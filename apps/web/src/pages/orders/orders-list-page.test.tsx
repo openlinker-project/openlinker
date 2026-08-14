@@ -1025,6 +1025,126 @@ describe('OrdersListPage', () => {
       expect(filters).toMatchObject({ salesDocumentBlocked: true });
     });
 
+    it('should state the cause as the badge tooltip AND an accessible name', async () => {
+      const mockApi = createMockApiClient({
+        orders: {
+          list: vi.fn().mockResolvedValue(
+            paginated([
+              blockedOrder({
+                salesDocumentBlockReason: 'unresolved-routing',
+                salesDocumentUnresolvedReason: 'ambiguous-connection-no-primary',
+              }),
+            ]),
+          ),
+        },
+        connections: { list: vi.fn().mockResolvedValue([sampleConnection, invoicingConnection]) },
+      });
+
+      const { container } = renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+      await screen.findByText('ALG-882414');
+      const row = container.querySelector('.data-table__row') as HTMLElement;
+      const wrapper = within(row).getByText('No primary').closest('span[title]');
+
+      // The hint is the ONLY statement of why on this surface, so it must reach the
+      // DOM — and `title` alone is unreachable by keyboard and unreliable in screen
+      // readers on a role-less span.
+      expect(wrapper).toHaveAttribute('title', expect.stringMatching(/none is set to issue/i));
+      expect(wrapper).toHaveAttribute('aria-label', expect.stringContaining('No primary'));
+    });
+
+    it('should render the block badge on the mobile card path too', async () => {
+      const viewport = mockMobileViewport();
+      try {
+        const mockApi = createMockApiClient({
+          orders: {
+            list: vi
+              .fn()
+              .mockResolvedValue(
+                paginated([blockedOrder({ salesDocumentBlockReason: 'trigger-model-batched' })]),
+              ),
+          },
+          connections: { list: vi.fn().mockResolvedValue([sampleConnection, invoicingConnection]) },
+        });
+
+        renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+        await screen.findByText('ALG-882414');
+        // The card is a deliberate parallel render path — deleting its ~20
+        // duplicated lines used to leave the suite green.
+        expect(screen.getByText('Batched')).toBeInTheDocument();
+      } finally {
+        viewport.restore();
+      }
+    });
+
+    it('should seed from the URL param and clear the filter when toggled off', async () => {
+      const list = vi.fn().mockResolvedValue(paginated([syncedOrder]));
+      const statusSummary = vi.fn().mockResolvedValue({
+        total: 3,
+        sourceDeleted: 0,
+        awaitingMapping: 0,
+        needsAttention: 0,
+        synced: 3,
+        awaitingDispatch: 0,
+        salesDocumentBlocked: 2,
+      });
+      const mockApi = createMockApiClient({ orders: { list, statusSummary } });
+
+      // URL state owns this filter (§ State Management), so a shared/bookmarked
+      // link must arrive already filtered.
+      renderWithProviders(<OrdersListPage />, {
+        apiClient: mockApi,
+        route: '/orders?invoicing=blocked&offset=20',
+      });
+
+      const chip = await screen.findByRole('button', { name: /invoicing blocked/i });
+      expect(chip).toHaveAttribute('aria-pressed', 'true');
+      expect(list.mock.calls[0][0]).toMatchObject({ salesDocumentBlocked: true });
+
+      const before = list.mock.calls.length;
+      await userEvent.setup().click(chip);
+
+      await vi.waitFor(() => {
+        expect(list.mock.calls.length).toBeGreaterThan(before);
+      });
+      const [filters, pagination] = list.mock.calls[list.mock.calls.length - 1];
+      // Toggled off means "no filter", never `false` — the UI offers no
+      // hide-blocked-orders mode.
+      expect(filters.salesDocumentBlocked).toBeUndefined();
+      // And any filter change resets the page.
+      expect(pagination).toMatchObject({ offset: 0 });
+    });
+
+    it('should keep the chip mounted while the filter is active even at zero', async () => {
+      const statusSummary = vi.fn().mockResolvedValue({
+        total: 0,
+        sourceDeleted: 0,
+        awaitingMapping: 0,
+        needsAttention: 0,
+        synced: 0,
+        awaitingDispatch: 0,
+        salesDocumentBlocked: 0,
+      });
+      const mockApi = createMockApiClient({
+        orders: { list: vi.fn().mockResolvedValue(paginated([])), statusSummary },
+      });
+
+      renderWithProviders(<OrdersListPage />, {
+        apiClient: mockApi,
+        route: '/orders?invoicing=blocked',
+      });
+
+      // Gating the chip on the count alone unmounted the ONLY control for this
+      // param exactly when the remediation succeeded, stranding an applied filter.
+      expect(
+        await screen.findByRole('button', { name: /invoicing blocked/i }),
+      ).toBeInTheDocument();
+      // And the empty state must not claim nothing has ever synced.
+      expect(screen.getByText(/Nothing is blocked from invoicing/i)).toBeInTheDocument();
+      expect(screen.queryByText(/No order records have been synced yet/i)).toBeNull();
+    });
+
     it('should hide the chip when nothing is blocked', async () => {
       const statusSummary = vi.fn().mockResolvedValue({
         total: 1,

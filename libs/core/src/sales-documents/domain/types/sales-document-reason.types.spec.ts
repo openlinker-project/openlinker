@@ -10,9 +10,11 @@
  * @module libs/core/src/sales-documents/domain/types
  */
 import {
+  SalesDocumentAttentionReasonValues,
   SalesDocumentGateBlockReasonValues,
   SalesDocumentUnresolvedReasonValues,
   isSalesDocumentGateBlockReason,
+  isSalesDocumentUnresolvedReason,
 } from './sales-document-reason.types';
 
 describe('sales-document reason vocabularies (ADR-041 decision 11)', () => {
@@ -45,6 +47,32 @@ describe('sales-document reason vocabularies (ADR-041 decision 11)', () => {
       (SalesDocumentUnresolvedReasonValues as readonly string[]).includes(value),
     );
     expect(overlap).toEqual([]);
+  });
+
+  it('should treat every reason EXCEPT manual as attention-worthy', () => {
+    // `trigger-model-manual` is `parseTriggerModel`'s default, so on a manual
+    // install every uninvoiced order carries it. Aggregating that would put a red
+    // "Invoicing blocked 4,312" on a healthy install and train the operator to
+    // ignore the number. Derived, so a NEW reason is attention-worthy by default.
+    expect(SalesDocumentAttentionReasonValues).toEqual([
+      'unresolved-routing',
+      'missing-required-tax-id',
+      'tax-rate-conflict',
+      'trigger-model-batched',
+    ]);
+    expect(SalesDocumentAttentionReasonValues).not.toContain('trigger-model-manual');
+  });
+
+  it('should narrow only the declared unresolved reasons', () => {
+    expect(isSalesDocumentUnresolvedReason('ambiguous-connection-no-primary')).toBe(true);
+    expect(isSalesDocumentUnresolvedReason('no-matching-rule')).toBe(true);
+    // A gate reason is NOT an unresolved reason — the repository relies on this
+    // guard to coerce an unrecognised stored value to `null` on read.
+    expect(isSalesDocumentUnresolvedReason('trigger-model-manual')).toBe(false);
+    expect(isSalesDocumentUnresolvedReason('')).toBe(false);
+    expect(isSalesDocumentUnresolvedReason(null)).toBe(false);
+    expect(isSalesDocumentUnresolvedReason(undefined)).toBe(false);
+    expect(isSalesDocumentUnresolvedReason(7)).toBe(false);
   });
 
   it('should narrow only the declared gate reasons', () => {

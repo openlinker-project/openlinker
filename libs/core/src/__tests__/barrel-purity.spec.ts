@@ -25,6 +25,9 @@
  * @module libs/core/src/__tests__
  */
 
+import { readFileSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
+
 const CONTEXT_BARRELS = [
   'ai',
   'content',
@@ -37,6 +40,7 @@ const CONTEXT_BARRELS = [
   'mappings',
   'orders',
   'products',
+  'sales-documents',
   'sync',
   'users',
   'webhooks',
@@ -50,5 +54,41 @@ describe('@openlinker/core/<context> barrel purity (#598)', () => {
       expect(mod).toBeTruthy();
       expect(Object.keys(mod).length).toBeGreaterThan(0);
     }).not.toThrow();
+  });
+
+  /**
+   * `sales-documents` (#2100) is the one context whose value is that it depends on
+   * NOTHING: `invoicing` and `orders` both value-import it, and `invoicing` would
+   * close a CJS module-load cycle the moment this leaf grew an edge back into
+   * either. Three docblocks call that load-bearing; before this assertion nothing
+   * enforced it, so a future `import` here would have been caught only by a Nest
+   * boot failure in some unrelated suite.
+   *
+   * Textual, deliberately: a `require()` cannot see whether the module pulled a
+   * dependency in, and the whole point is to forbid the import statement itself.
+   */
+  it('sales-documents stays a dependency-free leaf (no import statements at all)', () => {
+    const root = join(__dirname, '..', 'sales-documents');
+    const files: string[] = [];
+    const walk = (dir: string): void => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const full = join(dir, entry.name);
+        if (entry.isDirectory()) walk(full);
+        else if (entry.name.endsWith('.ts') && !entry.name.endsWith('.spec.ts')) files.push(full);
+      }
+    };
+    walk(root);
+
+    expect(files.length).toBeGreaterThan(0);
+    for (const file of files) {
+      const source = readFileSync(file, 'utf8');
+      const imports = source
+        .split('\n')
+        .filter((line) => /^\s*(import|export)\s.*\sfrom\s/.test(line))
+        // The barrel's own `export * from './domain/...'` is the one allowed edge:
+        // it is internal to the concern, so it cannot reach another context.
+        .filter((line) => !/from\s+['"]\.\//.test(line));
+      expect(imports).toEqual([]);
+    }
   });
 });

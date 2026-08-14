@@ -138,12 +138,12 @@ export interface OrderRecordRepositoryPort {
 
   /**
    * Set — or clear — the reason OpenLinker issued no fiscal document for this
-   * order (#2100, ADR-041 decision 11). Narrow absolute-set on the two
+   * order (#2100, ADR-041 decision 11). Narrow absolute-set on the three
    * `salesDocumentBlock*` columns only, mirroring
    * {@link updateItemResolutionFailure}, so it can't clobber a concurrent write
    * to any other column on the same row.
    *
-   * Passing `null` CLEARS both columns, and that is the primary path, not an
+   * Passing `null` CLEARS all three columns, and that is the primary path, not an
    * edge case: the auto-issue gate is level-evaluated, so this is called on
    * every order transition with whatever the current answer is. Last write
    * wins by design — the newest evaluation is the truthful one.

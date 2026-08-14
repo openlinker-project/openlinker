@@ -54,6 +54,7 @@ import type { IncomingOrder } from '../../domain/types/incoming-order.types';
 import type { Order } from '../../domain/types/order.types';
 import type { OrderFeedEventType } from '../../domain/types/order-feed.types';
 import type { OrderRecord } from '../../domain/entities/order-record.entity';
+import type { SalesDocumentBlockOutcome } from '@openlinker/core/sales-documents';
 import type { OrderRecordStatus } from '../../domain/types/order-record.types';
 import type { ItemResolutionFailureKind } from './order-item-ref-resolver.types';
 import { Logger } from '@openlinker/shared/logging';
@@ -459,21 +460,20 @@ export class OrderIngestionService implements IOrderIngestionService {
     // `error.name` + `connectionId` + `order.id` + `sourceEventId` — never the raw
     // error/message or any payload/buyer field.
     try {
-      const block = await this.autoIssueTrigger.onOrderTransition(
+      const outcome = await this.autoIssueTrigger.onOrderTransition(
         order,
         connectionId,
         sourceEventId
       );
       // #2100 (ADR-041 §54/§105): a block is never log-only. The trigger REPORTS
-      // the reason and this service — which owns the order record — writes it,
+      // the outcome and this service — which owns the order record — writes it,
       // which is what keeps the trigger's one-way edge (F3) intact.
       //
-      // `block` is written through even when it is `null`, and that is the point:
-      // the gate is level-evaluated, so `null` is the answer "nothing is blocking
-      // this order any more" and is the ONLY thing that clears a reason persisted
-      // by an earlier transition. Skipping the null write would make the badge
-      // permanent.
-      await this.orderRecordService.markSalesDocumentBlock(order.id, block);
+      // `none` is written through as `null`, and that is the point: the gate is
+      // level-evaluated, so it is the ONLY thing that clears a reason persisted by
+      // an earlier transition. `indeterminate` writes NOTHING — the gate could not
+      // tell, so erasing a true reason is worse than leaving it (#2100 review).
+      await this.persistSalesDocumentOutcome(order.id, outcome, existing);
     } catch (error) {
       // F9/D11: issuance is best-effort relative to order sync. SWALLOW — never
       // re-throw — so an enqueue/compose failure can never block the order
@@ -483,13 +483,61 @@ export class OrderIngestionService implements IOrderIngestionService {
       this.logger.warn(
         `Auto-issue trigger failed (swallowed): error=${errorName} connectionId=${connectionId} orderId=${order.id} sourceEventId=${sourceEventId ?? 'n/a'}`
       );
-      // NOTE: the block write shares this catch on purpose. If persisting the
-      // reason fails, the order pipeline must still succeed — the reason is
-      // re-decided and rewritten on the next transition, so a lost write
-      // self-heals; a thrown one would not.
     }
 
     return results;
+  }
+
+  /**
+   * Persist the auto-issue gate's outcome onto the order record (#2100).
+   *
+   * Three deliberate properties:
+   *
+   * 1. **`indeterminate` writes nothing.** The gate could not decide, so erasing a
+   *    reason it cannot vouch for would trade a true signal for silence.
+   * 2. **A no-change outcome writes nothing either.** `onOrderTransition` is
+   *    level-evaluated and the overwhelmingly common answer is `none` on an
+   *    already-unblocked order. Writing it anyway would issue a second `UPDATE`
+   *    per ingestion and bump `@UpdateDateColumn` — and `updatedAt` is a live
+   *    filter axis (`FulfillmentStatusSyncService` scans `updatedSince`), so the
+   *    bump would keep every re-polled order inside that scan window. The
+   *    comparison uses the PRE-persist record already in hand; no extra read.
+   * 3. **Its own catch and its own message.** A persistence failure here is not a
+   *    trigger failure, and reporting it as one would send the next reader to the
+   *    wrong service. Swallowed like the trigger itself: the outcome is re-decided
+   *    on the next transition, so a lost write self-heals.
+   */
+  private async persistSalesDocumentOutcome(
+    internalOrderId: string,
+    outcome: SalesDocumentBlockOutcome,
+    priorRecord: OrderRecord | null
+  ): Promise<void> {
+    if (outcome.kind === 'indeterminate') {
+      return;
+    }
+
+    const next = outcome.kind === 'blocked' ? outcome.block : null;
+    const priorReason = priorRecord?.salesDocumentBlockReason ?? null;
+    const priorUnresolved = priorRecord?.salesDocumentUnresolvedReason ?? null;
+    const priorDetail = priorRecord?.salesDocumentBlockDetail ?? null;
+
+    const unchanged =
+      priorReason === (next?.reason ?? null) &&
+      priorUnresolved === (next?.unresolvedReason ?? null) &&
+      priorDetail === (next?.detail ?? null);
+    if (unchanged) {
+      return;
+    }
+
+    try {
+      await this.orderRecordService.markSalesDocumentBlock(internalOrderId, next);
+    } catch (error) {
+      const errorName = error instanceof Error ? error.name : 'UnknownError';
+      this.logger.warn(
+        `Failed to persist the sales-document block outcome (swallowed): ` +
+          `error=${errorName} orderId=${internalOrderId} outcome=${outcome.kind}`
+      );
+    }
   }
 
   /**

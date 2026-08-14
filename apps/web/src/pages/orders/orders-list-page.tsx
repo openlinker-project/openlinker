@@ -53,7 +53,6 @@ import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../shared/config/demo-mode';
 import { useDemoMode } from '../../features/system';
 import { captureDemoEvent } from '../../features/demo';
 import { parseOrderSnapshot } from '../../features/orders/api/order-snapshot.schema';
-import type { ParsedOrderInvoice } from '../../features/orders/api/order-snapshot.schema';
 import { deriveOrderHealth, slaBadge, fulfillmentBadge } from '../../features/orders/lib/order-health';
 import {
   itemsSummary,
@@ -404,23 +403,6 @@ export function OrdersListPage(): ReactElement {
     [parsedByOrder],
   );
 
-  /**
-   * Row badge for a persisted sales-document block (#2100), shared by the desktop
-   * table and the mobile card.
-   *
-   * Suppressed whenever the order already carries an invoice. The backend clears
-   * the reason on the next transition and on a manual issue, but neither is
-   * instantaneous — and a "No primary" badge next to an issued invoice is worse
-   * than no badge at all, so the render refuses the contradiction outright rather
-   * than trusting the write to have landed first.
-   */
-  const blockedBadgeFor = useCallback(
-    (order: OrderRecord, invoice: ParsedOrderInvoice | null | undefined) =>
-      invoice
-        ? null
-        : invoicingBlockedBadge(order.salesDocumentBlockReason, order.salesDocumentUnresolvedReason),
-    [],
-  );
 
   // Whether ANY connection exposes the Invoicing capability (#1713). When none
   // does, the "Issue invoice" CTA degrades to an em dash — the platform can't
@@ -893,7 +875,11 @@ export function OrdersListPage(): ReactElement {
           const parsed = parsedFor(order);
           const pay = paymentBadge(parsed.paymentStatus);
           const inv = parsed.invoice ? invoiceBadge(parsed.invoice) : null;
-          const blocked = blockedBadgeFor(order, parsed.invoice);
+          const blocked = invoicingBlockedBadge(
+            order.salesDocumentBlockReason,
+            order.salesDocumentUnresolvedReason,
+            parsed.invoice,
+          );
           return (
             <span className="orders-cell-stack orders-cell-stack--end">
               {parsed.totals ? (
@@ -924,7 +910,12 @@ export function OrdersListPage(): ReactElement {
                 </StatusBadge>
               ) : blocked ? (
                 <>
-                  <span title={blocked.hint}>
+                  {/* `aria-label` alongside `title` (#2100 review): the hint is the
+                      ONLY statement of why on this surface, and `title` alone is
+                      unreachable by keyboard, unreliable in screen readers on a
+                      role-less span, and absent on touch. Same pairing the "est."
+                      ship-by marker in this file uses, for the same reason. */}
+                  <span title={blocked.hint} aria-label={`${blocked.label}: ${blocked.hint}`}>
                     <StatusBadge tone={blocked.tone} withDot compact>
                       {blocked.label}
                     </StatusBadge>
@@ -984,8 +975,6 @@ export function OrdersListPage(): ReactElement {
       // Per-page snapshot cache + invoicing-capability gate (#1713).
       parsedFor,
       hasInvoicingCapability,
-      // Sales-document block badge (#2100).
-      blockedBadgeFor,
     ],
   );
 
@@ -1242,15 +1231,19 @@ export function OrdersListPage(): ReactElement {
           #2100 — an independent filter, NOT a sixth health segment: an invoicing
           block is orthogonal to sync health (a blocked order is usually also
           `synced`), and the KPI segments above are a partition whose counts sum
-          to the total. Rendered only when the API reports at least one, so an
-          install that never hits this state sees no extra control.
+          to the total.
+
+          Hidden when the count is zero so an install that never hits this state
+          sees no extra control — but ALWAYS rendered while the filter is active,
+          even at zero. Gating on the count alone unmounted the only control for
+          `?invoicing=blocked` the moment the remediation succeeded, leaving an
+          applied filter with no way to clear it and an empty state that claimed
+          "no order records have been synced yet" (#2100 review). The sibling
+          ship-by chip is unconditional for the same reason.
         */}
-        {summary?.salesDocumentBlocked ? (
+        {invoicingBlocked || summary?.salesDocumentBlocked ? (
           <Chip tone="error" active={invoicingBlocked} onClick={toggleInvoicingBlocked}>
-            Invoicing blocked{' '}
-            <span className="tabular" style={{ opacity: 0.7 }}>
-              {summary.salesDocumentBlocked}
-            </span>
+            Invoicing blocked {summary?.salesDocumentBlocked ?? 0}
           </Chip>
         ) : null}
         {/* SLA KPI affordance (#1108) — at-a-glance overdue / at-risk counts. */}
@@ -1296,6 +1289,22 @@ export function OrdersListPage(): ReactElement {
             title="No orders in this view"
             message="No orders match the current filter."
             action={<Button onClick={() => { setHealthFilter(null); }}>View all orders</Button>}
+          />
+        ) : invoicingBlocked ? (
+          /*
+            #2100 — `invoicing=blocked` is a filter the `health !== undefined`
+            branch above cannot see, so without this arm an active block filter
+            fell through to "No order records have been synced yet", which is
+            false whenever a filter is applied. The recovery button clears THIS
+            param (the other arms' `setHealthFilter(null)` does not touch it).
+          */
+          <EmptyState
+            liveRegion="off"
+            title="Nothing is blocked from invoicing"
+            message="No order is waiting on an invoicing decision right now."
+            action={
+              <Button onClick={() => { toggleInvoicingBlocked(); }}>View all orders</Button>
+            }
           />
         ) : (
           <EmptyState
@@ -1443,7 +1452,11 @@ export function OrdersListPage(): ReactElement {
                   cancelled: parsed.status === 'cancelled',
                 });
                 const inv = parsed.invoice ? invoiceBadge(parsed.invoice) : null;
-                const blocked = blockedBadgeFor(order, parsed.invoice);
+                const blocked = invoicingBlockedBadge(
+                  order.salesDocumentBlockReason,
+                  order.salesDocumentUnresolvedReason,
+                  parsed.invoice,
+                );
                 const fulfillment = fulfillmentBadge(order.fulfillmentState);
                 // "Generate label" only when there's a live OL carrier route
                 // (#1799), same gate as the desktop cell — otherwise the passive
@@ -1496,7 +1509,10 @@ export function OrdersListPage(): ReactElement {
                             </StatusBadge>
                           ) : blocked ? (
                             <span className="ds-row" style={{ gap: 'var(--space-2)' }}>
-                              <span title={blocked.hint}>
+                              <span
+                                title={blocked.hint}
+                                aria-label={`${blocked.label}: ${blocked.hint}`}
+                              >
                                 <StatusBadge tone={blocked.tone} withDot compact>
                                   {blocked.label}
                                 </StatusBadge>

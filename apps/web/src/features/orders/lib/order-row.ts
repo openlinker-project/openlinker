@@ -146,64 +146,82 @@ export interface InvoicingBlockedBadge {
 export function invoicingBlockedBadge(
   reason: SalesDocumentGateBlockReasonValue | null | undefined,
   unresolvedReason?: SalesDocumentUnresolvedReasonValue | null,
+  /**
+   * The order's invoice projection, when it has one. Passing it SUPPRESSES the
+   * badge: a "No primary" pill beside an issued invoice is worse than no pill at
+   * all, and the backend's own gate now refuses to record a block for an invoiced
+   * order — this is the render-side belt for a row written before that landed.
+   *
+   * A parameter rather than a caller-side `if`, because every surface that shows
+   * the badge must apply the same rule. It previously lived in a page-local helper
+   * and the order-detail timeline simply didn't have it, so the timeline claimed
+   * "No invoice issued" directly under the panel showing the invoice (#2100 review).
+   */
+  invoice?: ParsedOrderInvoice | null,
 ): InvoicingBlockedBadge | null {
-  if (!reason) return null;
+  if (!reason || invoice) return null;
 
-  if (reason === 'unresolved-routing') {
-    if (unresolvedReason === 'ambiguous-connection-no-primary') {
-      return {
-        label: 'No primary',
-        tone: 'error',
-        hint: 'Several connections can invoice and none is set to issue automatically.',
-        keepIssueAction: false,
-      };
-    }
-    // Any other routing reason belongs to the #1908 router, which does not exist
-    // yet. Report the honest generic rather than inventing copy for a state no
-    // code path can currently produce.
+  // `unresolved-routing` is the only reason whose copy depends on a second field
+  // (ADR-041 §107's paired routing reason), so it is resolved before the table.
+  if (reason === 'unresolved-routing' && unresolvedReason === 'ambiguous-connection-no-primary') {
     return {
-      label: 'Not routed',
+      label: 'No primary',
       tone: 'error',
-      hint: 'OpenLinker could not decide where to issue this document.',
+      hint: 'Several connections can invoice and none is set to issue automatically.',
       keepIssueAction: false,
     };
   }
 
-  switch (reason) {
-    case 'trigger-model-manual':
-      // Neutral on purpose: a deliberate operator setting is not a fault. The
-      // fact is still recorded so the row is honest about why nothing happened.
-      return {
-        label: 'Manual only',
-        tone: 'neutral',
-        hint: 'This connection issues invoices by hand.',
-        keepIssueAction: true,
-      };
-    case 'trigger-model-batched':
-      return {
-        label: 'Batched',
-        tone: 'warning',
-        hint: "Batched invoicing isn't available yet, so this order is waiting.",
-        keepIssueAction: false,
-      };
-    case 'missing-required-tax-id':
-      // Declared by ADR-041 but never written today (no buyer tax id exists on
-      // the order contract). Copy ships so the badge is right the day it does.
-      return {
-        label: 'Tax ID missing',
-        tone: 'error',
-        hint: 'This order needs a buyer tax ID before it can be invoiced.',
-        keepIssueAction: false,
-      };
-    case 'tax-rate-conflict':
-      // Declared but never written today — blocked on #2057.
-      return {
-        label: 'Tax rate conflict',
-        tone: 'error',
-        hint: "The channel's tax rate disagrees with the master catalogue.",
-        keepIssueAction: false,
-      };
-    default:
-      return null;
-  }
+  return BADGE_BY_REASON[reason] ?? null;
 }
+
+/**
+ * Copy + tone per gate reason.
+ *
+ * `satisfies Record<SalesDocumentGateBlockReasonValue, …>` is the point: a reason
+ * added to ADR-041's union is a COMPILE error here rather than a silently
+ * unlabelled row. The mirror script only keeps the two arrays aligned — it cannot
+ * see this table, and a reason added to both arrays with no entry here would
+ * otherwise render nothing at all, which is the exact failure #2100 exists to fix.
+ */
+const BADGE_BY_REASON = {
+  // The generic arm of `unresolved-routing`: any other routing reason belongs to
+  // the #1908 router, which does not exist yet. Honest generic rather than copy
+  // invented for a state no code path can currently produce.
+  'unresolved-routing': {
+    label: 'Not routed',
+    tone: 'error',
+    hint: 'OpenLinker could not decide where to issue this document.',
+    keepIssueAction: false,
+  },
+  // Neutral on purpose: a deliberate operator setting is not a fault. The fact is
+  // still recorded so the row is honest about why nothing happened, and the CTA
+  // stays because issuing by hand IS this connection's configured workflow.
+  'trigger-model-manual': {
+    label: 'Manual only',
+    tone: 'neutral',
+    hint: 'This connection issues invoices by hand.',
+    keepIssueAction: true,
+  },
+  'trigger-model-batched': {
+    label: 'Batched',
+    tone: 'warning',
+    hint: "Batched invoicing isn't available yet, so this order is waiting.",
+    keepIssueAction: false,
+  },
+  // Declared by ADR-041 but never written today (no buyer tax id exists on the
+  // order contract). Copy ships so the badge is right the day it does.
+  'missing-required-tax-id': {
+    label: 'Tax ID missing',
+    tone: 'error',
+    hint: 'This order needs a buyer tax ID before it can be invoiced.',
+    keepIssueAction: false,
+  },
+  // Declared but never written today — blocked on #2057.
+  'tax-rate-conflict': {
+    label: 'Tax rate conflict',
+    tone: 'error',
+    hint: "The channel's tax rate disagrees with the master catalogue.",
+    keepIssueAction: false,
+  },
+} satisfies Record<SalesDocumentGateBlockReasonValue, InvoicingBlockedBadge>;

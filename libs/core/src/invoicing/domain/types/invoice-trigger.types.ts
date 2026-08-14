@@ -58,3 +58,24 @@ export type TriggerGateOutcome =
   | { kind: 'proceed' }
   | { kind: 'waiting' }
   | { kind: 'blocked'; reason: SalesDocumentGateBlockReason };
+
+/**
+ * The gate block reason each non-auto trigger model maps to (#2100 review).
+ *
+ * Two of ADR-041's gate reasons are named after values of THIS enum
+ * (`'trigger-model-manual'` / `'trigger-model-batched'`), and nothing else linked
+ * the two vocabularies: renaming a trigger model would have left the persisted
+ * reason string silently stale. This map is that link — it is keyed by the trigger
+ * models that block, so renaming one is a compile error here, and the reason
+ * literals are checked against ADR-041's union by the value type.
+ *
+ * `auto-on-paid` / `auto-on-shipped` are deliberately absent: they never block,
+ * they only wait for their condition (see `TriggerGateOutcome`).
+ */
+export const BLOCK_REASON_BY_TRIGGER_MODEL = {
+  manual: 'trigger-model-manual',
+  batched: 'trigger-model-batched',
+} as const satisfies Record<
+  Extract<InvoiceTriggerModel, 'manual' | 'batched'>,
+  SalesDocumentGateBlockReason
+>;

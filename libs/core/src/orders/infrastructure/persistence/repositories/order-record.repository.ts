@@ -36,6 +36,7 @@ import { SLA_AT_RISK_WINDOW_MS } from '../../../domain/types/order-sla.types';
 import type { FulfillmentRollupState } from '../../../domain/types/order-fulfillment.types';
 import type { SalesDocumentBlock } from '@openlinker/core/sales-documents';
 import {
+  SalesDocumentAttentionReasonValues,
   isSalesDocumentGateBlockReason,
   isSalesDocumentUnresolvedReason,
 } from '@openlinker/core/sales-documents';
@@ -340,8 +341,27 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    * or `countByHealth`'s FILTER clauses by mistake: an invoicing block is
    * orthogonal to sync health and is counted alongside the five, never among
    * them. Uses the indexed `salesDocumentBlockReason` column.
+   *
+   * An explicit IN-list of ATTENTION-WORTHY reasons rather than `IS NOT NULL`
+   * (#2100 review), which fixes two problems at once:
+   *
+   * - `'trigger-model-manual'` is excluded. It is `parseTriggerModel`'s default,
+   *   so on a manual install every uninvoiced order carries it — `IS NOT NULL`
+   *   would put a red "Invoicing blocked 4,312" on a perfectly healthy install.
+   *   The per-order badge still renders manual, neutral; it is just never
+   *   aggregated or filtered on.
+   * - A reason string this build does not recognise (written by a newer release,
+   *   then rolled back) no longer matches. `toDomain` already coerces such a value
+   *   to `null` on read, so `IS NOT NULL` counted rows that then rendered no badge
+   *   anywhere — a count with no reachable explanation.
+   *
+   * Built from `SalesDocumentAttentionReasonValues`, so a reason added to ADR-041's
+   * union is attention-worthy by default. Literal-only (no user input) — the values
+   * are compile-time constants, never request data.
    */
-  private static readonly IS_SALES_DOCUMENT_BLOCKED = `rec."salesDocumentBlockReason" IS NOT NULL`;
+  private static readonly IS_SALES_DOCUMENT_BLOCKED = `rec."salesDocumentBlockReason" IN (${SalesDocumentAttentionReasonValues.map(
+    (reason) => `'${reason}'`,
+  ).join(', ')})`;
 
   /**
    * Per-row earliest **failed sync attempt** timestamp, read from the
@@ -668,7 +688,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
   }
 
   /**
-   * Set or clear the sales-document block (#2100). Narrow absolute-set on the two
+   * Set or clear the sales-document block (#2100). Narrow absolute-set on the three
    * `salesDocumentBlock*` columns only — no read-modify-write, so it can't race a
    * concurrent write to any other column on the same row (mirrors
    * {@link updateItemResolutionFailure}).
@@ -878,7 +898,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     // entirely — the row's existing value survives untouched. `markCancelled`
     // (COALESCE-based, atomic) is the single writer for this column.
     //
-    // salesDocumentBlockReason / salesDocumentBlockDetail are omitted for the same
+    // All three salesDocument* columns are omitted for the same
     // reason (#2100), with one of its own: `persistOrder` runs BEFORE the
     // auto-issue gate on every ingestion, so round-tripping these here would null
     // the columns and then immediately re-set them — a visible flicker for any

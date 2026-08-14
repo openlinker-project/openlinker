@@ -570,6 +570,7 @@ export class InvoicingController {
         source: await this.resolveSourcePlatformType(orderRecord.sourceConnectionId),
       });
       await this.invoiceService.issueInvoice(command);
+      await this.clearSalesDocumentBlock(record.orderId);
       return { id: invoiceId, outcome: 'retried' };
     } catch (error) {
       // A re-rejection / rehydration failure for ONE id must not abort the batch.
@@ -872,6 +873,10 @@ export class InvoicingController {
     } catch (error) {
       throw this.toHttpException(error);
     }
+    // #2100: a correction implies an issued original, so the gate's own
+    // invoice-awareness already suppresses a block here. Clearing anyway is the
+    // cheap belt-and-braces for a row that predates that suppression.
+    await this.clearSalesDocumentBlock(original.orderId);
     return this.toDto(issued);
   }
 

@@ -90,7 +90,7 @@ export class OrderRecord {
      * `null` included — so a reason never outlives the misconfiguration that
      * caused it. Deliberately NOT round-tripped through the repository's
      * `toOrm`, for the same reason as `cancelledAt`: that writer is the single
-     * owner of these two columns.
+     * owner of all three `salesDocument*` columns.
      */
     public readonly salesDocumentBlockReason: SalesDocumentGateBlockReason | null = null,
     /**

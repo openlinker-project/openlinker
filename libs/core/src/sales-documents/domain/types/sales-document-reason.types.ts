@@ -103,6 +103,46 @@ export interface SalesDocumentBlock {
   readonly detail?: string;
 }
 
+/**
+ * What the gate concluded about one order transition, as reported to the caller
+ * that owns the persistence.
+ *
+ * Three arms, because "no block" and "could not tell" must not collapse into the
+ * same value — that collapse is how a legitimate reason gets erased:
+ *
+ * - `none`          — nothing is blocking this order. The caller CLEARS any
+ *   persisted reason; this is what makes the record self-heal once an operator
+ *   fixes the configuration, and it is the ordinary outcome.
+ * - `blocked`       — carries the named reason to persist.
+ * - `indeterminate` — the gate could not reach a conclusion (a compose/enqueue
+ *   error, which may be permanent). The caller LEAVES THE PERSISTED VALUE ALONE.
+ *   Clearing here would delete a true reason and replace it with nothing, which
+ *   is precisely the silent decline ADR-041 §54 forbids.
+ */
+export type SalesDocumentBlockOutcome =
+  | { kind: 'none' }
+  | { kind: 'blocked'; block: SalesDocumentBlock }
+  | { kind: 'indeterminate' };
+
+/**
+ * Reasons that warrant an install-level alarm — everything except
+ * `'trigger-model-manual'`.
+ *
+ * A manual connection is a deliberate operator choice, so on a manual install
+ * EVERY uninvoiced order carries that reason (it is also `parseTriggerModel`'s
+ * default for an unconfigured connection). Counting those would put a red
+ * "Invoicing blocked 4,312" on a perfectly healthy install and train the
+ * operator to ignore the number. The per-order badge still renders manual — it
+ * is simply rendered neutral, and never aggregated.
+ *
+ * Derived from the values array rather than hand-listed, so a reason added to
+ * ADR-041's union is attention-worthy by default: opting one out has to be a
+ * deliberate edit here.
+ */
+export const SalesDocumentAttentionReasonValues = SalesDocumentGateBlockReasonValues.filter(
+  (reason) => reason !== 'trigger-model-manual',
+);
+
 /** Narrow an untrusted string (a persisted column, a query param) to the union. */
 export function isSalesDocumentGateBlockReason(
   value: unknown,

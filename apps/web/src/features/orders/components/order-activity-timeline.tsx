@@ -21,8 +21,9 @@ import {
   type SalesDocumentGateBlockReasonValue,
   type SalesDocumentUnresolvedReasonValue,
 } from '../api/orders.types';
-import { invoicingBlockedBadge } from '../lib/order-row';
 import type { StatusBadgeTone } from '../../../shared/ui/status-badge';
+import type { ParsedOrderInvoice } from '../api/order-snapshot.schema';
+import { invoicingBlockedBadge } from '../lib/order-row';
 
 interface TimelineEvent {
   id: string;
@@ -69,6 +70,11 @@ interface OrderActivityTimelineProps {
   salesDocumentUnresolvedReason?: SalesDocumentUnresolvedReasonValue | null;
   /** PII-free elaboration the backend supplied. */
   salesDocumentBlockDetail?: string | null;
+  /**
+   * The order's invoice projection, when it has one. Suppresses the block entry —
+   * see the shared rule on `invoicingBlockedBadge`.
+   */
+  invoice?: ParsedOrderInvoice | null;
 }
 
 const STATUS_PAST_TENSE: Record<OrderSyncStatusValue, string> = {
@@ -110,6 +116,7 @@ function buildEvents(
   salesDocumentBlockReason?: SalesDocumentGateBlockReasonValue | null,
   salesDocumentUnresolvedReason?: SalesDocumentUnresolvedReasonValue | null,
   salesDocumentBlockDetail?: string | null,
+  invoice?: ParsedOrderInvoice | null,
 ): TimelineEvent[] {
   const events: TimelineEvent[] = [];
 
@@ -223,7 +230,14 @@ function buildEvents(
   // is a current-state fact re-decided on every transition, not a historical
   // event, and no instant is persisted for it. Dating it with `createdAt` or
   // `updatedAt` would assert a moment the data does not support.
-  const blocked = invoicingBlockedBadge(salesDocumentBlockReason, salesDocumentUnresolvedReason);
+  // `invoice` is passed so the shared suppression rule applies here too: without
+  // it this entry claimed "No invoice issued" directly under the panel showing the
+  // issued invoice (#2100 review).
+  const blocked = invoicingBlockedBadge(
+    salesDocumentBlockReason,
+    salesDocumentUnresolvedReason,
+    invoice,
+  );
   if (blocked) {
     events.push({
       id: 'invoicing-blocked',
@@ -256,6 +270,7 @@ export function OrderActivityTimeline({
   salesDocumentBlockReason,
   salesDocumentUnresolvedReason,
   salesDocumentBlockDetail,
+  invoice,
 }: OrderActivityTimelineProps): ReactElement {
   const events = useMemo(
     () =>
@@ -268,6 +283,7 @@ export function OrderActivityTimeline({
         salesDocumentBlockReason,
         salesDocumentUnresolvedReason,
         salesDocumentBlockDetail,
+        invoice,
       ),
     [
       createdAt,
@@ -278,6 +294,7 @@ export function OrderActivityTimeline({
       salesDocumentBlockReason,
       salesDocumentUnresolvedReason,
       salesDocumentBlockDetail,
+      invoice,
     ],
   );
 

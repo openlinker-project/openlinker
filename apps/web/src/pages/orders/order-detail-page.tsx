@@ -457,6 +457,7 @@ export function OrderDetailPage(): ReactElement {
           salesDocumentBlockReason={order.salesDocumentBlockReason}
           salesDocumentUnresolvedReason={order.salesDocumentUnresolvedReason}
           salesDocumentBlockDetail={order.salesDocumentBlockDetail}
+          invoice={snapshot.invoice}
         />
       </section>
 

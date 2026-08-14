@@ -1717,6 +1717,23 @@ textarea,
   color: var(--status-info-strong);
 }
 
+/* Active wins over the tone modifier (#2100).
+ *
+ * `.chip--active` and the five `.chip--{tone}` rules are all specificity (0,1,0),
+ * and the tones are declared LATER — so a toned chip (`tone="error"` on the
+ * invoicing-blocked filter, `tone="warning"` on ship-by) rendered its tone in both
+ * states and the only visual difference between on and off was `font-weight`. That
+ * is far too thin for a control that silently changes the result set, and it left
+ * colour doing the work `aria-pressed` alone could not show a sighted user.
+ * Doubling the class raises specificity to (0,2,0) without touching either rule.
+ */
+.chip.chip--active {
+  background: var(--accent-primary-soft);
+  border-color: color-mix(in oklab, var(--accent-primary) 35%, transparent);
+  color: var(--accent-primary-soft-strong);
+  font-weight: 600;
+}
+
 /* ── Theme toggle ───────────────────────────────────────────────────
  * Three-option radiogroup rendered as a segmented button group. Sits
  * inside the user-chip dropdown in the topbar (Phase 2 wiring).

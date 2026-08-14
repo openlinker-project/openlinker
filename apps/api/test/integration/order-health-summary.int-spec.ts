@@ -268,7 +268,9 @@ describe('Order health summary (integration)', () => {
       const synced = await repository.findMany({ health: 'synced' }, { limit: 1, offset: 0 });
       await ds.query(
         `UPDATE "order_records" SET "salesDocumentBlockReason" = $1 WHERE "internalOrderId" = $2`,
-        ['trigger-model-manual', synced.items[0].internalOrderId],
+        // An attention-worthy reason: `trigger-model-manual` is deliberately
+        // excluded from both the count and this filter.
+        ['trigger-model-batched', synced.items[0].internalOrderId],
       );
 
       const blocked = await repository.findMany(
@@ -276,7 +278,7 @@ describe('Order health summary (integration)', () => {
         { limit: 50, offset: 0 },
       );
       expect(blocked.total).toBe(1);
-      expect(blocked.items[0].salesDocumentBlockReason).toBe('trigger-model-manual');
+      expect(blocked.items[0].salesDocumentBlockReason).toBe('trigger-model-batched');
 
       // The two axes AND together — "synced AND invoicing blocked" is the shape an
       // operator actually asks for.
@@ -293,7 +295,7 @@ describe('Order health summary (integration)', () => {
       expect(notBlocked.total).toBe(6);
     });
 
-    it('reads back an unrecognised stored reason as null rather than leaking it', async () => {
+    it('neither counts nor surfaces an unrecognised stored reason', async () => {
       const ds = harness.getDataSource();
       const seeded = await createTestOrderRecord(ds, {
         sourceConnectionId: SOURCE_A,
@@ -301,20 +303,47 @@ describe('Order health summary (integration)', () => {
         syncStatus: [],
       });
       // The column is a plain varchar with no check constraint, so a value from a
-      // newer release (or a hand edit) can land here. It must degrade to "no
-      // block" instead of reaching the UI as a literal the badge cannot label.
+      // newer release (or a hand edit) can land here.
       await ds.query(
         `UPDATE "order_records" SET "salesDocumentBlockReason" = $1 WHERE "internalOrderId" = $2`,
         ['some-future-reason', seeded.internalOrderId],
       );
 
       const found = await repository.findById(seeded.internalOrderId);
-
       expect(found?.salesDocumentBlockReason).toBeNull();
-      // The FILTER still matches it — the row genuinely has a stored reason, and
-      // hiding it from the count would under-report a real problem.
+
+      // And it is NOT counted (#2100 review): the predicate is an IN-list of known
+      // attention-worthy reasons, not `IS NOT NULL`. Counting a row that then
+      // renders no badge, no panel alert and no timeline entry gave the operator a
+      // number with no reachable explanation.
       const summary = await repository.countByHealth({});
-      expect(summary.salesDocumentBlocked).toBe(1);
+      expect(summary.salesDocumentBlocked).toBe(0);
+      const blocked = await repository.findMany(
+        { salesDocumentBlocked: true },
+        { limit: 50, offset: 0 },
+      );
+      expect(blocked.total).toBe(0);
+    });
+
+    it('does not aggregate trigger-model-manual — a deliberate setting is not an alarm', async () => {
+      const ds = harness.getDataSource();
+      const seeded = await createTestOrderRecord(ds, {
+        sourceConnectionId: SOURCE_A,
+        recordStatus: 'ready',
+        syncStatus: [],
+      });
+      await repository.updateSalesDocumentBlock(seeded.internalOrderId, {
+        reason: 'trigger-model-manual',
+      });
+
+      // The reason IS persisted (ADR-041 lists it) and the per-order badge renders
+      // it — but `manual` is `parseTriggerModel`'s default, so counting it would
+      // report every order on a manual install as blocked.
+      const found = await repository.findById(seeded.internalOrderId);
+      expect(found?.salesDocumentBlockReason).toBe('trigger-model-manual');
+
+      const summary = await repository.countByHealth({});
+      expect(summary.salesDocumentBlocked).toBe(0);
     });
 
     it('updateSalesDocumentBlock sets and clears without touching other columns', async () => {

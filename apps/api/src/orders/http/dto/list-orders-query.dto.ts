@@ -145,9 +145,13 @@ export class ListOrdersQueryDto {
       'is the most common shape of the problem.',
   })
   @IsOptional()
-  // Query params arrive as strings; only the literal 'true'/'false' are accepted so a
-  // stray value can't silently collapse to `false` and hide blocked orders.
-  @Transform(({ value }) => (value === 'true' ? true : value === 'false' ? false : undefined))
+  // Query params arrive as strings, so map the two literals and pass anything else
+  // THROUGH unchanged for `@IsBoolean()` to reject with a 400 — mirroring
+  // `list-shipments-query.dto.ts` and `list-offer-mappings-query.dto.ts`. Mapping a
+  // stray value to `undefined` would make `?salesDocumentBlocked=yes` silently
+  // return the UNFILTERED list while the chip renders as applied, which is a worse
+  // failure for a filter than collapsing to `false`.
+  @Transform(({ value }): unknown => (value === 'true' ? true : value === 'false' ? false : value))
   @IsBoolean()
   salesDocumentBlocked?: boolean;
 

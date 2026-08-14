@@ -15,6 +15,7 @@ import type { ConnectionPort } from '@openlinker/core/identifier-mapping';
 import type { Connection } from '@openlinker/core/identifier-mapping';
 import type { ISyncJobsService } from '@openlinker/core/sync';
 import type { Order } from '@openlinker/core/orders';
+import type { IInvoiceService } from './invoice.service.interface';
 
 function makeOrder(overrides: Partial<Order> = {}): Order {
   return {
@@ -63,6 +64,7 @@ function makeConnection(triggerModel: string | undefined, overrides: Partial<Con
 describe('AutoIssueTriggerService', () => {
   let connectionPort: jest.Mocked<Pick<ConnectionPort, 'list'>>;
   let syncJobs: jest.Mocked<ISyncJobsService>;
+  let invoices: jest.Mocked<Pick<IInvoiceService, 'getLatestInvoiceForOrder'>>;
   let service: AutoIssueTriggerService;
   let warnSpy: jest.SpyInstance<void, [message: string]>;
   let errorSpy: jest.SpyInstance<void, [message: string]>;
@@ -75,9 +77,14 @@ describe('AutoIssueTriggerService', () => {
       findLastSucceededJob: jest.fn().mockResolvedValue(null),
       findEnabledPollTask: jest.fn().mockReturnValue(null),
     };
+    // #2100: the gate reads the order's own invoice projection before reporting a
+    // block. Default = no document, so the block paths are reachable; the
+    // suppression + read-failure cases override it per test.
+    invoices = { getLatestInvoiceForOrder: jest.fn().mockResolvedValue(null) };
     service = new AutoIssueTriggerService(
       connectionPort as unknown as ConnectionPort,
       syncJobs as unknown as ISyncJobsService,
+      invoices as unknown as IInvoiceService,
     );
     // Silence + capture the PII-safe envelope log.
     warnSpy = jest
@@ -459,14 +466,19 @@ describe('AutoIssueTriggerService', () => {
     });
   });
 
-  describe('reported block reason (#2100, ADR-041 decision 11)', () => {
-    it('should report the routing-unresolved bridge value with its own reason when no primary singles a connection out', async () => {
+
+  describe('reported block outcome (#2100, ADR-041 decision 11)', () => {
+    function twoCandidates(): void {
       connectionPort.list.mockResolvedValue([
         makeConnection('auto-on-paid', { id: 'conn-a' }),
         makeConnection('auto-on-paid', { id: 'conn-b' }),
       ]);
+    }
 
-      const block = await service.onOrderTransition(
+    it('should report the routing-unresolved bridge value with its own reason when no primary singles a connection out', async () => {
+      twoCandidates();
+
+      const outcome = await service.onOrderTransition(
         makeOrder({ paymentStatus: 'paid' }),
         'src-1',
         'evt-1',
@@ -474,10 +486,13 @@ describe('AutoIssueTriggerService', () => {
 
       // ADR-041 §107: ambiguity is a ROUTING-vocabulary fact, so the gate records
       // the bridge value and carries the routing reason alongside it.
-      expect(block).toEqual({
-        reason: 'unresolved-routing',
-        unresolvedReason: 'ambiguous-connection-no-primary',
-        detail: '2 invoicing connections, none marked primary',
+      expect(outcome).toEqual({
+        kind: 'blocked',
+        block: {
+          reason: 'unresolved-routing',
+          unresolvedReason: 'ambiguous-connection-no-primary',
+          detail: '2 invoicing connections, none marked primary',
+        },
       });
     });
 
@@ -489,91 +504,162 @@ describe('AutoIssueTriggerService', () => {
         });
       connectionPort.list.mockResolvedValue([primaryConn('conn-a'), primaryConn('conn-b')]);
 
-      const block = await service.onOrderTransition(makeOrder({ paymentStatus: 'paid' }), 'src-1');
+      const outcome = await service.onOrderTransition(
+        makeOrder({ paymentStatus: 'paid' }),
+        'src-1',
+      );
 
-      expect(block?.detail).toBe('2 invoicing connections, more than one marked primary');
+      expect(outcome).toMatchObject({
+        block: { detail: '2 invoicing connections, more than one marked primary' },
+      });
     });
 
     it('should report trigger-model-manual', async () => {
       connectionPort.list.mockResolvedValue([makeConnection('manual')]);
 
-      const block = await service.onOrderTransition(makeOrder({ paymentStatus: 'paid' }), 'src-1');
+      const outcome = await service.onOrderTransition(
+        makeOrder({ paymentStatus: 'paid' }),
+        'src-1',
+      );
 
-      expect(block).toEqual({ reason: 'trigger-model-manual' });
+      expect(outcome).toEqual({ kind: 'blocked', block: { reason: 'trigger-model-manual' } });
       expect(syncJobs.schedule).not.toHaveBeenCalled();
     });
 
     it('should report trigger-model-batched, keeping the existing PII-safe log', async () => {
       connectionPort.list.mockResolvedValue([makeConnection('batched')]);
 
-      const block = await service.onOrderTransition(makeOrder({ paymentStatus: 'paid' }), 'src-1');
+      const outcome = await service.onOrderTransition(
+        makeOrder({ paymentStatus: 'paid' }),
+        'src-1',
+      );
 
-      expect(block).toEqual({ reason: 'trigger-model-batched' });
+      expect(outcome).toEqual({ kind: 'blocked', block: { reason: 'trigger-model-batched' } });
       // The reason is ADDITIVE (§54) — the log envelope must not have been dropped.
       expect(warnSpy).toHaveBeenCalledTimes(1);
       expect(warnSpy.mock.calls[0][0]).toContain('BatchedTriggerNotImplementedError');
     });
 
-    it('should report NO block when the job is enqueued — this is what clears a stale reason', async () => {
+    it('should report `none` when the job is enqueued — this is what clears a stale reason', async () => {
       connectionPort.list.mockResolvedValue([makeConnection('auto-on-paid')]);
 
-      const block = await service.onOrderTransition(makeOrder({ paymentStatus: 'paid' }), 'src-1');
+      const outcome = await service.onOrderTransition(
+        makeOrder({ paymentStatus: 'paid' }),
+        'src-1',
+      );
 
-      expect(block).toBeNull();
+      expect(outcome).toEqual({ kind: 'none' });
     });
 
-    it('should report NO block for an unmet auto-on-paid condition — waiting is not blocked', async () => {
+    it('should report `none` for an unmet auto-on-paid condition — waiting is not blocked', async () => {
       connectionPort.list.mockResolvedValue([makeConnection('auto-on-paid')]);
 
-      const block = await service.onOrderTransition(
+      const outcome = await service.onOrderTransition(
         makeOrder({ paymentStatus: 'awaiting' }),
         'src-1',
       );
 
       // An unpaid order is early in its lifecycle, not misconfigured. Badging it
       // would put a permanent warning on every order that has not been paid yet.
-      expect(block).toBeNull();
+      expect(outcome).toEqual({ kind: 'none' });
     });
 
-    it('should report NO block for an unmet auto-on-shipped condition', async () => {
+    it('should report `none` for an unmet auto-on-shipped condition', async () => {
       connectionPort.list.mockResolvedValue([makeConnection('auto-on-shipped')]);
 
-      const block = await service.onOrderTransition(makeOrder({ status: 'processing' }), 'src-1');
+      const outcome = await service.onOrderTransition(
+        makeOrder({ status: 'processing' }),
+        'src-1',
+      );
 
-      expect(block).toBeNull();
+      expect(outcome).toEqual({ kind: 'none' });
     });
 
-    it('should report NO block when no connection has the Invoicing capability', async () => {
+    it('should report `none` when no connection has the Invoicing capability', async () => {
       connectionPort.list.mockResolvedValue([
         makeConnection('auto-on-paid', { enabledCapabilities: ['OrderSource'] }),
       ]);
 
-      const block = await service.onOrderTransition(makeOrder({ paymentStatus: 'paid' }), 'src-1');
+      const outcome = await service.onOrderTransition(
+        makeOrder({ paymentStatus: 'paid' }),
+        'src-1',
+      );
 
       // Nothing for an operator to unblock ON THIS ORDER — an install that simply
       // does not do invoicing must not badge every order it ingests.
-      expect(block).toBeNull();
+      expect(outcome).toEqual({ kind: 'none' });
+      // No document read is needed to answer that, so none is made.
+      expect(invoices.getLatestInvoiceForOrder).not.toHaveBeenCalled();
     });
 
-    it('should report NO block when composing the payload fails for an unrelated reason', async () => {
+    it('should SUPPRESS a block when the order already carries a document', async () => {
+      connectionPort.list.mockResolvedValue([makeConnection('manual')]);
+      invoices.getLatestInvoiceForOrder.mockResolvedValue({ id: 'inv-1' } as never);
+
+      const outcome = await service.onOrderTransition(
+        makeOrder({ paymentStatus: 'paid' }),
+        'src-1',
+      );
+
+      // The decisive case: `manual` is true forever, so without this the gate
+      // re-blocked an order the operator had already invoiced by hand — making the
+      // aggregate count wrong and the timeline contradict the invoice panel.
+      expect(outcome).toEqual({ kind: 'none' });
+      expect(invoices.getLatestInvoiceForOrder).toHaveBeenCalledWith('order-1');
+    });
+
+    it('should suppress on ANY record, not only an issued one', async () => {
+      connectionPort.list.mockResolvedValue([makeConnection('manual')]);
+      invoices.getLatestInvoiceForOrder.mockResolvedValue({
+        id: 'inv-1',
+        status: 'failed',
+      } as never);
+
+      const outcome = await service.onOrderTransition(
+        makeOrder({ paymentStatus: 'paid' }),
+        'src-1',
+      );
+
+      // Matches what the order surfaces already do — they key on the presence of
+      // the invoice projection. A failed attempt is visible on its own terms.
+      expect(outcome).toEqual({ kind: 'none' });
+    });
+
+    it('should report `indeterminate` when the document read fails — never a clear', async () => {
+      connectionPort.list.mockResolvedValue([makeConnection('manual')]);
+      invoices.getLatestInvoiceForOrder.mockRejectedValue(new Error('db down'));
+
+      const outcome = await service.onOrderTransition(
+        makeOrder({ paymentStatus: 'paid' }),
+        'src-1',
+      );
+
+      expect(outcome).toEqual({ kind: 'indeterminate' });
+      expect(warnSpy.mock.calls.map((c) => c[0]).join('\n')).toContain(
+        'leaving the persisted reason untouched',
+      );
+    });
+
+    it('should report `indeterminate`, NOT a clear, when composing the payload fails', async () => {
       connectionPort.list.mockResolvedValue([makeConnection('auto-on-paid')]);
       syncJobs.schedule.mockRejectedValueOnce(new Error('redis down'));
 
-      const block = await service.onOrderTransition(makeOrder({ paymentStatus: 'paid' }), 'src-1');
+      const outcome = await service.onOrderTransition(
+        makeOrder({ paymentStatus: 'paid' }),
+        'src-1',
+      );
 
-      // Transient/defect, already logged, retried on the next transition — not
-      // something the operator fixes on this order.
-      expect(block).toBeNull();
+      // Clearing here would erase a reason the operator had just fixed and put
+      // nothing in its place: no invoice, no badge, no count, no job row — the
+      // exact silent decline ADR-041 §54 forbids.
+      expect(outcome).toEqual({ kind: 'indeterminate' });
       expect(warnSpy).toHaveBeenCalledTimes(1);
     });
 
     it('should keep every reported detail PII-free', async () => {
-      connectionPort.list.mockResolvedValue([
-        makeConnection('auto-on-paid', { id: 'conn-a' }),
-        makeConnection('auto-on-paid', { id: 'conn-b' }),
-      ]);
+      twoCandidates();
 
-      const block = await service.onOrderTransition(
+      const outcome = await service.onOrderTransition(
         makeOrder({
           paymentStatus: 'paid',
           billingAddress: {
@@ -590,9 +676,10 @@ describe('AutoIssueTriggerService', () => {
 
       // The detail is rendered verbatim to an operator, so buyer fields must never
       // reach it — a count and neutral vocabulary only.
-      expect(block?.detail).not.toContain('Kowalski');
-      expect(block?.detail).not.toContain('Testowa');
-      expect(block?.detail).not.toContain('Poznań');
+      const detail = outcome.kind === 'blocked' ? (outcome.block.detail ?? '') : '';
+      expect(detail).not.toContain('Kowalski');
+      expect(detail).not.toContain('Testowa');
+      expect(detail).not.toContain('Poznań');
     });
   });
 
@@ -602,10 +689,13 @@ describe('AutoIssueTriggerService', () => {
       connectionPort.list.mockResolvedValue([makeConnection('auto-on-paid', { id: 'bad' })]);
       const badOrder = makeOrder({ paymentStatus: 'paid' });
       const noAddr = { ...badOrder, billingAddress: undefined, shippingAddress: undefined };
-      // #2100: the method now RESOLVES to a block reason or `null`; a compose
-      // failure is not an operator-fixable block, so `null` still means "nothing
-      // escaped".
-      await expect(service.onOrderTransition(noAddr, 'src-1')).resolves.toBeNull();
+      // #2100: the method now RESOLVES to an outcome. `InvalidBuyerProfileError` is
+      // deterministic — it will throw identically on every future transition — so
+      // the outcome is `indeterminate`, which tells the caller to leave any
+      // persisted reason alone rather than erasing it.
+      await expect(service.onOrderTransition(noAddr, 'src-1')).resolves.toEqual({
+        kind: 'indeterminate',
+      });
       expect(syncJobs.schedule).not.toHaveBeenCalled();
       expect(warnSpy).toHaveBeenCalled();
     });

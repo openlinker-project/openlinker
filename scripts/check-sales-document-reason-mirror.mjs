@@ -14,10 +14,17 @@
  *
  * The FE file cannot import the core type (the browser bundle does not depend on
  * `@openlinker/core`), so the arrays are copies — and a copy drifts silently in
- * BOTH directions: a reason added only to core reaches the browser as a value the
- * badge mapper has no label for, and one added only to the FE type-checks against
- * a value the API will never send. A prose "keep in sync" comment is not
- * enforcement; this is.
+ * BOTH directions: a reason added only to core never reaches the browser at all,
+ * and one added only to the FE type-checks against a value the API will never
+ * send. A prose "keep in sync" comment is not enforcement; this is.
+ *
+ * SCOPE, so the wrong guard is not trusted: this script compares two ARRAYS. It
+ * says nothing about whether `invoicingBlockedBadge` has a case for each value —
+ * a reason added to BOTH arrays with no badge entry would pass here. Two other
+ * guards close that: the `satisfies Record<SalesDocumentGateBlockReasonValue, …>`
+ * on the badge table (a compile error), and the table-driven assertion in
+ * `apps/web/src/features/orders/lib/order-row.test.ts` that every value yields a
+ * hint.
  *
  * Both files are parsed TEXTUALLY (no TypeScript import, no transpile) so this
  * script stays a zero-dependency `check:invariants` step like its siblings.
@@ -238,5 +245,11 @@ function selfCheck() {
 if (process.argv.includes('--self-check')) {
   selfCheck();
 } else {
-  await main();
+  // Explicit fatal handler, matching `check-permission-mirror.mjs`. A bare
+  // top-level `await main()` surfaces a rename of either mirrored file as a raw
+  // unhandled-rejection stack instead of one actionable line.
+  Promise.resolve(main()).catch((err) => {
+    console.error('✗ check-sales-document-reason-mirror: fatal error:', err);
+    process.exit(1);
+  });
 }

@@ -16,7 +16,7 @@
  * @see {@link AutoIssueTriggerService} for the implementation
  */
 import type { Order } from '@openlinker/core/orders';
-import type { SalesDocumentBlock } from '@openlinker/core/sales-documents';
+import type { SalesDocumentBlockOutcome } from '@openlinker/core/sales-documents';
 
 export interface IAutoIssueTriggerService {
   /**
@@ -28,9 +28,18 @@ export interface IAutoIssueTriggerService {
    * @param sourceEventId - The only trace token at the seam (NO `correlationId`
    *   exists — D10); threaded into the job payload and every log envelope.
    *
-   * @returns The named reason issuance was BLOCKED for this order, or `null` when
-   *   it was enqueued, is merely waiting for its trigger condition, or there is no
-   *   invoicing connection at all (#2100, ADR-041 decision 11).
+   * @returns A `SalesDocumentBlockOutcome` (#2100, ADR-041 decision 11) the caller
+   *   persists onto the order:
+   *   - `blocked`       — write the named reason.
+   *   - `none`          — CLEAR any persisted reason. Returned when the job was
+   *     enqueued, when the order is merely waiting for its trigger condition, when
+   *     no invoicing connection exists at all, and when the order ALREADY carries a
+   *     fiscal document (the gate suppresses its own block in that case, so a later
+   *     transition cannot re-label an invoiced order).
+   *   - `indeterminate` — LEAVE THE PERSISTED VALUE ALONE. Returned on a
+   *     compose/enqueue error and on the unreachable defensive branch: with the
+   *     answer unknown, clearing could erase a true reason and blocking could
+   *     invent one.
    *
    *   The value is REPORTED, not persisted, and that is load-bearing: persisting it
    *   would mean injecting an OrdersModule token here and closing a runtime DI
@@ -38,7 +47,7 @@ export interface IAutoIssueTriggerService {
    *   invariant above (and `invoicing-auto-issue-boot.int-spec.ts`) exists to
    *   prevent. The caller already lives in the orders context and owns the write.
    *
-   *   Callers MUST write `null` through as well — that is the level-triggered
+   *   Callers MUST honour `none` as a write of `null` — that is the level-triggered
    *   clear, and without it a reason persisted once would outlive the
    *   misconfiguration that caused it.
    */
@@ -46,5 +55,5 @@ export interface IAutoIssueTriggerService {
     order: Order,
     sourceConnectionId: string,
     sourceEventId?: string,
-  ): Promise<SalesDocumentBlock | null>;
+  ): Promise<SalesDocumentBlockOutcome>;
 }
