@@ -10,6 +10,7 @@
  * @module libs/core/src/listings/application/interfaces
  */
 import type { DestinationCategory } from '../../domain/entities/destination-category.entity';
+import type { CategoryPathSegment } from '../../domain/types/category.types';
 import type {
   DestinationCategorySearchHit,
   TaxonomyScope,
@@ -44,6 +45,16 @@ export interface IDestinationTaxonomyService {
    * cursor repository (a cross-context repository-port import is forbidden).
    */
   syncTaxonomy(connectionId: string, input: TaxonomySyncInput): Promise<TaxonomySyncResult>;
+
+  /**
+   * Root -> leaf breadcrumb for one category, read from the projection.
+   *
+   * Exists so the breadcrumb read stops being a LIVE adapter call (#2074):
+   * `CategoryPathReader` is still the offer-build path's breadcrumb source, but
+   * an operator-facing read now comes from OL's own store like every other read
+   * in this model (ADR-037).
+   */
+  path(connectionId: string, externalId: string): Promise<CategoryPathSegment[]>;
 
   /** Which row set this connection reads/writes. Memoised per connection. */
   resolveScope(connectionId: string): Promise<TaxonomyScope>;

@@ -58,9 +58,21 @@ interface CategoryRow {
 }
 
 /**
+ * Hard ceiling on how far the breadcrumb walk climbs (#2074).
+ *
+ * Sized far above any real taxonomy (Allegro/WooCommerce trees run ~5-8 deep),
+ * so it truncates nothing well-formed and exists purely to make a cyclic
+ * "parentId" terminate. Bound as a parameter rather than interpolated, per this
+ * file's no-interpolation rule.
+ */
+const BREADCRUMB_MAX_DEPTH = 64;
+
+/**
  * Walks each hit UP to its root, then reverses, so the caller gets a
  * root -> leaf breadcrumb. Anchored on the hit ids rather than the whole tree,
- * so the recursion is bounded by depth x limit, not by table size.
+ * so the recursion is bounded by depth x limit, not by table size — and depth
+ * is bounded in turn by BREADCRUMB_MAX_DEPTH, since "parentId" is mutable and
+ * therefore cannot be assumed acyclic.
  */
 const BREADCRUMB_SQL = `
   WITH RECURSIVE seed AS (
@@ -75,6 +87,19 @@ const BREADCRUMB_SQL = `
     JOIN seed s ON p."externalId" = s."parentId"
     WHERE $1::text IS NOT DISTINCT FROM p."taxonomyOwner"
       AND $2::uuid IS NOT DISTINCT FROM p."connectionId"
+      -- Cycle guard, NOT a taxonomy-shape assumption (#2074). A cycle is
+      -- persistable here: the upsert reassigns "parentId" on conflict, and
+      -- re-parenting is normal (see the DO UPDATE comment below), so two
+      -- individually-valid observations across a paged, resumable sync — A under
+      -- B, then B under A after the platform reorganizes — leave A <-> B. The
+      -- #2061 "expandedAt" guard terminates the SYNC; it says nothing about
+      -- READING the rows it wrote. Without this predicate the walk never ends,
+      -- and there is no statement_timeout configured to stop it, so one request
+      -- pins a pooled connection indefinitely. Real taxonomies are ~5-8 deep, so
+      -- the bound truncates nothing well-formed; a cycle yields a long-but-finite
+      -- path instead of a hang, which the caller renders as a wrong breadcrumb —
+      -- a visible bug, which is the point, rather than an outage.
+      AND s.depth < $4::int
   )
   SELECT "hitId", "externalId", "name", depth FROM seed ORDER BY "hitId", depth DESC
 `;
@@ -283,6 +308,14 @@ export class DestinationCategoryRepository implements DestinationCategoryReposit
     return Array.isArray(result) && typeof result[1] === 'number' ? result[1] : 0;
   }
 
+  async findPath(scope: TaxonomyScope, externalId: string): Promise<CategoryPathSegment[]> {
+    // Reuses the breadcrumb CTE `search` already runs for its hits — one node is
+    // just a one-element hit set, so this adds no SQL. An unknown id yields no
+    // rows and therefore an empty path, which is the documented posture.
+    const byHit = await this.loadBreadcrumbs(scope, [externalId]);
+    return byHit.get(externalId) ?? [];
+  }
+
   private async loadBreadcrumbs(
     scope: TaxonomyScope,
     hitIds: string[],
@@ -291,6 +324,7 @@ export class DestinationCategoryRepository implements DestinationCategoryReposit
       scope.taxonomyOwner,
       scope.connectionId,
       hitIds,
+      BREADCRUMB_MAX_DEPTH,
     ])) as { hitId: string; externalId: string; name: string }[];
 
     const byHit = new Map<string, CategoryPathSegment[]>();

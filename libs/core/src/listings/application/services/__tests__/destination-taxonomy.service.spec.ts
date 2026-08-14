@@ -85,6 +85,7 @@ function buildService(options: {
     markExpanded: jest.fn().mockResolvedValue(undefined),
     hasObserved: jest.fn().mockResolvedValue(false),
     deleteStaleBelow: jest.fn().mockResolvedValue(0),
+    findPath: jest.fn().mockResolvedValue([]),
     ...options.repository,
   } as unknown as jest.Mocked<DestinationCategoryRepositoryPort>;
 
@@ -211,6 +212,43 @@ describe('DestinationTaxonomyService', () => {
         taxonomyOwner: 'allegro',
         connectionId: null,
       });
+    });
+  });
+
+  describe('path', () => {
+    it('should read the breadcrumb from the projection, never the adapter', async () => {
+      // The route this backs used to call `CategoryPathReader` live. ADR-037's
+      // defining property is that reads do not touch the platform.
+      const adapters = { [ALLEGRO_CONNECTION]: { OfferManager: allegroOfferManager() } };
+      const { service, repository } = buildService({
+        adaptersByConnection: adapters,
+        repository: {
+          findPath: jest.fn().mockResolvedValue([
+            { id: 'a', name: 'Clothing' },
+            { id: 'a1', name: 'Shoes' },
+          ]),
+        },
+      });
+
+      await expect(service.path(ALLEGRO_CONNECTION, 'a1')).resolves.toEqual([
+        { id: 'a', name: 'Clothing' },
+        { id: 'a1', name: 'Shoes' },
+      ]);
+      expect(repository.findPath).toHaveBeenCalledWith(
+        { taxonomyOwner: 'allegro', connectionId: null },
+        'a1',
+      );
+      const fetchCategories = adapters[ALLEGRO_CONNECTION].OfferManager
+        ?.fetchCategories as jest.Mock;
+      expect(fetchCategories).not.toHaveBeenCalled();
+    });
+
+    it('should return an empty path for an id the scope has never synced', async () => {
+      const { service } = buildService({
+        adaptersByConnection: { [ALLEGRO_CONNECTION]: { OfferManager: allegroOfferManager() } },
+      });
+
+      await expect(service.path(ALLEGRO_CONNECTION, 'unknown')).resolves.toEqual([]);
     });
   });
 
