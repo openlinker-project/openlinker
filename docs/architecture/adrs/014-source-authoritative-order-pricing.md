@@ -76,8 +76,9 @@ Model source-authoritative pricing as a **core invariant**, implemented natively
 
 - Related issues: #895; future consumers #877 (WooCommerce `OrderProcessorManager`); #2054
   (per-line tax rate - the amendment below), #1290 (the KSeF symptom that named the follow-up),
-  #2053 (make the adapter substitutions visible), #2009 / PR #2056 (own the normative rate-rule
-  annex on ADR-026)
+  #2053 (make the adapter substitutions visible), #2057 (split unknown from resolved-zero in
+  `PrestashopTaxRateResolver` - prerequisite of any master rate read), #2009 / PR #2056 (own the
+  normative rate-rule annex on ADR-026)
 - Related ADRs: [ADR-002](./002-capability-ports-with-sub-capabilities.md) (capability vs.
   invariant distinction), [ADR-012](./012-branch-1-fulfillment-modeling.md) (order destination
   modeling), [ADR-026](./026-country-agnostic-invoicing-domain.md) (the invoicing contract that
@@ -88,8 +89,9 @@ Model source-authoritative pricing as a **core invariant**, implemented natively
 ## Proposed amendment (#2054, 2026-08-13): reverse the per-line tax-rate rejection
 
 > **This is a proposal, not a recorded refinement - it needs an explicit accept.** Recorded in place
-> following this repo's convention for a partial change: five amendment sections exist across four
-> ADRs ([009](./009-persisted-offer-status-snapshots.md) x2, [026](./026-country-agnostic-invoicing-domain.md),
+> following this repo's convention for a partial change: six amendment sections exist across four
+> ADRs ([009](./009-persisted-offer-status-snapshots.md) x3 - #1760, #2024, #2039 -
+> [026](./026-country-agnostic-invoicing-domain.md),
 > [030](./030-infakt-ksef-indirection.md), [037](./037-destination-taxonomy-read-model.md)), and
 > ADR-037 additionally reverses a recorded decision detail *in place* (`**Corrected by #2063**`), as
 > ADR-031 does with an inline `**Correction**`. So an in-place reversal is precedented; what is new
@@ -169,7 +171,9 @@ adapter defaults remain in the code path for historical orders regardless.
 
 **The rule adopted with it** is stated normatively by the ADR-026 rate annex (#2009 / PR #2056) and
 is deliberately **not** restated here, so the two documents cannot drift. Read that annex for the
-rule; read this section only for what it reverses and why. Merge order: if this section lands first,
+rule; read this section only for what it reverses, why, and under which constraint (below - the one
+thing this section does bind, because it is the condition of the reversal rather than a detail of the
+rule). Merge order: if this section lands first,
 the pointer is forward-looking until #2056 merges - it is not a claim that the annex is already in
 force, and neither document is normative until both are accepted.
 
@@ -187,20 +191,34 @@ because this is the document arguing the value must travel):
   authoritative. Out of scope for #2054; a channel-reported rate is treated as a cross-check today.
   (That Allegro reports gross only shows the channel is not always *available*, not that it is never
   authoritative.)
-- **Which vocabulary a core `OrderItem.taxRate` carries is open.** `FA3_TAX_RATE_MAP`'s keys are
-  KSeF-shaped; adopting them verbatim would land a Polish regime vocabulary on the neutral orders
-  contract, one layer further out than ADR-026 permits it on the invoicing one. #2054 has to answer
-  this to stay country-agnostic.
+
+**The vocabulary constraint is part of what is being accepted, not deferred to implementation.**
+Accepting "a per-line rate travels on `OrderItem`" without it would license importing a jurisdiction's
+model into the neutral orders contract, and implementation is exactly where the FA(3) keys are nearest
+to hand. So the reversal is conditioned on this rule, in the same words ADR-026 Decision 1 already uses
+one layer in:
+
+> A core `OrderItem` / `IncomingOrderItem` tax rate MUST be a **neutral string code that maps
+> losslessly onto UNCL 5305 inside the adapter** - the rule `InvoiceLine.taxRate` already lives under
+> (`invoicing.types.ts:272-274`, restating ADR-026 Decision 1: PL `zw`/`np` → `E`/`O`). Neutral
+> outward, national inward. A regime vocabulary MUST NOT be adopted verbatim: `FA3_TAX_RATE_MAP`'s
+> keys are KSeF-shaped and are **not** admissible as the core field's value set, because that would
+> land a Polish regime model one layer further out than ADR-026 permits it on the invoicing contract.
+
+Two corollaries follow from the same rule. The field is a **string, never a `number` fraction**, so an
+unresolved rate is *absent* rather than a `0` that reads as a lawful exemption - the conflation
+`PrestashopTaxRateResolver` exhibits today (see Evidence) and that **#2057** is open to fix. And naming
+the concrete admissible value set belongs to the ADR-026 rate annex (#2009 / PR #2056), not here; this
+section fixes the constraint the set must satisfy, the annex fixes the set.
 
 **Evidence** (verified against `dec889afb`):
 
 - **Nowhere to carry it.** `OrderItem` (`order.types.ts:235-255`) and `IncomingOrderItem`
   (`incoming-order.types.ts:131-164`) carry no tax field; the only tax signals are the order-level
   `OrderTotals.tax` (`:269`) and `taxTreatment` (`:283`), neither of which can describe a mixed-rate
-  basket. (`tax` is still a required `number`: the "make `tax?` optional" half of Decision 2 was
-  deliberately deferred with rationale in the linked plan (`:34`, `:86-89`) and at
-  `prestashop-order-processor-manager.adapter.ts:585`. Not this reversal's concern - argument 3
-  rests on `taxTreatment`, which did ship.)
+  basket. (`tax` is still a required `number` - the "make `tax?` optional" half of Decision 2 was
+  deliberately deferred, with rationale in the linked plan (`:34`, `:86-89`). Not this reversal's
+  concern: argument 3 rests on `taxTreatment`, which did ship.)
 - **So core emits nothing and adapters guess.** `toInvoiceLine` (`:228`) and `toShippingLine`
   (`:249`) emit `taxRate: ''`. inFakt substitutes `'23'` / `0.23`
   (`infakt-invoicing.adapter.ts:203-204`, applied `:228`, `:241`); its comment at `:194-202` records
@@ -210,18 +228,18 @@ because this is the document arguing the value must travel):
   and then to `DEFAULT_FA3_TAX_RATE = '23'` (`fa3-tax-rate.mapper.ts:27`).
 - **The destination vocabulary already exists and is unreachable per line.** `InvoiceLine.taxRate` is
   already a `string` code (`invoicing.types.ts:280`) and `FA3_TAX_RATE_MAP`
-  (`fa3-tax-rate.mapper.ts:34-50`) maps 12 keys onto all 10 FA(3) `P_12` values - including `0-wdt`,
-  `0-ex`, `np-i`, `np-ii`, `oo`. A connection-level `defaultTaxRate` does reach them
-  (`fa3-builder-input.mapper.ts:138` resolves `line.taxRate || context.defaultTaxRate`), flat for the
-  whole connection; no *per-line* value can. Erli already reports a per-line rate
+  (`fa3-tax-rate.mapper.ts:34-50`) maps 12 keys onto all 10 FA(3) `P_12` values. A connection-level
+  `defaultTaxRate` does reach them (`fa3-builder-input.mapper.ts:138` resolves
+  `line.taxRate || context.defaultTaxRate`), flat for the whole connection; no *per-line* value can.
+  Erli already reports a per-line rate
   (`erli-order.types.ts:79`) which its mapper drops (`erli-order.mapper.ts:156-165`); Allegro reports
   gross only (`allegro-order-source.adapter.ts:404`, `:412`).
-- **Downstream sites that assert the rejected rule** and would have to change with it:
-  `order.types.ts:281`, `order-to-issue-invoice-command.mapper.ts:94` / `:206-217` / `:232-240`,
+- **Downstream comment sites assert the rejected rule** and would have to change with it
+  (`order.types.ts:281`, `order-to-issue-invoice-command.mapper.ts:94` / `:206-217` / `:232-240`,
   `infakt-invoicing.adapter.ts:197`, `subiekt-line.mapper.ts:13`, `ksef-connection.types.ts:52`,
-  `fa3-builder-input.mapper.ts:112`, `prestashop-tax-rate.resolver.ts:10-11`, plus the linked
-  implementation plan (`:24`, `:86-87`). Two of them (`ksef-connection.types.ts:52`,
-  `fa3-builder-input.mapper.ts:112`) attribute the rule to **ADR-026**, so they become
+  `fa3-builder-input.mapper.ts:112`, `prestashop-tax-rate.resolver.ts:10-11`, plus the linked plan at
+  `:24` / `:86-87`). Two of them - `ksef-connection.types.ts:52` and
+  `fa3-builder-input.mapper.ts:112` - attribute the rule to **ADR-026**, so they become
   misattributions the moment the #2009 annex says otherwise.
 - **What the master actually resolves today.** `PrestashopTaxRateResolver` resolves a rate per
   `(product, delivery country)` - not per state: `selectRule` (`:129-144`) deliberately *de-prefers*
@@ -230,19 +248,26 @@ because this is the document arguing the value must travel):
   (`:193`); `PrestashopProductMasterAdapter` never receives it and `ProductMasterPort` exposes no
   rate. So this is **destination / `OrderProcessorManager` knowledge today** - the resolver's own
   header says exactly that - and exposing it as a master read is a new port method, not a rewiring of
-  an existing one. It would additionally need code semantics (it returns a `number` fraction, with
-  `0` meaning both untaxed and unresolvable - the conflation the adopted rule forbids) and honest
-  unknown semantics. WooCommerce's `ProductMaster` reads no tax at all, and its `tax_class` is a
-  class name rather than a rate, so a second master would have to be built rather than exposed.
+  an existing one. It would additionally need code semantics and honest unknown semantics: today it
+  returns a `number` fraction in which `0` means both untaxed and unresolvable - the conflation the
+  adopted rule forbids - so **#2057 (open) is a prerequisite of any master read**, since it is what
+  splits the two apart (`unknown` with `reason: 'transport' | 'configuration'`, never cached).
+  WooCommerce's `ProductMaster` reads no tax at all, and its `tax_class` is a class name rather than a
+  rate, so a second master would have to be built rather than exposed.
 
-**On the status line.** ADR-014's `Status` metadata is deliberately **unchanged**. The
-[README](./README.md) taxonomy has no per-alternative value, and `Superseded by ADR-NNN` would
-announce a whole-ADR replacement that is not happening. The bidirectional link is instead the two
-inline pointers plus this section naming what it reverses. Two consequences worth deciding rather
-than inheriting: (a) the append-only rule this design defers to (`README.md:40`) binds an
-**accepted** ADR, and ADR-014 is `Proposed` - so editing the alternative in place, or promoting
-ADR-014 to `Accepted` first (its decisions shipped) and then amending, are both open; (b) as it
-stands this is a proposal nested inside a proposal, and acceptance is recorded by dropping the
-"proposal, not a recorded refinement" preamble in the PR that adopts it. ADR-014 standing at
-`Proposed` while its decisions shipped is a separate bookkeeping gap this amendment does not
-silently close.
+**On the status line and on where this section lives.** ADR-014's `Status` metadata is deliberately
+**unchanged**. The [README](./README.md) taxonomy has no per-alternative value, and
+`Superseded by ADR-NNN` would announce a whole-ADR replacement that is not happening. The bidirectional
+link is instead the two inline pointers plus this section naming what it reverses.
+
+**The location question is settled (review on PR #2058): the section stays here.** A standalone
+superseding ADR was offered as an alternative for a reviewer holding that a reversal must not live
+inside the ADR it reverses; it was declined, because the README ladder describes whole-ADR replacement
+and a new ADR would additionally need a number from a pool with three live claimants. Note also that
+the append-only rule this design defers to (`README.md:40`) binds an **accepted** ADR, and ADR-014 is
+`Proposed` - so the in-place edit is not even the case that rule governs.
+
+What remains is **recording the decision**, and the PR that adopts this amendment owes two edits, not
+one: drop the "proposal, not a recorded refinement" preamble above, **and** resolve ADR-014's own
+`Proposed`-while-its-decisions-shipped status. Doing only the first would clear this proposal by
+leaving a second bookkeeping gap behind.
