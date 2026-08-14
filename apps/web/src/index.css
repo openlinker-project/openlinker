@@ -9518,6 +9518,23 @@ a.kpi-card:focus-visible {
   max-width: 100%;
 }
 
+/* Merged Document-type cell (#2090). Two columns answering one question became
+ * one two-line cell: the document number (a PDF link) over the document type.
+ * Same two-level shape as the identity cells above, without a thumbnail — there
+ * is no product to picture. No cap: both lines are short, bounded strings
+ * (`FV/2026/08/0042`, `Invoice`), so nothing here can widen a column. */
+.invoice-document-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: flex-start;
+  min-width: 0;
+}
+
+.invoice-document-cell__type {
+  font-size: 0.75rem;
+}
+
 /* Frozen-pane budget (#2089). 1024px is the worst case by construction: the
  * sidebar becomes a persistent 240px grid column at exactly this width (:1048)
  * AND the tables hosting this cell un-hide their Connection column there, so

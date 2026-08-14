@@ -18,7 +18,7 @@
  *
  * @module apps/web/src/pages/invoicing
  */
-import { useState, useCallback, type ReactElement } from 'react';
+import { useState, useCallback, useMemo, type ReactElement } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
@@ -49,6 +49,8 @@ import {
   type RegulatoryStatus,
 } from '../../features/invoicing';
 import { useConnectionsQuery } from '../../features/connections/hooks/use-connections-query';
+import { ConnectionCell } from '../../features/connections';
+import { OrderIdentityCell } from '../../features/orders';
 
 const PAGE_SIZE = 20;
 
@@ -105,7 +107,15 @@ export function InvoicesListPage(): ReactElement {
 
   const connectionsQuery = useConnectionsQuery();
   const connections = connectionsQuery.data ?? [];
-  const connectionMap = Object.fromEntries(connections.map((c) => [c.id, c.name]));
+  // `{ name, status }`, not just the name: that is `ConnectionCellFacts`, and
+  // supplying only part of it used to leave the cell's status note unresolved on
+  // exactly the batched path #1996 requires (#2027). A Map so a miss coalesces to
+  // `null` — `undefined` reads as "resolve it yourself" and reinstates a per-row
+  // fetch.
+  const connectionsById = useMemo(
+    () => new Map(connections.map((c) => [c.id, { name: c.name, status: c.status }])),
+    [connections],
+  );
 
   // Batch retry state
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -222,32 +232,45 @@ export function InvoicesListPage(): ReactElement {
     {
       id: 'orderId',
       header: t('invoice.column.orderId', 'Order'),
+      // Was the raw 41-character `orderId` in a `mono-text` span: no truncation,
+      // no Copy, no link. `orderSummary` has been on this response since #1995 /
+      // PR #2012 and was typed-but-unconsumed until now (#2090).
       cell: (r) => (
-        <span className="mono-text" title={r.orderId}>
-          {r.orderId}
-        </span>
+        <OrderIdentityCell
+          orderId={r.orderId}
+          orderNumber={r.orderSummary?.orderNumber}
+          firstItemName={r.orderSummary?.firstItemName}
+          firstItemImageUrl={r.orderSummary?.firstItemImageUrl}
+          itemCount={r.orderSummary?.itemCount}
+        />
       ),
-      accessor: (r) => r.orderId,
+      accessor: (r) => r.orderSummary?.orderNumber ?? r.orderId,
     },
     {
-      id: 'invoiceNumber',
-      header: t('invoice.column.invoiceNumber', 'Invoice no.'),
-      cell: (r) =>
-        r.providerInvoiceNumber ? (
-          <InvoicePdfLink invoiceNumber={r.providerInvoiceNumber} pdfUrl={r.pdfUrl} />
-        ) : (
-          <span className="text-muted">—</span>
-        ),
-    },
-    {
+      // `invoiceNumber` and `documentType` were two columns answering one
+      // question — *what document is this?* — in a nine-column budget (#2090).
+      // Merged: the number over the type, the number still a working PDF link.
+      //
+      // Deliberately NOT `hideBelow: 768` (which `documentType` carried): the
+      // merged column is the host for #2094's tablet fold of the Connection
+      // cell, so it cannot be the thing that disappears at that width.
       id: 'documentType',
       header: t('invoice.column.documentType', 'Document type'),
       cell: (r) => (
-        <span className="mono-text" title={r.documentType}>
-          {r.documentType}
+        <span className="invoice-document-cell">
+          {r.providerInvoiceNumber ? (
+            <InvoicePdfLink invoiceNumber={r.providerInvoiceNumber} pdfUrl={r.pdfUrl} />
+          ) : (
+            // A receipt carries no provider number — an expected shape, not an
+            // error state, so the type on line 2 still identifies the document.
+            <span className="text-muted">—</span>
+          )}
+          <span className="text-muted invoice-document-cell__type" title={r.documentType}>
+            {r.documentType}
+          </span>
         </span>
       ),
-      hideBelow: 768,
+      accessor: (r) => r.documentType,
     },
     {
       id: 'status',
@@ -279,10 +302,15 @@ export function InvoicesListPage(): ReactElement {
     {
       id: 'connection',
       header: t('invoice.column.connection', 'Connection'),
+      // The id used to live in a `title` attribute — invisible, unselectable and
+      // unreachable on touch. No adornment: an invoice's connection IS its
+      // issuing provider and the column header already says so (#2090).
       cell: (r) => (
-        <span className="text-muted" title={r.connectionId}>
-          {connectionMap[r.connectionId] ?? r.connectionId}
-        </span>
+        <ConnectionCell
+          connectionId={r.connectionId}
+          connection={connectionsById.get(r.connectionId) ?? null}
+          loading={connectionsQuery.isLoading}
+        />
       ),
       hideBelow: 1024,
     },

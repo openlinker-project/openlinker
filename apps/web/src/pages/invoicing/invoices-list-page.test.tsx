@@ -142,6 +142,195 @@ describe('InvoicesListPage', () => {
     });
   });
 
+  it('merges the document number and type into one column, keeping the PDF link (#2090)', async () => {
+    const list = vi.fn().mockResolvedValue(makeEnvelope({ items: [makeInvoice()], total: 1 }));
+    const { container } = renderWithProviders(<InvoicesListPage />, {
+      apiClient: mockApi(list),
+      route: '/invoices',
+    });
+
+    await screen.findByRole('link', { name: /open invoice pdf/i });
+    const cell = container.querySelector('.invoice-document-cell');
+    expect(cell).not.toBeNull();
+    // Number on line 1 (still the PDF anchor), type on line 2.
+    expect(within(cell as HTMLElement).getByText('FV/2026/001')).toBeInTheDocument();
+    expect(within(cell as HTMLElement).getByText('invoice')).toBeInTheDocument();
+
+    // The separate "Invoice no." column is gone; the list is 8 columns wide.
+    const headers = container.querySelectorAll('thead th');
+    expect(headers).toHaveLength(8);
+    expect(screen.queryByText('Invoice no.')).toBeNull();
+  });
+
+  it('renders the em dash over the document type for a receipt with no provider number', async () => {
+    // Expected shape, not an error state: the type on line 2 still identifies it.
+    const list = vi.fn().mockResolvedValue(
+      makeEnvelope({
+        items: [makeInvoice({ documentType: 'receipt', providerInvoiceNumber: null })],
+        total: 1,
+      }),
+    );
+    const { container } = renderWithProviders(<InvoicesListPage />, {
+      apiClient: mockApi(list),
+      route: '/invoices',
+    });
+
+    await screen.findByText('receipt');
+    const cell = container.querySelector('.invoice-document-cell') as HTMLElement;
+    expect(within(cell).getByText('—')).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /open invoice pdf/i })).toBeNull();
+  });
+
+  it('renders the Order column from the orderSummary projection, linking to the order (#2090)', async () => {
+    const list = vi.fn().mockResolvedValue(
+      makeEnvelope({
+        items: [
+          makeInvoice({
+            orderId: 'ol_order_a4f3b9c1d8e2f0a9b6c3d4e5f6a7b8c9',
+            orderSummary: {
+              orderNumber: '6839-2911-4402',
+              firstItemName: 'Terra Wool Coat',
+              firstItemImageUrl: null,
+              itemCount: 3,
+            },
+          }),
+        ],
+        total: 1,
+      }),
+    );
+    const { container } = renderWithProviders(<InvoicesListPage />, {
+      apiClient: mockApi(list),
+      route: '/invoices',
+    });
+
+    // Was the raw 41-character orderId in a mono span — no link, no Copy.
+    expect(await screen.findByRole('link', { name: '6839-2911-4402' })).toHaveAttribute(
+      'href',
+      '/orders/ol_order_a4f3b9c1d8e2f0a9b6c3d4e5f6a7b8c9',
+    );
+    expect(screen.getByText('Terra Wool Coat')).toBeInTheDocument();
+    expect(screen.getByText('+2')).toBeInTheDocument();
+    expect(
+      screen.queryByText('ol_order_a4f3b9c1d8e2f0a9b6c3d4e5f6a7b8c9'),
+    ).toBeNull();
+
+    // The row still navigates to the INVOICE; the in-cell order link is nested in
+    // no anchor, since `DataTable` linkifies the first cell only.
+    expect(
+      screen.getAllByRole('link').some((a) => a.getAttribute('href') === '/invoices/inv_1'),
+    ).toBe(true);
+    expect(container.querySelector('a a')).toBeNull();
+  });
+
+  it('copies the full internal order id from the Order cell (#2090)', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal('navigator', { clipboard: { writeText } });
+
+    const list = vi.fn().mockResolvedValue(
+      makeEnvelope({
+        items: [
+          makeInvoice({
+            orderId: 'ol_order_a4f3b9c1d8e2f0a9b6c3d4e5f6a7b8c9',
+            orderSummary: {
+              orderNumber: '6839-2911-4402',
+              firstItemName: null,
+              firstItemImageUrl: null,
+              itemCount: 1,
+            },
+          }),
+        ],
+        total: 1,
+      }),
+    );
+    renderWithProviders(<InvoicesListPage />, { apiClient: mockApi(list), route: '/invoices' });
+
+    const copy = await screen.findByRole('button', {
+      name: 'Copy internal order ID for order 6839-2911-4402',
+    });
+    copy.click();
+
+    expect(writeText).toHaveBeenCalledWith('ol_order_a4f3b9c1d8e2f0a9b6c3d4e5f6a7b8c9');
+    vi.unstubAllGlobals();
+  });
+
+  it('links the shortened internal order id when no order summary resolves', async () => {
+    // #2090's AC asked for `–`; the shared cell deliberately renders a link
+    // instead, because `buildOrderSummary` also returns null for "the snapshot
+    // carried no parseable items" — a live order. What the issue actually removes
+    // is the raw 41-character UUID, and a shortened link removes it.
+    const list = vi.fn().mockResolvedValue(
+      makeEnvelope({
+        items: [
+          makeInvoice({
+            orderId: 'ol_order_a4f3b9c1d8e2f0a9b6c3d4e5f6a7b8c9',
+            orderSummary: null,
+          }),
+        ],
+        total: 1,
+      }),
+    );
+    renderWithProviders(<InvoicesListPage />, { apiClient: mockApi(list), route: '/invoices' });
+
+    expect(await screen.findByRole('link', { name: 'ol_order_a4f3…c9' })).toHaveAttribute(
+      'href',
+      '/orders/ol_order_a4f3b9c1d8e2f0a9b6c3d4e5f6a7b8c9',
+    );
+    // The raw untruncated id — what this issue removes — is nowhere on the row.
+    expect(
+      screen.queryByText('ol_order_a4f3b9c1d8e2f0a9b6c3d4e5f6a7b8c9'),
+    ).toBeNull();
+  });
+
+  it('renders the connection as the shared cell, not an id hidden in a title attribute (#2090)', async () => {
+    const list = vi.fn().mockResolvedValue(makeEnvelope({ items: [makeInvoice()], total: 1 }));
+    const { container } = renderWithProviders(<InvoicesListPage />, {
+      apiClient: mockApi(list),
+      route: '/invoices',
+    });
+
+    await screen.findByText('order_1');
+    const cell = container.querySelector('.connection-cell') as HTMLElement;
+    expect(cell).not.toBeNull();
+    expect(within(cell).getByRole('link', { name: 'PrestaShop Main' })).toHaveAttribute(
+      'href',
+      '/connections/conn_1',
+    );
+    // The id is now readable and copyable text, not a `title` on a muted span.
+    expect(within(cell).getByText('conn_1')).toBeInTheDocument();
+    expect(
+      within(cell).getByRole('button', { name: 'Copy connection ID for PrestaShop Main' }),
+    ).toBeInTheDocument();
+    // No adornment on this page — an invoice's connection IS its issuing provider.
+    expect(cell.querySelector('.connection-cell__adornment')).toBeNull();
+  });
+
+  it('issues one connections request for the whole page, never one per row', async () => {
+    const connectionsList = vi.fn().mockResolvedValue([makeConnection()]);
+    const getById = vi.fn();
+    const list = vi.fn().mockResolvedValue(
+      makeEnvelope({
+        items: [
+          makeInvoice({ id: 'inv_1', connectionId: 'conn_1' }),
+          makeInvoice({ id: 'inv_2', connectionId: 'conn_1' }),
+          makeInvoice({ id: 'inv_3', connectionId: 'conn_missing' }),
+        ],
+        total: 3,
+      }),
+    );
+    renderWithProviders(<InvoicesListPage />, {
+      apiClient: createMockApiClient({
+        invoicing: { list },
+        connections: { list: connectionsList, getById },
+      }),
+      route: '/invoices',
+    });
+
+    // Two rows share conn_1, so this is intentionally findAll.
+    await screen.findAllByText('PrestaShop Main');
+    expect(connectionsList).toHaveBeenCalledTimes(1);
+    expect(getById).not.toHaveBeenCalled();
+  });
+
   it('drives the query with the regulatoryStatus filter', async () => {
     const user = userEvent.setup();
     const list = vi.fn().mockResolvedValue(makeEnvelope({ items: [], total: 0 }));
