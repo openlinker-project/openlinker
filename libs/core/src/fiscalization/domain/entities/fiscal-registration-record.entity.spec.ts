@@ -107,4 +107,54 @@ describe('FiscalRegistrationRecord', () => {
       expect(record('registering').isInDoubt).toBe(false);
     });
   });
+
+  describe('blocksFurtherRegistration', () => {
+    it('should block a SECOND originating registration for every live state', () => {
+      expect(record('pending').blocksFurtherRegistration).toBe(true);
+      expect(record('registering').blocksFurtherRegistration).toBe(true);
+      expect(record('registered').blocksFurtherRegistration).toBe(true);
+    });
+
+    it('should NOT block after a terminal rejection - the provider created nothing', () => {
+      expect(record('failed', { failureMode: 'rejected' }).blocksFurtherRegistration).toBe(
+        false,
+      );
+    });
+
+    it('should block an in-doubt failure - the sale may already be registered', () => {
+      expect(record('failed', { failureMode: 'in-doubt' }).blocksFurtherRegistration).toBe(
+        true,
+      );
+    });
+
+    it('should block a failed row with no mode (the fiscal-safe default)', () => {
+      expect(record('failed', { failureMode: null }).blocksFurtherRegistration).toBe(true);
+    });
+
+    it('should block a registering row whose lease already expired', () => {
+      // Lease-INDEPENDENT on purpose: an expired lease means the prior attempt
+      // crashed mid-flight, not that it created nothing. Re-claiming it under the
+      // SAME key is safe; starting a NEW registration is not.
+      expect(
+        record('registering', { leaseExpiresAt: new Date('2020-01-01T00:00:00.000Z') })
+          .blocksFurtherRegistration,
+      ).toBe(true);
+    });
+
+    it('should agree with ADR-041 §3b: only a terminal rejection frees the order', () => {
+      // One assertion over the whole status space, so a new status value cannot
+      // be added on the permissive side by accident.
+      const blocking = [
+        record('pending'),
+        record('registering'),
+        record('registered'),
+        record('failed', { failureMode: 'in-doubt' }),
+        record('failed', { failureMode: null }),
+      ];
+      expect(blocking.every((r) => r.blocksFurtherRegistration)).toBe(true);
+      expect(record('failed', { failureMode: 'rejected' }).blocksFurtherRegistration).toBe(
+        false,
+      );
+    });
+  });
 });

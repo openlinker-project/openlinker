@@ -45,6 +45,7 @@ import {
   IFiscalRegistrationService,
   InvalidFiscalLineError,
   MissingIdempotencyKeyException,
+  OrderAlreadyRegisteredException,
   UnsupportedFiscalPriceTreatmentError,
   toRegisterTransactionCommand,
 } from '@openlinker/core/fiscalization';
@@ -66,12 +67,18 @@ import { ReconcileFiscalRegistrationResponseDto } from './dto/reconcile-fiscal-r
 import { RegisterFiscalTransactionRequestDto } from './dto/register-fiscal-transaction-request.dto';
 
 /**
- * Deterministic default exactly-once key. One connection registering one order is
+ * The exactly-once key for this surface. One connection registering one order is
  * one sale, so this makes a repeated request - a double click, a retried fetch, a
  * duplicated job - idempotent BY CONSTRUCTION rather than by the caller
  * remembering to send a key.
+ *
+ * It is the ONLY key this endpoint can produce: the request DTO deliberately
+ * carries no `idempotencyKey`, because a caller-chosen key would bypass the read
+ * gate and register the same sale a second time. See the DTO for the full
+ * reasoning; the mandatory-key contract of ADR-042 decision 6 lives at the
+ * service boundary, which this function satisfies.
  */
-function defaultIdempotencyKey(connectionId: string, orderId: string): string {
+function idempotencyKeyFor(connectionId: string, orderId: string): string {
   return `fiscal:${connectionId}:${orderId}`;
 }
 
@@ -93,13 +100,20 @@ export class FiscalizationController {
     summary: 'Register an order`s sale with a fiscalization provider',
     description:
       'Composes the command server-side from the order and delegates to the core service, which ' +
-      'owns the exactly-once guarantee. Idempotent per (connection, idempotencyKey): a repeat ' +
-      'resumes the existing record and can never produce a second registration of the same sale. ' +
+      'owns the exactly-once guarantee. The exactly-once key is derived from (connection, order) ' +
+      'and cannot be supplied by the caller, so a repeat resumes the existing record and can ' +
+      'never produce a second registration of the same sale; an order that already carries a ' +
+      'non-rejected registration is refused with 409 rather than registered again. ' +
       'Returns 200 with the record even when the attempt FAILED - an indeterminate outcome must ' +
-      'be visibly indeterminate, and the caller needs the record id to reconcile against.',
+      'be visibly indeterminate, and the caller needs the record id to reconcile against. Read ' +
+      '`status` / `failureMode`, never the status code, to decide whether the sale was registered.',
   })
   @ApiResponse({ status: 200, description: 'Registration record', type: FiscalRegistrationResponseDto })
   @ApiResponse({ status: 404, description: 'Order not found' })
+  @ApiResponse({
+    status: 409,
+    description: 'The order already carries a fiscal registration that is not terminally rejected',
+  })
   @ApiResponse({ status: 422, description: 'The order cannot be composed into a registrable sale' })
   @ApiResponse({ status: 403, description: 'Insufficient permissions' })
   async register(
@@ -117,8 +131,7 @@ export class FiscalizationController {
       command = toRegisterTransactionCommand({
         order,
         connectionId: dto.connectionId,
-        idempotencyKey:
-          dto.idempotencyKey ?? defaultIdempotencyKey(dto.connectionId, dto.orderId),
+        idempotencyKey: idempotencyKeyFor(dto.connectionId, dto.orderId),
       });
     } catch (error) {
       throw this.toHttpException(error);
@@ -182,17 +195,19 @@ export class FiscalizationController {
    * cannot be rehydrated is a 422 with a generic message - never an echo of the
    * snapshot contents.
    *
-   * KNOWN LIMITATION: `orderFromReadySnapshot` refuses a snapshot with no usable
-   * buyer address, because it was written for invoicing, where a buyer profile is
-   * mandatory. A fiscal registration needs no named buyer, so under a hash-only
-   * PII configuration (`OL_STORE_PII=false`) this rejects an order that could
-   * legitimately be registered. Reusing the shared rehydrator is still the right
-   * default - a second snapshot reader would drift from it - so relaxing this is
-   * left to whoever first runs fiscalization with PII storage off.
+   * `requireBuyer: false` because a fiscal registration NAMES NO BUYER. The
+   * shared rehydrator's buyer gate is an invoicing rule (an invoice must carry a
+   * buyer profile); applied here it made the whole capability unusable under
+   * `OL_STORE_PII=false`, where every persisted address is `[REDACTED]` - every
+   * attempt 422'd with no way forward - and it made `toRecipient`'s documented
+   * "normal under a hash-only PII configuration" branch unreachable. Nothing
+   * redacted leaks as a result: the command composer reads only `customerEmail`
+   * (omitted entirely under hash-only mode) and `shippingAddress.phone` (absent
+   * from a sanitized address), so the recipient simply resolves to `null`.
    */
   private rehydrateOrder(orderId: string, record: OrderRecord): Order {
     try {
-      return orderFromReadySnapshot(record);
+      return orderFromReadySnapshot(record, { requireBuyer: false });
     } catch (error) {
       if (error instanceof OrderSnapshotUnavailableError) {
         throw new UnprocessableEntityException(
@@ -216,7 +231,10 @@ export class FiscalizationController {
     if (error instanceof FiscalRegistrationRecordNotFoundException) {
       return new NotFoundException(error.message);
     }
-    if (error instanceof FiscalRegistrationNotInDoubtException) {
+    if (
+      error instanceof FiscalRegistrationNotInDoubtException ||
+      error instanceof OrderAlreadyRegisteredException
+    ) {
       return new ConflictException(error.message);
     }
     // Capability resolution / enablement faults are a connection CONFIGURATION

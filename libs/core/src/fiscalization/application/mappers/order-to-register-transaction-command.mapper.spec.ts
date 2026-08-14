@@ -77,6 +77,7 @@ describe('toRegisterTransactionCommand', () => {
   it('should honour a caller-supplied shipping line label', () => {
     const cmd = toRegisterTransactionCommand({
       order: order({
+        items: [{ id: 'i1', productId: 'ol_product_1', quantity: 1, price: 10 }],
         totals: { subtotal: 10, tax: 0, shipping: 5, total: 15, currency: 'PLN' },
       }),
       connectionId: 'conn-1',
@@ -102,6 +103,7 @@ describe('toRegisterTransactionCommand', () => {
           { id: 'i1', productId: 'ol_product_1', quantity: 1, price: 5, sku: 'SKU-1' },
           { id: 'i2', productId: 'ol_product_2', quantity: 1, price: 5 },
         ],
+        totals: { subtotal: 10, tax: 0, shipping: 0, total: 10, currency: 'PLN' },
       }),
       connectionId: 'conn-1',
       idempotencyKey: 'k',
@@ -187,6 +189,91 @@ describe('toRegisterTransactionCommand', () => {
       expect((error as Error).message).toContain('ol_order_1');
       expect((error as Error).message).not.toContain('Jan Kowalski');
     }
+  });
+
+  describe('the lines must add up to the total', () => {
+    it('should refuse a sale whose lines do not sum to the reported gross total', () => {
+      // `OrderTotals` has no discount field, so a source that folds a coupon into
+      // `total` reports lines that sum higher. A fiscal document may not transmit
+      // amounts that contradict each other, so this blocks BEFORE any persist or
+      // provider call rather than printing a receipt that does not add up.
+      expect(() =>
+        toRegisterTransactionCommand({
+          order: order({
+            items: [{ id: 'i1', productId: 'ol_product_1', quantity: 1, price: 100 }],
+            totals: { subtotal: 100, tax: 0, shipping: 0, total: 90, currency: 'PLN' },
+          }),
+          connectionId: 'conn-1',
+          idempotencyKey: 'k',
+        }),
+      ).toThrow(InvalidFiscalLineError);
+    });
+
+    it('should refuse zero-priced lines under a non-zero total', () => {
+      // The shape a partially malformed snapshot takes: `readItems` zero-defaults
+      // every missing numeric, so the sale would register as free.
+      expect(() =>
+        toRegisterTransactionCommand({
+          order: order({
+            items: [{ id: 'i1', productId: 'ol_product_1', quantity: 1, price: 0 }],
+            totals: { subtotal: 0, tax: 0, shipping: 0, total: 123.45, currency: 'PLN' },
+          }),
+          connectionId: 'conn-1',
+          idempotencyKey: 'k',
+        }),
+      ).toThrow(InvalidFiscalLineError);
+    });
+
+    it('should refuse a sale with lines but a zero-defaulted total', () => {
+      expect(() =>
+        toRegisterTransactionCommand({
+          order: order({
+            items: [{ id: 'i1', productId: 'ol_product_1', quantity: 1, price: 50 }],
+            totals: { subtotal: 0, tax: 0, shipping: 0, total: 0, currency: 'PLN' },
+          }),
+          connectionId: 'conn-1',
+          idempotencyKey: 'k',
+        }),
+      ).toThrow(InvalidFiscalLineError);
+    });
+
+    it('should tolerate float accumulation across many lines', () => {
+      // 3 x 0.1 is 0.30000000000000004 in IEEE-754; rejecting that would block
+      // ordinary baskets.
+      expect(() =>
+        toRegisterTransactionCommand({
+          order: order({
+            items: [
+              { id: 'i1', productId: 'p1', quantity: 1, price: 0.1 },
+              { id: 'i2', productId: 'p2', quantity: 1, price: 0.1 },
+              { id: 'i3', productId: 'p3', quantity: 1, price: 0.1 },
+            ],
+            totals: { subtotal: 0.3, tax: 0, shipping: 0, total: 0.3, currency: 'PLN' },
+          }),
+          connectionId: 'conn-1',
+          idempotencyKey: 'k',
+        }),
+      ).not.toThrow();
+    });
+
+    it('should cite only ids and amounts when refusing (PII-clean)', () => {
+      try {
+        toRegisterTransactionCommand({
+          order: order({
+            items: [
+              { id: 'i1', productId: 'p1', quantity: 1, price: 100, name: 'Jan Kowalski' },
+            ],
+            totals: { subtotal: 100, tax: 0, shipping: 0, total: 10, currency: 'PLN' },
+          }),
+          connectionId: 'conn-1',
+          idempotencyKey: 'k',
+        });
+        fail('expected InvalidFiscalLineError');
+      } catch (error) {
+        expect((error as Error).message).toContain('ol_order_1');
+        expect((error as Error).message).not.toContain('Jan Kowalski');
+      }
+    });
   });
 
   it('should derive a delivery target when the snapshot carries one', () => {

@@ -21,6 +21,7 @@ import { DuplicateFiscalRegistrationRecordException } from '../../domain/excepti
 import { FiscalRegistrationNotInDoubtException } from '../../domain/exceptions/fiscal-registration-not-in-doubt.exception';
 import { FiscalRegistrationRecordNotFoundException } from '../../domain/exceptions/fiscal-registration-record-not-found.exception';
 import { MissingIdempotencyKeyException } from '../../domain/exceptions/missing-idempotency-key.exception';
+import { OrderAlreadyRegisteredException } from '../../domain/exceptions/order-already-registered.exception';
 import type { FiscalRegistrationRecordRepositoryPort } from '../../domain/ports/fiscal-registration-record-repository.port';
 import type { FiscalizationPort } from '../../domain/ports/fiscalization.port';
 import type { FiscalRegistrationLocator } from '../../domain/ports/capabilities/fiscal-registration-locator.capability';
@@ -51,16 +52,18 @@ function record(
   status: FiscalRegistrationStatus,
   overrides: {
     id?: string;
+    connectionId?: string;
+    idempotencyKey?: string;
     failureMode?: FiscalRegistrationFailureMode | null;
     leaseExpiresAt?: Date | null;
   } = {},
 ): FiscalRegistrationRecord {
   return new FiscalRegistrationRecord(
     overrides.id ?? 'rec-1',
-    CONNECTION_ID,
+    overrides.connectionId ?? CONNECTION_ID,
     ORDER_ID,
     '',
-    KEY,
+    overrides.idempotencyKey ?? KEY,
     status,
     null,
     null,
@@ -88,7 +91,10 @@ describe('FiscalRegistrationService', () => {
       create: jest.fn(),
       findById: jest.fn(),
       findByIdempotencyKey: jest.fn(),
-      findAllByOrderId: jest.fn(),
+      // Default: the order holds no record at all, so the
+      // at-most-one-originating-registration guard passes. Cases that exercise
+      // the guard override it.
+      findAllByOrderId: jest.fn().mockResolvedValue([]),
       updateOutcome: jest.fn(),
       claimForRegistration: jest.fn(),
     };
@@ -117,6 +123,166 @@ describe('FiscalRegistrationService', () => {
       );
       expect(repo.create).not.toHaveBeenCalled();
       expect(adapter.registerTransaction).not.toHaveBeenCalled();
+    });
+
+    it('should send the adapter the TRIMMED key it persisted, not the raw one', async () => {
+      // Otherwise a provider that echoes OL's key back is later queried by
+      // `reconcileInDoubt` under a value it never received, and a real
+      // registration reads as `not-found`.
+      repo.findByIdempotencyKey.mockResolvedValue(null);
+      repo.create.mockResolvedValue(record('pending'));
+      repo.claimForRegistration.mockResolvedValue(record('registering'));
+      repo.updateOutcome.mockResolvedValue(record('registered'));
+      adapter.registerTransaction.mockResolvedValue({
+        providerType: 'provider-a',
+        providerReference: null,
+        documentReference: null,
+        signingIdentity: null,
+        registeredAt: NOW,
+        artefacts: [],
+      });
+
+      await service.register(command({ idempotencyKey: `  ${KEY}  ` }));
+
+      expect(repo.create).toHaveBeenCalledWith(
+        expect.objectContaining({ idempotencyKey: KEY }),
+      );
+      expect(adapter.registerTransaction).toHaveBeenCalledWith(
+        expect.objectContaining({ idempotencyKey: KEY }),
+      );
+    });
+  });
+
+  // The interleaving this closes: register order O under the deterministic key,
+  // then re-post the same (connection, order) under ANY other key. The read gate
+  // is keyed on `(connectionId, idempotencyKey)` and misses; the unique index
+  // knows nothing about orders; a second row is inserted, wins its claim, and the
+  // provider is called again. That is one sale registered twice, which ADR-042
+  // decision 6 treats as a legal event rather than a data-quality issue.
+  describe('register - the at-most-one-originating-registration guard', () => {
+    beforeEach(() => {
+      // No same-key row: every case below reaches the guard.
+      repo.findByIdempotencyKey.mockResolvedValue(null);
+      repo.create.mockResolvedValue(record('pending'));
+      repo.claimForRegistration.mockResolvedValue(record('registering'));
+      repo.updateOutcome.mockResolvedValue(record('registered'));
+    });
+
+    it('should refuse a DIFFERENT key for an order already registered on the SAME connection', async () => {
+      repo.findAllByOrderId.mockResolvedValue([
+        record('registered', { id: 'rec-first', idempotencyKey: KEY }),
+      ]);
+
+      await expect(
+        service.register(command({ idempotencyKey: 'retry-1' })),
+      ).rejects.toBeInstanceOf(OrderAlreadyRegisteredException);
+      expect(repo.create).not.toHaveBeenCalled();
+      expect(repo.claimForRegistration).not.toHaveBeenCalled();
+      expect(adapter.registerTransaction).not.toHaveBeenCalled();
+    });
+
+    it('should refuse a second registration on a DIFFERENT connection', async () => {
+      repo.findAllByOrderId.mockResolvedValue([
+        record('registered', { id: 'rec-first', connectionId: 'conn-other' }),
+      ]);
+
+      await expect(service.register(command())).rejects.toBeInstanceOf(
+        OrderAlreadyRegisteredException,
+      );
+      expect(adapter.registerTransaction).not.toHaveBeenCalled();
+    });
+
+    const blockingShapes: Array<{
+      status: FiscalRegistrationStatus;
+      failureMode: FiscalRegistrationFailureMode | null;
+    }> = [
+      { status: 'pending', failureMode: null },
+      { status: 'registering', failureMode: null },
+      { status: 'registered', failureMode: null },
+      { status: 'failed', failureMode: 'in-doubt' },
+      // A mode-less `failed` row is indistinguishable from in-doubt and must
+      // fall on the safe side.
+      { status: 'failed', failureMode: null },
+    ];
+
+    for (const shape of blockingShapes) {
+      it(`should refuse while an existing record is ${shape.status} (failureMode=${shape.failureMode ?? 'none'})`, async () => {
+        repo.findAllByOrderId.mockResolvedValue([
+          record(shape.status, {
+            id: 'rec-first',
+            idempotencyKey: 'other-key',
+            failureMode: shape.failureMode,
+          }),
+        ]);
+
+        await expect(service.register(command())).rejects.toBeInstanceOf(
+          OrderAlreadyRegisteredException,
+        );
+        expect(adapter.registerTransaction).not.toHaveBeenCalled();
+      });
+    }
+
+    it('should ALLOW a new registration after a terminal rejection elsewhere', async () => {
+      // The provider definitely created nothing, so the sale is still unregistered
+      // and moving it to another connection/key is fiscally safe.
+      repo.findAllByOrderId.mockResolvedValue([
+        record('failed', {
+          id: 'rec-first',
+          connectionId: 'conn-other',
+          failureMode: 'rejected',
+        }),
+      ]);
+      adapter.registerTransaction.mockResolvedValue({
+        providerType: 'provider-a',
+        providerReference: 'p-1',
+        documentReference: null,
+        signingIdentity: null,
+        registeredAt: NOW,
+        artefacts: [],
+      });
+
+      await service.register(command());
+
+      expect(adapter.registerTransaction).toHaveBeenCalledTimes(1);
+    });
+
+    it('should carry the blocking record`s identity on the refusal', async () => {
+      // The operator has to be able to open the document that blocked them.
+      repo.findAllByOrderId.mockResolvedValue([
+        record('failed', {
+          id: 'rec-first',
+          connectionId: 'conn-other',
+          failureMode: 'in-doubt',
+        }),
+      ]);
+
+      await expect(service.register(command())).rejects.toMatchObject({
+        orderId: ORDER_ID,
+        registeringConnectionId: 'conn-other',
+        requestedConnectionId: CONNECTION_ID,
+        blockingRecordId: 'rec-first',
+        blockingStatus: 'failed',
+      });
+    });
+
+    it('should NOT run the guard when the SAME key resumes its own record', async () => {
+      // Resuming is the per-key lifecycle, not a new originating registration -
+      // running the guard there would refuse every legitimate retry.
+      const existing = record('failed', { failureMode: 'rejected' });
+      repo.findByIdempotencyKey.mockResolvedValue(existing);
+      adapter.registerTransaction.mockResolvedValue({
+        providerType: 'provider-a',
+        providerReference: 'p-1',
+        documentReference: null,
+        signingIdentity: null,
+        registeredAt: NOW,
+        artefacts: [],
+      });
+
+      await service.register(command());
+
+      expect(repo.findAllByOrderId).not.toHaveBeenCalled();
+      expect(adapter.registerTransaction).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -363,7 +529,12 @@ describe('FiscalRegistrationService', () => {
       );
     });
 
-    it('should claim BEFORE resolving the adapter', async () => {
+    it('should resolve the adapter BEFORE claiming', async () => {
+      // Claiming first parks the row `registering` under a live 5-minute lease
+      // with no failureMode whenever adapter resolution throws - the single most
+      // likely first-run fault, a connection without the capability enabled.
+      // Retries inside that window then report an attempt in progress for a call
+      // that was never made.
       const callOrder: string[] = [];
       repo.claimForRegistration.mockImplementation(() => {
         callOrder.push('claim');
@@ -385,7 +556,21 @@ describe('FiscalRegistrationService', () => {
 
       await service.register(command());
 
-      expect(callOrder).toEqual(['claim', 'resolve']);
+      expect(callOrder).toEqual(['resolve', 'claim']);
+    });
+
+    it('should leave the record UNCLAIMED when the capability is not enabled', async () => {
+      integrations.getCapabilityAdapter.mockRejectedValue(
+        new Error('Connection conn-1 does not support capability: Fiscalization'),
+      );
+
+      await expect(service.register(command())).rejects.toThrow(
+        'does not support capability',
+      );
+      // No claim, no lease, no half-written outcome: the row stays `pending` and
+      // freely re-attemptable once the operator enables the capability.
+      expect(repo.claimForRegistration).not.toHaveBeenCalled();
+      expect(repo.updateOutcome).not.toHaveBeenCalled();
     });
 
     it('should resolve the adapter under the closed `Fiscalization` capability', async () => {
@@ -486,6 +671,72 @@ describe('FiscalRegistrationService', () => {
       });
     });
 
+    it('should bound the provider call at the supported ceiling and call it in-doubt', async () => {
+      // Without a core-side bound the constant above is a promise nothing keeps:
+      // an adapter hanging past REGISTERING_LEASE_MS lets a retry re-claim
+      // through the expired-lease disjunct and register the same sale twice.
+      // Racing does not CANCEL the call, so the timeout must classify as
+      // `in-doubt` (never `rejected`) - an in-doubt row is not claimable, which
+      // is what actually closes the race.
+      jest.useFakeTimers();
+      try {
+        adapter.registerTransaction.mockImplementation(
+          () => new Promise(() => undefined),
+        );
+
+        const pending = service.register(command());
+        await jest.advanceTimersByTimeAsync(MAX_SUPPORTED_PROVIDER_TIMEOUT_MS + 1);
+        const result = await pending;
+
+        expect(result.failureMode).toBe('in-doubt');
+        expect(repo.updateOutcome).toHaveBeenCalledWith(
+          'rec-1',
+          expect.objectContaining({
+            status: 'failed',
+            failureMode: 'in-doubt',
+            leaseExpiresAt: null,
+          }),
+        );
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it('should NOT time out a provider that answers inside the ceiling', async () => {
+      jest.useFakeTimers();
+      try {
+        adapter.registerTransaction.mockImplementation(
+          () =>
+            new Promise((resolve) =>
+              setTimeout(
+                () =>
+                  resolve({
+                    providerType: 'provider-a',
+                    providerReference: 'p-1',
+                    documentReference: null,
+                    signingIdentity: null,
+                    registeredAt: NOW,
+                    artefacts: [],
+                  }),
+                MAX_SUPPORTED_PROVIDER_TIMEOUT_MS - 1_000,
+              ),
+            ),
+        );
+        repo.updateOutcome.mockResolvedValue(record('registered'));
+
+        const pending = service.register(command());
+        await jest.advanceTimersByTimeAsync(MAX_SUPPORTED_PROVIDER_TIMEOUT_MS);
+        await pending;
+
+        expect(repo.updateOutcome).toHaveBeenCalledWith(
+          'rec-1',
+          expect.objectContaining({ status: 'registered' }),
+        );
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
     it('should bound the internal diagnostic it persists', async () => {
       adapter.registerTransaction.mockRejectedValue(new Error('x'.repeat(2000)));
 
@@ -542,6 +793,52 @@ describe('FiscalRegistrationService', () => {
           failureMode: null,
         }),
       );
+    });
+
+    it('should backfill the provider identity a locator reports', async () => {
+      // Otherwise a record that reaches `registered` by RECONCILIATION keeps the
+      // `''` its pending row was created with, and the operator surface labels it
+      // "Provider identity: (blank)".
+      integrations.getCapabilityAdapter.mockResolvedValue({
+        registerTransaction: jest.fn(),
+        locateByQuery: jest.fn().mockResolvedValue({
+          providerType: 'provider-a',
+          providerReference: 'p-9',
+          documentReference: null,
+          signingIdentity: null,
+          registeredAt: NOW,
+        }),
+      });
+      repo.findById.mockResolvedValue(record('failed', { failureMode: 'in-doubt' }));
+      repo.updateOutcome.mockResolvedValue(record('registered'));
+
+      await service.reconcileInDoubt('rec-1');
+
+      expect(repo.updateOutcome).toHaveBeenCalledWith(
+        'rec-1',
+        expect.objectContaining({ providerType: 'provider-a' }),
+      );
+    });
+
+    it('should NOT invent a provider identity when the locator reports none', async () => {
+      // An omitted key must never be read as "set to null"/"set to blank": core
+      // leaves whatever the record holds rather than asserting an identity.
+      integrations.getCapabilityAdapter.mockResolvedValue({
+        registerTransaction: jest.fn(),
+        locateByQuery: jest.fn().mockResolvedValue({
+          providerReference: 'p-9',
+          documentReference: null,
+          signingIdentity: null,
+          registeredAt: NOW,
+        }),
+      });
+      repo.findById.mockResolvedValue(record('failed', { failureMode: 'in-doubt' }));
+      repo.updateOutcome.mockResolvedValue(record('registered'));
+
+      await service.reconcileInDoubt('rec-1');
+
+      const patch = repo.updateOutcome.mock.calls[0]?.[1];
+      expect(patch && 'providerType' in patch).toBe(false);
     });
 
     it('should leave the record in doubt when the provider holds no match', async () => {

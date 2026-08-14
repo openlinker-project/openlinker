@@ -98,4 +98,35 @@ export class FiscalRegistrationRecord {
   get isInDoubt(): boolean {
     return this.status === 'failed' && this.failureMode === 'in-doubt';
   }
+
+  /**
+   * Pure derivation: does this record forbid starting a SECOND originating
+   * registration of the same sale - under a different key, or on a different
+   * connection?
+   *
+   * The predicate deliberately matches ADR-041 §3b's originating-document rule
+   * (and invoicing's `InvoiceRecord.blocksIssuanceElsewhere`, #2047) with the
+   * fiscal statuses substituted: the only record that leaves the sale free to be
+   * registered again is one where the provider DEFINITELY created nothing - a
+   * terminal `rejected` failure. `pending` / `registering` / `registered` block,
+   * and so does a `failed` row with any other mode, absent or unknown included:
+   * an `in-doubt` failure means OL does not know whether the sale is registered,
+   * and registering again is exactly how one sale ends up with two receipts.
+   *
+   * The `registering` arm is lease-INDEPENDENT on purpose. An expired lease means
+   * the prior attempt crashed mid-flight, not that it created nothing - re-claiming
+   * it under the SAME key is fiscally safe (`claimForRegistration` allows exactly
+   * that), while starting a NEW registration is not.
+   *
+   * Unlike invoicing's sibling this is NOT scoped to "elsewhere": a second key on
+   * the SAME connection is the very interleaving that defeats the exactly-once
+   * guarantee, because the unique index is on `(connectionId, idempotencyKey)` and
+   * cannot see the order at all.
+   */
+  get blocksFurtherRegistration(): boolean {
+    if (this.status === 'failed') {
+      return this.failureMode !== 'rejected';
+    }
+    return true;
+  }
 }
