@@ -99,20 +99,23 @@
       break the layout" (#1991) is actually satisfied.
 
   ── FIFTEEN DESIGN DECISIONS THIS FILE SETTLES ──────────────────────────────
-   1 [G] treatment ......... Share by UNITS; revenue on ONE basis, computed by
-                             OpenLinker — never as-reported, per row
+   1 [G] treatment ......... Share by UNITS; revenue on ONE basis, carried on the
+                             order line — never as-reported, per row
    2 Date basis ............ `placedAt`, gap marked †
-   3 Revenue total ......... REVERSED 14 Aug 2026. Revenue always totals: the spec
-                             puts VAT on OpenLinker (calculated by country of
-                             delivery), so a tax basis is a fact the product owns,
-                             not a property of the source it must inherit. The
-                             earlier conditional — total when bases agree, degrade
-                             when not — is withdrawn with frame 05. The residual
-                             problem moves to #1983, it does not disappear:
-                             Allegro and Erli report `tax: 0` and PrestaShop
-                             declares nothing, so #1983 needs VAT rate tables per
-                             delivery country and a rule for the orders whose
-                             delivery country is unknown
+   3 Revenue total ......... REVERSED 14 Aug 2026. Revenue always totals, because
+                             the rate rides on the order line rather than on the
+                             source: the master supplies a VAT rate code per
+                             (product, delivery country) and OpenLinker carries it
+                             — it never computes one (#2054, team decision 13 Aug;
+                             the drafted TaxCalculationPort was withdrawn in full).
+                             So a tax basis is a fact each line already states, not
+                             a property of the channel it must inherit. The earlier
+                             conditional — total when bases agree, degrade when not
+                             — is withdrawn with frame 05. What remains on #2054 is
+                             SEQUENCING, not an open question: until the rate
+                             reaches the order snapshot, a line without a rate is
+                             excluded from the net aggregate and the excluded count
+                             is shown — never a gross figure wearing a net label
    4 `pending` ............. two distinct states: recalculating, and backfilling
    5 Resolved attention .... either/or. All clear = ONE line naming the checks;
                              otherwise only the open items, no resolved rows
@@ -1602,8 +1605,9 @@
                 <span class="alert__title">Share is measured in units, not revenue</span>
                 <div class="alert__description">
                   <p>
-                    Revenue totals across every channel: OpenLinker states one tax basis of its own,
-                    calculating VAT by country of delivery rather than inheriting whatever a source reports.
+                    Revenue totals across every channel: every order line carries its own VAT rate, supplied
+                    by the master for the product and its delivery country rather than inherited from
+                    whatever a source reports.
                     Share still counts units, because a unit means the same thing in every market and a
                     converted amount does not.
                   </p>
@@ -2149,8 +2153,8 @@
               (&bdquo;vs previous period&ldquo;) &mdash; not only for screen readers.</li>
             <li>Rates move in <b>points</b>, never percent. Colour follows meaning: a falling return rate is
               a green down arrow.</li>
-            <li>GMV and AOV render unconditionally (decision 3, reversed 14 Aug): VAT is OpenLinker&rsquo;s
-              to calculate, so no card waits on what a source declared. What GMV and AOV <b>do</b> inherit is
+            <li>GMV and AOV render unconditionally (decision 3, reversed 14 Aug): the rate comes from the
+              master on the order line, so no card waits on what a source declared. What GMV and AOV <b>do</b> inherit is
               the spec&rsquo;s split &mdash; GMV gross and before discounts, AOV net and after them &mdash;
               which is why the &#9432; on the Revenue card says so outright. Orders and Units are untouched
               by [G].</li>
@@ -2271,10 +2275,10 @@
               <span class="alert__title">Share is measured in units, not revenue</span>
               <div class="alert__description">
                 <p>
-                  Revenue totals across every channel: OpenLinker states one tax basis of its own,
-                  calculating VAT by country of delivery rather than inheriting whatever a source
-                  reports. Share still counts units, because a unit means the same thing in every
-                  market and a converted amount does not.
+                  Revenue totals across every channel: every order line carries its own VAT rate,
+                  supplied by the master for the product and its delivery country rather than
+                  inherited from whatever a source reports. Share still counts units, because a unit
+                  means the same thing in every market and a converted amount does not.
                 </p>
               </div>
             </div>
@@ -2287,11 +2291,17 @@
         <div class="build-field__body">
           Decision 1 and 3, together, as settled on 14 Aug. The spec named gross-vs-net [G] the most
           dangerous item in the epic and it is right about the danger &mdash; but the danger is answered by
-          owning the arithmetic, not by disclosing someone else&rsquo;s: <b>OpenLinker calculates VAT by
-          country of delivery</b>, so every row on this table is already on one basis and the Tax column that
-          used to qualify them is gone. What the adapters report is now an input, not a verdict: Allegro and
-          Erli send <code>tax: 0</code>, PrestaShop sends <code>total_paid_tax_incl</code> and declares
-          nothing, and #1983 has to turn all three into the same figure.
+          <b>one source for the rate</b>, not by disclosing what each channel guessed:
+          <b>the master supplies a VAT rate code per (product, delivery country) and the order line carries
+          it</b> &mdash; OpenLinker never computes one. So every row on this table is already on one basis and
+          the Tax column that used to qualify them is gone. What the adapters report is now a cross-check, not
+          a verdict: Allegro and Erli send <code>tax: 0</code>, PrestaShop sends
+          <code>total_paid_tax_incl</code> and declares nothing, and
+          <a href="https://github.com/openlinker-project/openlinker/issues/2054">#2054</a> carries the rate
+          from the master onto the line instead of asking anyone to reconcile the three.
+          <b>Until it lands:</b> a line with no rate &mdash; and an order whose master and channel rates
+          disagree &mdash; is excluded from the net aggregate rather than counted at gross, and the count of
+          excluded orders is stated under the figure. A conflicted line shows no net/VAT split at all.
         </div>
         <span class="build-field__label">Rules</span>
         <div class="build-field__body">
@@ -2321,10 +2331,12 @@
         <div class="build-field__body">
           <b>Nothing. This frame is not to be implemented.</b> It drew the by-channel table refusing to
           total revenue when one source reported net and the others gross. That state cannot arise under
-          the settled model: the metric spec puts VAT on OpenLinker &mdash; <i>&bdquo;VAT calculated by
-          country of delivery&ldquo;</i> &mdash; so the tax basis is something the product computes for
-          every channel alike, not something each source declares and the page reconciles. With one basis
-          there is nothing to mix, so the total always renders and the Tax column is gone from frame 04.
+          the settled model. The metric spec fixes the axis &mdash; <i>&bdquo;VAT calculated by country of
+          delivery&ldquo;</i> &mdash; and <a href="https://github.com/openlinker-project/openlinker/issues/2054">#2054</a>
+          fixes who answers it: the master supplies the rate for the product and that country, and the order
+          line carries it. So the tax basis is something every line already states, not something each source
+          declares and the page reconciles. With one basis there is nothing to mix, so the total always
+          renders and the Tax column is gone from frame 04.
         </div>
         <span class="build-field__label">Rules</span>
         <div class="build-field__body">
@@ -2345,13 +2357,16 @@
         </div>
         <span class="build-field__label build-field__label--watch">Watch out</span>
         <div class="build-field__body build-field__body--watch">
-          <b>The problem moved, it did not vanish &mdash; and it landed on #1983.</b> Allegro and Erli
-          report <code>tax: 0</code> and PrestaShop declares no basis at all, so &bdquo;OpenLinker
-          calculates VAT&ldquo; is a request for machinery that does not exist: VAT rate tables per
-          delivery country, a rate valid on the order date rather than today, and a decision for orders
-          whose delivery country is missing or ambiguous. Until #1983 carries all three, a build reading
-          only this file will reinvent the <code>Gross?</code> badge on its own &mdash; which is why the
-          reversal is written here and in the handover rather than left as a silent deletion.
+          <b>The problem moved, it did not vanish &mdash; and it landed on
+          <a href="https://github.com/openlinker-project/openlinker/issues/2054">#2054</a>.</b> Allegro and
+          Erli report <code>tax: 0</code> and PrestaShop declares no basis at all, so the rate has to reach
+          the line from somewhere. It is <b>not</b> machinery OpenLinker builds: #2054 records the team
+          decision that the master supplies the rate and OpenLinker never computes it. What is left is
+          <b>sequencing</b> &mdash; ADR, order contract, master read, mapper fill plus the issuance gate,
+          conflict state, and only then dropping the adapter defaults. Step one of seven has started. Until
+          the rate reaches the order snapshot, a build reading only this file will reinvent the
+          <code>Gross?</code> badge on its own &mdash; which is why the reversal is written here and in the
+          handover rather than left as a silent deletion.
         </div>
       </div>
     </div>
@@ -2969,9 +2984,9 @@
               <td>v1 reports a <i>fact</i>, not an alarm: a variant whose published quantity is already 0 because master stock is at or below the connection&rsquo;s <code>stockSafetyBuffer</code> (#1844), under <code>max(0, masterStock &minus; buffer)</code>. That needs no threshold, which is why frame&nbsp;02 carries no gap marker. A true low-stock <i>warning</i> &mdash; &bdquo;running out soon&ldquo; rather than &bdquo;unavailable now&ldquo; &mdash; would need an operator-set <code>reorderPoint</code> per variant, which no entity carries. v2.</td>
             </tr>
             <tr>
-              <td><b>Tax basis is OpenLinker&rsquo;s to calculate &mdash; decision 3 reversed, and #1983 inherits the work</b></td>
-              <td><span class="status-badge status-badge--error"><span class="status-badge__dot"></span>Blocking &mdash; new scope on #1983</span></td>
-              <td>Read this row before concluding the page overlooked gross-vs-net [G]. It did not: the earlier package made the tax basis a property of each <i>source</i> and had the by-channel total refuse itself when sources disagreed. <b>On 14 Aug that was reversed</b> in favour of the metric spec (<code>docs/specs/metrics-analytics-dashboard.md</code>), which puts the arithmetic on us &mdash; <i>&bdquo;VAT calculated by country of delivery&ldquo;</i>. Revenue therefore always totals, and the <code>Gross?</code> badge, the Tax column, the &bdquo;n of m channels assumed gross&ldquo; note and the mixed-basis alert are all gone; frame 05 is withdrawn and kept as the record. <b>What #1983 now owes, and did not before:</b> VAT rate tables per delivery country; a rate valid on the order date, not on the report date; a rule for sources that report <code>tax: 0</code> (Allegro, Erli) or declare nothing (PrestaShop); and a decision for orders whose delivery country is missing. None of that exists in the repo. Ship the page without it and every money figure is a gross figure wearing a net label &mdash; the exact misreading decision 3 was written to prevent.</td>
+              <td><b>The VAT rate comes from the master, not from us &mdash; decision 3 reversed, and the work is sequenced on #2054</b></td>
+              <td><span class="status-badge status-badge--error"><span class="status-badge__dot"></span>Blocking &mdash; sequenced on #2054</span></td>
+              <td>Read this row before concluding the page overlooked gross-vs-net [G]. It did not &mdash; the basis stopped being a property of each <i>source</i> on 14 Aug, which is what removed the <code>Gross?</code> badge, the Tax column and the mixed-basis alert (frame 05 keeps the record). <b>Settled</b> (<a href="https://github.com/openlinker-project/openlinker/issues/2054">#2054</a>, 13 Aug, superseding an ADR-014 rejection): the rate arrives from the <b>ProductMaster</b> per (product, delivery country) and <b>OpenLinker never computes it</b> &mdash; no rate tables here, and the drafted <code>TaxCalculationPort</code> was withdrawn in full. The metric spec carries this under &bdquo;Rules common to all metrics&ldquo; (<code>docs/specs/metrics-analytics-dashboard.md</code>), so read it there rather than inferring an owner from <i>&bdquo;VAT calculated by country of delivery&ldquo;</i> &mdash; the delivery country is the axis the rate is resolved on, not a licence to compute it. It is a <b>code, not a number</b> (<code>zw</code>, <code>oo</code>, <code>0-wdt</code>, <code>np-i</code> &hellip;), because exempt and reverse-charge both look like zero. A channel that also reports one (today only Erli) is a <b>cross-check, not an authority</b>; a missing rate <b>blocks invoice issue</b> with no remedy inside OpenLinker &mdash; never a silent <code>0</code> or <code>23</code>. <b>What remains is sequencing, not a decision:</b> ADR &rarr; order contract &rarr; master read &rarr; mapper fill and issuance gate &rarr; conflict state &rarr; drop the adapter defaults (dropping them early breaks 100% of issuance). One of seven steps has started. <b>This page needs step 4</b> &mdash; net, gross and the rate stored <i>per line</i> on the order snapshot, which #2054 asks for in these words: <i>&bdquo;so analytics can query margin by category without unpacking a per-order flag&ldquo;</i>. Until it lands, exclude no-rate and conflicted orders from the net aggregate and state the excluded count. Count them at gross instead and every money figure is a gross figure wearing a net label &mdash; the exact misreading decision 3 was written to prevent.</td>
             </tr>
             <tr>
               <td><b>Wording departs from #1989 and the spec, deliberately</b></td>
@@ -2991,7 +3006,7 @@
             <tr>
               <td><b>FX: no conversion, and no order-day rate to convert with</b></td>
               <td><span class="status-badge status-badge--error"><span class="status-badge__dot"></span>Blocking &mdash; [X]</span></td>
-              <td>Declaring a reporting currency (decision 11) needs two things the repo has neither of: a conversion service, and a rate <b>stored per order at ingestion</b>. The second gets missed. Converting at report time makes every historical figure a function of today&rsquo;s rate &mdash; last month&rsquo;s revenue changes every morning, and the DoD line about reconciling the page against the source becomes unsatisfiable. Store the order-day rate beside the order total, convert from that, and keep the source-currency figure so the by-channel table can still show what each market took.</td>
+              <td>Declaring a reporting currency (decision 11) needs two things the repo has neither of: a conversion service, and a rate <b>stored per order at ingestion</b>. The second gets missed. Converting at report time makes every historical figure a function of today&rsquo;s rate &mdash; last month&rsquo;s revenue changes every morning, and the DoD line about reconciling the page against the source becomes unsatisfiable. Store the order-day rate beside the order total, convert from that, and keep the source-currency figure so the by-channel table can still show what each market took. <b>This is its own open item and not part of the tax work</b> &mdash; <a href="https://github.com/openlinker-project/openlinker/issues/2054">#2054</a> does not touch currency at all, so the rate has no owner yet. The spec does settle <i>which</i> rate: <i>&bdquo;the exchange rate from the day preceding the order&ldquo;</i>, with a refund converted at the same rate as its original order. Nothing implements it.</td>
             </tr>
             <tr>
               <td>Money tables split by currency; only the strip converts</td>
@@ -3071,7 +3086,7 @@
             <tr>
               <td>The tax-basis count was typed, was wrong, and is now gone entirely</td>
               <td><span class="status-badge status-badge--warning"><span class="status-badge__dot"></span>Small, but instructive</span></td>
-              <td>Three strings said &bdquo;two channels did not state their tax basis&rdquo; while the dataset had exactly one. The fix was to <b>derive</b> the count from the same query as the figure; the 14 Aug reversal of decision 3 then deleted the count, the badge and the alert together, because OpenLinker now calculates VAT itself (frame 05). <b>The lesson survives the copy it was learned on and is the reason to carry it into #1990:</b> qualifier text has to be built from the same query as the figure it qualifies, or it drifts the first time a connection is added &mdash; and the cheapest qualifier is the one a product decision removes the need for.</td>
+              <td>Three strings said &bdquo;two channels did not state their tax basis&rdquo; while the dataset had exactly one. The fix was to <b>derive</b> the count from the same query as the figure; the 14 Aug reversal of decision 3 then deleted the count, the badge and the alert together, because the rate now comes from the master on the order line rather than from whatever a source declared (frame 05). <b>The lesson survives the copy it was learned on and is the reason to carry it into #1990:</b> qualifier text has to be built from the same query as the figure it qualifies, or it drifts the first time a connection is added &mdash; and the cheapest qualifier is the one a product decision removes the need for.</td>
             </tr>
             <tr>
               <td>Card view vs. the style guide</td>
@@ -4322,11 +4337,12 @@
   /* ══════════════════ By-channel table ══════════════════ */
   /* THE TAX COLUMN IS GONE, AND ITS ABSENCE IS THE DECISION (14 Aug 2026). It used to
      carry Gross / Net / Gross? per row, because the basis was whatever each source
-     declared. Under the metric spec OpenLinker calculates VAT itself, by country of
-     delivery, so every row is on one basis and a column repeating the same word on
-     every line would only invite the reader to look for a difference that cannot
-     exist. What the adapters send is now an input to #1983, not something the table
-     reports. See frame 05 for the reversed decision and what it hands #1983. */
+     declared. The rate now rides on the order line, supplied by the master per
+     (product, delivery country), so every row is on one basis and a column repeating
+     the same word on every line would only invite the reader to look for a difference
+     that cannot exist. What the adapters send is now a cross-check, not something the
+     table reports. See frame 05 for the reversed decision and #2054 for the sequence
+     that delivers the rate. */
 
   function sortHeader(text, align, hideBelow, active) {
     var cls = [];
@@ -4616,7 +4632,7 @@
     ['It carries 64% of units in this range, so every figure below is understated. This is an ingestion gap, not a drop in sales.', 'Page banner, second line',
      'The last sentence is the whole point of the trust header — it pre-empts the single most dangerous misreading on the page.'],
     ['Share is measured in units, not revenue', 'Note under by-channel',
-     'Replaces two tax-basis strings withdrawn on 14 Aug (decision 3 reversed, frame 05). Names what the share column measures rather than disclosing an assumption OpenLinker no longer makes.'],
+     'Replaces two tax-basis strings withdrawn on 14 Aug (decision 3 reversed, frame 05). Names what the share column measures rather than disclosing a guess the order line no longer leaves open.'],
     ['Total · PLN / Total · EUR', 'By-channel footer, more than one currency',
      'Per-currency subtotals, no grand total beneath — the total sits one row up, in reporting currency, so conversion is verifiable.'],
     ['Share is measured in units, which is comparable regardless.', 'Note under by-channel',

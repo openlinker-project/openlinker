@@ -32,6 +32,13 @@ Every other figure uses its metric name verbatim.
 ## Rules common to all metrics:
 
 - Net – amount excluding VAT.
+- **Where the VAT rate comes from** (added 2026-08-14, after the call — not part of the originally
+  agreed text) – the rate is supplied by the **ProductMaster** per (product, delivery country) and
+  **OpenLinker never computes it** ([#2054](https://github.com/openlinker-project/openlinker/issues/2054)).
+  Where a metric below says "VAT calculated by country of delivery", the delivery country is the axis
+  the rate is resolved on — it does not make OpenLinker the owner of the arithmetic. Until the rate
+  reaches the order snapshot, an order with no rate — or one whose master and channel rates disagree —
+  is excluded from every net figure and the excluded count is reported with it, never counted at gross.
 - All amounts converted to a single currency (PLN/EUR) at the exchange rate from the day preceding the order (agreed on the call).
 - An order is assigned to a period based on the **order placement date** (not the payment/shipment date).
 - **Net Order Value (NOV)** – the sum of the net value after line-item discounts (excluding shipping) of orders placed in the period, excluding cancelled orders. This is the base figure for Net Sales, AOV and Median Order Value.
