@@ -17,6 +17,7 @@ import type { Order, OrderItem, OrderTotals } from '@openlinker/core/orders';
 import type { OrderCreate, OrderStatus } from '@openlinker/core/orders';
 import { PrestashopProvisioningException } from '@openlinker/integrations-prestashop';
 import { Logger } from '@openlinker/shared/logging';
+import { PrestashopConversionRateUnknownException } from '../../domain/exceptions/prestashop-conversion-rate-unknown.exception';
 import { toPrestashopProductAttributeId } from './prestashop-variant-id';
 
 /**
@@ -158,12 +159,17 @@ export class PrestashopOrderMapper implements IPrestashopOrderMapper {
    *
    * Converts unified OrderCreate request to PrestaShop order structure.
    * Maps internal IDs to external PrestaShop IDs and formats data for API submission.
+   *
+   * `conversionRate` must be resolved against the destination shop's default
+   * currency by `PrestashopConversionRateResolver` (#2102) - see the note at the
+   * `conversion_rate` assignment below for why the mapper refuses to default it.
    */
   mapOrderCreate(
     orderCreate: OrderCreate,
     externalCustomerId: string | number,
     externalProductIds: Map<string, string | number>,
     externalVariantIds: Map<string, string | number>,
+    conversionRate: number,
     externalShippingAddressId?: string | number,
     externalBillingAddressId?: string | number,
     externalCurrencyId?: string | number,
@@ -237,14 +243,38 @@ export class PrestashopOrderMapper implements IPrestashopOrderMapper {
      */
 
     /**
-     * Currency conversion rate
+     * Currency conversion rate (#2102)
      *
-     * PrestaShop uses conversion_rate to handle multi-currency orders.
-     * For now, we default to 1.0 (assuming same currency or 1:1 conversion).
-     * Future enhancement: Fetch actual conversion rate from PrestaShop if order currency
-     * differs from shop default currency.
+     * PrestaShop relates the order's currency to the shop's DEFAULT currency
+     * through `conversion_rate` and recomputes the order header with it. The
+     * mapper therefore never invents the value: `1.000000` is correct ONLY when
+     * the order is priced in the shop's default currency (where PrestaShop pins
+     * that currency's own rate at 1 by definition), and asserting parity for any
+     * other currency books e.g. a EUR order as if its numerals were the shop
+     * default. That is worse than a flat mis-conversion, because the order LINES
+     * are pinned separately at the buyer-paid source price via cart-scoped
+     * `specific_prices` (#895 / ADR-014) - the header would be recomputed at the
+     * bogus rate while the lines carry the pinned amounts, and the two disagree
+     * on the same document.
+     *
+     * `conversionRate` is a REQUIRED parameter (deliberately positioned before
+     * the optional ones) so a new call site cannot compile without deciding, and
+     * callers resolve it with `PrestashopConversionRateResolver` - which returns
+     * exactly 1 for the shop-default currency, PrestaShop's own
+     * `currencies.conversion_rate` otherwise, and throws when neither is
+     * available. The guard below is the mapper's own half of that contract: an
+     * unresolvable rate must surface as a visible failure, never as a fallback
+     * 1.0 that quietly writes a wrong financial document.
      */
-    const conversionRate = 1.0;
+    if (!Number.isFinite(conversionRate) || conversionRate <= 0) {
+      throw new PrestashopConversionRateUnknownException(
+        `Refusing to build a PrestaShop order with an unusable currency conversion rate ` +
+          `'${String(conversionRate)}' (order currency ${orderCreate.totals.currency}). ` +
+          `Resolve it from PrestaShop before creating the order.`,
+        orderCreate.totals.currency,
+        undefined
+      );
+    }
 
     // Defaults are module-level constants so mapCartCreate and
     // mapOrderCreate share the same source of truth.
@@ -269,7 +299,9 @@ export class PrestashopOrderMapper implements IPrestashopOrderMapper {
       // total_shipping[_tax_incl|_tax_excl] intentionally omitted post-#516.
       // PS computes shipping from the resolved carrier (OL Dynamic via sidecar
       // or static via zone tables) at order-create time.
-      conversion_rate: conversionRate.toFixed(6), // Currency conversion rate (6 decimals)
+      // Resolved against the shop's default currency by the caller, never a
+      // constant - see the conversion-rate note above (#2102).
+      conversion_rate: conversionRate.toFixed(6), // 6 decimals, as PrestaShop stores it
       // PrestaShop requires associations for order_rows
       associations: {
         order_rows: {

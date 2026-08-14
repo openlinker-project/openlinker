@@ -122,6 +122,46 @@ describe('PrestashopShopCurrencyResolver', () => {
     expect(client.listResources).toHaveBeenCalledTimes(2);
   });
 
+  describe('resolveDefaultCurrency (#2102)', () => {
+    it('should report a resolved ISO as definitive', async () => {
+      await expect(resolver.resolveDefaultCurrency('conn-1', client)).resolves.toEqual({
+        iso: 'PLN',
+        transient: false,
+      });
+    });
+
+    it('should report an absent PS_CURRENCY_DEFAULT as definitive, not transient', async () => {
+      client.listResources.mockResolvedValueOnce([]);
+
+      await expect(resolver.resolveDefaultCurrency('conn-1', client)).resolves.toEqual({
+        iso: null,
+        transient: false,
+      });
+    });
+
+    it('should report a failed read as transient', async () => {
+      client.listResources.mockRejectedValueOnce(new Error('timeout'));
+
+      await expect(resolver.resolveDefaultCurrency('conn-1', client)).resolves.toEqual({
+        iso: null,
+        transient: true,
+      });
+    });
+
+    it('should report the same verdict from the cache as from the fresh read', async () => {
+      client.listResources.mockRejectedValueOnce(new Error('timeout'));
+      await resolver.resolveDefaultCurrency('conn-1', client);
+
+      // Second call is served from the cache; the retry decision a caller
+      // derives from `transient` must not change just because it was cached.
+      await expect(resolver.resolveDefaultCurrency('conn-1', client)).resolves.toEqual({
+        iso: null,
+        transient: true,
+      });
+      expect(client.listResources).toHaveBeenCalledTimes(1);
+    });
+  });
+
   it('should cache a definitive absence for the full TTL (no short-TTL retry)', async () => {
     client.listResources.mockResolvedValueOnce([]);
     const first = await resolver.resolveDefaultCurrencyIso('conn-1', client);

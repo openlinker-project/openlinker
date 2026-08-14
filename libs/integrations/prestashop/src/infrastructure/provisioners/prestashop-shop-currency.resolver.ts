@@ -24,6 +24,7 @@ import type {
   PrestashopConfiguration,
   PrestashopCurrency,
 } from './prestashop-provisioner.types';
+import type { PrestashopShopCurrencyResolution } from './prestashop-shop-currency.types';
 
 /** The PrestaShop configuration key holding the shop's default currency id. */
 const DEFAULT_CURRENCY_CONFIG_KEY = 'PS_CURRENCY_DEFAULT';
@@ -46,16 +47,16 @@ const FAILURE_CACHE_TTL_MS = 60 * 1000;
 interface CacheEntry {
   /** Resolved default ISO, or `null` when resolution failed / was absent. */
   iso: string | null;
+  /**
+   * Whether a cached `null` came from a failed read. Cached alongside the value
+   * so a cache HIT reports the same transient/definitive verdict a fresh read
+   * would - a caller that turns the verdict into a retry decision (#2102) must
+   * not get a different answer just because it arrived within the TTL.
+   */
+  transient: boolean;
   /** Per-entry TTL; short for transient failures, full for definitive results. */
   ttlMs: number;
   timestamp: number;
-}
-
-/** Distinguishes a definitive resolution from a transient-failure `null`. */
-interface ResolutionResult {
-  iso: string | null;
-  /** `true` when `iso === null` came from a transient error (short TTL). */
-  transient: boolean;
 }
 
 export class PrestashopShopCurrencyResolver {
@@ -73,10 +74,29 @@ export class PrestashopShopCurrencyResolver {
     connectionId: string,
     client: IPrestashopWebserviceClient
   ): Promise<string | null> {
+    const { iso } = await this.resolveDefaultCurrency(connectionId, client);
+    return iso;
+  }
+
+  /**
+   * Resolve the shop's default-currency ISO code **with the reason** an
+   * unresolved read failed.
+   *
+   * Same cached read as {@link resolveDefaultCurrencyIso} - this is the shape
+   * for callers that must branch on why the answer is `null`, because they turn
+   * it into a retry decision rather than a `currency: null` projection (#2102).
+   *
+   * @param connectionId - Cache key
+   * @param client - PrestaShop WebService client for this connection
+   */
+  async resolveDefaultCurrency(
+    connectionId: string,
+    client: IPrestashopWebserviceClient
+  ): Promise<PrestashopShopCurrencyResolution> {
     const cached = this.cache.get(connectionId);
     if (cached !== undefined) {
       if (Date.now() - cached.timestamp < cached.ttlMs) {
-        return cached.iso;
+        return { iso: cached.iso, transient: cached.transient };
       }
       this.cache.delete(connectionId);
     }
@@ -84,10 +104,11 @@ export class PrestashopShopCurrencyResolver {
     const { iso, transient } = await this.fetchDefaultCurrencyIso(connectionId, client);
     this.cache.set(connectionId, {
       iso,
+      transient,
       ttlMs: transient ? FAILURE_CACHE_TTL_MS : CACHE_TTL_MS,
       timestamp: Date.now(),
     });
-    return iso;
+    return { iso, transient };
   }
 
   /** Clear the cache for one connection, or all connections when omitted. */
@@ -102,7 +123,7 @@ export class PrestashopShopCurrencyResolver {
   private async fetchDefaultCurrencyIso(
     connectionId: string,
     client: IPrestashopWebserviceClient
-  ): Promise<ResolutionResult> {
+  ): Promise<PrestashopShopCurrencyResolution> {
     try {
       // NOTE (multistore): on a multistore PrestaShop, `PS_CURRENCY_DEFAULT`
       // can carry per-shop / per-shop-group rows. `limit=1` here takes an

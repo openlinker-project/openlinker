@@ -242,6 +242,13 @@ export interface IPrestashopOrderMapper {
    * @param externalCustomerId - PrestaShop customer ID (external)
    * @param externalProductIds - Map of internal product IDs to PrestaShop product IDs
    * @param externalVariantIds - Map of internal variant IDs to PrestaShop combination IDs
+   * @param conversionRate - The order currency's rate against the shop's DEFAULT
+   *   currency, resolved from PrestaShop by `PrestashopConversionRateResolver`
+   *   (#2102). Required, and never defaulted to 1: `1` is correct only when the
+   *   order is priced in the shop's default currency, and asserting parity for
+   *   any other currency mis-books the order header while its lines stay pinned
+   *   at the buyer-paid price (#895 / ADR-014). A non-finite or non-positive
+   *   value raises `PrestashopConversionRateUnknownException`.
    * @param externalShippingAddressId - PrestaShop shipping address ID (external, optional)
    * @param externalBillingAddressId - PrestaShop billing address ID (external, optional)
    * @returns PrestaShop order data ready for API submission
@@ -251,6 +258,7 @@ export interface IPrestashopOrderMapper {
     externalCustomerId: string | number,
     externalProductIds: Map<string, string | number>,
     externalVariantIds: Map<string, string | number>,
+    conversionRate: number,
     externalShippingAddressId?: string | number,
     externalBillingAddressId?: string | number,
     externalCurrencyId?: string | number,

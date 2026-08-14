@@ -9,6 +9,7 @@
 import { PrestashopOrderMapper } from '../prestashop-order.mapper';
 import type { PrestashopOrder, PrestashopOrderRow } from '../prestashop.mapper.interface';
 import type { OrderCreate } from '@openlinker/core/orders';
+import { PrestashopConversionRateUnknownException } from '../../../domain/exceptions/prestashop-conversion-rate-unknown.exception';
 
 describe('PrestashopOrderMapper', () => {
   let mapper: PrestashopOrderMapper;
@@ -251,6 +252,14 @@ describe('PrestashopOrderMapper', () => {
   });
 
   describe('mapOrderCreate', () => {
+    /**
+     * The rate `PrestashopConversionRateResolver` returns when the order is
+     * priced in the shop's default currency (#2102). Spelled out rather than
+     * inlined as `1` so these call sites can't be misread as "the mapper
+     * defaults it".
+     */
+    const SAME_CURRENCY_RATE = 1;
+
     const mockOrderCreate: OrderCreate = {
       orderNumber: 'ORDER-001',
       status: 'processing',
@@ -309,6 +318,7 @@ describe('PrestashopOrderMapper', () => {
         '100',
         externalProductIds,
         externalVariantIds,
+        SAME_CURRENCY_RATE,
         '200',
         '201',
         '1',
@@ -352,6 +362,7 @@ describe('PrestashopOrderMapper', () => {
           '100',
           externalProductIds,
           externalVariantIds,
+          SAME_CURRENCY_RATE,
           '200',
           '201'
         );
@@ -370,6 +381,7 @@ describe('PrestashopOrderMapper', () => {
         '100',
         externalProductIds,
         externalVariantIds,
+        SAME_CURRENCY_RATE,
         '200', // Only shipping
         undefined // No billing
       );
@@ -390,6 +402,7 @@ describe('PrestashopOrderMapper', () => {
         '100',
         externalProductIds,
         externalVariantIds,
+        SAME_CURRENCY_RATE,
         undefined, // No shipping
         '201' // Only billing
       );
@@ -411,6 +424,7 @@ describe('PrestashopOrderMapper', () => {
           '100',
           externalProductIds,
           externalVariantIds,
+          SAME_CURRENCY_RATE,
           undefined,
           undefined
         );
@@ -429,6 +443,7 @@ describe('PrestashopOrderMapper', () => {
         '100',
         externalProductIds,
         externalVariantIds,
+        SAME_CURRENCY_RATE,
         '200',
         '201',
         undefined, // No currency
@@ -451,6 +466,7 @@ describe('PrestashopOrderMapper', () => {
         '100',
         externalProductIds,
         externalVariantIds,
+        SAME_CURRENCY_RATE,
         '200',
         '201',
         '1',
@@ -502,6 +518,7 @@ describe('PrestashopOrderMapper', () => {
         '100',
         externalProductIds,
         externalVariantIds,
+        SAME_CURRENCY_RATE,
         '200',
         '201'
       );
@@ -537,6 +554,7 @@ describe('PrestashopOrderMapper', () => {
         '100',
         externalProductIds,
         externalVariantIds,
+        SAME_CURRENCY_RATE,
         '200',
         '201'
       );
@@ -562,6 +580,7 @@ describe('PrestashopOrderMapper', () => {
           '100',
           externalProductIds,
           externalVariantIds,
+          SAME_CURRENCY_RATE,
           '200',
           '201',
           '1',
@@ -578,6 +597,7 @@ describe('PrestashopOrderMapper', () => {
           '100',
           externalProductIds,
           externalVariantIds,
+          SAME_CURRENCY_RATE,
           '200',
           '201',
           '1',
@@ -586,6 +606,49 @@ describe('PrestashopOrderMapper', () => {
         );
 
         expect(result.id_carrier).toBe(1);
+      });
+    });
+
+    describe('currency conversion rate (#2102)', () => {
+      const externalProductIds = new Map<string, string | number>([
+        ['ol_product_1', '10'],
+        ['ol_product_2', '11'],
+      ]);
+      const externalVariantIds = new Map<string, string | number>([['ol_variant_1', '5']]);
+
+      const build = (conversionRate: number): Record<string, unknown> =>
+        mapper.mapOrderCreate(
+          mockOrderCreate,
+          '100',
+          externalProductIds,
+          externalVariantIds,
+          conversionRate,
+          '200',
+          '201',
+          '1',
+          '1'
+        );
+
+      it('should send 1.000000 when the order is in the shop default currency', () => {
+        expect(build(SAME_CURRENCY_RATE).conversion_rate).toBe('1.000000');
+      });
+
+      it('should send the resolved rate when the order currency differs from the shop default', () => {
+        expect(build(4.3157).conversion_rate).toBe('4.315700');
+      });
+
+      it('should throw when the resolved rate is zero', () => {
+        expect(() => build(0)).toThrow(PrestashopConversionRateUnknownException);
+      });
+
+      it('should throw when the resolved rate is negative', () => {
+        expect(() => build(-1)).toThrow(PrestashopConversionRateUnknownException);
+      });
+
+      it('should throw when the rate could not be resolved to a finite number', () => {
+        expect(() => build(Number.NaN)).toThrow(PrestashopConversionRateUnknownException);
+        // Never a silent fallback to parity - the whole point of #2102.
+        expect(() => build(Number.NaN)).toThrow(/unusable currency conversion rate/);
       });
     });
   });

@@ -48,6 +48,11 @@ export { PrestashopProvisioningException } from './domain/exceptions/prestashop-
 // configuration cannot supply. Exported because it is the input the retry
 // classifier keys on (a configuration error must not be retried).
 export { PrestashopTaxRateUnknownException } from './domain/exceptions/prestashop-tax-rate-unknown.exception';
+// #2102 - raised when an outbound order needs the conversion rate between its
+// own currency and the shop's default, and the shop's currency configuration
+// cannot state it. Exported for the same reason as the tax-rate exception: the
+// retry classifier keys on it.
+export { PrestashopConversionRateUnknownException } from './domain/exceptions/prestashop-conversion-rate-unknown.exception';
 
 // Retry classification (#581 / #2052) — registered by the plugin descriptor;
 // exported so specs can exercise the real classifier instead of a mock.
