@@ -2,7 +2,7 @@
 # WooCommerce Dev Stack Seed Script
 #
 # Run explicitly via: pnpm dev:stack:seed-woocommerce
-# (docker exec openlinker-woocommerce bash /docker-entrypoint-initdb.d/01-seed-wc-data.sh)
+# (docker compose exec woocommerce bash /docker-entrypoint-initdb.d/01-seed-wc-data.sh)
 #
 # Idempotent: safe to re-run; skips product creation if WC-SHIRT-001 exists.
 #

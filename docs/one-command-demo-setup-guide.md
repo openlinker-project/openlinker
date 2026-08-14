@@ -406,7 +406,7 @@ know before running this on a shared/public host (#1400):
   `WEB_HOST_PORT`) in that instance's own `.env` — see `.env.example` for the
   full list and defaults.
 
-> `pnpm dev:stack:seed-woocommerce` / `pnpm dev:stack:wc-credentials` invoke
-> `docker exec openlinker-woocommerce` directly and don't yet respect a custom
-> `COMPOSE_PROJECT_NAME` — a known limitation when running a second instance,
-> tracked as a documented gap rather than fixed here.
+> `pnpm dev:stack:seed-woocommerce` / `pnpm dev:stack:wc-credentials` go through
+> `docker compose exec woocommerce`, so they resolve the container through
+> Compose's own project scoping and respect a custom `COMPOSE_PROJECT_NAME`
+> (#2109). Run them from the same directory as that instance's `.env`.
