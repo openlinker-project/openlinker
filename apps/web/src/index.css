@@ -9580,6 +9580,52 @@ a.kpi-card:focus-visible {
   vertical-align: top;
 }
 
+/* Products takes the same table-wide anchor as Orders, for the same reason
+ * (#2092). Applying the carve-out's heuristic — "what sets the row height?" —
+ * the answer here is NOT the identity cell: `ConnectionCell` is ~40px while
+ * Stock stacks value + badge + `reserved N` (~56px) and the merged money column
+ * stacks price + updated + created (~51px). Either dominates on its own and both
+ * are unconditional, so top-aligning the leading control alone would leave the
+ * Source cell centred against taller neighbours — exactly the three-anchor row
+ * #2091 removed from Orders. (Listings is ~41px, not the ~50px an earlier draft
+ * claimed: `.products-row-cta` overrides `.button--sm`'s 1.75rem with
+ * `height: auto` at equal specificity and later source order, so "+ Publish" is
+ * ~18px. The conclusion is unaffected.)
+ *
+ * Every cell here is a top-anchored composite — not literally a
+ * `.products-cell-stack`: the Product cell's root is `.product-row`, the select
+ * cell is a `CheckboxCell`, and Source is now `.connection-cell`. `top` is right
+ * for each by inspection rather than by construction, so re-walk the columns if
+ * you add one. The leading expander is separately covered by #2089's global rule;
+ * the select checkbox in the second cell is not, and gains line-1 alignment
+ * from this.
+ *
+ * `DataTable` puts the caller's `className` on the CONTAINER and hardcodes the
+ * `<table>` class, so this is a descendant match that ties on specificity with
+ * `.data-table td { vertical-align: middle }` (:2798) and wins by source order
+ * alone — it must stay AFTER that rule in this file. */
+.products-table td {
+  vertical-align: top;
+}
+
+/* Products is the only list pairing `ConnectionCell` with a TEXT adornment, and
+ * the cell's 220px body cap was measured in #2027 for an adornment that is either
+ * absent or a 14px `ConnectionDot`. A `.channel-pill` is 2px border + 16px
+ * padding + a 6px dot + a 4px gap + mono 11px text at 0.6em advance, so
+ * `WooCommerce` runs ~100px — leaving the connection NAME ~113px inside 220px,
+ * about 17 characters at 13px. `PrestaShop - Terra Store` and
+ * `PrestaShop - Terra Outlet` therefore ellipsise to the same string: line 1
+ * stops discriminating on the exact axis it exists for, and the half that
+ * survives is the one the pill already said.
+ *
+ * Per the carve-out, a geometry budget is per-page and opted into positively,
+ * never inherited. 17rem gives the name ~165px; the two names above diverge at
+ * character 19 (~124px), so the failure mode is cleared with ~6 characters of
+ * slack rather than by fitting either name exactly. */
+.products-table .connection-cell__body {
+  max-width: 17rem;
+}
+
 /* Frozen-pane budget (#2089). 1024px is the worst case by construction: the
  * sidebar becomes a persistent 240px grid column at exactly this width (:1048)
  * AND the tables hosting this cell un-hide their Connection column there, so
@@ -16416,7 +16462,12 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
 /* Money-column date sub-lines: smaller and never wrapped - "upd. Jul 16,
    2026" breaking onto two lines left-hung a stray "2026" (#1720 review). */
 .products-cell-sub--date { font-size: 0.6875rem; white-space: nowrap; }
-.products-cell-sub { font-size: 0.75rem; color: var(--text-muted); }
+/* `nowrap` because the labelled SKU line is now two inline boxes ("SKU: " + a
+   mono value) where it used to be one `.mono-text`, which carried its own nowrap.
+   Without it the value can drop to its own line under width pressure and silently
+   make the identity cell three lines — and #2094 folds the connection into this
+   same stack as a third line. */
+.products-cell-sub { font-size: 0.75rem; color: var(--text-muted); white-space: nowrap; }
 .products-stock-value { font-weight: 600; }
 
 /* Merged Price / Updated / Created header (#1720) - one column, three

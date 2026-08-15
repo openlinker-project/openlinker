@@ -885,4 +885,340 @@ describe('ProductsListPage', () => {
       await screen.findByRole('button', { name: 'Publish to Allegro (1)' }),
     ).toBeEnabled();
   });
+
+  // ── Row identity: labelled SKU + shared ConnectionCell (#2092) ──────
+
+  describe('row identity cells (#2092)', () => {
+    /** The connection `sampleProducts`' first row names as its origin. */
+    const prestaConnection = {
+      id: 'conn_presta',
+      name: 'PrestaShop Terra Store',
+      status: 'active',
+      platformType: 'prestashop',
+      supportedCapabilities: ['ProductMaster', 'InventoryMaster'],
+    } as const;
+
+    /** The `<tr>` whose Product cell carries `name`. */
+    function rowOf(name: string): HTMLElement {
+      const row = screen.getByText(name).closest('tr');
+      if (!row) throw new Error(`no row for ${name}`);
+      return row;
+    }
+
+    function identityApi(
+      overrides: Parameters<typeof createMockApiClient>[0] = {},
+    ): ReturnType<typeof createMockApiClient> {
+      return createMockApiClient({
+        products: { list: vi.fn().mockResolvedValue(sampleProducts) },
+        connections: { list: vi.fn().mockResolvedValue([allegroConnection, prestaConnection]) },
+        ...overrides,
+      });
+    }
+
+    it('labels the identifier sub-line "SKU:" with the value in mono', async () => {
+      renderWithProviders(<ProductsListPage />, { apiClient: identityApi() });
+
+      await screen.findByText('Test Product');
+      const sku = screen.getByText('SKU-001');
+      // The value carries the mono treatment (and, inside a table cell, its
+      // 20ch ellipsis) — so the `title` has to sit here, not on the wrapper.
+      expect(sku).toHaveClass('mono-text');
+      expect(sku).toHaveAttribute('title', 'SKU-001');
+      // The wrapper reads as one labelled line; the label itself is body text.
+      const line = sku.parentElement;
+      expect(line).not.toBeNull();
+      expect(line).not.toHaveClass('mono-text');
+      expect(line?.textContent?.replace(/\s+/g, ' ')).toBe('SKU: SKU-001');
+    });
+
+    it('renders no EAN on the row, even for a single-variant product that has one', async () => {
+      // The decided case, not a deferral: EAN lives on the variant, so a product
+      // row could only ever carry one when the product resolves to a single
+      // variant — which is precisely this fixture.
+      const withEan = {
+        ...sampleProducts,
+        items: [
+          {
+            ...sampleProducts.items[0]!,
+            variantCount: 1,
+            variants: [
+              {
+                id: 'ol_variant_only',
+                productId: 'ol_product_abc123',
+                sku: 'SKU-001',
+                attributes: null,
+                ean: '5901234123457',
+                gtin: null,
+                price: 29.99,
+                createdAt: '2026-01-15T10:00:00.000Z',
+                updatedAt: '2026-01-15T10:00:00.000Z',
+              },
+            ],
+          },
+        ],
+        total: 1,
+      };
+      renderWithProviders(<ProductsListPage />, {
+        apiClient: identityApi({ products: { list: vi.fn().mockResolvedValue(withEan) } }),
+      });
+
+      await screen.findByText('Test Product');
+      const row = rowOf('Test Product');
+      expect(within(row).queryByText('5901234123457')).toBeNull();
+      expect(within(row).queryByText(/EAN/i)).toBeNull();
+    });
+
+    it('renders no identifier line at all for a product with no SKU (never "SKU: -")', async () => {
+      renderWithProviders(<ProductsListPage />, { apiClient: identityApi() });
+
+      // The second fixture product has `sku: null`.
+      await screen.findByText('Another Product');
+      const row = rowOf('Another Product');
+      expect(within(row).queryByText(/^SKU:/)).toBeNull();
+      // Scoped to the name cell's sub-line: `.mono-text` is not SKU-specific —
+      // `CopyableId` emits it too, so an unscoped query would pass here only
+      // because this fixture happens to carry no `externalIds` and therefore no
+      // Source `ConnectionCell`.
+      expect(row.querySelector('.products-cell-sub .mono-text')).toBeNull();
+    });
+
+    it('renders the Source column as the shared ConnectionCell with the channel pill as its adornment', async () => {
+      const { container } = renderWithProviders(<ProductsListPage />, {
+        apiClient: identityApi(),
+      });
+
+      await screen.findByText('Test Product');
+      const cell = await waitFor(() => {
+        const found = container.querySelector('.connection-cell') as HTMLElement | null;
+        expect(found).not.toBeNull();
+        return found!;
+      });
+
+      // The pill is the Products adornment (Listings passes none, Shipments a
+      // carrier dot) and it leads line 1 rather than replacing the name.
+      const adornment = cell.querySelector('.connection-cell__adornment');
+      expect(adornment).not.toBeNull();
+      const pill = adornment!.querySelector('.channel-pill');
+      expect(pill).toHaveAttribute('data-channel', 'prestashop');
+      expect(pill).toHaveTextContent('PrestaShop');
+
+      // Name over a shortened, copyable id — the fact the old cell dropped.
+      expect(within(cell).getByRole('link', { name: 'PrestaShop Terra Store' })).toHaveAttribute(
+        'href',
+        '/connections/conn_presta',
+      );
+      expect(within(cell).getByText('conn_presta')).toBeInTheDocument();
+      expect(
+        within(cell).getByRole('button', {
+          name: 'Copy connection ID for PrestaShop Terra Store',
+        }),
+      ).toBeInTheDocument();
+    });
+
+    it('resolves connections from the batched page read, never one request per row', async () => {
+      // Asserted as "does not scale with row count" rather than "called exactly
+      // once": the page already double-mounts the shared connections query
+      // (`OfferProductPickerModal` renders only inside the loaded-items branch,
+      // so its observer joins after the list settles). That is pre-existing and
+      // row-count-independent, which is the property this AC is about.
+      async function renderWith(
+        items: PaginatedProducts['items'],
+      ): Promise<{ listCalls: number; getByIdCalls: number }> {
+        const connectionsList = vi
+          .fn()
+          .mockResolvedValue([allegroConnection, prestaConnection]);
+        const getById = vi.fn();
+        renderWithProviders(<ProductsListPage />, {
+          apiClient: createMockApiClient({
+            products: {
+              list: vi.fn().mockResolvedValue({ ...sampleProducts, items, total: items.length }),
+            },
+            connections: { list: connectionsList, getById },
+          }),
+        });
+        await screen.findAllByText('PrestaShop Terra Store');
+        return { listCalls: connectionsList.mock.calls.length, getByIdCalls: getById.mock.calls.length };
+      }
+
+      const one = await renderWith([sampleProducts.items[0]!]);
+      cleanup();
+      // Three rows: two share conn_presta, the third names a connection that is
+      // gone — the shapes that would each trigger their own fetch per row.
+      const three = await renderWith([
+        sampleProducts.items[0]!,
+        {
+          ...sampleProducts.items[1]!,
+          externalIds: [
+            { externalId: '56', platformType: 'prestashop', connectionId: 'conn_presta' },
+          ],
+        },
+        {
+          ...sampleProducts.items[0]!,
+          id: 'ol_product_ghi789',
+          name: 'Third Product',
+          externalIds: [{ externalId: '9', platformType: 'erli', connectionId: 'conn_deleted' }],
+        },
+      ]);
+
+      expect(three.listCalls).toBe(one.listCalls);
+      expect(one.getByIdCalls).toBe(0);
+      expect(three.getByIdCalls).toBe(0);
+    });
+
+    it('shows the connection loading state rather than Unknown on a cold load', async () => {
+      // The `loading` half of ConnectionCell's caller contract: the page must
+      // coalesce a map miss to `null`, so without forwarding the batched query's
+      // loading state every row would read "Unknown" until it settles.
+      const { container } = renderWithProviders(<ProductsListPage />, {
+        apiClient: createMockApiClient({
+          products: { list: vi.fn().mockResolvedValue(sampleProducts) },
+          connections: { list: vi.fn().mockReturnValue(new Promise(() => {})) },
+        }),
+      });
+
+      await screen.findByText('Test Product');
+      await waitFor(() => {
+        expect(container.querySelector('.connection-cell [aria-busy="true"]')).not.toBeNull();
+      });
+      expect(screen.queryByText('Unknown')).toBeNull();
+    });
+
+    it('renders Unknown for a deleted source connection without falling back to a per-row fetch', async () => {
+      // The `?? null` half: `Map.get()` misses with `undefined`, which the cell
+      // reads as "resolve it yourself" and would turn back into one request per
+      // row. Resolved-but-absent must render Unknown and fetch nothing.
+      const getById = vi.fn();
+      const { container } = renderWithProviders(<ProductsListPage />, {
+        apiClient: createMockApiClient({
+          products: { list: vi.fn().mockResolvedValue(sampleProducts) },
+          connections: { list: vi.fn().mockResolvedValue([allegroConnection]), getById },
+        }),
+      });
+
+      await screen.findByText('Test Product');
+      const cell = await waitFor(() => {
+        const found = container.querySelector('.connection-cell') as HTMLElement | null;
+        expect(found).not.toBeNull();
+        return found!;
+      });
+      await waitFor(() => {
+        expect(within(cell).getByText('Unknown')).toBeInTheDocument();
+      });
+      expect(getById).not.toHaveBeenCalled();
+      // The pill still resolves: its platformType is on the product's own
+      // external-id row, not on the connection the page could not find.
+      expect(cell.querySelector('.channel-pill')).toHaveTextContent('PrestaShop');
+    });
+
+    it('renders erli and woocommerce source pills through the plugin registry, not the lowercase slug', async () => {
+      const erliConnection = {
+        id: 'conn_erli',
+        name: 'My Erli',
+        status: 'active',
+        platformType: 'erli',
+        supportedCapabilities: ['OfferManager', 'OfferCreator'],
+      } as const;
+      const wooConnection = {
+        id: 'conn_woo',
+        name: 'My WooCommerce',
+        status: 'active',
+        platformType: 'woocommerce',
+        supportedCapabilities: ['ProductPublisher'],
+      } as const;
+      const products = {
+        ...sampleProducts,
+        items: [
+          {
+            ...sampleProducts.items[0]!,
+            externalIds: [
+              { externalId: '1', platformType: 'erli', connectionId: 'conn_erli' },
+            ],
+          },
+          {
+            ...sampleProducts.items[1]!,
+            externalIds: [
+              { externalId: '2', platformType: 'woocommerce', connectionId: 'conn_woo' },
+            ],
+          },
+        ],
+        total: 2,
+      };
+      const { container } = renderWithProviders(<ProductsListPage />, {
+        apiClient: createMockApiClient({
+          products: { list: vi.fn().mockResolvedValue(products) },
+          connections: { list: vi.fn().mockResolvedValue([erliConnection, wooConnection]) },
+        }),
+      });
+
+      await screen.findByText('Test Product');
+      const pills = await waitFor(() => {
+        const found = Array.from(
+          container.querySelectorAll('.connection-cell__adornment .channel-pill'),
+        );
+        expect(found).toHaveLength(2);
+        return found;
+      });
+      // Brand-coloured pills (the `data-channel` hook) with registry labels.
+      expect(pills[0]).toHaveAttribute('data-channel', 'erli');
+      expect(pills[0]).toHaveTextContent('Erli');
+      expect(pills[1]).toHaveAttribute('data-channel', 'woocommerce');
+      expect(pills[1]).toHaveTextContent('WooCommerce');
+      // Never the raw slug the pre-#2088 inline maps fell back to.
+      expect(pills[0]?.textContent).not.toBe('erli');
+      expect(pills[1]?.textContent).not.toBe('woocommerce');
+    });
+
+    it('keeps the Source column hidden below 1024px, not 768px', async () => {
+      renderWithProviders(<ProductsListPage />, { apiClient: identityApi() });
+
+      await screen.findByText('Test Product');
+      const header = screen.getByRole('columnheader', { name: 'Source' });
+      // `hideBelow` is a class, so the breakpoint is assertable. Lowering it to
+      // 768 was rejected in #1996: it would keep the column only behind
+      // horizontal scroll. The tablet relocation is #2094 (S8).
+      expect(header).toHaveClass('data-table__cell--hide-below-1024');
+      expect(header.className).not.toMatch(/hide-below-768/);
+    });
+
+    it('carries the page-scoped table class the row-anchoring rule matches on', async () => {
+      // `.products-table td { vertical-align: top }` is a DESCENDANT match on the
+      // container (DataTable hardcodes the <table> class), so losing this
+      // className silently reverts every cell to `middle` against the taller
+      // Stock / Listings / money stacks.
+      const { container } = renderWithProviders(<ProductsListPage />, {
+        apiClient: identityApi(),
+      });
+
+      await screen.findByText('Test Product');
+      expect(container.querySelector('.data-table__container.products-table')).not.toBeNull();
+    });
+
+    it('labels the card SKU too and keeps the card free of the shared cell', async () => {
+      // The card hosts no `ConnectionCell` — the Source column does not render at
+      // card width — but it DOES carry the SKU, and "never `SKU: -`" is a claim
+      // about the fact rather than about one surface, so the labelled form has to
+      // hold here too. Pinned separately from the desktop assertions above
+      // because checking one surface and generalising is how #2090 shipped a bug.
+      const viewport = mockMobileViewport();
+      try {
+        const { container } = renderWithProviders(<ProductsListPage />, {
+          apiClient: identityApi(),
+        });
+
+        await screen.findByText('Test Product');
+        expect(container.querySelector('.connection-cell')).toBeNull();
+        const title = container.querySelector('.data-table__card-title') as HTMLElement;
+        expect(title).not.toBeNull();
+        // No `rowHref` on this table, so the card title is not wrapped in the
+        // row link — the premise that would make hosting a cell here legal.
+        expect(title.closest('a')).toBeNull();
+
+        const subtitle = container.querySelector('.data-table__card-subtitle');
+        expect(subtitle?.textContent).toBe('SKU: SKU-001');
+        expect(subtitle?.querySelector('.mono-text')?.textContent).toBe('SKU-001');
+      } finally {
+        viewport.restore();
+      }
+    });
+  });
 });
