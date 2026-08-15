@@ -139,9 +139,8 @@ export type SalesDocumentBlockOutcome =
  * ADR-041's union is attention-worthy by default: opting one out has to be a
  * deliberate edit here.
  */
-export const SalesDocumentAttentionReasonValues = SalesDocumentGateBlockReasonValues.filter(
-  (reason) => reason !== 'trigger-model-manual',
-);
+export const SalesDocumentAttentionReasonValues: readonly SalesDocumentGateBlockReason[] =
+  SalesDocumentGateBlockReasonValues.filter((reason) => reason !== 'trigger-model-manual');
 
 // Emptiness matters here — a consumer builds a SQL `IN (…)` list from this array
 // at class-definition time and `IN ()` is a Postgres syntax error — but the guard

@@ -940,6 +940,118 @@ describe('OrdersListPage', () => {
       expect(within(row).queryByRole('link', { name: /issue invoice/i })).not.toBeInTheDocument();
     });
 
+    /**
+     * The row must render the invoice pill and the block badge as INDEPENDENT
+     * parts, not as a three-way choice (#2100 review round 4).
+     *
+     * `a ? pill : b ? badge : cta` made the badge unreachable behind any invoice
+     * record — including a terminal REJECTED failure, the one shape the backend
+     * gate, the panel, the timeline, the aggregate count and the
+     * `?invoicing=blocked` filter all deliberately keep blocked. Clicking the
+     * "Invoicing blocked" chip then landed the operator on rows whose only
+     * visible signal was `Failed`: true, but a different fact from "auto-issue
+     * was refused because no connection is primary".
+     */
+    const rejectedInvoice = {
+      invoiceId: 'inv-1',
+      status: 'failed' as const,
+      regulatoryStatus: 'not-applicable' as const,
+      blocksIssuanceElsewhere: false,
+    };
+
+    it('should show the block badge BESIDE a rejected invoice pill', async () => {
+      const mockApi = createMockApiClient({
+        orders: {
+          list: vi.fn().mockResolvedValue(
+            paginated([
+              blockedOrder({
+                salesDocumentBlockReason: 'unresolved-routing',
+                salesDocumentUnresolvedReason: 'ambiguous-connection-no-primary',
+                orderSnapshot: { ...syncedOrder.orderSnapshot, invoice: rejectedInvoice },
+              }),
+            ]),
+          ),
+        },
+        connections: { list: vi.fn().mockResolvedValue([sampleConnection, invoicingConnection]) },
+      });
+
+      const { container } = renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+      await screen.findByText('ALG-882414');
+      const row = container.querySelector('.data-table__row') as HTMLElement;
+
+      expect(within(row).getByText('Failed')).toBeInTheDocument();
+      expect(within(row).getByText('No primary')).toBeInTheDocument();
+      // A record exists, so the next step is Retry in the panel, not a fresh issue.
+      expect(within(row).queryByRole('link', { name: /issue invoice/i })).not.toBeInTheDocument();
+    });
+
+    it('should show the block badge beside a rejected invoice on the mobile card too', async () => {
+      const mockApi = createMockApiClient({
+        orders: {
+          list: vi.fn().mockResolvedValue(
+            paginated([
+              blockedOrder({
+                salesDocumentBlockReason: 'unresolved-routing',
+                salesDocumentUnresolvedReason: 'ambiguous-connection-no-primary',
+                orderSnapshot: { ...syncedOrder.orderSnapshot, invoice: rejectedInvoice },
+              }),
+            ]),
+          ),
+        },
+        connections: { list: vi.fn().mockResolvedValue([sampleConnection, invoicingConnection]) },
+      });
+
+      // The card view was the SECOND hand-written copy of the ternary, so it
+      // needs its own assertion at the mobile breakpoint.
+      const viewport = mockMobileViewport();
+      try {
+        const { container } = renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+        await screen.findByText('ALG-882414');
+        const card = container.querySelector('.orders-card-summary') as HTMLElement;
+
+        expect(within(card).getByText('Failed')).toBeInTheDocument();
+        expect(within(card).getByText('No primary')).toBeInTheDocument();
+      } finally {
+        viewport.restore();
+      }
+    });
+
+    it('should still hide the badge behind an invoice that plausibly exists', async () => {
+      const mockApi = createMockApiClient({
+        orders: {
+          list: vi.fn().mockResolvedValue(
+            paginated([
+              blockedOrder({
+                salesDocumentBlockReason: 'unresolved-routing',
+                salesDocumentUnresolvedReason: 'ambiguous-connection-no-primary',
+                orderSnapshot: {
+                  ...syncedOrder.orderSnapshot,
+                  invoice: {
+                    invoiceId: 'inv-1',
+                    status: 'issued',
+                    regulatoryStatus: 'accepted',
+                    blocksIssuanceElsewhere: true,
+                  },
+                },
+              }),
+            ]),
+          ),
+        },
+        connections: { list: vi.fn().mockResolvedValue([sampleConnection, invoicingConnection]) },
+      });
+
+      const { container } = renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+      await screen.findByText('ALG-882414');
+      const row = container.querySelector('.data-table__row') as HTMLElement;
+
+      // "No primary" beside an issued invoice is worse than no pill at all — and
+      // the backend gate refuses to persist a block here in the first place.
+      expect(within(row).queryByText('No primary')).not.toBeInTheDocument();
+    });
+
     it('should keep the "Issue invoice" CTA alongside a manual-only badge', async () => {
       const mockApi = createMockApiClient({
         orders: {
