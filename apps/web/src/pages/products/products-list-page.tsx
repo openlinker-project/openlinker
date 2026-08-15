@@ -1231,7 +1231,20 @@ export function ProductsListPage(): ReactElement {
                   <span className="product-row__name product-row__name--wrap">{product.name}</span>
                 </span>
               ),
-              subtitle: (product) => product.sku ?? '-',
+              // Same labelled form as the desktop sub-line, and nothing at all
+              // when there is no SKU: an unlabelled identifier reads as "some
+              // id" on a card exactly as it does in a row, and the AC's "never
+              // `SKU: -`" is a statement about the fact, not about one surface.
+              // Text-only by choice, not by necessity — this table sets no
+              // `rowHref`, so `DataTableCard` does NOT wrap the card's title and
+              // subtitle in a row link and hosting a cell here would be legal.
+              // The card simply has no need of a second copy control.
+              subtitle: (product) =>
+                product.sku ? (
+                  <>
+                    SKU: <span className="mono-text">{product.sku}</span>
+                  </>
+                ) : null,
               meta: (product) => (
                 <span className="data-table__badge-row">
                   {product.price !== null ? (

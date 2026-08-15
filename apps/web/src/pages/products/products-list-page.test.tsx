@@ -975,7 +975,11 @@ describe('ProductsListPage', () => {
       await screen.findByText('Another Product');
       const row = rowOf('Another Product');
       expect(within(row).queryByText(/^SKU:/)).toBeNull();
-      expect(row.querySelector('.mono-text')).toBeNull();
+      // Scoped to the name cell's sub-line: `.mono-text` is not SKU-specific —
+      // `CopyableId` emits it too, so an unscoped query would pass here only
+      // because this fixture happens to carry no `externalIds` and therefore no
+      // Source `ConnectionCell`.
+      expect(row.querySelector('.products-cell-sub .mono-text')).toBeNull();
     });
 
     it('renders the Source column as the shared ConnectionCell with the channel pill as its adornment', async () => {
