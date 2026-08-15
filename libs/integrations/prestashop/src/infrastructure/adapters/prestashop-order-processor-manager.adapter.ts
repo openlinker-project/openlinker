@@ -53,6 +53,7 @@ import {
   PrestashopApiException,
   PrestashopProvisioningException,
   PrestashopTaxRateUnknownException,
+  PrestashopCurrencyUnknownException,
 } from '@openlinker/integrations-prestashop';
 import { Logger, formatBodyForLog } from '@openlinker/shared/logging';
 import type { PrestashopCustomerProvisioner } from '../provisioners/prestashop-customer-provisioner';
@@ -311,8 +312,26 @@ export class PrestashopOrderProcessorManagerAdapter
         this.logger.debug(`Resolved billing address ID: ${externalBillingAddressId}`);
       }
 
-      // Step 4: Resolve currency ID
-      const currencyCode = order.totals.currency || 'EUR'; // Default to EUR if not specified
+      // Step 4: Resolve currency ID.
+      //
+      // A missing currency is refused, never substituted (#2139). This used to
+      // read `order.totals.currency || 'EUR'`, while the snapshot path defaults
+      // the field to `''` (`order-from-ready-snapshot.ts`) - so an order that
+      // carried no currency asked the shop for EUR, and on a shop where EUR is
+      // active that resolved to a real-but-wrong id without ever reaching the
+      // resolver's own guards. The line amounts pinned downstream are the
+      // buyer-paid source numerals (#895 / ADR-014), so the order would be
+      // booked with the right numbers under the wrong denomination.
+      const currencyCode = order.totals.currency?.trim() ?? '';
+      if (currencyCode === '') {
+        throw new PrestashopCurrencyUnknownException(
+          `Order ${order.orderNumber || '(no reference)'}: no currency - the source ` +
+            `order carries no ISO 4217 code, so its PrestaShop currency cannot be ` +
+            `resolved. No order was created.`,
+          undefined,
+          this.connection.id
+        );
+      }
       const externalCurrencyId = await this.currencyResolver.resolveCurrencyId(
         currencyCode,
         this.connection.id,
@@ -539,7 +558,12 @@ export class PrestashopOrderProcessorManagerAdapter
         // `syncStatus[].error` verbatim: the wrapping below would prepend 35
         // characters and push the product identity out of every truncated
         // surface that renders it (#2052 — see `taxRateUnknownError`).
-        error instanceof PrestashopTaxRateUnknownException
+        error instanceof PrestashopTaxRateUnknownException ||
+        // Same contract for the currency refusal (#2139): wrapping would both
+        // bury the operator-facing message and hide the class the retry
+        // classifier keys on, turning a non-retryable configuration gap back
+        // into five retryable attempts.
+        error instanceof PrestashopCurrencyUnknownException
       ) {
         throw error;
       }
