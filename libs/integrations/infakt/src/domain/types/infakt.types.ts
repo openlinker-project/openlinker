@@ -164,6 +164,35 @@ export interface InfaktListResponse<T> {
 }
 
 /**
+ * Body of a `POST clients.json` request, under its `client` wrapper key.
+ *
+ * Kept distinct from the {@link InfaktClient} RESPONSE shape for the same
+ * reason as {@link InfaktInvoiceRequest} (#2103 review): the response carries
+ * provider-assigned identity (`id`, `uuid`) that must not be sent on a create,
+ * and an untyped inline literal is exactly how a field name drifts unnoticed.
+ * This write has already suffered that: #1926 was `name`/`post_code` being sent
+ * where inFakt wants `company_name`/`postal_code` — silently ignored, so
+ * first-time client creation always 422'd, with no compiler or test objecting.
+ * Naming the shape here means a future rename fails type-check instead.
+ *
+ * `company_name` is required (it is the client's display identity, and inFakt
+ * rejects a create without it); the rest are optional because OL genuinely may
+ * not hold them — a B2C buyer has no `nip`, and `email` is absent whenever the
+ * source order carries none (#1797 notes what that costs downstream).
+ */
+export interface InfaktClientRequest {
+  client: {
+    company_name: string;
+    nip?: string;
+    email?: string;
+    city?: string;
+    street?: string;
+    postal_code?: string;
+    country?: string;
+  };
+}
+
+/**
  * One service (line) row on a `POST invoices.json` request.
  *
  * Deliberately a WRITE-side type rather than a reuse of {@link

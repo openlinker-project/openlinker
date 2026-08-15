@@ -75,12 +75,18 @@ export type InvoiceFailureMode = (typeof InvoiceFailureModeValues)[number];
  *   - `buyer-tax-id-invalid`: a TERMINAL `rejected` failure caused by an invalid
  *     buyer tax identifier — the operator can fix the buyer data and re-issue.
  *   - `invalid-currency`: a TERMINAL `rejected` failure caused by the document's
- *     settlement currency — missing, malformed, or one the provider will not
- *     settle in. Operator-fixable on the source order, so it earns its own code
- *     rather than collapsing into `provider-rejected`, whose copy asserts the
- *     PROVIDER rejected the request (untrue when an adapter refuses the shape
- *     before any provider call, as #2103 does). Currency and ISO 4217 are
- *     country-agnostic vocabulary, so this stays ADR-026-clean.
+ *     settlement currency. In practice this is an ADAPTER PRE-CALL REFUSAL —
+ *     the adapter rejected a missing or malformed currency before any provider
+ *     round-trip (#2103) — which is precisely why it must not collapse into
+ *     `provider-rejected`, whose copy asserts the PROVIDER rejected a request
+ *     it never saw. A genuine provider-side currency rejection would classify
+ *     here too if its text reached `classifyFailureCode`, but no shipped
+ *     adapter routes one: inFakt's HTTP client deliberately keeps the provider
+ *     body out of the error message (it can echo buyer PII) and core never
+ *     reads `responseBody`, so such a rejection lands on `provider-rejected` —
+ *     accurately, since the provider did reject it. Operator-fixable on the
+ *     source order either way. Currency and ISO 4217 are country-agnostic
+ *     vocabulary, so this stays ADR-026-clean.
  *   - `provider-rejected`: any other TERMINAL `rejected` failure (safe to
  *     re-attempt once the underlying input is corrected).
  *   - `transport-timeout`: an `in-doubt` transport failure — the document MAY

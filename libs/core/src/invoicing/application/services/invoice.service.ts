@@ -802,9 +802,11 @@ export class InvoiceService implements IInvoiceService {
   private deriveFailureReason(failureCode: InvoiceFailureCode): string {
     const reasons: Record<InvoiceFailureCode, string> = {
       'buyer-tax-id-invalid': 'The buyer tax identifier was rejected as invalid.',
-      // Wording covers BOTH the adapter's pre-call shape refusal and a genuine
-      // provider-side currency rejection, so it can never claim the provider saw
-      // a request it did not.
+      // Worded to fit an adapter PRE-CALL refusal, which is the only origin
+      // that actually reaches this code today (see InvoiceFailureCode's doc):
+      // it never claims the provider saw a request it did not. It stays
+      // accurate for a provider-side currency rejection too, should one ever
+      // route here, which is why it names the condition rather than the actor.
       'invalid-currency':
         'The settlement currency is missing, malformed, or not accepted for this document. Fix the currency on the order and re-issue.',
       'provider-rejected': 'The invoicing provider rejected the request.',

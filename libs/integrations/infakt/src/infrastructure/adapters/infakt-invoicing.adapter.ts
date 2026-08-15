@@ -56,6 +56,7 @@ import type {
   InfaktAsyncTaskAccepted,
   InfaktBankAccount,
   InfaktClient,
+  InfaktClientRequest,
   InfaktCorrectiveInvoiceRequest,
   InfaktCorrectiveInvoiceServiceRequest,
   InfaktInvoice,
@@ -481,7 +482,10 @@ export class InfaktInvoicingAdapter
     // #1797: without `email`, Infakt creates the client with no email on
     // file, so a later `deliver_via_email.json` call 422s ("adres e-mail
     // Klienta jest nieznany") — confirmed live against the sandbox.
-    const payload = {
+    // Typed against the WRITE shape (#2103 review) so the field-name drift that
+    // caused #1926 fails type-check rather than 422-ing live. Same guard the
+    // issue path got via `InfaktInvoiceRequest`.
+    const payload: InfaktClientRequest = {
       client: {
         company_name: buyer.name,
         nip: nip ?? undefined,
