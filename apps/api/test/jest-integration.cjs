@@ -87,6 +87,14 @@ module.exports = {
       __dirname,
       '../../../libs/integrations/subiekt/src/$1',
     ),
+    '^@openlinker/integrations-fx$': path.resolve(
+      __dirname,
+      '../../../libs/integrations/fx/src/index.ts',
+    ),
+    '^@openlinker/integrations-fx/(.*)$': path.resolve(
+      __dirname,
+      '../../../libs/integrations/fx/src/$1',
+    ),
     '^@openlinker/integrations-erli$': path.resolve(
       __dirname,
       '../../../libs/integrations/erli/src/index.ts',
