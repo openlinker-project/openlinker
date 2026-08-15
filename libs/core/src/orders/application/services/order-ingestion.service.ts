@@ -473,7 +473,7 @@ export class OrderIngestionService implements IOrderIngestionService {
       // level-evaluated, so it is the ONLY thing that clears a reason persisted by
       // an earlier transition. `indeterminate` writes NOTHING — the gate could not
       // tell, so erasing a true reason is worse than leaving it (#2100 review).
-      await this.persistSalesDocumentOutcome(order.id, outcome, existing);
+      await this.persistSalesDocumentOutcome(order.id, outcome);
     } catch (error) {
       // F9/D11: issuance is best-effort relative to order sync. SWALLOW — never
       // re-throw — so an enqueue/compose failure can never block the order
@@ -495,13 +495,14 @@ export class OrderIngestionService implements IOrderIngestionService {
    *
    * 1. **`indeterminate` writes nothing.** The gate could not decide, so erasing a
    *    reason it cannot vouch for would trade a true signal for silence.
-   * 2. **A no-change outcome writes nothing either.** `onOrderTransition` is
-   *    level-evaluated and the overwhelmingly common answer is `none` on an
-   *    already-unblocked order. Writing it anyway would issue a second `UPDATE`
-   *    per ingestion and bump `@UpdateDateColumn` — and `updatedAt` is a live
-   *    filter axis (`FulfillmentStatusSyncService` scans `updatedSince`), so the
-   *    bump would keep every re-polled order inside that scan window. The
-   *    comparison uses the PRE-persist record already in hand; no extra read.
+   * 2. **A no-change outcome costs no `UPDATE`** — but the guard for that lives in
+   *    the repository's `WHERE` clause, not here. A caller-side comparison would
+   *    have to hold a record read BEFORE the destination round-trip, so a
+   *    concurrent writer (the manual-issue clear) could make a genuinely new
+   *    answer look unchanged and suppress it. Pushing the check into the statement
+   *    keeps last-write-wins intact and still keeps the `@UpdateDateColumn` bump
+   *    off the common `null -> null` path — `updatedAt` is a live filter axis
+   *    (`FulfillmentStatusSyncService` scans `updatedSince`).
    * 3. **Its own catch and its own message.** A persistence failure here is not a
    *    trigger failure, and reporting it as one would send the next reader to the
    *    wrong service. Swallowed like the trigger itself: the outcome is re-decided
@@ -509,28 +510,17 @@ export class OrderIngestionService implements IOrderIngestionService {
    */
   private async persistSalesDocumentOutcome(
     internalOrderId: string,
-    outcome: SalesDocumentBlockOutcome,
-    priorRecord: OrderRecord | null
+    outcome: SalesDocumentBlockOutcome
   ): Promise<void> {
     if (outcome.kind === 'indeterminate') {
       return;
     }
 
-    const next = outcome.kind === 'blocked' ? outcome.block : null;
-    const priorReason = priorRecord?.salesDocumentBlockReason ?? null;
-    const priorUnresolved = priorRecord?.salesDocumentUnresolvedReason ?? null;
-    const priorDetail = priorRecord?.salesDocumentBlockDetail ?? null;
-
-    const unchanged =
-      priorReason === (next?.reason ?? null) &&
-      priorUnresolved === (next?.unresolvedReason ?? null) &&
-      priorDetail === (next?.detail ?? null);
-    if (unchanged) {
-      return;
-    }
-
     try {
-      await this.orderRecordService.markSalesDocumentBlock(internalOrderId, next);
+      await this.orderRecordService.markSalesDocumentBlock(
+        internalOrderId,
+        outcome.kind === 'blocked' ? outcome.block : null
+      );
     } catch (error) {
       const errorName = error instanceof Error ? error.name : 'UnknownError';
       this.logger.warn(

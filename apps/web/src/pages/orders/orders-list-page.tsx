@@ -1243,7 +1243,13 @@ export function OrdersListPage(): ReactElement {
         */}
         {invoicingBlocked || summary?.salesDocumentBlocked ? (
           <Chip tone="error" active={invoicingBlocked} onClick={toggleInvoicingBlocked}>
-            Invoicing blocked {summary?.salesDocumentBlocked ?? 0}
+            {/* The count is omitted until the summary resolves rather than
+                defaulted to 0 — asserting a number the client does not have yet
+                would be worse than showing none. */}
+            Invoicing blocked
+            {summary?.salesDocumentBlocked === undefined
+              ? ''
+              : ` ${summary.salesDocumentBlocked}`}
           </Chip>
         ) : null}
         {/* SLA KPI affordance (#1108) — at-a-glance overdue / at-risk counts. */}
@@ -1288,7 +1294,20 @@ export function OrdersListPage(): ReactElement {
             liveRegion="off"
             title="No orders in this view"
             message="No orders match the current filter."
-            action={<Button onClick={() => { setHealthFilter(null); }}>View all orders</Button>}
+            action={
+              <Button
+                onClick={() => {
+                  // Clears BOTH axes (#2100 review): with `health` and
+                  // `invoicing=blocked` set together this arm wins, and a button
+                  // labelled "View all orders" that left a filter applied would be
+                  // lying about what it does.
+                  if (invoicingBlocked) toggleInvoicingBlocked();
+                  setHealthFilter(null);
+                }}
+              >
+                View all orders
+              </Button>
+            }
           />
         ) : invoicingBlocked ? (
           /*

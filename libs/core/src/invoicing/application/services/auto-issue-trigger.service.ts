@@ -159,7 +159,11 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     // InvoicingModule), so it neither forms a module cycle nor touches the F3
     // one-way edge — that invariant is specifically about OrdersModule tokens.
     // Used only to answer "does a document already exist for this order?" before
-    // reporting a block; see `reportBlock`.
+    // reporting a block; see `reportBlock`. Cost note: `parseTriggerModel` defaults
+    // to `manual`, which IS a block path, so on an install whose Invoicing
+    // connection has no `config.invoicing` every ingestion pays one extra indexed
+    // SELECT. That is the price of not re-blocking already-invoiced orders; the
+    // conditional UPDATE in `updateSalesDocumentBlock` gives back more than it.
     @Inject(INVOICE_SERVICE_TOKEN)
     private readonly invoices: IInvoiceService,
   ) {}
@@ -175,10 +179,14 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
    * count wrong, filtered rows render with no badge, and the order-detail
    * timeline claim "No invoice issued" directly under the issued invoice.
    *
-   * Suppressing on ANY record — not only `issued` — deliberately matches what the
-   * order surfaces already do: they key on the presence of the invoice projection.
-   * A `failed`/`pending` record means issuance is already under way and visible
-   * on its own terms; re-labelling that order "blocked" adds no information.
+   * A `pending` / `issuing` / `issued` record suppresses: issuance has happened or
+   * is under way and is visible on its own terms, so re-labelling the order
+   * "blocked" adds nothing. A terminal `failed` record does NOT suppress (#2100
+   * review round 2) — the configuration problem is still real, and clearing on it
+   * would strip the routing block from an order whose only remaining signal is a
+   * failed invoice that says nothing about the missing primary. That is the one
+   * place this deliberately keeps a block the FE row happens to hide behind the
+   * more urgent "Failed" invoice badge; the count and the panel still carry it.
    *
    * A read failure yields `indeterminate` rather than a block: with the answer
    * unknown, leaving the persisted value untouched is the only option that can
@@ -190,7 +198,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
   ): Promise<SalesDocumentBlockOutcome> {
     try {
       const existing = await this.invoices.getLatestInvoiceForOrder(orderId);
-      if (existing !== null) {
+      if (existing !== null && existing.status !== 'failed') {
         return { kind: 'none' };
       }
     } catch (error) {

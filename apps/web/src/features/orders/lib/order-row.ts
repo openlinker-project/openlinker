@@ -152,10 +152,14 @@ export function invoicingBlockedBadge(
    * all, and the backend's own gate now refuses to record a block for an invoiced
    * order — this is the render-side belt for a row written before that landed.
    *
-   * A parameter rather than a caller-side `if`, because every surface that shows
-   * the badge must apply the same rule. It previously lived in a page-local helper
-   * and the order-detail timeline simply didn't have it, so the timeline claimed
-   * "No invoice issued" directly under the panel showing the invoice (#2100 review).
+   * A parameter rather than a caller-side `if`, because every surface driven by
+   * THIS function must apply the same rule. It previously lived in a page-local
+   * helper and the order-detail timeline simply didn't have it, so the timeline
+   * claimed "No invoice issued" directly under the panel showing the invoice
+   * (#2100 review). The invoice panel is the deliberate exception: it renders from
+   * `resolveSalesDocumentBlockCopy` (a different, longer copy set) and applies the
+   * same rule at its own call site, because it already holds the live invoice query
+   * rather than a snapshot projection.
    */
   invoice?: ParsedOrderInvoice | null,
 ): InvoicingBlockedBadge | null {

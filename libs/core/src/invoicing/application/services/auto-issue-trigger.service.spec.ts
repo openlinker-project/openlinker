@@ -608,8 +608,28 @@ describe('AutoIssueTriggerService', () => {
       expect(invoices.getLatestInvoiceForOrder).toHaveBeenCalledWith('order-1');
     });
 
-    it('should suppress on ANY record, not only an issued one', async () => {
+    it('should suppress on an in-flight record, not only an issued one', async () => {
       connectionPort.list.mockResolvedValue([makeConnection('manual')]);
+      invoices.getLatestInvoiceForOrder.mockResolvedValue({
+        id: 'inv-1',
+        status: 'pending',
+      } as never);
+
+      const outcome = await service.onOrderTransition(
+        makeOrder({ paymentStatus: 'paid' }),
+        'src-1',
+      );
+
+      // Issuance is under way and visible on its own terms; re-labelling the order
+      // "blocked" adds nothing.
+      expect(outcome).toEqual({ kind: 'none' });
+    });
+
+    it('should NOT suppress on a terminal failed record — the config problem is still real', async () => {
+      connectionPort.list.mockResolvedValue([
+        makeConnection('auto-on-paid', { id: 'conn-a' }),
+        makeConnection('auto-on-paid', { id: 'conn-b' }),
+      ]);
       invoices.getLatestInvoiceForOrder.mockResolvedValue({
         id: 'inv-1',
         status: 'failed',
@@ -620,9 +640,13 @@ describe('AutoIssueTriggerService', () => {
         'src-1',
       );
 
-      // Matches what the order surfaces already do — they key on the presence of
-      // the invoice projection. A failed attempt is visible on its own terms.
-      expect(outcome).toEqual({ kind: 'none' });
+      // Clearing here would strip the routing block from an order whose only
+      // remaining signal is a failed invoice — which says nothing about the
+      // missing primary that caused it.
+      expect(outcome).toMatchObject({
+        kind: 'blocked',
+        block: { unresolvedReason: 'ambiguous-connection-no-primary' },
+      });
     });
 
     it('should report `indeterminate` when the document read fails — never a clear', async () => {

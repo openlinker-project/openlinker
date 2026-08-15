@@ -190,9 +190,16 @@ export interface OrderRecordFilters {
    */
   cancelled?: boolean;
   /**
-   * Sales-document block filter (#2100). Maps to
-   * `salesDocumentBlockReason IS [NOT] NULL` — `true` keeps only orders
-   * OpenLinker declined to invoice, `false` excludes them.
+   * Sales-document block filter (#2100). `true` keeps only orders carrying an
+   * ATTENTION-WORTHY block, `false` keeps only the rest; omitted does not filter.
+   *
+   * "Attention-worthy" is `SalesDocumentAttentionReasonValues`, i.e. every reason
+   * EXCEPT `'trigger-model-manual'` — so `true` deliberately does **not** return
+   * manual-only orders even though OpenLinker did decline to invoice them, and
+   * `false` includes them. That is the same subset the `salesDocumentBlocked`
+   * count reports, so the chip's number always matches the rows the filter yields;
+   * a filter that returned more than its own count would be worse than one that
+   * omits a deliberate operator setting. The per-order badge still renders manual.
    *
    * An INDEPENDENT axis, not an `OrderHealth` value: a blocked order still sits
    * in exactly one health bucket, so this filter composes with `health` rather

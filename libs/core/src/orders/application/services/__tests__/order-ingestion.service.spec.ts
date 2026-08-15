@@ -226,41 +226,22 @@ describe('OrderIngestionService', () => {
       );
     });
 
-    it('writes null through on `none` when a reason was persisted — the level-triggered clear', async () => {
+    it('writes null through on `none` — the level-triggered clear', async () => {
       orderSyncService.syncOrder.mockResolvedValue([]);
-      // A prior transition left a reason on the record; `none` must erase it.
-      orderRecordService.getOrderRecord.mockResolvedValueOnce({
-        internalOrderId: 'ol_order_test',
-        sourceConnectionId: connectionId,
-        salesDocumentBlockReason: 'trigger-model-manual',
-      } as never);
       autoIssueTrigger.onOrderTransition.mockResolvedValueOnce({ kind: 'none' });
 
       await service.syncOrderFromSource(connectionId, externalOrderId, 'evt-10');
 
-      // Skipping this write would make a once-persisted badge permanent.
+      // Skipping this write would make a once-persisted badge permanent. The
+      // no-op case is suppressed in the repository's WHERE clause, not here —
+      // a caller-side comparison would have to trust a record read before the
+      // destination round-trip, and a concurrent clear could make a genuinely
+      // new answer look unchanged.
       expect(orderRecordService.markSalesDocumentBlock).toHaveBeenCalledWith('ol_order_test', null);
-    });
-
-    it('writes NOTHING when the outcome matches what is already persisted', async () => {
-      orderSyncService.syncOrder.mockResolvedValue([]);
-      // `none` on an already-unblocked order is the overwhelmingly common answer.
-      // Writing it anyway would cost an extra UPDATE and an `updatedAt` bump on
-      // every re-poll of every order — and `updatedAt` is a live filter axis.
-      autoIssueTrigger.onOrderTransition.mockResolvedValueOnce({ kind: 'none' });
-
-      await service.syncOrderFromSource(connectionId, externalOrderId, 'evt-12');
-
-      expect(orderRecordService.markSalesDocumentBlock).not.toHaveBeenCalled();
     });
 
     it('writes NOTHING on `indeterminate` — the gate could not tell, so the reason stands', async () => {
       orderSyncService.syncOrder.mockResolvedValue([]);
-      orderRecordService.getOrderRecord.mockResolvedValueOnce({
-        internalOrderId: 'ol_order_test',
-        sourceConnectionId: connectionId,
-        salesDocumentBlockReason: 'unresolved-routing',
-      } as never);
       autoIssueTrigger.onOrderTransition.mockResolvedValueOnce({ kind: 'indeterminate' });
 
       await service.syncOrderFromSource(connectionId, externalOrderId, 'evt-13');

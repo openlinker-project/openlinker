@@ -82,13 +82,14 @@ describe('@openlinker/core/<context> barrel purity (#598)', () => {
     expect(files.length).toBeGreaterThan(0);
     for (const file of files) {
       const source = readFileSync(file, 'utf8');
-      const imports = source
-        .split('\n')
-        .filter((line) => /^\s*(import|export)\s.*\sfrom\s/.test(line))
-        // The barrel's own `export * from './domain/...'` is the one allowed edge:
-        // it is internal to the concern, so it cannot reach another context.
-        .filter((line) => !/from\s+['"]\.\//.test(line));
-      expect(imports).toEqual([]);
+      // Scanned over the WHOLE file, not line by line: a multi-line
+      // `import type {\n  X,\n} from '…'` — the prevailing style in this repo, and
+      // exactly what an edit here would produce — puts `import` and `from` on
+      // different lines, so a per-line matcher would let it through.
+      const specifiers = [...source.matchAll(/\bfrom\s+['"]([^'"]+)['"]/g)].map((m) => m[1]);
+      // The barrel's own `export * from './domain/...'` is the one allowed edge:
+      // internal to the concern, so it cannot reach another context.
+      expect(specifiers.filter((s) => !s.startsWith('./'))).toEqual([]);
     }
   });
 });

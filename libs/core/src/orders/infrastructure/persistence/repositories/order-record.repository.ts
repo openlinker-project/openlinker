@@ -358,8 +358,16 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    * Built from `SalesDocumentAttentionReasonValues`, so a reason added to ADR-041's
    * union is attention-worthy by default. Literal-only (no user input) — the values
    * are compile-time constants, never request data.
+   *
+   * `COALESCE(…, '')` is NOT cosmetic — it is what makes the NEGATION total.
+   * `NULL IN (…)` evaluates to NULL, so `NOT (NULL IN (…))` is NULL and `WHERE`
+   * DROPS the row: a bare IN-list made `salesDocumentBlocked=false` return zero
+   * orders on an install where nothing is blocked, instead of all of them. The old
+   * `IS NOT NULL` predicate was NULL-safe by construction and hid this trap when
+   * the IN-list replaced it. Coalescing to the empty string (never a valid reason)
+   * keeps both directions two-valued.
    */
-  private static readonly IS_SALES_DOCUMENT_BLOCKED = `rec."salesDocumentBlockReason" IN (${SalesDocumentAttentionReasonValues.map(
+  private static readonly IS_SALES_DOCUMENT_BLOCKED = `COALESCE(rec."salesDocumentBlockReason", '') IN (${SalesDocumentAttentionReasonValues.map(
     (reason) => `'${reason}'`,
   ).join(', ')})`;
 
@@ -701,13 +709,30 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     internalOrderId: string,
     block: SalesDocumentBlock | null
   ): Promise<void> {
-    await this.repository.update(
-      { internalOrderId },
-      {
-        salesDocumentBlockReason: block?.reason ?? null,
-        salesDocumentUnresolvedReason: block?.unresolvedReason ?? null,
-        salesDocumentBlockDetail: block?.detail ?? null,
-      }
+    // The no-op guard lives HERE, in the WHERE clause, rather than in the caller
+    // (#2100 review). A caller-side comparison had to hold a record it read before
+    // the destination round-trip, so a concurrent writer — the manual-issue clear,
+    // or the sibling ingestion path the `toOrm` comment already warns about — could
+    // change the row in between and make a genuinely new answer look unchanged.
+    // `IS DISTINCT FROM` is NULL-safe, so this is exact for the clear case too, and
+    // it keeps the `@UpdateDateColumn` bump off the overwhelmingly common
+    // `null -> null` path without giving up last-write-wins.
+    await this.repository.query(
+      `UPDATE "order_records"
+          SET "salesDocumentBlockReason" = $1,
+              "salesDocumentUnresolvedReason" = $2,
+              "salesDocumentBlockDetail" = $3,
+              "updatedAt" = now()
+        WHERE "internalOrderId" = $4
+          AND ("salesDocumentBlockReason" IS DISTINCT FROM $1
+            OR "salesDocumentUnresolvedReason" IS DISTINCT FROM $2
+            OR "salesDocumentBlockDetail" IS DISTINCT FROM $3)`,
+      [
+        block?.reason ?? null,
+        block?.unresolvedReason ?? null,
+        block?.detail ?? null,
+        internalOrderId,
+      ]
     );
   }
 

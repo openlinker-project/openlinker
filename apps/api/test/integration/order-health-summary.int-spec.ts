@@ -288,11 +288,15 @@ describe('Order health summary (integration)', () => {
       );
       expect(syncedAndBlocked.total).toBe(1);
 
+      // The negation must be NULL-SAFE. `NULL IN (…)` is NULL, so a bare
+      // `NOT (col IN (…))` drops every unblocked row and this returns 0 — the
+      // predicate coalesces for exactly this reason (#2100 review round 2).
       const notBlocked = await repository.findMany(
         { salesDocumentBlocked: false },
         { limit: 50, offset: 0 },
       );
       expect(notBlocked.total).toBe(6);
+      expect(notBlocked.items.every((o) => o.salesDocumentBlockReason === null)).toBe(true);
     });
 
     it('neither counts nor surfaces an unrecognised stored reason', async () => {
@@ -344,6 +348,43 @@ describe('Order health summary (integration)', () => {
 
       const summary = await repository.countByHealth({});
       expect(summary.salesDocumentBlocked).toBe(0);
+
+      // A manual-only order is NOT attention-worthy, so `false` must include it —
+      // the filter's two directions have to partition the set between them.
+      const notBlocked = await repository.findMany(
+        { salesDocumentBlocked: false },
+        { limit: 50, offset: 0 },
+      );
+      expect(notBlocked.items.map((o) => o.internalOrderId)).toContain(seeded.internalOrderId);
+    });
+
+    it('updateSalesDocumentBlock is a no-op when nothing changed, and still last-write-wins', async () => {
+      const ds = harness.getDataSource();
+      const seeded = await createTestOrderRecord(ds, {
+        sourceConnectionId: SOURCE_A,
+        recordStatus: 'ready',
+        syncStatus: [],
+      });
+      await repository.updateSalesDocumentBlock(seeded.internalOrderId, {
+        reason: 'trigger-model-batched',
+      });
+      const first = await repository.findById(seeded.internalOrderId);
+      const firstTouched = first!.updatedAt.getTime();
+
+      // Re-writing the SAME outcome must not touch the row: the gate is
+      // level-evaluated, so this is the common case on every re-poll, and
+      // `updatedAt` is a live filter axis (`FulfillmentStatusSyncService`).
+      await repository.updateSalesDocumentBlock(seeded.internalOrderId, {
+        reason: 'trigger-model-batched',
+      });
+      const second = await repository.findById(seeded.internalOrderId);
+      expect(second!.updatedAt.getTime()).toBe(firstTouched);
+
+      // A genuinely different answer still wins.
+      await repository.updateSalesDocumentBlock(seeded.internalOrderId, null);
+      const third = await repository.findById(seeded.internalOrderId);
+      expect(third!.salesDocumentBlockReason).toBeNull();
+      expect(third!.updatedAt.getTime()).toBeGreaterThanOrEqual(firstTouched);
     });
 
     it('updateSalesDocumentBlock sets and clears without touching other columns', async () => {

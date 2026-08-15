@@ -139,10 +139,13 @@ export class ListOrdersQueryDto {
   @ApiPropertyOptional({
     type: Boolean,
     description:
-      'Sales-document block filter (#2100): true keeps only orders OpenLinker declined to ' +
-      'invoice, false excludes them, omitted does not filter. An INDEPENDENT axis that ' +
-      'composes with `health` rather than competing with it — "synced AND invoicing blocked" ' +
-      'is the most common shape of the problem.',
+      'Sales-document block filter (#2100): true keeps only orders carrying an ATTENTION-WORTHY ' +
+      'block, false keeps only the rest, omitted does not filter. Attention-worthy excludes ' +
+      '"trigger-model-manual" — a deliberate operator setting that is true of every uninvoiced ' +
+      'order on a manual install — so true does not return manual-only orders and false does. ' +
+      'This is the same subset the salesDocumentBlocked count reports, so the two always agree. ' +
+      'An INDEPENDENT axis that composes with `health` rather than competing with it — ' +
+      '"synced AND invoicing blocked" is the most common shape of the problem.',
   })
   @IsOptional()
   // Query params arrive as strings, so map the two literals and pass anything else
