@@ -9580,6 +9580,28 @@ a.kpi-card:focus-visible {
   vertical-align: top;
 }
 
+/* Products takes the same table-wide anchor as Orders, for the same reason
+ * (#2092). Applying the carve-out's heuristic — "what sets the row height?" —
+ * the answer here is NOT the identity cell: `ConnectionCell` is ~40px while
+ * Stock stacks value + badge + `reserved N` (~56px), Listings stacks the
+ * coverage pills over a 28px "+ Publish" button (~50px) and the merged money
+ * column stacks price + updated + created (~51px). So top-aligning the leading
+ * control alone would leave the Source cell centred against three taller
+ * neighbours, which is exactly the three-anchor row #2091 removed from Orders.
+ *
+ * Every cell on this page is already a `.products-cell-stack`, so `top` is right
+ * for all of them. The leading expander is separately covered by #2089's global
+ * rule; the select checkbox in the second cell is not, and gains line-1
+ * alignment from this.
+ *
+ * `DataTable` puts the caller's `className` on the CONTAINER and hardcodes the
+ * `<table>` class, so this is a descendant match that ties on specificity with
+ * `.data-table td { vertical-align: middle }` (:2798) and wins by source order
+ * alone — it must stay AFTER that rule in this file. */
+.products-table td {
+  vertical-align: top;
+}
+
 /* Frozen-pane budget (#2089). 1024px is the worst case by construction: the
  * sidebar becomes a persistent 240px grid column at exactly this width (:1048)
  * AND the tables hosting this cell un-hide their Connection column there, so
