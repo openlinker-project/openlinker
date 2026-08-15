@@ -4,11 +4,15 @@
  * Resolves ISO 4217 currency codes to PrestaShop currency IDs.
  * Caches results per connection to reduce API calls.
  *
- * KNOWN GAP (not addressed here): an unresolvable ISO silently falls back to
- * `DEFAULT_CURRENCY_ID = 1` and caches that answer for the full TTL, so a
+ * KNOWN GAP (not addressed here, tracked as #2139): all three failure branches
+ * silently fall back to `DEFAULT_CURRENCY_ID = 1` - the ISO is absent from the
+ * shop, the shop returned an unparseable currency id, or the read threw - so a
  * currency the destination shop does not carry books the cart in currency 1
- * instead of failing. Changing that changes live order-creation behaviour, so
- * it is tracked separately.
+ * instead of failing. The fallback is cached, but only for this instance's
+ * lifetime: `PrestashopAdapterFactory` constructs a new resolver per adapter
+ * build and `prestashop-plugin.ts` constructs a new factory per
+ * `createCapabilityAdapter`, so the cache never outlives a single
+ * `createOrder`. Changing the fallback changes live order-creation behaviour.
  *
  * @module libs/integrations/prestashop/src/infrastructure/provisioners
  */

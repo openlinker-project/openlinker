@@ -11,9 +11,16 @@
  * mirroring the companion `PrestashopFeatureResolver` /
  * `PrestashopCurrencyResolver`. An UNRESOLVED result is cached for 60s only, so
  * neither a read blip nor a missing `PS_CURRENCY_DEFAULT` survives the operator
- * fixing it (see `UNRESOLVED_CACHE_TTL_MS`). The master sync resolves the adapter
- * per product, so this resolver must be held on the process-singleton factory for
- * its cache to survive across product jobs.
+ * fixing it (see `UNRESOLVED_CACHE_TTL_MS`).
+ *
+ * In the wiring as it ships, that TTL split is not yet observable: this resolver
+ * is a field on `PrestashopAdapterFactory`, and `prestashop-plugin.ts`
+ * constructs a new factory per `createCapabilityAdapter`, so the cache is
+ * discarded after the single `resolveDefaultCurrencyIso` call each adapter build
+ * makes. Every build re-reads regardless of TTL. The short unresolved TTL is
+ * kept as a defensive default - it costs nothing while the cache is per-build,
+ * and it is the correct value the moment the factory is genuinely held as a
+ * process singleton, which the field placement already assumes.
  *
  * Robust by design: any failure (missing/malformed config, ambiguous result,
  * WS error) returns `null` and never throws into product sync — the mapper then
