@@ -265,6 +265,47 @@ describe('EcbExchangeRateAdapter', () => {
         adapter.fetchRate({ from: 'PLN', to: 'USD', on: '2026-08-13' })
       ).rejects.toThrow(RateUnsupportedPairError);
     });
+
+    describe('mixed-failure classification', () => {
+      // With `Promise.all` the winning rejection is whichever settles FIRST, so
+      // a 404 on one leg and a 503 on the other classified by network timing -
+      // deciding between "die now" and "retry ten times" by a race. Terminal
+      // wins, in both orderings.
+      it('should report the TERMINAL leg when the from-leg 404s and the to-leg 503s', async () => {
+        const { fetchImpl } = fakeFetch((url) =>
+          url.includes('D.PLN.')
+            ? { status: 404, body: JSON.stringify({ title: 'Not Found', status: 404 }) }
+            : { status: 503, body: '' }
+        );
+        const adapter = new EcbExchangeRateAdapter({ fetchImpl });
+
+        await expect(
+          adapter.fetchRate({ from: 'PLN', to: 'USD', on: '2026-08-13' })
+        ).rejects.toThrow(RateUnsupportedPairError);
+      });
+
+      it('should report the TERMINAL leg when the to-leg 404s and the from-leg 503s', async () => {
+        const { fetchImpl } = fakeFetch((url) =>
+          url.includes('D.USD.')
+            ? { status: 404, body: JSON.stringify({ title: 'Not Found', status: 404 }) }
+            : { status: 503, body: '' }
+        );
+        const adapter = new EcbExchangeRateAdapter({ fetchImpl });
+
+        await expect(
+          adapter.fetchRate({ from: 'PLN', to: 'USD', on: '2026-08-13' })
+        ).rejects.toThrow(RateUnsupportedPairError);
+      });
+
+      it('should still report transient when BOTH legs are transient', async () => {
+        const { fetchImpl } = fakeFetch(() => ({ status: 503, body: '' }));
+        const adapter = new EcbExchangeRateAdapter({ fetchImpl });
+
+        await expect(
+          adapter.fetchRate({ from: 'PLN', to: 'USD', on: '2026-08-13' })
+        ).rejects.toThrow(RateUnavailableTransientError);
+      });
+    });
   });
 
   describe('failure classification', () => {
@@ -373,6 +414,28 @@ describe('EcbExchangeRateAdapter', () => {
         adapter.fetchRate({ from: 'EUR', to: 'PLN', on: '2026-12-24' })
       ).rejects.toThrow(/more than 10 days before/);
     });
+
+    // The bound is `> MAX_OBSERVATION_LAG_DAYS`, so 10 is accepted and 11 is
+    // refused. Pinned on both sides because an off-by-one here either lets a
+    // stale rate through onto a financial figure or rejects a legitimate one.
+    it.each<[number, string, 'accept' | 'refuse']>([
+      [10, '2026-08-03', 'accept'],
+      [11, '2026-08-02', 'refuse'],
+    ])(
+      'should treat a %i-day lag (observation %s) as %s',
+      async (_lagDays, timePeriod, verdict) => {
+        const { fetchImpl } = fakeFetch(() => ok(csv('PLN', timePeriod, '4.2712')));
+        const adapter = new EcbExchangeRateAdapter({ fetchImpl });
+
+        const call = adapter.fetchRate({ from: 'EUR', to: 'PLN', on: '2026-08-13' });
+
+        if (verdict === 'accept') {
+          await expect(call).resolves.toMatchObject({ rateDate: timePeriod });
+        } else {
+          await expect(call).rejects.toThrow(/more than 10 days before/);
+        }
+      }
+    );
 
     it('should accept the longest real non-publication run (4 days)', async () => {
       const { fetchImpl } = fakeFetch(() => ok(csv('PLN', '2026-04-02', '4.2401')));

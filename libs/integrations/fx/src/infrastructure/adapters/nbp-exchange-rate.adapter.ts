@@ -29,6 +29,7 @@ import {
   type ExchangeRateProviderPort,
   type ExchangeRateSource,
   type FetchRateInput,
+  type RateDerivationKind,
   type RateDerivationLeg,
 } from '@openlinker/core/currency';
 import { isPlWorkingDay, previousWorkingDay } from '@openlinker/shared/date';
@@ -57,6 +58,16 @@ const NBP_MAX_WALK_BACK_DAYS = 7;
  * NBP table A. Tables B (weekly exotics) and C (bid/ask) are deliberately out
  * of scope, so a currency absent here is permanently unreachable through this
  * adapter - which is exactly what `supports()` needs to be able to say up front.
+ *
+ * `PLN` HEADS THE LIST AND IS NOT A TABLE-A ROW. Table A quotes everything
+ * AGAINST PLN, so there is no `.../a/pln/` series to fetch and never will be.
+ * It is listed because this array is what both `supports()` and
+ * `listSupportedCurrencies()` answer from: without it `supports('EUR', 'PLN')`
+ * would be false - i.e. the adapter would deny the one pair it serves most
+ * directly - and the reachability gate behind the reporting-currency setting
+ * would be offered a currency set with no PLN in it. Deleting the entry as an
+ * apparent data error breaks both, silently and at save time rather than here.
+ * The ECB list carries the mirror-image note about `EUR`.
  */
 const NBP_TABLE_A_CURRENCIES: readonly string[] = [
   'PLN',
@@ -156,7 +167,7 @@ export class NbpExchangeRateAdapter implements ExchangeRateProviderPort {
     const legCurrencies =
       to === NBP_PIVOT_CURRENCY ? [from] : from === NBP_PIVOT_CURRENCY ? [to] : [from, to];
 
-    const quotes = await this.fetchQuotesForNearestPublishedDay(legCurrencies, on);
+    const quotes = await this.fetchQuotesForNearestPublishedDay(legCurrencies, on, from, to);
     const effectiveDate = this.singleEffectiveDate(quotes, from, to, on);
     const legs = quotes.map((quote) => this.toLeg(quote));
 
@@ -183,15 +194,25 @@ export class NbpExchangeRateAdapter implements ExchangeRateProviderPort {
   /**
    * Resolve the calendar candidate onto a day NBP actually published on, and
    * return every requested currency's quote for that one day.
+   *
+   * `from` / `to` are the pair the CALLER asked for and are threaded down
+   * purely so every error names it. A leg currency is not that pair: a
+   * `PLN -> EUR` request fetches the single `EUR` leg, so reporting the leg
+   * would render an exhausted walk-back as `EUR/EUR` - a pair the operator
+   * never asked for, on a terminal `business_failure` whose log line is the
+   * only signal they get. The leg and the day stay in the `reason` string,
+   * where they are diagnostic detail rather than the subject.
    */
   private async fetchQuotesForNearestPublishedDay(
     currencies: readonly string[],
-    candidate: string
+    candidate: string,
+    from: string,
+    to: string
   ): Promise<readonly NbpQuote[]> {
     let day = this.resolveWorkingDayAtOrBefore(candidate);
 
     for (let attempt = 0; attempt <= NBP_MAX_WALK_BACK_DAYS; attempt += 1) {
-      const quotes = await this.tryFetchQuotesFor(currencies, day, candidate);
+      const quotes = await this.tryFetchQuotesFor(currencies, day, candidate, from, to);
       if (quotes) {
         return quotes;
       }
@@ -203,8 +224,8 @@ export class NbpExchangeRateAdapter implements ExchangeRateProviderPort {
 
     throw new RateUnsupportedPairError(
       this.name,
-      currencies[0],
-      currencies[currencies.length - 1],
+      from,
+      to,
       candidate,
       `no NBP table A publication found within ${NBP_MAX_WALK_BACK_DAYS} working days of ${candidate}`
     );
@@ -214,12 +235,14 @@ export class NbpExchangeRateAdapter implements ExchangeRateProviderPort {
   private async tryFetchQuotesFor(
     currencies: readonly string[],
     day: string,
-    candidate: string
+    candidate: string,
+    from: string,
+    to: string
   ): Promise<readonly NbpQuote[] | null> {
     const quotes: NbpQuote[] = [];
 
     for (const currency of currencies) {
-      const quote = await this.fetchQuote(currency, day, candidate);
+      const quote = await this.fetchQuote(currency, day, candidate, from, to);
       if (quote === null) {
         return null;
       }
@@ -232,7 +255,9 @@ export class NbpExchangeRateAdapter implements ExchangeRateProviderPort {
   private async fetchQuote(
     currency: string,
     day: string,
-    candidate: string
+    candidate: string,
+    from: string,
+    to: string
   ): Promise<NbpQuote | null> {
     const url = `${this.baseUrl}/${currency.toLowerCase()}/${day}/?format=json`;
 
@@ -241,13 +266,7 @@ export class NbpExchangeRateAdapter implements ExchangeRateProviderPort {
       response = await fxGet(this.fetchImpl, url, this.timeoutMs);
     } catch (error) {
       if (error instanceof FxTransportError) {
-        throw new RateUnavailableTransientError(
-          this.name,
-          currency,
-          NBP_PIVOT_CURRENCY,
-          candidate,
-          error.message
-        );
+        throw new RateUnavailableTransientError(this.name, from, to, candidate, error.message);
       }
       throw error;
     }
@@ -262,10 +281,10 @@ export class NbpExchangeRateAdapter implements ExchangeRateProviderPort {
     if (response.status >= 500) {
       throw new RateUnavailableTransientError(
         this.name,
-        currency,
-        NBP_PIVOT_CURRENCY,
+        from,
+        to,
         candidate,
-        `NBP responded ${response.status}`
+        `NBP responded ${response.status} for ${currency} on ${day}`
       );
     }
 
@@ -278,27 +297,29 @@ export class NbpExchangeRateAdapter implements ExchangeRateProviderPort {
       // a 404-only walk-back as an unhandled HTTP error.
       throw new RateUnsupportedPairError(
         this.name,
-        currency,
-        NBP_PIVOT_CURRENCY,
+        from,
+        to,
         candidate,
         `NBP responded ${response.status} for ${currency} on ${day}`
       );
     }
 
-    return this.parseQuote(response.body, currency, day, candidate);
+    return this.parseQuote(response.body, currency, day, candidate, from, to);
   }
 
   private parseQuote(
     body: string,
     currency: string,
     day: string,
-    candidate: string
+    candidate: string,
+    from: string,
+    to: string
   ): NbpQuote | null {
     const fail = (reason: string): never => {
       throw new RateUnsupportedPairError(
         this.name,
-        currency,
-        NBP_PIVOT_CURRENCY,
+        from,
+        to,
         candidate,
         `${reason} (${currency} on ${day})`
       );
@@ -380,7 +401,7 @@ export class NbpExchangeRateAdapter implements ExchangeRateProviderPort {
     to: string,
     rateDate: string,
     rate: string,
-    kind: 'direct' | 'inverted' | 'pivot',
+    kind: RateDerivationKind,
     pivot: string | null,
     legs: readonly RateDerivationLeg[]
   ): ExchangeRate {
@@ -431,11 +452,18 @@ function isoDayToInstant(isoDay: string): Date {
   return new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
 }
 
+/**
+ * Module scope, matching `rate-date-resolution.ts`: constructing an
+ * `Intl.DateTimeFormat` is the expensive part, and the walk-back calls this
+ * once per step. `en-CA` renders `YYYY-MM-DD`.
+ */
+const warsawDayFormatter = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Europe/Warsaw',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+});
+
 function instantToIsoDay(instant: Date): string {
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Europe/Warsaw',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(instant);
+  return warsawDayFormatter.format(instant);
 }

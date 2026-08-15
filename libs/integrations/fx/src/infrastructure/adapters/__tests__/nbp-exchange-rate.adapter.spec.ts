@@ -53,6 +53,18 @@ function ok(body: string): StubResponse {
   return { status: 200, body };
 }
 
+/** The rate-lookup error a call rejected with, typed for its own fields. */
+type RateError = Error & { from: string; to: string; reason: string };
+
+async function rejectionOf(promise: Promise<unknown>): Promise<RateError> {
+  try {
+    await promise;
+  } catch (error) {
+    return error as RateError;
+  }
+  throw new Error('expected the call to reject, but it resolved');
+}
+
 describe('NbpExchangeRateAdapter', () => {
   describe('supports', () => {
     it('should accept a table-A pair', () => {
@@ -340,6 +352,97 @@ describe('NbpExchangeRateAdapter', () => {
       await expect(
         adapter.fetchRate({ from: 'EUR', to: 'PLN', on: '2026-06-10' })
       ).rejects.toThrow(RateUnsupportedPairError);
+    });
+  });
+
+  describe('errors name the REQUESTED pair, never the leg', () => {
+    // `PLN -> EUR` fetches the single `EUR` leg, so an error built from the leg
+    // currencies renders as `EUR/EUR` - a pair the operator never asked for. A
+    // terminal RateUnsupportedPairError is a business_failure with no retry
+    // (ADR-007), so this log line is the only signal they get.
+    it('should name PLN/EUR when the walk-back is exhausted on an inverted request', async () => {
+      const { fetchImpl } = fakeFetch(() => ({ status: 404, body: 'Not Found' }));
+      const adapter = new NbpExchangeRateAdapter({ fetchImpl });
+
+      const error = await rejectionOf(
+        adapter.fetchRate({ from: 'PLN', to: 'EUR', on: '2026-06-10' })
+      );
+
+      expect(error).toBeInstanceOf(RateUnsupportedPairError);
+      expect(error.from).toBe('PLN');
+      expect(error.to).toBe('EUR');
+      expect(error.message).toContain('Exchange rate PLN/EUR on 2026-06-10');
+    });
+
+    it('should name PLN/EUR when a leg answers 5xx on an inverted request', async () => {
+      // The pre-fix code hardcoded `to` to the pivot, so a PLN -> EUR blip
+      // logged as EUR/PLN - the inverse of the requested direction.
+      const { fetchImpl } = fakeFetch(() => ({ status: 503, body: 'Service Unavailable' }));
+      const adapter = new NbpExchangeRateAdapter({ fetchImpl });
+
+      const error = await rejectionOf(
+        adapter.fetchRate({ from: 'PLN', to: 'EUR', on: '2026-06-10' })
+      );
+
+      expect(error).toBeInstanceOf(RateUnavailableTransientError);
+      expect(error.from).toBe('PLN');
+      expect(error.to).toBe('EUR');
+      expect(error.message).toContain('Exchange rate PLN/EUR on 2026-06-10');
+      // The leg and the day survive as diagnostic detail in the reason.
+      expect(error.reason).toContain('EUR on 2026-06-10');
+    });
+
+    it('should name the requested pair on a transport failure, not the leg', async () => {
+      const { fetchImpl } = fakeFetch(() => new Error('ECONNRESET'));
+      const adapter = new NbpExchangeRateAdapter({ fetchImpl });
+
+      const error = await rejectionOf(
+        adapter.fetchRate({ from: 'PLN', to: 'EUR', on: '2026-06-10' })
+      );
+
+      expect(error.from).toBe('PLN');
+      expect(error.to).toBe('EUR');
+    });
+
+    it('should name the requested pair on a non-404 4xx, not the leg', async () => {
+      const { fetchImpl } = fakeFetch(() => ({ status: 400, body: 'Bad Request' }));
+      const adapter = new NbpExchangeRateAdapter({ fetchImpl });
+
+      const error = await rejectionOf(
+        adapter.fetchRate({ from: 'PLN', to: 'EUR', on: '2026-06-10' })
+      );
+
+      expect(error.from).toBe('PLN');
+      expect(error.to).toBe('EUR');
+      expect(error.reason).toContain('EUR on 2026-06-10');
+    });
+
+    it('should name the requested pair on an unparseable body, not the leg', async () => {
+      const { fetchImpl } = fakeFetch(() => ok('<html>maintenance</html>'));
+      const adapter = new NbpExchangeRateAdapter({ fetchImpl });
+
+      const error = await rejectionOf(
+        adapter.fetchRate({ from: 'PLN', to: 'EUR', on: '2026-06-10' })
+      );
+
+      expect(error.from).toBe('PLN');
+      expect(error.to).toBe('EUR');
+    });
+
+    it('should name the requested pair on a pivot leg failure', async () => {
+      // EUR -> USD walks two legs; reporting the leg pair would render the
+      // second leg's failure as `USD/PLN`.
+      const { fetchImpl } = fakeFetch((url) =>
+        url.includes('/eur/') ? ok(nbpBody(4.25, '2026-06-10')) : { status: 503, body: '' }
+      );
+      const adapter = new NbpExchangeRateAdapter({ fetchImpl });
+
+      const error = await rejectionOf(
+        adapter.fetchRate({ from: 'EUR', to: 'USD', on: '2026-06-10' })
+      );
+
+      expect(error.from).toBe('EUR');
+      expect(error.to).toBe('USD');
     });
   });
 });

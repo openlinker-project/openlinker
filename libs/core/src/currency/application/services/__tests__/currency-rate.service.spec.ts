@@ -152,6 +152,44 @@ describe('CurrencyRateService', () => {
       expect(result).toBe(storedWalkedBack);
     });
 
+    it('should re-fetch on EVERY call for a candidate that resolves by walk-back', async () => {
+      // The registry absorbs a repeat lookup only when the candidate day is
+      // ITSELF a publication day. A weekend candidate resolves onto an earlier
+      // published date, so nothing is ever written under the candidate, the
+      // pre-fetch read keeps missing, and each order carrying it costs a live
+      // provider call. Pinned because the file header used to claim otherwise;
+      // memoising the mapping is deferred to #2124.
+      const walkedBack: ExchangeRate = { ...FETCHED, rateDate: '2026-08-07' };
+      const storedWalkedBack: StoredExchangeRate = { ...STORED, rateDate: '2026-08-07' };
+      provider.fetchRate.mockResolvedValue(walkedBack);
+      repository.insertIfAbsent
+        .mockResolvedValueOnce(storedWalkedBack)
+        .mockRejectedValue(new DuplicateExchangeRateError('nbp', 'EUR', 'PLN', '2026-08-07'));
+      // The candidate is never registered, so its read misses every time; the
+      // resolved-date re-read after the duplicate finds the winner.
+      repository.findByKey.mockImplementation((key) =>
+        Promise.resolve(key.rateDate === '2026-08-07' ? storedWalkedBack : null)
+      );
+
+      const weekendCandidate = { ...INPUT, rateDate: '2026-08-08' };
+      await service.getRateFor(weekendCandidate);
+      await service.getRateFor(weekendCandidate);
+
+      expect(provider.fetchRate).toHaveBeenCalledTimes(2);
+    });
+
+    it('should re-fetch only ONCE for a candidate that is itself a publication day', async () => {
+      // The other side of the same rule: the write lands under the candidate,
+      // so the second call is served from the registry.
+      repository.findByKey.mockResolvedValueOnce(null).mockResolvedValue(STORED);
+
+      await service.getRateFor(INPUT);
+      await service.getRateFor(INPUT);
+
+      expect(provider.fetchRate).toHaveBeenCalledTimes(1);
+      expect(repository.insertIfAbsent).toHaveBeenCalledTimes(1);
+    });
+
     it('should re-raise when the duplicate cannot be re-read', async () => {
       const duplicate = new DuplicateExchangeRateError('nbp', 'EUR', 'PLN', '2026-08-13');
       repository.insertIfAbsent.mockRejectedValue(duplicate);

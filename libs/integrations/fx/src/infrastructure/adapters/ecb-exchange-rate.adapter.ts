@@ -55,6 +55,7 @@ import {
   type ExchangeRateProviderPort,
   type ExchangeRateSource,
   type FetchRateInput,
+  type RateDerivationKind,
   type RateDerivationLeg,
 } from '@openlinker/core/currency';
 import type { FetchLike } from '@openlinker/shared/http';
@@ -203,10 +204,25 @@ export class EcbExchangeRateAdapter implements ExchangeRateProviderPort {
 
     // X -> Y: both series are quoted per EUR, so
     // rate(from -> to) = mid(EUR -> to) / mid(EUR -> from).
-    const [fromObservation, toObservation] = await Promise.all([
+    //
+    // `allSettled`, NOT `all`: with `all` the rejection that wins is whichever
+    // settles FIRST, so a pair whose one leg 404s (terminal) while the other
+    // 503s (transient) classifies by network timing. That decides whether the
+    // job retries ten times or dies at once, so it cannot be a race - the
+    // precedence below is fixed and terminal wins.
+    const settled = await Promise.allSettled([
       this.fetchObservation(from, on, from, to),
       this.fetchObservation(to, on, from, to),
     ]);
+
+    const failure = pickLegFailure(settled);
+    if (failure !== null) {
+      throw failure;
+    }
+
+    const [fromObservation, toObservation] = settled.map(
+      (result) => (result as PromiseFulfilledResult<EcbObservation>).value
+    );
 
     if (fromObservation.timePeriod !== toObservation.timePeriod) {
       // Raise rather than silently picking one: combining two dates into a
@@ -355,7 +371,9 @@ export class EcbExchangeRateAdapter implements ExchangeRateProviderPort {
         candidate,
         `ECB returned observation ${timePeriod} for ${seriesKey}, more than ` +
           `${MAX_OBSERVATION_LAG_DAYS} days before the requested ${candidate} - ` +
-          `the maximum real non-publication run is 4 days, so this indicates a stale or future request date`
+          `the maximum real non-publication run is 4 days, so this indicates a stale or future request date. ` +
+          `This is terminal (no retry), so once the underlying date is corrected the order is re-stamped ` +
+          `by the reconcile sweep rather than by the original job.`
       );
     }
   }
@@ -373,7 +391,7 @@ export class EcbExchangeRateAdapter implements ExchangeRateProviderPort {
     to: string,
     rateDate: string,
     rate: string,
-    kind: 'direct' | 'inverted' | 'pivot',
+    kind: RateDerivationKind,
     pivot: string | null,
     legs: readonly RateDerivationLeg[]
   ): ExchangeRate {
@@ -388,6 +406,44 @@ export class EcbExchangeRateAdapter implements ExchangeRateProviderPort {
       derivation: { kind, legs },
     };
   }
+}
+
+/**
+ * The one failure a two-leg pivot reports, chosen by a FIXED precedence rather
+ * than by which leg happened to settle first.
+ *
+ * Terminal outranks transient: per ADR-007 a `RateUnsupportedPairError` is a
+ * `business_failure` that ends the job, while a `RateUnavailableTransientError`
+ * buys up to `maxAttempts` (10) more waves. Reporting the transient one when a
+ * sibling leg is permanently unobtainable spends ten futile round-trips to
+ * arrive at the same terminal answer. An unrecognised error sits between the
+ * two - it is not known to be retryable, so it must not be masked by a
+ * transient sibling, but a stated terminal condition is still the better
+ * explanation. Ties break on leg order (`from` before `to`), so the choice is
+ * reproducible.
+ *
+ * `null` when both legs resolved.
+ */
+function pickLegFailure(results: readonly PromiseSettledResult<EcbObservation>[]): unknown | null {
+  const rank = (error: unknown): number => {
+    if (error instanceof RateUnsupportedPairError) {
+      return 0;
+    }
+    return error instanceof RateUnavailableTransientError ? 2 : 1;
+  };
+
+  let worst: { error: unknown; rank: number } | null = null;
+  for (const result of results) {
+    if (result.status !== 'rejected') {
+      continue;
+    }
+    const candidate = { error: result.reason as unknown, rank: rank(result.reason) };
+    if (worst === null || candidate.rank < worst.rank) {
+      worst = candidate;
+    }
+  }
+
+  return worst === null ? null : worst.error;
 }
 
 /** `FREQ.CURRENCY.CURRENCY_DENOM.EXR_TYPE.EXR_SUFFIX` - daily spot average. */

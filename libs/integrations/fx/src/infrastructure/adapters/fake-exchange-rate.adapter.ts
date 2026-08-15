@@ -36,6 +36,11 @@ export class FakeExchangeRateAdapter implements ExchangeRateProviderPort {
   readonly pivotCurrency: string | null;
 
   private readonly supportedCurrencies: readonly string[];
+  /**
+   * The seed this instance was constructed with, kept so `reset()` can restore
+   * it. Held separately from `rates` because `setRate` mutates the live map.
+   */
+  private readonly seededRates: Readonly<Record<string, string>>;
   private rates: Record<string, string>;
   /** Call count, so a spec can assert the registry absorbed a repeat lookup. */
   private fetchCount = 0;
@@ -44,7 +49,8 @@ export class FakeExchangeRateAdapter implements ExchangeRateProviderPort {
     this.name = options.name;
     this.pivotCurrency = options.pivotCurrency ?? null;
     this.supportedCurrencies = options.supportedCurrencies ?? ['PLN', 'EUR', 'USD', 'GBP'];
-    this.rates = { ...(options.rates ?? { 'EUR/PLN': '4.25000000', 'PLN/EUR': '0.23529412' }) };
+    this.seededRates = { ...(options.rates ?? { 'EUR/PLN': '4.25000000', 'PLN/EUR': '0.23529412' }) };
+    this.rates = { ...this.seededRates };
   }
 
   supports(from: string, to: string): boolean {
@@ -102,8 +108,14 @@ export class FakeExchangeRateAdapter implements ExchangeRateProviderPort {
     return this.fetchCount;
   }
 
+  /**
+   * Back to the constructed state - the CONSTRUCTOR'S SEED, not an empty map.
+   * Emptying it would make a `reset()` between cases silently turn every
+   * lookup into a `RateUnsupportedPairError`, which is the opposite of what a
+   * fake documenting itself as deterministic should do.
+   */
   reset(): void {
-    this.rates = {};
+    this.rates = { ...this.seededRates };
     this.fetchCount = 0;
   }
 }
