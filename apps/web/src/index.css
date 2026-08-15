@@ -9551,6 +9551,30 @@ a.kpi-card:focus-visible {
   white-space: nowrap;
 }
 
+/* Customers' identity cell (#2093). Only the PII-disabled branch renders a
+ * stack: with a name there is one line and nothing here applies. The email hash
+ * alone under a "Customer" header reads as a bug, so the second line names the
+ * deployment setting instead — the same shape as `.invoice-document-cell`
+ * above, minus its cap, because both children are fixed-width (a hex hash and a
+ * constant string), so nothing here can widen the column.
+ *
+ * The weight pin is not decoration: this is the FIRST cell, so `DataTable`
+ * wraps it in `.data-table__row-link` (`font-weight: 500`, :2885). Without it
+ * the qualifier renders at the same emphasis as the identity it qualifies —
+ * the inversion `.orders-cell-sub` pins 400 against on the card (:9688). */
+.customer-identity {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: flex-start;
+  min-width: 0;
+}
+
+.customer-identity__note {
+  font-size: 0.75rem;
+  font-weight: 400;
+}
+
 /* The row's leading checkbox is the primary control on a list whose main action
  * is "select rows -> Retry selected". `.data-table td` is `vertical-align:
  * middle` (:2798), so at the ~60px identity-row height a 13px checkbox centres
