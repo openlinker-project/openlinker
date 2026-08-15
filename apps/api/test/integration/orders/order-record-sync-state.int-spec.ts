@@ -6,7 +6,18 @@
  * assert "the property was never set on the ORM entity"; only a real `save()`
  * against Postgres proves TypeORM actually omits both columns from the
  * generated statement, that the committed values survive, and that a first-time
- * insert still reaches the `NOT NULL DEFAULT '[]'` the migration put on them.
+ * insert still resolves the omitted columns to an empty array.
+ *
+ * That last assertion exercises the **ORM decorator** default, not the
+ * migration's. The harness builds its schema with TypeORM `synchronize`
+ * (`libs/shared/src/database/database.module.ts` enables it for every
+ * `NODE_ENV !== 'production'`; `libs/test-kit/src/harness.ts` calls it the
+ * "synchronize-built test schema"), so `default: () => "'[]'"` on
+ * `order-record.orm-entity.ts` is what fills the column here - which makes
+ * that decorator required for this suite to pass, not a cosmetic drift fix.
+ * Nothing in CI covers the migration-built schema; its default is asserted by
+ * `1833000000005-set-order-records-sync-status-default.ts` and verified only
+ * by reading.
  *
  * Also covers the operator-facing consequence: the failed -> retried -> synced
  * narrative the activity timeline renders survives the re-ingestion an operator
@@ -27,7 +38,6 @@ import {
 import {
   ORDER_DESTINATION_RETRY_SERVICE_TOKEN,
   ORDER_RECORD_SERVICE_TOKEN,
-  OrderDestinationNotFoundException,
   OrderDestinationNotRetryableException,
   type IOrderDestinationRetryService,
   type IOrderRecordService,
@@ -161,7 +171,7 @@ describe('Order record sync state survives re-ingestion (#2140)', () => {
     expect(found!.sourceEventId).toBe('evt-2');
   });
 
-  it('keeps the failed -> retried narrative and the retryable destination row across the retry re-ingestion', async () => {
+  it('keeps the failed -> retried -> synced narrative and the retryable destination row across the retry re-ingestion', async () => {
     const dataSource = harness.getDataSource();
     const recordRepo = dataSource.getRepository(OrderRecordOrmEntity);
     const source = await createTestConnection(dataSource, {
@@ -215,17 +225,32 @@ describe('Order record sync state survives re-ingestion (#2140)', () => {
 
     // The retry action no longer 404s on a just-re-ingested order: the
     // destination row is found, so the refusal is the honest
-    // "already in flight" one rather than "no such destination".
-    let secondRetryError: unknown;
-    try {
-      await retryService.retry({
+    // "already in flight" one (OrderDestinationNotRetryableException) rather
+    // than "no such destination" (OrderDestinationNotFoundException, mapped to
+    // HTTP 404) - the two are unrelated Error subclasses, so asserting the
+    // former rules out the latter.
+    await expect(
+      retryService.retry({
         internalOrderId: order.id,
         destinationConnectionId: destination.id,
-      });
-    } catch (error) {
-      secondRetryError = error;
-    }
-    expect(secondRetryError).not.toBeInstanceOf(OrderDestinationNotFoundException);
-    expect(secondRetryError).toBeInstanceOf(OrderDestinationNotRetryableException);
+      })
+    ).rejects.toBeInstanceOf(OrderDestinationNotRetryableException);
+
+    // The re-ingested sync then succeeds and appends its own entry. This is
+    // the state the bug actually destroyed: it is only at `synced` that the
+    // timeline used to render a lone success with both earlier entries gone.
+    await orderRecordService.updateSyncStatus(order.id, destination.id, {
+      destinationConnectionId: destination.id,
+      status: 'synced',
+      syncedAt: new Date('2026-08-02T10:00:00Z'),
+      externalOrderId: 'ps-order-retry-9',
+    });
+
+    const settled = await recordRepo.findOne({ where: { internalOrderId: order.id } });
+    expect(settled!.syncAttempts.map((a) => a.status)).toEqual(['failed', 'pending', 'synced']);
+    expect(settled!.syncAttempts[0].error).toBe('destination timeout');
+    expect(settled!.syncStatus).toHaveLength(1);
+    expect(settled!.syncStatus[0].status).toBe('synced');
+    expect(settled!.syncStatus[0].externalOrderId).toBe('ps-order-retry-9');
   });
 });

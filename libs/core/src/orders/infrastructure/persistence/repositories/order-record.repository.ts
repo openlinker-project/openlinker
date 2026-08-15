@@ -784,6 +784,42 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
 
   /**
    * Convert domain entity to ORM entity
+   *
+   * ## Columns deliberately outside the write set
+   *
+   * `syncStatus`, `syncAttempts`, `fulfillmentState` and `cancelledAt` are
+   * intentionally left unset below. Each is OL-owned state that no source
+   * payload carries and that a dedicated narrow `UPDATE` owns; leaving the
+   * property unset makes TypeORM omit the column from the generated statement
+   * entirely, so the row's committed value survives untouched.
+   *
+   * This is not optional tidiness. `upsert()` is a full-object `save()` with no
+   * per-order lock around it (webhook + reconciliation poll legitimately race
+   * for the same order, per `docs/architecture-overview.md` § "Webhook =
+   * trigger, poll = reconciliation backstop"), so mapping any of them lets the
+   * ingestion path's in-memory value stomp what the real writer committed. A
+   * read-before-write is NOT the fix - it still loses whatever commits between
+   * that read and this save. Omitting the column is the only race-free option.
+   *
+   * - `syncStatus` / `syncAttempts` (#2140) - sole writer `updateSyncStatus`.
+   *   For `syncAttempts` the wipe was irreversible: the JSONB array *is* the
+   *   store, so an operator retry erased the failed -> retried -> synced
+   *   narrative the activity timeline renders. For `syncStatus` it blinded
+   *   every reader of the per-destination rows while the destination
+   *   order-create calls run - the retry action 404s, fulfillment tracking
+   *   skips the order - permanently so whenever the writeback never runs.
+   *   Both rely on the column's `DEFAULT '[]'` on insert (asserted by
+   *   `1833000000005-set-order-records-sync-status-default.ts`).
+   * - `fulfillmentState` (#2101) - sole writer `updateFulfillmentState`, a
+   *   rollup over the order's shipments. The wipe made a dispatched order
+   *   reappear as not-shipped in the ship-by SLA buckets and list filter.
+   * - `cancelledAt` (#1984) - sole writer `markCancelled` (COALESCE-based,
+   *   atomic).
+   *
+   * Before adding an assignment here, ask which out-of-band writer owns that
+   * column: #2101 excluded only `fulfillmentState` and left the two columns
+   * with the identical defect assigned three lines above its own comment,
+   * which is what #2140 then had to fix.
    */
   private toOrm(orderRecord: OrderRecord): OrderRecordOrmEntity {
     const entity = new OrderRecordOrmEntity();
@@ -792,49 +828,9 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     entity.sourceConnectionId = orderRecord.sourceConnectionId;
     entity.sourceEventId = orderRecord.sourceEventId;
     entity.orderSnapshot = orderRecord.orderSnapshot;
-    // syncStatus and syncAttempts are deliberately NOT mapped here (#2140), for
-    // the same reason as fulfillmentState and cancelledAt below: both are
-    // OL-owned destination state, never carried by any source payload, and
-    // {@link updateSyncStatus} - a single atomic per-destination UPDATE - is
-    // their sole writer. Mapping them made every re-ingestion (a poll re-read, a
-    // webhook-triggered sync, a manual re-sync) write the ingestion path's
-    // in-memory `[]` over what that writer had already committed. For
-    // `syncAttempts` that is irreversible loss: the JSONB array *is* the store,
-    // so an operator retry (append `failed`, re-ingest, append `synced`) erased
-    // the failed -> retried -> synced narrative the activity timeline renders.
-    // For `syncStatus` it blinded every reader of the per-destination rows for
-    // the seconds-to-minutes the destination order-create calls take - the retry
-    // action 404s and fulfillment tracking skips the order - and it is permanent
-    // whenever the writeback never runs (no destination resolves, a destination
-    // dropped out of the fan-out, a throw or a process death in between).
-    // Carrying the values forward with a read-before-write would still lose an
-    // append that commits between that read and this save; omitting the columns
-    // is race-free. Both are `NOT NULL DEFAULT '[]'` in Postgres, so an insert
-    // that omits them resolves to an empty array rather than failing.
     entity.recordStatus = orderRecord.recordStatus;
     entity.mappingFailureReason = orderRecord.mappingFailureReason;
     entity.dispatchByAt = orderRecord.dispatchByAt;
-    // fulfillmentState is deliberately NOT mapped here (#2101), for the same
-    // reason as cancelledAt below: it is OL-owned state rolled up from the
-    // order's shipments, never re-derivable from the source payload, and
-    // {@link updateFulfillmentState} is its sole writer. Mapping it made every
-    // re-ingestion (a poll re-read, a webhook-triggered sync, a manual
-    // re-sync) write the ingestion path's in-memory `null` over a
-    // `'dispatched'` value the shipping context had already committed, so a
-    // dispatched order reappeared as not-shipped in the ship-by SLA buckets
-    // and the not-shipped list filter. Carrying the value forward with a
-    // read-before-write would still lose a rollup that commits between that
-    // read and this save; omitting the column is race-free.
-    // cancelledAt is deliberately NOT mapped here (#1984 follow-up). upsert()
-    // is a full-object save() with no per-order lock around it (two ingestion
-    // paths — webhook + reconciliation poll — legitimately race for the same
-    // order per docs/architecture-overview.md § "Webhook = trigger, poll =
-    // reconciliation backstop"), so writing this column here would let a
-    // stale in-memory read stomp a value {@link markCancelled} already
-    // committed concurrently. Leaving the ORM entity's `cancelledAt` property
-    // unset means TypeORM omits the column from the generated UPDATE
-    // entirely — the row's existing value survives untouched. `markCancelled`
-    // (COALESCE-based, atomic) is the single writer for this column.
     entity.createdAt = orderRecord.createdAt;
     entity.updatedAt = orderRecord.updatedAt;
     return entity;
