@@ -736,6 +736,16 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     );
   }
 
+  /**
+   * Full-row upsert of the ingestion-owned columns, keyed on the primary key.
+   *
+   * `fulfillmentState` (#2101), `cancelledAt` (#1984) and the three
+   * `salesDocument*` columns (#2100) are deliberately outside the write set -
+   * see the {@link toOrm} comments. A consequence is that the returned record
+   * reports them all as `null` regardless of what the row holds, because none
+   * was part of the statement; callers needing their true value re-read via
+   * {@link findById}.
+   */
   async upsert(orderRecord: OrderRecord): Promise<OrderRecord> {
     const entity = this.toOrm(orderRecord);
     // TypeORM save() performs upsert on primary key (internalOrderId)
@@ -911,7 +921,17 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     entity.recordStatus = orderRecord.recordStatus;
     entity.mappingFailureReason = orderRecord.mappingFailureReason;
     entity.dispatchByAt = orderRecord.dispatchByAt;
-    entity.fulfillmentState = orderRecord.fulfillmentState;
+    // fulfillmentState is deliberately NOT mapped here (#2101), for the same
+    // reason as cancelledAt below: it is OL-owned state rolled up from the
+    // order's shipments, never re-derivable from the source payload, and
+    // {@link updateFulfillmentState} is its sole writer. Mapping it made every
+    // re-ingestion (a poll re-read, a webhook-triggered sync, a manual
+    // re-sync) write the ingestion path's in-memory `null` over a
+    // `'dispatched'` value the shipping context had already committed, so a
+    // dispatched order reappeared as not-shipped in the ship-by SLA buckets
+    // and the not-shipped list filter. Carrying the value forward with a
+    // read-before-write would still lose a rollup that commits between that
+    // read and this save; omitting the column is race-free.
     // cancelledAt is deliberately NOT mapped here (#1984 follow-up). upsert()
     // is a full-object save() with no per-order lock around it (two ingestion
     // paths — webhook + reconciliation poll — legitimately race for the same

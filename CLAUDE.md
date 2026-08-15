@@ -179,7 +179,7 @@ pnpm dev:stack:down
 # Start apps
 pnpm start:dev:api       # NestJS API on :3000
 pnpm start:dev:worker    # Background job worker
-pnpm start:dev:web       # React frontend on :5173
+pnpm start:dev:web       # React frontend on :4173
 
 # Testing
 pnpm test                # Unit tests (fast, no Docker)

@@ -27,6 +27,7 @@ import { resolveTaxonomyOwner } from '../../domain/resolve-taxonomy-owner';
 import type { OfferManagerPort } from '../../domain/ports/offer-manager.port';
 import type { ShopProductManagerPort } from '../../domain/ports/shop-product-manager.port';
 import type { DestinationCategory } from '../../domain/entities/destination-category.entity';
+import type { CategoryPathSegment } from '../../domain/types/category.types';
 import { DestinationCategoryRepositoryPort } from '../../domain/ports/destination-category-repository.port';
 import type {
   DestinationCategorySearchHit,
@@ -99,6 +100,11 @@ export class DestinationTaxonomyService implements IDestinationTaxonomyService {
       SEARCH_LIMIT_MAX,
     );
     return this.repository.search(scope, query, effectiveLimit);
+  }
+
+  async path(connectionId: string, externalId: string): Promise<CategoryPathSegment[]> {
+    const scope = await this.resolveScope(connectionId);
+    return this.repository.findPath(scope, externalId);
   }
 
   async syncTaxonomy(connectionId: string, input: TaxonomySyncInput): Promise<TaxonomySyncResult> {

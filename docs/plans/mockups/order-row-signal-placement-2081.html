@@ -1,0 +1,1078 @@
+<!--
+  #2081 — Order row signal placement (packed + returns)
+
+  Design deliverable for #2081. The decision it records is canonical in
+  docs/frontend-ui-style-guide.md § Status Language → "Order-row signal placement";
+  this file is the visual rationale behind it.
+
+  Also published as a Claude artifact:
+  https://claude.ai/code/artifact/b511edef-7728-42f7-a258-fbdd99d4ea6c
+  When updating, republish from THIS path passing that URL, so the artifact
+  updates in place rather than forking a second copy.
+
+  Contains one thing the style guide deliberately does NOT adopt: the chip-density
+  refinement of the Money column. That is a change to existing UI outside #2081's
+  scope and needs its own issue before it is treated as decided.
+-->
+<title>#2081 — Order row signal placement</title>
+<style>
+  :root {
+    /* OpenLinker tokens — warm neutrals (hue 80), coral accent. */
+    --ol-canvas: oklch(99% 0.003 80);
+    --ol-surface: #ffffff;
+    --ol-muted: oklch(96% 0.005 80);
+    --ol-border-subtle: oklch(93.5% 0.006 80);
+    --ol-border: oklch(88% 0.008 80);
+    --ol-ink: oklch(20% 0.012 80);
+    --ol-ink-2: oklch(38% 0.010 80);
+    --ol-ink-3: oklch(52% 0.008 80);
+    --ol-accent: oklch(68% 0.18 50);
+
+    --ok-soft: oklch(96% 0.04 150);
+    --ok-border: oklch(85% 0.08 150);
+    --ok-fg: oklch(36% 0.12 150);
+    --warn-soft: oklch(96% 0.05 85);
+    --warn-border: oklch(85% 0.10 85);
+    --warn-fg: oklch(42% 0.12 80);
+    --err-soft: oklch(96% 0.04 25);
+    --err-border: oklch(85% 0.10 25);
+    --err-fg: oklch(42% 0.16 25);
+    --info-soft: oklch(96% 0.03 245);
+    --info-border: oklch(85% 0.08 245);
+    --info-fg: oklch(40% 0.12 245);
+
+    /* Page chrome — deeper than the product ground, so a mockup reads as inset. */
+    --page-bg: oklch(94.5% 0.008 78);
+    --page-ink: oklch(22% 0.014 78);
+    --page-ink-2: oklch(42% 0.012 78);
+    --page-rule: oklch(87% 0.010 78);
+    --page-card: oklch(99.2% 0.003 80);
+
+    --serif: 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, 'Times New Roman', serif;
+    --sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme='light']) {
+      --ol-canvas: oklch(21% 0.008 80);
+      --ol-surface: oklch(24% 0.009 80);
+      --ol-muted: oklch(27% 0.009 80);
+      --ol-border-subtle: oklch(31% 0.010 80);
+      --ol-border: oklch(36% 0.011 80);
+      --ol-ink: oklch(94% 0.005 80);
+      --ol-ink-2: oklch(78% 0.007 80);
+      --ol-ink-3: oklch(62% 0.008 80);
+      --ol-accent: oklch(74% 0.16 50);
+
+      --ok-soft: oklch(30% 0.05 150);
+      --ok-border: oklch(42% 0.08 150);
+      --ok-fg: oklch(84% 0.11 150);
+      --warn-soft: oklch(31% 0.06 85);
+      --warn-border: oklch(44% 0.09 85);
+      --warn-fg: oklch(87% 0.12 85);
+      --err-soft: oklch(30% 0.07 25);
+      --err-border: oklch(44% 0.11 25);
+      --err-fg: oklch(85% 0.11 25);
+      --info-soft: oklch(30% 0.05 245);
+      --info-border: oklch(43% 0.08 245);
+      --info-fg: oklch(85% 0.09 245);
+
+      --page-bg: oklch(16% 0.010 78);
+      --page-ink: oklch(93% 0.006 78);
+      --page-ink-2: oklch(72% 0.008 78);
+      --page-rule: oklch(28% 0.010 78);
+      --page-card: oklch(19.5% 0.009 78);
+    }
+  }
+
+  :root[data-theme='dark'] {
+    --ol-canvas: oklch(21% 0.008 80);
+    --ol-surface: oklch(24% 0.009 80);
+    --ol-muted: oklch(27% 0.009 80);
+    --ol-border-subtle: oklch(31% 0.010 80);
+    --ol-border: oklch(36% 0.011 80);
+    --ol-ink: oklch(94% 0.005 80);
+    --ol-ink-2: oklch(78% 0.007 80);
+    --ol-ink-3: oklch(62% 0.008 80);
+    --ol-accent: oklch(74% 0.16 50);
+
+    --ok-soft: oklch(30% 0.05 150);
+    --ok-border: oklch(42% 0.08 150);
+    --ok-fg: oklch(84% 0.11 150);
+    --warn-soft: oklch(31% 0.06 85);
+    --warn-border: oklch(44% 0.09 85);
+    --warn-fg: oklch(87% 0.12 85);
+    --err-soft: oklch(30% 0.07 25);
+    --err-border: oklch(44% 0.11 25);
+    --err-fg: oklch(85% 0.11 25);
+    --info-soft: oklch(30% 0.05 245);
+    --info-border: oklch(43% 0.08 245);
+    --info-fg: oklch(85% 0.09 245);
+
+    --page-bg: oklch(16% 0.010 78);
+    --page-ink: oklch(93% 0.006 78);
+    --page-ink-2: oklch(72% 0.008 78);
+    --page-rule: oklch(28% 0.010 78);
+    --page-card: oklch(19.5% 0.009 78);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--page-bg);
+    color: var(--page-ink);
+    font-family: var(--serif);
+    font-size: 17px;
+    line-height: 1.62;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 0 24px 96px; }
+  .prose { max-width: 66ch; }
+
+  /* ---------- masthead ---------- */
+  header.masthead {
+    padding: 72px 0 40px;
+    border-bottom: 1px solid var(--page-rule);
+    margin-bottom: 44px;
+  }
+  .eyebrow {
+    font-family: var(--sans);
+    font-size: 11.5px;
+    font-weight: 600;
+    letter-spacing: 0.13em;
+    text-transform: uppercase;
+    color: var(--ol-accent);
+    margin: 0 0 18px;
+  }
+  h1 {
+    font-size: clamp(38px, 6vw, 62px);
+    line-height: 1.04;
+    letter-spacing: -0.021em;
+    font-weight: 600;
+    margin: 0 0 20px;
+    text-wrap: balance;
+  }
+  .standfirst {
+    font-size: 20px;
+    line-height: 1.55;
+    color: var(--page-ink-2);
+    margin: 0;
+    max-width: 60ch;
+    text-wrap: pretty;
+  }
+
+  h2 {
+    font-size: 27px;
+    line-height: 1.2;
+    letter-spacing: -0.014em;
+    font-weight: 600;
+    margin: 64px 0 6px;
+    text-wrap: balance;
+  }
+  h2 + .kicker {
+    font-family: var(--sans);
+    font-size: 13px;
+    color: var(--page-ink-2);
+    margin: 0 0 22px;
+  }
+  h3 {
+    font-family: var(--sans);
+    font-size: 15px;
+    font-weight: 650;
+    letter-spacing: -0.005em;
+    margin: 0 0 4px;
+  }
+  p { margin: 0 0 16px; text-wrap: pretty; }
+  strong { font-weight: 650; }
+  code {
+    font-family: var(--mono);
+    font-size: 0.87em;
+    background: var(--ol-muted);
+    border: 1px solid var(--ol-border-subtle);
+    border-radius: 4px;
+    padding: 0.08em 0.34em;
+    color: var(--ol-ink-2);
+  }
+
+  /* ---------- mockup frame ---------- */
+  .device {
+    background: var(--ol-canvas);
+    border: 1px solid var(--ol-border);
+    border-radius: 10px;
+    overflow: hidden;
+    margin: 0 0 10px;
+    box-shadow: 0 1px 2px oklch(0% 0 0 / 0.05), 0 8px 24px oklch(0% 0 0 / 0.05);
+  }
+  .device__bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 14px;
+    background: var(--ol-muted);
+    border-bottom: 1px solid var(--ol-border-subtle);
+    font-family: var(--sans);
+    font-size: 11.5px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    font-weight: 600;
+    color: var(--ol-ink-3);
+  }
+  .device__scroll { overflow-x: auto; }
+
+  table.rows {
+    width: 100%;
+    min-width: 940px;
+    border-collapse: collapse;
+    font-family: var(--sans);
+    background: var(--ol-surface);
+  }
+  table.rows th {
+    text-align: left;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--ol-ink-3);
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--ol-border);
+    white-space: nowrap;
+    background: var(--ol-canvas);
+  }
+  table.rows td {
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--ol-border-subtle);
+    vertical-align: top;
+    font-size: 13.5px;
+    color: var(--ol-ink);
+  }
+  table.rows tr:last-child td { border-bottom: 0; }
+  .num { text-align: right; }
+  .stack { display: flex; flex-direction: column; align-items: flex-start; gap: 5px; }
+  .stack--end { align-items: flex-end; }
+  .oid { font-family: var(--mono); font-size: 12.5px; color: var(--ol-ink); }
+  .sub { font-size: 11.5px; color: var(--ol-ink-3); }
+  .mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+  .total { font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: 14px; font-weight: 600; }
+
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11.5px;
+    font-weight: 550;
+    line-height: 1.35;
+    padding: 2px 8px 2px 6px;
+    border-radius: 999px;
+    border: 1px solid;
+    white-space: nowrap;
+  }
+  .badge::before {
+    content: '';
+    width: 5px; height: 5px;
+    border-radius: 50%;
+    background: currentColor;
+    flex: none;
+  }
+  .badge--ok    { background: var(--ok-soft);   border-color: var(--ok-border);   color: var(--ok-fg); }
+  .badge--warn  { background: var(--warn-soft); border-color: var(--warn-border); color: var(--warn-fg); }
+  .badge--err   { background: var(--err-soft);  border-color: var(--err-border);  color: var(--err-fg); }
+  .badge--info  { background: var(--info-soft); border-color: var(--info-border); color: var(--info-fg); }
+  .badge--quiet { background: var(--ol-muted);  border-color: var(--ol-border);   color: var(--ol-ink-3); }
+
+  .tick {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-size: 12px; color: var(--ok-fg); font-weight: 550;
+  }
+  .tick__box {
+    width: 14px; height: 14px; border-radius: 4px;
+    background: var(--ok-soft); border: 1px solid var(--ok-border);
+    display: inline-grid; place-items: center;
+    font-size: 9px; line-height: 1; flex: none;
+  }
+  .tick--off { color: var(--ol-ink-3); }
+  .tick--off .tick__box { background: transparent; border-color: var(--ol-border); }
+
+  .newmark {
+    display: inline-block;
+    font-family: var(--sans);
+    font-size: 9.5px;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--ol-accent);
+    vertical-align: 2px;
+    margin-left: 5px;
+  }
+  .is-new { position: relative; }
+  .is-new::after {
+    content: '';
+    position: absolute;
+    inset: -3px -5px;
+    border: 1px dashed var(--ol-accent);
+    border-radius: 8px;
+    pointer-events: none;
+    opacity: 0.75;
+  }
+
+  /* ---------- traffic-light chips (borrowed pattern) ---------- */
+  .chips { display: inline-flex; gap: 4px; }
+  .chip {
+    width: 20px; height: 20px;
+    border-radius: 5px;
+    display: inline-grid; place-items: center;
+    font-size: 10px; font-weight: 700; letter-spacing: 0.01em;
+    border: 1px solid;
+    font-family: var(--sans);
+  }
+  .chip--ok    { background: var(--ok-soft);   border-color: var(--ok-border);   color: var(--ok-fg); }
+  .chip--warn  { background: var(--warn-soft); border-color: var(--warn-border); color: var(--warn-fg); }
+  .chip--err   { background: var(--err-soft);  border-color: var(--err-border);  color: var(--err-fg); }
+  .chip--off   { background: transparent;      border-color: var(--ol-border);   color: var(--ol-ink-3); }
+
+  .legend {
+    display: flex; flex-wrap: wrap; gap: 14px;
+    font-family: var(--sans); font-size: 12px;
+    color: var(--page-ink-2);
+    margin: 0 0 34px;
+  }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+
+  /* ---------- market comparison ---------- */
+  .compare {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(270px, 1fr));
+    gap: 0;
+    border: 1px solid var(--page-rule);
+    border-radius: 8px;
+    overflow: hidden;
+    background: var(--page-card);
+    margin: 22px 0 8px;
+  }
+  .compare > div { padding: 18px 20px; border-right: 1px solid var(--page-rule); }
+  .compare > div:last-child { border-right: 0; }
+  .compare h4 {
+    font-family: var(--sans);
+    font-size: 11px; font-weight: 700;
+    letter-spacing: 0.09em; text-transform: uppercase;
+    margin: 0 0 10px; color: var(--page-ink-2);
+  }
+  .compare p { font-size: 15.5px; line-height: 1.5; margin: 0 0 10px; }
+  .compare p:last-child { margin-bottom: 0; }
+  .folder {
+    display: flex; align-items: center; justify-content: space-between;
+    font-family: var(--sans); font-size: 12.5px;
+    padding: 5px 8px; border-radius: 5px;
+    background: var(--ol-muted); border: 1px solid var(--ol-border-subtle);
+    margin-bottom: 4px; color: var(--ol-ink-2);
+  }
+  .folder b {
+    font-size: 11px; font-weight: 700; border-radius: 4px;
+    padding: 1px 6px; min-width: 20px; text-align: center;
+  }
+
+  /* ---------- option blocks ---------- */
+  .option { margin: 40px 0 0; }
+  .option__head {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    margin: 0 0 14px;
+    flex-wrap: wrap;
+  }
+  .option__tag {
+    font-family: var(--sans);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--page-bg);
+    background: var(--page-ink);
+    border-radius: 4px;
+    padding: 3px 8px;
+    flex: none;
+  }
+  .option--pick .option__tag { background: var(--ol-accent); color: oklch(18% 0.012 50); }
+  .option__title { font-size: 22px; font-weight: 600; letter-spacing: -0.012em; margin: 0; }
+
+  .tradeoff {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 0;
+    border: 1px solid var(--page-rule);
+    border-radius: 8px;
+    overflow: hidden;
+    background: var(--page-card);
+    margin-top: 14px;
+  }
+  .tradeoff > div { padding: 14px 16px; border-right: 1px solid var(--page-rule); }
+  .tradeoff > div:last-child { border-right: 0; }
+  .tradeoff h4 {
+    font-family: var(--sans);
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    margin: 0 0 6px;
+    color: var(--page-ink-2);
+  }
+  .tradeoff p { margin: 0; font-size: 15px; line-height: 1.5; }
+  .tradeoff--cost h4 { color: var(--err-fg); }
+
+  /* ---------- evidence table ---------- */
+  .evidence {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: var(--sans);
+    font-size: 14.5px;
+    margin: 6px 0 8px;
+  }
+  .evidence th {
+    text-align: left;
+    font-size: 10.5px;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--page-ink-2);
+    font-weight: 700;
+    padding: 0 14px 8px 0;
+    border-bottom: 1px solid var(--page-rule);
+  }
+  .evidence td {
+    padding: 10px 14px 10px 0;
+    border-bottom: 1px solid var(--page-rule);
+    vertical-align: top;
+    color: var(--page-ink-2);
+  }
+  .evidence td:first-child { color: var(--page-ink); font-weight: 600; white-space: nowrap; }
+  .evidence .count {
+    font-family: var(--mono);
+    font-variant-numeric: tabular-nums;
+    color: var(--page-ink);
+  }
+
+  .note {
+    border-left: 2px solid var(--ol-accent);
+    padding: 2px 0 2px 18px;
+    margin: 26px 0;
+    color: var(--page-ink-2);
+  }
+  .note strong { color: var(--page-ink); }
+
+  .caption {
+    font-family: var(--sans);
+    font-size: 12.5px;
+    color: var(--page-ink-2);
+    margin: 0 0 34px;
+  }
+
+  ul.tight { margin: 0 0 16px; padding-left: 1.15em; }
+  ul.tight li { margin-bottom: 7px; }
+
+  footer.end {
+    margin-top: 72px;
+    padding-top: 22px;
+    border-top: 1px solid var(--page-rule);
+    font-family: var(--sans);
+    font-size: 13px;
+    color: var(--page-ink-2);
+  }
+
+  @media (max-width: 720px) {
+    body { font-size: 16px; }
+    header.masthead { padding-top: 48px; }
+    .tradeoff > div { border-right: 0; border-bottom: 1px solid var(--page-rule); }
+    .tradeoff > div:last-child { border-bottom: 0; }
+  }
+</style>
+
+<div class="wrap">
+
+  <header class="masthead">
+    <p class="eyebrow">OpenLinker · Orders · #2081</p>
+    <h1>Where packed goes</h1>
+    <p class="standfirst">
+      Two new signals need a home in the orders list — packed state and marketplace returns.
+      The row already carries six badges. <strong>Decided: option A</strong>, and the reason turned out
+      to be one the market leader supplied.
+    </p>
+  </header>
+
+  <section class="prose">
+    <h2>The brief changed once I looked</h2>
+    <p class="kicker">What the inventory found</p>
+    <p>
+      Issue #2081 was written on the premise that the order row is a pile of competing status
+      badges with no precedence between them. That is <strong>partly wrong</strong>, and the
+      correction matters more than the original complaint.
+    </p>
+    <p>
+      A consolidation pass already happened. The code carries the marks:
+      <code>Merged dispatch column (#1713)</code> and <code>Merged money column (#1713)</code>.
+      The row is deliberately organised into three semantic groups, each with one primary badge
+      and subordinate detail beneath it.
+    </p>
+  </section>
+
+  <table class="evidence">
+    <thead>
+      <tr><th>Group</th><th>Primary badge</th><th>Also carries</th><th class="count">Signals</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Status</td>
+        <td>Order health</td>
+        <td>Failure reason, as quiet text</td>
+        <td class="count">2</td>
+      </tr>
+      <tr>
+        <td>Shipment</td>
+        <td>Fulfillment state</td>
+        <td>Ship-by SLA + live countdown, delivery-outcome chip, carrier, sometimes a “Generate label” action</td>
+        <td class="count">5</td>
+      </tr>
+      <tr>
+        <td>Money</td>
+        <td>Total</td>
+        <td>Payment status, invoice clearance, created date</td>
+        <td class="count">4</td>
+      </tr>
+    </tbody>
+  </table>
+  <p class="caption">
+    Counted from <code>orders-list-page.tsx</code> on <code>main</code>. Worst case a single row renders six badges —
+    but grouped, not undifferentiated.
+  </p>
+
+  <section class="prose">
+    <p>
+      So the honest question is not “fix the crowded row”. It is narrower, and answerable:
+      <strong>where do two new signals sit inside a structure that already works</strong> — and does
+      the Shipment group survive another one.
+    </p>
+  </section>
+
+  <h2>What the market leader does</h2>
+  <p class="kicker">BaseLinker, read from its own help-centre screenshots</p>
+
+  <div class="compare">
+    <div>
+      <h4>Status is a folder, not a column</h4>
+      <div class="folder"><span>All orders</span><b class="chip--off">12</b></div>
+      <div class="folder"><span>New orders</span><b class="chip--warn">1</b></div>
+      <div class="folder"><span>To send</span><b class="chip--warn">3</b></div>
+      <div class="folder"><span>Sent</span><b class="chip--ok">3</b></div>
+      <div class="folder"><span>Canceled</span><b class="chip--err">3</b></div>
+      <p style="margin-top:12px">
+        Operator-defined statuses live in a left sidebar as collapsible folders, each with a
+        count badge tinted its own colour. The status also repeats as a pill in the row.
+      </p>
+    </div>
+    <div>
+      <h4>Density comes from chips, not stacks</h4>
+      <p>
+        Rather than stacking pills, the row carries a fixed four-slot strip — delivery, payment,
+        shipment, invoice — colour-coded grey&nbsp;/&nbsp;green&nbsp;/&nbsp;orange&nbsp;/&nbsp;red.
+        You scan for red instead of reading labels.
+      </p>
+      <p style="margin-top:14px">
+        <span class="chips">
+          <span class="chip chip--ok" title="Payment: paid">$</span>
+          <span class="chip chip--ok" title="Invoice: issued">F</span>
+          <span class="chip chip--warn" title="Shipment: partial">▣</span>
+          <span class="chip chip--off" title="Comments: none">✎</span>
+        </span>
+      </p>
+    </div>
+    <div>
+      <h4>Packing is invisible in the list</h4>
+      <p>
+        There is no packed column and no packed icon. Packing state shows only as whatever status
+        an automatic action moved the order into — and there is no board, no drag: transitions are
+        bulk-select, automated, or scanner-driven.
+      </p>
+    </div>
+  </div>
+  <p class="caption">
+    Screenshots may predate the base.com rebrand — patterns are trustworthy, pixel details are not.
+  </p>
+
+  <section class="prose">
+    <div class="note">
+      <p style="margin:0">
+        <strong>The asymmetry that decides this.</strong> BaseLinker can omit a packed signal from the
+        row <em>because its status folders already carry it</em> — an operator makes a “Packed” folder
+        and the folder is the signal. OpenLinker deliberately did not build operator-defined stages,
+        so it has no substitute. The upstream omission is not evidence the signal is unwanted; it is
+        evidence their information architecture carries it somewhere else. <strong>That is the real
+        argument for putting packed in the row.</strong>
+      </p>
+    </div>
+  </section>
+
+  <h2>Today</h2>
+  <p class="kicker">Baseline, no changes</p>
+
+  <div class="device">
+    <div class="device__bar">Orders — current</div>
+    <div class="device__scroll">
+      <table class="rows">
+        <thead>
+          <tr>
+            <th>Order</th><th>Customer</th><th>Channel</th><th>Status</th><th>Shipment</th><th class="num">Money</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="stack"><span class="oid">ol_order_4f2a…</span><span class="sub">3 items · 4 units</span></span></td>
+            <td><span class="stack">Anna Kowalska<span class="sub">Warszawa, PL</span></span></td>
+            <td><span class="stack">Allegro<span class="sub">Main seller</span></span></td>
+            <td><span class="stack"><span class="badge badge--info">Awaiting dispatch</span></span></td>
+            <td>
+              <span class="stack">
+                <span class="badge badge--quiet">Not shipped</span>
+                <span class="badge badge--warn">Ship by 14:00 <span class="mono">· 2h 41m</span></span>
+                <span class="badge badge--quiet">Shop-fulfilled</span>
+                <span class="sub">InPost Paczkomat</span>
+              </span>
+            </td>
+            <td class="num">
+              <span class="stack stack--end">
+                <span class="total">249,00 zł</span>
+                <span class="badge badge--ok">Paid</span>
+                <span class="badge badge--info">Invoice cleared</span>
+                <span class="sub mono">12 Aug 09:14</span>
+              </span>
+            </td>
+          </tr>
+          <tr>
+            <td><span class="stack"><span class="oid">ol_order_88c1…</span><span class="sub">1 item · 1 unit</span></span></td>
+            <td><span class="stack">Marek Nowak<span class="sub">Kraków, PL</span></span></td>
+            <td><span class="stack">Erli<span class="sub">Erli PL</span></span></td>
+            <td><span class="stack"><span class="badge badge--err">Sync failed</span><span class="sub">Destination rejected the order</span></span></td>
+            <td>
+              <span class="stack">
+                <span class="badge badge--quiet">Not shipped</span>
+                <span class="badge badge--err">Overdue <span class="mono">· 5h 12m</span></span>
+                <span class="badge badge--quiet">Awaiting label</span>
+              </span>
+            </td>
+            <td class="num">
+              <span class="stack stack--end">
+                <span class="total">89,90 zł</span>
+                <span class="badge badge--ok">Paid</span>
+                <span class="badge badge--quiet">No invoice</span>
+                <span class="sub mono">12 Aug 07:02</span>
+              </span>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <p class="caption">Six badges on row one. The grouping is what makes it readable.</p>
+
+  <section class="prose">
+    <h2>Three placements</h2>
+    <p class="kicker">Dashed outline marks what is new</p>
+    <p>
+      Packed and returns are <strong>different kinds of signal</strong>, and giving them the same
+      treatment is the first mistake to avoid. Packed is a position in a workflow — it happens
+      before dispatch. A return is an exception — it happens after delivery, and it means
+      something went wrong.
+    </p>
+  </section>
+
+  <div class="option option--pick">
+    <div class="option__head">
+      <span class="option__tag">Option A · recommended</span>
+      <h3 class="option__title">Shipment column reads as time</h3>
+    </div>
+    <p class="prose">
+      Packed joins the head of the Shipment stack, so the column reads top-to-bottom in the order
+      things actually happen: <em>packed → shipped → due → delivered by whom</em>. Returns go to the
+      Status group, where exceptions already live, beneath the health badge.
+    </p>
+
+    <div class="device">
+      <div class="device__bar">Orders — option A</div>
+      <div class="device__scroll">
+        <table class="rows">
+          <thead>
+            <tr><th>Order</th><th>Customer</th><th>Channel</th><th>Status</th><th>Shipment</th><th class="num">Money</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><span class="stack"><span class="oid">ol_order_4f2a…</span><span class="sub">3 items · 4 units</span></span></td>
+              <td><span class="stack">Anna Kowalska<span class="sub">Warszawa, PL</span></span></td>
+              <td><span class="stack">Allegro<span class="sub">Main seller</span></span></td>
+              <td><span class="stack"><span class="badge badge--info">Awaiting dispatch</span></span></td>
+              <td>
+                <span class="stack">
+                  <span class="is-new"><span class="tick"><span class="tick__box">✓</span> Packed · Ewa</span></span>
+                  <span class="badge badge--quiet">Not shipped</span>
+                  <span class="badge badge--warn">Ship by 14:00 <span class="mono">· 2h 41m</span></span>
+                  <span class="sub">InPost Paczkomat</span>
+                </span>
+              </td>
+              <td class="num">
+                <span class="stack stack--end">
+                  <span class="total">249,00 zł</span>
+                  <span class="badge badge--ok">Paid</span>
+                  <span class="sub mono">12 Aug 09:14</span>
+                </span>
+              </td>
+            </tr>
+            <tr>
+              <td><span class="stack"><span class="oid">ol_order_31d7…</span><span class="sub">2 items · 2 units</span></span></td>
+              <td><span class="stack">Piotr Zieliński<span class="sub">Gdańsk, PL</span></span></td>
+              <td><span class="stack">Allegro<span class="sub">Main seller</span></span></td>
+              <td>
+                <span class="stack">
+                  <span class="badge badge--ok">Synced</span>
+                  <span class="is-new"><span class="badge badge--warn">Return opened</span></span>
+                </span>
+              </td>
+              <td>
+                <span class="stack">
+                  <span class="tick"><span class="tick__box">✓</span> Packed · Ewa</span>
+                  <span class="badge badge--ok">Delivered</span>
+                  <span class="sub">DPD · 0000123456</span>
+                </span>
+              </td>
+              <td class="num">
+                <span class="stack stack--end">
+                  <span class="total">412,00 zł</span>
+                  <span class="badge badge--ok">Paid</span>
+                  <span class="sub mono">08 Aug 11:31</span>
+                </span>
+              </td>
+            </tr>
+            <tr>
+              <td><span class="stack"><span class="oid">ol_order_88c1…</span><span class="sub">1 item · 1 unit</span></span></td>
+              <td><span class="stack">Marek Nowak<span class="sub">Kraków, PL</span></span></td>
+              <td><span class="stack">Erli<span class="sub">Erli PL</span></span></td>
+              <td><span class="stack"><span class="badge badge--err">Sync failed</span><span class="sub">Destination rejected the order</span></span></td>
+              <td>
+                <span class="stack">
+                  <span class="is-new"><span class="tick tick--off"><span class="tick__box"></span> Not packed</span></span>
+                  <span class="badge badge--quiet">Not shipped</span>
+                  <span class="badge badge--err">Overdue <span class="mono">· 5h 12m</span></span>
+                </span>
+              </td>
+              <td class="num">
+                <span class="stack stack--end">
+                  <span class="total">89,90 zł</span>
+                  <span class="badge badge--ok">Paid</span>
+                  <span class="sub mono">12 Aug 07:02</span>
+                </span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="tradeoff">
+      <div>
+        <h4>Why it works</h4>
+        <p>Chronology is real information, not decoration. The column becomes scannable as a sequence rather than a list of unrelated facts.</p>
+      </div>
+      <div>
+        <h4>Deliberate</h4>
+        <p>Packed uses a tick, not a pill — it is a binary fact, and badges are already carrying four different vocabularies.</p>
+      </div>
+      <div class="tradeoff--cost">
+        <h4>Cost</h4>
+        <p>Shipment goes to five signals on a worst-case row. Carrier and the delivery chip may need to become hover detail.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="option option--pick">
+    <div class="option__head">
+      <span class="option__tag">A, refined · borrowed density</span>
+      <h3 class="option__title">Chips pay for the extra line</h3>
+    </div>
+    <p class="prose">
+      Option A’s one real cost is <strong>row height</strong> — Shipment goes to five signals. The market
+      leader’s answer to exactly this problem is chips instead of stacked pills. Apply it to the
+      <em>Money</em> group: payment and invoice become two compact chips on the total’s line. Money
+      loses two lines, Shipment gains one. <strong>Net row height goes down.</strong>
+    </p>
+
+    <div class="device">
+      <div class="device__bar">Orders — option A, refined</div>
+      <div class="device__scroll">
+        <table class="rows">
+          <thead>
+            <tr><th>Order</th><th>Customer</th><th>Channel</th><th>Status</th><th>Shipment</th><th class="num">Money</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><span class="stack"><span class="oid">ol_order_4f2a…</span><span class="sub">3 items · 4 units</span></span></td>
+              <td><span class="stack">Anna Kowalska<span class="sub">Warszawa, PL</span></span></td>
+              <td><span class="stack">Allegro<span class="sub">Main seller</span></span></td>
+              <td><span class="stack"><span class="badge badge--info">Awaiting dispatch</span></span></td>
+              <td>
+                <span class="stack">
+                  <span class="is-new"><span class="tick"><span class="tick__box">✓</span> Packed · Ewa</span></span>
+                  <span class="badge badge--quiet">Not shipped</span>
+                  <span class="badge badge--warn">Ship by 14:00 <span class="mono">· 2h 41m</span></span>
+                  <span class="sub">InPost Paczkomat</span>
+                </span>
+              </td>
+              <td class="num">
+                <span class="stack stack--end">
+                  <span style="display:inline-flex;align-items:center;gap:8px">
+                    <span class="chips is-new">
+                      <span class="chip chip--ok" title="Paid">$</span>
+                      <span class="chip chip--ok" title="Invoice cleared">F</span>
+                    </span>
+                    <span class="total">249,00 zł</span>
+                  </span>
+                  <span class="sub mono">12 Aug 09:14</span>
+                </span>
+              </td>
+            </tr>
+            <tr>
+              <td><span class="stack"><span class="oid">ol_order_88c1…</span><span class="sub">1 item · 1 unit</span></span></td>
+              <td><span class="stack">Marek Nowak<span class="sub">Kraków, PL</span></span></td>
+              <td><span class="stack">Erli<span class="sub">Erli PL</span></span></td>
+              <td><span class="stack"><span class="badge badge--err">Sync failed</span><span class="sub">Destination rejected</span></span></td>
+              <td>
+                <span class="stack">
+                  <span class="tick tick--off"><span class="tick__box"></span> Not packed</span>
+                  <span class="badge badge--quiet">Not shipped</span>
+                  <span class="badge badge--err">Overdue <span class="mono">· 5h 12m</span></span>
+                </span>
+              </td>
+              <td class="num">
+                <span class="stack stack--end">
+                  <span style="display:inline-flex;align-items:center;gap:8px">
+                    <span class="chips">
+                      <span class="chip chip--ok" title="Paid">$</span>
+                      <span class="chip chip--off" title="No invoice">F</span>
+                    </span>
+                    <span class="total">89,90 zł</span>
+                  </span>
+                  <span class="sub mono">12 Aug 07:02</span>
+                </span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <p class="legend">
+      <span><span class="chip chip--ok">$</span> paid</span>
+      <span><span class="chip chip--warn">$</span> partial</span>
+      <span><span class="chip chip--err">$</span> failed</span>
+      <span><span class="chip chip--off">F</span> not issued</span>
+      <span style="color:var(--page-ink-2)">— chips carry a <code>title</code>, and the same facts stay labelled in the mobile card</span>
+    </p>
+
+    <div class="tradeoff">
+      <div>
+        <h4>Why it works</h4>
+        <p>The height cost that made A arguable disappears. Money is reference data — you glance at it — which is exactly what chips are good at.</p>
+      </div>
+      <div>
+        <h4>Deliberate</h4>
+        <p>Only <em>Money</em> converts. Status and Shipment keep labelled badges, because those are read, not glanced at.</p>
+      </div>
+      <div class="tradeoff--cost">
+        <h4>Cost</h4>
+        <p>A chip is less legible than a label until learned, and it needs a legend. Accessibility rests on <code>title</code> plus the mobile card keeping full labels.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="option">
+    <div class="option__head">
+      <span class="option__tag">Option B</span>
+      <h3 class="option__title">Packed gets its own column</h3>
+    </div>
+    <p class="prose">
+      A narrow, sortable Packed column. Treats packing as its own workflow — the operator works a
+      pack queue, sorts by it, and clears it.
+    </p>
+
+    <div class="device">
+      <div class="device__bar">Orders — option B</div>
+      <div class="device__scroll">
+        <table class="rows">
+          <thead>
+            <tr><th>Order</th><th>Customer</th><th>Status</th><th class="is-new" style="position:static">Packed <span class="newmark">new</span></th><th>Shipment</th><th class="num">Money</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><span class="stack"><span class="oid">ol_order_4f2a…</span><span class="sub">3 items</span></span></td>
+              <td><span class="stack">Anna Kowalska<span class="sub">Warszawa, PL</span></span></td>
+              <td><span class="badge badge--info">Awaiting dispatch</span></td>
+              <td><span class="is-new"><span class="tick"><span class="tick__box">✓</span> Ewa · 09:40</span></span></td>
+              <td>
+                <span class="stack">
+                  <span class="badge badge--quiet">Not shipped</span>
+                  <span class="badge badge--warn">Ship by 14:00 <span class="mono">· 2h 41m</span></span>
+                  <span class="sub">InPost Paczkomat</span>
+                </span>
+              </td>
+              <td class="num"><span class="stack stack--end"><span class="total">249,00 zł</span><span class="badge badge--ok">Paid</span></span></td>
+            </tr>
+            <tr>
+              <td><span class="stack"><span class="oid">ol_order_88c1…</span><span class="sub">1 item</span></span></td>
+              <td><span class="stack">Marek Nowak<span class="sub">Kraków, PL</span></span></td>
+              <td><span class="badge badge--err">Sync failed</span></td>
+              <td><span class="is-new"><span class="tick tick--off"><span class="tick__box"></span> —</span></span></td>
+              <td>
+                <span class="stack">
+                  <span class="badge badge--quiet">Not shipped</span>
+                  <span class="badge badge--err">Overdue <span class="mono">· 5h 12m</span></span>
+                </span>
+              </td>
+              <td class="num"><span class="stack stack--end"><span class="total">89,90 zł</span><span class="badge badge--ok">Paid</span></span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="tradeoff">
+      <div>
+        <h4>Why it works</h4>
+        <p>Best density for a warehouse-led operator. Packed state is scannable down a single axis instead of hidden inside a stack.</p>
+      </div>
+      <div>
+        <h4>Deliberate</h4>
+        <p>Channel is dropped to buy the width — it is the least-consulted column once connections are named on the detail page.</p>
+      </div>
+      <div class="tradeoff--cost">
+        <h4>Cost</h4>
+        <p>A whole column for one boolean, on every screen including the many operators who never pack. A filter already does most of this.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="option">
+    <div class="option__head">
+      <span class="option__tag">Option C</span>
+      <h3 class="option__title">Add nothing to the row</h3>
+    </div>
+    <p class="prose">
+      Packed lives on the detail page and as a list <em>filter</em> only. A return shows as a small
+      marker against the order id. The row keeps exactly the density it has now.
+    </p>
+
+    <div class="device">
+      <div class="device__bar">Orders — option C</div>
+      <div class="device__scroll">
+        <table class="rows">
+          <thead>
+            <tr><th>Order</th><th>Customer</th><th>Channel</th><th>Status</th><th>Shipment</th><th class="num">Money</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>
+                <span class="stack">
+                  <span class="oid">ol_order_31d7… <span class="is-new"><span class="badge badge--warn" style="margin-left:4px">Return</span></span></span>
+                  <span class="sub">2 items · 2 units</span>
+                </span>
+              </td>
+              <td><span class="stack">Piotr Zieliński<span class="sub">Gdańsk, PL</span></span></td>
+              <td><span class="stack">Allegro<span class="sub">Main seller</span></span></td>
+              <td><span class="badge badge--ok">Synced</span></td>
+              <td>
+                <span class="stack">
+                  <span class="badge badge--ok">Delivered</span>
+                  <span class="sub">DPD · 0000123456</span>
+                </span>
+              </td>
+              <td class="num"><span class="stack stack--end"><span class="total">412,00 zł</span><span class="badge badge--ok">Paid</span></span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="tradeoff">
+      <div>
+        <h4>Why it works</h4>
+        <p>The null hypothesis, and this project has rewarded it repeatedly. Nothing is added to a row nobody has complained about.</p>
+      </div>
+      <div>
+        <h4>Deliberate</h4>
+        <p>Filter-only still delivers the pack queue — the operator selects “not packed” and works the result.</p>
+      </div>
+      <div class="tradeoff--cost">
+        <h4>Cost</h4>
+        <p>Packed state is invisible while scanning. A supervisor cannot see at a glance what the floor has done.</p>
+      </div>
+    </div>
+  </div>
+
+  <section class="prose">
+    <h2>Constraints any option must respect</h2>
+    <p class="kicker">Two are hard</p>
+    <ul class="tight">
+      <li>
+        <strong>The order-health partition cannot grow a bucket.</strong> Its five values must stay
+        exhaustive and mutually exclusive, because the KPI cards must sum to the total — an
+        invariant that exists to fix a real bug where orders fell into no bucket. So packed and
+        returns are <em>never</em> health values. They sit beside health, never inside it.
+      </li>
+      <li>
+        <strong>No frontend-only vocabulary.</strong> <code>deriveOrderHealth</code> is a deliberate
+        twin of SQL in the repository. A signal the backend cannot also compute can never become a
+        server-side sort or filter.
+      </li>
+      <li>
+        Badges carry text, not colour alone. Both new signals read without colour perception —
+        and a chip, which is colour plus one glyph, must therefore keep its label in the mobile card
+        and a <code>title</code> on desktop.
+      </li>
+      <li>
+        <strong>Keep a status pill inside ~17 characters.</strong> Borrowed, not derived: BaseLinker
+        reserves a 17-character “short name” for “space-limited areas like order tables”. It is
+        calibrated against a table doing this job at higher volume than ours.
+        <em>Awaiting dispatch</em> is exactly 17.
+      </li>
+    </ul>
+
+    <div class="note">
+      <p style="margin:0">
+        <strong>One thing I could not verify.</strong> The premise behind #2081 — that operators find
+        the multi-badge row confusing — is untested. Nobody has been asked. If they read it fine and
+        ignore what they do not need, <strong>Option C is correct</strong> and the rest of this page
+        is a solution to a problem that does not exist. That question is worth one conversation
+        before any of this is built.
+      </p>
+    </div>
+
+    <h2>Decision</h2>
+    <p class="kicker">Option A — recorded in the frontend style guide</p>
+    <p>
+      <strong>Option A</strong>, because it adds information rather than surface: ordering the Shipment
+      stack chronologically makes the column easier to read than it is today, before the new signal is
+      even counted. Returns land where exceptions already live.
+    </p>
+    <p>
+      <strong>The chip refinement is the recommended form.</strong> It removes A’s only real cost, and it
+      is a pattern proven at higher volume than ours rather than one invented here. If chips prove hard
+      to learn, the fallback is A unrefined plus demoting carrier to hover detail — carrier is
+      reference data, packed is a decision the operator acts on.
+    </p>
+    <p>
+      Option B becomes right the moment per-line packing ships, or if anyone wants to tick packed
+      <em>in the list</em> — that would be the first in-place mutation in this table, a new interaction
+      pattern, and its own decision. Both wait on the pack-station principal question.
+    </p>
+  </section>
+
+  <footer class="end">
+    Design deliverable for #2081 · unblocks #2072 (packed) and #2078 (returns) ·
+    row inventory from <span class="mono">orders-list-page.tsx</span> on <span class="mono">main</span> · market patterns from BaseLinker help-centre screenshots
+  </footer>
+
+</div>

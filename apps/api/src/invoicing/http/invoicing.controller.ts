@@ -1486,7 +1486,16 @@ export class InvoicingController {
         `No content snapshot is available for invoice ${invoiceId} (status ${record.status})`,
       );
     }
-    return IssuedDocumentContentDto.fromDomain(record.documentContent);
+    // #2076: `documentContent` and `issuedLineSnapshot` are separate columns
+    // from separate migrations, so a row issued between those deploys has
+    // content but no snapshot — and `issueCorrection` above then rebuilds the
+    // original document from the order's CURRENT state instead of indexing
+    // these lines. Report which it is, so a correction UI never lets an
+    // operator pick a position from an array the server will not index.
+    return IssuedDocumentContentDto.fromDomain(
+      record.documentContent,
+      record.issuedLineSnapshot != null,
+    );
   }
 
   @Get('invoices/:invoiceId/document')

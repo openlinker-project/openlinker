@@ -282,6 +282,54 @@ describe('OrderRecordRepository', () => {
       const callArg = ormRepository.save.mock.calls[0][0] as OrderRecordOrmEntity;
       expect(callArg.cancelledAt).toBeUndefined();
     });
+
+    it('should NOT include fulfillmentState in the entity passed to save() (#2101)', async () => {
+      // The ingestion path never carries a fulfillment rollup, so writing the
+      // column here reset a `'dispatched'` order to NULL on every re-poll.
+      // Leaving the property unset lets TypeORM omit the column from the
+      // generated UPDATE - updateFulfillmentState is the sole writer.
+      ormRepository.save.mockResolvedValue(createOrmEntity());
+
+      await repository.upsert(createDomainEntity());
+
+      const callArg = ormRepository.save.mock.calls[0][0] as OrderRecordOrmEntity;
+      expect(callArg.fulfillmentState).toBeUndefined();
+    });
+
+    it('should NOT write fulfillmentState even when the domain record carries one', async () => {
+      // Guards against a future caller reintroducing the clobber by passing a
+      // rollup value through the ingestion path.
+      const domainEntity = new OrderRecord(
+        'order-123',
+        null,
+        'conn-123',
+        null,
+        {},
+        [],
+        'ready',
+        new Date('2025-01-01T10:00:00Z'),
+        new Date('2025-01-01T10:00:00Z'),
+        [],
+        null,
+        'dispatched'
+      );
+      ormRepository.save.mockResolvedValue(createOrmEntity());
+
+      await repository.upsert(domainEntity);
+
+      const callArg = ormRepository.save.mock.calls[0][0] as OrderRecordOrmEntity;
+      expect(callArg.fulfillmentState).toBeUndefined();
+    });
+
+    it('should read fulfillmentState back via toDomain when present on the ORM row', async () => {
+      const savedEntity = createOrmEntity();
+      savedEntity.fulfillmentState = 'dispatched';
+      ormRepository.save.mockResolvedValue(savedEntity);
+
+      const result = await repository.upsert(createDomainEntity());
+
+      expect(result.fulfillmentState).toBe('dispatched');
+    });
   });
 
   describe('findMany', () => {

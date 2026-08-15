@@ -1,10 +1,10 @@
 <?php
 /**
- * Seed five real-data dev fixtures sourced from the Allegro public catalogue
+ * Seed six real-data dev fixtures sourced from the Allegro public catalogue
  * (#521), with CC0 cover images sourced from Wikimedia Commons (#544 —
  * provenance in `seed-images/LICENSES.md`).
  *
- * Idempotent: re-runs early-exit when ≥5 products with reference prefix `OL-`
+ * Idempotent: re-runs early-exit when ≥6 products with reference prefix `OL-`
  * are already present.
  *
  * Reference-prefix convention (documented for operators):
@@ -13,10 +13,11 @@
  *     during testing if you want it to survive `pnpm dev:stack:seed-prestashop`
  *     re-runs. Anything else is treated as upstream demo data and wiped.
  *
- * The five fixtures cover the variant × EAN-coverage matrix our codebase
+ * The six fixtures cover the variant × EAN-coverage matrix our codebase
  * actually exercises (simple+EAN, simple-no-EAN, variant-full-EAN,
- * variant-partial-EAN, variant-no-EAN). Names, EANs, Kod produktu, and
- * categories are real product data sourced from current Allegro listings.
+ * variant-partial-EAN, variant-no-EAN, simple+EAN+MPN). Names, EANs, Kod
+ * produktu, and categories are real product data sourced from current Allegro
+ * listings.
  * Descriptions are short paraphrases (we don't paste seller copy verbatim).
  *
  * Implementation note: bootstraps the legacy config + boots AdminKernel. The
