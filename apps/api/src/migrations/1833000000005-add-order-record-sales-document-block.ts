@@ -5,7 +5,10 @@
  * naming why OpenLinker issued no fiscal document for the order; `null` means
  * nothing is blocking it. It is INDEXED because it is a real filter axis — the
  * orders list ships an "Invoicing blocked" chip and a `salesDocumentBlocked`
- * count, both of which predicate on `IS NOT NULL`.
+ * count. Both predicate on membership in `SalesDocumentAttentionReasonValues`,
+ * NOT on `IS NOT NULL`: `trigger-model-manual` is `parseTriggerModel`'s default,
+ * so on a manual install every uninvoiced order carries a reason and an
+ * `IS NOT NULL` count would read "Invoicing blocked 4,312" on a healthy system.
  *
  * `salesDocumentUnresolvedReason` carries the routing reason that travelled
  * alongside a `'unresolved-routing'` block (ADR-041 §107) — today always

@@ -362,6 +362,7 @@ export class OrdersController {
       regulatoryStatus: record.regulatoryStatus,
       clearanceReference: record.clearanceReference,
       confirmationDocumentAvailable,
+      blocksIssuanceElsewhere: record.blocksIssuanceElsewhere,
     };
   }
 

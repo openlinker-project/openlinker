@@ -1060,6 +1060,31 @@ export function OrdersListPage(): ReactElement {
     });
   }
 
+  /**
+   * Clear BOTH attention axes in ONE write (#2100 review round 3).
+   *
+   * This exists because `setSearchParams` is not a queued reducer: React Router
+   * builds the next params from the params of the CURRENT render, so two calls in
+   * one handler both start from the same base and the second navigation simply
+   * supersedes the first. `toggleInvoicingBlocked(); setHealthFilter(null);` read
+   * as "clear both" and actually cleared `health` while re-applying
+   * `invoicing=blocked` — a button labelled "View all orders" that left a filter
+   * on, which is the exact defect it was written to fix.
+   *
+   * Both empty-state recovery buttons use this, including the `needs_attention`
+   * arm: it is evaluated FIRST, so an order set that is both unattended and
+   * invoicing-blocked lands there, not in the generic `health !== undefined` arm.
+   */
+  function clearAttentionFilters(): void {
+    setSearchParams((prev) => {
+      const p = new URLSearchParams(prev);
+      p.delete('health');
+      p.delete('invoicing');
+      p.delete('offset');
+      return p;
+    });
+  }
+
   function setOffset(next: number): void {
     setSearchParams((prev) => {
       const p = new URLSearchParams(prev);
@@ -1287,7 +1312,9 @@ export function OrdersListPage(): ReactElement {
             liveRegion="off"
             title="All clear — nothing needs your attention"
             message="No failed syncs or unmapped orders right now. New issues surface here the moment they happen."
-            action={<Button onClick={() => { setHealthFilter(null); }}>View all orders</Button>}
+            action={
+              <Button onClick={clearAttentionFilters}>View all orders</Button>
+            }
           />
         ) : health !== undefined ? (
           <EmptyState
@@ -1295,18 +1322,7 @@ export function OrdersListPage(): ReactElement {
             title="No orders in this view"
             message="No orders match the current filter."
             action={
-              <Button
-                onClick={() => {
-                  // Clears BOTH axes (#2100 review): with `health` and
-                  // `invoicing=blocked` set together this arm wins, and a button
-                  // labelled "View all orders" that left a filter applied would be
-                  // lying about what it does.
-                  if (invoicingBlocked) toggleInvoicingBlocked();
-                  setHealthFilter(null);
-                }}
-              >
-                View all orders
-              </Button>
+              <Button onClick={clearAttentionFilters}>View all orders</Button>
             }
           />
         ) : invoicingBlocked ? (
@@ -1315,14 +1331,14 @@ export function OrdersListPage(): ReactElement {
             branch above cannot see, so without this arm an active block filter
             fell through to "No order records have been synced yet", which is
             false whenever a filter is applied. The recovery button clears THIS
-            param (the other arms' `setHealthFilter(null)` does not touch it).
+            param; `clearAttentionFilters` clears both axes in one write.
           */
           <EmptyState
             liveRegion="off"
             title="Nothing is blocked from invoicing"
             message="No order is waiting on an invoicing decision right now."
             action={
-              <Button onClick={() => { toggleInvoicingBlocked(); }}>View all orders</Button>
+              <Button onClick={clearAttentionFilters}>View all orders</Button>
             }
           />
         ) : (

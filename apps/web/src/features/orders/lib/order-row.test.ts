@@ -94,6 +94,30 @@ describe('invoiceBadge', () => {
 });
 
 describe('invoicingBlockedBadge (#2100)', () => {
+  const invoice = (blocksIssuanceElsewhere?: boolean): ParsedOrderInvoice => ({
+    invoiceId: 'inv-1',
+    status: 'failed',
+    regulatoryStatus: 'not-applicable',
+    ...(blocksIssuanceElsewhere === undefined ? {} : { blocksIssuanceElsewhere }),
+  });
+
+  it('suppresses the badge when a document plausibly exists', () => {
+    expect(invoicingBlockedBadge('unresolved-routing', undefined, invoice(true))).toBeNull();
+  });
+
+  it('keeps the badge behind a terminal rejected failure', () => {
+    // The backend gate applies the identical predicate, so it PERSISTS a block
+    // here — and the aggregate count has no invoice awareness. Suppressing on the
+    // FE would leave a counted, filterable block that no surface explains.
+    expect(invoicingBlockedBadge('unresolved-routing', undefined, invoice(false))).toEqual(
+      expect.objectContaining({ label: 'Not routed' }),
+    );
+  });
+
+  it('treats a pre-#2100 snapshot without the field as superseding', () => {
+    expect(invoicingBlockedBadge('unresolved-routing', undefined, invoice())).toBeNull();
+  });
+
   it('returns null for an unblocked order', () => {
     expect(invoicingBlockedBadge(null)).toBeNull();
     expect(invoicingBlockedBadge(undefined)).toBeNull();

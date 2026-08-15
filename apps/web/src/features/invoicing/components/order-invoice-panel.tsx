@@ -263,11 +263,17 @@ export function OrderInvoicePanel({ order }: OrderInvoicePanelProps): ReactEleme
   // the toggle lives on the EDIT form, so link straight there. Deterministic:
   // candidates are id-sorted.
   const setPrimaryTarget = invoicingConnections[0] ?? null;
-  // #2100 — resolved once per render; `null` for an invoiced order or one with
-  // nothing blocking it.
-  const blockCopy = invoice
-    ? null
-    : resolveSalesDocumentBlockCopy(order, requiresConnectionPick, t);
+  // #2100 — resolved once per render; `null` when nothing is blocking, or when a
+  // document plausibly exists at the provider. `canRetryInvoice` IS that second
+  // test (`failed` + `rejected` ⇔ the domain's `!blocksIssuanceElsewhere`), so a
+  // rejected attempt still shows why auto-issue never ran, while an `in-doubt`
+  // failure — which may have produced a document — suppresses. Same rule as
+  // `invoiceSupersedesBlock` on the row and as the backend gate; they have to
+  // agree, or the aggregate counts blocks no surface can explain.
+  const blockCopy =
+    invoice && !canRetryInvoice(invoice)
+      ? null
+      : resolveSalesDocumentBlockCopy(order, requiresConnectionPick, t);
   // "Set a primary" follows the BACKEND's reason when it has one, so the button
   // appears for the state the gate actually recorded rather than for the state the
   // browser guessed.

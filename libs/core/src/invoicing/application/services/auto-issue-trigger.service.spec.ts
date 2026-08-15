@@ -16,6 +16,8 @@ import type { Connection } from '@openlinker/core/identifier-mapping';
 import type { ISyncJobsService } from '@openlinker/core/sync';
 import type { Order } from '@openlinker/core/orders';
 import type { IInvoiceService } from './invoice.service.interface';
+import { InvoiceRecord } from '../../domain/entities/invoice-record.entity';
+import type { InvoiceStatus, InvoiceFailureMode } from '../../domain/types/invoicing.types';
 
 function makeOrder(overrides: Partial<Order> = {}): Order {
   return {
@@ -592,9 +594,36 @@ describe('AutoIssueTriggerService', () => {
       expect(invoices.getLatestInvoiceForOrder).not.toHaveBeenCalled();
     });
 
+    // A REAL InvoiceRecord, so these exercise the domain's own
+    // `blocksIssuanceElsewhere` getter rather than a hand-stubbed boolean that
+    // could agree with a wrong implementation.
+    const record = (
+      status: InvoiceStatus,
+      failureMode: InvoiceFailureMode | null = null,
+    ): InvoiceRecord =>
+      new InvoiceRecord(
+        'inv-1',
+        'conn-1',
+        'order-1',
+        'infakt',
+        'invoice',
+        status,
+        null,
+        null,
+        'not-applicable',
+        null,
+        null,
+        null,
+        null,
+        null,
+        new Date('2026-08-01T10:00:00Z'),
+        new Date('2026-08-01T10:00:00Z'),
+        failureMode,
+      );
+
     it('should SUPPRESS a block when the order already carries a document', async () => {
       connectionPort.list.mockResolvedValue([makeConnection('manual')]);
-      invoices.getLatestInvoiceForOrder.mockResolvedValue({ id: 'inv-1' } as never);
+      invoices.getLatestInvoiceForOrder.mockResolvedValue(record('issued'));
 
       const outcome = await service.onOrderTransition(
         makeOrder({ paymentStatus: 'paid' }),
@@ -610,10 +639,7 @@ describe('AutoIssueTriggerService', () => {
 
     it('should suppress on an in-flight record, not only an issued one', async () => {
       connectionPort.list.mockResolvedValue([makeConnection('manual')]);
-      invoices.getLatestInvoiceForOrder.mockResolvedValue({
-        id: 'inv-1',
-        status: 'pending',
-      } as never);
+      invoices.getLatestInvoiceForOrder.mockResolvedValue(record('pending'));
 
       const outcome = await service.onOrderTransition(
         makeOrder({ paymentStatus: 'paid' }),
@@ -625,28 +651,45 @@ describe('AutoIssueTriggerService', () => {
       expect(outcome).toEqual({ kind: 'none' });
     });
 
-    it('should NOT suppress on a terminal failed record — the config problem is still real', async () => {
+    it('should NOT suppress on a terminal REJECTED failure — the config problem is still real', async () => {
       connectionPort.list.mockResolvedValue([
         makeConnection('auto-on-paid', { id: 'conn-a' }),
         makeConnection('auto-on-paid', { id: 'conn-b' }),
       ]);
-      invoices.getLatestInvoiceForOrder.mockResolvedValue({
-        id: 'inv-1',
-        status: 'failed',
-      } as never);
+      invoices.getLatestInvoiceForOrder.mockResolvedValue(record('failed', 'rejected'));
 
       const outcome = await service.onOrderTransition(
         makeOrder({ paymentStatus: 'paid' }),
         'src-1',
       );
 
-      // Clearing here would strip the routing block from an order whose only
-      // remaining signal is a failed invoice — which says nothing about the
-      // missing primary that caused it.
+      // The provider is known to have created nothing, so clearing here would
+      // strip the routing block from an order whose only remaining signal is a
+      // failure that says nothing about the missing primary that caused it.
       expect(outcome).toMatchObject({
         kind: 'blocked',
         block: { unresolvedReason: 'ambiguous-connection-no-primary' },
       });
+    });
+
+    it('should SUPPRESS on an in-doubt failure — a document may exist at the provider', async () => {
+      connectionPort.list.mockResolvedValue([
+        makeConnection('auto-on-paid', { id: 'conn-a' }),
+        makeConnection('auto-on-paid', { id: 'conn-b' }),
+      ]);
+      invoices.getLatestInvoiceForOrder.mockResolvedValue(record('failed', 'in-doubt'));
+
+      const outcome = await service.onOrderTransition(
+        makeOrder({ paymentStatus: 'paid' }),
+        'src-1',
+      );
+
+      // The fiscally dangerous direction: `failed` alone does NOT mean "nothing was
+      // issued". An `in-doubt` failure means we do not know whether the provider
+      // created a document, so recording "no fiscal document was issued" against it
+      // is a claim OL cannot support. This is why the check delegates to
+      // `blocksIssuanceElsewhere` instead of testing `status !== 'failed'`.
+      expect(outcome).toEqual({ kind: 'none' });
     });
 
     it('should report `indeterminate` when the document read fails — never a clear', async () => {

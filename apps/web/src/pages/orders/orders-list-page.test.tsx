@@ -1145,6 +1145,44 @@ describe('OrdersListPage', () => {
       expect(screen.queryByText(/No order records have been synced yet/i)).toBeNull();
     });
 
+    it('should clear BOTH filters from the empty-state recovery button', async () => {
+      const list = vi.fn().mockResolvedValue(paginated([]));
+      const statusSummary = vi.fn().mockResolvedValue({
+        total: 0,
+        sourceDeleted: 0,
+        awaitingMapping: 0,
+        needsAttention: 0,
+        synced: 0,
+        awaitingDispatch: 0,
+        salesDocumentBlocked: 0,
+      });
+      const mockApi = createMockApiClient({ orders: { list, statusSummary } });
+
+      // `needs_attention` is tested FIRST, so an order set that is both unattended
+      // and invoicing-blocked lands in the "All clear" arm — the one whose button
+      // used to touch only `health`.
+      renderWithProviders(<OrdersListPage />, {
+        apiClient: mockApi,
+        route: '/orders?health=needs_attention&invoicing=blocked',
+      });
+
+      const recover = await screen.findByRole('button', { name: 'View all orders' });
+      const before = list.mock.calls.length;
+      await userEvent.setup().click(recover);
+
+      await vi.waitFor(() => {
+        expect(list.mock.calls.length).toBeGreaterThan(before);
+      });
+
+      // Regression guard: `setSearchParams` is NOT a queued reducer, so two calls
+      // in one handler both build from the current render's params and the second
+      // supersedes the first. Clearing `health` and `invoicing` separately left
+      // `invoicing=blocked` applied behind a button that says "View all orders".
+      const [filters] = list.mock.calls[list.mock.calls.length - 1];
+      expect(filters.salesDocumentBlocked).toBeUndefined();
+      expect(filters.health).toBeUndefined();
+    });
+
     it('should hide the chip when nothing is blocked', async () => {
       const statusSummary = vi.fn().mockResolvedValue({
         total: 1,

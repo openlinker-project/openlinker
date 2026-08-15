@@ -179,14 +179,23 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
    * count wrong, filtered rows render with no badge, and the order-detail
    * timeline claim "No invoice issued" directly under the issued invoice.
    *
-   * A `pending` / `issuing` / `issued` record suppresses: issuance has happened or
-   * is under way and is visible on its own terms, so re-labelling the order
-   * "blocked" adds nothing. A terminal `failed` record does NOT suppress (#2100
-   * review round 2) — the configuration problem is still real, and clearing on it
-   * would strip the routing block from an order whose only remaining signal is a
-   * failed invoice that says nothing about the missing primary. That is the one
-   * place this deliberately keeps a block the FE row happens to hide behind the
-   * more urgent "Failed" invoice badge; the count and the panel still carry it.
+   * The suppression predicate is the domain's own `blocksIssuanceElsewhere`
+   * (#2100 review round 3), NOT a hand-rolled status test. It is already the
+   * codebase's canonical answer to "does a document plausibly exist for this
+   * order" (`InvoiceService`, `OrderAlreadyInvoicedException`, the issue lock),
+   * and it gets the arm a status test gets wrong: an `in-doubt` failure means we
+   * do NOT know whether the provider created a document, so persisting "no fiscal
+   * document was issued" against it is the fiscally dangerous direction. Only a
+   * terminal `rejected` failure — the provider is known to have created nothing —
+   * leaves the block standing, because there the configuration problem is still
+   * real and clearing it would strip the routing reason from an order whose only
+   * remaining signal is a failure that says nothing about the missing primary.
+   *
+   * `invoicingBlockedBadge` and `resolveSalesDocumentBlockCopy` mirror this rule
+   * on the FE, so the reasons the aggregate counts are exactly the reasons a row,
+   * a panel and a timeline can explain. They must move together: a block that is
+   * counted but suppressed on every surface is a number with no reachable
+   * explanation, which is the same silent decline §54 forbids.
    *
    * A read failure yields `indeterminate` rather than a block: with the answer
    * unknown, leaving the persisted value untouched is the only option that can
@@ -198,7 +207,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
   ): Promise<SalesDocumentBlockOutcome> {
     try {
       const existing = await this.invoices.getLatestInvoiceForOrder(orderId);
-      if (existing !== null && existing.status !== 'failed') {
+      if (existing !== null && existing.blocksIssuanceElsewhere) {
         return { kind: 'none' };
       }
     } catch (error) {

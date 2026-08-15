@@ -590,6 +590,10 @@ describe('OrdersController', () => {
         regulatoryStatus: 'accepted',
         clearanceReference: '5265877635-20250826-0100001AF629-AF',
         confirmationDocumentAvailable: true,
+        // #2100 — the domain's own `blocksIssuanceElsewhere`, projected verbatim so
+        // the FE suppresses a sales-document block on exactly the records the
+        // backend gate refuses to write one for.
+        blocksIssuanceElsewhere: true,
       });
     });
 

@@ -143,16 +143,12 @@ export const SalesDocumentAttentionReasonValues = SalesDocumentGateBlockReasonVa
   (reason) => reason !== 'trigger-model-manual',
 );
 
-// A consumer builds a SQL `IN (…)` list from this array at class-definition time,
-// and `IN ()` is a Postgres syntax error — so an empty set would surface as every
-// order query throwing at runtime rather than as a failing build. Derived by
-// `.filter()`, so a future narrowing of the union could reach that state; assert it
-// here, where the invariant belongs.
-if (SalesDocumentAttentionReasonValues.length === 0) {
-  throw new Error(
-    'SalesDocumentAttentionReasonValues must not be empty: consumers build a SQL IN-list from it.',
-  );
-}
+// Emptiness matters here — a consumer builds a SQL `IN (…)` list from this array
+// at class-definition time and `IN ()` is a Postgres syntax error — but the guard
+// belongs in the spec, not in this file: `sales-document-reason.types.spec.ts`
+// pins the array to its exact expected members, which is strictly stronger than a
+// non-empty check and costs nothing at runtime. This module's whole value is
+// being an inert, dependency-free leaf, so it carries no top-level side effect.
 
 /** Narrow an untrusted string (a persisted column, a query param) to the union. */
 export function isSalesDocumentGateBlockReason(
