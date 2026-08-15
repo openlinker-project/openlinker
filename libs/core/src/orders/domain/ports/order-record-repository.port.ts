@@ -44,13 +44,14 @@ export interface OrderRecordRepositoryPort {
    * Upsert order record (create or update)
    * Uses internalOrderId as the primary key.
    *
-   * Writes only the columns the ingestion path owns. The two columns written
-   * out-of-band by a narrow, atomic UPDATE - `fulfillmentState` (#2101,
+   * Writes only the columns the ingestion path owns. The columns written
+   * out-of-band by a narrow, atomic UPDATE - `syncStatus` / `syncAttempts`
+   * (#2140, {@link updateSyncStatus}), `fulfillmentState` (#2101,
    * {@link updateFulfillmentState}) and `cancelledAt` (#1984,
    * {@link markCancelled}) - are NOT part of the write set, so a re-ingestion
    * of the same order cannot reset them. The returned record therefore reports
-   * both as `null` whatever the row holds; re-read via {@link findById} when
-   * their live value matters.
+   * all four as empty (`[]` / `null`) whatever the row holds; re-read via
+   * {@link findById} when their live value matters.
    */
   upsert(orderRecord: OrderRecord): Promise<OrderRecord>;
 
@@ -63,6 +64,9 @@ export interface OrderRecordRepositoryPort {
    *      per-destination cap of most-recent entries.
    *
    * Throws `OrderRecordNotFoundException` if no row matches `internalOrderId`.
+   *
+   * Sole writer of both columns - {@link upsert} deliberately omits them
+   * (#2140), so nothing else can reset the attempt history it appends to.
    */
   updateSyncStatus(
     internalOrderId: string,

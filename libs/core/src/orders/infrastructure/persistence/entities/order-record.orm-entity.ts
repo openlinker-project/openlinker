@@ -60,9 +60,15 @@ export class OrderRecordOrmEntity {
 
   /**
    * Sync status per destination (JSONB array)
-   * Tracks sync state for each destination connection
+   * Tracks sync state for each destination connection.
+   *
+   * The `default` mirrors the `NOT NULL DEFAULT '[]'` the creating migration
+   * already put on the column. It was missing here, so the reliance on that DB
+   * default was incidental rather than declared once the upsert stopped writing
+   * the column (#2140) - and metadata that omits a default reads as schema drift
+   * to `migration:generate`.
    */
-  @Column({ type: 'jsonb' })
+  @Column({ type: 'jsonb', default: () => "'[]'" })
   syncStatus!: OrderSyncStatusJson[];
 
   /**

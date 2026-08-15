@@ -636,11 +636,12 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
   /**
    * Full-row upsert of the ingestion-owned columns, keyed on the primary key.
    *
-   * `fulfillmentState` (#2101) and `cancelledAt` (#1984) are deliberately
-   * outside the write set - see the {@link toOrm} comments. A consequence is
-   * that the returned record reports both as `null` regardless of what the row
-   * holds, because neither column was part of the statement; callers needing
-   * their true value re-read via {@link findById}.
+   * `syncStatus` / `syncAttempts` (#2140), `fulfillmentState` (#2101) and
+   * `cancelledAt` (#1984) are deliberately outside the write set - see the
+   * {@link toOrm} comments. A consequence is that the returned record reports
+   * all four as empty (`[]` / `null`) regardless of what the row holds, because
+   * none of those columns was part of the statement; callers needing their true
+   * value re-read via {@link findById}.
    */
   async upsert(orderRecord: OrderRecord): Promise<OrderRecord> {
     const entity = this.toOrm(orderRecord);
@@ -741,7 +742,11 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    * Convert ORM entity to domain entity
    */
   private toDomain(entity: OrderRecordOrmEntity): OrderRecord {
-    const syncStatus: OrderSyncStatus[] = entity.syncStatus.map((s) => ({
+    // `?? []` because {@link upsert} feeds this the entity it handed `save()`,
+    // whose `syncStatus` property is unset by design (#2140) - undefined on the
+    // update path, where TypeORM has no RETURNING clause to fill it back in.
+    // A row read from the database always carries the column (NOT NULL).
+    const syncStatus: OrderSyncStatus[] = (entity.syncStatus ?? []).map((s) => ({
       destinationConnectionId: s.destinationConnectionId,
       status: s.status,
       syncedAt: s.syncedAt ? new Date(s.syncedAt) : undefined,
@@ -787,22 +792,25 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     entity.sourceConnectionId = orderRecord.sourceConnectionId;
     entity.sourceEventId = orderRecord.sourceEventId;
     entity.orderSnapshot = orderRecord.orderSnapshot;
-    entity.syncStatus = orderRecord.syncStatus.map((s) => ({
-      destinationConnectionId: s.destinationConnectionId,
-      status: s.status,
-      syncedAt: s.syncedAt?.toISOString(),
-      externalOrderId: s.externalOrderId,
-      externalOrderNumber: s.externalOrderNumber,
-      error: s.error,
-    }));
-    entity.syncAttempts = orderRecord.syncAttempts.map((a) => ({
-      destinationConnectionId: a.destinationConnectionId,
-      status: a.status,
-      attemptedAt: a.attemptedAt.toISOString(),
-      error: a.error,
-      externalOrderId: a.externalOrderId,
-      externalOrderNumber: a.externalOrderNumber,
-    }));
+    // syncStatus and syncAttempts are deliberately NOT mapped here (#2140), for
+    // the same reason as fulfillmentState and cancelledAt below: both are
+    // OL-owned destination state, never carried by any source payload, and
+    // {@link updateSyncStatus} - a single atomic per-destination UPDATE - is
+    // their sole writer. Mapping them made every re-ingestion (a poll re-read, a
+    // webhook-triggered sync, a manual re-sync) write the ingestion path's
+    // in-memory `[]` over what that writer had already committed. For
+    // `syncAttempts` that is irreversible loss: the JSONB array *is* the store,
+    // so an operator retry (append `failed`, re-ingest, append `synced`) erased
+    // the failed -> retried -> synced narrative the activity timeline renders.
+    // For `syncStatus` it blinded every reader of the per-destination rows for
+    // the seconds-to-minutes the destination order-create calls take - the retry
+    // action 404s and fulfillment tracking skips the order - and it is permanent
+    // whenever the writeback never runs (no destination resolves, a destination
+    // dropped out of the fan-out, a throw or a process death in between).
+    // Carrying the values forward with a read-before-write would still lose an
+    // append that commits between that read and this save; omitting the columns
+    // is race-free. Both are `NOT NULL DEFAULT '[]'` in Postgres, so an insert
+    // that omits them resolves to an empty array rather than failing.
     entity.recordStatus = orderRecord.recordStatus;
     entity.mappingFailureReason = orderRecord.mappingFailureReason;
     entity.dispatchByAt = orderRecord.dispatchByAt;
