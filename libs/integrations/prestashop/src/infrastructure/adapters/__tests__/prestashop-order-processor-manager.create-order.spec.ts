@@ -784,6 +784,10 @@ describe('PrestashopOrderProcessorManagerAdapter — createOrder', () => {
         // resolver's own guards were never reached.
         expect(mockCurrencyResolver.resolveCurrencyId).not.toHaveBeenCalled();
         expect(mockOpenLinkerModuleClient.importOrder).not.toHaveBeenCalled();
+        // The guard is pure, so it sits ahead of guest-customer provisioning
+        // (Step 1) and address provisioning (Step 3) - both of which create
+        // real PrestaShop rows. A refusal must leave nothing behind.
+        expect(mockHttpClient.createResource).not.toHaveBeenCalled();
       });
 
       it('refuses a whitespace-only currency the same way', async () => {

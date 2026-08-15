@@ -20,6 +20,15 @@
  *     id is unusable. Same reasoning as above - nothing about the order or the
  *     shop changes between attempts, so the answer is identical every time.
  *
+ * Neither class reaches this classifier on the shipped ORDER-CREATE path today,
+ * so the "attempts" above describe what retrying would cost, not what currently
+ * happens: `OrderSyncService` reduces a per-destination `createOrder` rejection
+ * to its message under `Promise.allSettled`, and `OrderIngestionService` records
+ * that message without rethrowing - the job succeeds and the runner never asks.
+ * Both registrations are kept because the classification is correct by
+ * construction and is already right for the day the failure does propagate; the
+ * value they carry unconditionally is on the message, not on the retry count.
+ *
  * Retryable, deliberately left out (return `false`):
  *   - `PrestashopApiException` — a failed CALL, including the transport failure
  *     of the very same tax-rate or `GET /currencies` read (5xx / timeout /

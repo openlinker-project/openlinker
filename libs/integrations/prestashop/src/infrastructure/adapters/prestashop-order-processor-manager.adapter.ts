@@ -147,6 +147,37 @@ export class PrestashopOrderProcessorManagerAdapter
 
     this.logger.debug(`order: ${JSON.stringify(order)}`);
 
+    // Step 0: Refuse an order that carries no currency, before ANY PrestaShop
+    // write (#2139).
+    //
+    // This used to read `order.totals.currency || 'EUR'`, while the snapshot
+    // path defaults the field to `''` (`order-from-ready-snapshot.ts`) - so an
+    // order that carried no currency asked the shop for EUR, and on a shop
+    // where EUR is active that resolved to a real-but-wrong id without ever
+    // reaching the resolver's own guards. The line amounts pinned downstream
+    // are the buyer-paid source numerals (#895 / ADR-014), so the order would
+    // be booked with the right numbers under the wrong denomination.
+    //
+    // The check is pure - it reads only fields this method already holds on
+    // entry - so it sits ahead of guest-customer provisioning (Step 1) and
+    // address provisioning (Step 3). Both create real PrestaShop rows, and a
+    // refusal must not leave any behind. The resolver-side refusal cannot be
+    // hoisted the same way: it needs the shop read, so it stays at Step 4.
+    //
+    // `?? ''` before `.trim()` is defensive against untyped snapshot JSON;
+    // `OrderTotals.currency` is a required `string` and the real-world value
+    // is `''`, not `undefined`.
+    const currencyCode = (order.totals.currency ?? '').trim();
+    if (currencyCode === '') {
+      throw new PrestashopCurrencyUnknownException(
+        `Order ${order.orderNumber || '(no reference)'}: no currency - the source ` +
+          `order carries no ISO 4217 code, so its PrestaShop currency cannot be ` +
+          `resolved. No order was created.`,
+        undefined,
+        this.connection.id
+      );
+    }
+
     // Cart-scoped `specific_prices` rows created to pin line prices (#895).
     // Declared outside the try so the success path and the catch can both
     // best-effort clean them up. They're transient (the price is materialised
@@ -312,26 +343,9 @@ export class PrestashopOrderProcessorManagerAdapter
         this.logger.debug(`Resolved billing address ID: ${externalBillingAddressId}`);
       }
 
-      // Step 4: Resolve currency ID.
-      //
-      // A missing currency is refused, never substituted (#2139). This used to
-      // read `order.totals.currency || 'EUR'`, while the snapshot path defaults
-      // the field to `''` (`order-from-ready-snapshot.ts`) - so an order that
-      // carried no currency asked the shop for EUR, and on a shop where EUR is
-      // active that resolved to a real-but-wrong id without ever reaching the
-      // resolver's own guards. The line amounts pinned downstream are the
-      // buyer-paid source numerals (#895 / ADR-014), so the order would be
-      // booked with the right numbers under the wrong denomination.
-      const currencyCode = order.totals.currency?.trim() ?? '';
-      if (currencyCode === '') {
-        throw new PrestashopCurrencyUnknownException(
-          `Order ${order.orderNumber || '(no reference)'}: no currency - the source ` +
-            `order carries no ISO 4217 code, so its PrestaShop currency cannot be ` +
-            `resolved. No order was created.`,
-          undefined,
-          this.connection.id
-        );
-      }
+      // Step 4: Resolve the currency ID. `currencyCode` is non-empty by the
+      // Step 0 guard above; an ISO the shop does not carry, or a row with an
+      // unusable id, is refused by the resolver itself (#2139).
       const externalCurrencyId = await this.currencyResolver.resolveCurrencyId(
         currencyCode,
         this.connection.id,
@@ -559,10 +573,15 @@ export class PrestashopOrderProcessorManagerAdapter
         // characters and push the product identity out of every truncated
         // surface that renders it (#2052 — see `taxRateUnknownError`).
         error instanceof PrestashopTaxRateUnknownException ||
-        // Same contract for the currency refusal (#2139): wrapping would both
-        // bury the operator-facing message and hide the class the retry
-        // classifier keys on, turning a non-retryable configuration gap back
-        // into five retryable attempts.
+        // Same contract for the currency refusal (#2139). What it buys today is
+        // the operator-facing message: wrapping prepends 35 characters and
+        // pushes the currency identity out of the truncated surfaces. It also
+        // preserves the class the retry classifier keys on - which the shipped
+        // caller chain does not currently consult, since `OrderSyncService`
+        // reduces a per-destination create rejection to its message under
+        // `Promise.allSettled` and `OrderIngestionService` records it without
+        // rethrowing, so the job succeeds and is never retried. Preserved for
+        // correctness, and for the day the failure does reach the retry path.
         error instanceof PrestashopCurrencyUnknownException
       ) {
         throw error;

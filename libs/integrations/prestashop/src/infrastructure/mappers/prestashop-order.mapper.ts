@@ -20,6 +20,7 @@ import type {
 import type { Order, OrderItem, OrderTotals } from '@openlinker/core/orders';
 import type { OrderCreate, OrderStatus } from '@openlinker/core/orders';
 import { PrestashopProvisioningException } from '@openlinker/integrations-prestashop';
+import { PrestashopCurrencyUnknownException } from '../../domain/exceptions/prestashop-currency-unknown.exception';
 import { PrestashopParseException } from '../../domain/exceptions/prestashop-parse.exception';
 import { Logger } from '@openlinker/shared/logging';
 import { toPrestashopProductAttributeId } from './prestashop-variant-id';
@@ -29,7 +30,13 @@ import { toPrestashopProductAttributeId } from './prestashop-variant-id';
  * single source of truth. Future enhancement: move to connection config so
  * per-store overrides don't require a code change.
  */
-const DEFAULT_CURRENCY_ID = 1; // EUR
+// No DEFAULT_CURRENCY_ID (#2139). Currency is the one field here that must not
+// have a default: id 1 is not EUR and not the shop default (currency ids are
+// auto-increment and localization-pack dependent), and line amounts are the
+// buyer-paid source numerals (#895 / ADR-014), so substituting an id books the
+// order with the right numbers under the wrong denomination. The caller
+// resolves the id or refuses (`PrestashopCurrencyResolver`); an absent id is
+// refused here too rather than filled in.
 const DEFAULT_LANGUAGE_ID = 1; // First language
 const DEFAULT_CARRIER_ID = 1; // First carrier
 
@@ -246,11 +253,25 @@ export class PrestashopOrderMapper implements IPrestashopOrderMapper {
       };
     });
 
+    // The cart's `id_currency` is the live write the #2139 refusal protects:
+    // `importorder` builds the PrestaShop context from `$cart->id_currency`,
+    // and the cart-scoped `specific_prices` rows are keyed to the same id.
+    // Unreachable today (the adapter's Step 0 guard guarantees a non-empty code
+    // and the resolver returns a positive integer or throws), so this is
+    // defence-in-depth - but it raises the same non-retryable class as every
+    // other currency refusal on this path, since no retry can supply the id.
+    if (externalCurrencyId === undefined || externalCurrencyId === '') {
+      throw new PrestashopCurrencyUnknownException(
+        'No PrestaShop currency id was resolved for this order, so its cart cannot ' +
+          'be denominated. No cart was created.'
+      );
+    }
+
     // Build PrestaShop cart structure. id_carrier is set here because PS
     // resolves the order's carrier from the cart (#503).
     const prestashopCart: Record<string, unknown> = {
       id_customer: externalCustomerId,
-      id_currency: externalCurrencyId || DEFAULT_CURRENCY_ID,
+      id_currency: externalCurrencyId,
       id_lang: externalLangId || DEFAULT_LANGUAGE_ID,
       id_carrier: externalCarrierId ?? DEFAULT_CARRIER_ID,
       associations: {

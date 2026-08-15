@@ -17,8 +17,11 @@
  * read SUCCEEDED and reported data the order cannot be denominated with, so a
  * retry re-reads the same record. `PrestashopRetryClassifierAdapter` classifies
  * this class as non-retryable for exactly that reason - a transport failure of
- * the same `GET /currencies` read stays a `PrestashopApiException` and keeps its
- * retries. The class IS the retry decision; the two must never be conflated.
+ * the same `GET /currencies` read stays a `PrestashopApiException`. The class IS
+ * the retry decision; the two must never be conflated. (On the order-create path
+ * as shipped, neither reaches the runner - see the note in
+ * `PrestashopRetryClassifierAdapter` - so the split is correct-by-construction
+ * rather than currently load-bearing.)
  *
  * `message` is operator-facing interface copy, not a log line: `OrderSyncService`
  * stores it verbatim in `syncStatus[].error` and the frontend renders that string

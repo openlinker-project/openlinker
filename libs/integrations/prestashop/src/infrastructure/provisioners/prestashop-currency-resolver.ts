@@ -78,6 +78,11 @@ export class PrestashopCurrencyResolver {
     // Normalize ISO code (uppercase, trim)
     const normalizedIso = isoCode.trim().toUpperCase();
 
+    // Defence in depth: the sole production caller
+    // (`PrestashopOrderProcessorManagerAdapter.createOrder`, Step 0) already
+    // refuses an empty currency before it reaches here, and its message - the
+    // one an operator actually sees - leads with the order reference rather
+    // than with this one. Kept so a future caller cannot reintroduce the gap.
     if (normalizedIso === '') {
       throw new PrestashopCurrencyUnknownException(
         'Currency missing - the order carries no ISO 4217 currency code, so no ' +
@@ -126,7 +131,11 @@ export class PrestashopCurrencyResolver {
     // Extract currency ID from the matched row
     const currencyId = Number.parseInt(currency.id, 10);
 
-    if (Number.isNaN(currencyId)) {
+    // Not just `NaN`: `Number.parseInt('0', 10)` is `0` and
+    // `Number.parseInt('12abc', 10)` is `12`, neither of which addresses a
+    // PrestaShop currency row. A `0` in particular used to survive every guard
+    // and then get rewritten to `1` by the mapper's `||` fallback (#2139).
+    if (!Number.isInteger(currencyId) || currencyId <= 0) {
       this.logger.error(
         `Invalid currency ID returned from PrestaShop: ${currency.id} for ISO: ${normalizedIso} (connection: ${connectionId})`
       );

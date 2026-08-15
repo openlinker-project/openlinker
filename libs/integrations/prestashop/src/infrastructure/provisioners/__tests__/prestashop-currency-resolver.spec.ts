@@ -138,6 +138,20 @@ describe('PrestashopCurrencyResolver', () => {
       );
     });
 
+    // `Number.parseInt` is not a validity check: '0' parses to 0 and '12abc'
+    // parses to 12. A 0 in particular used to clear the old NaN-only guard and
+    // then be rewritten to 1 by the order mapper's `||` fallback (#2139).
+    it.each([['0'], ['-1'], ['0.4']])(
+      'should refuse a currency id that parses to a non-positive number (%s)',
+      async (rawId) => {
+        client.listResources.mockResolvedValue([{ id: rawId, iso_code: 'EUR' }]);
+
+        await expect(resolver.resolveCurrencyId('EUR', 'conn-1', client)).rejects.toThrow(
+          PrestashopCurrencyUnknownException
+        );
+      }
+    );
+
     it('should refuse an empty ISO code without querying the shop', async () => {
       await expect(resolver.resolveCurrencyId('   ', 'conn-1', client)).rejects.toThrow(
         PrestashopCurrencyUnknownException
