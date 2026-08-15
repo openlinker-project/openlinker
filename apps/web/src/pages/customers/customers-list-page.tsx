@@ -3,12 +3,18 @@
  *
  * #2093 (epic #2086) — the list leads with a person instead of an identifier:
  *   - `Customer` is now the FIRST column: first + last name, falling back to the
- *     email hash on a deployment running `OL_STORE_PII=false`, where the API
- *     returns no name at all.
+ *     email hash when the projection carries no name.
+ *
+ *     A nameless row is NOT evidence of `OL_STORE_PII=false`. Identity
+ *     resolution creates every projection with `firstName`/`lastName` null
+ *     (`customer-identity-resolver.service.ts`), and the names are backfilled
+ *     later, only if an order for that customer carries a shipping or billing
+ *     name (`order-customer-projection-updater.service.ts`). So a nameless row
+ *     is routine on a fully PII-enabled deployment too, and the fallback's
+ *     qualifier states the row-level fact ("No name recorded") rather than
+ *     asserting a deployment setting the row cannot observe.
  *   - The standalone `Email Hash` column is gone — deliberately. The hash is the
- *     name's fallback here and stays in full on the customer detail page; a
- *     whole column for it was only ever meaningful on the PII-disabled
- *     deployment.
+ *     name's fallback here and stays in full on the customer detail page.
  *   - `Customer ID` renders a `CopyableId` with the SHORTENED id (Copy still
  *     writes the full one).
  *   - `Last Source` printed a bare connection UUID because the page held no
@@ -44,9 +50,24 @@ import type { CustomerFilters, CustomerProjection } from '../../features/custome
 const PAGE_SIZE = 20;
 const SEARCH_DEBOUNCE_MS = 300;
 
+/**
+ * Row-level fact, never a deployment claim: a projection is born nameless and is
+ * only backfilled once an order carries a shipping/billing name, so this is the
+ * common case on a fully PII-enabled deployment (see the file header).
+ */
+const NAMELESS_LABEL = 'No name recorded';
+
+/**
+ * Sort key for a nameless row. Sorting by the rendered label is right, but the
+ * label is then a hash, which scatters nameless rows randomly through the name
+ * ordering. A sentinel above every ordinary character clusters them at one end
+ * deterministically (last ascending, first descending).
+ */
+const NAMELESS_SORT_KEY = '\uFFFF';
+
 interface CustomerIdentity {
   label: string;
-  /** True when the deployment stores no PII and the label is the email hash. */
+  /** True when the projection carries no name and the label is the email hash. */
   isHashFallback: boolean;
 }
 
@@ -100,22 +121,48 @@ export function CustomersListPage(): ReactElement {
   const columns: DataTableColumn<CustomerProjection>[] = useMemo(
     () => [
       {
-        id: 'customer',
+        // `name` unchanged since before #2093: `useTableSort` round-trips the
+        // column id through `?sort=`, and an id nothing derives from the header
+        // is pure churn — a bookmarked `?sort=name:asc` would resolve to no
+        // column and sort by NOTHING, not by the default.
+        id: 'name',
         header: 'Customer',
         cell: (c): ReactNode => {
           const { label, isHashFallback } = customerIdentity(c);
-          // A hash alone in a column headed "Customer" reads as a bug rather
-          // than as a deployment setting, so the fallback says why it is there.
+          // A hash alone in a column headed "Customer" reads as a bug, so the
+          // fallback states the row-level fact that no name was recorded.
           return isHashFallback ? (
             <span className="customer-identity">
-              <span className="mono-text">{label}</span>
-              <span className="text-muted customer-identity__note">Name not stored</span>
+              {/* `aria-hidden` + `title`, not `CopyableId`: this cell IS the row
+                  link (`DataTable` linkifies the first cell whenever `rowHref`
+                  is set), so its text content is the link's accessible name and
+                  a 64-character SHA-256 hex would be spelled out character by
+                  character — the same reason the Copy button two columns right
+                  says the generic "customer ID". A `CopyableId` here would nest
+                  a <button> inside that anchor, which `docs/lessons.md` bans.
+                  `title` keeps the full hash reachable for a sighted operator:
+                  it is the server-side search key (`emailHash ILIKE`, which
+                  this page's own search box accepts), the cell truncates it
+                  with an ellipsis, and drag-selecting inside the row anchor
+                  starts a link drag rather than a text selection. */}
+              <span className="mono-text" title={label} aria-hidden="true">
+                {label}
+              </span>
+              {/* Names the link for a screen reader; the visible qualifier below
+                  supplies the rest of the accessible name. */}
+              <span className="sr-only">Customer, </span>
+              <span className="text-muted customer-identity__note">{NAMELESS_LABEL}</span>
             </span>
           ) : (
             <span>{label}</span>
           );
         },
-        accessor: (c) => customerIdentity(c).label,
+        // Sort by what the column renders — but a nameless row renders a hash,
+        // which would scatter those rows through the alphabet at random.
+        accessor: (c): string => {
+          const { label, isHashFallback } = customerIdentity(c);
+          return isHashFallback ? NAMELESS_SORT_KEY : label;
+        },
         sortable: true,
       },
       {
@@ -267,12 +314,18 @@ export function CustomersListPage(): ReactElement {
         <>
           <DataTable
             caption="Customer projections"
+            // `ConnectionCell` made the Source column the tallest thing on the
+            // row (~2 lines), so `.data-table td { vertical-align: middle }`
+            // would centre the one-line Customer name against it while the
+            // connection name sits on line 1. Per the style guide's heuristic,
+            // when another column sets the row height you align the whole row.
+            className="customers-table"
             columns={columns}
             rows={query.data?.items ?? []}
             rowKey={(c) => c.internalCustomerId}
             rowHref={(c) => c.internalCustomerId}
-            // The `Customer` cell is the row link, and on a PII-disabled row it
-            // is a two-line stack. An inline anchor sizes its :focus-visible ring
+            // The `Customer` cell is the row link, and on a nameless row it is a
+            // two-line stack. An inline anchor sizes its :focus-visible ring
             // from its own line-box metrics, which paints a band across the row's
             // middle around a composite (see the style guide's listings
             // carve-out); an atomic inline-level box makes it one fragment.
@@ -288,10 +341,36 @@ export function CustomersListPage(): ReactElement {
               // (#2090 shipped exactly that bug). Same facts, same
               // `customerIdentity` helper, no affordances: the card already
               // navigates to the customer.
-              title: (c) => customerIdentity(c).label,
-              subtitle: (c) => (
-                <span className="mono-text">{shortenId(c.internalCustomerId)}</span>
-              ),
+              //
+              // The nameless row gets its OWN branch rather than reusing the
+              // desktop label. `.data-table__card-title` is 13.5px/600 with
+              // `word-break: break-word` and no cap, so headlining the label
+              // there would print a 64-character hash as a three-line bold hex
+              // blob — and it would drop the qualifier the desktop cell exists
+              // to supply, restoring exactly the "reads as a bug" state.
+              title: (c) => {
+                const { label, isHashFallback } = customerIdentity(c);
+                return isHashFallback ? NAMELESS_LABEL : label;
+              },
+              subtitle: (c) => {
+                const { label, isHashFallback } = customerIdentity(c);
+                return (
+                  <>
+                    {isHashFallback ? (
+                      <>
+                        {/* Shortened, and `title`-carried in full: the hash is
+                            the only identity a nameless row has, and it is the
+                            server-side search key. */}
+                        <span className="mono-text" title={label}>
+                          {shortenId(label)}
+                        </span>
+                        <span aria-hidden="true"> · </span>
+                      </>
+                    ) : null}
+                    <span className="mono-text">{shortenId(c.internalCustomerId)}</span>
+                  </>
+                );
+              },
               meta: (c) => <TimeDisplay iso={c.lastSeenAt} format="date" />,
             }}
           />

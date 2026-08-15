@@ -10,6 +10,11 @@
  * `ConnectionCell` on `Last connection source` (including BOTH halves of its
  * caller contract — `?? null` and `loading`), the unchanged `hideBelow: 768`,
  * and mobile-card parity with the desktop identity.
+ *
+ * The email-hash fixtures are REAL 64-character SHA-256 hexes. Short stubs are
+ * what let the first cut ship an uncapped bold hex blob as the mobile card
+ * headline and a spelled-out hash as the row link's accessible name with a
+ * green suite; never shorten them for convenience.
  */
 /// <reference types="node" />
 import { readFileSync } from 'node:fs';
@@ -21,6 +26,7 @@ import { afterEach, describe, it, expect, vi } from 'vitest';
 import { renderWithProviders, createMockApiClient } from '../../test/test-utils';
 import { mockMobileViewport } from '../../test/viewport';
 import { CustomersListPage } from './customers-list-page';
+import { shortenId } from '../../shared/ui/entity-label';
 import type { Connection } from '../../features/connections/api/connections.types';
 import type {
   CustomerProjection,
@@ -29,8 +35,22 @@ import type {
 
 const ALLEGRO_CONNECTION_ID = '3f9c1d2e-8a7b-4c5d-9e0f-1a2b3c4d5e6f';
 const NAMED_CUSTOMER_ID = 'ol_customer_74b1e9c03a2d48f6b85c1e70d92f4a36';
-/** What `shortenId` emits for the id above — 19 characters, past the old 18ch cap. */
-const NAMED_CUSTOMER_SHORT_ID = 'ol_customer_74b1…36';
+/**
+ * Derived, never hand-written: the point of the cap assertion below is that the
+ * CSS cap is sized for whatever `shortenId` actually emits (19 characters for an
+ * `ol_customer_` id, past the old 18ch cap). A literal would keep passing if
+ * `shortenId` changed shape.
+ */
+const NAMED_CUSTOMER_SHORT_ID = shortenId(NAMED_CUSTOMER_ID);
+
+/**
+ * Real SHA-256 hexes — 64 characters, which is what `emailHash` actually holds.
+ * A short stub would hide every defect this length causes: the mobile card's
+ * uncapped bold headline, the row link's spelled-out accessible name, and the
+ * fact that the visible cell is truncated and needs `title` to stay readable.
+ */
+const NAMED_EMAIL_HASH = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855';
+const ANON_EMAIL_HASH = '5e884898da28047151d0e56f8dc6292773603d0d6aabbdd62a11ef721d1542d8';
 
 function makeConnection(overrides: Partial<Connection> = {}): Connection {
   return {
@@ -51,7 +71,7 @@ function makeConnection(overrides: Partial<Connection> = {}): Connection {
 function makeCustomer(overrides: Partial<CustomerProjection> = {}): CustomerProjection {
   return {
     internalCustomerId: NAMED_CUSTOMER_ID,
-    emailHash: 'abc123hash',
+    emailHash: NAMED_EMAIL_HASH,
     normalizedEmail: 'buyer@example.com',
     firstName: 'Jane',
     lastName: 'Smith',
@@ -63,10 +83,14 @@ function makeCustomer(overrides: Partial<CustomerProjection> = {}): CustomerProj
   };
 }
 
-/** The PII-disabled row: `OL_STORE_PII=false` returns no first or last name. */
+/**
+ * The nameless row. NOT a PII-disabled deployment: identity resolution creates
+ * every projection with null names and only backfills them once an order carries
+ * a shipping/billing name, so this is routine with `OL_STORE_PII=true`.
+ */
 const anonymousCustomer = makeCustomer({
   internalCustomerId: 'ol_customer_c08fa25d7e614b39ac72d1508f6b3e94',
-  emailHash: 'def456hash',
+  emailHash: ANON_EMAIL_HASH,
   normalizedEmail: null,
   firstName: null,
   lastName: null,
@@ -116,7 +140,7 @@ describe('CustomersListPage', () => {
     renderWithProviders(<CustomersListPage />, { apiClient: mockApi() });
 
     expect(await screen.findByText('Jane Smith')).toBeInTheDocument();
-    expect(screen.getByText('def456hash')).toBeInTheDocument();
+    expect(screen.getByText(ANON_EMAIL_HASH)).toBeInTheDocument();
     expect(screen.getByText(NAMED_CUSTOMER_SHORT_ID)).toBeInTheDocument();
   });
 
@@ -181,6 +205,18 @@ describe('CustomersListPage', () => {
       expect(headers).toEqual(['Customer', 'Customer ID', 'Last connection source', 'Last seen']);
     });
 
+    it('scopes the table so its row-wide vertical alignment rule can match', async () => {
+      // `ConnectionCell` made the Source column the tallest thing on the row, so
+      // the style guide's heuristic puts Customers in the "another column sets
+      // the height -> align the whole row" branch. `DataTable` puts the caller's
+      // className on the CONTAINER, so `.customers-table td` is a descendant
+      // match; drop the className and the rule in `index.css` matches nothing.
+      const { container } = renderWithProviders(<CustomersListPage />, { apiClient: mockApi() });
+
+      await screen.findByText('Jane Smith');
+      expect(container.querySelector('.data-table__container')).toHaveClass('customers-table');
+    });
+
     it('leads the row with the customer name rather than an identifier', async () => {
       const { container } = renderWithProviders(<CustomersListPage />, { apiClient: mockApi() });
 
@@ -189,19 +225,90 @@ describe('CustomersListPage', () => {
       expect(within(firstCell).getByText('Jane Smith')).toBeInTheDocument();
     });
 
-    it('falls back to the email hash, labelled, when the deployment stores no name', async () => {
-      // `OL_STORE_PII=false` nulls first/last name outright. The hash under a
-      // "Customer" header would otherwise read as a bug rather than a setting.
+    it('falls back to the email hash, qualified with a row-level fact, when no name was recorded', async () => {
+      // A projection is born nameless and is only backfilled from an order's
+      // shipping/billing name, so this is routine on a PII-ENABLED deployment.
+      // The qualifier must therefore state what is true of the ROW, never claim
+      // anything about `OL_STORE_PII` — on the one page a compliance reviewer
+      // would check to confirm hash-only mode, that would be a false positive.
       const { container } = renderWithProviders(<CustomersListPage />, {
         apiClient: mockApi({ items: [anonymousCustomer], total: 1, limit: 20, offset: 0 }),
       });
 
-      const hash = await screen.findByText('def456hash');
+      const hash = await screen.findByText(ANON_EMAIL_HASH);
       const stack = hash.closest('.customer-identity');
       expect(stack).not.toBeNull();
-      expect(within(stack as HTMLElement).getByText('Name not stored')).toBeInTheDocument();
+      expect(within(stack as HTMLElement).getByText('No name recorded')).toBeInTheDocument();
+      expect(stack?.textContent).not.toMatch(/not stored|PII/i);
       // Still the FIRST cell — the fallback does not demote the column.
       expect(container.querySelector('.data-table__row td')).toContainElement(hash);
+    });
+
+    it("keeps the 64-character hash out of the row link's accessible name", async () => {
+      // The `Customer` cell IS the row link (`DataTable` linkifies the first
+      // cell whenever `rowHref` is set), so its text content is the link's
+      // accessible name. CSS truncation clips pixels, not the accessibility
+      // tree: without the hash hidden, a screen reader spells out 64 hex
+      // characters. Same rule the Copy button two columns right already applies.
+      renderWithProviders(<CustomersListPage />, {
+        apiClient: mockApi({ items: [anonymousCustomer], total: 1, limit: 20, offset: 0 }),
+      });
+
+      const hash = await screen.findByText(ANON_EMAIL_HASH);
+      expect(hash).toHaveAttribute('aria-hidden', 'true');
+
+      const rowLink = hash.closest('a');
+      expect(rowLink).not.toBeNull();
+      expect(rowLink).toHaveAccessibleName('Customer, No name recorded');
+      // Belt and braces: no link on the page announces the hash.
+      expect(screen.queryByRole('link', { name: new RegExp(ANON_EMAIL_HASH) })).toBeNull();
+    });
+
+    it('keeps the full hash reachable to a sighted operator through title', async () => {
+      // The hash is the server-side search key (`emailHash ILIKE`, which this
+      // page's own search box accepts). The cell truncates it, and it now sits
+      // inside the row `<a>` where drag-select starts a link drag — so without
+      // `title` an operator can paste a hash IN but never get one OUT, on a
+      // GDPR-erasure or support path. A `CopyableId` would be better still, but
+      // it renders a <button>, and nesting one in the row anchor is exactly what
+      // `docs/lessons.md` bans.
+      renderWithProviders(<CustomersListPage />, {
+        apiClient: mockApi({ items: [anonymousCustomer], total: 1, limit: 20, offset: 0 }),
+      });
+
+      const hash = await screen.findByText(ANON_EMAIL_HASH);
+      expect(hash).toHaveAttribute('title', ANON_EMAIL_HASH);
+      expect(hash.closest('a')?.querySelector('button')).toBeNull();
+    });
+
+    it('sorts by the rendered name under the unchanged `name` column id, nameless rows last', async () => {
+      // Two invariants in one render. (1) The column id stays `name`: it is what
+      // `useTableSort` round-trips through `?sort=`, so renaming it would make a
+      // bookmarked `?sort=name:asc` resolve to no column and sort by NOTHING —
+      // not by the default. (2) A nameless row sorts by a sentinel, not by its
+      // hash, so those rows cluster at one end instead of scattering through
+      // the alphabet at a value no operator can predict.
+      const { container } = renderWithProviders(<CustomersListPage />, {
+        apiClient: mockApi({
+          items: [
+            makeCustomer({ internalCustomerId: 'ol_customer_z1', firstName: 'Zoe', lastName: 'Zephyr' }),
+            anonymousCustomer,
+            makeCustomer({ internalCustomerId: 'ol_customer_a1', firstName: 'Alice', lastName: 'Anders' }),
+          ],
+          total: 3,
+          limit: 20,
+          offset: 0,
+        }),
+        route: '/customers?sort=name:asc',
+      });
+
+      await screen.findByText('Alice Anders');
+      const firstCells = Array.from(
+        container.querySelectorAll('.data-table__row td:first-child'),
+      ).map((td) => (td.textContent ?? '').trim());
+      expect(firstCells[0]).toBe('Alice Anders');
+      expect(firstCells[1]).toBe('Zoe Zephyr');
+      expect(firstCells[2]).toContain('No name recorded');
     });
 
     it('no longer renders a standalone Email Hash column', async () => {
@@ -211,7 +318,7 @@ describe('CustomersListPage', () => {
       expect(screen.queryByRole('columnheader', { name: /email hash/i })).toBeNull();
       // The named row's hash is gone from the table entirely — it survives only
       // as the no-name fallback and on the customer detail page.
-      expect(screen.queryByText('abc123hash')).toBeNull();
+      expect(screen.queryByText(NAMED_EMAIL_HASH)).toBeNull();
     });
 
     it('renders the customer id shortened, and Copy writes the full id', async () => {
@@ -286,7 +393,7 @@ describe('CustomersListPage', () => {
         apiClient: mockApi({ items: [anonymousCustomer], total: 1, limit: 20, offset: 0 }),
       });
 
-      await screen.findByText('def456hash');
+      await screen.findByText(ANON_EMAIL_HASH);
       expect(screen.getByLabelText('No value')).toBeInTheDocument();
     });
 
@@ -314,10 +421,10 @@ describe('CustomersListPage', () => {
       // gone — the shapes that would each trigger their own fetch per row.
       const three = await renderWith([
         makeCustomer(),
-        makeCustomer({ internalCustomerId: 'ol_customer_b2', emailHash: 'b2hash' }),
+        makeCustomer({ internalCustomerId: 'ol_customer_b2', emailHash: 'b2' + ANON_EMAIL_HASH.slice(2) }),
         makeCustomer({
           internalCustomerId: 'ol_customer_c3',
-          emailHash: 'c3hash',
+          emailHash: 'c3' + ANON_EMAIL_HASH.slice(2),
           lastSourceConnectionId: 'conn_deleted',
         }),
       ]);
@@ -370,17 +477,29 @@ describe('CustomersListPage', () => {
       expect(getById).not.toHaveBeenCalled();
     });
 
-    it('resolves a disabled connection and shows its status note', async () => {
+    it('reads connections unfiltered, so a disabled one still resolves and shows its status note', async () => {
       // The batched read must not be filtered to active connections: a disabled
       // one that still owns rows would resolve to `null` and read "Unknown",
       // dropping the very status note line 2 exists to carry.
-      const { container } = renderWithProviders(<CustomersListPage />, {
-        apiClient: mockApi({ items: [makeCustomer()], total: 1, limit: 20, offset: 0 }, [
-          makeConnection({ status: 'disabled' }),
-        ]),
-      });
+      //
+      // The status assertion alone does NOT pin that, because the mock ignores
+      // its argument — switching the page to `useConnectionsQuery({ status:
+      // 'active' })` would keep it green. `useConnectionsQuery` passes `filters`
+      // straight into `apiClient.connections.list(filters)`, so the argument is
+      // observable; assert it.
+      const apiClient = mockApi({ items: [makeCustomer()], total: 1, limit: 20, offset: 0 }, [
+        makeConnection({ status: 'disabled' }),
+      ]);
+      const { container } = renderWithProviders(<CustomersListPage />, { apiClient });
 
       await screen.findByText('Jane Smith');
+      const listConnections = apiClient.connections.list as ReturnType<typeof vi.fn>;
+      await waitFor(() => {
+        expect(listConnections).toHaveBeenCalled();
+      });
+      for (const [filters] of listConnections.mock.calls) {
+        expect(filters).toBeUndefined();
+      }
       const cell = await waitFor(() => {
         const found = container.querySelector('.connection-cell') as HTMLElement | null;
         expect(found).not.toBeNull();
@@ -430,6 +549,41 @@ describe('CustomersListPage', () => {
         expect(subtitle.querySelector('a, button')).toBeNull();
         // The card no longer headlines the raw internal id it used to.
         expect(container.querySelector('.connection-cell')).toBeNull();
+      } finally {
+        viewport.restore();
+      }
+    });
+
+    it('headlines the qualifier, not a raw hash, on a nameless mobile card', async () => {
+      // `.data-table__card-title` is 13.5px/600 with `word-break: break-word`
+      // and no cap, so headlining the desktop label here prints a REAL 64-char
+      // hash as a three-to-four-line bold hex blob — and drops the qualifier
+      // the desktop cell exists to supply, restoring the "reads as a bug" state
+      // that branch was designed to avoid. The hash moves to the subtitle,
+      // shortened, with the full value on `title`.
+      const viewport = mockMobileViewport();
+      try {
+        const { container } = renderWithProviders(<CustomersListPage />, {
+          apiClient: mockApi({ items: [anonymousCustomer], total: 1, limit: 20, offset: 0 }),
+        });
+
+        const title = (await waitFor(() => {
+          const found = container.querySelector('.data-table__card-title');
+          expect(found).not.toBeNull();
+          return found;
+        })) as HTMLElement;
+
+        expect(title.textContent).toBe('No name recorded');
+        expect(title.textContent).not.toContain(ANON_EMAIL_HASH);
+
+        const subtitle = container.querySelector('.data-table__card-subtitle') as HTMLElement;
+        const shortHash = subtitle.querySelector('.mono-text') as HTMLElement;
+        expect(shortHash.textContent).toBe(shortenId(ANON_EMAIL_HASH));
+        expect(shortHash).toHaveAttribute('title', ANON_EMAIL_HASH);
+        // The customer id survives beside it — the card still mirrors the
+        // desktop's second column.
+        expect(subtitle.textContent).toContain(shortenId(anonymousCustomer.internalCustomerId));
+        expect(subtitle.querySelector('a, button')).toBeNull();
       } finally {
         viewport.restore();
       }

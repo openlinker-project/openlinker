@@ -9551,12 +9551,17 @@ a.kpi-card:focus-visible {
   white-space: nowrap;
 }
 
-/* Customers' identity cell (#2093). Only the PII-disabled branch renders a
- * stack: with a name there is one line and nothing here applies. The email hash
- * alone under a "Customer" header reads as a bug, so the second line names the
- * deployment setting instead — the same shape as `.invoice-document-cell`
- * above, minus its cap, because both children are fixed-width (a hex hash and a
- * constant string), so nothing here can widen the column.
+/* Customers' identity cell (#2093). Only the nameless branch renders a stack:
+ * with a name there is one line and nothing here applies. The email hash alone
+ * under a "Customer" header reads as a bug, so the second line states that no
+ * name was recorded — the same shape as `.invoice-document-cell` above, minus
+ * its cap.
+ *
+ * No cap is needed because neither child can widen the column: the qualifier is
+ * a constant string, and the hash — a 64-character SHA-256 hex, NOT a short
+ * value — is bounded by `.data-table td .mono-text { max-width: 20ch }` (:2656),
+ * which is also what makes it ellipsise. Drop the `.mono-text` class from the
+ * hash and this cell needs its own cap.
  *
  * The weight pin is not decoration: this is the FIRST cell, so `DataTable`
  * wraps it in `.data-table__row-link` (`font-weight: 500`, :2885). Without it
@@ -9573,6 +9578,22 @@ a.kpi-card:focus-visible {
 .customer-identity__note {
   font-size: 0.75rem;
   font-weight: 400;
+}
+
+/* Adopting `ConnectionCell` made the Source column (~2 lines) the tallest thing
+ * on a Customers row, so `.data-table td { vertical-align: middle }` (:2798)
+ * centres the one-line Customer name — the row's primary label — against it,
+ * while the connection name it should read beside sits on line 1. The style
+ * guide's heuristic: if another column sets the row height, align the WHOLE
+ * row. Customers has no leading control, so there is nothing to align on its
+ * own instead; this is the `.orders-table td` shape, same reason.
+ *
+ * Descendant match on purpose — `DataTable` hardcodes the `<table>` class and
+ * puts the caller's `className` on the container div — so it ties on
+ * specificity with `.data-table td` and wins by source order alone. It MUST
+ * stay after that rule in this file. */
+.customers-table td {
+  vertical-align: top;
 }
 
 /* The row's leading checkbox is the primary control on a list whose main action
