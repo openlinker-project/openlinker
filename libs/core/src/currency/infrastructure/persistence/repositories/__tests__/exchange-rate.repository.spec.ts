@@ -172,6 +172,17 @@ describe('ExchangeRateRepository', () => {
       }
     );
 
+    // The named-method list above is only half the surface: both of these
+    // reach every mutation the blocklist bans, under a name the blocklist
+    // never sees. `createQueryBuilder().update()` and `manager.delete()` would
+    // each sail straight through it.
+    it.each(['createQueryBuilder(', 'manager.'])(
+      'should reach no ORM %s escape hatch',
+      (escapeHatch) => {
+        expect(source).not.toContain(`ormRepository.${escapeHatch}`);
+      }
+    );
+
     it('should expose exactly the two port methods plus the private mapper', () => {
       const methods = Object.getOwnPropertyNames(ExchangeRateRepository.prototype).filter(
         (name) => name !== 'constructor'
