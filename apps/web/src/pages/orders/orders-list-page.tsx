@@ -1285,7 +1285,7 @@ export function OrdersListPage(): ReactElement {
             branch above cannot see, so without this arm an active block filter
             fell through to "No order records have been synced yet", which is
             false whenever a filter is applied. The recovery button clears THIS
-            param; `clearAttentionFilters` clears both axes in one write.
+            param; `clearAttentionFilters` clears every attention axis in one write.
           */
           <EmptyState
             liveRegion="off"
