@@ -424,7 +424,7 @@ export class EcbExchangeRateAdapter implements ExchangeRateProviderPort {
  *
  * `null` when both legs resolved.
  */
-function pickLegFailure(results: readonly PromiseSettledResult<EcbObservation>[]): unknown | null {
+function pickLegFailure(results: readonly PromiseSettledResult<EcbObservation>[]): unknown {
   const rank = (error: unknown): number => {
     if (error instanceof RateUnsupportedPairError) {
       return 0;

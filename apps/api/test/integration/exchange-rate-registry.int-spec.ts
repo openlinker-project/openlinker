@@ -65,12 +65,12 @@ const KEY: ExchangeRateKey = {
 
 /** Every row this suite writes, so a count is scoped to its own data. */
 async function countRows(harness: IntegrationTestHarness): Promise<number> {
-  const rows = (await harness
+  const rows: ReadonlyArray<{ count: number }> = await harness
     .getDataSource()
     .query(
       'SELECT COUNT(*)::int AS count FROM exchange_rates WHERE source = $1 AND "fromCurrency" = $2 AND "toCurrency" = $3',
       ['nbp', 'EUR', 'PLN']
-    )) as ReadonlyArray<{ count: number }>;
+    );
   return rows[0].count;
 }
 
