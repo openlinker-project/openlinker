@@ -9610,16 +9610,18 @@ a.kpi-card:focus-visible {
 
 /* Products is the only list pairing `ConnectionCell` with a TEXT adornment, and
  * the cell's 220px body cap was measured in #2027 for an adornment that is either
- * absent or a 14px `ConnectionDot`. A `.channel-pill` is mono 11px plus a dot,
- * padding and border — `WooCommerce` runs ~95px — so inside 220px the connection
- * NAME is left ~120px, and `PrestaShop - Terra Store` and
- * `PrestaShop - Terra Outlet` both ellipsise to the same string. Line 1 stops
- * discriminating on the exact axis it exists for, and the surviving prefix is the
- * half the pill already said.
+ * absent or a 14px `ConnectionDot`. A `.channel-pill` is 2px border + 16px
+ * padding + a 6px dot + a 4px gap + mono 11px text at 0.6em advance, so
+ * `WooCommerce` runs ~100px — leaving the connection NAME ~113px inside 220px,
+ * about 17 characters at 13px. `PrestaShop - Terra Store` and
+ * `PrestaShop - Terra Outlet` therefore ellipsise to the same string: line 1
+ * stops discriminating on the exact axis it exists for, and the half that
+ * survives is the one the pill already said.
  *
  * Per the carve-out, a geometry budget is per-page and opted into positively,
- * never inherited: 17rem restores the name to ~176px, which clears both of those
- * names. */
+ * never inherited. 17rem gives the name ~165px; the two names above diverge at
+ * character 19 (~124px), so the failure mode is cleared with ~6 characters of
+ * slack rather than by fitting either name exactly. */
 .products-table .connection-cell__body {
   max-width: 17rem;
 }

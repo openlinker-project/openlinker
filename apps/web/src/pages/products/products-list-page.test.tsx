@@ -1193,12 +1193,12 @@ describe('ProductsListPage', () => {
       expect(container.querySelector('.data-table__container.products-table')).not.toBeNull();
     });
 
-    it('keeps the mobile card free of the shared cell and its interactive controls', async () => {
-      // The card branch is deliberately untouched (#1996 specified no Products
-      // card change) — and the Source column does not render at card width at
-      // all, so no link/button from the shared cell can land inside a card
-      // title. Pinned separately from the desktop assertions above because
-      // checking one surface and generalising is how #2090 shipped a bug.
+    it('labels the card SKU too and keeps the card free of the shared cell', async () => {
+      // The card hosts no `ConnectionCell` — the Source column does not render at
+      // card width — but it DOES carry the SKU, and "never `SKU: -`" is a claim
+      // about the fact rather than about one surface, so the labelled form has to
+      // hold here too. Pinned separately from the desktop assertions above
+      // because checking one surface and generalising is how #2090 shipped a bug.
       const viewport = mockMobileViewport();
       try {
         const { container } = renderWithProviders(<ProductsListPage />, {
@@ -1212,6 +1212,10 @@ describe('ProductsListPage', () => {
         // No `rowHref` on this table, so the card title is not wrapped in the
         // row link — the premise that would make hosting a cell here legal.
         expect(title.closest('a')).toBeNull();
+
+        const subtitle = container.querySelector('.data-table__card-subtitle');
+        expect(subtitle?.textContent).toBe('SKU: SKU-001');
+        expect(subtitle?.querySelector('.mono-text')?.textContent).toBe('SKU-001');
       } finally {
         viewport.restore();
       }
