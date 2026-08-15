@@ -6,11 +6,9 @@
  *
  * KNOWN GAP (not addressed here): an unresolvable ISO silently falls back to
  * `DEFAULT_CURRENCY_ID = 1` and caches that answer for the full TTL, so a
- * currency the destination shop does not carry books the order in currency 1
- * instead of failing. That is the opposite of the refuse-never-default rule
- * `PrestashopConversionRateResolver` follows for the same row's
- * `conversion_rate` (#2102). Changing it changes live order-creation behaviour,
- * so it is tracked separately rather than folded into #2102.
+ * currency the destination shop does not carry books the cart in currency 1
+ * instead of failing. Changing that changes live order-creation behaviour, so
+ * it is tracked separately.
  *
  * @module libs/integrations/prestashop/src/infrastructure/provisioners
  */
@@ -81,9 +79,7 @@ export class PrestashopCurrencyResolver {
 
     try {
       // Query PrestaShop currencies through the shared ISO read
-      // (`prestashop-currency-read`), which is also what
-      // `PrestashopConversionRateResolver` uses for the same row's
-      // `conversion_rate` (#2102) — the filter shape lives in one place.
+      // (`prestashop-currency-read`) so the filter shape lives in one place.
       const currency = await readPrestashopCurrencyByIso(webserviceClient, normalizedIso);
 
       if (!currency) {

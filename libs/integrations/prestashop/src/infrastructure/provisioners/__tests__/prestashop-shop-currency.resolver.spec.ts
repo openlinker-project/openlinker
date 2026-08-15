@@ -107,7 +107,7 @@ describe('PrestashopShopCurrencyResolver', () => {
     const first = await resolver.resolveDefaultCurrencyIso('conn-1', client);
     expect(first).toBeNull();
 
-    // A short-TTL failure entry must not survive; jump past FAILURE_CACHE_TTL_MS.
+    // A short-TTL failure entry must not survive; jump past UNRESOLVED_CACHE_TTL_MS.
     const realNow = Date.now;
     const past = realNow();
     jest.spyOn(Date, 'now').mockReturnValue(past + 61 * 1000);
@@ -122,51 +122,10 @@ describe('PrestashopShopCurrencyResolver', () => {
     expect(client.listResources).toHaveBeenCalledTimes(2);
   });
 
-  describe('resolveDefaultCurrency (#2102)', () => {
-    it('should report a resolved ISO as definitive', async () => {
-      await expect(resolver.resolveDefaultCurrency('conn-1', client)).resolves.toEqual({
-        iso: 'PLN',
-        transient: false,
-      });
-    });
-
-    it('should report an absent PS_CURRENCY_DEFAULT as definitive, not transient', async () => {
-      client.listResources.mockResolvedValueOnce([]);
-
-      await expect(resolver.resolveDefaultCurrency('conn-1', client)).resolves.toEqual({
-        iso: null,
-        transient: false,
-      });
-    });
-
-    it('should report a failed read as transient', async () => {
-      client.listResources.mockRejectedValueOnce(new Error('timeout'));
-
-      await expect(resolver.resolveDefaultCurrency('conn-1', client)).resolves.toEqual({
-        iso: null,
-        transient: true,
-      });
-    });
-
-    it('should report the same verdict from the cache as from the fresh read', async () => {
-      client.listResources.mockRejectedValueOnce(new Error('timeout'));
-      await resolver.resolveDefaultCurrency('conn-1', client);
-
-      // Second call is served from the cache; the retry decision a caller
-      // derives from `transient` must not change just because it was cached.
-      await expect(resolver.resolveDefaultCurrency('conn-1', client)).resolves.toEqual({
-        iso: null,
-        transient: true,
-      });
-      expect(client.listResources).toHaveBeenCalledTimes(1);
-    });
-  });
-
-  it('should re-read an absent PS_CURRENCY_DEFAULT after the short TTL (#2102)', async () => {
-    // A missing default currency used to cache for the full 24h TTL. Since #2102
-    // the same `null` also drives an order REFUSAL telling the operator to
-    // configure the currency and retry, so the negative entry must not outlive
-    // the fix — any unresolved answer gets the short TTL.
+  it('should re-read an absent PS_CURRENCY_DEFAULT after the short TTL', async () => {
+    // A missing default currency used to cache for the full 24h TTL, so a shop
+    // whose operator configured it in the back office kept reporting no
+    // currency for up to a day. Any unresolved answer now gets the short TTL.
     client.listResources.mockResolvedValueOnce([]);
     expect(await resolver.resolveDefaultCurrencyIso('conn-1', client)).toBeNull();
 

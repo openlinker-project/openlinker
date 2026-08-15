@@ -7,9 +7,9 @@
  * combination id; PrestaShop validates `id_product_attribute` as an unsigned int,
  * so any non-numeric / missing value must collapse to 0 ("no combination").
  *
- * Shared by the order/cart mapper (`mapOrderCreate` / `mapCartCreate`) and the
- * price-pinning path (`pinLinePrices`) so the coercion cannot drift between the
- * cart/order body and the cart-scoped `specific_prices` rows (#923). Before this
+ * Shared by the cart mapper (`mapCartCreate`) and the price-pinning path
+ * (`pinLinePrices`) so the coercion cannot drift between the cart body and the
+ * cart-scoped `specific_prices` rows (#923). Before this
  * was extracted, the mapper coerced but `pinLinePrices` forwarded the raw
  * `product:<n>` marker, which PrestaShop 400-rejected for every simple product.
  *

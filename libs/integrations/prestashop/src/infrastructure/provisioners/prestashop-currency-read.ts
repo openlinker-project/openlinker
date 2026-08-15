@@ -2,12 +2,9 @@
  * PrestaShop Currency-By-ISO Read
  *
  * The one place that knows how a PrestaShop currency row is looked up by its
- * ISO 4217 code over the WebService (`filter[iso_code]`). Two resolvers need
- * that row for different reasons - `PrestashopCurrencyResolver` for the
- * currency **id** it puts on a cart, `PrestashopConversionRateResolver` for the
- * **conversion_rate** an order body carries (#2102) - and each owns its own
- * caching and failure policy. Only the filter shape is shared, so the two
- * cannot drift on what the client expects.
+ * ISO 4217 code over the WebService (`filter[iso_code]`). Extracted so the
+ * filter shape lives in one place rather than being restated at each site that
+ * needs a currency row; caching and failure policy stay with the caller.
  *
  * Errors propagate: the caller decides whether a failed read is a fallback, a
  * retryable exception, or a refusal.

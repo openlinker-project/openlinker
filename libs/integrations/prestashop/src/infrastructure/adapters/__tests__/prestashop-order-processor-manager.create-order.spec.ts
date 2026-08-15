@@ -99,19 +99,6 @@ describe('PrestashopOrderProcessorManagerAdapter — createOrder', () => {
           return Promise.resolve([]);
         });
 
-      // Mock order mapping
-      const prestashopOrderData = {
-        id_customer: externalCustomerId,
-        current_state: 1,
-        reference: order.orderNumber,
-        associations: {
-          order_rows: {
-            order_row: [],
-          },
-        },
-      };
-      mockOrderMapper.mapOrderCreate.mockReturnValue(prestashopOrderData);
-
       // Mock cart and order creation
       const createdCart = { id: '123' };
       const createdOrder: PrestashopOrder = {
@@ -202,12 +189,6 @@ describe('PrestashopOrderProcessorManagerAdapter — createOrder', () => {
           }
           return Promise.resolve([]);
         });
-      mockOrderMapper.mapOrderCreate.mockReturnValue({
-        id_customer: '42',
-        current_state: 1,
-        associations: { order_rows: { order_row: [] } },
-      });
-
       // Cart + pins succeed; the order POST hits a unique-constraint error so the
       // adapter falls into its defense-in-depth recovery (#909): re-query PS by
       // reference and adopt the existing order's id.
@@ -343,17 +324,6 @@ describe('PrestashopOrderProcessorManagerAdapter — createOrder', () => {
           return Promise.resolve([]);
         });
 
-      const prestashopOrderData = {
-        id_customer: externalCustomerId,
-        current_state: 1,
-        associations: {
-          order_rows: {
-            order_row: [],
-          },
-        },
-      };
-      mockOrderMapper.mapOrderCreate.mockReturnValue(prestashopOrderData);
-
       const createdOrder: PrestashopOrder = {
         id: '999',
         reference: order.orderNumber,
@@ -416,17 +386,6 @@ describe('PrestashopOrderProcessorManagerAdapter — createOrder', () => {
           }
           return Promise.resolve([]);
         });
-
-      const prestashopOrderData = {
-        id_customer: externalCustomerId,
-        current_state: 1,
-        associations: {
-          order_rows: {
-            order_row: [],
-          },
-        },
-      };
-      mockOrderMapper.mapOrderCreate.mockReturnValue(prestashopOrderData);
 
       // Mock cart + specific_prices to succeed; the order INSERT
       // (importOrder / validateOrder) fails.
@@ -499,17 +458,6 @@ describe('PrestashopOrderProcessorManagerAdapter — createOrder', () => {
           return Promise.resolve([]);
         });
 
-      const prestashopOrderData = {
-        id_customer: externalCustomerId,
-        current_state: 1,
-        associations: {
-          order_rows: {
-            order_row: [],
-          },
-        },
-      };
-      mockOrderMapper.mapOrderCreate.mockReturnValue(prestashopOrderData);
-
       const createdOrder: PrestashopOrder = {
         id: '999',
         reference: 'PS-ORDER-999',
@@ -554,11 +502,6 @@ describe('PrestashopOrderProcessorManagerAdapter — createOrder', () => {
           .mockImplementation((entityType: string, internalId: string) =>
             entityType === 'Order' ? Promise.resolve([]) : resolveIds(entityType, internalId)
           );
-        mockOrderMapper.mapOrderCreate.mockReturnValue({
-          id_customer: '42',
-          current_state: 1,
-          associations: { order_rows: { order_row: [] } },
-        });
         setCreateResourceDispatch(
           { id: '123' },
           { id: '999', reference: 'TEST-ORDER-001' } as PrestashopOrder
@@ -822,11 +765,6 @@ describe('PrestashopOrderProcessorManagerAdapter — createOrder', () => {
               externalId ? [{ connectionId: connection.id, externalId, entityType }] : []
             );
           });
-        mockOrderMapper.mapOrderCreate.mockReturnValue({
-          id_customer: '42',
-          current_state: 1,
-          associations: { order_rows: { order_row: [] } },
-        });
         setCreateResourceDispatch(
           { id: '123' },
           { id: '999', reference: 'TEST-ORDER-001' } as PrestashopOrder

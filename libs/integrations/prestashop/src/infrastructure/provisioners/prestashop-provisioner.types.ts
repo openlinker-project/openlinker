@@ -44,7 +44,7 @@ export interface PrestashopCustomerCreate {
    * `associations.groups.group[]` at create time — `id_default_group`
    * alone doesn't add the row to `ps_customer_group`. The double-nested
    * shape matches the established PS WS JSON convention used by
-   * `PrestashopOrderMapper.mapOrderCreate` for `order_rows`.
+   * `PrestashopOrderMapper.mapCartCreate` for `cart_rows`.
    */
   associations?: {
     groups?: { group?: Array<{ id: number }> };
@@ -109,17 +109,6 @@ export interface PrestashopCountry {
 export interface PrestashopCurrency {
   id: string;
   iso_code?: string;
-  /**
-   * PrestaShop's own rate relating this currency to the shop's DEFAULT currency
-   * (the default currency's own row is pinned at `1.000000`). It is the value
-   * PrestaShop writes onto an order's `conversion_rate` and recomputes the order
-   * header with, which is why the outbound order body must carry PrestaShop's
-   * figure rather than an OL-computed or analytics-sourced one (#2102).
-   *
-   * Typed as `string | number` because the webservice reports numerics as
-   * strings; absent when the read did not select the full resource.
-   */
-  conversion_rate?: string | number;
 }
 
 /**

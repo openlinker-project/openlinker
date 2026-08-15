@@ -5,7 +5,6 @@
  */
 import { PrestashopRetryClassifierAdapter } from '../prestashop-retry-classifier.adapter';
 import { PrestashopTaxRateUnknownException } from '../../../domain/exceptions/prestashop-tax-rate-unknown.exception';
-import { PrestashopConversionRateUnknownException } from '../../../domain/exceptions/prestashop-conversion-rate-unknown.exception';
 import { PrestashopApiException } from '../../../domain/exceptions/prestashop-api.exception';
 import { PrestashopAuthenticationException } from '../../../domain/exceptions/prestashop-authentication.exception';
 
@@ -15,14 +14,6 @@ describe('PrestashopRetryClassifierAdapter', () => {
   it('should classify a tax-configuration error as non-retryable', () => {
     expect(
       classifier.isNonRetryable(new PrestashopTaxRateUnknownException('tax rate unknown'))
-    ).toBe(true);
-  });
-
-  it('should classify a currency-configuration error as non-retryable', () => {
-    expect(
-      classifier.isNonRetryable(
-        new PrestashopConversionRateUnknownException('conversion rate unknown', 'EUR', 'conn-1')
-      )
     ).toBe(true);
   });
 

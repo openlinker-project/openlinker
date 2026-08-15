@@ -24,7 +24,6 @@
 import { Logger } from '@openlinker/shared/logging';
 import type { IPrestashopWebserviceClient } from '../http/prestashop-webservice.client.interface';
 import type { PrestashopConfiguration, PrestashopCurrency } from './prestashop-provisioner.types';
-import type { PrestashopShopCurrencyResolution } from './prestashop-shop-currency.types';
 
 /** The PrestaShop configuration key holding the shop's default currency id. */
 const DEFAULT_CURRENCY_CONFIG_KEY = 'PS_CURRENCY_DEFAULT';
@@ -39,23 +38,16 @@ const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
  * Short TTL (60s) for ANY unresolved (`null`) answer — a transient read failure
  * and a definitive absence alike. A network blip / 5xx during the first product
  * sync must not pin `currency: null` for the whole 24h TTL, and neither must a
- * missing `PS_CURRENCY_DEFAULT`: since #2102 a second consumer turns the same
- * `null` into an order REFUSAL whose message tells the operator to configure the
- * default currency and retry, and a 24h negative entry would keep refusing for a
- * day after they did. Only a resolved ISO caches for the full `CACHE_TTL_MS`.
+ * missing or malformed `PS_CURRENCY_DEFAULT`: an operator can fix that in the
+ * back office at any moment, and a 24h negative entry would keep reporting the
+ * old answer for a day after they did. Only a resolved ISO caches for the full
+ * `CACHE_TTL_MS`.
  */
 const UNRESOLVED_CACHE_TTL_MS = 60 * 1000;
 
 interface CacheEntry {
   /** Resolved default ISO, or `null` when resolution failed / was absent. */
   iso: string | null;
-  /**
-   * Whether a cached `null` came from a failed read. Cached alongside the value
-   * so a cache HIT reports the same transient/definitive verdict a fresh read
-   * would - a caller that turns the verdict into a retry decision (#2102) must
-   * not get a different answer just because it arrived within the TTL.
-   */
-  transient: boolean;
   /** Per-entry TTL; short for any unresolved answer, full for a resolved ISO. */
   ttlMs: number;
   timestamp: number;
@@ -76,43 +68,23 @@ export class PrestashopShopCurrencyResolver {
     connectionId: string,
     client: IPrestashopWebserviceClient
   ): Promise<string | null> {
-    const { iso } = await this.resolveDefaultCurrency(connectionId, client);
-    return iso;
-  }
-
-  /**
-   * Resolve the shop's default-currency ISO code **with the reason** an
-   * unresolved read failed.
-   *
-   * Same cached read as {@link resolveDefaultCurrencyIso} - this is the shape
-   * for callers that must branch on why the answer is `null`, because they turn
-   * it into a retry decision rather than a `currency: null` projection (#2102).
-   *
-   * @param connectionId - Cache key
-   * @param client - PrestaShop WebService client for this connection
-   */
-  async resolveDefaultCurrency(
-    connectionId: string,
-    client: IPrestashopWebserviceClient
-  ): Promise<PrestashopShopCurrencyResolution> {
     const cached = this.cache.get(connectionId);
     if (cached !== undefined) {
       if (Date.now() - cached.timestamp < cached.ttlMs) {
-        return { iso: cached.iso, transient: cached.transient };
+        return cached.iso;
       }
       this.cache.delete(connectionId);
     }
 
-    const { iso, transient } = await this.fetchDefaultCurrencyIso(connectionId, client);
+    const iso = await this.fetchDefaultCurrencyIso(connectionId, client);
     this.cache.set(connectionId, {
       iso,
-      transient,
-      // `transient` still carries the RETRY decision (#2102); the TTL keys on the
-      // answer being unresolved at all, so no negative entry outlives a fix.
+      // The TTL keys on the answer being unresolved at all — a read blip and a
+      // back-office gap alike — so no negative entry outlives a fix.
       ttlMs: iso === null ? UNRESOLVED_CACHE_TTL_MS : CACHE_TTL_MS,
       timestamp: Date.now(),
     });
-    return { iso, transient };
+    return iso;
   }
 
   /** Clear the cache for one connection, or all connections when omitted. */
@@ -127,7 +99,7 @@ export class PrestashopShopCurrencyResolver {
   private async fetchDefaultCurrencyIso(
     connectionId: string,
     client: IPrestashopWebserviceClient
-  ): Promise<PrestashopShopCurrencyResolution> {
+  ): Promise<string | null> {
     try {
       // NOTE (multistore): on a multistore PrestaShop, `PS_CURRENCY_DEFAULT`
       // can carry per-shop / per-shop-group rows. `limit=1` here takes an
@@ -146,10 +118,9 @@ export class PrestashopShopCurrencyResolver {
           `No ${DEFAULT_CURRENCY_CONFIG_KEY} configured in PrestaShop (connection: ${connectionId}); ` +
             `product currency stays null`
         );
-        // Definitive absence (not a blip), so a retry of the same read is
-        // pointless — but it is still cached on the SHORT TTL, because the
-        // operator can fix it in the back office at any moment.
-        return { iso: null, transient: false };
+        // Cached on the SHORT TTL: the operator can configure it in the back
+        // office at any moment.
+        return null;
       }
 
       const currency = await client.getResource<PrestashopCurrency>('currencies', currencyId);
@@ -159,22 +130,21 @@ export class PrestashopShopCurrencyResolver {
           `Default currency ${currencyId} has no iso_code in PrestaShop (connection: ${connectionId}); ` +
             `product currency stays null`
         );
-        // Definitive (malformed data, not a transient blip) — same short TTL as
-        // the branch above, for the same reason.
-        return { iso: null, transient: false };
+        // Same short TTL as the branch above, for the same reason.
+        return null;
       }
 
       this.logger.debug(
         `Resolved PrestaShop default currency for connection ${connectionId}: ${iso}`
       );
-      return { iso, transient: false };
+      return iso;
     } catch (error) {
       this.logger.warn(
         `Failed to resolve PrestaShop default currency (connection: ${connectionId}); ` +
           `product currency stays null: ${(error as Error).message}`
       );
       // Transient failure (WS timeout / 5xx) — short TTL so the next sync retries.
-      return { iso: null, transient: true };
+      return null;
     }
   }
 }

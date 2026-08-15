@@ -14,16 +14,10 @@
  *     reported unusable data, so every retry re-reads the same record and fails
  *     identically; burning five attempts with backoff only delays the moment an
  *     operator sees the message that tells them what to fix.
- *   - `PrestashopConversionRateUnknownException` - the shop's currency
- *     configuration cannot state the order currency's rate against the shop
- *     default (#2102). Same shape as the tax-rate case: the reads succeeded and
- *     reported unusable data, and an operator has to fix the shop's currency
- *     setup before any attempt can differ.
  *
  * Retryable, deliberately left out (return `false`):
  *   - `PrestashopApiException` — a failed CALL, including the transport failure
- *     of the very same tax-rate or currency read (5xx / timeout / connection
- *     reset). These
+ *     of the very same tax-rate read (5xx / timeout / connection reset). These
  *     do fix themselves and MUST keep their retries. This is why an unresolvable
  *     tax rate raises two different classes rather than one class with a flag:
  *     the class IS the retry decision.
@@ -41,14 +35,10 @@
  * @implements {RetryClassifierPort}
  */
 import type { RetryClassifierPort } from '@openlinker/core/sync';
-import { PrestashopConversionRateUnknownException } from '../../domain/exceptions/prestashop-conversion-rate-unknown.exception';
 import { PrestashopTaxRateUnknownException } from '../../domain/exceptions/prestashop-tax-rate-unknown.exception';
 
 export class PrestashopRetryClassifierAdapter implements RetryClassifierPort {
   isNonRetryable(cause: unknown): boolean {
-    return (
-      cause instanceof PrestashopTaxRateUnknownException ||
-      cause instanceof PrestashopConversionRateUnknownException
-    );
+    return cause instanceof PrestashopTaxRateUnknownException;
   }
 }
