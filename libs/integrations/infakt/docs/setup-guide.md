@@ -293,13 +293,18 @@ apart from a correct one. Because inFakt relays to KSeF on the seller's behalf,
 such a document may already have been filed with the tax authority.
 
 **How much of your data this touches.** For a PLN-denominated account selling in
-PLN only - the shipped assumption, and the only configuration exercised in
-testing before #2103 - nothing is wrong: the account default *was* the right
-currency, so those documents are correct as issued. The defect was found by code
-reading rather than from an operator report, so there is no known
-mis-denominated production document; that is an absence of evidence for this
-repository, **not** a guarantee about your deployment. If you have ever invoiced
-a non-default-currency order through inFakt, check.
+PLN only - the shipped assumption, and the only configuration this integration's
+own tests exercised before #2103 (every currency literal in the inFakt package,
+specs and sandbox script alike, was `PLN`) - nothing is wrong: the account
+default *was* the right currency, so those documents are correct as issued. The
+defect was found by code reading rather than from an operator report, so there is
+no known mis-denominated production document; that is an absence of evidence for
+this repository, **not** a guarantee about your deployment. Note that the neutral
+layer above the adapter always could carry a non-PLN currency - the order-to-command
+mapper echoes `order.totals.currency` verbatim and the numbering series routes on
+it - so nothing structurally prevented a foreign-currency order from reaching
+inFakt. If you have ever invoiced a non-default-currency order through inFakt,
+check.
 
 **How to check.** For records issued after #1297 the currency as issued is
 persisted on the invoice record, so the reconciliation is a single query - run it
@@ -354,6 +359,7 @@ reaches inFakt.
 | Invoice stays `submitted` forever, never reaches `accepted` | KSeF itself rejected the document after inFakt submitted it, or (less likely, since OL's `sendToKsef` call would normally fail outright at issuance time if this were disabled) KSeF integration is off in inFakt's account settings | Check inFakt's own invoice/KSeF status in its dashboard first — `ksef_data.status: error` there means inFakt attempted submission and KSeF rejected it (fix the underlying document data and re-issue). If `getClearanceStatus()` keeps returning `not-applicable` with no `ksef_data` at all, confirm KSeF integration is enabled in inFakt's account settings (the [Prerequisites](#prerequisites) requirement). |
 | Invoice fails with "The settlement currency is missing, malformed, or not accepted for this document" | The order's currency is blank or not a three-letter code, so OL refuses to issue rather than let inFakt book the document in the account default | Fix the currency on the source order (it is echoed from the order totals) and re-issue. Nothing was created at inFakt, so re-issuing is safe. The offending value is in the API server log (`Infakt requires an ISO 4217 currency on ... , got "..."`), not in the UI. |
 | inFakt rejects a non-PLN invoice at issuance (422) | The seller's inFakt account is not configured to settle in that currency, or inFakt wants additional foreign-currency fields (e.g. an exchange-date kind) for it | Enable the currency in inFakt's own account settings and re-issue. The rejection is terminal and nothing was created, so the operator can re-submit. |
+| An invoice issued **before** #2103 shows the inFakt account's default currency for a foreign-currency order | OL never sent a `currency` at all, and inFakt reads an absent field as "use the account default" | Reconcile with the query in [Documents issued before OL sent the currency](#documents-issued-before-ol-sent-the-currency). A correction cannot re-denominate the document - remediation is a withdraw-and-re-issue on the accounting side. |
 | Rate limiting / `429` from inFakt | Sandbox and low-tier plans enforce API rate limits | Space out bulk issuance; inFakt's retry classifier (`InfaktRetryClassifierAdapter`) already treats `429` as retryable in the worker's job runner. |
 
 ---
