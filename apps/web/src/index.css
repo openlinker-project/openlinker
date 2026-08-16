@@ -9488,19 +9488,35 @@ a.kpi-card:focus-visible {
  * the channel pill. Same silhouette as that rule, deliberately: one line,
  * adornment + name, muted, ellipsising under pressure.
  *
- * The visibility switch lives HERE rather than in the components, and it is
- * `display: none` rather than `visibility`/`opacity` precisely because
- * `display: none` also removes the element from the accessibility tree — so at
- * any width exactly one of the fold and the standalone column is exposed, and a
- * screen reader never hears the same connection twice.
+ * The visibility switch lives HERE rather than in the components. Its media
+ * query is the exact complement of `.data-table__cell--hide-below-1024`'s
+ * (:2983), so the invariant the design needs — never BOTH — holds at every
+ * width, and between 768px and the breakpoint exactly one is exposed. (Below
+ * 768 `DataTable` swaps to cards and neither renders; a card fold is #2094's
+ * declared out-of-scope.)
+ *
+ * `display: none` rather than `visibility: hidden` for a LAYOUT reason, not an
+ * accessibility one — both drop out of the accessibility tree, but `visibility`
+ * still occupies space, so at desktop width the fold would reserve a phantom
+ * third line inside all three host cells.
  *
  * No new token: 6px matches `.connection-cell__line`'s gap, 0.75rem matches
  * `.orders-cell-sub`, and both colours are existing text tokens. */
+/* `max-width: 100%` is what lets the children's ellipsis fire at all. A column
+ * flex container with `align-items: flex-start` sizes each child to its own
+ * content, so without a cap resolving against a definite width the fold renders
+ * at full intrinsic width and widens the host column instead — the trap this
+ * epic's own carve-out documents ("before capping a cell inside a frozen pane,
+ * check its siblings"). It bites hardest on Products, where the fold sits in a
+ * `stickyLeftColumns` pane and its channel pill alone is ~100px. The hosts
+ * supply the definite width (`.invoice-document-cell` already had one; the other
+ * two gain `min-width: 0` + a child cap below). */
 .conn-fold {
   display: none;
   align-items: center;
   gap: 6px;
   min-width: 0;
+  max-width: 100%;
   font-size: 0.75rem;
   color: var(--text-muted);
 }
@@ -9511,29 +9527,89 @@ a.kpi-card:focus-visible {
   }
 }
 
-.conn-fold__adornment {
+/* Same shape as `.connection-cell__adornment` (:9827) — grouped there rather
+ * than duplicated once the fold shipped. */
+
+/* The fold hosts `ConnectionEntityLabel`, whose name is a link at
+ * `.entity-label__name` (:4325) — reset to the fold's muted scale so it reads as
+ * a relocated sub-line rather than as a second primary label inside the host
+ * cell.
+ *
+ * Size and weight only. Colour is scoped to `--link` deliberately: at (0,2,0)
+ * this selector outranks `--unknown` (:4354) and `--loading` (:4349), both
+ * (0,1,0), so colouring the base would render an UNRESOLVED connection in the
+ * same tone as a resolved one and silently drop the muted signal the desktop
+ * cell keeps. */
+.conn-fold .entity-label__name {
+  font-size: 0.75rem;
+  font-weight: 400;
+}
+
+.conn-fold .entity-label__name--link {
+  color: var(--text-secondary);
+}
+
+/* Shortened id, Unknown branch only — see `ConnectionFold`. Never copyable. */
+.conn-fold__id {
+  flex: none;
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+}
+
+/* Status: the dot carries the signal, `title` and an `sr-only` span carry the
+ * word. Same tones as `.connection-cell__status` (:9846), one size smaller
+ * because the fold is a sub-line. */
+.conn-fold__status {
   display: inline-flex;
   align-items: center;
   flex: none;
 }
 
-/* The fold hosts `ConnectionEntityLabel`, whose name is a link at
- * `.entity-label__name` (:4325) — reset to the fold's muted scale so it reads as
- * a relocated sub-line rather than as a second primary label inside the host
- * cell. */
-.conn-fold .entity-label__name {
-  font-size: 0.75rem;
-  font-weight: 400;
-  color: var(--text-secondary);
+.conn-fold__status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-pill);
 }
 
-/* Shipments' host: the Processor badge with the fold beneath it. */
+.conn-fold__status--disabled .conn-fold__status-dot {
+  background: var(--status-disabled-fg);
+}
+
+.conn-fold__status--error .conn-fold__status-dot {
+  background: var(--status-error-fg);
+}
+
+.conn-fold__status--needs_reauth .conn-fold__status-dot {
+  background: var(--status-warning-fg);
+}
+
+/* Shipments' host: the Processor badge with the fold beneath it. Capped for the
+ * same reason `.invoice-document-cell` is (:9596) — an uncapped column flex
+ * container sizes to its content, so the fold's ellipsis could never fire and a
+ * long carrier-connection name would widen the column at exactly the width where
+ * the table is already scrolling. 220px matches `.connection-cell__body`, whose
+ * budget this fold's first line mirrors. */
 .shipments-processor-cell {
   display: flex;
   flex-direction: column;
   gap: 2px;
   align-items: flex-start;
   min-width: 0;
+  max-width: 220px;
+}
+
+.shipments-processor-cell > * {
+  max-width: 100%;
+}
+
+/* Invoices' Document type cell becomes the tallest thing on the row at tablet
+ * width — Regulatory, Clearance ref. AND Connection are all `hideBelow: 1024`,
+ * so nothing else on the row is multi-line and the two-line Order cell centres
+ * against a three-line neighbour. Per the carve-out's heuristic that is the
+ * align-the-whole-row branch; `td:first-child` (which only topped the checkbox)
+ * was correct only while the identity cell set the height. */
+.invoices-table td {
+  vertical-align: top;
 }
 
 /* ── OrderIdentityCell (#2087) ───────────────────────────────────────
@@ -9824,6 +9900,7 @@ a.kpi-card:focus-visible {
   min-width: 0;
 }
 
+.conn-fold__adornment,
 .connection-cell__adornment {
   display: inline-flex;
   align-items: center;
@@ -16564,7 +16641,22 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
 }
 
 /* Two-line table cells (product identity / source / stock). */
-.products-cell-stack { display: flex; flex-direction: column; gap: 2px; align-items: flex-start; }
+/* `min-width: 0` + a child cap so the fold's ellipsis can fire: the two prior
+   children were bounded in practice (the name has its own ellipsis, the SKU line
+   is `nowrap` inside `.mono-text`'s 20ch cap), but #2094's fold added the first
+   genuinely unbounded operator-authored string to this stack — and it sits in a
+   `stickyLeftColumns` pane whose width is not recoverable by scrolling. */
+.products-cell-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: flex-start;
+  min-width: 0;
+}
+
+.products-cell-stack > * {
+  max-width: 100%;
+}
 .products-cell-stack--end { align-items: flex-end; min-width: 8rem; }
 /* Money-column date sub-lines: smaller and never wrapped - "upd. Jul 16,
    2026" breaking onto two lines left-hung a stray "2026" (#1720 review). */

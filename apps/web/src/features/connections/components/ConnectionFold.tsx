@@ -19,17 +19,33 @@
  * the name answers; "give me its id" stays a desktop and detail-page action.
  *
  * Which surface is visible is decided in CSS, not here: `.conn-fold` is
- * `display: none` above the breakpoint, where the standalone column renders.
- * `display: none` also drops the element from the accessibility tree, so
- * exactly one of the two renderings is exposed at any width — a screen reader
- * never hears the same connection twice.
+ * `display: none` above the breakpoint, where the standalone column renders. The
+ * two media queries are the exact complement of each other, so the invariant the
+ * design needs — **never both** — holds at every width, and between 768px and
+ * the breakpoint exactly one is exposed. (Below 768 `DataTable` swaps to cards
+ * and neither renders; a card-view fold is #2094's declared out-of-scope.)
+ *
+ * `display: none` rather than `visibility: hidden` for a layout reason, not an
+ * accessibility one — both drop out of the accessibility tree, but `visibility`
+ * still occupies space, so at desktop width the fold would reserve a phantom
+ * third line inside all three host cells.
  *
  * @module features/connections/components
  * @see {@link ConnectionCell} for the desktop cell this mirrors.
  */
 import type { ReactElement, ReactNode } from 'react';
+import { shortenId } from '../../../shared/ui/entity-label';
+import type { ConnectionStatus } from '../api/connections.types';
 import type { ConnectionCellFacts } from './ConnectionCell';
 import { ConnectionEntityLabel } from './ConnectionEntityLabel';
+
+/** Same vocabulary as `ConnectionCell`'s line 2, minus the label text: at this
+ *  size the dot carries the signal and its `title` carries the word. */
+const STATUS_NOTES: Record<Exclude<ConnectionStatus, 'active'>, string> = {
+  disabled: 'Disabled',
+  error: 'Error',
+  needs_reauth: 'Re-auth',
+};
 
 export interface ConnectionFoldProps {
   connectionId: string;
@@ -55,7 +71,6 @@ export interface ConnectionFoldProps {
    * connection IS the issuing provider and the column header said so).
    */
   adornment?: ReactNode;
-  className?: string;
 }
 
 export function ConnectionFold({
@@ -63,14 +78,26 @@ export function ConnectionFold({
   connection,
   loading = false,
   adornment,
-  className = '',
 }: ConnectionFoldProps): ReactElement | null {
   if (!connectionId) return null;
 
-  const classes = ['conn-fold', className].filter(Boolean).join(' ');
+  const status = connection?.status ?? null;
+  // The reduction is "no copyable id", NOT "no status": an id is a thing you
+  // copy, a status is a thing you read, and reading is exactly what tablet width
+  // is for. A `needs_reauth` carrier connection is the direct cause of a wall of
+  // failed labels, and a `disabled` invoicing connection is why documents
+  // stopped issuing — dropping that here would hide the answer on the surface
+  // where the operator is asking the question. Costs no height: the dot is
+  // inline (#2094 review).
+  const statusNote = status && status !== 'active' ? STATUS_NOTES[status] : null;
 
   return (
-    <span className={classes}>
+    <span className="conn-fold">
+      {/* The fold sits inside another column's cell, so it loses the `<th>` that
+          gave the desktop rendering its meaning. Without this a screen reader
+          reads "…, Invoice (faktura), link inFakt" with nothing saying what
+          `inFakt` is. */}
+      <span className="sr-only">Connection: </span>
       {adornment ? <span className="conn-fold__adornment">{adornment}</span> : null}
       {/* `ConnectionEntityLabel` rather than a hand-rolled name span: it owns the
           link to `/connections/:id`, its self-page suppression, the "Unknown"
@@ -85,6 +112,23 @@ export function ConnectionFold({
         showId={false}
         showCopy={false}
       />
+      {/* The one case where the id-is-a-desktop-concern argument inverts: a
+          connection that does not resolve is exactly when an operator needs its
+          raw id for a support ticket, and `EntityLabel`'s Unknown branch puts
+          the id only in a `title` — which touch does not have. Shortened, still
+          not copyable. */}
+      {!loading && connection === null ? (
+        <span className="conn-fold__id mono-text">{shortenId(connectionId)}</span>
+      ) : null}
+      {statusNote ? (
+        <span
+          className={`conn-fold__status conn-fold__status--${status}`}
+          title={statusNote}
+        >
+          <span className="conn-fold__status-dot" aria-hidden="true" />
+          <span className="sr-only">{statusNote}</span>
+        </span>
+      ) : null}
     </span>
   );
 }
