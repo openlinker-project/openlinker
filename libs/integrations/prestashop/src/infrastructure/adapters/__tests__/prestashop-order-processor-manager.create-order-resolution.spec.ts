@@ -96,12 +96,6 @@ describe('PrestashopOrderProcessorManagerAdapter — createOrder resolution', ()
           return Promise.resolve([]);
         });
 
-      mockOrderMapper.mapOrderCreate.mockReturnValue({
-        id_customer: externalCustomerId,
-        current_state: 1,
-        associations: { order_rows: { order_row: [] } },
-      });
-
       setCreateResourceDispatch({ id: '123' }, {
         id: '999',
         reference: 'TEST-ORDER-001',
@@ -110,7 +104,7 @@ describe('PrestashopOrderProcessorManagerAdapter — createOrder resolution', ()
       mockIdentifierMapping.createMapping = jest.fn().mockResolvedValue(undefined);
     };
 
-    it('passes mapped externalCarrierId to mapOrderCreate when MappingConfigService resolves', async () => {
+    it('passes mapped externalCarrierId to mapCartCreate when MappingConfigService resolves', async () => {
       wireSuccessfulMappings('42');
       const resolveCarrierMapping = jest.fn().mockResolvedValue('4');
       const mockMappingConfig = {
@@ -133,9 +127,8 @@ describe('PrestashopOrderProcessorManagerAdapter — createOrder resolution', ()
 
       await adapterWithMapping.createOrder(buildOrderWithShipping());
 
-      // 9th arg = externalCarrierId — passed to BOTH mappers (#503).
-      // Cart-side is the load-bearing assertion: PS resolves the order's
-      // id_carrier from the cart, ignoring the order body's value.
+      // 9th arg = externalCarrierId (#503): PS resolves the order's id_carrier
+      // from the cart.
       expect(mockOrderMapper.mapCartCreate).toHaveBeenCalledWith(
         expect.anything(),
         expect.anything(),
@@ -307,12 +300,6 @@ describe('PrestashopOrderProcessorManagerAdapter — createOrder resolution', ()
           ]);
         }
         return Promise.resolve([]);
-      });
-
-      mockOrderMapper.mapOrderCreate.mockReturnValue({
-        id_customer: '42',
-        current_state: 1,
-        associations: { order_rows: { order_row: [] } },
       });
 
       setCreateResourceDispatch({ id: '123' }, {
@@ -572,11 +559,6 @@ describe('PrestashopOrderProcessorManagerAdapter — createOrder resolution', ()
       });
       mockAddressProvisioner.resolveOrCreateAddress = jest.fn().mockResolvedValue('800');
 
-      mockOrderMapper.mapOrderCreate.mockReturnValue({
-        id_customer: '42',
-        current_state: 1,
-        associations: { order_rows: { order_row: [] } },
-      });
       setCreateResourceDispatch({ id: '123' }, {
         id: '999',
         reference: 'TEST-ORDER-001',

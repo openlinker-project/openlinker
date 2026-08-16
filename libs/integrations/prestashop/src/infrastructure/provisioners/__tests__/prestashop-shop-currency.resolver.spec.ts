@@ -107,7 +107,7 @@ describe('PrestashopShopCurrencyResolver', () => {
     const first = await resolver.resolveDefaultCurrencyIso('conn-1', client);
     expect(first).toBeNull();
 
-    // A short-TTL failure entry must not survive; jump past FAILURE_CACHE_TTL_MS.
+    // A short-TTL failure entry must not survive; jump past UNRESOLVED_CACHE_TTL_MS.
     const realNow = Date.now;
     const past = realNow();
     jest.spyOn(Date, 'now').mockReturnValue(past + 61 * 1000);
@@ -122,17 +122,31 @@ describe('PrestashopShopCurrencyResolver', () => {
     expect(client.listResources).toHaveBeenCalledTimes(2);
   });
 
-  it('should cache a definitive absence for the full TTL (no short-TTL retry)', async () => {
+  it('should re-read an absent PS_CURRENCY_DEFAULT after the short TTL', async () => {
+    // A missing default currency used to cache for the full 24h TTL, so a shop
+    // whose operator configured it in the back office kept reporting no
+    // currency for up to a day. Any unresolved answer now gets the short TTL.
     client.listResources.mockResolvedValueOnce([]);
-    const first = await resolver.resolveDefaultCurrencyIso('conn-1', client);
-    expect(first).toBeNull();
+    expect(await resolver.resolveDefaultCurrencyIso('conn-1', client)).toBeNull();
 
-    // Past the failure TTL but well within the 24h definitive TTL: no refetch.
     const past = Date.now();
     jest.spyOn(Date, 'now').mockReturnValue(past + 61 * 1000);
     try {
-      const second = await resolver.resolveDefaultCurrencyIso('conn-1', client);
-      expect(second).toBeNull();
+      // The operator configured it in the meantime: the next call sees it.
+      expect(await resolver.resolveDefaultCurrencyIso('conn-1', client)).toBe('PLN');
+    } finally {
+      (Date.now as jest.Mock).mockRestore();
+    }
+    expect(client.listResources).toHaveBeenCalledTimes(2);
+  });
+
+  it('should cache a RESOLVED ISO past the short TTL (only nulls expire fast)', async () => {
+    expect(await resolver.resolveDefaultCurrencyIso('conn-1', client)).toBe('PLN');
+
+    const past = Date.now();
+    jest.spyOn(Date, 'now').mockReturnValue(past + 61 * 1000);
+    try {
+      expect(await resolver.resolveDefaultCurrencyIso('conn-1', client)).toBe('PLN');
     } finally {
       (Date.now as jest.Mock).mockRestore();
     }
