@@ -24,6 +24,7 @@ import {
   FiscalRegistrationNotInDoubtException,
   FiscalRegistrationRecord,
   FiscalRegistrationRecordNotFoundException,
+  OrderAlreadyRegisteredException,
 } from '@openlinker/core/fiscalization';
 import type { IFiscalRegistrationService } from '@openlinker/core/fiscalization';
 import { ORDER_RECORD_SERVICE_TOKEN, OrderRecord } from '@openlinker/core/orders';
@@ -32,6 +33,7 @@ import 'reflect-metadata';
 
 import { ROLES_KEY } from '../../auth/decorators/roles.decorator';
 import { FiscalizationController } from './fiscalization.controller';
+import type { RegisterFiscalTransactionRequestDto } from './dto/register-fiscal-transaction-request.dto';
 
 const NOW = new Date('2026-08-14T10:00:00.000Z');
 const CONNECTION_ID = '00000000-0000-0000-0000-0000000019a8';
@@ -157,19 +159,43 @@ describe('FiscalizationController', () => {
       );
     });
 
-    it('should pass a caller-supplied key through verbatim', async () => {
+    it('should mint its own key even if a caller smuggles one into the body', async () => {
+      // The regression this pins: a caller-chosen key misses the
+      // `(connectionId, idempotencyKey)` read gate, inserts a second row, wins its
+      // claim and calls the provider again - the same sale registered twice. The
+      // field is off the request DTO (so `forbidNonWhitelisted` 400s it at the
+      // pipe), and the controller must not read one even if it arrives.
       orders.getOrderRecord.mockResolvedValue(orderRecord());
       service.register.mockResolvedValue(registrationRecord());
 
       await controller.register({
         connectionId: CONNECTION_ID,
         orderId: ORDER_ID,
-        idempotencyKey: 'operator-chosen-key',
-      });
+        idempotencyKey: 'retry-1',
+      } as unknown as RegisterFiscalTransactionRequestDto);
 
       expect(service.register).toHaveBeenCalledWith(
-        expect.objectContaining({ idempotencyKey: 'operator-chosen-key' }),
+        expect.objectContaining({ idempotencyKey: `fiscal:${CONNECTION_ID}:${ORDER_ID}` }),
       );
+    });
+
+    it('should 409 when the order already carries a blocking registration', async () => {
+      // The service refuses a second ORIGINATING registration; the operator needs
+      // that as a conflict naming the blocking record, not a 500.
+      orders.getOrderRecord.mockResolvedValue(orderRecord());
+      service.register.mockRejectedValue(
+        new OrderAlreadyRegisteredException(
+          ORDER_ID,
+          'conn-other',
+          CONNECTION_ID,
+          'registered',
+          'rec-first',
+        ),
+      );
+
+      await expect(
+        controller.register({ connectionId: CONNECTION_ID, orderId: ORDER_ID }),
+      ).rejects.toBeInstanceOf(ConflictException);
     });
 
     it('should compose the sale lines server-side from the order snapshot', async () => {
@@ -217,6 +243,44 @@ describe('FiscalizationController', () => {
         controller.register({ connectionId: CONNECTION_ID, orderId: ORDER_ID }),
       ).rejects.toBeInstanceOf(UnprocessableEntityException);
       expect(service.register).not.toHaveBeenCalled();
+    });
+
+    it('should register an order whose addresses are PII-redacted', async () => {
+      // Under `OL_STORE_PII=false` every persisted address is a `[REDACTED]`
+      // placeholder. The shared rehydrator's buyer gate is an INVOICING rule (an
+      // invoice must name its buyer); applied here it 422'd every attempt and
+      // made fiscalization unusable on such a deployment. A fiscal receipt names
+      // no buyer, so the gate is opted out of - and nothing redacted reaches the
+      // command: the recipient simply resolves to absent.
+      const record = orderRecord();
+      const redacted = new OrderRecord(
+        record.internalOrderId,
+        record.customerId,
+        record.sourceConnectionId,
+        null,
+        {
+          ...record.orderSnapshot,
+          billingAddress: {
+            address1: '[REDACTED]',
+            city: '[REDACTED]',
+            postalCode: '[REDACTED]',
+            country: 'PL',
+          },
+        },
+        [],
+        'ready',
+        NOW,
+        NOW,
+      );
+      orders.getOrderRecord.mockResolvedValue(redacted);
+      service.register.mockResolvedValue(registrationRecord());
+
+      await controller.register({ connectionId: CONNECTION_ID, orderId: ORDER_ID });
+
+      expect(service.register).toHaveBeenCalledWith(
+        expect.objectContaining({ totalGross: 100 }),
+      );
+      expect(service.register.mock.calls[0]?.[0].recipient).toBeUndefined();
     });
 
     it('should return a FAILED registration as a body, not an exception', async () => {

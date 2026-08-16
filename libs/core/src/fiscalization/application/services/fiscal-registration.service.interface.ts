@@ -24,7 +24,7 @@ export interface IFiscalRegistrationService {
    * Register a completed sale, exactly once per `(connectionId,
    * idempotencyKey)`.
    *
-   * The guarantee is upheld by four things acting together, none of which is
+   * The guarantee is upheld by five things acting together, none of which is
    * sufficient alone:
    *
    *   1. a MANDATORY caller-supplied key - there is no keyless mode;
@@ -32,7 +32,15 @@ export interface IFiscalRegistrationService {
    *   3. the record written BEFORE the outbound call, so an indeterminate crash
    *      still leaves durable evidence;
    *   4. an ATOMIC in-flight claim, without which two concurrent same-key calls
-   *      both pass the read gate and both reach the provider.
+   *      both pass the read gate and both reach the provider;
+   *   5. an AT-MOST-ONE-ORIGINATING-REGISTRATION guard on the ORDER, without
+   *      which re-posting the same sale under a DIFFERENT key misses the read
+   *      gate entirely - the index is keyed on `(connectionId, idempotencyKey)`
+   *      and knows nothing about orders. Throws
+   *      `OrderAlreadyRegisteredException` when the order already carries a
+   *      record that is `pending` / `registering` / `registered`, or `failed`
+   *      with any `failureMode` other than the terminal `rejected` - the same
+   *      predicate ADR-041 §3b states for originating documents.
    *
    * A repeat RESUMES the existing record under a status-aware invariant, never
    * blindly:
@@ -46,6 +54,14 @@ export interface IFiscalRegistrationService {
    * Never throws on a provider rejection: the outcome is persisted on the record
    * and the record is returned, so a failure surfaces on the order with an
    * actionable reason instead of interrupting other order processing.
+   *
+   * That is a DELIBERATE FORK from `InvoiceService.issueInvoice`, which rethrows.
+   * The two contexts therefore have opposite error contracts for the same shape
+   * of operation, and a caller must not port assumptions across: an HTTP 200 here
+   * says the request was handled, NOT that the sale was registered. A caller -
+   * including the FE - reads `status` / `failureMode`, never the status code.
+   * A refusal (missing key, order already registered) still throws, because
+   * nothing was attempted and there is no record to reason about.
    */
   register(cmd: RegisterTransactionCommand): Promise<FiscalRegistrationRecord>;
 

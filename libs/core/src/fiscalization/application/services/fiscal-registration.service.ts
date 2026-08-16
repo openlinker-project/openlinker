@@ -35,6 +35,7 @@ import { DuplicateFiscalRegistrationRecordException } from '../../domain/excepti
 import { FiscalRegistrationNotInDoubtException } from '../../domain/exceptions/fiscal-registration-not-in-doubt.exception';
 import { FiscalRegistrationRecordNotFoundException } from '../../domain/exceptions/fiscal-registration-record-not-found.exception';
 import { MissingIdempotencyKeyException } from '../../domain/exceptions/missing-idempotency-key.exception';
+import { OrderAlreadyRegisteredException } from '../../domain/exceptions/order-already-registered.exception';
 import { FISCAL_REGISTRATION_RECORD_REPOSITORY_TOKEN } from '../../fiscalization.tokens';
 import type {
   FiscalRegistrationFailureMode,
@@ -70,10 +71,24 @@ const MAX_FAILURE_REASON_LENGTH = 200;
 export const REGISTERING_LEASE_MS = 5 * 60 * 1000;
 
 /**
- * Hard ceiling on any single provider round-trip the system supports (including
- * transport retries). {@link REGISTERING_LEASE_MS} must strictly exceed it.
+ * Hard ceiling on any single provider round-trip. {@link REGISTERING_LEASE_MS}
+ * must strictly exceed it.
  *
- * @internal Exported only for the unit test that pins the invariant.
+ * ENFORCED HERE, not asserted about adapters: `registerWithAdapter` races the
+ * adapter call against this bound, so no adapter can exceed it whatever its own
+ * transport does. That is what makes the lease margin true rather than a
+ * convention - invoicing's identically-worded constant is true only because ONE
+ * adapter happens to validate its `timeoutMs` at config time, which says nothing
+ * about the next one.
+ *
+ * The bound alone would not be enough: a raced-out promise is NOT cancelled, so
+ * the underlying request may still land. That is why a timeout is classified
+ * `in-doubt` (never `rejected`) and an `in-doubt` row is not claimable - the
+ * expired-lease disjunct of `claimForRegistration` can therefore only be reached
+ * after the owning PROCESS died, whose in-flight socket died with it, and never
+ * while a call this process started is still open.
+ *
+ * @internal Exported for the unit tests that pin both halves of the invariant.
  */
 export const MAX_SUPPORTED_PROVIDER_TIMEOUT_MS = 120 * 1000;
 
@@ -86,6 +101,20 @@ if (REGISTERING_LEASE_MS <= MAX_SUPPORTED_PROVIDER_TIMEOUT_MS) {
       `exceed MAX_SUPPORTED_PROVIDER_TIMEOUT_MS (${MAX_SUPPORTED_PROVIDER_TIMEOUT_MS}ms) so an expired ` +
       `lease can never be re-claimed mid-flight and register one sale twice.`,
   );
+}
+
+/**
+ * Thrown when the provider call outruns {@link MAX_SUPPORTED_PROVIDER_TIMEOUT_MS}.
+ *
+ * Carries NO `failureMode`, so `classifyFailure` reads it as the fiscal-safe
+ * `in-doubt`: giving up on the promise does not cancel the request, so the sale
+ * may well be registered.
+ */
+class ProviderTimeoutError extends Error {
+  constructor(timeoutMs: number) {
+    super(`The fiscalization provider did not answer within ${timeoutMs}ms`);
+    this.name = 'ProviderTimeoutError';
+  }
 }
 
 /**
@@ -119,22 +148,33 @@ export class FiscalRegistrationService implements IFiscalRegistrationService {
       throw new MissingIdempotencyKeyException(cmd.orderId);
     }
 
+    // Everything downstream - the read gate, the persisted row, the reconcile
+    // lookup AND the adapter - must see the SAME key, or a provider that echoes
+    // OL's key back would be queried later under a value it never received.
+    const normalized: RegisterTransactionCommand = { ...cmd, idempotencyKey: key };
+
     // (1) Read gate. An existing row is RESUMED under the fiscal-safety
     // invariant - never returned blindly and never re-sent blindly.
-    const existing = await this.repo.findByIdempotencyKey(cmd.connectionId, key);
+    const existing = await this.repo.findByIdempotencyKey(normalized.connectionId, key);
     if (existing) {
-      return this.resumeExisting(cmd, existing);
+      return this.resumeExisting(normalized, existing);
     }
 
-    // (2) Persist intent BEFORE any outbound call, so an indeterminate crash
+    // (2) No same-key row exists, so this asks for a NEW originating
+    // registration of the sale. Refuse if the order already has one; the unique
+    // index cannot see this, because it is keyed on
+    // `(connectionId, idempotencyKey)` and knows nothing about orders.
+    await this.assertNotAlreadyRegistered(normalized.orderId, normalized.connectionId);
+
+    // (3) Persist intent BEFORE any outbound call, so an indeterminate crash
     // leaves durable evidence to reconcile against. ADR-005's
     // delete-the-row-on-failure step is deliberately NOT adopted here: deleting
     // on a throw is the blind-resend path, and the row IS the in-doubt evidence.
     let pending: FiscalRegistrationRecord;
     try {
       pending = await this.repo.create({
-        connectionId: cmd.connectionId,
-        orderId: cmd.orderId,
+        connectionId: normalized.connectionId,
+        orderId: normalized.orderId,
         // The adapter owns the authoritative provider identity; the success
         // patch backfills it. The pending row records '' until then.
         providerType: '',
@@ -142,19 +182,19 @@ export class FiscalRegistrationService implements IFiscalRegistrationService {
         status: 'pending',
       });
     } catch (error) {
-      // (2a) Create-race: a concurrent same-key call won the unique guard
+      // (3a) Create-race: a concurrent same-key call won the unique guard
       // between our read gate and this create. Re-read the winner and resume it
       // under the SAME invariant, so both callers agree about the same state.
       if (error instanceof DuplicateFiscalRegistrationRecordException) {
-        const winner = await this.repo.findByIdempotencyKey(cmd.connectionId, key);
+        const winner = await this.repo.findByIdempotencyKey(normalized.connectionId, key);
         if (winner) {
-          return this.resumeExisting(cmd, winner);
+          return this.resumeExisting(normalized, winner);
         }
       }
       throw error;
     }
 
-    return this.registerWithAdapter(cmd, pending.id);
+    return this.registerWithAdapter(normalized, pending.id);
   }
 
   async getByOrderId(orderId: string): Promise<FiscalRegistrationRecord[]> {
@@ -208,8 +248,13 @@ export class FiscalRegistrationService implements IFiscalRegistrationService {
       return { outcome: 'not-found', record };
     }
 
+    const locatedProviderType = located.providerType?.trim() ?? '';
     const patch: FiscalRegistrationOutcomePatch = {
       status: 'registered',
+      // Present-only: an omitted key is never read as "set to null", so an
+      // adapter that reports no identity leaves whatever the record holds rather
+      // than having core invent one.
+      ...(locatedProviderType.length > 0 ? { providerType: locatedProviderType } : {}),
       providerReference: located.providerReference,
       documentReference: located.documentReference,
       signingIdentity: located.signingIdentity,
@@ -224,6 +269,65 @@ export class FiscalRegistrationService implements IFiscalRegistrationService {
     };
     const resolved = await this.repo.updateOutcome(recordId, patch);
     return { outcome: 'resolved', record: resolved };
+  }
+
+  /**
+   * At-most-one-originating-registration guard.
+   *
+   * The exactly-once index is `(connectionId, idempotencyKey)`; it has no notion
+   * of an ORDER, so on its own "register order O, then register order O again
+   * under any other key" passes every per-key invariant and registers one sale
+   * twice. ADR-042 decision 6 puts the guarantee in the contract because that
+   * outcome is a legal event for the seller, so the second attempt is REFUSED.
+   *
+   * Blocking is `FiscalRegistrationRecord.blocksFurtherRegistration` - the same
+   * predicate ADR-041 §3b states for originating documents, so an order cannot
+   * be told "already documented" by one context and "free" by the other. Only a
+   * terminal `rejected` record (the provider definitely created nothing) leaves
+   * the sale registrable again.
+   *
+   * Scope differences from invoicing's `assertNotInvoicedElsewhere` (#2047), both
+   * deliberate:
+   *   - records on the REQUESTED connection are NOT skipped. That is the whole
+   *     point: a second key on the same connection is the interleaving the index
+   *     cannot see. Skipping it here would be safe there only because the read
+   *     gate already returned - which it did, or this method would not run.
+   *   - no `SyncLockPort` is taken. This is a read, so it is read-then-act:
+   *     two SIMULTANEOUS attempts on two DIFFERENT connections for a
+   *     never-registered order can both observe nothing and both proceed. The
+   *     same-connection case (the only one the shipped HTTP surface can produce,
+   *     since it mints one deterministic key per (connection, order)) is closed
+   *     by the unique index instead. Narrowing that last window means adopting
+   *     the per-order `SyncLockPort` invoicing takes around the same check
+   *     (`invoiceIssueLockKey`); deliberately not done here, so the residual
+   *     window is: two fiscalization connections, one never-registered order,
+   *     two truly simultaneous operator requests.
+   */
+  private async assertNotAlreadyRegistered(
+    orderId: string,
+    requestedConnectionId: string,
+  ): Promise<void> {
+    const records = await this.repo.findAllByOrderId(orderId);
+    const blocking = records.find((record) => record.blocksFurtherRegistration);
+    if (!blocking) {
+      return;
+    }
+
+    // `warn`, not `error`: a refusal here is the guard WORKING, and it is raised
+    // to the caller as a 409 rather than left in a log.
+    this.logger.warn(
+      `Refusing a second fiscal registration of order ${orderId} on connection ` +
+        `${requestedConnectionId}: record ${blocking.id} on connection ` +
+        `${blocking.connectionId} is ${blocking.status}` +
+        `${blocking.status === 'failed' ? ` (failureMode=${blocking.failureMode ?? 'unknown'})` : ''}`,
+    );
+    throw new OrderAlreadyRegisteredException(
+      orderId,
+      blocking.connectionId,
+      requestedConnectionId,
+      blocking.status,
+      blocking.id,
+    );
   }
 
   /**
@@ -264,17 +368,34 @@ export class FiscalRegistrationService implements IFiscalRegistrationService {
   }
 
   /**
-   * Claim the in-flight slot atomically, resolve the per-connection adapter,
+   * Resolve the per-connection adapter, claim the in-flight slot atomically,
    * cross the CORE <-> Integration boundary and patch the record with the
    * outcome.
    *
    * The claim is the single-flight guard: a concurrent same-key attempt that
    * fails to claim backs off WITHOUT calling the provider.
+   *
+   * ADAPTER RESOLUTION COMES FIRST, and that ordering is load-bearing. Claiming
+   * first means a connection with the capability disabled - the single most
+   * likely first-run misconfiguration - parks the row `registering` under a live
+   * lease with no `failureMode` and no `failureReason`, so for the whole lease
+   * window a retry reports "an attempt is in progress" for a call that was never
+   * made, and no surface can explain the row. Resolving first leaves the record
+   * untouched (`pending`, no lease, freely re-attemptable) and lets the
+   * configuration fault surface as itself. This DIVERGES from
+   * `InvoiceService.issueWithAdapter`, which still claims first; the same fix
+   * belongs there, but inheriting a known stuck state is not a reason to ship
+   * one on a new surface.
    */
   private async registerWithAdapter(
     cmd: RegisterTransactionCommand,
     recordId: string,
   ): Promise<FiscalRegistrationRecord> {
+    const adapter = await this.integrations.getCapabilityAdapter<FiscalizationPort>(
+      cmd.connectionId,
+      FISCALIZATION_CAPABILITY,
+    );
+
     const leaseExpiresAt = new Date(Date.now() + REGISTERING_LEASE_MS);
     const claimed = await this.repo.claimForRegistration(recordId, leaseExpiresAt);
     if (claimed === null) {
@@ -289,14 +410,9 @@ export class FiscalRegistrationService implements IFiscalRegistrationService {
       throw new FiscalRegistrationRecordNotFoundException(recordId);
     }
 
-    const adapter = await this.integrations.getCapabilityAdapter<FiscalizationPort>(
-      cmd.connectionId,
-      FISCALIZATION_CAPABILITY,
-    );
-
     let result: Awaited<ReturnType<FiscalizationPort['registerTransaction']>>;
     try {
-      result = await adapter.registerTransaction(cmd);
+      result = await this.callWithinSupportedTimeout(() => adapter.registerTransaction(cmd));
     } catch (error) {
       const failureMode = this.classifyFailure(error);
       const patch: FiscalRegistrationOutcomePatch = {
@@ -337,6 +453,41 @@ export class FiscalRegistrationService implements IFiscalRegistrationService {
       leaseExpiresAt: null,
     };
     return this.repo.updateOutcome(recordId, patch);
+  }
+
+  /**
+   * Run one provider call under the {@link MAX_SUPPORTED_PROVIDER_TIMEOUT_MS}
+   * ceiling, so the lease margin holds for EVERY adapter rather than for the
+   * ones that happen to bound themselves.
+   *
+   * Two details are not incidental:
+   *   - the loser of the race is swallowed with a no-op `catch`. A `Promise.race`
+   *     leaves the slower promise live, and an unhandled rejection from a call
+   *     nobody is waiting for would crash the process on Node's default policy.
+   *   - the timeout error carries no `failureMode`, so it classifies as
+   *     `in-doubt`. Racing does NOT cancel the request: the sale may still be
+   *     registered, and an `in-doubt` row is never re-claimable, which is exactly
+   *     what keeps the expired-lease disjunct from licensing a second call.
+   */
+  private async callWithinSupportedTimeout<T>(call: () => Promise<T>): Promise<T> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const inFlight = call();
+    const timeout = new Promise<never>((_resolve, reject) => {
+      timer = setTimeout(
+        () => reject(new ProviderTimeoutError(MAX_SUPPORTED_PROVIDER_TIMEOUT_MS)),
+        MAX_SUPPORTED_PROVIDER_TIMEOUT_MS,
+      );
+    });
+
+    inFlight.catch(() => undefined);
+
+    try {
+      return await Promise.race([inFlight, timeout]);
+    } finally {
+      if (timer !== undefined) {
+        clearTimeout(timer);
+      }
+    }
   }
 
   /**

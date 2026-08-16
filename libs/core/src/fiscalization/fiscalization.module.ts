@@ -24,10 +24,10 @@ import {
   FISCAL_REGISTRATION_SERVICE_TOKEN,
 } from './fiscalization.tokens';
 
-export {
-  FISCAL_REGISTRATION_RECORD_REPOSITORY_TOKEN,
-  FISCAL_REGISTRATION_SERVICE_TOKEN,
-} from './fiscalization.tokens';
+// No token re-export here: `fiscalization.tokens.ts` plus the barrel's
+// `export *` is the single publication path (engineering standards § Symbol DI
+// Token Re-export Convention), so a new token cannot land on one surface and
+// miss the other.
 
 @Module({
   imports: [TypeOrmModule.forFeature([FiscalRegistrationRecordOrmEntity]), IntegrationsModule],

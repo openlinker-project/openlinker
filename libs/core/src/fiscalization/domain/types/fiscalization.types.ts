@@ -213,6 +213,17 @@ export interface FiscalLocateCriteria {
  * means the provider holds NO match.
  */
 export interface FiscalLocateResult {
+  /**
+   * Provider identity the adapter owns, mirroring
+   * {@link RegisterTransactionResult.providerType}. OPTIONAL because a locator
+   * answers about a document, not about itself: an adapter that omits it leaves
+   * the record's existing value alone, since core will not invent a provider
+   * identity for a row it never registered through. Supplying it is what lets a
+   * record that reaches `registered` by RECONCILIATION carry the same identity a
+   * directly-registered one does, instead of the `''` placeholder its pending row
+   * was created with.
+   */
+  providerType?: string;
   providerReference: string | null;
   documentReference: string | null;
   signingIdentity: string | null;

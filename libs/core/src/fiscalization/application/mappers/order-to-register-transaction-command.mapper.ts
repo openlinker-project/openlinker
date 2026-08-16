@@ -29,6 +29,19 @@ import { UnsupportedFiscalPriceTreatmentError } from './errors/unsupported-fisca
  */
 const SHIPPING_LINE_NAME = 'Shipping';
 
+/**
+ * Tolerance, in the currency's own units, when checking that the composed lines
+ * sum to the reported total.
+ *
+ * One minor unit of a 2-decimal currency. Wide enough to absorb IEEE-754
+ * accumulation across a normal basket and per-line rounding the source already
+ * did; narrow enough that a folded discount, a coupon or a zero-defaulted
+ * snapshot field cannot hide inside it. NOT tax arithmetic - it compares two sets
+ * of gross figures the source itself reported (ADR-042 decision 8's negative half
+ * is about never computing a RATE, which this does not).
+ */
+const TOTAL_RECONCILIATION_EPSILON = 0.01;
+
 /** Inputs to {@link toRegisterTransactionCommand}. */
 export interface OrderToRegisterTransactionCommandInput {
   order: Order;
@@ -48,11 +61,13 @@ export interface OrderToRegisterTransactionCommandInput {
  *
  * Throws {@link UnsupportedFiscalPriceTreatmentError} when the order is
  * net-priced, and {@link InvalidFiscalLineError} when an item's quantity is not
- * a positive finite number. Both fire BEFORE anything is persisted or sent, so a
- * malformed order produces no record and no provider call.
+ * a positive finite number, or when the composed lines do not sum to the
+ * order's reported gross total. All of them fire BEFORE anything is persisted or
+ * sent, so a malformed order produces no record and no provider call.
  *
- * Appends a gross shipping line when the buyer paid for shipping, so the
- * registered total equals the buyer-paid order total.
+ * Appends a gross shipping line when the buyer paid for shipping, and then
+ * VERIFIES that the lines sum to the buyer-paid order total rather than merely
+ * intending to - see {@link assertLinesSumToTotal}.
  */
 export function toRegisterTransactionCommand(
   input: OrderToRegisterTransactionCommandInput,
@@ -77,6 +92,8 @@ export function toRegisterTransactionCommand(
     lines.push(shippingLine);
   }
 
+  assertLinesSumToTotal(lines, order.totals.total, order.id);
+
   const command: RegisterTransactionCommand = {
     connectionId,
     orderId: order.id,
@@ -98,6 +115,55 @@ export function toRegisterTransactionCommand(
   }
 
   return command;
+}
+
+/**
+ * Refuse a sale whose lines contradict its own total.
+ *
+ * A fiscal registration transmits amounts it must not silently distort, so
+ * "the lines sum to the total" has to be CHECKED, not asserted in a comment.
+ * Three real ways it breaks today, none of them exotic:
+ *
+ *   - `OrderTotals` carries no discount field, so a source that folds a coupon
+ *     or an order-level discount into `total` reports lines that sum higher;
+ *   - `orderFromReadySnapshot`'s `readTotals` / `readItems` zero-default every
+ *     missing numeric, so a partially malformed snapshot composes zero-priced
+ *     lines under a non-zero total (or the reverse);
+ *   - a source reporting `total` net of something it never itemised.
+ *
+ * Blocking with an operator-facing 422 is the fiscally correct answer: the
+ * alternative is a receipt whose printed lines do not add up to the amount the
+ * buyer paid, which no downstream surface can detect or repair.
+ *
+ * This is arithmetic on figures the SOURCE reported - a sum and a comparison. It
+ * neither computes nor infers a tax rate, so it stays clear of ADR-042 decision
+ * 8's negative half.
+ */
+function assertLinesSumToTotal(
+  lines: FiscalTransactionLine[],
+  totalGross: number,
+  orderId: string,
+): void {
+  if (!Number.isFinite(totalGross)) {
+    throw new InvalidFiscalLineError(
+      `Order ${orderId} reports a non-finite gross total; cannot compose a registrable sale`,
+    );
+  }
+
+  const summed = lines.reduce((sum, line) => sum + line.quantity * line.unitPriceGross, 0);
+  if (!Number.isFinite(summed)) {
+    throw new InvalidFiscalLineError(
+      `Order ${orderId} has a line with a non-finite amount; cannot compose a registrable sale`,
+    );
+  }
+
+  if (Math.abs(summed - totalGross) > TOTAL_RECONCILIATION_EPSILON) {
+    throw new InvalidFiscalLineError(
+      `Order ${orderId} lines sum to ${summed.toFixed(2)} but the order reports a gross total of ` +
+        `${totalGross.toFixed(2)}; a fiscal registration may not transmit lines that contradict ` +
+        `their own total`,
+    );
+  }
 }
 
 /**

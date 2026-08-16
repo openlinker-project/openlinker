@@ -80,6 +80,45 @@ describe('fiscal_registration_records persistence (integration)', () => {
     await teardownTestHarness();
   });
 
+  // This file mints `fiscal:int:${seq}` from a counter that `beforeEach` resets,
+  // so EVERY case re-uses the same keys. That is only sound because
+  // `fiscal_registration_records` is in the harness truncate list: the table
+  // declares no FK by design, so it is invisible to the CASCADE closure
+  // `truncateTables` walks and would otherwise never be cleared - the second case
+  // to call `row()` would then collide on
+  // UQ_fiscal_registration_records_connection_idempotency. This case asserts the
+  // reset rather than relying on it silently.
+  describe('per-case isolation', () => {
+    it('seeds a row that must NOT survive into the next case', async () => {
+      await repository.create({
+        connectionId: CONNECTION_ID,
+        orderId: 'ol_order_leak_probe',
+        providerType: '',
+        idempotencyKey: 'fiscal:leak-probe:1',
+        status: 'pending',
+      });
+
+      await expect(repo.count()).resolves.toBeGreaterThan(0);
+    });
+
+    it('starts with an empty table and can re-mint the previous case`s key', async () => {
+      // Both halves matter: the count proves the truncate ran, and re-inserting
+      // the exact key the previous case used proves it ran against THIS table
+      // rather than leaving rows the unique index would reject.
+      await expect(repo.count()).resolves.toBe(0);
+
+      await expect(
+        repository.create({
+          connectionId: CONNECTION_ID,
+          orderId: 'ol_order_leak_probe',
+          providerType: '',
+          idempotencyKey: 'fiscal:leak-probe:1',
+          status: 'pending',
+        }),
+      ).resolves.toBeDefined();
+    });
+  });
+
   it('persists a row with neutral defaults and reads it back', async () => {
     const created = await repository.create({
       connectionId: CONNECTION_ID,
