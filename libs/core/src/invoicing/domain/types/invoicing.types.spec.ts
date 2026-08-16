@@ -41,6 +41,7 @@ describe('invoicing.types', () => {
   it('exposes the closed neutral failure-code taxonomy (W1)', () => {
     expect([...InvoiceFailureCodeValues]).toEqual([
       'buyer-tax-id-invalid',
+      'invalid-currency',
       'provider-rejected',
       'transport-timeout',
       'provider-error',

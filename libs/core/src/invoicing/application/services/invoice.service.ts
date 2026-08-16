@@ -51,6 +51,9 @@ import {
 } from './invoice-issue-lock';
 import { MissingNumberingSeriesException } from '../../domain/exceptions/missing-numbering-series.exception';
 import { CapabilityNotSupportedException } from '@openlinker/core/integrations';
+// Published so an adapter spec can pin its own pre-call refusal message against
+// the very markers this service matches on (#2103 review) — see the constant's doc.
+import { CURRENCY_REJECTION_MARKERS } from '../../domain/types/invoicing.types';
 import type {
   CorrectionLine,
   GetInvoiceByOrderQuery,
@@ -751,9 +754,13 @@ export class InvoiceService implements IInvoiceService {
    * classified {@link InvoiceFailureMode} plus a STRUCTURAL read of the adapter
    * throwable's `reason`/message — never value-importing an adapter error class.
    *
-   *   - `rejected` (TERMINAL): a tax-identifier rejection → `buyer-tax-id-invalid`
-   *     (operator-fixable); anything else → `provider-rejected`.
+   *   - `rejected` (TERMINAL): a tax-identifier rejection → `buyer-tax-id-invalid`;
+   *     a settlement-currency rejection → `invalid-currency` (both operator-
+   *     fixable on the source order); anything else → `provider-rejected`.
    *   - `in-doubt` (transient/indeterminate transport): `transport-timeout`.
+   *
+   * Tax id is checked first purely for determinism — a message naming both is
+   * routed to the buyer-data fix, which is the more specific remedy.
    *
    * The mode is the source of truth for re-attemptability; the code is the FE-
    * facing cause refinement. An unrecognised mode can never reach here (the only
@@ -777,9 +784,13 @@ export class InvoiceService implements IInvoiceService {
           ? error.message
           : '';
     const haystack = reasonText.toLowerCase();
-    return TAX_ID_REJECTION_MARKERS.some((marker) => haystack.includes(marker))
-      ? 'buyer-tax-id-invalid'
-      : 'provider-rejected';
+    if (TAX_ID_REJECTION_MARKERS.some((marker) => haystack.includes(marker))) {
+      return 'buyer-tax-id-invalid';
+    }
+    if (CURRENCY_REJECTION_MARKERS.some((marker) => haystack.includes(marker))) {
+      return 'invalid-currency';
+    }
+    return 'provider-rejected';
   }
 
   /**
@@ -791,6 +802,13 @@ export class InvoiceService implements IInvoiceService {
   private deriveFailureReason(failureCode: InvoiceFailureCode): string {
     const reasons: Record<InvoiceFailureCode, string> = {
       'buyer-tax-id-invalid': 'The buyer tax identifier was rejected as invalid.',
+      // Worded to fit an adapter PRE-CALL refusal, which is the only origin
+      // that actually reaches this code today (see InvoiceFailureCode's doc):
+      // it never claims the provider saw a request it did not. It stays
+      // accurate for a provider-side currency rejection too, should one ever
+      // route here, which is why it names the condition rather than the actor.
+      'invalid-currency':
+        'The settlement currency is missing, malformed, or not accepted for this document. Fix the currency on the order and re-issue.',
       'provider-rejected': 'The invoicing provider rejected the request.',
       'transport-timeout':
         'The invoicing request timed out; the document may or may not have been created.',
