@@ -8,6 +8,12 @@
  * Implements InventoryRepositoryPort to maintain proper dependency
  * direction and enable easy testing/mocking.
  *
+ * The update path is column-scoped (#2071): the three exported column groups
+ * below state which columns the master sync owns, and a spec asserts every
+ * declared entity column is classified into exactly one of them — so a column
+ * added later cannot silently join the write set on the row every published
+ * quantity derives from.
+ *
  * @module libs/core/src/inventory/infrastructure/persistence/repositories
  * @implements {InventoryRepositoryPort}
  * @see {@link InventoryItemOrmEntity} for the database entity
@@ -28,6 +34,54 @@ import type {
   ProductStockAggregate,
   PruneStaleVariantsResult,
 } from '../../../domain/types/inventory.types';
+
+/**
+ * Columns that identify an `inventory_items` row (#2071).
+ *
+ * `findByProductAndVariant` matches on the last three, so these ARE the lookup
+ * key: writing them back on an update is a no-op at best and a row-identity
+ * change at worst. Never in an update's SET clause.
+ */
+export const INVENTORY_IDENTITY_COLUMNS = [
+  'id',
+  'productId',
+  'productVariantId',
+  'locationId',
+] as const;
+
+/**
+ * Columns the master sync owns and may write on an existing row (#2071).
+ *
+ * - `availableQuantity` — the master's stock figure.
+ * - `reservedQuantity` — a **mirror of the master's value, rewritten on every
+ *   sync**, NOT an OL-owned counter. This has been misread before; nothing in OL
+ *   accumulates into it.
+ * - `isStale` — written `false` on every upsert (the sole domain-entity
+ *   construction outside this file omits the argument, so the constructor
+ *   default applies). That is safe only because `MasterInventorySyncService`
+ *   runs its `setInventory` loop BEFORE `pruneStaleVariants`, and the prune
+ *   stales exactly the variants the loop did not report — so the two sets are
+ *   disjoint and an upsert cannot un-stale a row the same run just flagged.
+ *   **Precondition:** any new `upsert` caller must preserve that ordering, or
+ *   `isStale` has to leave this set.
+ */
+export const INVENTORY_MASTER_OWNED_COLUMNS = [
+  'availableQuantity',
+  'reservedQuantity',
+  'isStale',
+] as const;
+
+/**
+ * Columns the database stamps, which the master sync must NOT write (#2071).
+ *
+ * `updatedAt` is an `@UpdateDateColumn`. TypeORM appends its auto-timestamp only
+ * when the column is absent from the SET clause, so naming it would suppress the
+ * stamp and persist whatever the master reported. `InventorySyncService` builds
+ * the propagation job's dedupe key from this value, so it must remain OL-write
+ * time — a master reporting a stable timestamp while quantity moved would
+ * collide the key and the propagation would be silently dropped.
+ */
+export const INVENTORY_DB_MANAGED_COLUMNS = ['updatedAt'] as const;
 
 @Injectable()
 export class InventoryRepository implements InventoryRepositoryPort {
@@ -213,17 +267,60 @@ export class InventoryRepository implements InventoryRepositoryPort {
       item.locationId
     );
 
-    const entity = this.toOrmEntity(item);
-
     if (existing) {
-      // Update existing inventory item
-      entity.id = existing.id;
-      const saved = await this.repository.save(entity);
-      return this.toDomain(saved);
+      // Column-scoped on purpose (#2071): the master sync writes exactly
+      // INVENTORY_MASTER_OWNED_COLUMNS and nothing else. Previously this was a
+      // `save()`, so the write set was an emergent property of TypeORM's diffing
+      // — a column added to the entity later would have silently joined it, and
+      // this is the row every published quantity derives from.
+      //
+      // `updatedAt` is deliberately absent from the SET clause: TypeORM appends
+      // the `@UpdateDateColumn` timestamp only when the column is not already
+      // being written, so naming it here would suppress the auto-stamp and
+      // persist the master-supplied value instead. `InventorySyncService` derives
+      // the propagation job's dedupe key from this field, so it must stay
+      // OL-write time.
+      const updated = await this.repository
+        .createQueryBuilder()
+        .update(InventoryItemOrmEntity)
+        .set({
+          availableQuantity: item.availableQuantity,
+          reservedQuantity: item.reservedQuantity,
+          isStale: item.isStale,
+        })
+        .where('id = :id', { id: existing.id })
+        .returning(['updatedAt'])
+        .execute();
+
+      // RETURNING carries the DB-stamped `updatedAt` back in the same round-trip,
+      // which the caller cannot reconstruct from `item`.
+      const [returnedRow] = updated.raw as { updatedAt: Date | string }[];
+      const persistedUpdatedAt = returnedRow
+        ? returnedRow.updatedAt instanceof Date
+          ? returnedRow.updatedAt
+          : new Date(returnedRow.updatedAt)
+        : item.updatedAt;
+
+      return new InventoryItem(
+        existing.id,
+        existing.productId,
+        existing.productVariantId,
+        item.availableQuantity,
+        item.reservedQuantity,
+        existing.locationId,
+        persistedUpdatedAt,
+        item.isStale
+      );
     } else {
-      // Insert new inventory item
+      // Insert new inventory item.
+      //
+      // Deliberately NOT column-scoped, unlike the update branch above: an INSERT
+      // necessarily writes every column, so there is no other writer's column to
+      // avoid clobbering. `toOrmEntity` is now an insert-only mapping.
+      //
       // If the provided ID is not a valid UUID or doesn't exist, let TypeORM generate it
       // This handles the case where adapter's identifier mapping ID is used
+      const entity = this.toOrmEntity(item);
       if (!this.isValidUUID(item.id)) {
         // Clear ID - create new entity without ID property
         // TypeORM will require an ID, so we'll use a new UUID
