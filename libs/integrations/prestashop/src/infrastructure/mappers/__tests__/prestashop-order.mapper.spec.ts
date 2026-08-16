@@ -313,11 +313,22 @@ describe('PrestashopOrderMapper', () => {
 
       it('should read the XML attribute id shape when the id is not a child element', () => {
         const rows = [rowWith(undefined)];
-        (rows[0] as Record<string, unknown>)['@_id'] = 13;
+        rows[0]['@_id'] = 13;
 
         const result = mapper.mapOrder(orderFor(), rows);
 
         expect(result.items[0].id).toBe('13');
+      });
+
+      it('should fall through to the XML attribute id when the child element is blank', () => {
+        // `??` would not have caught this: `''` is neither null nor undefined, so the row would
+        // have thrown without ever consulting the attribute shape the fallback exists for.
+        const rows = [rowWith('')];
+        rows[0]['@_id'] = 21;
+
+        const result = mapper.mapOrder(orderFor(), rows);
+
+        expect(result.items[0].id).toBe('21');
       });
 
       it('should throw when a row carries no id at all', () => {
@@ -335,7 +346,8 @@ describe('PrestashopOrderMapper', () => {
         } catch (error) {
           const parseError = error as PrestashopParseException;
           expect(parseError).toBeInstanceOf(PrestashopParseException);
-          expect(parseError.message).toContain('position 1');
+          // 1-based: the offending row is the second one, so an operator counting from 1 finds it.
+          expect(parseError.message).toContain('position 2');
           expect(parseError.message).toContain('42');
           // The row shape is `[key: string]: unknown` and this message reaches sync-job storage.
           expect(parseError.message).not.toContain('PROD-001');

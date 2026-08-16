@@ -128,17 +128,21 @@ export class PrestashopOrderMapper implements IPrestashopOrderMapper {
    */
   private resolveOrderRowId(
     row: PrestashopOrderRow,
-    position: number,
+    index: number,
     orderId: string | number | undefined,
   ): string {
-    // `??` not `||`: a legitimate id of 0 must not fall through.
-    const rawId = row.id ?? (row as Record<string, unknown>)['@_id'];
+    // Both shapes are tried by the same presence test rather than `??`, so a blank `id` still
+    // falls through to `@_id`. `0` is present and must survive — which is the `||` bug this fixes.
+    const rawId = [row.id, row['@_id']].find(
+      (candidate) => candidate !== null && candidate !== undefined && String(candidate).trim() !== '',
+    );
 
-    if (rawId === null || rawId === undefined || String(rawId).trim() === '') {
+    if (rawId === undefined) {
       // Message-only: `responseBody` is documented as unbounded and this message reaches sync-job
       // storage and operator-visible error text, so the row itself is never serialised into it.
+      // Position is 1-based — an operator counts order lines from 1, as `originalLineNumber` does.
       throw new PrestashopParseException(
-        `PrestaShop order_details row at position ${position} for order ${String(orderId ?? 'unknown')} has no id`,
+        `PrestaShop order_details row at position ${index + 1} for order ${String(orderId ?? 'unknown')} has no id`,
       );
     }
 
