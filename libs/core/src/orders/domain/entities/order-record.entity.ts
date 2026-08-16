@@ -33,6 +33,12 @@ export type { OrderSyncStatus, SyncAttempt } from '../types/order-sync.types';
  * `syncAttempts` is the per-destination append-only history; the constructor
  * defaults it to `[]` so existing call sites that pre-date the column compile
  * unchanged (the field is hydrated from the JSONB column by the repository).
+ *
+ * Neither `syncStatus` nor `syncAttempts` is ever sourced from an ingestion
+ * payload: no order source reports OL's own destination sync state, and
+ * `updateSyncStatus` is their sole writer, so the ingestion path passes `[]`
+ * and the upsert excludes both columns entirely (#2140). A record handed back
+ * by that upsert therefore reports both empty whatever the row holds.
  */
 export class OrderRecord {
   constructor(

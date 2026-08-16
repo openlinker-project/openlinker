@@ -739,11 +739,12 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
   /**
    * Full-row upsert of the ingestion-owned columns, keyed on the primary key.
    *
-   * `fulfillmentState` (#2101), `cancelledAt` (#1984) and the three
-   * `salesDocument*` columns (#2100) are deliberately outside the write set -
-   * see the {@link toOrm} comments. A consequence is that the returned record
-   * reports them all as `null` regardless of what the row holds, because none
-   * was part of the statement; callers needing their true value re-read via
+   * `syncStatus` / `syncAttempts` (#2140), `fulfillmentState` (#2101),
+   * `cancelledAt` (#1984) and the three `salesDocument*` columns (#2100) are
+   * deliberately outside the write set - see the {@link toOrm} comments. A
+   * consequence is that the returned record reports them all as empty (`[]` /
+   * `null`) regardless of what the row holds, because none of those columns was
+   * part of the statement; callers needing their true value re-read via
    * {@link findById}.
    */
   async upsert(orderRecord: OrderRecord): Promise<OrderRecord> {
@@ -845,7 +846,11 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    * Convert ORM entity to domain entity
    */
   private toDomain(entity: OrderRecordOrmEntity): OrderRecord {
-    const syncStatus: OrderSyncStatus[] = entity.syncStatus.map((s) => ({
+    // `?? []` because {@link upsert} feeds this the entity it handed `save()`,
+    // whose `syncStatus` property is unset by design (#2140) - undefined on the
+    // update path, where TypeORM has no RETURNING clause to fill it back in.
+    // A row read from the database always carries the column (NOT NULL).
+    const syncStatus: OrderSyncStatus[] = (entity.syncStatus ?? []).map((s) => ({
       destinationConnectionId: s.destinationConnectionId,
       status: s.status,
       syncedAt: s.syncedAt ? new Date(s.syncedAt) : undefined,
@@ -894,6 +899,48 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
 
   /**
    * Convert domain entity to ORM entity
+   *
+   * ## Columns deliberately outside the write set
+   *
+   * `syncStatus`, `syncAttempts`, `fulfillmentState` and `cancelledAt` are
+   * intentionally left unset below. Each is OL-owned state that no source
+   * payload carries and that a dedicated narrow `UPDATE` owns; leaving the
+   * property unset makes TypeORM omit the column from the generated statement
+   * entirely, so the row's committed value survives untouched.
+   *
+   * This is not optional tidiness. `upsert()` is a full-object `save()` with no
+   * per-order lock around it (webhook + reconciliation poll legitimately race
+   * for the same order, per `docs/architecture-overview.md` § "Webhook =
+   * trigger, poll = reconciliation backstop"), so mapping any of them lets the
+   * ingestion path's in-memory value stomp what the real writer committed. A
+   * read-before-write is NOT the fix - it still loses whatever commits between
+   * that read and this save. Omitting the column is the only race-free option.
+   *
+   * - `syncStatus` / `syncAttempts` (#2140) - sole writer `updateSyncStatus`.
+   *   For `syncAttempts` the wipe was irreversible: the JSONB array *is* the
+   *   store, so an operator retry erased the failed -> retried -> synced
+   *   narrative the activity timeline renders. For `syncStatus` it blinded
+   *   every reader of the per-destination rows while the destination
+   *   order-create calls run - the retry action 404s, fulfillment tracking
+   *   skips the order - permanently so whenever the writeback never runs.
+   *   Both rely on the column's `DEFAULT '[]'` on insert (asserted by
+   *   `1833000000005-set-order-records-sync-status-default.ts`).
+   * - `fulfillmentState` (#2101) - sole writer `updateFulfillmentState`, a
+   *   rollup over the order's shipments. The wipe made a dispatched order
+   *   reappear as not-shipped in the ship-by SLA buckets and list filter.
+   * - `cancelledAt` (#1984) - sole writer `markCancelled` (COALESCE-based,
+   *   atomic).
+   * - The three `salesDocument*` columns (#2100) - sole writer
+   *   `updateSalesDocumentBlock`, with a reason of their own on top of the
+   *   shared one: `persistOrder` runs BEFORE the auto-issue gate on every
+   *   ingestion, so round-tripping them here would null the columns and then
+   *   immediately re-set them - a visible flicker for any concurrent read, and
+   *   a stomp against a reason a peer transition just wrote.
+   *
+   * Before adding an assignment here, ask which out-of-band writer owns that
+   * column: #2101 excluded only `fulfillmentState` and left the two columns
+   * with the identical defect assigned three lines above its own comment,
+   * which is what #2140 then had to fix.
    */
   private toOrm(orderRecord: OrderRecord): OrderRecordOrmEntity {
     const entity = new OrderRecordOrmEntity();
@@ -902,53 +949,9 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     entity.sourceConnectionId = orderRecord.sourceConnectionId;
     entity.sourceEventId = orderRecord.sourceEventId;
     entity.orderSnapshot = orderRecord.orderSnapshot;
-    entity.syncStatus = orderRecord.syncStatus.map((s) => ({
-      destinationConnectionId: s.destinationConnectionId,
-      status: s.status,
-      syncedAt: s.syncedAt?.toISOString(),
-      externalOrderId: s.externalOrderId,
-      externalOrderNumber: s.externalOrderNumber,
-      error: s.error,
-    }));
-    entity.syncAttempts = orderRecord.syncAttempts.map((a) => ({
-      destinationConnectionId: a.destinationConnectionId,
-      status: a.status,
-      attemptedAt: a.attemptedAt.toISOString(),
-      error: a.error,
-      externalOrderId: a.externalOrderId,
-      externalOrderNumber: a.externalOrderNumber,
-    }));
     entity.recordStatus = orderRecord.recordStatus;
     entity.mappingFailureReason = orderRecord.mappingFailureReason;
     entity.dispatchByAt = orderRecord.dispatchByAt;
-    // fulfillmentState is deliberately NOT mapped here (#2101), for the same
-    // reason as cancelledAt below: it is OL-owned state rolled up from the
-    // order's shipments, never re-derivable from the source payload, and
-    // {@link updateFulfillmentState} is its sole writer. Mapping it made every
-    // re-ingestion (a poll re-read, a webhook-triggered sync, a manual
-    // re-sync) write the ingestion path's in-memory `null` over a
-    // `'dispatched'` value the shipping context had already committed, so a
-    // dispatched order reappeared as not-shipped in the ship-by SLA buckets
-    // and the not-shipped list filter. Carrying the value forward with a
-    // read-before-write would still lose a rollup that commits between that
-    // read and this save; omitting the column is race-free.
-    // cancelledAt is deliberately NOT mapped here (#1984 follow-up). upsert()
-    // is a full-object save() with no per-order lock around it (two ingestion
-    // paths — webhook + reconciliation poll — legitimately race for the same
-    // order per docs/architecture-overview.md § "Webhook = trigger, poll =
-    // reconciliation backstop"), so writing this column here would let a
-    // stale in-memory read stomp a value {@link markCancelled} already
-    // committed concurrently. Leaving the ORM entity's `cancelledAt` property
-    // unset means TypeORM omits the column from the generated UPDATE
-    // entirely — the row's existing value survives untouched. `markCancelled`
-    // (COALESCE-based, atomic) is the single writer for this column.
-    //
-    // All three salesDocument* columns are omitted for the same
-    // reason (#2100), with one of its own: `persistOrder` runs BEFORE the
-    // auto-issue gate on every ingestion, so round-tripping these here would null
-    // the columns and then immediately re-set them — a visible flicker for any
-    // concurrent read, and a stomp risk against a reason a peer transition just
-    // wrote. {@link updateSalesDocumentBlock} is the single writer.
     entity.createdAt = orderRecord.createdAt;
     entity.updatedAt = orderRecord.updatedAt;
     return entity;

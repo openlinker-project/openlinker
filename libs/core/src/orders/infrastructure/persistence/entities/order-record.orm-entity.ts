@@ -60,9 +60,22 @@ export class OrderRecordOrmEntity {
 
   /**
    * Sync status per destination (JSONB array)
-   * Tracks sync state for each destination connection
+   * Tracks sync state for each destination connection.
+   *
+   * The `default` is load-bearing, not cosmetic - do not delete it as a
+   * tidy-up. Since #2140 the upsert omits this column from its write set, so
+   * every insert relies on the column's own default; and a schema built by
+   * TypeORM `synchronize` rather than by migrations gets that default from
+   * here and nowhere else (`libs/shared/src/database/database.module.ts`
+   * enables synchronize for every `NODE_ENV !== 'production'`, which is what
+   * the integration harness runs on). Without it the first `persistOrder`
+   * against such a schema violates the NOT NULL constraint.
+   *
+   * It mirrors the `NOT NULL DEFAULT '[]'` on the migration-built schema,
+   * asserted by `1833000000005-set-order-records-sync-status-default.ts`
+   * because the creating migration applies it only conditionally.
    */
-  @Column({ type: 'jsonb' })
+  @Column({ type: 'jsonb', default: () => "'[]'" })
   syncStatus!: OrderSyncStatusJson[];
 
   /**

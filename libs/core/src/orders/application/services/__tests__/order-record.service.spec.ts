@@ -508,6 +508,44 @@ describe('OrderRecordService', () => {
     });
   });
 
+  describe('persist paths - destination sync state left to updateSyncStatus (#2140)', () => {
+    beforeEach(() => {
+      process.env.OL_STORE_PII = 'true';
+      service = new OrderRecordService(repository);
+    });
+
+    it('never constructs the OrderRecord passed to upsert() with sync state', async () => {
+      // No order source reports OL's own destination sync state. The empty
+      // arrays here are the ingestion path declining to have an opinion; the
+      // upsert then omits both columns so a re-ingestion cannot erase what
+      // updateSyncStatus committed - see the toOrm comment in
+      // OrderRecordRepository.
+      repository.upsert.mockResolvedValue({} as OrderRecord);
+
+      await service.persistOrder(createMockOrder(), 'source-connection-123', 'event-456');
+
+      const callArg = repository.upsert.mock.calls[0][0];
+      expect(callArg.syncStatus).toEqual([]);
+      expect(callArg.syncAttempts).toEqual([]);
+    });
+
+    it('never constructs the snapshot OrderRecord with sync state either', async () => {
+      repository.upsert.mockResolvedValue({} as OrderRecord);
+
+      await service.persistIncomingSnapshot(
+        createMockIncomingOrder(),
+        'ol_order_abc123',
+        null,
+        'source-connection-123',
+        'event-456'
+      );
+
+      const callArg = repository.upsert.mock.calls[0][0];
+      expect(callArg.syncStatus).toEqual([]);
+      expect(callArg.syncAttempts).toEqual([]);
+    });
+  });
+
   describe('persistIncomingSnapshot', () => {
     beforeEach(() => {
       process.env.OL_STORE_PII = 'true';

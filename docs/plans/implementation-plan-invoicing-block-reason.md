@@ -85,7 +85,7 @@ Interface (API read) + Frontend.
 - `OrderRecordRepositoryPort.updateSalesDocumentBlock` + repository implementation.
 - `IOrderRecordService.markSalesDocumentBlock`.
 - `scripts/check-sales-document-reason-mirror.mjs`.
-- Migration `1833000000005-add-order-record-sales-document-block.ts`.
+- Migration `1833000000006-add-order-record-sales-document-block.ts`.
 
 **Core vs Integration Justification**: the block is a policy decision made entirely inside core, before
 any adapter is resolved. No integration package is touched.
@@ -241,7 +241,7 @@ An invoicing block is orthogonal: an order can be `synced` **and** blocked. See 
      wrapped so a clear failure never fails an issued invoice. Needed because fixing the config and
      issuing by hand fires no order transition.
 10. **Migration**
-    - **File**: `apps/api/src/migrations/1833000000005-add-order-record-sales-document-block.ts` (new)
+    - **File**: `apps/api/src/migrations/1833000000006-add-order-record-sales-document-block.ts` (new)
     - **Action**: `ADD COLUMN IF NOT EXISTS` for both columns + the index, `DROP COLUMN IF EXISTS` down.
       Prefix chosen above `origin/main`'s max (`1833000000004`) per the migration-timestamp lesson.
     - **Acceptance**: `pnpm --filter @openlinker/api migration:show` reports nothing pending.

@@ -3,7 +3,11 @@
  *
  * Maps PrestaShop order and order_detail data to OpenLinker Order schema.
  * Handles customer information, addresses, line items, and totals.
- * Also maps OpenLinker OrderCreate to PrestaShop order format.
+ * Also maps OpenLinker OrderCreate to the PrestaShop CART the order-processor
+ * adapter creates before handing off to the OL module's `importorder`
+ * endpoint, where PrestaShop's own `validateOrder` builds the order (ADR-016 /
+ * #905). The raw-webservice order body this mapper used to build was removed
+ * with #2102 - see ADR-016 for why that surface no longer exists.
  *
  * @module libs/integrations/prestashop/src/infrastructure/mappers
  * @implements {IPrestashopOrderMapper}
@@ -16,20 +20,18 @@ import type {
 import type { Order, OrderItem, OrderTotals } from '@openlinker/core/orders';
 import type { OrderCreate, OrderStatus } from '@openlinker/core/orders';
 import { PrestashopProvisioningException } from '@openlinker/integrations-prestashop';
+import { PrestashopParseException } from '../../domain/exceptions/prestashop-parse.exception';
 import { Logger } from '@openlinker/shared/logging';
 import { toPrestashopProductAttributeId } from './prestashop-variant-id';
 
 /**
- * Default values for PrestaShop cart + order creation. Hoisted to
- * module scope so both `mapOrderCreate` and `mapCartCreate` reference
- * the same source of truth. Future enhancement: move to connection
- * config so per-store overrides don't require a code change.
+ * Default values for PrestaShop cart creation. Kept at module scope as the
+ * single source of truth. Future enhancement: move to connection config so
+ * per-store overrides don't require a code change.
  */
 const DEFAULT_CURRENCY_ID = 1; // EUR
 const DEFAULT_LANGUAGE_ID = 1; // First language
 const DEFAULT_CARRIER_ID = 1; // First carrier
-const DEFAULT_PAYMENT_MODULE = 'ps_checkpayment';
-const DEFAULT_PAYMENT_METHOD = 'Check payment';
 
 /**
  * PrestaShop Order Mapper
@@ -39,7 +41,9 @@ const DEFAULT_PAYMENT_METHOD = 'Check payment';
 export class PrestashopOrderMapper implements IPrestashopOrderMapper {
   private readonly logger = new Logger(PrestashopOrderMapper.name);
   mapOrder(prestashopOrder: PrestashopOrder, orderRows: PrestashopOrderRow[]): Omit<Order, 'id'> {
-    // Map line items
+    // Strictly 1:1 and order-preserving: `PrestashopOrderSourceAdapter` re-correlates
+    // `mapped.items[i]` back to `orderRows[i]` positionally to build each product ref.
+    // Filtering or reordering rows here would silently mis-pair every later line.
     const items: OrderItem[] = orderRows.map((row, index) => {
       // PrestaShop uses "0" or 0 to indicate no variant, treat as undefined
       const variantId =
@@ -50,7 +54,7 @@ export class PrestashopOrderMapper implements IPrestashopOrderMapper {
           : undefined;
 
       return {
-        id: String(row.id || index),
+        id: this.resolveOrderRowId(row, index, prestashopOrder.id),
         productId: '', // Will be set by adapter using identifier mapping
         variantId,
         quantity: this.parseNumber(row.product_quantity) || 0,
@@ -110,6 +114,43 @@ export class PrestashopOrderMapper implements IPrestashopOrderMapper {
   }
 
   /**
+   * Resolve an `order_details` row's stable line id (#2068).
+   *
+   * The value is `ps_order_detail.id_order_detail` — an AUTO_INCREMENT primary key. It is the ONLY
+   * stable per-line identity available: a content-derived key such as
+   * `${product_id}:${product_attribute_id}` is not unique within one order (customisation, free-gift
+   * lines, warehouse splits and partial re-invoicing all produce sibling rows sharing that pair), and
+   * a positional key is not stable across polls. Since `OrderItem.id` is persisted into the order
+   * snapshot, rendered to operators and used as a React row key, any synthesised value would be a
+   * silent defect rather than a visible one — so a row without an id is refused, not invented.
+   *
+   * `@_id` is read because the response parser expects ids to arrive as an XML attribute in some
+   * shapes (`prestashop-response.parser.ts`), where `row.id` would be `undefined`.
+   */
+  private resolveOrderRowId(
+    row: PrestashopOrderRow,
+    index: number,
+    orderId: string | number | undefined,
+  ): string {
+    // Both shapes are tried by the same presence test rather than `??`, so a blank `id` still
+    // falls through to `@_id`. `0` is present and must survive — which is the `||` bug this fixes.
+    const rawId = [row.id, row['@_id']].find(
+      (candidate) => candidate !== null && candidate !== undefined && String(candidate).trim() !== '',
+    );
+
+    if (rawId === undefined) {
+      // Message-only: `responseBody` is documented as unbounded and this message reaches sync-job
+      // storage and operator-visible error text, so the row itself is never serialised into it.
+      // Position is 1-based — an operator counts order lines from 1, as `originalLineNumber` does.
+      throw new PrestashopParseException(
+        `PrestaShop order_details row at position ${index + 1} for order ${String(orderId ?? 'unknown')} has no id`,
+      );
+    }
+
+    return String(rawId);
+  }
+
+  /**
    * Parse number field (handles string or number)
    */
   private parseNumber(value: unknown): number | undefined {
@@ -151,157 +192,6 @@ export class PrestashopOrderMapper implements IPrestashopOrderMapper {
       return isNaN(parsed.getTime()) ? undefined : parsed;
     }
     return undefined;
-  }
-
-  /**
-   * Map OpenLinker OrderCreate to PrestaShop order format
-   *
-   * Converts unified OrderCreate request to PrestaShop order structure.
-   * Maps internal IDs to external PrestaShop IDs and formats data for API submission.
-   */
-  mapOrderCreate(
-    orderCreate: OrderCreate,
-    externalCustomerId: string | number,
-    externalProductIds: Map<string, string | number>,
-    externalVariantIds: Map<string, string | number>,
-    externalShippingAddressId?: string | number,
-    externalBillingAddressId?: string | number,
-    externalCurrencyId?: string | number,
-    externalLangId?: string | number,
-    externalCarrierId?: number
-  ): Record<string, unknown> {
-    // Map order status to PrestaShop status ID
-    // PrestaShop uses numeric status IDs. For MVP, we'll use common defaults:
-    // 1 = pending, 2 = payment accepted, 3 = preparation in progress, etc.
-    const statusId = this.mapStatusToPrestashopStateId(orderCreate.status);
-
-    // Map order rows (line items)
-    const orderRows = orderCreate.items.map((item, index) => {
-      const externalProductId = externalProductIds.get(item.productId);
-      if (!externalProductId) {
-        // Log warning before throwing to help debug mapping issues
-        this.logger.warn(
-          `No external product ID found for internal product ID: ${item.productId}. ` +
-            `This may indicate a missing product mapping or sync issue.`
-        );
-        throw new PrestashopProvisioningException(
-          `No external product ID found for internal product ID: ${item.productId}`,
-          undefined,
-          undefined
-        );
-      }
-
-      // Map variant ID if present. Synthetic-variant markers (`product:<n>`)
-      // and unmapped variants collapse to 0 ("no combination") — shared with
-      // the price-pinning path so the two never drift (#923).
-      const externalVariantId = toPrestashopProductAttributeId(
-        item.variantId ? externalVariantIds.get(item.variantId) : undefined
-      );
-
-      return {
-        id: index + 1, // PrestaShop order_row IDs are sequential
-        product_id: externalProductId,
-        product_attribute_id: externalVariantId,
-        product_quantity: item.quantity,
-        // NOTE: PrestaShop derives `order_detail` line prices from the cart
-        // (the order is created with `id_cart`), so this `product_price` is NOT
-        // authoritative — the cart-scoped `specific_prices` the order processor
-        // writes before POST /orders pin the buyer-paid price (#895 / ADR-014).
-        // Kept for parity with the PS order body shape.
-        product_price: item.price.toFixed(6), // PrestaShop expects string with 6 decimals
-        product_reference: item.sku || '',
-      };
-    });
-
-    /**
-     * Calculate product totals for PrestaShop order
-     *
-     * PrestaShop requires separate fields for products with and without tax:
-     * - total_products: Subtotal without tax (products cost excluding tax)
-     * - total_products_wt: Subtotal with tax (products cost including tax)
-     *
-     * Formula: total_products_wt = total_products + tax
-     */
-    const totalProducts = orderCreate.totals.subtotal;
-    const totalProductsWt = orderCreate.totals.subtotal + orderCreate.totals.tax;
-
-    /**
-     * Shipping totals are intentionally omitted from the create-order body
-     * post-#516. PrestaShop computes them from the resolved carrier at
-     * POST /orders time:
-     *   - OL Dynamic carrier: reads `getOrderShippingCostExternal()` from
-     *     the OL module's sidecar table written at Step 6.5 (#515 / #524).
-     *   - Static carriers: priced from the carrier's own zone/range tables.
-     * Writing total_shipping[_tax_incl|_tax_excl] here either gets ignored
-     * by PS or fights the carrier's own computation — both bad.
-     */
-
-    /**
-     * Currency conversion rate
-     *
-     * PrestaShop uses conversion_rate to handle multi-currency orders.
-     * For now, we default to 1.0 (assuming same currency or 1:1 conversion).
-     * Future enhancement: Fetch actual conversion rate from PrestaShop if order currency
-     * differs from shop default currency.
-     */
-    const conversionRate = 1.0;
-
-    // Defaults are module-level constants so mapCartCreate and
-    // mapOrderCreate share the same source of truth.
-
-    // Build PrestaShop order structure
-    const prestashopOrder: Record<string, unknown> = {
-      id_customer: externalCustomerId,
-      id_currency: externalCurrencyId || DEFAULT_CURRENCY_ID,
-      id_lang: externalLangId || DEFAULT_LANGUAGE_ID,
-      id_carrier: externalCarrierId ?? DEFAULT_CARRIER_ID,
-      module: DEFAULT_PAYMENT_MODULE,
-      payment: DEFAULT_PAYMENT_METHOD,
-      current_state: statusId,
-      reference: orderCreate.orderNumber || undefined,
-      // Financial totals
-      total_paid: orderCreate.totals.total.toFixed(2),
-      total_paid_real: orderCreate.totals.total.toFixed(2), // Actual amount paid (same as total_paid for new orders)
-      total_paid_tax_incl: orderCreate.totals.total.toFixed(2),
-      total_paid_tax_excl: orderCreate.totals.subtotal.toFixed(2),
-      total_products: totalProducts.toFixed(2), // Products total without tax
-      total_products_wt: totalProductsWt.toFixed(2), // Products total with tax
-      // total_shipping[_tax_incl|_tax_excl] intentionally omitted post-#516.
-      // PS computes shipping from the resolved carrier (OL Dynamic via sidecar
-      // or static via zone tables) at order-create time.
-      conversion_rate: conversionRate.toFixed(6), // Currency conversion rate (6 decimals)
-      // PrestaShop requires associations for order_rows
-      associations: {
-        order_rows: {
-          order_row: orderRows,
-        },
-      },
-    };
-
-    // Add address IDs (PrestaShop requires both delivery and invoice addresses)
-    // Ensure at least one address is set, use it for both if only one provided
-    if (externalShippingAddressId && externalBillingAddressId) {
-      prestashopOrder.id_address_delivery = externalShippingAddressId;
-      prestashopOrder.id_address_invoice = externalBillingAddressId;
-    } else if (externalShippingAddressId) {
-      // Use shipping address for both if only shipping provided
-      prestashopOrder.id_address_delivery = externalShippingAddressId;
-      prestashopOrder.id_address_invoice = externalShippingAddressId;
-    } else if (externalBillingAddressId) {
-      // Use billing address for both if only billing provided
-      prestashopOrder.id_address_delivery = externalBillingAddressId;
-      prestashopOrder.id_address_invoice = externalBillingAddressId;
-    } else {
-      // This should not happen in practice, but throw error to make it explicit
-      throw new PrestashopProvisioningException(
-        'Both shipping and billing addresses are missing. At least one address is required for PrestaShop order creation.'
-      );
-    }
-
-    // Validate required fields (including address IDs that were just added)
-    this.validateOrderData(prestashopOrder);
-
-    return prestashopOrder;
   }
 
   /**
@@ -356,10 +246,8 @@ export class PrestashopOrderMapper implements IPrestashopOrderMapper {
       };
     });
 
-    // Build PrestaShop cart structure. id_carrier is set here (not just on
-    // the order body) because PS resolves the order's carrier from the cart
-    // and ignores the order body's id_carrier (#503). DEFAULT_*_ID constants
-    // are module-level — same source of truth as mapOrderCreate.
+    // Build PrestaShop cart structure. id_carrier is set here because PS
+    // resolves the order's carrier from the cart (#503).
     const prestashopCart: Record<string, unknown> = {
       id_customer: externalCustomerId,
       id_currency: externalCurrencyId || DEFAULT_CURRENCY_ID,
@@ -424,64 +312,6 @@ export class PrestashopOrderMapper implements IPrestashopOrderMapper {
           `Unmapped OrderStatus → PrestaShop state id: ${String(_exhaustive)} (update the mapper / #862)`
         );
       }
-    }
-  }
-
-  /**
-   * Validate that all required PrestaShop order fields are present
-   *
-   * Throws PrestashopProvisioningException if any required field is missing.
-   * This ensures we catch missing fields before API submission.
-   *
-   * @param orderData - PrestaShop order data to validate
-   * @throws PrestashopProvisioningException if required field is missing
-   */
-  private validateOrderData(orderData: Record<string, unknown>): void {
-    const requiredFields = [
-      'id_customer',
-      'id_currency',
-      'id_lang',
-      'id_carrier',
-      'module',
-      'payment',
-      'current_state',
-      'id_address_delivery', // Required by PrestaShop
-      'id_address_invoice', // Required by PrestaShop
-      'total_paid',
-      'total_paid_real',
-      'total_paid_tax_incl',
-      'total_paid_tax_excl',
-      'total_products',
-      'total_products_wt',
-      // total_shipping[_tax_incl|_tax_excl] removed post-#516 — see mapOrderCreate JSDoc.
-      'conversion_rate',
-      'associations',
-    ];
-
-    const missingFields: string[] = [];
-    for (const field of requiredFields) {
-      if (orderData[field] === undefined || orderData[field] === null) {
-        missingFields.push(field);
-      }
-    }
-
-    if (missingFields.length > 0) {
-      throw new PrestashopProvisioningException(
-        `Required fields are missing in order data: ${missingFields.join(', ')}`
-      );
-    }
-
-    // Validate associations.order_rows exists and is not empty
-    const associations = orderData.associations as Record<string, unknown>;
-    if (!associations || !associations.order_rows) {
-      throw new PrestashopProvisioningException(
-        'Required field "associations.order_rows" is missing in order data'
-      );
-    }
-
-    const orderRows = (associations.order_rows as Record<string, unknown>).order_row;
-    if (!orderRows || (Array.isArray(orderRows) && orderRows.length === 0)) {
-      throw new PrestashopProvisioningException('Order must have at least one order row');
     }
   }
 }

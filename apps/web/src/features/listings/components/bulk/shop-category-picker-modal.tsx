@@ -21,10 +21,25 @@
  *
  * @module apps/web/src/features/listings/components/bulk
  */
-import { useMemo, useState, type ReactElement } from 'react';
+import { useState, type ReactElement } from 'react';
 import { Button, Input } from '../../../../shared/ui';
 import { ErrorState, LoadingState } from '../../../../shared/ui/feedback-state';
-import { Dialog, DialogContent, DialogDescription, DialogTitle } from '../../../../shared/ui/dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from '../../../../shared/ui/dialog';
+import {
+  CategorySearchResults,
+  type CategorySearchResultHit,
+} from '../../../../shared/ui/category-search-results';
+import { useDebouncedValue } from '../../../../shared/hooks/use-debounced-value';
+import {
+  useCategorySearchQuery,
+  isSearchableCategoryQuery,
+  toCategorySearchResultHits,
+} from '../../../mappings';
 import { useShopCategoriesQuery } from '../../hooks/use-shop-categories-query';
 
 interface Crumb {
@@ -90,11 +105,35 @@ function ShopCategoryPickerBody({
   const categoriesQuery = useShopCategoriesQuery(connectionId, parentId, true);
 
   const nodes = categoriesQuery.data ?? [];
-  const query = search.trim().toLowerCase();
-  const visible = useMemo(
-    () => (query === '' ? nodes : nodes.filter((n) => n.name.toLowerCase().includes(query))),
-    [nodes, query],
-  );
+
+  // Whole-tree search (#2075). The previous input filtered only the loaded
+  // level — honestly labelled, unlike the marketplace sibling, but still unable
+  // to answer "where is Kurtki?" from the root.
+  const debouncedSearch = useDebouncedValue(search, 250);
+  const isSearching = isSearchableCategoryQuery(debouncedSearch);
+  // The same neutral route the marketplace picker uses: scope resolves from the
+  // connection, so a shop connection searches its own connection-keyed rows
+  // (ADR-037) with no shop-specific client here.
+  const searchQuery = useCategorySearchQuery(connectionId, debouncedSearch, true);
+
+  const searchHits = toCategorySearchResultHits(searchQuery.data);
+
+  // NOTE the deliberate absence of `isTaxonomyUnsynced` here, unlike the two
+  // marketplace surfaces.
+  //
+  // That helper infers "never synced" from an empty BROWSE result, which is
+  // only sound when browse and search read the same store. On this surface they
+  // do not: the tree above is read LIVE from the shop
+  // (`ShopCategoryBrowseService` -> `adapter.browseCategories`, the #2085
+  // delegation deferral) while search reads the projection, which syncs hourly
+  // with no bootstrap on connection create (#2084). So `browsedNodeCount` is
+  // non-empty by construction for a real shop, the guard could never fire, and
+  // an empty search would confidently report "nothing matched" while the index
+  // was simply still catching up — the same false-claim defect #2075 removes.
+  //
+  // Until #2084/#2085 close, this surface cannot distinguish the two cases, so
+  // it says so rather than guessing.
+  const searchEmptyReason = 'indeterminate';
 
   function drillInto(node: Crumb): void {
     setBreadcrumb((prev) => [...prev, node]);
@@ -113,6 +152,19 @@ function ShopCategoryPickerBody({
 
   function pick(node: { id: string; name: string }): void {
     onSelect(node.id, [...breadcrumb.map((c) => c.name), node.name]);
+    onClose();
+  }
+
+  /**
+   * A search hit is not under the current breadcrumb — its path must come from
+   * the hit itself, or the caller stamps the product with a category trail that
+   * does not exist.
+   */
+  function pickHit(hit: CategorySearchResultHit): void {
+    onSelect(
+      hit.id,
+      hit.path.map((node) => node.name)
+    );
     onClose();
   }
 
@@ -141,65 +193,89 @@ function ShopCategoryPickerBody({
         <Input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Filter this level..."
-          aria-label="Filter categories in this level"
+          placeholder="Search all categories..."
+          aria-label="Search all categories"
+          aria-controls="shop-catpick-search-results"
         />
       </div>
 
-      <nav className="bulk-editor__catpick-crumbs" aria-label="Category path">
-        <button
-          type="button"
-          className="bulk-editor__catpick-crumb"
-          onClick={jumpToRoot}
-          disabled={breadcrumb.length === 0}
-        >
-          Root
-        </button>
-        {breadcrumb.map((crumb, i) => (
-          <span key={crumb.id} className="bulk-editor__catpick-crumb-group">
-            <span className="bulk-editor__catpick-sep" aria-hidden="true">
-              ›
+      {isSearching ? null : (
+        <nav className="bulk-editor__catpick-crumbs" aria-label="Category path">
+          <button
+            type="button"
+            className="bulk-editor__catpick-crumb"
+            onClick={jumpToRoot}
+            disabled={breadcrumb.length === 0}
+          >
+            Root
+          </button>
+          {breadcrumb.map((crumb, i) => (
+            <span key={crumb.id} className="bulk-editor__catpick-crumb-group">
+              <span className="bulk-editor__catpick-sep" aria-hidden="true">
+                ›
+              </span>
+              {i === breadcrumb.length - 1 ? (
+                <span className="bulk-editor__catpick-crumb-cur">{crumb.name}</span>
+              ) : (
+                <button
+                  type="button"
+                  className="bulk-editor__catpick-crumb"
+                  onClick={() => jumpToCrumb(i)}
+                >
+                  {crumb.name}
+                </button>
+              )}
             </span>
-            {i === breadcrumb.length - 1 ? (
-              <span className="bulk-editor__catpick-crumb-cur">{crumb.name}</span>
-            ) : (
-              <button
-                type="button"
-                className="bulk-editor__catpick-crumb"
-                onClick={() => jumpToCrumb(i)}
-              >
-                {crumb.name}
-              </button>
-            )}
-          </span>
-        ))}
-      </nav>
+          ))}
+        </nav>
+      )}
 
       <div className="bulk-editor__catpick-list">
-        {categoriesQuery.isLoading ? (
-          <LoadingState liveRegion="off" title="Loading categories" message="Fetching categories..." />
+        {isSearching ? (
+          <CategorySearchResults
+            listId="shop-catpick-search-results"
+            hits={searchHits}
+            isLoading={searchQuery.isLoading}
+            error={searchQuery.error}
+            onRetry={() => void searchQuery.refetch()}
+            onSelect={pickHit}
+            // A shop product may sit in ANY node, so every hit is selectable —
+            // the one behavioural difference from the marketplace picker
+            // (ADR-024).
+            canSelect={() => true}
+            selectedId={selectedId}
+            emptyReason={searchEmptyReason}
+            query={debouncedSearch}
+          />
+        ) : categoriesQuery.isLoading ? (
+          <LoadingState
+            liveRegion="off"
+            title="Loading categories"
+            message="Fetching categories..."
+          />
         ) : categoriesQuery.error ? (
           <ErrorState
             title="Unable to load categories"
             message={categoriesQuery.error.message}
             action={<Button onClick={() => void categoriesQuery.refetch()}>Retry</Button>}
           />
-        ) : visible.length === 0 ? (
+        ) : nodes.length === 0 ? (
           <div className="bulk-editor__catpick-empty">
-            {query === ''
-              ? breadcrumb.length === 0
-                ? 'This shop has no categories yet.'
-                : 'This category has no subcategories. Select it, or step back to a different branch.'
-              : `No categories match "${search.trim()}".`}
+            {breadcrumb.length === 0
+              ? 'This shop has no categories yet.'
+              : 'This category has no subcategories. Select it, or step back to a different branch.'}
           </div>
         ) : (
           <ul className="bulk-editor__catpick-items" role="list">
-            {visible.map((node) => {
+            {nodes.map((node) => {
               const isCurrent = node.id === selectedId;
               return (
                 <li
                   key={node.id}
-                  className={['bulk-editor__catpick-item', isCurrent ? 'bulk-editor__catpick-item--current' : '']
+                  className={[
+                    'bulk-editor__catpick-item',
+                    isCurrent ? 'bulk-editor__catpick-item--current' : '',
+                  ]
                     .filter(Boolean)
                     .join(' ')}
                 >

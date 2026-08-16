@@ -123,7 +123,11 @@ export class OrderRecordService implements IOrderRecordService {
       updatedAt: order.updatedAt.toISOString(),
     };
 
-    // Initial sync status: pending for all destinations (will be updated as sync progresses)
+    // Empty: no source payload carries destination sync state, and
+    // `updateSyncStatus` is the sole writer of both `syncStatus` and
+    // `syncAttempts`. The upsert excludes those columns (#2140), so this empty
+    // array never reaches the row - passing one here is the ingestion path
+    // declining to have an opinion, not an instruction to clear.
     const syncStatus: OrderSyncStatus[] = [];
 
     // `fulfillmentState` is intentionally left at its constructor default:
