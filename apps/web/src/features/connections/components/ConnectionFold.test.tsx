@@ -112,13 +112,29 @@ describe('ConnectionFold', () => {
       'utf8',
     );
 
-    const queryFor = (selector: string): string | undefined =>
-      css
-        .split('@media ')
-        .slice(1)
-        .find((block) => block.slice(0, block.indexOf('}')).includes(selector))
-        ?.split('{')[0]
-        .trim();
+    // Brace-matched, so only the media block's OWN body is searched. A naive
+    // `split('@media ')` also sweeps up every rule that follows a block until
+    // the next one — and `.data-table__cell--hide-below-1024` appears outside any
+    // media query too (in a comma group), so a looser guard finds the wrong
+    // block and passes by luck.
+    const queryFor = (selector: string): string | undefined => {
+      for (let at = css.indexOf('@media '); at !== -1; at = css.indexOf('@media ', at + 1)) {
+        const open = css.indexOf('{', at);
+        let depth = 0;
+        let close = open;
+        for (; close < css.length; close += 1) {
+          if (css[close] === '{') depth += 1;
+          else if (css[close] === '}') {
+            depth -= 1;
+            if (depth === 0) break;
+          }
+        }
+        if (css.slice(open + 1, close).includes(`${selector} {`)) {
+          return css.slice(at + '@media '.length, open).trim();
+        }
+      }
+      return undefined;
+    };
 
     const foldQuery = queryFor('.conn-fold');
     const columnQuery = queryFor('.data-table__cell--hide-below-1024');
