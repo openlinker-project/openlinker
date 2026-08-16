@@ -79,7 +79,7 @@ export function AllegroCategorySearch({
 
   function handlePrimitiveSelect(
     node: CategoryTreeNode,
-    breadcrumb: readonly CategoryTreeCrumb[],
+    breadcrumb: readonly CategoryTreeCrumb[]
   ): void {
     // Node shape from primitive is structurally compatible with AllegroCategory.
     setStaged({ category: node as AllegroCategory, path: buildCategoryPath(breadcrumb, node) });
@@ -120,7 +120,9 @@ export function AllegroCategorySearch({
         <div className="allegro-category-search__current">
           <span className="mono-text">{currentMapping.allegroCategoryName}</span>
           {currentMapping.allegroCategoryPath && (
-            <span className="allegro-category-search__path">{currentMapping.allegroCategoryPath}</span>
+            <span className="allegro-category-search__path">
+              {currentMapping.allegroCategoryPath}
+            </span>
           )}
           <Button className="button--ghost button--sm" onClick={onClear} disabled={isSaving}>
             Clear mapping
@@ -133,22 +135,12 @@ export function AllegroCategorySearch({
         <div className="allegro-category-search__staged">
           <span className="allegro-category-search__staged-label">Selected:</span>
           <span className="mono-text">{staged.category.name}</span>
-          {staged.path && (
-            <span className="allegro-category-search__path">{staged.path}</span>
-          )}
+          {staged.path && <span className="allegro-category-search__path">{staged.path}</span>}
           <span className="allegro-category-search__staged-actions">
-            <Button
-              className="button--primary button--sm"
-              onClick={handleSave}
-              disabled={isSaving}
-            >
+            <Button className="button--primary button--sm" onClick={handleSave} disabled={isSaving}>
               {isSaving ? 'Saving…' : 'Save mapping'}
             </Button>
-            <Button
-              className="button--ghost button--sm"
-              onClick={handleCancel}
-              disabled={isSaving}
-            >
+            <Button className="button--ghost button--sm" onClick={handleCancel} disabled={isSaving}>
               Cancel
             </Button>
           </span>
@@ -161,6 +153,7 @@ export function AllegroCategorySearch({
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search all categories..."
           aria-label="Search all categories"
+          aria-controls="mapping-catpick-search-results"
           disabled={isSaving}
         />
       </div>
@@ -171,6 +164,7 @@ export function AllegroCategorySearch({
           the level it was left on, since `parentId` is untouched here. */}
       {isSearching ? (
         <CategorySearchResults
+          listId="mapping-catpick-search-results"
           hits={searchHits}
           isLoading={searchQuery.isLoading}
           error={searchQuery.error}

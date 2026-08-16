@@ -96,6 +96,34 @@ describe('CategorySearchResults', () => {
     expect(screen.queryByText('No categories synced yet')).not.toBeInTheDocument();
   });
 
+  it('should refuse to claim either outcome when the caller is indeterminate', () => {
+    // The shop picker's browse and search read different stores, so it cannot
+    // know which case an empty result is — the copy must assert neither.
+    render(
+      <CategorySearchResults
+        hits={[]}
+        isLoading={false}
+        error={null}
+        onRetry={vi.fn()}
+        onSelect={vi.fn()}
+        canSelect={() => true}
+        emptyReason="indeterminate"
+        query="zzz"
+      />,
+    );
+
+    expect(screen.getByText('No search results')).toBeInTheDocument();
+    expect(screen.getByText(/may not be searchable yet/i)).toBeInTheDocument();
+    expect(screen.queryByText('No matching categories')).not.toBeInTheDocument();
+    expect(screen.queryByText('No categories synced yet')).not.toBeInTheDocument();
+  });
+
+  it('should expose listId on the results list so an input can aria-control it', () => {
+    renderResults({ listId: 'results-under-test' });
+
+    expect(screen.getByRole('list')).toHaveAttribute('id', 'results-under-test');
+  });
+
   it('should show an unselectable hit rather than hiding it', async () => {
     // The marketplace rule: a non-leaf is a real match but not a valid target.
     // Hiding it would look like the search missed it.

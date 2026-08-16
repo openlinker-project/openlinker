@@ -24,7 +24,12 @@
 import { useState, type ReactElement } from 'react';
 import { Button, Input } from '../../../../shared/ui';
 import { ErrorState, LoadingState } from '../../../../shared/ui/feedback-state';
-import { Dialog, DialogContent, DialogDescription, DialogTitle } from '../../../../shared/ui/dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from '../../../../shared/ui/dialog';
 import {
   CategorySearchResults,
   type CategorySearchResultHit,
@@ -34,7 +39,6 @@ import {
   useCategorySearchQuery,
   isSearchableCategoryQuery,
   toCategorySearchResultHits,
-  isTaxonomyUnsynced,
 } from '../../../mappings';
 import { useShopCategoriesQuery } from '../../hooks/use-shop-categories-query';
 
@@ -114,15 +118,22 @@ function ShopCategoryPickerBody({
 
   const searchHits = toCategorySearchResultHits(searchQuery.data);
 
-  // See the marketplace sibling: a failed browse is excluded inside the helper,
-  // so a transient error reads as "no matches" rather than the stronger and
-  // possibly false "never synced".
-  const taxonomyNeverSynced = isTaxonomyUnsynced({
-    atRoot: breadcrumb.length === 0,
-    browsedNodeCount: nodes.length,
-    isBrowseLoading: categoriesQuery.isLoading,
-    browseError: categoriesQuery.error,
-  });
+  // NOTE the deliberate absence of `isTaxonomyUnsynced` here, unlike the two
+  // marketplace surfaces.
+  //
+  // That helper infers "never synced" from an empty BROWSE result, which is
+  // only sound when browse and search read the same store. On this surface they
+  // do not: the tree above is read LIVE from the shop
+  // (`ShopCategoryBrowseService` -> `adapter.browseCategories`, the #2085
+  // delegation deferral) while search reads the projection, which syncs hourly
+  // with no bootstrap on connection create (#2084). So `browsedNodeCount` is
+  // non-empty by construction for a real shop, the guard could never fire, and
+  // an empty search would confidently report "nothing matched" while the index
+  // was simply still catching up — the same false-claim defect #2075 removes.
+  //
+  // Until #2084/#2085 close, this surface cannot distinguish the two cases, so
+  // it says so rather than guessing.
+  const searchEmptyReason = 'indeterminate';
 
   function drillInto(node: Crumb): void {
     setBreadcrumb((prev) => [...prev, node]);
@@ -152,7 +163,7 @@ function ShopCategoryPickerBody({
   function pickHit(hit: CategorySearchResultHit): void {
     onSelect(
       hit.id,
-      hit.path.map((node) => node.name),
+      hit.path.map((node) => node.name)
     );
     onClose();
   }
@@ -184,43 +195,45 @@ function ShopCategoryPickerBody({
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search all categories..."
           aria-label="Search all categories"
+          aria-controls="shop-catpick-search-results"
         />
       </div>
 
       {isSearching ? null : (
-      <nav className="bulk-editor__catpick-crumbs" aria-label="Category path">
-        <button
-          type="button"
-          className="bulk-editor__catpick-crumb"
-          onClick={jumpToRoot}
-          disabled={breadcrumb.length === 0}
-        >
-          Root
-        </button>
-        {breadcrumb.map((crumb, i) => (
-          <span key={crumb.id} className="bulk-editor__catpick-crumb-group">
-            <span className="bulk-editor__catpick-sep" aria-hidden="true">
-              ›
+        <nav className="bulk-editor__catpick-crumbs" aria-label="Category path">
+          <button
+            type="button"
+            className="bulk-editor__catpick-crumb"
+            onClick={jumpToRoot}
+            disabled={breadcrumb.length === 0}
+          >
+            Root
+          </button>
+          {breadcrumb.map((crumb, i) => (
+            <span key={crumb.id} className="bulk-editor__catpick-crumb-group">
+              <span className="bulk-editor__catpick-sep" aria-hidden="true">
+                ›
+              </span>
+              {i === breadcrumb.length - 1 ? (
+                <span className="bulk-editor__catpick-crumb-cur">{crumb.name}</span>
+              ) : (
+                <button
+                  type="button"
+                  className="bulk-editor__catpick-crumb"
+                  onClick={() => jumpToCrumb(i)}
+                >
+                  {crumb.name}
+                </button>
+              )}
             </span>
-            {i === breadcrumb.length - 1 ? (
-              <span className="bulk-editor__catpick-crumb-cur">{crumb.name}</span>
-            ) : (
-              <button
-                type="button"
-                className="bulk-editor__catpick-crumb"
-                onClick={() => jumpToCrumb(i)}
-              >
-                {crumb.name}
-              </button>
-            )}
-          </span>
-        ))}
-      </nav>
+          ))}
+        </nav>
       )}
 
       <div className="bulk-editor__catpick-list">
         {isSearching ? (
           <CategorySearchResults
+            listId="shop-catpick-search-results"
             hits={searchHits}
             isLoading={searchQuery.isLoading}
             error={searchQuery.error}
@@ -231,11 +244,15 @@ function ShopCategoryPickerBody({
             // (ADR-024).
             canSelect={() => true}
             selectedId={selectedId}
-            emptyReason={taxonomyNeverSynced ? 'not-synced' : 'no-matches'}
+            emptyReason={searchEmptyReason}
             query={debouncedSearch}
           />
         ) : categoriesQuery.isLoading ? (
-          <LoadingState liveRegion="off" title="Loading categories" message="Fetching categories..." />
+          <LoadingState
+            liveRegion="off"
+            title="Loading categories"
+            message="Fetching categories..."
+          />
         ) : categoriesQuery.error ? (
           <ErrorState
             title="Unable to load categories"
@@ -255,7 +272,10 @@ function ShopCategoryPickerBody({
               return (
                 <li
                   key={node.id}
-                  className={['bulk-editor__catpick-item', isCurrent ? 'bulk-editor__catpick-item--current' : '']
+                  className={[
+                    'bulk-editor__catpick-item',
+                    isCurrent ? 'bulk-editor__catpick-item--current' : '',
+                  ]
                     .filter(Boolean)
                     .join(' ')}
                 >

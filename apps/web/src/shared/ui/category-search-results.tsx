@@ -58,18 +58,34 @@ export interface CategorySearchResultsProps {
   /** Highlights the currently-chosen category if it appears in the results. */
   selectedId?: string | null;
   /**
-   * Distinguishes "this taxonomy has never synced" from "no matches for this
-   * query". Both come back as an empty array, so the caller — which knows
-   * whether the tree itself is empty — must say which it is. Conflating them
-   * would surface the read model's staleness as a broken search, the exact
-   * confusion #2075 exists to remove.
+   * Which empty state to render. All three arrive as an empty array, so the
+   * caller — which knows what its browse half reads — must say which it is.
+   * Conflating them would surface the read model's staleness as a broken
+   * search, the exact confusion #2075 exists to remove.
+   *
+   * - `'not-synced'` — the scope demonstrably has no rows (browse is empty too).
+   * - `'no-matches'` — the tree is populated FROM THE SAME STORE the search
+   *   reads, so an empty result really is "nothing matched".
+   * - `'indeterminate'` — browse and search read **different stores**, so the
+   *   caller cannot tell the two apart and must not claim either. Today that is
+   *   the shop picker: its tree is read live from the shop while search reads
+   *   the projection, which syncs hourly with no bootstrap on connection create
+   *   (#2084/#2085). Asserting "nothing matched" there would be a false claim
+   *   about the operator's own catalogue for as long as the projection lags.
    */
-  emptyReason: 'no-matches' | 'not-synced';
+  emptyReason: 'no-matches' | 'not-synced' | 'indeterminate';
   /** Echoed in the no-matches copy so the operator sees what was searched. */
   query: string;
   disabled?: boolean;
   /** Merged onto the list root, never replacing the base class. */
   className?: string;
+  /**
+   * `id` for the results `<ul>`, so the caller's search input can point at it
+   * with `aria-controls`. Deliberately just that: real `<button>`s keep native
+   * Tab order here, so this is not a combobox and `aria-activedescendant`
+   * would misdescribe it.
+   */
+  listId?: string;
 }
 
 export const CategorySearchResults = forwardRef<HTMLUListElement, CategorySearchResultsProps>(
@@ -86,6 +102,7 @@ export const CategorySearchResults = forwardRef<HTMLUListElement, CategorySearch
       query,
       disabled = false,
       className = '',
+      listId,
     },
     ref
   ) {
@@ -112,13 +129,30 @@ export const CategorySearchResults = forwardRef<HTMLUListElement, CategorySearch
     const results = hits ?? [];
 
     if (results.length === 0) {
-      return emptyReason === 'not-synced' ? (
-        <EmptyState
-          liveRegion="off"
-          title="No categories synced yet"
-          message="This destination's category tree has not been synced. Search will work once the first sync completes."
-        />
-      ) : (
+      if (emptyReason === 'not-synced') {
+        return (
+          <EmptyState
+            liveRegion="off"
+            title="No categories synced yet"
+            message="This destination's category tree has not been synced. Search will work once the first sync completes."
+          />
+        );
+      }
+
+      if (emptyReason === 'indeterminate') {
+        // Deliberately does NOT assert "nothing matched" — on this surface the
+        // search index is a different store from the browsable tree, so an
+        // empty result is equally consistent with "the index hasn't caught up".
+        return (
+          <EmptyState
+            liveRegion="off"
+            title="No search results"
+            message={`Nothing in the search index matches "${query.trim()}". This shop's index is built separately from the category tree above, so a recently-added category may not be searchable yet — browse to it instead.`}
+          />
+        );
+      }
+
+      return (
         <EmptyState
           liveRegion="off"
           title="No matching categories"
@@ -139,6 +173,7 @@ export const CategorySearchResults = forwardRef<HTMLUListElement, CategorySearch
         </p>
         <ul
           ref={ref}
+          id={listId}
           className={['category-search-results', className].filter(Boolean).join(' ')}
           role="list"
         >

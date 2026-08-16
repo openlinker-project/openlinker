@@ -25,7 +25,12 @@
 import { useState, type ReactElement } from 'react';
 import { Button, Input } from '../../../../shared/ui';
 import { ErrorState, LoadingState } from '../../../../shared/ui/feedback-state';
-import { Dialog, DialogContent, DialogDescription, DialogTitle } from '../../../../shared/ui/dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from '../../../../shared/ui/dialog';
 import {
   CategorySearchResults,
   type CategorySearchResultHit,
@@ -152,7 +157,7 @@ function BulkCategoryChooseBody({
   function pickHit(hit: CategorySearchResultHit): void {
     onSelect(
       hit.id,
-      hit.path.map((node) => node.name),
+      hit.path.map((node) => node.name)
     );
     onClose();
   }
@@ -198,6 +203,7 @@ function BulkCategoryChooseBody({
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search all categories..."
           aria-label="Search all categories"
+          aria-controls="bulk-catpick-search-results"
         />
       </div>
 
@@ -206,39 +212,40 @@ function BulkCategoryChooseBody({
           as the results' location. It is preserved, not reset, so clearing the
           query restores the level. */}
       {isSearching ? null : (
-      <nav className="bulk-editor__catpick-crumbs" aria-label="Category path">
-        <button
-          type="button"
-          className="bulk-editor__catpick-crumb"
-          onClick={jumpToRoot}
-          disabled={breadcrumb.length === 0}
-        >
-          Root
-        </button>
-        {breadcrumb.map((crumb, i) => (
-          <span key={crumb.id} className="bulk-editor__catpick-crumb-group">
-            <span className="bulk-editor__catpick-sep" aria-hidden="true">
-              ›
+        <nav className="bulk-editor__catpick-crumbs" aria-label="Category path">
+          <button
+            type="button"
+            className="bulk-editor__catpick-crumb"
+            onClick={jumpToRoot}
+            disabled={breadcrumb.length === 0}
+          >
+            Root
+          </button>
+          {breadcrumb.map((crumb, i) => (
+            <span key={crumb.id} className="bulk-editor__catpick-crumb-group">
+              <span className="bulk-editor__catpick-sep" aria-hidden="true">
+                ›
+              </span>
+              {i === breadcrumb.length - 1 ? (
+                <span className="bulk-editor__catpick-crumb-cur">{crumb.name}</span>
+              ) : (
+                <button
+                  type="button"
+                  className="bulk-editor__catpick-crumb"
+                  onClick={() => jumpToCrumb(i)}
+                >
+                  {crumb.name}
+                </button>
+              )}
             </span>
-            {i === breadcrumb.length - 1 ? (
-              <span className="bulk-editor__catpick-crumb-cur">{crumb.name}</span>
-            ) : (
-              <button
-                type="button"
-                className="bulk-editor__catpick-crumb"
-                onClick={() => jumpToCrumb(i)}
-              >
-                {crumb.name}
-              </button>
-            )}
-          </span>
-        ))}
-      </nav>
+          ))}
+        </nav>
       )}
 
       <div className="bulk-editor__catpick-list">
         {isSearching ? (
           <CategorySearchResults
+            listId="bulk-catpick-search-results"
             hits={searchHits}
             isLoading={searchQuery.isLoading}
             error={searchQuery.error}
@@ -252,7 +259,11 @@ function BulkCategoryChooseBody({
             query={debouncedSearch}
           />
         ) : categoriesQuery.isLoading ? (
-          <LoadingState liveRegion="off" title="Loading categories" message="Fetching categories..." />
+          <LoadingState
+            liveRegion="off"
+            title="Loading categories"
+            message="Fetching categories..."
+          />
         ) : categoriesQuery.error ? (
           <ErrorState
             title="Unable to load categories"
@@ -272,7 +283,10 @@ function BulkCategoryChooseBody({
               return (
                 <li
                   key={node.id}
-                  className={['bulk-editor__catpick-item', isCurrent ? 'bulk-editor__catpick-item--current' : '']
+                  className={[
+                    'bulk-editor__catpick-item',
+                    isCurrent ? 'bulk-editor__catpick-item--current' : '',
+                  ]
                     .filter(Boolean)
                     .join(' ')}
                 >

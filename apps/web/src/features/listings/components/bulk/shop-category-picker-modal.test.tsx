@@ -167,22 +167,30 @@ describe('ShopCategoryPickerModal', () => {
       expect(api.mappings.searchCategories).not.toHaveBeenCalled();
     });
 
-    it('distinguishes "no matches" from "nothing synced"', async () => {
+    it('does NOT claim "nothing matched" — browse and search read different stores', async () => {
+      // The tree is read LIVE from the shop while search reads the projection
+      // (#2085 deferral), so an empty result is equally consistent with "the
+      // index has not caught up". Asserting a match failure would be the same
+      // false claim #2075 exists to remove.
       renderModal(mockApi({ hits: [] }));
       await screen.findByText('Clothing');
 
       await userEvent.type(screen.getByLabelText('Search all categories'), 'zzz');
 
-      expect(await screen.findByText('No matching categories')).toBeInTheDocument();
-      expect(screen.queryByText('No categories synced yet')).not.toBeInTheDocument();
+      expect(await screen.findByText('No search results')).toBeInTheDocument();
+      expect(screen.getByText(/index is built separately/i)).toBeInTheDocument();
+      expect(screen.queryByText('No matching categories')).not.toBeInTheDocument();
     });
 
-    it('reports an unsynced taxonomy distinctly from an unmatched query', async () => {
+    it('keeps the indeterminate copy even when the live tree is empty', async () => {
+      // An empty live tree still says nothing about the projection, so the
+      // marketplace "never synced" claim stays unavailable on this surface.
       renderModal(mockApi({ roots: [], hits: [] }));
 
       await userEvent.type(screen.getByLabelText('Search all categories'), 'zzz');
 
-      expect(await screen.findByText('No categories synced yet')).toBeInTheDocument();
+      expect(await screen.findByText('No search results')).toBeInTheDocument();
+      expect(screen.queryByText('No categories synced yet')).not.toBeInTheDocument();
     });
 
     it('restores the drill-down when the query is cleared', async () => {

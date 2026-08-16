@@ -21,7 +21,7 @@
  * @module apps/web/src/features/mappings/hooks
  */
 
-import { useQuery, type UseQueryResult } from '@tanstack/react-query';
+import { keepPreviousData, useQuery, type UseQueryResult } from '@tanstack/react-query';
 import { useApiClient } from '../../../app/api/api-client-provider';
 import { mappingsQueryKeys } from '../api/mappings.query-keys';
 import type { CategorySearchHit } from '../api/mappings.types';
@@ -43,15 +43,23 @@ export function isSearchableCategoryQuery(query: string): boolean {
 export function useCategorySearchQuery(
   connectionId: string,
   query: string,
-  enabled = true,
+  enabled = true
 ): UseQueryResult<CategorySearchHit[]> {
   const apiClient = useApiClient();
   const trimmed = query.trim();
 
   return useQuery({
     queryKey: mappingsQueryKeys.categorySearch(connectionId, trimmed, CATEGORY_SEARCH_LIMIT),
-    queryFn: () => apiClient.mappings.searchCategories(connectionId, trimmed, CATEGORY_SEARCH_LIMIT),
+    queryFn: () =>
+      apiClient.mappings.searchCategories(connectionId, trimmed, CATEGORY_SEARCH_LIMIT),
     enabled: enabled && isSearchableCategoryQuery(trimmed),
+    // Each debounced keystroke past the minimum is a NEW query key with no
+    // cached data, so without this the whole list is replaced by the loading
+    // state on every extra character — the results flicker while the operator
+    // is still typing. Holding the previous hits until the next page resolves
+    // keeps the list stable; correctness is unaffected because the key still
+    // carries the query, so a late response can never render under a newer one.
+    placeholderData: keepPreviousData,
     // Shorter than the 1 h browse cache: a search is exploratory and typically
     // issued once, so holding results for an hour buys little and risks showing
     // a stale tree right after a taxonomy sync.
