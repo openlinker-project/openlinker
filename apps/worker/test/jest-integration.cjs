@@ -114,5 +114,13 @@ module.exports = {
       __dirname,
       '../../../libs/integrations/infakt/src/$1',
     ),
+    '^@openlinker/integrations-eparagony$': path.resolve(
+      __dirname,
+      '../../../libs/integrations/eparagony/src/index.ts',
+    ),
+    '^@openlinker/integrations-eparagony/(.*)$': path.resolve(
+      __dirname,
+      '../../../libs/integrations/eparagony/src/$1',
+    ),
   },
 };
