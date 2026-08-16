@@ -506,6 +506,38 @@ describe('InvoicesListPage', () => {
     expect(cell.querySelector('.connection-cell__adornment')).toBeNull();
   });
 
+  it('folds the connection into the Document type cell so 768px does not lose it (#2094)', async () => {
+    const list = vi.fn().mockResolvedValue(makeEnvelope({ items: [makeInvoice()], total: 1 }));
+    const { container } = renderWithProviders(<InvoicesListPage />, {
+      apiClient: mockApi(list),
+      route: '/invoices',
+    });
+
+    await screen.findByText('Invoice (faktura)');
+
+    // What a document is and who issued it are the same sentence — and this
+    // column is deliberately always visible, which is what makes it a valid host.
+    const fold = container.querySelector('.invoice-document-cell .conn-fold');
+    expect(fold).not.toBeNull();
+
+    const foldEl = fold as HTMLElement;
+    expect(within(foldEl).getByRole('link', { name: 'PrestaShop Main' })).toBeInTheDocument();
+    // No adornment on this page, matching the desktop cell: an invoice's
+    // connection IS its issuing provider and the header already says so.
+    expect(foldEl.querySelector('.conn-fold__adornment')).toBeNull();
+    // And no copyable id in the relocated form.
+    expect(foldEl.querySelector('.copyable-id')).toBeNull();
+    expect(within(foldEl).queryByRole('button')).toBeNull();
+
+    // The desktop column keeps its 1024 gate — not lowered to 768.
+    const headers = container.querySelectorAll('thead th');
+    expect(headers[6]?.className).toContain('data-table__cell--hide-below-1024');
+
+    // The merged Document type column must stay visible at 768, since it is the
+    // host — this is the constraint #2090 recorded for exactly this reason.
+    expect(headers[2]?.className).not.toContain('data-table__cell--hide-below-768');
+  });
+
   it('issues one connections request for the whole page, never one per row', async () => {
     const connectionsList = vi.fn().mockResolvedValue([makeConnection()]);
     const getById = vi.fn();

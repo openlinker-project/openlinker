@@ -68,7 +68,7 @@ import {
   DOCUMENT_TYPE_LABEL_FALLBACK,
   DOCUMENT_TYPE_UNKNOWN_LABEL,
 } from '../../features/invoicing';
-import { ConnectionCell, useConnectionsQuery } from '../../features/connections';
+import { ConnectionCell, ConnectionFold, useConnectionsQuery } from '../../features/connections';
 import { OrderIdentityCell, formatOrderRef } from '../../features/orders';
 
 const PAGE_SIZE = 20;
@@ -184,6 +184,17 @@ export function InvoicesListPage(): ReactElement {
         <span className="text-muted invoice-document-cell__type" title={label}>
           {label}
         </span>
+        {/* The Connection column is `hideBelow: 1024`, so below that width the
+            issuing provider would vanish. It folds here instead (#2094): what a
+            document is and who issued it are the same sentence, and this column
+            is deliberately always visible for exactly that reason. No adornment,
+            matching the desktop cell on this page. `display: none` above the
+            breakpoint keeps exactly one rendering exposed at any width. */}
+        <ConnectionFold
+          connectionId={r.connectionId}
+          connection={connectionsById.get(r.connectionId) ?? null}
+          loading={connectionsQuery.isLoading}
+        />
       </span>
     );
   };

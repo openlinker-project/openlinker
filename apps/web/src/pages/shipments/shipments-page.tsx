@@ -34,7 +34,7 @@ import { ShipmentRowDetail } from '../../features/shipments/components/shipment-
 import { groupFailedShipmentsByCause } from '../../features/shipments/lib/group-failed-shipments-by-cause';
 import { useShipmentsQuery } from '../../features/shipments/hooks/use-shipments-query';
 import { useConnectionsQuery } from '../../features/connections/hooks/use-connections-query';
-import { ConnectionCell } from '../../features/connections';
+import { ConnectionCell, ConnectionFold } from '../../features/connections';
 import { CustomerEntityLabel } from '../../features/customers/components/CustomerEntityLabel';
 import { ConnectionDot, OrderIdentityCell } from '../../features/orders';
 // Pure view-model helpers + the wire-mirrored redaction constant live in the
@@ -332,7 +332,33 @@ export function ShipmentsPage(): ReactElement {
       // useful (e.g. branch-priority), set `sortable: true` and define an
       // explicit comparator at that point. Consistent with the existing
       // Connection / Tracking columns (also non-sortable).
-      cell: (s) => <ProcessorBadge processor={deriveProcessor(s)} />,
+      // The Connection column is `hideBelow: 1024`, so below that width the
+      // carrier connection would simply vanish. It folds here instead (#2094):
+      // "Processor" and "which carrier connection" are one question, and the
+      // fold is `display: none` above the breakpoint so exactly one of the two
+      // renderings is ever exposed — including to a screen reader.
+      cell: (s): ReactElement => {
+        const connection = connectionsById.get(s.connectionId) ?? null;
+        return (
+          <span className="shipments-processor-cell">
+            <ProcessorBadge processor={deriveProcessor(s)} />
+            <ConnectionFold
+              connectionId={s.connectionId}
+              connection={connection}
+              loading={connectionsQuery.isLoading}
+              adornment={
+                <span aria-hidden="true">
+                  <ConnectionDot
+                    name={connection?.name ?? null}
+                    platformType={connection?.platformType}
+                    variant={s.shippingMethod === 'omp' ? 'shop' : 'carrier'}
+                  />
+                </span>
+              }
+            />
+          </span>
+        );
+      },
     },
     {
       id: 'createdAt',

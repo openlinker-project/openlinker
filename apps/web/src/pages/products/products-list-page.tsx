@@ -68,7 +68,7 @@ import {
   ProductListSortFieldValues,
   ProductStockFilterValues,
 } from '../../features/products/api/products.types';
-import { ConnectionCell, useConnectionsQuery } from '../../features/connections';
+import { ConnectionCell, ConnectionFold, useConnectionsQuery } from '../../features/connections';
 import type { Connection } from '../../features/connections';
 import { selectPublishDestinations } from '../../features/listings';
 import {
@@ -666,49 +666,69 @@ export function ProductsListPage(): ReactElement {
         id: 'name',
         header: 'Product',
         sortable: true,
-        cell: (product) => (
-          <span className="product-row">
-            <ProductThumbnail src={product.images?.[0]} name={product.name} />
-            <span className="products-cell-stack">
-              <span className="ds-row" style={{ gap: 'var(--space-2)', alignItems: 'center' }}>
-                <Link to={product.id} className="product-row__name product-row__name--link">
-                  {product.name}
-                </Link>
-                {(product.variantCount ?? 0) > 1 ? (
-                  <StatusBadge tone="neutral" compact>
-                    {product.variantCount} variants
-                  </StatusBadge>
+        cell: (product): ReactNode => {
+          const origin = product.externalIds?.[0];
+          return (
+            <span className="product-row">
+              <ProductThumbnail src={product.images?.[0]} name={product.name} />
+              <span className="products-cell-stack">
+                <span className="ds-row" style={{ gap: 'var(--space-2)', alignItems: 'center' }}>
+                  <Link to={product.id} className="product-row__name product-row__name--link">
+                    {product.name}
+                  </Link>
+                  {(product.variantCount ?? 0) > 1 ? (
+                    <StatusBadge tone="neutral" compact>
+                      {product.variantCount} variants
+                    </StatusBadge>
+                  ) : null}
+                </span>
+                {/* Labelled, not a bare mono string (#2092): unlabelled, an
+                    identifier under the product name reads as "some id" and the
+                    operator has to know by convention that it is the SKU rather
+                    than an EAN, an internal id or an external reference. The
+                    label is body text, the value stays mono — and `.mono-text`
+                    inside a table cell truncates at 20ch, which is why the
+                    `title` sits on the VALUE and not on the wrapper (a wrapper
+                    title would describe "SKU: …" and leave the truncated value
+                    unreachable). No EAN line: it lives on the variant, so a
+                    product row could only ever carry one when the product
+                    resolves to a single variant. */}
+                {product.sku ? (
+                  <span className="text-muted products-cell-sub">
+                    SKU:{' '}
+                    <span className="mono-text" title={product.sku}>
+                      {product.sku}
+                    </span>
+                  </span>
+                ) : null}
+                {/* The Source column is `hideBelow: 1024`, so below that width the
+                    product's origin would vanish. It folds here instead (#2094):
+                    a product's source connection is this identity column's own
+                    subject. `display: none` above the breakpoint means exactly one
+                    of the two renderings is exposed at any width. */}
+                {origin ? (
+                  <ConnectionFold
+                    connectionId={origin.connectionId}
+                    connection={connectionById.get(origin.connectionId) ?? null}
+                    loading={connectionsQuery.isLoading}
+                    adornment={
+                      <span className="channel-pill" data-channel={origin.platformType}>
+                        {platformLabel(origin.platformType)}
+                      </span>
+                    }
+                  />
                 ) : null}
               </span>
-              {/* Labelled, not a bare mono string (#2092): unlabelled, an
-                  identifier under the product name reads as "some id" and the
-                  operator has to know by convention that it is the SKU rather
-                  than an EAN, an internal id or an external reference. The
-                  label is body text, the value stays mono — and `.mono-text`
-                  inside a table cell truncates at 20ch, which is why the
-                  `title` sits on the VALUE and not on the wrapper (a wrapper
-                  title would describe "SKU: …" and leave the truncated value
-                  unreachable). No EAN line: it lives on the variant, so a
-                  product row could only ever carry one when the product
-                  resolves to a single variant. */}
-              {product.sku ? (
-                <span className="text-muted products-cell-sub">
-                  SKU:{' '}
-                  <span className="mono-text" title={product.sku}>
-                    {product.sku}
-                  </span>
-                </span>
-              ) : null}
             </span>
-          </span>
-        ),
+          );
+        },
       },
       {
         id: 'source',
         header: 'Source',
         // Stays 1024 (#1996): lowering it to 768 was rejected because it keeps
         // the column only behind horizontal scroll. The tablet relocation of
-        // this fact into the Product cell is #2094 (S8).
+        // this fact into the Product cell shipped as #2094 (S8).
         hideBelow: 1024,
         cell: (product): ReactNode => {
           const origin = product.externalIds?.[0];
