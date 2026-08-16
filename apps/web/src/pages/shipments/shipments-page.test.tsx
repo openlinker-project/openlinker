@@ -662,6 +662,36 @@ describe('ShipmentsPage — row accordion + Order/Provider columns (#1826)', () 
     expect(getById).not.toHaveBeenCalled();
   });
 
+  it('should fold the connection under the Processor badge so 768px does not lose it (#2094)', async () => {
+    const mockApi = createMockApiClient({
+      shipments: { list: vi.fn().mockResolvedValue(page([makeShipment({ connectionId: 'conn_inpost' })])) },
+      connections: { list: vi.fn().mockResolvedValue([makeConnection()]) },
+    });
+
+    renderWithProviders(<ShipmentsPage />, { apiClient: mockApi });
+
+    const table = await screen.findByRole('table');
+
+    // "Processor" and "which carrier connection" are one question, so the fold
+    // hosts here rather than beside.
+    const fold = table.querySelector('.shipments-processor-cell .conn-fold');
+    expect(fold).not.toBeNull();
+
+    const foldEl = fold as HTMLElement;
+    // The carrier dot, same adornment the desktop cell passes on this page.
+    expect(foldEl.querySelector('.conn-fold__adornment .conn-dot')).not.toBeNull();
+    expect(within(foldEl).getByRole('link', { name: 'InPost' })).toBeInTheDocument();
+    // No copyable id: the tablet form answers "which connection", not "give me
+    // its id" — copying reveals on row hover, which touch does not have.
+    expect(foldEl.querySelector('.copyable-id')).toBeNull();
+    expect(within(foldEl).queryByRole('button')).toBeNull();
+
+    // The desktop column is untouched — `hideBelow: 1024` was NOT lowered.
+    const header = within(table).getByText('Connection').closest('th');
+    expect(header).toHaveClass('data-table__cell--hide-below-1024');
+    expect(header?.className).not.toMatch(/hide-below-768/);
+  });
+
   it('should keep the column header "Connection" while rendering it as the shared ConnectionCell (#2089)', async () => {
     const mockApi = createMockApiClient({
       shipments: { list: vi.fn().mockResolvedValue(page([makeShipment({ connectionId: 'conn_inpost' })])) },

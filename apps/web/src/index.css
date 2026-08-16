@@ -9474,6 +9474,68 @@ a.kpi-card:focus-visible {
   transform: translateX(0);
 }
 
+/* ── ConnectionFold (#2094) ──────────────────────────────────────────
+ * The tablet relocation of `ConnectionCell`'s first line. Products, Shipments
+ * and Invoices all declare `hideBelow: 1024` on their Connection column — a
+ * value that fires at `max-width: 1023.98px`, i.e. "desktop only" — so below
+ * that width the fact vanished entirely. Lowering the three thresholds to 768
+ * was the cheaper option and was rejected in #1996: it keeps the column behind
+ * horizontal scroll, and a fact an operator has to scroll sideways to find is
+ * one they stop checking.
+ *
+ * So the fact moves instead, into whichever adjacent cell owns the neighbouring
+ * question — the pattern `.orders-order-channel` (:9013) already established for
+ * the channel pill. Same silhouette as that rule, deliberately: one line,
+ * adornment + name, muted, ellipsising under pressure.
+ *
+ * The visibility switch lives HERE rather than in the components, and it is
+ * `display: none` rather than `visibility`/`opacity` precisely because
+ * `display: none` also removes the element from the accessibility tree — so at
+ * any width exactly one of the fold and the standalone column is exposed, and a
+ * screen reader never hears the same connection twice.
+ *
+ * No new token: 6px matches `.connection-cell__line`'s gap, 0.75rem matches
+ * `.orders-cell-sub`, and both colours are existing text tokens. */
+.conn-fold {
+  display: none;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+@media (max-width: 1023.98px) {
+  .conn-fold {
+    display: inline-flex;
+  }
+}
+
+.conn-fold__adornment {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+}
+
+/* The fold hosts `ConnectionEntityLabel`, whose name is a link at
+ * `.entity-label__name` (:4325) — reset to the fold's muted scale so it reads as
+ * a relocated sub-line rather than as a second primary label inside the host
+ * cell. */
+.conn-fold .entity-label__name {
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: var(--text-secondary);
+}
+
+/* Shipments' host: the Processor badge with the fold beneath it. */
+.shipments-processor-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: flex-start;
+  min-width: 0;
+}
+
 /* ── OrderIdentityCell (#2087) ───────────────────────────────────────
  * A thumbnail beside the same two-level stack `.orders-cell-stack` (:8894) and
  * `.connection-cell__body` (below) already describe — what a person reads on

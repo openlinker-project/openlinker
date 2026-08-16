@@ -521,6 +521,9 @@ describe('CustomersListPage', () => {
       // column survives tablet width — which is why #2094 (S8) skips this page.
       expect(header).toHaveClass('data-table__cell--hide-below-768');
       expect(header.className).not.toMatch(/hide-below-1024/);
+      // …and therefore renders no `.conn-fold`: the fold exists to rescue a fact
+      // a 1024 gate would drop, and this page never drops it (#2094).
+      expect(document.querySelector('.conn-fold')).toBeNull();
     });
 
     it('headlines the mobile card with the same identity, text-only', async () => {

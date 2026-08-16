@@ -1180,6 +1180,36 @@ describe('ProductsListPage', () => {
       expect(header.className).not.toMatch(/hide-below-768/);
     });
 
+    it('folds the connection into the Product cell so 768px does not lose it (#2094)', async () => {
+      const { container } = renderWithProviders(<ProductsListPage />, {
+        apiClient: identityApi(),
+      });
+
+      await screen.findByText('Test Product');
+
+      // The fold lives INSIDE the identity cell, not beside it: a product's
+      // source connection is that column's own subject.
+      const fold = container.querySelector('.product-row .conn-fold');
+      expect(fold).not.toBeNull();
+
+      const foldEl = fold as HTMLElement;
+      // One line: adornment + name. The pill is the same adornment the desktop
+      // cell passes on this page.
+      expect(foldEl.querySelector('.conn-fold__adornment .channel-pill')).not.toBeNull();
+      expect(within(foldEl).getByRole('link', { name: 'PrestaShop Terra Store' })).toBeInTheDocument();
+
+      // Deliberately NO copyable id: copying is a hover affordance and there is
+      // no hover on touch, so the tablet form answers "which connection", not
+      // "give me its id".
+      expect(foldEl.querySelector('.copyable-id')).toBeNull();
+      expect(within(foldEl).queryByRole('button')).toBeNull();
+
+      // Which surface is visible is a CSS decision — both are in the DOM under
+      // jsdom, and `display: none` is what keeps exactly one exposed (including
+      // to a screen reader) at any real width.
+      expect(container.querySelector('.connection-cell')).not.toBeNull();
+    });
+
     it('carries the page-scoped table class the row-anchoring rule matches on', async () => {
       // `.products-table td { vertical-align: top }` is a DESCENDANT match on the
       // container (DataTable hardcodes the <table> class), so losing this
