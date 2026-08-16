@@ -96,27 +96,10 @@ describe('CategorySearchResults', () => {
     expect(screen.queryByText('No categories synced yet')).not.toBeInTheDocument();
   });
 
-  it('should refuse to claim either outcome when the caller is indeterminate', () => {
-    // The shop picker's browse and search read different stores, so it cannot
-    // know which case an empty result is — the copy must assert neither.
-    render(
-      <CategorySearchResults
-        hits={[]}
-        isLoading={false}
-        error={null}
-        onRetry={vi.fn()}
-        onSelect={vi.fn()}
-        canSelect={() => true}
-        emptyReason="indeterminate"
-        query="zzz"
-      />,
-    );
-
-    expect(screen.getByText('No search results')).toBeInTheDocument();
-    expect(screen.getByText(/may not be searchable yet/i)).toBeInTheDocument();
-    expect(screen.queryByText('No matching categories')).not.toBeInTheDocument();
-    expect(screen.queryByText('No categories synced yet')).not.toBeInTheDocument();
-  });
+  // The `'indeterminate'` variant was removed in #2085: it existed only for the
+  // shop picker, whose browse half read the live shop while search read the
+  // projection. Both now read the projection, so no caller can be in that
+  // position and the union is back to two.
 
   it('should expose listId on the results list so an input can aria-control it', () => {
     renderResults({ listId: 'results-under-test' });

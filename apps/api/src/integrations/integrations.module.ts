@@ -17,6 +17,11 @@ import {
 } from '@openlinker/core/integrations';
 import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
 import { SyncModule } from '@openlinker/core/sync';
+// #2084 — ConnectionService bootstraps a connection's category tree on
+// create/enable, which needs DESTINATION_TAXONOMY_SERVICE_TOKEN. No cycle: the
+// core ListingsModule imports the CORE IntegrationsModule, a different class
+// from this host module, and libs/core cannot import apps/api at all.
+import { ListingsModule as CoreListingsModule } from '@openlinker/core/listings/services';
 import { WebhooksCoreModule } from '@openlinker/core/webhooks';
 import { RedisConfigModule } from '@openlinker/shared/redis';
 import { RateLimitModule } from '@openlinker/plugin-sdk';
@@ -41,6 +46,7 @@ import { DEMO_MODE_SERVICE_TOKEN } from '../auth/demo-mode.service.interface';
 @Module({
   imports: [
     CoreIntegrationsModule,
+    CoreListingsModule, // #2084 taxonomy bootstrap on connection create/enable
     IdentifierMappingModule,
     SyncModule, // Required for cursor repository
     WebhooksCoreModule, // Webhook-delivery repository for the webhook-status projection (#1770)
