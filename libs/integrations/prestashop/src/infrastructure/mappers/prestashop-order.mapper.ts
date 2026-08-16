@@ -20,6 +20,7 @@ import type {
 import type { Order, OrderItem, OrderTotals } from '@openlinker/core/orders';
 import type { OrderCreate, OrderStatus } from '@openlinker/core/orders';
 import { PrestashopProvisioningException } from '@openlinker/integrations-prestashop';
+import { PrestashopParseException } from '../../domain/exceptions/prestashop-parse.exception';
 import { Logger } from '@openlinker/shared/logging';
 import { toPrestashopProductAttributeId } from './prestashop-variant-id';
 
@@ -40,7 +41,9 @@ const DEFAULT_CARRIER_ID = 1; // First carrier
 export class PrestashopOrderMapper implements IPrestashopOrderMapper {
   private readonly logger = new Logger(PrestashopOrderMapper.name);
   mapOrder(prestashopOrder: PrestashopOrder, orderRows: PrestashopOrderRow[]): Omit<Order, 'id'> {
-    // Map line items
+    // Strictly 1:1 and order-preserving: `PrestashopOrderSourceAdapter` re-correlates
+    // `mapped.items[i]` back to `orderRows[i]` positionally to build each product ref.
+    // Filtering or reordering rows here would silently mis-pair every later line.
     const items: OrderItem[] = orderRows.map((row, index) => {
       // PrestaShop uses "0" or 0 to indicate no variant, treat as undefined
       const variantId =
@@ -51,7 +54,7 @@ export class PrestashopOrderMapper implements IPrestashopOrderMapper {
           : undefined;
 
       return {
-        id: String(row.id || index),
+        id: this.resolveOrderRowId(row, index, prestashopOrder.id),
         productId: '', // Will be set by adapter using identifier mapping
         variantId,
         quantity: this.parseNumber(row.product_quantity) || 0,
@@ -108,6 +111,43 @@ export class PrestashopOrderMapper implements IPrestashopOrderMapper {
     if (statusNum === 7) return 'refunded';
 
     return 'pending'; // Default fallback
+  }
+
+  /**
+   * Resolve an `order_details` row's stable line id (#2068).
+   *
+   * The value is `ps_order_detail.id_order_detail` — an AUTO_INCREMENT primary key. It is the ONLY
+   * stable per-line identity available: a content-derived key such as
+   * `${product_id}:${product_attribute_id}` is not unique within one order (customisation, free-gift
+   * lines, warehouse splits and partial re-invoicing all produce sibling rows sharing that pair), and
+   * a positional key is not stable across polls. Since `OrderItem.id` is persisted into the order
+   * snapshot, rendered to operators and used as a React row key, any synthesised value would be a
+   * silent defect rather than a visible one — so a row without an id is refused, not invented.
+   *
+   * `@_id` is read because the response parser expects ids to arrive as an XML attribute in some
+   * shapes (`prestashop-response.parser.ts`), where `row.id` would be `undefined`.
+   */
+  private resolveOrderRowId(
+    row: PrestashopOrderRow,
+    index: number,
+    orderId: string | number | undefined,
+  ): string {
+    // Both shapes are tried by the same presence test rather than `??`, so a blank `id` still
+    // falls through to `@_id`. `0` is present and must survive — which is the `||` bug this fixes.
+    const rawId = [row.id, row['@_id']].find(
+      (candidate) => candidate !== null && candidate !== undefined && String(candidate).trim() !== '',
+    );
+
+    if (rawId === undefined) {
+      // Message-only: `responseBody` is documented as unbounded and this message reaches sync-job
+      // storage and operator-visible error text, so the row itself is never serialised into it.
+      // Position is 1-based — an operator counts order lines from 1, as `originalLineNumber` does.
+      throw new PrestashopParseException(
+        `PrestaShop order_details row at position ${index + 1} for order ${String(orderId ?? 'unknown')} has no id`,
+      );
+    }
+
+    return String(rawId);
   }
 
   /**
