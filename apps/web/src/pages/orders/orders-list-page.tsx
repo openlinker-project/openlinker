@@ -992,6 +992,51 @@ export function OrdersListPage(): ReactElement {
     });
   }
 
+  /**
+   * Every URL param that narrows the result set (#2148).
+   *
+   * Deliberately NOT `sort` / `dir` / `offset`: those change presentation, not
+   * membership, so an empty result is never their doing and "View all orders"
+   * has no business resetting the operator's column sort.
+   *
+   * Adding a filter to this page means adding it here. That is the point of the
+   * list existing at all: the empty-state ladder used to branch per param, so a
+   * new filter silently inherited the "nothing has ever synced" fallback.
+   */
+  const FILTER_PARAMS = [
+    'health',
+    'invoicing',
+    'due',
+    'slaState',
+    'fulfillmentState',
+    'sourceConnectionId',
+    'createdFrom',
+    'createdTo',
+  ] as const;
+
+  /** Is the current view narrowed at all? Drives the empty-state copy. */
+  const hasActiveFilters = FILTER_PARAMS.some((key) => searchParams.get(key) !== null);
+
+  /**
+   * Clear every filter in ONE write (#2148).
+   *
+   * One call, not one per param: `setSearchParams` is not a queued reducer -
+   * React Router builds the next params from the CURRENT render's params, so
+   * two calls in one handler both start from the same base and the second
+   * navigation supersedes the first. A "View all orders" button that cleared
+   * filters one at a time would leave all but the last one applied.
+   */
+  function clearAllFilters(): void {
+    setSearchParams((prev) => {
+      const p = new URLSearchParams(prev);
+      for (const key of FILTER_PARAMS) {
+        p.delete(key);
+      }
+      p.delete('offset');
+      return p;
+    });
+  }
+
   function setOffset(next: number): void {
     setSearchParams((prev) => {
       const p = new URLSearchParams(prev);
@@ -1194,14 +1239,24 @@ export function OrdersListPage(): ReactElement {
             liveRegion="off"
             title="All clear — nothing needs your attention"
             message="No failed syncs or unmapped orders right now. New issues surface here the moment they happen."
-            action={<Button onClick={() => { setHealthFilter(null); }}>View all orders</Button>}
+            action={<Button onClick={clearAllFilters}>View all orders</Button>}
           />
-        ) : health !== undefined ? (
+        ) : hasActiveFilters ? (
+          /*
+            #2148 — one arm for every narrowing filter, not one arm per param.
+            `health` used to be the only filter with an arm, so `due=breaching`,
+            `slaState`, `fulfillmentState`, `sourceConnectionId` and the date
+            range all fell through to "No order records have been synced yet" —
+            a statement about the whole dataset, read by an operator who has
+            thousands of orders and simply filtered to a narrow slice. The
+            recovery action was a link to /connections, which left the filter
+            applied and pointed at an ingestion problem that did not exist.
+          */
           <EmptyState
             liveRegion="off"
             title="No orders in this view"
-            message="No orders match the current filter."
-            action={<Button onClick={() => { setHealthFilter(null); }}>View all orders</Button>}
+            message="No orders match the current filters. Clear them to see everything."
+            action={<Button onClick={clearAllFilters}>View all orders</Button>}
           />
         ) : (
           <EmptyState
