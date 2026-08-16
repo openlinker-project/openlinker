@@ -159,6 +159,17 @@ describe('Inventory stale-prune (#1478)', () => {
     ]);
     await inventoryService.pruneStaleVariants(productId, [variantKeep]);
 
+    const inventoryRepo = dataSource.getRepository(InventoryItemOrmEntity);
+    const [beforeRow] = await inventoryRepo.find({
+      where: { productId, productVariantId: variantGone },
+    });
+
+    // A master timestamp deliberately far in the past. The column-scoped update
+    // (#2071) excludes `updatedAt` from its SET clause so Postgres stamps
+    // CURRENT_TIMESTAMP; if it were ever written from the item instead, this
+    // value would land in the row and poison the propagation dedupe key.
+    const staleMasterTimestamp = new Date('2020-01-01T00:00:00Z');
+
     // The gone variant reappears at the master — a fresh (live) canonical write.
     await inventoryService.setInventory(
       new InventoryItemEntity(
@@ -168,16 +179,18 @@ describe('Inventory stale-prune (#1478)', () => {
         4,
         0,
         null,
-        new Date(),
+        staleMasterTimestamp,
         false,
       ),
     );
 
-    const inventoryRepo = dataSource.getRepository(InventoryItemOrmEntity);
     const rows = await inventoryRepo.find({ where: { productId, productVariantId: variantGone } });
     expect(rows).toHaveLength(1); // no duplicate created
     expect(rows[0].isStale).toBe(false);
     expect(rows[0].availableQuantity).toBe(4);
+    // The DB stamped it, not the master.
+    expect(rows[0].updatedAt.getTime()).toBeGreaterThan(beforeRow.updatedAt.getTime());
+    expect(rows[0].updatedAt.getTime()).toBeGreaterThan(staleMasterTimestamp.getTime());
 
     const availability = await queryService.getAvailabilityByVariantIds([variantGone]);
     expect(availability.find((a) => a.productVariantId === variantGone)?.totalAvailable).toBe(4);

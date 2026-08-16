@@ -48,21 +48,37 @@ is per-variant, not per-location — so it cannot create an overlap either.)
 > what it just wrote. A second `setInventory` caller outside the sync, or moving the prune before the
 > loop, breaks this.
 
-**`updatedAt` is NOT master-owned, despite appearances.** `toOrmEntity:282` assigns
-`item.updatedAt`, but on the `save()` path TypeORM overwrites it with `new Date()`
-(`SubjectExecutor.js:340-342`) and writes the DB value back onto the entity, so the persisted column
-— and the value `toDomain(saved)` returns — is **OL write time**, and the master-supplied value is
-discarded. This matters because `UpdateQueryBuilder.js:401-403` appends the auto-timestamp *only if
-the column is absent from the SET clause*: naming `updatedAt` in a column-scoped update would
-**suppress** the auto-now and persist the master's value instead, silently changing the column's
-meaning. `inventory.service.ts:64-65,79` derives the propagation job's **dedupe key** from
-`upserted.updatedAt.toISOString()`, so a master reporting a stable timestamp while quantity moves
-would produce a colliding key and the propagation job would be dropped. `updatedAt` is therefore
-classified **DB-managed** and deliberately left out of the SET clause.
+**`updatedAt` is the one column that was genuinely written wrong — so this is a fix, not only
+hardening.** `toOrmEntity:282` assigns `item.updatedAt`, and on the `save()` path that value
+**reached the database**: `SubjectChangedColumnsComputer.js:33-40` has `column.isUpdateDate`
+explicitly *commented out* of its skip list, so an assigned update-date enters the change map and
+suppresses `CURRENT_TIMESTAMP`. (The `SubjectExecutor.js:340-342` overwrite that appears to prevent
+this sits inside the **MongoDB** branch at `:330` and never runs for Postgres — a trap worth naming,
+because it reads like the general case.)
 
-**This is therefore hardening, not a bug fix.** The risk it removes is prospective: a column added to
-the entity later — an OL-owned counter, a reservation field — silently joins the master sync's write
-set and is overwritten on every sync.
+So an `@UpdateDateColumn` has been carrying a **master-supplied** value. It has never bitten only
+because both shipped inventory-master adapters leave the field undefined
+(`woocommerce-inventory-master.adapter.ts:455`; PrestaShop never sets it), and
+`master-inventory-sync.service.ts:316` fills the gap with `?? new Date()` — app-clock now. An adapter
+that starts reporting `updatedAt` would silently take over the column.
+
+That matters because `UpdateQueryBuilder.js:401-403` appends the auto-timestamp *only if the column
+is absent from the SET clause*, and `inventory.service.ts:64-65,79` derives the propagation job's
+**dedupe key** from `upserted.updatedAt.toISOString()`. A master reporting a stable timestamp while
+quantity moved would produce a colliding key and the propagation job would be dropped silently.
+`updatedAt` is therefore classified **DB-managed** and left out of the SET clause, which hands the
+column back to Postgres.
+
+> **Clock source moves app → DB.** The persisted value becomes `CURRENT_TIMESTAMP` (transaction start
+> time) rather than the app clock. Harmless and arguably more correct. One tripwire: if a future
+> caller wraps a multi-row `setInventory` loop in a single explicit transaction, every row would get
+> an *identical* `updatedAt`. Safe today because the dedupe key also includes `productId` and
+> `productVariantId` (`inventory.service.ts:126-129`) — recorded here so it stays deliberate.
+
+**This is mostly hardening, plus one real fix.** The hardening removes a prospective risk: a column
+added to the entity later — an OL-owned counter, a reservation field — silently joining the master
+sync's write set and being overwritten on every sync. The fix is `updatedAt`, which the old path
+genuinely persisted from the master (see below).
 
 ### Non-goals
 
@@ -170,3 +186,6 @@ it needs one, or the new test throws on `undefined`.
 | `save()` emits no UPDATE for an unchanged row; a builder update always writes one | Negligible in practice: `toOrmEntity` assigns a fresh `item.updatedAt` (defaulted to `new Date()` at `master-inventory-sync.service.ts:316`) on every call, so `save()`'s change map is non-empty essentially every sync already. Worth knowing rather than worth avoiding. |
 | A future column is added and silently joins the write set | Exactly what step 4's contract test prevents — it fails until the column is classified into one of the three groups. |
 | The `isStale` ordering precondition is broken by a later change | Recorded explicitly in § 1 and in a code comment beside the owned set. |
+| **A scoped UPDATE cannot resurrect a deleted row, where `save()` would have re-INSERTed it** | Zero affected rows now raises `InventoryRowVanishedError` rather than returning an item for a row that does not exist (which would enqueue a propagation for absent stock). Unreachable today — the port has no delete, the staleness sweep is a soft update, and both FKs are `ON DELETE NO ACTION` — so this is a guard for a future delete path, not a live case. |
+| A driver silently ignores `.returning()` | TypeORM makes `.returning()` a no-op where unsupported, which would leave `raw` empty on every successful update. Falling back to `item.updatedAt` there would reintroduce exactly the master-supplied timestamp this change removes, so an affected row with no returned value throws instead. |
+| Two concurrent syncs of the same variant race between the read and the update | Last-write-wins, unchanged from the previous `save()` behaviour and acceptable for a single-writer master sync. Noted rather than fixed. |

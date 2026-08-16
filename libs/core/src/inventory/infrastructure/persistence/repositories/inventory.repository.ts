@@ -26,6 +26,7 @@ import { randomUUID } from 'crypto';
 import { InventoryItemOrmEntity } from '../entities/inventory-item.orm-entity';
 import type { InventoryRepositoryPort } from '../../../domain/ports/inventory-repository.port';
 import { InventoryItem } from '../../../domain/entities/inventory-item.entity';
+import { InventoryRowVanishedError } from '../../../domain/exceptions/inventory-row-vanished.error';
 import type {
   InventoryFilters,
   InventoryPagination,
@@ -283,6 +284,11 @@ export class InventoryRepository implements InventoryRepositoryPort {
       const updated = await this.repository
         .createQueryBuilder()
         .update(InventoryItemOrmEntity)
+        // Deliberately a literal rather than something built from
+        // INVENTORY_MASTER_OWNED_COLUMNS: the literal is what gives TypeORM's
+        // key type-checking something to check. The spec asserts the two agree,
+        // so do not "DRY" this into a computed object — that trades a compile-time
+        // guarantee for a runtime one.
         .set({
           availableQuantity: item.availableQuantity,
           reservedQuantity: item.reservedQuantity,
@@ -292,14 +298,30 @@ export class InventoryRepository implements InventoryRepositoryPort {
         .returning(['updatedAt'])
         .execute();
 
+      // A scoped UPDATE cannot resurrect a row the way `save()` would have
+      // (it fell back to an INSERT). Returning an item for a row that no longer
+      // exists would enqueue a marketplace propagation for absent stock, so fail
+      // loudly instead. Expected to be unreachable — see InventoryRowVanishedError.
+      if (updated.affected === 0) {
+        throw new InventoryRowVanishedError(existing.id, item.productId, item.productVariantId);
+      }
+
       // RETURNING carries the DB-stamped `updatedAt` back in the same round-trip,
-      // which the caller cannot reconstruct from `item`.
+      // which the caller cannot reconstruct from `item`. An empty `raw` on an
+      // affected row means the driver ignored RETURNING (TypeORM makes it a silent
+      // no-op where unsupported) — falling back to the master-supplied
+      // `item.updatedAt` would poison the propagation dedupe key this whole
+      // exclusion exists to protect, so that is an error too.
       const [returnedRow] = updated.raw as { updatedAt: Date | string }[];
-      const persistedUpdatedAt = returnedRow
-        ? returnedRow.updatedAt instanceof Date
+      if (!returnedRow) {
+        throw new Error(
+          `inventory_upsert_missing_returning row=${existing.id} — driver did not honour RETURNING`
+        );
+      }
+      const persistedUpdatedAt =
+        returnedRow.updatedAt instanceof Date
           ? returnedRow.updatedAt
-          : new Date(returnedRow.updatedAt)
-        : item.updatedAt;
+          : new Date(returnedRow.updatedAt);
 
       return new InventoryItem(
         existing.id,

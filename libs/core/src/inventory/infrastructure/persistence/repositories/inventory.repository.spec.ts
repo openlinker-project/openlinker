@@ -11,11 +11,10 @@
 import type { TestingModule } from '@nestjs/testing';
 import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import type { Repository, SelectQueryBuilder } from 'typeorm';
-
-import { getMetadataArgsStorage } from 'typeorm';
+import { getMetadataArgsStorage, type Repository, type SelectQueryBuilder } from 'typeorm';
 
 import { InventoryItem } from '../../../domain/entities/inventory-item.entity';
+import { InventoryRowVanishedError } from '../../../domain/exceptions/inventory-row-vanished.error';
 import { InventoryItemOrmEntity } from '../entities/inventory-item.orm-entity';
 import {
   INVENTORY_DB_MANAGED_COLUMNS,
@@ -178,7 +177,9 @@ describe('InventoryRepository', () => {
         set: jest.fn<unknown, [UpdatePayload]>(),
         where: jest.fn<unknown, [string, Record<string, unknown>]>(),
         returning: jest.fn<unknown, [string[]]>(),
-        execute: jest.fn().mockResolvedValue({ raw: [{ updatedAt: persistedUpdatedAt }] }),
+        execute: jest
+          .fn()
+          .mockResolvedValue({ raw: [{ updatedAt: persistedUpdatedAt }], affected: 1 }),
       };
       qb.update.mockReturnValue(qb);
       qb.set.mockReturnValue(qb);
@@ -250,6 +251,34 @@ describe('InventoryRepository', () => {
       // Identity comes from the matched row, not the inbound item's id.
       expect(result.id).toBe('inv-1');
       expect(result.availableQuantity).toBe(7);
+    });
+
+    it('should throw rather than return a phantom row when the update matches nothing', async () => {
+      const qb = buildUpdateBuilderMock();
+      // The row was read, then deleted before the UPDATE ran. `save()` would have
+      // re-INSERTed it; a scoped UPDATE cannot, and the old fallback would have
+      // returned an item for a row that no longer exists.
+      qb.execute.mockResolvedValue({ raw: [], affected: 0 });
+      ormRepository.findOne.mockResolvedValue(existingRow);
+      ormRepository.createQueryBuilder.mockReturnValue(
+        qb as unknown as ReturnType<typeof ormRepository.createQueryBuilder>
+      );
+
+      await expect(repository.upsert(incoming)).rejects.toThrow(InventoryRowVanishedError);
+    });
+
+    it('should throw when the driver ignores RETURNING rather than using the master timestamp', async () => {
+      const qb = buildUpdateBuilderMock();
+      // TypeORM makes `.returning()` a silent no-op on drivers that lack support.
+      // Falling back to `item.updatedAt` would put the master-supplied value into
+      // the propagation dedupe key — the exact failure this exclusion prevents.
+      qb.execute.mockResolvedValue({ raw: [], affected: 1 });
+      ormRepository.findOne.mockResolvedValue(existingRow);
+      ormRepository.createQueryBuilder.mockReturnValue(
+        qb as unknown as ReturnType<typeof ormRepository.createQueryBuilder>
+      );
+
+      await expect(repository.upsert(incoming)).rejects.toThrow(/did not honour RETURNING/);
     });
 
     // The guard that actually earns its keep: adding a column to the ORM entity
