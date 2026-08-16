@@ -45,7 +45,6 @@ import {
 import type { PriceTaxTreatment } from '../../../domain/types/order.types';
 import type { OrderFxIntent, OrderFxStamp } from '../../../domain/types/order-fx.types';
 import type { StampedReportingCurrencyCount } from '../../../domain/types/order-fx-read.types';
-import type { StampedReportingCurrencyCount } from '../../../domain/types/order-fx-read.types';
 
 @Injectable()
 export class OrderRecordRepository implements OrderRecordRepositoryPort {
@@ -1122,17 +1121,6 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       // ProductRepository's existing `Number(entity.price)` handling.
       entity.totalAmount !== null ? Number(entity.totalAmount) : null,
       entity.cancelledAt ?? null,
-      entity.reportingCurrency ?? null,
-      // `numeric` comes back from pg as a string; `Number()` per the house
-      // money convention (mirrors every other decimal column in the repo).
-      // Guarded so a NULL column stays `null` rather than becoming `0`.
-      entity.reportingTotalAmount === null || entity.reportingTotalAmount === undefined
-        ? null
-        : Number(entity.reportingTotalAmount),
-      entity.exchangeRateId ?? null,
-      entity.fxRule ?? null,
-      entity.fxStampedAt ?? null,
-      entity.fxIntendedCurrency ?? null,
       // Coerced through the guard rather than cast: the column is a plain
       // `varchar`, so a value written by an older/newer release (or by hand)
       // must degrade to "no block" instead of reaching the UI as an unknown
@@ -1217,15 +1205,6 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     entity.recordStatus = orderRecord.recordStatus;
     entity.mappingFailureReason = orderRecord.mappingFailureReason;
     entity.dispatchByAt = orderRecord.dispatchByAt;
-    // The six FX snapshot columns (#2124) are deliberately NOT mapped here,
-    // for the strongest version of the reason documented above for
-    // `fulfillmentState` / `cancelledAt` / `salesDocument*`: this is a
-    // full-row save() on an update-or-create ingestion path, so mapping them
-    // would let a re-poll of an already-stamped order write the ingestion
-    // path's in-memory `null` over a REPORTED FINANCIAL FIGURE. Leaving the
-    // properties unset makes TypeORM omit the columns from the generated
-    // UPDATE entirely. `claimFxIntentIfAbsent` + `stampFxIfAbsent` (both
-    // guarded, both single-statement) are their only writers.
     //
     // The six FX snapshot columns (#2124) are deliberately NOT mapped here
     // either, and for the strongest version of the same reason: this is a

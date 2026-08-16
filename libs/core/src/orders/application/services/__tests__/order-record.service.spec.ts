@@ -571,17 +571,17 @@ describe('OrderRecordService', () => {
       service = new OrderRecordService(repository, fxStamp);
     });
 
-    it('never constructs the OrderRecord passed to upsert() with a fulfillment state', async () => {
+    it('never constructs the OrderRecord passed to upsertWithLineItems() with a fulfillment state', async () => {
       // No order source reports a fulfillment state, so the ingestion path must
       // leave the field at its null default. Passing a derived value here would
       // let the upsert's full-object save() reset the rollup the shipping
       // context committed out-of-band - see the toOrm comment in
       // OrderRecordRepository.
-      repository.upsert.mockResolvedValue({} as OrderRecord);
+      repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
 
       await service.persistOrder(createMockOrder(), 'source-connection-123', 'event-456');
 
-      const callArg = repository.upsert.mock.calls[0][0];
+      const [callArg] = repository.upsertWithLineItems.mock.calls[0];
       expect(callArg.fulfillmentState).toBeNull();
     });
   });
@@ -592,17 +592,17 @@ describe('OrderRecordService', () => {
       service = new OrderRecordService(repository, fxStamp);
     });
 
-    it('never constructs the OrderRecord passed to upsert() with sync state', async () => {
+    it('never constructs the OrderRecord passed to upsertWithLineItems() with sync state', async () => {
       // No order source reports OL's own destination sync state. The empty
       // arrays here are the ingestion path declining to have an opinion; the
       // upsert then omits both columns so a re-ingestion cannot erase what
       // updateSyncStatus committed - see the toOrm comment in
       // OrderRecordRepository.
-      repository.upsert.mockResolvedValue({} as OrderRecord);
+      repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
 
       await service.persistOrder(createMockOrder(), 'source-connection-123', 'event-456');
 
-      const callArg = repository.upsert.mock.calls[0][0];
+      const [callArg] = repository.upsertWithLineItems.mock.calls[0];
       expect(callArg.syncStatus).toEqual([]);
       expect(callArg.syncAttempts).toEqual([]);
     });

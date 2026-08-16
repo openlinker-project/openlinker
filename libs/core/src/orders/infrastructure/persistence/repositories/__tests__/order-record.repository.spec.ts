@@ -11,8 +11,6 @@ import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import type { Repository, UpdateResult } from 'typeorm';
 import { IsNull } from 'typeorm';
-import type { Repository, UpdateResult } from 'typeorm';
-import { IsNull } from 'typeorm';
 import { OrderRecordRepository } from '../order-record.repository';
 import type { OrderSyncStatusJson } from '../../entities/order-record.orm-entity';
 import { OrderRecordOrmEntity } from '../../entities/order-record.orm-entity';
@@ -876,6 +874,9 @@ describe('OrderRecordRepository', () => {
           new Date('2026-08-01T10:00:00Z'),
           new Date('2026-08-01T10:00:00Z'),
           [],
+          null,
+          null,
+          null,
           null,
           null,
           null,

@@ -23,7 +23,6 @@ import type { FulfillmentRollupState } from '../types/order-fulfillment.types';
 import type { SyncAttempt } from '../types/order-sync.types';
 import type { OrderFxIntent, OrderFxStamp } from '../types/order-fx.types';
 import type { SalesDocumentBlock } from '@openlinker/core/sales-documents';
-import type { OrderFxIntent, OrderFxStamp } from '../types/order-fx.types';
 import type { StampedReportingCurrencyCount } from '../types/order-fx-read.types';
 
 export interface OrderRecordRepositoryPort {
