@@ -43,6 +43,7 @@ import type { OpenLinkerPlugin } from '../shared/plugins';
 import { allegroPlugin } from './allegro';
 import { assertUniquePluginInvariants } from './assert-unique-plugin-invariants';
 import { dpdPlugin } from './dpd';
+import { eparagonyPlugin } from './eparagony';
 import { erliPlugin } from './erli';
 import { infaktPlugin } from './infakt';
 import { inpostPlugin } from './inpost';
@@ -61,6 +62,7 @@ export const plugins: readonly OpenLinkerPlugin[] = [
   subiektPlugin,
   ksefPlugin,
   infaktPlugin,
+  eparagonyPlugin,
 ];
 
 assertUniquePluginInvariants(plugins);
