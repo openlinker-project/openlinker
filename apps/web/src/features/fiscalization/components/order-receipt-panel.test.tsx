@@ -68,10 +68,14 @@ describe('OrderReceiptPanel — not-registered', () => {
         fiscalization: { listForOrder: vi.fn().mockResolvedValue([]) },
       }),
     });
-    expect(await screen.findByText('Not registered')).toBeInTheDocument();
+    // Wait on the settled body copy, not the badge — the badge already reads
+    // "Not registered" on the very first render (derived from a null record),
+    // before the `listForOrder` query resolves, so asserting on it first would
+    // race the loading skeleton instead of the actual not-registered content.
     expect(
-      screen.getByText(/Whether this sale needs one is your call, not OpenLinker's/),
+      await screen.findByText(/Whether this sale needs one is your call, not OpenLinker's/),
     ).toBeInTheDocument();
+    expect(screen.getByText('Not registered')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Register receipt' })).toBeInTheDocument();
   });
 
