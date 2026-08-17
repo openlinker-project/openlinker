@@ -16,11 +16,17 @@
  * has decided" (`default`) and "an operator pinned this in configuration"
  * (`env`) are different facts, and only one of them is a problem.
  *
+ * `stampedOrders` is deliberately NOT rendered as a bare number here — see
+ * `CurrencyCoverageDialog` for why a raw count reads as an alarm ("0
+ * problems") rather than the coverage fact it actually is. It's tucked
+ * behind a secondary "Coverage" action instead of shown on first paint.
+ *
  * @module apps/web/src/features/currency-settings/components
  */
 import { useState, type ReactElement } from 'react';
 import { Button } from '../../../shared/ui/button';
 import { useCurrencySettingsQuery } from '../hooks/use-currency-settings-query';
+import { CurrencyCoverageDialog } from './currency-coverage-dialog';
 import { CurrencySettingsDialog } from './currency-settings-dialog';
 import type { ReportingCurrencySource } from '../api/currency-settings.types';
 
@@ -38,6 +44,7 @@ function formatReportingValue(reportingCurrency: string, source: ReportingCurren
 export function CurrencySettingsTile(): ReactElement {
   const query = useCurrencySettingsQuery();
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [coverageOpen, setCoverageOpen] = useState(false);
 
   return (
     <article className="panel panel--dense">
@@ -78,16 +85,6 @@ export function CurrencySettingsTile(): ReactElement {
               <dt>Rate date rule</dt>
               <dd className="mono-text">{query.data.rateDateRule}</dd>
             </div>
-            <div>
-              <dt>Stamped orders</dt>
-              <dd className="mono-text tabular">
-                {query.data.stampedOrders.length === 0
-                  ? '0'
-                  : query.data.stampedOrders
-                      .map((entry) => `${entry.count} ${entry.reportingCurrency}`)
-                      .join(' · ')}
-              </dd>
-            </div>
           </dl>
 
           <p className="muted-text panel-copy">
@@ -95,21 +92,40 @@ export function CurrencySettingsTile(): ReactElement {
             their own rate.
           </p>
 
-          <Button
-            tone="secondary"
-            className="button--sm"
-            onClick={() => {
-              setDialogOpen(true);
-            }}
-          >
-            Edit
-          </Button>
+          <div className="currency-settings-tile__actions">
+            <Button
+              tone="secondary"
+              className="button--sm"
+              onClick={() => {
+                setDialogOpen(true);
+              }}
+            >
+              Edit
+            </Button>
+            <Button
+              tone="ghost"
+              className="button--sm"
+              onClick={() => {
+                setCoverageOpen(true);
+              }}
+            >
+              Coverage
+            </Button>
+          </div>
 
           <CurrencySettingsDialog
             open={dialogOpen}
             view={query.data}
             onClose={() => {
               setDialogOpen(false);
+            }}
+          />
+
+          <CurrencyCoverageDialog
+            open={coverageOpen}
+            view={query.data}
+            onClose={() => {
+              setCoverageOpen(false);
             }}
           />
         </>
