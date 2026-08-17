@@ -114,6 +114,13 @@ services:
       # Same encryption key the api/migrate services use — the worker decrypts
       # connection credentials when running sync jobs (#1368).
       OPENLINKER_CREDENTIALS_ENCRYPTION_KEY: '${OPENLINKER_CREDENTIALS_ENCRYPTION_KEY:?set OPENLINKER_CREDENTIALS_ENCRYPTION_KEY in .env (see .env.example) - generate with: openssl rand -base64 32}'
+      # Must match the api service's value (#2126, ADR-040): order ingestion,
+      # the fxStamp retry job and the hourly reconcile sweep all run in THIS
+      # process, and ReportingCurrencySettingsService.resolve() falls back to
+      # this env var per-process before any settings row exists — a
+      # differing default here would stamp orders differently from what the
+      # api service's setting page reports until an operator saves a value.
+      OL_REPORTING_CURRENCY: '${OL_REPORTING_CURRENCY:-PLN}'
     depends_on:
       postgres:
         condition: service_healthy
