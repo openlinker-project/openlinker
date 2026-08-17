@@ -18,6 +18,8 @@ export const ORDER_ITEM_REF_RESOLVER_SERVICE_TOKEN = Symbol('IOrderItemRefResolv
 export const ORDER_LIFECYCLE_RELAY_SERVICE_TOKEN = Symbol('IOrderLifecycleRelayService');
 // Per-order reporting-currency stamp (#2125, ADR-040).
 export const ORDER_FX_STAMP_SERVICE_TOKEN = Symbol('IOrderFxStampService');
+// FX aggregate reads consumed by the reporting-currency settings surface (#2126).
+export const ORDER_FX_READ_SERVICE_TOKEN = Symbol('IOrderFxReadService');
 // Refund record capture (#2036).
 export const ORDER_REFUND_RECORD_REPOSITORY_TOKEN = Symbol('RefundRecordRepositoryPort');
 export const ORDER_REFUND_SERVICE_TOKEN = Symbol('IOrderRefundService');

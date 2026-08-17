@@ -41,6 +41,7 @@ import {
   isSalesDocumentUnresolvedReason,
 } from '@openlinker/core/sales-documents';
 import type { OrderFxIntent, OrderFxStamp } from '../../../domain/types/order-fx.types';
+import type { StampedReportingCurrencyCount } from '../../../domain/types/order-fx-read.types';
 
 @Injectable()
 export class OrderRecordRepository implements OrderRecordRepositoryPort {
@@ -857,6 +858,42 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       take: options.limit,
     });
     return rows.map((row) => row.internalOrderId);
+  }
+
+  /**
+   * Stamped-row counts per reporting currency (#2126).
+   *
+   * `COUNT(*)::int` rather than a bare `COUNT(*)`: node-postgres hands `bigint`
+   * back as a STRING, so the cast is what keeps the port's `number` contract
+   * true instead of leaking `'3947'` into a JSON response. Values are still
+   * re-coerced below, so a driver that ever changes its mind cannot produce a
+   * `NaN` count.
+   *
+   * Quoted camelCase identifiers on purpose — no TypeORM `namingStrategy` is
+   * configured anywhere in the repo, so `reporting_currency` would error at
+   * runtime.
+   */
+  async countStampedByReportingCurrency(): Promise<StampedReportingCurrencyCount[]> {
+    const rows = (await this.repository.query(
+      `SELECT rec."reportingCurrency" AS currency, COUNT(*)::int AS count
+       FROM "order_records" rec
+       WHERE rec."reportingCurrency" IS NOT NULL
+       GROUP BY rec."reportingCurrency"
+       ORDER BY rec."reportingCurrency" ASC`
+    )) as unknown;
+
+    if (!Array.isArray(rows)) {
+      return [];
+    }
+
+    return rows
+      .map((row) => row as { currency?: unknown; count?: unknown })
+      .filter((row): row is { currency: string; count: unknown } => typeof row.currency === 'string')
+      .map((row) => ({
+        reportingCurrency: row.currency,
+        count: Number(row.count ?? 0),
+      }))
+      .filter((entry) => Number.isFinite(entry.count));
   }
 
   /**

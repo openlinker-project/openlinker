@@ -135,6 +135,7 @@ export type {
   OrderFxSweepOptions,
   OrderFxSweepResult,
 } from './domain/types/order-fx-stamp.types';
+export type { StampedReportingCurrencyCount } from './domain/types/order-fx-read.types';
 
 // Refund record capture (#2036).
 export {
@@ -154,6 +155,8 @@ export {
 export { IOrderRecordService } from './application/interfaces/order-record.service.interface';
 export { OrderRecordService } from './application/services/order-record.service';
 export type { IOrderFxStampService } from './application/interfaces/order-fx-stamp.service.interface';
+// FX aggregate reads for the reporting-currency settings surface (#2126).
+export type { IOrderFxReadService } from './application/interfaces/order-fx-read.service.interface';
 export {
   IOrderDestinationRetryService,
   OrderDestinationRetryInput,
