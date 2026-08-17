@@ -13,6 +13,7 @@ import { OrderIngestionService } from './application/services/order-ingestion.se
 import { OrderItemRefResolverService } from './application/services/order-item-ref-resolver.service';
 import { OrderRecordService } from './application/services/order-record.service';
 import { OrderFxStampService } from './application/services/order-fx-stamp.service';
+import { OrderFxReadService } from './application/services/order-fx-read.service';
 import { OrderDestinationRetryService } from './application/services/order-destination-retry.service';
 import { OrderLifecycleRelayService } from './application/services/order-lifecycle-relay.service';
 import { OrderRecordRepository } from './infrastructure/persistence/repositories/order-record.repository';
@@ -31,6 +32,7 @@ import {
   ORDER_LIFECYCLE_RELAY_SERVICE_TOKEN,
   ORDER_REFUND_RECORD_REPOSITORY_TOKEN,
   ORDER_REFUND_SERVICE_TOKEN,
+  ORDER_FX_READ_SERVICE_TOKEN,
 } from './orders.tokens';
 import { IntegrationsModule } from '@openlinker/core/integrations';
 import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
@@ -75,6 +77,7 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     OrderDestinationRetryService,
     OrderLifecycleRelayService,
     OrderRecordRepository,
+    OrderFxReadService,
     OrderRefundService,
     RefundRecordRepository,
     // Then provide token bindings using useExisting
@@ -118,6 +121,10 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
       provide: ORDER_REFUND_SERVICE_TOKEN,
       useExisting: OrderRefundService,
     },
+    {
+      provide: ORDER_FX_READ_SERVICE_TOKEN,
+      useExisting: OrderFxReadService,
+    },
   ],
   exports: [
     OrderRecordService, // Export service class for direct injection
@@ -132,6 +139,7 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     ORDER_DESTINATION_RETRY_SERVICE_TOKEN,
     ORDER_LIFECYCLE_RELAY_SERVICE_TOKEN,
     ORDER_REFUND_SERVICE_TOKEN,
+    ORDER_FX_READ_SERVICE_TOKEN,
   ],
 })
 export class OrdersModule {}

@@ -45,6 +45,7 @@ import { McpModule } from './mcp/mcp.module';
 import { MailerApiModule } from './mailer/mailer.module';
 import { AnalyticsApiModule } from './analytics/analytics.module';
 import { AnalyticsTrustApiModule } from './analytics-trust/analytics-trust.module';
+import { CurrencyApiModule } from './currency/currency.module';
 import { RequestPriorityModule } from './http/request-priority.module';
 
 @Module({

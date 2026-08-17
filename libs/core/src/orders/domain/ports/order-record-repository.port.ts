@@ -22,6 +22,7 @@ import type { FulfillmentRollupState } from '../types/order-fulfillment.types';
 import type { SyncAttempt } from '../types/order-sync.types';
 import type { SalesDocumentBlock } from '@openlinker/core/sales-documents';
 import type { OrderFxIntent, OrderFxStamp } from '../types/order-fx.types';
+import type { StampedReportingCurrencyCount } from '../types/order-fx-read.types';
 
 export interface OrderRecordRepositoryPort {
   /**
@@ -266,4 +267,22 @@ export interface OrderRecordRepositoryPort {
    * malformed snapshot cannot fail the read.
    */
   listDistinctNativeCurrencies(): Promise<string[]>;
+
+  /**
+   * How many rows already carry an FX stamp, grouped by the reporting currency
+   * they were stamped in (#2126).
+   *
+   * The read behind "changing this setting splits history": a stamp is
+   * immutable, so every existing row keeps the currency it was stamped in and a
+   * deployment can legitimately hold several reporting-currency eras. Grouped
+   * rather than totalled because the era breakdown is the operator-facing fact
+   * and cannot be recovered from a bare total.
+   *
+   * Keyed on `reportingCurrency IS NOT NULL`, which is the same "is this row
+   * stamped?" predicate {@link stampFxIfAbsent} guards on - never
+   * `exchangeRateId`, which is legitimately NULL on a same-currency stamp.
+   * Rows that are unstamped (including terminal-unstamped ones) are absent from
+   * the result rather than reported under a `null` key.
+   */
+  countStampedByReportingCurrency(): Promise<StampedReportingCurrencyCount[]>;
 }
