@@ -192,7 +192,13 @@ function toProductLine(
     totalLineValue,
     taxRate,
   };
-  if (line.sku !== null && line.sku.trim().length > 0) {
+  // `line.sku` is declared `string | null` (never optional), but a value
+  // crossing a serialization boundary (a queued job payload, a hand-built
+  // caller bypassing the type checker) can still arrive as `undefined` - a
+  // `!== null` guard alone crashes on `.trim()` in that case. Checking for a
+  // non-empty string directly is equally correct for the well-typed case and
+  // additionally tolerant of the malformed one.
+  if (typeof line.sku === 'string' && line.sku.trim().length > 0) {
     product.SKU = line.sku.trim();
   }
   return product;

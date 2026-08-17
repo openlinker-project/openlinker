@@ -137,7 +137,7 @@ export class EparagonyFiscalizationAdapter
 
     const deadline = Date.now() + EPARAGONY_REGISTER_DEADLINE_MS;
 
-    await this.createDocument(body, cmd.idempotencyKey, documentToken, cmd.orderId);
+    await this.createDocument(body, documentToken, cmd.orderId);
 
     const status = await this.pollToTerminalStatus(documentToken, deadline, cmd.orderId);
     return toRegisterTransactionResult(status, documentToken);
@@ -189,13 +189,20 @@ export class EparagonyFiscalizationAdapter
 
   private async createDocument(
     body: ReturnType<typeof toCreateReceiptRequest>,
-    idempotencyKey: string,
     documentToken: string,
     orderId: string,
   ): Promise<void> {
     try {
       await this.http.post<unknown>(DOCUMENTS_PATH, body, {
-        headers: { 'Idempotency-Key': idempotencyKey },
+        // `documentToken`, NOT core's raw `idempotencyKey`: the vendor requires
+        // this header to match `/^[0-9A-Za-z_-]+$/` (verified live against the
+        // sandbox), and core's key is `fiscal:{connectionId}:{orderId}` - colons
+        // fail that pattern with a 400 on every single call. `documentToken` is
+        // already a deterministic derivation of the SAME (connectionId,
+        // idempotencyKey) pair, shaped as a UUID, which satisfies the vendor's
+        // character class while keeping the identical safety property this
+        // header exists for.
+        headers: { 'Idempotency-Key': documentToken },
         // Safe to re-issue on a 5xx/network failure precisely BECAUSE of the
         // header above: the vendor guarantees that repeating a key with the same
         // body cannot mint a second document, and therefore cannot mint a second
