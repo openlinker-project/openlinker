@@ -58,4 +58,22 @@ export class OrderInvoiceProjectionDto {
       'True once the authority confirmation document is downloadable (invoice issued and cleared); gates the FE download action.',
   })
   confirmationDocumentAvailable!: boolean;
+
+  /**
+   * The domain's own `InvoiceRecord.blocksIssuanceElsewhere`, projected verbatim
+   * rather than re-derived client-side (#2100).
+   *
+   * The FE needs exactly this question — "does a fiscal document plausibly exist
+   * for this order?" — to decide whether a persisted sales-document block is
+   * still worth explaining, and it is the same question `AutoIssueTriggerService`
+   * asks before persisting one. Shipping the derived boolean instead of the raw
+   * `failureMode` keeps the two answers from drifting: a `failed` record is NOT
+   * automatically "no document", because an `in-doubt` failure means the provider
+   * may well have created one.
+   */
+  @ApiProperty({
+    description:
+      'True when this record represents a document that plausibly exists at the provider (pending/issuing/issued, or a non-rejected failure). False only for a terminal rejected failure. Mirrors InvoiceRecord.blocksIssuanceElsewhere.',
+  })
+  blocksIssuanceElsewhere!: boolean;
 }

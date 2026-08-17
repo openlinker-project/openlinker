@@ -129,6 +129,37 @@ export class OrderRecordOrmEntity {
   @Index()
   fulfillmentState!: string | null;
 
+  /**
+   * Neutral `SalesDocumentGateBlockReason` naming why no fiscal document was
+   * issued (#2100, ADR-041 decision 11). `null` = nothing blocking. Indexed
+   * because it IS a filter axis (the orders list ships an "Invoicing blocked"
+   * chip and a `salesDocumentBlocked` count) — unlike `mappingFailureReason`,
+   * which is free text and never filtered on.
+   *
+   * Plain `varchar` with no check constraint, matching `recordStatus`: the union
+   * is enforced in TypeScript, and a future ADR-041 value must not need DDL.
+   */
+  @Column({ type: 'varchar', nullable: true })
+  @Index()
+  salesDocumentBlockReason!: string | null;
+
+  /**
+   * The `SalesDocumentUnresolvedReason` paired with a `'unresolved-routing'`
+   * block (ADR-041 §107); `null` for every other reason. Not indexed — the
+   * filter axis is "is this order blocked at all", which the column above
+   * answers; this one only refines the copy.
+   */
+  @Column({ type: 'varchar', nullable: true })
+  salesDocumentUnresolvedReason!: string | null;
+
+  /**
+   * PII-free elaboration of the reason above (ids and counts only). Free text,
+   * rendered verbatim to the operator, never filtered on — so no index, same
+   * call as `mappingFailureReason`.
+   */
+  @Column({ type: 'text', nullable: true })
+  salesDocumentBlockDetail!: string | null;
+
   @CreateDateColumn()
   createdAt!: Date;
 

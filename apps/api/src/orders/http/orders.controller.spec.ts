@@ -73,6 +73,7 @@ describe('OrdersController', () => {
       updateFulfillmentState: jest.fn(),
       updateItemResolutionFailure: jest.fn(),
       markCancelled: jest.fn(),
+      updateSalesDocumentBlock: jest.fn(),
     };
 
     const mockRetryService: jest.Mocked<IOrderDestinationRetryService> = {
@@ -505,6 +506,7 @@ describe('OrdersController', () => {
         needsAttention: 1,
         synced: 1,
         awaitingDispatch: 9,
+        salesDocumentBlocked: 0,
       });
 
       const result = await controller.statusSummary({});
@@ -522,6 +524,7 @@ describe('OrdersController', () => {
         needsAttention: 0,
         synced: 0,
         awaitingDispatch: 0,
+        salesDocumentBlocked: 0,
       });
 
       await controller.statusSummary({
@@ -588,6 +591,10 @@ describe('OrdersController', () => {
         regulatoryStatus: 'accepted',
         clearanceReference: '5265877635-20250826-0100001AF629-AF',
         confirmationDocumentAvailable: true,
+        // #2100 — the domain's own `blocksIssuanceElsewhere`, projected verbatim so
+        // the FE suppresses a sales-document block on exactly the records the
+        // backend gate refuses to write one for.
+        blocksIssuanceElsewhere: true,
       });
     });
 

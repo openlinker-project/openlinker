@@ -101,6 +101,7 @@ describe('ShipmentDispatchNotificationService', () => {
       markItemResolutionFailure: jest.fn(),
       getFailedSyncValueSummary: jest.fn(),
       markCancelled: jest.fn(),
+      markSalesDocumentBlock: jest.fn(),
     };
 
     integrations = {
