@@ -100,14 +100,21 @@ ol_order_a79fe613aa264436a3312f08873d2f69 as 9c1e8741-ba1e-4c53-b95b-fb24f14d646
 the vendor genuinely created the document; the poll budget simply ran out first, which
 Part A already established is expected sandbox behaviour.
 
-- [ ] Click **Look it up** again after the device has had more time, and confirm it
+- [x] Click **Look it up** again after the device has had more time, and confirm it
       resolves to **Registered** with a real receipt number and signing identity
 
-Not captured in this session within the time available — the sandbox device in Part A
-took over a minute past this adapter's poll budget to confirm, and this walkthrough's
-**Unconfirmed** screenshot already demonstrates the safety-critical path (no retry,
-only reconcile) working correctly. A later "Look it up" click against this same order
-is expected to resolve it, per Part A's direct verification of the identical mechanism.
+Resolved on a later `POST /fiscal-registrations/:id/reconcile` call (same order, several
+hours after the original attempt): `outcome: "resolved"`, `status: "registered"`,
+`documentReference: "210"`, `signingIdentity: "ZBN1901007833"`, plus every
+`regimeExtras` field the vendor reported (`fiscalDocumentId`, `fiscalDocumentNumber`,
+`processingMode`, `posId`, `merchantDocumentId`) and a working `link` artefact.
+
+![Fiscal receipt panel — Registered, with receipt no. 210, signing identity, every regimeExtras row, and an Open link to the hosted receipt](screenshots/eparagony/09-order-registered.png)
+
+This confirms Part A's finding was not an isolated adapter-level result: the identical
+`in-doubt → locateByQuery → registered` lifecycle resolves correctly through the real
+HTTP surface and renders correctly in the real UI, with the two legally required
+identifiers (§3 ust. 4) both present and copyable.
 
 ## Findings summary
 
@@ -115,5 +122,5 @@ is expected to resolve it, per Part A's direct verification of the identical mec
 |---|---|---|---|
 | 1 | `toProductLine` SKU guard crashes on `undefined` | Real bug | Fixed |
 | 2 | `Idempotency-Key` header sent raw core key with colons, rejected by every call | Real bug, blocking | Fixed |
-| 3 | Sandbox device confirms later than the adapter's poll deadline | Documentation correction, not a bug | `in-doubt` handles it correctly by design |
-| 4 | No live capture of the eventual `Registered` state in the UI | Coverage gap | Follow-up: re-run Part C's last step |
+| 3 | Sandbox device confirms later than the adapter's poll deadline | Documentation correction, not a bug | `in-doubt` handles it correctly by design; confirmed resolving to `registered` |
+| 4 | An order can carry both an invoice and a fiscal receipt today, with nothing enforcing "one sales document" across the two capabilities | Known, out-of-scope gap | ADR-041 / #2051 (sales-documents routing), deliberately sequenced after this epic |
