@@ -23,6 +23,8 @@ import { SyncJobHandlerRegistry } from './handlers/sync-job-handler.registry';
 import { InventoryPropagateToMarketplacesHandler } from './handlers/inventory-propagate-to-marketplaces.handler';
 import { OrdersPollHandler } from './handlers/orders-poll.handler';
 import { MarketplaceOrderSyncHandler } from './handlers/marketplace-order-sync.handler';
+import { MarketplaceOrderFxStampHandler } from './handlers/marketplace-order-fx-stamp.handler';
+import { MarketplaceOrderFxStampSweepHandler } from './handlers/marketplace-order-fx-stamp-sweep.handler';
 import { MarketplaceOfferQuantityUpdateHandler } from './handlers/marketplace-offer-quantity-update.handler';
 import { MarketplaceOfferFieldUpdateHandler } from './handlers/marketplace-offer-field-update.handler';
 import { MarketplaceOfferCreateHandler } from './handlers/marketplace-offer-create.handler';
@@ -72,6 +74,8 @@ import { HandlerRegistrationService } from './handlers/handler-registration.serv
     InventoryPropagateToMarketplacesHandler,
     OrdersPollHandler,
     MarketplaceOrderSyncHandler,
+    MarketplaceOrderFxStampHandler,
+    MarketplaceOrderFxStampSweepHandler,
     MarketplaceOfferQuantityUpdateHandler,
     MarketplaceOfferFieldUpdateHandler,
     MarketplaceOfferCreateHandler,

@@ -26,13 +26,19 @@ import type {
 import type { FulfillmentRollupState } from '../../domain/types/order-fulfillment.types';
 import type { SalesDocumentBlock } from '@openlinker/core/sales-documents';
 import { getPiiConfig } from '@openlinker/shared/config';
-import { ORDER_RECORD_REPOSITORY_TOKEN } from '../../orders.tokens';
+import { Logger } from '@openlinker/shared/logging';
+import { IOrderFxStampService } from '../interfaces/order-fx-stamp.service.interface';
+import { ORDER_FX_STAMP_SERVICE_TOKEN, ORDER_RECORD_REPOSITORY_TOKEN } from '../../orders.tokens';
 
 @Injectable()
 export class OrderRecordService implements IOrderRecordService {
+  private readonly logger = new Logger(OrderRecordService.name);
+
   constructor(
     @Inject(ORDER_RECORD_REPOSITORY_TOKEN)
-    private readonly repository: OrderRecordRepositoryPort
+    private readonly repository: OrderRecordRepositoryPort,
+    @Inject(ORDER_FX_STAMP_SERVICE_TOKEN)
+    private readonly fxStamp: IOrderFxStampService
   ) {}
 
   /**
@@ -150,7 +156,55 @@ export class OrderRecordService implements IOrderRecordService {
     );
 
     const saved = await this.repository.upsert(orderRecord);
-    return this.recordCancellationIfNeeded(order.id, order.status === 'cancelled', now, saved);
+
+    // Two post-upsert writers, ONE refresh (#2125). Both write columns that
+    // `upsert()` deliberately excludes from its statement, so `saved` cannot
+    // reflect either of them - and running each writer's own re-read in
+    // sequence would leave the record stale again, because the cancellation
+    // re-read happens before the stamp lands. So each writer only REPORTS
+    // whether the returned record is now behind the row, and the refresh runs
+    // at most once, after both.
+    const cancellationWrote = await this.recordCancellationIfNeeded(
+      order.id,
+      order.status === 'cancelled',
+      now
+    );
+    const fxWrote = await this.stampFx(order.id);
+
+    return cancellationWrote || fxWrote
+      ? (await this.repository.findById(order.id)) ?? saved
+      : saved;
+  }
+
+  /**
+   * Stamp the order's reporting-currency figure (#2125, ADR-040), inline on the
+   * ingestion path.
+   *
+   * NEVER FAILS THE PERSIST. `IOrderFxStampService.stamp` folds every failure
+   * into its outcome (degrading to the `marketplace.order.fxStamp` retry job),
+   * and the defensive catch here covers the residual case of the seam itself
+   * throwing: a rate provider being unreachable must not turn a successfully
+   * ingested order into a failed ingestion.
+   *
+   * @returns whether the returned `OrderRecord` is now behind the row's
+   *   reportable FX figure, i.e. whether a refresh is owed. Only a `'stamped'`
+   *   outcome qualifies: `'terminal'` and `'deferred'` leave the three figure
+   *   columns NULL, exactly as `upsert()` reported them, and the operational
+   *   columns they do write (`fxStampedAt`, `fxIntendedCurrency`, `fxRule`) are
+   *   not the financial contract this refresh exists to keep honest.
+   */
+  private async stampFx(internalOrderId: string): Promise<boolean> {
+    try {
+      const outcome = await this.fxStamp.stamp(internalOrderId);
+      return outcome.kind === 'stamped';
+    } catch (error) {
+      this.logger.warn(
+        `FX stamp seam threw for order ${internalOrderId}; the order stays persisted and ` +
+          `unstamped, and the hourly reconcile sweep will re-attempt it: ` +
+          (error instanceof Error ? error.message : String(error))
+      );
+      return false;
+    }
   }
 
   async persistIncomingSnapshot(
@@ -225,12 +279,19 @@ export class OrderRecordService implements IOrderRecordService {
     );
 
     const saved = await this.repository.upsert(orderRecord);
-    return this.recordCancellationIfNeeded(
+
+    // No FX stamp on this path, deliberately: an `awaiting_mapping` snapshot is
+    // overwritten by `persistOrder` as soon as item resolution succeeds, so
+    // stamping here would be work repeated moments later for the overwhelming
+    // majority of orders. An order that never leaves `awaiting_mapping` still
+    // carries `totals` in this snapshot and is picked up by the reconcile sweep.
+    const cancellationWrote = await this.recordCancellationIfNeeded(
       internalOrderId,
       incoming.status === 'cancelled',
-      now,
-      saved
+      now
     );
+
+    return cancellationWrote ? (await this.repository.findById(internalOrderId)) ?? saved : saved;
   }
 
   /**
@@ -276,18 +337,24 @@ export class OrderRecordService implements IOrderRecordService {
    * was never sent to the database in that statement), so a re-fetch is
    * needed to return an accurate record when a cancellation was recorded;
    * the extra read is paid only on this rare path, not on every persist.
+   *
+   * REPORTS the write rather than performing the re-read itself (#2125): the
+   * FX stamp is a second post-upsert writer and lands after this one, so a
+   * re-read here would be immediately stale. The caller owns the single
+   * refresh.
+   *
+   * @returns whether a cancellation instant was written
    */
   private async recordCancellationIfNeeded(
     internalOrderId: string,
     isCancelled: boolean,
-    cancelledAt: Date,
-    saved: OrderRecord
-  ): Promise<OrderRecord> {
+    cancelledAt: Date
+  ): Promise<boolean> {
     if (!isCancelled) {
-      return saved;
+      return false;
     }
     await this.repository.markCancelled(internalOrderId, cancelledAt);
-    return (await this.repository.findById(internalOrderId)) ?? saved;
+    return true;
   }
 
   /**
