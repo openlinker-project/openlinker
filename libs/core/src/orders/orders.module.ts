@@ -12,6 +12,7 @@ import { OrderSyncService } from './application/services/order-sync.service';
 import { OrderIngestionService } from './application/services/order-ingestion.service';
 import { OrderItemRefResolverService } from './application/services/order-item-ref-resolver.service';
 import { OrderRecordService } from './application/services/order-record.service';
+import { OrderFxStampService } from './application/services/order-fx-stamp.service';
 import { OrderDestinationRetryService } from './application/services/order-destination-retry.service';
 import { OrderLifecycleRelayService } from './application/services/order-lifecycle-relay.service';
 import { OrderRecordRepository } from './infrastructure/persistence/repositories/order-record.repository';
@@ -24,6 +25,7 @@ import {
   ORDER_INGESTION_SERVICE_TOKEN,
   ORDER_RECORD_REPOSITORY_TOKEN,
   ORDER_RECORD_SERVICE_TOKEN,
+  ORDER_FX_STAMP_SERVICE_TOKEN,
   ORDER_DESTINATION_RETRY_SERVICE_TOKEN,
   ORDER_ITEM_REF_RESOLVER_SERVICE_TOKEN,
   ORDER_LIFECYCLE_RELAY_SERVICE_TOKEN,
@@ -37,6 +39,7 @@ import { ProductsModule } from '@openlinker/core/products';
 import { MappingsModule } from '@openlinker/core/mappings';
 import { CustomersModule } from '@openlinker/core/customers';
 import { InvoicingModule } from '@openlinker/core/invoicing';
+import { CurrencyModule } from '@openlinker/core/currency';
 
 // Re-export tokens for convenience
 export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
@@ -55,6 +58,12 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     // an orders runtime value (PAYMENT_STATUS) via a dependency-free leaf import,
     // never the orders barrel — so no module-graph cycle.
     InvoicingModule,
+    // One-way edge to a LEAF context (#2125): OrderFxStampService injects
+    // CURRENCY_RATE_SERVICE_TOKEN + REPORTING_CURRENCY_SETTINGS_SERVICE_TOKEN.
+    // `currency` imports no sibling core context, so no cycle is possible.
+    // The module is deliberately static (never `forRoot`) so the provider
+    // registry `@openlinker/integrations-fx` writes into is the one read here.
+    CurrencyModule,
   ],
   providers: [
     // Provide classes directly first
@@ -62,6 +71,7 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     OrderIngestionService,
     OrderItemRefResolverService,
     OrderRecordService,
+    OrderFxStampService,
     OrderDestinationRetryService,
     OrderLifecycleRelayService,
     OrderRecordRepository,
@@ -83,6 +93,10 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     {
       provide: ORDER_RECORD_SERVICE_TOKEN,
       useExisting: OrderRecordService,
+    },
+    {
+      provide: ORDER_FX_STAMP_SERVICE_TOKEN,
+      useExisting: OrderFxStampService,
     },
     {
       provide: ORDER_DESTINATION_RETRY_SERVICE_TOKEN,
@@ -112,6 +126,9 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     ORDER_INGESTION_SERVICE_TOKEN,
     ORDER_RECORD_REPOSITORY_TOKEN,
     ORDER_RECORD_SERVICE_TOKEN,
+    // Exported so the worker's `marketplace.order.fxStamp` + `.fxStampSweep`
+    // handlers can inject the stamp seam (#2125).
+    ORDER_FX_STAMP_SERVICE_TOKEN,
     ORDER_DESTINATION_RETRY_SERVICE_TOKEN,
     ORDER_LIFECYCLE_RELAY_SERVICE_TOKEN,
     ORDER_REFUND_SERVICE_TOKEN,

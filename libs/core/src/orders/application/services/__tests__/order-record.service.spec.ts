@@ -14,11 +14,16 @@ import type { OrderSyncStatus } from '../../../domain/entities/order-record.enti
 import { OrderRecord } from '../../../domain/entities/order-record.entity';
 import type { Order } from '../../../domain/types/order.types';
 import type { IncomingOrder } from '../../../domain/types/incoming-order.types';
-import { ORDER_RECORD_REPOSITORY_TOKEN } from '../../../orders.tokens';
+import type { IOrderFxStampService } from '../../interfaces/order-fx-stamp.service.interface';
+import {
+  ORDER_FX_STAMP_SERVICE_TOKEN,
+  ORDER_RECORD_REPOSITORY_TOKEN,
+} from '../../../orders.tokens';
 
 describe('OrderRecordService', () => {
   let service: OrderRecordService;
   let repository: jest.Mocked<OrderRecordRepositoryPort>;
+  let fxStamp: jest.Mocked<IOrderFxStampService>;
 
   const originalEnv = process.env.OL_STORE_PII;
   const originalPiiHashSalt = process.env.OL_PII_HASH_SALT;
@@ -35,12 +40,28 @@ describe('OrderRecordService', () => {
       updateSalesDocumentBlock: jest.fn(),
     } as unknown as jest.Mocked<OrderRecordRepositoryPort>;
 
+    // Defaults to `deferred`, which is the outcome that owes NO refresh - so
+    // every pre-#2125 assertion about `findById` call counts keeps its original
+    // meaning unless a test opts into a stamped outcome.
+    fxStamp = {
+      stamp: jest.fn().mockResolvedValue({
+        kind: 'deferred',
+        reason: 'rate provider unavailable',
+        retryEnqueued: true,
+      }),
+      sweep: jest.fn(),
+    } as unknown as jest.Mocked<IOrderFxStampService>;
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         OrderRecordService,
         {
           provide: ORDER_RECORD_REPOSITORY_TOKEN,
           useValue: repository,
+        },
+        {
+          provide: ORDER_FX_STAMP_SERVICE_TOKEN,
+          useValue: fxStamp,
         },
       ],
     }).compile();
@@ -139,7 +160,7 @@ describe('OrderRecordService', () => {
   describe('persistOrder - PII enabled', () => {
     beforeEach(() => {
       process.env.OL_STORE_PII = 'true';
-      service = new OrderRecordService(repository);
+      service = new OrderRecordService(repository, fxStamp);
     });
 
     it('should persist order with all PII fields when PII storage is enabled', async () => {
@@ -327,7 +348,7 @@ describe('OrderRecordService', () => {
   describe('persistOrder - PII disabled', () => {
     beforeEach(() => {
       process.env.OL_STORE_PII = 'false';
-      service = new OrderRecordService(repository);
+      service = new OrderRecordService(repository, fxStamp);
     });
 
     it('should persist order with sanitized addresses when PII storage is disabled', async () => {
@@ -419,7 +440,7 @@ describe('OrderRecordService', () => {
   describe('persistOrder — cancellation recorded via markCancelled (#1984)', () => {
     beforeEach(() => {
       process.env.OL_STORE_PII = 'true';
-      service = new OrderRecordService(repository);
+      service = new OrderRecordService(repository, fxStamp);
     });
 
     it('never constructs the OrderRecord passed to upsert() with a non-null cancelledAt, even for a cancelled order', async () => {
@@ -490,7 +511,7 @@ describe('OrderRecordService', () => {
   describe('persistOrder - fulfillment rollup left to updateFulfillmentState (#2101)', () => {
     beforeEach(() => {
       process.env.OL_STORE_PII = 'true';
-      service = new OrderRecordService(repository);
+      service = new OrderRecordService(repository, fxStamp);
     });
 
     it('never constructs the OrderRecord passed to upsert() with a fulfillment state', async () => {
@@ -549,7 +570,7 @@ describe('OrderRecordService', () => {
   describe('persistIncomingSnapshot', () => {
     beforeEach(() => {
       process.env.OL_STORE_PII = 'true';
-      service = new OrderRecordService(repository);
+      service = new OrderRecordService(repository, fxStamp);
     });
 
     it('should persist incoming snapshot with awaiting_mapping status', async () => {
@@ -613,7 +634,7 @@ describe('OrderRecordService', () => {
 
     it('should sanitize addresses in snapshot when PII is disabled', async () => {
       process.env.OL_STORE_PII = 'false';
-      service = new OrderRecordService(repository);
+      service = new OrderRecordService(repository, fxStamp);
 
       const incoming = createMockIncomingOrder();
       const expectedRecord = new OrderRecord(
@@ -688,7 +709,7 @@ describe('OrderRecordService', () => {
 
     it('should omit customerEmail from the snapshot under hash-only PII mode (#948)', async () => {
       process.env.OL_STORE_PII = 'false';
-      service = new OrderRecordService(repository);
+      service = new OrderRecordService(repository, fxStamp);
 
       const incoming = createMockIncomingOrder();
       repository.upsert.mockResolvedValue({} as OrderRecord);
@@ -739,7 +760,7 @@ describe('OrderRecordService', () => {
   describe('persistIncomingSnapshot — cancellation recorded via markCancelled (#1984)', () => {
     beforeEach(() => {
       process.env.OL_STORE_PII = 'true';
-      service = new OrderRecordService(repository);
+      service = new OrderRecordService(repository, fxStamp);
     });
 
     it('never constructs the OrderRecord passed to upsert() with a non-null cancelledAt, even for a cancelled order', async () => {

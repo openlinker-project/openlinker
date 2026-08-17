@@ -11,7 +11,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import type { SelectQueryBuilder } from 'typeorm';
-import { In, IsNull, Repository } from 'typeorm';
+import { In, IsNull, MoreThanOrEqual, Repository } from 'typeorm';
 import type { OrderSyncStatusJson, SyncAttemptJson } from '../entities/order-record.orm-entity';
 import { OrderRecordOrmEntity } from '../entities/order-record.orm-entity';
 import type { OrderRecordRepositoryPort } from '../../../domain/ports/order-record-repository.port';
@@ -815,6 +815,48 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
           .filter((value): value is string => typeof value === 'string')
       ),
     ];
+  }
+
+  /**
+   * Record a TERMINAL stamp answer (#2125). Same conditional-write shape as
+   * {@link claimFxIntentIfAbsent}: the two `IsNull()` predicates make it
+   * first-write-wins AND unable to touch a row that already carries a figure.
+   * Writes `fxStampedAt` alone, which the `ck_order_records_fx_group` CHECK's
+   * first arm permits (it constrains only the three figure columns).
+   */
+  async markFxTerminalIfAbsent(internalOrderId: string, fxStampedAt: Date): Promise<boolean> {
+    const result = await this.repository.update(
+      { internalOrderId, reportingCurrency: IsNull(), fxStampedAt: IsNull() },
+      { fxStampedAt }
+    );
+    return (result.affected ?? 0) > 0;
+  }
+
+  /**
+   * One bounded page of unanswered FX rows for the reconcile sweep (#2125).
+   *
+   * `select`-narrowed to the primary key: the sweep hands each id straight back
+   * to `stamp()`, which re-reads the record anyway, so hydrating snapshots here
+   * would pull a page of JSONB for nothing. Ordered NEWEST FIRST so that when
+   * the frontier is larger than one page, the orders an operator is most likely
+   * to be looking at are answered first.
+   */
+  async findUnstampedFxOrderIds(
+    sourceConnectionId: string,
+    options: { limit: number; createdSince: Date }
+  ): Promise<string[]> {
+    const rows = await this.repository.find({
+      select: { internalOrderId: true },
+      where: {
+        sourceConnectionId,
+        fxStampedAt: IsNull(),
+        reportingCurrency: IsNull(),
+        createdAt: MoreThanOrEqual(options.createdSince),
+      },
+      order: { createdAt: 'DESC' },
+      take: options.limit,
+    });
+    return rows.map((row) => row.internalOrderId);
   }
 
   /**
