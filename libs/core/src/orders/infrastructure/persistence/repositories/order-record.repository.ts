@@ -43,6 +43,7 @@ import {
 } from '@openlinker/core/sales-documents';
 import type { OrderFxIntent, OrderFxStamp } from '../../../domain/types/order-fx.types';
 import type { StampedReportingCurrencyCount } from '../../../domain/types/order-fx-read.types';
+import type { StampedReportingCurrencyCount } from '../../../domain/types/order-fx-read.types';
 
 @Injectable()
 export class OrderRecordRepository implements OrderRecordRepositoryPort {
