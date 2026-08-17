@@ -32,6 +32,10 @@ import {
 import { createContentApi, type ContentApi } from '../../features/content/api/content.api';
 import { createCursorsApi, type CursorsApi } from '../../features/cursors/api/cursors.api';
 import { createCustomersApi, type CustomersApi } from '../../features/customers/api/customers.api';
+import {
+  createFiscalizationApi,
+  type FiscalizationApi,
+} from '../../features/fiscalization/api/fiscalization.api';
 import { createHealthApi, type HealthApi } from '../../features/health/api/health.api';
 import { createInventoryApi, type InventoryApi } from '../../features/inventory/api/inventory.api';
 import { createInvoicingApi, type InvoicingApi } from '../../features/invoicing/api/invoicing.api';
@@ -107,6 +111,7 @@ export interface CoreApiClient {
   content: ContentApi;
   cursors: CursorsApi;
   customers: CustomersApi;
+  fiscalization: FiscalizationApi;
   health: HealthApi;
   inventory: InventoryApi;
   invoicing: InvoicingApi;
@@ -261,6 +266,7 @@ export function createApiClient({
     content: createContentApi(request),
     cursors: createCursorsApi(request),
     customers: createCustomersApi(request),
+    fiscalization: createFiscalizationApi(request),
     health: createHealthApi(request),
     inventory: createInventoryApi(request),
     invoicing: createInvoicingApi(request, requestBlob),
