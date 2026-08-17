@@ -67,6 +67,17 @@ describe('AnalyticsNeedsAttention', () => {
     expect(screen.getByText('Clear')).toBeInTheDocument();
   });
 
+  it('should show a "checked" timestamp once the summary has loaded', async () => {
+    const apiClient = createMockApiClient({
+      analyticsTrust: { getNeedsAttention: vi.fn().mockResolvedValue(summary()) },
+    });
+
+    renderWithProviders(<AnalyticsNeedsAttention />, { apiClient });
+
+    expect(await screen.findByText('Nothing needs attention')).toBeInTheDocument();
+    expect(screen.getByText('checked', { exact: false })).toBeInTheDocument();
+  });
+
   it('should render only the open categories, not the resolved one', async () => {
     const apiClient = createMockApiClient({
       analyticsTrust: {

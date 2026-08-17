@@ -11,7 +11,14 @@
  */
 import { useMemo, type ReactElement } from 'react';
 import { Link } from 'react-router-dom';
-import { Button, ErrorState, LoadingState, StatusBadge, type StatusBadgeTone } from '../../../shared/ui';
+import {
+  Button,
+  ErrorState,
+  LoadingState,
+  StatusBadge,
+  TimeDisplay,
+  type StatusBadgeTone,
+} from '../../../shared/ui';
 import { useConnectionsQuery } from '../../connections';
 import { useNeedsAttentionQuery } from '../hooks/use-needs-attention-query';
 import {
@@ -147,11 +154,16 @@ export function AnalyticsNeedsAttention(): ReactElement {
     <article className="panel panel--dense">
       <div className="panel__header">
         <h3 className="section-title">Needs attention</h3>
+        {needsAttentionQuery.dataUpdatedAt > 0 && (
+          <span className="text-muted mono-text">
+            checked <TimeDisplay iso={new Date(needsAttentionQuery.dataUpdatedAt).toISOString()} />
+          </span>
+        )}
       </div>
       <div className="attention-list">
         {rows.length === 0 ? (
           <div className="attention-list__item attention-list__item--resolved">
-            <StatusBadge tone="success" withDot>
+            <StatusBadge tone="neutral" withDot>
               Clear
             </StatusBadge>
             <div className="attention-list__body">
