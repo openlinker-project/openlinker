@@ -34,7 +34,13 @@ export function AnalyticsPage(): ReactElement {
     if (!searchParams.get('from') || !searchParams.get('to')) {
       setSearchParams({ from, to }, { replace: true });
     }
-    // Runs once on mount only — from/to already reflect the resolved defaults.
+    // Deliberate `[]`: this project's ESLint config carries no
+    // `react-hooks/exhaustive-deps` rule (verified via `pnpm lint` — an
+    // unrecognized-rule disable directive itself errors), so there is no
+    // suppression to add. Runs once on mount only; from/to/searchParams/
+    // setSearchParams already reflect the resolved defaults, and re-running
+    // on their change would fight the user's own subsequent Apply/preset
+    // navigation.
   }, []);
 
   function handleApply(nextFrom: string, nextTo: string): void {

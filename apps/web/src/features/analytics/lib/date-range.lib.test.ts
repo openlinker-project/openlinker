@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { computePresetRange, derivePreset, toUtcRangeInstants } from './date-range.lib';
+import { computePresetRange, derivePreset } from './date-range.lib';
 
-const TODAY = new Date(2026, 7, 14); // 14 Aug 2026, pinned per the mockup's reference date
+const TODAY = new Date(2026, 7, 14); // 14 Aug 2026
 
 describe('computePresetRange', () => {
   it('should compute an inclusive 7-day range', () => {
@@ -37,17 +37,5 @@ describe('derivePreset', () => {
 
   it('should return "custom" for an incomplete range', () => {
     expect(derivePreset('', '2026-08-14', TODAY)).toBe('custom');
-  });
-});
-
-describe('toUtcRangeInstants', () => {
-  it('should widen the from date to the start of day UTC', () => {
-    expect(toUtcRangeInstants('2026-07-07', '2026-08-05').fromIso).toBe(
-      '2026-07-07T00:00:00.000Z',
-    );
-  });
-
-  it('should widen the to date to the end of day UTC, inclusive of the whole day', () => {
-    expect(toUtcRangeInstants('2026-07-07', '2026-08-05').toIso).toBe('2026-08-05T23:59:59.999Z');
   });
 });

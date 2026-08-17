@@ -17659,9 +17659,8 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   font-weight: 600;
 }
 
-/* The † gap marker on the "Order date" chip — matches the mockup's own
-   .gap-mark treatment verbatim. */
-.gap-mark {
+/* The † gap marker on the "Order date" chip. */
+.analytics-gap-mark {
   color: var(--accent-primary-hover);
   font-weight: 700;
   font-family: var(--font-mono);
@@ -17671,9 +17670,8 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
 /* ── Analytics trust header (#1986) ──
    Opens on click, never hover-only — Radix Tooltip ignores
    `pointerType === 'touch'`, which would make a hover-only affordance
-   unreachable on mobile (docs/plans/mockups/analytics-ledger-2003.html,
-   frame 01). */
-.info-popover-trigger {
+   unreachable on mobile. */
+.analytics-info-popover-trigger {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -17689,11 +17687,11 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   border-radius: var(--radius-pill);
 }
 
-.info-popover-trigger:hover {
+.analytics-info-popover-trigger:hover {
   color: var(--accent-primary);
 }
 
-.info-popover-trigger:focus-visible {
+.analytics-info-popover-trigger:focus-visible {
   box-shadow: var(--shadow-focus);
 }
 
@@ -17704,11 +17702,17 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
 
 .trust-header__row {
   display: grid;
-  grid-template-columns: 1.4fr 1fr 1fr auto;
+  grid-template-columns: 1.4fr 1fr 1fr;
   align-items: center;
   gap: var(--space-3);
   padding: var(--space-3) var(--space-4);
   border-top: 1px solid var(--border-subtle);
+}
+
+.trust-header__title-group {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
 }
 
 .trust-header__row:first-child {

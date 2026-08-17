@@ -114,13 +114,12 @@ export function AnalyticsDateRangeToolbar({
         <Button type="button" tone="secondary" disabled={!canApply} onClick={handleApply}>
           Apply
         </Button>
-        {/* Static disclaimer, not an interactive control — matches
-            docs/plans/mockups/analytics-ledger-2003.html's chip+dagger
-            markup verbatim rather than reusing the interactive Chip
-            primitive, which would render a toggle button that toggles
-            nothing (aria-pressed with no onClick). */}
+        {/* Static disclaimer, not an interactive control — a plain chip
+            markup rather than the interactive Chip primitive, which would
+            render a toggle button that toggles nothing (aria-pressed with
+            no onClick). */}
         <span className="chip chip--info" aria-label={`Order date. ${ORDER_DATE_CAVEAT}`}>
-          Order date <span className="gap-mark" title={ORDER_DATE_CAVEAT}>†</span>
+          Order date <span className="analytics-gap-mark" title={ORDER_DATE_CAVEAT}>†</span>
         </span>
       </div>
     </div>

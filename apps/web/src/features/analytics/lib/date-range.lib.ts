@@ -44,10 +44,3 @@ export function derivePreset(from: string, to: string, today: Date): DateRangeHi
   });
   return match ?? 'custom';
 }
-
-export function toUtcRangeInstants(from: string, to: string): { fromIso: string; toIso: string } {
-  return {
-    fromIso: `${from}T00:00:00.000Z`,
-    toIso: `${to}T23:59:59.999Z`,
-  };
-}

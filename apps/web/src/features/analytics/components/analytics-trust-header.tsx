@@ -43,11 +43,11 @@ export function AnalyticsTrustHeader({ connections }: AnalyticsTrustHeaderProps)
   return (
     <article className="panel panel--dense">
       <div className="panel__header">
-        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+        <div className="trust-header__title-group">
           <h3 className="section-title">Data coverage</h3>
           <Popover>
             <PopoverTrigger asChild>
-              <button type="button" className="info-popover-trigger" aria-label="About these dates">
+              <button type="button" className="analytics-info-popover-trigger" aria-label="About these dates">
                 &#9432;
               </button>
             </PopoverTrigger>
@@ -84,7 +84,6 @@ export function AnalyticsTrustHeader({ connections }: AnalyticsTrustHeaderProps)
                 <TimeDisplay iso={entry.connectionCreatedAt} format="date" />
               </span>
             </span>
-            <span />
           </div>
         ))}
       </div>
