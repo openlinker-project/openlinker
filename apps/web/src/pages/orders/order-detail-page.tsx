@@ -37,6 +37,7 @@ import { OrderCustomerCard } from '../../features/orders/components/order-custom
 import { OrderActivityTimeline } from '../../features/orders/components/order-activity-timeline';
 import { OrderShipmentPanel } from '../../features/orders/components/order-shipment-panel';
 import { OrderInvoicePanel } from '../../features/invoicing';
+import { OrderReceiptPanel } from '../../features/fiscalization';
 import { OrderDetailHeader } from '../../features/orders/components/order-detail-header';
 import { OrderHealthSummary } from '../../features/orders/components/order-health-summary';
 import { OrderPricingPanel } from '../../features/orders/components/order-pricing-panel';
@@ -428,6 +429,9 @@ export function OrderDetailPage(): ReactElement {
           </div>
           <div id="invoicing" tabIndex={-1}>
             <OrderInvoicePanel order={order} />
+          </div>
+          <div id="fiscal-receipt" tabIndex={-1}>
+            <OrderReceiptPanel orderId={order.internalOrderId} />
           </div>
           <OrderCustomerCard customerId={order.customerId} sourceConnectionId={order.sourceConnectionId} />
         </div>
