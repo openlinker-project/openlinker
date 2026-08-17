@@ -43,6 +43,7 @@ import { FormErrorSummary } from '../../../shared/ui/form-error-summary';
 import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';
 import { Select } from '../../../shared/ui/select';
+import { StatusBadge } from '../../../shared/ui/status-badge';
 import { useToast } from '../../../shared/ui/toast-provider';
 
 interface FlatValidationIssue {
@@ -160,28 +161,44 @@ export function EparagonySetupForm(): ReactElement {
 
       <Alert tone="info" title="Before you connect">
         <p>
-          eparagony.pl orchestrates registering a sale with your own fiscal printer - it does not
-          replace it. Three things need to already be true, and OpenLinker cannot verify all of
-          them from here:
+          eparagony.pl orchestrates registering a sale with your own fiscal printer - it works
+          alongside it, not instead of it. Three things need to be set up first, usually by your
+          printer servicer as part of installation:
         </p>
         <ul className="check-list">
           <li>
-            <strong>An online fiscal printer with a steady connection.</strong> Posnet, Novitus or
-            Elzab. <em>Checkable</em> - the connection test below reports whether your device was
-            seen active recently, when you tell it the device number.
+            <span>
+              <strong>An online fiscal printer</strong> - Posnet, Novitus or Elzab - connected to
+              the internet.
+            </span>
+            <StatusBadge tone="neutral" compact>
+              Your equipment
+            </StatusBadge>
           </li>
           <li>
-            <strong>The vendor&apos;s printer-control software running</strong> on the machine next to
-            the printer. eparagony.pl reaches your printer through it.{' '}
-            <em>Checkable indirectly</em> - if it is not running, most calls will fail.
+            <span>
+              <strong>eparagony.pl&apos;s printer-control software</strong> running on the machine
+              next to the printer.
+            </span>
+            <StatusBadge tone="neutral" compact>
+              Your equipment
+            </StatusBadge>
           </li>
           <li>
-            <strong>The device configured for electronic receipts by your printer servicer.</strong>{' '}
-            <em>OpenLinker cannot check this.</em> The sandbox reports every device as inactive, so a
-            green result here would be misleading rather than merely unavailable - ask your servicer
-            to confirm it directly.
+            <span>
+              <strong>The device set up for e-receipts</strong> by your printer servicer.
+            </span>
+            <StatusBadge tone="neutral" compact>
+              Ask your servicer
+            </StatusBadge>
           </li>
         </ul>
+        <p>
+          <strong>Test connection</strong>, below, confirms your credentials and permissions - the
+          part OpenLinker can see. The printer itself lives outside OpenLinker, the same way it
+          would with any other till software, so check it the way you'd check any other equipment:
+          with whoever installed it.
+        </p>
         <p>
           Connecting does not register anything automatically. In OpenLinker, a receipt is
           registered only when you ask for it on a specific order.

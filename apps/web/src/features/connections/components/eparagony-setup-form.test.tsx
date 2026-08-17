@@ -43,14 +43,14 @@ describe('EparagonySetupForm', () => {
     });
   });
 
-  it('renders the three named preconditions and states which cannot be checked', () => {
+  it('renders the three named preconditions in a calm, non-alarming tone', () => {
     renderWithProviders(<EparagonySetupForm />);
-    expect(screen.getByText(/An online fiscal printer with a steady connection/)).toBeInTheDocument();
-    expect(screen.getByText(/printer-control software running/)).toBeInTheDocument();
-    expect(
-      screen.getByText(/The device configured for electronic receipts by your printer servicer/),
-    ).toBeInTheDocument();
-    expect(screen.getByText(/OpenLinker cannot check this/)).toBeInTheDocument();
+    expect(screen.getByText(/An online fiscal printer/)).toBeInTheDocument();
+    expect(screen.getByText(/printer-control software/)).toBeInTheDocument();
+    expect(screen.getByText(/The device set up for e-receipts/)).toBeInTheDocument();
+    // No disclaimer-style "cannot verify" language repeated per item.
+    expect(screen.queryByText(/OpenLinker cannot check this/)).toBeNull();
+    expect(screen.queryByText(/would be misleading/)).toBeNull();
   });
 
   it('never implies a legal receipt obligation or automatic registration', () => {
