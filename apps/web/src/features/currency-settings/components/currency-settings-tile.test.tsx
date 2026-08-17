@@ -112,7 +112,37 @@ describe('CurrencySettingsTile', () => {
     renderWithProviders(<CurrencySettingsTile />, { sessionAdapter: adminSessionAdapter, apiClient });
 
     expect(await screen.findByText('PLN')).toBeInTheDocument();
-    expect(screen.getByText('3947 PLN · 1284 EUR')).toBeInTheDocument();
+    // Stamped-order counts are never shown on first paint — see the
+    // "Coverage" dialog tests below for why (0 reads as an alarm, not a fact).
+    expect(screen.queryByText(/3947/)).not.toBeInTheDocument();
+  });
+
+  it('opens the coverage dialog with a friendly zero-state when nothing is stamped yet', async () => {
+    const apiClient = createMockApiClient({
+      currencySettings: { get: vi.fn().mockResolvedValue(unsetView) },
+    });
+    renderWithProviders(<CurrencySettingsTile />, { sessionAdapter: adminSessionAdapter, apiClient });
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Coverage' }));
+
+    expect(await screen.findByText('Analytics coverage')).toBeInTheDocument();
+    expect(screen.getByText(/No orders have been stamped yet/)).toBeInTheDocument();
+    expect(screen.queryByText('Orders with a reporting figure')).not.toBeInTheDocument();
+  });
+
+  it('opens the coverage dialog with the era breakdown once orders are stamped', async () => {
+    const apiClient = createMockApiClient({
+      currencySettings: { get: vi.fn().mockResolvedValue(savedView) },
+    });
+    renderWithProviders(<CurrencySettingsTile />, { sessionAdapter: adminSessionAdapter, apiClient });
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Coverage' }));
+
+    expect(await screen.findByText('Orders with a reporting figure')).toBeInTheDocument();
+    expect(screen.getByText('5231')).toBeInTheDocument(); // 3947 + 1284
+    expect(screen.getByText('— stamped in PLN')).toBeInTheDocument();
+    expect(screen.getByText('— stamped in EUR')).toBeInTheDocument();
+    expect(screen.getByText('More than one reporting-currency era')).toBeInTheDocument();
   });
 
   it('opens the edit dialog when Edit is clicked', async () => {
