@@ -11,7 +11,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import type { SelectQueryBuilder } from 'typeorm';
-import { In, Repository } from 'typeorm';
+import { In, IsNull, Repository } from 'typeorm';
 import type { OrderSyncStatusJson, SyncAttemptJson } from '../entities/order-record.orm-entity';
 import { OrderRecordOrmEntity } from '../entities/order-record.orm-entity';
 import type { OrderRecordRepositoryPort } from '../../../domain/ports/order-record-repository.port';
@@ -40,6 +40,7 @@ import {
   isSalesDocumentGateBlockReason,
   isSalesDocumentUnresolvedReason,
 } from '@openlinker/core/sales-documents';
+import type { OrderFxIntent, OrderFxStamp } from '../../../domain/types/order-fx.types';
 
 @Injectable()
 export class OrderRecordRepository implements OrderRecordRepositoryPort {
@@ -737,15 +738,104 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
   }
 
   /**
+   * Claim the first-attempt FX intent (#2124). Conditional write — `IsNull()`
+   * in the WHERE is what makes this atomic under two concurrent first attempts:
+   * exactly one UPDATE can affect the row, and the loser adopts the winner's
+   * intent rather than pinning a second currency for the same order. Mirrors
+   * `ShipmentRepository.claimWaybillRelay`'s shape.
+   */
+  async claimFxIntentIfAbsent(internalOrderId: string, intent: OrderFxIntent): Promise<boolean> {
+    const result = await this.repository.update(
+      { internalOrderId, fxIntendedCurrency: IsNull() },
+      { fxIntendedCurrency: intent.reportingCurrency, fxRule: intent.fxRule }
+    );
+    return (result.affected ?? 0) > 0;
+  }
+
+  /**
+   * Stamp the reporting-currency figures at most once (#2124). All five stamp
+   * columns move in ONE statement so the group can never half-apply, and the
+   * `reportingCurrency: IsNull()` guard is what makes the write
+   * stamp-once — a second attempt (retry job, sweep, redelivered event) affects
+   * zero rows and leaves the already-reported figure untouched.
+   *
+   * The predicate is deliberately `reportingCurrency`, not
+   * `fxIntendedCurrency`: the intent is claimed before the rate lookup, so it is
+   * populated by the time any stamp is attempted.
+   */
+  async stampFxIfAbsent(internalOrderId: string, stamp: OrderFxStamp): Promise<boolean> {
+    const result = await this.repository.update(
+      { internalOrderId, reportingCurrency: IsNull() },
+      {
+        reportingCurrency: stamp.reportingCurrency,
+        reportingTotalAmount: stamp.reportingTotalAmount,
+        exchangeRateId: stamp.exchangeRateId,
+        fxRule: stamp.fxRule,
+        fxStampedAt: stamp.fxStampedAt,
+      }
+    );
+    return (result.affected ?? 0) > 0;
+  }
+
+  /**
+   * Distinct order-native currencies already ingested (#2124), for the
+   * reporting-currency coverage advisory.
+   *
+   * Reads `orderSnapshot.totals.currency` because `order_records` carries no
+   * native currency column yet (#1985 — deliberately not depended on); once it
+   * does this collapses to `SELECT DISTINCT "currency" FROM "order_records"`.
+   * The `jsonb_typeof(...) = 'string'` guard mirrors {@link TOTAL_EXPR}'s
+   * numeric guard: a malformed value yields NULL and is filtered out rather
+   * than failing the whole read, and the migration's expression index uses the
+   * identical form so the planner can still use it.
+   *
+   * Quoted camelCase identifiers on purpose — no TypeORM `namingStrategy` is
+   * configured anywhere in the repo, so `order_snapshot` would error at runtime.
+   */
+  async listDistinctNativeCurrencies(): Promise<string[]> {
+    const rows = (await this.repository.query(
+      `SELECT DISTINCT c AS currency
+       FROM (
+         SELECT ${OrderRecordRepository.NATIVE_CURRENCY_EXPR} AS c
+         FROM "order_records" rec
+       ) t
+       WHERE c IS NOT NULL`
+    )) as unknown;
+
+    if (!Array.isArray(rows)) {
+      return [];
+    }
+
+    // `SELECT DISTINCT` already de-duplicates; the Set keeps the "set, not
+    // list" contract true independently of what the driver hands back.
+    return [
+      ...new Set(
+        rows
+          .map((row) => (row as { currency?: unknown }).currency)
+          .filter((value): value is string => typeof value === 'string')
+      ),
+    ];
+  }
+
+  /**
+   * Per-row order-native currency, guarded so a non-string `totals.currency`
+   * reads as NULL instead of leaking a JSON scalar into the result set. Kept as
+   * a constant because the migration's expression index must match it verbatim.
+   */
+  private static readonly NATIVE_CURRENCY_EXPR =
+    `CASE WHEN jsonb_typeof(rec."orderSnapshot"#>'{totals,currency}') = 'string' ` +
+    `THEN rec."orderSnapshot"#>>'{totals,currency}' END`;
+
+  /**
    * Full-row upsert of the ingestion-owned columns, keyed on the primary key.
    *
    * `syncStatus` / `syncAttempts` (#2140), `fulfillmentState` (#2101),
-   * `cancelledAt` (#1984) and the three `salesDocument*` columns (#2100) are
-   * deliberately outside the write set - see the {@link toOrm} comments. A
-   * consequence is that the returned record reports them all as empty (`[]` /
-   * `null`) regardless of what the row holds, because none of those columns was
-   * part of the statement; callers needing their true value re-read via
-   * {@link findById}.
+   * `cancelledAt` (#1984), the three `salesDocument*` columns (#2100) and the
+   * six FX snapshot columns (#2124) are deliberately outside the write set -
+   * see the {@link toOrm} comments. A consequence is that the returned record
+   * reports all of them as empty (`[]` / `null`) regardless of what the row
+   * holds, because none of those columns was part of the statement; callers
+   * needing their true value re-read via {@link findById}.
    */
   async upsert(orderRecord: OrderRecord): Promise<OrderRecord> {
     const entity = this.toOrm(orderRecord);
@@ -893,7 +983,18 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       isSalesDocumentUnresolvedReason(entity.salesDocumentUnresolvedReason)
         ? entity.salesDocumentUnresolvedReason
         : null,
-      entity.salesDocumentBlockDetail ?? null
+      entity.salesDocumentBlockDetail ?? null,
+      entity.reportingCurrency ?? null,
+      // `numeric` comes back from pg as a string; `Number()` per the house
+      // money convention (mirrors every other decimal column in the repo).
+      // Guarded so a NULL column stays `null` rather than becoming `0`.
+      entity.reportingTotalAmount === null || entity.reportingTotalAmount === undefined
+        ? null
+        : Number(entity.reportingTotalAmount),
+      entity.exchangeRateId ?? null,
+      entity.fxRule ?? null,
+      entity.fxStampedAt ?? null,
+      entity.fxIntendedCurrency ?? null
     );
   }
 
@@ -936,6 +1037,10 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    *   ingestion, so round-tripping them here would null the columns and then
    *   immediately re-set them - a visible flicker for any concurrent read, and
    *   a stomp against a reason a peer transition just wrote.
+   * - The six FX snapshot columns (#2124) - sole writers `claimFxIntentIfAbsent`
+   *   + `stampFxIfAbsent` (both guarded, both single-statement). Mapping them
+   *   here would let a re-poll of an already-stamped order overwrite a
+   *   REPORTED FINANCIAL FIGURE with the ingestion path's in-memory `null`.
    *
    * Before adding an assignment here, ask which out-of-band writer owns that
    * column: #2101 excluded only `fulfillmentState` and left the two columns
@@ -952,6 +1057,15 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     entity.recordStatus = orderRecord.recordStatus;
     entity.mappingFailureReason = orderRecord.mappingFailureReason;
     entity.dispatchByAt = orderRecord.dispatchByAt;
+    // The six FX snapshot columns (#2124) are deliberately NOT mapped here,
+    // for the strongest version of the reason documented above for
+    // `fulfillmentState` / `cancelledAt` / `salesDocument*`: this is a
+    // full-row save() on an update-or-create ingestion path, so mapping them
+    // would let a re-poll of an already-stamped order write the ingestion
+    // path's in-memory `null` over a REPORTED FINANCIAL FIGURE. Leaving the
+    // properties unset makes TypeORM omit the columns from the generated
+    // UPDATE entirely. `claimFxIntentIfAbsent` + `stampFxIfAbsent` (both
+    // guarded, both single-statement) are their only writers.
     entity.createdAt = orderRecord.createdAt;
     entity.updatedAt = orderRecord.updatedAt;
     return entity;
