@@ -1,10 +1,11 @@
 /**
- * Unit tests for the PrestaShop retry classifier (#581 / #2052).
+ * Unit tests for the PrestaShop retry classifier (#581 / #2052 / #2139).
  *
  * @module libs/integrations/prestashop/src/infrastructure/adapters
  */
 import { PrestashopRetryClassifierAdapter } from '../prestashop-retry-classifier.adapter';
 import { PrestashopTaxRateUnknownException } from '../../../domain/exceptions/prestashop-tax-rate-unknown.exception';
+import { PrestashopCurrencyUnknownException } from '../../../domain/exceptions/prestashop-currency-unknown.exception';
 import { PrestashopApiException } from '../../../domain/exceptions/prestashop-api.exception';
 import { PrestashopAuthenticationException } from '../../../domain/exceptions/prestashop-authentication.exception';
 
@@ -17,7 +18,15 @@ describe('PrestashopRetryClassifierAdapter', () => {
     ).toBe(true);
   });
 
-  it('should keep an API error retryable, including the transport half of the same tax read', () => {
+  it('should classify an unresolvable order currency as non-retryable', () => {
+    expect(
+      classifier.isNonRetryable(
+        new PrestashopCurrencyUnknownException('Currency EUR unknown in PrestaShop', 'EUR')
+      )
+    ).toBe(true);
+  });
+
+  it('should keep an API error retryable, including the transport half of the same tax or currency read', () => {
     expect(classifier.isNonRetryable(new PrestashopApiException('gateway timeout', 504))).toBe(
       false
     );
