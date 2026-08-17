@@ -83,11 +83,13 @@ export class AnalyticsTrustService implements IAnalyticsTrustService {
     const now = new Date();
     // Batched once across every enumerated connection (#2083) — never move
     // this inside buildTrustEntry, which would silently reintroduce an N+1
-    // query per connection for this one field.
+    // query per connection for this one field. This is a supplementary
+    // field: a failure here must degrade to an empty Map (every connection
+    // reports earliestOrderDate: null) rather than throw out of the whole
+    // snapshot — the per-connection isolation this service documents about
+    // itself would otherwise not hold for this one batched read.
     const connectionIds = entries.map((entry) => entry.connection.id);
-    const earliestOrderDates = await this.orderRecordService.getEarliestOrderDateByConnection(
-      connectionIds
-    );
+    const earliestOrderDates = await this.getEarliestOrderDatesSafely(connectionIds);
 
     const connections = await Promise.all(
       entries.map((entry) => this.buildTrustEntry(entry.connection, now, earliestOrderDates))
@@ -98,6 +100,19 @@ export class AnalyticsTrustService implements IAnalyticsTrustService {
       worstStatus: computeWorstStatus(connections.map((c) => c.status)),
       connections,
     };
+  }
+
+  private async getEarliestOrderDatesSafely(connectionIds: string[]): Promise<Map<string, Date>> {
+    try {
+      return await this.orderRecordService.getEarliestOrderDateByConnection(connectionIds);
+    } catch (error) {
+      this.logger.warn(
+        `Failed to batch-read earliest order dates: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+      return new Map();
+    }
   }
 
   private async buildTrustEntry(

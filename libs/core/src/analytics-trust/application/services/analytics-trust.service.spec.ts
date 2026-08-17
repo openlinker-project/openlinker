@@ -434,6 +434,29 @@ describe('AnalyticsTrustService', () => {
     expect(result.connections[0].earliestOrderDate).toBeNull();
   });
 
+  it('does not throw the whole snapshot when the batched earliest-order-date lookup itself fails', async () => {
+    const connection = makeConnection();
+    integrationsService.listCapabilityAdapters.mockResolvedValue([
+      { connectionId: connection.id, connection, adapter: {}, metadata: {} as never },
+    ]);
+    syncJobsService.findEnabledPollTask.mockReturnValue(makeTask());
+    const recentPoll = new Date(now.getTime() - 2 * 60 * 1000);
+    mockJobsFor(connection.id, { id: 'job-1', updatedAt: recentPoll } as SyncJobEntity, null);
+    orderRecordService.getEarliestOrderDateByConnection.mockRejectedValue(new Error('db down'));
+
+    const result = await service.getIngestionTrustSnapshot();
+
+    expect(result.connections).toHaveLength(1);
+    expect(result.connections[0]).toMatchObject({
+      // The job lookup itself succeeded — only the earliest-order-date
+      // batch failed, so the rest of the entry must build normally rather
+      // than degrading to 'unknown'.
+      status: 'fresh',
+      lastPollAt: recentPoll,
+      earliestOrderDate: null,
+    });
+  });
+
   it('still reports a correct earliestOrderDate on a degraded (unknown) entry when the batch lookup succeeded', async () => {
     const connection = makeConnection();
     const earliestOrderDate = new Date('2025-11-01T00:00:00.000Z');
