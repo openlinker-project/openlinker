@@ -8,6 +8,15 @@
 export type { MappingOption, AllegroCategory, CategoryPathNode } from './api/mappings.types';
 export type { RoutingRule, FulfillmentProcessorKind } from './api/mappings.types';
 export { useAllegroCategoriesQuery } from './hooks/use-allegro-categories';
+// Whole-tree category search (#2075). Consumed by both bulk pickers in
+// `features/listings` and by this feature's own mapping-authoring picker.
+export type { CategorySearchHit } from './api/mappings.types';
+export {
+  useCategorySearchQuery,
+  isSearchableCategoryQuery,
+  CATEGORY_SEARCH_MIN_QUERY_LENGTH,
+} from './hooks/use-category-search';
+export { toCategorySearchResultHits, isTaxonomyUnsynced } from './lib/category-search-hits';
 export { useCategoryPathQuery } from './hooks/use-category-path';
 export { useMappingOptions } from './hooks/use-mapping-options';
 // Consumed by the orders generate-label flow to predict the routed carrier

@@ -6,7 +6,7 @@
 import { cleanup, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { renderWithProviders, sampleConnection } from '../../../test/test-utils';
-import type { InvoiceRecord } from '../../../features/invoicing/api/invoicing.types';
+import type { InvoiceRecord } from '../../../features/invoicing';
 import { SubiektInvoiceDetailSection } from './subiekt-invoice-detail-section';
 
 const subiektConnection = { ...sampleConnection, platformType: 'subiekt' };

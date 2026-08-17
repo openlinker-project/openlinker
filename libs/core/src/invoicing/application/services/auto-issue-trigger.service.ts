@@ -2,19 +2,34 @@
  * Auto-Issue Trigger Service (ADR-026 §3 — core policy composer, OL #1120)
  *
  * Core-resident policy that turns a qualifying order transition (paid / shipped)
- * into per-connection issuance jobs. It:
+ * into AT MOST ONE issuance job. It:
  *  1. Lists ACTIVE invoicing connections (D8) via `ConnectionPort`.
- *  2. Reads each connection's `config.invoicing.triggerModel` (`parseTriggerModel`).
- *  3. Evaluates the transition (level-evaluated, D3): `auto-on-paid` iff paid;
+ *  2. Resolves EXACTLY ONE of them (#2047) via `selectPrimaryInvoicingConnection`
+ *     over `config.invoicing.isPrimary` (`parseIsPrimaryInvoicing`). One sale is
+ *     one invoice: before #2047 this method fanned out over EVERY connection with
+ *     the `Invoicing` capability and its per-connection idempotency key
+ *     (`invoice:{connId}:{orderId}`) could not dedup across them, so an operator
+ *     running two providers got two real fiscal documents for one sale. With
+ *     several candidates and no unambiguous primary it now issues NOTHING and
+ *     logs an error — a missing invoice is fixable, a duplicate needs a
+ *     correction of a document that should never have existed.
+ *  3. Reads the selected connection's `config.invoicing.triggerModel`
+ *     (`parseTriggerModel`).
+ *  4. Evaluates the transition (level-evaluated, D3): `auto-on-paid` iff paid;
  *     `auto-on-shipped` iff `order.status === 'shipped'` (D6 + one-time viability
  *     log, F7); `manual` → skip; `batched` → log + skip (deferred, F-cleanly).
- *  4. Composes the `IssueInvoiceCommand` from the clean in-hand `Order` and
- *     enqueues one `invoicing.issue` job per match with a deterministic key
+ *  5. Composes the `IssueInvoiceCommand` from the clean in-hand `Order` and
+ *     enqueues the `invoicing.issue` job with a deterministic key
  *     `invoice:{connId}:{orderId}` composed ONCE and threaded into BOTH the
  *     `ScheduleJobInput.idempotencyKey` AND `payload.idempotencyKey` (F4).
  *
- * Each connection is isolated in its own try/catch; the catch logs a PII-SAFE
- * envelope only (F9 + D11): `error.name`, invoicing `connectionId`, `order.id`,
+ * Every non-issuing exit (ambiguous selection, `manual`, `batched`) is currently
+ * LOG-ONLY. ADR-041 §54/§105 require it to also persist a named, operator-visible
+ * reason — deferred to **#2100**, whose comment at the `ambiguous` branch explains
+ * why the log alone is insufficient.
+ *
+ * The selected connection's work is isolated in a try/catch; the catch logs a
+ * PII-SAFE envelope only (F9 + D11): `error.name`, invoicing `connectionId`, `order.id`,
  * `sourceEventId` (when present) — never the raw error / message / payload.
  * `error.message` is added ONLY for the allow-listed deterministic, PII-clean
  * errors (`InvalidBuyerProfileError`, `UnsupportedPriceTreatmentError`,
@@ -46,6 +61,10 @@ import { Logger } from '@openlinker/shared/logging';
 import type { IAutoIssueTriggerService } from './auto-issue-trigger.service.interface';
 import type { InvoiceTriggerModel } from '../../domain/types/invoice-trigger.types';
 import { parseTriggerModel } from '../../domain/types/invoice-trigger.types';
+import {
+  parseIsPrimaryInvoicing,
+  selectPrimaryInvoicingConnection,
+} from '../../domain/types/invoicing-primary.types';
 import { normalizeShippingLineName } from '../../domain/types/shipping-line-label.types';
 import { toIssueInvoiceCommand } from '../mappers/order-to-issue-invoice-command.mapper';
 import { BatchedTriggerNotImplementedError } from '../../domain/exceptions/batched-trigger-not-implemented.error';
@@ -90,6 +109,17 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
    */
   private readonly shippedViabilityWarned = new Set<string>();
 
+  /**
+   * #2047 one-time diagnosis: connection ids already warned about being the
+   * chosen primary while carrying a `manual` trigger model on an install that
+   * has OTHER invoicing candidates. Selection runs before the trigger model is
+   * read, so naming the primary on a `manual` connection turns auto-issue off
+   * for the WHOLE install even though a sibling is `auto-on-paid`. That is the
+   * operator's call to make, but without this line it is indistinguishable from
+   * "the trigger never fired". Warned ONCE per connection, not per order.
+   */
+  private readonly manualPrimaryWarned = new Set<string>();
+
   constructor(
     @Inject(CONNECTION_PORT_TOKEN)
     private readonly connectionPort: ConnectionPort,
@@ -111,50 +141,135 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
       connection.enabledCapabilities.includes(INVOICING_CAPABILITY),
     );
 
-    for (const connection of connections) {
-      // F9/D11: each connection is isolated — a compose/enqueue failure on one
-      // never aborts the others, and never escapes onOrderTransition (the
-      // OrderIngestionService catch swallows too, but defense in depth here keeps
-      // a single bad connection from skipping the rest).
-      try {
-        const triggerModel = parseTriggerModel(
-          connection.config.invoicing?.triggerModel,
-        );
+    // #2047: ONE order, ONE invoice. Resolve exactly one connection instead of
+    // fanning out — KSeF / inFakt / Subiekt are alternative routes for the same
+    // document, so issuing on each produced two real fiscal documents for one
+    // sale (the per-connection idempotency key could never dedup across them).
+    const selection = selectPrimaryInvoicingConnection(
+      connections.map((candidate) => ({
+        id: candidate.id,
+        isPrimary: parseIsPrimaryInvoicing(candidate.config.invoicing?.isPrimary),
+      })),
+    );
 
-        if (!this.qualifies(order, triggerModel, connection.id)) {
-          continue;
-        }
-
-        // F4: compose the deterministic key ONCE and thread it into BOTH the
-        // job-row idempotencyKey AND payload.idempotencyKey.
-        const idempotencyKey = `invoice:${connection.id}:${order.id}`;
-        // #1694: resolve the source connection's neutral platformType for the
-        // per-source numbering axis. Best-effort — a lookup failure leaves it
-        // absent (routing falls back past the source axis), never aborting issuance.
-        const sourcePlatformType = await this.resolveSourcePlatformType(sourceConnectionId);
-        const payload = this.composePayload(
-          order,
-          connection.id,
-          idempotencyKey,
-          triggerModel,
-          sourceConnectionId,
-          sourceEventId,
-          this.readShippingLineName(connection),
-          sourcePlatformType,
-        );
-
-        await this.syncJobs.schedule({
-          jobType: 'invoicing.issue',
-          connectionId: connection.id,
-          payload: payload as unknown as Record<string, unknown>,
-          idempotencyKey,
-          maxAttempts: AUTO_ISSUE_RETRY_BUDGET,
-          runAfter: new Date(),
-        });
-      } catch (error) {
-        this.logIssuanceFailure(error, connection.id, order.id, sourceEventId);
-      }
+    if (selection.kind === 'none') {
+      return;
     }
+    if (selection.kind === 'ambiguous') {
+      // Deliberately silent-by-design at the domain level: issue NOTHING and log
+      // an error naming the ambiguity. An uninvoiced order is fixable by hand; two
+      // issued documents for one sale need a correction of a document that should
+      // never have existed. The order-detail panel surfaces this state to the
+      // operator ("Automatic invoicing is off for this order") so the decision is
+      // not visible only in a log.
+      //
+      // DEFERRED — #2100: ADR-041 §54/§105 require a block to also PERSIST a named
+      // reason ('ambiguous-connection-no-primary'), never log-only. This exit (and
+      // the `manual` / `batched` ones below) is still log-only, so an install where
+      // auto-issue silently stopped for EVERY order is normal-looking on the orders
+      // and invoices lists — the panel's client-side re-derivation only helps an
+      // operator who already opened that one order. #2100 lands decision 11's first
+      // slice: the two reason unions in a `sales-documents` concern plus #1689's
+      // `source_deleted` surfacing treatment (health bucket + list badge + bulk-action
+      // exclusion). No `sync_jobs.outcomeReason` can carry it — these exits enqueue
+      // no job, so there is no row.
+      this.logger.error(
+        `Auto-issue skipped: ${selection.candidateIds.length} active Invoicing connections and ` +
+          `no unambiguous primary (reason=${selection.reason}) — issuing nothing rather than ` +
+          `issuing more than one document. orderId=${order.id} ` +
+          `candidateConnectionIds=${selection.candidateIds.join(',')} ` +
+          `sourceEventId=${sourceEventId ?? 'n/a'}. ` +
+          `Set config.invoicing.isPrimary on exactly one connection.`,
+      );
+      return;
+    }
+
+    const connection = connections.find((candidate) => candidate.id === selection.connectionId);
+    if (connection === undefined) {
+      // Unreachable: `selection.connectionId` is always an id this method just
+      // read out of `connections`. Logged rather than returned silently because
+      // this method's whole contract is "at most one job, and never quietly
+      // none" — a silent return here would be indistinguishable from the
+      // legitimate `none` / `manual` skips while actually being a defect.
+      this.logger.error(
+        `Auto-issue skipped: selected connection ${selection.connectionId} vanished from the ` +
+          `candidate list it was chosen from. orderId=${order.id} sourceEventId=${sourceEventId ?? 'n/a'}`,
+      );
+      return;
+    }
+
+    // F9/D11: the selected connection's work is isolated — a compose/enqueue
+    // failure never escapes onOrderTransition (the OrderIngestionService catch
+    // swallows too, but defense in depth here keeps an invoicing fault from
+    // surfacing as an order-ingestion failure).
+    try {
+      const triggerModel = parseTriggerModel(connection.config.invoicing?.triggerModel);
+      this.warnOnceIfManualPrimaryDisablesInstall(triggerModel, connection.id, connections.length);
+
+      if (!this.qualifies(order, triggerModel, connection.id)) {
+        return;
+      }
+
+      // F4: compose the deterministic key ONCE and thread it into BOTH the
+      // job-row idempotencyKey AND payload.idempotencyKey.
+      const idempotencyKey = `invoice:${connection.id}:${order.id}`;
+      // #1694: resolve the source connection's neutral platformType for the
+      // per-source numbering axis. Best-effort — a lookup failure leaves it
+      // absent (routing falls back past the source axis), never aborting issuance.
+      const sourcePlatformType = await this.resolveSourcePlatformType(sourceConnectionId);
+      const payload = this.composePayload(
+        order,
+        connection.id,
+        idempotencyKey,
+        triggerModel,
+        sourceConnectionId,
+        sourceEventId,
+        this.readShippingLineName(connection),
+        sourcePlatformType,
+      );
+
+      await this.syncJobs.schedule({
+        jobType: 'invoicing.issue',
+        connectionId: connection.id,
+        payload: payload as unknown as Record<string, unknown>,
+        idempotencyKey,
+        maxAttempts: AUTO_ISSUE_RETRY_BUDGET,
+        runAfter: new Date(),
+      });
+    } catch (error) {
+      this.logIssuanceFailure(error, connection.id, order.id, sourceEventId);
+    }
+  }
+
+  /**
+   * #2047 one-time viability warning, the `manual` counterpart of F7's
+   * `auto-on-shipped` one. Selection (which connection) happens BEFORE the
+   * trigger model (whether it auto-issues) is read, so a primary set on a
+   * `manual` connection silently turns auto-issue off for the entire install —
+   * a sibling `auto-on-paid` connection never gets a look. Warn ONCE per
+   * connection so the deliberate choice and the misconfiguration are
+   * distinguishable without flooding the log on every qualifying order.
+   * PII-clean: connection id + candidate count only.
+   */
+  private warnOnceIfManualPrimaryDisablesInstall(
+    triggerModel: InvoiceTriggerModel,
+    connectionId: string,
+    candidateCount: number,
+  ): void {
+    if (triggerModel !== 'manual' || candidateCount < 2) {
+      return;
+    }
+    if (this.manualPrimaryWarned.has(connectionId)) {
+      return;
+    }
+    this.manualPrimaryWarned.add(connectionId);
+    this.logger.warn(
+      `Primary invoicing connection ${connectionId} has triggerModel=manual, so NO connection ` +
+        `auto-issues on this install (${candidateCount} candidates). One sale is one invoice, so ` +
+        `the primary is resolved before the trigger model is read — a sibling connection set to ` +
+        `auto-on-paid is deliberately not consulted. Set the primary on the connection that should ` +
+        `auto-issue, or leave this one primary if manual issuing is intended.`,
+    );
   }
 
   /**

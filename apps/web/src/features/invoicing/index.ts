@@ -43,6 +43,15 @@ export {
 export { useOrderInvoiceQuery } from './hooks/use-order-invoice-query';
 export { useInvoiceQuery } from './hooks/use-invoice-query';
 export { useIssueInvoiceMutation } from './hooks/use-issue-invoice-mutation';
+export {
+  CorrectionLinePicker,
+  type CorrectionLinePickerProps,
+} from './components/correction-line-picker';
+export {
+  useInvoiceContentQuery,
+  isContentUnavailable,
+  type InvoiceContentQueryResult,
+} from './hooks/use-invoice-content-query';
 export { useInvoicesQuery } from './hooks/use-invoices-query';
 export { useRetryInvoicesMutation } from './hooks/use-retry-invoices-mutation';
 export { useBulkIssueInvoicesMutation } from './hooks/use-bulk-issue-invoices-mutation';
@@ -153,6 +162,8 @@ export type {
   BulkIssueOutcome,
   CorrectionLineInput,
   IssueCorrectionInput,
+  IssuedDocumentContent,
+  IssuedDocumentLine,
   InvoiceEmailLocale,
   SendInvoiceEmailInput,
   SendInvoiceEmailResult,

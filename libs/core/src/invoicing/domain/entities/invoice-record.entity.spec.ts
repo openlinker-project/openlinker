@@ -73,6 +73,38 @@ describe('InvoiceRecord', () => {
     });
   });
 
+  describe('blocksIssuanceElsewhere (#2047)', () => {
+    it('is true for every non-terminal / issued status', () => {
+      expect(makeRecord('pending').blocksIssuanceElsewhere).toBe(true);
+      expect(makeRecord('issuing').blocksIssuanceElsewhere).toBe(true);
+      expect(makeRecord('issued').blocksIssuanceElsewhere).toBe(true);
+    });
+
+    it('is FALSE only for a terminal rejected failure (the provider created nothing)', () => {
+      expect(makeRecord('failed', { failureMode: 'rejected' }).blocksIssuanceElsewhere).toBe(
+        false,
+      );
+    });
+
+    it('is true for an in-doubt failure — the most dangerous case, a document MAY exist', () => {
+      expect(makeRecord('failed', { failureMode: 'in-doubt' }).blocksIssuanceElsewhere).toBe(
+        true,
+      );
+    });
+
+    it('is true for a failed row with no recorded mode (fiscal-safe default)', () => {
+      expect(makeRecord('failed', { failureMode: null }).blocksIssuanceElsewhere).toBe(true);
+    });
+
+    it('is lease-independent: an EXPIRED issuing lease still blocks another connection', () => {
+      const expired = makeRecord('issuing', {
+        leaseExpiresAt: new Date('2020-01-01T00:00:00.000Z'),
+      });
+      expect(expired.isLeaseLive(new Date())).toBe(false);
+      expect(expired.blocksIssuanceElsewhere).toBe(true);
+    });
+  });
+
   describe('isLeaseLive (#1200)', () => {
     const now = new Date('2026-06-16T12:00:00.000Z');
 

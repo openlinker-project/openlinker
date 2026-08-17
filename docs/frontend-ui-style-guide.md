@@ -667,6 +667,15 @@ Known gap: `DataTableSkeleton` still renders `36 px` rows, so a table with these
 
 **Selection-list rows are governed separately.** Multi-select picker rows inside a modal (e.g. the offer-creation product picker, `.offer-product-picker__prow-main` / `.offer-product-picker__vrow`, #1754/#1779) are *not* `DataTable` rows and are intentionally taller than 36 px: the whole-product checkbox carries a ≥ 44 px tap target (touch parity with the full-width variant-row hit area) and each row pairs a thumbnail with two text lines. They inherit the density posture but pick their own height from content + the tap-target floor rather than the table default; don't force them onto the `36 px` row.
 
+Registered selection-row surfaces:
+
+| Class | Height | Why |
+|---|---|---|
+| `.offer-product-picker__prow-main` / `__vrow` (#1754/#1779) | auto, ≥ 44 px | thumbnail + two text lines; checkbox tap target |
+| `.category-search-results__item` (#2075) | `min-height: 44px` | category name + its root→leaf breadcrumb + a Select action, in the category pickers' search results |
+
+The category-search row takes the same `≥ 44 px` tap-target floor and, below 767 px, **stacks** (`flex-direction: column`) rather than truncating: the breadcrumb is the only thing that makes a hit from an unvisited branch intelligible, so squeezing it to keep one line would defeat the row's purpose. It shares `var(--radius-sm)` with `.bulk-editor__catpick-item`, the drill-down row it swaps places with in the same modal slot.
+
 ## Responsive
 
 Desktop (≥ 1024 px) is the design anchor. **Mobile (≤ 767 px) and tablet (768–1023 px) are first-class** — operators should be able to triage failures from a phone off-hours and from an iPad on the shop floor.

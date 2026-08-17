@@ -236,29 +236,6 @@ export interface IPrestashopOrderMapper {
   mapOrder(prestashopOrder: PrestashopOrder, orderRows: PrestashopOrderRow[]): Omit<Order, 'id'>;
 
   /**
-   * Map OpenLinker OrderCreate to PrestaShop order format
-   *
-   * @param orderCreate - OpenLinker order creation request
-   * @param externalCustomerId - PrestaShop customer ID (external)
-   * @param externalProductIds - Map of internal product IDs to PrestaShop product IDs
-   * @param externalVariantIds - Map of internal variant IDs to PrestaShop combination IDs
-   * @param externalShippingAddressId - PrestaShop shipping address ID (external, optional)
-   * @param externalBillingAddressId - PrestaShop billing address ID (external, optional)
-   * @returns PrestaShop order data ready for API submission
-   */
-  mapOrderCreate(
-    orderCreate: OrderCreate,
-    externalCustomerId: string | number,
-    externalProductIds: Map<string, string | number>,
-    externalVariantIds: Map<string, string | number>,
-    externalShippingAddressId?: string | number,
-    externalBillingAddressId?: string | number,
-    externalCurrencyId?: string | number,
-    externalLangId?: string | number,
-    externalCarrierId?: number
-  ): Record<string, unknown>;
-
-  /**
    * Map OpenLinker OrderCreate to PrestaShop cart format
    *
    * Creates a cart structure that can be used to create a cart in PrestaShop,
@@ -291,8 +268,7 @@ export interface IPrestashopOrderMapper {
   /**
    * Map an OpenLinker `OrderStatus` to its PrestaShop order-state id
    * (e.g. `'shipped' → 4`). Single source of truth for the status→state-id
-   * table, reused by `mapOrderCreate` and by the order-fulfillment update
-   * (#858 capability B).
+   * table, used by the order-fulfillment update (#858 capability B).
    */
   mapStatusToPrestashopStateId(status: OrderStatus): number;
 }

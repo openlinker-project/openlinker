@@ -255,6 +255,98 @@ the others.
 
 *(screenshot pending)*
 
+### Foreign-currency invoices
+
+The order's settlement currency is sent explicitly on every issued document as
+inFakt's invoice-level `currency` field, and a correction is always denominated in
+the currency inFakt holds for the document it corrects. inFakt performs the
+conversion itself and reports the rate back on its read-only `exchange_rates_data`
+block, so OL never sends an exchange rate. Verified live against the sandbox
+(2026-08-14): a EUR invoice issues with `currency: "EUR"` and its amount stated in
+EUR on the document, and inFakt fills in the foreign-currency exchange-date kind
+itself.
+
+Two operator-visible consequences:
+
+- An order whose currency is not a well-formed ISO 4217 code is refused before
+  anything reaches inFakt, rather than being booked in the account's default
+  currency. Omitting the field is what inFakt treats as "use the account default",
+  and it answers success either way - so a refusal is the only way to avoid a
+  silently mis-denominated document that inFakt then relays to KSeF. The refusal is
+  a terminal business failure the operator can re-submit: the invoice reads
+  **Failed** and its reason names the currency ("The settlement currency is missing,
+  malformed, or not accepted for this document. Fix the currency on the order and
+  re-issue."). The offending value itself is **not** shown in the UI - reasons are
+  fixed, PII-free strings by design - and appears only in the API server log.
+- The seller's inFakt account must actually be allowed to settle in that currency.
+  inFakt owns that rule and enforces it server-side, so an unsupported currency
+  surfaces as an inFakt rejection at issuance rather than as an OL-side error.
+
+#### Documents issued before OL sent the currency
+
+**What was wrong.** Until #2103, OL never sent inFakt a `currency` at all. inFakt
+reads an absent field as "use the account's default currency" and answers success
+either way, so **every** document OL issued was booked in the account default no
+matter what the order's currency said: a EUR 811.37 order was issued as
+PLN 811.37, with no error, no log line and nothing on the document to tell it
+apart from a correct one. Because inFakt relays to KSeF on the seller's behalf,
+such a document may already have been filed with the tax authority.
+
+**How much of your data this touches.** For a PLN-denominated account selling in
+PLN only - the shipped assumption, and the only configuration this integration's
+own tests exercised before #2103 (every currency literal in the inFakt package,
+specs and sandbox script alike, was `PLN`) - nothing is wrong: the account
+default *was* the right currency, so those documents are correct as issued. The
+defect was found by code reading rather than from an operator report, so there is
+no known mis-denominated production document; that is an absence of evidence for
+this repository, **not** a guarantee about your deployment. Note that the neutral
+layer above the adapter always could carry a non-PLN currency - the order-to-command
+mapper echoes `order.totals.currency` verbatim and the numbering series routes on
+it - so nothing structurally prevented a foreign-currency order from reaching
+inFakt. If you have ever invoiced a non-default-currency order through inFakt,
+check.
+
+**How to check.** For records issued after #1297 the currency as issued is
+persisted on the invoice record, so the reconciliation is a single query - run it
+against the OL database, replacing `'PLN'` with your inFakt account's own default
+currency:
+
+```sql
+SELECT ir.id,
+       ir."orderId",
+       ir."documentNumber",
+       ir."issuedAt",
+       ir."issuedLineSnapshot"->>'currency'            AS issued_currency,
+       o."orderSnapshot"->'totals'->>'currency'        AS order_currency
+FROM invoice_records ir
+JOIN connections c ON c.id = ir."connectionId"
+LEFT JOIN order_records o ON o."internalOrderId" = ir."orderId"
+WHERE c."platformType" = 'infakt'
+  AND ir.status = 'issued'
+  AND COALESCE(
+        NULLIF(ir."issuedLineSnapshot"->>'currency', ''),
+        NULLIF(o."orderSnapshot"->'totals'->>'currency', '')
+      ) <> 'PLN'
+ORDER BY ir."issuedAt" DESC;
+```
+
+Every returned row is a document whose order was **not** in the account default,
+which before #2103 means it was booked in the account default anyway. Records
+issued before the `issuedLineSnapshot` column existed carry no currency of their
+own, so the query falls back to the order's current snapshot for those - which is
+the order's currency today, not necessarily its currency at issuance.
+
+**How to fix.** OL cannot repair these itself, and neither can an ordinary
+correction: inFakt denominates a correction in the currency of the document it
+corrects, so correcting a wrongly-PLN document produces another PLN document. A
+mis-denominated document has to be withdrawn and re-issued in the right currency
+on the accounting side. Take the query's output to whoever keeps the books -
+correcting a document that has already cleared the tax authority is their call,
+not OL's, and this guide is not legal or tax advice. Once the account default and
+the order currency agree again, re-issuing from OL is safe: the currency is now
+always stamped explicitly, and an ambiguous one is refused before anything
+reaches inFakt.
+
 ---
 
 ## Troubleshooting
@@ -265,6 +357,9 @@ the others.
 | Webhook deliveries return 401 | `X-Infakt-Signature` (HMAC-SHA256 hex of the raw body) doesn't match the secret OL resolved | Copy the secret from inFakt's webhook-details view and set `OPENLINKER_WEBHOOK_SECRET__INFAKT__<CONNECTION_ID_UPPERCASE>` (or `OPENLINKER_WEBHOOK_SECRET__INFAKT`); do **not** use the `secret/rotate` endpoint for inFakt (it generates a random secret inFakt doesn't know). See [Webhook configuration](#2-webhook-configuration). |
 | Webhook subscription never activates | The verification-ping echo didn't reach inFakt (host unreachable, TLS issue, or the connection ID in the URL is wrong) | Confirm the URL path matches `POST /webhooks/infakt/{connectionId}` exactly and the host is publicly reachable from inFakt's servers. |
 | Invoice stays `submitted` forever, never reaches `accepted` | KSeF itself rejected the document after inFakt submitted it, or (less likely, since OL's `sendToKsef` call would normally fail outright at issuance time if this were disabled) KSeF integration is off in inFakt's account settings | Check inFakt's own invoice/KSeF status in its dashboard first — `ksef_data.status: error` there means inFakt attempted submission and KSeF rejected it (fix the underlying document data and re-issue). If `getClearanceStatus()` keeps returning `not-applicable` with no `ksef_data` at all, confirm KSeF integration is enabled in inFakt's account settings (the [Prerequisites](#prerequisites) requirement). |
+| Invoice fails with "The settlement currency is missing, malformed, or not accepted for this document" | The order's currency is blank or not a three-letter code, so OL refuses to issue rather than let inFakt book the document in the account default | Fix the currency on the source order (it is echoed from the order totals) and re-issue. Nothing was created at inFakt, so re-issuing is safe. The offending value is in the API server log (`Infakt requires an ISO 4217 currency on ... , got "..."`), not in the UI. |
+| inFakt rejects a non-PLN invoice at issuance (422) | The seller's inFakt account is not configured to settle in that currency, or inFakt wants additional foreign-currency fields (e.g. an exchange-date kind) for it | Enable the currency in inFakt's own account settings and re-issue. The rejection is terminal and nothing was created, so the operator can re-submit. |
+| An invoice issued **before** #2103 shows the inFakt account's default currency for a foreign-currency order | OL never sent a `currency` at all, and inFakt reads an absent field as "use the account default" | Reconcile with the query in [Documents issued before OL sent the currency](#documents-issued-before-ol-sent-the-currency). A correction cannot re-denominate the document - remediation is a withdraw-and-re-issue on the accounting side. |
 | Rate limiting / `429` from inFakt | Sandbox and low-tier plans enforce API rate limits | Space out bulk issuance; inFakt's retry classifier (`InfaktRetryClassifierAdapter`) already treats `429` as retryable in the worker's job runner. |
 
 ---

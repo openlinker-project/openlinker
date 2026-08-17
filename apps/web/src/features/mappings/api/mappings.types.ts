@@ -135,6 +135,25 @@ export interface CategoryPathNode {
   name: string;
 }
 
+/**
+ * One hit from a whole-tree category search (#2075).
+ *
+ * The breadcrumb is carried on every hit deliberately: a result from anywhere in
+ * the tree is unintelligible without it, because the operator has NOT drilled to
+ * it and has no other context for a leaf named "Buty".
+ *
+ * Neutral, not Allegro-scoped, despite living beside the `allegro*` category
+ * reads: the underlying route resolves its scope from the connection (ADR-037),
+ * so the same call serves a marketplace and a shop. The sibling `allegro*`
+ * naming is the platform-named legacy epic #1937 is retiring - see
+ * `use-category-search.ts`.
+ */
+export interface CategorySearchHit {
+  category: AllegroCategory;
+  /** Root -> leaf, inclusive of the hit itself. */
+  path: CategoryPathNode[];
+}
+
 export interface PrestashopCategory {
   id: string;
   name: string;

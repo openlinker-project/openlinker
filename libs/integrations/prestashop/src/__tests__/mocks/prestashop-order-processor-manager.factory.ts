@@ -121,7 +121,6 @@ export function createOrderProcessorManagerHarness(): OrderProcessorHarness {
   const connection = createTestConnection();
   const mockOrderMapper = {
     mapOrder: jest.fn(),
-    mapOrderCreate: jest.fn(),
     mapCartCreate: jest.fn().mockReturnValue({
       id_customer: '42',
       id_currency: 1,

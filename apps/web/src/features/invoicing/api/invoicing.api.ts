@@ -10,6 +10,7 @@
  *   - `POST /invoices/:invoiceId/correct` (correction — #1241)
  *   - `GET /invoices/:invoiceId/upo` (UPO blob — #1234)
  *   - `GET /invoices/:invoiceId/document?kind=source|rendered` (FA(3) doc — W3 #1231)
+ *   - `GET /invoices/:invoiceId/content` (issued-document content — #2076)
  *
  * @module apps/web/src/features/invoicing/api
  */
@@ -19,6 +20,7 @@ import type {
   InvoiceFilters,
   InvoicePagination,
   InvoiceRecord,
+  IssuedDocumentContent,
   IssueCorrectionInput,
   IssueInvoiceInput,
   PaginatedInvoices,
@@ -29,10 +31,13 @@ import type {
 } from './invoicing.types';
 
 export interface InvoicingApi {
-  /** `GET /orders/{orderId}/invoice?connectionId=…` — the single invoice
-   *  projection for an order + invoicing connection. 404 when no invoice row
-   *  exists (mapped to `not-issued` by the query hook). */
-  getForOrder: (orderId: string, connectionId: string) => Promise<InvoiceRecord>;
+  /** `GET /orders/{orderId}/invoice[?connectionId=…]` — the invoice projection
+   *  for an order. `connectionId` is OPTIONAL (#2047): omitted, the server
+   *  answers "is this order invoiced ANYWHERE?" and returns the record from
+   *  whichever connection holds it, which is what lets the panel lock itself to
+   *  the issuing connection. 404 when no invoice row exists (mapped to
+   *  `not-issued` by the query hook). */
+  getForOrder: (orderId: string, connectionId?: string) => Promise<InvoiceRecord>;
   /** `GET /invoices/{invoiceId}` — the single invoice by id (detail page, W2
    *  #1231). 404 when no invoice exists at this id. */
   getById: (invoiceId: string) => Promise<InvoiceRecord>;
@@ -78,6 +83,18 @@ export interface InvoicingApi {
    * content type is provider-defined.
    */
   downloadDocument: (invoiceId: string, kind: 'source' | 'rendered') => Promise<Blob>;
+  /**
+   * `GET /invoices/{invoiceId}/content` — the issued-document content snapshot
+   * captured at issue time. Consumed by the correction line picker (#2076):
+   * its `lines` are index-aligned with the server-side `issuedLineSnapshot`
+   * that `originalLineNumber` addresses.
+   *
+   * **409 is an expected outcome**, not a failure to retry — the invoice
+   * carries no content snapshot (still pending, an adapter that captured none,
+   * or a row predating the column). Callers degrade rather than surface an
+   * error.
+   */
+  getContent: (invoiceId: string) => Promise<IssuedDocumentContent>;
 }
 
 interface ApiRequest {
@@ -109,13 +126,22 @@ function buildQuery(filters?: InvoiceFilters, pagination?: InvoicePagination): s
 export function createInvoicingApi(request: ApiRequest, requestBlob: ApiBlobRequest): InvoicingApi {
   return {
     getForOrder(orderId, connectionId): Promise<InvoiceRecord> {
-      const params = new URLSearchParams({ connectionId });
-      return request<InvoiceRecord>(
-        `/orders/${encodeURIComponent(orderId)}/invoice?${params.toString()}`,
-      );
+      // No `connectionId` -> no query string at all: the server then resolves the
+      // order's record across connections (#2047). Sending an empty value would be
+      // a 400 (the DTO validates it as a UUID when present).
+      const query =
+        connectionId === undefined || connectionId.length === 0
+          ? ''
+          : `?${new URLSearchParams({ connectionId }).toString()}`;
+      return request<InvoiceRecord>(`/orders/${encodeURIComponent(orderId)}/invoice${query}`);
     },
     getById(invoiceId): Promise<InvoiceRecord> {
       return request<InvoiceRecord>(`/invoices/${encodeURIComponent(invoiceId)}`);
+    },
+    getContent(invoiceId): Promise<IssuedDocumentContent> {
+      return request<IssuedDocumentContent>(
+        `/invoices/${encodeURIComponent(invoiceId)}/content`,
+      );
     },
     list(filters, pagination): Promise<PaginatedInvoices> {
       return request<PaginatedInvoices>(`/invoices${buildQuery(filters, pagination)}`);

@@ -77,11 +77,11 @@ docker compose up -d prestashop mysql
 **Verify Installation Complete**:
 - Check that PrestaShop core tables exist (note: prefix may differ from `ps_`):
   ```bash
-  docker exec -it openlinker-mysql mysql -u prestashop -pprestashop prestashop -e "SHOW TABLES LIKE '%_module';"
+  docker compose exec mysql mysql -u prestashop -pprestashop prestashop -e "SHOW TABLES LIKE '%_module';"
   ```
 - Should return a table like `ps_module` or `usesj_module` (prefix may vary)
 - If no `*_module` table exists, PrestaShop is still installing - wait and check again
-- You can also check PrestaShop logs: `docker logs openlinker-prestashop`
+- You can also check PrestaShop logs: `docker compose logs prestashop`
 - **Note**: The table prefix in your database may differ from `ps_` (e.g., `usesj_`) - this is normal and depends on how PrestaShop was installed
 
 ### Delete Install Folder (Required for Module Installation)
@@ -146,7 +146,7 @@ After disabling demo mode, clear cache and refresh the module manager page.
 5. **Verify Outbox Table**:
    ```sql
    -- Connect to MySQL
-   docker exec -it openlinker-mysql mysql -u prestashop -pprestashop prestashop
+   docker compose exec mysql mysql -u prestashop -pprestashop prestashop
    
    -- Find your table prefix first (may be 'ps_' or different like 'usesj_')
    SHOW TABLES LIKE '%_openlinker_webhook_outbox';
@@ -302,7 +302,7 @@ export OPENLINKER_WEBHOOK_SECRET__PRESTASHOP=test-secret-key-12345
 
 3. **If Failed**:
    - Check OpenLinker API is running: `curl http://localhost:3000/v1/health`
-   - Check network connectivity: `docker exec openlinker-prestashop curl -v http://host.docker.internal:3000`
+   - Check network connectivity: `docker compose exec prestashop curl -v http://host.docker.internal:3000`
    - Verify webhook secret matches exactly
    - Check OpenLinker logs for signature verification errors
 
@@ -571,7 +571,7 @@ export OPENLINKER_WEBHOOK_SECRET__PRESTASHOP=test-secret-key-12345
 
 ```bash
 # View PrestaShop logs
-docker logs -f openlinker-prestashop
+docker compose logs -f prestashop
 
 # Or check PrestaShop backoffice: Advanced Parameters → Logs
 ```
@@ -587,12 +587,12 @@ Check terminal where `pnpm start:dev` is running for:
 
 **Important**: Replace `ps_` with your actual table prefix (e.g., `usesj_`) in all SQL queries below. Find your prefix with:
 ```bash
-docker exec -it openlinker-mysql mysql -u prestashop -pprestashop prestashop -e "SHOW TABLES LIKE '%_openlinker_webhook_outbox';"
+docker compose exec mysql mysql -u prestashop -pprestashop prestashop -e "SHOW TABLES LIKE '%_openlinker_webhook_outbox';"
 ```
 
 ```sql
 # Connect to MySQL
-docker exec -it openlinker-mysql mysql -u prestashop -pprestashop prestashop
+docker compose exec mysql mysql -u prestashop -pprestashop prestashop
 
 # Check outbox status summary (replace ps_ with your prefix)
 SELECT status, COUNT(*) as count 
@@ -646,12 +646,12 @@ LIMIT 10;
 2. **PrestaShop not fully installed** (check this first if demo mode is already disabled):
    - Find the actual table prefix (may differ from `ps_`):
      ```bash
-     docker exec -it openlinker-mysql mysql -u prestashop -pprestashop prestashop -e "SHOW TABLES LIKE '%_module';"
+     docker compose exec mysql mysql -u prestashop -pprestashop prestashop -e "SHOW TABLES LIKE '%_module';"
      ```
    - Should return a table like `ps_module` or `usesj_module` (prefix may vary)
    - If no `*_module` table exists, PrestaShop installation is incomplete
    - **Solution**: Wait for PrestaShop to finish installation (can take 1-2 minutes on first run)
-   - Check PrestaShop logs: `docker logs openlinker-prestashop`
+   - Check PrestaShop logs: `docker compose logs prestashop`
    - Access PrestaShop frontend: `http://localhost:8080` - if you see installer, let it complete
    - After installation completes, delete install folder (see #2 below)
    - **Note**: If tables exist with a different prefix (e.g., `usesj_` instead of `ps_`), PrestaShop IS installed - proceed to other solutions below
@@ -680,16 +680,16 @@ LIMIT 10;
 6. **Module already partially installed**:
    - First, find your table prefix:
      ```bash
-     docker exec -it openlinker-mysql mysql -u prestashop -pprestashop prestashop -e "SHOW TABLES LIKE '%_module';" | head -1
+     docker compose exec mysql mysql -u prestashop -pprestashop prestashop -e "SHOW TABLES LIKE '%_module';" | head -1
      ```
    - Extract the prefix (e.g., if table is `usesj_module`, prefix is `usesj_`)
    - Check if module exists (replace `PREFIX_` with your actual prefix):
      ```sql
-     docker exec -it openlinker-mysql mysql -u prestashop -pprestashop prestashop -e "SELECT * FROM PREFIX_module WHERE name='openlinker';"
+     docker compose exec mysql mysql -u prestashop -pprestashop prestashop -e "SELECT * FROM PREFIX_module WHERE name='openlinker';"
      ```
    - Example with `usesj_` prefix:
      ```sql
-     docker exec -it openlinker-mysql mysql -u prestashop -pprestashop prestashop -e "SELECT * FROM usesj_module WHERE name='openlinker';"
+     docker compose exec mysql mysql -u prestashop -pprestashop prestashop -e "SELECT * FROM usesj_module WHERE name='openlinker';"
      ```
    - If found but not working, try uninstalling first:
      - Go to: **Modules → Module Manager → OpenLinker → Uninstall**
@@ -706,7 +706,7 @@ After trying these solutions, refresh the module manager page and try installing
 ### Module Not Appearing
 
 - Clear PrestaShop cache: **Advanced Parameters → Performance → Clear cache**
-- Check module directory exists: `docker exec openlinker-prestashop ls -la /var/www/html/modules/openlinker`
+- Check module directory exists: `docker compose exec prestashop ls -la /var/www/html/modules/openlinker`
 - Check PrestaShop logs for installation errors
 
 ### Configuration Page Error ("Oops... looks like an unexpected error occurred")
@@ -718,7 +718,7 @@ After trying these solutions, refresh the module manager page and try installing
 1. **Missing template variables** (most common):
    - The module code may be missing required Smarty template variables
    - **Solution**: Ensure you have the latest version of the module code
-   - Check PrestaShop error logs: `docker logs openlinker-prestashop 2>&1 | grep -i error`
+   - Check PrestaShop error logs: `docker compose logs prestashop 2>&1 | grep -i error`
    - Or check PrestaShop backoffice: **Advanced Parameters → Logs**
 
 2. **Class autoloading issues**:
@@ -734,7 +734,7 @@ After trying these solutions, refresh the module manager page and try installing
    - **Solution**: Check if table exists:
      ```sql
      -- Find your table prefix first
-     docker exec -it openlinker-mysql mysql -u prestashop -pprestashop prestashop -e "SHOW TABLES LIKE '%_openlinker_webhook_outbox';"
+     docker compose exec mysql mysql -u prestashop -pprestashop prestashop -e "SHOW TABLES LIKE '%_openlinker_webhook_outbox';"
      ```
    - If table doesn't exist, reinstall the module:
      - Go to: **Modules → Module Manager → OpenLinker → Uninstall**
@@ -752,7 +752,7 @@ After trying these solutions, refresh the module manager page and try installing
    - Check PrestaShop error logs for PHP fatal errors
    - **Solution**: View logs:
      ```bash
-     docker logs openlinker-prestashop 2>&1 | tail -50
+     docker compose logs prestashop 2>&1 | tail -50
      ```
    - Or check PrestaShop backoffice: **Advanced Parameters → Logs**
    - Look for PHP errors, missing classes, or syntax errors
@@ -777,7 +777,7 @@ After trying these solutions, refresh the module manager page and try installing
 ### Events Not Delivered
 
 - Check cron is running (or trigger manually)
-- Verify OpenLinker API is reachable: `docker exec openlinker-prestashop curl -v http://host.docker.internal:3000`
+- Verify OpenLinker API is reachable: `docker compose exec prestashop curl -v http://host.docker.internal:3000`
 - Check webhook secret matches OpenLinker configuration
 - Check outbox table for stuck events
 - Check OpenLinker API logs for errors
@@ -807,7 +807,7 @@ After trying these solutions, refresh the module manager page and try installing
    - **Solution**: Check if table exists:
      ```sql
      -- Find your table prefix first
-     docker exec -it openlinker-mysql mysql -u prestashop -pprestashop prestashop -e "SHOW TABLES LIKE '%_openlinker_webhook_outbox';"
+     docker compose exec mysql mysql -u prestashop -pprestashop prestashop -e "SHOW TABLES LIKE '%_openlinker_webhook_outbox';"
      ```
    - If table doesn't exist, reinstall the module:
      - Go to: **Modules → Module Manager → OpenLinker → Uninstall**
@@ -816,7 +816,7 @@ After trying these solutions, refresh the module manager page and try installing
 3. **Check PrestaShop error logs**:
    - View logs to see the actual PHP error:
      ```bash
-     docker logs openlinker-prestashop 2>&1 | tail -100 | grep -i error
+     docker compose logs prestashop 2>&1 | tail -100 | grep -i error
      ```
    - Or check PrestaShop backoffice: **Advanced Parameters → Logs**
    - Look for PHP errors, missing classes, or database errors
@@ -857,7 +857,7 @@ After trying these solutions, refresh the module manager page and try installing
    - **Solution**: Check if table exists:
      ```sql
      -- Find your table prefix first
-     docker exec -it openlinker-mysql mysql -u prestashop -pprestashop prestashop -e "SHOW TABLES LIKE '%_openlinker_webhook_outbox';"
+     docker compose exec mysql mysql -u prestashop -pprestashop prestashop -e "SHOW TABLES LIKE '%_openlinker_webhook_outbox';"
      ```
    - If table doesn't exist, reinstall the module:
      - Go to: **Modules → Module Manager → OpenLinker → Uninstall**
@@ -866,7 +866,7 @@ After trying these solutions, refresh the module manager page and try installing
 3. **Check PrestaShop error logs**:
    - View logs to see the actual PHP error:
      ```bash
-     docker logs openlinker-prestashop 2>&1 | tail -100 | grep -i "openlinker\|error\|fatal"
+     docker compose logs prestashop 2>&1 | tail -100 | grep -i "openlinker\|error\|fatal"
      ```
    - Or check PrestaShop backoffice: **Advanced Parameters → Logs**
    - Look for PHP errors, missing classes, or database errors
@@ -946,7 +946,7 @@ ORDER BY created_at DESC;
    - If not working, manually requeue:
      ```sql
      -- Find your table prefix first
-     docker exec -it openlinker-mysql mysql -u prestashop -pprestashop prestashop -e "SHOW TABLES LIKE '%_openlinker_webhook_outbox';"
+     docker compose exec mysql mysql -u prestashop -pprestashop prestashop -e "SHOW TABLES LIKE '%_openlinker_webhook_outbox';"
      
      -- Manually requeue all stale processing rows (replace PREFIX_ with your actual prefix)
      UPDATE PREFIX_openlinker_webhook_outbox 
@@ -970,7 +970,7 @@ ORDER BY created_at DESC;
    - Check PrestaShop error logs for SQL syntax errors
    - **Solution**: View logs:
      ```bash
-     docker logs openlinker-prestashop 2>&1 | tail -100 | grep -i "sql\|error\|fatal"
+     docker compose logs prestashop 2>&1 | tail -100 | grep -i "sql\|error\|fatal"
      ```
    - Or check PrestaShop backoffice: **Advanced Parameters → Logs**
 
@@ -1031,7 +1031,7 @@ curl -s "${PRESTASHOP_URL}/index.php?fc=module&module=openlinker&controller=cron
 
 echo ""
 echo "2. Checking outbox status..."
-docker exec openlinker-mysql mysql -u prestashop -pprestashop prestashop -e "SELECT status, COUNT(*) as count FROM ps_openlinker_webhook_outbox GROUP BY status;"
+docker compose exec mysql mysql -u prestashop -pprestashop prestashop -e "SELECT status, COUNT(*) as count FROM ps_openlinker_webhook_outbox GROUP BY status;"
 
 echo ""
 echo "3. Checking OpenLinker health..."
