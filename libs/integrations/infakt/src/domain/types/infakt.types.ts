@@ -52,6 +52,35 @@ export interface InfaktInvoice {
   number: string | null;
   kind: InfaktInvoiceKind;
   status: string;
+  /**
+   * ISO 4217 settlement currency of the document (#2103).
+   *
+   * A WRITABLE field on inFakt's invoice resource - "`currency` | string |
+   * Waluta (domyślnie PLN)" in inFakt's own API reference, with no `(readonly)`
+   * marker (unlike `net_price`/`gross_price`/`exchange_rates_data`, which carry
+   * one). Confirmed present on live reads of BOTH document resources
+   * (`GET /invoices.json` and `GET /corrective_invoices.json`, sandbox
+   * 2026-08-14) and selectable via `fields=`.
+   *
+   * WRITE path verified live too (sandbox 2026-08-14): a `currency: 'EUR'`
+   * invoice returned `201` with `currency: "EUR"`, `gross_price: 81137` and
+   * `amount_in_words: "osiemset jedenaście EUR 37/100"` - denominated in EUR on
+   * the document itself, not reinterpreted as the account default. The same run
+   * showed inFakt populating `vat_exchange_date_kind` ("vat") server-side, so
+   * that field is NOT a required input for a foreign-currency VAT invoice.
+   * `exchange_rates_data` stayed absent while the document was `draft`, so the
+   * applied rate is still unobserved.
+   *
+   * Because the field DEFAULTS to the account currency when omitted, leaving it
+   * off the request booked every document in the account default no matter what
+   * the neutral `IssueInvoiceCommand.currency` said - silently, since inFakt
+   * answers 200/201 either way (#2103). It is therefore stamped explicitly on
+   * every write path, never omitted.
+   *
+   * inFakt owns the conversion itself: the rate is reported back on the
+   * read-only `exchange_rates_data` block, so OL never sends a rate.
+   */
+  currency: string;
   // Infakt's public API represents every monetary field as a PLAIN INTEGER
   // count of groszy (1 PLN = 100 grosze) — confirmed both live against the
   // real sandbox (a 349.00 PLN order landed as gross_price=348, i.e. 3.48 PLN,
@@ -135,6 +164,89 @@ export interface InfaktListResponse<T> {
 }
 
 /**
+ * Body of a `POST clients.json` request, under its `client` wrapper key.
+ *
+ * Kept distinct from the {@link InfaktClient} RESPONSE shape for the same
+ * reason as {@link InfaktInvoiceRequest} (#2103 review): the response carries
+ * provider-assigned identity (`id`, `uuid`) that must not be sent on a create,
+ * and an untyped inline literal is exactly how a field name drifts unnoticed.
+ * This write has already suffered that: #1926 was `name`/`post_code` being sent
+ * where inFakt wants `company_name`/`postal_code` — silently ignored, so
+ * first-time client creation always 422'd, with no compiler or test objecting.
+ * Naming the shape here means a future rename fails type-check instead.
+ *
+ * `company_name` is required (it is the client's display identity, and inFakt
+ * rejects a create without it); the rest are optional because OL genuinely may
+ * not hold them — a B2C buyer has no `nip`, and `email` is absent whenever the
+ * source order carries none (#1797 notes what that costs downstream).
+ */
+export interface InfaktClientRequest {
+  client: {
+    company_name: string;
+    nip?: string;
+    email?: string;
+    city?: string;
+    street?: string;
+    postal_code?: string;
+    country?: string;
+  };
+}
+
+/**
+ * One service (line) row on a `POST invoices.json` request.
+ *
+ * Deliberately a WRITE-side type rather than a reuse of {@link
+ * InfaktInvoiceService}: the read shape carries provider-computed totals
+ * (`net_price`/`tax_price`/`gross_price`) and correction bookkeeping
+ * (`correction`/`group`) that must NOT be sent on a create.
+ *
+ * `unit_net_price` is a plain integer count of groszy, the same minor-unit
+ * convention as everywhere else in this API — see `toGroszy`.
+ */
+export interface InfaktInvoiceServiceRequest {
+  name: string;
+  tax_symbol: string;
+  quantity: number;
+  unit: string;
+  unit_net_price: number;
+}
+
+/**
+ * Body of a `POST invoices.json` request, under its `invoice` wrapper key.
+ *
+ * The REQUEST shape is kept distinct from the {@link InfaktInvoice} RESPONSE
+ * shape on purpose (#2103 review). Sharing one interface for both had a
+ * concrete cost: the whole of #2103 was `currency` being absent from the
+ * outbound request while nothing — no compiler, no test, no provider response —
+ * objected, because the request was an untyped inline object literal. Declaring
+ * `currency` REQUIRED here means a future refactor of that literal fails
+ * type-check instead of silently re-booking every document in the account's
+ * default currency. The correction path already had this protection via
+ * {@link InfaktCorrectiveInvoiceRequest}; this is the issue path catching up.
+ *
+ * Only fields OL actually sends are modelled — inFakt defaults or derives the
+ * rest (dates, totals, `vat_exchange_date_kind`, `exchange_rates_data`).
+ */
+export interface InfaktInvoiceRequest {
+  invoice: {
+    kind: InfaktInvoiceKind;
+    /**
+     * ISO 4217 settlement currency (#2103). REQUIRED, never optional: omitting
+     * the field is exactly what inFakt reads as "use the account default", and
+     * it answers 200/201 either way — see {@link InfaktInvoice.currency}.
+     */
+    currency: string;
+    payment_method: string;
+    /** Numeric client id — inFakt silently ignores `client_uuid` here. */
+    client_id: number;
+    services: InfaktInvoiceServiceRequest[];
+    bank_account?: string;
+    bank_name?: string;
+    external_id?: string;
+  };
+}
+
+/**
  * One "before"/"after" service row on a POST /async/corrective_invoices.json
  * request. Rows come in pairs per `group`: `correction: false` (original
  * values) then `correction: true` (corrected values).
@@ -173,6 +285,15 @@ export interface InfaktCorrectiveInvoiceServiceRequest {
 export interface InfaktCorrectiveInvoiceRequest {
   corrective_invoice: {
     payment_method: string;
+    /**
+     * ISO 4217 currency of the CORRECTION document (#2103). Required here for
+     * the same reason as on `async/invoices.json`: omitted, inFakt falls back to
+     * the account default, which would denominate a correction differently from
+     * the document it corrects. Taken from the corrected original's own
+     * `currency`, never from the account default or a caller-supplied value -
+     * see `InfaktInvoice.currency`.
+     */
+    currency: string;
     client_id: number | null;
     bank_account?: string;
     bank_name?: string;

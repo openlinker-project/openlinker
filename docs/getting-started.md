@@ -35,13 +35,15 @@ docker compose ps
 curl -sI http://localhost:8080 | head -1   # expect 302 → /en/
 ```
 
-The first `docker compose up` automatically renames the admin folder, sets PLN as the default currency, and seeds 5 fixtures sourced from real Allegro listings — the entrypoint wrapper polls for install completion and runs every script in `docker/prestashop/post-install/` in order:
+The first `docker compose up` automatically renames the admin folder, sets PLN as the default currency, and seeds 6 fixtures sourced from real Allegro listings — the entrypoint wrapper polls for install completion and runs every script in `docker/prestashop/post-install/` in order:
 
 - `10-rename-admin.sh` — renames the random `/admin{hash}/` folder to a stable `/admin-dev/`
 - `20-set-default-currency.sh` — flips the shop's default currency to **PLN** (EUR / USD remain active)
-- `30-seed-test-products.sh` — replaces the upstream demo catalogue with **five fixtures** sourced from real Allegro listings (full table below)
+- `25-activate-country-pl.sh` — activates the Poland (PL) country row, which PrestaShop ships inactive (order sync for a PL buyer address fails without it)
+- `30-seed-test-products.sh` — replaces the upstream demo catalogue with **six fixtures** sourced from real Allegro listings (full table below)
+- `40-configure-container-network.sh` — makes the shop reachable from the app-tier containers on the compose network
 
-All three scripts are idempotent — restarting the container or re-running the wrapper is a no-op once each piece has been applied.
+All five scripts are idempotent — restarting the container or re-running the wrapper is a no-op once each piece has been applied.
 
 To **force a re-seed** (e.g. after manually breaking PS data during development), run:
 
@@ -60,7 +62,7 @@ Log in to the PrestaShop admin at **http://localhost:8080/admin-dev/** with the 
 
 ### Dev fixture catalogue
 
-The seed populates exactly these five products, covering the variant × EAN-coverage matrix our codebase exercises (offer linking by barcode, simple-product synthetic variants, partial barcode coverage, etc.):
+The seed populates exactly these six products, covering the variant × EAN-coverage matrix our codebase exercises (offer linking by barcode, simple-product synthetic variants, partial barcode coverage, etc.):
 
 | Reference | Shape | EAN coverage | Source |
 |---|---|---|---|
@@ -69,6 +71,7 @@ The seed populates exactly these five products, covering the variant × EAN-cove
 | `OL-ADIDAS-IA4845` | variants × 3 sizes (S/M/L) | per-variant EAN on every combination | adidas Adicolor 3-Stripes Tee — Allegro: Moda / Odzież męska |
 | `OL-SOAP-NATURAL` | variants × 2 colours (Lavender/Rose) | partial — Lavender has EAN, Rose doesn't | Artisan cold-process soap — Allegro: Dom i Ogród / Wyposażenie |
 | `OL-RING-RESIN` | variants × 3 sizes (16/18/20mm) | empty on every combination | Handmade resin ring — Allegro: Biżuteria / Pierścionki |
+| `OL-CANON-SX740LE` | simple, no variants | yes (`4549292246117`) + MPN | Canon PowerShot SX740 HS Lite Edition, Polish-language copy — Allegro: Elektronika / Fotografia / Aparaty kompaktowe |
 
 **Reference prefix convention:** the seed treats `OL-*` as fixtures it owns (never wiped on re-seed) and **`OP-*`** as operator-preserve — if you hand-add a product through the PS admin during testing and want it to survive `pnpm dev:stack:seed-prestashop` re-runs, prefix its reference with `OP-`. Anything else is treated as upstream demo data and wiped.
 

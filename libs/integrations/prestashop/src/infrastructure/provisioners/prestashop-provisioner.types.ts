@@ -44,7 +44,7 @@ export interface PrestashopCustomerCreate {
    * `associations.groups.group[]` at create time — `id_default_group`
    * alone doesn't add the row to `ps_customer_group`. The double-nested
    * shape matches the established PS WS JSON convention used by
-   * `PrestashopOrderMapper.mapOrderCreate` for `order_rows`.
+   * `PrestashopOrderMapper.mapCartCreate` for `cart_rows`.
    */
   associations?: {
     groups?: { group?: Array<{ id: number }> };

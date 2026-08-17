@@ -74,6 +74,19 @@ export type InvoiceFailureMode = (typeof InvoiceFailureModeValues)[number];
  *
  *   - `buyer-tax-id-invalid`: a TERMINAL `rejected` failure caused by an invalid
  *     buyer tax identifier — the operator can fix the buyer data and re-issue.
+ *   - `invalid-currency`: a TERMINAL `rejected` failure caused by the document's
+ *     settlement currency. In practice this is an ADAPTER PRE-CALL REFUSAL —
+ *     the adapter rejected a missing or malformed currency before any provider
+ *     round-trip (#2103) — which is precisely why it must not collapse into
+ *     `provider-rejected`, whose copy asserts the PROVIDER rejected a request
+ *     it never saw. A genuine provider-side currency rejection would classify
+ *     here too if its text reached `classifyFailureCode`, but no shipped
+ *     adapter routes one: inFakt's HTTP client deliberately keeps the provider
+ *     body out of the error message (it can echo buyer PII) and core never
+ *     reads `responseBody`, so such a rejection lands on `provider-rejected` —
+ *     accurately, since the provider did reject it. Operator-fixable on the
+ *     source order either way. Currency and ISO 4217 are country-agnostic
+ *     vocabulary, so this stays ADR-026-clean.
  *   - `provider-rejected`: any other TERMINAL `rejected` failure (safe to
  *     re-attempt once the underlying input is corrected).
  *   - `transport-timeout`: an `in-doubt` transport failure — the document MAY
@@ -83,11 +96,39 @@ export type InvoiceFailureMode = (typeof InvoiceFailureModeValues)[number];
  */
 export const InvoiceFailureCodeValues = [
   'buyer-tax-id-invalid',
+  'invalid-currency',
   'provider-rejected',
   'transport-timeout',
   'provider-error',
 ] as const;
 export type InvoiceFailureCode = (typeof InvoiceFailureCodeValues)[number];
+
+/**
+ * Substrings (case-insensitive) that mark a `rejected` failure as a settlement-
+ * currency problem, so `classifyFailureCode` can resolve `invalid-currency`
+ * instead of the generic `provider-rejected` — whose operator-facing copy
+ * asserts the PROVIDER rejected the request, which is untrue when an adapter
+ * refuses the currency shape BEFORE any provider call (#2103).
+ *
+ * Deliberately narrow phrases rather than the bare word `currency`, which would
+ * also match an unrelated provider message that merely mentions a currency
+ * (e.g. an amount-formatting rejection) and mis-route the operator's fix.
+ *
+ * PUBLISHED (unlike the sibling tax-id markers, which stay private to
+ * `InvoiceService`) because for this code BOTH ends of the structural read live
+ * in this repo: the phrase an adapter throws pre-call is OL-authored, so an
+ * adapter spec can assert its own message still matches one of these markers
+ * and a reword breaks the build rather than silently degrading the operator's
+ * failure reason (#2103 review). Neutral vocabulary only — "currency" and
+ * "ISO 4217" name no country or tax system (ADR-026).
+ */
+export const CURRENCY_REJECTION_MARKERS = [
+  'iso 4217',
+  'invalid currency',
+  'unsupported currency',
+  'currency is required',
+  'currency code',
+] as const;
 
 /**
  * Neutral Continuous-Transaction-Controls clearance lifecycle. The adapter maps

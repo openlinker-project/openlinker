@@ -23,6 +23,15 @@ export {
   parseTriggerModel,
 } from './domain/types/invoice-trigger.types';
 export type { InvoiceTriggerModel } from './domain/types/invoice-trigger.types';
+// One-invoice-per-order primary selection (#2047).
+export {
+  parseIsPrimaryInvoicing,
+  selectPrimaryInvoicingConnection,
+} from './domain/types/invoicing-primary.types';
+export type {
+  InvoicingConnectionCandidate,
+  InvoicingConnectionSelection,
+} from './domain/types/invoicing-primary.types';
 export { normalizeShippingLineName } from './domain/types/shipping-line-label.types';
 export * from './domain/entities/buyer-profile.entity';
 export * from './domain/entities/invoice-record.entity';
@@ -52,6 +61,8 @@ export * from './domain/ports/invoice-numbering-series-repository.port';
 export * from './domain/ports/invoice-number-gap-note-repository.port';
 export * from './domain/exceptions/invoice-record-not-found.exception';
 export * from './domain/exceptions/duplicate-invoice-record.exception';
+export * from './domain/exceptions/order-already-invoiced.exception';
+export * from './domain/exceptions/invoice-issue-contended.exception';
 export * from './domain/exceptions/missing-numbering-series.exception';
 export * from './domain/exceptions/duplicate-document-number.exception';
 export * from './domain/exceptions/document-number-too-long.exception';

@@ -12,6 +12,7 @@
  * @module libs/core/src/invoicing/application/services
  */
 import type { IIntegrationsService } from '@openlinker/core/integrations';
+import type { SyncLockPort } from '@openlinker/core/sync';
 
 import { InvoiceRecord } from '../../domain/entities/invoice-record.entity';
 import type { InvoiceRecordRepositoryPort } from '../../domain/ports/invoice-record-repository.port';
@@ -19,6 +20,8 @@ import type { InvoiceNumberingSeriesRepositoryPort } from '../../domain/ports/in
 import type { InvoicingPort } from '../../domain/ports/invoicing.port';
 import { DuplicateInvoiceRecordException } from '../../domain/exceptions/duplicate-invoice-record.exception';
 import { MissingNumberingSeriesException } from '../../domain/exceptions/missing-numbering-series.exception';
+import { OrderAlreadyInvoicedException } from '../../domain/exceptions/order-already-invoiced.exception';
+import { InvoiceIssueContendedException } from '../../domain/exceptions/invoice-issue-contended.exception';
 import type {
   InvoiceLine,
   IssueCorrectionCommand,
@@ -177,6 +180,16 @@ describe('InvoiceService', () => {
   let numberingRepo: jest.Mocked<InvoiceNumberingSeriesRepositoryPort>;
   let adapter: jest.Mocked<InvoicingPort>;
   let service: InvoiceService;
+  /**
+   * In-memory stand-in for the Redis `SET NX PX` semantics of
+   * `RedisSyncLockService` (#2047): the FIRST `acquire` for a key wins and every
+   * concurrent one gets `null` until it is released. Modelled as a real lock
+   * rather than `jest.fn().mockResolvedValue('token')` on purpose — the
+   * cross-connection concurrency test is only meaningful if contention actually
+   * happens.
+   */
+  let heldLocks: Set<string>;
+  let syncLock: jest.Mocked<SyncLockPort>;
 
   beforeEach(() => {
     repo = {
@@ -185,6 +198,7 @@ describe('InvoiceService', () => {
       findByOrderId: jest.fn(),
       findBySeriesId: jest.fn(),
       findLatestByOrderId: jest.fn(),
+      findAllByOrderId: jest.fn(),
       findLatestByOrderIds: jest.fn(),
       findByProviderInvoiceId: jest.fn(),
       findByIdempotencyKey: jest.fn(),
@@ -196,6 +210,10 @@ describe('InvoiceService', () => {
       findPendingSubmission: jest.fn(),
       findStuckPending: jest.fn(),
     };
+    // Default: the order carries no record on any OTHER connection, so the
+    // one-invoice-per-order guard (#2047) is a no-op. Tests that exercise a
+    // cross-connection block override this per-case.
+    repo.findAllByOrderId.mockResolvedValue([]);
     // Default: every claim succeeds (returns a record with the live lease). Tests
     // that exercise a contended/lost claim override this per-case.
     repo.claimForIssue.mockImplementation((id: string) =>
@@ -227,7 +245,24 @@ describe('InvoiceService', () => {
       allocateNumber: jest.fn(),
     };
 
-    service = new InvoiceService(repo, integrations, numberingRepo);
+    heldLocks = new Set<string>();
+    syncLock = {
+      acquire: jest.fn((key: string) => {
+        if (heldLocks.has(key)) {
+          return Promise.resolve(null);
+        }
+        heldLocks.add(key);
+        return Promise.resolve(`token:${key}`);
+      }),
+      release: jest.fn((key: string, token: string) => {
+        if (token !== `token:${key}`) {
+          return Promise.resolve(false);
+        }
+        return Promise.resolve(heldLocks.delete(key));
+      }),
+    } as unknown as jest.Mocked<SyncLockPort>;
+
+    service = new InvoiceService(repo, integrations, numberingRepo, syncLock);
   });
 
   describe('issueInvoice', () => {
@@ -297,6 +332,48 @@ describe('InvoiceService', () => {
           issuedLineSnapshot: { buyer: cmd.buyer, currency: cmd.currency, lines: cmd.lines },
         }),
       );
+    });
+
+    it('(a3b) #2076: documentContent.lines is index-aligned with issuedLineSnapshot.lines', async () => {
+      // The invariant the correction line picker rests on. The operator picks a
+      // row from `documentContent.lines` (served by GET /invoices/:id/content)
+      // and the 1-based position becomes `originalLineNumber`, which adapters
+      // index into `issuedLineSnapshot.lines`. If these two ever diverge in
+      // order or length, a correction silently targets the wrong line of a
+      // legally significant document. Today they are aligned only because both
+      // are built from `cmd.lines` in this one method — nothing else enforces
+      // it, which is why this test exists.
+      repo.findByIdempotencyKey.mockResolvedValue(null);
+      repo.create.mockResolvedValue(makeRecord({ id: 'rec-1', status: 'pending' }));
+      adapter.issueInvoice.mockResolvedValue(makeIssuedFromAdapter());
+      repo.updateOutcome.mockResolvedValue(makeRecord({ id: 'rec-1', status: 'issued' }));
+
+      // Two lines of the SAME product at different prices — the case that is
+      // unresolvable if the two arrays disagree.
+      const cmd = makeCmd({
+        lines: [
+          { name: 'Widget', quantity: 1, unitPriceGross: 100, taxRate: '23' },
+          { name: 'Widget', quantity: 1, unitPriceGross: 80, taxRate: '23' },
+          { name: 'Other', quantity: 2, unitPriceGross: 50, taxRate: '23' },
+        ],
+      });
+      await service.issueInvoice(cmd);
+
+      const patch = repo.updateOutcome.mock.calls[0]?.[1] as {
+        issuedLineSnapshot?: { lines: { name: string; quantity: number }[] };
+        documentContent?: { lines: { name: string; quantity: number; gross: number }[] } | null;
+      };
+
+      const snapshotLines = patch.issuedLineSnapshot?.lines ?? [];
+      const contentLines = patch.documentContent?.lines ?? [];
+
+      expect(contentLines).toHaveLength(snapshotLines.length);
+      snapshotLines.forEach((snapshotLine, i) => {
+        expect(contentLines[i]?.name).toBe(snapshotLine.name);
+        expect(contentLines[i]?.quantity).toBe(snapshotLine.quantity);
+      });
+      // Position 2 must be the 80.00 line in BOTH arrays, not the 100.00 one.
+      expect(contentLines[1]?.gross).toBe(80);
     });
 
     it('(a2) backfills authoritative providerType + adapter-derived documentType onto the projection (keyless / no documentType)', async () => {
@@ -470,6 +547,50 @@ describe('InvoiceService', () => {
       );
     });
 
+    it("(d4) failureCode: a 'rejected' throwable naming the settlement currency maps to 'invalid-currency'", async () => {
+      repo.findByIdempotencyKey.mockResolvedValue(null);
+      repo.create.mockResolvedValue(makeRecord({ id: 'rec-1', status: 'pending' }));
+      // The message an adapter raises when it refuses a malformed currency BEFORE
+      // contacting the provider (#2103, inFakt's `toInfaktCurrency`). The generic
+      // 'provider-rejected' copy would claim the provider rejected a request it
+      // never saw, so the operator must get currency-specific copy instead.
+      const rejection = Object.assign(
+        new Error('Infakt requires an ISO 4217 currency on invoice for order ol_order_1, got ""'),
+        { failureMode: 'rejected' as const },
+      );
+      adapter.issueInvoice.mockRejectedValue(rejection);
+      repo.updateOutcome.mockResolvedValue(makeRecord({ id: 'rec-1', status: 'failed' }));
+
+      await expect(service.issueInvoice(makeCmd())).rejects.toBe(rejection);
+      expect(repo.updateOutcome).toHaveBeenCalledWith(
+        'rec-1',
+        expect.objectContaining({
+          status: 'failed',
+          failureMode: 'rejected',
+          failureCode: 'invalid-currency',
+          failureReason:
+            'The settlement currency is missing, malformed, or not accepted for this document. Fix the currency on the order and re-issue.',
+        }),
+      );
+    });
+
+    it("(d5) failureCode: a tax-id rejection that also mentions a currency stays 'buyer-tax-id-invalid'", async () => {
+      repo.findByIdempotencyKey.mockResolvedValue(null);
+      repo.create.mockResolvedValue(makeRecord({ id: 'rec-1', status: 'pending' }));
+      const rejection = Object.assign(new Error('rejected'), {
+        failureMode: 'rejected' as const,
+        reason: 'Buyer tax id is malformed for an invalid currency document',
+      });
+      adapter.issueInvoice.mockRejectedValue(rejection);
+      repo.updateOutcome.mockResolvedValue(makeRecord({ id: 'rec-1', status: 'failed' }));
+
+      await expect(service.issueInvoice(makeCmd())).rejects.toBe(rejection);
+      expect(repo.updateOutcome).toHaveBeenCalledWith(
+        'rec-1',
+        expect.objectContaining({ failureCode: 'buyer-tax-id-invalid' }),
+      );
+    });
+
     it('(e) unreachable transport: adapter throws -> failed + rethrow (per-design propagation)', async () => {
       repo.findByIdempotencyKey.mockResolvedValue(null);
       repo.create.mockResolvedValue(makeRecord({ id: 'rec-1', status: 'pending' }));
@@ -635,10 +756,152 @@ describe('InvoiceService', () => {
       repo.updateOutcome.mockResolvedValue(makeRecord({ id: 'race', status: 'issued' }));
       repo.findById.mockResolvedValue(makeRecord({ id: 'race', status: 'issuing' }));
 
-      await Promise.all([service.issueInvoice(makeCmd()), service.issueInvoice(makeCmd())]);
+      const settled = await Promise.allSettled([
+        service.issueInvoice(makeCmd()),
+        service.issueInvoice(makeCmd()),
+      ]);
 
       // The provider boundary is crossed exactly once despite two concurrent retries.
       expect(adapter.issueInvoice).toHaveBeenCalledTimes(1);
+
+      // Since #2047 same-key concurrency has TWO defences, and the OUTER one wins
+      // the race first: the per-order lock refuses the loser before it ever reaches
+      // the CAS, and because the in-flight row is `pending` (not `issued`) there is
+      // no finished document to replay, so the refusal is the retryable contended
+      // exception — the shipping context's "did the peer FINISH, not does a row
+      // exist" rule. The CAS is unchanged and remains the defence in the window the
+      // lock cannot cover (a lock that expired mid-provider-call); (m) exercises it
+      // directly, without contention.
+      const rejected = settled.filter((r) => r.status === 'rejected');
+      expect(rejected).toHaveLength(1);
+      expect((rejected[0] as PromiseRejectedResult).reason).toBeInstanceOf(
+        InvoiceIssueContendedException,
+      );
+    });
+
+    it('(n) #2047 the defect itself: two concurrent attempts on DIFFERENT connections for ONE order yield EXACTLY ONE document', async () => {
+      // The regression this locks down. Before the per-order lock the guard was
+      // read-then-act: both attempts read no prior record, both passed, both
+      // created a row (different `(connectionId, idempotencyKey)` pairs, so the
+      // unique index cannot collide), and BOTH crossed the provider boundary —
+      // two real fiscal documents for one sale. Note this is the case (m2) does
+      // NOT cover: (m2) races the same key on the same connection, which the
+      // pre-existing CAS already handled.
+      //
+      // `findAllByOrderId` reads a real in-test store fed by `create`, so the
+      // guard sees what a peer actually persisted rather than a fixed mock.
+      const persisted: InvoiceRecord[] = [];
+      repo.findAllByOrderId.mockImplementation(() => Promise.resolve([...persisted]));
+      repo.findByIdempotencyKey.mockResolvedValue(null);
+      repo.create.mockImplementation((input) => {
+        const row = makeRecord({
+          id: `rec-${persisted.length + 1}`,
+          connectionId: input.connectionId,
+          status: 'pending',
+        });
+        persisted.push(row);
+        return Promise.resolve(row);
+      });
+      adapter.issueInvoice.mockResolvedValue(makeIssuedFromAdapter());
+      repo.updateOutcome.mockImplementation((id: string) =>
+        Promise.resolve(makeRecord({ id, status: 'issued' })),
+      );
+
+      const settled = await Promise.allSettled([
+        service.issueInvoice(makeCmd({ connectionId: 'conn-a', idempotencyKey: 'key-a' })),
+        service.issueInvoice(makeCmd({ connectionId: 'conn-b', idempotencyKey: 'key-b' })),
+      ]);
+
+      // The invariant, stated three ways: one intent row, one provider call, one
+      // document. This is what "one sale is one invoice" means at runtime.
+      expect(repo.create).toHaveBeenCalledTimes(1);
+      expect(adapter.issueInvoice).toHaveBeenCalledTimes(1);
+      expect(persisted).toHaveLength(1);
+
+      // Exactly one attempt is refused. WHICH refusal it gets depends on whether
+      // the winner had already persisted its row — `OrderAlreadyInvoicedException`
+      // if so, `InvoiceIssueContendedException` if not — and both are correct.
+      // Asserting a specific one here would pin microtask ordering rather than
+      // behaviour; (n2)/(n4) below pin each branch deterministically instead.
+      const rejected = settled.filter((r) => r.status === 'rejected');
+      expect(rejected).toHaveLength(1);
+      const reason = (rejected[0] as PromiseRejectedResult).reason;
+      expect(
+        reason instanceof InvoiceIssueContendedException ||
+          reason instanceof OrderAlreadyInvoicedException,
+      ).toBe(true);
+    });
+
+    it('(n2) contended + a blocking peer record already persisted: refuses with OrderAlreadyInvoicedException, never the provider', async () => {
+      // The lock is held (a peer is mid-issue) AND it already persisted its row.
+      // The honest answer names the real document, not the contention.
+      heldLocks.add('invoice:issue:order-1');
+      repo.findAllByOrderId.mockResolvedValue([
+        makeRecord({ id: 'peer', connectionId: 'conn-other', status: 'pending' }),
+      ]);
+
+      await expect(service.issueInvoice(makeCmd())).rejects.toBeInstanceOf(
+        OrderAlreadyInvoicedException,
+      );
+      expect(repo.create).not.toHaveBeenCalled();
+      expect(adapter.issueInvoice).not.toHaveBeenCalled();
+    });
+
+    it('(n3) contended + an already-`issued` same-key row on the REQUESTED connection: idempotent replay survives', async () => {
+      // A contended lock must not turn a plain replay into an error. Returned
+      // verbatim from persisted state — no provider call, no `resumeExisting`
+      // (which could re-cross the boundary while the peer holds the lock).
+      heldLocks.add('invoice:issue:order-1');
+      const issued = makeRecord({ id: 'rec-issued', status: 'issued' });
+      repo.findByIdempotencyKey.mockResolvedValue(issued);
+
+      const result = await service.issueInvoice(makeCmd());
+
+      expect(result).toBe(issued);
+      expect(repo.claimForIssue).not.toHaveBeenCalled();
+      expect(adapter.issueInvoice).not.toHaveBeenCalled();
+    });
+
+    it('(n4) contended + nothing persisted yet: raises the RETRYABLE contended exception without creating or issuing', async () => {
+      heldLocks.add('invoice:issue:order-1');
+      repo.findByIdempotencyKey.mockResolvedValue(null);
+
+      await expect(service.issueInvoice(makeCmd())).rejects.toBeInstanceOf(
+        InvoiceIssueContendedException,
+      );
+      expect(repo.create).not.toHaveBeenCalled();
+      expect(adapter.issueInvoice).not.toHaveBeenCalled();
+    });
+
+    it('(n5) the per-order lock is released on BOTH the success and the throw path', async () => {
+      repo.findByIdempotencyKey.mockResolvedValue(null);
+      repo.create.mockResolvedValue(makeRecord({ id: 'rec-1', status: 'pending' }));
+      adapter.issueInvoice.mockResolvedValue(makeIssuedFromAdapter());
+      repo.updateOutcome.mockResolvedValue(makeRecord({ id: 'rec-1', status: 'issued' }));
+
+      await service.issueInvoice(makeCmd());
+      expect(heldLocks.has('invoice:issue:order-1')).toBe(false);
+
+      // A leaked lock after a failed issue would block the order for the whole
+      // TTL — a retry would read as "contended" forever.
+      adapter.issueInvoice.mockRejectedValue(new Error('provider exploded'));
+      repo.updateOutcome.mockResolvedValue(makeRecord({ id: 'rec-1', status: 'failed' }));
+
+      await expect(service.issueInvoice(makeCmd())).rejects.toThrow();
+      expect(heldLocks.has('invoice:issue:order-1')).toBe(false);
+    });
+
+    it('(n6) a release failure never masks the issuance result', async () => {
+      // The document may already exist at the provider by then, so a Redis
+      // hiccup on release must not turn a successful issue into an error.
+      syncLock.release.mockRejectedValue(new Error('redis unavailable'));
+      repo.findByIdempotencyKey.mockResolvedValue(null);
+      repo.create.mockResolvedValue(makeRecord({ id: 'rec-1', status: 'pending' }));
+      adapter.issueInvoice.mockResolvedValue(makeIssuedFromAdapter());
+      const issued = makeRecord({ id: 'rec-1', status: 'issued' });
+      repo.updateOutcome.mockResolvedValue(issued);
+
+      await expect(service.issueInvoice(makeCmd())).resolves.toBe(issued);
     });
 
     it('(k) errorMessage sanitization: a >500-char adapter message is length-bounded before persistence', async () => {
@@ -695,6 +958,125 @@ describe('InvoiceService', () => {
       repo.findById.mockResolvedValue(null);
 
       expect(await service.getInvoiceById('missing')).toBeNull();
+    });
+  });
+
+  // #2047: one sale is one invoice. A record on ANOTHER connection blocks
+  // issuance unless it is a terminal `rejected` failure (nothing was created).
+  describe('one-invoice-per-order guard (#2047)', () => {
+    const OTHER_CONNECTION = 'conn-other';
+
+    function rival(overrides: Partial<InvoiceRecord> = {}): InvoiceRecord {
+      return makeRecord({
+        id: 'rival-rec',
+        connectionId: OTHER_CONNECTION,
+        idempotencyKey: null,
+        ...overrides,
+      });
+    }
+
+    it.each([
+      ['pending', { status: 'pending' as const }],
+      ['issuing', { status: 'issuing' as const }],
+      ['issued', { status: 'issued' as const }],
+      ['failed in-doubt', { status: 'failed' as const, failureMode: 'in-doubt' as const }],
+      ['failed with no failureMode', { status: 'failed' as const, failureMode: null }],
+    ])(
+      'should refuse and create no record when the order has a %s record on another connection',
+      async (_label, overrides) => {
+        repo.findAllByOrderId.mockResolvedValue([rival(overrides)]);
+
+        await expect(service.issueInvoice(makeCmd())).rejects.toThrow(
+          OrderAlreadyInvoicedException,
+        );
+        expect(repo.create).not.toHaveBeenCalled();
+        expect(repo.findByIdempotencyKey).not.toHaveBeenCalled();
+        expect(adapter.issueInvoice).not.toHaveBeenCalled();
+      },
+    );
+
+    it('should name the blocking connection and invoice on the thrown exception', async () => {
+      repo.findAllByOrderId.mockResolvedValue([rival({ status: 'issued', id: 'blocking-1' })]);
+
+      const error = await service.issueInvoice(makeCmd()).catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(OrderAlreadyInvoicedException);
+      const typed = error as OrderAlreadyInvoicedException;
+      expect(typed.issuingConnectionId).toBe(OTHER_CONNECTION);
+      expect(typed.requestedConnectionId).toBe(CONNECTION);
+      expect(typed.blockingInvoiceId).toBe('blocking-1');
+      expect(typed.blockingStatus).toBe('issued');
+    });
+
+    it('should still issue when the only record elsewhere is a terminal rejected failure', async () => {
+      repo.findAllByOrderId.mockResolvedValue([
+        rival({ status: 'failed', failureMode: 'rejected' }),
+      ]);
+      repo.findByIdempotencyKey.mockResolvedValue(null);
+      repo.create.mockResolvedValue(makeRecord());
+      repo.updateOutcome.mockResolvedValue(makeRecord({ status: 'issued' }));
+      adapter.issueInvoice.mockResolvedValue(makeIssuedFromAdapter());
+
+      await expect(service.issueInvoice(makeCmd())).resolves.toBeDefined();
+      expect(adapter.issueInvoice).toHaveBeenCalledTimes(1);
+    });
+
+    it('should ignore records on the REQUESTED connection so an issued replay stays idempotent', async () => {
+      // Same-connection records are owned by the per-connection lifecycle
+      // (read-gate + resumeExisting), not by this guard.
+      const existing = makeRecord({ status: 'issued' });
+      repo.findAllByOrderId.mockResolvedValue([existing]);
+      repo.findByIdempotencyKey.mockResolvedValue(existing);
+
+      await expect(service.issueInvoice(makeCmd())).resolves.toBe(existing);
+      expect(adapter.issueInvoice).not.toHaveBeenCalled();
+    });
+
+    it('should block on a blocking record even when a newer non-blocking one exists elsewhere', async () => {
+      // findAllByOrderId is newest-first; the guard must scan the whole set, not
+      // only the latest row.
+      repo.findAllByOrderId.mockResolvedValue([
+        rival({ id: 'newer', status: 'failed', failureMode: 'rejected' }),
+        rival({ id: 'older', connectionId: 'conn-third', status: 'issued' }),
+      ]);
+
+      await expect(service.issueInvoice(makeCmd())).rejects.toThrow(
+        OrderAlreadyInvoicedException,
+      );
+      expect(repo.create).not.toHaveBeenCalled();
+    });
+  });
+
+  // #2047: the panel renders only the LATEST record, so it needs a way to say
+  // "there is another document elsewhere" for rows that predate the guard.
+  describe('listInvoiceConnectionIdsForOrder (#2047)', () => {
+    it('should return the distinct connections holding a record, newest first', async () => {
+      repo.findAllByOrderId.mockResolvedValue([
+        makeRecord({ id: 'r1', connectionId: 'conn-b' }),
+        makeRecord({ id: 'r2', connectionId: 'conn-a' }),
+      ]);
+
+      expect(await service.listInvoiceConnectionIdsForOrder('order-1')).toEqual([
+        'conn-b',
+        'conn-a',
+      ]);
+    });
+
+    it('should collapse several records on one connection into a single entry', async () => {
+      // An original + its correction both live on the issuing connection; that is
+      // one provider, not two, and must not read as a cross-connection duplicate.
+      repo.findAllByOrderId.mockResolvedValue([
+        makeRecord({ id: 'kor', connectionId: 'conn-a' }),
+        makeRecord({ id: 'orig', connectionId: 'conn-a' }),
+      ]);
+
+      expect(await service.listInvoiceConnectionIdsForOrder('order-1')).toEqual(['conn-a']);
+    });
+
+    it('should return an empty list for an order with no records', async () => {
+      repo.findAllByOrderId.mockResolvedValue([]);
+
+      expect(await service.listInvoiceConnectionIdsForOrder('order-1')).toEqual([]);
     });
   });
 

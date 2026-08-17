@@ -20,6 +20,13 @@ export const mappingsQueryKeys = {
   /** Root-to-leaf breadcrumb for a single source (Allegro) category id (#1741). */
   allegroCategoryPath: (connectionId: string, categoryId: string) =>
     ['mappings', connectionId, 'allegro-category-path', categoryId] as const,
+  /**
+   * Whole-tree category search (#2075). Deliberately NOT `allegro*`-prefixed
+   * like its neighbours: the route resolves scope from the connection, so one
+   * key shape serves marketplace and shop alike (ADR-037).
+   */
+  categorySearch: (connectionId: string, query: string, limit?: number) =>
+    ['mappings', connectionId, 'category-search', query, limit ?? 'default'] as const,
   /** Fulfillment-routing rules + candidate processors for a source connection (#836). */
   routingRules: (connectionId: string) => ['mappings', connectionId, 'routing-rules'] as const,
   routingCandidates: (connectionId: string) =>
