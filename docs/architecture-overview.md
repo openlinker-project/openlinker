@@ -1355,11 +1355,14 @@ graph LR
   mailer --> integrations
   analytics-trust --> integrations
   analytics-trust --> sync
+  fiscalization --> invoicing
+  fiscalization --> sync
+  invoicing --> fiscalization
 ```
 
 `identifier-mapping`, `integrations`, and `events` form the most-depended-upon "infrastructure spine" (each used by 5+ siblings). `users`, `webhooks`, and `mappings` have minimal outbound coupling.
 
-The `orders ↔ customers`, `listings ↔ inventory` (the latter added for #824), and `orders ↔ invoicing` (#1120) pairs show up as cycles at the barrel level. They're safe at runtime because the cross-context surface is interfaces, Symbol tokens, and type imports — there's no value-level cycle between concrete classes. The NestJS module-graph back-edges (`inventory → listings` type/token-only; `invoicing → orders` via the `@openlinker/core/orders/types` sub-barrel that omits `OrdersModule`) avoid DI cycles. The same shape would be true of any future cyclic pair: cycle safety is a property of the contract surface, not the file-level dependency graph.
+The `orders ↔ customers`, `listings ↔ inventory` (the latter added for #824), `orders ↔ invoicing` (#1120), and `invoicing ↔ fiscalization` (#2157, the cross-document-kind one-document-per-order guard) pairs show up as cycles at the barrel level. They're safe at runtime because the cross-context surface is interfaces, Symbol tokens, and type imports — there's no value-level cycle between concrete classes. The NestJS module-graph back-edges (`inventory → listings` type/token-only; `invoicing → orders` via the `@openlinker/core/orders/types` sub-barrel that omits `OrdersModule`) avoid DI cycles. `invoicing ↔ fiscalization` is asymmetric in HOW it avoids the cycle rather than symmetric like the others: `FiscalizationModule` imports `InvoicingModule` in its `imports: [...]` (a real, one-way NestJS module edge — `FiscalRegistrationService` takes `IInvoiceService` via ordinary constructor DI) and consumes `invoiceIssueLockKey` / `INVOICE_ISSUE_LOCK_TTL_MS` so both write paths serialize under the identical per-order lock; `InvoiceService` resolves `IFiscalRegistrationService` lazily via `ModuleRef.get(..., { strict: false })` instead of a constructor dependency, so `InvoicingModule` never imports `FiscalizationModule` back — the TS barrel-level import exists in both directions, but only one direction is a static Nest module edge. The same shape would be true of any future cyclic pair: cycle safety is a property of the contract surface, not the file-level dependency graph.
 
 ### Enforcement
 
