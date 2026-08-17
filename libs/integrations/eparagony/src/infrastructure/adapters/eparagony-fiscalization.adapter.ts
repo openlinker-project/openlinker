@@ -353,7 +353,7 @@ export class EparagonyFiscalizationAdapter
         options.treatUnknownDocumentAsMissing &&
         error instanceof EparagonyApiError &&
         error.errorCode !== null &&
-        (EPARAGONY_ERROR_UNKNOWN_DOCUMENT as readonly number[]).includes(error.errorCode)
+        EPARAGONY_ERROR_UNKNOWN_DOCUMENT.includes(error.errorCode)
       ) {
         return null;
       }

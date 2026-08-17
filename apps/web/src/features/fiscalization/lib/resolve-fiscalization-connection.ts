@@ -21,6 +21,11 @@ export interface FiscalizationConnectionLike {
   enabledCapabilities: readonly string[];
 }
 
+/**
+ * Connections that could register a receipt right now: active + `Fiscalization`
+ * enabled, sorted by id so the order is deterministic across renders (mirrors
+ * `selectInvoicingCandidates` — not a ranking, just a stable tie-break).
+ */
 export function selectFiscalizationCandidates<T extends FiscalizationConnectionLike>(
   connections: readonly T[],
 ): T[] {

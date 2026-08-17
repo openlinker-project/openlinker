@@ -89,6 +89,27 @@ describe('EparagonySetupForm', () => {
     });
   });
 
+  it('rejects an integration ID with no colon separator', async () => {
+    renderWithProviders(<EparagonySetupForm />);
+
+    fireEvent.change(screen.getByLabelText('Connection name'), {
+      target: { value: 'My eparagony.pl account' },
+    });
+    fireEvent.change(screen.getByLabelText('Client ID'), { target: { value: 'client-abc' } });
+    fireEvent.change(screen.getByLabelText('Client secret'), { target: { value: 'secret-xyz' } });
+    fireEvent.change(screen.getByLabelText('POS ID'), { target: { value: 'openlinker' } });
+    fireEvent.change(screen.getByLabelText('Integration ID (optional)'), {
+      target: { value: 'no-colon-here' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Connect eparagony.pl' }));
+
+    await waitFor(() => {
+      expect(
+        screen.getAllByText('Must be of the form integration:secret, e.g. openlinker:abc123')[0],
+      ).toBeInTheDocument();
+    });
+  });
+
   it('maps a per-field shape-validation error onto the matching field', async () => {
     const create = vi
       .fn()

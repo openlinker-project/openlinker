@@ -188,7 +188,7 @@ export const EPARAGONY_ERROR_DOCUMENT_ALREADY_EXISTS = 118;
  * Both are accepted because live probing returned `92` where only `100` was
  * documented - a reminder that this list is a convenience, not a contract.
  */
-export const EPARAGONY_ERROR_UNKNOWN_DOCUMENT = [92, 100] as const;
+export const EPARAGONY_ERROR_UNKNOWN_DOCUMENT: readonly number[] = [92, 100];
 
 /** `GET /printers/{fiscalDeviceUniqueNumber}/status` body, read tolerantly. */
 export interface EparagonyPrinterStatusResponse {

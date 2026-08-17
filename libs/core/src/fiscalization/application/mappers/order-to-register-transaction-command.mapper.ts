@@ -39,6 +39,10 @@ const SHIPPING_LINE_NAME = 'Shipping';
  * snapshot field cannot hide inside it. NOT tax arithmetic - it compares two sets
  * of gross figures the source itself reported (ADR-042 decision 8's negative half
  * is about never computing a RATE, which this does not).
+ *
+ * A fixed value, not derived from the currency's own minor-unit count - fine
+ * for PL v1 (PLN/EUR, both 2 decimals), but a future adapter registering a
+ * 0- or 3-decimal currency should revisit this rather than reuse it verbatim.
  */
 const TOTAL_RECONCILIATION_EPSILON = 0.01;
 
