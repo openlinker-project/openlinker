@@ -78,6 +78,8 @@ export function buildSalesAndChannelAnalytics(
         orderCount,
         averageOrderValue: orderCount > 0 ? revenue / orderCount : 0,
         unitsSold: unitsByConnection.get(sourceConnectionId) ?? 0,
+        cancelledCount: sum(rows, (r) => r.cancelledCount),
+        cancelledValue: sum(rows, (r) => r.cancelledValue),
         revenueShare: headlineRevenue > 0 ? revenue / headlineRevenue : 0,
         trend: buildTrend(dayKeys, rows),
         // A connection present in `dailyRows` has ingested at least one order

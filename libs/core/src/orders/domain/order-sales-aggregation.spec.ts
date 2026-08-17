@@ -154,6 +154,38 @@ describe('orderSalesAggregation', () => {
       expect(result.headline.cancelledCount).toBe(3);
       expect(result.headline.cancelledValue).toBe(300);
     });
+
+    it('reports cancelled count/value per channel too, not just headline', () => {
+      const result = buildSalesAndChannelAnalytics({
+        filters: filters(),
+        dailyRows: [
+          row({
+            sourceConnectionId: 'conn-a',
+            revenue: 100,
+            orderCount: 1,
+            cancelledCount: 2,
+            cancelledValue: 80,
+          }),
+          row({
+            sourceConnectionId: 'conn-b',
+            revenue: 50,
+            orderCount: 1,
+            cancelledCount: 1,
+            cancelledValue: 10,
+          }),
+        ],
+        medianOrderValue: 75,
+        unitsByConnection: new Map(),
+        earliestOrderDateByConnection: new Map(),
+      });
+
+      const byId = new Map(result.channels.map((c) => [c.sourceConnectionId, c]));
+      expect(byId.get('conn-a')).toMatchObject({ cancelledCount: 2, cancelledValue: 80 });
+      expect(byId.get('conn-b')).toMatchObject({ cancelledCount: 1, cancelledValue: 10 });
+      // Per-channel cancelled totals sum back to the headline figure.
+      expect(result.headline.cancelledCount).toBe(3);
+      expect(result.headline.cancelledValue).toBe(90);
+    });
   });
 
   describe('trend zero-fill', () => {

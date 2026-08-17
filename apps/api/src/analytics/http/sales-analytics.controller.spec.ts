@@ -24,6 +24,8 @@ describe('SalesAnalyticsController', () => {
         orderCount: 90,
         averageOrderValue: 133.1,
         unitsSold: 200,
+        cancelledCount: 3,
+        cancelledValue: 450,
         revenueShare: 0.65,
         trend: [{ date: '2026-08-01', revenue: 60, orderCount: 1 }],
         coverageComplete: true,
@@ -56,6 +58,8 @@ describe('SalesAnalyticsController', () => {
     expect(result.channels).toHaveLength(1);
     expect(result.channels[0].sourceConnectionId).toBe('conn-a');
     expect(result.channels[0].coverageComplete).toBe(true);
+    expect(result.channels[0].cancelledCount).toBe(3);
+    expect(result.channels[0].cancelledValue).toBe(450);
   });
 
   it('throws BadRequestException when to <= from', async () => {

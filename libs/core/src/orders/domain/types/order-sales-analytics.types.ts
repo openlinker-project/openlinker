@@ -72,6 +72,8 @@ export interface ChannelSalesAnalytics {
   orderCount: number;
   averageOrderValue: number;
   unitsSold: number;
+  cancelledCount: number;
+  cancelledValue: number;
   /** Share of headline revenue, `0` when headline revenue is `0`. */
   revenueShare: number;
   trend: DailyTrendPoint[];

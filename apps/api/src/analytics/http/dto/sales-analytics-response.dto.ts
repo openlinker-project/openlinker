@@ -93,6 +93,12 @@ export class ChannelSalesAnalyticsDto {
   @ApiProperty()
   unitsSold!: number;
 
+  @ApiProperty()
+  cancelledCount!: number;
+
+  @ApiProperty()
+  cancelledValue!: number;
+
   @ApiProperty({ description: 'Share of headline revenue, 0 when headline revenue is 0.' })
   revenueShare!: number;
 
@@ -112,6 +118,8 @@ export class ChannelSalesAnalyticsDto {
     dto.orderCount = channel.orderCount;
     dto.averageOrderValue = channel.averageOrderValue;
     dto.unitsSold = channel.unitsSold;
+    dto.cancelledCount = channel.cancelledCount;
+    dto.cancelledValue = channel.cancelledValue;
     dto.revenueShare = channel.revenueShare;
     dto.trend = channel.trend.map((point) => DailyTrendPointDto.fromDomain(point));
     dto.coverageComplete = channel.coverageComplete;
