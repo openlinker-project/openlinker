@@ -1686,7 +1686,11 @@ textarea,
   outline-offset: 2px;
 }
 
-.chip--active {
+/* Doubled class (#2100): the five `.chip--{tone}` rules below are also
+ * specificity (0,1,0) and declared LATER, so a toned chip rendered its tone in
+ * both states and the only difference between on and off was font-weight — far
+ * too thin for a control that silently changes the result set. */
+.chip.chip--active {
   background: var(--accent-primary-soft);
   border-color: color-mix(in oklab, var(--accent-primary) 35%, transparent);
   color: var(--accent-primary-soft-strong);
@@ -1716,6 +1720,7 @@ textarea,
   border-color: var(--status-info-border);
   color: var(--status-info-strong);
 }
+
 
 /* ── Theme toggle ───────────────────────────────────────────────────
  * Three-option radiogroup rendered as a segmented button group. Sits

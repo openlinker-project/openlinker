@@ -254,9 +254,36 @@ export interface OrderRecord {
   sourceEventId: string | null;
   orderSnapshot: Record<string, unknown>;
   syncStatus: OrderSyncStatus[];
-  recordStatus: 'ready' | 'awaiting_mapping';
+  recordStatus: 'ready' | 'awaiting_mapping' | 'source_deleted';
   createdAt: string;
   updatedAt: string;
+  /**
+   * Why OpenLinker issued no fiscal document for this order (#2100, ADR-041
+   * decision 11). `null` = nothing blocking. Optional so the suite stays green
+   * against an API that predates the field.
+   */
+  salesDocumentBlockReason?: string | null;
+  /** The routing reason paired with a `'unresolved-routing'` block (ADR-041 §107). */
+  salesDocumentUnresolvedReason?: string | null;
+  /** PII-free elaboration of the block reason (ids and counts only). */
+  salesDocumentBlockDetail?: string | null;
+}
+
+/**
+ * `GET /orders/status-summary` (#929, extended #2100).
+ *
+ * The five health buckets partition the set, so `total` equals their sum.
+ * `salesDocumentBlocked` rides along and is deliberately NOT a member — a blocked
+ * order is also in exactly one health bucket — so it must never be added in.
+ */
+export interface OrderHealthSummary {
+  total: number;
+  sourceDeleted: number;
+  awaitingMapping: number;
+  needsAttention: number;
+  synced: number;
+  awaitingDispatch: number;
+  salesDocumentBlocked?: number;
 }
 
 /** POST /invoices — server assembles lines/buyer from the order. */
@@ -658,6 +685,13 @@ export interface ListOrdersQuery {
   syncStatus?: string;
   limit?: number;
   offset?: number;
+  /**
+   * Sales-document block filter (#2100). An independent axis that composes with
+   * `health` rather than competing with it. Typed `boolean | string` so a spec can
+   * deliberately send a stray value and assert the 400 — a silent unfiltered list
+   * would be the worse failure for a filter.
+   */
+  salesDocumentBlocked?: boolean | string;
 }
 
 export interface ListInvoicesQuery {

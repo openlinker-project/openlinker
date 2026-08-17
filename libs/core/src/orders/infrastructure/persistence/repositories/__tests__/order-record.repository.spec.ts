@@ -459,6 +459,31 @@ describe('OrderRecordRepository', () => {
 
       expect(andWhere).toHaveBeenCalledWith('rec.cancelledAt IS NULL');
     });
+
+    it('should never emit an empty IN () for the salesDocumentBlocked predicate (#2100)', async () => {
+      // IS_SALES_DOCUMENT_BLOCKED is built from SalesDocumentAttentionReasonValues at
+      // class-definition time — an empty array would compile to `IN ()`, a Postgres
+      // syntax error surfaced as a runtime 500 on the orders list rather than a type
+      // error. Piotr's review round (#2129) flagged this as cheap insurance worth
+      // pinning even though the exact-membership spec on the values array itself
+      // would also fail first.
+      const andWhere = jest.fn().mockReturnThis();
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        orderBy: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        skip: jest.fn().mockReturnThis(),
+        andWhere,
+        getManyAndCount: jest.fn().mockResolvedValue([[], 0]),
+      });
+
+      await repository.findMany({ salesDocumentBlocked: true }, { limit: 20, offset: 0 });
+
+      const predicate = andWhere.mock.calls
+        .map((c: unknown[]) => c[0] as string)
+        .find((c) => c.includes('salesDocumentBlockReason'));
+      expect(predicate).toBeDefined();
+      expect(predicate).not.toContain('IN ()');
+    });
   });
 
   describe('updateSyncStatus', () => {

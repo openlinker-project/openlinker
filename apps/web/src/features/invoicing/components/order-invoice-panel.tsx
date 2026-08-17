@@ -69,6 +69,7 @@ import { useOrderInvoiceQuery } from '../hooks/use-order-invoice-query';
 import { useIssueInvoiceMutation } from '../hooks/use-issue-invoice-mutation';
 import { resolveIssueErrorMessage, isMissingNumberingSeriesError } from '../lib/issue-error-message';
 import { deriveInvoiceDisplayStatus, canRetryInvoice, resolveFailureCopy } from '../lib/derive-invoice-display';
+import { resolveSalesDocumentBlockCopy } from '../lib/sales-document-block-copy';
 import {
   isPrimaryInvoicingConnection,
   resolveIssuableConnection,
@@ -262,6 +263,21 @@ export function OrderInvoicePanel({ order }: OrderInvoicePanelProps): ReactEleme
   // the toggle lives on the EDIT form, so link straight there. Deterministic:
   // candidates are id-sorted.
   const setPrimaryTarget = invoicingConnections[0] ?? null;
+  // #2100 — resolved once per render; `null` when nothing is blocking, or when a
+  // document plausibly exists at the provider. `canRetryInvoice` IS that second
+  // test (`failed` + `rejected` ⇔ the domain's `!blocksIssuanceElsewhere`), so a
+  // rejected attempt still shows why auto-issue never ran, while an `in-doubt`
+  // failure — which may have produced a document — suppresses. Same rule as
+  // `invoiceSupersedesBlock` on the row and as the backend gate; they have to
+  // agree, or the aggregate counts blocks no surface can explain.
+  const blockCopy =
+    invoice && !canRetryInvoice(invoice)
+      ? null
+      : resolveSalesDocumentBlockCopy(order, requiresConnectionPick, t);
+  // "Set a primary" follows the BACKEND's reason when it has one, so the button
+  // appears for the state the gate actually recorded rather than for the state the
+  // browser guessed.
+  const offerSetPrimary = blockCopy?.offerSetPrimary ?? false;
 
   const connectionPicker = showConnectionPicker ? (
     <div className="order-invoice-panel__connection">
@@ -362,19 +378,24 @@ export function OrderInvoicePanel({ order }: OrderInvoicePanelProps): ReactEleme
 
       {connectionPicker}
 
-      {requiresConnectionPick ? (
+      {/* #2100 — the explanation now comes from the BACKEND's own recorded
+          decision (`order.salesDocumentBlockReason`), not from re-deriving the
+          ambiguity in the browser. Re-derivation could only ever describe ONE of
+          the four non-issuing exits and could disagree with what actually
+          happened; the persisted reason covers `manual` and `batched` too and
+          cannot contradict the gate. `blockCopy` falls back to the derived
+          ambiguity message only for a row the gate has not re-evaluated since
+          this shipped — the persisted value always wins when present. */}
+      {blockCopy ? (
         <div className="order-invoice-panel__body">
-          <Alert tone="warning">
-            <strong>
-              {t(
-                'invoice.panel.noPrimaryTitle',
-                'Automatic invoicing is off for this order.',
-              )}
-            </strong>{' '}
-            {t(
-              'invoice.panel.noPrimaryBody',
-              'Several connections can issue invoices and none is marked primary, so OpenLinker issued nothing rather than issuing twice. Pick a connection above to issue this one by hand, or set a primary so it happens on its own.',
-            )}
+          <Alert tone={blockCopy.tone}>
+            <strong>{blockCopy.title}</strong> {blockCopy.body}
+            {blockCopy.detail ? (
+              <>
+                {' '}
+                <span className="text-muted">({blockCopy.detail})</span>
+              </>
+            ) : null}
           </Alert>
         </div>
       ) : null}
@@ -730,7 +751,7 @@ export function OrderInvoicePanel({ order }: OrderInvoicePanelProps): ReactEleme
             disabled={issueMutation.isPending || write.demoReadOnly}
             className="order-invoice-panel__doc-type"
           />
-          {requiresConnectionPick && setPrimaryTarget ? (
+          {offerSetPrimary && setPrimaryTarget ? (
             <Link
               className="button button--secondary"
               to={`/connections/${setPrimaryTarget.id}/edit`}

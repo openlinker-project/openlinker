@@ -134,6 +134,13 @@ const orderInvoiceSchema = z.object({
   regulatoryStatus: z.enum(RegulatoryStatusValues),
   clearanceReference: z.string().nullish(),
   confirmationDocumentAvailable: z.boolean().optional(),
+  /** Mirrors `InvoiceRecord.blocksIssuanceElsewhere` (#2100): does a fiscal
+   *  document plausibly exist at the provider? The sales-document block surfaces
+   *  suppress on this, not on "an invoice row exists" — the backend gate applies
+   *  the identical predicate before persisting a block, so the two agree on which
+   *  blocks are still worth explaining. Optional: a snapshot written before this
+   *  field existed is treated as suppressing, matching the pre-#2100 behaviour. */
+  blocksIssuanceElsewhere: z.boolean().optional(),
 });
 export type ParsedOrderInvoice = z.infer<typeof orderInvoiceSchema>;
 

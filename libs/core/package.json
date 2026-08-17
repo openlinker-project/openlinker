@@ -54,6 +54,11 @@
       "require": "./dist/mappings/index.js",
       "default": "./dist/mappings/index.js"
     },
+    "./sales-documents": {
+      "types": "./dist/sales-documents/index.d.ts",
+      "require": "./dist/sales-documents/index.js",
+      "default": "./dist/sales-documents/index.js"
+    },
     "./orders": {
       "types": "./dist/orders/index.d.ts",
       "require": "./dist/orders/index.js",

@@ -19,6 +19,7 @@ import type {
   PaginatedOrderRecords,
 } from '../../domain/types/order-record.types';
 import type { FulfillmentRollupState } from '../../domain/types/order-fulfillment.types';
+import type { SalesDocumentBlock } from '@openlinker/core/sales-documents';
 
 export interface IOrderRecordService {
   /**
@@ -157,4 +158,26 @@ export interface IOrderRecordService {
    * instant. No-op (no throw) when no record exists yet for `internalOrderId`.
    */
   markCancelled(internalOrderId: string, cancelledAt: Date): Promise<void>;
+
+  /**
+   * Record — or clear — why OpenLinker issued no fiscal document for this order
+   * (#2100, ADR-041 decision 11: a block is never log-only).
+   *
+   * Called on EVERY order transition with whatever the auto-issue gate currently
+   * answers, `null` included; passing `null` is the clear, and it is the ordinary
+   * path rather than an edge case. Also called with `null` from the manual issue
+   * endpoints, because fixing the configuration and issuing by hand fires no
+   * order transition and would otherwise leave a stale reason on an invoiced
+   * order.
+   *
+   * This is the seam the invoicing context reaches the order through — it must
+   * never inject `OrderRecordRepositoryPort` (repository ports are intra-context,
+   * per `docs/architecture-overview.md § "Cross-context dependencies in core"`),
+   * and `AutoIssueTriggerService` must not inject this token either (its one-way
+   * edge, F3). Invoicing REPORTS the block; orders WRITES it.
+   */
+  markSalesDocumentBlock(
+    internalOrderId: string,
+    block: SalesDocumentBlock | null
+  ): Promise<void>;
 }
