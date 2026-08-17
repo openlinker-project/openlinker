@@ -287,6 +287,22 @@ describe('WooCommerceOrderSourceAdapter', () => {
       expect(result.placedAt).toBe(result.createdAt);
     });
 
+    it('should leave placedAt undefined (not the epoch sentinel) when both date fields are absent (#2114)', async () => {
+      const order = makeOrder({
+        date_created_gmt: '',
+        date_created: '',
+      });
+      const httpClient = makeHttpClient({ get: jest.fn().mockResolvedValue(order) });
+      const adapter = new WooCommerceOrderSourceAdapter(httpClient, makeConnection());
+
+      const result = await adapter.getOrder({ externalOrderId: '1' });
+
+      expect(result.placedAt).toBeUndefined();
+      // createdAt keeps normGmt's epoch sentinel — only placedAt (which feeds
+      // invoicing's saleDate) must fail to empty rather than to 1970-01-01.
+      expect(result.createdAt).toBe(new Date(0).toISOString());
+    });
+
     it('should map variation_id > 0 to variant product ref', async () => {
       const order = makeOrder({
         line_items: [
