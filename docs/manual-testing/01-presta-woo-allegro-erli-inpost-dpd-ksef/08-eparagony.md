@@ -55,6 +55,20 @@ a gap.
 
 ![eparagony.pl setup form — preconditions panel + empty fields](screenshots/eparagony/02-form-empty.png)
 
+> **Finding (real bug, fixed — found by screenshot review):** the preconditions list
+> originally rendered as a broken multi-column table. `.check-list li` is
+> `display: flex; justify-content: space-between`, built for exactly two children (a
+> description plus a trailing badge, matching how `.activity-list__item` is used
+> elsewhere) — the markup instead put four separate inline nodes directly as children
+> with no wrapper, so flexbox spread each one into its own column. Fixed by wrapping
+> each item's description in one `<span>` and using a `StatusBadge` as the trailing
+> element. The copy was also rewritten: it originally repeated "OpenLinker cannot check
+> this" / "would be misleading" per item, reading as a disclaimer about inadequate
+> testing rather than calm setup guidance. Replaced with short "Your equipment" / "Ask
+> your servicer" badges and one plain closing sentence about what Test connection
+> actually covers — same honesty, none of the alarm. The screenshot above is the
+> corrected version.
+
 - [x] Fill in real sandbox credentials (`clientId`, `clientSecret`, `posId`)
 
 ![eparagony.pl setup form filled with real sandbox credentials](screenshots/eparagony/03-form-filled.png)
@@ -124,3 +138,4 @@ identifiers (§3 ust. 4) both present and copyable.
 | 2 | `Idempotency-Key` header sent raw core key with colons, rejected by every call | Real bug, blocking | Fixed |
 | 3 | Sandbox device confirms later than the adapter's poll deadline | Documentation correction, not a bug | `in-doubt` handles it correctly by design; confirmed resolving to `registered` |
 | 4 | An order can carry both an invoice and a fiscal receipt today, with nothing enforcing "one sales document" across the two capabilities | Known, out-of-scope gap | ADR-041 / #2051 (sales-documents routing), deliberately sequenced after this epic |
+| 5 | Preconditions panel rendered as a broken multi-column table; copy read as an alarming testing disclaimer | Real bug + tone issue, found by screenshot review | Fixed |
