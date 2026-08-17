@@ -122,6 +122,9 @@ export {
 } from './domain/types/order-fulfillment.types';
 export { deriveSlaState } from './domain/order-sla';
 
+// Per-order reporting-currency snapshot (#2124, ADR-040).
+export type { OrderFxIntent, OrderFxStamp } from './domain/types/order-fx.types';
+
 // Refund record capture (#2036).
 export {
   RefundReason,

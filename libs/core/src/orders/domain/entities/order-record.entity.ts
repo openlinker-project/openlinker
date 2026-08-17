@@ -118,6 +118,43 @@ export class OrderRecord {
      * the operator. `null` when the reason needs no elaboration.
      */
     public readonly salesDocumentBlockDetail: string | null = null,
+    /**
+     * Reporting currency the order's total was stamped into (#2124, ADR-040).
+     * `null` ≡ NOT stamped — the canonical test, since `exchangeRateId` is
+     * legitimately `null` on the same-currency path. Written only by
+     * `stampFxIfAbsent`; the ingestion upsert omits the column.
+     */
+    public readonly reportingCurrency: string | null = null,
+    /**
+     * The order total expressed in `reportingCurrency`, rounded to 2dp.
+     * `null` whenever `reportingCurrency` is (the group CHECK guarantees the
+     * pair moves together).
+     */
+    public readonly reportingTotalAmount: number | null = null,
+    /**
+     * `exchange_rates.id` the conversion used; `null` when the order's own
+     * currency already equalled the reporting currency, so no rate was needed.
+     */
+    public readonly exchangeRateId: string | null = null,
+    /**
+     * Which published day's rate the stamp was taken against (an `FxRateRule`
+     * value). A bare `string` rather than the union: this is read back out of
+     * the database, and a value written by a newer deployment must surface
+     * as-is rather than be coerced or dropped. Set by the intent claim too, so
+     * a non-null `fxRule` does NOT imply the order is stamped.
+     */
+    public readonly fxRule: string | null = null,
+    /**
+     * Instant the stamp attempt reached a terminal answer. `null` while an
+     * attempt is still deferred to the retry job.
+     */
+    public readonly fxStampedAt: Date | null = null,
+    /**
+     * The reporting currency pinned at the FIRST stamp attempt, before any rate
+     * lookup — so a retry or the sweep stamps against the same currency the
+     * inline attempt resolved even if the system setting changed in between.
+     */
+    public readonly fxIntendedCurrency: string | null = null
   ) {}
 
   /**
