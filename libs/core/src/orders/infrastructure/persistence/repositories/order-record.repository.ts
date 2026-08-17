@@ -45,6 +45,10 @@ import {
 import type { PriceTaxTreatment } from '../../../domain/types/order.types';
 import type { OrderFxIntent, OrderFxStamp } from '../../../domain/types/order-fx.types';
 import type { StampedReportingCurrencyCount } from '../../../domain/types/order-fx-read.types';
+import type {
+  DailyOrderAggregateRow,
+  SalesAnalyticsFilters,
+} from '../../../domain/types/order-sales-analytics.types';
 
 @Injectable()
 export class OrderRecordRepository implements OrderRecordRepositoryPort {
@@ -353,6 +357,93 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       mixedCurrency: Number(raw?.currency_count ?? 0) > 1,
       oldestFailedAt: raw?.oldest_failed_at ?? null,
     };
+  }
+
+  /**
+   * Daily, per-connection revenue/order-count aggregates (#1987). One row per
+   * `(day, sourceConnectionId)` with at least one matching order; the
+   * cancelled/non-cancelled split uses `FILTER (WHERE ...)`, mirroring
+   * `getFailedSyncValueSummary`'s `stuckPredicate` idiom.
+   */
+  async getDailyOrderAggregates(
+    filters: SalesAnalyticsFilters
+  ): Promise<DailyOrderAggregateRow[]> {
+    const notCancelled = 'rec."cancelledAt" IS NULL';
+    const isCancelled = 'rec."cancelledAt" IS NOT NULL';
+
+    const qb = this.repository
+      .createQueryBuilder('rec')
+      .select(`date_trunc('day', rec."placedAt")`, 'day')
+      .addSelect('rec.sourceConnectionId', 'source_connection_id')
+      .addSelect(`COUNT(*) FILTER (WHERE ${notCancelled})`, 'order_count')
+      .addSelect(`COALESCE(SUM(rec."totalAmount") FILTER (WHERE ${notCancelled}), 0)`, 'revenue')
+      .addSelect(`COUNT(*) FILTER (WHERE ${isCancelled})`, 'cancelled_count')
+      .addSelect(
+        `COALESCE(SUM(rec."totalAmount") FILTER (WHERE ${isCancelled}), 0)`,
+        'cancelled_value'
+      )
+      .groupBy(`date_trunc('day', rec."placedAt")`)
+      .addGroupBy('rec.sourceConnectionId');
+
+    this.applySalesAnalyticsScope(qb, filters);
+
+    const rows = await qb.getRawMany<{
+      day: Date;
+      source_connection_id: string;
+      order_count: string;
+      revenue: string;
+      cancelled_count: string;
+      cancelled_value: string;
+    }>();
+
+    return rows.map((row) => ({
+      day: row.day,
+      sourceConnectionId: row.source_connection_id,
+      orderCount: Number(row.order_count),
+      revenue: Number(row.revenue),
+      cancelledCount: Number(row.cancelled_count),
+      cancelledValue: Number(row.cancelled_value),
+    }));
+  }
+
+  /**
+   * Headline median order value via `PERCENTILE_CONT` (#1987) — always
+   * excludes cancelled orders, unlike {@link getDailyOrderAggregates} (which
+   * reports them in a separate column rather than omitting them). `null`
+   * when no row matches (an empty ordered-set aggregate).
+   */
+  async getMedianOrderValue(filters: SalesAnalyticsFilters): Promise<number | null> {
+    const qb = this.repository
+      .createQueryBuilder('rec')
+      .select(`PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY rec."totalAmount")`, 'median')
+      .andWhere('rec."cancelledAt" IS NULL');
+
+    this.applySalesAnalyticsScope(qb, filters);
+
+    const raw = await qb.getRawOne<{ median: string | null }>();
+    return raw?.median != null ? Number(raw.median) : null;
+  }
+
+  /**
+   * Shared scope predicate for the #1987 sales-analytics reads: only
+   * `'ready'` records with a resolvable `placedAt`/`totalAmount`, within
+   * `[filters.from, filters.to)`, optionally narrowed to one connection.
+   */
+  private applySalesAnalyticsScope(
+    qb: SelectQueryBuilder<OrderRecordOrmEntity>,
+    filters: SalesAnalyticsFilters
+  ): void {
+    qb.andWhere(`rec."recordStatus" = 'ready'`)
+      .andWhere('rec."placedAt" IS NOT NULL')
+      .andWhere('rec."totalAmount" IS NOT NULL')
+      .andWhere('rec."placedAt" >= :salesFrom', { salesFrom: filters.from })
+      .andWhere('rec."placedAt" < :salesTo', { salesTo: filters.to });
+
+    if (filters.sourceConnectionId) {
+      qb.andWhere('rec.sourceConnectionId = :salesConnectionId', {
+        salesConnectionId: filters.sourceConnectionId,
+      });
+    }
   }
 
   /**

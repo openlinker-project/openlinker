@@ -262,6 +262,124 @@ describe('OrderRecordRepository', () => {
     });
   });
 
+  describe('getDailyOrderAggregates (#1987)', () => {
+    const baseFilters = {
+      from: new Date('2026-08-01T00:00:00.000Z'),
+      to: new Date('2026-08-08T00:00:00.000Z'),
+    };
+
+    it('returns an empty array when nothing matches', async () => {
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        select: jest.fn().mockReturnThis(),
+        addSelect: jest.fn().mockReturnThis(),
+        groupBy: jest.fn().mockReturnThis(),
+        addGroupBy: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        getRawMany: jest.fn().mockResolvedValue([]),
+      });
+
+      const result = await repository.getDailyOrderAggregates(baseFilters);
+
+      expect(result).toEqual([]);
+    });
+
+    it('maps one row per (day, connection) with the cancelled split', async () => {
+      const day = new Date('2026-08-02T00:00:00.000Z');
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        select: jest.fn().mockReturnThis(),
+        addSelect: jest.fn().mockReturnThis(),
+        groupBy: jest.fn().mockReturnThis(),
+        addGroupBy: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        getRawMany: jest.fn().mockResolvedValue([
+          {
+            day,
+            source_connection_id: 'conn-a',
+            order_count: '3',
+            revenue: '150.50',
+            cancelled_count: '1',
+            cancelled_value: '20.00',
+          },
+        ]),
+      });
+
+      const result = await repository.getDailyOrderAggregates(baseFilters);
+
+      expect(result).toEqual([
+        {
+          day,
+          sourceConnectionId: 'conn-a',
+          orderCount: 3,
+          revenue: 150.5,
+          cancelledCount: 1,
+          cancelledValue: 20,
+        },
+      ]);
+    });
+
+    it('applies the sourceConnectionId filter when provided', async () => {
+      const andWhere = jest.fn().mockReturnThis();
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        select: jest.fn().mockReturnThis(),
+        addSelect: jest.fn().mockReturnThis(),
+        groupBy: jest.fn().mockReturnThis(),
+        addGroupBy: jest.fn().mockReturnThis(),
+        andWhere,
+        getRawMany: jest.fn().mockResolvedValue([]),
+      });
+
+      await repository.getDailyOrderAggregates({ ...baseFilters, sourceConnectionId: 'conn-a' });
+
+      expect(andWhere).toHaveBeenCalledWith('rec.sourceConnectionId = :salesConnectionId', {
+        salesConnectionId: 'conn-a',
+      });
+    });
+  });
+
+  describe('getMedianOrderValue (#1987)', () => {
+    const baseFilters = {
+      from: new Date('2026-08-01T00:00:00.000Z'),
+      to: new Date('2026-08-08T00:00:00.000Z'),
+    };
+
+    it('returns the parsed median when a row matches', async () => {
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        select: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        getRawOne: jest.fn().mockResolvedValue({ median: '98.00' }),
+      });
+
+      const result = await repository.getMedianOrderValue(baseFilters);
+
+      expect(result).toBe(98);
+    });
+
+    it('returns null when no row matches (empty ordered-set aggregate)', async () => {
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        select: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        getRawOne: jest.fn().mockResolvedValue({ median: null }),
+      });
+
+      const result = await repository.getMedianOrderValue(baseFilters);
+
+      expect(result).toBeNull();
+    });
+
+    it('excludes cancelled orders', async () => {
+      const andWhere = jest.fn().mockReturnThis();
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        select: jest.fn().mockReturnThis(),
+        andWhere,
+        getRawOne: jest.fn().mockResolvedValue({ median: null }),
+      });
+
+      await repository.getMedianOrderValue(baseFilters);
+
+      expect(andWhere).toHaveBeenCalledWith('rec."cancelledAt" IS NULL');
+    });
+  });
+
   describe('upsert', () => {
     it('should create new order record', async () => {
       const domainEntity = createDomainEntity();

@@ -10,6 +10,7 @@ import type { TestingModule } from '@nestjs/testing';
 import { Test } from '@nestjs/testing';
 import { OrderRecordService } from '../order-record.service';
 import type { OrderRecordRepositoryPort } from '../../../domain/ports/order-record-repository.port';
+import type { OrderLineItemRepositoryPort } from '../../../domain/ports/order-line-item-repository.port';
 import type { OrderSyncStatus } from '../../../domain/entities/order-record.entity';
 import { OrderRecord } from '../../../domain/entities/order-record.entity';
 import type { Order } from '../../../domain/types/order.types';
@@ -17,6 +18,7 @@ import type { IncomingOrder } from '../../../domain/types/incoming-order.types';
 import type { IOrderFxStampService } from '../../interfaces/order-fx-stamp.service.interface';
 import {
   ORDER_FX_STAMP_SERVICE_TOKEN,
+  ORDER_LINE_ITEM_REPOSITORY_TOKEN,
   ORDER_RECORD_REPOSITORY_TOKEN,
 } from '../../../orders.tokens';
 
@@ -24,6 +26,7 @@ describe('OrderRecordService', () => {
   let service: OrderRecordService;
   let repository: jest.Mocked<OrderRecordRepositoryPort>;
   let fxStamp: jest.Mocked<IOrderFxStampService>;
+  let lineItemRepository: jest.Mocked<OrderLineItemRepositoryPort>;
 
   const originalEnv = process.env.OL_STORE_PII;
   const originalPiiHashSalt = process.env.OL_PII_HASH_SALT;
@@ -40,6 +43,8 @@ describe('OrderRecordService', () => {
       updateItemResolutionFailure: jest.fn(),
       markCancelled: jest.fn(),
       updateSalesDocumentBlock: jest.fn(),
+      getDailyOrderAggregates: jest.fn(),
+      getMedianOrderValue: jest.fn(),
     } as unknown as jest.Mocked<OrderRecordRepositoryPort>;
 
     // Defaults to `deferred`, which is the outcome that owes NO refresh - so
@@ -54,6 +59,11 @@ describe('OrderRecordService', () => {
       sweep: jest.fn(),
     } as unknown as jest.Mocked<IOrderFxStampService>;
 
+    lineItemRepository = {
+      findByOrderId: jest.fn(),
+      getUnitsSoldByConnection: jest.fn(),
+    } as unknown as jest.Mocked<OrderLineItemRepositoryPort>;
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         OrderRecordService,
@@ -64,6 +74,10 @@ describe('OrderRecordService', () => {
         {
           provide: ORDER_FX_STAMP_SERVICE_TOKEN,
           useValue: fxStamp,
+        },
+        {
+          provide: ORDER_LINE_ITEM_REPOSITORY_TOKEN,
+          useValue: lineItemRepository,
         },
       ],
     }).compile();
@@ -162,7 +176,7 @@ describe('OrderRecordService', () => {
   describe('persistOrder - PII enabled', () => {
     beforeEach(() => {
       process.env.OL_STORE_PII = 'true';
-      service = new OrderRecordService(repository, fxStamp);
+      service = new OrderRecordService(repository, fxStamp, lineItemRepository);
     });
 
     it('should persist order with all PII fields when PII storage is enabled', async () => {
@@ -405,7 +419,7 @@ describe('OrderRecordService', () => {
   describe('persistOrder - PII disabled', () => {
     beforeEach(() => {
       process.env.OL_STORE_PII = 'false';
-      service = new OrderRecordService(repository, fxStamp);
+      service = new OrderRecordService(repository, fxStamp, lineItemRepository);
     });
 
     it('should persist order with sanitized addresses when PII storage is disabled', async () => {
@@ -497,7 +511,7 @@ describe('OrderRecordService', () => {
   describe('persistOrder — cancellation recorded via markCancelled (#1984)', () => {
     beforeEach(() => {
       process.env.OL_STORE_PII = 'true';
-      service = new OrderRecordService(repository, fxStamp);
+      service = new OrderRecordService(repository, fxStamp, lineItemRepository);
     });
 
     it('never constructs the OrderRecord passed to upsertWithLineItems() with a non-null cancelledAt, even for a cancelled order', async () => {
@@ -568,7 +582,7 @@ describe('OrderRecordService', () => {
   describe('persistOrder - fulfillment rollup left to updateFulfillmentState (#2101)', () => {
     beforeEach(() => {
       process.env.OL_STORE_PII = 'true';
-      service = new OrderRecordService(repository, fxStamp);
+      service = new OrderRecordService(repository, fxStamp, lineItemRepository);
     });
 
     it('never constructs the OrderRecord passed to upsertWithLineItems() with a fulfillment state', async () => {
@@ -589,7 +603,7 @@ describe('OrderRecordService', () => {
   describe('persist paths - destination sync state left to updateSyncStatus (#2140)', () => {
     beforeEach(() => {
       process.env.OL_STORE_PII = 'true';
-      service = new OrderRecordService(repository, fxStamp);
+      service = new OrderRecordService(repository, fxStamp, lineItemRepository);
     });
 
     it('never constructs the OrderRecord passed to upsertWithLineItems() with sync state', async () => {
@@ -627,7 +641,7 @@ describe('OrderRecordService', () => {
   describe('persistIncomingSnapshot', () => {
     beforeEach(() => {
       process.env.OL_STORE_PII = 'true';
-      service = new OrderRecordService(repository, fxStamp);
+      service = new OrderRecordService(repository, fxStamp, lineItemRepository);
     });
 
     it('should persist incoming snapshot with awaiting_mapping status', async () => {
@@ -691,7 +705,7 @@ describe('OrderRecordService', () => {
 
     it('should sanitize addresses in snapshot when PII is disabled', async () => {
       process.env.OL_STORE_PII = 'false';
-      service = new OrderRecordService(repository, fxStamp);
+      service = new OrderRecordService(repository, fxStamp, lineItemRepository);
 
       const incoming = createMockIncomingOrder();
       const expectedRecord = new OrderRecord(
@@ -766,7 +780,7 @@ describe('OrderRecordService', () => {
 
     it('should omit customerEmail from the snapshot under hash-only PII mode (#948)', async () => {
       process.env.OL_STORE_PII = 'false';
-      service = new OrderRecordService(repository, fxStamp);
+      service = new OrderRecordService(repository, fxStamp, lineItemRepository);
 
       const incoming = createMockIncomingOrder();
       repository.upsert.mockResolvedValue({} as OrderRecord);
@@ -817,7 +831,7 @@ describe('OrderRecordService', () => {
   describe('persistIncomingSnapshot — cancellation recorded via markCancelled (#1984)', () => {
     beforeEach(() => {
       process.env.OL_STORE_PII = 'true';
-      service = new OrderRecordService(repository, fxStamp);
+      service = new OrderRecordService(repository, fxStamp, lineItemRepository);
     });
 
     it('never constructs the OrderRecord passed to upsert() with a non-null cancelledAt, even for a cancelled order', async () => {
@@ -1061,6 +1075,58 @@ describe('OrderRecordService', () => {
       for (const call of repository.updateSalesDocumentBlock.mock.calls) {
         expect(call).toEqual(['ol_order_abc', block]);
       }
+    });
+  });
+
+  describe('getSalesAndChannelAnalytics (#1987)', () => {
+    const filters = {
+      from: new Date('2026-08-01T00:00:00.000Z'),
+      to: new Date('2026-08-08T00:00:00.000Z'),
+    };
+
+    it('composes the three raw reads + earliest-date lookup into the response', async () => {
+      const dailyRows = [
+        {
+          day: new Date('2026-08-01T00:00:00.000Z'),
+          sourceConnectionId: 'conn-a',
+          orderCount: 2,
+          revenue: 200,
+          cancelledCount: 0,
+          cancelledValue: 0,
+        },
+      ];
+      const unitsByConnection = new Map([['conn-a', 5]]);
+      const earliestMap = new Map([['conn-a', new Date('2026-07-01T00:00:00.000Z')]]);
+
+      repository.getDailyOrderAggregates.mockResolvedValue(dailyRows);
+      repository.getMedianOrderValue.mockResolvedValue(90);
+      lineItemRepository.getUnitsSoldByConnection.mockResolvedValue(unitsByConnection);
+      repository.findEarliestPlacedAtByConnection.mockResolvedValue(earliestMap);
+
+      const result = await service.getSalesAndChannelAnalytics(filters);
+
+      expect(repository.getDailyOrderAggregates).toHaveBeenCalledWith(filters);
+      expect(repository.getMedianOrderValue).toHaveBeenCalledWith(filters);
+      expect(lineItemRepository.getUnitsSoldByConnection).toHaveBeenCalledWith(filters);
+      expect(repository.findEarliestPlacedAtByConnection).toHaveBeenCalledWith(['conn-a']);
+      expect(result.headline.revenue).toBe(200);
+      expect(result.headline.medianOrderValue).toBe(90);
+      expect(result.headline.unitsSold).toBe(5);
+      expect(result.channels).toHaveLength(1);
+      expect(result.channels[0].coverageComplete).toBe(true);
+    });
+
+    it('derives the earliest-date lookup scope from the connections present in dailyRows only', async () => {
+      repository.getDailyOrderAggregates.mockResolvedValue([]);
+      repository.getMedianOrderValue.mockResolvedValue(null);
+      lineItemRepository.getUnitsSoldByConnection.mockResolvedValue(new Map());
+      repository.findEarliestPlacedAtByConnection.mockResolvedValue(new Map());
+
+      const result = await service.getSalesAndChannelAnalytics(filters);
+
+      expect(repository.findEarliestPlacedAtByConnection).toHaveBeenCalledWith([]);
+      expect(result.headline.revenue).toBe(0);
+      expect(result.channels).toEqual([]);
     });
   });
 });

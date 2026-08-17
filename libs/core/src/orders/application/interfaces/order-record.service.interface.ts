@@ -20,6 +20,10 @@ import type {
 } from '../../domain/types/order-record.types';
 import type { FulfillmentRollupState } from '../../domain/types/order-fulfillment.types';
 import type { SalesDocumentBlock } from '@openlinker/core/sales-documents';
+import type {
+  SalesAnalyticsFilters,
+  SalesAndChannelAnalytics,
+} from '../../domain/types/order-sales-analytics.types';
 
 export interface IOrderRecordService {
   /**
@@ -195,4 +199,20 @@ export interface IOrderRecordService {
     internalOrderId: string,
     block: SalesDocumentBlock | null
   ): Promise<void>;
+
+  /**
+   * Headline + per-channel sales analytics for a date range (#1987) — the
+   * `/analytics` KPI-strip / by-channel-table read. The cross-context surface
+   * `apps/api`'s `SalesAnalyticsController` uses — repository ports are
+   * forbidden across context boundaries per architecture-overview.md §
+   * "Cross-context dependencies in core", so callers go through this service
+   * method instead of `OrderRecordRepositoryPort.getDailyOrderAggregates` /
+   * `getMedianOrderValue` or `OrderLineItemRepositoryPort.
+   * getUnitsSoldByConnection` directly. Composes those three reads with the
+   * existing {@link getEarliestOrderDateByConnection} (#2083) for the
+   * per-channel coverage signal. Currency-mixing detection and gross/net
+   * tax-treatment normalization are deliberately out of scope — see
+   * #2049/ADR-040 and a separate tax-normalization effort.
+   */
+  getSalesAndChannelAnalytics(filters: SalesAnalyticsFilters): Promise<SalesAndChannelAnalytics>;
 }

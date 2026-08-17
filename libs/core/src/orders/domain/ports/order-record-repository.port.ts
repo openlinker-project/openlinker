@@ -24,6 +24,7 @@ import type { SyncAttempt } from '../types/order-sync.types';
 import type { SalesDocumentBlock } from '@openlinker/core/sales-documents';
 import type { OrderFxIntent, OrderFxStamp } from '../types/order-fx.types';
 import type { StampedReportingCurrencyCount } from '../types/order-fx-read.types';
+import type { DailyOrderAggregateRow, SalesAnalyticsFilters } from '../types/order-sales-analytics.types';
 
 export interface OrderRecordRepositoryPort {
   /**
@@ -152,6 +153,32 @@ export interface OrderRecordRepositoryPort {
   getFailedSyncValueSummary(filters: OrderHealthSummaryFilters): Promise<FailedSyncValueSummary>;
 
   /**
+   * Daily, per-connection revenue/order-count aggregates for the sales &
+   * channel analytics read (#1987). Scope: `recordStatus = 'ready' AND
+   * placedAt IS NOT NULL AND totalAmount IS NOT NULL AND placedAt` within
+   * `[filters.from, filters.to)`, optionally narrowed to one connection.
+   * Cancelled orders (`cancelledAt IS NOT NULL`) are split into their own
+   * `cancelledCount`/`cancelledValue` columns rather than being excluded from
+   * the result entirely — the aggregation layer sums them separately so a
+   * cancelled order is reported, not silently dropped. One row per
+   * `(day, sourceConnectionId)` pair that has at least one matching order;
+   * a day/connection with none is simply absent, mirroring the "absent key =
+   * no data" convention used by {@link getFailedSyncValueSummary} and
+   * `findEarliestPlacedAtByConnection`.
+   */
+  getDailyOrderAggregates(filters: SalesAnalyticsFilters): Promise<DailyOrderAggregateRow[]>;
+
+  /**
+   * Headline median order value for the sales & channel analytics read
+   * (#1987), via `PERCENTILE_CONT(0.5)`. Same scope as
+   * {@link getDailyOrderAggregates} but additionally excludes cancelled
+   * orders (`cancelledAt IS NULL`) — median is a headline-only figure, never
+   * computed per channel. Returns `null` when no row matches (an empty
+   * ordered-set aggregate), which the aggregation layer coalesces to `0`.
+   */
+  getMedianOrderValue(filters: SalesAnalyticsFilters): Promise<number | null>;
+
+  /**
    * Push a per-order fulfillment rollup (#1108) onto the order record. Called
    * from the shipping context after a shipment-status change (best-effort
    * projection). Idempotent absolute-set; a missing order row is a no-op (never
@@ -190,119 +217,6 @@ export interface OrderRecordRepositoryPort {
    * event racing ahead of the order's own create/sync job).
    */
   markCancelled(internalOrderId: string, cancelledAt: Date): Promise<void>;
-
-  /**
-   * Set — or clear — the reason OpenLinker issued no fiscal document for this
-   * order (#2100, ADR-041 decision 11). Narrow absolute-set on the three
-   * `salesDocumentBlock*` columns only, mirroring
-   * {@link updateItemResolutionFailure}, so it can't clobber a concurrent write
-   * to any other column on the same row.
-   *
-   * Passing `null` CLEARS all three columns, and that is the primary path, not an
-   * edge case: the auto-issue gate is level-evaluated, so this is called on
-   * every order transition with whatever the current answer is. Last write
-   * wins by design — the newest evaluation is the truthful one.
-   *
-   * No-op (no throw) when the order row doesn't exist, mirroring
-   * {@link updateFulfillmentState}'s residual-race tolerance.
-   */
-  updateSalesDocumentBlock(
-    internalOrderId: string,
-    block: SalesDocumentBlock | null
-  ): Promise<void>;
-
-  /**
-   * Claim the first-attempt FX intent (#2124, ADR-040 § Decision 5) — writes
-   * `fxIntendedCurrency` + `fxRule` and nothing else, guarded on
-   * `fxIntendedCurrency IS NULL` so exactly one concurrent attempt can win.
-   *
-   * Returns `true` for the winner and `false` for a loser, which then re-reads
-   * the row and adopts the winner's intent instead of pinning its own — two
-   * concurrent first attempts must never resolve to different currencies for
-   * one order. `false` is also returned when no row matches the id at all
-   * (never throws), the same residual-race tolerance
-   * {@link updateFulfillmentState} carries.
-   *
-   * Deliberately NOT keyed on `reportingCurrency`: the intent is claimed
-   * *before* any rate lookup, so at that point the stamp columns are still
-   * NULL by definition.
-   */
-  claimFxIntentIfAbsent(internalOrderId: string, intent: OrderFxIntent): Promise<boolean>;
-
-  /**
-   * Stamp the order's reporting-currency figures at most once (#2124) — one
-   * guarded `UPDATE` over all five stamp columns, so the group can never
-   * half-apply, matched on `reportingCurrency IS NULL`.
-   *
-   * The predicate is `reportingCurrency`, NOT `fxIntendedCurrency`: by the time
-   * a stamp is attempted the intent has deliberately been claimed, so guarding
-   * on it would reject every stamp.
-   *
-   * Returns `true` when this call wrote the stamp and `false` when a stamp was
-   * already present (or no row matched) — in which case nothing was written and
-   * the existing, already-reported figure survives untouched. Sole writer of
-   * these columns together with {@link claimFxIntentIfAbsent}; {@link upsert}
-   * omits them so a re-ingestion cannot move a stamped financial figure.
-   */
-  stampFxIfAbsent(internalOrderId: string, stamp: OrderFxStamp): Promise<boolean>;
-
-  /**
-   * Record that a stamp attempt reached a TERMINAL answer (#2125) - writes
-   * `fxStampedAt` and NOTHING else, so the row keeps `reportingCurrency`,
-   * `reportingTotalAmount` and `exchangeRateId` NULL (which is exactly what the
-   * `ck_order_records_fx_group` CHECK's first arm allows).
-   *
-   * A separate write from {@link stampFxIfAbsent} because a terminal answer has
-   * no figure to stamp, and `OrderFxStamp` requires one. What it buys is the
-   * BOUNDEDNESS of the reconcile sweep: the sweep selects on
-   * `fxStampedAt IS NULL AND reportingCurrency IS NULL`, so without this write a
-   * permanently-unstampable order (no `placedAt`, unsupported pair) would be
-   * re-read and re-answered on every hourly tick forever.
-   *
-   * Guarded on `fxStampedAt IS NULL AND reportingCurrency IS NULL`, so it can
-   * neither overwrite an earlier terminal instant nor touch a stamped row.
-   * Returns `true` when this call wrote; `false` when it did not (already
-   * answered, already stamped, or no row matched - never throws).
-   *
-   * Deliberately NOT a permanent gate on stamping: `stampFxIfAbsent` still keys
-   * on `reportingCurrency IS NULL`, so a re-ingestion that repairs the snapshot
-   * (a source re-poll finally reporting `placedAt`) can still stamp the order
-   * inline. Only the sweep stops revisiting it.
-   */
-  markFxTerminalIfAbsent(internalOrderId: string, fxStampedAt: Date): Promise<boolean>;
-
-  /**
-   * One bounded page of orders that carry neither a stamp nor a terminal answer
-   * (#2125), for the reconcile sweep.
-   *
-   * Predicate: `fxStampedAt IS NULL AND reportingCurrency IS NULL`, scoped to
-   * `sourceConnectionId` and to rows created at or after
-   * `options.createdSince`. Both bounds matter, for different reasons -
-   * `reportingCurrency IS NULL` alone would re-select the entire pre-feature
-   * table on every tick forever, and the age cutoff keeps a permanently
-   * unstampable historical backlog from crowding out live orders.
-   *
-   * Returns ids only: the sweep re-enters the stamp through the same
-   * `stamp(internalOrderId)` signature every other caller uses, so hydrating
-   * whole records here would be work the stamp immediately repeats.
-   */
-  findUnstampedFxOrderIds(
-    sourceConnectionId: string,
-    options: { limit: number; createdSince: Date }
-  ): Promise<string[]>;
-
-  /**
-   * The distinct set of order-native currencies OpenLinker has already
-   * ingested, feeding the reporting-currency coverage advisory.
-   *
-   * A SET, not a winner: no connection filter, no ordering, no `LIMIT` — the
-   * advisory needs to know every currency that would have to be convertible,
-   * not the most common one. Read out of the order snapshot (`totals.currency`)
-   * because `order_records` carries no native currency column yet (#1985);
-   * values that are not JSON strings are skipped rather than cast, so a
-   * malformed snapshot cannot fail the read.
-   */
-  listDistinctNativeCurrencies(): Promise<string[]>;
 
   /**
    * Set — or clear — the reason OpenLinker issued no fiscal document for this

@@ -13,8 +13,10 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { OrderLineItemOrmEntity } from '../entities/order-line-item.orm-entity';
+import { OrderRecordOrmEntity } from '../entities/order-record.orm-entity';
 import type { OrderLineItemRepositoryPort } from '../../../domain/ports/order-line-item-repository.port';
 import { OrderLineItem } from '../../../domain/entities/order-line-item.entity';
+import type { SalesAnalyticsFilters } from '../../../domain/types/order-sales-analytics.types';
 
 @Injectable()
 export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
@@ -29,6 +31,34 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
       order: { lineNumber: 'ASC' },
     });
     return entities.map((e) => this.toDomain(e));
+  }
+
+  /**
+   * Units sold per source connection (#1987). Joins back to `order_records`
+   * only to apply the `recordStatus = 'ready' AND cancelledAt IS NULL` scope
+   * — the date-range predicate itself runs against `li."placedAt"`
+   * (denormalized from the parent order, #1985).
+   */
+  async getUnitsSoldByConnection(filters: SalesAnalyticsFilters): Promise<Map<string, number>> {
+    const qb = this.repository
+      .createQueryBuilder('li')
+      .innerJoin(OrderRecordOrmEntity, 'rec', 'rec."internalOrderId" = li."orderRecordId"')
+      .select('li.sourceConnectionId', 'source_connection_id')
+      .addSelect('COALESCE(SUM(li."quantity"), 0)', 'units')
+      .where(`rec."recordStatus" = 'ready'`)
+      .andWhere('rec."cancelledAt" IS NULL')
+      .andWhere('li."placedAt" >= :salesFrom', { salesFrom: filters.from })
+      .andWhere('li."placedAt" < :salesTo', { salesTo: filters.to })
+      .groupBy('li.sourceConnectionId');
+
+    if (filters.sourceConnectionId) {
+      qb.andWhere('li.sourceConnectionId = :salesConnectionId', {
+        salesConnectionId: filters.sourceConnectionId,
+      });
+    }
+
+    const rows = await qb.getRawMany<{ source_connection_id: string; units: string }>();
+    return new Map(rows.map((row) => [row.source_connection_id, Number(row.units)]));
   }
 
   private toDomain(entity: OrderLineItemOrmEntity): OrderLineItem {

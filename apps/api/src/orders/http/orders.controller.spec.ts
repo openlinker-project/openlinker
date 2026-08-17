@@ -82,6 +82,8 @@ describe('OrdersController', () => {
       listDistinctNativeCurrencies: jest.fn(),
       countStampedByReportingCurrency: jest.fn(),
       updateSalesDocumentBlock: jest.fn(),
+      getDailyOrderAggregates: jest.fn(),
+      getMedianOrderValue: jest.fn(),
     };
 
     const mockRetryService: jest.Mocked<IOrderDestinationRetryService> = {
