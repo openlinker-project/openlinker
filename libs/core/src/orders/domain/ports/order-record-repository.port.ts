@@ -20,6 +20,7 @@ import type {
 import type { OrderSlaSummary } from '../types/order-sla.types';
 import type { FulfillmentRollupState } from '../types/order-fulfillment.types';
 import type { SyncAttempt } from '../types/order-sync.types';
+import type { SalesDocumentBlock } from '@openlinker/core/sales-documents';
 
 export interface OrderRecordRepositoryPort {
   /**
@@ -44,13 +45,14 @@ export interface OrderRecordRepositoryPort {
    * Upsert order record (create or update)
    * Uses internalOrderId as the primary key.
    *
-   * Writes only the columns the ingestion path owns. The two columns written
-   * out-of-band by a narrow, atomic UPDATE - `fulfillmentState` (#2101,
+   * Writes only the columns the ingestion path owns. The columns written
+   * out-of-band by a narrow, atomic UPDATE - `syncStatus` / `syncAttempts`
+   * (#2140, {@link updateSyncStatus}), `fulfillmentState` (#2101,
    * {@link updateFulfillmentState}) and `cancelledAt` (#1984,
    * {@link markCancelled}) - are NOT part of the write set, so a re-ingestion
    * of the same order cannot reset them. The returned record therefore reports
-   * both as `null` whatever the row holds; re-read via {@link findById} when
-   * their live value matters.
+   * all four as empty (`[]` / `null`) whatever the row holds; re-read via
+   * {@link findById} when their live value matters.
    */
   upsert(orderRecord: OrderRecord): Promise<OrderRecord>;
 
@@ -63,6 +65,9 @@ export interface OrderRecordRepositoryPort {
    *      per-destination cap of most-recent entries.
    *
    * Throws `OrderRecordNotFoundException` if no row matches `internalOrderId`.
+   *
+   * Sole writer of both columns - {@link upsert} deliberately omits them
+   * (#2140), so nothing else can reset the attempt history it appends to.
    */
   updateSyncStatus(
     internalOrderId: string,
@@ -144,4 +149,24 @@ export interface OrderRecordRepositoryPort {
    * event racing ahead of the order's own create/sync job).
    */
   markCancelled(internalOrderId: string, cancelledAt: Date): Promise<void>;
+
+  /**
+   * Set — or clear — the reason OpenLinker issued no fiscal document for this
+   * order (#2100, ADR-041 decision 11). Narrow absolute-set on the three
+   * `salesDocumentBlock*` columns only, mirroring
+   * {@link updateItemResolutionFailure}, so it can't clobber a concurrent write
+   * to any other column on the same row.
+   *
+   * Passing `null` CLEARS all three columns, and that is the primary path, not an
+   * edge case: the auto-issue gate is level-evaluated, so this is called on
+   * every order transition with whatever the current answer is. Last write
+   * wins by design — the newest evaluation is the truthful one.
+   *
+   * No-op (no throw) when the order row doesn't exist, mirroring
+   * {@link updateFulfillmentState}'s residual-race tolerance.
+   */
+  updateSalesDocumentBlock(
+    internalOrderId: string,
+    block: SalesDocumentBlock | null
+  ): Promise<void>;
 }

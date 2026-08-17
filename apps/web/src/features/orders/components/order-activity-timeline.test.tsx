@@ -189,4 +189,54 @@ describe('OrderActivityTimeline', () => {
 
     expect(screen.queryByRole('link', { name: /view all attempts/i })).toBeNull();
   });
+
+  describe('sales-document block narration (#2100)', () => {
+    it('narrates a no-primary block as its own last entry, with the backend detail', () => {
+      renderTimeline({
+        createdAt: '2026-04-20T10:00:00.000Z',
+        recordStatus: 'ready',
+        syncAttempts: [],
+        sourceConnectionId: SOURCE_CONNECTION_ID,
+        salesDocumentBlockReason: 'unresolved-routing',
+        salesDocumentUnresolvedReason: 'ambiguous-connection-no-primary',
+        salesDocumentBlockDetail: '2 invoicing connections, none marked primary',
+      });
+
+      expect(screen.getByText('No invoice issued')).toBeInTheDocument();
+      expect(
+        screen.getByText(/none is set to issue automatically/i),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(/2 invoicing connections, none marked primary/),
+      ).toBeInTheDocument();
+    });
+
+    it('narrates a manual connection without an error tone', () => {
+      renderTimeline({
+        createdAt: '2026-04-20T10:00:00.000Z',
+        recordStatus: 'ready',
+        syncAttempts: [],
+        sourceConnectionId: SOURCE_CONNECTION_ID,
+        salesDocumentBlockReason: 'trigger-model-manual',
+      });
+
+      const entry = screen.getByText('No invoice issued').closest('li');
+      expect(entry).not.toBeNull();
+      // A deliberate setting must not be dressed as a failure. The badge's
+      // `neutral` tone has no timeline dot, so it degrades to `default`.
+      expect(entry?.querySelector('.order-activity__dot--error')).toBeNull();
+      expect(entry?.querySelector('.order-activity__dot--warning')).toBeNull();
+    });
+
+    it('renders no block entry for an unblocked order', () => {
+      renderTimeline({
+        createdAt: '2026-04-20T10:00:00.000Z',
+        recordStatus: 'ready',
+        syncAttempts: [],
+        sourceConnectionId: SOURCE_CONNECTION_ID,
+      });
+
+      expect(screen.queryByText('No invoice issued')).toBeNull();
+    });
+  });
 });

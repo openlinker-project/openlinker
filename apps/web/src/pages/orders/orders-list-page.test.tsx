@@ -902,6 +902,421 @@ describe('OrdersListPage', () => {
     expect(within(row).getByRole('link', { name: /generate label/i })).toBeInTheDocument();
   });
 
+  describe('sales-document block badge + filter (#2100)', () => {
+    const invoicingConnection: Connection = {
+      ...sampleConnection,
+      id: 'conn_invoicing_1',
+      name: 'KSeF',
+      enabledCapabilities: ['Invoicing'],
+    };
+
+    function blockedOrder(overrides: Partial<OrderRecord>): OrderRecord {
+      return { ...syncedOrder, fulfillmentState: 'not-shipped', ...overrides };
+    }
+
+    it('should replace the "Issue invoice" CTA with the block badge', async () => {
+      const mockApi = createMockApiClient({
+        orders: {
+          list: vi.fn().mockResolvedValue(
+            paginated([
+              blockedOrder({
+                salesDocumentBlockReason: 'unresolved-routing',
+                salesDocumentUnresolvedReason: 'ambiguous-connection-no-primary',
+              }),
+            ]),
+          ),
+        },
+        connections: { list: vi.fn().mockResolvedValue([sampleConnection, invoicingConnection]) },
+      });
+
+      const { container } = renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+      await screen.findByText('ALG-882414');
+      const row = container.querySelector('.data-table__row') as HTMLElement;
+
+      expect(within(row).getByText('No primary')).toBeInTheDocument();
+      // The CTA must be GONE: an order OpenLinker already refused is not an order
+      // waiting for a click, and the CTA alone made every cause look identical.
+      expect(within(row).queryByRole('link', { name: /issue invoice/i })).not.toBeInTheDocument();
+    });
+
+    /**
+     * The row must render the invoice pill and the block badge as INDEPENDENT
+     * parts, not as a three-way choice (#2100 review round 4).
+     *
+     * `a ? pill : b ? badge : cta` made the badge unreachable behind any invoice
+     * record — including a terminal REJECTED failure, the one shape the backend
+     * gate, the panel, the timeline, the aggregate count and the
+     * `?invoicing=blocked` filter all deliberately keep blocked. Clicking the
+     * "Invoicing blocked" chip then landed the operator on rows whose only
+     * visible signal was `Failed`: true, but a different fact from "auto-issue
+     * was refused because no connection is primary".
+     */
+    const rejectedInvoice = {
+      invoiceId: 'inv-1',
+      status: 'failed' as const,
+      regulatoryStatus: 'not-applicable' as const,
+      blocksIssuanceElsewhere: false,
+    };
+
+    it('should show the block badge BESIDE a rejected invoice pill', async () => {
+      const mockApi = createMockApiClient({
+        orders: {
+          list: vi.fn().mockResolvedValue(
+            paginated([
+              blockedOrder({
+                salesDocumentBlockReason: 'unresolved-routing',
+                salesDocumentUnresolvedReason: 'ambiguous-connection-no-primary',
+                orderSnapshot: { ...syncedOrder.orderSnapshot, invoice: rejectedInvoice },
+              }),
+            ]),
+          ),
+        },
+        connections: { list: vi.fn().mockResolvedValue([sampleConnection, invoicingConnection]) },
+      });
+
+      const { container } = renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+      await screen.findByText('ALG-882414');
+      const row = container.querySelector('.data-table__row') as HTMLElement;
+
+      expect(within(row).getByText('Failed')).toBeInTheDocument();
+      expect(within(row).getByText('No primary')).toBeInTheDocument();
+      // A record exists, so the next step is Retry in the panel, not a fresh issue.
+      expect(within(row).queryByRole('link', { name: /issue invoice/i })).not.toBeInTheDocument();
+    });
+
+    it('should show the block badge beside a rejected invoice on the mobile card too', async () => {
+      const mockApi = createMockApiClient({
+        orders: {
+          list: vi.fn().mockResolvedValue(
+            paginated([
+              blockedOrder({
+                salesDocumentBlockReason: 'unresolved-routing',
+                salesDocumentUnresolvedReason: 'ambiguous-connection-no-primary',
+                orderSnapshot: { ...syncedOrder.orderSnapshot, invoice: rejectedInvoice },
+              }),
+            ]),
+          ),
+        },
+        connections: { list: vi.fn().mockResolvedValue([sampleConnection, invoicingConnection]) },
+      });
+
+      // The card view was the SECOND hand-written copy of the ternary, so it
+      // needs its own assertion at the mobile breakpoint.
+      const viewport = mockMobileViewport();
+      try {
+        const { container } = renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+        await screen.findByText('ALG-882414');
+        const card = container.querySelector('.orders-card-summary') as HTMLElement;
+
+        expect(within(card).getByText('Failed')).toBeInTheDocument();
+        expect(within(card).getByText('No primary')).toBeInTheDocument();
+      } finally {
+        viewport.restore();
+      }
+    });
+
+    it('should still hide the badge behind an invoice that plausibly exists', async () => {
+      const mockApi = createMockApiClient({
+        orders: {
+          list: vi.fn().mockResolvedValue(
+            paginated([
+              blockedOrder({
+                salesDocumentBlockReason: 'unresolved-routing',
+                salesDocumentUnresolvedReason: 'ambiguous-connection-no-primary',
+                orderSnapshot: {
+                  ...syncedOrder.orderSnapshot,
+                  invoice: {
+                    invoiceId: 'inv-1',
+                    status: 'issued',
+                    regulatoryStatus: 'accepted',
+                    blocksIssuanceElsewhere: true,
+                  },
+                },
+              }),
+            ]),
+          ),
+        },
+        connections: { list: vi.fn().mockResolvedValue([sampleConnection, invoicingConnection]) },
+      });
+
+      const { container } = renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+      await screen.findByText('ALG-882414');
+      const row = container.querySelector('.data-table__row') as HTMLElement;
+
+      // "No primary" beside an issued invoice is worse than no pill at all — and
+      // the backend gate refuses to persist a block here in the first place.
+      expect(within(row).queryByText('No primary')).not.toBeInTheDocument();
+    });
+
+    it('should keep the "Issue invoice" CTA alongside a manual-only badge', async () => {
+      const mockApi = createMockApiClient({
+        orders: {
+          list: vi
+            .fn()
+            .mockResolvedValue(
+              paginated([blockedOrder({ salesDocumentBlockReason: 'trigger-model-manual' })]),
+            ),
+        },
+        connections: { list: vi.fn().mockResolvedValue([sampleConnection, invoicingConnection]) },
+      });
+
+      const { container } = renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+      await screen.findByText('ALG-882414');
+      const row = container.querySelector('.data-table__row') as HTMLElement;
+
+      expect(within(row).getByText('Manual only')).toBeInTheDocument();
+      // Issuing by hand IS the configured workflow here, so the affordance stays.
+      expect(within(row).getByRole('link', { name: /issue invoice/i })).toBeInTheDocument();
+    });
+
+    it('should suppress the badge when the order already carries an invoice', async () => {
+      const mockApi = createMockApiClient({
+        orders: {
+          list: vi.fn().mockResolvedValue(
+            paginated([
+              blockedOrder({
+                salesDocumentBlockReason: 'unresolved-routing',
+                salesDocumentUnresolvedReason: 'ambiguous-connection-no-primary',
+                orderSnapshot: {
+                  ...syncedOrder.orderSnapshot,
+                  invoice: {
+                    invoiceId: 'inv-1',
+                    status: 'issued',
+                    regulatoryStatus: 'not-applicable',
+                  },
+                },
+              }),
+            ]),
+          ),
+        },
+        connections: { list: vi.fn().mockResolvedValue([sampleConnection, invoicingConnection]) },
+      });
+
+      const { container } = renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+      await screen.findByText('ALG-882414');
+      const row = container.querySelector('.data-table__row') as HTMLElement;
+
+      // "No primary" next to an issued invoice is worse than no badge at all, so
+      // the render refuses the contradiction rather than trusting the clear to
+      // have landed already.
+      expect(within(row).queryByText('No primary')).not.toBeInTheDocument();
+      expect(within(row).getByText('Issued')).toBeInTheDocument();
+    });
+
+    it('should offer a counted filter chip and pass the filter to the API', async () => {
+      const list = vi.fn().mockResolvedValue(paginated([syncedOrder]));
+      const statusSummary = vi.fn().mockResolvedValue({
+        total: 3,
+        sourceDeleted: 0,
+        awaitingMapping: 0,
+        needsAttention: 0,
+        synced: 3,
+        awaitingDispatch: 0,
+        salesDocumentBlocked: 2,
+      });
+      const mockApi = createMockApiClient({ orders: { list, statusSummary } });
+
+      renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+      const chip = await screen.findByRole('button', { name: /invoicing blocked/i });
+      expect(chip).toHaveTextContent('2');
+
+      const before = list.mock.calls.length;
+      await userEvent.setup().click(chip);
+
+      await vi.waitFor(() => {
+        expect(list.mock.calls.length).toBeGreaterThan(before);
+      });
+      const [filters] = list.mock.calls[list.mock.calls.length - 1];
+      expect(filters).toMatchObject({ salesDocumentBlocked: true });
+    });
+
+    it('should state the cause as the badge tooltip AND an accessible name', async () => {
+      const mockApi = createMockApiClient({
+        orders: {
+          list: vi.fn().mockResolvedValue(
+            paginated([
+              blockedOrder({
+                salesDocumentBlockReason: 'unresolved-routing',
+                salesDocumentUnresolvedReason: 'ambiguous-connection-no-primary',
+              }),
+            ]),
+          ),
+        },
+        connections: { list: vi.fn().mockResolvedValue([sampleConnection, invoicingConnection]) },
+      });
+
+      const { container } = renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+      await screen.findByText('ALG-882414');
+      const row = container.querySelector('.data-table__row') as HTMLElement;
+      const wrapper = within(row).getByText('No primary').closest('span[title]');
+
+      // The hint is the ONLY statement of why on this surface, so it must reach the
+      // DOM — and `title` alone is unreachable by keyboard and unreliable in screen
+      // readers on a role-less span.
+      expect(wrapper).toHaveAttribute('title', expect.stringMatching(/none is set to issue/i));
+      expect(wrapper).toHaveAttribute('aria-label', expect.stringContaining('No primary'));
+    });
+
+    it('should render the block badge on the mobile card path too', async () => {
+      const viewport = mockMobileViewport();
+      try {
+        const mockApi = createMockApiClient({
+          orders: {
+            list: vi
+              .fn()
+              .mockResolvedValue(
+                paginated([blockedOrder({ salesDocumentBlockReason: 'trigger-model-batched' })]),
+              ),
+          },
+          connections: { list: vi.fn().mockResolvedValue([sampleConnection, invoicingConnection]) },
+        });
+
+        renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+        await screen.findByText('ALG-882414');
+        // The card is a deliberate parallel render path — deleting its ~20
+        // duplicated lines used to leave the suite green.
+        expect(screen.getByText('Batched')).toBeInTheDocument();
+      } finally {
+        viewport.restore();
+      }
+    });
+
+    it('should seed from the URL param and clear the filter when toggled off', async () => {
+      const list = vi.fn().mockResolvedValue(paginated([syncedOrder]));
+      const statusSummary = vi.fn().mockResolvedValue({
+        total: 3,
+        sourceDeleted: 0,
+        awaitingMapping: 0,
+        needsAttention: 0,
+        synced: 3,
+        awaitingDispatch: 0,
+        salesDocumentBlocked: 2,
+      });
+      const mockApi = createMockApiClient({ orders: { list, statusSummary } });
+
+      // URL state owns this filter (§ State Management), so a shared/bookmarked
+      // link must arrive already filtered.
+      renderWithProviders(<OrdersListPage />, {
+        apiClient: mockApi,
+        route: '/orders?invoicing=blocked&offset=20',
+      });
+
+      const chip = await screen.findByRole('button', { name: /invoicing blocked/i });
+      expect(chip).toHaveAttribute('aria-pressed', 'true');
+      expect(list.mock.calls[0][0]).toMatchObject({ salesDocumentBlocked: true });
+
+      const before = list.mock.calls.length;
+      await userEvent.setup().click(chip);
+
+      await vi.waitFor(() => {
+        expect(list.mock.calls.length).toBeGreaterThan(before);
+      });
+      const [filters, pagination] = list.mock.calls[list.mock.calls.length - 1];
+      // Toggled off means "no filter", never `false` — the UI offers no
+      // hide-blocked-orders mode.
+      expect(filters.salesDocumentBlocked).toBeUndefined();
+      // And any filter change resets the page.
+      expect(pagination).toMatchObject({ offset: 0 });
+    });
+
+    it('should keep the chip mounted while the filter is active even at zero', async () => {
+      const statusSummary = vi.fn().mockResolvedValue({
+        total: 0,
+        sourceDeleted: 0,
+        awaitingMapping: 0,
+        needsAttention: 0,
+        synced: 0,
+        awaitingDispatch: 0,
+        salesDocumentBlocked: 0,
+      });
+      const mockApi = createMockApiClient({
+        orders: { list: vi.fn().mockResolvedValue(paginated([])), statusSummary },
+      });
+
+      renderWithProviders(<OrdersListPage />, {
+        apiClient: mockApi,
+        route: '/orders?invoicing=blocked',
+      });
+
+      // Gating the chip on the count alone unmounted the ONLY control for this
+      // param exactly when the remediation succeeded, stranding an applied filter.
+      expect(
+        await screen.findByRole('button', { name: /invoicing blocked/i }),
+      ).toBeInTheDocument();
+      // And the empty state must not claim nothing has ever synced.
+      expect(screen.getByText(/Nothing is blocked from invoicing/i)).toBeInTheDocument();
+      expect(screen.queryByText(/No order records have been synced yet/i)).toBeNull();
+    });
+
+    it('should clear BOTH filters from the empty-state recovery button', async () => {
+      const list = vi.fn().mockResolvedValue(paginated([]));
+      const statusSummary = vi.fn().mockResolvedValue({
+        total: 0,
+        sourceDeleted: 0,
+        awaitingMapping: 0,
+        needsAttention: 0,
+        synced: 0,
+        awaitingDispatch: 0,
+        salesDocumentBlocked: 0,
+      });
+      const mockApi = createMockApiClient({ orders: { list, statusSummary } });
+
+      // `needs_attention` is tested FIRST, so an order set that is both unattended
+      // and invoicing-blocked lands in the "All clear" arm — the one whose button
+      // used to touch only `health`.
+      renderWithProviders(<OrdersListPage />, {
+        apiClient: mockApi,
+        route: '/orders?health=needs_attention&invoicing=blocked',
+      });
+
+      const recover = await screen.findByRole('button', { name: 'View all orders' });
+      const before = list.mock.calls.length;
+      await userEvent.setup().click(recover);
+
+      await vi.waitFor(() => {
+        expect(list.mock.calls.length).toBeGreaterThan(before);
+      });
+
+      // Regression guard: `setSearchParams` is NOT a queued reducer, so two calls
+      // in one handler both build from the current render's params and the second
+      // supersedes the first. Clearing `health` and `invoicing` separately left
+      // `invoicing=blocked` applied behind a button that says "View all orders".
+      const [filters] = list.mock.calls[list.mock.calls.length - 1];
+      expect(filters.salesDocumentBlocked).toBeUndefined();
+      expect(filters.health).toBeUndefined();
+    });
+
+    it('should hide the chip when nothing is blocked', async () => {
+      const statusSummary = vi.fn().mockResolvedValue({
+        total: 1,
+        sourceDeleted: 0,
+        awaitingMapping: 0,
+        needsAttention: 0,
+        synced: 1,
+        awaitingDispatch: 0,
+        salesDocumentBlocked: 0,
+      });
+      const mockApi = createMockApiClient({
+        orders: { list: vi.fn().mockResolvedValue(paginated([syncedOrder])), statusSummary },
+      });
+
+      renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+      await screen.findByText('ALG-882414');
+      // An install that never hits this state gets no extra control.
+      expect(screen.queryByRole('button', { name: /invoicing blocked/i })).not.toBeInTheDocument();
+    });
+  });
+
   it('should NOT offer "Generate label" for a not-shipped shop-fulfilled order with no OL carrier route (#1799)', async () => {
     const shopFulfilled: OrderRecord = {
       ...syncedOrder,

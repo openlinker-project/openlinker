@@ -547,6 +547,50 @@ describe('InvoiceService', () => {
       );
     });
 
+    it("(d4) failureCode: a 'rejected' throwable naming the settlement currency maps to 'invalid-currency'", async () => {
+      repo.findByIdempotencyKey.mockResolvedValue(null);
+      repo.create.mockResolvedValue(makeRecord({ id: 'rec-1', status: 'pending' }));
+      // The message an adapter raises when it refuses a malformed currency BEFORE
+      // contacting the provider (#2103, inFakt's `toInfaktCurrency`). The generic
+      // 'provider-rejected' copy would claim the provider rejected a request it
+      // never saw, so the operator must get currency-specific copy instead.
+      const rejection = Object.assign(
+        new Error('Infakt requires an ISO 4217 currency on invoice for order ol_order_1, got ""'),
+        { failureMode: 'rejected' as const },
+      );
+      adapter.issueInvoice.mockRejectedValue(rejection);
+      repo.updateOutcome.mockResolvedValue(makeRecord({ id: 'rec-1', status: 'failed' }));
+
+      await expect(service.issueInvoice(makeCmd())).rejects.toBe(rejection);
+      expect(repo.updateOutcome).toHaveBeenCalledWith(
+        'rec-1',
+        expect.objectContaining({
+          status: 'failed',
+          failureMode: 'rejected',
+          failureCode: 'invalid-currency',
+          failureReason:
+            'The settlement currency is missing, malformed, or not accepted for this document. Fix the currency on the order and re-issue.',
+        }),
+      );
+    });
+
+    it("(d5) failureCode: a tax-id rejection that also mentions a currency stays 'buyer-tax-id-invalid'", async () => {
+      repo.findByIdempotencyKey.mockResolvedValue(null);
+      repo.create.mockResolvedValue(makeRecord({ id: 'rec-1', status: 'pending' }));
+      const rejection = Object.assign(new Error('rejected'), {
+        failureMode: 'rejected' as const,
+        reason: 'Buyer tax id is malformed for an invalid currency document',
+      });
+      adapter.issueInvoice.mockRejectedValue(rejection);
+      repo.updateOutcome.mockResolvedValue(makeRecord({ id: 'rec-1', status: 'failed' }));
+
+      await expect(service.issueInvoice(makeCmd())).rejects.toBe(rejection);
+      expect(repo.updateOutcome).toHaveBeenCalledWith(
+        'rec-1',
+        expect.objectContaining({ failureCode: 'buyer-tax-id-invalid' }),
+      );
+    });
+
     it('(e) unreachable transport: adapter throws -> failed + rethrow (per-design propagation)', async () => {
       repo.findByIdempotencyKey.mockResolvedValue(null);
       repo.create.mockResolvedValue(makeRecord({ id: 'rec-1', status: 'pending' }));

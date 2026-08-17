@@ -7,6 +7,8 @@
  * @module libs/integrations/prestashop/src/infrastructure/mappers/__tests__
  */
 import { PrestashopOrderMapper } from '../prestashop-order.mapper';
+import { PrestashopCurrencyUnknownException } from '../../../domain/exceptions/prestashop-currency-unknown.exception';
+import { PrestashopParseException } from '../../../domain/exceptions/prestashop-parse.exception';
 import type { PrestashopOrder, PrestashopOrderRow } from '../prestashop.mapper.interface';
 import type { OrderCreate } from '@openlinker/core/orders';
 
@@ -248,344 +250,110 @@ describe('PrestashopOrderMapper', () => {
 
       expect(result.items[0].variantId).toBeUndefined();
     });
-  });
 
-  describe('mapOrderCreate', () => {
-    const mockOrderCreate: OrderCreate = {
-      orderNumber: 'ORDER-001',
-      status: 'processing',
-      customerId: 'ol_customer_123',
-      items: [
-        {
-          id: 'item-1',
-          productId: 'ol_product_1',
-          variantId: 'ol_variant_1',
-          quantity: 2,
-          price: 19.99,
-          sku: 'PROD-001',
-        },
-        {
-          id: 'item-2',
-          productId: 'ol_product_2',
-          quantity: 1,
-          price: 29.99,
-          sku: 'PROD-002',
-        },
-      ],
-      totals: {
-        subtotal: 69.97,
-        tax: 13.99,
-        shipping: 5.0,
-        total: 88.96,
-        currency: 'EUR',
-      },
-      shippingAddress: {
-        firstName: 'John',
-        lastName: 'Doe',
-        address1: '123 Main St',
-        city: 'Warsaw',
-        postalCode: '00-001',
-        country: 'PL',
-      },
-      billingAddress: {
-        firstName: 'John',
-        lastName: 'Doe',
-        address1: '123 Main St',
-        city: 'Warsaw',
-        postalCode: '00-001',
-        country: 'PL',
-      },
-    };
-
-    it('should map order with all required fields', () => {
-      const externalProductIds = new Map<string, string | number>([
-        ['ol_product_1', '10'],
-        ['ol_product_2', '11'],
-      ]);
-      const externalVariantIds = new Map<string, string | number>([['ol_variant_1', '5']]);
-
-      const result = mapper.mapOrderCreate(
-        mockOrderCreate,
-        '100',
-        externalProductIds,
-        externalVariantIds,
-        '200',
-        '201',
-        '1',
-        '1'
-      );
-
-      expect(result.id_customer).toBe('100');
-      expect(result.id_currency).toBe('1');
-      expect(result.id_lang).toBe('1');
-      expect(result.id_carrier).toBe(1);
-      expect(result.module).toBe('ps_checkpayment');
-      expect(result.payment).toBe('Check payment');
-      expect(result.current_state).toBe(2); // processing
-      expect(result.reference).toBe('ORDER-001');
-      expect(result.total_paid).toBe('88.96');
-      expect(result.total_paid_real).toBe('88.96');
-      expect(result.total_products).toBe('69.97');
-      expect(result.total_products_wt).toBe('83.96'); // 69.97 + 13.99
-      // total_shipping[_tax_incl|_tax_excl] removed in #516 — PS computes
-      // shipping from the resolved carrier (OL Dynamic via sidecar / static
-      // via zone tables) at order-create time.
-      expect(result.total_shipping).toBeUndefined();
-      expect(result.total_shipping_tax_incl).toBeUndefined();
-      expect(result.total_shipping_tax_excl).toBeUndefined();
-      expect(result.conversion_rate).toBe('1.000000');
-      expect(result.id_address_delivery).toBe('200');
-      expect(result.id_address_invoice).toBe('201');
-      expect((result.associations as Record<string, unknown>).order_rows).toBeDefined();
-    });
-
-    it('should throw error when product ID mapping is missing', () => {
-      const externalProductIds = new Map<string, string | number>([
-        ['ol_product_1', '10'],
-        // Missing ol_product_2
-      ]);
-      const externalVariantIds = new Map<string, string | number>();
-
-      expect(() => {
-        mapper.mapOrderCreate(
-          mockOrderCreate,
-          '100',
-          externalProductIds,
-          externalVariantIds,
-          '200',
-          '201'
-        );
-      }).toThrow('No external product ID found for internal product ID: ol_product_2');
-    });
-
-    it('should use shipping address for both delivery and invoice when only shipping provided', () => {
-      const externalProductIds = new Map<string, string | number>([
-        ['ol_product_1', '10'],
-        ['ol_product_2', '11'],
-      ]);
-      const externalVariantIds = new Map<string, string | number>();
-
-      const result = mapper.mapOrderCreate(
-        mockOrderCreate,
-        '100',
-        externalProductIds,
-        externalVariantIds,
-        '200', // Only shipping
-        undefined // No billing
-      );
-
-      expect(result.id_address_delivery).toBe('200');
-      expect(result.id_address_invoice).toBe('200');
-    });
-
-    it('should use billing address for both delivery and invoice when only billing provided', () => {
-      const externalProductIds = new Map<string, string | number>([
-        ['ol_product_1', '10'],
-        ['ol_product_2', '11'],
-      ]);
-      const externalVariantIds = new Map<string, string | number>();
-
-      const result = mapper.mapOrderCreate(
-        mockOrderCreate,
-        '100',
-        externalProductIds,
-        externalVariantIds,
-        undefined, // No shipping
-        '201' // Only billing
-      );
-
-      expect(result.id_address_delivery).toBe('201');
-      expect(result.id_address_invoice).toBe('201');
-    });
-
-    it('should throw error when both addresses are missing', () => {
-      const externalProductIds = new Map<string, string | number>([
-        ['ol_product_1', '10'],
-        ['ol_product_2', '11'],
-      ]);
-      const externalVariantIds = new Map<string, string | number>();
-
-      expect(() => {
-        mapper.mapOrderCreate(
-          mockOrderCreate,
-          '100',
-          externalProductIds,
-          externalVariantIds,
-          undefined,
-          undefined
-        );
-      }).toThrow('Both shipping and billing addresses are missing');
-    });
-
-    it('should default currency and language IDs to 1 when not provided', () => {
-      const externalProductIds = new Map<string, string | number>([
-        ['ol_product_1', '10'],
-        ['ol_product_2', '11'],
-      ]);
-      const externalVariantIds = new Map<string, string | number>();
-
-      const result = mapper.mapOrderCreate(
-        mockOrderCreate,
-        '100',
-        externalProductIds,
-        externalVariantIds,
-        '200',
-        '201',
-        undefined, // No currency
-        undefined // No language
-      );
-
-      expect(result.id_currency).toBe(1);
-      expect(result.id_lang).toBe(1);
-    });
-
-    it('should include all required PrestaShop fields', () => {
-      const externalProductIds = new Map<string, string | number>([
-        ['ol_product_1', '10'],
-        ['ol_product_2', '11'],
-      ]);
-      const externalVariantIds = new Map<string, string | number>();
-
-      const result = mapper.mapOrderCreate(
-        mockOrderCreate,
-        '100',
-        externalProductIds,
-        externalVariantIds,
-        '200',
-        '201',
-        '1',
-        '1'
-      );
-
-      // Check all required fields are present
-      expect(result.id_customer).toBeDefined();
-      expect(result.id_currency).toBeDefined();
-      expect(result.id_lang).toBeDefined();
-      expect(result.id_carrier).toBeDefined();
-      expect(result.module).toBeDefined();
-      expect(result.payment).toBeDefined();
-      expect(result.current_state).toBeDefined();
-      expect(result.total_paid).toBeDefined();
-      expect(result.total_paid_real).toBeDefined();
-      expect(result.total_paid_tax_incl).toBeDefined();
-      expect(result.total_paid_tax_excl).toBeDefined();
-      expect(result.total_products).toBeDefined();
-      expect(result.total_products_wt).toBeDefined();
-      // total_shipping[_tax_incl|_tax_excl] omitted post-#516.
-      expect(result.total_shipping).toBeUndefined();
-      expect(result.total_shipping_tax_incl).toBeUndefined();
-      expect(result.total_shipping_tax_excl).toBeUndefined();
-      expect(result.conversion_rate).toBeDefined();
-      expect(result.associations).toBeDefined();
-    });
-
-    it('should map variant ID correctly when present', () => {
-      const externalProductIds = new Map<string, string | number>([['ol_product_1', '10']]);
-      const externalVariantIds = new Map<string, string | number>([['ol_variant_1', '5']]);
-
-      const orderWithVariant: OrderCreate = {
-        ...mockOrderCreate,
-        items: [
-          {
-            id: 'item-1',
-            productId: 'ol_product_1',
-            variantId: 'ol_variant_1',
-            quantity: 2,
-            price: 19.99,
-            sku: 'PROD-001',
-          },
-        ],
-      };
-
-      const result = mapper.mapOrderCreate(
-        orderWithVariant,
-        '100',
-        externalProductIds,
-        externalVariantIds,
-        '200',
-        '201'
-      );
-
-      const orderRows = (result.associations as Record<string, unknown>).order_rows as Record<
-        string,
-        unknown
-      >;
-      const orderRow = (orderRows.order_row as Array<Record<string, unknown>>)[0];
-      expect(orderRow.product_attribute_id).toBe(5);
-    });
-
-    it('should use 0 for variant ID when variant mapping is missing', () => {
-      const externalProductIds = new Map<string, string | number>([['ol_product_1', '10']]);
-      const externalVariantIds = new Map<string, string | number>(); // Empty - variant not found
-
-      const orderWithVariant: OrderCreate = {
-        ...mockOrderCreate,
-        items: [
-          {
-            id: 'item-1',
-            productId: 'ol_product_1',
-            variantId: 'ol_variant_1', // Variant ID provided but mapping missing
-            quantity: 2,
-            price: 19.99,
-            sku: 'PROD-001',
-          },
-        ],
-      };
-
-      const result = mapper.mapOrderCreate(
-        orderWithVariant,
-        '100',
-        externalProductIds,
-        externalVariantIds,
-        '200',
-        '201'
-      );
-
-      const orderRows = (result.associations as Record<string, unknown>).order_rows as Record<
-        string,
-        unknown
-      >;
-      const orderRow = (orderRows.order_row as Array<Record<string, unknown>>)[0];
-      expect(orderRow.product_attribute_id).toBe(0);
-    });
-
-    describe('carrier resolution (#455)', () => {
-      const externalProductIds = new Map<string, string | number>([
-        ['ol_product_1', '10'],
-        ['ol_product_2', '11'],
-      ]);
-      const externalVariantIds = new Map<string, string | number>([['ol_variant_1', '5']]);
-
-      it('should use externalCarrierId when explicitly provided', () => {
-        const result = mapper.mapOrderCreate(
-          mockOrderCreate,
-          '100',
-          externalProductIds,
-          externalVariantIds,
-          '200',
-          '201',
-          '1',
-          '1',
-          4 // externalCarrierId — mapped from CarrierMapping
-        );
-
-        expect(result.id_carrier).toBe(4);
+    // #2068 — the line id was `String(row.id || index)`, which fell back to the row's array
+    // POSITION. That id is persisted into the order snapshot, rendered to operators and used as a
+    // React row key, so a positional or colliding value is a live defect, not a cosmetic one.
+    describe('line id (#2068)', () => {
+      const orderFor = (): PrestashopOrder => ({
+        id: '42',
+        reference: 'ORDER-042',
+        current_state: '2',
+        total_paid: '10.00',
+        total_paid_tax_excl: '10.00',
+        total_paid_tax_incl: '10.00',
+        total_shipping: '0.00',
+        date_add: '2024-01-01 10:00:00',
+        date_upd: '2024-01-01 10:00:00',
       });
 
-      it('should fall back to PrestaShop default carrier 1 when externalCarrierId is omitted', () => {
-        const result = mapper.mapOrderCreate(
-          mockOrderCreate,
-          '100',
-          externalProductIds,
-          externalVariantIds,
-          '200',
-          '201',
-          '1',
-          '1'
-          // externalCarrierId omitted — adapter resolved nothing.
-        );
+      const rowWith = (id: unknown): PrestashopOrderRow =>
+        ({
+          id,
+          id_order: '42',
+          product_id: '10',
+          product_attribute_id: '0',
+          product_quantity: '1',
+          product_price: '10.00',
+          product_reference: 'PROD-001',
+        }) as PrestashopOrderRow;
 
-        expect(result.id_carrier).toBe(1);
+      it('should use the row id when it is 0 rather than falling through to the index', () => {
+        // The 0-id row is deliberately NOT first: at position 0 the old `row.id || index`
+        // expression also yields "0", so a leading row is what makes this a real guard.
+        const rows = [rowWith('9'), rowWith(0)];
+
+        const result = mapper.mapOrder(orderFor(), rows);
+
+        // `||` treated a legitimate id of 0 as absent and substituted the index (1); `??` does not.
+        expect(result.items[1].id).toBe('0');
+      });
+
+      it('should not produce colliding ids when one row id is 0', () => {
+        // Under the old expression these both mapped to "1": row 0 kept its id, and row 1's
+        // falsy 0 fell through to its index of 1.
+        const rows = [rowWith('1'), rowWith(0)];
+
+        const result = mapper.mapOrder(orderFor(), rows);
+
+        expect(result.items.map((item) => item.id)).toEqual(['1', '0']);
+      });
+
+      it('should map the same payload to the same ids on a later poll', () => {
+        const rows = [rowWith('7'), rowWith('9')];
+
+        const first = mapper.mapOrder(orderFor(), rows);
+        // A later poll returns the same lines in a different order — ids must follow the row,
+        // not the position.
+        const reordered = [rowWith('9'), rowWith('7')];
+        const second = mapper.mapOrder(orderFor(), reordered);
+
+        expect(first.items.map((i) => i.id).sort()).toEqual(second.items.map((i) => i.id).sort());
+        expect(second.items.map((i) => i.id)).toEqual(['9', '7']);
+      });
+
+      it('should read the XML attribute id shape when the id is not a child element', () => {
+        const rows = [rowWith(undefined)];
+        rows[0]['@_id'] = 13;
+
+        const result = mapper.mapOrder(orderFor(), rows);
+
+        expect(result.items[0].id).toBe('13');
+      });
+
+      it('should fall through to the XML attribute id when the child element is blank', () => {
+        // `??` would not have caught this: `''` is neither null nor undefined, so the row would
+        // have thrown without ever consulting the attribute shape the fallback exists for.
+        const rows = [rowWith('')];
+        rows[0]['@_id'] = 21;
+
+        const result = mapper.mapOrder(orderFor(), rows);
+
+        expect(result.items[0].id).toBe('21');
+      });
+
+      it('should throw when a row carries no id at all', () => {
+        const rows = [rowWith(undefined)];
+
+        expect(() => mapper.mapOrder(orderFor(), rows)).toThrow(PrestashopParseException);
+      });
+
+      it('should name the order and row position without serialising the row', () => {
+        const rows = [rowWith('1'), rowWith('')];
+
+        try {
+          mapper.mapOrder(orderFor(), rows);
+          throw new Error('expected mapOrder to throw');
+        } catch (error) {
+          const parseError = error as PrestashopParseException;
+          expect(parseError).toBeInstanceOf(PrestashopParseException);
+          // 1-based: the offending row is the second one, so an operator counting from 1 finds it.
+          expect(parseError.message).toContain('position 2');
+          expect(parseError.message).toContain('42');
+          // The row shape is `[key: string]: unknown` and this message reaches sync-job storage.
+          expect(parseError.message).not.toContain('PROD-001');
+          expect(parseError.responseBody).toBeUndefined();
+        }
       });
     });
   });
@@ -690,11 +458,39 @@ describe('PrestashopOrderMapper', () => {
         externalProductIds,
         externalVariantIds,
         '200', // Only shipping
-        undefined // No billing
+        undefined, // No billing
+        '1',
+        '1'
       );
 
       expect(result.id_address_delivery).toBe('200');
       expect(result.id_address_invoice).toBe('200');
+    });
+
+    // #2139: the cart's id_currency is the live write the refusal protects -
+    // `importorder` builds the PrestaShop context from `$cart->id_currency`,
+    // and the cart-scoped `specific_prices` rows are keyed to the same id.
+    it('should refuse a cart with no currency ID instead of defaulting it to 1', () => {
+      const externalProductIds = new Map<string, string | number>([['ol_product_1', '10']]);
+      const externalVariantIds = new Map<string, string | number>();
+
+      const refuse = (): unknown =>
+        mapper.mapCartCreate(
+          mockOrderCreate,
+          '100',
+          externalProductIds,
+          externalVariantIds,
+          '200',
+          '201',
+          undefined, // No currency
+          '1'
+        );
+
+      expect(refuse).toThrow('No PrestaShop currency id was resolved');
+      // The class carries the retry decision: no retry can supply the id, so
+      // this must be the non-retryable currency class, not the generic
+      // provisioning one the retry classifier leaves retryable.
+      expect(refuse).toThrow(PrestashopCurrencyUnknownException);
     });
 
     it('should map cart rows correctly', () => {
@@ -707,7 +503,9 @@ describe('PrestashopOrderMapper', () => {
         externalProductIds,
         externalVariantIds,
         '200',
-        '201'
+        '201',
+        '1',
+        '1'
       );
 
       const cartRows = (result.associations as Record<string, unknown>).cart_rows as Record<

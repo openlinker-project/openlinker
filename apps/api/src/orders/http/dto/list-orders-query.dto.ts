@@ -14,8 +14,9 @@ import {
   Min,
   Max,
   IsDateString,
+  IsBoolean,
 } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Type, Transform } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import {
   OrderSyncStatusFilterValues,
@@ -134,6 +135,28 @@ export class ListOrdersQueryDto {
   @IsOptional()
   @IsEnum(FulfillmentRollupStateValues)
   fulfillmentState?: FulfillmentRollupState;
+
+  @ApiPropertyOptional({
+    type: Boolean,
+    description:
+      'Sales-document block filter (#2100): true keeps only orders carrying an ATTENTION-WORTHY ' +
+      'block, false keeps only the rest, omitted does not filter. Attention-worthy excludes ' +
+      '"trigger-model-manual" — a deliberate operator setting that is true of every uninvoiced ' +
+      'order on a manual install — so true does not return manual-only orders and false does. ' +
+      'This is the same subset the salesDocumentBlocked count reports, so the two always agree. ' +
+      'An INDEPENDENT axis that composes with `health` rather than competing with it — ' +
+      '"synced AND invoicing blocked" is the most common shape of the problem.',
+  })
+  @IsOptional()
+  // Query params arrive as strings, so map the two literals and pass anything else
+  // THROUGH unchanged for `@IsBoolean()` to reject with a 400 — mirroring
+  // `list-shipments-query.dto.ts` and `list-offer-mappings-query.dto.ts`. Mapping a
+  // stray value to `undefined` would make `?salesDocumentBlocked=yes` silently
+  // return the UNFILTERED list while the chip renders as applied, which is a worse
+  // failure for a filter than collapsing to `false`.
+  @Transform(({ value }): unknown => (value === 'true' ? true : value === 'false' ? false : value))
+  @IsBoolean()
+  salesDocumentBlocked?: boolean;
 
   @ApiPropertyOptional({ default: 0, minimum: 0, description: 'Number of items to skip' })
   @IsOptional()

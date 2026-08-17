@@ -1686,7 +1686,11 @@ textarea,
   outline-offset: 2px;
 }
 
-.chip--active {
+/* Doubled class (#2100): the five `.chip--{tone}` rules below are also
+ * specificity (0,1,0) and declared LATER, so a toned chip rendered its tone in
+ * both states and the only difference between on and off was font-weight — far
+ * too thin for a control that silently changes the result set. */
+.chip.chip--active {
   background: var(--accent-primary-soft);
   border-color: color-mix(in oklab, var(--accent-primary) 35%, transparent);
   color: var(--accent-primary-soft-strong);
@@ -1716,6 +1720,7 @@ textarea,
   border-color: var(--status-info-border);
   color: var(--status-info-strong);
 }
+
 
 /* ── Theme toggle ───────────────────────────────────────────────────
  * Three-option radiogroup rendered as a segmented button group. Sits
@@ -4072,6 +4077,11 @@ a.delivery-rider-banner__button:focus-visible {
 .allegro-category-search__path {
   color: var(--text-secondary);
   font-size: 0.75rem;
+}
+
+/* Whole-tree search input above the browser (#2075). */
+.allegro-category-search__search {
+  margin-bottom: var(--space-2);
 }
 
 .allegro-category-search__staged {
@@ -17626,4 +17636,85 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   padding-left: var(--space-4);
   font-size: 0.75rem;
   color: var(--status-error-strong);
+}
+
+/* ── Category search results (#2075) ─────────────────────────────────────
+   Flat whole-tree search hits, rendered instead of the drill-down tree while
+   a query is active. Rows are SELECTION rows, not DataTable rows, so they
+   follow the picker's documented taller treatment (>= 44 px tap target,
+   frontend-ui-style-guide.md § Density) rather than the 36 px table row. */
+
+.category-search-results {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 0.25rem;
+  max-height: 20rem;
+  overflow-y: auto;
+}
+
+.category-search-results__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  min-height: 44px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border-subtle);
+  /* Matches `.bulk-editor__catpick-item`, the tree row this list SWAPS WITH in
+     the same modal slot — a differing radius would visibly change the corners
+     mid-interaction as the operator types. */
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+}
+
+.category-search-results__item:hover {
+  background: var(--bg-surface-hover);
+}
+
+.category-search-results__item--current {
+  border-color: var(--accent-primary-border);
+  background: var(--accent-primary-soft);
+}
+
+.category-search-results__label {
+  display: grid;
+  gap: 0.125rem;
+  min-width: 0;
+}
+
+.category-search-results__name {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+/* The breadcrumb is the reason a hit from an unvisited branch is readable at
+   all, so it wraps rather than truncating — losing the head of the trail
+   would defeat the point. */
+.category-search-results__path {
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.category-search-results__sep {
+  color: var(--text-disabled);
+}
+
+.category-search-results__unselectable {
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+@media (max-width: 767px) {
+  /* Stack on mobile so a long breadcrumb never squeezes the action out of
+     reach; the button keeps its full-width tap target. */
+  .category-search-results__item {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-2);
+  }
 }

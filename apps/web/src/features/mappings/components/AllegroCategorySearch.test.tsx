@@ -9,10 +9,11 @@
  * @module apps/web/src/features/mappings/components
  */
 import { cleanup, fireEvent, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AllegroCategorySearch } from './AllegroCategorySearch';
 import { createMockApiClient, renderWithProviders } from '../../../test/test-utils';
-import type { AllegroCategory } from '../api/mappings.types';
+import type { AllegroCategory, CategorySearchHit } from '../api/mappings.types';
 
 function mockCategoriesEndpoint(
   byParent: Record<string, AllegroCategory[]>,
@@ -196,5 +197,114 @@ describe('AllegroCategorySearch', () => {
     // Staged row is gone; onSelect was never called
     expect(screen.queryByText('Selected:')).not.toBeInTheDocument();
     expect(onSelect).not.toHaveBeenCalled();
+  });
+  describe('whole-tree search (#2075)', () => {
+    // Until #2075 this component was named "Search" and offered only
+    // drill-down — the mapping-authoring flow, where the operator already
+    // knows the category name, was the worst possible fit for that.
+    const DEEP_HIT: CategorySearchHit = {
+      category: { id: 'cat-9', name: 'Smartfony', parentId: 'cat-5', leaf: true },
+      path: [
+        { id: 'cat-1', name: 'Electronics' },
+        { id: 'cat-5', name: 'Phones' },
+        { id: 'cat-9', name: 'Smartfony' },
+      ],
+    };
+
+    function mockApi(hits: CategorySearchHit[] = [DEEP_HIT]) {
+      return createMockApiClient({
+        mappings: {
+          getAllegroCategories: vi.fn(
+            mockCategoriesEndpoint({
+              root: [{ id: 'cat-1', name: 'Electronics', parentId: null, leaf: false }],
+            }),
+          ),
+          searchCategories: vi.fn().mockResolvedValue(hits),
+        },
+      });
+    }
+
+    function renderSearch(
+      apiClient: ReturnType<typeof createMockApiClient>,
+      onSelect = vi.fn(),
+    ): { onSelect: ReturnType<typeof vi.fn> } {
+      renderWithProviders(
+        <AllegroCategorySearch
+          marketplaceConnectionId={connectionId}
+          currentMapping={undefined}
+          onSelect={onSelect}
+          onClear={vi.fn()}
+          isSaving={false}
+        />,
+        { apiClient },
+      );
+      return { onSelect };
+    }
+
+    it('finds a category below the loaded level', async () => {
+      renderSearch(mockApi());
+      expect(await screen.findByText('Electronics')).toBeInTheDocument();
+
+      await userEvent.type(screen.getByLabelText('Search all categories'), 'smart');
+
+      expect(await screen.findByText('Smartfony')).toBeInTheDocument();
+    });
+
+    it('stages a search hit with the hit own path, not the browsed breadcrumb', async () => {
+      const { onSelect } = renderSearch(mockApi());
+      await screen.findByText('Electronics');
+
+      await userEvent.type(screen.getByLabelText('Search all categories'), 'smart');
+      await userEvent.click(await screen.findByRole('button', { name: 'Select Smartfony' }));
+
+      // Staged, not saved — the confirm step is unchanged by #2075.
+      expect(onSelect).not.toHaveBeenCalled();
+      await userEvent.click(screen.getByRole('button', { name: /save mapping/i }));
+
+      // The path string must come from the hit. Deriving it from tree
+      // navigation would persist a wrong allegroCategoryPath on the mapping.
+      expect(onSelect).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'cat-9', name: 'Smartfony' }),
+        'Electronics > Phones > Smartfony',
+      );
+    });
+
+    it('does not search below the minimum query length', async () => {
+      const apiClient = mockApi();
+      renderSearch(apiClient);
+      await screen.findByText('Electronics');
+
+      await userEvent.type(screen.getByLabelText('Search all categories'), 'a');
+
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      expect(apiClient.mappings.searchCategories).not.toHaveBeenCalled();
+    });
+
+    it('distinguishes no-matches from a never-synced taxonomy', async () => {
+      renderSearch(mockApi([]));
+      await screen.findByText('Electronics');
+
+      await userEvent.type(screen.getByLabelText('Search all categories'), 'zzz');
+
+      expect(await screen.findByText('No matching categories')).toBeInTheDocument();
+      expect(screen.queryByText('No categories synced yet')).not.toBeInTheDocument();
+    });
+
+    it('restores the tree when the query is cleared', async () => {
+      renderSearch(mockApi());
+      await screen.findByText('Electronics');
+
+      const input = screen.getByLabelText('Search all categories');
+      await userEvent.type(input, 'smart');
+      await screen.findByText('Smartfony');
+
+      await userEvent.clear(input);
+
+      // A tree-only affordance — "Electronics" alone also appears in the
+      // hit breadcrumb, so it would be a false positive.
+      expect(
+        await screen.findByRole('button', { name: /browse into electronics/i }),
+      ).toBeInTheDocument();
+    });
   });
 });

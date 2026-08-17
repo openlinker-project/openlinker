@@ -40,6 +40,7 @@ export type FailureMode = (typeof FailureModeValues)[number];
  *  raw provider message is never carried (the DTO omits `errorMessage`). */
 export const FailureCodeValues = [
   'buyer-tax-id-invalid',
+  'invalid-currency',
   'provider-rejected',
   'transport-timeout',
   'provider-error',

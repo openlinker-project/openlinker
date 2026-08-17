@@ -52,6 +52,7 @@ import type {
   MeResponse,
   OfferCreationStatus,
   OfferMapping,
+  OrderHealthSummary,
   OrderRecord,
   Paginated,
   Product,
@@ -90,7 +91,9 @@ function withApiVersion(path: string): string {
   return `${API_VERSION_PREFIX}${normalized}`;
 }
 
-function buildQuery(params: Record<string, string | number | undefined>): string {
+function buildQuery(
+  params: Record<string, string | number | boolean | undefined>,
+): string {
   const search = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
     if (value !== undefined && value !== '') {
@@ -552,10 +555,18 @@ export class ApiClient {
           syncStatus: query?.syncStatus,
           limit: query?.limit,
           offset: query?.offset,
+          salesDocumentBlocked: query?.salesDocumentBlocked,
         })}`,
       ),
     getById: (internalOrderId: string): Promise<OrderRecord> =>
       this.request<OrderRecord>(`/orders/${internalOrderId}`),
+    /**
+     * Per-health-bucket counts plus the orthogonal sales-document block count
+     * (#929/#2100). Deliberately un-scoped here: the endpoint is not
+     * self-filterable, so there is nothing to pass.
+     */
+    statusSummary: (): Promise<OrderHealthSummary> =>
+      this.request<OrderHealthSummary>('/orders/status-summary'),
   };
 
   // ── Invoices ────────────────────────────────────────────────────────────

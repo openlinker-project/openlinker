@@ -23,6 +23,7 @@ import type {
   CategoryMapping,
   AllegroCategory,
   CategoryPathNode,
+  CategorySearchHit,
   PrestashopCategory,
   MappingOption,
   MappingSide,
@@ -38,6 +39,19 @@ import type {
   AttributeRule,
   UpsertAttributeRulePayload,
 } from './mappings.types';
+
+/**
+ * Wire shape of one search hit (#2075).
+ *
+ * Distinct from the domain `CategorySearchHit` in exactly one field: the API's
+ * `leaf` is `boolean | null` (null for a shop node, which has no leaf concept)
+ * while consumers want a plain boolean. Declaring the wire shape explicitly is
+ * what makes that normalisation a visible mapping step rather than a cast.
+ */
+interface TaxonomySearchHitWire {
+  category: { id: string; name: string; parentId: string | null; leaf: boolean | null };
+  path: CategoryPathNode[];
+}
 
 export interface MappingsApi {
   getStatusMappings: (connectionId: string) => Promise<StatusMapping[]>;
@@ -69,6 +83,16 @@ export interface MappingsApi {
   deleteCategoryMapping: (connectionId: string, prestashopCategoryId: string) => Promise<void>;
   getAllegroCategories: (connectionId: string, parentId?: string) => Promise<AllegroCategory[]>;
   getCategoryPath: (connectionId: string, categoryId: string) => Promise<CategoryPathNode[]>;
+  /**
+   * Whole-tree category search (#2075) against the neutral destination-taxonomy
+   * projection (#2074). Serves marketplace AND shop connections - scope is
+   * resolved from the connection, never from a platform name.
+   */
+  searchCategories: (
+    connectionId: string,
+    query: string,
+    limit?: number,
+  ) => Promise<CategorySearchHit[]>;
   getPrestashopCategories: (connectionId: string) => Promise<PrestashopCategory[]>;
 
   // Fulfillment routing (#836) — sibling of /mappings, keyed on the source connection.
@@ -179,6 +203,24 @@ export function createMappingsApi(request: ApiRequest): MappingsApi {
       request<PrestashopCategory[]>(
         `/connections/${connectionId}/mappings/options/destination/categories`,
       ),
+
+    searchCategories: async (connectionId, query, limit) => {
+      const params = new URLSearchParams({ q: query });
+      if (limit !== undefined) params.set('limit', String(limit));
+
+      // `leaf` is nullable on the wire - a shop node has no leaf concept
+      // (ADR-024), only a marketplace one does. Normalising to `false` here
+      // keeps every consumer free of null handling: a shop picker never
+      // leaf-gates selection, so the substituted value is unreachable there.
+      const hits = await request<TaxonomySearchHitWire[]>(
+        `/listings/connections/${connectionId}/taxonomy/categories/search?${params.toString()}`,
+      );
+
+      return hits.map((hit) => ({
+        category: { ...hit.category, leaf: hit.category.leaf ?? false },
+        path: hit.path,
+      }));
+    },
 
     getAttributeRules: (connectionId) =>
       request<AttributeRule[]>(`/connections/${connectionId}/attribute-rules`),
