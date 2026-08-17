@@ -14,6 +14,7 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { getMetadataArgsStorage, type Repository, type SelectQueryBuilder } from 'typeorm';
 
 import { InventoryItem } from '../../../domain/entities/inventory-item.entity';
+import { InventoryReturningUnsupportedError } from '../../../domain/exceptions/inventory-returning-unsupported.error';
 import { InventoryRowVanishedError } from '../../../domain/exceptions/inventory-row-vanished.error';
 import { InventoryItemOrmEntity } from '../entities/inventory-item.orm-entity';
 import {
@@ -278,7 +279,7 @@ describe('InventoryRepository', () => {
         qb as unknown as ReturnType<typeof ormRepository.createQueryBuilder>
       );
 
-      await expect(repository.upsert(incoming)).rejects.toThrow(/did not honour RETURNING/);
+      await expect(repository.upsert(incoming)).rejects.toThrow(InventoryReturningUnsupportedError);
     });
 
     // The guard that actually earns its keep: adding a column to the ORM entity

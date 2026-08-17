@@ -24,12 +24,10 @@ export class InventoryRowVanishedError extends Error {
   constructor(
     public readonly inventoryItemId: string,
     public readonly productId: string,
-    public readonly productVariantId: string | null,
-    cause?: unknown
+    public readonly productVariantId: string | null
   ) {
     super(
-      `Inventory row vanished between read and write (id=${inventoryItemId}, productId=${productId}, productVariantId=${productVariantId ?? 'null'})`,
-      { cause }
+      `Inventory row vanished between read and write (id=${inventoryItemId}, productId=${productId}, productVariantId=${productVariantId ?? 'null'})`
     );
     this.name = 'InventoryRowVanishedError';
 

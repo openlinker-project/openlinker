@@ -26,6 +26,7 @@ import { randomUUID } from 'crypto';
 import { InventoryItemOrmEntity } from '../entities/inventory-item.orm-entity';
 import type { InventoryRepositoryPort } from '../../../domain/ports/inventory-repository.port';
 import { InventoryItem } from '../../../domain/entities/inventory-item.entity';
+import { InventoryReturningUnsupportedError } from '../../../domain/exceptions/inventory-returning-unsupported.error';
 import { InventoryRowVanishedError } from '../../../domain/exceptions/inventory-row-vanished.error';
 import type {
   InventoryFilters,
@@ -314,9 +315,7 @@ export class InventoryRepository implements InventoryRepositoryPort {
       // exclusion exists to protect, so that is an error too.
       const [returnedRow] = updated.raw as { updatedAt: Date | string }[];
       if (!returnedRow) {
-        throw new Error(
-          `inventory_upsert_missing_returning row=${existing.id} — driver did not honour RETURNING`
-        );
+        throw new InventoryReturningUnsupportedError(existing.id);
       }
       const persistedUpdatedAt =
         returnedRow.updatedAt instanceof Date
@@ -398,7 +397,11 @@ export class InventoryRepository implements InventoryRepositoryPort {
     // A freshly-synced/upserted row is always live — this is what clears a
     // previously-stale flag when a deleted variant reappears at the master (#1478).
     entity.isStale = item.isStale;
-    entity.updatedAt = item.updatedAt;
+    // `updatedAt` is deliberately NOT assigned (#2071). Assigning an
+    // @UpdateDateColumn puts it in the change map and suppresses
+    // CURRENT_TIMESTAMP, which would persist the master's timestamp on INSERT
+    // exactly as it used to on UPDATE — and the propagation dedupe key reads
+    // this column. Leaving it unset lets TypeORM/Postgres stamp it.
     return entity;
   }
 }
