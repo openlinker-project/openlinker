@@ -133,9 +133,10 @@ describe('EparagonyFiscalizationAdapter', () => {
       );
       expect(body.transactionToken).not.toBe(body.documentToken);
       expect(body.eReceipt.fiscalize).toBe(true);
-      // OL's own key becomes the vendor's idempotency guard - that is what makes
-      // a transport-level re-issue safe.
-      expect(options.headers['Idempotency-Key']).toBe('fiscal:conn-1:ol_order_1');
+      // The vendor's `Idempotency-Key` header rejects OL's colon-bearing raw key
+      // format, so the adapter sends the same derived `documentToken` there
+      // instead - that is what makes a transport-level re-issue safe.
+      expect(options.headers['Idempotency-Key']).toBe(body.documentToken);
       expect(options.idempotent).toBe(true);
     });
 
