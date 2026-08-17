@@ -7,6 +7,7 @@
  * @module libs/integrations/prestashop/src/infrastructure/mappers/__tests__
  */
 import { PrestashopOrderMapper } from '../prestashop-order.mapper';
+import { PrestashopCurrencyUnknownException } from '../../../domain/exceptions/prestashop-currency-unknown.exception';
 import { PrestashopParseException } from '../../../domain/exceptions/prestashop-parse.exception';
 import type { PrestashopOrder, PrestashopOrderRow } from '../prestashop.mapper.interface';
 import type { OrderCreate } from '@openlinker/core/orders';
@@ -457,11 +458,39 @@ describe('PrestashopOrderMapper', () => {
         externalProductIds,
         externalVariantIds,
         '200', // Only shipping
-        undefined // No billing
+        undefined, // No billing
+        '1',
+        '1'
       );
 
       expect(result.id_address_delivery).toBe('200');
       expect(result.id_address_invoice).toBe('200');
+    });
+
+    // #2139: the cart's id_currency is the live write the refusal protects -
+    // `importorder` builds the PrestaShop context from `$cart->id_currency`,
+    // and the cart-scoped `specific_prices` rows are keyed to the same id.
+    it('should refuse a cart with no currency ID instead of defaulting it to 1', () => {
+      const externalProductIds = new Map<string, string | number>([['ol_product_1', '10']]);
+      const externalVariantIds = new Map<string, string | number>();
+
+      const refuse = (): unknown =>
+        mapper.mapCartCreate(
+          mockOrderCreate,
+          '100',
+          externalProductIds,
+          externalVariantIds,
+          '200',
+          '201',
+          undefined, // No currency
+          '1'
+        );
+
+      expect(refuse).toThrow('No PrestaShop currency id was resolved');
+      // The class carries the retry decision: no retry can supply the id, so
+      // this must be the non-retryable currency class, not the generic
+      // provisioning one the retry classifier leaves retryable.
+      expect(refuse).toThrow(PrestashopCurrencyUnknownException);
     });
 
     it('should map cart rows correctly', () => {
@@ -474,7 +503,9 @@ describe('PrestashopOrderMapper', () => {
         externalProductIds,
         externalVariantIds,
         '200',
-        '201'
+        '201',
+        '1',
+        '1'
       );
 
       const cartRows = (result.associations as Record<string, unknown>).cart_rows as Record<
