@@ -169,4 +169,18 @@ export interface IInvoiceService {
     invoiceId: string,
     result: RegulatoryClearanceResult,
   ): Promise<InvoiceRecord>;
+
+  /**
+   * The BLOCKING `InvoiceRecord` for an order, if any, across ALL connections
+   * (#2157, ADR-041 §3a/3b). "Blocking" is `InvoiceRecord.blocksIssuanceElsewhere`
+   * — `pending`, `issuing`, `issued`, or `failed` with any `failureMode` other
+   * than the terminal `rejected`. Projection read — NEVER queries the
+   * provider/adapter. Returns `null` when no record blocks.
+   *
+   * This is the cross-context read `FiscalRegistrationService.register` calls
+   * (via `IInvoiceService`) to enforce ADR-041's cross-KIND exclusivity: an
+   * order gets at most one originating sales document, invoice **or** fiscal
+   * receipt, never both.
+   */
+  findBlockingInvoiceForOrder(orderId: string): Promise<InvoiceRecord | null>;
 }

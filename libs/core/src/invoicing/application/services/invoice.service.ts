@@ -19,12 +19,15 @@
  * @implements {IInvoiceService}
  */
 import { Inject, Injectable } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import { Logger } from '@openlinker/shared/logging';
 import {
   IIntegrationsService,
   INTEGRATIONS_SERVICE_TOKEN,
 } from '@openlinker/core/integrations';
 import { type SyncLockPort, SYNC_LOCK_TOKEN } from '@openlinker/core/sync';
+import type { IFiscalRegistrationService } from '@openlinker/core/fiscalization';
+import { FISCAL_REGISTRATION_SERVICE_TOKEN } from '@openlinker/core/fiscalization';
 
 import type { IInvoiceService } from './invoice.service.interface';
 import { InvoiceRecordRepositoryPort } from '../../domain/ports/invoice-record-repository.port';
@@ -44,6 +47,7 @@ import { isDocumentNumberConsumer } from '../../domain/ports/capabilities/docume
 import { DuplicateInvoiceRecordException } from '../../domain/exceptions/duplicate-invoice-record.exception';
 import { InvoiceRecordNotFoundException } from '../../domain/exceptions/invoice-record-not-found.exception';
 import { OrderAlreadyInvoicedException } from '../../domain/exceptions/order-already-invoiced.exception';
+import { OrderAlreadyHasFiscalReceiptException } from '../../domain/exceptions/order-already-has-fiscal-receipt.exception';
 import { InvoiceIssueContendedException } from '../../domain/exceptions/invoice-issue-contended.exception';
 import {
   INVOICE_ISSUE_LOCK_TTL_MS,
@@ -221,6 +225,9 @@ export class InvoiceService implements IInvoiceService {
     private readonly numberingRepo: InvoiceNumberingSeriesRepositoryPort,
     @Inject(SYNC_LOCK_TOKEN)
     private readonly issueLock: SyncLockPort,
+    // Resolved LAZILY via ModuleRef, never via a static `InvoicingModule.imports`
+    // edge to `FiscalizationModule` — see `resolveFiscalRegistrationService`.
+    private readonly moduleRef: ModuleRef,
   ) {}
 
   /**
@@ -369,16 +376,24 @@ export class InvoiceService implements IInvoiceService {
   }
 
   /**
-   * One-invoice-per-order guard (#2047). Throws
-   * {@link OrderAlreadyInvoicedException} when ANY record on a DIFFERENT
-   * connection blocks issuance (`InvoiceRecord.blocksIssuanceElsewhere`:
-   * `pending` / `issuing` / `issued`, or `failed` with a `failureMode` other than
-   * `rejected`).
+   * One-invoice-per-order guard (#2047), extended cross-KIND (#2157,
+   * ADR-041 §3a/3b). Throws {@link OrderAlreadyInvoicedException} when ANY
+   * record on a DIFFERENT invoicing connection blocks issuance
+   * (`InvoiceRecord.blocksIssuanceElsewhere`: `pending` / `issuing` / `issued`,
+   * or `failed` with a `failureMode` other than `rejected`), and throws
+   * {@link OrderAlreadyHasFiscalReceiptException} when the order already
+   * carries a blocking `FiscalRegistrationRecord` on ANY fiscalization
+   * connection — ADR-041 decision 3a is exclusive across document KINDS, not
+   * just within one: invoice or fiscal receipt, never both.
    *
-   * Records on the REQUESTED connection are deliberately ignored here — the
-   * per-connection lifecycle (idempotency read-gate + `resumeExisting` + the CAS
-   * claim) already owns retry/replay semantics there, and re-checking them here
-   * would break the idempotent replay of an already-`issued` row.
+   * Records on the REQUESTED connection are deliberately ignored for the
+   * SAME-kind check — the per-connection lifecycle (idempotency read-gate +
+   * `resumeExisting` + the CAS claim) already owns retry/replay semantics
+   * there, and re-checking them here would break the idempotent replay of an
+   * already-`issued` row. The CROSS-kind check has no such exemption: an
+   * invoicing connection id can never collide with a fiscalization connection
+   * id's own retry/replay state, so every blocking fiscal-receipt record
+   * refuses regardless of which connection is asking.
    *
    * A `failed` + `rejected` record elsewhere is NOT blocking: the provider
    * refused the document and created nothing, so moving the order to another
@@ -390,15 +405,18 @@ export class InvoiceService implements IInvoiceService {
    * unlocked it would be read-then-act: two concurrent attempts on different
    * connections would both observe no blocking record and both proceed. Every
    * caller must therefore either hold the lock or, like {@link issueContended},
-   * be unable to reach the provider at all.
+   * be unable to reach the provider at all. `FiscalRegistrationService.register`
+   * (#2157) acquires the SAME lock key before registering, so a concurrent
+   * cross-kind attempt is serialized the same way a same-kind one is.
    *
    * Logged at `warn`, not `error`, deliberately: a refusal here is the guard
    * WORKING — the expected outcome whenever an operator (or a stale tab) aims a
    * second connection at an invoiced order. The signal is not left to the log
-   * either way: it is raised as {@link OrderAlreadyInvoicedException}, mapped to
-   * a 409 the FE renders against the real document. That is the opposite case to
-   * the auto-issue ambiguity, which logs at `error` because nothing is raised to
-   * a caller there — the install silently stops issuing.
+   * either way: it is raised as {@link OrderAlreadyInvoicedException} /
+   * {@link OrderAlreadyHasFiscalReceiptException}, mapped to a 409 the FE
+   * renders against the real document. That is the opposite case to the
+   * auto-issue ambiguity, which logs at `error` because nothing is raised to a
+   * caller there — the install silently stops issuing.
    */
   private async assertNotInvoicedElsewhere(
     orderId: string,
@@ -409,23 +427,93 @@ export class InvoiceService implements IInvoiceService {
       (record) =>
         record.connectionId !== requestedConnectionId && record.blocksIssuanceElsewhere,
     );
+    if (blocking) {
+      this.logger.warn(
+        `Refusing to issue a second document for order ${orderId} on connection ` +
+          `${requestedConnectionId}: invoice ${blocking.id} on connection ` +
+          `${blocking.connectionId} is ${blocking.status}` +
+          `${blocking.status === 'failed' ? ` (failureMode=${blocking.failureMode ?? 'unknown'})` : ''}`,
+      );
+      throw new OrderAlreadyInvoicedException(
+        orderId,
+        blocking.connectionId,
+        requestedConnectionId,
+        blocking.status,
+        blocking.id,
+      );
+    }
+
+    await this.assertNoBlockingFiscalReceipt(orderId, requestedConnectionId);
+  }
+
+  /**
+   * Cross-KIND half of the one-document-per-order guard (#2157, ADR-041 §3a/3b).
+   * Refuses to issue an invoice when the order already carries a BLOCKING
+   * `FiscalRegistrationRecord` on ANY fiscalization connection.
+   *
+   * Resolved via `ModuleRef.get(FISCAL_REGISTRATION_SERVICE_TOKEN, { strict:
+   * false })` rather than a normal `@Inject` constructor dependency, and
+   * deliberately NOT via a static `InvoicingModule.imports` edge to
+   * `FiscalizationModule`: this repo's own ADR-041 decision 2 states "there is
+   * no `forwardRef` anywhere in `libs/core`, `apps/api` or `apps/worker`", and a
+   * normal two-way constructor dependency here (`FiscalRegistrationService`
+   * already injects `IInvoiceService` the other direction, see
+   * `assertNotAlreadyRegistered`) would require exactly that. `ModuleRef`'s
+   * lazy, whole-container lookup breaks the cycle without it: NEITHER core
+   * module's `imports` array references the other.
+   *
+   * A `NestJS` "provider not found" throw (fiscalization not wired into THIS
+   * process — true of `apps/worker` today, which never imports
+   * `FiscalizationModule`) is read as "nothing can have been registered here
+   * either", which is accurate: the SAME missing wiring that hides the
+   * fiscalization read also means `FiscalRegistrationService.register` cannot
+   * run in that process. This is not a silent safety gap — it degrades exactly
+   * where the write path it would guard against is itself unreachable.
+   */
+  private async assertNoBlockingFiscalReceipt(
+    orderId: string,
+    requestedConnectionId: string,
+  ): Promise<void> {
+    const fiscalRegistrationService = this.resolveFiscalRegistrationService();
+    if (!fiscalRegistrationService) {
+      return;
+    }
+
+    const records = await fiscalRegistrationService.getByOrderId(orderId);
+    const blocking = records.find((record) => record.blocksFurtherRegistration);
     if (!blocking) {
       return;
     }
 
     this.logger.warn(
-      `Refusing to issue a second document for order ${orderId} on connection ` +
-        `${requestedConnectionId}: invoice ${blocking.id} on connection ` +
+      `Refusing to issue a document for order ${orderId} on connection ` +
+        `${requestedConnectionId}: fiscal registration ${blocking.id} on connection ` +
         `${blocking.connectionId} is ${blocking.status}` +
         `${blocking.status === 'failed' ? ` (failureMode=${blocking.failureMode ?? 'unknown'})` : ''}`,
     );
-    throw new OrderAlreadyInvoicedException(
+    throw new OrderAlreadyHasFiscalReceiptException(
       orderId,
       blocking.connectionId,
       requestedConnectionId,
       blocking.status,
       blocking.id,
     );
+  }
+
+  /**
+   * Lazily resolve `IFiscalRegistrationService` from anywhere in the running
+   * application's DI container. Returns `null` (never throws) when
+   * fiscalization is not wired into this process — see
+   * {@link assertNoBlockingFiscalReceipt}.
+   */
+  private resolveFiscalRegistrationService(): IFiscalRegistrationService | null {
+    try {
+      return this.moduleRef.get<IFiscalRegistrationService>(FISCAL_REGISTRATION_SERVICE_TOKEN, {
+        strict: false,
+      });
+    } catch {
+      return null;
+    }
   }
 
   /**
@@ -955,6 +1043,17 @@ export class InvoiceService implements IInvoiceService {
 
   async getLatestInvoiceForOrder(orderId: string): Promise<InvoiceRecord | null> {
     return this.repo.findLatestByOrderId(orderId);
+  }
+
+  async findBlockingInvoiceForOrder(orderId: string): Promise<InvoiceRecord | null> {
+    // Same predicate `assertNotInvoicedElsewhere` uses, exposed as a projection
+    // read for cross-context consumption (#2157) — `FiscalRegistrationService`
+    // calls this via `IInvoiceService` to enforce ADR-041's cross-kind
+    // exclusivity. No connection exemption here: unlike the same-context guard,
+    // a caller from OUTSIDE invoicing has no "requested connection" of its own
+    // to exclude.
+    const records = await this.repo.findAllByOrderId(orderId);
+    return records.find((record) => record.blocksIssuanceElsewhere) ?? null;
   }
 
   async listInvoiceConnectionIdsForOrder(orderId: string): Promise<string[]> {
