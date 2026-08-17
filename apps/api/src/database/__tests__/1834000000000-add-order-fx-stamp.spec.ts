@@ -13,10 +13,21 @@
  * legal FX states plus the one illegal combination it exists to reject. The
  * live `run → revert → run` round-trip stays a manual gate.
  *
- * @module apps/api/src/migrations/__tests__
+ * LIVES HERE, NOT UNDER `migrations/__tests__/`: `data-source.ts`'s
+ * `migrations` glob (`migrations/**\/*{.ts,.js}`) feeds every matched file
+ * straight into the TypeORM CLI's `migration:run`, which requires each one to
+ * export a migration class — a colocated `__tests__/*.spec.ts` there would be
+ * `require()`d by `migration:run` itself and crash on the first bare
+ * `describe()` (a jest global that does not exist in that ts-node process).
+ * Confirmed live: an epic-branch E2E boot hit exactly this crash before the
+ * file was moved here. `database/__tests__/` sits beside `data-source.ts`,
+ * the file that owns the glob, and is picked up by jest's repo-wide
+ * `testRegex: '.*\.spec\.ts$'` regardless of location.
+ *
+ * @module apps/api/src/database/__tests__
  */
 import type { QueryRunner } from 'typeorm';
-import { AddOrderFxStamp1834000000000 } from '../1834000000000-add-order-fx-stamp';
+import { AddOrderFxStamp1834000000000 } from '../../migrations/1834000000000-add-order-fx-stamp';
 
 /** The six FX columns as a row shape the CHECK can be evaluated against. */
 interface FxRow {
