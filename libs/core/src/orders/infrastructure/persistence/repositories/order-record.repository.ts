@@ -90,6 +90,29 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     return entities.map((e) => this.toDomain(e));
   }
 
+  /**
+   * Batch earliest-order-date lookup by source connection (#2083). One
+   * `GROUP BY` aggregate query, not a per-connection fan-out — mirrors
+   * `findByIds`'s "absent id = no match" convention for connections with
+   * zero rows. Deliberately unfiltered by `recordStatus` — see the port's
+   * JSDoc for why no `NOT_MAPPING_OR_DELETED`-style gate applies here.
+   */
+  async findEarliestPlacedAtByConnection(connectionIds: string[]): Promise<Map<string, Date>> {
+    if (connectionIds.length === 0) {
+      return new Map();
+    }
+
+    const rows = await this.repository
+      .createQueryBuilder('rec')
+      .select('rec.sourceConnectionId', 'source_connection_id')
+      .addSelect(`MIN(COALESCE(rec."placedAt", rec."createdAt"))`, 'earliest_at')
+      .where('rec.sourceConnectionId IN (:...connectionIds)', { connectionIds })
+      .groupBy('rec.sourceConnectionId')
+      .getRawMany<{ source_connection_id: string; earliest_at: Date }>();
+
+    return new Map(rows.map((row) => [row.source_connection_id, row.earliest_at]));
+  }
+
   async findMany(
     filters: OrderRecordFilters,
     pagination: OrderRecordPagination

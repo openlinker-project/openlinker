@@ -453,6 +453,10 @@ export class OrderRecordService implements IOrderRecordService {
     return this.repository.getFailedSyncValueSummary(filters);
   }
 
+  async getEarliestOrderDateByConnection(connectionIds: string[]): Promise<Map<string, Date>> {
+    return this.repository.findEarliestPlacedAtByConnection(connectionIds);
+  }
+
   /**
    * Durably record the instant this order was cancelled (#1984). Thin
    * pass-through to the repository's first-write-wins absolute-set — see

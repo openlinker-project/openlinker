@@ -8,6 +8,7 @@ import type { IIntegrationsService } from '@openlinker/core/integrations';
 import type { ISyncJobsService, SchedulerTaskConfig } from '@openlinker/core/sync';
 import type { Connection } from '@openlinker/core/identifier-mapping';
 import type { SyncJobEntity } from '@openlinker/core/sync';
+import type { IOrderRecordService } from '@openlinker/core/orders';
 
 function makeConnection(overrides: Partial<Connection> = {}): Connection {
   return {
@@ -40,6 +41,7 @@ function makeTask(overrides: Partial<SchedulerTaskConfig> = {}): SchedulerTaskCo
 describe('AnalyticsTrustService', () => {
   let integrationsService: jest.Mocked<Pick<IIntegrationsService, 'listCapabilityAdapters'>>;
   let syncJobsService: jest.Mocked<Pick<ISyncJobsService, 'findLastSucceededJob' | 'findEnabledPollTask'>>;
+  let orderRecordService: jest.Mocked<Pick<IOrderRecordService, 'getEarliestOrderDateByConnection'>>;
   let service: AnalyticsTrustService;
 
   const now = new Date('2026-06-01T12:00:00.000Z');
@@ -58,10 +60,14 @@ describe('AnalyticsTrustService', () => {
       findLastSucceededJob: jest.fn().mockResolvedValue(null),
       findEnabledPollTask: jest.fn().mockReturnValue(null),
     };
+    orderRecordService = {
+      getEarliestOrderDateByConnection: jest.fn().mockResolvedValue(new Map()),
+    };
 
     service = new AnalyticsTrustService(
       integrationsService as unknown as IIntegrationsService,
-      syncJobsService as unknown as ISyncJobsService
+      syncJobsService as unknown as ISyncJobsService,
+      orderRecordService as unknown as IOrderRecordService
     );
   });
 
@@ -378,5 +384,99 @@ describe('AnalyticsTrustService', () => {
     const result = await service.getIngestionTrustSnapshot();
 
     expect(result.connections[0].connectionCreatedAt).toEqual(createdAt);
+  });
+
+  it('batches the earliest-order-date lookup exactly once across every enumerated connection (#2083)', async () => {
+    const connectionA = makeConnection({ id: 'conn-a' });
+    const connectionB = makeConnection({ id: 'conn-b' });
+    integrationsService.listCapabilityAdapters.mockResolvedValue([
+      { connectionId: connectionA.id, connection: connectionA, adapter: {}, metadata: {} as never },
+      { connectionId: connectionB.id, connection: connectionB, adapter: {}, metadata: {} as never },
+    ]);
+    syncJobsService.findEnabledPollTask.mockReturnValue(null);
+    orderRecordService.getEarliestOrderDateByConnection.mockResolvedValue(new Map());
+
+    await service.getIngestionTrustSnapshot();
+
+    expect(orderRecordService.getEarliestOrderDateByConnection).toHaveBeenCalledTimes(1);
+    expect(orderRecordService.getEarliestOrderDateByConnection).toHaveBeenCalledWith([
+      connectionA.id,
+      connectionB.id,
+    ]);
+  });
+
+  it('reports earliestOrderDate from the batched Map when present for the connection', async () => {
+    const connection = makeConnection();
+    const earliestOrderDate = new Date('2026-01-15T00:00:00.000Z');
+    integrationsService.listCapabilityAdapters.mockResolvedValue([
+      { connectionId: connection.id, connection, adapter: {}, metadata: {} as never },
+    ]);
+    syncJobsService.findEnabledPollTask.mockReturnValue(null);
+    orderRecordService.getEarliestOrderDateByConnection.mockResolvedValue(
+      new Map([[connection.id, earliestOrderDate]])
+    );
+
+    const result = await service.getIngestionTrustSnapshot();
+
+    expect(result.connections[0].earliestOrderDate).toEqual(earliestOrderDate);
+  });
+
+  it('reports earliestOrderDate as null when the connection is absent from the batched Map (zero ingested orders)', async () => {
+    const connection = makeConnection();
+    integrationsService.listCapabilityAdapters.mockResolvedValue([
+      { connectionId: connection.id, connection, adapter: {}, metadata: {} as never },
+    ]);
+    syncJobsService.findEnabledPollTask.mockReturnValue(null);
+    orderRecordService.getEarliestOrderDateByConnection.mockResolvedValue(new Map());
+
+    const result = await service.getIngestionTrustSnapshot();
+
+    expect(result.connections[0].earliestOrderDate).toBeNull();
+  });
+
+  it('does not throw the whole snapshot when the batched earliest-order-date lookup itself fails', async () => {
+    const connection = makeConnection();
+    integrationsService.listCapabilityAdapters.mockResolvedValue([
+      { connectionId: connection.id, connection, adapter: {}, metadata: {} as never },
+    ]);
+    syncJobsService.findEnabledPollTask.mockReturnValue(makeTask());
+    const recentPoll = new Date(now.getTime() - 2 * 60 * 1000);
+    mockJobsFor(connection.id, { id: 'job-1', updatedAt: recentPoll } as SyncJobEntity, null);
+    orderRecordService.getEarliestOrderDateByConnection.mockRejectedValue(new Error('db down'));
+
+    const result = await service.getIngestionTrustSnapshot();
+
+    expect(result.connections).toHaveLength(1);
+    expect(result.connections[0]).toMatchObject({
+      // The job lookup itself succeeded — only the earliest-order-date
+      // batch failed, so the rest of the entry must build normally rather
+      // than degrading to 'unknown'.
+      status: 'fresh',
+      lastPollAt: recentPoll,
+      earliestOrderDate: null,
+    });
+  });
+
+  it('still reports a correct earliestOrderDate on a degraded (unknown) entry when the batch lookup succeeded', async () => {
+    const connection = makeConnection();
+    const earliestOrderDate = new Date('2025-11-01T00:00:00.000Z');
+    integrationsService.listCapabilityAdapters.mockResolvedValue([
+      { connectionId: connection.id, connection, adapter: {}, metadata: {} as never },
+    ]);
+    syncJobsService.findEnabledPollTask.mockReturnValue(makeTask());
+    // The job lookup fails (triggers the degraded/'unknown' path), but the
+    // batched earliest-order-date lookup is independent and already
+    // succeeded for this connection.
+    syncJobsService.findLastSucceededJob.mockRejectedValue(new Error('boom'));
+    orderRecordService.getEarliestOrderDateByConnection.mockResolvedValue(
+      new Map([[connection.id, earliestOrderDate]])
+    );
+
+    const result = await service.getIngestionTrustSnapshot();
+
+    expect(result.connections[0]).toMatchObject({
+      status: 'unknown',
+      earliestOrderDate,
+    });
   });
 });

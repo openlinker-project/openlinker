@@ -46,6 +46,28 @@ export interface OrderRecordRepositoryPort {
   findByIds(internalOrderIds: string[]): Promise<OrderRecord[]>;
 
   /**
+   * Batch earliest-order-date lookup by source connection (#2083).
+   *
+   * `MIN(COALESCE(placedAt, createdAt))` per `sourceConnectionId`, in one
+   * `GROUP BY` query — the real batch analytics-trust's coverage-window
+   * read needs, as opposed to one query per connection. A connection with
+   * zero matching rows is simply absent from the returned Map (mirrors
+   * {@link findByIds}); callers treat a missing key as "no orders yet",
+   * distinct from a present key whose value is merely old.
+   *
+   * Deliberately unfiltered by `recordStatus`: every row this connection has
+   * ever ingested — including `source_deleted` / `awaiting_mapping` /
+   * `failed` rows — reflects a real order that was placed, so it counts
+   * toward "how far back this connection's data goes". This is a
+   * coverage/freshness fact, not a revenue or health figure — unlike
+   * {@link getFailedSyncValueSummary}'s `NOT_MAPPING_OR_DELETED` gate, which
+   * exists to keep administrative buckets out of a *value* sum, no such gate
+   * applies here. Mirrors the already-documented decision to also include
+   * cancelled orders.
+   */
+  findEarliestPlacedAtByConnection(connectionIds: string[]): Promise<Map<string, Date>>;
+
+  /**
    * Upsert order record (create or update)
    * Uses internalOrderId as the primary key.
    *

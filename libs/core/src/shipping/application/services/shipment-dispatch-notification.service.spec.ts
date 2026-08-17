@@ -102,6 +102,7 @@ describe('ShipmentDispatchNotificationService', () => {
       getFailedSyncValueSummary: jest.fn(),
       markCancelled: jest.fn(),
       markSalesDocumentBlock: jest.fn(),
+      getEarliestOrderDateByConnection: jest.fn(),
     };
 
     integrations = {
