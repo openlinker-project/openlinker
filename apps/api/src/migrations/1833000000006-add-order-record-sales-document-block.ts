@@ -10,6 +10,19 @@
  * so on a manual install every uninvoiced order carries a reason and an
  * `IS NOT NULL` count would read "Invoicing blocked 4,312" on a healthy system.
  *
+ * The index is therefore PARTIAL, restricted to the same attention-worthy
+ * membership the query predicate itself uses (`SalesDocumentAttentionReasonValues`
+ * = every `SalesDocumentGateBlockReason` except `'trigger-model-manual'`) — a
+ * plain btree would be dominated by `null` and `trigger-model-manual` rows while
+ * every read filters to this subset (PR #2129 review). The membership is
+ * hardcoded here, matching every other enum-shaped column in this codebase
+ * (`recordStatus`, `fulfillmentState`): a future ADR-041 reason needs a follow-up
+ * migration to extend the `WHERE` list, same as it needs no DDL for the column
+ * itself. Named camelCase (`IDX_order_records_salesDocumentBlockReason`) to match
+ * this table's sibling indexes (`IDX_order_records_fulfillmentState`,
+ * `IDX_order_records_cancelledAt`, `IDX_order_records_dispatchByAt`) rather than
+ * `migration:generate`'s default snake_case.
+ *
  * `salesDocumentUnresolvedReason` carries the routing reason that travelled
  * alongside a `'unresolved-routing'` block (ADR-041 §107) — today always
  * `'ambiguous-connection-no-primary'`. Not indexed: the filter axis is "is this
@@ -47,14 +60,16 @@ export class AddOrderRecordSalesDocumentBlock1833000000006 implements MigrationI
       `ALTER TABLE "order_records" ADD COLUMN IF NOT EXISTS "salesDocumentBlockDetail" text`,
     );
     await queryRunner.query(
-      `CREATE INDEX IF NOT EXISTS "IDX_order_records_sales_document_block_reason" ` +
-        `ON "order_records" ("salesDocumentBlockReason")`,
+      `CREATE INDEX IF NOT EXISTS "IDX_order_records_salesDocumentBlockReason" ` +
+        `ON "order_records" ("salesDocumentBlockReason") ` +
+        `WHERE "salesDocumentBlockReason" IN ` +
+        `('unresolved-routing', 'missing-required-tax-id', 'tax-rate-conflict', 'trigger-model-batched')`,
     );
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(
-      `DROP INDEX IF EXISTS "IDX_order_records_sales_document_block_reason"`,
+      `DROP INDEX IF EXISTS "IDX_order_records_salesDocumentBlockReason"`,
     );
     await queryRunner.query(
       `ALTER TABLE "order_records" DROP COLUMN IF EXISTS "salesDocumentBlockDetail"`,
