@@ -1,4 +1,4 @@
-<title>Jeden dokument na zamówienie</title>
+<title>One Document Per Order</title>
 <style>
 /* ══════════════════ 1. TOKENS - verbatim from apps/web/src/index.css ══════════════════ */
 :root {
@@ -504,15 +504,15 @@ body {
 
 <div class="controls">
   <span class="controls__label">ADR-041 · sales-document routing · Phase 1 mockup</span>
-  <button class="toggle-btn" type="button" id="theme-toggle">Zmień motyw</button>
+  <button class="toggle-btn" type="button" id="theme-toggle">Toggle theme</button>
 </div>
 
 <main class="sheet">
-  <h1 class="sheet__title">Jeden dokument na zamówienie</h1>
+  <h1 class="sheet__title">One document per order</h1>
   <p class="sheet__sub">
-    Mockup Fazy 1 dla epika sales-document routing (ADR-041). Ekrany zbudowane na tokenach i
-    komponentach z <span class="mono-text">apps/web/src/index.css</span> — to, co widzisz, jest tym,
-    co powstanie. Copy w interfejsie po angielsku, komentarz po polsku (tak działa produkt).
+    Phase 1 mockup for the sales-document routing epic (ADR-041). Screens built on the tokens and
+    components from <span class="mono-text">apps/web/src/index.css</span> — what you see is what
+    ships.
   </p>
 
   <div class="sheet__note">
@@ -520,12 +520,12 @@ body {
       <circle cx="8" cy="8" r="6.5" /><path d="M8 7.5v3.5M8 5.2v.6" stroke-linecap="round" />
     </svg>
     <div>
-      <b>Punkt wyjścia zmienił się od poprzedniego szkicu tej samej zakładki.</b>
-      <span class="mono-text">#2047</span> (jedno połączenie fakturujące) i <span class="mono-text">#2100</span>
-      (powód blokady zapisany i widoczny — <span class="mono-text">PR #2129</span>) są już na <code>main</code>.
-      Ten mockup traktuje je jako fundament i pokazuje, co epik dokłada ponad nie: drugi typ dokumentu
-      (paragon), jedno gniazdo dokumentu na zamówieniu zamiast dwóch niezależnych paneli, i konfigurację
-      per-connection która obejmuje oba typy naraz.
+      <b>The starting point has moved since the earlier sketch of this same tab.</b>
+      <span class="mono-text">#2047</span> (single invoicing connection) and <span class="mono-text">#2100</span>
+      (block reason persisted and surfaced — <span class="mono-text">PR #2129</span>) are already on
+      <code>main</code>. This mockup treats them as the foundation and shows what the epic adds on top:
+      a second document kind (fiscal receipt), one document slot on the order instead of two independent
+      panels, and per-connection configuration that covers both kinds at once.
     </div>
   </div>
 
@@ -534,54 +534,54 @@ body {
       <path d="M8 1.5 15 14H1L8 1.5Z" stroke-linejoin="round" /><path d="M8 6.2v3.6M8 11.6v.6" stroke-linecap="round" />
     </svg>
     <div>
-      <b>Fiskalizacja (#1902 / PR #2137) NIE jest jeszcze zmergowana</b> — otwarty PR, wymaga review
-      od Piotra, check <span class="mono-text">Test</span> obecnie czerwony (naprawa w toku równolegle).
-      <span class="mono-text">OrderReceiptPanel</span> istnieje dziś tylko na tamtym branchu. Ten epik
-      zacznie pracę na branchu wywodzącym się z gałęzi #2137 (nie z <code>main</code>) i jego PR zostanie
-      draftem, dopóki #2137 się nie zmerguje.
+      <b>Fiscalization (#1902 / PR #2137) is NOT merged yet</b> — open PR, awaiting Piotr's review,
+      its <span class="mono-text">Test</span> check is currently failing (fix in progress in parallel).
+      <span class="mono-text">OrderReceiptPanel</span> only exists on that branch today. This epic starts
+      its branch from #2137's branch (not from <code>main</code>) and its own PR stays in draft until
+      #2137 merges.
     </div>
   </div>
 
-  <nav class="deck-nav" aria-label="Sekcje">
+  <nav class="deck-nav" aria-label="Sections">
     <button class="deck-nav__link" type="button" data-goto="before-after" aria-current="true">
-      <span class="deck-nav__num">01</span> Przed / po
+      <span class="deck-nav__num">01</span> Before / after
     </button>
     <button class="deck-nav__link" type="button" data-goto="config">
-      <span class="deck-nav__num">02</span> Konfiguracja
+      <span class="deck-nav__num">02</span> Configuration
     </button>
     <button class="deck-nav__link" type="button" data-goto="order">
-      <span class="deck-nav__num">03</span> Zamówienie
+      <span class="deck-nav__num">03</span> Order
     </button>
     <button class="deck-nav__link" type="button" data-goto="reasons">
-      <span class="deck-nav__num">04</span> Powody
+      <span class="deck-nav__num">04</span> Reasons
     </button>
     <button class="deck-nav__link" type="button" data-goto="edge-cases">
-      <span class="deck-nav__num">05</span> Agregacja i self-routing
+      <span class="deck-nav__num">05</span> Aggregation & self-routing
     </button>
   </nav>
 
-  <!-- ══════════════════════════ 01 · PRZED / PO ══════════════════════════ -->
+  <!-- ══════════════════════════ 01 · BEFORE / AFTER ══════════════════════════ -->
   <section class="deck-panel" id="panel-before-after" data-active="true" aria-labelledby="h-ba">
     <h2 class="section-title" id="h-ba" style="margin-bottom: var(--space-2)">
-      Dziś: dwa niezależne panele. Po: jedno gniazdo dokumentu
+      Today: two independent panels. After: one document slot
     </h2>
     <p class="page-description" style="margin-bottom: var(--space-5)">
-      To jest pojedynczy najważniejszy obrazek w całym mockupie — dokładnie problem opisany w
-      <span class="mono-text">docs/manual-testing/.../08-eparagony.md</span> finding #4: nic nie stoi na
-      przeszkodzie, żeby jedno zamówienie dostało jednocześnie fakturę i paragon fiskalny, bo to dwie
-      niezależne capability na dwóch niezależnych connection, każda z własnym przyciskiem akcji.
+      This is the single most important image in the whole mockup — exactly the problem documented in
+      <span class="mono-text">docs/manual-testing/.../08-eparagony.md</span> finding #4: nothing stops one
+      order from getting an invoice AND a fiscal receipt at the same time, because they're two independent
+      capabilities on two independent connections, each with its own action button.
     </p>
 
     <div class="legend">
       <span class="legend__item"><span class="legend__swatch" style="background:var(--status-error)"></span>problem</span>
-      <span class="legend__item"><span class="legend__swatch" style="background:var(--status-success)"></span>rozwiązane</span>
+      <span class="legend__item"><span class="legend__swatch" style="background:var(--status-success)"></span>solved</span>
     </div>
 
     <section class="viewport-frame">
       <div class="viewport-frame__label">
-        <span class="eyebrow-mono">Dziś</span>
-        <b>OrderInvoicePanel + OrderReceiptPanel, jako niezależne siostrzane sekcje</b>
-        <span class="caption">order-detail-page.tsx — po prostu stackowane, bez wspólnej wiedzy o sobie</span>
+        <span class="eyebrow-mono">Today</span>
+        <b>OrderInvoicePanel + OrderReceiptPanel, as independent sibling sections</b>
+        <span class="caption">order-detail-page.tsx — just stacked, no shared awareness</span>
       </div>
       <div class="viewport-frame__scroll">
         <div class="app-frame" style="max-width: 640px; margin: 0 auto">
@@ -613,17 +613,17 @@ body {
           </div>
         </div>
         <p class="app-frame__caption app-frame__caption--bad">
-          Nic nie łączy tych dwóch paneli. Kliknięcie „Register receipt" utworzy DRUGI dokument fiskalny
-          dla tej samej sprzedaży — przycisk o tym nie wie.
+          Nothing links these two panels. Clicking "Register receipt" creates a SECOND fiscal document for
+          the same sale — the button has no idea.
         </p>
       </div>
     </section>
 
     <section class="viewport-frame">
       <div class="viewport-frame__label">
-        <span class="eyebrow-mono">Po</span>
-        <b>Jedno gniazdo „Sales document"</b>
-        <span class="caption">jeden panel, jeden dokument pierwotny, korekty jako następstwa</span>
+        <span class="eyebrow-mono">After</span>
+        <b>One "Sales document" slot</b>
+        <span class="caption">one panel, one originating document, corrections as follow-ups</span>
       </div>
       <div class="viewport-frame__scroll">
         <div class="app-frame" style="max-width: 640px; margin: 0 auto">
@@ -646,56 +646,55 @@ body {
           </section>
         </div>
         <p class="app-frame__caption app-frame__caption--good">
-          Jeden panel, jeden dokument. „Register receipt" nie istnieje już jako niezależny przycisk —
-          podlega tej samej bramie co auto-issue faktury.
+          One panel, one document. "Register receipt" no longer exists as an independent button — it goes
+          through the same gate as invoice auto-issue.
         </p>
       </div>
     </section>
   </section>
 
-  <!-- ══════════════════════════ 02 · KONFIGURACJA ══════════════════════════ -->
+  <!-- ══════════════════════════ 02 · CONFIGURATION ══════════════════════════ -->
   <section class="deck-panel" id="panel-config" aria-labelledby="h-cfg">
     <h2 class="section-title" id="h-cfg" style="margin-bottom: var(--space-2)">
-      Który dokument, z którego połączenia, i kto jest pierwotny
+      Which document, from which connection, and who's primary
     </h2>
     <p class="page-description" style="margin-bottom: var(--space-5)">
-      Tryb <span class="mono-text">operator-configured</span> (ADR-041 dec. 4). Dwie propozycje ekranu —
-      oznaczone wprost, żeby było jasne co jest mandatem ADR, a co moją propozycją UX do zaakceptowania
-      lub odrzucenia.
+      <span class="mono-text">operator-configured</span> mode (ADR-041 dec. 4). Two screen proposals —
+      labelled explicitly so it's clear what's an ADR mandate and what's a UX proposal to accept or reject.
     </p>
 
     <section class="viewport-frame">
       <div class="viewport-frame__label">
-        <span class="eyebrow-mono">Poprawka po pierwszym review</span>
-        <b>Dlaczego nie ma już osobnego checkboxa per-connection</b>
+        <span class="eyebrow-mono">Correction after first review</span>
+        <b>Why there's no separate per-connection checkbox anymore</b>
       </div>
       <div class="viewport-frame__scroll">
         <div class="alert alert--info">
           <div class="alert__content">
-            <p class="alert__title">„Auto-issue invoices on this connection" nie ma dokąd się przenieść — bo pyta o złą rzecz</p>
+            <p class="alert__title">"Auto-issue invoices on this connection" has nowhere to move to — it asks the wrong question</p>
             <div class="alert__description">
               <p>
-                Pierwsza wersja tego mockupu miała dwa niezależne checkboxy: jeden per capability, na
-                osobnym ekranie edycji connection. To się psuje w chwili, gdy „Issues" tego connection
-                zmienia się na paragon — checkbox nazwany „Auto-issue invoices" przestaje mieć sens, a
-                dodanie DRUGIEGO checkboxa („Auto-register fiscal receipts") obok niego sugeruje dwie
-                niezależne osie, podczas gdy jest tylko jedna: <span class="mono-text">isPrimary</span>
-                (dec. 3a — dokładnie jeden pierwotny dokument, więc dokładnie jeden primary spośród
-                WSZYSTKICH kandydatów, niezależnie od capability).
+                The first version of this mockup had two independent checkboxes: one per capability, on
+                the connection's own edit screen. That breaks the moment this connection's "Issues" becomes
+                a receipt — a checkbox named "Auto-issue invoices" stops making sense, and adding a SECOND
+                checkbox ("Auto-register fiscal receipts") next to it implies two independent axes, when
+                there's only one: <span class="mono-text">isPrimary</span> (dec. 3a — exactly one
+                originating document, so exactly one primary among ALL candidates, regardless of
+                capability).
               </p>
               <p style="margin-top: var(--space-2)">
-                Ważniejszy powód niż nazewnictwo: <b>primary da się poprawnie ustawić tylko widząc
-                wszystkich kandydatów naraz.</b> N niezależnych checkboxów w N osobnych formularzach
-                connection to dokładnie kształt, który dziś produkuje konflikt — dwie osoby, dwie sesje,
-                dwa zapisane connection, żadne nie wie o drugim. Jeden radio-group w jednym miejscu
-                strukturalnie eliminuje tę możliwość z poziomu UI (ścieżka zapisu — dec. 3b — zostaje
-                gwarancją na wypadek konfiguracji spoza tego ekranu).
+                A more important reason than naming: <b>primary can only be set correctly by seeing all
+                candidates at once.</b> N independent checkboxes across N separate connection forms is
+                exactly the shape that produces a conflict today — two people, two sessions, two saved
+                connections, neither aware of the other. One radio group in one place structurally
+                eliminates that possibility at the UI level (the write path — dec. 3b — remains the
+                guarantee for configuration that originates outside this screen).
               </p>
             </div>
           </div>
         </div>
         <p class="app-frame__caption" style="margin-top: var(--space-3)">
-          EditConnectionForm dostaje więc TYLKO odczyt — żadnej duplikowanej kontrolki do edycji.
+          So EditConnectionForm gets a READ-ONLY view only — no duplicated editable control.
         </p>
         <div class="frame-grid frame-grid--2" style="margin-top: var(--space-3)">
           <div class="app-frame app-frame--tight">
@@ -734,9 +733,9 @@ body {
 
     <section class="viewport-frame">
       <div class="viewport-frame__label">
-        <span class="eyebrow-mono">Jedyna edytowalna powierzchnia</span>
+        <span class="eyebrow-mono">The only editable surface</span>
         <b>Settings → Sales documents</b>
-        <span class="caption">wszyscy kandydaci w jednym miejscu — jeden radio-group, jeden Trigger per wiersz, oba edytowalne tutaj i tylko tutaj</span>
+        <span class="caption">every candidate in one place — one radio group, one Trigger per row, both editable here and only here</span>
       </div>
       <div class="viewport-frame__scroll">
         <div class="app-frame">
@@ -839,17 +838,17 @@ body {
               </table>
             </div>
             <p class="muted-text">
-              Jeden <span class="mono-text">&lt;input type="radio" name="sd-primary"&gt;</span> na WSZYSTKIE
-              wiersze niezależnie od capability — bo decyzja 3a jest jedna: invoice XOR receipt, nigdy oba.
-              Radio wymusza to na poziomie UI; gwarancją pozostaje ścieżka zapisu (decyzja 3b), nie ten
-              control — instalacja z konfliktem powstałym poza tym ekranem (API, migracja, wyścig) i tak
-              musi trafić na alert poniżej. „Trigger" jest teraz EDYTOWALNY tutaj (poprzednia wersja
-              pokazywała go jako statyczny tekst) — to ten sam <span class="mono-text">triggerModel</span>
-              co dziś (<span class="mono-text">auto-on-paid</span> / <span class="mono-text">auto-on-shipped</span>
-              / <span class="mono-text">manual</span> / <span class="mono-text">batched</span>), tylko
-              czytany i zapisywany z jednego miejsca zamiast per-connection. Wyszarzony dla wiersza, który
-              nie jest primary — trigger nie ma znaczenia, dopóki połączenie nie zostanie wybrane jako
-              jedyne wystawiające.
+              One <span class="mono-text">&lt;input type="radio" name="sd-primary"&gt;</span> across ALL
+              rows regardless of capability — because decision 3a is singular: invoice XOR receipt, never
+              both. The radio group enforces this at the UI level; the write path (decision 3b) remains the
+              actual guarantee, not this control — an install with a conflict originating outside this
+              screen (API, migration, race) still has to hit the alert below. "Trigger" is now EDITABLE
+              here (an earlier draft showed it as static text) — it's the same
+              <span class="mono-text">triggerModel</span> as today
+              (<span class="mono-text">auto-on-paid</span> / <span class="mono-text">auto-on-shipped</span>
+              / <span class="mono-text">manual</span> / <span class="mono-text">batched</span>), just read
+              and written from one place instead of per-connection. Greyed out for a non-primary row —
+              the trigger doesn't matter until a connection is actually chosen as the one issuing.
             </p>
           </div>
         </div>
@@ -858,9 +857,9 @@ body {
 
     <section class="viewport-frame">
       <div class="viewport-frame__label">
-        <span class="eyebrow-mono">Stan konfliktu</span>
-        <b>Dwa połączenia, żadne nie jest primary — albo dwa primary naraz</b>
-        <span class="caption">może wystąpić mimo radio na ekranie B, jeśli konfiguracja powstała gdzie indziej</span>
+        <span class="eyebrow-mono">Conflict state</span>
+        <b>Two connections, neither is primary — or two primaries at once</b>
+        <span class="caption">can still happen despite the radio group above, if the configuration originated elsewhere</span>
       </div>
       <div class="viewport-frame__scroll">
         <div class="app-frame">
@@ -883,19 +882,19 @@ body {
     </section>
   </section>
 
-  <!-- ══════════════════════════ 03 · ZAMÓWIENIE ══════════════════════════ -->
+  <!-- ══════════════════════════ 03 · ORDER ══════════════════════════ -->
   <section class="deck-panel" id="panel-order" aria-labelledby="h-ord">
     <h2 class="section-title" id="h-ord" style="margin-bottom: var(--space-2)">
-      Jedno gniazdo dokumentu, cztery stany
+      One document slot, four states
     </h2>
     <p class="page-description" style="margin-bottom: var(--space-5)">
-      Korekty jako powiązane następstwa — nigdy jako drugi dokument. Niezmiennik dec. 3a dotyczy tylko
-      dokumentów PIERWOTNYCH.
+      Corrections as linked follow-ups — never as a second document. Invariant dec. 3a applies only to
+      ORIGINATING documents.
     </p>
 
     <section class="viewport-frame">
       <div class="viewport-frame__label">
-        <span class="eyebrow-mono">1 · Wystawiony, z korektą</span>
+        <span class="eyebrow-mono">1 · Issued, with a correction</span>
         <b>doc-slot--filled</b>
       </div>
       <div class="viewport-frame__scroll">
@@ -926,8 +925,8 @@ body {
 
     <section class="viewport-frame">
       <div class="viewport-frame__label">
-        <span class="eyebrow-mono">2 · Puste, z powodem</span>
-        <b>„nothing issued" — powód zapisany, nie tylko zalogowany</b>
+        <span class="eyebrow-mono">2 · Empty, with a reason</span>
+        <b>"nothing issued" — reason persisted, not just logged</b>
       </div>
       <div class="viewport-frame__scroll">
         <div class="app-frame app-frame--tight" style="max-width: 520px">
@@ -956,9 +955,9 @@ body {
 
     <section class="viewport-frame">
       <div class="viewport-frame__label">
-        <span class="eyebrow-mono">3 · Ręczna rejestracja paragonu — ta sama brama</span>
-        <b>Register receipt, zablokowane bo faktura już istnieje</b>
-        <span class="caption">decyzja z tego kickoffu: ręczna rejestracja podlega tej samej bramie co auto-issue</span>
+        <span class="eyebrow-mono">3 · Manual receipt registration — the same gate</span>
+        <b>Register receipt, blocked because an invoice already exists</b>
+        <span class="caption">decision from this epic's kickoff: manual registration goes through the same gate as auto-issue</span>
       </div>
       <div class="viewport-frame__scroll">
         <div class="app-frame app-frame--tight" style="max-width: 560px">
@@ -989,9 +988,9 @@ body {
               </div>
             </div>
             <p class="muted-text" style="margin-top: var(--space-2)">
-              To jest odmowa ŚCIEŻKI ZAPISU (dec. 3b), NIE powód routingu (dec. 11) — router nic tu nie
-              decydował, po prostu dokument już istnieje na innym connection. Rozróżnienie ma znaczenie:
-              zobacz zakładkę 04.
+              This is a WRITE-PATH refusal (dec. 3b), NOT a routing reason (dec. 11) — the router decided
+              nothing here, the document simply already exists on another connection. The distinction
+              matters: see tab 04.
             </p>
           </section>
         </div>
@@ -1000,8 +999,8 @@ body {
 
     <section class="viewport-frame">
       <div class="viewport-frame__label">
-        <span class="eyebrow-mono">4 · Odwrotnie — faktura zablokowana bo paragon już zarejestrowany</span>
-        <b>Issue invoice, zablokowane przez ten sam niezmiennik</b>
+        <span class="eyebrow-mono">4 · The reverse — invoice blocked because a receipt is already registered</span>
+        <b>Issue invoice, blocked by the same invariant</b>
       </div>
       <div class="viewport-frame__scroll">
         <div class="app-frame app-frame--tight" style="max-width: 560px">
@@ -1034,40 +1033,40 @@ body {
     </section>
   </section>
 
-  <!-- ══════════════════════════ 04 · POWODY ══════════════════════════ -->
+  <!-- ══════════════════════════ 04 · REASONS ══════════════════════════ -->
   <section class="deck-panel" id="panel-reasons" aria-labelledby="h-rea">
     <h2 class="section-title" id="h-rea" style="margin-bottom: var(--space-2)">
-      Trzy rodzaje "nic nie wystawiono", trzy różne odpowiedzi
+      Three kinds of "nothing was issued," three different answers
     </h2>
     <p class="page-description" style="margin-bottom: var(--space-5)">
-      Operator zawsze widzi POWÓD, nigdy tylko pusty stan — ale nie każdy powód pochodzi z tego samego
-      miejsca. Rozróżnienie jest architektoniczne (ADR-041 dec. 11), nie kosmetyczne.
+      An operator always sees a REASON, never just an empty state — but not every reason comes from the
+      same place. The distinction is architectural (ADR-041 dec. 11), not cosmetic.
     </p>
 
     <div class="gap-table__wrap" style="margin-bottom: var(--space-5)">
       <table class="gap-table">
         <thead>
           <tr>
-            <th scope="col">Rodzaj</th>
-            <th scope="col">Kto to produkuje</th>
-            <th scope="col">Przykład z tego mockupu</th>
+            <th scope="col">Kind</th>
+            <th scope="col">Who produces it</th>
+            <th scope="col">Example in this mockup</th>
           </tr>
         </thead>
         <tbody>
           <tr>
             <td><b>Unresolved</b></td>
-            <td><span class="mono-text">SalesDocumentUnresolvedReason</span> — router nie zdecydował</td>
-            <td>tab 03 · stan 2 (żaden primary)</td>
+            <td><span class="mono-text">SalesDocumentUnresolvedReason</span> — the router didn't decide</td>
+            <td>tab 03 · state 2 (no primary)</td>
           </tr>
           <tr>
             <td><b>Gate block</b></td>
-            <td><span class="mono-text">SalesDocumentGateBlockReason</span> — router zdecydował, brama i tak odmawia (config/dane)</td>
-            <td>manual-only trigger, batched, brak NIP</td>
+            <td><span class="mono-text">SalesDocumentGateBlockReason</span> — the router decided, the gate refuses anyway (config/data)</td>
+            <td>manual-only trigger, batched, missing tax id</td>
           </tr>
           <tr>
             <td><b>Write-path refusal</b></td>
-            <td>dec. 3b — decyzja NIE jest routingu, dokument już istnieje na innym connection</td>
-            <td>tab 03 · stany 3 i 4 (ręczna rejestracja / ręczne wystawienie)</td>
+            <td>dec. 3b — NOT a routing decision, the document already exists on another connection</td>
+            <td>tab 03 · states 3 and 4 (manual registration / manual issuance)</td>
           </tr>
         </tbody>
       </table>
@@ -1077,82 +1076,83 @@ body {
       <table class="gap-table">
         <thead>
           <tr>
-            <th scope="col">Wartość</th>
-            <th scope="col">Słownik</th>
-            <th scope="col">Co operator widzi</th>
-            <th scope="col">Aktywne?</th>
+            <th scope="col">Value</th>
+            <th scope="col">Dictionary</th>
+            <th scope="col">What the operator sees</th>
+            <th scope="col">Active?</th>
           </tr>
         </thead>
         <tbody>
           <tr>
             <td><code>no-matching-rule</code></td><td>unresolved</td>
-            <td>żadna reguła nie pasuje do tego zamówienia</td>
-            <td><span class="status-badge">Po silniku reguł (deferred)</span></td>
+            <td>no rule matches this order</td>
+            <td><span class="status-badge">After the rule engine (deferred)</span></td>
           </tr>
           <tr>
             <td><code>conflicting-rules-equal-priority</code></td><td>unresolved</td>
-            <td>dwie reguły o tym samym priorytecie</td>
-            <td><span class="status-badge">Po silniku reguł (deferred)</span></td>
+            <td>two rules at the same priority</td>
+            <td><span class="status-badge">After the rule engine (deferred)</span></td>
           </tr>
           <tr>
             <td><code>ambiguous-connection-no-primary</code></td><td>unresolved</td>
-            <td>kilka kandydatów (dowolna capability), brak wskazanego pierwotnego</td>
-            <td><span class="status-badge status-badge--success"><span class="status-badge__dot" aria-hidden="true"></span>Tak — już #2100 dla samej faktury</span></td>
+            <td>several candidates (any capability), no primary set</td>
+            <td><span class="status-badge status-badge--success"><span class="status-badge__dot" aria-hidden="true"></span>Yes — already #2100 for invoice alone</span></td>
           </tr>
           <tr>
             <td><code>unsupported-document-kind-on-connection</code></td><td>unresolved</td>
-            <td>to połączenie nie umie wystawić tego typu dokumentu</td>
-            <td><span class="status-badge status-badge--success"><span class="status-badge__dot" aria-hidden="true"></span>Ten epik</span></td>
+            <td>this connection can't issue this document kind</td>
+            <td><span class="status-badge status-badge--success"><span class="status-badge__dot" aria-hidden="true"></span>This epic</span></td>
           </tr>
           <tr>
             <td><code>net-priced-order</code></td><td>unresolved</td>
-            <td>zamówienie ma kwoty netto, progu nie da się porównać</td>
-            <td><span class="status-badge">Po silniku reguł (deferred)</span></td>
+            <td>order has net amounts, the threshold can't be compared</td>
+            <td><span class="status-badge">After the rule engine (deferred)</span></td>
           </tr>
           <tr>
             <td><code>unresolved-routing</code></td><td>gate block</td>
-            <td>brama zablokowała, bo router nie zdecydował</td>
-            <td><span class="status-badge status-badge--success"><span class="status-badge__dot" aria-hidden="true"></span>Ten epik</span></td>
+            <td>the gate blocked because the router didn't decide</td>
+            <td><span class="status-badge status-badge--success"><span class="status-badge__dot" aria-hidden="true"></span>This epic</span></td>
           </tr>
           <tr>
             <td><code>missing-required-tax-id</code></td><td>gate block</td>
-            <td>brak NIP nabywcy tam, gdzie typ dokumentu go wymaga</td>
-            <td><span class="status-badge">Bezczynne — brak buyerTaxId na kontrakcie zamówienia</span></td>
+            <td>buyer tax id missing where the document kind requires one</td>
+            <td><span class="status-badge">Inert — no buyerTaxId on the order contract yet</span></td>
           </tr>
           <tr>
             <td><code>tax-rate-conflict</code></td><td>gate block</td>
-            <td>kanał i katalog podają różne stawki VAT</td>
-            <td><span class="status-badge status-badge--warning"><span class="status-badge__dot" aria-hidden="true"></span>Dane już istnieją (#2057 wylądował) — wciąż poza zakresem tego epica</span></td>
+            <td>channel and catalog report different VAT rates</td>
+            <td><span class="status-badge status-badge--warning"><span class="status-badge__dot" aria-hidden="true"></span>Data now exists (#2057 landed) — still out of this epic's scope</span></td>
           </tr>
           <tr>
             <td><code>trigger-model-manual</code></td><td>gate block</td>
-            <td>to połączenie wystawia tylko na żądanie</td>
-            <td><span class="status-badge status-badge--success"><span class="status-badge__dot" aria-hidden="true"></span>Już #2100 dla faktury</span></td>
+            <td>this connection only issues on request</td>
+            <td><span class="status-badge status-badge--success"><span class="status-badge__dot" aria-hidden="true"></span>Already #2100 for invoice</span></td>
           </tr>
           <tr>
             <td><code>trigger-model-batched</code></td><td>gate block</td>
-            <td>tryb zbiorczy nie jest zaimplementowany</td>
-            <td><span class="status-badge status-badge--success"><span class="status-badge__dot" aria-hidden="true"></span>Już #2100 dla faktury</span></td>
+            <td>batched mode isn't implemented</td>
+            <td><span class="status-badge status-badge--success"><span class="status-badge__dot" aria-hidden="true"></span>Already #2100 for invoice</span></td>
           </tr>
         </tbody>
       </table>
     </div>
     <p class="muted-text" style="margin-top: var(--space-3)">
-      Kolumna „Aktywne?" pokazuje stan PO tym epicu, nie stan ADR-owy sprzed #2100/#2129 — te dwa już
-      wylądowały dla samej faktury, ten epik rozszerza je na parę faktura/paragon i dokłada
-      <span class="mono-text">unsupported-document-kind-on-connection</span> oraz
+      The "Active?" column shows the state AFTER this epic, not the ADR-era state before #2100/#2129 — those
+      two already shipped for invoice alone; this epic extends them to the invoice/receipt pair and adds
+      <span class="mono-text">unsupported-document-kind-on-connection</span> and
       <span class="mono-text">unresolved-routing</span>.
     </p>
   </section>
 
-  <!-- ══════════════════════════ 05 · AGREGACJA I SELF-ROUTING ══════════════════════════ -->
+  <!-- ══════════════════════════ 05 · AGGREGATION & SELF-ROUTING ══════════════════════════ -->
   <section class="deck-panel" id="panel-edge-cases" aria-labelledby="h-edge">
     <h2 class="section-title" id="h-edge" style="margin-bottom: var(--space-2)">
-      Dwa wyniki, które nie są dokumentem
+      Two outcomes that aren't a document
     </h2>
     <p class="page-description" style="margin-bottom: var(--space-5)">
-      ADR-041 dec. 8 (agregacja okresowa) i dec. 9 (self-routing destination). Oba zarezerwowane w typie
-      zwrotnym, żaden nie ma dziś mechaniki — pokazane tu dla kompletności stanów operatorskich.
+      ADR-041 dec. 8 (periodic aggregation) and dec. 9 (self-routing destination). Both reserved in the
+      return type only, neither has real mechanics today — shown here for completeness of operator-facing
+      states.
     </p>
 
     <div class="frame-grid frame-grid--2">
@@ -1166,8 +1166,8 @@ body {
             </p>
           </div>
           <p class="muted-text">
-            Zarezerwowane tylko w typie zwrotnym — mechanika okna, dokumentu zbiorczego i numeracji jest
-            deliberately deferred (ADR-041 § Deferred).
+            Reserved in the return type only — the window's mechanics, the batch document, and its
+            numbering are deliberately deferred (ADR-041 § Deferred).
           </p>
         </div>
       </div>
@@ -1181,8 +1181,8 @@ body {
             </p>
           </div>
           <p class="muted-text">
-            Rozpoznawane przez guard zdolności, nigdy po <span class="mono-text">platformType</span>.
-            Niezmiennik „jeden dokument pierwotny" nadal obowiązuje na tej gałęzi.
+            Recognized via a capability guard, never via <span class="mono-text">platformType</span>. The
+            "one originating document" invariant still holds on this branch.
           </p>
         </div>
       </div>
