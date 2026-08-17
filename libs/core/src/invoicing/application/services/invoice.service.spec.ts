@@ -13,6 +13,8 @@
  */
 import type { IIntegrationsService } from '@openlinker/core/integrations';
 import type { SyncLockPort } from '@openlinker/core/sync';
+import type { ModuleRef } from '@nestjs/core';
+import type { IFiscalRegistrationService } from '@openlinker/core/fiscalization';
 
 import { InvoiceRecord } from '../../domain/entities/invoice-record.entity';
 import type { InvoiceRecordRepositoryPort } from '../../domain/ports/invoice-record-repository.port';
@@ -21,6 +23,7 @@ import type { InvoicingPort } from '../../domain/ports/invoicing.port';
 import { DuplicateInvoiceRecordException } from '../../domain/exceptions/duplicate-invoice-record.exception';
 import { MissingNumberingSeriesException } from '../../domain/exceptions/missing-numbering-series.exception';
 import { OrderAlreadyInvoicedException } from '../../domain/exceptions/order-already-invoiced.exception';
+import { OrderAlreadyHasFiscalReceiptException } from '../../domain/exceptions/order-already-has-fiscal-receipt.exception';
 import { InvoiceIssueContendedException } from '../../domain/exceptions/invoice-issue-contended.exception';
 import type {
   InvoiceLine,
@@ -190,6 +193,7 @@ describe('InvoiceService', () => {
    */
   let heldLocks: Set<string>;
   let syncLock: jest.Mocked<SyncLockPort>;
+  let moduleRef: { get: jest.Mock };
 
   beforeEach(() => {
     repo = {
@@ -262,7 +266,25 @@ describe('InvoiceService', () => {
       }),
     } as unknown as jest.Mocked<SyncLockPort>;
 
-    service = new InvoiceService(repo, integrations, numberingRepo, syncLock);
+    // Default: fiscalization is not wired into this process (mirrors
+    // `apps/worker` today), so `resolveFiscalRegistrationService` catches the
+    // throw and treats it as "nothing can be registered here either" — the
+    // cross-kind guard (#2157, ADR-041 §3a/3b) is a no-op unless a test
+    // explicitly wires a fiscal-registration-service mock via
+    // `moduleRef.get.mockReturnValueOnce(...)`.
+    moduleRef = {
+      get: jest.fn(() => {
+        throw new Error('FiscalizationModule not registered in this process');
+      }),
+    };
+
+    service = new InvoiceService(
+      repo,
+      integrations,
+      numberingRepo,
+      syncLock,
+      moduleRef as unknown as ModuleRef,
+    );
   });
 
   describe('issueInvoice', () => {
@@ -1044,6 +1066,83 @@ describe('InvoiceService', () => {
         OrderAlreadyInvoicedException,
       );
       expect(repo.create).not.toHaveBeenCalled();
+    });
+  });
+
+  // #2157, ADR-041 §3a/3b: the same guard extended cross-KIND — an order
+  // already carrying a blocking fiscal receipt must refuse an invoice too.
+  describe('cross-kind sales-document guard (#2157)', () => {
+    const FISCAL_CONNECTION = 'fiscal-conn-1';
+
+    interface FakeFiscalRecord {
+      id: string;
+      connectionId: string;
+      status: string;
+      blocksFurtherRegistration: boolean;
+    }
+
+    function fiscalRecord(overrides: Partial<FakeFiscalRecord> = {}): FakeFiscalRecord {
+      return {
+        id: overrides.id ?? 'fiscal-rec-1',
+        connectionId: overrides.connectionId ?? FISCAL_CONNECTION,
+        status: overrides.status ?? 'registered',
+        blocksFurtherRegistration: overrides.blocksFurtherRegistration ?? true,
+      };
+    }
+
+    function stubFiscalRegistrationService(records: FakeFiscalRecord[]): void {
+      const stub: jest.Mocked<Pick<IFiscalRegistrationService, 'getByOrderId'>> = {
+        getByOrderId: jest.fn().mockResolvedValue(records),
+      };
+      moduleRef.get.mockReturnValueOnce(stub);
+    }
+
+    it('should refuse to issue when the order already has a blocking fiscal receipt', async () => {
+      stubFiscalRegistrationService([fiscalRecord()]);
+
+      await expect(service.issueInvoice(makeCmd())).rejects.toThrow(
+        OrderAlreadyHasFiscalReceiptException,
+      );
+      expect(repo.create).not.toHaveBeenCalled();
+      expect(adapter.issueInvoice).not.toHaveBeenCalled();
+    });
+
+    it('should name the blocking fiscal connection and record on the thrown exception', async () => {
+      stubFiscalRegistrationService([
+        fiscalRecord({ id: 'fiscal-blocking-1', status: 'registered' }),
+      ]);
+
+      const error = await service.issueInvoice(makeCmd()).catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(OrderAlreadyHasFiscalReceiptException);
+      const typed = error as OrderAlreadyHasFiscalReceiptException;
+      expect(typed.registeringConnectionId).toBe(FISCAL_CONNECTION);
+      expect(typed.requestedConnectionId).toBe(CONNECTION);
+      expect(typed.blockingRecordId).toBe('fiscal-blocking-1');
+      expect(typed.blockingStatus).toBe('registered');
+    });
+
+    it('should still issue when the only fiscal record is non-blocking', async () => {
+      stubFiscalRegistrationService([fiscalRecord({ blocksFurtherRegistration: false })]);
+      repo.findByIdempotencyKey.mockResolvedValue(null);
+      repo.create.mockResolvedValue(makeRecord());
+      repo.updateOutcome.mockResolvedValue(makeRecord({ status: 'issued' }));
+      adapter.issueInvoice.mockResolvedValue(makeIssuedFromAdapter());
+
+      await expect(service.issueInvoice(makeCmd())).resolves.toBeDefined();
+      expect(adapter.issueInvoice).toHaveBeenCalledTimes(1);
+    });
+
+    it('should still issue when fiscalization is not wired into this process at all', async () => {
+      // Default beforeEach wiring: moduleRef.get throws — mirrors apps/worker,
+      // which never imports FiscalizationModule.
+      repo.findByIdempotencyKey.mockResolvedValue(null);
+      repo.create.mockResolvedValue(makeRecord());
+      repo.updateOutcome.mockResolvedValue(makeRecord({ status: 'issued' }));
+      adapter.issueInvoice.mockResolvedValue(makeIssuedFromAdapter());
+
+      await expect(service.issueInvoice(makeCmd())).resolves.toBeDefined();
+      expect(adapter.issueInvoice).toHaveBeenCalledTimes(1);
     });
   });
 

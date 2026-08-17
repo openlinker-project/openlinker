@@ -72,6 +72,7 @@ import {
   UnsupportedPriceTreatmentError,
   DuplicateInvoiceRecordException,
   OrderAlreadyInvoicedException,
+  OrderAlreadyHasFiscalReceiptException,
   InvoiceIssueContendedException,
   InvoiceRecordNotFoundException,
   MissingNumberingSeriesException,
@@ -717,6 +718,20 @@ export class InvoicingController {
           reason:
             `An invoice for this order already exists on connection ${error.issuingConnectionId} ` +
             `(invoice ${error.blockingInvoiceId}, status ${error.blockingStatus}).`,
+        };
+      }
+      if (error instanceof OrderAlreadyHasFiscalReceiptException) {
+        // #2157, ADR-041 §3a/3b: the order already has a fiscal RECEIPT (a
+        // different document kind) on a fiscalization connection. Same
+        // `skipped` treatment as the already-invoiced branch above — one sale
+        // still has one originating document.
+        return {
+          orderId,
+          outcome: 'skipped',
+          reason:
+            `A fiscal receipt for this order already exists on connection ` +
+            `${error.registeringConnectionId} (registration ${error.blockingRecordId}, ` +
+            `status ${error.blockingStatus}).`,
         };
       }
       if (error instanceof InvoiceIssueContendedException) {
@@ -1370,6 +1385,19 @@ export class InvoicingController {
         error: 'OrderAlreadyInvoicedException',
         issuingConnectionId: error.issuingConnectionId,
         blockingInvoiceId: error.blockingInvoiceId,
+        blockingStatus: error.blockingStatus,
+      });
+    }
+    // #2157, ADR-041 §3a/3b: the order already has a fiscal RECEIPT — a
+    // different sales-document KIND — on a fiscalization connection. Also a
+    // 409: one sale gets one originating document, invoice or receipt, never
+    // both.
+    if (error instanceof OrderAlreadyHasFiscalReceiptException) {
+      return new ConflictException({
+        message: error.message,
+        error: 'OrderAlreadyHasFiscalReceiptException',
+        registeringConnectionId: error.registeringConnectionId,
+        blockingRecordId: error.blockingRecordId,
         blockingStatus: error.blockingStatus,
       });
     }

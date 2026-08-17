@@ -62,6 +62,7 @@ export * from './domain/ports/invoice-number-gap-note-repository.port';
 export * from './domain/exceptions/invoice-record-not-found.exception';
 export * from './domain/exceptions/duplicate-invoice-record.exception';
 export * from './domain/exceptions/order-already-invoiced.exception';
+export * from './domain/exceptions/order-already-has-fiscal-receipt.exception';
 export * from './domain/exceptions/invoice-issue-contended.exception';
 export * from './domain/exceptions/missing-numbering-series.exception';
 export * from './domain/exceptions/duplicate-document-number.exception';
@@ -81,6 +82,10 @@ export {
 } from './application/mappers/order-to-issue-invoice-command.mapper';
 export { IInvoiceService } from './application/services/invoice.service.interface';
 export { InvoiceService } from './application/services/invoice.service';
+// Per-order issuance lock key + TTL (#2047), reused verbatim by
+// FiscalRegistrationService (#2157) so both write paths serialize under the
+// SAME lock key — see docs/architecture-overview.md § Invoicing.
+export { invoiceIssueLockKey, INVOICE_ISSUE_LOCK_TTL_MS } from './application/services/invoice-issue-lock';
 export type { IAutoIssueTriggerService } from './application/services/auto-issue-trigger.service.interface';
 export {
   AutoIssueTriggerService,
