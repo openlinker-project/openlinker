@@ -20,6 +20,7 @@ import type {
 import type { OrderSlaSummary } from '../types/order-sla.types';
 import type { FulfillmentRollupState } from '../types/order-fulfillment.types';
 import type { SyncAttempt } from '../types/order-sync.types';
+import type { OrderFxIntent, OrderFxStamp } from '../types/order-fx.types';
 import type { SalesDocumentBlock } from '@openlinker/core/sales-documents';
 import type { OrderFxIntent, OrderFxStamp } from '../types/order-fx.types';
 import type { StampedReportingCurrencyCount } from '../types/order-fx-read.types';
@@ -154,6 +155,54 @@ export interface OrderRecordRepositoryPort {
    * event racing ahead of the order's own create/sync job).
    */
   markCancelled(internalOrderId: string, cancelledAt: Date): Promise<void>;
+
+  /**
+   * Claim the first-attempt FX intent (#2124, ADR-040 § Decision 5) — writes
+   * `fxIntendedCurrency` + `fxRule` and nothing else, guarded on
+   * `fxIntendedCurrency IS NULL` so exactly one concurrent attempt can win.
+   *
+   * Returns `true` for the winner and `false` for a loser, which then re-reads
+   * the row and adopts the winner's intent instead of pinning its own — two
+   * concurrent first attempts must never resolve to different currencies for
+   * one order. `false` is also returned when no row matches the id at all
+   * (never throws), the same residual-race tolerance
+   * {@link updateFulfillmentState} carries.
+   *
+   * Deliberately NOT keyed on `reportingCurrency`: the intent is claimed
+   * *before* any rate lookup, so at that point the stamp columns are still
+   * NULL by definition.
+   */
+  claimFxIntentIfAbsent(internalOrderId: string, intent: OrderFxIntent): Promise<boolean>;
+
+  /**
+   * Stamp the order's reporting-currency figures at most once (#2124) — one
+   * guarded `UPDATE` over all five stamp columns, so the group can never
+   * half-apply, matched on `reportingCurrency IS NULL`.
+   *
+   * The predicate is `reportingCurrency`, NOT `fxIntendedCurrency`: by the time
+   * a stamp is attempted the intent has deliberately been claimed, so guarding
+   * on it would reject every stamp.
+   *
+   * Returns `true` when this call wrote the stamp and `false` when a stamp was
+   * already present (or no row matched) — in which case nothing was written and
+   * the existing, already-reported figure survives untouched. Sole writer of
+   * these columns together with {@link claimFxIntentIfAbsent}; {@link upsert}
+   * omits them so a re-ingestion cannot move a stamped financial figure.
+   */
+  stampFxIfAbsent(internalOrderId: string, stamp: OrderFxStamp): Promise<boolean>;
+
+  /**
+   * The distinct set of order-native currencies OpenLinker has already
+   * ingested, feeding the reporting-currency coverage advisory.
+   *
+   * A SET, not a winner: no connection filter, no ordering, no `LIMIT` — the
+   * advisory needs to know every currency that would have to be convertible,
+   * not the most common one. Read out of the order snapshot (`totals.currency`)
+   * because `order_records` carries no native currency column yet (#1985);
+   * values that are not JSON strings are skipped rather than cast, so a
+   * malformed snapshot cannot fail the read.
+   */
+  listDistinctNativeCurrencies(): Promise<string[]>;
 
   /**
    * Set — or clear — the reason OpenLinker issued no fiscal document for this

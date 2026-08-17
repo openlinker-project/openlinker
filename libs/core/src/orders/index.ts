@@ -121,9 +121,6 @@ export {
   FulfillmentRollupStateOrNull,
 } from './domain/types/order-fulfillment.types';
 export { deriveSlaState } from './domain/order-sla';
-
-// Per-order reporting-currency snapshot (#2124, ADR-040).
-export type { OrderFxIntent, OrderFxStamp } from './domain/types/order-fx.types';
 // The stamp's own outcome vocabulary (#2125) — read by the worker handlers.
 export { FX_STAMP_TERMINAL_REASONS } from './domain/types/order-fx-stamp.types';
 export type {
@@ -136,6 +133,9 @@ export type {
   OrderFxSweepResult,
 } from './domain/types/order-fx-stamp.types';
 export type { StampedReportingCurrencyCount } from './domain/types/order-fx-read.types';
+
+// Per-order reporting-currency snapshot (#2124, ADR-040).
+export type { OrderFxIntent, OrderFxStamp } from './domain/types/order-fx.types';
 
 // Refund record capture (#2036).
 export {
