@@ -75,6 +75,8 @@ describe('OrdersController', () => {
       markCancelled: jest.fn(),
       claimFxIntentIfAbsent: jest.fn(),
       stampFxIfAbsent: jest.fn(),
+      markFxTerminalIfAbsent: jest.fn(),
+      findUnstampedFxOrderIds: jest.fn(),
       listDistinctNativeCurrencies: jest.fn(),
       updateSalesDocumentBlock: jest.fn(),
       claimFxIntentIfAbsent: jest.fn(),

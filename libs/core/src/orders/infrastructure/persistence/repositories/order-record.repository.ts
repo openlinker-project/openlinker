@@ -12,6 +12,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import type { SelectQueryBuilder } from 'typeorm';
 import { In, IsNull, MoreThanOrEqual, Repository } from 'typeorm';
+import { In, IsNull, MoreThanOrEqual, Repository } from 'typeorm';
 import type { OrderSyncStatusJson, SyncAttemptJson } from '../entities/order-record.orm-entity';
 import { OrderRecordOrmEntity } from '../entities/order-record.orm-entity';
 import type { OrderRecordRepositoryPort } from '../../../domain/ports/order-record-repository.port';

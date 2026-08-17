@@ -192,6 +192,51 @@ export interface OrderRecordRepositoryPort {
   stampFxIfAbsent(internalOrderId: string, stamp: OrderFxStamp): Promise<boolean>;
 
   /**
+   * Record that a stamp attempt reached a TERMINAL answer (#2125) - writes
+   * `fxStampedAt` and NOTHING else, so the row keeps `reportingCurrency`,
+   * `reportingTotalAmount` and `exchangeRateId` NULL (which is exactly what the
+   * `ck_order_records_fx_group` CHECK's first arm allows).
+   *
+   * A separate write from {@link stampFxIfAbsent} because a terminal answer has
+   * no figure to stamp, and `OrderFxStamp` requires one. What it buys is the
+   * BOUNDEDNESS of the reconcile sweep: the sweep selects on
+   * `fxStampedAt IS NULL AND reportingCurrency IS NULL`, so without this write a
+   * permanently-unstampable order (no `placedAt`, unsupported pair) would be
+   * re-read and re-answered on every hourly tick forever.
+   *
+   * Guarded on `fxStampedAt IS NULL AND reportingCurrency IS NULL`, so it can
+   * neither overwrite an earlier terminal instant nor touch a stamped row.
+   * Returns `true` when this call wrote; `false` when it did not (already
+   * answered, already stamped, or no row matched - never throws).
+   *
+   * Deliberately NOT a permanent gate on stamping: `stampFxIfAbsent` still keys
+   * on `reportingCurrency IS NULL`, so a re-ingestion that repairs the snapshot
+   * (a source re-poll finally reporting `placedAt`) can still stamp the order
+   * inline. Only the sweep stops revisiting it.
+   */
+  markFxTerminalIfAbsent(internalOrderId: string, fxStampedAt: Date): Promise<boolean>;
+
+  /**
+   * One bounded page of orders that carry neither a stamp nor a terminal answer
+   * (#2125), for the reconcile sweep.
+   *
+   * Predicate: `fxStampedAt IS NULL AND reportingCurrency IS NULL`, scoped to
+   * `sourceConnectionId` and to rows created at or after
+   * `options.createdSince`. Both bounds matter, for different reasons -
+   * `reportingCurrency IS NULL` alone would re-select the entire pre-feature
+   * table on every tick forever, and the age cutoff keeps a permanently
+   * unstampable historical backlog from crowding out live orders.
+   *
+   * Returns ids only: the sweep re-enters the stamp through the same
+   * `stamp(internalOrderId)` signature every other caller uses, so hydrating
+   * whole records here would be work the stamp immediately repeats.
+   */
+  findUnstampedFxOrderIds(
+    sourceConnectionId: string,
+    options: { limit: number; createdSince: Date }
+  ): Promise<string[]>;
+
+  /**
    * The distinct set of order-native currencies OpenLinker has already
    * ingested, feeding the reporting-currency coverage advisory.
    *
