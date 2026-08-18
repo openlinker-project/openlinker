@@ -60,9 +60,15 @@ export class TaxonomyController {
   @ApiParam({ name: 'connectionId', type: String })
   @ApiQuery({ name: 'parentId', required: false, type: String })
   @ApiResponse({ status: 200, type: [TaxonomyCategoryResponseDto] })
-  @ApiResponse({ status: 404, description: 'Connection not found' })
-  @ApiResponse({ status: 409, description: 'Connection disabled' })
-  @ApiResponse({ status: 422, description: 'Connection has no taxonomy source' })
+  // Corrected in #2085: 404 / 409 are unreachable on any taxonomy read. Scope
+  // resolution probes the destination kind through a swallowing try/catch, so
+  // an unknown connection, a disabled one, and a missing browse capability all
+  // arrive as the same 422.
+  @ApiResponse({
+    status: 422,
+    description:
+      'No taxonomy source could be resolved — the connection does not exist, is disabled, or exposes no category browser',
+  })
   async browseCategories(
     @Param('connectionId') connectionId: string,
     @Query('parentId') parentId?: string,
@@ -81,9 +87,13 @@ export class TaxonomyController {
   @ApiParam({ name: 'connectionId', type: String })
   @ApiResponse({ status: 200, type: [TaxonomySearchHitResponseDto] })
   @ApiResponse({ status: 400, description: 'Query too short' })
-  @ApiResponse({ status: 404, description: 'Connection not found' })
-  @ApiResponse({ status: 409, description: 'Connection disabled' })
-  @ApiResponse({ status: 422, description: 'Connection has no taxonomy source' })
+  // See the note on `browseCategories` above — 404 / 409 are unreachable here
+  // for the same reason.
+  @ApiResponse({
+    status: 422,
+    description:
+      'No taxonomy source could be resolved — the connection does not exist, is disabled, or exposes no category browser',
+  })
   async searchCategories(
     @Param('connectionId') connectionId: string,
     @Query() query: TaxonomySearchQueryDto,

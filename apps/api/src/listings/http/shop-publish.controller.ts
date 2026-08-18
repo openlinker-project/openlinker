@@ -107,7 +107,7 @@ export class ShopPublishController {
   @ApiOperation({
     summary: 'Browse a shop connection\'s existing category tree',
     description:
-      'Resolves the connection ProductPublisher adapter, narrows it to the ShopCategoryBrowser sub-capability, and returns the direct child categories under parentId (root level when omitted). Backs the publish edit flow category picker.',
+      "Returns the direct child categories under parentId (root level when omitted), read from OpenLinker's synced DestinationCategory projection rather than the live shop (#2085, ADR-037). The tree is refreshed by the destination.taxonomy.sync job, which is bootstrapped when a connection is created or enabled and re-run hourly — so a scope that has never synced returns an empty list rather than an error. Backs the publish edit flow category picker.",
   })
   @ApiQuery({
     name: 'parentId',
@@ -115,9 +115,16 @@ export class ShopPublishController {
     description: 'Parent category id; omit for root-level categories.',
   })
   @ApiResponse({ status: 200, description: 'Category nodes', type: [ShopCategoryResponseDto] })
-  @ApiResponse({ status: 404, description: 'Connection not found' })
-  @ApiResponse({ status: 409, description: 'Connection disabled' })
-  @ApiResponse({ status: 422, description: 'Adapter does not support shop category browsing' })
+  // 404 / 409 were declared here until #2085 and are now unreachable: scope
+  // resolution probes the destination kind through a swallowing try/catch, so
+  // an unknown connection, a disabled one, and a missing browse capability all
+  // arrive as the same 422. Declaring them would document a contract the route
+  // cannot honour.
+  @ApiResponse({
+    status: 422,
+    description:
+      'No taxonomy source could be resolved for the connection — it does not exist, is disabled, or exposes no category browser (TaxonomySourceUnavailableException). The body shape also changed in #2085: `error` now carries the domain exception name rather than the generic "Unprocessable Entity".',
+  })
   async browseCategories(
     @Param('connectionId') connectionId: string,
     @Query('parentId') parentId?: string,
