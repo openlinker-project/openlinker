@@ -282,6 +282,61 @@ describe('InventoryRepository', () => {
       await expect(repository.upsert(incoming)).rejects.toThrow(InventoryReturningUnsupportedError);
     });
 
+    it('should throw when RETURNING yields a row whose updatedAt is unparseable', async () => {
+      const qb = buildUpdateBuilderMock();
+      // The raw key is literally `updatedAt` only because no `namingStrategy` is
+      // configured. Under a snake_case strategy the row object stays truthy while
+      // the property reads `undefined`, so guarding the ROW is not enough — an
+      // unguarded `new Date(undefined)` would sail past as `Invalid Date`.
+      qb.execute.mockResolvedValue({ raw: [{ created_at: persistedUpdatedAt }], affected: 1 });
+      ormRepository.findOne.mockResolvedValue(existingRow);
+      ormRepository.createQueryBuilder.mockReturnValue(
+        qb as unknown as ReturnType<typeof ormRepository.createQueryBuilder>
+      );
+
+      await expect(repository.upsert(incoming)).rejects.toThrow(InventoryReturningUnsupportedError);
+    });
+
+    // The insert branch writes every column, so it has no owned-set to scope —
+    // but `updatedAt` is omitted from `toOrmEntity` for the same reason, which
+    // means it too can only come back from the database.
+    it('should throw when an inserted row comes back without a DB-stamped updatedAt', async () => {
+      ormRepository.findOne.mockResolvedValue(null);
+      ormRepository.save.mockResolvedValue({
+        ...existingRow,
+        id: '6f1d2b3c-4e5f-4a7b-8c9d-0e1f2a3b4c5d',
+        updatedAt: undefined,
+      } as unknown as InventoryItemOrmEntity);
+
+      const insertable = new InventoryItem(
+        '6f1d2b3c-4e5f-4a7b-8c9d-0e1f2a3b4c5d',
+        'ol_product_1',
+        'ol_variant_1',
+        7,
+        3,
+        null,
+        new Date('2026-06-02T09:00:00Z'),
+        false
+      );
+
+      await expect(repository.upsert(insertable)).rejects.toThrow(
+        InventoryReturningUnsupportedError
+      );
+    });
+
+    it('should throw on a regenerated-id insert that comes back without updatedAt', async () => {
+      // The non-UUID branch strips the caller id and regenerates one; it must
+      // carry the same guarantee as its sibling, not just the happy path.
+      ormRepository.findOne.mockResolvedValue(null);
+      ormRepository.create.mockImplementation((v: unknown) => v as InventoryItemOrmEntity);
+      ormRepository.save.mockResolvedValue({
+        ...existingRow,
+        updatedAt: undefined,
+      } as unknown as InventoryItemOrmEntity);
+
+      await expect(repository.upsert(incoming)).rejects.toThrow(InventoryReturningUnsupportedError);
+    });
+
     // The guard that actually earns its keep: adding a column to the ORM entity
     // fails here until it is classified, instead of silently joining the write
     // set. Same "must be updated deliberately" shape as route-lazy.test.ts's

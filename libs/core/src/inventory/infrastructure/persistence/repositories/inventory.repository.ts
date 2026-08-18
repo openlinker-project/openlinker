@@ -38,6 +38,14 @@ import type {
 } from '../../../domain/types/inventory.types';
 
 /**
+ * The three column groups below are exported for the classification spec, which
+ * asserts every declared entity column falls into exactly one of them — so a new
+ * column fails the build until someone decides who owns it. They are NOT part of
+ * the context's public surface (deliberately absent from `inventory/index.ts`)
+ * and no caller should read them.
+ */
+
+/**
  * Columns that identify an `inventory_items` row (#2071).
  *
  * `findByProductAndVariant` matches on the last three, so these ARE the lookup
@@ -309,18 +317,12 @@ export class InventoryRepository implements InventoryRepositoryPort {
 
       // RETURNING carries the DB-stamped `updatedAt` back in the same round-trip,
       // which the caller cannot reconstruct from `item`. An empty `raw` on an
-      // affected row means the driver ignored RETURNING (TypeORM makes it a silent
-      // no-op where unsupported) — falling back to the master-supplied
-      // `item.updatedAt` would poison the propagation dedupe key this whole
-      // exclusion exists to protect, so that is an error too.
-      const [returnedRow] = updated.raw as { updatedAt: Date | string }[];
-      if (!returnedRow) {
-        throw new InventoryReturningUnsupportedError(existing.id);
-      }
-      const persistedUpdatedAt =
-        returnedRow.updatedAt instanceof Date
-          ? returnedRow.updatedAt
-          : new Date(returnedRow.updatedAt);
+      // affected row means the driver ignored RETURNING (TypeORM makes it a
+      // silent no-op where unsupported). Why that is an error rather than a
+      // fallback, and why the value is validated rather than just the row, is in
+      // `resolvePersistedUpdatedAt`.
+      const [returnedRow] = updated.raw as { updatedAt?: Date | string }[];
+      const persistedUpdatedAt = this.resolvePersistedUpdatedAt(returnedRow?.updatedAt, existing.id);
 
       return new InventoryItem(
         existing.id,
@@ -352,10 +354,10 @@ export class InventoryRepository implements InventoryRepositoryPort {
           id: randomUUID(),
         });
         const saved = await this.repository.save(newEntity);
-        return this.toDomain(saved);
+        return this.toDomainWithStampedUpdatedAt(saved);
       }
       const saved = await this.repository.save(entity);
-      return this.toDomain(saved);
+      return this.toDomainWithStampedUpdatedAt(saved);
     }
   }
 
@@ -365,6 +367,49 @@ export class InventoryRepository implements InventoryRepositoryPort {
   private isValidUUID(id: string): boolean {
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     return uuidRegex.test(id);
+  }
+
+  /**
+   * Resolve the DB-stamped `updatedAt` both upsert branches depend on (#2071).
+   *
+   * `updatedAt` is excluded from the update's SET clause and from `toOrmEntity`,
+   * so on BOTH paths the value can only come back from the database. Neither
+   * path can fall back to `item.updatedAt`: that is the master's timestamp, and
+   * persisting it is the exact defect this exclusion exists to prevent — a
+   * master reporting a stable timestamp while quantity moved would collide
+   * `InventorySyncService`'s propagation dedupe key and the propagation would be
+   * silently dropped.
+   *
+   * Two ways the value can arrive unusable, both treated as the same fault
+   * (the driver did not give us a stamp we can trust):
+   *  - absent — the driver ignored RETURNING, or `save()` returned no row;
+   *  - present but unparseable — `new Date(...)` yields `Invalid Date`. Today
+   *    the raw key is literally `"updatedAt"` only because no `namingStrategy`
+   *    is configured; adopt a snake_case strategy and the property would read
+   *    `undefined` while the row object stayed truthy, so guard the value
+   *    rather than the row.
+   */
+  private resolvePersistedUpdatedAt(raw: Date | string | undefined | null, rowId: string): Date {
+    if (raw === undefined || raw === null) {
+      throw new InventoryReturningUnsupportedError(rowId);
+    }
+    const resolved = raw instanceof Date ? raw : new Date(raw);
+    if (Number.isNaN(resolved.getTime())) {
+      throw new InventoryReturningUnsupportedError(rowId);
+    }
+    return resolved;
+  }
+
+  /**
+   * `toDomain` for the insert branch, asserting the DB stamped `updatedAt`.
+   *
+   * The update branch fails loudly when the stamp is missing; without this the
+   * insert branch would hand back an `InventoryItem` whose `updatedAt` is typed
+   * `Date` but is actually `undefined`, into the same dedupe-key consumer.
+   */
+  private toDomainWithStampedUpdatedAt(entity: InventoryItemOrmEntity): InventoryItem {
+    entity.updatedAt = this.resolvePersistedUpdatedAt(entity.updatedAt, entity.id);
+    return this.toDomain(entity);
   }
 
   /**
