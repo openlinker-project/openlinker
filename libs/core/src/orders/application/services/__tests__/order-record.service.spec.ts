@@ -532,7 +532,7 @@ describe('OrderRecordService', () => {
   describe('persist paths - destination sync state left to updateSyncStatus (#2140)', () => {
     beforeEach(() => {
       process.env.OL_STORE_PII = 'true';
-      service = new OrderRecordService(repository);
+      service = new OrderRecordService(repository, fxStamp);
     });
 
     it('never constructs the OrderRecord passed to upsert() with sync state', async () => {
