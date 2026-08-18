@@ -31,9 +31,12 @@
  *      body each original panel rendered (connection lock, KV block, provider
  *      extras slot, correction flow, retry/in-doubt handling — all reused
  *      verbatim). See the KNOWN GAP note below re: corrections-as-follow-up.
- *   2. Empty + reason     — no document, several invoicing connections and
- *      none primary (`resolveSalesDocumentBlockCopy` — see that module for why
- *      this covers only the one reason the codebase can compute today).
+ *   2. Empty + reason     — no document, and either a persisted gate-block
+ *      reason (`order.salesDocumentBlockReason`, #2100/#2156) or the one
+ *      client-derivable ambiguity signal for a not-yet-re-evaluated order
+ *      (`resolveSalesDocumentBlockCopy` — see that module for the kind-aware
+ *      copy rules: the persisted reason is document-kind-agnostic, so this
+ *      panel derives `kind` locally from its own candidate pool).
  *   3 / 4. Blocked-by-other-kind — the primary action for the OTHER document
  *      kind is disabled with an explanatory `alert--warning`, distinct in tone
  *      from state 2: this is a WRITE-PATH refusal (ADR-041 §3b — the document
@@ -109,7 +112,9 @@ import {
   DocumentTypeSelect,
   DOCUMENT_TYPE_LABEL_FALLBACK,
   InvoicePdfLink,
+  resolveSalesDocumentBlockCopy,
   type InvoiceRecord,
+  type SalesDocumentBlockCopyKind,
 } from '../../invoicing';
 
 import {
@@ -125,7 +130,6 @@ import {
   type FiscalRegistrationRecord,
 } from '../../fiscalization';
 
-import { resolveSalesDocumentBlockCopy } from '../lib/sales-document-block-copy';
 import type { OrderRecord } from '../api/orders.types';
 
 interface SalesDocumentPanelProps {
@@ -449,8 +453,27 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
   const issueBlockedByReceipt = showFiscalSlot && fiscalBlocks && invoicingConnections.length > 0;
 
   // ── Empty-state routing/gate-block reason (state 2) ──
+  //
+  // The persisted block reason is document-kind-AGNOSTIC (#2156 resolves across
+  // BOTH kinds through one shared resolver, so the columns say why nothing was
+  // issued, never which kind almost was) — `kind` here is therefore derived
+  // LOCALLY from this order's own candidate pool, not from the backend. Pure
+  // invoice / pure fiscal-receipt render kind-specific copy; a pool that
+  // genuinely spans both renders neutral "sales document" copy rather than
+  // claiming a kind the data does not support.
+  const blockCopyKind: SalesDocumentBlockCopyKind =
+    fiscalCandidates.length === 0
+      ? 'invoice'
+      : invoicingConnections.length === 0
+        ? 'fiscal-receipt'
+        : 'mixed';
+  // `requiresConnectionPick` is the one client-derivable ambiguity signal, and it
+  // only exists for invoice kind (fiscalization v1 has no auto-issue/primary
+  // concept — ADR-042 decision 9), so it is passed only when the pool is pure
+  // invoice; a fiscal-receipt or mixed pool relies solely on the persisted reason.
+  const derivedAmbiguity = blockCopyKind === 'invoice' && requiresConnectionPick;
   const blockCopy = showEmptyState
-    ? resolveSalesDocumentBlockCopy('invoice', requiresConnectionPick, t)
+    ? resolveSalesDocumentBlockCopy(order, derivedAmbiguity, t, blockCopyKind)
     : null;
 
   return (

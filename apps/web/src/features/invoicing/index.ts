@@ -145,6 +145,11 @@ export {
   type IssuingConnectionResolution,
 } from './lib/resolve-invoicing-connection';
 export {
+  resolveSalesDocumentBlockCopy,
+  type SalesDocumentBlockCopy,
+  type SalesDocumentBlockCopyKind,
+} from './lib/sales-document-block-copy';
+export {
   buildNumberingPreview,
   type NumberingPreview,
   type PreviewToken,

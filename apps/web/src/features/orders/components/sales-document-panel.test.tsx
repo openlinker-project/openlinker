@@ -188,6 +188,43 @@ describe('SalesDocumentPanel — state 2: empty + gate-block reason', () => {
     // Never confused with the cross-kind blocked copy.
     expect(screen.queryByText(/would create a second document/i)).toBeNull();
   });
+
+  it('renders fiscal-receipt-flavored copy for a persisted block when the candidate pool is fiscal-only (#2156)', async () => {
+    renderWithProviders(
+      <SalesDocumentPanel
+        order={{ ...order, salesDocumentBlockReason: 'trigger-model-manual' }}
+      />,
+      {
+        apiClient: createMockApiClient({
+          connections: { list: vi.fn().mockResolvedValue([fiscalConnection]) },
+          invoicing: { getForOrder: vi.fn().mockRejectedValue(notFound()) },
+          fiscalization: { listForOrder: vi.fn().mockResolvedValue([]) },
+        }),
+        ...adminSession,
+      },
+    );
+    expect(await screen.findByText(/registers receipts by hand/i)).toBeInTheDocument();
+    expect(screen.queryByText(/invoice/i)).toBeNull();
+  });
+
+  it('renders neutral copy when the candidate pool spans both kinds (#2156)', async () => {
+    renderWithProviders(
+      <SalesDocumentPanel
+        order={{ ...order, salesDocumentBlockReason: 'trigger-model-manual' }}
+      />,
+      {
+        apiClient: createMockApiClient({
+          connections: {
+            list: vi.fn().mockResolvedValue([invoicingConnection, fiscalConnection]),
+          },
+          invoicing: { getForOrder: vi.fn().mockRejectedValue(notFound()) },
+          fiscalization: { listForOrder: vi.fn().mockResolvedValue([]) },
+        }),
+        ...adminSession,
+      },
+    );
+    expect(await screen.findByText(/issues sales documents by hand/i)).toBeInTheDocument();
+  });
 });
 
 describe('SalesDocumentPanel — state 3: register-receipt blocked by an existing invoice', () => {
