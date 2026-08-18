@@ -1,5 +1,5 @@
 /**
- * resolveSalesDocumentRouting — unit spec (#2155, ADR-041 decisions 1, 2, 6, 10)
+ * resolveSalesDocumentRouting — unit spec (#2155, #2158, ADR-041 decisions 1, 2, 6, 9, 10)
  *
  * @module libs/core/src/sales-documents/domain/domain-services
  */
@@ -25,6 +25,7 @@ function candidate(overrides: Partial<SalesDocumentRoutingCandidate>): SalesDocu
     documentKind: 'invoice',
     isPrimary: false,
     enabledCapabilities: ['Invoicing'],
+    selfRoutesDocumentKind: false,
     ...overrides,
   };
 }
@@ -147,6 +148,106 @@ describe('resolveSalesDocumentRouting (ADR-041)', () => {
       kind: 'route',
       documentKind: 'daily-aggregate-report',
       connectionId: 'conn-only',
+    });
+  });
+
+  describe('self-routing destinations (decision 9)', () => {
+    it('should route to a self-routing candidate with documentKind: null even without a configured documentKind', () => {
+      const selfRouting = candidate({
+        connectionId: 'conn-self-routing',
+        documentKind: null,
+        enabledCapabilities: [],
+        selfRoutesDocumentKind: true,
+      });
+
+      expect(resolveSalesDocumentRouting(ORDER, [selfRouting])).toEqual({
+        kind: 'route',
+        documentKind: null,
+        connectionId: 'conn-self-routing',
+      });
+    });
+
+    it('should skip the structural capability check for a self-routing candidate even when it also declares a documentKind', () => {
+      // A self-routing candidate that ALSO happens to carry a documentKind
+      // (e.g. stale operator config) still short-circuits to documentKind:
+      // null — decision 9 is unconditional once the guard applies, and there
+      // is nothing left to validate against `enabledCapabilities`.
+      const selfRouting = candidate({
+        connectionId: 'conn-self-routing',
+        documentKind: 'invoice',
+        enabledCapabilities: [], // would fail the structural check if it were checked
+        selfRoutesDocumentKind: true,
+      });
+
+      expect(resolveSalesDocumentRouting(ORDER, [selfRouting])).toEqual({
+        kind: 'route',
+        documentKind: null,
+        connectionId: 'conn-self-routing',
+      });
+    });
+
+    it('should apply the same primary tie-break to self-routing candidates as any other (decision 6)', () => {
+      const connections = [
+        candidate({
+          connectionId: 'conn-a',
+          documentKind: null,
+          enabledCapabilities: [],
+          selfRoutesDocumentKind: true,
+          isPrimary: false,
+        }),
+        candidate({
+          connectionId: 'conn-b',
+          documentKind: null,
+          enabledCapabilities: [],
+          selfRoutesDocumentKind: true,
+          isPrimary: true,
+        }),
+      ];
+
+      expect(resolveSalesDocumentRouting(ORDER, connections)).toEqual({
+        kind: 'route',
+        documentKind: null,
+        connectionId: 'conn-b',
+      });
+    });
+
+    it('should resolve unresolved/ambiguous-connection-no-primary when several self-routing candidates and no primary is set', () => {
+      const connections = [
+        candidate({
+          connectionId: 'conn-a',
+          documentKind: null,
+          enabledCapabilities: [],
+          selfRoutesDocumentKind: true,
+        }),
+        candidate({
+          connectionId: 'conn-b',
+          documentKind: null,
+          enabledCapabilities: [],
+          selfRoutesDocumentKind: true,
+        }),
+      ];
+
+      expect(resolveSalesDocumentRouting(ORDER, connections)).toEqual({
+        kind: 'unresolved',
+        reason: 'ambiguous-connection-no-primary',
+      });
+    });
+
+    it('should let a normal (non-self-routing) candidate win the tie-break over an ineligible self-routing-false candidate', () => {
+      const connections = [
+        candidate({ connectionId: 'conn-normal', documentKind: 'invoice' }),
+        candidate({
+          connectionId: 'conn-not-eligible',
+          documentKind: null,
+          selfRoutesDocumentKind: false,
+        }),
+      ];
+
+      expect(resolveSalesDocumentRouting(ORDER, connections)).toEqual({
+        kind: 'route',
+        documentKind: 'invoice',
+        connectionId: 'conn-normal',
+      });
     });
   });
 
