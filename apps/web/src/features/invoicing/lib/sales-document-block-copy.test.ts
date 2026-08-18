@@ -87,6 +87,33 @@ describe('resolveSalesDocumentBlockCopy — invoice kind (default, #2100 wording
     expect(copy?.title).toMatch(/no route/i);
   });
 
+  it('renders dedicated copy for no-configuration-for-country (#2170)', () => {
+    const copy = resolveSalesDocumentBlockCopy(
+      order({
+        salesDocumentBlockReason: 'unresolved-routing',
+        salesDocumentUnresolvedReason: 'no-configuration-for-country',
+      }),
+      false,
+      t,
+    );
+    expect(copy).toMatchObject({ tone: 'error', offerSetPrimary: false });
+    expect(copy?.title).toMatch(/no rules configured for this country/i);
+  });
+
+  it('renders dedicated copy for threshold-currency-mismatch, and never implies a conversion (#2170)', () => {
+    const copy = resolveSalesDocumentBlockCopy(
+      order({
+        salesDocumentBlockReason: 'unresolved-routing',
+        salesDocumentUnresolvedReason: 'threshold-currency-mismatch',
+      }),
+      false,
+      t,
+    );
+    expect(copy).toMatchObject({ tone: 'error', offerSetPrimary: false });
+    expect(copy?.title).toMatch(/does not match the rule's threshold/i);
+    expect(copy?.body).toMatch(/never converts currencies/i);
+  });
+
   it('renders manual quietly — info tone, no Set-a-primary', () => {
     const copy = resolveSalesDocumentBlockCopy(
       order({ salesDocumentBlockReason: 'trigger-model-manual' }),

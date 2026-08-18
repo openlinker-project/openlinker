@@ -1,0 +1,185 @@
+/**
+ * Sales-Document Rules Service (#2170)
+ *
+ * Owns the write-path conflict guard, threshold-ref validation, and the
+ * read-side assembly that feeds the pure `evaluateSalesDocumentRules`. Injects
+ * ONLY this concern's own three repository ports — no `IIntegrationsService`,
+ * no connection lookup, no capability check. That check (a rule pointing
+ * `Invoice → eparagony.pl` must be rejected because eparagony.pl carries no
+ * `Invoicing` capability) is deliberately NOT done here: doing so would inject
+ * a cross-context token into a concern this repo's architecture doc pins as a
+ * zero-outbound-CORE-context-edge leaf. It is done at the API layer instead
+ * (`apps/api/src/sales-documents/`), which already has `IIntegrationsService`
+ * in scope and wraps this service's `createRule` / `upsertCountryDefault`.
+ *
+ * @module libs/core/src/sales-documents/application/services
+ * @implements {ISalesDocumentRulesService}
+ */
+import { Inject, Injectable } from '@nestjs/common';
+import type { ISalesDocumentRulesService } from '../interfaces/sales-document-rules.service.interface';
+import {
+  SALES_DOCUMENT_COUNTRY_DEFAULT_REPOSITORY_TOKEN,
+  SALES_DOCUMENT_RULE_REPOSITORY_TOKEN,
+  SALES_DOCUMENT_THRESHOLD_REPOSITORY_TOKEN,
+} from '../../sales-documents.tokens';
+import { SalesDocumentRuleRepositoryPort } from '../../domain/ports/sales-document-rule-repository.port';
+import { SalesDocumentCountryDefaultRepositoryPort } from '../../domain/ports/sales-document-country-default-repository.port';
+import { SalesDocumentThresholdRepositoryPort } from '../../domain/ports/sales-document-threshold-repository.port';
+import type { SalesDocumentRule } from '../../domain/entities/sales-document-rule.entity';
+import type { SalesDocumentCountryDefault } from '../../domain/entities/sales-document-country-default.entity';
+import type { SalesDocumentThreshold } from '../../domain/entities/sales-document-threshold.entity';
+import type {
+  SalesDocumentCountryDefaultInput,
+  SalesDocumentRuleInput,
+} from '../../domain/types/sales-document-rule-write.types';
+import { computeSalesDocumentConditionsHash } from '../../domain/types/sales-document-condition.types';
+import {
+  SALES_DOCUMENT_REST_OF_WORLD_COUNTRY,
+  type SalesDocumentOrderFacts,
+} from '../../domain/types/sales-document-order-facts.types';
+import type { SalesDocumentDecision } from '../../domain/types/sales-document-decision.types';
+import { evaluateSalesDocumentRules } from '../../domain/domain-services/evaluate-sales-document-rules';
+import { SalesDocumentRuleConflictException } from '../../domain/exceptions/sales-document-rule-conflict.exception';
+import { SalesDocumentThresholdNotFoundException } from '../../domain/exceptions/sales-document-threshold-not-found.exception';
+import {
+  SalesDocumentCountryDefaultNotFoundException,
+  SalesDocumentRuleNotFoundException,
+} from '../../domain/exceptions/sales-document-rule-not-found.exception';
+
+function rangesOverlap(
+  aFrom: Date,
+  aTo: Date | null,
+  bFrom: Date,
+  bTo: Date | null,
+): boolean {
+  const aEnd = aTo ?? new Date(8640000000000000); // open-ended = effectively +infinity
+  const bEnd = bTo ?? new Date(8640000000000000);
+  return aFrom.getTime() <= bEnd.getTime() && bFrom.getTime() <= aEnd.getTime();
+}
+
+@Injectable()
+export class SalesDocumentRulesService implements ISalesDocumentRulesService {
+  constructor(
+    @Inject(SALES_DOCUMENT_RULE_REPOSITORY_TOKEN)
+    private readonly ruleRepository: SalesDocumentRuleRepositoryPort,
+    @Inject(SALES_DOCUMENT_COUNTRY_DEFAULT_REPOSITORY_TOKEN)
+    private readonly countryDefaultRepository: SalesDocumentCountryDefaultRepositoryPort,
+    @Inject(SALES_DOCUMENT_THRESHOLD_REPOSITORY_TOKEN)
+    private readonly thresholdRepository: SalesDocumentThresholdRepositoryPort,
+  ) {}
+
+  async listRules(country: string): Promise<SalesDocumentRule[]> {
+    return this.ruleRepository.findByCountry(country);
+  }
+
+  async createRule(input: SalesDocumentRuleInput): Promise<SalesDocumentRule> {
+    await this.assertThresholdRefsResolve(input);
+
+    const conditionsHash = computeSalesDocumentConditionsHash(input.conditions);
+    await this.assertNoConflict(input.country, conditionsHash, input.effectiveFrom, input.effectiveTo, input.connectionId);
+
+    return this.ruleRepository.create({ ...input, conditionsHash });
+  }
+
+  async deleteRule(id: string): Promise<void> {
+    const existing = await this.ruleRepository.findById(id);
+    if (existing === null) {
+      throw new SalesDocumentRuleNotFoundException(id);
+    }
+    await this.ruleRepository.delete(id);
+  }
+
+  async listCountryDefaults(country: string): Promise<SalesDocumentCountryDefault[]> {
+    return this.countryDefaultRepository.findByCountry(country);
+  }
+
+  async upsertCountryDefault(
+    input: SalesDocumentCountryDefaultInput,
+  ): Promise<SalesDocumentCountryDefault> {
+    return this.countryDefaultRepository.upsert(input);
+  }
+
+  async deleteCountryDefault(id: string): Promise<void> {
+    const existing = await this.countryDefaultRepository.findById(id);
+    if (existing === null) {
+      throw new SalesDocumentCountryDefaultNotFoundException(id);
+    }
+    await this.countryDefaultRepository.delete(id);
+  }
+
+  async listThresholds(): Promise<SalesDocumentThreshold[]> {
+    return this.thresholdRepository.findAll();
+  }
+
+  async resolveRouting(order: SalesDocumentOrderFacts, now: Date = new Date()): Promise<SalesDocumentDecision> {
+    const [countryRules, countryDefaults, restOfWorldRules, restOfWorldDefaults, thresholds] =
+      await Promise.all([
+        this.ruleRepository.findByCountry(order.country),
+        this.countryDefaultRepository.findByCountry(order.country),
+        this.ruleRepository.findByCountry(SALES_DOCUMENT_REST_OF_WORLD_COUNTRY),
+        this.countryDefaultRepository.findByCountry(SALES_DOCUMENT_REST_OF_WORLD_COUNTRY),
+        this.thresholdRepository.findAll(),
+      ]);
+
+    return evaluateSalesDocumentRules({
+      order,
+      countryRules,
+      countryDefaults,
+      restOfWorldRules,
+      restOfWorldDefaults,
+      thresholds,
+      now,
+    });
+  }
+
+  /**
+   * Validate every `orderTotalGross` condition's `thresholdRef` resolves
+   * BEFORE persisting the rule — an unresolvable ref at evaluation time would
+   * silently make the condition unevaluable rather than loudly wrong at
+   * authoring time.
+   */
+  private async assertThresholdRefsResolve(input: SalesDocumentRuleInput): Promise<void> {
+    const refs: string[] = [];
+    for (const condition of input.conditions) {
+      if (condition.field === 'orderTotalGross') {
+        refs.push(condition.thresholdRef);
+      }
+    }
+    if (refs.length === 0) return;
+
+    const found = await this.thresholdRepository.findByRefs(refs);
+    const foundRefs = new Set(found.map((t) => t.ref));
+    for (const ref of refs) {
+      if (!foundRefs.has(ref)) {
+        throw new SalesDocumentThresholdNotFoundException(ref);
+      }
+    }
+  }
+
+  /**
+   * The write-path conflict guard (mockup tab 02): same country + same
+   * `conditionsHash` + an OVERLAPPING effective range + a DIFFERENT
+   * connection is rejected outright. Deliberately no `priority` field breaks
+   * the tie — see `SalesDocumentRuleConflictException`'s own doc comment.
+   *
+   * A read-then-reject inside one transaction, not a DB trigger — a plain
+   * unique index cannot express "overlapping date range" (same trade-off
+   * ADR-040 accepted for its own append-only guard: no database-level guard
+   * ships beyond the exact-duplicate unique index the migration adds).
+   */
+  private async assertNoConflict(
+    country: string,
+    conditionsHash: string,
+    effectiveFrom: Date,
+    effectiveTo: Date | null,
+    connectionId: string,
+  ): Promise<void> {
+    const candidates = await this.ruleRepository.findByCountryAndConditionsHash(country, conditionsHash);
+    for (const candidate of candidates) {
+      if (candidate.connectionId === connectionId) continue;
+      if (rangesOverlap(effectiveFrom, effectiveTo, candidate.effectiveFrom, candidate.effectiveTo)) {
+        throw new SalesDocumentRuleConflictException(candidate.id, candidate.connectionId);
+      }
+    }
+  }
+}

@@ -141,6 +141,40 @@ export function resolveSalesDocumentBlockCopy(
         offerSetPrimary: true,
       };
     }
+    // #2170 — the country-agnostic rule engine's own two additions. Neither
+    // is reachable from the shipped auto-issue gate today (the engine is not
+    // yet wired into `AutoIssueTriggerService`), but the copy exists now so a
+    // future rewiring is additive, not a second FE change.
+    if (order.salesDocumentUnresolvedReason === 'no-configuration-for-country') {
+      return {
+        tone: 'error',
+        title: t(
+          'salesDocument.panel.blockNoCountryConfigTitle',
+          `Not ${v.pastParticiplePhrase}: no rules configured for this country.`,
+        ),
+        body: t(
+          'salesDocument.panel.blockNoCountryConfigBody',
+          `Neither this order's own country nor "★ Rest of world" has any sales-document rule or default configured. Set up rules for this country (or a Rest of world default) in Settings → Sales documents, or ${v.actionVerb} this one by hand.`,
+        ),
+        detail,
+        offerSetPrimary: false,
+      };
+    }
+    if (order.salesDocumentUnresolvedReason === 'threshold-currency-mismatch') {
+      return {
+        tone: 'error',
+        title: t(
+          'salesDocument.panel.blockCurrencyMismatchTitle',
+          `Not ${v.pastParticiplePhrase}: the order currency does not match the rule's threshold.`,
+        ),
+        body: t(
+          'salesDocument.panel.blockCurrencyMismatchBody',
+          `A matching rule compares this order's total against an amount defined in a different currency. OpenLinker never converts currencies for a fiscal decision, so nothing was ${v.pastParticiplePhrase} automatically. ${capitalize(v.actionVerb)} this one by hand, or adjust the rule's threshold.`,
+        ),
+        detail,
+        offerSetPrimary: false,
+      };
+    }
     return {
       tone: 'error',
       title: t(

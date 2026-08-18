@@ -8,6 +8,7 @@
  */
 export { SalesDocumentsPanel } from './components/sales-documents-panel';
 export { SalesDocumentsTile } from './components/sales-documents-tile';
+export { SalesDocumentRuleEnginePanel } from './components/sales-document-rule-engine-panel';
 
 export type {
   SalesDocumentCapability,

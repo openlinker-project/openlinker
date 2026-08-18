@@ -472,6 +472,18 @@ export function createMockApiClient(
       deleteAttributeRule: vi.fn().mockResolvedValue(undefined),
       ...overrides.mappings,
     } as ApiClient['mappings'],
+    salesDocumentRules: {
+      listRules: vi.fn().mockResolvedValue([]),
+      createRule: vi.fn().mockResolvedValue(null),
+      deleteRule: vi.fn().mockResolvedValue(undefined),
+      listCountryDefaults: vi.fn().mockResolvedValue([]),
+      upsertCountryDefault: vi.fn().mockResolvedValue(null),
+      deleteCountryDefault: vi.fn().mockResolvedValue(undefined),
+      listThresholds: vi.fn().mockResolvedValue([]),
+      getTemplate: vi.fn().mockResolvedValue(null),
+      adoptTemplate: vi.fn().mockResolvedValue([]),
+      ...overrides.salesDocumentRules,
+    } as ApiClient['salesDocumentRules'],
     shipments: {
       list: vi.fn().mockResolvedValue({
         items: [],

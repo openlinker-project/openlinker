@@ -11,7 +11,7 @@ import type { ReactElement } from 'react';
 import { useSession } from '../../shared/auth/use-session';
 import { ErrorState } from '../../shared/ui/feedback-state';
 import { PageLayout } from '../../shared/ui/page-layout';
-import { SalesDocumentsPanel } from '../../features/sales-documents';
+import { SalesDocumentsPanel, SalesDocumentRuleEnginePanel } from '../../features/sales-documents';
 
 export function SalesDocumentsPage(): ReactElement {
   const { session } = useSession();
@@ -35,6 +35,15 @@ export function SalesDocumentsPage(): ReactElement {
       backTo={{ to: '/settings', label: 'Settings' }}
     >
       <SalesDocumentsPanel />
+      {/*
+       * #2170 — the country-agnostic rule engine, rendered alongside the
+       * #2156 operator-configured table above rather than replacing it:
+       * `AutoIssueTriggerService` still resolves via that table today, so
+       * removing it would leave operators unable to configure what
+       * actually auto-issues. See `SalesDocumentRuleEnginePanel`'s own doc
+       * comment.
+       */}
+      <SalesDocumentRuleEnginePanel />
     </PageLayout>
   );
 }

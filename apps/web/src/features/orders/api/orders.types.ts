@@ -95,6 +95,9 @@ export const SalesDocumentUnresolvedReasonValues = [
   'ambiguous-connection-no-primary',
   'unsupported-document-kind-on-connection',
   'net-priced-order',
+  // #2170 rule-engine additions — see the backend file for the full rationale.
+  'no-configuration-for-country',
+  'threshold-currency-mismatch',
 ] as const;
 export type SalesDocumentUnresolvedReasonValue =
   (typeof SalesDocumentUnresolvedReasonValues)[number];
