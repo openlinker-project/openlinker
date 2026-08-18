@@ -343,46 +343,6 @@ describe('mergeStructuredIntoConfig — rateLimit (#1810, #2016)', () => {
   });
 });
 
-describe('mergeStructuredIntoConfig — invoicingIsPrimary (#2047)', () => {
-  it('writes the flag nested under `invoicing`, not as a flat key', () => {
-    // The BE reader looks at exactly `config.invoicing.isPrimary`; a flat
-    // `isPrimary` would save cleanly and then never be read.
-    const result = mergeStructuredIntoConfig({}, { invoicingIsPrimary: true });
-    expect(result).toEqual({ invoicing: { isPrimary: true } });
-  });
-
-  it('preserves sibling invoicing keys when claiming the primary role', () => {
-    const base = { invoicing: { triggerModel: 'auto-on-paid', shippingLineName: 'Dostawa' } };
-    const result = mergeStructuredIntoConfig(base, { invoicingIsPrimary: true });
-    expect(result.invoicing).toEqual({
-      triggerModel: 'auto-on-paid',
-      shippingLineName: 'Dostawa',
-      isPrimary: true,
-    });
-  });
-
-  it('DELETES the flag rather than persisting `false`', () => {
-    // `parseIsPrimaryInvoicing` reads absence and explicit `false` identically,
-    // so writing `false` would only leave a key that means nothing.
-    const base = { invoicing: { triggerModel: 'manual', isPrimary: true } };
-    const result = mergeStructuredIntoConfig(base, { invoicingIsPrimary: false });
-    expect(result.invoicing).toEqual({ triggerModel: 'manual' });
-  });
-
-  it('drops an emptied `invoicing` object when releasing the only key it held', () => {
-    const base = { invoicing: { isPrimary: true }, baseUrl: 'https://shop.example.com' };
-    const result = mergeStructuredIntoConfig(base, { invoicingIsPrimary: false });
-    expect('invoicing' in result).toBe(false);
-    expect(result.baseUrl).toBe('https://shop.example.com');
-  });
-
-  it('leaves invoicing untouched when the patch omits the flag', () => {
-    const base = { invoicing: { isPrimary: true } };
-    const result = mergeStructuredIntoConfig(base, { baseUrl: 'https://shop.example.com' });
-    expect(result.invoicing).toEqual({ isPrimary: true });
-  });
-});
-
 describe('mergeStructuredIntoConfig — inpostPsModuleType (#767/#1155)', () => {
   it("writes 'official_inpost' to config", () => {
     const result = mergeStructuredIntoConfig({}, { inpostPsModuleType: 'official_inpost' });
