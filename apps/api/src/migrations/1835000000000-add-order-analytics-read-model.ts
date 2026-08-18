@@ -16,8 +16,8 @@
  */
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AddOrderAnalyticsReadModel1833000000004 implements MigrationInterface {
-  name = 'AddOrderAnalyticsReadModel1833000000004';
+export class AddOrderAnalyticsReadModel1835000000000 implements MigrationInterface {
+  name = 'AddOrderAnalyticsReadModel1835000000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     // 1. Additive scalar columns on order_records.
