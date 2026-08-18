@@ -663,7 +663,7 @@ Mechanics that differ from the listings carve-out, and why:
   One mechanical trap when you write the rule: `DataTable` hardcodes the `<table>` class and puts the caller's `className` on the **container** div, so a page-scoped rule is a *descendant* match (`.orders-table td`) and ties on specificity with `.data-table td { vertical-align: middle }`. It wins by source order alone. Author it **after** that rule in `index.css`, or it silently loses.
 - **Hosting one of these cells in a card `title` slot** (the mobile branch) puts it inside `<strong>`, so the meta line must not inherit the emphasis — `.orders-cell-sub, .orders-more-count` pin `font-weight: 400` (the `+N` chip inherits the emphasis too).
 
-Known gap: `DataTableSkeleton` still renders `36 px` rows, so a table with these cells grows on load. It predates this epic (listings ships the same mismatch) and is not owned by any of the five sub-issues.
+Known gap: `DataTableSkeleton` still renders `36 px` rows, so a table with these cells grows on load. It predates this epic (listings ships the same mismatch) and is not owned by any of the five sub-issues. Tracked as #2152.
 
 **Selection-list rows are governed separately.** Multi-select picker rows inside a modal (e.g. the offer-creation product picker, `.offer-product-picker__prow-main` / `.offer-product-picker__vrow`, #1754/#1779) are *not* `DataTable` rows and are intentionally taller than 36 px: the whole-product checkbox carries a ≥ 44 px tap target (touch parity with the full-width variant-row hit area) and each row pairs a thumbnail with two text lines. They inherit the density posture but pick their own height from content + the tap-target floor rather than the table default; don't force them onto the `36 px` row.
 
