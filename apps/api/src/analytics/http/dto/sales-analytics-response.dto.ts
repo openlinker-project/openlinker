@@ -5,9 +5,11 @@
  * revenue/orders/AOV/median/units figures plus a per-source-connection
  * breakdown with revenue share and a coverage-completeness signal.
  *
- * Currency-mixing detection and gross/net tax-treatment normalization are
- * deliberately out of scope here — see #2049/ADR-040 and a separate
- * tax-normalization effort.
+ * Currency correctness (#2049/ADR-040 follow-up): `revenue`/`averageOrderValue`/
+ * `medianOrderValue` are computed only from reporting-currency-stamped orders
+ * — see `currency` for which one, and `unconvertedCount`/`unconvertedValue`
+ * for what's excluded. Gross/net tax-treatment normalization remains a
+ * separate, not-yet-scoped effort.
  *
  * @module apps/api/src/analytics/http/dto
  */
@@ -60,6 +62,26 @@ export class SalesAnalyticsHeadlineDto {
   @ApiProperty()
   cancelledValue!: number;
 
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description:
+      'Reporting currency revenue/averageOrderValue/medianOrderValue are expressed in. Null when no order in range has been stamped yet.',
+  })
+  currency!: string | null;
+
+  @ApiProperty({
+    description:
+      "Non-cancelled orders in range with no reporting-currency stamp yet — not reflected in revenue.",
+  })
+  unconvertedCount!: number;
+
+  @ApiProperty({
+    description:
+      'Native-currency sum for unconvertedCount. Informational only — may mix currencies.',
+  })
+  unconvertedValue!: number;
+
   @ApiProperty({ type: [DailyTrendPointDto] })
   trend!: DailyTrendPointDto[];
 
@@ -72,6 +94,9 @@ export class SalesAnalyticsHeadlineDto {
     dto.unitsSold = headline.unitsSold;
     dto.cancelledCount = headline.cancelledCount;
     dto.cancelledValue = headline.cancelledValue;
+    dto.currency = headline.currency;
+    dto.unconvertedCount = headline.unconvertedCount;
+    dto.unconvertedValue = headline.unconvertedValue;
     dto.trend = headline.trend.map((point) => DailyTrendPointDto.fromDomain(point));
     return dto;
   }
@@ -99,6 +124,23 @@ export class ChannelSalesAnalyticsDto {
   @ApiProperty()
   cancelledValue!: number;
 
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description: 'Same meaning as the headline currency field, scoped to this channel.',
+  })
+  currency!: string | null;
+
+  @ApiProperty({
+    description: 'Same meaning as the headline unconvertedCount field, scoped to this channel.',
+  })
+  unconvertedCount!: number;
+
+  @ApiProperty({
+    description: 'Same meaning as the headline unconvertedValue field, scoped to this channel.',
+  })
+  unconvertedValue!: number;
+
   @ApiProperty({ description: 'Share of headline revenue, 0 when headline revenue is 0.' })
   revenueShare!: number;
 
@@ -120,6 +162,9 @@ export class ChannelSalesAnalyticsDto {
     dto.unitsSold = channel.unitsSold;
     dto.cancelledCount = channel.cancelledCount;
     dto.cancelledValue = channel.cancelledValue;
+    dto.currency = channel.currency;
+    dto.unconvertedCount = channel.unconvertedCount;
+    dto.unconvertedValue = channel.unconvertedValue;
     dto.revenueShare = channel.revenueShare;
     dto.trend = channel.trend.map((point) => DailyTrendPointDto.fromDomain(point));
     dto.coverageComplete = channel.coverageComplete;

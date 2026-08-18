@@ -1091,8 +1091,11 @@ describe('OrderRecordService', () => {
           sourceConnectionId: 'conn-a',
           orderCount: 2,
           revenue: 200,
+          unconvertedCount: 0,
+          unconvertedValue: 0,
           cancelledCount: 0,
           cancelledValue: 0,
+          reportingCurrency: 'EUR',
         },
       ];
       const unitsByConnection = new Map([['conn-a', 5]]);

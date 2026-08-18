@@ -17,8 +17,11 @@ describe('orderSalesAggregation', () => {
     sourceConnectionId: 'conn-a',
     orderCount: 1,
     revenue: 100,
+    unconvertedCount: 0,
+    unconvertedValue: 0,
     cancelledCount: 0,
     cancelledValue: 0,
+    reportingCurrency: 'EUR',
     ...overrides,
   });
 
@@ -40,6 +43,9 @@ describe('orderSalesAggregation', () => {
         unitsSold: 0,
         cancelledCount: 0,
         cancelledValue: 0,
+        currency: null,
+        unconvertedCount: 0,
+        unconvertedValue: 0,
         trend: [
           { date: '2026-08-01', revenue: 0, orderCount: 0 },
           { date: '2026-08-02', revenue: 0, orderCount: 0 },
@@ -237,6 +243,53 @@ describe('orderSalesAggregation', () => {
       expect(result.headline.trend).toHaveLength(7);
       expect(result.headline.trend[0].date).toBe('2026-08-24');
       expect(result.headline.trend[6].date).toBe('2026-08-30');
+    });
+  });
+
+  describe('currency correctness (#2049/ADR-040 follow-up)', () => {
+    it('reports the stamped currency and rolls up unconverted totals separately', () => {
+      const result = buildSalesAndChannelAnalytics({
+        filters: filters(),
+        dailyRows: [
+          row({ sourceConnectionId: 'conn-a', revenue: 100, orderCount: 1, reportingCurrency: 'EUR' }),
+          row({
+            sourceConnectionId: 'conn-a',
+            revenue: 0,
+            orderCount: 0,
+            unconvertedCount: 2,
+            unconvertedValue: 250,
+            reportingCurrency: null,
+          }),
+        ],
+        medianOrderValue: 100,
+        unitsByConnection: new Map(),
+        earliestOrderDateByConnection: new Map(),
+      });
+
+      expect(result.headline.currency).toBe('EUR');
+      expect(result.headline.revenue).toBe(100);
+      expect(result.headline.unconvertedCount).toBe(2);
+      expect(result.headline.unconvertedValue).toBe(250);
+      expect(result.channels[0]).toMatchObject({
+        currency: 'EUR',
+        unconvertedCount: 2,
+        unconvertedValue: 250,
+      });
+    });
+
+    it('reports a null currency when every row in range is unconverted', () => {
+      const result = buildSalesAndChannelAnalytics({
+        filters: filters(),
+        dailyRows: [
+          row({ revenue: 0, orderCount: 0, unconvertedCount: 1, unconvertedValue: 40, reportingCurrency: null }),
+        ],
+        medianOrderValue: null,
+        unitsByConnection: new Map(),
+        earliestOrderDateByConnection: new Map(),
+      });
+
+      expect(result.headline.currency).toBeNull();
+      expect(result.channels[0].currency).toBeNull();
     });
   });
 

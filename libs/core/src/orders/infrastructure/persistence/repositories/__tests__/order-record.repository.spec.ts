@@ -297,8 +297,11 @@ describe('OrderRecordRepository', () => {
             source_connection_id: 'conn-a',
             order_count: '3',
             revenue: '150.50',
+            unconverted_count: '1',
+            unconverted_value: '15.00',
             cancelled_count: '1',
             cancelled_value: '20.00',
+            reporting_currency: 'EUR',
           },
         ]),
       });
@@ -311,8 +314,11 @@ describe('OrderRecordRepository', () => {
           sourceConnectionId: 'conn-a',
           orderCount: 3,
           revenue: 150.5,
+          unconvertedCount: 1,
+          unconvertedValue: 15,
           cancelledCount: 1,
           cancelledValue: 20,
+          reportingCurrency: 'EUR',
         },
       ]);
     });
@@ -377,6 +383,19 @@ describe('OrderRecordRepository', () => {
       await repository.getMedianOrderValue(baseFilters);
 
       expect(andWhere).toHaveBeenCalledWith('rec."cancelledAt" IS NULL');
+    });
+
+    it('excludes unconverted (unstamped) orders (#2049/ADR-040 follow-up)', async () => {
+      const andWhere = jest.fn().mockReturnThis();
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        select: jest.fn().mockReturnThis(),
+        andWhere,
+        getRawOne: jest.fn().mockResolvedValue({ median: null }),
+      });
+
+      await repository.getMedianOrderValue(baseFilters);
+
+      expect(andWhere).toHaveBeenCalledWith('rec."reportingCurrency" IS NOT NULL');
     });
   });
 
