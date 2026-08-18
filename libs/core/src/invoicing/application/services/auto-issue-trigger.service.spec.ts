@@ -1,6 +1,9 @@
 /**
- * AutoIssueTriggerService unit tests (OL #1120). Mocks `ConnectionPort` +
- * `ISyncJobsService`; asserts trigger-model gating, deterministic-key
+ * AutoIssueTriggerService unit tests (OL #1120, #2156). Mocks `ConnectionPort`
+ * + `ISyncJobsService` + `IIntegrationsService`; asserts cross-capability
+ * connection discovery, routing resolution via `resolveSalesDocumentRouting`,
+ * per-kind dispatch (invoice / fiscal-receipt), the deeper
+ * `getSupportedDocumentTypes()` capability check, deterministic-key
  * idempotency, plain-object payload (#12), and PII-safe per-connection
  * isolation.
  *
@@ -14,6 +17,7 @@ import { BuyerProfile } from '../../domain/entities/buyer-profile.entity';
 import type { ConnectionPort } from '@openlinker/core/identifier-mapping';
 import type { Connection } from '@openlinker/core/identifier-mapping';
 import type { ISyncJobsService } from '@openlinker/core/sync';
+import type { IIntegrationsService } from '@openlinker/core/integrations';
 import type { Order } from '@openlinker/core/orders';
 
 function makeOrder(overrides: Partial<Order> = {}): Order {
@@ -44,13 +48,26 @@ function makeOrder(overrides: Partial<Order> = {}): Order {
   };
 }
 
+/**
+ * Builds a connection that is a sales-document routing CANDIDATE by default —
+ * `config.salesDocument.documentKind` defaults to `'invoice'` and
+ * `enabledCapabilities` to `['Invoicing']`, mirroring what an operator must now
+ * configure post-#2155/#2156 for the router to consider it at all. Passing a
+ * full `config` override skips this default merge, so callers that do so must
+ * include `salesDocument.documentKind` themselves if the connection should
+ * remain a candidate.
+ */
 function makeConnection(triggerModel: string | undefined, overrides: Partial<Connection> = {}): Connection {
+  const defaultConfig = {
+    ...(triggerModel === undefined ? {} : { invoicing: { triggerModel } }),
+    salesDocument: { documentKind: 'invoice' },
+  };
   return {
     id: overrides.id ?? 'conn-inv-1',
     platformType: 'subiekt',
     name: 'Invoicing conn',
     status: 'active',
-    config: triggerModel === undefined ? {} : { invoicing: { triggerModel } },
+    config: overrides.config ?? defaultConfig,
     credentialsRef: 'cred-1',
     createdAt: new Date(),
     updatedAt: new Date(),
@@ -60,24 +77,52 @@ function makeConnection(triggerModel: string | undefined, overrides: Partial<Con
   } as Connection;
 }
 
+/** A connection whose only routed kind is `'fiscal-receipt'`. */
+function makeFiscalConnection(
+  triggerModel: string | undefined,
+  overrides: Partial<Connection> = {},
+): Connection {
+  return makeConnection(triggerModel, {
+    id: 'conn-fiscal-1',
+    platformType: 'eparagony',
+    enabledCapabilities: ['Fiscalization'],
+    config: {
+      ...(triggerModel === undefined ? {} : { invoicing: { triggerModel } }),
+      salesDocument: { documentKind: 'fiscal-receipt' },
+    },
+    ...overrides,
+  });
+}
+
 describe('AutoIssueTriggerService', () => {
-  let connectionPort: jest.Mocked<Pick<ConnectionPort, 'list'>>;
+  let connectionPort: jest.Mocked<Pick<ConnectionPort, 'list' | 'get'>>;
   let syncJobs: jest.Mocked<ISyncJobsService>;
+  let integrations: jest.Mocked<Pick<IIntegrationsService, 'getCapabilityAdapter'>>;
   let service: AutoIssueTriggerService;
   let warnSpy: jest.SpyInstance<void, [message: string]>;
   let errorSpy: jest.SpyInstance<void, [message: string]>;
 
   beforeEach(() => {
-    connectionPort = { list: jest.fn() };
+    connectionPort = { list: jest.fn(), get: jest.fn() };
     syncJobs = {
       schedule: jest.fn().mockResolvedValue({} as never),
       requeueDeadByIdempotencyKey: jest.fn().mockResolvedValue(false),
       findLastSucceededJob: jest.fn().mockResolvedValue(null),
       findEnabledPollTask: jest.fn().mockReturnValue(null),
     };
+    // Every invoice-kind test defaults to a fully-supporting Invoicing
+    // adapter, so the decision-7 deeper check never spuriously blocks
+    // pre-existing scenarios; tests that specifically exercise the check
+    // override this mock.
+    integrations = {
+      getCapabilityAdapter: jest.fn().mockResolvedValue({
+        getSupportedDocumentTypes: () => ['invoice'],
+      }),
+    };
     service = new AutoIssueTriggerService(
       connectionPort as unknown as ConnectionPort,
       syncJobs as unknown as ISyncJobsService,
+      integrations as unknown as IIntegrationsService,
     );
     // Silence + capture the PII-safe envelope log.
     warnSpy = jest
@@ -86,8 +131,8 @@ describe('AutoIssueTriggerService', () => {
         'warn',
       )
       .mockImplementation(() => undefined) as jest.SpyInstance<void, [message: string]>;
-    // #2047: the ambiguous-primary refusal logs at ERROR (it is a
-    // misconfiguration that silently suppresses invoicing), not WARN.
+    // Routing-unresolved / dispatch-validation refusals log at ERROR (a
+    // misconfiguration that silently suppresses issuance), not WARN.
     errorSpy = jest
       .spyOn(
         (service as unknown as { logger: { error: (m: string) => void } }).logger,
@@ -98,7 +143,7 @@ describe('AutoIssueTriggerService', () => {
 
   afterEach(() => jest.restoreAllMocks());
 
-  describe('onOrderTransition — trigger-model gating', () => {
+  describe('onOrderTransition — trigger-model gating (invoice kind)', () => {
     it('auto-on-paid: paid order enqueues exactly one invoicing.issue job', async () => {
       connectionPort.list.mockResolvedValue([makeConnection('auto-on-paid')]);
       await service.onOrderTransition(makeOrder({ paymentStatus: 'paid' }), 'src-1', 'evt-1');
@@ -165,9 +210,9 @@ describe('AutoIssueTriggerService', () => {
       expect(warnSpy.mock.calls[0][0]).toContain('BatchedTriggerNotImplementedError');
     });
 
-    // One connection per case: with two candidates and no primary the #2047
-    // selection would refuse for an unrelated reason, making the assertion pass
-    // without exercising the trigger-model default at all.
+    // One connection per case: with two candidates and no primary the router
+    // would refuse for an unrelated reason, making the assertion pass without
+    // exercising the trigger-model default at all.
     it.each([
       ['unset', undefined],
       ['unrecognized', 'nonsense'],
@@ -183,10 +228,10 @@ describe('AutoIssueTriggerService', () => {
     });
   });
 
-  describe('connection discovery', () => {
-    it('excludes connections without the Invoicing capability', async () => {
+  describe('cross-capability connection discovery (#2156)', () => {
+    it('excludes connections without Invoicing or Fiscalization capability', async () => {
       connectionPort.list.mockResolvedValue([
-        makeConnection('auto-on-paid', { id: 'no-cap', enabledCapabilities: ['Orders'] }),
+        makeConnection('auto-on-paid', { id: 'no-cap', enabledCapabilities: ['OrderSource'] }),
       ]);
       await service.onOrderTransition(makeOrder({ paymentStatus: 'paid' }), 'src-1');
       expect(syncJobs.schedule).not.toHaveBeenCalled();
@@ -196,6 +241,24 @@ describe('AutoIssueTriggerService', () => {
       connectionPort.list.mockResolvedValue([]);
       await service.onOrderTransition(makeOrder({ paymentStatus: 'paid' }), 'src-1');
       expect(connectionPort.list).toHaveBeenCalledWith({ status: 'active' });
+    });
+
+    it('a connection with ONLY Fiscalization enabled is discovered and can win the routing decision', async () => {
+      connectionPort.list.mockResolvedValue([makeFiscalConnection('auto-on-paid')]);
+      await service.onOrderTransition(makeOrder({ paymentStatus: 'paid' }), 'src-1');
+      expect(syncJobs.schedule).toHaveBeenCalledTimes(1);
+      expect(syncJobs.schedule.mock.calls[0][0].jobType).toBe('fiscalization.register');
+    });
+
+    it('a connection carrying no config.salesDocument.documentKind is NOT a routing candidate', async () => {
+      connectionPort.list.mockResolvedValue([
+        makeConnection('auto-on-paid', { id: 'unconfigured', config: { invoicing: { triggerModel: 'auto-on-paid' } } }),
+      ]);
+      await service.onOrderTransition(makeOrder({ paymentStatus: 'paid' }), 'src-1');
+      expect(syncJobs.schedule).not.toHaveBeenCalled();
+      // Zero eligible candidates short-circuits before the resolver — no
+      // spurious "ambiguous" error either.
+      expect(errorSpy).not.toHaveBeenCalled();
     });
   });
 
@@ -219,7 +282,7 @@ describe('AutoIssueTriggerService', () => {
     });
   });
 
-  describe('command composition fidelity', () => {
+  describe('command composition fidelity (invoice)', () => {
     it('payload buyer carries the REAL billing name+address (not redacted)', async () => {
       connectionPort.list.mockResolvedValue([makeConnection('auto-on-paid')]);
       await service.onOrderTransition(makeOrder({ paymentStatus: 'paid' }), 'src-1');
@@ -234,6 +297,23 @@ describe('AutoIssueTriggerService', () => {
       const buyer = (syncJobs.schedule.mock.calls[0][0].payload as { buyer: object }).buyer;
       expect(buyer).not.toBeInstanceOf(BuyerProfile);
       expect((buyer as { isCompany?: unknown }).isCompany).toBeUndefined();
+    });
+
+    it('payload carries saleDate from order.placedAt (P_6 seam, #1525)', async () => {
+      connectionPort.list.mockResolvedValue([makeConnection('auto-on-paid')]);
+      await service.onOrderTransition(
+        makeOrder({ paymentStatus: 'paid', placedAt: new Date('2026-06-19T14:30:00.000Z') }),
+        'src-1',
+      );
+      const payload = syncJobs.schedule.mock.calls[0][0].payload as { saleDate?: string };
+      expect(payload.saleDate).toBe('2026-06-19');
+    });
+
+    it('payload omits saleDate entirely when the order has no placedAt', async () => {
+      connectionPort.list.mockResolvedValue([makeConnection('auto-on-paid')]);
+      await service.onOrderTransition(makeOrder({ paymentStatus: 'paid' }), 'src-1');
+      const payload = syncJobs.schedule.mock.calls[0][0].payload;
+      expect('saleDate' in payload).toBe(false);
     });
 
     it('payload buyer carries order.customerEmail (#1797)', async () => {
@@ -262,26 +342,9 @@ describe('AutoIssueTriggerService', () => {
       expect(buyer.type).toBe('private');
       expect(buyer.taxId).toBeNull();
     });
-
-    it('payload carries saleDate from order.placedAt (P_6 seam, #1525)', async () => {
-      connectionPort.list.mockResolvedValue([makeConnection('auto-on-paid')]);
-      await service.onOrderTransition(
-        makeOrder({ paymentStatus: 'paid', placedAt: new Date('2026-06-19T14:30:00.000Z') }),
-        'src-1',
-      );
-      const payload = syncJobs.schedule.mock.calls[0][0].payload as { saleDate?: string };
-      expect(payload.saleDate).toBe('2026-06-19');
-    });
-
-    it('payload omits saleDate entirely when the order has no placedAt', async () => {
-      connectionPort.list.mockResolvedValue([makeConnection('auto-on-paid')]);
-      await service.onOrderTransition(makeOrder({ paymentStatus: 'paid' }), 'src-1');
-      const payload = syncJobs.schedule.mock.calls[0][0].payload;
-      expect('saleDate' in payload).toBe(false);
-    });
   });
 
-  describe('shipping-line label wiring (#1562)', () => {
+  describe('shipping-line label wiring (#1562, invoice kind)', () => {
     // Order with a gross shipping cost so the mapper appends a shipping line.
     const paidShippingOrder = (): Order =>
       makeOrder({
@@ -307,7 +370,10 @@ describe('AutoIssueTriggerService', () => {
     it("threads config.invoicing.shippingLineName into the payload's shipping line", async () => {
       connectionPort.list.mockResolvedValue([
         makeConnection('auto-on-paid', {
-          config: { invoicing: { triggerModel: 'auto-on-paid', shippingLineName: 'Koszt wysyłki' } },
+          config: {
+            invoicing: { triggerModel: 'auto-on-paid', shippingLineName: 'Koszt wysyłki' },
+            salesDocument: { documentKind: 'invoice' },
+          },
         }),
       ]);
       await service.onOrderTransition(paidShippingOrder(), 'src-1');
@@ -324,7 +390,10 @@ describe('AutoIssueTriggerService', () => {
     it('ignores a blank shippingLineName and uses the neutral default', async () => {
       connectionPort.list.mockResolvedValue([
         makeConnection('auto-on-paid', {
-          config: { invoicing: { triggerModel: 'auto-on-paid', shippingLineName: '   ' } },
+          config: {
+            invoicing: { triggerModel: 'auto-on-paid', shippingLineName: '   ' },
+            salesDocument: { documentKind: 'invoice' },
+          },
         }),
       ]);
       await service.onOrderTransition(paidShippingOrder(), 'src-1');
@@ -332,13 +401,93 @@ describe('AutoIssueTriggerService', () => {
     });
   });
 
-  // #2047: one sale is one invoice. The trigger resolves EXACTLY ONE connection
-  // instead of fanning out over every Invoicing-capable one.
-  describe('single-connection selection (#2047)', () => {
+  describe('fiscal-receipt dispatch (#2156)', () => {
+    it('auto-on-paid: paid order enqueues exactly one fiscalization.register job', async () => {
+      connectionPort.list.mockResolvedValue([makeFiscalConnection('auto-on-paid')]);
+      await service.onOrderTransition(makeOrder({ paymentStatus: 'paid' }), 'src-1');
+      expect(syncJobs.schedule).toHaveBeenCalledTimes(1);
+      const input = syncJobs.schedule.mock.calls[0][0];
+      expect(input.jobType).toBe('fiscalization.register');
+      expect(input.connectionId).toBe('conn-fiscal-1');
+    });
+
+    it('manual: enqueues ZERO jobs', async () => {
+      connectionPort.list.mockResolvedValue([makeFiscalConnection('manual')]);
+      await service.onOrderTransition(makeOrder({ paymentStatus: 'paid' }), 'src-1');
+      expect(syncJobs.schedule).not.toHaveBeenCalled();
+    });
+
+    it('schedules with deterministic idempotencyKey `fiscal:{connId}:{orderId}` threaded twice', async () => {
+      connectionPort.list.mockResolvedValue([makeFiscalConnection('auto-on-paid')]);
+      await service.onOrderTransition(makeOrder({ id: 'order-Z', paymentStatus: 'paid' }), 'src-1');
+      const input = syncJobs.schedule.mock.calls[0][0];
+      expect(input.idempotencyKey).toBe('fiscal:conn-fiscal-1:order-Z');
+      expect((input.payload as { idempotencyKey: string }).idempotencyKey).toBe(
+        'fiscal:conn-fiscal-1:order-Z',
+      );
+    });
+
+    it('payload carries lines/currency/totalGross composed from the order, no buyer field at all', async () => {
+      connectionPort.list.mockResolvedValue([makeFiscalConnection('auto-on-paid')]);
+      await service.onOrderTransition(makeOrder({ paymentStatus: 'paid' }), 'src-1');
+      const payload = syncJobs.schedule.mock.calls[0][0].payload;
+      expect(payload.currency).toBe('PLN');
+      expect(payload.totalGross).toBe(20);
+      expect(Array.isArray(payload.lines)).toBe(true);
+      expect('buyer' in payload).toBe(false);
+    });
+
+    it('does NOT call the Invoicing capability-adapter check for a fiscal-receipt candidate', async () => {
+      connectionPort.list.mockResolvedValue([makeFiscalConnection('auto-on-paid')]);
+      await service.onOrderTransition(makeOrder({ paymentStatus: 'paid' }), 'src-1');
+      expect(integrations.getCapabilityAdapter).not.toHaveBeenCalled();
+    });
+
+    it('a net-priced order surfaces UnsupportedFiscalPriceTreatmentError, caught + logged, no enqueue', async () => {
+      connectionPort.list.mockResolvedValue([makeFiscalConnection('auto-on-paid')]);
+      await service.onOrderTransition(
+        makeOrder({ paymentStatus: 'paid', totals: { ...makeOrder().totals, taxTreatment: 'exclusive' } }),
+        'src-1',
+      );
+      expect(syncJobs.schedule).not.toHaveBeenCalled();
+      expect(warnSpy).toHaveBeenCalled();
+      expect(warnSpy.mock.calls[0][0]).toContain('UnsupportedFiscalPriceTreatmentError');
+    });
+  });
+
+  describe('decision-7 deeper capability check (invoice kind, #2156)', () => {
+    it('skips dispatch when the Invoicing adapter does not list "invoice" as a supported document type', async () => {
+      integrations.getCapabilityAdapter.mockResolvedValue({
+        getSupportedDocumentTypes: () => ['credit-note'],
+      });
+      connectionPort.list.mockResolvedValue([makeConnection('auto-on-paid')]);
+      await service.onOrderTransition(makeOrder({ paymentStatus: 'paid' }), 'src-1');
+      expect(syncJobs.schedule).not.toHaveBeenCalled();
+      expect(errorSpy).toHaveBeenCalled();
+      expect(errorSpy.mock.calls[0][0]).toContain('does not list');
+    });
+
+    it('fails closed (skips) when the adapter cannot be resolved at all', async () => {
+      integrations.getCapabilityAdapter.mockRejectedValue(new Error('connection disabled'));
+      connectionPort.list.mockResolvedValue([makeConnection('auto-on-paid')]);
+      await service.onOrderTransition(makeOrder({ paymentStatus: 'paid' }), 'src-1');
+      expect(syncJobs.schedule).not.toHaveBeenCalled();
+      expect(errorSpy).toHaveBeenCalled();
+    });
+  });
+
+  // #2047/#2155: one sale is one document. The gate resolves EXACTLY ONE
+  // (documentKind, connectionId) pair via resolveSalesDocumentRouting instead
+  // of fanning out — and across BOTH kinds, since the routing pool is
+  // cross-kind (ADR-041 decision 3a: invoice XOR receipt, never both).
+  describe('single-connection resolution (#2047/#2155/#2156)', () => {
     function primary(id: string): Connection {
       return makeConnection('auto-on-paid', {
         id,
-        config: { invoicing: { triggerModel: 'auto-on-paid', isPrimary: true } },
+        config: {
+          invoicing: { triggerModel: 'auto-on-paid', isPrimary: true },
+          salesDocument: { documentKind: 'invoice' },
+        },
       });
     }
 
@@ -353,7 +502,7 @@ describe('AutoIssueTriggerService', () => {
       expect(syncJobs.schedule).not.toHaveBeenCalled();
       expect(errorSpy).toHaveBeenCalledTimes(1);
       const logged = errorSpy.mock.calls[0][0];
-      expect(logged).toContain('no-primary');
+      expect(logged).toContain('ambiguous-connection-no-primary');
       expect(logged).toContain('conn-a');
       expect(logged).toContain('conn-b');
       expect(logged).toContain('order-1');
@@ -378,7 +527,7 @@ describe('AutoIssueTriggerService', () => {
       await service.onOrderTransition(makeOrder({ paymentStatus: 'paid' }), 'src-1');
 
       expect(syncJobs.schedule).not.toHaveBeenCalled();
-      expect(errorSpy.mock.calls[0][0]).toContain('multiple-primaries');
+      expect(errorSpy.mock.calls[0][0]).toContain('ambiguous-connection-no-primary');
     });
 
     it('should keep issuing on the lone connection even when it is not marked primary', async () => {
@@ -391,14 +540,16 @@ describe('AutoIssueTriggerService', () => {
       expect(errorSpy).not.toHaveBeenCalled();
     });
 
-    it('should ignore a non-boolean isPrimary value when resolving the primary', async () => {
+    it('should ignore a non-boolean isPrimary value when resolving the winner', async () => {
       connectionPort.list.mockResolvedValue([
         makeConnection('auto-on-paid', {
           id: 'conn-a',
           // The stored jsonb is untrusted: `isPrimary` is documented as a boolean
           // but nothing stops a hand-edited config from holding a string.
-          config: { invoicing: { triggerModel: 'auto-on-paid', isPrimary: 'yes' } } as
-            unknown as Connection['config'],
+          config: {
+            invoicing: { triggerModel: 'auto-on-paid', isPrimary: 'yes' },
+            salesDocument: { documentKind: 'invoice' },
+          } as unknown as Connection['config'],
         }),
         makeConnection('auto-on-paid', { id: 'conn-b' }),
       ]);
@@ -406,10 +557,24 @@ describe('AutoIssueTriggerService', () => {
       await service.onOrderTransition(makeOrder({ paymentStatus: 'paid' }), 'src-1');
 
       expect(syncJobs.schedule).not.toHaveBeenCalled();
-      expect(errorSpy.mock.calls[0][0]).toContain('no-primary');
+      expect(errorSpy.mock.calls[0][0]).toContain('ambiguous-connection-no-primary');
     });
 
-    it('should not log an ambiguity error when no connection has the Invoicing capability', async () => {
+    it('an invoice candidate and a fiscal-receipt candidate compete in the SAME cross-kind pool', async () => {
+      connectionPort.list.mockResolvedValue([
+        makeConnection('auto-on-paid', { id: 'conn-inv' }),
+        makeFiscalConnection('auto-on-paid', { id: 'conn-fiscal' }),
+      ]);
+
+      await service.onOrderTransition(makeOrder({ paymentStatus: 'paid' }), 'src-1');
+
+      // Two candidates, neither primary ⇒ unresolved, exactly like two
+      // same-kind candidates would be.
+      expect(syncJobs.schedule).not.toHaveBeenCalled();
+      expect(errorSpy.mock.calls[0][0]).toContain('ambiguous-connection-no-primary');
+    });
+
+    it('should not log an ambiguity error when no connection has Invoicing or Fiscalization', async () => {
       connectionPort.list.mockResolvedValue([
         makeConnection('auto-on-paid', { id: 'x', enabledCapabilities: [] }),
       ]);
@@ -420,15 +585,18 @@ describe('AutoIssueTriggerService', () => {
       expect(errorSpy).not.toHaveBeenCalled();
     });
 
-    // Selection runs BEFORE the trigger model is read, so a primary on a
-    // `manual` connection turns auto-issue off for the whole install. That is a
-    // legitimate operator choice, but it must not be indistinguishable from
-    // "the trigger never fired".
-    it('should warn once when the chosen primary is manual while sibling candidates exist', async () => {
+    // Selection resolves the winner BEFORE the trigger model is read, so a
+    // primary on a `manual` connection turns auto-issue off for the whole
+    // install. That is a legitimate operator choice, but it must not be
+    // indistinguishable from "the trigger never fired".
+    it('should warn once when the chosen winner is manual while sibling candidates exist', async () => {
       const connections = [
         makeConnection('manual', {
           id: 'conn-primary',
-          config: { invoicing: { triggerModel: 'manual', isPrimary: true } },
+          config: {
+            invoicing: { triggerModel: 'manual', isPrimary: true },
+            salesDocument: { documentKind: 'invoice' },
+          },
         }),
         makeConnection('auto-on-paid', { id: 'conn-sibling' }),
       ];

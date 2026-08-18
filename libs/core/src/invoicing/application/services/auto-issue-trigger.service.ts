@@ -1,42 +1,76 @@
 /**
- * Auto-Issue Trigger Service (ADR-026 §3 — core policy composer, OL #1120)
+ * Auto-Issue Trigger Service — cross-capability sales-document gate
+ * (ADR-026 §3 — core policy composer, OL #1120; ADR-041 decisions 3a/3b/4/7 —
+ * cross-capability gate, #2156)
  *
- * Core-resident policy that turns a qualifying order transition (paid / shipped)
- * into AT MOST ONE issuance job. It:
- *  1. Lists ACTIVE invoicing connections (D8) via `ConnectionPort`.
- *  2. Resolves EXACTLY ONE of them (#2047) via `selectPrimaryInvoicingConnection`
- *     over `config.invoicing.isPrimary` (`parseIsPrimaryInvoicing`). One sale is
- *     one invoice: before #2047 this method fanned out over EVERY connection with
- *     the `Invoicing` capability and its per-connection idempotency key
- *     (`invoice:{connId}:{orderId}`) could not dedup across them, so an operator
- *     running two providers got two real fiscal documents for one sale. With
- *     several candidates and no unambiguous primary it now issues NOTHING and
- *     logs an error — a missing invoice is fixable, a duplicate needs a
- *     correction of a document that should never have existed.
- *  3. Reads the selected connection's `config.invoicing.triggerModel`
- *     (`parseTriggerModel`).
- *  4. Evaluates the transition (level-evaluated, D3): `auto-on-paid` iff paid;
- *     `auto-on-shipped` iff `order.status === 'shipped'` (D6 + one-time viability
- *     log, F7); `manual` → skip; `batched` → log + skip (deferred, F-cleanly).
- *  5. Composes the `IssueInvoiceCommand` from the clean in-hand `Order` and
- *     enqueues the `invoicing.issue` job with a deterministic key
- *     `invoice:{connId}:{orderId}` composed ONCE and threaded into BOTH the
- *     `ScheduleJobInput.idempotencyKey` AND `payload.idempotencyKey` (F4).
+ * Core-resident policy that turns a qualifying order transition (paid /
+ * shipped) into AT MOST ONE sales-document issuance job — invoice **or**
+ * fiscal receipt, never both (ADR-041 decision 3a). It:
+ *  1. Lists ACTIVE connections (D8) via `ConnectionPort` that have EITHER the
+ *     `Invoicing` OR the `Fiscalization` capability enabled (#2156 — before
+ *     this, only `Invoicing` was listed, which structurally could never
+ *     produce a fiscal-receipt candidate).
+ *  2. Reduces each to a `SalesDocumentRoutingCandidate` via
+ *     `readSalesDocumentRouting(connection.config)` (which `documentKind` this
+ *     connection issues, and whether it is the operator-set primary) and
+ *     resolves EXACTLY ONE `(documentKind, connectionId)` pair via the
+ *     `sales-documents` context's pure `resolveSalesDocumentRouting` (#2155) —
+ *     replacing the invoice-only `selectPrimaryInvoicingConnection` call this
+ *     service used to make directly (that selection logic is now INSIDE the
+ *     resolver; this service only calls it).
+ *  3. Validates the resolved connection actually supports the resolved
+ *     `documentKind` before dispatch (decision 7): for `'invoice'`, by asking
+ *     the resolved `InvoicingPort` adapter's `getSupportedDocumentTypes()` —
+ *     the resolver's own structural check (capability enabled) already ran,
+ *     this is the DEEPER, adapter-level check. `'fiscal-receipt'` has no
+ *     adapter-level discovery method yet (`FiscalizationPort` carries no
+ *     `getSupportedDocumentTypes()` equivalent), so the structural check is
+ *     the whole story for that kind today — documented, not silently skipped.
+ *  4. Reads the winning connection's `config.invoicing.triggerModel`
+ *     (`parseTriggerModel`) — reused verbatim for BOTH document kinds. The key
+ *     predates the two-kind split and is historically named after invoicing
+ *     only; ADR-041 decision 4 fixes the shape of `isPrimary` /
+ *     `salesDocument.documentKind` but says nothing about renaming
+ *     `triggerModel`, so this service treats it as "this connection's
+ *     document-issuance trigger model" regardless of which kind it issues.
+ *     Introducing a kind-scoped trigger-model key is a separate, out-of-scope
+ *     config-shape decision.
+ *  5. Evaluates the transition against that trigger model (level-evaluated,
+ *     D3): `auto-on-paid` iff paid; `auto-on-shipped` iff
+ *     `order.status === 'shipped'` (D6 + one-time viability log, F7);
+ *     `manual` → skip; `batched` → log + skip (deferred, F-cleanly).
+ *  6. Composes the job payload from the clean in-hand `Order` and enqueues
+ *     the matching job type with a deterministic key: `invoicing.issue` /
+ *     `invoice:{connId}:{orderId}` for `'invoice'` (unchanged from before
+ *     #2156), `fiscalization.register` / `fiscal:{connId}:{orderId}` for
+ *     `'fiscal-receipt'` (#2156 — the SAME key format the fiscalization HTTP
+ *     controller already uses for the identical semantic: one connection
+ *     registering one order is one sale).
  *
- * Every non-issuing exit (ambiguous selection, `manual`, `batched`) is currently
- * LOG-ONLY. ADR-041 §54/§105 require it to also persist a named, operator-visible
- * reason — deferred to **#2100**, whose comment at the `ambiguous` branch explains
- * why the log alone is insufficient.
+ * Every non-issuing exit (unresolved routing, unsupported document kind,
+ * `manual`, `batched`) is currently LOG-ONLY. ADR-041 §54/§105 require it to
+ * also persist a named, operator-visible reason via the `order_records`
+ * sales-document-block mechanism — deferred to **#2100**. IMPORTANT: that
+ * mechanism does not exist on this branch (it shipped independently on `main`,
+ * commit c9231c9ba, which this epic branch has not merged) — see the PR/issue
+ * description for this deviation. Every log line below already names the
+ * exact `SalesDocumentUnresolvedReason` / kind values #2100's persistence
+ * would need, so wiring it in is additive once the mechanism lands here.
  *
  * The selected connection's work is isolated in a try/catch; the catch logs a
- * PII-SAFE envelope only (F9 + D11): `error.name`, invoicing `connectionId`, `order.id`,
+ * PII-SAFE envelope only (F9 + D11): `error.name`, connectionId, `order.id`,
  * `sourceEventId` (when present) — never the raw error / message / payload.
  * `error.message` is added ONLY for the allow-listed deterministic, PII-clean
  * errors (`InvalidBuyerProfileError`, `UnsupportedPriceTreatmentError`,
+ * `InvalidFiscalLineError`, `UnsupportedFiscalPriceTreatmentError`,
  * `BatchedTriggerNotImplementedError`).
  *
- * ONE-WAY EDGE (F3): depends ONLY on `CONNECTION_PORT_TOKEN` (identifier-mapping)
- * and `SYNC_JOBS_SERVICE_TOKEN` (sync). It injects NO OrdersModule token.
+ * ONE-WAY EDGE (F3): still injects NO `OrdersModule` token. #2156 adds
+ * `INTEGRATIONS_SERVICE_TOKEN` (for the `getSupportedDocumentTypes()` check) —
+ * an `integrations`-context dependency, unrelated to the ONE-WAY EDGE
+ * property this docstring guards, which is specifically about `orders`.
+ * `apps/worker/test/integration/invoicing-auto-issue-boot.int-spec.ts`
+ * continues to assert no `OrdersModule` token is injected.
  *
  * @module libs/core/src/invoicing/application/services
  * @implements {IAutoIssueTriggerService}
@@ -56,19 +90,33 @@ import type { Order } from '@openlinker/core/orders';
 // without pulling in `OrdersModule`. Using the main barrel would close a CJS
 // cycle (OrdersModule imports InvoicingModule which provides this service).
 import { PAYMENT_STATUS } from '@openlinker/core/orders/types';
+import {
+  IIntegrationsService,
+  INTEGRATIONS_SERVICE_TOKEN,
+} from '@openlinker/core/integrations';
+import {
+  readSalesDocumentRouting,
+  resolveSalesDocumentRouting,
+} from '@openlinker/core/sales-documents';
+import type {
+  SalesDocumentDecision,
+  SalesDocumentRoutingCandidate,
+  SalesDocumentUnresolvedReason,
+} from '@openlinker/core/sales-documents';
+import { toRegisterTransactionCommand } from '@openlinker/core/fiscalization';
 import { Logger } from '@openlinker/shared/logging';
 
 import type { IAutoIssueTriggerService } from './auto-issue-trigger.service.interface';
+import type { InvoicingPort } from '../../domain/ports/invoicing.port';
 import type { InvoiceTriggerModel } from '../../domain/types/invoice-trigger.types';
 import { parseTriggerModel } from '../../domain/types/invoice-trigger.types';
-import {
-  parseIsPrimaryInvoicing,
-  selectPrimaryInvoicingConnection,
-} from '../../domain/types/invoicing-primary.types';
 import { normalizeShippingLineName } from '../../domain/types/shipping-line-label.types';
 import { toIssueInvoiceCommand } from '../mappers/order-to-issue-invoice-command.mapper';
 import { BatchedTriggerNotImplementedError } from '../../domain/exceptions/batched-trigger-not-implemented.error';
-import type { InvoicingIssuePayloadV1 } from '@openlinker/core/sync';
+import type {
+  InvoicingIssuePayloadV1,
+  FiscalizationRegisterPayloadV1,
+} from '@openlinker/core/sync';
 
 /**
  * Retry budget for issuance jobs (F1/F8/D9). Mirrors `RUNNER_RETRY_BUDGET = 3`:
@@ -79,8 +127,9 @@ import type { InvoicingIssuePayloadV1 } from '@openlinker/core/sync';
  */
 export const AUTO_ISSUE_RETRY_BUDGET = 3;
 
-/** Capability name a connection must enable to receive issuance jobs. */
+/** Capability names a connection must enable to be a routing candidate at all. */
 const INVOICING_CAPABILITY = 'Invoicing';
+const FISCALIZATION_CAPABILITY = 'Fiscalization';
 
 /**
  * Error names whose `message` is deterministic and PII-clean (each cites only
@@ -91,6 +140,8 @@ const PII_SAFE_ERROR_NAMES: ReadonlySet<string> = new Set([
   'InvalidBuyerProfileError',
   'InvalidInvoiceLineError',
   'UnsupportedPriceTreatmentError',
+  'InvalidFiscalLineError',
+  'UnsupportedFiscalPriceTreatmentError',
   'BatchedTriggerNotImplementedError',
 ]);
 
@@ -100,31 +151,34 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
 
   /**
    * F7/D6 one-time viability log: connection ids for which an `auto-on-shipped`
-   * model has already been evaluated against a non-`shipped` order and warned.
-   * `auto-on-shipped` is only honored where the source surfaces `'shipped'`
-   * inbound; a connection configured for it on a source that never emits
-   * `'shipped'` would otherwise silently never issue. We warn ONCE per
+   * trigger model has already been evaluated against a non-`shipped` order and
+   * warned. `auto-on-shipped` is only honored where the source surfaces
+   * `'shipped'` inbound; a connection configured for it on a source that never
+   * emits `'shipped'` would otherwise silently never issue. We warn ONCE per
    * connection (not per order) so the misconfiguration is operator-visible
    * without flooding the log on every poll.
    */
   private readonly shippedViabilityWarned = new Set<string>();
 
   /**
-   * #2047 one-time diagnosis: connection ids already warned about being the
-   * chosen primary while carrying a `manual` trigger model on an install that
-   * has OTHER invoicing candidates. Selection runs before the trigger model is
-   * read, so naming the primary on a `manual` connection turns auto-issue off
-   * for the WHOLE install even though a sibling is `auto-on-paid`. That is the
-   * operator's call to make, but without this line it is indistinguishable from
-   * "the trigger never fired". Warned ONCE per connection, not per order.
+   * One-time diagnosis: connection ids already warned about being the chosen
+   * winner while carrying a `manual` trigger model on an install that has
+   * OTHER sales-document candidates. Routing resolves the winning connection
+   * BEFORE its trigger model is read, so a `manual` winner silently turns
+   * auto-issue off for the WHOLE install even though a sibling candidate is
+   * `auto-on-paid`. That is the operator's call to make, but without this line
+   * it is indistinguishable from "the trigger never fired". Warned ONCE per
+   * connection, not per order.
    */
-  private readonly manualPrimaryWarned = new Set<string>();
+  private readonly manualWinnerWarned = new Set<string>();
 
   constructor(
     @Inject(CONNECTION_PORT_TOKEN)
     private readonly connectionPort: ConnectionPort,
     @Inject(SYNC_JOBS_SERVICE_TOKEN)
     private readonly syncJobs: ISyncJobsService,
+    @Inject(INTEGRATIONS_SERVICE_TOKEN)
+    private readonly integrations: IIntegrationsService,
   ) {}
 
   async onOrderTransition(
@@ -132,68 +186,182 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     sourceConnectionId: string,
     sourceEventId?: string,
   ): Promise<void> {
-    // D8: only ACTIVE invoicing connections receive issuance jobs. The
-    // scheduler's `status: 'active'` filter already excludes disabled/error/
-    // needs_reauth connections.
+    // D8: only ACTIVE connections receive issuance jobs. The scheduler's
+    // `status: 'active'` filter already excludes disabled/error/needs_reauth
+    // connections. #2156: a candidate needs EITHER capability, not just
+    // Invoicing — a connection with only `Fiscalization` enabled must be
+    // discoverable too, or a fiscal-receipt candidate could never exist.
     const connections = (
       await this.connectionPort.list({ status: 'active' })
-    ).filter((connection) =>
-      connection.enabledCapabilities.includes(INVOICING_CAPABILITY),
+    ).filter(
+      (connection) =>
+        connection.enabledCapabilities.includes(INVOICING_CAPABILITY) ||
+        connection.enabledCapabilities.includes(FISCALIZATION_CAPABILITY),
     );
 
-    // #2047: ONE order, ONE invoice. Resolve exactly one connection instead of
-    // fanning out — KSeF / inFakt / Subiekt are alternative routes for the same
-    // document, so issuing on each produced two real fiscal documents for one
-    // sale (the per-connection idempotency key could never dedup across them).
-    const selection = selectPrimaryInvoicingConnection(
-      connections.map((candidate) => ({
-        id: candidate.id,
-        isPrimary: parseIsPrimaryInvoicing(candidate.config.invoicing?.isPrimary),
-      })),
-    );
-
-    if (selection.kind === 'none') {
+    if (connections.length === 0) {
       return;
     }
-    if (selection.kind === 'ambiguous') {
-      // Deliberately silent-by-design at the domain level: issue NOTHING and log
-      // an error naming the ambiguity. An uninvoiced order is fixable by hand; two
-      // issued documents for one sale need a correction of a document that should
-      // never have existed. The order-detail panel surfaces this state to the
-      // operator ("Automatic invoicing is off for this order") so the decision is
-      // not visible only in a log.
-      //
-      // DEFERRED — #2100: ADR-041 §54/§105 require a block to also PERSIST a named
-      // reason ('ambiguous-connection-no-primary'), never log-only. This exit (and
-      // the `manual` / `batched` ones below) is still log-only, so an install where
-      // auto-issue silently stopped for EVERY order is normal-looking on the orders
-      // and invoices lists — the panel's client-side re-derivation only helps an
-      // operator who already opened that one order. #2100 lands decision 11's first
-      // slice: the two reason unions in a `sales-documents` concern plus #1689's
-      // `source_deleted` surfacing treatment (health bucket + list badge + bulk-action
-      // exclusion). No `sync_jobs.outcomeReason` can carry it — these exits enqueue
-      // no job, so there is no row.
+
+    const candidates: SalesDocumentRoutingCandidate[] = connections.map((connection) => {
+      const routing = readSalesDocumentRouting(connection.config);
+      return {
+        connectionId: connection.id,
+        documentKind: routing.documentKind,
+        isPrimary: routing.isPrimary,
+        enabledCapabilities: connection.enabledCapabilities,
+      };
+    });
+
+    const eligibleCount = candidates.filter((candidate) => candidate.documentKind !== null).length;
+    if (eligibleCount === 0) {
+      // resolveSalesDocumentRouting's own doc: a caller that already knows it
+      // has zero ELIGIBLE candidates (none carries a configured
+      // `documentKind`) is expected to short-circuit before calling the
+      // resolver — its zero-candidate branch is a defensive fallback, not the
+      // common path. Without this, a perfectly ordinary "not configured yet"
+      // install (capability enabled, but no `config.salesDocument.documentKind`
+      // set) would error-log 'ambiguous-connection-no-primary' on every order,
+      // which is a materially different and less actionable signal than "no
+      // candidate at all". Mirrors the pre-#2156 `selection.kind === 'none'`
+      // short-circuit.
+      return;
+    }
+
+    const decision = resolveSalesDocumentRouting(order, candidates);
+
+    switch (decision.kind) {
+      case 'unresolved':
+        this.logUnresolved(decision.reason, candidates, order, sourceEventId);
+        return;
+      case 'aggregate':
+        // Reserved outcome (ADR-041 decision 8) — the aggregation window's
+        // mechanics are explicitly deferred, and no caller of
+        // resolveSalesDocumentRouting can produce this decision today.
+        // Defensive-only: if this ever fires it is a forward-compat gap, not
+        // a normal outcome, so issue nothing rather than guess.
+        this.logger.error(
+          `Auto-issue skipped: 'aggregate' routing outcome is not implemented; issuing nothing. ` +
+            `orderId=${order.id} connectionId=${decision.connectionId} ` +
+            `sourceEventId=${sourceEventId ?? 'n/a'}`,
+        );
+        return;
+      case 'route':
+        await this.dispatchRoute(decision, connections, eligibleCount, order, sourceConnectionId, sourceEventId);
+        return;
+    }
+  }
+
+  /**
+   * DEFERRED — #2100: ADR-041 §54/§105 require an `unresolved` routing outcome
+   * to also PERSIST a named reason (`'unresolved-routing'` + the
+   * `SalesDocumentUnresolvedReason` that travelled with it), never log-only.
+   * This exit is still log-only — see the file-level docstring for why the
+   * persistence mechanism is out of reach on this branch today.
+   */
+  private logUnresolved(
+    reason: SalesDocumentUnresolvedReason,
+    candidates: readonly SalesDocumentRoutingCandidate[],
+    order: Order,
+    sourceEventId?: string,
+  ): void {
+    const candidateIds = candidates
+      .filter((candidate) => candidate.documentKind !== null)
+      .map((candidate) => candidate.connectionId);
+
+    this.logger.error(
+      `Auto-issue skipped: sales-document routing unresolved (reason=${reason}) — issuing nothing ` +
+        `rather than issuing on an ambiguous or unsupported pick. orderId=${order.id} ` +
+        `candidateConnectionIds=${candidateIds.join(',')} sourceEventId=${sourceEventId ?? 'n/a'}. ` +
+        `Set config.salesDocument.documentKind and config.invoicing.isPrimary appropriately.`,
+    );
+  }
+
+  /**
+   * Dispatch a resolved `route` decision: validate the resolved connection
+   * still exists in the candidate list, then branch on `documentKind`.
+   */
+  private async dispatchRoute(
+    decision: Extract<SalesDocumentDecision, { kind: 'route' }>,
+    connections: readonly Connection[],
+    eligibleCount: number,
+    order: Order,
+    sourceConnectionId: string,
+    sourceEventId?: string,
+  ): Promise<void> {
+    if (decision.documentKind === null) {
+      // Self-routing destination (ADR-041 decision 9): reserved in the type,
+      // but resolveSalesDocumentRouting's own candidate filter requires a
+      // configured `documentKind`, so a `route` decision can never carry
+      // `null` while no adapter declares self-routing. Defensive-only.
       this.logger.error(
-        `Auto-issue skipped: ${selection.candidateIds.length} active Invoicing connections and ` +
-          `no unambiguous primary (reason=${selection.reason}) — issuing nothing rather than ` +
-          `issuing more than one document. orderId=${order.id} ` +
-          `candidateConnectionIds=${selection.candidateIds.join(',')} ` +
-          `sourceEventId=${sourceEventId ?? 'n/a'}. ` +
-          `Set config.invoicing.isPrimary on exactly one connection.`,
+        `Auto-issue skipped: resolved a self-routing decision (documentKind: null), but no ` +
+          `self-routing dispatch is implemented; issuing nothing. orderId=${order.id} ` +
+          `connectionId=${decision.connectionId} sourceEventId=${sourceEventId ?? 'n/a'}`,
       );
       return;
     }
 
-    const connection = connections.find((candidate) => candidate.id === selection.connectionId);
+    const connection = connections.find((candidate) => candidate.id === decision.connectionId);
     if (connection === undefined) {
-      // Unreachable: `selection.connectionId` is always an id this method just
-      // read out of `connections`. Logged rather than returned silently because
-      // this method's whole contract is "at most one job, and never quietly
-      // none" — a silent return here would be indistinguishable from the
-      // legitimate `none` / `manual` skips while actually being a defect.
+      // Unreachable: `decision.connectionId` is always an id this method just
+      // read out of `connections`. Logged rather than returned silently
+      // because this method's whole contract is "at most one job, and never
+      // quietly none" — a silent return here would be indistinguishable from
+      // a legitimate skip while actually being a defect.
       this.logger.error(
-        `Auto-issue skipped: selected connection ${selection.connectionId} vanished from the ` +
+        `Auto-issue skipped: selected connection ${decision.connectionId} vanished from the ` +
           `candidate list it was chosen from. orderId=${order.id} sourceEventId=${sourceEventId ?? 'n/a'}`,
+      );
+      return;
+    }
+
+    if (decision.documentKind === 'invoice') {
+      await this.dispatchInvoice(connection, eligibleCount, order, sourceConnectionId, sourceEventId);
+      return;
+    }
+    if (decision.documentKind === 'fiscal-receipt') {
+      await this.dispatchFiscalReceipt(connection, eligibleCount, order, sourceConnectionId, sourceEventId);
+      return;
+    }
+
+    // Open-world kind (decision 10): core recognizes no dispatch for it. The
+    // resolver's structural capability check already passed (an unrecognized
+    // kind has no REQUIRED_CAPABILITY entry, so it is never blocked there) —
+    // the DEEPER "can this connection actually produce a document of this
+    // kind" check is this gate's job, and for an unrecognized kind the honest
+    // answer is "not yet" rather than a guess.
+    //
+    // DEFERRED — #2100: should also persist
+    // `'unsupported-document-kind-on-connection'`, not just log.
+    this.logger.error(
+      `Auto-issue skipped: connection ${connection.id} resolved to sales-document kind ` +
+        `'${decision.documentKind}', which this gate does not know how to dispatch. ` +
+        `orderId=${order.id} sourceEventId=${sourceEventId ?? 'n/a'}`,
+    );
+  }
+
+  /**
+   * Dispatch the `'invoice'` kind (unchanged job type / idempotency key from
+   * before #2156). Adds the decision-7 deeper capability check: the resolved
+   * connection's `InvoicingPort` adapter must actually list `'invoice'` among
+   * its `getSupportedDocumentTypes()`.
+   */
+  private async dispatchInvoice(
+    connection: Connection,
+    eligibleCount: number,
+    order: Order,
+    sourceConnectionId: string,
+    sourceEventId?: string,
+  ): Promise<void> {
+    const supported = await this.connectionSupportsInvoiceDocumentType(connection.id);
+    if (!supported) {
+      // DEFERRED — #2100: should also persist
+      // `'unsupported-document-kind-on-connection'`, not just log.
+      this.logger.error(
+        `Auto-issue skipped: connection ${connection.id} is routed for 'invoice' but its adapter ` +
+          `does not list 'invoice' among its supported document types. orderId=${order.id} ` +
+          `sourceEventId=${sourceEventId ?? 'n/a'}`,
       );
       return;
     }
@@ -204,7 +372,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     // surfacing as an order-ingestion failure).
     try {
       const triggerModel = parseTriggerModel(connection.config.invoicing?.triggerModel);
-      this.warnOnceIfManualPrimaryDisablesInstall(triggerModel, connection.id, connections.length);
+      this.warnOnceIfManualWinnerDisablesInstall(triggerModel, connection.id, eligibleCount);
 
       if (!this.qualifies(order, triggerModel, connection.id)) {
         return;
@@ -217,7 +385,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
       // per-source numbering axis. Best-effort — a lookup failure leaves it
       // absent (routing falls back past the source axis), never aborting issuance.
       const sourcePlatformType = await this.resolveSourcePlatformType(sourceConnectionId);
-      const payload = this.composePayload(
+      const payload = this.composeInvoicePayload(
         order,
         connection.id,
         idempotencyKey,
@@ -242,39 +410,114 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
   }
 
   /**
-   * #2047 one-time viability warning, the `manual` counterpart of F7's
-   * `auto-on-shipped` one. Selection (which connection) happens BEFORE the
-   * trigger model (whether it auto-issues) is read, so a primary set on a
-   * `manual` connection silently turns auto-issue off for the entire install —
-   * a sibling `auto-on-paid` connection never gets a look. Warn ONCE per
-   * connection so the deliberate choice and the misconfiguration are
+   * Dispatch the `'fiscal-receipt'` kind (#2156). No adapter-level "which
+   * document kinds can this connection produce" discovery exists yet on
+   * `FiscalizationPort` (unlike `InvoicingPort.getSupportedDocumentTypes()`),
+   * so the resolver's structural check (`Fiscalization` capability enabled)
+   * is the whole validation story for this kind today.
+   */
+  private async dispatchFiscalReceipt(
+    connection: Connection,
+    eligibleCount: number,
+    order: Order,
+    sourceConnectionId: string,
+    sourceEventId?: string,
+  ): Promise<void> {
+    try {
+      // Reused verbatim from `config.invoicing.triggerModel` — see the
+      // file-level docstring point 4 for why this is deliberate, not an
+      // oversight.
+      const triggerModel = parseTriggerModel(connection.config.invoicing?.triggerModel);
+      this.warnOnceIfManualWinnerDisablesInstall(triggerModel, connection.id, eligibleCount);
+
+      if (!this.qualifies(order, triggerModel, connection.id)) {
+        return;
+      }
+
+      // Same key FORMAT the fiscalization HTTP controller already uses for
+      // the identical semantic (one connection registering one order is one
+      // sale) — see `apps/api/src/fiscalization/http/fiscalization.controller.ts`.
+      const idempotencyKey = `fiscal:${connection.id}:${order.id}`;
+      const payload = this.composeFiscalReceiptPayload(
+        order,
+        connection,
+        idempotencyKey,
+        sourceConnectionId,
+        sourceEventId,
+      );
+
+      await this.syncJobs.schedule({
+        jobType: 'fiscalization.register',
+        connectionId: connection.id,
+        payload: payload as unknown as Record<string, unknown>,
+        idempotencyKey,
+        maxAttempts: AUTO_ISSUE_RETRY_BUDGET,
+        runAfter: new Date(),
+      });
+    } catch (error) {
+      this.logIssuanceFailure(error, connection.id, order.id, sourceEventId);
+    }
+  }
+
+  /**
+   * Decision-7 deeper check for the `'invoice'` kind: resolve the connection's
+   * `InvoicingPort` adapter and ask its value-level
+   * `getSupportedDocumentTypes()` whether `'invoice'` is among them. Fails
+   * CLOSED (returns `false`) on any adapter-resolution error — a connection
+   * this gate cannot even resolve is not one it should dispatch to.
+   */
+  private async connectionSupportsInvoiceDocumentType(connectionId: string): Promise<boolean> {
+    try {
+      const adapter = await this.integrations.getCapabilityAdapter<InvoicingPort>(
+        connectionId,
+        INVOICING_CAPABILITY,
+      );
+      return adapter.getSupportedDocumentTypes().includes('invoice');
+    } catch (error) {
+      const name = error instanceof Error ? error.name : 'UnknownError';
+      this.logger.warn(
+        `Could not resolve connection ${connectionId}'s Invoicing adapter to verify 'invoice' ` +
+          `support (error=${name}); skipping this issuance rather than risk dispatching to an ` +
+          `unresolvable adapter.`,
+      );
+      return false;
+    }
+  }
+
+  /**
+   * One-time viability warning: the winning connection carries a `manual`
+   * trigger model while OTHER sales-document candidates exist. Routing
+   * resolves the winning connection BEFORE the trigger model is read, so a
+   * winner set to `manual` silently turns auto-issue off for the entire
+   * install — a sibling `auto-on-paid` candidate never gets a look. Warn ONCE
+   * per connection so the deliberate choice and the misconfiguration are
    * distinguishable without flooding the log on every qualifying order.
    * PII-clean: connection id + candidate count only.
    */
-  private warnOnceIfManualPrimaryDisablesInstall(
+  private warnOnceIfManualWinnerDisablesInstall(
     triggerModel: InvoiceTriggerModel,
     connectionId: string,
-    candidateCount: number,
+    eligibleCount: number,
   ): void {
-    if (triggerModel !== 'manual' || candidateCount < 2) {
+    if (triggerModel !== 'manual' || eligibleCount < 2) {
       return;
     }
-    if (this.manualPrimaryWarned.has(connectionId)) {
+    if (this.manualWinnerWarned.has(connectionId)) {
       return;
     }
-    this.manualPrimaryWarned.add(connectionId);
+    this.manualWinnerWarned.add(connectionId);
     this.logger.warn(
-      `Primary invoicing connection ${connectionId} has triggerModel=manual, so NO connection ` +
-        `auto-issues on this install (${candidateCount} candidates). One sale is one invoice, so ` +
-        `the primary is resolved before the trigger model is read — a sibling connection set to ` +
-        `auto-on-paid is deliberately not consulted. Set the primary on the connection that should ` +
-        `auto-issue, or leave this one primary if manual issuing is intended.`,
+      `Winning sales-document connection ${connectionId} has triggerModel=manual, so NO ` +
+        `connection auto-issues on this install (${eligibleCount} candidates). Routing resolves ` +
+        `the winner before the trigger model is read — a sibling candidate set to auto-on-paid is ` +
+        `deliberately not consulted. Set the primary on the connection that should auto-issue, or ` +
+        `leave this one the winner if manual issuing is intended.`,
     );
   }
 
   /**
    * PII-SAFE per-connection failure log (F9/D11): names ONLY `error.name`,
-   * invoicing `connectionId`, `order.id`, and `sourceEventId` (when present).
+   * connectionId, `order.id`, and `sourceEventId` (when present).
    * `error.message` is appended ONLY for the allow-listed deterministic,
    * PII-clean errors — never the raw error/payload/buyer.
    */
@@ -345,7 +588,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
    * `idempotencyKey` into `payload.idempotencyKey` (F4). May surface
    * `InvalidBuyerProfileError` / `UnsupportedPriceTreatmentError` from the mapper.
    */
-  private composePayload(
+  private composeInvoicePayload(
     order: Order,
     invoicingConnectionId: string,
     idempotencyKey: string,
@@ -410,9 +653,57 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
   }
 
   /**
+   * Compose the SERIALIZABLE `fiscalization.register` payload (#2156) from the
+   * clean `Order`, via the fiscalization context's own
+   * `toRegisterTransactionCommand` mapper. May surface `InvalidFiscalLineError`
+   * / `UnsupportedFiscalPriceTreatmentError` (both PII-clean, cite only the
+   * order id).
+   */
+  private composeFiscalReceiptPayload(
+    order: Order,
+    connection: Connection,
+    idempotencyKey: string,
+    sourceConnectionId: string,
+    sourceEventId?: string,
+  ): FiscalizationRegisterPayloadV1 {
+    const command = toRegisterTransactionCommand({
+      order,
+      connectionId: connection.id,
+      idempotencyKey,
+      shippingLineName: this.readShippingLineName(connection),
+    });
+
+    const payload: FiscalizationRegisterPayloadV1 = {
+      schemaVersion: 1,
+      connectionId: command.connectionId,
+      orderId: command.orderId,
+      idempotencyKey,
+      currency: command.currency,
+      lines: command.lines,
+      totalGross: command.totalGross,
+      sourceConnectionId,
+    };
+
+    // SERIALIZATION CONTRACT: `occurredAt` is a `Date` on the command; the
+    // jsonb payload carries it as ISO-8601 (see the payload type's own doc).
+    if (command.occurredAt !== undefined) {
+      payload.occurredAt = command.occurredAt.toISOString();
+    }
+    if (command.recipient !== undefined) {
+      payload.recipient = command.recipient;
+    }
+    if (sourceEventId !== undefined) {
+      payload.sourceEventId = sourceEventId;
+    }
+
+    return payload;
+  }
+
+  /**
    * Read the connection's optional operator-supplied shipping-line label
    * (#1562), narrowed via the shared {@link normalizeShippingLineName} coercion
-   * so this reader and the HTTP controller's cannot drift.
+   * so this reader and the HTTP controller's cannot drift. Reused verbatim for
+   * both document kinds — see the file-level docstring point 4.
    */
   private readShippingLineName(connection: Connection): string | undefined {
     return normalizeShippingLineName(connection.config.invoicing?.shippingLineName);
