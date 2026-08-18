@@ -416,6 +416,13 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
    * distinguishes "no primary was set" from "more than one was" — the
    * operator fix is opposite in each case — by recounting primaries among the
    * same eligible candidates the resolver itself considered.
+   *
+   * The noun is kind-derived from the eligible pool itself (all-`'invoice'`,
+   * all-`'fiscal-receipt'`, or a genuine mix), not hardcoded to "invoicing" —
+   * this detail is cross-kind since #2156, and a two-Fiscalization-connection
+   * ambiguity must not read as if it were about invoicing. The all-invoice
+   * wording is unchanged from the pre-#2156 gate for backward-compatible
+   * operator copy.
    */
   private describeUnresolvedDetail(
     reason: SalesDocumentUnresolvedReason,
@@ -424,9 +431,27 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     if (reason === 'ambiguous-connection-no-primary') {
       const primaryCount = eligible.filter((candidate) => candidate.isPrimary).length;
       const qualifier = primaryCount === 0 ? 'none marked primary' : 'more than one marked primary';
-      return `${eligible.length} invoicing connections, ${qualifier}`;
+      const noun = this.describeEligiblePoolNoun(eligible);
+      return `${eligible.length} ${noun}, ${qualifier}`;
     }
     return `${eligible.length} sales-document candidates, reason=${reason}`;
+  }
+
+  /**
+   * Kind-derived noun for {@link describeUnresolvedDetail}'s "N {noun}, …"
+   * phrasing: `'invoicing connections'` when every eligible candidate resolves
+   * `'invoice'` (unchanged from the pre-#2156 gate), `'fiscal-registration
+   * connections'` when every one resolves `'fiscal-receipt'`, and
+   * `'sales-document connections'` for a genuine mix or an open-world kind.
+   */
+  private describeEligiblePoolNoun(eligible: readonly SalesDocumentRoutingCandidate[]): string {
+    const kinds = new Set(eligible.map((candidate) => candidate.documentKind));
+    if (kinds.size === 1) {
+      const [kind] = kinds;
+      if (kind === 'invoice') return 'invoicing connections';
+      if (kind === 'fiscal-receipt') return 'fiscal-registration connections';
+    }
+    return 'sales-document connections';
   }
 
   /**
