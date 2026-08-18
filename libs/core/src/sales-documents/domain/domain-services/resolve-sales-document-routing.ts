@@ -1,5 +1,5 @@
 /**
- * Resolve Sales-Document Routing (#2155, ADR-041 decisions 1, 2, 6, 10)
+ * Resolve Sales-Document Routing (#2155, #2158, ADR-041 decisions 1, 2, 6, 9, 10)
  *
  * The `sales-documents` policy module's one pure resolve (decision 1): given
  * an order and the candidate connections that could receive its originating
@@ -30,6 +30,21 @@
  * resolver never returns `no-matching-rule`, `conflicting-rules-equal-priority`,
  * or `net-priced-order` — those need the rule engine, which does not exist
  * yet. Pinned by `resolve-sales-document-routing.spec.ts`.
+ *
+ * SELF-ROUTING DESTINATIONS BYPASS MATCHING AND THE CAPABILITY CHECK (decision
+ * 9, #2158): a candidate whose adapter declared `SelfRoutingDocumentKind`
+ * (`isSelfRoutingDocumentKind`, `@openlinker/core/sales-documents`) is
+ * eligible for selection independent of whether it has a configured
+ * `documentKind` at all — the destination decides its own kind, so the
+ * operator never configures one for it. Once such a candidate is selected,
+ * the resolver returns `documentKind: null` directly, skipping decision 10's
+ * structural capability check (there is no kind to validate against
+ * `enabledCapabilities`). Candidate selection itself (single-candidate-wins /
+ * operator-primary-among-several / ambiguous-unresolved) is UNCHANGED — a
+ * self-routing candidate still has to win that same tie-break like any other,
+ * because decision 3a still allows only one connection. No adapter in this
+ * repo declares the capability yet (#2158 ships the mechanism, not a first
+ * consumer); pinned by a fake candidate in the spec instead.
  *
  * @module libs/core/src/sales-documents/domain/domain-services
  * @see docs/architecture/adrs/041-sales-document-routing-policy.md
@@ -67,18 +82,24 @@ const REQUIRED_CAPABILITY_BY_CORE_KIND: Readonly<Record<CoreSalesDocumentKind, s
  * `isPrimary` via `readSalesDocumentRouting(connection.config)` and
  * `enabledCapabilities` from `Connection.enabledCapabilities` before
  * building this list.
+ *
+ * `selfRoutesDocumentKind` (decision 9, #2158) is the caller's structural
+ * check — `isSelfRoutingDocumentKind(adapter)` against the resolved
+ * `InvoicingPort` / `FiscalizationPort` adapter for this connection — reduced
+ * to the one bit the resolver needs. A self-routing connection is eligible
+ * for selection even with `documentKind: null`, since the destination decides
+ * its own kind and the operator never configures one for it.
  */
 export interface SalesDocumentRoutingCandidate {
   readonly connectionId: string;
   readonly documentKind: SalesDocumentKind | null;
   readonly isPrimary: boolean;
   readonly enabledCapabilities: readonly string[];
+  readonly selfRoutesDocumentKind: boolean;
 }
 
-type EligibleCandidate = SalesDocumentRoutingCandidate & { readonly documentKind: SalesDocumentKind };
-
-function hasDocumentKind(candidate: SalesDocumentRoutingCandidate): candidate is EligibleCandidate {
-  return candidate.documentKind !== null;
+function isEligibleCandidate(candidate: SalesDocumentRoutingCandidate): boolean {
+  return candidate.documentKind !== null || candidate.selfRoutesDocumentKind;
 }
 
 function isCoreSalesDocumentKind(value: SalesDocumentKind): value is CoreSalesDocumentKind {
@@ -87,18 +108,23 @@ function isCoreSalesDocumentKind(value: SalesDocumentKind): value is CoreSalesDo
 
 /**
  * Resolve AT MOST ONE originating (documentKind, connectionId) pair for
- * `_order` from its candidate connections (decisions 1, 2, 6, 10).
+ * `_order` from its candidate connections (decisions 1, 2, 6, 9, 10).
  *
  * Resolution:
- * 1. Narrow to candidates that declare a `documentKind` at all (decision 4) —
- *    a connection with no configured kind is not a routing candidate.
+ * 1. Narrow to ELIGIBLE candidates — one that declares a `documentKind`
+ *    (decision 4), OR one whose adapter self-routes (`selfRoutesDocumentKind`,
+ *    decision 9): a connection with neither is not a routing candidate at
+ *    all.
  * 2. Exactly one such candidate wins outright, primary flag irrelevant
  *    (mirrors `selectPrimaryInvoicingConnection`'s single-candidate rule): a
  *    single-connection install must not require the operator to also set
  *    `isPrimary`.
  * 3. Several candidates: the operator-set primary among THEM wins; none or
  *    more than one is `unresolved` (`'ambiguous-connection-no-primary'`,
- *    decision 6) — silence-and-pick-one is forbidden.
+ *    decision 6) — silence-and-pick-one is forbidden. This tie-break applies
+ *    identically whether or not the candidates involved self-route — decision
+ *    9 bypasses kind matching and the capability check, never "which
+ *    connection wins."
  * 4. Zero candidates ALSO resolves `unresolved`
  *    (`'ambiguous-connection-no-primary'`) rather than a bespoke reason: the
  *    closed `SalesDocumentDecision` shape (decision 11) has no `none` arm,
@@ -108,10 +134,14 @@ function isCoreSalesDocumentKind(value: SalesDocumentKind): value is CoreSalesDo
  *    short-circuit before calling this resolver (mirroring
  *    `selectPrimaryInvoicingConnection`'s own `'none'` pre-check today) —
  *    this branch is a defensive fallback, not the common path.
- * 5. The winning candidate's OWN declared kind is checked against its OWN
- *    enabled capabilities (decision 10's structural half) — `'invoice'`
- *    needs `Invoicing`, `'fiscal-receipt'` needs `Fiscalization`. A mismatch
- *    resolves `unresolved` (`'unsupported-document-kind-on-connection'`)
+ * 5. SELF-ROUTING SHORT-CIRCUIT (decision 9): if the winning candidate
+ *    self-routes, return `documentKind: null` immediately — there is no OL-
+ *    chosen kind to validate, so step 6's structural capability check does
+ *    not apply to it.
+ * 6. Otherwise, the winning candidate's OWN declared kind is checked against
+ *    its OWN enabled capabilities (decision 10's structural half) —
+ *    `'invoice'` needs `Invoicing`, `'fiscal-receipt'` needs `Fiscalization`.
+ *    A mismatch resolves `unresolved` (`'unsupported-document-kind-on-connection'`)
  *    rather than routing to a connection that cannot dispatch the kind at
  *    all. An open-world kind (not in `CoreSalesDocumentKindValues`) has no
  *    known required capability and passes this structural check — its "is
@@ -122,9 +152,9 @@ export function resolveSalesDocumentRouting(
   _order: Order,
   connections: readonly SalesDocumentRoutingCandidate[],
 ): SalesDocumentDecision {
-  const eligible = connections.filter(hasDocumentKind);
+  const eligible = connections.filter(isEligibleCandidate);
 
-  let selected: EligibleCandidate | undefined;
+  let selected: SalesDocumentRoutingCandidate | undefined;
   if (eligible.length === 1) {
     selected = eligible[0];
   } else if (eligible.length > 1) {
@@ -136,8 +166,21 @@ export function resolveSalesDocumentRouting(
     return { kind: 'unresolved', reason: 'ambiguous-connection-no-primary' };
   }
 
-  const requiredCapability = isCoreSalesDocumentKind(selected.documentKind)
-    ? REQUIRED_CAPABILITY_BY_CORE_KIND[selected.documentKind]
+  if (selected.selfRoutesDocumentKind) {
+    return { kind: 'route', documentKind: null, connectionId: selected.connectionId };
+  }
+
+  const { documentKind } = selected;
+  if (documentKind === null) {
+    // Eligibility (`isEligibleCandidate`) only admits a null `documentKind`
+    // when `selfRoutesDocumentKind` is true, and that branch already
+    // returned above — unreachable in practice, kept as a typed narrowing
+    // step rather than a non-null cast.
+    return { kind: 'unresolved', reason: 'ambiguous-connection-no-primary' };
+  }
+
+  const requiredCapability = isCoreSalesDocumentKind(documentKind)
+    ? REQUIRED_CAPABILITY_BY_CORE_KIND[documentKind]
     : undefined;
   if (
     requiredCapability !== undefined &&
@@ -148,7 +191,7 @@ export function resolveSalesDocumentRouting(
 
   return {
     kind: 'route',
-    documentKind: selected.documentKind,
+    documentKind,
     connectionId: selected.connectionId,
   };
 }
