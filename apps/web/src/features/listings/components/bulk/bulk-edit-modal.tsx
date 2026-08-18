@@ -59,7 +59,12 @@ import {
   type UseFormReturn,
 } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { usePlatform, type BulkOfferRowSectionProps } from '../../../../shared/plugins';
+import {
+  usePlatform,
+  usePlatforms,
+  type BulkOfferRowSectionProps,
+} from '../../../../shared/plugins';
+import { resolvePlatformLabel } from '../../../mappings';
 import type { Connection } from '../../../connections';
 import { resolveVariantGroupingModel } from '../../../connections';
 import { Alert, Button, ConfirmDialog, FormField, Input, Textarea } from '../../../../shared/ui';
@@ -474,7 +479,8 @@ function BulkEditModalForm({
   const connectionId = connection.id;
   const { showToast } = useToast();
   const platform = usePlatform(connection.platformType);
-  const platformName = platform?.displayName ?? connection.platformType;
+  const platforms = usePlatforms();
+  const platformName = resolvePlatformLabel(platforms, connection);
   const platformSection = platform?.bulkOfferRowSection;
   const isMultiVariant = row.variants.length > 1;
   const masterImages = useMemo(

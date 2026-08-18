@@ -13,6 +13,7 @@ import type { ReactElement } from 'react';
 import { Link } from 'react-router-dom';
 import { StatusBadge } from '../../../shared/ui/status-badge';
 import { usePlatforms } from '../../../shared/plugins';
+import { resolvePlatformLabel } from '../../mappings';
 import type { Connection } from '../../connections';
 import type { ExternalIdMapping } from '../api/products.types';
 
@@ -32,9 +33,7 @@ export function ProductSourceSection({
   }
 
   const [primary, ...rest] = mappings;
-  const platformLabel =
-    platforms.find((p) => p.platformType === primary.platformType)?.displayName ??
-    primary.platformType;
+  const platformLabel = resolvePlatformLabel(platforms, primary);
   const connectionName = connections.find((c) => c.id === primary.connectionId)?.name;
 
   return (

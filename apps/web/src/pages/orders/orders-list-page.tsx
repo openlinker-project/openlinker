@@ -8,12 +8,13 @@
  *   so the counts sum to the total and double as the `health` URL-state filter;
  * — a filter/sort bar (#939) — source-connection, created-date range, and sort
  *   controls, all URL-state-backed (mirrors the connections-list toolbar);
- * — a dense `DataTable` whose rows lead with human identity (`EntityLabel`,
- *   showing a shortened channel order reference — #939), surface customer +
- *   contents (parsed from `orderSnapshot`, with an email fallback when the
- *   source omits a buyer name — #939), the source→destination channel, one
- *   reconciled health `StatusBadge` (`deriveOrderHealth`, replacing the
- *   per-destination list and the blank "—"), a "Created" time, a **Ship-by**
+ * — a dense `DataTable` whose rows lead with human identity — the shared
+ *   `OrderIdentityCell` since #2091, so this page, Shipments and Invoices answer
+ *   "which order is this row?" with one renderer instead of three (#1996) —
+ *   surface customer + contents (parsed from `orderSnapshot`, with an email
+ *   fallback when the source omits a buyer name — #939), the source→destination
+ *   channel, one reconciled health `StatusBadge` (`deriveOrderHealth`, replacing
+ *   the per-destination list and the blank "—"), a "Created" time, a **Ship-by**
  *   SLA countdown (#927; server-sorted soonest-first, with a
  *   "breaching ≤24h / overdue" filter chip), a ghost Payment column (#928), and
  *   an inline Retry for failed rows;
@@ -38,7 +39,6 @@ import { Select } from '../../shared/ui/select';
 import { TimeDisplay } from '../../shared/ui/time-display';
 import { StatusBadge, type StatusBadgeTone } from '../../shared/ui/status-badge';
 import { MetricCard, type MetricCardTone } from '../../shared/ui/metric-card';
-import { EntityLabel } from '../../shared/ui/entity-label';
 import { useToast } from '../../shared/ui/toast-provider';
 import { formatShipBy, type ShipByLevel } from '../../shared/format/format-ship-by';
 import { useTranslation, getBcp47Locale } from '../../shared/i18n';
@@ -54,7 +54,8 @@ import { useDemoMode } from '../../features/system';
 import { captureDemoEvent } from '../../features/demo';
 import { parseOrderSnapshot } from '../../features/orders/api/order-snapshot.schema';
 import { deriveOrderHealth, slaBadge, fulfillmentBadge } from '../../features/orders/lib/order-health';
-import { itemsSummary, paymentBadge } from '../../features/orders/lib/order-row';
+import { paymentBadge } from '../../features/orders/lib/order-row';
+import { OrderIdentityCell } from '../../features/orders';
 import { OrderInvoicingCell } from '../../features/orders/components/order-invoicing-cell';
 import { deriveDeliveryOutcome, hasLiveOlCarrierRoute } from '../../features/orders/lib/delivery-outcome';
 import { DeliveryOutcomeChip } from '../../features/orders/components/delivery-chip';
@@ -81,15 +82,10 @@ import {
   FulfillmentRollupStateValues,
 } from '../../features/orders/api/orders.types';
 import { useConnectionsQuery } from '../../features/connections';
+import { resolvePlatformLabel } from '../../features/mappings';
+import { usePlatforms } from '../../shared/plugins';
 
 const PAGE_SIZE = 20;
-
-const CHANNEL_LABELS: Record<string, string> = {
-  allegro: 'Allegro',
-  prestashop: 'PrestaShop',
-  amazon: 'Amazon',
-  shopify: 'Shopify',
-};
 
 /**
  * Status segments — partition the order set (#929). The "All" card carries the
@@ -183,21 +179,6 @@ const FULFILLMENT_FILTER_OPTIONS: readonly { value: FulfillmentRollupStateValue;
   { value: 'delivered', label: 'Delivered' },
   { value: 'failed', label: 'Dispatch failed' },
 ];
-
-/**
- * Order-column primary label (#939). The source marketplace often has no
- * human-friendly order number — Allegro's `orderNumber` is its `checkoutFormId`,
- * a 36-char UUID that reads as noise when rendered verbatim. Shorten long ids to
- * a `head…tail` form so the cell reads as a reference; short numbers (most
- * shops) pass through untouched. Returns `''` when no order number is present so
- * the caller can fall back to the internal id. The marketplace itself is already
- * conveyed by the dedicated Channel column, so no channel prefix is added here.
- */
-function formatOrderRef(orderNumber: string | undefined): string {
-  if (!orderNumber) return '';
-  if (orderNumber.length <= 18) return orderNumber;
-  return `${orderNumber.slice(0, 8)}…${orderNumber.slice(-6)}`;
-}
 
 /** Map the neutral ship-by urgency level (#927) to a StatusBadge tone. */
 const SHIP_BY_TONE: Record<ShipByLevel, StatusBadgeTone> = {
@@ -356,8 +337,13 @@ export function OrdersListPage(): ReactElement {
     return map;
   }, [connectionsQuery.data]);
 
+  // Registry-resolved, never a local map: the four-entry `CHANNEL_LABELS` this
+  // replaced (#2088) had no row for `erli` or `woocommerce`, so both rendered
+  // raw and lowercase here while rendering correctly two pages over.
+  const platforms = usePlatforms();
+
   const channelLabel = (platform: string | undefined): string | undefined =>
-    platform ? (CHANNEL_LABELS[platform] ?? platform) : undefined;
+    platform ? resolvePlatformLabel(platforms, platform) : undefined;
 
   // Resolve a connectionId to a human channel label (never undefined) for the
   // bulk-dispatch per-row source pill.
@@ -399,6 +385,48 @@ export function OrdersListPage(): ReactElement {
     [parsedByOrder],
   );
 
+  /**
+   * ONE renderer for the desktop Order column and the mobile card title (#2091).
+   * The two used to be separate hand-rolled `EntityLabel`s that nothing kept in
+   * sync — the exact drift the shared cell exists to end (#1996) — so this is a
+   * function, not two call sites that happen to agree today.
+   *
+   * `itemCount` is `parsed.items.length`, deliberately NOT the old
+   * `itemsSummary()` count: that helper dropped nameless lines before counting
+   * the rest, so the same `+N` chip meant "other NAMED lines" here and "other
+   * lines" on Shipments / Invoices, which read the `buildOrderSummary`
+   * projection (#1995). `firstItemName` is item[0]'s name verbatim for the same
+   * reason — the projection names the FIRST item, not the first named one, so a
+   * nameless leading line now renders the cell's "N line items" branch instead
+   * of silently promoting a later item's name onto line 2.
+   *
+   * The convergence is NEAR, not exact, and nobody should later treat the two
+   * counts as provably identical: `parseOrderSnapshot` drops any item failing
+   * `orderItemSchema` (`id: string`, `quantity: number`, `price: number` are all
+   * required) before this reads `items.length`, whereas `buildOrderSummary`
+   * counts the RAW array. A snapshot carrying a money-as-string `price` therefore
+   * reads lower here than on Shipments / Invoices for the same order.
+   *
+   * `onNavigate` keeps the row-open demo-analytics event (#1788) that the
+   * pre-#2091 `EntityLabel` carried at both call sites.
+   */
+  const renderOrderIdentity = useCallback(
+    (order: OrderRecord): ReactElement => {
+      const parsed = parsedFor(order);
+      const firstItem = parsed.items[0];
+      return (
+        <OrderIdentityCell
+          orderId={order.internalOrderId}
+          orderNumber={parsed.orderNumber}
+          firstItemName={firstItem?.name}
+          firstItemImageUrl={firstItem?.imageUrl}
+          itemCount={parsed.items.length}
+          onNavigate={() => captureDemoEvent('demo_order_opened', {})}
+        />
+      );
+    },
+    [parsedFor],
+  );
 
   // Whether ANY connection exposes the Invoicing capability (#1713). When none
   // does, the "Issue invoice" CTA degrades to an em dash — the platform can't
@@ -584,8 +612,6 @@ export function OrdersListPage(): ReactElement {
         id: 'order',
         header: 'Order',
         cell: (order) => {
-          const parsed = parsedFor(order);
-          const items = itemsSummary(parsed.items);
           const sourcePlatform = platformByConnection.get(order.sourceConnectionId);
           const source = channelLabel(sourcePlatform);
           const destPlatform = order.syncStatus[0]
@@ -609,25 +635,11 @@ export function OrdersListPage(): ReactElement {
             retryMutation.variables?.internalOrderId === order.internalOrderId;
           return (
             <span className="orders-cell-stack">
-              <EntityLabel
-                id={order.internalOrderId}
-                name={formatOrderRef(parsed.orderNumber) || order.internalOrderId}
-                to={order.internalOrderId}
-                onNavigate={() => captureDemoEvent('demo_order_opened', {})}
-              />
-              {items ? (
-                <span className="orders-items-line">
-                  <span
-                    className="text-muted orders-cell-sub orders-items-preview"
-                    title={items.firstName}
-                  >
-                    {items.firstName}
-                  </span>
-                  {items.moreCount > 0 ? (
-                    <span className="orders-more-count">+{items.moreCount}</span>
-                  ) : null}
-                </span>
-              ) : null}
+              {/* Thumbnail + order ref + item name/`+N`, all owned by the shared
+                  cell since #2091. The channel fold and the inline Retry stay
+                  siblings BELOW it: both are row affordances rather than part of
+                  the order's identity, and #2094 owns relocating the fold. */}
+              {renderOrderIdentity(order)}
               {/* Channel folds under the order name below the Channel column's
                   hide breakpoint (#1713) — hidden on wide screens where the
                   standalone Channel column is visible. */}
@@ -911,6 +923,11 @@ export function OrdersListPage(): ReactElement {
     [
       locale,
       platformByConnection,
+      // `channelLabel` closes over the plugin registry as of #2088. The registry
+      // array is referentially stable (a provider-level memo over a module
+      // constant), so listing it costs no rebuild — but that invariant lives two
+      // files away, and a stale closure here would render stale channel labels.
+      platforms,
       retryMutation.isPending,
       retryMutation.variables,
       retryWrite.visible,
@@ -925,6 +942,9 @@ export function OrdersListPage(): ReactElement {
       sortLabel,
       // Per-page snapshot cache + invoicing-capability gate (#1713).
       parsedFor,
+      // The shared Order cell renderer (#2091) — a `useCallback` over
+      // `parsedFor`, so this rebuilds exactly when the parse cache does.
+      renderOrderIdentity,
       hasInvoicingCapability,
     ],
   );
@@ -1314,6 +1334,11 @@ export function OrdersListPage(): ReactElement {
             columns={columns}
             rows={query.data?.items ?? []}
             rowKey={(order) => order.internalOrderId}
+            // Top-aligns every cell in the row (#2091, `.orders-table td`). Row
+            // height here comes from the money column's four-item stack, so a
+            // middle-aligned Order cell sat below the top-aligned expander and
+            // beside a centred checkbox — three anchors in one row.
+            className="orders-table"
             stickyLeftColumns={2}
             footer={
               <BulkActionBar
@@ -1359,17 +1384,13 @@ export function OrdersListPage(): ReactElement {
             cardView={{
               // Per-row select stays usable in the mobile card layout (#1109/#1620).
               select: (order) => renderSelectCheckbox(order),
-              title: (order) => {
-                const parsed = parsedFor(order);
-                return (
-                  <EntityLabel
-                    id={order.internalOrderId}
-                    name={formatOrderRef(parsed.orderNumber) || order.internalOrderId}
-                    to={order.internalOrderId}
-                    onNavigate={() => captureDemoEvent('demo_order_opened', {})}
-                  />
-                );
-              },
+              // The SAME renderer as the desktop Order column (#2091). Safe to
+              // put a link + Copy button here because this page drives its rows
+              // with `expandable` and passes no `rowHref`: `DataTableCard` only
+              // wraps `title` + `subtitle` in the row's own `<Link>` when a
+              // href exists, and nesting interactive content inside that anchor
+              // is what bit Invoices (#2090).
+              title: renderOrderIdentity,
               subtitle: (order) => {
                 const source = channelLabel(platformByConnection.get(order.sourceConnectionId));
                 const destPlatform = order.syncStatus[0]
@@ -1410,12 +1431,14 @@ export function OrdersListPage(): ReactElement {
                   platformByConnection={platformByConnection}
                 />
               ),
-              // Scannable essentials shown before expanding (#1713): the items
-              // summary plus a tight facts grid (total / payment / customer /
-              // created / shipment carrier).
+              // Scannable essentials shown before expanding (#1713): a tight
+              // facts grid (total / payment / invoice / customer / shipment).
+              // The items line that used to head this block moved out with
+              // #2091 — the card title now carries the first item name and the
+              // `+N` chip, and printing the same two strings twice, 20px apart,
+              // is not a summary.
               summary: (order) => {
                 const parsed = parsedFor(order);
-                const items = itemsSummary(parsed.items);
                 const pay = paymentBadge(parsed.paymentStatus);
                 const cust = customerName(parsed);
                 // Snapshot-only (#1776): method name → method id → pickup name.
@@ -1450,16 +1473,6 @@ export function OrdersListPage(): ReactElement {
                   hasLiveOlCarrierRoute(order.deliveryResolution);
                 return (
                   <div className="orders-card-summary">
-                    {items ? (
-                      <div className="orders-items-line">
-                        <span className="orders-items-preview" title={items.firstName}>
-                          {items.firstName}
-                        </span>
-                        {items.moreCount > 0 ? (
-                          <span className="orders-more-count">+{items.moreCount}</span>
-                        ) : null}
-                      </div>
-                    ) : null}
                     <dl className="orders-card-facts">
                       <div>
                         <dt>Total</dt>

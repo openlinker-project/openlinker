@@ -31,6 +31,30 @@ When a lesson hardens into a rule, **graduate it** to the canonical doc and leav
 **Applies to**: any repository whose `upsert`/`save` coexists with a narrow `UPDATE` writer on the same table - today `libs/core/src/orders/infrastructure/persistence/repositories/order-record.repository.ts` (`syncStatus`, `syncAttempts`, `fulfillmentState`, `cancelledAt`).
 **Source**: #2101 (surfaced reviewing #2050 / ADR-040, which adopts the narrow-conditional-UPDATE shape for its own columns); the `cancelledAt` precedent is #1984; #2140 closed the same defect for `syncStatus` / `syncAttempts` in the same method.
 
+## CSS truncation clips pixels, not the accessibility tree — an unbounded identifier inside a linkified first cell becomes the row link's spelled-out accessible name
+
+**Context**: #2093 fell the Customers list back to `emailHash` when a projection carries no name. `DataTable` linkifies the FIRST cell whenever `rowHref` is set (`linkifyFirstCell = Boolean(href) && !expandable`), so that cell's text content *is* the row link's accessible name.
+**Problem**: `emailHash` is a 64-character SHA-256 hex. `.data-table td .mono-text { max-width: 20ch; text-overflow: ellipsis }` made it *look* handled, so it read fine in review and in every DOM assertion — but a screen reader spells all 64 characters out, and the mobile card (`.data-table__card-title`, 13.5px/600, `word-break: break-word`, no cap) printed it as a multi-line bold hex blob. The test fixtures used 10-character stubs, so the whole class of defect was invisible to a green suite. The same file already applied the opposite rule two columns to the right, where the Copy button deliberately says the generic "customer ID".
+**Rule**: When a raw identifier (hash, UUID, token) lands inside a linkified first cell or a card title, put `aria-hidden="true"` on the identifier and let a short human phrase carry the accessible name — and keep the full value reachable to a sighted operator with `title` (a `CopyableId` renders a `<button>`, which must not nest inside the row anchor; see the `cardView.title` entry below). Fixture the value at its **real** length: a shortened stub hides the truncation, the accessible name, and the card headline all at once.
+**Applies to**: `apps/web/src/pages/**/*-page.tsx` first-column cells under `rowHref`, and their `*.test.tsx` fixtures.
+**Source**: #2093 (found in review).
+
+## A row-level UI label must state what is true of the row, never infer a deployment setting the row cannot observe
+
+**Context**: #2093 labelled the nameless Customers row "Name not stored", reading it as evidence of `OL_STORE_PII=false`.
+**Problem**: `CustomerIdentityResolverService` creates **every** projection with `firstName`/`lastName` null, and `OrderCustomerProjectionUpdaterService` backfills them only if an order later carries a shipping or billing name. So a nameless row is routine on a fully PII-**enabled** deployment. On the one page a compliance reviewer would open to confirm hash-only mode, the label was a false positive; to a support agent it read as "OL dropped the buyer's name".
+**Rule**: Before writing a label that explains *why* a value is absent, trace who writes that column. If absence has more than one cause — and "not populated yet" almost always is one — state the observable row fact ("No name recorded") and leave the cause to the settings page that actually knows it.
+**Applies to**: any operator-facing empty/fallback label in `apps/web/src/**`.
+**Source**: #2093 (found in review).
+
+## Interactive content in a `DataTable` `cardView.title` / `subtitle` is legal only while the table sets no `rowHref` — and assert `title.closest('a')` is null, because a rendered-and-present assertion passes on the broken shape
+
+**Context**: Epic #2086 moved a shared, interactive identity cell (a name `<Link>` plus a Copy `<button>`) into the mobile card of three lists. `DataTableCard` wraps `title` + `subtitle` in the row's own `<Link>` **only when `rowHref` is set** (`apps/web/src/shared/ui/data-table.tsx`), so the same renderer is safe on one page and broken on the next.
+**Problem**: #2090 (Invoices, which sets `rowHref`) shipped the desktop renderers straight onto the card. That nested an `<a>` and two `<button>`s inside an anchor — invalid HTML, and worse, the clicks bubbled to the card link: the PDF number navigated to the invoice instead of opening the PDF, and both Copy buttons copied **and** navigated away. Every test still passed, because the assertions were all "the link/button renders" — which is true inside a wrapping anchor. #2091 (Orders) then justified hosting the cell verbatim on the premise that the page passes no `rowHref`, with nothing pinning that premise: adding one later would reproduce the bug with a green suite. `rowHref` churned inside this very epic (#1826 dropped it from Shipments in favour of `expandable`).
+**Rule**: Before putting a link, button, or any click handler in `cardView.title` / `subtitle`, check the same `DataTable` call for `rowHref`. If it is set, the card gets text-only renderers (share the label/format helpers so the two cannot drift). If it is not, pin the premise: assert `title.closest('a')` is null in the card test, and make the affordance a **works** assertion — click Copy and assert `writeText` received the value — never merely `toBeInTheDocument()`. See also *An "authenticates" assertion is not a "works" assertion* below.
+**Applies to**: `apps/web/src/pages/**/*-page.tsx` passing `cardView` to `DataTable`, and their `*.test.tsx`.
+**Source**: #2090 (bug shipped), corrected and pinned in #2091 review.
+
 ## Claim an ADR number from the "Reserved numbers" note, not from the last row of the index table
 
 **Context**: #2066 authored three ADRs and numbered them 039/040/041 by reading the index table in `docs/architecture/adrs/README.md` and taking "last merged row + 1".

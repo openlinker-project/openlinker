@@ -18,9 +18,13 @@ export interface OrderSummary {
   firstItemName: string | null;
   /**
    * The order's first line item's image URL, frozen at order-snapshot time
-   * (NOT the live product catalog image); null when the source never
-   * populated it — the common case today, since no adapter sets
-   * `OrderItem.imageUrl` on ingestion yet.
+   * (NOT the live product catalog image); null when the source never populated
+   * it — still the common case, but not universal: the WooCommerce order source
+   * DOES set `OrderItem.imageUrl` on ingestion
+   * (`woocommerce-order-source.adapter.ts`). Allegro omits it deliberately,
+   * PrestaShop and Erli never set it. Corrected in #2089; the core mirror in
+   * `libs/core/src/orders/domain/types/order-summary.types.ts` still says
+   * "no adapter".
    */
   firstItemImageUrl: string | null;
   /** The order's full item count (not the number of items projected here). */
