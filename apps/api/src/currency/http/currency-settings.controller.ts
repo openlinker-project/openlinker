@@ -142,7 +142,6 @@ export class CurrencySettingsController {
     observedCurrencies: readonly string[]
   ): ReportingCurrencyCoverageDto {
     const provider = this.resolveProvider(candidate);
-    const rateSource = this.resolveSourceKey(candidate);
 
     if (!provider) {
       return ReportingCurrencyCoverageDto.fromCoverage(
@@ -151,13 +150,13 @@ export class CurrencySettingsController {
           observedCurrencies: [...new Set(observedCurrencies)],
           uncoverableCurrencies: [],
         },
-        rateSource
+        null
       );
     }
 
     return ReportingCurrencyCoverageDto.fromCoverage(
       assessCoverage(candidate, observedCurrencies, provider),
-      rateSource
+      this.resolveSourceKey(candidate)
     );
   }
 
