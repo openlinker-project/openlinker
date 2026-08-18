@@ -16,8 +16,9 @@ import { useTranslation } from '../../../shared/i18n';
 const OPTIONS = ['invoice', 'receipt'] as const;
 
 /** EN fallbacks for the well-known document types (PL via `t()`). Exported as
- *  the single source of truth so the issued-state line in `OrderInvoicePanel`
- *  reuses the same labels instead of re-declaring them. Unknown adapter-supplied
+ *  the single source of truth so the issued-state line in the `orders` feature's
+ *  `SalesDocumentPanel` (#2160, previously `OrderInvoicePanel`) reuses the same
+ *  labels instead of re-declaring them. Unknown adapter-supplied
  *  types fall back to the raw string (open-world). */
 export const DOCUMENT_TYPE_LABEL_FALLBACK: Record<string, string> = {
   invoice: 'Invoice (faktura)',

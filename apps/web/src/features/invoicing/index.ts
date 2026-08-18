@@ -2,22 +2,27 @@
  * Invoicing — public surface (#757)
  *
  * Public barrel for the invoicing feature. Cross-feature / page consumers
- * import only from here. Kept narrow (like `orders/index.ts`): the panel, the
+ * import only from here. Kept narrow (like `orders/index.ts`): the
  * query/mutation hooks, the query keys, the transport types, the shared display
  * components (status badges, PDF link), and the runtime value arrays used for
  * filter guards on the list page.
- *
- * `resolveIssueErrorMessage`, `DocumentTypeSelect`, and `DOCUMENT_TYPE_LABEL_FALLBACK`
- * stay internal (only used by the panel itself or tests that deep-import them).
  *
  * Exception: `RegulatoryStatusBadge` and `regCardToneFor` are exported so
  * per-provider `invoiceDetailSection` slot components (KSeF, Subiekt,
  * inFakt) can reuse the neutral badge and `.reg-card` tone mapping without
  * duplicating either.
  *
+ * `InvoiceConnectionLock`, `DocumentTypeSelect`, `DOCUMENT_TYPE_LABEL_FALLBACK`,
+ * `resolveIssueErrorMessage`, `isMissingNumberingSeriesError`, the
+ * connection-resolution helpers, and the display-derivation helpers were
+ * exported for `OrderInvoicePanel`'s own use only until #2160, which replaced
+ * that component with the `orders` feature's `SalesDocumentPanel` — a
+ * cross-feature consumer that reassembles the same lifecycle rendering inside
+ * the unified "Sales document" slot (ADR-041). They are now genuinely
+ * cross-feature and stay exported here rather than duplicated.
+ *
  * @module apps/web/src/features/invoicing
  */
-export { OrderInvoicePanel } from './components/order-invoice-panel';
 export { InvoiceTimeline } from './components/invoice-timeline';
 export { InvoiceStatusBadge } from './components/invoice-status-badge';
 export type { InvoiceDisplayStatus } from './components/invoice-status-badge';
@@ -27,6 +32,11 @@ export {
 } from './components/regulatory-status-badge';
 export { regCardToneFor, type RegCardTone } from './lib/derive-invoice-display';
 export { InvoicePdfLink } from './components/invoice-pdf-link';
+export { InvoiceConnectionLock } from './components/invoice-connection-lock';
+export {
+  DocumentTypeSelect,
+  DOCUMENT_TYPE_LABEL_FALLBACK,
+} from './components/document-type-select';
 export { useOrderInvoiceQuery } from './hooks/use-order-invoice-query';
 export { useInvoiceQuery } from './hooks/use-invoice-query';
 export { useIssueInvoiceMutation } from './hooks/use-issue-invoice-mutation';
@@ -115,7 +125,30 @@ export {
   validateNumberingPattern,
   type NumberRenderContext,
 } from './lib/numbering-pattern';
-export { isMissingNumberingSeriesError } from './lib/issue-error-message';
+export {
+  isMissingNumberingSeriesError,
+  isCapabilityDisabledError,
+  resolveIssueErrorMessage,
+} from './lib/issue-error-message';
+export {
+  deriveInvoiceDisplayStatus,
+  canRetryInvoice,
+  resolveFailureCopy,
+} from './lib/derive-invoice-display';
+export {
+  isPrimaryInvoicingConnection,
+  selectInvoicingCandidates,
+  selectReauthInvoicingConnections,
+  resolveIssuingConnection,
+  resolveIssuableConnection,
+  type InvoicingConnectionLike,
+  type IssuingConnectionResolution,
+} from './lib/resolve-invoicing-connection';
+export {
+  resolveSalesDocumentBlockCopy,
+  type SalesDocumentBlockCopy,
+  type SalesDocumentBlockCopyKind,
+} from './lib/sales-document-block-copy';
 export {
   buildNumberingPreview,
   type NumberingPreview,
