@@ -199,7 +199,11 @@ describe('OrderRecordRepository', () => {
       expect(ormRepository.save).toHaveBeenCalledTimes(1);
     });
 
-    it('should convert sync status from domain entities to JSONB', async () => {
+    it('should NOT write syncStatus even when the domain record carries one (#2140)', async () => {
+      // Guards against a future caller reintroducing the clobber by passing
+      // destination sync state through the ingestion path. updateSyncStatus is
+      // the sole writer; a full-object save() that carries this column resets
+      // the per-destination rows it committed.
       const syncStatus: OrderSyncStatus[] = [
         {
           destinationConnectionId: 'dest-connection-789',
@@ -230,10 +234,7 @@ describe('OrderRecordRepository', () => {
       await repository.upsert(domainEntity);
 
       const callArg = ormRepository.save.mock.calls[0][0] as OrderRecordOrmEntity;
-      expect(callArg.syncStatus).toHaveLength(1);
-      expect(callArg.syncStatus[0].destinationConnectionId).toBe('dest-connection-789');
-      expect(callArg.syncStatus[0].status).toBe('synced');
-      expect(callArg.syncStatus[0].syncedAt).toBe('2025-01-01T11:00:00.000Z');
+      expect(callArg.syncStatus).toBeUndefined();
     });
 
     it('should map recordStatus to ORM entity on toOrm path', async () => {
@@ -330,6 +331,66 @@ describe('OrderRecordRepository', () => {
 
       expect(result.fulfillmentState).toBe('dispatched');
     });
+
+    it('should NOT include syncStatus or syncAttempts in the entity passed to save() (#2140)', async () => {
+      // The ingestion path never carries destination sync state, so writing
+      // these columns wiped the per-destination rows and the whole attempt
+      // history on every re-poll. Leaving the properties unset lets TypeORM omit
+      // both columns from the generated statement - updateSyncStatus is the sole
+      // writer, and Postgres fills an omitted column on INSERT from its
+      // `DEFAULT '[]'`.
+      ormRepository.save.mockResolvedValue(createOrmEntity());
+
+      await repository.upsert(createDomainEntity());
+
+      const callArg = ormRepository.save.mock.calls[0][0] as OrderRecordOrmEntity;
+      expect(callArg.syncStatus).toBeUndefined();
+      expect(callArg.syncAttempts).toBeUndefined();
+    });
+
+    it('should NOT write syncAttempts even when the domain record carries history', async () => {
+      const attempts: SyncAttempt[] = [
+        {
+          destinationConnectionId: 'dest-connection-789',
+          status: 'failed',
+          attemptedAt: new Date('2025-01-01T11:00:00Z'),
+          error: 'destination timeout',
+        },
+      ];
+      const domainEntity = new OrderRecord(
+        'order-123',
+        null,
+        'conn-123',
+        null,
+        {},
+        [],
+        'ready',
+        new Date('2025-01-01T10:00:00Z'),
+        new Date('2025-01-01T10:00:00Z'),
+        attempts
+      );
+      ormRepository.save.mockResolvedValue(createOrmEntity());
+
+      await repository.upsert(domainEntity);
+
+      const callArg = ormRepository.save.mock.calls[0][0] as OrderRecordOrmEntity;
+      expect(callArg.syncAttempts).toBeUndefined();
+    });
+
+    it('should report both columns empty when save() hands back the entity it was given', async () => {
+      // The update path has no RETURNING clause, so the entity TypeORM returns
+      // still carries the unset properties. toDomain must read that as "not part
+      // of this statement" rather than throwing on `undefined.map`.
+      const unsetEntity = createOrmEntity();
+      delete (unsetEntity as Partial<OrderRecordOrmEntity>).syncStatus;
+      delete (unsetEntity as Partial<OrderRecordOrmEntity>).syncAttempts;
+      ormRepository.save.mockResolvedValue(unsetEntity);
+
+      const result = await repository.upsert(createDomainEntity());
+
+      expect(result.syncStatus).toEqual([]);
+      expect(result.syncAttempts).toEqual([]);
+    });
   });
 
   describe('findMany', () => {
@@ -397,6 +458,31 @@ describe('OrderRecordRepository', () => {
       await repository.findMany({ cancelled: false }, { limit: 20, offset: 0 });
 
       expect(andWhere).toHaveBeenCalledWith('rec.cancelledAt IS NULL');
+    });
+
+    it('should never emit an empty IN () for the salesDocumentBlocked predicate (#2100)', async () => {
+      // IS_SALES_DOCUMENT_BLOCKED is built from SalesDocumentAttentionReasonValues at
+      // class-definition time — an empty array would compile to `IN ()`, a Postgres
+      // syntax error surfaced as a runtime 500 on the orders list rather than a type
+      // error. Piotr's review round (#2129) flagged this as cheap insurance worth
+      // pinning even though the exact-membership spec on the values array itself
+      // would also fail first.
+      const andWhere = jest.fn().mockReturnThis();
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        orderBy: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        skip: jest.fn().mockReturnThis(),
+        andWhere,
+        getManyAndCount: jest.fn().mockResolvedValue([[], 0]),
+      });
+
+      await repository.findMany({ salesDocumentBlocked: true }, { limit: 20, offset: 0 });
+
+      const predicate = andWhere.mock.calls
+        .map((c: unknown[]) => c[0] as string)
+        .find((c) => c.includes('salesDocumentBlockReason'));
+      expect(predicate).toBeDefined();
+      expect(predicate).not.toContain('IN ()');
     });
   });
 

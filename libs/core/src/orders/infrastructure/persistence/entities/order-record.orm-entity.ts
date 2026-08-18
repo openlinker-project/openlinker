@@ -60,9 +60,22 @@ export class OrderRecordOrmEntity {
 
   /**
    * Sync status per destination (JSONB array)
-   * Tracks sync state for each destination connection
+   * Tracks sync state for each destination connection.
+   *
+   * The `default` is load-bearing, not cosmetic - do not delete it as a
+   * tidy-up. Since #2140 the upsert omits this column from its write set, so
+   * every insert relies on the column's own default; and a schema built by
+   * TypeORM `synchronize` rather than by migrations gets that default from
+   * here and nowhere else (`libs/shared/src/database/database.module.ts`
+   * enables synchronize for every `NODE_ENV !== 'production'`, which is what
+   * the integration harness runs on). Without it the first `persistOrder`
+   * against such a schema violates the NOT NULL constraint.
+   *
+   * It mirrors the `NOT NULL DEFAULT '[]'` on the migration-built schema,
+   * asserted by `1833000000005-set-order-records-sync-status-default.ts`
+   * because the creating migration applies it only conditionally.
    */
-  @Column({ type: 'jsonb' })
+  @Column({ type: 'jsonb', default: () => "'[]'" })
   syncStatus!: OrderSyncStatusJson[];
 
   /**
@@ -115,6 +128,37 @@ export class OrderRecordOrmEntity {
   @Column({ type: 'varchar', nullable: true })
   @Index()
   fulfillmentState!: string | null;
+
+  /**
+   * Neutral `SalesDocumentGateBlockReason` naming why no fiscal document was
+   * issued (#2100, ADR-041 decision 11). `null` = nothing blocking. Indexed
+   * because it IS a filter axis (the orders list ships an "Invoicing blocked"
+   * chip and a `salesDocumentBlocked` count) — unlike `mappingFailureReason`,
+   * which is free text and never filtered on.
+   *
+   * Plain `varchar` with no check constraint, matching `recordStatus`: the union
+   * is enforced in TypeScript, and a future ADR-041 value must not need DDL.
+   */
+  @Column({ type: 'varchar', nullable: true })
+  @Index()
+  salesDocumentBlockReason!: string | null;
+
+  /**
+   * The `SalesDocumentUnresolvedReason` paired with a `'unresolved-routing'`
+   * block (ADR-041 §107); `null` for every other reason. Not indexed — the
+   * filter axis is "is this order blocked at all", which the column above
+   * answers; this one only refines the copy.
+   */
+  @Column({ type: 'varchar', nullable: true })
+  salesDocumentUnresolvedReason!: string | null;
+
+  /**
+   * PII-free elaboration of the reason above (ids and counts only). Free text,
+   * rendered verbatim to the operator, never filtered on — so no index, same
+   * call as `mappingFailureReason`.
+   */
+  @Column({ type: 'text', nullable: true })
+  salesDocumentBlockDetail!: string | null;
 
   @CreateDateColumn()
   createdAt!: Date;

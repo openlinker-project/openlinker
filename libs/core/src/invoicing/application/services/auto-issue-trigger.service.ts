@@ -1,7 +1,7 @@
 /**
  * Auto-Issue Trigger Service — cross-capability sales-document gate
  * (ADR-026 §3 — core policy composer, OL #1120; ADR-041 decisions 3a/3b/4/7 —
- * cross-capability gate, #2156)
+ * cross-capability gate, #2156; decision 11's persisted block reason, #2100)
  *
  * Core-resident policy that turns a qualifying order transition (paid /
  * shipped) into AT MOST ONE sales-document issuance job — invoice **or**
@@ -36,9 +36,12 @@
  *     Introducing a kind-scoped trigger-model key is a separate, out-of-scope
  *     config-shape decision.
  *  5. Evaluates the transition against that trigger model (level-evaluated,
- *     D3): `auto-on-paid` iff paid; `auto-on-shipped` iff
- *     `order.status === 'shipped'` (D6 + one-time viability log, F7);
- *     `manual` → skip; `batched` → log + skip (deferred, F-cleanly).
+ *     D3, via `evaluateGate` — separating "not yet" from "not without a
+ *     human", #2100): `auto-on-paid` / `auto-on-shipped` `proceed` when their
+ *     condition holds and `waiting` otherwise (D6 + one-time viability log,
+ *     F7); `manual` is `blocked`; `batched` throws
+ *     `BatchedTriggerNotImplementedError`, mapped to a `trigger-model-batched`
+ *     block by the PII-safe catch.
  *  6. Composes the job payload from the clean in-hand `Order` and enqueues
  *     the matching job type with a deterministic key: `invoicing.issue` /
  *     `invoice:{connId}:{orderId}` for `'invoice'` (unchanged from before
@@ -47,15 +50,25 @@
  *     controller already uses for the identical semantic: one connection
  *     registering one order is one sale).
  *
- * Every non-issuing exit (unresolved routing, unsupported document kind,
- * `manual`, `batched`) is currently LOG-ONLY. ADR-041 §54/§105 require it to
- * also persist a named, operator-visible reason via the `order_records`
- * sales-document-block mechanism — deferred to **#2100**. IMPORTANT: that
- * mechanism does not exist on this branch (it shipped independently on `main`,
- * commit c9231c9ba, which this epic branch has not merged) — see the PR/issue
- * description for this deviation. Every log line below already names the
- * exact `SalesDocumentUnresolvedReason` / kind values #2100's persistence
- * would need, so wiring it in is additive once the mechanism lands here.
+ * Every exit REPORTS a `SalesDocumentBlockOutcome` to the caller (#2100, ADR-041
+ * §54/§105: a block is never log-only), alongside — never instead of — its
+ * existing log line. Reporting rather than persisting is what keeps the F3
+ * one-way edge below intact: the caller already lives in the orders context and
+ * owns the write.
+ *
+ *  - `blocked`       — unresolved routing, unsupported document kind, `manual`,
+ *    `batched`. Reported only after `reportBlock` confirms the order does not
+ *    already carry a document, because reasons derived from CONFIGURATION stay
+ *    true after issuance and would otherwise be re-blocked onto an order the
+ *    operator already invoiced/registered by hand.
+ *  - `none`          — job enqueued; or the `auto-on-*` condition is simply not
+ *    met yet (level-evaluated, D3 — an unpaid order is waiting, not blocked); or
+ *    no sales-document candidate exists at all; or a document already exists.
+ *  - `indeterminate` — a compose/enqueue error, or the unreachable
+ *    vanished-connection / unimplemented-aggregate branches. The caller leaves
+ *    the persisted reason ALONE: clearing on a deterministic error would erase a
+ *    true reason and put nothing in its place, which is the silent decline §54
+ *    forbids.
  *
  * The selected connection's work is isolated in a try/catch; the catch logs a
  * PII-SAFE envelope only (F9 + D11): `error.name`, connectionId, `order.id`,
@@ -65,12 +78,15 @@
  * `InvalidFiscalLineError`, `UnsupportedFiscalPriceTreatmentError`,
  * `BatchedTriggerNotImplementedError`).
  *
- * ONE-WAY EDGE (F3): still injects NO `OrdersModule` token. #2156 adds
- * `INTEGRATIONS_SERVICE_TOKEN` (for the `getSupportedDocumentTypes()` check) —
- * an `integrations`-context dependency, unrelated to the ONE-WAY EDGE
- * property this docstring guards, which is specifically about `orders`.
- * `apps/worker/test/integration/invoicing-auto-issue-boot.int-spec.ts`
- * continues to assert no `OrdersModule` token is injected.
+ * ONE-WAY EDGE (F3): depends on `CONNECTION_PORT_TOKEN` (identifier-mapping),
+ * `SYNC_JOBS_SERVICE_TOKEN` (sync), `INVOICE_SERVICE_TOKEN` (SAME context —
+ * InvoicingModule provides both, so no module cycle; used only for the
+ * idempotent-block-suppression read in `reportBlock`) and, since #2156,
+ * `INTEGRATIONS_SERVICE_TOKEN` (for the `getSupportedDocumentTypes()` deeper
+ * check — an `integrations`-context dependency, likewise unrelated to the F3
+ * property, which is specifically about `orders`). It injects NO `OrdersModule`
+ * token, which is what the invariant is about and what
+ * `invoicing-auto-issue-boot.int-spec.ts` asserts.
  *
  * @module libs/core/src/invoicing/application/services
  * @implements {IAutoIssueTriggerService}
@@ -85,6 +101,8 @@ import {
   ISyncJobsService,
   SYNC_JOBS_SERVICE_TOKEN,
 } from '@openlinker/core/sync';
+import { IInvoiceService } from './invoice.service.interface';
+import { INVOICE_SERVICE_TOKEN } from '../../invoicing.tokens';
 import type { Order } from '@openlinker/core/orders';
 // `@openlinker/core/orders/types` sub-barrel: exports dependency-free constants
 // without pulling in `OrdersModule`. Using the main barrel would close a CJS
@@ -99,6 +117,8 @@ import {
   resolveSalesDocumentRouting,
 } from '@openlinker/core/sales-documents';
 import type {
+  SalesDocumentBlock,
+  SalesDocumentBlockOutcome,
   SalesDocumentDecision,
   SalesDocumentRoutingCandidate,
   SalesDocumentUnresolvedReason,
@@ -108,8 +128,14 @@ import { Logger } from '@openlinker/shared/logging';
 
 import type { IAutoIssueTriggerService } from './auto-issue-trigger.service.interface';
 import type { InvoicingPort } from '../../domain/ports/invoicing.port';
-import type { InvoiceTriggerModel } from '../../domain/types/invoice-trigger.types';
-import { parseTriggerModel } from '../../domain/types/invoice-trigger.types';
+import type {
+  InvoiceTriggerModel,
+  TriggerGateOutcome,
+} from '../../domain/types/invoice-trigger.types';
+import {
+  BLOCK_REASON_BY_TRIGGER_MODEL,
+  parseTriggerModel,
+} from '../../domain/types/invoice-trigger.types';
 import { normalizeShippingLineName } from '../../domain/types/shipping-line-label.types';
 import { toIssueInvoiceCommand } from '../mappers/order-to-issue-invoice-command.mapper';
 import { BatchedTriggerNotImplementedError } from '../../domain/exceptions/batched-trigger-not-implemented.error';
@@ -179,13 +205,88 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     private readonly syncJobs: ISyncJobsService,
     @Inject(INTEGRATIONS_SERVICE_TOKEN)
     private readonly integrations: IIntegrationsService,
+    // #2100: read-only, SAME-CONTEXT dependency (both are provided by
+    // InvoicingModule), so it neither forms a module cycle nor touches the F3
+    // one-way edge — that invariant is specifically about OrdersModule tokens.
+    // Used only to answer "does a document already exist for this order?" before
+    // reporting a block; see `reportBlock`. Cost note: `parseTriggerModel` defaults
+    // to `manual`, which IS a block path, so on an install whose winning
+    // connection has no `config.invoicing` every ingestion pays one extra indexed
+    // SELECT. That is the price of not re-blocking already-invoiced orders; the
+    // conditional UPDATE in `updateSalesDocumentBlock` gives back more than it.
+    @Inject(INVOICE_SERVICE_TOKEN)
+    private readonly invoices: IInvoiceService,
   ) {}
+
+  /**
+   * Report a block ONLY if the order does not already have a fiscal document
+   * (#2100 review).
+   *
+   * Without this check the gate is not idempotent against its own effect: a
+   * `manual` connection re-reports `trigger-model-manual` on every later
+   * transition (shipped, status change, re-poll), so a block would be re-written
+   * onto an order that had since been invoiced by hand. That made the aggregate
+   * count wrong, filtered rows render with no badge, and the order-detail
+   * timeline claim "No invoice issued" directly under the issued invoice.
+   *
+   * The suppression predicate is the domain's own `blocksIssuanceElsewhere`
+   * (#2100 review round 3), NOT a hand-rolled status test. It is already the
+   * codebase's canonical answer to "does a document plausibly exist for this
+   * order" (`InvoiceService`, `OrderAlreadyInvoicedException`, the issue lock),
+   * and it gets the arm a status test gets wrong: an `in-doubt` failure means we
+   * do NOT know whether the provider created a document, so persisting "no fiscal
+   * document was issued" against it is the fiscally dangerous direction. Only a
+   * terminal `rejected` failure — the provider is known to have created nothing —
+   * leaves the block standing, because there the configuration problem is still
+   * real and clearing it would strip the routing reason from an order whose only
+   * remaining signal is a failure that says nothing about the missing primary.
+   *
+   * `invoicingBlockedBadge` and `resolveSalesDocumentBlockCopy` mirror this rule
+   * on the FE, so the reasons the aggregate counts are exactly the reasons a row,
+   * a panel and a timeline can explain. They must move together: a block that is
+   * counted but suppressed on every surface is a number with no reachable
+   * explanation, which is the same silent decline §54 forbids.
+   *
+   * A read failure yields `indeterminate` rather than a block: with the answer
+   * unknown, leaving the persisted value untouched is the only option that can
+   * neither invent a reason nor erase a true one.
+   *
+   * NOTE (#2156): this check only reads the INVOICE projection today
+   * (`getLatestInvoiceForOrder`) — it does not also check for an existing
+   * fiscal-receipt registration. A fiscal-receipt candidate that gets blocked
+   * for an unrelated reason (e.g. `trigger-model-manual`) on an order that
+   * ALREADY has a receipt would therefore still report the block rather than
+   * `none`. This is a narrower version of the same suppression gap, tracked
+   * as a fast-follow rather than blocking this issue — the cross-kind
+   * write-path guard (#2157) is what actually prevents a second document from
+   * being CREATED; this method only decides whether a block gets RE-REPORTED.
+   */
+  private async reportBlock(
+    block: SalesDocumentBlock,
+    orderId: string,
+  ): Promise<SalesDocumentBlockOutcome> {
+    try {
+      const existing = await this.invoices.getLatestInvoiceForOrder(orderId);
+      if (existing !== null && existing.blocksIssuanceElsewhere) {
+        return { kind: 'none' };
+      }
+    } catch (error) {
+      const name = error instanceof Error ? error.name : 'UnknownError';
+      this.logger.warn(
+        `Could not read the invoice projection while reporting a sales-document block; ` +
+          `leaving the persisted reason untouched: error=${name} orderId=${orderId} ` +
+          `reason=${block.reason}`,
+      );
+      return { kind: 'indeterminate' };
+    }
+    return { kind: 'blocked', block };
+  }
 
   async onOrderTransition(
     order: Order,
     sourceConnectionId: string,
     sourceEventId?: string,
-  ): Promise<void> {
+  ): Promise<SalesDocumentBlockOutcome> {
     // D8: only ACTIVE connections receive issuance jobs. The scheduler's
     // `status: 'active'` filter already excludes disabled/error/needs_reauth
     // connections. #2156: a candidate needs EITHER capability, not just
@@ -200,9 +301,20 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     );
 
     if (connections.length === 0) {
-      return;
+      // NOT a block: no connection can issue a sales document at all, so there
+      // is nothing for an operator to unblock on THIS order. Reporting a
+      // reason here would badge every order on an install that simply does
+      // not do invoicing or fiscalization.
+      return { kind: 'none' };
     }
 
+    // `selfRoutesDocumentKind` is hardcoded `false`: per #2158's own doc
+    // comment, no adapter in this repo implements `SelfRoutingDocumentKind`
+    // yet ("#2158 ships the mechanism, not a first consumer"). Resolving each
+    // candidate's adapter here purely to ask a question that can only ever
+    // answer `false` today would be a per-order-transition I/O cost with no
+    // observable effect; wiring the real per-connection resolution is
+    // deferred until a self-routing adapter actually exists to exercise it.
     const candidates: SalesDocumentRoutingCandidate[] = connections.map((connection) => {
       const routing = readSalesDocumentRouting(connection.config);
       return {
@@ -210,6 +322,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
         documentKind: routing.documentKind,
         isPrimary: routing.isPrimary,
         enabledCapabilities: connection.enabledCapabilities,
+        selfRoutesDocumentKind: false,
       };
     });
 
@@ -224,50 +337,61 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
       // set) would error-log 'ambiguous-connection-no-primary' on every order,
       // which is a materially different and less actionable signal than "no
       // candidate at all". Mirrors the pre-#2156 `selection.kind === 'none'`
-      // short-circuit.
-      return;
+      // short-circuit — NOT a block, same reasoning as the zero-connections
+      // case above.
+      return { kind: 'none' };
     }
 
     const decision = resolveSalesDocumentRouting(order, candidates);
 
     switch (decision.kind) {
       case 'unresolved':
-        this.logUnresolved(decision.reason, candidates, order, sourceEventId);
-        return;
+        return this.reportUnresolved(decision.reason, candidates, order, sourceEventId);
       case 'aggregate':
         // Reserved outcome (ADR-041 decision 8) — the aggregation window's
         // mechanics are explicitly deferred, and no caller of
         // resolveSalesDocumentRouting can produce this decision today.
         // Defensive-only: if this ever fires it is a forward-compat gap, not
-        // a normal outcome, so issue nothing rather than guess.
+        // a normal outcome, so issue nothing rather than guess. NOT a block
+        // (there is no operator-actionable misconfiguration to name) and NOT
+        // a clear either (a defect, not a legitimate "nothing to do").
         this.logger.error(
           `Auto-issue skipped: 'aggregate' routing outcome is not implemented; issuing nothing. ` +
             `orderId=${order.id} connectionId=${decision.connectionId} ` +
             `sourceEventId=${sourceEventId ?? 'n/a'}`,
         );
-        return;
+        return { kind: 'indeterminate' };
       case 'route':
-        await this.dispatchRoute(decision, connections, eligibleCount, order, sourceConnectionId, sourceEventId);
-        return;
+        return this.dispatchRoute(decision, connections, eligibleCount, order, sourceConnectionId, sourceEventId);
     }
   }
 
   /**
-   * DEFERRED — #2100: ADR-041 §54/§105 require an `unresolved` routing outcome
-   * to also PERSIST a named reason (`'unresolved-routing'` + the
-   * `SalesDocumentUnresolvedReason` that travelled with it), never log-only.
-   * This exit is still log-only — see the file-level docstring for why the
-   * persistence mechanism is out of reach on this branch today.
+   * `unresolved` routing outcome (#2156, closing the #2100 persistence gap
+   * this dispatcher previously left log-only): persists
+   * `'unresolved-routing'` as the gate-block reason with the routing's own
+   * `SalesDocumentUnresolvedReason` traveling alongside it as the
+   * `unresolvedReason` (ADR-041 §107 — the gate records that it blocked on an
+   * unresolved routing decision; the routing reason itself is a routing-
+   * vocabulary fact, so it cannot be the gate reason directly).
+   *
+   * The resolver reports only the REASON, never a breakdown (it is a pure
+   * function of the candidate list, not a formatter) — so `detail` is
+   * composed here, from the same eligible-candidate list the resolver saw.
+   * Wording is carried over verbatim from the pre-#2156, invoice-only gate
+   * (#2100): "none marked primary" vs "more than one marked primary" is a
+   * materially different operator instruction (add a primary vs remove one),
+   * so collapsing both into one generic phrase would make the persisted
+   * detail less actionable than before this dispatcher went cross-kind.
    */
-  private logUnresolved(
+  private async reportUnresolved(
     reason: SalesDocumentUnresolvedReason,
     candidates: readonly SalesDocumentRoutingCandidate[],
     order: Order,
     sourceEventId?: string,
-  ): void {
-    const candidateIds = candidates
-      .filter((candidate) => candidate.documentKind !== null)
-      .map((candidate) => candidate.connectionId);
+  ): Promise<SalesDocumentBlockOutcome> {
+    const eligible = candidates.filter((candidate) => candidate.documentKind !== null);
+    const candidateIds = eligible.map((candidate) => candidate.connectionId);
 
     this.logger.error(
       `Auto-issue skipped: sales-document routing unresolved (reason=${reason}) — issuing nothing ` +
@@ -275,6 +399,34 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
         `candidateConnectionIds=${candidateIds.join(',')} sourceEventId=${sourceEventId ?? 'n/a'}. ` +
         `Set config.salesDocument.documentKind and config.invoicing.isPrimary appropriately.`,
     );
+
+    // PII-free detail: a count and the neutral routing reason only. It reaches
+    // an operator screen verbatim, so it must never carry buyer data.
+    const detail = this.describeUnresolvedDetail(reason, eligible);
+
+    return this.reportBlock(
+      { reason: 'unresolved-routing', unresolvedReason: reason, detail },
+      order.id,
+    );
+  }
+
+  /**
+   * PII-free elaboration of an `unresolved` decision, for the persisted
+   * `SalesDocumentBlock.detail`. `'ambiguous-connection-no-primary'`
+   * distinguishes "no primary was set" from "more than one was" — the
+   * operator fix is opposite in each case — by recounting primaries among the
+   * same eligible candidates the resolver itself considered.
+   */
+  private describeUnresolvedDetail(
+    reason: SalesDocumentUnresolvedReason,
+    eligible: readonly SalesDocumentRoutingCandidate[],
+  ): string {
+    if (reason === 'ambiguous-connection-no-primary') {
+      const primaryCount = eligible.filter((candidate) => candidate.isPrimary).length;
+      const qualifier = primaryCount === 0 ? 'none marked primary' : 'more than one marked primary';
+      return `${eligible.length} invoicing connections, ${qualifier}`;
+    }
+    return `${eligible.length} sales-document candidates, reason=${reason}`;
   }
 
   /**
@@ -288,20 +440,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     order: Order,
     sourceConnectionId: string,
     sourceEventId?: string,
-  ): Promise<void> {
-    if (decision.documentKind === null) {
-      // Self-routing destination (ADR-041 decision 9): reserved in the type,
-      // but resolveSalesDocumentRouting's own candidate filter requires a
-      // configured `documentKind`, so a `route` decision can never carry
-      // `null` while no adapter declares self-routing. Defensive-only.
-      this.logger.error(
-        `Auto-issue skipped: resolved a self-routing decision (documentKind: null), but no ` +
-          `self-routing dispatch is implemented; issuing nothing. orderId=${order.id} ` +
-          `connectionId=${decision.connectionId} sourceEventId=${sourceEventId ?? 'n/a'}`,
-      );
-      return;
-    }
-
+  ): Promise<SalesDocumentBlockOutcome> {
     const connection = connections.find((candidate) => candidate.id === decision.connectionId);
     if (connection === undefined) {
       // Unreachable: `decision.connectionId` is always an id this method just
@@ -313,16 +452,31 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
         `Auto-issue skipped: selected connection ${decision.connectionId} vanished from the ` +
           `candidate list it was chosen from. orderId=${order.id} sourceEventId=${sourceEventId ?? 'n/a'}`,
       );
-      return;
+      // NOT a block, and NOT a clear either: this is a defect, so neither naming a
+      // reason the operator cannot act on nor erasing one they can is right.
+      return { kind: 'indeterminate' };
+    }
+
+    if (decision.documentKind === null) {
+      // Self-routing destination (ADR-041 decision 9): reserved in the type,
+      // but resolveSalesDocumentRouting's own candidate filter requires either
+      // a configured `documentKind` or `selfRoutesDocumentKind: true`
+      // (#2158), so a `route` decision with `documentKind: null` means the
+      // resolved connection self-routes. No self-routing dispatch is
+      // implemented yet on this branch (no adapter declares the capability).
+      this.logger.error(
+        `Auto-issue skipped: resolved a self-routing decision (documentKind: null), but no ` +
+          `self-routing dispatch is implemented; issuing nothing. orderId=${order.id} ` +
+          `connectionId=${decision.connectionId} sourceEventId=${sourceEventId ?? 'n/a'}`,
+      );
+      return { kind: 'indeterminate' };
     }
 
     if (decision.documentKind === 'invoice') {
-      await this.dispatchInvoice(connection, eligibleCount, order, sourceConnectionId, sourceEventId);
-      return;
+      return this.dispatchInvoice(connection, eligibleCount, order, sourceConnectionId, sourceEventId);
     }
     if (decision.documentKind === 'fiscal-receipt') {
-      await this.dispatchFiscalReceipt(connection, eligibleCount, order, sourceConnectionId, sourceEventId);
-      return;
+      return this.dispatchFiscalReceipt(connection, eligibleCount, order, sourceConnectionId, sourceEventId);
     }
 
     // Open-world kind (decision 10): core recognizes no dispatch for it. The
@@ -331,13 +485,18 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     // the DEEPER "can this connection actually produce a document of this
     // kind" check is this gate's job, and for an unrecognized kind the honest
     // answer is "not yet" rather than a guess.
-    //
-    // DEFERRED — #2100: should also persist
-    // `'unsupported-document-kind-on-connection'`, not just log.
     this.logger.error(
       `Auto-issue skipped: connection ${connection.id} resolved to sales-document kind ` +
         `'${decision.documentKind}', which this gate does not know how to dispatch. ` +
         `orderId=${order.id} sourceEventId=${sourceEventId ?? 'n/a'}`,
+    );
+    return this.reportBlock(
+      {
+        reason: 'unresolved-routing',
+        unresolvedReason: 'unsupported-document-kind-on-connection',
+        detail: `connection ${connection.id} resolved to unrecognized kind '${decision.documentKind}'`,
+      },
+      order.id,
     );
   }
 
@@ -353,17 +512,22 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     order: Order,
     sourceConnectionId: string,
     sourceEventId?: string,
-  ): Promise<void> {
+  ): Promise<SalesDocumentBlockOutcome> {
     const supported = await this.connectionSupportsInvoiceDocumentType(connection.id);
     if (!supported) {
-      // DEFERRED — #2100: should also persist
-      // `'unsupported-document-kind-on-connection'`, not just log.
       this.logger.error(
         `Auto-issue skipped: connection ${connection.id} is routed for 'invoice' but its adapter ` +
           `does not list 'invoice' among its supported document types. orderId=${order.id} ` +
           `sourceEventId=${sourceEventId ?? 'n/a'}`,
       );
-      return;
+      return this.reportBlock(
+        {
+          reason: 'unresolved-routing',
+          unresolvedReason: 'unsupported-document-kind-on-connection',
+          detail: `connection ${connection.id} does not list 'invoice' in getSupportedDocumentTypes()`,
+        },
+        order.id,
+      );
     }
 
     // F9/D11: the selected connection's work is isolated — a compose/enqueue
@@ -374,8 +538,12 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
       const triggerModel = parseTriggerModel(connection.config.invoicing?.triggerModel);
       this.warnOnceIfManualWinnerDisablesInstall(triggerModel, connection.id, eligibleCount);
 
-      if (!this.qualifies(order, triggerModel, connection.id)) {
-        return;
+      const gate = this.evaluateGate(order, triggerModel, connection.id);
+      if (gate.kind === 'waiting') {
+        return { kind: 'none' };
+      }
+      if (gate.kind === 'blocked') {
+        return await this.reportBlock({ reason: gate.reason }, order.id);
       }
 
       // F4: compose the deterministic key ONCE and thread it into BOTH the
@@ -404,8 +572,31 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
         maxAttempts: AUTO_ISSUE_RETRY_BUDGET,
         runAfter: new Date(),
       });
+      // Enqueued: report NO block, which is what clears a previously persisted
+      // reason once the operator has fixed the configuration. This is the
+      // level-triggered half of the clear-on-success rule.
+      return { kind: 'none' };
     } catch (error) {
       this.logIssuanceFailure(error, connection.id, order.id, sourceEventId);
+      if (error instanceof BatchedTriggerNotImplementedError) {
+        // The one error that IS an operator-visible block rather than a fault:
+        // OpenLinker cannot group this order into a batch yet, and no retry will
+        // change that until the feature ships or the operator picks another model.
+        return await this.reportBlock(
+          { reason: BLOCK_REASON_BY_TRIGGER_MODEL.batched },
+          order.id,
+        );
+      }
+      // Anything else is `indeterminate`, NOT a clear (#2100 review). Three of the
+      // four errors this class allow-lists as deterministic and PII-clean
+      // (`InvalidBuyerProfileError`, `InvalidInvoiceLineError`,
+      // `UnsupportedPriceTreatmentError`) come out of command composition here and
+      // will throw identically on every future transition. Clearing on them would
+      // erase a true reason — say, the ambiguity the operator has just fixed — and
+      // replace it with nothing at all: no invoice, no badge, no count, and no
+      // `sync_jobs` row either, because nothing was enqueued. That is the exact
+      // silent decline ADR-041 §54 forbids.
+      return { kind: 'indeterminate' };
     }
   }
 
@@ -415,6 +606,11 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
    * `FiscalizationPort` (unlike `InvoicingPort.getSupportedDocumentTypes()`),
    * so the resolver's structural check (`Fiscalization` capability enabled)
    * is the whole validation story for this kind today.
+   *
+   * Mirrors `dispatchInvoice`'s trigger-model gate + block-reporting shape
+   * (#2100) so a blocked fiscal-receipt candidate is exactly as
+   * operator-visible as a blocked invoice candidate — the persisted reason
+   * columns are document-kind-agnostic.
    */
   private async dispatchFiscalReceipt(
     connection: Connection,
@@ -422,7 +618,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     order: Order,
     sourceConnectionId: string,
     sourceEventId?: string,
-  ): Promise<void> {
+  ): Promise<SalesDocumentBlockOutcome> {
     try {
       // Reused verbatim from `config.invoicing.triggerModel` — see the
       // file-level docstring point 4 for why this is deliberate, not an
@@ -430,8 +626,12 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
       const triggerModel = parseTriggerModel(connection.config.invoicing?.triggerModel);
       this.warnOnceIfManualWinnerDisablesInstall(triggerModel, connection.id, eligibleCount);
 
-      if (!this.qualifies(order, triggerModel, connection.id)) {
-        return;
+      const gate = this.evaluateGate(order, triggerModel, connection.id);
+      if (gate.kind === 'waiting') {
+        return { kind: 'none' };
+      }
+      if (gate.kind === 'blocked') {
+        return await this.reportBlock({ reason: gate.reason }, order.id);
       }
 
       // Same key FORMAT the fiscalization HTTP controller already uses for
@@ -454,8 +654,20 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
         maxAttempts: AUTO_ISSUE_RETRY_BUDGET,
         runAfter: new Date(),
       });
+      return { kind: 'none' };
     } catch (error) {
       this.logIssuanceFailure(error, connection.id, order.id, sourceEventId);
+      if (error instanceof BatchedTriggerNotImplementedError) {
+        return await this.reportBlock(
+          { reason: BLOCK_REASON_BY_TRIGGER_MODEL.batched },
+          order.id,
+        );
+      }
+      // Same reasoning as dispatchInvoice's catch: InvalidFiscalLineError /
+      // UnsupportedFiscalPriceTreatmentError are deterministic and will throw
+      // identically on every future transition, so clearing on them would
+      // erase a true reason and replace it with nothing at all.
+      return { kind: 'indeterminate' };
     }
   }
 
@@ -540,25 +752,32 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
 
   /**
    * Decide whether the trigger model qualifies for THIS transition
-   * (level-evaluated, D3): `auto-on-paid` iff paid; `auto-on-shipped` iff
-   * `order.status === 'shipped'`; `manual` → false; `batched` → throws
-   * `BatchedTriggerNotImplementedError`. For `auto-on-shipped` on a non-shipped
-   * order it emits the F7/D6 one-time viability warning (keyed by `connectionId`)
-   * so a source that never surfaces `'shipped'` is operator-diagnosable.
+   * (level-evaluated, D3), separating "not yet" from "not without a human"
+   * (#2100): `auto-on-paid` / `auto-on-shipped` `proceed` when their condition
+   * holds and `waiting` otherwise; `manual` is `blocked`; `batched` throws
+   * `BatchedTriggerNotImplementedError`, which the caller's PII-safe catch maps to
+   * a `trigger-model-batched` block. For `auto-on-shipped` on a non-shipped order
+   * it emits the F7/D6 one-time viability warning (keyed by `connectionId`) so a
+   * source that never surfaces `'shipped'` is operator-diagnosable. Reused
+   * verbatim for BOTH document kinds (#2156) — the trigger-model vocabulary is
+   * document-kind-agnostic.
    */
-  private qualifies(
+  private evaluateGate(
     order: Order,
     triggerModel: InvoiceTriggerModel,
     connectionId: string,
-  ): boolean {
+  ): TriggerGateOutcome {
     switch (triggerModel) {
       case 'auto-on-paid':
-        // D3 level-evaluated: qualifies iff the order is currently paid.
-        return order.paymentStatus === PAYMENT_STATUS.Paid;
+        // D3 level-evaluated: qualifies iff the order is currently paid. An unpaid
+        // order is `waiting`, never `blocked` — the next transition re-evaluates it.
+        return order.paymentStatus === PAYMENT_STATUS.Paid
+          ? { kind: 'proceed' }
+          : { kind: 'waiting' };
       case 'auto-on-shipped':
         // D6: honored only where the source surfaces 'shipped' inbound.
         if (order.status === 'shipped') {
-          return true;
+          return { kind: 'proceed' };
         }
         // F7: a non-`shipped` order on an `auto-on-shipped` connection is the
         // signal that the source may never emit `'shipped'`. Warn ONCE per
@@ -571,11 +790,22 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
               `If the source never surfaces 'shipped' inbound, this connection will never auto-issue (D6).`,
           );
         }
-        return false;
+        // `waiting`, not `blocked`, even though the F7 warning above suspects the
+        // source may never emit 'shipped': from THIS order's point of view the
+        // condition is simply unmet, and the misconfiguration it hints at is a
+        // connection-level fact the one-time warning already carries.
+        return { kind: 'waiting' };
       case 'manual':
-        return false;
+        // A deliberate operator setting, not a fault — but still a block: no
+        // invoice will ever be issued for this order without a human acting.
+        // ADR-041 lists it in `SalesDocumentGateBlockReasonValues`, so the fact is
+        // recorded; rendering keeps it quiet (neutral tone, alongside the
+        // "Issue invoice" affordance rather than in place of it).
+        return { kind: 'blocked', reason: BLOCK_REASON_BY_TRIGGER_MODEL.manual };
       case 'batched':
         // Deferred to a future issue — rejected cleanly, never silently ignored.
+        // Still thrown rather than returned so the existing PII-safe catch keeps
+        // logging it; the catch maps it to `trigger-model-batched`.
         throw new BatchedTriggerNotImplementedError(
           `Batched trigger model is not implemented (order ${order.id})`,
         );

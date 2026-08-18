@@ -24,6 +24,7 @@ import type {
   PaginatedOrderRecords,
 } from '../../domain/types/order-record.types';
 import type { FulfillmentRollupState } from '../../domain/types/order-fulfillment.types';
+import type { SalesDocumentBlock } from '@openlinker/core/sales-documents';
 import { getPiiConfig } from '@openlinker/shared/config';
 import { ORDER_RECORD_REPOSITORY_TOKEN } from '../../orders.tokens';
 
@@ -122,7 +123,11 @@ export class OrderRecordService implements IOrderRecordService {
       updatedAt: order.updatedAt.toISOString(),
     };
 
-    // Initial sync status: pending for all destinations (will be updated as sync progresses)
+    // Empty: no source payload carries destination sync state, and
+    // `updateSyncStatus` is the sole writer of both `syncStatus` and
+    // `syncAttempts`. The upsert excludes those columns (#2140), so this empty
+    // array never reaches the row - passing one here is the ingestion path
+    // declining to have an opinion, not an instruction to clear.
     const syncStatus: OrderSyncStatus[] = [];
 
     // `fulfillmentState` is intentionally left at its constructor default:
@@ -372,6 +377,20 @@ export class OrderRecordService implements IOrderRecordService {
    */
   async markCancelled(internalOrderId: string, cancelledAt: Date): Promise<void> {
     await this.repository.markCancelled(internalOrderId, cancelledAt);
+  }
+
+  /**
+   * Record or clear the sales-document block (#2100). Thin pass-through to the
+   * repository's narrow absolute-set — see
+   * {@link OrderRecordRepositoryPort.updateSalesDocumentBlock}. `null` clears,
+   * and is the ordinary path: the auto-issue gate is level-evaluated, so this is
+   * called on every transition with the current answer.
+   */
+  async markSalesDocumentBlock(
+    internalOrderId: string,
+    block: SalesDocumentBlock | null
+  ): Promise<void> {
+    await this.repository.updateSalesDocumentBlock(internalOrderId, block);
   }
 
   /**
