@@ -310,11 +310,6 @@ export const editConnectionSchema = z
     inpostSenderAddress: inpostSenderAddressSchema.optional(),
     // Per-connection outbound rate limit (#1810) — platform-neutral, every connection.
     rateLimit: rateLimitFormSchema.optional(),
-    // #2047 — primary invoicing connection → NESTED `config.invoicing.isPrimary`.
-    // Capability-gated (any connection with `Invoicing` enabled), never gated on
-    // platformType: KSeF / inFakt / Subiekt are alternative routes for one
-    // document, so the flag belongs to the capability, not to a provider.
-    invoicingIsPrimary: z.boolean().optional(),
   });
 
 /**
@@ -464,19 +459,6 @@ export type StructuredConfigPatch = {
    * key (#2016) — see `mergeStructuredIntoConfig`'s rateLimit clause for why.
    */
   rateLimit?: RateLimitFormValues | null;
-  /**
-   * Primary invoicing connection → NESTED `config.invoicing.isPrimary` (#2047).
-   * Capability-neutral like `rateLimit`: it is rendered for any connection with
-   * the `Invoicing` capability enabled rather than for a named platform.
-   *
-   * `true` writes the flag; `false` DELETES it (and drops an emptied `invoicing`
-   * object), because the backend's `parseIsPrimaryInvoicing` reads absence and
-   * an explicit `false` identically — persisting `false` would only leave a
-   * meaningless key behind, and "not primary" is the absence of a claim. Sibling
-   * `invoicing` keys (`triggerModel`, `shippingLineName`) are preserved, exactly
-   * as the `subiektTriggerModel` clause preserves its siblings.
-   */
-  invoicingIsPrimary?: boolean;
 };
 
 /**
@@ -627,27 +609,6 @@ export function mergeStructuredIntoConfig(
       delete invoicing.triggerModel;
     } else {
       invoicing.triggerModel = structured.subiektTriggerModel;
-    }
-    if (Object.keys(invoicing).length === 0) {
-      delete next.invoicing;
-    } else {
-      next.invoicing = invoicing;
-    }
-  }
-  // #2047 — primary invoicing connection: NESTED under `config.invoicing`,
-  // same shape as the trigger-model clause above (preserve siblings, drop an
-  // emptied `invoicing` object). `false` deletes rather than persists: the BE
-  // reader treats absence and explicit `false` identically, so writing `false`
-  // would store a key that means nothing.
-  if (structured.invoicingIsPrimary !== undefined) {
-    const invoicing: Record<string, unknown> =
-      typeof next.invoicing === 'object' && next.invoicing !== null
-        ? { ...(next.invoicing as Record<string, unknown>) }
-        : {};
-    if (structured.invoicingIsPrimary) {
-      invoicing.isPrimary = true;
-    } else {
-      delete invoicing.isPrimary;
     }
     if (Object.keys(invoicing).length === 0) {
       delete next.invoicing;

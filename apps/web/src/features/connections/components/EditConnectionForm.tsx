@@ -15,7 +15,7 @@ import {
   type RateLimitFormValues,
 } from './edit-connection.schema';
 import { RateLimitSection } from './rate-limit-section';
-import { InvoicingPrimarySection } from './invoicing-primary-section';
+import { SalesDocumentStatusSection } from './sales-document-status-section';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import { FormErrorSummary } from '../../../shared/ui/form-error-summary';
@@ -116,21 +116,6 @@ function readTriggerModel(
  * (#1810). Each knob is independently optional; missing/non-number values
  * read as `''` (unset), same shape as `defaultCarrierId`/`unmanagedStockQuantity`.
  */
-/**
- * Read the primary-invoicing flag out of NESTED `config.invoicing.isPrimary`
- * (#2047). Mirrors the backend's `parseIsPrimaryInvoicing` coercion exactly —
- * only a real `true` (or the string `'true'`, how a hand-edited JSON config
- * arrives) counts, everything else is `false`. Clone of `readTriggerModel`.
- */
-function readIsPrimaryInvoicing(config: Record<string, unknown>): boolean {
-  const invoicing =
-    typeof config.invoicing === 'object' && config.invoicing !== null
-      ? (config.invoicing as Record<string, unknown>)
-      : {};
-  const raw = invoicing.isPrimary;
-  return raw === true || raw === 'true';
-}
-
 function readRateLimit(config: Record<string, unknown>): RateLimitFormValues {
   const rateLimit =
     typeof config.rateLimit === 'object' && config.rateLimit !== null
@@ -409,8 +394,6 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
       infaktEnvironment: readInfaktEnvironment(connection.config),
       // Per-connection outbound rate limit (#1810) — platform-neutral.
       rateLimit: readRateLimit(connection.config),
-      // Primary invoicing connection (#2047) — capability-gated, platform-neutral.
-      invoicingIsPrimary: readIsPrimaryInvoicing(connection.config),
       // Plugin-owned structured fields (#1330) — the platform's contribution
       // hydrates its own field slice (e.g. KSeF seller/payment) so an
       // unrelated save doesn't blank the persisted platform config.
@@ -452,17 +435,6 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
     [productMasterConnections, connection.id],
   );
   const localAutoSelectId = candidates.length === 1 ? candidates[0].id : undefined;
-
-  // #2047 — how many connections compete for the primary-invoicing role. Drives
-  // the section's copy only: with a single candidate the flag is inert, and
-  // saying so keeps an operator from believing they must set it.
-  const invoicingConnectionCount = useMemo(
-    () =>
-      (connectionsQuery.data ?? []).filter(
-        (c) => c.status === 'active' && c.enabledCapabilities.includes('Invoicing'),
-      ).length,
-    [connectionsQuery.data],
-  );
 
   const masterCatalogValue = form.watch('masterCatalogConnectionId') ?? '';
   const storedMasterRaw = connection.config.masterCatalogConnectionId;
@@ -582,19 +554,6 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
     if (!configIsParseable) return;
     const parsed = JSON.parse(form.getValues('configText')) as Record<string, unknown>;
     const merged = mergeStructuredIntoConfig(parsed, { rateLimit: form.getValues('rateLimit') });
-    form.setValue('configText', JSON.stringify(merged, null, 2), { shouldDirty: true });
-  }
-
-  // #2047 — re-serialize `config.invoicing.isPrimary` into configText. Clone of
-  // `syncRateLimitToJson`: reads CURRENT form state, takes NO argument, and
-  // KEEPS the `!configIsParseable` early-return. The section MUST
-  // setValue('invoicingIsPrimary', …) BEFORE calling this.
-  function syncInvoicingPrimaryToJson(): void {
-    if (!configIsParseable) return;
-    const parsed = JSON.parse(form.getValues('configText')) as Record<string, unknown>;
-    const merged = mergeStructuredIntoConfig(parsed, {
-      invoicingIsPrimary: form.getValues('invoicingIsPrimary') ?? false,
-    });
     form.setValue('configText', JSON.stringify(merged, null, 2), { shouldDirty: true });
   }
 
@@ -752,16 +711,15 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
         />
       ) : null}
 
-      {/* #2047 — capability-gated, not platform-gated: any connection that can
-          issue invoices needs to be able to claim (or release) the primary role,
-          because the rule is about which of them auto-issues, not about who the
-          provider is. */}
-      {connection.enabledCapabilities.includes('Invoicing') ? (
-        <InvoicingPrimarySection
-          form={form}
-          configIsParseable={configIsParseable}
-          syncInvoicingPrimaryToJson={syncInvoicingPrimaryToJson}
-          invoicingConnectionCount={invoicingConnectionCount}
+      {/* #2159 — capability-gated, not platform-gated: any connection that can
+          issue a sales document (invoice OR fiscal receipt) shows its routing
+          status here, read-only. Editing lives ONLY at Settings → Sales
+          documents — see `SalesDocumentStatusSection`'s doc comment for why. */}
+      {connection.enabledCapabilities.includes('Invoicing') ||
+      connection.enabledCapabilities.includes('Fiscalization') ? (
+        <SalesDocumentStatusSection
+          connection={connection}
+          allConnections={connectionsQuery.data ?? []}
         />
       ) : null}
 

@@ -2795,6 +2795,14 @@ a.delivery-rider-banner__button:focus-visible {
   gap: 2px;
 }
 
+/* ── Data table radio cell (#2159) ── */
+.data-table__radio {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  cursor: pointer;
+}
+
 .data-table__action {
   color: var(--accent-primary);
   font-weight: 500;
