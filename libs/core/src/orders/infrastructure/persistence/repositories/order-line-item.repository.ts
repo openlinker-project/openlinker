@@ -11,12 +11,18 @@
  */
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import type { SelectQueryBuilder } from 'typeorm';
 import { Repository } from 'typeorm';
 import { OrderLineItemOrmEntity } from '../entities/order-line-item.orm-entity';
 import { OrderRecordOrmEntity } from '../entities/order-record.orm-entity';
 import type { OrderLineItemRepositoryPort } from '../../../domain/ports/order-line-item-repository.port';
 import { OrderLineItem } from '../../../domain/entities/order-line-item.entity';
 import type { SalesAnalyticsFilters } from '../../../domain/types/order-sales-analytics.types';
+import type {
+  ProductChannelBreakdownRow,
+  ProductRankingRow,
+  TopProductFilters,
+} from '../../../domain/types/top-products.types';
 
 @Injectable()
 export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
@@ -59,6 +65,156 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
 
     const rows = await qb.getRawMany<{ source_connection_id: string; units: string }>();
     return new Map(rows.map((row) => [row.source_connection_id, Number(row.units)]));
+  }
+
+  /**
+   * Products ranked by revenue or units, paged (#1988). Per-line reporting-
+   * currency revenue is derived from the parent order's own implicit FX
+   * multiplier (`reportingTotalAmount / totalAmount`, both already on the
+   * joined `order_records` row) rather than a second join into the currency
+   * context — see the #1988 implementation plan § 4 for why this is exact,
+   * not an approximation. Runs the page query and the total-count query in
+   * parallel; the count query shares the same scope but no grouping/paging.
+   */
+  async getTopProductRanking(
+    filters: TopProductFilters
+  ): Promise<{ rows: ProductRankingRow[]; total: number }> {
+    const rankingQb = this.repository
+      .createQueryBuilder('li')
+      .innerJoin(OrderRecordOrmEntity, 'rec', 'rec."internalOrderId" = li."orderRecordId"')
+      .select('li.productId', 'product_id')
+      .addSelect('COALESCE(SUM(li."quantity"), 0)', 'units')
+      .addSelect(
+        `COALESCE(SUM(li."unitPrice" * li."quantity" * (rec."reportingTotalAmount" / NULLIF(rec."totalAmount", 0))) FILTER (WHERE rec."reportingCurrency" IS NOT NULL), 0)`,
+        'revenue'
+      )
+      .addSelect(
+        `COALESCE(SUM(li."unitPrice" * li."quantity") FILTER (WHERE rec."reportingCurrency" IS NULL), 0)`,
+        'unconverted_revenue'
+      )
+      .addSelect(
+        `COUNT(DISTINCT li."orderRecordId") FILTER (WHERE rec."reportingCurrency" IS NULL)`,
+        'unconverted_order_count'
+      )
+      .addSelect(
+        `(array_agg(rec."reportingCurrency") FILTER (WHERE rec."reportingCurrency" IS NOT NULL))[1]`,
+        'reporting_currency'
+      )
+      .groupBy('li.productId')
+      .orderBy(filters.sortBy === 'units' ? 'units' : 'revenue', 'DESC')
+      .limit(filters.limit)
+      .offset(filters.offset);
+    this.applyTopProductsScope(rankingQb, filters);
+
+    const totalQb = this.repository
+      .createQueryBuilder('li')
+      .innerJoin(OrderRecordOrmEntity, 'rec', 'rec."internalOrderId" = li."orderRecordId"')
+      .select('COUNT(DISTINCT li."productId")', 'total');
+    this.applyTopProductsScope(totalQb, filters);
+
+    const [rankingRows, totalRow] = await Promise.all([
+      rankingQb.getRawMany<{
+        product_id: string;
+        units: string;
+        revenue: string;
+        unconverted_revenue: string;
+        unconverted_order_count: string;
+        reporting_currency: string | null;
+      }>(),
+      totalQb.getRawOne<{ total: string }>(),
+    ]);
+
+    return {
+      rows: rankingRows.map((row) => ({
+        productId: row.product_id,
+        units: Number(row.units),
+        revenue: Number(row.revenue),
+        unconvertedRevenue: Number(row.unconverted_revenue),
+        unconvertedOrderCount: Number(row.unconverted_order_count),
+        currency: row.reporting_currency,
+      })),
+      total: Number(totalRow?.total ?? 0),
+    };
+  }
+
+  /**
+   * Per-(product, connection) breakdown for an explicit, already-paged set of
+   * product ids (#1988) — callers MUST bound `productIds` to the current
+   * page; this method does not itself limit or rank.
+   */
+  async getProductChannelBreakdown(
+    productIds: string[],
+    filters: SalesAnalyticsFilters
+  ): Promise<ProductChannelBreakdownRow[]> {
+    if (productIds.length === 0) {
+      return [];
+    }
+
+    const qb = this.repository
+      .createQueryBuilder('li')
+      .innerJoin(OrderRecordOrmEntity, 'rec', 'rec."internalOrderId" = li."orderRecordId"')
+      .select('li.productId', 'product_id')
+      .addSelect('li.sourceConnectionId', 'source_connection_id')
+      .addSelect('COALESCE(SUM(li."quantity"), 0)', 'units')
+      .addSelect(
+        `COALESCE(SUM(li."unitPrice" * li."quantity" * (rec."reportingTotalAmount" / NULLIF(rec."totalAmount", 0))) FILTER (WHERE rec."reportingCurrency" IS NOT NULL), 0)`,
+        'revenue'
+      )
+      .addSelect(
+        `COALESCE(SUM(li."unitPrice" * li."quantity") FILTER (WHERE rec."reportingCurrency" IS NULL), 0)`,
+        'unconverted_revenue'
+      )
+      .addSelect(
+        `(array_agg(rec."reportingCurrency") FILTER (WHERE rec."reportingCurrency" IS NOT NULL))[1]`,
+        'reporting_currency'
+      )
+      .andWhere('li."productId" IN (:...productIds)', { productIds })
+      .groupBy('li.productId')
+      .addGroupBy('li.sourceConnectionId');
+    this.applyTopProductsScope(qb, filters);
+
+    const rows = await qb.getRawMany<{
+      product_id: string;
+      source_connection_id: string;
+      units: string;
+      revenue: string;
+      unconverted_revenue: string;
+      reporting_currency: string | null;
+    }>();
+
+    return rows.map((row) => ({
+      productId: row.product_id,
+      sourceConnectionId: row.source_connection_id,
+      units: Number(row.units),
+      revenue: Number(row.revenue),
+      unconvertedRevenue: Number(row.unconverted_revenue),
+      currency: row.reporting_currency,
+    }));
+  }
+
+  /**
+   * Shared scope for the #1988 top-products reads: only `'ready'` records
+   * (via the join), not cancelled, within `[filters.from, filters.to)` on
+   * `li."placedAt"`, optionally narrowed to one connection — mirrors {@link
+   * getUnitsSoldByConnection}'s inline predicates and
+   * `OrderRecordRepository.applySalesAnalyticsScope`'s semantics, kept
+   * byte-for-byte aligned so the two endpoints can never silently diverge on
+   * what counts as "an order in scope".
+   */
+  private applyTopProductsScope(
+    qb: SelectQueryBuilder<OrderLineItemOrmEntity>,
+    filters: SalesAnalyticsFilters
+  ): void {
+    qb.andWhere(`rec."recordStatus" = 'ready'`)
+      .andWhere('rec."cancelledAt" IS NULL')
+      .andWhere('li."placedAt" >= :salesFrom', { salesFrom: filters.from })
+      .andWhere('li."placedAt" < :salesTo', { salesTo: filters.to });
+
+    if (filters.sourceConnectionId) {
+      qb.andWhere('li.sourceConnectionId = :salesConnectionId', {
+        salesConnectionId: filters.sourceConnectionId,
+      });
+    }
   }
 
   private toDomain(entity: OrderLineItemOrmEntity): OrderLineItem {

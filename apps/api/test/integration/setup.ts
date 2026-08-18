@@ -64,6 +64,13 @@ const harness = createIntegrationTestHarness({
     'sync_jobs',
     'inventory_items',
     'order_records',
+    // order_line_items (#1985) — the analytics read-model child table. No
+    // ORM/migration FK to order_records (internal ids are plain indexed TEXT
+    // columns, not a DB-enforced FK, per the entity's own doc comment), so
+    // truncating order_records does NOT cascade here; truncate explicitly or
+    // a top-products/sales-analytics case (#1987/#1988) leaks rows into the
+    // next test file's date range.
+    'order_line_items',
     // offer_status_snapshots (#816) — connection-scoped marketplace publication
     // status. No ORM/migration FK to connections, so nothing cascades; truncate
     // explicitly so the Erli offers-status reconciliation case (#991) starts clean.

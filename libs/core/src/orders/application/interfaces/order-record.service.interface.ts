@@ -24,6 +24,7 @@ import type {
   SalesAnalyticsFilters,
   SalesAndChannelAnalytics,
 } from '../../domain/types/order-sales-analytics.types';
+import type { TopProductFilters, TopProductsResult } from '../../domain/types/top-products.types';
 
 export interface IOrderRecordService {
   /**
@@ -215,4 +216,16 @@ export interface IOrderRecordService {
    * #2049/ADR-040 and a separate tax-normalization effort.
    */
   getSalesAndChannelAnalytics(filters: SalesAnalyticsFilters): Promise<SalesAndChannelAnalytics>;
+
+  /**
+   * Products ranked by revenue or units for a date range, each carrying its
+   * own inline per-channel breakdown (#1988) — the read behind
+   * `/analytics/top-products`. Same currency-correctness rule as {@link
+   * getSalesAndChannelAnalytics}: a product's ranked `revenue` sums only
+   * FX-stamped orders; unstamped orders' contribution is surfaced separately
+   * via `unconvertedRevenue`/`unconvertedOrderCount`, never silently summed
+   * in or dropped. Product-level grouping only — variant-level ranking is a
+   * separate, not-yet-scoped read (spec row C3).
+   */
+  getTopProducts(filters: TopProductFilters): Promise<TopProductsResult>;
 }

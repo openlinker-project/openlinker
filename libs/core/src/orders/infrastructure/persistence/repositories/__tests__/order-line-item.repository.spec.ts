@@ -149,4 +149,158 @@ describe('OrderLineItemRepository', () => {
       });
     });
   });
+
+  describe('getTopProductRanking (#1988)', () => {
+    const baseFilters = {
+      from: new Date('2026-08-01T00:00:00.000Z'),
+      to: new Date('2026-08-08T00:00:00.000Z'),
+      sortBy: 'revenue' as const,
+      limit: 20,
+      offset: 0,
+    };
+
+    const makeRankingQb = (rows: unknown[]) => ({
+      innerJoin: jest.fn().mockReturnThis(),
+      select: jest.fn().mockReturnThis(),
+      addSelect: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      groupBy: jest.fn().mockReturnThis(),
+      orderBy: jest.fn().mockReturnThis(),
+      limit: jest.fn().mockReturnThis(),
+      offset: jest.fn().mockReturnThis(),
+      getRawMany: jest.fn().mockResolvedValue(rows),
+    });
+
+    const makeTotalQb = (total: string) => ({
+      innerJoin: jest.fn().mockReturnThis(),
+      select: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      getRawOne: jest.fn().mockResolvedValue({ total }),
+    });
+
+    it('returns an empty page and zero total when nothing matches', async () => {
+      const rankingQb = makeRankingQb([]);
+      const totalQb = makeTotalQb('0');
+      (ormRepository.createQueryBuilder as jest.Mock)
+        .mockReturnValueOnce(rankingQb)
+        .mockReturnValueOnce(totalQb);
+
+      const result = await repository.getTopProductRanking(baseFilters);
+
+      expect(result).toEqual({ rows: [], total: 0 });
+    });
+
+    it('maps ranked rows and the total count, coercing numeric strings', async () => {
+      const rankingQb = makeRankingQb([
+        {
+          product_id: 'p1',
+          units: '10',
+          revenue: '123.45',
+          unconverted_revenue: '5',
+          unconverted_order_count: '1',
+          reporting_currency: 'EUR',
+        },
+      ]);
+      const totalQb = makeTotalQb('7');
+      (ormRepository.createQueryBuilder as jest.Mock)
+        .mockReturnValueOnce(rankingQb)
+        .mockReturnValueOnce(totalQb);
+
+      const result = await repository.getTopProductRanking(baseFilters);
+
+      expect(result).toEqual({
+        rows: [
+          {
+            productId: 'p1',
+            units: 10,
+            revenue: 123.45,
+            unconvertedRevenue: 5,
+            unconvertedOrderCount: 1,
+            currency: 'EUR',
+          },
+        ],
+        total: 7,
+      });
+    });
+
+    it('orders by units when sortBy is units, revenue when sortBy is revenue', async () => {
+      const rankingQbUnits = makeRankingQb([]);
+      (ormRepository.createQueryBuilder as jest.Mock)
+        .mockReturnValueOnce(rankingQbUnits)
+        .mockReturnValueOnce(makeTotalQb('0'));
+      await repository.getTopProductRanking({ ...baseFilters, sortBy: 'units' });
+      expect(rankingQbUnits.orderBy).toHaveBeenCalledWith('units', 'DESC');
+
+      const rankingQbRevenue = makeRankingQb([]);
+      (ormRepository.createQueryBuilder as jest.Mock)
+        .mockReturnValueOnce(rankingQbRevenue)
+        .mockReturnValueOnce(makeTotalQb('0'));
+      await repository.getTopProductRanking({ ...baseFilters, sortBy: 'revenue' });
+      expect(rankingQbRevenue.orderBy).toHaveBeenCalledWith('revenue', 'DESC');
+    });
+
+    it('applies limit/offset for pagination', async () => {
+      const rankingQb = makeRankingQb([]);
+      (ormRepository.createQueryBuilder as jest.Mock)
+        .mockReturnValueOnce(rankingQb)
+        .mockReturnValueOnce(makeTotalQb('0'));
+
+      await repository.getTopProductRanking({ ...baseFilters, limit: 5, offset: 10 });
+
+      expect(rankingQb.limit).toHaveBeenCalledWith(5);
+      expect(rankingQb.offset).toHaveBeenCalledWith(10);
+    });
+  });
+
+  describe('getProductChannelBreakdown (#1988)', () => {
+    const baseFilters = {
+      from: new Date('2026-08-01T00:00:00.000Z'),
+      to: new Date('2026-08-08T00:00:00.000Z'),
+    };
+
+    it('returns [] without a DB round-trip when productIds is empty', async () => {
+      const result = await repository.getProductChannelBreakdown([], baseFilters);
+
+      expect(result).toEqual([]);
+      expect(ormRepository.createQueryBuilder).not.toHaveBeenCalled();
+    });
+
+    it('filters by the given productIds and returns one row per (product, connection)', async () => {
+      const andWhere = jest.fn().mockReturnThis();
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        innerJoin: jest.fn().mockReturnThis(),
+        select: jest.fn().mockReturnThis(),
+        addSelect: jest.fn().mockReturnThis(),
+        andWhere,
+        groupBy: jest.fn().mockReturnThis(),
+        addGroupBy: jest.fn().mockReturnThis(),
+        getRawMany: jest.fn().mockResolvedValue([
+          {
+            product_id: 'p1',
+            source_connection_id: 'conn-a',
+            units: '4',
+            revenue: '40',
+            unconverted_revenue: '0',
+            reporting_currency: 'EUR',
+          },
+        ]),
+      });
+
+      const result = await repository.getProductChannelBreakdown(['p1'], baseFilters);
+
+      expect(andWhere).toHaveBeenCalledWith('li."productId" IN (:...productIds)', {
+        productIds: ['p1'],
+      });
+      expect(result).toEqual([
+        {
+          productId: 'p1',
+          sourceConnectionId: 'conn-a',
+          units: 4,
+          revenue: 40,
+          unconvertedRevenue: 0,
+          currency: 'EUR',
+        },
+      ]);
+    });
+  });
 });
