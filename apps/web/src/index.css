@@ -17638,3 +17638,114 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
     gap: var(--space-2);
   }
 }
+
+/* ── Analytics date-range toolbar (#1986) ──
+   Mirrors .orders-toolbar__field / __label (line ~9097) — same inline
+   mono-caps label + native date input shape, wrap allowed on narrow
+   viewports so fields land on their own line instead of overflowing. */
+.analytics-toolbar .toolbar__group {
+  flex-wrap: wrap;
+}
+.analytics-toolbar__field {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.analytics-toolbar__label {
+  font-size: 0.6875rem;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+/* The † gap marker on the "Order date" chip — keyboard-focusable Tooltip
+   trigger, not a bare `title`, so it's reachable without a mouse. */
+.analytics-gap-mark {
+  color: var(--accent-primary-hover);
+  font-weight: 700;
+  font-family: var(--font-mono);
+  cursor: help;
+  border-radius: var(--radius-xs);
+}
+
+.analytics-gap-mark:focus-visible {
+  box-shadow: var(--shadow-focus);
+}
+
+/* ── Analytics trust header (#1986) ──
+   Opens on click, never hover-only — Radix Tooltip ignores
+   `pointerType === 'touch'`, which would make a hover-only affordance
+   unreachable on mobile. */
+.analytics-info-popover-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: var(--radius-pill);
+}
+
+.analytics-info-popover-trigger:hover {
+  color: var(--accent-primary);
+}
+
+.analytics-info-popover-trigger:focus-visible {
+  box-shadow: var(--shadow-focus);
+}
+
+.trust-header {
+  display: flex;
+  flex-direction: column;
+}
+
+.trust-header__row {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr 1fr;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.trust-header__title-group {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.trust-header__row:first-child {
+  border-top: 0;
+}
+
+.trust-header__name {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-weight: 600;
+  font-size: 0.8125rem;
+}
+
+.trust-header__fact-label {
+  display: block;
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+}
+
+.trust-header__fact-value {
+  font-size: 0.8125rem;
+}
+
+@media (max-width: 767.98px) {
+  .trust-header__row {
+    grid-template-columns: 1fr;
+    row-gap: var(--space-1);
+  }
+}
