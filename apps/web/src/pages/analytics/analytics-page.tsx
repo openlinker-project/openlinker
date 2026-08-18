@@ -8,14 +8,17 @@
  *
  * @module apps/web/src/pages/analytics
  */
-import { useEffect, useRef, type ReactElement } from 'react';
+import { useEffect, useMemo, useRef, type ReactElement } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
   AnalyticsDateRangeToolbar,
   AnalyticsDegradationBanner,
+  AnalyticsKpiStrip,
   AnalyticsTrustHeader,
+  ChannelSalesTable,
   computePresetRange,
   useAnalyticsTrustQuery,
+  type SalesAnalyticsFilters,
 } from '../../features/analytics';
 import { Button, EmptyState, ErrorState, LoadingState } from '../../shared/ui';
 
@@ -48,6 +51,12 @@ export function AnalyticsPage(): ReactElement {
   }
 
   const trustQuery = useAnalyticsTrustQuery();
+
+  // Built once per from/to so `AnalyticsKpiStrip` and `ChannelSalesTable`
+  // share a byte-identical query key and therefore one network request —
+  // and so a channel-table failure can never blank the KPI strip: they
+  // render independently even though they fetch from the same cache entry.
+  const salesFilters: SalesAnalyticsFilters = useMemo(() => ({ from, to }), [from, to]);
 
   return (
     <section className="page-section">
@@ -99,7 +108,12 @@ export function AnalyticsPage(): ReactElement {
                 </Link>
               }
             />
-          ) : null}
+          ) : (
+            <>
+              <AnalyticsKpiStrip filters={salesFilters} />
+              <ChannelSalesTable filters={salesFilters} />
+            </>
+          )}
         </>
       ) : null}
     </section>

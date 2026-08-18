@@ -111,6 +111,25 @@ export function createMockApiClient(
       setActive: vi.fn().mockResolvedValue(undefined),
       ...overrides.aiProviderSettings,
     } as ApiClient['aiProviderSettings'],
+    analytics: {
+      getSales: vi.fn().mockResolvedValue({
+        headline: {
+          revenue: 0,
+          reportingCurrency: 'PLN',
+          orderCount: 0,
+          stampedOrderCount: 0,
+          averageOrderValue: 0,
+          medianOrderValue: 0,
+          unitsSold: 0,
+          cancelledCount: 0,
+          cancelledValue: 0,
+          taxTreatmentMixed: false,
+          trend: [],
+        },
+        channels: [],
+      }),
+      ...overrides.analytics,
+    } as ApiClient['analytics'],
     analyticsTrust: {
       getTrust: vi.fn().mockResolvedValue({
         generatedAt: '2026-01-01T00:00:00.000Z',
