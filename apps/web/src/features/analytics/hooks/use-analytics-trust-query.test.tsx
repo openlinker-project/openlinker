@@ -35,6 +35,7 @@ const mockSnapshot: AnalyticsTrustSnapshot = {
       lastPollAt: '2026-08-14T14:32:00.000Z',
       lastOrderIngestedAt: '2026-08-14T12:00:00.000Z',
       connectionCreatedAt: '2026-01-01T00:00:00.000Z',
+      earliestOrderDate: '2026-01-05T00:00:00.000Z',
       expectedIntervalMs: 300000,
       staleAfterMs: 900000,
     },

@@ -25,6 +25,7 @@ export interface ConnectionIngestionTrust {
   lastPollAt: string | null;
   lastOrderIngestedAt: string | null;
   connectionCreatedAt: string;
+  earliestOrderDate: string | null;
   expectedIntervalMs: number | null;
   staleAfterMs: number | null;
 }

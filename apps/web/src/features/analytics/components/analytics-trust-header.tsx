@@ -1,10 +1,12 @@
 /**
  * Analytics Trust Header
  *
- * Per-connection data-coverage disclosure: freshness, "connected since",
- * and ingestion state. Ships without a "data from" coverage-window row —
- * see Decision 3 in docs/plans/implementation-plan-analytics-page-shell.md
- * (the backend has no real earliest-order-date field yet; tracked as #2083).
+ * Per-connection data-coverage disclosure: freshness, "data from" coverage
+ * window, and ingestion state. #2083 (real per-connection earliestOrderDate)
+ * has since landed — see Decision 3 in
+ * docs/plans/implementation-plan-analytics-page-shell.md for the coverage
+ * row's history; this renders the real MIN(placedAt)-derived fact rather
+ * than the connectionCreatedAt approximation that row shipped with.
  *
  * @module apps/web/src/features/analytics/components
  */
@@ -60,9 +62,9 @@ export function AnalyticsTrustHeader({ connections }: AnalyticsTrustHeaderProps)
             </PopoverTrigger>
             <PopoverContent>
               &ldquo;Last polled&rdquo; is when each channel&rsquo;s ingestion pipe last succeeded —
-              it is not proof that new order data has arrived. &ldquo;Connected since&rdquo; is when
-              the connection was configured in OpenLinker, not a claim about how far back its order
-              history goes.
+              it is not proof that new order data has arrived. &ldquo;Data from&rdquo; is the
+              earliest order OpenLinker has ingested for this connection, so a recently-connected
+              channel isn&rsquo;t misread as underperforming.
             </PopoverContent>
           </Popover>
         </div>
@@ -87,9 +89,13 @@ export function AnalyticsTrustHeader({ connections }: AnalyticsTrustHeaderProps)
               </span>
             </span>
             <span>
-              <span className="trust-header__fact-label">Connected since</span>
+              <span className="trust-header__fact-label">Data from</span>
               <span className="trust-header__fact-value">
-                <TimeDisplay iso={entry.connectionCreatedAt} format="date" />
+                {entry.earliestOrderDate ? (
+                  <TimeDisplay iso={entry.earliestOrderDate} format="date" />
+                ) : (
+                  'No orders yet'
+                )}
               </span>
             </span>
           </div>

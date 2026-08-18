@@ -14,6 +14,7 @@ function makeEntry(overrides: Partial<ConnectionIngestionTrust> = {}): Connectio
     lastPollAt: '2026-08-14T14:32:00.000Z',
     lastOrderIngestedAt: null,
     connectionCreatedAt: '2026-01-01T00:00:00.000Z',
+    earliestOrderDate: '2026-01-05T00:00:00.000Z',
     expectedIntervalMs: null,
     staleAfterMs: null,
     ...overrides,
@@ -69,9 +70,15 @@ describe('AnalyticsTrustHeader', () => {
     const user = userEvent.setup();
     render(<AnalyticsTrustHeader connections={[makeEntry()]} />);
 
-    expect(screen.queryByText(/Connected since/i, { selector: 'span.trust-header__fact-label' })).toBeInTheDocument();
+    expect(screen.queryByText(/Data from/i, { selector: 'span.trust-header__fact-label' })).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'About these dates' }));
 
-    expect(screen.getByText(/not a claim about how/i)).toBeInTheDocument();
+    expect(screen.getByText(/earliest order OpenLinker has ingested/i)).toBeInTheDocument();
+  });
+
+  it('should render "No orders yet" when a connection has no earliestOrderDate', () => {
+    render(<AnalyticsTrustHeader connections={[makeEntry({ earliestOrderDate: null })]} />);
+
+    expect(screen.getByText('No orders yet')).toBeInTheDocument();
   });
 });
