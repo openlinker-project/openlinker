@@ -113,6 +113,7 @@ export type { RegulatoryStatusReconcilePayloadV1 } from './domain/types/invoicin
 export type { OfflineResubmitPayloadV1 } from './domain/types/invoicing-job-payloads.types';
 export type { PendingRecoverySweepPayloadV1 } from './domain/types/invoicing-job-payloads.types';
 export type { PaymentStatusRefreshByExternalIdPayloadV1 } from './domain/types/invoicing-job-payloads.types';
+export type { FiscalizationRegisterPayloadV1 } from './domain/types/fiscalization-job-payloads.types';
 
 // Exceptions
 export { SyncJobExecutionError } from './domain/exceptions/sync-job-execution.error';

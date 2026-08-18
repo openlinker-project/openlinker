@@ -79,6 +79,9 @@ export const JobTypeValues = [
 
   // Invoicing (core-owned policy; executed by worker — OL #1120)
   'invoicing.issue',
+
+  // Fiscalization (core-owned policy; executed by worker — #2156, ADR-041 decision 7)
+  'fiscalization.register',
 ] as const;
 
 /**
