@@ -2,7 +2,8 @@
  * KSeF Invoice Detail Section
  *
  * Per-provider `invoiceDetailSection` slot for KSeF connections (#1152, B4 + B3 + B5).
- * Rendered by the neutral `OrderInvoicePanel` and `InvoiceDetailPage` via
+ * Rendered by the neutral `SalesDocumentPanel` (#2160, `orders` feature) and
+ * `InvoiceDetailPage` via
  * `usePlatform(connection.platformType).invoiceDetailSection` — ZERO
  * `platformType` literals here.
  *
