@@ -210,10 +210,13 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
     },
     {
-      // Orders list/detail UI coverage (#2148). Strictly READ-ONLY — every spec
-      // narrows with URL params that cannot match and asserts on copy and URL
+      // Orders list/detail UI coverage (#2148). Strictly READ-ONLY today — every
+      // spec narrows with URL params that cannot match and asserts on copy and URL
       // state, so `retries: 1` is safe: a retry re-reads, it cannot re-apply an
-      // effect.
+      // effect. This project matches every `orders/*.spec.ts`, so a future spec
+      // that mutates (dispatch, status change, …) must NOT be dropped in here
+      // unmodified — give it its own project with `retries: 0`, matching the
+      // `invoicing` project's precedent above.
       name: 'orders',
       testMatch: /orders\/.*\.spec\.ts/,
       retries: 1,

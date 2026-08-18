@@ -25,7 +25,7 @@
  * @module pages/orders
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams, type SetURLSearchParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
 import { ErrorState, EmptyState } from '../../shared/ui/feedback-state';
@@ -248,6 +248,58 @@ function formatFreshness(items: readonly OrderRecord[], locale: LocaleCode): str
     minute: '2-digit',
   }).format(new Date(mostRecentMs));
   return `Synced ${time}`;
+}
+
+/**
+ * URL param name for every `OrderFilters` key this page can narrow by (#2148).
+ *
+ * `Record<..., string>` makes this exhaustive: TypeScript fails the build when a new
+ * `OrderFilters` key isn't accounted for here — either mapped to a real URL param or added
+ * to the `Exclude` list below — so an unlisted filter can't silently fall through to the
+ * "nothing has synced" copy the way `due` / `slaState` / `fulfillmentState` /
+ * `sourceConnectionId` / `createdFrom` / `createdTo` did before this fix.
+ *
+ * Excluded deliberately: `sort` / `dir` change presentation, not membership (an empty
+ * result is never their doing, and "View all orders" has no business resetting the
+ * operator's column sort); `syncStatus` / `customerId` / `recordStatus` are query-only
+ * filters this page's UI does not expose as controls.
+ */
+type NarrowingOrderFilterKey = Exclude<
+  keyof OrderFilters,
+  'sort' | 'dir' | 'syncStatus' | 'customerId' | 'recordStatus'
+>;
+
+const NARROWING_FILTER_URL_PARAM: Record<NarrowingOrderFilterKey, string> = {
+  health: 'health',
+  sourceConnectionId: 'sourceConnectionId',
+  createdFrom: 'createdFrom',
+  createdTo: 'createdTo',
+  dueBefore: 'due',
+  slaState: 'slaState',
+  fulfillmentState: 'fulfillmentState',
+};
+
+/** Every URL param that narrows the result set — derived, not hand-maintained (#2148). */
+const FILTER_PARAMS: readonly string[] = Object.values(NARROWING_FILTER_URL_PARAM);
+
+/**
+ * Clear every filter in ONE write (#2148).
+ *
+ * One call, not one per param: `setSearchParams` is not a queued reducer - React Router
+ * builds the next params from the CURRENT render's params, so two calls in one handler
+ * both start from the same base and the second navigation supersedes the first. A "View
+ * all orders" button that cleared filters one at a time would leave all but the last one
+ * applied.
+ */
+function clearAllFilters(setSearchParams: SetURLSearchParams): void {
+  setSearchParams((prev) => {
+    const p = new URLSearchParams(prev);
+    for (const key of FILTER_PARAMS) {
+      p.delete(key);
+    }
+    p.delete('offset');
+    return p;
+  });
 }
 
 export function OrdersListPage(): ReactElement {
@@ -992,50 +1044,8 @@ export function OrdersListPage(): ReactElement {
     });
   }
 
-  /**
-   * Every URL param that narrows the result set (#2148).
-   *
-   * Deliberately NOT `sort` / `dir` / `offset`: those change presentation, not
-   * membership, so an empty result is never their doing and "View all orders"
-   * has no business resetting the operator's column sort.
-   *
-   * Adding a filter to this page means adding it here. That is the point of the
-   * list existing at all: the empty-state ladder used to branch per param, so a
-   * new filter silently inherited the "nothing has ever synced" fallback.
-   */
-  const FILTER_PARAMS = [
-    'health',
-    'invoicing',
-    'due',
-    'slaState',
-    'fulfillmentState',
-    'sourceConnectionId',
-    'createdFrom',
-    'createdTo',
-  ] as const;
-
-  /** Is the current view narrowed at all? Drives the empty-state copy. */
+  /** Is the current view narrowed at all? Drives the empty-state copy (#2148). */
   const hasActiveFilters = FILTER_PARAMS.some((key) => searchParams.get(key) !== null);
-
-  /**
-   * Clear every filter in ONE write (#2148).
-   *
-   * One call, not one per param: `setSearchParams` is not a queued reducer -
-   * React Router builds the next params from the CURRENT render's params, so
-   * two calls in one handler both start from the same base and the second
-   * navigation supersedes the first. A "View all orders" button that cleared
-   * filters one at a time would leave all but the last one applied.
-   */
-  function clearAllFilters(): void {
-    setSearchParams((prev) => {
-      const p = new URLSearchParams(prev);
-      for (const key of FILTER_PARAMS) {
-        p.delete(key);
-      }
-      p.delete('offset');
-      return p;
-    });
-  }
 
   function setOffset(next: number): void {
     setSearchParams((prev) => {
@@ -1235,11 +1245,17 @@ export function OrdersListPage(): ReactElement {
         />
       ) : (query.data?.items.length ?? 0) === 0 ? (
         health === 'needs_attention' ? (
+          // `off`: this arm is reached from the health segment's own click, which is
+          // itself the operator-visible signal — no separate announcement is needed.
           <EmptyState
             liveRegion="off"
             title="All clear — nothing needs your attention"
             message="No failed syncs or unmapped orders right now. New issues surface here the moment they happen."
-            action={<Button onClick={clearAllFilters}>View all orders</Button>}
+            action={
+              <Button onClick={() => { clearAllFilters(setSearchParams); }}>
+                View all orders
+              </Button>
+            }
           />
         ) : hasActiveFilters ? (
           /*
@@ -1251,14 +1267,25 @@ export function OrdersListPage(): ReactElement {
             thousands of orders and simply filtered to a narrow slice. The
             recovery action was a link to /connections, which left the filter
             applied and pointed at an ingestion problem that did not exist.
+
+            No `liveRegion` override here (defaults to "polite"): unlike the two
+            sibling arms, this one is reached by a transition from a prior loaded
+            table (the operator applies a filter and the table is replaced by this
+            card), which is exactly the case `feedback-state.tsx` reserves the
+            "polite" default for.
           */
           <EmptyState
-            liveRegion="off"
             title="No orders in this view"
             message="No orders match the current filters. Clear them to see everything."
-            action={<Button onClick={clearAllFilters}>View all orders</Button>}
+            action={
+              <Button onClick={() => { clearAllFilters(setSearchParams); }}>
+                View all orders
+              </Button>
+            }
           />
         ) : (
+          // `off`: this arm renders on initial page load with no prior loaded state
+          // to transition from (an operator landing on an empty, never-synced deployment).
           <EmptyState
             liveRegion="off"
             title="No orders found"

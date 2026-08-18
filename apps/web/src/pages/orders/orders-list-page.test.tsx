@@ -298,6 +298,23 @@ describe('OrdersListPage', () => {
       expect(pagination).toMatchObject({ offset: 0 });
     });
 
+    it('should show the error state, never the filtered empty state, when a narrowed query rejects', async () => {
+      // The `isLoading -> error -> empty` ternary order means a rejected query
+      // never reaches any empty-state arm today — but that ordering is a plausible
+      // future edit, so pin it rather than relying on it holding by accident.
+      const mockApi = createMockApiClient({
+        orders: { list: vi.fn().mockRejectedValue(new Error('Network error')) },
+      });
+
+      renderWithProviders(<OrdersListPage />, {
+        apiClient: mockApi,
+        route: '/orders?slaState=overdue',
+      });
+
+      expect(await screen.findByText('Unable to load orders')).toBeInTheDocument();
+      expect(screen.queryByText('No orders in this view')).toBeNull();
+    });
+
     it('should keep sort and direction — they narrow nothing', async () => {
       const list = vi.fn().mockResolvedValue(paginated([]));
       const mockApi = createMockApiClient({ orders: { list } });
