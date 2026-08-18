@@ -1,6 +1,6 @@
 # ADR-041: Sales-document routing policy - which document type and which connection an order gets
 
-- **Status**: Proposed
+- **Status**: Proposed (decision 11's visibility contract partially implemented - see the note under it)
 - **Date**: 2026-08-13
 - **Authors**: @norbert-kulus-blockydevs
 
@@ -107,6 +107,16 @@ export type SalesDocumentDecision =
 They stay **two unions rather than one** because they answer different questions and are not interchangeable: `SalesDocumentUnresolvedReason` says *routing could not decide*, and is a value the router returns; `SalesDocumentGateBlockReason` says *routing decided (or explicitly did not) and issuance is still not allowed*, and is a value the gate produces about state outside the router's knowledge. Collapsing them would let a caller answer "was this a policy gap or an operator-fixable data gap?" only by string-matching. `'unresolved-routing'` is the one bridge value - the gate's record of having blocked on a router `unresolved`, whose own reason travels alongside it.
 
 The surfacing mechanics are the implementing issue's, not this ADR's; the repo precedent to follow is #1689's `source_deleted` - a dedicated health bucket, a list badge, and a named ineligibility reason that also excludes the order from bulk actions.
+
+> **Implementation note (#2100, shipped).** Decision 11's *visibility contract* has landed as the first implementing slice; the router of decisions 1-10 has not. Both value arrays exist verbatim on `@openlinker/core/sales-documents` (a leaf concern with no module, no service and no persistence, so any context can value-import it), and the auto-issue gate's three reachable non-issuing exits now persist a reason on `order_records` alongside their existing PII-safe logs: the #2047 ambiguity as `'unresolved-routing'` + `'ambiguous-connection-no-primary'`, plus `'trigger-model-manual'` and `'trigger-model-batched'`. `'missing-required-tax-id'` and `'tax-rate-conflict'` ship **declared but never written**, per the preconditions above.
+>
+> Three details worth carrying into the router's own slice:
+>
+> - **The gate reports, it does not persist.** `AutoIssueTriggerService.onOrderTransition` returns the block and `OrderIngestionService` writes it. Persisting in place would need an `OrdersModule` token inside `InvoicingModule`, closing the runtime DI cycle that service's ONE-WAY EDGE property exists to prevent. A future router living in this module inherits the same constraint.
+> - **The write is level-triggered, not an event.** The gate re-decides on every order transition and the writer stores the answer *including `null`*, which is what clears a reason once the misconfiguration is fixed. Nothing is appended, so nothing accumulates. A router returning `unresolved` should behave the same way.
+> - **The gate must be idempotent against its own effect.** `manual` (and any reason derived from configuration rather than from the order) is still true after the document exists, so a gate that reports it unconditionally re-blocks an order it already blocked and an operator already resolved. #2100 fixes this by having the gate read the order's own document projection before reporting, and by adding a third `indeterminate` outcome so an error path can decline to answer instead of being forced to choose between "blocked" and "clear". A router returning `unresolved` inherits both requirements.
+> - **An aggregate count is not the same population as a per-order badge.** `trigger-model-manual` is the trigger model's DEFAULT, so on a manual install every uninvoiced order carries it. Counting it turned the operator-facing number into noise, so the count and the list filter run over an attention-worthy subset while the badge still renders every reason. A future reason is attention-worthy by default; opting one out is a deliberate edit.
+> - **Two surfacing deviations from #1689's literal treatment, both deliberate.** The count is a non-partitioning field plus a filter chip rather than a sixth `OrderHealth` bucket, because `deriveOrderHealth` returns exactly one bucket and its SQL twins partition the set - a blocked order is usually also `synced`, so a sixth value would double-count it or hide its real sync state. And blocked orders are **not** excluded from bulk issuance: `POST /invoices/bulk-issue` names its connection explicitly, so every reachable reason means "auto-issue did not happen", never "this order cannot be invoiced", and excluding them would break the primary remediation path for the very state the surfacing exists to reveal. A future `unresolved`-on-a-real-router reason may genuinely warrant exclusion; that is a per-reason judgement, not a blanket rule.
 
 ### Deferred, with reasons
 

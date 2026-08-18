@@ -54,6 +54,7 @@ import type { IncomingOrder } from '../../domain/types/incoming-order.types';
 import type { Order } from '../../domain/types/order.types';
 import type { OrderFeedEventType } from '../../domain/types/order-feed.types';
 import type { OrderRecord } from '../../domain/entities/order-record.entity';
+import type { SalesDocumentBlockOutcome } from '@openlinker/core/sales-documents';
 import type { OrderRecordStatus } from '../../domain/types/order-record.types';
 import type { ItemResolutionFailureKind } from './order-item-ref-resolver.types';
 import { Logger } from '@openlinker/shared/logging';
@@ -459,7 +460,20 @@ export class OrderIngestionService implements IOrderIngestionService {
     // `error.name` + `connectionId` + `order.id` + `sourceEventId` — never the raw
     // error/message or any payload/buyer field.
     try {
-      await this.autoIssueTrigger.onOrderTransition(order, connectionId, sourceEventId);
+      const outcome = await this.autoIssueTrigger.onOrderTransition(
+        order,
+        connectionId,
+        sourceEventId
+      );
+      // #2100 (ADR-041 §54/§105): a block is never log-only. The trigger REPORTS
+      // the outcome and this service — which owns the order record — writes it,
+      // which is what keeps the trigger's one-way edge (F3) intact.
+      //
+      // `none` is written through as `null`, and that is the point: the gate is
+      // level-evaluated, so it is the ONLY thing that clears a reason persisted by
+      // an earlier transition. `indeterminate` writes NOTHING — the gate could not
+      // tell, so erasing a true reason is worse than leaving it (#2100 review).
+      await this.persistSalesDocumentOutcome(order.id, outcome);
     } catch (error) {
       // F9/D11: issuance is best-effort relative to order sync. SWALLOW — never
       // re-throw — so an enqueue/compose failure can never block the order
@@ -472,6 +486,48 @@ export class OrderIngestionService implements IOrderIngestionService {
     }
 
     return results;
+  }
+
+  /**
+   * Persist the auto-issue gate's outcome onto the order record (#2100).
+   *
+   * Three deliberate properties:
+   *
+   * 1. **`indeterminate` writes nothing.** The gate could not decide, so erasing a
+   *    reason it cannot vouch for would trade a true signal for silence.
+   * 2. **A no-change outcome costs no `UPDATE`** — but the guard for that lives in
+   *    the repository's `WHERE` clause, not here. A caller-side comparison would
+   *    have to hold a record read BEFORE the destination round-trip, so a
+   *    concurrent writer (the manual-issue clear) could make a genuinely new
+   *    answer look unchanged and suppress it. Pushing the check into the statement
+   *    keeps last-write-wins intact and still keeps the `@UpdateDateColumn` bump
+   *    off the common `null -> null` path — `updatedAt` is a live filter axis
+   *    (`FulfillmentStatusSyncService` scans `updatedSince`).
+   * 3. **Its own catch and its own message.** A persistence failure here is not a
+   *    trigger failure, and reporting it as one would send the next reader to the
+   *    wrong service. Swallowed like the trigger itself: the outcome is re-decided
+   *    on the next transition, so a lost write self-heals.
+   */
+  private async persistSalesDocumentOutcome(
+    internalOrderId: string,
+    outcome: SalesDocumentBlockOutcome
+  ): Promise<void> {
+    if (outcome.kind === 'indeterminate') {
+      return;
+    }
+
+    try {
+      await this.orderRecordService.markSalesDocumentBlock(
+        internalOrderId,
+        outcome.kind === 'blocked' ? outcome.block : null
+      );
+    } catch (error) {
+      const errorName = error instanceof Error ? error.name : 'UnknownError';
+      this.logger.warn(
+        `Failed to persist the sales-document block outcome (swallowed): ` +
+          `error=${errorName} orderId=${internalOrderId} outcome=${outcome.kind}`
+      );
+    }
   }
 
   /**

@@ -19,6 +19,7 @@ import {
 import {
   PrestashopApiException,
   PrestashopTaxRateUnknownException,
+  PrestashopCurrencyUnknownException,
 } from '@openlinker/integrations-prestashop';
 import type { OrderCreate } from '@openlinker/core/orders';
 import type { PrestashopOrder } from '../../mappers/prestashop.mapper.interface';
@@ -28,6 +29,7 @@ describe('PrestashopOrderProcessorManagerAdapter — createOrder', () => {
   let mockHttpClient: OrderProcessorHarness['mockHttpClient'];
   let mockIdentifierMapping: OrderProcessorHarness['mockIdentifierMapping'];
   let mockOrderMapper: OrderProcessorHarness['mockOrderMapper'];
+  let mockCurrencyResolver: OrderProcessorHarness['mockCurrencyResolver'];
   let mockTaxRateResolver: OrderProcessorHarness['mockTaxRateResolver'];
   let mockCustomerProjectionRepository: OrderProcessorHarness['mockCustomerProjectionRepository'];
   let mockOpenLinkerModuleClient: OrderProcessorHarness['mockOpenLinkerModuleClient'];
@@ -40,6 +42,7 @@ describe('PrestashopOrderProcessorManagerAdapter — createOrder', () => {
       mockHttpClient,
       mockIdentifierMapping,
       mockOrderMapper,
+      mockCurrencyResolver,
       mockTaxRateResolver,
       mockCustomerProjectionRepository,
       mockOpenLinkerModuleClient,
@@ -735,6 +738,116 @@ describe('PrestashopOrderProcessorManagerAdapter — createOrder', () => {
         // rate 0 → net == gross, and the order is created normally.
         expect(specificPriceFor('100')?.price).toBe((29.99).toFixed(6));
         expect(mockOpenLinkerModuleClient.importOrder).toHaveBeenCalled();
+      });
+    });
+
+    // #2139 - the destination currency used to be guessed: the adapter
+    // substituted 'EUR' for a missing code and the resolver returned a
+    // hardcoded id 1 for anything it could not resolve, so the order was booked
+    // with the buyer's amounts under the wrong denomination and the sync still
+    // reported success.
+    describe('destination currency refusal (#2139)', () => {
+      const arrangeIds = (): void => {
+        mockIdentifierMapping.getExternalIds = jest
+          .fn()
+          .mockImplementation((entityType: string, internalId: string) => {
+            const map: Record<string, Record<string, string>> = {
+              Customer: { 'internal-customer-123': '42' },
+              Product: { 'internal-product-456': '100', 'internal-product-789': '200' },
+              ProductVariant: { 'internal-variant-789': '300' },
+            };
+            const externalId = map[entityType]?.[internalId];
+            return Promise.resolve(
+              externalId ? [{ connectionId: connection.id, externalId, entityType }] : []
+            );
+          });
+        setCreateResourceDispatch({ id: '123' }, {
+          id: '999',
+          reference: 'TEST-ORDER-001',
+        } as PrestashopOrder);
+      };
+
+      const orderWithCurrency = (currency: string): OrderCreate =>
+        createTestOrder({
+          totals: { subtotal: 109.97, tax: 10.0, shipping: 5.0, total: 124.97, currency },
+        });
+
+      it('refuses an order carrying no currency instead of substituting EUR', async () => {
+        arrangeIds();
+
+        await expect(adapter.createOrder(orderWithCurrency(''))).rejects.toThrow(
+          PrestashopCurrencyUnknownException
+        );
+
+        // The substituted 'EUR' is what made this silent: on a shop where EUR
+        // happens to be active it resolved to a real-but-wrong id, so the
+        // resolver's own guards were never reached.
+        expect(mockCurrencyResolver.resolveCurrencyId).not.toHaveBeenCalled();
+        expect(mockOpenLinkerModuleClient.importOrder).not.toHaveBeenCalled();
+        // The guard is pure, so it sits ahead of guest-customer provisioning
+        // (Step 1) and address provisioning (Step 3) - both of which create
+        // real PrestaShop rows. A refusal must leave nothing behind.
+        expect(mockHttpClient.createResource).not.toHaveBeenCalled();
+      });
+
+      it('refuses a whitespace-only currency the same way', async () => {
+        arrangeIds();
+
+        await expect(adapter.createOrder(orderWithCurrency('   '))).rejects.toThrow(
+          PrestashopCurrencyUnknownException
+        );
+        expect(mockCurrencyResolver.resolveCurrencyId).not.toHaveBeenCalled();
+      });
+
+      it('leads the message with the order reference for the truncated operator surfaces', async () => {
+        arrangeIds();
+
+        const error = await adapter.createOrder(orderWithCurrency('')).then(
+          () => null,
+          (e: unknown) => e as Error
+        );
+
+        expect(error?.message.slice(0, 40)).toBe('Order TEST-ORDER-001: no currency - the ');
+      });
+
+      it('re-throws the resolver refusal unchanged so the operator message and class survive', async () => {
+        arrangeIds();
+        mockCurrencyResolver.resolveCurrencyId.mockRejectedValue(
+          new PrestashopCurrencyUnknownException(
+            'Currency EUR unknown in PrestaShop - the shop has no currency for that code.',
+            'EUR',
+            connection.id
+          )
+        );
+
+        const error = await adapter.createOrder(orderWithCurrency('EUR')).then(
+          () => null,
+          (e: unknown) => e as Error
+        );
+
+        // Wrapping would prepend 35 characters and hide the class the retry
+        // classifier keys on, turning a configuration gap back into retries.
+        expect(error).toBeInstanceOf(PrestashopCurrencyUnknownException);
+        expect(error?.message).toBe(
+          'Currency EUR unknown in PrestaShop - the shop has no currency for that code.'
+        );
+        expect(mockOpenLinkerModuleClient.importOrder).not.toHaveBeenCalled();
+      });
+
+      it('keeps a failed currency READ a retryable API error, never the refusal class', async () => {
+        arrangeIds();
+        mockCurrencyResolver.resolveCurrencyId.mockRejectedValue(
+          new PrestashopApiException('GET currencies returned 503', 503)
+        );
+
+        const error = await adapter.createOrder(orderWithCurrency('EUR')).then(
+          () => null,
+          (e: unknown) => e as Error
+        );
+
+        expect(error).toBeInstanceOf(PrestashopApiException);
+        expect(error).not.toBeInstanceOf(PrestashopCurrencyUnknownException);
+        expect((error as PrestashopApiException).statusCode).toBe(503);
       });
     });
 

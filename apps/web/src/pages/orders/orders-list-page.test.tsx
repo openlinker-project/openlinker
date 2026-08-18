@@ -534,7 +534,33 @@ describe('OrdersListPage', () => {
     expect(pill?.textContent).toBe('Allegro');
   });
 
-  it('should fall back to the internalOrderId when the snapshot has no orderNumber', async () => {
+  it.each([
+    ['erli', 'Erli'],
+    ['woocommerce', 'WooCommerce'],
+  ])(
+    'should resolve the %s channel-pill from the plugin registry, not a local map',
+    async (platformType, expectedLabel) => {
+      // The deleted `CHANNEL_LABELS` map (#2088) covered only allegro /
+      // prestashop / amazon / shopify, so these two rendered raw and lowercase
+      // here while rendering correctly two pages over. The test above passes on
+      // either implementation because `allegro` was in that map — these two are
+      // what actually pin the registry as the single source of the label.
+      const mockApi = createMockApiClient({
+        orders: { list: vi.fn().mockResolvedValue(paginated([syncedOrder])) },
+        connections: {
+          list: vi.fn().mockResolvedValue([{ ...sampleConnection, platformType }]),
+        },
+      });
+
+      const { container } = renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+      await screen.findByText('ALG-882414');
+      const pill = container.querySelector(`.channel-pill[data-channel="${platformType}"]`);
+      expect(pill?.textContent).toBe(expectedLabel);
+    },
+  );
+
+  it('should fall back to a SHORTENED internalOrderId when the snapshot has no orderNumber (#2091)', async () => {
     const orderWithoutNumber: OrderRecord = {
       ...syncedOrder,
       internalOrderId: 'ol_order_no_number',
@@ -547,7 +573,11 @@ describe('OrdersListPage', () => {
 
     renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
 
-    expect(await screen.findByText('ol_order_no_number')).toBeInTheDocument();
+    // Pre-#2091 this printed the id verbatim. `shortenId` keeps the `ol_order_`
+    // prefix (which tells an operator WHAT the id names) and elides the middle
+    // of the random part, so it reads as a reference rather than as noise.
+    expect(await screen.findByText('ol_order_no_n…er')).toBeInTheDocument();
+    expect(screen.queryByText('ol_order_no_number')).not.toBeInTheDocument();
   });
 
   it('should call retryDestination with the failed destination when the row Retry is clicked (#929)', async () => {
@@ -785,7 +815,13 @@ describe('OrdersListPage', () => {
     });
   });
 
-  it('should shorten a UUID-shaped order number so it reads as a reference (#939)', async () => {
+  // Still shortened after #2091, deliberately: the shortening moved INTO
+  // `OrderIdentityCell` (its recorded deviation 4) rather than being dropped.
+  // Allegro's `orderNumber` IS its 36-character `checkoutFormId`, so rendering a
+  // long number verbatim — which #2091's issue text asked for — would print a
+  // UUID on every Allegro row and widen the frozen Order column. The full value
+  // stays reachable as the link's `title` and in the Copy button's name.
+  it('should shorten a UUID-shaped order number so it reads as a reference (#939/#2091)', async () => {
     const uuidOrder: OrderRecord = {
       ...syncedOrder,
       internalOrderId: 'ol_order_uuid',
@@ -801,8 +837,16 @@ describe('OrdersListPage', () => {
 
     renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
 
-    expect(await screen.findByText('186d7a20…66d4ec')).toBeInTheDocument();
+    const link = await screen.findByText('186d7a20…66d4ec');
     expect(screen.queryByText('186d7a20-5b82-11f1-979b-098d4666d4ec')).not.toBeInTheDocument();
+    // The full number is not lost — it is the link's tooltip (sighted hover) and
+    // it names the Copy button (screen reader).
+    expect(link).toHaveAttribute('title', '186d7a20-5b82-11f1-979b-098d4666d4ec');
+    expect(
+      screen.getByRole('button', {
+        name: 'Copy internal order ID for order 186d7a20-5b82-11f1-979b-098d4666d4ec',
+      }),
+    ).toBeInTheDocument();
   });
 
   it('should fall back to the buyer email in the customer cell when the address has no name (#939)', async () => {
@@ -1016,6 +1060,421 @@ describe('OrdersListPage', () => {
     expect(within(row).getByRole('link', { name: /generate label/i })).toBeInTheDocument();
   });
 
+  describe('sales-document block badge + filter (#2100)', () => {
+    const invoicingConnection: Connection = {
+      ...sampleConnection,
+      id: 'conn_invoicing_1',
+      name: 'KSeF',
+      enabledCapabilities: ['Invoicing'],
+    };
+
+    function blockedOrder(overrides: Partial<OrderRecord>): OrderRecord {
+      return { ...syncedOrder, fulfillmentState: 'not-shipped', ...overrides };
+    }
+
+    it('should replace the "Issue invoice" CTA with the block badge', async () => {
+      const mockApi = createMockApiClient({
+        orders: {
+          list: vi.fn().mockResolvedValue(
+            paginated([
+              blockedOrder({
+                salesDocumentBlockReason: 'unresolved-routing',
+                salesDocumentUnresolvedReason: 'ambiguous-connection-no-primary',
+              }),
+            ]),
+          ),
+        },
+        connections: { list: vi.fn().mockResolvedValue([sampleConnection, invoicingConnection]) },
+      });
+
+      const { container } = renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+      await screen.findByText('ALG-882414');
+      const row = container.querySelector('.data-table__row') as HTMLElement;
+
+      expect(within(row).getByText('No primary')).toBeInTheDocument();
+      // The CTA must be GONE: an order OpenLinker already refused is not an order
+      // waiting for a click, and the CTA alone made every cause look identical.
+      expect(within(row).queryByRole('link', { name: /issue invoice/i })).not.toBeInTheDocument();
+    });
+
+    /**
+     * The row must render the invoice pill and the block badge as INDEPENDENT
+     * parts, not as a three-way choice (#2100 review round 4).
+     *
+     * `a ? pill : b ? badge : cta` made the badge unreachable behind any invoice
+     * record — including a terminal REJECTED failure, the one shape the backend
+     * gate, the panel, the timeline, the aggregate count and the
+     * `?invoicing=blocked` filter all deliberately keep blocked. Clicking the
+     * "Invoicing blocked" chip then landed the operator on rows whose only
+     * visible signal was `Failed`: true, but a different fact from "auto-issue
+     * was refused because no connection is primary".
+     */
+    const rejectedInvoice = {
+      invoiceId: 'inv-1',
+      status: 'failed' as const,
+      regulatoryStatus: 'not-applicable' as const,
+      blocksIssuanceElsewhere: false,
+    };
+
+    it('should show the block badge BESIDE a rejected invoice pill', async () => {
+      const mockApi = createMockApiClient({
+        orders: {
+          list: vi.fn().mockResolvedValue(
+            paginated([
+              blockedOrder({
+                salesDocumentBlockReason: 'unresolved-routing',
+                salesDocumentUnresolvedReason: 'ambiguous-connection-no-primary',
+                orderSnapshot: { ...syncedOrder.orderSnapshot, invoice: rejectedInvoice },
+              }),
+            ]),
+          ),
+        },
+        connections: { list: vi.fn().mockResolvedValue([sampleConnection, invoicingConnection]) },
+      });
+
+      const { container } = renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+      await screen.findByText('ALG-882414');
+      const row = container.querySelector('.data-table__row') as HTMLElement;
+
+      expect(within(row).getByText('Failed')).toBeInTheDocument();
+      expect(within(row).getByText('No primary')).toBeInTheDocument();
+      // A record exists, so the next step is Retry in the panel, not a fresh issue.
+      expect(within(row).queryByRole('link', { name: /issue invoice/i })).not.toBeInTheDocument();
+    });
+
+    it('should show the block badge beside a rejected invoice on the mobile card too', async () => {
+      const mockApi = createMockApiClient({
+        orders: {
+          list: vi.fn().mockResolvedValue(
+            paginated([
+              blockedOrder({
+                salesDocumentBlockReason: 'unresolved-routing',
+                salesDocumentUnresolvedReason: 'ambiguous-connection-no-primary',
+                orderSnapshot: { ...syncedOrder.orderSnapshot, invoice: rejectedInvoice },
+              }),
+            ]),
+          ),
+        },
+        connections: { list: vi.fn().mockResolvedValue([sampleConnection, invoicingConnection]) },
+      });
+
+      // The card view was the SECOND hand-written copy of the ternary, so it
+      // needs its own assertion at the mobile breakpoint.
+      const viewport = mockMobileViewport();
+      try {
+        const { container } = renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+        await screen.findByText('ALG-882414');
+        const card = container.querySelector('.orders-card-summary') as HTMLElement;
+
+        expect(within(card).getByText('Failed')).toBeInTheDocument();
+        expect(within(card).getByText('No primary')).toBeInTheDocument();
+      } finally {
+        viewport.restore();
+      }
+    });
+
+    it('should still hide the badge behind an invoice that plausibly exists', async () => {
+      const mockApi = createMockApiClient({
+        orders: {
+          list: vi.fn().mockResolvedValue(
+            paginated([
+              blockedOrder({
+                salesDocumentBlockReason: 'unresolved-routing',
+                salesDocumentUnresolvedReason: 'ambiguous-connection-no-primary',
+                orderSnapshot: {
+                  ...syncedOrder.orderSnapshot,
+                  invoice: {
+                    invoiceId: 'inv-1',
+                    status: 'issued',
+                    regulatoryStatus: 'accepted',
+                    blocksIssuanceElsewhere: true,
+                  },
+                },
+              }),
+            ]),
+          ),
+        },
+        connections: { list: vi.fn().mockResolvedValue([sampleConnection, invoicingConnection]) },
+      });
+
+      const { container } = renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+      await screen.findByText('ALG-882414');
+      const row = container.querySelector('.data-table__row') as HTMLElement;
+
+      // "No primary" beside an issued invoice is worse than no pill at all — and
+      // the backend gate refuses to persist a block here in the first place.
+      expect(within(row).queryByText('No primary')).not.toBeInTheDocument();
+    });
+
+    it('should keep the "Issue invoice" CTA alongside a manual-only badge', async () => {
+      const mockApi = createMockApiClient({
+        orders: {
+          list: vi
+            .fn()
+            .mockResolvedValue(
+              paginated([blockedOrder({ salesDocumentBlockReason: 'trigger-model-manual' })]),
+            ),
+        },
+        connections: { list: vi.fn().mockResolvedValue([sampleConnection, invoicingConnection]) },
+      });
+
+      const { container } = renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+      await screen.findByText('ALG-882414');
+      const row = container.querySelector('.data-table__row') as HTMLElement;
+
+      expect(within(row).getByText('Manual only')).toBeInTheDocument();
+      // Issuing by hand IS the configured workflow here, so the affordance stays.
+      expect(within(row).getByRole('link', { name: /issue invoice/i })).toBeInTheDocument();
+    });
+
+    it('should suppress the badge when the order already carries an invoice', async () => {
+      const mockApi = createMockApiClient({
+        orders: {
+          list: vi.fn().mockResolvedValue(
+            paginated([
+              blockedOrder({
+                salesDocumentBlockReason: 'unresolved-routing',
+                salesDocumentUnresolvedReason: 'ambiguous-connection-no-primary',
+                orderSnapshot: {
+                  ...syncedOrder.orderSnapshot,
+                  invoice: {
+                    invoiceId: 'inv-1',
+                    status: 'issued',
+                    regulatoryStatus: 'not-applicable',
+                  },
+                },
+              }),
+            ]),
+          ),
+        },
+        connections: { list: vi.fn().mockResolvedValue([sampleConnection, invoicingConnection]) },
+      });
+
+      const { container } = renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+      await screen.findByText('ALG-882414');
+      const row = container.querySelector('.data-table__row') as HTMLElement;
+
+      // "No primary" next to an issued invoice is worse than no badge at all, so
+      // the render refuses the contradiction rather than trusting the clear to
+      // have landed already.
+      expect(within(row).queryByText('No primary')).not.toBeInTheDocument();
+      expect(within(row).getByText('Issued')).toBeInTheDocument();
+    });
+
+    it('should offer a counted filter chip and pass the filter to the API', async () => {
+      const list = vi.fn().mockResolvedValue(paginated([syncedOrder]));
+      const statusSummary = vi.fn().mockResolvedValue({
+        total: 3,
+        sourceDeleted: 0,
+        awaitingMapping: 0,
+        needsAttention: 0,
+        synced: 3,
+        awaitingDispatch: 0,
+        salesDocumentBlocked: 2,
+      });
+      const mockApi = createMockApiClient({ orders: { list, statusSummary } });
+
+      renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+      const chip = await screen.findByRole('button', { name: /invoicing blocked/i });
+      expect(chip).toHaveTextContent('2');
+
+      const before = list.mock.calls.length;
+      await userEvent.setup().click(chip);
+
+      await vi.waitFor(() => {
+        expect(list.mock.calls.length).toBeGreaterThan(before);
+      });
+      const [filters] = list.mock.calls[list.mock.calls.length - 1];
+      expect(filters).toMatchObject({ salesDocumentBlocked: true });
+    });
+
+    it('should state the cause as the badge tooltip AND an accessible name', async () => {
+      const mockApi = createMockApiClient({
+        orders: {
+          list: vi.fn().mockResolvedValue(
+            paginated([
+              blockedOrder({
+                salesDocumentBlockReason: 'unresolved-routing',
+                salesDocumentUnresolvedReason: 'ambiguous-connection-no-primary',
+              }),
+            ]),
+          ),
+        },
+        connections: { list: vi.fn().mockResolvedValue([sampleConnection, invoicingConnection]) },
+      });
+
+      const { container } = renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+      await screen.findByText('ALG-882414');
+      const row = container.querySelector('.data-table__row') as HTMLElement;
+      const wrapper = within(row).getByText('No primary').closest('span[title]');
+
+      // The hint is the ONLY statement of why on this surface, so it must reach the
+      // DOM — and `title` alone is unreachable by keyboard and unreliable in screen
+      // readers on a role-less span.
+      expect(wrapper).toHaveAttribute('title', expect.stringMatching(/none is set to issue/i));
+      expect(wrapper).toHaveAttribute('aria-label', expect.stringContaining('No primary'));
+    });
+
+    it('should render the block badge on the mobile card path too', async () => {
+      const viewport = mockMobileViewport();
+      try {
+        const mockApi = createMockApiClient({
+          orders: {
+            list: vi
+              .fn()
+              .mockResolvedValue(
+                paginated([blockedOrder({ salesDocumentBlockReason: 'trigger-model-batched' })]),
+              ),
+          },
+          connections: { list: vi.fn().mockResolvedValue([sampleConnection, invoicingConnection]) },
+        });
+
+        renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+        await screen.findByText('ALG-882414');
+        // The card is a deliberate parallel render path — deleting its ~20
+        // duplicated lines used to leave the suite green.
+        expect(screen.getByText('Batched')).toBeInTheDocument();
+      } finally {
+        viewport.restore();
+      }
+    });
+
+    it('should seed from the URL param and clear the filter when toggled off', async () => {
+      const list = vi.fn().mockResolvedValue(paginated([syncedOrder]));
+      const statusSummary = vi.fn().mockResolvedValue({
+        total: 3,
+        sourceDeleted: 0,
+        awaitingMapping: 0,
+        needsAttention: 0,
+        synced: 3,
+        awaitingDispatch: 0,
+        salesDocumentBlocked: 2,
+      });
+      const mockApi = createMockApiClient({ orders: { list, statusSummary } });
+
+      // URL state owns this filter (§ State Management), so a shared/bookmarked
+      // link must arrive already filtered.
+      renderWithProviders(<OrdersListPage />, {
+        apiClient: mockApi,
+        route: '/orders?invoicing=blocked&offset=20',
+      });
+
+      const chip = await screen.findByRole('button', { name: /invoicing blocked/i });
+      expect(chip).toHaveAttribute('aria-pressed', 'true');
+      expect(list.mock.calls[0][0]).toMatchObject({ salesDocumentBlocked: true });
+
+      const before = list.mock.calls.length;
+      await userEvent.setup().click(chip);
+
+      await vi.waitFor(() => {
+        expect(list.mock.calls.length).toBeGreaterThan(before);
+      });
+      const [filters, pagination] = list.mock.calls[list.mock.calls.length - 1];
+      // Toggled off means "no filter", never `false` — the UI offers no
+      // hide-blocked-orders mode.
+      expect(filters.salesDocumentBlocked).toBeUndefined();
+      // And any filter change resets the page.
+      expect(pagination).toMatchObject({ offset: 0 });
+    });
+
+    it('should keep the chip mounted while the filter is active even at zero', async () => {
+      const statusSummary = vi.fn().mockResolvedValue({
+        total: 0,
+        sourceDeleted: 0,
+        awaitingMapping: 0,
+        needsAttention: 0,
+        synced: 0,
+        awaitingDispatch: 0,
+        salesDocumentBlocked: 0,
+      });
+      const mockApi = createMockApiClient({
+        orders: { list: vi.fn().mockResolvedValue(paginated([])), statusSummary },
+      });
+
+      renderWithProviders(<OrdersListPage />, {
+        apiClient: mockApi,
+        route: '/orders?invoicing=blocked',
+      });
+
+      // Gating the chip on the count alone unmounted the ONLY control for this
+      // param exactly when the remediation succeeded, stranding an applied filter.
+      expect(
+        await screen.findByRole('button', { name: /invoicing blocked/i }),
+      ).toBeInTheDocument();
+      // And the empty state must not claim nothing has ever synced.
+      expect(screen.getByText(/Nothing is blocked from invoicing/i)).toBeInTheDocument();
+      expect(screen.queryByText(/No order records have been synced yet/i)).toBeNull();
+    });
+
+    it('should clear BOTH filters from the empty-state recovery button', async () => {
+      const list = vi.fn().mockResolvedValue(paginated([]));
+      const statusSummary = vi.fn().mockResolvedValue({
+        total: 0,
+        sourceDeleted: 0,
+        awaitingMapping: 0,
+        needsAttention: 0,
+        synced: 0,
+        awaitingDispatch: 0,
+        salesDocumentBlocked: 0,
+      });
+      const mockApi = createMockApiClient({ orders: { list, statusSummary } });
+
+      // `needs_attention` is tested FIRST, so an order set that is both unattended
+      // and invoicing-blocked lands in the "All clear" arm — the one whose button
+      // used to touch only `health`.
+      renderWithProviders(<OrdersListPage />, {
+        apiClient: mockApi,
+        route: '/orders?health=needs_attention&invoicing=blocked',
+      });
+
+      const recover = await screen.findByRole('button', { name: 'View all orders' });
+      const before = list.mock.calls.length;
+      await userEvent.setup().click(recover);
+
+      await vi.waitFor(() => {
+        expect(list.mock.calls.length).toBeGreaterThan(before);
+      });
+
+      // Regression guard: `setSearchParams` is NOT a queued reducer, so two calls
+      // in one handler both build from the current render's params and the second
+      // supersedes the first. Clearing `health` and `invoicing` separately left
+      // `invoicing=blocked` applied behind a button that says "View all orders".
+      const [filters] = list.mock.calls[list.mock.calls.length - 1];
+      expect(filters.salesDocumentBlocked).toBeUndefined();
+      expect(filters.health).toBeUndefined();
+    });
+
+    it('should hide the chip when nothing is blocked', async () => {
+      const statusSummary = vi.fn().mockResolvedValue({
+        total: 1,
+        sourceDeleted: 0,
+        awaitingMapping: 0,
+        needsAttention: 0,
+        synced: 1,
+        awaitingDispatch: 0,
+        salesDocumentBlocked: 0,
+      });
+      const mockApi = createMockApiClient({
+        orders: { list: vi.fn().mockResolvedValue(paginated([syncedOrder])), statusSummary },
+      });
+
+      renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+      await screen.findByText('ALG-882414');
+      // An install that never hits this state gets no extra control.
+      expect(screen.queryByRole('button', { name: /invoicing blocked/i })).not.toBeInTheDocument();
+    });
+  });
+
   it('should NOT offer "Generate label" for a not-shipped shop-fulfilled order with no OL carrier route (#1799)', async () => {
     const shopFulfilled: OrderRecord = {
       ...syncedOrder,
@@ -1107,5 +1566,336 @@ describe('OrdersListPage', () => {
     expect(within(row).queryByRole('link', { name: /generate label/i })).not.toBeInTheDocument();
     expect(within(row).getByText('Cleared')).toBeInTheDocument();
     expect(within(row).getByText('Dispatched')).toBeInTheDocument();
+  });
+});
+
+/**
+ * Shared Order identity cell (#2091) — the Order column and the mobile card
+ * title both render `OrderIdentityCell` now, and the five channel-label
+ * consumers on this page all resolve through the plugin registry (#2088).
+ */
+describe('OrdersListPage — shared Order identity cell (#2091)', () => {
+  const erliConnection: Connection = {
+    ...sampleConnection,
+    id: 'conn_erli_1',
+    name: 'Erli Shop',
+    platformType: 'erli',
+  };
+  const wooConnection: Connection = {
+    ...sampleConnection,
+    id: 'conn_woo_1',
+    name: 'Woo Shop',
+    platformType: 'woocommerce',
+  };
+  /**
+   * Source `erli`, destination `woocommerce` — the two platforms the deleted
+   * four-entry `CHANNEL_LABELS` map had no row for, so a consumer still reading
+   * a local map renders `erli` / `woocommerce` raw and lowercase here.
+   */
+  const crossChannelOrder: OrderRecord = {
+    ...syncedOrder,
+    internalOrderId: 'ol_order_crosschannel',
+    sourceConnectionId: 'conn_erli_1',
+    syncStatus: [{ ...syncedOrder.syncStatus[0], destinationConnectionId: 'conn_woo_1' }],
+  };
+
+  function mockCrossChannelApi(): ReturnType<typeof createMockApiClient> {
+    return createMockApiClient({
+      orders: { list: vi.fn().mockResolvedValue(paginated([crossChannelOrder])) },
+      connections: { list: vi.fn().mockResolvedValue([erliConnection, wooConnection]) },
+    });
+  }
+
+  afterEach(() => {
+    cleanup();
+    // One test stubs `navigator` for the clipboard; without this the stub leaks
+    // into every test after it in the file.
+    vi.unstubAllGlobals();
+  });
+
+  it('renders the Order column through OrderIdentityCell, thumbnail included', async () => {
+    const withImage: OrderRecord = {
+      ...syncedOrder,
+      orderSnapshot: {
+        ...syncedOrder.orderSnapshot,
+        items: [
+          {
+            id: 'i1',
+            quantity: 1,
+            price: 84.2,
+            name: 'Filtr kubełkowy AquaPro',
+            imageUrl: 'https://cdn.example.test/filtr.jpg',
+          },
+        ],
+      },
+    };
+    const mockApi = createMockApiClient({
+      orders: { list: vi.fn().mockResolvedValue(paginated([withImage])) },
+      connections: { list: vi.fn().mockResolvedValue([sampleConnection]) },
+    });
+
+    const { container } = renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+    const table = await screen.findByRole('table');
+    const cell = table.querySelector('.order-cell') as HTMLElement;
+    expect(cell).not.toBeNull();
+    // The thumbnail is what this column never had (#1996 frame 04).
+    expect(cell.querySelector('.product-thumbnail img')).toHaveAttribute(
+      'src',
+      'https://cdn.example.test/filtr.jpg',
+    );
+    expect(within(cell).getByRole('link', { name: 'ALG-882414' })).toHaveAttribute(
+      'href',
+      '/orders/ol_order_synced',
+    );
+    expect(within(cell).getByText('Filtr kubełkowy AquaPro')).toBeInTheDocument();
+    expect(container.querySelector('.orders-cell-stack .order-cell')).not.toBeNull();
+  });
+
+  it('no longer renders the entity-label__id chip inside the Order cell', async () => {
+    const mockApi = createMockApiClient({
+      orders: { list: vi.fn().mockResolvedValue(paginated([syncedOrder])) },
+      connections: { list: vi.fn().mockResolvedValue([sampleConnection]) },
+    });
+
+    const { container } = renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+    await screen.findByText('ALG-882414');
+    const cell = container.querySelector('.order-cell') as HTMLElement;
+    // The shortened id is the NAME's fallback now, so it must never sit beside a
+    // real order number competing with it.
+    expect(cell.querySelector('.entity-label__id')).toBeNull();
+    expect(container.querySelector('.entity-label__id')).toBeNull();
+  });
+
+  it('copies the FULL internal order id, not the shortened display form', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal('navigator', { clipboard: { writeText } });
+
+    const longIdOrder: OrderRecord = {
+      ...syncedOrder,
+      internalOrderId: 'ol_order_a3f24b09c4d1486789abcdef01234567',
+    };
+    const mockApi = createMockApiClient({
+      orders: { list: vi.fn().mockResolvedValue(paginated([longIdOrder])) },
+      connections: { list: vi.fn().mockResolvedValue([sampleConnection]) },
+    });
+
+    renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+    const table = await screen.findByRole('table');
+    fireEvent.click(
+      within(table).getByRole('button', {
+        name: 'Copy internal order ID for order ALG-882414',
+      }),
+    );
+
+    expect(writeText).toHaveBeenCalledWith('ol_order_a3f24b09c4d1486789abcdef01234567');
+  });
+
+  it('counts EVERY line item in the +N chip, not only the named ones', async () => {
+    // Pre-#2091 the page derived `+N` from `itemsSummary()`, which dropped the
+    // nameless lines BEFORE counting — so this order read `+0` here while the
+    // same order read `+2` on Shipments and Invoices (`buildOrderSummary`, #1995).
+    const partiallyNamed: OrderRecord = {
+      ...syncedOrder,
+      internalOrderId: 'ol_order_partial',
+      orderSnapshot: {
+        ...syncedOrder.orderSnapshot,
+        items: [
+          { id: 'i1', quantity: 1, price: 40, name: 'Filtr kubełkowy AquaPro' },
+          { id: 'i2', quantity: 1, price: 22.1 },
+          { id: 'i3', quantity: 1, price: 22.1 },
+        ],
+      },
+    };
+    const mockApi = createMockApiClient({
+      orders: { list: vi.fn().mockResolvedValue(paginated([partiallyNamed])) },
+      connections: { list: vi.fn().mockResolvedValue([sampleConnection]) },
+    });
+
+    const { container } = renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+    await screen.findByText('ALG-882414');
+    const cell = container.querySelector('.order-cell') as HTMLElement;
+    expect(within(cell).getByText('+2')).toBeInTheDocument();
+  });
+
+  it('states the line count as a sentence when the first item carries no name', async () => {
+    // `buildOrderSummary` projects the FIRST item, not the first NAMED one, so
+    // the page feeds item[0] verbatim to stay identical to the other two lists.
+    // The cell then keeps the known count rather than dropping it (its own
+    // recorded deviation 2 from the mockup).
+    const namelessLead: OrderRecord = {
+      ...syncedOrder,
+      internalOrderId: 'ol_order_nameless',
+      orderSnapshot: {
+        ...syncedOrder.orderSnapshot,
+        items: [
+          { id: 'i1', quantity: 1, price: 40 },
+          { id: 'i2', quantity: 1, price: 22.1, name: 'Wkład węglowy' },
+        ],
+      },
+    };
+    const mockApi = createMockApiClient({
+      orders: { list: vi.fn().mockResolvedValue(paginated([namelessLead])) },
+      connections: { list: vi.fn().mockResolvedValue([sampleConnection]) },
+    });
+
+    const { container } = renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+    await screen.findByText('ALG-882414');
+    const cell = container.querySelector('.order-cell') as HTMLElement;
+    expect(within(cell).getByText('2 line items')).toBeInTheDocument();
+    expect(within(cell).queryByText('Wkład węglowy')).not.toBeInTheDocument();
+  });
+
+  it('renders the mobile card title from the SAME cell as the desktop column', async () => {
+    const viewport = mockMobileViewport();
+    // Asserting the Copy button EXISTS on the card is not asserting it works —
+    // and "works" is what the no-`rowHref` premise below buys (#2090 shipped a
+    // card whose Copy copied AND navigated away).
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal('navigator', { clipboard: { writeText } });
+    try {
+      const mockApi = createMockApiClient({
+        orders: { list: vi.fn().mockResolvedValue(paginated([syncedOrder])) },
+        connections: { list: vi.fn().mockResolvedValue([sampleConnection]) },
+      });
+
+      const { container } = renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+      await screen.findAllByText('ALG-882414');
+      expect(container.querySelector('table')).toBeNull();
+
+      const title = container.querySelector('.data-table__card-title') as HTMLElement;
+      const cell = title.querySelector('.order-cell') as HTMLElement;
+      expect(cell).not.toBeNull();
+      expect(cell.querySelector('.product-thumbnail')).not.toBeNull();
+      expect(cell.querySelector('.entity-label__id')).toBeNull();
+      // The load-bearing premise, pinned rather than assumed: `DataTableCard`
+      // wraps `title` + `subtitle` in the row's `<Link>` only when a `rowHref`
+      // exists, and this page passes none. Adding one would nest this cell's own
+      // link and button inside an anchor — invalid, and the clicks would bubble to
+      // the card link, which is exactly the bug #2090 shipped. Every assertion
+      // below still passes on that broken shape, so this is the one that fails.
+      expect(title.closest('a')).toBeNull();
+      // The card is not `rowHref`-linked (this page uses `expandable`), so the
+      // cell's own link and Copy button are legal here — and they are the point:
+      // the pre-#2091 card had its own hand-rolled `EntityLabel`.
+      expect(within(cell).getByRole('link', { name: 'ALG-882414' })).toHaveAttribute(
+        'href',
+        '/orders/ol_order_synced',
+      );
+      fireEvent.click(within(cell).getByRole('button', { name: /^Copy internal order ID/ }));
+      expect(writeText).toHaveBeenCalledWith('ol_order_synced');
+      // The item name now belongs to the title, so the summary block must not
+      // print it a second time twenty pixels lower.
+      const card = container.querySelector('.data-table__card') as HTMLElement;
+      expect(within(card).getAllByText('Filtr kubełkowy AquaPro')).toHaveLength(1);
+    } finally {
+      viewport.restore();
+    }
+  });
+
+  it('captures demo_order_opened from the mobile card title link', async () => {
+    const viewport = mockMobileViewport();
+    try {
+      const mockApi = createMockApiClient({
+        orders: { list: vi.fn().mockResolvedValue(paginated([syncedOrder])) },
+        connections: { list: vi.fn().mockResolvedValue([sampleConnection]) },
+      });
+      captureDemoEvent.mockClear();
+
+      const { container } = renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+      await screen.findAllByText('ALG-882414');
+      const title = container.querySelector('.data-table__card-title') as HTMLElement;
+      fireEvent.click(within(title).getByRole('link', { name: 'ALG-882414' }));
+
+      expect(captureDemoEvent).toHaveBeenCalledWith('demo_order_opened', {});
+    } finally {
+      viewport.restore();
+    }
+  });
+
+  it('keeps the folded channel pill under the order name, with its registry label', async () => {
+    // The fold is CSS-driven (`.orders-order-channel`, hidden ≥1024px) and
+    // #2094 owns relocating it — this pins that #2091 left the render branch and
+    // its `→ dest +N` sibling in place, INSIDE the order cell's stack.
+    const mockApi = mockCrossChannelApi();
+
+    const { container } = renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+    await screen.findByText('ALG-882414');
+    const stack = container.querySelector('.orders-cell-stack') as HTMLElement;
+    const fold = stack.querySelector('.orders-order-channel') as HTMLElement;
+    expect(fold).not.toBeNull();
+    expect(fold.querySelector('.channel-pill[data-channel="erli"]')?.textContent).toBe('Erli');
+    expect(within(fold).getByText('→ WooCommerce')).toBeInTheDocument();
+    // The fold is a SIBLING of the identity cell, not inside its body.
+    expect(fold.closest('.order-cell')).toBeNull();
+  });
+
+  it('resolves the standalone Channel column label from the registry', async () => {
+    const mockApi = mockCrossChannelApi();
+
+    const { container } = renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+    await screen.findByText('ALG-882414');
+    // Two `erli` pills render on the desktop row — the order cell's fold and the
+    // Channel column. Exclude the fold to assert the column's own lookup.
+    const columnPill = Array.from(
+      container.querySelectorAll('.channel-pill[data-channel="erli"]'),
+    ).find((pill) => pill.closest('.orders-order-channel') === null);
+    expect(columnPill?.textContent).toBe('Erli');
+    expect(columnPill?.parentElement?.textContent).toContain('→ WooCommerce');
+  });
+
+  it('resolves the mobile-card subtitle channel label from the registry', async () => {
+    const viewport = mockMobileViewport();
+    try {
+      const mockApi = mockCrossChannelApi();
+
+      const { container } = renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+      await screen.findAllByText('ALG-882414');
+      const subtitle = container.querySelector('.orders-card-sub') as HTMLElement;
+      expect(subtitle.querySelector('.channel-pill[data-channel="erli"]')?.textContent).toBe('Erli');
+      expect(within(subtitle).getByText('→ WooCommerce')).toBeInTheDocument();
+    } finally {
+      viewport.restore();
+    }
+  });
+
+  it('resolves the bulk-dispatch per-row source label from the registry', async () => {
+    const user = userEvent.setup();
+    const mockApi = mockCrossChannelApi();
+
+    renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+    await screen.findByText('ALG-882414');
+    await user.click(screen.getByRole('checkbox', { name: 'Select ol_order_crosschannel' }));
+    await user.click(screen.getByRole('button', { name: 'Dispatch 1' }));
+
+    // The dialog portals outside the render container, so query the document.
+    const source = document.querySelector('.bulk-dispatch__src') as HTMLElement;
+    expect(source).not.toBeNull();
+    expect(source.textContent).toBe('Erli');
+  });
+
+  it('resolves the row-detail Destination label from the registry', async () => {
+    const user = userEvent.setup();
+    const mockApi = mockCrossChannelApi();
+
+    const { container } = renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+    await screen.findByText('ALG-882414');
+    await user.click(
+      screen.getByRole('button', { name: /Expand details for order ol_order_crosschannel/ }),
+    );
+
+    const detail = container.querySelector('.orders-detail') as HTMLElement;
+    expect(within(detail).getByText('WooCommerce')).toBeInTheDocument();
   });
 });

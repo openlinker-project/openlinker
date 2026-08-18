@@ -51,6 +51,8 @@ import {
 } from '@openlinker/core/integrations';
 import type { SyncJobRequest } from '@openlinker/core/sync';
 import { JobEnqueuePort, JOB_ENQUEUE_TOKEN } from '@openlinker/core/sync';
+import { IDestinationTaxonomyService } from '@openlinker/core/listings';
+import { DESTINATION_TAXONOMY_SERVICE_TOKEN } from '@openlinker/core/listings';
 import { Inject } from '@nestjs/common';
 import { Logger } from '@openlinker/shared/logging';
 import { HTTP_TRANSPORT_FACTORY_TOKEN } from '@openlinker/plugin-sdk';
@@ -86,7 +88,9 @@ export class ConnectionService implements IConnectionService {
     @Inject(CREDENTIALS_RESOLVER_TOKEN)
     private readonly credentialsResolver: CredentialsResolverPort,
     @Inject(HTTP_TRANSPORT_FACTORY_TOKEN)
-    private readonly httpTransportFactory: HttpTransportFactoryPort
+    private readonly httpTransportFactory: HttpTransportFactoryPort,
+    @Inject(DESTINATION_TAXONOMY_SERVICE_TOKEN)
+    private readonly destinationTaxonomy: IDestinationTaxonomyService
   ) {}
 
   /**
@@ -367,6 +371,7 @@ export class ConnectionService implements IConnectionService {
 
       this.logger.log(`Connection created successfully: ${connection.id} (${connection.name})`);
       await this.enqueueInitialCatalogSync(connection);
+      await this.enqueueInitialTaxonomySync(connection);
       return connection;
     } catch (error) {
       this.logger.error(`Failed to create connection: ${rest.name}`, error);
@@ -408,6 +413,73 @@ export class ConnectionService implements IConnectionService {
     } catch (error) {
       this.logger.warn(
         `Bootstrap catalog sync skipped for connection ${connection.id}: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  }
+
+  /**
+   * Best-effort initial destination-taxonomy bootstrap (#2084).
+   *
+   * The category pickers read the `DestinationCategory` projection rather than
+   * the live platform (ADR-037), and the only writer is an hourly scheduler
+   * task — so without this a connection created at :24 shows an empty category
+   * picker until :23 the next hour. That gap is what blocked #2085 from
+   * delegating the shop-side read to the projection.
+   *
+   * Two triggers, both routed here: unconditionally at create, and on the
+   * transition into `active`. Create is deliberately NOT gated on status —
+   * `resolveScope` cannot resolve an adapter for a disabled connection and so
+   * skips on its own, and encoding that rule twice gives it two places to drift
+   * (mirrors `enqueueInitialCatalogSync`, which is also unconditional).
+   *
+   * Note what this does and does not promise: the sync handler runs one page
+   * per job and does not self-reschedule, so this makes the walk START
+   * immediately rather than up to an hour later. A shop tree is small enough to
+   * finish in that first run; a marketplace tree still spans several ticks.
+   *
+   * Failures MUST NOT fail the connection write — the connection is genuinely
+   * created/enabled even if the enqueue fails, and the hourly task is the
+   * backstop.
+   */
+  private async enqueueInitialTaxonomySync(connection: Connection): Promise<void> {
+    try {
+      // Throws TaxonomySourceUnavailableException when the connection exposes
+      // no taxonomy source, which doubles as the capability gate: nothing to
+      // browse => nothing to bootstrap.
+      const scope = await this.destinationTaxonomy.resolveScope(connection.id);
+
+      // AC-4: a second marketplace connection joins an owner-keyed scope that
+      // is already populated, and the per-scope lock only prevents a
+      // CONCURRENT walk — an owner synced an hour ago has a free lock and would
+      // be fully re-walked (thousands of platform calls). A synced scope always
+      // has roots, so a non-empty root level is a sound "already bootstrapped".
+      // A shop scope is connection-keyed and therefore always empty here.
+      const roots = await this.destinationTaxonomy.browse(connection.id);
+      if (roots.length > 0) {
+        this.logger.debug(
+          `Taxonomy bootstrap skipped for connection ${connection.id}: scope already populated (${roots.length} root categories)`
+        );
+        return;
+      }
+
+      const jobRequest: SyncJobRequest = {
+        jobType: 'destination.taxonomy.sync',
+        connectionId: connection.id,
+        payload: { schemaVersion: 1, taxonomyOwner: scope.taxonomyOwner },
+        // Run-once per connection, unlike the scheduler's per-tick timestamped
+        // key. A re-enable after a disable therefore collapses into this key
+        // and enqueues nothing — correct, because `disable()` does not delete
+        // projection rows, so a re-enabled connection still has its tree.
+        idempotencyKey: `bootstrap:${connection.id}:taxonomy:sync`,
+      };
+
+      const { jobId, isExisting } = await this.jobEnqueue.enqueueJob(jobRequest);
+      this.logger.log(
+        `Bootstrap taxonomy sync ${isExisting ? 'already enqueued' : 'enqueued'} for connection ${connection.id}: ${jobId}`
+      );
+    } catch (error) {
+      this.logger.warn(
+        `Bootstrap taxonomy sync skipped for connection ${connection.id}: ${error instanceof Error ? error.message : String(error)}`
       );
     }
   }
@@ -503,6 +575,15 @@ export class ConnectionService implements IConnectionService {
       this.logger.log(
         `Connection updated successfully: ${connection.id} (status: ${connection.status})`
       );
+
+      // #2084 — a connection created disabled skips the create-time bootstrap
+      // (its adapter cannot resolve), so enabling it is the moment its taxonomy
+      // first becomes fetchable. Tested against the PERSISTED status, not
+      // `patch.status`: a patch omitting status must not read as a transition.
+      if (existing.status !== 'active' && connection.status === 'active') {
+        await this.enqueueInitialTaxonomySync(connection);
+      }
+
       return connection;
     } catch (error) {
       if (error instanceof ConnectionNotFoundException) {
