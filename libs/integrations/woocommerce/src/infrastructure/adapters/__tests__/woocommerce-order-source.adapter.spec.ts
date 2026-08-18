@@ -259,6 +259,50 @@ describe('WooCommerceOrderSourceAdapter', () => {
   });
 
   describe('getOrder', () => {
+    it('should map placedAt from date_created_gmt, identical to createdAt (#2097)', async () => {
+      const order = makeOrder({
+        date_created_gmt: '2024-01-15T10:00:00',
+        date_created: '2024-01-15T12:00:00',
+      });
+      const httpClient = makeHttpClient({ get: jest.fn().mockResolvedValue(order) });
+      const adapter = new WooCommerceOrderSourceAdapter(httpClient, makeConnection());
+
+      const result = await adapter.getOrder({ externalOrderId: '1' });
+
+      expect(result.placedAt).toBe('2024-01-15T10:00:00Z');
+      expect(result.placedAt).toBe(result.createdAt);
+    });
+
+    it('should fall back to date_created for placedAt when date_created_gmt is absent (#2097)', async () => {
+      const order = makeOrder({
+        date_created_gmt: '',
+        date_created: '2024-01-15T12:00:00',
+      });
+      const httpClient = makeHttpClient({ get: jest.fn().mockResolvedValue(order) });
+      const adapter = new WooCommerceOrderSourceAdapter(httpClient, makeConnection());
+
+      const result = await adapter.getOrder({ externalOrderId: '1' });
+
+      expect(result.placedAt).toBe('2024-01-15T12:00:00Z');
+      expect(result.placedAt).toBe(result.createdAt);
+    });
+
+    it('should leave placedAt undefined (not the epoch sentinel) when both date fields are absent (#2114)', async () => {
+      const order = makeOrder({
+        date_created_gmt: '',
+        date_created: '',
+      });
+      const httpClient = makeHttpClient({ get: jest.fn().mockResolvedValue(order) });
+      const adapter = new WooCommerceOrderSourceAdapter(httpClient, makeConnection());
+
+      const result = await adapter.getOrder({ externalOrderId: '1' });
+
+      expect(result.placedAt).toBeUndefined();
+      // createdAt keeps normGmt's epoch sentinel — only placedAt (which feeds
+      // invoicing's saleDate) must fail to empty rather than to 1970-01-01.
+      expect(result.createdAt).toBe(new Date(0).toISOString());
+    });
+
     it('should map variation_id > 0 to variant product ref', async () => {
       const order = makeOrder({
         line_items: [

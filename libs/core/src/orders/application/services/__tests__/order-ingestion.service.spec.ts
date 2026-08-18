@@ -104,6 +104,7 @@ describe('OrderIngestionService', () => {
       findByIds: jest.fn(),
       markItemResolutionFailure: jest.fn().mockResolvedValue(undefined),
       markCancelled: jest.fn().mockResolvedValue(undefined),
+      markSalesDocumentBlock: jest.fn().mockResolvedValue(undefined),
     } as unknown as jest.Mocked<IOrderRecordService>;
 
     customerIdentityResolver = {
@@ -122,7 +123,7 @@ describe('OrderIngestionService', () => {
       relay: jest.fn().mockResolvedValue({ targets: [] }),
     } as unknown as jest.Mocked<IOrderLifecycleRelayService>;
     autoIssueTrigger = {
-      onOrderTransition: jest.fn().mockResolvedValue(undefined),
+      onOrderTransition: jest.fn().mockResolvedValue({ kind: 'none' }),
     } as unknown as jest.Mocked<IAutoIssueTriggerService>;
 
     service = new OrderIngestionService(
@@ -203,6 +204,74 @@ describe('OrderIngestionService', () => {
 
       expect(results).toEqual([]);
       expect(autoIssueTrigger.onOrderTransition).not.toHaveBeenCalled();
+    });
+
+    // #2100 (ADR-041 decision 11): the trigger REPORTS a block, this service WRITES
+    // it. That split is what keeps the trigger's one-way edge (F3) intact.
+    const block = {
+      reason: 'unresolved-routing',
+      unresolvedReason: 'ambiguous-connection-no-primary',
+      detail: '2 invoicing connections, none marked primary',
+    } as const;
+
+    it('persists the block the trigger reported', async () => {
+      orderSyncService.syncOrder.mockResolvedValue([]);
+      autoIssueTrigger.onOrderTransition.mockResolvedValueOnce({ kind: 'blocked', block });
+
+      await service.syncOrderFromSource(connectionId, externalOrderId, 'evt-9');
+
+      expect(orderRecordService.markSalesDocumentBlock).toHaveBeenCalledWith(
+        'ol_order_test',
+        block,
+      );
+    });
+
+    it('writes null through on `none` — the level-triggered clear', async () => {
+      orderSyncService.syncOrder.mockResolvedValue([]);
+      autoIssueTrigger.onOrderTransition.mockResolvedValueOnce({ kind: 'none' });
+
+      await service.syncOrderFromSource(connectionId, externalOrderId, 'evt-10');
+
+      // Skipping this write would make a once-persisted badge permanent. The
+      // no-op case is suppressed in the repository's WHERE clause, not here —
+      // a caller-side comparison would have to trust a record read before the
+      // destination round-trip, and a concurrent clear could make a genuinely
+      // new answer look unchanged.
+      expect(orderRecordService.markSalesDocumentBlock).toHaveBeenCalledWith('ol_order_test', null);
+    });
+
+    it('writes NOTHING on `indeterminate` — the gate could not tell, so the reason stands', async () => {
+      orderSyncService.syncOrder.mockResolvedValue([]);
+      autoIssueTrigger.onOrderTransition.mockResolvedValueOnce({ kind: 'indeterminate' });
+
+      await service.syncOrderFromSource(connectionId, externalOrderId, 'evt-13');
+
+      // Erasing a true reason and replacing it with nothing is the silent decline
+      // ADR-041 §54 forbids — worse than leaving a possibly-stale one.
+      expect(orderRecordService.markSalesDocumentBlock).not.toHaveBeenCalled();
+    });
+
+    it('swallows a failed block write with its OWN message — the order pipeline still succeeds', async () => {
+      const warnSpy = jest
+        .spyOn((service as unknown as { logger: { warn: (m: string) => void } }).logger, 'warn')
+        .mockImplementation(() => undefined);
+      orderSyncService.syncOrder.mockResolvedValue([]);
+      autoIssueTrigger.onOrderTransition.mockResolvedValueOnce({
+        kind: 'blocked',
+        block: { reason: 'trigger-model-manual' },
+      });
+      orderRecordService.markSalesDocumentBlock.mockRejectedValueOnce(new Error('db down'));
+
+      const results = await service.syncOrderFromSource(connectionId, externalOrderId, 'evt-11');
+
+      // A lost write self-heals on the next transition; a thrown one would not.
+      expect(results).toEqual([]);
+      const logged = warnSpy.mock.calls.map((c) => String(c[0])).join('\n');
+      // A persistence failure is not a trigger failure — reporting it as one would
+      // send the next reader to the wrong service.
+      expect(logged).toContain('Failed to persist the sales-document block outcome');
+      expect(logged).not.toContain('Auto-issue trigger failed');
+      warnSpy.mockRestore();
     });
   });
 

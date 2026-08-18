@@ -46,6 +46,11 @@ function buildQuery(filters?: OrderFilters, pagination?: OrderPagination): strin
   if (filters?.dueBefore) params.set('dueBefore', filters.dueBefore);
   if (filters?.slaState) params.set('slaState', filters.slaState);
   if (filters?.fulfillmentState) params.set('fulfillmentState', filters.fulfillmentState);
+  // #2100 — a boolean, so it needs the `!== undefined` guard the truthy checks
+  // above don't: `false` ("exclude blocked orders") is a real predicate.
+  if (filters?.salesDocumentBlocked !== undefined) {
+    params.set('salesDocumentBlocked', String(filters.salesDocumentBlocked));
+  }
   if (pagination?.limit !== undefined) params.set('limit', String(pagination.limit));
   if (pagination?.offset !== undefined) params.set('offset', String(pagination.offset));
   const qs = params.toString();

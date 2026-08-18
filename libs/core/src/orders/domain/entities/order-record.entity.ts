@@ -14,6 +14,10 @@ import type { PaymentStatus } from '../types/payment-status.types';
 import type { CodToCollect } from '../types/cod-to-collect.types';
 import type { FulfillmentRollupState } from '../types/order-fulfillment.types';
 import type { OrderDispatchWindow } from '../types/order.types';
+import type {
+  SalesDocumentGateBlockReason,
+  SalesDocumentUnresolvedReason,
+} from '@openlinker/core/sales-documents';
 
 export type { OrderSyncStatus, SyncAttempt } from '../types/order-sync.types';
 
@@ -85,6 +89,35 @@ export class OrderRecord {
      * first-observed instant survives every later re-persist.
      */
     public readonly cancelledAt: Date | null = null,
+    /**
+     * Why OpenLinker issued no fiscal document for this order (#2100, ADR-041
+     * decision 11), or `null` when nothing is blocking it — including the
+     * ordinary cases of "already invoiced", "no invoicing connection", and
+     * "waiting for its trigger condition". Independent of `recordStatus`: an
+     * order can be `ready` and fully `synced` while still carrying a block.
+     *
+     * Level-triggered: `AutoIssueTriggerService` re-decides it on EVERY order
+     * transition and `updateSalesDocumentBlock` writes the answer through,
+     * `null` included — so a reason never outlives the misconfiguration that
+     * caused it. Deliberately NOT round-tripped through the repository's
+     * `toOrm`, for the same reason as `cancelledAt`: that writer is the single
+     * owner of all three `salesDocument*` columns.
+     */
+    public readonly salesDocumentBlockReason: SalesDocumentGateBlockReason | null = null,
+    /**
+     * The routing reason that travelled alongside a `'unresolved-routing'` block
+     * (ADR-041 §107) — today always `'ambiguous-connection-no-primary'`. `null`
+     * for every other block reason and for an unblocked order. This is the value
+     * the operator-facing copy keys on, because "routing was unresolved" is not
+     * actionable while "no primary invoicing connection" is.
+     */
+    public readonly salesDocumentUnresolvedReason: SalesDocumentUnresolvedReason | null = null,
+    /**
+     * PII-FREE elaboration of `salesDocumentBlockReason` (ids and counts only,
+     * e.g. "3 invoicing connections, none marked primary"), rendered verbatim to
+     * the operator. `null` when the reason needs no elaboration.
+     */
+    public readonly salesDocumentBlockDetail: string | null = null,
   ) {}
 
   /**

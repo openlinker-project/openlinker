@@ -39,6 +39,7 @@ import {
   useCategorySearchQuery,
   isSearchableCategoryQuery,
   toCategorySearchResultHits,
+  isTaxonomyUnsynced,
 } from '../../../mappings';
 import { useShopCategoriesQuery } from '../../hooks/use-shop-categories-query';
 
@@ -118,22 +119,20 @@ function ShopCategoryPickerBody({
 
   const searchHits = toCategorySearchResultHits(searchQuery.data);
 
-  // NOTE the deliberate absence of `isTaxonomyUnsynced` here, unlike the two
-  // marketplace surfaces.
+  // #2085 put this surface's browse half on the projection too, so it now uses
+  // the same helper as the marketplace pickers. The helper infers "never
+  // synced" from an empty BROWSE result, which is sound exactly when both
+  // halves read one store — as of the delegation, they do.
   //
-  // That helper infers "never synced" from an empty BROWSE result, which is
-  // only sound when browse and search read the same store. On this surface they
-  // do not: the tree above is read LIVE from the shop
-  // (`ShopCategoryBrowseService` -> `adapter.browseCategories`, the #2085
-  // delegation deferral) while search reads the projection, which syncs hourly
-  // with no bootstrap on connection create (#2084). So `browsedNodeCount` is
-  // non-empty by construction for a real shop, the guard could never fire, and
-  // an empty search would confidently report "nothing matched" while the index
-  // was simply still catching up — the same false-claim defect #2075 removes.
-  //
-  // Until #2084/#2085 close, this surface cannot distinguish the two cases, so
-  // it says so rather than guessing.
-  const searchEmptyReason = 'indeterminate';
+  // Note that a partially-synced scope does not break the inference: both
+  // halves are equally incomplete, so an empty search can never contradict a
+  // tree the operator can actually see.
+  const taxonomyNeverSynced = isTaxonomyUnsynced({
+    atRoot: breadcrumb.length === 0,
+    browsedNodeCount: nodes.length,
+    isBrowseLoading: categoriesQuery.isLoading,
+    browseError: categoriesQuery.error,
+  });
 
   function drillInto(node: Crumb): void {
     setBreadcrumb((prev) => [...prev, node]);
@@ -244,7 +243,7 @@ function ShopCategoryPickerBody({
             // (ADR-024).
             canSelect={() => true}
             selectedId={selectedId}
-            emptyReason={searchEmptyReason}
+            emptyReason={taxonomyNeverSynced ? 'not-synced' : 'no-matches'}
             query={debouncedSearch}
           />
         ) : categoriesQuery.isLoading ? (
@@ -261,8 +260,12 @@ function ShopCategoryPickerBody({
           />
         ) : nodes.length === 0 ? (
           <div className="bulk-editor__catpick-empty">
+            {/* #2085 — this list reads OL's synced copy of the shop's tree, not
+                the shop itself, so an empty root means "not synced yet", never
+                "this shop has no categories". Claiming the latter would be a
+                false statement about the operator's own storefront. */}
             {breadcrumb.length === 0
-              ? 'This shop has no categories yet.'
+              ? "This shop's categories have not been synced yet. They appear here once the first sync completes."
               : 'This category has no subcategories. Select it, or step back to a different branch.'}
           </div>
         ) : (

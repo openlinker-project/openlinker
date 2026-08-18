@@ -18,7 +18,12 @@ import {
   SYNC_ATTEMPTS_PER_DESTINATION_CAP,
   type OrderSyncStatusValue,
   type SyncAttempt,
+  type SalesDocumentGateBlockReasonValue,
+  type SalesDocumentUnresolvedReasonValue,
 } from '../api/orders.types';
+import type { StatusBadgeTone } from '../../../shared/ui/status-badge';
+import type { ParsedOrderInvoice } from '../api/order-snapshot.schema';
+import { invoicingBlockedBadge } from '../lib/order-row';
 
 interface TimelineEvent {
   id: string;
@@ -55,6 +60,21 @@ interface OrderActivityTimelineProps {
    * alongside `recordStatus = 'awaiting_mapping' | 'source_deleted'`.
    */
   mappingFailureReason?: string | null;
+  /**
+   * Why OpenLinker issued no fiscal document (#2100). Narrated as its own
+   * timeline entry rather than folded into "Order received" the way
+   * `mappingFailureReason` is — an invoicing block is not an ingestion-time fact.
+   */
+  salesDocumentBlockReason?: SalesDocumentGateBlockReasonValue | null;
+  /** Routing reason paired with a `'unresolved-routing'` block (ADR-041 §107). */
+  salesDocumentUnresolvedReason?: SalesDocumentUnresolvedReasonValue | null;
+  /** PII-free elaboration the backend supplied. */
+  salesDocumentBlockDetail?: string | null;
+  /**
+   * The order's invoice projection, when it has one. Suppresses the block entry —
+   * see the shared rule on `invoicingBlockedBadge`.
+   */
+  invoice?: ParsedOrderInvoice | null;
 }
 
 const STATUS_PAST_TENSE: Record<OrderSyncStatusValue, string> = {
@@ -62,6 +82,22 @@ const STATUS_PAST_TENSE: Record<OrderSyncStatusValue, string> = {
   syncing: 'syncing to',
   synced: 'synced to',
   failed: 'failed to sync to',
+};
+
+/**
+ * Badge tone → timeline tone (#2100). The timeline's dot vocabulary is narrower
+ * than `StatusBadgeTone`, so the mapping is explicit and total rather than a
+ * conditional that silently widens: `neutral` / `info` / `review` all read
+ * correctly as an ordinary `default` entry — a deliberate operator setting is not
+ * a failure and must not borrow a failure colour.
+ */
+const BLOCK_TONE_FOR_BADGE: Record<StatusBadgeTone, TimelineEvent['tone']> = {
+  error: 'error',
+  warning: 'warning',
+  success: 'success',
+  neutral: 'default',
+  info: 'default',
+  review: 'default',
 };
 
 const TONE_FOR_STATUS: Record<OrderSyncStatusValue, TimelineEvent['tone']> = {
@@ -77,6 +113,10 @@ function buildEvents(
   syncAttempts: SyncAttempt[],
   sourceConnectionId: string,
   mappingFailureReason?: string | null,
+  salesDocumentBlockReason?: SalesDocumentGateBlockReasonValue | null,
+  salesDocumentUnresolvedReason?: SalesDocumentUnresolvedReasonValue | null,
+  salesDocumentBlockDetail?: string | null,
+  invoice?: ParsedOrderInvoice | null,
 ): TimelineEvent[] {
   const events: TimelineEvent[] = [];
 
@@ -186,6 +226,31 @@ function buildEvents(
     });
   });
 
+  // #2100 — appended last and DELIBERATELY UNDATED (`timestamp: null`): the block
+  // is a current-state fact re-decided on every transition, not a historical
+  // event, and no instant is persisted for it. Dating it with `createdAt` or
+  // `updatedAt` would assert a moment the data does not support.
+  // `invoice` is passed so the shared suppression rule applies here too: without
+  // it this entry claimed "No invoice issued" directly under the panel showing the
+  // issued invoice (#2100 review).
+  const blocked = invoicingBlockedBadge(
+    salesDocumentBlockReason,
+    salesDocumentUnresolvedReason,
+    invoice,
+  );
+  if (blocked) {
+    events.push({
+      id: 'invoicing-blocked',
+      timestamp: null,
+      title: 'No invoice issued',
+      by: 'system · invoicing',
+      description: `${blocked.hint}${
+        salesDocumentBlockDetail ? ` (${salesDocumentBlockDetail})` : ''
+      }`,
+      tone: BLOCK_TONE_FOR_BADGE[blocked.tone],
+    });
+  }
+
   return events;
 }
 
@@ -202,11 +267,35 @@ export function OrderActivityTimeline({
   syncAttempts,
   sourceConnectionId,
   mappingFailureReason,
+  salesDocumentBlockReason,
+  salesDocumentUnresolvedReason,
+  salesDocumentBlockDetail,
+  invoice,
 }: OrderActivityTimelineProps): ReactElement {
   const events = useMemo(
     () =>
-      buildEvents(createdAt, recordStatus, syncAttempts, sourceConnectionId, mappingFailureReason),
-    [createdAt, recordStatus, syncAttempts, sourceConnectionId, mappingFailureReason],
+      buildEvents(
+        createdAt,
+        recordStatus,
+        syncAttempts,
+        sourceConnectionId,
+        mappingFailureReason,
+        salesDocumentBlockReason,
+        salesDocumentUnresolvedReason,
+        salesDocumentBlockDetail,
+        invoice,
+      ),
+    [
+      createdAt,
+      recordStatus,
+      syncAttempts,
+      sourceConnectionId,
+      mappingFailureReason,
+      salesDocumentBlockReason,
+      salesDocumentUnresolvedReason,
+      salesDocumentBlockDetail,
+      invoice,
+    ],
   );
 
   if (events.length === 0) {

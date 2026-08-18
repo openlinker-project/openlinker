@@ -14,6 +14,14 @@ import {
   FulfillmentRollupStateValues,
 } from '@openlinker/core/orders';
 import { OrderRecordStatus, SlaState, FulfillmentRollupState } from '@openlinker/core/orders';
+import {
+  SalesDocumentGateBlockReasonValues,
+  SalesDocumentUnresolvedReasonValues,
+} from '@openlinker/core/sales-documents';
+import type {
+  SalesDocumentGateBlockReason,
+  SalesDocumentUnresolvedReason,
+} from '@openlinker/core/sales-documents';
 import { OrderSyncStatusResponseDto } from './order-sync-status-response.dto';
 import { SyncAttemptResponseDto } from './sync-attempt-response.dto';
 import type { OrderInvoiceProjectionDto } from './order-invoice-projection.dto';
@@ -73,6 +81,35 @@ export class OrderRecordResponseDto {
       'recordStatus = "awaiting_mapping" | "source_deleted". null for a "ready" record.',
   })
   mappingFailureReason!: string | null;
+
+  @ApiPropertyOptional({
+    enum: SalesDocumentGateBlockReasonValues,
+    nullable: true,
+    description:
+      'Why OpenLinker issued no fiscal document for this order (#2100, ADR-041 decision 11). ' +
+      'null when nothing is blocking it — including the ordinary cases of already invoiced, ' +
+      'no invoicing connection, and waiting for the trigger condition. Independent of ' +
+      'recordStatus: an order can be ready and synced while still carrying a block.',
+  })
+  salesDocumentBlockReason!: SalesDocumentGateBlockReason | null;
+
+  @ApiPropertyOptional({
+    enum: SalesDocumentUnresolvedReasonValues,
+    nullable: true,
+    description:
+      'The routing reason paired with a "unresolved-routing" block (ADR-041 §107); null for ' +
+      'every other reason. This is the value operator-facing copy keys on — "routing was ' +
+      'unresolved" is not actionable, "no primary invoicing connection" is.',
+  })
+  salesDocumentUnresolvedReason!: SalesDocumentUnresolvedReason | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      'PII-free elaboration of the block reason (ids and counts only, e.g. "3 invoicing ' +
+      'connections, none marked primary"), rendered to the operator verbatim.',
+  })
+  salesDocumentBlockDetail!: string | null;
 
   @ApiProperty({ description: 'Order last-update timestamp (ISO 8601)' })
   updatedAt!: string;

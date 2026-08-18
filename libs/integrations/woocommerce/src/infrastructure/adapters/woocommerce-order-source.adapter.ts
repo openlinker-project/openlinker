@@ -175,6 +175,17 @@ export class WooCommerceOrderSourceAdapter implements OrderSourcePort {
       // `dispatchTime` is intentionally unmapped and the derived ship-by stays
       // blank by design — no fabrication. Only sources with a per-order dispatch
       // window (Allegro) populate ship-by.
+      // date_created is the buyer-placement instant (checkout, admin, or REST
+      // creation all set it at the same instant) — the buyer-placed time
+      // (#926), mirroring the PrestaShop adapter's date_add mapping. Unlike
+      // createdAt (which falls through normGmt's epoch sentinel when both
+      // fields are absent — fine for bookkeeping timestamps), placedAt feeds
+      // invoicing's saleDate (P_6 on a submitted KSeF FA(3)), so it must stay
+      // undefined rather than resolve to 1970-01-01 when the wire shape omits
+      // both date fields — mirrors the PrestaShop adapter's date_add guard.
+      ...(order.date_created_gmt || order.date_created
+        ? { placedAt: normGmt(order.date_created_gmt, order.date_created) }
+        : {}),
       createdAt: normGmt(order.date_created_gmt, order.date_created),
       updatedAt: normGmt(order.date_modified_gmt, order.date_modified),
     };

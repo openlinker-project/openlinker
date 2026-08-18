@@ -54,8 +54,9 @@ import { useDemoMode } from '../../features/system';
 import { captureDemoEvent } from '../../features/demo';
 import { parseOrderSnapshot } from '../../features/orders/api/order-snapshot.schema';
 import { deriveOrderHealth, slaBadge, fulfillmentBadge } from '../../features/orders/lib/order-health';
-import { paymentBadge, invoiceBadge } from '../../features/orders/lib/order-row';
+import { paymentBadge } from '../../features/orders/lib/order-row';
 import { OrderIdentityCell } from '../../features/orders';
+import { OrderInvoicingCell } from '../../features/orders/components/order-invoicing-cell';
 import { deriveDeliveryOutcome, hasLiveOlCarrierRoute } from '../../features/orders/lib/delivery-outcome';
 import { DeliveryOutcomeChip } from '../../features/orders/components/delivery-chip';
 import { resolveDeliveryOwner } from '../../features/orders/lib/delivery-owner';
@@ -257,6 +258,10 @@ export function OrdersListPage(): ReactElement {
   const slaState = isSlaState(rawSla) ? rawSla : undefined;
   const rawFulfillment = searchParams.get('fulfillmentState');
   const fulfillmentState = isFulfillmentState(rawFulfillment) ? rawFulfillment : undefined;
+  // #2100 — an independent axis, so it lives in its own param and composes with
+  // `health` rather than replacing it. Present-only toggle: the URL never carries
+  // `invoicing=false`, so the filter is either "blocked only" or absent.
+  const invoicingBlocked = searchParams.get('invoicing') === 'blocked';
   const offset = Number(searchParams.get('offset') ?? '0');
 
   // "Breaching soon / overdue" cutoff — stable per toggle (not recomputed each
@@ -278,6 +283,10 @@ export function OrdersListPage(): ReactElement {
     dueBefore,
     slaState,
     fulfillmentState,
+    // Present-only (#2100): `true` when the chip is on, `undefined` otherwise —
+    // never `false`, which would mean "hide blocked orders" and is not something
+    // the UI offers.
+    salesDocumentBlocked: invoicingBlocked ? true : undefined,
   };
   const pagination = { limit: PAGE_SIZE, offset };
 
@@ -873,7 +882,6 @@ export function OrdersListPage(): ReactElement {
         cell: (order) => {
           const parsed = parsedFor(order);
           const pay = paymentBadge(parsed.paymentStatus);
-          const inv = parsed.invoice ? invoiceBadge(parsed.invoice) : null;
           return (
             <span className="orders-cell-stack orders-cell-stack--end">
               {parsed.totals ? (
@@ -888,27 +896,18 @@ export function OrdersListPage(): ReactElement {
                   {pay.label}
                 </StatusBadge>
               ) : null}
-              {/* Invoice: the clearance-status pill when an invoice exists; else
-                  the "Issue invoice" action deep-linking to the order's invoicing
-                  section — but only when some connection can actually issue an
-                  invoice (#1713). No invoicing capability ⇒ em dash. */}
-              {inv ? (
-                <StatusBadge tone={inv.tone} withDot compact>
-                  {inv.label}
-                </StatusBadge>
-              ) : hasInvoicingCapability ? (
-                <Link
-                  className="orders-row-cta"
-                  to={`/orders/${order.internalOrderId}#invoicing`}
-                >
-                  <span className="orders-row-cta__plus" aria-hidden="true">
-                    +
-                  </span>{' '}
-                  Issue invoice
-                </Link>
-              ) : (
-                <span className="text-muted">—</span>
-              )}
+              {/* Invoice pill, block badge and "Issue invoice" CTA — independent
+                  parts, not a three-way choice; see `OrderInvoicingCell`. Shared
+                  verbatim with the mobile card so the two cannot drift again. */}
+              <OrderInvoicingCell
+                internalOrderId={order.internalOrderId}
+                invoice={parsed.invoice}
+                blockReason={order.salesDocumentBlockReason}
+                unresolvedReason={order.salesDocumentUnresolvedReason}
+                hasInvoicingCapability={hasInvoicingCapability}
+                layout="stack"
+                emptyFallback={<span className="text-muted">—</span>}
+              />
               <span className="text-muted orders-cell-sub mono tabular">
                 <TimeDisplay iso={order.createdAt} format="datetime" />
               </span>
@@ -1008,6 +1007,53 @@ export function OrdersListPage(): ReactElement {
       } else {
         p.set('due', 'breaching');
       }
+      p.delete('offset');
+      return p;
+    });
+  }
+
+  /** #2100 — mirrors `toggleBreaching`: an independent, present-only chip filter. */
+  function toggleInvoicingBlocked(): void {
+    captureDemoEvent('demo_orders_filtered', {
+      filter: 'invoicing_blocked',
+      value: String(!invoicingBlocked),
+    });
+    setSearchParams((prev) => {
+      const p = new URLSearchParams(prev);
+      if (invoicingBlocked) {
+        p.delete('invoicing');
+      } else {
+        p.set('invoicing', 'blocked');
+      }
+      // Any filter change invalidates the current page offset.
+      p.delete('offset');
+      return p;
+    });
+  }
+
+  /**
+   * Clear BOTH attention axes in ONE write (#2100 review round 3).
+   *
+   * This exists because `setSearchParams` is not a queued reducer: React Router
+   * builds the next params from the params of the CURRENT render, so two calls in
+   * one handler both start from the same base and the second navigation simply
+   * supersedes the first. `toggleInvoicingBlocked(); setHealthFilter(null);` read
+   * as "clear both" and actually cleared `health` while re-applying
+   * `invoicing=blocked` — a button labelled "View all orders" that left a filter
+   * on, which is the exact defect it was written to fix.
+   *
+   * Both empty-state recovery buttons use this, including the `needs_attention`
+   * arm: it is evaluated FIRST, so an order set that is both unattended and
+   * invoicing-blocked lands there, not in the generic `health !== undefined` arm.
+   */
+  function clearAttentionFilters(): void {
+    setSearchParams((prev) => {
+      const p = new URLSearchParams(prev);
+      p.delete('health');
+      p.delete('invoicing');
+      // `due` is the third attention axis (ship-by SLA). "View all orders" that
+      // left the ship-by chip applied would be lying in the same way.
+      p.delete('due');
       p.delete('offset');
       return p;
     });
@@ -1180,6 +1226,31 @@ export function OrdersListPage(): ReactElement {
         <Chip tone="warning" active={breaching} onClick={toggleBreaching}>
           Ship-by ≤ 24h / overdue
         </Chip>
+        {/*
+          #2100 — an independent filter, NOT a sixth health segment: an invoicing
+          block is orthogonal to sync health (a blocked order is usually also
+          `synced`), and the KPI segments above are a partition whose counts sum
+          to the total.
+
+          Hidden when the count is zero so an install that never hits this state
+          sees no extra control — but ALWAYS rendered while the filter is active,
+          even at zero. Gating on the count alone unmounted the only control for
+          `?invoicing=blocked` the moment the remediation succeeded, leaving an
+          applied filter with no way to clear it and an empty state that claimed
+          "no order records have been synced yet" (#2100 review). The sibling
+          ship-by chip is unconditional for the same reason.
+        */}
+        {invoicingBlocked || summary?.salesDocumentBlocked ? (
+          <Chip tone="error" active={invoicingBlocked} onClick={toggleInvoicingBlocked}>
+            {/* The count is omitted until the summary resolves rather than
+                defaulted to 0 — asserting a number the client does not have yet
+                would be worse than showing none. */}
+            Invoicing blocked
+            {summary?.salesDocumentBlocked === undefined
+              ? ''
+              : ` ${summary.salesDocumentBlocked}`}
+          </Chip>
+        ) : null}
         {/* SLA KPI affordance (#1108) — at-a-glance overdue / at-risk counts. */}
         {slaSummary && (slaSummary.overdue > 0 || slaSummary.atRisk > 0) && (
           <span className="ds-row" style={{ gap: 'var(--space-2)', alignItems: 'center' }}>
@@ -1215,14 +1286,34 @@ export function OrdersListPage(): ReactElement {
             liveRegion="off"
             title="All clear — nothing needs your attention"
             message="No failed syncs or unmapped orders right now. New issues surface here the moment they happen."
-            action={<Button onClick={() => { setHealthFilter(null); }}>View all orders</Button>}
+            action={
+              <Button onClick={clearAttentionFilters}>View all orders</Button>
+            }
           />
         ) : health !== undefined ? (
           <EmptyState
             liveRegion="off"
             title="No orders in this view"
             message="No orders match the current filter."
-            action={<Button onClick={() => { setHealthFilter(null); }}>View all orders</Button>}
+            action={
+              <Button onClick={clearAttentionFilters}>View all orders</Button>
+            }
+          />
+        ) : invoicingBlocked ? (
+          /*
+            #2100 — `invoicing=blocked` is a filter the `health !== undefined`
+            branch above cannot see, so without this arm an active block filter
+            fell through to "No order records have been synced yet", which is
+            false whenever a filter is applied. The recovery button clears THIS
+            param; `clearAttentionFilters` clears every attention axis in one write.
+          */
+          <EmptyState
+            liveRegion="off"
+            title="Nothing is blocked from invoicing"
+            message="No order is waiting on an invoicing decision right now."
+            action={
+              <Button onClick={clearAttentionFilters}>View all orders</Button>
+            }
           />
         ) : (
           <EmptyState
@@ -1372,7 +1463,6 @@ export function OrdersListPage(): ReactElement {
                   processorAvailable: order.deliveryResolution?.processorAvailable,
                   cancelled: parsed.status === 'cancelled',
                 });
-                const inv = parsed.invoice ? invoiceBadge(parsed.invoice) : null;
                 const fulfillment = fulfillmentBadge(order.fulfillmentState);
                 // "Generate label" only when there's a live OL carrier route
                 // (#1799), same gate as the desktop cell — otherwise the passive
@@ -1407,23 +1497,18 @@ export function OrdersListPage(): ReactElement {
                       <div>
                         <dt>Invoice</dt>
                         <dd>
-                          {inv ? (
-                            <StatusBadge tone={inv.tone} withDot compact>
-                              {inv.label}
-                            </StatusBadge>
-                          ) : hasInvoicingCapability ? (
-                            <Link
-                              className="orders-row-cta"
-                              to={`/orders/${order.internalOrderId}#invoicing`}
-                            >
-                              <span className="orders-row-cta__plus" aria-hidden="true">
-                                +
-                              </span>{' '}
-                              Issue invoice
-                            </Link>
-                          ) : (
-                            '—'
-                          )}
+                          {/* SAME component as the desktop cell — this used to be a
+                              hand-duplicated parallel render path, and the two
+                              diverged. */}
+                          <OrderInvoicingCell
+                            internalOrderId={order.internalOrderId}
+                            invoice={parsed.invoice}
+                            blockReason={order.salesDocumentBlockReason}
+                            unresolvedReason={order.salesDocumentUnresolvedReason}
+                            hasInvoicingCapability={hasInvoicingCapability}
+                            layout="row"
+                            emptyFallback="—"
+                          />
                         </dd>
                       </div>
                       <div>

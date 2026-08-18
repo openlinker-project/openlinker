@@ -87,6 +87,19 @@ export interface OrderHealthSummary {
   needsAttention: number;
   synced: number;
   awaitingDispatch: number;
+  /**
+   * Orders with a persisted sales-document block (#2100). ORTHOGONAL to the five
+   * buckets above and DELIBERATELY NOT part of the partition: an invoicing block
+   * says nothing about sync health, so a blocked order is also counted in exactly
+   * one of the five (it is typically `synced`). `total` therefore still equals the
+   * sum of the FIVE buckets, and this count must never be added to them.
+   *
+   * It rides on this summary rather than a sixth `OrderHealth` value because
+   * `deriveOrderHealth` returns exactly one bucket per order and its SQL twins
+   * partition the set — a sixth value would either double-count or hide a sync
+   * failure behind an invoicing one.
+   */
+  salesDocumentBlocked: number;
 }
 
 /**
@@ -176,6 +189,24 @@ export interface OrderRecordFilters {
    * or FE control — that is the aggregate endpoints' job (#1987/#1988).
    */
   cancelled?: boolean;
+  /**
+   * Sales-document block filter (#2100). `true` keeps only orders carrying an
+   * ATTENTION-WORTHY block, `false` keeps only the rest; omitted does not filter.
+   *
+   * "Attention-worthy" is `SalesDocumentAttentionReasonValues`, i.e. every reason
+   * EXCEPT `'trigger-model-manual'` — so `true` deliberately does **not** return
+   * manual-only orders even though OpenLinker did decline to invoice them, and
+   * `false` includes them. That is the same subset the `salesDocumentBlocked`
+   * count reports, so the chip's number always matches the rows the filter yields;
+   * a filter that returned more than its own count would be worse than one that
+   * omits a deliberate operator setting. The per-order badge still renders manual.
+   *
+   * An INDEPENDENT axis, not an `OrderHealth` value: a blocked order still sits
+   * in exactly one health bucket, so this filter composes with `health` rather
+   * than competing with it (an operator can ask for "synced AND invoicing
+   * blocked", which is the most common shape of the problem).
+   */
+  salesDocumentBlocked?: boolean;
   /**
    * Result ordering (#927/#944/#1108). Maps to a SQL `ORDER BY` by
    * `OrderRecordRepository.applySort`. `dispatchBy` (ship-by deadline, NULLs

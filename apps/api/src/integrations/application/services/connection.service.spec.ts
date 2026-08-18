@@ -54,6 +54,8 @@ import {
 } from '@openlinker/integrations-prestashop';
 import type { JobEnqueuePort } from '@openlinker/core/sync';
 import { JOB_ENQUEUE_TOKEN } from '@openlinker/core/sync';
+import { DESTINATION_TAXONOMY_SERVICE_TOKEN } from '@openlinker/core/listings';
+import type { IDestinationTaxonomyService } from '@openlinker/core/listings';
 import type { ConnectionCreateInput } from '../interfaces/connection.service.types';
 
 describe('ConnectionService', () => {
@@ -61,6 +63,7 @@ describe('ConnectionService', () => {
   let connectionPort: jest.Mocked<ConnectionPort>;
   let integrationsService: jest.Mocked<IIntegrationsService>;
   let jobEnqueue: jest.Mocked<JobEnqueuePort>;
+  let destinationTaxonomy: jest.Mocked<IDestinationTaxonomyService>;
   let credentials: jest.Mocked<ICredentialsService>;
   let testerRegistry: ConnectionTesterRegistryService;
   let mockTester: jest.Mocked<ConnectionTesterPort>;
@@ -117,6 +120,17 @@ describe('ConnectionService', () => {
     const mockJobEnqueue = {
       enqueueJob: jest.fn().mockResolvedValue({ jobId: 'job-1', isExisting: false }),
     } as unknown as jest.Mocked<JobEnqueuePort>;
+
+    // #2084 — defaults to "this connection has no taxonomy source", so every
+    // pre-existing test keeps its original single-enqueue expectations and only
+    // the taxonomy-bootstrap tests opt in.
+    const mockDestinationTaxonomy = {
+      resolveScope: jest.fn().mockRejectedValue(new Error('TaxonomySourceUnavailableException')),
+      browse: jest.fn().mockResolvedValue([]),
+      search: jest.fn(),
+      syncTaxonomy: jest.fn(),
+      path: jest.fn(),
+    } as unknown as jest.Mocked<IDestinationTaxonomyService>;
 
     const mockCredentials = {
       create: jest
@@ -201,6 +215,7 @@ describe('ConnectionService', () => {
         { provide: CONNECTION_PORT_TOKEN, useValue: mockConnectionPort },
         { provide: INTEGRATIONS_SERVICE_TOKEN, useValue: mockIntegrationsService },
         { provide: JOB_ENQUEUE_TOKEN, useValue: mockJobEnqueue },
+        { provide: DESTINATION_TAXONOMY_SERVICE_TOKEN, useValue: mockDestinationTaxonomy },
         { provide: CREDENTIALS_SERVICE_TOKEN, useValue: mockCredentials },
         { provide: CONNECTION_TESTER_REGISTRY_TOKEN, useValue: testerRegistry },
         { provide: WEBHOOK_PROVISIONING_REGISTRY_TOKEN, useValue: webhookProvisioningRegistry },
@@ -225,6 +240,7 @@ describe('ConnectionService', () => {
     connectionPort = module.get(CONNECTION_PORT_TOKEN);
     integrationsService = module.get(INTEGRATIONS_SERVICE_TOKEN);
     jobEnqueue = module.get(JOB_ENQUEUE_TOKEN);
+    destinationTaxonomy = module.get(DESTINATION_TAXONOMY_SERVICE_TOKEN);
     credentials = module.get(CREDENTIALS_SERVICE_TOKEN);
   });
 
@@ -401,7 +417,12 @@ describe('ConnectionService', () => {
 
       await service.create(payload);
 
-      expect(jobEnqueue.enqueueJob).not.toHaveBeenCalled();
+      // Narrowed to the product job (#2084): create now also runs a taxonomy
+      // bootstrap, so a bare `not.toHaveBeenCalled()` would fail here even
+      // though this test's subject — the ProductMaster gate — still holds.
+      expect(jobEnqueue.enqueueJob).not.toHaveBeenCalledWith(
+        expect.objectContaining({ jobType: 'master.product.syncAll' })
+      );
     });
 
     it('should not fail connection creation when bootstrap enqueue throws', async () => {
@@ -409,7 +430,90 @@ describe('ConnectionService', () => {
       integrationsService.getAdapter.mockRejectedValue(new Error('adapter resolution failed'));
 
       await expect(service.create(payload)).resolves.toEqual(mockConnection);
-      expect(jobEnqueue.enqueueJob).not.toHaveBeenCalled();
+      expect(jobEnqueue.enqueueJob).not.toHaveBeenCalledWith(
+        expect.objectContaining({ jobType: 'master.product.syncAll' })
+      );
+    });
+
+    describe('taxonomy bootstrap (#2084)', () => {
+      const shopScope = { taxonomyOwner: null, connectionId: mockConnection.id };
+
+      it('should enqueue destination.taxonomy.sync for a scope with no rows yet', async () => {
+        connectionPort.create.mockResolvedValue(mockConnection);
+        destinationTaxonomy.resolveScope.mockResolvedValue(shopScope);
+        destinationTaxonomy.browse.mockResolvedValue([]);
+
+        await service.create(payload);
+
+        expect(jobEnqueue.enqueueJob).toHaveBeenCalledWith(
+          expect.objectContaining({
+            jobType: 'destination.taxonomy.sync',
+            connectionId: mockConnection.id,
+            payload: { schemaVersion: 1, taxonomyOwner: null },
+            idempotencyKey: `bootstrap:${mockConnection.id}:taxonomy:sync`,
+          })
+        );
+      });
+
+      it('should carry the resolved owner in the payload for an owner-keyed marketplace scope', async () => {
+        connectionPort.create.mockResolvedValue(mockConnection);
+        destinationTaxonomy.resolveScope.mockResolvedValue({
+          taxonomyOwner: 'allegro',
+          connectionId: null,
+        });
+        destinationTaxonomy.browse.mockResolvedValue([]);
+
+        await service.create(payload);
+
+        expect(jobEnqueue.enqueueJob).toHaveBeenCalledWith(
+          expect.objectContaining({
+            jobType: 'destination.taxonomy.sync',
+            payload: { schemaVersion: 1, taxonomyOwner: 'allegro' },
+          })
+        );
+      });
+
+      it('should skip the enqueue when the scope already has root categories', async () => {
+        // AC-4: a second marketplace connection joining an already-synced owner
+        // must not re-walk thousands of nodes — the per-scope lock only guards
+        // a CONCURRENT walk, not a sequential one.
+        connectionPort.create.mockResolvedValue(mockConnection);
+        destinationTaxonomy.resolveScope.mockResolvedValue({
+          taxonomyOwner: 'allegro',
+          connectionId: null,
+        });
+        destinationTaxonomy.browse.mockResolvedValue([
+          { externalId: '1', name: 'Root' },
+        ] as unknown as Awaited<ReturnType<IDestinationTaxonomyService['browse']>>);
+
+        await service.create(payload);
+
+        expect(jobEnqueue.enqueueJob).not.toHaveBeenCalledWith(
+          expect.objectContaining({ jobType: 'destination.taxonomy.sync' })
+        );
+      });
+
+      it('should skip the enqueue when the connection exposes no taxonomy source', async () => {
+        connectionPort.create.mockResolvedValue(mockConnection);
+        destinationTaxonomy.resolveScope.mockRejectedValue(
+          new Error('TaxonomySourceUnavailableException')
+        );
+
+        await service.create(payload);
+
+        expect(jobEnqueue.enqueueJob).not.toHaveBeenCalledWith(
+          expect.objectContaining({ jobType: 'destination.taxonomy.sync' })
+        );
+      });
+
+      it('should not fail connection creation when the taxonomy enqueue throws', async () => {
+        connectionPort.create.mockResolvedValue(mockConnection);
+        destinationTaxonomy.resolveScope.mockResolvedValue(shopScope);
+        destinationTaxonomy.browse.mockResolvedValue([]);
+        jobEnqueue.enqueueJob.mockRejectedValue(new Error('stream unavailable'));
+
+        await expect(service.create(payload)).resolves.toEqual(mockConnection);
+      });
     });
 
     // #1498 — stock write-back authority guard + default-off.
@@ -709,6 +813,76 @@ describe('ConnectionService', () => {
 
       expect(result).toEqual(updatedConnection);
       expect(connectionPort.update).toHaveBeenCalledWith('connection-123', patch);
+    });
+
+    describe('taxonomy bootstrap on enable (#2084)', () => {
+      const withStatus = (status: 'active' | 'disabled'): Connection =>
+        new Connection(
+          'connection-123',
+          'prestashop',
+          'Test Connection',
+          status,
+          {},
+          'cred_123',
+          new Date(),
+          new Date(),
+          undefined,
+          ['ProductPublisher']
+        );
+
+      beforeEach(() => {
+        destinationTaxonomy.resolveScope.mockResolvedValue({
+          taxonomyOwner: null,
+          connectionId: 'connection-123',
+        });
+        destinationTaxonomy.browse.mockResolvedValue([]);
+      });
+
+      it('should enqueue the bootstrap when a disabled connection transitions to active', async () => {
+        // A connection created disabled skipped the create-time bootstrap (its
+        // adapter could not resolve), so enabling is when its tree first
+        // becomes fetchable.
+        connectionPort.get.mockResolvedValue(withStatus('disabled'));
+        connectionPort.update.mockResolvedValue(withStatus('active'));
+
+        await service.update('connection-123', { status: 'active' } as ConnectionUpdate);
+
+        expect(jobEnqueue.enqueueJob).toHaveBeenCalledWith(
+          expect.objectContaining({
+            jobType: 'destination.taxonomy.sync',
+            idempotencyKey: 'bootstrap:connection-123:taxonomy:sync',
+          })
+        );
+      });
+
+      it('should not enqueue when the connection was already active', async () => {
+        connectionPort.get.mockResolvedValue(withStatus('active'));
+        connectionPort.update.mockResolvedValue(withStatus('active'));
+
+        await service.update('connection-123', { name: 'Renamed' } as ConnectionUpdate);
+
+        expect(jobEnqueue.enqueueJob).not.toHaveBeenCalled();
+      });
+
+      it('should not enqueue when the patch leaves the connection disabled', async () => {
+        connectionPort.get.mockResolvedValue(withStatus('disabled'));
+        connectionPort.update.mockResolvedValue(withStatus('disabled'));
+
+        await service.update('connection-123', { name: 'Renamed' } as ConnectionUpdate);
+
+        expect(jobEnqueue.enqueueJob).not.toHaveBeenCalled();
+      });
+
+      it('should not fail the update when the bootstrap enqueue throws', async () => {
+        connectionPort.get.mockResolvedValue(withStatus('disabled'));
+        const enabled = withStatus('active');
+        connectionPort.update.mockResolvedValue(enabled);
+        jobEnqueue.enqueueJob.mockRejectedValue(new Error('stream unavailable'));
+
+        await expect(
+          service.update('connection-123', { status: 'active' } as ConnectionUpdate)
+        ).resolves.toEqual(enabled);
+      });
     });
 
     it('should throw NotFoundException when connection not found', async () => {

@@ -34,6 +34,12 @@ import type {
 import type { SlaState, OrderSlaSummary } from '../../../domain/types/order-sla.types';
 import { SLA_AT_RISK_WINDOW_MS } from '../../../domain/types/order-sla.types';
 import type { FulfillmentRollupState } from '../../../domain/types/order-fulfillment.types';
+import type { SalesDocumentBlock } from '@openlinker/core/sales-documents';
+import {
+  SalesDocumentAttentionReasonValues,
+  isSalesDocumentGateBlockReason,
+  isSalesDocumentUnresolvedReason,
+} from '@openlinker/core/sales-documents';
 
 @Injectable()
 export class OrderRecordRepository implements OrderRecordRepositoryPort {
@@ -156,6 +162,17 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       qb.andWhere(filters.cancelled ? 'rec.cancelledAt IS NOT NULL' : 'rec.cancelledAt IS NULL');
     }
 
+    if (filters.salesDocumentBlocked !== undefined) {
+      // #2100 — an independent axis, deliberately ANDed with `health` rather than
+      // folded into it: "synced AND invoicing blocked" is the most common shape of
+      // the problem this issue exists to surface.
+      qb.andWhere(
+        filters.salesDocumentBlocked
+          ? OrderRecordRepository.IS_SALES_DOCUMENT_BLOCKED
+          : `NOT (${OrderRecordRepository.IS_SALES_DOCUMENT_BLOCKED})`,
+      );
+    }
+
     this.applySort(qb, filters.sort, filters.dir);
 
     const [entities, total] = await qb.getManyAndCount();
@@ -202,6 +219,14 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       .addSelect(
         `COUNT(*) FILTER (WHERE ${notMappingOrDeleted} AND NOT (${OrderRecordRepository.HAS_FAILED}) AND NOT (${OrderRecordRepository.HAS_SYNCED}))`,
         'awaiting_dispatch'
+      )
+      // #2100 — ORTHOGONAL to the five buckets above, not a sixth partition
+      // member: this predicate deliberately carries no `notMappingOrDeleted`
+      // guard, so a blocked order is counted here AND in whichever health bucket
+      // it belongs to. `total` still equals the sum of the five.
+      .addSelect(
+        `COUNT(*) FILTER (WHERE ${OrderRecordRepository.IS_SALES_DOCUMENT_BLOCKED})`,
+        'sales_document_blocked'
       );
 
     if (filters.sourceConnectionId) {
@@ -226,6 +251,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       needs_attention: string;
       synced: string;
       awaiting_dispatch: string;
+      sales_document_blocked: string;
     }>();
 
     return {
@@ -235,6 +261,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       needsAttention: Number(raw?.needs_attention ?? 0),
       synced: Number(raw?.synced ?? 0),
       awaitingDispatch: Number(raw?.awaiting_dispatch ?? 0),
+      salesDocumentBlocked: Number(raw?.sales_document_blocked ?? 0),
     };
   }
 
@@ -308,6 +335,41 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     `NOT (${OrderRecordRepository.IS_MAPPING}) AND NOT (${OrderRecordRepository.IS_SOURCE_DELETED})`;
   private static readonly HAS_FAILED = `rec."syncStatus" @> '[{"status":"failed"}]'::jsonb`;
   private static readonly HAS_SYNCED = `rec."syncStatus" @> '[{"status":"synced"}]'::jsonb`;
+  /**
+   * #2100 — NOT part of the health partition. Deliberately kept out of the
+   * `IS_*` bucket set above so it can never be pasted into `applyHealthFilter`
+   * or `countByHealth`'s FILTER clauses by mistake: an invoicing block is
+   * orthogonal to sync health and is counted alongside the five, never among
+   * them. Uses the indexed `salesDocumentBlockReason` column.
+   *
+   * An explicit IN-list of ATTENTION-WORTHY reasons rather than `IS NOT NULL`
+   * (#2100 review), which fixes two problems at once:
+   *
+   * - `'trigger-model-manual'` is excluded. It is `parseTriggerModel`'s default,
+   *   so on a manual install every uninvoiced order carries it — `IS NOT NULL`
+   *   would put a red "Invoicing blocked 4,312" on a perfectly healthy install.
+   *   The per-order badge still renders manual, neutral; it is just never
+   *   aggregated or filtered on.
+   * - A reason string this build does not recognise (written by a newer release,
+   *   then rolled back) no longer matches. `toDomain` already coerces such a value
+   *   to `null` on read, so `IS NOT NULL` counted rows that then rendered no badge
+   *   anywhere — a count with no reachable explanation.
+   *
+   * Built from `SalesDocumentAttentionReasonValues`, so a reason added to ADR-041's
+   * union is attention-worthy by default. Literal-only (no user input) — the values
+   * are compile-time constants, never request data.
+   *
+   * `COALESCE(…, '')` is NOT cosmetic — it is what makes the NEGATION total.
+   * `NULL IN (…)` evaluates to NULL, so `NOT (NULL IN (…))` is NULL and `WHERE`
+   * DROPS the row: a bare IN-list made `salesDocumentBlocked=false` return zero
+   * orders on an install where nothing is blocked, instead of all of them. The old
+   * `IS NOT NULL` predicate was NULL-safe by construction and hid this trap when
+   * the IN-list replaced it. Coalescing to the empty string (never a valid reason)
+   * keeps both directions two-valued.
+   */
+  private static readonly IS_SALES_DOCUMENT_BLOCKED = `COALESCE(rec."salesDocumentBlockReason", '') IN (${SalesDocumentAttentionReasonValues.map(
+    (reason) => `'${reason}'`,
+  ).join(', ')})`;
 
   /**
    * Per-row earliest **failed sync attempt** timestamp, read from the
@@ -634,14 +696,56 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
   }
 
   /**
+   * Set or clear the sales-document block (#2100). Narrow absolute-set on the three
+   * `salesDocumentBlock*` columns only — no read-modify-write, so it can't race a
+   * concurrent write to any other column on the same row (mirrors
+   * {@link updateItemResolutionFailure}).
+   *
+   * Unlike {@link markCancelled}, this is deliberately last-write-wins rather than
+   * first-write-wins: the gate re-decides on every transition, so the NEWEST answer
+   * is the truthful one and an older reason must not survive it.
+   */
+  async updateSalesDocumentBlock(
+    internalOrderId: string,
+    block: SalesDocumentBlock | null
+  ): Promise<void> {
+    // The no-op guard lives HERE, in the WHERE clause, rather than in the caller
+    // (#2100 review). A caller-side comparison had to hold a record it read before
+    // the destination round-trip, so a concurrent writer — the manual-issue clear,
+    // or the sibling ingestion path the `toOrm` comment already warns about — could
+    // change the row in between and make a genuinely new answer look unchanged.
+    // `IS DISTINCT FROM` is NULL-safe, so this is exact for the clear case too, and
+    // it keeps the `@UpdateDateColumn` bump off the overwhelmingly common
+    // `null -> null` path without giving up last-write-wins.
+    await this.repository.query(
+      `UPDATE "order_records"
+          SET "salesDocumentBlockReason" = $1,
+              "salesDocumentUnresolvedReason" = $2,
+              "salesDocumentBlockDetail" = $3,
+              "updatedAt" = now()
+        WHERE "internalOrderId" = $4
+          AND ("salesDocumentBlockReason" IS DISTINCT FROM $1
+            OR "salesDocumentUnresolvedReason" IS DISTINCT FROM $2
+            OR "salesDocumentBlockDetail" IS DISTINCT FROM $3)`,
+      [
+        block?.reason ?? null,
+        block?.unresolvedReason ?? null,
+        block?.detail ?? null,
+        internalOrderId,
+      ]
+    );
+  }
+
+  /**
    * Full-row upsert of the ingestion-owned columns, keyed on the primary key.
    *
-   * `syncStatus` / `syncAttempts` (#2140), `fulfillmentState` (#2101) and
-   * `cancelledAt` (#1984) are deliberately outside the write set - see the
-   * {@link toOrm} comments. A consequence is that the returned record reports
-   * all four as empty (`[]` / `null`) regardless of what the row holds, because
-   * none of those columns was part of the statement; callers needing their true
-   * value re-read via {@link findById}.
+   * `syncStatus` / `syncAttempts` (#2140), `fulfillmentState` (#2101),
+   * `cancelledAt` (#1984) and the three `salesDocument*` columns (#2100) are
+   * deliberately outside the write set - see the {@link toOrm} comments. A
+   * consequence is that the returned record reports them all as empty (`[]` /
+   * `null`) regardless of what the row holds, because none of those columns was
+   * part of the statement; callers needing their true value re-read via
+   * {@link findById}.
    */
   async upsert(orderRecord: OrderRecord): Promise<OrderRecord> {
     const entity = this.toOrm(orderRecord);
@@ -778,7 +882,18 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       entity.dispatchByAt,
       (entity.fulfillmentState as FulfillmentRollupState | null) ?? null,
       entity.mappingFailureReason ?? null,
-      entity.cancelledAt ?? null
+      entity.cancelledAt ?? null,
+      // Coerced through the guard rather than cast: the column is a plain
+      // `varchar`, so a value written by an older/newer release (or by hand)
+      // must degrade to "no block" instead of reaching the UI as an unknown
+      // literal the badge mapper has no label for.
+      isSalesDocumentGateBlockReason(entity.salesDocumentBlockReason)
+        ? entity.salesDocumentBlockReason
+        : null,
+      isSalesDocumentUnresolvedReason(entity.salesDocumentUnresolvedReason)
+        ? entity.salesDocumentUnresolvedReason
+        : null,
+      entity.salesDocumentBlockDetail ?? null
     );
   }
 
@@ -815,6 +930,12 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    *   reappear as not-shipped in the ship-by SLA buckets and list filter.
    * - `cancelledAt` (#1984) - sole writer `markCancelled` (COALESCE-based,
    *   atomic).
+   * - The three `salesDocument*` columns (#2100) - sole writer
+   *   `updateSalesDocumentBlock`, with a reason of their own on top of the
+   *   shared one: `persistOrder` runs BEFORE the auto-issue gate on every
+   *   ingestion, so round-tripping them here would null the columns and then
+   *   immediately re-set them - a visible flicker for any concurrent read, and
+   *   a stomp against a reason a peer transition just wrote.
    *
    * Before adding an assignment here, ask which out-of-band writer owns that
    * column: #2101 excluded only `fulfillmentState` and left the two columns

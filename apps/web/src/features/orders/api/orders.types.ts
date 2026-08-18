@@ -69,6 +69,35 @@ export type FulfillmentRollupStateValue = (typeof FulfillmentRollupStateValues)[
 export const SlaStateValues = ['none', 'on_track', 'at_risk', 'overdue'] as const;
 export type SlaStateValue = (typeof SlaStateValues)[number];
 
+// Why OpenLinker issued no fiscal document for an order (#2100, ADR-041
+// decision 11). Hand-mirrored from `SalesDocumentGateBlockReasonValues` /
+// `SalesDocumentUnresolvedReasonValues` in `@openlinker/core/sales-documents`
+// per the FE-001 contract strategy (the browser bundle cannot import core).
+//
+// ENFORCED, not merely commented: `scripts/check-sales-document-reason-mirror.mjs`
+// fails `pnpm check:invariants` on any drift in either direction. Drift here is
+// silent both ways — a reason added only to core renders as an unlabelled badge,
+// and one added only here type-checks against a value the API will never send.
+export const SalesDocumentGateBlockReasonValues = [
+  'unresolved-routing',
+  'missing-required-tax-id',
+  'tax-rate-conflict',
+  'trigger-model-manual',
+  'trigger-model-batched',
+] as const;
+export type SalesDocumentGateBlockReasonValue =
+  (typeof SalesDocumentGateBlockReasonValues)[number];
+
+export const SalesDocumentUnresolvedReasonValues = [
+  'no-matching-rule',
+  'conflicting-rules-equal-priority',
+  'ambiguous-connection-no-primary',
+  'unsupported-document-kind-on-connection',
+  'net-priced-order',
+] as const;
+export type SalesDocumentUnresolvedReasonValue =
+  (typeof SalesDocumentUnresolvedReasonValues)[number];
+
 // ── Mapping-aware delivery (epic #1776) ─────────────────────────────────────
 // Hand-mirrored from the BE order response DTOs (`OrderDeliveryResolutionDto`
 // #1791, `OrderDeliveryRiderDto` #1792) and the `@openlinker/core/mappings`
@@ -182,6 +211,20 @@ export interface OrderRecord {
    * for a `'ready'` record. Optional for graceful degradation on older payloads.
    */
   mappingFailureReason?: string | null;
+  /**
+   * Why OpenLinker issued no fiscal document for this order (#2100). `null` when
+   * nothing is blocking it. Independent of `recordStatus` — an order can be
+   * `ready` and `synced` while still carrying a block.
+   */
+  salesDocumentBlockReason?: SalesDocumentGateBlockReasonValue | null;
+  /**
+   * The routing reason paired with a `'unresolved-routing'` block (ADR-041
+   * §107). This is what the operator-facing copy keys on: "routing was
+   * unresolved" is not actionable, "no primary invoicing connection" is.
+   */
+  salesDocumentUnresolvedReason?: SalesDocumentUnresolvedReasonValue | null;
+  /** PII-free elaboration of the block reason (ids and counts only). */
+  salesDocumentBlockDetail?: string | null;
 }
 
 // Result ordering for the orders list (#927, extended #944). Mirrors
@@ -229,6 +272,13 @@ export interface OrderHealthSummary {
   needsAttention: number;
   synced: number;
   awaitingDispatch: number;
+  /**
+   * Orders carrying a persisted sales-document block (#2100). ORTHOGONAL to the
+   * buckets above — a blocked order is also counted in exactly one of them — so
+   * this never joins the KPI segment row and must not be added to their sum.
+   * Optional for graceful degradation against an older API.
+   */
+  salesDocumentBlocked?: number;
 }
 
 export interface OrderFilters {
@@ -250,6 +300,11 @@ export interface OrderFilters {
   slaState?: SlaStateValue;
   /** Fulfillment-rollup filter (#1108). */
   fulfillmentState?: FulfillmentRollupStateValue;
+  /**
+   * Sales-document block filter (#2100). An independent axis that composes with
+   * `health` — "synced AND invoicing blocked" is the common shape of the problem.
+   */
+  salesDocumentBlocked?: boolean;
 }
 
 /**

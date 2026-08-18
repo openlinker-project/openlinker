@@ -20,7 +20,7 @@ import {
   SHOP_PRODUCT_MAPPING_REPOSITORY_TOKEN,
 } from '../../listings.tokens';
 import type { ICoverageGapReadService } from './coverage-gap-read.service.interface';
-import type { IPublishedVariantsService } from './published-variants.service.interface';
+import { IPublishedVariantsService } from './published-variants.service.interface';
 
 // Caps the candidate-variant fan-in query so a large catalogue can't produce
 // an unbounded per-connection scan (#1983 AC — bounded/paged output).
