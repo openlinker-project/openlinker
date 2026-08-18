@@ -113,6 +113,7 @@ COPY --from=base --chown=node:node /app/libs/plugin-sdk/dist ./libs/plugin-sdk/d
 COPY --from=base --chown=node:node /app/libs/integrations/ai/dist ./libs/integrations/ai/dist
 COPY --from=base --chown=node:node /app/libs/integrations/allegro/dist ./libs/integrations/allegro/dist
 COPY --from=base --chown=node:node /app/libs/integrations/dpd-polska/dist ./libs/integrations/dpd-polska/dist
+COPY --from=base --chown=node:node /app/libs/integrations/eparagony/dist ./libs/integrations/eparagony/dist
 COPY --from=base --chown=node:node /app/libs/integrations/erli/dist ./libs/integrations/erli/dist
 COPY --from=base --chown=node:node /app/libs/integrations/infakt/dist ./libs/integrations/infakt/dist
 COPY --from=base --chown=node:node /app/libs/integrations/inpost/dist ./libs/integrations/inpost/dist
