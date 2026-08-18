@@ -57,7 +57,7 @@ describe('AnalyticsDateRangeToolbar', () => {
 
   it('should reset the draft when the committed from/to props change', () => {
     const { rerender } = render(
-      <AnalyticsDateRangeToolbar from="2026-07-16" to="2026-08-14" onApply={vi.fn()} />,
+      <AnalyticsDateRangeToolbar from="2026-07-16" to="2026-08-14" onApply={vi.fn()} />
     );
 
     rerender(<AnalyticsDateRangeToolbar from="2026-01-01" to="2026-01-07" onApply={vi.fn()} />);
@@ -69,6 +69,8 @@ describe('AnalyticsDateRangeToolbar', () => {
   it('should render the "Order date" disclaimer chip', () => {
     render(<AnalyticsDateRangeToolbar from="2026-07-16" to="2026-08-14" onApply={vi.fn()} />);
 
-    expect(screen.getByText('Order date †')).toBeInTheDocument();
+    expect(
+      screen.getByText((_content, element) => element?.textContent === 'Order date †')
+    ).toBeInTheDocument();
   });
 });

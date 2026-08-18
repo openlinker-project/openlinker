@@ -1,11 +1,10 @@
 /**
  * Date Range Helpers
  *
- * Pure preset/derive/UTC-widening math for the /analytics date-range
- * toolbar. Mirrors the day-boundary widening pattern in
- * pages/orders/orders-list-page.tsx (createdFrom/createdTo), but the
- * preset-derivation and draft/commit semantics are new for this page —
- * see Decision 1 in docs/plans/implementation-plan-analytics-page-shell.md.
+ * Pure preset/derive math (local-time, inclusive day ranges) for the
+ * /analytics date-range toolbar. The preset-derivation and draft/commit
+ * semantics are new for this page — see Decision 1 in
+ * docs/plans/implementation-plan-analytics-page-shell.md.
  *
  * @module apps/web/src/features/analytics/lib
  */
@@ -28,7 +27,7 @@ function formatDate(date: Date): string {
 
 export function computePresetRange(
   preset: DateRangePreset,
-  today: Date,
+  today: Date
 ): { from: string; to: string } {
   const to = new Date(today);
   const from = new Date(today);

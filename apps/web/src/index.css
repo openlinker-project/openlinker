@@ -17659,12 +17659,18 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   font-weight: 600;
 }
 
-/* The † gap marker on the "Order date" chip. */
+/* The † gap marker on the "Order date" chip — keyboard-focusable Tooltip
+   trigger, not a bare `title`, so it's reachable without a mouse. */
 .analytics-gap-mark {
   color: var(--accent-primary-hover);
   font-weight: 700;
   font-family: var(--font-mono);
   cursor: help;
+  border-radius: var(--radius-xs);
+}
+
+.analytics-gap-mark:focus-visible {
+  box-shadow: var(--shadow-focus);
 }
 
 /* ── Analytics trust header (#1986) ──

@@ -17,7 +17,10 @@ import {
   TimeDisplay,
   type StatusBadgeTone,
 } from '../../../shared/ui';
-import type { ConnectionIngestionStatus, ConnectionIngestionTrust } from '../api/analytics-trust.types';
+import type {
+  ConnectionIngestionStatus,
+  ConnectionIngestionTrust,
+} from '../api/analytics-trust.types';
 
 interface AnalyticsTrustHeaderProps {
   connections: ConnectionIngestionTrust[];
@@ -47,14 +50,19 @@ export function AnalyticsTrustHeader({ connections }: AnalyticsTrustHeaderProps)
           <h3 className="section-title">Data coverage</h3>
           <Popover>
             <PopoverTrigger asChild>
-              <button type="button" className="analytics-info-popover-trigger" aria-label="About these dates">
+              <button
+                type="button"
+                className="analytics-info-popover-trigger"
+                aria-label="About these dates"
+              >
                 &#9432;
               </button>
             </PopoverTrigger>
             <PopoverContent>
-              Freshness is when each channel&rsquo;s ingestion pipe last succeeded. &ldquo;Connected
-              since&rdquo; is when the connection was configured in OpenLinker, not a claim about how
-              far back its order history goes.
+              &ldquo;Last polled&rdquo; is when each channel&rsquo;s ingestion pipe last succeeded —
+              it is not proof that new order data has arrived. &ldquo;Connected since&rdquo; is when
+              the connection was configured in OpenLinker, not a claim about how far back its order
+              history goes.
             </PopoverContent>
           </Popover>
         </div>
@@ -69,7 +77,7 @@ export function AnalyticsTrustHeader({ connections }: AnalyticsTrustHeaderProps)
               {entry.connectionName}
             </span>
             <span>
-              <span className="trust-header__fact-label">Current to</span>
+              <span className="trust-header__fact-label">Last polled</span>
               <span className="trust-header__fact-value">
                 {entry.lastPollAt ? (
                   <TimeDisplay iso={entry.lastPollAt} format="datetime" />

@@ -22,22 +22,20 @@ function makeEntry(overrides: Partial<ConnectionIngestionTrust> = {}): Connectio
 
 describe('AnalyticsDegradationBanner', () => {
   it('should render nothing when no connection is stalled or disconnected', () => {
-    const { container } = renderWithProviders(
-      <AnalyticsDegradationBanner connections={[makeEntry({ status: 'fresh' })]} />,
-    );
+    renderWithProviders(<AnalyticsDegradationBanner connections={[makeEntry({ status: 'fresh' })]} />);
 
-    expect(container).toBeEmptyDOMElement();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
   it('should render an alert for a stalled connection with a link to its sync detail', () => {
     renderWithProviders(
-      <AnalyticsDegradationBanner connections={[makeEntry({ connectionId: 'conn-42' })]} />,
+      <AnalyticsDegradationBanner connections={[makeEntry({ connectionId: 'conn-42' })]} />
     );
 
-    expect(screen.getByRole('alert')).toHaveTextContent('Allegro — main has not ingested since');
+    expect(screen.getByRole('alert')).toHaveTextContent('Allegro — main has not been polled since');
     expect(screen.getByRole('link', { name: 'View sync' })).toHaveAttribute(
       'href',
-      '/cursors?connectionId=conn-42',
+      '/cursors?connectionId=conn-42'
     );
   });
 
@@ -49,7 +47,7 @@ describe('AnalyticsDegradationBanner', () => {
           makeEntry({ connectionId: 'conn-b', status: 'disconnected' }),
           makeEntry({ connectionId: 'conn-c', status: 'fresh' }),
         ]}
-      />,
+      />
     );
 
     expect(screen.getAllByRole('alert')).toHaveLength(2);

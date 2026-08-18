@@ -10,6 +10,7 @@
  */
 import { useEffect, useRef, useState, type ReactElement } from 'react';
 import { Button, SegmentedControl } from '../../../shared/ui';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../../shared/ui/tooltip';
 import {
   computePresetRange,
   derivePreset,
@@ -30,7 +31,11 @@ const PRESET_OPTIONS: readonly { value: DateRangeHighlight; label: string }[] = 
   { value: 'custom', label: 'Custom' },
 ];
 
-const ORDER_DATE_CAVEAT = 'placedAt is not a column and cannot be filtered today';
+// Operator-facing: no schema jargon (no "placedAt", no "column"). The
+// underlying reason is that `placedAt` isn't yet a filterable read-model
+// column — tracked for #1990 — but that's a developer fact, not one an
+// operator can act on, so it stays out of the rendered copy/aria-label.
+const ORDER_DATE_CAVEAT = "This range doesn't filter results yet — coming soon";
 
 export function AnalyticsDateRangeToolbar({
   from,
@@ -76,52 +81,62 @@ export function AnalyticsDateRangeToolbar({
   }
 
   return (
-    <div className="toolbar analytics-toolbar">
-      <div className="toolbar__group">
-        <SegmentedControl
-          aria-label="Date range"
-          options={PRESET_OPTIONS}
-          value={highlight}
-          onChange={handleSegmentChange}
-        />
-        <label className="analytics-toolbar__field">
-          <span className="analytics-toolbar__label">From</span>
-          <input
-            ref={fromInputRef}
-            type="date"
-            className="control"
-            aria-label="Order date from"
-            value={draftFrom}
-            onChange={(event) => {
-              setForcedCustom(true);
-              setDraftFrom(event.target.value);
-            }}
+    <TooltipProvider>
+      <div className="toolbar analytics-toolbar">
+        <div className="toolbar__group">
+          <SegmentedControl
+            aria-label="Date range"
+            options={PRESET_OPTIONS}
+            value={highlight}
+            onChange={handleSegmentChange}
           />
-        </label>
-        <label className="analytics-toolbar__field">
-          <span className="analytics-toolbar__label">To</span>
-          <input
-            type="date"
-            className="control"
-            aria-label="Order date to"
-            value={draftTo}
-            onChange={(event) => {
-              setForcedCustom(true);
-              setDraftTo(event.target.value);
-            }}
-          />
-        </label>
-        <Button type="button" tone="secondary" disabled={!canApply} onClick={handleApply}>
-          Apply
-        </Button>
-        {/* Static disclaimer, not an interactive control — a plain chip
+          <label className="analytics-toolbar__field">
+            <span className="analytics-toolbar__label">From</span>
+            <input
+              ref={fromInputRef}
+              type="date"
+              className="control"
+              aria-label="Order date from"
+              value={draftFrom}
+              onChange={(event) => {
+                setForcedCustom(true);
+                setDraftFrom(event.target.value);
+              }}
+            />
+          </label>
+          <label className="analytics-toolbar__field">
+            <span className="analytics-toolbar__label">To</span>
+            <input
+              type="date"
+              className="control"
+              aria-label="Order date to"
+              value={draftTo}
+              onChange={(event) => {
+                setForcedCustom(true);
+                setDraftTo(event.target.value);
+              }}
+            />
+          </label>
+          <Button type="button" tone="secondary" disabled={!canApply} onClick={handleApply}>
+            Apply
+          </Button>
+          {/* Static disclaimer, not an interactive control — a plain chip
             markup rather than the interactive Chip primitive, which would
             render a toggle button that toggles nothing (aria-pressed with
             no onClick). */}
-        <span className="chip chip--info" aria-label={`Order date. ${ORDER_DATE_CAVEAT}`}>
-          Order date <span className="analytics-gap-mark" title={ORDER_DATE_CAVEAT}>†</span>
-        </span>
+          <span className="chip chip--info" aria-label={`Order date. ${ORDER_DATE_CAVEAT}`}>
+            Order date{' '}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="analytics-gap-mark" tabIndex={0}>
+                  †
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>{ORDER_DATE_CAVEAT}</TooltipContent>
+            </Tooltip>
+          </span>
+        </div>
       </div>
-    </div>
+    </TooltipProvider>
   );
 }

@@ -13,7 +13,7 @@ describe('computePresetRange', () => {
   });
 
   it('should compute an inclusive 90-day range', () => {
-    expect(computePresetRange('90d', TODAY)).toEqual({ from: '2026-05-16', to: '2026-08-14' });
+    expect(computePresetRange('90d', TODAY)).toEqual({ from: '2026-05-17', to: '2026-08-14' });
   });
 
   it('should cross a month/year boundary correctly', () => {

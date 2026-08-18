@@ -35,8 +35,8 @@ export function AnalyticsDegradationBanner({
           tone="error"
           title={
             entry.lastPollAt
-              ? `${entry.connectionName} has not ingested since ${formatDateTime(entry.lastPollAt)}`
-              : `${entry.connectionName} has never ingested`
+              ? `${entry.connectionName} has not been polled since ${formatDateTime(entry.lastPollAt)}`
+              : `${entry.connectionName} has never been polled`
           }
           action={
             <Link
