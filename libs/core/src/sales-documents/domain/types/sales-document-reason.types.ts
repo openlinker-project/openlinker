@@ -35,9 +35,16 @@
  * out (#2047). It reaches the order paired with the gate's `'unresolved-routing'`
  * bridge value.
  *
- * DECLARED BUT NEVER WRITTEN: the other four need the rule engine that produces
- * them, which is #1908-era work. Declaring the full set now is deliberate — a
- * later reader must not mistake an unwritten value for a bug.
+ * DECLARED BUT NEVER WRITTEN (pre-#2170): the other four needed the rule
+ * engine that produces them. #2170 ships that engine
+ * (`evaluateSalesDocumentRules`) — `'no-matching-rule'`,
+ * `'conflicting-rules-equal-priority'`, and `'net-priced-order'` are now
+ * reachable through it, alongside two ADDITIONS the mechanism itself required
+ * (`'no-configuration-for-country'`, `'threshold-currency-mismatch'`) — see
+ * the two entries appended below. Neither is a rename of an ADR-041 value;
+ * both are new failure shapes the engine's own fallback ladder and
+ * currency-safety rule surface that the ADR's original four-value sketch did
+ * not anticipate.
  */
 export const SalesDocumentUnresolvedReasonValues = [
   'no-matching-rule',
@@ -45,6 +52,23 @@ export const SalesDocumentUnresolvedReasonValues = [
   'ambiguous-connection-no-primary',
   'unsupported-document-kind-on-connection',
   'net-priced-order',
+  /**
+   * The order's own country carries no rules and no default, AND `★ Rest of
+   * world` is either unconfigured too or was not consulted because the
+   * order's own country WAS configured but still failed to resolve down a
+   * different branch (#2170 fallback-ladder tier 4). Never a silent
+   * "assume Poland's rules for everyone" — an operator must configure
+   * something, even if that something is just `★ Rest of world`.
+   */
+  'no-configuration-for-country',
+  /**
+   * A matched rule's `orderTotalGross` condition references a `thresholdRef`
+   * whose `currency` differs from the order's own `totals.currency` (#2170).
+   * Never silently converted — the existing FX stamp (ADR-040) is
+   * analytics-only and explicitly forbidden as a fiscal-document rate source,
+   * so a currency mismatch here is exactly as terminal as `net-priced-order`.
+   */
+  'threshold-currency-mismatch',
 ] as const;
 
 export type SalesDocumentUnresolvedReason = (typeof SalesDocumentUnresolvedReasonValues)[number];

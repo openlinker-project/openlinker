@@ -51,6 +51,10 @@ import {
 import { createMcpTokensApi, type McpTokensApi } from '../../features/mcp-tokens';
 import { createOrdersApi, type OrdersApi } from '../../features/orders/api/orders.api';
 import {
+  createSalesDocumentRulesApi,
+  type SalesDocumentRulesApi,
+} from '../../features/sales-documents/api/sales-document-rules.api';
+import {
   createPosthogSettingsApi,
   type PosthogSettingsApi,
 } from '../../features/posthog-settings/api/posthog-settings.api';
@@ -165,6 +169,7 @@ export interface CoreApiClient {
   request: ApiRequest;
   requestBlob: ApiBlobRequest;
   requestStream: ApiStreamRequest;
+  salesDocumentRules: SalesDocumentRulesApi;
   shipments: ShipmentsApi;
   syncJobs: SyncJobsApi;
   system: SystemApi;
@@ -382,6 +387,7 @@ export function createApiClient({
     request,
     requestBlob,
     requestStream,
+    salesDocumentRules: createSalesDocumentRulesApi(request),
     shipments: createShipmentsApi(request, requestBlob),
     syncJobs: createSyncJobsApi(request),
     system: createSystemApi(request),
