@@ -89,6 +89,7 @@ import { RequestPriorityModule } from './http/request-priority.module';
     InvoicingApiModule, // Invoicing issue/read HTTP API (#1119); UPO download endpoint (#1224, epic #1142 C15)
     SystemModule, // Server-driven runtime config (demoMode) via GET /system/config (#1127)
     McpModule, // MCP Resource-Server auth (PATs) + Streamable-HTTP ingress (#1486, ADR-034)
+    CurrencyApiModule, // Reporting-currency settings HTTP API (#2126, ADR-040)
   ],
   controllers: [AppController],
   providers: [AppService],
