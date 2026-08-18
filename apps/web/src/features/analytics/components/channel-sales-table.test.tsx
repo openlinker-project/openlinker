@@ -48,7 +48,7 @@ function analytics(channels: ChannelSalesAnalytics[]): SalesAndChannelAnalytics 
 describe('ChannelSalesTable', () => {
   it('should show a loading state before the query resolves', () => {
     const apiClient = createMockApiClient({
-      analytics: { getSales: vi.fn(() => new Promise(() => {})) },
+      analytics: { getSales: vi.fn(() => new Promise<SalesAndChannelAnalytics>(() => {})) },
     });
 
     renderWithProviders(<ChannelSalesTable filters={FILTERS} />, { apiClient });

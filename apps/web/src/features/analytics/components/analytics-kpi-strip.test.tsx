@@ -29,7 +29,7 @@ function analytics(overrides: Partial<SalesAndChannelAnalytics['headline']> = {}
 describe('AnalyticsKpiStrip', () => {
   it('should show a loading state before the query resolves', () => {
     const apiClient = createMockApiClient({
-      analytics: { getSales: vi.fn(() => new Promise(() => {})) },
+      analytics: { getSales: vi.fn(() => new Promise<SalesAndChannelAnalytics>(() => {})) },
     });
 
     renderWithProviders(<AnalyticsKpiStrip filters={FILTERS} />, { apiClient });
