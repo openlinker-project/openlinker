@@ -89,8 +89,8 @@ export function toCreateReceiptRequest(
 
   const lines: EparagonyReceiptLine[] = [...productLines];
   const balancing = grossSaleValue - productLines.reduce((sum, l) => sum + l.totalLineValue, 0);
-  if (balancing !== 0) {
-    // The buyer-paid total does not equal the sum of the taxed positions -
+  if (balancing < 0) {
+    // The buyer-paid total is LESS than the sum of the taxed positions -
     // typically an order-level discount the neutral command carries only inside
     // the total. A whole-receipt REBATE line carries no rate of its own, so the
     // device distributes it proportionally across the rates already present.
@@ -98,6 +98,19 @@ export function toCreateReceiptRequest(
     // position, and it is what keeps the vendor's declared-payment check
     // (`errorCode: 87`) satisfied.
     lines.push({ type: 'REBATE', value: balancing, name: BALANCING_LINE_NAME });
+  } else if (balancing > 0) {
+    // The vendor's own type permits a positive `value` here as a markup, but
+    // core's upstream reconciliation (`assertLinesSumToTotal`,
+    // TOTAL_RECONCILIATION_EPSILON = 0.01) already guarantees this can only
+    // ever be floating-point/rounding dust, never a real declared surcharge -
+    // there is no legitimate order shape that reaches this adapter with lines
+    // summing to LESS than the total. Recording a fictitious "markup" on a
+    // fiscal document to paper over rounding noise is worse than refusing.
+    throw new EparagonyConfigException(
+      `eparagony.pl cannot register order ${command.orderId}: lines sum to less than the ` +
+        `gross total by ${balancing} minor unit(s); refusing to record it as a fabricated markup`,
+      'The order lines do not add up to the order total, so no e-receipt was requested.',
+    );
   }
 
   const paymentForm = config.paymentForm ?? DEFAULT_PAYMENT_FORM;
@@ -236,7 +249,10 @@ export function toRegisterTransactionResult(
     // PL: numer unikatowy of the device that signed the registration. Flat by
     // design (ADR-042 decision 3) - core never learns what class of anchor it is.
     signingIdentity: readString(body.fiscalDeviceUniqueNumber),
-    registeredAt: readDate(body.endTime) ?? new Date(),
+    // Prefer `null` over fabricating OL's own clock as a provider-reported
+    // timestamp (I7): `toLocateResult` below already returns `null` in the
+    // same case, and this field is part of the persisted identity set.
+    registeredAt: readDate(body.endTime),
     regimeExtras: toRegimeExtras(body),
     artefacts: toArtefacts(body),
   };

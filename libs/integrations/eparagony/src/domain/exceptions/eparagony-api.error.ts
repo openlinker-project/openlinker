@@ -11,15 +11,26 @@
  * The default classification is deliberately asymmetric and is stated once here
  * so no call site has to re-derive it:
  *
- *   - `4xx` other than `422` and `429` -> `'rejected'`. The request was refused
- *     at the API boundary, so no document and no fiscal registration was created.
- *     Re-crossing the boundary is safe: OL sends its own `idempotencyKey` as the
- *     vendor's `Idempotency-Key`, and the vendor guarantees that repeating a key
- *     with the same data cannot mint a second registration.
+ *   - `4xx` other than `408`, `422`, `425` and `429`, WHEN `errorCode` parsed ->
+ *     `'rejected'`. The request was refused at the API boundary, so no document
+ *     and no fiscal registration was created. Re-crossing the boundary is safe:
+ *     OL sends its own `idempotencyKey` as the vendor's `Idempotency-Key`, and
+ *     the vendor guarantees that repeating a key with the same data cannot mint
+ *     a second registration.
  *   - `422` -> `'in-doubt'`. The vendor returns it when the SAME key is replayed
  *     with DIFFERENT data, which means a document already exists under that key.
  *     Reading that as `'rejected'` would be the exact wrong-direction error this
  *     taxonomy exists to prevent.
+ *   - `408` and `425` -> `'in-doubt'`. Both mean the server may have SEEN the
+ *     request (a slow client body, a replayed-too-early request) rather than
+ *     refused it outright, so treating either as a clean rejection is not safe.
+ *   - Any `4xx` whose `errorCode` could NOT be parsed -> `'in-doubt'`. This is
+ *     the ambiguous case that matters most: a `409` whose body was truncated
+ *     (the vendor caps error bodies at 4 MB) bypasses the
+ *     `DOCUMENT_ALREADY_EXISTS` short-circuit in the adapter's create path with
+ *     no `errorCode` to reason about. Without a parsed code there is nothing
+ *     distinguishing "definitely refused" from "our own earlier attempt already
+ *     landed", so the fiscal-safe default applies instead of guessing rejected.
  *   - `429` and `5xx` -> `'in-doubt'`. The vendor documents 502/503/504 as
  *     retry-worthy; either may have been raised after the document was created.
  *
@@ -52,13 +63,17 @@ export class EparagonyApiError extends Error {
   constructor(
     message: string,
     readonly statusCode: number,
-    readonly responseBody: EparagonyErrorBody | string | null,
+    // Deliberately NOT stored on `this` (S3): the raw vendor body can quote a
+    // submitted line name, and nothing here reads it once `errorCode` is
+    // extracted - a generic `JSON.stringify(err)` upstream must never be able
+    // to leak it back out.
+    responseBody: EparagonyErrorBody | string | null,
     options?: { failureMode?: EparagonyFailureMode; reason?: string },
   ) {
     super(message);
     this.name = 'EparagonyApiError';
     this.errorCode = readErrorCode(responseBody);
-    this.failureMode = options?.failureMode ?? defaultFailureMode(statusCode);
+    this.failureMode = options?.failureMode ?? defaultFailureMode(statusCode, this.errorCode);
     this.reason = (options?.reason ?? defaultReason(statusCode, this.errorCode)).slice(
       0,
       MAX_REASON_LENGTH,
@@ -80,11 +95,28 @@ export class EparagonyApiError extends Error {
   }
 }
 
-function defaultFailureMode(statusCode: number): EparagonyFailureMode {
-  if (statusCode === 422 || statusCode === 429) {
+/** 4xx codes that mean "may have been seen", never a clean refusal. */
+const AMBIGUOUS_CLIENT_ERROR_CODES: readonly number[] = [408, 422, 425, 429];
+
+function defaultFailureMode(
+  statusCode: number,
+  errorCode: number | null,
+): EparagonyFailureMode {
+  const isClientError = statusCode >= 400 && statusCode < 500;
+  if (!isClientError) {
     return 'in-doubt';
   }
-  return statusCode >= 400 && statusCode < 500 ? 'rejected' : 'in-doubt';
+  if (AMBIGUOUS_CLIENT_ERROR_CODES.includes(statusCode)) {
+    return 'in-doubt';
+  }
+  // An unparseable errorCode leaves nothing to distinguish "definitely
+  // refused" from "our own earlier attempt already landed" (e.g. a 409 whose
+  // body was truncated past the DOCUMENT_ALREADY_EXISTS short-circuit) -
+  // the fiscal-safe default applies rather than guessing rejected.
+  if (errorCode === null) {
+    return 'in-doubt';
+  }
+  return 'rejected';
 }
 
 function defaultReason(statusCode: number, errorCode: number | null): string {

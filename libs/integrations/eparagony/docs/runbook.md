@@ -43,6 +43,17 @@ directly.
   `locateByQuery` reconcile path. A "Register receipt" that returns quickly with
   `registered` got there via the poll; there is no separate webhook delivery to
   troubleshoot yet.
+- **The `POST /documents` retry-on-5xx/network safety assumes the vendor's
+  `Idempotency-Key` dedup window outlives our own retry span.** The adapter
+  sends the same derived `documentToken` as the header on every retried
+  attempt (pinned by a unit test), and the vendor is documented to guarantee
+  that repeating a key with the same body never mints a second document — but
+  that guarantee is only as good as how long the vendor actually remembers the
+  key. Our own retry span is small (a handful of seconds across the transport's
+  bounded backoff), so this is safe against any dedup window measured in
+  minutes or longer. If the vendor's dedup window ever turns out to be shorter
+  than that, a retry could mint a second document; nothing in this codebase
+  currently verifies the vendor's window length against our own retry span.
 
 ---
 

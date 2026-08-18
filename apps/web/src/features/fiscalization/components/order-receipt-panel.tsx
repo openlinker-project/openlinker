@@ -24,7 +24,7 @@
  *
  * @module apps/web/src/features/fiscalization/components
  */
-import { useMemo, type ReactElement } from 'react';
+import { useMemo, useState, type ReactElement } from 'react';
 import { useTranslation } from '../../../shared/i18n';
 import { useToast } from '../../../shared/ui/toast-provider';
 import { Alert } from '../../../shared/ui/alert';
@@ -101,6 +101,7 @@ export function OrderReceiptPanel({ orderId }: OrderReceiptPanelProps): ReactEle
 
   const allConnections = connectionsQuery.data ?? [];
   const candidates = useMemo(() => selectFiscalizationCandidates(allConnections), [allConnections]);
+  const [selectedConnectionId, setSelectedConnectionId] = useState('');
 
   // No capability at all: the panel has nothing to offer and nothing to show
   // (there can be no record without a connection that ever had the capability).
@@ -213,7 +214,11 @@ export function OrderReceiptPanel({ orderId }: OrderReceiptPanelProps): ReactEle
               <label className="form-field__label" htmlFor="fiscal-connection">
                 {t('fiscalReceipt.panel.registerOnLabel', 'Register on')}
               </label>
-              <Select id="fiscal-connection" defaultValue={defaultConnectionId}>
+              <Select
+                id="fiscal-connection"
+                value={selectedConnectionId || defaultConnectionId}
+                onChange={(event) => setSelectedConnectionId(event.target.value)}
+              >
                 {candidates.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.name}
@@ -225,26 +230,48 @@ export function OrderReceiptPanel({ orderId }: OrderReceiptPanelProps): ReactEle
           <Button
             tone="primary"
             disabled={registerMutation.isPending}
-            onClick={() => {
-              const select = document.getElementById('fiscal-connection') as HTMLSelectElement | null;
-              handleRegister(select?.value ?? defaultConnectionId);
-            }}
+            onClick={() => handleRegister(selectedConnectionId || defaultConnectionId)}
           >
             {t('fiscalReceipt.action.register', 'Register receipt')}
           </Button>
         </div>
       ) : null}
 
-      {/* ── pending / registering: no action, in-flight notice ── */}
-      {settled && (displayStatus === 'pending' || displayStatus === 'registering') ? (
+      {/* ── registering: a live in-flight attempt holds the lease - wait, no action ── */}
+      {settled && displayStatus === 'registering' ? (
         <>
           <div className="order-receipt-panel__skeleton" aria-hidden="true" />
           <p className="order-receipt-panel__notice">
             {t(
-              'fiscalReceipt.pending.body',
+              'fiscalReceipt.registering.body',
               'Sent to the provider. This refreshes automatically when it responds.',
             )}
           </p>
+        </>
+      ) : null}
+
+      {/* ── pending: the row exists but was NEVER actually sent (I6) - the
+          adapter call never got claimed, most likely a connection misconfig.
+          Distinct copy from `registering`, and an action so this is not a
+          dead end: `register` resumes a claimless `pending` row exactly like
+          a fresh attempt. ── */}
+      {settled && displayStatus === 'pending' && record ? (
+        <>
+          <p className="order-receipt-panel__notice">
+            {t(
+              'fiscalReceipt.pending.body',
+              'Queued, but not yet sent to the provider. Nothing was registered.',
+            )}
+          </p>
+          <div className="order-receipt-panel__actions">
+            <Button
+              tone="secondary"
+              disabled={registerMutation.isPending}
+              onClick={() => handleRegister(record.connectionId)}
+            >
+              {t('fiscalReceipt.action.register', 'Register receipt')}
+            </Button>
+          </div>
         </>
       ) : null}
 

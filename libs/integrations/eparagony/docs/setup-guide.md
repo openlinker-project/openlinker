@@ -75,6 +75,15 @@ conversation with the vendor and are not part of this guide.
 > is edited later via the connection's raw config editor — see the [README](../README.md)
 > for the full field list.
 
+> **Before registering anything for real, confirm `taxRates` matches your actual
+> device.** OpenLinker ships a default slot table (`A`=23%, `B`=8%, `C`=5%,
+> `D`/`F`/`G`=0%, `E`=exempt) and assumes it silently if you leave `taxRates`
+> unconfigured. OpenLinker cannot see how your printer servicer (`serwisant`)
+> actually programmed the device — a mismatch registers real sales under the
+> wrong rate with no error shown anywhere. Ask your `serwisant` for the device's
+> actual slot layout and set `taxRates` to match before your first production
+> registration.
+
 ---
 
 ## Step 2 — Register a receipt for an order

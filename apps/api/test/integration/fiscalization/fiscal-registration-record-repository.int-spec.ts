@@ -1,7 +1,7 @@
 /**
  * Fiscal Registration Records persistence Integration Test (#1908, ADR-042)
  *
- * Proves the `CreateFiscalRegistrationRecords1834000000000` migration and real
+ * Proves the `CreateFiscalRegistrationRecords1835000000000` migration and real
  * Postgres behaviour for the exactly-once guarantee, which is the highest-severity
  * acceptance criterion in the epic: retrying must never produce a second fiscal
  * registration of the same sale.

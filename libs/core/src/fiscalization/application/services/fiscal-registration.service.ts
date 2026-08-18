@@ -85,8 +85,19 @@ export const REGISTERING_LEASE_MS = 5 * 60 * 1000;
  * the underlying request may still land. That is why a timeout is classified
  * `in-doubt` (never `rejected`) and an `in-doubt` row is not claimable - the
  * expired-lease disjunct of `claimForRegistration` can therefore only be reached
- * after the owning PROCESS died, whose in-flight socket died with it, and never
- * while a call this process started is still open.
+ * after the owning PROCESS died, and never while a call this process started is
+ * still open.
+ *
+ * A dead process does NOT prove the request never landed, though: the socket
+ * dying with the process says nothing about whether the provider had already
+ * processed it. So re-claiming an expired-lease row IS a resend of a possibly-
+ * already-registered sale - a case core's own exactly-once guarantee does not
+ * close by itself (ADR-042 decision 6 accepts this: the base `FiscalizationPort`
+ * contract requires a caller-supplied idempotency key precisely so a provider
+ * can dedupe a resend it cannot otherwise distinguish from a new sale). Core
+ * still refuses to invent a fiscal outcome it cannot observe, but the crash
+ * window between "process died" and "request may have landed" is real and is
+ * closed by the adapter's own vendor-side idempotency key, not by this lease.
  *
  * @internal Exported for the unit tests that pin both halves of the invariant.
  */

@@ -15,10 +15,12 @@ Polish fiscal e-receipt with the seller's own online fiscal printer.
 ## What this adapter is, and is not
 
 OpenLinker can never *issue* a Polish fiscal receipt — issuance is reserved to a
-certified registering device (art. 111 ust. 3a pkt 1 ustawy o VAT). eparagony.pl is an
-e-receipt distribution hub fronting vendor-proprietary software that drives a physical
-online fiscal printer (Posnet / Novitus / Elzab); this adapter hands a completed sale to
-that hub and reads back the outcome. It never performs fiscal registration itself. See
+certified registering device (art. 111 ust. 3a pkt 1 ustawy o VAT). That states what the
+statute says and is **not legal advice** — no seller-facing compliance claim should rest
+on it without a professional opinion. eparagony.pl is an e-receipt distribution hub
+fronting vendor-proprietary software that drives a physical online fiscal printer
+(Posnet / Novitus / Elzab); this adapter hands a completed sale to that hub and reads
+back the outcome. It never performs fiscal registration itself. See
 [ADR-042](../../../docs/architecture/adrs/042-fiscalization-capability.md) for the full
 design rationale — this package is the first (and, at time of writing, only) adapter
 against the neutral `FiscalizationPort` in `libs/core/src/fiscalization/`.
@@ -64,7 +66,7 @@ found it unenforced on GET requests, so a connection without it still works.
 |---|---|---|
 | `environment` | `sandbox` \| `production` | Required. Selects both the documents-API host and the OAuth host — they are different hosts (`[login.]sandbox.eparagony.pl` vs `[login.]eparagony.pl`) |
 | `posId` | non-empty string | Required. Vendor-assigned register identifier, stamped on every document |
-| `taxRates` | `{ [A-G]: "<rate>" }` (optional) | Letter → rate table sent as `metadata.taxRates`. Describes the SELLER's device configuration — OpenLinker cannot observe it, so an operator whose device is programmed differently must override the default |
+| `taxRates` | `{ [A-G]: "<rate>" }` (optional) | Letter → rate table sent as `metadata.taxRates`. Describes the SELLER's device configuration — OpenLinker cannot observe it, so an operator whose device is programmed differently **must** override the default (`A`=23%, `B`=8%, `C`=5%, `D`/`F`/`G`=0%, `E`=exempt). **Left unconfigured, every registration silently assumes that exact layout.** A device programmed with different slots will register real sales under the WRONG tax rate with no error from OpenLinker — this is not a rate OL computed or verified, it is a guess about hardware OL cannot see. Confirm your device's actual slot assignment with your `serwisant` before registering anything for real |
 | `defaultTaxRateCode` | one of `A`-`G` (optional) | Rate slot used only when a line's neutral `taxRate` is empty (OL resolved none). Absent means an un-rated line blocks registration with an operator-facing reason — never a guessed rate |
 | `print` | boolean (optional, default `false`) | Ask the vendor's print service to also produce a paper receipt |
 | `paymentForm` | one of the vendor's Polish payment-form labels (optional, default `Przelew`) | Purely descriptive; the vendor rejects a document whose declared payment amount ≠ the sale value regardless of the label |

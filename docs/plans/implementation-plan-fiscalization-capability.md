@@ -75,7 +75,7 @@ fiscalization.tokens.ts | fiscalization.module.ts | index.ts | orm-entities.ts
 
 ### Persistence
 
-- `apps/api/src/migrations/1834000000000-create-fiscal-registration-records.ts`
+- `apps/api/src/migrations/1835000000000-create-fiscal-registration-records.ts`
 - `libs/core/package.json` - `./fiscalization` + `./fiscalization/orm-entities` exports
 
 ## 4. Exactly-once lifecycle (the highest-severity AC)

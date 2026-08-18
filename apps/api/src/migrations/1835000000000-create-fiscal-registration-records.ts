@@ -21,12 +21,16 @@
  * coupling.
  *
  * Generated: 2026-08-14 (synthetic sequential prefix per docs/migrations.md #1013).
+ * Re-prefixed 1834000000000 -> 1835000000000: that slot collided with a
+ * different in-flight migration on another open PR (#2135's order-FX-stamp
+ * table) - `check-migration-timestamps.mjs` only compares against
+ * `origin/main`, so it can't see a sibling branch's choice.
  * @module apps/api/src/migrations
  */
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class CreateFiscalRegistrationRecords1834000000000 implements MigrationInterface {
-  name = 'CreateFiscalRegistrationRecords1834000000000';
+export class CreateFiscalRegistrationRecords1835000000000 implements MigrationInterface {
+  name = 'CreateFiscalRegistrationRecords1835000000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`CREATE EXTENSION IF NOT EXISTS "uuid-ossp"`);

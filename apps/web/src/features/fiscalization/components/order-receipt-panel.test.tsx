@@ -93,6 +93,74 @@ describe('OrderReceiptPanel — not-registered', () => {
       expect(register).toHaveBeenCalledWith({ connectionId: CONN_ID, orderId: ORDER_ID }),
     );
   });
+
+  it('registers on the connection the operator actually picked, not the default (S1)', async () => {
+    const secondConnection: Connection = {
+      ...fiscalConnection,
+      id: 'conn_fiscal_2',
+      name: 'eparagony.pl (second)',
+    };
+    const register = vi.fn().mockResolvedValue(makeRecord({ status: 'pending' }));
+    const user = userEvent.setup();
+    renderWithProviders(<OrderReceiptPanel orderId={ORDER_ID} />, {
+      apiClient: createMockApiClient({
+        connections: { list: vi.fn().mockResolvedValue([fiscalConnection, secondConnection]) },
+        fiscalization: { listForOrder: vi.fn().mockResolvedValue([]), register },
+      }),
+    });
+    const select = await screen.findByLabelText('Register on');
+    await user.selectOptions(select, 'conn_fiscal_2');
+    await user.click(screen.getByRole('button', { name: 'Register receipt' }));
+    await waitFor(() =>
+      expect(register).toHaveBeenCalledWith({ connectionId: 'conn_fiscal_2', orderId: ORDER_ID }),
+    );
+  });
+});
+
+describe('OrderReceiptPanel — pending (I6: not a dead end)', () => {
+  it('distinguishes "queued, never sent" from "registering" and offers a way forward', async () => {
+    renderWithProviders(<OrderReceiptPanel orderId={ORDER_ID} />, {
+      apiClient: createMockApiClient({
+        connections: { list: vi.fn().mockResolvedValue([fiscalConnection]) },
+        fiscalization: { listForOrder: vi.fn().mockResolvedValue([makeRecord({ status: 'pending' })]) },
+      }),
+    });
+    expect(await screen.findByText(/not yet sent to the provider/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Register receipt' })).toBeEnabled();
+  });
+
+  it('resumes the SAME record by re-registering on its own connection', async () => {
+    const register = vi.fn().mockResolvedValue(makeRecord({ status: 'registering' }));
+    const user = userEvent.setup();
+    renderWithProviders(<OrderReceiptPanel orderId={ORDER_ID} />, {
+      apiClient: createMockApiClient({
+        connections: { list: vi.fn().mockResolvedValue([fiscalConnection]) },
+        fiscalization: {
+          listForOrder: vi.fn().mockResolvedValue([makeRecord({ status: 'pending' })]),
+          register,
+        },
+      }),
+    });
+    await user.click(await screen.findByRole('button', { name: 'Register receipt' }));
+    await waitFor(() =>
+      expect(register).toHaveBeenCalledWith({ connectionId: CONN_ID, orderId: ORDER_ID }),
+    );
+  });
+});
+
+describe('OrderReceiptPanel — registering (live in-flight attempt)', () => {
+  it('shows the sent-notice with no action', async () => {
+    renderWithProviders(<OrderReceiptPanel orderId={ORDER_ID} />, {
+      apiClient: createMockApiClient({
+        connections: { list: vi.fn().mockResolvedValue([fiscalConnection]) },
+        fiscalization: {
+          listForOrder: vi.fn().mockResolvedValue([makeRecord({ status: 'registering' })]),
+        },
+      }),
+    });
+    expect(await screen.findByText(/Sent to the provider/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Register receipt' })).toBeNull();
+  });
 });
 
 describe('OrderReceiptPanel — registered', () => {

@@ -181,7 +181,14 @@ export interface RegisterTransactionResult {
    * rejects, because the class is not stable even within one country.
    */
   signingIdentity: string | null;
-  registeredAt: Date;
+  /**
+   * `null` when the provider's response carried no timestamp for this
+   * registration - an adapter must NEVER fabricate one (e.g. by falling back
+   * to its own clock) on a field that is part of the persisted identity set.
+   * Mirrors {@link FiscalLocateResult.registeredAt}'s nullability exactly, for
+   * the same reason.
+   */
+  registeredAt: Date | null;
   /**
    * Adapter-owned bag of flat string key/values with no cross-regime
    * counterpart. Core persists it verbatim and indexes NO key inside it. A key

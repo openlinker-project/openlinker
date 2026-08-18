@@ -6,10 +6,15 @@
  * implements `FiscalizationPort` plus the `FiscalRegistrationLocator`
  * sub-capability.
  *
- * `supportedCapabilities` lists only `Fiscalization`. The locator is narrowed at
- * the call site with `isFiscalRegistrationLocator`, never resolved by name from
- * the registry - asking `getCapabilityAdapter` for a sub-capability passes the
- * manifest gate and then throws inside `dispatchCapability`.
+ * `supportedCapabilities` lists `Fiscalization` plus `FiscalRegistrationLocator`,
+ * advertised-without-dispatch (ADR-042 decision 5, the same pattern as
+ * `CategoryBrowser` / `OfferCreator` / `ShopCategoryBrowser`): the locator is
+ * ALWAYS narrowed at the call site with `isFiscalRegistrationLocator`, never
+ * resolved by name from the registry - asking `getCapabilityAdapter` for it
+ * would pass this manifest gate and then throw inside `dispatchCapability`,
+ * since the dispatch table below only has a `Fiscalization` entry. The manifest
+ * entry exists purely so host/FE discovery (the connection response) can tell
+ * this connection is reconcilable before an operator ever sees an in-doubt row.
  *
  * NOT declared, and each for a stated reason:
  *   - `FiscalDeviceOperator` (#1910, closed `not_planned`) - the fiscal printer
@@ -48,7 +53,7 @@ import { EparagonyRetryClassifierAdapter } from './infrastructure/adapters/epara
 export const eparagonyAdapterManifest: AdapterMetadata = {
   adapterKey: EPARAGONY_ADAPTER_KEY,
   platformType: EPARAGONY_PROVIDER_TYPE,
-  supportedCapabilities: ['Fiscalization'],
+  supportedCapabilities: ['Fiscalization', 'FiscalRegistrationLocator'],
   displayName: 'eparagony.pl Documents API v3',
   version: '1.0.0',
   isDefault: true,

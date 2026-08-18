@@ -64,7 +64,25 @@ describe('createEparagonyPlugin', () => {
     it('should declare the fiscalization capability under its own adapter key', () => {
       expect(eparagonyAdapterManifest.adapterKey).toBe('eparagony.documents.v3');
       expect(eparagonyAdapterManifest.platformType).toBe('eparagony');
-      expect(eparagonyAdapterManifest.supportedCapabilities).toEqual(['Fiscalization']);
+      expect(eparagonyAdapterManifest.supportedCapabilities).toEqual([
+        'Fiscalization',
+        'FiscalRegistrationLocator',
+      ]);
+    });
+
+    it('should advertise the locator without dispatching it by name', async () => {
+      // ADR-002 sub-capability shape: the manifest lists it for discovery, but
+      // asking the registry to dispatch it directly must still fail - only
+      // `isFiscalRegistrationLocator` narrowing of the DISPATCHED Fiscalization
+      // adapter may resolve it.
+      const { host } = makeHost();
+      await expect(
+        createEparagonyPlugin().createCapabilityAdapter(
+          connection,
+          'FiscalRegistrationLocator',
+          host,
+        ),
+      ).rejects.toThrow();
     });
 
     it('should return the same manifest reference at runtime so static and runtime cannot drift', () => {

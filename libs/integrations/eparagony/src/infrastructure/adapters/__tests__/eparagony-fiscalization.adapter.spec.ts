@@ -111,7 +111,7 @@ describe('EparagonyFiscalizationAdapter', () => {
       expect(result.documentReference).toBe('334');
       // PL numer unikatowy - flat, no anchor class reaches core.
       expect(result.signingIdentity).toBe('TEST0000000001');
-      expect(result.registeredAt.toISOString()).toBe('2026-08-14T09:16:42.123Z');
+      expect(result.registeredAt?.toISOString()).toBe('2026-08-14T09:16:42.123Z');
       expect(result.regimeExtras).toMatchObject({
         fiscalDocumentId: 'TEST0000000001/568',
         printed: 'true',
@@ -325,6 +325,19 @@ describe('EparagonyFiscalizationAdapter', () => {
       expect(body.eReceipt.payment.totalPaid).toBe(5548);
     });
 
+    it('should block rather than emit a positive-valued markup line for rounding dust (S2)', async () => {
+      // Lines sum to 60.48; a total of 60.49 sums to LESS than the lines, which
+      // core's own upstream reconciliation guarantees can only be
+      // floating-point/rounding dust, never a real declared surcharge.
+      const client = makeClient([CONFIRMED]);
+      const adapter = makeAdapter(client);
+
+      await expect(
+        adapter.registerTransaction(makeCommand({ totalGross: 60.49 })),
+      ).rejects.toBeInstanceOf(EparagonyConfigException);
+      expect(client.post).not.toHaveBeenCalled();
+    });
+
     it('should emit no balancing line when the total already equals the line sum', async () => {
       const client = makeClient([CONFIRMED]);
       await makeAdapter(client).registerTransaction(makeCommand());
@@ -407,8 +420,9 @@ describe('EparagonyFiscalizationAdapter', () => {
       // No receipt or document number came back - independently nullable.
       expect(result.documentReference).toBeNull();
       expect(result.artefacts).toHaveLength(1);
-      // Nothing anchored a registration time; a real one still had to be recorded.
-      expect(result.registeredAt).toBeInstanceOf(Date);
+      // Nothing anchored a registration time (I7) - record null rather than
+      // fabricating OL's own clock as a provider-reported timestamp.
+      expect(result.registeredAt).toBeNull();
     });
 
     it('should not promote a non-scalar into a fiscal identity field', async () => {

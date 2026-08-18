@@ -251,6 +251,38 @@ describe('EparagonyHttpClient', () => {
       expect((error as EparagonyApiError).errorCode).toBeNull();
     });
 
+    it('should classify a 4xx with no parseable errorCode as in-doubt, not rejected', async () => {
+      // Nothing distinguishes "definitely refused" from "our own earlier
+      // attempt already landed" (e.g. a 409 whose body was truncated past the
+      // adapter's DOCUMENT_ALREADY_EXISTS short-circuit) without a code to
+      // reason about - the fiscal-safe default applies rather than guessing.
+      const fetchImpl = makeFetch([
+        (url): Response =>
+          url.includes('/auth/token')
+            ? jsonResponse(200, tokenBody())
+            : new Response('upstream said no', { status: 400 }),
+      ]);
+      await expect(makeClient(fetchImpl).get('documents/x/status')).rejects.toMatchObject({
+        failureMode: 'in-doubt',
+        errorCode: null,
+      });
+    });
+
+    it.each([408, 425])(
+      'should classify a %i as in-doubt even with a parsed errorCode',
+      async (statusCode) => {
+        const fetchImpl = makeFetch([
+          (url): Response =>
+            url.includes('/auth/token')
+              ? jsonResponse(200, tokenBody())
+              : jsonResponse(statusCode, { statusCode, errorCode: 7 }),
+        ]);
+        await expect(makeClient(fetchImpl).get('documents/x/status')).rejects.toMatchObject({
+          failureMode: 'in-doubt',
+        });
+      },
+    );
+
     it('should classify an exhausted 5xx retry budget as in-doubt', async () => {
       const fetchImpl = makeFetch([
         (url): Response =>
@@ -305,6 +337,35 @@ describe('EparagonyHttpClient', () => {
         makeClient(fetchImpl).post('documents', {}, { idempotent: true }),
       ).resolves.toMatchObject({ status: 202 });
       expect(apiCalls).toBe(2);
+    });
+
+    it('should send the SAME Idempotency-Key header on the retried attempt', async () => {
+      // The whole safety of retrying a POST on 5xx/network rests on the vendor
+      // deduping by this header - if the retried attempt sent a different (or
+      // no) key, a retry could mint a second document. Pin it on the attempt
+      // that actually got retried, not just the first one.
+      const apiCalls: Array<Record<string, string>> = [];
+      const fetchImpl = jest.fn().mockImplementation(
+        (url: string, init: RequestInit): Promise<Response> => {
+          if (String(url).includes('/auth/token')) {
+            return Promise.resolve(jsonResponse(200, tokenBody()));
+          }
+          apiCalls.push(init.headers as Record<string, string>);
+          return Promise.resolve(
+            apiCalls.length === 1 ? jsonResponse(503, {}) : jsonResponse(202, { ok: true }),
+          );
+        },
+      );
+      await expect(
+        makeClient(fetchImpl).post(
+          'documents',
+          {},
+          { idempotent: true, headers: { 'Idempotency-Key': 'doc-token-1' } },
+        ),
+      ).resolves.toMatchObject({ status: 202 });
+      expect(apiCalls).toHaveLength(2);
+      expect(apiCalls[0]['Idempotency-Key']).toBe('doc-token-1');
+      expect(apiCalls[1]['Idempotency-Key']).toBe('doc-token-1');
     });
   });
 
