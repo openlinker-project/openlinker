@@ -6,8 +6,10 @@
  * order — there is no absent-record 404 to remap, because OpenLinker never
  * asserts that an order requires a registration.
  *
- * Polls while the newest record is `pending` / `registering`, so the manual
- * "Register receipt" action's in-flight state resolves on its own.
+ * Polls while the newest record is `registering` - the only status backed by a
+ * live lease - so the manual "Register receipt" action's in-flight state
+ * resolves on its own. A `pending` row has never been sent to the provider
+ * (nothing is in flight to observe), so it does not poll.
  *
  * @module apps/web/src/features/fiscalization/hooks
  */
@@ -30,8 +32,7 @@ export function useOrderFiscalRegistrationsQuery(
       apiClient.fiscalization.listForOrder(orderId),
     refetchInterval: (query) => {
       const newest = query.state.data?.[0];
-      const s = newest?.status;
-      return s === 'pending' || s === 'registering' ? FISCAL_POLL_MS : false;
+      return newest?.status === 'registering' ? FISCAL_POLL_MS : false;
     },
   });
 }

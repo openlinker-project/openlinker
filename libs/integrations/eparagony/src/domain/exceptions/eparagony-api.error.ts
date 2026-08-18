@@ -11,12 +11,12 @@
  * The default classification is deliberately asymmetric and is stated once here
  * so no call site has to re-derive it:
  *
- *   - `4xx` other than `408`, `422`, `425` and `429`, WHEN `errorCode` parsed ->
- *     `'rejected'`. The request was refused at the API boundary, so no document
- *     and no fiscal registration was created. Re-crossing the boundary is safe:
- *     OL sends its own `idempotencyKey` as the vendor's `Idempotency-Key`, and
- *     the vendor guarantees that repeating a key with the same data cannot mint
- *     a second registration.
+ *   - `4xx` other than `408`, `409`, `422`, `425` and `429`, WHEN `errorCode`
+ *     parsed -> `'rejected'`. The request was refused at the API boundary, so
+ *     no document and no fiscal registration was created. Re-crossing the
+ *     boundary is safe: OL sends its own `idempotencyKey` as the vendor's
+ *     `Idempotency-Key`, and the vendor guarantees that repeating a key with
+ *     the same data cannot mint a second registration.
  *   - `422` -> `'in-doubt'`. The vendor returns it when the SAME key is replayed
  *     with DIFFERENT data, which means a document already exists under that key.
  *     Reading that as `'rejected'` would be the exact wrong-direction error this
@@ -24,13 +24,20 @@
  *   - `408` and `425` -> `'in-doubt'`. Both mean the server may have SEEN the
  *     request (a slow client body, a replayed-too-early request) rather than
  *     refused it outright, so treating either as a clean rejection is not safe.
- *   - Any `4xx` whose `errorCode` could NOT be parsed -> `'in-doubt'`. This is
- *     the ambiguous case that matters most: a `409` whose body was truncated
- *     (the vendor caps error bodies at 4 MB) bypasses the
- *     `DOCUMENT_ALREADY_EXISTS` short-circuit in the adapter's create path with
- *     no `errorCode` to reason about. Without a parsed code there is nothing
- *     distinguishing "definitely refused" from "our own earlier attempt already
- *     landed", so the fiscal-safe default applies instead of guessing rejected.
+ *   - `409` -> `'in-doubt'`, EVEN when `errorCode` parsed to something the
+ *     adapter doesn't specifically recognise. `409 Conflict` is by definition a
+ *     statement about server-side state - the server saw the request - which is
+ *     exactly the "may have landed" shape this list exists for. The adapter's
+ *     `DOCUMENT_ALREADY_EXISTS` short-circuit still handles the recognised case
+ *     directly; this catches every OTHER 409 body, parseable or not. The
+ *     failure is asymmetric: a wrong `in-doubt` costs one manual reconcile, a
+ *     wrong `rejected` licenses a second real fiscal registration for one sale.
+ *   - Any OTHER `4xx` whose `errorCode` could NOT be parsed -> `'in-doubt'`.
+ *     This is the ambiguous case that matters most: a response whose body was
+ *     truncated (the vendor caps error bodies at 4 MB) leaves no `errorCode` to
+ *     reason about. Without a parsed code there is nothing distinguishing
+ *     "definitely refused" from "our own earlier attempt already landed", so
+ *     the fiscal-safe default applies instead of guessing rejected.
  *   - `429` and `5xx` -> `'in-doubt'`. The vendor documents 502/503/504 as
  *     retry-worthy; either may have been raised after the document was created.
  *
@@ -96,7 +103,7 @@ export class EparagonyApiError extends Error {
 }
 
 /** 4xx codes that mean "may have been seen", never a clean refusal. */
-const AMBIGUOUS_CLIENT_ERROR_CODES: readonly number[] = [408, 422, 425, 429];
+const AMBIGUOUS_CLIENT_ERROR_CODES: readonly number[] = [408, 409, 422, 425, 429];
 
 function defaultFailureMode(
   statusCode: number,
@@ -126,6 +133,9 @@ function defaultReason(statusCode: number, errorCode: number | null): string {
   }
   if (statusCode === 422) {
     return `The e-receipt provider reports this registration key was already used with different data${suffix}.`;
+  }
+  if (statusCode === 409) {
+    return `The e-receipt provider reports a conflict for this request; it may have already been registered${suffix}.`;
   }
   if (statusCode === 429) {
     return `The e-receipt provider rate-limited the request${suffix}.`;
