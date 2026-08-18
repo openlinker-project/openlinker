@@ -27,7 +27,13 @@ import {
 } from '@openlinker/core/integrations';
 import { type SyncLockPort, SYNC_LOCK_TOKEN } from '@openlinker/core/sync';
 import type { IFiscalRegistrationService } from '@openlinker/core/fiscalization';
-import { FISCAL_REGISTRATION_SERVICE_TOKEN } from '@openlinker/core/fiscalization';
+// Type-only NAMED import (never a wildcard — see
+// docs/architecture-overview.md#cross-context-dependencies-in-core) of just
+// the one token used in the lazy require below. Erases at compile time, never
+// emits a runtime require(), so it cannot reintroduce the CommonJS cycle that
+// require breaks; used only to type its return value without an inline
+// `import()` type (banned by `@typescript-eslint/consistent-type-imports`).
+import type { FISCAL_REGISTRATION_SERVICE_TOKEN as FiscalRegistrationServiceTokenType } from '@openlinker/core/fiscalization';
 
 import type { IInvoiceService } from './invoice.service.interface';
 import { InvoiceRecordRepositoryPort } from '../../domain/ports/invoice-record-repository.port';
@@ -471,6 +477,30 @@ export class InvoiceService implements IInvoiceService {
    * `apps/api` and `apps/worker` import `FiscalizationModule` today (the
    * latter since #2156, for the `fiscalization.register` handler), so this
    * fallback is defensive rather than a live gap in either host process.
+   *
+   * CommonJS-CYCLE NOTE (found live during epic #2154 Phase 4 e2e — the
+   * `ModuleRef` lookup above breaks the NestJS DI-graph cycle, but a plain
+   * top-level `import { FISCAL_REGISTRATION_SERVICE_TOKEN } from
+   * '@openlinker/core/fiscalization'` in THIS file still closes a REQUIRE
+   * cycle one layer down: `app.module.ts` requires `@openlinker/core/invoicing`
+   * first, which (via this file) requires `@openlinker/core/fiscalization`
+   * mid-load, whose `fiscalization.module.ts` requires
+   * `@openlinker/core/invoicing` back — landing on invoicing's own
+   * still-partially-populated `module.exports`, where `InvoicingModule` (the
+   * barrel's LAST export) is not yet assigned. Node hands back `undefined`,
+   * and NestJS's `@Module({ imports: [...] })` decorator captures that
+   * `undefined` PERMANENTLY (decorator arguments evaluate once, synchronously,
+   * at class-definition time — they are not live bindings), crashing
+   * `apps/api` / `apps/worker` boot with "the module at index [n] of the
+   * FiscalizationModule imports array is undefined". {@link
+   * resolveFiscalRegistrationService} therefore requires the token LAZILY,
+   * deferred past application boot to first actual call — by then both
+   * barrels have fully finished loading via `app.module.ts`'s own top-level
+   * imports, so the cycle never closes mid-load. A dynamic `require()`, not
+   * `import()`, because `ModuleRef.get` needs the token SYNCHRONOUSLY and by
+   * exact Symbol identity — a second `Symbol('...')` with the same
+   * description would not `===` the one `FiscalRegistrationService` registers
+   * against.
    */
   private async assertNoBlockingFiscalReceipt(
     orderId: string,
@@ -510,9 +540,14 @@ export class InvoiceService implements IInvoiceService {
    */
   private resolveFiscalRegistrationService(): IFiscalRegistrationService | null {
     try {
-      return this.moduleRef.get<IFiscalRegistrationService>(FISCAL_REGISTRATION_SERVICE_TOKEN, {
-        strict: false,
-      });
+      // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires -- lazy require needed to break a CommonJS barrel-load cycle with `@openlinker/core/fiscalization` (see the doc comment above)
+      const fiscalization = require('@openlinker/core/fiscalization') as {
+        FISCAL_REGISTRATION_SERVICE_TOKEN: typeof FiscalRegistrationServiceTokenType;
+      };
+      return this.moduleRef.get<IFiscalRegistrationService>(
+        fiscalization.FISCAL_REGISTRATION_SERVICE_TOKEN,
+        { strict: false },
+      );
     } catch {
       return null;
     }

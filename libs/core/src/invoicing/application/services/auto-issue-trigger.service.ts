@@ -123,8 +123,13 @@ import type {
   SalesDocumentRoutingCandidate,
   SalesDocumentUnresolvedReason,
 } from '@openlinker/core/sales-documents';
-import { toRegisterTransactionCommand } from '@openlinker/core/fiscalization';
 import { Logger } from '@openlinker/shared/logging';
+// Type-only NAMED import (never a wildcard — see
+// docs/architecture-overview.md#cross-context-dependencies-in-core) of just
+// the one function used in the lazy require below. Erases at compile time,
+// never emits a runtime require(), so it cannot reintroduce the CommonJS
+// cycle that require breaks.
+import type { toRegisterTransactionCommand as ToRegisterTransactionCommandType } from '@openlinker/core/fiscalization';
 
 import type { IAutoIssueTriggerService } from './auto-issue-trigger.service.interface';
 import type { InvoicingPort } from '../../domain/ports/invoicing.port';
@@ -913,6 +918,19 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
    * `toRegisterTransactionCommand` mapper. May surface `InvalidFiscalLineError`
    * / `UnsupportedFiscalPriceTreatmentError` (both PII-clean, cite only the
    * order id).
+   *
+   * `toRegisterTransactionCommand` is required LAZILY, not via a top-level
+   * import, for the same reason `InvoiceService.resolveFiscalRegistrationService`
+   * does (see that file's doc comment): this file is exported from
+   * `@openlinker/core/invoicing`'s barrel BEFORE `InvoicingModule` itself, so a
+   * top-level `import ... from '@openlinker/core/fiscalization'` here forces
+   * fiscalization's barrel to load mid-way through invoicing's own barrel load
+   * — and `fiscalization.module.ts`'s own `import { InvoicingModule } from
+   * '@openlinker/core/invoicing'` then lands on invoicing's still-partially
+   * -populated exports, capturing `undefined` into `FiscalizationModule`'s
+   * `imports` array permanently and crashing `apps/api` / `apps/worker` boot.
+   * Deferring the require to call time (well after both barrels have fully
+   * loaded via `app.module.ts`'s own top-level imports) breaks the cycle.
    */
   private composeFiscalReceiptPayload(
     order: Order,
@@ -921,6 +939,10 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     sourceConnectionId: string,
     sourceEventId?: string,
   ): FiscalizationRegisterPayloadV1 {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires -- lazy require needed to break a CommonJS barrel-load cycle with `@openlinker/core/fiscalization` (see the doc comment above)
+    const { toRegisterTransactionCommand } = require('@openlinker/core/fiscalization') as {
+      toRegisterTransactionCommand: typeof ToRegisterTransactionCommandType;
+    };
     const command = toRegisterTransactionCommand({
       order,
       connectionId: connection.id,
