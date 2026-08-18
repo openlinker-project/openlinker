@@ -466,12 +466,14 @@ export class InvoiceService implements IInvoiceService {
    * module's `imports` array references the other.
    *
    * A `NestJS` "provider not found" throw (fiscalization not wired into THIS
-   * process — true of `apps/worker` today, which never imports
-   * `FiscalizationModule`) is read as "nothing can have been registered here
-   * either", which is accurate: the SAME missing wiring that hides the
-   * fiscalization read also means `FiscalRegistrationService.register` cannot
-   * run in that process. This is not a silent safety gap — it degrades exactly
-   * where the write path it would guard against is itself unreachable.
+   * process) is read as "nothing can have been registered here either", which
+   * is accurate: the SAME missing wiring that would hide the fiscalization
+   * read also means `FiscalRegistrationService.register` cannot run in that
+   * process. This is not a silent safety gap — it degrades exactly where the
+   * write path it would guard against is itself unreachable. Both
+   * `apps/api` and `apps/worker` import `FiscalizationModule` today (the
+   * latter since #2156, for the `fiscalization.register` handler), so this
+   * fallback is defensive rather than a live gap in either host process.
    */
   private async assertNoBlockingFiscalReceipt(
     orderId: string,
