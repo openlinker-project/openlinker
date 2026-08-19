@@ -174,6 +174,12 @@ export interface OrderRecordRepositoryPort {
    * `totalAmount`, informational, may mix currencies) rather than being
    * silently folded into `revenue` or silently dropped. `cancelledValue`
    * stays on native `totalAmount`, unchanged.
+   *
+   * `unconvertedCurrency` (#1987 scope, not an FX-epic deliverable —
+   * `order_records.currency` predates #2049) labels `unconvertedValue` with
+   * the one native currency shared by every unconverted, non-cancelled order
+   * this day/connection, or `null` when that set mixes currencies (or is
+   * empty — nothing to label).
    */
   getDailyOrderAggregates(filters: SalesAnalyticsFilters): Promise<DailyOrderAggregateRow[]>;
 
