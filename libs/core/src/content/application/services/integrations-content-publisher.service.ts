@@ -9,6 +9,8 @@
  *     integrations registry and calls `updateProduct(productId, { [fieldKey]: value })`.
  *     Uses the adapter's response `updatedAt` as the opaque `baseVersion` so
  *     future inbound reconciles can detect divergence by string inequality.
+ *     Applies no `DescriptionFormat` - the master is the catalogue of record,
+ *     not a listing destination (ADR-046; see the call site).
  *
  *   - **Channel path**: resolves an `OfferManager` adapter for the target
  *     connection, confirms it implements `OfferFieldUpdater`, walks the
@@ -19,6 +21,9 @@
  *     inbound reconcile does not exist yet (tracked as a follow-up); when it
  *     lands, the strategy here will need to be reconciled with the
  *     marketplace-provided revision / lastUpdated.
+ *     Applies the destination's declared `DescriptionFormat` before dispatch
+ *     (ADR-046) - this path reaches `updateOfferFields` without passing through
+ *     either builder, so it is one of the four enforcement points.
  *
  * The `ChannelContentPublishNotSupportedException` class remains in the
  * domain for future branches (e.g. a connection type that fundamentally
@@ -102,6 +107,13 @@ export class IntegrationsContentPublisher implements ContentPublisherPort {
 
     const { adapter } = masters[0];
 
+    // ADR-046 deliberately does NOT apply a `DescriptionFormat` here, and this
+    // comment exists so the absence reads as a decision rather than a gap.
+    // The rule covers paths publishing to a LISTING destination (a marketplace
+    // offer, a shop product); the master is the catalogue of record, its own
+    // editor is the authority on what it accepts, and it is where the broad
+    // HTML originates - so there is nothing to narrow it to. `ProductMasterPort`
+    // carries no declaration for the same reason.
     const updated = await adapter.updateProduct(request.productId, {
       [request.fieldKey]: request.value,
     });
