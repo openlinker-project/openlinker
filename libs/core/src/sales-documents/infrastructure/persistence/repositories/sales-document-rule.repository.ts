@@ -56,6 +56,16 @@ export class SalesDocumentRuleRepository implements SalesDocumentRuleRepositoryP
     await this.ormRepository.delete({ id });
   }
 
+  async countRulesByCountry(): Promise<Map<string, number>> {
+    const rows = await this.ormRepository
+      .createQueryBuilder('rule')
+      .select('rule.country', 'country')
+      .addSelect('COUNT(*)', 'count')
+      .groupBy('rule.country')
+      .getRawMany<{ country: string; count: string }>();
+    return new Map(rows.map((row) => [row.country, Number(row.count)]));
+  }
+
   private toDomain(entity: SalesDocumentRuleOrmEntity): SalesDocumentRule {
     const rawConditions = Array.isArray(entity.conditions) ? entity.conditions : [];
     const conditions = rawConditions.filter(isSalesDocumentCondition);

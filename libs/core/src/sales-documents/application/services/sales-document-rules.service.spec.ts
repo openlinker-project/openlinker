@@ -1,7 +1,8 @@
 /**
- * SalesDocumentRulesService — unit spec (#2170)
+ * SalesDocumentRulesService — unit spec (#2170, #2186)
  *
- * Focused on the write-path conflict guard and threshold-ref validation —
+ * Focused on the write-path conflict guard, threshold-ref validation, the
+ * countries-listing merge, and the acknowledgment lifecycle —
  * `evaluateSalesDocumentRules` (the pure resolver `resolveRouting` delegates
  * to) has its own dedicated spec. Repositories are mocked ports, per
  * `docs/engineering-standards.md § Mocking Ports`.
@@ -12,8 +13,11 @@ import { SalesDocumentRulesService } from './sales-document-rules.service';
 import type { SalesDocumentRuleRepositoryPort } from '../../domain/ports/sales-document-rule-repository.port';
 import type { SalesDocumentCountryDefaultRepositoryPort } from '../../domain/ports/sales-document-country-default-repository.port';
 import type { SalesDocumentThresholdRepositoryPort } from '../../domain/ports/sales-document-threshold-repository.port';
+import type { SalesDocumentCountryAcknowledgmentRepositoryPort } from '../../domain/ports/sales-document-country-acknowledgment-repository.port';
 import { SalesDocumentRule } from '../../domain/entities/sales-document-rule.entity';
 import { SalesDocumentThreshold } from '../../domain/entities/sales-document-threshold.entity';
+import { SalesDocumentCountryDefault } from '../../domain/entities/sales-document-country-default.entity';
+import { SalesDocumentCountryAcknowledgment } from '../../domain/entities/sales-document-country-acknowledgment.entity';
 import { SalesDocumentRuleConflictException } from '../../domain/exceptions/sales-document-rule-conflict.exception';
 import { SalesDocumentThresholdNotFoundException } from '../../domain/exceptions/sales-document-threshold-not-found.exception';
 import type { SalesDocumentRuleInput } from '../../domain/types/sales-document-rule-write.types';
@@ -25,6 +29,7 @@ function makeRuleRepo(): jest.Mocked<SalesDocumentRuleRepositoryPort> {
     findByCountryAndConditionsHash: jest.fn(),
     create: jest.fn(),
     delete: jest.fn(),
+    countRulesByCountry: jest.fn(),
   };
 }
 
@@ -32,6 +37,7 @@ function makeCountryDefaultRepo(): jest.Mocked<SalesDocumentCountryDefaultReposi
   return {
     findById: jest.fn(),
     findByCountry: jest.fn(),
+    findAll: jest.fn(),
     findByCountryAndKind: jest.fn(),
     upsert: jest.fn(),
     delete: jest.fn(),
@@ -45,6 +51,30 @@ function makeThresholdRepo(): jest.Mocked<SalesDocumentThresholdRepositoryPort> 
     findByRefs: jest.fn(),
     create: jest.fn(),
   };
+}
+
+function makeAcknowledgmentRepo(): jest.Mocked<SalesDocumentCountryAcknowledgmentRepositoryPort> {
+  return {
+    find: jest.fn(),
+    findAll: jest.fn(),
+    upsert: jest.fn(),
+    delete: jest.fn(),
+  };
+}
+
+function countryDefault(overrides: {
+  country: string;
+  documentKind: string;
+  connectionId: string;
+}): SalesDocumentCountryDefault {
+  return new SalesDocumentCountryDefault(
+    `default-${overrides.country}-${overrides.documentKind}`,
+    overrides.country,
+    overrides.documentKind,
+    overrides.connectionId,
+    new Date(),
+    new Date(),
+  );
 }
 
 function existingRule(): SalesDocumentRule {
@@ -76,17 +106,19 @@ function baseInput(overrides: Partial<SalesDocumentRuleInput> = {}): SalesDocume
   };
 }
 
-describe('SalesDocumentRulesService (#2170)', () => {
+describe('SalesDocumentRulesService (#2170, #2186)', () => {
   let ruleRepo: jest.Mocked<SalesDocumentRuleRepositoryPort>;
   let countryDefaultRepo: jest.Mocked<SalesDocumentCountryDefaultRepositoryPort>;
   let thresholdRepo: jest.Mocked<SalesDocumentThresholdRepositoryPort>;
+  let acknowledgmentRepo: jest.Mocked<SalesDocumentCountryAcknowledgmentRepositoryPort>;
   let service: SalesDocumentRulesService;
 
   beforeEach(() => {
     ruleRepo = makeRuleRepo();
     countryDefaultRepo = makeCountryDefaultRepo();
     thresholdRepo = makeThresholdRepo();
-    service = new SalesDocumentRulesService(ruleRepo, countryDefaultRepo, thresholdRepo);
+    acknowledgmentRepo = makeAcknowledgmentRepo();
+    service = new SalesDocumentRulesService(ruleRepo, countryDefaultRepo, thresholdRepo, acknowledgmentRepo);
   });
 
   describe('createRule — conflict guard', () => {
@@ -175,6 +207,158 @@ describe('SalesDocumentRulesService (#2170)', () => {
       ruleRepo.findById.mockResolvedValue(null);
       await expect(service.deleteRule('missing')).rejects.toThrow();
       expect(ruleRepo.delete).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('listConfiguredCountries (#2186)', () => {
+    it('should return a country with a rule count only (no defaults, no acknowledgment)', async () => {
+      ruleRepo.countRulesByCountry.mockResolvedValue(new Map([['PL', 3]]));
+      countryDefaultRepo.findAll.mockResolvedValue([]);
+      acknowledgmentRepo.findAll.mockResolvedValue([]);
+
+      const summaries = await service.listConfiguredCountries();
+
+      expect(summaries).toEqual([
+        {
+          country: 'PL',
+          ruleCount: 3,
+          invoiceDefaultConnectionId: null,
+          receiptDefaultConnectionId: null,
+          acknowledgedNoDocumentAt: null,
+        },
+      ]);
+    });
+
+    it('should return a country with defaults only (no rules, no acknowledgment), keeping both document kinds distinct', async () => {
+      ruleRepo.countRulesByCountry.mockResolvedValue(new Map());
+      countryDefaultRepo.findAll.mockResolvedValue([
+        countryDefault({ country: 'DE', documentKind: 'invoice', connectionId: 'conn-invoice' }),
+        countryDefault({ country: 'DE', documentKind: 'fiscal-receipt', connectionId: 'conn-receipt' }),
+      ]);
+      acknowledgmentRepo.findAll.mockResolvedValue([]);
+
+      const summaries = await service.listConfiguredCountries();
+
+      expect(summaries).toEqual([
+        {
+          country: 'DE',
+          ruleCount: 0,
+          invoiceDefaultConnectionId: 'conn-invoice',
+          receiptDefaultConnectionId: 'conn-receipt',
+          acknowledgedNoDocumentAt: null,
+        },
+      ]);
+    });
+
+    it('should merge rules AND defaults for the same country into one row', async () => {
+      ruleRepo.countRulesByCountry.mockResolvedValue(new Map([['FR', 2]]));
+      countryDefaultRepo.findAll.mockResolvedValue([
+        countryDefault({ country: 'FR', documentKind: 'invoice', connectionId: 'conn-fr' }),
+      ]);
+      acknowledgmentRepo.findAll.mockResolvedValue([]);
+
+      const summaries = await service.listConfiguredCountries();
+
+      expect(summaries).toEqual([
+        {
+          country: 'FR',
+          ruleCount: 2,
+          invoiceDefaultConnectionId: 'conn-fr',
+          receiptDefaultConnectionId: null,
+          acknowledgedNoDocumentAt: null,
+        },
+      ]);
+    });
+
+    it('should include an acknowledged country with no rules and no defaults, reporting the acknowledgment timestamp', async () => {
+      const acknowledgedAt = new Date('2026-01-15T00:00:00.000Z');
+      ruleRepo.countRulesByCountry.mockResolvedValue(new Map());
+      countryDefaultRepo.findAll.mockResolvedValue([]);
+      acknowledgmentRepo.findAll.mockResolvedValue([
+        new SalesDocumentCountryAcknowledgment('ES', acknowledgedAt),
+      ]);
+
+      const summaries = await service.listConfiguredCountries();
+
+      expect(summaries).toEqual([
+        {
+          country: 'ES',
+          ruleCount: 0,
+          invoiceDefaultConnectionId: null,
+          receiptDefaultConnectionId: null,
+          acknowledgedNoDocumentAt: acknowledgedAt.toISOString(),
+        },
+      ]);
+    });
+
+    it('should include the "★ Rest of world" pseudo-country (`*`) like any other country', async () => {
+      ruleRepo.countRulesByCountry.mockResolvedValue(new Map([['*', 1]]));
+      countryDefaultRepo.findAll.mockResolvedValue([]);
+      acknowledgmentRepo.findAll.mockResolvedValue([]);
+
+      const summaries = await service.listConfiguredCountries();
+
+      expect(summaries).toEqual([
+        {
+          country: '*',
+          ruleCount: 1,
+          invoiceDefaultConnectionId: null,
+          receiptDefaultConnectionId: null,
+          acknowledgedNoDocumentAt: null,
+        },
+      ]);
+    });
+  });
+
+  describe('acknowledgment lifecycle (#2186)', () => {
+    it('should persist a no-document acknowledgment', async () => {
+      const acknowledgedAt = new Date('2026-02-01T00:00:00.000Z');
+      acknowledgmentRepo.upsert.mockResolvedValue(
+        new SalesDocumentCountryAcknowledgment('IT', acknowledgedAt),
+      );
+
+      const result = await service.acknowledgeNoDocument('IT');
+
+      expect(acknowledgmentRepo.upsert).toHaveBeenCalledWith('IT');
+      expect(result).toEqual(new SalesDocumentCountryAcknowledgment('IT', acknowledgedAt));
+    });
+
+    it('should explicitly clear an acknowledgment', async () => {
+      await service.clearAcknowledgment('IT');
+      expect(acknowledgmentRepo.delete).toHaveBeenCalledWith('IT');
+    });
+
+    it('should auto-clear the acknowledgment when a rule is created for that country', async () => {
+      ruleRepo.findByCountryAndConditionsHash.mockResolvedValue([]);
+      ruleRepo.create.mockResolvedValue(existingRule());
+
+      await service.createRule(baseInput({ country: 'IT' }));
+
+      expect(acknowledgmentRepo.delete).toHaveBeenCalledWith('IT');
+    });
+
+    it('should NOT clear the acknowledgment when rule creation is rejected by the conflict guard', async () => {
+      ruleRepo.findByCountryAndConditionsHash.mockResolvedValue([existingRule()]);
+
+      await expect(service.createRule(baseInput({ country: 'PL' }))).rejects.toBeInstanceOf(
+        SalesDocumentRuleConflictException,
+      );
+
+      expect(acknowledgmentRepo.delete).not.toHaveBeenCalled();
+    });
+
+    it('should auto-clear the acknowledgment when a country default is upserted for that country', async () => {
+      countryDefaultRepo.upsert.mockResolvedValue(
+        countryDefault({ country: 'NL', documentKind: 'invoice', connectionId: 'conn-nl' }),
+      );
+
+      await service.upsertCountryDefault({
+        country: 'NL',
+        documentKind: 'invoice',
+        connectionId: 'conn-nl',
+      });
+
+      expect(acknowledgmentRepo.delete).toHaveBeenCalledWith('NL');
     });
   });
 });

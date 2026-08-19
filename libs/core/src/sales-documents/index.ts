@@ -42,12 +42,14 @@ export * from './domain/types/sales-document-decision.types';
 export * from './domain/types/sales-document-condition.types';
 export * from './domain/types/sales-document-order-facts.types';
 export * from './domain/types/sales-document-rule-write.types';
+export * from './domain/types/sales-document-country-summary.types';
 export * from './domain/ports/capabilities/self-routing-document-kind.capability';
 export * from './domain/domain-services/resolve-sales-document-routing';
 export * from './domain/domain-services/evaluate-sales-document-rules';
 export { SalesDocumentRule } from './domain/entities/sales-document-rule.entity';
 export { SalesDocumentCountryDefault } from './domain/entities/sales-document-country-default.entity';
 export { SalesDocumentThreshold } from './domain/entities/sales-document-threshold.entity';
+export { SalesDocumentCountryAcknowledgment } from './domain/entities/sales-document-country-acknowledgment.entity';
 export { SalesDocumentRuleConflictException } from './domain/exceptions/sales-document-rule-conflict.exception';
 export { SalesDocumentThresholdNotFoundException } from './domain/exceptions/sales-document-threshold-not-found.exception';
 export {
