@@ -266,7 +266,7 @@ export function InfaktSetupForm(): ReactElement {
         description="Choose Sandbox to test against inFakt's sandbox before switching to production."
       >
         <Select {...form.register('environment')}>
-          <option value="sandbox">Sandbox - https://api.sandbox.infakt.pl</option>
+          <option value="sandbox">Sandbox - https://api.sandbox-infakt.pl</option>
           <option value="production">Production - https://api.infakt.pl</option>
         </Select>
       </FormField>

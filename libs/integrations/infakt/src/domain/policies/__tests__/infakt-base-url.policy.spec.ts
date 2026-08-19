@@ -35,6 +35,17 @@ describe('resolveInfaktBaseUrl', () => {
     expect(resolveInfaktBaseUrl(config)).toBe(INFAKT_SANDBOX_BASE_URL);
   });
 
+  // Asserted against a hardcoded literal (not just the constant re-export) per
+  // #2179 review: inFakt's sandbox is a separate domain (api.sandbox-infakt.pl,
+  // hyphen), not a subdomain (api.sandbox.infakt.pl) - a prior version of this
+  // constant had the wrong host and no test caught it because every assertion
+  // compared the constant against itself.
+  it('should resolve the sandbox host to the correct hyphenated domain', () => {
+    expect(resolveInfaktBaseUrl({ environment: 'sandbox' })).toBe(
+      'https://api.sandbox-infakt.pl/api/v3',
+    );
+  });
+
   it('should resolve to the default production host when environment is production', () => {
     const config: InfaktConnectionConfig = { environment: 'production' };
 
@@ -43,5 +54,11 @@ describe('resolveInfaktBaseUrl', () => {
 
   it('should resolve to the default production host when neither baseUrl nor environment is set', () => {
     expect(resolveInfaktBaseUrl({})).toBe(INFAKT_DEFAULT_BASE_URL);
+  });
+
+  it('should treat a whitespace-only baseUrl as absent and fall through to environment', () => {
+    const config: InfaktConnectionConfig = { baseUrl: '   ', environment: 'sandbox' };
+
+    expect(resolveInfaktBaseUrl(config)).toBe(INFAKT_SANDBOX_BASE_URL);
   });
 });

@@ -19,7 +19,7 @@ describe('InfaktConnectionConfigShapeValidatorAdapter', () => {
 
   it('should resolve when baseUrl is a valid URL', async () => {
     await expect(
-      validator.validate({ baseUrl: 'https://api.sandbox.infakt.pl/api/v3' }),
+      validator.validate({ baseUrl: 'https://api.sandbox-infakt.pl/api/v3' }),
     ).resolves.toBeUndefined();
   });
 

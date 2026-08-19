@@ -27,11 +27,17 @@ import type { InfaktConnectionConfig } from '../types/infakt-connection.types';
 
 export const INFAKT_DEFAULT_BASE_URL = 'https://api.infakt.pl/api/v3';
 
-/** Sandbox counterpart of {@link INFAKT_DEFAULT_BASE_URL} (#2174). */
-export const INFAKT_SANDBOX_BASE_URL = 'https://api.sandbox.infakt.pl/api/v3';
+/**
+ * Sandbox counterpart of {@link INFAKT_DEFAULT_BASE_URL} (#2174). inFakt's
+ * sandbox is a separate domain, not a subdomain of `infakt.pl` - verified
+ * against inFakt's own developer docs and this package's live-captured
+ * fixtures (`__fixtures__/README.md`, `__fixtures__/*.json`), which already
+ * carry real `api.sandbox-infakt.pl` pagination links.
+ */
+export const INFAKT_SANDBOX_BASE_URL = 'https://api.sandbox-infakt.pl/api/v3';
 
 export function resolveInfaktBaseUrl(config: InfaktConnectionConfig): string {
-  if (config.baseUrl) {
+  if (config.baseUrl?.trim()) {
     return config.baseUrl;
   }
   return config.environment === 'sandbox' ? INFAKT_SANDBOX_BASE_URL : INFAKT_DEFAULT_BASE_URL;

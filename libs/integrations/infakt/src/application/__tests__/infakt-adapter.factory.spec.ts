@@ -99,7 +99,7 @@ describe('InfaktAdapterFactory', () => {
 
   it('should use the sandbox baseUrl override from connection.config when present', async () => {
     const resolver = resolverFor({ apiKey: 'k' });
-    const sandboxUrl = 'https://api.sandbox.infakt.pl/api/v3';
+    const sandboxUrl = 'https://api.sandbox-infakt.pl/api/v3';
     const adapter = await factory.createInvoicingAdapter(
       connection({ config: { baseUrl: sandboxUrl } }),
       resolver,

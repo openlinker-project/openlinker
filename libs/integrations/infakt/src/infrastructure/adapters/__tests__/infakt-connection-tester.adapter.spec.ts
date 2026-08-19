@@ -122,7 +122,7 @@ describe('InfaktConnectionTesterAdapter', () => {
     await tester.test(connection({ config: { environment: 'sandbox' } }), resolver);
 
     const [url] = fetchMock.mock.calls[0] as [string];
-    expect(url).toContain('api.sandbox.infakt.pl');
+    expect(url).toContain('api.sandbox-infakt.pl');
   });
 
   it('should let an explicit baseUrl override win over environment when both are present (#2174)', async () => {
@@ -136,6 +136,6 @@ describe('InfaktConnectionTesterAdapter', () => {
 
     const [url] = fetchMock.mock.calls[0] as [string];
     expect(url).toContain(overrideUrl);
-    expect(url).not.toContain('api.sandbox.infakt.pl');
+    expect(url).not.toContain('api.sandbox-infakt.pl');
   });
 });
