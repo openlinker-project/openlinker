@@ -252,8 +252,19 @@ export function EditOfferDrawer({ isOpen, onClose, mapping }: EditOfferDrawerPro
                 name="descriptionText"
                 error={form.formState.errors.descriptionText?.message}
               >
+                {/* ADR-046: rich text, with the toolbar and schema derived from
+                    this offer's own destination. Bound through watch/setValue
+                    rather than `register` because the editor is a custom control,
+                    not a native input. */}
                 <OfferDescriptionEditor
-                  registration={form.register('descriptionText')}
+                  connectionId={mapping.connectionId}
+                  value={form.watch('descriptionText') ?? ''}
+                  onChange={(html) => {
+                    form.setValue('descriptionText', html, {
+                      shouldDirty: true,
+                      shouldValidate: true,
+                    });
+                  }}
                   error={form.formState.errors.descriptionText?.message}
                 />
               </FormField>

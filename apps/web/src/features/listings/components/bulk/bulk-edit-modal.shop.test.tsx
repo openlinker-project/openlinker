@@ -263,6 +263,23 @@ describe('BulkEditModal (shop mode)', () => {
     ]);
   });
 
+/**
+ * Type a description into a rich-text field through the editor's HTML view.
+ *
+ * A `fireEvent.change` on the editing surface is impossible - it is a
+ * contenteditable, so it has no value setter - and `userEvent.type` inserts
+ * nothing into ProseMirror in any test DOM (see #2201). The HTML view is a real
+ * `<textarea>` and a real operator path: click HTML, edit, click Rich text, which
+ * round-trips the markup through the destination's schema and emits onChange.
+ */
+function setDescriptionViaHtmlView(scope: HTMLElement, html: string): void {
+  fireEvent.click(within(scope).getByRole('button', { name: 'HTML' }));
+  fireEvent.change(within(scope).getByRole('textbox', { name: /HTML source/ }), {
+    target: { value: html },
+  });
+  fireEvent.click(within(scope).getByRole('button', { name: 'Rich text' }));
+}
+
   it('emits a per-variant description override in the two-pane editor (#1830)', () => {
     const onSave = vi.fn();
     const row = makeRow([makeVariant('v1', { Size: 'M' }), makeVariant('v2', { Size: 'L' })]);
@@ -270,8 +287,9 @@ describe('BulkEditModal (shop mode)', () => {
 
     // Focus the first variant scope, override its description.
     fireEvent.click(screen.getByRole('radio', { name: /Size: M|M$/ }));
-    const descriptions = screen.getAllByLabelText(/Description for/);
-    fireEvent.change(descriptions[0], { target: { value: 'Only for M' } });
+    const editors = screen.getAllByLabelText(/Description for/);
+    const scope = editors[0].closest('.rich-text') as HTMLElement;
+    setDescriptionViaHtmlView(scope, 'Only for M');
     fireEvent.click(screen.getByRole('button', { name: 'Save all' }));
 
     const [, , perVariantOverrides] = onSave.mock.calls[0] as [
@@ -279,7 +297,9 @@ describe('BulkEditModal (shop mode)', () => {
       BulkPerProductOverride,
       Record<string, BulkPerProductOverride>,
     ];
-    expect(perVariantOverrides.v1.overrides?.description).toBe('Only for M');
+    // Wrapped in a paragraph on the way through the schema: the shop format
+    // requires a block opener, so this is the value that would really publish.
+    expect(perVariantOverrides.v1.overrides?.description).toBe('<p>Only for M</p>');
   });
 
   it('renders provenance badges + reset affordances in the variant panel, matching the marketplace panel (#1838)', () => {
@@ -291,7 +311,7 @@ describe('BulkEditModal (shop mode)', () => {
     // Description, Attributes, and Price all start inherited - muted styling,
     // no reset control yet (three "inherited" badges: description/attributes/price).
     const description = within(panel).getByLabelText(/Description for/);
-    expect(description).toHaveClass('bulk-editor__input--inherited');
+    expect(description.closest('.rich-text')).toHaveClass('bulk-editor__input--inherited');
     expect(within(panel).queryByText(/reset to base/)).not.toBeInTheDocument();
     expect(within(panel).getAllByText('inherited').length).toBeGreaterThanOrEqual(3);
 
@@ -302,13 +322,13 @@ describe('BulkEditModal (shop mode)', () => {
     expect(within(panel).getByText('from master')).toBeInTheDocument();
 
     // Overriding description flips the badge + input styling and surfaces reset.
-    fireEvent.change(description, { target: { value: 'Only for M' } });
-    expect(description).toHaveClass('bulk-editor__input--overridden');
+    setDescriptionViaHtmlView(description.closest('.rich-text') as HTMLElement, 'Only for M');
+    expect(description.closest('.rich-text')).toHaveClass('bulk-editor__input--overridden');
     const resetButton = within(panel).getByText(/reset to base/);
     expect(resetButton).toBeInTheDocument();
 
     fireEvent.click(resetButton);
-    expect(description).toHaveClass('bulk-editor__input--inherited');
+    expect(description.closest('.rich-text')).toHaveClass('bulk-editor__input--inherited');
     expect(within(panel).queryByText(/reset to base/)).not.toBeInTheDocument();
   });
 

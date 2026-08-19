@@ -203,8 +203,11 @@ describe('EditOfferDrawer', () => {
       fireEvent.click(applyButton);
 
       await waitFor(() => {
-        const textarea = screen.getByLabelText(/description/i);
-        expect(textarea).toHaveValue('Generated copy');
+        // ADR-046: the field is a contenteditable rich-text surface, so there is
+        // no form value to assert - the suggestion lands as the editor's content.
+        expect(screen.getByRole('textbox', { name: /offer description/i })).toHaveTextContent(
+          'Generated copy',
+        );
       });
       // Apply must mark the form dirty so Save activates.
       expect(screen.getByRole('button', { name: /save changes/i })).not.toBeDisabled();

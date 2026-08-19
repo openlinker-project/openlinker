@@ -161,6 +161,15 @@ function describeFormat(format: DescriptionFormat): string {
   ].join('~');
 }
 
+/** Text content of an HTML fragment, for telling normalization from an edit. */
+function textOf(html: string): string {
+  return html
+    .replace(/<[^>]*>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 export function RichTextEditor({
   format,
   value,
@@ -184,27 +193,69 @@ export function RichTextEditor({
     [format],
   );
   const [sourceMode, setSourceMode] = useState(false);
-  const [sourceDraft, setSourceDraft] = useState(value);
+  const [sourceDraft, setSourceDraft] = useState(value ?? '');
 
-  // Tracks what the editor itself last emitted, so an incoming `value` prop can
-  // be told apart from our own echo. Without this, every keystroke round-trips
-  // through the parent and back and the caret jumps to the end.
-  const lastEmitted = useRef(value);
+  /**
+   * Two refs, because the prop and the editor's serialization are NOT the same
+   * string and conflating them oscillates.
+   *
+   * Seeding plain `A hoodie` into a format that requires a block opener gives
+   * `<p>A hoodie</p>`. A single ref comparing against the raw prop therefore let
+   * an emit through on the first interaction, and a caller writing
+   * `value === base ? undefined : value` recorded an override the operator never
+   * made - which is how every freshly opened bulk variant panel started showing
+   * "Description overridden / reset to base".
+   *
+   * - `appliedProp` is prop-space: the last `value` we pushed in. It decides
+   *   whether an incoming prop is genuinely new.
+   * - `appliedHtml` is editor-space: the editor's own serialization of that same
+   *   value. It decides whether an update is a real edit or just normalization.
+   */
+  const appliedProp = useRef(value ?? '');
+  const appliedHtml = useRef(value ?? '');
+  /** Whether the mount-time restatement has been absorbed. See `onUpdate`. */
+  const baselineAccepted = useRef(false);
+  // A call site whose override field is optional can hand us `undefined` at
+  // runtime even where the prop type says `string`. Normalising here keeps the
+  // byte counter and the sync effect from throwing on it.
+  const safeValue = value ?? '';
 
   const editor = useEditor(
     {
       extensions: buildRichTextExtensions(profile, placeholder),
-      content: value,
+      content: safeValue,
       editable: !disabled,
       onUpdate: ({ editor: instance }) => {
         const html = instance.getHTML();
-        // Mounting emits an update whose value is the one the parent just handed
-        // us. Echoing it back would mark a form dirty before the operator typed
-        // anything - harmless for a value-equality dirty check, but the bulk
-        // editors mark dirty straight off `onChange`. `onChange` means the user
-        // changed something.
-        if (html === lastEmitted.current) return;
-        lastEmitted.current = html;
+
+        // Normalization is not an edit, and string equality cannot tell them
+        // apart: seeding plain `A hoodie` into a format that requires a block
+        // opener serializes as `<p>A hoodie</p>`, so the first update legitimately
+        // differs from the prop it came from. Emitting it made a caller writing
+        // `value === base ? undefined : value` record an override the operator
+        // never made - every freshly opened bulk variant panel read
+        // "Description overridden".
+        //
+        // `onCreate` is not usable for capturing the baseline; it does not run
+        // before that first update. So the rule is textual: an update whose TEXT
+        // matches the applied value's text, arriving before any baseline has been
+        // accepted, is the editor restating what it was given.
+        //
+        // Residual, deliberately accepted: if no mount restatement happens and
+        // the operator's first action is formatting-only (bolding a word alters
+        // tags but not text), that one change is swallowed and the next keystroke
+        // recovers it. That is much rarer than the restatement this prevents.
+        if (!baselineAccepted.current) {
+          baselineAccepted.current = true;
+          if (textOf(html) === textOf(appliedProp.current)) {
+            appliedHtml.current = html;
+            return;
+          }
+        }
+
+        if (html === appliedHtml.current) return;
+        appliedHtml.current = html;
+        appliedProp.current = html;
         onChange(html);
       },
       editorProps: {
@@ -223,11 +274,15 @@ export function RichTextEditor({
 
   useEffect(() => {
     if (editor === null) return;
-    if (value === lastEmitted.current) return;
+    if (safeValue === appliedProp.current) return;
     // An outside change (AI suggestion applied, draft discarded, row refetched).
-    editor.commands.setContent(value, { emitUpdate: false });
-    lastEmitted.current = value;
-  }, [editor, value]);
+    editor.commands.setContent(safeValue, { emitUpdate: false });
+    appliedProp.current = safeValue;
+    appliedHtml.current = editor.getHTML();
+    // A newly applied outside value gets its own restatement allowance - the
+    // editor may re-normalize it exactly as it did the seed.
+    baselineAccepted.current = false;
+  }, [editor, safeValue]);
 
   useEffect(() => {
     editor?.setEditable(!disabled);
@@ -241,7 +296,7 @@ export function RichTextEditor({
   }, [editor, sourceDraft]);
 
   const enterSourceMode = useCallback(() => {
-    setSourceDraft(editor?.getHTML() ?? value);
+    setSourceDraft(editor?.getHTML() ?? safeValue);
     setSourceMode(true);
   }, [editor, value]);
 
@@ -250,7 +305,7 @@ export function RichTextEditor({
     [profile],
   );
 
-  const bytes = byteLength(value);
+  const bytes = byteLength(safeValue);
   const overCap = profile.maxBytes !== null && bytes > profile.maxBytes;
   const nearCap = profile.maxBytes !== null && !overCap && bytes > profile.maxBytes * 0.8;
 

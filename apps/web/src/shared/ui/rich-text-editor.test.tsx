@@ -161,6 +161,38 @@ describe('RichTextEditor', () => {
     expect(onChange).not.toHaveBeenCalled();
   });
 
+  it('should not report normalization of the seeded value as an edit', async () => {
+    // The bug this pins: seeding plain text into a format that requires a block
+    // opener serializes as `<p>…</p>`, which differs from the prop. Emitting that
+    // made every freshly opened bulk variant panel read "Description overridden"
+    // - a caller writing `value === base ? undefined : value` recorded an
+    // override the operator never made. String equality cannot catch it; the
+    // guard is textual.
+    const onChange = vi.fn();
+    render(<RichTextEditor format={format()} value="A hoodie" onChange={onChange} />);
+
+    // Give any mount-time transaction a chance to land.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it('should not report normalization of a newly applied outside value as an edit', async () => {
+    // An AI suggestion or a refetched row arrives as plain text too, and gets the
+    // same restatement allowance.
+    const onChange = vi.fn();
+    const { rerender } = render(
+      <RichTextEditor format={format()} value="<p>first</p>" onChange={onChange} />,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    onChange.mockClear();
+
+    rerender(<RichTextEditor format={format()} value="Generated copy" onChange={onChange} />);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
   it('should keep the same editor instance when the format prop is a fresh object', () => {
     // Keying the schema rebuild on the format's object IDENTITY meant a caller
     // spreading a fetched format, or writing an inline literal, destroyed and

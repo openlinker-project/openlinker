@@ -67,7 +67,10 @@ import {
 import { resolvePlatformLabel } from '../../../mappings';
 import type { Connection } from '../../../connections';
 import { resolveVariantGroupingModel } from '../../../connections';
-import { Alert, Button, ConfirmDialog, FormField, Input, Textarea } from '../../../../shared/ui';
+import { Alert, Button, ConfirmDialog, FormField, Input, RichTextEditor } from '../../../../shared/ui';
+import type { DescriptionFormat } from '../../../../shared/ui';
+import { useDescriptionFormatQuery } from '../../hooks/use-description-format-query';
+import { OFFER_DESCRIPTION_FALLBACK_FORMAT } from '../offer-description-editor.constants';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../../../../shared/ui/tooltip';
 import { useToast } from '../../../../shared/ui/toast-provider';
 import { ReadOnlyLock } from '../../../../shared/ui/read-only-lock';
@@ -298,6 +301,14 @@ export function BulkEditModal({
 }: BulkEditModalProps): ReactElement | null {
   const [dirty, setDirty] = useState(false);
   const [discardOpen, setDiscardOpen] = useState(false);
+  // ADR-046: one read for the whole modal - both the marketplace and the shop
+  // branch render description fields, and each derives its toolbar and schema
+  // from this, so a control the destination would discard is never offered.
+  // Called before the early return below, or it would break the hook order on a
+  // row with no variants. Narrow while in flight; see
+  // `offer-description-editor.constants.ts` for why erring narrow is safe.
+  const descriptionFormatQuery = useDescriptionFormatQuery(connection.id);
+  const descriptionFormat = descriptionFormatQuery.data ?? OFFER_DESCRIPTION_FALLBACK_FORMAT;
 
   if (row.variants.length === 0) return null;
 
@@ -338,6 +349,7 @@ export function BulkEditModal({
         >
           {destinationKind === 'shop' ? (
             <BulkShopEditModalForm
+              descriptionFormat={descriptionFormat}
               row={row}
               connection={connection}
               canBrowseShopCategories={canBrowseShopCategories}
@@ -477,6 +489,13 @@ function BulkEditModalForm({
   onClose,
 }: BulkEditModalFormProps): ReactElement {
   const connectionId = connection.id;
+  // ADR-046: one read for the whole modal. Every description field below derives
+  // its toolbar and schema from this, so a control the destination would discard
+  // is never offered. Narrow while in flight - see
+  // `offer-description-editor.constants.ts` for why erring narrow is the safe
+  // direction.
+  const descriptionFormatQuery = useDescriptionFormatQuery(connectionId);
+  const descriptionFormat = descriptionFormatQuery.data ?? OFFER_DESCRIPTION_FALLBACK_FORMAT;
   const { showToast } = useToast();
   const platform = usePlatform(connection.platformType);
   const platforms = usePlatforms();
@@ -1053,6 +1072,7 @@ function BulkEditModalForm({
             />
           ) : null}
           <BaseScopeForm
+            descriptionFormat={descriptionFormat}
             mode={isMultiVariant ? 'base' : 'simple'}
             active={scope === (isMultiVariant ? 'base' : 'simple')}
             row={row}
@@ -1097,6 +1117,7 @@ function BulkEditModalForm({
                   />
                   {scope === v.variantId ? (
                     <VariantScopeForm
+                      descriptionFormat={descriptionFormat}
                       variant={v}
                       index={i}
                       edit={variantEdits[v.variantId]}
@@ -1262,6 +1283,13 @@ function ProvBadge({ kind }: { kind: Provenance }): ReactElement {
 // ── Base / simple scope form (the only RHF form) ─────────────────────────────
 
 interface BaseScopeFormProps {
+  /**
+   * The destination's declared description contract (ADR-046). Resolved once by
+   * the modal and threaded down, rather than each scope form running its own
+   * hook - one query, and `VariantScopeForm` has no `connectionId` of its own.
+   */
+  descriptionFormat: DescriptionFormat;
+
   mode: 'base' | 'simple';
   active: boolean;
   row: BulkWizardRow;
@@ -1297,6 +1325,7 @@ interface BaseScopeFormProps {
 }
 
 function BaseScopeForm({
+  descriptionFormat,
   mode,
   active,
   row,
@@ -1481,7 +1510,7 @@ function BaseScopeForm({
           </FormField>
         )}
 
-        <BaseDescriptionField productId={row.product?.id ?? ''} channel={connection.platformType} />
+        <BaseDescriptionField productId={row.product?.id ?? ''} channel={connection.platformType}  descriptionFormat={descriptionFormat}/>
 
         {mode === 'simple' ? (
           <div className="bulk-editor__row2">
@@ -1743,7 +1772,15 @@ function BaseScopeForm({
   );
 }
 
-function BaseDescriptionField({ productId, channel }: { productId: string; channel: string }): ReactElement {
+function BaseDescriptionField({
+  productId,
+  channel,
+  descriptionFormat,
+}: {
+  productId: string;
+  channel: string;
+  descriptionFormat: DescriptionFormat;
+}): ReactElement {
   const form = useFormContext<BulkEditModalValues>();
   const error = form.formState.errors.description?.message;
   return (
@@ -1762,16 +1799,21 @@ function BaseDescriptionField({ productId, channel }: { productId: string; chann
           </span>
         ) : null}
       </label>
-      <Textarea
-        {...form.register('description')}
-        className="bulk-editor__input"
-        rows={6}
+      {/* ADR-046: rich text, derived from the destination's contract. Bound
+          through watch/setValue rather than `register` because the editor is a
+          custom control. The old hint said "Plain text." while the AI prompt was
+          explicitly producing semantic HTML into this very field. */}
+      <RichTextEditor
+        format={descriptionFormat}
+        value={form.watch('description') ?? ''}
+        onChange={(html) => {
+          form.setValue('description', html, { shouldDirty: true, shouldValidate: true });
+        }}
         aria-label="Description"
-        aria-invalid={Boolean(error)}
       />
       {error ? <div className="bulk-editor__ean-err">{error}</div> : null}
       <div className="hint" style={{ color: 'var(--text-muted)', fontSize: 12 }}>
-        Plain text. AI writes one description shared by every variant unless a variant overrides it.
+        AI writes one description shared by every variant unless a variant overrides it.
       </div>
     </div>
   );
@@ -1817,6 +1859,13 @@ function BaseParameterSection({
 // ── Variant scope form (controlled off the edit model) ───────────────────────
 
 interface VariantScopeFormProps {
+  /**
+   * The destination's declared description contract (ADR-046). Resolved once by
+   * the modal and threaded down, rather than each scope form running its own
+   * hook - one query, and `VariantScopeForm` has no `connectionId` of its own.
+   */
+  descriptionFormat: DescriptionFormat;
+
   variant: BulkVariantRow;
   index: number;
   edit: VariantEdit;
@@ -1855,6 +1904,7 @@ interface VariantScopeFormProps {
 }
 
 function VariantScopeForm({
+  descriptionFormat,
   variant,
   index,
   edit,
@@ -2234,16 +2284,17 @@ function VariantScopeForm({
                 </button>
               ) : null}
             </label>
-            <Textarea
-              className={[
-                'bulk-editor__input',
-                edit.description !== undefined ? 'bulk-editor__input--overridden' : 'bulk-editor__input--inherited',
-              ].join(' ')}
-              rows={4}
+            <RichTextEditor
+              className={
+                edit.description !== undefined
+                  ? 'bulk-editor__input--overridden'
+                  : 'bulk-editor__input--inherited'
+              }
+              format={descriptionFormat}
               value={edit.description !== undefined ? edit.description : baseValues.description}
               aria-label={`Description for ${label}`}
-              onChange={(e) =>
-                onPatch({ description: e.target.value === baseValues.description ? undefined : e.target.value })
+              onChange={(html) =>
+                onPatch({ description: html === baseValues.description ? undefined : html })
               }
             />
           </div>
@@ -2931,6 +2982,8 @@ function shopInheritedPrice(pricingPolicy: PricingPolicy, masterPrice: number | 
 }
 
 interface BulkShopEditModalFormProps {
+  /** ADR-046: resolved once by the modal, threaded to every description field. */
+  descriptionFormat: DescriptionFormat;
   row: BulkWizardRow;
   connection: Connection;
   canBrowseShopCategories: boolean;
@@ -2948,6 +3001,7 @@ interface BulkShopEditModalFormProps {
 }
 
 function BulkShopEditModalForm({
+  descriptionFormat,
   row,
   connection,
   canBrowseShopCategories,
@@ -3268,6 +3322,7 @@ function BulkShopEditModalForm({
               />
             ) : null}
             <ShopBaseScopeForm
+              descriptionFormat={descriptionFormat}
               mode={isMultiVariant ? 'base' : 'simple'}
               active={scope === (isMultiVariant ? 'base' : 'simple')}
               connectionId={connectionId}
@@ -3317,6 +3372,7 @@ function BulkShopEditModalForm({
                     />
                     {scope === v.variantId ? (
                       <ShopVariantScopeForm
+                        descriptionFormat={descriptionFormat}
                         variant={v}
                         index={i}
                         edit={variantEdits[v.variantId]}
@@ -3384,6 +3440,13 @@ function BulkShopEditModalForm({
 // ── Shop base / simple scope form ────────────────────────────────────────────
 
 interface ShopBaseScopeFormProps {
+  /**
+   * The destination's declared description contract (ADR-046). Resolved once by
+   * the modal and threaded down, rather than each scope form running its own
+   * hook - one query, and `VariantScopeForm` has no `connectionId` of its own.
+   */
+  descriptionFormat: DescriptionFormat;
+
   mode: 'base' | 'simple';
   active: boolean;
   connectionId: string;
@@ -3417,6 +3480,7 @@ interface ShopBaseScopeFormProps {
 }
 
 function ShopBaseScopeForm({
+  descriptionFormat,
   mode,
   active,
   connectionId,
@@ -3501,15 +3565,14 @@ function ShopBaseScopeForm({
             </span>
           ) : null}
         </label>
-        <Textarea
+        <RichTextEditor
+          format={descriptionFormat}
           value={description}
-          onChange={(e) => onDescriptionChange(e.target.value)}
-          className="bulk-editor__input"
-          rows={6}
+          onChange={onDescriptionChange}
           aria-label="Description"
         />
         <div className="hint" style={{ color: 'var(--text-muted)', fontSize: 12 }}>
-          Plain text. Shared by every variant unless a variant overrides it.
+          Shared by every variant unless a variant overrides it.
         </div>
       </div>
 
@@ -3736,6 +3799,13 @@ function ShopBaseScopeForm({
 // ── Shop variant scope form ──────────────────────────────────────────────────
 
 interface ShopVariantScopeFormProps {
+  /**
+   * The destination's declared description contract (ADR-046). Resolved once by
+   * the modal and threaded down, rather than each scope form running its own
+   * hook - one query, and `VariantScopeForm` has no `connectionId` of its own.
+   */
+  descriptionFormat: DescriptionFormat;
+
   variant: BulkVariantRow;
   index: number;
   edit: ShopVariantEdit;
@@ -3754,6 +3824,7 @@ interface ShopVariantScopeFormProps {
 }
 
 function ShopVariantScopeForm({
+  descriptionFormat,
   variant,
   index,
   edit,
@@ -3809,15 +3880,16 @@ function ShopVariantScopeForm({
             </button>
           ) : null}
         </label>
-        <Textarea
-          className={[
-            'bulk-editor__input',
-            edit.description !== undefined ? 'bulk-editor__input--overridden' : 'bulk-editor__input--inherited',
-          ].join(' ')}
-          rows={4}
+        <RichTextEditor
+          className={
+            edit.description !== undefined
+              ? 'bulk-editor__input--overridden'
+              : 'bulk-editor__input--inherited'
+          }
+          format={descriptionFormat}
           value={edit.description !== undefined ? edit.description : baseDescription}
           aria-label={`Description for ${label}`}
-          onChange={(e) => onPatch({ description: e.target.value === baseDescription ? undefined : e.target.value })}
+          onChange={(html) => onPatch({ description: html === baseDescription ? undefined : html })}
         />
       </div>
 

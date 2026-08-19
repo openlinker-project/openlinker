@@ -8653,10 +8653,10 @@ a.kpi-card:focus-visible {
   color: var(--text-primary);
 }
 
+/* #2200: the suggestion is rendered as rich text, not as a <pre> of markup, so
+   `white-space: pre-wrap` would now double every block gap. */
 .content-suggestion__preview-body {
   margin: 0;
-  white-space: pre-wrap;
-  font-family: var(--font-body);
   font-size: 0.875rem;
   line-height: 1.55;
   max-height: 18rem;
