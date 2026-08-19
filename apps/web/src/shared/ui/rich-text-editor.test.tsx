@@ -13,7 +13,7 @@
  *
  * @module apps/web/src/shared/ui
  */
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { RichTextEditor } from './rich-text-editor';
@@ -149,6 +149,66 @@ describe('RichTextEditor', () => {
     );
 
     expect(screen.getByRole('button', { name: 'Suggest with AI' })).toBeInTheDocument();
+  });
+
+  it('should not fire onChange on mount, so a form is not dirty before the operator types', () => {
+    // Mounting emits a Tiptap update whose value is the one the parent just
+    // handed us. Echoing it would enable Save with no user edit in the bulk
+    // editors, which mark dirty straight off onChange.
+    const onChange = vi.fn();
+    render(<RichTextEditor format={format()} value="<p>seeded</p>" onChange={onChange} />);
+
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it('should keep the same editor instance when the format prop is a fresh object', () => {
+    // Keying the schema rebuild on the format's object IDENTITY meant a caller
+    // spreading a fetched format, or writing an inline literal, destroyed and
+    // recreated the editor on every render - caret and focus lost mid-typing.
+    const onChange = vi.fn();
+    const { rerender } = render(
+      <RichTextEditor format={{ ...format() }} value="<p>a</p>" onChange={onChange} />,
+    );
+    const first = document.querySelector('.ProseMirror');
+
+    rerender(<RichTextEditor format={{ ...format() }} value="<p>a</p>" onChange={onChange} />);
+
+    expect(document.querySelector('.ProseMirror')).toBe(first);
+  });
+
+  it('should rebuild the editor when the destination contract actually changes', () => {
+    // The other half of the same rule: a different contract IS a different
+    // document shape, so it must rebuild.
+    const onChange = vi.fn();
+    const { rerender } = render(
+      <RichTextEditor format={format()} value="<p>a</p>" onChange={onChange} />,
+    );
+    expect(screen.queryByRole('button', { name: 'Heading 3' })).toBeNull();
+
+    rerender(
+      <RichTextEditor
+        format={format({ allowedTags: ['h1', 'h2', 'h3', 'p', 'b'] })}
+        value="<p>a</p>"
+        onChange={onChange}
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: 'Heading 3' })).toBeInTheDocument();
+  });
+
+  it('should filter hand-edited HTML through the schema when leaving source mode', () => {
+    // Source mode is an escape hatch, not a bypass: what comes back is what the
+    // destination's schema accepts, and the parent is told.
+    const onChange = vi.fn();
+    render(<RichTextEditor format={format()} value="<p>a</p>" onChange={onChange} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'HTML' }));
+    fireEvent.change(screen.getByRole('textbox', { name: /HTML source/ }), {
+      target: { value: '<p>b <span style="color:red">c</span></p>' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Rich text' }));
+
+    expect(onChange).toHaveBeenCalledWith('<p>b c</p>');
   });
 
   it('should label the editing surface for assistive tech', () => {

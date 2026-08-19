@@ -126,6 +126,41 @@ function headingButtons(profile: RichTextProfile): ToolbarButton[] {
   }));
 }
 
+/**
+ * Everything about a format that changes the editor's schema or surface, as one
+ * comparable string. Deliberately not `JSON.stringify(format)`: `declared` and
+ * `resolvedVia` are diagnostics that must not rebuild the document, and key order
+ * in `contentModel` is not meaningful.
+ */
+function describeFormat(format: DescriptionFormat): string {
+  const contentModel =
+    format.contentModel === null
+      ? '-'
+      : Object.keys(format.contentModel)
+          .sort()
+          .map((parent) => `${parent}>${[...(format.contentModel?.[parent] ?? [])].sort().join('.')}`)
+          .join('|');
+  const attributes = Object.keys(format.allowedAttributes)
+    .sort()
+    .map((tag) => `${tag}:${[...format.allowedAttributes[tag]].sort().join('.')}`)
+    .join('|');
+  const rewrites = format.rewrites
+    .map((rewrite) => `${rewrite.from}>${rewrite.action}>${rewrite.to ?? ''}`)
+    .sort()
+    .join('|');
+
+  return [
+    format.shape,
+    [...format.allowedTags].sort().join('.'),
+    attributes,
+    contentModel,
+    rewrites,
+    String(format.requiresBlockOpener),
+    String(format.selfClosingVoids),
+    String(format.maxBytes),
+  ].join('~');
+}
+
 export function RichTextEditor({
   format,
   value,
@@ -137,7 +172,17 @@ export function RichTextEditor({
   id,
   className = '',
 }: RichTextEditorProps): ReactElement {
-  const profile = useMemo(() => deriveRichTextProfile(format), [format]);
+  // A signature rather than the object identity. The schema genuinely must be
+  // rebuilt when the destination's contract changes - and ONLY then. Keying on
+  // the `format` prop's identity instead means a caller who writes an inline
+  // `format={{ ... }}` (or spreads a fetched one) destroys and recreates the
+  // editor on every render: caret lost mid-typing, focus lost, `onChange`
+  // re-fired from the fresh mount. Nothing in the prop types would hint at that
+  // requirement, so the primitive absorbs it.
+  const { profile, formatSignature } = useMemo(
+    () => ({ profile: deriveRichTextProfile(format), formatSignature: describeFormat(format) }),
+    [format],
+  );
   const [sourceMode, setSourceMode] = useState(false);
   const [sourceDraft, setSourceDraft] = useState(value);
 
@@ -153,6 +198,12 @@ export function RichTextEditor({
       editable: !disabled,
       onUpdate: ({ editor: instance }) => {
         const html = instance.getHTML();
+        // Mounting emits an update whose value is the one the parent just handed
+        // us. Echoing it back would mark a form dirty before the operator typed
+        // anything - harmless for a value-equality dirty check, but the bulk
+        // editors mark dirty straight off `onChange`. `onChange` means the user
+        // changed something.
+        if (html === lastEmitted.current) return;
         lastEmitted.current = html;
         onChange(html);
       },
@@ -165,9 +216,9 @@ export function RichTextEditor({
         },
       },
     },
-    // The schema is rebuilt when the destination changes - a different format is
-    // a different document shape, not a re-render.
-    [profile],
+    // The schema is rebuilt when the destination's contract changes - a different
+    // format is a different document shape - and not on an unrelated re-render.
+    [formatSignature],
   );
 
   useEffect(() => {
