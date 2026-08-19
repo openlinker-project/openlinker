@@ -76,7 +76,7 @@ describe('OrderFxStampService', () => {
       findById: jest.fn(),
       claimFxIntentIfAbsent: jest.fn(),
       stampFxIfAbsent: jest.fn(),
-      markFxTerminalIfAbsent: jest.fn(),
+      markFxTerminal: jest.fn(),
       findUnstampedFxOrderIds: jest.fn(),
     } as unknown as jest.Mocked<OrderRecordRepositoryPort>;
 
@@ -98,7 +98,7 @@ describe('OrderFxStampService', () => {
     settings.resolve.mockResolvedValue('PLN');
     repository.claimFxIntentIfAbsent.mockResolvedValue(true);
     repository.stampFxIfAbsent.mockResolvedValue(true);
-    repository.markFxTerminalIfAbsent.mockResolvedValue(true);
+    repository.markFxTerminal.mockResolvedValue(true);
     jobEnqueue.enqueueJob.mockResolvedValue({ jobId: 'job_1', isExisting: false });
 
     service = new OrderFxStampService(repository, settings, rates, jobEnqueue);
@@ -132,7 +132,7 @@ describe('OrderFxStampService', () => {
       const outcome = await service.stamp('ol_order_missing');
 
       expect(outcome).toEqual({ kind: 'terminal', reason: 'order-not-found' });
-      expect(repository.markFxTerminalIfAbsent).not.toHaveBeenCalled();
+      expect(repository.markFxTerminal).not.toHaveBeenCalled();
     });
   });
 
@@ -246,10 +246,7 @@ describe('OrderFxStampService', () => {
       const outcome = await service.stamp('ol_order_1');
 
       expect(outcome).toEqual({ kind: 'terminal', reason: 'unsupported-pair' });
-      expect(repository.markFxTerminalIfAbsent).toHaveBeenCalledWith(
-        'ol_order_1',
-        expect.any(Date)
-      );
+      expect(repository.markFxTerminal).toHaveBeenCalledWith('ol_order_1', expect.any(Date));
       expect(jobEnqueue.enqueueJob).not.toHaveBeenCalled();
     });
 
@@ -293,7 +290,7 @@ describe('OrderFxStampService', () => {
           idempotencyKey: 'fx:ol_order_1',
         })
       );
-      expect(repository.markFxTerminalIfAbsent).not.toHaveBeenCalled();
+      expect(repository.markFxTerminal).not.toHaveBeenCalled();
     });
 
     it('should NOT propagate and should log distinctly when the enqueue itself throws', async () => {
@@ -377,12 +374,33 @@ describe('OrderFxStampService', () => {
       const result = await service.sweep('conn_1', {
         limit: 100,
         createdSince: new Date('2026-01-01'),
+        terminalRetryBefore: new Date('2026-01-08'),
       });
 
       expect(result).toEqual({ scanned: 3, stamped: 1, terminal: 1, deferred: 1 });
       expect(repository.findUnstampedFxOrderIds).toHaveBeenCalledWith('conn_1', {
         limit: 100,
         createdSince: new Date('2026-01-01'),
+        terminalRetryBefore: new Date('2026-01-08'),
+      });
+    });
+
+    it('should pass the terminal-retry cooldown through so an aged terminal row can be re-admitted', async () => {
+      // #2135 review, finding 1: the cooldown is the ONLY recovery path out of a
+      // terminal answer, so the sweep must forward it verbatim rather than
+      // deriving its own bound.
+      repository.findUnstampedFxOrderIds.mockResolvedValue([]);
+
+      await service.sweep('conn_1', {
+        limit: 50,
+        createdSince: new Date('2026-01-01'),
+        terminalRetryBefore: new Date('2026-02-01T12:00:00.000Z'),
+      });
+
+      expect(repository.findUnstampedFxOrderIds).toHaveBeenCalledWith('conn_1', {
+        limit: 50,
+        createdSince: new Date('2026-01-01'),
+        terminalRetryBefore: new Date('2026-02-01T12:00:00.000Z'),
       });
     });
 
@@ -398,6 +416,7 @@ describe('OrderFxStampService', () => {
       const result = await service.sweep('conn_1', {
         limit: 100,
         createdSince: new Date('2026-01-01'),
+        terminalRetryBefore: new Date('2026-01-08'),
       });
 
       expect(result).toEqual({ scanned: 1, stamped: 0, terminal: 0, deferred: 0 });

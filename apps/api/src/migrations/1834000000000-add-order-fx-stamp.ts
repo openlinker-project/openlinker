@@ -14,7 +14,12 @@
  * `timestamp without time zone` for the `timestamptz` columns.
  *
  * Timestamp is a synthetic sequential prefix per `docs/migrations.md`
- * § Timestamp uniqueness invariant — the tail on `main` was `1833000000005`.
+ * § Timestamp uniqueness invariant — the tail on `main` is `1833000000006`
+ * (`add-order-record-sales-document-block`), so `1834000000000` is strictly
+ * greater and uncontested: the fiscalization stack that once claimed this slot
+ * moved to `1835000000000`. (An earlier revision of this header said the tail was
+ * `1833000000005`, one short — corrected because the next author reads this note
+ * rather than re-deriving it.)
  * `gen_random_uuid()` is built-in on PG >= 13 (Testcontainers + prod run PG 16).
  *
  * NOTE ON NAMING: `exchange_rates` and the `order_records` additions use quoted

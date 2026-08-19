@@ -175,7 +175,11 @@ export class OrderFxStampService implements IOrderFxStampService {
       // this is a business failure, not a retry.
       const terminalReason = this.classifyTerminal(error);
       if (terminalReason) {
-        return await this.recordTerminal(record.internalOrderId, terminalReason);
+        return await this.recordTerminal(
+          record.internalOrderId,
+          terminalReason,
+          error instanceof Error ? error.message : String(error)
+        );
       }
 
       // (6) Everything else is retryable.
@@ -198,6 +202,11 @@ export class OrderFxStampService implements IOrderFxStampService {
   }
 
   /**
+   * The frontier includes rows whose TERMINAL marker has aged past
+   * `options.terminalRetryBefore` and that still carry no figure - which is the
+   * only recovery path a terminal answer has (#2135 review, finding 1). A row
+   * that carries a figure is never re-entered.
+   *
    * One bounded page per tick, walked SEQUENTIALLY. A page of foreign-currency
    * orders on distinct days is a page of provider calls; fanning them out in
    * parallel would burst a public reference-rate API for no latency benefit
@@ -211,6 +220,7 @@ export class OrderFxStampService implements IOrderFxStampService {
     const ids = await this.repository.findUnstampedFxOrderIds(sourceConnectionId, {
       limit: options.limit,
       createdSince: options.createdSince,
+      terminalRetryBefore: options.terminalRetryBefore,
     });
 
     let stamped = 0;
@@ -390,12 +400,22 @@ export class OrderFxStampService implements IOrderFxStampService {
    */
   private async recordTerminal(
     internalOrderId: string,
-    reason: FxStampTerminalReason
+    reason: FxStampTerminalReason,
+    detail?: string
   ): Promise<FxStampTerminalOutcome> {
-    this.logger.warn(`FX stamp terminal: reason=${reason}`, { internalOrderId, reason });
+    // `detail` carries the provider's own message (`ECB responded 400 for
+    // EXR.D.PLN...`). Without it the reason alone was the whole record of a
+    // permanent answer, so an operator could see THAT an order was refused but
+    // never WHY - the adapter's message died in the catch (#2135 review,
+    // finding 3, which flagged the same silence one layer down).
+    this.logger.warn(`FX stamp terminal: reason=${reason}` + (detail ? ` - ${detail}` : ''), {
+      internalOrderId,
+      reason,
+      detail: detail ?? null,
+    });
 
     try {
-      await this.repository.markFxTerminalIfAbsent(internalOrderId, new Date());
+      await this.repository.markFxTerminal(internalOrderId, new Date());
     } catch (error) {
       // Only consequence: the reconcile sweep will revisit this row and reach
       // the same terminal answer again.
@@ -412,6 +432,17 @@ export class OrderFxStampService implements IOrderFxStampService {
    * Enqueue the bounded retry. One job per order: the idempotency key carries no
    * attempt counter, so repeated inline failures for one order collapse onto a
    * single job instead of one per re-poll.
+   *
+   * NO WAVE COMPONENT, AND THAT IS INTENDED (#2135 review, finding 7). `fx:{id}`
+   * is spent for good once the job exists - `sync_jobs.idempotencyKey` is globally
+   * unique with no TTL - so if that job exhausts its attempts and dies, no second
+   * retry job can ever be enqueued for the order. Unlike #2039's
+   * `refreshSnapshot`, where the delayed chain WAS the only route and a spent key
+   * therefore lost the read, here the hourly reconcile sweep re-reads the row
+   * straight from the frontier predicate and is an unconditional backstop that
+   * needs no key at all. A wave component would buy a second inline retry ladder
+   * on top of a mechanism that already covers the case, at the cost of one row
+   * per wave per order.
    */
   private async enqueueRetry(record: OrderRecord): Promise<boolean> {
     const request: SyncJobRequest = {

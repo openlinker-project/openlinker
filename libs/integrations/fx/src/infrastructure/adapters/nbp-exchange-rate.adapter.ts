@@ -35,7 +35,12 @@ import {
 import { isPlWorkingDay, previousWorkingDay } from '@openlinker/shared/date';
 import type { FetchLike } from '@openlinker/shared/http';
 import { Logger } from '@openlinker/shared/logging';
-import { FxTransportError, fxGet, FX_DEFAULT_TIMEOUT_MS } from '../http/fx-http.client';
+import {
+  FxTransportError,
+  fxGet,
+  isTransientFxStatus,
+  FX_DEFAULT_TIMEOUT_MS,
+} from '../http/fx-http.client';
 import { directRate, invertedRate, pivotRate } from './rate-arithmetic';
 
 const NBP_BASE_URL = 'https://api.nbp.pl/api/exchangerates/rates/a';
@@ -44,15 +49,22 @@ const NBP_BASE_URL = 'https://api.nbp.pl/api/exchangerates/rates/a';
 const NBP_PIVOT_CURRENCY = 'PLN';
 
 /**
- * How many days the 404 walk-back will step back before giving up.
+ * How many publication days the 404 walk-back will TRY before giving up - the
+ * first candidate plus seven steps back.
  *
- * Seven covers any realistic Polish holiday cluster once the calendar has
+ * Named for attempts rather than days on purpose (#2135 review, finding 5): the
+ * loop is `attempt < NBP_MAX_WALK_BACK_ATTEMPTS`, so the count here is exactly
+ * the number of requests made per leg and matches what the spec asserts
+ * (`<= 8`). The previous `_DAYS = 7` with a `<=` bound described one fewer
+ * request than it made.
+ *
+ * Eight covers any realistic Polish holiday cluster once the calendar has
  * already skipped weekends and known holidays. It is a bound on a defensive
  * path, not the mechanism - a pair that is simply absent from table A is
  * rejected by `supports()` before a single request is made, which is what stops
- * an unsupported pair costing `maxAttempts` (10) x 7 futile requests.
+ * an unsupported pair costing `maxAttempts` (10) x 8 futile requests.
  */
-const NBP_MAX_WALK_BACK_DAYS = 7;
+const NBP_MAX_WALK_BACK_ATTEMPTS = 8;
 
 /**
  * NBP table A. Tables B (weekly exotics) and C (bid/ask) are deliberately out
@@ -211,13 +223,14 @@ export class NbpExchangeRateAdapter implements ExchangeRateProviderPort {
   ): Promise<readonly NbpQuote[]> {
     let day = this.resolveWorkingDayAtOrBefore(candidate);
 
-    for (let attempt = 0; attempt <= NBP_MAX_WALK_BACK_DAYS; attempt += 1) {
+    for (let attempt = 0; attempt < NBP_MAX_WALK_BACK_ATTEMPTS; attempt += 1) {
       const quotes = await this.tryFetchQuotesFor(currencies, day, candidate, from, to);
       if (quotes) {
         return quotes;
       }
       this.logger.debug(
-        `NBP published no table A for ${day}; walking back (attempt ${attempt + 1}/${NBP_MAX_WALK_BACK_DAYS})`
+        `NBP published no table A for ${day}; walking back ` +
+          `(attempt ${attempt + 1}/${NBP_MAX_WALK_BACK_ATTEMPTS})`
       );
       day = this.previousWorkingDayIso(day);
     }
@@ -227,7 +240,7 @@ export class NbpExchangeRateAdapter implements ExchangeRateProviderPort {
       from,
       to,
       candidate,
-      `no NBP table A publication found within ${NBP_MAX_WALK_BACK_DAYS} working days of ${candidate}`
+      `no NBP table A publication found within ${NBP_MAX_WALK_BACK_ATTEMPTS} working days of ${candidate}`
     );
   }
 
@@ -278,7 +291,13 @@ export class NbpExchangeRateAdapter implements ExchangeRateProviderPort {
       return null;
     }
 
-    if (response.status >= 500) {
+    if (isTransientFxStatus(response.status)) {
+      // `>= 500` PLUS 429/408 (`isTransientFxStatus`). NBP is public and
+      // unauthenticated, so 429 is exactly what a burst earns - and the sweep's
+      // sequential page walk can produce one unaided. Classifying it terminal
+      // would write the row's permanent `fxStampedAt` marker and cost those
+      // orders their reported figure for a throttle that clears in seconds
+      // (#2135 review, finding 1).
       throw new RateUnavailableTransientError(
         this.name,
         from,
@@ -289,12 +308,14 @@ export class NbpExchangeRateAdapter implements ExchangeRateProviderPort {
     }
 
     if (response.status >= 400) {
-      // ANY non-404 4xx is terminal, deliberately, rather than hardcoding 400.
-      // NBP is documented to answer 400 for a date it cannot parse or that
-      // lies outside the published range, but that is not verified against the
-      // live API - so treating the whole class as terminal is correct whichever
-      // code it actually returns, and closes the hole where a 400 would escape
-      // a 404-only walk-back as an unhandled HTTP error.
+      // Every REMAINING non-404 4xx is terminal, deliberately, rather than
+      // hardcoding 400. NBP is documented to answer 400 for a date it cannot
+      // parse or that lies outside the published range, but that is not
+      // verified against the live API - so treating the rest of the class as
+      // terminal is correct whichever code it actually returns, and closes the
+      // hole where a 400 would escape a 404-only walk-back as an unhandled
+      // HTTP error. The two unambiguously-transient codes are excluded above
+      // precisely BECAUSE the class is unverified.
       throw new RateUnsupportedPairError(
         this.name,
         from,

@@ -10,7 +10,7 @@ import type { TestingModule } from '@nestjs/testing';
 import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import type { Repository, UpdateResult } from 'typeorm';
-import { IsNull } from 'typeorm';
+import { IsNull, LessThan, MoreThanOrEqual } from 'typeorm';
 import { OrderRecordRepository } from '../order-record.repository';
 import type { OrderSyncStatusJson } from '../../entities/order-record.orm-entity';
 import { OrderRecordOrmEntity } from '../../entities/order-record.orm-entity';
@@ -654,6 +654,72 @@ describe('OrderRecordRepository', () => {
         ];
         expect(values.exchangeRateId).toBeNull();
         expect(values.reportingCurrency).toBe('EUR');
+      });
+    });
+
+    describe('markFxTerminal (#2135 review, finding 1)', () => {
+      it('should guard ONLY on reportingCurrency IS NULL so a re-answer can move the marker', async () => {
+        // No `fxStampedAt: IsNull()` predicate, deliberately. The sweep re-admits a
+        // terminal-but-figureless row once its marker ages past the cooldown, so a
+        // second terminal answer has to move the marker forward - otherwise the row
+        // would be re-tried on every subsequent tick instead of once per cooldown.
+        (ormRepository.update as jest.Mock).mockResolvedValue(buildUpdateResult(1));
+        const at = new Date('2026-08-20T10:00:00Z');
+
+        await expect(repository.markFxTerminal('order-123', at)).resolves.toBe(true);
+        expect(ormRepository.update).toHaveBeenCalledWith(
+          { internalOrderId: 'order-123', reportingCurrency: IsNull() },
+          { fxStampedAt: at }
+        );
+
+        const [where] = (ormRepository.update as jest.Mock).mock.calls[0] as [
+          Record<string, unknown>,
+        ];
+        expect(where).not.toHaveProperty('fxStampedAt');
+      });
+
+      it('should write nothing for a row that already carries a figure', async () => {
+        // The immutability that matters: a stamped row is untouchable here whatever
+        // its timestamp says.
+        (ormRepository.update as jest.Mock).mockResolvedValue(buildUpdateResult(0));
+
+        await expect(
+          repository.markFxTerminal('order-123', new Date('2026-08-20T10:00:00Z'))
+        ).resolves.toBe(false);
+      });
+    });
+
+    describe('findUnstampedFxOrderIds (#2135 review, finding 1)', () => {
+      it('should OR an unanswered arm with a cooled-down terminal arm, both keyed on no figure', async () => {
+        (ormRepository.find as jest.Mock).mockResolvedValue([{ internalOrderId: 'order-1' }]);
+        const createdSince = new Date('2026-07-01T00:00:00Z');
+        const terminalRetryBefore = new Date('2026-08-13T00:00:00Z');
+
+        const ids = await repository.findUnstampedFxOrderIds('conn-1', {
+          limit: 25,
+          createdSince,
+          terminalRetryBefore,
+        });
+
+        expect(ids).toEqual(['order-1']);
+        const [options] = (ormRepository.find as jest.Mock).mock.calls[0] as [
+          { where: Record<string, unknown>[]; take: number },
+        ];
+        expect(options.take).toBe(25);
+        expect(options.where).toHaveLength(2);
+        // `reportingCurrency IS NULL` in BOTH arms is the invariant that keeps a
+        // stamped row out of the frontier no matter how old its marker is.
+        for (const arm of options.where) {
+          expect(arm).toMatchObject({
+            sourceConnectionId: 'conn-1',
+            reportingCurrency: IsNull(),
+            createdAt: MoreThanOrEqual(createdSince),
+          });
+        }
+        expect(options.where[0]).toMatchObject({ fxStampedAt: IsNull() });
+        expect(options.where[1]).toMatchObject({
+          fxStampedAt: LessThan(terminalRetryBefore),
+        });
       });
     });
 

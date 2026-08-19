@@ -39,3 +39,27 @@ export class UnregisteredExchangeRateSourceError extends Error {
     Error.captureStackTrace(this, this.constructor);
   }
 }
+
+/**
+ * The registry is EMPTY at the end of boot, i.e. no host module ever registered
+ * a provider (#2135 review, finding 9).
+ *
+ * Raised at `onApplicationBootstrap` rather than left to the first stamp, because
+ * an empty registry degrades two ways at once and both are silent: every stamp
+ * classifies `no-rate-source` and durably marks the order answered without a
+ * figure, while `listSelectableCurrencies` returns `[]` so every settings PUT
+ * 422s with nothing to select. Failing the boot converts a data-loss default into
+ * a startup error naming the missing module.
+ */
+export class NoExchangeRateProvidersRegisteredError extends Error {
+  constructor() {
+    super(
+      'No exchange-rate providers are registered at the end of boot. ' +
+        'The host must import FxIntegrationModule (@openlinker/integrations-fx) - ' +
+        'without it every order FX stamp fails as no-rate-source and the ' +
+        'reporting-currency setting has no selectable currencies.'
+    );
+    this.name = 'NoExchangeRateProvidersRegisteredError';
+    Error.captureStackTrace(this, this.constructor);
+  }
+}

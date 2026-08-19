@@ -17,6 +17,16 @@
  * primary action locally, in this dialog, rather than the backend rejecting
  * an unacknowledged submit.
  *
+ * A11Y (#2135 review, finding 8): both warnings appear REACTIVELY, on a
+ * `<select>` change rather than on submit, and the coverage one gates Save behind
+ * a checkbox. `Alert` already carries `role="status"` for its warning tone, but a
+ * live region that is INSERTED together with its content is not reliably
+ * announced - screen readers watch an existing region for mutations. So a single
+ * persistently-mounted visually-hidden region below announces which warnings
+ * materialised, following `category-search-results.tsx`. Its text is derived, not
+ * duplicated: it names the warning and the required acknowledgement rather than
+ * re-reading the per-currency counts, which are available on the visible Alert.
+ *
  * @module apps/web/src/features/currency-settings/components
  */
 import { useEffect, useState, type ReactElement } from 'react';
@@ -77,6 +87,23 @@ export function CurrencySettingsDialog({
 
   const canSubmit = selected.length > 0 && (!hasCoverageGap || acknowledged);
 
+  // One string, so the region has exactly one announcement per state change
+  // rather than two competing ones. Empty when neither warning applies, which is
+  // what returns the region to silence after the operator picks a clean currency.
+  const warningAnnouncement = [
+    willSplitHistory
+      ? `Warning: switching to ${selected} splits reporting history. Orders already stamped in ` +
+        `${otherEraStamped.map((entry) => entry.reportingCurrency).join(', ')} keep that stamp.`
+      : null,
+    hasCoverageGap
+      ? `Warning: coverage gap. ` +
+        `${selectedCoverage?.uncoverableCurrencies.join(', ') ?? ''} cannot be converted to ` +
+        `${selected}. Acknowledge before saving.`
+      : null,
+  ]
+    .filter(Boolean)
+    .join(' ');
+
   const handleSubmit = async (): Promise<void> => {
     try {
       await mutation.mutateAsync({
@@ -104,6 +131,15 @@ export function CurrencySettingsDialog({
       <DialogContent>
         <DialogTitle>Currency</DialogTitle>
         <DialogDescription>Read by Analytics · never used on an invoice</DialogDescription>
+
+        {/*
+          PERSISTENTLY MOUNTED, deliberately: this element must already exist when
+          its text changes, or the announcement is unreliable. Rendering it only
+          while a warning applies would reproduce the exact gap it closes.
+        */}
+        <p className="sr-only" role="status" aria-live="polite">
+          {warningAnnouncement}
+        </p>
 
         {mutation.error ? (
           <Alert tone="error" title="Could not save the reporting currency">
