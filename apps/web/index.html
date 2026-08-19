@@ -4,29 +4,33 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>OpenLinker Web</title>
-    <meta name="description" content="%VITE_OG_TITLE_PREFIX%E-commerce orchestration platform" />
+    <title>%OG_TITLE_PREFIX%OpenLinker Admin</title>
+    <meta name="description" content="%OG_TITLE_PREFIX%E-commerce orchestration platform" />
     <!--
-      Open Graph / Twitter Card (#2174). %VITE_OG_TITLE_PREFIX% is Vite's
-      built-in build-time HTML env substitution (no plugin). %OG_IMAGE_PATH%
-      is a custom token resolved by the `og-image-path` plugin in
-      vite.config.ts from VITE_OG_BADGE_TEXT — see apps/web/.env.example for
-      the two vars a demo deployment sets to badge every shared link without
-      touching this markup.
+      Open Graph / Twitter Card (#2174). Every percent-delimited token below is
+      resolved by the `og-meta` plugin in vite.config.ts — deliberately NOT by
+      Vite's native VITE_-prefixed env substitution, which leaves the literal
+      token in the output (warning only, build still green) whenever the
+      variable is unset. See apps/web/.env.example for the three vars a demo
+      deployment sets to badge every shared link without touching this markup.
+
+      Tokens are mirrored in src/test/og-meta-manifest.test.ts; adding one here
+      without teaching the plugin about it fails that guard.
     -->
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="OpenLinker" />
-    <meta property="og:title" content="%VITE_OG_TITLE_PREFIX%OpenLinker Admin" />
-    <meta property="og:description" content="%VITE_OG_TITLE_PREFIX%E-commerce orchestration platform" />
-    <meta property="og:image" content="%OG_IMAGE_PATH%" />
+    %OG_URL_TAG%
+    <meta property="og:title" content="%OG_TITLE_PREFIX%OpenLinker Admin" />
+    <meta property="og:description" content="%OG_TITLE_PREFIX%E-commerce orchestration platform" />
+    <meta property="og:image" content="%OG_IMAGE_URL%" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
-    <meta property="og:image:alt" content="%VITE_OG_TITLE_PREFIX%OpenLinker" />
+    <meta property="og:image:alt" content="%OG_TITLE_PREFIX%OpenLinker" />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="%VITE_OG_TITLE_PREFIX%OpenLinker Admin" />
-    <meta name="twitter:description" content="%VITE_OG_TITLE_PREFIX%E-commerce orchestration platform" />
-    <meta name="twitter:image" content="%OG_IMAGE_PATH%" />
-    <meta name="twitter:image:alt" content="%VITE_OG_TITLE_PREFIX%OpenLinker" />
+    <meta name="twitter:title" content="%OG_TITLE_PREFIX%OpenLinker Admin" />
+    <meta name="twitter:description" content="%OG_TITLE_PREFIX%E-commerce orchestration platform" />
+    <meta name="twitter:image" content="%OG_IMAGE_URL%" />
+    <meta name="twitter:image:alt" content="%OG_TITLE_PREFIX%OpenLinker" />
     <script>
       // Theme FOUC guard: resolve light/dark before React hydrates so tokens
       // cascade correctly on first paint. Kept in sync with ThemeProvider.

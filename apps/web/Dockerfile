@@ -6,10 +6,18 @@
 #   docker build -f apps/web/Dockerfile \
 #     --build-arg VITE_API_BASE_URL=http://localhost:3000 .
 #
-# VITE_API_BASE_URL is a BUILD-TIME input (Vite bakes it into the bundle —
-# see docs/frontend-architecture.md § Runtime Configuration). It must point
-# at the API origin reachable from the operator's BROWSER, not from inside
-# the Docker network.
+# Every VITE_* below is a BUILD-TIME input (Vite bakes it into the bundle —
+# see docs/frontend-architecture.md § Runtime Configuration), so each one
+# needs an explicit ARG here: root .dockerignore excludes `.env.*`, meaning
+# no env FILE ever reaches this build and `--build-arg` is the only channel.
+#
+# VITE_API_BASE_URL must point at the API origin reachable from the
+# operator's BROWSER, not from inside the Docker network.
+#
+# The VITE_OG_* trio drives the Open Graph / Twitter share card (#2174) and
+# is what makes a demo deployment's links visually distinguishable from
+# production's. All three default to empty, which yields the plain
+# production card — see apps/web/.env.example.
 FROM node:22.23.1-alpine3.24 AS build
 
 # Pinned to match the repo's packageManager field (package.json).
@@ -34,6 +42,13 @@ COPY apps/web ./apps/web
 
 ARG VITE_API_BASE_URL=http://localhost:3000
 ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
+
+ARG VITE_OG_TITLE_PREFIX=
+ENV VITE_OG_TITLE_PREFIX=$VITE_OG_TITLE_PREFIX
+ARG VITE_OG_BADGE_TEXT=
+ENV VITE_OG_BADGE_TEXT=$VITE_OG_BADGE_TEXT
+ARG VITE_OG_SITE_URL=
+ENV VITE_OG_SITE_URL=$VITE_OG_SITE_URL
 
 RUN pnpm --filter @openlinker/web build
 
