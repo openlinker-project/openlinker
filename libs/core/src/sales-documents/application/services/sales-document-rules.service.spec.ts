@@ -20,6 +20,7 @@ import { SalesDocumentCountryDefault } from '../../domain/entities/sales-documen
 import { SalesDocumentCountryAcknowledgment } from '../../domain/entities/sales-document-country-acknowledgment.entity';
 import { SalesDocumentRuleConflictException } from '../../domain/exceptions/sales-document-rule-conflict.exception';
 import { SalesDocumentThresholdNotFoundException } from '../../domain/exceptions/sales-document-threshold-not-found.exception';
+import { SalesDocumentCountryAlreadyConfiguredException } from '../../domain/exceptions/sales-document-country-already-configured.exception';
 import type { SalesDocumentRuleInput } from '../../domain/types/sales-document-rule-write.types';
 
 function makeRuleRepo(): jest.Mocked<SalesDocumentRuleRepositoryPort> {
@@ -55,7 +56,6 @@ function makeThresholdRepo(): jest.Mocked<SalesDocumentThresholdRepositoryPort> 
 
 function makeAcknowledgmentRepo(): jest.Mocked<SalesDocumentCountryAcknowledgmentRepositoryPort> {
   return {
-    find: jest.fn(),
     findAll: jest.fn(),
     upsert: jest.fn(),
     delete: jest.fn(),
@@ -313,6 +313,8 @@ describe('SalesDocumentRulesService (#2170, #2186)', () => {
   describe('acknowledgment lifecycle (#2186)', () => {
     it('should persist a no-document acknowledgment', async () => {
       const acknowledgedAt = new Date('2026-02-01T00:00:00.000Z');
+      ruleRepo.findByCountry.mockResolvedValue([]);
+      countryDefaultRepo.findByCountry.mockResolvedValue([]);
       acknowledgmentRepo.upsert.mockResolvedValue(
         new SalesDocumentCountryAcknowledgment('IT', acknowledgedAt),
       );
@@ -321,6 +323,28 @@ describe('SalesDocumentRulesService (#2170, #2186)', () => {
 
       expect(acknowledgmentRepo.upsert).toHaveBeenCalledWith('IT');
       expect(result).toEqual(new SalesDocumentCountryAcknowledgment('IT', acknowledgedAt));
+    });
+
+    it('should reject acknowledging a country that still has an active rule', async () => {
+      ruleRepo.findByCountry.mockResolvedValue([existingRule()]);
+      countryDefaultRepo.findByCountry.mockResolvedValue([]);
+
+      await expect(service.acknowledgeNoDocument('PL')).rejects.toBeInstanceOf(
+        SalesDocumentCountryAlreadyConfiguredException,
+      );
+      expect(acknowledgmentRepo.upsert).not.toHaveBeenCalled();
+    });
+
+    it('should reject acknowledging a country that still has a country default', async () => {
+      ruleRepo.findByCountry.mockResolvedValue([]);
+      countryDefaultRepo.findByCountry.mockResolvedValue([
+        countryDefault({ country: 'DE', documentKind: 'invoice', connectionId: 'conn-invoice' }),
+      ]);
+
+      await expect(service.acknowledgeNoDocument('DE')).rejects.toBeInstanceOf(
+        SalesDocumentCountryAlreadyConfiguredException,
+      );
+      expect(acknowledgmentRepo.upsert).not.toHaveBeenCalled();
     });
 
     it('should explicitly clear an acknowledgment', async () => {

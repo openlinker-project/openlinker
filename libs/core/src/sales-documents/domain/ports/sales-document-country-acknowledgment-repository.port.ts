@@ -6,8 +6,6 @@
 import type { SalesDocumentCountryAcknowledgment } from '../entities/sales-document-country-acknowledgment.entity';
 
 export interface SalesDocumentCountryAcknowledgmentRepositoryPort {
-  find(country: string): Promise<SalesDocumentCountryAcknowledgment | null>;
-
   /** Every acknowledged country — the countries-listing read's merge input. */
   findAll(): Promise<SalesDocumentCountryAcknowledgment[]>;
 
