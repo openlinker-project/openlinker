@@ -2,7 +2,22 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <!--
+      Favicons (#2182). Same set openlinker.io ships (see the website repo's
+      src/layouts/BaseLayout.astro), so the admin app, the marketing site and a
+      shared link all read as one brand in a tab strip: /favicon.ico (16/32/48)
+      for legacy clients, the SVG for modern browsers, a 180px PNG for Apple.
+      The dark-background icon is deliberate - browsers paint a favicon on their
+      own chrome, where the contained-square logo reads best.
+
+      Every href below must resolve to a real file under public/: nginx.conf's
+      SPA fallback (`try_files … /index.html`) answers a missing icon with
+      index.html at HTTP 200 rather than a 404, so a typo here shows up only as
+      a silently absent icon. src/test/og-meta-manifest.test.ts is the guard.
+    -->
+    <link rel="icon" href="/favicon.ico" sizes="any" />
+    <link rel="icon" type="image/svg+xml" href="/openlinker-logo.svg" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>%OG_TITLE_PREFIX%OpenLinker Admin</title>
     <meta name="description" content="%OG_TITLE_PREFIX%E-commerce orchestration platform" />

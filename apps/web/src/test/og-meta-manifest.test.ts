@@ -63,11 +63,38 @@ function extractOgImagePaths(html: string, ogMetaModule: string): string[] {
   return [...found];
 }
 
+/**
+ * Root-relative icon paths declared in the document head (`rel="icon"`,
+ * `rel="apple-touch-icon"`).
+ *
+ * These need the same existence check the og:image paths get, for a sharper
+ * reason: nginx.conf's SPA fallback (`try_files $uri $uri/ /index.html`)
+ * answers a missing icon with index.html at HTTP 200, so the browser quietly
+ * discards non-image HTML and paints its default placeholder. That is how
+ * `index.html` shipped a link to a `/favicon.svg` that was never in public/
+ * (#2182) - a green build, a blank tab, and nothing in the access log.
+ */
+function extractIconPaths(html: string): string[] {
+  const found = new Set<string>();
+
+  const linkPattern =
+    /<link\s+[^>]*\brel\s*=\s*["'](?:icon|apple-touch-icon|shortcut icon|mask-icon)["'][^>]*>/gi;
+  for (const match of html.matchAll(linkPattern)) {
+    const href = /\bhref\s*=\s*["']([^"']+)["']/i.exec(match[0])?.[1];
+    if (href?.startsWith('/')) {
+      found.add(href);
+    }
+  }
+
+  return [...found];
+}
+
 describe('og meta manifest', () => {
   const html = readFileSync(INDEX_HTML, 'utf8');
   const ogMetaModule = readFileSync(OG_META_MODULE, 'utf8');
   const tokens = extractHtmlTokens(html);
   const imagePaths = extractOgImagePaths(html, ogMetaModule);
+  const iconPaths = extractIconPaths(html);
 
   // Titles use a bare `%s`: vitest's printf parser mangles an escaped `%%`
   // sitting next to one, so the percent-delimiters are left out of the name.
@@ -94,5 +121,17 @@ describe('og meta manifest', () => {
 
   it.each(imagePaths)('og image %s exists under public/', (path) => {
     expect(existsSync(join(PUBLIC_DIR, path.replace(/^\//, '')))).toBe(true);
+  });
+
+  it('declares at least one favicon link (guard cannot go vacuous)', () => {
+    expect(iconPaths.length).toBeGreaterThan(0);
+  });
+
+  it.each(iconPaths)('icon %s exists under public/', (path) => {
+    expect(
+      existsSync(join(PUBLIC_DIR, path.replace(/^\//, ''))),
+      `index.html links ${path}, which is not in apps/web/public/. The nginx SPA ` +
+        `fallback serves index.html for it at HTTP 200, so the icon silently never renders.`
+    ).toBe(true);
   });
 });
