@@ -2,8 +2,8 @@
 /**
  * NUL-Byte Guard (#1902 / PR #2137 B1 follow-up)
  *
- * Fails `pnpm lint` if any tracked TEXT source file contains a literal `0x00`
- * byte.
+ * Fails `pnpm lint` if any TEXT source file in the working tree contains a
+ * literal `0x00` byte.
  *
  * Why this exists: `document-token.policy.ts` shipped three raw NUL bytes inside
  * a template literal (they were meant to be `\0` escapes). Git classifies a file
@@ -14,7 +14,7 @@
  * kind of file a reviewer must be able to read. The escape and the raw byte emit
  * identical bytes at runtime, so there is never a reason to prefer the raw form.
  *
- * Scope: tracked files whose extension is in {@link TEXT_EXTENSIONS}. Genuinely
+ * Scope: files whose extension is in {@link TEXT_EXTENSIONS}. Genuinely
  * binary assets (images, fonts, archives) are out of scope by construction
  * rather than by allowlist, since they are never matched in the first place.
  *
@@ -25,44 +25,67 @@
  *
  * @module scripts
  */
-import { execFile } from 'node:child_process';
-import { readFile } from 'node:fs/promises';
-import { dirname, resolve } from 'node:path';
+import { readFile, readdir } from 'node:fs/promises';
+import { dirname, extname, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { promisify } from 'node:util';
 
-const execFileAsync = promisify(execFile);
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 /**
  * Extensions treated as text. A NUL byte in any of these is a defect; anything
  * not listed is not inspected at all.
  */
-const TEXT_EXTENSIONS = [
-  'ts',
-  'tsx',
-  'js',
-  'jsx',
-  'mjs',
-  'cjs',
-  'json',
-  'md',
-  'mdx',
-  'yml',
-  'yaml',
-  'css',
-  'scss',
-  'html',
-  'sql',
-  'sh',
-  'php',
-  'cs',
-  'csproj',
-  'xml',
-  'xsd',
-  'env',
-  'txt',
-];
+const TEXT_EXTENSIONS = new Set(
+  [
+    'ts',
+    'tsx',
+    'js',
+    'jsx',
+    'mjs',
+    'cjs',
+    'json',
+    'md',
+    'mdx',
+    'yml',
+    'yaml',
+    'css',
+    'scss',
+    'html',
+    'sql',
+    'sh',
+    'php',
+    'cs',
+    'csproj',
+    'xml',
+    'xsd',
+    'env',
+    'txt',
+  ].map((ext) => `.${ext}`)
+);
+
+/**
+ * Directories skipped during the walk.
+ *
+ * The walk is filesystem-based rather than git-based for the reason
+ * `check-repo-urls.mjs` documents at the same spot: the CI runner that invokes
+ * `pnpm lint` has no `git` on its PATH, so a `git ls-files` version of this
+ * guard passes locally and dies with `spawn git ENOENT` in CI. A pure-fs walk
+ * behaves identically in both.
+ */
+const SKIP_DIRS = new Set([
+  '.git',
+  '.claude',
+  'node_modules',
+  'dist',
+  'build',
+  'coverage',
+  '.next',
+  '.vite',
+  '.turbo',
+  '.cache',
+  '.pnpm-store',
+  '.husky',
+]);
 
 /** Read at most this many files concurrently, to bound open descriptors. */
 const READ_CONCURRENCY = 32;
@@ -96,17 +119,34 @@ export function lineOfOffset(buffer, offset) {
   return line;
 }
 
-async function trackedTextFiles() {
-  const patterns = TEXT_EXTENSIONS.map((ext) => `*.${ext}`);
-  const { stdout } = await execFileAsync('git', ['ls-files', '-z', '--', ...patterns], {
-    cwd: ROOT,
-    maxBuffer: 64 * 1024 * 1024,
-  });
-  return stdout.split('\0').filter((entry) => entry.length > 0);
+async function* walk(dir) {
+  let entries;
+  try {
+    entries = await readdir(dir, { withFileTypes: true });
+  } catch {
+    return;
+  }
+  for (const entry of entries) {
+    const abs = resolve(dir, entry.name);
+    if (entry.isDirectory()) {
+      if (SKIP_DIRS.has(entry.name)) continue;
+      yield* walk(abs);
+    } else if (entry.isFile() && TEXT_EXTENSIONS.has(extname(entry.name).toLowerCase())) {
+      yield abs;
+    }
+  }
+}
+
+async function textFiles() {
+  const files = [];
+  for await (const abs of walk(ROOT)) {
+    files.push(relative(ROOT, abs));
+  }
+  return files;
 }
 
 async function main() {
-  const files = await trackedTextFiles();
+  const files = await textFiles();
   const violations = [];
 
   for (let start = 0; start < files.length; start += READ_CONCURRENCY) {
@@ -117,7 +157,8 @@ async function main() {
         try {
           buffer = await readFile(resolve(ROOT, file));
         } catch {
-          // A tracked-but-absent path (mid-rebase, sparse checkout) is not this
+          // A path that vanished between the walk and the read (a build artefact
+          // in an unskipped directory, a mid-rebase checkout) is not this
           // guard's business.
           return;
         }

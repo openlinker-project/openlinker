@@ -29,7 +29,7 @@ When a lesson hardens into a rule, **graduate it** to the canonical doc and leav
 
 **Problem**: git classifies a file containing a NUL byte as **binary**. The file rendered as `Bin 0 -> 2999 bytes` on GitHub - no diff, no reviewable lines, and no way to resolve a merge conflict in it. It happened to be the one file deriving the key that stands between a retried fiscal-registration POST and a second real registration, i.e. exactly the file a reviewer must be able to read. Local tooling gave no signal at all: it compiles, lints, and passes tests, so the defect only surfaced in review.
 
-**Rule**: write control characters as escapes (`\0`, `\u0000`, `\x1b`) - the emitted bytes are identical, so there is never a runtime reason to prefer the raw byte. `scripts/check-nul-bytes.mjs` (in the `check:invariants` chain) now fails `pnpm lint` on a literal NUL in any tracked text file, so this cannot reach review again. If you need a genuinely binary fixture, give it a binary extension so it falls outside the guard's extension list rather than allowlisting a `.ts` file.
+**Rule**: write control characters as escapes (`\0`, `\u0000`, `\x1b`) - the emitted bytes are identical, so there is never a runtime reason to prefer the raw byte. `scripts/check-nul-bytes.mjs` (in the `check:invariants` chain) now fails `pnpm lint` on a literal NUL in any text file in the tree, so this cannot reach review again. If you need a genuinely binary fixture, give it a binary extension so it falls outside the guard's extension list rather than allowlisting a `.ts` file.
 
 **Applies to**: every tracked text source file; especially any policy/derivation file whose reviewability is the point.
 
