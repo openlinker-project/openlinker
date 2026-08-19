@@ -364,23 +364,47 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    * `(day, sourceConnectionId)` with at least one matching order; the
    * cancelled/non-cancelled split uses `FILTER (WHERE ...)`, mirroring
    * `getFailedSyncValueSummary`'s `stuckPredicate` idiom.
+   *
+   * Currency correctness (#2049/ADR-040 follow-up): `order_count`/`revenue`
+   * are further restricted to `reportingCurrency IS NOT NULL` — one
+   * comparable currency, `SUM(reportingTotalAmount)` — with the complementary
+   * unstamped slice reported separately as `unconverted_count`/
+   * `unconverted_value` (native `totalAmount`, informational only) rather
+   * than silently mixed in or silently dropped. `cancelled_value` is left on
+   * native `totalAmount`, unchanged — a secondary figure, not revisited here.
    */
   async getDailyOrderAggregates(
     filters: SalesAnalyticsFilters
   ): Promise<DailyOrderAggregateRow[]> {
     const notCancelled = 'rec."cancelledAt" IS NULL';
     const isCancelled = 'rec."cancelledAt" IS NOT NULL';
+    const isStamped = 'rec."reportingCurrency" IS NOT NULL';
+    const isUnconverted = 'rec."reportingCurrency" IS NULL';
+    const stampedAndNotCancelled = `${notCancelled} AND ${isStamped}`;
+    const unconvertedAndNotCancelled = `${notCancelled} AND ${isUnconverted}`;
 
     const qb = this.repository
       .createQueryBuilder('rec')
       .select(`date_trunc('day', rec."placedAt")`, 'day')
       .addSelect('rec.sourceConnectionId', 'source_connection_id')
-      .addSelect(`COUNT(*) FILTER (WHERE ${notCancelled})`, 'order_count')
-      .addSelect(`COALESCE(SUM(rec."totalAmount") FILTER (WHERE ${notCancelled}), 0)`, 'revenue')
+      .addSelect(`COUNT(*) FILTER (WHERE ${stampedAndNotCancelled})`, 'order_count')
+      .addSelect(
+        `COALESCE(SUM(rec."reportingTotalAmount") FILTER (WHERE ${stampedAndNotCancelled}), 0)`,
+        'revenue'
+      )
+      .addSelect(`COUNT(*) FILTER (WHERE ${unconvertedAndNotCancelled})`, 'unconverted_count')
+      .addSelect(
+        `COALESCE(SUM(rec."totalAmount") FILTER (WHERE ${unconvertedAndNotCancelled}), 0)`,
+        'unconverted_value'
+      )
       .addSelect(`COUNT(*) FILTER (WHERE ${isCancelled})`, 'cancelled_count')
       .addSelect(
         `COALESCE(SUM(rec."totalAmount") FILTER (WHERE ${isCancelled}), 0)`,
         'cancelled_value'
+      )
+      .addSelect(
+        `(array_agg(rec."reportingCurrency") FILTER (WHERE ${isStamped}))[1]`,
+        'reporting_currency'
       )
       .groupBy(`date_trunc('day', rec."placedAt")`)
       .addGroupBy('rec.sourceConnectionId');
@@ -392,8 +416,11 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       source_connection_id: string;
       order_count: string;
       revenue: string;
+      unconverted_count: string;
+      unconverted_value: string;
       cancelled_count: string;
       cancelled_value: string;
+      reporting_currency: string | null;
     }>();
 
     return rows.map((row) => ({
@@ -401,8 +428,11 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       sourceConnectionId: row.source_connection_id,
       orderCount: Number(row.order_count),
       revenue: Number(row.revenue),
+      unconvertedCount: Number(row.unconverted_count),
+      unconvertedValue: Number(row.unconverted_value),
       cancelledCount: Number(row.cancelled_count),
       cancelledValue: Number(row.cancelled_value),
+      reportingCurrency: row.reporting_currency,
     }));
   }
 
@@ -411,12 +441,20 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    * excludes cancelled orders, unlike {@link getDailyOrderAggregates} (which
    * reports them in a separate column rather than omitting them). `null`
    * when no row matches (an empty ordered-set aggregate).
+   *
+   * Currency correctness (#2049/ADR-040 follow-up): computed over
+   * `reportingTotalAmount`, restricted to `reportingCurrency IS NOT NULL` —
+   * the same stamped subset {@link getDailyOrderAggregates} uses for
+   * `revenue`, so the headline median stays comparable with the headline
+   * revenue/AOV figures rather than mixing a native-currency distribution
+   * into a reporting-currency one.
    */
   async getMedianOrderValue(filters: SalesAnalyticsFilters): Promise<number | null> {
     const qb = this.repository
       .createQueryBuilder('rec')
-      .select(`PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY rec."totalAmount")`, 'median')
-      .andWhere('rec."cancelledAt" IS NULL');
+      .select(`PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY rec."reportingTotalAmount")`, 'median')
+      .andWhere('rec."cancelledAt" IS NULL')
+      .andWhere('rec."reportingCurrency" IS NOT NULL');
 
     this.applySalesAnalyticsScope(qb, filters);
 

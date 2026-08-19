@@ -9,11 +9,16 @@
  * them. Never throws — a missing map entry or empty input degrades to a
  * zero-valued / empty result rather than failing the read.
  *
- * Currency-mixing detection and gross/net tax-treatment normalization are
- * deliberately out of scope here — see #2049/ADR-040 (currency) and a
- * separate, not-yet-scoped tax-normalization effort. `totalAmount` (via
- * `DailyOrderAggregateRow.revenue`) is summed as-is regardless of currency or
- * tax treatment.
+ * Currency correctness (#2049/ADR-040 follow-up): `revenue` (headline and per
+ * channel) is `SUM(DailyOrderAggregateRow.revenue)`, itself a
+ * `reportingTotalAmount` sum restricted to stamped orders at the repository
+ * layer — one comparable currency, never a naive cross-currency sum. `currency`
+ * is picked from the first row carrying a non-null `reportingCurrency` (rows
+ * should agree; see the type's own doc comment for the one caveat this
+ * doesn't handle: an in-flight #2096 restatement). `unconvertedCount`/
+ * `unconvertedValue` roll up the rows' own unconverted totals unchanged — this
+ * function does no currency arithmetic of its own. Gross/net tax-treatment
+ * normalization remains a separate, not-yet-scoped effort.
  *
  * @module libs/core/src/orders/domain
  */
@@ -53,6 +58,9 @@ export function buildSalesAndChannelAnalytics(
   const headlineCancelledCount = sum(dailyRows, (r) => r.cancelledCount);
   const headlineCancelledValue = sum(dailyRows, (r) => r.cancelledValue);
   const headlineUnitsSold = sum([...unitsByConnection.values()], (units) => units);
+  const headlineUnconvertedCount = sum(dailyRows, (r) => r.unconvertedCount);
+  const headlineUnconvertedValue = sum(dailyRows, (r) => r.unconvertedValue);
+  const currency = pickCurrency(dailyRows);
 
   const headline = {
     revenue: headlineRevenue,
@@ -62,6 +70,9 @@ export function buildSalesAndChannelAnalytics(
     unitsSold: headlineUnitsSold,
     cancelledCount: headlineCancelledCount,
     cancelledValue: headlineCancelledValue,
+    currency,
+    unconvertedCount: headlineUnconvertedCount,
+    unconvertedValue: headlineUnconvertedValue,
     trend: buildTrend(dayKeys, dailyRows),
   };
 
@@ -80,6 +91,9 @@ export function buildSalesAndChannelAnalytics(
         unitsSold: unitsByConnection.get(sourceConnectionId) ?? 0,
         cancelledCount: sum(rows, (r) => r.cancelledCount),
         cancelledValue: sum(rows, (r) => r.cancelledValue),
+        currency: pickCurrency(rows),
+        unconvertedCount: sum(rows, (r) => r.unconvertedCount),
+        unconvertedValue: sum(rows, (r) => r.unconvertedValue),
         revenueShare: headlineRevenue > 0 ? revenue / headlineRevenue : 0,
         trend: buildTrend(dayKeys, rows),
         // A connection present in `dailyRows` has ingested at least one order
@@ -97,6 +111,17 @@ export function buildSalesAndChannelAnalytics(
 
 function sum<T>(items: T[], pick: (item: T) => number): number {
   return items.reduce((total, item) => total + pick(item), 0);
+}
+
+/**
+ * The reporting currency to label a set of rows' `revenue` with — the first
+ * non-null `reportingCurrency` found, or `null` when every row is
+ * unconverted. Rows are expected to agree (one system-wide reporting
+ * currency); see the type's own doc comment for the one case that can
+ * violate that — an in-flight #2096 restatement.
+ */
+function pickCurrency(rows: DailyOrderAggregateRow[]): string | null {
+  return rows.find((r) => r.reportingCurrency !== null)?.reportingCurrency ?? null;
 }
 
 function groupByConnection(

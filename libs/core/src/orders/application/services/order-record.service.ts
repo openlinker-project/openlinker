@@ -40,6 +40,8 @@ import {
 } from '../../orders.tokens';
 import { deriveOrderAnalyticsScalars, deriveOrderLineItems } from '../../domain/order-analytics-projection';
 import { buildSalesAndChannelAnalytics } from '../../domain/order-sales-aggregation';
+import { buildTopProducts } from '../../domain/top-products-aggregation';
+import type { TopProductFilters, TopProductsResult } from '../../domain/types/top-products.types';
 
 @Injectable()
 export class OrderRecordService implements IOrderRecordService {
@@ -499,6 +501,14 @@ export class OrderRecordService implements IOrderRecordService {
       unitsByConnection,
       earliestOrderDateByConnection,
     });
+  }
+
+  async getTopProducts(filters: TopProductFilters): Promise<TopProductsResult> {
+    const { rows: ranking, total } = await this.lineItemRepository.getTopProductRanking(filters);
+    const productIds = ranking.map((row) => row.productId);
+    const breakdown = await this.lineItemRepository.getProductChannelBreakdown(productIds, filters);
+
+    return buildTopProducts({ ranking, total, breakdown });
   }
 
   /**

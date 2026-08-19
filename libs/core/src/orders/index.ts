@@ -145,6 +145,17 @@ export {
   DailyTrendPoint,
 } from './domain/types/order-sales-analytics.types';
 
+// Top products analytics (#1988) — response shapes for
+// IOrderRecordService.getTopProducts.
+export { TopProductSortByValues } from './domain/types/top-products.types';
+export type {
+  TopProductSortBy,
+  TopProductFilters,
+  TopProductView,
+  TopProductsResult,
+  ProductChannelBreakdownRow,
+} from './domain/types/top-products.types';
+
 // Refund record capture (#2036).
 export {
   RefundReason,

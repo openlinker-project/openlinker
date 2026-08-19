@@ -6,9 +6,18 @@
  * getSalesAndChannelAnalytics`. Built on top of the #1985 read model
  * (`order_records.placedAt/totalAmount/cancelledAt`, `order_line_items`).
  *
- * Currency-mixing detection and gross/net tax-treatment normalization are
- * deliberately out of scope here — see #2049/ADR-040 (currency) and a
- * separate tax-normalization effort. `totalAmount` is summed as-is.
+ * Currency correctness (#2049/ADR-040 follow-up): `revenue`/`averageOrderValue`/
+ * `medianOrderValue` are computed only from orders whose `reportingCurrency`
+ * stamp has landed — SUM(reportingTotalAmount), one comparable currency.
+ * `unconvertedCount`/`unconvertedValue` disclose orders in range that have no
+ * stamp yet (pre-#2049 history, or a stamp still in flight) rather than
+ * silently omitting them or silently mixing their native-currency amount into
+ * `revenue`. `unconvertedValue` itself sums each order's own native
+ * `totalAmount` and MAY mix currencies — it is informational only, never a
+ * KPI. `cancelledCount`/`cancelledValue` are left as pre-existing (native
+ * `totalAmount`, unstamped-safe) — a secondary figure, not revisited here.
+ * Gross/net tax-treatment normalization remains out of scope — a separate,
+ * not-yet-scoped effort.
  *
  * @module libs/core/src/orders/domain/types
  */
@@ -32,10 +41,21 @@ export interface SalesAnalyticsFilters {
 export interface DailyOrderAggregateRow {
   day: Date;
   sourceConnectionId: string;
+  /** Non-cancelled orders with a `reportingCurrency` stamp. */
   orderCount: number;
+  /** `SUM(reportingTotalAmount)` over the same stamped, non-cancelled set. */
   revenue: number;
+  /** Non-cancelled orders in range with no `reportingCurrency` stamp yet. */
+  unconvertedCount: number;
+  /** Native-currency `SUM(totalAmount)` for `unconvertedCount` — informational, may mix currencies. */
+  unconvertedValue: number;
   cancelledCount: number;
   cancelledValue: number;
+  /**
+   * The `reportingCurrency` this row's `revenue` is expressed in — `null`
+   * only when every order in the group is unconverted.
+   */
+  reportingCurrency: string | null;
 }
 
 /**
@@ -59,6 +79,16 @@ export interface SalesAnalyticsHeadline {
   unitsSold: number;
   cancelledCount: number;
   cancelledValue: number;
+  /**
+   * The reporting currency `revenue`/`averageOrderValue`/`medianOrderValue`
+   * are expressed in. `null` when no order in range has been stamped yet
+   * (every order falls into `unconvertedCount`/`unconvertedValue` instead).
+   */
+  currency: string | null;
+  /** Non-cancelled orders in range with no `reportingCurrency` stamp yet — not reflected in `revenue`. */
+  unconvertedCount: number;
+  /** Native-currency sum for `unconvertedCount` — informational, may mix currencies. */
+  unconvertedValue: number;
   trend: DailyTrendPoint[];
 }
 
@@ -74,6 +104,12 @@ export interface ChannelSalesAnalytics {
   unitsSold: number;
   cancelledCount: number;
   cancelledValue: number;
+  /** Same meaning as {@link SalesAnalyticsHeadline.currency}, scoped to this channel. */
+  currency: string | null;
+  /** Same meaning as {@link SalesAnalyticsHeadline.unconvertedCount}, scoped to this channel. */
+  unconvertedCount: number;
+  /** Same meaning as {@link SalesAnalyticsHeadline.unconvertedValue}, scoped to this channel. */
+  unconvertedValue: number;
   /** Share of headline revenue, `0` when headline revenue is `0`. */
   revenueShare: number;
   trend: DailyTrendPoint[];

@@ -15,6 +15,9 @@ describe('SalesAnalyticsController', () => {
       unitsSold: 311,
       cancelledCount: 4,
       cancelledValue: 612,
+      currency: 'EUR',
+      unconvertedCount: 2,
+      unconvertedValue: 145,
       trend: [{ date: '2026-08-01', revenue: 100, orderCount: 1 }],
     },
     channels: [
@@ -26,6 +29,9 @@ describe('SalesAnalyticsController', () => {
         unitsSold: 200,
         cancelledCount: 3,
         cancelledValue: 450,
+        currency: 'EUR',
+        unconvertedCount: 1,
+        unconvertedValue: 60,
         revenueShare: 0.65,
         trend: [{ date: '2026-08-01', revenue: 60, orderCount: 1 }],
         coverageComplete: true,
@@ -55,11 +61,16 @@ describe('SalesAnalyticsController', () => {
     });
     expect(result.headline.revenue).toBe(18420.5);
     expect(result.headline.medianOrderValue).toBe(98);
+    expect(result.headline.currency).toBe('EUR');
+    expect(result.headline.unconvertedCount).toBe(2);
+    expect(result.headline.unconvertedValue).toBe(145);
     expect(result.channels).toHaveLength(1);
     expect(result.channels[0].sourceConnectionId).toBe('conn-a');
     expect(result.channels[0].coverageComplete).toBe(true);
     expect(result.channels[0].cancelledCount).toBe(3);
     expect(result.channels[0].cancelledValue).toBe(450);
+    expect(result.channels[0].currency).toBe('EUR');
+    expect(result.channels[0].unconvertedCount).toBe(1);
   });
 
   it('throws BadRequestException when to <= from', async () => {
