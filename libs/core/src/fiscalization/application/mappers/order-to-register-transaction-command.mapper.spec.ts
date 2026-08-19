@@ -256,6 +256,52 @@ describe('toRegisterTransactionCommand', () => {
       ).not.toThrow();
     });
 
+    it('should tolerate only ONE minor unit of drift in a 0-decimal currency', () => {
+      // JPY has no minor unit, so a fixed 0.01 tolerance would be a hundredth of
+      // the smallest amount the currency can express - and a whole-yen basket
+      // carrying float dust would be refused. One minor unit means 1 here.
+      expect(() =>
+        toRegisterTransactionCommand({
+          order: order({
+            items: [{ id: 'i1', productId: 'p1', quantity: 3, price: 100 }],
+            totals: { subtotal: 300, tax: 0, shipping: 0, total: 300.5, currency: 'JPY' },
+          }),
+          connectionId: 'conn-1',
+          idempotencyKey: 'k',
+        }),
+      ).not.toThrow();
+    });
+
+    it('should refuse drift wider than one minor unit in a 3-decimal currency', () => {
+      // KWD is 3-decimal, so a fixed 0.01 would silently tolerate TEN of its own
+      // minor units of unexplained difference between the lines and the total.
+      expect(() =>
+        toRegisterTransactionCommand({
+          order: order({
+            items: [{ id: 'i1', productId: 'p1', quantity: 1, price: 10 }],
+            totals: { subtotal: 10, tax: 0, shipping: 0, total: 10.005, currency: 'KWD' },
+          }),
+          connectionId: 'conn-1',
+          idempotencyKey: 'k',
+        }),
+      ).toThrow(InvalidFiscalLineError);
+    });
+
+    it('should fall back to two minor-unit digits for an unrecognised currency code', () => {
+      // Unknown code -> the ISO default. Stricter than an unknown 0-decimal
+      // currency needs, never laxer, and it keeps ordinary baskets passing.
+      expect(() =>
+        toRegisterTransactionCommand({
+          order: order({
+            items: [{ id: 'i1', productId: 'p1', quantity: 1, price: 10 }],
+            totals: { subtotal: 10, tax: 0, shipping: 0, total: 10.005, currency: 'ZZZ' },
+          }),
+          connectionId: 'conn-1',
+          idempotencyKey: 'k',
+        }),
+      ).not.toThrow();
+    });
+
     it('should cite only ids and amounts when refusing (PII-clean)', () => {
       try {
         toRegisterTransactionCommand({

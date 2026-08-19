@@ -30,21 +30,83 @@ import { UnsupportedFiscalPriceTreatmentError } from './errors/unsupported-fisca
 const SHIPPING_LINE_NAME = 'Shipping';
 
 /**
+ * Minor-unit digits per ISO 4217 currency, for every currency whose exponent is
+ * NOT 2. Exhaustive as of ISO 4217:2015 amendments - the vast majority of
+ * currencies are 2-digit, so listing the exceptions keeps the table small and
+ * makes an unknown code fall through to the safe default below.
+ *
+ * This is a UNIT COUNT, not a rate and not an amount: it says how finely a
+ * currency can express money, which is what "one minor unit of tolerance" needs
+ * to mean the same thing in JPY as in PLN.
+ */
+const CURRENCY_MINOR_UNIT_DIGITS: Readonly<Record<string, number>> = {
+  // Exponent 0 - no minor unit at all.
+  BIF: 0,
+  CLP: 0,
+  DJF: 0,
+  GNF: 0,
+  ISK: 0,
+  JPY: 0,
+  KMF: 0,
+  KRW: 0,
+  PYG: 0,
+  RWF: 0,
+  UGX: 0,
+  UYI: 0,
+  VND: 0,
+  VUV: 0,
+  XAF: 0,
+  XOF: 0,
+  XPF: 0,
+  // Exponent 3.
+  BHD: 3,
+  IQD: 3,
+  JOD: 3,
+  KWD: 3,
+  LYD: 3,
+  OMR: 3,
+  TND: 3,
+  // Exponent 4 - unit-of-account currencies; included for completeness.
+  CLF: 4,
+  UYW: 4,
+};
+
+/**
+ * Minor-unit digits assumed for a currency the table doesn't name. Two is both
+ * the ISO default and the conservative choice here: an unknown 0-digit currency
+ * merely gets a tolerance finer than its own smallest coin (stricter, never
+ * laxer), while assuming 0 for an unknown 2-digit currency would reject every
+ * ordinary basket carrying a grosz of float dust.
+ */
+const DEFAULT_MINOR_UNIT_DIGITS = 2;
+
+/**
  * Tolerance, in the currency's own units, when checking that the composed lines
  * sum to the reported total.
  *
- * One minor unit of a 2-decimal currency. Wide enough to absorb IEEE-754
- * accumulation across a normal basket and per-line rounding the source already
- * did; narrow enough that a folded discount, a coupon or a zero-defaulted
- * snapshot field cannot hide inside it. NOT tax arithmetic - it compares two sets
- * of gross figures the source itself reported (ADR-042 decision 8's negative half
- * is about never computing a RATE, which this does not).
+ * ONE MINOR UNIT of the order's own currency - `0.01` for PLN/EUR, `1` for JPY,
+ * `0.001` for KWD. Wide enough to absorb IEEE-754 accumulation across a normal
+ * basket and per-line rounding the source already did; narrow enough that a
+ * folded discount, a coupon or a zero-defaulted snapshot field cannot hide
+ * inside it.
  *
- * A fixed value, not derived from the currency's own minor-unit count - fine
- * for PL v1 (PLN/EUR, both 2 decimals), but a future adapter registering a
- * 0- or 3-decimal currency should revisit this rather than reuse it verbatim.
+ * Deriving it rather than fixing it at `0.01` matters in both directions: a
+ * 3-decimal currency (KWD) would otherwise tolerate ten of its own minor units
+ * of unexplained drift, and a 0-decimal currency (JPY) would reject a whole-yen
+ * basket carrying float dust. Neither is reachable from the PL v1 regime, but
+ * the constant is in `libs/core` and the next regime is what it exists for.
+ *
+ * NOT tax arithmetic - it compares two sets of gross figures the source itself
+ * reported (ADR-042 decision 8's negative half is about never computing a RATE,
+ * which this does not). Nor is it a price conversion: nothing here rewrites an
+ * amount, it only decides whether two reported amounts agree.
  */
-const TOTAL_RECONCILIATION_EPSILON = 0.01;
+function totalReconciliationEpsilon(currency: string | undefined): number {
+  const digits =
+    CURRENCY_MINOR_UNIT_DIGITS[(currency ?? '').trim().toUpperCase()] ??
+    DEFAULT_MINOR_UNIT_DIGITS;
+  return 10 ** -digits;
+}
 
 /** Inputs to {@link toRegisterTransactionCommand}. */
 export interface OrderToRegisterTransactionCommandInput {
@@ -96,7 +158,7 @@ export function toRegisterTransactionCommand(
     lines.push(shippingLine);
   }
 
-  assertLinesSumToTotal(lines, order.totals.total, order.id);
+  assertLinesSumToTotal(lines, order.totals.total, order.id, order.totals.currency);
 
   const command: RegisterTransactionCommand = {
     connectionId,
@@ -147,6 +209,7 @@ function assertLinesSumToTotal(
   lines: FiscalTransactionLine[],
   totalGross: number,
   orderId: string,
+  currency: string | undefined,
 ): void {
   if (!Number.isFinite(totalGross)) {
     throw new InvalidFiscalLineError(
@@ -161,7 +224,7 @@ function assertLinesSumToTotal(
     );
   }
 
-  if (Math.abs(summed - totalGross) > TOTAL_RECONCILIATION_EPSILON) {
+  if (Math.abs(summed - totalGross) > totalReconciliationEpsilon(currency)) {
     throw new InvalidFiscalLineError(
       `Order ${orderId} lines sum to ${summed.toFixed(2)} but the order reports a gross total of ` +
         `${totalGross.toFixed(2)}; a fiscal registration may not transmit lines that contradict ` +

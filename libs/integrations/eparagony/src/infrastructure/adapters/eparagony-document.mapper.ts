@@ -100,9 +100,9 @@ export function toCreateReceiptRequest(
     lines.push({ type: 'REBATE', value: balancing, name: BALANCING_LINE_NAME });
   } else if (balancing > 0) {
     // The vendor's own type permits a positive `value` here as a markup, but
-    // core's upstream reconciliation (`assertLinesSumToTotal`,
-    // TOTAL_RECONCILIATION_EPSILON = 0.01) already guarantees this can only
-    // ever be floating-point/rounding dust, never a real declared surcharge -
+    // core's upstream reconciliation (`assertLinesSumToTotal`, tolerating at most
+    // ONE minor unit of the order's own currency) already guarantees this can
+    // only ever be floating-point/rounding dust, never a real declared surcharge -
     // there is no legitimate order shape that reaches this adapter with lines
     // summing to LESS than the total. Recording a fictitious "markup" on a
     // fiscal document to paper over rounding noise is worse than refusing.

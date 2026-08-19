@@ -9,7 +9,8 @@
  * Polls while the newest record is `registering` - the only status backed by a
  * live lease - so the manual "Register receipt" action's in-flight state
  * resolves on its own. A `pending` row has never been sent to the provider
- * (nothing is in flight to observe), so it does not poll.
+ * (nothing is in flight to observe), so it does not poll. The rule itself lives
+ * in `lib/fiscal-poll-interval.ts`, where it is unit-asserted.
  *
  * @module apps/web/src/features/fiscalization/hooks
  */
@@ -17,8 +18,7 @@ import { useQuery, type UseQueryResult } from '@tanstack/react-query';
 import { useApiClient } from '../../../app/api/api-client-provider';
 import { fiscalizationQueryKeys } from '../api/fiscalization.query-keys';
 import type { FiscalRegistrationRecord } from '../api/fiscalization.types';
-
-const FISCAL_POLL_MS = 5000;
+import { fiscalPollInterval } from '../lib/fiscal-poll-interval';
 
 export function useOrderFiscalRegistrationsQuery(
   orderId: string,
@@ -30,9 +30,6 @@ export function useOrderFiscalRegistrationsQuery(
     enabled: Boolean(orderId),
     queryFn: (): Promise<FiscalRegistrationRecord[]> =>
       apiClient.fiscalization.listForOrder(orderId),
-    refetchInterval: (query) => {
-      const newest = query.state.data?.[0];
-      return newest?.status === 'registering' ? FISCAL_POLL_MS : false;
-    },
+    refetchInterval: (query) => fiscalPollInterval(query.state.data?.[0]?.status),
   });
 }
