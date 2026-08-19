@@ -65,6 +65,51 @@ describe('ContentDraftService', () => {
   });
 
   describe('saveDraft', () => {
+    it('should sanitize the draft before persisting it (#2198)', async () => {
+      // The inbound XSS boundary. An operator draft is untrusted the moment a
+      // surface renders it as HTML, and `RichTextView` does.
+      repo.findByKey.mockResolvedValue(null);
+      repo.upsert.mockImplementation((p) =>
+        Promise.resolve(buildField({ draftValue: p.draftValue, updatedBy: p.updatedBy })),
+      );
+
+      await service.saveDraft({
+        productId: 'ol_product_abc',
+        connectionId: null,
+        fieldKey: 'description',
+        value: '<p>ok</p><script>alert(1)</script><img src=x onerror="alert(2)">',
+        userId: 'user-1',
+      });
+
+      const persisted = repo.upsert.mock.calls[0][0].draftValue as string;
+      expect(persisted).not.toContain('<script');
+      expect(persisted).not.toContain('onerror');
+      expect(persisted).not.toContain('alert');
+      expect(persisted).toContain('<p>ok</p>');
+    });
+
+    it('should keep legitimate shop markup that no destination would accept', async () => {
+      // Wider than any `DescriptionFormat` on purpose: narrowing per channel is
+      // the publish path's job, and doing it here would destroy the operator's
+      // own catalogue content.
+      repo.findByKey.mockResolvedValue(null);
+      repo.upsert.mockImplementation((p) =>
+        Promise.resolve(buildField({ draftValue: p.draftValue, updatedBy: p.updatedBy })),
+      );
+
+      await service.saveDraft({
+        productId: 'ol_product_abc',
+        connectionId: null,
+        fieldKey: 'description',
+        value: '<div class="rte"><table><tbody><tr><td>Waga</td></tr></tbody></table></div>',
+        userId: 'user-1',
+      });
+
+      const persisted = repo.upsert.mock.calls[0][0].draftValue as string;
+      expect(persisted).toContain('<table>');
+      expect(persisted).toContain('class="rte"');
+    });
+
     it('should create a row with draftValue when no row exists', async () => {
       repo.findByKey.mockResolvedValue(null);
       repo.upsert.mockImplementation((p) =>

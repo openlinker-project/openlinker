@@ -8,6 +8,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
+import { sanitizeStoredHtml } from '@openlinker/shared/html';
 import { Injectable, Inject } from '@nestjs/common';
 import {
   IIntegrationsService,
@@ -267,7 +268,12 @@ export class MasterProductSyncService implements IMasterProductSyncService {
       ...product,
       sku: product.sku ?? null,
       price: product.price ?? null,
-      description: product.description ?? null,
+      // #2198: shop-supplied HTML is untrusted - OpenLinker pulls whatever the
+      // master returns, so a compromised or hostile source shop could otherwise
+      // store a script vector that `RichTextView` would later render. Sanitized
+      // HERE rather than in each adapter's mapper so every current and future
+      // ProductMaster is covered by one call.
+      description: sanitizeStoredHtml(product.description ?? null),
       images: product.images ?? null,
     };
   }

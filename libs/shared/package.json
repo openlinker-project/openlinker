@@ -29,6 +29,10 @@
       "types": "./dist/errors/index.d.ts",
       "require": "./dist/errors/index.js"
     },
+    "./html": {
+      "types": "./dist/html/index.d.ts",
+      "require": "./dist/html/index.js"
+    },
     "./types": {
       "types": "./dist/types/index.d.ts",
       "require": "./dist/types/index.js"
@@ -82,7 +86,8 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
-    "redis": "4.6.12"
+    "redis": "4.6.12",
+    "sanitize-html": "2.17.5"
   },
   "peerDependencies": {
     "@nestjs/common": "^10.0.0",
@@ -99,6 +104,7 @@
   "devDependencies": {
     "@types/jest": "29.5.12",
     "@types/node": "20.11.30",
+    "@types/sanitize-html": "^2.16.1",
     "@typescript-eslint/eslint-plugin": "7.3.1",
     "@typescript-eslint/parser": "7.3.1",
     "eslint": "8.57.0",

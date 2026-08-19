@@ -9,6 +9,7 @@
  * @implements {IContentDraftService}
  */
 import { Inject, Injectable } from '@nestjs/common';
+import { sanitizeStoredHtml } from '@openlinker/shared/html';
 import { Logger } from '@openlinker/shared/logging';
 import type { ProductContentField } from '../../domain/entities/product-content-field.entity';
 import { ContentConflictException } from '../../domain/exceptions/content-conflict.exception';
@@ -46,11 +47,24 @@ export class ContentDraftService implements IContentDraftService {
       fieldKey: cmd.fieldKey,
     });
 
+    // #2198: the inbound XSS boundary. An operator-authored draft is untrusted
+    // input the moment a surface renders it as HTML, and `RichTextView` does.
+    // Deliberately wider than any destination format - narrowing per channel is
+    // the publish path's job (ADR-046).
+    const draftValue = sanitizeStoredHtml(cmd.value);
+    if (draftValue !== cmd.value) {
+      this.logger.warn(
+        `[content] draft sanitized on save: productId=${cmd.productId} ` +
+          `connectionId=${cmd.connectionId ?? 'master'} fieldKey=${cmd.fieldKey} ` +
+          `before=${cmd.value.length}B after=${draftValue.length}B`
+      );
+    }
+
     return this.repository.upsert({
       productId: cmd.productId,
       connectionId: cmd.connectionId,
       fieldKey: cmd.fieldKey,
-      draftValue: cmd.value,
+      draftValue,
       baseValue: existing?.baseValue ?? null,
       baseVersion: existing?.baseVersion ?? null,
       // Saving a draft implicitly acknowledges any prior conflict — the user is taking ownership.
