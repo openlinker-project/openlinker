@@ -33,12 +33,16 @@ invoking, and degrade gracefully when an adapter doesn't implement it.
 | `ShopProductManagerPort` | listings | `ProductPublisher` | Publish a product as a native listing on a shop (the shop-publish flow). | `publishProduct` |
 | `ShippingProviderManagerPort` | shipping | `ShippingProviderManager` *(open-world — see note)* | Generate shipping labels, read tracking, and list supported shipping methods. | `generateLabel` · `getTracking` · `getSupportedMethods` |
 | `InvoicingPort` | invoicing | `Invoicing` | Issue fiscal documents, fetch them, upsert a customer, and report supported document types. | `issueInvoice` · `getInvoice` · `upsertCustomer` · `getSupportedDocumentTypes` |
+| `FiscalizationPort` | fiscalization | `Fiscalization` | Hand a completed sale to a provider that performs or brokers its fiscal registration (never OL itself). | `registerTransaction` |
 | `ContentPublisherPort` | content | *(internal — not registry-resolved)* | Publish a content field (e.g. a product description) to a channel or the master. | `publish` |
 
 **Open-world capability vocabulary (#576).** The closed, well-known set is
 `CoreCapabilityValues` = `ProductMaster`, `InventoryMaster`, `OrderSource`,
 `OrderProcessorManager`, `OfferManager`, `ProductPublisher`,
-`CategoryProvisioner`, `Invoicing`. Adapters may register **additional**
+`CategoryProvisioner`, `Invoicing`, `Fiscalization`. `Fiscalization` joins the
+closed set rather than the open-world escape (#1908) because the connection
+DTOs validate `enabledCapabilities` against it with a strict `@IsIn`. Adapters
+may register **additional**
 capability strings at runtime without a core change — `ShippingProviderManager`
 is the live example (declared in the InPost / DPD / Allegro manifests, resolved
 through the registry, but intentionally *not* a member of the closed set). The
@@ -151,6 +155,24 @@ Subiekt nexo implements `RegulatoryStatusReader`, `CorrectionIssuer`, and
 
 See [ADR-026](./architecture/adrs/026-country-agnostic-invoicing-domain.md) for
 the country-agnostic invoicing design.
+
+### `FiscalizationPort` (fiscalization) — 1
+
+| Sub-capability | What it does | Method(s) | Guard |
+|---|---|---|---|
+| `FiscalRegistrationLocator` | Resolve an `in-doubt` outcome by querying the provider for a registration already made under this `(connectionId, idempotencyKey)` pair — never a resubmit. | `locateByQuery` | `isFiscalRegistrationLocator` |
+
+**Adapter coverage:** eparagony.pl implements `FiscalRegistrationLocator`. No
+device/peripheral sub-capability exists: `print`/`fiscalize` are booleans inside
+the vendor's document payload, not separate operations, and no known adapter
+exposes fiscal-printer control as a distinct call — see
+[ADR-042 § Decision 5](./architecture/adrs/042-fiscalization-capability.md) for
+why one was designed and then not built. A periodic journal/audit export
+(`FiscalJournalExporter`) is the *named first extension point* for a future
+adapter, not yet implemented by any shipped one.
+
+See [ADR-042](./architecture/adrs/042-fiscalization-capability.md) for the
+fiscalization capability design.
 
 ---
 

@@ -31,6 +31,7 @@ COPY libs/test-kit/package.json ./libs/test-kit/
 COPY libs/integrations/ai/package.json ./libs/integrations/ai/
 COPY libs/integrations/allegro/package.json ./libs/integrations/allegro/
 COPY libs/integrations/dpd-polska/package.json ./libs/integrations/dpd-polska/
+COPY libs/integrations/eparagony/package.json ./libs/integrations/eparagony/
 COPY libs/integrations/erli/package.json ./libs/integrations/erli/
 COPY libs/integrations/infakt/package.json ./libs/integrations/infakt/
 COPY libs/integrations/inpost/package.json ./libs/integrations/inpost/
@@ -78,6 +79,7 @@ COPY libs/test-kit/package.json ./libs/test-kit/
 COPY libs/integrations/ai/package.json ./libs/integrations/ai/
 COPY libs/integrations/allegro/package.json ./libs/integrations/allegro/
 COPY libs/integrations/dpd-polska/package.json ./libs/integrations/dpd-polska/
+COPY libs/integrations/eparagony/package.json ./libs/integrations/eparagony/
 COPY libs/integrations/erli/package.json ./libs/integrations/erli/
 COPY libs/integrations/infakt/package.json ./libs/integrations/infakt/
 COPY libs/integrations/inpost/package.json ./libs/integrations/inpost/
