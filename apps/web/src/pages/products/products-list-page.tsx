@@ -16,6 +16,12 @@
  *   the capability-gated wizard launch (#1096) and write-access gate (#1704)
  *   carried over unchanged.
  *
+ * Row identity follows the shared cells (#2092, epic #2086): the sub-line under
+ * the product name is a labelled `SKU: <value>` (a bare mono string does not say
+ * which kind of identifier it is), and the Source column renders the shared
+ * `ConnectionCell` with the channel pill as its adornment — resolved name over a
+ * shortened, copyable connection id, fed from ONE batched connections read.
+ *
  * @module apps/web/src/pages/products
  */
 import {
@@ -45,6 +51,7 @@ import { CheckboxCell } from '../../shared/ui/checkbox-cell';
 import { useMediaQuery } from '../../shared/ui/use-media-query';
 import { useDebouncedValue } from '../../shared/hooks/use-debounced-value';
 import { usePlatforms } from '../../shared/plugins';
+import { resolvePlatformLabel } from '../../features/mappings';
 import { useWriteAccess } from '../../shared/auth/use-permission';
 import { useDemoMode } from '../../features/system';
 import { useProductsQuery } from '../../features/products/hooks/use-products-query';
@@ -61,7 +68,7 @@ import {
   ProductListSortFieldValues,
   ProductStockFilterValues,
 } from '../../features/products/api/products.types';
-import { useConnectionsQuery } from '../../features/connections';
+import { ConnectionCell, ConnectionFold, useConnectionsQuery } from '../../features/connections';
 import type { Connection } from '../../features/connections';
 import { selectPublishDestinations } from '../../features/listings';
 import {
@@ -275,6 +282,10 @@ export function ProductsListPage(): ReactElement {
     () => (connectionsQuery.data ?? []).filter((c) => c.status === 'active'),
     [connectionsQuery.data],
   );
+  // One batched read, indexed once — the Source column's `ConnectionCell` must
+  // never cost a request per row (#1996). A whole `Connection` structurally
+  // satisfies `ConnectionCellFacts` (`{ name, status }`), so this existing map
+  // feeds the cell directly rather than growing a second, parallel index.
   const connectionById = useMemo(() => {
     const map = new Map<string, Connection>();
     (connectionsQuery.data ?? []).forEach((c) => map.set(c.id, c));
@@ -282,8 +293,7 @@ export function ProductsListPage(): ReactElement {
   }, [connectionsQuery.data]);
 
   const platformLabel = useCallback(
-    (platformType: string): string =>
-      platforms.find((p) => p.platformType === platformType)?.displayName ?? platformType,
+    (platformType: string): string => resolvePlatformLabel(platforms, platformType),
     [platforms],
   );
 
@@ -552,8 +562,7 @@ export function ProductsListPage(): ReactElement {
 
   const soleConnectionName =
     publishDestinations.length === 1
-      ? (platforms.find((p) => p.platformType === publishDestinations[0]!.connection.platformType)
-          ?.displayName ?? publishDestinations[0]!.connection.platformType)
+      ? resolvePlatformLabel(platforms, publishDestinations[0]!.connection)
       : null;
 
   const atCap = selectedIds.size >= BULK_SELECTION_CAP;
@@ -657,46 +666,95 @@ export function ProductsListPage(): ReactElement {
         id: 'name',
         header: 'Product',
         sortable: true,
-        cell: (product) => (
-          <span className="product-row">
-            <ProductThumbnail src={product.images?.[0]} name={product.name} />
-            <span className="products-cell-stack">
-              <span className="ds-row" style={{ gap: 'var(--space-2)', alignItems: 'center' }}>
-                <Link to={product.id} className="product-row__name product-row__name--link">
-                  {product.name}
-                </Link>
-                {(product.variantCount ?? 0) > 1 ? (
-                  <StatusBadge tone="neutral" compact>
-                    {product.variantCount} variants
-                  </StatusBadge>
+        cell: (product): ReactNode => {
+          const origin = product.externalIds?.[0];
+          return (
+            <span className="product-row">
+              <ProductThumbnail src={product.images?.[0]} name={product.name} />
+              <span className="products-cell-stack">
+                <span className="ds-row" style={{ gap: 'var(--space-2)', alignItems: 'center' }}>
+                  <Link to={product.id} className="product-row__name product-row__name--link">
+                    {product.name}
+                  </Link>
+                  {(product.variantCount ?? 0) > 1 ? (
+                    <StatusBadge tone="neutral" compact>
+                      {product.variantCount} variants
+                    </StatusBadge>
+                  ) : null}
+                </span>
+                {/* Labelled, not a bare mono string (#2092): unlabelled, an
+                    identifier under the product name reads as "some id" and the
+                    operator has to know by convention that it is the SKU rather
+                    than an EAN, an internal id or an external reference. The
+                    label is body text, the value stays mono — and `.mono-text`
+                    inside a table cell truncates at 20ch, which is why the
+                    `title` sits on the VALUE and not on the wrapper (a wrapper
+                    title would describe "SKU: …" and leave the truncated value
+                    unreachable). No EAN line: it lives on the variant, so a
+                    product row could only ever carry one when the product
+                    resolves to a single variant. */}
+                {product.sku ? (
+                  <span className="text-muted products-cell-sub">
+                    SKU:{' '}
+                    <span className="mono-text" title={product.sku}>
+                      {product.sku}
+                    </span>
+                  </span>
+                ) : null}
+                {/* The Source column is `hideBelow: 1024`, so below that width the
+                    product's origin would vanish. It folds here instead (#2094):
+                    a product's source connection is this identity column's own
+                    subject. `display: none` above the breakpoint means exactly one
+                    of the two renderings is exposed at any width. */}
+                {origin ? (
+                  <ConnectionFold
+                    connectionId={origin.connectionId}
+                    connection={connectionById.get(origin.connectionId) ?? null}
+                    loading={connectionsQuery.isLoading}
+                    adornment={
+                      <span className="channel-pill" data-channel={origin.platformType}>
+                        {platformLabel(origin.platformType)}
+                      </span>
+                    }
+                  />
                 ) : null}
               </span>
-              {product.sku ? (
-                <span className="text-muted products-cell-sub mono-text" title={product.sku}>
-                  {product.sku}
-                </span>
-              ) : null}
             </span>
-          </span>
-        ),
+          );
+        },
       },
       {
         id: 'source',
         header: 'Source',
+        // Stays 1024 (#1996): lowering it to 768 was rejected because it keeps
+        // the column only behind horizontal scroll. The tablet relocation of
+        // this fact into the Product cell shipped as #2094 (S8).
         hideBelow: 1024,
         cell: (product): ReactNode => {
           const origin = product.externalIds?.[0];
           if (!origin) return <span className="text-muted">-</span>;
-          const connectionName = connectionById.get(origin.connectionId)?.name;
           return (
-            <span className="products-cell-stack">
-              <span className="channel-pill" data-channel={origin.platformType}>
-                {platformLabel(origin.platformType)}
-              </span>
-              {connectionName ? (
-                <span className="text-muted products-cell-sub">{connectionName}</span>
-              ) : null}
-            </span>
+            <ConnectionCell
+              connectionId={origin.connectionId}
+              // `.get()` returns undefined on a miss, which ConnectionCell reads
+              // as "resolve it yourself" and would silently reinstate the
+              // per-row fetch #1996 rejected — coalesce to null and hand it the
+              // batched query's loading state instead, or a cold load renders a
+              // column of "Unknown".
+              connection={connectionById.get(origin.connectionId) ?? null}
+              loading={connectionsQuery.isLoading}
+              // Products is the one list that passes the channel pill: the
+              // source connection's channel is the fact an operator scans for
+              // first here, whereas Listings carries Channel as its own column
+              // and Shipments' adornment is a carrier dot. The platformType
+              // comes off the product's own external-id row, so the pill renders
+              // even while the connection itself is still unresolved.
+              adornment={
+                <span className="channel-pill" data-channel={origin.platformType}>
+                  {platformLabel(origin.platformType)}
+                </span>
+              }
+            />
           );
         },
       },
@@ -769,6 +827,7 @@ export function ProductsListPage(): ReactElement {
       renderStockCell,
       renderCoveragePills,
       connectionById,
+      connectionsQuery.isLoading,
       platformLabel,
       write.visible,
       hasListingGap,
@@ -1115,6 +1174,7 @@ export function ProductsListPage(): ReactElement {
         <>
           <DataTable
             caption="Products"
+            className="products-table"
             columns={columns}
             rows={items}
             rowKey={(product) => product.id}
@@ -1191,7 +1251,20 @@ export function ProductsListPage(): ReactElement {
                   <span className="product-row__name product-row__name--wrap">{product.name}</span>
                 </span>
               ),
-              subtitle: (product) => product.sku ?? '-',
+              // Same labelled form as the desktop sub-line, and nothing at all
+              // when there is no SKU: an unlabelled identifier reads as "some
+              // id" on a card exactly as it does in a row, and the AC's "never
+              // `SKU: -`" is a statement about the fact, not about one surface.
+              // Text-only by choice, not by necessity — this table sets no
+              // `rowHref`, so `DataTableCard` does NOT wrap the card's title and
+              // subtitle in a row link and hosting a cell here would be legal.
+              // The card simply has no need of a second copy control.
+              subtitle: (product) =>
+                product.sku ? (
+                  <>
+                    SKU: <span className="mono-text">{product.sku}</span>
+                  </>
+                ) : null,
               meta: (product) => (
                 <span className="data-table__badge-row">
                   {product.price !== null ? (

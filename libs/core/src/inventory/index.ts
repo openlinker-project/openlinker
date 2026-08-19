@@ -20,6 +20,10 @@ export { InventoryRepositoryPort } from './domain/ports/inventory-repository.por
 // Domain Entities
 export { InventoryItem as InventoryItemEntity } from './domain/entities/inventory-item.entity';
 
+// Domain exceptions
+export { InventoryReturningUnsupportedError } from './domain/exceptions/inventory-returning-unsupported.error';
+export { InventoryRowVanishedError } from './domain/exceptions/inventory-row-vanished.error';
+
 // Application Services
 export { IInventoryService } from './application/services/inventory.service.interface';
 export { InventoryService } from './application/services/inventory.service';

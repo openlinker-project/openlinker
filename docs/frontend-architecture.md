@@ -94,6 +94,8 @@ A feature must keep its public-facing modules inside the canonical subdirectory 
 
 **Cross-feature consumption example (#1787):** `posthog-settings` imports `DemoEventCatalog` and `DemoEventGroup` from the `demo` feature's public barrel (`import { DemoEventCatalog, type DemoEventGroup } from '../../demo';`) to auto-derive its Product-events settings panel's group toggles from the event catalog, rather than hand-maintaining a duplicate group list. This is the intended shape of cross-feature consumption described above, not an exception to it.
 
+**Cross-feature consumption example (#2150):** `invoicing` type-imports `OrderRecord` from the `orders` feature's public barrel (`import type { OrderRecord } from '../../orders';`) in `order-invoice-panel.tsx` and `sales-document-block-copy.ts`, and `shipments` imports `ordersQueryKeys` the same way in `use-notify-dispatched-mutation.ts`. `orders` is now the most cross-imported feature barrel in the app — five call sites (Orders, Shipments, Invoices, Products, Customers) render its `OrderIdentityCell` — so the slug was added to both `no-restricted-imports` pattern groups (`features/**` and `plugins/**`) in `.eslintrc.js`, for every canonical subdirectory (`orders/api`, `orders/hooks`, `orders/components`, `orders/lib`, `orders/types`).
+
 ## Routing Conventions
 
 Routing uses explicit React Router definitions under `src/app/routes`. Avoid file-system routing for FE-001 so the first app stays predictable and easy to refactor inside the monorepo.

@@ -9427,7 +9427,18 @@ a.kpi-card:focus-visible {
   background: var(--bg-surface-muted);
   padding: 1px 6px;
   border-radius: var(--radius-xs);
-  max-width: 18ch;
+  /* 18ch was sized for a shortened bare UUID (13 chars) and clipped the longer
+   * `ol_<entity>_…` short forms a SECOND time, appending a meaningless ellipsis
+   * to an already-elided id (#2087). `shortenId()` emits `prefix + 7`, and the
+   * longest prefix `formatInternalId` produces for a WELL-KNOWN entity type is
+   * `ol_shopproduct_` (15, from `CoreEntityTypeValues` + `ENTITY_TYPE_ID_PREFIX`;
+   * a plugin-registered type falls through to its own lowercased name and could
+   * exceed this), so the ceiling is 22 characters. 26ch rather than 22ch because
+   * `box-sizing: border-box` (:498)
+   * makes this rule's own `padding: 1px 6px` count against `max-width` and
+   * `--tracking-wide` adds 0.02em of advance per glyph. A genuinely long raw
+   * value (a webhook URL, a tracking number) still ellipsises here as before. */
+  max-width: 26ch;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -9473,6 +9484,395 @@ a.kpi-card:focus-visible {
   transform: translateX(0);
 }
 
+/* ── ConnectionFold (#2094) ──────────────────────────────────────────
+ * The tablet relocation of `ConnectionCell`'s first line. Products, Shipments
+ * and Invoices all declare `hideBelow: 1024` on their Connection column — a
+ * value that fires at `max-width: 1023.98px`, i.e. "desktop only" — so below
+ * that width the fact vanished entirely. Lowering the three thresholds to 768
+ * was the cheaper option and was rejected in #1996: it keeps the column behind
+ * horizontal scroll, and a fact an operator has to scroll sideways to find is
+ * one they stop checking.
+ *
+ * So the fact moves instead, into whichever adjacent cell owns the neighbouring
+ * question — the pattern `.orders-order-channel` (:9013) already established for
+ * the channel pill. Same silhouette as that rule, deliberately: one line,
+ * adornment + name, muted, ellipsising under pressure.
+ *
+ * The visibility switch lives HERE rather than in the components. Its media
+ * query is the exact complement of `.data-table__cell--hide-below-1024`'s
+ * (:2983), so the invariant the design needs — never BOTH — holds at every
+ * width, and between 768px and the breakpoint exactly one is exposed. (Below
+ * 768 `DataTable` swaps to cards and neither renders; a card fold is #2094's
+ * declared out-of-scope.)
+ *
+ * `display: none` rather than `visibility: hidden` for a LAYOUT reason, not an
+ * accessibility one — both drop out of the accessibility tree, but `visibility`
+ * still occupies space, so at desktop width the fold would reserve a phantom
+ * third line inside all three host cells.
+ *
+ * No new token: 6px matches `.connection-cell__line`'s gap, 0.75rem matches
+ * `.orders-cell-sub`, and both colours are existing text tokens. */
+/* `max-width: 100%` is what lets the children's ellipsis fire at all. A column
+ * flex container with `align-items: flex-start` sizes each child to its own
+ * content, so without a cap resolving against a definite width the fold renders
+ * at full intrinsic width and widens the host column instead — the trap this
+ * epic's own carve-out documents ("before capping a cell inside a frozen pane,
+ * check its siblings"). It bites hardest on Products, where the fold sits in a
+ * `stickyLeftColumns` pane and its channel pill alone is ~100px. The hosts
+ * supply the definite width (`.invoice-document-cell` already had one; the other
+ * two gain `min-width: 0` + a child cap below). */
+.conn-fold {
+  display: none;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+@media (max-width: 1023.98px) {
+  .conn-fold {
+    display: inline-flex;
+  }
+}
+
+/* Same shape as `.connection-cell__adornment` (:9827) — grouped there rather
+ * than duplicated once the fold shipped. */
+
+/* The fold hosts `ConnectionEntityLabel`, whose name is a link at
+ * `.entity-label__name` (:4325) — reset to the fold's muted scale so it reads as
+ * a relocated sub-line rather than as a second primary label inside the host
+ * cell.
+ *
+ * Size and weight only. Colour is scoped to `--link` deliberately: at (0,2,0)
+ * this selector outranks `--unknown` (:4354) and `--loading` (:4349), both
+ * (0,1,0), so colouring the base would render an UNRESOLVED connection in the
+ * same tone as a resolved one and silently drop the muted signal the desktop
+ * cell keeps. */
+.conn-fold .entity-label__name {
+  font-size: 0.75rem;
+  font-weight: 400;
+}
+
+.conn-fold .entity-label__name--link {
+  color: var(--text-secondary);
+}
+
+/* Shortened id, Unknown branch only — see `ConnectionFold`. Never copyable. */
+.conn-fold__id {
+  flex: none;
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+}
+
+/* Status: the dot carries the signal, `title` and an `sr-only` span carry the
+ * word. Same tones as `.connection-cell__status` (:9846), one size smaller
+ * because the fold is a sub-line. */
+.conn-fold__status {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+}
+
+.conn-fold__status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-pill);
+}
+
+.conn-fold__status--disabled .conn-fold__status-dot {
+  background: var(--status-disabled-fg);
+}
+
+.conn-fold__status--error .conn-fold__status-dot {
+  background: var(--status-error-fg);
+}
+
+.conn-fold__status--needs_reauth .conn-fold__status-dot {
+  background: var(--status-warning-fg);
+}
+
+/* Shipments' host: the Processor badge with the fold beneath it. Capped for the
+ * same reason `.invoice-document-cell` is (:9596) — an uncapped column flex
+ * container sizes to its content, so the fold's ellipsis could never fire and a
+ * long carrier-connection name would widen the column at exactly the width where
+ * the table is already scrolling. 220px matches `.connection-cell__body`, whose
+ * budget this fold's first line mirrors. */
+.shipments-processor-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: flex-start;
+  min-width: 0;
+  max-width: 220px;
+}
+
+.shipments-processor-cell > * {
+  max-width: 100%;
+}
+
+/* Invoices' Document type cell becomes the tallest thing on the row at tablet
+ * width — Regulatory, Clearance ref. AND Connection are all `hideBelow: 1024`,
+ * so nothing else on the row is multi-line and the two-line Order cell centres
+ * against a three-line neighbour. Per the carve-out's heuristic that is the
+ * align-the-whole-row branch; `td:first-child` (which only topped the checkbox)
+ * was correct only while the identity cell set the height. */
+.invoices-table td {
+  vertical-align: top;
+}
+
+/* ── OrderIdentityCell (#2087) ───────────────────────────────────────
+ * A thumbnail beside the same two-level stack `.orders-cell-stack` (:8894) and
+ * `.connection-cell__body` (below) already describe — what a person reads on
+ * top, the rest beneath. The thumbnail is what Orders lacks today and what
+ * Shipments and Invoices lack entirely.
+ *
+ * A column flex container with `align-items: flex-start` sizes each child to its
+ * own content, so a long order number or item title escapes the box once the
+ * column narrows; capping the children at the container width lets the ellipsis
+ * these primitives ALREADY declare (`.entity-label__name`,
+ * `.orders-items-preview`) actually fire, instead of introducing a character cap.
+ *
+ * No new colour, radius, shadow or spacing value: `--space-3` is the existing
+ * token, 2px matches the sibling stacks' inner gap, and 100% / `flex` are
+ * structural.
+ */
+.order-cell {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.order-cell__body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: flex-start;
+  min-width: 0;
+  flex: 1 1 auto;
+  /* The mockup omits this cap, but its own specimen tables are auto-layout too,
+   * so it never exercised the failure: `max-width: 100%` below resolves against
+   * a container whose width is content-derived inside `.data-table`
+   * (`width: auto`, :2699), so line 1's ellipsis can never fire and a 30-char
+   * shop order ref widens the Order column and scrolls the whole table. 250px
+   * matches `.orders-items-line`, which already governs line 2 of this same
+   * cell, and mirrors why `.connection-cell__body` caps at 220px (:9538). */
+  max-width: 250px;
+}
+
+.order-cell__body > * {
+  max-width: 100%;
+}
+
+/* Merged Document-type cell (#2090). Two columns answering one question became
+ * one two-line cell: the document number (a PDF link) over the document type.
+ * Same two-level shape as the identity cells above, without a thumbnail — there
+ * is no product to picture.
+ *
+ * Capped like its siblings, and for the same reason: neither line is actually
+ * bounded. `providerInvoiceNumber` is a `text` column filled from an
+ * operator-authored numbering pattern or from whatever the provider assigns
+ * (`FS/MAGAZYN-1/2026/08/000042` is a routine PL series), and `documentType` is
+ * open-world at the boundary. In an auto-layout `.data-table` a flex column with
+ * `align-items: flex-start` sizes to content, so without a cap no child's
+ * ellipsis can fire and one long series widens the column. 220px matches
+ * `.connection-cell__body`. */
+.invoice-document-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: flex-start;
+  min-width: 0;
+  max-width: 220px;
+}
+
+.invoice-document-cell > * {
+  max-width: 100%;
+}
+
+.invoice-document-cell__type {
+  font-size: 0.75rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Customers' identity cell (#2093). Only the nameless branch renders a stack:
+ * with a name there is one line and nothing here applies. The email hash alone
+ * under a "Customer" header reads as a bug, so the second line states that no
+ * name was recorded — the same shape as `.invoice-document-cell` above, minus
+ * its cap.
+ *
+ * No cap is needed because neither child can widen the column: the qualifier is
+ * a constant string, and the hash — a 64-character SHA-256 hex, NOT a short
+ * value — is bounded by `.data-table td .mono-text { max-width: 20ch }` (:2656),
+ * which is also what makes it ellipsise. Drop the `.mono-text` class from the
+ * hash and this cell needs its own cap.
+ *
+ * The weight pin is not decoration: this is the FIRST cell, so `DataTable`
+ * wraps it in `.data-table__row-link` (`font-weight: 500`, :2885). Without it
+ * the qualifier renders at the same emphasis as the identity it qualifies —
+ * the inversion `.orders-cell-sub` pins 400 against on the card (:9688). */
+.customer-identity {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: flex-start;
+  min-width: 0;
+}
+
+.customer-identity__note {
+  font-size: 0.75rem;
+  font-weight: 400;
+}
+
+/* Adopting `ConnectionCell` made the Source column (~2 lines) the tallest thing
+ * on a Customers row, so `.data-table td { vertical-align: middle }` (:2798)
+ * centres the one-line Customer name — the row's primary label — against it,
+ * while the connection name it should read beside sits on line 1. The style
+ * guide's heuristic: if another column sets the row height, align the WHOLE
+ * row. Customers has no leading control, so there is nothing to align on its
+ * own instead; this is the `.orders-table td` shape, same reason.
+ *
+ * Descendant match on purpose — `DataTable` hardcodes the `<table>` class and
+ * puts the caller's `className` on the container div — so it ties on
+ * specificity with `.data-table td` and wins by source order alone. It MUST
+ * stay after that rule in this file. */
+.customers-table td {
+  vertical-align: top;
+}
+
+/* The row's leading checkbox is the primary control on a list whose main action
+ * is "select rows -> Retry selected". `.data-table td` is `vertical-align:
+ * middle` (:2798), so at the ~60px identity-row height a 13px checkbox centres
+ * opposite the GAP between the two identity lines instead of the identity it
+ * selects — the same geometry #2089 fixed for its leading expander, but that rule
+ * is keyed on `.data-table__row--expandable` and this table has no expander. A
+ * column of misaligned boxes at 60px pitch is how an operator mis-ticks the
+ * neighbouring row. */
+.invoices-table td:first-child {
+  vertical-align: top;
+}
+
+/* Every cell in an Orders row is a stack, so the row is anchored at the top
+ * (#2091). `.data-table td` is `vertical-align: middle` (:2798), and the row
+ * height here is set by the MONEY column, which stacks four items on nearly
+ * every row (total, payment badge, invoice badge or the "Issue invoice" CTA,
+ * created) — 70-85px against the identity cell's ~37px. At that height the Order
+ * cell centres while #2089's global rule top-aligns the leading expander and the
+ * select checkbox centres in a third place: three vertical anchors in one row.
+ *
+ * Table-wide rather than `.invoices-table`'s `td:first-child` (:9562): that
+ * selector targets the CHECKBOX, which is Invoices' first cell because it has no
+ * `expandable`. Here the first cell is the expander, which #2089 already
+ * top-aligns, so the same selector would be a no-op — and it would still leave
+ * the identity cell centred against it. */
+.orders-table td {
+  vertical-align: top;
+}
+
+/* Products takes the same table-wide anchor as Orders, for the same reason
+ * (#2092). Applying the carve-out's heuristic — "what sets the row height?" —
+ * the answer here is NOT the identity cell: `ConnectionCell` is ~40px while
+ * Stock stacks value + badge + `reserved N` (~56px) and the merged money column
+ * stacks price + updated + created (~51px). Either dominates on its own and both
+ * are unconditional, so top-aligning the leading control alone would leave the
+ * Source cell centred against taller neighbours — exactly the three-anchor row
+ * #2091 removed from Orders. (Listings is ~41px, not the ~50px an earlier draft
+ * claimed: `.products-row-cta` overrides `.button--sm`'s 1.75rem with
+ * `height: auto` at equal specificity and later source order, so "+ Publish" is
+ * ~18px. The conclusion is unaffected.)
+ *
+ * Every cell here is a top-anchored composite — not literally a
+ * `.products-cell-stack`: the Product cell's root is `.product-row`, the select
+ * cell is a `CheckboxCell`, and Source is now `.connection-cell`. `top` is right
+ * for each by inspection rather than by construction, so re-walk the columns if
+ * you add one. The leading expander is separately covered by #2089's global rule;
+ * the select checkbox in the second cell is not, and gains line-1 alignment
+ * from this.
+ *
+ * `DataTable` puts the caller's `className` on the CONTAINER and hardcodes the
+ * `<table>` class, so this is a descendant match that ties on specificity with
+ * `.data-table td { vertical-align: middle }` (:2798) and wins by source order
+ * alone — it must stay AFTER that rule in this file. */
+.products-table td {
+  vertical-align: top;
+}
+
+/* Products is the only list pairing `ConnectionCell` with a TEXT adornment, and
+ * the cell's 220px body cap was measured in #2027 for an adornment that is either
+ * absent or a 14px `ConnectionDot`. A `.channel-pill` is 2px border + 16px
+ * padding + a 6px dot + a 4px gap + mono 11px text at 0.6em advance, so
+ * `WooCommerce` runs ~100px — leaving the connection NAME ~113px inside 220px,
+ * about 17 characters at 13px. `PrestaShop - Terra Store` and
+ * `PrestaShop - Terra Outlet` therefore ellipsise to the same string: line 1
+ * stops discriminating on the exact axis it exists for, and the half that
+ * survives is the one the pill already said.
+ *
+ * Per the carve-out, a geometry budget is per-page and opted into positively,
+ * never inherited. 17rem gives the name ~165px; the two names above diverge at
+ * character 19 (~124px), so the failure mode is cleared with ~6 characters of
+ * slack rather than by fitting either name exactly. */
+.products-table .connection-cell__body {
+  max-width: 17rem;
+}
+
+/* Frozen-pane budget (#2089). 1024px is the worst case by construction: the
+ * sidebar becomes a persistent 240px grid column at exactly this width (:1048)
+ * AND the tables hosting this cell un-hide their Connection column there, so
+ * content width is 1024 - 240 - 64 = 720px. Shipments freezes Status + Order
+ * (`stickyLeftColumns={2}`), and on a triage page Status carries a 32ch error
+ * string — at 250px the frozen cluster leaves under 100px of scrollable window
+ * for every remaining column. Narrower only inside the frozen pane, and only
+ * below the desktop anchor: an unfrozen instance of this cell has the whole row
+ * to grow into.
+ *
+ * Scoped to the page it was MEASURED for since #2091. Keyed on
+ * `.data-table__sticky-col` alone it silently caught Orders too, which freezes
+ * `stickyLeftColumns={2}` WITH `expandable` — a frozen pane of expander +
+ * checkbox + Order, nothing like Shipments' 32ch Status cluster. Worse, the cap
+ * could not even take effect there: the identity cell's two siblings inside
+ * `.orders-cell-stack` are uncapped (`.orders-order-channel` renders a pill plus
+ * `→ WooCommerce +2` at ~200px, `.orders-row-retry` is `white-space: nowrap`),
+ * so the column sized past 11rem and line 1 ellipsised beside empty space. A
+ * per-page geometry budget has to be opted into per page, not inherited by
+ * whichever table freezes a column next. */
+@media (max-width: 1279px) {
+  .shipments-table .data-table__sticky-col .order-cell__body {
+    max-width: 11rem;
+  }
+}
+
+/* The mobile card hosts this cell in `<strong class="data-table__card-title">`
+ * (weight 600). Line 1 pins its own 500 via `.entity-label__name`, so without
+ * this the item name would render BOLDER than the order number it qualifies —
+ * inverting the hierarchy on exactly the surface where the two-line cell is the
+ * card's title. `.orders-cell-sub` is never emphasis.
+ *
+ * `.orders-more-count` needs it for the same reason and pins no weight of its own
+ * (:8943), so without this the `+N` chip renders 600 on the card and 400 in the
+ * desktop column — one cell, two weights. */
+.orders-cell-sub,
+.orders-more-count {
+  font-weight: 400;
+}
+
+/* At ~60px the 24px expander centres opposite the GAP between the two text lines
+ * rather than the identity it belongs to. Shipments is the first tall row with a
+ * leading toggle (#2089); listings has no `expandable`.
+ *
+ * `vertical-align` ONLY — no padding nudge. The cell inherits the table's
+ * `--space-3` vertical padding (:2794) and the 24px toggle is the same height as
+ * a 13px line box, so top-aligning lands it on line 1 at every row height. A
+ * `padding-top` tuned for ~60px would misalign the two OTHER `expandable` tables
+ * (orders, products), which are out of this issue's scope; they inherit the
+ * top-alignment, which is an improvement on their two-line rows too. */
+.data-table__row--expandable .data-table__expand-cell {
+  vertical-align: top;
+}
+
 /* ── ConnectionCell (#2027) ──────────────────────────────────────────
  * Two-line composition: adornment + name link on line 1, shortened id with
  * hover-Copy plus an attention-only status note on line 2. The 220px cap
@@ -9510,6 +9910,7 @@ a.kpi-card:focus-visible {
   min-width: 0;
 }
 
+.conn-fold__adornment,
 .connection-cell__adornment {
   display: inline-flex;
   align-items: center;
@@ -11771,12 +12172,6 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
 .shipment-row-detail__actions {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-2);
-}
-
-.shipments-page__provider {
-  display: inline-flex;
   align-items: center;
   gap: var(--space-2);
 }
@@ -16451,12 +16846,32 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
 }
 
 /* Two-line table cells (product identity / source / stock). */
-.products-cell-stack { display: flex; flex-direction: column; gap: 2px; align-items: flex-start; }
+/* `min-width: 0` + a child cap so the fold's ellipsis can fire: the two prior
+   children were bounded in practice (the name has its own ellipsis, the SKU line
+   is `nowrap` inside `.mono-text`'s 20ch cap), but #2094's fold added the first
+   genuinely unbounded operator-authored string to this stack — and it sits in a
+   `stickyLeftColumns` pane whose width is not recoverable by scrolling. */
+.products-cell-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: flex-start;
+  min-width: 0;
+}
+
+.products-cell-stack > * {
+  max-width: 100%;
+}
 .products-cell-stack--end { align-items: flex-end; min-width: 8rem; }
 /* Money-column date sub-lines: smaller and never wrapped - "upd. Jul 16,
    2026" breaking onto two lines left-hung a stray "2026" (#1720 review). */
 .products-cell-sub--date { font-size: 0.6875rem; white-space: nowrap; }
-.products-cell-sub { font-size: 0.75rem; color: var(--text-muted); }
+/* `nowrap` because the labelled SKU line is now two inline boxes ("SKU: " + a
+   mono value) where it used to be one `.mono-text`, which carried its own nowrap.
+   Without it the value can drop to its own line under width pressure and silently
+   make the identity cell three lines — and #2094 folds the connection into this
+   same stack as a third line. */
+.products-cell-sub { font-size: 0.75rem; color: var(--text-muted); white-space: nowrap; }
 .products-stock-value { font-weight: 600; }
 
 /* Merged Price / Updated / Created header (#1720) - one column, three
