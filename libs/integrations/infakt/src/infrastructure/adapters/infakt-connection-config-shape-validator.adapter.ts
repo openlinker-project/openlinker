@@ -2,17 +2,19 @@
  * Infakt Connection Config Shape Validator
  *
  * Validates the non-secret config for an Infakt connection: an optional
- * `baseUrl` override (sandbox vs production) that, when present, must be a
- * non-empty, well-formed URL; an optional `defaultPaymentMethod` (#1303)
- * that, when present, must be one of `InfaktPaymentMethodValues`; and an
- * optional `bankAccount` snapshot (#1303 follow-up) that, when present, must
- * carry an `id` (string or legacy number) plus non-empty `accountNumber` and
- * `bankName` strings — the adapter stamps the latter two straight onto
- * `'transfer'` invoices, so a malformed shape must fail fast at save time
- * (400) rather than surface as an opaque inFakt 422 at issuance. Registered
- * against `ConnectionConfigShapeValidatorRegistryService` at
- * `infakt.accounting.v1`; `ConnectionService` maps the thrown exception to a
- * 400 at the API boundary.
+ * `environment` selector (#2174) that, when present, must be one of
+ * `InfaktEnvironmentValues`; a legacy `baseUrl` override (sandbox vs
+ * production, no longer surfaced on either FE form but still honoured for
+ * back-compat) that, when present, must be a non-empty, well-formed URL; an
+ * optional `defaultPaymentMethod` (#1303) that, when present, must be one of
+ * `InfaktPaymentMethodValues`; and an optional `bankAccount` snapshot (#1303
+ * follow-up) that, when present, must carry an `id` (string or legacy
+ * number) plus non-empty `accountNumber` and `bankName` strings — the
+ * adapter stamps the latter two straight onto `'transfer'` invoices, so a
+ * malformed shape must fail fast at save time (400) rather than surface as
+ * an opaque inFakt 422 at issuance. Registered against
+ * `ConnectionConfigShapeValidatorRegistryService` at `infakt.accounting.v1`;
+ * `ConnectionService` maps the thrown exception to a 400 at the API boundary.
  *
  * Hand-rolled (no class-validator) — two optional fields don't justify a DTO
  * graph, and the plugin stays dependency-light. Error messages use neutral
@@ -26,7 +28,10 @@ import {
   type FlatValidationIssue,
   InvalidConnectionConfigException,
 } from '@openlinker/core/integrations';
-import { InfaktPaymentMethodValues } from '../../domain/types/infakt-connection.types';
+import {
+  InfaktEnvironmentValues,
+  InfaktPaymentMethodValues,
+} from '../../domain/types/infakt-connection.types';
 
 export class InfaktConnectionConfigShapeValidatorAdapter
   implements ConnectionConfigShapeValidatorPort
@@ -60,6 +65,7 @@ export class InfaktConnectionConfigShapeValidatorAdapter
     }
 
     this.validateBankAccount(config.bankAccount, issues);
+    this.validateEnvironment(config.environment, issues);
 
     if (issues.length > 0) {
       return Promise.reject(new InvalidConnectionConfigException(this.pluginName, issues));
@@ -90,6 +96,27 @@ export class InfaktConnectionConfigShapeValidatorAdapter
     }
     if (typeof bankName !== 'string' || bankName.trim().length === 0) {
       issues.push({ path: 'bankAccount.bankName', message: 'must be a non-empty string' });
+    }
+  }
+
+  /**
+   * `environment` (#2174), when present, must be exactly `'sandbox'` or
+   * `'production'` — the two hosts `resolveInfaktBaseUrl` resolves against.
+   * Absent is valid (legacy connections used `baseUrl` directly, and the
+   * resolver falls back to the prod default).
+   */
+  private validateEnvironment(value: unknown, issues: FlatValidationIssue[]): void {
+    if (value === undefined || value === null) {
+      return;
+    }
+    if (
+      typeof value !== 'string' ||
+      !InfaktEnvironmentValues.includes(value as (typeof InfaktEnvironmentValues)[number])
+    ) {
+      issues.push({
+        path: 'environment',
+        message: `must be one of: ${InfaktEnvironmentValues.join(', ')}`,
+      });
     }
   }
 

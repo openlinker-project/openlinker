@@ -23,8 +23,13 @@ describe('InfaktSetupForm', () => {
     renderWithProviders(<InfaktSetupForm />);
     expect(screen.getByLabelText('Connection name')).toBeInTheDocument();
     expect(screen.getByLabelText('API key')).toBeInTheDocument();
-    expect(screen.getByLabelText('Base URL (optional)')).toBeInTheDocument();
+    expect(screen.getByLabelText('Environment')).toBeInTheDocument();
     expect(screen.getByLabelText('Default payment method')).toBeInTheDocument();
+  });
+
+  it('defaults the environment to production', () => {
+    renderWithProviders(<InfaktSetupForm />);
+    expect(screen.getByLabelText('Environment')).toHaveValue('production');
   });
 
   it('defaults the payment method to cash', () => {
@@ -53,25 +58,7 @@ describe('InfaktSetupForm', () => {
     });
   });
 
-  it('rejects a non-HTTPS base URL override', async () => {
-    renderWithProviders(<InfaktSetupForm />);
-    fireEvent.change(screen.getByLabelText('Connection name'), {
-      target: { value: 'My inFakt Account' },
-    });
-    fireEvent.change(screen.getByLabelText('API key'), {
-      target: { value: 'sk_test_123' },
-    });
-    fireEvent.change(screen.getByLabelText('Base URL (optional)'), {
-      target: { value: 'http://api.infakt.pl' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Connect inFakt' }));
-
-    await waitFor(() => {
-      expect(screen.getAllByText('Base URL must use HTTPS')[0]).toBeInTheDocument();
-    });
-  });
-
-  it('submits the API key and a cash-default config when no base URL is given', async () => {
+  it('submits the API key and a cash-default, production config by default', async () => {
     const create = vi.fn().mockResolvedValue({ id: 'conn-1', name: 'My inFakt Account' });
     const apiClient = createMockApiClient({ connections: { create } });
 
@@ -91,7 +78,7 @@ describe('InfaktSetupForm', () => {
           name: 'My inFakt Account',
           platformType: 'infakt',
           adapterKey: 'infakt.accounting.v1',
-          config: { defaultPaymentMethod: 'cash' },
+          config: { defaultPaymentMethod: 'cash', environment: 'production' },
           credentials: { apiKey: 'sk_test_123' },
         }),
       );
@@ -127,7 +114,7 @@ describe('InfaktSetupForm', () => {
     expect(await screen.findByText(/\/webhooks\/infakt\/conn-1/)).toBeInTheDocument();
   });
 
-  it('includes baseUrl in config when supplied', async () => {
+  it('submits environment: sandbox when Sandbox is selected', async () => {
     const create = vi.fn().mockResolvedValue({ id: 'conn-1', name: 'My inFakt Account' });
     const apiClient = createMockApiClient({ connections: { create } });
 
@@ -139,15 +126,15 @@ describe('InfaktSetupForm', () => {
     fireEvent.change(screen.getByLabelText('API key'), {
       target: { value: 'sk_test_123' },
     });
-    fireEvent.change(screen.getByLabelText('Base URL (optional)'), {
-      target: { value: 'https://sandbox.infakt.pl' },
+    fireEvent.change(screen.getByLabelText('Environment'), {
+      target: { value: 'sandbox' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Connect inFakt' }));
 
     await waitFor(() => {
       expect(create).toHaveBeenCalledWith(
         expect.objectContaining({
-          config: { defaultPaymentMethod: 'cash', baseUrl: 'https://sandbox.infakt.pl' },
+          config: { defaultPaymentMethod: 'cash', environment: 'sandbox' },
         }),
       );
     });
@@ -173,7 +160,7 @@ describe('InfaktSetupForm', () => {
     await waitFor(() => {
       expect(create).toHaveBeenCalledWith(
         expect.objectContaining({
-          config: { defaultPaymentMethod: 'transfer' },
+          config: { defaultPaymentMethod: 'transfer', environment: 'production' },
         }),
       );
     });

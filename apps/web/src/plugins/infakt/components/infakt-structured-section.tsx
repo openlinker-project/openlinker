@@ -4,8 +4,11 @@
  * Plugin-owned structured-config inputs rendered inside `EditConnectionForm`
  * when the connection's `platformType` is `'infakt'`. Carries:
  *
- *   - Base URL (`config.baseUrl`) — used to point an existing connection at
- *     inFakt's sandbox environment instead of production.
+ *   - Environment (`config.environment`, #2174) — used to point an existing
+ *     connection at inFakt's sandbox host instead of production. Mirrors
+ *     InPost's `inpostEnvironment` structured field. The legacy free-text
+ *     `config.baseUrl` override still exists on the BE config type for
+ *     backward compatibility but is no longer surfaced here.
  *   - Default payment method (`config.defaultPaymentMethod`, #1303) — sent
  *     on every issued invoice/correction. Empty selection means "no
  *     override", the adapter falls back to `'cash'`. Tucked behind an
@@ -37,7 +40,6 @@
 import type { ReactElement } from 'react';
 import { FormField } from '../../../shared/ui/form-field';
 import { InlineDisclosure } from '../../../shared/ui/inline-disclosure';
-import { Input } from '../../../shared/ui/input';
 import { Select } from '../../../shared/ui/select';
 import type { StructuredConfigSectionProps } from '../../../shared/plugins';
 import { useBankAccountsQuery, usePickBankAccount } from '../../../features/connections';
@@ -87,20 +89,21 @@ export function InfaktStructuredSection({
   return (
     <>
       <FormField
-        label="Base URL (optional)"
-        name="baseUrl"
-        error={form.formState.errors.baseUrl?.message}
-        description="Advanced — override the default inFakt API base URL for sandbox testing. Leave blank to use production."
+        label="Environment"
+        name="infaktEnvironment"
+        error={form.formState.errors.infaktEnvironment?.message}
+        description="inFakt API environment. Use Sandbox to test before switching to Production."
       >
-        <Input
-          value={form.watch('baseUrl') ?? ''}
-          onChange={(event) => syncStructuredToJson('baseUrl', event.target.value)}
-          placeholder="https://api.infakt.pl"
-          className="mono-text"
-          autoComplete="off"
+        <Select
+          value={form.watch('infaktEnvironment') ?? ''}
+          onChange={(event) => syncStructuredToJson('infaktEnvironment', event.target.value)}
           disabled={!configIsParseable}
-          invalid={Boolean(form.formState.errors.baseUrl)}
-        />
+          invalid={Boolean(form.formState.errors.infaktEnvironment)}
+        >
+          <option value="">— not set —</option>
+          <option value="sandbox">Sandbox</option>
+          <option value="production">Production</option>
+        </Select>
       </FormField>
       <InlineDisclosure label="Payment method for invoice:" value={effectiveLabel}>
         <FormField

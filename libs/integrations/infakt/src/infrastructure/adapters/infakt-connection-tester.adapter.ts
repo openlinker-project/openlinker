@@ -27,8 +27,9 @@ import type {
 import type { Connection } from '@openlinker/core/identifier-mapping';
 import { Logger } from '@openlinker/shared/logging';
 import type { HttpTransportFactoryPort } from '@openlinker/shared/http';
-import { InfaktHttpClient, INFAKT_DEFAULT_BASE_URL } from '../http/infakt-http-client';
+import { InfaktHttpClient } from '../http/infakt-http-client';
 import { InfaktApiError } from '../../domain/exceptions/infakt-api.error';
+import { resolveInfaktBaseUrl } from '../../application/infakt-base-url.resolver';
 import type { InfaktCredentials, InfaktConnectionConfig } from '../../domain/types/infakt-connection.types';
 
 const INFAKT_CONNECTION_PROBE_PATH = 'clients.json';
@@ -60,7 +61,7 @@ export class InfaktConnectionTesterAdapter implements ConnectionTesterPort {
       // site, not a bare globalThis.fetch.
       const fetchImpl = this.http.forConnection(connection);
       const client = new InfaktHttpClient(
-        { apiKey: credentials.apiKey, baseUrl: config.baseUrl ?? INFAKT_DEFAULT_BASE_URL },
+        { apiKey: credentials.apiKey, baseUrl: resolveInfaktBaseUrl(config) },
         this.logger,
         fetchImpl,
       );

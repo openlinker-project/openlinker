@@ -10,9 +10,10 @@ import type { LoggerPort } from '@openlinker/shared/logging';
 import type { FetchLike } from '@openlinker/shared/http';
 import type { Connection } from '@openlinker/core/identifier-mapping';
 import type { CredentialsResolverPort } from '@openlinker/core/integrations';
-import { InfaktHttpClient, INFAKT_DEFAULT_BASE_URL } from '../infrastructure/http/infakt-http-client';
+import { InfaktHttpClient } from '../infrastructure/http/infakt-http-client';
 import { InfaktInvoicingAdapter } from '../infrastructure/adapters/infakt-invoicing.adapter';
 import { InfaktConfigException } from '../domain/exceptions/infakt-config.exception';
+import { resolveInfaktBaseUrl } from './infakt-base-url.resolver';
 import type { IInfaktAdapterFactory } from './interfaces/infakt-adapter.factory.interface';
 import type { InfaktCredentials, InfaktConnectionConfig } from '../domain/types/infakt-connection.types';
 
@@ -37,7 +38,7 @@ export class InfaktAdapterFactory implements IInfaktAdapterFactory {
 
     const config = (connection.config ?? {}) as InfaktConnectionConfig;
     const httpClient = new InfaktHttpClient(
-      { apiKey, baseUrl: config.baseUrl ?? INFAKT_DEFAULT_BASE_URL },
+      { apiKey, baseUrl: resolveInfaktBaseUrl(config) },
       logger,
       fetchImpl,
     );

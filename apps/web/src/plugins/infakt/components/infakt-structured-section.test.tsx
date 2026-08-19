@@ -1,8 +1,8 @@
 /**
  * InfaktStructuredSection Tests
  *
- * Coverage for the baseUrl editor field and default-payment-method select
- * (#1303) shown in EditConnectionForm for inFakt connections. Tests
+ * Coverage for the environment select (#2174) and default-payment-method
+ * select (#1303) shown in EditConnectionForm for inFakt connections. Tests
  * propagation to JSON config via syncStructuredToJson callback. Mirrors
  * `woocommerce-structured-section.test.tsx`.
  */
@@ -18,10 +18,10 @@ import type { BankAccount } from '../../../features/connections';
 describe('InfaktStructuredSection', () => {
   afterEach(cleanup);
 
-  it('renders the baseUrl field for editing', () => {
+  it('renders the environment field for editing', () => {
     const TestComponent = (): ReactElement => {
       const form = useForm<any>({
-        defaultValues: { baseUrl: 'https://api.infakt.pl' },
+        defaultValues: { infaktEnvironment: 'sandbox' },
       });
       return (
         <InfaktStructuredSection
@@ -33,14 +33,14 @@ describe('InfaktStructuredSection', () => {
       );
     };
     renderWithProviders(<TestComponent />);
-    expect(screen.getByDisplayValue('https://api.infakt.pl')).toBeInTheDocument();
+    expect(screen.getByLabelText('Environment')).toHaveValue('sandbox');
   });
 
-  it('calls syncStructuredToJson with the baseUrl config key when the value changes', () => {
+  it('calls syncStructuredToJson with the infaktEnvironment config key when the value changes', () => {
     const syncStructuredToJson = vi.fn();
     const TestComponent = (): ReactElement => {
       const form = useForm<any>({
-        defaultValues: { baseUrl: 'https://api.infakt.pl' },
+        defaultValues: { infaktEnvironment: 'sandbox' },
       });
       return (
         <InfaktStructuredSection
@@ -53,16 +53,15 @@ describe('InfaktStructuredSection', () => {
     };
     renderWithProviders(<TestComponent />);
 
-    const input = screen.getByDisplayValue('https://api.infakt.pl');
-    fireEvent.change(input, { target: { value: 'https://sandbox.infakt.pl' } });
+    fireEvent.change(screen.getByLabelText('Environment'), { target: { value: 'production' } });
 
-    expect(syncStructuredToJson).toHaveBeenCalledWith('baseUrl', 'https://sandbox.infakt.pl');
+    expect(syncStructuredToJson).toHaveBeenCalledWith('infaktEnvironment', 'production');
   });
 
-  it('disables input when configIsParseable is false', () => {
+  it('disables the environment select when configIsParseable is false', () => {
     const TestComponent = (): ReactElement => {
       const form = useForm<any>({
-        defaultValues: { baseUrl: 'https://api.infakt.pl' },
+        defaultValues: { infaktEnvironment: 'sandbox' },
       });
       return (
         <InfaktStructuredSection
@@ -75,17 +74,16 @@ describe('InfaktStructuredSection', () => {
     };
     renderWithProviders(<TestComponent />);
 
-    const input = screen.getByDisplayValue('https://api.infakt.pl');
-    expect(input).toBeDisabled();
+    expect(screen.getByLabelText('Environment')).toBeDisabled();
   });
 
-  it('shows form error message when baseUrl has a validation error', () => {
+  it('shows form error message when infaktEnvironment has a validation error', () => {
     const TestComponent = (): ReactElement => {
       const form = useForm<any>({
-        defaultValues: { baseUrl: '' },
+        defaultValues: { infaktEnvironment: '' },
       });
-      form.formState.errors.baseUrl = {
-        message: 'Base URL must use HTTPS',
+      form.formState.errors.infaktEnvironment = {
+        message: 'must be one of: sandbox, production',
         type: 'manual',
       };
       return (
@@ -99,13 +97,13 @@ describe('InfaktStructuredSection', () => {
     };
     renderWithProviders(<TestComponent />);
 
-    expect(screen.getByText('Base URL must use HTTPS')).toBeInTheDocument();
+    expect(screen.getByText('must be one of: sandbox, production')).toBeInTheDocument();
   });
 
   it('shows the effective payment method in the collapsed disclosure summary (#1303)', () => {
     const TestComponent = (): ReactElement => {
       const form = useForm<any>({
-        defaultValues: { baseUrl: '', infaktPaymentMethod: 'transfer' },
+        defaultValues: { infaktPaymentMethod: 'transfer' },
       });
       return (
         <InfaktStructuredSection
@@ -125,7 +123,7 @@ describe('InfaktStructuredSection', () => {
   it('defaults the collapsed summary to Cash when no value is set', () => {
     const TestComponent = (): ReactElement => {
       const form = useForm<any>({
-        defaultValues: { baseUrl: '', infaktPaymentMethod: '' },
+        defaultValues: { infaktPaymentMethod: '' },
       });
       return (
         <InfaktStructuredSection
@@ -143,7 +141,7 @@ describe('InfaktStructuredSection', () => {
   it('renders the default payment method select once expanded (#1303)', () => {
     const TestComponent = (): ReactElement => {
       const form = useForm<any>({
-        defaultValues: { baseUrl: '', infaktPaymentMethod: 'cash' },
+        defaultValues: { infaktPaymentMethod: 'cash' },
       });
       return (
         <InfaktStructuredSection
@@ -165,7 +163,7 @@ describe('InfaktStructuredSection', () => {
     const syncStructuredToJson = vi.fn();
     const TestComponent = (): ReactElement => {
       const form = useForm<any>({
-        defaultValues: { baseUrl: '', infaktPaymentMethod: 'cash' },
+        defaultValues: { infaktPaymentMethod: 'cash' },
       });
       return (
         <InfaktStructuredSection
@@ -189,7 +187,7 @@ describe('InfaktStructuredSection', () => {
   it('disables the payment method select when configIsParseable is false', () => {
     const TestComponent = (): ReactElement => {
       const form = useForm<any>({
-        defaultValues: { baseUrl: '', infaktPaymentMethod: 'cash' },
+        defaultValues: { infaktPaymentMethod: 'cash' },
       });
       return (
         <InfaktStructuredSection
@@ -214,7 +212,7 @@ describe('InfaktStructuredSection', () => {
       const apiClient = createMockApiClient({ connections: { getBankAccounts } });
       const TestComponent = (): ReactElement => {
         const form = useForm<any>({
-          defaultValues: { baseUrl: '', infaktPaymentMethod: 'transfer', infaktBankAccount: null },
+          defaultValues: { infaktPaymentMethod: 'transfer', infaktBankAccount: null },
         });
         return (
           <InfaktStructuredSection
@@ -234,7 +232,7 @@ describe('InfaktStructuredSection', () => {
       const getBankAccounts = vi.fn().mockResolvedValue([]);
       const apiClient = createMockApiClient({ connections: { getBankAccounts } });
       const TestComponent = (): ReactElement => {
-        const form = useForm<any>({ defaultValues: { baseUrl: '', infaktPaymentMethod: 'cash' } });
+        const form = useForm<any>({ defaultValues: { infaktPaymentMethod: 'cash' } });
         return (
           <InfaktStructuredSection
             connection={{ id: 'conn-1' } as any}
@@ -273,7 +271,6 @@ describe('InfaktStructuredSection', () => {
       const TestComponent = (): ReactElement => {
         const form = useForm<any>({
           defaultValues: {
-            baseUrl: '',
             infaktPaymentMethod: 'transfer',
             infaktBankAccount: {
               id: '99',
@@ -341,7 +338,7 @@ describe('InfaktStructuredSection', () => {
       let capturedForm: ReturnType<typeof useForm> | null = null;
       const TestComponent = (): ReactElement => {
         const form = useForm<any>({
-          defaultValues: { baseUrl: '', infaktPaymentMethod: 'transfer', infaktBankAccount: null },
+          defaultValues: { infaktPaymentMethod: 'transfer', infaktBankAccount: null },
         });
         capturedForm = form;
         return (
@@ -400,7 +397,7 @@ describe('InfaktStructuredSection', () => {
       });
       const TestComponent = (): ReactElement => {
         const form = useForm<any>({
-          defaultValues: { baseUrl: '', infaktPaymentMethod: 'transfer', infaktBankAccount: null },
+          defaultValues: { infaktPaymentMethod: 'transfer', infaktBankAccount: null },
         });
         return (
           <InfaktStructuredSection
@@ -435,7 +432,7 @@ describe('InfaktStructuredSection', () => {
       });
       const TestComponent = (): ReactElement => {
         const form = useForm<any>({
-          defaultValues: { baseUrl: '', infaktPaymentMethod: 'transfer', infaktBankAccount: null },
+          defaultValues: { infaktPaymentMethod: 'transfer', infaktBankAccount: null },
         });
         return (
           <InfaktStructuredSection
@@ -468,7 +465,7 @@ describe('InfaktStructuredSection', () => {
       });
       const TestComponent = (): ReactElement => {
         const form = useForm<any>({
-          defaultValues: { baseUrl: '', infaktPaymentMethod: 'transfer', infaktBankAccount: null },
+          defaultValues: { infaktPaymentMethod: 'transfer', infaktBankAccount: null },
         });
         return (
           <InfaktStructuredSection

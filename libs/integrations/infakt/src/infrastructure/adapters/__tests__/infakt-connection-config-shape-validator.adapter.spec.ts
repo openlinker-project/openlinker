@@ -2,8 +2,8 @@
  * Infakt Connection Config Shape Validator — unit tests
  *
  * Verifies the optional `baseUrl` URL check, the optional
- * `defaultPaymentMethod` enum check (#1303), and the flat-issue rejection
- * payload.
+ * `defaultPaymentMethod` enum check (#1303), the optional `environment` enum
+ * check (#2174), and the flat-issue rejection payload.
  *
  * @module libs/integrations/infakt/src/infrastructure/adapters/__tests__
  */
@@ -88,6 +88,33 @@ describe('InfaktConnectionConfigShapeValidatorAdapter', () => {
     await expect(validator.validate({ defaultPaymentMethod: 123 })).rejects.toBeInstanceOf(
       InvalidConnectionConfigException,
     );
+  });
+
+  describe('environment (#2174)', () => {
+    it('should resolve when environment is absent', async () => {
+      await expect(validator.validate({})).resolves.toBeUndefined();
+    });
+
+    it('should resolve when environment is null', async () => {
+      await expect(validator.validate({ environment: null })).resolves.toBeUndefined();
+    });
+
+    it.each(['sandbox', 'production'])('should resolve when environment is %s', async (environment) => {
+      await expect(validator.validate({ environment })).resolves.toBeUndefined();
+    });
+
+    it('should reject when environment is not a supported value', async () => {
+      await expect(validator.validate({ environment: 'staging' })).rejects.toMatchObject({
+        pluginName: 'Infakt',
+        errors: [{ path: 'environment', message: expect.stringContaining('sandbox, production') }],
+      });
+    });
+
+    it('should reject when environment is not a string', async () => {
+      await expect(validator.validate({ environment: 123 })).rejects.toBeInstanceOf(
+        InvalidConnectionConfigException,
+      );
+    });
   });
 
   describe('bankAccount (#1303 follow-up)', () => {

@@ -115,4 +115,27 @@ describe('InfaktConnectionTesterAdapter', () => {
     expect(result.message.length).toBeGreaterThan(0);
     expect(fetchMock).not.toHaveBeenCalled();
   });
+
+  it('should probe the sandbox host when connection.config.environment is sandbox (#2174)', async () => {
+    fetchMock.mockResolvedValue(fakeResponse(true, 200));
+
+    await tester.test(connection({ config: { environment: 'sandbox' } }), resolver);
+
+    const [url] = fetchMock.mock.calls[0] as [string];
+    expect(url).toContain('api.sandbox.infakt.pl');
+  });
+
+  it('should let an explicit baseUrl override win over environment when both are present (#2174)', async () => {
+    fetchMock.mockResolvedValue(fakeResponse(true, 200));
+    const overrideUrl = 'https://api.infakt.example/api/v3';
+
+    await tester.test(
+      connection({ config: { environment: 'sandbox', baseUrl: overrideUrl } }),
+      resolver,
+    );
+
+    const [url] = fetchMock.mock.calls[0] as [string];
+    expect(url).toContain(overrideUrl);
+    expect(url).not.toContain('api.sandbox.infakt.pl');
+  });
 });

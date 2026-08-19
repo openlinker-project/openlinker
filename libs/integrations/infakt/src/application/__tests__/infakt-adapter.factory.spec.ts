@@ -2,7 +2,9 @@
  * Infakt Adapter Factory — unit tests
  *
  * Verifies per-connection credential resolution and the sandbox-vs-production
- * `baseUrl` resolution. Stubs `global.fetch` to assert the constructed
+ * base URL resolution — both the legacy `baseUrl` override and the neutral
+ * `environment` selector (#2174), with the former winning when both are
+ * present. Stubs `global.fetch` to assert the constructed
  * `InfaktInvoicingAdapter`'s HTTP client hits the resolved base URL with the
  * resolved API key.
  *
@@ -13,7 +15,7 @@ import type { FetchLike } from '@openlinker/shared/http';
 import type { CredentialsResolverPort } from '@openlinker/core/integrations';
 import type { Connection } from '@openlinker/core/identifier-mapping';
 import { BuyerProfile } from '@openlinker/core/invoicing';
-import { INFAKT_DEFAULT_BASE_URL } from '../../infrastructure/http/infakt-http-client';
+import { INFAKT_DEFAULT_BASE_URL, INFAKT_SANDBOX_BASE_URL } from '../../infrastructure/http/infakt-http-client';
 import { InfaktAdapterFactory } from '../infakt-adapter.factory';
 
 function connection(overrides: Partial<Connection> = {}): Connection {
@@ -109,6 +111,38 @@ describe('InfaktAdapterFactory', () => {
 
     const [url] = lastFetchCall();
     expect(url).toContain(sandboxUrl);
+  });
+
+  it('should resolve INFAKT_SANDBOX_BASE_URL when connection.config.environment is sandbox (#2174)', async () => {
+    const resolver = resolverFor({ apiKey: 'k' });
+    const adapter = await factory.createInvoicingAdapter(
+      connection({ config: { environment: 'sandbox' } }),
+      resolver,
+      logger,
+      fetchMock as unknown as FetchLike,
+    );
+
+    await adapter.getInvoice({ providerInvoiceId: 'inv-1' }).catch(() => undefined);
+
+    const [url] = lastFetchCall();
+    expect(url).toContain(INFAKT_SANDBOX_BASE_URL);
+  });
+
+  it('should let an explicit baseUrl win over environment when both are present (#2174)', async () => {
+    const resolver = resolverFor({ apiKey: 'k' });
+    const overrideUrl = 'https://api.infakt.example/api/v3';
+    const adapter = await factory.createInvoicingAdapter(
+      connection({ config: { environment: 'sandbox', baseUrl: overrideUrl } }),
+      resolver,
+      logger,
+      fetchMock as unknown as FetchLike,
+    );
+
+    await adapter.getInvoice({ providerInvoiceId: 'inv-1' }).catch(() => undefined);
+
+    const [url] = lastFetchCall();
+    expect(url).toContain(overrideUrl);
+    expect(url).not.toContain(INFAKT_SANDBOX_BASE_URL);
   });
 
   it('should throw when the connection has no credentialsRef', async () => {

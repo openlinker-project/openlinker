@@ -64,6 +64,7 @@ const HOST_STRUCTURED_FIELDS = [
   'inpostEnvironment',
   'inpostOrganizationId',
   'infaktPaymentMethod',
+  'infaktEnvironment',
 ] as const;
 
 type StructuredField = (typeof HOST_STRUCTURED_FIELDS)[number];
@@ -157,6 +158,18 @@ function readInpostEnvironment(config: Record<string, unknown>): '' | 'sandbox' 
  */
 function readInfaktPaymentMethod(config: Record<string, unknown>): 'cash' | 'transfer' {
   return config.defaultPaymentMethod === 'transfer' ? 'transfer' : 'cash';
+}
+
+/**
+ * Read the Infakt environment out of `config.environment` (#2174). Clone of
+ * `readInpostEnvironment` — kept as its own named reader rather than a shared
+ * generic helper, matching this file's per-platform reader convention.
+ */
+// Exported for unit testing (mirrors `readInfaktBankAccount`); consumed only
+// via the component's `defaultValues`.
+export function readInfaktEnvironment(config: Record<string, unknown>): '' | 'sandbox' | 'production' {
+  const value = config.environment;
+  return value === 'sandbox' || value === 'production' ? value : '';
 }
 
 /**
@@ -391,6 +404,9 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
       // Infakt default payment method (#1303) — `config.defaultPaymentMethod`.
       infaktPaymentMethod: readInfaktPaymentMethod(connection.config),
       infaktBankAccount: readInfaktBankAccount(connection.config),
+      // Infakt environment (#2174) — `config.environment`. Symmetric read-side
+      // hydration so an unrelated save doesn't blank the persisted choice.
+      infaktEnvironment: readInfaktEnvironment(connection.config),
       // Per-connection outbound rate limit (#1810) — platform-neutral.
       rateLimit: readRateLimit(connection.config),
       // Primary invoicing connection (#2047) — capability-gated, platform-neutral.
