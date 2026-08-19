@@ -13,6 +13,11 @@
  * (owns/borrows/open) is derived from the destination adapter's capabilities,
  * never its `platformType`.
  *
+ * `resolveCategoriesBatch` resolves N variants by EAN in one answer;
+ * `resolveCategoriesStream` resolves the same N variants but emits each verdict
+ * as it lands (#2207, epic #2205), degrading to the batch capability and then to
+ * per-item `no-match` when the destination declares neither.
+ *
  * @module libs/core/src/listings/application/services
  * @implements {ICategoryResolutionService}
  */
@@ -21,6 +26,8 @@ import { Injectable, Inject } from '@nestjs/common';
 import { Logger } from '@openlinker/shared/logging';
 import type {
   OfferManagerPort,
+  EanCategoryMatchStreamEvent,
+  EanCategoryMatchStreamOptions,
   EanMatchResult,
 } from '@openlinker/core/listings';
 import {
@@ -28,12 +35,14 @@ import {
   isCategoryBrowser,
   isCategoryParametersReader,
   isEanCategoryMatcher,
+  isEanCategoryMatcherStreaming,
 } from '@openlinker/core/listings';
 import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 import { IMappingConfigService, MAPPING_CONFIG_SERVICE_TOKEN } from '@openlinker/core/mappings';
 import type { ICategoryResolutionService } from '../interfaces/category-resolution.service.interface';
 import type {
   BatchCategoryResolveInput,
+  BatchCategoryResolveItem,
   CategoryProvenance,
   CategoryResolutionInput,
   CategoryResolutionResult,
@@ -142,47 +151,180 @@ export class CategoryResolutionService implements ICategoryResolutionService {
       items: input.items.map((item) => ({ variantId: item.variantId, ean: item.ean })),
     });
 
-    // #1522 — mapping fallback. When the EAN yields no catalogue match (or the
-    // variant has no EAN) and the item supplies source categories, consult the
-    // operator's configured per-source-category mapping — the same mapping
-    // `OfferBuilderService` honours at offer-build time — so the wizard preview
-    // agrees with the build. A hit resolves to a `matched` result with no
-    // catalogue card (the offer self-links by barcode at build time).
     const resolved = new Map<string, EanMatchResult>();
     for (const item of input.items) {
-      const eanResult = eanResults.get(item.variantId) ?? { kind: 'no-match' };
-      if (
-        (eanResult.kind === 'no-match' || eanResult.kind === 'no-ean') &&
-        item.sourceCategoryIds &&
-        item.sourceCategoryIds.length > 0
-      ) {
-        // Empty opts (no `sourceConnectionId`/`borrowedTaxonomy`) is safe today:
-        // this loop only runs past the `isEanCategoryMatcher` gate above, and
-        // every current EanCategoryMatcher (Allegro) *owns* its taxonomy, so
-        // `resolveDestinationCategory` resolves entirely via its step-1
-        // `findBySourceCategory` lookup, which consults neither opt. The
-        // transport also has no `sourceConnectionId` to carry. If a future
-        // destination is ever both an EanCategoryMatcher *and* a
-        // borrows-taxonomy destination, this batch preview would need to
-        // thread `sourceConnectionId`/`borrowedTaxonomy` here too, or it would
-        // silently diverge from `OfferBuilderService.resolveCategory`.
-        const mapped = await this.tryCategoryMapping(connectionId, item.sourceCategoryIds, {});
-        if (mapped) {
-          this.logger.debug(
-            `Variant ${item.variantId} resolved via category_mapping (connection=${connectionId}, categoryId=${mapped})`
-          );
-          resolved.set(item.variantId, {
-            kind: 'matched',
-            allegroCategoryId: mapped,
-            productCardId: '',
-            method: 'category_mapping',
-          });
-          continue;
-        }
-      }
-      resolved.set(item.variantId, eanResult);
+      resolved.set(
+        item.variantId,
+        await this.applyMappingFallback(
+          connectionId,
+          item,
+          eanResults.get(item.variantId) ?? { kind: 'no-match' }
+        )
+      );
     }
     return resolved;
+  }
+
+  async *resolveCategoriesStream(
+    connectionId: string,
+    input: BatchCategoryResolveInput,
+    options?: EanCategoryMatchStreamOptions
+  ): AsyncGenerator<EanCategoryMatchStreamEvent> {
+    const signal = options?.signal;
+    let resolvedCount = 0;
+    let failedCount = 0;
+    const tally = (result: EanMatchResult): void => {
+      if (result.kind === 'matched') {
+        resolvedCount += 1;
+        return;
+      }
+      failedCount += 1;
+    };
+
+    // An already-aborted signal must not even resolve the adapter — connection
+    // resolution can decrypt credentials and mint a token, which is exactly the
+    // work the caller just told us to stop scheduling.
+    if (signal?.aborted) {
+      yield { kind: 'done', resolvedCount, failedCount };
+      return;
+    }
+
+    // Same gate as `resolveCategoriesBatch`: unknown/disabled connections
+    // surface as 404/409 and a non-marketplace connection as 422. It runs on the
+    // first `next()` rather than at call time — a generator body is lazy.
+    const adapter = await this.integrationsService.getCapabilityAdapter<OfferManagerPort>(
+      connectionId,
+      'OfferManager'
+    );
+    const eanOnlyItems = input.items.map((item) => ({
+      variantId: item.variantId,
+      ean: item.ean,
+    }));
+
+    if (isEanCategoryMatcherStreaming(adapter)) {
+      this.logger.debug(
+        `Streaming ${input.items.length} variant EAN(s) (connection=${connectionId})`
+      );
+      const byVariantId = new Map(input.items.map((item) => [item.variantId, item]));
+      const seen = new Set<string>();
+      for await (const streamed of adapter.streamCategoriesForBatchByEan(
+        { items: eanOnlyItems },
+        signal ? { signal } : undefined
+      )) {
+        if (signal?.aborted) {
+          break;
+        }
+        seen.add(streamed.variantId);
+        const item = byVariantId.get(streamed.variantId) ?? {
+          variantId: streamed.variantId,
+          ean: null,
+        };
+        const result = await this.applyMappingFallback(connectionId, item, streamed.result);
+        tally(result);
+        yield { kind: 'result', variantId: streamed.variantId, result };
+      }
+      // A consumer's progress denominator is the input size, so an item the
+      // adapter never reported would leave the bar short of complete forever.
+      // Report it as unresolved rather than trusting the adapter's arithmetic.
+      if (!signal?.aborted) {
+        for (const item of input.items) {
+          if (seen.has(item.variantId)) {
+            continue;
+          }
+          const result = await this.applyMappingFallback(connectionId, item, {
+            kind: 'no-match',
+          });
+          tally(result);
+          yield { kind: 'result', variantId: item.variantId, result };
+        }
+      }
+      yield { kind: 'done', resolvedCount, failedCount };
+      return;
+    }
+
+    if (isEanCategoryMatcher(adapter)) {
+      // Batch-only adapter: nothing is observable until the whole call returns,
+      // so the operator sees the results arrive together. The step still
+      // completes, which is the point of keeping the streaming capability a
+      // sibling rather than a replacement (epic #2205 decision 2).
+      this.logger.debug(
+        `Adapter lacks EanCategoryMatcherStreaming; batch-resolving ${input.items.length} ` +
+          `variant EAN(s) before emitting (connection=${connectionId})`
+      );
+      const eanResults = await adapter.resolveCategoriesForBatchByEan({ items: eanOnlyItems });
+      for (const item of input.items) {
+        if (signal?.aborted) {
+          break;
+        }
+        const result = await this.applyMappingFallback(
+          connectionId,
+          item,
+          eanResults.get(item.variantId) ?? { kind: 'no-match' }
+        );
+        tally(result);
+        yield { kind: 'result', variantId: item.variantId, result };
+      }
+      yield { kind: 'done', resolvedCount, failedCount };
+      return;
+    }
+
+    // Neither capability: the mapping fallback is deliberately skipped here so
+    // the stream stays byte-identical to what `resolveCategoriesBatch` returns
+    // for the same destination (epic #2205 decision 4 — an immediate stream is a
+    // first-class case, not a failure).
+    this.logger.debug(
+      `Adapter matches no EAN capability; streaming ${input.items.length} no-match result(s) ` +
+        `for manual category selection (connection=${connectionId})`
+    );
+    for (const item of input.items) {
+      failedCount += 1;
+      yield { kind: 'result', variantId: item.variantId, result: { kind: 'no-match' } };
+    }
+    yield { kind: 'done', resolvedCount, failedCount };
+  }
+
+  /**
+   * #1522 — mapping fallback, shared by the batch and streaming paths so the
+   * two can never disagree about a single item. When the EAN yields no
+   * catalogue match (or the variant has no EAN) and the item supplies source
+   * categories, consult the operator's configured per-source-category mapping —
+   * the same mapping `OfferBuilderService` honours at offer-build time — so the
+   * wizard preview agrees with the build. A hit resolves to a `matched` result
+   * with no catalogue card (the offer self-links by barcode at build time).
+   */
+  private async applyMappingFallback(
+    connectionId: string,
+    item: BatchCategoryResolveItem,
+    eanResult: EanMatchResult
+  ): Promise<EanMatchResult> {
+    if (
+      (eanResult.kind === 'no-match' || eanResult.kind === 'no-ean') &&
+      item.sourceCategoryIds &&
+      item.sourceCategoryIds.length > 0
+    ) {
+      // Empty opts (no `sourceConnectionId`/`borrowedTaxonomy`) is safe today:
+      // this runs only past an EAN-capability gate, and every current EAN
+      // matcher (Allegro) *owns* its taxonomy, so `resolveDestinationCategory`
+      // resolves entirely via its step-1 `findBySourceCategory` lookup, which
+      // consults neither opt. The transport also has no `sourceConnectionId` to
+      // carry. If a future destination is ever both an EAN matcher *and* a
+      // borrows-taxonomy destination, this preview would need to thread
+      // `sourceConnectionId`/`borrowedTaxonomy` here too, or it would silently
+      // diverge from `OfferBuilderService.resolveCategory`.
+      const mapped = await this.tryCategoryMapping(connectionId, item.sourceCategoryIds, {});
+      if (mapped) {
+        this.logger.debug(
+          `Variant ${item.variantId} resolved via category_mapping (connection=${connectionId}, categoryId=${mapped})`
+        );
+        return {
+          kind: 'matched',
+          allegroCategoryId: mapped,
+          productCardId: '',
+          method: 'category_mapping',
+        };
+      }
+    }
+    return eanResult;
   }
 
   /**

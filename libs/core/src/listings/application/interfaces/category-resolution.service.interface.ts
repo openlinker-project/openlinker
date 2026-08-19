@@ -8,7 +8,11 @@
  * @module libs/core/src/listings/application/interfaces
  */
 
-import type { EanMatchResult } from '@openlinker/core/listings';
+import type {
+  EanCategoryMatchStreamEvent,
+  EanCategoryMatchStreamOptions,
+  EanMatchResult,
+} from '@openlinker/core/listings';
 import type {
   BatchCategoryResolveInput,
   CategoryResolutionInput,
@@ -56,4 +60,37 @@ export interface ICategoryResolutionService {
     connectionId: string,
     input: BatchCategoryResolveInput,
   ): Promise<Map<string, EanMatchResult>>;
+
+  /**
+   * Same resolution as `resolveCategoriesBatch`, delivered per variant as it
+   * lands (#2207, epic #2205) so a caller can report progress instead of
+   * waiting on one all-or-nothing answer.
+   *
+   * Emits one `result` event per input item followed by exactly one `done`
+   * event. Three paths, all gated on declared capabilities:
+   * - `EanCategoryMatcherStreaming` - streamed through as the adapter resolves.
+   * - `EanCategoryMatcher` only - the batch call runs, then its results are
+   *   emitted; the operator sees no intermediate progress, but the step works.
+   * - neither - every item emits `no-match` and the stream terminates without a
+   *   single marketplace call (a `borrows`-taxonomy destination such as Erli,
+   *   ADR-025 §3; a first-class case per epic #2205 decision 4, not an error).
+   *
+   * The #1522 configured-mapping fallback applies per item on both matcher
+   * paths, exactly as on the batch path, so the streamed preview cannot
+   * disagree with what `OfferBuilderService` resolves at build time.
+   *
+   * Connection resolution is identical to `resolveCategoriesBatch`, so an
+   * unknown/disabled connection or a non-marketplace one still surfaces its
+   * usual error - raised from the first `next()`, since a generator body does
+   * not run until iteration starts.
+   *
+   * `options.signal`, once aborted, stops further work being scheduled and the
+   * stream ends with its `done` tally; in-flight marketplace calls are left to
+   * settle (epic #2205 decision 5).
+   */
+  resolveCategoriesStream(
+    connectionId: string,
+    input: BatchCategoryResolveInput,
+    options?: EanCategoryMatchStreamOptions,
+  ): AsyncIterable<EanCategoryMatchStreamEvent>;
 }
