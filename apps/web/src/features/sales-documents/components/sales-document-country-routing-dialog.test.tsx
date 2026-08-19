@@ -12,7 +12,7 @@
  * two tiers both labeled "Tier 2" — which is why the numbering assertions
  * check both the exact count AND the absence of duplicate numbers.
  */
-import { screen } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import {
@@ -20,8 +20,41 @@ import {
   createMockApiClient,
   createAuthenticatedSessionAdapter,
 } from '../../../test/test-utils';
-import type { SalesDocumentCountryDefault } from '../api/sales-document-rules.types';
+import type {
+  SalesDocumentCountryDefault,
+  SalesDocumentCountrySummary,
+  SalesDocumentRule,
+} from '../api/sales-document-rules.types';
 import { SalesDocumentCountryRoutingDialog } from './sales-document-country-routing-dialog';
+
+function makeRule(id: string, overrides: Partial<SalesDocumentRule> = {}): SalesDocumentRule {
+  return {
+    id,
+    country: 'DE',
+    conditions: [],
+    documentKind: 'invoice',
+    connectionId: 'conn_1',
+    effectiveFrom: '2026-01-01T00:00:00.000Z',
+    effectiveTo: null,
+    provenance: null,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+    ...overrides,
+  };
+}
+
+function makeCountrySummary(
+  overrides: Partial<SalesDocumentCountrySummary> = {},
+): SalesDocumentCountrySummary {
+  return {
+    country: 'DE',
+    ruleCount: 0,
+    invoiceDefaultConnectionId: null,
+    receiptDefaultConnectionId: null,
+    acknowledgedNoDocumentAt: null,
+    ...overrides,
+  };
+}
 
 function tierNumbers(): (string | undefined)[] {
   const headings = screen.getAllByRole('heading', { name: /^Tier \d/ });
@@ -276,5 +309,328 @@ describe('SalesDocumentCountryRoutingDialog', () => {
     // rather than via DOM traversal from the heading, so this stays
     // robust to Radix's own portal-container structure.
     expect(document.querySelector('.dialog__overlay--elevated')).not.toBeNull();
+  });
+});
+
+describe('SalesDocumentCountryRoutingDialog — acknowledgment banner (#2189)', () => {
+  it('should render the "Mark as no sales document" banner when the country has zero rules and zero defaults', async () => {
+    const apiClient = createMockApiClient({
+      salesDocumentRules: {
+        listRules: vi.fn().mockResolvedValue([]),
+        listCountryDefaults: vi.fn().mockResolvedValue([]),
+        listConfiguredCountries: vi.fn().mockResolvedValue([]),
+      },
+    });
+    renderWithProviders(
+      <SalesDocumentCountryRoutingDialog
+        open
+        country="DE"
+        cameFrom={null}
+        onOpenChange={vi.fn()}
+        onNavigate={vi.fn()}
+      />,
+      { apiClient, sessionAdapter: createAuthenticatedSessionAdapter() },
+    );
+
+    expect(
+      await screen.findByRole('button', { name: 'Mark as no sales document' }),
+    ).toBeInTheDocument();
+  });
+
+  it('should not render the banner when the country has a rule', async () => {
+    const apiClient = createMockApiClient({
+      salesDocumentRules: {
+        listRules: vi.fn().mockResolvedValue([makeRule('r1')]),
+        listCountryDefaults: vi.fn().mockResolvedValue([]),
+        listConfiguredCountries: vi
+          .fn()
+          .mockResolvedValue([makeCountrySummary({ ruleCount: 1 })]),
+      },
+    });
+    renderWithProviders(
+      <SalesDocumentCountryRoutingDialog
+        open
+        country="DE"
+        cameFrom={null}
+        onOpenChange={vi.fn()}
+        onNavigate={vi.fn()}
+      />,
+      { apiClient, sessionAdapter: createAuthenticatedSessionAdapter() },
+    );
+
+    await screen.findByText(/Rules for DE/i);
+    expect(screen.queryByRole('button', { name: 'Mark as no sales document' })).toBeNull();
+  });
+
+  it('should not render the banner when the country has a country default', async () => {
+    const defaults: SalesDocumentCountryDefault[] = [
+      { id: 'd1', country: 'DE', documentKind: 'invoice', connectionId: 'conn_1' },
+    ];
+    const apiClient = createMockApiClient({
+      salesDocumentRules: {
+        listRules: vi.fn().mockResolvedValue([]),
+        listCountryDefaults: vi.fn().mockResolvedValue(defaults),
+        listConfiguredCountries: vi
+          .fn()
+          .mockResolvedValue([makeCountrySummary({ invoiceDefaultConnectionId: 'conn_1' })]),
+      },
+    });
+    renderWithProviders(
+      <SalesDocumentCountryRoutingDialog
+        open
+        country="DE"
+        cameFrom={null}
+        onOpenChange={vi.fn()}
+        onNavigate={vi.fn()}
+      />,
+      { apiClient, sessionAdapter: createAuthenticatedSessionAdapter() },
+    );
+
+    await screen.findByText(/Rules for DE/i);
+    expect(screen.queryByRole('button', { name: 'Mark as no sales document' })).toBeNull();
+  });
+
+  it('should acknowledge the country and flip the banner to "Acknowledged" with an Undo action', async () => {
+    let acknowledgedAt: string | null = null;
+    const acknowledgeNoDocument = vi.fn((country: string) => {
+      acknowledgedAt = '2026-02-03T10:00:00.000Z';
+      return Promise.resolve({ country, acknowledgedAt });
+    });
+    const apiClient = createMockApiClient({
+      salesDocumentRules: {
+        listRules: vi.fn().mockResolvedValue([]),
+        listCountryDefaults: vi.fn().mockResolvedValue([]),
+        listConfiguredCountries: vi.fn(() =>
+          Promise.resolve(
+            acknowledgedAt
+              ? [makeCountrySummary({ acknowledgedNoDocumentAt: acknowledgedAt })]
+              : [],
+          ),
+        ),
+        acknowledgeNoDocument,
+      },
+    });
+    renderWithProviders(
+      <SalesDocumentCountryRoutingDialog
+        open
+        country="DE"
+        cameFrom={null}
+        onOpenChange={vi.fn()}
+        onNavigate={vi.fn()}
+      />,
+      { apiClient, sessionAdapter: createAuthenticatedSessionAdapter() },
+    );
+
+    const markButton = await screen.findByRole('button', { name: 'Mark as no sales document' });
+    await userEvent.click(markButton);
+
+    expect(acknowledgeNoDocument).toHaveBeenCalledWith('DE');
+    expect(await screen.findByText(/Acknowledged/i)).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Undo' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Mark as no sales document' })).toBeNull();
+  });
+
+  it('should undo the acknowledgment and flip the banner back to the offering state', async () => {
+    let acknowledgedAt: string | null = '2026-02-03T10:00:00.000Z';
+    const clearAcknowledgment = vi.fn(() => {
+      acknowledgedAt = null;
+      return Promise.resolve(undefined);
+    });
+    const apiClient = createMockApiClient({
+      salesDocumentRules: {
+        listRules: vi.fn().mockResolvedValue([]),
+        listCountryDefaults: vi.fn().mockResolvedValue([]),
+        listConfiguredCountries: vi.fn(() =>
+          Promise.resolve(
+            acknowledgedAt
+              ? [makeCountrySummary({ acknowledgedNoDocumentAt: acknowledgedAt })]
+              : [],
+          ),
+        ),
+        clearAcknowledgment,
+      },
+    });
+    renderWithProviders(
+      <SalesDocumentCountryRoutingDialog
+        open
+        country="DE"
+        cameFrom={null}
+        onOpenChange={vi.fn()}
+        onNavigate={vi.fn()}
+      />,
+      { apiClient, sessionAdapter: createAuthenticatedSessionAdapter() },
+    );
+
+    const undoButton = await screen.findByRole('button', { name: 'Undo' });
+    await userEvent.click(undoButton);
+
+    expect(clearAcknowledgment).toHaveBeenCalledWith('DE');
+    expect(
+      await screen.findByRole('button', { name: 'Mark as no sales document' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Undo' })).toBeNull();
+  });
+});
+
+describe('SalesDocumentCountryRoutingDialog — Reset country (#2189)', () => {
+  it('should disable "Reset country" when the country has zero rules, zero defaults, and no acknowledgment', async () => {
+    const apiClient = createMockApiClient({
+      salesDocumentRules: {
+        listRules: vi.fn().mockResolvedValue([]),
+        listCountryDefaults: vi.fn().mockResolvedValue([]),
+        listConfiguredCountries: vi.fn().mockResolvedValue([]),
+      },
+    });
+    renderWithProviders(
+      <SalesDocumentCountryRoutingDialog
+        open
+        country="DE"
+        cameFrom={null}
+        onOpenChange={vi.fn()}
+        onNavigate={vi.fn()}
+      />,
+      { apiClient, sessionAdapter: createAuthenticatedSessionAdapter() },
+    );
+
+    await screen.findByText(/No rules yet for this country/i);
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Reset country' })).toBeDisabled();
+    });
+  });
+
+  it('should enable "Reset country" when the country has at least one rule', async () => {
+    const apiClient = createMockApiClient({
+      salesDocumentRules: {
+        listRules: vi.fn().mockResolvedValue([makeRule('r1')]),
+        listCountryDefaults: vi.fn().mockResolvedValue([]),
+        listConfiguredCountries: vi
+          .fn()
+          .mockResolvedValue([makeCountrySummary({ ruleCount: 1 })]),
+      },
+    });
+    renderWithProviders(
+      <SalesDocumentCountryRoutingDialog
+        open
+        country="DE"
+        cameFrom={null}
+        onOpenChange={vi.fn()}
+        onNavigate={vi.fn()}
+      />,
+      { apiClient, sessionAdapter: createAuthenticatedSessionAdapter() },
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Reset country' })).toBeEnabled();
+    });
+  });
+
+  it('should name the exact rule count and default in the confirm dialog description', async () => {
+    const defaults: SalesDocumentCountryDefault[] = [
+      { id: 'd1', country: 'DE', documentKind: 'invoice', connectionId: 'conn_1' },
+    ];
+    const apiClient = createMockApiClient({
+      salesDocumentRules: {
+        listRules: vi.fn().mockResolvedValue([makeRule('r1'), makeRule('r2'), makeRule('r3')]),
+        listCountryDefaults: vi.fn().mockResolvedValue(defaults),
+        listConfiguredCountries: vi.fn().mockResolvedValue([
+          makeCountrySummary({ ruleCount: 3, invoiceDefaultConnectionId: 'conn_1' }),
+        ]),
+      },
+    });
+    renderWithProviders(
+      <SalesDocumentCountryRoutingDialog
+        open
+        country="DE"
+        cameFrom={null}
+        onOpenChange={vi.fn()}
+        onNavigate={vi.fn()}
+      />,
+      { apiClient, sessionAdapter: createAuthenticatedSessionAdapter() },
+    );
+
+    const resetButton = await waitFor(() => {
+      const button = screen.getByRole('button', { name: 'Reset country' });
+      expect(button).toBeEnabled();
+      return button;
+    });
+    await userEvent.click(resetButton);
+
+    expect(
+      await screen.findByText(
+        "This deletes 3 rules and the Invoice default for DE. This can't be undone.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('should sequentially delete every rule and default, then reflect an empty, never-touched-looking state', async () => {
+    let rules: SalesDocumentRule[] = [makeRule('r1'), makeRule('r2'), makeRule('r3')];
+    let defaults: SalesDocumentCountryDefault[] = [
+      { id: 'd1', country: 'DE', documentKind: 'invoice', connectionId: 'conn_1' },
+    ];
+    const deleteRule = vi.fn((id: string) => {
+      rules = rules.filter((r) => r.id !== id);
+      return Promise.resolve(undefined);
+    });
+    const deleteCountryDefault = vi.fn((id: string) => {
+      defaults = defaults.filter((d) => d.id !== id);
+      return Promise.resolve(undefined);
+    });
+    const clearAcknowledgment = vi.fn().mockResolvedValue(undefined);
+    const apiClient = createMockApiClient({
+      salesDocumentRules: {
+        listRules: vi.fn(() => Promise.resolve(rules)),
+        listCountryDefaults: vi.fn(() => Promise.resolve(defaults)),
+        listConfiguredCountries: vi.fn(() =>
+          Promise.resolve(
+            rules.length > 0 || defaults.length > 0
+              ? [makeCountrySummary({ ruleCount: rules.length, invoiceDefaultConnectionId: 'conn_1' })]
+              : [],
+          ),
+        ),
+        deleteRule,
+        deleteCountryDefault,
+        clearAcknowledgment,
+      },
+    });
+    renderWithProviders(
+      <SalesDocumentCountryRoutingDialog
+        open
+        country="DE"
+        cameFrom={null}
+        onOpenChange={vi.fn()}
+        onNavigate={vi.fn()}
+      />,
+      { apiClient, sessionAdapter: createAuthenticatedSessionAdapter() },
+    );
+
+    const resetButton = await waitFor(() => {
+      const button = screen.getByRole('button', { name: 'Reset country' });
+      expect(button).toBeEnabled();
+      return button;
+    });
+    await userEvent.click(resetButton);
+
+    const confirmButton = await screen.findByRole('button', { name: 'Yes, reset' });
+    await userEvent.click(confirmButton);
+
+    await waitFor(() => {
+      expect(deleteRule).toHaveBeenCalledTimes(3);
+    });
+    expect(deleteRule).toHaveBeenNthCalledWith(1, 'r1');
+    expect(deleteRule).toHaveBeenNthCalledWith(2, 'r2');
+    expect(deleteRule).toHaveBeenNthCalledWith(3, 'r3');
+    expect(deleteCountryDefault).toHaveBeenCalledWith('d1');
+    expect(clearAcknowledgment).not.toHaveBeenCalled();
+
+    // Post-reset state matches a never-touched country: no rules, no
+    // defaults, the acknowledgment banner back in its offering shape, and
+    // "Reset country" disabled again.
+    await screen.findByText(/No rules yet for this country/i);
+    expect(
+      await screen.findByRole('button', { name: 'Mark as no sales document' }),
+    ).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Reset country' })).toBeDisabled();
+    });
   });
 });

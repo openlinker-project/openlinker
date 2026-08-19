@@ -541,6 +541,11 @@ export function createMockApiClient(
       getTemplate: vi.fn().mockResolvedValue(null),
       adoptTemplate: vi.fn().mockResolvedValue([]),
       listConfiguredCountries: vi.fn().mockResolvedValue([]),
+      acknowledgeNoDocument: vi.fn().mockResolvedValue({
+        country: '',
+        acknowledgedAt: '2026-01-01T00:00:00.000Z',
+      }),
+      clearAcknowledgment: vi.fn().mockResolvedValue(undefined),
       ...overrides.salesDocumentRules,
     } as ApiClient['salesDocumentRules'],
     shipments: {

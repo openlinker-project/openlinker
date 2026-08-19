@@ -7,6 +7,7 @@ import { ApiError } from '../../../shared/api/api-error';
 import type {
   AdoptSalesDocumentTemplateInput,
   CreateSalesDocumentRuleInput,
+  SalesDocumentCountryAcknowledgment,
   SalesDocumentCountryDefault,
   SalesDocumentCountrySummary,
   SalesDocumentRule,
@@ -29,6 +30,10 @@ export interface SalesDocumentRulesApi {
   adoptTemplate: (country: string, input: AdoptSalesDocumentTemplateInput) => Promise<SalesDocumentRule[]>;
   /** GET /sales-documents/countries (#2186) — every country carrying any config. */
   listConfiguredCountries: () => Promise<SalesDocumentCountrySummary[]>;
+  /** PUT /sales-documents/countries/:country/acknowledgment (#2186, #2189). */
+  acknowledgeNoDocument: (country: string) => Promise<SalesDocumentCountryAcknowledgment>;
+  /** DELETE /sales-documents/countries/:country/acknowledgment (#2186, #2189). */
+  clearAcknowledgment: (country: string) => Promise<void>;
 }
 
 interface ApiRequest {
@@ -86,6 +91,18 @@ export function createSalesDocumentRulesApi(request: ApiRequest): SalesDocumentR
     },
     listConfiguredCountries(): Promise<SalesDocumentCountrySummary[]> {
       return request<SalesDocumentCountrySummary[]>('/sales-documents/countries');
+    },
+    acknowledgeNoDocument(country): Promise<SalesDocumentCountryAcknowledgment> {
+      return request<SalesDocumentCountryAcknowledgment>(
+        `/sales-documents/countries/${encodeURIComponent(country)}/acknowledgment`,
+        { method: 'PUT' },
+      );
+    },
+    clearAcknowledgment(country): Promise<void> {
+      return request<void>(
+        `/sales-documents/countries/${encodeURIComponent(country)}/acknowledgment`,
+        { method: 'DELETE' },
+      );
     },
   };
 }
