@@ -61,7 +61,14 @@ export interface ISalesDocumentRulesService {
    */
   listConfiguredCountries(): Promise<SalesDocumentCountrySummary[]>;
 
-  /** Persist "this market intentionally has no sales document configured". */
+  /**
+   * Persist "this market intentionally has no sales document configured".
+   * Rejects with `SalesDocumentCountryAlreadyConfiguredException` when the
+   * country already carries any active rule or country default (#2186) —
+   * the mirror-image of `createRule` / `upsertCountryDefault`'s auto-clear,
+   * so a real configuration and an acknowledgment can never coexist from
+   * either write direction.
+   */
   acknowledgeNoDocument(country: string): Promise<SalesDocumentCountryAcknowledgment>;
 
   /** Idempotent — clearing an already-unacknowledged country is a no-op. */

@@ -49,6 +49,7 @@ import {
   SalesDocumentCountryDefaultNotFoundException,
   SalesDocumentRuleNotFoundException,
 } from '../../domain/exceptions/sales-document-rule-not-found.exception';
+import { SalesDocumentCountryAlreadyConfiguredException } from '../../domain/exceptions/sales-document-country-already-configured.exception';
 
 /** One country default's contribution to a `SalesDocumentCountrySummary`. */
 interface CountryDefaultSlots {
@@ -94,7 +95,8 @@ export class SalesDocumentRulesService implements ISalesDocumentRulesService {
     // A real configuration and a "no document, by design" acknowledgment can
     // never coexist (#2186) — clear only after the write succeeds, so a
     // rejected create (conflict / unresolved threshold ref) never clears a
-    // still-accurate acknowledgment.
+    // still-accurate acknowledgment. `acknowledgeNoDocument` enforces the
+    // same invariant from the OTHER direction (see its own comment).
     await this.clearAcknowledgment(input.country);
     return rule;
   }
@@ -203,11 +205,32 @@ export class SalesDocumentRulesService implements ISalesDocumentRulesService {
   }
 
   async acknowledgeNoDocument(country: string): Promise<SalesDocumentCountryAcknowledgment> {
+    // Mirror-image of the `createRule` / `upsertCountryDefault` auto-clear
+    // (#2186): a real configuration and an acknowledgment can never coexist,
+    // so this write is rejected outright rather than silently producing that
+    // contradictory state when the acknowledgment lands SECOND.
+    await this.assertCountryUnconfigured(country);
     return this.acknowledgmentRepository.upsert(country);
   }
 
   async clearAcknowledgment(country: string): Promise<void> {
     await this.acknowledgmentRepository.delete(country);
+  }
+
+  /**
+   * Throws `SalesDocumentCountryAlreadyConfiguredException` when `country`
+   * already carries any active rule or country default — the guard that
+   * keeps `acknowledgeNoDocument` from ever coexisting with a real
+   * configuration (#2186).
+   */
+  private async assertCountryUnconfigured(country: string): Promise<void> {
+    const [rules, defaults] = await Promise.all([
+      this.ruleRepository.findByCountry(country),
+      this.countryDefaultRepository.findByCountry(country),
+    ]);
+    if (rules.length > 0 || defaults.length > 0) {
+      throw new SalesDocumentCountryAlreadyConfiguredException(country);
+    }
   }
 
   /**

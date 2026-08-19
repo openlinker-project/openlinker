@@ -19,11 +19,6 @@ export class SalesDocumentCountryAcknowledgmentRepository
     private readonly ormRepository: Repository<SalesDocumentCountryAcknowledgmentOrmEntity>,
   ) {}
 
-  async find(country: string): Promise<SalesDocumentCountryAcknowledgment | null> {
-    const entity = await this.ormRepository.findOne({ where: { country } });
-    return entity ? this.toDomain(entity) : null;
-  }
-
   async findAll(): Promise<SalesDocumentCountryAcknowledgment[]> {
     const entities = await this.ormRepository.find();
     return entities.map((entity) => this.toDomain(entity));

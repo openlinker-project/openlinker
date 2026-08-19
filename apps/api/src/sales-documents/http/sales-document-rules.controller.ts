@@ -36,6 +36,7 @@ import { Roles } from '../../auth/decorators/roles.decorator';
 import {
   type ISalesDocumentRulesService,
   SALES_DOCUMENT_RULES_SERVICE_TOKEN,
+  SalesDocumentCountryAlreadyConfiguredException,
   SalesDocumentCountryDefaultNotFoundException,
   SalesDocumentRuleConflictException,
   SalesDocumentRuleNotFoundException,
@@ -174,11 +175,17 @@ export class SalesDocumentRulesController {
   })
   @ApiParam({ name: 'country', type: String })
   @ApiResponse({ status: 200, type: SalesDocumentCountryAcknowledgmentResponseDto })
+  @ApiResponse({ status: 409, description: 'Country already has an active rule or country default' })
   async acknowledgeNoDocument(
     @Param('country') country: string,
   ): Promise<SalesDocumentCountryAcknowledgmentResponseDto> {
-    const acknowledgment = await this.service.acknowledgeNoDocument(country);
-    return SalesDocumentCountryAcknowledgmentResponseDto.fromDomain(acknowledgment);
+    this.assertValidCountryParam(country);
+    try {
+      const acknowledgment = await this.service.acknowledgeNoDocument(country);
+      return SalesDocumentCountryAcknowledgmentResponseDto.fromDomain(acknowledgment);
+    } catch (error) {
+      throw this.toHttpException(error);
+    }
   }
 
   @Delete('countries/:country/acknowledgment')
@@ -187,11 +194,29 @@ export class SalesDocumentRulesController {
   @ApiParam({ name: 'country', type: String })
   @ApiResponse({ status: 204 })
   async clearAcknowledgment(@Param('country') country: string): Promise<void> {
+    this.assertValidCountryParam(country);
     await this.service.clearAcknowledgment(country);
+  }
+
+  /**
+   * `sales_document_country_acknowledgments.country` (and its sibling rule /
+   * default tables) is `varchar(8)` — a bare, unvalidated path param would
+   * otherwise surface an oversized value as a raw DB error (500) rather than
+   * a clean 400.
+   */
+  private assertValidCountryParam(country: string): void {
+    if (country.length < 1 || country.length > 8) {
+      throw new BadRequestException(
+        `'country' must be between 1 and 8 characters (ISO 3166-1 alpha-2, or '*' for Rest of world).`,
+      );
+    }
   }
 
   private toHttpException(error: unknown): Error {
     if (error instanceof SalesDocumentRuleConflictException) {
+      return new ConflictException(error.message);
+    }
+    if (error instanceof SalesDocumentCountryAlreadyConfiguredException) {
       return new ConflictException(error.message);
     }
     if (error instanceof SalesDocumentThresholdNotFoundException) {
