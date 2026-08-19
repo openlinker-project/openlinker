@@ -5,8 +5,10 @@
  * OpenLinker unified Product and ProductVariant domain entities.
  *
  * Description is stored as raw HTML — no stripping. This matches the
- * PrestaShop pattern; outbound adapters (e.g. Allegro) sanitise on publish
- * via sanitizeAllegroDescription.
+ * PrestaShop pattern; the destination's declared `DescriptionFormat` is applied
+ * on the way out instead, once, in core (ADR-046). Inbound sanitisation of
+ * shop-supplied HTML is a separate concern and is tracked as #2198 - storing it
+ * raw is only safe while nothing renders it as HTML.
  *
  * Price parsing uses Number.isFinite to correctly preserve zero-price
  * products (free downloads, giveaways) — `parseFloat('0') || null` would

@@ -29,6 +29,10 @@
  * @implements {ContentPublisherPort}
  */
 import { Inject, Injectable } from '@nestjs/common';
+import {
+  formatOfferFieldsForDestination,
+  resolveOfferDescriptionFormat,
+} from '@openlinker/core/listings';
 import { Logger } from '@openlinker/shared/logging';
 import { INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 import { IIntegrationsService } from '@openlinker/core/integrations';
@@ -151,11 +155,16 @@ export class IntegrationsContentPublisher implements ContentPublisherPort {
 
     const publishedAtIso = new Date().toISOString();
     const payload = toChannelDescriptionPayload(request.value);
+    const descriptionFormat = resolveOfferDescriptionFormat(adapter);
 
     for (const externalOfferId of externalOfferIds) {
       await adapter.updateOfferFields({
         externalOfferId,
-        fields: { description: payload },
+        // ADR-046: this path reaches `updateOfferFields` directly, without
+        // passing through either builder, so it applies the destination's
+        // declared format itself. It is the Content tab's publish path - the
+        // one an enumeration of "the two builders" silently misses.
+        fields: formatOfferFieldsForDestination({ description: payload }, descriptionFormat),
         idempotencyKey: `content:${request.productId}:${connectionId}:${externalOfferId}:${publishedAtIso}`,
       });
     }

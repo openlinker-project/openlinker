@@ -425,6 +425,12 @@ export { ProductPublishTargetNotFoundException } from './domain/exceptions/produ
 // future marketplace-side check).
 export { checkRequiredToSell } from './application/services/check-required-to-sell';
 export { applyDescriptionFormat } from './application/services/apply-description-format';
+export {
+  resolveOfferDescriptionFormat,
+  resolveShopDescriptionFormat,
+  formatDescriptionForDestination,
+  formatOfferFieldsForDestination,
+} from './application/services/description-format-resolution';
 export type {
   DescriptionFormat,
   DescriptionShape,

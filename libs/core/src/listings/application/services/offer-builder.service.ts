@@ -31,6 +31,10 @@
  */
 
 import { Inject, Injectable } from '@nestjs/common';
+import {
+  formatDescriptionForDestination,
+  resolveOfferDescriptionFormat,
+} from './description-format-resolution';
 
 import { Logger } from '@openlinker/shared/logging';
 import {
@@ -196,7 +200,14 @@ export class OfferBuilderService implements IOfferBuilderService {
     const variantGroup = this.resolveVariantGroup(variant, siblings.length);
 
     const title = input.overrides?.title ?? product.name;
-    const description = input.overrides?.description ?? product.description;
+    // ADR-046: shape the description into what THIS destination accepts, using
+    // the format the already-resolved adapter declares. Returns undefined when
+    // nothing survives, which the cleanup below then omits - the Allegro
+    // adapter used to implement that emptiness check locally.
+    const description = formatDescriptionForDestination(
+      input.overrides?.description ?? product.description,
+      resolveOfferDescriptionFormat(destination)
+    );
     const imageUrls = input.overrides?.imageUrls ?? product.images;
 
     const overrides = {

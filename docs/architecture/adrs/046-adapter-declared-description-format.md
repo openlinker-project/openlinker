@@ -35,7 +35,14 @@ The contract is a neutral `DescriptionFormat` value type in `libs/core/src/listi
 - **Marketplace** - the method is added to the existing `OfferFieldUpdater` sub-capability (`listings/domain/ports/capabilities/offer-field-updater.capability.ts`), whose own contract already names `description`. Optional, opted into per adapter, reached through the existing `isOfferFieldUpdater` guard. This is the `TaxonomyBorrower.getBorrowedTaxonomy()` precedent exactly.
 - **Shop** - `ProductPublisher` is a capability *value* in `CoreCapabilityValues`, not an interface; the interface behind it is `ShopProductManagerPort` (`listings/domain/ports/shop-product-manager.port.ts`), a base port carrying only `publishProduct`. The method is therefore added to that **base port**, making it required of every shop adapter. That deliberately widens a port this repo otherwise keeps minimal, and it is the right trade here: none of the three existing shop sub-capabilities (`ShopAttributeReader`, `ShopCategoryBrowser`, `ShopProductStatusReader`) is about content, so hanging content on one of them would be worse than admitting the base port grew - and unlike a marketplace offer field, a shop publish *always* carries a description, so there is nothing to opt out of.
 
-One pure helper, `applyDescriptionFormat`, enforces it. **The rule is that every path handing a description to a destination applies the format** - stated as a rule rather than a list, so a fourth path is covered by construction. Today there are three: `OfferBuilderService` (offer create), `ProductPublishBuilderService` (shop publish), and `IntegrationsContentPublisherService`, which narrows with `isOfferFieldUpdater` and calls `updateOfferFields` directly without passing through either builder - the path the Content tab uses, and therefore the one that would silently keep shipping unfiltered HTML if the enumeration were treated as complete. `sanitizeAllegroDescription` is deleted.
+One pure helper, `applyDescriptionFormat`, enforces it. **The rule is that every path handing a description to a destination applies the format** - stated as a rule rather than a list, precisely because the list keeps being wrong. Today there are **four**:
+
+1. `OfferBuilderService` - offer create.
+2. `ProductPublishBuilderService` - shop publish.
+3. `IntegrationsContentPublisherService` - the Content tab's channel publish. Narrows with `isOfferFieldUpdater` and calls `updateOfferFields` directly, passing through neither builder.
+4. `MarketplaceOfferFieldUpdateHandler` (`apps/worker`) - the edit-offer drawer's `marketplace.offer.updateFields` job. Also calls the adapter directly.
+
+The enumeration was wrong twice while this decision was being written: the first draft named only the two builders, review added the third, and implementing it found the fourth. That is the argument for the rule form, and for `resolveOfferDescriptionFormat` / `formatOfferFieldsForDestination` existing as one shared implementation rather than four copies. `sanitizeAllegroDescription` is deleted.
 
 Three subordinate decisions are settled here:
 

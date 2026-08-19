@@ -100,8 +100,15 @@ describe('ProductPublishBuilderService', () => {
     );
     expect(command.parameters).toEqual([{ id: 'Brand', values: ['Acme'], section: 'product' }]);
     expect(command.price).toEqual({ amount: 12.5, currency: 'PLN' });
+    // ADR-046: the builder shapes the description with the shop's declared
+    // format. This mock adapter declares none, so the defensive fallback
+    // applies and its block-opener rule wraps the plain-text master value.
     expect(command.content).toEqual(
-      expect.objectContaining({ title: 'Widget', description: 'A widget', imageUrls: ['http://img'] })
+      expect.objectContaining({
+        title: 'Widget',
+        description: '<p>A widget</p>',
+        imageUrls: ['http://img'],
+      })
     );
     expect(command.status).toBe('published');
     // Default mock variant has sku: null ⇒ the key is spread-omitted entirely

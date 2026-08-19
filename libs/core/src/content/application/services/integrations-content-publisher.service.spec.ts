@@ -226,8 +226,14 @@ describe('IntegrationsContentPublisher', () => {
       const seenKeys = new Set<string>();
       for (const call of updateOfferFields.mock.calls) {
         const cmd = call[0];
+        // ADR-046: this path calls `updateOfferFields` directly, without either
+        // builder, so it applies the destination's declared format itself. The
+        // mock adapter declares none, so the fallback's block-opener rule wraps
+        // the plain-text draft.
         expect(cmd.fields).toEqual({
-          description: { sections: [{ items: [{ type: 'TEXT', content: 'channel text' }] }] },
+          description: {
+            sections: [{ items: [{ type: 'TEXT', content: '<p>channel text</p>' }] }],
+          },
         });
         // Each offer gets a distinct idempotency key scoped by externalOfferId.
         expect(cmd.idempotencyKey).toMatch(

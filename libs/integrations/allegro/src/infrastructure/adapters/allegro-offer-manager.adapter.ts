@@ -111,7 +111,6 @@ import type {
 import { AllegroApiException } from '../../domain/exceptions/allegro-api.exception';
 import { Logger, formatBodyForLog } from '@openlinker/shared/logging';
 import { createHash } from 'crypto';
-import { sanitizeAllegroDescription } from '../util/sanitize-allegro-description';
 import { sanitizeAllegroName } from '../util/sanitize-allegro-name';
 import { uploadImagesViaAllegro } from '../util/upload-images-via-allegro';
 import { uploadSafetyAttachmentViaAllegro } from '../util/upload-safety-attachment-via-allegro';
@@ -1341,7 +1340,13 @@ export class AllegroOfferManagerAdapter
         sections: cmd.fields.description.sections.map((section) => ({
           items: section.items.map((item) => ({
             type: item.type,
-            content: sanitizeAllegroDescription(item.content),
+            // ADR-046: core applied the destination's declared format before
+            // dispatch (`formatOfferFieldsForDestination`), so the content
+            // arrives already shaped. The adapter deliberately keeps no
+            // defensive second pass - two sources of truth drift, and the
+            // previous adapter-local regex is exactly how the wrong allowlist
+            // shipped.
+            content: item.content,
           })),
         })),
       };
@@ -1810,12 +1815,16 @@ export class AllegroOfferManagerAdapter
     };
 
     if (cmd.overrides?.description) {
-      const sanitized = sanitizeAllegroDescription(cmd.overrides.description).trim();
-      if (sanitized.length > 0) {
+      // ADR-046: already shaped by core. The emptiness check that used to live
+      // here moved with it - `formatDescriptionForDestination` returns
+      // undefined when nothing survives, so an empty description never reaches
+      // this branch at all.
+      const shaped = cmd.overrides.description.trim();
+      if (shaped.length > 0) {
         body.description = {
           sections: [
             {
-              items: [{ type: 'TEXT', content: sanitized }],
+              items: [{ type: 'TEXT', content: shaped }],
             },
           ],
         };

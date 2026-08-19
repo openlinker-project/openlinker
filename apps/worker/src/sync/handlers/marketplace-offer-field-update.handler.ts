@@ -17,7 +17,11 @@ import type {
 import { SyncJobExecutionError } from '@openlinker/core/sync';
 import { IIdentifierMappingService, IDENTIFIER_MAPPING_SERVICE_TOKEN, CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
 import type { OfferManagerPort } from '@openlinker/core/listings';
-import { isOfferFieldUpdater } from '@openlinker/core/listings';
+import {
+  formatOfferFieldsForDestination,
+  isOfferFieldUpdater,
+  resolveOfferDescriptionFormat,
+} from '@openlinker/core/listings';
 import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 import { Logger } from '@openlinker/shared/logging';
 
@@ -71,7 +75,14 @@ export class MarketplaceOfferFieldUpdateHandler implements SyncJobHandler {
     try {
       await adapter.updateOfferFields({
         externalOfferId: mapping.externalId,
-        fields: payload.fields,
+        // ADR-046: the fourth path that hands a description to a destination -
+        // the edit-offer drawer's `marketplace.offer.updateFields` job. It calls
+        // the adapter directly, so it applies the declared format itself rather
+        // than relying on an adapter-local sanitiser (there is no longer one).
+        fields: formatOfferFieldsForDestination(
+          payload.fields,
+          resolveOfferDescriptionFormat(adapter)
+        ),
         idempotencyKey: payload.idempotencyKey,
       });
 
