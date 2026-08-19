@@ -20,7 +20,8 @@ import {
 import { Button } from '../../../shared/ui/button';
 import { DesktopOnlyBanner } from '../../../shared/ui/desktop-only-banner';
 import { StatusBadge } from '../../../shared/ui/status-badge';
-import { Textarea } from '../../../shared/ui/textarea';
+import { RichTextEditor } from '../../../shared/ui/rich-text-editor';
+import type { DescriptionFormat } from '../../../shared/ui/rich-text.types';
 import { formatDateTime } from '../../../shared/format/format-date';
 import { formatRelativeTime } from '../../../shared/format/format-relative-time';
 import { translateAllegroError } from '../../allegro';
@@ -38,6 +39,13 @@ export interface ContentPanelProps {
   updatedBy: string | null;
   disabledReason?: string | null;
   isDesktop: boolean;
+  /**
+   * The destination's declared description contract (ADR-046). The master tab
+   * passes `MASTER_DESCRIPTION_FORMAT`, since the catalogue of record is
+   * deliberately outside the declared-format rule; a channel tab passes what its
+   * connection declared.
+   */
+  format: DescriptionFormat;
   busy: boolean;
   error?: string | null;
   /**
@@ -70,6 +78,7 @@ export function ContentPanel({
   updatedBy,
   disabledReason,
   isDesktop,
+  format,
   busy,
   error,
   errors,
@@ -131,15 +140,19 @@ export function ContentPanel({
         <Alert tone="error">{error}</Alert>
       ) : null}
 
-      <Textarea
-        className="content-panel__textarea"
-        rows={12}
+      {/* ADR-046: a description is HTML, and this field held it as raw markup -
+          with the AI suggestion prompt explicitly producing semantic HTML into a
+          field whose helper text said "plain text". The editor derives its
+          toolbar and schema from the destination's contract, so the operator
+          cannot author a tag this channel would discard. */}
+      <RichTextEditor
+        className="content-panel__editor"
+        format={format}
         value={value}
-        readOnly={readOnly}
+        onChange={setValue}
+        disabled={readOnly}
         aria-label={`${title} description`}
-        onChange={(e) => {
-          setValue(e.target.value);
-        }}
+        toolbarSlot={suggestSlot}
       />
 
       <div className="content-panel__meta">
@@ -169,7 +182,6 @@ export function ContentPanel({
         </div>
 
         <div className="content-panel__actions">
-          {suggestSlot}
           <Button
             type="button"
             tone="ghost"

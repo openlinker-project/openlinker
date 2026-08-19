@@ -32,6 +32,7 @@
  * @module apps/web/src/features/listings/components/bulk
  */
 import { useEffect, useMemo, useState, type ReactElement } from 'react';
+import { RichTextView } from '../../../../shared/ui';
 
 import { Alert, Button, CheckboxCell, Input, ProductThumbnail } from '../../../../shared/ui';
 import { ReadOnlyLock } from '../../../../shared/ui/read-only-lock';
@@ -103,6 +104,13 @@ interface ShopReviewLine {
   stock: number | null;
   /** Policy-resolved price; null when it falls back to master server-side. */
   price: number | null;
+  /**
+   * The description this line will actually publish, resolved exactly as the
+   * payload resolves it (#2200). `null` when the operator overrode nothing and
+   * the builder will fall back to the master product's own description
+   * server-side - which the preview then says, rather than showing blank.
+   */
+  description: string | null;
 }
 
 /** Product-grouped lines (#1838) - a product with 2+ lines to review renders
@@ -327,6 +335,9 @@ export function BulkShopReviewStep({
           included: variant.included,
           stock: stock.value,
           price: price.value,
+          // Same resolver the submit path uses, so review == publish - the
+          // principle this block's comment above already states.
+          description: effectiveShopContent(row, variant)?.description ?? null,
         });
       }
     }
@@ -937,6 +948,18 @@ function ShopVariantRow({
         <div className="t">
           <b>{line.variantLabel}</b>
           {line.variantSku ? <small>{line.variantSku}</small> : null}
+          {/* #2200: the Review step resolved which description each row would
+              publish and then never showed it - an operator submitted copy to a
+              live marketplace without ever seeing it rendered. Collapsed by
+              default so the dense grid keeps its shape, matching the
+              listing-detail "Description preview" disclosure. */}
+          <details className="bulk-review__desc">
+            <summary>Description</summary>
+            <RichTextView
+              html={line.description}
+              emptyLabel="From the master product — no override for this line."
+            />
+          </details>
         </div>
       </div>
       <div className="bulk-review__c-status bulk-review__chips">

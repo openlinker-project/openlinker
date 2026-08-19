@@ -45,3 +45,34 @@ export interface DescriptionFormat {
   declared: boolean;
   resolvedVia: 'OfferManager' | 'ProductPublisher' | null;
 }
+
+/**
+ * The format for editing the MASTER description.
+ *
+ * ADR-046 deliberately excludes the master from the declared-format rule: it is
+ * the catalogue of record rather than a listing destination, its own editor is
+ * the authority on what it accepts, and it is where the broad HTML originates.
+ * So there is no adapter declaration to fetch here, and narrowing the editor to
+ * a marketplace subset would actively prevent an operator from authoring the
+ * tables and headings their own shop supports.
+ *
+ * `declared: true` is not a fudge: the contract IS stated, in ADR-046, it just
+ * comes from the decision rather than from an adapter method. Reporting
+ * `declared: false` would render the "this destination has not declared its
+ * format" warning, which is wrong here - nothing is supposed to declare.
+ */
+export const MASTER_DESCRIPTION_FORMAT: DescriptionFormat = {
+  shape: 'html',
+  allowedTags: [
+    'h1', 'h2', 'h3', 'h4', 'p', 'br', 'ul', 'ol', 'li',
+    'b', 'strong', 'i', 'em', 'u', 's', 'a', 'blockquote',
+  ],
+  allowedAttributes: { a: ['href'] },
+  contentModel: null,
+  rewrites: [],
+  requiresBlockOpener: false,
+  selfClosingVoids: false,
+  maxBytes: 65536,
+  declared: true,
+  resolvedVia: null,
+};

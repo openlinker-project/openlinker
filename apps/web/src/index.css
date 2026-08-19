@@ -18310,3 +18310,27 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
 .rich-text-view pre { margin: 0; overflow-x: auto; font-family: var(--font-mono); font-size: 0.75rem; }
 
 .rich-text-view__empty { margin: 0; font-size: 0.875rem; color: var(--text-muted); }
+
+/* Review-step description disclosure (#2200). Collapsed by default so the dense
+   review grid keeps its row height; the preview is what an operator submits. */
+.bulk-review__desc { margin-top: var(--space-1); }
+.bulk-review__desc > summary {
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.bulk-review__desc > summary:hover { color: var(--text-secondary); }
+.bulk-review__desc[open] > summary { margin-bottom: var(--space-1); }
+.bulk-review__desc .rich-text-view,
+.bulk-review__desc .rich-text-view__empty {
+  padding: var(--space-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface-muted);
+  font-size: 0.8125rem;
+  max-height: 12rem;
+  overflow-y: auto;
+}

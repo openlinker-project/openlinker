@@ -95,3 +95,4 @@ export type { RichTextViewProps } from './rich-text-view';
 export { deriveRichTextProfile, buildRichTextExtensions, byteLength } from './rich-text-profiles';
 export type { RichTextProfile } from './rich-text-profiles';
 export type { DescriptionFormat, DescriptionRewrite, RichTextMark } from './rich-text.types';
+export { MASTER_DESCRIPTION_FORMAT } from './rich-text.types';

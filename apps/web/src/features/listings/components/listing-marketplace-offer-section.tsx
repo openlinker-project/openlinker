@@ -14,6 +14,7 @@
  *     description preview (collapsed, expandable).
  */
 import type { ReactElement } from 'react';
+import { RichTextView } from '../../../shared/ui';
 import { Button } from '../../../shared/ui/button';
 import { ErrorState, LoadingState } from '../../../shared/ui/feedback-state';
 import { KeyValueList } from '../../../shared/ui/key-value-list';
@@ -167,7 +168,11 @@ export function ListingMarketplaceOfferSection({
       {offer.description ? (
         <details className="listing-marketplace-offer__description">
           <summary>Description preview</summary>
-          <p className="listing-marketplace-offer__description-body">{offer.description}</p>
+          {/* ADR-046: the channel-side value is HTML and was printed as text. */}
+          <RichTextView
+            html={offer.description}
+            className="listing-marketplace-offer__description-body"
+          />
         </details>
       ) : null}
     </section>

@@ -35,6 +35,14 @@ When a lesson hardens into a rule, **graduate it** to the canonical doc and leav
 
 **Source**: PR #2137 (finding B1), guard added in the same PR.
 
+## DOMPurify is LOSSY under happy-dom, not absent - so a rendered-HTML assertion there proves nothing
+
+**Context**: `apps/web` runs `vitest` on `happy-dom` (`apps/web/vite.config.ts`). ADR-046 introduced `shared/ui/rich-text-view.tsx`, which sanitizes stored description HTML with DOMPurify before rendering it.
+**Problem**: under happy-dom DOMPurify reports `isSupported: true` and `document.implementation.createHTMLDocument` exists, so nothing looks wrong - but `sanitize('<p>a</p>')` returns `'a'`. Block tags are silently stripped, a `<ul>` renders as bare text, and in an earlier probe a `<script>` element was left standing while an `<a href>` lost its href. DOMPurify's own README says happy-dom "is not considered safe at this point"; this is what that means in practice. The trap is the direction of the failure: a page test asserting "the description renders" can PASS on the surviving text while proving nothing about the sanitizer, and a test asserting real markup fails for a reason that has nothing to do with the component.
+**Rule**: assert markup fidelity and sanitizer behaviour ONLY in a suite carrying `/** @vitest-environment jsdom */` - today `shared/ui/rich-text-view.test.tsx`. In a page test on happy-dom, assert that the value went through the primitive (`.rich-text-view` present, the text content visible, and no literal `<p>` reaching the operator) and say in a comment where the real assertion lives. Do NOT switch a whole page suite to jsdom to get one assertion: `product-detail-page.test.tsx` was tried that way and six unrelated tests began timing out at ~1000 ms, because the suite was written against happy-dom's timing. And never "fix" a failing sanitizer assertion by loosening the sanitizer - it fails lossy, not open, so production in a real browser is unaffected.
+**Applies to**: `apps/web/src/**/*.test.tsx` that render `RichTextView` (or any DOMPurify consumer), and `apps/web/src/shared/ui/rich-text-*.test.*`.
+**Source**: #2199 / #2200 under [ADR-046](./architecture/adrs/046-adapter-declared-description-format.md).
+
 ## A marketplace's accepted HTML is a grammar, not a tag list - and Allegro publishes neither
 
 **Context**: `sanitizeAllegroDescription` (`libs/integrations/allegro/src/infrastructure/util/`) filtered PrestaShop TinyMCE descriptions down to what its author believed Allegro's `description.sections[].items[].content` accepts, using a flat `ALLOWED_TAGS` set.

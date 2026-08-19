@@ -10,6 +10,8 @@
  * @module apps/web/src/features/content/components
  */
 import { useCallback, useMemo, useState, type ReactElement } from 'react';
+import { MASTER_DESCRIPTION_FORMAT } from '../../../shared/ui';
+import { ChannelContentPanel } from './channel-content-panel';
 import { useSearchParams } from 'react-router-dom';
 import { ConfirmDialog } from '../../../shared/ui/confirm-dialog';
 import { EmptyState, ErrorState, LoadingState } from '../../../shared/ui/feedback-state';
@@ -232,6 +234,7 @@ export function ContentEditor({ productId }: ContentEditorProps): ReactElement {
           <ContentPanel
             title="Master description"
             subtitle="Canonical description. Publishing updates the product master and clears the draft."
+            format={MASTER_DESCRIPTION_FORMAT}
             baseValue={master.baseValue}
             draftValue={master.draftValue}
             hasConflict={master.hasConflict}
@@ -277,7 +280,8 @@ export function ContentEditor({ productId }: ContentEditorProps): ReactElement {
               : writeLockedReason;
           return (
             <TabsContent key={channel.connectionId} value={channel.connectionId}>
-              <ContentPanel
+              <ChannelContentPanel
+                connectionId={channel.connectionId}
                 title={channel.connectionName}
                 subtitle={
                   <>

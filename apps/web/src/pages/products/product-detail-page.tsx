@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState, type ReactElement } from 'react';
+import { RichTextView } from '../../shared/ui';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { LoadingState, ErrorState } from '../../shared/ui/feedback-state';
@@ -238,14 +239,14 @@ export function ProductDetailPage(): ReactElement {
                     Edit in Content →
                   </Link>
                 </div>
-                {product.description ? (
-                  <p className="description-block">{product.description}</p>
-                ) : (
-                  <p className="description-block text-muted">
-                    No description synced from the source. Draft and publish one per channel in the
-                    Content tab.
-                  </p>
-                )}
+                {/* ADR-046: rendered, not printed. This block interpolated the
+                    value into a <p>, so React escaped it and a shop description
+                    read as a wall of angle brackets. */}
+                <RichTextView
+                  html={product.description}
+                  className="description-block"
+                  emptyLabel="No description synced from the source. Draft and publish one per channel in the Content tab."
+                />
               </section>
             </div>
 
