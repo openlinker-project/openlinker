@@ -273,8 +273,10 @@ describe('EparagonyHttpClient', () => {
     // state, so the server saw the request. A wrong `rejected` here licenses a
     // second REAL fiscal registration for one sale; a wrong `in-doubt` costs one
     // manual reconcile. The adapter's DOCUMENT_ALREADY_EXISTS short-circuit is
-    // errorCode-keyed and so is unaffected by this classification.
-    it.each([408, 409, 425])(
+    // errorCode-keyed and so is unaffected by this classification. The list is
+    // every AMBIGUOUS_CLIENT_ERROR_CODES member reachable this way - `429` is
+    // intercepted as a RetryableHttpError before the error is ever constructed.
+    it.each([408, 409, 422, 425])(
       'should classify a %i as in-doubt even with a parsed errorCode',
       async (statusCode) => {
         const fetchImpl = makeFetch([
