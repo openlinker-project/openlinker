@@ -11,17 +11,13 @@
 import type { LoggerPort } from '@openlinker/shared/logging';
 import type { FetchLike } from '@openlinker/shared/http';
 import { InfaktApiError } from '../../domain/exceptions/infakt-api.error';
+import { INFAKT_DEFAULT_BASE_URL } from '../../domain/policies/infakt-base-url.policy';
 import type { IInfaktHttpClient, InfaktBinaryResponse } from './infakt-http-client.interface';
 
 export interface InfaktHttpClientConfig {
   apiKey: string;
   baseUrl?: string;
 }
-
-export const INFAKT_DEFAULT_BASE_URL = 'https://api.infakt.pl/api/v3';
-
-/** Sandbox counterpart of {@link INFAKT_DEFAULT_BASE_URL} (#2174). */
-export const INFAKT_SANDBOX_BASE_URL = 'https://api.sandbox.infakt.pl/api/v3';
 
 /**
  * Cap on a binary response body (e.g. an invoice PDF). Mirrors the KSeF HTTP

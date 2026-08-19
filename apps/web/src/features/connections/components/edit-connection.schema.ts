@@ -279,9 +279,13 @@ export const editConnectionSchema = z
     // (#1303). Empty allowed for unset — the adapter falls back to `'cash'`.
     infaktPaymentMethod: z.union([z.enum(['cash', 'transfer']), z.literal('')]).optional(),
     // Infakt-only environment selector surfacing `config.environment` (#2174).
-    // Field name is `infakt*`-prefixed to avoid colliding with a future
-    // generic `environment` field on another platform, mirroring InPost's
-    // `inpostEnvironment` naming below. Empty allowed for unset.
+    // Field name is `infakt*`-prefixed to avoid an RHF/Zod SCHEMA-KEY collision
+    // with InPost's `inpostEnvironment` below - both intentionally persist to
+    // the SAME flat `config.environment` key, which is safe because a
+    // `Connection` has exactly one `platformType`, so the InPost and Infakt
+    // structured sections never render (or submit) for the same row. The
+    // prefix namespaces the two form fields, not the persisted config key.
+    // Empty allowed for unset.
     infaktEnvironment: z.union([z.enum(['sandbox', 'production']), z.literal('')]).optional(),
     // Infakt-only bank-account snapshot surfacing `config.bankAccount`
     // (#1303 follow-up). Whole-object field (like `sellerDefaults`) — the

@@ -8,7 +8,20 @@
  *     connection at inFakt's sandbox host instead of production. Mirrors
  *     InPost's `inpostEnvironment` structured field. The legacy free-text
  *     `config.baseUrl` override still exists on the BE config type for
- *     backward compatibility but is no longer surfaced here.
+ *     backward compatibility and always takes precedence over Environment
+ *     (`resolveInfaktBaseUrl`) - see the legacy-override banner below.
+ *   - Legacy Base URL override banner (#2179 review, Important #1) - a
+ *     connection created before this Environment select existed may still
+ *     carry a `config.baseUrl` override. Because `resolveInfaktBaseUrl`
+ *     prefers it unconditionally, picking a new Environment value on such a
+ *     connection would silently have no effect: the select would round-trip
+ *     into `config.environment` but the resolved host would stay whatever
+ *     `baseUrl` says. The banner surfaces that value and offers a "Clear
+ *     legacy override" action that reuses the generic host `baseUrl` field
+ *     (`syncStructuredToJson('baseUrl', '')`, which already deletes the key
+ *     via `mergeStructuredIntoConfig`'s pre-existing generic clause) - no new
+ *     merge clause needed, since `baseUrl` was already a host-structured field
+ *     before this plugin section stopped rendering a control for it.
  *   - Default payment method (`config.defaultPaymentMethod`, #1303) — sent
  *     on every issued invoice/correction. Empty selection means "no
  *     override", the adapter falls back to `'cash'`. Tucked behind an
@@ -38,6 +51,8 @@
  * @module plugins/infakt/components
  */
 import type { ReactElement } from 'react';
+import { Alert } from '../../../shared/ui/alert';
+import { Button } from '../../../shared/ui/button';
 import { FormField } from '../../../shared/ui/form-field';
 import { InlineDisclosure } from '../../../shared/ui/inline-disclosure';
 import { Select } from '../../../shared/ui/select';
@@ -62,6 +77,17 @@ export function InfaktStructuredSection({
   // so the collapsed summary always reflects what will actually be sent.
   const effectiveLabel = PAYMENT_METHOD_LABELS[isTransfer ? 'transfer' : 'cash'];
   const bankAccount = form.watch('infaktBankAccount') ?? null;
+  // #2179 review, Important #1 - `baseUrl` is the generic host-structured
+  // field (`EditConnectionForm` hydrates it from `connection.config.baseUrl`
+  // for every platform); this section renders no control bound to it, but
+  // `resolveInfaktBaseUrl` still prefers it over `infaktEnvironment` when
+  // present. Watched here only to decide whether the legacy-override banner
+  // below should render.
+  const legacyBaseUrl = form.watch('baseUrl') ?? '';
+
+  function clearLegacyBaseUrl(): void {
+    syncStructuredToJson('baseUrl', '');
+  }
 
   const bankAccountsQuery = useBankAccountsQuery(connection.id, { enabled: isTransfer });
   // Shared persist-then-flip choreography (#1310 review) — see the file header
@@ -88,11 +114,32 @@ export function InfaktStructuredSection({
 
   return (
     <>
+      {legacyBaseUrl ? (
+        <Alert
+          tone="warning"
+          title="Legacy Base URL override in effect"
+          action={
+            <Button
+              type="button"
+              tone="secondary"
+              className="button--sm"
+              onClick={clearLegacyBaseUrl}
+              disabled={!configIsParseable}
+            >
+              Clear legacy override
+            </Button>
+          }
+        >
+          This connection has a legacy Base URL override (<code>{legacyBaseUrl}</code>) that takes
+          precedence over Environment below - invoices keep going to that host until it's cleared,
+          even after picking a different Environment and saving.
+        </Alert>
+      ) : null}
       <FormField
         label="Environment"
         name="infaktEnvironment"
         error={form.formState.errors.infaktEnvironment?.message}
-        description="inFakt API environment. Use Sandbox to test before switching to Production."
+        description="inFakt API environment. Use Sandbox to test before switching to Production. Leaving this not set falls back to Production."
       >
         <Select
           value={form.watch('infaktEnvironment') ?? ''}

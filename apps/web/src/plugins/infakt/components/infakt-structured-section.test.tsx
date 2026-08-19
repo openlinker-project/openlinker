@@ -100,6 +100,97 @@ describe('InfaktStructuredSection', () => {
     expect(screen.getByText('must be one of: sandbox, production')).toBeInTheDocument();
   });
 
+  describe('legacy Base URL override banner (#2179 review, Important #1)', () => {
+    it('does not render the banner when no legacy baseUrl is set', () => {
+      const TestComponent = (): ReactElement => {
+        const form = useForm<any>({
+          defaultValues: { infaktEnvironment: 'sandbox', baseUrl: '' },
+        });
+        return (
+          <InfaktStructuredSection
+            connection={{ id: '1' } as any}
+            form={form as any}
+            configIsParseable={true}
+            syncStructuredToJson={vi.fn()}
+          />
+        );
+      };
+      renderWithProviders(<TestComponent />);
+
+      expect(screen.queryByText('Legacy Base URL override in effect')).not.toBeInTheDocument();
+    });
+
+    it('renders the banner with the legacy value when connection.config.baseUrl is set', () => {
+      const TestComponent = (): ReactElement => {
+        const form = useForm<any>({
+          defaultValues: {
+            infaktEnvironment: 'production',
+            baseUrl: 'https://custom.infakt.example/api/v3',
+          },
+        });
+        return (
+          <InfaktStructuredSection
+            connection={{ id: '1' } as any}
+            form={form as any}
+            configIsParseable={true}
+            syncStructuredToJson={vi.fn()}
+          />
+        );
+      };
+      renderWithProviders(<TestComponent />);
+
+      expect(screen.getByText('Legacy Base URL override in effect')).toBeInTheDocument();
+      expect(screen.getByText('https://custom.infakt.example/api/v3')).toBeInTheDocument();
+    });
+
+    it('clears the legacy baseUrl via syncStructuredToJson when "Clear legacy override" is clicked', () => {
+      const syncStructuredToJson = vi.fn();
+      const TestComponent = (): ReactElement => {
+        const form = useForm<any>({
+          defaultValues: {
+            infaktEnvironment: 'production',
+            baseUrl: 'https://custom.infakt.example/api/v3',
+          },
+        });
+        return (
+          <InfaktStructuredSection
+            connection={{ id: '1' } as any}
+            form={form as any}
+            configIsParseable={true}
+            syncStructuredToJson={syncStructuredToJson}
+          />
+        );
+      };
+      renderWithProviders(<TestComponent />);
+
+      fireEvent.click(screen.getByRole('button', { name: 'Clear legacy override' }));
+
+      expect(syncStructuredToJson).toHaveBeenCalledWith('baseUrl', '');
+    });
+
+    it('disables the "Clear legacy override" action when configIsParseable is false', () => {
+      const TestComponent = (): ReactElement => {
+        const form = useForm<any>({
+          defaultValues: {
+            infaktEnvironment: 'production',
+            baseUrl: 'https://custom.infakt.example/api/v3',
+          },
+        });
+        return (
+          <InfaktStructuredSection
+            connection={{ id: '1' } as any}
+            form={form as any}
+            configIsParseable={false}
+            syncStructuredToJson={vi.fn()}
+          />
+        );
+      };
+      renderWithProviders(<TestComponent />);
+
+      expect(screen.getByRole('button', { name: 'Clear legacy override' })).toBeDisabled();
+    });
+  });
+
   it('shows the effective payment method in the collapsed disclosure summary (#1303)', () => {
     const TestComponent = (): ReactElement => {
       const form = useForm<any>({

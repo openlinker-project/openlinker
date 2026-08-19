@@ -111,7 +111,7 @@ export class InfaktConnectionConfigShapeValidatorAdapter
     }
     if (
       typeof value !== 'string' ||
-      !InfaktEnvironmentValues.includes(value as (typeof InfaktEnvironmentValues)[number])
+      !(InfaktEnvironmentValues as readonly string[]).includes(value)
     ) {
       issues.push({
         path: 'environment',

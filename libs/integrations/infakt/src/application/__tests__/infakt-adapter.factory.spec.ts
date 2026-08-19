@@ -15,7 +15,7 @@ import type { FetchLike } from '@openlinker/shared/http';
 import type { CredentialsResolverPort } from '@openlinker/core/integrations';
 import type { Connection } from '@openlinker/core/identifier-mapping';
 import { BuyerProfile } from '@openlinker/core/invoicing';
-import { INFAKT_DEFAULT_BASE_URL, INFAKT_SANDBOX_BASE_URL } from '../../infrastructure/http/infakt-http-client';
+import { INFAKT_DEFAULT_BASE_URL, INFAKT_SANDBOX_BASE_URL } from '../../domain/policies/infakt-base-url.policy';
 import { InfaktAdapterFactory } from '../infakt-adapter.factory';
 
 function connection(overrides: Partial<Connection> = {}): Connection {

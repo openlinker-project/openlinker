@@ -29,7 +29,7 @@ import { Logger } from '@openlinker/shared/logging';
 import type { HttpTransportFactoryPort } from '@openlinker/shared/http';
 import { InfaktHttpClient } from '../http/infakt-http-client';
 import { InfaktApiError } from '../../domain/exceptions/infakt-api.error';
-import { resolveInfaktBaseUrl } from '../../application/infakt-base-url.resolver';
+import { resolveInfaktBaseUrl } from '../../domain/policies/infakt-base-url.policy';
 import type { InfaktCredentials, InfaktConnectionConfig } from '../../domain/types/infakt-connection.types';
 
 const INFAKT_CONNECTION_PROBE_PATH = 'clients.json';

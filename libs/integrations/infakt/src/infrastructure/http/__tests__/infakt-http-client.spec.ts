@@ -9,7 +9,8 @@
  */
 import type { LoggerPort } from '@openlinker/shared/logging';
 import { InfaktApiError } from '../../../domain/exceptions/infakt-api.error';
-import { InfaktHttpClient, INFAKT_DEFAULT_BASE_URL } from '../infakt-http-client';
+import { INFAKT_DEFAULT_BASE_URL } from '../../../domain/policies/infakt-base-url.policy';
+import { InfaktHttpClient } from '../infakt-http-client';
 
 function fakeResponse(status: number, body: string): Response {
   return {

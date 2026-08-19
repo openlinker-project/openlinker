@@ -13,7 +13,7 @@ import type { CredentialsResolverPort } from '@openlinker/core/integrations';
 import { InfaktHttpClient } from '../infrastructure/http/infakt-http-client';
 import { InfaktInvoicingAdapter } from '../infrastructure/adapters/infakt-invoicing.adapter';
 import { InfaktConfigException } from '../domain/exceptions/infakt-config.exception';
-import { resolveInfaktBaseUrl } from './infakt-base-url.resolver';
+import { resolveInfaktBaseUrl } from '../domain/policies/infakt-base-url.policy';
 import type { IInfaktAdapterFactory } from './interfaces/infakt-adapter.factory.interface';
 import type { InfaktCredentials, InfaktConnectionConfig } from '../domain/types/infakt-connection.types';
 
