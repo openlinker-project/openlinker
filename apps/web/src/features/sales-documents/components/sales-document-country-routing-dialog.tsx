@@ -1,5 +1,5 @@
 /**
- * Sales-Document Country Routing Dialog (#2188)
+ * Sales-Document Country Routing Dialog (#2188, acknowledgment + reset #2189)
  *
  * Per-country routing configuration, relocated out of the flat page layout
  * (#2170's interim state) and into a Radix `Dialog` opened from a row in the
@@ -32,16 +32,53 @@
  * list below is built as a single array and numbered by array index, not by a
  * hand-maintained literal per tier.)
  *
+ * #2189 adds two things on top, both scoped to THIS dialog:
+ *
+ *   - An acknowledgment banner, rendered ONLY when the country carries zero
+ *     rules and zero country defaults (loading excluded, to avoid a flash of
+ *     the banner before the real counts arrive). It offers "Mark as no sales
+ *     document" (`PUT .../acknowledgment`) or, once acknowledged, flips to an
+ *     "Acknowledged — {timestamp}" state with an "Undo" (`DELETE
+ *     .../acknowledgment`) action. No client-side clear-on-configure logic
+ *     exists here on purpose — the backend (#2186) already clears the
+ *     acknowledgment the moment a real rule or default is created, so the
+ *     banner's own empty-state gate is what makes it disappear.
+ *   - A destructive "Reset country" footer action, disabled when there is
+ *     nothing to reset. It opens `ConfirmDialog` (never a second bespoke
+ *     modal) naming exactly what will be deleted, then sequentially composes
+ *     the existing per-id `deleteRule` / `deleteCountryDefault` mutations plus
+ *     the acknowledgment clear — no new backend endpoint.
+ *
+ * Acknowledgment state has no per-country GET of its own; this dialog reads
+ * it off `useSalesDocumentCountriesQuery()` (the same #2186 list read the
+ * country index uses) and finds its own row, rather than adding a redundant
+ * read endpoint for a single boolean-ish field.
+ *
  * @module apps/web/src/features/sales-documents/components
  */
-import type { ReactElement, ReactNode } from 'react';
-import { Dialog, DialogContent, DialogTitle } from '../../../shared/ui/dialog';
+import { useState, type ReactElement, type ReactNode } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { Dialog, DialogContent, DialogFooter, DialogTitle } from '../../../shared/ui/dialog';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
+import { ConfirmDialog } from '../../../shared/ui/confirm-dialog';
+import { TimeDisplay } from '../../../shared/ui/time-display';
+import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
+import { useWriteAccess } from '../../../shared/auth/use-permission';
+import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
+import { useDemoMode } from '../../system';
+import { useSalesDocumentRulesQuery } from '../hooks/use-sales-document-rules-query';
 import { useSalesDocumentCountryDefaultsQuery } from '../hooks/use-sales-document-country-defaults-query';
+import { useSalesDocumentCountriesQuery } from '../hooks/use-sales-document-countries-query';
+import { useAcknowledgeSalesDocumentCountryMutation } from '../hooks/use-acknowledge-sales-document-country-mutation';
+import { useClearSalesDocumentCountryAcknowledgmentMutation } from '../hooks/use-clear-sales-document-country-acknowledgment-mutation';
+import { useDeleteSalesDocumentRuleMutation } from '../hooks/use-delete-sales-document-rule-mutation';
+import { useDeleteSalesDocumentCountryDefaultMutation } from '../hooks/use-delete-sales-document-country-default-mutation';
 import { SalesDocumentRulesList } from './sales-document-rules-list';
 import { SalesDocumentCountryDefaults } from './sales-document-country-defaults';
+import { salesDocumentRulesQueryKeys } from '../api/sales-document-rules.query-keys';
 import { SALES_DOCUMENT_REST_OF_WORLD_COUNTRY } from '../api/sales-document-rules.types';
+import { describeSalesDocumentCountryReset } from '../lib/describe-sales-document-country-reset';
 
 export interface SalesDocumentCountryRoutingDialogProps {
   open: boolean;
@@ -81,13 +118,59 @@ export function SalesDocumentCountryRoutingDialog({
   onNavigate,
 }: SalesDocumentCountryRoutingDialogProps): ReactElement {
   const isRestOfWorld = country === SALES_DOCUMENT_REST_OF_WORLD_COUNTRY;
+  const queryClient = useQueryClient();
+  const demoMode = useDemoMode();
+  const write = useWriteAccess('connections:write', demoMode);
+
+  const rulesQuery = useSalesDocumentRulesQuery(country);
   const defaultsQuery = useSalesDocumentCountryDefaultsQuery(country);
+  const countriesQuery = useSalesDocumentCountriesQuery();
+
+  const acknowledgeMutation = useAcknowledgeSalesDocumentCountryMutation();
+  const clearAcknowledgmentMutation = useClearSalesDocumentCountryAcknowledgmentMutation();
+  const deleteRuleMutation = useDeleteSalesDocumentRuleMutation();
+  const deleteCountryDefaultMutation = useDeleteSalesDocumentCountryDefaultMutation();
+
+  const [confirmResetOpen, setConfirmResetOpen] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
+  const [resetError, setResetError] = useState<string | null>(null);
+
+  const rules = rulesQuery.data ?? [];
   const defaults = defaultsQuery.data ?? [];
-  const hasDualDefault =
-    defaults.some((d) => d.documentKind === 'invoice') &&
-    defaults.some((d) => d.documentKind === 'fiscal-receipt');
+  const hasInvoiceDefault = defaults.some((d) => d.documentKind === 'invoice');
+  const hasReceiptDefault = defaults.some((d) => d.documentKind === 'fiscal-receipt');
+  const hasDualDefault = hasInvoiceDefault && hasReceiptDefault;
+
+  const isSummaryLoading = rulesQuery.isLoading || defaultsQuery.isLoading || countriesQuery.isLoading;
+  const acknowledgedAt =
+    countriesQuery.data?.find((summary) => summary.country === country)?.acknowledgedNoDocumentAt ??
+    null;
+  const isEmptyCountry = !isSummaryLoading && rules.length === 0 && defaults.length === 0;
+  const hasNothingToReset = rules.length === 0 && defaults.length === 0 && acknowledgedAt === null;
 
   const displayName = countryDisplayName(country);
+
+  async function handleConfirmReset(): Promise<void> {
+    setResetError(null);
+    setIsResetting(true);
+    try {
+      for (const rule of rules) {
+        await deleteRuleMutation.mutateAsync(rule.id);
+      }
+      for (const countryDefault of defaults) {
+        await deleteCountryDefaultMutation.mutateAsync(countryDefault.id);
+      }
+      if (acknowledgedAt !== null) {
+        await clearAcknowledgmentMutation.mutateAsync(country);
+      }
+      await queryClient.invalidateQueries({ queryKey: salesDocumentRulesQueryKeys.all });
+      setConfirmResetOpen(false);
+    } catch (error) {
+      setResetError(error instanceof Error ? error.message : 'Failed to reset country');
+    } finally {
+      setIsResetting(false);
+    }
+  }
 
   const tiers: RoutingTier[] = [
     {
@@ -150,29 +233,113 @@ export function SalesDocumentCountryRoutingDialog({
   });
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent aria-describedby={undefined} className="dialog__content--wide">
-        {cameFrom ? (
-          <Button
-            tone="ghost"
-            className="button--sm sales-document-country-routing-dialog__back"
-            onClick={() => onNavigate(cameFrom, null)}
-          >
-            ← Back to {cameFrom}
-          </Button>
-        ) : null}
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent aria-describedby={undefined} className="dialog__content--wide">
+          {cameFrom ? (
+            <Button
+              tone="ghost"
+              className="button--sm sales-document-country-routing-dialog__back"
+              onClick={() => onNavigate(cameFrom, null)}
+            >
+              ← Back to {cameFrom}
+            </Button>
+          ) : null}
 
-        <DialogTitle>Sales-document routing · {displayName}</DialogTitle>
+          <DialogTitle>Sales-document routing · {displayName}</DialogTitle>
 
-        {tiers.map((tier, index) => (
-          <section key={tier.key} className="page-section">
-            <h3 className="detail-section__title">
-              Tier {index + 1} · {tier.title}
-            </h3>
-            {tier.content}
-          </section>
-        ))}
-      </DialogContent>
-    </Dialog>
+          {isEmptyCountry ? (
+            acknowledgedAt !== null ? (
+              <Alert
+                tone="success"
+                title="No sales document, by design"
+                action={
+                  <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+                    <Button
+                      tone="secondary"
+                      className="button--sm"
+                      disabled={!write.canWrite || clearAcknowledgmentMutation.isPending}
+                      onClick={() => void clearAcknowledgmentMutation.mutateAsync(country)}
+                    >
+                      Undo
+                    </Button>
+                  </ReadOnlyLock>
+                }
+              >
+                Acknowledged - <TimeDisplay iso={acknowledgedAt} />.
+              </Alert>
+            ) : (
+              <Alert
+                tone="info"
+                title="Nothing configured for this country yet"
+                action={
+                  <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+                    <Button
+                      tone="secondary"
+                      className="button--sm"
+                      disabled={!write.canWrite || acknowledgeMutation.isPending}
+                      onClick={() => void acknowledgeMutation.mutateAsync(country)}
+                    >
+                      Mark as no sales document
+                    </Button>
+                  </ReadOnlyLock>
+                }
+              >
+                If {displayName} intentionally has no invoicing or fiscalization integration
+                configured, acknowledge it so operators can tell that apart from a market nobody
+                has looked at yet.
+              </Alert>
+            )
+          ) : null}
+          {acknowledgeMutation.error ? (
+            <Alert tone="error">{acknowledgeMutation.error.message}</Alert>
+          ) : null}
+          {clearAcknowledgmentMutation.error ? (
+            <Alert tone="error">{clearAcknowledgmentMutation.error.message}</Alert>
+          ) : null}
+
+          {tiers.map((tier, index) => (
+            <section key={tier.key} className="page-section">
+              <h3 className="detail-section__title">
+                Tier {index + 1} · {tier.title}
+              </h3>
+              {tier.content}
+            </section>
+          ))}
+
+          {resetError ? <Alert tone="error">{resetError}</Alert> : null}
+
+          <DialogFooter>
+            <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+              <Button
+                tone="danger"
+                disabled={!write.canWrite || isSummaryLoading || hasNothingToReset || isResetting}
+                onClick={() => setConfirmResetOpen(true)}
+              >
+                Reset country
+              </Button>
+            </ReadOnlyLock>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <ConfirmDialog
+        open={confirmResetOpen}
+        onOpenChange={setConfirmResetOpen}
+        className="dialog__content--elevated"
+        overlayClassName="dialog__overlay--elevated"
+        tone="danger"
+        title={`Reset ${displayName}?`}
+        description={describeSalesDocumentCountryReset(displayName, {
+          ruleCount: rules.length,
+          hasInvoiceDefault,
+          hasReceiptDefault,
+          acknowledged: acknowledgedAt !== null,
+        })}
+        confirmLabel="Yes, reset"
+        isConfirming={isResetting}
+        onConfirm={() => void handleConfirmReset()}
+      />
+    </>
   );
 }

@@ -94,6 +94,15 @@ export interface SalesDocumentCountrySummary {
   acknowledgedNoDocumentAt: string | null;
 }
 
+/**
+ * Mirrors the backend `SalesDocumentCountryAcknowledgmentResponseDto` (#2186):
+ * the "no sales document, by design" acknowledgment for one country.
+ */
+export interface SalesDocumentCountryAcknowledgment {
+  country: string;
+  acknowledgedAt: string;
+}
+
 export interface SalesDocumentTemplateRuleSummary {
   slot: string;
   label: string;
