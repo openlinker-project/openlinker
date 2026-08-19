@@ -29,6 +29,10 @@ import {
   createAnalyticsTrustApi,
   type AnalyticsTrustApi,
 } from '../../features/analytics/api/analytics-trust.api';
+import {
+  createTopProductsApi,
+  type TopProductsApi,
+} from '../../features/analytics/api/top-products.api';
 import { createAuthApi, type AuthApi } from '../../features/auth/api/auth.api';
 import {
   createConnectionsApi,
@@ -111,7 +115,7 @@ export interface PluginApiNamespaces {}
 export interface CoreApiClient {
   adapters: AdaptersApi;
   aiProviderSettings: AiProviderSettingsApi;
-  analytics: AnalyticsApi;
+  analytics: AnalyticsApi & TopProductsApi;
   analyticsTrust: AnalyticsTrustApi;
   auth: AuthApi;
   connections: ConnectionsApi;
@@ -268,7 +272,7 @@ export function createApiClient({
   const core: CoreApiClient = {
     adapters: createAdaptersApi(request),
     aiProviderSettings: createAiProviderSettingsApi(request),
-    analytics: createAnalyticsApi(request),
+    analytics: { ...createAnalyticsApi(request), ...createTopProductsApi(request) },
     analyticsTrust: createAnalyticsTrustApi(request),
     auth: createAuthApi(request),
     connections: createConnectionsApi(request),

@@ -4847,6 +4847,61 @@ a.kpi-card:focus-visible {
   color: var(--status-error);
 }
 
+/* ── Top products "Not listed" / "Publish" cell (#1991) ───────────────
+ * A missing listing and a zero sale mean different things and must not
+ * render identically: the "Not listed" label is muted prose, deliberately
+ * non-tabular, so the column still scans as figures everywhere a real
+ * number IS present. Where the product sells on another channel, a
+ * "Publish" chip shares this SAME slot rather than living beside it as a
+ * flex sibling — an `opacity: 0` sibling still occupies layout and would
+ * push the label off the column's right edge by its own width. The label
+ * never leaves the accessibility tree (`opacity`, never `display: none`).
+ */
+.cell-not-listed {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  /* Room for the longest realistic channel figure ("1,234") plus the
+     "Publish" chip without either shifting the column's own width. */
+  min-width: 5.5rem;
+}
+
+.cell-not-listed__label {
+  color: var(--text-muted);
+  font-style: italic;
+  transition: opacity 120ms ease;
+}
+
+.cell-not-listed__chip {
+  position: absolute;
+  right: 0;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease;
+}
+
+tr:hover .cell-not-listed .cell-not-listed__chip,
+tr:focus-within .cell-not-listed .cell-not-listed__chip {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+tr:hover .cell-not-listed .cell-not-listed__label,
+tr:focus-within .cell-not-listed .cell-not-listed__label {
+  opacity: 0;
+}
+
+@media (hover: none) {
+  .cell-not-listed .cell-not-listed__chip {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .cell-not-listed .cell-not-listed__label {
+    opacity: 0;
+  }
+}
+
 /* KeyValueList ------------------------------------------------------ */
 
 /* ── KeyValueList (#775) ────────────────────────────────────────────
