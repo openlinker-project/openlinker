@@ -22,4 +22,11 @@ export interface SalesDocumentRuleRepositoryPort {
   create(input: SalesDocumentRuleInput & { conditionsHash: string }): Promise<SalesDocumentRule>;
 
   delete(id: string): Promise<void>;
+
+  /**
+   * Rule count per country (or `*`) — the countries-listing read's (#2186)
+   * merge input. A country with zero rules is simply absent from the map;
+   * the caller defaults it to `0`.
+   */
+  countRulesByCountry(): Promise<Map<string, number>>;
 }

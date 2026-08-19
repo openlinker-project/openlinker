@@ -17,4 +17,7 @@ export const SALES_DOCUMENT_COUNTRY_DEFAULT_REPOSITORY_TOKEN = Symbol(
 export const SALES_DOCUMENT_THRESHOLD_REPOSITORY_TOKEN = Symbol(
   'SalesDocumentThresholdRepositoryPort',
 );
+export const SALES_DOCUMENT_COUNTRY_ACKNOWLEDGMENT_REPOSITORY_TOKEN = Symbol(
+  'SalesDocumentCountryAcknowledgmentRepositoryPort',
+);
 export const SALES_DOCUMENT_RULES_SERVICE_TOKEN = Symbol('ISalesDocumentRulesService');
