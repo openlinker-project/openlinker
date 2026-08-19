@@ -3,8 +3,16 @@
  *
  * Composes the country index (#2187, replacing the free-text-plus-chips
  * `SalesDocumentCountrySelector`), the starter-template "Review & adopt"
- * screen (Poland only), the country defaults, and the rules list into the
+ * screen (Poland only), and the per-country routing dialog (#2188) into the
  * "Settings → Sales documents" page's rule-engine section.
+ *
+ * A row's "Configure" action (and "Add country") reaches
+ * `SalesDocumentCountryRoutingDialog` via `handleSelectCountry` — the country
+ * defaults + rules list no longer render flat below the index (#2188 retires
+ * that interim placeholder); they render exclusively inside the dialog now.
+ * `handleNavigate` backs the dialog's own tier-3 cross-link (open ★ Rest of
+ * world's dialog) and its "← Back to {country}" affordance, both of which
+ * switch the dialog's country while it stays open.
  *
  * NOT YET WIRED TO AUTO-ISSUE (documented, not hidden): `AutoIssueTriggerService`
  * still resolves via the #2156 operator-configured single-primary model
@@ -19,32 +27,30 @@
  * @module apps/web/src/features/sales-documents/components
  */
 import { useState, type ReactElement } from 'react';
-import { Alert } from '../../../shared/ui/alert';
 import { SalesDocumentCountryIndex } from './sales-document-country-index';
-import { SalesDocumentCountryDefaults } from './sales-document-country-defaults';
-import { SalesDocumentRulesList } from './sales-document-rules-list';
+import { SalesDocumentCountryRoutingDialog } from './sales-document-country-routing-dialog';
 import { SalesDocumentTemplateScreen } from './sales-document-template-screen';
-import { useSalesDocumentRulesQuery } from '../hooks/use-sales-document-rules-query';
-import { useSalesDocumentCountryDefaultsQuery } from '../hooks/use-sales-document-country-defaults-query';
+
+interface RoutingDialogState {
+  open: boolean;
+  country: string;
+  cameFrom: string | null;
+}
 
 export function SalesDocumentRuleEnginePanel(): ReactElement {
-  const [country, setCountry] = useState('PL');
-  const rulesQuery = useSalesDocumentRulesQuery(country);
-  const defaultsQuery = useSalesDocumentCountryDefaultsQuery(country);
+  const [routingDialog, setRoutingDialog] = useState<RoutingDialogState | null>(null);
 
-  // TODO(#2188): a row's "Configure" action (and "Add country") is meant to
-  // open a per-country routing dialog. That dialog doesn't exist yet, so in
-  // the interim this just selects the country and keeps driving the
-  // country-scoped sections rendered below the index with it.
   function handleSelectCountry(selected: string): void {
-    setCountry(selected);
+    setRoutingDialog({ open: true, country: selected, cameFrom: null });
   }
 
-  const isUnconfigured =
-    !rulesQuery.isLoading &&
-    !defaultsQuery.isLoading &&
-    (rulesQuery.data ?? []).length === 0 &&
-    (defaultsQuery.data ?? []).length === 0;
+  function handleNavigate(nextCountry: string, cameFrom: string | null): void {
+    setRoutingDialog({ open: true, country: nextCountry, cameFrom });
+  }
+
+  function handleOpenChange(open: boolean): void {
+    setRoutingDialog((prev) => (prev ? { ...prev, open } : prev));
+  }
 
   return (
     <div className="page-section">
@@ -62,22 +68,17 @@ export function SalesDocumentRuleEnginePanel(): ReactElement {
 
       <SalesDocumentCountryIndex onSelectCountry={handleSelectCountry} />
 
-      <SalesDocumentTemplateScreen country={country} />
+      <SalesDocumentTemplateScreen country="PL" />
 
-      {isUnconfigured ? (
-        <Alert
-          tone="warning"
-          title={`${country === '*' ? '★ Rest of world' : country} has no defaults and no rules yet`}
-        >
-          Until at least one default is set, an order billed here with no matching rule falls
-          through to <span className="mono-text">★ Rest of world</span> if that&apos;s configured,
-          or is reported <span className="mono-text">unresolved</span> otherwise. Set a default to
-          start.
-        </Alert>
+      {routingDialog ? (
+        <SalesDocumentCountryRoutingDialog
+          open={routingDialog.open}
+          country={routingDialog.country}
+          cameFrom={routingDialog.cameFrom}
+          onOpenChange={handleOpenChange}
+          onNavigate={handleNavigate}
+        />
       ) : null}
-
-      <SalesDocumentCountryDefaults country={country} />
-      <SalesDocumentRulesList country={country} />
     </div>
   );
 }

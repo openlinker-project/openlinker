@@ -14,13 +14,11 @@
  * but the bottom and is always visually called out.
  *
  * Row-level "Configure" and the "Add country" affordance both resolve to
- * `onSelectCountry` — clicking either is meant to open the per-country
- * routing dialog, but that dialog is sub-issue #2188's scope, not this one's.
- * Until #2188 ships, the callback degrades gracefully (see
- * `SalesDocumentRuleEnginePanel`, which still drives the legacy
- * country-scoped sections below with the same callback). Both affordances
- * reach that single callback in exactly one click past typing a code, so an
- * unconfigured/new country costs no more clicks than a configured one.
+ * `onSelectCountry` — clicking either opens the per-country routing dialog
+ * (`SalesDocumentCountryRoutingDialog`, #2188) via `SalesDocumentRuleEnginePanel`.
+ * Both affordances reach that single callback in exactly one click past
+ * typing a code, so an unconfigured/new country costs no more clicks than a
+ * configured one.
  *
  * @module apps/web/src/features/sales-documents/components
  */
