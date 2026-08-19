@@ -226,4 +226,48 @@ describe('evaluateSalesDocumentRules (#2170)', () => {
       });
     });
   });
+
+  // #2173 (ADR-041 decision 5's own blocked prerequisite): the `Order`
+  // contract carries no buyer-tax-id field yet, so every real-order caller
+  // (`AutoIssueTriggerService`'s order-facts mapper) supplies `undefined`,
+  // never `false`. These pin the evaluator's EXISTING handling of that
+  // (unchanged by #2173 — the issue only feeds it real data): `undefined`
+  // matches neither `true` nor `false`, so a `buyerHasTaxId` condition never
+  // matches, never throws, and never silently coerces to a guess.
+  describe('an unknown buyerHasTaxId (undefined) never matches (#2173)', () => {
+    it('should NOT match a buyerHasTaxId: true condition when the fact is undefined', () => {
+      const input = baseInput({
+        order: order({ buyerHasTaxId: undefined }),
+        countryRules: [rule({ conditions: [{ field: 'buyerHasTaxId', op: 'eq', value: true }] })],
+      });
+      expect(evaluateSalesDocumentRules(input)).toEqual({
+        kind: 'unresolved',
+        reason: 'no-matching-rule',
+      });
+    });
+
+    it('should NOT match a buyerHasTaxId: false condition when the fact is undefined either — never treated as "known false"', () => {
+      const input = baseInput({
+        order: order({ buyerHasTaxId: undefined }),
+        countryRules: [rule({ conditions: [{ field: 'buyerHasTaxId', op: 'eq', value: false }] })],
+      });
+      expect(evaluateSalesDocumentRules(input)).toEqual({
+        kind: 'unresolved',
+        reason: 'no-matching-rule',
+      });
+    });
+
+    it('should fall through cleanly to the country default when the only rule needs a known buyerHasTaxId', () => {
+      const input = baseInput({
+        order: order({ buyerHasTaxId: undefined }),
+        countryRules: [rule({ conditions: [{ field: 'buyerHasTaxId', op: 'eq', value: true }] })],
+        countryDefaults: [{ documentKind: 'invoice', connectionId: 'conn-infakt' }],
+      });
+      expect(evaluateSalesDocumentRules(input)).toEqual({
+        kind: 'route',
+        documentKind: 'invoice',
+        connectionId: 'conn-infakt',
+      });
+    });
+  });
 });

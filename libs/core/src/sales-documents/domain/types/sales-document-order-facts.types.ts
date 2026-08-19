@@ -9,10 +9,16 @@
  * prerequisite of the engine, not an assumption it may make"), so the
  * evaluator's input type must not silently imply that field already exists on
  * `Order`. A future caller builds this projection from whatever it has in
- * hand — today that means `buyerHasTaxId` is always explicitly supplied as
- * `false` (or omitted → defaults false) by every caller, honestly, rather than
- * this file reaching into `Order` to derive a fact that does not exist there
- * yet.
+ * hand — `buyerHasTaxId` is `boolean | undefined` (not defaulted) for exactly
+ * that reason: `undefined` means "not asserted by the source" (today, always
+ * — see `AutoIssueTriggerService`'s order-facts mapper, #2173), which is a
+ * DIFFERENT fact from "known to have no tax id" (`false`). A caller must never
+ * collapse the two by defaulting to `false`, since that would let a
+ * `buyerHasTaxId` condition silently misfire (a false "no tax id" match) on
+ * exactly the orders this gap is honest about not knowing. `undefined`
+ * compares unequal to both `true` and `false` in `evaluateCondition`, so an
+ * unknown fact never matches either literal — never throws, never coerces to
+ * a guess.
  *
  * Dependency-free leaf file (no imports) — matches every other file in this
  * concern.
@@ -56,10 +62,11 @@ export interface SalesDocumentOrderFacts {
   readonly taxTreatment?: SalesDocumentOrderTaxTreatment;
   /**
    * Whether the buyer carries a tax identifier. Blocked prerequisite (see the
-   * module doc comment): every caller in this repo passes `false` until a
-   * buyer-tax-id field lands on the order contract.
+   * module doc comment): `undefined` means "unknown" and is what every caller
+   * in this repo passes until a buyer-tax-id field lands on the order
+   * contract — never defaulted to `false`.
    */
-  readonly buyerHasTaxId: boolean;
+  readonly buyerHasTaxId: boolean | undefined;
 }
 
 /** One rule, reduced to what the evaluator needs (mirrors `SalesDocumentRoutingCandidate`'s reduction style). */
