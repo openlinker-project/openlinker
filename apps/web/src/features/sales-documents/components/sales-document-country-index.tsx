@@ -181,7 +181,9 @@ export function SalesDocumentCountryIndex({
             aria-label="New country ISO code"
             onChange={(event) => setDraftCountry(event.target.value)}
             onKeyDown={(event) => {
-              if (event.key === 'Enter') submitAddCountry();
+              if (event.key !== 'Enter') return;
+              event.preventDefault();
+              submitAddCountry();
             }}
           />
           <Button tone="secondary" className="button--sm" onClick={submitAddCountry}>
