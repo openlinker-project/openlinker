@@ -39,7 +39,7 @@ One pure helper, `applyDescriptionFormat`, enforces it. **The rule is that every
 
 Three subordinate decisions are settled here:
 
-1. **A destination declaring no format resolves to a conservative shared subset, plus a visible "this destination has not declared its format" state in the UI.** Never a permissive guess - a permissive guess yields a platform rejection the operator cannot explain to themselves.
+1. **A destination declaring no format resolves to a conservative shared subset, plus a visible "this destination has not declared its format" state in the UI.** Never a permissive guess - a permissive guess yields a platform rejection the operator cannot explain to themselves. Note which destinations that state is actually reachable for: the method is *required* on `ShopProductManagerPort`, so a shop can never be undeclared, and the only reachable case is a marketplace adapter that declares `OfferCreator` without `OfferFieldUpdater` (none exists today). **The fallback is resolved server-side**, so the HTTP response always carries a usable format plus a flag saying it is the fallback - the frontend never holds a default of its own, which is what makes the "holds no knowledge" claim above true rather than aspirational.
 2. **`i` / `em` are rewritten to `b`, not unwrapped**, with the lossy conversion stated on the editor's italic control. Renaming loses the semantic distinction but the operator sees it happen; unwrapping loses the emphasis silently.
 3. **Rewrites run before the allowlist.** Ordering them the other way would delete the very emphasis the operator applied and call it sanitisation.
 
