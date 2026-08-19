@@ -125,3 +125,34 @@ describe('SalesDocumentRuleEnginePanel — Reset country reflects everywhere (#2
     });
   });
 });
+
+describe('SalesDocumentRuleEnginePanel — Enter key in "Add country" opens the typed country', () => {
+  it('should open the typed country\'s own dialog, not ★ Rest of world\'s, when submitted via Enter', async () => {
+    const listConfiguredCountries = vi.fn((): Promise<SalesDocumentCountrySummary[]> => Promise.resolve([]));
+
+    const apiClient = createMockApiClient({
+      salesDocumentRules: {
+        listRules: vi.fn(() => Promise.resolve([])),
+        listCountryDefaults: vi.fn(() => Promise.resolve([])),
+        listConfiguredCountries,
+        getTemplate: vi.fn(() => Promise.resolve(null)),
+      },
+    });
+
+    renderWithProviders(<SalesDocumentRuleEnginePanel />, {
+      apiClient,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
+
+    const addCountryInput = await screen.findByLabelText('New country ISO code');
+    await userEvent.type(addCountryInput, 'FR{Enter}');
+
+    // Regression (#2184): pressing Enter used to leave the native keydown
+    // in flight past the state update, landing on the freshly-opened
+    // dialog's "Open ★ Rest of world's routing" cross-link and triggering
+    // it too — so the operator ended up on Rest of world instead of FR.
+    expect(await screen.findByText(/Sales-document routing.*FR/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Sales-document routing.*Rest of world/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Back to/i)).not.toBeInTheDocument();
+  });
+});
