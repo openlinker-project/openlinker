@@ -18133,3 +18133,180 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
     gap: var(--space-2);
   }
 }
+
+/* ── Rich text editor + view (ADR-046 / #2199) ──────────────────────────────
+   Tiptap ships no stylesheet, so every pixel here is ours. The first three
+   declarations on `.rich-text__surface .ProseMirror` are the functional half of
+   `prosemirror-view/style/prosemirror.css`, transcribed rather than imported:
+   that file is NOT auto-injected (prosemirror-view only warns when `white-space`
+   is unset), and the UI Library Policy forbids importing library CSS. Its one
+   cosmetic rule (`outline: 2px solid #8cf`) is replaced by our accent token. */
+
+.rich-text {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  overflow: hidden;
+}
+
+.rich-text:focus-within {
+  border-color: var(--accent-primary);
+  box-shadow: var(--shadow-focus);
+}
+
+.rich-text__toolbar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-wrap: wrap;
+  padding: var(--space-1);
+  background: var(--bg-shell);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.rich-text__toolbar-end {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin-left: auto;
+}
+
+.rich-text__tool {
+  min-width: 28px;
+  height: 24px;
+  padding: 0 var(--space-1);
+  font: 500 12px/1 var(--font-sans);
+  color: var(--text-secondary);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.rich-text__tool:hover:not(:disabled) {
+  background: var(--bg-surface-hover);
+  color: var(--text-primary);
+}
+
+.rich-text__tool:focus-visible {
+  box-shadow: var(--shadow-focus);
+}
+
+.rich-text__tool.is-active {
+  background: var(--accent-primary-soft);
+  border-color: var(--accent-primary-border);
+  color: var(--accent-primary-soft-strong);
+}
+
+.rich-text__tool:disabled {
+  color: var(--text-disabled);
+  cursor: not-allowed;
+}
+
+/* Bold / italic / underline / strike read as what they do. */
+.rich-text__tool[aria-label='Bold'] { font-weight: 700; }
+.rich-text__tool[aria-label='Italic'] { font-style: italic; }
+.rich-text__tool[aria-label='Underline'] { text-decoration: underline; }
+.rich-text__tool[aria-label='Strikethrough'] { text-decoration: line-through; }
+
+.rich-text__surface {
+  max-height: 26rem;
+  overflow-y: auto;
+}
+
+.rich-text__surface .ProseMirror {
+  position: relative;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  min-height: 11rem;
+  padding: var(--space-3) var(--space-4);
+  font-size: 0.875rem;
+  line-height: 1.6;
+  color: var(--text-primary);
+  outline: none;
+}
+
+.rich-text__surface .ProseMirror li { position: relative; }
+.rich-text__surface .ProseMirror > * + * { margin-top: var(--space-2); }
+.rich-text__surface .ProseMirror p { margin: 0; }
+.rich-text__surface .ProseMirror h1 { margin: 0; font-size: 1.0625rem; font-weight: 600; letter-spacing: var(--tracking-tight); }
+.rich-text__surface .ProseMirror h2 { margin: 0; font-size: 1rem; font-weight: 600; }
+.rich-text__surface .ProseMirror h3 { margin: 0; font-size: 0.9375rem; font-weight: 600; }
+.rich-text__surface .ProseMirror ul,
+.rich-text__surface .ProseMirror ol { margin: 0; padding-left: var(--space-5); }
+.rich-text__surface .ProseMirror li + li { margin-top: var(--space-1); }
+.rich-text__surface .ProseMirror a { color: var(--text-link); }
+.rich-text__surface .ProseMirror-selectednode { outline: 2px solid var(--accent-primary); }
+
+.rich-text__surface .ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+  color: var(--text-muted);
+}
+
+.rich-text__source {
+  min-height: 11rem;
+  max-height: 26rem;
+  padding: var(--space-3) var(--space-4);
+  border: 0;
+  resize: vertical;
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  font: 400 12px/1.6 var(--font-mono);
+  outline: none;
+}
+
+.rich-text__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  min-height: 26px;
+  padding: var(--space-1) var(--space-2);
+  border-top: 1px solid var(--border-subtle);
+  background: var(--bg-shell);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+}
+
+.rich-text__undeclared { color: var(--status-warning-fg); }
+.rich-text__bytes { font-variant-numeric: tabular-nums; margin-left: auto; }
+.rich-text__bytes.is-near { color: var(--status-warning-fg); }
+.rich-text__bytes.is-over { color: var(--status-error-fg); }
+
+/* Read side. Same type ramp as the editor surface so a description does not
+   change shape between viewing and editing it. */
+.rich-text-view {
+  font-size: 0.875rem;
+  line-height: 1.6;
+  color: var(--text-primary);
+  overflow-wrap: break-word;
+  /* Storage keeps `style`; this view strips it (see rich-text-view.tsx). The
+     containment is belt-and-braces for anything a future allowlist lets in. */
+  contain: layout paint;
+}
+
+.rich-text-view > * + * { margin-top: var(--space-2); }
+.rich-text-view p { margin: 0; }
+.rich-text-view h1 { margin: 0; font-size: 1.0625rem; font-weight: 600; letter-spacing: var(--tracking-tight); }
+.rich-text-view h2 { margin: 0; font-size: 1rem; font-weight: 600; }
+.rich-text-view h3,
+.rich-text-view h4 { margin: 0; font-size: 0.9375rem; font-weight: 600; }
+.rich-text-view ul,
+.rich-text-view ol { margin: 0; padding-left: var(--space-5); }
+.rich-text-view li + li { margin-top: var(--space-1); }
+.rich-text-view a { color: var(--text-link); }
+.rich-text-view img { max-width: 100%; height: auto; border-radius: var(--radius-sm); }
+.rich-text-view table { border-collapse: collapse; width: 100%; font-size: 0.8125rem; }
+.rich-text-view th,
+.rich-text-view td { border: 1px solid var(--border-subtle); padding: var(--space-1) var(--space-2); text-align: left; }
+.rich-text-view blockquote { margin: 0; padding-left: var(--space-3); border-left: 2px solid var(--border-strong); color: var(--text-secondary); }
+.rich-text-view pre { margin: 0; overflow-x: auto; font-family: var(--font-mono); font-size: 0.75rem; }
+
+.rich-text-view__empty { margin: 0; font-size: 0.875rem; color: var(--text-muted); }

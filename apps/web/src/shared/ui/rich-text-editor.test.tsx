@@ -1,0 +1,166 @@
+/**
+ * @vitest-environment jsdom
+ *
+ * RichTextEditor tests
+ *
+ * Runs on jsdom rather than the app default: Tiptap is ProseMirror, which needs
+ * Range, Selection and `getClientRects` to mount an editable surface at all, and
+ * happy-dom covers those only partly.
+ *
+ * The assertions concentrate on the derived surface - which controls exist for a
+ * given declaration - because that is the contract ADR-046 buys. Caret-level
+ * editing behaviour belongs to ProseMirror and is not re-tested here.
+ *
+ * @module apps/web/src/shared/ui
+ */
+import { cleanup, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+
+import { RichTextEditor } from './rich-text-editor';
+import type { DescriptionFormat } from './rich-text.types';
+
+function format(overrides: Partial<DescriptionFormat> = {}): DescriptionFormat {
+  return {
+    shape: 'html',
+    allowedTags: ['h1', 'h2', 'p', 'ul', 'ol', 'li', 'b'],
+    allowedAttributes: {},
+    contentModel: { root: ['h1', 'h2', 'p', 'ul', 'ol'], p: ['b'], li: ['b', 'p'], h1: [], h2: [] },
+    rewrites: [{ from: 'strong', action: 'rename', to: 'b' }],
+    requiresBlockOpener: true,
+    selfClosingVoids: false,
+    maxBytes: 40000,
+    declared: true,
+    resolvedVia: 'OfferManager',
+    ...overrides,
+  };
+}
+
+describe('RichTextEditor', () => {
+  afterEach(cleanup);
+
+  it('should render only the controls the destination declares', () => {
+    render(<RichTextEditor format={format()} value="<p>x</p>" onChange={vi.fn()} />);
+
+    expect(screen.getByRole('button', { name: 'Bold' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Heading 1' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Heading 2' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Bullet list' })).toBeInTheDocument();
+
+    // Not declared, so not offered - the operator cannot author what the
+    // destination would discard.
+    expect(screen.queryByRole('button', { name: 'Italic' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Underline' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Add or edit link' })).toBeNull();
+  });
+
+  it('should render an H3 control when the destination allows h3', () => {
+    render(
+      <RichTextEditor
+        format={format({ allowedTags: ['h1', 'h2', 'h3', 'p'] })}
+        value="<p>x</p>"
+        onChange={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: 'Heading 3' })).toBeInTheDocument();
+  });
+
+  it('should render the link control when an anchor is allowed', () => {
+    render(
+      <RichTextEditor
+        format={format({ allowedTags: ['p', 'a'], allowedAttributes: { a: ['href'] } })}
+        value="<p>x</p>"
+        onChange={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: 'Add or edit link' })).toBeInTheDocument();
+  });
+
+  it('should warn on the italic control that italic publishes as bold', () => {
+    // ADR-046 subordinate decision 3: the conversion is lossy, so the operator
+    // learns about it where they press the button.
+    render(
+      <RichTextEditor
+        format={format({ allowedTags: ['p', 'b', 'i'] })}
+        value="<p>x</p>"
+        onChange={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: 'Italic' })).toHaveAttribute(
+      'title',
+      expect.stringContaining('publishes as bold') as unknown as string,
+    );
+  });
+
+  it('should render the byte counter against the declared cap', () => {
+    render(<RichTextEditor format={format()} value="<p>abc</p>" onChange={vi.fn()} />);
+
+    expect(screen.getByText(/40,000 bytes/)).toBeInTheDocument();
+  });
+
+  it('should omit the byte counter when the destination declares no cap', () => {
+    render(<RichTextEditor format={format({ maxBytes: null })} value="<p>x</p>" onChange={vi.fn()} />);
+
+    expect(screen.queryByText(/bytes/)).toBeNull();
+  });
+
+  it('should flag a value over the declared cap', () => {
+    render(<RichTextEditor format={format({ maxBytes: 4 })} value="<p>too long</p>" onChange={vi.fn()} />);
+
+    expect(screen.getByText(/over the destination limit/)).toBeInTheDocument();
+  });
+
+  it('should say so when the destination declared no format', () => {
+    // Otherwise the conservative subset reads as authoritative, which is what
+    // ADR-046 subordinate decision 1 exists to prevent.
+    render(<RichTextEditor format={format({ declared: false })} value="<p>x</p>" onChange={vi.fn()} />);
+
+    expect(screen.getByText(/has not declared its description format/)).toBeInTheDocument();
+  });
+
+  it('should not claim a fallback when the format is declared', () => {
+    render(<RichTextEditor format={format()} value="<p>x</p>" onChange={vi.fn()} />);
+
+    expect(screen.queryByText(/has not declared/)).toBeNull();
+  });
+
+  it('should disable every control when disabled', () => {
+    render(<RichTextEditor format={format()} value="<p>x</p>" onChange={vi.fn()} disabled />);
+
+    expect(screen.getByRole('button', { name: 'Bold' })).toBeDisabled();
+  });
+
+  it('should expose an HTML source toggle', () => {
+    render(<RichTextEditor format={format()} value="<p>x</p>" onChange={vi.fn()} />);
+
+    expect(screen.getByRole('button', { name: 'HTML' })).toBeInTheDocument();
+  });
+
+  it('should render a caller-supplied toolbar slot', () => {
+    render(
+      <RichTextEditor
+        format={format()}
+        value="<p>x</p>"
+        onChange={vi.fn()}
+        toolbarSlot={<button type="button">Suggest with AI</button>}
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: 'Suggest with AI' })).toBeInTheDocument();
+  });
+
+  it('should label the editing surface for assistive tech', () => {
+    render(
+      <RichTextEditor
+        format={format()}
+        value="<p>x</p>"
+        onChange={vi.fn()}
+        aria-label="Master description"
+      />,
+    );
+
+    expect(screen.getByRole('textbox', { name: 'Master description' })).toBeInTheDocument();
+  });
+});
