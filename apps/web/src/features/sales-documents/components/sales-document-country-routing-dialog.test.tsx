@@ -15,7 +15,11 @@
 import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import { renderWithProviders, createMockApiClient } from '../../../test/test-utils';
+import {
+  renderWithProviders,
+  createMockApiClient,
+  createAuthenticatedSessionAdapter,
+} from '../../../test/test-utils';
 import type { SalesDocumentCountryDefault } from '../api/sales-document-rules.types';
 import { SalesDocumentCountryRoutingDialog } from './sales-document-country-routing-dialog';
 
@@ -239,5 +243,38 @@ describe('SalesDocumentCountryRoutingDialog', () => {
 
     await screen.findByText(/Rules for PL/i);
     expect(screen.queryByText(/both an Invoice default and a Receipt default/i)).toBeNull();
+  });
+
+  it('should render the "+ Add rule" composer with the elevated dialog tier when opened from within this dialog', async () => {
+    const apiClient = createMockApiClient({
+      salesDocumentRules: {
+        listRules: vi.fn().mockResolvedValue([]),
+        listCountryDefaults: vi.fn().mockResolvedValue([]),
+      },
+    });
+    renderWithProviders(
+      <SalesDocumentCountryRoutingDialog
+        open
+        country="PL"
+        cameFrom={null}
+        onOpenChange={vi.fn()}
+        onNavigate={vi.fn()}
+      />,
+      { apiClient, sessionAdapter: createAuthenticatedSessionAdapter() },
+    );
+
+    const addRuleButton = await screen.findByRole('button', { name: /\+ Add rule/i });
+    await userEvent.click(addRuleButton);
+
+    const composerHeading = await screen.findByRole('heading', { name: 'Add rule' });
+    const composerContent = composerHeading.closest('[role="dialog"]');
+    expect(composerContent).not.toBeNull();
+    expect(composerContent).toHaveClass('dialog__content--elevated');
+
+    // The overlay is a Radix Portal sibling of the content, not an
+    // ancestor/descendant of it — assert directly against the document
+    // rather than via DOM traversal from the heading, so this stays
+    // robust to Radix's own portal-container structure.
+    expect(document.querySelector('.dialog__overlay--elevated')).not.toBeNull();
   });
 });
