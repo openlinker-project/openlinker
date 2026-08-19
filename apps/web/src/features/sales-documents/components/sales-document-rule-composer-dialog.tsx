@@ -9,6 +9,15 @@
  * yet. The checkbox therefore submits NOTHING today — it exists so the
  * composer's shape doesn't need to change once that adapter gap closes.
  *
+ * Always opened from `SalesDocumentRulesList`, which in turn only ever
+ * renders inside `SalesDocumentCountryRoutingDialog` (#2188) - so this
+ * dialog is always a nested dialog, never a top-level one. Its `DialogContent`
+ * therefore carries the `--elevated` tier unconditionally (matching
+ * `bulk-edit-modal.tsx` / `shop-category-picker-modal.tsx` / the discard-guard
+ * `ConfirmDialog`), since the base overlay z-index (40) sits below any dialog
+ * content (50) and would otherwise leave the routing dialog undimmed behind
+ * this one.
+ *
  * @module apps/web/src/features/sales-documents/components
  */
 import { useState, type ReactElement } from 'react';
@@ -116,7 +125,12 @@ export function SalesDocumentRuleComposerDialog({
         onOpenChange(next);
       }}
     >
-      <DialogContent aria-describedby={undefined} style={{ maxWidth: '30rem' }}>
+      <DialogContent
+        aria-describedby={undefined}
+        className="dialog__content--elevated"
+        overlayClassName="dialog__overlay--elevated"
+        style={{ maxWidth: '30rem' }}
+      >
         <DialogTitle>Add rule</DialogTitle>
 
         {createRule.error ? <Alert tone="error">{createRule.error.message}</Alert> : null}
