@@ -9,19 +9,35 @@
  *     InPost's `inpostEnvironment` structured field. The legacy free-text
  *     `config.baseUrl` override still exists on the BE config type for
  *     backward compatibility and always takes precedence over Environment
- *     (`resolveInfaktBaseUrl`) - see the legacy-override banner below.
+ *     (`resolveInfaktBaseUrl`) - see the legacy-override banner below. Its
+ *     label, description and option labels go through the shared i18n seam
+ *     under `infakt.settings.environment.*`, matching the InPost structured
+ *     section's identical field (#2179 review round 3, Suggestion #4).
  *   - Legacy Base URL override banner (#2179 review, Important #1) - a
  *     connection created before this Environment select existed may still
  *     carry a `config.baseUrl` override. Because `resolveInfaktBaseUrl`
  *     prefers it unconditionally, picking a new Environment value on such a
  *     connection would silently have no effect: the select would round-trip
  *     into `config.environment` but the resolved host would stay whatever
- *     `baseUrl` says. The banner surfaces that value and offers a "Clear
- *     legacy override" action that reuses the generic host `baseUrl` field
+ *     `baseUrl` says. The banner surfaces that value and offers a clear action
+ *     that reuses the generic host `baseUrl` field
  *     (`syncStructuredToJson('baseUrl', '')`, which already deletes the key
  *     via `mergeStructuredIntoConfig`'s pre-existing generic clause) - no new
  *     merge clause needed, since `baseUrl` was already a host-structured field
  *     before this plugin section stopped rendering a control for it.
+ *
+ *     The clear action NAMES the host it leaves behind (#2179 review round 3,
+ *     Important #2). The legacy field existed for sandbox testing, so an
+ *     affected connection's override is most likely the sandbox host, while
+ *     `readInfaktEnvironment` yields `''` for any connection that never had
+ *     `config.environment` - and an unset Environment resolves to PRODUCTION.
+ *     A bare clear would therefore promote a sandbox connection to production
+ *     and start issuing real invoices that inFakt submits to KSeF. So: when
+ *     the override's host is recognised, the clear first syncs
+ *     `infaktEnvironment` to that same environment and only then clears
+ *     `baseUrl`, keeping the resolved host identical; when it is not
+ *     recognised and no Environment is picked, the action is DISABLED rather
+ *     than silently defaulting.
  *   - Default payment method (`config.defaultPaymentMethod`, #1303) — sent
  *     on every issued invoice/correction. Empty selection means "no
  *     override", the adapter falls back to `'cash'`. Tucked behind an
@@ -56,6 +72,7 @@ import { Button } from '../../../shared/ui/button';
 import { FormField } from '../../../shared/ui/form-field';
 import { InlineDisclosure } from '../../../shared/ui/inline-disclosure';
 import { Select } from '../../../shared/ui/select';
+import { useTranslation } from '../../../shared/i18n';
 import type { StructuredConfigSectionProps } from '../../../shared/plugins';
 import { useBankAccountsQuery, usePickBankAccount } from '../../../features/connections';
 
@@ -64,6 +81,41 @@ const PAYMENT_METHOD_LABELS: Record<'cash' | 'transfer', string> = {
   transfer: 'Transfer',
 };
 
+/**
+ * Hosts of the two inFakt API environments, mirroring the BE
+ * `INFAKT_SANDBOX_BASE_URL` / `INFAKT_DEFAULT_BASE_URL` constants. Duplicated
+ * deliberately rather than imported: FE and BE are separate deployables (same
+ * reasoning already recorded for `INFAKT_ENVIRONMENT_VALUES` in
+ * `infakt-setup.schema.ts`).
+ */
+const INFAKT_SANDBOX_API_HOST = 'api.sandbox-infakt.pl';
+const INFAKT_PRODUCTION_API_HOST = 'api.infakt.pl';
+
+type InfaktEnvironmentValue = 'sandbox' | 'production';
+
+const ENVIRONMENT_LABELS: Record<InfaktEnvironmentValue, string> = {
+  sandbox: 'Sandbox',
+  production: 'Production',
+};
+
+/**
+ * Which environment a legacy `config.baseUrl` override actually points at, or
+ * `null` when the host is neither inFakt environment (an operator proxy, a
+ * stale value, or an unparseable string). Pure - no host-specific behaviour
+ * beyond the two literals above.
+ */
+function resolveLegacyBaseUrlEnvironment(value: string): InfaktEnvironmentValue | null {
+  let host: string;
+  try {
+    host = new URL(value).hostname.toLowerCase();
+  } catch {
+    return null;
+  }
+  if (host === INFAKT_SANDBOX_API_HOST) return 'sandbox';
+  if (host === INFAKT_PRODUCTION_API_HOST) return 'production';
+  return null;
+}
+
 export function InfaktStructuredSection({
   connection,
   form,
@@ -71,6 +123,7 @@ export function InfaktStructuredSection({
   syncStructuredToJson,
   syncInfaktBankAccountToJson,
 }: StructuredConfigSectionProps): ReactElement {
+  const { t } = useTranslation();
   const paymentMethod = form.watch('infaktPaymentMethod') ?? '';
   const isTransfer = paymentMethod === 'transfer';
   // Mirrors the adapter's own fallback (`config.defaultPaymentMethod ?? 'cash'`)
@@ -84,8 +137,33 @@ export function InfaktStructuredSection({
   // present. Watched here only to decide whether the legacy-override banner
   // below should render.
   const legacyBaseUrl = form.watch('baseUrl') ?? '';
+  const selectedEnvironment = form.watch('infaktEnvironment') ?? '';
+  // The environment the override resolves to today (null = unrecognised host).
+  const legacyEnvironment = legacyBaseUrl ? resolveLegacyBaseUrlEnvironment(legacyBaseUrl) : null;
+  // What the connection will target once the override is gone: the override's
+  // own environment when recognised, otherwise the picked Environment. `null`
+  // means the outcome is unknowable, which is the one case the clear is blocked.
+  const environmentAfterClear: InfaktEnvironmentValue | null =
+    legacyEnvironment ??
+    (selectedEnvironment === 'sandbox' || selectedEnvironment === 'production'
+      ? selectedEnvironment
+      : null);
+  const clearBlocked = environmentAfterClear === null;
+  const clearLabel = environmentAfterClear
+    ? legacyEnvironment
+      ? `Clear override (keep ${ENVIRONMENT_LABELS[environmentAfterClear]})`
+      : `Clear override (use ${ENVIRONMENT_LABELS[environmentAfterClear]})`
+    : 'Clear override';
 
   function clearLegacyBaseUrl(): void {
+    if (environmentAfterClear === null) return;
+    // Sequential syncs compose: `syncStructuredToJson` re-reads `configText`
+    // from the form on every call, so the second merge sees the first one's
+    // write. Environment goes first so the resolved host never passes through
+    // an unset (⇒ production) state.
+    if (legacyEnvironment !== null) {
+      syncStructuredToJson('infaktEnvironment', legacyEnvironment);
+    }
     syncStructuredToJson('baseUrl', '');
   }
 
@@ -124,32 +202,44 @@ export function InfaktStructuredSection({
               tone="secondary"
               className="button--sm"
               onClick={clearLegacyBaseUrl}
-              disabled={!configIsParseable}
+              disabled={!configIsParseable || clearBlocked}
             >
-              Clear legacy override
+              {clearLabel}
             </Button>
           }
         >
           This connection has a legacy Base URL override (<code>{legacyBaseUrl}</code>) that takes
           precedence over Environment below - invoices keep going to that host until it's cleared,
           even after picking a different Environment and saving.
+          {environmentAfterClear === null
+            ? " That host isn't one of inFakt's two API environments, so clearing it would fall back to Production and start issuing real invoices. Pick an Environment below first."
+            : legacyEnvironment !== null
+              ? ` Clearing it keeps this connection on ${ENVIRONMENT_LABELS[legacyEnvironment]}, the environment that host already points at.`
+              : ` Clearing it switches this connection to ${ENVIRONMENT_LABELS[environmentAfterClear]}, the Environment picked below.`}
         </Alert>
       ) : null}
       <FormField
-        label="Environment"
+        label={t('infakt.settings.environment.label', 'Environment')}
         name="infaktEnvironment"
         error={form.formState.errors.infaktEnvironment?.message}
-        description="inFakt API environment. Use Sandbox to test before switching to Production. Leaving this not set falls back to Production."
+        description={t(
+          'infakt.settings.environment.description',
+          'inFakt API environment. Use Sandbox to test before switching to Production. Leaving this not set falls back to Production.',
+        )}
       >
         <Select
-          value={form.watch('infaktEnvironment') ?? ''}
+          value={selectedEnvironment}
           onChange={(event) => syncStructuredToJson('infaktEnvironment', event.target.value)}
           disabled={!configIsParseable}
           invalid={Boolean(form.formState.errors.infaktEnvironment)}
         >
-          <option value="">— not set —</option>
-          <option value="sandbox">Sandbox</option>
-          <option value="production">Production</option>
+          <option value="">{t('infakt.settings.environment.unset', '— not set —')}</option>
+          <option value="sandbox">
+            {t('infakt.settings.environment.sandbox', ENVIRONMENT_LABELS.sandbox)}
+          </option>
+          <option value="production">
+            {t('infakt.settings.environment.production', ENVIRONMENT_LABELS.production)}
+          </option>
         </Select>
       </FormField>
       <InlineDisclosure label="Payment method for invoice:" value={effectiveLabel}>

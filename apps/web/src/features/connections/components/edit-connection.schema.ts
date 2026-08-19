@@ -286,6 +286,10 @@ export const editConnectionSchema = z
     // structured sections never render (or submit) for the same row. The
     // prefix namespaces the two form fields, not the persisted config key.
     // Empty allowed for unset.
+    // Like `infaktPaymentMethod` and `infaktBankAccount` above, this field is
+    // declared host-side rather than contributed through the plugin
+    // `connectionConfig` seam (#1330) - the third inFakt field still awaiting
+    // that migration.
     infaktEnvironment: z.union([z.enum(['sandbox', 'production']), z.literal('')]).optional(),
     // Infakt-only bank-account snapshot surfacing `config.bankAccount`
     // (#1303 follow-up). Whole-object field (like `sellerDefaults`) — the

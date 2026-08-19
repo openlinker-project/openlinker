@@ -1,7 +1,9 @@
 /**
  * Infakt Connection Config Shape Validator — unit tests
  *
- * Verifies the optional `baseUrl` URL check, the optional
+ * Verifies the optional `baseUrl` URL + https checks (#2179 review round 3,
+ * Important #1 - the API key travels on every request against that host, so a
+ * cleartext override is refused at save time), the optional
  * `defaultPaymentMethod` enum check (#1303), the optional `environment` enum
  * check (#2174), and the flat-issue rejection payload.
  *
@@ -25,6 +27,29 @@ describe('InfaktConnectionConfigShapeValidatorAdapter', () => {
 
   it('should resolve when baseUrl is null', async () => {
     await expect(validator.validate({ baseUrl: null })).resolves.toBeUndefined();
+  });
+
+  it('should reject when baseUrl is plain http (#2179 review round 3, Important #1)', async () => {
+    await expect(
+      validator.validate({ baseUrl: 'http://attacker.example/api/v3' }),
+    ).rejects.toBeInstanceOf(InvalidConnectionConfigException);
+  });
+
+  it('should carry a "must use https" issue for a plain-http baseUrl', async () => {
+    await expect(
+      validator.validate({ baseUrl: 'http://attacker.example/api/v3' }),
+    ).rejects.toMatchObject({
+      errors: [{ path: 'baseUrl', message: 'must use https' }],
+    });
+  });
+
+  // Deliberately NOT an infakt.pl host allowlist: the legacy override is
+  // documented for sandbox testing and may target an operator proxy, so
+  // requiring https (not a specific host) is the property enforced here.
+  it('should accept an https baseUrl on a non-infakt host', async () => {
+    await expect(
+      validator.validate({ baseUrl: 'https://proxy.internal.example/api/v3' }),
+    ).resolves.toBeUndefined();
   });
 
   it('should reject when baseUrl is not a valid URL', async () => {

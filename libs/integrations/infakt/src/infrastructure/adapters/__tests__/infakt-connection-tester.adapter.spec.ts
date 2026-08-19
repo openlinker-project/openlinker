@@ -3,7 +3,10 @@
  *
  * Stubs `global.fetch` to verify the probe maps a 2xx to success, a 401 to a
  * clear auth failure, and a transport error to a failure result — never
- * throwing (the tester always returns a `ConnectionTestResult`).
+ * throwing (the tester always returns a `ConnectionTestResult`). Includes the
+ * https guard on the legacy `baseUrl` override (#2179 review round 3,
+ * Important #1): a `http://` override must surface as an actionable FAILED
+ * result and never reach the network.
  *
  * @module libs/integrations/infakt/src/infrastructure/adapters/__tests__
  */
@@ -137,5 +140,28 @@ describe('InfaktConnectionTesterAdapter', () => {
     const [url] = fetchMock.mock.calls[0] as [string];
     expect(url).toContain(overrideUrl);
     expect(url).not.toContain('api.sandbox-infakt.pl');
+  });
+
+  describe('https guard on the legacy baseUrl override (#2179 review round 3, Important #1)', () => {
+    it('should return a failure without probing when baseUrl is plain http', async () => {
+      const result = await tester.test(
+        connection({ config: { baseUrl: 'http://attacker.example/api/v3' } }),
+        resolver,
+      );
+
+      expect(result.success).toBe(false);
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('should report the configuration problem rather than the opaque probe failure', async () => {
+      const result = await tester.test(
+        connection({ config: { baseUrl: 'http://attacker.example/api/v3' } }),
+        resolver,
+      );
+
+      expect(result.message).toContain('configuration is invalid');
+      expect(result.message).toContain('https');
+      expect(result.message).not.toBe('Infakt probe failed');
+    });
   });
 });

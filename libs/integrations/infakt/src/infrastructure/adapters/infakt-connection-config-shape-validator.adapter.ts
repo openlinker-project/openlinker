@@ -5,7 +5,9 @@
  * `environment` selector (#2174) that, when present, must be one of
  * `InfaktEnvironmentValues`; a legacy `baseUrl` override (sandbox vs
  * production, no longer surfaced on either FE form but still honoured for
- * back-compat) that, when present, must be a non-empty, well-formed URL; an
+ * back-compat) that, when present, must be a non-empty, well-formed **https**
+ * URL - the API key travels on every request against it, so cleartext is
+ * refused at save time (#2179 review round 3, Important #1); an
  * optional `defaultPaymentMethod` (#1303) that, when present, must be one of
  * `InfaktPaymentMethodValues`; and an optional `bankAccount` snapshot (#1303
  * follow-up) that, when present, must carry an `id` (string or legacy
@@ -28,6 +30,7 @@ import {
   type FlatValidationIssue,
   InvalidConnectionConfigException,
 } from '@openlinker/core/integrations';
+import { isAllowedInfaktBaseUrl } from '../../domain/policies/infakt-base-url.policy';
 import {
   InfaktEnvironmentValues,
   InfaktPaymentMethodValues,
@@ -48,6 +51,12 @@ export class InfaktConnectionConfigShapeValidatorAdapter
         issues.push({ path: 'baseUrl', message: 'must be a non-empty string' });
       } else if (!this.isValidUrl(baseUrl)) {
         issues.push({ path: 'baseUrl', message: 'must be a valid URL' });
+      } else if (!isAllowedInfaktBaseUrl(baseUrl.trim())) {
+        // https-only, deliberately NOT an infakt.pl host allowlist: the legacy
+        // override is documented for sandbox testing and may point at an
+        // operator proxy, so an allowlist would refuse existing rows on their
+        // next save. See `isAllowedInfaktBaseUrl` for the full rationale.
+        issues.push({ path: 'baseUrl', message: 'must use https' });
       }
     }
 

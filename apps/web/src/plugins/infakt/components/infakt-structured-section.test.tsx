@@ -5,6 +5,10 @@
  * select (#1303) shown in EditConnectionForm for inFakt connections. Tests
  * propagation to JSON config via syncStructuredToJson callback. Mirrors
  * `woocommerce-structured-section.test.tsx`.
+ *
+ * The legacy-Base-URL-override block additionally pins the host-preserving
+ * clear (#2179 review round 3, Important #2): clearing an override must never
+ * silently move a sandbox connection onto production.
  */
 /* eslint-disable @typescript-eslint/no-explicit-any -- test component mocking requires flexible types */
 import type { ReactElement } from 'react';
@@ -101,6 +105,31 @@ describe('InfaktStructuredSection', () => {
   });
 
   describe('legacy Base URL override banner (#2179 review, Important #1)', () => {
+    function renderBanner(options: {
+      infaktEnvironment: string;
+      baseUrl: string;
+      syncStructuredToJson?: (field: string, value: string) => void;
+      configIsParseable?: boolean;
+    }): void {
+      const TestComponent = (): ReactElement => {
+        const form = useForm<any>({
+          defaultValues: {
+            infaktEnvironment: options.infaktEnvironment,
+            baseUrl: options.baseUrl,
+          },
+        });
+        return (
+          <InfaktStructuredSection
+            connection={{ id: '1' } as any}
+            form={form as any}
+            configIsParseable={options.configIsParseable ?? true}
+            syncStructuredToJson={(options.syncStructuredToJson ?? vi.fn()) as any}
+          />
+        );
+      };
+      renderWithProviders(<TestComponent />);
+    }
+
     it('does not render the banner when no legacy baseUrl is set', () => {
       const TestComponent = (): ReactElement => {
         const form = useForm<any>({
@@ -143,51 +172,84 @@ describe('InfaktStructuredSection', () => {
       expect(screen.getByText('https://custom.infakt.example/api/v3')).toBeInTheDocument();
     });
 
-    it('clears the legacy baseUrl via syncStructuredToJson when "Clear legacy override" is clicked', () => {
+    it('clears the legacy baseUrl via syncStructuredToJson when the clear action is clicked', () => {
       const syncStructuredToJson = vi.fn();
-      const TestComponent = (): ReactElement => {
-        const form = useForm<any>({
-          defaultValues: {
-            infaktEnvironment: 'production',
-            baseUrl: 'https://custom.infakt.example/api/v3',
-          },
-        });
-        return (
-          <InfaktStructuredSection
-            connection={{ id: '1' } as any}
-            form={form as any}
-            configIsParseable={true}
-            syncStructuredToJson={syncStructuredToJson}
-          />
-        );
-      };
-      renderWithProviders(<TestComponent />);
+      renderBanner({
+        infaktEnvironment: 'production',
+        baseUrl: 'https://custom.infakt.example/api/v3',
+        syncStructuredToJson,
+      });
 
-      fireEvent.click(screen.getByRole('button', { name: 'Clear legacy override' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Clear override (use Production)' }));
 
       expect(syncStructuredToJson).toHaveBeenCalledWith('baseUrl', '');
     });
 
-    it('disables the "Clear legacy override" action when configIsParseable is false', () => {
-      const TestComponent = (): ReactElement => {
-        const form = useForm<any>({
-          defaultValues: {
-            infaktEnvironment: 'production',
-            baseUrl: 'https://custom.infakt.example/api/v3',
-          },
-        });
-        return (
-          <InfaktStructuredSection
-            connection={{ id: '1' } as any}
-            form={form as any}
-            configIsParseable={false}
-            syncStructuredToJson={vi.fn()}
-          />
-        );
-      };
-      renderWithProviders(<TestComponent />);
+    it('disables the clear action when configIsParseable is false', () => {
+      renderBanner({
+        infaktEnvironment: 'production',
+        baseUrl: 'https://custom.infakt.example/api/v3',
+        configIsParseable: false,
+      });
 
-      expect(screen.getByRole('button', { name: 'Clear legacy override' })).toBeDisabled();
+      expect(screen.getByRole('button', { name: 'Clear override (use Production)' })).toBeDisabled();
+    });
+
+    it('keeps a sandbox-host override on Sandbox by syncing the environment before clearing', () => {
+      const syncStructuredToJson = vi.fn();
+      renderBanner({
+        // Never had `config.environment` - a bare clear would resolve to production.
+        infaktEnvironment: '',
+        baseUrl: 'https://api.sandbox-infakt.pl/api/v3',
+        syncStructuredToJson,
+      });
+
+      fireEvent.click(screen.getByRole('button', { name: 'Clear override (keep Sandbox)' }));
+
+      expect(syncStructuredToJson).toHaveBeenNthCalledWith(1, 'infaktEnvironment', 'sandbox');
+      expect(syncStructuredToJson).toHaveBeenNthCalledWith(2, 'baseUrl', '');
+    });
+
+    it('keeps a production-host override on Production', () => {
+      const syncStructuredToJson = vi.fn();
+      renderBanner({
+        infaktEnvironment: '',
+        baseUrl: 'https://api.infakt.pl/api/v3',
+        syncStructuredToJson,
+      });
+
+      fireEvent.click(screen.getByRole('button', { name: 'Clear override (keep Production)' }));
+
+      expect(syncStructuredToJson).toHaveBeenNthCalledWith(1, 'infaktEnvironment', 'production');
+      expect(syncStructuredToJson).toHaveBeenNthCalledWith(2, 'baseUrl', '');
+    });
+
+    it('disables the clear action and asks for an Environment when the host is unrecognised and none is picked', () => {
+      const syncStructuredToJson = vi.fn();
+      renderBanner({
+        infaktEnvironment: '',
+        baseUrl: 'https://proxy.internal.example/api/v3',
+        syncStructuredToJson,
+      });
+
+      expect(screen.getByRole('button', { name: 'Clear override' })).toBeDisabled();
+      expect(screen.getByText(/Pick an Environment below first/)).toBeInTheDocument();
+      expect(syncStructuredToJson).not.toHaveBeenCalled();
+    });
+
+    it('clears an unrecognised-host override to the picked Environment and names the outcome', () => {
+      const syncStructuredToJson = vi.fn();
+      renderBanner({
+        infaktEnvironment: 'sandbox',
+        baseUrl: 'https://proxy.internal.example/api/v3',
+        syncStructuredToJson,
+      });
+
+      expect(screen.getByText(/switches this connection to Sandbox/)).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'Clear override (use Sandbox)' }));
+
+      expect(syncStructuredToJson).toHaveBeenCalledTimes(1);
+      expect(syncStructuredToJson).toHaveBeenCalledWith('baseUrl', '');
     });
   });
 

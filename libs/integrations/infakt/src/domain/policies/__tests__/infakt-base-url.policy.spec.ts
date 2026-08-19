@@ -10,11 +10,16 @@
  * constructed HTTP client's resolved URL rather than the pure function
  * itself.
  *
+ * Also covers the https guard on the legacy override and the trimming of a
+ * padded override (#2179 review round 3, Important #1 + Suggestion #1).
+ *
  * @module libs/integrations/infakt/src/domain/policies/__tests__
  */
+import { InfaktConfigException } from '../../exceptions/infakt-config.exception';
 import {
   INFAKT_DEFAULT_BASE_URL,
   INFAKT_SANDBOX_BASE_URL,
+  isAllowedInfaktBaseUrl,
   resolveInfaktBaseUrl,
 } from '../infakt-base-url.policy';
 import type { InfaktConnectionConfig } from '../../types/infakt-connection.types';
@@ -60,5 +65,56 @@ describe('resolveInfaktBaseUrl', () => {
     const config: InfaktConnectionConfig = { baseUrl: '   ', environment: 'sandbox' };
 
     expect(resolveInfaktBaseUrl(config)).toBe(INFAKT_SANDBOX_BASE_URL);
+  });
+
+  it('should trim surrounding whitespace off an explicit baseUrl', () => {
+    const config: InfaktConnectionConfig = { baseUrl: '  https://api.infakt.example/api/v3  ' };
+
+    expect(resolveInfaktBaseUrl(config)).toBe('https://api.infakt.example/api/v3');
+  });
+
+  describe('https guard on the legacy override (#2179 review round 3, Important #1)', () => {
+    it('should throw InfaktConfigException when the baseUrl override is plain http', () => {
+      const config: InfaktConnectionConfig = { baseUrl: 'http://attacker.example/api/v3' };
+
+      expect(() => resolveInfaktBaseUrl(config, 'conn-1')).toThrow(InfaktConfigException);
+    });
+
+    it('should name the offending connection in the thrown message', () => {
+      const config: InfaktConnectionConfig = { baseUrl: 'http://attacker.example/api/v3' };
+
+      expect(() => resolveInfaktBaseUrl(config, 'conn-1')).toThrow(/conn-1/);
+    });
+
+    it('should still resolve a valid https override', () => {
+      const config: InfaktConnectionConfig = { baseUrl: 'https://proxy.example/api/v3' };
+
+      expect(resolveInfaktBaseUrl(config, 'conn-1')).toBe('https://proxy.example/api/v3');
+    });
+
+    it('should throw rather than fall through to the environment default', () => {
+      const config: InfaktConnectionConfig = {
+        baseUrl: 'http://attacker.example/api/v3',
+        environment: 'sandbox',
+      };
+
+      expect(() => resolveInfaktBaseUrl(config, 'conn-1')).toThrow(InfaktConfigException);
+    });
+  });
+});
+
+describe('isAllowedInfaktBaseUrl', () => {
+  it('should accept an https URL on any host', () => {
+    expect(isAllowedInfaktBaseUrl('https://api.infakt.pl/api/v3')).toBe(true);
+    // Deliberately host-agnostic: the legacy override may target an operator proxy.
+    expect(isAllowedInfaktBaseUrl('https://proxy.internal.example/api/v3')).toBe(true);
+  });
+
+  it('should reject a plain-http URL', () => {
+    expect(isAllowedInfaktBaseUrl('http://api.infakt.pl/api/v3')).toBe(false);
+  });
+
+  it('should reject a non-URL string', () => {
+    expect(isAllowedInfaktBaseUrl('not-a-url')).toBe(false);
   });
 });
