@@ -94,19 +94,19 @@ describe('SchedulerService', () => {
   describe('onApplicationBootstrap', () => {
     const defaultConfigGet = (key: string, defaultValue?: unknown): unknown => {
       const cronKeys = [
+        // Kept ALPHABETICAL. A cron key missing from this list falls through to
+        // `'true'` below, which CronJob rejects ("Unknown alias: tru") and which
+        // aborts onApplicationBootstrap for EVERY task - so a new scheduled task
+        // must register its cron key here, in order.
         'OL_INVENTORY_SYNC_CRON',
-        'OL_PRODUCT_SYNC_CRON',
-        'OL_PICKUP_POINT_REFRESH_CRON',
-        'OL_REGULATORY_RECONCILE_CRON',
         'OL_OFFLINE_RESUBMIT_CRON',
-        'OL_PENDING_RECOVERY_CRON',
-        'OL_STALE_OFFER_PAUSE_CRON',
-        // A cron key missing from this list falls through to `'true'`
-        // below, which CronJob rejects ("Unknown alias: tru") and which
-        // aborts onApplicationBootstrap for EVERY task — so a new
-        // scheduled task must register its cron key here.
-        'OL_TAXONOMY_SYNC_CRON',
         'OL_ORDER_FX_STAMP_SWEEP_CRON',
+        'OL_PENDING_RECOVERY_CRON',
+        'OL_PICKUP_POINT_REFRESH_CRON',
+        'OL_PRODUCT_SYNC_CRON',
+        'OL_REGULATORY_RECONCILE_CRON',
+        'OL_STALE_OFFER_PAUSE_CRON',
+        'OL_TAXONOMY_SYNC_CRON',
       ];
       if (cronKeys.includes(key)) return defaultValue ?? '*/15 * * * *';
       return 'true';
@@ -398,19 +398,19 @@ describe('SchedulerService', () => {
   describe('regulatory-status reconcile task (#1121)', () => {
     const defaultConfigGet = (key: string, defaultValue?: unknown): unknown => {
       const cronKeys = [
+        // Kept ALPHABETICAL. A cron key missing from this list falls through to
+        // `'true'` below, which CronJob rejects ("Unknown alias: tru") and which
+        // aborts onApplicationBootstrap for EVERY task - so a new scheduled task
+        // must register its cron key here, in order.
         'OL_INVENTORY_SYNC_CRON',
-        'OL_PRODUCT_SYNC_CRON',
-        'OL_PICKUP_POINT_REFRESH_CRON',
-        'OL_REGULATORY_RECONCILE_CRON',
         'OL_OFFLINE_RESUBMIT_CRON',
-        'OL_PENDING_RECOVERY_CRON',
-        'OL_STALE_OFFER_PAUSE_CRON',
-        // A cron key missing from this list falls through to `'true'`
-        // below, which CronJob rejects ("Unknown alias: tru") and which
-        // aborts onApplicationBootstrap for EVERY task — so a new
-        // scheduled task must register its cron key here.
-        'OL_TAXONOMY_SYNC_CRON',
         'OL_ORDER_FX_STAMP_SWEEP_CRON',
+        'OL_PENDING_RECOVERY_CRON',
+        'OL_PICKUP_POINT_REFRESH_CRON',
+        'OL_PRODUCT_SYNC_CRON',
+        'OL_REGULATORY_RECONCILE_CRON',
+        'OL_STALE_OFFER_PAUSE_CRON',
+        'OL_TAXONOMY_SYNC_CRON',
       ];
       if (cronKeys.includes(key)) return defaultValue ?? '*/15 * * * *';
       return 'true';
@@ -488,19 +488,19 @@ describe('SchedulerService', () => {
   describe('stale-offer-pause-sweep task (#1689)', () => {
     const defaultConfigGet = (key: string, defaultValue?: unknown): unknown => {
       const cronKeys = [
+        // Kept ALPHABETICAL. A cron key missing from this list falls through to
+        // `'true'` below, which CronJob rejects ("Unknown alias: tru") and which
+        // aborts onApplicationBootstrap for EVERY task - so a new scheduled task
+        // must register its cron key here, in order.
         'OL_INVENTORY_SYNC_CRON',
-        'OL_PRODUCT_SYNC_CRON',
-        'OL_PICKUP_POINT_REFRESH_CRON',
-        'OL_REGULATORY_RECONCILE_CRON',
         'OL_OFFLINE_RESUBMIT_CRON',
-        'OL_PENDING_RECOVERY_CRON',
-        'OL_STALE_OFFER_PAUSE_CRON',
-        // A cron key missing from this list falls through to `'true'`
-        // below, which CronJob rejects ("Unknown alias: tru") and which
-        // aborts onApplicationBootstrap for EVERY task — so a new
-        // scheduled task must register its cron key here.
-        'OL_TAXONOMY_SYNC_CRON',
         'OL_ORDER_FX_STAMP_SWEEP_CRON',
+        'OL_PENDING_RECOVERY_CRON',
+        'OL_PICKUP_POINT_REFRESH_CRON',
+        'OL_PRODUCT_SYNC_CRON',
+        'OL_REGULATORY_RECONCILE_CRON',
+        'OL_STALE_OFFER_PAUSE_CRON',
+        'OL_TAXONOMY_SYNC_CRON',
       ];
       if (cronKeys.includes(key)) return defaultValue ?? '*/15 * * * *';
       return 'true';
@@ -575,15 +575,19 @@ describe('SchedulerService', () => {
   describe('destination-taxonomy-sync task (#1979, ADR-037)', () => {
     const defaultConfigGet = (key: string, defaultValue?: unknown): unknown => {
       const cronKeys = [
+        // Kept ALPHABETICAL. A cron key missing from this list falls through to
+        // `'true'` below, which CronJob rejects ("Unknown alias: tru") and which
+        // aborts onApplicationBootstrap for EVERY task - so a new scheduled task
+        // must register its cron key here, in order.
         'OL_INVENTORY_SYNC_CRON',
-        'OL_PRODUCT_SYNC_CRON',
-        'OL_PICKUP_POINT_REFRESH_CRON',
-        'OL_REGULATORY_RECONCILE_CRON',
         'OL_OFFLINE_RESUBMIT_CRON',
+        'OL_ORDER_FX_STAMP_SWEEP_CRON',
         'OL_PENDING_RECOVERY_CRON',
+        'OL_PICKUP_POINT_REFRESH_CRON',
+        'OL_PRODUCT_SYNC_CRON',
+        'OL_REGULATORY_RECONCILE_CRON',
         'OL_STALE_OFFER_PAUSE_CRON',
         'OL_TAXONOMY_SYNC_CRON',
-        'OL_ORDER_FX_STAMP_SWEEP_CRON',
       ];
       if (cronKeys.includes(key)) return defaultValue ?? '*/15 * * * *';
       return 'true';
