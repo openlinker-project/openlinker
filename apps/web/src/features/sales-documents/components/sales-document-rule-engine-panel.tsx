@@ -1,7 +1,8 @@
 /**
  * Sales-Document Rule Engine Panel (#2170, ADR-041 decision 5, narrowed)
  *
- * Composes the country selector, the starter-template "Review & adopt"
+ * Composes the country index (#2187, replacing the free-text-plus-chips
+ * `SalesDocumentCountrySelector`), the starter-template "Review & adopt"
  * screen (Poland only), the country defaults, and the rules list into the
  * "Settings → Sales documents" page's rule-engine section.
  *
@@ -19,7 +20,7 @@
  */
 import { useState, type ReactElement } from 'react';
 import { Alert } from '../../../shared/ui/alert';
-import { SalesDocumentCountrySelector } from './sales-document-country-selector';
+import { SalesDocumentCountryIndex } from './sales-document-country-index';
 import { SalesDocumentCountryDefaults } from './sales-document-country-defaults';
 import { SalesDocumentRulesList } from './sales-document-rules-list';
 import { SalesDocumentTemplateScreen } from './sales-document-template-screen';
@@ -30,6 +31,14 @@ export function SalesDocumentRuleEnginePanel(): ReactElement {
   const [country, setCountry] = useState('PL');
   const rulesQuery = useSalesDocumentRulesQuery(country);
   const defaultsQuery = useSalesDocumentCountryDefaultsQuery(country);
+
+  // TODO(#2188): a row's "Configure" action (and "Add country") is meant to
+  // open a per-country routing dialog. That dialog doesn't exist yet, so in
+  // the interim this just selects the country and keeps driving the
+  // country-scoped sections rendered below the index with it.
+  function handleSelectCountry(selected: string): void {
+    setCountry(selected);
+  }
 
   const isUnconfigured =
     !rulesQuery.isLoading &&
@@ -51,7 +60,7 @@ export function SalesDocumentRuleEnginePanel(): ReactElement {
         </p>
       </header>
 
-      <SalesDocumentCountrySelector country={country} onChange={setCountry} />
+      <SalesDocumentCountryIndex onSelectCountry={handleSelectCountry} />
 
       <SalesDocumentTemplateScreen country={country} />
 

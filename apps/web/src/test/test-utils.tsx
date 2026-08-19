@@ -482,6 +482,7 @@ export function createMockApiClient(
       listThresholds: vi.fn().mockResolvedValue([]),
       getTemplate: vi.fn().mockResolvedValue(null),
       adoptTemplate: vi.fn().mockResolvedValue([]),
+      listConfiguredCountries: vi.fn().mockResolvedValue([]),
       ...overrides.salesDocumentRules,
     } as ApiClient['salesDocumentRules'],
     shipments: {
