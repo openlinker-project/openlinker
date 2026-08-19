@@ -12,12 +12,12 @@ import { describe, expect, it } from 'vitest';
 // Resolves to `apps/web/` regardless of where vitest is invoked from.
 const WEB_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const INDEX_HTML = join(WEB_ROOT, 'index.html');
-const VITE_CONFIG = join(WEB_ROOT, 'vite.config.ts');
+const OG_META_MODULE = join(WEB_ROOT, 'src', 'build-time', 'og-meta.ts');
 const PUBLIC_DIR = join(WEB_ROOT, 'public');
 
 /**
  * The `%TOKEN%` placeholders `index.html` is allowed to contain, all of them
- * resolved by the `og-meta` plugin in vite.config.ts.
+ * resolved by the `og-meta` plugin in src/build-time/og-meta.ts.
  *
  * This list is the guard: a `%VITE_FOO%`-shaped token relies on Vite's native
  * env substitution, which only WARNS when the variable is unset and ships the
@@ -42,10 +42,10 @@ function extractHtmlTokens(html: string): string[] {
 /**
  * Root-relative OG/Twitter image paths the build can emit. Collected from BOTH
  * files because the path moved out of the markup and into the plugin: today
- * `index.html` carries a token and vite.config.ts carries the two literals,
- * but a future inline path in the markup must stay covered too.
+ * `index.html` carries a token and src/build-time/og-meta.ts carries the two
+ * literals, but a future inline path in the markup must stay covered too.
  */
-function extractOgImagePaths(html: string, viteConfig: string): string[] {
+function extractOgImagePaths(html: string, ogMetaModule: string): string[] {
   const found = new Set<string>();
 
   const metaPattern = /<meta\s+[^>]*\b(?:property|name)\s*=\s*["'](?:og|twitter):image["'][^>]*>/gi;
@@ -56,7 +56,7 @@ function extractOgImagePaths(html: string, viteConfig: string): string[] {
     }
   }
 
-  for (const match of viteConfig.matchAll(/['"](\/[^'"]*og-image[^'"]*\.png)['"]/g)) {
+  for (const match of ogMetaModule.matchAll(/['"](\/[^'"]*og-image[^'"]*\.png)['"]/g)) {
     found.add(match[1]);
   }
 
@@ -65,9 +65,9 @@ function extractOgImagePaths(html: string, viteConfig: string): string[] {
 
 describe('og meta manifest', () => {
   const html = readFileSync(INDEX_HTML, 'utf8');
-  const viteConfig = readFileSync(VITE_CONFIG, 'utf8');
+  const ogMetaModule = readFileSync(OG_META_MODULE, 'utf8');
   const tokens = extractHtmlTokens(html);
-  const imagePaths = extractOgImagePaths(html, viteConfig);
+  const imagePaths = extractOgImagePaths(html, ogMetaModule);
 
   // Titles use a bare `%s`: vitest's printf parser mangles an escaped `%%`
   // sitting next to one, so the percent-delimiters are left out of the name.
@@ -77,14 +77,14 @@ describe('og meta manifest', () => {
       `index.html contains %${token}%, which no build step is known to replace. ` +
         `A %VITE_*% token relies on Vite's native env substitution, which only warns ` +
         `on an unset variable and ships the literal token into the built HTML — add ` +
-        `the token to the og-meta plugin in vite.config.ts instead.`
+        `the token to the og-meta plugin in src/build-time/og-meta.ts instead.`
     ).toContain(token);
   });
 
   it.each(ALLOWED_HTML_TOKENS)('token %s is resolved by the og-meta plugin', (token) => {
     expect(
-      viteConfig.includes(`%${token}%`),
-      `vite.config.ts does not mention %${token}%, so it would survive into the built HTML.`
+      ogMetaModule.includes(`%${token}%`),
+      `src/build-time/og-meta.ts does not mention %${token}%, so it would survive into the built HTML.`
     ).toBe(true);
   });
 

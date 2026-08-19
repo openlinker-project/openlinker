@@ -8,14 +8,15 @@
     <meta name="description" content="%OG_TITLE_PREFIX%E-commerce orchestration platform" />
     <!--
       Open Graph / Twitter Card (#2174). Every percent-delimited token below is
-      resolved by the `og-meta` plugin in vite.config.ts — deliberately NOT by
+      resolved by the `og-meta` plugin in src/build-time/og-meta.ts — deliberately NOT by
       Vite's native VITE_-prefixed env substitution, which leaves the literal
       token in the output (warning only, build still green) whenever the
       variable is unset. See apps/web/.env.example for the three vars a demo
       deployment sets to badge every shared link without touching this markup.
 
       Tokens are mirrored in src/test/og-meta-manifest.test.ts; adding one here
-      without teaching the plugin about it fails that guard.
+      without teaching the plugin about it fails that guard, and the behaviour
+      each one produces is covered by src/test/og-meta-plugin.test.ts.
     -->
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="OpenLinker" />
