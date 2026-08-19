@@ -64,6 +64,74 @@ describe('ContentDraftService', () => {
     service = new ContentDraftService(repo, publisher);
   });
 
+  describe('reconcileExternal', () => {
+    it('should sanitize the external value before storing it as baseValue (#2198)', async () => {
+      // `baseValue` is rendered - the content panel falls back to it when there
+      // is no draft - and `externalValue` comes from an external system, so it is
+      // untrusted for the same reason a master description is. No production
+      // caller exists yet, which is why closing it now matters: the boundary is
+      // complete before the inbound reconcile pipeline is wired.
+      repo.findByKey.mockResolvedValue(null);
+      repo.upsert.mockImplementation((p) =>
+        Promise.resolve(buildField({ baseValue: p.baseValue ?? null })),
+      );
+
+      await service.reconcileExternal({
+        productId: 'ol_product_abc',
+        connectionId: null,
+        fieldKey: 'description',
+        externalValue: '<p>from shop</p><script>alert(1)</script>',
+        externalVersion: 'v1',
+      });
+
+      const stored = repo.upsert.mock.calls[0][0].baseValue as string;
+      expect(stored).not.toContain('<script');
+      expect(stored).toContain('<p>from shop</p>');
+    });
+
+    it('should sanitize on the silent base-refresh branch too', async () => {
+      repo.findByKey.mockResolvedValue(
+        buildField({ draftValue: null, baseValue: 'old', baseVersion: 'v0' }),
+      );
+      repo.upsert.mockImplementation((p) =>
+        Promise.resolve(buildField({ baseValue: p.baseValue ?? null })),
+      );
+
+      await service.reconcileExternal({
+        productId: 'ol_product_abc',
+        connectionId: null,
+        fieldKey: 'description',
+        externalValue: '<p>new</p><img src=x onerror="alert(1)">',
+        externalVersion: 'v1',
+      });
+
+      const stored = repo.upsert.mock.calls[0][0].baseValue as string;
+      expect(stored).not.toContain('onerror');
+    });
+
+    it('should sanitize on the conflict branch, which preserves the draft', async () => {
+      repo.findByKey.mockResolvedValue(
+        buildField({ draftValue: 'pending', baseValue: 'old', baseVersion: 'v0' }),
+      );
+      repo.upsert.mockImplementation((p) =>
+        Promise.resolve(buildField({ baseValue: p.baseValue ?? null, draftValue: p.draftValue })),
+      );
+
+      await service.reconcileExternal({
+        productId: 'ol_product_abc',
+        connectionId: null,
+        fieldKey: 'description',
+        externalValue: '<p>x</p><iframe src="https://evil.example"></iframe>',
+        externalVersion: 'v1',
+      });
+
+      const call = repo.upsert.mock.calls[0][0];
+      expect(call.baseValue as string).not.toContain('<iframe');
+      expect(call.hasConflict).toBe(true);
+      expect(call.draftValue).toBe('pending');
+    });
+  });
+
   describe('saveDraft', () => {
     it('should sanitize the draft before persisting it (#2198)', async () => {
       // The inbound XSS boundary. An operator draft is untrusted the moment a

@@ -148,6 +148,24 @@ export class ContentDraftService implements IContentDraftService {
   }
 
   async reconcileExternal(cmd: ReconcileExternalCommand): Promise<ProductContentField> {
+    // #2198: `externalValue` is HTML read back from an external system, so it is
+    // untrusted for exactly the same reason a master-supplied description is -
+    // and `baseValue` IS rendered (the content panel falls back to it when no
+    // draft exists). Sanitized once here rather than at each of the three
+    // `upsert` calls below, so a fourth branch cannot be added without it.
+    //
+    // No production caller exists yet (inbound content reconcile is a documented
+    // follow-up), which is precisely why this is worth closing now: the day that
+    // pipeline is wired, the boundary is already complete rather than needing to
+    // be remembered.
+    const externalValue = sanitizeStoredHtml(cmd.externalValue);
+    if (externalValue !== cmd.externalValue) {
+      this.logger.warn(
+        `[content] external value sanitized on reconcile: productId=${cmd.productId} ` +
+          `connectionId=${cmd.connectionId ?? 'master'} fieldKey=${cmd.fieldKey}`
+      );
+    }
+
     const existing = await this.repository.findByKey({
       productId: cmd.productId,
       connectionId: cmd.connectionId,
@@ -161,7 +179,7 @@ export class ContentDraftService implements IContentDraftService {
         connectionId: cmd.connectionId,
         fieldKey: cmd.fieldKey,
         draftValue: null,
-        baseValue: cmd.externalValue,
+        baseValue: externalValue,
         baseVersion: cmd.externalVersion,
         hasConflict: false,
         updatedBy: null, // system-driven
@@ -181,7 +199,7 @@ export class ContentDraftService implements IContentDraftService {
         connectionId: cmd.connectionId,
         fieldKey: cmd.fieldKey,
         draftValue: null,
-        baseValue: cmd.externalValue,
+        baseValue: externalValue,
         baseVersion: cmd.externalVersion,
         hasConflict: false,
         updatedBy: null,
@@ -198,7 +216,7 @@ export class ContentDraftService implements IContentDraftService {
       connectionId: cmd.connectionId,
       fieldKey: cmd.fieldKey,
       draftValue: existing.draftValue,
-      baseValue: cmd.externalValue,
+      baseValue: externalValue,
       baseVersion: cmd.externalVersion,
       hasConflict: true,
       updatedBy: existing.updatedBy,
