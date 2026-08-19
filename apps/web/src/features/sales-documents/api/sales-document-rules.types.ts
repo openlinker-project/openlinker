@@ -80,6 +80,20 @@ export interface SalesDocumentThreshold {
   versionEffectiveTo: string | null;
 }
 
+/**
+ * Mirrors the backend `SalesDocumentCountrySummaryResponseDto` (#2186): one
+ * row per country carrying ANY rule, country default, or no-document
+ * acknowledgment. A country missing one side is never dropped — `ruleCount`
+ * defaults to `0`, the two default fields default to `null`.
+ */
+export interface SalesDocumentCountrySummary {
+  country: string;
+  ruleCount: number;
+  invoiceDefaultConnectionId: string | null;
+  receiptDefaultConnectionId: string | null;
+  acknowledgedNoDocumentAt: string | null;
+}
+
 export interface SalesDocumentTemplateRuleSummary {
   slot: string;
   label: string;

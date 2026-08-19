@@ -8,6 +8,7 @@ import type {
   AdoptSalesDocumentTemplateInput,
   CreateSalesDocumentRuleInput,
   SalesDocumentCountryDefault,
+  SalesDocumentCountrySummary,
   SalesDocumentRule,
   SalesDocumentStarterTemplate,
   SalesDocumentThreshold,
@@ -26,6 +27,8 @@ export interface SalesDocumentRulesApi {
   listThresholds: () => Promise<SalesDocumentThreshold[]>;
   getTemplate: (country: string) => Promise<SalesDocumentStarterTemplate | null>;
   adoptTemplate: (country: string, input: AdoptSalesDocumentTemplateInput) => Promise<SalesDocumentRule[]>;
+  /** GET /sales-documents/countries (#2186) — every country carrying any config. */
+  listConfiguredCountries: () => Promise<SalesDocumentCountrySummary[]>;
 }
 
 interface ApiRequest {
@@ -80,6 +83,9 @@ export function createSalesDocumentRulesApi(request: ApiRequest): SalesDocumentR
         `/sales-documents/templates/${encodeURIComponent(country)}/adopt`,
         { method: 'POST', body: JSON.stringify(input) },
       );
+    },
+    listConfiguredCountries(): Promise<SalesDocumentCountrySummary[]> {
+      return request<SalesDocumentCountrySummary[]>('/sales-documents/countries');
     },
   };
 }
