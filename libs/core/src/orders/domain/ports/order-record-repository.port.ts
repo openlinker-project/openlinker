@@ -165,6 +165,15 @@ export interface OrderRecordRepositoryPort {
    * a day/connection with none is simply absent, mirroring the "absent key =
    * no data" convention used by {@link getFailedSyncValueSummary} and
    * `findEarliestPlacedAtByConnection`.
+   *
+   * Currency correctness (#2049/ADR-040 follow-up): `orderCount`/`revenue`
+   * are further restricted to `reportingCurrency IS NOT NULL` and computed
+   * from `reportingTotalAmount` — one comparable currency. The complementary
+   * unstamped slice (pre-#2049 history, or a stamp still in flight) is
+   * reported separately via `unconvertedCount`/`unconvertedValue` (native
+   * `totalAmount`, informational, may mix currencies) rather than being
+   * silently folded into `revenue` or silently dropped. `cancelledValue`
+   * stays on native `totalAmount`, unchanged.
    */
   getDailyOrderAggregates(filters: SalesAnalyticsFilters): Promise<DailyOrderAggregateRow[]>;
 
@@ -175,6 +184,11 @@ export interface OrderRecordRepositoryPort {
    * orders (`cancelledAt IS NULL`) — median is a headline-only figure, never
    * computed per channel. Returns `null` when no row matches (an empty
    * ordered-set aggregate), which the aggregation layer coalesces to `0`.
+   *
+   * Currency correctness (#2049/ADR-040 follow-up): computed over
+   * `reportingTotalAmount`, restricted to `reportingCurrency IS NOT NULL` —
+   * the same stamped subset {@link getDailyOrderAggregates} uses for
+   * `revenue`.
    */
   getMedianOrderValue(filters: SalesAnalyticsFilters): Promise<number | null>;
 
