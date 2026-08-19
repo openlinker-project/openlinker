@@ -14,9 +14,7 @@ export { useSalesAnalyticsQuery } from './hooks/use-sales-analytics-query';
 export { AnalyticsKpiStrip } from './components/analytics-kpi-strip';
 export { ChannelSalesTable } from './components/channel-sales-table';
 export type {
-  ChannelRevenueBasis,
   ChannelSalesAnalytics,
-  ChannelTaxTreatmentSummary,
   DailyTrendPoint,
   SalesAnalyticsFilters,
   SalesAnalyticsHeadline,

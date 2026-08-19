@@ -4643,16 +4643,21 @@ a.kpi-card:focus-visible {
  * "planned" treatment for a card with no real figure at all, and a
  * click-to-open (ⓘ) definitions popover on the label row.
  */
-.status-strip--analytics {
+/* `.status-strip.status-strip--analytics` (not bare `.status-strip--analytics`): the
+ * Phase 6 dashboard-triage `.status-strip` breakpoints below share this rule's
+ * specificity (0,1,0) and sit later in the file, so without the compound
+ * selector their `repeat(4, …)` at ≥1024px silently won, packing 6 KPI cards
+ * as 4-then-2 instead of the mockup's 3-per-row. */
+.status-strip.status-strip--analytics {
   grid-template-columns: minmax(0, 1fr);
 }
 @media (min-width: 768px) {
-  .status-strip--analytics {
+  .status-strip.status-strip--analytics {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 @media (min-width: 1024px) {
-  .status-strip--analytics {
+  .status-strip.status-strip--analytics {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }

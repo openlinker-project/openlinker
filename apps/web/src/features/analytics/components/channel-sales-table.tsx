@@ -7,15 +7,17 @@
  * (batched-lookup connection column) with a `ConnectionDot` adornment for
  * the per-channel colour.
  *
- * Money column (#1987/#2049/ADR-040): a channel's `revenueBasis` decides how
- * its revenue is rendered — `'reporting'` is comparable to headline revenue
- * (its `revenueShare` renders as a percentage); `'native'` is a real number
- * in the channel's own currency but is NEVER divided against headline
- * revenue (share always renders empty, with an inline comparability note);
- * `'unavailable'` renders empty for both. `taxTreatment: 'mixed'` renders an
- * inline chip stating the channel isn't on a normalised gross/net basis,
- * rather than silently implying its figures compare 1:1 with another
- * channel's.
+ * Money column (#1987/#2049/ADR-040): there is exactly ONE system-wide
+ * reporting currency — a channel's `revenue`/`averageOrderValue`/`revenueShare`
+ * are always comparable when `currency` is non-null. A channel with `currency
+ * === null` has no FX-stamped revenue yet in range; the cell falls back to
+ * its `unconvertedValue`/`unconvertedCurrency` native-currency evidence
+ * (informational only, visually marked, never folded into a Total ·
+ * {reporting currency} row) when that evidence is itself in one uniform
+ * currency, and to an honest empty state when it isn't (or there's nothing
+ * at all). `Orders`/`AOV` stay on the same FX-stamped basis as `Net sales` so
+ * a row's own figures always reconcile with each other and with the
+ * `Total · {currency}` rows below.
  *
  * Calls its own `useSalesAnalyticsQuery` rather than accepting a `query`
  * prop — a caller that renders both this table and `AnalyticsKpiStrip` for
@@ -38,7 +40,12 @@ import { ConnectionCell, useConnectionsQuery, type Connection } from '../../conn
 import { ConnectionDot } from '../../orders';
 import { useSalesAnalyticsQuery } from '../hooks/use-sales-analytics-query';
 import type { ChannelSalesAnalytics, SalesAnalyticsFilters } from '../api/sales-analytics.types';
-import { revenueTrendValues, trendTone } from '../lib/sales-analytics-view-model';
+import {
+  groupChannelTotalsByCurrency,
+  revenueTrendValues,
+  trendTone,
+  type ChannelCurrencyTotal,
+} from '../lib/sales-analytics-view-model';
 
 const PERCENT_FORMAT_OPTIONS: Intl.NumberFormatOptions = {
   style: 'percent',
@@ -46,17 +53,21 @@ const PERCENT_FORMAT_OPTIONS: Intl.NumberFormatOptions = {
   maximumFractionDigits: 1,
 };
 
-interface ChannelRow {
-  channel: ChannelSalesAnalytics;
-  connection: Connection | undefined;
-}
+const UNCONVERTED_EVIDENCE_TITLE =
+  'Native-currency evidence with no FX stamp yet — informational only, not part of Net sales or any Total · {currency} row.';
+
+type ChannelRow =
+  | { kind: 'channel'; channel: ChannelSalesAnalytics; connection: Connection | undefined }
+  | { kind: 'total'; total: ChannelCurrencyTotal };
+
+type ChannelDataRow = Extract<ChannelRow, { kind: 'channel' }>;
 
 function ChannelIdentity({
   connectionsLoading,
   row,
 }: {
   connectionsLoading: boolean;
-  row: ChannelRow;
+  row: ChannelDataRow;
 }): ReactElement {
   return (
     <ConnectionCell
@@ -70,7 +81,7 @@ function ChannelIdentity({
   );
 }
 
-function ChannelFlags({ row }: { row: ChannelRow }): ReactElement | null {
+function ChannelFlags({ row }: { row: ChannelDataRow }): ReactElement | null {
   const flags: ReactElement[] = [];
   if (!row.channel.coverageComplete) {
     flags.push(
@@ -83,25 +94,14 @@ function ChannelFlags({ row }: { row: ChannelRow }): ReactElement | null {
       </Chip>
     );
   }
-  if (row.channel.revenueBasis === 'native') {
+  if (row.channel.unconvertedCount > 0) {
     flags.push(
       <Chip
-        key="native"
+        key="unconverted"
         tone="info"
-        title="No FX-stamped order exists for this channel in range, so its revenue is shown in its own currency and not compared against headline revenue."
+        title={`${row.channel.unconvertedCount} order(s) in this channel have no reporting-currency FX stamp yet and are excluded from Net sales/Orders/AOV here.`}
       >
-        Own currency
-      </Chip>
-    );
-  }
-  if (row.channel.taxTreatment === 'mixed') {
-    flags.push(
-      <Chip
-        key="tax-mixed"
-        tone="info"
-        title="This channel's orders assert both gross and net pricing — its figures are not on a normalised gross/net basis and should not be compared 1:1 against another channel."
-      >
-        Gross/net mixed
+        Awaiting FX stamp
       </Chip>
     );
   }
@@ -109,7 +109,13 @@ function ChannelFlags({ row }: { row: ChannelRow }): ReactElement | null {
   return <>{flags}</>;
 }
 
-function ChannelName({ connectionsLoading, row }: { connectionsLoading: boolean; row: ChannelRow }): ReactElement {
+function ChannelName({
+  connectionsLoading,
+  row,
+}: {
+  connectionsLoading: boolean;
+  row: ChannelDataRow;
+}): ReactElement {
   return (
     <span className="data-table__stack">
       <ChannelIdentity connectionsLoading={connectionsLoading} row={row} />
@@ -151,76 +157,120 @@ export function ChannelSalesTable({ filters }: ChannelSalesTableProps): ReactEle
   }
 
   const channels = query.data?.channels ?? [];
-  const reportingCurrency = query.data?.headline.reportingCurrency;
   const connectionsById = new Map((connectionsQuery.data ?? []).map((c) => [c.id, c]));
-  const rows: ChannelRow[] = channels.map((channel) => ({
+  const channelRows: ChannelRow[] = channels.map((channel) => ({
+    kind: 'channel',
     channel,
     connection: connectionsById.get(channel.sourceConnectionId),
   }));
+  const totalRows: ChannelRow[] = groupChannelTotalsByCurrency(channels).map((total) => ({
+    kind: 'total',
+    total,
+  }));
+  const rows: ChannelRow[] = [...channelRows, ...totalRows];
 
   function renderRevenueCell(row: ChannelRow): ReactElement {
-    if (row.channel.revenueBasis === 'unavailable' || row.channel.revenue === null) {
-      return <EmptyValue label="No revenue figure can be given for this channel in range" />;
+    if (row.kind === 'total') {
+      const money = formatAmount(row.total.revenue, row.total.currency);
+      return row.total.kind === 'unconverted' ? (
+        <strong title={UNCONVERTED_EVIDENCE_TITLE}>{money}</strong>
+      ) : (
+        <strong>{money}</strong>
+      );
     }
-    const currency = row.channel.revenueBasis === 'native' ? row.channel.nativeCurrency ?? undefined : reportingCurrency;
-    return <>{formatAmount(row.channel.revenue, currency)}</>;
+    if (row.channel.currency !== null) {
+      return <>{formatAmount(row.channel.revenue, row.channel.currency)}</>;
+    }
+    if (row.channel.unconvertedCurrency !== null) {
+      return (
+        <span title={UNCONVERTED_EVIDENCE_TITLE}>
+          {formatAmount(row.channel.unconvertedValue, row.channel.unconvertedCurrency)}
+        </span>
+      );
+    }
+    return <EmptyValue label="No non-cancelled revenue recorded for this channel in range" />;
   }
 
-  function renderShareCell(row: ChannelRow): ReactElement {
-    if (row.channel.revenueShare === null) {
-      return <EmptyValue label="Share not comparable to headline revenue for this channel" />;
+  function renderAovCell(row: ChannelRow): ReactElement {
+    if (row.kind === 'total') {
+      return <>{formatAmount(row.total.averageOrderValue, row.total.currency)}</>;
     }
-    return <>{pctFormat.format(row.channel.revenueShare)}</>;
+    if (row.channel.currency !== null) {
+      return <>{formatAmount(row.channel.averageOrderValue, row.channel.currency)}</>;
+    }
+    if (row.channel.unconvertedCurrency !== null && row.channel.unconvertedCount > 0) {
+      return (
+        <span title={UNCONVERTED_EVIDENCE_TITLE}>
+          {formatAmount(row.channel.unconvertedValue / row.channel.unconvertedCount, row.channel.unconvertedCurrency)}
+        </span>
+      );
+    }
+    return <EmptyValue label="No average order value can be given for this channel in range" />;
   }
 
   const columns: DataTableColumn<ChannelRow>[] = [
     {
       id: 'channel',
       header: 'Channel',
-      cell: (row) => <ChannelName connectionsLoading={connectionsQuery.isLoading} row={row} />,
+      cell: (row) =>
+        row.kind === 'total' ? (
+          <strong>
+            Total · {row.total.currency}
+            {row.total.kind === 'unconverted' ? ' (unconverted)' : ''}
+          </strong>
+        ) : (
+          <ChannelName connectionsLoading={connectionsQuery.isLoading} row={row} />
+        ),
     },
     {
       id: 'revenue',
-      header: 'Revenue',
+      header: 'Net sales',
       align: 'right',
       cell: renderRevenueCell,
-    },
-    {
-      id: 'share',
-      header: 'Share',
-      align: 'right',
-      cell: renderShareCell,
-      hideBelow: 768,
     },
     {
       id: 'orders',
       header: 'Orders',
       align: 'right',
-      cell: (row) => intFormat.format(row.channel.orderCount),
+      cell: (row) => intFormat.format(row.kind === 'total' ? row.total.orderCount : row.channel.orderCount),
       hideBelow: 480,
     },
     {
       id: 'aov',
       header: 'AOV',
       align: 'right',
-      cell: (row) =>
-        formatAmount(
-          row.channel.averageOrderValue,
-          row.channel.revenueBasis === 'native' ? row.channel.nativeCurrency ?? undefined : reportingCurrency
-        ),
+      cell: renderAovCell,
       hideBelow: 768,
     },
     {
       id: 'units',
       header: 'Units',
       align: 'right',
-      cell: (row) => intFormat.format(row.channel.unitsSold),
+      cell: (row) => {
+        const units = row.kind === 'total' ? row.total.unitsSold : row.channel.unitsSold;
+        return units === null ? <EmptyValue label="Not tracked for an unconverted-evidence total" /> : intFormat.format(units);
+      },
       hideBelow: 1024,
+    },
+    {
+      id: 'share',
+      header: 'Share',
+      align: 'right',
+      cell: (row) => {
+        const share = row.kind === 'total' ? row.total.revenueShare : row.channel.revenueShare;
+        return share === null ? (
+          <EmptyValue label="Share is only meaningful against reporting-currency revenue" />
+        ) : (
+          <>{pctFormat.format(share)}</>
+        );
+      },
+      hideBelow: 768,
     },
     {
       id: 'trend',
       header: 'Trend',
       cell: (row) => {
+        if (row.kind === 'total') return null;
         const values = revenueTrendValues(row.channel.trend);
         return values.length >= 2 ? (
           <Sparkline values={values} tone={trendTone(values)} width={72} height={20} ariaLabel="Channel revenue trend" />
@@ -237,7 +287,7 @@ export function ChannelSalesTable({ filters }: ChannelSalesTableProps): ReactEle
       caption="Sales by channel"
       rows={rows}
       columns={columns}
-      rowKey={(row) => row.channel.sourceConnectionId}
+      rowKey={(row) => (row.kind === 'total' ? `total:${row.total.kind}:${row.total.currency}` : row.channel.sourceConnectionId)}
       emptyState={<EmptyValue label="No channel has any orders in this range" />}
     />
   );

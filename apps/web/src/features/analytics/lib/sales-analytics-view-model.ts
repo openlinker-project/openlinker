@@ -52,19 +52,79 @@ export function trendTone(values: readonly number[]): TrendTone {
   return 'neutral';
 }
 
+function sum<T>(items: T[], pick: (item: T) => number): number {
+  return items.reduce((total, item) => total + pick(item), 0);
+}
+
+export interface ChannelCurrencyTotal {
+  currency: string;
+  /**
+   * `'reporting'` — a real KPI aggregate: every contributing channel's
+   * `revenue` is already expressed in this one system-wide currency.
+   * `'unconverted'` — an informational subtotal of native-currency evidence
+   * that has no FX stamp yet (`unconvertedValue`/`unconvertedCount`) — never
+   * part of headline revenue, and never comparable across channels the way
+   * a `'reporting'` total is.
+   */
+  kind: 'reporting' | 'unconverted';
+  revenue: number;
+  orderCount: number;
+  averageOrderValue: number;
+  /** `null` for an `'unconverted'` total — units aren't split by stamp status, so there is nothing honest to sum here. */
+  unitsSold: number | null;
+  /** `null` for an `'unconverted'` total — share is only meaningful against headline (reporting-currency) revenue. */
+  revenueShare: number | null;
+}
+
 /**
- * Whether a channel's `revenue`/`revenueShare` figures can be rendered as
- * plain money/percentage values, or must render a caveat instead.
- * - `'reporting'` — comparable to headline revenue, in `reportingCurrency`.
- * - `'native'` — a real number, but in the channel's own currency; never
- *   compared against headline revenue (share is always `null` here).
- * - `'unavailable'` — no figure can be honestly given at all.
+ * `Total · {currency}` rows for the by-channel table: one `'reporting'` total
+ * (the real, comparable KPI aggregate, all channels' `revenue` already share
+ * one currency) plus one `'unconverted'` total per distinct native currency
+ * found in channels' `unconvertedCurrency` — informational subtotals of
+ * evidence with no FX stamp yet. A currency contributed by only one channel
+ * is skipped entirely: a total that repeats a single row's own figures is
+ * noise, not a summary.
  */
-export function channelRevenueDisplayCurrency(
-  channel: ChannelSalesAnalytics,
-  reportingCurrency: string
-): string | undefined {
-  if (channel.revenueBasis === 'reporting') return reportingCurrency;
-  if (channel.revenueBasis === 'native') return channel.nativeCurrency ?? undefined;
-  return undefined;
+export function groupChannelTotalsByCurrency(channels: ChannelSalesAnalytics[]): ChannelCurrencyTotal[] {
+  const totals: ChannelCurrencyTotal[] = [];
+
+  const reportingCurrency = channels.find((c) => c.currency !== null)?.currency ?? null;
+  if (reportingCurrency) {
+    const contributing = channels.filter((c) => c.currency === reportingCurrency);
+    if (contributing.length > 1) {
+      const revenue = sum(contributing, (c) => c.revenue);
+      const orderCount = sum(contributing, (c) => c.orderCount);
+      totals.push({
+        currency: reportingCurrency,
+        kind: 'reporting',
+        revenue,
+        orderCount,
+        averageOrderValue: orderCount === 0 ? 0 : revenue / orderCount,
+        unitsSold: sum(contributing, (c) => c.unitsSold),
+        revenueShare: sum(contributing, (c) => c.revenueShare),
+      });
+    }
+  }
+
+  const unconvertedCurrencies = [
+    ...new Set(channels.map((c) => c.unconvertedCurrency).filter((c): c is string => c !== null)),
+  ].sort((a, b) => a.localeCompare(b));
+
+  for (const currency of unconvertedCurrencies) {
+    const contributing = channels.filter((c) => c.unconvertedCurrency === currency);
+    if (contributing.length <= 1) continue;
+    const value = sum(contributing, (c) => c.unconvertedValue);
+    const count = sum(contributing, (c) => c.unconvertedCount);
+    totals.push({
+      currency,
+      kind: 'unconverted',
+      revenue: value,
+      orderCount: count,
+      averageOrderValue: count === 0 ? 0 : value / count,
+      unitsSold: null,
+      revenueShare: null,
+    });
+  }
+
+  return totals;
 }

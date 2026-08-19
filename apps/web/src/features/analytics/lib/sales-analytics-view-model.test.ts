@@ -3,7 +3,7 @@ import type { ChannelSalesAnalytics, DailyTrendPoint } from '../api/sales-analyt
 import {
   averageDailyOrders,
   cancellationRate,
-  channelRevenueDisplayCurrency,
+  groupChannelTotalsByCurrency,
   orderCountTrendValues,
   rangeDays,
   revenueTrendValues,
@@ -15,16 +15,16 @@ function channel(overrides: Partial<ChannelSalesAnalytics> = {}): ChannelSalesAn
   return {
     sourceConnectionId: 'conn-1',
     revenue: 100,
-    revenueBasis: 'reporting',
-    nativeCurrency: null,
+    currency: 'PLN',
     orderCount: 10,
-    stampedOrderCount: 10,
     averageOrderValue: 10,
     unitsSold: 20,
     cancelledCount: 0,
     cancelledValue: 0,
+    unconvertedCount: 0,
+    unconvertedValue: 0,
+    unconvertedCurrency: null,
     revenueShare: 0.5,
-    taxTreatment: 'inclusive',
     trend: [],
     coverageComplete: true,
     ...overrides,
@@ -96,23 +96,76 @@ describe('revenueTrendValues / orderCountTrendValues', () => {
   });
 });
 
-describe('channelRevenueDisplayCurrency', () => {
-  it('should use the reporting currency when revenueBasis is reporting', () => {
-    expect(channelRevenueDisplayCurrency(channel({ revenueBasis: 'reporting' }), 'PLN')).toBe('PLN');
+describe('groupChannelTotalsByCurrency', () => {
+  it('should sum a reporting-currency total across more than one contributing channel', () => {
+    const totals = groupChannelTotalsByCurrency([
+      channel({ sourceConnectionId: 'a', revenue: 3000, orderCount: 25, unitsSold: 40, revenueShare: 0.6 }),
+      channel({ sourceConnectionId: 'b', revenue: 2000, orderCount: 15, unitsSold: 20, revenueShare: 0.4 }),
+    ]);
+
+    expect(totals).toEqual([
+      {
+        currency: 'PLN',
+        kind: 'reporting',
+        revenue: 5000,
+        orderCount: 40,
+        averageOrderValue: 125,
+        unitsSold: 60,
+        revenueShare: 1,
+      },
+    ]);
   });
 
-  it('should use the channel native currency when revenueBasis is native', () => {
-    expect(
-      channelRevenueDisplayCurrency(
-        channel({ revenueBasis: 'native', nativeCurrency: 'EUR' }),
-        'PLN'
-      )
-    ).toBe('EUR');
+  it('should not emit a reporting total for a single contributing channel', () => {
+    expect(groupChannelTotalsByCurrency([channel({ revenue: 3000 })])).toEqual([]);
   });
 
-  it('should return undefined when revenueBasis is unavailable', () => {
-    expect(
-      channelRevenueDisplayCurrency(channel({ revenueBasis: 'unavailable', revenue: null }), 'PLN')
-    ).toBeUndefined();
+  it('should emit an unconverted-currency subtotal across more than one contributing channel, separate from the reporting total', () => {
+    const totals = groupChannelTotalsByCurrency([
+      channel({ sourceConnectionId: 'a', revenue: 3000, orderCount: 25, revenueShare: 1 }),
+      channel({
+        sourceConnectionId: 'b',
+        revenue: 0,
+        currency: null,
+        orderCount: 0,
+        unitsSold: 0,
+        revenueShare: 0,
+        unconvertedCount: 5,
+        unconvertedValue: 500,
+        unconvertedCurrency: 'EUR',
+      }),
+      channel({
+        sourceConnectionId: 'c',
+        revenue: 0,
+        currency: null,
+        orderCount: 0,
+        unitsSold: 0,
+        revenueShare: 0,
+        unconvertedCount: 3,
+        unconvertedValue: 300,
+        unconvertedCurrency: 'EUR',
+      }),
+    ]);
+
+    expect(totals).toEqual([
+      expect.objectContaining({ currency: 'PLN', kind: 'reporting' }),
+      {
+        currency: 'EUR',
+        kind: 'unconverted',
+        revenue: 800,
+        orderCount: 8,
+        averageOrderValue: 100,
+        unitsSold: null,
+        revenueShare: null,
+      },
+    ]);
+  });
+
+  it('should not emit an unconverted subtotal for a single contributing channel', () => {
+    const totals = groupChannelTotalsByCurrency([
+      channel({ unconvertedCount: 5, unconvertedValue: 500, unconvertedCurrency: 'EUR' }),
+    ]);
+
+    expect(totals.filter((t) => t.kind === 'unconverted')).toEqual([]);
   });
 });
