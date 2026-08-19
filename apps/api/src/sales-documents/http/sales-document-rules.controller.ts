@@ -1,11 +1,12 @@
 /**
- * Sales-Document Rules Controller (#2170)
+ * Sales-Document Rules Controller (#2170, #2186)
  *
  * HTTP surface for the country-agnostic rule engine's CRUD: rules,
  * country defaults, and a read-only threshold list (thresholds are seeded by
  * migration for the Poland template today — no write endpoint yet since no
  * FE flow authors a new one this issue). Admin + JWT (global guard), mirrors
- * `FulfillmentRoutingController`.
+ * `FulfillmentRoutingController`. Also the countries-listing read + the
+ * per-country "no document, by design" acknowledgment lifecycle (#2186).
  *
  * The connection-capability check happens HERE, via
  * `SalesDocumentCapabilityGuardService`, BEFORE delegating to the core
@@ -27,6 +28,7 @@ import {
   NotFoundException,
   Param,
   Post,
+  Put,
   Query,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
@@ -45,6 +47,8 @@ import { SalesDocumentRuleResponseDto } from './dto/sales-document-rule-response
 import { UpsertSalesDocumentCountryDefaultDto } from './dto/upsert-sales-document-country-default.dto';
 import { SalesDocumentCountryDefaultResponseDto } from './dto/sales-document-country-default-response.dto';
 import { SalesDocumentThresholdResponseDto } from './dto/sales-document-threshold-response.dto';
+import { SalesDocumentCountrySummaryResponseDto } from './dto/sales-document-country-summary-response.dto';
+import { SalesDocumentCountryAcknowledgmentResponseDto } from './dto/sales-document-country-acknowledgment-response.dto';
 import { SalesDocumentCapabilityGuardService } from '../sales-document-capability-guard.service';
 
 @Roles('admin')
@@ -151,6 +155,39 @@ export class SalesDocumentRulesController {
   async listThresholds(): Promise<SalesDocumentThresholdResponseDto[]> {
     const thresholds = await this.service.listThresholds();
     return thresholds.map((t) => SalesDocumentThresholdResponseDto.fromDomain(t));
+  }
+
+  @Get('countries')
+  @ApiOperation({
+    summary:
+      'List every country carrying any rule, country default, or no-document acknowledgment (#2186)',
+  })
+  @ApiResponse({ status: 200, type: [SalesDocumentCountrySummaryResponseDto] })
+  async listConfiguredCountries(): Promise<SalesDocumentCountrySummaryResponseDto[]> {
+    const summaries = await this.service.listConfiguredCountries();
+    return summaries.map((summary) => SalesDocumentCountrySummaryResponseDto.fromDomain(summary));
+  }
+
+  @Put('countries/:country/acknowledgment')
+  @ApiOperation({
+    summary: 'Acknowledge that a country intentionally has no sales document configured (#2186)',
+  })
+  @ApiParam({ name: 'country', type: String })
+  @ApiResponse({ status: 200, type: SalesDocumentCountryAcknowledgmentResponseDto })
+  async acknowledgeNoDocument(
+    @Param('country') country: string,
+  ): Promise<SalesDocumentCountryAcknowledgmentResponseDto> {
+    const acknowledgment = await this.service.acknowledgeNoDocument(country);
+    return SalesDocumentCountryAcknowledgmentResponseDto.fromDomain(acknowledgment);
+  }
+
+  @Delete('countries/:country/acknowledgment')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Clear a country no-document acknowledgment (#2186)' })
+  @ApiParam({ name: 'country', type: String })
+  @ApiResponse({ status: 204 })
+  async clearAcknowledgment(@Param('country') country: string): Promise<void> {
+    await this.service.clearAcknowledgment(country);
   }
 
   private toHttpException(error: unknown): Error {

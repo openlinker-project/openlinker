@@ -1,9 +1,9 @@
 /**
- * Sales-Document Rules Service (#2170)
+ * Sales-Document Rules Service (#2170, #2186)
  *
  * Owns the write-path conflict guard, threshold-ref validation, and the
  * read-side assembly that feeds the pure `evaluateSalesDocumentRules`. Injects
- * ONLY this concern's own three repository ports — no `IIntegrationsService`,
+ * ONLY this concern's own four repository ports — no `IIntegrationsService`,
  * no connection lookup, no capability check. That check (a rule pointing
  * `Invoice → eparagony.pl` must be rejected because eparagony.pl carries no
  * `Invoicing` capability) is deliberately NOT done here: doing so would inject
@@ -18,6 +18,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import type { ISalesDocumentRulesService } from '../interfaces/sales-document-rules.service.interface';
 import {
+  SALES_DOCUMENT_COUNTRY_ACKNOWLEDGMENT_REPOSITORY_TOKEN,
   SALES_DOCUMENT_COUNTRY_DEFAULT_REPOSITORY_TOKEN,
   SALES_DOCUMENT_RULE_REPOSITORY_TOKEN,
   SALES_DOCUMENT_THRESHOLD_REPOSITORY_TOKEN,
@@ -25,9 +26,11 @@ import {
 import { SalesDocumentRuleRepositoryPort } from '../../domain/ports/sales-document-rule-repository.port';
 import { SalesDocumentCountryDefaultRepositoryPort } from '../../domain/ports/sales-document-country-default-repository.port';
 import { SalesDocumentThresholdRepositoryPort } from '../../domain/ports/sales-document-threshold-repository.port';
+import { SalesDocumentCountryAcknowledgmentRepositoryPort } from '../../domain/ports/sales-document-country-acknowledgment-repository.port';
 import type { SalesDocumentRule } from '../../domain/entities/sales-document-rule.entity';
 import type { SalesDocumentCountryDefault } from '../../domain/entities/sales-document-country-default.entity';
 import type { SalesDocumentThreshold } from '../../domain/entities/sales-document-threshold.entity';
+import type { SalesDocumentCountryAcknowledgment } from '../../domain/entities/sales-document-country-acknowledgment.entity';
 import type {
   SalesDocumentCountryDefaultInput,
   SalesDocumentRuleInput,
@@ -38,6 +41,7 @@ import {
   type SalesDocumentOrderFacts,
 } from '../../domain/types/sales-document-order-facts.types';
 import type { SalesDocumentDecision } from '../../domain/types/sales-document-decision.types';
+import type { SalesDocumentCountrySummary } from '../../domain/types/sales-document-country-summary.types';
 import { evaluateSalesDocumentRules } from '../../domain/domain-services/evaluate-sales-document-rules';
 import { SalesDocumentRuleConflictException } from '../../domain/exceptions/sales-document-rule-conflict.exception';
 import { SalesDocumentThresholdNotFoundException } from '../../domain/exceptions/sales-document-threshold-not-found.exception';
@@ -45,6 +49,12 @@ import {
   SalesDocumentCountryDefaultNotFoundException,
   SalesDocumentRuleNotFoundException,
 } from '../../domain/exceptions/sales-document-rule-not-found.exception';
+
+/** One country default's contribution to a `SalesDocumentCountrySummary`. */
+interface CountryDefaultSlots {
+  invoiceDefaultConnectionId: string | null;
+  receiptDefaultConnectionId: string | null;
+}
 
 function rangesOverlap(
   aFrom: Date,
@@ -66,6 +76,8 @@ export class SalesDocumentRulesService implements ISalesDocumentRulesService {
     private readonly countryDefaultRepository: SalesDocumentCountryDefaultRepositoryPort,
     @Inject(SALES_DOCUMENT_THRESHOLD_REPOSITORY_TOKEN)
     private readonly thresholdRepository: SalesDocumentThresholdRepositoryPort,
+    @Inject(SALES_DOCUMENT_COUNTRY_ACKNOWLEDGMENT_REPOSITORY_TOKEN)
+    private readonly acknowledgmentRepository: SalesDocumentCountryAcknowledgmentRepositoryPort,
   ) {}
 
   async listRules(country: string): Promise<SalesDocumentRule[]> {
@@ -78,7 +90,13 @@ export class SalesDocumentRulesService implements ISalesDocumentRulesService {
     const conditionsHash = computeSalesDocumentConditionsHash(input.conditions);
     await this.assertNoConflict(input.country, conditionsHash, input.effectiveFrom, input.effectiveTo, input.connectionId);
 
-    return this.ruleRepository.create({ ...input, conditionsHash });
+    const rule = await this.ruleRepository.create({ ...input, conditionsHash });
+    // A real configuration and a "no document, by design" acknowledgment can
+    // never coexist (#2186) — clear only after the write succeeds, so a
+    // rejected create (conflict / unresolved threshold ref) never clears a
+    // still-accurate acknowledgment.
+    await this.clearAcknowledgment(input.country);
+    return rule;
   }
 
   async deleteRule(id: string): Promise<void> {
@@ -96,7 +114,10 @@ export class SalesDocumentRulesService implements ISalesDocumentRulesService {
   async upsertCountryDefault(
     input: SalesDocumentCountryDefaultInput,
   ): Promise<SalesDocumentCountryDefault> {
-    return this.countryDefaultRepository.upsert(input);
+    const countryDefault = await this.countryDefaultRepository.upsert(input);
+    // Same auto-clear rule as `createRule` (#2186) — see its own comment.
+    await this.clearAcknowledgment(input.country);
+    return countryDefault;
   }
 
   async deleteCountryDefault(id: string): Promise<void> {
@@ -130,6 +151,63 @@ export class SalesDocumentRulesService implements ISalesDocumentRulesService {
       thresholds,
       now,
     });
+  }
+
+  /**
+   * Merges rule counts + country defaults + acknowledgments by country
+   * (#2186) — a country appearing in ANY of the three sources gets a row; a
+   * missing side defaults to `0` / `null` rather than the row being dropped.
+   */
+  async listConfiguredCountries(): Promise<SalesDocumentCountrySummary[]> {
+    const [ruleCounts, defaults, acknowledgments] = await Promise.all([
+      this.ruleRepository.countRulesByCountry(),
+      this.countryDefaultRepository.findAll(),
+      this.acknowledgmentRepository.findAll(),
+    ]);
+
+    const defaultSlotsByCountry = new Map<string, CountryDefaultSlots>();
+    for (const countryDefault of defaults) {
+      const slots =
+        defaultSlotsByCountry.get(countryDefault.country) ??
+        ({ invoiceDefaultConnectionId: null, receiptDefaultConnectionId: null } satisfies CountryDefaultSlots);
+      if (countryDefault.documentKind === 'invoice') {
+        slots.invoiceDefaultConnectionId = countryDefault.connectionId;
+      } else if (countryDefault.documentKind === 'fiscal-receipt') {
+        slots.receiptDefaultConnectionId = countryDefault.connectionId;
+      }
+      defaultSlotsByCountry.set(countryDefault.country, slots);
+    }
+
+    const acknowledgedAtByCountry = new Map<string, Date>();
+    for (const acknowledgment of acknowledgments) {
+      acknowledgedAtByCountry.set(acknowledgment.country, acknowledgment.acknowledgedAt);
+    }
+
+    const countries = new Set<string>([
+      ...ruleCounts.keys(),
+      ...defaultSlotsByCountry.keys(),
+      ...acknowledgedAtByCountry.keys(),
+    ]);
+
+    return Array.from(countries).map((country) => {
+      const slots = defaultSlotsByCountry.get(country);
+      const acknowledgedAt = acknowledgedAtByCountry.get(country);
+      return {
+        country,
+        ruleCount: ruleCounts.get(country) ?? 0,
+        invoiceDefaultConnectionId: slots?.invoiceDefaultConnectionId ?? null,
+        receiptDefaultConnectionId: slots?.receiptDefaultConnectionId ?? null,
+        acknowledgedNoDocumentAt: acknowledgedAt ? acknowledgedAt.toISOString() : null,
+      };
+    });
+  }
+
+  async acknowledgeNoDocument(country: string): Promise<SalesDocumentCountryAcknowledgment> {
+    return this.acknowledgmentRepository.upsert(country);
+  }
+
+  async clearAcknowledgment(country: string): Promise<void> {
+    await this.acknowledgmentRepository.delete(country);
   }
 
   /**

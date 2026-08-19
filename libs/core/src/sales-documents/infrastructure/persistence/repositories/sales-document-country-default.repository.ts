@@ -30,6 +30,11 @@ export class SalesDocumentCountryDefaultRepository
     return entities.map((entity) => this.toDomain(entity));
   }
 
+  async findAll(): Promise<SalesDocumentCountryDefault[]> {
+    const entities = await this.ormRepository.find();
+    return entities.map((entity) => this.toDomain(entity));
+  }
+
   async findByCountryAndKind(
     country: string,
     documentKind: string,
