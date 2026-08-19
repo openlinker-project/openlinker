@@ -236,6 +236,120 @@ describe('OrdersListPage', () => {
     expect(screen.getByRole('button', { name: 'View all orders' })).toBeInTheDocument();
   });
 
+  describe('filtered empty state (#2148)', () => {
+    // Every narrowing filter must say "nothing matched", never "nothing has ever
+    // synced" — the latter is a statement about the whole dataset, and an
+    // operator with thousands of orders reads it as an ingestion outage.
+    const NARROWING_ROUTES: ReadonlyArray<readonly [string, string]> = [
+      ['ship-by SLA chip', '/orders?due=breaching'],
+      ['SLA state select', '/orders?slaState=overdue'],
+      ['fulfillment select', '/orders?fulfillmentState=not-shipped'],
+      ['source select', '/orders?sourceConnectionId=conn_1'],
+      ['created-from date', '/orders?createdFrom=2026-01-01'],
+      ['created-to date', '/orders?createdTo=2026-01-31'],
+    ];
+
+    it.each(NARROWING_ROUTES)(
+      'should not claim nothing has synced when the %s yields no rows',
+      async (_label, route) => {
+        const mockApi = createMockApiClient({
+          orders: { list: vi.fn().mockResolvedValue(paginated([])) },
+        });
+
+        renderWithProviders(<OrdersListPage />, { apiClient: mockApi, route });
+
+        expect(await screen.findByText('No orders in this view')).toBeInTheDocument();
+        expect(screen.queryByText(/No order records have been synced yet/i)).toBeNull();
+        // The recovery affordance must clear the filter, not send the operator
+        // to /connections to debug an ingestion problem that does not exist.
+        expect(screen.getByRole('button', { name: 'View all orders' })).toBeInTheDocument();
+        expect(screen.queryByRole('link', { name: 'Manage connections' })).toBeNull();
+      },
+    );
+
+    it('should clear every filter in one write from the recovery button', async () => {
+      const list = vi.fn().mockResolvedValue(paginated([]));
+      const mockApi = createMockApiClient({ orders: { list } });
+
+      renderWithProviders(<OrdersListPage />, {
+        apiClient: mockApi,
+        // Several axes at once: `setSearchParams` builds from the current
+        // render's params, so clearing them one call at a time would leave all
+        // but the last applied.
+        route:
+          '/orders?due=breaching&slaState=overdue&fulfillmentState=not-shipped&sourceConnectionId=conn_1&createdFrom=2026-01-01&createdTo=2026-01-31',
+      });
+
+      const recover = await screen.findByRole('button', { name: 'View all orders' });
+      const before = list.mock.calls.length;
+      await userEvent.setup().click(recover);
+
+      await vi.waitFor(() => {
+        expect(list.mock.calls.length).toBeGreaterThan(before);
+      });
+
+      const [filters, pagination] = list.mock.calls[list.mock.calls.length - 1];
+      expect(filters.dueBefore).toBeUndefined();
+      expect(filters.slaState).toBeUndefined();
+      expect(filters.fulfillmentState).toBeUndefined();
+      expect(filters.sourceConnectionId).toBeUndefined();
+      expect(filters.createdFrom).toBeUndefined();
+      expect(filters.createdTo).toBeUndefined();
+      expect(pagination).toMatchObject({ offset: 0 });
+    });
+
+    it('should show the error state, never the filtered empty state, when a narrowed query rejects', async () => {
+      // The `isLoading -> error -> empty` ternary order means a rejected query
+      // never reaches any empty-state arm today — but that ordering is a plausible
+      // future edit, so pin it rather than relying on it holding by accident.
+      const mockApi = createMockApiClient({
+        orders: { list: vi.fn().mockRejectedValue(new Error('Network error')) },
+      });
+
+      renderWithProviders(<OrdersListPage />, {
+        apiClient: mockApi,
+        route: '/orders?slaState=overdue',
+      });
+
+      expect(await screen.findByText('Unable to load orders')).toBeInTheDocument();
+      expect(screen.queryByText('No orders in this view')).toBeNull();
+    });
+
+    it('should keep sort and direction — they narrow nothing', async () => {
+      const list = vi.fn().mockResolvedValue(paginated([]));
+      const mockApi = createMockApiClient({ orders: { list } });
+
+      renderWithProviders(<OrdersListPage />, {
+        apiClient: mockApi,
+        route: '/orders?due=breaching&sort=createdAt&dir=asc',
+      });
+
+      const recover = await screen.findByRole('button', { name: 'View all orders' });
+      const before = list.mock.calls.length;
+      await userEvent.setup().click(recover);
+
+      await vi.waitFor(() => {
+        expect(list.mock.calls.length).toBeGreaterThan(before);
+      });
+
+      // "View all orders" restores membership, not presentation — resetting the
+      // operator's chosen column sort would be a second, unasked-for change.
+      const [filters] = list.mock.calls[list.mock.calls.length - 1];
+      expect(filters).toMatchObject({ sort: 'createdAt', dir: 'asc' });
+    });
+
+    it('should still say nothing has synced when no filter is applied', async () => {
+      const mockApi = createMockApiClient({
+        orders: { list: vi.fn().mockResolvedValue(paginated([])) },
+      });
+
+      renderWithProviders(<OrdersListPage />, { apiClient: mockApi, route: '/orders' });
+
+      expect(await screen.findByText('No orders found')).toBeInTheDocument();
+      expect(screen.getByText(/No order records have been synced yet/i)).toBeInTheDocument();
+    });
+  });
+
   it('should render status segments with counts from the summary endpoint (#929)', async () => {
     const statusSummary = vi.fn().mockResolvedValue({
       total: 11,
