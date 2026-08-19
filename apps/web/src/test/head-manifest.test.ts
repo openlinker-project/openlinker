@@ -64,8 +64,25 @@ function extractOgImagePaths(html: string, ogMetaModule: string): string[] {
 }
 
 /**
- * Root-relative icon paths declared in the document head (`rel="icon"`,
- * `rel="apple-touch-icon"`).
+ * `rel` tokens that mark a `<link>` as declaring an icon. `rel` is a
+ * space-separated token LIST, so membership is tested per token rather than
+ * against the whole attribute value: `rel="apple-touch-icon precomposed"` and
+ * `rel="alternate icon"` are ordinary real-world spellings that a whole-value
+ * comparison misses, leaving exactly the kind of link a future contributor is
+ * most likely to add completely unguarded.
+ */
+const ICON_REL_TOKENS = new Set(['icon', 'apple-touch-icon', 'shortcut']);
+
+/**
+ * Tokens the head is expected to keep declaring. Path existence alone lets a
+ * link be deleted outright and still pass, which would quietly drop a whole
+ * client family (Apple home screens) from the brand set.
+ */
+const REQUIRED_ICON_REL_TOKENS = ['icon', 'apple-touch-icon'];
+
+/**
+ * Icon links declared in the document head, as their root-relative hrefs plus
+ * the set of `rel` tokens actually seen.
  *
  * These need the same existence check the og:image paths get, for a sharper
  * reason: nginx.conf's SPA fallback (`try_files $uri $uri/ /index.html`)
@@ -73,28 +90,78 @@ function extractOgImagePaths(html: string, ogMetaModule: string): string[] {
  * discards non-image HTML and paints its default placeholder. That is how
  * `index.html` shipped a link to a `/favicon.svg` that was never in public/
  * (#2182) - a green build, a blank tab, and nothing in the access log.
+ *
+ * The check is existence-only: it says nothing about whether an asset is a
+ * valid icon for the `rel` it is declared under.
+ *
+ * Only root-relative hrefs are collected, and deliberately so: Vite treats
+ * `link[href]` as an asset attribute and resolves a RELATIVE href at build
+ * time, failing loudly when the file is missing. A root-relative path is passed
+ * through to public/ unchecked, which is the half nothing else covers.
  */
-function extractIconPaths(html: string): string[] {
-  const found = new Set<string>();
+function extractIconLinks(html: string): { paths: string[]; relTokens: Set<string> } {
+  const paths = new Set<string>();
+  const relTokens = new Set<string>();
 
-  const linkPattern =
-    /<link\s+[^>]*\brel\s*=\s*["'](?:icon|apple-touch-icon|shortcut icon|mask-icon)["'][^>]*>/gi;
-  for (const match of html.matchAll(linkPattern)) {
-    const href = /\bhref\s*=\s*["']([^"']+)["']/i.exec(match[0])?.[1];
+  for (const match of html.matchAll(/<link\s[^>]*>/gi)) {
+    const tag = match[0];
+    // Quoted or bare value - `rel=icon` is valid HTML and would otherwise slip
+    // through unguarded.
+    const rel = /\brel\s*=\s*(?:["']([^"']*)["']|([^\s"'=<>`]+))/i.exec(tag);
+    if (!rel) continue;
+
+    const tokens = (rel[1] ?? rel[2] ?? '').trim().toLowerCase().split(/\s+/);
+    const iconTokens = tokens.filter((token) => ICON_REL_TOKENS.has(token));
+    if (iconTokens.length === 0) continue;
+
+    for (const token of iconTokens) {
+      relTokens.add(token);
+    }
+
+    const href = /\bhref\s*=\s*["']([^"']+)["']/i.exec(tag)?.[1];
     if (href?.startsWith('/')) {
-      found.add(href);
+      paths.add(href);
     }
   }
 
-  return [...found];
+  return { paths: [...paths], relTokens };
 }
 
-describe('og meta manifest', () => {
+/**
+ * Drops HTML comments so a commented-out link cannot be read as a declaration.
+ * Applied to the icon extraction only - the OG comment block deliberately names
+ * the `%TOKEN%` placeholders it documents, and those extractors are supposed to
+ * see them.
+ */
+function stripHtmlComments(html: string): string {
+  return html.replace(/<!--[\s\S]*?-->/g, '');
+}
+
+/**
+ * Asserts every root-relative path a head declaration points at is really in
+ * public/, and that the declaration set is non-empty so the guard cannot pass
+ * by matching nothing: `it.each([])` registers zero tests, i.e. a green suite.
+ */
+function describePublicAssets(label: string, paths: string[]): void {
+  it(`declares at least one ${label} (guard cannot go vacuous)`, () => {
+    expect(paths.length).toBeGreaterThan(0);
+  });
+
+  it.each(paths)(`${label} %s exists under public/`, (path) => {
+    expect(
+      existsSync(join(PUBLIC_DIR, path.replace(/^\//, ''))),
+      `index.html references ${path}, which is not in apps/web/public/. The nginx SPA ` +
+        `fallback serves index.html for it at HTTP 200, so it silently never renders.`
+    ).toBe(true);
+  });
+}
+
+describe('head asset manifest', () => {
   const html = readFileSync(INDEX_HTML, 'utf8');
   const ogMetaModule = readFileSync(OG_META_MODULE, 'utf8');
   const tokens = extractHtmlTokens(html);
   const imagePaths = extractOgImagePaths(html, ogMetaModule);
-  const iconPaths = extractIconPaths(html);
+  const icons = extractIconLinks(stripHtmlComments(html));
 
   // Titles use a bare `%s`: vitest's printf parser mangles an escaped `%%`
   // sitting next to one, so the percent-delimiters are left out of the name.
@@ -115,23 +182,14 @@ describe('og meta manifest', () => {
     ).toBe(true);
   });
 
-  it('declares at least one og:image asset (guard cannot go vacuous)', () => {
-    expect(imagePaths.length).toBeGreaterThan(0);
-  });
+  describePublicAssets('og image', imagePaths);
+  describePublicAssets('icon', icons.paths);
 
-  it.each(imagePaths)('og image %s exists under public/', (path) => {
-    expect(existsSync(join(PUBLIC_DIR, path.replace(/^\//, '')))).toBe(true);
-  });
-
-  it('declares at least one favicon link (guard cannot go vacuous)', () => {
-    expect(iconPaths.length).toBeGreaterThan(0);
-  });
-
-  it.each(iconPaths)('icon %s exists under public/', (path) => {
+  it.each(REQUIRED_ICON_REL_TOKENS)('declares a rel="%s" link', (token) => {
     expect(
-      existsSync(join(PUBLIC_DIR, path.replace(/^\//, ''))),
-      `index.html links ${path}, which is not in apps/web/public/. The nginx SPA ` +
-        `fallback serves index.html for it at HTTP 200, so the icon silently never renders.`
+      icons.relTokens.has(token),
+      `index.html declares no rel="${token}" link, so that client family falls back ` +
+        `to a default placeholder icon while every other assertion stays green.`
     ).toBe(true);
   });
 });
