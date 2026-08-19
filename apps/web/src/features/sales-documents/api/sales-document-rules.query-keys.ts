@@ -10,4 +10,5 @@ export const salesDocumentRulesQueryKeys = {
     ['sales-document-rules', 'country-defaults', country] as const,
   thresholds: () => ['sales-document-rules', 'thresholds'] as const,
   template: (country: string) => ['sales-document-rules', 'template', country] as const,
+  countries: () => ['sales-document-rules', 'countries'] as const,
 };

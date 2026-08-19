@@ -18532,7 +18532,11 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   }
 }
 
-.sales-document-country-selector__row {
+/* ── Sales-document country index (#2187) ── */
+.sales-document-country-index__add-row {
+  margin-top: var(--space-3);
+}
+.sales-document-country-index__add-row-controls {
   display: flex;
   align-items: center;
   gap: var(--space-2);
