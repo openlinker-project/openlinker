@@ -28,6 +28,7 @@
 import { Logger } from '@openlinker/shared/logging';
 import type { Connection } from '@openlinker/core/identifier-mapping';
 import {
+  type DescriptionFormat,
   ProductPublishRejectedException,
   ProductPublishTargetNotFoundException,
   SHOP_PUBLICATION_STATUS,
@@ -49,6 +50,8 @@ import {
   type ShopProductStatusReader,
   type ShopPublicationStatus,
 } from '@openlinker/core/listings';
+
+import { WOOCOMMERCE_DESCRIPTION_FORMAT } from './woocommerce-description-format';
 
 import { WooCommerceHttpResponseException } from '../../http/woocommerce-http-response.exception';
 import type { IWooCommerceHttpClient } from '../../http/woocommerce-http-client.interface';
@@ -106,6 +109,28 @@ export class WooCommerceProductPublisherAdapter
     ShopProductStatusReader
 {
   private readonly logger = new Logger(WooCommerceProductPublisherAdapter.name);
+
+  /**
+   * WooCommerce stores description HTML broadly, so this is the permissive end
+   * of the range: a flat allowlist, no content model, links keep `href`
+   * (ADR-046).
+   *
+   * The real allowlist is WordPress's own `wp_kses`, which varies with the API
+   * user's role and the store's configuration - a shop can be more or less
+   * permissive than this declaration. That per-CONNECTION variance is exactly
+   * why the declaration is a capability method rather than a static manifest
+   * entry: deriving it from the connection is possible here later, and would
+   * not be from a manifest.
+   *
+   * Being permissive is safe in the direction that matters: WordPress strips
+   * what it dislikes server-side, so an over-broad declaration loses
+   * formatting silently at the shop, whereas an over-narrow one would lose it
+   * here for every store including those that accept more.
+   */
+  getDescriptionFormat(): DescriptionFormat {
+    return WOOCOMMERCE_DESCRIPTION_FORMAT;
+  }
+
 
   constructor(
     private readonly httpClient: IWooCommerceHttpClient,

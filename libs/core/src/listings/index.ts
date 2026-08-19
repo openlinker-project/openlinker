@@ -424,6 +424,20 @@ export { ProductPublishTargetNotFoundException } from './domain/exceptions/produ
 // but not be sellable" checker + shared shape (cross-cutting seam for a
 // future marketplace-side check).
 export { checkRequiredToSell } from './application/services/check-required-to-sell';
+export { applyDescriptionFormat } from './application/services/apply-description-format';
+export type {
+  DescriptionFormat,
+  DescriptionShape,
+  DescriptionRewrite,
+  DescriptionRewriteAction,
+  DescriptionContentModel,
+} from './domain/types/description-format.types';
+export {
+  CONSERVATIVE_DESCRIPTION_FORMAT,
+  DESCRIPTION_BLOCK_TAGS,
+  DescriptionShapeValues,
+  DescriptionRewriteActionValues,
+} from './domain/types/description-format.types';
 export {
   RequiredToSellSeverityValues,
   RequiredToSellIssueCodeValues,

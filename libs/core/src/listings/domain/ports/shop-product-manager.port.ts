@@ -31,6 +31,7 @@
  * @see {@link CategoryProvisioner} for the first sub-capability.
  */
 
+import type { DescriptionFormat } from '../types/description-format.types';
 import type {
   PublishProductCommand,
   PublishProductResult,
@@ -44,4 +45,19 @@ export interface ShopProductManagerPort {
    * `externalProductId` exists on the shop.
    */
   publishProduct(cmd: PublishProductCommand): Promise<PublishProductResult>;
+
+  /**
+   * What this shop accepts in a product description (ADR-046). Pure and
+   * synchronous: no I/O, no credentials, no network.
+   *
+   * Unlike the marketplace side - where the declaration hangs off the
+   * `OfferFieldUpdater` sub-capability - this sits on the base port and is
+   * therefore REQUIRED of every shop adapter. That deliberately widens a port
+   * this repo otherwise keeps minimal: none of the shop sub-capabilities
+   * (`ShopAttributeReader`, `ShopCategoryBrowser`, `ShopProductStatusReader`)
+   * is about content, and a shop publish always carries a description, so
+   * there is nothing to opt out of. The consequence is that a shop can never
+   * be "undeclared", so the conservative fallback is unreachable here.
+   */
+  getDescriptionFormat(): DescriptionFormat;
 }

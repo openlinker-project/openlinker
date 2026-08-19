@@ -19,6 +19,7 @@ import { Logger } from '@openlinker/shared/logging';
 import type { FetchLike } from '@openlinker/shared/http';
 import type { Connection } from '@openlinker/core/identifier-mapping';
 import {
+  type DescriptionFormat,
   ProductPublishRejectedException,
   type CategoryProvisioner,
   type OfferParameter,
@@ -29,6 +30,8 @@ import {
   type PublishProductStatus,
   type ShopProductManagerPort,
 } from '@openlinker/core/listings';
+
+import { PRESTASHOP_DESCRIPTION_FORMAT } from './prestashop-description-format';
 import { PrestashopApiException } from '@openlinker/integrations-prestashop';
 
 import type { IPrestashopWebserviceClient } from '../../http/prestashop-webservice.client.interface';
@@ -57,6 +60,30 @@ export class PrestashopProductPublisherAdapter
   implements ShopProductManagerPort, CategoryProvisioner
 {
   private readonly logger = new Logger(PrestashopProductPublisherAdapter.name);
+
+  /**
+   * PrestaShop accepts broad description HTML, so this is a permissive
+   * declaration: flat allowlist, no content model, links keep `href`
+   * (ADR-046).
+   *
+   * Provenance is worth stating because it differs from the other adapters.
+   * Allegro's format is reconstructed from validator rejections and Erli's is
+   * published; this one is inferred from PrestaShop's own OUTPUT. PrestaShop is
+   * the ProductMaster whose TinyMCE editor produces the `<div class="rte"
+   * style="…">`, `<span style="font-weight:700">` and `<table>` markup that
+   * `sanitizeAllegroDescription` existed to strip - a shop that emits those
+   * demonstrably stores them. The set below is therefore evidence-based for
+   * what it ACCEPTS, and deliberately does not claim to be exhaustive.
+   *
+   * Erring permissive is the safe direction for a shop: PrestaShop applies its
+   * own filtering server-side, so an over-broad declaration loses formatting
+   * at the shop, whereas an over-narrow one destroys it here for every store.
+   * Narrowing it needs a documented PrestaShop restriction to cite.
+   */
+  getDescriptionFormat(): DescriptionFormat {
+    return PRESTASHOP_DESCRIPTION_FORMAT;
+  }
+
 
   constructor(
     private readonly client: IPrestashopWebserviceClient,
