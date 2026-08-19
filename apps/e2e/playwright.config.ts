@@ -210,15 +210,16 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
     },
     {
-      // Orders list/detail UI coverage (#2148). Strictly READ-ONLY today — every
-      // spec narrows with URL params that cannot match and asserts on copy and URL
-      // state, so `retries: 1` is safe: a retry re-reads, it cannot re-apply an
-      // effect. This project matches every `orders/*.spec.ts`, so a future spec
-      // that mutates (dispatch, status change, …) must NOT be dropped in here
-      // unmodified — give it its own project with `retries: 0`, matching the
-      // `invoicing` project's precedent above.
-      name: 'orders',
-      testMatch: /orders\/.*\.spec\.ts/,
+      // Resolve-step latency + progress measurement for the bulk publish wizard.
+      // Read-only and non-mutating: the whole OL API surface the wizard touches
+      // is stubbed in-test (`page.route`), with only `categories/resolve-batch`
+      // carrying simulated latency derived from the production Allegro fan-out
+      // cost model. Needs no Allegro connection and no seeded catalogue, so it
+      // runs on any stack. `retries: 1` is safe (nothing is mutated), and the
+      // longest scenario deliberately crosses the SPA's 30 s request timeout to
+      // measure the retry amplification behind it.
+      name: 'perf',
+      testMatch: /perf\/.*\.spec\.ts/,
       retries: 1,
       dependencies: ['setup'],
       use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
