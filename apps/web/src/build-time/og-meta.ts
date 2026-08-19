@@ -89,8 +89,8 @@ export function renderOgMeta(html: string, env: OgMetaEnv): string {
 
   return (
     html
-      .replace(/%OG_TITLE_PREFIX%/g, titlePrefix)
-      .replace(/%OG_IMAGE_URL%/g, imageUrl)
+      .replace(/%OG_TITLE_PREFIX%/g, () => titlePrefix)
+      .replace(/%OG_IMAGE_URL%/g, () => imageUrl)
       // Consumes the whole line so an absent origin leaves no blank gap; the
       // captured indent keeps the emitted tag aligned.
       .replace(/([ \t]*)%OG_URL_TAG%[ \t]*\r?\n/g, (_match, indent: string) =>

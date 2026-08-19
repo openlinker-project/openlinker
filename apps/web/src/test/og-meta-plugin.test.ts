@@ -110,5 +110,15 @@ describe('og-meta plugin', () => {
       ]);
       expect(html).not.toContain('<y>');
     });
+
+    it('does not treat a $ in the prefix as a replacement pattern', () => {
+      // `String.prototype.replace(regexp, string)` treats `$&`/`$$`/`$1` in the
+      // replacement string specially — a bug that would silently corrupt the
+      // emitted HTML for an operator-supplied prefix containing a literal `$`
+      // (#2175 review). These must survive as literal text, untouched.
+      const html = buildHtml({ VITE_OG_TITLE_PREFIX: '$& $$ $1 ' });
+
+      expect(metaContents(html, 'og:title')).toEqual(['$&amp; $$ $1 OpenLinker Admin']);
+    });
   });
 });

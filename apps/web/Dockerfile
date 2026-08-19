@@ -1,4 +1,4 @@
-# OpenLinker Web (admin SPA) — static production build served by nginx.
+# OpenLinker Admin — static production build served by nginx.
 #
 # Build from the REPO ROOT so the pnpm workspace manifests and the shared
 # tsconfig.base.json (extended by apps/web/tsconfig.json) are in the context:
