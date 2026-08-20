@@ -37,6 +37,7 @@ import { ErliIntegrationModule } from '@openlinker/integrations-erli';
 import { KsefIntegrationModule } from '@openlinker/integrations-ksef';
 import { SubiektIntegrationModule } from '@openlinker/integrations-subiekt';
 import { InfaktIntegrationModule } from '@openlinker/integrations-infakt';
+import { EparagonyIntegrationModule } from '@openlinker/integrations-eparagony';
 import { FxIntegrationModule } from '@openlinker/integrations-fx';
 
 export const apiPlugins: PluginEntry[] = [
@@ -53,6 +54,10 @@ export const apiPlugins: PluginEntry[] = [
   SubiektIntegrationModule,
   // #1281: Infakt accounting invoicing adapter (KSeF submitted via Infakt).
   InfaktIntegrationModule,
+  // #1908 / ADR-042: eparagony.pl fiscalization adapter - resolves the
+  // 'Fiscalization' capability so an operator can register a completed sale
+  // as a Polish fiscal e-receipt.
+  EparagonyIntegrationModule,
   // #2123: reference exchange-rate providers (NBP, ECB). NOT a plugin - it
   // registers no adapter manifest and exposes no capability; it appears here
   // purely as a module-composition seam, exactly as AiIntegrationModule does.

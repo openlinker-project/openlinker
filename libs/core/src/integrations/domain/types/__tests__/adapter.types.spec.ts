@@ -29,6 +29,8 @@ describe('adapter.types', () => {
         'CategoryProvisioner',
         // Invoicing (#751, ADR-026)
         'Invoicing',
+        // Fiscalization (#1908, ADR-042)
+        'Fiscalization',
       ]);
     });
   });
