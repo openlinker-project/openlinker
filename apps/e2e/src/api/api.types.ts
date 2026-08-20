@@ -125,6 +125,16 @@ export interface Product {
    * detail reads; `null` when the source shop carries none.
    */
   description?: string | null;
+  /**
+   * How many variants the product has, on the LIST read.
+   *
+   * The list projection deliberately omits `variants` (pinned by
+   * `products.controller.spec.ts`), so this is the only variant fact available
+   * without a second request per product - which matters for a spec that needs
+   * to pick, say, a single-variant product out of a page.
+   */
+  variantCount?: number;
+  /** Only on the DETAIL read (`GET /products/:id`), never on the list. */
   variants?: ProductVariant[];
   externalIds?: ExternalIdMapping[];
   createdAt: string;

@@ -61,15 +61,21 @@ const SHOP_MARKUP = [
 ].join('');
 
 /**
- * A description using only tags Allegro allows, authored fresh in each publish
- * run so the payload is this run's own rather than whatever the stack held.
+ * A description using only tags Allegro allows.
+ *
+ * The `marker` is minted per run and sits inside ONE text node, which is what
+ * makes the authoring verifiable at all: it is the needle both the row editor's
+ * change detection and the wizard's pre-submit assertion match on, and being
+ * per-run it cannot be satisfied by whatever the stack already held.
  */
-const AUTHORED_DESCRIPTION = [
-  '<h1>Opis przygotowany w OpenLinkerze</h1>',
-  '<p>Tekst z <b>wyróżnieniem</b> i akapitem.</p>',
-  '<ul><li>Punkt pierwszy</li><li>Punkt drugi</li></ul>',
-  '<ol><li>Krok jeden</li><li>Krok dwa</li></ol>',
-].join('');
+function authoredDescription(marker: string): string {
+  return [
+    `<h1>Opis przygotowany w OpenLinkerze ${marker}</h1>`,
+    '<p>Tekst z <b>wyróżnieniem</b> i akapitem.</p>',
+    '<ul><li>Punkt pierwszy</li><li>Punkt drugi</li></ul>',
+    '<ol><li>Krok jeden</li><li>Krok dwa</li></ol>',
+  ].join('');
+}
 
 /**
  * Which toolbar controls a contract implies, and which it forbids.
@@ -172,9 +178,16 @@ async function setSourceMode(root: Locator, on: boolean): Promise<void> {
   await expect(toggle).toHaveAttribute('aria-pressed', String(on));
 }
 
-/** `documentHtml`, retried until it stops being empty, like every other wait here. */
-async function pollDocumentHtml(root: Locator): Promise<string> {
-  await expect.poll(() => documentHtml(root), { timeout: 10_000 }).not.toBe('');
+/**
+ * The document once it contains `settled`, then returned for exact assertions.
+ *
+ * Polling for "not empty" was useless: select-all does not clear the surface, so
+ * the pre-paste document satisfied it immediately and the assertions after it
+ * were as racy as a bare read. Polling for something the PASTE introduces is the
+ * only wait that means anything here.
+ */
+async function pollDocumentHtml(root: Locator, settled: string): Promise<string> {
+  await expect.poll(() => documentHtml(root), { timeout: 10_000 }).toContain(settled);
   return documentHtml(root);
 }
 
@@ -247,7 +260,11 @@ test.describe('rich-text descriptions (#2201, ADR-046)', () => {
     // explanatory info Alert and every action disabled, so no draft can be saved
     // at all. That is a stack/session condition, not a defect: skip with the
     // reason named rather than fail on a permanently disabled button.
-    const readOnlyNotice = page.getByRole('alert').filter({ hasText: /read-only access/i });
+    // `role="status"`, not `alert`: `Alert` maps only `tone === 'error'` to `alert`
+    // and the write-lock reason is rendered `tone="info"` (`alert.tsx`). Getting
+    // this wrong makes the skip dead code and the case fails on a disabled button
+    // instead.
+    const readOnlyNotice = page.getByText(/read-only access to content/i);
     test.skip(
       (await readOnlyNotice.count()) > 0,
       'this session has read-only access to content, so no draft can be saved'
@@ -274,8 +291,10 @@ test.describe('rich-text descriptions (#2201, ADR-046)', () => {
     const publish = page.getByRole('button', { name: 'Publish' });
     await expect(publish).toBeDisabled();
 
+    let saved = false;
     try {
       await save.click();
+      saved = true;
       await expect(publish).toBeEnabled({ timeout: 20_000 });
 
       // The persisted fact, read back from the API: the typed buffer became the
@@ -294,14 +313,26 @@ test.describe('rich-text descriptions (#2201, ADR-046)', () => {
       // and, once an ingestion moves the base value under it, raises a conflict
       // that would fail the NEXT run's publish-enabled assertion for a reason
       // unrelated to the code.
-      const discard = page.getByRole('button', { name: 'Discard draft' });
-      if (await discard.isEnabled().catch(() => false)) {
-        await discard.click();
-        await expect
-          .poll(async () => (await api.content.forProduct(product.id)).master.draftValue, {
-            timeout: 20_000,
-          })
-          .toBeNull();
+      //
+      // Gated on `saved`, so a failure BEFORE the save cannot delete a
+      // pre-existing draft this case never created; and wrapped, because a throw
+      // inside `finally` replaces the real error - the cleanup would then be the
+      // reported failure instead of the assertion that actually broke.
+      if (saved) {
+        try {
+          const discard = page.getByRole('button', { name: 'Discard draft' });
+          await discard.click();
+          await expect
+            .poll(async () => (await api.content.forProduct(product.id)).master.draftValue, {
+              timeout: 20_000,
+            })
+            .toBeNull();
+        } catch (cleanupError) {
+          test.info().annotations.push({
+            type: 'warning',
+            description: `left a master draft behind on ${product.id}: ${String(cleanupError).slice(0, 200)}`,
+          });
+        }
       }
     }
   });
@@ -423,10 +454,20 @@ test.describe('rich-text descriptions (#2201, ADR-046)', () => {
       await expect(note, 'an undeclared destination must say so').toBeVisible();
     } else {
       await expect(note, 'a declared destination must not claim otherwise').toHaveCount(0);
-      // The cap is the destination's own, not a default.
-      await expect(editor.locator('.rich-text__bytes')).toContainText(
-        contract.maxBytes === null ? '' : contract.maxBytes.toLocaleString('en-US')
-      );
+      // The cap is the destination's own, not a default. An UNBOUNDED format
+      // renders no counter at all (`rich-text-editor.tsx`), so matching text
+      // against it would hang - assert its absence instead. And the digits are
+      // compared without a grouping separator, because the page formats with a
+      // bare `toLocaleString()` in the browser's locale.
+      const bytes = editor.locator('.rich-text__bytes');
+      if (contract.maxBytes === null) {
+        await expect(bytes, 'an unbounded format shows no byte counter').toHaveCount(0);
+      } else {
+        const digits = String(contract.maxBytes);
+        await expect(bytes).toContainText(
+          new RegExp(digits.split('').join('[\\s,.\u00a0\u202f]*'))
+        );
+      }
     }
 
     // Paste-time filtering: the registered extensions ARE the document schema,
@@ -438,7 +479,7 @@ test.describe('rich-text descriptions (#2201, ADR-046)', () => {
     // switch inside a modal that remounts its editors as the form goes dirty.
     // Polled, not read once: every other wait in this file auto-retries, and a
     // paste that lands a tick late would otherwise flake on a bare string compare.
-    const html = await pollDocumentHtml(editor);
+    const html = await pollDocumentHtml(editor, 'Kurtka puchowa Alpine 300');
 
     // The pasted markup's tags, minus whatever the contract allows: a tag the
     // destination accepts must NOT be asserted absent (Erli accepts `br`, Allegro
@@ -484,8 +525,13 @@ test.describe('rich-text descriptions (#2201, ADR-046)', () => {
     // multi-variant product carries it per variant row, and those render only
     // while the row is expanded). Picking blind would report a data condition as
     // "expected 1, received 0".
+    //
+    // Read from `variantCount`, NOT from `variants`: the list projection omits
+    // variants on purpose (pinned by `products.controller.spec.ts`), so a filter
+    // on `variants.length` is always false and the case would skip forever while
+    // blaming the stack.
     const products = await api.products.list({ limit: 25 });
-    const product = products.items.find((candidate) => (candidate.variants ?? []).length === 1);
+    const product = products.items.find((candidate) => candidate.variantCount === 1);
     test.skip(product === undefined, 'no single-variant product on this stack');
 
     await pages.productsList.goto();
@@ -587,22 +633,29 @@ test.describe('rich-text descriptions (#2201, ADR-046)', () => {
 
     const connectionId = marketplace?.id ?? '';
 
-    // A variant that is NOT already listed on this destination. Re-running against
-    // the same stack otherwise hits the #1837 duplicate guard: the variant is
-    // filtered out of the batch and an all-filtered submit is a 400, so the case
-    // would fail on its second run for a reason unrelated to descriptions.
-    const products = await api.products.list({ limit: 25 });
-    const candidates = products.items.filter(
+    // Variants come from the DETAIL read: the list projection omits them
+    // deliberately, so filtering `items[].variants` is always false and this case
+    // would skip forever while blaming the stack for a client bug.
+    //
+    // Then a variant that is NOT already listed on this destination. Re-running
+    // against the same stack otherwise hits the #1837 duplicate guard: the variant
+    // is filtered out of the batch and an all-filtered submit is a 400, so the
+    // case would fail on its second run for a reason unrelated to descriptions.
+    const page1 = await api.products.list({ limit: 8 });
+    const detailed = await Promise.all(page1.items.map((p) => api.products.getById(p.id)));
+    const candidates = detailed.filter(
       (p) => (p.variants?.[0]?.ean ?? p.variants?.[0]?.gtin) != null
     );
     test.skip(candidates.length === 0, 'no product with a barcode to list on this stack');
-    const listed = new Set(
-      await api.listings.publishedVariants(
-        connectionId,
-        candidates.map((p) => p.variants?.[0]?.id ?? '').filter((id) => id !== '')
-      )
-    );
-    const product = candidates.find((p) => !listed.has(p.variants?.[0]?.id ?? ''));
+
+    // Every sibling is checked, not just the first: the wizard expands a
+    // multi-variant product into one offer per variant (#824), so a product whose
+    // first variant is free but whose siblings are listed still meets the filter
+    // on those rows.
+    const variantIds = candidates.flatMap((p) => (p.variants ?? []).map((v) => v.id));
+    test.skip(variantIds.length === 0, 'no resolvable variants on this stack');
+    const listed = new Set(await api.listings.publishedVariants(connectionId, variantIds));
+    const product = candidates.find((p) => (p.variants ?? []).every((v) => !listed.has(v.id)));
     test.skip(
       product === undefined,
       'every barcoded product is already listed on this destination - nothing left to publish'
@@ -622,7 +675,7 @@ test.describe('rich-text descriptions (#2201, ADR-046)', () => {
     await wizard.advanceToConfirmModal({
       requiresDeliveryPolicy: true,
       gtin: primary?.ean ?? primary?.gtin ?? undefined,
-      descriptionMarkup: AUTHORED_DESCRIPTION,
+      descriptionMarkup: authoredDescription(`E2E-${Date.now()}`),
     });
     const progress = await wizard.confirmCreation();
     expect(progress.batchId).toBeTruthy();
@@ -756,7 +809,7 @@ test.describe('rich-text descriptions (#2201, ADR-046)', () => {
       editor.locator('.rich-text__surface [role="textbox"]'),
       '<h3>Sekcja</h3><p>Pierwsza linia<br>Druga linia</p>'
     );
-    const html = await pollDocumentHtml(editor);
+    const html = await pollDocumentHtml(editor, 'Druga linia');
     expect(html).toContain('<h3>');
     expect(html).toContain('<br');
     expect(html).toContain('Druga linia');

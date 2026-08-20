@@ -529,7 +529,9 @@ export class ApiClient {
       } catch (error) {
         // ONLY a 404 means "this API does not have the route". Swallowing every
         // status would turn a 500 or an expired token into "old stack", and the
-        // caller would skip with a reason that is not true.
+        // caller would skip with a reason that is not true. A 404 is also what an
+        // unknown connection returns, which is why callers pass a world-resolved
+        // id rather than a literal.
         if (error instanceof ApiError && error.status === 404) return null;
         throw error;
       }

@@ -37,7 +37,11 @@
  */
 import { expect, type Locator, type Page } from '@playwright/test';
 import { BulkBatchProgressPage } from './bulk-batch-progress.page';
-import { BulkOfferRowEditor, isVisibleWithin } from './bulk-offer-row-editor.page';
+import {
+  BulkOfferRowEditor,
+  descriptionMarker,
+  isVisibleWithin,
+} from './bulk-offer-row-editor.page';
 
 /** Upper bound on per-row edits so an unfillable parameter fails loudly, not forever. */
 const MAX_ROW_EDITS = 25;
@@ -320,13 +324,22 @@ export class BulkOfferWizard {
     // asserting "the authored description survived" would then be asserting
     // nothing. Fail here, naming the cause, rather than there.
     if (opts.descriptionMarkup !== undefined) {
-      const wanted = opts.descriptionMarkup
-        .replace(/<[^>]+>/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim()
-        .slice(0, 40);
+      // Matched on a marker that lives inside ONE text node. Playwright's
+      // `hasText` concatenates text nodes with NO separator, so a needle spanning
+      // `</h1><p>` can never match and this assertion would fail closed on every
+      // run - worse than the false green it replaced.
+      const marker = descriptionMarker(opts.descriptionMarkup);
+      if (marker === null) {
+        throw new Error(
+          'descriptionMarkup needs one text run of 8+ characters to be verifiable on a review row',
+        );
+      }
+      // One disclosure is the right assertion, not one per row: the editor writes
+      // the BASE-scope description, which is the product-level override every
+      // sibling variant falls back to (`effectiveDescription` in
+      // `bulk-review-step.tsx`), so authoring once covers the whole fan-out.
       await expect(
-        this.page.locator('.bulk-review__desc').filter({ hasText: wanted }).first(),
+        this.page.locator('.bulk-review__desc').filter({ hasText: marker }).first(),
         'the authored description should be visible on a review row before submit',
       ).toBeVisible({ timeout: 20_000 });
     }

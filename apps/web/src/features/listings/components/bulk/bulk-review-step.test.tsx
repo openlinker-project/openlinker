@@ -172,8 +172,9 @@ describe('BulkReviewStep', () => {
 
   it('keeps the disclosure off the product row of a multi-variant product', () => {
     // The product row carries the disclosure ONLY for a simple product; for a
-    // multi-variant one each variant row carries its own. Asserting both halves
-    // pins the non-duplication that makes the fix safe.
+    // multi-variant one each variant row carries its own. This asserts the
+    // absence half - that the product row does not add a second one - which is
+    // the half the fix could have got wrong.
     const rows = [makeRow('prod_1', [variantRow('v1'), variantRow('v2')])];
     renderWithProviders(<BulkReviewStep rows={rows} {...baseProps()} />);
 

@@ -65,6 +65,20 @@ async function currentText(field: Locator): Promise<string> {
   return (await field.textContent()) ?? '';
 }
 
+/**
+ * The longest run of text between two tags in a markup string.
+ *
+ * The one substring that survives into a single DOM text node, which is all that
+ * Playwright's `hasText` and `textContent` can see - neither inserts a separator
+ * at a block boundary, so a needle spanning `</h1><p>` is unmatchable. Returns
+ * `null` when no run is long enough to be distinctive.
+ */
+export function descriptionMarker(markup: string): string | null {
+  const runs = [...markup.matchAll(/>([^<]+)</g)].map((m) => m[1].trim());
+  const longest = runs.sort((a, b) => b.length - a.length)[0] ?? '';
+  return longest.length >= 8 ? longest : null;
+}
+
 export class BulkOfferRowEditor {
   constructor(private readonly page: Page) {}
 
@@ -459,14 +473,19 @@ export class BulkOfferRowEditor {
   private async authorDescription(dialog: Locator, markup: string): Promise<boolean> {
     const field = dialog.getByLabel('Description', { exact: true }).first();
     if ((await field.count()) === 0) return false;
-    // Report whether this actually CHANGED anything, so the caller's
-    // `if-changed` contract still holds. Returning an unconditional `true` would
-    // make a top-up walk that passes `descriptionMarkup` loop forever - and the
-    // walk has to pass it, because a row with no blocker is never visited by the
-    // needs-attention pass and would otherwise publish an unauthored description.
-    const wanted = markup.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-    const current = (await currentText(field)).replace(/\s+/g, ' ').trim();
-    if (wanted !== '' && current === wanted) return false;
+    // Report whether this actually CHANGED anything, so the caller's `if-changed`
+    // contract still holds - an unconditional `true` makes the top-up walk (which
+    // MUST pass the markup, since it is the only walk that visits an unflagged
+    // row) exhaust its pass budget and throw about required parameters.
+    //
+    // The comparison is a MARKER inside one text node, not the whole value
+    // stripped of tags: `textContent` inserts nothing at a block boundary, so
+    // `<h1>A</h1><p>B</p>` reads as `AB` and any tag-to-space expectation can
+    // never match. A marker also makes "unchanged" mean "we authored this" rather
+    // than "the same words happened to be here as plain text" - which is why the
+    // callers mint it per run.
+    const marker = descriptionMarker(markup);
+    if (marker !== null && (await currentText(field)).includes(marker)) return false;
     await field.click();
     await field.press('ControlOrMeta+a');
     await field.evaluate((el, html) => {
