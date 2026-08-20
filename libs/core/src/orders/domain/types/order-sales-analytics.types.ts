@@ -19,6 +19,16 @@
  * Gross/net tax-treatment normalization remains out of scope — a separate,
  * not-yet-scoped effort.
  *
+ * `unconvertedCurrency` labels the `unconvertedValue` figure with the one
+ * native currency (`order_records.currency` — a pre-existing #1985 column,
+ * never touched by the #2049/ADR-040 FX stamp) shared by every unconverted
+ * order in scope, or `null` when that set spans more than one native
+ * currency. This is #1987's own scope, not an FX-epic deliverable: the FX
+ * epic's job was stamping `reportingCurrency`/`reportingTotalAmount`, which it
+ * already did: labelling the *unconverted* evidence with its own native
+ * currency is purely an aggregation-query addition on a column the FX epic
+ * never touched.
+ *
  * @module libs/core/src/orders/domain/types
  */
 
@@ -49,6 +59,13 @@ export interface DailyOrderAggregateRow {
   unconvertedCount: number;
   /** Native-currency `SUM(totalAmount)` for `unconvertedCount` — informational, may mix currencies. */
   unconvertedValue: number;
+  /**
+   * The single native currency shared by every unconverted, non-cancelled
+   * order this day/connection, or `null` when that set already mixes
+   * currencies. Also `null` when `unconvertedCount` is `0` — the aggregation
+   * layer must not read that as "mixed" (see `resolveUniformUnconvertedCurrency`).
+   */
+  unconvertedCurrency: string | null;
   cancelledCount: number;
   cancelledValue: number;
   /**
@@ -89,6 +106,12 @@ export interface SalesAnalyticsHeadline {
   unconvertedCount: number;
   /** Native-currency sum for `unconvertedCount` — informational, may mix currencies. */
   unconvertedValue: number;
+  /**
+   * The one native currency `unconvertedValue` is expressed in, or `null`
+   * when the unconverted set spans more than one native currency (or
+   * `unconvertedCount` is `0` — nothing to label).
+   */
+  unconvertedCurrency: string | null;
   trend: DailyTrendPoint[];
 }
 
@@ -110,6 +133,8 @@ export interface ChannelSalesAnalytics {
   unconvertedCount: number;
   /** Same meaning as {@link SalesAnalyticsHeadline.unconvertedValue}, scoped to this channel. */
   unconvertedValue: number;
+  /** Same meaning as {@link SalesAnalyticsHeadline.unconvertedCurrency}, scoped to this channel. */
+  unconvertedCurrency: string | null;
   /** Share of headline revenue, `0` when headline revenue is `0`. */
   revenueShare: number;
   trend: DailyTrendPoint[];

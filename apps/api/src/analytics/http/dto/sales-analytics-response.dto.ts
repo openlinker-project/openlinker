@@ -8,8 +8,11 @@
  * Currency correctness (#2049/ADR-040 follow-up): `revenue`/`averageOrderValue`/
  * `medianOrderValue` are computed only from reporting-currency-stamped orders
  * — see `currency` for which one, and `unconvertedCount`/`unconvertedValue`
- * for what's excluded. Gross/net tax-treatment normalization remains a
- * separate, not-yet-scoped effort.
+ * for what's excluded. `unconvertedCurrency` labels that excluded figure with
+ * its own native currency (#1987 scope — `order_records.currency` predates
+ * the FX epic), `null` when the unconverted set itself mixes currencies.
+ * Gross/net tax-treatment normalization remains a separate, not-yet-scoped
+ * effort.
  *
  * @module apps/api/src/analytics/http/dto
  */
@@ -82,6 +85,14 @@ export class SalesAnalyticsHeadlineDto {
   })
   unconvertedValue!: number;
 
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description:
+      'The one native currency unconvertedValue is expressed in. Null when the unconverted set spans more than one native currency (or unconvertedCount is 0).',
+  })
+  unconvertedCurrency!: string | null;
+
   @ApiProperty({ type: [DailyTrendPointDto] })
   trend!: DailyTrendPointDto[];
 
@@ -97,6 +108,7 @@ export class SalesAnalyticsHeadlineDto {
     dto.currency = headline.currency;
     dto.unconvertedCount = headline.unconvertedCount;
     dto.unconvertedValue = headline.unconvertedValue;
+    dto.unconvertedCurrency = headline.unconvertedCurrency;
     dto.trend = headline.trend.map((point) => DailyTrendPointDto.fromDomain(point));
     return dto;
   }
@@ -141,6 +153,13 @@ export class ChannelSalesAnalyticsDto {
   })
   unconvertedValue!: number;
 
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description: 'Same meaning as the headline unconvertedCurrency field, scoped to this channel.',
+  })
+  unconvertedCurrency!: string | null;
+
   @ApiProperty({ description: 'Share of headline revenue, 0 when headline revenue is 0.' })
   revenueShare!: number;
 
@@ -165,6 +184,7 @@ export class ChannelSalesAnalyticsDto {
     dto.currency = channel.currency;
     dto.unconvertedCount = channel.unconvertedCount;
     dto.unconvertedValue = channel.unconvertedValue;
+    dto.unconvertedCurrency = channel.unconvertedCurrency;
     dto.revenueShare = channel.revenueShare;
     dto.trend = channel.trend.map((point) => DailyTrendPointDto.fromDomain(point));
     dto.coverageComplete = channel.coverageComplete;

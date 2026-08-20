@@ -372,6 +372,15 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    * `unconverted_value` (native `totalAmount`, informational only) rather
    * than silently mixed in or silently dropped. `cancelled_value` is left on
    * native `totalAmount`, unchanged — a secondary figure, not revisited here.
+   *
+   * `unconverted_currency` (#1987 scope, not FX-epic scope — `order_records.
+   * currency` is the pre-existing native-currency column from #1985, untouched
+   * by #2049) labels the `unconverted_value` figure with the one native
+   * currency shared by every unconverted, non-cancelled order this
+   * day/connection, or `NULL` when that set already mixes currencies. A day
+   * with zero unconverted orders also reports `NULL` here (no currency to
+   * report), which the aggregation layer must not confuse with "mixed" — see
+   * `resolveUniformUnconvertedCurrency`.
    */
   async getDailyOrderAggregates(
     filters: SalesAnalyticsFilters
@@ -397,6 +406,12 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
         `COALESCE(SUM(rec."totalAmount") FILTER (WHERE ${unconvertedAndNotCancelled}), 0)`,
         'unconverted_value'
       )
+      .addSelect(
+        `CASE WHEN COUNT(DISTINCT rec."currency") FILTER (WHERE ${unconvertedAndNotCancelled}) <= 1
+              THEN MAX(rec."currency") FILTER (WHERE ${unconvertedAndNotCancelled})
+              ELSE NULL END`,
+        'unconverted_currency'
+      )
       .addSelect(`COUNT(*) FILTER (WHERE ${isCancelled})`, 'cancelled_count')
       .addSelect(
         `COALESCE(SUM(rec."totalAmount") FILTER (WHERE ${isCancelled}), 0)`,
@@ -418,6 +433,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       revenue: string;
       unconverted_count: string;
       unconverted_value: string;
+      unconverted_currency: string | null;
       cancelled_count: string;
       cancelled_value: string;
       reporting_currency: string | null;
@@ -430,6 +446,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       revenue: Number(row.revenue),
       unconvertedCount: Number(row.unconverted_count),
       unconvertedValue: Number(row.unconverted_value),
+      unconvertedCurrency: row.unconverted_currency,
       cancelledCount: Number(row.cancelled_count),
       cancelledValue: Number(row.cancelled_value),
       reportingCurrency: row.reporting_currency,

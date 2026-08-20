@@ -20,6 +20,14 @@
  * function does no currency arithmetic of its own. Gross/net tax-treatment
  * normalization remains a separate, not-yet-scoped effort.
  *
+ * `unconvertedCurrency` (headline and per channel) labels `unconvertedValue`
+ * with the one native currency shared by every unconverted order rolled into
+ * it, via `resolveUniformUnconvertedCurrency` — `null` when that set spans
+ * more than one native currency. A day/connection bucket with zero
+ * unconverted orders reports `unconvertedCurrency: null` at the repository
+ * layer too, but that's "nothing to report", not "mixed" — the resolver
+ * skips those buckets rather than letting them poison the whole set.
+ *
  * @module libs/core/src/orders/domain
  */
 import type {
@@ -73,6 +81,7 @@ export function buildSalesAndChannelAnalytics(
     currency,
     unconvertedCount: headlineUnconvertedCount,
     unconvertedValue: headlineUnconvertedValue,
+    unconvertedCurrency: resolveUniformUnconvertedCurrency(dailyRows),
     trend: buildTrend(dayKeys, dailyRows),
   };
 
@@ -94,6 +103,7 @@ export function buildSalesAndChannelAnalytics(
         currency: pickCurrency(rows),
         unconvertedCount: sum(rows, (r) => r.unconvertedCount),
         unconvertedValue: sum(rows, (r) => r.unconvertedValue),
+        unconvertedCurrency: resolveUniformUnconvertedCurrency(rows),
         revenueShare: headlineRevenue > 0 ? revenue / headlineRevenue : 0,
         trend: buildTrend(dayKeys, rows),
         // A connection present in `dailyRows` has ingested at least one order
@@ -122,6 +132,35 @@ function sum<T>(items: T[], pick: (item: T) => number): number {
  */
 function pickCurrency(rows: DailyOrderAggregateRow[]): string | null {
   return rows.find((r) => r.reportingCurrency !== null)?.reportingCurrency ?? null;
+}
+
+/**
+ * The single native currency shared by every unconverted, non-cancelled
+ * order across a set of daily rows — the label for `unconvertedValue`.
+ * `null` when two rows disagree, or a single row already reports `null`
+ * while still carrying unconverted orders (that day/connection itself mixes
+ * currencies). A row with zero unconverted orders is skipped rather than
+ * treated as poisoning: the repository reports `unconvertedCurrency: null`
+ * for such a row too, but "nothing to report" must not be conflated with
+ * "mixed" — the same distinction `resolveUniformNativeCurrency`-shaped
+ * helpers elsewhere in the codebase have to make.
+ */
+function resolveUniformUnconvertedCurrency(rows: DailyOrderAggregateRow[]): string | null {
+  let currency: string | null = null;
+  for (const row of rows) {
+    if (row.unconvertedCount === 0) {
+      continue;
+    }
+    if (row.unconvertedCurrency == null) {
+      return null;
+    }
+    if (currency == null) {
+      currency = row.unconvertedCurrency;
+    } else if (currency !== row.unconvertedCurrency) {
+      return null;
+    }
+  }
+  return currency;
 }
 
 function groupByConnection(
