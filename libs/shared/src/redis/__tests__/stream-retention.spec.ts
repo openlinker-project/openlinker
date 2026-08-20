@@ -39,8 +39,9 @@ describe('resolveStreamBound', () => {
   });
 
   it('should keep the jobs.sync horizon longer than the job dedup TTL', () => {
-    // The property the whole choice rests on: anything trimmed has already lost
-    // its `jobdedup:` key, so it can be re-enqueued. Trimmed implies recoverable.
+    // Anything trimmed has certainly lost its `jobdedup:` key, so a re-enqueue
+    // no longer no-ops with `{isExisting: true}`. That makes a trimmed job
+    // un-blocked, NOT recovered — nothing re-enqueues it automatically.
     const bound = resolveStreamBound(REDIS_STREAM_NAMES.jobsSync);
 
     expect(bound.kind).toBe('minid');

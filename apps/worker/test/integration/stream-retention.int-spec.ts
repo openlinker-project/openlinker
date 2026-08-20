@@ -15,6 +15,7 @@ import {
   REDIS_STREAM_NAMES,
   streamTrimOptions,
   STREAM_NODE_MAX_ENTRIES,
+  xAddBounded,
   type StreamTrimOptions,
 } from '@openlinker/shared/redis';
 
@@ -74,19 +75,20 @@ describe('Stream retention (#2163)', () => {
     expect(length).toBeLessThan(written);
   });
 
-  it('should bound a stream that carries no explicit registry entry', async () => {
-    // The #2163 inversion, observed at the Redis level rather than in an
-    // options object: an unregistered stream is bounded by the default.
-    const stream = `test.unregistered.${randomUUID()}`;
-    const options = streamTrimOptions(stream);
-    const written = 200;
+  it('should bound a stream through xAddBounded itself, against the real server', async () => {
+    // The seam, end to end. Unit tests cover `xAddBounded` against a mock, which
+    // by construction cannot catch a node-redis option-shape drift — the exact
+    // failure mode this file exists for. `healthcheck` is the cheapest stream to
+    // prove it on: an EXACT cap of 1, so the assertion is unambiguous.
+    const written = 5;
 
     for (let i = 0; i < written; i += 1) {
-      await redis.xAdd(stream, '*', { i: String(i) }, options);
+      await xAddBounded(redis, REDIS_STREAM_NAMES.healthcheck, { i: String(i) });
     }
 
-    expect(options.TRIM.strategy).toBe('MAXLEN');
-    expect(await redis.xLen(stream)).toBeGreaterThan(0);
+    // Exact, not approximate — `~ 1` would stop at a macro-node boundary and
+    // retain ~100. This asserting 1 is what proves `exact` reaches Redis.
+    expect(await redis.xLen(REDIS_STREAM_NAMES.healthcheck)).toBe(1);
   });
 
   it('should drop an entry older than a MINID horizon while keeping a fresh one', async () => {

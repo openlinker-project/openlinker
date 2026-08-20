@@ -60,8 +60,10 @@ export class RedisStreamsJobEnqueueService implements JobEnqueuePort {
       try {
         // Age-bounded, not count-bounded. Until `job-intake` writes the
         // `sync_jobs` row this entry IS the job, and the `jobdedup:` key above
-        // would block a re-enqueue for 7 days — so the retention horizon is
-        // deliberately longer than that TTL (#2163).
+        // would make a re-enqueue silently no-op for 7 days — so the retention
+        // horizon is deliberately longer than that TTL (#2163). That makes a
+        // trimmed job un-blocked, NOT recovered: nothing re-enqueues it
+        // automatically. See docs/operations/redis-stream-retention.md.
         messageId = await xAddBounded(this.redisClient, this.STREAM_NAME, fields);
       } catch (xaddError) {
         // Clean up idempotency key if XADD fails

@@ -14,6 +14,11 @@
  * prevent it: `resolveStreamBound` must accept a plain `string`, because
  * `EventPublisherPort.publish` takes a dynamic stream name.
  *
+ * Two rules:
+ *   - `bare-xadd`     — no direct `.xAdd(` outside the seam.
+ *   - `dynamic-seam`  — `xAddBoundedDynamic` (which skips the union type by
+ *                       design) is referenced only by its one legitimate caller.
+ *
  * Run from `pnpm lint` via `pnpm check:invariants`.
  *
  * Usage:
@@ -38,6 +43,21 @@ const ALLOW_LIST = new Map([
     'libs/shared/src/redis/stream-retention.ts',
     'defines xAddBounded — the seam itself must call xAdd',
   ],
+]);
+
+/**
+ * Files permitted to reference `xAddBoundedDynamic`.
+ *
+ * Exactly one production caller: the event publisher, whose
+ * `EventPublisherPort.publish(streamName: string, …)` contract is dynamic by
+ * design. Nothing else enforced "one caller", so a future import would get an
+ * un-typed write with no compile error and no lint error. This is what makes
+ * the escape hatch's narrowness real rather than merely stated.
+ */
+const DYNAMIC_SEAM_ALLOW_LIST = new Set([
+  'libs/shared/src/redis/stream-retention.ts',
+  'libs/shared/src/redis/index.ts',
+  'libs/core/src/events/infrastructure/adapters/redis-streams-event-publisher.ts',
 ]);
 
 /** Test files write to streams to set up fixtures; retention is not their concern. */
@@ -67,43 +87,135 @@ function walk(dir, out = []) {
 }
 
 /**
- * Find direct `.xAdd(` calls in a source string.
+ * Blank out comment lines, preserving line numbering so hits stay reportable.
  *
- * Deliberately naive: a line-based scan that skips comment lines. It can only
- * be wrong in the safe direction for the cases that matter — a real call is
- * never missed, and a false positive is visible and easy to allow-list.
+ * Line-oriented rather than a real parser: it only has to stop a doc comment
+ * that mentions `.xAdd(` from reading as a call.
  */
-export function findDirectXAddCalls(source) {
+function stripComments(source) {
+  return source
+    .split('\n')
+    .map((line) => {
+      const trimmed = line.trim();
+      return trimmed.startsWith('*') || trimmed.startsWith('//') ? '' : line;
+    })
+    .join('\n');
+}
+
+/** Report every regex match as `{ line, text }` against the original source. */
+function collectMatches(source, pattern) {
   const hits = [];
+  const stripped = stripComments(source);
   const lines = source.split('\n');
 
-  for (let i = 0; i < lines.length; i += 1) {
-    const line = lines[i];
-    const trimmed = line.trim();
-    if (trimmed.startsWith('*') || trimmed.startsWith('//')) continue;
-    if (!/\.xAdd\s*\(/.test(line)) continue;
-    hits.push({ line: i + 1, text: trimmed });
+  let match;
+  while ((match = pattern.exec(stripped)) !== null) {
+    const line = stripped.slice(0, match.index).split('\n').length;
+    hits.push({ line, text: lines[line - 1]?.trim() ?? '' });
   }
   return hits;
 }
 
+/**
+ * Find direct stream-write calls in a source string.
+ *
+ * Matches across line boundaries, because prettier routinely breaks a long
+ * client expression as `client\n  .xAdd(` at 100 columns — a purely line-based
+ * scan would miss exactly the calls most likely to appear in real code. Also
+ * catches the bracket form `client['xAdd'](…)`.
+ *
+ * It does NOT catch an aliased call (`const add = client.xAdd`) or a raw
+ * `sendCommand(['XADD', …])`. That is an accepted limit rather than an
+ * oversight: this script is defence-in-depth, and the real guard is the
+ * `RedisStreamName` union on `xAddBounded`'s parameter, enforced by the compiler.
+ */
+export function findDirectXAddCalls(source) {
+  return collectMatches(source, /(?:\.\s*xAdd|\[\s*['"`]xAdd['"`]\s*\])\s*\(/g);
+}
+
+/** Find references to the dynamic escape hatch. */
+export function findDynamicSeamRefs(source) {
+  return collectMatches(source, /xAddBoundedDynamic/g);
+}
+
 function selfCheck() {
   const cases = [
-    { name: 'plain call', source: 'await client.xAdd("s", "*", f);', expected: 1 },
-    { name: 'spaced call', source: 'await client.xAdd ("s", "*", f);', expected: 1 },
-    { name: 'line comment', source: '// await client.xAdd("s", "*", f);', expected: 0 },
-    { name: 'jsdoc line', source: ' * `client.xAdd(...)` is banned here', expected: 0 },
-    { name: 'wrapper call', source: 'await xAddBounded(client, name, fields);', expected: 0 },
-    { name: 'unrelated', source: 'const x = 1;', expected: 0 },
+    {
+      name: 'plain call',
+      fn: findDirectXAddCalls,
+      source: 'await client.xAdd("s", "*", f);',
+      expected: 1,
+    },
+    {
+      name: 'spaced call',
+      fn: findDirectXAddCalls,
+      source: 'await client.xAdd ("s", "*", f);',
+      expected: 1,
+    },
+    {
+      name: 'line comment',
+      fn: findDirectXAddCalls,
+      source: '// await client.xAdd("s", "*", f);',
+      expected: 0,
+    },
+    {
+      name: 'jsdoc line',
+      fn: findDirectXAddCalls,
+      source: ' * `client.xAdd(...)` is banned here',
+      expected: 0,
+    },
+    {
+      name: 'wrapper call',
+      fn: findDirectXAddCalls,
+      source: 'await xAddBounded(client, name, fields);',
+      expected: 0,
+    },
+    { name: 'unrelated', fn: findDirectXAddCalls, source: 'const x = 1;', expected: 0 },
+    // The case the original line-based scan missed: prettier breaks long client
+    // expressions exactly like this at 100 columns.
+    {
+      name: 'multiline call',
+      fn: findDirectXAddCalls,
+      source: 'await client\n  .xAdd("s", "*", f);',
+      expected: 1,
+    },
+    {
+      name: 'bracket access',
+      fn: findDirectXAddCalls,
+      source: 'await client["xAdd"]("s", "*", f);',
+      expected: 1,
+    },
+    {
+      name: 'multiline in comment',
+      fn: findDirectXAddCalls,
+      source: ' * client\n * .xAdd(...)',
+      expected: 0,
+    },
+    {
+      name: 'dynamic seam import',
+      fn: findDynamicSeamRefs,
+      source: "import { xAddBoundedDynamic } from 'x';",
+      expected: 1,
+    },
+    {
+      name: 'dynamic seam in comment',
+      fn: findDynamicSeamRefs,
+      source: ' * xAddBoundedDynamic is narrow',
+      expected: 0,
+    },
+    {
+      name: 'bounded seam is not the dynamic one',
+      fn: findDynamicSeamRefs,
+      source: 'xAddBounded(a, b, c);',
+      expected: 0,
+    },
   ];
 
   let failures = 0;
   for (const testCase of cases) {
-    const actual = findDirectXAddCalls(testCase.source).length;
+    const actual = testCase.fn(testCase.source).length;
     if (actual !== testCase.expected) {
-      console.error(
-        `  ✗ ${testCase.name}: expected ${testCase.expected} hit(s), got ${actual}`
-      );
+      console.error(`  ✗ ${testCase.name}: expected ${testCase.expected} hit(s), got ${actual}`);
       failures += 1;
     }
   }
@@ -129,27 +241,36 @@ function main() {
       const rel = relative(REPO_ROOT, file).split('\\').join('/');
       if (TEST_PATTERN.test(rel)) continue;
       scanned += 1;
-      if (ALLOW_LIST.has(rel)) continue;
 
-      for (const hit of findDirectXAddCalls(readFileSync(file, 'utf8'))) {
-        violations.push({ file: rel, ...hit });
+      const source = readFileSync(file, 'utf8');
+
+      if (!ALLOW_LIST.has(rel)) {
+        for (const hit of findDirectXAddCalls(source)) {
+          violations.push({ file: rel, ...hit, rule: 'bare-xadd' });
+        }
+      }
+
+      if (!DYNAMIC_SEAM_ALLOW_LIST.has(rel)) {
+        for (const hit of findDynamicSeamRefs(source)) {
+          violations.push({ file: rel, ...hit, rule: 'dynamic-seam' });
+        }
       }
     }
   }
 
   if (violations.length > 0) {
-    console.error('✗ check-stream-writes: direct .xAdd( call(s) bypass the retention seam.\n');
+    console.error('✗ check-stream-writes: stream write(s) bypass the retention seam.\n');
     for (const violation of violations) {
-      console.error(`  ${violation.file}:${violation.line}`);
+      console.error(`  ${violation.file}:${violation.line}  [${violation.rule}]`);
       console.error(`    ${violation.text}`);
     }
-    console.error(
-      '\n  Every stream write must go through `xAddBounded` from `@openlinker/shared/redis`,'
-    );
-    console.error(
-      '  so an unbounded stream cannot exist. Add the stream to `REDIS_STREAM_NAMES` and'
-    );
-    console.error('  give it a retention bound in `STREAM_BOUNDS` (#2163).');
+    console.error('\n  bare-xadd:    every stream write must go through `xAddBounded` from');
+    console.error('                `@openlinker/shared/redis`, so an unbounded stream cannot');
+    console.error('                exist. Add the stream to `REDIS_STREAM_NAMES` and give it a');
+    console.error('                bound in `STREAM_BOUNDS` (#2163).');
+    console.error('  dynamic-seam: `xAddBoundedDynamic` skips the call-site type check and');
+    console.error('                exists only for `EventPublisherPort.publish`, whose stream');
+    console.error('                name is dynamic by contract. Use `xAddBounded` instead.');
     process.exit(1);
   }
 

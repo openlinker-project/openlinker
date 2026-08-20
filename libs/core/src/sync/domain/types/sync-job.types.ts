@@ -91,12 +91,7 @@ export type JobType = (typeof JobTypeValues)[number];
  * Runtime array of all valid job status values. Used for validation,
  * Swagger documentation, and UI dropdowns.
  */
-export const JobStatusValues = [
-  'queued',
-  'running',
-  'succeeded',
-  'dead',
-] as const;
+export const JobStatusValues = ['queued', 'running', 'succeeded', 'dead'] as const;
 
 /**
  * Job Status
@@ -305,7 +300,6 @@ export interface BulkRetryResult {
  */
 export const BULK_RETRY_MAX_BATCH_SIZE = 1000;
 
-
 /**
  * Sync Job (Persisted)
  *
@@ -381,4 +375,3 @@ export interface SyncJob extends SyncJobRequest {
    */
   updatedAt: Date | string;
 }
-

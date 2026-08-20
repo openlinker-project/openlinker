@@ -103,10 +103,21 @@ const STREAM_BOUNDS: Record<RedisStreamName, StreamBound> = {
   // (`{platformType}:{connectionId}:{sourceEventId}`), so that is a lost order
   // while `webhook_deliveries` still reads `job_enqueued`.
   //
-  // A COUNT bound discards silently under exactly the load spike it was sized
-  // for. This horizon is longer than JOB_DEDUP_TTL_MS, so anything trimmed has
-  // already lost its dedup key and CAN be re-enqueued: trimmed implies
-  // recoverable, which no MAXLEN threshold can guarantee.
+  // An AGE bound is chosen because a COUNT bound discards under exactly the
+  // load spike it was sized for: volume-correlated, and therefore most likely
+  // precisely when the backlog is legitimate. An age bound discards only after
+  // sustained intake failure, which is a condition an operator can alert on.
+  //
+  // The horizon is also longer than JOB_DEDUP_TTL_MS, so a trimmed entry's dedup
+  // key has certainly expired. Note carefully what that does and does not buy:
+  // it makes a trimmed job **un-blocked**, not **recovered**. A re-enqueue will
+  // no longer no-op with `{isExisting: true}` — but nothing in the system
+  // re-enqueues one. The consumer's recovery is PEL-based and a trimmed,
+  // never-delivered entry was never in a PEL; a source redelivering the same
+  // webhook is stopped at the durable `webhook_deliveries` gate, which outlives
+  // every TTL here. Recovery is operator-driven; see
+  // docs/operations/redis-stream-retention.md. Closing the gap for real is
+  // ADR-049 decision 1 (work row inside the business transaction).
   [REDIS_STREAM_NAMES.jobsSync]: { kind: 'minid', maxAgeMs: 14 * DAY_MS },
 
   // Diagnostic, but the *fact* of dead-lettering is durable in
@@ -137,9 +148,19 @@ const STREAM_BOUNDS: Record<RedisStreamName, StreamBound> = {
  */
 export const DEFAULT_STREAM_BOUND: StreamBound = { kind: 'maxlen', threshold: 10_000 };
 
-/** Resolve a stream's bound. Never returns `undefined`. */
+/**
+ * Resolve a stream's bound. Never returns `undefined`.
+ *
+ * `Object.hasOwn` rather than a plain index: an inherited key (`'constructor'`,
+ * `'toString'`) would return a function, skip the `??` fallback, and reach
+ * node-redis as `threshold: undefined`. Only reachable through
+ * {@link xAddBoundedDynamic} with an absurd name, but the whole point of this
+ * module is that no input yields an unbounded or malformed write.
+ */
 export function resolveStreamBound(streamName: string): StreamBound {
-  return STREAM_BOUNDS[streamName as RedisStreamName] ?? DEFAULT_STREAM_BOUND;
+  return Object.hasOwn(STREAM_BOUNDS, streamName)
+    ? STREAM_BOUNDS[streamName as RedisStreamName]
+    : DEFAULT_STREAM_BOUND;
 }
 
 /** node-redis `XADD` TRIM options. */
@@ -157,6 +178,13 @@ export interface StreamTrimOptions {
  * `now` is injectable because a `minid` bound resolves its threshold from the
  * current time: a Redis stream id is `{ms}-{seq}`, so `now - maxAgeMs` is a
  * valid `MINID` threshold.
+ *
+ * Note that this is the **application's** clock, while the ids it is compared
+ * against were minted by the **Redis server's**. The exposure is negligible by
+ * construction: trimming an entry that is actually recent would need the server
+ * to lag the app by more than the margin between the horizon and the dedup TTL
+ * (7 days), and skew above a few seconds already breaks the far tighter
+ * `OL_WEBHOOK_SKEW_WINDOW_MS` replay guard, so it would surface there first.
  */
 export function streamTrimOptions(streamName: string, now: number = Date.now()): StreamTrimOptions {
   const bound = resolveStreamBound(streamName);
