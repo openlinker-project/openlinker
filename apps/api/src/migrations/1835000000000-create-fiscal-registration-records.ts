@@ -25,8 +25,8 @@
  */
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class CreateFiscalRegistrationRecords1834000000000 implements MigrationInterface {
-  name = 'CreateFiscalRegistrationRecords1834000000000';
+export class CreateFiscalRegistrationRecords1835000000000 implements MigrationInterface {
+  name = 'CreateFiscalRegistrationRecords1835000000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`CREATE EXTENSION IF NOT EXISTS "uuid-ossp"`);
