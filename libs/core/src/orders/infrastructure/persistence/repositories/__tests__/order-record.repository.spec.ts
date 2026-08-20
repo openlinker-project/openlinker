@@ -21,7 +21,7 @@ import { OrderRecordNotFoundException } from '../../../../domain/exceptions/orde
 describe('OrderRecordRepository', () => {
   let repository: OrderRecordRepository;
   let ormRepository: jest.Mocked<Repository<OrderRecordOrmEntity>>;
-  let transactionalManager: { save: jest.Mock; delete: jest.Mock };
+  let transactionalManager: { save: jest.Mock<Promise<unknown>, unknown[]>; delete: jest.Mock };
 
   beforeEach(async () => {
     const qb = {
