@@ -10,7 +10,7 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { byteLength, deriveRichTextProfile } from './rich-text-profiles';
+import { byteLength, deriveRichTextProfile, exceedsDescriptionCap } from './rich-text-profiles';
 import type { DescriptionFormat } from './rich-text.types';
 
 function format(overrides: Partial<DescriptionFormat> = {}): DescriptionFormat {
@@ -148,5 +148,31 @@ describe('byteLength', () => {
 
   it('should count an empty string as zero', () => {
     expect(byteLength('')).toBe(0);
+  });
+});
+
+describe('exceedsDescriptionCap', () => {
+  it('should report a value over the destination cap when a cap is declared', () => {
+    expect(exceedsDescriptionCap('abcdef', { maxBytes: 5 })).toBe(true);
+    expect(exceedsDescriptionCap('abcde', { maxBytes: 5 })).toBe(false);
+  });
+
+  it('should measure bytes, not characters', () => {
+    // Three Polish characters are six bytes: a character-length gate would let
+    // this through and the destination would reject the whole write.
+    expect(exceedsDescriptionCap('żóć', { maxBytes: 5 })).toBe(true);
+  });
+
+  it('should never report a breach while the contract is still in flight', () => {
+    // `null` format means the declaration has not arrived. A cap nobody declared
+    // cannot be exceeded, and blocking Save on a pending read would look like a
+    // broken form.
+    expect(exceedsDescriptionCap('x'.repeat(10_000), null)).toBe(false);
+    expect(exceedsDescriptionCap('x'.repeat(10_000), undefined)).toBe(false);
+  });
+
+  it('should never report a breach for an uncapped destination or an empty value', () => {
+    expect(exceedsDescriptionCap('x'.repeat(10_000), { maxBytes: null })).toBe(false);
+    expect(exceedsDescriptionCap('', { maxBytes: 0 })).toBe(false);
   });
 });

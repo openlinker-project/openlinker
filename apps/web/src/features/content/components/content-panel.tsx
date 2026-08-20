@@ -21,6 +21,7 @@ import { Button } from '../../../shared/ui/button';
 import { DesktopOnlyBanner } from '../../../shared/ui/desktop-only-banner';
 import { StatusBadge } from '../../../shared/ui/status-badge';
 import { RichTextEditor } from '../../../shared/ui/rich-text-editor';
+import { exceedsDescriptionCap } from '../../../shared/ui/rich-text-profiles';
 import type { DescriptionFormat } from '../../../shared/ui/rich-text.types';
 import { formatDateTime } from '../../../shared/format/format-date';
 import { formatRelativeTime } from '../../../shared/format/format-relative-time';
@@ -106,8 +107,7 @@ export function ContentPanel({
   // exact class of failure ADR-046 exists to remove. Measured in UTF-8 bytes,
   // like the backend cap, and only when the destination declared one.
   const destinationCap = format?.maxBytes ?? null;
-  const overDestinationCap =
-    destinationCap !== null && new TextEncoder().encode(value).length > destinationCap;
+  const overDestinationCap = exceedsDescriptionCap(value, format);
   const canSave = !readOnly && !busy && isDirty && !overLimit && !overDestinationCap;
   const canDiscard = !readOnly && !busy && hasDraft;
   const canPublish = !readOnly && !busy && hasDraft && !isDirty && !hasConflict;

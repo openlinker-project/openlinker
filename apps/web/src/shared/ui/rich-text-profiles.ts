@@ -156,3 +156,22 @@ export function buildRichTextExtensions(
 export function byteLength(value: string): number {
   return new TextEncoder().encode(value).length;
 }
+
+/**
+ * Is `value` longer than the destination's declared byte cap?
+ *
+ * The counter next to the editor is informational; this is what a submit
+ * surface gates on. Every surface that can send a description has to ask,
+ * because the cap belongs to the destination and the platform rejects the
+ * whole write - the operator would otherwise learn about it from a 422 on a
+ * job they already dispatched. Returns `false` while the contract is still in
+ * flight (`format === null`): a cap nobody has declared cannot be exceeded.
+ */
+export function exceedsDescriptionCap(
+  value: string,
+  format: Pick<DescriptionFormat, 'maxBytes'> | null | undefined,
+): boolean {
+  const cap = format?.maxBytes ?? null;
+  if (cap === null || value === '') return false;
+  return byteLength(value) > cap;
+}

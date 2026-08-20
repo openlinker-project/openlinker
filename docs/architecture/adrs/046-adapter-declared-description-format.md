@@ -85,6 +85,14 @@ Three subordinate decisions are settled here:
 
 Images inside descriptions (a question about the shape of `description.sections`, not about a tag allowlist), tables, Allegro's structured multi-section model, and ordering/cardinality in the content model. `sup` and `sub` appear in neither grammar and must not be declared - they surfaced only in a search-engine cache of a superseded revision of Erli's doc.
 
+## Amendment - how the read resolves a connection (review of #2204)
+
+Decision 1 said the fallback is resolved server-side; it did not say *which* capability answers, and the first implementation took the first one that did. That was wrong in a shipped configuration: a WooCommerce connection with #1498 stock write-back enabled resolves `OfferManager` to a base-port-only adapter that declares nothing, so the editor was handed the conservative subset - and the operator was told their destination had declared no format - for a shop whose own `ProductPublisher` declaration allows tables, links and `h3`, and whose publish path uses that real declaration. The read therefore prefers a **declaration** over a fallback regardless of which capability produced it: `OfferManager` is probed first, `ProductPublisher` second, and an undeclared first answer is kept only if the second does not declare either.
+
+That also splits a case decision 1 collapsed. "This destination declared nothing" and "no adapter could be resolved for this connection" are different facts, and only the second is a configuration state an operator can act on (a disabled connection, a credential failure). So the response carries `resolvedVia: 'OfferManager' | 'ProductPublisher' | null`, with `null` meaning unresolved rather than undeclared, logged at `warn` on the way out. `declared: false` still means what it said.
+
+Every submit surface that can send a description gates on the declared `maxBytes` (`exceedsDescriptionCap`), not just the Content tab: an offer-field update and a bulk publish both dispatch jobs, so an over-cap description would otherwise be accepted in the UI and rejected by the platform after the modal closed.
+
 ## References
 
 - Related issues: #2193 (epic), #2194 (this ADR), #2195, #2196, #2197, #2198, #2199, #2200, #2201, #2202

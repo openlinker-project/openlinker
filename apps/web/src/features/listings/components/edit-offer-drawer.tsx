@@ -16,7 +16,9 @@ import { Input } from '../../../shared/ui/input';
 import { Button } from '../../../shared/ui/button';
 import { Alert } from '../../../shared/ui/alert';
 import { useToast } from '../../../shared/ui/toast-provider';
+import { exceedsDescriptionCap } from '../../../shared/ui';
 import { useUpdateOfferFields } from '../hooks/use-update-offer-fields';
+import { useDescriptionFormatQuery } from '../hooks/use-description-format-query';
 import type { OfferMapping } from '../api/listings.types';
 import type { UpdateOfferFieldsPayload } from '../api/listings.types';
 import { editOfferFieldsSchema, type EditOfferFieldsValues } from './edit-offer-fields.schema';
@@ -93,6 +95,15 @@ export function EditOfferDrawer({ isOpen, onClose, mapping }: EditOfferDrawerPro
   const validationMessages = Object.values(form.formState.errors).flatMap((error) =>
     error?.message ? [String(error.message)] : [],
   );
+
+  // ADR-046: the destination's own byte cap, enforced before dispatch. The
+  // counter under the editor only informs; the update is a job, so an over-cap
+  // description would be accepted here and rejected by the platform long after
+  // the drawer closed. Same read the editor composes itself from (one query,
+  // deduped by key), so the number quoted below is the destination's.
+  const descriptionFormat = useDescriptionFormatQuery(mapping.connectionId).data ?? null;
+  const descriptionValue = form.watch('descriptionText') ?? '';
+  const overDescriptionCap = exceedsDescriptionCap(descriptionValue, descriptionFormat);
 
   const onSubmit = form.handleSubmit(async (values) => {
     const fields: UpdateOfferFieldsPayload = {};
@@ -172,6 +183,14 @@ export function EditOfferDrawer({ isOpen, onClose, mapping }: EditOfferDrawerPro
           {mutation.error ? (
             <Alert tone="error" title="Update failed">
               {mutation.error.message}
+            </Alert>
+          ) : null}
+
+          {overDescriptionCap && descriptionFormat?.maxBytes != null ? (
+            <Alert tone="warning">
+              This description is longer than the destination accepts (
+              {descriptionFormat.maxBytes.toLocaleString()} bytes). Shorten it before saving - the
+              platform would reject the update.
             </Alert>
           ) : null}
 
@@ -279,7 +298,7 @@ export function EditOfferDrawer({ isOpen, onClose, mapping }: EditOfferDrawerPro
           <Button
             type="submit"
             form="edit-offer-fields-form"
-            disabled={!isDirty || mutation.isPending}
+            disabled={!isDirty || mutation.isPending || overDescriptionCap}
           >
             {mutation.isPending ? 'Saving…' : 'Save changes'}
           </Button>

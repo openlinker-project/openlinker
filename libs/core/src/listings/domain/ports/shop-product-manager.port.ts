@@ -8,8 +8,11 @@
  * (content, images, SEO, multi-category placement, price/stock as fields,
  * draft/published visibility).
  *
- * Like `OfferManagerPort`, the base port carries only the one method every
- * shop-listing adapter must implement: `publishProduct`. Additional shop
+ * The base port carries the two methods every shop-listing adapter must
+ * implement: `publishProduct`, and `getDescriptionFormat` - the description
+ * grammar this shop accepts (ADR-046), required here rather than optional
+ * because a shop publish always carries content (see the method for why).
+ * Additional shop
  * behaviours (category provisioning today; unpublish / set-visibility /
  * status-read as the surface grows) live as distinct capability interfaces
  * under `./capabilities/`, declared via `implements` and narrowed at call sites

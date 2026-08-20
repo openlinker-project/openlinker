@@ -67,7 +67,15 @@ import {
 import { resolvePlatformLabel } from '../../../mappings';
 import type { Connection } from '../../../connections';
 import { resolveVariantGroupingModel } from '../../../connections';
-import { Alert, Button, ConfirmDialog, FormField, Input, RichTextEditor } from '../../../../shared/ui';
+import {
+  Alert,
+  Button,
+  ConfirmDialog,
+  exceedsDescriptionCap,
+  FormField,
+  Input,
+  RichTextEditor,
+} from '../../../../shared/ui';
 import type { DescriptionFormat } from '../../../../shared/ui';
 import { useDescriptionFormatQuery } from '../../hooks/use-description-format-query';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../../../../shared/ui/tooltip';
@@ -304,8 +312,8 @@ export function BulkEditModal({
   // branch render description fields, and each derives its toolbar and schema
   // from this, so a control the destination would discard is never offered.
   // Called before the early return below, or it would break the hook order on a
-  // row with no variants. Narrow while in flight; see
-  // `offer-description-editor.constants.ts` for why erring narrow is safe.
+  // row with no variants. `null` while in flight - the editor renders a disabled
+  // placeholder rather than authoring against a frontend-held guess.
   const descriptionFormatQuery = useDescriptionFormatQuery(connection.id);
   // `null` while in flight; the editor renders a disabled placeholder rather
   // than authoring against a frontend-held guess (ADR-046).
@@ -492,9 +500,7 @@ function BulkEditModalForm({
   const connectionId = connection.id;
   // ADR-046: one read for the whole modal. Every description field below derives
   // its toolbar and schema from this, so a control the destination would discard
-  // is never offered. Narrow while in flight - see
-  // `offer-description-editor.constants.ts` for why erring narrow is the safe
-  // direction.
+  // is never offered.
   const descriptionFormatQuery = useDescriptionFormatQuery(connectionId);
   // `null` while in flight; the editor renders a disabled placeholder rather
   // than authoring against a frontend-held guess (ADR-046).
@@ -760,6 +766,28 @@ function BulkEditModalForm({
     }
 
     const values = baseForm.getValues();
+
+    // ADR-046: the destination's own byte cap, checked before the batch leaves
+    // the modal. The counter under each editor only informs, and a bulk submit
+    // fans out into jobs - an over-cap description would come back as a platform
+    // reject per offer, long after this modal closed. Blocking here also keeps
+    // the operator on the scope that has to change.
+    const overCapScope = exceedsDescriptionCap(values.description ?? '', descriptionFormat)
+      ? isMultiVariant
+        ? 'base'
+        : 'simple'
+      : row.variants.find((v) =>
+          exceedsDescriptionCap(variantEdits[v.variantId]?.description ?? '', descriptionFormat),
+        )?.variantId;
+    if (overCapScope !== undefined && descriptionFormat?.maxBytes != null) {
+      setScope(overCapScope);
+      showToast({
+        tone: 'error',
+        title: 'Description too long for this destination',
+        description: `Shorten it to ${descriptionFormat.maxBytes.toLocaleString()} bytes or fewer - ${platformName} rejects a longer one.`,
+      });
+      return;
+    }
 
     let baseParameters: OfferParameter[] = [];
     if (categoryParameters.length > 0 && values.parameters) {
@@ -3054,6 +3082,7 @@ function BulkShopEditModalForm({
   onClose,
 }: BulkShopEditModalFormProps): ReactElement {
   const connectionId = connection.id;
+  const { showToast } = useToast();
   const isMultiVariant = row.variants.length > 1;
   const masterImages = useMemo(
     () => (row.product?.images ?? []).filter((u): u is string => typeof u === 'string' && u.trim() !== ''),
@@ -3211,6 +3240,26 @@ function BulkShopEditModalForm({
     if (title.trim() === '') {
       setTitleTouched(true);
       setScope(isMultiVariant ? 'base' : 'simple');
+      return;
+    }
+
+    // ADR-046, same gate as the marketplace form: the shop declares a byte cap
+    // too, and a bulk publish fans out into jobs, so an over-cap description
+    // would surface as a per-product reject after this modal closed.
+    const overCapScope = exceedsDescriptionCap(description, descriptionFormat)
+      ? isMultiVariant
+        ? 'base'
+        : 'simple'
+      : row.variants.find((v) =>
+          exceedsDescriptionCap(variantEdits[v.variantId]?.description ?? '', descriptionFormat),
+        )?.variantId;
+    if (overCapScope !== undefined && descriptionFormat?.maxBytes != null) {
+      setScope(overCapScope);
+      showToast({
+        tone: 'error',
+        title: 'Description too long for this destination',
+        description: `Shorten it to ${descriptionFormat.maxBytes.toLocaleString()} bytes or fewer - the shop rejects a longer one.`,
+      });
       return;
     }
 
