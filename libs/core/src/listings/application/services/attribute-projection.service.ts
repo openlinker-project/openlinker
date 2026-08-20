@@ -20,8 +20,12 @@
 
 import { Injectable, Inject } from '@nestjs/common';
 import { Logger } from '@openlinker/shared/logging';
-import type { OfferManagerPort, CategoryParameter } from '@openlinker/core/listings';
-import { isCategoryParametersReader } from '@openlinker/core/listings';
+import type {
+  OfferManagerPort,
+  CategoryParameter,
+  ParameterRestrictionIssue,
+} from '@openlinker/core/listings';
+import { isCategoryParametersReader, checkParameterRestrictions } from '@openlinker/core/listings';
 import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 import {
   IMappingConfigService,
@@ -79,6 +83,7 @@ export class AttributeProjectionService implements IAttributeProjectionService {
 
     const parameters: ResolvedParameter[] = [];
     const unresolvedRequired: AttributeProjectionResult['unresolvedRequired'] = [];
+    const restrictionIssues: ParameterRestrictionIssue[] = [];
     const usedSourceKeys = new Set<string>();
 
     // Operator-authored rule layer (#1841): a deterministic, sequenced overlay
@@ -111,8 +116,32 @@ export class AttributeProjectionService implements IAttributeProjectionService {
         const resolved = this.toResolvedParameter(param, destinationValue);
         if (resolved) {
           parameters.push(resolved);
-        } else if (param.required) {
-          unresolvedRequired.push({ id: param.id, name: param.name, section: param.section });
+          // The value never passes through any UI on this path, so this is the
+          // only place a declared bound can be checked before the marketplace
+          // answers (#2243). Reported, not corrected: rewriting an operator's
+          // mapped value would be a worse failure than naming it.
+          restrictionIssues.push(
+            ...checkParameterRestrictions(param, {
+              values: resolved.valuesIds,
+              texts: resolved.values,
+            })
+          );
+        } else {
+          // A dictionary miss. The parameter is still dropped (an unknown id is
+          // its own rejection), but it is no longer only a debug line - an offer
+          // published without the value looks fine and is not.
+          restrictionIssues.push({
+            code: 'VALUE_NOT_IN_DICTIONARY',
+            severity: 'block',
+            parameterId: param.id,
+            parameterName: param.name,
+            message:
+              `"${destinationValue}" is not one of the values ${param.name} allows in this category, ` +
+              `so the parameter was left out of the offer.`,
+          });
+          if (param.required) {
+            unresolvedRequired.push({ id: param.id, name: param.name, section: param.section });
+          }
         }
       }
     } else {
@@ -144,7 +173,15 @@ export class AttributeProjectionService implements IAttributeProjectionService {
       return true;
     });
 
-    return { parameters, unmappedSourceKeys, unresolvedRequired };
+    if (restrictionIssues.length > 0) {
+      this.logger.warn(
+        `Projected ${restrictionIssues.length} parameter value(s) that break a declared bound ` +
+          `(destination=${destinationConnectionId}, category=${destinationCategoryId}): ` +
+          restrictionIssues.map((i) => `${i.parameterName}: ${i.code}`).join('; ')
+      );
+    }
+
+    return { parameters, unmappedSourceKeys, unresolvedRequired, restrictionIssues };
   }
 
   /**

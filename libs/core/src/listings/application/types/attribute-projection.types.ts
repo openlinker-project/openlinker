@@ -10,6 +10,7 @@
 
 import type { CategoryParameterSection } from '../../domain/types/category-parameter.types';
 import type { OfferParameter } from '../../domain/types/offer-parameter.types';
+import type { ParameterRestrictionIssue } from '../../domain/types/parameter-restriction.types';
 
 /**
  * Projection input. `sourceConnectionId` selects the source-scoped attribute
@@ -91,4 +92,16 @@ export interface AttributeProjectionResult {
   parameters: ResolvedParameter[];
   unmappedSourceKeys: string[];
   unresolvedRequired: { id: string; name: string; section: CategoryParameterSection }[];
+  /**
+   * Declared bounds a projected value breaks (#2243) — reported, never
+   * corrected. These values come from attribute mappings and the #1841 operator
+   * rule layer, so they never pass through any UI: the browser cannot see them
+   * and therefore cannot warn about them. Before this the marketplace was the
+   * first thing to notice, one rejected record at a time.
+   *
+   * A dictionary miss is in here too. It used to be a debug log and a dropped
+   * parameter, which published an offer that was silently MISSING the value
+   * rather than one that was visibly wrong.
+   */
+  restrictionIssues: ParameterRestrictionIssue[];
 }

@@ -328,7 +328,7 @@ describe('ProductPublishBuilderService', () => {
     projection.project.mockResolvedValue({
       parameters: [],
       unmappedSourceKeys: [],
-      unresolvedRequired: [{ id: 'GTIN', name: 'GTIN', section: 'product' }],
+      unresolvedRequired: [{ id: 'GTIN', name: 'GTIN', section: 'product' }], restrictionIssues: [],
     });
 
     await expect(service.buildPublishProductCommand(baseInput)).rejects.toBeInstanceOf(

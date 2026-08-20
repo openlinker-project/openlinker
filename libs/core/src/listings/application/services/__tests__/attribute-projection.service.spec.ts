@@ -441,4 +441,72 @@ describe('AttributeProjectionService', () => {
       expect(result.parameters).toEqual([]);
     });
   });
+
+  describe('restriction reporting (#2243)', () => {
+    it('reports a mapped value that breaks a declared bound, and still emits it', async () => {
+      // The operator never sees this value - it comes from a mapping rule - so
+      // this is the only place it can be checked before Allegro answers.
+      const params = [
+        param({ id: '250792', name: 'Kod taryfy celnej', restrictions: { minLength: 8 } }),
+      ];
+      service = build(ownsAdapter(params), [mapping('CN', 'Kod taryfy celnej')]);
+
+      const result = await service.project(input({ CN: '250792' }));
+
+      expect(result.parameters).toEqual([
+        { id: '250792', values: ['250792'], section: 'offer' },
+      ]);
+      expect(result.restrictionIssues).toHaveLength(1);
+      expect(result.restrictionIssues[0]).toMatchObject({
+        code: 'VALUE_TOO_SHORT',
+        severity: 'block',
+        parameterId: '250792',
+        parameterName: 'Kod taryfy celnej',
+      });
+    });
+
+    it('reports nothing when the mapped value is inside the declared bound', async () => {
+      const params = [
+        param({ id: '250792', name: 'Kod taryfy celnej', restrictions: { minLength: 8 } }),
+      ];
+      service = build(ownsAdapter(params), [mapping('CN', 'Kod taryfy celnej')]);
+
+      const result = await service.project(input({ CN: '25079200' }));
+
+      expect(result.restrictionIssues).toEqual([]);
+    });
+
+    it('reports a dictionary miss instead of dropping the parameter silently', async () => {
+      const params = [
+        param({
+          id: 'p-color',
+          name: 'Kolor',
+          type: 'dictionary',
+          dictionary: [{ id: 'd-beige', value: 'Beżowy' }],
+        }),
+      ];
+      service = build(ownsAdapter(params), [mapping('Color', 'Kolor')]);
+
+      const result = await service.project(input({ Color: 'Cappuccino' }));
+
+      // Still dropped - an unknown id is its own rejection - but no longer only
+      // a debug line: an offer published WITHOUT the value looks fine and is not.
+      expect(result.parameters).toEqual([]);
+      expect(result.restrictionIssues).toHaveLength(1);
+      expect(result.restrictionIssues[0]).toMatchObject({
+        code: 'VALUE_NOT_IN_DICTIONARY',
+        parameterName: 'Kolor',
+      });
+      expect(result.restrictionIssues[0].message).toContain('Cappuccino');
+    });
+
+    it('reports nothing on the pass-through branch, which has no schema to check against', async () => {
+      service = build(passthroughAdapter(), [mapping('CN', 'Kod taryfy celnej')]);
+
+      const result = await service.project(input({ CN: '250792' }));
+
+      expect(result.parameters).toHaveLength(1);
+      expect(result.restrictionIssues).toEqual([]);
+    });
+  });
 });
