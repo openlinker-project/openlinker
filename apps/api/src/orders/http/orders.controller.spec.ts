@@ -74,6 +74,12 @@ describe('OrdersController', () => {
       updateItemResolutionFailure: jest.fn(),
       markCancelled: jest.fn(),
       updateSalesDocumentBlock: jest.fn(),
+      claimFxIntentIfAbsent: jest.fn(),
+      stampFxIfAbsent: jest.fn(),
+      markFxTerminal: jest.fn(),
+      findUnstampedFxOrderIds: jest.fn(),
+      listDistinctNativeCurrencies: jest.fn(),
+      countStampedByReportingCurrency: jest.fn(),
     };
 
     const mockRetryService: jest.Mocked<IOrderDestinationRetryService> = {

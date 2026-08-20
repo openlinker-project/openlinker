@@ -50,6 +50,7 @@ import { PromptTemplatesController } from '../ai/http/prompt-templates.controlle
 import { ContentController } from '../content/http/content.controller';
 import { MappingsController } from '../mappings/http/mappings.controller';
 import { MailerSettingsController } from '../mailer/http/mailer-settings.controller';
+import { CurrencySettingsController } from '../currency/http/currency-settings.controller';
 
 const METHOD_METADATA = 'method';
 
@@ -87,6 +88,7 @@ const CONTROLLERS = [
   ContentController,
   MailerSettingsController,
   MappingsController,
+  CurrencySettingsController,
 ];
 
 describe('Write-guard coverage invariant (#1124 / #1126 / #1357)', () => {

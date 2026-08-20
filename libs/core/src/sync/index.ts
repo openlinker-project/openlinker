@@ -67,6 +67,8 @@ export {
 export {
   MarketplaceOrdersPollPayloadV1,
   MarketplaceOrderSyncPayloadV1,
+  MarketplaceOrderFxStampPayloadV1,
+  MarketplaceOrderFxStampSweepPayloadV1,
   MarketplaceOfferQuantityUpdatePayloadV1,
   MarketplaceOfferFieldUpdatePayloadV1,
   MarketplaceOffersSyncPayloadV1,

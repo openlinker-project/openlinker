@@ -118,6 +118,43 @@ export class OrderRecord {
      * the operator. `null` when the reason needs no elaboration.
      */
     public readonly salesDocumentBlockDetail: string | null = null,
+    /**
+     * Reporting currency the order's total was stamped into (#2124, ADR-040).
+     * `null` ≡ NOT stamped — the canonical test, since `exchangeRateId` is
+     * legitimately `null` on the same-currency path. Written only by
+     * `stampFxIfAbsent`; the ingestion upsert omits the column.
+     */
+    public readonly reportingCurrency: string | null = null,
+    /**
+     * The order total expressed in `reportingCurrency`, rounded to 2dp.
+     * `null` whenever `reportingCurrency` is (the group CHECK guarantees the
+     * pair moves together).
+     */
+    public readonly reportingTotalAmount: number | null = null,
+    /**
+     * `exchange_rates.id` the conversion used; `null` when the order's own
+     * currency already equalled the reporting currency, so no rate was needed.
+     */
+    public readonly exchangeRateId: string | null = null,
+    /**
+     * Which published day's rate the stamp was taken against (an `FxRateRule`
+     * value). A bare `string` rather than the union: this is read back out of
+     * the database, and a value written by a newer deployment must surface
+     * as-is rather than be coerced or dropped. Set by the intent claim too, so
+     * a non-null `fxRule` does NOT imply the order is stamped.
+     */
+    public readonly fxRule: string | null = null,
+    /**
+     * Instant the stamp attempt reached a terminal answer. `null` while an
+     * attempt is still deferred to the retry job.
+     */
+    public readonly fxStampedAt: Date | null = null,
+    /**
+     * The reporting currency pinned at the FIRST stamp attempt, before any rate
+     * lookup — so a retry or the sweep stamps against the same currency the
+     * inline attempt resolved even if the system setting changed in between.
+     */
+    public readonly fxIntendedCurrency: string | null = null
   ) {}
 
   /**
@@ -219,5 +256,66 @@ export class OrderRecord {
    */
   get isCancelled(): boolean {
     return this.cancelledAt !== null;
+  }
+
+  /**
+   * True once a reporting-currency figure has landed on this row (#2125). Pure
+   * derivation of an already-loaded field (ADR-011).
+   *
+   * Reads `reportingCurrency`, NOT `exchangeRateId` (legitimately `null` on the
+   * same-currency path) and NOT `fxStampedAt` (which a TERMINAL attempt also
+   * writes, with no figure attached).
+   */
+  get isFxStamped(): boolean {
+    return this.reportingCurrency !== null;
+  }
+
+  /**
+   * Typed, fail-safe read of the order's own (native) currency and total from
+   * the snapshot (#2125). Pure derivation of an already-loaded field (ADR-011):
+   * no I/O, no mutation. Mirrors {@link codToCollect} - centralises the
+   * `orderSnapshot.totals` keys so the FX stamp binds to a typed contract
+   * rather than the snapshot's JSON layout.
+   *
+   * Deliberately NOT routed through `orderFromReadySnapshot`: that accessor
+   * asserts `recordStatus === 'ready'` and throws when the buyer address is
+   * PII-redacted, so a hash-only deployment (`OL_STORE_PII=false`) would lose
+   * every FX stamp over a field the stamp does not read. `totals` is written by
+   * BOTH persist paths and is never PII-gated.
+   *
+   * Returns `undefined` unless both halves are well-formed - a total with no
+   * currency cannot be converted, and a currency with no total has nothing to
+   * convert.
+   */
+  get nativeTotals(): { amount: number; currency: string } | undefined {
+    const value = this.orderSnapshot.totals;
+    if (typeof value !== 'object' || value === null) {
+      return undefined;
+    }
+    const { total, currency } = value as Record<string, unknown>;
+    return typeof total === 'number' && Number.isFinite(total) && typeof currency === 'string'
+      ? { amount: total, currency }
+      : undefined;
+  }
+
+  /**
+   * Typed, fail-safe read of the buyer-placed-on-marketplace instant (#2125)
+   * from the snapshot (`orderSnapshot.placedAt`, persisted as an ISO string).
+   * Pure derivation of an already-loaded field (ADR-011).
+   *
+   * `undefined` for an absent OR unparseable value - the same no-fallback
+   * semantics `orderFromReadySnapshot`'s `asOptionalDate` applies, so the two
+   * rehydration paths cannot disagree about whether `placedAt` exists. There is
+   * deliberately no fallback to `createdAt`: that is OpenLinker's ingestion
+   * instant, not the sale date, and substituting it would stamp a rate against
+   * a day the buyer never transacted on.
+   */
+  get placedAt(): Date | undefined {
+    const value = this.orderSnapshot.placedAt;
+    if (typeof value !== 'string' && !(value instanceof Date)) {
+      return undefined;
+    }
+    const parsed = value instanceof Date ? value : new Date(value);
+    return Number.isNaN(parsed.getTime()) ? undefined : parsed;
   }
 }

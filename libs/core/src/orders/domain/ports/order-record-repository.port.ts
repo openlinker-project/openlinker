@@ -21,6 +21,8 @@ import type { OrderSlaSummary } from '../types/order-sla.types';
 import type { FulfillmentRollupState } from '../types/order-fulfillment.types';
 import type { SyncAttempt } from '../types/order-sync.types';
 import type { SalesDocumentBlock } from '@openlinker/core/sales-documents';
+import type { OrderFxIntent, OrderFxStamp } from '../types/order-fx.types';
+import type { StampedReportingCurrencyCount } from '../types/order-fx-read.types';
 
 export interface OrderRecordRepositoryPort {
   /**
@@ -48,11 +50,14 @@ export interface OrderRecordRepositoryPort {
    * Writes only the columns the ingestion path owns. The columns written
    * out-of-band by a narrow, atomic UPDATE - `syncStatus` / `syncAttempts`
    * (#2140, {@link updateSyncStatus}), `fulfillmentState` (#2101,
-   * {@link updateFulfillmentState}) and `cancelledAt` (#1984,
-   * {@link markCancelled}) - are NOT part of the write set, so a re-ingestion
-   * of the same order cannot reset them. The returned record therefore reports
-   * all four as empty (`[]` / `null`) whatever the row holds; re-read via
-   * {@link findById} when their live value matters.
+   * {@link updateFulfillmentState}), `cancelledAt` (#1984,
+   * {@link markCancelled}), the three `salesDocument*` columns (#2100,
+   * {@link updateSalesDocumentBlock}) and the six FX snapshot columns (#2124,
+   * {@link claimFxIntentIfAbsent} / {@link stampFxIfAbsent}) - are NOT part of
+   * the write set, so a re-ingestion of the same order cannot reset them. The
+   * returned record therefore reports all of them as empty (`[]` / `null`)
+   * whatever the row holds; re-read via {@link findById} when their live value
+   * matters.
    */
   upsert(orderRecord: OrderRecord): Promise<OrderRecord>;
 
@@ -169,4 +174,130 @@ export interface OrderRecordRepositoryPort {
     internalOrderId: string,
     block: SalesDocumentBlock | null
   ): Promise<void>;
+
+  /**
+   * Claim the first-attempt FX intent (#2124, ADR-040 § Decision 5) — writes
+   * `fxIntendedCurrency` + `fxRule` and nothing else, guarded on
+   * `fxIntendedCurrency IS NULL` so exactly one concurrent attempt can win.
+   *
+   * Returns `true` for the winner and `false` for a loser, which then re-reads
+   * the row and adopts the winner's intent instead of pinning its own — two
+   * concurrent first attempts must never resolve to different currencies for
+   * one order. `false` is also returned when no row matches the id at all
+   * (never throws), the same residual-race tolerance
+   * {@link updateFulfillmentState} carries.
+   *
+   * Deliberately NOT keyed on `reportingCurrency`: the intent is claimed
+   * *before* any rate lookup, so at that point the stamp columns are still
+   * NULL by definition.
+   */
+  claimFxIntentIfAbsent(internalOrderId: string, intent: OrderFxIntent): Promise<boolean>;
+
+  /**
+   * Stamp the order's reporting-currency figures at most once (#2124) — one
+   * guarded `UPDATE` over all five stamp columns, so the group can never
+   * half-apply, matched on `reportingCurrency IS NULL`.
+   *
+   * The predicate is `reportingCurrency`, NOT `fxIntendedCurrency`: by the time
+   * a stamp is attempted the intent has deliberately been claimed, so guarding
+   * on it would reject every stamp.
+   *
+   * Returns `true` when this call wrote the stamp and `false` when a stamp was
+   * already present (or no row matched) — in which case nothing was written and
+   * the existing, already-reported figure survives untouched. Sole writer of
+   * these columns together with {@link claimFxIntentIfAbsent}; {@link upsert}
+   * omits them so a re-ingestion cannot move a stamped financial figure.
+   */
+  stampFxIfAbsent(internalOrderId: string, stamp: OrderFxStamp): Promise<boolean>;
+
+  /**
+   * Record that a stamp attempt reached a TERMINAL answer (#2125) - writes
+   * `fxStampedAt` and NOTHING else, so the row keeps `reportingCurrency`,
+   * `reportingTotalAmount` and `exchangeRateId` NULL (which is exactly what the
+   * `ck_order_records_fx_group` CHECK's first arm allows).
+   *
+   * A separate write from {@link stampFxIfAbsent} because a terminal answer has
+   * no figure to stamp, and `OrderFxStamp` requires one. What it buys is the
+   * BOUNDEDNESS of the reconcile sweep: the sweep selects on
+   * `fxStampedAt IS NULL AND reportingCurrency IS NULL`, so without this write a
+   * permanently-unstampable order (no `placedAt`, unsupported pair) would be
+   * re-read and re-answered on every hourly tick forever.
+   *
+   * Guarded on `reportingCurrency IS NULL` ALONE, so it can never touch a stamped
+   * row - the figure is the thing that is immutable. Returns `true` when this
+   * call wrote; `false` when it did not (already stamped, or no row matched -
+   * never throws).
+   *
+   * It deliberately does NOT also require `fxStampedAt IS NULL` (#2135 review,
+   * finding 1). The sweep re-admits a terminal-but-figureless row once its marker
+   * ages past its cooldown, so a re-answer has to move the marker forward;
+   * refusing the write would leave the stale instant in place and the row would
+   * be re-tried on every subsequent tick instead of once per cooldown.
+   *
+   * Deliberately NOT a permanent gate on stamping either: `stampFxIfAbsent` still
+   * keys on `reportingCurrency IS NULL`, so a re-ingestion that repairs the
+   * snapshot (a source re-poll finally reporting `placedAt`) can still stamp the
+   * order inline.
+   */
+  markFxTerminal(internalOrderId: string, fxStampedAt: Date): Promise<boolean>;
+
+  /**
+   * One bounded page of orders that still carry NO reported figure (#2125), for
+   * the reconcile sweep.
+   *
+   * Predicate: `reportingCurrency IS NULL` AND (`fxStampedAt IS NULL` OR
+   * `fxStampedAt < options.terminalRetryBefore`), scoped to `sourceConnectionId`
+   * and to rows created at or after `options.createdSince`. Every bound matters,
+   * for a different reason:
+   *
+   *  - `reportingCurrency IS NULL` is the invariant, present in both arms: a row
+   *    that carries a figure is never re-entered, so a stamp stays immutable.
+   *  - `createdSince` keeps a permanently unstampable historical backlog from
+   *    crowding out live orders, and stops the whole pre-feature table being
+   *    re-selected on every tick forever.
+   *  - `terminalRetryBefore` is the recovery arm (#2135 review, finding 1). A
+   *    terminal answer is terminal about the CLASSIFICATION, not about the world:
+   *    `no-rate-source` clears when the host is rewired and a throttle-induced
+   *    `unsupported-pair` clears by itself, so a marker older than the cooldown
+   *    earns one more attempt rather than costing the order its figure forever.
+   *
+   * Returns ids only: the sweep re-enters the stamp through the same
+   * `stamp(internalOrderId)` signature every other caller uses, so hydrating
+   * whole records here would be work the stamp immediately repeats.
+   */
+  findUnstampedFxOrderIds(
+    sourceConnectionId: string,
+    options: { limit: number; createdSince: Date; terminalRetryBefore: Date }
+  ): Promise<string[]>;
+
+  /**
+   * The distinct set of order-native currencies OpenLinker has already
+   * ingested, feeding the reporting-currency coverage advisory.
+   *
+   * A SET, not a winner: no connection filter, no ordering, no `LIMIT` — the
+   * advisory needs to know every currency that would have to be convertible,
+   * not the most common one. Read out of the order snapshot (`totals.currency`)
+   * because `order_records` carries no native currency column yet (#1985);
+   * values that are not JSON strings are skipped rather than cast, so a
+   * malformed snapshot cannot fail the read.
+   */
+  listDistinctNativeCurrencies(): Promise<string[]>;
+
+  /**
+   * How many rows already carry an FX stamp, grouped by the reporting currency
+   * they were stamped in (#2126).
+   *
+   * The read behind "changing this setting splits history": a stamp is
+   * immutable, so every existing row keeps the currency it was stamped in and a
+   * deployment can legitimately hold several reporting-currency eras. Grouped
+   * rather than totalled because the era breakdown is the operator-facing fact
+   * and cannot be recovered from a bare total.
+   *
+   * Keyed on `reportingCurrency IS NOT NULL`, which is the same "is this row
+   * stamped?" predicate {@link stampFxIfAbsent} guards on - never
+   * `exchangeRateId`, which is legitimately NULL on a same-currency stamp.
+   * Rows that are unstamped (including terminal-unstamped ones) are absent from
+   * the result rather than reported under a `null` key.
+   */
+  countStampedByReportingCurrency(): Promise<StampedReportingCurrencyCount[]>;
 }
