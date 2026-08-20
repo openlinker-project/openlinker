@@ -14,6 +14,7 @@ describe('buildTopProducts', () => {
     unconvertedRevenue: 0,
     unconvertedOrderCount: 0,
     currency: 'EUR',
+    unconvertedCurrency: null,
     ...overrides,
   });
 
@@ -68,6 +69,7 @@ describe('buildTopProducts', () => {
         unconvertedRevenue: 0,
         unconvertedOrderCount: 0,
         currency: 'EUR',
+        unconvertedCurrency: null,
         channels: [],
       },
     ]);

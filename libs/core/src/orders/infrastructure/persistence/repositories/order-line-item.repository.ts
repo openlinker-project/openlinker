@@ -82,7 +82,11 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
    * different currency era and must not be summed into `revenue` alongside
    * current-era orders under one arbitrary label — it is folded into
    * `unconvertedRevenue`/`unconvertedOrderCount` instead, exactly like a
-   * never-stamped order.
+   * never-stamped order. `unconvertedCurrency` labels that evidence with the
+   * one native currency shared by every such order, or `null` when the set
+   * mixes currencies — same "null if mixed" rule
+   * `OrderRecordRepositoryPort.getDailyOrderAggregates` uses for its own
+   * `unconvertedCurrency`.
    */
   async getTopProductRanking(
     filters: TopProductFilters,
@@ -109,6 +113,12 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
         `CASE WHEN COUNT(*) FILTER (WHERE rec."reportingCurrency" = :reportingCurrency) > 0 THEN :reportingCurrency ELSE NULL END`,
         'reporting_currency'
       )
+      .addSelect(
+        `CASE WHEN COUNT(DISTINCT rec."currency") FILTER (WHERE rec."reportingCurrency" IS DISTINCT FROM :reportingCurrency) <= 1
+              THEN MAX(rec."currency") FILTER (WHERE rec."reportingCurrency" IS DISTINCT FROM :reportingCurrency)
+              ELSE NULL END`,
+        'unconverted_currency'
+      )
       .setParameter('reportingCurrency', reportingCurrency)
       .groupBy('li.productId')
       .orderBy(filters.sortBy === 'units' ? 'units' : 'revenue', 'DESC')
@@ -130,6 +140,7 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
         unconverted_revenue: string;
         unconverted_order_count: string;
         reporting_currency: string | null;
+        unconverted_currency: string | null;
       }>(),
       totalQb.getRawOne<{ total: string }>(),
     ]);
@@ -142,6 +153,7 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
         unconvertedRevenue: Number(row.unconverted_revenue),
         unconvertedOrderCount: Number(row.unconverted_order_count),
         currency: row.reporting_currency,
+        unconvertedCurrency: row.unconverted_currency,
       })),
       total: Number(totalRow?.total ?? 0),
     };

@@ -87,6 +87,14 @@ export class TopProductRowDto {
   })
   currency!: string | null;
 
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description:
+      'The one native currency shared by every order contributing to unconvertedRevenue, or null when that set mixes currencies (or unconvertedRevenue is 0).',
+  })
+  unconvertedCurrency!: string | null;
+
   @ApiProperty({ type: [ProductChannelBreakdownDto] })
   channels!: ProductChannelBreakdownDto[];
 
@@ -111,6 +119,7 @@ export class TopProductRowDto {
     dto.unconvertedRevenue = view.unconvertedRevenue;
     dto.unconvertedOrderCount = view.unconvertedOrderCount;
     dto.currency = view.currency;
+    dto.unconvertedCurrency = view.unconvertedCurrency;
     dto.channels = view.channels.map((row) => ProductChannelBreakdownDto.fromDomain(row));
     dto.missingFromConnectionIds = missingFromConnectionIds;
     return dto;

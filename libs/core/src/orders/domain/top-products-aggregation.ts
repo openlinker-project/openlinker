@@ -46,6 +46,7 @@ export function buildTopProducts(input: BuildTopProductsInput): TopProductsResul
     unconvertedRevenue: row.unconvertedRevenue,
     unconvertedOrderCount: row.unconvertedOrderCount,
     currency: row.currency,
+    unconvertedCurrency: row.unconvertedCurrency,
     channels: breakdownByProductId.get(row.productId) ?? [],
   }));
 
