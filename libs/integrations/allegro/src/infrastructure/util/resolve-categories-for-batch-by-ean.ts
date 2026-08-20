@@ -2,15 +2,27 @@
  * Resolve Categories For Batch By EAN
  *
  * Batch EAN→Allegro-category resolver (#735). Implements the
- * `EanCategoryMatcher` capability for `AllegroOfferManagerAdapter`. Given
- * N `{ variantId, ean }` pairs, queries Allegro's product catalogue
- * (`GET /sale/products?phrase={ean}&mode=GTIN`) per non-empty EAN with a
- * concurrency cap, and returns a per-variant outcome envelope.
+ * `EanCategoryMatcher` and `EanCategoryMatcherStreaming` capabilities for
+ * `AllegroOfferManagerAdapter`. Given N `{ variantId, ean }` pairs, queries
+ * Allegro's product catalogue (`GET /sale/products?phrase={ean}&mode=GTIN`)
+ * per non-empty EAN with a concurrency cap, and reports a per-variant
+ * outcome envelope.
+ *
+ * `streamCategoriesForBatchByEan` is the primary shape (#2208, epic #2205):
+ * an async generator that yields each variant's outcome the moment it
+ * settles, so a 50-item chunk stops withholding every result for the
+ * `ceil(n/3) * latency` it takes the last wave to land. Allegro exposes no
+ * bulk GTIN lookup, so the per-item work itself is unchanged - only the
+ * delivery point moved.
+ *
+ * `resolveCategoriesForBatchByEan` is kept as a thin collector over that
+ * generator. One resolution path means the batch and streaming call sites
+ * cannot drift in cache behaviour, GTIN filtering, or failure handling.
  *
  * No-throw contract: the util never throws for resolver-side failures.
  * HTTP errors collapse into `{ kind: 'no-match' }` (and are NOT cached, so
  * the next attempt can retry). Cache failures (Redis outage) are caught
- * + logged + bypassed — they MUST NOT abort the batch.
+ * + logged + bypassed - they MUST NOT abort the batch or the stream.
  *
  * Cache semantics:
  * - `matched` (unique exact-EAN hit)             → cached 24 h
@@ -24,12 +36,14 @@
  * the EAN; #431 resolves a card given an already-known category.
  *
  * @module libs/integrations/allegro/src/infrastructure/util
- * @see {@link EanCategoryMatcher} for the capability port
+ * @see {@link EanCategoryMatcher} for the batch capability port
+ * @see {@link EanCategoryMatcherStreaming} for the streaming capability port
  */
 import type { CachePort } from '@openlinker/shared';
 import { Logger } from '@openlinker/shared/logging';
 import type {
   BatchCategoryByEanInput,
+  EanCategoryMatchStreamItem,
   EanMatchCandidate,
   EanMatchResult,
 } from '@openlinker/core/listings';
@@ -38,9 +52,15 @@ import type {
   AllegroProductsSearchResponse,
 } from '../../domain/types/allegro-api.types';
 import type { IAllegroHttpClient } from '../http/allegro-http-client.interface';
-import type { ResolveCategoriesForBatchByEanOptions } from './resolve-categories-for-batch-by-ean.types';
+import type {
+  ResolveCategoriesForBatchByEanOptions,
+  StreamCategoriesForBatchByEanOptions,
+} from './resolve-categories-for-batch-by-ean.types';
 
-export type { ResolveCategoriesForBatchByEanOptions } from './resolve-categories-for-batch-by-ean.types';
+export type {
+  ResolveCategoriesForBatchByEanOptions,
+  StreamCategoriesForBatchByEanOptions,
+} from './resolve-categories-for-batch-by-ean.types';
 
 const DEFAULT_CACHE_TTL_SEC = 24 * 60 * 60;
 const DEFAULT_CACHE_KEY_PREFIX = 'allegro:ean-match';
@@ -65,6 +85,58 @@ type CachedOutcome =
   | { kind: 'matched'; allegroCategoryId: string; productCardId: string }
   | { kind: 'no-match' };
 
+/**
+ * Streaming resolver (#2208). Yields one item per input variant, each as soon
+ * as its own outcome settles rather than when its wave does.
+ *
+ * `no-ean` verdicts cost nothing to reach, so they are yielded up front in
+ * input order; the remaining items follow in settle order, which is why a
+ * consumer keys on `variantId` and never on position.
+ *
+ * `options.signal` stops further waves from being *scheduled*. The wave
+ * already in flight is drained and its results are still yielded: those calls
+ * are paid for either way, so discarding them would spend the operator's
+ * rate-limit budget for nothing (epic #2205 decision 5).
+ */
+export async function* streamCategoriesForBatchByEan(
+  httpClient: IAllegroHttpClient,
+  cache: CachePort | undefined,
+  connectionId: string,
+  input: BatchCategoryByEanInput,
+  options?: StreamCategoriesForBatchByEanOptions,
+): AsyncGenerator<EanCategoryMatchStreamItem, void, undefined> {
+  const ttl = options?.cacheTtlSec ?? DEFAULT_CACHE_TTL_SEC;
+  const prefix = options?.cacheKeyPrefix ?? DEFAULT_CACHE_KEY_PREFIX;
+  const concurrency = options?.concurrency ?? DEFAULT_CONCURRENCY;
+  const searchLimit = options?.searchLimit ?? DEFAULT_SEARCH_LIMIT;
+  const signal = options?.signal;
+
+  const itemsToFetch: Array<{ variantId: string; ean: string }> = [];
+  const withoutEan: EanCategoryMatchStreamItem[] = [];
+
+  for (const item of input.items) {
+    if (!isResolvableEan(item.ean)) {
+      withoutEan.push({ variantId: item.variantId, result: { kind: 'no-ean' } });
+    } else {
+      itemsToFetch.push({ variantId: item.variantId, ean: item.ean.trim() });
+    }
+  }
+
+  for (const item of withoutEan) {
+    yield item;
+  }
+
+  if (itemsToFetch.length === 0) return;
+
+  yield* throttleStream(itemsToFetch, concurrency, signal, (item) =>
+    resolveOne(httpClient, cache, connectionId, prefix, ttl, searchLimit, item),
+  );
+}
+
+/**
+ * Batch resolver (#735), kept as a thin collector over the generator so the
+ * two capability paths share one resolution implementation.
+ */
 export async function resolveCategoriesForBatchByEan(
   httpClient: IAllegroHttpClient,
   cache: CachePort | undefined,
@@ -72,31 +144,16 @@ export async function resolveCategoriesForBatchByEan(
   input: BatchCategoryByEanInput,
   options?: ResolveCategoriesForBatchByEanOptions,
 ): Promise<Map<string, EanMatchResult>> {
-  const ttl = options?.cacheTtlSec ?? DEFAULT_CACHE_TTL_SEC;
-  const prefix = options?.cacheKeyPrefix ?? DEFAULT_CACHE_KEY_PREFIX;
-  const concurrency = options?.concurrency ?? DEFAULT_CONCURRENCY;
-  const searchLimit = options?.searchLimit ?? DEFAULT_SEARCH_LIMIT;
-
   const result = new Map<string, EanMatchResult>();
-  const itemsToFetch: Array<{ variantId: string; ean: string }> = [];
-
-  for (const item of input.items) {
-    if (!isResolvableEan(item.ean)) {
-      result.set(item.variantId, { kind: 'no-ean' });
-    } else {
-      itemsToFetch.push({ variantId: item.variantId, ean: item.ean.trim() });
-    }
+  for await (const item of streamCategoriesForBatchByEan(
+    httpClient,
+    cache,
+    connectionId,
+    input,
+    options,
+  )) {
+    result.set(item.variantId, item.result);
   }
-
-  if (itemsToFetch.length === 0) return result;
-
-  const settled = await throttleProcess(itemsToFetch, concurrency, (item) =>
-    resolveOne(httpClient, cache, connectionId, prefix, ttl, searchLimit, item),
-  );
-  for (const entry of settled) {
-    result.set(entry.variantId, entry.outcome);
-  }
-
   return result;
 }
 
@@ -271,25 +328,53 @@ function errorMessage(err: unknown): string {
 }
 
 /**
- * Chunked Promise.allSettled with a fixed in-flight concurrency cap. Items
- * within a chunk run in parallel; the next chunk starts after the previous
- * fully settles. Per-item failures cannot be observed here because `fn`
- * never throws — the resolver maps HTTP errors to a fulfilled `no-match`
- * outcome.
+ * Chunked resolution with a fixed in-flight concurrency cap, yielding in
+ * settle order. Items within a chunk run in parallel; the next chunk starts
+ * only once the previous one has fully settled, so the cap is the same one
+ * the pre-#2208 `Promise.allSettled` wave loop enforced.
+ *
+ * A rejection is dropped rather than propagated, preserving the no-throw
+ * contract: `fn` is the resolver, which maps HTTP errors to a fulfilled
+ * `no-match`, so a rejection here can only be a defect and must not take the
+ * rest of the batch down with it.
  */
-async function throttleProcess<T, R>(
-  items: T[],
+async function* throttleStream(
+  items: Array<{ variantId: string; ean: string }>,
   concurrency: number,
-  fn: (item: T) => Promise<R>,
-): Promise<R[]> {
-  const results: R[] = [];
+  signal: AbortSignal | undefined,
+  fn: (item: { variantId: string; ean: string }) => Promise<{
+    variantId: string;
+    outcome: EanMatchResult;
+  }>,
+): AsyncGenerator<EanCategoryMatchStreamItem, void, undefined> {
   const cap = Math.max(1, concurrency);
   for (let i = 0; i < items.length; i += cap) {
-    const chunk = items.slice(i, i + cap);
-    const settled = await Promise.allSettled(chunk.map(fn));
-    for (const s of settled) {
-      if (s.status === 'fulfilled') results.push(s.value);
+    if (signal?.aborted) return;
+    const inFlight = new Map<number, Promise<SettledSlot>>();
+    items.slice(i, i + cap).forEach((item, slot) => {
+      inFlight.set(
+        slot,
+        fn(item).then(
+          (value): SettledSlot => ({ slot, outcome: value }),
+          (): SettledSlot => ({ slot }),
+        ),
+      );
+    });
+    while (inFlight.size > 0) {
+      const first = await Promise.race(inFlight.values());
+      inFlight.delete(first.slot);
+      if (first.outcome) {
+        yield { variantId: first.outcome.variantId, result: first.outcome.outcome };
+      }
     }
   }
-  return results;
+}
+
+/**
+ * One settled slot of the current wave. `outcome` absent means the resolver
+ * rejected, which the no-throw contract treats as nothing to report.
+ */
+interface SettledSlot {
+  slot: number;
+  outcome?: { variantId: string; outcome: EanMatchResult };
 }

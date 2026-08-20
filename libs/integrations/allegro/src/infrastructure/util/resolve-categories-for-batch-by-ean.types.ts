@@ -29,3 +29,17 @@ export interface ResolveCategoriesForBatchByEanOptions {
   /** Allegro `GET /sale/products?limit=` cap. Default 10 — mirrors #431. */
   searchLimit?: number;
 }
+
+/**
+ * Options for `streamCategoriesForBatchByEan` (#2208). Same tuning knobs plus
+ * the cancellation seam the `EanCategoryMatcherStreaming` capability declares.
+ */
+export interface StreamCategoriesForBatchByEanOptions
+  extends ResolveCategoriesForBatchByEanOptions {
+  /**
+   * Aborting stops further marketplace calls from being *scheduled*; calls
+   * already issued are left to settle and their results are still yielded
+   * (epic #2205 decision 5).
+   */
+  signal?: AbortSignal;
+}

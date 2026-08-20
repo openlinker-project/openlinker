@@ -5,12 +5,19 @@
  * / multi-match / cache hits / HTTP failure / malformed response / cache
  * outages / concurrency cap / mode=GTIN / empty input.
  *
+ * The second suite covers the streaming sibling (#2208): incremental delivery
+ * before its wave settles, plus the cache, no-throw, concurrency and abort
+ * guarantees the batch path must keep sharing with it.
+ *
  * @module libs/integrations/allegro/src/infrastructure/util/__tests__
  */
 import type { CachePort } from '@openlinker/shared';
 import type { IAllegroHttpClient } from '../../http/allegro-http-client.interface';
 import { AllegroApiException } from '../../../domain/exceptions/allegro-api.exception';
-import { resolveCategoriesForBatchByEan } from '../resolve-categories-for-batch-by-ean';
+import {
+  resolveCategoriesForBatchByEan,
+  streamCategoriesForBatchByEan,
+} from '../resolve-categories-for-batch-by-ean';
 
 const CONNECTION_ID = 'conn-123';
 
@@ -344,5 +351,339 @@ describe('resolveCategoriesForBatchByEan', () => {
     });
 
     expect(cache.get).toHaveBeenCalledWith('allegro:ean-match:conn-XYZ:5901313131313');
+  });
+});
+
+describe('streamCategoriesForBatchByEan (#2208)', () => {
+  let httpClient: jest.Mocked<IAllegroHttpClient>;
+  let cache: jest.Mocked<CachePort>;
+
+  beforeEach(() => {
+    httpClient = {
+      get: jest.fn(),
+      post: jest.fn(),
+      put: jest.fn(),
+      patch: jest.fn(),
+      postBinary: jest.fn(),
+    } as unknown as jest.Mocked<IAllegroHttpClient>;
+
+    cache = {
+      get: jest.fn().mockResolvedValue(null),
+      set: jest.fn().mockResolvedValue(undefined),
+      delete: jest.fn().mockResolvedValue(undefined),
+    } as unknown as jest.Mocked<CachePort>;
+  });
+
+  const buildCard = (overrides: {
+    id: string;
+    name?: string;
+    ean: string;
+    categoryId: string;
+  }) => ({
+    id: overrides.id,
+    name: overrides.name,
+    category: { id: overrides.categoryId },
+    parameters: [
+      { id: 'gtin-param', name: 'EAN', values: [overrides.ean], options: { isGTIN: true } },
+    ],
+  });
+
+  /**
+   * Hand the test control over when each per-EAN call settles, which is the
+   * only way to observe that a result is delivered before its wave finishes.
+   */
+  const gateCallsByPhrase = (): {
+    started: string[];
+    settle: (phrase: string, products: ReturnType<typeof buildCard>[]) => void;
+    fail: (phrase: string, err: Error) => void;
+  } => {
+    const started: string[] = [];
+    const gates = new Map<string, { ok: (v: unknown) => void; ko: (e: unknown) => void }>();
+    httpClient.get.mockImplementation((_path, opts) => {
+      const phrase = String((opts as { queryParams: { phrase: string } }).queryParams.phrase);
+      started.push(phrase);
+      return new Promise((resolve, reject) => {
+        gates.set(phrase, { ok: resolve as (v: unknown) => void, ko: reject });
+      });
+    });
+    const gateFor = (phrase: string) => {
+      const gate = gates.get(phrase);
+      if (!gate) throw new Error(`No in-flight call for phrase ${phrase}`);
+      return gate;
+    };
+    return {
+      started,
+      settle: (phrase, products) =>
+        gateFor(phrase).ok({ data: { products }, status: 200, headers: {} }),
+      fail: (phrase, err) => gateFor(phrase).ko(err),
+    };
+  };
+
+  const flush = async (): Promise<void> => {
+    await new Promise((resolve) => setImmediate(resolve));
+  };
+
+  it('yields a variant as soon as it settles, without waiting for its wave', async () => {
+    const gates = gateCallsByPhrase();
+    const stream = streamCategoriesForBatchByEan(httpClient, undefined, CONNECTION_ID, {
+      items: [
+        { variantId: 'v1', ean: '5901111111111' },
+        { variantId: 'v2', ean: '5902222222222' },
+        { variantId: 'v3', ean: '5903333333333' },
+      ],
+    });
+
+    const first = stream.next();
+    await flush();
+    expect(gates.started).toEqual(['5901111111111', '5902222222222', '5903333333333']);
+
+    // The middle item lands first; the other two are still in flight.
+    gates.settle('5902222222222', [
+      buildCard({ id: 'prod-2', ean: '5902222222222', categoryId: 'cat-B' }),
+    ]);
+
+    await expect(first).resolves.toEqual({
+      done: false,
+      value: {
+        variantId: 'v2',
+        result: { kind: 'matched', allegroCategoryId: 'cat-B', productCardId: 'prod-2' },
+      },
+    });
+
+    gates.settle('5901111111111', []);
+    gates.settle('5903333333333', []);
+    const rest: string[] = [];
+    for await (const item of stream) {
+      rest.push(item.variantId);
+    }
+    expect(rest.sort()).toEqual(['v1', 'v3']);
+  });
+
+  it('yields no-ean variants up front and never calls Allegro for them', async () => {
+    const gates = gateCallsByPhrase();
+    const stream = streamCategoriesForBatchByEan(httpClient, cache, CONNECTION_ID, {
+      items: [
+        { variantId: 'v1', ean: null },
+        { variantId: 'v2', ean: '   ' },
+        { variantId: 'v3', ean: '5904444444444' },
+      ],
+    });
+
+    await expect(stream.next()).resolves.toEqual({
+      done: false,
+      value: { variantId: 'v1', result: { kind: 'no-ean' } },
+    });
+    await expect(stream.next()).resolves.toEqual({
+      done: false,
+      value: { variantId: 'v2', result: { kind: 'no-ean' } },
+    });
+    expect(gates.started).toEqual([]);
+
+    // The wave is scheduled lazily, so the call only starts once the consumer
+    // asks for the item past the free no-ean verdicts.
+    const third = stream.next();
+    await flush();
+    expect(gates.started).toEqual(['5904444444444']);
+
+    gates.settle('5904444444444', []);
+    await expect(third).resolves.toEqual({
+      done: false,
+      value: { variantId: 'v3', result: { kind: 'no-match' } },
+    });
+    await expect(stream.next()).resolves.toEqual({ done: true, value: undefined });
+  });
+
+  it('serves a cache hit without an HTTP call', async () => {
+    cache.get.mockResolvedValue({
+      kind: 'matched',
+      allegroCategoryId: 'cat-cached',
+      productCardId: 'prod-cached',
+    });
+
+    const yielded = [];
+    for await (const item of streamCategoriesForBatchByEan(httpClient, cache, CONNECTION_ID, {
+      items: [{ variantId: 'v1', ean: '5906666666666' }],
+    })) {
+      yielded.push(item);
+    }
+
+    expect(yielded).toEqual([
+      {
+        variantId: 'v1',
+        result: { kind: 'matched', allegroCategoryId: 'cat-cached', productCardId: 'prod-cached' },
+      },
+    ]);
+    expect(cache.get).toHaveBeenCalledWith('allegro:ean-match:conn-123:5906666666666');
+    expect(httpClient.get).not.toHaveBeenCalled();
+  });
+
+  it('does not cache a multi-match', async () => {
+    httpClient.get.mockResolvedValue({
+      data: {
+        products: [
+          buildCard({ id: 'prod-A', name: 'First', ean: '5905555555555', categoryId: 'cat-1' }),
+          buildCard({ id: 'prod-B', name: 'Second', ean: '5905555555555', categoryId: 'cat-2' }),
+        ],
+      },
+      status: 200,
+      headers: {},
+    });
+
+    const yielded = [];
+    for await (const item of streamCategoriesForBatchByEan(httpClient, cache, CONNECTION_ID, {
+      items: [{ variantId: 'v1', ean: '5905555555555' }],
+    })) {
+      yielded.push(item);
+    }
+
+    expect(yielded[0].result).toEqual({
+      kind: 'multi-match',
+      candidates: [
+        { allegroCategoryId: 'cat-1', productCardId: 'prod-A', name: 'First' },
+        { allegroCategoryId: 'cat-2', productCardId: 'prod-B', name: 'Second' },
+      ],
+    });
+    expect(cache.set).not.toHaveBeenCalled();
+  });
+
+  it('yields no-match on a per-item HTTP failure, keeps streaming, and caches nothing for it', async () => {
+    const gates = gateCallsByPhrase();
+    const stream = streamCategoriesForBatchByEan(httpClient, cache, CONNECTION_ID, {
+      items: [
+        { variantId: 'v1', ean: '5901111111111' },
+        { variantId: 'v2', ean: '5902222222222' },
+      ],
+    });
+
+    const first = stream.next();
+    await flush();
+    gates.fail('5901111111111', new AllegroApiException('Allegro 5xx', 500, 'oops'));
+
+    await expect(first).resolves.toEqual({
+      done: false,
+      value: { variantId: 'v1', result: { kind: 'no-match' } },
+    });
+
+    gates.settle('5902222222222', [
+      buildCard({ id: 'prod-2', ean: '5902222222222', categoryId: 'cat-B' }),
+    ]);
+    await expect(stream.next()).resolves.toEqual({
+      done: false,
+      value: {
+        variantId: 'v2',
+        result: { kind: 'matched', allegroCategoryId: 'cat-B', productCardId: 'prod-2' },
+      },
+    });
+    expect(cache.set).toHaveBeenCalledTimes(1);
+    expect(cache.set).toHaveBeenCalledWith(
+      'allegro:ean-match:conn-123:5902222222222',
+      expect.objectContaining({ kind: 'matched' }),
+      24 * 60 * 60,
+    );
+  });
+
+  it('keeps the default in-flight cap at 3', async () => {
+    const gates = gateCallsByPhrase();
+    const stream = streamCategoriesForBatchByEan(httpClient, undefined, CONNECTION_ID, {
+      items: Array.from({ length: 5 }, (_, i) => ({
+        variantId: `v${i}`,
+        ean: `590000000000${i}`,
+      })),
+    });
+
+    const first = stream.next();
+    await flush();
+    expect(gates.started).toHaveLength(3);
+
+    // A fourth call may only start once the whole first wave has settled.
+    gates.settle('5900000000000', []);
+    await first;
+    await flush();
+    expect(gates.started).toHaveLength(3);
+
+    gates.settle('5900000000001', []);
+    gates.settle('5900000000002', []);
+    await stream.next();
+    await stream.next();
+    const fourth = stream.next();
+    await flush();
+    expect(gates.started).toHaveLength(5);
+
+    gates.settle('5900000000003', []);
+    gates.settle('5900000000004', []);
+    await fourth;
+    const rest: string[] = [];
+    for await (const item of stream) {
+      rest.push(item.variantId);
+    }
+    expect(rest).toHaveLength(1);
+  });
+
+  it('stops scheduling further waves once the signal aborts', async () => {
+    const gates = gateCallsByPhrase();
+    const controller = new AbortController();
+    const stream = streamCategoriesForBatchByEan(
+      httpClient,
+      undefined,
+      CONNECTION_ID,
+      {
+        items: [
+          { variantId: 'v1', ean: '5901111111111' },
+          { variantId: 'v2', ean: '5902222222222' },
+        ],
+      },
+      { concurrency: 1, signal: controller.signal },
+    );
+
+    const first = stream.next();
+    await flush();
+    gates.settle('5901111111111', []);
+    await expect(first).resolves.toEqual({
+      done: false,
+      value: { variantId: 'v1', result: { kind: 'no-match' } },
+    });
+
+    controller.abort();
+    await expect(stream.next()).resolves.toEqual({ done: true, value: undefined });
+    expect(gates.started).toEqual(['5901111111111']);
+  });
+
+  it('produces the same map as the batch collector for the same input', async () => {
+    httpClient.get.mockImplementation((_path, opts) => {
+      const phrase = String((opts as { queryParams: { phrase: string } }).queryParams.phrase);
+      return Promise.resolve({
+        data: {
+          products: [buildCard({ id: `prod-${phrase}`, ean: phrase, categoryId: `cat-${phrase}` })],
+        },
+        status: 200,
+        headers: {},
+      });
+    });
+    const input = {
+      items: [
+        { variantId: 'v1', ean: '5901111111111' },
+        { variantId: 'v2', ean: null },
+        { variantId: 'v3', ean: '5903333333333' },
+      ],
+    };
+
+    const streamed = new Map<string, unknown>();
+    for await (const item of streamCategoriesForBatchByEan(
+      httpClient,
+      undefined,
+      CONNECTION_ID,
+      input,
+    )) {
+      streamed.set(item.variantId, item.result);
+    }
+    const collected = await resolveCategoriesForBatchByEan(
+      httpClient,
+      undefined,
+      CONNECTION_ID,
+      input,
+    );
+
+    expect(Object.fromEntries(streamed)).toEqual(Object.fromEntries(collected));
+    expect(collected.get('v2')).toEqual({ kind: 'no-ean' });
   });
 });
