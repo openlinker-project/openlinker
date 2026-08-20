@@ -1,7 +1,7 @@
 /**
  * FX Snapshot Migration Unit Tests
  *
- * Guards the DDL of `1834000000000-add-order-fx-stamp.ts` (#2124).
+ * Guards the DDL of `1836000000000-add-order-fx-stamp.ts` (#2124).
  *
  * WHY THIS EXISTS AT ALL: nothing in CI or in the test harness executes a
  * migration — the Testcontainers schema is built by TypeORM `synchronize`
@@ -27,7 +27,7 @@
  * @module apps/api/src/database/__tests__
  */
 import type { QueryRunner } from 'typeorm';
-import { AddOrderFxStamp1834000000000 } from '../../migrations/1834000000000-add-order-fx-stamp';
+import { AddOrderFxStamp1836000000000 } from '../../migrations/1836000000000-add-order-fx-stamp';
 
 /** The six FX columns as a row shape the CHECK can be evaluated against. */
 interface FxRow {
@@ -79,12 +79,12 @@ const parseArms = (checkExpression: string): NullTest[][] => {
 const evaluate = (arms: NullTest[][], row: FxRow): boolean =>
   arms.some((arm) => arm.every(({ column, mustBeNull }) => (row[column] === null) === mustBeNull));
 
-describe('AddOrderFxStamp1834000000000', () => {
+describe('AddOrderFxStamp1836000000000', () => {
   let queryRunner: QueryRunner;
   let statements: string[];
 
   const collect = async (direction: 'up' | 'down'): Promise<string[]> => {
-    const migration = new AddOrderFxStamp1834000000000();
+    const migration = new AddOrderFxStamp1836000000000();
     await migration[direction](queryRunner);
     return statements;
   };

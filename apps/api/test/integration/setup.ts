@@ -84,6 +84,13 @@ const harness = createIntegrationTestHarness({
     // No ORM/migration FK; truncate explicitly so each invoicing case (incl.
     // the (connectionId, idempotencyKey) dedup assertion) starts clean.
     'invoice_records',
+    // fiscal_registration_records (#1908) — order- + connection-scoped
+    // fiscalization projection. Its migration declares NO FK by design (same
+    // choice as invoice_records), so the table sits outside the CASCADE closure
+    // `truncateTables` walks and `resetTestHarness()` would never clear it;
+    // rows would then leak across cases and collide on
+    // UQ_fiscal_registration_records_connection_idempotency. Truncate explicitly.
+    'fiscal_registration_records',
     // refund_records (#2036) — order-scoped refund-capture projection. No
     // ORM/migration FK to order_records (plain indexed text column, matching
     // the invoice_records precedent); truncate explicitly so each refund case

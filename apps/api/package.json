@@ -48,6 +48,7 @@
     "@openlinker/integrations-erli": "workspace:*",
     "@openlinker/integrations-fx": "workspace:*",
     "@openlinker/integrations-infakt": "workspace:*",
+    "@openlinker/integrations-eparagony": "workspace:*",
     "@openlinker/integrations-inpost": "workspace:*",
     "@openlinker/integrations-ksef": "workspace:*",
     "@openlinker/integrations-prestashop": "workspace:*",

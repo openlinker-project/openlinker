@@ -69,7 +69,7 @@ port interfaces in `libs/core/src/<context>/domain/ports/`. An adapter
 implements one or more of them.
 
 The well-known set is `CoreCapabilityValues`, declared verbatim at
-[`libs/core/src/integrations/domain/types/adapter.types.ts:23-37`](../libs/core/src/integrations/domain/types/adapter.types.ts#L23-L37):
+[`libs/core/src/integrations/domain/types/adapter.types.ts:23-42`](../libs/core/src/integrations/domain/types/adapter.types.ts#L23-L42):
 
 ```typescript
 export const CoreCapabilityValues = [
@@ -86,6 +86,11 @@ export const CoreCapabilityValues = [
   // Invoicing (ADR-026). Resolves an `InvoicingPort` (issuance mechanism);
   // regulatory transmission/clearance is a deferred ADR-002 sub-capability.
   'Invoicing',
+  // Fiscalization (ADR-042). Resolves a `FiscalizationPort` - handing a completed
+  // sale to a provider that performs or brokers its fiscal registration.
+  // Deliberately NOT a document type on `Invoicing`: different issuer, device
+  // dependency, legal basis and retry semantics.
+  'Fiscalization',
 ] as const;
 ```
 
@@ -99,6 +104,7 @@ export const CoreCapabilityValues = [
 | `ProductPublisher`     | Shop product publishing — create/own the product record (base shop-listing port, sub-capabilities). | [`libs/core/src/listings/domain/ports/shop-product-manager.port.ts`](../libs/core/src/listings/domain/ports/shop-product-manager.port.ts) |
 | `CategoryProvisioner`  | Mirror/create a destination category tree (shop sub-capability).    | [`libs/core/src/listings/domain/ports/capabilities/category-provisioner.capability.ts`](../libs/core/src/listings/domain/ports/capabilities/category-provisioner.capability.ts) |
 | `Invoicing`            | Issue fiscal documents through a provider (ADR-026); country-agnostic. | [`libs/core/src/invoicing/domain/ports/invoicing.port.ts`](../libs/core/src/invoicing/domain/ports/invoicing.port.ts) |
+| `Fiscalization`        | Register a completed sale with a provider that performs or brokers the fiscal registration (ADR-042); country-agnostic. | [`libs/core/src/fiscalization/domain/ports/fiscalization.port.ts`](../libs/core/src/fiscalization/domain/ports/fiscalization.port.ts) |
 
 **Open at the registry boundary (#576).** The set above is closed at
 the type-system level (`CoreCapability` union). At the registry

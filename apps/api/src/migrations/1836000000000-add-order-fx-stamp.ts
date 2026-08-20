@@ -14,12 +14,11 @@
  * `timestamp without time zone` for the `timestamptz` columns.
  *
  * Timestamp is a synthetic sequential prefix per `docs/migrations.md`
- * § Timestamp uniqueness invariant — the tail on `main` is `1833000000006`
- * (`add-order-record-sales-document-block`), so `1834000000000` is strictly
- * greater and uncontested: the fiscalization stack that once claimed this slot
- * moved to `1835000000000`. (An earlier revision of this header said the tail was
- * `1833000000005`, one short — corrected because the next author reads this note
- * rather than re-deriving it.)
+ * § Timestamp uniqueness invariant — the tail on `main` is `1835000000000`
+ * (`create-fiscal-registration-records`, #2137), so `1836000000000` is strictly
+ * greater and uncontested. This migration sat at `1834000000000` until the
+ * fiscalization stack landed on `main` ahead of it and took `1835000000000`;
+ * re-prefixed on the merge rather than left below `main`'s tail.
  * `gen_random_uuid()` is built-in on PG >= 13 (Testcontainers + prod run PG 16).
  *
  * NOTE ON NAMING: `exchange_rates` and the `order_records` additions use quoted
@@ -32,8 +31,8 @@
  */
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AddOrderFxStamp1834000000000 implements MigrationInterface {
-  name = 'AddOrderFxStamp1834000000000';
+export class AddOrderFxStamp1836000000000 implements MigrationInterface {
+  name = 'AddOrderFxStamp1836000000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     // ── The shared, APPEND-ONLY rate registry (#2122) ──────────────────────
