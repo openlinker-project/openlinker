@@ -17,16 +17,28 @@
  * schema — this component only renders errors, it does not duplicate the
  * bounds check itself.
  *
+ * Since #2229 it also states the connection's category-resolve in-flight
+ * ceiling, which is applied inside the adapter's own resolver BELOW the
+ * limiter these fields configure. That line lives here rather than in
+ * `PrestashopRateLimitReadout` for one reason: this section renders for every
+ * connection, and the readout is mounted only by the PrestaShop plugin — so
+ * Allegro, the one platform that has a ceiling today, would never have shown
+ * it. The two are also different in kind: a live in-flight/queued readout
+ * versus a static declared ceiling.
+ *
  * @module features/connections/components
  */
 import { useState, type ReactElement } from 'react';
 import type { UseFormReturn } from 'react-hook-form';
 import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';
+import { useRateLimitStatusQuery } from '../hooks/use-rate-limit-status-query';
 import type { EditConnectionFormValues } from './edit-connection.schema';
-import type { ConnectionRateLimit } from '../api/connections.types';
+import type { ConnectionRateLimit, ResolveConcurrencyCeiling } from '../api/connections.types';
 
 export interface RateLimitSectionProps {
+  /** Reads the adapter-declared resolve ceiling (#2229). */
+  connectionId: string;
   form: UseFormReturn<EditConnectionFormValues>;
   /** When false, raw JSON is unparseable — inputs are disabled (divergence gate). */
   configIsParseable: boolean;
@@ -43,6 +55,20 @@ export interface RateLimitSectionProps {
   defaultRateLimit: ConnectionRateLimit | null;
 }
 
+/**
+ * One sentence, two facts: the number and where it came from. Deliberately not
+ * a table of `maxInFlight` / `source` / `adapterDefault` — the operator needs
+ * the ceiling and whether they set it, and the third value only earns its
+ * place when it explains a clamp.
+ */
+function describeResolveCeiling(ceiling: ResolveConcurrencyCeiling): string {
+  const provenance =
+    ceiling.source === 'connection-config'
+      ? `from your max-concurrent setting, below this adapter's default of ${ceiling.adapterDefault}`
+      : 'adapter default';
+  return `${ceiling.maxInFlight} requests in flight (${provenance})`;
+}
+
 function formatRateLimit(limit: ConnectionRateLimit): string {
   const parts: string[] = [];
   if (limit.requestsPerMinute !== undefined) {
@@ -55,12 +81,18 @@ function formatRateLimit(limit: ConnectionRateLimit): string {
 }
 
 export function RateLimitSection({
+  connectionId,
   form,
   configIsParseable,
   syncRateLimitToJson,
   defaultRateLimit,
 }: RateLimitSectionProps): ReactElement {
   const errors = form.formState.errors.rateLimit;
+  // Absent while loading, on error, and when no adapter declares one. All
+  // three render nothing rather than a placeholder: an unstated ceiling is
+  // the pre-#2229 status quo, whereas a wrong or provisional number is a new
+  // false claim.
+  const resolveCeiling = useRateLimitStatusQuery(connectionId).data?.resolveConcurrency;
 
   const hasStoredValue =
     Boolean(form.getValues('rateLimit.requestsPerMinute')) ||
@@ -109,9 +141,20 @@ export function RateLimitSection({
             <strong>{formatRateLimit(defaultRateLimit)}</strong>.
           </>
         ) : (
-          <>Leave rate limiting off for unlimited (the default for this adapter).</>
+          <>
+            Leave rate limiting off and this adapter applies no per-minute or concurrency cap of
+            its own here.
+          </>
         )}
       </p>
+
+      {resolveCeiling ? (
+        <p className="rate-limit-section__help">
+          Category matching on this connection runs at most{' '}
+          <strong>{describeResolveCeiling(resolveCeiling)}</strong>, at every batch size. That
+          ceiling is applied by the adapter itself, separately from the cap below.
+        </p>
+      ) : null}
 
       <label className="rate-limit-section__toggle">
         <input

@@ -1,15 +1,36 @@
 /**
- * RateLimitSection tests (#1810, #2016)
+ * RateLimitSection tests (#1810, #2016, #2229)
  *
  * @module features/connections/components
  */
 /* eslint-disable @typescript-eslint/no-explicit-any -- test harness wraps RHF with a flexible form type */
 import type { ReactElement } from 'react';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
 import { useForm } from 'react-hook-form';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { renderWithProviders, createMockApiClient } from '../../../test/test-utils';
 import { RateLimitSection } from './rate-limit-section';
-import type { ConnectionRateLimit } from '../api/connections.types';
+import type {
+  ConnectionRateLimit,
+  RateLimitStatus,
+  ResolveConcurrencyCeiling,
+} from '../api/connections.types';
+
+/**
+ * The section reads the adapter-declared resolve ceiling (#2229), so every
+ * render needs the query provider. No ceiling by default — most connections
+ * declare none, and that is the branch the pre-existing specs exercise.
+ */
+function render(ui: ReactElement, resolveConcurrency?: ResolveConcurrencyCeiling): void {
+  const status: RateLimitStatus = {
+    enabled: false,
+    ...(resolveConcurrency ? { resolveConcurrency } : {}),
+  };
+  const apiClient = createMockApiClient({
+    connections: { getRateLimitStatus: vi.fn().mockResolvedValue(status) },
+  });
+  renderWithProviders(ui, { apiClient });
+}
 
 interface HarnessProps {
   configIsParseable?: boolean;
@@ -29,6 +50,7 @@ function Harness({
   });
   return (
     <RateLimitSection
+      connectionId="conn_1"
       form={form as any}
       configIsParseable={configIsParseable}
       syncRateLimitToJson={syncRateLimitToJson}
@@ -87,6 +109,7 @@ describe('RateLimitSection', () => {
       });
       return (
         <RateLimitSection
+          connectionId="conn_1"
           form={form as any}
           configIsParseable={true}
           syncRateLimitToJson={() => {
@@ -137,6 +160,7 @@ describe('RateLimitSection', () => {
       }) as typeof form.setValue;
       return (
         <RateLimitSection
+          connectionId="conn_1"
           form={form as any}
           configIsParseable={true}
           syncRateLimitToJson={syncRateLimitToJson}
@@ -153,9 +177,14 @@ describe('RateLimitSection', () => {
     expect(calls.indexOf('setValue')).toBeLessThan(calls.indexOf('sync'));
   });
 
-  it('says "unlimited" when the adapter declares no defaultRateLimit (#1810 FE honesty)', () => {
+  it('scopes the no-default claim to this adapter rather than claiming nothing paces it (#1810/#2229)', () => {
     render(<Harness defaultRateLimit={null} />);
-    expect(screen.getByText(/Leave rate limiting off for unlimited/i)).toBeInTheDocument();
+    // NOT "unlimited" (#2229): a resolve ceiling is applied below this
+    // mechanism, so a blanket claim here is one the section cannot support.
+    expect(
+      screen.getByText(/applies no per-minute or concurrency cap of its own/i),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/off for unlimited/i)).not.toBeInTheDocument();
     fireEvent.click(screen.getByLabelText('Enable rate limiting'));
     expect(screen.getByLabelText('Requests per minute')).toHaveAttribute('placeholder', 'Unlimited');
   });
@@ -163,7 +192,9 @@ describe('RateLimitSection', () => {
   it('surfaces the resolved adapter defaultRateLimit instead of claiming "unlimited" (#1810 FE honesty)', () => {
     render(<Harness defaultRateLimit={{ requestsPerMinute: 60, maxConcurrent: 4 }} />);
     expect(screen.getByText(/60 requests\/min, 4 concurrent/i)).toBeInTheDocument();
-    expect(screen.queryByText(/^Leave rate limiting off for unlimited/i)).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/applies no per-minute or concurrency cap of its own/i),
+    ).not.toBeInTheDocument();
     fireEvent.click(screen.getByLabelText('Enable rate limiting'));
     expect(screen.getByLabelText('Requests per minute')).toHaveAttribute('placeholder', 'Default: 60');
     expect(screen.getByLabelText('Max concurrent requests')).toHaveAttribute(
@@ -178,6 +209,7 @@ describe('RateLimitSection', () => {
       const form = useForm<any>({ defaultValues: { rateLimit: { requestsPerMinute: '1' } } });
       return (
         <RateLimitSection
+          connectionId="conn_1"
           form={form as any}
           configIsParseable={true}
           syncRateLimitToJson={() => {
@@ -190,5 +222,45 @@ describe('RateLimitSection', () => {
     render(<CaptureHarness />);
     fireEvent.change(screen.getByLabelText('Max concurrent requests'), { target: { value: '4' } });
     expect(captured).toEqual({ requestsPerMinute: '1', maxConcurrent: '4' });
+  });
+
+  it('states the adapter-declared resolve ceiling and that it applies at every batch size (#2229)', async () => {
+    render(<Harness defaultRateLimit={null} />, {
+      maxInFlight: 9,
+      source: 'adapter-default',
+      adapterDefault: 9,
+    });
+
+    // "at every batch size" is load-bearing: before #2215 a 45-variant batch
+    // ran 3 in flight and now runs 9, so an operator reading only the number
+    // would assume small runs are gentler.
+    await waitFor(() => {
+      expect(screen.getByText(/9 requests in flight \(adapter default\)/i)).toBeInTheDocument();
+    });
+    expect(screen.getByText(/at every batch size/i)).toBeInTheDocument();
+  });
+
+  it('names the operator setting that clamped the ceiling, and the default it clamped (#2229)', async () => {
+    render(<Harness defaultRateLimit={null} />, {
+      maxInFlight: 4,
+      source: 'connection-config',
+      adapterDefault: 9,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(/4 requests in flight/i)).toBeInTheDocument();
+    });
+    expect(screen.getByText(/from your max-concurrent setting/i)).toBeInTheDocument();
+    expect(screen.getByText(/default of 9/i)).toBeInTheDocument();
+  });
+
+  it('renders no ceiling line when no adapter reports one', async () => {
+    render(<Harness defaultRateLimit={null} />);
+
+    // Settle on copy that is always present first, so this asserts "never
+    // rendered" rather than "not rendered yet".
+    await screen.findByText(/applies no per-minute or concurrency cap of its own/i);
+    expect(screen.queryByText(/requests in flight/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/at every batch size/i)).not.toBeInTheDocument();
   });
 });

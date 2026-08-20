@@ -99,6 +99,49 @@ export const STREAM_CONCURRENCY = 9;
 const DEFAULT_SEARCH_LIMIT = 10;
 
 /**
+ * Resolve the effective in-flight ceiling for one streamed run (#2229).
+ *
+ * The single source of truth for BOTH what the adapter reports through
+ * `getStreamConcurrency()` and what it actually passes as `concurrency` below.
+ * Two call sites, one function, on purpose: a ceiling shown to the operator
+ * that differs from the one enforced would be a worse defect than the
+ * invisible ceiling #2229 exists to remove.
+ *
+ * An operator's `Connection.config.rateLimit.maxConcurrent` clamps the ceiling
+ * DOWNWARD only. Raising it is deliberately not supported - that knob is a
+ * safety valve on the operator's own quota, and letting it lift the adapter's
+ * pacing would turn a cap into a throttle-release. A non-finite or
+ * non-positive configured value is ignored rather than treated as zero, since
+ * a zero ceiling would stall every resolve run silently.
+ */
+export function resolveStreamConcurrency(configuredMaxConcurrent?: number): {
+  maxInFlight: number;
+  source: 'connection-config' | 'adapter-default';
+  adapterDefault: number;
+} {
+  const usable =
+    typeof configuredMaxConcurrent === 'number' &&
+    Number.isFinite(configuredMaxConcurrent) &&
+    configuredMaxConcurrent > 0
+      ? Math.floor(configuredMaxConcurrent)
+      : undefined;
+
+  if (usable !== undefined && usable < STREAM_CONCURRENCY) {
+    return {
+      maxInFlight: usable,
+      source: 'connection-config',
+      adapterDefault: STREAM_CONCURRENCY,
+    };
+  }
+
+  return {
+    maxInFlight: STREAM_CONCURRENCY,
+    source: 'adapter-default',
+    adapterDefault: STREAM_CONCURRENCY,
+  };
+}
+
+/**
  * Lazy-instantiated logger — only constructed on the cache-failure path.
  * Avoids the module-import side effect of `new Logger(...)` at top scope.
  */

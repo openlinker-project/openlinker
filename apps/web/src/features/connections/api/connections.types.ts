@@ -238,10 +238,34 @@ export interface WebhookStatus {
 }
 
 /**
+ * Where a resolve ceiling came from (#2229). Mirrors
+ * `ResolveConcurrencySourceValues` in `@openlinker/core/listings`.
+ */
+export type ResolveConcurrencySource = 'connection-config' | 'adapter-default';
+
+/**
+ * In-flight ceiling the connection's category-resolve path enforces (#2229),
+ * declared by its own adapter. `adapterDefault` is what would apply with no
+ * operator cap, so a clamped `maxInFlight` can name what clamped it.
+ */
+export interface ResolveConcurrencyCeiling {
+  maxInFlight: number;
+  source: ResolveConcurrencySource;
+  adapterDefault: number;
+}
+
+/**
  * Live, in-memory outbound rate-limit status for ANY connection
- * (`GET /connections/:id/rate-limit-status`, #1810). `enabled: false` means
- * no cap is currently in effect (neither an explicit `config.rateLimit` nor
- * the destination adapter's manifest default) — every other field is absent.
+ * (`GET /connections/:id/rate-limit-status`, #1810).
+ *
+ * `enabled` describes the SHARED OUTBOUND LIMITER only — `false` means neither
+ * an explicit `config.rateLimit` nor the destination adapter's manifest
+ * default applies, and the counters below are absent. It does NOT mean
+ * nothing paces this connection: `resolveConcurrency` (#2229) reports a
+ * ceiling applied below the limiter, inside the adapter's own resolver, and is
+ * independent of `enabled`. Rendering `enabled: false` as "not rate-limited"
+ * is the false claim #2229 exists to remove — say which mechanism is off.
+ *
  * Resets on API/worker restart; not a persisted audit trail.
  */
 export interface RateLimitStatus {
@@ -251,6 +275,8 @@ export interface RateLimitStatus {
   inFlight?: number;
   queued?: number;
   lastAcquiredAt?: string | null;
+  /** Absent when no adapter reported one — never render a fabricated value. */
+  resolveConcurrency?: ResolveConcurrencyCeiling;
 }
 
 export interface ConnectionDiagnostics {

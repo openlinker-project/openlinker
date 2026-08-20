@@ -64,6 +64,7 @@ import type {
   SafetyAttachmentUploadResult,
   TaxonomyIdentityProvider,
   TaxonomyOwner,
+  ResolveConcurrencyCeiling,
 } from '@openlinker/core/listings';
 
 import { ALLEGRO_DESCRIPTION_FORMAT } from '../util/allegro-description-format';
@@ -82,6 +83,7 @@ import {
 } from '../util/resolve-allegro-product-card-by-ean';
 import {
   resolveCategoriesForBatchByEan,
+  resolveStreamConcurrency,
   streamCategoriesForBatchByEan,
 } from '../util/resolve-categories-for-batch-by-ean';
 import { fetchAllegroProduct } from '../util/fetch-allegro-product';
@@ -315,6 +317,13 @@ export class AllegroOfferManagerAdapter
 
   private readonly quantityPollConfig: QuantityPollConfig;
   private readonly catParamsTtlSec: number;
+  /**
+   * The operator's own outbound concurrency cap, read once at construction
+   * (#2229). Clamps the streamed resolve ceiling downward - see
+   * `resolveStreamConcurrency`. Read from the connection rather than injected
+   * so the reported and enforced ceilings share one input.
+   */
+  private readonly configuredMaxConcurrent: number | undefined;
 
   constructor(
     private readonly connectionId: string,
@@ -327,7 +336,7 @@ export class AllegroOfferManagerAdapter
      */
     private readonly uploadHttpClient: IAllegroHttpClient,
     private readonly identifierMapping: IdentifierMappingPort,
-    _connection: Connection,
+    connection: Connection,
     private readonly commandRepository?: AllegroQuantityCommandRepositoryPort,
     quantityPollConfig?: Partial<QuantityPollConfig>,
     /**
@@ -373,7 +382,7 @@ export class AllegroOfferManagerAdapter
       backoffMultiplier: quantityPollConfig?.backoffMultiplier ?? 2,
     };
     this.catParamsTtlSec = catParamsTtlSec ?? DEFAULT_CAT_PARAMS_TTL_SEC;
-    void _connection;
+    this.configuredMaxConcurrent = connection.config?.rateLimit?.maxConcurrent;
   }
 
   /**
@@ -1166,13 +1175,24 @@ export class AllegroOfferManagerAdapter
     input: BatchCategoryByEanInput,
     options?: EanCategoryMatchStreamOptions
   ): AsyncIterable<EanCategoryMatchStreamItem> {
-    return streamCategoriesForBatchByEan(
-      this.httpClient,
-      this.cache,
-      this.connectionId,
-      input,
-      options?.signal ? { signal: options.signal } : undefined
-    );
+    return streamCategoriesForBatchByEan(this.httpClient, this.cache, this.connectionId, input, {
+      // Resolved, never the bare constant: the operator's own `maxConcurrent`
+      // clamps the ceiling, and `getStreamConcurrency` below reports whatever
+      // this same call computes (#2229).
+      concurrency: resolveStreamConcurrency(this.configuredMaxConcurrent).maxInFlight,
+      ...(options?.signal ? { signal: options.signal } : {}),
+    });
+  }
+
+  /**
+   * EanCategoryMatcherStreaming.getStreamConcurrency (#2229).
+   *
+   * Reports the ceiling the method above actually enforces - same function,
+   * same input - so the number an operator reads on the connection page cannot
+   * drift from the number that paces their resolve run.
+   */
+  getStreamConcurrency(): ResolveConcurrencyCeiling {
+    return resolveStreamConcurrency(this.configuredMaxConcurrent);
   }
 
   /**
