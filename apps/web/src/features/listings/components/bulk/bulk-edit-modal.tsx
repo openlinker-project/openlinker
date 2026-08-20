@@ -1198,7 +1198,11 @@ function BulkEditModalForm({
                         setCatModalOpen(true);
                       }}
                       variantCount={row.variants.length}
-                      destinationName={platformName}
+                      // The CONNECTION's name, matching what the Review table's
+                      // chips already say: an operator can hold two Allegro
+                      // connections, and "Allegro" would not tell them which
+                      // catalogue was consulted. Falls back to the platform label.
+                      destinationName={connection.name || platformName}
                       batchCurrency={currency}
                     />
                   ) : null}
