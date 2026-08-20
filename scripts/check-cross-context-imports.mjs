@@ -436,6 +436,10 @@ const ALLOW_LIST = new Map([
     new Set(['OrderRecordRepositoryPort']),
   ],
   [
+    'apps/api/test/integration/order-line-items-write.int-spec.ts',
+    new Set(['OrderRecordRepositoryPort']),
+  ],
+  [
     'apps/api/test/integration/find-recently-listed-variant-ids.int-spec.ts',
     new Set(['OfferMappingRepositoryPort', 'ShopProductMappingRepositoryPort']),
   ],

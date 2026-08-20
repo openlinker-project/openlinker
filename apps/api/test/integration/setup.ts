@@ -64,6 +64,12 @@ const harness = createIntegrationTestHarness({
     'sync_jobs',
     'inventory_items',
     'order_records',
+    // order_line_items (#1985) — the per-line analytics projection. No
+    // ORM/migration FK to order_records (plain indexed text column, same
+    // choice as invoice_records/refund_records), so nothing cascades from
+    // order_records; truncate explicitly or a prior case's rows leak into a
+    // later case's aggregate.
+    'order_line_items',
     // offer_status_snapshots (#816) — connection-scoped marketplace publication
     // status. No ORM/migration FK to connections, so nothing cascades; truncate
     // explicitly so the Erli offers-status reconciliation case (#991) starts clean.
