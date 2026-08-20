@@ -70,13 +70,24 @@ export function resolveSweepLockTtlMs(raw: string | undefined): number {
   return Math.min(Math.max(parsed, SWEEP_LOCK_TTL_MIN_MS), SWEEP_LOCK_TTL_MAX_MS);
 }
 
+/**
+ * The sweep families that own a lock + cursor namespace.
+ *
+ * `product-delta` (#2220) is deliberately a THIRD kind rather than a mode of
+ * `product`: the incremental pass takes its own lock so it can run concurrently
+ * with the full pass. Sharing `product`'s lock would let the 20-minute full sweep —
+ * which is mid-cycle more or less permanently on a large catalog — starve the delta
+ * pass indefinitely while it logged "already in progress" and returned ok.
+ */
+export type SweepKind = 'product' | 'inventory' | 'product-delta';
+
 /** `master:{kind}:sweep:{connectionId}` — one in-flight run per connection. */
-export function sweepLockKey(kind: 'product' | 'inventory', connectionId: string): string {
+export function sweepLockKey(kind: SweepKind, connectionId: string): string {
   return `master:${kind}:sweep:${connectionId}`;
 }
 
 /** `master.{kind}.sweep:connection:{connectionId}` */
-export function sweepCursorKey(kind: 'product' | 'inventory', connectionId: string): string {
+export function sweepCursorKey(kind: SweepKind, connectionId: string): string {
   return `master.${kind}.sweep:connection:${connectionId}`;
 }
 

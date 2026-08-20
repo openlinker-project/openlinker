@@ -129,6 +129,26 @@ const CORE_CAPABILITY_TASKS: readonly CoreCapabilityTaskDescriptor[] = [
       `master:${connectionId}:product:syncAll:${timestamp}`,
   },
   {
+    // Incremental catalog pass (#2220, ADR-048). OPT-IN: it is additive work on top
+    // of the unchanged 20-minute full sweep, and only a master declaring the
+    // modified-since rung does anything with it. #2222 owns the two-cadence policy
+    // that would make it the default and relax the full pass.
+    //
+    // Gated on `ProductMaster`, not on the rung's own name: a connection's
+    // `enabledCapabilities` is stamped at create and never retro-filled, so gating
+    // on a newly advertised capability would drain nothing for every connection
+    // that already exists. The handler narrows with `isModifiedProductLister`.
+    taskId: 'master-product-delta-sync',
+    jobType: 'master.product.syncDelta',
+    capability: 'ProductMaster',
+    enabledEnvVar: 'OL_MASTER_PRODUCT_DELTA_SYNC_ENABLED',
+    defaultEnabled: false,
+    cronEnvVar: 'OL_MASTER_PRODUCT_DELTA_SYNC_CRON',
+    defaultCron: '*/5 * * * *',
+    idempotencyKey: (connectionId, timestamp) =>
+      `master:${connectionId}:product:syncDelta:${timestamp}`,
+  },
+  {
     taskId: 'pickup-point-refresh',
     jobType: 'shipping.pickupPoint.refreshFrequent',
     capability: 'ShippingProviderManager',
