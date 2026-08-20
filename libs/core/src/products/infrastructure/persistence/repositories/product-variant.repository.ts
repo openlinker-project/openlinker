@@ -54,6 +54,16 @@ export class ProductVariantRepository implements ProductVariantRepositoryPort {
     return entities.map((entity) => this.toDomain(entity));
   }
 
+  async findByProductIds(productIds: readonly string[]): Promise<ProductVariant[]> {
+    if (productIds.length === 0) return [];
+
+    const entities = await this.repository.find({
+      where: { productId: In([...productIds]) },
+    });
+
+    return entities.map((entity) => this.toDomain(entity));
+  }
+
   async countByProductIds(productIds: readonly string[]): Promise<Map<string, number>> {
     const result = new Map<string, number>();
     if (productIds.length === 0) return result;

@@ -13,7 +13,11 @@
  * `name`/`sku` and `missingFromConnectionIds` are populated by the apps/api
  * composition service (`TopProductsService`), NOT by the core
  * `TopProductView` this DTO otherwise mirrors — see that service's header
- * for why the enrichment lives at this layer.
+ * for why the enrichment lives at this layer. `coverageGapAvailable` (#2172
+ * review, SUGGESTION 5) is response-level: `false` means the coverage-gap
+ * enrichment failed for this whole response, so every row's
+ * `missingFromConnectionIds` is an unreliable `[]` rather than evidence the
+ * product is listed everywhere.
  *
  * @module apps/api/src/analytics/http/dto
  */
@@ -138,4 +142,10 @@ export class TopProductsResponseDto {
       'Count of items in this page whose productId could not be resolved to a live catalogue entry (name/sku are null for those rows) — never silently dropped.',
   })
   unresolvedProductCount!: number;
+
+  @ApiProperty({
+    description:
+      'False when the coverage-gap enrichment failed for this response — every row’s missingFromConnectionIds is then an unreliable empty array (not evidence the product is listed everywhere), not a real answer. Render the column as unavailable rather than trusting an all-empty result.',
+  })
+  coverageGapAvailable!: boolean;
 }

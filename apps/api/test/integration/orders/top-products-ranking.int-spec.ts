@@ -392,4 +392,53 @@ describe('Top products ranking — currency correctness against real Postgres (#
       expect(product.units).toBe(3);
     }
   );
+
+  it(
+    'discloses a stamped order with totalAmount = 0 as unconverted evidence rather than dropping it (#2172 review, IMPORTANT 2)',
+    async () => {
+      const dataSource = harness.getDataSource();
+      const conn = await createTestConnection(dataSource, {
+        platformType: 'allegro',
+        name: 'Connection zero-total test',
+        adapterKey: 'allegro.test.unused-zero-total',
+      });
+
+      // Fully-discounted order: stamped EUR, but totalAmount = 0 means the
+      // FX multiplier (reportingTotalAmount / totalAmount) is NULL via
+      // NULLIF — without the fix this line silently vanishes from both
+      // `revenue` and `unconvertedRevenue`.
+      await createTestOrderRecord(dataSource, {
+        internalOrderId: 'ol_order_zero_total',
+        sourceConnectionId: conn.id,
+        orderSnapshot: { items: [] },
+        recordStatus: 'ready',
+        cancelledAt: null,
+        placedAt: new Date('2026-08-02T00:00:00.000Z'),
+        totalAmount: 0,
+        currency: 'EUR',
+        reportingCurrency: 'EUR',
+        reportingTotalAmount: 0,
+      });
+      await seedLineItem(dataSource, {
+        orderRecordId: 'ol_order_zero_total',
+        productId: 'ol_product_zero_total',
+        sourceConnectionId: conn.id,
+        quantity: 2,
+        unitPrice: 15,
+        placedAt: new Date('2026-08-02T00:00:00.000Z'),
+      });
+
+      const result = await orderRecordService.getTopProducts(filters);
+
+      expect(result.items).toHaveLength(1);
+      const product = result.items[0];
+      expect(product.productId).toBe('ol_product_zero_total');
+      expect(product.revenue).toBe(0);
+      // The line's own native amount (2 x 15 = 30) is disclosed, not lost.
+      expect(product.unconvertedRevenue).toBeCloseTo(30, 2);
+      expect(product.unconvertedOrderCount).toBe(1);
+      expect(product.unconvertedCurrency).toBe('EUR');
+      expect(product.units).toBe(2);
+    }
+  );
 });

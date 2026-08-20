@@ -72,6 +72,14 @@ export interface IProductsService {
   getVariantsByProductId(productId: string): Promise<ProductVariant[]>;
 
   /**
+   * Batch variant lookup for the given product IDs (#2172 review,
+   * SUGGESTION 4) — a single query, as opposed to a `Promise.all` fan-out
+   * over {@link getVariantsByProductId} once per product. Empty input
+   * returns `[]` without a storage round-trip.
+   */
+  getVariantsByProductIds(productIds: readonly string[]): Promise<ProductVariant[]>;
+
+  /**
    * Variant lookup by SKU list. Used by offer-mapping reconciliation flows
    * to resolve marketplace external-refs / SKUs back to internal variants.
    * Empty input returns `[]` without a DB round-trip.

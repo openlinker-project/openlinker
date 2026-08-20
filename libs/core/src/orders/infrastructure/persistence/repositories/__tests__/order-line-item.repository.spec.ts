@@ -167,6 +167,7 @@ describe('OrderLineItemRepository', () => {
       andWhere: jest.fn().mockReturnThis(),
       groupBy: jest.fn().mockReturnThis(),
       orderBy: jest.fn().mockReturnThis(),
+      addOrderBy: jest.fn().mockReturnThis(),
       limit: jest.fn().mockReturnThis(),
       offset: jest.fn().mockReturnThis(),
       getRawMany: jest.fn().mockResolvedValue(rows),
@@ -241,6 +242,17 @@ describe('OrderLineItemRepository', () => {
         .mockReturnValueOnce(makeTotalQb('0'));
       await repository.getTopProductRanking({ ...baseFilters, sortBy: 'revenue' }, 'PLN');
       expect(rankingQbRevenue.orderBy).toHaveBeenCalledWith('revenue', 'DESC');
+    });
+
+    it('adds a deterministic product_id tiebreaker so pagination over a non-unique sort is stable (#2172 review, IMPORTANT 1)', async () => {
+      const rankingQb = makeRankingQb([]);
+      (ormRepository.createQueryBuilder as jest.Mock)
+        .mockReturnValueOnce(rankingQb)
+        .mockReturnValueOnce(makeTotalQb('0'));
+
+      await repository.getTopProductRanking(baseFilters, 'PLN');
+
+      expect(rankingQb.addOrderBy).toHaveBeenCalledWith('product_id', 'ASC');
     });
 
     it('applies limit/offset for pagination', async () => {

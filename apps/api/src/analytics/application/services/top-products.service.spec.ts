@@ -10,7 +10,7 @@ import { TopProductsService } from './top-products.service';
 describe('TopProductsService', () => {
   let orderRecordService: jest.Mocked<Pick<IOrderRecordService, 'getTopProducts'>>;
   let productsService: jest.Mocked<
-    Pick<IProductsService, 'getProductsByIds' | 'getVariantsByProductId'>
+    Pick<IProductsService, 'getProductsByIds' | 'getVariantsByProductIds'>
   >;
   let integrationsService: jest.Mocked<Pick<IIntegrationsService, 'listCapabilityAdapters'>>;
   let publishedVariantsService: jest.Mocked<IPublishedVariantsService>;
@@ -65,7 +65,7 @@ describe('TopProductsService', () => {
 
   beforeEach(() => {
     orderRecordService = { getTopProducts: jest.fn() };
-    productsService = { getProductsByIds: jest.fn(), getVariantsByProductId: jest.fn() };
+    productsService = { getProductsByIds: jest.fn(), getVariantsByProductIds: jest.fn() };
     integrationsService = { listCapabilityAdapters: jest.fn() };
     publishedVariantsService = { getPublishedVariantIds: jest.fn() };
 
@@ -80,7 +80,7 @@ describe('TopProductsService', () => {
   it('enriches each ranked product with its catalog name/sku', async () => {
     orderRecordService.getTopProducts.mockResolvedValue(coreResult());
     productsService.getProductsByIds.mockResolvedValue([product({ id: 'p1' })]);
-    productsService.getVariantsByProductId.mockResolvedValue([]);
+    productsService.getVariantsByProductIds.mockResolvedValue([]);
     integrationsService.listCapabilityAdapters.mockResolvedValue([]);
 
     const result = await service.getTopProducts(filters);
@@ -89,12 +89,13 @@ describe('TopProductsService', () => {
     expect(result.items[0].name).toBe('Widget');
     expect(result.items[0].sku).toBe('SKU-1');
     expect(result.unresolvedProductCount).toBe(0);
+    expect(result.coverageGapAvailable).toBe(true);
   });
 
   it('never drops a row whose productId fails to resolve — renders null name/sku and counts it', async () => {
     orderRecordService.getTopProducts.mockResolvedValue(coreResult());
     productsService.getProductsByIds.mockResolvedValue([]); // resolver silently dropped p1
-    productsService.getVariantsByProductId.mockResolvedValue([]);
+    productsService.getVariantsByProductIds.mockResolvedValue([]);
     integrationsService.listCapabilityAdapters.mockResolvedValue([]);
 
     const result = await service.getTopProducts(filters);
@@ -110,7 +111,7 @@ describe('TopProductsService', () => {
     it('flags a listing-capable connection where none of the product’s variants are published', async () => {
       orderRecordService.getTopProducts.mockResolvedValue(coreResult());
       productsService.getProductsByIds.mockResolvedValue([product({ id: 'p1' })]);
-      productsService.getVariantsByProductId.mockResolvedValue([variant('v1', 'p1')]);
+      productsService.getVariantsByProductIds.mockResolvedValue([variant('v1', 'p1')]);
       integrationsService.listCapabilityAdapters.mockImplementation(({ capability }) =>
         Promise.resolve(
           capability === 'OfferManager'
@@ -138,8 +139,8 @@ describe('TopProductsService', () => {
         })
       );
       productsService.getProductsByIds.mockResolvedValue([product({ id: 'p1' }), product({ id: 'p2' })]);
-      productsService.getVariantsByProductId.mockImplementation((productId) =>
-        Promise.resolve([variant(`v-${productId}`, productId)])
+      productsService.getVariantsByProductIds.mockImplementation((productIds) =>
+        Promise.resolve(productIds.map((productId) => variant(`v-${productId}`, productId)))
       );
       integrationsService.listCapabilityAdapters.mockImplementation(({ capability }) =>
         Promise.resolve(
@@ -156,16 +157,20 @@ describe('TopProductsService', () => {
       await service.getTopProducts(filters);
 
       expect(publishedVariantsService.getPublishedVariantIds).toHaveBeenCalledTimes(2); // 2 connections, not 2 connections × 2 products
+      // one batch call for the whole page, not one call per product (#2172 review, SUGGESTION 4)
+      expect(productsService.getVariantsByProductIds).toHaveBeenCalledTimes(1);
+      expect(productsService.getVariantsByProductIds).toHaveBeenCalledWith(['p1', 'p2']);
     });
 
-    it('degrades to an empty flag on every row when the coverage read fails, without failing the whole request', async () => {
+    it('degrades to an empty flag on every row and reports coverageGapAvailable: false when the coverage read fails, without failing the whole request', async () => {
       orderRecordService.getTopProducts.mockResolvedValue(coreResult());
       productsService.getProductsByIds.mockResolvedValue([product({ id: 'p1' })]);
-      productsService.getVariantsByProductId.mockRejectedValue(new Error('boom'));
+      productsService.getVariantsByProductIds.mockRejectedValue(new Error('boom'));
 
       const result = await service.getTopProducts(filters);
 
       expect(result.items[0].missingFromConnectionIds).toEqual([]);
+      expect(result.coverageGapAvailable).toBe(false);
     });
 
     it('skips the coverage read entirely when there are no products on the page', async () => {

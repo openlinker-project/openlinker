@@ -87,41 +87,59 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
    * mixes currencies — same "null if mixed" rule
    * `OrderRecordRepositoryPort.getDailyOrderAggregates` uses for its own
    * `unconvertedCurrency`.
+   *
+   * A stamped order with `totalAmount = 0` (fully discounted / free) also
+   * folds into the unconverted bucket (#2172 review, IMPORTANT 2): the FX
+   * multiplier `reportingTotalAmount / totalAmount` is `NULL` via
+   * `NULLIF(totalAmount, 0)`, so without this guard the line's revenue would
+   * silently vanish from *both* `revenue` and `unconvertedRevenue` — exactly
+   * the silent-drop #1988's own AC forbids. Its native-currency line amount
+   * is disclosed instead, same as a never-stamped order.
+   *
+   * `ORDER BY` carries an explicit `product_id` tiebreaker (#2172 review,
+   * IMPORTANT 1): `revenue`/`units` are not unique, so pagination over a
+   * non-unique sort with no secondary key is non-deterministic in Postgres —
+   * ties can be repeated on one page and skipped on the next.
    */
   async getTopProductRanking(
     filters: TopProductFilters,
     reportingCurrency: string
   ): Promise<{ rows: ProductRankingRow[]; total: number }> {
+    const stampedNonZero = 'rec."reportingCurrency" = :reportingCurrency AND rec."totalAmount" <> 0';
+    const unconvertedOrZeroTotal =
+      'rec."reportingCurrency" IS DISTINCT FROM :reportingCurrency OR rec."totalAmount" = 0';
+
     const rankingQb = this.repository
       .createQueryBuilder('li')
       .innerJoin(OrderRecordOrmEntity, 'rec', 'rec."internalOrderId" = li."orderRecordId"')
       .select('li.productId', 'product_id')
       .addSelect('COALESCE(SUM(li."quantity"), 0)', 'units')
       .addSelect(
-        `COALESCE(SUM(li."unitPrice" * li."quantity" * (rec."reportingTotalAmount" / NULLIF(rec."totalAmount", 0))) FILTER (WHERE rec."reportingCurrency" = :reportingCurrency), 0)`,
+        `COALESCE(SUM(li."unitPrice" * li."quantity" * (rec."reportingTotalAmount" / NULLIF(rec."totalAmount", 0))) FILTER (WHERE ${stampedNonZero}), 0)`,
         'revenue'
       )
       .addSelect(
-        `COALESCE(SUM(li."unitPrice" * li."quantity") FILTER (WHERE rec."reportingCurrency" IS DISTINCT FROM :reportingCurrency), 0)`,
+        `COALESCE(SUM(li."unitPrice" * li."quantity") FILTER (WHERE ${unconvertedOrZeroTotal}), 0)`,
         'unconverted_revenue'
       )
       .addSelect(
-        `COUNT(DISTINCT li."orderRecordId") FILTER (WHERE rec."reportingCurrency" IS DISTINCT FROM :reportingCurrency)`,
+        `COUNT(DISTINCT li."orderRecordId") FILTER (WHERE ${unconvertedOrZeroTotal})`,
         'unconverted_order_count'
       )
       .addSelect(
-        `CASE WHEN COUNT(*) FILTER (WHERE rec."reportingCurrency" = :reportingCurrency) > 0 THEN :reportingCurrency ELSE NULL END`,
+        `CASE WHEN COUNT(*) FILTER (WHERE ${stampedNonZero}) > 0 THEN :reportingCurrency ELSE NULL END`,
         'reporting_currency'
       )
       .addSelect(
-        `CASE WHEN COUNT(DISTINCT rec."currency") FILTER (WHERE rec."reportingCurrency" IS DISTINCT FROM :reportingCurrency) <= 1
-              THEN MAX(rec."currency") FILTER (WHERE rec."reportingCurrency" IS DISTINCT FROM :reportingCurrency)
+        `CASE WHEN COUNT(DISTINCT rec."currency") FILTER (WHERE ${unconvertedOrZeroTotal}) <= 1
+              THEN MAX(rec."currency") FILTER (WHERE ${unconvertedOrZeroTotal})
               ELSE NULL END`,
         'unconverted_currency'
       )
       .setParameter('reportingCurrency', reportingCurrency)
       .groupBy('li.productId')
       .orderBy(filters.sortBy === 'units' ? 'units' : 'revenue', 'DESC')
+      .addOrderBy('product_id', 'ASC')
       .limit(filters.limit)
       .offset(filters.offset);
     this.applyTopProductsScope(rankingQb, filters);
@@ -164,7 +182,9 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
    * product ids (#1988) — callers MUST bound `productIds` to the current
    * page; this method does not itself limit or rank. `reportingCurrency` is
    * scoped to the CURRENT system reporting currency — same meaning and same
-   * #2049/ADR-040 bugfix as {@link getTopProductRanking}.
+   * #2049/ADR-040 bugfix as {@link getTopProductRanking}. Also shares that
+   * method's `totalAmount = 0` fold into the unconverted bucket (#2172
+   * review, IMPORTANT 2) — see its doc comment.
    */
   async getProductChannelBreakdown(
     productIds: string[],
@@ -175,6 +195,10 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
       return [];
     }
 
+    const stampedNonZero = 'rec."reportingCurrency" = :reportingCurrency AND rec."totalAmount" <> 0';
+    const unconvertedOrZeroTotal =
+      'rec."reportingCurrency" IS DISTINCT FROM :reportingCurrency OR rec."totalAmount" = 0';
+
     const qb = this.repository
       .createQueryBuilder('li')
       .innerJoin(OrderRecordOrmEntity, 'rec', 'rec."internalOrderId" = li."orderRecordId"')
@@ -182,15 +206,15 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
       .addSelect('li.sourceConnectionId', 'source_connection_id')
       .addSelect('COALESCE(SUM(li."quantity"), 0)', 'units')
       .addSelect(
-        `COALESCE(SUM(li."unitPrice" * li."quantity" * (rec."reportingTotalAmount" / NULLIF(rec."totalAmount", 0))) FILTER (WHERE rec."reportingCurrency" = :reportingCurrency), 0)`,
+        `COALESCE(SUM(li."unitPrice" * li."quantity" * (rec."reportingTotalAmount" / NULLIF(rec."totalAmount", 0))) FILTER (WHERE ${stampedNonZero}), 0)`,
         'revenue'
       )
       .addSelect(
-        `COALESCE(SUM(li."unitPrice" * li."quantity") FILTER (WHERE rec."reportingCurrency" IS DISTINCT FROM :reportingCurrency), 0)`,
+        `COALESCE(SUM(li."unitPrice" * li."quantity") FILTER (WHERE ${unconvertedOrZeroTotal}), 0)`,
         'unconverted_revenue'
       )
       .addSelect(
-        `CASE WHEN COUNT(*) FILTER (WHERE rec."reportingCurrency" = :reportingCurrency) > 0 THEN :reportingCurrency ELSE NULL END`,
+        `CASE WHEN COUNT(*) FILTER (WHERE ${stampedNonZero}) > 0 THEN :reportingCurrency ELSE NULL END`,
         'reporting_currency'
       )
       .setParameter('reportingCurrency', reportingCurrency)

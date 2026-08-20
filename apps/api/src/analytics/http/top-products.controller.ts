@@ -34,6 +34,8 @@ export class TopProductsController {
   @ApiOperation({
     summary:
       'Products ranked by revenue or units for a date range, with an inline per-channel breakdown',
+    description:
+      'Sorting by revenue only considers reporting-currency-stamped orders (see the per-row `currency`/`unconvertedRevenue`); a product whose orders are entirely unstamped ranks at revenue 0 and may not appear on this page at all, in which case its unconvertedRevenue is never surfaced either — sort by units to see it.',
   })
   @ApiResponse({ status: 200, type: TopProductsResponseDto })
   async getTopProducts(@Query() query: TopProductsQueryDto): Promise<TopProductsResponseDto> {
