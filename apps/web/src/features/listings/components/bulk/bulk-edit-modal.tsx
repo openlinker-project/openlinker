@@ -2086,6 +2086,12 @@ function VariantScopeForm({
   const [categoryPickerOpen, setCategoryPickerOpen] = useState(false);
   const [ownCategoryPathNames, setOwnCategoryPathNames] = useState<string[] | null>(null);
   const hasOwnCategory = edit.categoryId !== undefined;
+  /**
+   * Whether the PRODUCT tier carries a category (#2240). Gates the per-variant
+   * override, which is a refinement of the shared value rather than a substitute
+   * for it - see the banner below.
+   */
+  const productCategorySet = (baseValues.categoryId ?? '').trim() !== '';
   // Breadcrumb name instead of the raw id when the base's path is already
   // resolved (#1924) - falls back to the id (or "Not set on base") only
   // while the path hasn't resolved yet.
@@ -2374,10 +2380,22 @@ function VariantScopeForm({
         });
         const categoryBlocker = isCategoryBlocker(blocker);
         const variantScope = isVariantScopeFixable(blocker);
+        // The category action belongs on a row that actually lacks a category.
+        // A blocker like `invalid barcode` is category-adjacent but survives a
+        // set category, and there the fix is the barcode field below - offering
+        // "set the category" would point at a control that is already filled in.
+        const needsCategory = categoryBlocker && !productCategorySet && !hasOwnCategory;
         return (
           <div key={blocker} className="bulk-editor__banner bulk-editor__banner--error">
             <b>{copy.title}</b> {copy.detail}
-            {categoryBlocker && canOverrideCategory ? (
+            {/* The per-variant override is deliberately NOT offered here as an
+                alternative: the editor's own save requires a category on the
+                product (the base schema's `requireCategory` for a browsable
+                destination), so a per-variant-only route would end in a Save
+                refused on a scope the operator never chose. Once the product
+                carries one, the category field below offers the override as the
+                refinement it is. */}
+            {needsCategory && canOverrideCategory ? (
               <div
                 className="bulk-editor__scope-toggles"
                 style={{ marginTop: 'var(--space-2)', gap: 'var(--space-2)' }}
@@ -2390,16 +2408,8 @@ function VariantScopeForm({
                 >
                   Set category for all {variantCount} variants
                 </Button>
-                <Button
-                  tone="ghost"
-                  type="button"
-                  className="button--sm"
-                  onClick={() => setCategoryWarn(true)}
-                >
-                  Only this variant
-                </Button>
               </div>
-            ) : categoryBlocker ? (
+            ) : needsCategory ? (
               // The destination forbids a per-variant category (its grouping is
               // parent-child or explicit), so the product tier is the only tier.
               <div

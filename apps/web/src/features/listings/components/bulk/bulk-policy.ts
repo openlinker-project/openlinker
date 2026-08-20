@@ -608,6 +608,20 @@ export function recomputeVariantBlockers(
   return filtered;
 }
 
+/**
+ * Stand-in for an outcome the build does not recognise (#2240).
+ *
+ * `EanMatchResult` is a closed union, so there is no member meaning "the
+ * destination answered something this version cannot read" - and that state has
+ * to survive a reblock, or a row degrades from `unknown result` to
+ * `no catalog match` and starts asserting something the lookup never said. The
+ * cast is confined to this constant, and `computeBlockers`' exhaustive branch is
+ * the only thing that ever reads it.
+ */
+const UNRECOGNISED_CATEGORY_RESULT = {
+  kind: '__unrecognised__',
+} as unknown as EanMatchResult;
+
 /** Reconstruct an `EanMatchResult` for a sibling from its resolved state. */
 function variantCategoryResult(
   variant: BulkVariantRow,
@@ -629,6 +643,13 @@ function variantCategoryResult(
   const masterEan = (variant.variant.ean ?? variant.variant.gtin ?? '').trim();
   if (masterEan === '' && suppliedEan !== undefined && suppliedEan !== '' && isValidGtin(suppliedEan)) {
     return { kind: 'matched', allegroCategoryId: '', productCardId: variant.resolvedProductCardId ?? '' };
+  }
+  if (variant.blockers.includes('unknown-category-result')) {
+    // Preserve "the answer was not understood" across a reblock (#2240).
+    // Falling through to `no-match` would state that the catalogue HAS no match
+    // for this barcode, which is precisely what the lookup did not say - and the
+    // row would then read `no catalog match` from its second recompute onwards.
+    return UNRECOGNISED_CATEGORY_RESULT;
   }
   if (variant.blockers.includes('no-ean') || variant.blockers.includes('invalid-barcode')) {
     // Either way there is no usable barcode to have matched on (#2240). The

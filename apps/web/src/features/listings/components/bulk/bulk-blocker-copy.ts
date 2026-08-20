@@ -53,7 +53,12 @@ export function describeBlocker(blocker: string, ctx: BlockerCopyContext): Block
     case 'no-match':
       return {
         title: `Barcode ${quoted(ctx.ean)} isn't in the ${ctx.destinationName} catalog, and no category mapping covers this product.`,
-        detail: `No category was detected, so this variant can't be listed yet. Set one for ${all}, or just for this variant.`,
+        // Deliberately does NOT offer "or just for this variant" as an
+        // alternative: the editor's own save requires a category on the product,
+        // so a per-variant override alone cannot be saved. The override is a
+        // refinement of the shared value, and the editor offers it only once
+        // that value exists (#2240).
+        detail: `No category was detected, so this variant can't be listed yet. Set one for ${all}.`,
       };
     case 'invalid-barcode':
       return {
