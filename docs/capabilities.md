@@ -87,9 +87,9 @@ declare what they support via `implements <BasePort>, <SubCapability>, …`.
 | `TaxonomyBorrower` | Reuse another platform's resolved taxonomy for a destination. | `getBorrowedTaxonomy` | `isTaxonomyBorrower` |
 
 **Adapter coverage:** Allegro implements every sub-capability except
-`OfferQuantityBatchUpdater` and `EanCategoryMatcherStreaming` (the streaming
-producer is the next step of epic #2205; until it lands
-`CategoryResolutionService` falls back to the batch method for every adapter)
+`OfferQuantityBatchUpdater`, including `EanCategoryMatcherStreaming` (#2208, epic
+#2205); an adapter that ships only `EanCategoryMatcher` keeps working, because
+`CategoryResolutionService` falls back to the batch method
 (see the [README Implementations](../README.md#implementations)
 section); Erli implements a reconciliation-first subset
 ([ADR-025](./architecture/adrs/025-erli-marketplace-adapter.md)).

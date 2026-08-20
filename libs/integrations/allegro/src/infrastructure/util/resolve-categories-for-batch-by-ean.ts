@@ -93,10 +93,11 @@ type CachedOutcome =
  * input order; the remaining items follow in settle order, which is why a
  * consumer keys on `variantId` and never on position.
  *
- * `options.signal` stops further waves from being *scheduled*. The wave
- * already in flight is drained and its results are still yielded: those calls
- * are paid for either way, so discarding them would spend the operator's
- * rate-limit budget for nothing (epic #2205 decision 5).
+ * `options.signal` ends the iteration promptly: no further wave is scheduled
+ * and the generator stops waiting on the wave already in flight, so an
+ * operator who navigated away is never held for the HTTP client's 30 s
+ * per-request timeout. Those calls are deliberately NOT cancelled - see
+ * `throttleStream` for why - their results are simply discarded.
  */
 export async function* streamCategoriesForBatchByEan(
   httpClient: IAllegroHttpClient,
@@ -122,6 +123,8 @@ export async function* streamCategoriesForBatchByEan(
     }
   }
 
+  if (signal?.aborted) return;
+
   for (const item of withoutEan) {
     yield item;
   }
@@ -136,6 +139,10 @@ export async function* streamCategoriesForBatchByEan(
 /**
  * Batch resolver (#735), kept as a thin collector over the generator so the
  * two capability paths share one resolution implementation.
+ *
+ * The returned map is equal *by value* to the pre-#2208 one, not by iteration
+ * order: fetched entries are inserted in settle order rather than in chunk
+ * order. Both in-tree call sites read it with `.get(variantId)`.
  */
 export async function resolveCategoriesForBatchByEan(
   httpClient: IAllegroHttpClient,
@@ -329,14 +336,29 @@ function errorMessage(err: unknown): string {
 
 /**
  * Chunked resolution with a fixed in-flight concurrency cap, yielding in
- * settle order. Items within a chunk run in parallel; the next chunk starts
- * only once the previous one has fully settled, so the cap is the same one
- * the pre-#2208 `Promise.allSettled` wave loop enforced.
+ * settle order.
  *
- * A rejection is dropped rather than propagated, preserving the no-throw
- * contract: `fn` is the resolver, which maps HTTP errors to a fulfilled
- * `no-match`, so a rejection here can only be a defect and must not take the
- * rest of the batch down with it.
+ * Strict waves, NOT a sliding window: items within a chunk run in parallel and
+ * the next chunk starts only once the previous one has fully settled. That is
+ * deliberate - it keeps the scheduling behaviour byte-identical to the
+ * pre-#2208 `Promise.allSettled` wave loop, so #2208 changes only when a result
+ * is delivered and never how much Allegro traffic is generated. Refilling a
+ * freed slot early would shorten the tail, but it is a rate-limit change and
+ * belongs in its own issue.
+ *
+ * A rejection cannot take the rest of the batch down (no-throw contract): `fn`
+ * is the resolver, which already maps HTTP errors to a fulfilled `no-match`, so
+ * a rejection here can only be a defect. It is logged and reported as
+ * `no-match` rather than swallowed, because the capability promises every input
+ * item is yielded exactly once.
+ *
+ * Abort ends the iteration promptly: the drain races the in-flight wave against
+ * the signal and returns on the abort branch, leaving those promises un-awaited.
+ * The underlying HTTP calls are NOT cancelled, and must not be "fixed" into
+ * being cancelled: `AllegroHttpClient` builds its own `AbortController` per
+ * request and accepts no external signal, and epic #2205 decision 5 accepted
+ * that coarseness. Orphaning them costs one settled promise nobody reads;
+ * awaiting them costs the consumer up to the client's 30 s request timeout.
  */
 async function* throttleStream(
   items: Array<{ variantId: string; ean: string }>,
@@ -348,33 +370,69 @@ async function* throttleStream(
   }>,
 ): AsyncGenerator<EanCategoryMatchStreamItem, void, undefined> {
   const cap = Math.max(1, concurrency);
-  for (let i = 0; i < items.length; i += cap) {
-    if (signal?.aborted) return;
-    const inFlight = new Map<number, Promise<SettledSlot>>();
-    items.slice(i, i + cap).forEach((item, slot) => {
-      inFlight.set(
-        slot,
-        fn(item).then(
-          (value): SettledSlot => ({ slot, outcome: value }),
-          (): SettledSlot => ({ slot }),
-        ),
-      );
-    });
-    while (inFlight.size > 0) {
-      const first = await Promise.race(inFlight.values());
-      inFlight.delete(first.slot);
-      if (first.outcome) {
+  const abortRace = signal ? createAbortRace(signal) : null;
+  try {
+    for (let i = 0; i < items.length; i += cap) {
+      if (signal?.aborted) return;
+      const inFlight = new Map<number, Promise<SettledSlot>>();
+      items.slice(i, i + cap).forEach((item, slot) => {
+        inFlight.set(
+          slot,
+          fn(item).then(
+            (value): SettledSlot => ({ slot, outcome: value }),
+            (err): SettledSlot => {
+              getLogger().warn(
+                `Resolver rejected for variant ${item.variantId}, reporting no-match: ${errorMessage(err)}`,
+              );
+              return {
+                slot,
+                outcome: { variantId: item.variantId, outcome: { kind: 'no-match' } },
+              };
+            },
+          ),
+        );
+      });
+      while (inFlight.size > 0) {
+        const racers: Array<Promise<SettledSlot | typeof ABORTED>> = [...inFlight.values()];
+        if (abortRace) racers.push(abortRace.promise);
+        const first = await Promise.race(racers);
+        if (first === ABORTED) return;
+        inFlight.delete(first.slot);
         yield { variantId: first.outcome.variantId, result: first.outcome.outcome };
       }
     }
+  } finally {
+    abortRace?.dispose();
   }
 }
 
+/** Race marker for the abort branch of the drain. */
+const ABORTED = Symbol('aborted');
+
 /**
- * One settled slot of the current wave. `outcome` absent means the resolver
- * rejected, which the no-throw contract treats as nothing to report.
+ * A never-rejecting promise that settles when `signal` aborts, plus the
+ * listener teardown. Without `dispose` a long-lived signal (one per operator
+ * request in the #2205 NDJSON path) would accumulate a listener per wave.
  */
+function createAbortRace(signal: AbortSignal): {
+  promise: Promise<typeof ABORTED>;
+  dispose: () => void;
+} {
+  let onAbort: () => void = (): void => undefined;
+  const promise = new Promise<typeof ABORTED>((resolve): void => {
+    onAbort = (): void => resolve(ABORTED);
+    if (signal.aborted) {
+      onAbort();
+      return;
+    }
+    signal.addEventListener('abort', onAbort, { once: true });
+  });
+  const dispose = (): void => signal.removeEventListener('abort', onAbort);
+  return { promise, dispose };
+}
+
+/** One settled slot of the current wave. */
 interface SettledSlot {
   slot: number;
-  outcome?: { variantId: string; outcome: EanMatchResult };
+  outcome: { variantId: string; outcome: EanMatchResult };
 }

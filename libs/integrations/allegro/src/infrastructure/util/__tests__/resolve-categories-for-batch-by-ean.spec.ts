@@ -648,6 +648,34 @@ describe('streamCategoriesForBatchByEan (#2208)', () => {
     expect(gates.started).toEqual(['5901111111111']);
   });
 
+  it('ends the iteration on abort without waiting for the in-flight wave', async () => {
+    const gates = gateCallsByPhrase();
+    const controller = new AbortController();
+    const stream = streamCategoriesForBatchByEan(
+      httpClient,
+      undefined,
+      CONNECTION_ID,
+      {
+        items: Array.from({ length: 5 }, (_, i) => ({
+          variantId: `v${i}`,
+          ean: `590000000000${i}`,
+        })),
+      },
+      { concurrency: 3, signal: controller.signal },
+    );
+
+    const pending = stream.next();
+    await flush();
+    // Three calls are genuinely outstanding: no gate is ever released below,
+    // so anything that awaited them would never settle.
+    expect(gates.started).toHaveLength(3);
+
+    controller.abort();
+
+    await expect(pending).resolves.toEqual({ done: true, value: undefined });
+    expect(gates.started).toHaveLength(3);
+  });
+
   it('produces the same map as the batch collector for the same input', async () => {
     httpClient.get.mockImplementation((_path, opts) => {
       const phrase = String((opts as { queryParams: { phrase: string } }).queryParams.phrase);
