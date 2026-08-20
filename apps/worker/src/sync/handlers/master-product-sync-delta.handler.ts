@@ -33,7 +33,10 @@
  *   "fix" it by sharing a lock.
  * - **The watermark advances only when the cycle completes**, so `since` is
  *   recomputed from the unadvanced watermark on every resuming tick and the query
- *   set stays stable across a multi-tick cycle.
+ *   set stays stable across a multi-tick cycle. It advances to the instant the
+ *   CYCLE opened, not to the completing tick's clock — a multi-tick cycle queries
+ *   one fixed `since`, so stamping the last tick's clock would move the watermark
+ *   past rows the cycle never had the chance to observe.
  * - **A missing watermark stamps and enumerates nothing.** Treating it as "since
  *   the epoch" would make the first delta tick a second full pass. The full sweep
  *   is what bootstraps a catalog.
@@ -141,7 +144,12 @@ export class MasterProductSyncDeltaHandler implements SyncJobHandler {
       // resolved through getCapabilityAdapter (see the capability file's header).
       // A master that does not offer it is not an error — it stays enumerate-only.
       if (!isModifiedProductLister(productMaster)) {
-        this.logger.log(
+        // `debug`, not `log`: this is a permanent structural property of the
+        // adapter, not an event. The task is gated on `ProductMaster` (see the
+        // scheduler descriptor for why it cannot be gated on the rung itself), so
+        // every non-declaring connection reaches this line on every tick — at
+        // `log` level that is a steady stream of noise describing nothing new.
+        this.logger.debug(
           `master.product.syncDelta skipped for connection ${job.connectionId}: ` +
             `its ProductMaster adapter does not implement the modified-since rung`
         );
@@ -173,6 +181,28 @@ export class MasterProductSyncDeltaHandler implements SyncJobHandler {
       const cursorKey = sweepCursorKey('product-delta', job.connectionId);
       const cursor = parseSweepCursor(await this.cursors.getCursor(job.connectionId, cursorKey));
 
+      // The instant the watermark will advance to belongs to the CYCLE, not to the
+      // tick that happens to finish it. A multi-tick cycle queries one fixed
+      // `since`, so stamping the completing tick's clock would advance the
+      // watermark past rows the cycle never had a chance to observe — and the one
+      // row shape the ADR-048 #2220 amendment already concedes can be stepped over
+      // (re-modified mid-cycle, shifted left past the offset cursor) would go from
+      // "missed for one cycle" to "missed permanently, only the full sweep finds
+      // it". So it is captured when the cycle OPENS and carried across resumptions.
+      const pendingKey = this.pendingWatermarkKey(job.connectionId);
+      const cycleStartedAt =
+        cursor === null
+          ? capturedAt
+          : (this.parseWatermark(await this.cursors.getCursor(job.connectionId, pendingKey)) ??
+            capturedAt);
+      if (cursor === null) {
+        await this.cursors.advanceCursor(
+          job.connectionId,
+          pendingKey,
+          cycleStartedAt.toISOString()
+        );
+      }
+
       const result = await runBoundedSweep({
         cursor,
         budget,
@@ -181,6 +211,13 @@ export class MasterProductSyncDeltaHandler implements SyncJobHandler {
         newCycleId: () => randomUUID(),
       });
 
+      // ORDER MATTERS — these two writes are not atomic, and this is the safe
+      // order. A crash between them leaves the cursor cleared and the watermark
+      // held, so the next tick restarts the cycle against the same `since`:
+      // duplicated children under a fresh cycle id, which is idempotent-safe.
+      // Swapping them silently SKIPS rows — the watermark would advance while the
+      // cursor still pointed at an offset, and the next tick would resume at that
+      // offset against a newer, smaller query set. Do not reorder.
       await this.cursors.advanceCursor(
         job.connectionId,
         cursorKey,
@@ -190,8 +227,20 @@ export class MasterProductSyncDeltaHandler implements SyncJobHandler {
       // Only a completed cycle may move the watermark. A budget-truncated or
       // partly-failed run leaves it, so the next tick recomputes the SAME `since`
       // and the un-enqueued tail is still in the query set.
+      //
+      // `failed === 0` is belt-and-braces: `runBoundedSweep` currently hard-codes
+      // `completed: false` on its failure branch, so the term is redundant today
+      // and no test can distinguish it. It is kept deliberately — this is the
+      // write that must never run early, and a future edit to the sweep's failure
+      // handling should not be able to reach it by accident.
       if (result.completed && result.failed === 0) {
-        await this.cursors.advanceCursor(job.connectionId, watermarkKey, capturedAt.toISOString());
+        await this.cursors.advanceCursor(
+          job.connectionId,
+          watermarkKey,
+          cycleStartedAt.toISOString()
+        );
+        // Cleared last: the pending value is only meaningful while a cycle is open.
+        await this.cursors.advanceCursor(job.connectionId, pendingKey, '');
       }
 
       if (result.failed > 0) {
@@ -289,6 +338,15 @@ export class MasterProductSyncDeltaHandler implements SyncJobHandler {
     return this.jobEnqueue.enqueueJob(jobRequest);
   }
 
+  /**
+   * Holds the cycle's opening instant while a cycle is in flight, so a resuming
+   * tick advances the watermark to when the cycle STARTED rather than to its own
+   * clock. Empty/absent means no cycle is open.
+   */
+  private pendingWatermarkKey(connectionId: string): string {
+    return `master.product-delta.pending-watermark:connection:${connectionId}`;
+  }
+
   private watermarkKey(connectionId: string): string {
     return `master.product-delta.watermark:connection:${connectionId}`;
   }
@@ -331,7 +389,12 @@ export class MasterProductSyncDeltaHandler implements SyncJobHandler {
               String(LOOKBACK_SECONDS_DEFAULT)
             )
           );
-    if (!Number.isFinite(raw) || raw < 0) {
+    // `0` is rejected along with negatives and non-finites, not accepted as "no
+    // overlap": `since === watermark` is precisely the `modified_since =
+    // last_run_time` shape ADR-048 decision 3 forbids, and the overlap is what
+    // makes a row whose timestamp precedes its commit recoverable. An operator
+    // may tune the window; they may not switch the invariant off through it.
+    if (!Number.isFinite(raw) || raw <= 0) {
       return LOOKBACK_SECONDS_DEFAULT;
     }
     return Math.min(Math.floor(raw), LOOKBACK_SECONDS_MAX);

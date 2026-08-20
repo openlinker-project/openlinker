@@ -144,7 +144,14 @@ const CORE_CAPABILITY_TASKS: readonly CoreCapabilityTaskDescriptor[] = [
     enabledEnvVar: 'OL_MASTER_PRODUCT_DELTA_SYNC_ENABLED',
     defaultEnabled: false,
     cronEnvVar: 'OL_MASTER_PRODUCT_DELTA_SYNC_CRON',
-    defaultCron: '*/5 * * * *',
+    // 15 min, derived from the same drain-rate rule `bounded-sweep.ts` states for
+    // the budget: budget x per-child-duration must fit inside the tick. One child
+    // is a full per-product platform sync (~2-5 s) against an execution
+    // concurrency of 1 that `syncAll` and `master.inventory.syncAll` are already
+    // feeding, so the default budget of 100 needs ~500 s worst case. A 5-minute
+    // tick would be ~167% of that and would pile up during exactly the event this
+    // pass exists for — a bulk catalog edit, when pages come back full.
+    defaultCron: '*/15 * * * *',
     idempotencyKey: (connectionId, timestamp) =>
       `master:${connectionId}:product:syncDelta:${timestamp}`,
   },

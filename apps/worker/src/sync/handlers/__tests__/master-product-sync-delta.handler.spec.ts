@@ -27,6 +27,7 @@ describe('MasterProductSyncDeltaHandler', () => {
 
   const WATERMARK_KEY = 'master.product-delta.watermark:connection:conn-1';
   const CURSOR_KEY = 'master.product-delta.sweep:connection:conn-1';
+  const PENDING_KEY = 'master.product-delta.pending-watermark:connection:conn-1';
   const LOCK_KEY = 'master:product-delta:sweep:conn-1';
   const PREVIOUS_WATERMARK = '2026-08-20T10:00:00.000Z';
 
@@ -246,6 +247,67 @@ describe('MasterProductSyncDeltaHandler', () => {
       const call = productMaster.listExternalIdsModifiedSince.mock.calls[0]?.[0];
       expect(call?.since.toISOString()).toBe('2026-08-20T09:55:00.000Z');
       expect(call?.offset).toBe(100);
+    });
+
+    it('should advance the watermark on an EMPTY change set (the quiet steady state)', async () => {
+      // The most-executed path in production, and the one a natural-looking
+      // "no items -> return early" optimisation would break: skipping the cursor
+      // writes would freeze the watermark forever while every job row read ok —
+      // exactly the silent degradation this handler warns about.
+      productMaster.listExternalIdsModifiedSince.mockResolvedValue([]);
+
+      const result = await handler.execute(createJob());
+
+      expect(result).toEqual({ outcome: 'ok' });
+      expect(jobEnqueue.enqueueJob).not.toHaveBeenCalled();
+      const watermarkWrite = cursors.advanceCursor.mock.calls.find(
+        (call) => call[1] === WATERMARK_KEY
+      );
+      expect(watermarkWrite).toBeDefined();
+      expect(new Date(String(watermarkWrite?.[2])).getTime()).toBeGreaterThan(
+        new Date(PREVIOUS_WATERMARK).getTime()
+      );
+    });
+
+    it('should stamp the CYCLE start, not the completing tick, when a cycle resumes', async () => {
+      // A multi-tick cycle queries one fixed `since`. Advancing to the completing
+      // tick's clock would move the watermark past rows the cycle never had the
+      // chance to observe — turning the ADR-048 #2220 row-skip window from "missed
+      // for one cycle" into "missed permanently".
+      const CYCLE_OPENED_AT = '2026-08-20T10:30:00.000Z';
+      distinctPages(100, 3);
+      stubCursors({
+        [WATERMARK_KEY]: PREVIOUS_WATERMARK,
+        [CURSOR_KEY]: 'cycle-abc:0',
+        [PENDING_KEY]: CYCLE_OPENED_AT,
+      });
+
+      await handler.execute(createJob());
+
+      const watermarkWrite = cursors.advanceCursor.mock.calls.find(
+        (call) => call[1] === WATERMARK_KEY
+      );
+      expect(watermarkWrite?.[2]).toBe(CYCLE_OPENED_AT);
+      // ...and the pending value is cleared once the cycle closes.
+      const pendingWrites = cursors.advanceCursor.mock.calls.filter(
+        (call) => call[1] === PENDING_KEY
+      );
+      expect(pendingWrites.at(-1)?.[2]).toBe('');
+    });
+
+    it('should open a cycle by recording its start instant when no cursor exists', async () => {
+      distinctPages(100, 250);
+
+      await handler.execute(createJob({ pageLimit: 100 }));
+
+      const pendingWrite = cursors.advanceCursor.mock.calls.find(
+        (call) => call[1] === PENDING_KEY
+      );
+      expect(pendingWrite?.[2]).toEqual(expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/));
+      // The cycle is still open, so the watermark itself must not have moved.
+      expect(
+        cursors.advanceCursor.mock.calls.find((call) => call[1] === WATERMARK_KEY)
+      ).toBeUndefined();
     });
 
     it('should treat an unparseable watermark as absent rather than wedging the sweep', async () => {

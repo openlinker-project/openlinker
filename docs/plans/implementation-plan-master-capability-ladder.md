@@ -7,6 +7,19 @@
 > **Revision 2** — applies the `/pre-implement` gate (`analysis/ANALYSIS-master-capability-ladder.md`, NEEDS-REVISION,
 > C1+C2) and the deep `/tech-review` (Approve with changes, 1 BLOCKING + 5 IMPORTANT). Changes from revision 1 are
 > marked **[R2]**.
+>
+> **Revision 3** — applies the deep `/tech-review` of the implemented diff (Approve with changes, 0 blocking).
+> The substantive one: **the watermark advances to the instant the CYCLE opened, not to the completing tick's
+> clock**, carried across resumptions on a `master.product-delta.pending-watermark:connection:{id}` cursor. A
+> multi-tick cycle queries one fixed `since`, so stamping the last tick would move the watermark past rows the
+> cycle never had the chance to observe — turning the § 6(b) row-skip from "missed for one cycle" into "missed
+> permanently". Recorded in ADR-048 as a partial narrowing of that window. Also: the default cron is **`*/15`**,
+> derived from `bounded-sweep.ts`'s own drain-rate rule rather than guessed (`*/5` was ~167% of a tick at the
+> default budget, worst case, on a runner the full sweeps already feed); `lookbackSeconds: 0` is rejected rather
+> than accepted as "no overlap", since that is exactly the shape decision 3 forbids; the non-declaring-adapter
+> skip logs at `debug`, because the task is gated on `ProductMaster` so every PrestaShop connection reaches it
+> every tick; the two non-atomic cursor writes carry a do-not-reorder note; and `master.product.syncDelta` was
+> added to the FE job-type filter list.
 
 ## Goal
 

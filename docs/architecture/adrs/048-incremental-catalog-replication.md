@@ -91,6 +91,8 @@ The first answer alone settles it. `date_upd` covers product-level fields only, 
 
 Keyset paging (carry each row's `modified` rather than an offset) would fix it properly, but it requires the rung to return timestamps alongside ids — a different contract, premature for a rung with one implementer. The window is therefore **accepted and documented**, on one condition that is load-bearing rather than incidental: it is survivable only because #2220 leaves the full `master.product.syncAll` pass running unchanged, which re-reads the whole catalog on its own cadence.
 
+One half of that window is closed cheaply and already is: the watermark advances to the instant the **cycle opened**, not to the clock of whichever tick completes it. A multi-tick cycle queries one fixed `since`, so stamping the completing tick would push the watermark past rows the cycle never had the chance to observe - turning a row skipped for one cycle into a row skipped permanently. Cycle-start capture therefore leaves such a row inside the next cycle's window, where the ordering usually recovers it. It is a narrowing, not a fix: a row re-modified mid-cycle still moves in the ordered set.
+
 **That makes it a hard dependency for #2222**, the issue that may relax the full cadence once it owns the reconciliation pass. Relaxing that cadence without first moving the delta rung to keyset paging converts a bounded staleness window into unbounded, silent row loss — the failure this ADR exists to prevent, arriving through the one path that reports healthy.
 
 ## References
