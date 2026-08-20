@@ -18,15 +18,33 @@ import {
   JobTypeValues,
 } from '@openlinker/core/sync';
 import { Logger } from '@openlinker/shared/logging';
+import {
+  ackTrimmed,
+  MIN_RECLAIM_IDLE_MS,
+  readOwnPending,
+  reclaimOrphans,
+  resolveConsumerName,
+  type StreamConsumerClient,
+  type StreamEntry,
+} from '@openlinker/shared/redis';
 
 @Injectable()
 export class JobIntakeConsumer implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(JobIntakeConsumer.name);
   private readonly STREAM_NAME = 'jobs.sync';
   private readonly CONSUMER_GROUP = 'job-intake';
-  private readonly CONSUMER_NAME = `job-intake-${process.pid}`;
+  // Stable across restarts of the same logical worker and distinct across
+  // replicas, so this process can reach its own pending history (#2164).
+  private readonly CONSUMER_NAME = resolveConsumerName('job-intake');
   private readonly BLOCK_MS = 5000; // 5 seconds
   private readonly COUNT = 10; // Read up to 10 messages at a time
+  // Must exceed p99 handler duration or a reclaim steals live work. The intake
+  // handler is a single parse plus one insert, so the shared floor is already
+  // orders of magnitude above it.
+  private readonly RECLAIM_IDLE_MS = MIN_RECLAIM_IDLE_MS;
+  private readonly RECLAIM_INTERVAL_MS = 5 * 60 * 1000;
+
+  private lastReclaimAt = 0;
 
   private abortController: AbortController | null = null;
   private isRunning = false;
@@ -49,6 +67,7 @@ export class JobIntakeConsumer implements OnModuleInit, OnModuleDestroy {
     }
 
     await this.initializeConsumerGroup();
+    await this.drainOwnPending();
     this.startConsumptionLoop();
   }
 
@@ -193,6 +212,8 @@ export class JobIntakeConsumer implements OnModuleInit, OnModuleDestroy {
             await this.processMessage(message.id, message.message);
           }
         }
+
+        await this.maybeReclaimOrphans();
       } catch (error) {
         // Handle abort signal (graceful shutdown)
         if (this.abortController?.signal.aborted) {
@@ -302,10 +323,126 @@ export class JobIntakeConsumer implements OnModuleInit, OnModuleDestroy {
         }
       }
 
-      // Don't ACK - message will be re-delivered after timeout
-      // In production, you might want to implement retry limits and dead-letter queue
+      // Deliberately not ACKed: the entry stays in this consumer's Pending
+      // Entries List. Redis never expires a PEL entry on its own, so recovery is
+      // this consumer's own job — the startup drain (`drainOwnPending`) picks it
+      // up on restart, and `reclaimOrphanedEntries` claims it if this process
+      // never returns. Before #2164 no code path read a PEL at all, and the
+      // comment here claimed a redelivery timeout that does not exist, which is
+      // why permanent message loss went unnoticed.
       throw error;
     }
+  }
+
+  /**
+   * Drain this consumer's own pending history before reading new messages.
+   *
+   * Reading with id `0` returns entries already delivered to this consumer and
+   * never ACKed — the messages a previous incarnation of this worker was holding
+   * when it died. Without this they would sit in the PEL forever, because the
+   * steady-state loop reads `'>'`, which returns only never-delivered entries.
+   */
+  private async drainOwnPending(): Promise<void> {
+    let drained = 0;
+
+    try {
+      for (;;) {
+        const entries = await readOwnPending(
+          this.redisClient as unknown as StreamConsumerClient,
+          this.STREAM_NAME,
+          this.CONSUMER_GROUP,
+          this.CONSUMER_NAME,
+          this.COUNT
+        );
+
+        if (entries.length === 0) {
+          break;
+        }
+
+        for (const entry of entries) {
+          await this.handleRecoveredEntry(entry, 'startup-drain');
+        }
+        drained += entries.length;
+      }
+    } catch (error) {
+      // Never block startup on recovery: the steady-state loop is still correct
+      // without it, and the periodic reclaim will retry the same entries.
+      this.logger.error(
+        'Failed to drain pending history; continuing to new messages',
+        error instanceof Error ? error.stack : String(error)
+      );
+      return;
+    }
+
+    if (drained > 0) {
+      this.logger.log(`Recovered ${drained} pending message(s) as ${this.CONSUMER_NAME}`);
+    }
+  }
+
+  /**
+   * Periodically claim entries stranded by a consumer that never came back.
+   *
+   * Stable identity lets a restarted process drain its own history; it cannot
+   * help when a replica disappears permanently. `XAUTOCLAIM` covers that case.
+   */
+  private async maybeReclaimOrphans(): Promise<void> {
+    const now = Date.now();
+    if (now - this.lastReclaimAt < this.RECLAIM_INTERVAL_MS) {
+      return;
+    }
+    this.lastReclaimAt = now;
+
+    try {
+      const entries = await reclaimOrphans(
+        this.redisClient as unknown as StreamConsumerClient,
+        this.STREAM_NAME,
+        this.CONSUMER_GROUP,
+        this.CONSUMER_NAME,
+        this.RECLAIM_IDLE_MS,
+        this.COUNT
+      );
+
+      for (const entry of entries) {
+        await this.handleRecoveredEntry(entry, 'orphan-reclaim');
+      }
+      const reclaimed = entries.length;
+
+      if (reclaimed > 0) {
+        this.logger.warn(
+          `Reclaimed ${reclaimed} orphaned message(s) idle > ${this.RECLAIM_IDLE_MS}ms into ${this.CONSUMER_NAME}`
+        );
+      }
+    } catch (error) {
+      this.logger.error(
+        'Failed to reclaim orphaned messages',
+        error instanceof Error ? error.stack : String(error)
+      );
+    }
+  }
+
+  /**
+   * Route one recovered entry, separating a trimmed id from real work.
+   *
+   * A trimmed entry keeps its PEL id after retention removed its data, so it has
+   * no body to process. Routing it into `processMessage` would fail the
+   * required-field check and persist a bogus dead `sync_jobs` row, inventing a
+   * job that never existed — so it is ACKed to clear the dangling id instead.
+   */
+  private async handleRecoveredEntry(entry: StreamEntry, source: string): Promise<void> {
+    if (entry.kind === 'trimmed') {
+      this.logger.warn(
+        `Discarding trimmed stream entry ${entry.id} (${source}): retention removed its data before it was processed`
+      );
+      await ackTrimmed(
+        this.redisClient as unknown as StreamConsumerClient,
+        this.STREAM_NAME,
+        this.CONSUMER_GROUP,
+        entry.id
+      );
+      return;
+    }
+
+    await this.processMessage(entry.id, entry.fields);
   }
 
   /**
@@ -373,7 +510,17 @@ export class JobIntakeConsumer implements OnModuleInit, OnModuleDestroy {
       maxAttempts: 10,
     });
 
-    // Mark as dead immediately
+    // Only mark a freshly-created row dead. `createIfNotExistsByIdempotencyKey`
+    // returns the existing row when one is already present, and startup drain /
+    // orphan reclaim (#2164) make redelivery real — so an unguarded markDead
+    // would flip a job that has since run to 'dead' on a repeat delivery.
+    if (deadJob.status !== 'queued') {
+      this.logger.warn(
+        `Skipping markDead for ${deadJob.id}: job already in status '${deadJob.status}' (redelivered message)`
+      );
+      return;
+    }
+
     await this.jobRepository.markDead(deadJob.id, errorMessage);
   }
 }

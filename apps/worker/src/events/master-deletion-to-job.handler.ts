@@ -27,6 +27,15 @@ import type { MasterDeletionEventPayload } from '@openlinker/core/products';
 import { MASTER_DELETION_EVENT_STREAM } from '@openlinker/core/products';
 import { JobEnqueuePort, JOB_ENQUEUE_TOKEN } from '@openlinker/core/sync';
 import { Logger } from '@openlinker/shared/logging';
+import {
+  ackTrimmed,
+  MIN_RECLAIM_IDLE_MS,
+  readOwnPending,
+  reclaimOrphans,
+  resolveConsumerName,
+  type StreamConsumerClient,
+  type StreamEntry,
+} from '@openlinker/shared/redis';
 import { MASTER_DELETION_REDIS_CLIENT_BLOCKING_TOKEN } from './events.tokens';
 
 /**
@@ -44,7 +53,13 @@ export class MasterDeletionToJobHandler implements OnModuleInit, OnModuleDestroy
   private readonly STREAM_NAME = MASTER_DELETION_EVENT_STREAM;
   private readonly DLQ_STREAM_NAME = 'events.master.deletion.dead';
   private readonly CONSUMER_GROUP = 'master-deletion-offer-pause';
-  private readonly CONSUMER_NAME = `master-deletion-offer-pause-${process.pid}`;
+  // Stable across restarts of the same logical worker and distinct across
+  // replicas, so this process can reach its own pending history (#2164).
+  private readonly CONSUMER_NAME = resolveConsumerName('master-deletion-offer-pause');
+  private readonly RECLAIM_IDLE_MS = MIN_RECLAIM_IDLE_MS;
+  private readonly RECLAIM_INTERVAL_MS = 5 * 60 * 1000;
+
+  private lastReclaimAt = 0;
   private readonly BLOCK_MS = 5000;
   private readonly COUNT = 10;
 
@@ -70,6 +85,7 @@ export class MasterDeletionToJobHandler implements OnModuleInit, OnModuleDestroy
     }
 
     await this.initializeConsumerGroup();
+    await this.drainOwnPending();
     this.startConsumptionLoop();
   }
 
@@ -149,6 +165,8 @@ export class MasterDeletionToJobHandler implements OnModuleInit, OnModuleDestroy
             await this.processMessage(message.id, message.message);
           }
         }
+
+        await this.maybeReclaimOrphans();
       } catch (error) {
         if (this.abortController?.signal.aborted) {
           break;
@@ -249,12 +267,118 @@ export class MasterDeletionToJobHandler implements OnModuleInit, OnModuleDestroy
     };
   }
 
+  /**
+   * Drain this consumer's own pending history before reading new messages.
+   *
+   * The steady-state loop reads `'>'`, which returns only never-delivered
+   * entries, so without this a message held when a previous incarnation died
+   * would stay in the PEL forever (#2164).
+   */
+  private async drainOwnPending(): Promise<void> {
+    let drained = 0;
+
+    try {
+      for (;;) {
+        const entries = await readOwnPending(
+          this.redisClient as unknown as StreamConsumerClient,
+          this.STREAM_NAME,
+          this.CONSUMER_GROUP,
+          this.CONSUMER_NAME,
+          this.COUNT
+        );
+
+        if (entries.length === 0) {
+          break;
+        }
+
+        for (const entry of entries) {
+          await this.handleRecoveredEntry(entry, 'startup-drain');
+        }
+        drained += entries.length;
+      }
+    } catch (error) {
+      this.logger.error(
+        'Failed to drain pending history; continuing to new messages',
+        error instanceof Error ? error.stack : String(error)
+      );
+      return;
+    }
+
+    if (drained > 0) {
+      this.logger.log(`Recovered ${drained} pending event(s) as ${this.CONSUMER_NAME}`);
+    }
+  }
+
+  /**
+   * Periodically claim entries stranded by a consumer that never came back.
+   */
+  private async maybeReclaimOrphans(): Promise<void> {
+    const now = Date.now();
+    if (now - this.lastReclaimAt < this.RECLAIM_INTERVAL_MS) {
+      return;
+    }
+    this.lastReclaimAt = now;
+
+    try {
+      const entries = await reclaimOrphans(
+        this.redisClient as unknown as StreamConsumerClient,
+        this.STREAM_NAME,
+        this.CONSUMER_GROUP,
+        this.CONSUMER_NAME,
+        this.RECLAIM_IDLE_MS,
+        this.COUNT
+      );
+
+      for (const entry of entries) {
+        await this.handleRecoveredEntry(entry, 'orphan-reclaim');
+      }
+      const reclaimed = entries.length;
+
+      if (reclaimed > 0) {
+        this.logger.warn(
+          `Reclaimed ${reclaimed} orphaned event(s) idle > ${this.RECLAIM_IDLE_MS}ms into ${this.CONSUMER_NAME}`
+        );
+      }
+    } catch (error) {
+      this.logger.error(
+        'Failed to reclaim orphaned events',
+        error instanceof Error ? error.stack : String(error)
+      );
+    }
+  }
+
+  /**
+   * Route one recovered entry, separating a trimmed id from real work.
+   *
+   * A trimmed entry has no body, so routing it into `processMessage` would fail
+   * validation and write a dead-letter entry describing an event that was never
+   * actually dropped. It is ACKed to clear the dangling PEL id instead.
+   */
+  private async handleRecoveredEntry(entry: StreamEntry, source: string): Promise<void> {
+    if (entry.kind === 'trimmed') {
+      this.logger.warn(
+        `Discarding trimmed stream entry ${entry.id} (${source}): retention removed its data before it was processed`
+      );
+      await ackTrimmed(
+        this.redisClient as unknown as StreamConsumerClient,
+        this.STREAM_NAME,
+        this.CONSUMER_GROUP,
+        entry.id
+      );
+      return;
+    }
+
+    await this.processMessage(entry.id, entry.fields);
+  }
+
   private async deadLetter(
     messageId: string,
     fields: Record<string, string>,
     reason: string
   ): Promise<void> {
-    this.logger.warn(`Dead-lettering master-deletion event: messageId=${messageId}, reason=${reason}`);
+    this.logger.warn(
+      `Dead-lettering master-deletion event: messageId=${messageId}, reason=${reason}`
+    );
     try {
       await this.redisClient.xAdd(this.DLQ_STREAM_NAME, '*', {
         ...fields,
