@@ -67,7 +67,7 @@ export interface StreamConsumerClient {
  * is classified here, once, and never reaches a handler.
  */
 export type StreamEntry =
-  | { kind: 'entry'; id: string; fields: Record<string, string> }
+  | { kind: 'entry'; id: string; fields: Record<string, string>; deliveryCount: number }
   | { kind: 'trimmed'; id: string };
 
 /** Environment variable that pins a worker's stable identity. */
@@ -134,7 +134,26 @@ export interface PendingRow {
   id: string;
   owner: string;
   millisecondsSinceLastDelivery: number;
+  /**
+   * How many times Redis has delivered this entry.
+   *
+   * Surfaced because recovery makes unbounded retry reachable for the first
+   * time: before #2164 a failing entry was simply never redelivered, so no
+   * terminal state was needed. Now that drain and reclaim re-present it, an
+   * entry whose handler always throws would be retried forever. Consumers
+   * compare this against {@link MAX_DELIVERY_ATTEMPTS} and dead-letter past it.
+   */
+  deliveryCount: number;
 }
+
+/**
+ * Deliveries after which a pending entry is treated as poison.
+ *
+ * Deliberately generous: a handler failing for a transient reason (a database
+ * blip, a marketplace timeout) must be allowed to succeed on a later pass, so
+ * this is a terminal-state backstop rather than a retry budget.
+ */
+export const MAX_DELIVERY_ATTEMPTS = 10;
 
 /**
  * Narrow an `XPENDING ... START END COUNT` reply, tolerating shape drift.
@@ -152,7 +171,10 @@ export function toPendingRows(reply: unknown): PendingRow[] {
     if (!row || typeof row !== 'object') {
       continue;
     }
-    const { id, owner, millisecondsSinceLastDelivery } = row as Record<string, unknown>;
+    const { id, owner, millisecondsSinceLastDelivery, deliveriesCounter } = row as Record<
+      string,
+      unknown
+    >;
     if (typeof id !== 'string') {
       continue;
     }
@@ -161,6 +183,9 @@ export function toPendingRows(reply: unknown): PendingRow[] {
       owner: typeof owner === 'string' ? owner : '',
       millisecondsSinceLastDelivery:
         typeof millisecondsSinceLastDelivery === 'number' ? millisecondsSinceLastDelivery : 0,
+      // Defaults to 1 (this delivery), never 0: a missing counter must not read
+      // as "never delivered" and so never reach the poison threshold.
+      deliveryCount: typeof deliveriesCounter === 'number' ? deliveriesCounter : 1,
     });
   }
   return rows;
@@ -181,14 +206,15 @@ export function toPendingRows(reply: unknown): PendingRow[] {
 async function resolvePendingEntry(
   client: StreamConsumerClient,
   streamName: string,
-  id: string
+  id: string,
+  deliveryCount: number
 ): Promise<StreamEntry> {
   const reply = await client.xRange(streamName, id, id, { COUNT: 1 });
 
   if (Array.isArray(reply) && reply.length > 0) {
     const fields = (reply[0] as { message?: unknown })?.message;
     if (fields && typeof fields === 'object' && Object.keys(fields).length > 0) {
-      return { kind: 'entry', id, fields: fields as Record<string, string> };
+      return { kind: 'entry', id, fields: fields as Record<string, string>, deliveryCount };
     }
   }
 
@@ -221,7 +247,7 @@ export async function readOwnPending(
 
   const entries: StreamEntry[] = [];
   for (const row of pending) {
-    entries.push(await resolvePendingEntry(client, streamName, row.id));
+    entries.push(await resolvePendingEntry(client, streamName, row.id, row.deliveryCount));
   }
   return entries;
 }
@@ -312,7 +338,12 @@ export async function reclaimOrphans(
     );
 
     if (claimed) {
-      entries.push({ kind: 'entry', id: row.id, fields: claimed });
+      entries.push({
+        kind: 'entry',
+        id: row.id,
+        fields: claimed,
+        deliveryCount: row.deliveryCount,
+      });
       continue;
     }
 

@@ -135,6 +135,17 @@ new write that makes Redis the only record of an operator-visible fact.
 - Decision 1 is stated but not yet implemented anywhere; it constrains future work rather than
   changing current behaviour.
 
+**Known gap — no terminal state for a poison entry.** #2164 makes repeated delivery
+reachable for the first time (before it, a failing entry was simply never redelivered), so an
+entry whose handler always throws is now retried indefinitely. Per-entry error isolation stops it
+starving its siblings, and `PendingRow.deliveryCount` is surfaced so crossing
+`MAX_DELIVERY_ATTEMPTS` alarms at `error` level. What is deliberately *not* done is
+auto-dead-lettering: two of the three consumers cannot construct their dead-letter payload from a
+raw pending entry (the webhook handler needs a decoded event, job-intake a parsed job request), and
+discarding the entry instead would be unrecoverable loss. *Reversal gate:* the first poison entry
+observed in production, or the Wave 5 spine (decision 1) removing the PEL from the durable path
+entirely.
+
 **Migration path:**
 - #2164 makes PEL entries recoverable (stable identity, startup drain, orphan reclaim).
 - #2163 bounds every stream and makes the Redis memory policy explicit.

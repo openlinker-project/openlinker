@@ -29,6 +29,7 @@ import {
 import { Logger } from '@openlinker/shared/logging';
 import {
   ackTrimmed,
+  MAX_DELIVERY_ATTEMPTS,
   MAX_DRAIN_PAGES,
   MIN_RECLAIM_IDLE_MS,
   readOwnPending,
@@ -501,7 +502,7 @@ export class WebhookToJobHandler implements OnModuleInit, OnModuleDestroy {
         }
 
         for (const entry of entries) {
-          await this.handleRecoveredEntry(entry, 'startup-drain');
+          await this.recoverEntrySafely(entry, 'startup-drain');
         }
         drained += entries.length;
       }
@@ -545,7 +546,7 @@ export class WebhookToJobHandler implements OnModuleInit, OnModuleDestroy {
         this.COUNT
       );
       for (const entry of ownRetries) {
-        await this.handleRecoveredEntry(entry, 'pending-retry');
+        await this.recoverEntrySafely(entry, 'pending-retry');
       }
 
       const entries = await reclaimOrphans(
@@ -558,7 +559,7 @@ export class WebhookToJobHandler implements OnModuleInit, OnModuleDestroy {
       );
 
       for (const entry of entries) {
-        await this.handleRecoveredEntry(entry, 'orphan-reclaim');
+        await this.recoverEntrySafely(entry, 'orphan-reclaim');
       }
       const reclaimed = entries.length;
 
@@ -570,6 +571,42 @@ export class WebhookToJobHandler implements OnModuleInit, OnModuleDestroy {
     } catch (error) {
       this.logger.error(
         'Failed to reclaim orphaned webhook events',
+        error instanceof Error ? error.stack : String(error)
+      );
+    }
+  }
+
+  /**
+   * Run one recovered entry, isolating a handler failure to that entry.
+   *
+   * Without this the enclosing try/catch spans the whole page loop, so a single
+   * entry whose handler throws aborts the entire pass — and because the PEL is
+   * always paged from the oldest id, that same entry leads every later drain and
+   * reclaim. One poison message would permanently block recovery of every other
+   * stranded message, which is the precise failure this recovery path exists to
+   * prevent. The entry stays un-ACKed and is retried on the next pass; what does
+   * not happen is its siblings being starved behind it.
+   */
+  private async recoverEntrySafely(entry: StreamEntry, source: string): Promise<void> {
+    // Recovery makes repeated delivery reachable for the first time, so an entry
+    // whose handler always throws is now retried indefinitely. It no longer
+    // starves its siblings (see above), but it must not fail silently either.
+    // Auto-dead-lettering is deliberately NOT done here: two of the three
+    // consumers cannot build their dead-letter payload from a raw pending entry
+    // (one needs a decoded webhook event, one a parsed job request), and
+    // discarding the entry would be unrecoverable data loss. Terminal handling
+    // is tracked as a follow-up; see ADR-049.
+    if (entry.kind === 'entry' && entry.deliveryCount > MAX_DELIVERY_ATTEMPTS) {
+      this.logger.error(
+        `Stream entry ${entry.id} has been delivered ${entry.deliveryCount} times without succeeding (${source}); it is left pending and needs manual intervention`
+      );
+    }
+
+    try {
+      await this.handleRecoveredEntry(entry, source);
+    } catch (error) {
+      this.logger.error(
+        `Failed to recover stream entry ${entry.id} (${source}); leaving it pending and continuing`,
         error instanceof Error ? error.stack : String(error)
       );
     }

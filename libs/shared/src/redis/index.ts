@@ -6,6 +6,7 @@
 export { RedisConfigModule } from './redis-config.module';
 export {
   ackTrimmed,
+  MAX_DELIVERY_ATTEMPTS,
   MAX_DRAIN_PAGES,
   MIN_RECLAIM_IDLE_MS,
   readOwnPending,

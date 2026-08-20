@@ -11,6 +11,7 @@
 import { hostname } from 'os';
 
 import {
+  MAX_DELIVERY_ATTEMPTS,
   MIN_RECLAIM_IDLE_MS,
   toClaimedMessage,
   readOwnPending,
@@ -69,10 +70,12 @@ describe('resolveConsumerName', () => {
 
 describe('toPendingRows', () => {
   it('should read a well-formed XPENDING reply', () => {
-    const reply = [{ id: '1-0', owner: 'c1', millisecondsSinceLastDelivery: 42 }];
+    const reply = [
+      { id: '1-0', owner: 'c1', millisecondsSinceLastDelivery: 42, deliveriesCounter: 3 },
+    ];
 
     expect(toPendingRows(reply)).toEqual([
-      { id: '1-0', owner: 'c1', millisecondsSinceLastDelivery: 42 },
+      { id: '1-0', owner: 'c1', millisecondsSinceLastDelivery: 42, deliveryCount: 3 },
     ]);
   });
 
@@ -87,7 +90,7 @@ describe('toPendingRows', () => {
   it('should default a missing owner and idle time rather than dropping the row', () => {
     // Losing a row here would silently strand the message it names.
     expect(toPendingRows([{ id: '1-0' }])).toEqual([
-      { id: '1-0', owner: '', millisecondsSinceLastDelivery: 0 },
+      { id: '1-0', owner: '', millisecondsSinceLastDelivery: 0, deliveryCount: 1 },
     ]);
   });
 });
@@ -114,6 +117,14 @@ describe('toClaimedMessage', () => {
   });
 });
 
+describe('MAX_DELIVERY_ATTEMPTS', () => {
+  it('should be generous enough that a transient failure is not treated as poison', () => {
+    // It is a terminal-state backstop, not a retry budget: a handler failing on a
+    // database blip must be allowed to succeed on a later pass.
+    expect(MAX_DELIVERY_ATTEMPTS).toBeGreaterThanOrEqual(5);
+  });
+});
+
 describe('readOwnPending', () => {
   it('should scope the XPENDING scan to this consumer', async () => {
     const client = buildClient();
@@ -129,12 +140,14 @@ describe('readOwnPending', () => {
     const client = buildClient({
       xPendingRange: jest
         .fn()
-        .mockResolvedValue([{ id: '1-0', owner: CONSUMER, millisecondsSinceLastDelivery: 1 }]),
+        .mockResolvedValue([
+          { id: '1-0', owner: CONSUMER, millisecondsSinceLastDelivery: 1, deliveriesCounter: 2 },
+        ]),
       xRange: jest.fn().mockResolvedValue([{ id: '1-0', message: { jobType: 'a' } }]),
     } as Partial<jest.Mocked<StreamConsumerClient>>);
 
     expect(await readOwnPending(client, STREAM, GROUP, CONSUMER, 10)).toEqual([
-      { kind: 'entry', id: '1-0', fields: { jobType: 'a' } },
+      { kind: 'entry', id: '1-0', fields: { jobType: 'a' }, deliveryCount: 2 },
     ]);
   });
 
@@ -217,7 +230,9 @@ describe('reclaimOrphans', () => {
 
     const entries = await reclaimOrphans(client, STREAM, GROUP, CONSUMER, MIN_RECLAIM_IDLE_MS);
 
-    expect(entries).toEqual([{ kind: 'entry', id: '1-0', fields: { jobType: 'a' } }]);
+    expect(entries).toEqual([
+      { kind: 'entry', id: '1-0', fields: { jobType: 'a' }, deliveryCount: 1 },
+    ]);
     expect(client.xClaim).toHaveBeenCalledWith(STREAM, GROUP, CONSUMER, MIN_RECLAIM_IDLE_MS, '1-0');
   });
 
