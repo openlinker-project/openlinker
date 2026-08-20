@@ -25,6 +25,7 @@ import type {
 } from '../domain/ports/identifier-mapping.port';
 import type {
   ExternalIdMapping,
+  IdentifierMappingPage,
   IdentifierMappingRequest,
   MappingContext,
 } from '../domain/types/identifier-mapping.types';
@@ -101,14 +102,25 @@ export class InMemoryIdentifierMappingAdapter implements IdentifierMappingPort {
     return Promise.resolve(result);
   }
 
-  listExternalIdsByConnection(entityType: string, connectionId: string): Promise<string[]> {
+  listExternalIdsByConnection(
+    entityType: string,
+    connectionId: string,
+    page?: IdentifierMappingPage,
+  ): Promise<string[]> {
     const result: string[] = [];
     for (const row of this.rows.values()) {
       if (row.entityType === entityType && row.connectionId === connectionId) {
         result.push(row.externalId);
       }
     }
-    return Promise.resolve(result);
+    if (page === undefined) {
+      return Promise.resolve(result);
+    }
+    // Mirror the repository: a paged read is ordered by `externalId`, so a fake
+    // that returned Map-insertion order would let a spec pass against ordering
+    // the real store does not provide.
+    const offset = page.offset ?? 0;
+    return Promise.resolve([...result].sort().slice(offset, offset + page.limit));
   }
 
   getOrCreateInternalId(
