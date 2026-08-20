@@ -86,7 +86,12 @@ export class OrderRecord {
      * (#1987/#1988) can filter/bucket without parsing `orderSnapshot`.
      *
      * `placedAt`: the buyer's true order time (#926); `null` when the source
-     * didn't expose one — consumers fall back to `createdAt`.
+     * didn't expose one. No universal fallback here — `findEarliestPlacedAtByConnection`
+     * (#2083) falls back to `createdAt` for its own coverage-window purpose via an
+     * explicit `COALESCE`, but the FX rate-date resolver (`OrderFxStampService`,
+     * ADR-040) reads this field with no fallback: `createdAt` is OpenLinker's
+     * ingestion instant, not the sale date, and substituting it would stamp a
+     * rate against a day the buyer never transacted on. Each consumer decides.
      */
     public readonly placedAt: Date | null = null,
     /**
