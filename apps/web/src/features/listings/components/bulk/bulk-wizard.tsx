@@ -83,6 +83,13 @@ interface BulkWizardProps {
    * to the `/products` entry point.
    */
   preSelectedVariantIds?: ReadonlySet<string>;
+  /**
+   * Set when the wizard was reopened from a failed bulk batch's "Fix and
+   * resubmit" action (#2234). Renders a banner naming the batch so the
+   * pre-filled selection reads as intentional rather than as a bug. Purely
+   * informational - nothing in the submit path consumes it.
+   */
+  resumedFromBatchId?: string;
 }
 
 const WIZARD_STEPS: { id: BulkWizardStep; label: string }[] = [
@@ -110,6 +117,7 @@ export function BulkWizard({
   resolveConnectionName,
   preselectedConnectionId,
   preSelectedVariantIds,
+  resumedFromBatchId,
 }: BulkWizardProps): ReactElement {
   const navigate = useNavigate();
   const { showToast } = useToast();
@@ -637,6 +645,14 @@ export function BulkWizard({
             completedSteps={new Set(Array.from({ length: stepperCurrent }, (_, i) => i))}
           />
         </div>
+
+        {resumedFromBatchId !== undefined && resumedFromBatchId !== '' ? (
+          <Alert tone="info">
+            Resuming from batch <span className="mono-text">{resumedFromBatchId.slice(0, 8)}</span>
+            {' - '}the variants that failed there are pre-selected. Offers already live
+            are not included.
+          </Alert>
+        ) : null}
 
         {counts.noVariants > 0 ? (
           <Alert tone="warning">

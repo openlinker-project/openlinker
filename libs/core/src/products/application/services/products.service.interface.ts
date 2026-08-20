@@ -79,6 +79,14 @@ export interface IProductsService {
   getVariantsBySkus(skus: string[]): Promise<ProductVariant[]>;
 
   /**
+   * Variant lookup by internal variant id list. Batched counterpart to
+   * `getVariant`, for callers holding a set of variant ids that need each
+   * one's owning product without a per-id fan-out (#2234). Empty input
+   * returns `[]` without a DB round-trip; unknown ids are omitted.
+   */
+  getVariantsByIds(ids: readonly string[]): Promise<ProductVariant[]>;
+
+  /**
    * Variant lookup by EAN or GTIN list, scoped to a master-catalog
    * connection. The connection scope ensures variants on a different
    * master tenant don't collide on the same barcode. Empty input returns

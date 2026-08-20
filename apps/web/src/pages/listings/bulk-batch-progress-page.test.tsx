@@ -1,7 +1,11 @@
 import { cleanup, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { renderWithProviders, createMockApiClient } from '../../test/test-utils';
+import {
+  renderWithProviders,
+  createMockApiClient,
+  createAuthenticatedSessionAdapter,
+} from '../../test/test-utils';
 import { Routes, Route } from 'react-router-dom';
 import { BulkBatchProgressPage } from './bulk-batch-progress-page';
 import type { BulkBatchSummary } from '../../features/listings/api/bulk-listings.types';
@@ -42,7 +46,27 @@ function makeBatch(overrides: Partial<BulkBatchSummary> = {}): BulkBatchSummary 
   };
 }
 
-function renderPage(apiClient: ReturnType<typeof createMockApiClient>) {
+function failedRecord(
+  overrides: Partial<BulkBatchSummary['records'][number]> = {},
+): BulkBatchSummary['records'][number] {
+  return {
+    id: 'rec_f',
+    internalVariantId: 'ol_variant_333',
+    status: 'failed',
+    externalOfferId: null,
+    createdAt: '2026-05-18T15:00:02.000Z',
+    updatedAt: '2026-05-18T15:01:00.000Z',
+    errors: [{ code: 'REJECTED', message: 'Produkt juz istnieje w Katalogu' }],
+    productId: 'ol_product_aaa',
+    ...overrides,
+  };
+}
+
+function renderPage(
+  apiClient: ReturnType<typeof createMockApiClient>,
+  options: { authenticated?: boolean } = {},
+) {
+  const { authenticated = true } = options;
   return renderWithProviders(
     <Routes>
       <Route path="/listings/bulk-batches/:batchId" element={<BulkBatchProgressPage />} />
@@ -50,6 +74,9 @@ function renderPage(apiClient: ReturnType<typeof createMockApiClient>) {
     {
       apiClient,
       route: `/listings/bulk-batches/${BATCH_ID}`,
+      // The recovery actions are permission-gated (#2234), so the default
+      // no-op (anonymous) adapter would hide them.
+      ...(authenticated ? { sessionAdapter: createAuthenticatedSessionAdapter() } : {}),
     },
   );
 }
@@ -79,7 +106,7 @@ describe('BulkBatchProgressPage', () => {
     expect(totals.length).toBeGreaterThan(0);
   });
 
-  it('shows the partially-failed banner with Retry button when terminal with failures', async () => {
+  it('shows the recovery bar with both actions when terminal with failures', async () => {
     const apiClient = createMockApiClient({
       listings: {
         getBulkBatch: vi.fn().mockResolvedValue(
@@ -95,11 +122,11 @@ describe('BulkBatchProgressPage', () => {
     renderPage(apiClient);
 
     expect(
-      await screen.findByRole('button', { name: /Retry all failed/ }),
+      await screen.findByRole('button', { name: /Retry unchanged/ }),
     ).toBeInTheDocument();
   });
 
-  it('does not show the Retry banner when batch is still running', async () => {
+  it('does not show the recovery bar when batch is still running', async () => {
     const apiClient = createMockApiClient({
       listings: {
         getBulkBatch: vi.fn().mockResolvedValue(makeBatch({ status: 'running' })),
@@ -110,8 +137,107 @@ describe('BulkBatchProgressPage', () => {
 
     await screen.findByText('Total');
     expect(
-      screen.queryByRole('button', { name: /Retry all failed/ }),
+      screen.queryByRole('button', { name: /Retry unchanged/ }),
     ).not.toBeInTheDocument();
+  });
+
+  it('shows the recovery bar on a fully failed batch', async () => {
+    const apiClient = createMockApiClient({
+      listings: {
+        getBulkBatch: vi.fn().mockResolvedValue(
+          makeBatch({
+            status: 'failed',
+            totalCount: 1,
+            succeededCount: 0,
+            failedCount: 1,
+            records: [failedRecord()],
+          }),
+        ),
+      },
+    });
+
+    renderPage(apiClient);
+
+    expect(
+      await screen.findByText('1 variant failed. Nothing went live.'),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Retry unchanged \(1\)/ })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Fix and resubmit \(1\)/ })).toBeInTheDocument();
+  });
+
+  it('links Fix and resubmit to the wizard with the failed products, variants and connection', async () => {
+    const apiClient = createMockApiClient({
+      listings: {
+        getBulkBatch: vi.fn().mockResolvedValue(
+          makeBatch({
+            status: 'partially-failed',
+            totalCount: 3,
+            succeededCount: 2,
+            failedCount: 1,
+            records: [failedRecord()],
+          }),
+        ),
+      },
+    });
+
+    renderPage(apiClient);
+
+    const link = await screen.findByRole('link', { name: /Fix and resubmit \(1\) →/ });
+    const href = link.getAttribute('href') ?? '';
+    const query = new URLSearchParams(href.slice(href.indexOf('?')));
+    expect(href.startsWith('/listings/bulk-create/wizard?')).toBe(true);
+    expect(query.get('productIds')).toBe('ol_product_aaa');
+    expect(query.get('variantIds')).toBe('ol_variant_333');
+    expect(query.get('connectionId')).toBe('conn_1');
+    expect(query.get('fromBatch')).toBe(BATCH_ID);
+  });
+
+  it('disables Fix and resubmit and states why when no record carries a product link', async () => {
+    const apiClient = createMockApiClient({
+      listings: {
+        getBulkBatch: vi.fn().mockResolvedValue(
+          makeBatch({
+            status: 'failed',
+            totalCount: 1,
+            succeededCount: 0,
+            failedCount: 1,
+            records: [failedRecord({ productId: null })],
+          }),
+        ),
+      },
+    });
+
+    renderPage(apiClient);
+
+    expect(
+      await screen.findByRole('button', { name: /Fix and resubmit/ }),
+    ).toBeDisabled();
+    expect(
+      screen.getByText(/needs the product link, which this batch did not record/),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Retry unchanged/ })).toBeEnabled();
+  });
+
+  it('hides the recovery bar for a session without listings:write', async () => {
+    const apiClient = createMockApiClient({
+      listings: {
+        getBulkBatch: vi.fn().mockResolvedValue(
+          makeBatch({
+            status: 'failed',
+            totalCount: 1,
+            succeededCount: 0,
+            failedCount: 1,
+            records: [failedRecord()],
+          }),
+        ),
+      },
+    });
+
+    renderPage(apiClient, { authenticated: false });
+
+    await screen.findByText('Total');
+    expect(screen.queryByRole('button', { name: /Retry unchanged/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /Fix and resubmit/ })).not.toBeInTheDocument();
   });
 
   it('shows error state when the fetch fails', async () => {
@@ -163,7 +289,7 @@ describe('BulkBatchProgressPage', () => {
     renderPage(apiClient);
 
     const retryBtn = await screen.findByRole('button', {
-      name: /Retry all failed/,
+      name: /Retry unchanged/,
     });
     await user.click(retryBtn);
 

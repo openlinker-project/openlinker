@@ -11,6 +11,10 @@
  * render:
  *   - empty productIds  → redirect back to /products
  *   - >100 productIds   → redirect back to /products with an alert
+ *
+ * An optional `?fromBatch=` param (#2234) marks the load as a recovery of a
+ * failed bulk batch; it is forwarded to the wizard for its resuming banner and
+ * is never read by the submit path.
  *   - loading           → LoadingState
  *   - product-fetch errors → ErrorState with retry
  *
@@ -24,11 +28,17 @@ import {
   LoadingState,
 } from '../../shared/ui';
 import { BulkWizard } from '../../features/listings/components/bulk/bulk-wizard';
+import { MAX_WIZARD_PRODUCTS } from '../../features/listings/lib/batch-recovery';
 import { useConnectionsQuery } from '../../features/connections';
 import { useProductsBatchQuery } from '../../features/products';
 import type { Product } from '../../features/products';
 
-const MAX_PRODUCTS = 100;
+/**
+ * Shared with the batch-recovery helpers (#2234) so the failed-batch "Fix and
+ * resubmit" action disables itself at the same cap this route enforces,
+ * instead of routing into a redirect.
+ */
+const MAX_PRODUCTS = MAX_WIZARD_PRODUCTS;
 
 export function BulkCreateWizardPage(): ReactElement {
   const [searchParams] = useSearchParams();
@@ -127,6 +137,7 @@ export function BulkCreateWizardPage(): ReactElement {
       products={products}
       preSelectedVariantIds={selectedVariantIds}
       preselectedConnectionId={searchParams.get('connectionId') ?? undefined}
+      resumedFromBatchId={searchParams.get('fromBatch') ?? undefined}
       resolveConnectionName={(connectionId) =>
         connectionsQuery.data?.find((c) => c.id === connectionId)?.name ??
         connectionId
