@@ -54,7 +54,7 @@ import {
   SyncLockPort,
 } from '@openlinker/core/sync';
 import {
-  IIdentifierMappingService,
+  IdentifierMappingQueryPort,
   IDENTIFIER_MAPPING_SERVICE_TOKEN,
   CORE_ENTITY_TYPE,
 } from '@openlinker/core/identifier-mapping';
@@ -67,18 +67,10 @@ import {
   runBoundedSweep,
   sweepCursorKey,
   sweepLockKey,
+  readMappingPage,
 } from '../bounded-sweep';
-import type { SweepPage } from '../bounded-sweep.types';
 
 type SyncJob = SyncJobEntity;
-
-/**
- * Synthetic variant external ids (e.g. `product:13`) map to a VARIANT internal id,
- * not a product one, so re-checking them as products would resolve the wrong entity.
- * The plain numeric externalId of the same simple product is enumerated alongside and
- * covers it. Same filter, same reason, as the inventory sweep.
- */
-const SYNTHETIC_VARIANT_PREFIX = 'product:';
 
 @Injectable()
 export class MasterProductReconcileHandler implements SyncJobHandler {
@@ -86,7 +78,8 @@ export class MasterProductReconcileHandler implements SyncJobHandler {
 
   constructor(
     @Inject(IDENTIFIER_MAPPING_SERVICE_TOKEN)
-    private readonly identifierMapping: IIdentifierMappingService,
+    // The narrow QUERY port, matching the inventory sweep: this pass only reads.
+    private readonly identifierMapping: IdentifierMappingQueryPort,
     @Inject(JOB_ENQUEUE_TOKEN)
     private readonly jobEnqueue: JobEnqueuePort,
     @Inject(SYNC_CURSORS_SERVICE_TOKEN)
@@ -118,7 +111,17 @@ export class MasterProductReconcileHandler implements SyncJobHandler {
       const result = await runBoundedSweep({
         cursor,
         budget,
-        readPage: (offset, pageBudget) => this.readPage(job.connectionId, offset, pageBudget),
+        readPage: (offset, pageBudget) =>
+          readMappingPage(
+            (page) =>
+              this.identifierMapping.listExternalIdsByConnection(
+                CORE_ENTITY_TYPE.Product,
+                job.connectionId,
+                page
+              ),
+            offset,
+            pageBudget
+          ),
         enqueue: (externalId, cycleId) => this.enqueueChild(job, externalId, cycleId),
         newCycleId: () => randomUUID(),
       });
@@ -160,34 +163,6 @@ export class MasterProductReconcileHandler implements SyncJobHandler {
         );
       }
     }
-  }
-
-  /**
-   * Reads one page of OL's mapped product ids for the connection.
-   *
-   * The synthetic-variant filter runs AFTER the page is read, so a page can yield
-   * fewer children than the budget. That is correct: the budget bounds *enqueues*,
-   * and the cursor advances by what was READ (`consumed`) — advancing by what
-   * survived would re-read the filtered rows on every tick.
-   */
-  private async readPage(
-    connectionId: string,
-    offset: number,
-    budget: number
-  ): Promise<SweepPage> {
-    const externalIds = await this.identifierMapping.listExternalIdsByConnection(
-      CORE_ENTITY_TYPE.Product,
-      connectionId,
-      { limit: budget, offset }
-    );
-
-    const items = externalIds.filter((id) => !id.startsWith(SYNTHETIC_VARIANT_PREFIX));
-
-    return {
-      items,
-      consumed: externalIds.length,
-      exhausted: externalIds.length < budget,
-    };
   }
 
   private async enqueueChild(job: SyncJob, externalId: string, cycleId: string): Promise<unknown> {

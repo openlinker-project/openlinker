@@ -48,6 +48,7 @@ export {
   IMasterProductSyncService,
   MasterProductSyncResult,
   PruneSkippedReason,
+  PruneSkippedReasonValues,
 } from './application/services/master-product-sync.service.interface';
 export { MasterProductSyncService } from './application/services/master-product-sync.service';
 export { IAutoMatchVariantOffersService } from './application/services/auto-match-variant-offers.service.interface';

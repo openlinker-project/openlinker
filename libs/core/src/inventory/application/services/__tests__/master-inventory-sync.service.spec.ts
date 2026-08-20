@@ -415,6 +415,34 @@ describe('MasterInventorySyncService', () => {
       expect(eventPublisher.publish).not.toHaveBeenCalled();
     });
 
+    it('propagates a PRODUCTS-side rival block into its own pruneSkipped', async () => {
+      // The two guards test different capabilities — the inventory one checks
+      // InventoryMaster rivals, the delegate's checks ProductMaster rivals — so a
+      // connection carrying both can clear the first and still be withheld by the
+      // second. Reporting false here would claim a prune ran that did not, and
+      // architecture-overview.md § Products states the contract as "on a hit the
+      // prune is withheld ... and the sync result reports `pruneSkipped: true`".
+      inventoryAdapter.listInventory.mockRejectedValueOnce(
+        new MasterProductNotFoundError(internalProductId, connectionId)
+      );
+      (inventoryService.pruneStaleVariants as jest.Mock).mockResolvedValueOnce({
+        markedCount: 2,
+        variantIds: ['ol_variant_1', 'ol_variant_2'],
+      });
+      (masterProductSync.markProductDeletedAtMaster as jest.Mock).mockResolvedValueOnce({
+        internalProductId,
+        variantsUpserted: 0,
+        masterDeleted: true,
+        pruneSkipped: true,
+        pruneSkippedReason: 'rival',
+      });
+
+      const result = await service.syncFromMasterByExternalId(connectionId, externalId);
+
+      expect(result.pruneSkipped).toBe(true);
+      expect(result.masterDeleted).toBe(true);
+    });
+
     it('does not delegate when the #1904 rival guard withholds the prune', async () => {
       inventoryAdapter.listInventory.mockRejectedValueOnce(
         new MasterProductNotFoundError(internalProductId, connectionId)

@@ -58,13 +58,10 @@ import {
   runBoundedSweep,
   sweepCursorKey,
   sweepLockKey,
+  readMappingPage,
 } from '../bounded-sweep';
-import type { SweepPage } from '../bounded-sweep.types';
 
 type SyncJob = SyncJobEntity;
-
-/** Synthetic variant ids the PrestaShop adapter mints as offer-link targets. */
-const SYNTHETIC_VARIANT_PREFIX = 'product:';
 
 @Injectable()
 export class MasterInventorySyncAllHandler implements SyncJobHandler {
@@ -104,7 +101,17 @@ export class MasterInventorySyncAllHandler implements SyncJobHandler {
       const result = await runBoundedSweep({
         cursor,
         budget,
-        readPage: (offset, pageBudget) => this.readPage(job.connectionId, offset, pageBudget),
+        readPage: (offset, pageBudget) =>
+          readMappingPage(
+            (page) =>
+              this.identifierMapping.listExternalIdsByConnection(
+                CORE_ENTITY_TYPE.Product,
+                job.connectionId,
+                page
+              ),
+            offset,
+            pageBudget
+          ),
         enqueue: (externalId, cycleId) => this.enqueueChild(job, externalId, cycleId),
         newCycleId: () => randomUUID(),
       });
@@ -146,40 +153,6 @@ export class MasterInventorySyncAllHandler implements SyncJobHandler {
         );
       }
     }
-  }
-
-  /**
-   * Reads one page of mapped product ids.
-   *
-   * The synthetic-variant filter runs AFTER the page is read, so a page can yield
-   * fewer children than the budget. That is correct: the budget bounds *enqueues*,
-   * and the cursor advances by what was READ (`consumed`), not by what survived —
-   * otherwise the filtered rows would be re-read on every tick.
-   */
-  private async readPage(
-    connectionId: string,
-    offset: number,
-    budget: number
-  ): Promise<SweepPage> {
-    const externalIds = await this.identifierMapping.listExternalIdsByConnection(
-      CORE_ENTITY_TYPE.Product,
-      connectionId,
-      { limit: budget, offset }
-    );
-
-    // Synthetic variant external IDs (e.g. `product:13`) are created by the
-    // PrestaShop adapter as stable offer-link targets for simple products; their
-    // internal ID is a variant ID, not a product ID, so inserting inventory for
-    // them violates the inventory_items.productId FK. Inventory for simple
-    // products is covered by the plain numeric externalId.
-    const items = externalIds.filter((id) => !id.startsWith(SYNTHETIC_VARIANT_PREFIX));
-
-    return {
-      items,
-      consumed: externalIds.length,
-      // A short page means the store had nothing more to give.
-      exhausted: externalIds.length < budget,
-    };
   }
 
   private async enqueueChild(job: SyncJob, externalId: string, cycleId: string): Promise<unknown> {

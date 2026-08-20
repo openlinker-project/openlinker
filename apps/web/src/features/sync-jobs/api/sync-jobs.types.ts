@@ -58,6 +58,7 @@ export const JOB_TYPE_VALUES = [
   'marketplace.offer.create',
   'master.product.syncAll',
   'master.product.syncDelta', // Internal job — not user-triggerable; listed here so an operator can filter the incremental pass (#2220).
+  'master.product.reconcile', // Internal job — not user-triggerable; listed here so an operator can filter the deletion-reconciliation pass (#2222).
   'master.product.syncByExternalId',
   'master.inventory.syncAll',
   'master.inventory.syncByExternalId',

@@ -46,7 +46,10 @@ export interface MasterProductSyncResult {
  *              product; pruning against an empty keep-set would stale every
  *              variant on what may be a transient response (#1599).
  */
-export type PruneSkippedReason = 'rival' | 'empty-response' | null;
+export const PruneSkippedReasonValues = ['rival', 'empty-response'] as const;
+
+/** `null` is carried at the field rather than in the union, so the runtime array above stays a list of real reasons. */
+export type PruneSkippedReason = (typeof PruneSkippedReasonValues)[number] | null;
 
 export interface IMasterProductSyncService {
   syncFromMasterByExternalId(

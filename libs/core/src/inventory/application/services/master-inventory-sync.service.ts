@@ -240,14 +240,26 @@ export class MasterInventorySyncService implements IMasterInventorySyncService {
     // The delegate emits `master.product.stale` itself (gated on having marked
     // something) and applies its own #1904 rival guard, so this path no longer
     // publishes - one deletion, one event, one authority.
-    await this.masterProductSync.markProductDeletedAtMaster({
+    const delegated = await this.masterProductSync.markProductDeletedAtMaster({
       connectionId,
       externalId,
       internalProductId,
       correlationId: randomUUID(),
     });
+
+    // The delegate's own guard checks a DIFFERENT capability - `ProductMaster`
+    // rivals, where the guard above checked `InventoryMaster` rivals - so the two
+    // outcomes genuinely diverge: a connection carrying both capabilities can
+    // clear the inventory guard and still be withheld on the products side.
+    // Reporting `false` there would claim a prune ran that did not, and
+    // architecture-overview.md § Products states the contract as "on a hit the
+    // prune is withheld ... and the sync result reports `pruneSkipped: true`".
+    // At this point both flags mean the same thing - the deletion was not fully
+    // applied - so the withheld outcome propagates.
+    const pruneSkipped = delegated.pruneSkipped;
+
     this.logger.warn(
-      `Master inventory deleted at source — marked rows stale (connection: ${connectionId}, externalId: ${externalId}, internalProductId: ${internalProductId}, markedStale=${pruneResult.markedCount})`
+      `Master inventory deleted at source — marked rows stale (connection: ${connectionId}, externalId: ${externalId}, internalProductId: ${internalProductId}, markedStale=${pruneResult.markedCount}, variantPruneSkipped=${String(pruneSkipped)})`
     );
     return {
       internalProductId,
@@ -255,7 +267,7 @@ export class MasterInventorySyncService implements IMasterInventorySyncService {
       availableQuantity: 0,
       reservedQuantity: 0,
       masterDeleted: true,
-      pruneSkipped: false,
+      pruneSkipped,
     };
   }
 
