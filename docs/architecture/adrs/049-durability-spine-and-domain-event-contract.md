@@ -138,8 +138,14 @@ new write that makes Redis the only record of an operator-visible fact.
 **Known gap — no terminal state for a poison entry.** #2164 makes repeated delivery
 reachable for the first time (before it, a failing entry was simply never redelivered), so an
 entry whose handler always throws is now retried indefinitely. Per-entry error isolation stops it
-starving its siblings, and `PendingRow.deliveryCount` is surfaced so crossing
-`MAX_DELIVERY_ATTEMPTS` alarms at `error` level. What is deliberately *not* done is
+starving its siblings, the drain pages forward with an exclusive cursor so one stuck entry cannot
+re-present its own page (which would stall boot rather than merely skip work), and a per-consumer
+`RecoveryAttemptTracker` alarms once on crossing `MAX_RECOVERY_ATTEMPTS`.
+
+That counter is deliberately **local, not Redis'**. `deliveriesCounter` is incremented only on an
+actual delivery (`XREADGROUP` / `XCLAIM`); the drain path is `XPENDING` + `XRANGE`, both pure reads,
+so keying the alarm on it would leave it unreachable on precisely the path where poison
+accumulates. What is deliberately *not* done is
 auto-dead-lettering: two of the three consumers cannot construct their dead-letter payload from a
 raw pending entry (the webhook handler needs a decoded event, job-intake a parsed job request), and
 discarding the entry instead would be unrecoverable loss. *Reversal gate:* the first poison entry

@@ -16,6 +16,7 @@ import { randomUUID } from 'crypto';
 
 import {
   ackTrimmed,
+  nextPendingCursor,
   readOwnPending,
   reclaimOrphans,
   resolveConsumerName,
@@ -136,6 +137,91 @@ describe('Stream consumer recovery (#2164)', () => {
       await redis.xAck(stream, GROUP, recovered[0].id);
 
       expect(await readOwnPending(redis, stream, GROUP, consumer, 10)).toEqual([]);
+    });
+  });
+
+  describe('poison entries', () => {
+    it('should reach later entries even when an earlier one is never acked', async () => {
+      // The head-of-line case. A handler that throws leaves its entry pending,
+      // so a drain that re-read from the oldest id would return the same page
+      // forever and never reach the siblings behind it.
+      const stream = await freshStream();
+      const consumer = resolveConsumerName('job-intake', { OL_WORKER_ID: 'worker-a' });
+
+      await redis.xAdd(stream, '*', { n: 'poison' });
+      await redis.xAdd(stream, '*', { n: 'second' });
+      await redis.xAdd(stream, '*', { n: 'third' });
+      await deliverWithoutAck(stream, consumer);
+
+      const seen: string[] = [];
+      let cursor: string | undefined;
+
+      // Drain with a handler that always throws on the first entry, exactly as
+      // `recoverEntrySafely` isolates it: log and carry on to the next entry.
+      for (let page = 0; page < 5; page += 1) {
+        const entries = await readOwnPending(redis, stream, GROUP, consumer, 1, cursor);
+        if (entries.length === 0) {
+          break;
+        }
+        for (const entry of entries) {
+          if (entry.kind === 'entry') {
+            seen.push(entry.fields.n);
+            // 'poison' is deliberately never acked.
+            if (entry.fields.n !== 'poison') {
+              await redis.xAck(stream, GROUP, entry.id);
+            }
+          }
+        }
+        cursor = nextPendingCursor(entries) ?? cursor;
+      }
+
+      expect(seen).toEqual(['poison', 'second', 'third']);
+    });
+
+    it('should terminate the scan rather than re-reading the unacked entry forever', async () => {
+      const stream = await freshStream();
+      const consumer = resolveConsumerName('job-intake', { OL_WORKER_ID: 'worker-a' });
+
+      await redis.xAdd(stream, '*', { n: 'poison' });
+      await deliverWithoutAck(stream, consumer);
+
+      // First page returns it; advancing past it yields an empty page, which is
+      // what lets the drain loop exit instead of stalling boot to the page cap.
+      const first = await readOwnPending(redis, stream, GROUP, consumer, 10);
+      expect(first).toHaveLength(1);
+
+      const second = await readOwnPending(
+        redis,
+        stream,
+        GROUP,
+        consumer,
+        10,
+        nextPendingCursor(first) ?? '-'
+      );
+
+      expect(second).toEqual([]);
+    });
+
+    it("should leave Redis' own delivery counter frozen across drain re-reads", async () => {
+      // Why the poison alarm counts locally instead. Redis increments
+      // `deliveriesCounter` on XREADGROUP/XCLAIM only; the drain path is
+      // XPENDING + XRANGE, both pure reads. Keying the alarm on this value would
+      // make it unreachable on exactly the path where poison accumulates.
+      const stream = await freshStream();
+      const consumer = resolveConsumerName('job-intake', { OL_WORKER_ID: 'worker-a' });
+
+      await redis.xAdd(stream, '*', { n: 'poison' });
+      await deliverWithoutAck(stream, consumer);
+
+      const first = await readOwnPending(redis, stream, GROUP, consumer, 10);
+      const second = await readOwnPending(redis, stream, GROUP, consumer, 10);
+      const third = await readOwnPending(redis, stream, GROUP, consumer, 10);
+
+      const counts = [first, second, third].map((page) =>
+        page[0].kind === 'entry' ? page[0].deliveryCount : -1
+      );
+
+      expect(counts).toEqual([counts[0], counts[0], counts[0]]);
     });
   });
 

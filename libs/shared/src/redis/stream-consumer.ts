@@ -112,6 +112,18 @@ const PEL_RANGE_START = '-';
 const PEL_RANGE_END = '+';
 
 /**
+ * The exclusive start id that resumes a PEL scan after `lastId`.
+ *
+ * Redis 6.2+ accepts a `(`-prefixed id as an exclusive range bound — the same
+ * version floor `XPENDING` itself sits on, so this costs no portability.
+ * Returns `null` when the page was empty and there is nothing to resume from.
+ */
+export function nextPendingCursor(entries: readonly StreamEntry[]): string | null {
+  const last = entries[entries.length - 1];
+  return last ? `(${last.id}` : null;
+}
+
+/**
  * Build a consumer name that is stable across restarts of the same logical
  * worker and distinct across replicas.
  *
@@ -135,25 +147,87 @@ export interface PendingRow {
   owner: string;
   millisecondsSinceLastDelivery: number;
   /**
-   * How many times Redis has delivered this entry.
+   * How many times **Redis** has delivered this entry.
    *
-   * Surfaced because recovery makes unbounded retry reachable for the first
-   * time: before #2164 a failing entry was simply never redelivered, so no
-   * terminal state was needed. Now that drain and reclaim re-present it, an
-   * entry whose handler always throws would be retried forever. Consumers
-   * compare this against {@link MAX_DELIVERY_ATTEMPTS} and dead-letter past it.
+   * Diagnostic context only — never the alarm trigger. Redis increments this on
+   * `XREADGROUP` / `XCLAIM`, so the drain path (`XPENDING` + `XRANGE`, both pure
+   * reads) leaves it frozen; it rises only when a *different* consumer claims
+   * the entry, which makes it a useful signal for cross-replica churn and a
+   * useless one for a locally-stuck handler. The poison alarm keys on
+   * {@link RecoveryAttemptTracker} instead.
+   *
+   * On the reclaim path this is the value read *before* that pass's `XCLAIM`,
+   * so it under-reports by exactly one there.
    */
   deliveryCount: number;
 }
 
 /**
- * Deliveries after which a pending entry is treated as poison.
+ * Failed recovery attempts after which a pending entry is treated as poison.
  *
  * Deliberately generous: a handler failing for a transient reason (a database
  * blip, a marketplace timeout) must be allowed to succeed on a later pass, so
- * this is a terminal-state backstop rather than a retry budget.
+ * this is an alarm threshold rather than a retry budget.
+ *
+ * Counted **locally** by {@link RecoveryAttemptTracker}, not from Redis'
+ * `deliveriesCounter`. That counter is incremented only on an actual delivery
+ * (`XREADGROUP`, `XCLAIM`) — never by `XPENDING` or `XRANGE`, which is all the
+ * drain path uses. Re-presenting an entry a thousand times through the drain
+ * therefore leaves Redis' counter frozen at 1, so keying the alarm on it would
+ * make it unreachable on precisely the path where poison accumulates.
  */
-export const MAX_DELIVERY_ATTEMPTS = 10;
+export const MAX_RECOVERY_ATTEMPTS = 10;
+
+/**
+ * Upper bound on tracked entry ids, so a large poisoned PEL cannot grow the map
+ * without limit. Far above any plausible simultaneous-poison count; on overflow
+ * the oldest tracked id is dropped, which at worst re-arms its alarm.
+ */
+const MAX_TRACKED_ATTEMPTS = 10_000;
+
+/** The minimal logger shape the recovery helpers need. */
+export interface RecoveryLogger {
+  warn(message: string): void;
+  error(message: string, stack?: string): void;
+}
+
+/**
+ * Per-consumer count of *failed* recovery attempts, keyed by stream entry id.
+ *
+ * Exists because Redis cannot answer this question on the drain path (see
+ * {@link MAX_RECOVERY_ATTEMPTS}), and because the alarm must fire exactly once
+ * per entry rather than on every pass: a poison entry recurs by definition, so
+ * an unguarded `error` line per pass is alert fatigue on the channel meant to
+ * carry real incidents.
+ */
+export class RecoveryAttemptTracker {
+  private readonly failures = new Map<string, number>();
+
+  /** Record a failure and report the new count for that entry. */
+  recordFailure(id: string): number {
+    const next = (this.failures.get(id) ?? 0) + 1;
+
+    if (!this.failures.has(id) && this.failures.size >= MAX_TRACKED_ATTEMPTS) {
+      const oldest = this.failures.keys().next();
+      if (!oldest.done) {
+        this.failures.delete(oldest.value);
+      }
+    }
+
+    this.failures.set(id, next);
+    return next;
+  }
+
+  /** Forget an entry that finally succeeded, so a later failure starts fresh. */
+  succeeded(id: string): void {
+    this.failures.delete(id);
+  }
+
+  /** True exactly once — on the pass that crosses the threshold. */
+  justCrossedThreshold(attempts: number): boolean {
+    return attempts === MAX_RECOVERY_ATTEMPTS + 1;
+  }
+}
 
 /**
  * Narrow an `XPENDING ... START END COUNT` reply, tolerating shape drift.
@@ -237,10 +311,20 @@ export async function readOwnPending(
   streamName: string,
   group: string,
   consumer: string,
-  count: number
+  count: number,
+  /**
+   * Where to start the scan. Defaults to the oldest pending id.
+   *
+   * A caller paging through the whole PEL **must** advance this — see
+   * {@link nextPendingCursor}. Repeatedly reading from `'-'` only terminates if
+   * every entry read gets ACKed, and an entry whose handler throws never is: the
+   * same page would come back forever, turning one poison entry into a
+   * page-capped startup stall.
+   */
+  startId: string = PEL_RANGE_START
 ): Promise<StreamEntry[]> {
   const pending = toPendingRows(
-    await client.xPendingRange(streamName, group, PEL_RANGE_START, PEL_RANGE_END, count, {
+    await client.xPendingRange(streamName, group, startId, PEL_RANGE_END, count, {
       consumer,
     })
   );

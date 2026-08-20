@@ -29,12 +29,13 @@ import { JobEnqueuePort, JOB_ENQUEUE_TOKEN } from '@openlinker/core/sync';
 import { Logger } from '@openlinker/shared/logging';
 import {
   ackTrimmed,
-  MAX_DELIVERY_ATTEMPTS,
   MAX_DRAIN_PAGES,
   MIN_RECLAIM_IDLE_MS,
+  nextPendingCursor,
   readOwnPending,
   RECLAIM_INTERVAL_MS,
   reclaimOrphans,
+  RecoveryAttemptTracker,
   resolveConsumerName,
   type StreamConsumerClient,
   type StreamEntry,
@@ -62,6 +63,7 @@ export class MasterDeletionToJobHandler implements OnModuleInit, OnModuleDestroy
   private readonly RECLAIM_IDLE_MS = MIN_RECLAIM_IDLE_MS;
 
   private lastReclaimAt = 0;
+  private readonly recoveryAttempts = new RecoveryAttemptTracker();
   private readonly BLOCK_MS = 5000;
   private readonly COUNT = 10;
 
@@ -281,6 +283,7 @@ export class MasterDeletionToJobHandler implements OnModuleInit, OnModuleDestroy
    */
   private async drainOwnPending(): Promise<void> {
     let drained = 0;
+    let cursor: string | undefined;
 
     try {
       for (let page = 0; ; page += 1) {
@@ -299,7 +302,8 @@ export class MasterDeletionToJobHandler implements OnModuleInit, OnModuleDestroy
           this.STREAM_NAME,
           this.CONSUMER_GROUP,
           this.CONSUMER_NAME,
-          this.COUNT
+          this.COUNT,
+          cursor
         );
 
         if (entries.length === 0) {
@@ -310,6 +314,13 @@ export class MasterDeletionToJobHandler implements OnModuleInit, OnModuleDestroy
           await this.recoverEntrySafely(entry, 'startup-drain');
         }
         drained += entries.length;
+
+        // Advance past this page rather than re-reading from the oldest id. An
+        // entry whose handler threw is still pending, so without this the same
+        // page returns forever and the drain — which onModuleInit awaits —
+        // stalls boot until the page cap. A failed entry is retried by the next
+        // recovery pass, not by spinning inside this one.
+        cursor = nextPendingCursor(entries) ?? cursor;
       }
     } catch (error) {
       this.logger.error(
@@ -392,27 +403,36 @@ export class MasterDeletionToJobHandler implements OnModuleInit, OnModuleDestroy
    * not happen is its siblings being starved behind it.
    */
   private async recoverEntrySafely(entry: StreamEntry, source: string): Promise<void> {
-    // Recovery makes repeated delivery reachable for the first time, so an entry
-    // whose handler always throws is now retried indefinitely. It no longer
-    // starves its siblings (see above), but it must not fail silently either.
-    // Auto-dead-lettering is deliberately NOT done here: two of the three
-    // consumers cannot build their dead-letter payload from a raw pending entry
-    // (one needs a decoded webhook event, one a parsed job request), and
-    // discarding the entry would be unrecoverable data loss. Terminal handling
-    // is tracked as a follow-up; see ADR-049.
-    if (entry.kind === 'entry' && entry.deliveryCount > MAX_DELIVERY_ATTEMPTS) {
-      this.logger.error(
-        `Stream entry ${entry.id} has been delivered ${entry.deliveryCount} times without succeeding (${source}); it is left pending and needs manual intervention`
-      );
-    }
-
     try {
       await this.handleRecoveredEntry(entry, source);
+      this.recoveryAttempts.succeeded(entry.id);
     } catch (error) {
+      // A shutdown-time failure is not a handler failure: the client is quitting
+      // and every later command would fail too. Rethrow so the enclosing pass
+      // ends instead of grinding through the rest of the page against a dead
+      // connection.
+      if (this.abortController?.signal.aborted) {
+        throw error;
+      }
+
+      const attempts = this.recoveryAttempts.recordFailure(entry.id);
+
       this.logger.error(
-        `Failed to recover stream entry ${entry.id} (${source}); leaving it pending and continuing`,
+        `Failed to recover stream entry ${entry.id} (${source}, attempt ${attempts}); leaving it pending and continuing`,
         error instanceof Error ? error.stack : String(error)
       );
+
+      // Once, on the crossing — a poison entry recurs by definition, so an
+      // unguarded alarm per pass is alert fatigue. Auto-dead-lettering is
+      // deliberately NOT done: two of the three consumers cannot build their
+      // dead-letter payload from a raw pending entry (one needs a decoded
+      // webhook event, one a parsed job request), and discarding it would be
+      // unrecoverable loss. See ADR-049.
+      if (this.recoveryAttempts.justCrossedThreshold(attempts)) {
+        this.logger.error(
+          `Stream entry ${entry.id} has now failed recovery ${attempts} times (${source}); it is stuck and needs manual intervention`
+        );
+      }
     }
   }
 

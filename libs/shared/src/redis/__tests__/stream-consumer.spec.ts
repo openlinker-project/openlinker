@@ -11,8 +11,10 @@
 import { hostname } from 'os';
 
 import {
-  MAX_DELIVERY_ATTEMPTS,
+  MAX_RECOVERY_ATTEMPTS,
   MIN_RECLAIM_IDLE_MS,
+  nextPendingCursor,
+  RecoveryAttemptTracker,
   toClaimedMessage,
   readOwnPending,
   reclaimOrphans,
@@ -117,11 +119,68 @@ describe('toClaimedMessage', () => {
   });
 });
 
-describe('MAX_DELIVERY_ATTEMPTS', () => {
+describe('nextPendingCursor', () => {
+  it('should return an exclusive cursor past the last entry of a page', () => {
+    // Exclusive `(` bound, so the next page starts strictly after this id.
+    // Without it a drain re-reads from the oldest id, and an entry whose handler
+    // threw is still pending — so the same page returns forever.
+    const entries = [
+      { kind: 'entry' as const, id: '1-0', fields: { a: 'b' }, deliveryCount: 1 },
+      { kind: 'entry' as const, id: '5-0', fields: { a: 'b' }, deliveryCount: 1 },
+    ];
+
+    expect(nextPendingCursor(entries)).toBe('(5-0');
+  });
+
+  it('should advance past a trimmed entry too, since it also stays in the page', () => {
+    expect(nextPendingCursor([{ kind: 'trimmed' as const, id: '9-0' }])).toBe('(9-0');
+  });
+
+  it('should return null for an empty page so the caller keeps its cursor', () => {
+    expect(nextPendingCursor([])).toBeNull();
+  });
+});
+
+describe('RecoveryAttemptTracker', () => {
+  it('should count failures per entry independently', () => {
+    const tracker = new RecoveryAttemptTracker();
+
+    expect(tracker.recordFailure('1-0')).toBe(1);
+    expect(tracker.recordFailure('1-0')).toBe(2);
+    expect(tracker.recordFailure('2-0')).toBe(1);
+  });
+
+  it('should forget an entry that finally succeeded', () => {
+    // A transient failure must not leave the entry permanently near the alarm.
+    const tracker = new RecoveryAttemptTracker();
+    tracker.recordFailure('1-0');
+    tracker.recordFailure('1-0');
+
+    tracker.succeeded('1-0');
+
+    expect(tracker.recordFailure('1-0')).toBe(1);
+  });
+
+  it('should report the threshold crossing exactly once', () => {
+    // A poison entry recurs by definition, so alarming every pass is alert
+    // fatigue on the channel meant to carry real incidents.
+    const tracker = new RecoveryAttemptTracker();
+    const crossings: number[] = [];
+
+    for (let i = 0; i < MAX_RECOVERY_ATTEMPTS + 5; i += 1) {
+      const attempts = tracker.recordFailure('1-0');
+      if (tracker.justCrossedThreshold(attempts)) {
+        crossings.push(attempts);
+      }
+    }
+
+    expect(crossings).toEqual([MAX_RECOVERY_ATTEMPTS + 1]);
+  });
+
   it('should be generous enough that a transient failure is not treated as poison', () => {
-    // It is a terminal-state backstop, not a retry budget: a handler failing on a
-    // database blip must be allowed to succeed on a later pass.
-    expect(MAX_DELIVERY_ATTEMPTS).toBeGreaterThanOrEqual(5);
+    // An alarm threshold, not a retry budget: a handler failing on a database
+    // blip must be allowed to succeed on a later pass.
+    expect(MAX_RECOVERY_ATTEMPTS).toBeGreaterThanOrEqual(5);
   });
 });
 
@@ -132,6 +191,17 @@ describe('readOwnPending', () => {
     await readOwnPending(client, STREAM, GROUP, CONSUMER, 10);
 
     expect(client.xPendingRange).toHaveBeenCalledWith(STREAM, GROUP, '-', '+', 10, {
+      consumer: CONSUMER,
+    });
+  });
+
+  it('should resume from a supplied cursor rather than the oldest pending id', async () => {
+    // What stops a drain re-reading a poison entry forever.
+    const client = buildClient();
+
+    await readOwnPending(client, STREAM, GROUP, CONSUMER, 10, '(5-0');
+
+    expect(client.xPendingRange).toHaveBeenCalledWith(STREAM, GROUP, '(5-0', '+', 10, {
       consumer: CONSUMER,
     });
   });
