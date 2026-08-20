@@ -15,6 +15,7 @@ import {
   isCategoryParametersReader,
   isOfferCreator,
   isOfferFieldUpdater,
+  isTaxonomyBorrower,
 } from '@openlinker/core/listings';
 import { ErliConfigException } from '../../domain/exceptions/erli-config.exception';
 import { ErliAdapterFactory } from '../erli-adapter.factory';
@@ -340,6 +341,36 @@ describe('ErliAdapterFactory', () => {
           expect.stringContaining('allegrosandbox.pl'),
           expect.anything()
         );
+      });
+
+      it('should declare the sandbox taxonomy owner when config.allegroEnvironment is sandbox (#2210)', async () => {
+        const adapters = await factory.createAdapters(
+          connection({ config: { allegroEnvironment: 'sandbox' } }),
+          {} as IdentifierMappingPort,
+          resolverFor({ apiKey: 'k-123' }),
+          fetchMock as unknown as FetchLike
+        );
+
+        // Must match what an Allegro sandbox connection reports (#2063), or the
+        // borrowed catalogue lookup finds no owner at all.
+        expect(isTaxonomyBorrower(adapters.offerManager)).toBe(true);
+        if (isTaxonomyBorrower(adapters.offerManager)) {
+          expect(adapters.offerManager.getBorrowedTaxonomy()).toBe('allegro:sandbox');
+        }
+      });
+
+      it('should declare the production taxonomy owner when no Allegro environment is set (#2210)', async () => {
+        const adapters = await factory.createAdapters(
+          connection(),
+          {} as IdentifierMappingPort,
+          resolverFor({ apiKey: 'k-123' }),
+          fetchMock as unknown as FetchLike
+        );
+
+        expect(isTaxonomyBorrower(adapters.offerManager)).toBe(true);
+        if (isTaxonomyBorrower(adapters.offerManager)) {
+          expect(adapters.offerManager.getBorrowedTaxonomy()).toBe('allegro');
+        }
       });
     });
   });

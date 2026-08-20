@@ -34,6 +34,7 @@ import type {
   EanCategoryMatchStreamEvent,
   EanCategoryMatchStreamOptions,
   EanMatchResult,
+  TaxonomyOwner,
 } from '@openlinker/core/listings';
 import {
   isCategoryBarcodeMatcher,
@@ -44,7 +45,12 @@ import {
   isTaxonomyBorrower,
   isTaxonomyIdentityProvider,
 } from '@openlinker/core/listings';
-import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
+import {
+  IIntegrationsService,
+  INTEGRATIONS_SERVICE_TOKEN,
+  type AdapterMetadata,
+} from '@openlinker/core/integrations';
+import type { Connection } from '@openlinker/core/identifier-mapping';
 import { IMappingConfigService, MAPPING_CONFIG_SERVICE_TOKEN } from '@openlinker/core/mappings';
 import type { ICategoryResolutionService } from '../interfaces/category-resolution.service.interface';
 import type {
@@ -145,6 +151,11 @@ export class CategoryResolutionService implements ICategoryResolutionService {
     // the batch degrade to `no-match` for every variant, resolving the category
     // at build time instead (the wizard suppresses the pre-flight blocker then).
     const { matcher } = await this.resolveEanMatcher(connectionId, adapter);
+    // The `isEanCategoryMatcher` narrowing is not redundant: a resolved matcher
+    // may be streaming-ONLY, and this path has no way to consume that, so such
+    // an owner degrades every variant to `no-match` even though it could have
+    // answered. Unreachable today (Allegro declares both capabilities); the
+    // streaming path is the one to use if that ever stops being true.
     if (matcher === null || !isEanCategoryMatcher(matcher)) {
       this.logger.debug(
         `No EAN matcher available; degrading ${input.items.length} variant(s) to no-match ` +
@@ -364,15 +375,6 @@ export class CategoryResolutionService implements ICategoryResolutionService {
   }
 
   /**
-   * #1522 — mapping fallback, shared by the batch and streaming paths so the
-   * two can never disagree about a single item. When the EAN yields no
-   * catalogue match (or the variant has no EAN) and the item supplies source
-   * categories, consult the operator's configured per-source-category mapping —
-   * the same mapping `OfferBuilderService` honours at offer-build time — so the
-   * wizard preview agrees with the build. A hit resolves to a `matched` result
-   * with no catalogue card (the offer self-links by barcode at build time).
-   */
-  /**
    * Decide which adapter performs the EAN catalogue lookup for a destination.
    *
    * A destination that owns a catalogue answers for itself. A destination that
@@ -393,6 +395,17 @@ export class CategoryResolutionService implements ICategoryResolutionService {
    * but is refused on the catalogue search with 403 even carrying
    * `allegro:api:sale:offers:read`. The search needs seller context, which only
    * a real connection has. See ADR-047's appendix.
+   *
+   * ISOLATION IS THE HARD REQUIREMENT HERE. This runs on a path whose whole
+   * contract is "degrade to `no-match`, never throw", so no third party's
+   * misconfiguration may reach the caller: the discovery listing is `lazy` (no
+   * adapter is built while candidates are filtered), the destination's own
+   * connection is dropped before any construction, and both the listing and the
+   * one construction that survives the filter are caught. A candidate that
+   * cannot be built is treated as "no owner", because the alternative - throwing
+   * - turns an unrelated broken Allegro connection into a 500 on the batch route
+   * and a `failed` stream, which is strictly worse than the pre-#2210 behaviour
+   * this feature is supposed to be a free upgrade over.
    */
   private async resolveEanMatcher(
     connectionId: string,
@@ -406,17 +419,34 @@ export class CategoryResolutionService implements ICategoryResolutionService {
     }
 
     const owner = destination.getBorrowedTaxonomy();
-    const candidates = await this.integrationsService.listCapabilityAdapters<OfferManagerPort>({
-      capability: 'OfferManager',
-    });
-    const owners = candidates
+    let candidates: Array<{
+      connectionId: string;
+      connection: Connection;
+      adapter: OfferManagerPort;
+      metadata: AdapterMetadata;
+    }> = [];
+    try {
+      candidates = await this.integrationsService.listCapabilityAdapters<OfferManagerPort>({
+        capability: 'OfferManager',
+        lazy: true,
+      });
+    } catch (error) {
+      // The listing itself aborts on ANY connection's adapter-key resolution
+      // error, including one that has nothing to do with this destination.
+      this.logger.warn(
+        `Could not enumerate '${owner}' taxonomy owners for connection ${connectionId}; ` +
+          `leaving the category to build-time mapping resolution: ${(error as Error).message}`
+      );
+      return { matcher: null, borrowedFrom: null };
+    }
+
+    // Manifest pre-filter: EAN matching is declared statically, so an adapter
+    // that cannot answer is discarded WITHOUT being constructed. Together with
+    // dropping the destination's own connection this keeps the cost at one
+    // construction (the winner) instead of one per active OfferManager.
+    const eligible = candidates
       .filter(({ connectionId: candidateId }) => candidateId !== connectionId)
-      .filter(
-        ({ adapter }) =>
-          isTaxonomyIdentityProvider(adapter) &&
-          adapter.getTaxonomyIdentity() === owner &&
-          (isEanCategoryMatcher(adapter) || isEanCategoryMatcherStreaming(adapter))
-      )
+      .filter(({ metadata }) => this.declaresEanMatching(metadata))
       // Oldest connection wins, ties broken by id. Matches the oldest-wins rule
       // `findBySourceCategory` already uses for borrowed-taxonomy mappings, so
       // the catalogue lookup and the mapping fallback can never disagree about
@@ -426,26 +456,93 @@ export class CategoryResolutionService implements ICategoryResolutionService {
         return byAge !== 0 ? byAge : a.connectionId.localeCompare(b.connectionId);
       });
 
-    const winner = owners[0];
-    if (!winner) {
+    // The taxonomy identity is per-CONNECTION (an Allegro sandbox connection
+    // owns a different tree from a production one, #2063), so it can only be
+    // read off a built adapter - which is why the loop constructs in the
+    // deterministic order above and stops at the first owner, rather than
+    // building every candidate to count them.
+    for (const candidate of eligible) {
+      const adapter = await this.buildOwnerCandidate(candidate, owner, connectionId);
+      if (adapter === null) {
+        continue;
+      }
+      if (eligible.length > 1) {
+        this.logger.warn(
+          `Ambiguous borrowed-taxonomy EAN matcher: ${eligible.length} connections declare ` +
+            `EAN matching. Using the oldest that owns '${owner}' (${candidate.connectionId}) ` +
+            `for connection ${connectionId}`
+        );
+      }
       this.logger.debug(
-        `No connection owns taxonomy '${owner}' with EAN matching; leaving the category to ` +
-          `build-time mapping resolution (connection=${connectionId})`
+        `Borrowing the '${owner}' catalogue from connection ${candidate.connectionId} ` +
+          `(connection=${connectionId})`
       );
-      return { matcher: null, borrowedFrom: null };
+      return { matcher: adapter, borrowedFrom: candidate.connectionId };
     }
-    if (owners.length > 1) {
-      this.logger.warn(
-        `Ambiguous borrowed-taxonomy EAN matcher: ${owners.length} connections own '${owner}'. ` +
-          `Using the oldest (${winner.connectionId}) for connection ${connectionId}`
-      );
-    }
+
     this.logger.debug(
-      `Borrowing the '${owner}' catalogue from connection ${winner.connectionId} ` +
-        `(connection=${connectionId})`
+      `No connection owns taxonomy '${owner}' with EAN matching; leaving the category to ` +
+        `build-time mapping resolution (connection=${connectionId})`
     );
-    return { matcher: winner.adapter, borrowedFrom: winner.connectionId };
+    return { matcher: null, borrowedFrom: null };
   }
+
+  /** A manifest that declares neither EAN capability can never serve as an owner. */
+  private declaresEanMatching(metadata: AdapterMetadata): boolean {
+    const declared: readonly string[] = metadata.supportedCapabilities ?? [];
+    return (
+      declared.includes('EanCategoryMatcher') || declared.includes('EanCategoryMatcherStreaming')
+    );
+  }
+
+  /**
+   * Build one owner candidate and confirm it really owns `owner` and really
+   * matches EANs, or report `null`.
+   *
+   * A construction failure (missing credentials, invalid config - the Allegro
+   * factory raises those for a half-configured connection that is still
+   * `active`) is logged and degraded rather than rethrown: the operator's OWN
+   * destination is healthy, and an optional catalogue borrow must never be the
+   * reason their resolve fails. The manifest gate is static, so the runtime
+   * guards below are still required - a declared capability may be missing on
+   * the instance (advertised-without-dispatch sub-capabilities are real).
+   */
+  private async buildOwnerCandidate(
+    candidate: { connectionId: string; adapter: OfferManagerPort | Promise<OfferManagerPort> },
+    owner: TaxonomyOwner,
+    connectionId: string
+  ): Promise<OfferManagerPort | null> {
+    let adapter: OfferManagerPort;
+    try {
+      // A `lazy` entry's `adapter` is a memoized CONSTRUCTION PROMISE that the
+      // listing types as the adapter itself (#1206), so it is normalised here
+      // rather than trusted to be either shape.
+      adapter = await Promise.resolve(candidate.adapter);
+    } catch (error) {
+      this.logger.warn(
+        `Could not build taxonomy-owner candidate ${candidate.connectionId} while resolving ` +
+          `an EAN matcher for connection ${connectionId}; skipping it: ${(error as Error).message}`
+      );
+      return null;
+    }
+    if (!isTaxonomyIdentityProvider(adapter) || adapter.getTaxonomyIdentity() !== owner) {
+      return null;
+    }
+    if (!isEanCategoryMatcher(adapter) && !isEanCategoryMatcherStreaming(adapter)) {
+      return null;
+    }
+    return adapter;
+  }
+
+  /**
+   * #1522 — mapping fallback, shared by the batch and streaming paths so the
+   * two can never disagree about a single item. When the EAN yields no
+   * catalogue match (or the variant has no EAN) and the item supplies source
+   * categories, consult the operator's configured per-source-category mapping —
+   * the same mapping `OfferBuilderService` honours at offer-build time — so the
+   * wizard preview agrees with the build. A hit resolves to a `matched` result
+   * with no catalogue card (the offer self-links by barcode at build time).
+   */
 
   private async applyMappingFallback(
     connectionId: string,

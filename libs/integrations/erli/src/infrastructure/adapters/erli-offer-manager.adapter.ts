@@ -134,7 +134,10 @@ import { Logger } from '@openlinker/shared/logging';
 import { ErliApiException } from '../../domain/exceptions/erli-api.exception';
 import { ErliConfigException } from '../../domain/exceptions/erli-config.exception';
 import { ERLI_PRODUCT_ID_PATTERN, erliProductPath } from '../../erli.constants';
-import type { ErliDispatchTime } from '../../domain/types/erli-connection.types';
+import type {
+  AllegroCatalogEnvironment,
+  ErliDispatchTime,
+} from '../../domain/types/erli-connection.types';
 import type { AllegroCategoryCatalogClient } from '../http/allegro-category-catalog-client';
 import type { IErliHttpClient } from '../http/erli-http-client.interface';
 import type {
@@ -240,9 +243,19 @@ export class ErliOfferManagerAdapter
    * `CategoryBrowser` / `CategoryParametersReader` of its own. Declaring this
    * lets core reuse an operator's existing PrestaShop→Allegro category/attribute
    * mappings for an Erli destination with zero re-authoring (#1045).
+   *
+   * The value is ENVIRONMENT-QUALIFIED (#2210), because Allegro publishes a
+   * different tree per environment and an Allegro connection declares itself
+   * accordingly (`'allegro:sandbox'` for a sandbox connection, #2063). Returning
+   * a bare `'allegro'` from a sandbox-configured Erli connection would name an
+   * owner no sandbox connection answers to, so every borrowed lookup would
+   * silently find nothing - on exactly the installs this gets tested on. The
+   * environment is the one this connection's borrowed catalogue reads from
+   * (`config.allegroEnvironment`, ADR-031); absent, it defaults to production,
+   * which is the pre-#2210 value.
    */
   getBorrowedTaxonomy(): TaxonomyOwner {
-    return 'allegro';
+    return this.allegroEnvironment === 'sandbox' ? 'allegro:sandbox' : 'allegro';
   }
 
   /**
@@ -297,6 +310,14 @@ export class ErliOfferManagerAdapter
      * pre-fix behaviour.
      */
     private readonly webBaseUrl?: string,
+    /**
+     * Which Allegro environment this connection borrows its taxonomy from
+     * (`config.allegroEnvironment`, ADR-031). Read by
+     * {@link getBorrowedTaxonomy} so the declared owner matches the identity the
+     * corresponding Allegro connection reports (#2210). Optional: absent means
+     * production, the pre-#2210 behaviour.
+     */
+    private readonly allegroEnvironment?: AllegroCatalogEnvironment,
   ) {
     if (allegroCategoryCatalog) {
       this.fetchCategories = (parentId?: string): Promise<OfferCategory[]> =>

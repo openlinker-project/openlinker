@@ -104,6 +104,9 @@ export class ErliAdapterFactory implements IErliAdapterFactory {
       cache,
       allegroCategoryCatalog,
       webBaseUrl,
+      // Same value the borrowed catalogue client reads, so the taxonomy owner the
+      // adapter declares can never disagree with the tree it actually reads (#2210).
+      config.allegroEnvironment,
     );
     return {
       offerManager,

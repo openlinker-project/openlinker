@@ -17,6 +17,13 @@
  * connection-resolution errors without starting a stream or calling a
  * marketplace.
  *
+ * The #2210 block additionally covers borrowed-matcher ISOLATION: a candidate
+ * whose manifest declares no EAN matching is never built, an unrelated
+ * connection that cannot be built (or a listing that throws outright) does not
+ * break the destination's own resolve, a failed build of the only candidate
+ * degrades to no-owner with `catalogueLookupPerformed: false`, and an
+ * environment-qualified borrower matches only the owner of that environment.
+ *
  * @module libs/core/src/listings/application/services
  */
 import type { IIntegrationsService } from '@openlinker/core/integrations';
@@ -770,19 +777,25 @@ describe('CategoryResolutionService', () => {
       getBorrowedTaxonomy: () => 'allegro' as const,
     };
 
+    /** What a real `OfferManager` owner manifest declares (Allegro's). */
+    const OWNER_METADATA = {
+      supportedCapabilities: ['OfferManager', 'EanCategoryMatcher'],
+    };
+
     const ownerEntry = (
       connectionId: string,
       createdAt: Date,
-      matcher: jest.Mock
+      matcher: jest.Mock,
+      taxonomyIdentity: 'allegro' | 'allegro:sandbox' = 'allegro'
     ): Record<string, unknown> => ({
       connectionId,
       connection: { id: connectionId, createdAt },
       adapter: {
         updateOfferQuantity: jest.fn(),
-        getTaxonomyIdentity: () => 'allegro' as const,
+        getTaxonomyIdentity: () => taxonomyIdentity,
         resolveCategoriesForBatchByEan: matcher,
       },
-      metadata: {},
+      metadata: OWNER_METADATA,
     });
 
     it('should resolve a borrowing destination by EAN through the owner connection', async () => {
@@ -829,7 +842,9 @@ describe('CategoryResolutionService', () => {
             updateOfferQuantity: jest.fn(),
             getTaxonomyIdentity: () => 'allegro' as const,
           },
-          metadata: {},
+          // Declared in the manifest, missing on the instance - the runtime
+          // guard, not the manifest pre-filter, is what has to reject this.
+          metadata: OWNER_METADATA,
         },
       ]);
 
@@ -914,6 +929,133 @@ describe('CategoryResolutionService', () => {
         unresolvedCount: 1,
         completion: 'complete',
         catalogueLookupPerformed: false,
+      });
+    });
+
+    it('should skip a candidate whose manifest declares no EAN matching without building it', async () => {
+      const built = jest.fn();
+      integrationsService.getCapabilityAdapter.mockResolvedValue(borrowingDestination);
+      integrationsService.listCapabilityAdapters.mockResolvedValue([
+        {
+          connectionId: 'conn-woocommerce',
+          connection: { id: 'conn-woocommerce', createdAt: new Date('2025-01-01') },
+          get adapter(): { updateOfferQuantity: jest.Mock } {
+            built();
+            return { updateOfferQuantity: jest.fn() };
+          },
+          metadata: { supportedCapabilities: ['OfferManager'] },
+        },
+      ]);
+
+      const result = await service.resolveCategoriesBatch(CONNECTION_ID, {
+        items: [{ variantId: 'v1', ean: '5901234123457' }],
+      });
+
+      expect(built).not.toHaveBeenCalled();
+      expect(result.get('v1')).toEqual({ kind: 'no-match' });
+    });
+
+    it('should resolve normally when an unrelated connection cannot be built', async () => {
+      const matcher = jest.fn().mockResolvedValue(
+        new Map([['v1', { kind: 'matched', allegroCategoryId: '9', productCardId: 'card-9' }]])
+      );
+      integrationsService.getCapabilityAdapter.mockResolvedValue(borrowingDestination);
+      integrationsService.listCapabilityAdapters.mockResolvedValue([
+        {
+          // Oldest, so it is attempted first - a half-configured but still
+          // `active` connection must not take the destination's resolve down.
+          connectionId: 'conn-broken',
+          connection: { id: 'conn-broken', createdAt: new Date('2024-01-01') },
+          get adapter(): Promise<never> {
+            return Promise.reject(new Error('missing credentialsRef'));
+          },
+          metadata: OWNER_METADATA,
+        },
+        ownerEntry(OWNER_ID, new Date('2026-01-01'), matcher),
+      ]);
+
+      const result = await service.resolveCategoriesBatch(CONNECTION_ID, {
+        items: [{ variantId: 'v1', ean: '5901234123457' }],
+      });
+
+      expect(matcher).toHaveBeenCalledTimes(1);
+      expect(result.get('v1')).toEqual({
+        kind: 'matched',
+        allegroCategoryId: '9',
+        productCardId: 'card-9',
+      });
+    });
+
+    it('should degrade to no-owner when the only owner candidate fails to build', async () => {
+      integrationsService.getCapabilityAdapter.mockResolvedValue(borrowingDestination);
+      integrationsService.listCapabilityAdapters.mockResolvedValue([
+        {
+          connectionId: OWNER_ID,
+          connection: { id: OWNER_ID, createdAt: new Date('2026-01-01') },
+          get adapter(): Promise<never> {
+            return Promise.reject(new Error('invalid Allegro config'));
+          },
+          metadata: OWNER_METADATA,
+        },
+      ]);
+
+      const events = await collect(
+        service.resolveCategoriesStream(CONNECTION_ID, {
+          items: [{ variantId: 'v1', ean: '5901234123457' }],
+        })
+      );
+
+      // Nothing was asked, so nothing may be claimed - and the stream completes
+      // instead of failing, which is the whole point of the borrow being optional.
+      expect(events.at(-1)).toEqual({
+        kind: 'done',
+        resolvedCount: 0,
+        unresolvedCount: 1,
+        completion: 'complete',
+        catalogueLookupPerformed: false,
+      });
+    });
+
+    it('should keep resolving when the owner listing itself throws', async () => {
+      integrationsService.getCapabilityAdapter.mockResolvedValue(borrowingDestination);
+      integrationsService.listCapabilityAdapters.mockRejectedValue(
+        new Error('adapter key resolution failed for an unrelated connection')
+      );
+
+      const result = await service.resolveCategoriesBatch(CONNECTION_ID, {
+        items: [{ variantId: 'v1', ean: '5901234123457' }],
+      });
+
+      expect(result.get('v1')).toEqual({ kind: 'no-match' });
+    });
+
+    it('should match a sandbox owner for a sandbox-borrowing destination', async () => {
+      const sandboxDestination = {
+        updateOfferQuantity: jest.fn(),
+        getBorrowedTaxonomy: () => 'allegro:sandbox' as const,
+      };
+      const production = jest.fn().mockResolvedValue(new Map());
+      const sandbox = jest.fn().mockResolvedValue(
+        new Map([['v1', { kind: 'matched', allegroCategoryId: 'sbx', productCardId: 'card-sbx' }]])
+      );
+      integrationsService.getCapabilityAdapter.mockResolvedValue(sandboxDestination);
+      integrationsService.listCapabilityAdapters.mockResolvedValue([
+        ownerEntry('conn-allegro-prod', new Date('2025-01-01'), production, 'allegro'),
+        ownerEntry('conn-allegro-sbx', new Date('2026-01-01'), sandbox, 'allegro:sandbox'),
+      ]);
+
+      const result = await service.resolveCategoriesBatch(CONNECTION_ID, {
+        items: [{ variantId: 'v1', ean: '5901234123457' }],
+      });
+
+      // The production connection is older, so it is tried first and rejected on
+      // identity - a sandbox borrower must never read the production tree (#2063).
+      expect(production).not.toHaveBeenCalled();
+      expect(sandbox).toHaveBeenCalledTimes(1);
+      expect(result.get('v1')).toEqual({
+        kind: 'matched',
+        allegroCategoryId: 'sbx',
+        productCardId: 'card-sbx',
       });
     });
   });
