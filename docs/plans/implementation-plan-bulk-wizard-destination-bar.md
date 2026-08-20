@@ -23,8 +23,9 @@ away.* A dense strip of settings reads as noise and gets ignored, which defeats 
 - No change to `BulkWizardConfig`, the submit payload, or any BE contract.
 - No redesign of the step bodies, the Review table, or the Edit modal.
 - No change to the single-product publish flows outside the bulk wizard.
-- No new shared primitive, no new design token.
-- **Sticky-on-scroll is deferred** — see §5 *Deliberate deferrals*.
+- No new shared primitive, and no new colour token - the only tokens added are the three layout
+  offsets the sticky bar needs (§6.1).
+- No change to the shell's own layout beyond those offsets.
 - **Batch progress page is already done** — `bulk-batch-progress-page.tsx:139` already renders
   `connectionName` in its description, so nothing to add there.
 
@@ -155,14 +156,27 @@ which is what made the 320 px layout blow up in the mockup). Badges wrap; the le
 - **Security.** The panel shows a shortened connection id via the existing `shortenId`; no
   credentials, no `config` blob dump — only the known keys plus `platformParams`.
 
-**Deliberate deferrals** (stated rather than silently dropped):
+## 6. Decisions taken after the first pass
 
-- **Sticky-on-scroll.** `.demo-banner` is itself `position: sticky; top: 52px` in the same scroll
-  container, and there is no layout token for "topbar + banner height". A sticky bar at `top: 52px`
-  would sit under the banner in demo mode. Doing it correctly needs a shared offset token, which is a
-  layout change beyond this issue. The bar sits directly under the page title, which is where a
-  screenshot of a wizard step is normally framed. Follow-up if it turns out to matter.
+Three things the operator asked for once the first implementation was reviewable:
 
-**Open question for the user:** `ConnectionDot` is a fixed 14 px disc. The mockup drew a 26 px disc,
-which reads better as an identity anchor. Reuse the 14 px component as-is (no shared-component
-change), or give it an optional `size` prop? Plan assumes reuse as-is.
+1. **Sticky-on-scroll shipped**, and it needed the shared offset token the first pass tried to avoid.
+   `.demo-banner` is itself `position: sticky; top: 52px` in the same scroll container, so a bar
+   pinned at a hardcoded `52px` would sit *under* it in demo mode. Three tokens now carry the fact -
+   `--shell-topbar-height` (which `.shell-topbar` and `.demo-banner` both consume instead of
+   repeating `52px`), `--demo-banner-height` (with a matching `min-height` on the banner so the token
+   stays true, wrapped on mobile and one line from 768 px up), and `--layout-sticky-top`, raised by
+   `.shell-main:has(.demo-banner)`. `:has()` keeps the knowledge in CSS rather than threading a flag
+   through `AppShell` into every future sticky consumer. The bar stops pinning while its settings
+   panel is open (`:has(.bulk-destbar__panel:not([hidden]))`) - expanded, it would cover the rows it
+   describes.
+2. **`ConnectionDot` gained an optional `size`** (default 14). The glyph is an SVG with a `viewBox`,
+   so the initial scales with the disc; `.conn-dot` reads `var(--conn-size, 14px)`. The bar passes
+   26, where the disc is the identity anchor for the whole batch rather than a marker beside other
+   text. Every existing call site is untouched.
+3. **The destination is in the heading after all** - `Create offers on {name}` /
+   `Publish products to {name}`, with the action verb matching the step's primary button so the flow
+   keeps one vocabulary. Only after Config: on Config the destination is still being chosen, the
+   picker already carries the name, and the e2e page object asserts that exact heading
+   (`apps/e2e/src/pages/bulk-offer-wizard.page.ts:63`, anchored `^...$`) - so the base title stays
+   byte-identical there.

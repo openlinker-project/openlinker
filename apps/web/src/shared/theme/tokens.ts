@@ -41,6 +41,13 @@ export const tokens = {
   'space-7': 'var(--space-7)',
   'space-8': 'var(--space-8)',
 
+  // ── Layout offsets (#2227) ──────────────────────────────────────
+  // What is already pinned above a sticky sub-header. `layout-sticky-top` is
+  // the one to stick to: it accounts for the demo banner when it is present.
+  'shell-topbar-height': 'var(--shell-topbar-height)',
+  'demo-banner-height': 'var(--demo-banner-height)',
+  'layout-sticky-top': 'var(--layout-sticky-top)',
+
   // ── Radii ───────────────────────────────────────────────────────
   'radius-xs': 'var(--radius-xs)',
   'radius-sm': 'var(--radius-sm)',

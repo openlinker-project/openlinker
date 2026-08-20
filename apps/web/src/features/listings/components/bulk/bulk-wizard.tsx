@@ -648,10 +648,21 @@ export function BulkWizard({
   );
   const stepperCurrent = shopBatchId !== null ? wizardSteps.length : currentStepIndex;
 
+  // #2227: name the destination in the heading, so even a screenshot cropped to
+  // the top of the page identifies the batch. Only after Config - on Config the
+  // destination is still being chosen, and the picker itself carries the name.
+  // The action verb matches the step's primary button ("Create offers" /
+  // "Publish"), so the flow keeps one vocabulary.
+  const baseTitle = isShop ? 'Bulk shop product publishing' : 'Bulk marketplace offer creation';
+  const pageTitle =
+    step !== 'config' && activeConnection !== null
+      ? `${isShop ? 'Publish products to' : 'Create offers on'} ${activeConnection.name}`
+      : baseTitle;
+
   return (
     <PageLayout
       eyebrow="Operations · Listings"
-      title={isShop ? 'Bulk shop product publishing' : 'Bulk marketplace offer creation'}
+      title={pageTitle}
       description={
         isShop
           ? `Publishing ${rows.length} ${rows.length === 1 ? 'product' : 'products'} · ${counts.totalVariants} variants to a shop.`

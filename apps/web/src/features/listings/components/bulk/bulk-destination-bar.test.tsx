@@ -44,13 +44,20 @@ function makeConfig(over: Partial<BulkWizardConfig> = {}): BulkWizardConfig {
   };
 }
 
-function renderBar(over: {
+interface RenderBarOverrides {
   connection?: Connection;
   config?: BulkWizardConfig | null;
   settingsOpen?: boolean;
   onToggleSettings?: () => void;
   onChangeDestination?: () => void;
-} = {}) {
+}
+
+interface RenderBarResult {
+  onToggleSettings: () => void;
+  onChangeDestination: () => void;
+}
+
+function renderBar(over: RenderBarOverrides = {}): RenderBarResult {
   const onToggleSettings = over.onToggleSettings ?? vi.fn();
   const onChangeDestination = over.onChangeDestination ?? vi.fn();
   renderWithProviders(
@@ -91,6 +98,10 @@ describe('BulkDestinationBar', () => {
     expect(barName()).toBeInTheDocument();
     expect(within(badges()).getByText('Production')).toBeInTheDocument();
     expect(screen.queryByText('Sandbox')).not.toBeInTheDocument();
+    // The disc is the batch's identity anchor here, so it is raised off the 14 px default.
+    expect(screen.getByTestId('bulk-destination-bar').querySelector('.conn-dot')).toHaveStyle({
+      '--conn-size': '26px',
+    });
   });
 
   it('should flag a sandbox connection on the badge and on the bar itself', () => {

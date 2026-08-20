@@ -332,6 +332,17 @@
   --button-primary-bg-hover: oklch(62% 0.19 50);
 
   /* ── Spacing scale (strict 4px grid) ─────────────────────────────── */
+  /* ── Layout offsets (#2227) ────────────────────────────────────────
+   * Sticky sub-headers need to know what is already pinned above them. The
+   * topbar is always there; the demo banner sits under it only in demo mode,
+   * so `.shell-main:has(.demo-banner)` raises `--layout-sticky-top` instead of
+   * every sticky element hardcoding a guess. Height, not padding, so the token
+   * stays true: `.demo-banner` carries a matching `min-height`.
+   */
+  --shell-topbar-height: 52px;
+  --demo-banner-height: 48px;
+  --layout-sticky-top: var(--shell-topbar-height);
+
   --space-1: 0.25rem; /* 4px */
   --space-2: 0.5rem; /* 8px */
   --space-3: 0.75rem; /* 12px */
@@ -1291,6 +1302,21 @@ textarea,
   flex-direction: column;
 }
 
+/* The demo banner wraps to two lines on narrow viewports; from tablet up it is
+   one line, so the offset a sticky sub-header must clear gets smaller (#2227). */
+@media (min-width: 768px) {
+  :root {
+    --demo-banner-height: 32px;
+  }
+}
+
+/* Only demo mode renders a second pinned strip, so only then does a sticky
+   sub-header have to clear it. `:has()` keeps the knowledge in CSS instead of
+   threading a flag through AppShell into every sticky consumer. */
+.shell-main:has(.demo-banner) {
+  --layout-sticky-top: calc(var(--shell-topbar-height) + var(--demo-banner-height));
+}
+
 .shell-topbar {
   position: sticky;
   top: 0;
@@ -1298,7 +1324,7 @@ textarea,
   display: flex;
   align-items: center;
   gap: 12px;
-  height: 52px;
+  height: var(--shell-topbar-height);
   padding: 0 16px;
   background: var(--bg-shell);
   border-bottom: 1px solid var(--border-subtle);
@@ -2437,8 +2463,10 @@ textarea,
    initial + visually-hidden full name carry the signal. */
 .conn-dot {
   display: inline-block;
-  width: 14px;
-  height: 14px;
+  /* `--conn-size` is set inline by connection-dot.tsx only where the dot is the
+     primary identity anchor (the bulk wizard destination bar, #2227). */
+  width: var(--conn-size, 14px);
+  height: var(--conn-size, 14px);
   border-radius: 50%;
   flex: 0 0 auto;
   vertical-align: -2px;
@@ -2449,8 +2477,8 @@ textarea,
    so it needs no line-box gymnastics - just fill the disc. */
 .conn-dot__glyph {
   display: block;
-  width: 14px;
-  height: 14px;
+  width: var(--conn-size, 14px);
+  height: var(--conn-size, 14px);
 }
 
 .conn-dot__glyph text {
@@ -10791,6 +10819,10 @@ input.bulk-dispatch__num--wide {
  * state that is most expensive to miss in a screenshot.
  */
 .bulk-destbar {
+  position: sticky;
+  top: var(--layout-sticky-top);
+  /* Above scrolled content, below the demo banner (9) and the topbar (10). */
+  z-index: 3;
   background: var(--bg-surface);
   border: 1px solid var(--border-default);
   border-left: 3px solid var(--accent-primary);
@@ -10879,6 +10911,12 @@ input.bulk-dispatch__num--wide {
 
 .bulk-destbar__panel[hidden] {
   display: none;
+}
+
+/* Expanded, the bar is a panel rather than a marker - pinning it would cover
+   the rows it describes, so it scrolls away until it is collapsed again. */
+.bulk-destbar:has(.bulk-destbar__panel:not([hidden])) {
+  position: static;
 }
 
 /* KeyValueList owns its own responsive dt/dd grid - only the width is ours. */
@@ -14951,7 +14989,8 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
      scrolled .shell-content but below the topbar (z-index: 10) so the two
      header blocks never overlap. */
   position: sticky;
-  top: 52px;
+  top: var(--shell-topbar-height);
+  min-height: var(--demo-banner-height);
   z-index: 9;
 }
 

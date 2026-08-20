@@ -84,7 +84,9 @@ export function BulkDestinationBar({
     >
       <div className="bulk-destbar__main">
         <span className="bulk-destbar__id">
-          <ConnectionDot name={connection.name} platformType={connection.platformType} />
+          {/* Larger than the 14 px default: here the disc is the identity
+              anchor for the whole batch, not a marker beside other text. */}
+          <ConnectionDot name={connection.name} platformType={connection.platformType} size={26} />
           <span className="bulk-destbar__name" title={connection.name}>
             {connection.name}
           </span>
