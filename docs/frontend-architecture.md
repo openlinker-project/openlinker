@@ -45,6 +45,7 @@ The `apps/web/src` folder is organized as:
 - `plugins/`: build-time plugin registry — named extension points (routes, nav items, typed API namespaces) iterated by the host. The barrel at `plugins/index.ts` is the **single edit point** an OSS contributor touches to enable a new in-tree plugin. Mirrors the BE `apps/api/src/plugins.ts` shape (#604/#605).
 - `shared/`: reusable UI, utilities, config, and cross-feature types
 - `test/`: shared frontend test setup and helpers
+- `build-time/`: build-tool-only modules consumed by `vite.config.ts` (never imported by application code, so it's exempt from the `app → pages → features → shared` dependency rules above). Kept in TypeScript project-checked (`tsconfig.app.json` includes `src`) but framework-free so it can also be unit-tested directly.
 
 Conventions:
 

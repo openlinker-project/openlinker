@@ -129,6 +129,15 @@ services:
         # takes effect on the NEXT `--build` (e.g. https://api.example.com
         # for a public-domain deployment), not on a plain `up`/restart.
         VITE_API_BASE_URL: '${VITE_API_BASE_URL:-http://localhost:3000}'
+        # Open Graph share card (#2174). A public demo sets these in .env so
+        # every shared link is visibly a demo — VITE_OG_TITLE_PREFIX="[DEMO] ",
+        # VITE_OG_BADGE_TEXT=Demo (swaps in the badged og-image), and
+        # VITE_OG_SITE_URL=https://demo.example.com (makes og:image absolute,
+        # which LinkedIn needs). Empty defaults give the plain production card.
+        # Same build-time caveat as VITE_API_BASE_URL above: needs `--build`.
+        VITE_OG_TITLE_PREFIX: '${VITE_OG_TITLE_PREFIX:-}'
+        VITE_OG_BADGE_TEXT: '${VITE_OG_BADGE_TEXT:-}'
+        VITE_OG_SITE_URL: '${VITE_OG_SITE_URL:-}'
     container_name: ${COMPOSE_PROJECT_NAME:-openlinker}-web
     ports:
       # 8080 = PrestaShop, 8081 = phpMyAdmin, 8082 = WooCommerce
