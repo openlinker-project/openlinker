@@ -36,6 +36,7 @@ export { InvoiceConnectionLock } from './components/invoice-connection-lock';
 export {
   DocumentTypeSelect,
   DOCUMENT_TYPE_LABEL_FALLBACK,
+  DOCUMENT_TYPE_UNKNOWN_LABEL,
 } from './components/document-type-select';
 export { useOrderInvoiceQuery } from './hooks/use-order-invoice-query';
 export { useInvoiceQuery } from './hooks/use-invoice-query';
