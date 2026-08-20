@@ -47,6 +47,8 @@ A real, code-grounded audit (both `main` and the unmerged epic branch) checked w
 ### Constraints
 - **Base branch is not `main`.** The entire feature this plan modifies exists only on `2154-sales-document-routing-adr041` (epic #2154's branch, itself based on the still-unmerged `1902-fiscalization-eparagony`). This plan's implementation PR must target that branch, not `main` — see §5 for what that implies for the worktree/branch setup at execution time.
 - No new colors, fonts, or hand-rolled primitives: this repo already self-hosts IBM Plex Sans/Mono and ships a full OKLCH token set (`apps/web/src/index.css`) — the mockup's Google-Fonts `@import` was an artifact-only necessity, not something to carry into the real app.
+- **Migration timestamps in this repo are synthetic and sequential, not `Date.now()`.** `pnpm migration:generate` emits a real epoch prefix, which sorts into the middle of already-merged history and only fails on a fresh database — see `docs/migrations.md` § Timestamp uniqueness invariant, rule 3 (#1013). Any migration this plan adds must be re-prefixed by hand to the next free synthetic timestamp, with the class-name suffix updated to match. The tail on `main` is `1835000000000`; the tail on the actual base branch (`2154-sales-document-routing-adr041`) is `1836000000000`, so this plan's migration takes `1837000000000`. Re-check the tail on the base branch at execution time rather than trusting this number — the two branches move independently, and a collision between them is the exact failure this rule exists to prevent.
+- **`country` is normalized to trimmed uppercase at the write boundary.** Verified against the base branch: `CreateSalesDocumentRuleDto.country` is a bare `@IsString() @IsNotEmpty()`, and `SalesDocumentRulesService` passes it through to the repository untouched — so `de` and `DE` today become two independent rows with independent rules. That is harmless while the only surface is a per-country lookup, but this plan's whole premise is an index that claims to show "everything you configured," and it would show the same market twice with half its rules under each row — indistinguishable from data loss. See Phase 1a Step 4b.
 - Reuse Radix `Dialog` (`apps/web/src/shared/ui/dialog.tsx`) exactly as `SalesDocumentRuleComposerDialog` already does — it already provides focus-on-open, a focus trap, Escape-to-close, and focus-return-on-close for free. Do not hand-build any of that.
 
 ---
@@ -103,11 +105,24 @@ Not applicable — no external system involved.
 ### Documentation Gaps
 - None found specific to this task; `docs/frontend-architecture.md` and `docs/frontend-ui-style-guide.md` cover the FE conventions this plan follows directly.
 
+### Review feedback folded in (PR #2185)
+| # | Finding | Where it now lives |
+|---|---|---|
+| 1 | Phase 1 Step 5 omitted DI-token / module-registration / ORM-entity wiring | Phase 1b Step 5, "DI + registration wiring" sub-list |
+| 2 | Migration prefix convention (synthetic sequential, not `Date.now()`) not stated | §2 Constraints + Phase 1b Step 5 "Migration" |
+| 3 | The write-time acknowledgment clear is not atomic | Phase 1b Step 5, "two repository calls, not one atomic write" — resolved by derivation precedence + write ordering, with the transaction named as an accepted stronger alternative |
+| 4 | "Reset country" had no stated partial-failure behaviour | Phase 2 Step 3b, "Partial failure is a real outcome" + a second acceptance test |
+| 5 | Country-code normalization unaddressed | §2 Constraints (with the base-branch verification result) + new Phase 1a Step 4b + Backward Compatibility (not retro-applied) |
+| 6 | Step 4's acceptance was a manual `curl` | Phase 1a Step 4 now names a controller spec |
+| 7 | Step 5 was doing two things | Phase 1 split into 1a (countries listing) and 1b (acknowledgment), shippable as two PRs |
+
 ---
 
 ## 6. Proposed Implementation Plan
 
-### Phase 1: Backend — countries-listing read
+**Phase 1 is split into 1a and 1b deliberately.** The countries-listing read and the acknowledgment marker are independently valuable and independently reviewable: 1a alone already ships the index (with a two-state Status column), and 1b is what grew this plan's estimate from 3–4 days to 4–6. Ship them as two PRs so the index is not held hostage to another round on the acknowledgment design.
+
+### Phase 1a: Backend — countries-listing read
 
 **Goal**: Make "which countries have any sales-document configuration, and how much" queryable in one call.
 
@@ -133,13 +148,35 @@ Not applicable — no external system involved.
 4. **Controller endpoint + DTO**
    - **File**: `apps/api/src/sales-documents/http/sales-document-rules.controller.ts` (add `GET /sales-documents/countries`) + new `apps/api/src/sales-documents/http/dto/sales-document-country-summary-response.dto.ts`.
    - **Action**: Thin pass-through, `@Roles('admin')` (matching every other endpoint on this controller already), no capability guard needed (this is a read, not a write to a specific connection).
-   - **Acceptance**: A quick manual `curl` against the booted API returns the expected shape; Swagger doc reflects the new route (`@ApiOperation`, `@ApiResponse`) matching the existing endpoints' style.
+   - **Acceptance**: `apps/api/src/sales-documents/http/sales-document-rules.controller.spec.ts` gains a case asserting the route delegates to `listConfiguredCountries` and maps the domain summary onto the response DTO (mocking the service token, as the controller's existing specs do). Every other step in this plan names a spec file; a manual `curl` would be the one exception, and a controller spec is cheap enough that there is no reason to make it. Swagger doc reflects the new route (`@ApiOperation`, `@ApiResponse`) matching the existing endpoints' style.
    - **Dependencies**: Step 3.
 
-5. **"No document — by design" acknowledgment: entity, repository, service, endpoints**
-   - **Files**: new `domain/entities/sales-document-country-acknowledgment.entity.ts`, new ORM entity + migration (`sales_document_country_acknowledgments`: `country` PK, `acknowledgedAt` timestamp — no `documentKind`, this isn't a routing outcome, it's a per-country flag), new repository (mirrors `sales-document-country-default.repository.ts`'s shape: `find(country)`, `upsert(country)`, `delete(country)`); service methods `acknowledgeNoDocument(country)` / `clearAcknowledgment(country)` on `ISalesDocumentRulesService`; two controller routes `PUT` / `DELETE /sales-documents/countries/:country/acknowledgment`.
-   - **Action**: `listConfiguredCountries` (Step 3) also left-joins this table so `acknowledgedNoDocumentAt` is populated per row. Creating a rule or a country default for an already-acknowledged country **clears the acknowledgment as part of that same write** (`createRule` / `upsertCountryDefault` call `clearAcknowledgment` internally when a row is written for that country) — this is what keeps the three states mutually exclusive without a UI-side guard: acknowledging and configuring can never silently coexist.
-   - **Acceptance**: Service spec covers: acknowledging a bare country, acknowledging then adding a rule (acknowledgment clears), acknowledging an already-configured country (rejected client-side per Phase 2 Step 4 — see below — but the service method itself doesn't need to guard this since the FE never offers the action). Migration has both `up()`/`down()`.
+4b. **Normalize `country` at the write boundary**
+   - **Files**: `apps/api/src/sales-documents/http/dto/create-sales-document-rule.dto.ts`, `.../upsert-sales-document-country-default.dto.ts`, plus the acknowledgment DTO/param from Phase 1b, and the `:country` route params on `sales-document-rules.controller.ts`.
+   - **Action**: Apply one `@Transform(({ value }) => typeof value === 'string' ? value.trim().toUpperCase() : value)` on every inbound `country` field and route param, leaving the `*` Rest-of-world sentinel unaffected (uppercasing `*` is a no-op). Normalize on the way **in**, not on the way out: the value becomes a primary key on the acknowledgment table and the row key of the index, so a stored `de` would keep producing a second row no matter what the read does.
+   - **Acceptance**: A controller (or DTO) spec asserts `de` / ` de ` / `De` all reach the service as `DE`, and that `*` survives unchanged. Existing rows are not backfilled — see Backward Compatibility in §8.
+   - **Dependencies**: None (independent of Steps 1–4; can land first).
+
+---
+
+### Phase 1b: Backend — "No document — by design" acknowledgment
+
+**Goal**: Persist the third per-country state — "we decided this market gets no sales document" — as a record distinct from "nobody has configured this yet."
+
+**Steps**:
+
+5. **Acknowledgment: entity, repository, DI wiring, service, endpoints**
+   - **Files**: new `domain/entities/sales-document-country-acknowledgment.entity.ts`, new `domain/ports/sales-document-country-acknowledgment-repository.port.ts`, new ORM entity + migration (`sales_document_country_acknowledgments`: `country` PK, `acknowledgedAt` timestamp — no `documentKind`, this isn't a routing outcome, it's a per-country flag), new repository (mirrors `sales-document-country-default.repository.ts`'s shape: `find(country)`, `upsert(country)`, `delete(country)`); service methods `acknowledgeNoDocument(country)` / `clearAcknowledgment(country)` on `ISalesDocumentRulesService`; two controller routes `PUT` / `DELETE /sales-documents/countries/:country/acknowledgment`.
+   - **DI + registration wiring (do not skip — an implementer who follows entity → repository → service → controller literally gets an unresolvable injection at boot):**
+     1. Add `SALES_DOCUMENT_COUNTRY_ACKNOWLEDGMENT_REPOSITORY_TOKEN = Symbol('SalesDocumentCountryAcknowledgmentRepositoryPort')` to `libs/core/src/sales-documents/sales-documents.tokens.ts` — `{CONTEXT}_{INTERFACE}_TOKEN` naming, Symbol description matching the port name (`engineering-standards.md § Symbol DI Token Re-export Convention`, rules 1, 2 and 5). The sub-barrel already does `export * from './sales-documents.tokens'`, so no second barrel edit is needed. **Note**: the "vocabulary-only concern has no tokens file" exemption in that section describes `sales-documents` as it stands on `main`; on the base branch the context already has a module, a service and a tokens file, so the exemption no longer applies here.
+     2. Register the new ORM entity in `TypeOrmModule.forFeature([...])` inside `libs/core/src/sales-documents/sales-documents.module.ts` (alongside the rule / country-default / threshold entities) so TypeORM discovers it, and bind the repository with `{ provide: <TOKEN>, useExisting: SalesDocumentCountryAcknowledgmentRepository }`.
+     3. Confirm the ORM entity is reachable by the migration CLI's filesystem glob (`apps/api/src/database/data-source.ts`) — it is, for anything under `libs/core/src/**/*.orm-entity.ts`, but check before assuming the migration diff is complete.
+   - **Migration**: **hand-prefix it**, per the Constraints bullet above — `migration:generate` emits a `Date.now()` prefix that sorts into the middle of merged history and only fails on a fresh DB. Take the next free synthetic timestamp after the base branch's tail and rename the class suffix to match.
+   - **Action**: `listConfiguredCountries` (Step 3) also left-joins this table so `acknowledgedNoDocumentAt` is populated per row. Creating a rule or a country default for an already-acknowledged country clears the acknowledgment (`createRule` / `upsertCountryDefault` call `clearAcknowledgment` after writing a row for that country).
+   - **These are two repository calls, not one atomic write — and the plan does not pretend otherwise.** A failure between them leaves a country both configured *and* acknowledged. Two mitigations, both required:
+     1. **The acknowledgment is never authoritative for the displayed status.** `deriveSalesDocumentCountryStatus` (Phase 2 Step 2) checks `ruleCount > 0 || either default set` **first** and only falls through to `acknowledgedNoDocumentAt` when the country is genuinely bare, so a stale acknowledgment row is invisible: the country reads "Configured", which is the truth. The precedence order is the correctness mechanism, not a cosmetic choice — state it in the derivation function's own header so a later refactor can't reorder the branches innocently.
+     2. **Order the writes so the survivable state is the harmless one.** Write the rule/default first, then clear — a crash after the rule leaves a stale acknowledgment (invisible, self-heals on the next write); the reverse order would clear an acknowledgment for a rule that was never created. Wrapping both in a transaction is a legitimate stronger alternative if the implementer prefers it; the acceptance criterion is the observable outcome, not the mechanism.
+   - **Acceptance**: Service spec covers: acknowledging a bare country, acknowledging then adding a rule (acknowledgment clears), acknowledging an already-configured country (rejected client-side per Phase 2 Step 4 — see below — but the service method itself doesn't need to guard this since the FE never offers the action), and a **stale-acknowledgment row alongside a real rule deriving "Configured", not "No document — by design"**. Migration has both `up()`/`down()`.
    - **Dependencies**: Steps 1–3 (extends the same summary type and listing method).
 
 ### Phase 2: Frontend — country index + routing dialog
@@ -167,7 +204,8 @@ Not applicable — no external system involved.
 3b. **"Reset country" action**
    - **File**: same component as Step 3 (`sales-document-country-routing-dialog.tsx`).
    - **Action**: A destructive `Button` ("Reset country") in the dialog footer, disabled when the country already has zero rules/defaults/acknowledgment (nothing to reset). On click, opens `apps/web/src/shared/ui/confirm-dialog.tsx` (already exists — reuse verbatim, do not build a second confirm pattern) naming exactly what will be deleted ("This deletes N rule(s) and clears both defaults for {country}. This can't be undone."). On confirm: sequentially calls the existing `deleteRule` mutation for every rule, `deleteCountryDefault` for both kinds if set, and the acknowledgment-clear endpoint if set, then invalidates the country-list and country-detail query keys so the dialog and index both reflect the reset immediately.
-   - **Acceptance**: Resetting a country with 3 rules + 1 default leaves it in the exact same state as a never-touched country (index shows "Not configured", dialog reopens empty) — verified by a component test seeding that state and asserting the post-reset query cache. The confirm step is not skippable (no reset without the intermediate dialog).
+   - **Partial failure is a real outcome and must be handled explicitly.** This is N+3 independent requests with no backend transaction, so call 3 of 5 can fail after the first two have already deleted rows — while the confirm copy has already promised "this deletes N rule(s) and clears both defaults." Required behaviour: (a) stop the sequence on the first failure, (b) **invalidate the query keys anyway**, so the dialog re-reads what actually survived instead of retrying against a stale list and 404-ing on rules that are already gone, (c) keep the confirm dialog open with an inline error naming the partial state ("Removed 2 of 5 — {message}. Retry to remove the rest."), and (d) leave "Reset country" enabled so retrying resumes from the real remaining state. Do **not** report success, and do not silently close.
+   - **Acceptance**: Resetting a country with 3 rules + 1 default leaves it in the exact same state as a never-touched country (index shows "Not configured", dialog reopens empty) — verified by a component test seeding that state and asserting the post-reset query cache. The confirm step is not skippable (no reset without the intermediate dialog). A **second** test covers the unhappy path: a mid-sequence rejection surfaces the partial-failure message, refetches, and a retry completes the reset without erroring on the already-deleted rules.
    - **Dependencies**: Step 3; no new backend endpoint (composes existing per-id deletes).
 
 4. **`SalesDocumentRestOfWorldRoutingDialog` (or a branch of Step 3's component)**
@@ -233,9 +271,12 @@ Not applicable — no external system involved.
 ### Edge Cases
 - **A country with rules but its defaults were later deleted (or vice versa)**: the countries-listing read (Step 1.3) must not drop such a country from the list just because one side is empty — the merge logic explicitly defaults the missing side rather than filtering the row out.
 - **`★ Rest of world` with zero rules AND zero defaults**: still must appear on the index (it is "Always on," per its own badge) — the FE renders it unconditionally rather than only when the query returns a row for `*`.
+- **A country stored in mixed case before Phase 1a Step 4b lands** (`de` alongside `DE`): the index renders both as separate rows. Normalization is applied on the way in only, so pre-existing rows are not rewritten — see Backward Compatibility.
+- **A stale acknowledgment coexisting with a real rule** (a failed clear): the status derivation checks configuration first, so the row reads "Configured". The acknowledgment row is dead data that the next successful write removes.
 
 ### Backward Compatibility
 - ✅ No breaking change to any existing endpoint or component's public props — this plan adds one new endpoint and relocates existing components into a new parent, without changing their own interfaces.
+- ⚠️ **Country normalization is not retro-applied.** Phase 1a Step 4b uppercases at the write boundary; it does **not** run a data migration over `sales_document_rules` / `sales_document_country_defaults`. On an install that already stored a lowercase code, the old row keeps its literal value and shows as its own index row until an operator resets or re-authors it. Deliberate: a backfill would silently merge two countries an operator may have configured differently, and there is no safe automatic answer to which set of rules wins. If a real install turns out to have such rows, a one-off migration is a separate, reviewed decision — not a side effect of this plan.
 
 ---
 
@@ -266,6 +307,9 @@ Not applicable — no external system involved.
 - [ ] A country with zero rules and zero defaults can be marked "No document — by design"; the index shows a third, visually distinct status for it (not the same badge as "Not configured").
 - [ ] Adding a rule or default to an acknowledged country automatically clears the acknowledgment — the two states can never coexist.
 - [ ] "Reset country" clears every rule, both defaults, and any acknowledgment for that country after an explicit confirm step (via the existing `ConfirmDialog` primitive), never silently.
+- [ ] A reset that fails partway reports how far it got, refetches, and can be retried to completion — it never reports success and never leaves the dialog showing a state the server does not have.
+- [ ] A country entered as `de`, `De` or ` DE ` produces exactly one index row (`DE`), on every write path — rules, defaults, and the acknowledgment.
+- [ ] A stale acknowledgment left behind by a failed clear is invisible: the country with a real rule reads "Configured", never "No document — by design".
 - [ ] No new colors, fonts, or hand-rolled Dialog/Select/confirm pattern — verified by diff review against `docs/frontend-ui-style-guide.md`.
 - [ ] `SalesDocumentCountrySelector` is deleted once confirmed unreferenced, or left in place with a note if some other caller still needs it (check before deleting).
 
