@@ -12,3 +12,14 @@ export { AnalyticsNeedsAttention } from './components/analytics-needs-attention'
 export { computePresetRange } from './lib/date-range.lib';
 export type { AnalyticsTrustSnapshot, ConnectionIngestionTrust } from './api/analytics-trust.types';
 export type { NeedsAttentionSummary } from './api/needs-attention.types';
+
+export { useSalesAnalyticsQuery } from './hooks/use-sales-analytics-query';
+export { AnalyticsKpiStrip } from './components/analytics-kpi-strip';
+export { ChannelSalesTable } from './components/channel-sales-table';
+export type {
+  ChannelSalesAnalytics,
+  DailyTrendPoint,
+  SalesAnalyticsFilters,
+  SalesAnalyticsHeadline,
+  SalesAndChannelAnalytics,
+} from './api/sales-analytics.types';
