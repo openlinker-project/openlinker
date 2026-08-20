@@ -36,6 +36,7 @@ import {
   effectiveVariantEan,
   imageCountForVariant,
   isValidGtin,
+  productCategoryIdOf,
   titleForVariant,
 } from './bulk-policy';
 import {
@@ -292,6 +293,9 @@ export function BulkResolveStep({
           masterCurrency,
           batchCurrency: currency,
           override: variant.override,
+          // A category already pinned at the product tier clears the sibling's
+          // category blocker (#2240) - the submit inherits it as the family pin.
+          productCategoryId: productCategoryIdOf(row),
           imageCount: imageCountForVariant(row, variant),
           effectiveTitle: titleForVariant(row, variant),
           platformValidate,
@@ -300,9 +304,14 @@ export function BulkResolveStep({
         // Master stock is authoritative + read-only for multi-variant siblings
         // (incl. 0 -> out-of-stock, not a create error). Plan §11.
         if (isMulti) blockers = blockers.filter((b) => b !== 'no-master-stock');
-        // A supplied-but-invalid EAN is a hard GS1 gate (plan §10.1 / B5).
-        if (ean !== null && !isValidGtin(ean) && !blockers.includes('no-ean')) {
-          blockers = [...blockers, 'no-ean'];
+        // A supplied-but-invalid barcode is a hard GS1 gate (plan §10.1 / B5) and
+        // its own cause since #2240, replacing the downstream category cause so
+        // the row carries one explanation rather than two.
+        if (ean !== null && !isValidGtin(ean) && !blockers.includes('invalid-barcode')) {
+          blockers = [
+            ...blockers.filter((b) => b !== 'no-match' && b !== 'no-ean'),
+            'invalid-barcode',
+          ];
         }
 
         return {

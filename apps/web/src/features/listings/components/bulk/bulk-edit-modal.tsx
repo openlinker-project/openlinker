@@ -75,8 +75,9 @@ import {
   FormField,
   Input,
   RichTextEditor,
+  StatusBadge,
 } from '../../../../shared/ui';
-import type { DescriptionFormat } from '../../../../shared/ui';
+import type { DescriptionFormat, StatusBadgeTone } from '../../../../shared/ui';
 import { useDescriptionFormatQuery } from '../../hooks/use-description-format-query';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../../../../shared/ui/tooltip';
 import { useToast } from '../../../../shared/ui/toast-provider';
@@ -100,7 +101,15 @@ import { BulkCategoryChooseModal } from './bulk-category-choose-modal';
 import { ShopCategoryPickerModal } from './shop-category-picker-modal';
 import { ShopAttributePicker } from './shop-attribute-picker';
 import { BulkImageLightbox } from './bulk-image-lightbox';
-import { blockerLabel, isVariantScopeFixable } from './bulk-blockers';
+import {
+  blockerLabel,
+  isCategoryBlocker,
+  isVariantScopeFixable,
+  CATEGORY_EFFECT_CHIP,
+  NEUTRAL_BLOCKER_CHIPS,
+  FALLBACK_CHIP,
+} from './bulk-blockers';
+import { describeBlocker } from './bulk-blocker-copy';
 import { ErliDeliveryPriceListOverrideField } from '../erli/erli-delivery-price-list-override-field';
 import { useCategoryParametersQuery } from '../../hooks/use-category-parameters-query';
 import { useCategoryParameterSchemas } from '../../hooks/use-category-parameter-schemas';
@@ -135,6 +144,11 @@ import {
   stockPolicyEquals,
 } from './bulk-policy';
 import type { BulkOfferOverrides, BulkPerProductOverride } from '../../api/bulk-listings.types';
+
+/** Chip tone for a blocker id (#2240) - neutral map first, generic fallback after. */
+function chipToneOf(blocker: string): StatusBadgeTone {
+  return (NEUTRAL_BLOCKER_CHIPS[blocker] ?? FALLBACK_CHIP).tone;
+}
 
 // Grouping-determining category parameters - shared across siblings, edited on
 // the base scope only (a per-variant Brand/Condition would split the Allegro
@@ -1016,7 +1030,9 @@ function BulkEditModalForm({
             className="bulk-editor__cat-change"
             onClick={() => setCatModalOpen(true)}
           >
-            change ↱
+            {/* Name the action, not the widget (#2240): with nothing set, this
+                bar is the product-tier fix every category blocker points at. */}
+            {categoryMissing ? 'set category ↱' : 'change ↱'}
           </Button>
         ) : null}
         <span className="eyebrow">Category</span>
@@ -1174,6 +1190,16 @@ function BulkEditModalForm({
                       onParamChange={(paramId, value) => setVariantParam(v.variantId, paramId, value)}
                       onIncludedChange={(next) => setIncluded((prev) => ({ ...prev, [v.variantId]: next }))}
                       onFixOnBase={() => setScope('base')}
+                      // The product-tier fix (#2240): switch to the shared scope
+                      // AND open the picker, so one click lands on the control
+                      // instead of on a scope the operator then has to read.
+                      onSetProductCategory={() => {
+                        setScope('base');
+                        setCatModalOpen(true);
+                      }}
+                      variantCount={row.variants.length}
+                      destinationName={platformName}
+                      batchCurrency={currency}
                     />
                   ) : null}
                 </Fragment>
@@ -1962,6 +1988,18 @@ interface VariantScopeFormProps {
   onParamChange: (paramId: string, value: FormParameterValue) => void;
   onIncludedChange: (next: boolean) => void;
   onFixOnBase: () => void;
+  /**
+   * Set the PRODUCT-tier category, covering every sibling that has no override
+   * of its own (#2240). The primary fix for a category blocker: the submit pins
+   * that value as the family category, and readiness now reads it too.
+   */
+  onSetProductCategory: () => void;
+  /** How many siblings a product-tier fix would cover (#2240 - blocker copy). */
+  variantCount: number;
+  /** Resolved destination display name, interpolated into the blocker copy (#2240). */
+  destinationName: string;
+  /** Batch currency, for the currency-mismatch sentence (#2240). */
+  batchCurrency: string;
 }
 
 function VariantScopeForm({
@@ -1986,6 +2024,10 @@ function VariantScopeForm({
   onParamChange,
   onIncludedChange,
   onFixOnBase,
+  onSetProductCategory,
+  variantCount,
+  destinationName,
+  batchCurrency,
 }: VariantScopeFormProps): ReactElement {
   const label = distinguishingLabel(variant, index);
   const master = masterBarcodeOf(variant);
@@ -2294,23 +2336,90 @@ function VariantScopeForm({
         </div>
       ) : null}
 
+      {/* Cause + consequence, side by side (#2240). The Review table shows the
+          cause alone; here there is room for both, and the operator arrived
+          because something is wrong. `category not set` is derived, not a
+          blocker id: a cause other than `invalid-barcode` can only have been
+          emitted where the destination does NOT resolve the category at submit,
+          so the consequence is true by construction and never guessed. */}
+      {variant.blockers.length > 0 ? (
+        <div className="bulk-editor__blocker-chips">
+          {variant.blockers.map((blocker) => (
+            <StatusBadge key={blocker} tone={chipToneOf(blocker)} withDot>
+              {blockerLabel(blocker)}
+            </StatusBadge>
+          ))}
+          {variant.blockers.some((b) => isCategoryBlocker(b) && b !== 'invalid-barcode') ? (
+            <StatusBadge tone={CATEGORY_EFFECT_CHIP.tone} withDot>
+              {CATEGORY_EFFECT_CHIP.label}
+            </StatusBadge>
+          ) : null}
+        </div>
+      ) : null}
+
       {variant.blockers.map((blocker) => {
-        // Friendly label (shared with the Review step, #1741 review #11) and a
-        // context-aware CTA: a per-variant field (e.g. no-ean) is fixed in this
-        // same panel, so it points down to the fields rather than to the base.
+        // #2240: name the cause and the offending value, then offer actions that
+        // change state. A category blocker's primary action is the PRODUCT-tier
+        // category - the submit pins it for every sibling and readiness now reads
+        // it, which is exactly what the old "Fix on base" button did not do.
+        const copy = describeBlocker(blocker, {
+          ean: edit.ean.trim() === '' ? null : edit.ean.trim(),
+          destinationName,
+          variantCount,
+          batchCurrency,
+        });
+        const categoryBlocker = isCategoryBlocker(blocker);
         const variantScope = isVariantScopeFixable(blocker);
         return (
           <div key={blocker} className="bulk-editor__banner bulk-editor__banner--error">
-            <b>{blockerLabel(blocker)}.</b>{' '}
-            {variantScope ? (
-              <>Set it in this variant&apos;s fields below, or exclude the variant.</>
-            ) : (
-              <>
-                Resolve this blocker for the variant, or exclude it.{' '}
-                <Button tone="ghost" type="button" className="button--sm" onClick={onFixOnBase}>
-                  Fix on base
+            <b>{copy.title}</b> {copy.detail}
+            {categoryBlocker && canOverrideCategory ? (
+              <div
+                className="bulk-editor__scope-toggles"
+                style={{ marginTop: 'var(--space-2)', gap: 'var(--space-2)' }}
+              >
+                <Button
+                  tone="primary"
+                  type="button"
+                  className="button--sm"
+                  onClick={onSetProductCategory}
+                >
+                  Set category for all {variantCount} variants
                 </Button>
-              </>
+                <Button
+                  tone="ghost"
+                  type="button"
+                  className="button--sm"
+                  onClick={() => setCategoryWarn(true)}
+                >
+                  Only this variant
+                </Button>
+              </div>
+            ) : categoryBlocker ? (
+              // The destination forbids a per-variant category (its grouping is
+              // parent-child or explicit), so the product tier is the only tier.
+              <div
+                className="bulk-editor__scope-toggles"
+                style={{ marginTop: 'var(--space-2)', gap: 'var(--space-2)' }}
+              >
+                <Button
+                  tone="primary"
+                  type="button"
+                  className="button--sm"
+                  onClick={onSetProductCategory}
+                >
+                  Set the product category
+                </Button>
+              </div>
+            ) : variantScope ? null : (
+              <div
+                className="bulk-editor__scope-toggles"
+                style={{ marginTop: 'var(--space-2)', gap: 'var(--space-2)' }}
+              >
+                <Button tone="ghost" type="button" className="button--sm" onClick={onFixOnBase}>
+                  Open shared base
+                </Button>
+              </div>
             )}
           </div>
         );
@@ -2320,13 +2429,123 @@ function VariantScopeForm({
         Per-variant
       </div>
 
-      {/* Title / description / category overrides - collapsed at the top;
-          inherit base by default. Category joins this accordion (#1924)
-          rather than getting its own - all three are rarely-touched
-          per-variant overrides. */}
+      {/* Per-variant category (#2240). Hoisted OUT of the title/description
+          disclosure: it is the field a blocked variant is blocked on, and it sat
+          last inside a collapsed accordion named after two fields it is not.
+          Only `'catalog-implicit'` (Allegro) renders the interactive ladder -
+          giving this variant its own category is a real, consequential choice
+          there (it leaves the grouped listing). Every other declared model (or
+          none) renders read-only: `'explicit-group'` (Erli) has no browsable
+          picker yet (#1045 follow-up), `'parent-child'` (WooCommerce) is
+          structurally parent-only, and an undeclared adapter resolves to the
+          same locked shape. */}
+        <div className="bulk-editor__field">
+          <label>
+            Category {hasOwnCategory ? <ProvBadge kind="override" /> : <ProvBadge kind="inherit" />}
+          </label>
+          {!canOverrideCategory ? (
+            <>
+              <Input
+                className="bulk-editor__input bulk-editor__input--inherited"
+                value={baseCategoryDisplay}
+                readOnly
+                aria-readonly="true"
+              />
+              <div className="hint" style={{ color: 'var(--text-muted)', fontSize: 12 }}>
+                {variantGroupingModel === 'parent-child'
+                  ? 'Category is set on the parent product - it cannot be overridden per variant here.'
+                  : 'Shared across all variants.'}
+              </div>
+            </>
+          ) : hasOwnCategory ? (
+            <>
+              <div className="bulk-editor__cat-chip">
+                <span className="mono-text">
+                  {ownCategoryPathNames && ownCategoryPathNames.length > 0
+                    ? ownCategoryPathNames.join(' › ')
+                    : edit.categoryId}
+                </span>
+                <span className="bulk-editor__prov bulk-editor__prov--split">splits listing</span>
+              </div>
+              <div
+                className="bulk-editor__scope-toggles"
+                style={{ marginTop: 'var(--space-2)', gap: 'var(--space-2)' }}
+              >
+                <Button
+                  tone="ghost"
+                  type="button"
+                  className="button--sm"
+                  onClick={() => setCategoryPickerOpen(true)}
+                >
+                  Change category
+                </Button>
+                <button
+                  type="button"
+                  className="bulk-editor__reset"
+                  onClick={() => {
+                    onPatch({ categoryId: undefined });
+                    setOwnCategoryPathNames(null);
+                    setCategoryWarn(false);
+                  }}
+                >
+                  ↺ reset to shared
+                </button>
+              </div>
+              <div className="hint" style={{ color: 'var(--text-muted)', fontSize: 12 }}>
+                Publishes as its own listing, outside the grouped card.
+              </div>
+            </>
+          ) : categoryWarn ? (
+            <div className="bulk-editor__split-warn" role="alert">
+              <p>
+                Giving this variant its own category splits it into its own Allegro listing - it stops
+                grouping with the other variants.
+              </p>
+              <div className="bulk-editor__split-warn-actions">
+                <Button
+                  tone="primary"
+                  type="button"
+                  className="button--sm"
+                  onClick={() => {
+                    setCategoryWarn(false);
+                    setCategoryPickerOpen(true);
+                  }}
+                >
+                  Override anyway
+                </Button>
+                <Button tone="ghost" type="button" className="button--sm" onClick={() => setCategoryWarn(false)}>
+                  Keep shared
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <>
+              <Input
+                className="bulk-editor__input bulk-editor__input--inherited"
+                value={baseCategoryDisplay}
+                readOnly
+                aria-readonly="true"
+              />
+              <div className="hint" style={{ color: 'var(--text-muted)', fontSize: 12 }}>
+                Shared across all variants - overriding splits this variant into its own listing.
+              </div>
+              <button
+                type="button"
+                className="bulk-editor__override-link"
+                onClick={() => setCategoryWarn(true)}
+              >
+                Override for this variant
+              </button>
+            </>
+          )}
+        </div>
+
+      {/* Title / description overrides - collapsed, inherit base by default.
+          These two are the rarely-touched per-variant overrides; the category
+          moved above the disclosure in #2240. */}
       <details className="bulk-editor__field">
         <summary style={{ cursor: 'pointer', color: 'var(--accent-primary)' }}>
-          Override base title / description / category
+          Override base title / description
         </summary>
         <div style={{ marginTop: 'var(--space-3)' }}>
           <InheritableTextField
@@ -2362,114 +2581,6 @@ function VariantScopeForm({
             />
           </div>
 
-          {/* Per-variant category (#1924). Only `'catalog-implicit'` (Allegro)
-              renders the interactive ladder - giving this variant its own
-              category is a real, consequential choice there (it leaves the
-              grouped listing). Every other declared model (or none) renders
-              read-only: `'explicit-group'` (Erli) has no browsable picker yet
-              (#1045 follow-up), `'parent-child'` (WooCommerce) is
-              structurally parent-only, and an undeclared adapter resolves to
-              the same locked shape. */}
-          <div className="bulk-editor__field">
-            <label>
-              Category {hasOwnCategory ? <ProvBadge kind="override" /> : <ProvBadge kind="inherit" />}
-            </label>
-            {!canOverrideCategory ? (
-              <>
-                <Input
-                  className="bulk-editor__input bulk-editor__input--inherited"
-                  value={baseCategoryDisplay}
-                  readOnly
-                  aria-readonly="true"
-                />
-                <div className="hint" style={{ color: 'var(--text-muted)', fontSize: 12 }}>
-                  {variantGroupingModel === 'parent-child'
-                    ? 'Category is set on the parent product - it cannot be overridden per variant here.'
-                    : 'Shared across all variants.'}
-                </div>
-              </>
-            ) : hasOwnCategory ? (
-              <>
-                <div className="bulk-editor__cat-chip">
-                  <span className="mono-text">
-                    {ownCategoryPathNames && ownCategoryPathNames.length > 0
-                      ? ownCategoryPathNames.join(' › ')
-                      : edit.categoryId}
-                  </span>
-                  <span className="bulk-editor__prov bulk-editor__prov--split">splits listing</span>
-                </div>
-                <div
-                  className="bulk-editor__scope-toggles"
-                  style={{ marginTop: 'var(--space-2)', gap: 'var(--space-2)' }}
-                >
-                  <Button
-                    tone="ghost"
-                    type="button"
-                    className="button--sm"
-                    onClick={() => setCategoryPickerOpen(true)}
-                  >
-                    Change category
-                  </Button>
-                  <button
-                    type="button"
-                    className="bulk-editor__reset"
-                    onClick={() => {
-                      onPatch({ categoryId: undefined });
-                      setOwnCategoryPathNames(null);
-                      setCategoryWarn(false);
-                    }}
-                  >
-                    ↺ reset to shared
-                  </button>
-                </div>
-                <div className="hint" style={{ color: 'var(--text-muted)', fontSize: 12 }}>
-                  Publishes as its own listing, outside the grouped card.
-                </div>
-              </>
-            ) : categoryWarn ? (
-              <div className="bulk-editor__split-warn" role="alert">
-                <p>
-                  Giving this variant its own category splits it into its own Allegro listing - it stops
-                  grouping with the other variants.
-                </p>
-                <div className="bulk-editor__split-warn-actions">
-                  <Button
-                    tone="primary"
-                    type="button"
-                    className="button--sm"
-                    onClick={() => {
-                      setCategoryWarn(false);
-                      setCategoryPickerOpen(true);
-                    }}
-                  >
-                    Override anyway
-                  </Button>
-                  <Button tone="ghost" type="button" className="button--sm" onClick={() => setCategoryWarn(false)}>
-                    Keep shared
-                  </Button>
-                </div>
-              </div>
-            ) : (
-              <>
-                <Input
-                  className="bulk-editor__input bulk-editor__input--inherited"
-                  value={baseCategoryDisplay}
-                  readOnly
-                  aria-readonly="true"
-                />
-                <div className="hint" style={{ color: 'var(--text-muted)', fontSize: 12 }}>
-                  Shared across all variants - overriding splits this variant into its own listing.
-                </div>
-                <button
-                  type="button"
-                  className="bulk-editor__override-link"
-                  onClick={() => setCategoryWarn(true)}
-                >
-                  Override for this variant
-                </button>
-              </>
-            )}
-          </div>
         </div>
       </details>
 

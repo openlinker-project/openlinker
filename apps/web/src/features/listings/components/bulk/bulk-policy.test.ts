@@ -11,6 +11,7 @@ import {
   computeBlockers,
   computeResolvedPrice,
   computeResolvedStock,
+  productCategoryIdOf,
   roundHalfUp,
   type ComputeBlockersInput,
 } from './bulk-policy';
@@ -520,13 +521,16 @@ describe('recomputeVariantBlockers', () => {
     expect(blockers).not.toContain('no-master-stock');
   });
 
-  it('flags an invalid supplied EAN as no-ean', () => {
+  it('flags an invalid supplied barcode as invalid-barcode, not no-ean (#2240)', () => {
     const variant = makeVariant('ol_variant_1', {
       override: { overrides: { ean: '5901234567890' } },
     });
     const row = makeWizardRow([variant]);
     const blockers = recomputeVariantBlockers(row, variant, CONFIG, new Map());
-    expect(blockers).toContain('no-ean');
+    // "add a barcode" and "correct the barcode you typed" are different fixes,
+    // so they are different blockers with different sentences.
+    expect(blockers).toContain('invalid-barcode');
+    expect(blockers).not.toContain('no-ean');
   });
 
   it('resolves blockers using the per-product policy over the batch default (#1741)', () => {
@@ -685,5 +689,114 @@ describe('#1934/F7 - duplicate EAN detection must normalise to GTIN-14', () => {
   it('normalises to the padded form', () => {
     expect(toGtin14('5901234123457')).toBe('05901234123457');
     expect(toGtin14('05901234123457')).toBe('05901234123457');
+  });
+});
+
+
+// ── #2240 - the product-tier category, and failing closed on an unknown outcome ──
+
+describe('productCategoryIdOf', () => {
+  it('prefers the shared-base override over the resolved product category', () => {
+    const row = makeWizardRow([makeVariant('ol_variant_1')]);
+    expect(productCategoryIdOf(row)).toBeNull();
+
+    row.resolvedCategoryId = 'cat-resolved';
+    expect(productCategoryIdOf(row)).toBe('cat-resolved');
+
+    row.override = { overrides: { categoryId: 'cat-picked' } };
+    expect(productCategoryIdOf(row)).toBe('cat-picked');
+  });
+});
+
+describe('recomputeVariantBlockers - product-tier category (#2240)', () => {
+  const EMPTY_SCHEMA = new Map<string, readonly string[]>();
+
+  it('clears a sibling category blocker once the shared category is set', () => {
+    const blocked = makeVariant('ol_variant_1', {
+      resolvedCategoryId: null,
+      resolvedProductCardId: null,
+      blockers: ['no-match'],
+    });
+    const row = makeWizardRow([blocked, makeVariant('ol_variant_2')]);
+
+    // The submit would pin the product category either way; before #2240
+    // readiness read the variant tier only, which is the defect.
+    expect(
+      recomputeVariantBlockers(row, blocked, CONFIG, EMPTY_SCHEMA, undefined, false, true),
+    ).toContain('no-match');
+
+    row.override = { overrides: { categoryId: 'cat-picked' } };
+    expect(
+      recomputeVariantBlockers(row, blocked, CONFIG, EMPTY_SCHEMA, undefined, false, true),
+    ).not.toContain('no-match');
+  });
+
+  it("keeps a sibling's own override winning over the shared category", () => {
+    const own = makeVariant('ol_variant_1', {
+      resolvedCategoryId: null,
+      resolvedProductCardId: null,
+      blockers: ['no-match'],
+      override: { overrides: { categoryId: 'cat-own' } },
+    });
+    const row = makeWizardRow([own]);
+    row.override = { overrides: { categoryId: 'cat-shared' } };
+
+    expect(
+      recomputeVariantBlockers(row, own, CONFIG, EMPTY_SCHEMA, undefined, false, true),
+    ).not.toContain('no-match');
+  });
+
+  it('reports an invalid barcode as its own cause, replacing the category cause', () => {
+    const bad = makeVariant('ol_variant_1', {
+      resolvedCategoryId: null,
+      resolvedProductCardId: null,
+      blockers: ['no-match'],
+      override: { overrides: { ean: '5901234123456' } },
+    });
+    const row = makeWizardRow([bad]);
+
+    const blockers = recomputeVariantBlockers(
+      row,
+      bad,
+      CONFIG,
+      EMPTY_SCHEMA,
+      undefined,
+      false,
+      true,
+    );
+    expect(blockers).toContain('invalid-barcode');
+    expect(blockers).not.toContain('no-match');
+    expect(blockers).not.toContain('no-ean');
+  });
+});
+
+describe('computeBlockers - unknown resolve outcome (#2240)', () => {
+  const base: ComputeBlockersInput = {
+    hasVariant: true,
+    categoryResult: { kind: 'matched', allegroCategoryId: 'cat-1', productCardId: '' },
+    pricingPolicy: { mode: 'use-master' },
+    stockPolicy: { mode: 'use-master' },
+    masterPrice: 39,
+    masterStock: 5,
+    masterCurrency: 'PLN',
+    batchCurrency: 'PLN',
+    override: NO_OVERRIDE,
+  };
+
+  it('blocks rather than falling through when the discriminant is unrecognised', () => {
+    // The shape of a discriminant added backend-first (the planned `lookup-failed`).
+    const unknown = { kind: 'lookup-failed' } as unknown as ComputeBlockersInput['categoryResult'];
+
+    expect(computeBlockers({ ...base, categoryResult: unknown })).toEqual([
+      'unknown-category-result',
+    ]);
+  });
+
+  it('still clears the category when a product-tier category is pinned', () => {
+    const unknown = { kind: 'lookup-failed' } as unknown as ComputeBlockersInput['categoryResult'];
+
+    expect(
+      computeBlockers({ ...base, categoryResult: unknown, productCategoryId: 'cat-picked' }),
+    ).toEqual([]);
   });
 });

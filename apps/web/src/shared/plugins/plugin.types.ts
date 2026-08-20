@@ -368,6 +368,35 @@ export interface OfferRowValidationInput {
 }
 
 /**
+ * Neutral input a platform's BATCH validator reads (#2240). Batch-level, not
+ * row-level: some platform preconditions are properties of the destination
+ * connection, and a row cannot observe them.
+ */
+export interface OfferBatchValidationInput {
+  /**
+   * The destination connection's stored config, as the API returned it. The
+   * plugin owns the shape of its own keys; the host never inspects them.
+   */
+  connectionConfig: Record<string, unknown>;
+}
+
+/**
+ * One batch-level precondition a platform reports as unmet (#2240). Copy comes
+ * from the plugin because only it knows what its platform requires; the host
+ * renders it as a single banner and never as a per-row chip - a row cannot
+ * observe a connection-level fact, and repeating it per row would state N times
+ * something true once.
+ */
+export interface OfferBatchIssue {
+  /** Stable id, namespaced like a blocker (e.g. `allegro:missing-seller-details`). */
+  id: string;
+  /** One sentence naming what is unmet. */
+  title: string;
+  /** One sentence naming the consequence and where to fix it. */
+  detail: string;
+}
+
+/**
  * Per-platform offer-validation contribution (#1096). Declares the platform's
  * blocker descriptors once and a pure row validator; serves BOTH the bulk
  * Review step and the single-offer wizard so a marketplace declares its
@@ -378,6 +407,15 @@ export interface OfferValidationContribution {
   blockers: readonly OfferBlockerDescriptor[];
   /** Returns the active platform-specific blocker ids for a row. Pure. */
   validateRow: (input: OfferRowValidationInput) => string[];
+  /**
+   * Returns the platform's unmet batch-level preconditions (#2240). Pure.
+   * Absent ⇒ the platform declares none. Introduced for Allegro's seller
+   * defaults, whose gate is the first statement of `createOffer` and applies to
+   * every offer on the connection: without this the batch read `ready`,
+   * submitted, and then failed one child job at a time. Same failure shape as
+   * `allegro:title-too-long` (#1962), one level up.
+   */
+  validateBatch?: (input: OfferBatchValidationInput) => OfferBatchIssue[];
   /**
    * Whether this platform's `validateRow` reads `needsProductParameters` (#1096).
    * The host's per-category required-product-parameter schema fetch

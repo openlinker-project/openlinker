@@ -15,9 +15,10 @@
  * @module apps/web/src/features/listings/components/bulk
  */
 import { useEffect, useMemo, useState, type ReactElement } from 'react';
-import { Button, CheckboxCell, Input, ProductThumbnail } from '../../../../shared/ui';
+import { Link } from 'react-router-dom';
+import { Alert, Button, CheckboxCell, Input, ProductThumbnail } from '../../../../shared/ui';
 import type { StatusBadgeTone } from '../../../../shared/ui';
-import type { OfferBlockerDescriptor } from '../../../../shared/plugins';
+import type { OfferBatchIssue, OfferBlockerDescriptor } from '../../../../shared/plugins';
 import type { Connection } from '../../../connections';
 import type { BulkPerProductOverride } from '../../api/bulk-listings.types';
 import {
@@ -41,6 +42,7 @@ import {
   NEUTRAL_BLOCKER_CHIPS,
   type ChipDescriptor,
 } from './bulk-blockers';
+import { describeBlocker, type BlockerCopyContext } from './bulk-blocker-copy';
 
 interface BulkReviewStepProps {
   rows: BulkWizardRow[];
@@ -48,6 +50,8 @@ interface BulkReviewStepProps {
   config: BulkWizardConfig;
   paramsResolving: boolean;
   platformBlockerChips: readonly OfferBlockerDescriptor[];
+  /** Unmet batch-level platform preconditions (#2240). Empty ⇒ nothing to warn. */
+  batchIssues: readonly OfferBatchIssue[];
   canBrowseCategories: boolean;
   batchDeliveryPriceList?: string;
   /** Demo read-only viewer - gates the editor's field edits + "Save all" (#1704). */
@@ -104,12 +108,32 @@ function variantReadiness(v: BulkVariantRow): VariantReadiness {
   return { included: v.included, ready: v.included && v.blockers.length === 0 };
 }
 
+/**
+ * Values the blocker sentences interpolate (#2240). Assembled at the call site
+ * rather than inside `describeBlocker` so the copy module stays pure and free of
+ * wizard row types.
+ */
+function blockerCopyContext(
+  row: BulkWizardRow,
+  variant: BulkVariantRow,
+  destinationName: string,
+  config: BulkWizardConfig,
+): BlockerCopyContext {
+  return {
+    ean: variant.ean,
+    destinationName,
+    variantCount: row.variants.length,
+    batchCurrency: config.currency,
+  };
+}
+
 export function BulkReviewStep({
   rows,
   connection,
   config,
   paramsResolving,
   platformBlockerChips,
+  batchIssues,
   canBrowseCategories,
   batchDeliveryPriceList,
   demoReadOnly,
@@ -322,6 +346,24 @@ export function BulkReviewStep({
           ) : null}
         </div>
       </div>
+
+      {/* Batch-level platform preconditions (#2240). One banner for the whole
+          batch, above the readiness line: the fact belongs to the connection,
+          so a chip per row would repeat it N times and still not name the fix. */}
+      {batchIssues.map((issue) => (
+        <Alert
+          key={issue.id}
+          tone="warning"
+          title={issue.title}
+          action={
+            <Link className="button button--sm" to={`/connections/${config.connectionId}`}>
+              Open connection settings
+            </Link>
+          }
+        >
+          {issue.detail}
+        </Alert>
+      ))}
 
       <div
         className={
@@ -631,6 +673,7 @@ function ProductRow({
               label={distinguishingLabel(row.variants[0], 0)}
               alreadyListed={alreadyListedVariantIds.has(row.variants[0].variantId)}
               destinationName={destinationName}
+              copyContext={blockerCopyContext(row, row.variants[0], destinationName, config)}
               onFix={() => {
                 onEdit(row.variants[0].variantId);
               }}
@@ -769,6 +812,7 @@ function VariantRow({
           label={label}
           alreadyListed={alreadyListed}
           destinationName={destinationName}
+          copyContext={blockerCopyContext(row, variant, destinationName, config)}
         />
       </div>
       <div className="bulk-review__c-stock tabular">{stock.value ?? '-'}</div>
@@ -791,6 +835,7 @@ function VariantChips({
   label,
   alreadyListed,
   destinationName,
+  copyContext,
 }: {
   variant: BulkVariantRow;
   chips: Record<string, ChipDescriptor>;
@@ -800,6 +845,8 @@ function VariantChips({
   /** Already published on the destination (#1837) - soft warning, not a blocker. */
   alreadyListed: boolean;
   destinationName: string;
+  /** Values the blocker sentences interpolate (#2240) - barcode, destination, counts. */
+  copyContext: BlockerCopyContext;
 }): ReactElement {
   // The "already on {destination}" chip is a SOFT warning shown alongside the
   // readiness/blocker chips - it never marks the variant not-ready (#1837).
@@ -824,12 +871,17 @@ function VariantChips({
     <>
       {variant.blockers.map((b) => {
         const descriptor = chips[b] ?? FALLBACK_CHIP;
+        // The cause sentence rides on the chip (#2240). One chip per row keeps
+        // the identity column at its documented two lines; the explanation is a
+        // hover/focus away rather than a second constant chip.
+        const cause = describeBlocker(b, copyContext);
         return (
           <Chip
             key={b}
             descriptor={descriptor}
             onFix={descriptor.fixable ? onFix : undefined}
-            fixLabel={`Fix: ${descriptor.label} - ${label}`}
+            fixLabel={`Fix: ${descriptor.label} - ${label}. ${cause.title}`}
+            title={cause.title}
           />
         );
       })}
@@ -860,10 +912,13 @@ function Chip({
   descriptor,
   onFix,
   fixLabel,
+  title,
 }: {
   descriptor: ChipDescriptor;
   onFix?: () => void;
   fixLabel?: string;
+  /** Cause sentence, shown on hover; also folded into the accessible name. */
+  title?: string;
 }): ReactElement {
   const cls = `bulk-chip ${chipToneClass(descriptor.tone)}`;
   if (onFix) {
@@ -872,6 +927,7 @@ function Chip({
         type="button"
         className={cls}
         aria-label={fixLabel ?? descriptor.label}
+        title={title}
         onClick={(e) => {
           e.stopPropagation();
           onFix();
@@ -883,7 +939,7 @@ function Chip({
     );
   }
   return (
-    <span className={cls}>
+    <span className={cls} title={title}>
       <span className="bulk-chip__dot" aria-hidden="true" />
       {descriptor.label}
     </span>

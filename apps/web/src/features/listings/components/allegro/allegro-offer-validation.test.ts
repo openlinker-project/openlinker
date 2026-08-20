@@ -36,7 +36,7 @@ describe('allegroOfferValidation', () => {
         ...base,
         needsProductParameters: true,
         willLinkProductCard: true,
-      }),
+      })
     ).toEqual([]);
   });
 
@@ -76,7 +76,7 @@ describe('allegroOfferValidation', () => {
         ...base,
         needsProductParameters: true,
         title: 'x'.repeat(120),
-      }),
+      })
     ).toEqual([ALLEGRO_NEEDS_PRODUCT_PARAMETERS_BLOCKER, ALLEGRO_TITLE_TOO_LONG_BLOCKER]);
   });
 
@@ -93,5 +93,64 @@ describe('allegroOfferValidation', () => {
 
   it('opts into the host category-parameter schema fetch (its validator reads it)', () => {
     expect(allegroOfferValidation.needsCategoryParameterSchema).toBe(true);
+  });
+
+  // ── #2240 - seller details are a connection-level precondition ──
+  describe('validateBatch', () => {
+    const complete = {
+      sellerDefaults: {
+        location: {
+          countryCode: 'PL',
+          province: 'MAZOWIECKIE',
+          city: 'Warszawa',
+          postCode: '00-001',
+        },
+        responsibleProducerId: 'rp_1',
+        safetyInformation: { description: 'Safe' },
+      },
+    };
+
+    it('reports nothing when every group is filled in', () => {
+      expect(allegroOfferValidation.validateBatch?.({ connectionConfig: complete })).toEqual([]);
+    });
+
+    it('names every missing group on an empty connection config', () => {
+      const issues = allegroOfferValidation.validateBatch?.({ connectionConfig: {} }) ?? [];
+
+      expect(issues).toHaveLength(1);
+      expect(issues[0]?.id).toBe('allegro:missing-seller-details');
+      expect(issues[0]?.title).toContain('a ship-from location');
+      expect(issues[0]?.title).toContain('a responsible producer');
+      expect(issues[0]?.title).toContain('safety information');
+    });
+
+    it('treats a partially filled ship-from location as missing', () => {
+      // The adapter's gate requires all four fields, so three of four is a
+      // rejection at create time - not a warning we can soften here.
+      const issues =
+        allegroOfferValidation.validateBatch?.({
+          connectionConfig: {
+            sellerDefaults: {
+              ...complete.sellerDefaults,
+              location: { countryCode: 'PL', province: 'MAZOWIECKIE', city: 'Warszawa' },
+            },
+          },
+        }) ?? [];
+
+      expect(issues).toHaveLength(1);
+      expect(issues[0]?.title).toContain('a ship-from location');
+      expect(issues[0]?.title).not.toContain('responsible producer');
+    });
+
+    it('treats a blank string as missing, not as a value', () => {
+      const issues =
+        allegroOfferValidation.validateBatch?.({
+          connectionConfig: {
+            sellerDefaults: { ...complete.sellerDefaults, responsibleProducerId: '   ' },
+          },
+        }) ?? [];
+
+      expect(issues[0]?.title).toContain('a responsible producer');
+    });
   });
 });
