@@ -43,8 +43,16 @@ export interface StreamCategoriesForBatchByEanOptions
   extends ResolveCategoriesForBatchByEanOptions {
   /**
    * Aborting stops further marketplace calls from being *scheduled*; calls
-   * already issued are left to settle and their results are still yielded
-   * (epic #2205 decision 5).
+   * already issued are left to settle and their results DISCARDED, so the
+   * stream can end short of the input size (ADR-047 § Consequences,
+   * "Cancellation is coarse" - `AllegroHttpClient` mints its own controller per
+   * request and accepts no external signal, so the calls cannot be torn down).
    */
   signal?: AbortSignal;
+
+  /**
+   * In-flight concurrency cap. Defaults to `STREAM_CONCURRENCY` on this path
+   * (#2215), not the batch collector's 3 - see the inherited field's doc.
+   */
+  concurrency?: number;
 }

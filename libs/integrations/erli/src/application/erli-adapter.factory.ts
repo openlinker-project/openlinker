@@ -105,8 +105,13 @@ export class ErliAdapterFactory implements IErliAdapterFactory {
       allegroCategoryCatalog,
       webBaseUrl,
       // Same value the borrowed catalogue client reads, so the taxonomy owner the
-      // adapter declares can never disagree with the tree it actually reads (#2210).
-      config.allegroEnvironment,
+      // adapter declares can never disagree with the tree it actually reads
+      // (#2210). Falls back to Erli's OWN environment because
+      // `allegroEnvironment` is written only when ADR-031 category access is
+      // configured: without the fallback a sandbox Erli connection that never
+      // enabled that feature would declare the PRODUCTION owner and silently
+      // borrow nothing, which is the failure this value exists to prevent.
+      config.allegroEnvironment ?? config.environment,
     );
     return {
       offerManager,

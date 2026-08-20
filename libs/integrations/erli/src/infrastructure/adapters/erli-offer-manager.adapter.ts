@@ -251,8 +251,10 @@ export class ErliOfferManagerAdapter
    * owner no sandbox connection answers to, so every borrowed lookup would
    * silently find nothing - on exactly the installs this gets tested on. The
    * environment is the one this connection's borrowed catalogue reads from
-   * (`config.allegroEnvironment`, ADR-031); absent, it defaults to production,
-   * which is the pre-#2210 value.
+   * (`config.allegroEnvironment`, ADR-031), falling back to Erli's own
+   * `config.environment` because the ADR-031 value only exists once that
+   * separate feature is configured. With neither set it defaults to production,
+   * the pre-#2210 value.
    */
   getBorrowedTaxonomy(): TaxonomyOwner {
     return this.allegroEnvironment === 'sandbox' ? 'allegro:sandbox' : 'allegro';

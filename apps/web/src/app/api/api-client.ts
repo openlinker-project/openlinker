@@ -113,6 +113,14 @@ export type ApiBlobRequest = (path: string, init?: RequestInit) => Promise<Blob>
  * `features/listings/api/listings.api.ts` - so a socket that opens and then goes
  * silent still fails with a retryable error rather than hanging forever.
  */
+/**
+ * Ceiling on time-to-first-byte for a streamed request. Generous, because the
+ * server answers before its first marketplace call (it resolves the connection
+ * first, precisely so the head is not held behind one), but finite: without it
+ * `timeout: false` leaves a pre-header stall unbounded.
+ */
+export const STREAM_HEAD_TIMEOUT_MS = 20_000;
+
 export type ApiStreamRequest = (
   path: string,
   init?: RequestInit,
@@ -307,7 +315,35 @@ export function createApiClient({
     path: string,
     init: RequestInit = {},
   ): Promise<ReadableStream<Uint8Array>> => {
-    const response = await execute(path, init, { timeout: false });
+    // Two different stalls need two different bounds. Once the body exists, the
+    // reader's idle ceiling covers a socket that goes quiet (the backend sends a
+    // keep-alive line, so silence is diagnosable). BEFORE that, there is no
+    // reader yet and `timeout: false` has removed the ordinary deadline, so a
+    // server that accepts the connection and never answers would hang the caller
+    // with no error and nothing to retry. This bound covers only that window: it
+    // is armed until the response head arrives and then dropped, so a legitimate
+    // batch that streams for minutes is never cut off.
+    const headTimeout = new AbortController();
+    const headTimer = setTimeout(() => {
+      headTimeout.abort();
+    }, STREAM_HEAD_TIMEOUT_MS);
+    const signal = init.signal
+      ? AbortSignal.any([headTimeout.signal, init.signal])
+      : headTimeout.signal;
+    let response: Response;
+    try {
+      response = await execute(path, { ...init, signal }, { timeout: false });
+    } catch (error) {
+      if (headTimeout.signal.aborted) {
+        // Surfaced as a timeout on the shared error type so the caller's existing
+        // retry branch handles it, rather than as a bare abort the caller would
+        // mistake for its own cancellation.
+        throw ApiError.fromTimeout(path);
+      }
+      throw error;
+    } finally {
+      clearTimeout(headTimer);
+    }
     if (response.body === null) {
       // A 2xx with no body is not a stream the caller can read; surfacing it as
       // an `ApiError` keeps every failure on the one type callers already

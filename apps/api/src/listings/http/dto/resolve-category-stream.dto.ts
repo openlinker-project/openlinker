@@ -19,7 +19,10 @@
 import type { SchemaObject } from '@nestjs/swagger/dist/interfaces/open-api-spec.interface';
 
 import type { EanCategoryMatchStreamEvent } from '@openlinker/core/listings';
-import { EanMatchMethodValues } from '@openlinker/core/listings';
+import {
+  EanCategoryMatchStreamCompletionValues,
+  EanMatchMethodValues,
+} from '@openlinker/core/listings';
 
 /** NDJSON: one complete JSON value per line, no enclosing array. */
 export const RESOLVE_CATEGORY_STREAM_CONTENT_TYPE = 'application/x-ndjson';
@@ -133,9 +136,23 @@ export const resolveCategoryStreamLineSchema: SchemaObject = {
         kind: { type: 'string', enum: ['done'] },
         resolvedCount: { type: 'integer' },
         unresolvedCount: { type: 'integer' },
-        completion: { type: 'string', enum: ['complete', 'aborted', 'failed'] },
+        completion: { type: 'string', enum: [...EanCategoryMatchStreamCompletionValues] },
+        catalogueLookupPerformed: {
+          type: 'boolean',
+          description:
+            'Whether a catalogue was actually consulted. `false` means the ' +
+            'destination had no EAN matcher of its own and could borrow none, so ' +
+            'every `no-match` on this run carries no information and must not be ' +
+            'read as "this variant has no category".',
+        },
       },
-      required: ['kind', 'resolvedCount', 'unresolvedCount', 'completion'],
+      required: [
+        'kind',
+        'resolvedCount',
+        'unresolvedCount',
+        'completion',
+        'catalogueLookupPerformed',
+      ],
     },
     {
       type: 'object',

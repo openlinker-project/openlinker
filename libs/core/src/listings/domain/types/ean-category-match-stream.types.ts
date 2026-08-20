@@ -59,7 +59,7 @@ export interface EanCategoryMatchStreamResultEvent {
  *
  * - `complete` - every input item was reported; the tallies sum to the input size.
  * - `aborted` - the caller's signal fired, so scheduling stopped early
- *   (decision 5); the tallies cover only what had already landed.
+ *   (ADR-047 § Consequences); the tallies cover only what had already landed.
  * - `failed` - the run threw. The tallies still describe the results actually
  *   delivered before the throw, which is what a resume needs.
  */
@@ -107,7 +107,7 @@ export type EanCategoryMatchStreamEvent =
  * Cancellation input, shared by the streaming capability and the service.
  *
  * An aborted signal stops further work from being *scheduled*; an in-flight
- * marketplace call is left to settle (epic #2205 decision 5) - tearing it down
+ * marketplace call is left to settle (ADR-047 § Consequences) - tearing it down
  * would spend the operator's rate-limit budget for a result nobody reads while
  * still paying for the request.
  */

@@ -150,7 +150,7 @@ export class CategoryResolutionService implements ICategoryResolutionService {
     // connection that owns its taxonomy (#2210); only when neither exists does
     // the batch degrade to `no-match` for every variant, resolving the category
     // at build time instead (the wizard suppresses the pre-flight blocker then).
-    const { matcher } = await this.resolveEanMatcher(connectionId, adapter);
+    const { matcher, borrowedTaxonomy } = await this.resolveEanMatcher(connectionId, adapter);
     // The `isEanCategoryMatcher` narrowing is not redundant: a resolved matcher
     // may be streaming-ONLY, and this path has no way to consume that, so such
     // an owner degrades every variant to `no-match` even though it could have
@@ -181,7 +181,8 @@ export class CategoryResolutionService implements ICategoryResolutionService {
         await this.applyMappingFallback(
           connectionId,
           item,
-          eanResults.get(item.variantId) ?? { kind: 'no-match' }
+          eanResults.get(item.variantId) ?? { kind: 'no-match' },
+          borrowedTaxonomy
         )
       );
     }
@@ -261,7 +262,7 @@ export class CategoryResolutionService implements ICategoryResolutionService {
 
       // Same borrowing rule as the batch path, so the wizard preview and the
       // offer build cannot disagree about a borrowing destination's category.
-      const { matcher } = await this.resolveEanMatcher(connectionId, adapter);
+      const { matcher, borrowedTaxonomy } = await this.resolveEanMatcher(connectionId, adapter);
       catalogueLookupPerformed = matcher !== null;
 
       if (matcher !== null && isEanCategoryMatcherStreaming(matcher)) {
@@ -294,7 +295,12 @@ export class CategoryResolutionService implements ICategoryResolutionService {
             continue;
           }
           seen.add(streamed.variantId);
-          const result = await this.applyMappingFallback(connectionId, item, streamed.result);
+          const result = await this.applyMappingFallback(
+            connectionId,
+            item,
+            streamed.result,
+            borrowedTaxonomy
+          );
           tally(result);
           yield { kind: 'result', variantId: streamed.variantId, result };
         }
@@ -306,9 +312,12 @@ export class CategoryResolutionService implements ICategoryResolutionService {
             if (seen.has(item.variantId)) {
               continue;
             }
-            const result = await this.applyMappingFallback(connectionId, item, {
-              kind: 'no-match',
-            });
+            const result = await this.applyMappingFallback(
+              connectionId,
+              item,
+              { kind: 'no-match' },
+              borrowedTaxonomy
+            );
             tally(result);
             yield { kind: 'result', variantId: item.variantId, result };
           }
@@ -334,7 +343,8 @@ export class CategoryResolutionService implements ICategoryResolutionService {
           const result = await this.applyMappingFallback(
             connectionId,
             item,
-            eanResults.get(item.variantId) ?? { kind: 'no-match' }
+            eanResults.get(item.variantId) ?? { kind: 'no-match' },
+            borrowedTaxonomy
           );
           tally(result);
           yield { kind: 'result', variantId: item.variantId, result };
@@ -410,12 +420,12 @@ export class CategoryResolutionService implements ICategoryResolutionService {
   private async resolveEanMatcher(
     connectionId: string,
     destination: OfferManagerPort
-  ): Promise<{ matcher: OfferManagerPort | null; borrowedFrom: string | null }> {
+  ): Promise<{ matcher: OfferManagerPort | null; borrowedTaxonomy: TaxonomyOwner | null }> {
     if (isEanCategoryMatcher(destination) || isEanCategoryMatcherStreaming(destination)) {
-      return { matcher: destination, borrowedFrom: null };
+      return { matcher: destination, borrowedTaxonomy: null };
     }
     if (!isTaxonomyBorrower(destination)) {
-      return { matcher: null, borrowedFrom: null };
+      return { matcher: null, borrowedTaxonomy: null };
     }
 
     const owner = destination.getBorrowedTaxonomy();
@@ -437,7 +447,7 @@ export class CategoryResolutionService implements ICategoryResolutionService {
         `Could not enumerate '${owner}' taxonomy owners for connection ${connectionId}; ` +
           `leaving the category to build-time mapping resolution: ${(error as Error).message}`
       );
-      return { matcher: null, borrowedFrom: null };
+      return { matcher: null, borrowedTaxonomy: owner };
     }
 
     // Manifest pre-filter: EAN matching is declared statically, so an adapter
@@ -477,14 +487,14 @@ export class CategoryResolutionService implements ICategoryResolutionService {
         `Borrowing the '${owner}' catalogue from connection ${candidate.connectionId} ` +
           `(connection=${connectionId})`
       );
-      return { matcher: adapter, borrowedFrom: candidate.connectionId };
+      return { matcher: adapter, borrowedTaxonomy: owner };
     }
 
     this.logger.debug(
       `No connection owns taxonomy '${owner}' with EAN matching; leaving the category to ` +
         `build-time mapping resolution (connection=${connectionId})`
     );
-    return { matcher: null, borrowedFrom: null };
+    return { matcher: null, borrowedTaxonomy: owner };
   }
 
   /** A manifest that declares neither EAN capability can never serve as an owner. */
@@ -547,23 +557,33 @@ export class CategoryResolutionService implements ICategoryResolutionService {
   private async applyMappingFallback(
     connectionId: string,
     item: BatchCategoryResolveItem,
-    eanResult: EanMatchResult
+    eanResult: EanMatchResult,
+    borrowedTaxonomy: TaxonomyOwner | null
   ): Promise<EanMatchResult> {
     if (
       (eanResult.kind === 'no-match' || eanResult.kind === 'no-ean') &&
       item.sourceCategoryIds &&
       item.sourceCategoryIds.length > 0
     ) {
-      // Empty opts (no `sourceConnectionId`/`borrowedTaxonomy`) is safe today:
-      // this runs only past an EAN-capability gate, and every current EAN
-      // matcher (Allegro) *owns* its taxonomy, so `resolveDestinationCategory`
-      // resolves entirely via its step-1 `findBySourceCategory` lookup, which
-      // consults neither opt. The transport also has no `sourceConnectionId` to
-      // carry. If a future destination is ever both an EAN matcher *and* a
-      // borrows-taxonomy destination, this preview would need to thread
-      // `sourceConnectionId`/`borrowedTaxonomy` here too, or it would silently
-      // diverge from `OfferBuilderService.resolveCategory`.
-      const mapped = await this.tryCategoryMapping(connectionId, item.sourceCategoryIds, {});
+      // `borrowedTaxonomy` has to be threaded, not omitted: since #2210 a
+      // borrowing destination can reach this line (it borrows an owner's
+      // catalogue), and without the owner provenance `resolveDestinationCategory`
+      // would consult only rows keyed to the destination connection - never the
+      // #1045 rows the operator actually authored under the owner. The preview
+      // would then report `no-match` and gate a row that
+      // `OfferBuilderService.resolveCategory` resolves fine at build time, which
+      // is the one thing this shared fallback exists to prevent.
+      //
+      // `sourceConnectionId` stays unset because neither the batch input nor the
+      // stream transport carries one. The borrowed lookup therefore matches an
+      // owner row for ANY source store, where the build narrows to the master it
+      // is publishing from. That is deliberately the permissive direction: the
+      // preview may agree with the build where the build is stricter, and the
+      // operator sees an unresolved category at submit rather than a red row for
+      // a category that resolves.
+      const mapped = await this.tryCategoryMapping(connectionId, item.sourceCategoryIds, {
+        borrowedTaxonomy: borrowedTaxonomy ?? undefined,
+      });
       if (mapped) {
         this.logger.debug(
           `Variant ${item.variantId} resolved via category_mapping (connection=${connectionId}, categoryId=${mapped})`

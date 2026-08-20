@@ -123,8 +123,9 @@ export interface ICategoryResolutionService {
    *
    * `options.signal`, once aborted, stops further work being scheduled and the
    * stream ends with its `done` tally; in-flight marketplace calls are left to
-   * settle (epic #2205 decision 5). An abort therefore *discards* verdicts the
-   * adapter had already paid a marketplace call for, which is the intended
+   * settle (ADR-047 § Consequences, "Cancellation is coarse"). An abort
+   * therefore *discards* verdicts the adapter had already paid a marketplace
+   * call for, which is the intended
    * trade for a caller that aborts on navigation - a caller aborting on a
    * timeout instead should not expect the partial results back.
    */

@@ -40,7 +40,8 @@ export interface EanCategoryMatcherStreaming {
    *
    * `options.signal`, when aborted, stops the adapter scheduling further
    * marketplace calls and ends the iteration; already-issued calls are left to
-   * settle (epic #2205 decision 5), so the stream may end short of the input
+   * settle and their results discarded (ADR-047 § Consequences, "Cancellation is
+   * coarse"), so the stream may end short of the input
    * size.
    *
    * Call sites narrow via `isEanCategoryMatcherStreaming(adapter)`.

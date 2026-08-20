@@ -17,10 +17,13 @@
  * because `resolveCategoriesForBatchByEan`
  * (`libs/integrations/allegro/src/infrastructure/util/`) issues exactly one
  * `GET /sale/products?phrase={ean}&mode=GTIN` per item - Allegro exposes no
- * bulk GTIN lookup - with a fixed in-flight cap of 3. That model was verified
- * against the real util with a latency-injecting fake HTTP client: wall time is
- * `ceil(n/3) * latency` to within 1%, max in-flight 3, one HTTP call per item.
- * Streamed, the same model paces one NDJSON line every `perEanLatencyMs / 9`.
+ * bulk GTIN lookup - under a fixed in-flight cap. The model was verified against
+ * the real util with a latency-injecting fake HTTP client at the cap the BATCH
+ * collector keeps: wall time `ceil(n/3) * latency` to within 1%, max in-flight 3,
+ * one HTTP call per item. The streaming path runs at its own wider cap since
+ * #2215 (`STREAM_CONCURRENCY`, 9), which is the number `ALLEGRO_EAN_CONCURRENCY`
+ * below mirrors, so the same model paces one NDJSON line every
+ * `perEanLatencyMs / 9`.
  *
  * Stubbing the transport (rather than pointing at a live Allegro sandbox) is
  * what makes the numbers reproducible and lets the per-EAN latency be swept.
@@ -799,7 +802,7 @@ test.describe('resolve loader visuals', () => {
   test('streamed loader, early / mid / mixed outcomes', async ({ page }, testInfo) => {
     // 8 products x 2 siblings, cycling the three outcomes so all three feed
     // chips are reachable, paced slowly enough that a screenshot lands where it
-    // is aimed (perEan 1500 / concurrency 3 = one line every 500 ms).
+    // is aimed (perEan 1500 / ALLEGRO_EAN_CONCURRENCY 9 = one line every 167 ms).
     const products = 8;
     const catalogue = buildCatalogue(products, GUARD_VARIANTS_PER_PRODUCT);
     const variants = products * GUARD_VARIANTS_PER_PRODUCT;

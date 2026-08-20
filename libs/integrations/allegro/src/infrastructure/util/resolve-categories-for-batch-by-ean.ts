@@ -10,8 +10,8 @@
  *
  * `streamCategoriesForBatchByEan` is the primary shape (#2208, epic #2205):
  * an async generator that yields each variant's outcome the moment it
- * settles, so a 50-item chunk stops withholding every result for the
- * `ceil(n/3) * latency` it takes the last wave to land. Allegro exposes no
+ * settles, so a batch stops withholding every result for the
+ * `ceil(n / STREAM_CONCURRENCY) * latency` it takes the last wave to land. Allegro exposes no
  * bulk GTIN lookup, so the per-item work itself is unchanged - only the
  * delivery point moved.
  *
@@ -389,7 +389,7 @@ function errorMessage(err: unknown): string {
  * the signal and returns on the abort branch, leaving those promises un-awaited.
  * The underlying HTTP calls are NOT cancelled, and must not be "fixed" into
  * being cancelled: `AllegroHttpClient` builds its own `AbortController` per
- * request and accepts no external signal, and epic #2205 decision 5 accepted
+ * request and accepts no external signal, and ADR-047 § Consequences accepted
  * that coarseness. Orphaning them costs one settled promise nobody reads;
  * awaiting them costs the consumer up to the client's 30 s request timeout.
  */

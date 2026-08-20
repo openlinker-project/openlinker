@@ -932,6 +932,124 @@ describe('CategoryResolutionService', () => {
       });
     });
 
+    it('should resolve a borrowed-taxonomy mapping when the borrowed EAN lookup misses', async () => {
+      // The regression this pins: the destination only reaches the mapping
+      // fallback because it BORROWED a matcher, so a fallback that forgets the
+      // borrowed provenance consults only rows keyed to the Erli connection and
+      // reports `no-match` - flagging a row red that the offer build resolves.
+      const matcher = jest.fn().mockResolvedValue(new Map([['v1', { kind: 'no-match' }]]));
+      integrationsService.getCapabilityAdapter.mockResolvedValue(borrowingDestination);
+      integrationsService.listCapabilityAdapters.mockResolvedValue([
+        ownerEntry(OWNER_ID, new Date('2026-01-01'), matcher),
+      ]);
+      mappingConfig.resolveDestinationCategory.mockResolvedValue('cat-borrowed');
+
+      const result = await service.resolveCategoriesBatch(CONNECTION_ID, {
+        items: [{ variantId: 'v1', ean: '5901234123457', sourceCategoryIds: ['src-1'] }],
+      });
+
+      expect(mappingConfig.resolveDestinationCategory).toHaveBeenCalledWith(
+        CONNECTION_ID,
+        'src-1',
+        { borrowedTaxonomy: 'allegro' }
+      );
+      expect(result.get('v1')).toEqual({
+        kind: 'matched',
+        allegroCategoryId: 'cat-borrowed',
+        productCardId: '',
+        method: 'category_mapping',
+      });
+    });
+
+    it('should resolve a borrowed-taxonomy mapping on the streaming path too', async () => {
+      const streamCategoriesForBatchByEan = jest.fn(
+        () =>
+          (async function* (): AsyncGenerator<EanCategoryMatchStreamItem> {
+            await Promise.resolve();
+            yield { variantId: 'v1', result: { kind: 'no-match' } };
+          })()
+      );
+      integrationsService.getCapabilityAdapter.mockResolvedValue(borrowingDestination);
+      integrationsService.listCapabilityAdapters.mockResolvedValue([
+        {
+          connectionId: OWNER_ID,
+          connection: { id: OWNER_ID, createdAt: new Date('2026-01-01') },
+          adapter: {
+            updateOfferQuantity: jest.fn(),
+            getTaxonomyIdentity: () => 'allegro' as const,
+            streamCategoriesForBatchByEan,
+          },
+          metadata: { supportedCapabilities: ['OfferManager', 'EanCategoryMatcherStreaming'] },
+        },
+      ]);
+      mappingConfig.resolveDestinationCategory.mockResolvedValue('cat-borrowed');
+
+      const events = await collect(
+        service.resolveCategoriesStream(CONNECTION_ID, {
+          items: [{ variantId: 'v1', ean: '5901234123457', sourceCategoryIds: ['src-1'] }],
+        })
+      );
+
+      expect(mappingConfig.resolveDestinationCategory).toHaveBeenCalledWith(
+        CONNECTION_ID,
+        'src-1',
+        { borrowedTaxonomy: 'allegro' }
+      );
+      // `resolvedCount: 1` is the operator-visible half: the FE gates a row on
+      // an unresolved verdict, so a mapping hit must not arrive as `no-match`.
+      expect(events).toEqual([
+        {
+          kind: 'result',
+          variantId: 'v1',
+          result: {
+            kind: 'matched',
+            allegroCategoryId: 'cat-borrowed',
+            productCardId: '',
+            method: 'category_mapping',
+          },
+        },
+        {
+          kind: 'done',
+          resolvedCount: 1,
+          unresolvedCount: 0,
+          completion: 'complete',
+          catalogueLookupPerformed: true,
+        },
+      ]);
+    });
+
+    it('should thread the environment-qualified taxonomy into the mapping fallback', async () => {
+      // #2210 qualifies the declared owner by environment; the mapping store
+      // holds bare-owner rows, so the qualified value has to reach
+      // `resolveDestinationCategory`, which owns the qualified-then-bare ladder.
+      const sandboxDestination = {
+        updateOfferQuantity: jest.fn(),
+        getBorrowedTaxonomy: () => 'allegro:sandbox' as const,
+      };
+      const matcher = jest.fn().mockResolvedValue(new Map([['v1', { kind: 'no-ean' }]]));
+      integrationsService.getCapabilityAdapter.mockResolvedValue(sandboxDestination);
+      integrationsService.listCapabilityAdapters.mockResolvedValue([
+        ownerEntry(OWNER_ID, new Date('2026-01-01'), matcher, 'allegro:sandbox'),
+      ]);
+      mappingConfig.resolveDestinationCategory.mockResolvedValue('cat-sandbox');
+
+      const result = await service.resolveCategoriesBatch(CONNECTION_ID, {
+        items: [{ variantId: 'v1', ean: null, sourceCategoryIds: ['src-1'] }],
+      });
+
+      expect(mappingConfig.resolveDestinationCategory).toHaveBeenCalledWith(
+        CONNECTION_ID,
+        'src-1',
+        { borrowedTaxonomy: 'allegro:sandbox' }
+      );
+      expect(result.get('v1')).toEqual({
+        kind: 'matched',
+        allegroCategoryId: 'cat-sandbox',
+        productCardId: '',
+        method: 'category_mapping',
+      });
+    });
+
     it('should skip a candidate whose manifest declares no EAN matching without building it', async () => {
       const built = jest.fn();
       integrationsService.getCapabilityAdapter.mockResolvedValue(borrowingDestination);

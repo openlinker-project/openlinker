@@ -47,6 +47,13 @@
  *                      `retries: 0` — the propagation/pruning specs mutate
  *                      real PrestaShop stock (propagation restores it in
  *                      `afterAll`; pruning is opt-in and irreversible).
+ *   - `orders`       - orders list/detail UI coverage (#2148). Read-only:
+ *                      every spec narrows with URL params that cannot match and
+ *                      asserts on copy and URL state. `retries: 1`.
+ *   - `perf`         - resolve-step latency + progress measurement for the bulk
+ *                      publish wizard (#2205). Every OL route the wizard touches
+ *                      is stubbed in-test, so it needs no seeded catalogue and
+ *                      runs on any stack. `retries: 1` (nothing is mutated).
  *
  * Reporters: html + list. Retries are per-project: read-only projects (setup,
  * smoke) retry once; the mutating golden-path project runs with `retries: 0` —
@@ -210,9 +217,23 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
     },
     {
+      // Orders list/detail UI coverage (#2148). Strictly READ-ONLY today — every
+      // spec narrows with URL params that cannot match and asserts on copy and URL
+      // state, so `retries: 1` is safe: a retry re-reads, it cannot re-apply an
+      // effect. This project matches every `orders/*.spec.ts`, so a future spec
+      // that mutates (dispatch, status change, …) must NOT be dropped in here
+      // unmodified — give it its own project with `retries: 0`, matching the
+      // `invoicing` project's precedent above.
+      name: 'orders',
+      testMatch: /orders\/.*\.spec\.ts/,
+      retries: 1,
+      dependencies: ['setup'],
+      use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
+    },
+    {
       // Resolve-step latency + progress measurement for the bulk publish wizard.
       // Read-only and non-mutating: the whole OL API surface the wizard touches
-      // is stubbed in-test (`page.route`), with only `categories/resolve-batch`
+      // is stubbed in-test (`page.route`), with only `categories/resolve-stream`
       // carrying simulated latency derived from the production Allegro fan-out
       // cost model. Needs no Allegro connection and no seeded catalogue, so it
       // runs on any stack. `retries: 1` is safe (nothing is mutated), and the
