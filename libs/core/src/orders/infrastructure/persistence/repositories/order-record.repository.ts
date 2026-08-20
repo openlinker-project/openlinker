@@ -392,9 +392,19 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     const stampedAndNotCancelled = `${notCancelled} AND ${isStamped}`;
     const unconvertedAndNotCancelled = `${notCancelled} AND ${isUnconverted}`;
 
+    // UTC day boundary made explicit (#1987 review, IMPORTANT 2): `placedAt`
+    // is `timestamptz`, so a bare `date_trunc('day', ...)` truncates at local
+    // midnight per the Postgres session `TimeZone` GUC — on a non-UTC server
+    // every bucket would land on the wrong calendar day and silently mismatch
+    // `enumerateDayKeys`'s UTC day keys. The trailing `AT TIME ZONE 'UTC'` is
+    // required too: without it the column round-trips as a bare `timestamp`,
+    // which node-postgres parses in the Node process's own local time,
+    // reintroducing the same shift one layer up.
+    const utcDay = `date_trunc('day', rec."placedAt" AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'`;
+
     const qb = this.repository
       .createQueryBuilder('rec')
-      .select(`date_trunc('day', rec."placedAt")`, 'day')
+      .select(utcDay, 'day')
       .addSelect('rec.sourceConnectionId', 'source_connection_id')
       .addSelect(`COUNT(*) FILTER (WHERE ${stampedAndNotCancelled})`, 'order_count')
       .addSelect(
@@ -418,10 +428,19 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
         'cancelled_value'
       )
       .addSelect(
-        `(array_agg(rec."reportingCurrency") FILTER (WHERE ${isStamped}))[1]`,
+        // Guarded like `unconverted_currency` above (#1987 review, IMPORTANT
+        // 1): `reportingCurrency` isn't guaranteed single-valued within a
+        // (day, connection) bucket (an in-flight #2096 restatement can leave
+        // two values live at once), so a bare `array_agg(...)[1]` could label
+        // a cross-currency `revenue` sum with whichever value happened to
+        // sort first. `NULL` here is the same "not comparable" signal the FE
+        // already has to handle for `unconverted_currency`.
+        `CASE WHEN COUNT(DISTINCT rec."reportingCurrency") FILTER (WHERE ${isStamped}) <= 1
+              THEN MAX(rec."reportingCurrency") FILTER (WHERE ${isStamped})
+              ELSE NULL END`,
         'reporting_currency'
       )
-      .groupBy(`date_trunc('day', rec."placedAt")`)
+      .groupBy(utcDay)
       .addGroupBy('rec.sourceConnectionId');
 
     this.applySalesAnalyticsScope(qb, filters);

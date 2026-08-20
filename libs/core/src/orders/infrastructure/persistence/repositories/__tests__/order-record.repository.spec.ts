@@ -21,7 +21,7 @@ import { OrderRecordNotFoundException } from '../../../../domain/exceptions/orde
 describe('OrderRecordRepository', () => {
   let repository: OrderRecordRepository;
   let ormRepository: jest.Mocked<Repository<OrderRecordOrmEntity>>;
-  let transactionalManager: { save: jest.Mock; delete: jest.Mock };
+  let transactionalManager: { save: jest.Mock<Promise<unknown>, unknown[]>; delete: jest.Mock };
 
   beforeEach(async () => {
     const qb = {
@@ -341,6 +341,45 @@ describe('OrderRecordRepository', () => {
       expect(andWhere).toHaveBeenCalledWith('rec.sourceConnectionId = :salesConnectionId', {
         salesConnectionId: 'conn-a',
       });
+    });
+
+    it('buckets by an explicit UTC day boundary, not the session-timezone-dependent default (#1987 review, IMPORTANT 2)', async () => {
+      const select = jest.fn().mockReturnThis();
+      const groupBy = jest.fn().mockReturnThis();
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        select,
+        addSelect: jest.fn().mockReturnThis(),
+        groupBy,
+        addGroupBy: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        getRawMany: jest.fn().mockResolvedValue([]),
+      });
+
+      await repository.getDailyOrderAggregates(baseFilters);
+
+      const utcDayFragment = `date_trunc('day', rec."placedAt" AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'`;
+      expect(select).toHaveBeenCalledWith(utcDayFragment, 'day');
+      expect(groupBy).toHaveBeenCalledWith(utcDayFragment);
+    });
+
+    it('guards reporting_currency against a mixed (day, connection) bucket instead of picking the first array element (#1987 review, IMPORTANT 1)', async () => {
+      const addSelect = jest.fn().mockReturnThis();
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        select: jest.fn().mockReturnThis(),
+        addSelect,
+        groupBy: jest.fn().mockReturnThis(),
+        addGroupBy: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        getRawMany: jest.fn().mockResolvedValue([]),
+      });
+
+      await repository.getDailyOrderAggregates(baseFilters);
+
+      const calls = addSelect.mock.calls as Array<[string, string]>;
+      const reportingCurrencyCall = calls.find(([, alias]) => alias === 'reporting_currency');
+      expect(reportingCurrencyCall?.[0]).toContain('COUNT(DISTINCT rec."reportingCurrency")');
+      expect(reportingCurrencyCall?.[0]).toContain('ELSE NULL END');
+      expect(reportingCurrencyCall?.[0]).not.toContain('array_agg');
     });
   });
 
