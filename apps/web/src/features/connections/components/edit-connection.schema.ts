@@ -278,6 +278,19 @@ export const editConnectionSchema = z
     // Infakt-only structured field surfacing `config.defaultPaymentMethod`
     // (#1303). Empty allowed for unset — the adapter falls back to `'cash'`.
     infaktPaymentMethod: z.union([z.enum(['cash', 'transfer']), z.literal('')]).optional(),
+    // Infakt-only environment selector surfacing `config.environment` (#2174).
+    // Field name is `infakt*`-prefixed to avoid an RHF/Zod SCHEMA-KEY collision
+    // with InPost's `inpostEnvironment` below - both intentionally persist to
+    // the SAME flat `config.environment` key, which is safe because a
+    // `Connection` has exactly one `platformType`, so the InPost and Infakt
+    // structured sections never render (or submit) for the same row. The
+    // prefix namespaces the two form fields, not the persisted config key.
+    // Empty allowed for unset.
+    // Like `infaktPaymentMethod` and `infaktBankAccount` above, this field is
+    // declared host-side rather than contributed through the plugin
+    // `connectionConfig` seam (#1330) - the third inFakt field still awaiting
+    // that migration.
+    infaktEnvironment: z.union([z.enum(['sandbox', 'production']), z.literal('')]).optional(),
     // Infakt-only bank-account snapshot surfacing `config.bankAccount`
     // (#1303 follow-up). Whole-object field (like `sellerDefaults`) — the
     // structured section fetches the live list and writes the whole object
@@ -419,6 +432,11 @@ export type StructuredConfigPatch = {
    * Empty string clears the key (adapter falls back to `'cash'`).
    */
   infaktPaymentMethod?: string;
+  /**
+   * Infakt environment — `config.environment` (#2174). Empty string clears
+   * the key (adapter falls back to production). Mirrors `inpostEnvironment`.
+   */
+  infaktEnvironment?: 'sandbox' | 'production' | '';
   /**
    * Infakt bank-account snapshot — `config.bankAccount` (#1303 follow-up).
    * Whole-object field, like `sellerDefaults`/`inpostSenderAddress`. `null`
@@ -690,6 +708,15 @@ export function mergeStructuredIntoConfig(
       delete next.defaultPaymentMethod;
     } else {
       next.defaultPaymentMethod = structured.infaktPaymentMethod;
+    }
+  }
+  // Infakt environment (#2174) — flat `config.environment`, delete-on-empty.
+  // Mirrors the InPost `inpostEnvironment` clause above.
+  if (structured.infaktEnvironment !== undefined) {
+    if (structured.infaktEnvironment.length === 0) {
+      delete next.environment;
+    } else {
+      next.environment = structured.infaktEnvironment;
     }
   }
   // Infakt bank-account snapshot (#1303 follow-up) — `config.bankAccount`.
