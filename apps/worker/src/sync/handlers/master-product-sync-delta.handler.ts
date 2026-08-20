@@ -174,11 +174,20 @@ export class MasterProductSyncDeltaHandler implements SyncJobHandler {
         return { outcome: 'ok' };
       }
 
-      this.warnIfWatermarkStale(job.connectionId, previous, capturedAt);
-
       const since = new Date(previous.getTime() - this.getLookbackSeconds(payload) * 1000);
       const cursorKey = sweepCursorKey('product-delta', job.connectionId);
       const cursor = parseSweepCursor(await this.cursors.getCursor(job.connectionId, cursorKey));
+
+      // Only meaningful when NO cycle is open. A resuming tick holds the watermark
+      // BY DESIGN, so on a catalog large enough to span more than the threshold in
+      // ticks, warning here would have the cursor-resumption design reporting its
+      // own correct behaviour as a fault — and a warning that fires when nothing is
+      // wrong is how a real one stops being read. The cycle-in-flight state already
+      // distinguishes the two, so the warn is for a watermark that is old with
+      // nothing in flight to explain it.
+      if (cursor === null) {
+        this.warnIfWatermarkStale(job.connectionId, previous, capturedAt);
+      }
 
       // The instant the watermark will advance to belongs to the CYCLE, not to the
       // tick that happens to finish it. A multi-tick cycle queries one fixed
@@ -367,15 +376,13 @@ export class MasterProductSyncDeltaHandler implements SyncJobHandler {
   }
 
   private getLookbackSeconds(payload: MasterProductSyncDeltaPayloadV1): number {
-    const raw =
-      typeof payload.lookbackSeconds === 'number'
-        ? payload.lookbackSeconds
-        : Number(
-            this.configService.get<string>(
-              'OL_MASTER_DELTA_LOOKBACK_SECONDS',
-              String(LOOKBACK_SECONDS_DEFAULT)
-            )
-          );
+    const configured = this.configService.get<string>(
+      'OL_MASTER_DELTA_LOOKBACK_SECONDS',
+      String(LOOKBACK_SECONDS_DEFAULT)
+    );
+    const fromPayload = typeof payload.lookbackSeconds === 'number';
+    const raw = fromPayload ? (payload.lookbackSeconds as number) : Number(configured);
+
     // `0` is rejected along with negatives and non-finites, not accepted as "no
     // overlap": `since === watermark` is precisely the `modified_since =
     // last_run_time` shape ADR-048 decision 3 forbids, and the overlap is what
@@ -384,16 +391,29 @@ export class MasterProductSyncDeltaHandler implements SyncJobHandler {
     if (!Number.isFinite(raw) || raw <= 0) {
       // Warned, not silent: an operator who deliberately set 0 (or a bad value)
       // would otherwise get a window they did not choose, with no signal that
-      // their configuration was overridden.
+      // their configuration was overridden. The message quotes what they actually
+      // configured — `String(raw)` would print "NaN" for a typo like `abc` and
+      // send them looking for the wrong thing.
+      const offending = fromPayload ? String(payload.lookbackSeconds) : configured;
       this.logger.warn(
-        `Rejected delta lookback "${String(raw)}" (must be > 0 — a zero overlap is the ` +
-          `\`since = lastRunAt\` shape ADR-048 decision 3 forbids); using ${String(LOOKBACK_SECONDS_DEFAULT)}s.`
+        `Rejected delta lookback "${offending}" from ${
+          fromPayload ? 'the job payload' : 'OL_MASTER_DELTA_LOOKBACK_SECONDS'
+        } (must be > 0 — a zero overlap is the \`since = lastRunAt\` shape ADR-048 ` +
+          `decision 3 forbids); using ${String(LOOKBACK_SECONDS_DEFAULT)}s.`
       );
       return LOOKBACK_SECONDS_DEFAULT;
     }
     return Math.min(Math.floor(raw), LOOKBACK_SECONDS_MAX);
   }
 
+  /**
+   * Silently defaults on a bad value, unlike `getLookbackSeconds`. The asymmetry is
+   * deliberate rather than an oversight: the lookback is the one knob that can
+   * disable an ADR-048 decision-3 invariant, so an override of it that OL refuses
+   * has to be visible. These two only tune noise thresholds and page size — a
+   * rejected value costs the operator nothing they would act on, and warning on
+   * every tick for it is the kind of noise that trains people to ignore warnings.
+   */
   private getStaleWarnHours(): number {
     const parsed = Number(
       this.configService.get<string>(
