@@ -19,6 +19,7 @@
 import type { SchemaObject } from '@nestjs/swagger/dist/interfaces/open-api-spec.interface';
 
 import type { EanCategoryMatchStreamEvent } from '@openlinker/core/listings';
+import { EanMatchMethodValues } from '@openlinker/core/listings';
 
 /** NDJSON: one complete JSON value per line, no enclosing array. */
 export const RESOLVE_CATEGORY_STREAM_CONTENT_TYPE = 'application/x-ndjson';
@@ -57,6 +58,7 @@ export type ResolveCategoryStreamLine =
  * `findProductsByBarcodeResponseSchema` uses for a discriminated union.
  */
 export const resolveCategoryStreamLineSchema: SchemaObject = {
+  discriminator: { propertyName: 'kind' },
   oneOf: [
     {
       type: 'object',
@@ -64,7 +66,59 @@ export const resolveCategoryStreamLineSchema: SchemaObject = {
       properties: {
         kind: { type: 'string', enum: ['result'] },
         variantId: { type: 'string' },
-        result: { type: 'object', additionalProperties: true },
+        // Spelled out rather than left as a free-form object: `result.kind` is
+        // the discriminant a client branches its Review row on, so an opaque
+        // `additionalProperties: true` hides the one field the docs exist for.
+        result: {
+          discriminator: { propertyName: 'kind' },
+          oneOf: [
+            {
+              type: 'object',
+              description: 'Category resolved, by catalogue match or configured mapping.',
+              properties: {
+                kind: { type: 'string', enum: ['matched'] },
+                allegroCategoryId: { type: 'string' },
+                // Empty on the configured-mapping path: there is no catalogue
+                // card, the offer self-links by barcode at build time.
+                productCardId: { type: 'string' },
+                method: { type: 'string', enum: [...EanMatchMethodValues] },
+              },
+              required: ['kind', 'allegroCategoryId', 'productCardId'],
+            },
+            {
+              type: 'object',
+              description: 'Several catalogue candidates; the operator picks one.',
+              properties: {
+                kind: { type: 'string', enum: ['multi-match'] },
+                candidates: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      allegroCategoryId: { type: 'string' },
+                      productCardId: { type: 'string' },
+                      name: { type: 'string' },
+                    },
+                    required: ['allegroCategoryId', 'productCardId'],
+                  },
+                },
+              },
+              required: ['kind', 'candidates'],
+            },
+            {
+              type: 'object',
+              description: 'The variant carries no EAN, so nothing was looked up.',
+              properties: { kind: { type: 'string', enum: ['no-ean'] } },
+              required: ['kind'],
+            },
+            {
+              type: 'object',
+              description: 'Nothing matched; the operator selects the category manually.',
+              properties: { kind: { type: 'string', enum: ['no-match'] } },
+              required: ['kind'],
+            },
+          ],
+        },
       },
       required: ['kind', 'variantId', 'result'],
     },

@@ -12,7 +12,10 @@
  * of an `EanCategoryMatcherStreaming` adapter, degradation to the batch
  * capability, the zero-call immediate stream for a destination with neither, the
  * shared #1522 mapping fallback, abort handling, the per-input-item de-dup gate,
- * and the guaranteed terminal event on a mid-stream throw.
+ * and the guaranteed terminal event on a mid-stream throw - plus the #2209
+ * `assertStreamableConnection` gate step, which raises the same
+ * connection-resolution errors without starting a stream or calling a
+ * marketplace.
  *
  * @module libs/core/src/listings/application/services
  */
@@ -711,6 +714,47 @@ describe('CategoryResolutionService', () => {
       await expect(collect(service.resolveCategoriesStream(CONNECTION_ID, twoItems))).rejects.toBe(
         boom
       );
+    });
+  });
+
+  describe('assertStreamableConnection', () => {
+    it('should resolve the OfferManager adapter and nothing else', async () => {
+      const streamCategoriesForBatchByEan = jest.fn();
+      const resolveCategoriesForBatchByEan = jest.fn();
+      integrationsService.getCapabilityAdapter.mockResolvedValue({
+        updateOfferQuantity: jest.fn(),
+        resolveCategoriesForBatchByEan,
+        streamCategoriesForBatchByEan,
+      });
+
+      await expect(service.assertStreamableConnection(CONNECTION_ID)).resolves.toBeUndefined();
+
+      expect(integrationsService.getCapabilityAdapter).toHaveBeenCalledWith(
+        CONNECTION_ID,
+        'OfferManager'
+      );
+      // The gate exists so a streaming transport can commit its status before it
+      // spends marketplace quota, so it must not resolve a single category.
+      expect(streamCategoriesForBatchByEan).not.toHaveBeenCalled();
+      expect(resolveCategoriesForBatchByEan).not.toHaveBeenCalled();
+      expect(mappingConfig.resolveDestinationCategory).not.toHaveBeenCalled();
+    });
+
+    it('should pass for a destination that declares no EAN capability at all', async () => {
+      // Erli's case (ADR-025 §3): the stream terminates immediately with
+      // no-match results, which is a valid run - not a gate rejection.
+      integrationsService.getCapabilityAdapter.mockResolvedValue({
+        updateOfferQuantity: jest.fn(),
+      });
+
+      await expect(service.assertStreamableConnection(CONNECTION_ID)).resolves.toBeUndefined();
+    });
+
+    it('should propagate the same connection-resolution error resolveCategoriesBatch raises', async () => {
+      const boom = new Error('connection not found');
+      integrationsService.getCapabilityAdapter.mockRejectedValue(boom);
+
+      await expect(service.assertStreamableConnection(CONNECTION_ID)).rejects.toBe(boom);
     });
   });
 });

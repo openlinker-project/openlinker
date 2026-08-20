@@ -28,7 +28,6 @@ import {
   ParseUUIDPipe,
   Post,
   Query,
-  Req,
   Res,
   UnprocessableEntityException,
 } from '@nestjs/common';
@@ -41,7 +40,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { randomUUID } from 'crypto';
-import { Request, Response } from 'express';
+import { Response } from 'express';
 import { Logger } from '@openlinker/shared/logging';
 
 import { Roles } from '../../auth/decorators/roles.decorator';
@@ -883,7 +882,9 @@ export class ListingsController {
       'failure path too, because the 200 status is committed with the first line and can no ' +
       'longer express a mid-stream failure - a client that reaches end-of-body without it ' +
       'must treat the run as truncated. {"kind":"keep-alive"} lines appear during a quiet ' +
-      'period and carry no data. Disconnecting cancels further marketplace work.',
+      'period and carry no data. Disconnecting cancels further marketplace work. The 200 body ' +
+      'is a SEQUENCE of the lines described below, not one object; the connection gate is ' +
+      'checked before the first line, so 404 / 409 / 422 still arrive as a real status.',
   })
   @ApiResponse({
     status: 200,
@@ -896,33 +897,26 @@ export class ListingsController {
   async resolveCategoriesStream(
     @Param('connectionId') connectionId: string,
     @Body() dto: ResolveCategoryBatchRequestDto,
-    @Req() req: Request,
     @Res() res: Response
   ): Promise<void> {
     // A disconnect is the whole point of this route: the batch route kept
     // spending the operator's marketplace quota after the SPA gave up at 30 s,
     // because nothing told the resolver the reader had left.
+    //
+    // The listener is on the RESPONSE, never on the request. Since Node 16 the
+    // `IncomingMessage` emits 'close' as soon as its body has been consumed, and
+    // `express.json()` consumes it before this handler runs - so `req.on('close')`
+    // fires about a millisecond into every healthy request and would abort the
+    // resolver on every call, leaving each response a lone terminal line with
+    // zero results. `res` closes when the socket does, and `writableFinished`
+    // separates "the client left" from "we finished writing the body".
     const abort = new AbortController();
-    const onClientClose = (): void => abort.abort();
-    req.on('close', onClientClose);
-
-    const iterator = this.categoryResolution
-      .resolveCategoriesStream(
-        connectionId,
-        {
-          // Same mapping as `resolveCategoriesBatch`; deliberately not factored
-          // out, so this route cannot alter the batch route's behaviour.
-          items: dto.items.map((item) => ({
-            variantId: item.variantId,
-            ean: item.ean ?? null,
-            ...(item.sourceCategoryIds && item.sourceCategoryIds.length > 0
-              ? { sourceCategoryIds: item.sourceCategoryIds }
-              : {}),
-          })),
-        },
-        { signal: abort.signal }
-      )
-      [Symbol.asyncIterator]();
+    const onClientClose = (): void => {
+      if (!res.writableFinished) {
+        abort.abort();
+      }
+    };
+    res.on('close', onClientClose);
 
     let committed = false;
     let terminalWritten = false;
@@ -956,6 +950,13 @@ export class ListingsController {
     let unresolvedWritten = 0;
 
     const writeEvent = (event: EanCategoryMatchStreamEvent): void => {
+      // "Exactly one terminal line, always last" is the contract the client
+      // reads to tell a truncated stream from a finished one, so anything a
+      // producer emits after its terminal is dropped rather than trusted - a
+      // late `result` would be as damaging as a second `done`.
+      if (terminalWritten) {
+        return;
+      }
       if (event.kind === 'result') {
         if (event.result.kind === 'matched') {
           resolvedWritten += 1;
@@ -964,55 +965,77 @@ export class ListingsController {
         }
       }
       if (event.kind === 'done') {
-        // "Exactly one terminal line" is the contract the client reads to tell a
-        // truncated stream from a finished one, so a second one is dropped here
-        // rather than trusted.
-        if (terminalWritten) {
-          return;
-        }
         terminalWritten = true;
       }
       writeLine(event);
+      // The keep-alive must never be re-armed past the terminal line, or the
+      // filler could land after it and break the "always last" guarantee.
+      if (terminalWritten) {
+        stopKeepAlive();
+        return;
+      }
       armKeepAlive();
     };
 
     try {
-      let next = await iterator.next();
+      // Explicit gate, awaited before a single byte is written (#2209 review
+      // finding 2). It costs one connection lookup and makes no marketplace
+      // call, so an unknown / disabled / non-marketplace connection is answered
+      // with a real 404 / 409 / 422 while the status is still free. Inferring
+      // that verdict from the first stream event instead would put the first
+      // GTIN lookup - which can burn a `Retry-After` sleep or several backoff
+      // attempts inside the marketplace client - ahead of the first byte and
+      // ahead of the keep-alive timer, which is exactly the 30 s client abort
+      // this route exists to remove.
+      await this.categoryResolution.assertStreamableConnection(connectionId);
 
-      // The connection gate (unknown / disabled / non-marketplace) fires on the
-      // first `next()` - a generator body is lazy - and core reports it as a
-      // `failed` terminal followed by a rethrow on the next pull. Nothing is on
-      // the wire yet, so draining that pull lets the real exception reach the
-      // global filters as 404 / 409 / 422. A 200 whose body merely says "failed"
-      // would bury an operator-fixable misconfiguration inside a success.
-      const buffered: EanCategoryMatchStreamEvent[] = [];
-      if (!next.done && next.value.kind === 'done' && next.value.completion === 'failed') {
-        buffered.push(next.value);
-        next = await iterator.next();
-      }
-
-      // Gate passed. Nothing above writes a byte, so the status is still free to
-      // be an error; from here on it is committed and every failure has to be
+      // Gate passed. Nothing above writes a byte, so the status was still free
+      // to be an error; from here on it is committed and every failure has to be
       // reported in the body instead.
       res.statusCode = HttpStatus.OK;
       res.setHeader('Content-Type', RESOLVE_CATEGORY_STREAM_CONTENT_TYPE);
       // `no-transform` asks intermediaries not to re-encode (and so not to
-      // buffer) the body. Turning off proxy buffering itself is a deployment
-      // concern per epic #2205, not something a response header can guarantee.
+      // buffer) the body; `X-Accel-Buffering: no` is the one nginx actually
+      // honours for `proxy_buffering`, and is ignored by intermediaries that do
+      // not know it. Neither replaces the deployment-side guidance in epic
+      // #2205, but a buffering proxy reintroduces the very cliff this route
+      // removes, so the part code can own is set here.
       res.setHeader('Cache-Control', 'no-cache, no-transform');
+      res.setHeader('X-Accel-Buffering', 'no');
       res.flushHeaders();
       committed = true;
+      // Armed before the first marketplace call, so a slow or rate-limited
+      // first lookup cannot pass as a dead socket.
       armKeepAlive();
 
-      for (const event of buffered) {
-        writeEvent(event);
-      }
+      const iterator = this.categoryResolution
+        .resolveCategoriesStream(
+          connectionId,
+          {
+            // Same mapping as `resolveCategoriesBatch`; deliberately not
+            // factored out, so this route cannot alter the batch route's
+            // behaviour.
+            items: dto.items.map((item) => ({
+              variantId: item.variantId,
+              ean: item.ean ?? null,
+              ...(item.sourceCategoryIds && item.sourceCategoryIds.length > 0
+                ? { sourceCategoryIds: item.sourceCategoryIds }
+                : {}),
+            })),
+          },
+          { signal: abort.signal }
+        )
+        [Symbol.asyncIterator]();
+
+      let next = await iterator.next();
       while (!next.done) {
         writeEvent(next.value);
         next = await iterator.next();
       }
     } catch (error) {
       if (!committed) {
+        // Only the gate can land here, and it wrote nothing, so the exception is
+        // free to reach the global filters as a real status.
         if (error instanceof AdapterCapabilityNotSupportedException) {
           // Mirrors the batch route: the connection is not an OfferManager
           // marketplace at all.
@@ -1028,7 +1051,7 @@ export class ListingsController {
       );
     } finally {
       stopKeepAlive();
-      req.off('close', onClientClose);
+      res.off('close', onClientClose);
       if (committed) {
         if (!terminalWritten) {
           // Core emits its own `failed` terminal before rethrowing, so this only

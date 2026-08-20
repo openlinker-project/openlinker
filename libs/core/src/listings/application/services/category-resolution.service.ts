@@ -17,6 +17,9 @@
  * `resolveCategoriesStream` resolves the same N variants but emits each verdict
  * as it lands (#2207, epic #2205), degrading to the batch capability and then to
  * per-item `no-match` when the destination declares neither.
+ * `assertStreamableConnection` exposes the connection gate on its own (#2209) so
+ * a transport whose status is committed by its first byte can reject an unusable
+ * connection before it writes one.
  *
  * @module libs/core/src/listings/application/services
  * @implements {ICategoryResolutionService}
@@ -165,6 +168,22 @@ export class CategoryResolutionService implements ICategoryResolutionService {
       );
     }
     return resolved;
+  }
+
+  async assertStreamableConnection(connectionId: string): Promise<void> {
+    // The gate *is* adapter resolution: `getCapabilityAdapter` raises the
+    // unknown / disabled / non-marketplace errors a transport maps to
+    // 404 / 409 / 422. No marketplace call happens here, which is the point -
+    // a streaming caller can commit its status before spending quota.
+    //
+    // The resolved instance is deliberately discarded rather than returned:
+    // `resolveCategoriesStream` builds its own, and handing this one out would
+    // invite a caller to hold a handle whose credentials may have been rotated
+    // by the time the stream reaches its last item.
+    await this.integrationsService.getCapabilityAdapter<OfferManagerPort>(
+      connectionId,
+      'OfferManager'
+    );
   }
 
   async *resolveCategoriesStream(

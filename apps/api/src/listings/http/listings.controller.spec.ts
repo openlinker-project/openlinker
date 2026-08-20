@@ -8,7 +8,7 @@ import { EventEmitter } from 'events';
 import { NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import type { TestingModule } from '@nestjs/testing';
 import { Test } from '@nestjs/testing';
-import type { Request, Response } from 'express';
+import type { Response } from 'express';
 
 import { ROLES_KEY } from '../../auth/decorators/roles.decorator';
 
@@ -193,6 +193,7 @@ describe('ListingsController', () => {
     categoryResolution = {
       resolveCategory: jest.fn(),
       resolveCategoriesBatch: jest.fn(),
+      assertStreamableConnection: jest.fn().mockResolvedValue(undefined),
       resolveCategoriesStream: jest.fn(),
     };
     offerStatusRead = {
@@ -1274,50 +1275,60 @@ describe('ListingsController', () => {
   // ─── NDJSON category-resolution stream (#2209, epic #2205) ──────────────────
   //
   // Framing is the controller's whole job here, so these tests read the bytes
-  // rather than a return value: a fake express response records the lines, and a
-  // fake request lets the disconnect be fired on demand. Everything about
-  // *resolution* is core's and is covered there.
+  // rather than a return value: a fake express response records the lines and
+  // carries the two emitters whose 'close' events mean opposite things (see
+  // `FakeRes.req`). Everything about *resolution* is core's and is covered there.
   describe('resolveCategoriesStream (#2209)', () => {
-    interface FakeRes {
+    type FakeRes = EventEmitter & {
       statusCode: number;
       headers: Record<string, string>;
       chunks: string[];
       writableEnded: boolean;
+      writableFinished: boolean;
       destroyed: boolean;
       flushHeadersCalls: number;
+      /**
+       * The request, reachable exactly as express exposes it (`res.req`). Node
+       * closes the `IncomingMessage` as soon as its body has been consumed - and
+       * `express.json()` consumes it before the handler runs - so a 'close' here
+       * says nothing about the client still reading. The handler must therefore
+       * never listen on it; these tests assert that it does not.
+       */
+      req: EventEmitter;
       setHeader: (name: string, value: string) => void;
       flushHeaders: () => void;
       write: (chunk: string) => boolean;
       end: () => void;
-    }
+    };
 
     function makeRes(): FakeRes {
-      const res: FakeRes = {
+      const res: FakeRes = Object.assign(new EventEmitter(), {
         statusCode: 0,
-        headers: {},
-        chunks: [],
+        headers: {} as Record<string, string>,
+        chunks: [] as string[],
         writableEnded: false,
+        // Node flips this only once the whole body reached the socket, which is
+        // what tells a finished response apart from a client that hung up.
+        writableFinished: false,
         destroyed: false,
         flushHeadersCalls: 0,
-        setHeader: (name, value) => {
+        req: new EventEmitter(),
+        setHeader: (name: string, value: string): void => {
           res.headers[name] = value;
         },
-        flushHeaders: () => {
+        flushHeaders: (): void => {
           res.flushHeadersCalls += 1;
         },
-        write: (chunk) => {
+        write: (chunk: string): boolean => {
           res.chunks.push(chunk);
           return true;
         },
-        end: () => {
+        end: (): void => {
           res.writableEnded = true;
+          res.writableFinished = true;
         },
-      };
+      });
       return res;
-    }
-
-    function makeReq(): EventEmitter {
-      return new EventEmitter();
     }
 
     function linesOf(res: FakeRes): ResolveCategoryStreamLine[] {
@@ -1328,15 +1339,10 @@ describe('ListingsController', () => {
         .map((line) => JSON.parse(line) as ResolveCategoryStreamLine);
     }
 
-    function run(
-      res: FakeRes,
-      req: EventEmitter,
-      connectionId = 'conn-1'
-    ): Promise<void> {
+    function run(res: FakeRes, connectionId = 'conn-1'): Promise<void> {
       return controller.resolveCategoriesStream(
         connectionId,
         { items: [{ variantId: 'v1', ean: '5901234567890' }, { variantId: 'v2' }] },
-        req as unknown as Request,
         res as unknown as Response
       );
     }
@@ -1381,11 +1387,14 @@ describe('ListingsController', () => {
       );
       const res = makeRes();
 
-      await run(res, makeReq());
+      await run(res);
 
       expect(res.statusCode).toBe(200);
       expect(res.headers['Content-Type']).toBe('application/x-ndjson');
       expect(res.headers['Cache-Control']).toBe('no-cache, no-transform');
+      // The one header nginx honours for `proxy_buffering`; a buffering proxy
+      // reintroduces exactly the latency cliff this route removes.
+      expect(res.headers['X-Accel-Buffering']).toBe('no');
       expect(res.flushHeadersCalls).toBe(1);
       // Every chunk is newline-terminated, so a client splitting on '\n' never
       // sees a partial object.
@@ -1403,7 +1412,7 @@ describe('ListingsController', () => {
         streamOf({ kind: 'done', resolvedCount: 0, unresolvedCount: 0, completion: 'complete' })
       );
 
-      await run(makeRes(), makeReq());
+      await run(makeRes());
 
       expect(categoryResolution.resolveCategoriesStream).toHaveBeenCalledWith(
         'conn-1',
@@ -1427,7 +1436,7 @@ describe('ListingsController', () => {
       );
       const res = makeRes();
 
-      await run(res, makeReq());
+      await run(res);
 
       const terminals = linesOf(res).filter((line) => line.kind === 'done');
       expect(terminals).toEqual([
@@ -1447,7 +1456,7 @@ describe('ListingsController', () => {
       );
       const res = makeRes();
 
-      await expect(run(res, makeReq())).resolves.toBeUndefined();
+      await expect(run(res)).resolves.toBeUndefined();
 
       const lines = linesOf(res);
       expect(lines).toHaveLength(2);
@@ -1471,7 +1480,7 @@ describe('ListingsController', () => {
       );
       const res = makeRes();
 
-      await run(res, makeReq());
+      await run(res);
 
       // Tallied from the lines actually written, so a resuming client is not
       // told the run delivered nothing.
@@ -1498,7 +1507,7 @@ describe('ListingsController', () => {
       );
       const res = makeRes();
 
-      const handled = run(res, makeReq());
+      const handled = run(res);
       await jest.advanceTimersByTimeAsync(RESOLVE_CATEGORY_STREAM_KEEP_ALIVE_INTERVAL_MS * 2 + 1);
 
       expect(linesOf(res).filter((line) => line.kind === 'keep-alive')).toHaveLength(2);
@@ -1516,36 +1525,52 @@ describe('ListingsController', () => {
       expect(jest.getTimerCount()).toBe(0);
     });
 
-    it('aborts the signal handed to core when the client disconnects', async () => {
+    /**
+     * Holds a stream open after its first event so a 'close' can be fired
+     * mid-body, and reports the signal the handler passed to core.
+     */
+    function pausedStream(): {
+      signalOf: () => AbortSignal | undefined;
+      release: () => void;
+    } {
       let signal: AbortSignal | undefined;
       let release = (): void => undefined;
       const quiet = new Promise<void>((resolve) => {
         release = resolve;
       });
-      categoryResolution.resolveCategoriesStream.mockImplementation((_connectionId, _input, options) => {
-        signal = options?.signal;
-        return (async function* generate(): AsyncGenerator<EanCategoryMatchStreamEvent> {
-          yield matchedV1;
-          await quiet;
-          if (options?.signal?.aborted) {
-            yield { kind: 'done', resolvedCount: 1, unresolvedCount: 0, completion: 'aborted' };
-            return;
-          }
-          yield { kind: 'done', resolvedCount: 1, unresolvedCount: 1, completion: 'complete' };
-        })();
-      });
+      categoryResolution.resolveCategoriesStream.mockImplementation(
+        (_connectionId, _input, options) => {
+          signal = options?.signal;
+          return (async function* generate(): AsyncGenerator<EanCategoryMatchStreamEvent> {
+            yield matchedV1;
+            await quiet;
+            if (options?.signal?.aborted) {
+              yield { kind: 'done', resolvedCount: 1, unresolvedCount: 0, completion: 'aborted' };
+              return;
+            }
+            yield noEanV2;
+            yield { kind: 'done', resolvedCount: 1, unresolvedCount: 1, completion: 'complete' };
+          })();
+        }
+      );
+      return { signalOf: () => signal, release: () => release() };
+    }
+
+    it('aborts the signal handed to core when the RESPONSE closes mid-stream', async () => {
+      const { signalOf, release } = pausedStream();
       const res = makeRes();
-      const req = makeReq();
 
-      const handled = run(res, req);
+      const handled = run(res);
       await Promise.resolve();
-      expect(signal?.aborted).toBe(false);
+      expect(signalOf()?.aborted).toBe(false);
 
-      req.emit('close');
+      // A socket that closes while the body is still being written is the only
+      // reliable disconnect signal express exposes.
+      res.emit('close');
       release();
       await handled;
 
-      expect(signal?.aborted).toBe(true);
+      expect(signalOf()?.aborted).toBe(true);
       expect(linesOf(res).at(-1)).toEqual({
         kind: 'done',
         resolvedCount: 1,
@@ -1554,27 +1579,64 @@ describe('ListingsController', () => {
       });
       // The close listener is detached, so a reused socket cannot abort a later
       // request through this handler's controller.
-      expect(req.listenerCount('close')).toBe(0);
+      expect(res.listenerCount('close')).toBe(0);
+    });
+
+    it('keeps streaming when the REQUEST closes because its body was consumed', async () => {
+      // Regression guard for the defect this route shipped with: since Node 16
+      // the IncomingMessage emits 'close' as soon as the body is drained, and
+      // `express.json()` drains it before the handler runs - so listening there
+      // aborted every healthy request about a millisecond in and reduced every
+      // response to a lone terminal line with zero results.
+      const { signalOf, release } = pausedStream();
+      const res = makeRes();
+
+      const handled = run(res);
+      await Promise.resolve();
+
+      res.req.emit('close');
+      release();
+      await handled;
+
+      expect(signalOf()?.aborted).toBe(false);
+      expect(linesOf(res)).toEqual([
+        matchedV1,
+        noEanV2,
+        { kind: 'done', resolvedCount: 1, unresolvedCount: 1, completion: 'complete' },
+      ]);
+      // Nothing subscribed to the request at all, which is what keeps the above
+      // true no matter when the body happens to drain.
+      expect(res.req.listenerCount('close')).toBe(0);
+    });
+
+    it('does not abort on the close that follows a completed body', async () => {
+      categoryResolution.resolveCategoriesStream.mockImplementation(
+        streamOf({ kind: 'done', resolvedCount: 0, unresolvedCount: 0, completion: 'complete' })
+      );
+      const res = makeRes();
+
+      await run(res);
+      // Node emits 'close' on every response, success included; `writableFinished`
+      // is what stops that from being read as a disconnect.
+      res.emit('close');
+
+      const signal = categoryResolution.resolveCategoriesStream.mock.calls[0][2]?.signal;
+      expect(signal?.aborted).toBe(false);
     });
 
     it.each([
       ['unknown connection (404)', new ConnectionNotFoundException('conn-missing')],
       ['disabled connection (409)', new ConnectionDisabledException('conn-1')],
     ])('propagates a %s gate error with nothing written', async (_label, gateError) => {
-      // Core reports the gate as a failed terminal and rethrows on the next
-      // pull. Nothing is on the wire yet, so the exception must still reach the
-      // global filters that map it to a real status.
-      categoryResolution.resolveCategoriesStream.mockImplementation(
-        async function* generate(): AsyncGenerator<EanCategoryMatchStreamEvent> {
-          await tick();
-          yield { kind: 'done', resolvedCount: 0, unresolvedCount: 0, completion: 'failed' };
-          throw gateError;
-        }
-      );
+      // The gate is its own awaited step, so the verdict arrives before a byte
+      // is written and the exception reaches the global filters that map it to a
+      // real status. No stream is started at all.
+      categoryResolution.assertStreamableConnection.mockRejectedValue(gateError);
       const res = makeRes();
 
-      await expect(run(res, makeReq())).rejects.toBe(gateError);
+      await expect(run(res)).rejects.toBe(gateError);
 
+      expect(categoryResolution.resolveCategoriesStream).not.toHaveBeenCalled();
       expect(res.chunks).toEqual([]);
       expect(res.headers).toEqual({});
       expect(res.flushHeadersCalls).toBe(0);
@@ -1582,19 +1644,43 @@ describe('ListingsController', () => {
     });
 
     it('maps a non-marketplace connection to 422 with nothing written', async () => {
-      categoryResolution.resolveCategoriesStream.mockImplementation(
-        async function* generate(): AsyncGenerator<EanCategoryMatchStreamEvent> {
-          await tick();
-          yield { kind: 'done', resolvedCount: 0, unresolvedCount: 0, completion: 'failed' };
-          throw new AdapterCapabilityNotSupportedException('conn-1', 'OfferManager');
-        }
+      categoryResolution.assertStreamableConnection.mockRejectedValue(
+        new AdapterCapabilityNotSupportedException('conn-1', 'OfferManager')
       );
       const res = makeRes();
 
-      await expect(run(res, makeReq())).rejects.toBeInstanceOf(UnprocessableEntityException);
+      await expect(run(res)).rejects.toBeInstanceOf(UnprocessableEntityException);
 
+      expect(categoryResolution.resolveCategoriesStream).not.toHaveBeenCalled();
       expect(res.chunks).toEqual([]);
       expect(res.flushHeadersCalls).toBe(0);
+    });
+
+    it('flushes the headers before the resolver is asked for anything', async () => {
+      // The point of the gate step: the keep-alive timer and the first byte both
+      // precede the first marketplace call, so a `Retry-After` sleep inside the
+      // first GTIN lookup can no longer run out the client's 30 s timeout with
+      // nothing on the wire.
+      let flushedAtCallTime = 0;
+      let armedAtCallTime = 0;
+      jest.useFakeTimers();
+      categoryResolution.resolveCategoriesStream.mockImplementation(() => {
+        flushedAtCallTime = res.flushHeadersCalls;
+        armedAtCallTime = jest.getTimerCount();
+        return streamOf({
+          kind: 'done',
+          resolvedCount: 0,
+          unresolvedCount: 0,
+          completion: 'complete',
+        })();
+      });
+      const res = makeRes();
+
+      await run(res);
+
+      expect(flushedAtCallTime).toBe(1);
+      expect(armedAtCallTime).toBe(1);
+      expect(categoryResolution.assertStreamableConnection).toHaveBeenCalledWith('conn-1');
     });
 
     it('streams an already-aborted run as a lone terminal line', async () => {
@@ -1605,7 +1691,7 @@ describe('ListingsController', () => {
       );
       const res = makeRes();
 
-      await run(res, makeReq());
+      await run(res);
 
       expect(linesOf(res)).toEqual([
         { kind: 'done', resolvedCount: 0, unresolvedCount: 0, completion: 'aborted' },

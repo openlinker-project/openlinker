@@ -62,6 +62,29 @@ export interface ICategoryResolutionService {
   ): Promise<Map<string, EanMatchResult>>;
 
   /**
+   * Run the connection gate `resolveCategoriesStream` would otherwise reach
+   * lazily, without starting the stream (#2209, epic #2205).
+   *
+   * Raises exactly the errors `resolveCategoriesBatch` raises for the same
+   * connection - unknown, disabled, or not an `OfferManager` marketplace - and
+   * nothing else: it resolves the adapter and discards it, so it performs no
+   * marketplace call and reports no resolution outcome.
+   *
+   * It exists because a streaming transport commits its HTTP status with the
+   * first byte it writes. Without a separately awaited gate, the only way to
+   * learn that the connection is unusable is to pull the first event, and that
+   * pull also carries the first marketplace lookup - which can burn a
+   * `Retry-After` sleep or several backoff attempts before anything is on the
+   * wire. Awaiting this first lets a transport answer 404 / 409 / 422 while the
+   * status is still free, then flush its headers and start its own liveness
+   * timer *before* any marketplace work begins.
+   *
+   * Optional for an in-process caller: `resolveCategoriesStream` still applies
+   * the same gate itself, so calling this is idempotent, not a prerequisite.
+   */
+  assertStreamableConnection(connectionId: string): Promise<void>;
+
+  /**
    * Same resolution as `resolveCategoriesBatch`, delivered per variant as it
    * lands (#2207, epic #2205) so a caller can report progress instead of
    * waiting on one all-or-nothing answer.
@@ -90,7 +113,10 @@ export interface ICategoryResolutionService {
    * Connection resolution is identical to `resolveCategoriesBatch`, so an
    * unknown/disabled connection or a non-marketplace one still surfaces its
    * usual error - raised from the first `next()`, since a generator body does
-   * not run until iteration starts. The one exception is a signal that is
+   * not run until iteration starts. A caller that needs that verdict *before*
+   * it starts iterating (a transport whose status is spent on the first byte)
+   * awaits `assertStreamableConnection` instead of inspecting the first event.
+   * The one exception is a signal that is
    * *already* aborted at the first `next()`: the connection is then never
    * resolved, so no such error can surface and the stream is a lone `done` with
    * `completion: 'aborted'`.
