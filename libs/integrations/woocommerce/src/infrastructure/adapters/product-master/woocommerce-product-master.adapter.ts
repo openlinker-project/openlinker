@@ -4,6 +4,7 @@
  * Implements ProductMasterPort for WooCommerce REST API v3.
  * Read methods (#874): getProduct, getProducts, getProductVariants,
  *   getProductCategories, getCategories, searchProducts, listExternalIds.
+ * Modified-since rung (#2220): listExternalIdsModifiedSince — see the caveat below.
  * Write methods (#879): createProduct, updateProduct, deleteProduct,
  *   upsertProductVariant, assignCategories.
  *
@@ -11,6 +12,16 @@
  * The caller (master-product-sync-all.handler.ts) drives the loop via
  * listExternalIds({ limit, offset }). Offset is translated to WC page numbers
  * using page = Math.floor(offset / perPage) + 1.
+ *
+ * Modified-since rung caveat (#2220, ADR-048): this adapter declares
+ * `ModifiedProductLister`, but the freshness it reports is PRODUCT-LEVEL ONLY.
+ * A variation edit does NOT bump the parent's `date_modified`
+ * (https://github.com/woocommerce/woocommerce/issues/19562, open since 3.4) and
+ * there is no store-wide variations collection to enumerate instead. Stock is not
+ * on this rung either: `update_product_stock()` writes raw SQL that bypasses
+ * `wp_update_post()`, so order-driven stock reduction never surfaces in
+ * `modified_after`. Do not "verify" this rung with a REST round-trip — a REST PUT
+ * *does* bump `date_modified`, so such a test reports the opposite of the truth.
  *
  * 404 handling: WooCommerceHttpClient throws WooCommerceHttpResponseException(404)
  * for not-found responses. All read and write methods catch and rethrow as
@@ -31,6 +42,10 @@ import type {
   Category,
 } from '@openlinker/core/products';
 import { MasterProductNotFoundError } from '@openlinker/core/products';
+import type {
+  ModifiedProductLister,
+  ListExternalIdsModifiedSinceInput,
+} from '@openlinker/core/products';
 import type { IdentifierMappingPort, Connection } from '@openlinker/core/identifier-mapping';
 import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
 import { Logger } from '@openlinker/shared/logging';
@@ -49,7 +64,7 @@ import type {
 } from './woocommerce-product.types';
 import { fetchAllPages } from '../../utils/woocommerce-utils';
 
-export class WooCommerceProductMasterAdapter implements ProductMasterPort {
+export class WooCommerceProductMasterAdapter implements ProductMasterPort, ModifiedProductLister {
   private readonly logger = new Logger(WooCommerceProductMasterAdapter.name);
 
   constructor(
@@ -72,6 +87,51 @@ export class WooCommerceProductMasterAdapter implements ProductMasterPort {
       '/wp-json/wc/v3/products',
       { _fields: 'id', per_page: perPage, page },
     );
+    return raw
+      .filter((r): r is { id: number } => r.id !== undefined && r.id !== null)
+      .map((r) => String(r.id));
+  }
+
+  /**
+   * Modified-since rung (#2220, ADR-048 decision 1).
+   *
+   * `dates_are_gmt: true` is the load-bearing literal. WooCommerce's default is
+   * `false`, which compares `modified_after` against the SITE's local time — so
+   * without the flag, products modified inside the local-offset window are silently
+   * skipped once the watermark has advanced past them. The order source carries the
+   * same flag for the same reason (`woocommerce-order-source.adapter.ts`); this is
+   * an established fix, not a new theory. Requires WC >= 5.8.
+   *
+   * `orderby=modified&order=asc` keeps newly modified rows landing PAST the read
+   * cursor rather than shuffling into pages already read. It does not make offset
+   * paging fully stable — a row re-modified mid-cycle moves to the tail and shifts
+   * later rows left, so one row can be stepped over for that cycle (ADR-048
+   * amendment #2220). That window is covered by the full `master.product.syncAll`
+   * pass, which is why the delta pass is additive rather than a replacement.
+   *
+   * Note `per_page` is the caller's page size, never a sweep budget: WooCommerce
+   * hard-caps it at 100 and rejects more with HTTP 400 (#1723).
+   */
+  async listExternalIdsModifiedSince(
+    input: ListExternalIdsModifiedSinceInput,
+  ): Promise<string[]> {
+    const { since, limit, offset } = input;
+    this.logger.debug(
+      `Listing external product IDs modified since ${since.toISOString()} ` +
+        `(connection: ${this.connection.id}, limit: ${String(limit)}, offset: ${String(offset)})`,
+    );
+    // Same derivation as listExternalIds — exact while the caller keeps `offset` a
+    // multiple of `limit`, which the bounded sweep's page loop does.
+    const page = Math.floor(offset / limit) + 1;
+    const raw = await this.httpClient.get<Array<{ id: number }>>('/wp-json/wc/v3/products', {
+      _fields: 'id',
+      per_page: limit,
+      page,
+      modified_after: since.toISOString(),
+      dates_are_gmt: true,
+      orderby: 'modified',
+      order: 'asc',
+    });
     return raw
       .filter((r): r is { id: number } => r.id !== undefined && r.id !== null)
       .map((r) => String(r.id));

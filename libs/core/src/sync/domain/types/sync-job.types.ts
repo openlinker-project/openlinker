@@ -39,6 +39,9 @@ export const JobTypeValues = [
   'marketplace.fulfillment.statusSync',
   'master.product.syncByExternalId',
   'master.product.syncAll',
+  // Incremental catalog pass (#2220, ADR-048). Opt-in; complements rather than
+  // replaces `syncAll`, which remains the reconciliation/bootstrap path.
+  'master.product.syncDelta',
   'master.inventory.syncByExternalId',
   'master.inventory.syncAll',
 

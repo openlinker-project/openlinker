@@ -59,13 +59,13 @@ import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
 import {
   formatSweepCursor,
   parseSweepCursor,
+  readPagedIds,
   resolveSweepBudget,
   resolveSweepLockTtlMs,
   runBoundedSweep,
   sweepCursorKey,
   sweepLockKey,
 } from '../bounded-sweep';
-import type { SweepPage } from '../bounded-sweep.types';
 
 type SyncJob = SyncJobEntity;
 
@@ -123,7 +123,13 @@ export class MasterProductSyncAllHandler implements SyncJobHandler {
       const result = await runBoundedSweep({
         cursor,
         budget,
-        readPage: (offset, pageBudget) => this.readPage(productMaster, offset, pageBudget),
+        readPage: (offset, pageBudget) =>
+          readPagedIds(
+            (pageOffset, limit) => productMaster.listExternalIds({ limit, offset: pageOffset }),
+            offset,
+            pageBudget,
+            this.getPageSize()
+          ),
         enqueue: (externalId, cycleId) => this.enqueueChild(job, externalId, cycleId),
         newCycleId: () => randomUUID(),
       });
@@ -170,46 +176,6 @@ export class MasterProductSyncAllHandler implements SyncJobHandler {
         );
       }
     }
-  }
-
-  /**
-   * Reads up to `budget` external ids, paging the master at its own page size.
-   *
-   * The budget truncates at a PAGE BOUNDARY — pages are fetched while the
-   * collected count is below budget, so a non-multiple budget overshoots to the
-   * end of the page in flight rather than splitting it. The overshoot is bounded
-   * by one page.
-   */
-  private async readPage(
-    productMaster: ProductMasterPort,
-    offset: number,
-    budget: number
-  ): Promise<SweepPage> {
-    const pageSize = this.getPageSize();
-    const collected: string[] = [];
-    let exhausted = false;
-    let consumed = 0;
-
-    while (collected.length < budget) {
-      const batch = await productMaster.listExternalIds({
-        limit: pageSize,
-        offset: offset + consumed,
-      });
-      if (batch.length === 0) {
-        exhausted = true;
-        break;
-      }
-      collected.push(...batch);
-      consumed += batch.length;
-      if (batch.length < pageSize) {
-        exhausted = true;
-        break;
-      }
-    }
-
-    // De-duplicate within the page — some sources repeat ids across pages. The
-    // cursor still counts what was READ (`consumed`), not what survived.
-    return { items: [...new Set(collected)], consumed, exhausted };
   }
 
   private async enqueueChild(job: SyncJob, externalId: string, cycleId: string): Promise<unknown> {
