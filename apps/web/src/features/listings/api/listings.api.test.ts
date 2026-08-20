@@ -62,6 +62,45 @@ describe('parseResolveCategoryStreamLine', () => {
     // because the missing terminal line is what proves truncation.
     expect(parseResolveCategoryStreamLine('{"kind":"resu')).toBeNull();
   });
+
+  it('drops a result line missing the fields the consumer reads', () => {
+    // Each of these carries the right `kind` and would have been cast through
+    // on the strength of that alone. The `variantId` case is the costly one: it
+    // keys an outcome under `"undefined"` in the reducer, so one row never
+    // clears and nothing in the UI can say why.
+    const drop = (line: string): void => {
+      expect(parseResolveCategoryStreamLine(line)).toBeNull();
+    };
+    drop('{"kind":"result","result":{"kind":"no-match"}}');
+    drop('{"kind":"result","variantId":7,"result":{"kind":"no-match"}}');
+    drop('{"kind":"result","variantId":"","result":{"kind":"no-match"}}');
+    drop('{"kind":"result","variantId":"v1"}');
+    // `result.kind` is what the step switches on, so a result without one is a
+    // render crash rather than a row.
+    drop('{"kind":"result","variantId":"v1","result":{}}');
+  });
+
+  it('drops a terminal line that cannot state its counts, and keeps an unknown completion', () => {
+    const drop = (line: string): void => {
+      expect(parseResolveCategoryStreamLine(line)).toBeNull();
+    };
+    drop('{"kind":"done","unresolvedCount":1,"completion":"complete"}');
+    drop('{"kind":"done","resolvedCount":"0","unresolvedCount":1,"completion":"complete"}');
+
+    // `completion` is deliberately NOT validated: a value a later API version
+    // adds must reach the consumer's "not complete" arm, which reports an
+    // incomplete run, instead of vanishing here and reading as a truncated body.
+    const forwardCompatible =
+      '{"kind":"done","resolvedCount":1,"unresolvedCount":0,' +
+      '"completion":"partially-degraded","catalogueLookupPerformed":true}';
+    expect(parseResolveCategoryStreamLine(forwardCompatible)).toEqual({
+      kind: 'done',
+      resolvedCount: 1,
+      unresolvedCount: 0,
+      completion: 'partially-degraded',
+      catalogueLookupPerformed: true,
+    });
+  });
 });
 
 type StreamRequestFn = (path: string, init?: RequestInit) => Promise<ReadableStream<Uint8Array>>;

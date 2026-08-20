@@ -306,6 +306,15 @@ export const RESOLVE_CATEGORY_STREAM_IDLE_TIMEOUT_MS =
  * the body ended mid-write. Dropping a partial tail is safe precisely because
  * the terminal `done` line is what proves completeness - a truncated stream
  * still surfaces as truncated.
+ *
+ * The narrowing checks the fields each kind is READ BY, not only `kind`, so the
+ * cast at the end is one the line has actually earned. A `result` missing its
+ * `variantId` would otherwise reach the reducer and key an outcome under
+ * `"undefined"` - a row that never clears, on data the consumer cannot see is
+ * wrong. `completion` is deliberately NOT checked against the known values: a
+ * value added by a later API version must surface through the consumer's
+ * existing "not `complete`" arm, which reports an incomplete run, rather than
+ * being dropped here and reported as a truncated body.
  */
 export function parseResolveCategoryStreamLine(line: string): EanCategoryMatchStreamEvent | null {
   const trimmed = line.trim();
@@ -317,9 +326,25 @@ export function parseResolveCategoryStreamLine(line: string): EanCategoryMatchSt
     return null;
   }
   if (typeof parsed !== 'object' || parsed === null) return null;
-  const kind = (parsed as { kind?: unknown }).kind;
-  if (kind !== 'result' && kind !== 'done') return null;
-  return parsed as EanCategoryMatchStreamEvent;
+  const candidate = parsed as Record<string, unknown>;
+  if (candidate.kind === 'result') {
+    if (typeof candidate.variantId !== 'string' || candidate.variantId === '') return null;
+    // The component switches on `result.kind`, so a result without one is a
+    // crash rather than a rendered row.
+    const result = candidate.result;
+    if (typeof result !== 'object' || result === null) return null;
+    if (typeof (result as Record<string, unknown>).kind !== 'string') return null;
+    return parsed as EanCategoryMatchStreamEvent;
+  }
+  if (candidate.kind === 'done') {
+    // Both counts feed the operator's "resolved / unresolved" reading, so a
+    // terminal that cannot state them is not a terminal worth trusting -
+    // dropping it surfaces the run as truncated, which is the honest reading.
+    if (!Number.isFinite(candidate.resolvedCount)) return null;
+    if (!Number.isFinite(candidate.unresolvedCount)) return null;
+    return parsed as EanCategoryMatchStreamEvent;
+  }
+  return null;
 }
 
 /**

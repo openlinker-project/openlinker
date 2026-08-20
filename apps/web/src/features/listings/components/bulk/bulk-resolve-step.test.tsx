@@ -11,7 +11,7 @@
  */
 import type { ReactElement } from 'react';
 import { describe, expect, it, vi } from 'vitest';
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, type RenderResult } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderWithProviders, createMockApiClient } from '../../../../test/test-utils';
 import { RESOLVE_CATEGORY_STREAM_CHUNK_SIZE } from '../../api/listings.api';
@@ -160,13 +160,12 @@ function mockClient(
   });
 }
 
-function renderStep(
-  apiClient: ReturnType<typeof createMockApiClient>,
+function stepElement(
+  rows: BulkWizardRow[],
   onComplete: OnComplete,
-  rows: BulkWizardRow[] = [makeRow('prod_1', [variantRow('v1'), variantRow('v2')])],
   onBack?: () => void,
-): void {
-  renderWithProviders(
+): ReactElement {
+  return (
     <BulkResolveStep
       rows={rows}
       connectionId="conn_1"
@@ -175,9 +174,17 @@ function renderStep(
       currency="PLN"
       onBack={onBack}
       onComplete={onComplete}
-    />,
-    { apiClient },
+    />
   );
+}
+
+function renderStep(
+  apiClient: ReturnType<typeof createMockApiClient>,
+  onComplete: OnComplete,
+  rows: BulkWizardRow[] = [makeRow('prod_1', [variantRow('v1'), variantRow('v2')])],
+  onBack?: () => void,
+): RenderResult {
+  return renderWithProviders(stepElement(rows, onComplete, onBack), { apiClient });
 }
 
 /** One product carrying `count` siblings, so a batch can exceed the request cap. */
@@ -590,6 +597,37 @@ describe('BulkResolveStep', () => {
     await userEvent.click(screen.getByRole('button', { name: /^Back$/ }));
     expect(onBack).toHaveBeenCalledTimes(1);
     held.open();
+  });
+
+  it('re-asks about a variant whose EAN changed under it, keeping no stale outcome', async () => {
+    // The carried results/retry counters make a rerun cheap, but they are keyed
+    // to the QUESTION. When `rows` is refetched in place and a barcode moved,
+    // the variant would otherwise be filtered out of `pending` as
+    // already-resolved and keep an outcome matched against a barcode that no
+    // longer exists.
+    const onComplete = vi.fn<OnComplete>();
+    const streamFn = vi.fn<ResolveStreamFn>(() =>
+      scriptedStream([result('v1', 'no-match'), done({ unresolvedCount: 1 })]),
+    );
+    const apiClient = mockClient(streamFn);
+    const rowWith = (ean: string): BulkWizardRow =>
+      makeRow('prod_1', [
+        variantRow('v1', { variant: makeVariant('v1', { productId: 'prod_1', ean }), ean }),
+      ]);
+
+    const { rerender } = renderStep(apiClient, onComplete, [rowWith('5901234123457')]);
+
+    await waitFor(() => {
+      expect(streamFn).toHaveBeenCalledTimes(1);
+    });
+    expect(streamFn.mock.calls[0][1].items).toEqual([{ variantId: 'v1', ean: '5901234123457' }]);
+
+    rerender(stepElement([rowWith('5909999999999')], onComplete));
+
+    await waitFor(() => {
+      expect(streamFn).toHaveBeenCalledTimes(2);
+    });
+    expect(streamFn.mock.calls[1][1].items).toEqual([{ variantId: 'v1', ean: '5909999999999' }]);
   });
 });
 

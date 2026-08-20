@@ -107,7 +107,13 @@ type ResolveStreamAction =
    */
   | { type: 'terminal'; catalogueLookupPerformed: boolean | null }
   | { type: 'error'; message: string }
-  | { type: 'restart' };
+  | { type: 'restart' }
+  /**
+   * The requested work itself changed, so nothing carried from the previous
+   * question survives. Distinct from `restart`, which keeps delivered results
+   * on purpose because the question is the same one.
+   */
+  | { type: 'reset' };
 
 const INITIAL_STREAM_STATE: ResolveStreamState = {
   phase: 'starting',
@@ -161,6 +167,10 @@ export function resolveStreamReducer(
       // previous attempt's numbers with nothing moving - a frozen screen for up
       // to the idle ceiling, right after the operator asked for help.
       return { ...state, phase: 'starting', errorMessage: null, eventCount: 0, startedAt: null };
+    case 'reset':
+      // Returned by reference so a reset that lands on already-initial state is
+      // a no-op render rather than a spurious one.
+      return INITIAL_STREAM_STATE;
     default:
       return state;
   }
@@ -239,6 +249,35 @@ export function useResolveStream({
   const autoRetriesRef = useRef(0);
   /** Latest reading a real terminal reported, for the operator's own stop. */
   const catalogueLookupRef = useRef<boolean | null>(null);
+
+  /**
+   * The content key the four refs above were accumulated under.
+   *
+   * A signature change means the requested WORK changed - a variant's EAN was
+   * edited in place, an item left the batch - so anything carried over answers
+   * a question nobody is asking any more: the variant is filtered out of
+   * `pending` as already-resolved and keeps a result matched against its old
+   * barcode. Unmounting the step clears the refs too, but the mount boundary is
+   * a coincidence of where the step sits in the wizard, not the guarantee; the
+   * signature is.
+   *
+   * A retry deliberately clears NOTHING - it bumps `runId` and leaves the
+   * signature alone, because resuming on delivered results is the point (epic
+   * #2205 decision 3).
+   *
+   * Declared BEFORE the stream effect, which shares the `resolveSignature`
+   * dependency, so the clear always lands before the run that reads the refs.
+   */
+  const signatureRef = useRef(resolveSignature);
+  useEffect(() => {
+    if (signatureRef.current === resolveSignature) return;
+    signatureRef.current = resolveSignature;
+    resultsRef.current = {};
+    deliveredRef.current = 0;
+    autoRetriesRef.current = 0;
+    catalogueLookupRef.current = null;
+    dispatch({ type: 'reset' });
+  }, [resolveSignature]);
 
   useEffect(() => {
     let cancelled = false;
