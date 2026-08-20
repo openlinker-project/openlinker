@@ -141,7 +141,8 @@ export function SalesDocumentCountryRoutingDialog({
   const hasReceiptDefault = defaults.some((d) => d.documentKind === 'fiscal-receipt');
   const hasDualDefault = hasInvoiceDefault && hasReceiptDefault;
 
-  const isSummaryLoading = rulesQuery.isLoading || defaultsQuery.isLoading || countriesQuery.isLoading;
+  const isSummaryLoading =
+    rulesQuery.isLoading || defaultsQuery.isLoading || countriesQuery.isLoading;
   const acknowledgedAt =
     countriesQuery.data?.find((summary) => summary.country === country)?.acknowledgedNoDocumentAt ??
     null;
@@ -186,10 +187,10 @@ export function SalesDocumentCountryRoutingDialog({
           <SalesDocumentCountryDefaults country={country} />
           {hasDualDefault ? (
             <Alert tone="warning" title="Both an Invoice and a Receipt default are set">
-              {displayName} has both an Invoice default and a Receipt default configured. Which
-              one applies depends entirely on which rule (or manual action) decides the document
-              kind for a given order — confirm this is the intended configuration, since nothing
-              here decides between them automatically.
+              {displayName} has both an Invoice default and a Receipt default configured. Which one
+              applies depends entirely on which rule (or manual action) decides the document kind
+              for a given order — confirm this is the intended configuration, since nothing here
+              decides between them automatically.
             </Alert>
           ) : null}
         </>
@@ -204,8 +205,8 @@ export function SalesDocumentCountryRoutingDialog({
       content: (
         <div>
           <p className="muted-text">
-            An order billed to {displayName} that matches no rule above and has no country
-            default here falls through to <span className="mono-text">★ Rest of world</span>
+            An order billed to {displayName} that matches no rule above and has no country default
+            here falls through to <span className="mono-text">★ Rest of world</span>
             &apos;s own rules and defaults.
           </p>
           <Button
@@ -249,66 +250,72 @@ export function SalesDocumentCountryRoutingDialog({
           <DialogTitle>Sales-document routing · {displayName}</DialogTitle>
 
           <div className="sales-document-country-routing-dialog__body">
-          {isEmptyCountry ? (
-            acknowledgedAt !== null ? (
-              <Alert
-                tone="success"
-                title="No sales document, by design"
-                action={
-                  <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
-                    <Button
-                      tone="secondary"
-                      className="button--sm"
-                      disabled={!write.canWrite || clearAcknowledgmentMutation.isPending}
-                      onClick={() => void clearAcknowledgmentMutation.mutateAsync(country)}
+            {isEmptyCountry ? (
+              acknowledgedAt !== null ? (
+                <Alert
+                  tone="success"
+                  title="No sales document, by design"
+                  action={
+                    <ReadOnlyLock
+                      active={write.demoReadOnly}
+                      message={DEMO_READ_ONLY_ACTION_MESSAGE}
                     >
-                      Undo
-                    </Button>
-                  </ReadOnlyLock>
-                }
-              >
-                Acknowledged - <TimeDisplay iso={acknowledgedAt} />.
-              </Alert>
-            ) : (
-              <Alert
-                tone="info"
-                title="Nothing configured for this country yet"
-                action={
-                  <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
-                    <Button
-                      tone="secondary"
-                      className="button--sm"
-                      disabled={!write.canWrite || acknowledgeMutation.isPending}
-                      onClick={() => void acknowledgeMutation.mutateAsync(country)}
+                      <Button
+                        tone="secondary"
+                        className="button--sm"
+                        disabled={!write.canWrite || clearAcknowledgmentMutation.isPending}
+                        onClick={() => void clearAcknowledgmentMutation.mutateAsync(country)}
+                      >
+                        Undo
+                      </Button>
+                    </ReadOnlyLock>
+                  }
+                >
+                  Acknowledged - <TimeDisplay iso={acknowledgedAt} />.
+                </Alert>
+              ) : (
+                <Alert
+                  tone="info"
+                  title="Nothing configured for this country yet"
+                  action={
+                    <ReadOnlyLock
+                      active={write.demoReadOnly}
+                      message={DEMO_READ_ONLY_ACTION_MESSAGE}
                     >
-                      Mark as no sales document
-                    </Button>
-                  </ReadOnlyLock>
-                }
-              >
-                If {displayName} intentionally has no invoicing or fiscalization integration
-                configured, acknowledge it so operators can tell that apart from a market nobody
-                has looked at yet.
-              </Alert>
-            )
-          ) : null}
-          {acknowledgeMutation.error ? (
-            <Alert tone="error">{acknowledgeMutation.error.message}</Alert>
-          ) : null}
-          {clearAcknowledgmentMutation.error ? (
-            <Alert tone="error">{clearAcknowledgmentMutation.error.message}</Alert>
-          ) : null}
+                      <Button
+                        tone="secondary"
+                        className="button--sm"
+                        disabled={!write.canWrite || acknowledgeMutation.isPending}
+                        onClick={() => void acknowledgeMutation.mutateAsync(country)}
+                      >
+                        Mark as no sales document
+                      </Button>
+                    </ReadOnlyLock>
+                  }
+                >
+                  If {displayName} intentionally has no invoicing or fiscalization integration
+                  configured, acknowledge it so operators can tell that apart from a market nobody
+                  has looked at yet.
+                </Alert>
+              )
+            ) : null}
+            {acknowledgeMutation.error ? (
+              <Alert tone="error">{acknowledgeMutation.error.message}</Alert>
+            ) : null}
+            {clearAcknowledgmentMutation.error ? (
+              <Alert tone="error">{clearAcknowledgmentMutation.error.message}</Alert>
+            ) : null}
 
-          {tiers.map((tier, index) => (
-            <section key={tier.key} className="page-section">
-              <h3 className="detail-section__title">
-                Tier {index + 1} · {tier.title}
-              </h3>
-              {tier.content}
-            </section>
-          ))}
+            {tiers.map((tier, index) => (
+              <section key={tier.key} className="page-section">
+                <h3 className="detail-section__title">
+                  Tier {index + 1} · {tier.title}
+                </h3>
+                {tier.content}
+              </section>
+            ))}
 
-          {resetError ? <Alert tone="error">{resetError}</Alert> : null}
+            {resetError ? <Alert tone="error">{resetError}</Alert> : null}
           </div>
 
           <DialogFooter>
