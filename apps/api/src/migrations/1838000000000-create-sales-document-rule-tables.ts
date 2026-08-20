@@ -35,8 +35,8 @@
  */
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class CreateSalesDocumentRuleTables1836000000000 implements MigrationInterface {
-  name = 'CreateSalesDocumentRuleTables1836000000000';
+export class CreateSalesDocumentRuleTables1838000000000 implements MigrationInterface {
+  name = 'CreateSalesDocumentRuleTables1838000000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`CREATE EXTENSION IF NOT EXISTS "uuid-ossp"`);
