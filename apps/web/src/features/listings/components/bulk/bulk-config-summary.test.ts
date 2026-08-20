@@ -13,6 +13,7 @@ import {
   describeStockPolicy,
   formatPlatformParamValue,
   humanizeParamKey,
+  looksLikeIdentifier,
   readConnectionEnvironment,
 } from './bulk-config-summary';
 import type { BulkWizardConfig } from './bulk-wizard.types';
@@ -110,8 +111,30 @@ describe('formatPlatformParamValue', () => {
 
 describe('humanizeParamKey', () => {
   it('should turn an open-world param key into a label', () => {
-    expect(humanizeParamKey('deliveryPolicyId')).toBe('Delivery policy id');
     expect(humanizeParamKey('dispatch_time')).toBe('Dispatch time');
+    expect(humanizeParamKey('handlingTime')).toBe('Handling time');
+  });
+
+  it('should drop an Id suffix, which names the value shape rather than the setting', () => {
+    expect(humanizeParamKey('deliveryPolicyId')).toBe('Delivery policy');
+    expect(humanizeParamKey('return_policy_id')).toBe('Return policy');
+  });
+
+  it('should keep a key that is nothing but an id', () => {
+    expect(humanizeParamKey('id')).toBe('Id');
+  });
+});
+
+describe('looksLikeIdentifier', () => {
+  it('should recognise a value the operator cannot read as words', () => {
+    expect(looksLikeIdentifier('2012d84a-8c28-441c-b6cc-27e4bcbf8113')).toBe(true);
+    expect(looksLikeIdentifier('ol_variant_e4b98e91340a44ed')).toBe(true);
+  });
+
+  it('should leave a human value alone', () => {
+    expect(looksLikeIdentifier('Standard 24h')).toBe(false);
+    expect(looksLikeIdentifier('24 h')).toBe(false);
+    expect(looksLikeIdentifier('PLN')).toBe(false);
   });
 });
 

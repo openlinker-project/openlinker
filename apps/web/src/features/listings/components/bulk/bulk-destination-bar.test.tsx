@@ -104,6 +104,21 @@ describe('BulkDestinationBar', () => {
     });
   });
 
+  it('should announce the destination once, not twice', () => {
+    renderBar();
+
+    // ConnectionDot carries the name in an sr-only span; the bar renders it
+    // visibly right beside the disc, so the disc is hidden from assistive tech.
+    const bar = screen.getByTestId('bulk-destination-bar');
+    const announced = Array.from(bar.querySelectorAll('*')).filter(
+      (el) =>
+        el.textContent === 'Allegro — Sklep główny' &&
+        el.closest('[aria-hidden="true"]') === null &&
+        el.children.length === 0,
+    );
+    expect(announced).toHaveLength(1);
+  });
+
   it('should flag a sandbox connection on the badge and on the bar itself', () => {
     renderBar({ connection: makeConnection({ config: { environment: 'sandbox' } }) });
 
@@ -173,7 +188,7 @@ describe('BulkDestinationBar', () => {
     expect(screen.getByText('PLN')).toBeInTheDocument();
     expect(screen.getByText('Master stock')).toBeInTheDocument();
     expect(screen.getByText('Publish immediately')).toBeInTheDocument();
-    expect(screen.getByText('Delivery policy id')).toBeInTheDocument();
+    expect(screen.getByText('Delivery policy')).toBeInTheDocument();
     expect(screen.getByText('Standard 24h')).toBeInTheDocument();
   });
 

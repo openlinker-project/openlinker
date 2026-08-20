@@ -160,16 +160,21 @@ which is what made the 320 px layout blow up in the mockup). Badges wrap; the le
 
 Three things the operator asked for once the first implementation was reviewable:
 
-1. **Sticky-on-scroll shipped**, and it needed the shared offset token the first pass tried to avoid.
-   `.demo-banner` is itself `position: sticky; top: 52px` in the same scroll container, so a bar
-   pinned at a hardcoded `52px` would sit *under* it in demo mode. Three tokens now carry the fact -
-   `--shell-topbar-height` (which `.shell-topbar` and `.demo-banner` both consume instead of
-   repeating `52px`), `--demo-banner-height` (with a matching `min-height` on the banner so the token
-   stays true, wrapped on mobile and one line from 768 px up), and `--layout-sticky-top`, raised by
-   `.shell-main:has(.demo-banner)`. `:has()` keeps the knowledge in CSS rather than threading a flag
-   through `AppShell` into every future sticky consumer. The bar stops pinning while its settings
-   panel is open (`:has(.bulk-destbar__panel:not([hidden]))`) - expanded, it would cover the rows it
-   describes.
+1. **Sticky-on-scroll was attempted, verified against the running app, and withdrawn** - it cannot
+   work today, and the reason is a shell-wide defect rather than anything about this bar.
+   `main.shell-content` declares `overflow-y: auto`, which makes it the scroll container any sticky
+   descendant resolves against; but the shell never constrains its height, so the **document**
+   scrolls and `.shell-content` itself never does (measured live: `html.scrollTopMax = 222`,
+   `.shell-content.scrollTopMax = 0`). A sticky descendant therefore never engages and simply scrolls
+   away - confirmed on the real page: computed `position: sticky; top: 52px`, and the bar still moved
+   from `y = 138` to `y = -36` under a 222 px scroll. **The same defect silently disables every other
+   sticky element inside the content area, including `DataTable`'s sticky table headers and
+   `.bulk-action-bar`.** Fixing it means changing where the app scrolls, which is a shell-wide change
+   affecting every page - out of scope here and worth its own issue. What survives from the attempt:
+   `--shell-topbar-height` and `--demo-banner-height`, which replace the literal `52px` repeated in
+   `.shell-topbar` and `.demo-banner` (the banner gained a matching `min-height` so the value stays
+   true). `--layout-sticky-top` and the `:has()` rule that raised it were dropped rather than left as
+   dead tokens.
 2. **`ConnectionDot` gained an optional `size`** (default 14). The glyph is an SVG with a `viewBox`,
    so the initial scales with the disc; `.conn-dot` reads `var(--conn-size, 14px)`. The bar passes
    26, where the disc is the identity anchor for the whole batch rather than a marker beside other

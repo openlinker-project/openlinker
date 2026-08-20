@@ -90,13 +90,29 @@ export function collectBulkConfigChanges(config: BulkWizardConfig): BulkConfigCh
   return changes;
 }
 
-/** `deliveryPolicyId` -> `Delivery policy id`, so an open-world param key reads as a label. */
+/**
+ * `deliveryPolicyId` -> `Delivery policy`, so an open-world param key reads as a
+ * label. The `Id` suffix is dropped: it names the shape of the value, which the
+ * operator can already see, and every param key in the repo that carries it is
+ * a reference to something the label already names.
+ */
 export function humanizeParamKey(key: string): string {
-  const spaced = key
+  const withoutIdSuffix = key.replace(/[_-]?(?:Id|ID|id)$/, '');
+  const spaced = (withoutIdSuffix === '' ? key : withoutIdSuffix)
     .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
     .replace(/[_-]+/g, ' ')
     .trim();
   return spaced.charAt(0).toUpperCase() + spaced.slice(1).toLowerCase();
+}
+
+/**
+ * A value the operator cannot read as words - a uuid, an internal id, an opaque
+ * token. Rendered mono so it reads as a reference to quote in a ticket rather
+ * than as a name.
+ */
+export function looksLikeIdentifier(value: string): boolean {
+  if (/\s/.test(value)) return false;
+  return /^ol_/.test(value) || /^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(value) || value.length >= 20;
 }
 
 /**
@@ -147,10 +163,12 @@ export function buildBulkConfigRows({
   ];
 
   for (const [key, value] of Object.entries(config.platformParams)) {
+    const formatted = formatPlatformParamValue(value);
     rows.push({
       id: `param-${key}`,
       label: humanizeParamKey(key),
-      value: formatPlatformParamValue(value),
+      value: formatted,
+      ...(looksLikeIdentifier(formatted) ? { mono: true } : {}),
     });
   }
 

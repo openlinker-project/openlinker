@@ -332,16 +332,14 @@
   --button-primary-bg-hover: oklch(62% 0.19 50);
 
   /* ── Spacing scale (strict 4px grid) ─────────────────────────────── */
-  /* ── Layout offsets (#2227) ────────────────────────────────────────
-   * Sticky sub-headers need to know what is already pinned above them. The
-   * topbar is always there; the demo banner sits under it only in demo mode,
-   * so `.shell-main:has(.demo-banner)` raises `--layout-sticky-top` instead of
-   * every sticky element hardcoding a guess. Height, not padding, so the token
-   * stays true: `.demo-banner` carries a matching `min-height`.
+  /* ── Layout heights (#2227) ────────────────────────────────────────
+   * The two pinned strips at the top of the shell, named once instead of
+   * repeated as a literal `52px` in `.shell-topbar` and `.demo-banner`. Height,
+   * not padding, so the value stays true: the banner carries a matching
+   * `min-height`.
    */
   --shell-topbar-height: 52px;
   --demo-banner-height: 48px;
-  --layout-sticky-top: var(--shell-topbar-height);
 
   --space-1: 0.25rem; /* 4px */
   --space-2: 0.5rem; /* 8px */
@@ -1308,13 +1306,6 @@ textarea,
   :root {
     --demo-banner-height: 32px;
   }
-}
-
-/* Only demo mode renders a second pinned strip, so only then does a sticky
-   sub-header have to clear it. `:has()` keeps the knowledge in CSS instead of
-   threading a flag through AppShell into every sticky consumer. */
-.shell-main:has(.demo-banner) {
-  --layout-sticky-top: calc(var(--shell-topbar-height) + var(--demo-banner-height));
 }
 
 .shell-topbar {
@@ -10818,11 +10809,12 @@ input.bulk-dispatch__num--wide {
  * the accent, re-tinted to the warning tone for a sandbox connection - the
  * state that is most expensive to miss in a screenshot.
  */
+/* Deliberately NOT sticky: `main.shell-content` declares `overflow-y: auto`, so
+   it is the scroll container a sticky descendant resolves against - but the
+   document scrolls instead of it, so the offset never engages and the element
+   just scrolls away. Pinning this bar needs that shell-wide scroll model fixed
+   first (it also disables DataTable's sticky headers today). */
 .bulk-destbar {
-  position: sticky;
-  top: var(--layout-sticky-top);
-  /* Above scrolled content, below the demo banner (9) and the topbar (10). */
-  z-index: 3;
   background: var(--bg-surface);
   border: 1px solid var(--border-default);
   border-left: 3px solid var(--accent-primary);
@@ -10913,11 +10905,6 @@ input.bulk-dispatch__num--wide {
   display: none;
 }
 
-/* Expanded, the bar is a panel rather than a marker - pinning it would cover
-   the rows it describes, so it scrolls away until it is collapsed again. */
-.bulk-destbar:has(.bulk-destbar__panel:not([hidden])) {
-  position: static;
-}
 
 /* KeyValueList owns its own responsive dt/dd grid - only the width is ours. */
 .bulk-destbar__panel .key-value-list {

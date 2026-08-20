@@ -85,8 +85,13 @@ export function BulkDestinationBar({
       <div className="bulk-destbar__main">
         <span className="bulk-destbar__id">
           {/* Larger than the 14 px default: here the disc is the identity
-              anchor for the whole batch, not a marker beside other text. */}
-          <ConnectionDot name={connection.name} platformType={connection.platformType} size={26} />
+              anchor for the whole batch, not a marker beside other text.
+              Hidden from assistive tech because the name it carries in its
+              `sr-only` span is rendered visibly right beside it - without this
+              the destination is announced twice. */}
+          <span aria-hidden="true">
+            <ConnectionDot name={connection.name} platformType={connection.platformType} size={26} />
+          </span>
           <span className="bulk-destbar__name" title={connection.name}>
             {connection.name}
           </span>
