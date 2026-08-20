@@ -39,14 +39,22 @@ export interface OrderLineItemRepositoryPort {
    * channel, plus the total distinct-product count in scope (for pagination)
    * — the top-products read's ranking half (#1988). Same
    * `recordStatus = 'ready' AND cancelledAt IS NULL` scope as {@link
-   * getUnitsSoldByConnection}. Revenue ranking sums only FX-stamped orders
-   * (`reportingCurrency IS NOT NULL`); unstamped orders' native-currency
-   * contribution is reported separately, never silently summed in or
-   * dropped — same rule {@link OrderRecordRepositoryPort.getDailyOrderAggregates}
-   * applies at the order level.
+   * getUnitsSoldByConnection}. Revenue ranking sums only orders stamped in
+   * `reportingCurrency`, the CURRENT system reporting currency (#2049/ADR-040
+   * bugfix) — never merely `reportingCurrency IS NOT NULL`. An order stamped
+   * under a PREVIOUS reporting-currency setting is a different currency era
+   * (settings changes are forward-only, ADR-040 § Decision 7) and would
+   * otherwise get silently summed into `revenue` under an arbitrary label.
+   * Such orders' native-currency contribution is folded into
+   * `unconvertedRevenue`/`unconvertedOrderCount` alongside never-stamped
+   * orders — both are "not in the current reporting currency", disclosed
+   * rather than mixed in — same rule {@link
+   * OrderRecordRepositoryPort.getDailyOrderAggregates} applies at the order
+   * level.
    */
   getTopProductRanking(
-    filters: TopProductFilters
+    filters: TopProductFilters,
+    reportingCurrency: string
   ): Promise<{ rows: ProductRankingRow[]; total: number }>;
 
   /**
@@ -54,9 +62,13 @@ export interface OrderLineItemRepositoryPort {
    * — the top-products read's inline channel-split half (#1988). Callers
    * MUST pass only the current page's product ids (never the full scoped
    * set) to keep this query's cost bounded by page size, not catalogue size.
+   * `reportingCurrency` is the CURRENT system reporting currency — same
+   * meaning and same bugfix as {@link getTopProductRanking}'s parameter of
+   * the same name.
    */
   getProductChannelBreakdown(
     productIds: string[],
-    filters: SalesAnalyticsFilters
+    filters: SalesAnalyticsFilters,
+    reportingCurrency: string
   ): Promise<ProductChannelBreakdownRow[]>;
 }

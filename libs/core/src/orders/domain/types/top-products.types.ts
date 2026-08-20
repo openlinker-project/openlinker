@@ -7,12 +7,16 @@
  * model `order_line_items` uses for the #1987 sales & channel aggregates.
  *
  * Currency correctness (#2049/ADR-040), same rule as `order-sales-analytics.types.ts`:
- * a product's ranked `revenue` sums only orders whose `reportingCurrency`
- * stamp has landed (`SUM(reportingTotalAmount)` per line, converted via the
+ * a product's ranked `revenue` sums only orders stamped in the CURRENT system
+ * reporting currency (`SUM(reportingTotalAmount)` per line, converted via the
  * order's own implicit FX multiplier `reportingTotalAmount / totalAmount`).
- * `unconvertedRevenue`/`unconvertedOrderCount` disclose what's excluded
- * rather than silently omitting or mixing it into `revenue`. `units` has no
- * currency and is never split this way.
+ * An order stamped under a PREVIOUS reporting-currency setting is a
+ * different currency era — settings changes are forward-only (ADR-040 §
+ * Decision 7), so an older stamp is never reclassified — and is folded into
+ * `unconvertedRevenue`/`unconvertedOrderCount` alongside never-stamped
+ * orders, exactly like them: disclosed rather than silently mixed into
+ * `revenue` under an arbitrary label. `units` has no currency and is never
+ * split this way.
  *
  * Grouping is at PRODUCT granularity only (spec rows C1/C2/D1) — variant-level
  * ranking is spec row C3, explicitly out of scope for this read (see the
@@ -44,13 +48,13 @@ export interface ProductRankingRow {
   productId: string;
   /** `SUM(quantity)` regardless of currency — units carry no FX ambiguity. */
   units: number;
-  /** `SUM(unitPrice × quantity × orderFxMultiplier)` over stamped orders only. */
+  /** `SUM(unitPrice × quantity × orderFxMultiplier)` over orders stamped in the current reporting currency only. */
   revenue: number;
-  /** Native-currency `SUM(unitPrice × quantity)` for unstamped orders' lines — informational, may mix currencies. */
+  /** Native-currency `SUM(unitPrice × quantity)` for lines not in the current reporting currency (never-stamped, or a prior era) — informational, may mix currencies. */
   unconvertedRevenue: number;
-  /** Distinct unstamped orders contributing to `unconvertedRevenue`. */
+  /** Distinct orders contributing to `unconvertedRevenue`. */
   unconvertedOrderCount: number;
-  /** The `reportingCurrency` this row's `revenue` is expressed in — `null` only when every contributing order is unconverted. */
+  /** The current system reporting currency `revenue` is expressed in — `null` only when every contributing order is unconverted. */
   currency: string | null;
 }
 
