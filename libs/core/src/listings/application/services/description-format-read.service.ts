@@ -40,6 +40,7 @@ import {
 import {
   CONSERVATIVE_DESCRIPTION_FORMAT,
   type DescriptionFormat,
+  type DescriptionFormatSource,
 } from '../../domain/types/description-format.types';
 import type {
   DescriptionFormatView,
@@ -58,9 +59,21 @@ export class DescriptionFormatReadService implements IDescriptionFormatReadServi
   ) {}
 
   async getForConnection(connectionId: string): Promise<DescriptionFormatView> {
+    // A DECLARED format wins over a fallback, whichever capability answers.
+    //
+    // Probing `OfferManager` first and accepting whatever it returns was wrong
+    // for a real, operator-reachable state: a WooCommerce connection with stock
+    // write-back enabled (#1498) resolves `OfferManager` to a base-port-only
+    // adapter that declares nothing, so the editor was handed the conservative
+    // seven-tag subset - and told "this destination has not declared its format"
+    // - for a shop whose own declaration allows tables, links and h3, and whose
+    // publish path uses that real declaration. The operator lost controls the
+    // destination accepts, on a false statement about their own connection.
     const marketplace = await this.tryResolve<OfferManagerPort>(connectionId, 'OfferManager');
-    if (marketplace !== null) {
-      return this.view(resolveOfferDescriptionFormat(marketplace), 'OfferManager');
+    const marketplaceFormat =
+      marketplace === null ? null : resolveOfferDescriptionFormat(marketplace);
+    if (marketplaceFormat !== null && marketplaceFormat !== CONSERVATIVE_DESCRIPTION_FORMAT) {
+      return this.view(marketplaceFormat, 'OfferManager');
     }
 
     const shop = await this.tryResolve<ShopProductManagerPort>(connectionId, 'ProductPublisher');
@@ -68,10 +81,21 @@ export class DescriptionFormatReadService implements IDescriptionFormatReadServi
       return this.view(resolveShopDescriptionFormat(shop), 'ProductPublisher');
     }
 
-    // Neither capability resolves: a disabled connection, a credential failure,
-    // or a connection that publishes nothing. The editor still needs something
-    // to author against, and saying so beats an error the operator cannot act on.
-    this.logger.debug(
+    // A marketplace that resolved but declared nothing: the fallback is the
+    // answer, and naming the capability that produced it is still useful.
+    if (marketplaceFormat !== null) {
+      this.logger.warn(
+        `[description-format] connection ${connectionId} resolves OfferManager but declares no description format; using the conservative fallback`,
+      );
+      return this.view(marketplaceFormat, 'OfferManager');
+    }
+
+    // Neither capability resolves. This is NOT the same as "declared nothing" -
+    // it is a disabled connection, a credential failure, or an id that matches
+    // no publishing destination - so it is reported as unresolved (`resolvedVia:
+    // null`) rather than as an undeclared destination, and logged at `warn`
+    // because it is a configuration state an operator can act on.
+    this.logger.warn(
       `[description-format] no publishing capability resolved for connection ${connectionId}; using the conservative fallback`,
     );
     return { format: CONSERVATIVE_DESCRIPTION_FORMAT, declared: false, resolvedVia: null };
@@ -79,7 +103,7 @@ export class DescriptionFormatReadService implements IDescriptionFormatReadServi
 
   private view(
     format: DescriptionFormat,
-    resolvedVia: 'OfferManager' | 'ProductPublisher',
+    resolvedVia: DescriptionFormatSource,
   ): DescriptionFormatView {
     // Reference equality is the signal: `resolve*DescriptionFormat` returns the
     // shared constant when the adapter declared nothing, so this needs no

@@ -94,6 +94,21 @@ export class MasterProductSyncService implements IMasterProductSyncService {
 
     // Convert port -> domain entities
     const product = this.toDomainProduct(productFromAdapter);
+    if (
+      (productFromAdapter.description ?? null) !== null &&
+      product.description !== productFromAdapter.description
+    ) {
+      // Logged, because the alternative is a silent rewrite of the operator's own
+      // catalogue copy: `ContentDraftService` warns on all three of its branches
+      // for the same reason. One line per altered product, with the ids needed to
+      // find it - this runs inside a catalogue loop, so it says what changed
+      // rather than dumping either value.
+      this.logger.warn(
+        `[master-sync] description sanitized on pull: connectionId=${connectionId} ` +
+          `externalId=${externalId} internalId=${internalProductId} correlationId=${correlationId} ` +
+          `before=${(productFromAdapter.description ?? '').length}B after=${(product.description ?? '').length}B`,
+      );
+    }
     const variants = variantsFromAdapter.map((v) => this.toDomainVariant(v, internalProductId));
 
     // Upsert into canonical storage (upsert clears any prior staleness on the

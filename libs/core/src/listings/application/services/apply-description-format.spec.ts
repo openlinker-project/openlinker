@@ -254,6 +254,24 @@ describe('applyDescriptionFormat', () => {
     });
   });
 
+  /** Every emitted element is closed, innermost-first, with no stray close tag. */
+  function isBalanced(html: string): boolean {
+    const voids = new Set(['br', 'hr', 'img', 'wbr']);
+    const stack: string[] = [];
+    const pattern = /<\s*(\/)?\s*([a-zA-Z][a-zA-Z0-9]*)[^>]*?(\/)?\s*>/g;
+    let match: RegExpExecArray | null;
+    while ((match = pattern.exec(html)) !== null) {
+      const tag = match[2].toLowerCase();
+      if (voids.has(tag) || match[3] === '/') continue;
+      if (match[1] === '/') {
+        if (stack.pop() !== tag) return false;
+      } else {
+        stack.push(tag);
+      }
+    }
+    return stack.length === 0;
+  }
+
   describe('byte cap', () => {
     it('should leave output under the cap untouched', () => {
       expect(applyDescriptionFormat('<p>short</p>', { ...ALLEGRO, maxBytes: 1000 })).toBe(
@@ -261,11 +279,50 @@ describe('applyDescriptionFormat', () => {
       );
     });
 
+    it('should close every element it cut through, not merely end on a tag', () => {
+      // The previous implementation cut at the last '>' inside the budget, which
+      // keeps a half-written TAG off the wire and happily ships a half-closed
+      // ELEMENT: a 40-byte budget produced literally `<h1>Title</h1><p>`. An
+      // `endsWith('>')` assertion passes on that, which is why it is not the
+      // assertion here - balance is.
+      const long = `<h1>Title</h1><p>${'x'.repeat(300)}</p>`;
+      const out = applyDescriptionFormat(long, { ...ALLEGRO, maxBytes: 40 });
+      expect(Buffer.byteLength(out, 'utf8')).toBeLessThanOrEqual(40);
+      expect(isBalanced(out)).toBe(true);
+      expect(out).toContain('Title');
+    });
+
+    it('should close a single element the cut landed inside', () => {
+      const out = applyDescriptionFormat(`<p>${'x'.repeat(300)}</p><p>tail</p>`, {
+        ...ALLEGRO,
+        maxBytes: 50,
+      });
+      expect(Buffer.byteLength(out, 'utf8')).toBeLessThanOrEqual(50);
+      expect(isBalanced(out)).toBe(true);
+      expect(out.startsWith('<p>x')).toBe(true);
+    });
+
     it('should cut at a tag boundary so a half-open tag never ships', () => {
       const long = `<p>${'x'.repeat(200)}</p><p>tail</p>`;
       const out = applyDescriptionFormat(long, { ...ALLEGRO, maxBytes: 120 });
       expect(Buffer.byteLength(out, 'utf8')).toBeLessThanOrEqual(120);
       expect(out.endsWith('>')).toBe(true);
+      expect(isBalanced(out)).toBe(true);
+    });
+
+    it('should never emit a lone surrogate when the cut lands on an astral character', () => {
+      // Indexing by UTF-16 unit split the emoji and shipped `"aaa\ud83d"`, which
+      // is invalid UTF-8 and does not survive JSON serialisation.
+      const out = applyDescriptionFormat('aaa\u{1F600}bbb', {
+        ...ALLEGRO,
+        shape: 'plain-text',
+        maxBytes: 8,
+      });
+      expect(Buffer.byteLength(out, 'utf8')).toBeLessThanOrEqual(8);
+      expect(out).toBe('aaa\u{1F600}b');
+      expect(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(out)).toBe(
+        false,
+      );
     });
 
     it('should count bytes and not characters, so multi-byte text is capped correctly', () => {
@@ -341,6 +398,46 @@ describe('applyDescriptionFormat', () => {
       expect(out).toContain('<strong>');
       expect(out).not.toContain('<table');
       expect(out).not.toContain('style=');
+    });
+  });
+
+  describe('comments, CDATA and doctypes are markup, not text', () => {
+    it('should drop a Gutenberg block comment rather than wrap it in a paragraph', () => {
+      // `TAG_PATTERN` requires `<[a-zA-Z]`, so these used to survive as TEXT and
+      // then get wrapped: `<p>a</p><p><!-- wp:paragraph --></p><p>b</p>`. Fully
+      // reachable - the builders read the description from a LIVE master call
+      // that never passes through `sanitizeStoredHtml`, and a WooCommerce
+      // `post_content` carries these as a matter of course.
+      expect(
+        applyDescriptionFormat('<p>a</p><!-- wp:paragraph --><p>b</p>', ALLEGRO),
+      ).toBe('<p>a</p><p>b</p>');
+    });
+
+    it('should drop a CDATA section', () => {
+      expect(applyDescriptionFormat('<p>a</p><![CDATA[x]]>', ALLEGRO)).toBe('<p>a</p>');
+    });
+
+    it('should drop a doctype and a processing instruction', () => {
+      expect(applyDescriptionFormat('<!DOCTYPE html><p>a</p><?xml v?>', ALLEGRO)).toBe('<p>a</p>');
+    });
+  });
+
+  describe('a block inside an inline element', () => {
+    it('should drop the block and keep its text, rather than cross-nesting', () => {
+      // Was `<p><b>a</p><p>c</p><p></b></p>` - cross-nested, with a stray close
+      // tag. `sanitize-html` does NOT re-balance block-in-inline, so nothing
+      // upstream fixes this, and the adapter keeps no defensive second pass.
+      expect(applyDescriptionFormat('<strong>a<p>c</p></strong>', ALLEGRO)).toBe(
+        '<p><b>ac</b></p>',
+      );
+    });
+
+    it('should not leave a bare list item behind when it drops the list', () => {
+      // `<li>` outside a list is structurally meaningless; judging an unmodelled
+      // parent as an inline context rejects it while keeping the text.
+      expect(applyDescriptionFormat('<b>a<ul><li>x</li></ul></b>', ALLEGRO)).toBe(
+        '<p><b>ax</b></p>',
+      );
     });
   });
 

@@ -8591,12 +8591,10 @@ a.kpi-card:focus-visible {
   gap: 0.5rem;
 }
 
-.content-panel__textarea {
-  font-family: var(--font-body);
-  font-size: 0.875rem;
-  line-height: 1.55;
+/* The Content tab's description field is a rich-text editor since ADR-046; the
+   min-height that made the old textarea comfortable still applies to it. */
+.content-panel__editor .rich-text__surface {
   min-height: 14rem;
-  resize: vertical;
 }
 
 .content-panel__meta {
@@ -11619,6 +11617,14 @@ button.bulk-chip:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--acce
 textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: inherit; }
 .bulk-editor__input--inherited { color: var(--text-muted); font-style: italic; }
 .bulk-editor__input--overridden { font-weight: 600; border-color: var(--accent-primary-border); }
+/* The provenance cue on a RICH-TEXT field is chrome only. The two rules above
+   were written for a <textarea>; on the editor container `font-style: italic`
+   renders the whole authoring surface italic - in a control that also offers an
+   Italic mark, so real emphasis and "inherited" become indistinguishable - and
+   `font-weight: 600` does the same to bold. The textual cue is carried by the
+   inherit/override badge beside the field, which is where it belongs. */
+.rich-text.bulk-editor__input--inherited { font-style: normal; color: inherit; border-style: dashed; }
+.rich-text.bulk-editor__input--overridden { font-weight: 400; }
 .bulk-editor__input--error { border-color: var(--status-error-border) !important; box-shadow: none; }
 /* Read-only fields (Distinguishing / Stock / Currency) - a locked, muted look
  * so they read as non-editable, not like the other inputs. */
@@ -18276,6 +18282,14 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
 }
 
 .rich-text__undeclared { color: var(--status-warning-fg); }
+.rich-text--loading .rich-text__surface { min-height: 6rem; display: flex; align-items: center; }
+.rich-text__loading-note {
+  margin: 0;
+  padding: var(--space-3);
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+
 .rich-text__bytes { font-variant-numeric: tabular-nums; margin-left: auto; }
 .rich-text__bytes.is-near { color: var(--status-warning-fg); }
 .rich-text__bytes.is-over { color: var(--status-error-fg); }

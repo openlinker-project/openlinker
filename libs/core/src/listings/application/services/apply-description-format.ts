@@ -47,6 +47,18 @@ const VOID_TAGS = new Set(['br', 'hr', 'img', 'wbr']);
 
 /** `<tag …>` / `</tag>` / `<tag … />`, plus the raw text between them. */
 const TAG_PATTERN = /<\s*(\/)?\s*([a-zA-Z][a-zA-Z0-9]*)((?:"[^"]*"|'[^']*'|[^>"'])*?)(\/)?\s*>/g;
+/**
+ * Comment, CDATA, doctype and processing-instruction spans.
+ *
+ * `TAG_PATTERN` requires `<[a-zA-Z]`, so none of these is a tag to the walker:
+ * they would survive as TEXT and then be wrapped into a paragraph, shipping
+ * `<p><!-- wp:paragraph --></p>` to a destination whose grammar has no comment
+ * production. That is not hypothetical - a WooCommerce master's `post_content`
+ * carries Gutenberg block comments as a matter of course, and the builders read
+ * the description from a LIVE master call that never passes through
+ * `sanitizeStoredHtml` (which would have stripped them).
+ */
+const MARKUP_NOISE_PATTERN = /<!--[\s\S]*?-->|<!\[CDATA\[[\s\S]*?\]\]>|<![^>]*>|<\?[\s\S]*?\?>/g;
 const ATTRIBUTE_PATTERN = /([a-zA-Z_:][-a-zA-Z0-9_:.]*)\s*=\s*("[^"]*"|'[^']*'|[^\s"'>]+)/g;
 
 interface RewriteResolution {
@@ -56,15 +68,35 @@ interface RewriteResolution {
   readonly splitBlock: boolean;
 }
 
+/**
+ * Compile-time exhaustiveness for the rewrite union.
+ *
+ * Reached only if a new `DescriptionRewriteAction` is added without a case here,
+ * which the compiler then rejects - the point being that a bare fallthrough
+ * silently treated an unknown action as `split-block`, i.e. invented structure.
+ */
+function assertUnreachableRewrite(rule: never): never {
+  throw new Error(`unhandled description rewrite: ${JSON.stringify(rule)}`);
+}
+
 function resolveRewrite(
   tag: string,
   rewrites: readonly DescriptionRewrite[] | undefined,
 ): RewriteResolution {
   for (const rule of rewrites ?? []) {
     if (rule.from.toLowerCase() !== tag) continue;
-    if (rule.action === 'rename') return { emitAs: rule.to.toLowerCase(), splitBlock: false };
-    if (rule.action === 'unwrap') return { emitAs: null, splitBlock: false };
-    return { emitAs: null, splitBlock: true };
+    // Exhaustive on purpose: a bare fallthrough would silently treat a future
+    // action as `split-block`, which invents structure rather than failing.
+    switch (rule.action) {
+      case 'rename':
+        return { emitAs: rule.to.toLowerCase(), splitBlock: false };
+      case 'unwrap':
+        return { emitAs: null, splitBlock: false };
+      case 'split-block':
+        return { emitAs: null, splitBlock: true };
+      default:
+        return assertUnreachableRewrite(rule);
+    }
   }
   return { emitAs: tag, splitBlock: false };
 }
@@ -106,7 +138,19 @@ function isAllowedIn(
   if (model === undefined || model === null) return true;
   const key = parent ?? 'root';
   const allowed = model[key];
-  if (allowed === undefined) return true;
+  if (allowed === undefined) {
+    // A parent the model does not mention is an INLINE context, so it accepts
+    // exactly what the implicit paragraph accepts - not "anything".
+    //
+    // Two payloads made this necessary, both ordinary shop HTML. `<b>a<p>c</p></b>`
+    // used to emit a block inside an inline, and the root-inline wrap then split
+    // the run through the still-open `<b>`: `<p><b>a</p><p>c</p><p></b></p>` -
+    // cross-nested, with a stray close tag. And `<b>a<ul><li>x</li></ul></b>`
+    // dropped the `<ul>` but kept a bare `<li>`, which is structurally
+    // meaningless outside a list. Judging against the paragraph's own child set
+    // rejects both while keeping every character of text.
+    return (model[IMPLICIT_WRAP_TAG] ?? []).includes(tag);
+  }
   if (allowed.includes(tag)) return true;
 
   // Root-level inline content is judged against the paragraph it is about to
@@ -121,20 +165,113 @@ function isAllowedIn(
   return false;
 }
 
-function capBytes(html: string, maxBytes: number): string {
-  const bytes = Buffer.byteLength(html, 'utf8');
-  if (bytes <= maxBytes) return html;
+/**
+ * Cap plain text at a byte budget, cutting on a CODE POINT boundary.
+ *
+ * Indexing by UTF-16 unit would cut an astral character in half and ship a lone
+ * surrogate, which is invalid UTF-8 and does not survive JSON serialisation -
+ * emoji in a description are ordinary, so this is reachable.
+ */
+function capTextBytes(text: string, maxBytes: number): string {
+  if (Buffer.byteLength(text, 'utf8') <= maxBytes) return text;
   let used = 0;
-  let cutAt = 0;
-  for (let i = 0; i < html.length; i++) {
-    const charBytes = Buffer.byteLength(html[i], 'utf8');
-    if (used + charBytes > maxBytes) break;
-    used += charBytes;
-    cutAt = i + 1;
+  let out = '';
+  for (const codePoint of text) {
+    const size = Buffer.byteLength(codePoint, 'utf8');
+    if (used + size > maxBytes) break;
+    used += size;
+    out += codePoint;
   }
-  // Cut at the last '>' inside the budget so a half-open tag never ships.
-  const lastGt = html.lastIndexOf('>', cutAt - 1);
-  return lastGt >= 0 ? html.slice(0, lastGt + 1) : html.slice(0, cutAt);
+  return out;
+}
+
+/**
+ * Cap well-formed markup at a byte budget WITHOUT leaving an element open.
+ *
+ * Cutting at the last `>` inside the budget - the obvious approach - keeps a
+ * half-written *tag* off the wire but happily ships a half-closed *element*:
+ * a 40-byte budget over `<h1>Title</h1><p>xxx…` produced literally
+ * `<h1>Title</h1><p>`, i.e. the unbalanced payload this whole contract exists
+ * to prevent, and the adapter keeps no defensive second pass to catch it.
+ *
+ * So the budget is spent with the closers reserved: at every token the walk
+ * checks that what it is about to emit still leaves room to close everything
+ * currently open. When it does not, the walk stops and the stack is closed.
+ */
+function capHtmlBytes(html: string, maxBytes: number, format: DescriptionFormat): string {
+  if (Buffer.byteLength(html, 'utf8') <= maxBytes) return html;
+
+  const stack: string[] = [];
+  const closersFor = (open: readonly string[]): string =>
+    [...open]
+      .reverse()
+      .filter((tag) => !VOID_TAGS.has(tag))
+      .map((tag) => `</${tag}>`)
+      .join('');
+
+  let out = '';
+  let used = 0;
+  /** Can `token` be added while still leaving room for `closers`? */
+  const fits = (token: string, closers: string): boolean =>
+    used + Buffer.byteLength(token, 'utf8') + Buffer.byteLength(closers, 'utf8') <= maxBytes;
+
+  const emit = (token: string): void => {
+    out += token;
+    used += Buffer.byteLength(token, 'utf8');
+  };
+
+  let cursor = 0;
+  let match: RegExpExecArray | null;
+  let stopped = false;
+  TAG_PATTERN.lastIndex = 0;
+  while (!stopped && (match = TAG_PATTERN.exec(html)) !== null) {
+    const text = html.slice(cursor, match.index);
+    cursor = match.index + match[0].length;
+
+    if (text !== '') {
+      if (fits(text, closersFor(stack))) {
+        emit(text);
+      } else {
+        // Partial text is fine - it is the only place a cut can land without
+        // breaking structure. Budget for the closers first.
+        const room = maxBytes - used - Buffer.byteLength(closersFor(stack), 'utf8');
+        emit(capTextBytes(text, Math.max(0, room)));
+        stopped = true;
+        break;
+      }
+    }
+
+    const isClosing = match[1] === '/';
+    const tag = match[2].toLowerCase();
+    const selfContained = match[4] === '/' || VOID_TAGS.has(tag);
+    const nextStack = isClosing
+      ? stack.slice(0, Math.max(0, stack.lastIndexOf(tag)))
+      : selfContained
+        ? stack
+        : [...stack, tag];
+
+    if (!fits(match[0], closersFor(nextStack))) {
+      stopped = true;
+      break;
+    }
+    emit(match[0]);
+    if (isClosing) {
+      const openIndex = stack.lastIndexOf(tag);
+      if (openIndex !== -1) stack.length = openIndex;
+    } else if (!selfContained) {
+      stack.push(tag);
+    }
+  }
+
+  if (!stopped) {
+    const tail = html.slice(cursor);
+    const room = maxBytes - used - Buffer.byteLength(closersFor(stack), 'utf8');
+    emit(capTextBytes(tail, Math.max(0, room)));
+  }
+
+  // Closing the stack can leave an element with nothing in it (the cut landed
+  // right after its open tag), which the destination renders as a blank line.
+  return collapseEmpty(out + closersFor(stack), format);
 }
 
 function stripTags(html: string): string {
@@ -151,9 +288,12 @@ function stripTags(html: string): string {
 export function applyDescriptionFormat(html: string, format: DescriptionFormat): string {
   if (html.trim() === '') return '';
   if (format.shape === 'plain-text') {
-    const text = stripTags(html);
-    return format.maxBytes != null ? capBytes(text, format.maxBytes) : text;
+    const text = stripTags(html.replace(MARKUP_NOISE_PATTERN, ''));
+    return format.maxBytes != null ? capTextBytes(text, format.maxBytes) : text;
   }
+
+  // Dropped before the walk, not during it: see `MARKUP_NOISE_PATTERN`.
+  const source = html.replace(MARKUP_NOISE_PATTERN, '');
 
   const out: string[] = [];
   /**
@@ -168,8 +308,8 @@ export function applyDescriptionFormat(html: string, format: DescriptionFormat):
   let cursor = 0;
   let match: RegExpExecArray | null;
   TAG_PATTERN.lastIndex = 0;
-  while ((match = TAG_PATTERN.exec(html)) !== null) {
-    out.push(html.slice(cursor, match.index));
+  while ((match = TAG_PATTERN.exec(source)) !== null) {
+    out.push(source.slice(cursor, match.index));
     cursor = match.index + match[0].length;
 
     const isClosing = match[1] === '/';
@@ -220,7 +360,7 @@ export function applyDescriptionFormat(html: string, format: DescriptionFormat):
     out.push(`<${emitAs}${attributes}>`);
     stack.push(emitAs);
   }
-  out.push(html.slice(cursor));
+  out.push(source.slice(cursor));
 
   // Unwind anything the input left open.
   while (stack.length > 0) {
@@ -234,7 +374,7 @@ export function applyDescriptionFormat(html: string, format: DescriptionFormat):
     result = wrapRootInlineRuns(result, format);
   }
 
-  return format.maxBytes != null ? capBytes(result, format.maxBytes) : result;
+  return format.maxBytes != null ? capHtmlBytes(result, format.maxBytes, format) : result;
 }
 
 /**

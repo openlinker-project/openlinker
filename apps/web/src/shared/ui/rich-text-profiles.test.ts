@@ -37,6 +37,22 @@ describe('deriveRichTextProfile', () => {
     expect(profile.marks).toEqual(['bold']);
   });
 
+  it('should offer italic when the destination rewrites it to bold, and flag the loss', () => {
+    // ADR-046 subordinate decision 2: rename, not unwrap. Hiding the control on
+    // a destination that rewrites `i` to `b` loses the operator's emphasis and
+    // leaves them no way to express it - Allegro is exactly this case.
+    const profile = deriveRichTextProfile(
+      format({ allowedTags: ['p', 'b'], rewrites: [{ from: 'em', action: 'rename', to: 'b' }] }),
+    );
+    expect(profile.marks).toContain('italic');
+    expect(profile.italicPublishesAsBold).toBe(true);
+  });
+
+  it('should not flag a loss when the destination has its own italic tag', () => {
+    const profile = deriveRichTextProfile(format({ allowedTags: ['p', 'b', 'em'] }));
+    expect(profile.italicPublishesAsBold).toBe(false);
+  });
+
   it('should enable every mark on a permissive destination', () => {
     const profile = deriveRichTextProfile(
       format({ allowedTags: ['p', 'strong', 'em', 'u', 's', 'a'] }),

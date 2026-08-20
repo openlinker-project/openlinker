@@ -70,7 +70,6 @@ import { resolveVariantGroupingModel } from '../../../connections';
 import { Alert, Button, ConfirmDialog, FormField, Input, RichTextEditor } from '../../../../shared/ui';
 import type { DescriptionFormat } from '../../../../shared/ui';
 import { useDescriptionFormatQuery } from '../../hooks/use-description-format-query';
-import { OFFER_DESCRIPTION_FALLBACK_FORMAT } from '../offer-description-editor.constants';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../../../../shared/ui/tooltip';
 import { useToast } from '../../../../shared/ui/toast-provider';
 import { ReadOnlyLock } from '../../../../shared/ui/read-only-lock';
@@ -308,7 +307,9 @@ export function BulkEditModal({
   // row with no variants. Narrow while in flight; see
   // `offer-description-editor.constants.ts` for why erring narrow is safe.
   const descriptionFormatQuery = useDescriptionFormatQuery(connection.id);
-  const descriptionFormat = descriptionFormatQuery.data ?? OFFER_DESCRIPTION_FALLBACK_FORMAT;
+  // `null` while in flight; the editor renders a disabled placeholder rather
+  // than authoring against a frontend-held guess (ADR-046).
+  const descriptionFormat = descriptionFormatQuery.data ?? null;
 
   if (row.variants.length === 0) return null;
 
@@ -495,7 +496,9 @@ function BulkEditModalForm({
   // `offer-description-editor.constants.ts` for why erring narrow is the safe
   // direction.
   const descriptionFormatQuery = useDescriptionFormatQuery(connectionId);
-  const descriptionFormat = descriptionFormatQuery.data ?? OFFER_DESCRIPTION_FALLBACK_FORMAT;
+  // `null` while in flight; the editor renders a disabled placeholder rather
+  // than authoring against a frontend-held guess (ADR-046).
+  const descriptionFormat = descriptionFormatQuery.data ?? null;
   const { showToast } = useToast();
   const platform = usePlatform(connection.platformType);
   const platforms = usePlatforms();
@@ -1300,7 +1303,8 @@ interface BaseScopeFormProps {
    * the modal and threaded down, rather than each scope form running its own
    * hook - one query, and `VariantScopeForm` has no `connectionId` of its own.
    */
-  descriptionFormat: DescriptionFormat;
+  /** `null` until the destination's contract arrives (ADR-046). */
+  descriptionFormat: DescriptionFormat | null;
 
   mode: 'base' | 'simple';
   active: boolean;
@@ -1798,7 +1802,8 @@ function BaseDescriptionField({
 }: {
   productId: string;
   channel: string;
-  descriptionFormat: DescriptionFormat;
+  /** `null` until the destination's contract arrives (ADR-046). */
+  descriptionFormat: DescriptionFormat | null;
   readOnly: boolean;
 }): ReactElement {
   const form = useFormContext<BulkEditModalValues>();
@@ -1891,7 +1896,8 @@ interface VariantScopeFormProps {
    * the modal and threaded down, rather than each scope form running its own
    * hook - one query, and `VariantScopeForm` has no `connectionId` of its own.
    */
-  descriptionFormat: DescriptionFormat;
+  /** `null` until the destination's contract arrives (ADR-046). */
+  descriptionFormat: DescriptionFormat | null;
 
   variant: BulkVariantRow;
   index: number;
@@ -3012,7 +3018,8 @@ function shopInheritedPrice(pricingPolicy: PricingPolicy, masterPrice: number | 
 
 interface BulkShopEditModalFormProps {
   /** ADR-046: resolved once by the modal, threaded to every description field. */
-  descriptionFormat: DescriptionFormat;
+  /** `null` until the destination's contract arrives (ADR-046). */
+  descriptionFormat: DescriptionFormat | null;
   row: BulkWizardRow;
   connection: Connection;
   canBrowseShopCategories: boolean;
@@ -3482,7 +3489,8 @@ interface ShopBaseScopeFormProps {
    * the modal and threaded down, rather than each scope form running its own
    * hook - one query, and `VariantScopeForm` has no `connectionId` of its own.
    */
-  descriptionFormat: DescriptionFormat;
+  /** `null` until the destination's contract arrives (ADR-046). */
+  descriptionFormat: DescriptionFormat | null;
 
   mode: 'base' | 'simple';
   active: boolean;
@@ -3849,7 +3857,8 @@ interface ShopVariantScopeFormProps {
    * the modal and threaded down, rather than each scope form running its own
    * hook - one query, and `VariantScopeForm` has no `connectionId` of its own.
    */
-  descriptionFormat: DescriptionFormat;
+  /** `null` until the destination's contract arrives (ADR-046). */
+  descriptionFormat: DescriptionFormat | null;
 
   variant: BulkVariantRow;
   index: number;

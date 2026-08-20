@@ -159,6 +159,21 @@ function variantDisplayLabel(variant: BulkVariantRow): string {
  * winning. Returns `undefined` when the operator supplied no content override,
  * so the item omits `content` and the builder keeps its master/batch fallback.
  */
+/**
+ * What the disclosure should say when a line carries no markup.
+ *
+ * An absent description and a DELIBERATELY CLEARED one are different facts, and
+ * both arrive here as falsy: `null`/`undefined` means "no override, the master
+ * copy publishes", while `''` means the operator emptied the field on purpose.
+ * Saying "from the master product" about the second is wrong in the direction
+ * that matters - it tells the operator their old copy will go out.
+ */
+function describeEmptyDescription(description: string | null | undefined): string {
+  return description === ''
+    ? 'Cleared - this line publishes no description.'
+    : 'From the master product — no override for this line.';
+}
+
 function effectiveShopContent(
   row: BulkWizardRow,
   variant: BulkVariantRow
@@ -819,7 +834,7 @@ function ShopProductRow({
                 <summary>Description</summary>
                 <RichTextView
                   html={soleLine.description}
-                  emptyLabel="From the master product — no override for this line."
+                  emptyLabel={describeEmptyDescription(soleLine.description)}
                 />
               </details>
             ) : null}
@@ -963,14 +978,16 @@ function ShopVariantRow({
           {line.variantSku ? <small>{line.variantSku}</small> : null}
           {/* #2200: the Review step resolved which description each row would
               publish and then never showed it - an operator submitted copy to a
-              live marketplace without ever seeing it rendered. Collapsed by
+              live shop without ever seeing it rendered. (The MARKETPLACE Review
+              step deliberately carries no description: an offer's copy is
+              authored and reviewed in the row editor.) Collapsed by
               default so the dense grid keeps its shape, matching the
               listing-detail "Description preview" disclosure. */}
           <details className="bulk-review__desc">
             <summary>Description</summary>
             <RichTextView
               html={line.description}
-              emptyLabel="From the master product — no override for this line."
+              emptyLabel={describeEmptyDescription(line.description)}
             />
           </details>
         </div>

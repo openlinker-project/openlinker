@@ -54,12 +54,15 @@ describe('EditOfferDrawer', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
-  it('should render title, price, and description fields when open', () => {
+  it('should render title, price, and description fields when open', async () => {
     renderDrawer(true);
     expect(screen.getByRole('dialog', { name: 'Edit offer' })).toBeInTheDocument();
     expect(screen.getByLabelText(/title/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/price/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/description/i)).toBeInTheDocument();
+    // Awaited, not synchronous: since ADR-046 the description editor is composed
+    // from the destination's fetched contract, so it mounts after that read
+    // resolves rather than on the first tick.
+    expect(await screen.findByLabelText(/description/i)).toBeInTheDocument();
   });
 
   it('should disable save button when form is pristine', () => {

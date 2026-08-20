@@ -22,6 +22,28 @@ import type { Connection } from '../../../connections';
 import type { Product, ProductVariant } from '../../../products';
 
 vi.mock('../../../content', () => ({ SuggestionDialog: () => null }));
+vi.mock('../../hooks/use-description-format-query', () => ({
+  useDescriptionFormatQuery: () => ({
+    // The frontend holds no format of its own since ADR-046, so a test that
+    // needs an editor has to supply the destination's contract - a null format
+    // deliberately renders a disabled placeholder instead.
+    data: {
+      shape: 'html',
+      allowedTags: ['h1', 'h2', 'h3', 'p', 'b', 'strong', 'em', 'ul', 'ol', 'li', 'a', 'br'],
+      allowedAttributes: { a: ['href'] },
+      contentModel: null,
+      rewrites: [],
+      requiresBlockOpener: false,
+      selfClosingVoids: false,
+      maxBytes: null,
+      declared: true,
+      resolvedVia: 'ProductPublisher',
+    },
+    isLoading: false,
+    error: null,
+  }),
+}));
+
 vi.mock('../../hooks/use-shop-attributes-query', () => ({
   useShopAttributesQuery: () => ({
     data: [{ id: 'pa_color', name: 'Color', slug: 'color' }],

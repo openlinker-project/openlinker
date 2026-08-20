@@ -441,12 +441,14 @@ export type {
   DescriptionRewrite,
   DescriptionRewriteAction,
   DescriptionContentModel,
+  DescriptionFormatSource,
 } from './domain/types/description-format.types';
 export {
   CONSERVATIVE_DESCRIPTION_FORMAT,
   DESCRIPTION_BLOCK_TAGS,
   DescriptionShapeValues,
   DescriptionRewriteActionValues,
+  DescriptionFormatSourceValues,
 } from './domain/types/description-format.types';
 export {
   RequiredToSellSeverityValues,

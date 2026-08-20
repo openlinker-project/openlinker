@@ -122,4 +122,45 @@ describe('DescriptionFormatReadService', () => {
     integrationsService.getCapabilityAdapter.mockRejectedValue(new Error('connection not found'));
     await expect(service.getForConnection('nope')).resolves.toBeDefined();
   });
+
+  it('should prefer a declared shop format over an OfferManager that declares nothing', async () => {
+    // A WooCommerce connection with #1498 stock write-back enabled resolves BOTH
+    // capabilities: `OfferManager` to a base-port-only adapter that declares
+    // nothing, and `ProductPublisher` to the one that does. Accepting the first
+    // answer handed the editor the conservative subset and told the operator
+    // their shop had declared no format.
+    const shopFormat: DescriptionFormat = {
+      ...CONSERVATIVE_DESCRIPTION_FORMAT,
+      allowedTags: ['p', 'a', 'table', 'h3'],
+      contentModel: null,
+      maxBytes: null,
+    };
+    integrationsService.getCapabilityAdapter.mockImplementation((_id: string, capability: string) =>
+      capability === 'OfferManager'
+        ? Promise.resolve({ updateOfferQuantity: jest.fn() } as never)
+        : Promise.resolve({
+            getDescriptionFormat: () => shopFormat,
+            publishProduct: jest.fn(),
+          } as never),
+    );
+
+    const view = await service.getForConnection('conn-1');
+
+    expect(view.resolvedVia).toBe('ProductPublisher');
+    expect(view.declared).toBe(true);
+    expect(view.format.allowedTags).toContain('table');
+  });
+
+  it('should report an unresolvable connection as unresolved rather than undeclared', async () => {
+    // A disabled connection and an adapter that declares nothing are different
+    // facts; collapsing them makes the UI state a falsehood about the operator's
+    // own configuration.
+    integrationsService.getCapabilityAdapter.mockRejectedValue(new Error('connection disabled'));
+
+    const view = await service.getForConnection('conn-1');
+
+    expect(view.resolvedVia).toBeNull();
+    expect(view.declared).toBe(false);
+    expect(view.format).toBe(CONSERVATIVE_DESCRIPTION_FORMAT);
+  });
 });

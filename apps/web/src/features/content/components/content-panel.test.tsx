@@ -113,4 +113,17 @@ describe('ContentPanel', () => {
     await user.click(screen.getByRole('button', { name: 'Publish' }));
     expect(onPublish).toHaveBeenCalledTimes(1);
   });
+
+  it('should block Save when the draft exceeds the destination byte cap', async () => {
+    // The byte counter used to be decorative: nothing gated on it, so an operator
+    // could save and publish a description the platform then rejected with a 422.
+    renderPanel({
+      format: { ...MASTER_DESCRIPTION_FORMAT, maxBytes: 10 },
+      baseValue: 'x'.repeat(50),
+      draftValue: null,
+    });
+
+    expect(await screen.findByText(/longer than the destination accepts/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Save draft' })).toBeDisabled();
+  });
 });

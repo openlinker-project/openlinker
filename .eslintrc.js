@@ -670,17 +670,25 @@ module.exports = {
             message:
               'dangerouslySetInnerHTML is restricted. Render stored HTML through the RichTextView primitive (shared/ui/rich-text-view.tsx), which sanitizes with DOMPurify — see ADR-046.',
           },
+          {
+            // The same hole, reached without JSX. A selector that only matches
+            // the JSX attribute leaves `el.innerHTML = untrusted` and
+            // `insertAdjacentHTML` completely unrestricted, which is the more
+            // likely shape in an imperative helper or a test utility.
+            selector:
+              "AssignmentExpression[left.type='MemberExpression'][left.property.name=/^(innerHTML|outerHTML)$/]",
+            message:
+              'Assigning innerHTML/outerHTML is restricted. Render stored HTML through the RichTextView primitive (shared/ui/rich-text-view.tsx) — see ADR-046.',
+          },
+          {
+            selector: "CallExpression[callee.property.name='insertAdjacentHTML']",
+            message:
+              'insertAdjacentHTML is restricted. Render stored HTML through the RichTextView primitive (shared/ui/rich-text-view.tsx) — see ADR-046.',
+          },
         ],
       },
     },
-    {
-      // The single exception to the rule above. Scoped to one file so the
-      // restriction stays checkable rather than becoming a convention.
-      files: ['apps/web/src/shared/ui/rich-text-view.tsx'],
-      rules: {
-        'no-restricted-syntax': 'off',
-      },
-    },
+
     {
       // Port, capability, and port-local type files form the public contract
       // surface plugin adapters implement. They must import cross-context

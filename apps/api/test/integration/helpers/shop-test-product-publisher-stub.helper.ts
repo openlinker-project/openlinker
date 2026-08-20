@@ -26,6 +26,8 @@ import {
   type ProvisionCategoryResult,
   type PublishProductCommand,
   type PublishProductResult,
+  CONSERVATIVE_DESCRIPTION_FORMAT,
+  type DescriptionFormat,
   type ShopProductManagerPort,
 } from '@openlinker/core/listings';
 
@@ -60,6 +62,12 @@ export function installShopTestPublisherStub(
   let lastCmd: PublishProductCommand | null = null;
 
   const stub: ShopProductManagerPort & CategoryProvisioner = {
+    // Required on the base port since ADR-046 - a shop always declares. The
+    // conservative subset is the honest stub value: this fake publishes nowhere,
+    // so it has no grammar of its own to state.
+    getDescriptionFormat(): DescriptionFormat {
+      return CONSERVATIVE_DESCRIPTION_FORMAT;
+    },
     publishProduct(cmd: PublishProductCommand): Promise<PublishProductResult> {
       lastCmd = cmd;
       const script = scripts.get(cmd.internalVariantId);

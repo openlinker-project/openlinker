@@ -38,6 +38,7 @@ import {
   ChannelAdapterLacksFieldUpdaterException,
   ContentConflictException,
   ContentFieldNotFoundException,
+  EmptyAfterDescriptionFormatException,
   NoLinkedOffersException,
   type ContentChannelState,
   type ContentMasterState,
@@ -190,6 +191,11 @@ export class ContentController {
         throw new NotFoundException(error.message);
       }
       if (error instanceof ChannelAdapterLacksFieldUpdaterException) {
+        throw new UnprocessableEntityException(error.message);
+      }
+      if (error instanceof EmptyAfterDescriptionFormatException) {
+        // 422, same class as NoLinkedOffers: the request is well-formed and the
+        // precondition (a description the destination can represent) is not met.
         throw new UnprocessableEntityException(error.message);
       }
       if (error instanceof NoLinkedOffersException) {

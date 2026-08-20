@@ -36,13 +36,26 @@ import {
 import type { DescriptionFormat } from './rich-text.types';
 
 export interface RichTextEditorProps {
-  /** The destination's declared contract. Everything is derived from it. */
-  format: DescriptionFormat;
+  /**
+   * The destination's declared contract. Everything is derived from it.
+   *
+   * `null` means it has not arrived yet, and the editor then renders a disabled
+   * placeholder rather than authoring against a guess. The frontend deliberately
+   * holds NO default of its own (ADR-046 subordinate decision 1): two call sites
+   * used to keep a local "conservative" literal, which was Allegro's grammar
+   * transcribed into `apps/web` - the alternative that ADR rejected by name -
+   * and it announced "this destination has not declared its format" for the
+   * duration of every fetch, about destinations that had.
+   */
+  format: DescriptionFormat | null;
   /** Current HTML value. */
   value: string;
   onChange: (html: string) => void;
   /** Read-only with a reason (viewer role, inactive connection, narrow viewport). */
   disabled?: boolean;
+  /** Marks the control invalid and points at its error text, like `Input`. */
+  'aria-invalid'?: boolean;
+  'aria-describedby'?: string;
   placeholder?: string;
   /** Extra actions rendered at the end of the toolbar (e.g. Suggest with AI). */
   toolbarSlot?: ReactNode;
@@ -170,6 +183,26 @@ function textOf(html: string): string {
     .trim();
 }
 
+/**
+ * A shape for the pre-arrival render only.
+ *
+ * Never used to author anything: when `format` is null the component returns the
+ * disabled placeholder before any editor is mounted. It exists so the hooks below
+ * keep a stable shape rather than being called conditionally.
+ */
+const PLACEHOLDER_FORMAT: DescriptionFormat = {
+  shape: 'html',
+  allowedTags: [],
+  allowedAttributes: {},
+  contentModel: null,
+  rewrites: [],
+  requiresBlockOpener: false,
+  selfClosingVoids: false,
+  maxBytes: null,
+  declared: false,
+  resolvedVia: null,
+};
+
 export function RichTextEditor({
   format,
   value,
@@ -178,6 +211,8 @@ export function RichTextEditor({
   placeholder = 'Describe the product…',
   toolbarSlot,
   'aria-label': ariaLabel,
+  'aria-invalid': ariaInvalid,
+  'aria-describedby': ariaDescribedBy,
   id,
   className = '',
 }: RichTextEditorProps): ReactElement {
@@ -189,7 +224,12 @@ export function RichTextEditor({
   // re-fired from the fresh mount. Nothing in the prop types would hint at that
   // requirement, so the primitive absorbs it.
   const { profile, formatSignature } = useMemo(
-    () => ({ profile: deriveRichTextProfile(format), formatSignature: describeFormat(format) }),
+    () => ({
+      // A null format is only ever the pre-arrival state; the placeholder below
+      // renders instead of an editor, so the profile is never read in that case.
+      profile: deriveRichTextProfile(format ?? PLACEHOLDER_FORMAT),
+      formatSignature: describeFormat(format ?? PLACEHOLDER_FORMAT),
+    }),
     [format],
   );
   const [sourceMode, setSourceMode] = useState(false);
@@ -264,6 +304,10 @@ export function RichTextEditor({
           ...(id === undefined ? {} : { id }),
           role: 'textbox',
           'aria-multiline': 'true',
+          // Mirrors what `Input`/`Textarea` carry, so a migrated field keeps its
+          // invalid state and its error association instead of losing both.
+          ...(ariaInvalid === true ? { 'aria-invalid': 'true' } : {}),
+          ...(ariaDescribedBy === undefined ? {} : { 'aria-describedby': ariaDescribedBy }),
         },
       },
     },
@@ -288,6 +332,22 @@ export function RichTextEditor({
     editor?.setEditable(!disabled);
   }, [editor, disabled]);
 
+  useEffect(() => {
+    // The editor is destroyed and rebuilt when the contract changes, and the new
+    // instance restates the value under the NEW schema. Without resetting the
+    // allowance, that restatement is reported as an operator edit - e.g. a value
+    // seeded as `<strong>` under a format that rewrites bold to `<b>`, then
+    // re-serialised as `<strong>` once a permissive format arrives, marks the
+    // form dirty and records an override nobody asked for.
+    baselineAccepted.current = false;
+  }, [formatSignature]);
+
+  // Deliberately NOT committed on blur. Clicking the "Rich text" toggle in a real
+  // browser fires mousedown -> textarea blur -> click: a blur-driven exit flips
+  // the mode to false, and the click handler then reads `sourceMode === false`
+  // and re-enters source mode, so the toggle appears not to work. `fireEvent.click`
+  // dispatches no blur, so the unit suite could not see it. The toggle is the only
+  // commit point; the draft survives losing focus.
   const leaveSourceMode = useCallback(() => {
     // Round-trip through the schema so hand-edited markup is filtered exactly as
     // typed markup is - source mode is an escape hatch, not a bypass.
@@ -309,6 +369,16 @@ export function RichTextEditor({
   const overCap = profile.maxBytes !== null && bytes > profile.maxBytes;
   const nearCap = profile.maxBytes !== null && !overCap && bytes > profile.maxBytes * 0.8;
 
+  if (format === null) {
+    return (
+      <div className={['rich-text', 'rich-text--loading', className].filter(Boolean).join(' ')}>
+        <div className="rich-text__surface" aria-busy="true">
+          <p className="rich-text__loading-note">Loading the destination's formatting rules…</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className={['rich-text', className].filter(Boolean).join(' ')}>
       <div className="rich-text__toolbar" role="toolbar" aria-label="Formatting">
@@ -320,7 +390,7 @@ export function RichTextEditor({
               type="button"
               className={['rich-text__tool', active ? 'is-active' : ''].filter(Boolean).join(' ')}
               title={
-                button.id === 'italic' && profile.boldTag === 'b'
+                button.id === 'italic' && profile.italicPublishesAsBold
                   ? 'Italic — this destination has no italic tag, so it publishes as bold'
                   : button.title
               }
@@ -385,7 +455,6 @@ export function RichTextEditor({
           value={sourceDraft}
           readOnly={disabled}
           onChange={(event) => setSourceDraft(event.target.value)}
-          onBlur={leaveSourceMode}
         />
       ) : (
         <EditorContent editor={editor} className="rich-text__surface" />
@@ -408,7 +477,9 @@ export function RichTextEditor({
               .join(' ')}
           >
             {bytes.toLocaleString()} / {profile.maxBytes.toLocaleString()} bytes
-            {overCap ? ' — over the destination limit' : ''}
+            {/* Colour is never the only signal: the near state said "watch out"
+                in amber and nothing else. */}
+            {overCap ? ' — over the destination limit' : nearCap ? ' — near the limit' : ''}
           </span>
         )}
       </div>

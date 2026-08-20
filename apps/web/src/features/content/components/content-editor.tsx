@@ -249,7 +249,12 @@ export function ContentEditor({ productId }: ContentEditorProps): ReactElement {
               <SuggestionDialog
                 productId={productId}
                 channel={null}
-                disabled={busy || !isDesktop}
+                // `writeLockedReason` belongs here too: applying a suggestion
+                // calls `handleSave`. Since #2200 this button sits INSIDE the
+                // editor toolbar, where every sibling control is disabled for a
+                // viewer - leaving this one live was the odd one out. The channel
+                // branch below already gated it.
+                disabled={busy || !isDesktop || writeLockedReason !== null}
                 onApply={(text) => {
                   void handleSave({ kind: 'master' }, text);
                 }}

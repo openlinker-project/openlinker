@@ -43,6 +43,13 @@ export interface RichTextProfile {
   marks: RichTextMark[];
   /** The tag bold serialises to. Allegro rejects `<strong>` and accepts `<b>`. */
   boldTag: 'b' | 'strong';
+  /**
+   * True when italic is offered only because the destination REWRITES it to
+   * bold, not because it has an italic tag. ADR-046 subordinate decision 2: the
+   * mark stays authorable (the operator's emphasis survives as bold) and the
+   * lossy conversion is stated on the control.
+   */
+  italicPublishesAsBold: boolean;
   hardBreak: boolean;
   headingLevels: number[];
   /** False when the format says a heading accepts no children at all. */
@@ -64,10 +71,27 @@ export function deriveRichTextProfile(format: DescriptionFormat): RichTextProfil
     (level) => (format.contentModel?.[`h${level}`] ?? null)?.length === 0,
   );
 
+  // A destination that rewrites `i`/`em` to bold still ACCEPTS the operator's
+  // emphasis - it just publishes it as bold. Hiding the control there loses the
+  // intent entirely and leaves the operator no way to express it, which is why
+  // ADR-046 chose rename-with-a-note over unwrap. Allegro is exactly this case:
+  // its tag list has no `i`, and its rewrites turn `i`/`em` into `b`.
+  const italicRewritesToBold = (format.rewrites ?? []).some(
+    (rule) =>
+      rule.action === 'rename' &&
+      rule.to !== undefined &&
+      ['i', 'em'].includes(rule.from.toLowerCase()) &&
+      MARK_TAGS.bold.includes(rule.to.toLowerCase()),
+  );
+
+  const marks = (Object.keys(MARK_TAGS) as RichTextMark[]).filter((mark) =>
+    MARK_TAGS[mark].some(has),
+  );
+  if (!marks.includes('italic') && italicRewritesToBold) marks.push('italic');
+
   return {
-    marks: (Object.keys(MARK_TAGS) as RichTextMark[]).filter((mark) =>
-      MARK_TAGS[mark].some(has),
-    ),
+    marks,
+    italicPublishesAsBold: !MARK_TAGS.italic.some(has) && italicRewritesToBold,
     boldTag: has('strong') ? 'strong' : 'b',
     hardBreak: has('br'),
     headingLevels,
@@ -105,6 +129,9 @@ export function buildRichTextExtensions(
       profile.boldTag === 'b' ? Bold.extend({ renderHTML: () => ['b', 0] }) : Bold,
     );
   }
+  // Emits `<em>` even where the destination rewrites it to bold: the stored
+  // draft keeps the operator's intent, and the OUTBOUND applier is what narrows
+  // it (ADR-046 - the format is a publish-time contract, not a storage one).
   if (profile.marks.includes('italic')) extensions.push(Italic);
   if (profile.marks.includes('underline')) extensions.push(Underline);
   if (profile.marks.includes('strike')) extensions.push(Strike);

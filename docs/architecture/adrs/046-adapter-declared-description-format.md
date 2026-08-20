@@ -74,7 +74,7 @@ Three subordinate decisions are settled here:
 - `DescriptionFormat` crosses to the frontend as an HTTP response shape, so changing it is a coordinated change - mitigated by it being a plain value type with no behaviour.
 - The declaration is only as good as its evidence. Allegro's is reconstructed from rejection messages and can drift without notice, so each declaration carries its evidence in a comment plus a spec pinning its exact tag set - widening it is then a deliberate test change.
 - `contentModel` expresses which children are allowed, not ordering or cardinality. Sufficient for both known grammars; a destination needing more extends the type.
-- Reading the format adds no new dispatch: all three call sites already resolve the adapter. A future non-adapter caller would need one.
+- Reading the format needs no new *dispatch mechanism*, but it is not free everywhere: of the four write paths, three already hold the adapter, while `ProductPublishBuilderService` now resolves a `ProductPublisher` it previously did not - so a shop build can fail on adapter resolution where it used to succeed. A future non-adapter caller would need a dispatch of its own.
 
 **Migration path:**
 

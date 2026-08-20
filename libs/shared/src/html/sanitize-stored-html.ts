@@ -7,6 +7,10 @@
  * `ProductMasterPort` - and neither was sanitized before, which was harmless
  * only for as long as no frontend surface rendered a description as HTML.
  *
+ * The exact version pin on `sanitize-html` is explained in `docs/lessons.md`
+ * ("An exact dependency pin whose reason lives only in a source comment…") as
+ * well as below - a bump PR reads the manifest, not this file.
+ *
  * ## This is the XSS boundary, unlike `applyDescriptionFormat`
  *
  * There are two passes over description HTML and conflating them is how the
@@ -120,14 +124,4 @@ export function sanitizeStoredHtml(html: string | null | undefined): string | nu
   if (html === null || html === undefined) return null;
   if (html === '') return '';
   return sanitizeHtml(html, OPTIONS);
-}
-
-/**
- * Whether sanitizing would change the value. Callers use this to log that a
- * stored description was altered, so an operator asking "why did my formatting
- * change" has an answer in the logs rather than a silent rewrite.
- */
-export function isStoredHtmlClean(html: string | null | undefined): boolean {
-  if (html === null || html === undefined || html === '') return true;
-  return sanitizeStoredHtml(html) === html;
 }

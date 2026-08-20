@@ -14,7 +14,11 @@
  */
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
-import type { DescriptionFormatView } from '@openlinker/core/listings';
+import {
+  DescriptionFormatSourceValues,
+  type DescriptionFormatSource,
+  type DescriptionFormatView,
+} from '@openlinker/core/listings';
 
 export class DescriptionRewriteResponseDto {
   @ApiProperty({ description: 'Tag the rewrite applies to', example: 'strong' })
@@ -72,10 +76,10 @@ export class DescriptionFormatResponseDto {
 
   @ApiPropertyOptional({
     description: 'Which capability answered. Null when no publishing capability resolved.',
-    enum: ['OfferManager', 'ProductPublisher'],
+    enum: DescriptionFormatSourceValues,
     nullable: true,
   })
-  resolvedVia!: 'OfferManager' | 'ProductPublisher' | null;
+  resolvedVia!: DescriptionFormatSource | null;
 
   static fromDomain(view: DescriptionFormatView): DescriptionFormatResponseDto {
     const { format } = view;

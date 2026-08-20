@@ -7,4 +7,4 @@
  *
  * @module libs/shared/src/html
  */
-export { sanitizeStoredHtml, isStoredHtmlClean } from './sanitize-stored-html';
+export { sanitizeStoredHtml } from './sanitize-stored-html';

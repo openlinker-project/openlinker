@@ -91,6 +91,16 @@ export const DESCRIPTION_BLOCK_TAGS = ['p', 'h1', 'h2', 'h3', 'ul', 'ol'] as con
  * without `OfferFieldUpdater` - `getDescriptionFormat` is required on
  * `ShopProductManagerPort`, so a shop always declares one.
  */
+/**
+ * Which capability answered the format read.
+ *
+ * `as const` + derived union, not an inline string union: the value crosses to
+ * the frontend as an HTTP response field, so it needs a runtime array for
+ * validation and Swagger (`engineering-standards.md § Union Types`).
+ */
+export const DescriptionFormatSourceValues = ['OfferManager', 'ProductPublisher'] as const;
+export type DescriptionFormatSource = (typeof DescriptionFormatSourceValues)[number];
+
 export const CONSERVATIVE_DESCRIPTION_FORMAT: DescriptionFormat = {
   shape: 'html',
   allowedTags: ['h1', 'h2', 'p', 'ul', 'ol', 'li', 'b'],

@@ -8,7 +8,10 @@
  *
  * @module libs/core/src/listings/application/services
  */
-import type { DescriptionFormat } from '../../domain/types/description-format.types';
+import type {
+  DescriptionFormat,
+  DescriptionFormatSource,
+} from '../../domain/types/description-format.types';
 
 export interface DescriptionFormatView {
   /** The format to author against. Never null - see `declared`. */
@@ -20,7 +23,7 @@ export interface DescriptionFormatView {
    */
   declared: boolean;
   /** Which capability answered, for diagnostics. */
-  resolvedVia: 'OfferManager' | 'ProductPublisher' | null;
+  resolvedVia: DescriptionFormatSource | null;
 }
 
 export interface IDescriptionFormatReadService {

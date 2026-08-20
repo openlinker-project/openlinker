@@ -50,6 +50,7 @@ import {
 } from '@openlinker/core/listings';
 import { ChannelAdapterLacksFieldUpdaterException } from '../../domain/exceptions/channel-adapter-lacks-field-updater.exception';
 import { ContentPublishMissingVersionException } from '../../domain/exceptions/content-publish-missing-version.exception';
+import { EmptyAfterDescriptionFormatException } from '../../domain/exceptions/empty-after-description-format.exception';
 import { NoLinkedOffersException } from '../../domain/exceptions/no-linked-offers.exception';
 import { NoProductMasterAdapterException } from '../../domain/exceptions/no-product-master-adapter.exception';
 import type {
@@ -169,14 +170,29 @@ export class IntegrationsContentPublisher implements ContentPublisherPort {
     const payload = toChannelDescriptionPayload(request.value);
     const descriptionFormat = resolveOfferDescriptionFormat(adapter);
 
+    // ADR-046: this path reaches `updateOfferFields` directly, without passing
+    // through either builder, so it applies the destination's declared format
+    // itself. It is the Content tab's publish path - the one an enumeration of
+    // "the two builders" silently misses.
+    const fields = formatOfferFieldsForDestination({ description: payload }, descriptionFormat);
+
+    // Nothing survived the destination's grammar. Sending `{}` would call the
+    // marketplace once per offer, change nothing, and still return a fresh
+    // `baseVersion` - marking the draft published and clearing the conflict flag
+    // on a publish that never happened. Refusing is the honest answer: the
+    // operator authored something the destination cannot represent at all.
+    if (fields.description === undefined) {
+      this.logger.warn(
+        `[content] channel publish refused: nothing survived the destination's description format. ` +
+          `productId=${request.productId} connectionId=${connectionId} fieldKey=${request.fieldKey}`
+      );
+      throw new EmptyAfterDescriptionFormatException(request.productId, connectionId);
+    }
+
     for (const externalOfferId of externalOfferIds) {
       await adapter.updateOfferFields({
         externalOfferId,
-        // ADR-046: this path reaches `updateOfferFields` directly, without
-        // passing through either builder, so it applies the destination's
-        // declared format itself. It is the Content tab's publish path - the
-        // one an enumeration of "the two builders" silently misses.
-        fields: formatOfferFieldsForDestination({ description: payload }, descriptionFormat),
+        fields,
         idempotencyKey: `content:${request.productId}:${connectionId}:${externalOfferId}:${publishedAtIso}`,
       });
     }

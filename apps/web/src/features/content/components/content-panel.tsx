@@ -2,7 +2,7 @@
  * Content Panel
  *
  * Shared editor shell for a single content field (master or per-channel).
- * Renders a textarea bound to a local draft buffer, a conflict banner when the
+ * Renders a rich-text editor bound to a local draft buffer, a conflict banner when the
  * backend reports a divergent external version, a status line with last-edit
  * metadata, and an action cluster: Save / Discard / Publish / Suggest.
  *
@@ -45,7 +45,8 @@ export interface ContentPanelProps {
    * deliberately outside the declared-format rule; a channel tab passes what its
    * connection declared.
    */
-  format: DescriptionFormat;
+  /** `null` while the destination's contract is in flight (ADR-046). */
+  format: DescriptionFormat | null;
   busy: boolean;
   error?: string | null;
   /**
@@ -99,7 +100,15 @@ export function ContentPanel({
   const isDirty = value !== (draftValue ?? baseValue ?? '');
   const readOnly = !isDesktop || Boolean(disabledReason);
   const overLimit = value.length > MAX_VALUE_LENGTH;
-  const canSave = !readOnly && !busy && isDirty && !overLimit;
+  // The DESTINATION's cap, not just the storage cap. The editor's byte counter
+  // was decorative: nothing gated on it, so an operator could save and publish a
+  // 45,000-byte Allegro description and learn about it from a platform 422 - the
+  // exact class of failure ADR-046 exists to remove. Measured in UTF-8 bytes,
+  // like the backend cap, and only when the destination declared one.
+  const destinationCap = format?.maxBytes ?? null;
+  const overDestinationCap =
+    destinationCap !== null && new TextEncoder().encode(value).length > destinationCap;
+  const canSave = !readOnly && !busy && isDirty && !overLimit && !overDestinationCap;
   const canDiscard = !readOnly && !busy && hasDraft;
   const canPublish = !readOnly && !busy && hasDraft && !isDirty && !hasConflict;
 
@@ -124,6 +133,12 @@ export function ContentPanel({
       )}
 
       {disabledReason && <Alert tone="info">{disabledReason}</Alert>}
+      {overDestinationCap && (
+        <Alert tone="warning">
+          This description is longer than the destination accepts ({destinationCap?.toLocaleString()}{' '}
+          bytes). Shorten it before saving — the platform would reject the publish.
+        </Alert>
+      )}
 
       {hasConflict && (
         <Alert tone="warning">

@@ -8,7 +8,7 @@
  *
  * @module libs/shared/src/html/__tests__
  */
-import { isStoredHtmlClean, sanitizeStoredHtml } from '../sanitize-stored-html';
+import { sanitizeStoredHtml } from '../sanitize-stored-html';
 
 describe('sanitizeStoredHtml', () => {
   describe('null handling', () => {
@@ -159,18 +159,3 @@ describe('sanitizeStoredHtml', () => {
   });
 });
 
-describe('isStoredHtmlClean', () => {
-  it('should report clean input as clean', () => {
-    expect(isStoredHtmlClean('<p>a</p>')).toBe(true);
-  });
-
-  it('should report hostile input as not clean, so the caller can log the rewrite', () => {
-    expect(isStoredHtmlClean('<p>a</p><script>alert(1)</script>')).toBe(false);
-  });
-
-  it('should treat null, undefined and empty as clean', () => {
-    expect(isStoredHtmlClean(null)).toBe(true);
-    expect(isStoredHtmlClean(undefined)).toBe(true);
-    expect(isStoredHtmlClean('')).toBe(true);
-  });
-});

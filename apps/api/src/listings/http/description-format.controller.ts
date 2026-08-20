@@ -25,10 +25,15 @@ import {
   type IDescriptionFormatReadService,
 } from '@openlinker/core/listings';
 
+import { Roles } from '../../auth/decorators/roles.decorator';
 import { DescriptionFormatResponseDto } from './dto/description-format-response.dto';
 
 @ApiBearerAuth()
 @ApiTags('listings')
+// Declared explicitly, matching `TaxonomyController`. `RolesGuard` allows any
+// authenticated user when the decorator is absent, so omitting it is fail-open
+// on role even where the effective audience happens to be the same set.
+@Roles('admin', 'operator', 'viewer')
 @Controller('listings/connections/:connectionId')
 export class DescriptionFormatController {
   constructor(

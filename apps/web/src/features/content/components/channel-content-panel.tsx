@@ -13,7 +13,6 @@
  */
 import type { ReactElement } from 'react';
 
-import { CONSERVATIVE_FALLBACK_WHILE_LOADING } from './channel-content-panel.constants';
 import { ContentPanel, type ContentPanelProps } from './content-panel';
 import { useDescriptionFormatQuery } from '../../listings';
 
@@ -27,13 +26,10 @@ export function ChannelContentPanel({
 }: ChannelContentPanelProps): ReactElement {
   const formatQuery = useDescriptionFormatQuery(connectionId);
 
-  // While the contract is in flight the editor renders against the narrow
-  // fallback rather than a permissive guess. Erring narrow is the safe
-  // direction: a control that appears late is a smaller surprise than one that
-  // lets an operator author a tag the destination then discards. The endpoint
-  // never errors, so there is no failure branch to handle - see
-  // DescriptionFormatReadService.
-  const format = formatQuery.data ?? CONSERVATIVE_FALLBACK_WHILE_LOADING;
-
-  return <ContentPanel {...panelProps} format={format} />;
+  // `null` while the contract is in flight: the editor renders a disabled
+  // placeholder rather than authoring against a guess. The frontend holds no
+  // default of its own - a local "conservative" literal here was Allegro's
+  // grammar transcribed into `apps/web`, and it told the operator their
+  // destination had declared no format for the length of every fetch.
+  return <ContentPanel {...panelProps} format={formatQuery.data ?? null} />;
 }

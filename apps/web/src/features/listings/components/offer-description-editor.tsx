@@ -16,7 +16,6 @@ import type { ReactElement } from 'react';
 
 import { RichTextEditor } from '../../../shared/ui';
 import { useDescriptionFormatQuery } from '../hooks/use-description-format-query';
-import { OFFER_DESCRIPTION_FALLBACK_FORMAT } from './offer-description-editor.constants';
 
 interface OfferDescriptionEditorProps {
   /** The offer's connection - selects whose contract the editor is built from. */
@@ -38,9 +37,9 @@ export function OfferDescriptionEditor({
 }: OfferDescriptionEditorProps): ReactElement {
   const formatQuery = useDescriptionFormatQuery(connectionId);
   // Narrow while the contract loads, for the same reason the content tab does it:
-  // a control appearing a moment late beats one that lets an operator author a
-  // tag this marketplace then discards. The endpoint never errors.
-  const format = formatQuery.data ?? OFFER_DESCRIPTION_FALLBACK_FORMAT;
+  // `null` while in flight - the editor renders a disabled placeholder. The
+  // frontend keeps no format of its own (ADR-046 subordinate decision 1).
+  const format = formatQuery.data ?? null;
 
   return (
     <div className="offer-description-editor">
@@ -51,6 +50,11 @@ export function OfferDescriptionEditor({
         onChange={onChange}
         disabled={disabled}
         aria-label="Offer description"
+        // Restored with the migration: the textarea carried both, and without
+        // them a screen-reader user gets no invalid state and never hears the
+        // error text below, which still renders with this id.
+        aria-invalid={error !== undefined}
+        aria-describedby={error !== undefined ? 'description-error' : undefined}
       />
       {error !== undefined ? (
         <p id="description-error" className="field-error" role="alert">

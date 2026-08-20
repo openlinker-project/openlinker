@@ -77,21 +77,25 @@ describe('RichTextEditor', () => {
     expect(screen.getByRole('button', { name: 'Add or edit link' })).toBeInTheDocument();
   });
 
-  it('should warn on the italic control that italic publishes as bold', () => {
-    // ADR-046 subordinate decision 3: the conversion is lossy, so the operator
-    // learns about it where they press the button.
+  it('should warn on the italic control when the destination rewrites italic to bold', () => {
+    // ADR-046 subordinate decision 2. The old condition was `boldTag === 'b'`,
+    // which meant the note only appeared for a destination that HAS an italic
+    // tag - i.e. exactly where the statement is false - and never for Allegro,
+    // whose declaration has no `i` and rewrites it to `b`.
     render(
       <RichTextEditor
-        format={format({ allowedTags: ['p', 'b', 'i'] })}
+        format={format({
+          allowedTags: ['p', 'b'],
+          rewrites: [{ from: 'i', action: 'rename', to: 'b' }],
+        })}
         value="<p>x</p>"
         onChange={vi.fn()}
       />,
     );
 
-    expect(screen.getByRole('button', { name: 'Italic' })).toHaveAttribute(
-      'title',
-      expect.stringContaining('publishes as bold') as unknown as string,
-    );
+    const italic = screen.getByRole('button', { name: 'Italic' });
+    expect(italic).toBeInTheDocument();
+    expect(italic.getAttribute('title')).toContain('publishes as bold');
   });
 
   it('should render the byte counter against the declared cap', () => {
@@ -254,5 +258,29 @@ describe('RichTextEditor', () => {
     );
 
     expect(screen.getByRole('textbox', { name: 'Master description' })).toBeInTheDocument();
+  });
+
+
+  it('should not claim italic publishes as bold when the destination has an italic tag', () => {
+    render(
+      <RichTextEditor
+        format={format({ allowedTags: ['p', 'b', 'i'] })}
+        value="<p>x</p>"
+        onChange={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: 'Italic' }).getAttribute('title')).not.toContain(
+      'publishes as bold',
+    );
+  });
+
+  it('should render a disabled placeholder until the destination format arrives', () => {
+    // The frontend holds no format of its own, so there is nothing to author
+    // against before the read resolves (ADR-046 subordinate decision 1).
+    render(<RichTextEditor format={null} value="<p>x</p>" onChange={vi.fn()} />);
+
+    expect(screen.queryByRole('button', { name: 'Bold' })).not.toBeInTheDocument();
+    expect(screen.getByText(/Loading the destination/)).toBeInTheDocument();
   });
 });

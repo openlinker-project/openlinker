@@ -31,7 +31,7 @@
  * @module apps/web/src/shared/ui
  */
 import DOMPurify from 'dompurify';
-import { useMemo, type ReactElement } from 'react';
+import { forwardRef, useMemo, type ComponentPropsWithoutRef } from 'react';
 
 /**
  * Tags a rendered description may contain. Wider than any single destination's
@@ -61,7 +61,7 @@ const ALLOWED_TAGS = [
  */
 const ALLOWED_ATTR = ['href', 'src', 'alt', 'width', 'height', 'title', 'colspan', 'rowspan'];
 
-export interface RichTextViewProps {
+export interface RichTextViewProps extends Omit<ComponentPropsWithoutRef<'div'>, 'children' | 'dangerouslySetInnerHTML'> {
   /** Stored HTML. `null` / empty renders the empty state. */
   html: string | null | undefined;
   /** Rendered when there is nothing to show. */
@@ -69,31 +69,42 @@ export interface RichTextViewProps {
   className?: string;
 }
 
-export function RichTextView({
-  html,
-  emptyLabel = 'No description',
-  className = '',
-}: RichTextViewProps): ReactElement {
+export const RichTextView = forwardRef<HTMLDivElement, RichTextViewProps>(function RichTextView(
+  { html, emptyLabel = 'No description', className = '', ...rest },
+  ref,
+) {
   const clean = useMemo(() => {
     if (html === null || html === undefined || html.trim() === '') return '';
     return DOMPurify.sanitize(html, {
       ALLOWED_TAGS,
       ALLOWED_ATTR,
       FORBID_ATTR: ['style', 'class'],
+      // Both default to TRUE and are NOT covered by `ALLOWED_ATTR`, so stored
+      // `data-*` / `aria-*` would survive into the admin page. A source shop's
+      // description is untrusted input; neither carries meaning we render.
+      ALLOW_DATA_ATTR: false,
+      ALLOW_ARIA_ATTR: false,
     });
   }, [html]);
 
   if (clean === '') {
-    return <p className={['rich-text-view__empty', className].filter(Boolean).join(' ')}>{emptyLabel}</p>;
+    return (
+      <p className={['rich-text-view__empty', className].filter(Boolean).join(' ')}>{emptyLabel}</p>
+    );
   }
 
   return (
     <div
+      ref={ref}
+      {...rest}
       className={['rich-text-view', className].filter(Boolean).join(' ')}
-      // The single sanctioned use in the app: `dangerouslySetInnerHTML` is
-      // banned app-wide by a `no-restricted-syntax` selector, with this file as
-      // the only override. The value above is DOMPurify output - see the header.
+      // The single sanctioned use in the app. Disabled per LINE rather than by
+      // turning the rule off for this file: the same rule carries three unrelated
+      // selectors (the retired plugin identifiers), and a file-level `off` would
+      // silently exempt this file from those too - and from any selector added
+      // later. The value above is DOMPurify output; see the header.
+      // eslint-disable-next-line no-restricted-syntax -- ADR-046: the one sanctioned sink; the value is DOMPurify output.
       dangerouslySetInnerHTML={{ __html: clean }}
     />
   );
-}
+});

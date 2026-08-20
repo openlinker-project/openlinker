@@ -29,4 +29,4 @@ export const WOOCOMMERCE_DESCRIPTION_FORMAT: DescriptionFormat = {
   contentModel: null,
   rewrites: [],
   maxBytes: 65_536,
-    };
+};

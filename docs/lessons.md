@@ -48,7 +48,7 @@ When a lesson hardens into a rule, **graduate it** to the canonical doc and leav
 **Context**: `sanitizeAllegroDescription` (`libs/integrations/allegro/src/infrastructure/util/`) filtered PrestaShop TinyMCE descriptions down to what its author believed Allegro's `description.sections[].items[].content` accepts, using a flat `ALLOWED_TAGS` set.
 **Problem**: the set was wrong in both directions and had been shipping 422s. Allegro accepts exactly `h1 h2 p ul ol li b`; the allowlist additionally admitted `br strong i em u`, and a special case actively normalised every self-closing variant to `<br>` before passing it through, so we deliberately emitted a tag Allegro rejects. Worse, even the correct seven tags are not enough: the validator is **context-sensitive**, so a flat list still passes `<h1><b>x</b></h1>` - which TinyMCE really produces and Allegro really rejects. None of this is documented by Allegro; the grammar is reconstructible only from validator rejection messages in the `allegro/allegro-api` tracker, where one payload can produce two opposite allowed sets (`Błędny tag "strong", dozwolone są: {b}` and `Błędny tag "b", dozwolone są: {h1, h2, p, ul, ol}`, both in #9714).
 **Rule**: never model a destination's accepted markup as a flat allowlist, and never as a regex private to one adapter - a flat list cannot express a rule like "a heading takes no formatting", so it passes markup the platform rejects while looking correct in review. Before widening an allowlist, ask what evidence backs the new tag: where the platform publishes no list, the only evidence is a rejection message, so pin the exact set in a spec and make any widening a deliberate test change. Prefer *converting* a rejected tag over stripping it, so the operator's formatting survives in some form. The canonical per-destination grammars and the contract that expresses them live in [ADR-046](./architecture/adrs/046-adapter-declared-description-format.md) - do not copy them back here.
-**Applies to**: any destination that accepts a markup subset - `DescriptionFormat` declarations in `libs/integrations/*/src/infrastructure/adapters/`, and `applyDescriptionFormat` in `libs/core/src/listings/domain/`.
+**Applies to**: any destination that accepts a markup subset - `DescriptionFormat` declarations in `libs/integrations/*/src/infrastructure/adapters/`, and `applyDescriptionFormat` in `libs/core/src/listings/application/services/`.
 **Source**: [ADR-046](./architecture/adrs/046-adapter-declared-description-format.md), #2193 epic (#2194 / #2196 / #2197). Evidence: `allegro/allegro-api` #11708 (2025-06-24), #9714 (2024-08-22), #10656 (2025-01-13), #3856.
 
 ## A destination that never returns an error can still be silently discarding your formatting
@@ -321,6 +321,16 @@ When a lesson hardens into a rule, **graduate it** to the canonical doc and leav
 **Rule**: When a feature's justification is a claim about existing behaviour ("X always happens, so warn about it"), trace the claim from the **caller the feature actually sits in front of** down to the layer that performs it, and check for guards added in between - especially for sibling features shipping in parallel under one epic. Then make the tree consistent in one pass: code, FE copy, and the `architecture-overview.md` bullet that states the guarantee. A doc bullet describing operator-visible semantics is part of the contract, not commentary.
 **Applies to**: `libs/core/src/listings/application/services/bulk-listing-submit.service.ts`, `apps/web/src/features/listings/components/duplicate-guard-modal.tsx`, `docs/architecture-overview.md` §Listings; any pre-flight warning UI fronting a guarded pipeline.
 **Source**: #1933 (PR #1935); premise introduced by #1837 (PR #1857) against #1741 (PR #1757).
+
+## An exact dependency pin whose reason lives only in a source comment will be lifted by the next upgrade PR
+
+**Symptom.** `libs/shared` pins `sanitize-html` to `2.17.5` exactly - no caret - on the library that IS the XSS boundary. A dependency-bump PR (or Dependabot) touches `package.json`, not `libs/shared/src/html/sanitize-stored-html.ts`, so the person best placed to break it never sees why it is pinned.
+
+**Cause.** From `2.17.6` it depends on `htmlparser2@^12`, which is ESM-only; Jest 29 loads the repo's CJS build, so the bump turns every `libs/shared` spec red with a module-resolution error rather than a test failure - a symptom that reads like a broken test, not a deliberate constraint.
+
+**Rule.** A pin that exists for a reason belongs in this file as well as in a header comment, and the header should cite the entry. The pin is not a preference: it is a liability, so lift it immediately if an advisory lands on `2.17.5` - re-check `pnpm audit` first, and expect to have to solve the ESM/CJS question in the same change rather than deferring it.
+
+**Applies to**: `libs/shared/package.json`, `libs/shared/src/html/sanitize-stored-html.ts`, and any future exact pin on a security-relevant transitive.
 
 ## A gating primitive built for write affordances does not gate content — check which policy demo mode needs before reusing it
 
