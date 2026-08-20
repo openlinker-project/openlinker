@@ -15,6 +15,7 @@
  * @module apps/web/src/features/listings/components/bulk
  */
 import { useEffect, useMemo, useState, type ReactElement } from 'react';
+import { RichTextView } from '../../../../shared/ui';
 import { Button, CheckboxCell, Input, ProductThumbnail } from '../../../../shared/ui';
 import type { StatusBadgeTone } from '../../../../shared/ui';
 import type { OfferBlockerDescriptor } from '../../../../shared/plugins';
@@ -699,6 +700,28 @@ function ProductRow({
   );
 }
 
+/**
+ * The description this line will actually publish (#2200).
+ *
+ * Mirrors the precedence the submit path relies on: the marketplace payload sends
+ * `perVariantOverrides` and `perProductOverrides` as-is and the backend resolves
+ * variant-over-product, falling back to the master description. `null` means no
+ * override, which the preview says rather than showing blank.
+ *
+ * The shop review step has the same disclosure for the same reason - the step
+ * resolved which copy would publish and then never showed it, so an operator
+ * submitted to a live marketplace without seeing it rendered. Allegro is the
+ * worse half of that: it rejects a malformed payload outright and its seven-tag
+ * grammar mangles the most.
+ */
+function effectiveDescription(row: BulkWizardRow, variant?: BulkVariantRow): string | null {
+  const perVariant = variant?.override.overrides?.description;
+  if (typeof perVariant === 'string' && perVariant !== '') return perVariant;
+  const perProduct = row.override.overrides?.description;
+  if (typeof perProduct === 'string' && perProduct !== '') return perProduct;
+  return null;
+}
+
 interface VariantRowProps {
   row: BulkWizardRow;
   variant: BulkVariantRow;
@@ -759,6 +782,13 @@ function VariantRow({
         <div className="t">
           <b>{label}</b>
           <small className={catBlocked ? 'bad' : undefined}>{variant.ean ?? 'no EAN'}</small>
+          <details className="bulk-review__desc">
+            <summary>Description</summary>
+            <RichTextView
+              html={effectiveDescription(row, variant)}
+              emptyLabel="From the master product — no override for this line."
+            />
+          </details>
         </div>
       </div>
       <div className="bulk-review__c-status bulk-review__chips">

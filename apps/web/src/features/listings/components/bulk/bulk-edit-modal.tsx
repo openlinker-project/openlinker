@@ -1052,9 +1052,13 @@ function BulkEditModalForm({
 
         <div className="bulk-editor__scopes">
           {/* A demo read-only viewer can browse scopes (rail stays live) but
-              every field edit + image control is natively disabled; nothing can
-              be committed (`Save all` is locked below). `display:contents` keeps
-              the layout while `disabled` cascades to all nested controls. */}
+              cannot edit; nothing can be committed (`Save all` is locked below).
+              `display:contents` keeps the layout while `disabled` cascades to all
+              nested FORM CONTROLS.
+              Note the limit, because it bit once (#2200): the cascade does NOT
+              reach a `contenteditable`, so the rich-text description fields are
+              not covered by it and take an explicit `disabled` prop instead. Any
+              future non-form-control editor added here needs the same. */}
           <fieldset
             disabled={demoReadOnly}
             style={{ border: 0, margin: 0, padding: 0, minWidth: 0, display: 'contents' }}
@@ -1072,6 +1076,7 @@ function BulkEditModalForm({
             />
           ) : null}
           <BaseScopeForm
+            readOnly={demoReadOnly}
             descriptionFormat={descriptionFormat}
             mode={isMultiVariant ? 'base' : 'simple'}
             active={scope === (isMultiVariant ? 'base' : 'simple')}
@@ -1117,6 +1122,7 @@ function BulkEditModalForm({
                   />
                   {scope === v.variantId ? (
                     <VariantScopeForm
+                      readOnly={demoReadOnly}
                       descriptionFormat={descriptionFormat}
                       variant={v}
                       index={i}
@@ -1284,6 +1290,12 @@ function ProvBadge({ kind }: { kind: Provenance }): ReactElement {
 
 interface BaseScopeFormProps {
   /**
+   * Demo read-only. Passed explicitly rather than relying on the wrapping
+   * `fieldset[disabled]`, which does not reach a `contenteditable` (#2200).
+   */
+  readOnly: boolean;
+
+  /**
    * The destination's declared description contract (ADR-046). Resolved once by
    * the modal and threaded down, rather than each scope form running its own
    * hook - one query, and `VariantScopeForm` has no `connectionId` of its own.
@@ -1325,6 +1337,7 @@ interface BaseScopeFormProps {
 }
 
 function BaseScopeForm({
+  readOnly,
   descriptionFormat,
   mode,
   active,
@@ -1510,7 +1523,12 @@ function BaseScopeForm({
           </FormField>
         )}
 
-        <BaseDescriptionField productId={row.product?.id ?? ''} channel={connection.platformType}  descriptionFormat={descriptionFormat}/>
+        <BaseDescriptionField
+          productId={row.product?.id ?? ''}
+          channel={connection.platformType}
+          descriptionFormat={descriptionFormat}
+          readOnly={readOnly}
+        />
 
         {mode === 'simple' ? (
           <div className="bulk-editor__row2">
@@ -1776,10 +1794,12 @@ function BaseDescriptionField({
   productId,
   channel,
   descriptionFormat,
+  readOnly,
 }: {
   productId: string;
   channel: string;
   descriptionFormat: DescriptionFormat;
+  readOnly: boolean;
 }): ReactElement {
   const form = useFormContext<BulkEditModalValues>();
   const error = form.formState.errors.description?.message;
@@ -1805,6 +1825,7 @@ function BaseDescriptionField({
           explicitly producing semantic HTML into this very field. */}
       <RichTextEditor
         format={descriptionFormat}
+        disabled={readOnly}
         value={form.watch('description') ?? ''}
         onChange={(html) => {
           form.setValue('description', html, { shouldDirty: true, shouldValidate: true });
@@ -1860,6 +1881,12 @@ function BaseParameterSection({
 
 interface VariantScopeFormProps {
   /**
+   * Demo read-only. Passed explicitly rather than relying on the wrapping
+   * `fieldset[disabled]`, which does not reach a `contenteditable` (#2200).
+   */
+  readOnly: boolean;
+
+  /**
    * The destination's declared description contract (ADR-046). Resolved once by
    * the modal and threaded down, rather than each scope form running its own
    * hook - one query, and `VariantScopeForm` has no `connectionId` of its own.
@@ -1904,6 +1931,7 @@ interface VariantScopeFormProps {
 }
 
 function VariantScopeForm({
+  readOnly,
   descriptionFormat,
   variant,
   index,
@@ -2285,6 +2313,7 @@ function VariantScopeForm({
               ) : null}
             </label>
             <RichTextEditor
+              disabled={readOnly}
               className={
                 edit.description !== undefined
                   ? 'bulk-editor__input--overridden'
@@ -3322,6 +3351,7 @@ function BulkShopEditModalForm({
               />
             ) : null}
             <ShopBaseScopeForm
+              readOnly={demoReadOnly}
               descriptionFormat={descriptionFormat}
               mode={isMultiVariant ? 'base' : 'simple'}
               active={scope === (isMultiVariant ? 'base' : 'simple')}
@@ -3372,6 +3402,7 @@ function BulkShopEditModalForm({
                     />
                     {scope === v.variantId ? (
                       <ShopVariantScopeForm
+                        readOnly={demoReadOnly}
                         descriptionFormat={descriptionFormat}
                         variant={v}
                         index={i}
@@ -3441,6 +3472,12 @@ function BulkShopEditModalForm({
 
 interface ShopBaseScopeFormProps {
   /**
+   * Demo read-only. Passed explicitly rather than relying on the wrapping
+   * `fieldset[disabled]`, which does not reach a `contenteditable` (#2200).
+   */
+  readOnly: boolean;
+
+  /**
    * The destination's declared description contract (ADR-046). Resolved once by
    * the modal and threaded down, rather than each scope form running its own
    * hook - one query, and `VariantScopeForm` has no `connectionId` of its own.
@@ -3480,6 +3517,7 @@ interface ShopBaseScopeFormProps {
 }
 
 function ShopBaseScopeForm({
+  readOnly,
   descriptionFormat,
   mode,
   active,
@@ -3567,6 +3605,7 @@ function ShopBaseScopeForm({
         </label>
         <RichTextEditor
           format={descriptionFormat}
+          disabled={readOnly}
           value={description}
           onChange={onDescriptionChange}
           aria-label="Description"
@@ -3800,6 +3839,12 @@ function ShopBaseScopeForm({
 
 interface ShopVariantScopeFormProps {
   /**
+   * Demo read-only. Passed explicitly rather than relying on the wrapping
+   * `fieldset[disabled]`, which does not reach a `contenteditable` (#2200).
+   */
+  readOnly: boolean;
+
+  /**
    * The destination's declared description contract (ADR-046). Resolved once by
    * the modal and threaded down, rather than each scope form running its own
    * hook - one query, and `VariantScopeForm` has no `connectionId` of its own.
@@ -3824,6 +3869,7 @@ interface ShopVariantScopeFormProps {
 }
 
 function ShopVariantScopeForm({
+  readOnly,
   descriptionFormat,
   variant,
   index,
@@ -3881,6 +3927,7 @@ function ShopVariantScopeForm({
           ) : null}
         </label>
         <RichTextEditor
+          disabled={readOnly}
           className={
             edit.description !== undefined
               ? 'bulk-editor__input--overridden'

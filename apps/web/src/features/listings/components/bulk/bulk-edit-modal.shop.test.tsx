@@ -123,6 +123,7 @@ function renderShopEditor(
     included: Record<string, boolean>,
     editFormValues: Record<string, unknown>,
   ) => void,
+  extra: Partial<{ demoReadOnly: boolean }> = {},
 ): void {
   renderWithProviders(
     <BulkEditModal
@@ -130,6 +131,7 @@ function renderShopEditor(
       onOpenChange={() => undefined}
       row={row}
       connection={shopConnection}
+      {...extra}
       destinationKind="shop"
       canBrowseCategories={false}
       canBrowseShopCategories
@@ -279,6 +281,31 @@ function setDescriptionViaHtmlView(scope: HTMLElement, html: string): void {
   });
   fireEvent.click(within(scope).getByRole('button', { name: 'Rich text' }));
 }
+
+  it('makes the description non-editable for a demo read-only viewer (#2200)', () => {
+    // The regression this pins: demo read-only is enforced by a wrapping
+    // `<fieldset disabled>`, and that cascade reaches FORM CONTROLS only. A
+    // contenteditable is not one, so when the description became rich text it
+    // silently went live for a public demo viewer while Save stayed locked -
+    // exactly the editable-but-uncommittable middle state the demo policy
+    // (#1615) exists to avoid. Each editor now takes an explicit `disabled`.
+    renderShopEditor(makeRow([makeVariant('v1')]), vi.fn(), { demoReadOnly: true });
+
+    const surfaces = screen.getAllByRole('textbox', { name: /description/i });
+    expect(surfaces.length).toBeGreaterThan(0);
+    for (const surface of surfaces) {
+      expect(surface).toHaveAttribute('contenteditable', 'false');
+    }
+  });
+
+  it('leaves the description editable for a normal operator', () => {
+    renderShopEditor(makeRow([makeVariant('v1')]), vi.fn());
+
+    expect(screen.getAllByRole('textbox', { name: /description/i })[0]).toHaveAttribute(
+      'contenteditable',
+      'true',
+    );
+  });
 
   it('emits a per-variant description override in the two-pane editor (#1830)', () => {
     const onSave = vi.fn();

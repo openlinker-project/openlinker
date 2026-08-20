@@ -155,12 +155,20 @@ export function ContentPanel({
         toolbarSlot={suggestSlot}
       />
 
-      <div className="content-panel__meta">
-        <span>
-          {value.length.toLocaleString()} / {MAX_VALUE_LENGTH.toLocaleString()} characters
-        </span>
-        {overLimit && <span className="text-danger">Over limit</span>}
-      </div>
+      {/* #2200: the character counter that used to live here is gone. It measured
+          `MAX_VALUE_LENGTH`, the storage cap on the draft DTO - not what the
+          destination accepts - and the editor already renders a BYTE counter
+          against the destination's own limit. Two counters in two units on one
+          field, where the smaller one is the one that actually rejects a publish,
+          told the operator less than one. The storage cap is still enforced: it
+          gates Save below, and the backend validates it. */}
+      {overLimit && (
+        <div className="content-panel__meta">
+          <span className="text-danger">
+            Over the {MAX_VALUE_LENGTH.toLocaleString()}-character storage limit
+          </span>
+        </div>
+      )}
 
       <div className="content-panel__footer">
         <div className="content-panel__footer-status">
