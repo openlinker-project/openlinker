@@ -41,6 +41,8 @@ import {
   isCategoryParametersReader,
   isEanCategoryMatcher,
   isEanCategoryMatcherStreaming,
+  isTaxonomyBorrower,
+  isTaxonomyIdentityProvider,
 } from '@openlinker/core/listings';
 import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 import { IMappingConfigService, MAPPING_CONFIG_SERVICE_TOKEN } from '@openlinker/core/mappings';
@@ -138,9 +140,14 @@ export class CategoryResolutionService implements ICategoryResolutionService {
     // (the wizard suppresses the pre-flight blocker for it). This mirrors the
     // single-resolve chain's graceful fall-through and the per-item no-throw
     // contract, and is gated on the declared capability, never `platformType`.
-    if (!isEanCategoryMatcher(adapter)) {
+    // A destination with no catalogue of its own may still borrow one from a
+    // connection that owns its taxonomy (#2210); only when neither exists does
+    // the batch degrade to `no-match` for every variant, resolving the category
+    // at build time instead (the wizard suppresses the pre-flight blocker then).
+    const { matcher } = await this.resolveEanMatcher(connectionId, adapter);
+    if (matcher === null || !isEanCategoryMatcher(matcher)) {
       this.logger.debug(
-        `Adapter lacks EanCategoryMatcher; degrading ${input.items.length} variant(s) to no-match ` +
+        `No EAN matcher available; degrading ${input.items.length} variant(s) to no-match ` +
           `for manual category selection (connection=${connectionId})`
       );
       return new Map<string, EanMatchResult>(
@@ -150,9 +157,9 @@ export class CategoryResolutionService implements ICategoryResolutionService {
     this.logger.debug(
       `Batch-resolving ${input.items.length} variant EAN(s) (connection=${connectionId})`
     );
-    // EAN catalogue match stays the PRIMARY path — the adapter only needs
+    // EAN catalogue match stays the PRIMARY path - the adapter only needs
     // `{ variantId, ean }`; `sourceCategoryIds` is a core-owned fallback input.
-    const eanResults = await adapter.resolveCategoriesForBatchByEan({
+    const eanResults = await matcher.resolveCategoriesForBatchByEan({
       items: input.items.map((item) => ({ variantId: item.variantId, ean: item.ean })),
     });
 
@@ -194,6 +201,9 @@ export class CategoryResolutionService implements ICategoryResolutionService {
     const signal = options?.signal;
     let resolvedCount = 0;
     let unresolvedCount = 0;
+    // Stays false until a matcher is resolved, so an early exit (already-aborted
+    // signal, connection gate failure) never claims a catalogue was consulted.
+    let catalogueLookupPerformed = false;
     const tally = (result: EanMatchResult): void => {
       if (result.kind === 'matched') {
         resolvedCount += 1;
@@ -208,6 +218,7 @@ export class CategoryResolutionService implements ICategoryResolutionService {
       resolvedCount,
       unresolvedCount,
       completion,
+      catalogueLookupPerformed,
     });
     // Every non-throwing exit reports the same way, so a path can never claim a
     // clean finish while the caller's signal cut it short.
@@ -237,13 +248,18 @@ export class CategoryResolutionService implements ICategoryResolutionService {
         ean: item.ean,
       }));
 
-      if (isEanCategoryMatcherStreaming(adapter)) {
+      // Same borrowing rule as the batch path, so the wizard preview and the
+      // offer build cannot disagree about a borrowing destination's category.
+      const { matcher } = await this.resolveEanMatcher(connectionId, adapter);
+      catalogueLookupPerformed = matcher !== null;
+
+      if (matcher !== null && isEanCategoryMatcherStreaming(matcher)) {
         this.logger.debug(
           `Streaming ${input.items.length} variant EAN(s) (connection=${connectionId})`
         );
         const byVariantId = new Map(input.items.map((item) => [item.variantId, item]));
         const seen = new Set<string>();
-        for await (const streamed of adapter.streamCategoriesForBatchByEan(
+        for await (const streamed of matcher.streamCategoriesForBatchByEan(
           { items: eanOnlyItems },
           signal ? { signal } : undefined
         )) {
@@ -290,7 +306,7 @@ export class CategoryResolutionService implements ICategoryResolutionService {
         return;
       }
 
-      if (isEanCategoryMatcher(adapter)) {
+      if (matcher !== null && isEanCategoryMatcher(matcher)) {
         // Batch-only adapter: nothing is observable until the whole call returns,
         // so the operator sees the results arrive together. The step still
         // completes, which is the point of keeping the streaming capability a
@@ -299,7 +315,7 @@ export class CategoryResolutionService implements ICategoryResolutionService {
           `Adapter lacks EanCategoryMatcherStreaming; batch-resolving ${input.items.length} ` +
             `variant EAN(s) before emitting (connection=${connectionId})`
         );
-        const eanResults = await adapter.resolveCategoriesForBatchByEan({ items: eanOnlyItems });
+        const eanResults = await matcher.resolveCategoriesForBatchByEan({ items: eanOnlyItems });
         for (const item of input.items) {
           if (signal?.aborted) {
             break;
@@ -316,12 +332,14 @@ export class CategoryResolutionService implements ICategoryResolutionService {
         return;
       }
 
-      // Neither capability: the mapping fallback is deliberately skipped here so
-      // the stream stays byte-identical to what `resolveCategoriesBatch` returns
-      // for the same destination (epic #2205 decision 4 — an immediate stream is a
-      // first-class case, not a failure).
+      // No matcher at all, neither the destination's own nor a borrowed one: the
+      // mapping fallback is deliberately skipped here so the stream stays
+      // byte-identical to what `resolveCategoriesBatch` returns for the same
+      // destination (epic #2205 decision 4 - an immediate stream is a first-class
+      // case, not a failure). `catalogueLookupPerformed` is what tells the
+      // consumer these `no-match` results carry no information.
       this.logger.debug(
-        `Adapter matches no EAN capability; streaming ${input.items.length} no-match result(s) ` +
+        `No EAN matcher available; streaming ${input.items.length} no-match result(s) ` +
           `for manual category selection (connection=${connectionId})`
       );
       for (const item of input.items) {
@@ -354,6 +372,81 @@ export class CategoryResolutionService implements ICategoryResolutionService {
    * wizard preview agrees with the build. A hit resolves to a `matched` result
    * with no catalogue card (the offer self-links by barcode at build time).
    */
+  /**
+   * Decide which adapter performs the EAN catalogue lookup for a destination.
+   *
+   * A destination that owns a catalogue answers for itself. A destination that
+   * BORROWS its taxonomy (ADR-025 §3: Erli accepts Allegro ids verbatim and
+   * ships no catalogue) has nothing to ask, so the lookup is delegated to a
+   * connection that OWNS that taxonomy and can match EANs - the same borrowing
+   * principle #1045 already applies to configured category mappings, moved one
+   * step earlier to the catalogue itself.
+   *
+   * Deliberately OPTIONAL. With no owner connection present the caller keeps
+   * today's behaviour exactly (`no-match` per variant, category resolved at
+   * build time from the operator's own mappings). This is not the rejected
+   * ADR-031 option of *requiring* an Allegro seller connection - an Erli-only
+   * operator is never asked to create one.
+   *
+   * Borrowing cannot use the destination's own Allegro application credentials
+   * (#1382): probed live, an application token reaches every category endpoint
+   * but is refused on the catalogue search with 403 even carrying
+   * `allegro:api:sale:offers:read`. The search needs seller context, which only
+   * a real connection has. See ADR-047's appendix.
+   */
+  private async resolveEanMatcher(
+    connectionId: string,
+    destination: OfferManagerPort
+  ): Promise<{ matcher: OfferManagerPort | null; borrowedFrom: string | null }> {
+    if (isEanCategoryMatcher(destination) || isEanCategoryMatcherStreaming(destination)) {
+      return { matcher: destination, borrowedFrom: null };
+    }
+    if (!isTaxonomyBorrower(destination)) {
+      return { matcher: null, borrowedFrom: null };
+    }
+
+    const owner = destination.getBorrowedTaxonomy();
+    const candidates = await this.integrationsService.listCapabilityAdapters<OfferManagerPort>({
+      capability: 'OfferManager',
+    });
+    const owners = candidates
+      .filter(({ connectionId: candidateId }) => candidateId !== connectionId)
+      .filter(
+        ({ adapter }) =>
+          isTaxonomyIdentityProvider(adapter) &&
+          adapter.getTaxonomyIdentity() === owner &&
+          (isEanCategoryMatcher(adapter) || isEanCategoryMatcherStreaming(adapter))
+      )
+      // Oldest connection wins, ties broken by id. Matches the oldest-wins rule
+      // `findBySourceCategory` already uses for borrowed-taxonomy mappings, so
+      // the catalogue lookup and the mapping fallback can never disagree about
+      // which owner they mean.
+      .sort((a, b) => {
+        const byAge = a.connection.createdAt.getTime() - b.connection.createdAt.getTime();
+        return byAge !== 0 ? byAge : a.connectionId.localeCompare(b.connectionId);
+      });
+
+    const winner = owners[0];
+    if (!winner) {
+      this.logger.debug(
+        `No connection owns taxonomy '${owner}' with EAN matching; leaving the category to ` +
+          `build-time mapping resolution (connection=${connectionId})`
+      );
+      return { matcher: null, borrowedFrom: null };
+    }
+    if (owners.length > 1) {
+      this.logger.warn(
+        `Ambiguous borrowed-taxonomy EAN matcher: ${owners.length} connections own '${owner}'. ` +
+          `Using the oldest (${winner.connectionId}) for connection ${connectionId}`
+      );
+    }
+    this.logger.debug(
+      `Borrowing the '${owner}' catalogue from connection ${winner.connectionId} ` +
+        `(connection=${connectionId})`
+    );
+    return { matcher: winner.adapter, borrowedFrom: winner.connectionId };
+  }
+
   private async applyMappingFallback(
     connectionId: string,
     item: BatchCategoryResolveItem,

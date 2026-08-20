@@ -1382,7 +1382,7 @@ describe('ListingsController', () => {
           kind: 'done',
           resolvedCount: 1,
           unresolvedCount: 1,
-          completion: 'complete',
+          completion: 'complete', catalogueLookupPerformed: true
         })
       );
       const res = makeRes();
@@ -1402,14 +1402,14 @@ describe('ListingsController', () => {
       expect(linesOf(res)).toEqual([
         matchedV1,
         noEanV2,
-        { kind: 'done', resolvedCount: 1, unresolvedCount: 1, completion: 'complete' },
+        { kind: 'done', resolvedCount: 1, unresolvedCount: 1, completion: 'complete', catalogueLookupPerformed: true },
       ]);
       expect(res.writableEnded).toBe(true);
     });
 
     it('forwards the same item mapping the batch route uses, plus an abort signal', async () => {
       categoryResolution.resolveCategoriesStream.mockImplementation(
-        streamOf({ kind: 'done', resolvedCount: 0, unresolvedCount: 0, completion: 'complete' })
+        streamOf({ kind: 'done', resolvedCount: 0, unresolvedCount: 0, completion: 'complete', catalogueLookupPerformed: true })
       );
 
       await run(makeRes());
@@ -1430,8 +1430,8 @@ describe('ListingsController', () => {
       categoryResolution.resolveCategoriesStream.mockImplementation(
         streamOf(
           matchedV1,
-          { kind: 'done', resolvedCount: 1, unresolvedCount: 0, completion: 'complete' },
-          { kind: 'done', resolvedCount: 9, unresolvedCount: 9, completion: 'complete' }
+          { kind: 'done', resolvedCount: 1, unresolvedCount: 0, completion: 'complete', catalogueLookupPerformed: true },
+          { kind: 'done', resolvedCount: 9, unresolvedCount: 9, completion: 'complete', catalogueLookupPerformed: true }
         )
       );
       const res = makeRes();
@@ -1440,7 +1440,7 @@ describe('ListingsController', () => {
 
       const terminals = linesOf(res).filter((line) => line.kind === 'done');
       expect(terminals).toEqual([
-        { kind: 'done', resolvedCount: 1, unresolvedCount: 0, completion: 'complete' },
+        { kind: 'done', resolvedCount: 1, unresolvedCount: 0, completion: 'complete', catalogueLookupPerformed: true },
       ]);
     });
 
@@ -1450,7 +1450,7 @@ describe('ListingsController', () => {
         async function* generate(): AsyncGenerator<EanCategoryMatchStreamEvent> {
           await tick();
           yield matchedV1;
-          yield { kind: 'done', resolvedCount: 1, unresolvedCount: 0, completion: 'failed' };
+          yield { kind: 'done', resolvedCount: 1, unresolvedCount: 0, completion: 'failed', catalogueLookupPerformed: true };
           throw new Error('allegro-503');
         }
       );
@@ -1464,7 +1464,7 @@ describe('ListingsController', () => {
         kind: 'done',
         resolvedCount: 1,
         unresolvedCount: 0,
-        completion: 'failed',
+        completion: 'failed', catalogueLookupPerformed: true
       });
       expect(res.writableEnded).toBe(true);
     });
@@ -1488,7 +1488,7 @@ describe('ListingsController', () => {
         kind: 'done',
         resolvedCount: 1,
         unresolvedCount: 1,
-        completion: 'failed',
+        completion: 'failed', catalogueLookupPerformed: true
       });
     });
 
@@ -1502,7 +1502,7 @@ describe('ListingsController', () => {
         async function* generate(): AsyncGenerator<EanCategoryMatchStreamEvent> {
           yield matchedV1;
           await quiet;
-          yield { kind: 'done', resolvedCount: 1, unresolvedCount: 0, completion: 'complete' };
+          yield { kind: 'done', resolvedCount: 1, unresolvedCount: 0, completion: 'complete', catalogueLookupPerformed: true };
         }
       );
       const res = makeRes();
@@ -1520,7 +1520,7 @@ describe('ListingsController', () => {
         kind: 'done',
         resolvedCount: 1,
         unresolvedCount: 0,
-        completion: 'complete',
+        completion: 'complete', catalogueLookupPerformed: true
       });
       expect(jest.getTimerCount()).toBe(0);
     });
@@ -1545,11 +1545,11 @@ describe('ListingsController', () => {
             yield matchedV1;
             await quiet;
             if (options?.signal?.aborted) {
-              yield { kind: 'done', resolvedCount: 1, unresolvedCount: 0, completion: 'aborted' };
+              yield { kind: 'done', resolvedCount: 1, unresolvedCount: 0, completion: 'aborted', catalogueLookupPerformed: true };
               return;
             }
             yield noEanV2;
-            yield { kind: 'done', resolvedCount: 1, unresolvedCount: 1, completion: 'complete' };
+            yield { kind: 'done', resolvedCount: 1, unresolvedCount: 1, completion: 'complete', catalogueLookupPerformed: true };
           })();
         }
       );
@@ -1575,7 +1575,7 @@ describe('ListingsController', () => {
         kind: 'done',
         resolvedCount: 1,
         unresolvedCount: 0,
-        completion: 'aborted',
+        completion: 'aborted', catalogueLookupPerformed: true
       });
       // The close listener is detached, so a reused socket cannot abort a later
       // request through this handler's controller.
@@ -1602,7 +1602,7 @@ describe('ListingsController', () => {
       expect(linesOf(res)).toEqual([
         matchedV1,
         noEanV2,
-        { kind: 'done', resolvedCount: 1, unresolvedCount: 1, completion: 'complete' },
+        { kind: 'done', resolvedCount: 1, unresolvedCount: 1, completion: 'complete', catalogueLookupPerformed: true },
       ]);
       // Nothing subscribed to the request at all, which is what keeps the above
       // true no matter when the body happens to drain.
@@ -1611,7 +1611,7 @@ describe('ListingsController', () => {
 
     it('does not abort on the close that follows a completed body', async () => {
       categoryResolution.resolveCategoriesStream.mockImplementation(
-        streamOf({ kind: 'done', resolvedCount: 0, unresolvedCount: 0, completion: 'complete' })
+        streamOf({ kind: 'done', resolvedCount: 0, unresolvedCount: 0, completion: 'complete', catalogueLookupPerformed: true })
       );
       const res = makeRes();
 
@@ -1671,7 +1671,7 @@ describe('ListingsController', () => {
           kind: 'done',
           resolvedCount: 0,
           unresolvedCount: 0,
-          completion: 'complete',
+          completion: 'complete', catalogueLookupPerformed: true
         })();
       });
       const res = makeRes();
@@ -1687,14 +1687,14 @@ describe('ListingsController', () => {
       // Epic #2205 decision 4's sibling case: the stream can terminate at once,
       // and a 0/0 tally must still arrive as a well-formed body.
       categoryResolution.resolveCategoriesStream.mockImplementation(
-        streamOf({ kind: 'done', resolvedCount: 0, unresolvedCount: 0, completion: 'aborted' })
+        streamOf({ kind: 'done', resolvedCount: 0, unresolvedCount: 0, completion: 'aborted', catalogueLookupPerformed: true })
       );
       const res = makeRes();
 
       await run(res);
 
       expect(linesOf(res)).toEqual([
-        { kind: 'done', resolvedCount: 0, unresolvedCount: 0, completion: 'aborted' },
+        { kind: 'done', resolvedCount: 0, unresolvedCount: 0, completion: 'aborted', catalogueLookupPerformed: true },
       ]);
       expect(res.writableEnded).toBe(true);
     });

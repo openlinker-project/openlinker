@@ -1063,6 +1063,11 @@ export class ListingsController {
             resolvedCount: resolvedWritten,
             unresolvedCount: unresolvedWritten,
             completion: 'failed',
+            // A synthesised terminal cannot know whether a catalogue was
+            // consulted, and `false` would tell the consumer these results carry
+            // no information - which is a stronger claim than "the producer
+            // died". Results already written are real, so report `true`.
+            catalogueLookupPerformed: true,
           });
         }
         res.end();

@@ -85,6 +85,18 @@ export interface EanCategoryMatchStreamDoneEvent {
   resolvedCount: number;
   unresolvedCount: number;
   completion: EanCategoryMatchStreamCompletion;
+  /**
+   * Whether a destination catalogue was actually consulted for these EANs.
+   *
+   * `false` means every `no-match` in this stream is an artefact of there being
+   * nothing to ask, not a statement about the operator's barcodes: a destination
+   * that borrows its taxonomy and has no owner connection to borrow a matcher
+   * from resolves its category at build time instead (#1045). A consumer must
+   * not turn those into "no category found" blockers - #1934/F10 is what the
+   * inverse mistake costs, where every row read as resolvable and then every
+   * child failed on a missing category at submit.
+   */
+  catalogueLookupPerformed: boolean;
 }
 
 export type EanCategoryMatchStreamEvent =

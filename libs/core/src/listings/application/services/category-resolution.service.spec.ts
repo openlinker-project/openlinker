@@ -44,12 +44,15 @@ async function collect(
 }
 
 describe('CategoryResolutionService', () => {
-  let integrationsService: { getCapabilityAdapter: jest.Mock };
+  let integrationsService: { getCapabilityAdapter: jest.Mock; listCapabilityAdapters: jest.Mock };
   let mappingConfig: { resolveDestinationCategory: jest.Mock };
   let service: CategoryResolutionService;
 
   beforeEach(() => {
-    integrationsService = { getCapabilityAdapter: jest.fn() };
+    integrationsService = {
+      getCapabilityAdapter: jest.fn(),
+      listCapabilityAdapters: jest.fn().mockResolvedValue([]),
+    };
     mappingConfig = { resolveDestinationCategory: jest.fn() };
     service = new CategoryResolutionService(
       integrationsService as unknown as IIntegrationsService,
@@ -383,7 +386,7 @@ describe('CategoryResolutionService', () => {
           result: { kind: 'matched', allegroCategoryId: 'cat-1', productCardId: 'card-1' },
         },
         { kind: 'result', variantId: 'v2', result: { kind: 'no-ean' } },
-        { kind: 'done', resolvedCount: 1, unresolvedCount: 1, completion: 'complete' },
+        { kind: 'done', resolvedCount: 1, unresolvedCount: 1, completion: 'complete', catalogueLookupPerformed: true },
       ]);
       // The adapter receives only the EAN-only shape, and the streaming
       // capability wins over the batch one when both are declared.
@@ -408,7 +411,7 @@ describe('CategoryResolutionService', () => {
       expect(events).toEqual([
         { kind: 'result', variantId: 'v1', result: { kind: 'no-match' } },
         { kind: 'result', variantId: 'v2', result: { kind: 'no-match' } },
-        { kind: 'done', resolvedCount: 0, unresolvedCount: 2, completion: 'complete' },
+        { kind: 'done', resolvedCount: 0, unresolvedCount: 2, completion: 'complete', catalogueLookupPerformed: true },
       ]);
     });
 
@@ -439,7 +442,7 @@ describe('CategoryResolutionService', () => {
             method: 'category_mapping',
           },
         },
-        { kind: 'done', resolvedCount: 1, unresolvedCount: 0, completion: 'complete' },
+        { kind: 'done', resolvedCount: 1, unresolvedCount: 0, completion: 'complete', catalogueLookupPerformed: true },
       ]);
       expect(mappingConfig.resolveDestinationCategory).toHaveBeenCalledWith(
         CONNECTION_ID,
@@ -471,7 +474,7 @@ describe('CategoryResolutionService', () => {
           result: { kind: 'matched', allegroCategoryId: 'cat-1', productCardId: 'card-1' },
         },
         { kind: 'result', variantId: 'v2', result: { kind: 'no-ean' } },
-        { kind: 'done', resolvedCount: 1, unresolvedCount: 1, completion: 'complete' },
+        { kind: 'done', resolvedCount: 1, unresolvedCount: 1, completion: 'complete', catalogueLookupPerformed: true },
       ]);
     });
 
@@ -500,7 +503,7 @@ describe('CategoryResolutionService', () => {
       expect(events).toEqual([
         { kind: 'result', variantId: 'v1', result: { kind: 'no-match' } },
         { kind: 'result', variantId: 'v2', result: { kind: 'no-match' } },
-        { kind: 'done', resolvedCount: 0, unresolvedCount: 2, completion: 'complete' },
+        { kind: 'done', resolvedCount: 0, unresolvedCount: 2, completion: 'complete', catalogueLookupPerformed: false },
       ]);
       expect(adapter.updateOfferQuantity).not.toHaveBeenCalled();
       expect(mappingConfig.resolveDestinationCategory).not.toHaveBeenCalled();
@@ -527,7 +530,7 @@ describe('CategoryResolutionService', () => {
       expect(events).toEqual([
         { kind: 'result', variantId: 'v1', result: { kind: 'no-match' } },
         { kind: 'result', variantId: 'v2', result: { kind: 'no-ean' } },
-        { kind: 'done', resolvedCount: 0, unresolvedCount: 2, completion: 'complete' },
+        { kind: 'done', resolvedCount: 0, unresolvedCount: 2, completion: 'complete', catalogueLookupPerformed: true },
       ]);
     });
 
@@ -565,7 +568,7 @@ describe('CategoryResolutionService', () => {
           variantId: 'v1',
           result: { kind: 'matched', allegroCategoryId: 'cat-1', productCardId: 'card-1' },
         },
-        { kind: 'done', resolvedCount: 1, unresolvedCount: 0, completion: 'failed' },
+        { kind: 'done', resolvedCount: 1, unresolvedCount: 0, completion: 'failed', catalogueLookupPerformed: true },
       ]);
     });
 
@@ -603,7 +606,7 @@ describe('CategoryResolutionService', () => {
           variantId: 'v1',
           result: { kind: 'matched', allegroCategoryId: 'cat-1', productCardId: 'card-1' },
         },
-        { kind: 'done', resolvedCount: 1, unresolvedCount: 0, completion: 'failed' },
+        { kind: 'done', resolvedCount: 1, unresolvedCount: 0, completion: 'failed', catalogueLookupPerformed: true },
       ]);
     });
 
@@ -616,7 +619,7 @@ describe('CategoryResolutionService', () => {
       );
 
       expect(events).toEqual([
-        { kind: 'done', resolvedCount: 0, unresolvedCount: 0, completion: 'aborted' },
+        { kind: 'done', resolvedCount: 0, unresolvedCount: 0, completion: 'aborted', catalogueLookupPerformed: false },
       ]);
       // Resolving the adapter can decrypt credentials and mint a token — work
       // the caller already told us to stop scheduling.
@@ -665,7 +668,7 @@ describe('CategoryResolutionService', () => {
       });
       expect(events).toEqual([
         { kind: 'result', variantId: 'v1', result: { kind: 'no-match' } },
-        { kind: 'done', resolvedCount: 0, unresolvedCount: 1, completion: 'aborted' },
+        { kind: 'done', resolvedCount: 0, unresolvedCount: 1, completion: 'aborted', catalogueLookupPerformed: true },
       ]);
       expect(yielded).not.toContain('v3');
     });
@@ -702,7 +705,7 @@ describe('CategoryResolutionService', () => {
 
       expect(events).toEqual([
         { kind: 'result', variantId: 'v1', result: { kind: 'no-match' } },
-        { kind: 'done', resolvedCount: 0, unresolvedCount: 1, completion: 'aborted' },
+        { kind: 'done', resolvedCount: 0, unresolvedCount: 1, completion: 'aborted', catalogueLookupPerformed: true },
       ]);
       expect(mappingConfig.resolveDestinationCategory).toHaveBeenCalledTimes(1);
     });
@@ -755,6 +758,163 @@ describe('CategoryResolutionService', () => {
       integrationsService.getCapabilityAdapter.mockRejectedValue(boom);
 
       await expect(service.assertStreamableConnection(CONNECTION_ID)).rejects.toBe(boom);
+    });
+  });
+
+  describe('borrowed-taxonomy EAN matching (#2210)', () => {
+    const OWNER_ID = 'conn-allegro-1';
+
+    /** A destination with no catalogue of its own, e.g. Erli (ADR-025 §3). */
+    const borrowingDestination = {
+      updateOfferQuantity: jest.fn(),
+      getBorrowedTaxonomy: () => 'allegro' as const,
+    };
+
+    const ownerEntry = (
+      connectionId: string,
+      createdAt: Date,
+      matcher: jest.Mock
+    ): Record<string, unknown> => ({
+      connectionId,
+      connection: { id: connectionId, createdAt },
+      adapter: {
+        updateOfferQuantity: jest.fn(),
+        getTaxonomyIdentity: () => 'allegro' as const,
+        resolveCategoriesForBatchByEan: matcher,
+      },
+      metadata: {},
+    });
+
+    it('should resolve a borrowing destination by EAN through the owner connection', async () => {
+      const matcher = jest.fn().mockResolvedValue(
+        new Map([['v1', { kind: 'matched', allegroCategoryId: '9', productCardId: 'card-9' }]])
+      );
+      integrationsService.getCapabilityAdapter.mockResolvedValue(borrowingDestination);
+      integrationsService.listCapabilityAdapters.mockResolvedValue([
+        ownerEntry(OWNER_ID, new Date('2026-01-01'), matcher),
+      ]);
+
+      const result = await service.resolveCategoriesBatch(CONNECTION_ID, {
+        items: [{ variantId: 'v1', ean: '5901234123457' }],
+      });
+
+      expect(matcher).toHaveBeenCalledTimes(1);
+      expect(result.get('v1')).toEqual({
+        kind: 'matched',
+        allegroCategoryId: '9',
+        productCardId: 'card-9',
+      });
+    });
+
+    it('should leave the category to build-time mapping when no owner connection exists', async () => {
+      integrationsService.getCapabilityAdapter.mockResolvedValue(borrowingDestination);
+      integrationsService.listCapabilityAdapters.mockResolvedValue([]);
+
+      const result = await service.resolveCategoriesBatch(CONNECTION_ID, {
+        items: [{ variantId: 'v1', ean: '5901234123457' }],
+      });
+
+      // Unchanged pre-#2210 behaviour: nothing was asked, so nothing is claimed.
+      expect(result.get('v1')).toEqual({ kind: 'no-match' });
+      expect(mappingConfig.resolveDestinationCategory).not.toHaveBeenCalled();
+    });
+
+    it('should ignore an owner connection that cannot match EANs', async () => {
+      integrationsService.getCapabilityAdapter.mockResolvedValue(borrowingDestination);
+      integrationsService.listCapabilityAdapters.mockResolvedValue([
+        {
+          connectionId: OWNER_ID,
+          connection: { id: OWNER_ID, createdAt: new Date('2026-01-01') },
+          adapter: {
+            updateOfferQuantity: jest.fn(),
+            getTaxonomyIdentity: () => 'allegro' as const,
+          },
+          metadata: {},
+        },
+      ]);
+
+      const result = await service.resolveCategoriesBatch(CONNECTION_ID, {
+        items: [{ variantId: 'v1', ean: '5901234123457' }],
+      });
+
+      expect(result.get('v1')).toEqual({ kind: 'no-match' });
+    });
+
+    it('should pick the oldest owner deterministically when several qualify', async () => {
+      const older = jest.fn().mockResolvedValue(
+        new Map([['v1', { kind: 'matched', allegroCategoryId: 'older', productCardId: 'c' }]])
+      );
+      const newer = jest.fn().mockResolvedValue(new Map());
+      integrationsService.getCapabilityAdapter.mockResolvedValue(borrowingDestination);
+      integrationsService.listCapabilityAdapters.mockResolvedValue([
+        ownerEntry('conn-newer', new Date('2026-06-01'), newer),
+        ownerEntry('conn-older', new Date('2026-01-01'), older),
+      ]);
+
+      const result = await service.resolveCategoriesBatch(CONNECTION_ID, {
+        items: [{ variantId: 'v1', ean: '5901234123457' }],
+      });
+
+      expect(older).toHaveBeenCalledTimes(1);
+      expect(newer).not.toHaveBeenCalled();
+      expect(result.get('v1')).toEqual({
+        kind: 'matched',
+        allegroCategoryId: 'older',
+        productCardId: 'c',
+      });
+    });
+
+    it('should borrow on the streaming path too and report the lookup as performed', async () => {
+      const matcher = jest.fn().mockResolvedValue(
+        new Map([['v1', { kind: 'matched', allegroCategoryId: '9', productCardId: 'card-9' }]])
+      );
+      integrationsService.getCapabilityAdapter.mockResolvedValue(borrowingDestination);
+      integrationsService.listCapabilityAdapters.mockResolvedValue([
+        ownerEntry(OWNER_ID, new Date('2026-01-01'), matcher),
+      ]);
+
+      const events = await collect(
+        service.resolveCategoriesStream(CONNECTION_ID, {
+          items: [{ variantId: 'v1', ean: '5901234123457' }],
+        })
+      );
+
+      expect(matcher).toHaveBeenCalledTimes(1);
+      expect(events).toEqual([
+        {
+          kind: 'result',
+          variantId: 'v1',
+          result: { kind: 'matched', allegroCategoryId: '9', productCardId: 'card-9' },
+        },
+        {
+          kind: 'done',
+          resolvedCount: 1,
+          unresolvedCount: 0,
+          completion: 'complete',
+          catalogueLookupPerformed: true,
+        },
+      ]);
+    });
+
+    it('should report the lookup as NOT performed when nothing could be asked', async () => {
+      integrationsService.getCapabilityAdapter.mockResolvedValue(borrowingDestination);
+      integrationsService.listCapabilityAdapters.mockResolvedValue([]);
+
+      const events = await collect(
+        service.resolveCategoriesStream(CONNECTION_ID, {
+          items: [{ variantId: 'v1', ean: '5901234123457' }],
+        })
+      );
+
+      // The consumer needs this to tell "no category found" from "nothing was
+      // looked up" - #1934/F10 is what conflating them costs.
+      expect(events.at(-1)).toEqual({
+        kind: 'done',
+        resolvedCount: 0,
+        unresolvedCount: 1,
+        completion: 'complete',
+        catalogueLookupPerformed: false,
+      });
     });
   });
 });
