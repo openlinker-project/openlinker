@@ -55,9 +55,16 @@ export function SalesDocumentRulesList({ country }: SalesDocumentRulesListProps)
 
   return (
     <div className="page-section">
-      <p className="eyebrow" style={{ marginBottom: 2 }}>
-        Rules for {country === '*' ? '★ Rest of world' : country}
-      </p>
+      <div className="detail-section__title-row">
+        <p className="eyebrow" style={{ marginBottom: 2 }}>
+          Rules for {country === '*' ? '★ Rest of world' : country}
+        </p>
+        <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+          <Button className="button--sm" disabled={!write.canWrite} onClick={() => setComposerOpen(true)}>
+            + Add rule
+          </Button>
+        </ReadOnlyLock>
+      </div>
 
       {rules.map((rule) => {
         const connectionName = connections.find((c) => c.id === rule.connectionId)?.name ?? rule.connectionId;
@@ -97,14 +104,6 @@ export function SalesDocumentRulesList({ country }: SalesDocumentRulesListProps)
       })}
 
       {rules.length === 0 ? <p className="muted-text">No rules yet for this country.</p> : null}
-
-      <div style={{ display: 'flex', justifyContent: 'flex-start', marginTop: 'var(--space-2)' }}>
-        <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
-          <Button tone="secondary" className="button--sm" disabled={!write.canWrite} onClick={() => setComposerOpen(true)}>
-            + Add rule
-          </Button>
-        </ReadOnlyLock>
-      </div>
 
       <SalesDocumentRuleComposerDialog country={country} open={composerOpen} onOpenChange={setComposerOpen} />
     </div>

@@ -53,7 +53,7 @@ export function SalesDocumentRuleEnginePanel(): ReactElement {
   }
 
   return (
-    <div className="page-section">
+    <div className="page-section" style={{ marginTop: 'var(--space-6)' }}>
       <header style={{ marginBottom: 'var(--space-4)' }}>
         <p className="eyebrow">Per-country rules</p>
         <h3 className="detail-section__title">Sales-document rule engine</h3>
