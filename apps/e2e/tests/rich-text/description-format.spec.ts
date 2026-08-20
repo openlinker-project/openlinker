@@ -609,4 +609,91 @@ test.describe('rich-text descriptions (#2201, ADR-046)', () => {
         'offer created; description read-back is not exposed by GET /listings/:id/offer, so the tag-set assertion lives in the paste case',
     });
   });
+
+  test('a borrowing destination offers what IT declared, not what Allegro did', async ({
+    page,
+    pages,
+    world,
+    api,
+  }) => {
+    const erli = world.connectionWithCapability('OfferManager', PlatformType.erli);
+    test.skip(!erli, 'no Erli connection with OfferManager on this stack');
+
+    // Erli is the interesting second destination precisely because it never
+    // errors: it silently converts a payload it dislikes, so a rejection can
+    // never tell us the shape was wrong. Its declaration differs from Allegro's
+    // in exactly two tags - `h3` and `br` - and the editor must reflect that
+    // rather than inheriting the marketplace default.
+    const contract = await api.listings.descriptionFormat(erli?.id ?? '');
+    test.skip(
+      contract === null,
+      'stack API predates /description-format - the declaration cannot be read'
+    );
+    expect(contract?.declared, 'Erli declares its own format').toBe(true);
+    expect(contract?.allowedTags).toContain('h3');
+    expect(contract?.allowedTags).toContain('br');
+    // The published requirement that no rejection would ever reveal: Erli wants
+    // its void elements written self-closing. Asserted at the contract, because
+    // the spelling is a serialization detail the browser's DOM cannot show - the
+    // applier's own spec covers the emitted bytes.
+    expect(contract?.selfClosingVoids, 'Erli requires <br/>').toBe(true);
+
+    const taxonomy = await api.listings.taxonomyCategories(erli?.id ?? '');
+    test.skip(
+      taxonomy === null || taxonomy.length === 0,
+      "the destination's category projection is empty on this stack - no review row can resolve a category"
+    );
+
+    const products = await api.products.list({ limit: 5 });
+    const product = products.items[0];
+    test.skip(product === undefined, 'no products on this stack');
+
+    await pages.productsList.goto();
+    await pages.productsList.selectProduct(product?.name ?? '');
+    const wizard = await pages.productsList.startBulkOfferCreation(erli?.name);
+    await wizard.selectConnectionIfPresent(erli?.name ?? '');
+    await wizard.completePlatformConfig({ requiresErliBuyabilityFields: true });
+    await expect(wizard.proceedButton).toBeEnabled({ timeout: 60_000 });
+    await wizard.proceedButton.click();
+
+    const row = page.locator('.bulk-review__prow').first();
+    await expect(row.locator('.bulk-review__prow-main')).toBeVisible({ timeout: 60_000 });
+    await row
+      .locator('.bulk-review__prow-main')
+      .getByRole('button', { name: 'Edit', exact: true })
+      .click();
+
+    const dialog = page.getByRole('dialog', { name: /^Edit (offer|product)\b/ });
+    await expect(dialog).toBeVisible({ timeout: 20_000 });
+    const editor = descriptionEditor(dialog, page);
+    await expect(editor).toBeVisible({ timeout: 20_000 });
+
+    const expected = expectedControls(contract);
+    for (const name of expected.present) {
+      await expect(editor.getByRole('button', { name }), `${name} is declared`).toBeVisible();
+    }
+    for (const name of expected.absent) {
+      await expect(
+        editor.getByRole('button', { name }),
+        `${name} is not declared, so it must not be offerable`
+      ).toHaveCount(0);
+    }
+    // The two-tag difference, asserted as a difference: H3 exists here and does
+    // not on Allegro.
+    await expect(editor.getByRole('button', { name: 'Heading 3' })).toBeVisible();
+
+    // A line break survives the paste here, where Allegro's declaration turns it
+    // into a paragraph break. Same pasted markup, two documents - which is the
+    // whole point of declaring the format per destination.
+    await pasteMarkup(
+      editor.locator('.rich-text__surface [role="textbox"]'),
+      '<h3>Sekcja</h3><p>Pierwsza linia<br>Druga linia</p>'
+    );
+    const html = await documentHtml(editor);
+    expect(html).toContain('<h3>');
+    expect(html).toContain('<br');
+    expect(html).toContain('Druga linia');
+
+    await dialog.getByRole('button', { name: 'Cancel', exact: true }).first().click();
+  });
 });
