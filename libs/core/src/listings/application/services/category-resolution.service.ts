@@ -37,6 +37,8 @@ import type {
   TaxonomyOwner,
 } from '@openlinker/core/listings';
 import {
+  EAN_CATEGORY_MATCHER_CAPABILITY,
+  EAN_CATEGORY_MATCHER_STREAMING_CAPABILITY,
   isCategoryBarcodeMatcher,
   isCategoryBrowser,
   isCategoryParametersReader,
@@ -60,6 +62,30 @@ import type {
   CategoryResolutionInput,
   CategoryResolutionResult,
 } from '../types/category-resolution.types';
+
+/**
+ * Collapse repeated `variantId`s, keeping the first occurrence.
+ *
+ * The batch/stream contract a consumer relies on is "one outcome per item I
+ * sent", which it turns into a progress denominator. A repeated id can only ever
+ * produce ONE outcome (the map is keyed by id, the stream drops repeats), so the
+ * two only agree if the input is unique - and neither the wire DTO nor the port
+ * forbids a repeat. Deduping here fixes both routes and every in-process caller
+ * in one place, and is silent on purpose: a repeat is a caller slip, not a
+ * request worth rejecting after the operator already waited for the wizard.
+ */
+function dedupeItemsByVariantId(
+  items: readonly BatchCategoryResolveItem[]
+): BatchCategoryResolveItem[] {
+  const seen = new Set<string>();
+  const unique: BatchCategoryResolveItem[] = [];
+  for (const item of items) {
+    if (seen.has(item.variantId)) continue;
+    seen.add(item.variantId);
+    unique.push(item);
+  }
+  return unique;
+}
 
 @Injectable()
 export class CategoryResolutionService implements ICategoryResolutionService {
@@ -150,6 +176,13 @@ export class CategoryResolutionService implements ICategoryResolutionService {
     // connection that owns its taxonomy (#2210); only when neither exists does
     // the batch degrade to `no-match` for every variant, resolving the category
     // at build time instead (the wizard suppresses the pre-flight blocker then).
+    //
+    // Items are deduped by `variantId` first: the wire DTO does not forbid a
+    // repeated id, and a repeat would otherwise make the caller's denominator
+    // (input size) exceed the number of outcomes it can ever receive - the map
+    // is keyed by `variantId` here and the stream drops repeats downstream, so a
+    // progress bar keyed on input size would stall short of complete forever.
+    const items = dedupeItemsByVariantId(input.items);
     const { matcher, borrowedTaxonomy } = await this.resolveEanMatcher(connectionId, adapter);
     // The `isEanCategoryMatcher` narrowing is not redundant: a resolved matcher
     // may be streaming-ONLY, and this path has no way to consume that, so such
@@ -158,24 +191,24 @@ export class CategoryResolutionService implements ICategoryResolutionService {
     // streaming path is the one to use if that ever stops being true.
     if (matcher === null || !isEanCategoryMatcher(matcher)) {
       this.logger.debug(
-        `No EAN matcher available; degrading ${input.items.length} variant(s) to no-match ` +
+        `No EAN matcher available; degrading ${items.length} variant(s) to no-match ` +
           `for manual category selection (connection=${connectionId})`
       );
       return new Map<string, EanMatchResult>(
-        input.items.map((item) => [item.variantId, { kind: 'no-match' }])
+        items.map((item) => [item.variantId, { kind: 'no-match' }])
       );
     }
     this.logger.debug(
-      `Batch-resolving ${input.items.length} variant EAN(s) (connection=${connectionId})`
+      `Batch-resolving ${items.length} variant EAN(s) (connection=${connectionId})`
     );
     // EAN catalogue match stays the PRIMARY path - the adapter only needs
     // `{ variantId, ean }`; `sourceCategoryIds` is a core-owned fallback input.
     const eanResults = await matcher.resolveCategoriesForBatchByEan({
-      items: input.items.map((item) => ({ variantId: item.variantId, ean: item.ean })),
+      items: items.map((item) => ({ variantId: item.variantId, ean: item.ean })),
     });
 
     const resolved = new Map<string, EanMatchResult>();
-    for (const item of input.items) {
+    for (const item of items) {
       resolved.set(
         item.variantId,
         await this.applyMappingFallback(
@@ -211,6 +244,10 @@ export class CategoryResolutionService implements ICategoryResolutionService {
     options?: EanCategoryMatchStreamOptions
   ): AsyncGenerator<EanCategoryMatchStreamEvent> {
     const signal = options?.signal;
+    // Same dedupe as the batch path, for the same reason: a repeated `variantId`
+    // is dropped downstream (`seen`), so counting it in the denominator would
+    // park the consumer's bar below 100% with nothing left to arrive.
+    const items = dedupeItemsByVariantId(input.items);
     let resolvedCount = 0;
     let unresolvedCount = 0;
     // Stays false until a matcher is resolved, so an early exit (already-aborted
@@ -255,7 +292,7 @@ export class CategoryResolutionService implements ICategoryResolutionService {
         connectionId,
         'OfferManager'
       );
-      const eanOnlyItems = input.items.map((item) => ({
+      const eanOnlyItems = items.map((item) => ({
         variantId: item.variantId,
         ean: item.ean,
       }));
@@ -267,9 +304,9 @@ export class CategoryResolutionService implements ICategoryResolutionService {
 
       if (matcher !== null && isEanCategoryMatcherStreaming(matcher)) {
         this.logger.debug(
-          `Streaming ${input.items.length} variant EAN(s) (connection=${connectionId})`
+          `Streaming ${items.length} variant EAN(s) (connection=${connectionId})`
         );
-        const byVariantId = new Map(input.items.map((item) => [item.variantId, item]));
+        const byVariantId = new Map(items.map((item) => [item.variantId, item]));
         const seen = new Set<string>();
         for await (const streamed of matcher.streamCategoriesForBatchByEan(
           { items: eanOnlyItems },
@@ -308,7 +345,7 @@ export class CategoryResolutionService implements ICategoryResolutionService {
         // adapter never reported would leave the bar short of complete forever.
         // Report it as unresolved rather than trusting the adapter's arithmetic.
         if (!signal?.aborted) {
-          for (const item of input.items) {
+          for (const item of items) {
             if (seen.has(item.variantId)) {
               continue;
             }
@@ -332,11 +369,11 @@ export class CategoryResolutionService implements ICategoryResolutionService {
         // completes, which is the point of keeping the streaming capability a
         // sibling rather than a replacement (epic #2205 decision 2).
         this.logger.debug(
-          `Adapter lacks EanCategoryMatcherStreaming; batch-resolving ${input.items.length} ` +
+          `Adapter lacks EanCategoryMatcherStreaming; batch-resolving ${items.length} ` +
             `variant EAN(s) before emitting (connection=${connectionId})`
         );
         const eanResults = await matcher.resolveCategoriesForBatchByEan({ items: eanOnlyItems });
-        for (const item of input.items) {
+        for (const item of items) {
           if (signal?.aborted) {
             break;
           }
@@ -360,10 +397,10 @@ export class CategoryResolutionService implements ICategoryResolutionService {
       // case, not a failure). `catalogueLookupPerformed` is what tells the
       // consumer these `no-match` results carry no information.
       this.logger.debug(
-        `No EAN matcher available; streaming ${input.items.length} no-match result(s) ` +
+        `No EAN matcher available; streaming ${items.length} no-match result(s) ` +
           `for manual category selection (connection=${connectionId})`
       );
-      for (const item of input.items) {
+      for (const item of items) {
         const result: EanMatchResult = { kind: 'no-match' };
         tally(result);
         yield { kind: 'result', variantId: item.variantId, result };
@@ -429,6 +466,20 @@ export class CategoryResolutionService implements ICategoryResolutionService {
     }
 
     const owner = destination.getBorrowedTaxonomy();
+    // The borrow reaches the OWNER's live catalogue on the owner's credentials
+    // and against the owner's rate-limit budget, which is a stronger act than
+    // reusing the owner's authored mappings (#1045, no network). A destination
+    // whose operator switched that access off says so here, and the resolve
+    // degrades exactly as it does when no owner connection exists - never an
+    // error. Mapping reuse is untouched: `borrowedTaxonomy` is still reported,
+    // so the build-time fallback keeps consulting the owner's rows.
+    if (destination.allowsBorrowedCatalogueLookup?.() === false) {
+      this.logger.debug(
+        `Destination declines borrowed catalogue access; leaving the category to build-time ` +
+          `mapping resolution (connection=${connectionId}, owner=${owner})`
+      );
+      return { matcher: null, borrowedTaxonomy: owner };
+    }
     let candidates: Array<{
       connectionId: string;
       connection: Connection;
@@ -471,16 +522,27 @@ export class CategoryResolutionService implements ICategoryResolutionService {
     // read off a built adapter - which is why the loop constructs in the
     // deterministic order above and stops at the first owner, rather than
     // building every candidate to count them.
+    let rejected = 0;
     for (const candidate of eligible) {
       const adapter = await this.buildOwnerCandidate(candidate, owner, connectionId);
       if (adapter === null) {
+        rejected += 1;
         continue;
       }
-      if (eligible.length > 1) {
+      // Ambiguity is about how many connections own THIS taxonomy, not how many
+      // declare the capability: the ordinary production-plus-sandbox Allegro pair
+      // declares it twice and owns two different trees, so warning on the
+      // declared count cried wolf on every resolve. Only a candidate that got
+      // past `buildOwnerCandidate` - i.e. actually owns `owner` and actually
+      // matches EANs - is a rival for the one being used, and the loop stops at
+      // the first winner, so the remaining unbuilt candidates are the honest
+      // upper bound on how many others might also qualify.
+      const otherPossibleOwners = eligible.length - rejected - 1;
+      if (otherPossibleOwners > 0) {
         this.logger.warn(
-          `Ambiguous borrowed-taxonomy EAN matcher: ${eligible.length} connections declare ` +
-            `EAN matching. Using the oldest that owns '${owner}' (${candidate.connectionId}) ` +
-            `for connection ${connectionId}`
+          `Ambiguous borrowed-taxonomy EAN matcher: up to ${otherPossibleOwners} other ` +
+            `connection(s) may also own '${owner}'. Using the oldest that does ` +
+            `(${candidate.connectionId}) for connection ${connectionId}`
         );
       }
       this.logger.debug(
@@ -497,11 +559,20 @@ export class CategoryResolutionService implements ICategoryResolutionService {
     return { matcher: null, borrowedTaxonomy: owner };
   }
 
-  /** A manifest that declares neither EAN capability can never serve as an owner. */
+  /**
+   * A manifest that declares neither EAN capability can never serve as an owner.
+   *
+   * The names come from the capability files themselves rather than being spelled
+   * here: both are deliberately absent from `CoreCapabilityValues`
+   * (advertised-without-dispatch), so nothing else would catch a rename, and the
+   * failure mode is silent - every borrow would resolve to "no owner" and every
+   * variant would degrade to `no-match` with no error anywhere.
+   */
   private declaresEanMatching(metadata: AdapterMetadata): boolean {
     const declared: readonly string[] = metadata.supportedCapabilities ?? [];
     return (
-      declared.includes('EanCategoryMatcher') || declared.includes('EanCategoryMatcherStreaming')
+      declared.includes(EAN_CATEGORY_MATCHER_CAPABILITY) ||
+      declared.includes(EAN_CATEGORY_MATCHER_STREAMING_CAPABILITY)
     );
   }
 

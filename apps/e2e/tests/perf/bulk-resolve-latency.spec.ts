@@ -35,9 +35,10 @@
  *
  * WHAT IS ASSERTED, and what is only measured. Every assertion here is an
  * invariant - a request count, a resumed item set, a lower bound on distinct
- * progress states derived from the batch size, the presence of a terminal state.
- * Wall-clock numbers are printed and attached, never asserted, so the file
- * cannot go flaky on a slow machine.
+ * progress states derived from the batch size and how much React may coalesce
+ * (`MAX_COALESCED_PROGRESS_LINES`), the presence of a terminal state. Wall-clock
+ * numbers are printed and attached, never asserted, so the file cannot go flaky
+ * on a slow machine.
  *
  * ONE NUMBER THE SWEEP MAKES VISIBLE AND DOES NOT HIDE: the resolve fan-out is
  * no longer chunked, so a batch is one request. Its internal concurrency was
@@ -82,12 +83,33 @@ import {
   type ResolveStreamStubState,
 } from './resolve-stream-stub';
 
-/** FE chunk size - mirrors `RESOLVE_CHUNK_SIZE` in `bulk-resolve-step.tsx`. */
+/**
+ * Availability read size - mirrors `AVAILABILITY_CHUNK_SIZE` in
+ * `bulk-resolve-step.tsx`. This is the boundary the PRE-#2205 shape chunked its
+ * resolve requests on too, which is what makes it the right yardstick below: a
+ * progress value that is not a multiple of it cannot have come from the old
+ * all-or-nothing-per-chunk path. The streamed path splits resolve requests at
+ * the route's own item cap instead (`RESOLVE_CATEGORY_STREAM_CHUNK_SIZE`, 200),
+ * well above every scenario here, so no scenario crosses a resolve boundary.
+ */
 const FE_RESOLVE_CHUNK_SIZE = 50;
 /** Browser request timeout - mirrors `DEFAULT_TIMEOUT_MS` in `apps/web/src/app/api/api-client.ts`. */
 const CLIENT_TIMEOUT_MS = 30_000;
 /** How many products the live feed keeps on screen - mirrors `RESOLVE_FEED_SIZE`. */
 const RESOLVE_FEED_SIZE = 4;
+/**
+ * How many streamed lines one painted progress state is allowed to stand for.
+ *
+ * Not an app constant, and not a performance threshold: it is how much React 18
+ * auto-batching may legitimately hide from the measurement. Every update that
+ * lands in one task is merged into a single commit, so a runner whose event loop
+ * stalls long enough for several NDJSON lines to queue up decodes them in one
+ * read and paints one `aria-valuenow` for the lot. Bounding the batch-progress
+ * state count by `variants / this` therefore measures the app's granularity;
+ * bounding it by `variants / 2` (as this file first did) measured the runner's
+ * scheduling luck as well, and a loaded CI machine can undercut that.
+ */
+const MAX_COALESCED_PROGRESS_LINES = 4;
 
 const CONNECTION_ID = '00000000-0000-4000-8000-00000000perf'.replace('perf', '0001');
 const MASTER_CONNECTION_ID = '00000000-0000-4000-8000-000000000002';
@@ -96,10 +118,10 @@ const RESOLVED_CATEGORY_ID = '165986';
 
 /** Error copy the step renders when a stream ends without its terminal line. */
 const TRUNCATED_STREAM_MESSAGE =
-  'The resolver stopped before reporting every variant, so the results are incomplete.';
+  'Category matching stopped before every variant was checked, so the results are incomplete.';
 /** Error copy for a terminal line that reported `completion: 'failed'`. */
 const FAILED_STREAM_MESSAGE =
-  'The resolver reported a failure part-way through this batch, so the results are incomplete.';
+  'Category matching reported a failure part-way through this batch, so the results are incomplete.';
 /** The step's own error headline, shared by every failure path. */
 const RESOLVE_ERROR_HEADLINE = 'Could not resolve categories and stock for this batch.';
 /**
@@ -374,6 +396,35 @@ function startProgressSampling(page: Page, start: number, states: ProgressState[
 }
 
 /**
+ * Samples how many elements a locator matches until stopped, keeping the maximum.
+ *
+ * For anything the step renders TRANSIENTLY: a single `count()` mid-stream is a
+ * statement about one instant, and the live feed rotates a row every pacing
+ * interval and then disappears entirely when the step hands over. "Never more
+ * than its cap, and it did reach it" survives both, and it is what the bounded
+ * feed actually promises. Errors are swallowed to 0 - the page can navigate away
+ * under the sampler, and the wait the caller is really doing owns the failure.
+ */
+function startMaxCountSampling(locator: Locator): { stop: () => void; max: () => number } {
+  let stopped = false;
+  let max = 0;
+  const tick = async (): Promise<void> => {
+    while (!stopped) {
+      const count = await locator.count().catch(() => 0);
+      if (count > max) max = count;
+      await new Promise((r) => setTimeout(r, 50));
+    }
+  };
+  void tick();
+  return {
+    stop: () => {
+      stopped = true;
+    },
+    max: () => max,
+  };
+}
+
+/**
  * Drives the wizard from its URL to the moment the Resolve step reaches a
  * terminal state, returning whichever it was. Racing the two rather than waiting
  * out the happy path first is deliberate: a failing run reaches its error alert
@@ -411,19 +462,27 @@ async function runResolveStep(
     .first()
     .click();
 
-  const outcome = await Promise.race([
-    page
-      .getByRole('heading', { name: /^Review \d+ products?$/ })
-      .waitFor({ state: 'visible', timeout: 300_000 })
-      .then((): 'review' => 'review'),
-    page
-      .getByText(RESOLVE_ERROR_HEADLINE)
-      .waitFor({ state: 'visible', timeout: 300_000 })
-      .then((): 'error' => 'error'),
-  ]);
-  const totalMs = Date.now() - start;
-  stopSampling();
-  return { outcome, totalMs, configReadyMs, progressStates };
+  // `finally`, not a stop on the success path: neither branch of the race is
+  // guaranteed to settle. A selector rename or a wizard that never leaves
+  // Configure times both out, and the sampler would then keep polling a page the
+  // test has already failed on - one leaked loop per test, all of them still
+  // driving the same browser while later tests run.
+  try {
+    const outcome = await Promise.race([
+      page
+        .getByRole('heading', { name: /^Review \d+ products?$/ })
+        .waitFor({ state: 'visible', timeout: 300_000 })
+        .then((): 'review' => 'review'),
+      page
+        .getByText(RESOLVE_ERROR_HEADLINE)
+        .waitFor({ state: 'visible', timeout: 300_000 })
+        .then((): 'error' => 'error'),
+    ]);
+    const totalMs = Date.now() - start;
+    return { outcome, totalMs, configReadyMs, progressStates };
+  } finally {
+    stopSampling();
+  }
 }
 
 /** Counts one `GET /products/{id}` per selected product; there is no batch read. */
@@ -543,11 +602,30 @@ for (const scenario of SCENARIOS) {
     expect(stub.attempts).toHaveLength(1);
     expect(stub.attempts[0].requestedVariantIds).toHaveLength(variants);
     expect(run.outcome).toBe('review');
-    // Progress is now per variant, not per chunk: the bar's own state count is
-    // bounded below by the batch size rather than by the number of chunks (which
-    // is 1 here, and was at most 3 before #2205). Half is the floor, so a slow
-    // machine coalescing some renders cannot make this flaky.
-    expect(distinctProgressStates).toBeGreaterThanOrEqual(Math.ceil(variants / 2));
+    // Progress is now per variant, not per chunk. That claim is made twice,
+    // because the two halves can fail for different reasons.
+    //
+    // (1) A floor on how many states the bar carried. The count is not the app's
+    // alone: React 18 batches every update that lands in one task, so a loaded
+    // runner that decodes several NDJSON lines inside a single stream read
+    // legitimately paints ONE state for all of them. So the floor is expressed
+    // as a tolerance for that coalescing rather than as a fraction of the batch,
+    // and it is checked to still sit above what the pre-#2205 shape could ever
+    // paint - one state per 50-item chunk, i.e. `expectedAvailabilityChunks`,
+    // which still chunks on the same boundary (at most 3 for the batches here).
+    const coalescingFloor = Math.ceil(variants / MAX_COALESCED_PROGRESS_LINES);
+    expect(coalescingFloor).toBeGreaterThan(expectedAvailabilityChunks);
+    expect(distinctProgressStates).toBeGreaterThanOrEqual(coalescingFloor);
+    // (2) The half batching cannot erase, however much it coalesced: the bar
+    // carried a value no chunked implementation could have produced. Chunked
+    // progress advanced 50 items at a time, so every state it could paint was a
+    // multiple of FE_RESOLVE_CHUNK_SIZE - or, on the last chunk, the batch total.
+    // A value that is neither is per-variant progress by construction.
+    expect(
+      stub.batchProgressValues.filter(
+        (value) => value !== variants && value % FE_RESOLVE_CHUNK_SIZE !== 0,
+      ).length,
+    ).toBeGreaterThan(0);
     expect(Math.max(...stub.batchProgressValues)).toBe(variants);
     // Monotonic: a bar that went backwards would mean a variant was counted twice.
     for (let i = 1; i < stub.batchProgressValues.length; i++) {
@@ -843,14 +921,25 @@ test.describe('resolve loader visuals', () => {
     await waitForResolved(page, Math.ceil(variants / 2));
     await shoot(page, testInfo, 'loader-mid-run');
 
-    // The feed is bounded, which is part of what the shots document.
-    expect(await page.locator('.bulk-wizard__resolve-feed .bulk-progress__row').count()).toBe(
-      RESOLVE_FEED_SIZE,
+    // The feed is bounded, which is part of what the shots document - but its row
+    // count is a moving target, so it is measured over a state the test actually
+    // waits for rather than read once. A row rotates in every ~167 ms, and the
+    // whole feed is torn down when the step hands over to Review, so a single
+    // `count()` taken here (with about 1.3 s of stream left) could legitimately
+    // see 4, or fewer while a row is being replaced, or 0 if the last lines
+    // landed during the screenshot. Sampling until Review appears states the
+    // durable claim instead: the feed reached its cap and never grew past it.
+    const feedRows = startMaxCountSampling(
+      page.locator('.bulk-wizard__resolve-feed .bulk-progress__row'),
     );
-
-    await expect(page.getByRole('heading', { name: /^Review \d+ products?$/ })).toBeVisible({
-      timeout: 180_000,
-    });
+    try {
+      await expect(page.getByRole('heading', { name: /^Review \d+ products?$/ })).toBeVisible({
+        timeout: 180_000,
+      });
+    } finally {
+      feedRows.stop();
+    }
+    expect(feedRows.max()).toBe(RESOLVE_FEED_SIZE);
   });
 
   test('error state after a truncated stream', async ({ page }, testInfo) => {

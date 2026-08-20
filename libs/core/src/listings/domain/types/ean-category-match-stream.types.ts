@@ -18,10 +18,18 @@
 import type { EanMatchResult } from './ean-category-match.types';
 
 /**
- * Runtime array of the stream-event discriminants. Required by
- * `engineering-standards.md § Union Types: as const Pattern`; the transport
- * work (epic #2205 step 4) validates an inbound line against it, so the
- * runtime array has to exist before that lands.
+ * Runtime array of the stream-event discriminants, per
+ * `engineering-standards.md § Union Types: as const Pattern`.
+ *
+ * It is the source of truth two hand-written copies are checked against, since
+ * neither can import it: the NDJSON decoder in `apps/web` (a browser module
+ * cannot depend on core) and the per-line Swagger schema in the API app, which
+ * spells each discriminant inside its own `oneOf` branch. `scripts/check-resolve-stream-mirror.mjs`
+ * fails the build when a kind is added here and not mirrored there - a drift
+ * that would otherwise surface as the client silently dropping a line kind it
+ * does not recognise. It is deliberately NOT used to validate inbound lines at
+ * runtime: the decoder narrows to the kinds it can actually handle, which is a
+ * stricter and more useful test than membership of this array.
  */
 export const EanCategoryMatchStreamEventKindValues = ['result', 'done'] as const;
 

@@ -404,6 +404,45 @@ describe('CategoryResolutionService', () => {
       expect(resolveCategoriesForBatchByEan).not.toHaveBeenCalled();
     });
 
+    it('should collapse a repeated variantId so the tallies match what a consumer can receive', async () => {
+      // A consumer turns the input size into a progress denominator, but a repeat
+      // can only ever produce one outcome (`seen` drops the second). Left in, the
+      // bar parks below 100% with nothing left to arrive. The DTO does not forbid
+      // a repeat, so the collapse is the service's job.
+      const streamCategoriesForBatchByEan = streamingMatcher([
+        { variantId: 'v1', result: { kind: 'no-match' } },
+      ]);
+      integrationsService.getCapabilityAdapter.mockResolvedValue({
+        updateOfferQuantity: jest.fn(),
+        streamCategoriesForBatchByEan,
+      });
+
+      const events = await collect(
+        service.resolveCategoriesStream(CONNECTION_ID, {
+          items: [
+            { variantId: 'v1', ean: '590111' },
+            { variantId: 'v1', ean: '590111' },
+          ],
+        })
+      );
+
+      expect(events).toEqual([
+        { kind: 'result', variantId: 'v1', result: { kind: 'no-match' } },
+        {
+          kind: 'done',
+          resolvedCount: 0,
+          unresolvedCount: 1,
+          completion: 'complete',
+          catalogueLookupPerformed: true,
+        },
+      ]);
+      // The adapter is asked once, not twice: a duplicate is not a second lookup.
+      expect(streamCategoriesForBatchByEan).toHaveBeenCalledWith(
+        { items: [{ variantId: 'v1', ean: '590111' }] },
+        undefined
+      );
+    });
+
     it('should report an item the streaming adapter never yielded as unresolved', async () => {
       const streamCategoriesForBatchByEan = streamingMatcher([
         { variantId: 'v1', result: { kind: 'no-match' } },
@@ -817,6 +856,48 @@ describe('CategoryResolutionService', () => {
         allegroCategoryId: '9',
         productCardId: 'card-9',
       });
+    });
+
+    it('should not borrow a catalogue when the destination declines the lookup', async () => {
+      // The ADR-031 opt-out (#1934/F10). Borrowing spends a PEER connection's
+      // credentials and rate-limit budget, so it is a different mechanism from
+      // the destination's own category browsing - and slipped the toggle while
+      // producing exactly the effect the operator switched off.
+      const declining = {
+        ...borrowingDestination,
+        allowsBorrowedCatalogueLookup: () => false,
+      };
+      integrationsService.getCapabilityAdapter.mockResolvedValue(declining);
+      integrationsService.listCapabilityAdapters.mockResolvedValue([
+        ownerEntry(OWNER_ID, new Date('2026-01-01'), jest.fn()),
+      ]);
+
+      const result = await service.resolveCategoriesBatch(CONNECTION_ID, {
+        items: [{ variantId: 'v1', ean: '5901234123457' }],
+      });
+
+      // Owner discovery must not even run: enumerating candidates is the first
+      // step of the borrow, not a free read.
+      expect(integrationsService.listCapabilityAdapters).not.toHaveBeenCalled();
+      expect(result.get('v1')).toEqual({ kind: 'no-match' });
+    });
+
+    it('should still borrow when the destination declares no opinion on the lookup', async () => {
+      // Absent means yes: a borrower without the optional member (every borrower
+      // before #2210) keeps working unchanged.
+      const matcher = jest.fn().mockResolvedValue(
+        new Map([['v1', { kind: 'matched', allegroCategoryId: '9', productCardId: 'card-9' }]])
+      );
+      integrationsService.getCapabilityAdapter.mockResolvedValue(borrowingDestination);
+      integrationsService.listCapabilityAdapters.mockResolvedValue([
+        ownerEntry(OWNER_ID, new Date('2026-01-01'), matcher),
+      ]);
+
+      await service.resolveCategoriesBatch(CONNECTION_ID, {
+        items: [{ variantId: 'v1', ean: '5901234123457' }],
+      });
+
+      expect(matcher).toHaveBeenCalledTimes(1);
     });
 
     it('should leave the category to build-time mapping when no owner connection exists', async () => {

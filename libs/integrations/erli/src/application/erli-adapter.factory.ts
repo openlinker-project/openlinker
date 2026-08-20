@@ -28,6 +28,10 @@ import type { IInventoryQueryService } from '@openlinker/core/inventory';
 import type { CachePort } from '@openlinker/shared';
 import type { FetchLike } from '@openlinker/shared/http';
 import { ErliConfigException } from '../domain/exceptions/erli-config.exception';
+import {
+  erliAllowsAllegroCatalogueAccess,
+  resolveErliAllegroTaxonomyEnvironment,
+} from '../domain/policies/erli-allegro-taxonomy.policy';
 import { isAllowedErliBaseUrl } from '../domain/policies/erli-base-url.policy';
 import {
   ERLI_DEFAULT_BASE_URL,
@@ -104,14 +108,19 @@ export class ErliAdapterFactory implements IErliAdapterFactory {
       cache,
       allegroCategoryCatalog,
       webBaseUrl,
-      // Same value the borrowed catalogue client reads, so the taxonomy owner the
-      // adapter declares can never disagree with the tree it actually reads
-      // (#2210). Falls back to Erli's OWN environment because
-      // `allegroEnvironment` is written only when ADR-031 category access is
-      // configured: without the fallback a sandbox Erli connection that never
-      // enabled that feature would declare the PRODUCTION owner and silently
-      // borrow nothing, which is the failure this value exists to prevent.
-      config.allegroEnvironment ?? config.environment,
+      // Both taxonomy answers come from `erli-allegro-taxonomy.policy` so the
+      // owner this adapter DECLARES cannot drift from the catalogue it actually
+      // READS (#2210). They did drift: this argument fell back to Erli's own
+      // `config.environment` while the catalogue client below falls back to
+      // `'production'`, so the ordinary "Erli sandbox, real Allegro catalogue"
+      // connection declared `allegro:sandbox`, matched no production Allegro
+      // connection, and borrowed nothing at all.
+      resolveErliAllegroTaxonomyEnvironment(config),
+      // Whether core may borrow a PEER Allegro connection's catalogue for the
+      // EAN lookup (#2210). Same operator opt-out that disarms this connection's
+      // own category browsing below - a different mechanism, but the effect the
+      // operator switched off.
+      erliAllowsAllegroCatalogueAccess(config),
     );
     return {
       offerManager,
@@ -200,7 +209,7 @@ export class ErliAdapterFactory implements IErliAdapterFactory {
     // having category access off. Absent (not `false`) keeps the pre-existing
     // credential-driven behaviour, so connections predating the toggle - or
     // created via the API - are not silently downgraded.
-    if (config.allegroCategoryAccessEnabled === false) {
+    if (!erliAllowsAllegroCatalogueAccess(config)) {
       return undefined;
     }
     const clientId = credentials.allegroClientId?.trim();
@@ -219,7 +228,7 @@ export class ErliAdapterFactory implements IErliAdapterFactory {
     return new AllegroCategoryCatalogClient(
       clientId,
       clientSecret,
-      config.allegroEnvironment ?? 'production',
+      resolveErliAllegroTaxonomyEnvironment(config),
       fetchImpl,
       cache,
     );

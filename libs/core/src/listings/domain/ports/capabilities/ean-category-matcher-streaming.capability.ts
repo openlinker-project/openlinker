@@ -25,6 +25,12 @@ import type {
   EanCategoryMatchStreamOptions,
 } from '../../types/ean-category-match-stream.types';
 
+/**
+ * Manifest name an adapter advertises this sub-capability under. See
+ * `EAN_CATEGORY_MATCHER_CAPABILITY` for why it is a shared const.
+ */
+export const EAN_CATEGORY_MATCHER_STREAMING_CAPABILITY = 'EanCategoryMatcherStreaming';
+
 export interface EanCategoryMatcherStreaming {
   /**
    * Resolve marketplace categories for N variant EANs, yielding each variant's

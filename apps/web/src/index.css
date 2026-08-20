@@ -10566,6 +10566,15 @@ input.bulk-dispatch__num--wide {
   transition: width var(--duration-normal) var(--ease-out);
 }
 
+/* The streamed resolve advances this bar several times a second, so the width
+   transition animates continuously for the whole step - the one case on this
+   bar where the motion is sustained rather than incidental. */
+@media (prefers-reduced-motion: reduce) {
+  .bulk-wizard__progress-fill {
+    transition: none;
+  }
+}
+
 .bulk-wizard__progress-count {
   font-family: var(--font-mono);
   font-size: 13px;

@@ -77,14 +77,23 @@ const DEFAULT_CONCURRENCY = 3;
  * replaced the chunking, which dropped the cap to a flat 3 and made a
  * 120-variant batch take about 25 s where it took about 10 s.
  *
- * 9 restores what a 3-chunk batch already sustained. It deliberately does NOT
- * restore the old unbounded growth with batch size: a 500-variant batch used to
- * reach 30 in flight, which was an accident nobody should inherit.
+ * 9 is what a 3-chunk batch already sustained, so it is a ceiling that ran in
+ * production rather than a new one. Two things it is NOT, stated because the
+ * arithmetic above invites both readings:
  *
- * This is a floor on latency, not a licence to ignore limits. Every outbound
- * call is still paced against the connection's own `config.rateLimit`
- * (`HttpTransportFactory`, #1810 / #2015), and a 429 still parks the client on
- * `Retry-After`, so an operator's configured cap always wins over this number.
+ * - It does not "restore" the old number for every batch. The client now splits
+ *   at the route's 200-item cap, not at 50, so a batch of 40 ran 3 in flight
+ *   before and runs 9 now. The premise only holds from roughly 150 variants up;
+ *   below that this is a straight 3x on outbound `/sale/products`, accepted
+ *   deliberately because that is where the frozen-counter complaint came from.
+ * - It does not sit under a manifest floor. `allegroAdapterManifest` declares no
+ *   `defaultRateLimit` and deliberately never will (#1810 §1: a manifest default
+ *   is for merchant-hosted platforms; a fabricated RPM for a multi-tenant
+ *   marketplace would be surfaced to the operator as "adapter default"). So
+ *   "the operator's configured cap wins" is true only once the operator has
+ *   configured `connection.config.rateLimit`; with none set, 9 IS the cap.
+ *   Reactive protection still applies unconditionally - a 429 parks the client
+ *   on `Retry-After` (`AllegroHttpClient`).
  */
 export const STREAM_CONCURRENCY = 9;
 const DEFAULT_SEARCH_LIMIT = 10;

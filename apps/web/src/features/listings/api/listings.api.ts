@@ -183,9 +183,16 @@ export interface ListingsApi {
   ) => Promise<ResolveCategoryResponse>;
   /**
    * Batch-resolve N variant EANs to marketplace categories in one call (#795).
-   * Wraps the adapter's `EanCategoryMatcher` sub-capability; drives the bulk
-   * wizard's Resolve step, replacing the per-row `resolveCategory` loop. Max
-   * 200 items per request; results keyed by `variantId`.
+   * Wraps the adapter's `EanCategoryMatcher` sub-capability. Max
+   * `RESOLVE_CATEGORY_STREAM_CHUNK_SIZE` items per request; results keyed by
+   * `variantId`.
+   *
+   * No screen calls this since #2211 - the Resolve step moved to
+   * {@link ListingsApi.resolveCategoriesStream}. It is kept rather than deleted
+   * because the route is not deprecated (it is still the all-at-once answer, and
+   * the one a caller that cannot read a stream needs), and because a client
+   * method is the cheapest place to keep that parity honest. Delete it together
+   * with the route, not before.
    */
   resolveCategoriesBatch: (
     connectionId: string,
@@ -255,6 +262,19 @@ interface ApiStreamRequest {
 const RESOLVE_CATEGORY_STREAM_ACCEPT = 'application/x-ndjson';
 
 /**
+ * Items per resolve request. Mirrors `RESOLVE_CATEGORY_ITEMS_MAX` in
+ * `apps/api/src/listings/http/dto/resolve-category-batch.dto.ts` - the route's
+ * own `@ArrayMaxSize` - so a caller with more variants than this splits them
+ * across sequential streams instead of being rejected by the validation pipe.
+ *
+ * The wizard caps a batch at 100 PRODUCTS and a product expands to every
+ * sibling variant (#824), so a batch above the cap is reachable in ordinary
+ * use. `scripts/check-resolve-stream-mirror.mjs` fails the build if the two
+ * numbers drift.
+ */
+export const RESOLVE_CATEGORY_STREAM_CHUNK_SIZE = 200;
+
+/**
  * Quiet period after which the route emits a keep-alive line. Mirrors
  * `RESOLVE_CATEGORY_STREAM_KEEP_ALIVE_INTERVAL_MS` in
  * `apps/api/src/listings/http/dto/resolve-category-stream.dto.ts` (the FE cannot
@@ -322,7 +342,7 @@ async function readWithIdleCeiling(
     timer = setTimeout(() => {
       reject(
         new ApiError(
-          `The resolver stopped sending data for ${Math.round(idleTimeoutMs / 1000)}s.`,
+          `No response from the category lookup for ${Math.round(idleTimeoutMs / 1000)}s.`,
           408,
           { idleTimeoutMs },
         ),

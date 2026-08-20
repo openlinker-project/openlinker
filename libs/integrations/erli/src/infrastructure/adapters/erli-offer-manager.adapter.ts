@@ -247,17 +247,37 @@ export class ErliOfferManagerAdapter
    * The value is ENVIRONMENT-QUALIFIED (#2210), because Allegro publishes a
    * different tree per environment and an Allegro connection declares itself
    * accordingly (`'allegro:sandbox'` for a sandbox connection, #2063). Returning
-   * a bare `'allegro'` from a sandbox-configured Erli connection would name an
-   * owner no sandbox connection answers to, so every borrowed lookup would
-   * silently find nothing - on exactly the installs this gets tested on. The
-   * environment is the one this connection's borrowed catalogue reads from
-   * (`config.allegroEnvironment`, ADR-031), falling back to Erli's own
-   * `config.environment` because the ADR-031 value only exists once that
-   * separate feature is configured. With neither set it defaults to production,
-   * the pre-#2210 value.
+   * a bare `'allegro'` from a connection that borrows the SANDBOX catalogue
+   * would name an owner no sandbox connection answers to, so every borrowed
+   * lookup would silently find nothing.
+   *
+   * The environment is resolved by `resolveErliAllegroTaxonomyEnvironment`, the
+   * same helper the factory uses to build the catalogue client, so the owner
+   * declared here always names the tree this connection actually reads. It is
+   * NOT derived from Erli's own `config.environment`: that selects the Erli Shop
+   * API host, a different axis, and an Erli sandbox connection borrowing the
+   * real Allegro catalogue is the ordinary test topology - the one that broke
+   * when the two values were derived independently.
    */
   getBorrowedTaxonomy(): TaxonomyOwner {
     return this.allegroEnvironment === 'sandbox' ? 'allegro:sandbox' : 'allegro';
+  }
+
+  /**
+   * `TaxonomyBorrower.allowsBorrowedCatalogueLookup` - whether core may resolve
+   * this destination's EAN lookups through a PEER connection that owns the
+   * borrowed taxonomy (#2210).
+   *
+   * `false` is the operator's ADR-031 "Allegro category access" opt-out
+   * (#1934/F10). Borrowing is a different mechanism from this connection's own
+   * category browsing - it spends the peer's OAuth credentials and the peer's
+   * rate-limit budget, not this connection's Allegro keys - so it slips that
+   * toggle unless it is answered here. It is still the effect the operator
+   * switched off: up to one Allegro catalogue call per variant, caused by this
+   * connection.
+   */
+  allowsBorrowedCatalogueLookup(): boolean {
+    return this.allegroCatalogueAccessAllowed;
   }
 
   /**
@@ -320,6 +340,15 @@ export class ErliOfferManagerAdapter
      * production, the pre-#2210 behaviour.
      */
     private readonly allegroEnvironment?: AllegroCatalogEnvironment,
+    /**
+     * Whether the operator left ADR-031 Allegro category access enabled for this
+     * connection (#1934/F10). Read by
+     * {@link allowsBorrowedCatalogueLookup} so the opt-out also covers the
+     * borrowed EAN lookup core performs through a peer Allegro connection
+     * (#2210). Defaults to `true`: absent means "not opted out", which is what
+     * every caller predating the flag means.
+     */
+    private readonly allegroCatalogueAccessAllowed: boolean = true,
   ) {
     if (allegroCategoryCatalog) {
       this.fetchCategories = (parentId?: string): Promise<OfferCategory[]> =>

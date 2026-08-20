@@ -1,32 +1,33 @@
 /**
  * Bulk wizard Step 2 - streamed per-variant resolve (#792 / #1741 / #2211)
  *
- * Consumes the NDJSON `categories/resolve-stream` route (epic #2205) and
- * reports progress the operator can actually read: one bar for the whole batch
- * (variants resolved of total) and one for the product currently in flight
- * (variant N of M), with the last few products listed underneath and their
- * outcome named. Availability is still pulled per chunk, but it is an instant
- * read and no longer counts as a unit of progress - mixing the two is what made
- * the old counter say "1 of 2" when it meant "0 of 1".
+ * Renders the progress of the NDJSON `categories/resolve-stream` run and turns
+ * each variant's outcome into its blocker set. The stream loop itself lives in
+ * `use-resolve-stream.ts`; this file is the view plus the per-variant policy
+ * (its own EAN x master values x the batch pricing/stock policy).
  *
- * Each variant's blocker set is still computed here, from its own EAN x master
- * values x the batch pricing/stock policy.
+ * What the operator sees, and why it is shaped this way:
+ * - one bar for the whole batch, because that is the only number that answers
+ *   "how much longer";
+ * - a second bar ONLY for a product with several siblings, because a
+ *   single-variant product's bar is either 0% or 100% and a full bar under a
+ *   12% batch bar is exactly the "nearly done" misreading this step exists to
+ *   remove;
+ * - an estimate, which is cheap now that progress is continuous and is the most
+ *   useful thing to put on a wait that can run into minutes;
+ * - a way out at all times (Back, and Stop-with-what-resolved), because the
+ *   streamed path traded a shorter wait for a visible one.
+ *
+ * Availability is still pulled per chunk, but it is an instant OL-store read and
+ * no longer counts as a unit of progress - mixing the two is what made the old
+ * counter say "1 of 2" when it meant "0 of 1".
  *
  * @module apps/web/src/features/listings/components/bulk
  */
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useReducer,
-  useRef,
-  useState,
-  type ReactElement,
-} from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import { useQueries } from '@tanstack/react-query';
 import { Alert, Button } from '../../../../shared/ui';
 import { useApiClient } from '../../../../app/api/api-client-provider';
-import { ApiError } from '../../../../shared/api/api-error';
 import { inventoryQueryKeys } from '../../../inventory';
 import type { OfferRowValidationInput } from '../../../../shared/plugins';
 import type { EanMatchCandidate, EanMatchResult } from '../../api/listings.types';
@@ -37,6 +38,12 @@ import {
   isValidGtin,
   titleForVariant,
 } from './bulk-policy';
+import {
+  resolveRetryDelay,
+  shouldRetryTransient,
+  useResolveStream,
+  type ResolveItem,
+} from './use-resolve-stream';
 import type {
   BulkRowBlocker,
   BulkVariantRow,
@@ -44,6 +51,10 @@ import type {
   PricingPolicy,
   StockPolicy,
 } from './bulk-wizard.types';
+
+// Re-exported so call sites (and the availability queries below) keep one
+// import path for the retry policy the stream loop owns.
+export { shouldRetryTransient } from './use-resolve-stream';
 
 /** Per-sibling resolved outcome merged back into `row.variants` (#1741). */
 export interface BulkResolveVariantOutcome {
@@ -86,26 +97,36 @@ interface BulkResolveStepProps {
   currency: string;
   platformValidate?: (input: OfferRowValidationInput) => string[];
   destinationResolvesCategoryAtSubmit?: boolean;
+  /**
+   * Leave the step without resolving. Optional only so the component keeps
+   * rendering in isolation; the wizard always supplies it, because a step that
+   * can run for a minute with no way back is a trap (#2205 review I7).
+   */
+  onBack?: () => void;
   onComplete: (outcomes: BulkResolveOutcome[], completion: BulkResolveCompletion) => void;
 }
 
-const RESOLVE_MAX_RETRIES = 3;
-/** Chunk size - well under the 200-id API cap; smaller keeps per-chunk latency low. */
-const RESOLVE_CHUNK_SIZE = 50;
+/**
+ * Availability read size. Unrelated to the resolve request cap: this bounds one
+ * `inventory.availability` query, which is an OL-store read with its own
+ * 200-id limit, and it is deliberately smaller so the first stock numbers land
+ * early. The resolve stream splits at `RESOLVE_CATEGORY_STREAM_CHUNK_SIZE`,
+ * owned by the api module.
+ */
+const AVAILABILITY_CHUNK_SIZE = 50;
 /** How many products the live list keeps on screen at once. */
 const RESOLVE_FEED_SIZE = 4;
-
-export function shouldRetryTransient(failureCount: number, error: Error): boolean {
-  if (failureCount >= RESOLVE_MAX_RETRIES) return false;
-  if (error instanceof ApiError) {
-    return error.isNetworkError() || error.status === 429 || error.isServerError();
-  }
-  return true;
-}
-
-function resolveRetryDelay(attemptIndex: number): number {
-  return Math.min(1000 * 2 ** attemptIndex, 8000);
-}
+/**
+ * How often the screen-reader region restates progress.
+ *
+ * The visible counter changes about five times a second, and a `polite` region
+ * on it never drains its queue - a screen reader narrates the counter for the
+ * whole step and the user hears nothing else. So the counter is NOT a live
+ * region; this separate, visually-hidden one is, at a pace a person can follow.
+ */
+const PROGRESS_ANNOUNCE_INTERVAL_MS = 8000;
+/** Below this, an estimate is noise rather than information. */
+const ESTIMATE_MIN_RESOLVED = 3;
 
 function chunk<T>(items: T[], size: number): T[][] {
   const out: T[][] = [];
@@ -113,107 +134,19 @@ function chunk<T>(items: T[], size: number): T[][] {
   return out;
 }
 
-interface ResolveItem {
-  variantId: string;
-  ean: string | null;
-  sourceCategoryIds?: string[];
-}
-
 function sourceCategoriesOf(row: BulkWizardRow): string[] {
   return (row.product?.categories ?? []).filter((c) => typeof c === 'string' && c.trim() !== '');
 }
 
-// ---------------------------------------------------------------------------
-// Stream state
-// ---------------------------------------------------------------------------
-
-type ResolvePhase = 'starting' | 'streaming' | 'done' | 'error';
-
-interface ResolveStreamState {
-  phase: ResolvePhase;
-  /** Streamed outcomes, keyed by variant id. Survives a retry so it resumes. */
-  results: Record<string, EanMatchResult>;
-  /** Product ids in the order the stream first touched them. */
-  touchedProductIds: string[];
-  eventCount: number;
-  catalogueLookupPerformed: boolean | null;
-  errorMessage: string | null;
-}
-
-type ResolveStreamAction =
-  | { type: 'result'; variantId: string; productId: string | null; result: EanMatchResult }
-  /**
-   * `catalogueLookupPerformed: null` means "this arm reached its end without a
-   * terminal event reporting it" - the empty-pending path. It must never be
-   * spelled as `true`: a retry that resolves no new variant would then overwrite
-   * the `false` an earlier stream did report, re-arming every category blocker
-   * the flag exists to suppress (the #1934/F10 shape, one retry click away).
-   */
-  | { type: 'terminal'; catalogueLookupPerformed: boolean | null }
-  | { type: 'error'; message: string }
-  | { type: 'restart' };
-
-const INITIAL_STREAM_STATE: ResolveStreamState = {
-  phase: 'starting',
-  results: {},
-  touchedProductIds: [],
-  eventCount: 0,
-  catalogueLookupPerformed: null,
-  errorMessage: null,
-};
-
-function resolveStreamReducer(
-  state: ResolveStreamState,
-  action: ResolveStreamAction,
-): ResolveStreamState {
-  switch (action.type) {
-    case 'result': {
-      const touchedProductIds =
-        action.productId !== null && !state.touchedProductIds.includes(action.productId)
-          ? [...state.touchedProductIds, action.productId]
-          : state.touchedProductIds;
-      return {
-        ...state,
-        phase: 'streaming',
-        results: { ...state.results, [action.variantId]: action.result },
-        touchedProductIds,
-        eventCount: state.eventCount + 1,
-        errorMessage: null,
-      };
-    }
-    case 'terminal':
-      return {
-        ...state,
-        phase: 'done',
-        // Only an event that actually reported the value may assign it; an
-        // unobserved terminal keeps whatever a real terminal already said.
-        catalogueLookupPerformed:
-          action.catalogueLookupPerformed ?? state.catalogueLookupPerformed,
-        errorMessage: null,
-      };
-    case 'error':
-      return { ...state, phase: 'error', errorMessage: action.message };
-    case 'restart':
-      // Delivered results are kept deliberately: a rerun resumes the variants
-      // that never resolved instead of re-spending marketplace calls on the
-      // ones that did (epic #2205 decision 3).
-      return { ...state, phase: 'starting', errorMessage: null };
-    default:
-      return state;
+/** "about 40 seconds left" / "about 3 minutes left", never a false precision. */
+function formatEstimate(remainingMs: number): string {
+  const seconds = Math.max(1, Math.round(remainingMs / 1000));
+  if (seconds < 90) {
+    return `about ${Math.max(5, Math.round(seconds / 5) * 5)} seconds left`;
   }
+  const minutes = Math.round(seconds / 60);
+  return `about ${minutes} ${minutes === 1 ? 'minute' : 'minutes'} left`;
 }
-
-const TRUNCATED_STREAM_MESSAGE =
-  'The resolver stopped before reporting every variant, so the results are incomplete.';
-/**
- * A `failed` terminal is a failure the server explicitly reported, which is a
- * different fact from a body that was cut short - so it gets its own sentence
- * rather than being described as truncation.
- */
-const FAILED_STREAM_MESSAGE =
-  'The resolver reported a failure part-way through this batch, so the results are incomplete.';
-
-// ---------------------------------------------------------------------------
 
 interface ResolveProduct {
   productId: string;
@@ -230,6 +163,7 @@ export function BulkResolveStep({
   currency,
   platformValidate,
   destinationResolvesCategoryAtSubmit,
+  onBack,
   onComplete,
 }: BulkResolveStepProps): ReactElement {
   const apiClient = useApiClient();
@@ -290,7 +224,7 @@ export function BulkResolveStep({
   }, [allVariants, resolveItems]);
 
   const availabilityChunks = useMemo(
-    () => chunk(allVariantIds, RESOLVE_CHUNK_SIZE),
+    () => chunk(allVariantIds, AVAILABILITY_CHUNK_SIZE),
     [allVariantIds],
   );
 
@@ -310,138 +244,13 @@ export function BulkResolveStep({
   const availabilitySettled = availabilityResults.every((q) => q.isSuccess);
   const availabilityError = availabilityResults.find((q) => q.isError)?.error ?? null;
 
-  /**
-   * The stream's content key: what this run would ask the destination about,
-   * order-independent. Two renders that describe the same work produce the same
-   * string even when every array around them is a fresh object, which is what
-   * the old `useQueries` path got for free from its content-derived `queryKey`.
-   */
-  const resolveSignature = useMemo(
-    () =>
-      resolveItems
-        .map((item) => {
-          const categories = [...(item.sourceCategoryIds ?? [])].sort().join('~');
-          return `${item.variantId}|${item.ean ?? ''}|${categories}`;
-        })
-        .sort()
-        .join(','),
-    [resolveItems],
-  );
-
-  const [stream, dispatch] = useReducer(resolveStreamReducer, INITIAL_STREAM_STATE);
-  const [runId, setRunId] = useState(0);
-  /**
-   * Latest values the stream effect needs, read without listing them as deps.
-   * Written in an effect declared BEFORE the stream effect, so a render that
-   * does change the content key still hands the stream the fresh values.
-   */
-  const resolveItemsRef = useRef<ResolveItem[]>(resolveItems);
-  const productIdByVariantIdRef = useRef<Map<string, string>>(productIdByVariantId);
-  useEffect(() => {
-    resolveItemsRef.current = resolveItems;
-    productIdByVariantIdRef.current = productIdByVariantId;
+  const stream = useResolveStream({
+    apiClient,
+    connectionId,
+    resolveItems,
+    productIdByVariantId,
   });
-  /** Results across every attempt, read inside the effect without re-arming it. */
-  const resultsRef = useRef<Record<string, EanMatchResult>>({});
-  /** Total events ever delivered - the retry gate (epic #2205 decision 3). */
-  const deliveredRef = useRef(0);
-  const autoRetriesRef = useRef(0);
 
-  useEffect(() => {
-    let cancelled = false;
-    let retryTimer: ReturnType<typeof setTimeout> | null = null;
-    const controller = new AbortController();
-
-    const resolveItems = resolveItemsRef.current;
-    const productIdByVariantId = productIdByVariantIdRef.current;
-
-    const pending = resolveItems.filter((i) => resultsRef.current[i.variantId] === undefined);
-    if (pending.length === 0) {
-      // Nothing to ask the destination about. The step is done, but this arm
-      // observed no terminal event, so it reports no reading of its own -
-      // `null`, never `true` (see `ResolveStreamAction`). A first run that never
-      // reaches the marketplace therefore leaves the value unset, and the
-      // conservative default below keeps every blocker.
-      dispatch({ type: 'terminal', catalogueLookupPerformed: null });
-      return () => {
-        cancelled = true;
-      };
-    }
-
-    const consume = async (): Promise<void> => {
-      try {
-        const events = apiClient.listings.resolveCategoriesStream(
-          connectionId,
-          { items: pending },
-          { signal: controller.signal },
-        );
-        for await (const event of events) {
-          if (cancelled) return;
-          deliveredRef.current += 1;
-          if (event.kind === 'result') {
-            resultsRef.current[event.variantId] = event.result;
-            dispatch({
-              type: 'result',
-              variantId: event.variantId,
-              productId: productIdByVariantId.get(event.variantId) ?? null,
-              result: event.result,
-            });
-            continue;
-          }
-          // Terminal line. Only `complete` is a finished run - `aborted` and
-          // `failed` describe a partial one, and the 200 status can no longer
-          // say so, which is exactly why the completion is on the wire.
-          if (event.completion === 'complete') {
-            dispatch({
-              type: 'terminal',
-              catalogueLookupPerformed: event.catalogueLookupPerformed,
-            });
-          } else {
-            dispatch({
-              type: 'error',
-              message:
-                event.completion === 'failed' ? FAILED_STREAM_MESSAGE : TRUNCATED_STREAM_MESSAGE,
-            });
-          }
-          return;
-        }
-        if (cancelled) return;
-        // End of body without a terminal line: truncated, never a clean finish.
-        dispatch({ type: 'error', message: TRUNCATED_STREAM_MESSAGE });
-      } catch (error) {
-        if (cancelled) return;
-        const failure = error instanceof Error ? error : new Error('Resolution failed.');
-        // Retry only while NOTHING has been delivered - that is the #1709
-        // cold-start case the retry exists for. Once an event has arrived the
-        // run is progressing, so restarting it would re-spend marketplace calls
-        // that already succeeded; the operator resumes instead.
-        if (deliveredRef.current === 0 && shouldRetryTransient(autoRetriesRef.current, failure)) {
-          const delay = resolveRetryDelay(autoRetriesRef.current);
-          autoRetriesRef.current += 1;
-          retryTimer = setTimeout(() => {
-            if (!cancelled) setRunId((n) => n + 1);
-          }, delay);
-          return;
-        }
-        dispatch({ type: 'error', message: failure.message });
-      }
-    };
-
-    void consume();
-
-    return () => {
-      cancelled = true;
-      if (retryTimer !== null) clearTimeout(retryTimer);
-      controller.abort();
-    };
-    // Keyed on CONTENT, never on array identity. `rows` is rebuilt as a new
-    // array holding the same rows on any parent re-render (a window-focus
-    // refetch, `staleTime` expiry), which would otherwise abort the in-flight
-    // stream mid-run and re-spend the marketplace calls already in flight - the
-    // regression an identity dep reintroduced over the old content-keyed
-    // `useQueries` path. `resolveItems` / `productIdByVariantId` are read from
-    // refs so their churn cannot re-arm the effect either.
-  }, [apiClient, connectionId, resolveSignature, runId]);
 
   const catalogueLookupPerformed = stream.catalogueLookupPerformed ?? true;
   // A destination that looked nothing up cannot have produced a meaningful
@@ -537,13 +346,68 @@ export function BulkResolveStep({
     onComplete(buildOutcomes(), { catalogueLookupPerformed });
   }, [settled, hasError, buildOutcomes, onComplete, catalogueLookupPerformed]);
 
+  const totalVariants = resolveItems.length;
+  const resolvedVariants = Object.keys(stream.results).length;
+
   const retry = useCallback(() => {
     for (const q of availabilityResults) {
       if (q.isError) void q.refetch();
     }
-    dispatch({ type: 'restart' });
-    setRunId((n) => n + 1);
-  }, [availabilityResults]);
+    stream.retry();
+  }, [availabilityResults, stream]);
+
+  /**
+   * Ticks once a second while the stream runs, so the estimate ages instead of
+   * freezing at whatever the last event implied. Nothing else re-renders on it -
+   * every result event already re-renders the component.
+   */
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  useEffect(() => {
+    if (stream.phase !== 'streaming') return;
+    const id = setInterval(() => setNowMs(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [stream.phase]);
+
+  /**
+   * Progress read by the announcer's interval. Written in an effect rather than
+   * listed as a dep, so the interval is not torn down and re-armed on every
+   * event - which would stop it ever firing.
+   */
+  const progressRef = useRef({ resolved: 0, total: 0 });
+  useEffect(() => {
+    progressRef.current = { resolved: resolvedVariants, total: totalVariants };
+  }, [resolvedVariants, totalVariants]);
+
+  const [announcement, setAnnouncement] = useState('');
+  useEffect(() => {
+    if (stream.phase === 'done') {
+      // The one moment worth announcing immediately.
+      setAnnouncement(
+        `Resolved ${progressRef.current.resolved} of ${progressRef.current.total} variants.`,
+      );
+      return;
+    }
+    if (stream.phase !== 'streaming') return;
+    const id = setInterval(() => {
+      setAnnouncement(
+        `Resolved ${progressRef.current.resolved} of ${progressRef.current.total} variants.`,
+      );
+    }, PROGRESS_ANNOUNCE_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, [stream.phase]);
+
+  /**
+   * Rate-based estimate from this attempt's own start. Absent until a few
+   * variants have landed: the first result carries the whole connection setup,
+   * so extrapolating from it overstates the wait by a wide margin.
+   */
+  const estimate = ((): string | null => {
+    if (stream.phase !== 'streaming' || stream.startedAt === null) return null;
+    if (resolvedVariants < ESTIMATE_MIN_RESOLVED || resolvedVariants >= totalVariants) return null;
+    const elapsed = nowMs - stream.startedAt;
+    if (elapsed <= 0) return null;
+    return formatEstimate((elapsed / resolvedVariants) * (totalVariants - resolvedVariants));
+  })();
 
   if (hasError) {
     const message =
@@ -551,7 +415,9 @@ export function BulkResolveStep({
       (availabilityError instanceof Error ? availabilityError.message : 'Resolution failed.');
     const resolvedSoFar = Object.keys(stream.results).length;
     return (
-      <div className="bulk-wizard__body--center" role="alert">
+      // No `role="alert"` on the wrapper: `Alert` carries it, and nesting the
+      // two makes several screen readers announce the message twice.
+      <div className="bulk-wizard__body--center">
         <Alert tone="error">
           Could not resolve categories and stock for this batch. {message}
         </Alert>
@@ -561,33 +427,70 @@ export function BulkResolveStep({
             the remaining ones instead of starting over.
           </p>
         ) : null}
-        <Button tone="secondary" onClick={retry}>
-          Retry resolve
-        </Button>
+        <div className="bulk-wizard__footer">
+          {onBack ? (
+            <Button tone="ghost" onClick={onBack}>
+              Back
+            </Button>
+          ) : null}
+          <div className="bulk-wizard__footer-spacer" />
+          <Button tone="secondary" onClick={retry}>
+            Retry resolve
+          </Button>
+          {/* A batch that lost its last few variants does not need a second full
+              wait: an unresolved variant carries a `no-match` into Review, which
+              Review already surfaces and lets the operator fix per row. Only
+              offered once something did resolve - with nothing resolved there is
+              no partial result to continue with. */}
+          {resolvedSoFar > 0 ? (
+            <Button tone="primary" onClick={stream.stop}>
+              Continue with {resolvedSoFar} resolved
+            </Button>
+          ) : null}
+        </div>
       </div>
     );
   }
-
-  const totalVariants = resolveItems.length;
-  const resolvedVariants = Object.keys(stream.results).length;
 
   // Nothing has come back yet. Rendering the bars here would put two tracks at
   // 0% on screen for a destination that terminates immediately (epic #2205
   // decision 4), so the waiting state is its own panel.
   if (stream.eventCount === 0) {
+    // Two different situations reach here, and saying the wrong one is worse
+    // than saying nothing. Still running: the shimmer plus what is being waited
+    // on. Already finished with no results at all (a destination that could
+    // borrow no catalogue, epic #2205 decision 4): the previous copy claimed the
+    // marketplace catalog was being asked about the first barcode, which never
+    // happened.
+    const waiting = stream.phase !== 'done';
+    const resumed = resolvedVariants > 0;
     return (
       <div className="bulk-wizard__body--center" role="status" aria-live="polite">
-        <div className="bulk-wizard__resolve-pending" aria-hidden="true" />
+        {waiting ? <div className="bulk-wizard__resolve-pending" aria-hidden="true" /> : null}
         <h2 className="bulk-wizard__resolve-title">
-          {totalVariants > 0
-            ? `Resolving ${totalVariants} ${totalVariants === 1 ? 'variant' : 'variants'}`
-            : 'Pulling master price and stock'}
+          {!waiting
+            ? 'Nothing to match against the catalog'
+            : totalVariants > 0
+              ? `Resolving ${totalVariants} ${totalVariants === 1 ? 'variant' : 'variants'}`
+              : 'Pulling master price and stock'}
         </h2>
         <p className="bulk-wizard__resolve-sub">
-          {totalVariants > 0
-            ? 'Asking the marketplace catalog about the first barcode. Results appear one product at a time as they come back.'
-            : 'No variant in this batch carries a barcode or a source category, so there is nothing to match against the catalog.'}
+          {!waiting
+            ? 'This destination has no product catalog to match barcodes against, so categories are picked in Review or resolved at submit.'
+            : totalVariants === 0
+              ? 'No variant in this batch carries a barcode or a source category, so there is nothing to match against the catalog.'
+              : resumed
+                ? `Picking up where the last attempt stopped: ${resolvedVariants} of ${totalVariants} variants already resolved.`
+                : 'Asking the marketplace catalog about the first barcode. Results appear one product at a time as they come back.'}
         </p>
+        {waiting && onBack ? (
+          <div className="bulk-wizard__footer">
+            <Button tone="ghost" onClick={onBack}>
+              Back
+            </Button>
+            <div className="bulk-wizard__footer-spacer" />
+          </div>
+        ) : null}
       </div>
     );
   }
@@ -611,7 +514,21 @@ export function BulkResolveStep({
       };
     });
 
-  const current = feedProducts.find((p) => p.done < p.total) ?? feedProducts[0];
+  // Only a product still IN FLIGHT, and only one with siblings to count through.
+  // No fallback to a finished product: parking a full second bar under a batch
+  // bar at 12% is the "nearly done" misreading this step exists to remove, and
+  // for a single-variant product the bar can only ever read 0% or 100%.
+  const current = feedProducts.find((p) => p.done < p.total && p.total > 1);
+
+  // Products whose every streamed variant has landed. `touchedProductIds`
+  // counts products STARTED, which on one line after the word "resolved" reads
+  // as products finished - and with multi-variant products it reaches 100%
+  // while the variant bar sits at 40%.
+  const completedProducts = [...resolveProductsById.values()].filter(
+    (product) =>
+      product.variantIds.length > 0 &&
+      product.variantIds.every((id) => stream.results[id] !== undefined),
+  ).length;
 
   return (
     <div className="bulk-wizard__body--center">
@@ -619,13 +536,15 @@ export function BulkResolveStep({
         Resolving {totalVariants} {totalVariants === 1 ? 'variant' : 'variants'}
       </h2>
 
+      {/* Deliberately NOT a live region - see `PROGRESS_ANNOUNCE_INTERVAL_MS`.
+          The visually-hidden region at the end of this panel is. */}
       <div className="bulk-wizard__resolve-track bulk-wizard__resolve-track--batch">
-        <p className="bulk-wizard__resolve-track-meta" role="status" aria-live="polite">
+        <p className="bulk-wizard__resolve-track-meta">
           <span>
             {resolvedVariants} of {totalVariants} variants resolved
           </span>
           <span>
-            {stream.touchedProductIds.length} of {resolveProductsById.size} products
+            {completedProducts} of {resolveProductsById.size} products done
           </span>
         </p>
         <div
@@ -644,8 +563,12 @@ export function BulkResolveStep({
         <div className="bulk-wizard__resolve-track">
           <p className="bulk-wizard__resolve-track-meta">
             <span className="bulk-wizard__resolve-track-name">{current.name}</span>
+            {/* `done`, not `done + 1`: the label used to count the variant in
+                flight while `aria-valuenow` and the fill counted the ones
+                finished, so a sighted user read "1 of 3" as a screen reader
+                announced "0 of 3". All three now report the same number. */}
             <span>
-              variant {Math.min(current.done + 1, current.total)} of {current.total}
+              {current.done} of {current.total} variants
             </span>
           </p>
           <div
@@ -704,7 +627,32 @@ export function BulkResolveStep({
         Each variant&apos;s barcode is matched against the marketplace catalog, then per-variant
         master price and stock are pulled. Products that need a category are flagged here so you
         can fix them in Review before submit.
+        {estimate !== null ? ` Roughly ${estimate}.` : ''}
       </p>
+
+      {/* The only live region on this panel, restated on a slow interval. The
+          counter above changes about five times a second; announcing that would
+          fill the queue and drown out everything else on the page. */}
+      <p className="sr-only" role="status" aria-live="polite">
+        {announcement}
+      </p>
+
+      <div className="bulk-wizard__footer">
+        {onBack ? (
+          <Button tone="ghost" onClick={onBack}>
+            Back
+          </Button>
+        ) : null}
+        <div className="bulk-wizard__footer-spacer" />
+        {/* A minute-long wait needs a way out that keeps the work already paid
+            for. Stopping settles the step with what arrived; the rest carry a
+            `no-match` into Review, which Review already handles per row. */}
+        {stream.phase === 'streaming' && resolvedVariants > 0 ? (
+          <Button tone="secondary" onClick={stream.stop}>
+            Stop and review {resolvedVariants}
+          </Button>
+        ) : null}
+      </div>
     </div>
   );
 }

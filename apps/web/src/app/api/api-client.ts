@@ -117,6 +117,11 @@ export type ApiBlobRequest = (path: string, init?: RequestInit) => Promise<Blob>
  * `features/listings/api/listings.api.ts` - so a socket that opens and then goes
  * silent still fails with a retryable error rather than hanging forever.
  */
+export type ApiStreamRequest = (
+  path: string,
+  init?: RequestInit,
+) => Promise<ReadableStream<Uint8Array>>;
+
 /**
  * Ceiling on time-to-first-byte for a streamed request. Generous, because the
  * server answers before its first marketplace call (it resolves the connection
@@ -124,11 +129,6 @@ export type ApiBlobRequest = (path: string, init?: RequestInit) => Promise<Blob>
  * `timeout: false` leaves a pre-header stall unbounded.
  */
 export const STREAM_HEAD_TIMEOUT_MS = 20_000;
-
-export type ApiStreamRequest = (
-  path: string,
-  init?: RequestInit,
-) => Promise<ReadableStream<Uint8Array>>;
 
 /**
  * Plugin-augmentable surface. Empty by default; each plugin extends it

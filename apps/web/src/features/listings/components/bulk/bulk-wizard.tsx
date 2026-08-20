@@ -675,6 +675,9 @@ export function BulkWizard({
                 currency={config.currency}
                 platformValidate={platformValidate}
                 destinationResolvesCategoryAtSubmit={destinationResolvesCategoryFromManifest}
+                onBack={() => {
+                  setStep('config');
+                }}
                 onComplete={handleResolveComplete}
               />
             )}

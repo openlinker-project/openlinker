@@ -921,6 +921,9 @@ export class ListingsController {
     let committed = false;
     let terminalWritten = false;
     let keepAlive: ReturnType<typeof setInterval> | null = null;
+    // Held so the `finally` can close a generator this loop abandoned. Cleared
+    // once the loop drains it normally.
+    let streamIterator: AsyncIterator<EanCategoryMatchStreamEvent> | null = null;
 
     const stopKeepAlive = (): void => {
       if (keepAlive !== null) {
@@ -1027,11 +1030,15 @@ export class ListingsController {
         )
         [Symbol.asyncIterator]();
 
+      streamIterator = iterator;
       let next = await iterator.next();
       while (!next.done) {
         writeEvent(next.value);
         next = await iterator.next();
       }
+      // Ran to completion on its own, so there is nothing left suspended and the
+      // `finally` below must not call `return()` on a finished generator.
+      streamIterator = null;
     } catch (error) {
       if (!committed) {
         // Only the gate can land here, and it wrote nothing, so the exception is
@@ -1052,6 +1059,21 @@ export class ListingsController {
     } finally {
       stopKeepAlive();
       res.off('close', onClientClose);
+      if (streamIterator !== null) {
+        // The loop left the generator suspended at a `yield` - the reachable
+        // cause is `writeEvent`/`res.write` throwing part-way through. Without
+        // this the core generator never resumes, so its own `finally` never runs
+        // and the adapter's abort listener is never disposed. `return()` is
+        // best-effort: it is the cleanup path, and a throw from it would replace
+        // the real error with a cleanup one.
+        try {
+          await streamIterator.return?.();
+        } catch {
+          // Nothing actionable, and the terminal line below is what the client
+          // reads. Deliberately swallowed rather than logged: this runs on the
+          // error path of an already-logged failure.
+        }
+      }
       if (committed) {
         if (!terminalWritten) {
           // Core emits its own `failed` terminal before rethrowing, so this only
@@ -1070,7 +1092,12 @@ export class ListingsController {
             catalogueLookupPerformed: true,
           });
         }
-        res.end();
+        // Same guard as `writeLine`: reachable when the client disconnects
+        // between the last write and here, and `end()` on a destroyed socket
+        // throws an unhandled `ERR_STREAM_WRITE_AFTER_END` out of a `finally`.
+        if (!res.writableEnded && !res.destroyed) {
+          res.end();
+        }
       }
     }
   }

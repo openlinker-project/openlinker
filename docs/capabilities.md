@@ -84,7 +84,7 @@ declare what they support via `implements <BasePort>, <SubCapability>, …`.
 | `SellerPoliciesReader` | Surface the seller's saved return / shipping / warranty policies. | `fetchSellerPolicies` | `isSellerPoliciesReader` |
 | `ResponsibleProducerReader` | List GPSR responsible-producer entries. | `fetchResponsibleProducers` | `isResponsibleProducerReader` |
 | `SafetyAttachmentUploader` | Upload a GPSR safety attachment (manual, label, …). | `uploadSafetyAttachment` | `isSafetyAttachmentUploader` |
-| `TaxonomyBorrower` | Reuse another platform's resolved taxonomy for a destination. | `getBorrowedTaxonomy` | `isTaxonomyBorrower` |
+| `TaxonomyBorrower` | Reuse another platform's resolved taxonomy for a destination. | `getBorrowedTaxonomy`, `allowsBorrowedCatalogueLookup` (optional) | `isTaxonomyBorrower` |
 
 **Adapter coverage:** Allegro implements every sub-capability except
 `OfferQuantityBatchUpdater`, including `EanCategoryMatcherStreaming` (#2208, epic

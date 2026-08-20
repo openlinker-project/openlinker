@@ -5,9 +5,16 @@
  * Resolve step adds: lines are not aligned to chunk boundaries, the transport
  * injects keep-alive filler that carries no outcome, and a non-2xx must still
  * raise `ApiError` so the route's 404 / 409 / 422 gate keeps working.
+ *
+ * The request the stream method PUTS on the wire is pinned here too: the route
+ * only answers NDJSON, so `Accept: application/x-ndjson` is part of the
+ * contract, and the client's `buildHeaders` default must neither overwrite it
+ * nor stop defaulting `application/json` for every ordinary request.
  */
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi, type Mock } from 'vitest';
 import { ApiError } from '../../../shared/api/api-error';
+import { createApiClient } from '../../../app/api/api-client';
+import type { SessionAdapter } from '../../../shared/auth/session-adapter';
 import {
   createListingsApi,
   parseResolveCategoryStreamLine,
@@ -54,6 +61,144 @@ describe('parseResolveCategoryStreamLine', () => {
     // A body cut mid-object leaves an unparseable tail; dropping it is safe
     // because the missing terminal line is what proves truncation.
     expect(parseResolveCategoryStreamLine('{"kind":"resu')).toBeNull();
+  });
+});
+
+type StreamRequestFn = (path: string, init?: RequestInit) => Promise<ReadableStream<Uint8Array>>;
+
+/** Typed stub of the streaming transport, so `mock.calls` needs no cast. */
+function streamRequestMock(stream: ReadableStream<Uint8Array>): Mock<StreamRequestFn> {
+  return vi.fn<StreamRequestFn>().mockResolvedValue(stream);
+}
+
+describe('resolveCategoriesStream request', () => {
+  const body = {
+    items: [
+      { variantId: 'v1', ean: '5901234123457' },
+      { variantId: 'v2', ean: null },
+    ],
+  };
+
+  it('posts the batch to the resolve-stream route asking for NDJSON', async () => {
+    const requestStream = streamRequestMock(streamOf([`${DONE_LINE}\n`]));
+    const api = createListingsApi(vi.fn(), requestStream);
+
+    await collect(api.resolveCategoriesStream('conn_1', body));
+
+    const [path, init = {}] = requestStream.mock.calls[0];
+    expect(path).toBe('/listings/connections/conn_1/categories/resolve-stream');
+    expect(init.method).toBe('POST');
+    const headers = new Headers(init.headers);
+    // The route ONLY answers NDJSON; the client's `Accept: application/json`
+    // default must not be what goes out here.
+    expect(headers.get('Accept')).toBe('application/x-ndjson');
+    expect(headers.get('Content-Type')).toBe('application/json');
+    expect(typeof init.body).toBe('string');
+    expect(JSON.parse(init.body as string)).toEqual(body);
+  });
+
+  it('forwards the caller AbortSignal so an unmount can cancel the open body', async () => {
+    // The streamed transport arms no wall clock, so this signal is the ONLY way
+    // a caller can end a run it no longer wants; dropping it would leave the
+    // marketplace resolving rows nobody will read.
+    const controller = new AbortController();
+    const requestStream = streamRequestMock(streamOf([`${DONE_LINE}\n`]));
+    const api = createListingsApi(vi.fn(), requestStream);
+
+    await collect(api.resolveCategoriesStream('conn_1', body, { signal: controller.signal }));
+
+    const [, init = {}] = requestStream.mock.calls[0];
+    expect(init.signal).toBe(controller.signal);
+  });
+
+  it('omits signal entirely when the caller passes none', async () => {
+    // Absent rather than `undefined`: the transport composes `init.signal` with
+    // its own head-timeout signal, so an explicitly present key is a shape the
+    // conditional spread exists to avoid.
+    const requestStream = streamRequestMock(streamOf([`${DONE_LINE}\n`]));
+    const api = createListingsApi(vi.fn(), requestStream);
+
+    await collect(api.resolveCategoriesStream('conn_1', body));
+
+    const [, init = {}] = requestStream.mock.calls[0];
+    expect('signal' in init).toBe(false);
+  });
+});
+
+describe('Accept header on the wire', () => {
+  const BASE_URL = 'http://localhost:3000';
+
+  function sessionAdapter(): SessionAdapter {
+    return {
+      getAccessToken: vi.fn().mockResolvedValue(null),
+      getSession: vi.fn(),
+      persistSession: vi.fn(),
+      clearSession: vi.fn(),
+    };
+  }
+
+  /**
+   * The client's own transport option type. Spelled through
+   * `createApiClient` rather than as `typeof fetch`, because `features/` is
+   * barred from naming the raw global at all (`no-restricted-globals`) - a rule
+   * about calling it that a type reference trips just the same.
+   */
+  type ClientFetch = NonNullable<Parameters<typeof createApiClient>[0]['fetchFn']>;
+
+  function jsonResponse(payload: unknown): Response {
+    return {
+      ok: true,
+      status: 200,
+      headers: new Headers({ 'content-type': 'application/json' }),
+      json: () => Promise.resolve(payload),
+      text: () => Promise.resolve(JSON.stringify(payload)),
+    } as unknown as Response;
+  }
+
+  function ndjsonResponse(chunks: readonly string[]): Response {
+    return {
+      ok: true,
+      status: 200,
+      headers: new Headers({ 'content-type': 'application/x-ndjson' }),
+      body: streamOf(chunks),
+    } as unknown as Response;
+  }
+
+  it('keeps the application/json default on an ordinary non-stream listings request', async () => {
+    // The regression `buildHeaders` could silently cause: teaching the client to
+    // respect a caller-set Accept must not stop it defaulting for everyone else.
+    const fetchFn = vi.fn<ClientFetch>().mockResolvedValue(jsonResponse({ id: 'map_1' }));
+    const client = createApiClient({
+      baseUrl: BASE_URL,
+      fetchFn,
+      sessionAdapter: sessionAdapter(),
+    });
+
+    await client.listings.getById('map_1');
+
+    const [, init = {}] = fetchFn.mock.calls[0];
+    expect(new Headers(init.headers).get('Accept')).toBe('application/json');
+  });
+
+  it('leaves the stream request asking for NDJSON through the real client', async () => {
+    const fetchFn = vi
+      .fn<ClientFetch>()
+      .mockResolvedValue(ndjsonResponse([`${RESULT_LINE}\n${DONE_LINE}\n`]));
+    const client = createApiClient({
+      baseUrl: BASE_URL,
+      fetchFn,
+      sessionAdapter: sessionAdapter(),
+    });
+
+    const events = await collect(
+      client.listings.resolveCategoriesStream('conn_1', {
+        items: [{ variantId: 'v1', ean: '5901234123457' }],
+      }),
+    );
+
+    expect(events).toHaveLength(2);
+    const [, init = {}] = fetchFn.mock.calls[0];
+    expect(new Headers(init.headers).get('Accept')).toBe('application/x-ndjson');
   });
 });
 
@@ -130,7 +275,7 @@ describe('resolveCategoriesStream', () => {
       // re-run a silent stream and burn another idle window before the operator
       // is told anything.
       expect((error as ApiError).status).toBe(408);
-      expect((error as ApiError).message).toMatch(/stopped sending data/i);
+      expect((error as ApiError).message).toMatch(/No response from the category lookup/i);
     } finally {
       vi.useRealTimers();
     }

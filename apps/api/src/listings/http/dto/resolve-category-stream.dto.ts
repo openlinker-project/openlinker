@@ -32,7 +32,10 @@ export const RESOLVE_CATEGORY_STREAM_CONTENT_TYPE = 'application/x-ndjson';
  * backoff can hold a chunk for 30 s or more). Its own `kind` keeps it outside
  * the core `EanCategoryMatchStreamEventKindValues` union, so a client that
  * switches on the discriminant drops it instead of counting it as a resolved
- * variant - the one property that makes the line safe to inject anywhere.
+ * variant - the one property that makes the line safe to inject anywhere. That
+ * separation is what `scripts/check-resolve-stream-mirror.mjs` pins: a new core
+ * event kind has to reach the client, and this one must never be mistaken for
+ * one.
  */
 export interface ResolveCategoryStreamKeepAliveLine {
   kind: 'keep-alive';

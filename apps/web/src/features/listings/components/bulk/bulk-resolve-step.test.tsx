@@ -14,6 +14,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderWithProviders, createMockApiClient } from '../../../../test/test-utils';
+import { RESOLVE_CATEGORY_STREAM_CHUNK_SIZE } from '../../api/listings.api';
 import { ApiError } from '../../../../shared/api/api-error';
 import {
   BulkResolveStep,
@@ -163,6 +164,7 @@ function renderStep(
   apiClient: ReturnType<typeof createMockApiClient>,
   onComplete: OnComplete,
   rows: BulkWizardRow[] = [makeRow('prod_1', [variantRow('v1'), variantRow('v2')])],
+  onBack?: () => void,
 ): void {
   renderWithProviders(
     <BulkResolveStep
@@ -171,9 +173,18 @@ function renderStep(
       pricingPolicy={{ mode: 'use-master' }}
       stockPolicy={{ mode: 'use-master' }}
       currency="PLN"
+      onBack={onBack}
       onComplete={onComplete}
     />,
     { apiClient },
+  );
+}
+
+/** One product carrying `count` siblings, so a batch can exceed the request cap. */
+function wideRow(count: number): BulkWizardRow {
+  return makeRow(
+    'prod_1',
+    Array.from({ length: count }, (_, i) => variantRow(`v${i + 1}`)),
   );
 }
 
@@ -225,7 +236,13 @@ describe('BulkResolveStep', () => {
     expect(
       await screen.findByRole('progressbar', { name: /variants resolved for Merino Hiking Socks/i }),
     ).toHaveAttribute('aria-valuenow', '1');
-    expect(screen.getByText(/variant 2 of 2/i)).toBeInTheDocument();
+    // One number, three faces: the label, `aria-valuenow` and the fill all report
+    // variants FINISHED. The label used to count the one in flight instead, so a
+    // sighted user read "2 of 2" while a screen reader announced "1 of 2".
+    // Exact text, not a regex: the batch line above reads "1 of 2 variants
+    // resolved", so a loose match hits both and the assertion stops being about
+    // the product track at all.
+    expect(screen.getByText('1 of 2 variants')).toBeInTheDocument();
     held.open();
   });
 
@@ -254,7 +271,7 @@ describe('BulkResolveStep', () => {
     renderStep(apiClient, onComplete);
 
     expect(await screen.findByText(/Retry resolve/i)).toBeInTheDocument();
-    expect(screen.getByText(/stopped before reporting every variant/i)).toBeInTheDocument();
+    expect(screen.getByText(/stopped before every variant was checked/i)).toBeInTheDocument();
     expect(onComplete).not.toHaveBeenCalled();
   });
 
@@ -269,7 +286,7 @@ describe('BulkResolveStep', () => {
     expect(await screen.findByText(/Retry resolve/i)).toBeInTheDocument();
     // A reported failure is not truncation, and does not read as one.
     expect(screen.getByText(/reported a failure part-way through/i)).toBeInTheDocument();
-    expect(screen.queryByText(/stopped before reporting every variant/i)).toBeNull();
+    expect(screen.queryByText(/stopped before every variant was checked/i)).toBeNull();
     expect(onComplete).not.toHaveBeenCalled();
   });
 
@@ -464,6 +481,115 @@ describe('BulkResolveStep', () => {
       expect(variant.blockers).not.toContain('no-match');
     }
     expect(onComplete.mock.calls[0][1]).toEqual({ catalogueLookupPerformed: false });
+  });
+
+  it('splits a batch over the request cap into sequential requests', async () => {
+    // The route caps `items` at `RESOLVE_CATEGORY_STREAM_CHUNK_SIZE` and the
+    // wizard's 100-PRODUCT cap expands to far more variants than that (#824), so
+    // a single un-split POST is rejected by the validation pipe - a dead end with
+    // no Back and a retry that fails identically forever. Splitting is what keeps
+    // the streamed path reachable for a real batch.
+    const total = RESOLVE_CATEGORY_STREAM_CHUNK_SIZE + 5;
+    const onComplete = vi.fn<OnComplete>();
+    const seenSizes: number[] = [];
+    const apiClient = mockClient((_connectionId, body) => {
+      seenSizes.push(body.items.length);
+      return scriptedStream([
+        ...body.items.map((item) => result(item.variantId, 'matched')),
+        done(),
+      ]);
+    });
+
+    renderStep(apiClient, onComplete, [wideRow(total)]);
+
+    await waitFor(() => {
+      expect(onComplete).toHaveBeenCalledTimes(1);
+    });
+    expect(seenSizes).toEqual([RESOLVE_CATEGORY_STREAM_CHUNK_SIZE, 5]);
+    // Sequential, not parallel: the second request is only made once the first
+    // has delivered its terminal, which is what keeps the adapter's in-flight
+    // cap meaningful and gives the abort path a checkpoint.
+    expect(onComplete.mock.calls[0][0][0].variants).toHaveLength(total);
+  });
+
+  it('settles with the results already delivered when the operator stops the run', async () => {
+    const held = gate();
+    const onComplete = vi.fn<OnComplete>();
+    const apiClient = mockClient(() =>
+      scriptedStream([result('v1', 'matched'), held.wait, result('v2', 'matched'), done()]),
+    );
+
+    renderStep(apiClient, onComplete);
+
+    await userEvent.click(await screen.findByText(/Stop and review 1/i));
+
+    await waitFor(() => {
+      expect(onComplete).toHaveBeenCalledTimes(1);
+    });
+    // The one that resolved keeps its category; the one that never did carries a
+    // `no-match` into Review, which Review already surfaces per row.
+    const variants = onComplete.mock.calls[0][0][0].variants;
+    expect(variants[0].resolvedCategoryId).toBe('cat-A');
+    expect(variants[1].resolvedCategoryId).toBeNull();
+    // A stop observed no terminal of its own, so it must not claim a catalogue
+    // reading a real terminal never reported.
+    expect(onComplete.mock.calls[0][1]).toEqual({ catalogueLookupPerformed: true });
+    held.open();
+  });
+
+  it('keeps a chunk-reported catalogueLookupPerformed: false across an operator stop', async () => {
+    // The #1934/F10 shape: defaulting to `true` on a stop re-arms every category
+    // blocker for a destination that consulted no catalogue at all, which is
+    // exactly what the flag exists to suppress.
+    const total = RESOLVE_CATEGORY_STREAM_CHUNK_SIZE + 1;
+    const held = gate();
+    const onComplete = vi.fn<OnComplete>();
+    let call = 0;
+    const apiClient = mockClient((_connectionId, body) => {
+      call += 1;
+      return call === 1
+        ? scriptedStream([
+            ...body.items.map((item) => result(item.variantId, 'no-match')),
+            done({ catalogueLookupPerformed: false }),
+          ])
+        : scriptedStream([held.wait, done({ catalogueLookupPerformed: false })]);
+    });
+
+    renderStep(apiClient, onComplete, [wideRow(total)]);
+
+    await userEvent.click(
+      await screen.findByText(new RegExp(`Stop and review ${RESOLVE_CATEGORY_STREAM_CHUNK_SIZE}`)),
+    );
+
+    await waitFor(() => {
+      expect(onComplete).toHaveBeenCalledTimes(1);
+    });
+    expect(onComplete.mock.calls[0][1]).toEqual({ catalogueLookupPerformed: false });
+    held.open();
+  });
+
+  it('offers a way out of the step while the stream is still running', async () => {
+    const held = gate();
+    const onBack = vi.fn();
+    const onComplete = vi.fn<OnComplete>();
+    const apiClient = mockClient(() =>
+      scriptedStream([result('v1', 'matched'), held.wait, done()]),
+    );
+
+    renderStep(
+      apiClient,
+      onComplete,
+      [makeRow('prod_1', [variantRow('v1'), variantRow('v2')])],
+      onBack,
+    );
+
+    // Wait for the progress panel before querying the button: the step swaps the
+    // waiting panel for the bars on the first event, and a node resolved before
+    // that swap is detached by the time the click is dispatched.
+    await screen.findByRole('progressbar', { name: /variants resolved in this batch/i });
+    await userEvent.click(screen.getByRole('button', { name: /^Back$/ }));
+    expect(onBack).toHaveBeenCalledTimes(1);
+    held.open();
   });
 });
 

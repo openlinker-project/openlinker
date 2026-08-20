@@ -1407,6 +1407,39 @@ describe('ListingsController', () => {
       expect(res.writableEnded).toBe(true);
     });
 
+    it('closes the producer and does not end a destroyed response when a write throws', async () => {
+      // The reachable cause is the socket dying between two writes. Without
+      // `iterator.return()` the core generator stays suspended at its `yield`,
+      // so its own `finally` never runs and the adapter's abort listener is
+      // never disposed; without the `end()` guard, ending a destroyed response
+      // throws out of the `finally` and replaces the logged cause.
+      let closed = false;
+      categoryResolution.resolveCategoriesStream.mockImplementation(
+        () =>
+          (async function* generate(): AsyncGenerator<EanCategoryMatchStreamEvent> {
+            try {
+              await tick();
+              yield matchedV1;
+              await tick();
+              yield noEanV2;
+            } finally {
+              closed = true;
+            }
+          })()
+      );
+
+      const res = makeRes();
+      res.write = (): boolean => {
+        res.destroyed = true;
+        throw new Error('socket closed');
+      };
+
+      await expect(run(res)).resolves.toBeUndefined();
+
+      expect(closed).toBe(true);
+      expect(res.writableEnded).toBe(false);
+    });
+
     it('forwards the same item mapping the batch route uses, plus an abort signal', async () => {
       categoryResolution.resolveCategoriesStream.mockImplementation(
         streamOf({ kind: 'done', resolvedCount: 0, unresolvedCount: 0, completion: 'complete', catalogueLookupPerformed: true })
