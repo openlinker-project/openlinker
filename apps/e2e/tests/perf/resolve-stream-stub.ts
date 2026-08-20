@@ -31,8 +31,13 @@
  */
 import type { Page } from '@playwright/test';
 
-/** Backend in-flight cap - mirrors `DEFAULT_CONCURRENCY` in `resolve-categories-for-batch-by-ean.ts`. */
-export const ALLEGRO_EAN_CONCURRENCY = 3;
+/**
+ * Backend in-flight cap for the STREAMING path - mirrors `STREAM_CONCURRENCY`
+ * in `resolve-categories-for-batch-by-ean.ts` (#2215), not the narrower
+ * `DEFAULT_CONCURRENCY` the batch collector keeps. Change one and change the
+ * other, or this stub paces a backend that no longer exists.
+ */
+export const ALLEGRO_EAN_CONCURRENCY = 9;
 
 /** Path fragment the patched `fetch` claims; every other URL falls through. */
 export const RESOLVE_STREAM_PATH_FRAGMENT = '/categories/resolve-stream';

@@ -65,6 +65,28 @@ export type {
 const DEFAULT_CACHE_TTL_SEC = 24 * 60 * 60;
 const DEFAULT_CACHE_KEY_PREFIX = 'allegro:ean-match';
 const DEFAULT_CONCURRENCY = 3;
+/**
+ * In-flight cap for the STREAMING path (#2215), deliberately higher than
+ * `DEFAULT_CONCURRENCY`.
+ *
+ * Before the streamed step existed, the wizard split a batch into 50-variant
+ * requests and fired them in parallel; each request built its own adapter, each
+ * capped at 3, so the effective in-flight count was `3 * ceil(variants / 50)` -
+ * 9 for a 120-variant batch, 18 for 300. Nobody chose those numbers, they fell
+ * out of the chunk size, but they ran routinely in production. One stream
+ * replaced the chunking, which dropped the cap to a flat 3 and made a
+ * 120-variant batch take about 25 s where it took about 10 s.
+ *
+ * 9 restores what a 3-chunk batch already sustained. It deliberately does NOT
+ * restore the old unbounded growth with batch size: a 500-variant batch used to
+ * reach 30 in flight, which was an accident nobody should inherit.
+ *
+ * This is a floor on latency, not a licence to ignore limits. Every outbound
+ * call is still paced against the connection's own `config.rateLimit`
+ * (`HttpTransportFactory`, #1810 / #2015), and a 429 still parks the client on
+ * `Retry-After`, so an operator's configured cap always wins over this number.
+ */
+export const STREAM_CONCURRENCY = 9;
 const DEFAULT_SEARCH_LIMIT = 10;
 
 /**
@@ -108,7 +130,11 @@ export async function* streamCategoriesForBatchByEan(
 ): AsyncGenerator<EanCategoryMatchStreamItem, void, undefined> {
   const ttl = options?.cacheTtlSec ?? DEFAULT_CACHE_TTL_SEC;
   const prefix = options?.cacheKeyPrefix ?? DEFAULT_CACHE_KEY_PREFIX;
-  const concurrency = options?.concurrency ?? DEFAULT_CONCURRENCY;
+  // The streaming path is the wide one (#2215). The batch collector below
+  // narrows it back to `DEFAULT_CONCURRENCY`, so a caller that wants the old
+  // per-call pacing gets it by calling the batch function, not by remembering
+  // to pass a number.
+  const concurrency = options?.concurrency ?? STREAM_CONCURRENCY;
   const searchLimit = options?.searchLimit ?? DEFAULT_SEARCH_LIMIT;
   const signal = options?.signal;
 
@@ -157,7 +183,11 @@ export async function resolveCategoriesForBatchByEan(
     cache,
     connectionId,
     input,
-    options,
+    // A batch caller blocks on the whole map, so widening its in-flight count
+    // buys it nothing an operator can see while spending more of the
+    // marketplace's rate limit at once. Only the streaming path, whose whole
+    // point is that results land continuously, gets the wider cap (#2215).
+    { ...options, concurrency: options?.concurrency ?? DEFAULT_CONCURRENCY },
   )) {
     result.set(item.variantId, item.result);
   }

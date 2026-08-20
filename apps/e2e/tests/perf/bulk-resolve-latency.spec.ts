@@ -20,7 +20,7 @@
  * bulk GTIN lookup - with a fixed in-flight cap of 3. That model was verified
  * against the real util with a latency-injecting fake HTTP client: wall time is
  * `ceil(n/3) * latency` to within 1%, max in-flight 3, one HTTP call per item.
- * Streamed, the same model paces one NDJSON line every `perEanLatencyMs / 3`.
+ * Streamed, the same model paces one NDJSON line every `perEanLatencyMs / 9`.
  *
  * Stubbing the transport (rather than pointing at a live Allegro sandbox) is
  * what makes the numbers reproducible and lets the per-EAN latency be swept.
@@ -37,13 +37,12 @@
  * cannot go flaky on a slow machine.
  *
  * ONE NUMBER THE SWEEP MAKES VISIBLE AND DOES NOT HIDE: the resolve fan-out is
- * no longer chunked, so a batch is one request whose internal concurrency is 3,
- * where it used to be several 50-item chunks running their fan-outs in parallel.
- * A 120-variant batch at 600 ms therefore reads ~24 s of marketplace time
- * instead of ~10 s of it. That is the trade the epic made on purpose - the old
- * shape bought its wall time with nine in-flight marketplace calls, a counter
- * that could not move, and a 30 s cliff past which four whole chunks were
- * abandoned - but it is a real cost and the printed `total=` is where it shows.
+ * no longer chunked, so a batch is one request. Its internal concurrency was
+ * briefly 3, which made a 120-variant batch read ~24 s of marketplace time
+ * where the old parallel-chunk shape read ~10 s; #2215 gave the streaming path
+ * its own cap of 9, restoring what a 3-chunk batch already sustained, so the
+ * same batch now measures faster than the pre-epic path AND shows progress
+ * throughout. The printed `total=` is where that shows.
  *
  * Needs a running API (for the session) and a running web app; no Allegro
  * connection and no seeded catalogue, so it is safe on any stack.

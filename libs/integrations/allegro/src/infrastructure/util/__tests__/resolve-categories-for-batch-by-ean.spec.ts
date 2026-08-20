@@ -17,6 +17,7 @@ import { AllegroApiException } from '../../../domain/exceptions/allegro-api.exce
 import {
   resolveCategoriesForBatchByEan,
   streamCategoriesForBatchByEan,
+  STREAM_CONCURRENCY,
 } from '../resolve-categories-for-batch-by-ean';
 
 const CONNECTION_ID = 'conn-123';
@@ -582,41 +583,66 @@ describe('streamCategoriesForBatchByEan (#2208)', () => {
     );
   });
 
-  it('keeps the default in-flight cap at 3', async () => {
+  it('keeps the batch collector in-flight cap at 3', async () => {
+    // A batch caller blocks on the whole map, so it gains nothing from a wider
+    // cap and would only spend more of the rate limit at once (#2215).
     const gates = gateCallsByPhrase();
-    const stream = streamCategoriesForBatchByEan(httpClient, undefined, CONNECTION_ID, {
+    const pending = resolveCategoriesForBatchByEan(httpClient, undefined, CONNECTION_ID, {
       items: Array.from({ length: 5 }, (_, i) => ({
         variantId: `v${i}`,
         ean: `590000000000${i}`,
       })),
     });
 
-    const first = stream.next();
     await flush();
     expect(gates.started).toHaveLength(3);
 
-    // A fourth call may only start once the whole first wave has settled.
     gates.settle('5900000000000', []);
-    await first;
-    await flush();
-    expect(gates.started).toHaveLength(3);
-
     gates.settle('5900000000001', []);
     gates.settle('5900000000002', []);
-    await stream.next();
-    await stream.next();
-    const fourth = stream.next();
     await flush();
     expect(gates.started).toHaveLength(5);
 
     gates.settle('5900000000003', []);
     gates.settle('5900000000004', []);
-    await fourth;
-    const rest: string[] = [];
-    for await (const item of stream) {
-      rest.push(item.variantId);
+    await expect(pending).resolves.toBeInstanceOf(Map);
+  });
+
+  it('streams at the wider in-flight cap', async () => {
+    // The streaming path exists so results land continuously, and the wizard's
+    // pre-#2208 chunking already sustained this many in flight (#2215).
+    const total = STREAM_CONCURRENCY + 3;
+    const gates = gateCallsByPhrase();
+    const stream = streamCategoriesForBatchByEan(httpClient, undefined, CONNECTION_ID, {
+      items: Array.from({ length: total }, (_, i) => ({
+        variantId: `v${i}`,
+        ean: `59000000000${String(i).padStart(2, '0')}`,
+      })),
+    });
+
+    const first = stream.next();
+    await flush();
+    expect(gates.started).toHaveLength(STREAM_CONCURRENCY);
+
+    const drained: string[] = [];
+    const rest = (async (): Promise<void> => {
+      const head = await first;
+      if (!head.done) drained.push(head.value.variantId);
+      for await (const item of stream) {
+        drained.push(item.variantId);
+      }
+    })();
+    // Settling repeatedly is safe: the gate map keeps its entries, so a second
+    // resolve on an already-settled promise is a no-op.
+    for (let round = 0; round < 4; round += 1) {
+      for (const phrase of [...gates.started]) {
+        gates.settle(phrase, []);
+      }
+      await flush();
     }
-    expect(rest).toHaveLength(1);
+    await rest;
+    expect(drained).toHaveLength(total);
+    expect(gates.started).toHaveLength(total);
   });
 
   it('stops scheduling further waves once the signal aborts', async () => {
