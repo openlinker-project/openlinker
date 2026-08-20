@@ -120,6 +120,11 @@ export interface Product {
   sku: string | null;
   price: number | null;
   currency: string | null;
+  /**
+   * Master description, stored as raw HTML (#2201). Present on the list and
+   * detail reads; `null` when the source shop carries none.
+   */
+  description?: string | null;
   variants?: ProductVariant[];
   externalIds?: ExternalIdMapping[];
   createdAt: string;
@@ -768,4 +773,19 @@ export interface InvoicingBankAccount {
 /** A raw binary response whose text body is also retained (source XML / documents). */
 export interface RawTextResponse extends RawResponse {
   text: string;
+}
+
+/**
+ * Per-product content state (#2201). Narrowed to what the rich-text specs read:
+ * which channels have an editable description for this product.
+ */
+export interface ProductContentState {
+  master: { baseValue: string | null; draftValue: string | null };
+  channels: Array<{
+    connectionId: string;
+    connectionName: string;
+    platformType: string;
+    baseValue: string | null;
+    draftValue: string | null;
+  }>;
 }

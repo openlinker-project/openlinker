@@ -146,6 +146,18 @@ describe('BulkReviewStep', () => {
     create.forEach((btn) => expect(btn).not.toBeDisabled());
   });
 
+  it('shows the description disclosure on a single-variant product row', () => {
+    // A simple product publishes from the PRODUCT row - its variant row is never
+    // rendered - so a disclosure that lives only on the variant row leaves the
+    // #2200 gap open for the most common case: copy submitted to a live
+    // destination that the operator never saw rendered.
+    renderWithProviders(
+      <BulkReviewStep rows={[makeRow('prod_1', [variantRow('v1')])]} {...baseProps()} />,
+    );
+
+    expect(screen.getAllByText('Description').length).toBeGreaterThan(0);
+  });
+
   it('disables Create offers when an included variant needs attention', () => {
     renderWithProviders(
       <BulkReviewStep

@@ -220,6 +220,17 @@ function renderStep(
 }
 
 describe('BulkShopReviewStep (render)', () => {
+  it('shows the description disclosure on a single-variant product row', async () => {
+    // Same gap as the marketplace step: a simple product publishes from the
+    // PRODUCT row - no variant row is rendered - so a disclosure that lives only
+    // on the variant row never appears for the most common case (#2200).
+    renderStep([makeRow('prod_1', [makeVariantRow('v1')])], config(), {}, [
+      { productVariantId: 'v1', totalAvailable: 3 },
+    ]);
+
+    expect((await screen.findAllByText('Description')).length).toBeGreaterThan(0);
+  });
+
   it('renders one row per variant (included and excluded) and displays the resolved stock + price it will submit', async () => {
     const rows = [makeRow('prod_1', [makeVariantRow('v1'), makeVariantRow('v2', { included: false })])];
     // use-master stock (availability 7) + flat price 99 -> review must show both.

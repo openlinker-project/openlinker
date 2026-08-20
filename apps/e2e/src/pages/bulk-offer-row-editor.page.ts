@@ -52,6 +52,19 @@ export function isVisibleWithin(locator: Locator, timeoutMs: number): Promise<bo
     .catch(() => false);
 }
 
+/**
+ * Current text of a control that may be an `<input>`/`<textarea>` OR a
+ * contenteditable rich-text surface (ADR-046). `inputValue()` throws on the
+ * latter, so the element kind decides which read is legal.
+ */
+async function currentText(field: Locator): Promise<string> {
+  const isFormControl = await field.evaluate(
+    (node) => node instanceof HTMLInputElement || node instanceof HTMLTextAreaElement,
+  );
+  if (isFormControl) return field.inputValue();
+  return (await field.textContent()) ?? '';
+}
+
 export class BulkOfferRowEditor {
   constructor(private readonly page: Page) {}
 
@@ -408,9 +421,16 @@ export class BulkOfferRowEditor {
    *
    * `exact: true` is load-bearing: the editor also renders per-variant override
    * fields named "Title for {variant}" / "Description for {variant}"
-   * (`bulk-edit-modal.tsx:2009` / `:2028`), which a substring match would sweep
-   * in. The base controls' names come from `FormField`'s `<label htmlFor>`
-   * (`:1262-1274`) and the base textarea's `aria-label="Description"` (`:1628`).
+   * (`bulk-edit-modal.tsx`), which a substring match would sweep in. The base
+   * controls' names come from `FormField`'s `<label htmlFor>` and the base
+   * editor's `aria-label="Description"`.
+   *
+   * Since ADR-046 the Description is a contenteditable rich-text surface rather
+   * than a textarea, which splits the two operations this helper performs:
+   * `fill()` still works (Playwright supports contenteditable), but
+   * `inputValue()` THROWS on a non-input element. So emptiness is read from text
+   * content when the target is not a form control. Getting this wrong fails the
+   * whole golden path on a step that looks unrelated to descriptions.
    */
   private async fillRequiredTextField(
     dialog: Locator,
@@ -419,7 +439,7 @@ export class BulkOfferRowEditor {
   ): Promise<boolean> {
     const field = dialog.getByLabel(label, { exact: true }).first();
     if ((await field.count()) === 0) return false;
-    if ((await field.inputValue()).trim() !== '') return false;
+    if ((await currentText(field)).trim() !== '') return false;
     await field.fill(value);
     return true;
   }

@@ -15,6 +15,7 @@
  */
 import { ApiError } from './api-error';
 import type {
+  ProductContentState,
   ApproveUserInput,
   BulkBatchSummary,
   BulkIssueInvoicesInput,
@@ -473,6 +474,23 @@ export class ApiClient {
       this.request<Product>(`/products/${productId}`),
     listVariants: (productId: string): Promise<Paginated<ProductVariant>> =>
       this.request<Paginated<ProductVariant>>(`/products/${productId}/variants`),
+  };
+
+  // ── Content (per-product, per-channel descriptions) ─────────────────────
+  content = {
+    /**
+     * Master + per-channel description state for a product (#2201).
+     *
+     * `channels` is what makes the Content tab's channel tabs exist - a channel
+     * appears only when an active connection with `OfferFieldUpdater` has at
+     * least one linked offer for the product. A spec that needs a channel editor
+     * uses this to FIND such a product rather than assuming one exists, so it
+     * skips cleanly on a stack where none does.
+     */
+    forProduct: (productId: string): Promise<ProductContentState> =>
+      // `products/:id/content`, not `content/products/:id` - the controller is
+      // mounted under the product resource (`content.controller.ts`).
+      this.request<ProductContentState>(`/products/${productId}/content`),
   };
 
   // ── Inventory ───────────────────────────────────────────────────────────

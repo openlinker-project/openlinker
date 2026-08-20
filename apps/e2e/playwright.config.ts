@@ -223,5 +223,22 @@ export default defineConfig({
       dependencies: ['setup'],
       use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
     },
+    {
+      // Rich-text description coverage (#2201, ADR-046). The only place typing
+      // into a ProseMirror surface, paste-time schema filtering, and sanitized
+      // rendering can be asserted at all - none of the three is reachable under
+      // jsdom or happy-dom.
+      //
+      // `retries: 1` is safe on the same reasoning as `orders` above: every case
+      // is read-mostly. The one that edits touches a description DRAFT and never
+      // publishes, so a retry re-types into the same draft rather than repeating
+      // an outward effect. A future spec here that PUBLISHES must get its own
+      // project with `retries: 0`, following the `invoicing` precedent.
+      name: 'rich-text',
+      testMatch: /rich-text\/.*\.spec\.ts/,
+      retries: 1,
+      dependencies: ['setup'],
+      use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
+    },
   ],
 });

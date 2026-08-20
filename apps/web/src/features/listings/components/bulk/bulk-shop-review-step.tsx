@@ -810,6 +810,19 @@ function ShopProductRow({
                   ? `${soleLine.variantSku} · 1 variant`
                   : '1 variant'}
             </small>
+            {/* A single-variant product publishes from THIS row - its variant row
+                is never rendered - so without the disclosure here the #2200 gap
+                stayed open for exactly the simplest, most common case. Mirrors
+                how this row already carries the sole line's chips and price. */}
+            {soleLine ? (
+              <details className="bulk-review__desc">
+                <summary>Description</summary>
+                <RichTextView
+                  html={soleLine.description}
+                  emptyLabel="From the master product — no override for this line."
+                />
+              </details>
+            ) : null}
           </div>
         </div>
         <div className="bulk-review__c-status bulk-review__chips">
