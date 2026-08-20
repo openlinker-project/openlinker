@@ -99,6 +99,7 @@ describe('SchedulerService', () => {
         // aborts onApplicationBootstrap for EVERY task - so a new scheduled task
         // must register its cron key here, in order.
         'OL_INVENTORY_SYNC_CRON',
+        'OL_MASTER_PRODUCT_DELTA_SYNC_CRON',
         'OL_OFFLINE_RESUBMIT_CRON',
         'OL_ORDER_FX_STAMP_SWEEP_CRON',
         'OL_PENDING_RECOVERY_CRON',
@@ -154,6 +155,38 @@ describe('SchedulerService', () => {
       expect(registeredJobs).not.toContain('master-product-sync');
     });
 
+    it('should NOT register the product delta sync task by default (#2220 is opt-in)', () => {
+      // It is additive work on top of the unchanged full sweep, and only a master
+      // declaring the modified-since rung does anything with it. #2222 owns the
+      // two-cadence policy that would make it the default.
+      //
+      // The env var must fall through to the DESCRIPTOR's default ('false'), which
+      // is what an unset variable does in production. `defaultConfigGet` answers
+      // `'true'` for every non-cron key, so using it alone would assert the
+      // opposite of the intended condition.
+      configService.get.mockImplementation((key: string, defaultValue?: unknown) => {
+        if (key === 'OL_MASTER_PRODUCT_DELTA_SYNC_ENABLED') return defaultValue;
+        return defaultConfigGet(key, defaultValue);
+      });
+
+      service.onApplicationBootstrap();
+
+      const registeredJobs = schedulerRegistry.addCronJob.mock.calls.map((c) => c[0]);
+      expect(registeredJobs).not.toContain('master-product-delta-sync');
+    });
+
+    it('should register the product delta sync task when explicitly enabled', () => {
+      configService.get.mockImplementation((key: string, defaultValue?: unknown) => {
+        if (key === 'OL_MASTER_PRODUCT_DELTA_SYNC_ENABLED') return 'true';
+        return defaultConfigGet(key, defaultValue);
+      });
+
+      service.onApplicationBootstrap();
+
+      const registeredJobs = schedulerRegistry.addCronJob.mock.calls.map((c) => c[0]);
+      expect(registeredJobs).toContain('master-product-delta-sync');
+    });
+
     it('should schedule plugin-contributed tasks drained from the registry', () => {
       configService.get.mockImplementation(defaultConfigGet);
       schedulerTaskRegistry.register(makeTask('plugin-orders-poll'));
@@ -183,6 +216,7 @@ describe('SchedulerService', () => {
         // ProductPublisher connections and names no platform (#1979).
         'destination-taxonomy-sync',
         'master-inventory-sync',
+        'master-product-delta-sync',
         'master-product-sync',
         'offline-resubmit',
         'order-fx-stamp-sweep',
@@ -403,6 +437,7 @@ describe('SchedulerService', () => {
         // aborts onApplicationBootstrap for EVERY task - so a new scheduled task
         // must register its cron key here, in order.
         'OL_INVENTORY_SYNC_CRON',
+        'OL_MASTER_PRODUCT_DELTA_SYNC_CRON',
         'OL_OFFLINE_RESUBMIT_CRON',
         'OL_ORDER_FX_STAMP_SWEEP_CRON',
         'OL_PENDING_RECOVERY_CRON',
@@ -493,6 +528,7 @@ describe('SchedulerService', () => {
         // aborts onApplicationBootstrap for EVERY task - so a new scheduled task
         // must register its cron key here, in order.
         'OL_INVENTORY_SYNC_CRON',
+        'OL_MASTER_PRODUCT_DELTA_SYNC_CRON',
         'OL_OFFLINE_RESUBMIT_CRON',
         'OL_ORDER_FX_STAMP_SWEEP_CRON',
         'OL_PENDING_RECOVERY_CRON',
@@ -580,6 +616,7 @@ describe('SchedulerService', () => {
         // aborts onApplicationBootstrap for EVERY task - so a new scheduled task
         // must register its cron key here, in order.
         'OL_INVENTORY_SYNC_CRON',
+        'OL_MASTER_PRODUCT_DELTA_SYNC_CRON',
         'OL_OFFLINE_RESUBMIT_CRON',
         'OL_ORDER_FX_STAMP_SWEEP_CRON',
         'OL_PENDING_RECOVERY_CRON',

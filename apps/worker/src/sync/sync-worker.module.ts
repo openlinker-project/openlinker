@@ -43,6 +43,7 @@ import { MasterInventorySyncHandler } from './handlers/master-inventory-sync.han
 import { AutoMatchVariantsHandler } from './handlers/auto-match-variants.handler';
 import { MasterInventorySyncAllHandler } from './handlers/master-inventory-sync-all.handler';
 import { MasterProductSyncAllHandler } from './handlers/master-product-sync-all.handler';
+import { MasterProductSyncDeltaHandler } from './handlers/master-product-sync-delta.handler';
 import { PickupPointRefreshHandler } from './handlers/pickup-point-refresh.handler';
 import { ShopProductPublishHandler } from './handlers/shop-product-publish.handler';
 import { ShopProductStatusSyncHandler } from './handlers/shop-product-status-sync.handler';
@@ -94,6 +95,7 @@ import { HandlerRegistrationService } from './handlers/handler-registration.serv
     AutoMatchVariantsHandler,
     MasterInventorySyncAllHandler,
     MasterProductSyncAllHandler,
+    MasterProductSyncDeltaHandler,
     PickupPointRefreshHandler,
     ShopProductPublishHandler,
     ShopProductStatusSyncHandler,

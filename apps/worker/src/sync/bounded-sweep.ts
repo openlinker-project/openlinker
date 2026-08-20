@@ -22,6 +22,7 @@ import type {
   BoundedSweepInput,
   BoundedSweepResult,
   SweepCursor,
+  SweepPage,
 } from './bounded-sweep.types';
 
 /**
@@ -70,14 +71,74 @@ export function resolveSweepLockTtlMs(raw: string | undefined): number {
   return Math.min(Math.max(parsed, SWEEP_LOCK_TTL_MIN_MS), SWEEP_LOCK_TTL_MAX_MS);
 }
 
+/**
+ * The sweep families that own a lock + cursor namespace.
+ *
+ * `product-delta` (#2220) is deliberately a THIRD kind rather than a mode of
+ * `product`: the incremental pass takes its own lock so it can run concurrently
+ * with the full pass. Sharing `product`'s lock would let the 20-minute full sweep —
+ * which is mid-cycle more or less permanently on a large catalog — starve the delta
+ * pass indefinitely while it logged "already in progress" and returned ok.
+ */
+export type SweepKind = 'product' | 'inventory' | 'product-delta';
+
 /** `master:{kind}:sweep:{connectionId}` — one in-flight run per connection. */
-export function sweepLockKey(kind: 'product' | 'inventory', connectionId: string): string {
+export function sweepLockKey(kind: SweepKind, connectionId: string): string {
   return `master:${kind}:sweep:${connectionId}`;
 }
 
 /** `master.{kind}.sweep:connection:{connectionId}` */
-export function sweepCursorKey(kind: 'product' | 'inventory', connectionId: string): string {
+export function sweepCursorKey(kind: SweepKind, connectionId: string): string {
   return `master.${kind}.sweep:connection:${connectionId}`;
+}
+
+/**
+ * Collects up to `budget` external ids by paging a master's own enumeration.
+ *
+ * Shared by BOTH master-product sweeps — the full pass and the #2220 delta pass —
+ * which differ only in which lister method they close over. Two invariants live
+ * here rather than in each caller, because they are what the sweep's cursor
+ * arithmetic depends on:
+ *
+ * - **The budget truncates at a PAGE boundary.** Pages are fetched while the
+ *   collected count is below budget, so a non-multiple budget overshoots to the
+ *   end of the page in flight rather than splitting it. The overshoot is bounded
+ *   by one page, and it is also what keeps `offset` a multiple of the page size —
+ *   which the WooCommerce adapter's offset-to-page derivation relies on.
+ * - **`consumed` counts rows READ, not rows returned.** The de-duplication below
+ *   can shrink `items`; advancing the cursor by the smaller number would re-read
+ *   the collapsed rows forever.
+ *
+ * The inventory sweep deliberately does NOT use this: it reads one page and then
+ * filters synthetic variants out, so its `consumed` and `items` diverge for a
+ * different reason and its loop is genuinely a different shape.
+ */
+export async function readPagedIds(
+  fetchPage: (offset: number, limit: number) => Promise<readonly string[]>,
+  startOffset: number,
+  budget: number,
+  pageSize: number
+): Promise<SweepPage> {
+  const collected: string[] = [];
+  let exhausted = false;
+  let consumed = 0;
+
+  while (collected.length < budget) {
+    const batch = await fetchPage(startOffset + consumed, pageSize);
+    if (batch.length === 0) {
+      exhausted = true;
+      break;
+    }
+    collected.push(...batch);
+    consumed += batch.length;
+    if (batch.length < pageSize) {
+      exhausted = true;
+      break;
+    }
+  }
+
+  // Some sources repeat ids across pages; the cursor still counts what was read.
+  return { items: [...new Set(collected)], consumed, exhausted };
 }
 
 /** Floors then clamps a payload-supplied budget. */

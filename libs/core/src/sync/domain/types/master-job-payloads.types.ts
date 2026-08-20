@@ -34,3 +34,17 @@ export interface MasterProductSyncAllPayloadV1 {
   pageLimit?: number;
 }
 
+/**
+ * Incremental catalog pass (#2220, ADR-048 decisions 1/3).
+ *
+ * `pageLimit` behaves exactly as on the full sweep. `lookbackSeconds` overlaps the
+ * change window backwards so a row whose timestamp precedes its commit is re-read
+ * rather than skipped (decision 3) — never `since = lastRunAt`. Both optional; the
+ * handler floors and clamps whatever arrives.
+ */
+export interface MasterProductSyncDeltaPayloadV1 {
+  schemaVersion: 1;
+  pageLimit?: number;
+  lookbackSeconds?: number;
+}
+
