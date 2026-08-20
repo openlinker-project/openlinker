@@ -344,3 +344,24 @@ When a lesson hardens into a rule, **graduate it** to the canonical doc and leav
 **Rule**: Never let a test's happy path depend on a background self-heal/eviction/orphan-timeout window — drive the state transition explicitly (call the release/complete/cancel path yourself) instead of waiting for time to pass. Separately, audit any two "looks unrelated" duration constants that happen to share a numeric value (here `MAX_CALL_LIFETIME_MS` and `MAX_TOTAL_WAIT_MS`, both 120000) — an accidental equality between two constants that bound different things is exactly the kind of coincidence that turns into exactly this bug the next time either one is tuned.
 **Applies to**: `apps/api/test/integration/rate-limit-redis-cross-process.int-spec.ts`; any int-spec whose assertion path relies on a TTL/eviction window rather than an explicit state change.
 **Source**: #2015 (CI run 31472849426).
+
+## An Allegro application token reaches the category tree but not the product catalogue
+
+**Context**: designing #2210 (EAN-to-category detection for Erli, a destination that borrows Allegro's taxonomy). The cheap option was to reuse the Allegro **application** credentials an Erli connection may already hold for the category cache (#1382 / [ADR-031](./architecture/adrs/031-erli-allegro-category-catalog-via-client-credentials.md)) instead of borrowing a seller connection.
+
+**Problem**: a `grant_type=client_credentials` token is not a smaller version of a seller token - it is a different principal, and Allegro's own scope list does not say so. Probed live against the sandbox on 2026-08-19:
+
+| endpoint | result |
+|---|---|
+| `/sale/categories`, `/sale/categories/{id}`, `/sale/categories/{id}/parameters`, `/sale/categories/{id}/product-parameters`, `/sale/category-events`, `/sale/matching-categories`, `/sale/delivery-methods`, `/order/carriers` | **200** |
+| `GET /sale/products?phrase={ean}` (with and without `mode=GTIN`) | **403 `AccessDeniedException`**, even carrying `allegro:api:sale:offers:read` |
+| `/sale/offers`, `/sale/offer-events`, `/offers/listing` | **403** |
+| `GET /sale/products/{ean}?idType=GTIN` | **404 `ProductNotFound`** for every EAN tried, including nine with live sandbox offers - so it could not be shown to work either |
+
+Scope is not the gate; seller context is. Granting the scope and retrying, or switching to the by-id product route, both look like the obvious next move and both dead-end.
+
+**Rule**: any Allegro read that searches the **product catalogue or offers** needs a seller (authorization-code) connection. Application credentials are good for the category tree and the shipping/carrier dictionaries, and nothing beyond. Do not design a feature around widening the application token's scopes - probe the endpoint with the token class you intend to ship before the design depends on it.
+
+**Applies to**: `libs/integrations/allegro/**` (any new read added to `AllegroHttpClient`); any borrowing destination that reuses Allegro credentials (`libs/integrations/erli/**`).
+
+**Source**: ADR-047 (PR #2213) § Appendix; the application-credentials precedent it bounds is #1382 / ADR-031.

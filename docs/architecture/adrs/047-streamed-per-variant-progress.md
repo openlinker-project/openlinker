@@ -6,9 +6,9 @@
 
 ## Context
 
-The bulk publish wizard's Resolve step matches every selected variant's EAN to a marketplace category. Allegro exposes no bulk GTIN lookup, so `resolveCategoriesForBatchByEan` issues **one `GET /sale/products?phrase={ean}&mode=GTIN` per variant** at a fixed in-flight cap of 3. Measured against the real util with a latency-injecting fake HTTP client: wall time is `ceil(n / 3) * per-call latency` to within 1%, one call per item, max in-flight 3.
+The bulk publish wizard's Resolve step matches every selected variant's EAN to a marketplace category. Allegro exposes no bulk GTIN lookup, so `resolveCategoriesForBatchByEan` issues **one `GET /sale/products?phrase={ean}&mode=GTIN` per variant** at a fixed in-flight cap of 3. Wall time is `ceil(n / 3) * per-call latency`, verified against the real util with a latency-injecting fake HTTP client to within 1%.
 
-`POST .../categories/resolve-batch` then answers all-or-nothing, so the browser observes nothing between "sent" and "answered". Driving the real wizard (`apps/e2e/tests/perf/bulk-resolve-latency.spec.ts`) shows what that costs an operator:
+`POST .../categories/resolve-batch` answers all-or-nothing, so the browser observes nothing between "sent" and "answered". The table below comes from driving the real wizard - its own 50-variant chunking, `useQueries` fan-out, 30 s `AbortController` and `shouldRetryTransient` - against a **stubbed** `resolve-batch` route whose delay follows the cost model above, which is what makes the per-call latency sweepable. The instrument is a throwaway measurement spec, landing with #2212 as `apps/e2e/tests/perf/bulk-resolve-latency.spec.ts`.
 
 | batch | per-call latency | total | longest unchanged screen | outcome |
 |---|---|---|---|---|
@@ -18,7 +18,7 @@ The bulk publish wizard's Resolve step matches every selected variant's EAN to a
 
 Two aggravating facts. The step's counter counts *chunks*, and half of them are instant availability reads, so `1 of 2` means `0 of 1`. And nothing on that screen animates: it renders `loading-state__spinner`, a class with no CSS anywhere in `apps/web`.
 
-A chunk is capped at 50 variants, so it crosses the SPA's 30 s request timeout at roughly **1.76 s per marketplace call** — independent of how many products were selected. Past that, `shouldRetryTransient` re-runs the whole chunk three more times: four attempts, all abandoned at 30 s, 200 lookups spent for zero delivered results, and the server never learns the client left.
+A chunk is capped at 50 variants, so it crosses the SPA's 30 s request timeout at roughly **1.76 s per marketplace call**, whatever the selection size. Past that, `shouldRetryTransient` re-runs the whole chunk three more times: 200 lookups spent for zero delivered results, and the server never learns the client left.
 
 ## Decision
 
@@ -39,29 +39,26 @@ Retry is narrowed rather than removed: while **no** event has been delivered, re
 
 **Pros:**
 - Progress advances tens of times per batch instead of two or three, and names the product in flight.
-- The 30 s cliff disappears: there is no single long request to abandon, so the four-attempt amplification cannot occur.
-- Cancellation becomes expressible — a disconnect can stop scheduling further marketplace work. Today there is nothing to cancel.
+- The 30 s cliff disappears: no single long request to abandon, so the four-attempt amplification cannot occur.
+- Cancellation becomes expressible - a disconnect can stop scheduling further marketplace work; today there is nothing to cancel.
 - A destination that borrows a taxonomy can reuse an owner's matcher (#2210), so Erli gains category detection it never had.
 
 **Cons / trade-offs:**
-- **First streaming endpoint in the repo** (`grep -r '@Sse|text/event-stream|ReadableStream' apps/api apps/web` returns nothing), so framing and teardown must be tested rather than assumed.
-- A reverse proxy in front of the API must not buffer. `apps/web/nginx.conf` serves only the SPA and does not proxy `/v1`, but a deployment that does needs buffering off.
-- **Cancellation is coarse.** `AllegroHttpClient` builds its own `AbortController` per request and accepts no external signal, so up to 3 in-flight calls finish and their results are discarded. Threading a signal to the client is a separate change.
+- **First streaming endpoint in the repo** (`grep -r '@Sse|text/event-stream|ReadableStream' apps/api apps/web` returns nothing), so framing and teardown must be tested rather than assumed. A proxy in front of the API must not buffer; `apps/web/nginx.conf` serves only the SPA and does not proxy `/v1`, but a deployment that does needs buffering off.
+- **Cancellation is coarse.** `AllegroHttpClient` builds its own `AbortController` per request and accepts no external signal, so up to 3 in-flight calls finish and are discarded. Threading a signal through is a separate change.
 - Two response shapes for one question (batch and stream) until every consumer moves.
 
-**Migration path:**
-- The batch route and method stay. The streaming method is additive, advertised per adapter, and the core service falls back when it is absent.
+**Migration path:** the batch route and method stay. The streaming method is additive, advertised per adapter, and the core service falls back when it is absent.
 
 ## Appendix: Allegro application tokens cannot search the catalogue
 
-Probed live against the Allegro sandbox on 2026-08-19, because the cheaper design for #2210 would have been to let Erli match EANs with the Allegro **application** credentials it may already hold (#1382 / [ADR-031](./031-erli-allegro-category-catalog-via-client-credentials.md)).
+The cheaper design for #2210 would have been to match EANs with the Allegro **application** credentials an Erli connection may already hold (#1382 / [ADR-031](./031-erli-allegro-category-catalog-via-client-credentials.md)). A live sandbox probe on 2026-08-19 ruled that out: a `client_credentials` token reaches every category endpoint with 200, but `GET /sale/products?phrase={ean}` answers **403** even carrying `allegro:api:sale:offers:read`. Scope is not the gate; seller context is, so #2210 borrows a seller connection.
 
-With a `grant_type=client_credentials` token: `/sale/categories`, `/sale/categories/{id}`, `/sale/categories/{id}/parameters`, `/sale/categories/{id}/product-parameters`, `/sale/category-events`, `/sale/matching-categories`, `/sale/delivery-methods` and `/order/carriers` all answer **200**. But `GET /sale/products?phrase={ean}` answers **403 `AccessDeniedException`** — with and without `mode=GTIN` — even though the token carries `allegro:api:sale:offers:read`. `/sale/offers`, `/sale/offer-events` and `/offers/listing` are also 403. `GET /sale/products/{ean}?idType=GTIN` answers **404 `ProductNotFound`** for every EAN tried, including nine with live sandbox offers, so it could not be shown to work either.
-
-Scope is not the gate; seller context is. The catalogue search therefore requires a seller connection, which is why #2210 borrows one instead of using application credentials.
+The full endpoint-by-endpoint result is recorded in [`docs/lessons.md`](../../lessons.md) § *An Allegro application token reaches the category tree but not the product catalogue*, so it is findable without knowing this ADR exists.
 
 ## References
 
 - Related issues: #2205 (epic), #2206, #2207, #2208, #2209, #2210, #2211, #2212, #1709 (why retry exists), #1934 (per-connection capability gate), #1522 (mapping fallback), #741 (polled batch progress)
+- Related PRs: #2213
 - Related ADRs: [ADR-002](./002-capability-ports-with-sub-capabilities.md), [ADR-025](./025-erli-marketplace-adapter.md), [ADR-031](./031-erli-allegro-category-catalog-via-client-credentials.md)
 - Primary doc section: [docs/architecture-overview.md](../../architecture-overview.md) § Listings (Offers)
