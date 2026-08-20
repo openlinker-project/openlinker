@@ -611,6 +611,10 @@ describe('streamCategoriesForBatchByEan (#2208)', () => {
   it('streams at the wider in-flight cap', async () => {
     // The streaming path exists so results land continuously, and the wizard's
     // pre-#2208 chunking already sustained this many in flight (#2215).
+    // Asserted against a LITERAL, not the constant: a test written in terms of
+    // `STREAM_CONCURRENCY` stays green if someone reverts it to the batch
+    // default, which is exactly the regression worth catching (#2215).
+    expect(STREAM_CONCURRENCY).toBe(9);
     const total = STREAM_CONCURRENCY + 3;
     const gates = gateCallsByPhrase();
     const stream = streamCategoriesForBatchByEan(httpClient, undefined, CONNECTION_ID, {
@@ -622,7 +626,7 @@ describe('streamCategoriesForBatchByEan (#2208)', () => {
 
     const first = stream.next();
     await flush();
-    expect(gates.started).toHaveLength(STREAM_CONCURRENCY);
+    expect(gates.started).toHaveLength(9);
 
     const drained: string[] = [];
     const rest = (async (): Promise<void> => {

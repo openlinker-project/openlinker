@@ -40,9 +40,17 @@
  * no longer chunked, so a batch is one request. Its internal concurrency was
  * briefly 3, which made a 120-variant batch read ~24 s of marketplace time
  * where the old parallel-chunk shape read ~10 s; #2215 gave the streaming path
- * its own cap of 9, restoring what a 3-chunk batch already sustained, so the
- * same batch now measures faster than the pre-epic path AND shows progress
- * throughout. The printed `total=` is where that shows.
+ * its own cap of 9, restoring what a 3-chunk batch already sustained.
+ *
+ * Read the resulting `total=` with one caveat. The old shape ran its chunks in
+ * parallel, so its wall time was roughly CONSTANT past 50 variants (the longest
+ * single chunk, about 17 waves) while its in-flight count grew unbounded. The
+ * streamed shape holds a flat ceiling and grows instead: `ceil(n / 9)` waves. So
+ * the streamed path is faster up to roughly 150 variants and slower above it -
+ * 300 variants reads about 20 s against the old 10 s - and it pays for that with
+ * a bounded traffic ceiling and progress the operator can actually read. The
+ * largest scenario below is 120 variants, near the crossover, so this file does
+ * not measure the slower side.
  *
  * Needs a running API (for the session) and a running web app; no Allegro
  * connection and no seeded catalogue, so it is safe on any stack.

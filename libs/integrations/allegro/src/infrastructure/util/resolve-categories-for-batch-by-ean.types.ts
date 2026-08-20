@@ -19,11 +19,16 @@ export interface ResolveCategoriesForBatchByEanOptions {
   /** Cache-key prefix. Default `'allegro:ean-match'`. Override for tests. */
   cacheKeyPrefix?: string;
   /**
-   * In-flight concurrency cap. Default 3 — straddles the spec's 5-10 req/sec
-   * target at Allegro's typical 200-500ms p50 latency. Higher values are
-   * tolerated by `AllegroHttpClient`'s `Retry-After`-aware 429 backoff,
-   * but deliberately staying under the rate-limit ceiling is cheaper than
-   * relying on the backpressure net.
+   * In-flight concurrency cap.
+   *
+   * The default differs by entry point (#2215): the batch collector uses 3,
+   * which straddles the spec's 5-10 req/sec target at Allegro's typical
+   * 200-500 ms p50 latency, while the streaming generator uses
+   * `STREAM_CONCURRENCY` because results land continuously there and the
+   * pre-#2208 chunking already sustained that many in flight. Higher values are
+   * tolerated by `AllegroHttpClient`'s `Retry-After`-aware 429 backoff, and
+   * `HttpTransportFactory` still paces every call against the connection's own
+   * `config.rateLimit`, so an operator's configured cap wins over either number.
    */
   concurrency?: number;
   /** Allegro `GET /sale/products?limit=` cap. Default 10 — mirrors #431. */

@@ -369,12 +369,15 @@ function errorMessage(err: unknown): string {
  * settle order.
  *
  * Strict waves, NOT a sliding window: items within a chunk run in parallel and
- * the next chunk starts only once the previous one has fully settled. That is
- * deliberate - it keeps the scheduling behaviour byte-identical to the
- * pre-#2208 `Promise.allSettled` wave loop, so #2208 changes only when a result
- * is delivered and never how much Allegro traffic is generated. Refilling a
- * freed slot early would shorten the tail, but it is a rate-limit change and
- * belongs in its own issue.
+ * the next chunk starts only once the previous one has fully settled. That keeps
+ * the scheduling shape identical to the pre-#2208 `Promise.allSettled` wave
+ * loop, so #2208 changed only WHEN a result is delivered.
+ *
+ * How much traffic is generated is a separate axis, and #2215 did move it: the
+ * streaming entry point now runs at `STREAM_CONCURRENCY` instead of the batch
+ * default. Refilling a freed slot early - a sliding window rather than waves -
+ * would shorten the tail further without raising the ceiling, and is still
+ * unclaimed work.
  *
  * A rejection cannot take the rest of the batch down (no-throw contract): `fn`
  * is the resolver, which already maps HTTP errors to a fulfilled `no-match`, so
