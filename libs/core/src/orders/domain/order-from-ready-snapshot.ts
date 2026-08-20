@@ -9,6 +9,14 @@
  * `Date`, and throws `OrderSnapshotUnavailableError` (PII-clean) when buyer
  * identity/address is redacted/missing under the PII-storage configuration.
  *
+ * That buyer gate is OPT-OUTABLE (`{ requireBuyer: false }`, #1908): it exists
+ * because an invoice must name its buyer, which is not true of every document a
+ * caller composes from an order. A fiscal registration needs no named buyer
+ * (ADR-042), so requiring one would make fiscalization unusable under
+ * `OL_STORE_PII=false`, where every persisted address is a `[REDACTED]`
+ * placeholder. The opt-out is a flag on THIS reader rather than a second
+ * snapshot reader, which would drift from it field by field.
+ *
  * @module libs/core/src/orders/domain
  */
 import type { OrderRecord } from './entities/order-record.entity';
@@ -18,13 +26,32 @@ import { OrderSnapshotUnavailableError } from './exceptions/order-snapshot-unava
 /** The `OrderRecordService.sanitizeAddress` placeholder for a PII-redacted field. */
 const REDACTED = '[REDACTED]';
 
+/** Caller-declared expectations of the rehydrated order. */
+export interface OrderFromReadySnapshotOptions {
+  /**
+   * Refuse a snapshot carrying no usable (non-redacted) buyer address.
+   *
+   * Defaults to `true`, which is the invoicing contract: a buyer profile is
+   * mandatory on an invoice, so a redacted snapshot must fail loudly rather
+   * than emit `[REDACTED]` onto a fiscal document. A caller composing a document
+   * that names no buyer passes `false`; the addresses are still rehydrated
+   * verbatim, redaction placeholders included, so such a caller must not read
+   * buyer identity off them.
+   */
+  requireBuyer?: boolean;
+}
+
 /**
  * Reconstruct a typed {@link Order} from a `ready` {@link OrderRecord}.
  *
- * @throws {OrderSnapshotUnavailableError} when the record is not `ready`, or its
- *   buyer identity/address is redacted/missing so no buyer profile can derive.
+ * @throws {OrderSnapshotUnavailableError} when the record is not `ready`, or -
+ *   unless `options.requireBuyer` is `false` - its buyer identity/address is
+ *   redacted/missing so no buyer profile can derive.
  */
-export function orderFromReadySnapshot(record: OrderRecord): Order {
+export function orderFromReadySnapshot(
+  record: OrderRecord,
+  options: OrderFromReadySnapshotOptions = {},
+): Order {
   if (record.recordStatus !== 'ready') {
     throw new OrderSnapshotUnavailableError(
       record.internalOrderId,
@@ -37,17 +64,21 @@ export function orderFromReadySnapshot(record: OrderRecord): Order {
   const billingAddress = readAddress(snapshot.billingAddress);
   const shippingAddress = readAddress(snapshot.shippingAddress);
 
-  // The command composer derives the buyer profile from billing, falling back to
-  // shipping. When PII storage is off, addresses are persisted with `[REDACTED]`
-  // placeholders, so no usable buyer profile can be reconstructed. Fail PII-clean
-  // (cites only the order id) rather than emit a `[REDACTED]` buyer onto a fiscal
-  // document.
-  const usable = firstUsableAddress(billingAddress, shippingAddress);
-  if (!usable) {
-    throw new OrderSnapshotUnavailableError(
-      record.internalOrderId,
-      'no usable buyer address in the order snapshot (missing or PII-redacted)',
-    );
+  // The invoicing command composer derives the buyer profile from billing,
+  // falling back to shipping. When PII storage is off, addresses are persisted
+  // with `[REDACTED]` placeholders, so no usable buyer profile can be
+  // reconstructed. Fail PII-clean (cites only the order id) rather than emit a
+  // `[REDACTED]` buyer onto a fiscal document. A caller whose document names no
+  // buyer opts out - the gate is about the BUYER PROFILE, not about the snapshot
+  // being readable.
+  if (options.requireBuyer !== false) {
+    const usable = firstUsableAddress(billingAddress, shippingAddress);
+    if (!usable) {
+      throw new OrderSnapshotUnavailableError(
+        record.internalOrderId,
+        'no usable buyer address in the order snapshot (missing or PII-redacted)',
+      );
+    }
   }
 
   const order: Order = {

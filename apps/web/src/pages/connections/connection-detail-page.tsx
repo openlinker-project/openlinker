@@ -16,7 +16,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../shared/ui/tabs';
 import { TimeDisplay } from '../../shared/ui/time-display';
 import { StatusBadge, type StatusBadgeTone } from '../../shared/ui/status-badge';
 import { Alert } from '../../shared/ui/alert';
-import { usePlatform } from '../../shared/plugins';
+import { usePlatform, usePlatforms } from '../../shared/plugins';
+import { resolvePlatformLabel } from '../../features/mappings';
 import { useWriteAccess } from '../../shared/auth/use-permission';
 import { useDemoMode } from '../../features/system';
 
@@ -44,10 +45,11 @@ function toStatusTone(status: ConnectionStatus): StatusBadgeTone {
  */
 function ReauthRequiredBanner({ connection }: { connection: Connection }): ReactElement | null {
   const platform = usePlatform(connection.platformType);
+  const platforms = usePlatforms();
 
   if (connection.status !== 'needs_reauth') return null;
 
-  const platformLabel = platform?.displayName ?? connection.platformType;
+  const platformLabel = resolvePlatformLabel(platforms, connection);
   const oauthReauthTo =
     platform?.requiresExternalAuthRedirect && platform.setupCard?.to
       ? `${platform.setupCard.to}?reauth=${connection.id}`

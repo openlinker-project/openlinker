@@ -2,9 +2,12 @@
  * Analytics Page
  *
  * The /analytics route shell (#1986): page scaffold, date-range control,
- * and the trust/data-coverage disclosure every other /analytics section
- * (#1989, #1990, #1991) will mount alongside. Ships zero revenue/order
- * metrics — see docs/plans/implementation-plan-analytics-page-shell.md.
+ * the trust/data-coverage disclosure, the needs-attention section (#1989),
+ * and the sales KPI strip / by-channel table (#1990). Section #1991 will
+ * mount alongside. Ships zero revenue/order metrics of its own — see
+ * docs/plans/implementation-plan-analytics-page-shell.md,
+ * docs/plans/implementation-plan-analytics-needs-attention.md, and
+ * docs/plans/implementation-plan-sales-channel-aggregates.md.
  *
  * @module apps/web/src/pages/analytics
  */
@@ -14,6 +17,7 @@ import {
   AnalyticsDateRangeToolbar,
   AnalyticsDegradationBanner,
   AnalyticsKpiStrip,
+  AnalyticsNeedsAttention,
   AnalyticsTrustHeader,
   ChannelSalesTable,
   computePresetRange,
@@ -111,6 +115,7 @@ export function AnalyticsPage(): ReactElement {
             />
           ) : (
             <>
+              <AnalyticsNeedsAttention />
               <AnalyticsKpiStrip filters={salesFilters} />
               <ChannelSalesTable filters={salesFilters} />
               <ProductSalesTable filters={salesFilters} />

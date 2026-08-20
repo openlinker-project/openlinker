@@ -1,4 +1,4 @@
-# OpenLinker Web
+# OpenLinker Admin
 
 Frontend foundation app for OpenLinker.
 

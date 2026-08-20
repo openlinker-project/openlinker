@@ -8,12 +8,13 @@
  *   so the counts sum to the total and double as the `health` URL-state filter;
  * — a filter/sort bar (#939) — source-connection, created-date range, and sort
  *   controls, all URL-state-backed (mirrors the connections-list toolbar);
- * — a dense `DataTable` whose rows lead with human identity (`EntityLabel`,
- *   showing a shortened channel order reference — #939), surface customer +
- *   contents (parsed from `orderSnapshot`, with an email fallback when the
- *   source omits a buyer name — #939), the source→destination channel, one
- *   reconciled health `StatusBadge` (`deriveOrderHealth`, replacing the
- *   per-destination list and the blank "—"), a "Created" time, a **Ship-by**
+ * — a dense `DataTable` whose rows lead with human identity — the shared
+ *   `OrderIdentityCell` since #2091, so this page, Shipments and Invoices answer
+ *   "which order is this row?" with one renderer instead of three (#1996) —
+ *   surface customer + contents (parsed from `orderSnapshot`, with an email
+ *   fallback when the source omits a buyer name — #939), the source→destination
+ *   channel, one reconciled health `StatusBadge` (`deriveOrderHealth`, replacing
+ *   the per-destination list and the blank "—"), a "Created" time, a **Ship-by**
  *   SLA countdown (#927; server-sorted soonest-first, with a
  *   "breaching ≤24h / overdue" filter chip), a ghost Payment column (#928), and
  *   an inline Retry for failed rows;
@@ -25,7 +26,7 @@
  * @module pages/orders
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams, type SetURLSearchParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
 import { ErrorState, EmptyState } from '../../shared/ui/feedback-state';
@@ -38,7 +39,6 @@ import { Select } from '../../shared/ui/select';
 import { TimeDisplay } from '../../shared/ui/time-display';
 import { StatusBadge, type StatusBadgeTone } from '../../shared/ui/status-badge';
 import { MetricCard, type MetricCardTone } from '../../shared/ui/metric-card';
-import { EntityLabel } from '../../shared/ui/entity-label';
 import { useToast } from '../../shared/ui/toast-provider';
 import { formatShipBy, type ShipByLevel } from '../../shared/format/format-ship-by';
 import { useTranslation, getBcp47Locale } from '../../shared/i18n';
@@ -54,7 +54,8 @@ import { useDemoMode } from '../../features/system';
 import { captureDemoEvent } from '../../features/demo';
 import { parseOrderSnapshot } from '../../features/orders/api/order-snapshot.schema';
 import { deriveOrderHealth, slaBadge, fulfillmentBadge } from '../../features/orders/lib/order-health';
-import { itemsSummary, paymentBadge } from '../../features/orders/lib/order-row';
+import { paymentBadge } from '../../features/orders/lib/order-row';
+import { OrderIdentityCell } from '../../features/orders';
 import { OrderInvoicingCell } from '../../features/orders/components/order-invoicing-cell';
 import { deriveDeliveryOutcome, hasLiveOlCarrierRoute } from '../../features/orders/lib/delivery-outcome';
 import { DeliveryOutcomeChip } from '../../features/orders/components/delivery-chip';
@@ -81,15 +82,10 @@ import {
   FulfillmentRollupStateValues,
 } from '../../features/orders/api/orders.types';
 import { useConnectionsQuery } from '../../features/connections';
+import { resolvePlatformLabel } from '../../features/mappings';
+import { usePlatforms } from '../../shared/plugins';
 
 const PAGE_SIZE = 20;
-
-const CHANNEL_LABELS: Record<string, string> = {
-  allegro: 'Allegro',
-  prestashop: 'PrestaShop',
-  amazon: 'Amazon',
-  shopify: 'Shopify',
-};
 
 /**
  * Status segments — partition the order set (#929). The "All" card carries the
@@ -184,21 +180,6 @@ const FULFILLMENT_FILTER_OPTIONS: readonly { value: FulfillmentRollupStateValue;
   { value: 'failed', label: 'Dispatch failed' },
 ];
 
-/**
- * Order-column primary label (#939). The source marketplace often has no
- * human-friendly order number — Allegro's `orderNumber` is its `checkoutFormId`,
- * a 36-char UUID that reads as noise when rendered verbatim. Shorten long ids to
- * a `head…tail` form so the cell reads as a reference; short numbers (most
- * shops) pass through untouched. Returns `''` when no order number is present so
- * the caller can fall back to the internal id. The marketplace itself is already
- * conveyed by the dedicated Channel column, so no channel prefix is added here.
- */
-function formatOrderRef(orderNumber: string | undefined): string {
-  if (!orderNumber) return '';
-  if (orderNumber.length <= 18) return orderNumber;
-  return `${orderNumber.slice(0, 8)}…${orderNumber.slice(-6)}`;
-}
-
 /** Map the neutral ship-by urgency level (#927) to a StatusBadge tone. */
 const SHIP_BY_TONE: Record<ShipByLevel, StatusBadgeTone> = {
   ok: 'info',
@@ -249,6 +230,59 @@ function formatFreshness(items: readonly OrderRecord[], locale: LocaleCode): str
     minute: '2-digit',
   }).format(new Date(mostRecentMs));
   return `Synced ${time}`;
+}
+
+/**
+ * URL param name for every `OrderFilters` key this page can narrow by (#2148).
+ *
+ * `Record<..., string>` makes this exhaustive: TypeScript fails the build when a new
+ * `OrderFilters` key isn't accounted for here — either mapped to a real URL param or added
+ * to the `Exclude` list below — so an unlisted filter can't silently fall through to the
+ * "nothing has synced" copy the way `due` / `slaState` / `fulfillmentState` /
+ * `sourceConnectionId` / `createdFrom` / `createdTo` did before this fix.
+ *
+ * Excluded deliberately: `sort` / `dir` change presentation, not membership (an empty
+ * result is never their doing, and "View all orders" has no business resetting the
+ * operator's column sort); `syncStatus` / `customerId` / `recordStatus` are query-only
+ * filters this page's UI does not expose as controls.
+ */
+type NarrowingOrderFilterKey = Exclude<
+  keyof OrderFilters,
+  'sort' | 'dir' | 'syncStatus' | 'customerId' | 'recordStatus'
+>;
+
+const NARROWING_FILTER_URL_PARAM: Record<NarrowingOrderFilterKey, string> = {
+  health: 'health',
+  sourceConnectionId: 'sourceConnectionId',
+  createdFrom: 'createdFrom',
+  createdTo: 'createdTo',
+  dueBefore: 'due',
+  slaState: 'slaState',
+  fulfillmentState: 'fulfillmentState',
+  salesDocumentBlocked: 'invoicing',
+};
+
+/** Every URL param that narrows the result set — derived, not hand-maintained (#2148). */
+const FILTER_PARAMS: readonly string[] = Object.values(NARROWING_FILTER_URL_PARAM);
+
+/**
+ * Clear every filter in ONE write (#2148).
+ *
+ * One call, not one per param: `setSearchParams` is not a queued reducer - React Router
+ * builds the next params from the CURRENT render's params, so two calls in one handler
+ * both start from the same base and the second navigation supersedes the first. A "View
+ * all orders" button that cleared filters one at a time would leave all but the last one
+ * applied.
+ */
+function clearAllFilters(setSearchParams: SetURLSearchParams): void {
+  setSearchParams((prev) => {
+    const p = new URLSearchParams(prev);
+    for (const key of FILTER_PARAMS) {
+      p.delete(key);
+    }
+    p.delete('offset');
+    return p;
+  });
 }
 
 export function OrdersListPage(): ReactElement {
@@ -356,8 +390,13 @@ export function OrdersListPage(): ReactElement {
     return map;
   }, [connectionsQuery.data]);
 
+  // Registry-resolved, never a local map: the four-entry `CHANNEL_LABELS` this
+  // replaced (#2088) had no row for `erli` or `woocommerce`, so both rendered
+  // raw and lowercase here while rendering correctly two pages over.
+  const platforms = usePlatforms();
+
   const channelLabel = (platform: string | undefined): string | undefined =>
-    platform ? (CHANNEL_LABELS[platform] ?? platform) : undefined;
+    platform ? resolvePlatformLabel(platforms, platform) : undefined;
 
   // Resolve a connectionId to a human channel label (never undefined) for the
   // bulk-dispatch per-row source pill.
@@ -399,6 +438,48 @@ export function OrdersListPage(): ReactElement {
     [parsedByOrder],
   );
 
+  /**
+   * ONE renderer for the desktop Order column and the mobile card title (#2091).
+   * The two used to be separate hand-rolled `EntityLabel`s that nothing kept in
+   * sync — the exact drift the shared cell exists to end (#1996) — so this is a
+   * function, not two call sites that happen to agree today.
+   *
+   * `itemCount` is `parsed.items.length`, deliberately NOT the old
+   * `itemsSummary()` count: that helper dropped nameless lines before counting
+   * the rest, so the same `+N` chip meant "other NAMED lines" here and "other
+   * lines" on Shipments / Invoices, which read the `buildOrderSummary`
+   * projection (#1995). `firstItemName` is item[0]'s name verbatim for the same
+   * reason — the projection names the FIRST item, not the first named one, so a
+   * nameless leading line now renders the cell's "N line items" branch instead
+   * of silently promoting a later item's name onto line 2.
+   *
+   * The convergence is NEAR, not exact, and nobody should later treat the two
+   * counts as provably identical: `parseOrderSnapshot` drops any item failing
+   * `orderItemSchema` (`id: string`, `quantity: number`, `price: number` are all
+   * required) before this reads `items.length`, whereas `buildOrderSummary`
+   * counts the RAW array. A snapshot carrying a money-as-string `price` therefore
+   * reads lower here than on Shipments / Invoices for the same order.
+   *
+   * `onNavigate` keeps the row-open demo-analytics event (#1788) that the
+   * pre-#2091 `EntityLabel` carried at both call sites.
+   */
+  const renderOrderIdentity = useCallback(
+    (order: OrderRecord): ReactElement => {
+      const parsed = parsedFor(order);
+      const firstItem = parsed.items[0];
+      return (
+        <OrderIdentityCell
+          orderId={order.internalOrderId}
+          orderNumber={parsed.orderNumber}
+          firstItemName={firstItem?.name}
+          firstItemImageUrl={firstItem?.imageUrl}
+          itemCount={parsed.items.length}
+          onNavigate={() => captureDemoEvent('demo_order_opened', {})}
+        />
+      );
+    },
+    [parsedFor],
+  );
 
   // Whether ANY connection exposes the Invoicing capability (#1713). When none
   // does, the "Issue invoice" CTA degrades to an em dash — the platform can't
@@ -584,8 +665,6 @@ export function OrdersListPage(): ReactElement {
         id: 'order',
         header: 'Order',
         cell: (order) => {
-          const parsed = parsedFor(order);
-          const items = itemsSummary(parsed.items);
           const sourcePlatform = platformByConnection.get(order.sourceConnectionId);
           const source = channelLabel(sourcePlatform);
           const destPlatform = order.syncStatus[0]
@@ -609,25 +688,11 @@ export function OrdersListPage(): ReactElement {
             retryMutation.variables?.internalOrderId === order.internalOrderId;
           return (
             <span className="orders-cell-stack">
-              <EntityLabel
-                id={order.internalOrderId}
-                name={formatOrderRef(parsed.orderNumber) || order.internalOrderId}
-                to={order.internalOrderId}
-                onNavigate={() => captureDemoEvent('demo_order_opened', {})}
-              />
-              {items ? (
-                <span className="orders-items-line">
-                  <span
-                    className="text-muted orders-cell-sub orders-items-preview"
-                    title={items.firstName}
-                  >
-                    {items.firstName}
-                  </span>
-                  {items.moreCount > 0 ? (
-                    <span className="orders-more-count">+{items.moreCount}</span>
-                  ) : null}
-                </span>
-              ) : null}
+              {/* Thumbnail + order ref + item name/`+N`, all owned by the shared
+                  cell since #2091. The channel fold and the inline Retry stay
+                  siblings BELOW it: both are row affordances rather than part of
+                  the order's identity, and #2094 owns relocating the fold. */}
+              {renderOrderIdentity(order)}
               {/* Channel folds under the order name below the Channel column's
                   hide breakpoint (#1713) — hidden on wide screens where the
                   standalone Channel column is visible. */}
@@ -911,6 +976,11 @@ export function OrdersListPage(): ReactElement {
     [
       locale,
       platformByConnection,
+      // `channelLabel` closes over the plugin registry as of #2088. The registry
+      // array is referentially stable (a provider-level memo over a module
+      // constant), so listing it costs no rebuild — but that invariant lives two
+      // files away, and a stale closure here would render stale channel labels.
+      platforms,
       retryMutation.isPending,
       retryMutation.variables,
       retryWrite.visible,
@@ -925,6 +995,9 @@ export function OrdersListPage(): ReactElement {
       sortLabel,
       // Per-page snapshot cache + invoicing-capability gate (#1713).
       parsedFor,
+      // The shared Order cell renderer (#2091) — a `useCallback` over
+      // `parsedFor`, so this rebuilds exactly when the parse cache does.
+      renderOrderIdentity,
       hasInvoicingCapability,
     ],
   );
@@ -992,6 +1065,9 @@ export function OrdersListPage(): ReactElement {
     });
   }
 
+  /** Is the current view narrowed at all? Drives the empty-state copy (#2148). */
+  const hasActiveFilters = FILTER_PARAMS.some((key) => searchParams.get(key) !== null);
+
   /** #2100 — mirrors `toggleBreaching`: an independent, present-only chip filter. */
   function toggleInvoicingBlocked(): void {
     captureDemoEvent('demo_orders_filtered', {
@@ -1006,34 +1082,6 @@ export function OrdersListPage(): ReactElement {
         p.set('invoicing', 'blocked');
       }
       // Any filter change invalidates the current page offset.
-      p.delete('offset');
-      return p;
-    });
-  }
-
-  /**
-   * Clear BOTH attention axes in ONE write (#2100 review round 3).
-   *
-   * This exists because `setSearchParams` is not a queued reducer: React Router
-   * builds the next params from the params of the CURRENT render, so two calls in
-   * one handler both start from the same base and the second navigation simply
-   * supersedes the first. `toggleInvoicingBlocked(); setHealthFilter(null);` read
-   * as "clear both" and actually cleared `health` while re-applying
-   * `invoicing=blocked` — a button labelled "View all orders" that left a filter
-   * on, which is the exact defect it was written to fix.
-   *
-   * Both empty-state recovery buttons use this, including the `needs_attention`
-   * arm: it is evaluated FIRST, so an order set that is both unattended and
-   * invoicing-blocked lands there, not in the generic `health !== undefined` arm.
-   */
-  function clearAttentionFilters(): void {
-    setSearchParams((prev) => {
-      const p = new URLSearchParams(prev);
-      p.delete('health');
-      p.delete('invoicing');
-      // `due` is the third attention axis (ship-by SLA). "View all orders" that
-      // left the ship-by chip applied would be lying in the same way.
-      p.delete('due');
       p.delete('offset');
       return p;
     });
@@ -1262,40 +1310,67 @@ export function OrdersListPage(): ReactElement {
         />
       ) : (query.data?.items.length ?? 0) === 0 ? (
         health === 'needs_attention' ? (
+          // `off`: this arm is reached from the health segment's own click, which is
+          // itself the operator-visible signal — no separate announcement is needed.
           <EmptyState
             liveRegion="off"
             title="All clear — nothing needs your attention"
             message="No failed syncs or unmapped orders right now. New issues surface here the moment they happen."
             action={
-              <Button onClick={clearAttentionFilters}>View all orders</Button>
-            }
-          />
-        ) : health !== undefined ? (
-          <EmptyState
-            liveRegion="off"
-            title="No orders in this view"
-            message="No orders match the current filter."
-            action={
-              <Button onClick={clearAttentionFilters}>View all orders</Button>
+              <Button onClick={() => { clearAllFilters(setSearchParams); }}>
+                View all orders
+              </Button>
             }
           />
         ) : invoicingBlocked ? (
           /*
-            #2100 — `invoicing=blocked` is a filter the `health !== undefined`
-            branch above cannot see, so without this arm an active block filter
-            fell through to "No order records have been synced yet", which is
-            false whenever a filter is applied. The recovery button clears THIS
-            param; `clearAttentionFilters` clears every attention axis in one write.
+            #2100 — `invoicing=blocked` gets its own copy ahead of the generic
+            `hasActiveFilters` arm below: "no orders matched" is technically true
+            but uninformative for a state whose entire point is "nothing is
+            currently blocked from invoicing" — a good outcome, not a narrowed
+            search coming up empty. Checked before `hasActiveFilters` (which would
+            otherwise catch it too, since `salesDocumentBlocked` is one of the
+            `FILTER_PARAMS`) so this copy isn't shadowed by the generic one.
           */
           <EmptyState
             liveRegion="off"
             title="Nothing is blocked from invoicing"
             message="No order is waiting on an invoicing decision right now."
             action={
-              <Button onClick={clearAttentionFilters}>View all orders</Button>
+              <Button onClick={() => { clearAllFilters(setSearchParams); }}>
+                View all orders
+              </Button>
+            }
+          />
+        ) : hasActiveFilters ? (
+          /*
+            #2148 — one arm for every narrowing filter, not one arm per param.
+            `health` used to be the only filter with an arm, so `due=breaching`,
+            `slaState`, `fulfillmentState`, `sourceConnectionId` and the date
+            range all fell through to "No order records have been synced yet" —
+            a statement about the whole dataset, read by an operator who has
+            thousands of orders and simply filtered to a narrow slice. The
+            recovery action was a link to /connections, which left the filter
+            applied and pointed at an ingestion problem that did not exist.
+
+            No `liveRegion` override here (defaults to "polite"): unlike its
+            sibling arms, this one is reached by a transition from a prior loaded
+            table (the operator applies a filter and the table is replaced by this
+            card), which is exactly the case `feedback-state.tsx` reserves the
+            "polite" default for.
+          */
+          <EmptyState
+            title="No orders in this view"
+            message="No orders match the current filters. Clear them to see everything."
+            action={
+              <Button onClick={() => { clearAllFilters(setSearchParams); }}>
+                View all orders
+              </Button>
             }
           />
         ) : (
+          // `off`: this arm renders on initial page load with no prior loaded state
+          // to transition from (an operator landing on an empty, never-synced deployment).
           <EmptyState
             liveRegion="off"
             title="No orders found"
@@ -1314,6 +1389,11 @@ export function OrdersListPage(): ReactElement {
             columns={columns}
             rows={query.data?.items ?? []}
             rowKey={(order) => order.internalOrderId}
+            // Top-aligns every cell in the row (#2091, `.orders-table td`). Row
+            // height here comes from the money column's four-item stack, so a
+            // middle-aligned Order cell sat below the top-aligned expander and
+            // beside a centred checkbox — three anchors in one row.
+            className="orders-table"
             stickyLeftColumns={2}
             footer={
               <BulkActionBar
@@ -1359,17 +1439,13 @@ export function OrdersListPage(): ReactElement {
             cardView={{
               // Per-row select stays usable in the mobile card layout (#1109/#1620).
               select: (order) => renderSelectCheckbox(order),
-              title: (order) => {
-                const parsed = parsedFor(order);
-                return (
-                  <EntityLabel
-                    id={order.internalOrderId}
-                    name={formatOrderRef(parsed.orderNumber) || order.internalOrderId}
-                    to={order.internalOrderId}
-                    onNavigate={() => captureDemoEvent('demo_order_opened', {})}
-                  />
-                );
-              },
+              // The SAME renderer as the desktop Order column (#2091). Safe to
+              // put a link + Copy button here because this page drives its rows
+              // with `expandable` and passes no `rowHref`: `DataTableCard` only
+              // wraps `title` + `subtitle` in the row's own `<Link>` when a
+              // href exists, and nesting interactive content inside that anchor
+              // is what bit Invoices (#2090).
+              title: renderOrderIdentity,
               subtitle: (order) => {
                 const source = channelLabel(platformByConnection.get(order.sourceConnectionId));
                 const destPlatform = order.syncStatus[0]
@@ -1410,12 +1486,14 @@ export function OrdersListPage(): ReactElement {
                   platformByConnection={platformByConnection}
                 />
               ),
-              // Scannable essentials shown before expanding (#1713): the items
-              // summary plus a tight facts grid (total / payment / customer /
-              // created / shipment carrier).
+              // Scannable essentials shown before expanding (#1713): a tight
+              // facts grid (total / payment / invoice / customer / shipment).
+              // The items line that used to head this block moved out with
+              // #2091 — the card title now carries the first item name and the
+              // `+N` chip, and printing the same two strings twice, 20px apart,
+              // is not a summary.
               summary: (order) => {
                 const parsed = parsedFor(order);
-                const items = itemsSummary(parsed.items);
                 const pay = paymentBadge(parsed.paymentStatus);
                 const cust = customerName(parsed);
                 // Snapshot-only (#1776): method name → method id → pickup name.
@@ -1450,16 +1528,6 @@ export function OrdersListPage(): ReactElement {
                   hasLiveOlCarrierRoute(order.deliveryResolution);
                 return (
                   <div className="orders-card-summary">
-                    {items ? (
-                      <div className="orders-items-line">
-                        <span className="orders-items-preview" title={items.firstName}>
-                          {items.firstName}
-                        </span>
-                        {items.moreCount > 0 ? (
-                          <span className="orders-more-count">+{items.moreCount}</span>
-                        ) : null}
-                      </div>
-                    ) : null}
                     <dl className="orders-card-facts">
                       <div>
                         <dt>Total</dt>

@@ -164,6 +164,7 @@ Beyond the PrestaShop/Allegro worked example above:
 | **KSeF** | `ksef.publicapi.v2` | Invoicing | Polish national e-invoicing; see [Invoices](./04-invoices.md) |
 | **Subiekt** (nexo, Sfera bridge) | `subiekt.invoicing.v1` | Invoicing | Alternative invoicing provider; see [Invoices](./04-invoices.md) |
 | **inFakt** | `infakt.accounting.v1` | Invoicing | Alternative invoicing provider; see [Invoices](./04-invoices.md) |
+| **eparagony.pl** | `eparagony.documents.v3` | Fiscalization | Registers Polish fiscal e-receipts with your own fiscal printer; see [Fiscal receipts](./04a-fiscal-receipts.md) |
 
 ### Invoicing providers
 

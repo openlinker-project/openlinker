@@ -174,15 +174,16 @@ describe('AnalyticsPage', () => {
         getSales: vi.fn().mockResolvedValue({
           headline: {
             revenue: 4800,
-            reportingCurrency: 'PLN',
+            currency: 'PLN',
             orderCount: 40,
-            stampedOrderCount: 40,
             averageOrderValue: 120,
             medianOrderValue: 100,
             unitsSold: 60,
             cancelledCount: 2,
             cancelledValue: 200,
-            taxTreatmentMixed: false,
+            unconvertedCount: 0,
+            unconvertedValue: 0,
+            unconvertedCurrency: null,
             trend: [],
           },
           channels: [],
@@ -208,5 +209,37 @@ describe('AnalyticsPage', () => {
 
     expect(await screen.findByText('Unable to load sales figures')).toBeInTheDocument();
     expect(screen.getByText('Unable to load by-channel figures')).toBeInTheDocument();
+  });
+
+  it('should keep the trust header rendered when only the needs-attention fetch fails (#1989)', async () => {
+    const apiClient = createMockApiClient({
+      analyticsTrust: {
+        getTrust: vi.fn().mockResolvedValue(
+          snapshot({
+            connections: [
+              {
+                connectionId: 'conn-1',
+                connectionName: 'Allegro — main',
+                platformType: 'allegro',
+                connectionStatus: 'active',
+                status: 'fresh',
+                lastPollAt: '2026-08-14T14:32:00.000Z',
+                lastOrderIngestedAt: '2026-08-14T12:00:00.000Z',
+                connectionCreatedAt: '2026-01-01T00:00:00.000Z',
+                earliestOrderDate: '2026-01-05T00:00:00.000Z',
+                expectedIntervalMs: 300000,
+                staleAfterMs: 900000,
+              },
+            ],
+          }),
+        ),
+        getNeedsAttention: vi.fn().mockRejectedValue(new Error('needs-attention unavailable')),
+      },
+    });
+
+    renderWithProviders(<AnalyticsPage />, { apiClient, route: ROUTE });
+
+    expect(await screen.findByText('Allegro — main')).toBeInTheDocument();
+    expect(await screen.findByText('Unable to check for open items')).toBeInTheDocument();
   });
 });

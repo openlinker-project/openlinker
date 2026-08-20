@@ -19,6 +19,7 @@ describe('orderSalesAggregation', () => {
     revenue: 100,
     unconvertedCount: 0,
     unconvertedValue: 0,
+    unconvertedCurrency: null,
     cancelledCount: 0,
     cancelledValue: 0,
     reportingCurrency: 'EUR',
@@ -46,6 +47,7 @@ describe('orderSalesAggregation', () => {
         currency: null,
         unconvertedCount: 0,
         unconvertedValue: 0,
+        unconvertedCurrency: null,
         trend: [
           { date: '2026-08-01', revenue: 0, orderCount: 0 },
           { date: '2026-08-02', revenue: 0, orderCount: 0 },
@@ -290,6 +292,117 @@ describe('orderSalesAggregation', () => {
 
       expect(result.headline.currency).toBeNull();
       expect(result.channels[0].currency).toBeNull();
+    });
+  });
+
+  describe('unconvertedCurrency (#1987 scope — labels the unconverted evidence, not an FX-epic field)', () => {
+    it('labels unconvertedValue with the single native currency shared by every unconverted row', () => {
+      const result = buildSalesAndChannelAnalytics({
+        filters: filters(),
+        dailyRows: [
+          row({
+            day: new Date('2026-08-01T00:00:00.000Z'),
+            unconvertedCount: 1,
+            unconvertedValue: 40,
+            unconvertedCurrency: 'PLN',
+          }),
+          row({
+            day: new Date('2026-08-02T00:00:00.000Z'),
+            unconvertedCount: 1,
+            unconvertedValue: 60,
+            unconvertedCurrency: 'PLN',
+          }),
+        ],
+        medianOrderValue: null,
+        unitsByConnection: new Map(),
+        earliestOrderDateByConnection: new Map(),
+      });
+
+      expect(result.headline.unconvertedCurrency).toBe('PLN');
+      expect(result.channels[0].unconvertedCurrency).toBe('PLN');
+    });
+
+    it('reports null when the unconverted set spans more than one native currency', () => {
+      const result = buildSalesAndChannelAnalytics({
+        filters: filters(),
+        dailyRows: [
+          row({
+            day: new Date('2026-08-01T00:00:00.000Z'),
+            unconvertedCount: 1,
+            unconvertedValue: 40,
+            unconvertedCurrency: 'PLN',
+          }),
+          row({
+            day: new Date('2026-08-02T00:00:00.000Z'),
+            unconvertedCount: 1,
+            unconvertedValue: 60,
+            unconvertedCurrency: 'EUR',
+          }),
+        ],
+        medianOrderValue: null,
+        unitsByConnection: new Map(),
+        earliestOrderDateByConnection: new Map(),
+      });
+
+      expect(result.headline.unconvertedCurrency).toBeNull();
+      expect(result.channels[0].unconvertedCurrency).toBeNull();
+    });
+
+    it('reports null when a single day/connection bucket already mixes currencies', () => {
+      const result = buildSalesAndChannelAnalytics({
+        filters: filters(),
+        dailyRows: [
+          row({ unconvertedCount: 2, unconvertedValue: 100, unconvertedCurrency: null }),
+        ],
+        medianOrderValue: null,
+        unitsByConnection: new Map(),
+        earliestOrderDateByConnection: new Map(),
+      });
+
+      expect(result.headline.unconvertedCurrency).toBeNull();
+      expect(result.channels[0].unconvertedCurrency).toBeNull();
+    });
+
+    it('does NOT treat a row with zero unconverted orders as poisoning the label (the zero-order-null bug)', () => {
+      const result = buildSalesAndChannelAnalytics({
+        filters: filters(),
+        dailyRows: [
+          // Day 1: no unconverted orders at all — its unconvertedCurrency is
+          // `null` per the repository's own contract, but that must NOT be
+          // read as "mixed" since there's nothing to disagree about.
+          row({
+            day: new Date('2026-08-01T00:00:00.000Z'),
+            unconvertedCount: 0,
+            unconvertedValue: 0,
+            unconvertedCurrency: null,
+          }),
+          row({
+            day: new Date('2026-08-02T00:00:00.000Z'),
+            unconvertedCount: 1,
+            unconvertedValue: 50,
+            unconvertedCurrency: 'PLN',
+          }),
+        ],
+        medianOrderValue: null,
+        unitsByConnection: new Map(),
+        earliestOrderDateByConnection: new Map(),
+      });
+
+      expect(result.headline.unconvertedCurrency).toBe('PLN');
+      expect(result.channels[0].unconvertedCurrency).toBe('PLN');
+    });
+
+    it('reports null when there is no unconverted evidence at all (nothing to label)', () => {
+      const result = buildSalesAndChannelAnalytics({
+        filters: filters(),
+        dailyRows: [row({ unconvertedCount: 0, unconvertedValue: 0, unconvertedCurrency: null })],
+        medianOrderValue: null,
+        unitsByConnection: new Map(),
+        earliestOrderDateByConnection: new Map(),
+      });
+
+      expect(result.headline.unconvertedCurrency).toBeNull();
+      expect(result.channels[0].unconvertedCurrency).toBeNull();
     });
   });
 

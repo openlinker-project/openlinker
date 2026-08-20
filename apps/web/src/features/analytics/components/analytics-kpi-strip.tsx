@@ -10,10 +10,12 @@
  * Real vs. not-yet-real, per card:
  *   - Revenue: the headline ("Net sales") needs a refund amount that exists
  *     nowhere in the repo — unavailable. Its GMV qualifier (`headline.
- *     revenue`, real, FX-stamped, in `reportingCurrency`) renders normally.
- *   - Orders, Order value (AOV + median), Units: fully real. Order value
- *     divides by `stampedOrderCount`, not `orderCount` (ADR-040) — the gap
- *     between the two counts is surfaced explicitly rather than hidden.
+ *     revenue`, real, FX-stamped, in `headline.currency`) renders normally.
+ *   - Orders, Order value (AOV + median), Units: fully real. `headline.
+ *     orderCount` only counts FX-stamped orders (ADR-040) — `totalOrders`
+ *     below adds back `headline.unconvertedCount` so Orders/Avg. daily/Units
+ *     per order/Cancellation rate count every placed order, while AOV/median
+ *     stay on the stamped subset and disclose the gap explicitly.
  *   - Returns & refunds: no return/refund entity exists anywhere in the
  *     orders domain — fully planned.
  *   - Cancellations: `cancelledCount`/`cancelledValue` are real fields —
@@ -22,10 +24,12 @@
  *     takes one `from`/`to` and stores no prior-period figure, so this is
  *     always a static placeholder, never computed (see `AnalyticsKpiCard`).
  *
- * Currency (#1987/#2049/ADR-040): every money figure in this strip is in
- * `headline.reportingCurrency`. When `stampedOrderCount < orderCount`, the
- * Order value card discloses the gap explicitly instead of implying the
- * figure covers every placed order.
+ * Currency (#1987/#2049/ADR-040): there is exactly ONE system-wide reporting
+ * currency, `headline.currency` — `null` only when nothing in range has been
+ * FX-stamped yet, in which case every money figure here falls back to a
+ * bare number rather than a fabricated currency. When `headline.
+ * unconvertedCount > 0`, the Order value card discloses the gap explicitly
+ * instead of implying AOV/median cover every placed order.
  *
  * @module features/analytics/components
  */
@@ -107,11 +111,14 @@ export function AnalyticsKpiStrip({ filters }: AnalyticsKpiStripProps): ReactEle
 
   const revenueTrend = revenueTrendValues(headline.trend);
   const orderTrend = orderCountTrendValues(headline.trend);
-  const avgDaily = averageDailyOrders(headline.orderCount, filters.from, filters.to);
-  const unitsRatio = unitsPerOrder(headline.unitsSold, headline.orderCount);
-  const cancelRate = cancellationRate(headline.cancelledCount, headline.orderCount);
-  const currency = headline.reportingCurrency;
-  const stampedGapVisible = headline.stampedOrderCount < headline.orderCount;
+  // headline.orderCount only counts FX-stamped orders (ADR-040) — every
+  // placed, non-cancelled order also includes the not-yet-stamped ones.
+  const totalOrders = headline.orderCount + headline.unconvertedCount;
+  const avgDaily = averageDailyOrders(totalOrders, filters.from, filters.to);
+  const unitsRatio = unitsPerOrder(headline.unitsSold, totalOrders);
+  const cancelRate = cancellationRate(headline.cancelledCount, totalOrders);
+  const currency = headline.currency ?? undefined;
+  const stampedGapVisible = headline.unconvertedCount > 0;
 
   return (
     <section className="status-strip status-strip--analytics" aria-label="Key sales figures">
@@ -129,7 +136,7 @@ export function AnalyticsKpiStrip({ filters }: AnalyticsKpiStripProps): ReactEle
             term: 'GMV (Gross Merchandise Value)',
             text: 'The value of non-cancelled, FX-stamped product items in orders placed during the selected period, in the reporting currency.',
             caveat: stampedGapVisible
-              ? `Cancelled orders and cancelled items are excluded. ${headline.orderCount - headline.stampedOrderCount} of ${headline.orderCount} placed orders have not yet been FX-stamped and are omitted from this figure.`
+              ? `Cancelled orders and cancelled items are excluded. ${headline.unconvertedCount} of ${totalOrders} placed orders have not yet been FX-stamped and are omitted from this figure.`
               : 'Cancelled orders and cancelled items are excluded. Returned/refunded items remain included.',
           },
         ]}
@@ -169,7 +176,7 @@ export function AnalyticsKpiStrip({ filters }: AnalyticsKpiStripProps): ReactEle
           },
         ]}
         metric="Placed orders"
-        value={numberFormat.format(headline.orderCount)}
+        value={numberFormat.format(totalOrders)}
         trend={{ values: orderTrend, tone: trendTone(orderTrend), ariaLabel: 'Order count trend, last 7 days' }}
         qualifiers={[{ label: 'Avg. daily', value: ratioFormat.format(avgDaily) }]}
       />
@@ -226,11 +233,11 @@ export function AnalyticsKpiStrip({ filters }: AnalyticsKpiStripProps): ReactEle
             text: 'Cancelled orders divided by all orders placed in the period, including the cancelled ones themselves.',
           },
         ]}
-        metric="Cancelled value"
-        value={formatAmount(headline.cancelledValue, currency)}
+        metric="Cancellation rate"
+        value={pctFormat.format(cancelRate)}
         qualifiers={[
           { label: 'Cancelled orders', value: numberFormat.format(headline.cancelledCount) },
-          { label: 'Rate', value: pctFormat.format(cancelRate) },
+          { label: 'Cancelled value', value: formatAmount(headline.cancelledValue, currency) },
         ]}
       />
 

@@ -174,6 +174,12 @@ export interface OrderRecordRepositoryPort {
    * `totalAmount`, informational, may mix currencies) rather than being
    * silently folded into `revenue` or silently dropped. `cancelledValue`
    * stays on native `totalAmount`, unchanged.
+   *
+   * `unconvertedCurrency` (#1987 scope, not an FX-epic deliverable —
+   * `order_records.currency` predates #2049) labels `unconvertedValue` with
+   * the one native currency shared by every unconverted, non-cancelled order
+   * this day/connection, or `null` when that set mixes currencies (or is
+   * empty — nothing to label).
    */
   getDailyOrderAggregates(filters: SalesAnalyticsFilters): Promise<DailyOrderAggregateRow[]>;
 
@@ -300,28 +306,43 @@ export interface OrderRecordRepositoryPort {
    * permanently-unstampable order (no `placedAt`, unsupported pair) would be
    * re-read and re-answered on every hourly tick forever.
    *
-   * Guarded on `fxStampedAt IS NULL AND reportingCurrency IS NULL`, so it can
-   * neither overwrite an earlier terminal instant nor touch a stamped row.
-   * Returns `true` when this call wrote; `false` when it did not (already
-   * answered, already stamped, or no row matched - never throws).
+   * Guarded on `reportingCurrency IS NULL` ALONE, so it can never touch a stamped
+   * row - the figure is the thing that is immutable. Returns `true` when this
+   * call wrote; `false` when it did not (already stamped, or no row matched -
+   * never throws).
    *
-   * Deliberately NOT a permanent gate on stamping: `stampFxIfAbsent` still keys
-   * on `reportingCurrency IS NULL`, so a re-ingestion that repairs the snapshot
-   * (a source re-poll finally reporting `placedAt`) can still stamp the order
-   * inline. Only the sweep stops revisiting it.
+   * It deliberately does NOT also require `fxStampedAt IS NULL` (#2135 review,
+   * finding 1). The sweep re-admits a terminal-but-figureless row once its marker
+   * ages past its cooldown, so a re-answer has to move the marker forward;
+   * refusing the write would leave the stale instant in place and the row would
+   * be re-tried on every subsequent tick instead of once per cooldown.
+   *
+   * Deliberately NOT a permanent gate on stamping either: `stampFxIfAbsent` still
+   * keys on `reportingCurrency IS NULL`, so a re-ingestion that repairs the
+   * snapshot (a source re-poll finally reporting `placedAt`) can still stamp the
+   * order inline.
    */
-  markFxTerminalIfAbsent(internalOrderId: string, fxStampedAt: Date): Promise<boolean>;
+  markFxTerminal(internalOrderId: string, fxStampedAt: Date): Promise<boolean>;
 
   /**
-   * One bounded page of orders that carry neither a stamp nor a terminal answer
-   * (#2125), for the reconcile sweep.
+   * One bounded page of orders that still carry NO reported figure (#2125), for
+   * the reconcile sweep.
    *
-   * Predicate: `fxStampedAt IS NULL AND reportingCurrency IS NULL`, scoped to
-   * `sourceConnectionId` and to rows created at or after
-   * `options.createdSince`. Both bounds matter, for different reasons -
-   * `reportingCurrency IS NULL` alone would re-select the entire pre-feature
-   * table on every tick forever, and the age cutoff keeps a permanently
-   * unstampable historical backlog from crowding out live orders.
+   * Predicate: `reportingCurrency IS NULL` AND (`fxStampedAt IS NULL` OR
+   * `fxStampedAt < options.terminalRetryBefore`), scoped to `sourceConnectionId`
+   * and to rows created at or after `options.createdSince`. Every bound matters,
+   * for a different reason:
+   *
+   *  - `reportingCurrency IS NULL` is the invariant, present in both arms: a row
+   *    that carries a figure is never re-entered, so a stamp stays immutable.
+   *  - `createdSince` keeps a permanently unstampable historical backlog from
+   *    crowding out live orders, and stops the whole pre-feature table being
+   *    re-selected on every tick forever.
+   *  - `terminalRetryBefore` is the recovery arm (#2135 review, finding 1). A
+   *    terminal answer is terminal about the CLASSIFICATION, not about the world:
+   *    `no-rate-source` clears when the host is rewired and a throttle-induced
+   *    `unsupported-pair` clears by itself, so a marker older than the cooldown
+   *    earns one more attempt rather than costing the order its figure forever.
    *
    * Returns ids only: the sweep re-enters the stamp through the same
    * `stamp(internalOrderId)` signature every other caller uses, so hydrating
@@ -329,7 +350,7 @@ export interface OrderRecordRepositoryPort {
    */
   findUnstampedFxOrderIds(
     sourceConnectionId: string,
-    options: { limit: number; createdSince: Date }
+    options: { limit: number; createdSince: Date; terminalRetryBefore: Date }
   ): Promise<string[]>;
 
   /**

@@ -14,7 +14,8 @@ import { useDevStackHealthQuery } from '../../features/health/hooks/use-dev-stac
 import { useSyncJobsQuery } from '../../features/sync-jobs/hooks/use-sync-jobs-query';
 import { useFailedJobGroupsQuery } from '../../features/sync-jobs/hooks/use-failed-job-groups-query';
 import { useRetryGroupedSyncJobsMutation } from '../../features/sync-jobs/hooks/use-retry-grouped-sync-jobs-mutation';
-import { usePlatforms } from '../../shared/plugins';
+import { usePlatforms, type Platform } from '../../shared/plugins';
+import { resolvePlatformLabel } from '../../features/mappings';
 import type {
   DevStackHealth,
   ServiceHealth,
@@ -96,17 +97,6 @@ function ServiceHealthRow({ name, health }: { name: string; health: ServiceHealt
 }
 
 /**
- * Capitalizes a bare platform-type key (e.g. `woocommerce` → `Woocommerce`)
- * for when no plugin-contributed display name is registered. This is only a
- * fallback — the dashboard prefers `usePlatforms()` display names.
- */
-function fallbackPlatformLabel(platformType: string): string {
-  return platformType.length > 0
-    ? platformType[0].toUpperCase() + platformType.slice(1)
-    : platformType;
-}
-
-/**
  * Builds the ordered list of infrastructure node labels backing both the
  * Infrastructure panel and the KPI-strip summary (#1619). Core services are
  * always listed first, followed by one entry per infra-bearing connection
@@ -115,7 +105,7 @@ function fallbackPlatformLabel(platformType: string): string {
  */
 function buildInfraNodeLabels(
   data: DevStackHealth | undefined,
-  platformDisplayNames: Map<string, string>
+  platforms: readonly Platform[]
 ): string[] {
   if (!data) return [];
   const labels = ['Postgres', 'Redis', 'PrestaShop'];
@@ -123,9 +113,7 @@ function buildInfraNodeLabels(
     labels.push('Worker');
   }
   for (const connection of data.connections ?? []) {
-    const platformLabel =
-      platformDisplayNames.get(connection.platformType) ??
-      fallbackPlatformLabel(connection.platformType);
+    const platformLabel = resolvePlatformLabel(platforms, connection.platformType);
     labels.push(connection.name ? `${platformLabel} (${connection.name})` : platformLabel);
   }
   return labels;
@@ -250,17 +238,10 @@ export function DashboardPage(): ReactElement {
   );
 
   const platforms = usePlatforms();
-  const platformDisplayNames = useMemo(
-    () =>
-      new Map<string, string>(
-        platforms.map((platform): [string, string] => [platform.platformType, platform.displayName])
-      ),
-    [platforms]
-  );
   const infraConnections = healthQuery.data?.connections ?? [];
   const infraNodeLabels = useMemo(
-    () => buildInfraNodeLabels(healthQuery.data, platformDisplayNames),
-    [healthQuery.data, platformDisplayNames]
+    () => buildInfraNodeLabels(healthQuery.data, platforms),
+    [healthQuery.data, platforms]
   );
   const systemHealthDescription = healthQuery.isLoading
     ? 'Checking dependencies…'
@@ -649,9 +630,8 @@ export function DashboardPage(): ReactElement {
                   key={connection.connectionId}
                   name={
                     connection.name
-                      ? `${platformDisplayNames.get(connection.platformType) ?? fallbackPlatformLabel(connection.platformType)} — ${connection.name}`
-                      : (platformDisplayNames.get(connection.platformType) ??
-                        fallbackPlatformLabel(connection.platformType))
+                      ? `${resolvePlatformLabel(platforms, connection.platformType)} — ${connection.name}`
+                      : resolvePlatformLabel(platforms, connection.platformType)
                   }
                   health={{ status: connection.status, message: connection.message }}
                 />

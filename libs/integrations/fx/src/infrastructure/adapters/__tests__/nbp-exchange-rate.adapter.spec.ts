@@ -297,6 +297,24 @@ describe('NbpExchangeRateAdapter', () => {
       ).rejects.toThrow(RateUnsupportedPairError);
     });
 
+    it.each([429, 408])(
+      'should treat %i as TRANSIENT even though it is a 4xx',
+      async (status: number) => {
+        // #2135 review, finding 1. NBP is public and unauthenticated, so 429 is
+        // what a burst earns - and the sweep's sequential page walk can produce
+        // one unaided. Classified terminal it would write the row's permanent
+        // `fxStampedAt` marker, costing those orders their reported figure for a
+        // throttle that clears in seconds. 408 is a server-side read timeout, the
+        // same class of event as the local abort two cases below.
+        const { fetchImpl } = fakeFetch(() => ({ status, body: '' }));
+        const adapter = new NbpExchangeRateAdapter({ fetchImpl });
+
+        await expect(
+          adapter.fetchRate({ from: 'EUR', to: 'PLN', on: '2026-06-10' })
+        ).rejects.toThrow(RateUnavailableTransientError);
+      }
+    );
+
     it('should treat a 5xx as transient', async () => {
       const { fetchImpl } = fakeFetch(() => ({ status: 503, body: 'Service Unavailable' }));
       const adapter = new NbpExchangeRateAdapter({ fetchImpl });

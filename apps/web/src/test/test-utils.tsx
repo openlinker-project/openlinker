@@ -115,15 +115,16 @@ export function createMockApiClient(
       getSales: vi.fn().mockResolvedValue({
         headline: {
           revenue: 0,
-          reportingCurrency: 'PLN',
+          currency: 'PLN',
           orderCount: 0,
-          stampedOrderCount: 0,
           averageOrderValue: 0,
           medianOrderValue: 0,
           unitsSold: 0,
           cancelledCount: 0,
           cancelledValue: 0,
-          taxTreatmentMixed: false,
+          unconvertedCount: 0,
+          unconvertedValue: 0,
+          unconvertedCurrency: null,
           trend: [],
         },
         channels: [],
@@ -140,6 +141,13 @@ export function createMockApiClient(
         generatedAt: '2026-01-01T00:00:00.000Z',
         worstStatus: 'fresh',
         connections: [],
+      }),
+      getNeedsAttention: vi.fn().mockResolvedValue({
+        coverageGaps: [],
+        coverageGapsTotalCount: 0,
+        stockAtRisk: [],
+        stockAtRiskTotalCount: 0,
+        failedSyncValue: { count: 0, totalValue: 0, mixedCurrency: false, oldestFailedAt: null },
       }),
       ...overrides.analyticsTrust,
     } as ApiClient['analyticsTrust'],
@@ -259,6 +267,14 @@ export function createMockApiClient(
       getById: vi.fn().mockResolvedValue(null),
       ...overrides.customers,
     } as ApiClient['customers'],
+    fiscalization: {
+      // #1909 — empty list default: the normal never-registered state, never a
+      // 404 (OpenLinker never asserts an order requires a receipt).
+      listForOrder: vi.fn().mockResolvedValue([]),
+      register: vi.fn().mockResolvedValue(null),
+      reconcile: vi.fn().mockResolvedValue(null),
+      ...overrides.fiscalization,
+    } as ApiClient['fiscalization'],
     health: {
       getDevStackHealth: vi.fn().mockResolvedValue({
         status: 'ok',

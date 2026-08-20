@@ -10,15 +10,16 @@ function analytics(overrides: Partial<SalesAndChannelAnalytics['headline']> = {}
   return {
     headline: {
       revenue: 4800,
-      reportingCurrency: 'PLN',
+      currency: 'PLN',
       orderCount: 40,
-      stampedOrderCount: 40,
       averageOrderValue: 120,
       medianOrderValue: 100,
       unitsSold: 60,
       cancelledCount: 2,
       cancelledValue: 200,
-      taxTreatmentMixed: false,
+      unconvertedCount: 0,
+      unconvertedValue: 0,
+      unconvertedCurrency: null,
       trend: [],
       ...overrides,
     },
@@ -62,10 +63,22 @@ describe('AnalyticsKpiStrip', () => {
     expect(screen.getByText('PLN 200.00')).toBeInTheDocument();
   });
 
-  it('should disclose the stamped/placed order gap when not every order is FX-stamped', async () => {
+  it('should render the cancellation rate, not the cancelled value, as the Cancellations headline', async () => {
+    const apiClient = createMockApiClient({
+      analytics: { getSales: vi.fn().mockResolvedValue(analytics()) },
+    });
+
+    renderWithProviders(<AnalyticsKpiStrip filters={FILTERS} />, { apiClient });
+
+    // cancelledCount=2, totalOrders=40 (orderCount) + 0 (unconverted) → 2 / (40 + 2) = 4.8%
+    expect(await screen.findByText('4.8%')).toBeInTheDocument();
+    expect(screen.getByText('PLN 200.00')).toBeInTheDocument();
+  });
+
+  it('should disclose the FX-stamp gap when some placed orders have no stamp yet', async () => {
     const apiClient = createMockApiClient({
       analytics: {
-        getSales: vi.fn().mockResolvedValue(analytics({ orderCount: 40, stampedOrderCount: 35 })),
+        getSales: vi.fn().mockResolvedValue(analytics({ orderCount: 35, unconvertedCount: 5 })),
       },
     });
 
@@ -76,6 +89,32 @@ describe('AnalyticsKpiStrip', () => {
         'Order value is computed only from orders an FX rate has been stamped onto — recently ingested, not-yet-stamped orders are excluded from this figure until the FX stamp sweep reaches them.'
       )
     ).not.toHaveLength(0);
+    // Orders headline counts every placed order: 35 stamped + 5 unconverted = 40.
+    expect(screen.getByText('40')).toBeInTheDocument();
+  });
+
+  it('should fall back to a bare number when nothing in range has been FX-stamped yet', async () => {
+    const apiClient = createMockApiClient({
+      analytics: {
+        getSales: vi.fn().mockResolvedValue(
+          analytics({
+            revenue: 0,
+            currency: null,
+            orderCount: 0,
+            averageOrderValue: 0,
+            medianOrderValue: 17.5,
+            unconvertedCount: 3,
+            unconvertedValue: 450,
+            unconvertedCurrency: 'EUR',
+          })
+        ),
+      },
+    });
+
+    renderWithProviders(<AnalyticsKpiStrip filters={FILTERS} />, { apiClient });
+
+    expect((await screen.findAllByText('0.00')).length).toBeGreaterThan(0);
+    expect(screen.getByText('17.50')).toBeInTheDocument();
   });
 
   it('should render Revenue headline as unavailable and Returns & refunds as planned', async () => {

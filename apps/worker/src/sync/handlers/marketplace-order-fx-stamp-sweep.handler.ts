@@ -11,8 +11,12 @@
  * that covers a retry job that was never enqueued at all.
  *
  * Delegates to the core `IOrderFxStampService.sweep`, which owns the predicate
- * (`fxStampedAt IS NULL AND reportingCurrency IS NULL`) and re-enters the very
- * same per-order `stamp` the inline and retry paths use.
+ * (`reportingCurrency IS NULL` AND the row is either unanswered or carries a
+ * terminal marker older than `terminalRetryBefore`) and re-enters the very same
+ * per-order `stamp` the inline and retry paths use. The terminal arm is the only
+ * recovery route out of a terminal answer whose cause has since cleared - a
+ * throttled provider, a host booted without `FxIntegrationModule` (#2135 review,
+ * finding 1).
  *
  * Always `outcome: 'ok'` on a completed tick: individual orders carry their own
  * terminal/deferred answers, and a tick that answered nothing is not a business
@@ -46,6 +50,20 @@ const MAX_LIMIT = 500;
  */
 const DEFAULT_MAX_AGE_DAYS = 30;
 const MAX_AGE_DAYS_CEILING = 365;
+/**
+ * How long a TERMINAL answer is honoured before the sweep gives the order one
+ * more attempt (#2135 review, finding 1).
+ *
+ * Seven days sits between the two failure modes it has to separate. Shorter and
+ * a genuinely unstampable order (an unsupported pair that will never be
+ * supported) is re-answered often enough to cost real provider calls; longer and
+ * a cleared condition - a host booted without `FxIntegrationModule`, a throttled
+ * provider - keeps the order figureless well past the point an operator would
+ * have fixed it. Only rows that still carry NO figure are re-admitted, so this
+ * can never re-cross a stamped order.
+ */
+const DEFAULT_TERMINAL_RETRY_DAYS = 7;
+const TERMINAL_RETRY_DAYS_CEILING = 365;
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 @Injectable()
@@ -59,17 +77,23 @@ export class MarketplaceOrderFxStampSweepHandler implements SyncJobHandler {
 
   async execute(job: SyncJob): Promise<SyncJobHandlerResult> {
     const payload = this.getPayload(job);
-    const createdSince = new Date(Date.now() - payload.maxAgeDays * MS_PER_DAY);
+    const now = Date.now();
+    const createdSince = new Date(now - payload.maxAgeDays * MS_PER_DAY);
+    const terminalRetryBefore = new Date(
+      now - (payload.terminalRetryDays ?? DEFAULT_TERMINAL_RETRY_DAYS) * MS_PER_DAY
+    );
 
     this.logger.debug(
       `Executing marketplace.order.fxStampSweep job ${job.id} for connection ${job.connectionId} ` +
-        `(limit=${payload.limit}, createdSince=${createdSince.toISOString()})`
+        `(limit=${payload.limit}, createdSince=${createdSince.toISOString()}, ` +
+        `terminalRetryBefore=${terminalRetryBefore.toISOString()})`
     );
 
     try {
       const result = await this.fxStamp.sweep(job.connectionId, {
         limit: payload.limit,
         createdSince,
+        terminalRetryBefore,
       });
 
       if (result.scanned > 0) {
@@ -116,7 +140,13 @@ export class MarketplaceOrderFxStampSweepHandler implements SyncJobHandler {
         : DEFAULT_MAX_AGE_DAYS,
       MAX_AGE_DAYS_CEILING
     );
+    const terminalRetryDays = Math.min(
+      typeof payload.terminalRetryDays === 'number' && payload.terminalRetryDays > 0
+        ? payload.terminalRetryDays
+        : DEFAULT_TERMINAL_RETRY_DAYS,
+      TERMINAL_RETRY_DAYS_CEILING
+    );
 
-    return { schemaVersion: 1, limit, maxAgeDays };
+    return { schemaVersion: 1, limit, maxAgeDays, terminalRetryDays };
   }
 }
