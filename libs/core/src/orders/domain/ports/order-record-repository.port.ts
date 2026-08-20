@@ -24,6 +24,7 @@ import type { SyncAttempt } from '../types/order-sync.types';
 import type { SalesDocumentBlock } from '@openlinker/core/sales-documents';
 import type { OrderFxIntent, OrderFxStamp } from '../types/order-fx.types';
 import type { StampedReportingCurrencyCount } from '../types/order-fx-read.types';
+import type { DailyOrderAggregateRow, SalesAnalyticsFilters } from '../types/order-sales-analytics.types';
 
 export interface OrderRecordRepositoryPort {
   /**
@@ -150,6 +151,52 @@ export interface OrderRecordRepositoryPort {
    * the summed order value (and its oldest failure) rather than just a count.
    */
   getFailedSyncValueSummary(filters: OrderHealthSummaryFilters): Promise<FailedSyncValueSummary>;
+
+  /**
+   * Daily, per-connection revenue/order-count aggregates for the sales &
+   * channel analytics read (#1987). Scope: `recordStatus = 'ready' AND
+   * placedAt IS NOT NULL AND totalAmount IS NOT NULL AND placedAt` within
+   * `[filters.from, filters.to)`, optionally narrowed to one connection.
+   * Cancelled orders (`cancelledAt IS NOT NULL`) are split into their own
+   * `cancelledCount`/`cancelledValue` columns rather than being excluded from
+   * the result entirely — the aggregation layer sums them separately so a
+   * cancelled order is reported, not silently dropped. One row per
+   * `(day, sourceConnectionId)` pair that has at least one matching order;
+   * a day/connection with none is simply absent, mirroring the "absent key =
+   * no data" convention used by {@link getFailedSyncValueSummary} and
+   * `findEarliestPlacedAtByConnection`.
+   *
+   * Currency correctness (#2049/ADR-040 follow-up): `orderCount`/`revenue`
+   * are further restricted to `reportingCurrency IS NOT NULL` and computed
+   * from `reportingTotalAmount` — one comparable currency. The complementary
+   * unstamped slice (pre-#2049 history, or a stamp still in flight) is
+   * reported separately via `unconvertedCount`/`unconvertedValue` (native
+   * `totalAmount`, informational, may mix currencies) rather than being
+   * silently folded into `revenue` or silently dropped. `cancelledValue`
+   * stays on native `totalAmount`, unchanged.
+   *
+   * `unconvertedCurrency` (#1987 scope, not an FX-epic deliverable —
+   * `order_records.currency` predates #2049) labels `unconvertedValue` with
+   * the one native currency shared by every unconverted, non-cancelled order
+   * this day/connection, or `null` when that set mixes currencies (or is
+   * empty — nothing to label).
+   */
+  getDailyOrderAggregates(filters: SalesAnalyticsFilters): Promise<DailyOrderAggregateRow[]>;
+
+  /**
+   * Headline median order value for the sales & channel analytics read
+   * (#1987), via `PERCENTILE_CONT(0.5)`. Same scope as
+   * {@link getDailyOrderAggregates} but additionally excludes cancelled
+   * orders (`cancelledAt IS NULL`) — median is a headline-only figure, never
+   * computed per channel. Returns `null` when no row matches (an empty
+   * ordered-set aggregate), which the aggregation layer coalesces to `0`.
+   *
+   * Currency correctness (#2049/ADR-040 follow-up): computed over
+   * `reportingTotalAmount`, restricted to `reportingCurrency IS NOT NULL` —
+   * the same stamped subset {@link getDailyOrderAggregates} uses for
+   * `revenue`.
+   */
+  getMedianOrderValue(filters: SalesAnalyticsFilters): Promise<number | null>;
 
   /**
    * Push a per-order fulfillment rollup (#1108) onto the order record. Called

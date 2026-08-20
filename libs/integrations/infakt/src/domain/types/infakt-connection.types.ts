@@ -25,6 +25,15 @@ export const InfaktPaymentMethodValues = ['cash', 'transfer'] as const;
 export type InfaktPaymentMethod = (typeof InfaktPaymentMethodValues)[number];
 
 /**
+ * inFakt API environment (#2174). The neutral choice the FE create wizard and
+ * edit form persist on `connection.config.environment`; the adapter factory
+ * and connection tester map it to the concrete API base URL via
+ * `resolveInfaktBaseUrl`. Mirrors Erli's `ErliEnvironmentValues` convention.
+ */
+export const InfaktEnvironmentValues = ['sandbox', 'production'] as const;
+export type InfaktEnvironment = (typeof InfaktEnvironmentValues)[number];
+
+/**
  * A specific inFakt bank account chosen by the operator (#1303 follow-up).
  * Snapshotted at selection time — the adapter never re-fetches by `id` at
  * invoice-issuance time, so a later edit/deletion of the account directly in
@@ -40,6 +49,17 @@ export interface InfaktBankAccountConfig {
 
 /** Non-secret config persisted on the connection row. */
 export interface InfaktConnectionConfig {
+  /**
+   * Neutral environment choice (#2174) — `'sandbox' | 'production'`. Resolved
+   * to a base URL by `resolveInfaktBaseUrl`; absent falls back to production.
+   */
+  environment?: InfaktEnvironment;
+  /**
+   * Legacy free-text base URL override, superseded by {@link InfaktConnectionConfig.environment}
+   * (#2174). No longer surfaced on either FE form — kept only so a connection
+   * created before the environment select existed keeps resolving to the base
+   * URL it was configured with. When present, this always wins over `environment`.
+   */
   baseUrl?: string;
   /**
    * Payment method sent on every issued invoice/correction. Defaults to

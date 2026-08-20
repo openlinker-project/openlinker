@@ -45,6 +45,10 @@ import {
 import type { PriceTaxTreatment } from '../../../domain/types/order.types';
 import type { OrderFxIntent, OrderFxStamp } from '../../../domain/types/order-fx.types';
 import type { StampedReportingCurrencyCount } from '../../../domain/types/order-fx-read.types';
+import type {
+  DailyOrderAggregateRow,
+  SalesAnalyticsFilters,
+} from '../../../domain/types/order-sales-analytics.types';
 
 @Injectable()
 export class OrderRecordRepository implements OrderRecordRepositoryPort {
@@ -353,6 +357,167 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       mixedCurrency: Number(raw?.currency_count ?? 0) > 1,
       oldestFailedAt: raw?.oldest_failed_at ?? null,
     };
+  }
+
+  /**
+   * Daily, per-connection revenue/order-count aggregates (#1987). One row per
+   * `(day, sourceConnectionId)` with at least one matching order; the
+   * cancelled/non-cancelled split uses `FILTER (WHERE ...)`, mirroring
+   * `getFailedSyncValueSummary`'s `stuckPredicate` idiom.
+   *
+   * Currency correctness (#2049/ADR-040 follow-up): `order_count`/`revenue`
+   * are further restricted to `reportingCurrency IS NOT NULL` — one
+   * comparable currency, `SUM(reportingTotalAmount)` — with the complementary
+   * unstamped slice reported separately as `unconverted_count`/
+   * `unconverted_value` (native `totalAmount`, informational only) rather
+   * than silently mixed in or silently dropped. `cancelled_value` is left on
+   * native `totalAmount`, unchanged — a secondary figure, not revisited here.
+   *
+   * `unconverted_currency` (#1987 scope, not FX-epic scope — `order_records.
+   * currency` is the pre-existing native-currency column from #1985, untouched
+   * by #2049) labels the `unconverted_value` figure with the one native
+   * currency shared by every unconverted, non-cancelled order this
+   * day/connection, or `NULL` when that set already mixes currencies. A day
+   * with zero unconverted orders also reports `NULL` here (no currency to
+   * report), which the aggregation layer must not confuse with "mixed" — see
+   * `resolveUniformUnconvertedCurrency`.
+   */
+  async getDailyOrderAggregates(
+    filters: SalesAnalyticsFilters
+  ): Promise<DailyOrderAggregateRow[]> {
+    const notCancelled = 'rec."cancelledAt" IS NULL';
+    const isCancelled = 'rec."cancelledAt" IS NOT NULL';
+    const isStamped = 'rec."reportingCurrency" IS NOT NULL';
+    const isUnconverted = 'rec."reportingCurrency" IS NULL';
+    const stampedAndNotCancelled = `${notCancelled} AND ${isStamped}`;
+    const unconvertedAndNotCancelled = `${notCancelled} AND ${isUnconverted}`;
+
+    // UTC day boundary made explicit (#1987 review, IMPORTANT 2): `placedAt`
+    // is `timestamptz`, so a bare `date_trunc('day', ...)` truncates at local
+    // midnight per the Postgres session `TimeZone` GUC — on a non-UTC server
+    // every bucket would land on the wrong calendar day and silently mismatch
+    // `enumerateDayKeys`'s UTC day keys. The trailing `AT TIME ZONE 'UTC'` is
+    // required too: without it the column round-trips as a bare `timestamp`,
+    // which node-postgres parses in the Node process's own local time,
+    // reintroducing the same shift one layer up.
+    const utcDay = `date_trunc('day', rec."placedAt" AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'`;
+
+    const qb = this.repository
+      .createQueryBuilder('rec')
+      .select(utcDay, 'day')
+      .addSelect('rec.sourceConnectionId', 'source_connection_id')
+      .addSelect(`COUNT(*) FILTER (WHERE ${stampedAndNotCancelled})`, 'order_count')
+      .addSelect(
+        `COALESCE(SUM(rec."reportingTotalAmount") FILTER (WHERE ${stampedAndNotCancelled}), 0)`,
+        'revenue'
+      )
+      .addSelect(`COUNT(*) FILTER (WHERE ${unconvertedAndNotCancelled})`, 'unconverted_count')
+      .addSelect(
+        `COALESCE(SUM(rec."totalAmount") FILTER (WHERE ${unconvertedAndNotCancelled}), 0)`,
+        'unconverted_value'
+      )
+      .addSelect(
+        `CASE WHEN COUNT(DISTINCT rec."currency") FILTER (WHERE ${unconvertedAndNotCancelled}) <= 1
+              THEN MAX(rec."currency") FILTER (WHERE ${unconvertedAndNotCancelled})
+              ELSE NULL END`,
+        'unconverted_currency'
+      )
+      .addSelect(`COUNT(*) FILTER (WHERE ${isCancelled})`, 'cancelled_count')
+      .addSelect(
+        `COALESCE(SUM(rec."totalAmount") FILTER (WHERE ${isCancelled}), 0)`,
+        'cancelled_value'
+      )
+      .addSelect(
+        // Guarded like `unconverted_currency` above (#1987 review, IMPORTANT
+        // 1): `reportingCurrency` isn't guaranteed single-valued within a
+        // (day, connection) bucket (an in-flight #2096 restatement can leave
+        // two values live at once), so a bare `array_agg(...)[1]` could label
+        // a cross-currency `revenue` sum with whichever value happened to
+        // sort first. `NULL` here is the same "not comparable" signal the FE
+        // already has to handle for `unconverted_currency`.
+        `CASE WHEN COUNT(DISTINCT rec."reportingCurrency") FILTER (WHERE ${isStamped}) <= 1
+              THEN MAX(rec."reportingCurrency") FILTER (WHERE ${isStamped})
+              ELSE NULL END`,
+        'reporting_currency'
+      )
+      .groupBy(utcDay)
+      .addGroupBy('rec.sourceConnectionId');
+
+    this.applySalesAnalyticsScope(qb, filters);
+
+    const rows = await qb.getRawMany<{
+      day: Date;
+      source_connection_id: string;
+      order_count: string;
+      revenue: string;
+      unconverted_count: string;
+      unconverted_value: string;
+      unconverted_currency: string | null;
+      cancelled_count: string;
+      cancelled_value: string;
+      reporting_currency: string | null;
+    }>();
+
+    return rows.map((row) => ({
+      day: row.day,
+      sourceConnectionId: row.source_connection_id,
+      orderCount: Number(row.order_count),
+      revenue: Number(row.revenue),
+      unconvertedCount: Number(row.unconverted_count),
+      unconvertedValue: Number(row.unconverted_value),
+      unconvertedCurrency: row.unconverted_currency,
+      cancelledCount: Number(row.cancelled_count),
+      cancelledValue: Number(row.cancelled_value),
+      reportingCurrency: row.reporting_currency,
+    }));
+  }
+
+  /**
+   * Headline median order value via `PERCENTILE_CONT` (#1987) — always
+   * excludes cancelled orders, unlike {@link getDailyOrderAggregates} (which
+   * reports them in a separate column rather than omitting them). `null`
+   * when no row matches (an empty ordered-set aggregate).
+   *
+   * Currency correctness (#2049/ADR-040 follow-up): computed over
+   * `reportingTotalAmount`, restricted to `reportingCurrency IS NOT NULL` —
+   * the same stamped subset {@link getDailyOrderAggregates} uses for
+   * `revenue`, so the headline median stays comparable with the headline
+   * revenue/AOV figures rather than mixing a native-currency distribution
+   * into a reporting-currency one.
+   */
+  async getMedianOrderValue(filters: SalesAnalyticsFilters): Promise<number | null> {
+    const qb = this.repository
+      .createQueryBuilder('rec')
+      .select(`PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY rec."reportingTotalAmount")`, 'median')
+      .andWhere('rec."cancelledAt" IS NULL')
+      .andWhere('rec."reportingCurrency" IS NOT NULL');
+
+    this.applySalesAnalyticsScope(qb, filters);
+
+    const raw = await qb.getRawOne<{ median: string | null }>();
+    return raw?.median != null ? Number(raw.median) : null;
+  }
+
+  /**
+   * Shared scope predicate for the #1987 sales-analytics reads: only
+   * `'ready'` records with a resolvable `placedAt`/`totalAmount`, within
+   * `[filters.from, filters.to)`, optionally narrowed to one connection.
+   */
+  private applySalesAnalyticsScope(
+    qb: SelectQueryBuilder<OrderRecordOrmEntity>,
+    filters: SalesAnalyticsFilters
+  ): void {
+    qb.andWhere(`rec."recordStatus" = 'ready'`)
+      .andWhere('rec."placedAt" IS NOT NULL')
+      .andWhere('rec."totalAmount" IS NOT NULL')
+      .andWhere('rec."placedAt" >= :salesFrom', { salesFrom: filters.from })
+      .andWhere('rec."placedAt" < :salesTo', { salesTo: filters.to });
+
+    if (filters.sourceConnectionId) {
+      qb.andWhere('rec.sourceConnectionId = :salesConnectionId', {
+        salesConnectionId: filters.sourceConnectionId,
+      });
+    }
   }
 
   /**
@@ -963,12 +1128,22 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    * Full-row upsert of the ingestion-owned columns, keyed on the primary key.
    *
    * `syncStatus` / `syncAttempts` (#2140), `fulfillmentState` (#2101),
-   * `cancelledAt` (#1984), the three `salesDocument*` columns (#2100) and the
-   * six FX snapshot columns (#2124) are deliberately outside the write set -
-   * see the {@link toOrm} comments. A consequence is that the returned record
-   * reports all of them as empty (`[]` / `null`) regardless of what the row
-   * holds, because none of those columns was part of the statement; callers
-   * needing their true value re-read via {@link findById}.
+   * `cancelledAt` (#1984), the three `salesDocument*` columns (#2100), the
+   * six FX snapshot columns (#2124), and the four analytics scalars (#1985 —
+   * `placedAt` / `currency` / `taxTreatment` / `totalAmount`) are deliberately
+   * outside the write set - see the {@link toOrm} comments. A consequence is
+   * that the returned record reports all of them as empty (`[]` / `null`)
+   * regardless of what the row holds, because none of those columns was part
+   * of the statement; callers needing their true value re-read via
+   * {@link findById}.
+   *
+   * This is the sole writer reached by `persistIncomingSnapshot`, which never
+   * has a resolved analytics figure to offer (its `OrderRecord` carries the
+   * four scalars at their constructor `null` default) - mapping them here
+   * would NULL out whatever `upsertWithLineItems` below previously wrote on a
+   * re-poll of an already-`ready` order, and leave them permanently NULL if
+   * item resolution then fails, orphaning any `order_line_items` rows that
+   * survive the narrower `markItemResolutionFailure` update.
    */
   async upsert(orderRecord: OrderRecord): Promise<OrderRecord> {
     const entity = this.toOrm(orderRecord);
@@ -984,12 +1159,21 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    * ever leaving a stale row from a shrunk item list. Both writes go through
    * the same transactional `EntityManager`, so a failure on either side rolls
    * back both (no order_records/order_line_items desync).
+   *
+   * The sole writer of the four analytics scalars (#1985) - stamped onto the
+   * entity here, not in the shared {@link toOrm}, because `upsert()` above
+   * reaches the same conversion from `persistIncomingSnapshot`, which has no
+   * resolved figure to offer yet (see its comment there).
    */
   async upsertWithLineItems(
     orderRecord: OrderRecord,
     lineItems: OrderLineItemDraft[]
   ): Promise<OrderRecord> {
     const entity = this.toOrm(orderRecord);
+    entity.placedAt = orderRecord.placedAt;
+    entity.currency = orderRecord.currency;
+    entity.taxTreatment = orderRecord.taxTreatment;
+    entity.totalAmount = orderRecord.totalAmount;
     const savedRecord = await this.dataSource.transaction(async (manager: EntityManager) => {
       const saved = await manager.save(OrderRecordOrmEntity, entity);
       await manager.delete(OrderLineItemOrmEntity, { orderRecordId: orderRecord.internalOrderId });
@@ -1207,6 +1391,14 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    *   + `stampFxIfAbsent` (both guarded, both single-statement). Mapping them
    *   here would let a re-poll of an already-stamped order overwrite a
    *   REPORTED FINANCIAL FIGURE with the ingestion path's in-memory `null`.
+   * - The four analytics scalars (#1985) - `placedAt` / `currency` /
+   *   `taxTreatment` / `totalAmount` - are mapped by {@link upsertWithLineItems}
+   *   directly, NOT here, because this shared conversion also backs
+   *   `upsert()`, reached by `persistIncomingSnapshot` with no resolved figure
+   *   to offer. Mapping them in this shared method would NULL an
+   *   already-`ready` order's analytics figures on every re-poll, and leave
+   *   them permanently NULL once item resolution starts failing (see
+   *   `upsert()`'s own comment).
    *
    * Before adding an assignment here, ask which out-of-band writer owns that
    * column: #2101 excluded only `fulfillmentState` and left the two columns
@@ -1223,11 +1415,8 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     entity.recordStatus = orderRecord.recordStatus;
     entity.mappingFailureReason = orderRecord.mappingFailureReason;
     entity.dispatchByAt = orderRecord.dispatchByAt;
-    entity.placedAt = orderRecord.placedAt;
-    entity.currency = orderRecord.currency;
-    entity.taxTreatment = orderRecord.taxTreatment;
-    entity.totalAmount = orderRecord.totalAmount;
-    //
+    // The four analytics scalars (#1985) are deliberately NOT mapped here -
+    // see the class comment above and `upsertWithLineItems`, their sole writer.
     // The six FX snapshot columns (#2124) are deliberately NOT mapped here,
     // for the strongest version of the reason documented above for
     // `fulfillmentState` / `cancelledAt` / `salesDocument*`: this is a

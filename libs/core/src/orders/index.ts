@@ -135,6 +135,26 @@ export type {
   OrderFxSweepOptions,
   OrderFxSweepResult,
 } from './domain/types/order-fx-stamp.types';
+// Sales & channel analytics (#1987) — response shapes for
+// IOrderRecordService.getSalesAndChannelAnalytics.
+export {
+  SalesAnalyticsFilters,
+  SalesAnalyticsHeadline,
+  ChannelSalesAnalytics,
+  SalesAndChannelAnalytics,
+  DailyTrendPoint,
+} from './domain/types/order-sales-analytics.types';
+
+// Top products analytics (#1988) — response shapes for
+// IOrderRecordService.getTopProducts.
+export { TopProductSortByValues } from './domain/types/top-products.types';
+export type {
+  TopProductSortBy,
+  TopProductFilters,
+  TopProductView,
+  TopProductsResult,
+  ProductChannelBreakdownRow,
+} from './domain/types/top-products.types';
 
 // Refund record capture (#2036).
 export {
