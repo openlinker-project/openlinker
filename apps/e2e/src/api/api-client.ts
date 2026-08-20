@@ -18,6 +18,7 @@ import type {
   ProductContentState,
   ApproveUserInput,
   BulkBatchSummary,
+  DescriptionFormatView,
   BulkIssueInvoicesInput,
   BulkIssueInvoicesResult,
   CategoryMappingInput,
@@ -512,6 +513,42 @@ export class ApiClient {
      */
     bulkBatch: (batchId: string): Promise<BulkBatchSummary> =>
       this.request<BulkBatchSummary>(`/listings/bulk-create/${batchId}`),
+    /**
+     * The destination's declared description format (ADR-046), or `null` when the
+     * API predates the endpoint.
+     *
+     * Returning `null` rather than throwing is the point: a stack whose API is
+     * older than the contract builds its publish payload with the PREVIOUS
+     * builder, so a publish assertion there would pass or fail for reasons that
+     * have nothing to do with the format. Callers use this as a capability probe
+     * and skip with a reason that names the cause.
+     */
+    /**
+     * The destination's category projection, one level from the root (#1979).
+     *
+     * Used as a precondition, not as data: the wizard's row editor cannot resolve
+     * a category when this is empty, so a spec that must open that editor skips
+     * with a reason naming the empty projection instead of failing deep inside a
+     * category browser. `null` when the API predates the route.
+     */
+    taxonomyCategories: async (connectionId: string): Promise<unknown[] | null> => {
+      try {
+        return await this.request<unknown[]>(
+          `/listings/connections/${connectionId}/taxonomy/categories`,
+        );
+      } catch {
+        return null;
+      }
+    },
+    descriptionFormat: async (connectionId: string): Promise<DescriptionFormatView | null> => {
+      try {
+        return await this.request<DescriptionFormatView>(
+          `/listings/connections/${connectionId}/description-format`,
+        );
+      } catch {
+        return null;
+      }
+    },
     list: (query?: ListListingsQuery): Promise<Paginated<OfferMapping>> =>
       this.request<Paginated<OfferMapping>>(
         `/listings${buildQuery({

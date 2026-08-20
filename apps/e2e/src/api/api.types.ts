@@ -789,3 +789,23 @@ export interface ProductContentState {
     draftValue: string | null;
   }>;
 }
+
+/**
+ * A destination's declared description contract (ADR-046).
+ *
+ * Only the fields the e2e suite asserts on - the API returns more. `declared`
+ * false means the destination declared nothing and the response is the
+ * conservative shared subset, which the UI must say out loud rather than
+ * presenting as authoritative.
+ */
+export interface DescriptionFormatView {
+  shape: 'html' | 'plain-text';
+  allowedTags: string[];
+  allowedAttributes: Record<string, string[]>;
+  contentModel: Record<string, string[]> | null;
+  requiresBlockOpener: boolean;
+  selfClosingVoids: boolean;
+  maxBytes: number | null;
+  declared: boolean;
+  resolvedVia: 'OfferManager' | 'ProductPublisher' | null;
+}

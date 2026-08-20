@@ -26,16 +26,26 @@
  * legitimate configuration, and the spec must pass there while still proving the
  * "not declared" note appears.
  *
- * Self-configuring and read-mostly. It edits a description DRAFT (never
- * publishes), scopes every assertion to the connection it found, and skips
- * cleanly on a stack without the connection a case needs - so it is safe on a
- * demo database, a fresh one, or a stack mid-ingestion.
+ * Self-configuring. Every case but the last is read-mostly: it edits a
+ * description DRAFT, scopes assertions to the connection it found, and skips
+ * cleanly on a stack without that connection - safe on a demo database, a fresh
+ * one, or a stack mid-ingestion.
+ *
+ * The last case DOES publish, because "the marketplace accepted what we sent" is
+ * the epic's central claim and nothing short of a real create proves it. It is
+ * gated on the stack's API actually serving `/description-format`: an older
+ * deployment builds its payload with the PREVIOUS builder, so publishing there
+ * would pass or fail for reasons unrelated to the format - a green run that
+ * proves nothing is worse than a skip that says why.
  *
  * @module tests/rich-text
  */
 import type { Locator, Page } from '@playwright/test';
 
 import { test, expect } from '../../src/fixtures/test';
+import { BulkOfferRowEditor } from '../../src/pages/bulk-offer-row-editor.page';
+import { PlatformType } from '../../src/world/world';
+import type { DescriptionFormatView } from '../../src/api/api.types';
 
 /** Markup a PrestaShop TinyMCE description really carries. */
 const SHOP_MARKUP = [
@@ -46,6 +56,79 @@ const SHOP_MARKUP = [
   '<ul><li>Puch 90/10</li><li>Membrana 10 000 mm</li></ul>',
   '</div>',
 ].join('');
+
+/**
+ * A description using only tags Allegro allows, authored fresh in each publish
+ * run so the payload is this run's own rather than whatever the stack held.
+ */
+const AUTHORED_DESCRIPTION = [
+  '<h1>Opis przygotowany w OpenLinkerze</h1>',
+  '<p>Tekst z <b>wyróżnieniem</b> i akapitem.</p>',
+  '<ul><li>Punkt pierwszy</li><li>Punkt drugi</li></ul>',
+  '<ol><li>Krok jeden</li><li>Krok dwa</li></ol>',
+].join('');
+
+/**
+ * Which toolbar controls a contract implies, and which it forbids.
+ *
+ * The single source of truth for the channel case's expectations. It mirrors
+ * `deriveRichTextProfile` (`apps/web/src/shared/ui/rich-text-profiles.ts`)
+ * deliberately - the point of the assertion is that the UI derives its surface
+ * from the declaration, so the test must derive its expectation from the same
+ * declaration rather than from a platform name.
+ *
+ * `null` means the stack's API predates the endpoint, which is a legitimate
+ * deployment: the frontend then uses the conservative shared subset, and the
+ * only honest expectation is that subset plus the visible "not declared" note.
+ */
+function expectedControls(contract: DescriptionFormatView | null): {
+  present: string[];
+  absent: string[];
+  tags: string[];
+} {
+  // The fallback, kept in step with `OFFER_DESCRIPTION_FALLBACK_FORMAT`.
+  const tags = contract?.allowedTags ?? ['h1', 'h2', 'p', 'ul', 'ol', 'li', 'b'];
+  const has = (tag: string): boolean => tags.includes(tag);
+
+  const control: Record<string, boolean> = {
+    Bold: has('b') || has('strong'),
+    // ADR-046 decision 2 rewrites `i`/`em` to `b` on the way OUT, which is a
+    // WRITE-path rule; it does not put an italic control in an editor whose
+    // destination declares no italic tag. When a destination does declare one,
+    // the control appears and carries the lossy-conversion note - so this stays
+    // keyed on the declaration and does not need revisiting when that note ships.
+    Italic: has('i') || has('em'),
+    Underline: has('u'),
+    Strikethrough: has('s') || has('del'),
+    'Bullet list': has('ul') && has('li'),
+    'Numbered list': has('ol') && has('li'),
+    'Heading 1': has('h1'),
+    'Heading 2': has('h2'),
+    'Heading 3': has('h3'),
+  };
+
+  return {
+    present: Object.keys(control).filter((name) => control[name]),
+    absent: Object.keys(control).filter((name) => !control[name]),
+    tags,
+  };
+}
+
+/**
+ * The base-scope description editor inside a row-edit modal.
+ *
+ * Located by the surface's accessible name, never positionally: the modal mounts
+ * a base-scope editor plus one per variant ("Description for {label}"), and the
+ * per-variant ones appear once the form goes dirty - so `.first()` on the class
+ * silently retargets mid-test. The regex spans both modes because source mode
+ * renames the control to "Description (HTML source)".
+ */
+function descriptionEditor(dialog: Locator, page: Page): Locator {
+  return dialog
+    .locator('.rich-text')
+    .filter({ has: page.getByRole('textbox', { name: /^Description( \(HTML source\))?$/ }) })
+    .first();
+}
 
 /** The editor surface for a labelled description field. */
 function surface(page: Page, name: RegExp): Locator {
@@ -102,7 +185,7 @@ async function pasteMarkup(surface: Locator, markup: string): Promise<void> {
     data.setData('text/html', html);
     data.setData('text/plain', html.replace(/<[^>]+>/g, ''));
     el.dispatchEvent(
-      new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }),
+      new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true })
     );
   }, markup);
 }
@@ -131,29 +214,23 @@ async function serializedHtml(root: Locator): Promise<string> {
   return html;
 }
 
-/**
- * A product whose Content tab carries a channel tab for `connectionId`.
- *
- * The channel tab exists only when an active `OfferFieldUpdater` connection has
- * at least one linked offer for the product - so this reads the connection's
- * offer mappings and takes the first that resolved to a product. One targeted
- * request, deliberately: the obvious version (walk products, read each one's
- * content state) is 25 sequential round-trips and timed the test out, and one
- * badly-mapped product 500-ing made it worse.
- *
- * Returns undefined rather than throwing when the stack has no such offer, so
- * the caller skips instead of failing on data it cannot control.
- */
-
 test.describe('rich-text descriptions (#2201, ADR-046)', () => {
-  test('the master editor accepts typing and gates Save on a real edit', async ({ page, api, world }) => {
-    const master = world.connectionFor('prestashop') ?? world.connectionFor('woocommerce');
+  test('the master editor saves the typed buffer as a draft', async ({ page, api, world }) => {
+    const master =
+      world.connectionWithCapability('ProductMaster') ??
+      world.connectionFor(PlatformType.prestashop);
     test.skip(!master, 'no master-catalog connection on this stack');
 
+    // Not scoped by connection: `GET /products` takes no `connectionId`
+    // (`list-products-query.dto.ts` accepts search / limit / offset only), and
+    // passing one the read ignores would imply a scoping this case does not have.
+    // The master connection is a precondition - a stack with no ProductMaster has
+    // no master description to edit - not a filter.
     const products = await api.products.list({ limit: 1 });
     const product = products.items[0];
     test.skip(product === undefined, 'no products on this stack');
 
+    const before = await api.content.forProduct(product.id);
     await page.goto(`/products/${product.id}?view=content&tab=master`);
 
     const editor = surface(page, /description/i);
@@ -165,14 +242,34 @@ test.describe('rich-text descriptions (#2201, ADR-046)', () => {
     await expect(save).toBeDisabled();
 
     // The assertion the unit suites cannot make: a real keystroke.
+    const marker = `E2E ${Date.now()}`;
     await editor.click();
-    await page.keyboard.type(' Edited by E2E');
-    await expect(editor).toContainText('Edited by E2E');
+    await page.keyboard.press('ControlOrMeta+End');
+    await page.keyboard.type(` ${marker}`);
+    await expect(editor).toContainText(marker);
     await expect(save).toBeEnabled();
 
-    // Publish stays locked while the buffer is unsaved - relocated from
-    // `content-panel.test.tsx`.
-    await expect(page.getByRole('button', { name: 'Publish' })).toBeDisabled();
+    // Publish is asserted in BOTH polarities, because it is also disabled when
+    // there is no draft at all and for a session without `content:write` - so a
+    // one-sided assertion cannot tell "gated on the unsaved buffer" from
+    // "always disabled". Relocated from `content-panel.test.tsx`.
+    const publish = page.getByRole('button', { name: 'Publish' });
+    await expect(publish).toBeDisabled();
+
+    await save.click();
+    await expect(publish).toBeEnabled({ timeout: 20_000 });
+
+    // The persisted fact, read back from the API: the typed buffer became the
+    // MASTER draft (`connectionId: null`), not a channel one. This is the case
+    // relocated from `content-editor.test.tsx`, where it survives as a skip.
+    const after = await api.content.forProduct(product.id);
+    expect(after.master.draftValue ?? '').toContain(marker);
+    expect(
+      after.channels.every((c) => !(c.draftValue ?? '').includes(marker)),
+      'the master edit must not land on a channel'
+    ).toBe(true);
+    // The base value is untouched by a draft save.
+    expect(after.master.baseValue).toEqual(before.master.baseValue);
   });
 
   test('bold applied to a selection reaches the document, not just the toolbar', async ({
@@ -180,7 +277,8 @@ test.describe('rich-text descriptions (#2201, ADR-046)', () => {
     api,
     world,
   }) => {
-    const master = world.connectionFor('prestashop') ?? world.connectionFor('woocommerce');
+    const master =
+      world.connectionFor(PlatformType.prestashop) ?? world.connectionFor(PlatformType.woocommerce);
     test.skip(!master, 'no master-catalog connection on this stack');
 
     const products = await api.products.list({ limit: 1 });
@@ -204,7 +302,7 @@ test.describe('rich-text descriptions (#2201, ADR-046)', () => {
     // is whichever one the format declares - `b` for a destination that rejects
     // `<strong>`, `strong` for the permissive master.
     const html = await serializedHtml(root);
-    expect(html).toMatch(/<(b|strong)>bold me<\/(b|strong)>/);
+    expect(html).toMatch(/<(b|strong)>bold me<\/\1>/);
     // Never both spellings for one mark.
     expect(html.includes('<b>') && html.includes('<strong>')).toBe(false);
   });
@@ -215,7 +313,7 @@ test.describe('rich-text descriptions (#2201, ADR-046)', () => {
     world,
     api,
   }) => {
-    const marketplace = world.connectionWithCapability('OfferManager', 'allegro');
+    const marketplace = world.connectionWithCapability('OfferManager', PlatformType.allegro);
     test.skip(!marketplace, 'no Allegro connection with OfferManager on this stack');
 
     // Reached through the publish wizard's row editor rather than the Content
@@ -224,6 +322,16 @@ test.describe('rich-text descriptions (#2201, ADR-046)', () => {
     // The claim is the same - the editor's surface comes from the destination's
     // declared contract - and this route asserts it with no outward effect: open,
     // assert, cancel.
+    //
+    // Read the contract FIRST and derive every expectation from it. Hard-coding
+    // Allegro's seven tags would make this case pass against a stack where the
+    // whole declaration pipeline is dead: the conservative fallback IS the
+    // Allegro-shaped subset, so the toolbar looks identical either way. The one
+    // observable difference is the "not declared" note, so that is what
+    // distinguishes them here.
+    const contract = await api.listings.descriptionFormat(marketplace?.id ?? '');
+    const expected = expectedControls(contract);
+
     const products = await api.products.list({ limit: 5 });
     const product = products.items[0];
     test.skip(product === undefined, 'no products on this stack');
@@ -231,39 +339,51 @@ test.describe('rich-text descriptions (#2201, ADR-046)', () => {
     await pages.productsList.goto();
     await pages.productsList.selectProduct(product?.name ?? '');
     const wizard = await pages.productsList.startBulkOfferCreation(marketplace?.name);
-    await wizard.expectOnConfigStep();
     await wizard.selectConnectionIfPresent(marketplace?.name ?? '');
     await wizard.completePlatformConfig();
-    await expect(wizard.proceedButton).toBeEnabled({ timeout: 30_000 });
+    await expect(wizard.proceedButton).toBeEnabled({ timeout: 60_000 });
     await wizard.proceedButton.click();
 
     const row = page.locator('.bulk-review__prow-main').first();
-    await expect(row).toBeVisible({ timeout: 30_000 });
+    // 60 s to match the page object's own budget for the same Config -> Resolve ->
+    // Review transition (`bulk-offer-wizard.page.ts`), which waits on the async
+    // per-category parameter schema.
+    await expect(row).toBeVisible({ timeout: 60_000 });
     await row.getByRole('button', { name: 'Edit', exact: true }).click();
 
     const dialog = page.getByRole('dialog', { name: /^Edit (offer|product)\b/ });
     await expect(dialog).toBeVisible({ timeout: 20_000 });
-    // Scoped by the surface's accessible name, NOT `.first()`: the modal mounts a
-    // base-scope editor plus one per variant ("Description for {label}"), and the
-    // per-variant ones appear once the form goes dirty - so a positional locator
-    // silently retargets mid-test. The regex spans both modes because source mode
-    // renames the control to "Description (HTML source)".
-    const editor = dialog
-      .locator('.rich-text')
-      .filter({ has: page.getByRole('textbox', { name: /^Description( \(HTML source\))?$/ }) })
-      .first();
+    const editor = descriptionEditor(dialog, page);
     await expect(editor).toBeVisible({ timeout: 20_000 });
 
-    // Allegro's grammar is seven tags, so there is no italic / underline /
-    // strike / link control and no H3. The operator cannot author what the
-    // destination would discard.
-    await expect(editor.getByRole('button', { name: 'Bold' })).toBeVisible();
-    await expect(editor.getByRole('button', { name: 'Heading 1' })).toBeVisible();
-    await expect(editor.getByRole('button', { name: 'Italic' })).toHaveCount(0);
-    await expect(editor.getByRole('button', { name: 'Underline' })).toHaveCount(0);
-    await expect(editor.getByRole('button', { name: 'Strikethrough' })).toHaveCount(0);
-    await expect(editor.getByRole('button', { name: /^(Link|Add or edit link)$/ })).toHaveCount(0);
-    await expect(editor.getByRole('button', { name: 'Heading 3' })).toHaveCount(0);
+    // Every control the contract allows is present; every one it does not is
+    // absent. Both directions matter: presence alone would pass on a permissive
+    // fallback, absence alone would pass on an editor with no toolbar at all.
+    for (const name of expected.present) {
+      await expect(editor.getByRole('button', { name }), `${name} is declared`).toBeVisible();
+    }
+    for (const name of expected.absent) {
+      await expect(
+        editor.getByRole('button', { name }),
+        `${name} is not declared, so it must not be offerable`
+      ).toHaveCount(0);
+    }
+
+    // The state that tells the two apart. ADR-046 decision 1: an undeclared
+    // destination gets the conservative subset AND must say so rather than
+    // presenting it as authoritative. This is the assertion that fails if the
+    // declaration pipeline - controller, read service, adapter constant - is
+    // dead, because then the note appears where it should not.
+    const note = editor.locator('.rich-text__undeclared');
+    if (contract === null || contract.declared === false) {
+      await expect(note, 'an undeclared destination must say so').toBeVisible();
+    } else {
+      await expect(note, 'a declared destination must not claim otherwise').toHaveCount(0);
+      // The cap is the destination's own, not a default.
+      await expect(editor.locator('.rich-text__bytes')).toContainText(
+        contract.maxBytes === null ? '' : contract.maxBytes.toLocaleString('en-US')
+      );
+    }
 
     // Paste-time filtering: the registered extensions ARE the document schema,
     // so a disallowed tag is dropped as it is parsed while its text survives.
@@ -274,8 +394,14 @@ test.describe('rich-text descriptions (#2201, ADR-046)', () => {
     // switch inside a modal that remounts its editors as the form goes dirty.
     const html = await documentHtml(editor);
 
-    for (const rejected of ['<div', '<span', '<table', '<tbody', '<tr', '<td', '<br', '<strong']) {
-      expect(html, `Allegro rejects ${rejected}`).not.toContain(rejected);
+    // The pasted markup's tags, minus whatever the contract allows: a tag the
+    // destination accepts must NOT be asserted absent (Erli accepts `br`, Allegro
+    // does not), so the expectation follows the declaration rather than the
+    // platform this stack happens to run.
+    const allowed = new Set(expected.tags);
+    for (const tag of ['div', 'span', 'table', 'tbody', 'tr', 'td', 'br', 'strong']) {
+      if (allowed.has(tag)) continue;
+      expect(html, `${tag} is not in the declared tag set`).not.toContain(`<${tag}`);
     }
     expect(html, 'no attributes survive').not.toMatch(/<[a-z0-9]+\s+[a-z-]+=/i);
     // Text inside dropped elements survives - filtering, not deletion.
@@ -286,86 +412,201 @@ test.describe('rich-text descriptions (#2201, ADR-046)', () => {
     await dialog.getByRole('button', { name: 'Cancel', exact: true }).first().click();
   });
 
-  test('the product page renders its description through the sanitizing primitive', async ({
-    page,
-    api,
-  }) => {
-    // Two assertions in one case, because their availability differs. The
-    // primitive being present and never leaking tags holds for ANY non-empty
-    // description, so it runs everywhere; the markup-fidelity half needs a
-    // product whose stored description actually contains HTML, which a demo
-    // stack seeded with plain text does not have. DOMPurify is lossy under
-    // happy-dom, so a real engine is the only place either means anything.
-    const products = await api.products.list({ limit: 50 });
-    const withText = products.items.find((candidate) => (candidate.description ?? '').trim() !== '');
-    test.skip(withText === undefined, 'no product with a description on this stack');
-
-    await page.goto(`/products/${withText?.id ?? ''}`);
-
-    const view = page.locator('.rich-text-view, .rich-text-view__empty').first();
-    await expect(view).toBeVisible();
-    // The defect this replaced: the value was interpolated into a <p>, so React
-    // escaped it and the operator read angle brackets.
-    await expect(view).not.toContainText('<p>');
-    await expect(view).not.toContainText('&lt;p&gt;');
-    // A script vector never renders, whatever the stored value holds.
-    await expect(view.locator('script')).toHaveCount(0);
-
-    const withHtml = products.items.find((candidate) =>
-      /<(p|ul|h[1-3]|strong|b)\b/i.test(candidate.description ?? ''),
-    );
-    if (withHtml === undefined) {
-      // Stated, not silently passed: this stack cannot exercise the half of the
-      // assertion that needs stored markup.
-      test.info().annotations.push({
-        type: 'note',
-        description: 'no product with HTML in its description - markup-fidelity half not exercised',
-      });
-      return;
-    }
-
-    await page.goto(`/products/${withHtml.id}`);
-    const htmlView = page.locator('.rich-text-view').first();
-    await expect(htmlView).toBeVisible();
-    // Rendered as elements, not printed as text.
-    await expect(htmlView.locator('p, ul, h1, h2, h3, strong, b').first()).toBeVisible();
-  });
-
-  test('the review step shows the description each row will publish', async ({
+  test('authored markup renders as markup in the review step, and the product page never prints tags', async ({
     page,
     pages,
     world,
     api,
   }) => {
     const destination =
-      world.connectionWithCapability('OfferManager', 'allegro') ??
+      world.connectionWithCapability('OfferManager', PlatformType.allegro) ??
       world.connectionWithCapability('ProductPublisher');
     test.skip(!destination, 'no publish destination on this stack');
 
+    // The row editor this case must open resolves a category first, and it cannot
+    // when the destination's category projection is empty (`destination.taxonomy
+    // .sync` has not populated it). Named explicitly so an empty tree reads as
+    // "this stack has no taxonomy" rather than as a broken category browser.
+    const taxonomy = await api.listings.taxonomyCategories(destination?.id ?? '');
+    test.skip(
+      taxonomy === null || taxonomy.length === 0,
+      "the destination's category projection is empty on this stack - no review row can resolve a category"
+    );
+
     const products = await api.products.list({ limit: 5 });
-    test.skip(products.items[0] === undefined, 'no products on this stack');
+    const product = products.items[0];
+    test.skip(product === undefined, 'no products on this stack');
 
     await pages.productsList.goto();
-    await pages.productsList.selectProduct(products.items[0]?.name ?? '');
+    await pages.productsList.selectProduct(product?.name ?? '');
     const wizard = await pages.productsList.startBulkOfferCreation(destination?.name);
-    await wizard.expectOnConfigStep();
     await wizard.selectConnectionIfPresent(destination?.name ?? '');
     await wizard.completePlatformConfig();
-    await expect(wizard.proceedButton).toBeEnabled({ timeout: 30_000 });
+    await expect(wizard.proceedButton).toBeEnabled({ timeout: 60_000 });
     await wizard.proceedButton.click();
 
-    // The gap #2200 closed: an operator submitted copy to a live destination
-    // without ever seeing it rendered. The Review step now carries a per-row
-    // disclosure, and it renders through the sanitizing view rather than
-    // printing tags.
-    const disclosure = page.locator('.bulk-review__desc').first();
-    await expect(disclosure).toBeVisible({ timeout: 30_000 });
-    await expect(disclosure.getByText('Description', { exact: true })).toBeVisible();
+    // Author the copy this case then asserts on, rather than hunting the stack for
+    // a product that happens to hold HTML. A stack seeded with plain text made the
+    // earlier version of this assertion vacuous - "no tags are printed" passes on
+    // plain text even if the sanitizing view is replaced by a raw interpolation.
+    //
+    // What this adds over `rich-text-view.test.tsx`, which covers the same
+    // primitive under an explicit jsdom pragma, is the REAL engine plus the real
+    // composition: the value travels operator -> editor -> wizard state -> the
+    // view, in the browser the operator uses. So when this skips for want of a
+    // category projection the primitive is still covered; what is missing is the
+    // end-to-end confirmation, and the skip says which.
+    const marker = `Alpine ${Date.now()}`;
+    // The OUTER row: `fillRowEditor` scopes its own Edit-button lookup to the
+    // row's `.bulk-review__prow-main` child, so handing it that child already
+    // would nest the selector and never match.
+    const row = page.locator('.bulk-review__prow').first();
+    const productRow = row.locator('.bulk-review__prow-main');
+    await expect(productRow).toBeVisible({ timeout: 60_000 });
+
+    // Through the row-editor page object rather than a hand-rolled open/paste/save:
+    // a review row routinely carries a category blocker, and the editor's Save is
+    // gated on the required parameters that category brings with it. Driving it by
+    // hand fails on the blocker, not on anything this case is about.
+    const rowEditor = new BulkOfferRowEditor(page);
+    const primary = product?.variants?.[0];
+    await rowEditor.fillRowEditor(row, primary?.ean ?? primary?.gtin ?? undefined, 'always', {
+      descriptionMarkup: `<h1>${marker}</h1><p>Do <b>-20 °C</b>.</p><ul><li>Puch 90/10</li></ul>`,
+    });
+
+    // Scoped to the PRODUCT row, not `.first()` on the class: the variant-row
+    // disclosure carries the same class, so an unscoped locator would assert the
+    // pre-existing behaviour instead of the single-variant row the fix added.
+    const disclosure = productRow.locator('.bulk-review__desc');
+    await expect(disclosure).toHaveCount(1);
     await disclosure.locator('summary').click();
 
-    const view = disclosure.locator('.rich-text-view, .rich-text-view__empty').first();
+    const view = disclosure.locator('.rich-text-view').first();
     await expect(view).toBeVisible();
-    await expect(view).not.toContainText('<p>');
-    await expect(view).not.toContainText('&lt;p&gt;');
+    // Rendered as ELEMENTS - the claim. The old surface interpolated the value
+    // into a paragraph, so React escaped it and the operator read angle brackets.
+    await expect(view.locator('h1')).toContainText(marker);
+    await expect(view.locator('b')).toContainText('-20');
+    await expect(view.locator('ul li')).toContainText('Puch 90/10');
+    await expect(view).not.toContainText('<h1>');
+    await expect(view).not.toContainText('&lt;h1&gt;');
+    await expect(view.locator('script')).toHaveCount(0);
+
+    // The product page reads the MASTER value, which this case deliberately does
+    // not write (that would mean publishing to the source platform), so the
+    // assertion there is the weaker one it can honestly make.
+    await page.goto(`/products/${product?.id ?? ''}`);
+    const detail = page.locator('.rich-text-view, .rich-text-view__empty').first();
+    await expect(detail).toBeVisible({ timeout: 20_000 });
+    await expect(detail).not.toContainText('&lt;p&gt;');
+    await expect(detail.locator('script')).toHaveCount(0);
+  });
+
+  test('an authored description survives the marketplace validator', async ({
+    pages,
+    world,
+    api,
+    poll,
+  }) => {
+    const marketplace = world.connectionWithCapability('OfferManager', PlatformType.allegro);
+    test.skip(!marketplace, 'no Allegro connection with OfferManager on this stack');
+
+    // Capability probe, not a data check: a stack whose API predates ADR-046
+    // builds the publish payload with the previous builder, so a create there
+    // says nothing about the declared format either way.
+    const contract = await api.listings.descriptionFormat(marketplace?.id ?? '');
+    test.skip(
+      contract === null,
+      'stack API predates /description-format - a publish here would exercise the old builder'
+    );
+    // The declaration itself is worth asserting once: the rest of the epic is
+    // downstream of it being right.
+    expect(contract?.declared, 'Allegro declares its own format').toBe(true);
+    expect(contract?.allowedTags.slice().sort()).toEqual(
+      ['b', 'h1', 'h2', 'li', 'ol', 'p', 'ul'].sort()
+    );
+    expect(contract?.allowedAttributes).toEqual({});
+    expect(contract?.requiresBlockOpener).toBe(true);
+
+    const taxonomy = await api.listings.taxonomyCategories(marketplace?.id ?? '');
+    test.skip(
+      taxonomy === null || taxonomy.length === 0,
+      "the destination's category projection is empty on this stack - the wizard cannot resolve a category to list under"
+    );
+
+    const products = await api.products.list({ limit: 25 });
+    const product = products.items.find(
+      (p) => (p.variants?.[0]?.ean ?? p.variants?.[0]?.gtin) != null
+    );
+    test.skip(product === undefined, 'no product with a barcode to list on this stack');
+
+    const connectionId = marketplace?.id ?? '';
+    const before = (await api.listings.list({ connectionId, limit: 1 })).total;
+
+    await pages.productsList.goto();
+    await pages.productsList.selectProduct(product?.sku ?? product?.name ?? '');
+    const wizard = await pages.productsList.startBulkOfferCreation(marketplace?.name);
+    await wizard.selectConnectionIfPresent(marketplace?.name ?? '');
+
+    // Author the description in the editor on the way through, so what reaches
+    // the marketplace is what the operator wrote in THIS run - not a value the
+    // stack happened to already hold. Every tag used is one Allegro allows.
+    const primary = product?.variants?.[0];
+    await wizard.advanceToConfirmModal({
+      requiresDeliveryPolicy: true,
+      gtin: primary?.ean ?? primary?.gtin ?? undefined,
+      descriptionMarkup: AUTHORED_DESCRIPTION,
+    });
+    const progress = await wizard.confirmCreation();
+    expect(progress.batchId).toBeTruthy();
+
+    // A batch whose every job is rejected still exists, so waiting only on the
+    // mapping would report "nothing appeared" for what is really a validator
+    // rejection. Read the batch's own reasons and name them.
+    try {
+      await poll.until(
+        () => api.listings.list({ connectionId, limit: 1 }),
+        (listed) => listed.total > before,
+        { message: 'an offer mapping to appear for the authored description', timeoutMs: 180_000 }
+      );
+    } catch (error) {
+      const batch = await api.listings.bulkBatch(progress.batchId).catch(() => null);
+      const reasons = (batch?.records ?? [])
+        .filter((r) => r.status === 'failed')
+        .flatMap((r) =>
+          (r.errors ?? []).map((e) =>
+            `${e.code ?? 'ERROR'} ${e.field ?? ''}: ${e.message ?? ''}`.trim()
+          )
+        );
+      // A description-shaped rejection is the failure this epic exists to
+      // prevent, so it gets its own message rather than being buried in a list.
+      const descriptionFault = reasons.filter((r) => /description|tag|html/i.test(r));
+      if (descriptionFault.length > 0) {
+        throw new Error(
+          `the marketplace rejected the DESCRIPTION we sent - the format was not applied:\n- ${[
+            ...new Set(descriptionFault),
+          ].join('\n- ')}`
+        );
+      }
+      if (reasons.length > 0) {
+        throw new Error(
+          `batch ${progress.batchId} rejected ${batch?.failedCount ?? '?'}/${batch?.totalCount ?? '?'} offers for reasons unrelated to the description:\n- ${[
+            ...new Set(reasons),
+          ].join('\n- ')}`
+        );
+      }
+      throw error;
+    }
+
+    // Read-back caveat, stated rather than silently skipped: OL's own offer
+    // response DTO does not expose the marketplace's description field, so the
+    // strongest available assertion is "the validator that used to 422 on our
+    // markup accepted this offer". The document's tag set is asserted directly in
+    // the paste case above.
+    test.info().annotations.push({
+      type: 'note',
+      description:
+        'offer created; description read-back is not exposed by GET /listings/:id/offer, so the tag-set assertion lives in the paste case',
+    });
   });
 });

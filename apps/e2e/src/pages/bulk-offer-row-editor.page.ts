@@ -125,6 +125,7 @@ export class BulkOfferRowEditor {
     row: Locator,
     gtin: string | undefined,
     save: 'always' | 'if-changed',
+    opts: { descriptionMarkup?: string } = {},
   ): Promise<boolean> {
     await row
       .locator('.bulk-review__prow-main')
@@ -137,11 +138,13 @@ export class BulkOfferRowEditor {
     let changed = await this.ensureCategoryResolved(dialog);
     changed = (await this.fillRequiredTextField(dialog, 'Title', 'E2E offer')) || changed;
     changed =
-      (await this.fillRequiredTextField(
-        dialog,
-        'Description',
-        'Automated E2E golden-path offer.',
-      )) || changed;
+      opts.descriptionMarkup === undefined
+        ? (await this.fillRequiredTextField(
+            dialog,
+            'Description',
+            'Automated E2E golden-path offer.',
+          )) || changed
+        : (await this.authorDescription(dialog, opts.descriptionMarkup)) || changed;
     changed = (await this.fillRequiredCategoryParameters(dialog, gtin)) || changed;
 
     // Both footer actions are scoped to `.bulk-editor__foot`
@@ -441,6 +444,32 @@ export class BulkOfferRowEditor {
     if ((await field.count()) === 0) return false;
     if ((await currentText(field)).trim() !== '') return false;
     await field.fill(value);
+    return true;
+  }
+
+  /**
+   * Replace the description with authored MARKUP, via a real clipboard paste.
+   *
+   * `fill()` cannot do this: on a contenteditable it inserts the string as TEXT,
+   * so `<b>` would reach the marketplace as four visible characters. A paste is
+   * also the honest path - it round-trips through the editor's schema exactly as
+   * an operator's paste does, so a tag the destination rejects is dropped here
+   * rather than surviving into the payload (ADR-046).
+   */
+  private async authorDescription(dialog: Locator, markup: string): Promise<boolean> {
+    const field = dialog.getByLabel('Description', { exact: true }).first();
+    if ((await field.count()) === 0) return false;
+    await field.click();
+    await field.press('ControlOrMeta+a');
+    await field.evaluate((el, html) => {
+      const data = new DataTransfer();
+      data.setData('text/html', html);
+      data.setData('text/plain', html.replace(/<[^>]+>/g, ' '));
+      el.dispatchEvent(
+        new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }),
+      );
+    }, markup);
+    await expect(field).not.toBeEmpty();
     return true;
   }
 

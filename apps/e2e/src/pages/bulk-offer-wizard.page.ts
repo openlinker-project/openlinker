@@ -287,6 +287,12 @@ export class BulkOfferWizard {
       gtin?: string;
       categoryPath?: string[];
       categoryId?: string;
+      /**
+       * Author this markup as the offer description instead of the default
+       * placeholder text. Pasted through the editor, so what reaches the payload
+       * has already passed the destination's schema (ADR-046 / #2201).
+       */
+      descriptionMarkup?: string;
     } = {},
   ): Promise<void> {
     this.rowEditor.setCategoryTarget(opts.categoryPath, opts.categoryId);
@@ -295,7 +301,7 @@ export class BulkOfferWizard {
     await this.proceedButton.click();
     await expect(this.createOffersButton).toBeVisible({ timeout: 60_000 });
 
-    await this.resolveNeedsAttentionRows(opts.gtin);
+    await this.resolveNeedsAttentionRows(opts.gtin, opts.descriptionMarkup);
     // Blocker-clearing only edits rows the FE flags "needs attention". A
     // destination whose FE validator does NOT surface missing required category
     // parameters as a blocker (Erli — its only bulk blocker is missing-image;
@@ -447,7 +453,10 @@ export class BulkOfferWizard {
    * Bounded, and requires forward progress per edit so a parameter that can't be
    * auto-filled fails loudly (naming the offending row) instead of looping.
    */
-  private async resolveNeedsAttentionRows(gtin?: string): Promise<void> {
+  private async resolveNeedsAttentionRows(
+    gtin?: string,
+    descriptionMarkup?: string,
+  ): Promise<void> {
     await this.setOnlyFlagged(true);
     try {
       for (let attempt = 0; attempt < MAX_ROW_EDITS; attempt += 1) {
@@ -462,7 +471,7 @@ export class BulkOfferWizard {
         ).toBeVisible({ timeout: 15_000 });
         const rowSummary = (await row.innerText()).replace(/\s+/g, ' ').trim();
 
-        await this.rowEditor.fillRowEditor(row, gtin, 'always');
+        await this.rowEditor.fillRowEditor(row, gtin, 'always', { descriptionMarkup });
 
         // The Save recomputes the row's blockers; require the count to drop so an
         // unfilled required field surfaces here with its row. Re-settle first so a
@@ -517,6 +526,10 @@ export class BulkOfferWizard {
       const count = await this.editableProductRows().count();
       let saved = false;
       for (let i = 0; i < count; i += 1) {
+        // Deliberately WITHOUT `descriptionMarkup`: authoring is unconditional,
+        // so passing it here would report "changed" on every pass and the top-up
+        // walk would never terminate. The description is authored once, in the
+        // `'always'` pass above.
         saved = await this.rowEditor.fillRowEditor(
           this.editableProductRows().nth(i),
           gtin,
