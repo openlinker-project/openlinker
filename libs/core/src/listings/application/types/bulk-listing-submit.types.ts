@@ -177,4 +177,12 @@ export interface BulkBatchSummary {
    * review table renders rows in submission order even after retries.
    */
   records: OfferCreationRecord[];
+  /**
+   * Owning product id per record variant id (#2234). Resolved with one batched
+   * variant lookup rather than a per-record fan-out, and carried beside
+   * `records` so `OfferCreationRecord` (which has no product column, nor one on
+   * its request snapshot) stays untouched. A variant that no longer resolves is
+   * simply absent from the map.
+   */
+  productIdByVariantId: Record<string, string>;
 }

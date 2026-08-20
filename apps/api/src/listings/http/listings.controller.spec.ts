@@ -184,6 +184,7 @@ describe('ListingsController', () => {
       countByProductIds: jest.fn().mockResolvedValue(new Map<string, number>()),
       findBySku: jest.fn(),
       findBySkuIn: jest.fn(),
+    findByIdIn: jest.fn(),
       findByEanOrGtinIn: jest.fn(),
       upsert: jest.fn(),
       upsertMany: jest.fn(),

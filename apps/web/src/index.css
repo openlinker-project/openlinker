@@ -11178,6 +11178,33 @@ input.bulk-dispatch__num--wide {
   }
 }
 
+/* Recovery bar on a terminal batch with failures (#2234). Two ranked actions
+   share one row; the copy column carries the optional blocked-reason line. */
+.bulk-batch__recovery {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.bulk-batch__recovery-copy {
+  flex: 1 1 22rem;
+  min-width: 0;
+}
+
+.bulk-batch__recovery-reason {
+  margin-top: var(--space-1);
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.bulk-batch__recovery-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
 .bulk-batch__summary {
   display: flex;
   align-items: center;

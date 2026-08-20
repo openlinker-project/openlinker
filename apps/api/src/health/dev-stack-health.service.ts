@@ -15,6 +15,7 @@ import { DataSource } from 'typeorm';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { firstValueFrom, timeout } from 'rxjs';
+import { REDIS_STREAM_NAMES, xAddBounded } from '@openlinker/shared/redis';
 import { RedisClientType } from 'redis';
 import { WORKER_HEARTBEAT_REDIS_KEY } from '@openlinker/shared/worker';
 import type { IDevStackHealthService } from './dev-stack-health.service.interface';
@@ -33,7 +34,7 @@ import type {
 export class DevStackHealthService implements IDevStackHealthService {
   private readonly logger = new Logger(DevStackHealthService.name);
   private readonly CHECK_TIMEOUT_MS = 5000;
-  private readonly HEALTHCHECK_STREAM = 'healthcheck';
+  private readonly HEALTHCHECK_STREAM = REDIS_STREAM_NAMES.healthcheck;
   private readonly WORKER_OK_MS = 30_000; // 30 seconds
   private readonly WORKER_WARN_MS = 60_000; // 60 seconds
 
@@ -150,19 +151,11 @@ export class DevStackHealthService implements IDevStackHealthService {
       // the server supports Streams and accepts writes; no read-back needed,
       // which avoids false positives on cold boot when consumer groups or
       // stream entries are not yet initialized.
+      // Routed through the shared seam like every other stream write (#2163).
+      // The bound is EXACT here: `~` cannot trim below one macro node, so the
+      // previous `~ 1` really retained ~100 entries, not 1.
       await withTimeout(
-        this.redisClient.xAdd(
-          streamKey,
-          '*',
-          { timestamp },
-          {
-            TRIM: {
-              strategy: 'MAXLEN',
-              strategyModifier: '~',
-              threshold: 1,
-            },
-          }
-        ),
+        xAddBounded(this.redisClient, streamKey, { timestamp }),
         'Redis xAdd timeout',
         this.CHECK_TIMEOUT_MS
       );

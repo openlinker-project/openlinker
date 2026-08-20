@@ -23,6 +23,32 @@ When a lesson hardens into a rule, **graduate it** to the canonical doc and leav
 
 ---
 
+## An id is assigned before its transaction commits, so id order is not visibility order
+
+**Context**: designing the reader contract for ADR-049's durability spine — how a consumer advances
+through a table of work rows or events without missing any.
+
+**Problem**: the obvious cursor is a scalar `WHERE id > :cursor ORDER BY id`. It is wrong on any
+table written inside a transaction. A sequence (or ULID) hands out the id at **insert** time, but
+the row becomes visible at **commit** time, and those orders differ: transaction A can take id 100,
+transaction B take id 101 and commit first. A reader that sees 101 and advances its cursor past it
+will **never** see 100 — it committed into a position the reader has already passed. The loss is
+silent, permanent, and invisible to a lag metric, because the row is not late; it is simply behind
+a cursor that already moved.
+
+**Rule**: never advance a durable read cursor on a scalar monotonic id alone. Use a composite cursor
+read below a **visibility barrier** set at the oldest still-in-flight transaction (in Postgres,
+derived from the active-transaction horizon), so the reader never crosses a position an open
+transaction can still fill. If a scalar cursor is genuinely unavoidable, the reader must tolerate
+re-reading a bounded window and dedupe on a business-derived identity — never on the id.
+
+**Applies to**: any polling reader over a transactionally-written table — `sync_jobs`, the
+`destination_taxonomy_sync` frontier, and any future outbox/event log. Not applicable to Redis
+Streams ids, which are assigned by a single-threaded server at write time with no commit phase.
+
+**Source**: [ADR-049](./architecture/adrs/049-durability-spine-and-domain-event-contract.md)
+decision 3 (#2165, epic #2162)
+
 ## Never write a control character as a raw byte in source - escape it, or the file stops being reviewable
 
 **Context**: `libs/integrations/eparagony/src/domain/policies/document-token.policy.ts` joined the parts of a vendor idempotency key with `0x00`, written as three literal NUL bytes inside a template literal (and inside the comment describing them) rather than as `\0` escapes.
