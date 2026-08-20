@@ -62,7 +62,6 @@ export {
   JobOutcomeValues,
   JobOutcomeReasonValues,
   BULK_RETRY_MAX_BATCH_SIZE,
-  SYNC_JOBS_EVENT_STREAM,
 } from './domain/types/sync-job.types';
 export {
   MarketplaceOrdersPollPayloadV1,

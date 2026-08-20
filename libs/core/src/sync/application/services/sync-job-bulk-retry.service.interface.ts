@@ -16,7 +16,6 @@ export interface ISyncJobBulkRetryService {
    * `BULK_RETRY_MAX_BATCH_SIZE`. Jobs that flipped out of `dead` between
    * the selection and update are skipped, not re-enqueued.
    *
-   * Emits `sync.job.bulk-retry-requested` on the `events.sync.jobs` stream
    * when at least one job is re-queued; silent on zero-count (nothing moved).
    *
    * @param connectionId - Connection UUID scoping the group

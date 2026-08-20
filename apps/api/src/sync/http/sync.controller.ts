@@ -225,7 +225,7 @@ export class SyncController {
   @ApiOperation({
     summary: 'Re-queue every dead job in a (connectionId, jobType) group',
     description:
-      'Re-queues every dead sync job matching the group selector, capped at a server-side batch size. Jobs that flipped out of dead between our selection and the update are counted as skipped. Emits one sync.job.bulk-retry-requested event when at least one job is re-queued.',
+      'Re-queues every dead sync job matching the group selector, capped at a server-side batch size. Jobs that flipped out of dead between our selection and the update are counted as skipped.',
   })
   @ApiResponse({
     status: 200,

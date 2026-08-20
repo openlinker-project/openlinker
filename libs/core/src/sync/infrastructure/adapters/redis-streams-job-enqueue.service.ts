@@ -14,11 +14,12 @@ import { RedisClientType } from 'redis';
 import type { JobEnqueuePort } from '../../domain/ports/job-enqueue.port';
 import type { EnqueueJobResult, SyncJobRequest } from '../../domain/types/sync-job.types';
 import { Logger } from '@openlinker/shared/logging';
+import { REDIS_STREAM_NAMES, xAddBounded } from '@openlinker/shared/redis';
 
 @Injectable()
 export class RedisStreamsJobEnqueueService implements JobEnqueuePort {
   private readonly logger = new Logger(RedisStreamsJobEnqueueService.name);
-  private readonly STREAM_NAME = 'jobs.sync';
+  private readonly STREAM_NAME = REDIS_STREAM_NAMES.jobsSync;
   private readonly IDEMPOTENCY_KEY_PREFIX = 'jobdedup:';
   private readonly IDEMPOTENCY_TTL = 7 * 24 * 60 * 60; // 7 days in seconds
 
@@ -57,7 +58,11 @@ export class RedisStreamsJobEnqueueService implements JobEnqueuePort {
       // Publish to Redis Stream using XADD
       let messageId: string | null;
       try {
-        messageId = await this.redisClient.xAdd(this.STREAM_NAME, '*', fields);
+        // Age-bounded, not count-bounded. Until `job-intake` writes the
+        // `sync_jobs` row this entry IS the job, and the `jobdedup:` key above
+        // would block a re-enqueue for 7 days — so the retention horizon is
+        // deliberately longer than that TTL (#2163).
+        messageId = await xAddBounded(this.redisClient, this.STREAM_NAME, fields);
       } catch (xaddError) {
         // Clean up idempotency key if XADD fails
         await this.redisClient.del(idempotencyKey).catch(() => {

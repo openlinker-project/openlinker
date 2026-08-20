@@ -305,13 +305,6 @@ export interface BulkRetryResult {
  */
 export const BULK_RETRY_MAX_BATCH_SIZE = 1000;
 
-/**
- * Redis Streams channel for sync-job lifecycle events. Introduced in
- * this module for `sync.job.bulk-retry-requested`; no consumer is
- * attached yet (audit-trail / observability only). Future bulk-operation
- * events should publish to the same stream.
- */
-export const SYNC_JOBS_EVENT_STREAM = 'events.sync.jobs';
 
 /**
  * Sync Job (Persisted)

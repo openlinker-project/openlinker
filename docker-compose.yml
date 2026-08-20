@@ -54,6 +54,23 @@ services:
     # one-command demo pull small. The standard names the version, not the base.
     image: redis:8.4-alpine
     container_name: ${COMPOSE_PROJECT_NAME:-openlinker}-redis
+    # Both settings are required, and the policy alone would be inert (#2163):
+    # with the upstream default `maxmemory 0` there is no eviction cycle, so
+    # `maxmemory-policy` is never consulted and Redis simply grows until the OS
+    # OOM-killer takes the container — losing the whole dataset, including every
+    # consumer group and Pending Entries List.
+    #
+    # `noeviction` is a deliberate decision, not a default. Under any `allkeys-*`
+    # policy Redis can evict a WHOLE stream key, taking its consumer groups and
+    # PELs with it, and no consumer receives an error — silent total loss. Failing
+    # the write instead is the correct direction for a queue: back-pressure over
+    # data loss, and the enqueue path already treats a failed XADD as retryable.
+    command:
+      - redis-server
+      - --maxmemory
+      - ${REDIS_MAXMEMORY:-512mb}
+      - --maxmemory-policy
+      - noeviction
     ports:
       - '${OL_BIND_ADDRESS:-127.0.0.1}:${REDIS_HOST_PORT:-6379}:6379'
     volumes:
