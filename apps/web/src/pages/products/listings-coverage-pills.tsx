@@ -18,6 +18,7 @@ import type { ReactElement } from 'react';
 import type { Connection } from '../../features/connections';
 import type { ProductListingsCoverage } from '../../features/products/api/products.types';
 import { usePlatforms } from '../../shared/plugins';
+import { findPlatformDisplayName } from '../../features/mappings';
 
 export interface ListingsCoveragePillsProps {
   coverage: ProductListingsCoverage[] | undefined;
@@ -59,8 +60,7 @@ export function ListingsCoveragePills({
         const soleOfPlatform =
           connections.filter((c) => c.platformType === connection.platformType).length === 1;
         const label = soleOfPlatform
-          ? (platforms.find((p) => p.platformType === connection.platformType)?.displayName ??
-            connection.name)
+          ? (findPlatformDisplayName(platforms, connection) ?? connection.name)
           : connection.name;
         return (
           <span

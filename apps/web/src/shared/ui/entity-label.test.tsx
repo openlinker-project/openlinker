@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { EntityLabel } from './entity-label';
+import { EntityLabel, shortenId } from './entity-label';
 
 function renderWithRouter(ui: React.ReactElement): ReturnType<typeof render> {
   return render(<MemoryRouter>{ui}</MemoryRouter>);
@@ -74,6 +74,94 @@ describe('EntityLabel', () => {
     expect(copy).toHaveAttribute('type', 'button');
   });
 
+  it('uses copyLabel and copiedLabel for the copy button accessible name when supplied', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText },
+      configurable: true,
+    });
+
+    renderWithRouter(
+      <EntityLabel
+        id="ol_order_abc123def456"
+        name="6839-2911-4402"
+        copyLabel="Copy order ID 6839-2911-4402"
+        copiedLabel="Copied order ID 6839-2911-4402"
+      />,
+    );
+
+    const copy = screen.getByRole('button', { name: 'Copy order ID 6839-2911-4402' });
+    expect(screen.queryByRole('button', { name: /ol_order_abc/ })).toBeNull();
+
+    fireEvent.click(copy);
+
+    expect(writeText).toHaveBeenCalledWith('ol_order_abc123def456');
+    expect(
+      await screen.findByRole('button', { name: 'Copied order ID 6839-2911-4402' }),
+    ).toBeInTheDocument();
+  });
+
+  it('falls back to the spelled-out id for the copy button accessible name when no label is supplied', () => {
+    renderWithRouter(<EntityLabel id="ol_connection_abc123def456" name="Store" />);
+
+    expect(
+      screen.getByRole('button', { name: 'Copy ol_connection_abc123def456' }),
+    ).toBeInTheDocument();
+  });
+
+  it('titles the copy button with the id a sighted user cannot otherwise see (#2091)', async () => {
+    // The row's visible identity is not always the id Copy writes — an order row
+    // reads `ALG-882414` and copies `ol_order_…` — and with `showId={false}` no
+    // chip beside the button shows the target either. `aria-label` alone produces
+    // no tooltip, so the button needs a `title`; it carries the id rather than a
+    // copy of the accessible name, so the tooltip states what lands on the
+    // clipboard instead of repeating what a screen reader already announces.
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText },
+      configurable: true,
+    });
+
+    renderWithRouter(
+      <EntityLabel
+        id="ol_order_abc123def456"
+        name="6839-2911-4402"
+        showId={false}
+        copyLabel="Copy internal order ID for order 6839-2911-4402"
+        copiedLabel="Copied internal order ID for order 6839-2911-4402"
+      />,
+    );
+
+    const copy = screen.getByRole('button', {
+      name: 'Copy internal order ID for order 6839-2911-4402',
+    });
+    // The tooltip is the id itself, not a mirror of the accessible name: this row
+    // displays the order NUMBER and copies the internal id, and with
+    // `showId={false}` nothing else on the row shows the target. Mirroring the
+    // name would make `title` the accessible *description* of a control whose
+    // name is already that string, so a screen reader announces it twice.
+    expect(copy).toHaveAttribute('title', 'ol_order_abc123def456');
+
+    fireEvent.click(copy);
+
+    // The name tracks the copied state; the title does not need to, because the
+    // id it shows has not changed.
+    expect(
+      await screen.findByRole('button', {
+        name: 'Copied internal order ID for order 6839-2911-4402',
+      }),
+    ).toHaveAttribute('title', 'ol_order_abc123def456');
+  });
+
+  it('titles the copy button with the id even when no copy label is supplied', () => {
+    renderWithRouter(<EntityLabel id="ol_connection_abc123def456" name="Store" />);
+
+    expect(screen.getByRole('button', { name: /Copy ol_connection/ })).toHaveAttribute(
+      'title',
+      'ol_connection_abc123def456',
+    );
+  });
+
   it('copies the full ID to the clipboard when the copy button is pressed', () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, 'clipboard', {
@@ -123,5 +211,36 @@ describe('EntityLabel', () => {
     fireEvent.click(screen.getByRole('button', { name: /Copy ol_order/ }));
 
     expect(onNavigate).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * `shortenId` algorithm coverage, moved here from
+ * `features/shipments/lib/shipment-severity.test.ts` when #2089 retired the
+ * `truncateOrderId` alias. These four branches were the ONLY tests of the
+ * algorithm; `OrderIdentityCell` (#2087) now depends on it on three lists, so
+ * they follow the function rather than the deleted alias.
+ */
+describe('shortenId', () => {
+  it('should keep the ol_ prefix and elide the middle of a full internal order id', () => {
+    expect(shortenId('ol_order_a3f24b09c4d1486789abcdef01234567')).toBe('ol_order_a3f2…67');
+  });
+
+  it('should leave a short ol_ id untouched when its suffix is 6 characters or fewer', () => {
+    expect(shortenId('ol_order_123456')).toBe('ol_order_123456');
+    expect(shortenId('ol_order_1')).toBe('ol_order_1');
+  });
+
+  it('should truncate a 7-character ol_ suffix - the boundary just past the keep-whole limit', () => {
+    expect(shortenId('ol_order_1234567')).toBe('ol_order_1234…67');
+  });
+
+  it('should leave a non-OL id of 14 characters or fewer untouched', () => {
+    expect(shortenId('12345678901234')).toBe('12345678901234');
+    expect(shortenId('ORD-42')).toBe('ORD-42');
+  });
+
+  it('should elide the middle of a non-OL id longer than 14 characters', () => {
+    expect(shortenId('123456789012345')).toBe('12345678…2345');
   });
 });

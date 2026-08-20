@@ -34,6 +34,11 @@ export const CoreCapabilityValues = [
   // Invoicing (ADR-026). Resolves an `InvoicingPort` (issuance mechanism);
   // regulatory transmission/clearance is a deferred ADR-002 sub-capability.
   'Invoicing',
+  // Fiscalization (ADR-042). Resolves a `FiscalizationPort` - handing a completed
+  // sale to a provider that performs or brokers its fiscal registration.
+  // Deliberately NOT a document type on `Invoicing`: different issuer, device
+  // dependency, legal basis and retry semantics.
+  'Fiscalization',
 ] as const;
 
 /**

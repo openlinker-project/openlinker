@@ -11,10 +11,18 @@
 import type { TestingModule } from '@nestjs/testing';
 import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import type { Repository, SelectQueryBuilder } from 'typeorm';
+import { getMetadataArgsStorage, type Repository, type SelectQueryBuilder } from 'typeorm';
 
+import { InventoryItem } from '../../../domain/entities/inventory-item.entity';
+import { InventoryReturningUnsupportedError } from '../../../domain/exceptions/inventory-returning-unsupported.error';
+import { InventoryRowVanishedError } from '../../../domain/exceptions/inventory-row-vanished.error';
 import { InventoryItemOrmEntity } from '../entities/inventory-item.orm-entity';
-import { InventoryRepository } from './inventory.repository';
+import {
+  INVENTORY_DB_MANAGED_COLUMNS,
+  INVENTORY_IDENTITY_COLUMNS,
+  INVENTORY_MASTER_OWNED_COLUMNS,
+  InventoryRepository,
+} from './inventory.repository';
 
 type RawAggregateRow = {
   productId: string;
@@ -134,6 +142,218 @@ describe('InventoryRepository', () => {
       const result = await repository.findStockAggregatesByProductIds(['prod-1']);
 
       expect(result[0].stockUpdatedAt).toEqual(new Date('2026-05-01T12:00:00.000Z'));
+    });
+  });
+
+  // #2071 — the existing-row write used to be a `save()`, so which columns the
+  // master sync could touch was an emergent property of TypeORM's diffing. These
+  // pin the write set, on the row every published quantity derives from.
+  describe('upsert write set (#2071)', () => {
+    const existingRow = {
+      id: 'inv-1',
+      productId: 'ol_product_1',
+      productVariantId: 'ol_variant_1',
+      availableQuantity: 1,
+      reservedQuantity: 0,
+      locationId: null,
+      isStale: true,
+      updatedAt: new Date('2026-01-01T00:00:00Z'),
+    } as InventoryItemOrmEntity;
+
+    const persistedUpdatedAt = new Date('2026-06-02T09:30:00Z');
+
+    /** The SET payload the SUT hands the builder — typed so it is not `any`. */
+    type UpdatePayload = Record<string, unknown>;
+
+    /** Chainable update-builder stub capturing the SET payload. */
+    function buildUpdateBuilderMock(): {
+      set: jest.Mock<unknown, [UpdatePayload]>;
+      where: jest.Mock<unknown, [string, Record<string, unknown>]>;
+      returning: jest.Mock<unknown, [string[]]>;
+      execute: jest.Mock;
+      update: jest.Mock;
+    } {
+      const qb = {
+        update: jest.fn(),
+        set: jest.fn<unknown, [UpdatePayload]>(),
+        where: jest.fn<unknown, [string, Record<string, unknown>]>(),
+        returning: jest.fn<unknown, [string[]]>(),
+        execute: jest
+          .fn()
+          .mockResolvedValue({ raw: [{ updatedAt: persistedUpdatedAt }], affected: 1 }),
+      };
+      qb.update.mockReturnValue(qb);
+      qb.set.mockReturnValue(qb);
+      qb.where.mockReturnValue(qb);
+      qb.returning.mockReturnValue(qb);
+      return qb;
+    }
+
+    const incoming = new InventoryItem(
+      'ignored-inbound-id',
+      'ol_product_1',
+      'ol_variant_1',
+      7,
+      3,
+      null,
+      new Date('2026-06-02T09:00:00Z'),
+      false
+    );
+
+    it('should write exactly the master-owned columns, sourced from the item', async () => {
+      const qb = buildUpdateBuilderMock();
+      ormRepository.findOne.mockResolvedValue(existingRow);
+      ormRepository.createQueryBuilder.mockReturnValue(
+        qb as unknown as ReturnType<typeof ormRepository.createQueryBuilder>
+      );
+
+      await repository.upsert(incoming);
+
+      const payload = qb.set.mock.calls[0][0];
+      // Both directions: no column may be added, and none dropped.
+      expect(Object.keys(payload).sort()).toEqual([...INVENTORY_MASTER_OWNED_COLUMNS].sort());
+      // Values must round-trip from the item, not merely be present.
+      expect(payload).toEqual({ availableQuantity: 7, reservedQuantity: 3, isStale: false });
+      expect(qb.where).toHaveBeenCalledWith('id = :id', { id: 'inv-1' });
+    });
+
+    it('should never write an identity or DB-managed column on the existing-row branch', async () => {
+      const qb = buildUpdateBuilderMock();
+      ormRepository.findOne.mockResolvedValue(existingRow);
+      ormRepository.createQueryBuilder.mockReturnValue(
+        qb as unknown as ReturnType<typeof ormRepository.createQueryBuilder>
+      );
+
+      await repository.upsert(incoming);
+
+      const payload = qb.set.mock.calls[0][0];
+      for (const column of [
+        ...INVENTORY_IDENTITY_COLUMNS,
+        // `updatedAt` in particular: naming it suppresses the @UpdateDateColumn
+        // stamp that the propagation dedupe key depends on.
+        ...INVENTORY_DB_MANAGED_COLUMNS,
+      ]) {
+        expect(payload).not.toHaveProperty(column);
+      }
+      expect(ormRepository.save).not.toHaveBeenCalled();
+    });
+
+    it('should return the DB-stamped updatedAt rather than the inbound one', async () => {
+      const qb = buildUpdateBuilderMock();
+      ormRepository.findOne.mockResolvedValue(existingRow);
+      ormRepository.createQueryBuilder.mockReturnValue(
+        qb as unknown as ReturnType<typeof ormRepository.createQueryBuilder>
+      );
+
+      const result = await repository.upsert(incoming);
+
+      expect(qb.returning).toHaveBeenCalledWith(['updatedAt']);
+      expect(result.updatedAt).toEqual(persistedUpdatedAt);
+      // Identity comes from the matched row, not the inbound item's id.
+      expect(result.id).toBe('inv-1');
+      expect(result.availableQuantity).toBe(7);
+    });
+
+    it('should throw rather than return a phantom row when the update matches nothing', async () => {
+      const qb = buildUpdateBuilderMock();
+      // The row was read, then deleted before the UPDATE ran. `save()` would have
+      // re-INSERTed it; a scoped UPDATE cannot, and the old fallback would have
+      // returned an item for a row that no longer exists.
+      qb.execute.mockResolvedValue({ raw: [], affected: 0 });
+      ormRepository.findOne.mockResolvedValue(existingRow);
+      ormRepository.createQueryBuilder.mockReturnValue(
+        qb as unknown as ReturnType<typeof ormRepository.createQueryBuilder>
+      );
+
+      await expect(repository.upsert(incoming)).rejects.toThrow(InventoryRowVanishedError);
+    });
+
+    it('should throw when the driver ignores RETURNING rather than using the master timestamp', async () => {
+      const qb = buildUpdateBuilderMock();
+      // TypeORM makes `.returning()` a silent no-op on drivers that lack support.
+      // Falling back to `item.updatedAt` would put the master-supplied value into
+      // the propagation dedupe key — the exact failure this exclusion prevents.
+      qb.execute.mockResolvedValue({ raw: [], affected: 1 });
+      ormRepository.findOne.mockResolvedValue(existingRow);
+      ormRepository.createQueryBuilder.mockReturnValue(
+        qb as unknown as ReturnType<typeof ormRepository.createQueryBuilder>
+      );
+
+      await expect(repository.upsert(incoming)).rejects.toThrow(InventoryReturningUnsupportedError);
+    });
+
+    it('should throw when RETURNING yields a row whose updatedAt is unparseable', async () => {
+      const qb = buildUpdateBuilderMock();
+      // The raw key is literally `updatedAt` only because no `namingStrategy` is
+      // configured. Under a snake_case strategy the row object stays truthy while
+      // the property reads `undefined`, so guarding the ROW is not enough — an
+      // unguarded `new Date(undefined)` would sail past as `Invalid Date`.
+      qb.execute.mockResolvedValue({ raw: [{ created_at: persistedUpdatedAt }], affected: 1 });
+      ormRepository.findOne.mockResolvedValue(existingRow);
+      ormRepository.createQueryBuilder.mockReturnValue(
+        qb as unknown as ReturnType<typeof ormRepository.createQueryBuilder>
+      );
+
+      await expect(repository.upsert(incoming)).rejects.toThrow(InventoryReturningUnsupportedError);
+    });
+
+    // The insert branch writes every column, so it has no owned-set to scope —
+    // but `updatedAt` is omitted from `toOrmEntity` for the same reason, which
+    // means it too can only come back from the database.
+    it('should throw when an inserted row comes back without a DB-stamped updatedAt', async () => {
+      ormRepository.findOne.mockResolvedValue(null);
+      ormRepository.save.mockResolvedValue({
+        ...existingRow,
+        id: '6f1d2b3c-4e5f-4a7b-8c9d-0e1f2a3b4c5d',
+        updatedAt: undefined,
+      } as unknown as InventoryItemOrmEntity);
+
+      const insertable = new InventoryItem(
+        '6f1d2b3c-4e5f-4a7b-8c9d-0e1f2a3b4c5d',
+        'ol_product_1',
+        'ol_variant_1',
+        7,
+        3,
+        null,
+        new Date('2026-06-02T09:00:00Z'),
+        false
+      );
+
+      await expect(repository.upsert(insertable)).rejects.toThrow(
+        InventoryReturningUnsupportedError
+      );
+    });
+
+    it('should throw on a regenerated-id insert that comes back without updatedAt', async () => {
+      // The non-UUID branch strips the caller id and regenerates one; it must
+      // carry the same guarantee as its sibling, not just the happy path.
+      ormRepository.findOne.mockResolvedValue(null);
+      ormRepository.create.mockImplementation((v: unknown) => v as InventoryItemOrmEntity);
+      ormRepository.save.mockResolvedValue({
+        ...existingRow,
+        updatedAt: undefined,
+      } as unknown as InventoryItemOrmEntity);
+
+      await expect(repository.upsert(incoming)).rejects.toThrow(InventoryReturningUnsupportedError);
+    });
+
+    // The guard that actually earns its keep: adding a column to the ORM entity
+    // fails here until it is classified, instead of silently joining the write
+    // set. Same "must be updated deliberately" shape as route-lazy.test.ts's
+    // expected-count assertion.
+    it('should classify every declared entity column into exactly one group', () => {
+      const declared = getMetadataArgsStorage()
+        .columns.filter((column) => column.target === InventoryItemOrmEntity)
+        .map((column) => column.propertyName)
+        .sort();
+
+      const classified = [
+        ...INVENTORY_IDENTITY_COLUMNS,
+        ...INVENTORY_MASTER_OWNED_COLUMNS,
+        ...INVENTORY_DB_MANAGED_COLUMNS,
+      ].sort();
+
+      expect(declared).toEqual(classified);
     });
   });
 });

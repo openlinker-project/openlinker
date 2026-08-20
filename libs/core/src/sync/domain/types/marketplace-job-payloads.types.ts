@@ -69,6 +69,18 @@ export interface MarketplaceOrderFxStampSweepPayloadV1 {
   limit: number;
   /** Ignore orders created longer ago than this, in whole days. */
   maxAgeDays: number;
+  /**
+   * How long a TERMINAL answer is honoured before the sweep re-tries the order,
+   * in whole days (#2135 review, finding 1).
+   *
+   * A terminal answer says "no retry changes this", which is true of the
+   * classification and false of the world: `no-rate-source` clears when the host
+   * is rewired, and an `unsupported-pair` raised by a throttled provider clears
+   * on its own. Without a cooldown the row leaves the frontier forever and the
+   * order silently never carries a reported figure. Only rows that still hold NO
+   * figure are revisited - a real stamp is immutable and never re-entered.
+   */
+  terminalRetryDays?: number;
 }
 
 export interface MarketplaceOfferQuantityUpdatePayloadV1 {

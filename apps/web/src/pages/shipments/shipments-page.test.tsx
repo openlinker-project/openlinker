@@ -397,7 +397,12 @@ describe('ShipmentsPage — failed-shipment hint (#1800)', () => {
 });
 
 describe('ShipmentsPage — row accordion + Order/Provider columns (#1826)', () => {
-  afterEach(cleanup);
+  afterEach(() => {
+    cleanup();
+    // One test in this block stubs `navigator` for the clipboard; without this
+    // the stub leaks into every test after it in the file.
+    vi.unstubAllGlobals();
+  });
 
   it('should expand and collapse the row accordion, showing the Regenerate action', async () => {
     const failed = makeShipment({
@@ -462,7 +467,232 @@ describe('ShipmentsPage — row accordion + Order/Provider columns (#1826)', () 
     expect(orderLink).toHaveAttribute('href', '/orders/ol_order_1');
   });
 
-  it('should keep the column header "Connection" while rendering it as a ConnectionDot (#1905)', async () => {
+  it('should render the Order column from the orderSummary projection (#2089)', async () => {
+    // `orderSummary` has been on this response since #1995 / PR #2012 and was
+    // typed-but-consumed-by-nothing until now, so this pins the wiring.
+    const mockApi = createMockApiClient({
+      shipments: {
+        list: vi.fn().mockResolvedValue(
+          page([
+            makeShipment({
+              orderSummary: {
+                orderNumber: '6839-2911-4402',
+                firstItemName: 'Terra Wool Coat',
+                firstItemImageUrl: null,
+                itemCount: 3,
+              },
+            }),
+          ]),
+        ),
+      },
+      connections: { list: vi.fn().mockResolvedValue([]) },
+    });
+
+    renderWithProviders(<ShipmentsPage />, { apiClient: mockApi });
+
+    const table = await screen.findByRole('table');
+    // Marketplace-facing number first, item name and `+N` beneath, and the
+    // thumbnail this column never had.
+    expect(within(table).getByRole('link', { name: '6839-2911-4402' })).toHaveAttribute(
+      'href',
+      '/orders/ol_order_1',
+    );
+    expect(within(table).getByText('Terra Wool Coat')).toBeInTheDocument();
+    expect(within(table).getByText('+2')).toBeInTheDocument();
+    expect(table.querySelector('.order-cell .product-thumbnail')).not.toBeNull();
+  });
+
+  it('should copy the full order id from the Order cell, not the shortened form', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal('navigator', { clipboard: { writeText } });
+
+    const mockApi = createMockApiClient({
+      shipments: {
+        list: vi.fn().mockResolvedValue(
+          page([
+            makeShipment({
+              orderId: 'ol_order_a4f3b9c1d8e2f0a9b6c3d4e5f6a7b8c9',
+              orderSummary: {
+                orderNumber: '6839-2911-4402',
+                firstItemName: null,
+                firstItemImageUrl: null,
+                itemCount: 1,
+              },
+            }),
+          ]),
+        ),
+      },
+      connections: { list: vi.fn().mockResolvedValue([]) },
+    });
+
+    renderWithProviders(<ShipmentsPage />, { apiClient: mockApi });
+
+    const table = await screen.findByRole('table');
+    fireEvent.click(
+      within(table).getByRole('button', {
+        name: 'Copy internal order ID for order 6839-2911-4402',
+      }),
+    );
+
+    expect(writeText).toHaveBeenCalledWith('ol_order_a4f3b9c1d8e2f0a9b6c3d4e5f6a7b8c9');
+  });
+
+  it('should render the mobile card title from the same Order cell as the desktop column (#2089)', async () => {
+    // The card branch used to be a SECOND hand-rolled EntityLabel that nothing
+    // kept in sync with the column — the drift the shared cell exists to kill.
+    const viewport = mockMobileViewport();
+    try {
+      const mockApi = createMockApiClient({
+        shipments: {
+          list: vi.fn().mockResolvedValue(
+            page([
+              makeShipment({
+                orderSummary: {
+                  orderNumber: '6839-2911-4402',
+                  firstItemName: 'Terra Wool Coat',
+                  firstItemImageUrl: null,
+                  itemCount: 3,
+                },
+              }),
+            ]),
+          ),
+        },
+        connections: { list: vi.fn().mockResolvedValue([]) },
+      });
+
+      renderWithProviders(<ShipmentsPage />, { apiClient: mockApi });
+
+      expect(await screen.findByRole('link', { name: '6839-2911-4402' })).toBeInTheDocument();
+      expect(screen.queryByRole('table')).toBeNull();
+      // Same composition as the desktop column: thumbnail + item name + `+N`.
+      expect(document.querySelector('.order-cell .product-thumbnail')).not.toBeNull();
+      expect(screen.getByText('Terra Wool Coat')).toBeInTheDocument();
+      expect(screen.getByText('+2')).toBeInTheDocument();
+    } finally {
+      viewport.restore();
+    }
+  });
+
+  it('should link the shortened internal order id when no order summary resolves', async () => {
+    // #2089's AC asked for `–` here; the shared cell deliberately does not, and
+    // the API is why: `resolveOrderContext` degrades to an empty map on a
+    // batch-read failure (`shipment.controller.ts`), so EVERY row on the page
+    // gets `orderSummary: null` during a transient failure. A dash would erase
+    // the Order column mid-incident on a triage queue. See deviation 1 in
+    // `order-identity-cell.tsx`.
+    const mockApi = createMockApiClient({
+      shipments: {
+        list: vi.fn().mockResolvedValue(
+          page([
+            makeShipment({
+              orderId: 'ol_order_a4f3b9c1d8e2f0a9b6c3d4e5f6a7b8c9',
+              orderSummary: null,
+            }),
+          ]),
+        ),
+      },
+      connections: { list: vi.fn().mockResolvedValue([]) },
+    });
+
+    renderWithProviders(<ShipmentsPage />, { apiClient: mockApi });
+
+    const table = await screen.findByRole('table');
+    expect(within(table).getByRole('link', { name: 'ol_order_a4f3…c9' })).toHaveAttribute(
+      'href',
+      '/orders/ol_order_a4f3b9c1d8e2f0a9b6c3d4e5f6a7b8c9',
+    );
+    expect(within(table).queryByLabelText('No value')).toBeNull();
+    // No summary means no second line at all — not a bare item count.
+    expect(table.querySelector('.orders-items-line')).toBeNull();
+  });
+
+  it('should render the empty-value placeholder only when the row carries no order id', async () => {
+    // Defensive: `Shipment.orderId` is NOT NULL on the wire, so this branch is
+    // unreachable in production. Kept because it is the cell's dash contract.
+    const mockApi = createMockApiClient({
+      shipments: { list: vi.fn().mockResolvedValue(page([makeShipment({ orderId: '' })])) },
+      connections: { list: vi.fn().mockResolvedValue([]) },
+    });
+
+    renderWithProviders(<ShipmentsPage />, { apiClient: mockApi });
+
+    const table = await screen.findByRole('table');
+    expect(within(table).getByLabelText('No value')).toBeInTheDocument();
+  });
+
+  it('should show the connection loading state rather than Unknown on a cold load', async () => {
+    // `ConnectionCell` renders "Unknown" for a resolved-but-missing connection.
+    // Without the page threading `loading`, every row would read "Unknown" until
+    // the batched query settles — indistinguishable from a deleted connection.
+    const mockApi = createMockApiClient({
+      shipments: { list: vi.fn().mockResolvedValue(page([makeShipment()])) },
+      connections: { list: vi.fn().mockReturnValue(new Promise(() => {})) },
+    });
+
+    renderWithProviders(<ShipmentsPage />, { apiClient: mockApi });
+
+    const table = await screen.findByRole('table');
+    expect(table.querySelector('.connection-cell [aria-busy="true"]')).not.toBeNull();
+    expect(within(table).queryByText('Unknown')).toBeNull();
+  });
+
+  it('should issue one connections request for the whole page, never one per row', async () => {
+    // `ConnectionCell` falls back to a per-row fetch when `connection` is
+    // `undefined`, so a page that forgets to coalesce its map lookup to `null`
+    // silently reinstates N requests (#1996).
+    const list = vi.fn().mockResolvedValue([makeConnection()]);
+    const getById = vi.fn();
+    const mockApi = createMockApiClient({
+      shipments: {
+        list: vi.fn().mockResolvedValue(
+          page([
+            makeShipment({ id: 'ol_shipment_1', connectionId: 'conn_inpost' }),
+            makeShipment({ id: 'ol_shipment_2', connectionId: 'conn_inpost' }),
+            makeShipment({ id: 'ol_shipment_3', connectionId: 'conn_missing' }),
+          ]),
+        ),
+      },
+      connections: { list, getById },
+    });
+
+    renderWithProviders(<ShipmentsPage />, { apiClient: mockApi });
+
+    await screen.findByRole('table');
+    expect(list).toHaveBeenCalledTimes(1);
+    expect(getById).not.toHaveBeenCalled();
+  });
+
+  it('should fold the connection under the Processor badge so 768px does not lose it (#2094)', async () => {
+    const mockApi = createMockApiClient({
+      shipments: { list: vi.fn().mockResolvedValue(page([makeShipment({ connectionId: 'conn_inpost' })])) },
+      connections: { list: vi.fn().mockResolvedValue([makeConnection()]) },
+    });
+
+    renderWithProviders(<ShipmentsPage />, { apiClient: mockApi });
+
+    const table = await screen.findByRole('table');
+
+    // "Processor" and "which carrier connection" are one question, so the fold
+    // hosts here rather than beside.
+    const fold = table.querySelector('.shipments-processor-cell .conn-fold');
+    expect(fold).not.toBeNull();
+
+    const foldEl = fold as HTMLElement;
+    // The carrier dot, same adornment the desktop cell passes on this page.
+    expect(foldEl.querySelector('.conn-fold__adornment .conn-dot')).not.toBeNull();
+    expect(within(foldEl).getByRole('link', { name: 'InPost' })).toBeInTheDocument();
+    // No copyable id: the tablet form answers "which connection", not "give me
+    // its id" — copying reveals on row hover, which touch does not have.
+    expect(foldEl.querySelector('.copyable-id')).toBeNull();
+    expect(within(foldEl).queryByRole('button')).toBeNull();
+
+    // The desktop column is untouched — `hideBelow: 1024` was NOT lowered.
+    const header = within(table).getByText('Connection').closest('th');
+    expect(header).toHaveClass('data-table__cell--hide-below-1024');
+    expect(header?.className).not.toMatch(/hide-below-768/);
+  });
+
+  it('should keep the column header "Connection" while rendering it as the shared ConnectionCell (#2089)', async () => {
     const mockApi = createMockApiClient({
       shipments: { list: vi.fn().mockResolvedValue(page([makeShipment({ connectionId: 'conn_inpost' })])) },
       connections: { list: vi.fn().mockResolvedValue([makeConnection()]) },
@@ -476,12 +706,27 @@ describe('ShipmentsPage — row accordion + Order/Provider columns (#1826)', () 
     // "Provider" left the operator hunting for a filter that doesn't exist.
     expect(within(table).getByText('Connection')).toBeInTheDocument();
     expect(within(table).queryByText('Provider')).not.toBeInTheDocument();
-    // Scoped to the visible provider cell — `ConnectionDot` also carries a
-    // duplicate `sr-only` "InPost" for its accessible name, and "InPost" is
-    // separately an `<option>` in the toolbar's connection filter.
-    const providerCell = table.querySelector('.shipments-page__provider');
-    expect(providerCell).not.toBeNull();
-    expect(within(providerCell as HTMLElement).getByText('InPost', { selector: 'span:not(.sr-only)' })).toBeInTheDocument();
+
+    // The hand-rolled `.shipments-page__provider` span is gone; the column is
+    // the shared cell, which adds the shortened id + Copy the old one lacked.
+    const connectionCell = table.querySelector('.connection-cell');
+    expect(connectionCell).not.toBeNull();
+    expect(table.querySelector('.shipments-page__provider')).toBeNull();
+
+    const cell = connectionCell as HTMLElement;
+    // Scoped to the cell — `ConnectionDot` also carries a duplicate `sr-only`
+    // "InPost" for its accessible name, and "InPost" is separately an
+    // `<option>` in the toolbar's connection filter.
+    expect(within(cell).getByRole('link', { name: 'InPost' })).toHaveAttribute(
+      'href',
+      '/connections/conn_inpost',
+    );
+    // The carrier glyph the column already showed, now the cell's adornment.
+    expect(cell.querySelector('.connection-cell__adornment .conn-dot')).not.toBeNull();
+    // Copy writes the full connection id, never the shortened display form.
+    expect(
+      within(cell).getByRole('button', { name: 'Copy connection ID for InPost' }),
+    ).toBeInTheDocument();
   });
 
   it('should render the Action column with a plain, non-interactive severity label per status', async () => {
