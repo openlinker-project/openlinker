@@ -16,8 +16,6 @@ import { OrderRecord } from '../../../domain/entities/order-record.entity';
 import type { Order } from '../../../domain/types/order.types';
 import type { IncomingOrder } from '../../../domain/types/incoming-order.types';
 import type { IOrderFxStampService } from '../../interfaces/order-fx-stamp.service.interface';
-import type { IReportingCurrencySettingsService } from '@openlinker/core/currency';
-import { REPORTING_CURRENCY_SETTINGS_SERVICE_TOKEN } from '@openlinker/core/currency';
 import {
   ORDER_FX_STAMP_SERVICE_TOKEN,
   ORDER_LINE_ITEM_REPOSITORY_TOKEN,
@@ -29,7 +27,6 @@ describe('OrderRecordService', () => {
   let repository: jest.Mocked<OrderRecordRepositoryPort>;
   let fxStamp: jest.Mocked<IOrderFxStampService>;
   let lineItemRepository: jest.Mocked<OrderLineItemRepositoryPort>;
-  let reportingCurrencySettings: jest.Mocked<IReportingCurrencySettingsService>;
 
   const originalEnv = process.env.OL_STORE_PII;
   const originalPiiHashSalt = process.env.OL_PII_HASH_SALT;
@@ -69,13 +66,6 @@ describe('OrderRecordService', () => {
       getProductChannelBreakdown: jest.fn(),
     } as unknown as jest.Mocked<OrderLineItemRepositoryPort>;
 
-    reportingCurrencySettings = {
-      resolve: jest.fn().mockResolvedValue('PLN'),
-      getView: jest.fn(),
-      setReportingCurrency: jest.fn(),
-      listSelectableCurrencies: jest.fn(),
-    } as unknown as jest.Mocked<IReportingCurrencySettingsService>;
-
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         OrderRecordService,
@@ -90,10 +80,6 @@ describe('OrderRecordService', () => {
         {
           provide: ORDER_LINE_ITEM_REPOSITORY_TOKEN,
           useValue: lineItemRepository,
-        },
-        {
-          provide: REPORTING_CURRENCY_SETTINGS_SERVICE_TOKEN,
-          useValue: reportingCurrencySettings,
         },
       ],
     }).compile();
@@ -192,7 +178,7 @@ describe('OrderRecordService', () => {
   describe('persistOrder - PII enabled', () => {
     beforeEach(() => {
       process.env.OL_STORE_PII = 'true';
-      service = new OrderRecordService(repository, fxStamp, lineItemRepository, reportingCurrencySettings);
+      service = new OrderRecordService(repository, fxStamp, lineItemRepository);
     });
 
     it('should persist order with all PII fields when PII storage is enabled', async () => {
@@ -435,7 +421,7 @@ describe('OrderRecordService', () => {
   describe('persistOrder - PII disabled', () => {
     beforeEach(() => {
       process.env.OL_STORE_PII = 'false';
-      service = new OrderRecordService(repository, fxStamp, lineItemRepository, reportingCurrencySettings);
+      service = new OrderRecordService(repository, fxStamp, lineItemRepository);
     });
 
     it('should persist order with sanitized addresses when PII storage is disabled', async () => {
@@ -527,7 +513,7 @@ describe('OrderRecordService', () => {
   describe('persistOrder — cancellation recorded via markCancelled (#1984)', () => {
     beforeEach(() => {
       process.env.OL_STORE_PII = 'true';
-      service = new OrderRecordService(repository, fxStamp, lineItemRepository, reportingCurrencySettings);
+      service = new OrderRecordService(repository, fxStamp, lineItemRepository);
     });
 
     it('never constructs the OrderRecord passed to upsertWithLineItems() with a non-null cancelledAt, even for a cancelled order', async () => {
@@ -598,7 +584,7 @@ describe('OrderRecordService', () => {
   describe('persistOrder - fulfillment rollup left to updateFulfillmentState (#2101)', () => {
     beforeEach(() => {
       process.env.OL_STORE_PII = 'true';
-      service = new OrderRecordService(repository, fxStamp, lineItemRepository, reportingCurrencySettings);
+      service = new OrderRecordService(repository, fxStamp, lineItemRepository);
     });
 
     it('never constructs the OrderRecord passed to upsertWithLineItems() with a fulfillment state', async () => {
@@ -619,7 +605,7 @@ describe('OrderRecordService', () => {
   describe('persist paths - destination sync state left to updateSyncStatus (#2140)', () => {
     beforeEach(() => {
       process.env.OL_STORE_PII = 'true';
-      service = new OrderRecordService(repository, fxStamp, lineItemRepository, reportingCurrencySettings);
+      service = new OrderRecordService(repository, fxStamp, lineItemRepository);
     });
 
     it('never constructs the OrderRecord passed to upsertWithLineItems() with sync state', async () => {
@@ -657,7 +643,7 @@ describe('OrderRecordService', () => {
   describe('persistIncomingSnapshot', () => {
     beforeEach(() => {
       process.env.OL_STORE_PII = 'true';
-      service = new OrderRecordService(repository, fxStamp, lineItemRepository, reportingCurrencySettings);
+      service = new OrderRecordService(repository, fxStamp, lineItemRepository);
     });
 
     it('should persist incoming snapshot with awaiting_mapping status', async () => {
@@ -721,7 +707,7 @@ describe('OrderRecordService', () => {
 
     it('should sanitize addresses in snapshot when PII is disabled', async () => {
       process.env.OL_STORE_PII = 'false';
-      service = new OrderRecordService(repository, fxStamp, lineItemRepository, reportingCurrencySettings);
+      service = new OrderRecordService(repository, fxStamp, lineItemRepository);
 
       const incoming = createMockIncomingOrder();
       const expectedRecord = new OrderRecord(
@@ -796,7 +782,7 @@ describe('OrderRecordService', () => {
 
     it('should omit customerEmail from the snapshot under hash-only PII mode (#948)', async () => {
       process.env.OL_STORE_PII = 'false';
-      service = new OrderRecordService(repository, fxStamp, lineItemRepository, reportingCurrencySettings);
+      service = new OrderRecordService(repository, fxStamp, lineItemRepository);
 
       const incoming = createMockIncomingOrder();
       repository.upsert.mockResolvedValue({} as OrderRecord);
@@ -847,7 +833,7 @@ describe('OrderRecordService', () => {
   describe('persistIncomingSnapshot — cancellation recorded via markCancelled (#1984)', () => {
     beforeEach(() => {
       process.env.OL_STORE_PII = 'true';
-      service = new OrderRecordService(repository, fxStamp, lineItemRepository, reportingCurrencySettings);
+      service = new OrderRecordService(repository, fxStamp, lineItemRepository);
     });
 
     it('never constructs the OrderRecord passed to upsert() with a non-null cancelledAt, even for a cancelled order', async () => {
@@ -1201,14 +1187,13 @@ describe('OrderRecordService', () => {
 
       const result = await service.getTopProducts(filters);
 
-      expect(lineItemRepository.getTopProductRanking).toHaveBeenCalledWith(filters, 'PLN');
+      expect(lineItemRepository.getTopProductRanking).toHaveBeenCalledWith(filters);
       // Breakdown query MUST receive only the ranked page's product ids —
       // never re-derived from the full scoped set — to keep its cost bounded
       // by page size (#1988 correctness requirement).
       expect(lineItemRepository.getProductChannelBreakdown).toHaveBeenCalledWith(
         ['p1', 'p2'],
-        filters,
-        'PLN'
+        filters
       );
       expect(result.total).toBe(2);
       expect(result.items).toHaveLength(2);
@@ -1234,11 +1219,7 @@ describe('OrderRecordService', () => {
 
       await service.getTopProducts(filters);
 
-      expect(lineItemRepository.getProductChannelBreakdown).toHaveBeenCalledWith(
-        ['p1'],
-        filters,
-        'PLN'
-      );
+      expect(lineItemRepository.getProductChannelBreakdown).toHaveBeenCalledWith(['p1'], filters);
     });
 
     it('returns an empty page and zero total when nothing matches', async () => {
@@ -1247,28 +1228,8 @@ describe('OrderRecordService', () => {
 
       const result = await service.getTopProducts(filters);
 
-      expect(lineItemRepository.getProductChannelBreakdown).toHaveBeenCalledWith(
-        [],
-        filters,
-        'PLN'
-      );
+      expect(lineItemRepository.getProductChannelBreakdown).toHaveBeenCalledWith([], filters);
       expect(result).toEqual({ items: [], total: 0 });
-    });
-
-    it('resolves the CURRENT reporting currency and never mixes a prior era into revenue (#2049/ADR-040 bugfix)', async () => {
-      reportingCurrencySettings.resolve.mockResolvedValue('EUR');
-      lineItemRepository.getTopProductRanking.mockResolvedValue({ rows: [], total: 0 });
-      lineItemRepository.getProductChannelBreakdown.mockResolvedValue([]);
-
-      await service.getTopProducts(filters);
-
-      expect(reportingCurrencySettings.resolve).toHaveBeenCalled();
-      expect(lineItemRepository.getTopProductRanking).toHaveBeenCalledWith(filters, 'EUR');
-      expect(lineItemRepository.getProductChannelBreakdown).toHaveBeenCalledWith(
-        [],
-        filters,
-        'EUR'
-      );
     });
   });
 });

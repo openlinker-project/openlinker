@@ -34,10 +34,6 @@ import { getPiiConfig } from '@openlinker/shared/config';
 import { Logger } from '@openlinker/shared/logging';
 import { IOrderFxStampService } from '../interfaces/order-fx-stamp.service.interface';
 import {
-  IReportingCurrencySettingsService,
-  REPORTING_CURRENCY_SETTINGS_SERVICE_TOKEN,
-} from '@openlinker/core/currency';
-import {
   ORDER_FX_STAMP_SERVICE_TOKEN,
   ORDER_LINE_ITEM_REPOSITORY_TOKEN,
   ORDER_RECORD_REPOSITORY_TOKEN,
@@ -57,9 +53,7 @@ export class OrderRecordService implements IOrderRecordService {
     @Inject(ORDER_FX_STAMP_SERVICE_TOKEN)
     private readonly fxStamp: IOrderFxStampService,
     @Inject(ORDER_LINE_ITEM_REPOSITORY_TOKEN)
-    private readonly lineItemRepository: OrderLineItemRepositoryPort,
-    @Inject(REPORTING_CURRENCY_SETTINGS_SERVICE_TOKEN)
-    private readonly reportingCurrencySettings: IReportingCurrencySettingsService
+    private readonly lineItemRepository: OrderLineItemRepositoryPort
   ) {}
 
   /**
@@ -509,26 +503,10 @@ export class OrderRecordService implements IOrderRecordService {
     });
   }
 
-  /**
-   * Resolves the CURRENT system reporting currency (#2049/ADR-040 bugfix)
-   * before ranking, so `revenue` sums only orders stamped in that currency —
-   * an order stamped under a PREVIOUS setting is a different currency era
-   * (settings changes are forward-only) and would otherwise get silently
-   * summed in under an arbitrary label. See {@link
-   * OrderLineItemRepositoryPort.getTopProductRanking}.
-   */
   async getTopProducts(filters: TopProductFilters): Promise<TopProductsResult> {
-    const reportingCurrency = await this.reportingCurrencySettings.resolve();
-    const { rows: ranking, total } = await this.lineItemRepository.getTopProductRanking(
-      filters,
-      reportingCurrency
-    );
+    const { rows: ranking, total } = await this.lineItemRepository.getTopProductRanking(filters);
     const productIds = ranking.map((row) => row.productId);
-    const breakdown = await this.lineItemRepository.getProductChannelBreakdown(
-      productIds,
-      filters,
-      reportingCurrency
-    );
+    const breakdown = await this.lineItemRepository.getProductChannelBreakdown(productIds, filters);
 
     return buildTopProducts({ ranking, total, breakdown });
   }

@@ -163,7 +163,6 @@ describe('OrderLineItemRepository', () => {
       innerJoin: jest.fn().mockReturnThis(),
       select: jest.fn().mockReturnThis(),
       addSelect: jest.fn().mockReturnThis(),
-      setParameter: jest.fn().mockReturnThis(),
       andWhere: jest.fn().mockReturnThis(),
       groupBy: jest.fn().mockReturnThis(),
       orderBy: jest.fn().mockReturnThis(),
@@ -186,7 +185,7 @@ describe('OrderLineItemRepository', () => {
         .mockReturnValueOnce(rankingQb)
         .mockReturnValueOnce(totalQb);
 
-      const result = await repository.getTopProductRanking(baseFilters, 'PLN');
+      const result = await repository.getTopProductRanking(baseFilters);
 
       expect(result).toEqual({ rows: [], total: 0 });
     });
@@ -207,9 +206,8 @@ describe('OrderLineItemRepository', () => {
         .mockReturnValueOnce(rankingQb)
         .mockReturnValueOnce(totalQb);
 
-      const result = await repository.getTopProductRanking(baseFilters, 'EUR');
+      const result = await repository.getTopProductRanking(baseFilters);
 
-      expect(rankingQb.setParameter).toHaveBeenCalledWith('reportingCurrency', 'EUR');
       expect(result).toEqual({
         rows: [
           {
@@ -230,14 +228,14 @@ describe('OrderLineItemRepository', () => {
       (ormRepository.createQueryBuilder as jest.Mock)
         .mockReturnValueOnce(rankingQbUnits)
         .mockReturnValueOnce(makeTotalQb('0'));
-      await repository.getTopProductRanking({ ...baseFilters, sortBy: 'units' }, 'PLN');
+      await repository.getTopProductRanking({ ...baseFilters, sortBy: 'units' });
       expect(rankingQbUnits.orderBy).toHaveBeenCalledWith('units', 'DESC');
 
       const rankingQbRevenue = makeRankingQb([]);
       (ormRepository.createQueryBuilder as jest.Mock)
         .mockReturnValueOnce(rankingQbRevenue)
         .mockReturnValueOnce(makeTotalQb('0'));
-      await repository.getTopProductRanking({ ...baseFilters, sortBy: 'revenue' }, 'PLN');
+      await repository.getTopProductRanking({ ...baseFilters, sortBy: 'revenue' });
       expect(rankingQbRevenue.orderBy).toHaveBeenCalledWith('revenue', 'DESC');
     });
 
@@ -247,7 +245,7 @@ describe('OrderLineItemRepository', () => {
         .mockReturnValueOnce(rankingQb)
         .mockReturnValueOnce(makeTotalQb('0'));
 
-      await repository.getTopProductRanking({ ...baseFilters, limit: 5, offset: 10 }, 'PLN');
+      await repository.getTopProductRanking({ ...baseFilters, limit: 5, offset: 10 });
 
       expect(rankingQb.limit).toHaveBeenCalledWith(5);
       expect(rankingQb.offset).toHaveBeenCalledWith(10);
@@ -261,7 +259,7 @@ describe('OrderLineItemRepository', () => {
     };
 
     it('returns [] without a DB round-trip when productIds is empty', async () => {
-      const result = await repository.getProductChannelBreakdown([], baseFilters, 'PLN');
+      const result = await repository.getProductChannelBreakdown([], baseFilters);
 
       expect(result).toEqual([]);
       expect(ormRepository.createQueryBuilder).not.toHaveBeenCalled();
@@ -269,12 +267,10 @@ describe('OrderLineItemRepository', () => {
 
     it('filters by the given productIds and returns one row per (product, connection)', async () => {
       const andWhere = jest.fn().mockReturnThis();
-      const setParameter = jest.fn().mockReturnThis();
       (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
         innerJoin: jest.fn().mockReturnThis(),
         select: jest.fn().mockReturnThis(),
         addSelect: jest.fn().mockReturnThis(),
-        setParameter,
         andWhere,
         groupBy: jest.fn().mockReturnThis(),
         addGroupBy: jest.fn().mockReturnThis(),
@@ -290,9 +286,8 @@ describe('OrderLineItemRepository', () => {
         ]),
       });
 
-      const result = await repository.getProductChannelBreakdown(['p1'], baseFilters, 'EUR');
+      const result = await repository.getProductChannelBreakdown(['p1'], baseFilters);
 
-      expect(setParameter).toHaveBeenCalledWith('reportingCurrency', 'EUR');
       expect(andWhere).toHaveBeenCalledWith('li."productId" IN (:...productIds)', {
         productIds: ['p1'],
       });

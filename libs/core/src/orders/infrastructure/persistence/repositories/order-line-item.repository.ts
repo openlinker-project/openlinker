@@ -75,18 +75,9 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
    * context — see the #1988 implementation plan § 4 for why this is exact,
    * not an approximation. Runs the page query and the total-count query in
    * parallel; the count query shares the same scope but no grouping/paging.
-   *
-   * `reportingCurrency` is scoped to the CURRENT system reporting currency
-   * (#2049/ADR-040 bugfix): a row's `reportingCurrency` is pinned forever at
-   * first-stamp time, so an order stamped under a PREVIOUS setting is a
-   * different currency era and must not be summed into `revenue` alongside
-   * current-era orders under one arbitrary label — it is folded into
-   * `unconvertedRevenue`/`unconvertedOrderCount` instead, exactly like a
-   * never-stamped order.
    */
   async getTopProductRanking(
-    filters: TopProductFilters,
-    reportingCurrency: string
+    filters: TopProductFilters
   ): Promise<{ rows: ProductRankingRow[]; total: number }> {
     const rankingQb = this.repository
       .createQueryBuilder('li')
@@ -94,22 +85,21 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
       .select('li.productId', 'product_id')
       .addSelect('COALESCE(SUM(li."quantity"), 0)', 'units')
       .addSelect(
-        `COALESCE(SUM(li."unitPrice" * li."quantity" * (rec."reportingTotalAmount" / NULLIF(rec."totalAmount", 0))) FILTER (WHERE rec."reportingCurrency" = :reportingCurrency), 0)`,
+        `COALESCE(SUM(li."unitPrice" * li."quantity" * (rec."reportingTotalAmount" / NULLIF(rec."totalAmount", 0))) FILTER (WHERE rec."reportingCurrency" IS NOT NULL), 0)`,
         'revenue'
       )
       .addSelect(
-        `COALESCE(SUM(li."unitPrice" * li."quantity") FILTER (WHERE rec."reportingCurrency" IS DISTINCT FROM :reportingCurrency), 0)`,
+        `COALESCE(SUM(li."unitPrice" * li."quantity") FILTER (WHERE rec."reportingCurrency" IS NULL), 0)`,
         'unconverted_revenue'
       )
       .addSelect(
-        `COUNT(DISTINCT li."orderRecordId") FILTER (WHERE rec."reportingCurrency" IS DISTINCT FROM :reportingCurrency)`,
+        `COUNT(DISTINCT li."orderRecordId") FILTER (WHERE rec."reportingCurrency" IS NULL)`,
         'unconverted_order_count'
       )
       .addSelect(
-        `CASE WHEN COUNT(*) FILTER (WHERE rec."reportingCurrency" = :reportingCurrency) > 0 THEN :reportingCurrency ELSE NULL END`,
+        `(array_agg(rec."reportingCurrency") FILTER (WHERE rec."reportingCurrency" IS NOT NULL))[1]`,
         'reporting_currency'
       )
-      .setParameter('reportingCurrency', reportingCurrency)
       .groupBy('li.productId')
       .orderBy(filters.sortBy === 'units' ? 'units' : 'revenue', 'DESC')
       .limit(filters.limit)
@@ -150,14 +140,11 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
   /**
    * Per-(product, connection) breakdown for an explicit, already-paged set of
    * product ids (#1988) — callers MUST bound `productIds` to the current
-   * page; this method does not itself limit or rank. `reportingCurrency` is
-   * scoped to the CURRENT system reporting currency — same meaning and same
-   * #2049/ADR-040 bugfix as {@link getTopProductRanking}.
+   * page; this method does not itself limit or rank.
    */
   async getProductChannelBreakdown(
     productIds: string[],
-    filters: SalesAnalyticsFilters,
-    reportingCurrency: string
+    filters: SalesAnalyticsFilters
   ): Promise<ProductChannelBreakdownRow[]> {
     if (productIds.length === 0) {
       return [];
@@ -170,18 +157,17 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
       .addSelect('li.sourceConnectionId', 'source_connection_id')
       .addSelect('COALESCE(SUM(li."quantity"), 0)', 'units')
       .addSelect(
-        `COALESCE(SUM(li."unitPrice" * li."quantity" * (rec."reportingTotalAmount" / NULLIF(rec."totalAmount", 0))) FILTER (WHERE rec."reportingCurrency" = :reportingCurrency), 0)`,
+        `COALESCE(SUM(li."unitPrice" * li."quantity" * (rec."reportingTotalAmount" / NULLIF(rec."totalAmount", 0))) FILTER (WHERE rec."reportingCurrency" IS NOT NULL), 0)`,
         'revenue'
       )
       .addSelect(
-        `COALESCE(SUM(li."unitPrice" * li."quantity") FILTER (WHERE rec."reportingCurrency" IS DISTINCT FROM :reportingCurrency), 0)`,
+        `COALESCE(SUM(li."unitPrice" * li."quantity") FILTER (WHERE rec."reportingCurrency" IS NULL), 0)`,
         'unconverted_revenue'
       )
       .addSelect(
-        `CASE WHEN COUNT(*) FILTER (WHERE rec."reportingCurrency" = :reportingCurrency) > 0 THEN :reportingCurrency ELSE NULL END`,
+        `(array_agg(rec."reportingCurrency") FILTER (WHERE rec."reportingCurrency" IS NOT NULL))[1]`,
         'reporting_currency'
       )
-      .setParameter('reportingCurrency', reportingCurrency)
       .andWhere('li."productId" IN (:...productIds)', { productIds })
       .groupBy('li.productId')
       .addGroupBy('li.sourceConnectionId');
