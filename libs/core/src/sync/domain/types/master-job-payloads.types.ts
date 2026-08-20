@@ -42,6 +42,17 @@ export interface MasterProductSyncAllPayloadV1 {
  * rather than skipped (decision 3) — never `since = lastRunAt`. Both optional; the
  * handler floors and clamps whatever arrives.
  */
+/**
+ * Deletion reconciliation over OL's own mappings (#2222).
+ *
+ * `pageLimit` behaves as on the sweeps. There is no watermark and no lookback:
+ * this pass carries no notion of "changed since", only "still there?".
+ */
+export interface MasterProductReconcilePayloadV1 {
+  schemaVersion: 1;
+  pageLimit?: number;
+}
+
 export interface MasterProductSyncDeltaPayloadV1 {
   schemaVersion: 1;
   pageLimit?: number;

@@ -74,13 +74,17 @@ export function resolveSweepLockTtlMs(raw: string | undefined): number {
 /**
  * The sweep families that own a lock + cursor namespace.
  *
+ * `product-reconcile` (#2222) is the deletion pass: it enumerates OL's own
+ * mappings rather than the master, so it is a fourth kind for the same reason
+ * `product-delta` is a third — its own lock, so the full sweep cannot starve it.
+ *
  * `product-delta` (#2220) is deliberately a THIRD kind rather than a mode of
  * `product`: the incremental pass takes its own lock so it can run concurrently
  * with the full pass. Sharing `product`'s lock would let the 20-minute full sweep —
  * which is mid-cycle more or less permanently on a large catalog — starve the delta
  * pass indefinitely while it logged "already in progress" and returned ok.
  */
-export type SweepKind = 'product' | 'inventory' | 'product-delta';
+export type SweepKind = 'product' | 'inventory' | 'product-delta' | 'product-reconcile';
 
 /** `master:{kind}:sweep:{connectionId}` — one in-flight run per connection. */
 export function sweepLockKey(kind: SweepKind, connectionId: string): string {
