@@ -13,8 +13,10 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 // consistent-type-imports). The inline form is the only shape stable under fix.
 import {
   OfferLifecycleValues,
+  OfferValidationScopeValues,
   type OfferLifecycle,
   type OfferPublicationStatus,
+  type OfferValidationScope,
 } from '@openlinker/core/listings';
 
 import { OfferCreationStatusResponseDto } from './offer-creation-status-response.dto';
@@ -63,6 +65,36 @@ export class OfferMappingIdentityResponseDto {
   isStale!: boolean;
 }
 
+export class OfferValidationProblemResponseDto {
+  @ApiProperty({
+    description:
+      "The platform's OWN code, verbatim (e.g. Erli `missingTaxRate`). Never translated and never " +
+      'invented: it is what an operator quotes in a support ticket and what a maintainer greps for ' +
+      "in the platform's docs. Empty string when the platform reported a message with no code.",
+  })
+  code!: string;
+
+  @ApiPropertyOptional({
+    description:
+      'One short line, for a surface with exactly one line to spend (the /listings row). Absent when ' +
+      'the adapter supplied only a full sentence - fall back to `message`.',
+  })
+  summary?: string;
+
+  @ApiProperty({
+    description: 'The operator-facing sentence: what is wrong and what to change.',
+  })
+  message!: string;
+
+  @ApiProperty({
+    enum: OfferValidationScopeValues,
+    description:
+      '`offer` - about this listing. `account` - about the seller\'s shop on the channel, reported by ' +
+      'the platform against EVERY one of its offers; render it once per connection, not once per row.',
+  })
+  scope!: OfferValidationScope;
+}
+
 export class OfferMappingChannelStatusResponseDto {
   @ApiPropertyOptional({
     nullable: true,
@@ -93,6 +125,15 @@ export class OfferMappingChannelStatusResponseDto {
     description: 'Marketplace validator messages; empty when the validator raised none',
   })
   validationMessages!: string[];
+
+  @ApiProperty({
+    type: [OfferValidationProblemResponseDto],
+    description:
+      'The same refusals in structured form (#2231): the platform\'s own code, a one-line summary, ' +
+      'and the scope that decides where each belongs on screen - `offer` on the row, `account` once ' +
+      'per connection. Empty on a snapshot written before #2231; fall back to `validationMessages`.',
+  })
+  validationProblems!: OfferValidationProblemResponseDto[];
 
   @ApiPropertyOptional({
     nullable: true,

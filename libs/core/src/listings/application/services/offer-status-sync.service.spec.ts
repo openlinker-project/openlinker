@@ -51,6 +51,7 @@ function makeMapping(externalOfferId: string, internalVariantId: string): OfferM
       publicationStatus: null,
       lifecycle: 'Unsynced',
       validationMessages: [],
+      validationProblems: [],
       lastStatusSyncedAt: null,
     },
     commercial: null,
@@ -563,6 +564,7 @@ describe('OfferStatusSyncService', () => {
       await service.recordObservedStatus(CONNECTION_ID, target, {
         publicationStatus: 'active',
         validationMessages: [],
+        validationProblems: [],
       });
 
       expect(integrations.getCapabilityAdapter).not.toHaveBeenCalled();

@@ -10,6 +10,7 @@
  * @module libs/core/src/listings/domain/types
  */
 import type { OfferPublicationStatus } from './offer-status-read.types';
+import type { OfferValidationProblem } from './offer-validation-problem.types';
 
 /**
  * Persisted snapshot of a mapped offer's live marketplace publication status.
@@ -44,6 +45,17 @@ export interface OfferStatusSnapshotProps {
 export interface OfferStatusSnapshotDetails {
   /** Validation messages reported by the marketplace, if any. */
   validationMessages?: string[];
+  /**
+   * The same refusals in structured form (#2231): each carries the platform's
+   * own `code`, an optional one-line `summary`, and the `scope` saying whether
+   * it is about this offer or about the seller's whole account on the channel.
+   *
+   * Additive and independent of `validationMessages`, which stays the field the
+   * lifecycle rule and its SQL twin read - so a writer populates BOTH and no
+   * existing reader changes behaviour. Absent on every snapshot written before
+   * #2231, which is why every consumer falls back to `validationMessages`.
+   */
+  validationProblems?: OfferValidationProblem[];
 }
 
 /**

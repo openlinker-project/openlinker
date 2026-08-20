@@ -34,7 +34,7 @@ import type {
   OfferStatusReadResult
 } from '@openlinker/core/listings';
 import { isOfferStatusReader, OfferNotFoundOnMarketplaceException ,
-  OfferMappingRepositoryPort} from '@openlinker/core/listings';
+  OfferMappingRepositoryPort, toOfferValidationProblem} from '@openlinker/core/listings';
 import { Logger } from '@openlinker/shared/logging';
 import { OfferStatusSnapshotRepositoryPort } from '../../domain/ports/offer-status-snapshot-repository.port';
 import type { OfferStatusSnapshotDetails } from '../../domain/types/offer-status-snapshot.types';
@@ -53,6 +53,7 @@ import type {
 import type { OfferStatusSyncResult } from '../../domain/types/offer-status-snapshot.types';
 import type { OfferCommercialWriteOutcome } from '../../domain/types/offer-commercial-snapshot.types';
 import type { OfferPublicationStatus } from '../../domain/types/offer-status-read.types';
+import type { OfferValidationScope } from '../../domain/types/offer-validation-problem.types';
 
 @Injectable()
 export class OfferStatusSyncService implements IOfferStatusSyncService {
@@ -225,6 +226,11 @@ export class OfferStatusSyncService implements IOfferStatusSyncService {
     const applied = await this.recordObservedStatus(connectionId, target, {
       publicationStatus: status.publicationStatus,
       validationMessages: status.validationErrors.map((error) => error.message),
+      // Threaded through as well as flattened (#2231): the observation shape is
+      // the ONLY hop between the adapter's read and the snapshot on this path,
+      // so dropping the codes and scopes here would make the manual "Refresh"
+      // action quietly downgrade a snapshot the hourly sync writes in full.
+      validationProblems: status.validationErrors.map(toOfferValidationProblem),
       observedAt,
     });
 
@@ -256,7 +262,8 @@ export class OfferStatusSyncService implements IOfferStatusSyncService {
       internalVariantId: target.internalVariantId,
       publicationStatus: observation.publicationStatus,
       statusDetails: this.toStatusDetails(
-        (observation.validationMessages ?? []).map((message) => ({ message }))
+        observation.validationProblems ??
+          (observation.validationMessages ?? []).map((message) => ({ code: '', message }))
       ),
       lastStatusSyncedAt: observation.observedAt ?? new Date(),
     });
@@ -278,13 +285,34 @@ export class OfferStatusSyncService implements IOfferStatusSyncService {
     return true;
   }
 
+  /**
+   * Build the detail blob from whatever the reader reported.
+   *
+   * BOTH keys are written off the same input (#2231). `validationMessages` stays
+   * first and stays the field the lifecycle rule and its SQL twin read, so this
+   * change cannot move a row between the Draft and Invalid buckets;
+   * `validationProblems` is the additive structured half the row, the panel and
+   * the connection banner read. A problem carrying no platform code is emitted
+   * with an empty `code` rather than being dropped - the sentence is still the
+   * operator's answer, and the surfaces render the code only when it is there.
+   */
   private toStatusDetails(
-    validationErrors: ReadonlyArray<{ message: string }>
+    validationErrors: ReadonlyArray<{
+      code?: string;
+      message: string;
+      summary?: string;
+      scope?: OfferValidationScope;
+    }>
   ): OfferStatusSnapshotDetails | null {
     if (validationErrors.length === 0) {
       return null;
     }
-    return { validationMessages: validationErrors.map((error) => error.message) };
+    return {
+      validationMessages: validationErrors.map((error) => error.message),
+      validationProblems: validationErrors.map((error) =>
+        toOfferValidationProblem({ ...error, code: error.code ?? '' })
+      ),
+    };
   }
 
   /**

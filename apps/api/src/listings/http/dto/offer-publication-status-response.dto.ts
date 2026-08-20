@@ -15,6 +15,7 @@ import {
   type OfferPublicationStatus,
   OfferPublicationStatusValues,
 } from '@openlinker/core/listings';
+import { OfferValidationProblemResponseDto } from './offer-mapping-response.dto';
 
 export class OfferPublicationStatusResponseDto {
   @ApiProperty({ description: 'Marketplace connection the offer belongs to' })
@@ -39,6 +40,15 @@ export class OfferPublicationStatusResponseDto {
     description: 'Marketplace validation messages captured with the status, if any',
   })
   validationMessages?: string[];
+
+  @ApiPropertyOptional({
+    type: [OfferValidationProblemResponseDto],
+    description:
+      'The same refusals in structured form (#2231): the sentence for the seller plus the ' +
+      "platform's own code for whoever has to check it against the platform's docs. Absent on a " +
+      'snapshot written before #2231.',
+  })
+  validationProblems?: OfferValidationProblemResponseDto[];
 
   @ApiProperty({
     nullable: true,
