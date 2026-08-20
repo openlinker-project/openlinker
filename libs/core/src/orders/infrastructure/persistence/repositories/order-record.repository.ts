@@ -1227,7 +1227,6 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     entity.currency = orderRecord.currency;
     entity.taxTreatment = orderRecord.taxTreatment;
     entity.totalAmount = orderRecord.totalAmount;
-    //
     // The six FX snapshot columns (#2124) are deliberately NOT mapped here,
     // for the strongest version of the reason documented above for
     // `fulfillmentState` / `cancelledAt` / `salesDocument*`: this is a
