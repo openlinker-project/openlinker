@@ -1,6 +1,7 @@
 import type { ReactElement } from 'react';
 import { env } from '../../shared/config/env';
 import { useSession } from '../../shared/auth/use-session';
+import { CurrencySettingsTile } from '../../features/currency-settings/components/currency-settings-tile';
 import { MailerSettingsTile } from '../../features/mailer-settings/components/mailer-settings-tile';
 import { PosthogSettingsTile } from '../../features/posthog-settings/components/posthog-settings-tile';
 import { McpTokensTile } from '../../features/mcp-tokens/components/mcp-tokens-tile';
@@ -19,6 +20,7 @@ export function SettingsPage(): ReactElement {
         <div className="toolbar__group">
           <span className="toolbar-chip">Environment</span>
           <span className="toolbar-chip">Account</span>
+          {isAdmin ? <span className="toolbar-chip">Currency</span> : null}
           {isAdmin ? <span className="toolbar-chip">Mailer</span> : null}
           {isAdmin ? <span className="toolbar-chip">PostHog</span> : null}
           {isAdmin ? <span className="toolbar-chip">MCP tokens</span> : null}
@@ -85,6 +87,9 @@ export function SettingsPage(): ReactElement {
             </dl>
           )}
         </article>
+
+        {/* ── Currency (admin-only) ─────────────────────────────────── */}
+        {isAdmin ? <CurrencySettingsTile /> : null}
 
         {/* ── Mailer (admin-only) ──────────────────────────────────── */}
         {isAdmin ? <MailerSettingsTile /> : null}

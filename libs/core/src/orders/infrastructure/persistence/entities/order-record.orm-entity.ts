@@ -38,6 +38,15 @@ export interface SyncAttemptJson {
 @Index(['customerId'])
 @Index(['sourceConnectionId'])
 @Index(['createdAt'])
+// Reporting-currency analytics shape (#2124): filter by connection, group by
+// reporting currency. PARTIAL, and composite rather than a standalone index on
+// `reportingCurrency` — that column carries 1-3 distinct values, so a
+// single-column btree is not selective enough for the planner to prefer over a
+// sequential scan, and `@Index(['sourceConnectionId'])` above already covers
+// the filter half. The predicate keeps every unstamped row out of the index.
+@Index('IDX_order_records_reporting', ['sourceConnectionId', 'reportingCurrency'], {
+  where: '"reportingCurrency" IS NOT NULL',
+})
 export class OrderRecordOrmEntity {
   @PrimaryColumn({ type: 'text' })
   internalOrderId!: string;
@@ -159,6 +168,71 @@ export class OrderRecordOrmEntity {
    */
   @Column({ type: 'text', nullable: true })
   salesDocumentBlockDetail!: string | null;
+
+  /**
+   * Per-order reporting-currency snapshot (#2124, ADR-040) — six columns
+   * written ONLY by the two narrow, conditional UPDATEs on the repository
+   * (`claimFxIntentIfAbsent`, `stampFxIfAbsent`). The ingestion upsert
+   * deliberately omits all six (see the `toOrm` comments): `upsert` is a
+   * full-row `save()` and a re-ingestion would otherwise write `null` over an
+   * already-reported financial figure.
+   *
+   * The migration guards the group with `ck_order_records_fx_group` so the
+   * columns cannot drift into a meaningless combination.
+   */
+
+  /**
+   * ISO-4217 currency `reportingTotalAmount` is expressed in. `NULL` is the
+   * canonical "unstamped" test — NOT `exchangeRateId IS NULL`, which is
+   * legitimately NULL on the same-currency path and would discard the
+   * overwhelming majority of orders.
+   */
+  @Column({ type: 'varchar', length: 3, nullable: true })
+  reportingCurrency!: string | null;
+
+  /** The order total converted into `reportingCurrency`, rounded to 2dp. */
+  @Column({ type: 'decimal', precision: 12, scale: 2, nullable: true })
+  reportingTotalAmount!: number | null;
+
+  /**
+   * `exchange_rates.id` the conversion used; `NULL` when the order's own
+   * currency already equalled the reporting currency, so no rate was needed.
+   * Deliberately carries NO foreign key and NO index: `order_records` has zero
+   * FKs today, and the analytics join lands on `exchange_rates`' own PK, so an
+   * index on the referencing side buys nothing for that direction.
+   */
+  @Column({ type: 'uuid', nullable: true })
+  exchangeRateId!: string | null;
+
+  /**
+   * Which published day's rate the stamp was taken against (`FxRateRule`).
+   * Kept a bare `string` on the read side so a value written by a newer
+   * deployment surfaces as-is instead of being coerced or dropped. Written by
+   * the intent claim as well as the stamp, which is why the group CHECK's
+   * "unstamped" arm deliberately does NOT require it to be NULL.
+   */
+  @Column({ type: 'varchar', length: 32, nullable: true })
+  fxRule!: string | null;
+
+  /**
+   * Instant the stamp attempt reached a terminal answer. NULL on a row still
+   * awaiting the retry job, so `fxStampedAt IS NULL` alone does not mean
+   * "unstampable" — the sweep predicate uses it together with
+   * `reportingCurrency IS NULL`.
+   */
+  @Column({ type: 'timestamptz', nullable: true })
+  fxStampedAt!: Date | null;
+
+  /**
+   * The reporting currency pinned at the FIRST stamp attempt (ADR-040
+   * § Decision 5), claimed before any rate lookup. Deliberately a separate
+   * column from `reportingCurrency`: the two differ in meaning (*intended* vs
+   * *stamped*) and in lifecycle (an intent exists on a row that is still
+   * unstamped), and collapsing them would make the stamp guard's `IsNull()`
+   * predicate unusable.
+   */
+  @Column({ type: 'varchar', length: 3, nullable: true })
+  fxIntendedCurrency!: string | null;
 
   @CreateDateColumn()
   createdAt!: Date;

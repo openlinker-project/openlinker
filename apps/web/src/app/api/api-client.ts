@@ -30,6 +30,10 @@ import {
   type ConnectionsApi,
 } from '../../features/connections/api/connections.api';
 import { createContentApi, type ContentApi } from '../../features/content/api/content.api';
+import {
+  createCurrencySettingsApi,
+  type CurrencySettingsApi,
+} from '../../features/currency-settings/api/currency-settings.api';
 import { createCursorsApi, type CursorsApi } from '../../features/cursors/api/cursors.api';
 import { createCustomersApi, type CustomersApi } from '../../features/customers/api/customers.api';
 import {
@@ -143,6 +147,7 @@ export interface CoreApiClient {
   auth: AuthApi;
   connections: ConnectionsApi;
   content: ContentApi;
+  currencySettings: CurrencySettingsApi;
   cursors: CursorsApi;
   customers: CustomersApi;
   fiscalization: FiscalizationApi;
@@ -359,6 +364,7 @@ export function createApiClient({
     auth: createAuthApi(request),
     connections: createConnectionsApi(request),
     content: createContentApi(request),
+    currencySettings: createCurrencySettingsApi(request),
     cursors: createCursorsApi(request),
     customers: createCustomersApi(request),
     fiscalization: createFiscalizationApi(request),

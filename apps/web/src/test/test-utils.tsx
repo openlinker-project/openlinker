@@ -215,6 +215,21 @@ export function createMockApiClient(
       }),
       ...overrides.content,
     } as ApiClient['content'],
+    currencySettings: {
+      get: vi.fn().mockResolvedValue({
+        reportingCurrency: 'EUR',
+        source: 'default',
+        updatedAt: null,
+        updatedBy: null,
+        supportedCurrencies: ['PLN', 'EUR'],
+        rateSource: 'ecb',
+        rateDateRule: 'prev-business-day',
+        stampedOrders: [],
+        coverage: [],
+      }),
+      setReportingCurrency: vi.fn().mockResolvedValue(undefined),
+      ...overrides.currencySettings,
+    } as ApiClient['currencySettings'],
     cursors: {
       list: vi.fn().mockResolvedValue({
         items: [],

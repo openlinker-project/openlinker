@@ -17,6 +17,12 @@ export const JobTypeValues = [
   // Generic (Option B)
   'marketplace.orders.poll',
   'marketplace.order.sync',
+  // Per-order reporting-currency stamp: bounded retry after a degraded inline
+  // attempt, plus the hourly reconcile that survives a dead retry job (#2125).
+  // Named under `marketplace.order.*` rather than a new `order.*` namespace so
+  // it greps alongside `marketplace.order.sync`, which ingests the same row.
+  'marketplace.order.fxStamp',
+  'marketplace.order.fxStampSweep',
   'marketplace.offers.sync',
   'marketplace.offerQuantity.update',
   'marketplace.offer.updateFields',

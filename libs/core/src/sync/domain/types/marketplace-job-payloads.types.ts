@@ -31,6 +31,58 @@ export interface MarketplaceOrderSyncPayloadV1 {
   eventType?: OrderFeedEventType;
 }
 
+/**
+ * Payload for `marketplace.order.fxStamp` jobs (#2125, ADR-040).
+ *
+ * The bounded retry after an inline stamp attempt degraded (a rate provider
+ * blip, a database hiccup). Carries ONLY the internal order id, because
+ * `IOrderFxStampService.stamp` takes exactly that and rehydrates everything
+ * else from the persisted record - a payload-carried `placedAt` or reporting
+ * currency would let this path resolve differently from the inline one, which
+ * is precisely what the persisted FX intent exists to prevent.
+ *
+ * Enqueued under the idempotency key `fx:{internalOrderId}`, so repeated inline
+ * failures for one order collapse onto a single job.
+ */
+export interface MarketplaceOrderFxStampPayloadV1 {
+  schemaVersion: 1;
+  internalOrderId: string;
+}
+
+/**
+ * Payload for `marketplace.order.fxStampSweep` jobs (#2125, ADR-040).
+ *
+ * The hourly reconcile, scheduled per `OrderSource`-capable connection - the
+ * guarantee that survives a DEAD retry job. A job's idempotency key is globally
+ * unique with no TTL and `createIfNotExistsByIdempotencyKey` returns the
+ * existing row whatever its status, so once the ~4.3 h retry window is
+ * exhausted that key can never be re-enqueued; a longer provider outage would
+ * otherwise lose the stamp permanently. Reading the unstamped rows directly is
+ * also the only mechanism that covers a retry job that was never enqueued.
+ *
+ * The handler selects on `fxStampedAt IS NULL AND reportingCurrency IS NULL`
+ * for `job.connectionId`, bounded by `limit` and `maxAgeDays`.
+ */
+export interface MarketplaceOrderFxStampSweepPayloadV1 {
+  schemaVersion: 1;
+  /** Max unanswered orders to pull per sweep tick. */
+  limit: number;
+  /** Ignore orders created longer ago than this, in whole days. */
+  maxAgeDays: number;
+  /**
+   * How long a TERMINAL answer is honoured before the sweep re-tries the order,
+   * in whole days (#2135 review, finding 1).
+   *
+   * A terminal answer says "no retry changes this", which is true of the
+   * classification and false of the world: `no-rate-source` clears when the host
+   * is rewired, and an `unsupported-pair` raised by a throttled provider clears
+   * on its own. Without a cooldown the row leaves the frontier forever and the
+   * order silently never carries a reported figure. Only rows that still hold NO
+   * figure are revisited - a real stamp is immutable and never re-entered.
+   */
+  terminalRetryDays?: number;
+}
+
 export interface MarketplaceOfferQuantityUpdatePayloadV1 {
   schemaVersion: 1;
   offerId: string;

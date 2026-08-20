@@ -100,6 +100,16 @@ const harness = createIntegrationTestHarness({
     // rows are owner-keyed with NO connectionId, so nothing cascades from
     // connections; truncate explicitly or an owner tree leaks between cases.
     'destination_categories',
+    // exchange_rates (#2123) — the shared, connection-less reference-rate
+    // registry. Its natural key is (source, pair, rateDate) with a unique
+    // index and no FK anywhere, so nothing cascades into it; truncate
+    // explicitly or a row registered by one case is still there for the next,
+    // and the get-or-create int-spec counts rows.
+    'exchange_rates',
+    // reporting_currency_setting (#2123) — the singleton system setting. No
+    // FK, so it never cascades; a row written by one case would otherwise
+    // change what every later case resolves as the reporting currency.
+    'reporting_currency_setting',
     // product_content_field FKs to both products + connections, so it goes
     // before them.
     'product_content_field',

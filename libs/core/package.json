@@ -19,6 +19,11 @@
       "require": "./dist/analytics/index.js",
       "default": "./dist/analytics/index.js"
     },
+    "./currency": {
+      "types": "./dist/currency/index.d.ts",
+      "require": "./dist/currency/index.js",
+      "default": "./dist/currency/index.js"
+    },
     "./integrations": {
       "types": "./dist/integrations/index.d.ts",
       "require": "./dist/integrations/index.js",

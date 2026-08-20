@@ -66,6 +66,10 @@ services:
       # unreachable/ERROR even with a working Connection (#1415). Route it to
       # the `prestashop` service's Docker DNS name instead.
       PRESTASHOP_BASE_URL: '${PRESTASHOP_BASE_URL:-http://prestashop}'
+      # Matches the demo shop's own PS_CURRENCY_DEFAULT (PLN), set at the
+      # compose layer only — not asserting a product-wide default (ADR-040).
+      # An operator's saved setting still outranks this on every read.
+      OL_REPORTING_CURRENCY: '${OL_REPORTING_CURRENCY:-PLN}'
     # Overrides base's port publish with the same ${OL_BIND_ADDRESS}/${API_HOST_PORT}
     # vars (#1400) — kept as an explicit override rather than relying on the
     # base value because the demo image ships default admin/admin credentials
@@ -110,6 +114,13 @@ services:
       # Same encryption key the api/migrate services use — the worker decrypts
       # connection credentials when running sync jobs (#1368).
       OPENLINKER_CREDENTIALS_ENCRYPTION_KEY: '${OPENLINKER_CREDENTIALS_ENCRYPTION_KEY:?set OPENLINKER_CREDENTIALS_ENCRYPTION_KEY in .env (see .env.example) - generate with: openssl rand -base64 32}'
+      # Must match the api service's value (#2126, ADR-040): order ingestion,
+      # the fxStamp retry job and the hourly reconcile sweep all run in THIS
+      # process, and ReportingCurrencySettingsService.resolve() falls back to
+      # this env var per-process before any settings row exists — a
+      # differing default here would stamp orders differently from what the
+      # api service's setting page reports until an operator saves a value.
+      OL_REPORTING_CURRENCY: '${OL_REPORTING_CURRENCY:-PLN}'
     depends_on:
       postgres:
         condition: service_healthy
