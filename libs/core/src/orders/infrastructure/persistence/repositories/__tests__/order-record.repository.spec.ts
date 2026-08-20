@@ -530,6 +530,41 @@ describe('OrderRecordRepository', () => {
 
       await expect(repository.upsertWithLineItems(domainEntity, [])).rejects.toThrow('db error');
     });
+
+    it('includes the four analytics scalars (#1985 review, finding 1) in the entity passed to save()', async () => {
+      // upsertWithLineItems() is the sole writer of these four columns — see
+      // the `toOrm` describe block below, which asserts the sibling upsert()
+      // path (persistIncomingSnapshot) does NOT touch them.
+      const domainEntity = new OrderRecord(
+        'order-123',
+        'customer-456',
+        'source-connection-123',
+        'event-456',
+        { id: 'order-123', orderNumber: 'ORD-001', status: 'pending' },
+        [],
+        'ready',
+        new Date('2025-01-01T10:00:00Z'),
+        new Date('2025-01-01T10:00:00Z'),
+        [],
+        null,
+        null,
+        null,
+        new Date('2025-01-01T09:00:00Z'),
+        'PLN',
+        'inclusive',
+        199.99
+      );
+      transactionalManager.save.mockResolvedValue(createOrmEntity());
+      transactionalManager.delete.mockResolvedValue(undefined);
+
+      await repository.upsertWithLineItems(domainEntity, []);
+
+      const callArg = transactionalManager.save.mock.calls[0][1] as OrderRecordOrmEntity;
+      expect(callArg.placedAt).toEqual(new Date('2025-01-01T09:00:00Z'));
+      expect(callArg.currency).toBe('PLN');
+      expect(callArg.taxTreatment).toBe('inclusive');
+      expect(callArg.totalAmount).toBe(199.99);
+    });
   });
 
   describe('findMany', () => {
@@ -969,6 +1004,58 @@ describe('OrderRecordRepository', () => {
         expect(callArg.fxRule).toBeUndefined();
         expect(callArg.fxStampedAt).toBeUndefined();
         expect(callArg.fxIntendedCurrency).toBeUndefined();
+      });
+
+      it('should NOT include the four analytics scalars (#1985 review, finding 1) in the entity passed to save() via upsert()', async () => {
+        // upsert() is reached by persistIncomingSnapshot, whose OrderRecord
+        // never carries a resolved analytics figure. Mapping these columns
+        // here would NULL out an already-`ready` order's figures on every
+        // re-poll (transient), and leave them permanently NULL once item
+        // resolution starts failing (permanent) — upsertWithLineItems() is
+        // their sole writer instead.
+        ormRepository.save.mockResolvedValue(createOrmEntity());
+
+        await repository.upsert(createDomainEntity());
+
+        const callArg = ormRepository.save.mock.calls[0][0] as OrderRecordOrmEntity;
+        expect(callArg.placedAt).toBeUndefined();
+        expect(callArg.currency).toBeUndefined();
+        expect(callArg.taxTreatment).toBeUndefined();
+        expect(callArg.totalAmount).toBeUndefined();
+      });
+
+      it('should NOT write the analytics scalars via upsert() even when the domain record carries them', async () => {
+        // Guards against a future caller reintroducing the clobber by
+        // threading an already-resolved OrderRecord back through
+        // persistIncomingSnapshot's upsert() path.
+        const withScalars = new OrderRecord(
+          'order-123',
+          null,
+          'conn-123',
+          null,
+          {},
+          [],
+          'awaiting_mapping',
+          new Date('2026-08-01T10:00:00Z'),
+          new Date('2026-08-01T10:00:00Z'),
+          [],
+          null,
+          null,
+          null,
+          new Date('2026-08-01T09:00:00Z'),
+          'EUR',
+          'exclusive',
+          425
+        );
+        ormRepository.save.mockResolvedValue(createOrmEntity());
+
+        await repository.upsert(withScalars);
+
+        const callArg = ormRepository.save.mock.calls[0][0] as OrderRecordOrmEntity;
+        expect(callArg.placedAt).toBeUndefined();
+        expect(callArg.currency).toBeUndefined();
+        expect(callArg.taxTreatment).toBeUndefined();
+        expect(callArg.totalAmount).toBeUndefined();
       });
     });
 
