@@ -169,6 +169,16 @@
       "require": "./dist/invoicing/orm-entities.js",
       "default": "./dist/invoicing/orm-entities.js"
     },
+    "./fiscalization": {
+      "types": "./dist/fiscalization/index.d.ts",
+      "require": "./dist/fiscalization/index.js",
+      "default": "./dist/fiscalization/index.js"
+    },
+    "./fiscalization/orm-entities": {
+      "types": "./dist/fiscalization/orm-entities.d.ts",
+      "require": "./dist/fiscalization/orm-entities.js",
+      "default": "./dist/fiscalization/orm-entities.js"
+    },
     "./mailer": {
       "types": "./dist/mailer/index.d.ts",
       "require": "./dist/mailer/index.js",

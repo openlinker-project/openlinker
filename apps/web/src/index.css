@@ -13831,6 +13831,107 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   align-self: stretch;
 }
 
+/* ── Order receipt panel (#1909) ──────────────────────────────────────
+   Mirrors `.order-invoice-panel` exactly - same box, same header/actions/
+   body rhythm - because the two panels sit side by side on the order detail
+   page and must read as one family, not two unrelated widgets. */
+.order-receipt-panel {
+  gap: var(--space-3);
+  padding: var(--space-4);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-xs);
+}
+.order-receipt-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+.order-receipt-panel__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  border-top: 1px solid var(--border-subtle);
+  padding-top: var(--space-3);
+}
+.order-receipt-panel__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.order-receipt-panel__notice {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+}
+.order-receipt-panel__skeleton {
+  height: 14px;
+  border-radius: var(--radius-sm);
+  background: linear-gradient(
+    100deg,
+    var(--bg-surface-muted) 0%,
+    var(--bg-surface-hover) 50%,
+    var(--bg-surface-muted) 100%
+  );
+  background-size: 200% 100%;
+  animation: invoice-skeleton-shimmer 1.4s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .order-receipt-panel__skeleton {
+    animation: none;
+    background: var(--bg-surface-muted);
+  }
+}
+
+/* An artefact row: the neutral (medium, disposition, content) triple a fiscal
+   registration returns. Deliberately not link-shaped by default - most media
+   are not links (#1909, mirrors the fiscalization mockup). */
+.artefact-list {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.artefact-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface-muted);
+}
+.artefact-row__medium {
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-muted);
+  min-width: 5.25rem;
+  flex: 0 0 auto;
+}
+.artefact-row__body {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.artefact-row__title {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.artefact-row__action {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
 /* ── Invoice connection lock (#2047) ──────────────────────────────────
    States the issuing connection as order state, not as a setting: a lock
    glyph + mono/caps eyebrow + the connection name, with a left severity
