@@ -29,8 +29,10 @@ import {
 import { Logger } from '@openlinker/shared/logging';
 import {
   ackTrimmed,
+  MAX_DRAIN_PAGES,
   MIN_RECLAIM_IDLE_MS,
   readOwnPending,
+  RECLAIM_INTERVAL_MS,
   reclaimOrphans,
   resolveConsumerName,
   type StreamConsumerClient,
@@ -56,7 +58,6 @@ export class WebhookToJobHandler implements OnModuleInit, OnModuleDestroy {
   // row already reads 'published', so a dropped message looks like a delivered one.
   private readonly CONSUMER_NAME = resolveConsumerName('webhook-handler');
   private readonly RECLAIM_IDLE_MS = MIN_RECLAIM_IDLE_MS;
-  private readonly RECLAIM_INTERVAL_MS = 5 * 60 * 1000;
 
   private lastReclaimAt = 0;
   private readonly BLOCK_MS = 5000; // 5 seconds
@@ -234,6 +235,11 @@ export class WebhookToJobHandler implements OnModuleInit, OnModuleDestroy {
           }
         );
 
+        // Before the empty-batch check: an idle stream is exactly when stranded
+        // entries need recovering, so gating recovery on a batch arriving would
+        // make it dead code in the case it exists for. Throttled internally.
+        await this.maybeReclaimOrphans();
+
         if (!messages || messages.length === 0) {
           // No messages, continue loop
           continue;
@@ -264,8 +270,6 @@ export class WebhookToJobHandler implements OnModuleInit, OnModuleDestroy {
             }
           }
         }
-
-        await this.maybeReclaimOrphans();
       } catch (error) {
         if (this.abortController?.signal.aborted) {
           // Shutdown requested, exit loop
@@ -473,7 +477,17 @@ export class WebhookToJobHandler implements OnModuleInit, OnModuleDestroy {
     let drained = 0;
 
     try {
-      for (;;) {
+      for (let page = 0; ; page += 1) {
+        if (page >= MAX_DRAIN_PAGES) {
+          this.logger.warn(
+            `Stopping startup drain after ${MAX_DRAIN_PAGES} pages; entries remain pending for ${this.CONSUMER_NAME}`
+          );
+          break;
+        }
+        if (this.abortController?.signal.aborted) {
+          break;
+        }
+
         const entries = await readOwnPending(
           this.redisClient as unknown as StreamConsumerClient,
           this.STREAM_NAME,
@@ -510,16 +524,30 @@ export class WebhookToJobHandler implements OnModuleInit, OnModuleDestroy {
    * Periodically claim entries stranded by a consumer that never came back.
    *
    * Stable identity lets a restarted process drain its own history; it cannot
-   * help when a replica disappears permanently. `XAUTOCLAIM` covers that case.
+   * help when a replica disappears permanently. An `XPENDING ... IDLE` + `XCLAIM`
+   * pass covers that case, and only processes what the claim actually
+   * transferred — an entry a live consumer still owns is left alone.
    */
   private async maybeReclaimOrphans(): Promise<void> {
     const now = Date.now();
-    if (now - this.lastReclaimAt < this.RECLAIM_INTERVAL_MS) {
+    if (now - this.lastReclaimAt < RECLAIM_INTERVAL_MS) {
       return;
     }
     this.lastReclaimAt = now;
 
     try {
+      // Own failed messages first — the orphan pass below skips self-owned rows.
+      const ownRetries = await readOwnPending(
+        this.redisClient as unknown as StreamConsumerClient,
+        this.STREAM_NAME,
+        this.CONSUMER_GROUP,
+        this.CONSUMER_NAME,
+        this.COUNT
+      );
+      for (const entry of ownRetries) {
+        await this.handleRecoveredEntry(entry, 'pending-retry');
+      }
+
       const entries = await reclaimOrphans(
         this.redisClient as unknown as StreamConsumerClient,
         this.STREAM_NAME,
@@ -570,7 +598,16 @@ export class WebhookToJobHandler implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
-    await this.processMessage(entry.id, entry.fields);
+    // Tracked exactly like the batch path (#1920/#1923): without this, a
+    // shutdown landing mid-recovery would return from `stopConsumptionLoop`
+    // immediately and `onModuleDestroy` would `quit()` the client out from
+    // under a message still being processed.
+    this.inFlightMessage = this.processMessage(entry.id, entry.fields);
+    try {
+      await this.inFlightMessage;
+    } finally {
+      this.inFlightMessage = null;
+    }
   }
 
   private async deadLetter(

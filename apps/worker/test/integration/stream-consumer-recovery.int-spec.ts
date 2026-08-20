@@ -171,6 +171,22 @@ describe('Stream consumer recovery (#2164)', () => {
       expect(await readOwnPending(redis, stream, GROUP, live, 10)).toHaveLength(1);
     });
 
+    it('should not process an entry the original owner acked before the claim landed', async () => {
+      const stream = await freshStream();
+      const owner = resolveConsumerName('job-intake', { OL_WORKER_ID: 'worker-owner' });
+      const live = resolveConsumerName('job-intake', { OL_WORKER_ID: 'worker-live' });
+
+      const id = await redis.xAdd(stream, '*', { jobType: 'master.product.syncByExternalId' });
+      await deliverWithoutAck(stream, owner);
+
+      // The owner finishes and ACKs — the entry leaves the PEL but stays in the
+      // stream, so an XRANGE would still return its body. Only the claim reply
+      // can tell us it is no longer ours to run.
+      await redis.xAck(stream, GROUP, id);
+
+      expect(await reclaimOrphans(redis, stream, GROUP, live, 0, 10, 0)).toEqual([]);
+    });
+
     it('should not claim an entry younger than the idle threshold', async () => {
       const stream = await freshStream();
       const dead = resolveConsumerName('job-intake', { OL_WORKER_ID: 'worker-gone' });

@@ -20,8 +20,10 @@ import {
 import { Logger } from '@openlinker/shared/logging';
 import {
   ackTrimmed,
+  MAX_DRAIN_PAGES,
   MIN_RECLAIM_IDLE_MS,
   readOwnPending,
+  RECLAIM_INTERVAL_MS,
   reclaimOrphans,
   resolveConsumerName,
   type StreamConsumerClient,
@@ -42,7 +44,6 @@ export class JobIntakeConsumer implements OnModuleInit, OnModuleDestroy {
   // handler is a single parse plus one insert, so the shared floor is already
   // orders of magnitude above it.
   private readonly RECLAIM_IDLE_MS = MIN_RECLAIM_IDLE_MS;
-  private readonly RECLAIM_INTERVAL_MS = 5 * 60 * 1000;
 
   private lastReclaimAt = 0;
 
@@ -201,6 +202,11 @@ export class JobIntakeConsumer implements OnModuleInit, OnModuleDestroy {
           lastHeartbeat = now;
         }
 
+        // Before the empty-batch check: an idle stream is exactly when stranded
+        // entries need recovering, so gating recovery on a batch arriving would
+        // make it dead code in the case it exists for. Throttled internally.
+        await this.maybeReclaimOrphans();
+
         if (!messages || messages.length === 0) {
           // No messages, continue loop
           continue;
@@ -212,8 +218,6 @@ export class JobIntakeConsumer implements OnModuleInit, OnModuleDestroy {
             await this.processMessage(message.id, message.message);
           }
         }
-
-        await this.maybeReclaimOrphans();
       } catch (error) {
         // Handle abort signal (graceful shutdown)
         if (this.abortController?.signal.aborted) {
@@ -326,7 +330,7 @@ export class JobIntakeConsumer implements OnModuleInit, OnModuleDestroy {
       // Deliberately not ACKed: the entry stays in this consumer's Pending
       // Entries List. Redis never expires a PEL entry on its own, so recovery is
       // this consumer's own job — the startup drain (`drainOwnPending`) picks it
-      // up on restart, and `reclaimOrphanedEntries` claims it if this process
+      // up on restart, and `maybeReclaimOrphans` claims it if this process
       // never returns. Before #2164 no code path read a PEL at all, and the
       // comment here claimed a redelivery timeout that does not exist, which is
       // why permanent message loss went unnoticed.
@@ -337,8 +341,8 @@ export class JobIntakeConsumer implements OnModuleInit, OnModuleDestroy {
   /**
    * Drain this consumer's own pending history before reading new messages.
    *
-   * Reading with id `0` returns entries already delivered to this consumer and
-   * never ACKed — the messages a previous incarnation of this worker was holding
+   * `XPENDING` scoped to this consumer returns entries already delivered to it
+   * and never ACKed — the messages a previous incarnation of this worker was holding
    * when it died. Without this they would sit in the PEL forever, because the
    * steady-state loop reads `'>'`, which returns only never-delivered entries.
    */
@@ -346,7 +350,17 @@ export class JobIntakeConsumer implements OnModuleInit, OnModuleDestroy {
     let drained = 0;
 
     try {
-      for (;;) {
+      for (let page = 0; ; page += 1) {
+        if (page >= MAX_DRAIN_PAGES) {
+          this.logger.warn(
+            `Stopping startup drain after ${MAX_DRAIN_PAGES} pages; entries remain pending for ${this.CONSUMER_NAME}`
+          );
+          break;
+        }
+        if (this.abortController?.signal.aborted) {
+          break;
+        }
+
         const entries = await readOwnPending(
           this.redisClient as unknown as StreamConsumerClient,
           this.STREAM_NAME,
@@ -383,16 +397,30 @@ export class JobIntakeConsumer implements OnModuleInit, OnModuleDestroy {
    * Periodically claim entries stranded by a consumer that never came back.
    *
    * Stable identity lets a restarted process drain its own history; it cannot
-   * help when a replica disappears permanently. `XAUTOCLAIM` covers that case.
+   * help when a replica disappears permanently. An `XPENDING ... IDLE` + `XCLAIM`
+   * pass covers that case, and only processes what the claim actually
+   * transferred — an entry a live consumer still owns is left alone.
    */
   private async maybeReclaimOrphans(): Promise<void> {
     const now = Date.now();
-    if (now - this.lastReclaimAt < this.RECLAIM_INTERVAL_MS) {
+    if (now - this.lastReclaimAt < RECLAIM_INTERVAL_MS) {
       return;
     }
     this.lastReclaimAt = now;
 
     try {
+      // Own failed messages first — the orphan pass below skips self-owned rows.
+      const ownRetries = await readOwnPending(
+        this.redisClient as unknown as StreamConsumerClient,
+        this.STREAM_NAME,
+        this.CONSUMER_GROUP,
+        this.CONSUMER_NAME,
+        this.COUNT
+      );
+      for (const entry of ownRetries) {
+        await this.handleRecoveredEntry(entry, 'pending-retry');
+      }
+
       const entries = await reclaimOrphans(
         this.redisClient as unknown as StreamConsumerClient,
         this.STREAM_NAME,

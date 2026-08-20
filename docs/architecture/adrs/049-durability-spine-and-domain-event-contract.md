@@ -80,8 +80,10 @@ Registration-time validation is the shape `AdapterRegistryService` already uses.
 `events` gains a legitimate compile-time dependency on every producing context (i.e. the spine is
 restructured).
 
-**8. Nothing depends on a stream primitive above Redis 6.2.** `XPENDING` / `XAUTOCLAIM` / plain
-`MAXLEN` and `MINID` only. This keeps #1396 (Valkey) a drop-in retag rather than a redesign, and it
+**8. Nothing depends on a stream primitive above Redis 6.2.** `XPENDING` / `XCLAIM` / `XRANGE` /
+plain `MAXLEN` and `MINID` only. (`XAUTOCLAIM` is also 6.2, but #2164 deliberately does not use it:
+node-redis throws while transforming a reply that describes a trimmed entry, so recovery is built
+from `XPENDING` + `XCLAIM` + `XRANGE`, whose replies it can always transform.) This keeps #1396 (Valkey) a drop-in retag rather than a redesign, and it
 is a further argument for Postgres as the transport of record: the durable path then does not care
 which engine serves the hint. *Reversal gate:* #1396 is closed without merging **and** a newer
 primitive measurably fixes a problem the 6.2 floor cannot.

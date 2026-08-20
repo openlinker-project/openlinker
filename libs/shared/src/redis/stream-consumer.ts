@@ -86,6 +86,25 @@ export const WORKER_ID_ENV = 'OL_WORKER_ID';
  */
 export const MIN_RECLAIM_IDLE_MS = 5 * 60 * 1000;
 
+/**
+ * How often a consumer should run an orphan-reclaim pass.
+ *
+ * Shared rather than redeclared per consumer: the three loops tick at different
+ * rates, and a per-consumer literal would let them drift apart for no reason.
+ */
+export const RECLAIM_INTERVAL_MS = 5 * 60 * 1000;
+
+/**
+ * Hard cap on pages a startup drain will read before giving up.
+ *
+ * The drain loops until a page comes back empty, which terminates only because
+ * every handler path either ACKs or throws (the throw is caught and ends the
+ * drain). That invariant lives in three separate consumer files, so a future
+ * branch that neither ACKs nor throws would hang `onModuleInit` and with it
+ * application boot. The cap turns that regression into a logged warning.
+ */
+export const MAX_DRAIN_PAGES = 1_000;
+
 /** Start sentinel for an `XPENDING` id range. */
 const PEL_RANGE_START = '-';
 
@@ -208,6 +227,38 @@ export async function readOwnPending(
 }
 
 /**
+ * Read the body an `XCLAIM` actually transferred, or `null` if it did not.
+ *
+ * node-redis maps the reply through `transformStreamMessagesNullReply`, which
+ * returns one element per requested id and `null` where the claim did not
+ * transfer. Both non-transfer cases matter and both must be honoured:
+ *
+ * - the original owner ACKed between the `XPENDING` and the `XCLAIM`, or it
+ *   touched the entry so it is no longer idle past the threshold — the entry is
+ *   not ours and must not be processed;
+ * - the entry's data was trimmed, which on Redis 7+ also drops it from the PEL.
+ *
+ * Exported for unit testing: trusting the claim is the property that stops this
+ * function re-running work another live consumer still owns.
+ */
+export function toClaimedMessage(reply: unknown): Record<string, string> | null {
+  if (!Array.isArray(reply)) {
+    return null;
+  }
+
+  const first: unknown = (reply as unknown[])[0];
+  if (!first || typeof first !== 'object') {
+    return null;
+  }
+
+  const fields = (first as { message?: unknown }).message;
+  if (!fields || typeof fields !== 'object' || Object.keys(fields).length === 0) {
+    return null;
+  }
+  return fields as Record<string, string>;
+}
+
+/**
  * Claim one page of entries idle beyond `minIdleMs`, whichever consumer holds
  * them.
  *
@@ -219,6 +270,12 @@ export async function readOwnPending(
  * same reason {@link resolvePendingEntry} avoids `XREADGROUP`: it keeps every
  * reply on a shape node-redis can transform without throwing, and it holds the
  * module to the Redis 6.2 floor that Valkey also provides.
+ *
+ * **The claim reply is the source of truth, not the `XPENDING` listing.** An
+ * `XCLAIM` that does not transfer returns a `null` element, and ownership is
+ * the only thing separating recovery from re-running work a live consumer is
+ * still processing — `XRANGE` would happily return the body either way, because
+ * ACK removes an entry from the PEL but not from the stream.
  *
  * `minIdleMs` is floored rather than trusted, so a caller cannot accidentally
  * configure work-stealing.
@@ -249,9 +306,24 @@ export async function reclaimOrphans(
   for (const row of pending) {
     // Re-assert the threshold on the claim itself: XCLAIM transfers ownership
     // only while the entry is still idle, so an owner that woke up between the
-    // XPENDING and here keeps its message instead of having it stolen.
-    await client.xClaim(streamName, group, consumer, idle, row.id);
-    entries.push(await resolvePendingEntry(client, streamName, row.id));
+    // XPENDING and here keeps its message.
+    const claimed = toClaimedMessage(
+      await client.xClaim(streamName, group, consumer, idle, row.id)
+    );
+
+    if (claimed) {
+      entries.push({ kind: 'entry', id: row.id, fields: claimed });
+      continue;
+    }
+
+    // No transfer. Either the entry is gone (trimmed — report it so the caller
+    // clears the dangling id) or another consumer still owns it, in which case
+    // it is emphatically not ours to process. XRANGE separates the two: an
+    // empty result means the data is gone, anything else means we lost the race.
+    const stillInStream = await client.xRange(streamName, row.id, row.id, { COUNT: 1 });
+    if (!Array.isArray(stillInStream) || stillInStream.length === 0) {
+      entries.push({ kind: 'trimmed', id: row.id });
+    }
   }
   return entries;
 }

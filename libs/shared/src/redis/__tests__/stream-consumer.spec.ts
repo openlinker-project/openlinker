@@ -12,6 +12,7 @@ import { hostname } from 'os';
 
 import {
   MIN_RECLAIM_IDLE_MS,
+  toClaimedMessage,
   readOwnPending,
   reclaimOrphans,
   resolveConsumerName,
@@ -88,6 +89,28 @@ describe('toPendingRows', () => {
     expect(toPendingRows([{ id: '1-0' }])).toEqual([
       { id: '1-0', owner: '', millisecondsSinceLastDelivery: 0 },
     ]);
+  });
+});
+
+describe('toClaimedMessage', () => {
+  it('should return the body when the claim transferred', () => {
+    expect(toClaimedMessage([{ id: '1-0', message: { jobType: 'a' } }])).toEqual({ jobType: 'a' });
+  });
+
+  it('should return null when the claim did not transfer', () => {
+    expect(toClaimedMessage([null])).toBeNull();
+  });
+
+  it('should return null for an empty reply', () => {
+    expect(toClaimedMessage([])).toBeNull();
+  });
+
+  it('should return null for a bodiless element', () => {
+    expect(toClaimedMessage([{ id: '1-0', message: {} }])).toBeNull();
+  });
+
+  it('should return null when the reply is not an array', () => {
+    expect(toClaimedMessage(null)).toBeNull();
   });
 });
 
@@ -189,7 +212,7 @@ describe('reclaimOrphans', () => {
         .mockResolvedValue([
           { id: '1-0', owner: 'dead-worker', millisecondsSinceLastDelivery: 9e5 },
         ]),
-      xRange: jest.fn().mockResolvedValue([{ id: '1-0', message: { jobType: 'a' } }]),
+      xClaim: jest.fn().mockResolvedValue([{ id: '1-0', message: { jobType: 'a' } }]),
     } as Partial<jest.Mocked<StreamConsumerClient>>);
 
     const entries = await reclaimOrphans(client, STREAM, GROUP, CONSUMER, MIN_RECLAIM_IDLE_MS);
@@ -207,6 +230,7 @@ describe('reclaimOrphans', () => {
         .mockResolvedValue([
           { id: '1-0', owner: 'dead-worker', millisecondsSinceLastDelivery: 9e5 },
         ]),
+      xClaim: jest.fn().mockResolvedValue([{ id: '1-0', message: { jobType: 'a' } }]),
     } as Partial<jest.Mocked<StreamConsumerClient>>);
 
     await reclaimOrphans(client, STREAM, GROUP, CONSUMER, MIN_RECLAIM_IDLE_MS);
@@ -215,17 +239,37 @@ describe('reclaimOrphans', () => {
   });
 
   it('should surface a reclaimed-but-trimmed entry so the caller can ACK it', async () => {
+    // Claim did not transfer AND the body is gone: the entry was trimmed.
     const client = buildClient({
       xPendingRange: jest
         .fn()
         .mockResolvedValue([
           { id: '1-0', owner: 'dead-worker', millisecondsSinceLastDelivery: 9e5 },
         ]),
+      xClaim: jest.fn().mockResolvedValue([null]),
       xRange: jest.fn().mockResolvedValue([]),
     } as Partial<jest.Mocked<StreamConsumerClient>>);
 
     expect(await reclaimOrphans(client, STREAM, GROUP, CONSUMER, MIN_RECLAIM_IDLE_MS)).toEqual([
       { kind: 'trimmed', id: '1-0' },
     ]);
+  });
+
+  it('should not process an entry whose claim did not transfer', async () => {
+    // The original owner ACKed, or touched the entry so it is no longer idle,
+    // between the XPENDING and the XCLAIM. XRANGE still returns the body —
+    // ACK removes an entry from the PEL, not from the stream — so trusting the
+    // listing here would re-run work a live consumer still owns.
+    const client = buildClient({
+      xPendingRange: jest
+        .fn()
+        .mockResolvedValue([
+          { id: '1-0', owner: 'other-worker', millisecondsSinceLastDelivery: 9e5 },
+        ]),
+      xClaim: jest.fn().mockResolvedValue([null]),
+      xRange: jest.fn().mockResolvedValue([{ id: '1-0', message: { jobType: 'a' } }]),
+    } as Partial<jest.Mocked<StreamConsumerClient>>);
+
+    expect(await reclaimOrphans(client, STREAM, GROUP, CONSUMER, MIN_RECLAIM_IDLE_MS)).toEqual([]);
   });
 });

@@ -29,8 +29,10 @@ import { JobEnqueuePort, JOB_ENQUEUE_TOKEN } from '@openlinker/core/sync';
 import { Logger } from '@openlinker/shared/logging';
 import {
   ackTrimmed,
+  MAX_DRAIN_PAGES,
   MIN_RECLAIM_IDLE_MS,
   readOwnPending,
+  RECLAIM_INTERVAL_MS,
   reclaimOrphans,
   resolveConsumerName,
   type StreamConsumerClient,
@@ -57,7 +59,6 @@ export class MasterDeletionToJobHandler implements OnModuleInit, OnModuleDestroy
   // replicas, so this process can reach its own pending history (#2164).
   private readonly CONSUMER_NAME = resolveConsumerName('master-deletion-offer-pause');
   private readonly RECLAIM_IDLE_MS = MIN_RECLAIM_IDLE_MS;
-  private readonly RECLAIM_INTERVAL_MS = 5 * 60 * 1000;
 
   private lastReclaimAt = 0;
   private readonly BLOCK_MS = 5000;
@@ -153,6 +154,11 @@ export class MasterDeletionToJobHandler implements OnModuleInit, OnModuleDestroy
           { BLOCK: this.BLOCK_MS, COUNT: this.COUNT }
         );
 
+        // Before the empty-batch check: an idle stream is exactly when stranded
+        // entries need recovering, and this is a low-traffic stream that can sit
+        // empty for days. Throttled internally.
+        await this.maybeReclaimOrphans();
+
         if (!messages || messages.length === 0) {
           continue;
         }
@@ -165,8 +171,6 @@ export class MasterDeletionToJobHandler implements OnModuleInit, OnModuleDestroy
             await this.processMessage(message.id, message.message);
           }
         }
-
-        await this.maybeReclaimOrphans();
       } catch (error) {
         if (this.abortController?.signal.aborted) {
           break;
@@ -278,7 +282,17 @@ export class MasterDeletionToJobHandler implements OnModuleInit, OnModuleDestroy
     let drained = 0;
 
     try {
-      for (;;) {
+      for (let page = 0; ; page += 1) {
+        if (page >= MAX_DRAIN_PAGES) {
+          this.logger.warn(
+            `Stopping startup drain after ${MAX_DRAIN_PAGES} pages; entries remain pending for ${this.CONSUMER_NAME}`
+          );
+          break;
+        }
+        if (this.abortController?.signal.aborted) {
+          break;
+        }
+
         const entries = await readOwnPending(
           this.redisClient as unknown as StreamConsumerClient,
           this.STREAM_NAME,
@@ -310,16 +324,34 @@ export class MasterDeletionToJobHandler implements OnModuleInit, OnModuleDestroy
   }
 
   /**
-   * Periodically claim entries stranded by a consumer that never came back.
+   * Periodically recover stranded work: this consumer's own failed messages
+   * first, then entries orphaned by a consumer that never came back.
+   *
+   * Re-draining own pending matters because a handler that throws leaves its
+   * entry un-ACKed in this consumer's PEL, and the orphan pass deliberately
+   * skips self-owned rows. Without this, one transient failure would strand a
+   * message until the process restarted — indefinitely, for a long-lived pod.
    */
   private async maybeReclaimOrphans(): Promise<void> {
     const now = Date.now();
-    if (now - this.lastReclaimAt < this.RECLAIM_INTERVAL_MS) {
+    if (now - this.lastReclaimAt < RECLAIM_INTERVAL_MS) {
       return;
     }
     this.lastReclaimAt = now;
 
     try {
+      // Own failed messages first — the orphan pass below skips self-owned rows.
+      const ownRetries = await readOwnPending(
+        this.redisClient as unknown as StreamConsumerClient,
+        this.STREAM_NAME,
+        this.CONSUMER_GROUP,
+        this.CONSUMER_NAME,
+        this.COUNT
+      );
+      for (const entry of ownRetries) {
+        await this.handleRecoveredEntry(entry, 'pending-retry');
+      }
+
       const entries = await reclaimOrphans(
         this.redisClient as unknown as StreamConsumerClient,
         this.STREAM_NAME,
