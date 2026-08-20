@@ -3519,6 +3519,17 @@ a.delivery-rider-banner__button:focus-visible {
   margin: 12px 0;
 }
 
+/* `.dialog__content` has no gap of its own (#2189 review) — sibling
+   `<section class="page-section">` tiers and `Alert` banners rendered
+   directly inside it stacked with zero space between them. This wrapper
+   gives the routing dialog's body the same grid+gap treatment every other
+   multi-section dialog body already has (mirrors `.trigger-sync-dialog__body`
+   above). */
+.sales-document-country-routing-dialog__body {
+  display: grid;
+  gap: var(--space-5);
+}
+
 .trigger-sync-dialog__description {
   margin: 0;
 }

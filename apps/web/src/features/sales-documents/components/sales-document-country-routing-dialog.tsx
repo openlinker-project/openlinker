@@ -248,6 +248,7 @@ export function SalesDocumentCountryRoutingDialog({
 
           <DialogTitle>Sales-document routing · {displayName}</DialogTitle>
 
+          <div className="sales-document-country-routing-dialog__body">
           {isEmptyCountry ? (
             acknowledgedAt !== null ? (
               <Alert
@@ -308,6 +309,7 @@ export function SalesDocumentCountryRoutingDialog({
           ))}
 
           {resetError ? <Alert tone="error">{resetError}</Alert> : null}
+          </div>
 
           <DialogFooter>
             <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
