@@ -381,6 +381,15 @@ export function applyDescriptionFormat(html: string, format: DescriptionFormat):
  * Remove elements the pass emptied out. A `<p></p>` left by a `split-block` at
  * a block boundary, or a `<b></b>` whose only child was dropped, is noise the
  * destination would render as a blank line.
+ *
+ * The open-tag pattern is attribute-aware (`"…"` / `'…'` runs are consumed
+ * whole) rather than the shorter `[^>]*`, which would terminate on a `>` inside
+ * an attribute value and then fail to recognise the element as empty. That is
+ * unreachable today - this runs on walker output whose attributes come from a
+ * tiny per-tag allowlist with `"` escaped to `&quot;` - but the cost of being
+ * right anyway is one alternation, and the next person to widen
+ * `allowedAttributes` to something free-form (`title`, `alt`) should not have to
+ * discover the coupling.
  */
 function collapseEmpty(html: string, format: DescriptionFormat): string {
   const voids = [...VOID_TAGS].join('|');
@@ -389,7 +398,10 @@ function collapseEmpty(html: string, format: DescriptionFormat): string {
   do {
     previous = current;
     current = current.replace(
-      new RegExp(`<([a-zA-Z][a-zA-Z0-9]*)\\b[^>]*>(?:\\s|<(?:${voids})\\s*/?>)*</\\1>`, 'gi'),
+      new RegExp(
+        `<([a-zA-Z][a-zA-Z0-9]*)\\b(?:"[^"]*"|'[^']*'|[^>"'])*>(?:\\s|<(?:${voids})\\s*/?>)*</\\1>`,
+        'gi',
+      ),
       (whole, tag: string) => (format.allowedTags.includes(tag.toLowerCase()) ? '' : whole),
     );
   } while (current !== previous);

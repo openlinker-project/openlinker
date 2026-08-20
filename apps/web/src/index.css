@@ -1721,6 +1721,14 @@ textarea,
   color: var(--status-info-strong);
 }
 
+/* #2211 - the "resolved from a configured mapping" tone: a real catalogue hit
+   was not involved, so it is neither a plain success nor a warning. */
+.chip--review {
+  background: var(--status-review-soft);
+  border-color: var(--status-review-border);
+  color: var(--status-review-strong);
+}
+
 
 /* ── Theme toggle ───────────────────────────────────────────────────
  * Three-option radiogroup rendered as a segmented button group. Sits
@@ -10556,6 +10564,15 @@ input.bulk-dispatch__num--wide {
   transition: width var(--duration-normal) var(--ease-out);
 }
 
+/* The streamed resolve advances this bar several times a second, so the width
+   transition animates continuously for the whole step - the one case on this
+   bar where the motion is sustained rather than incidental. */
+@media (prefers-reduced-motion: reduce) {
+  .bulk-wizard__progress-fill {
+    transition: none;
+  }
+}
+
 .bulk-wizard__progress-count {
   font-family: var(--font-mono);
   font-size: 13px;
@@ -10567,6 +10584,126 @@ input.bulk-dispatch__num--wide {
   max-width: 480px;
   font-size: 13px;
   color: var(--text-muted);
+}
+
+/* ── Streamed Resolve step (#2211) ──────────────────────────────────
+ * Two stacked tracks - the whole batch, then the product in flight - over a
+ * live list of the last few products. Reuses `bulk-wizard__progress-bar`
+ * / `__progress-fill` for the tracks and `bulk-progress__row` for the list;
+ * only the wrappers, the second track's tone and the waiting shimmer are new.
+ */
+.bulk-wizard__resolve-title {
+  margin: 0;
+  font-size: 1.0625rem;
+  font-weight: 600;
+  letter-spacing: var(--tracking-tight);
+}
+
+.bulk-wizard__resolve-track {
+  width: 360px;
+  max-width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.bulk-wizard__resolve-track .bulk-wizard__progress-bar {
+  width: 100%;
+  margin: 0;
+}
+
+/* The batch is the headline fact and the product in flight is a detail of it,
+   so the two tracks differ in weight instead of reading as one bar twice. */
+.bulk-wizard__resolve-track--batch .bulk-wizard__progress-bar {
+  height: 10px;
+}
+
+.bulk-wizard__resolve-track-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.bulk-wizard__resolve-track-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-transform: none;
+  letter-spacing: var(--tracking-normal);
+  color: var(--text-secondary);
+}
+
+/* The per-product track is a different fact from the batch track, so it reads
+   in a different tone rather than as a second helping of the same bar. */
+.bulk-wizard__progress-fill--product {
+  background: var(--status-info);
+}
+
+.bulk-wizard__resolve-feed {
+  width: 100%;
+  max-width: 560px;
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  list-style: none;
+  text-align: left;
+}
+
+.bulk-wizard__resolve-feed .bulk-progress__row {
+  background: var(--bg-surface-elevated);
+}
+
+/* Both modifiers are feed-scoped (0,2,0) on purpose. `.bulk-progress__row` and
+   `.bulk-progress__row--incomplete` live in the #1741 rollup section further
+   DOWN this file, so a bare `.bulk-progress__row--current` here (0,1,0) lost
+   the border and background to the later base rule, and `--incomplete` lost its
+   warning tint to the feed background rule directly above. Scoping settles both
+   on specificity rather than on which section happens to come first; the two
+   rules below stay in the feed's own order (current, then incomplete), which is
+   also the order a row can only ever match one of. */
+.bulk-wizard__resolve-feed .bulk-progress__row--current {
+  border-color: var(--accent-primary-border);
+  background: var(--accent-primary-soft);
+}
+
+.bulk-wizard__resolve-feed .bulk-progress__row--incomplete {
+  border-color: var(--status-warning-border);
+  background: var(--status-warning-soft);
+}
+
+/* Waiting on the first event. Replaces the `loading-state__spinner` this step
+   used to render, which had no CSS anywhere in the app and so animated nothing;
+   this reuses the one loading motion the design system actually owns
+   (`data-table-skeleton-shimmer`). */
+.bulk-wizard__resolve-pending {
+  width: 360px;
+  max-width: 100%;
+  height: 6px;
+  border-radius: var(--radius-pill);
+  margin-bottom: var(--space-3);
+  background-color: var(--bg-surface-muted);
+  background-image: linear-gradient(
+    90deg,
+    var(--bg-surface-muted) 0%,
+    var(--bg-surface-hover) 50%,
+    var(--bg-surface-muted) 100%
+  );
+  background-size: 200% 100%;
+  background-repeat: no-repeat;
+  animation: data-table-skeleton-shimmer 1.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bulk-wizard__resolve-pending {
+    animation: none;
+  }
 }
 
 .bulk-wizard__review-summary {

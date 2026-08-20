@@ -8,8 +8,9 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import { sanitizeStoredHtml } from '@openlinker/shared/html';
 import { Injectable, Inject } from '@nestjs/common';
+import { Logger } from '@openlinker/shared/logging';
+import { sanitizeStoredHtml } from '@openlinker/shared/html';
 import {
   IIntegrationsService,
   INTEGRATIONS_SERVICE_TOKEN,
@@ -36,7 +37,6 @@ import type {
   IMasterProductSyncService,
   MasterProductSyncResult,
 } from './master-product-sync.service.interface';
-import { Logger } from '@openlinker/shared/logging';
 
 @Injectable()
 export class MasterProductSyncService implements IMasterProductSyncService {

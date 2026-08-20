@@ -5,7 +5,8 @@
  * 1. Seed identifier mappings for a connection (simulating previously-synced products)
  * 2. Execute MasterInventorySyncAllHandler with a syncAll job
  * 3. Verify one `master.inventory.syncByExternalId` sub-job is enqueued per mapping
- * 4. Verify sub-job idempotency keys are stable (derived from outer job id)
+ * 4. Verify sub-job idempotency keys are stable (derived from the CYCLE, #2219)
+ * 5. Verify a mapping set larger than one budget completes across successive ticks
  *
  * @module apps/worker/test/integration
  */
@@ -113,12 +114,59 @@ describe('Master Inventory Sync All End-to-End Integration', () => {
       .sort();
     expect(enqueuedExternalIds).toEqual([...externalIds].sort());
 
-    // Every sub-job idempotency key embeds the outer job id, so re-running the
-    // same outer job produces identical keys (queue dedupe handles the rest).
+    // Since #2219 the key embeds the CYCLE, not the outer job id: a resuming tick
+    // is a different job, so a job-scoped key would re-enqueue the same child
+    // under a fresh key on every overlapping page.
     for (const [req] of subJobCalls) {
-      expect(req.idempotencyKey).toContain(outerJob.id);
+      expect(req.idempotencyKey).not.toContain(outerJob.id);
+      expect(req.idempotencyKey).toMatch(
+        new RegExp(`^master:${connection.id}:inventory:sync:ext-\\d:`)
+      );
       expect(req.connectionId).toBe(connection.id);
     }
+  });
+
+  it('completes a mapping set larger than one budget across successive ticks', async () => {
+    const connection = await createTestConnection(dataSource, {
+      platformType: 'prestashop',
+      status: 'active',
+      credentialsRef: 'test-credentials-ref',
+      adapterKey: 'prestashop.webservice.v1',
+    });
+
+    // 5 mappings, budget of 2 => 3 ticks (2 + 2 + 1).
+    const externalIds = ['ext-1', 'ext-2', 'ext-3', 'ext-4', 'ext-5'];
+    await seedProductMappings(connection.id, 'prestashop', externalIds);
+
+    const {
+      MasterInventorySyncAllHandler,
+    } = require('../../src/sync/handlers/master-inventory-sync-all.handler');
+    const handler = harness.get(MasterInventorySyncAllHandler);
+
+    const enqueueSpy = jest.spyOn(jobEnqueue, 'enqueueJob');
+    const perTickCounts: number[] = [];
+
+    // Each tick is a DISTINCT outer job, exactly as the scheduler mints one per
+    // cron fire — which is why the child key cannot be job-scoped.
+    for (let tick = 0; tick < 3; tick++) {
+      const outerJob = await jobRepository.createIfNotExistsByIdempotencyKey({
+        jobType: 'master.inventory.syncAll',
+        connectionId: connection.id,
+        payload: { schemaVersion: 1, pageLimit: 2 },
+        idempotencyKey: `inventory-sync-all-tick-${String(tick)}-${randomUUID()}`,
+        maxAttempts: 3,
+      });
+      enqueueSpy.mockClear();
+      await expect(handler.execute(outerJob)).resolves.toEqual({ outcome: 'ok' });
+      perTickCounts.push(
+        enqueueSpy.mock.calls.filter(
+          ([req]) => req.jobType === 'master.inventory.syncByExternalId'
+        ).length
+      );
+    }
+
+    // Budget respected per tick, and the whole set covered across the cycle.
+    expect(perTickCounts).toEqual([2, 2, 1]);
   });
 
   it('is a no-op when no product mappings exist for the connection', async () => {

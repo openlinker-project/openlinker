@@ -15,6 +15,7 @@ import {
   isCategoryParametersReader,
   isOfferCreator,
   isOfferFieldUpdater,
+  isTaxonomyBorrower,
 } from '@openlinker/core/listings';
 import { ErliConfigException } from '../../domain/exceptions/erli-config.exception';
 import { ErliAdapterFactory } from '../erli-adapter.factory';
@@ -340,6 +341,122 @@ describe('ErliAdapterFactory', () => {
           expect.stringContaining('allegrosandbox.pl'),
           expect.anything()
         );
+      });
+
+      it('should declare the sandbox taxonomy owner when config.allegroEnvironment is sandbox (#2210)', async () => {
+        const adapters = await factory.createAdapters(
+          connection({ config: { allegroEnvironment: 'sandbox' } }),
+          {} as IdentifierMappingPort,
+          resolverFor({ apiKey: 'k-123' }),
+          fetchMock as unknown as FetchLike
+        );
+
+        // Must match what an Allegro sandbox connection reports (#2063), or the
+        // borrowed catalogue lookup finds no owner at all.
+        expect(isTaxonomyBorrower(adapters.offerManager)).toBe(true);
+        if (isTaxonomyBorrower(adapters.offerManager)) {
+          expect(adapters.offerManager.getBorrowedTaxonomy()).toBe('allegro:sandbox');
+        }
+      });
+
+      it('should declare the PRODUCTION owner for an Erli sandbox connection with no Allegro environment (#2210)', async () => {
+        // The two environments are different axes that only type-check together
+        // because both are `'sandbox' | 'production'`. This connection - Erli
+        // sandbox, borrowing the real Allegro catalogue - is the ordinary test
+        // topology, and deriving the owner from `config.environment` made it
+        // declare `'allegro:sandbox'`, which no production Allegro connection
+        // answers to: every variant then degraded to `no-match` with no error.
+        const adapters = await factory.createAdapters(
+          connection({ config: { environment: 'sandbox' } }),
+          {} as IdentifierMappingPort,
+          resolverFor({ apiKey: 'k-123' }),
+          fetchMock as unknown as FetchLike
+        );
+
+        expect(isTaxonomyBorrower(adapters.offerManager)).toBe(true);
+        if (isTaxonomyBorrower(adapters.offerManager)) {
+          expect(adapters.offerManager.getBorrowedTaxonomy()).toBe('allegro');
+        }
+      });
+
+      it('should declare the owner the borrowed catalogue client actually reads (#2210)', async () => {
+        // The declared owner and the catalogue host are resolved by one helper,
+        // so this pins the property rather than the two values separately.
+        const adapters = await factory.createAdapters(
+          connection({
+            config: { environment: 'sandbox', allegroEnvironment: 'sandbox' },
+          }),
+          {} as IdentifierMappingPort,
+          resolverFor({
+            apiKey: 'k-123',
+            allegroClientId: 'cid',
+            allegroClientSecret: 'secret',
+          }),
+          fetchMock as unknown as FetchLike
+        );
+
+        if (isCategoryBrowser(adapters.offerManager)) {
+          await adapters.offerManager.fetchCategories();
+        }
+        expect(fetchMock).toHaveBeenCalledWith(
+          expect.stringContaining('allegrosandbox.pl'),
+          expect.anything()
+        );
+        if (isTaxonomyBorrower(adapters.offerManager)) {
+          expect(adapters.offerManager.getBorrowedTaxonomy()).toBe('allegro:sandbox');
+        }
+      });
+
+      it('should decline a borrowed catalogue lookup when Allegro category access is off (#2210)', async () => {
+        // Borrowing spends a PEER connection's credentials and rate-limit budget,
+        // so it is a different mechanism from this connection's own browsing -
+        // and slipped the operator's opt-out while producing the effect they
+        // switched off (#1934/F10).
+        const adapters = await factory.createAdapters(
+          connection({ config: { allegroCategoryAccessEnabled: false } }),
+          {} as IdentifierMappingPort,
+          resolverFor({
+            apiKey: 'k-123',
+            allegroClientId: 'cid',
+            allegroClientSecret: 'secret',
+          }),
+          fetchMock as unknown as FetchLike
+        );
+
+        expect(isTaxonomyBorrower(adapters.offerManager)).toBe(true);
+        if (isTaxonomyBorrower(adapters.offerManager)) {
+          expect(adapters.offerManager.allowsBorrowedCatalogueLookup?.()).toBe(false);
+          // The taxonomy it borrows is unchanged: mapping reuse (#1045) makes no
+          // network call and is not what the operator opted out of.
+          expect(adapters.offerManager.getBorrowedTaxonomy()).toBe('allegro');
+        }
+      });
+
+      it('should allow a borrowed catalogue lookup when the operator never set the toggle (#2210)', async () => {
+        const adapters = await factory.createAdapters(
+          connection(),
+          {} as IdentifierMappingPort,
+          resolverFor({ apiKey: 'k-123' }),
+          fetchMock as unknown as FetchLike
+        );
+
+        if (isTaxonomyBorrower(adapters.offerManager)) {
+          expect(adapters.offerManager.allowsBorrowedCatalogueLookup?.()).toBe(true);
+        }
+      });
+
+      it('should declare the production taxonomy owner when no Allegro environment is set (#2210)', async () => {
+        const adapters = await factory.createAdapters(
+          connection(),
+          {} as IdentifierMappingPort,
+          resolverFor({ apiKey: 'k-123' }),
+          fetchMock as unknown as FetchLike
+        );
+
+        expect(isTaxonomyBorrower(adapters.offerManager)).toBe(true);
+        if (isTaxonomyBorrower(adapters.offerManager)) {
+          expect(adapters.offerManager.getBorrowedTaxonomy()).toBe('allegro');
+        }
       });
     });
   });

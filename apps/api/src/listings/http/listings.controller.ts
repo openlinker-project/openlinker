@@ -7,6 +7,11 @@
  * then delegates asynchronous orchestration to the worker via
  * `marketplace.offer.create`.
  *
+ * `resolveCategoriesStream` (#2209) is the one handler that owns its own
+ * response framing: it writes NDJSON through `@Res()` so per-variant progress
+ * reaches the caller as it lands. Framing and the request lifecycle are all it
+ * adds - the resolution itself stays in `ICategoryResolutionService`.
+ *
  * @module apps/api/src/listings/http
  */
 import {
@@ -23,10 +28,20 @@ import {
   ParseUUIDPipe,
   Post,
   Query,
+  Res,
   UnprocessableEntityException,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiParam,
+  ApiProduces,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import { randomUUID } from 'crypto';
+import { Response } from 'express';
+import { Logger } from '@openlinker/shared/logging';
 
 import { Roles } from '../../auth/decorators/roles.decorator';
 import {
@@ -63,6 +78,7 @@ import {
 import type {
   CategoryParameter,
   CategoryPathSegment,
+  EanCategoryMatchStreamEvent,
   OfferCreationRecord,
   OfferManagerPort,
   OfferMappingListItem,
@@ -108,6 +124,13 @@ import {
   ResolveCategoryBatchRequestDto,
   ResolveCategoryBatchResponseDto,
 } from './dto/resolve-category-batch.dto';
+import type { ResolveCategoryStreamLine } from './dto/resolve-category-stream.dto';
+import {
+  RESOLVE_CATEGORY_STREAM_CONTENT_TYPE,
+  RESOLVE_CATEGORY_STREAM_KEEP_ALIVE_INTERVAL_MS,
+  RESOLVE_CATEGORY_STREAM_KEEP_ALIVE_LINE,
+  resolveCategoryStreamLineSchema,
+} from './dto/resolve-category-stream.dto';
 import type { FindProductsByBarcodeResponseDto } from './dto/catalog-product.dto';
 import {
   CatalogProductResponseDto,
@@ -119,6 +142,8 @@ import {
 @ApiTags('listings')
 @Controller('listings')
 export class ListingsController {
+  private readonly logger = new Logger(ListingsController.name);
+
   constructor(
     @Inject(OFFER_MAPPING_REPOSITORY_TOKEN)
     private readonly offerMappingRepository: OfferMappingRepositoryPort,
@@ -839,6 +864,241 @@ export class ListingsController {
         throw new UnprocessableEntityException(error.message);
       }
       throw error;
+    }
+  }
+
+  @Roles('admin', 'operator', 'viewer')
+  @Post('connections/:connectionId/categories/resolve-stream')
+  @ApiParam({ name: 'connectionId', description: 'Marketplace connection ID' })
+  @ApiProduces(RESOLVE_CATEGORY_STREAM_CONTENT_TYPE)
+  @ApiOperation({
+    summary: 'Stream per-variant category resolution as NDJSON (#2209)',
+    description:
+      'Same request body and same resolution as resolve-batch, delivered per variant as it ' +
+      'lands so the caller can report progress instead of waiting on one all-or-nothing ' +
+      'answer. The body is application/x-ndjson: one JSON object per line, flushed as the ' +
+      'resolver yields, terminated by exactly one {"kind":"done"} line carrying ' +
+      'resolvedCount / unresolvedCount / completion. That terminal line is present on the ' +
+      'failure path too, because the 200 status is committed with the first line and can no ' +
+      'longer express a mid-stream failure - a client that reaches end-of-body without it ' +
+      'must treat the run as truncated. {"kind":"keep-alive"} lines appear during a quiet ' +
+      'period and carry no data. Disconnecting cancels further marketplace work. The 200 body ' +
+      'is a SEQUENCE of the lines described below, not one object; the connection gate is ' +
+      'checked before the first line, so 404 / 409 / 422 still arrive as a real status.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'NDJSON stream; the schema describes one line.',
+    schema: resolveCategoryStreamLineSchema,
+  })
+  @ApiResponse({ status: 404, description: 'Connection not found.' })
+  @ApiResponse({ status: 409, description: 'Connection disabled.' })
+  @ApiResponse({ status: 422, description: 'Connection adapter does not support OfferManager.' })
+  async resolveCategoriesStream(
+    @Param('connectionId') connectionId: string,
+    @Body() dto: ResolveCategoryBatchRequestDto,
+    @Res() res: Response
+  ): Promise<void> {
+    // A disconnect is the whole point of this route: the batch route kept
+    // spending the operator's marketplace quota after the SPA gave up at 30 s,
+    // because nothing told the resolver the reader had left.
+    //
+    // The listener is on the RESPONSE, never on the request. Since Node 16 the
+    // `IncomingMessage` emits 'close' as soon as its body has been consumed, and
+    // `express.json()` consumes it before this handler runs - so `req.on('close')`
+    // fires about a millisecond into every healthy request and would abort the
+    // resolver on every call, leaving each response a lone terminal line with
+    // zero results. `res` closes when the socket does, and `writableFinished`
+    // separates "the client left" from "we finished writing the body".
+    const abort = new AbortController();
+    const onClientClose = (): void => {
+      if (!res.writableFinished) {
+        abort.abort();
+      }
+    };
+    res.on('close', onClientClose);
+
+    let committed = false;
+    let terminalWritten = false;
+    let keepAlive: ReturnType<typeof setInterval> | null = null;
+    // Held so the `finally` can close a generator this loop abandoned. Cleared
+    // once the loop drains it normally.
+    let streamIterator: AsyncIterator<EanCategoryMatchStreamEvent> | null = null;
+
+    const stopKeepAlive = (): void => {
+      if (keepAlive !== null) {
+        clearInterval(keepAlive);
+        keepAlive = null;
+      }
+    };
+
+    const writeLine = (line: ResolveCategoryStreamLine): void => {
+      if (res.writableEnded || res.destroyed) {
+        return;
+      }
+      res.write(`${JSON.stringify(line)}\n`);
+    };
+
+    // Re-armed after every real line, so the filler only ever appears in an
+    // actual gap rather than interleaved with a fast-flowing stream.
+    const armKeepAlive = (): void => {
+      stopKeepAlive();
+      keepAlive = setInterval(
+        () => writeLine(RESOLVE_CATEGORY_STREAM_KEEP_ALIVE_LINE),
+        RESOLVE_CATEGORY_STREAM_KEEP_ALIVE_INTERVAL_MS
+      );
+    };
+
+    let resolvedWritten = 0;
+    let unresolvedWritten = 0;
+
+    const writeEvent = (event: EanCategoryMatchStreamEvent): void => {
+      // "Exactly one terminal line, always last" is the contract the client
+      // reads to tell a truncated stream from a finished one, so anything a
+      // producer emits after its terminal is dropped rather than trusted - a
+      // late `result` would be as damaging as a second `done`.
+      if (terminalWritten) {
+        return;
+      }
+      if (event.kind === 'result') {
+        if (event.result.kind === 'matched') {
+          resolvedWritten += 1;
+        } else {
+          unresolvedWritten += 1;
+        }
+      }
+      if (event.kind === 'done') {
+        terminalWritten = true;
+      }
+      writeLine(event);
+      // The keep-alive must never be re-armed past the terminal line, or the
+      // filler could land after it and break the "always last" guarantee.
+      if (terminalWritten) {
+        stopKeepAlive();
+        return;
+      }
+      armKeepAlive();
+    };
+
+    try {
+      // Explicit gate, awaited before a single byte is written (#2209 review
+      // finding 2). It costs one connection lookup and makes no marketplace
+      // call, so an unknown / disabled / non-marketplace connection is answered
+      // with a real 404 / 409 / 422 while the status is still free. Inferring
+      // that verdict from the first stream event instead would put the first
+      // GTIN lookup - which can burn a `Retry-After` sleep or several backoff
+      // attempts inside the marketplace client - ahead of the first byte and
+      // ahead of the keep-alive timer, which is exactly the 30 s client abort
+      // this route exists to remove.
+      await this.categoryResolution.assertStreamableConnection(connectionId);
+
+      // Gate passed. Nothing above writes a byte, so the status was still free
+      // to be an error; from here on it is committed and every failure has to be
+      // reported in the body instead.
+      res.statusCode = HttpStatus.OK;
+      res.setHeader('Content-Type', RESOLVE_CATEGORY_STREAM_CONTENT_TYPE);
+      // `no-transform` asks intermediaries not to re-encode (and so not to
+      // buffer) the body; `X-Accel-Buffering: no` is the one nginx actually
+      // honours for `proxy_buffering`, and is ignored by intermediaries that do
+      // not know it. Neither replaces the deployment-side guidance in epic
+      // #2205, but a buffering proxy reintroduces the very cliff this route
+      // removes, so the part code can own is set here.
+      res.setHeader('Cache-Control', 'no-cache, no-transform');
+      res.setHeader('X-Accel-Buffering', 'no');
+      res.flushHeaders();
+      committed = true;
+      // Armed before the first marketplace call, so a slow or rate-limited
+      // first lookup cannot pass as a dead socket.
+      armKeepAlive();
+
+      const iterator = this.categoryResolution
+        .resolveCategoriesStream(
+          connectionId,
+          {
+            // Same mapping as `resolveCategoriesBatch`; deliberately not
+            // factored out, so this route cannot alter the batch route's
+            // behaviour.
+            items: dto.items.map((item) => ({
+              variantId: item.variantId,
+              ean: item.ean ?? null,
+              ...(item.sourceCategoryIds && item.sourceCategoryIds.length > 0
+                ? { sourceCategoryIds: item.sourceCategoryIds }
+                : {}),
+            })),
+          },
+          { signal: abort.signal }
+        )
+        [Symbol.asyncIterator]();
+
+      streamIterator = iterator;
+      let next = await iterator.next();
+      while (!next.done) {
+        writeEvent(next.value);
+        next = await iterator.next();
+      }
+      // Ran to completion on its own, so there is nothing left suspended and the
+      // `finally` below must not call `return()` on a finished generator.
+      streamIterator = null;
+    } catch (error) {
+      if (!committed) {
+        // Only the gate can land here, and it wrote nothing, so the exception is
+        // free to reach the global filters as a real status.
+        if (error instanceof AdapterCapabilityNotSupportedException) {
+          // Mirrors the batch route: the connection is not an OfferManager
+          // marketplace at all.
+          throw new UnprocessableEntityException(error.message);
+        }
+        throw error;
+      }
+      // Past the first line the status is spent, so the only honest signal left
+      // is the terminal line the `finally` block guarantees.
+      this.logger.error(
+        `Category resolution stream failed mid-body (connection=${connectionId})`,
+        error instanceof Error ? error.stack : String(error)
+      );
+    } finally {
+      stopKeepAlive();
+      res.off('close', onClientClose);
+      if (streamIterator !== null) {
+        // The loop left the generator suspended at a `yield` - the reachable
+        // cause is `writeEvent`/`res.write` throwing part-way through. Without
+        // this the core generator never resumes, so its own `finally` never runs
+        // and the adapter's abort listener is never disposed. `return()` is
+        // best-effort: it is the cleanup path, and a throw from it would replace
+        // the real error with a cleanup one.
+        try {
+          await streamIterator.return?.();
+        } catch {
+          // Nothing actionable, and the terminal line below is what the client
+          // reads. Deliberately swallowed rather than logged: this runs on the
+          // error path of an already-logged failure.
+        }
+      }
+      if (committed) {
+        if (!terminalWritten) {
+          // Core emits its own `failed` terminal before rethrowing, so this only
+          // covers a producer that dies without one. The client must never have
+          // to guess, so synthesise it - tallied from the lines actually written,
+          // which is what a resume needs.
+          writeLine({
+            kind: 'done',
+            resolvedCount: resolvedWritten,
+            unresolvedCount: unresolvedWritten,
+            completion: 'failed',
+            // A synthesised terminal cannot know whether a catalogue was
+            // consulted, and `false` would tell the consumer these results carry
+            // no information - which is a stronger claim than "the producer
+            // died". Results already written are real, so report `true`.
+            catalogueLookupPerformed: true,
+          });
+        }
+        // Same guard as `writeLine`: reachable when the client disconnects
+        // between the last write and here, and `end()` on a destroyed socket
+        // throws an unhandled `ERR_STREAM_WRITE_AFTER_END` out of a `finally`.
+        if (!res.writableEnded && !res.destroyed) {
+          res.end();
+        }
+      }
     }
   }
 

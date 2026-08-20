@@ -46,7 +46,8 @@
  * a preference: `pnpm audit` reported no advisory against `2.17.5` when it was
  * pinned, and that has to be re-checked rather than assumed. Lift it once the
  * repo can load ESM under Jest - and if an advisory lands against `2.17.5`
- * first, lift it immediately and solve the runner problem then.
+ * first, lift it immediately and solve the runner problem then. The periodic
+ * re-check is tracked as #2233 so it is an assigned item, not a remembered one.
  *
  * DOMPurify is the browser-side counterpart and is NOT usable here: its own
  * README states Node use requires a current jsdom and that `happy-dom` is not

@@ -349,6 +349,21 @@ describe('applyDescriptionFormat', () => {
     it('should remove an element left empty by the pass', () => {
       expect(applyDescriptionFormat('<p><u></u></p><p>real</p>', ALLEGRO)).toBe('<p>real</p>');
     });
+
+    it('should still recognise an empty element whose attribute value contains a bracket', () => {
+      // Unreachable through any shipped format, whose attribute allowlists are
+      // href-only - but a `>` inside an attribute value is exactly what a
+      // free-form allowlist (`title`, `alt`) would let through, and the collapse
+      // has to keep working when someone widens one.
+      const titled: DescriptionFormat = {
+        ...SHOP,
+        allowedAttributes: { a: ['href', 'title'] },
+      };
+
+      expect(applyDescriptionFormat('<p><a title="a > b"></a></p><p>real</p>', titled)).toBe(
+        '<p>real</p>',
+      );
+    });
   });
 
   describe('real PrestaShop TinyMCE markup, end to end', () => {

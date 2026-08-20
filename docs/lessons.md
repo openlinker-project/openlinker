@@ -274,6 +274,15 @@ When a lesson hardens into a rule, **graduate it** to the canonical doc and leav
 **Rule**: When a union of string literals must be duplicated across the FE/BE boundary, add a textual-parse invariant script (`scripts/check-*-mirror.mjs`, no TS import, `--self-check` for the pure differ) and chain it into `check:invariants` - the same shape as `check-service-interfaces.mjs`. A comment is not enforcement.
 **Applies to**: `scripts/check-permission-mirror.mjs`; any future FE/BE mirrored `as const` vocabulary.
 **Source**: #1826 review round (PR #1905).
+
+## A hand-copied FE/BE *number* is the same mirror class as a literal union - guard it, and guard the differently-named twin too
+
+**Context**: The streamed resolve route (#2209/#2211) duplicated three things across the boundary, each with only a prose "mirrors X" comment: `RESOLVE_CATEGORY_STREAM_KEEP_ALIVE_INTERVAL_MS` (API stream DTO ↔ `listings.api.ts`), the items cap (`RESOLVE_CATEGORY_ITEMS_MAX`, the route's `@ArrayMaxSize`, ↔ the FE's `RESOLVE_CATEGORY_STREAM_CHUNK_SIZE`), and the FE mirror of `EanCategoryMatchStreamEvent`.
+**Problem**: The lesson above was written about *string unions*, so a duplicated **number** read as out of its scope - yet it fails harder and more quietly. The client derives its idle ceiling as `interval * 6` from its own copy, so raising only the server's interval past that ceiling aborts every healthy long run with "the resolver stopped sending data", and both sides stay green because each is unit-tested against its own copy. The cap is worse to spot because the two constants are deliberately named differently (a limit vs a chunk size), so no grep for a shared name finds the pair: reduce the server cap without touching the FE and every large batch 400s at the validation pipe.
+**Rule**: Treat *any* value duplicated across the FE/BE boundary as needing a `check:invariants` guard - numbers included, and especially a pair whose two names differ (state the pairing in the guard, since nothing else records it). For a duplicated *shape*, compare it structurally rather than as a text diff: derive the `kind` discriminants from each side's union members, compare property NAME sets (keeping `?`), and skip types the two sides declare independently. Blank comments before parsing (preserving offsets, so line numbers stay reportable) or a `{@link}` in a JSDoc block breaks the brace matching. Also check the authoritative side against *itself*: an `as const` kinds array sitting beside the union it describes can rot on its own, and only the BE has one to rot.
+**Applies to**: `scripts/check-resolve-stream-mirror.mjs` (keep-alive interval, items cap, stream-event vocabulary); any FE/BE mirrored constant or interface. NOT covered by that guard and still comment-only: `EanMatchResult` itself, the `* 6` idle-ceiling factor, and the Swagger schema in the stream DTO.
+**Source**: PR #2214 review (finding I9), guard added in the same PR.
+
 ## An upsert overlay must not assign a lifecycle-state column unconditionally when two decoupled writers share the row
 
 **Context**: `webhook_deliveries` is stamped by the ingress API (`received`, then `published` after the stream publish) and, independently, by the stream consumer that reads that publish (`job_enqueued` / `deadlettered`). Both go through the same `INSERT ... ON CONFLICT DO UPDATE`, whose set-list is built from the caller-supplied overlay columns.
@@ -331,6 +340,7 @@ When a lesson hardens into a rule, **graduate it** to the canonical doc and leav
 **Rule.** A pin that exists for a reason belongs in this file as well as in a header comment, and the header should cite the entry. The pin is not a preference: it is a liability, so lift it immediately if an advisory lands on `2.17.5` - re-check `pnpm audit` first, and expect to have to solve the ESM/CJS question in the same change rather than deferring it.
 
 **Applies to**: `libs/shared/package.json`, `libs/shared/src/html/sanitize-stored-html.ts`, and any future exact pin on a security-relevant transitive.
+**Tracked**: [#2233](https://github.com/openlinker-project/openlinker/issues/2233) - the periodic `pnpm audit` re-check against `2.17.5`, so the pin is somebody's assigned item and not only a rule in this file.
 
 ## A gating primitive built for write affordances does not gate content — check which policy demo mode needs before reusing it
 

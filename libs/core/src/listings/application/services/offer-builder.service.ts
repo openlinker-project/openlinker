@@ -31,11 +31,6 @@
  */
 
 import { Inject, Injectable } from '@nestjs/common';
-import {
-  formatDescriptionForDestination,
-  resolveOfferDescriptionFormat,
-} from './description-format-resolution';
-
 import { Logger } from '@openlinker/shared/logging';
 import {
   CONNECTION_PORT_TOKEN,
@@ -82,6 +77,10 @@ import type { IOfferBuilderService } from '../interfaces/offer-builder.service.i
 import type { BuildCreateOfferCommandInput } from '../types/offer-builder.types';
 import type { AttributeProjectionMetadata } from '../types/attribute-projection.types';
 import { buildProjectionMetadata } from './build-projection-metadata';
+import {
+  formatDescriptionForDestination,
+  resolveOfferDescriptionFormat,
+} from './description-format-resolution';
 import { flattenAttributes } from './variant-attributes.util';
 
 @Injectable()
