@@ -40,7 +40,7 @@ describe('orderSalesAggregation', () => {
         revenue: 0,
         orderCount: 0,
         averageOrderValue: 0,
-        medianOrderValue: 0,
+        medianOrderValue: null,
         unitsSold: 0,
         cancelledCount: 0,
         cancelledValue: 0,
@@ -148,7 +148,7 @@ describe('orderSalesAggregation', () => {
       expect(result.headline.cancelledValue).toBe(80);
     });
 
-    it('reports 0 average and median (not NaN) when every order in range is cancelled', () => {
+    it('reports 0 average (not NaN) and a null median when every order in range is cancelled', () => {
       const result = buildSalesAndChannelAnalytics({
         filters: filters(),
         dailyRows: [row({ revenue: 0, orderCount: 0, cancelledCount: 3, cancelledValue: 300 })],
@@ -158,7 +158,9 @@ describe('orderSalesAggregation', () => {
       });
 
       expect(result.headline.averageOrderValue).toBe(0);
-      expect(result.headline.medianOrderValue).toBe(0);
+      // null, not 0 (#1987 review, suggestion 2) — no stamped order matched
+      // the range, distinct from a genuine zero-value median.
+      expect(result.headline.medianOrderValue).toBeNull();
       expect(result.headline.cancelledCount).toBe(3);
       expect(result.headline.cancelledValue).toBe(300);
     });
@@ -292,6 +294,51 @@ describe('orderSalesAggregation', () => {
 
       expect(result.headline.currency).toBeNull();
       expect(result.channels[0].currency).toBeNull();
+    });
+
+    it('reports a null currency (not the first row seen) when rows disagree on reportingCurrency (#1987 review, IMPORTANT 1)', () => {
+      // Guards against a first-wins reintroduction: two stamped rows disagree
+      // (e.g. an in-flight #2096 restatement), so labelling `revenue` with
+      // either one would be a silently wrong sum-plus-label.
+      const result = buildSalesAndChannelAnalytics({
+        filters: filters(),
+        dailyRows: [
+          row({ sourceConnectionId: 'conn-a', revenue: 100, orderCount: 1, reportingCurrency: 'EUR' }),
+          row({ sourceConnectionId: 'conn-a', revenue: 100, orderCount: 1, reportingCurrency: 'PLN' }),
+        ],
+        medianOrderValue: 100,
+        unitsByConnection: new Map(),
+        earliestOrderDateByConnection: new Map(),
+      });
+
+      expect(result.headline.currency).toBeNull();
+      expect(result.headline.revenue).toBe(200);
+      expect(result.channels[0].currency).toBeNull();
+    });
+
+    it('does NOT treat a row with zero stamped orders as poisoning the label', () => {
+      // A row with orderCount 0 legitimately reports reportingCurrency: null
+      // per the repository's own guard — that must not be conflated with an
+      // actual disagreement between two stamped rows.
+      const result = buildSalesAndChannelAnalytics({
+        filters: filters(),
+        dailyRows: [
+          row({ sourceConnectionId: 'conn-a', revenue: 100, orderCount: 1, reportingCurrency: 'EUR' }),
+          row({
+            sourceConnectionId: 'conn-a',
+            revenue: 0,
+            orderCount: 0,
+            unconvertedCount: 1,
+            unconvertedValue: 10,
+            reportingCurrency: null,
+          }),
+        ],
+        medianOrderValue: 100,
+        unitsByConnection: new Map(),
+        earliestOrderDateByConnection: new Map(),
+      });
+
+      expect(result.headline.currency).toBe('EUR');
     });
   });
 

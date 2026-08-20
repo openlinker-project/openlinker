@@ -12,10 +12,12 @@
  * Currency correctness (#2049/ADR-040 follow-up): `revenue` (headline and per
  * channel) is `SUM(DailyOrderAggregateRow.revenue)`, itself a
  * `reportingTotalAmount` sum restricted to stamped orders at the repository
- * layer — one comparable currency, never a naive cross-currency sum. `currency`
- * is picked from the first row carrying a non-null `reportingCurrency` (rows
- * should agree; see the type's own doc comment for the one caveat this
- * doesn't handle: an in-flight #2096 restatement). `unconvertedCount`/
+ * layer — one comparable currency, never a naive cross-currency sum.
+ * `currency` is `null` unless every row with at least one stamped order
+ * agrees on the same `reportingCurrency`, via `resolveUniformReportingCurrency`
+ * (#1987 review, IMPORTANT 1 — see the type's own doc comment for the one
+ * caveat that can make rows disagree: an in-flight #2096 restatement).
+ * `unconvertedCount`/
  * `unconvertedValue` roll up the rows' own unconverted totals unchanged — this
  * function does no currency arithmetic of its own. Gross/net tax-treatment
  * normalization remains a separate, not-yet-scoped effort.
@@ -68,13 +70,16 @@ export function buildSalesAndChannelAnalytics(
   const headlineUnitsSold = sum([...unitsByConnection.values()], (units) => units);
   const headlineUnconvertedCount = sum(dailyRows, (r) => r.unconvertedCount);
   const headlineUnconvertedValue = sum(dailyRows, (r) => r.unconvertedValue);
-  const currency = pickCurrency(dailyRows);
+  const currency = resolveUniformReportingCurrency(dailyRows);
 
   const headline = {
     revenue: headlineRevenue,
     orderCount: headlineOrderCount,
     averageOrderValue: headlineOrderCount > 0 ? headlineRevenue / headlineOrderCount : 0,
-    medianOrderValue: medianOrderValue ?? 0,
+    // Passed through verbatim, `null` included (#1987 review, suggestion 2) —
+    // flattening to `0` made "no stamped order in range" indistinguishable
+    // from a genuine zero-value median.
+    medianOrderValue,
     unitsSold: headlineUnitsSold,
     cancelledCount: headlineCancelledCount,
     cancelledValue: headlineCancelledValue,
@@ -100,7 +105,7 @@ export function buildSalesAndChannelAnalytics(
         unitsSold: unitsByConnection.get(sourceConnectionId) ?? 0,
         cancelledCount: sum(rows, (r) => r.cancelledCount),
         cancelledValue: sum(rows, (r) => r.cancelledValue),
-        currency: pickCurrency(rows),
+        currency: resolveUniformReportingCurrency(rows),
         unconvertedCount: sum(rows, (r) => r.unconvertedCount),
         unconvertedValue: sum(rows, (r) => r.unconvertedValue),
         unconvertedCurrency: resolveUniformUnconvertedCurrency(rows),
@@ -124,14 +129,36 @@ function sum<T>(items: T[], pick: (item: T) => number): number {
 }
 
 /**
- * The reporting currency to label a set of rows' `revenue` with — the first
- * non-null `reportingCurrency` found, or `null` when every row is
- * unconverted. Rows are expected to agree (one system-wide reporting
- * currency); see the type's own doc comment for the one case that can
- * violate that — an in-flight #2096 restatement.
+ * The reporting currency to label a set of rows' `revenue` with (#1987
+ * review, IMPORTANT 1) — `null` unless every row carrying at least one
+ * stamped order agrees on the same `reportingCurrency`. The repository
+ * already guards this within a single (day, connection) bucket (`NULL` when
+ * that bucket itself mixes currencies); this mirrors the same "nothing to
+ * report" vs. "mixed" distinction {@link resolveUniformUnconvertedCurrency}
+ * makes, across the set of rows being summed here. A row with zero stamped
+ * orders is skipped rather than treated as poisoning: it can legitimately
+ * carry `reportingCurrency: null` per the repository's own guard, and that
+ * must not be conflated with an actual disagreement. Rows are otherwise
+ * expected to agree (one system-wide reporting currency); see the type's own
+ * doc comment for the one case that can violate that — an in-flight #2096
+ * restatement.
  */
-function pickCurrency(rows: DailyOrderAggregateRow[]): string | null {
-  return rows.find((r) => r.reportingCurrency !== null)?.reportingCurrency ?? null;
+function resolveUniformReportingCurrency(rows: DailyOrderAggregateRow[]): string | null {
+  let currency: string | null = null;
+  for (const row of rows) {
+    if (row.orderCount === 0) {
+      continue;
+    }
+    if (row.reportingCurrency == null) {
+      return null;
+    }
+    if (currency == null) {
+      currency = row.reportingCurrency;
+    } else if (currency !== row.reportingCurrency) {
+      return null;
+    }
+  }
+  return currency;
 }
 
 /**

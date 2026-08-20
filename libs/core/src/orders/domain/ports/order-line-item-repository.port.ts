@@ -31,6 +31,15 @@ export interface OrderLineItemRepositoryPort {
    * from the parent order, #1985), not the join. A connection with zero
    * matching lines is simply absent from the returned Map (mirrors the
    * "absent key = no data" convention used elsewhere in this context).
+   *
+   * Scoped differently from `orderCount`/`revenue` (#1987 review, suggestion
+   * 1): unlike {@link OrderRecordRepositoryPort.getDailyOrderAggregates},
+   * this reads the order-level `reportingCurrency IS NOT NULL` restriction
+   * OFF — units aren't money, so an unstamped order's items still count here
+   * even though the same order is excluded from `orderCount`. A caller
+   * computing units-per-order therefore divides by a denominator that can be
+   * smaller than the numerator's population; don't build that ratio without
+   * accounting for the mismatch.
    */
   getUnitsSoldByConnection(filters: SalesAnalyticsFilters): Promise<Map<string, number>>;
 

@@ -70,7 +70,12 @@ export interface DailyOrderAggregateRow {
   cancelledValue: number;
   /**
    * The `reportingCurrency` this row's `revenue` is expressed in — `null`
-   * only when every order in the group is unconverted.
+   * when every order in the group is unconverted, OR when the stamped orders
+   * in this (day, connection) bucket already disagree on `reportingCurrency`
+   * (#1987 review, IMPORTANT 1 — an in-flight #2096 restatement can leave two
+   * values live at once). Guarded at the repository layer with the same
+   * `COUNT(DISTINCT ...) <= 1` pattern as `unconvertedCurrency`, so a mixed
+   * bucket is never mislabelled with whichever value happened to sort first.
    */
   reportingCurrency: string | null;
 }
@@ -92,7 +97,15 @@ export interface SalesAnalyticsHeadline {
   revenue: number;
   orderCount: number;
   averageOrderValue: number;
-  medianOrderValue: number;
+  /**
+   * `null` when no stamped order matches the range (the underlying
+   * `PERCENTILE_CONT` has no rows to aggregate) — distinct from a genuine
+   * zero median (#1987 review, suggestion 2: `revenue`/`averageOrderValue`
+   * disambiguate the same "nothing to report" case via `currency: null`;
+   * median had no such companion before this, so it flattened both cases to
+   * the same `0`).
+   */
+  medianOrderValue: number | null;
   unitsSold: number;
   cancelledCount: number;
   cancelledValue: number;
