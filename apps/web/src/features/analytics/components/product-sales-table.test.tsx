@@ -17,6 +17,7 @@ function row(overrides: Partial<TopProductRow> = {}): TopProductRow {
     unconvertedRevenue: 0,
     unconvertedOrderCount: 0,
     currency: 'PLN',
+    unconvertedCurrency: null,
     channels: [
       { sourceConnectionId: 'conn-a', units: 2, revenue: 110, unconvertedRevenue: 0, currency: 'PLN' },
       { sourceConnectionId: 'conn-b', units: 2, revenue: 0, unconvertedRevenue: 50, currency: null },
@@ -172,6 +173,50 @@ describe('ProductSalesTable', () => {
 
     expect(await screen.findByLabelText('No SKU')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /Widget A/ })).toHaveAttribute('href', '/products/p1');
+  });
+
+  it('falls back to the native-currency evidence when the product carries no current-era stamp (#2049/ADR-040 bugfix)', async () => {
+    const apiClient = createMockApiClient({
+      analytics: {
+        getTopProducts: vi.fn().mockResolvedValue(
+          result([
+            row({
+              revenue: 0,
+              currency: null,
+              unconvertedRevenue: 100,
+              unconvertedCurrency: 'EUR',
+              unconvertedOrderCount: 1,
+            }),
+          ])
+        ),
+      },
+      connections: { list: vi.fn().mockResolvedValue(CONNECTIONS) },
+    });
+
+    renderWithProviders(<ProductSalesTable filters={FILTERS} />, { apiClient });
+
+    await screen.findByText('Widget A');
+    expect(screen.queryByText('No FX-stamped order for this product in range')).not.toBeInTheDocument();
+    expect(screen.getByTitle(/informational only/)).toBeInTheDocument();
+  });
+
+  it('renders an empty value when a product has neither a current-era stamp nor unconverted evidence', async () => {
+    const apiClient = createMockApiClient({
+      analytics: {
+        getTopProducts: vi.fn().mockResolvedValue(
+          result([
+            row({ revenue: 0, currency: null, unconvertedRevenue: 0, unconvertedCurrency: null }),
+          ])
+        ),
+      },
+      connections: { list: vi.fn().mockResolvedValue(CONNECTIONS) },
+    });
+
+    renderWithProviders(<ProductSalesTable filters={FILTERS} />, { apiClient });
+
+    expect(
+      await screen.findByLabelText('No FX-stamped order for this product in range')
+    ).toBeInTheDocument();
   });
 
   it('renders an empty state when there are no orders in range', async () => {

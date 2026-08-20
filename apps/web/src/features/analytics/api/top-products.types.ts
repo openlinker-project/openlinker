@@ -30,6 +30,8 @@ export interface TopProductRow {
   unconvertedRevenue: number;
   unconvertedOrderCount: number;
   currency: string | null;
+  /** The one native currency `unconvertedRevenue` is expressed in, or `null` when it mixes currencies (or is `0`). */
+  unconvertedCurrency: string | null;
   channels: ProductChannelSales[];
   /** Listing-capable connections where this product has sales but no listed variant. */
   missingFromConnectionIds: string[];

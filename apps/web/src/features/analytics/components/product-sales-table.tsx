@@ -36,6 +36,19 @@
  * by-channel table (#1990) already resolved this identical tension the same
  * way. Do not relabel this column without also revisiting that decision.
  *
+ * Revenue cell fallback (#2049/ADR-040): a product whose only orders in
+ * range were stamped under a PREVIOUS reporting-currency setting (a
+ * different currency era, per the #1988 bugfix) has `currency: null` — same
+ * as a never-stamped product. Rather than rendering a bare `EmptyValue` for
+ * either case, the cell falls back to `unconvertedRevenue`/
+ * `unconvertedCurrency` (when that evidence is itself in one uniform
+ * currency) so an operator still sees the figure, clearly marked
+ * informational — mirroring `ChannelSalesTable`'s identical fallback for the
+ * #1987 by-channel read. This does NOT render two currencies side by side
+ * for one row (the mockup's two-money-column "currency-split" mode is
+ * out of scope, see the #1991 implementation plan § non-goals) — it shows
+ * whichever one figure the row actually has.
+ *
  * Thumbnails come from the product catalogue (`Product.images[0]`), joined
  * FE-side via `useProductsBatchQuery` — never from a per-channel order-item
  * image field, which is only populated by some source adapters and would
@@ -67,6 +80,23 @@ import {
 } from '../lib/top-products-view-model';
 
 const DEFAULT_LIMIT = 20;
+
+const UNCONVERTED_EVIDENCE_TITLE =
+  'Native-currency evidence with no current-era FX stamp — informational only, not part of ranked revenue.';
+
+function renderRevenueCell(row: TopProductRow): ReactElement {
+  if (row.currency) {
+    return <>{formatAmount(row.revenue, row.currency)}</>;
+  }
+  if (row.unconvertedCurrency) {
+    return (
+      <span title={UNCONVERTED_EVIDENCE_TITLE}>
+        {formatAmount(row.unconvertedRevenue, row.unconvertedCurrency)}
+      </span>
+    );
+  }
+  return <EmptyValue label="No FX-stamped order for this product in range" />;
+}
 
 const SORT_OPTIONS = [
   { value: 'revenue' as const, label: 'By revenue' },
@@ -188,12 +218,7 @@ export function ProductSalesTable({ filters }: ProductSalesTableProps): ReactEle
       id: 'revenue',
       header: sortBy === 'revenue' ? 'Revenue ↓' : 'Revenue',
       align: 'right',
-      cell: (row) =>
-        row.currency ? (
-          formatAmount(row.revenue, row.currency)
-        ) : (
-          <EmptyValue label="No FX-stamped order for this product in range" />
-        ),
+      cell: renderRevenueCell,
     },
     {
       id: 'units',
@@ -236,7 +261,7 @@ export function ProductSalesTable({ filters }: ProductSalesTableProps): ReactEle
           subtitle: (row) => row.sku ?? undefined,
           summary: (row) => (
             <>
-              {row.currency ? formatAmount(row.revenue, row.currency) : <EmptyValue label="No revenue figure" />}
+              {renderRevenueCell(row)}
               {' · '}
               {intFormat.format(totalUnits(row))} units
             </>

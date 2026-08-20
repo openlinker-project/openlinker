@@ -23,6 +23,7 @@ function row(overrides: Partial<TopProductRow> = {}): TopProductRow {
     unconvertedRevenue: 0,
     unconvertedOrderCount: 0,
     currency: 'PLN',
+    unconvertedCurrency: null,
     channels: [channel()],
     missingFromConnectionIds: [],
     ...overrides,
