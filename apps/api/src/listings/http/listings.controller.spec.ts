@@ -4,9 +4,11 @@
  * @module apps/api/src/listings/http
  */
 import 'reflect-metadata';
+import { EventEmitter } from 'events';
 import { NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import type { TestingModule } from '@nestjs/testing';
 import { Test } from '@nestjs/testing';
+import type { Request, Response } from 'express';
 
 import { ROLES_KEY } from '../../auth/decorators/roles.decorator';
 
@@ -14,6 +16,7 @@ import type {
   CatalogProduct,
   CatalogProductMatchResult,
   CategoryParameter,
+  EanCategoryMatchStreamEvent,
   EanMatchResult,
   OfferManagerPort,
   SellerPolicies,
@@ -25,6 +28,7 @@ import {
   OfferNotFoundOnMarketplaceException,
 } from '@openlinker/core/listings';
 import {
+  ConnectionDisabledException,
   ConnectionNotFoundException,
   IdentifierMapping,
 } from '@openlinker/core/identifier-mapping';
@@ -62,6 +66,8 @@ import type { ProductVariant, ProductVariantRepositoryPort } from '@openlinker/c
 import { JOB_ENQUEUE_TOKEN } from '@openlinker/core/sync';
 import type { JobEnqueuePort } from '@openlinker/core/sync';
 
+import type { ResolveCategoryStreamLine } from './dto/resolve-category-stream.dto';
+import { RESOLVE_CATEGORY_STREAM_KEEP_ALIVE_INTERVAL_MS } from './dto/resolve-category-stream.dto';
 import { ListingsController } from './listings.controller';
 
 describe('ListingsController', () => {
@@ -1264,6 +1270,350 @@ describe('ListingsController', () => {
     });
   });
 
+
+  // ─── NDJSON category-resolution stream (#2209, epic #2205) ──────────────────
+  //
+  // Framing is the controller's whole job here, so these tests read the bytes
+  // rather than a return value: a fake express response records the lines, and a
+  // fake request lets the disconnect be fired on demand. Everything about
+  // *resolution* is core's and is covered there.
+  describe('resolveCategoriesStream (#2209)', () => {
+    interface FakeRes {
+      statusCode: number;
+      headers: Record<string, string>;
+      chunks: string[];
+      writableEnded: boolean;
+      destroyed: boolean;
+      flushHeadersCalls: number;
+      setHeader: (name: string, value: string) => void;
+      flushHeaders: () => void;
+      write: (chunk: string) => boolean;
+      end: () => void;
+    }
+
+    function makeRes(): FakeRes {
+      const res: FakeRes = {
+        statusCode: 0,
+        headers: {},
+        chunks: [],
+        writableEnded: false,
+        destroyed: false,
+        flushHeadersCalls: 0,
+        setHeader: (name, value) => {
+          res.headers[name] = value;
+        },
+        flushHeaders: () => {
+          res.flushHeadersCalls += 1;
+        },
+        write: (chunk) => {
+          res.chunks.push(chunk);
+          return true;
+        },
+        end: () => {
+          res.writableEnded = true;
+        },
+      };
+      return res;
+    }
+
+    function makeReq(): EventEmitter {
+      return new EventEmitter();
+    }
+
+    function linesOf(res: FakeRes): ResolveCategoryStreamLine[] {
+      return res.chunks
+        .join('')
+        .split('\n')
+        .filter((line) => line.length > 0)
+        .map((line) => JSON.parse(line) as ResolveCategoryStreamLine);
+    }
+
+    function run(
+      res: FakeRes,
+      req: EventEmitter,
+      connectionId = 'conn-1'
+    ): Promise<void> {
+      return controller.resolveCategoriesStream(
+        connectionId,
+        { items: [{ variantId: 'v1', ean: '5901234567890' }, { variantId: 'v2' }] },
+        req as unknown as Request,
+        res as unknown as Response
+      );
+    }
+
+    /** Microtask boundary, so every fake producer is genuinely asynchronous. */
+    const tick = (): Promise<void> => Promise.resolve();
+
+    function streamOf(
+      ...events: EanCategoryMatchStreamEvent[]
+    ): () => AsyncGenerator<EanCategoryMatchStreamEvent> {
+      return async function* generate(): AsyncGenerator<EanCategoryMatchStreamEvent> {
+        for (const event of events) {
+          await tick();
+          yield event;
+        }
+      };
+    }
+
+    const matchedV1: EanCategoryMatchStreamEvent = {
+      kind: 'result',
+      variantId: 'v1',
+      result: { kind: 'matched', allegroCategoryId: '257933', productCardId: 'card-1' },
+    };
+    const noEanV2: EanCategoryMatchStreamEvent = {
+      kind: 'result',
+      variantId: 'v2',
+      result: { kind: 'no-ean' },
+    };
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    it('frames one JSON object per line and commits NDJSON headers before the first line', async () => {
+      categoryResolution.resolveCategoriesStream.mockImplementation(
+        streamOf(matchedV1, noEanV2, {
+          kind: 'done',
+          resolvedCount: 1,
+          unresolvedCount: 1,
+          completion: 'complete',
+        })
+      );
+      const res = makeRes();
+
+      await run(res, makeReq());
+
+      expect(res.statusCode).toBe(200);
+      expect(res.headers['Content-Type']).toBe('application/x-ndjson');
+      expect(res.headers['Cache-Control']).toBe('no-cache, no-transform');
+      expect(res.flushHeadersCalls).toBe(1);
+      // Every chunk is newline-terminated, so a client splitting on '\n' never
+      // sees a partial object.
+      expect(res.chunks.every((chunk) => chunk.endsWith('\n'))).toBe(true);
+      expect(linesOf(res)).toEqual([
+        matchedV1,
+        noEanV2,
+        { kind: 'done', resolvedCount: 1, unresolvedCount: 1, completion: 'complete' },
+      ]);
+      expect(res.writableEnded).toBe(true);
+    });
+
+    it('forwards the same item mapping the batch route uses, plus an abort signal', async () => {
+      categoryResolution.resolveCategoriesStream.mockImplementation(
+        streamOf({ kind: 'done', resolvedCount: 0, unresolvedCount: 0, completion: 'complete' })
+      );
+
+      await run(makeRes(), makeReq());
+
+      expect(categoryResolution.resolveCategoriesStream).toHaveBeenCalledWith(
+        'conn-1',
+        {
+          items: [
+            { variantId: 'v1', ean: '5901234567890' },
+            { variantId: 'v2', ean: null },
+          ],
+        },
+        { signal: expect.any(AbortSignal) }
+      );
+    });
+
+    it('writes exactly one terminal line even when the producer emits two', async () => {
+      categoryResolution.resolveCategoriesStream.mockImplementation(
+        streamOf(
+          matchedV1,
+          { kind: 'done', resolvedCount: 1, unresolvedCount: 0, completion: 'complete' },
+          { kind: 'done', resolvedCount: 9, unresolvedCount: 9, completion: 'complete' }
+        )
+      );
+      const res = makeRes();
+
+      await run(res, makeReq());
+
+      const terminals = linesOf(res).filter((line) => line.kind === 'done');
+      expect(terminals).toEqual([
+        { kind: 'done', resolvedCount: 1, unresolvedCount: 0, completion: 'complete' },
+      ]);
+    });
+
+    it("keeps core's failed terminal and does not reject when the stream throws mid-body", async () => {
+      // Core's own shape: the terminal is yielded, then the error is rethrown.
+      categoryResolution.resolveCategoriesStream.mockImplementation(
+        async function* generate(): AsyncGenerator<EanCategoryMatchStreamEvent> {
+          await tick();
+          yield matchedV1;
+          yield { kind: 'done', resolvedCount: 1, unresolvedCount: 0, completion: 'failed' };
+          throw new Error('allegro-503');
+        }
+      );
+      const res = makeRes();
+
+      await expect(run(res, makeReq())).resolves.toBeUndefined();
+
+      const lines = linesOf(res);
+      expect(lines).toHaveLength(2);
+      expect(lines[1]).toEqual({
+        kind: 'done',
+        resolvedCount: 1,
+        unresolvedCount: 0,
+        completion: 'failed',
+      });
+      expect(res.writableEnded).toBe(true);
+    });
+
+    it('synthesises a failed terminal when the producer dies without one', async () => {
+      categoryResolution.resolveCategoriesStream.mockImplementation(
+        async function* generate(): AsyncGenerator<EanCategoryMatchStreamEvent> {
+          await tick();
+          yield matchedV1;
+          yield noEanV2;
+          throw new Error('socket hang up');
+        }
+      );
+      const res = makeRes();
+
+      await run(res, makeReq());
+
+      // Tallied from the lines actually written, so a resuming client is not
+      // told the run delivered nothing.
+      expect(linesOf(res).at(-1)).toEqual({
+        kind: 'done',
+        resolvedCount: 1,
+        unresolvedCount: 1,
+        completion: 'failed',
+      });
+    });
+
+    it('emits ignorable keep-alive lines while the resolver is quiet', async () => {
+      jest.useFakeTimers();
+      let release = (): void => undefined;
+      const quiet = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      categoryResolution.resolveCategoriesStream.mockImplementation(
+        async function* generate(): AsyncGenerator<EanCategoryMatchStreamEvent> {
+          yield matchedV1;
+          await quiet;
+          yield { kind: 'done', resolvedCount: 1, unresolvedCount: 0, completion: 'complete' };
+        }
+      );
+      const res = makeRes();
+
+      const handled = run(res, makeReq());
+      await jest.advanceTimersByTimeAsync(RESOLVE_CATEGORY_STREAM_KEEP_ALIVE_INTERVAL_MS * 2 + 1);
+
+      expect(linesOf(res).filter((line) => line.kind === 'keep-alive')).toHaveLength(2);
+
+      release();
+      await handled;
+
+      // The filler stops with the stream and never displaces the terminal line.
+      expect(linesOf(res).at(-1)).toEqual({
+        kind: 'done',
+        resolvedCount: 1,
+        unresolvedCount: 0,
+        completion: 'complete',
+      });
+      expect(jest.getTimerCount()).toBe(0);
+    });
+
+    it('aborts the signal handed to core when the client disconnects', async () => {
+      let signal: AbortSignal | undefined;
+      let release = (): void => undefined;
+      const quiet = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      categoryResolution.resolveCategoriesStream.mockImplementation((_connectionId, _input, options) => {
+        signal = options?.signal;
+        return (async function* generate(): AsyncGenerator<EanCategoryMatchStreamEvent> {
+          yield matchedV1;
+          await quiet;
+          if (options?.signal?.aborted) {
+            yield { kind: 'done', resolvedCount: 1, unresolvedCount: 0, completion: 'aborted' };
+            return;
+          }
+          yield { kind: 'done', resolvedCount: 1, unresolvedCount: 1, completion: 'complete' };
+        })();
+      });
+      const res = makeRes();
+      const req = makeReq();
+
+      const handled = run(res, req);
+      await Promise.resolve();
+      expect(signal?.aborted).toBe(false);
+
+      req.emit('close');
+      release();
+      await handled;
+
+      expect(signal?.aborted).toBe(true);
+      expect(linesOf(res).at(-1)).toEqual({
+        kind: 'done',
+        resolvedCount: 1,
+        unresolvedCount: 0,
+        completion: 'aborted',
+      });
+      // The close listener is detached, so a reused socket cannot abort a later
+      // request through this handler's controller.
+      expect(req.listenerCount('close')).toBe(0);
+    });
+
+    it.each([
+      ['unknown connection (404)', new ConnectionNotFoundException('conn-missing')],
+      ['disabled connection (409)', new ConnectionDisabledException('conn-1')],
+    ])('propagates a %s gate error with nothing written', async (_label, gateError) => {
+      // Core reports the gate as a failed terminal and rethrows on the next
+      // pull. Nothing is on the wire yet, so the exception must still reach the
+      // global filters that map it to a real status.
+      categoryResolution.resolveCategoriesStream.mockImplementation(
+        async function* generate(): AsyncGenerator<EanCategoryMatchStreamEvent> {
+          await tick();
+          yield { kind: 'done', resolvedCount: 0, unresolvedCount: 0, completion: 'failed' };
+          throw gateError;
+        }
+      );
+      const res = makeRes();
+
+      await expect(run(res, makeReq())).rejects.toBe(gateError);
+
+      expect(res.chunks).toEqual([]);
+      expect(res.headers).toEqual({});
+      expect(res.flushHeadersCalls).toBe(0);
+      expect(res.writableEnded).toBe(false);
+    });
+
+    it('maps a non-marketplace connection to 422 with nothing written', async () => {
+      categoryResolution.resolveCategoriesStream.mockImplementation(
+        async function* generate(): AsyncGenerator<EanCategoryMatchStreamEvent> {
+          await tick();
+          yield { kind: 'done', resolvedCount: 0, unresolvedCount: 0, completion: 'failed' };
+          throw new AdapterCapabilityNotSupportedException('conn-1', 'OfferManager');
+        }
+      );
+      const res = makeRes();
+
+      await expect(run(res, makeReq())).rejects.toBeInstanceOf(UnprocessableEntityException);
+
+      expect(res.chunks).toEqual([]);
+      expect(res.flushHeadersCalls).toBe(0);
+    });
+
+    it('streams an already-aborted run as a lone terminal line', async () => {
+      // Epic #2205 decision 4's sibling case: the stream can terminate at once,
+      // and a 0/0 tally must still arrive as a well-formed body.
+      categoryResolution.resolveCategoriesStream.mockImplementation(
+        streamOf({ kind: 'done', resolvedCount: 0, unresolvedCount: 0, completion: 'aborted' })
+      );
+      const res = makeRes();
+
+      await run(res, makeReq());
+
+      expect(linesOf(res)).toEqual([
+        { kind: 'done', resolvedCount: 0, unresolvedCount: 0, completion: 'aborted' },
+      ]);
+      expect(res.writableEnded).toBe(true);
+    });
+  });
+
   describe('CatalogProductReader (#633)', () => {
     function makeAdapter(
       catalogReader: boolean,
@@ -1430,6 +1780,7 @@ describe('ListingsController', () => {
       'getCategoryParameters',
       'resolveCategory',
       'resolveCategoriesBatch',
+      'resolveCategoriesStream',
       'findProductsByBarcode',
       'getCatalogProduct',
     ] as const;
