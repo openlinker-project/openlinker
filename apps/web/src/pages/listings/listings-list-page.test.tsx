@@ -169,6 +169,130 @@ const MISMATCHED_PLATFORM_CONNECTION = {
 describe('ListingsListPage', () => {
   afterEach(cleanup);
   afterEach(() => navigateMock.mockClear());
+  describe('shop-level channel problems (#2231)', () => {
+    const shopBlockedPage = (): PaginatedOfferMappings =>
+      oneRow({
+        channelStatus: {
+          publicationStatus: 'inactive',
+          lifecycle: 'Invalid',
+          validationMessages: [
+            'Finish verification in the Erli seller panel; the next status read clears it.',
+            'Set the tax rate on the product and publish again.',
+          ],
+          validationProblems: [
+            {
+              code: 'shopKyc',
+              summary: 'Shop verification incomplete',
+              message:
+                'Finish verification in the Erli seller panel; the next status read clears it.',
+              scope: 'account',
+            },
+            {
+              code: 'missingTaxRate',
+              summary: 'No VAT rate set on Erli',
+              message: 'Set the tax rate on the product and publish again.',
+              scope: 'offer',
+            },
+          ],
+          lastStatusSyncedAt: '2026-01-20T09:30:00.000Z',
+        },
+      });
+
+    it('should carry a shop-level problem once, above the table, naming the connection', async () => {
+      const mockApi = createListingsMockApiClient({
+        listings: { list: vi.fn().mockResolvedValue(shopBlockedPage()) },
+        connections: { list: vi.fn().mockResolvedValue([MISMATCHED_PLATFORM_CONNECTION]) },
+      });
+
+      renderWithProviders(<ListingsListPage />, { apiClient: mockApi });
+
+      expect(
+        await screen.findByText('Erli Demo cannot sell anything right now'),
+      ).toBeInTheDocument();
+      expect(screen.getByText('1 of the listings shown here is affected.')).toBeInTheDocument();
+      // The raw channel code stays reachable for a support ticket.
+      expect(screen.getByText('shopKyc')).toBeInTheDocument();
+    });
+
+    it('should keep the row on its own problem rather than repeating the shop one', async () => {
+      const mockApi = createListingsMockApiClient({
+        listings: { list: vi.fn().mockResolvedValue(shopBlockedPage()) },
+        connections: { list: vi.fn().mockResolvedValue([MISMATCHED_PLATFORM_CONNECTION]) },
+      });
+
+      const { container } = renderWithProviders(<ListingsListPage />, { apiClient: mockApi });
+
+      await screen.findByText('Erli Demo cannot sell anything right now');
+      const reason = container.querySelector('.listing-cell__reason');
+      expect(reason?.textContent).toBe('No VAT rate set on Erli');
+      expect(reason?.className).not.toContain('listing-cell__reason--muted');
+    });
+
+    it('should mute the row of a listing whose only problem is the shop', async () => {
+      const mockApi = createListingsMockApiClient({
+        listings: {
+          list: vi.fn().mockResolvedValue(
+            oneRow({
+              channelStatus: {
+                publicationStatus: 'inactive',
+                lifecycle: 'Invalid',
+                validationMessages: ['Contact Erli support.'],
+                validationProblems: [
+                  {
+                    code: 'blocked',
+                    summary: 'Blocked by Erli',
+                    message: 'Contact Erli support.',
+                    scope: 'account',
+                  },
+                ],
+                lastStatusSyncedAt: '2026-01-20T09:30:00.000Z',
+              },
+            }),
+          ),
+        },
+        connections: { list: vi.fn().mockResolvedValue([MISMATCHED_PLATFORM_CONNECTION]) },
+      });
+
+      const { container } = renderWithProviders(<ListingsListPage />, { apiClient: mockApi });
+
+      await screen.findByText('Erli Demo cannot sell anything right now');
+      const reason = container.querySelector('.listing-cell__reason');
+      expect(reason?.textContent).toBe('Blocked by a problem with the shop, not this listing');
+      expect(reason?.className).toContain('listing-cell__reason--muted');
+    });
+
+    it('should raise no notice when every problem belongs to the offer', async () => {
+      const mockApi = createListingsMockApiClient({
+        listings: {
+          list: vi.fn().mockResolvedValue(
+            oneRow({
+              channelStatus: {
+                publicationStatus: 'inactive',
+                lifecycle: 'Invalid',
+                validationMessages: ['Set the tax rate on the product and publish again.'],
+                validationProblems: [
+                  {
+                    code: 'missingTaxRate',
+                    summary: 'No VAT rate set on Erli',
+                    message: 'Set the tax rate on the product and publish again.',
+                    scope: 'offer',
+                  },
+                ],
+                lastStatusSyncedAt: '2026-01-20T09:30:00.000Z',
+              },
+            }),
+          ),
+        },
+        connections: { list: vi.fn().mockResolvedValue([MISMATCHED_PLATFORM_CONNECTION]) },
+      });
+
+      renderWithProviders(<ListingsListPage />, { apiClient: mockApi });
+
+      expect(await screen.findByText('No VAT rate set on Erli')).toBeInTheDocument();
+      expect(screen.queryByText('Erli Demo cannot sell anything right now')).not.toBeInTheDocument();
+    });
+  });
+
   it('should show loading state initially', () => {
     const mockApi = createListingsMockApiClient({
       listings: {
