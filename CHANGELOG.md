@@ -12,6 +12,42 @@ From `0.2.0` onward this file is generated automatically by
 Commits. The `0.1.0` entry below is the hand-curated baseline of what shipped
 before automated releases began.
 
+## [0.7.0](https://github.com/openlinker-project/openlinker/compare/v0.6.0...v0.7.0) (2026-08-18)
+
+
+### Features
+
+* **analytics-trust,sync:** add analytics data-trust reads ([#2037](https://github.com/openlinker-project/openlinker/issues/2037)) ([cf0beac](https://github.com/openlinker-project/openlinker/commit/cf0beac644218cef8e964bb1639ce027c56785b6))
+* **invoicing,orders,web:** persist and surface the auto-issue block reason ([#2100](https://github.com/openlinker-project/openlinker/issues/2100)) ([#2129](https://github.com/openlinker-project/openlinker/issues/2129)) ([c9231c9](https://github.com/openlinker-project/openlinker/commit/c9231c9ba3d994eae2015d68800518a1b843fd69))
+* **listings,api:** repoint marketplace category reads at the taxonomy projection ([#2117](https://github.com/openlinker-project/openlinker/issues/2117)) ([ab2c963](https://github.com/openlinker-project/openlinker/commit/ab2c96369661d91b80598071d1fbbd185b79fd2f)), closes [#2074](https://github.com/openlinker-project/openlinker/issues/2074)
+* **listings,integrations:** bootstrap destination taxonomy on connect, delegate shop browse to the projection ([#2145](https://github.com/openlinker-project/openlinker/issues/2145)) ([6956d29](https://github.com/openlinker-project/openlinker/commit/6956d29ac24a135e745b85211d2a3828aac0bff6)), closes [#2084](https://github.com/openlinker-project/openlinker/issues/2084) [#2085](https://github.com/openlinker-project/openlinker/issues/2085)
+* **listings,orders,analytics:** needs-attention aggregates ([#2045](https://github.com/openlinker-project/openlinker/issues/2045)) ([b849933](https://github.com/openlinker-project/openlinker/commit/b8499333d3ab4403c6c30c896ba521bac2f92e1f))
+* **listings,sync:** derive the taxonomy sync frontier from the projection ([#2067](https://github.com/openlinker-project/openlinker/issues/2067)) ([07fa171](https://github.com/openlinker-project/openlinker/commit/07fa1711ee35bfe566f84b4bcd306439d58d2169))
+* **listings,sync:** neutral destination-taxonomy read model (browse + search + sync) ([#2062](https://github.com/openlinker-project/openlinker/issues/2062)) ([59fe748](https://github.com/openlinker-project/openlinker/commit/59fe748db00f4646a41b68d4a64e8b12d7ccb346))
+* **orders:** capture order cancellation as first-class record state ([#2022](https://github.com/openlinker-project/openlinker/issues/2022)) ([5e1443c](https://github.com/openlinker-project/openlinker/commit/5e1443c35f4d9932baaefaec94fa92b9676c7cec))
+* **orders:** capture return/refund/withdrawal as a first-class record ([#2046](https://github.com/openlinker-project/openlinker/issues/2046)) ([e4fe656](https://github.com/openlinker-project/openlinker/commit/e4fe656ae4e6ea0599bfabcde22b45f85c8693e0))
+* **shared,plugin-sdk:** Redis-backed cross-process rate limiter ([#2019](https://github.com/openlinker-project/openlinker/issues/2019)) ([d5e8104](https://github.com/openlinker-project/openlinker/commit/d5e8104d7a57312655290839232d5d1c4484edbf))
+* **web/listings,mappings:** whole-tree category search in the pickers ([#2133](https://github.com/openlinker-project/openlinker/issues/2133)) ([bc59f43](https://github.com/openlinker-project/openlinker/commit/bc59f43ec7defc8283bc1e23d2653e9ef477b956))
+* **web/listings:** redesign /listings with lifecycle tabs and channel-side commercial data ([#2032](https://github.com/openlinker-project/openlinker/issues/2032)) ([805e29c](https://github.com/openlinker-project/openlinker/commit/805e29ca34a66c22ab2dbf2be68754243bf97951))
+* **web:** unify the Order identity and Connection cells across the remaining five lists ([#2086](https://github.com/openlinker-project/openlinker/issues/2086)) ([#2150](https://github.com/openlinker-project/openlinker/issues/2150)) ([14bfc6e](https://github.com/openlinker-project/openlinker/commit/14bfc6e60dc2c5c51b0c8459511fb83aa0f8b6dd))
+
+
+### Bug Fixes
+
+* **core/orders:** stop the order upsert resetting fulfillmentState to NULL ([#2107](https://github.com/openlinker-project/openlinker/issues/2107)) ([b3e1506](https://github.com/openlinker-project/openlinker/commit/b3e1506399d9b938747e9b6dbedb3e72397b5c84))
+* **core/orders:** stop the order upsert wiping syncStatus and syncAttempts ([#2141](https://github.com/openlinker-project/openlinker/issues/2141)) ([5bbb63e](https://github.com/openlinker-project/openlinker/commit/5bbb63e1f2c820928cbded7b05a9319e4028e5c4))
+* **dx:** resolve the WooCommerce dev-stack container through Compose ([#2112](https://github.com/openlinker-project/openlinker/issues/2112)) ([3df1b54](https://github.com/openlinker-project/openlinker/commit/3df1b54a65d1aace13a241d6f5be7438e25d7a30))
+* **infakt:** stamp the invoice currency instead of booking in the account default ([#2108](https://github.com/openlinker-project/openlinker/issues/2108)) ([a65981b](https://github.com/openlinker-project/openlinker/commit/a65981b103f760936dab10d99f694a9ac43929da))
+* **invoicing,web:** lock an order to one invoicing connection ([#2047](https://github.com/openlinker-project/openlinker/issues/2047)) ([#2060](https://github.com/openlinker-project/openlinker/issues/2060)) ([0788a5f](https://github.com/openlinker-project/openlinker/commit/0788a5f3ef85c87721f4eb9f63d47e9830f1a433))
+* **invoicing:** let operators pick the correction line instead of typing it ([#2132](https://github.com/openlinker-project/openlinker/issues/2132)) ([c481678](https://github.com/openlinker-project/openlinker/commit/c481678f6b021d700cae25193ba54d5e92863c45))
+* **listings,allegro:** taxonomy identity is declared, not inferred from platformType ([#2065](https://github.com/openlinker-project/openlinker/issues/2065)) ([8c64e32](https://github.com/openlinker-project/openlinker/commit/8c64e3252c5cc971a2fb4033e4acfe29de70707c))
+* **listings:** write the status snapshot a create already knows, and make its reconcile reachable ([#2039](https://github.com/openlinker-project/openlinker/issues/2039)) ([#2044](https://github.com/openlinker-project/openlinker/issues/2044)) ([bded91b](https://github.com/openlinker-project/openlinker/commit/bded91be1c9de107f32cc5ffa9a85fbd3deeef2f))
+* **prestashop:** refuse an unresolvable order currency instead of defaulting to id 1 ([#2142](https://github.com/openlinker-project/openlinker/issues/2142)) ([4b1bd67](https://github.com/openlinker-project/openlinker/commit/4b1bd675ba3575f3853c8f544c3e47f54b142888))
+* **prestashop:** tell an unknown tax rate apart from a resolved zero ([#2057](https://github.com/openlinker-project/openlinker/issues/2057)) ([351c78d](https://github.com/openlinker-project/openlinker/commit/351c78d314d61cc93331552c746620b0cd9866ec))
+* **prestashop:** use the real order_details id as the line id ([#2134](https://github.com/openlinker-project/openlinker/issues/2134)) ([7401126](https://github.com/openlinker-project/openlinker/commit/74011260bd2780dc664c76f8c47ec6bd3b7c0600))
+* **web:** persist explicit config.rateLimit: null on revert-to-default ([#2016](https://github.com/openlinker-project/openlinker/issues/2016)) ([#2017](https://github.com/openlinker-project/openlinker/issues/2017)) ([3a35ff8](https://github.com/openlinker-project/openlinker/commit/3a35ff8a3fb334a67a47fae3f8e2844c4451a875))
+* **woocommerce:** map placedAt from date_created_gmt on order source ([#2114](https://github.com/openlinker-project/openlinker/issues/2114)) ([bd642a0](https://github.com/openlinker-project/openlinker/commit/bd642a070fabbc456d67c2efd6f6a464e06295c8))
+
 ## [0.6.0](https://github.com/openlinker-project/openlinker/compare/v0.5.0...v0.6.0) (2026-08-10)
 
 

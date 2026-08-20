@@ -11,7 +11,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import type { DataSource, EntityManager, SelectQueryBuilder } from 'typeorm';
-import { In, IsNull, MoreThanOrEqual, Repository } from 'typeorm';
+import { In, IsNull, LessThan, MoreThanOrEqual, Repository } from 'typeorm';
 import type { OrderSyncStatusJson, SyncAttemptJson } from '../entities/order-record.orm-entity';
 import { OrderRecordOrmEntity } from '../entities/order-record.orm-entity';
 import { OrderLineItemOrmEntity } from '../entities/order-line-item.orm-entity';
@@ -856,14 +856,21 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
 
   /**
    * Record a TERMINAL stamp answer (#2125). Same conditional-write shape as
-   * {@link claimFxIntentIfAbsent}: the two `IsNull()` predicates make it
-   * first-write-wins AND unable to touch a row that already carries a figure.
-   * Writes `fxStampedAt` alone, which the `ck_order_records_fx_group` CHECK's
-   * first arm permits (it constrains only the three figure columns).
+   * {@link claimFxIntentIfAbsent}: `reportingCurrency: IsNull()` is what makes it
+   * unable to touch a row that already carries a figure. Writes `fxStampedAt`
+   * alone, which the `ck_order_records_fx_group` CHECK's first arm permits (it
+   * constrains only the three figure columns).
+   *
+   * It does NOT also require `fxStampedAt IS NULL`, and that is deliberate
+   * (#2135 review, finding 1): the sweep re-admits a terminal-but-figureless row
+   * once its marker ages past the cooldown, and a re-answer must move the marker
+   * forward or the row would be retried on every tick from then on. The
+   * immutability that matters is the FIGURE's, and that is the predicate above -
+   * a stamped row is untouchable here regardless of the timestamp.
    */
-  async markFxTerminalIfAbsent(internalOrderId: string, fxStampedAt: Date): Promise<boolean> {
+  async markFxTerminal(internalOrderId: string, fxStampedAt: Date): Promise<boolean> {
     const result = await this.repository.update(
-      { internalOrderId, reportingCurrency: IsNull(), fxStampedAt: IsNull() },
+      { internalOrderId, reportingCurrency: IsNull() },
       { fxStampedAt }
     );
     return (result.affected ?? 0) > 0;
@@ -880,16 +887,27 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    */
   async findUnstampedFxOrderIds(
     sourceConnectionId: string,
-    options: { limit: number; createdSince: Date }
+    options: { limit: number; createdSince: Date; terminalRetryBefore: Date }
   ): Promise<string[]> {
+    // TWO branches, OR'd (TypeORM renders an array of `where` objects as OR).
+    // `reportingCurrency IS NULL` is in BOTH and is the invariant: a row that
+    // carries a figure is never re-entered, so the stamp stays immutable. The
+    // second branch is the cooldown re-admission (#2135 review, finding 1) - a
+    // terminal answer older than `terminalRetryBefore` that still produced no
+    // figure gets one more attempt, which is what makes `no-rate-source` and a
+    // throttle-induced `unsupported-pair` recoverable instead of permanent.
+    const common = {
+      sourceConnectionId,
+      reportingCurrency: IsNull(),
+      createdAt: MoreThanOrEqual(options.createdSince),
+    };
+
     const rows = await this.repository.find({
       select: { internalOrderId: true },
-      where: {
-        sourceConnectionId,
-        fxStampedAt: IsNull(),
-        reportingCurrency: IsNull(),
-        createdAt: MoreThanOrEqual(options.createdSince),
-      },
+      where: [
+        { ...common, fxStampedAt: IsNull() },
+        { ...common, fxStampedAt: LessThan(options.terminalRetryBefore) },
+      ],
       order: { createdAt: 'DESC' },
       take: options.limit,
     });
@@ -1205,19 +1223,20 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     entity.recordStatus = orderRecord.recordStatus;
     entity.mappingFailureReason = orderRecord.mappingFailureReason;
     entity.dispatchByAt = orderRecord.dispatchByAt;
+    entity.placedAt = orderRecord.placedAt;
+    entity.currency = orderRecord.currency;
+    entity.taxTreatment = orderRecord.taxTreatment;
+    entity.totalAmount = orderRecord.totalAmount;
     //
-    // The six FX snapshot columns (#2124) are deliberately NOT mapped here
-    // either, and for the strongest version of the same reason: this is a
+    // The six FX snapshot columns (#2124) are deliberately NOT mapped here,
+    // for the strongest version of the reason documented above for
+    // `fulfillmentState` / `cancelledAt` / `salesDocument*`: this is a
     // full-row save() on an update-or-create ingestion path, so mapping them
     // would let a re-poll of an already-stamped order write the ingestion
     // path's in-memory `null` over a REPORTED FINANCIAL FIGURE. Leaving the
     // properties unset makes TypeORM omit the columns from the generated
     // UPDATE entirely. `claimFxIntentIfAbsent` + `stampFxIfAbsent` (both
     // guarded, both single-statement) are their only writers.
-    entity.placedAt = orderRecord.placedAt;
-    entity.currency = orderRecord.currency;
-    entity.taxTreatment = orderRecord.taxTreatment;
-    entity.totalAmount = orderRecord.totalAmount;
     entity.createdAt = orderRecord.createdAt;
     entity.updatedAt = orderRecord.updatedAt;
     return entity;

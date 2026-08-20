@@ -24,6 +24,7 @@ import type { Product, ProductVariant } from '../../features/products/api/produc
 import type { InventoryItem } from '../../features/inventory/api/inventory.types';
 import type { Connection } from '../../features/connections';
 import { usePlatforms } from '../../shared/plugins';
+import { findPlatformDisplayName } from '../../features/mappings';
 import {
   deriveStockStatus,
   STOCK_STATUS_BADGE_TONE,
@@ -230,8 +231,7 @@ function ProductVariantRow({
             const soleOfPlatform =
               connections.filter((c) => c.platformType === connection.platformType).length === 1;
             const label = soleOfPlatform
-              ? (platforms.find((p) => p.platformType === connection.platformType)?.displayName ??
-                connection.name)
+              ? (findPlatformDisplayName(platforms, connection) ?? connection.name)
               : connection.name;
             return (
               <span

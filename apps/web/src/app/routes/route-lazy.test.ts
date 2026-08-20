@@ -62,9 +62,10 @@ const lazyRoutes = collectLazyRoutes([
  *     absorbed cross-catalog stock browsing)
  *   - 4 guest routes (forgot-password, reset-password, register, confirm-email (#1624)
  *     — login stays eager)
- *   - 11 plugin routes (allegro callback + setup, prestashop setup, dpd setup,
+ *   - 12 plugin routes (allegro callback + setup, prestashop setup, dpd setup,
  *     woocommerce setup, erli setup, subiekt setup (#1199), ksef setup, ksef
- *     invoice numbering (#1577), inpost setup, infakt setup (#1282))
+ *     invoice numbering (#1577), inpost setup, infakt setup (#1282), eparagony
+ *     setup (#1909))
  *
  * Routes that are intentionally eager (no page module to defer):
  *   - login (first-paint optimization — see `login.route.tsx`)

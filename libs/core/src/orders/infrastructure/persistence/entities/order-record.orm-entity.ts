@@ -47,15 +47,6 @@ export interface SyncAttemptJson {
 @Index('IDX_order_records_reporting', ['sourceConnectionId', 'reportingCurrency'], {
   where: '"reportingCurrency" IS NOT NULL',
 })
-// Reporting-currency analytics shape (#2124): filter by connection, group by
-// reporting currency. PARTIAL, and composite rather than a standalone index on
-// `reportingCurrency` — that column carries 1-3 distinct values, so a
-// single-column btree is not selective enough for the planner to prefer over a
-// sequential scan, and `@Index(['sourceConnectionId'])` above already covers
-// the filter half. The predicate keeps every unstamped row out of the index.
-@Index('IDX_order_records_reporting', ['sourceConnectionId', 'reportingCurrency'], {
-  where: '"reportingCurrency" IS NOT NULL',
-})
 export class OrderRecordOrmEntity {
   @PrimaryColumn({ type: 'text' })
   internalOrderId!: string;

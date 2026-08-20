@@ -58,8 +58,14 @@ import {
   type RateDerivationKind,
   type RateDerivationLeg,
 } from '@openlinker/core/currency';
+import { Logger } from '@openlinker/shared/logging';
 import type { FetchLike } from '@openlinker/shared/http';
-import { FxTransportError, fxGet, FX_DEFAULT_TIMEOUT_MS } from '../http/fx-http.client';
+import {
+  FxTransportError,
+  fxGet,
+  isTransientFxStatus,
+  FX_DEFAULT_TIMEOUT_MS,
+} from '../http/fx-http.client';
 import { directRate, invertedRate, pivotRate } from './rate-arithmetic';
 
 const ECB_BASE_URL = 'https://data-api.ecb.europa.eu/service/data/EXR';
@@ -84,6 +90,19 @@ const ECB_DATAFLOW = 'ECB:EXR(1.0)';
  * and got a months-stale rate back at HTTP 200.
  */
 const MAX_OBSERVATION_LAG_DAYS = 10;
+
+/**
+ * Above this lag the observation is accepted but WARN-logged.
+ *
+ * `MAX_OBSERVATION_LAG_DAYS` is a hard assertion that cannot fire on healthy
+ * data; between three days and that bound sits a band that is legal (the real
+ * maximum run is four) yet also what a degrading source looks like on its way
+ * to being wrong. Storing a six-day-stale rate silently is the failure this
+ * threshold exists to make audible, and it is only a log line because refusing
+ * a legitimate Easter-cluster rate would be strictly worse (#2135 review,
+ * finding 6).
+ */
+const OBSERVATION_LAG_WARN_DAYS = 3;
 
 /**
  * The daily reference currencies. `EUR` is included because it is the base of
@@ -146,6 +165,7 @@ export class EcbExchangeRateAdapter implements ExchangeRateProviderPort {
   readonly name: ExchangeRateSource = 'ecb';
   readonly pivotCurrency: string | null = ECB_PIVOT_CURRENCY;
 
+  private readonly logger = new Logger(EcbExchangeRateAdapter.name);
   private readonly fetchImpl: FetchLike;
   private readonly timeoutMs: number;
   private readonly baseUrl: string;
@@ -284,7 +304,11 @@ export class EcbExchangeRateAdapter implements ExchangeRateProviderPort {
       );
     }
 
-    if (response.status >= 500) {
+    if (isTransientFxStatus(response.status)) {
+      // `>= 500` PLUS 429/408 (`isTransientFxStatus`) - same reasoning as the
+      // NBP adapter: the ECB SDMX API is public and unauthenticated too, and a
+      // wrongly-terminal throttle permanently marks the order answered without
+      // a figure (#2135 review, finding 1).
       throw new RateUnavailableTransientError(
         this.name,
         from,
@@ -311,6 +335,12 @@ export class EcbExchangeRateAdapter implements ExchangeRateProviderPort {
     // body, and it is zero bytes in every format, so a parser handed the body
     // throws on empty input rather than yielding an empty document.
     if (response.body.trim().length === 0) {
+      // Debug, not warn: the ECB analogue of NBP's walk-back signal. It is the
+      // one branch here that reports the API working correctly about a date it
+      // has nothing for, so it is traced rather than flagged.
+      this.logger.debug(
+        `ECB returned an empty body (no observation) for ${seriesKey} at or before ${candidate}`
+      );
       throw new RateUnsupportedPairError(
         this.name,
         from,
@@ -332,6 +362,11 @@ export class EcbExchangeRateAdapter implements ExchangeRateProviderPort {
     }
 
     this.assertObservationIsPlausible(row.timePeriod, candidate, from, to, seriesKey);
+
+    this.logger.debug(
+      `ECB ${seriesKey}: observation ${row.timePeriod} = ${row.value} ` +
+        `(requested at or before ${candidate})`
+    );
 
     return {
       currency,
@@ -363,17 +398,31 @@ export class EcbExchangeRateAdapter implements ExchangeRateProviderPort {
       );
     }
 
-    if (daysBetween(timePeriod, candidate) > MAX_OBSERVATION_LAG_DAYS) {
+    const lagDays = daysBetween(timePeriod, candidate);
+
+    if (lagDays > MAX_OBSERVATION_LAG_DAYS) {
       throw new RateUnsupportedPairError(
         this.name,
         from,
         to,
         candidate,
         `ECB returned observation ${timePeriod} for ${seriesKey}, more than ` +
-          `${MAX_OBSERVATION_LAG_DAYS} days before the requested ${candidate} - ` +
+          `${MAX_OBSERVATION_LAG_DAYS} days before the requested ${candidate} (lag ${lagDays}d) - ` +
           `the maximum real non-publication run is 4 days, so this indicates a stale or future request date. ` +
           `This is terminal (no retry), so once the underlying date is corrected the order is re-stamped ` +
           `by the reconcile sweep rather than by the original job.`
+      );
+    }
+
+    if (lagDays > OBSERVATION_LAG_WARN_DAYS) {
+      // Accepted, not refused: four days is a real TARGET closing run, so the
+      // rate is legitimate. Logged because the band above it is indistinguishable
+      // from a source that has stopped publishing, and the alternative is
+      // storing a progressively staler rate in silence.
+      this.logger.warn(
+        `ECB observation for ${seriesKey} is ${lagDays} days older than the requested ` +
+          `${candidate} (returned ${timePeriod}); accepted, but the longest real ` +
+          `non-publication run is 4 days - check whether the source is still publishing`
       );
     }
   }

@@ -11,6 +11,7 @@ import {
   RateUnsupportedPairError,
 } from '@openlinker/core/currency';
 import type { FetchLike } from '@openlinker/shared/http';
+import { Logger } from '@openlinker/shared/logging';
 import { EcbExchangeRateAdapter } from '../ecb-exchange-rate.adapter';
 
 interface StubResponse {
@@ -362,6 +363,21 @@ describe('EcbExchangeRateAdapter', () => {
       ).rejects.toThrow(RateUnsupportedPairError);
     });
 
+    it.each([429, 408])(
+      'should treat %i as TRANSIENT even though it is a 4xx',
+      async (status: number) => {
+        // #2135 review, finding 1 - same reasoning as the NBP adapter: the ECB
+        // SDMX API is public and unauthenticated too, and a wrongly-terminal
+        // throttle permanently marks the order answered without a figure.
+        const { fetchImpl } = fakeFetch(() => ({ status, body: '' }));
+        const adapter = new EcbExchangeRateAdapter({ fetchImpl });
+
+        await expect(
+          adapter.fetchRate({ from: 'EUR', to: 'PLN', on: '2026-08-13' })
+        ).rejects.toThrow(RateUnavailableTransientError);
+      }
+    );
+
     it('should treat a 5xx as transient', async () => {
       const { fetchImpl } = fakeFetch(() => ({ status: 503, body: '' }));
       const adapter = new EcbExchangeRateAdapter({ fetchImpl });
@@ -433,6 +449,37 @@ describe('EcbExchangeRateAdapter', () => {
           await expect(call).resolves.toMatchObject({ rateDate: timePeriod });
         } else {
           await expect(call).rejects.toThrow(/more than 10 days before/);
+        }
+      }
+    );
+
+    // #2135 review, finding 6. Between "legal" (the real maximum run is 4 days)
+    // and the hard bound of 10 sits a band that is also what a source that has
+    // stopped publishing looks like. Accepting it silently is the failure; the
+    // warn is the whole remedy, so it is asserted on both sides of the threshold.
+    it.each<[number, string, boolean]>([
+      [3, '2026-08-10', false],
+      [4, '2026-08-09', true],
+      [6, '2026-08-07', true],
+    ])(
+      'should warn on a %i-day lag (observation %s): %s',
+      async (_lagDays, timePeriod, shouldWarn) => {
+        const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+        try {
+          const { fetchImpl } = fakeFetch(() => ok(csv('PLN', timePeriod, '4.2712')));
+          const adapter = new EcbExchangeRateAdapter({ fetchImpl });
+
+          // Accepted either way - the warn never refuses a legitimate rate.
+          await expect(
+            adapter.fetchRate({ from: 'EUR', to: 'PLN', on: '2026-08-13' })
+          ).resolves.toMatchObject({ rateDate: timePeriod });
+
+          const warned = warn.mock.calls.some((call) =>
+            String(call[0]).includes('days older than the requested')
+          );
+          expect(warned).toBe(shouldWarn);
+        } finally {
+          warn.mockRestore();
         }
       }
     );

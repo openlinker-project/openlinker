@@ -50,6 +50,7 @@ import {
 import { Button } from '../../../shared/ui/button';
 import { ConfirmDialog } from '../../../shared/ui/confirm-dialog';
 import { CopyableId } from '../../../shared/ui/copyable-id';
+import { shortenId } from '../../../shared/ui/entity-label';
 import { TimeDisplay } from '../../../shared/ui/time-display';
 import { useToast } from '../../../shared/ui/toast-provider';
 import {
@@ -157,12 +158,33 @@ export function ShipmentRowDetail({
   // the accordion is the ONLY place they can be read. The `omp` branch above
   // already surfaces its tracking number this way; this is the same treatment
   // for a carrier-dispatched row.
+  //
+  // The internal order id joined them in #2089 — see `orderIdField` below, which
+  // both grids render.
   const facts: ReadonlyArray<{ label: string; value: string; mono: boolean }> = [
     { label: 'Provider', value: shipment.carrier ? carrierName : null, mono: false },
     { label: 'Method', value: SHIPPING_METHOD_LABEL[shipment.shippingMethod], mono: false },
     { label: 'Tracking', value: shipment.trackingNumber, mono: true },
     { label: 'Paczkomat', value: shipment.paczkomatId, mono: true },
   ].filter((fact): fact is { label: string; value: string; mono: boolean } => fact.value !== null);
+
+  // ONE definition for both grids below. The failed grid is a separate `<dl>`
+  // that does not render `facts`, and a failed row is precisely where an operator
+  // quotes the order id to carrier support — so justifying this field by triage
+  // while showing it only on healthy rows would have been the wrong way round.
+  const orderIdField = (
+    <div className="shipment-detail-grid__field">
+      <span className="shipment-detail-grid__label">Order</span>
+      <p className="shipment-detail-grid__value mono-text">
+        <CopyableId
+          id={shipment.orderId}
+          label={shortenId(shipment.orderId)}
+          copyLabel={`Copy internal order ID ${shortenId(shipment.orderId)}`}
+          copiedLabel={`Copied internal order ID ${shortenId(shipment.orderId)}`}
+        />
+      </p>
+    </div>
+  );
 
   const handleDownloadLabel = (): void => {
     void labelDownload.download(shipment.id).then((ok) => {
@@ -191,6 +213,7 @@ export function ShipmentRowDetail({
                   'The carrier reported this parcel as undelivered or returned - check the tracker.'}
             </p>
           </div>
+          {orderIdField}
           {shipment.failedAt ? (
             <div className="shipment-detail-grid__field">
               <span className="shipment-detail-grid__label">Failed</span>
@@ -226,8 +249,9 @@ export function ShipmentRowDetail({
             </div>
           ) : null}
         </dl>
-      ) : facts.length > 0 ? (
+      ) : (
         <dl className="shipment-detail-grid">
+          {orderIdField}
           {facts.map((fact) => (
             <div className="shipment-detail-grid__field" key={fact.label}>
               <span className="shipment-detail-grid__label">{fact.label}</span>
@@ -237,7 +261,7 @@ export function ShipmentRowDetail({
             </div>
           ))}
         </dl>
-      ) : null}
+      )}
 
       {!isFailed && !hasAnyAction ? (
         // Two genuinely different reasons for an actionless row — conflating

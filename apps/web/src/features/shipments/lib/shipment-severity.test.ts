@@ -4,7 +4,7 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { deriveSeverityLabel, truncateOrderId } from './shipment-severity';
+import { deriveSeverityLabel } from './shipment-severity';
 import { SHIPMENT_STATUS_VALUES, type Shipment } from '../api/shipments.types';
 
 function makeShipment(overrides: Partial<Shipment> = {}): Shipment {
@@ -113,29 +113,5 @@ describe('deriveSeverityLabel', () => {
         true
       )
     ).toBe('Fix');
-  });
-});
-
-describe('truncateOrderId', () => {
-  it('should keep the ol_ prefix and elide the middle of a full internal order id', () => {
-    expect(truncateOrderId('ol_order_a3f24b09c4d1486789abcdef01234567')).toBe('ol_order_a3f2…67');
-  });
-
-  it('should leave a short ol_ id untouched when its suffix is 6 characters or fewer', () => {
-    expect(truncateOrderId('ol_order_123456')).toBe('ol_order_123456');
-    expect(truncateOrderId('ol_order_1')).toBe('ol_order_1');
-  });
-
-  it('should truncate a 7-character ol_ suffix - the boundary just past the keep-whole limit', () => {
-    expect(truncateOrderId('ol_order_1234567')).toBe('ol_order_1234…67');
-  });
-
-  it('should leave a non-OL id of 14 characters or fewer untouched', () => {
-    expect(truncateOrderId('12345678901234')).toBe('12345678901234');
-    expect(truncateOrderId('ORD-42')).toBe('ORD-42');
-  });
-
-  it('should elide the middle of a non-OL id longer than 14 characters', () => {
-    expect(truncateOrderId('123456789012345')).toBe('12345678…2345');
   });
 });
