@@ -43,17 +43,28 @@ export class SalesDocumentCountryDefaultRepository
     return entity ? this.toDomain(entity) : null;
   }
 
+  /**
+   * `INSERT ... ON CONFLICT (country, document_kind) DO UPDATE` — one atomic
+   * statement, not a `findOne` + `create`/`save` round-trip (review finding
+   * 10). The prior TOCTOU shape let two concurrent saves for the same
+   * `(country, documentKind)` both observe "not found" and both attempt an
+   * insert; the second collided against the unique index and 500'd instead
+   * of getting the same clean conflict handling `createRule` has. Mirrors
+   * `ReportingCurrencySettingRepository.upsertSetting` — the established
+   * shape for this repo's singleton/unique-keyed upsert tables.
+   */
   async upsert(input: SalesDocumentCountryDefaultInput): Promise<SalesDocumentCountryDefault> {
-    const existing = await this.ormRepository.findOne({
+    await this.ormRepository.upsert(
+      {
+        country: input.country,
+        documentKind: input.documentKind,
+        connectionId: input.connectionId,
+      },
+      { conflictPaths: ['country', 'documentKind'] },
+    );
+    const saved = await this.ormRepository.findOneOrFail({
       where: { country: input.country, documentKind: input.documentKind },
     });
-    const entity = this.ormRepository.create({
-      ...(existing ?? {}),
-      country: input.country,
-      documentKind: input.documentKind,
-      connectionId: input.connectionId,
-    });
-    const saved = await this.ormRepository.save(entity);
     return this.toDomain(saved);
   }
 

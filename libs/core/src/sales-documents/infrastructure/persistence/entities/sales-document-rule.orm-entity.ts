@@ -28,6 +28,13 @@ import {
 @Index('UQ_sales_document_rules_country_hash_from', ['country', 'conditionsHash', 'effectiveFrom'], {
   unique: true,
 })
+// Non-unique — the FK join target. Now mirrored here (review, optional
+// improvements: the migration created it without a matching entity
+// declaration). No separate `(country, conditionsHash)` index exists —
+// those columns are already the leading prefix of the unique index above,
+// which Postgres can serve a `(country, conditionsHash)`-only lookup from
+// directly, so a second index would be pure write overhead.
+@Index('IDX_sales_document_rules_connection_id', ['connectionId'])
 export class SalesDocumentRuleOrmEntity {
   @PrimaryGeneratedColumn('uuid')
   id!: string;

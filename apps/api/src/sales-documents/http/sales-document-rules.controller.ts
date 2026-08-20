@@ -38,6 +38,7 @@ import {
   SALES_DOCUMENT_RULES_SERVICE_TOKEN,
   SalesDocumentCountryAlreadyConfiguredException,
   SalesDocumentCountryDefaultNotFoundException,
+  SalesDocumentInvalidConditionException,
   SalesDocumentRuleConflictException,
   SalesDocumentRuleNotFoundException,
   SalesDocumentThresholdNotFoundException,
@@ -68,6 +69,7 @@ export class SalesDocumentRulesController {
   @ApiQuery({ name: 'country', required: true })
   @ApiResponse({ status: 200, type: [SalesDocumentRuleResponseDto] })
   async listRules(@Query('country') country: string): Promise<SalesDocumentRuleResponseDto[]> {
+    this.assertValidCountryParam(country);
     const rules = await this.service.listRules(country);
     return rules.map((rule) => SalesDocumentRuleResponseDto.fromDomain(rule));
   }
@@ -116,13 +118,18 @@ export class SalesDocumentRulesController {
   async listCountryDefaults(
     @Query('country') country: string,
   ): Promise<SalesDocumentCountryDefaultResponseDto[]> {
+    this.assertValidCountryParam(country);
     const defaults = await this.service.listCountryDefaults(country);
     return defaults.map((d) => SalesDocumentCountryDefaultResponseDto.fromDomain(d));
   }
 
-  @Post('country-defaults')
+  // PUT, not POST (review, optional improvements): this is an idempotent
+  // insert-or-replace keyed on `(country, documentKind)`, exactly like the
+  // structurally identical `acknowledgeNoDocument` a few lines below, which
+  // already uses PUT.
+  @Put('country-defaults')
   @ApiOperation({ summary: 'Set (insert or replace) a country default for one document kind' })
-  @ApiResponse({ status: 201, type: SalesDocumentCountryDefaultResponseDto })
+  @ApiResponse({ status: 200, type: SalesDocumentCountryDefaultResponseDto })
   @ApiResponse({ status: 400, description: 'Connection lacks the required capability' })
   async upsertCountryDefault(
     @Body() dto: UpsertSalesDocumentCountryDefaultDto,
@@ -219,7 +226,10 @@ export class SalesDocumentRulesController {
     if (error instanceof SalesDocumentCountryAlreadyConfiguredException) {
       return new ConflictException(error.message);
     }
-    if (error instanceof SalesDocumentThresholdNotFoundException) {
+    if (
+      error instanceof SalesDocumentThresholdNotFoundException ||
+      error instanceof SalesDocumentInvalidConditionException
+    ) {
       return new BadRequestException(error.message);
     }
     if (

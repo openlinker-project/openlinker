@@ -66,8 +66,15 @@ import type { CoreSalesDocumentKind, SalesDocumentKind } from '../types/sales-do
  * this map does not recognize is left entirely to that deeper check —
  * "validity is a runtime check against the target, never a type check"
  * (decision 10).
+ *
+ * Exported (review finding, optional improvements) so
+ * `SalesDocumentCapabilityGuardService` (`apps/api/src/sales-documents/`) can
+ * import this exact map for its save-time check instead of hand-duplicating
+ * it — the two checks answer the same question ("does this connection have
+ * the capability `documentKind` needs enabled?") and a second, drifted copy
+ * would silently diverge from this one.
  */
-const REQUIRED_CAPABILITY_BY_CORE_KIND: Readonly<Record<CoreSalesDocumentKind, string>> = {
+export const REQUIRED_CAPABILITY_BY_CORE_KIND: Readonly<Record<CoreSalesDocumentKind, string>> = {
   invoice: 'Invoicing',
   'fiscal-receipt': 'Fiscalization',
 };
@@ -102,7 +109,8 @@ function isEligibleCandidate(candidate: SalesDocumentRoutingCandidate): boolean 
   return candidate.documentKind !== null || candidate.selfRoutesDocumentKind;
 }
 
-function isCoreSalesDocumentKind(value: SalesDocumentKind): value is CoreSalesDocumentKind {
+/** Exported alongside {@link REQUIRED_CAPABILITY_BY_CORE_KIND} for the same reason — see its doc comment. */
+export function isCoreSalesDocumentKind(value: SalesDocumentKind): value is CoreSalesDocumentKind {
   return (CoreSalesDocumentKindValues as readonly string[]).includes(value);
 }
 

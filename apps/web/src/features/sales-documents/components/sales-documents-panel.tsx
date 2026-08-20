@@ -23,7 +23,8 @@ import { Alert } from '../../../shared/ui/alert';
 import { ErrorState, LoadingState } from '../../../shared/ui/feedback-state';
 import { Button } from '../../../shared/ui/button';
 import { Select } from '../../../shared/ui/select';
-import { StatusBadge } from '../../../shared/ui/status-badge';
+import { StatusBadge, type StatusBadgeTone } from '../../../shared/ui/status-badge';
+import type { ConnectionStatus } from '../../connections';
 import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
 import { useWriteAccess } from '../../../shared/auth/use-permission';
 import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
@@ -37,6 +38,23 @@ import {
   type SalesDocumentKind,
   type SalesDocumentRow,
 } from '../api/sales-documents.types';
+
+// Mirrors `apps/web/src/pages/connections/connections-list-page.tsx`'s own
+// `toStatusTone` — kept as a small duplicate rather than a shared export,
+// since this feature must not import from `pages/` (dependency direction:
+// app -> pages -> features -> shared).
+function toStatusTone(status: ConnectionStatus): StatusBadgeTone {
+  switch (status) {
+    case 'active':
+      return 'success';
+    case 'disabled':
+      return 'neutral';
+    case 'error':
+      return 'error';
+    case 'needs_reauth':
+      return 'warning';
+  }
+}
 
 const CONFLICT_COPY: Record<'multiple-primaries' | 'ambiguous-no-primary', { title: string; body: string }> = {
   'multiple-primaries': {
@@ -143,6 +161,7 @@ export function SalesDocumentsPanel(): ReactElement {
           <thead>
             <tr>
               <th scope="col">Provider</th>
+              <th scope="col">Status</th>
               <th scope="col">Capability</th>
               <th scope="col">Issues</th>
               <th scope="col">Primary</th>
@@ -159,6 +178,11 @@ export function SalesDocumentsPanel(): ReactElement {
                     <span>{row.name}</span>
                     <br />
                     <span className="text-muted mono-text">{row.platformType}</span>
+                  </td>
+                  <td>
+                    <StatusBadge tone={toStatusTone(row.status)} compact>
+                      {row.status}
+                    </StatusBadge>
                   </td>
                   <td>
                     <StatusBadge tone="neutral" compact>

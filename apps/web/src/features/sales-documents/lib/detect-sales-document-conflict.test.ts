@@ -60,4 +60,38 @@ describe('detectSalesDocumentConflict', () => {
 
     expect(detectSalesDocumentConflict(rows)).toBeNull();
   });
+
+  // Review finding 8: only `active` connections can ever compete for the
+  // primary slot at runtime (`AutoIssueTriggerService`, D8).
+  it('should NOT count a disabled connection toward eligibility, even with a configured documentKind', () => {
+    const rows = [
+      makeRow({ connectionId: 'conn_1', isPrimary: false }),
+      makeRow({
+        connectionId: 'conn_2',
+        isPrimary: false,
+        status: 'disabled',
+        capability: 'Fiscalization',
+        documentKind: 'fiscal-receipt',
+      }),
+    ];
+
+    expect(detectSalesDocumentConflict(rows)).toBeNull();
+  });
+
+  it('should NOT count a needs_reauth connection toward eligibility', () => {
+    const rows = [
+      makeRow({ connectionId: 'conn_1', isPrimary: true }),
+      makeRow({
+        connectionId: 'conn_2',
+        isPrimary: true,
+        status: 'needs_reauth',
+        capability: 'Fiscalization',
+        documentKind: 'fiscal-receipt',
+      }),
+    ];
+
+    // Would be `multiple-primaries` if the disabled/needs_reauth connection
+    // were counted — it cannot be, since it can never actually issue.
+    expect(detectSalesDocumentConflict(rows)).toBeNull();
+  });
 });

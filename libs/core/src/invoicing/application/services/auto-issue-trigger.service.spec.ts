@@ -11,6 +11,7 @@
  *
  * @module libs/core/src/invoicing/application/services
  */
+import type { ModuleRef } from '@nestjs/core';
 import {
   AutoIssueTriggerService,
   AUTO_ISSUE_RETRY_BUDGET,
@@ -25,6 +26,7 @@ import type { IInvoiceService } from './invoice.service.interface';
 import { InvoiceRecord } from '../../domain/entities/invoice-record.entity';
 import type { InvoiceStatus, InvoiceFailureMode } from '../../domain/types/invoicing.types';
 import type { ISalesDocumentRulesService, SalesDocumentDecision } from '@openlinker/core/sales-documents';
+import { FiscalRegistrationRecord } from '@openlinker/core/fiscalization';
 
 function makeOrder(overrides: Partial<Order> = {}): Order {
   return {
@@ -128,6 +130,7 @@ describe('AutoIssueTriggerService', () => {
   let integrations: jest.Mocked<Pick<IIntegrationsService, 'getCapabilityAdapter'>>;
   let invoices: jest.Mocked<Pick<IInvoiceService, 'getLatestInvoiceForOrder'>>;
   let salesDocumentRules: jest.Mocked<Pick<ISalesDocumentRulesService, 'resolveRouting'>>;
+  let moduleRef: { get: jest.Mock };
   let service: AutoIssueTriggerService;
   let warnSpy: jest.SpyInstance<void, [message: string]>;
   let errorSpy: jest.SpyInstance<void, [message: string]>;
@@ -165,12 +168,23 @@ describe('AutoIssueTriggerService', () => {
         .fn()
         .mockResolvedValue({ kind: 'unresolved', reason: 'no-configuration-for-country' }),
     };
+    // Default: fiscalization is not wired into this process (mirrors
+    // `InvoiceService.resolveFiscalRegistrationService`'s own spec default)
+    // — the reportBlock cross-kind check (review finding 6) is a no-op
+    // unless a test explicitly wires a fiscal-registration-service mock via
+    // `moduleRef.get.mockReturnValueOnce(...)`.
+    moduleRef = {
+      get: jest.fn(() => {
+        throw new Error('FiscalizationModule not registered in this process');
+      }),
+    };
     service = new AutoIssueTriggerService(
       connectionPort as unknown as ConnectionPort,
       syncJobs as unknown as ISyncJobsService,
       integrations as unknown as IIntegrationsService,
       invoices as unknown as IInvoiceService,
       salesDocumentRules as unknown as ISalesDocumentRulesService,
+      moduleRef as unknown as ModuleRef,
     );
     // Silence + capture the PII-safe envelope log.
     warnSpy = jest
@@ -900,6 +914,47 @@ describe('AutoIssueTriggerService', () => {
       // is a claim OL cannot support. This is why the check delegates to
       // `blocksIssuanceElsewhere` instead of testing `status !== 'failed'`.
       expect(outcome).toEqual({ kind: 'none' });
+    });
+
+    it('should SUPPRESS a block when the order already has a blocking fiscal-registration record (review finding 6)', async () => {
+      connectionPort.list.mockResolvedValue([makeConnection('manual')]);
+      invoices.getLatestInvoiceForOrder.mockResolvedValue(null);
+      const fiscalRegistrations = {
+        getByOrderId: jest.fn().mockResolvedValue([
+          new FiscalRegistrationRecord(
+            'freg-1',
+            'conn-fiscal',
+            'order-1',
+            'eparagony',
+            'idem-1',
+            'registered',
+            null,
+            null,
+            null,
+            new Date('2026-08-01T10:00:00Z'),
+            null,
+            [],
+            null,
+            null,
+            null,
+            null,
+            new Date('2026-08-01T10:00:00Z'),
+            new Date('2026-08-01T10:00:00Z'),
+          ),
+        ]),
+      };
+      moduleRef.get.mockReturnValueOnce(fiscalRegistrations);
+
+      const outcome = await service.onOrderTransition(
+        makeOrder({ paymentStatus: 'paid' }),
+        'src-1',
+      );
+
+      // Without checking the fiscal-registration side too, a `manual` connection
+      // would keep re-reporting `trigger-model-manual` on an order that already
+      // has a registered receipt from a DIFFERENT connection.
+      expect(outcome).toEqual({ kind: 'none' });
+      expect(fiscalRegistrations.getByOrderId).toHaveBeenCalledWith('order-1');
     });
 
     it('should report `indeterminate` when the document read fails — never a clear', async () => {

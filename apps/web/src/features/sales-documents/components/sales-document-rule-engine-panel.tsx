@@ -14,15 +14,22 @@
  * world's dialog) and its "← Back to {country}" affordance, both of which
  * switch the dialog's country while it stays open.
  *
- * NOT YET WIRED TO AUTO-ISSUE (documented, not hidden): `AutoIssueTriggerService`
- * still resolves via the #2156 operator-configured single-primary model
- * (`SalesDocumentsPanel`, rendered above this section on the same page) —
- * rewiring the trigger to consult this rule engine is a follow-up this issue
- * does not claim ("this issue should land the mechanism but cannot claim the
- * Poland template is live until the order contract carries the field").
- * Removing the still-live configuration surface to make room for this one
- * would leave operators unable to configure what the backend actually acts
- * on today, so both surfaces render on the same page, clearly labelled.
+ * WIRED TO AUTO-ISSUE (#2173): `AutoIssueTriggerService` consults
+ * `evaluateSalesDocumentRules` FIRST, ahead of the #2156 operator-configured
+ * single-primary model (`SalesDocumentsPanel`, rendered above this section on
+ * the same page) — only a `'no-configuration-for-country'` result (or an
+ * order the engine can't place at all) falls through to that older resolver.
+ * Both surfaces stay on the same page, clearly labelled, because the older
+ * resolver is still live and reachable whenever a country has no rule-engine
+ * configuration.
+ *
+ * The shipped Poland starter template's `buyerHasTaxId` condition CANNOT
+ * match a real order yet: `Order` carries no buyer-tax-id field, so the
+ * mapper that feeds this engine always supplies `undefined` for it (see
+ * `toSalesDocumentOrderFacts`'s own doc comment) — `undefined` matches
+ * neither `true` nor `false`. `SalesDocumentRuleComposerDialog` surfaces this
+ * as an inline warning wherever an operator authors that condition, rather
+ * than only in a code comment nobody configuring a rule would ever read.
  *
  * @module apps/web/src/features/sales-documents/components
  */
@@ -68,7 +75,12 @@ export function SalesDocumentRuleEnginePanel(): ReactElement {
 
       <SalesDocumentCountryIndex onSelectCountry={handleSelectCountry} />
 
-      <SalesDocumentTemplateScreen country="PL" />
+      {/* Only shown while nothing else is open, or while the operator is actually
+          configuring PL — otherwise it's clutter on every other market's dialog
+          (review finding, optional improvements). */}
+      {routingDialog === null || routingDialog.country === 'PL' ? (
+        <SalesDocumentTemplateScreen country="PL" />
+      ) : null}
 
       {routingDialog ? (
         <SalesDocumentCountryRoutingDialog

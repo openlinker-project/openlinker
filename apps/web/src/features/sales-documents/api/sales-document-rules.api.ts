@@ -60,8 +60,10 @@ export function createSalesDocumentRulesApi(request: ApiRequest): SalesDocumentR
       );
     },
     upsertCountryDefault(input): Promise<SalesDocumentCountryDefault> {
+      // PUT, not POST — idempotent insert-or-replace (review, optional
+      // improvements; matches the backend route).
       return request<SalesDocumentCountryDefault>('/sales-documents/country-defaults', {
-        method: 'POST',
+        method: 'PUT',
         body: JSON.stringify(input),
       });
     },

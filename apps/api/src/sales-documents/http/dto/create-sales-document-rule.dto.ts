@@ -13,6 +13,7 @@ import {
   IsOptional,
   IsString,
   IsUUID,
+  MaxLength,
   ValidateNested,
 } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
@@ -23,6 +24,10 @@ export class CreateSalesDocumentRuleDto {
   @ApiProperty({ description: "ISO 3166-1 alpha-2, or '*' for Rest of world" })
   @IsString()
   @IsNotEmpty()
+  // `sales_document_rules.country` is `varchar(8)` — without this an
+  // oversized value surfaces as a raw DB error (500) instead of a clean 400
+  // (review, optional improvements).
+  @MaxLength(8)
   country!: string;
 
   @ApiProperty({ type: [SalesDocumentConditionDto] })

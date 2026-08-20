@@ -141,10 +141,10 @@ export function resolveSalesDocumentBlockCopy(
         offerSetPrimary: true,
       };
     }
-    // #2170 — the country-agnostic rule engine's own two additions. Neither
-    // is reachable from the shipped auto-issue gate today (the engine is not
-    // yet wired into `AutoIssueTriggerService`), but the copy exists now so a
-    // future rewiring is additive, not a second FE change.
+    // #2170 — the country-agnostic rule engine's own two additions. #2173
+    // wired `evaluateSalesDocumentRules` into `AutoIssueTriggerService` as
+    // the first-consulted resolver, so both reasons ARE reachable from a
+    // real order today.
     if (order.salesDocumentUnresolvedReason === 'no-configuration-for-country') {
       return {
         tone: 'error',

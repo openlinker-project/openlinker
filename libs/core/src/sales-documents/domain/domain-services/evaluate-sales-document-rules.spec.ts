@@ -201,6 +201,23 @@ describe('evaluateSalesDocumentRules (#2170)', () => {
       });
     });
 
+    // Review finding 11: the type's own doc comment says a MISSING taxTreatment
+    // resolves the same as `exclusive`, but the evaluator previously only
+    // checked `=== 'exclusive'` and silently treated `undefined` as
+    // gross-comparable — letting an order with genuinely unknown tax
+    // treatment match an amount-threshold rule it shouldn't.
+    it('should resolve unresolved/net-priced-order when taxTreatment is UNDEFINED, not just when it is exclusive', () => {
+      const input = baseInput({
+        order: order({ taxTreatment: undefined }),
+        countryRules: [amountRule],
+        thresholds: [threshold],
+      });
+      expect(evaluateSalesDocumentRules(input)).toEqual({
+        kind: 'unresolved',
+        reason: 'net-priced-order',
+      });
+    });
+
     it('should resolve unresolved/net-priced-order for an exclusive (net) total, never guessing the gross amount', () => {
       const input = baseInput({
         order: order({ taxTreatment: 'exclusive' }),
@@ -223,6 +240,63 @@ describe('evaluateSalesDocumentRules (#2170)', () => {
         kind: 'route',
         documentKind: 'fiscal-receipt',
         connectionId: 'conn-eparagony',
+      });
+    });
+
+    // Review finding 3: a later rule's own data problem must never discard
+    // an already-found clean match from an earlier rule in the same scope.
+    it('should still route on a clean match even when a LATER rule in the scope has a currency mismatch', () => {
+      const cleanRule = rule({ id: 'clean', conditions: [{ field: 'buyerHasTaxId', op: 'eq', value: false }] });
+      const brokenRule = rule({
+        id: 'broken',
+        conditions: [{ field: 'orderTotalGross', op: 'lt', thresholdRef: 'pl-simplified-invoice-2026' }],
+        connectionId: 'conn-other',
+      });
+      const input = baseInput({
+        order: order({ currency: 'EUR' }),
+        countryRules: [cleanRule, brokenRule],
+        thresholds: [threshold],
+      });
+      expect(evaluateSalesDocumentRules(input)).toEqual({
+        kind: 'route',
+        documentKind: 'fiscal-receipt',
+        connectionId: 'conn-eparagony',
+      });
+    });
+
+    it('should still route on a clean match even when an EARLIER rule in the scope has a currency mismatch', () => {
+      const brokenRule = rule({
+        id: 'broken',
+        conditions: [{ field: 'orderTotalGross', op: 'lt', thresholdRef: 'pl-simplified-invoice-2026' }],
+        connectionId: 'conn-other',
+      });
+      const cleanRule = rule({ id: 'clean', conditions: [{ field: 'buyerHasTaxId', op: 'eq', value: false }] });
+      const input = baseInput({
+        order: order({ currency: 'EUR' }),
+        countryRules: [brokenRule, cleanRule],
+        thresholds: [threshold],
+      });
+      expect(evaluateSalesDocumentRules(input)).toEqual({
+        kind: 'route',
+        documentKind: 'fiscal-receipt',
+        connectionId: 'conn-eparagony',
+      });
+    });
+
+    it('should still resolve the data problem when NOTHING in the scope matches cleanly', () => {
+      const brokenRule = rule({
+        id: 'broken',
+        conditions: [{ field: 'orderTotalGross', op: 'lt', thresholdRef: 'pl-simplified-invoice-2026' }],
+      });
+      const nonMatching = rule({ id: 'other', conditions: [{ field: 'buyerHasTaxId', op: 'eq', value: true }] });
+      const input = baseInput({
+        order: order({ currency: 'EUR' }),
+        countryRules: [nonMatching, brokenRule],
+        thresholds: [threshold],
+      });
+      expect(evaluateSalesDocumentRules(input)).toEqual({
+        kind: 'unresolved',
+        reason: 'threshold-currency-mismatch',
       });
     });
   });

@@ -52,6 +52,7 @@ export { SalesDocumentThreshold } from './domain/entities/sales-document-thresho
 export { SalesDocumentCountryAcknowledgment } from './domain/entities/sales-document-country-acknowledgment.entity';
 export { SalesDocumentRuleConflictException } from './domain/exceptions/sales-document-rule-conflict.exception';
 export { SalesDocumentThresholdNotFoundException } from './domain/exceptions/sales-document-threshold-not-found.exception';
+export { SalesDocumentInvalidConditionException } from './domain/exceptions/sales-document-invalid-condition.exception';
 export { SalesDocumentCountryAlreadyConfiguredException } from './domain/exceptions/sales-document-country-already-configured.exception';
 export {
   SalesDocumentRuleNotFoundException,

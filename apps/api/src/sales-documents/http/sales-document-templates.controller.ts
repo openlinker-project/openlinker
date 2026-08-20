@@ -55,6 +55,14 @@ export class SalesDocumentTemplatesController {
       requiredCapability: string;
       effectiveFrom: string;
       effectiveTo: string | null;
+      /**
+       * Whether this rule's conditions reference `buyerHasTaxId` — the FE
+       * "Review & adopt" screen uses it to warn that the rule cannot match a
+       * real order yet (review finding 4: `Order` carries no buyer-tax-id
+       * field). Computed here rather than exposing raw `conditions` to the
+       * FE, which has no other use for that shape.
+       */
+      usesBuyerHasTaxId: boolean;
     }[];
   } {
     const template = getSalesDocumentStarterTemplate(country);
@@ -73,6 +81,7 @@ export class SalesDocumentTemplatesController {
         requiredCapability: rule.requiredCapability,
         effectiveFrom: rule.effectiveFrom,
         effectiveTo: rule.effectiveTo,
+        usesBuyerHasTaxId: rule.conditions.some((condition) => condition.field === 'buyerHasTaxId'),
       })),
     };
   }

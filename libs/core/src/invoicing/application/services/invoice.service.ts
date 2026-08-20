@@ -551,7 +551,22 @@ export class InvoiceService implements IInvoiceService {
         fiscalization.FISCAL_REGISTRATION_SERVICE_TOKEN,
         { strict: false },
       );
-    } catch {
+    } catch (error) {
+      // Expected on every process that never imports `FiscalizationModule`
+      // (e.g. a deployment that only ever uses Invoicing) — `ModuleRef.get`
+      // throws when the token was never bound. That case is a normal,
+      // silent no-op. Anything else caught here (a malformed require, a
+      // provider that threw during lazy instantiation, …) is NOT expected
+      // and must not vanish without a trace: this guard is the one thing
+      // standing between a fiscal receipt and a second, duplicate invoice
+      // for the same order (#2157), so a swallowed unexpected error here
+      // would silently disable that protection. Logged, not thrown — this
+      // resolver still can't distinguish "not wired" from "broken" by type,
+      // and failing closed would also break the fully-expected not-wired case.
+      this.logger.warn(
+        `Could not resolve IFiscalRegistrationService (treating fiscalization as not wired ` +
+          `into this process): ${error instanceof Error ? error.message : String(error)}`,
+      );
       return null;
     }
   }

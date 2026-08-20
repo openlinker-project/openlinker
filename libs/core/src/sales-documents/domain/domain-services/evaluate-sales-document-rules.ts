@@ -93,7 +93,12 @@ function checkAmountConditionDataProblem(
     // carries it cannot match; other rules in the same scope are unaffected.
     return null;
   }
-  if (order.taxTreatment === 'exclusive') {
+  // A missing `taxTreatment` is NOT "known to be inclusive" — the type's own
+  // doc comment (`SalesDocumentOrderFacts.taxTreatment`) says a missing OR
+  // `exclusive` treatment resolves the same way, and this codebase's stance
+  // is to never guess on a figure feeding a legal-document decision (review
+  // finding 11). Only an EXPLICIT `'inclusive'` clears this check.
+  if (order.taxTreatment !== 'inclusive') {
     return 'net-priced';
   }
   if (threshold.currency !== order.currency) {
@@ -136,6 +141,13 @@ function evaluateScope(
   thresholdsByRef: ReadonlyMap<string, SalesDocumentThresholdFact>,
 ): ScopeResult {
   const matched: SalesDocumentRuleFact[] = [];
+  // The first order-data problem encountered across ALL rules in this scope,
+  // kept aside rather than returned immediately (review finding 3): a rule
+  // ordered AFTER a clean match must never discard that match just because
+  // IT happens to reference a threshold with a currency mismatch, or the
+  // order is net-priced. The problem is only surfaced if the scope ends up
+  // with no clean match at all — see below.
+  let dataProblemFound: 'net-priced' | 'currency-mismatch' | null = null;
   for (const rule of rules) {
     if (!isEffective(rule, now)) continue;
 
@@ -143,10 +155,12 @@ function evaluateScope(
     for (const condition of rule.conditions) {
       const { matches, dataProblem } = evaluateCondition(condition, order, thresholdsByRef);
       if (dataProblem !== null) {
-        // An order-data problem is a fact about THIS order, not about which
-        // rule was being checked — halt the whole scope rather than let a
-        // different rule paper over it with an unrelated match.
-        return { kind: dataProblem };
+        // This rule cannot be reliably evaluated — it does not match, but
+        // the problem is remembered in case nothing else in the scope does
+        // either.
+        dataProblemFound ??= dataProblem;
+        allTrue = false;
+        break;
       }
       if (!matches) {
         allTrue = false;
@@ -165,6 +179,9 @@ function evaluateScope(
   }
   if (matched.length > 1) {
     return { kind: 'ambiguous-rules' };
+  }
+  if (dataProblemFound !== null) {
+    return { kind: dataProblemFound };
   }
 
   // Tier 2: the scope's own default, but only when exactly one documentKind

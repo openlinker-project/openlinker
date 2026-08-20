@@ -172,6 +172,15 @@ export function SalesDocumentRuleComposerDialog({
                   <option value="false">no</option>
                 </Select>
               ) : null}
+              {condition.kind === 'buyerHasTaxId' ? (
+                <div style={{ gridColumn: '1 / -1' }}>
+                  <Alert tone="warning">
+                    This condition cannot match yet: OpenLinker doesn&apos;t know a buyer&apos;s
+                    tax-ID status for any order today, so a rule using it will never fire until that
+                    data is available.
+                  </Alert>
+                </div>
+              ) : null}
 
               {condition.kind === 'orderCountry' ? (
                 <Input

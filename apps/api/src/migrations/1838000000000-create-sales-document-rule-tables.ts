@@ -79,10 +79,14 @@ export class CreateSalesDocumentRuleTables1838000000000 implements MigrationInte
         ON "sales_document_rules" ("country", "conditions_hash", "effective_from")
     `);
 
-    await queryRunner.query(`
-      CREATE INDEX "IDX_sales_document_rules_country_hash"
-        ON "sales_document_rules" ("country", "conditions_hash")
-    `);
+    // No separate `(country, conditions_hash)` index (review, optional
+    // improvements): its leading columns are already a strict prefix of the
+    // unique index just above, which Postgres can use directly for a
+    // `(country, conditions_hash)`-only lookup — a second index over the
+    // same leading columns would only add write overhead with no query
+    // benefit. `IDX_sales_document_rules_connection_id` below is NOT
+    // redundant the same way: it covers a different column entirely (the FK
+    // join target), which the unique index's leading columns do not prefix.
 
     await queryRunner.query(`
       CREATE INDEX "IDX_sales_document_rules_connection_id"
@@ -134,7 +138,6 @@ export class CreateSalesDocumentRuleTables1838000000000 implements MigrationInte
     );
     await queryRunner.query(`DROP TABLE IF EXISTS "sales_document_country_defaults"`);
     await queryRunner.query(`DROP INDEX IF EXISTS "public"."IDX_sales_document_rules_connection_id"`);
-    await queryRunner.query(`DROP INDEX IF EXISTS "public"."IDX_sales_document_rules_country_hash"`);
     await queryRunner.query(
       `DROP INDEX IF EXISTS "public"."UQ_sales_document_rules_country_hash_from"`,
     );

@@ -110,6 +110,8 @@ export interface SalesDocumentTemplateRuleSummary {
   requiredCapability: 'Invoicing' | 'Fiscalization';
   effectiveFrom: string;
   effectiveTo: string | null;
+  /** Whether this rule's conditions reference `buyerHasTaxId` — see the backend controller's own doc comment. */
+  usesBuyerHasTaxId: boolean;
 }
 
 export interface SalesDocumentStarterTemplate {

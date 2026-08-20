@@ -12,24 +12,21 @@
  * in scope, so it does the check and the controller calls it BEFORE
  * delegating to the core `ISalesDocumentRulesService`.
  *
- * Mirrors `resolveSalesDocumentRouting`'s own
- * `REQUIRED_CAPABILITY_BY_CORE_KIND` map — kept as a SEPARATE small map here
- * rather than imported, since that map is a private (non-exported) constant
- * inside the core resolver file and duplicating three lines of open-world-safe
- * lookup logic is cheaper than exporting an internal implementation detail
- * across the API/core boundary for one caller.
+ * Reuses `resolveSalesDocumentRouting`'s own `REQUIRED_CAPABILITY_BY_CORE_KIND`
+ * map (`@openlinker/core/sales-documents`) rather than a separately maintained
+ * copy, so this save-time check and the routing resolver's own structural
+ * check can never drift apart.
  *
  * @module apps/api/src/sales-documents
  */
 import { Inject, Injectable } from '@nestjs/common';
 import { BadRequestException } from '@nestjs/common';
 import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
-import { CoreSalesDocumentKindValues, type SalesDocumentKind } from '@openlinker/core/sales-documents';
-
-const REQUIRED_CAPABILITY_BY_CORE_KIND: Readonly<Record<string, string>> = {
-  invoice: 'Invoicing',
-  'fiscal-receipt': 'Fiscalization',
-};
+import {
+  isCoreSalesDocumentKind,
+  REQUIRED_CAPABILITY_BY_CORE_KIND,
+  type SalesDocumentKind,
+} from '@openlinker/core/sales-documents';
 
 @Injectable()
 export class SalesDocumentCapabilityGuardService {
@@ -49,16 +46,25 @@ export class SalesDocumentCapabilityGuardService {
     connectionId: string,
     documentKind: SalesDocumentKind,
   ): Promise<void> {
-    const isCoreKind = (CoreSalesDocumentKindValues as readonly string[]).includes(documentKind);
-    if (!isCoreKind) return;
+    if (!isCoreSalesDocumentKind(documentKind)) return;
 
     const requiredCapability = REQUIRED_CAPABILITY_BY_CORE_KIND[documentKind];
     if (requiredCapability === undefined) return;
 
-    const { metadata } = await this.integrations.getAdapter(connectionId);
-    if (!metadata.supportedCapabilities.includes(requiredCapability)) {
+    // Checked against what the OPERATOR turned on, not what the adapter
+    // package could theoretically support (review finding 5) — every other
+    // gate in this epic (the actual `AutoIssueTriggerService` runtime path,
+    // `SalesDocumentCapabilityGuardService`'s own sibling checks) keys off
+    // `connection.enabledCapabilities`. Keying off `metadata.supportedCapabilities`
+    // instead let an operator save a rule routing through a connection whose
+    // adapter CAN support the capability but that was never enabled — the
+    // save-time guard would pass, and the rejection would only surface later,
+    // as a confusing `unsupported-document-kind-on-connection` block on a
+    // real order.
+    const { connection } = await this.integrations.getAdapter(connectionId);
+    if (!connection.enabledCapabilities.includes(requiredCapability)) {
       throw new BadRequestException(
-        `Connection '${connectionId}' does not support ${requiredCapability}, which is required to issue '${documentKind}'.`,
+        `Connection '${connectionId}' does not have ${requiredCapability} enabled, which is required to issue '${documentKind}'.`,
       );
     }
   }

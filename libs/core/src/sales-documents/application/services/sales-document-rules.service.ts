@@ -35,7 +35,10 @@ import type {
   SalesDocumentCountryDefaultInput,
   SalesDocumentRuleInput,
 } from '../../domain/types/sales-document-rule-write.types';
-import { computeSalesDocumentConditionsHash } from '../../domain/types/sales-document-condition.types';
+import {
+  computeSalesDocumentConditionsHash,
+  isSalesDocumentCondition,
+} from '../../domain/types/sales-document-condition.types';
 import {
   SALES_DOCUMENT_REST_OF_WORLD_COUNTRY,
   type SalesDocumentOrderFacts,
@@ -45,6 +48,7 @@ import type { SalesDocumentCountrySummary } from '../../domain/types/sales-docum
 import { evaluateSalesDocumentRules } from '../../domain/domain-services/evaluate-sales-document-rules';
 import { SalesDocumentRuleConflictException } from '../../domain/exceptions/sales-document-rule-conflict.exception';
 import { SalesDocumentThresholdNotFoundException } from '../../domain/exceptions/sales-document-threshold-not-found.exception';
+import { SalesDocumentInvalidConditionException } from '../../domain/exceptions/sales-document-invalid-condition.exception';
 import {
   SalesDocumentCountryDefaultNotFoundException,
   SalesDocumentRuleNotFoundException,
@@ -86,6 +90,7 @@ export class SalesDocumentRulesService implements ISalesDocumentRulesService {
   }
 
   async createRule(input: SalesDocumentRuleInput): Promise<SalesDocumentRule> {
+    this.assertConditionsWellFormed(input.conditions);
     await this.assertThresholdRefsResolve(input);
 
     const conditionsHash = computeSalesDocumentConditionsHash(input.conditions);
@@ -234,6 +239,23 @@ export class SalesDocumentRulesService implements ISalesDocumentRulesService {
   }
 
   /**
+   * Defense-in-depth guard (review finding 2): reject any condition that
+   * fails {@link isSalesDocumentCondition} BEFORE it can persist. The HTTP DTO
+   * layer already validates this shape, but this service has no other caller
+   * enforcing it, and a condition that slips through would otherwise persist
+   * as an unconditional "match everything" rule — the read-side repository
+   * mapper only discovers the same malformation later, by silently filtering
+   * it out of an already-saved row.
+   */
+  private assertConditionsWellFormed(conditions: SalesDocumentRuleInput['conditions']): void {
+    for (let i = 0; i < conditions.length; i++) {
+      if (!isSalesDocumentCondition(conditions[i])) {
+        throw new SalesDocumentInvalidConditionException(i);
+      }
+    }
+  }
+
+  /**
    * Validate every `orderTotalGross` condition's `thresholdRef` resolves
    * BEFORE persisting the rule — an unresolvable ref at evaluation time would
    * silently make the condition unevaluable rather than loudly wrong at
@@ -263,10 +285,23 @@ export class SalesDocumentRulesService implements ISalesDocumentRulesService {
    * connection is rejected outright. Deliberately no `priority` field breaks
    * the tie — see `SalesDocumentRuleConflictException`'s own doc comment.
    *
-   * A read-then-reject inside one transaction, not a DB trigger — a plain
-   * unique index cannot express "overlapping date range" (same trade-off
-   * ADR-040 accepted for its own append-only guard: no database-level guard
-   * ships beyond the exact-duplicate unique index the migration adds).
+   * NOT a transaction, lock, or `SELECT FOR UPDATE` (review finding 9,
+   * correcting an earlier version of this comment that overstated the
+   * guarantee as "read-then-reject inside one transaction") — a plain
+   * read-then-check, same as ADR-040's own append-only guard, which also
+   * ships no database-level guard beyond the exact-duplicate unique index
+   * the migration adds. Two concurrent `createRule` calls for the same
+   * country with OVERLAPPING-but-not-identical scope can both pass this
+   * check and insert; the unique index only catches an exact
+   * `(country, conditionsHash, connectionId, effectiveFrom)`-shaped tuple
+   * match, not an overlap. The blast radius is bounded, not eliminated: the
+   * runtime evaluator (`evaluateSalesDocumentRules`) still fails safe to
+   * `unresolved`/`conflicting-rules-equal-priority` on genuine ambiguity
+   * rather than silently picking one of the two racily-inserted rules —
+   * ADR-041's "never silently pick one" invariant holds regardless. Real
+   * locking (an advisory lock keyed on `(country, conditionsHash)`, or a
+   * `SELECT ... FOR UPDATE` inside an explicit transaction) is a fast-follow,
+   * not shipped here.
    */
   private async assertNoConflict(
     country: string,

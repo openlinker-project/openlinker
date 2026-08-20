@@ -21,10 +21,13 @@ export function useUpsertSalesDocumentCountryDefaultMutation(): UseMutationResul
 
   return useMutation({
     mutationFn: (input) => apiClient.salesDocumentRules.upsertCountryDefault(input),
-    onSuccess: async (_result, input) => {
-      await queryClient.invalidateQueries({
-        queryKey: salesDocumentRulesQueryKeys.countryDefaults(input.country),
-      });
+    onSuccess: async () => {
+      // Invalidate the whole domain, not just this country's own defaults —
+      // matching every deletion/reset/acknowledge hook in this feature
+      // (review finding 7). `countries()` (the index's Status column) also
+      // needs to move after a save; the narrower key left it stale for the
+      // 30s default `staleTime`, reading as a failed save.
+      await queryClient.invalidateQueries({ queryKey: salesDocumentRulesQueryKeys.all });
     },
   });
 }

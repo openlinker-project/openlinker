@@ -107,14 +107,20 @@
  * property, which is specifically about `orders`), and since #2173,
  * `SALES_DOCUMENT_RULES_SERVICE_TOKEN` (`sales-documents` — a dependency-free
  * leaf concern with zero outbound core-context edges of its own, per
- * `docs/architecture-overview.md`). It injects NO `OrdersModule` token, which
- * is what the invariant is about and what
+ * `docs/architecture-overview.md`), and since review finding 6, a plain
+ * `ModuleRef` used to lazily resolve `IFiscalRegistrationService` in
+ * `reportBlock` — the SAME lazy-require pattern `InvoiceService` uses, for
+ * the SAME reason (a constructor-typed dependency would require
+ * `FiscalizationModule`, which imports `InvoicingModule`, not the other way
+ * around). It injects NO `OrdersModule` token, which is what the invariant is
+ * about and what
  * `invoicing-auto-issue-boot.int-spec.ts` asserts.
  *
  * @module libs/core/src/invoicing/application/services
  * @implements {IAutoIssueTriggerService}
  */
 import { Inject, Injectable } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import {
   ConnectionPort,
   CONNECTION_PORT_TOKEN,
@@ -155,6 +161,12 @@ import { Logger } from '@openlinker/shared/logging';
 // never emits a runtime require(), so it cannot reintroduce the CommonJS
 // cycle that require breaks.
 import type { toRegisterTransactionCommand as ToRegisterTransactionCommandType } from '@openlinker/core/fiscalization';
+// Same lazy-require reason as `toRegisterTransactionCommand` above and as
+// `InvoiceService.resolveFiscalRegistrationService` — see either doc comment.
+import type {
+  FISCAL_REGISTRATION_SERVICE_TOKEN as FiscalRegistrationServiceTokenType,
+  IFiscalRegistrationService,
+} from '@openlinker/core/fiscalization';
 
 import type { IAutoIssueTriggerService } from './auto-issue-trigger.service.interface';
 import type { InvoicingPort } from '../../domain/ports/invoicing.port';
@@ -254,7 +266,46 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     // one-way edge above.
     @Inject(SALES_DOCUMENT_RULES_SERVICE_TOKEN)
     private readonly salesDocumentRules: ISalesDocumentRulesService,
+    // Resolved lazily via `resolveFiscalRegistrationService` (review finding
+    // 6) — never a constructor-typed `IFiscalRegistrationService`, which
+    // would require `FiscalizationModule` and close the
+    // `invoicing <-> fiscalization` cycle from the WRONG direction (see
+    // `docs/architecture-overview.md`'s dependency map: `FiscalizationModule`
+    // imports `InvoicingModule`, never the reverse).
+    private readonly moduleRef: ModuleRef,
   ) {}
+
+  /**
+   * Lazily resolve `IFiscalRegistrationService`, structurally mirroring
+   * `InvoiceService.resolveFiscalRegistrationService` (see that method's own
+   * doc comment for why the require is deferred to call time). Returns
+   * `null` when `FiscalizationModule` is not wired into this process — the
+   * normal case on an install that only uses Invoicing.
+   *
+   * Deliberately SILENT on the catch, unlike its `InvoiceService` sibling
+   * (review finding 1 vs. finding 6 — two different call sites, two
+   * different noise budgets): `reportBlock` calls this on EVERY order
+   * transition, so a warn-per-call here would log on every single
+   * transition for the common "Fiscalization not wired at all" install,
+   * which is exactly the log-spam anti-pattern this file's own
+   * `shippedViabilityWarned` / `manualWinnerWarned` one-time-diagnostic sets
+   * exist to avoid. `InvoiceService`'s copy is called once per issuance
+   * attempt — a much smaller noise budget — which is why IT logs.
+   */
+  private resolveFiscalRegistrationService(): IFiscalRegistrationService | null {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires -- lazy require needed to break a CommonJS barrel-load cycle with `@openlinker/core/fiscalization`
+      const fiscalization = require('@openlinker/core/fiscalization') as {
+        FISCAL_REGISTRATION_SERVICE_TOKEN: typeof FiscalRegistrationServiceTokenType;
+      };
+      return this.moduleRef.get<IFiscalRegistrationService>(
+        fiscalization.FISCAL_REGISTRATION_SERVICE_TOKEN,
+        { strict: false },
+      );
+    } catch {
+      return null;
+    }
+  }
 
   /**
    * Report a block ONLY if the order does not already have a fiscal document
@@ -289,15 +340,16 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
    * unknown, leaving the persisted value untouched is the only option that can
    * neither invent a reason nor erase a true one.
    *
-   * NOTE (#2156): this check only reads the INVOICE projection today
-   * (`getLatestInvoiceForOrder`) — it does not also check for an existing
-   * fiscal-receipt registration. A fiscal-receipt candidate that gets blocked
-   * for an unrelated reason (e.g. `trigger-model-manual`) on an order that
-   * ALREADY has a receipt would therefore still report the block rather than
-   * `none`. This is a narrower version of the same suppression gap, tracked
-   * as a fast-follow rather than blocking this issue — the cross-kind
-   * write-path guard (#2157) is what actually prevents a second document from
-   * being CREATED; this method only decides whether a block gets RE-REPORTED.
+   * Checks BOTH document kinds (review finding 6 — previously only the
+   * invoice projection was read): an order that already has a blocking
+   * fiscal-receipt registration must suppress a re-block for the same reason
+   * an already-invoiced order does, or a fiscal-receipt candidate blocked for
+   * an unrelated reason (e.g. `trigger-model-manual`) on an order that
+   * already has a receipt would still report the block instead of `none`.
+   * `IFiscalRegistrationService` is resolved lazily (see
+   * `resolveFiscalRegistrationService`) since `fiscalization` is not always
+   * wired into this process; when it isn't, this half of the check is simply
+   * skipped rather than treated as a read failure.
    */
   private async reportBlock(
     block: SalesDocumentBlock,
@@ -308,12 +360,20 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
       if (existing !== null && existing.blocksIssuanceElsewhere) {
         return { kind: 'none' };
       }
+
+      const fiscalRegistrationService = this.resolveFiscalRegistrationService();
+      if (fiscalRegistrationService !== null) {
+        const registrations = await fiscalRegistrationService.getByOrderId(orderId);
+        if (registrations.some((record) => record.blocksFurtherRegistration)) {
+          return { kind: 'none' };
+        }
+      }
     } catch (error) {
       const name = error instanceof Error ? error.name : 'UnknownError';
       this.logger.warn(
-        `Could not read the invoice projection while reporting a sales-document block; ` +
-          `leaving the persisted reason untouched: error=${name} orderId=${orderId} ` +
-          `reason=${block.reason}`,
+        `Could not read the invoice/fiscal-registration projection while reporting a ` +
+          `sales-document block; leaving the persisted reason untouched: error=${name} ` +
+          `orderId=${orderId} reason=${block.reason}`,
       );
       return { kind: 'indeterminate' };
     }

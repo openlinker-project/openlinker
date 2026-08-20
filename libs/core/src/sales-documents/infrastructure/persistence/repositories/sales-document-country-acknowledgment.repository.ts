@@ -24,14 +24,19 @@ export class SalesDocumentCountryAcknowledgmentRepository
     return entities.map((entity) => this.toDomain(entity));
   }
 
+  /**
+   * `INSERT ... ON CONFLICT (country) DO UPDATE` — one atomic statement, not
+   * a `findOne` + `create`/`save` round-trip (same TOCTOU class as review
+   * finding 10, applied here too: `country` is this table's primary key, so
+   * two concurrent acknowledgments for the same country could otherwise both
+   * observe "not found" and race on the insert).
+   */
   async upsert(country: string): Promise<SalesDocumentCountryAcknowledgment> {
-    const existing = await this.ormRepository.findOne({ where: { country } });
-    const entity = this.ormRepository.create({
-      ...(existing ?? {}),
-      country,
-      acknowledgedAt: new Date(),
-    });
-    const saved = await this.ormRepository.save(entity);
+    await this.ormRepository.upsert(
+      { country, acknowledgedAt: new Date() },
+      { conflictPaths: ['country'] },
+    );
+    const saved = await this.ormRepository.findOneOrFail({ where: { country } });
     return this.toDomain(saved);
   }
 

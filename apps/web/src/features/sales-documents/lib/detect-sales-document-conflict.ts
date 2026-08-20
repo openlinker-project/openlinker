@@ -21,11 +21,18 @@ export type SalesDocumentConflictKind = 'multiple-primaries' | 'ambiguous-no-pri
  * `null` = no conflict — either zero/one routing candidate (a single
  * candidate wins outright regardless of its primary flag, mirroring the
  * resolver's single-candidate rule), or exactly one primary among several.
+ *
+ * Only `active` connections count as candidates (review finding 8): the
+ * actual runtime gate (`AutoIssueTriggerService`, D8) only ever lists
+ * `status: 'active'` connections, so a disabled or `needs_reauth` connection
+ * with a configured `documentKind` can never actually compete for the
+ * "primary" slot at runtime. Counting it here would show a legal-sounding
+ * conflict banner for a state that cannot happen.
  */
 export function detectSalesDocumentConflict(
   rows: readonly SalesDocumentRow[],
 ): SalesDocumentConflictKind | null {
-  const eligible = rows.filter((row) => row.documentKind !== null);
+  const eligible = rows.filter((row) => row.status === 'active' && row.documentKind !== null);
   if (eligible.length <= 1) return null;
 
   const primaries = eligible.filter((row) => row.isPrimary);

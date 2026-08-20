@@ -96,6 +96,14 @@ export function SalesDocumentTemplateScreen({
           })}
         </div>
 
+        {template.rules.some((rule) => rule.usesBuyerHasTaxId) ? (
+          <Alert tone="warning">
+            Every rule above keys off whether the buyer has a tax ID — a fact OpenLinker does not
+            capture on any order yet. None of these rules will fire until that data is available;
+            adopting the template today would silently route no orders at all.
+          </Alert>
+        ) : null}
+
         <Alert tone="warning">{template.disclaimer}</Alert>
 
         {adopt.error ? <Alert tone="error">{adopt.error.message}</Alert> : null}
