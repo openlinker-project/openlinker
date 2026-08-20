@@ -17,6 +17,7 @@ import {
   type OfferManagerPort,
 } from '@openlinker/core/listings';
 import type { OrderSourcePort } from '@openlinker/core/orders';
+import type { SchedulerTaskConfig } from '@openlinker/core/sync';
 import type { HostServices } from '@openlinker/plugin-sdk';
 import { createErliPlugin, erliAdapterManifest, ErliIntegrationModule } from '../index';
 
@@ -244,39 +245,60 @@ describe('createErliPlugin', () => {
       );
     });
 
-    it('should register the erli-offer-status-sync scheduler task when opt-in env is set (#989, #1063)', () => {
-      const prev = process.env.OL_ERLI_OFFER_STATUS_SYNC_SCHEDULER_ENABLED;
-      process.env.OL_ERLI_OFFER_STATUS_SYNC_SCHEDULER_ENABLED = 'true';
-      try {
-        const { host, schedulerTaskRegistry } = makeRegisterHost();
-        createErliPlugin().register?.(host);
+    // #2230: registration is unconditional and the descriptor's own `enabledEnvVar`
+    // carries the toggle, so all three env states must register the SAME descriptor.
+    // The `'false'` case is deliberately a registration assertion, not a
+    // "does not run" one: disabling happens per tick inside the scheduler, and a
+    // task that is not registered writes no snapshot at all - which is exactly the
+    // defect this issue fixed (every Erli mapping stuck in `Unsynced` forever).
+    describe.each([
+      ['unset', undefined],
+      ['true', 'true'],
+      ['false', 'false'],
+    ])(
+      'erli-offer-status-sync registration with OL_ERLI_OFFER_STATUS_SYNC_SCHEDULER_ENABLED=%s',
+      (_label: string, value: string | undefined) => {
+        it('should register the task with its runtime env gate (#989, #2230)', () => {
+          const prev = process.env.OL_ERLI_OFFER_STATUS_SYNC_SCHEDULER_ENABLED;
+          if (value === undefined) delete process.env.OL_ERLI_OFFER_STATUS_SYNC_SCHEDULER_ENABLED;
+          else process.env.OL_ERLI_OFFER_STATUS_SYNC_SCHEDULER_ENABLED = value;
+          try {
+            const { host, schedulerTaskRegistry } = makeRegisterHost();
+            createErliPlugin().register?.(host);
 
-        expect(schedulerTaskRegistry.register).toHaveBeenCalledWith(
-          expect.objectContaining({
-            taskId: 'erli-offer-status-sync',
-            platformType: 'erli',
-            jobType: 'marketplace.offer.statusSync',
-            enabledEnvVar: 'OL_ERLI_OFFER_STATUS_SYNC_SCHEDULER_ENABLED',
-          }),
-        );
-      } finally {
-        if (prev === undefined) delete process.env.OL_ERLI_OFFER_STATUS_SYNC_SCHEDULER_ENABLED;
-        else process.env.OL_ERLI_OFFER_STATUS_SYNC_SCHEDULER_ENABLED = prev;
-      }
-    });
+            expect(schedulerTaskRegistry.register).toHaveBeenCalledWith(
+              expect.objectContaining({
+                taskId: 'erli-offer-status-sync',
+                platformType: 'erli',
+                jobType: 'marketplace.offer.statusSync',
+                enabledEnvVar: 'OL_ERLI_OFFER_STATUS_SYNC_SCHEDULER_ENABLED',
+              }),
+            );
+          } finally {
+            if (prev === undefined) delete process.env.OL_ERLI_OFFER_STATUS_SYNC_SCHEDULER_ENABLED;
+            else process.env.OL_ERLI_OFFER_STATUS_SYNC_SCHEDULER_ENABLED = prev;
+          }
+        });
+      },
+    );
 
-    it('should NOT register the offer-status-sync task by default — opt-in, #992-provisional status field (#1063)', () => {
+    it('should never omit enabledDefault on the offer-status task, so an unset env var means ON (#2230)', () => {
+      // The scheduler resolves an unset env var against `enabledDefault`, which
+      // itself defaults to enabled. An `enabledDefault: false` here would silently
+      // reinstate the opt-in posture while still registering the descriptor.
       const prev = process.env.OL_ERLI_OFFER_STATUS_SYNC_SCHEDULER_ENABLED;
       delete process.env.OL_ERLI_OFFER_STATUS_SYNC_SCHEDULER_ENABLED;
       try {
         const { host, schedulerTaskRegistry } = makeRegisterHost();
         createErliPlugin().register?.(host);
 
-        // Specific to the offer-status task: other Erli scheduler tasks (e.g. the
-        // orders-poll backstop, #993) register unconditionally and must be unaffected.
-        expect(schedulerTaskRegistry.register).not.toHaveBeenCalledWith(
-          expect.objectContaining({ taskId: 'erli-offer-status-sync' }),
-        );
+        const registered = (
+          schedulerTaskRegistry.register.mock.calls as unknown as [SchedulerTaskConfig][]
+        ).map(([task]) => task);
+        const task = registered.find((t) => t.taskId === 'erli-offer-status-sync');
+
+        expect(task).toBeDefined();
+        expect(task?.enabledDefault).toBeUndefined();
       } finally {
         if (prev === undefined) delete process.env.OL_ERLI_OFFER_STATUS_SYNC_SCHEDULER_ENABLED;
         else process.env.OL_ERLI_OFFER_STATUS_SYNC_SCHEDULER_ENABLED = prev;
