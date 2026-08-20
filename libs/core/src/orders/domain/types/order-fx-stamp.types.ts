@@ -87,6 +87,17 @@ export interface OrderFxSweepOptions {
    * rows the sweep has already answered.
    */
   readonly createdSince: Date;
+  /**
+   * Re-admit a row whose TERMINAL marker is older than this instant, provided it
+   * still carries no figure (#2135 review, finding 1).
+   *
+   * The frontier is otherwise "never answered", which permanently loses an order
+   * whose terminal answer came from a condition that has since cleared - a
+   * throttled provider, or a host booted without `FxIntegrationModule`. A row
+   * that carries a real stamp is never re-admitted whatever this value is: the
+   * predicate keys on `reportingCurrency IS NULL`, and the stamp is immutable.
+   */
+  readonly terminalRetryBefore: Date;
 }
 
 /** What one reconcile-sweep tick did. */

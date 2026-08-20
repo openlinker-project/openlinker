@@ -213,6 +213,7 @@ export { RefundCurrencyMismatchException } from './domain/exceptions/refund-curr
 
 // Typed-Order accessor for cross-context command composition (#1119).
 export { orderFromReadySnapshot } from './domain/order-from-ready-snapshot';
+export type { OrderFromReadySnapshotOptions } from './domain/order-from-ready-snapshot';
 
 // Order-identity list projection for Shipments/Invoices (#1995).
 export { buildOrderSummary } from './domain/order-summary-projection';

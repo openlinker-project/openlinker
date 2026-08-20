@@ -7,8 +7,13 @@
  * components (status badges, PDF link), and the runtime value arrays used for
  * filter guards on the list page.
  *
- * `resolveIssueErrorMessage`, `DocumentTypeSelect`, and `DOCUMENT_TYPE_LABEL_FALLBACK`
- * stay internal (only used by the panel itself or tests that deep-import them).
+ * `resolveIssueErrorMessage` and `DocumentTypeSelect` stay internal (only used by
+ * the panel itself or tests that deep-import them). Its `documentType` labels do
+ * NOT: three surfaces render one — the invoices list, the invoice detail page and
+ * `OrderInvoicePanel` — so `DOCUMENT_TYPE_LABEL_FALLBACK` (the map) and
+ * `DOCUMENT_TYPE_UNKNOWN_LABEL` (the not-yet-issued string) are exported to keep
+ * that map the single source of truth (#2090). The detail page still reaches it by
+ * deep path; migrating that call site is a follow-up, not a blocker.
  *
  * Exception: `RegulatoryStatusBadge` and `regCardToneFor` are exported so
  * per-provider `invoiceDetailSection` slot components (KSeF, Subiekt,
@@ -25,8 +30,16 @@ export {
   RegulatoryStatusBadge,
   REGULATORY_STATUS_LABEL_FALLBACK,
 } from './components/regulatory-status-badge';
-export { regCardToneFor, type RegCardTone } from './lib/derive-invoice-display';
+export {
+  deriveInvoiceDisplayStatus,
+  regCardToneFor,
+  type RegCardTone,
+} from './lib/derive-invoice-display';
 export { InvoicePdfLink } from './components/invoice-pdf-link';
+export {
+  DOCUMENT_TYPE_LABEL_FALLBACK,
+  DOCUMENT_TYPE_UNKNOWN_LABEL,
+} from './components/document-type-select';
 export { useOrderInvoiceQuery } from './hooks/use-order-invoice-query';
 export { useInvoiceQuery } from './hooks/use-invoice-query';
 export { useIssueInvoiceMutation } from './hooks/use-issue-invoice-mutation';

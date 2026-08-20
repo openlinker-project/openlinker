@@ -77,6 +77,7 @@ export {
 } from './domain/exceptions/exchange-rate.exception';
 export {
   DuplicateExchangeRateSourceError,
+  NoExchangeRateProvidersRegisteredError,
   UnregisteredExchangeRateSourceError,
 } from './domain/exceptions/exchange-rate-source.exception';
 export {

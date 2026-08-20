@@ -28,6 +28,8 @@ export const CAPABILITY_HELP: Record<CoreCapability, string> = {
   CategoryProvisioner:
     'Create or resolve destination categories when publishing listings to this connection.',
   Invoicing: 'Issue and manage fiscal documents (invoices) through this connection.',
+  Fiscalization:
+    'Register a completed sale with this connection, which performs or brokers the fiscal registration. OpenLinker never decides whether an order requires one.',
 };
 
 /**

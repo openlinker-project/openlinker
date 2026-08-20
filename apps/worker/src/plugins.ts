@@ -38,6 +38,7 @@ import { ErliIntegrationModule } from '@openlinker/integrations-erli';
 import { KsefIntegrationModule } from '@openlinker/integrations-ksef';
 import { SubiektIntegrationModule } from '@openlinker/integrations-subiekt';
 import { InfaktIntegrationModule } from '@openlinker/integrations-infakt';
+import { EparagonyIntegrationModule } from '@openlinker/integrations-eparagony';
 import { FxIntegrationModule } from '@openlinker/integrations-fx';
 
 export const workerPlugins: PluginEntry[] = [
@@ -58,6 +59,10 @@ export const workerPlugins: PluginEntry[] = [
   // #1281: resolve the Infakt 'Invoicing' capability when issuance/reconcile
   // jobs run from the worker (mirrors Subiekt/KSeF dual registration).
   InfaktIntegrationModule,
+  // #1908 / ADR-042: resolve the 'Fiscalization' capability when a fiscal
+  // registration is driven from the worker (mirrors the invoicing adapters'
+  // dual registration).
+  EparagonyIntegrationModule,
   // #2123: reference exchange-rate providers (NBP, ECB), registered into the
   // core currency registry at boot. Load-bearing here: order ingestion and the
   // FX retry / reconcile-sweep handlers are worker-side. NOT a plugin - no
