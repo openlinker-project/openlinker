@@ -172,6 +172,56 @@ describe('orderFromReadySnapshot', () => {
     expect(() => orderFromReadySnapshot(makeRecord(rest))).toThrow(OrderSnapshotUnavailableError);
   });
 
+  describe('requireBuyer: false (#1908)', () => {
+    // The buyer gate is an INVOICING rule. A caller composing a document that
+    // names no buyer - a fiscal registration - must still be able to read the
+    // sale under `OL_STORE_PII=false`, where every address is `[REDACTED]`.
+    const redactedSnapshot = {
+      ...READY_SNAPSHOT,
+      billingAddress: {
+        address1: '[REDACTED]',
+        city: '[REDACTED]',
+        postalCode: '[REDACTED]',
+        country: 'PL',
+      },
+      shippingAddress: undefined,
+    };
+
+    it('rehydrates a fully-redacted snapshot instead of refusing it', () => {
+      const order = orderFromReadySnapshot(makeRecord(redactedSnapshot), {
+        requireBuyer: false,
+      });
+      expect(order.id).toBe('ol_order_1');
+      expect(order.items).toHaveLength(1);
+      expect(order.totals.total).toBe(99.98);
+    });
+
+    it('rehydrates a snapshot with no address at all', () => {
+      const { billingAddress: _omit, ...rest } = READY_SNAPSHOT;
+      void _omit;
+      expect(() =>
+        orderFromReadySnapshot(makeRecord(rest), { requireBuyer: false }),
+      ).not.toThrow();
+    });
+
+    it('still refuses a record that is not `ready` - the opt-out is only about the BUYER', () => {
+      expect(() =>
+        orderFromReadySnapshot(makeRecord(READY_SNAPSHOT, 'awaiting_mapping'), {
+          requireBuyer: false,
+        }),
+      ).toThrow(OrderSnapshotUnavailableError);
+    });
+
+    it('keeps the gate on by default, so invoicing is untouched', () => {
+      expect(() => orderFromReadySnapshot(makeRecord(redactedSnapshot))).toThrow(
+        OrderSnapshotUnavailableError,
+      );
+      expect(() => orderFromReadySnapshot(makeRecord(redactedSnapshot), {})).toThrow(
+        OrderSnapshotUnavailableError,
+      );
+    });
+  });
+
   it('rejects an awaiting_mapping record (snapshot is a raw IncomingOrder, not an Order)', () => {
     expect(() => orderFromReadySnapshot(makeRecord(READY_SNAPSHOT, 'awaiting_mapping'))).toThrow(
       OrderSnapshotUnavailableError,

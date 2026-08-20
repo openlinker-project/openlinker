@@ -32,7 +32,14 @@ export function InvoicePdfLink({ invoiceNumber, pdfUrl }: InvoicePdfLinkProps): 
         target="_blank"
         rel="noopener noreferrer"
         className="invoice-pdf-link"
-        aria-label={t('invoice.pdf.aria', 'Open invoice PDF (opens in new tab)')}
+        // The number, not just "invoice PDF": `aria-label` overrides the
+        // name-from-content, so without it a 20-row page exposes 20 links with
+        // identical accessible names and a screen reader's link list is useless
+        // (#2090). Doubly so now the number is a merged identity cell's headline.
+        aria-label={t(
+          'invoice.pdf.aria',
+          `Open invoice PDF for ${invoiceNumber} (opens in new tab)`
+        )}
       >
         <span className="mono-text">{invoiceNumber}</span>
       </a>

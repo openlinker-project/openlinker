@@ -19,6 +19,25 @@ interface EntityLabelProps extends Omit<ComponentPropsWithoutRef<'span'>, 'id'> 
    * same id never grows two copy controls (#2027).
    */
   showCopy?: boolean;
+  /**
+   * Accessible name of the built-in copy button. Defaults to `Copy {id}`, which
+   * a screen reader spells out character by character — 32 hex digits on every
+   * row of a table. A caller that can resolve the id to something human should
+   * pass it ("Copy order ID 6839-2911-4402"), mirroring `CopyableId`'s
+   * `copyLabel` (#1996). Kept optional so no existing call site changes.
+   */
+  copyLabel?: string;
+  /** Accessible name once the copy succeeded. Defaults to `Copied {id}`. */
+  copiedLabel?: string;
+  /**
+   * `title` on the rendered name, overriding the default (the name itself).
+   *
+   * For a caller that SHORTENS what it passes as `name`: the default would then
+   * tooltip the shortened form, leaving the full value unreachable to a sighted
+   * user. `OrderIdentityCell` passes the full order number, because Allegro's
+   * order number is a 36-character id that its own cell must shorten (#2089).
+   */
+  nameTitle?: string;
   to?: string;
   /**
    * Fired when the inner name link is clicked (navigation), never when the
@@ -35,6 +54,9 @@ export const EntityLabel = forwardRef<HTMLSpanElement, EntityLabelProps>(functio
     name,
     showId = true,
     showCopy = true,
+    copyLabel,
+    copiedLabel,
+    nameTitle,
     to,
     onNavigate,
     className = '',
@@ -71,7 +93,13 @@ export const EntityLabel = forwardRef<HTMLSpanElement, EntityLabelProps>(functio
   }, [id]);
 
   const classes = ['entity-label', className].filter(Boolean).join(' ');
+  const copyButtonLabel = copied ? (copiedLabel ?? `Copied ${id}`) : (copyLabel ?? `Copy ${id}`);
   const resolvedName = name ?? null;
+  // `?? undefined` rather than `?? id`: both consumers sit inside the
+  // `resolvedName ?` branch below, so the third rung is unreachable — it exists
+  // only because `title` takes `string | undefined`, and defaulting an
+  // unreachable rung to the raw id would read as a behaviour somebody relies on.
+  const resolvedTitle = nameTitle ?? resolvedName ?? undefined;
 
   const nameNode = loading ? (
     <span className="entity-label__name entity-label__name--loading" aria-busy="true">
@@ -83,12 +111,12 @@ export const EntityLabel = forwardRef<HTMLSpanElement, EntityLabelProps>(functio
         to={to}
         className="entity-label__name entity-label__name--link"
         onClick={onNavigate}
-        title={resolvedName}
+        title={resolvedTitle}
       >
         {resolvedName}
       </Link>
     ) : (
-      <span className="entity-label__name" title={resolvedName}>
+      <span className="entity-label__name" title={resolvedTitle}>
         {resolvedName}
       </span>
     )
@@ -111,7 +139,16 @@ export const EntityLabel = forwardRef<HTMLSpanElement, EntityLabelProps>(functio
           type="button"
           className="entity-label__copy"
           onClick={handleCopy}
-          aria-label={copied ? `Copied ${id}` : `Copy ${id}`}
+          aria-label={copyButtonLabel}
+          // `title={id}`, NOT a mirror of `aria-label` (#2091). A sighted operator
+          // needs to know what "Copy" writes on a row whose visible identity is
+          // not the id being copied — `OrderIdentityCell` renders the order NUMBER
+          // and copies the internal id, and with `showId={false}` there is no
+          // `entity-label__id` chip beside it to make the target visible. Mirroring
+          // the accessible name would make `title` the accessible *description* of
+          // a control that already has that exact string as its name, so a screen
+          // reader announces it twice; the id adds information instead.
+          title={id}
         >
           {copied ? 'Copied' : 'Copy'}
         </button>

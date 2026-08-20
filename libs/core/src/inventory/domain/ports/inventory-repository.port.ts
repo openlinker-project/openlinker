@@ -47,8 +47,23 @@ export interface InventoryRepositoryPort {
    * Upserts inventory by unique constraint: (productId, productVariantId, locationId).
    * If productVariantId is null, uses base inventory constraint.
    *
+   * On an EXISTING row the write is **column-scoped** (#2071): only the columns
+   * the master sync owns are written (`availableQuantity`, `reservedQuantity`,
+   * `isStale`). The row's identity columns are never rewritten, and `updatedAt`
+   * is left to the database — so the returned item's `updatedAt` is the
+   * DB-stamped value, NOT the `item.updatedAt` the caller passed in.
+   * `InventorySyncService` builds the propagation dedupe key from that value,
+   * which is why the master's timestamp must not survive the round-trip.
+   *
+   * **Precondition on `isStale`:** it is in the owned set only because
+   * `MasterInventorySyncService` runs its `setInventory` loop BEFORE
+   * `pruneStaleVariants`, keeping the two write sets disjoint. A new caller that
+   * breaks that ordering must move `isStale` out of the owned set.
+   *
    * @param item - Inventory item domain entity with internal IDs
-   * @returns Upserted inventory item domain entity
+   * @returns Upserted inventory item domain entity, carrying the DB-stamped `updatedAt`
+   * @throws InventoryRowVanishedError if the matched row disappeared before the scoped UPDATE
+   * @throws InventoryReturningUnsupportedError if the driver returned no usable `updatedAt`
    */
   upsert(item: InventoryItem): Promise<InventoryItem>;
 

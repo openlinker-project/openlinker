@@ -25,6 +25,7 @@ import { TimeDisplay } from '../../shared/ui/time-display';
 import { StatusBadge, type StatusBadgeTone } from '../../shared/ui/status-badge';
 import { useMediaQuery } from '../../shared/ui/use-media-query';
 import { usePlatforms } from '../../shared/plugins';
+import { findPlatformDisplayName, resolvePlatformLabel } from '../../features/mappings';
 import {
   deriveStockStatus,
   STOCK_STATUS_BADGE_TONE,
@@ -203,7 +204,7 @@ function VariantCoverage({
   const platforms = usePlatforms();
   const listedConnectionIds = new Set(listings.map((l) => l.connectionId));
   const platformLabel = (platformType: string): string =>
-    platforms.find((p) => p.platformType === platformType)?.displayName ?? platformType;
+    resolvePlatformLabel(platforms, platformType);
 
   const listedConnections = connections.filter((c) => listedConnectionIds.has(c.id));
 
@@ -215,7 +216,15 @@ function VariantCoverage({
       ? listedConnections.map((connection) => {
           const soleOfPlatform =
             connections.filter((c) => c.platformType === connection.platformType).length === 1;
-          const label = soleOfPlatform ? platformLabel(connection.platformType) : connection.name;
+          // Same fallback as the other two renderings of this pill
+          // (`listings-coverage-pills.tsx`, `product-row-detail.tsx`): with no
+          // registered platform, the operator-authored connection name beats a
+          // lowercase slug. Before #2088 this one site disagreed with its two
+          // siblings, so the same variant read `My Shopify Store` on the products
+          // list and `shopify` on the product detail page.
+          const label = soleOfPlatform
+            ? (findPlatformDisplayName(platforms, connection) ?? connection.name)
+            : connection.name;
           return { key: connection.id, label, channel: connection.platformType };
         })
       : listings.map((listing) => ({
@@ -266,9 +275,7 @@ function DrawerChannelLink({
   const offerQuery = useListingMarketplaceOfferQuery(listing.id, { enabled: enabled && isOffer });
   const url = offerQuery.data?.marketplaceUrl;
   if (!url) return null;
-  const label =
-    platforms.find((p) => p.platformType === listing.platformType)?.displayName ??
-    listing.platformType;
+  const label = resolvePlatformLabel(platforms, listing);
   return (
     <a
       className="variant-drawer__link"
@@ -342,7 +349,7 @@ function ListingsSummary({
 }): ReactElement {
   const platforms = usePlatforms();
   const platformLabel = (platformType: string): string =>
-    platforms.find((p) => p.platformType === platformType)?.displayName ?? platformType;
+    resolvePlatformLabel(platforms, platformType);
   const listedConnectionIds = new Set(listings.map((l) => l.connectionId));
   const gapConnections = connections.filter((c) => !listedConnectionIds.has(c.id));
   const gapChannels = Array.from(
@@ -487,9 +494,7 @@ function ListingDetailCard({
     categoryPathQuery.data && categoryPathQuery.data.length > 0
       ? categoryPathQuery.data.map((segment) => segment.name).join(' › ')
       : null;
-  const label =
-    platforms.find((p) => p.platformType === listing.platformType)?.displayName ??
-    listing.platformType;
+  const label = resolvePlatformLabel(platforms, listing);
 
   // Meta items are conditional (Qty / Category only when the live offer
   // resolves). Build the rendered nodes first, then interleave a muted `·`

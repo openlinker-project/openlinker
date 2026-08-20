@@ -18,6 +18,7 @@ import { useNavigate } from 'react-router-dom';
 import { Alert, Button, PageLayout, SetupStepper } from '../../../../shared/ui';
 import { useToast } from '../../../../shared/ui/toast-provider';
 import { usePlatforms, type OfferRowValidationInput } from '../../../../shared/plugins';
+import { resolvePlatformLabel } from '../../../mappings';
 import { useWriteAccess } from '../../../../shared/auth/use-permission';
 import { useDemoMode } from '../../../system';
 import { useConnectionsQuery } from '../../../connections';
@@ -519,7 +520,13 @@ export function BulkWizard({
   );
 
   const counts = useMemo(() => countBatch(rows), [rows]);
-  const marketplaceName = batchPlatform?.displayName ?? 'marketplace';
+  // `'marketplace'` stays the fallback for "no destination chosen yet"; once a
+  // connection IS chosen its label comes from the registry like everywhere else,
+  // so an unregistered platform reads as its raw type rather than the generic
+  // word (#2088).
+  const marketplaceName = batchConnection
+    ? resolvePlatformLabel(platforms, batchConnection)
+    : 'marketplace';
 
   // Every seeded variant id, checked against the destination in one call.
   const allSeededVariantIds = useMemo(() => {

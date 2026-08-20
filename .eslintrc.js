@@ -262,6 +262,14 @@ module.exports = {
                   '**/mcp-tokens/components/**',
                   '**/mcp-tokens/lib/**',
                   '**/mcp-tokens/types/**',
+                  // Added in #2150 review — `features/orders` became a
+                  // cross-imported barrel (`OrderIdentityCell`,
+                  // `formatOrderRef`) but was missing from this slug list.
+                  '**/orders/api/**',
+                  '**/orders/hooks/**',
+                  '**/orders/components/**',
+                  '**/orders/lib/**',
+                  '**/orders/types/**',
                   '**/products/api/**',
                   '**/products/hooks/**',
                   '**/products/components/**',
@@ -470,6 +478,14 @@ module.exports = {
                   '**/mcp-tokens/components/**',
                   '**/mcp-tokens/lib/**',
                   '**/mcp-tokens/types/**',
+                  // Added in #2150 review — `features/orders` became a
+                  // cross-imported barrel (`OrderIdentityCell`,
+                  // `formatOrderRef`) but was missing from this slug list.
+                  '**/orders/api/**',
+                  '**/orders/hooks/**',
+                  '**/orders/components/**',
+                  '**/orders/lib/**',
+                  '**/orders/types/**',
                   '**/products/api/**',
                   '**/products/hooks/**',
                   '**/products/components/**',
