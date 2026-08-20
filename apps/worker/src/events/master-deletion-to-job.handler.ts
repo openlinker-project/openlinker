@@ -37,8 +37,10 @@ import {
   RECLAIM_INTERVAL_MS,
   reclaimOrphans,
   RecoveryAttemptTracker,
+  REDIS_STREAM_NAMES,
   resolveConsumerName,
   type RecoveryOutcome,
+  xAddBounded,
   type StreamConsumerClient,
   type StreamEntry,
 } from '@openlinker/shared/redis';
@@ -57,7 +59,7 @@ const SYSTEM_CONNECTION_ID = '00000000-0000-0000-0000-000000000000';
 export class MasterDeletionToJobHandler implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(MasterDeletionToJobHandler.name);
   private readonly STREAM_NAME = MASTER_DELETION_EVENT_STREAM;
-  private readonly DLQ_STREAM_NAME = 'events.master.deletion.dead';
+  private readonly DLQ_STREAM_NAME = REDIS_STREAM_NAMES.masterDeletionDead;
   private readonly CONSUMER_GROUP = 'master-deletion-offer-pause';
   // Stable across restarts of the same logical worker and distinct across
   // replicas, so this process can reach its own pending history (#2164).
@@ -530,7 +532,10 @@ export class MasterDeletionToJobHandler implements OnModuleInit, OnModuleDestroy
       `Dead-lettering master-deletion event: messageId=${messageId}, reason=${reason}`
     );
     try {
-      await this.redisClient.xAdd(this.DLQ_STREAM_NAME, '*', {
+      // Age-bounded rather than count-bounded: this stream is the SOLE record
+      // that a deletion event was discarded (no Postgres counterpart), so
+      // FIFO-drop would discard exactly the first entries of an incident (#2163).
+      await xAddBounded(this.redisClient, this.DLQ_STREAM_NAME, {
         ...fields,
         errorReason: reason,
       });

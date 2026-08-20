@@ -28,3 +28,19 @@ export type {
   StreamConsumerClient,
   StreamEntry,
 } from './stream-consumer';
+export {
+  DEFAULT_STREAM_BOUND,
+  JOB_DEDUP_TTL_MS,
+  REDIS_STREAM_NAMES,
+  resolveStreamBound,
+  STREAM_NODE_MAX_ENTRIES,
+  streamTrimOptions,
+  xAddBounded,
+  xAddBoundedDynamic,
+} from './stream-retention';
+export type {
+  RedisStreamName,
+  StreamBound,
+  StreamTrimOptions,
+  StreamWriteClient,
+} from './stream-retention';

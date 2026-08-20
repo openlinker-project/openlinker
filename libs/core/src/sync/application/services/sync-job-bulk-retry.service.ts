@@ -1,36 +1,34 @@
 /**
  * Sync Job Bulk Retry Service
  *
- * Re-queues every dead job in a `(connectionId, jobType)` group and publishes
- * one `sync.job.bulk-retry-requested` event per successful batch. Event is
- * skipped when no jobs moved (nothing to announce).
+ * Re-queues every dead job in a `(connectionId, jobType)` group.
+ *
+ * This used to also publish one `sync.job.bulk-retry-requested` event per batch
+ * to `events.sync.jobs`. That stream had a publisher and, in its entire life, no
+ * consumer — nothing ever called `xReadGroup` on it — so it was write-only and,
+ * being unbounded, grew forever. The retry it announced has already completed
+ * synchronously by the time the event is sent, so the event triggered nothing
+ * and reported nothing that `sync_jobs` does not already hold. Removed rather
+ * than consumed (#2163), consistent with ADR-049 decision 2.
  *
  * @module libs/core/src/sync/application/services
  * @implements {ISyncJobBulkRetryService}
  */
 import { Inject, Injectable } from '@nestjs/common';
-import { randomUUID } from 'crypto';
 import { Logger } from '@openlinker/shared/logging';
-import { EVENT_PUBLISHER_TOKEN, EventPublisherPort } from '@openlinker/core/events';
 import { SYNC_JOB_REPOSITORY_TOKEN } from '../../sync.tokens';
 import { SyncJobRepositoryPort } from '../../domain/ports/sync-job-repository.port';
 import type { BulkRetryResult, JobType } from '../../domain/types/sync-job.types';
-import {
-  BULK_RETRY_MAX_BATCH_SIZE,
-  SYNC_JOBS_EVENT_STREAM,
-} from '../../domain/types/sync-job.types';
+import { BULK_RETRY_MAX_BATCH_SIZE } from '../../domain/types/sync-job.types';
 import type { ISyncJobBulkRetryService } from './sync-job-bulk-retry.service.interface';
 
 @Injectable()
 export class SyncJobBulkRetryService implements ISyncJobBulkRetryService {
   private readonly logger = new Logger(SyncJobBulkRetryService.name);
-  private readonly SCHEMA_VERSION = '1';
 
   constructor(
     @Inject(SYNC_JOB_REPOSITORY_TOKEN)
-    private readonly syncJobRepository: SyncJobRepositoryPort,
-    @Inject(EVENT_PUBLISHER_TOKEN)
-    private readonly eventPublisher: EventPublisherPort
+    private readonly syncJobRepository: SyncJobRepositoryPort
   ) {}
 
   async retryGroup(connectionId: string, jobType: JobType): Promise<BulkRetryResult> {
@@ -50,22 +48,6 @@ export class SyncJobBulkRetryService implements ISyncJobBulkRetryService {
       );
       return result;
     }
-
-    const now = new Date().toISOString();
-    await this.eventPublisher.publish(SYNC_JOBS_EVENT_STREAM, {
-      eventId: randomUUID(),
-      eventType: 'sync.job.bulk-retry-requested',
-      payloadJson: JSON.stringify({
-        connectionId,
-        jobType,
-        jobIds: result.requeuedJobIds,
-        count: result.count,
-        skipped: result.skipped,
-      }),
-      metadataJson: JSON.stringify({ schemaVersion: this.SCHEMA_VERSION }),
-      occurredAt: now,
-      publishedAt: now,
-    });
 
     this.logger.log(
       `Bulk retry re-queued ${result.count} job(s) (connection: ${connectionId}, type: ${jobType}, skipped: ${result.skipped})`

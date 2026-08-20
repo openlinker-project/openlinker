@@ -54,6 +54,36 @@ services:
     # one-command demo pull small. The standard names the version, not the base.
     image: redis:8.4-alpine
     container_name: ${COMPOSE_PROJECT_NAME:-openlinker}-redis
+    # Both settings are required, and the policy alone would be inert (#2163):
+    # with the upstream default `maxmemory 0` there is no eviction cycle, so
+    # `maxmemory-policy` is never consulted and Redis simply grows until the OS
+    # OOM-killer takes the container — losing the whole dataset, including every
+    # consumer group and Pending Entries List.
+    #
+    # `noeviction` is a deliberate decision, not a default. Under any `allkeys-*`
+    # policy Redis can evict a WHOLE stream key, taking its consumer groups and
+    # PELs with it, and no consumer receives an error — silent total loss. Failing
+    # the write instead is the correct direction for a queue: back-pressure over
+    # data loss, and the enqueue path already treats a failed XADD as retryable.
+    #
+    # ⚠️ UPGRADING AN EXISTING STACK whose streams grew before retention existed:
+    # run the one-time cleanup in docs/operations/redis-stream-retention.md FIRST.
+    # Retention is applied lazily, on write, so a Redis that boots already above
+    # the cap refuses the very XADD that would trim it — a state it cannot leave
+    # on its own. `XTRIM` is not a `denyoom` command and is the way out.
+    #
+    # Sizing: `jobs.sync` is bounded by AGE, not count, so total footprint cannot
+    # be derived from the caps table — at 50k jobs/day its 14-day horizon is
+    # ~700k entries (~350 MB) by itself, and `events.inbound.webhooks` holds up
+    # to 50k entries whose payloads run 2–5 KB (~100–250 MB). 2 GB is a floor
+    # with headroom, not a measured value; raise it before widening any
+    # `maxAgeMs` in libs/shared/src/redis/stream-retention.ts.
+    command:
+      - redis-server
+      - --maxmemory
+      - ${REDIS_MAXMEMORY:-2gb}
+      - --maxmemory-policy
+      - noeviction
     ports:
       - '${OL_BIND_ADDRESS:-127.0.0.1}:${REDIS_HOST_PORT:-6379}:6379'
     volumes:

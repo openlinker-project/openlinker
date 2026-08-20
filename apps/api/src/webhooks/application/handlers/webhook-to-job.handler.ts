@@ -37,8 +37,10 @@ import {
   RECLAIM_INTERVAL_MS,
   reclaimOrphans,
   RecoveryAttemptTracker,
+  REDIS_STREAM_NAMES,
   resolveConsumerName,
   type RecoveryOutcome,
+  xAddBounded,
   type StreamConsumerClient,
   type StreamEntry,
 } from '@openlinker/shared/redis';
@@ -53,8 +55,8 @@ import type { WebhookPayload, WebhookMetadata } from './webhook-handler.types';
 @Injectable()
 export class WebhookToJobHandler implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(WebhookToJobHandler.name);
-  private readonly STREAM_NAME = 'events.inbound.webhooks';
-  private readonly DLQ_STREAM_NAME = 'events.inbound.webhooks.dead';
+  private readonly STREAM_NAME = REDIS_STREAM_NAMES.inboundWebhooks;
+  private readonly DLQ_STREAM_NAME = REDIS_STREAM_NAMES.inboundWebhooksDead;
   private readonly CONSUMER_GROUP = 'webhook-handler';
   // Stable across restarts of the same logical worker and distinct across
   // replicas, so this process can reach its own pending history (#2164). This is
@@ -778,7 +780,7 @@ export class WebhookToJobHandler implements OnModuleInit, OnModuleDestroy {
         originalFields, // Full stream fields for debugging
       };
 
-      await this.redisClient.xAdd(this.DLQ_STREAM_NAME, '*', {
+      await xAddBounded(this.redisClient, this.DLQ_STREAM_NAME, {
         provider: event.provider,
         connectionId: event.connectionId,
         eventId: event.eventId,
