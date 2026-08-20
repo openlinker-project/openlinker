@@ -7,7 +7,7 @@
  * (ADR-026, backend #1292/#1293); this plugin contributes:
  *
  *   - the guided setup route (build-time) + setup card (platform-side)
- *   - the structured-config edit section (sandbox baseUrl override)
+ *   - the structured-config edit section (sandbox/production environment select, #2174)
  *   - the write-only credentials panel (single API key rotation)
  *   - the per-provider invoice detail section (KSeF number + clearance status)
  *   - the per-provider invoice correction flow (KOR)
