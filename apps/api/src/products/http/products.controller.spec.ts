@@ -58,6 +58,7 @@ function createMockProductsService(): jest.Mocked<IProductsService> {
     getVariant: jest.fn(),
     getVariantsByProductId: jest.fn(),
     getVariantsBySkus: jest.fn(),
+  getVariantsByIds: jest.fn(),
     getVariantsByBarcodes: jest.fn(),
     listProducts: jest.fn(),
     listVariants: jest.fn(),

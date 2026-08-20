@@ -67,6 +67,18 @@ export interface ProductVariantRepositoryPort {
   findBySkuIn(skus: string[]): Promise<ProductVariant[]>;
 
   /**
+   * Find variants by internal variant id list
+   *
+   * Batched counterpart to `findById`. Used where a caller holds a set of
+   * variant ids and needs their owning products in one query rather than a
+   * per-id fan-out (e.g. the bulk-batch summary projection, #2234).
+   *
+   * @param ids - Array of internal OpenLinker variant IDs
+   * @returns Array of product variant domain entities (missing ids are omitted)
+   */
+  findByIdIn(ids: readonly string[]): Promise<ProductVariant[]>;
+
+  /**
    * Find variants by EAN or GTIN list, scoped to master catalog connection
    *
    * @param connectionId - Master catalog connection ID

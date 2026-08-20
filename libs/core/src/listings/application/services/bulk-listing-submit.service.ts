@@ -46,6 +46,7 @@ import type {
   BulkBatchStatus,
   BulkListingBatch,
   CreateOfferOverrides,
+  OfferCreationRecord,
   OfferManagerPort,
 } from '@openlinker/core/listings';
 import {
@@ -323,7 +324,33 @@ export class BulkListingSubmitService implements IBulkListingSubmitService {
       return null;
     }
     const records = await this.offerCreationRecords.findByBulkBatchId(batchId);
-    return { batch, records };
+    return {
+      batch,
+      records,
+      productIdByVariantId: await this.resolveProductIds(records),
+    };
+  }
+
+  /**
+   * Map each record's variant id to its owning product id (#2234). The FE
+   * needs product ids to reopen the bulk wizard on a failed batch's variants,
+   * and neither `OfferCreationRecord` nor its request snapshot carries one.
+   * One batched lookup per page load; a variant that no longer resolves is
+   * omitted rather than defaulted, so the caller can tell "no product link"
+   * apart from a wrong one.
+   */
+  private async resolveProductIds(
+    records: readonly OfferCreationRecord[]
+  ): Promise<Record<string, string>> {
+    const variantIds = [...new Set(records.map((record) => record.internalVariantId))];
+    if (variantIds.length === 0) return {};
+
+    const variants = await this.productsService.getVariantsByIds(variantIds);
+    const productIdByVariantId: Record<string, string> = {};
+    for (const variant of variants) {
+      productIdByVariantId[variant.id] = variant.productId;
+    }
+    return productIdByVariantId;
   }
 
   /**
