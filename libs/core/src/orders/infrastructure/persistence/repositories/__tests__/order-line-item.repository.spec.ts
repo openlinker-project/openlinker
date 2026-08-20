@@ -200,6 +200,7 @@ describe('OrderLineItemRepository', () => {
           unconverted_revenue: '5',
           unconverted_order_count: '1',
           reporting_currency: 'EUR',
+          unconverted_currency: 'PLN',
         },
       ]);
       const totalQb = makeTotalQb('7');
@@ -219,6 +220,7 @@ describe('OrderLineItemRepository', () => {
             unconvertedRevenue: 5,
             unconvertedOrderCount: 1,
             currency: 'EUR',
+            unconvertedCurrency: 'PLN',
           },
         ],
         total: 7,

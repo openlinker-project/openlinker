@@ -56,6 +56,14 @@ export interface ProductRankingRow {
   unconvertedOrderCount: number;
   /** The current system reporting currency `revenue` is expressed in — `null` only when every contributing order is unconverted. */
   currency: string | null;
+  /**
+   * The one native currency (`order_records.currency`) shared by every order
+   * contributing to `unconvertedRevenue`, or `null` when that set spans more
+   * than one native currency (or `unconvertedRevenue` is `0` — nothing to
+   * label). Same "null if mixed" rule as
+   * `DailyOrderAggregateRow.unconvertedCurrency`.
+   */
+  unconvertedCurrency: string | null;
 }
 
 /**
@@ -87,6 +95,7 @@ export interface TopProductView {
   unconvertedRevenue: number;
   unconvertedOrderCount: number;
   currency: string | null;
+  unconvertedCurrency: string | null;
   channels: ProductChannelBreakdownRow[];
 }
 

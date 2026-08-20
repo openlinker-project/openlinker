@@ -1168,6 +1168,7 @@ describe('OrderRecordService', () => {
           unconvertedRevenue: 0,
           unconvertedOrderCount: 0,
           currency: 'EUR',
+          unconvertedCurrency: null,
         },
         {
           productId: 'p2',
@@ -1176,6 +1177,7 @@ describe('OrderRecordService', () => {
           unconvertedRevenue: 0,
           unconvertedOrderCount: 0,
           currency: 'EUR',
+          unconvertedCurrency: null,
         },
       ];
       const breakdown = [
@@ -1226,6 +1228,7 @@ describe('OrderRecordService', () => {
             unconvertedRevenue: 0,
             unconvertedOrderCount: 0,
             currency: 'EUR',
+            unconvertedCurrency: null,
           },
         ],
         total: 500,
