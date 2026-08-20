@@ -2,7 +2,30 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <!--
+      Favicons (#2182). Same icon set openlinker.io ships, so the admin app, the
+      marketing site and a shared link all read as one brand in a tab strip:
+      /favicon.ico (16/32/48) for legacy clients, the SVG for modern browsers, a
+      180px PNG for Apple. The dark-background icon is deliberate - browsers
+      paint a favicon on their own chrome, where the contained-square logo reads
+      best.
+
+      favicon.svg is a deliberate byte-for-byte copy of openlinker-logo.svg
+      rather than a link to it: the logo is the sidebar brand mark, and swapping
+      that for a wordmark or a wider lockup must not silently change every
+      browser tab and home-screen shortcut.
+
+      Every href below must resolve to a real file under public/: nginx.conf's
+      SPA fallback (`try_files … /index.html`) answers a missing icon with
+      index.html at HTTP 200 rather than a 404, so a typo here shows up only as
+      a silently absent icon. src/test/head-manifest.test.ts is the guard. These
+      root-level icons need no nginx rule of their own - they fall under
+      `location /` and inherit its `Cache-Control: no-cache`, which is correct
+      because the filenames are not content-hashed and so cannot be immutable.
+    -->
+    <link rel="icon" href="/favicon.ico" sizes="any" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>%OG_TITLE_PREFIX%OpenLinker Admin</title>
     <meta name="description" content="%OG_TITLE_PREFIX%E-commerce orchestration platform" />
@@ -14,7 +37,7 @@
       variable is unset. See apps/web/.env.example for the three vars a demo
       deployment sets to badge every shared link without touching this markup.
 
-      Tokens are mirrored in src/test/og-meta-manifest.test.ts; adding one here
+      Tokens are mirrored in src/test/head-manifest.test.ts; adding one here
       without teaching the plugin about it fails that guard, and the behaviour
       each one produces is covered by src/test/og-meta-plugin.test.ts.
     -->
