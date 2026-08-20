@@ -300,8 +300,10 @@ describe('reclaimOrphans', () => {
 
     const entries = await reclaimOrphans(client, STREAM, GROUP, CONSUMER, MIN_RECLAIM_IDLE_MS);
 
+    // deliveryCount is +1 on this path: the XPENDING listing was read before
+    // this pass's own XCLAIM, which is itself a delivery.
     expect(entries).toEqual([
-      { kind: 'entry', id: '1-0', fields: { jobType: 'a' }, deliveryCount: 1 },
+      { kind: 'entry', id: '1-0', fields: { jobType: 'a' }, deliveryCount: 2 },
     ]);
     expect(client.xClaim).toHaveBeenCalledWith(STREAM, GROUP, CONSUMER, MIN_RECLAIM_IDLE_MS, '1-0');
   });

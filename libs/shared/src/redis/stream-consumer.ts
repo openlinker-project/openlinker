@@ -156,8 +156,8 @@ export interface PendingRow {
    * useless one for a locally-stuck handler. The poison alarm keys on
    * {@link RecoveryAttemptTracker} instead.
    *
-   * On the reclaim path this is the value read *before* that pass's `XCLAIM`,
-   * so it under-reports by exactly one there.
+   * The reclaim path compensates for reading the listing before its own
+   * `XCLAIM`, so the value a consumer sees already includes that delivery.
    */
   deliveryCount: number;
 }
@@ -426,7 +426,10 @@ export async function reclaimOrphans(
         kind: 'entry',
         id: row.id,
         fields: claimed,
-        deliveryCount: row.deliveryCount,
+        // +1 because `row` was read by the XPENDING above, i.e. BEFORE the
+        // XCLAIM on the previous line — and XCLAIM is itself a delivery, so the
+        // listing's value is stale by exactly one at this point.
+        deliveryCount: row.deliveryCount + 1,
       });
       continue;
     }

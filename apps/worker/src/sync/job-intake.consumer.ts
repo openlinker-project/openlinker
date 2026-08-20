@@ -378,10 +378,14 @@ export class JobIntakeConsumer implements OnModuleInit, OnModuleDestroy {
           break;
         }
 
+        // Counts entries actually handled, not entries attempted: a pass that
+        // failed on half its page must not report them as recovered, since the
+        // operator reading that line is reading it during the incident.
         for (const entry of entries) {
-          await this.recoverEntrySafely(entry, 'startup-drain');
+          if (await this.recoverEntrySafely(entry, 'startup-drain')) {
+            drained += 1;
+          }
         }
-        drained += entries.length;
 
         // Advance past this page rather than re-reading from the oldest id. An
         // entry whose handler threw is still pending, so without this the same
@@ -471,10 +475,11 @@ export class JobIntakeConsumer implements OnModuleInit, OnModuleDestroy {
    * prevent. The entry stays un-ACKed and is retried on the next pass; what does
    * not happen is its siblings being starved behind it.
    */
-  private async recoverEntrySafely(entry: StreamEntry, source: string): Promise<void> {
+  private async recoverEntrySafely(entry: StreamEntry, source: string): Promise<boolean> {
     try {
       await this.handleRecoveredEntry(entry, source);
       this.recoveryAttempts.succeeded(entry.id);
+      return true;
     } catch (error) {
       // A shutdown-time failure is not a handler failure: the client is quitting
       // and every later command would fail too. Rethrow so the enclosing pass
@@ -502,6 +507,8 @@ export class JobIntakeConsumer implements OnModuleInit, OnModuleDestroy {
           `Stream entry ${entry.id} has now failed recovery ${attempts} times (${source}); it is stuck and needs manual intervention`
         );
       }
+
+      return false;
     }
   }
 
