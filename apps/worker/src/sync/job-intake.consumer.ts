@@ -24,10 +24,12 @@ import {
   MIN_RECLAIM_IDLE_MS,
   nextPendingCursor,
   readOwnPending,
+  RECOVERY_PAGES_PER_TICK,
   RECLAIM_INTERVAL_MS,
   reclaimOrphans,
   RecoveryAttemptTracker,
   resolveConsumerName,
+  type RecoveryOutcome,
   type StreamConsumerClient,
   type StreamEntry,
 } from '@openlinker/shared/redis';
@@ -71,6 +73,14 @@ export class JobIntakeConsumer implements OnModuleInit, OnModuleDestroy {
     }
 
     await this.initializeConsumerGroup();
+
+    // Created BEFORE the drain, not inside `startConsumptionLoop`. The drain is
+    // awaited here and can run for many pages, so without this its own abort
+    // check and `recoverEntrySafely`'s shutdown rethrow are both reading an
+    // undefined controller — two guards documented as live that never fire, and
+    // a shutdown mid-drain would keep issuing commands against a quitting client.
+    this.abortController = new AbortController();
+
     await this.drainOwnPending();
     this.startConsumptionLoop();
   }
@@ -117,7 +127,11 @@ export class JobIntakeConsumer implements OnModuleInit, OnModuleDestroy {
    * Uses AbortController for graceful shutdown.
    */
   private startConsumptionLoop(): void {
-    this.abortController = new AbortController();
+    // Reuse the controller created in `onModuleInit`; replace it only when a
+    // previous run aborted, which is the restart-after-backoff path.
+    if (!this.abortController || this.abortController.signal.aborted) {
+      this.abortController = new AbortController();
+    }
     this.isRunning = true;
 
     this.logger.log(
@@ -351,6 +365,7 @@ export class JobIntakeConsumer implements OnModuleInit, OnModuleDestroy {
    */
   private async drainOwnPending(): Promise<void> {
     let drained = 0;
+    let discarded = 0;
     let cursor: string | undefined;
 
     try {
@@ -378,12 +393,15 @@ export class JobIntakeConsumer implements OnModuleInit, OnModuleDestroy {
           break;
         }
 
-        // Counts entries actually handled, not entries attempted: a pass that
-        // failed on half its page must not report them as recovered, since the
-        // operator reading that line is reading it during the incident.
+        // Counted by outcome. A failed entry is not recovered, and a trimmed
+        // entry is not either — its payload is gone. The operator reading this
+        // line is reading it during the incident it describes.
         for (const entry of entries) {
-          if (await this.recoverEntrySafely(entry, 'startup-drain')) {
+          const outcome = await this.recoverEntrySafely(entry, 'startup-drain');
+          if (outcome === 'recovered') {
             drained += 1;
+          } else if (outcome === 'discarded') {
+            discarded += 1;
           }
         }
 
@@ -407,6 +425,14 @@ export class JobIntakeConsumer implements OnModuleInit, OnModuleDestroy {
     if (drained > 0) {
       this.logger.log(`Recovered ${drained} pending message(s) as ${this.CONSUMER_NAME}`);
     }
+
+    // Reported separately and at warn: these were not recovered, they were lost
+    // to retention before anything could process them.
+    if (discarded > 0) {
+      this.logger.warn(
+        `Discarded ${discarded} pending message(s) as ${this.CONSUMER_NAME}: retention removed the payload before processing`
+      );
+    }
   }
 
   /**
@@ -426,15 +452,36 @@ export class JobIntakeConsumer implements OnModuleInit, OnModuleDestroy {
 
     try {
       // Own failed messages first — the orphan pass below skips self-owned rows.
-      const ownRetries = await readOwnPending(
-        this.redisClient as unknown as StreamConsumerClient,
-        this.STREAM_NAME,
-        this.CONSUMER_GROUP,
-        this.CONSUMER_NAME,
-        this.COUNT
-      );
-      for (const entry of ownRetries) {
-        await this.recoverEntrySafely(entry, 'pending-retry');
+      //
+      // Paged with the same exclusive cursor the startup drain uses. Without it
+      // this re-reads the oldest COUNT ids from '-' on every tick, so a poison
+      // entry at the head starves every later own-pending entry for the life of
+      // the process — the drain only runs at boot. Capped per tick so recovery
+      // cannot monopolise the consume loop.
+      let retryCursor: string | undefined;
+      for (let page = 0; page < RECOVERY_PAGES_PER_TICK; page += 1) {
+        if (this.abortController?.signal.aborted) {
+          break;
+        }
+
+        const ownRetries = await readOwnPending(
+          this.redisClient as unknown as StreamConsumerClient,
+          this.STREAM_NAME,
+          this.CONSUMER_GROUP,
+          this.CONSUMER_NAME,
+          this.COUNT,
+          retryCursor
+        );
+
+        if (ownRetries.length === 0) {
+          break;
+        }
+
+        for (const entry of ownRetries) {
+          await this.recoverEntrySafely(entry, 'pending-retry');
+        }
+
+        retryCursor = nextPendingCursor(ownRetries) ?? retryCursor;
       }
 
       const entries = await reclaimOrphans(
@@ -449,7 +496,11 @@ export class JobIntakeConsumer implements OnModuleInit, OnModuleDestroy {
       for (const entry of entries) {
         await this.recoverEntrySafely(entry, 'orphan-reclaim');
       }
-      const reclaimed = entries.length;
+      // Only entries whose XCLAIM actually transferred. `reclaimOrphans` also
+      // returns a `trimmed` entry on the path where the claim did NOT transfer
+      // and the data was gone — nothing was reclaimed there, so counting it
+      // would overstate what this pass took ownership of.
+      const reclaimed = entries.filter((entry) => entry.kind === 'entry').length;
 
       if (reclaimed > 0) {
         this.logger.warn(
@@ -475,11 +526,14 @@ export class JobIntakeConsumer implements OnModuleInit, OnModuleDestroy {
    * prevent. The entry stays un-ACKed and is retried on the next pass; what does
    * not happen is its siblings being starved behind it.
    */
-  private async recoverEntrySafely(entry: StreamEntry, source: string): Promise<boolean> {
+  private async recoverEntrySafely(entry: StreamEntry, source: string): Promise<RecoveryOutcome> {
     try {
       await this.handleRecoveredEntry(entry, source);
       this.recoveryAttempts.succeeded(entry.id);
-      return true;
+      // A trimmed entry was ACKed, but nothing was recovered — retention
+      // destroyed its payload. Reporting that as recovered would tell an
+      // operator the opposite of what happened.
+      return entry.kind === 'trimmed' ? 'discarded' : 'recovered';
     } catch (error) {
       // A shutdown-time failure is not a handler failure: the client is quitting
       // and every later command would fail too. Rethrow so the enclosing pass
@@ -492,7 +546,7 @@ export class JobIntakeConsumer implements OnModuleInit, OnModuleDestroy {
       const attempts = this.recoveryAttempts.recordFailure(entry.id);
 
       this.logger.error(
-        `Failed to recover stream entry ${entry.id} (${source}, attempt ${attempts}); leaving it pending and continuing`,
+        `Failed to recover stream entry ${entry.id} (${source}, attempt ${attempts}, redis deliveries ${entry.kind === 'entry' ? entry.deliveryCount : 'n/a'}); leaving it pending and continuing`,
         error instanceof Error ? error.stack : String(error)
       );
 
@@ -508,7 +562,7 @@ export class JobIntakeConsumer implements OnModuleInit, OnModuleDestroy {
         );
       }
 
-      return false;
+      return 'failed';
     }
   }
 

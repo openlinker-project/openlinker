@@ -221,7 +221,10 @@ describe('Stream consumer recovery (#2164)', () => {
         page[0].kind === 'entry' ? page[0].deliveryCount : -1
       );
 
-      expect(counts).toEqual([counts[0], counts[0], counts[0]]);
+      // Absolute, not self-referential: a server reporting 0 on every read would
+      // satisfy an equal-to-itself assertion while breaking the "defaults to 1,
+      // never 0" invariant the classifier relies on.
+      expect(counts).toEqual([1, 1, 1]);
     });
   });
 

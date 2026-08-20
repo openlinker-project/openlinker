@@ -70,6 +70,17 @@ export type StreamEntry =
   | { kind: 'entry'; id: string; fields: Record<string, string>; deliveryCount: number }
   | { kind: 'trimmed'; id: string };
 
+/**
+ * What a recovery attempt actually did.
+ *
+ * Three outcomes, not two: a `trimmed` entry is ACKed successfully but nothing
+ * was recovered — retention destroyed its payload. Collapsing that into a
+ * boolean made a page of ten trimmed entries report "Recovered 10", reporting
+ * permanent loss as successful recovery to the operator reading that line
+ * during the incident.
+ */
+export type RecoveryOutcome = 'recovered' | 'discarded' | 'failed';
+
 /** Environment variable that pins a worker's stable identity. */
 export const WORKER_ID_ENV = 'OL_WORKER_ID';
 
@@ -104,6 +115,15 @@ export const RECLAIM_INTERVAL_MS = 5 * 60 * 1000;
  * application boot. The cap turns that regression into a logged warning.
  */
 export const MAX_DRAIN_PAGES = 1_000;
+
+/**
+ * Pages of own-pending history a periodic recovery tick will work through.
+ *
+ * Much smaller than {@link MAX_DRAIN_PAGES}: the startup drain runs once with
+ * nothing else competing, whereas this shares a tick with the consume loop and
+ * must not monopolise it. Anything not reached this tick is reached on the next.
+ */
+export const RECOVERY_PAGES_PER_TICK = 5;
 
 /** Start sentinel for an `XPENDING` id range. */
 const PEL_RANGE_START = '-';
@@ -183,7 +203,7 @@ export const MAX_RECOVERY_ATTEMPTS = 10;
  * without limit. Far above any plausible simultaneous-poison count; on overflow
  * the oldest tracked id is dropped, which at worst re-arms its alarm.
  */
-const MAX_TRACKED_ATTEMPTS = 10_000;
+export const MAX_TRACKED_ATTEMPTS = 10_000;
 
 /** The minimal logger shape the recovery helpers need. */
 export interface RecoveryLogger {
@@ -208,12 +228,17 @@ export class RecoveryAttemptTracker {
     const next = (this.failures.get(id) ?? 0) + 1;
 
     if (!this.failures.has(id) && this.failures.size >= MAX_TRACKED_ATTEMPTS) {
-      const oldest = this.failures.keys().next();
-      if (!oldest.done) {
-        this.failures.delete(oldest.value);
+      const stalest = this.failures.keys().next();
+      if (!stalest.done) {
+        this.failures.delete(stalest.value);
       }
     }
 
+    // Delete-then-set so a repeat failure moves the id to the tail, making the
+    // eviction above least-recently-failed. A plain `set` on an existing key
+    // does not reorder a Map, which would evict the entry that has been stuck
+    // LONGEST — precisely the one whose alarm is worth keeping.
+    this.failures.delete(id);
     this.failures.set(id, next);
     return next;
   }
@@ -223,9 +248,9 @@ export class RecoveryAttemptTracker {
     this.failures.delete(id);
   }
 
-  /** True exactly once — on the pass that crosses the threshold. */
+  /** True exactly once — on the pass that reaches the threshold. */
   justCrossedThreshold(attempts: number): boolean {
-    return attempts === MAX_RECOVERY_ATTEMPTS + 1;
+    return attempts === MAX_RECOVERY_ATTEMPTS;
   }
 }
 

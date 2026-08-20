@@ -12,6 +12,7 @@ import { hostname } from 'os';
 
 import {
   MAX_RECOVERY_ATTEMPTS,
+  MAX_TRACKED_ATTEMPTS,
   MIN_RECLAIM_IDLE_MS,
   nextPendingCursor,
   RecoveryAttemptTracker,
@@ -161,6 +162,38 @@ describe('RecoveryAttemptTracker', () => {
     expect(tracker.recordFailure('1-0')).toBe(1);
   });
 
+  it('should fire the crossing at the documented threshold, not one past it', () => {
+    const tracker = new RecoveryAttemptTracker();
+    let firedAt = 0;
+
+    for (let i = 0; i < MAX_RECOVERY_ATTEMPTS + 3; i += 1) {
+      const attempts = tracker.recordFailure('1-0');
+      if (tracker.justCrossedThreshold(attempts)) {
+        firedAt = attempts;
+      }
+    }
+
+    expect(firedAt).toBe(MAX_RECOVERY_ATTEMPTS);
+  });
+
+  it('should evict the least-recently-failed id, keeping the longest-stuck one tracked', () => {
+    // A plain Map `set` does not reorder, which would evict the entry stuck
+    // longest — precisely the one whose alarm is worth keeping.
+    const tracker = new RecoveryAttemptTracker();
+    tracker.recordFailure('oldest');
+
+    for (let i = 0; i < MAX_TRACKED_ATTEMPTS - 1; i += 1) {
+      tracker.recordFailure(`filler-${i}`);
+    }
+
+    // Touching 'oldest' again must move it to the tail...
+    tracker.recordFailure('oldest');
+    // ...so this overflow evicts a filler, not it.
+    tracker.recordFailure('newcomer');
+
+    expect(tracker.recordFailure('oldest')).toBe(3);
+  });
+
   it('should report the threshold crossing exactly once', () => {
     // A poison entry recurs by definition, so alarming every pass is alert
     // fatigue on the channel meant to carry real incidents.
@@ -174,7 +207,7 @@ describe('RecoveryAttemptTracker', () => {
       }
     }
 
-    expect(crossings).toEqual([MAX_RECOVERY_ATTEMPTS + 1]);
+    expect(crossings).toEqual([MAX_RECOVERY_ATTEMPTS]);
   });
 
   it('should be generous enough that a transient failure is not treated as poison', () => {
