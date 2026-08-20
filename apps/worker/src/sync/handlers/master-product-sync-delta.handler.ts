@@ -67,19 +67,18 @@ import {
 import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 import type { ProductMasterPort } from '@openlinker/core/products';
 import { isModifiedProductLister } from '@openlinker/core/products';
-import type { ModifiedProductLister } from '@openlinker/core/products';
 import { Logger } from '@openlinker/shared/logging';
 import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
 import {
   formatSweepCursor,
   parseSweepCursor,
+  readPagedIds,
   resolveSweepBudget,
   resolveSweepLockTtlMs,
   runBoundedSweep,
   sweepCursorKey,
   sweepLockKey,
 } from '../bounded-sweep';
-import type { SweepPage } from '../bounded-sweep.types';
 
 type SyncJob = SyncJobEntity;
 
@@ -160,7 +159,7 @@ export class MasterProductSyncDeltaHandler implements SyncJobHandler {
       const capturedAt = new Date();
       const watermarkKey = this.watermarkKey(job.connectionId);
       const storedWatermark = await this.cursors.getCursor(job.connectionId, watermarkKey);
-      const previous = this.parseWatermark(storedWatermark);
+      const previous = this.parseWatermark(storedWatermark, 'watermark');
 
       if (previous === null) {
         // First run (or a lost/cleared watermark — the two are indistinguishable,
@@ -189,11 +188,27 @@ export class MasterProductSyncDeltaHandler implements SyncJobHandler {
       // (re-modified mid-cycle, shifted left past the offset cursor) would go from
       // "missed for one cycle" to "missed permanently, only the full sweep finds
       // it". So it is captured when the cycle OPENS and carried across resumptions.
+      //
+      // Reading it is deliberately INSIDE the `cursor !== null` branch. A pending
+      // value can outlive its cycle (a crash between the cursor clear and the
+      // pending clear), and it is only meaningful while a cursor exists — reading
+      // it unconditionally would stamp a dead cycle's instant and move the
+      // watermark BACKWARDS, re-reading an ever-growing window while every job row
+      // read ok. Opening a new cycle always overwrites it, which is what makes a
+      // stale value self-healing. A spec pins this; do not hoist the read.
+      //
+      // The `?? capturedAt` fallback is the deploy transition: a cycle already in
+      // flight when this shipped has no pending value, so that one cycle keeps the
+      // old (completing-tick) behaviour and its one-cycle exposure. It self-corrects
+      // on the next cycle, and falling forward is the safe direction.
       const pendingKey = this.pendingWatermarkKey(job.connectionId);
       const cycleStartedAt =
         cursor === null
           ? capturedAt
-          : (this.parseWatermark(await this.cursors.getCursor(job.connectionId, pendingKey)) ??
+          : (this.parseWatermark(
+              await this.cursors.getCursor(job.connectionId, pendingKey),
+              'pending cycle-start'
+            ) ??
             capturedAt);
       if (cursor === null) {
         await this.cursors.advanceCursor(
@@ -206,7 +221,14 @@ export class MasterProductSyncDeltaHandler implements SyncJobHandler {
       const result = await runBoundedSweep({
         cursor,
         budget,
-        readPage: (offset, pageBudget) => this.readPage(productMaster, since, offset, pageBudget),
+        readPage: (offset, pageBudget) =>
+          readPagedIds(
+            (pageOffset, limit) =>
+              productMaster.listExternalIdsModifiedSince({ since, limit, offset: pageOffset }),
+            offset,
+            pageBudget,
+            this.getPageSize()
+          ),
         enqueue: (externalId, cycleId) => this.enqueueChild(job, externalId, cycleId),
         newCycleId: () => randomUUID(),
       });
@@ -255,7 +277,11 @@ export class MasterProductSyncDeltaHandler implements SyncJobHandler {
             `enqueued for changes since ${since.toISOString()} (cycle ${result.cycleId}, ` +
             `${
               result.completed
-                ? `cycle complete, watermark advanced to ${capturedAt.toISOString()}`
+                ? // `cycleStartedAt`, never `capturedAt` — on a multi-tick cycle those
+                  // differ by the whole span of the cycle, and this line must report
+                  // the value actually persisted or an operator reconstructing a
+                  // suspected skip window is handed the wrong one.
+                  `cycle complete, watermark advanced to ${cycleStartedAt.toISOString()}`
                 : `resuming at offset ${String(result.nextCursor?.offset ?? 0)}, watermark held`
             })`
         );
@@ -280,45 +306,6 @@ export class MasterProductSyncDeltaHandler implements SyncJobHandler {
         );
       }
     }
-  }
-
-  /**
-   * Reads up to `budget` external ids, paging the master at its own page size.
-   *
-   * Mirrors the full sweep's loop exactly — including truncating at a PAGE
-   * boundary — which is also what keeps `offset` a multiple of the page size so the
-   * WooCommerce offset-to-page derivation stays exact.
-   */
-  private async readPage(
-    lister: ModifiedProductLister,
-    since: Date,
-    offset: number,
-    budget: number
-  ): Promise<SweepPage> {
-    const pageSize = this.getPageSize();
-    const collected: string[] = [];
-    let exhausted = false;
-    let consumed = 0;
-
-    while (collected.length < budget) {
-      const batch = await lister.listExternalIdsModifiedSince({
-        since,
-        limit: pageSize,
-        offset: offset + consumed,
-      });
-      if (batch.length === 0) {
-        exhausted = true;
-        break;
-      }
-      collected.push(...batch);
-      consumed += batch.length;
-      if (batch.length < pageSize) {
-        exhausted = true;
-        break;
-      }
-    }
-
-    return { items: [...new Set(collected)], consumed, exhausted };
   }
 
   private async enqueueChild(job: SyncJob, externalId: string, cycleId: string): Promise<unknown> {
@@ -351,7 +338,7 @@ export class MasterProductSyncDeltaHandler implements SyncJobHandler {
     return `master.product-delta.watermark:connection:${connectionId}`;
   }
 
-  private parseWatermark(raw: string | null): Date | null {
+  private parseWatermark(raw: string | null, label: string): Date | null {
     if (raw === null || raw.trim() === '') {
       return null;
     }
@@ -360,7 +347,7 @@ export class MasterProductSyncDeltaHandler implements SyncJobHandler {
       // Defensive, matching `parseSweepCursor`: a malformed value restarts the
       // watermark rather than wedging the sweep forever.
       this.logger.warn(
-        `Unparseable delta watermark "${raw}" — treating as absent and re-stamping.`
+        `Unparseable ${label} value "${raw}" for the delta pass — treating as absent.`
       );
       return null;
     }
@@ -395,6 +382,13 @@ export class MasterProductSyncDeltaHandler implements SyncJobHandler {
     // makes a row whose timestamp precedes its commit recoverable. An operator
     // may tune the window; they may not switch the invariant off through it.
     if (!Number.isFinite(raw) || raw <= 0) {
+      // Warned, not silent: an operator who deliberately set 0 (or a bad value)
+      // would otherwise get a window they did not choose, with no signal that
+      // their configuration was overridden.
+      this.logger.warn(
+        `Rejected delta lookback "${String(raw)}" (must be > 0 — a zero overlap is the ` +
+          `\`since = lastRunAt\` shape ADR-048 decision 3 forbids); using ${String(LOOKBACK_SECONDS_DEFAULT)}s.`
+      );
       return LOOKBACK_SECONDS_DEFAULT;
     }
     return Math.min(Math.floor(raw), LOOKBACK_SECONDS_MAX);

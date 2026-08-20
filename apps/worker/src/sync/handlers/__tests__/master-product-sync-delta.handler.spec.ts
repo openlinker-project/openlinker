@@ -310,6 +310,31 @@ describe('MasterProductSyncDeltaHandler', () => {
       ).toBeUndefined();
     });
 
+    it('should IGNORE a stale pending value when no cycle is open, never jumping the watermark backwards', async () => {
+      // The guard the whole design rests on. A pending value can outlive its cycle
+      // (crash between the cursor clear and the pending clear, or an abandoned
+      // cycle), and it is only meaningful while a cursor exists. Reading it here
+      // would stamp a DEAD cycle's opening instant — the watermark would move
+      // backwards and the pass would re-read an ever-growing window forever, with
+      // every job row reading ok. Today that is prevented because the pending read
+      // sits inside the `cursor !== null` branch; this test is what stops a future
+      // "hoist the read for clarity" refactor from silently undoing it.
+      const STALE_PENDING = '2026-08-19T00:00:00.000Z';
+      const before = Date.now();
+      distinctPages(100, 2);
+      stubCursors({ [WATERMARK_KEY]: PREVIOUS_WATERMARK, [PENDING_KEY]: STALE_PENDING });
+
+      await handler.execute(createJob());
+
+      const watermarkWrite = cursors.advanceCursor.mock.calls.find(
+        (call) => call[1] === WATERMARK_KEY
+      );
+      expect(watermarkWrite?.[2]).not.toBe(STALE_PENDING);
+      const stamped = new Date(String(watermarkWrite?.[2])).getTime();
+      expect(stamped).toBeGreaterThanOrEqual(before);
+      expect(stamped).toBeGreaterThan(new Date(PREVIOUS_WATERMARK).getTime());
+    });
+
     it('should treat an unparseable watermark as absent rather than wedging the sweep', async () => {
       stubCursors({ [WATERMARK_KEY]: 'not-a-date' });
 
