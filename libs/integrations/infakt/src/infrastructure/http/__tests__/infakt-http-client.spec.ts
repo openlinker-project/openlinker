@@ -9,7 +9,8 @@
  */
 import type { LoggerPort } from '@openlinker/shared/logging';
 import { InfaktApiError } from '../../../domain/exceptions/infakt-api.error';
-import { InfaktHttpClient, INFAKT_DEFAULT_BASE_URL } from '../infakt-http-client';
+import { INFAKT_DEFAULT_BASE_URL } from '../../../domain/policies/infakt-base-url.policy';
+import { InfaktHttpClient } from '../infakt-http-client';
 
 function fakeResponse(status: number, body: string): Response {
   return {
@@ -80,14 +81,14 @@ describe('InfaktHttpClient', () => {
 
     it('should strip a trailing slash from a configured baseUrl', async () => {
       const sandboxClient = new InfaktHttpClient(
-        { apiKey: 'k', baseUrl: 'https://api.sandbox.infakt.pl/api/v3/' },
+        { apiKey: 'k', baseUrl: 'https://api.sandbox-infakt.pl/api/v3/' },
         logger,
         fetchMock as unknown as typeof fetch,
       );
       fetchMock.mockResolvedValue(fakeResponse(200, '{}'));
       await sandboxClient.get('invoices.json');
       const [url] = fetchMock.mock.calls[0] as [string];
-      expect(url).toBe('https://api.sandbox.infakt.pl/api/v3/invoices.json');
+      expect(url).toBe('https://api.sandbox-infakt.pl/api/v3/invoices.json');
     });
   });
 

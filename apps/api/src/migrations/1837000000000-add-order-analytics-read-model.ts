@@ -16,8 +16,8 @@
  */
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AddOrderAnalyticsReadModel1835000000000 implements MigrationInterface {
-  name = 'AddOrderAnalyticsReadModel1835000000000';
+export class AddOrderAnalyticsReadModel1837000000000 implements MigrationInterface {
+  name = 'AddOrderAnalyticsReadModel1837000000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     // 1. Additive scalar columns on order_records.
@@ -55,17 +55,21 @@ export class AddOrderAnalyticsReadModel1835000000000 implements MigrationInterfa
     await queryRunner.query(
       `CREATE INDEX IF NOT EXISTS "IDX_order_line_items_orderRecordId" ON "order_line_items" ("orderRecordId")`
     );
+    // Composite, matching the #1987/#1988 access patterns rather than one
+    // single-column index per column (review finding: five single-column
+    // indexes on a table written on every order ingest is real write
+    // amplification, and none of them served the actual queries well).
+    // - (sourceConnectionId, placedAt): getUnitsSoldByConnection's optional
+    //   per-connection filter + the mandatory placedAt range.
+    // - (productId, placedAt): getProductChannelBreakdown's bounded
+    //   productId IN (...) + the mandatory placedAt range.
+    // variantId and a standalone placedAt index are deferred until a query
+    // actually needs them.
     await queryRunner.query(
-      `CREATE INDEX IF NOT EXISTS "IDX_order_line_items_productId" ON "order_line_items" ("productId")`
+      `CREATE INDEX IF NOT EXISTS "IDX_order_line_items_connection_placedAt" ON "order_line_items" ("sourceConnectionId", "placedAt")`
     );
     await queryRunner.query(
-      `CREATE INDEX IF NOT EXISTS "IDX_order_line_items_variantId" ON "order_line_items" ("variantId")`
-    );
-    await queryRunner.query(
-      `CREATE INDEX IF NOT EXISTS "IDX_order_line_items_sourceConnectionId" ON "order_line_items" ("sourceConnectionId")`
-    );
-    await queryRunner.query(
-      `CREATE INDEX IF NOT EXISTS "IDX_order_line_items_placedAt" ON "order_line_items" ("placedAt")`
+      `CREATE INDEX IF NOT EXISTS "IDX_order_line_items_product_placedAt" ON "order_line_items" ("productId", "placedAt")`
     );
 
     // 3. Backfill existing order_records rows from the JSONB snapshot.

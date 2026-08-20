@@ -1109,12 +1109,22 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    * Full-row upsert of the ingestion-owned columns, keyed on the primary key.
    *
    * `syncStatus` / `syncAttempts` (#2140), `fulfillmentState` (#2101),
-   * `cancelledAt` (#1984), the three `salesDocument*` columns (#2100) and the
-   * six FX snapshot columns (#2124) are deliberately outside the write set -
-   * see the {@link toOrm} comments. A consequence is that the returned record
-   * reports all of them as empty (`[]` / `null`) regardless of what the row
-   * holds, because none of those columns was part of the statement; callers
-   * needing their true value re-read via {@link findById}.
+   * `cancelledAt` (#1984), the three `salesDocument*` columns (#2100), the
+   * six FX snapshot columns (#2124), and the four analytics scalars (#1985 —
+   * `placedAt` / `currency` / `taxTreatment` / `totalAmount`) are deliberately
+   * outside the write set - see the {@link toOrm} comments. A consequence is
+   * that the returned record reports all of them as empty (`[]` / `null`)
+   * regardless of what the row holds, because none of those columns was part
+   * of the statement; callers needing their true value re-read via
+   * {@link findById}.
+   *
+   * This is the sole writer reached by `persistIncomingSnapshot`, which never
+   * has a resolved analytics figure to offer (its `OrderRecord` carries the
+   * four scalars at their constructor `null` default) - mapping them here
+   * would NULL out whatever `upsertWithLineItems` below previously wrote on a
+   * re-poll of an already-`ready` order, and leave them permanently NULL if
+   * item resolution then fails, orphaning any `order_line_items` rows that
+   * survive the narrower `markItemResolutionFailure` update.
    */
   async upsert(orderRecord: OrderRecord): Promise<OrderRecord> {
     const entity = this.toOrm(orderRecord);
@@ -1130,12 +1140,21 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    * ever leaving a stale row from a shrunk item list. Both writes go through
    * the same transactional `EntityManager`, so a failure on either side rolls
    * back both (no order_records/order_line_items desync).
+   *
+   * The sole writer of the four analytics scalars (#1985) - stamped onto the
+   * entity here, not in the shared {@link toOrm}, because `upsert()` above
+   * reaches the same conversion from `persistIncomingSnapshot`, which has no
+   * resolved figure to offer yet (see its comment there).
    */
   async upsertWithLineItems(
     orderRecord: OrderRecord,
     lineItems: OrderLineItemDraft[]
   ): Promise<OrderRecord> {
     const entity = this.toOrm(orderRecord);
+    entity.placedAt = orderRecord.placedAt;
+    entity.currency = orderRecord.currency;
+    entity.taxTreatment = orderRecord.taxTreatment;
+    entity.totalAmount = orderRecord.totalAmount;
     const savedRecord = await this.dataSource.transaction(async (manager: EntityManager) => {
       const saved = await manager.save(OrderRecordOrmEntity, entity);
       await manager.delete(OrderLineItemOrmEntity, { orderRecordId: orderRecord.internalOrderId });
@@ -1353,6 +1372,14 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    *   + `stampFxIfAbsent` (both guarded, both single-statement). Mapping them
    *   here would let a re-poll of an already-stamped order overwrite a
    *   REPORTED FINANCIAL FIGURE with the ingestion path's in-memory `null`.
+   * - The four analytics scalars (#1985) - `placedAt` / `currency` /
+   *   `taxTreatment` / `totalAmount` - are mapped by {@link upsertWithLineItems}
+   *   directly, NOT here, because this shared conversion also backs
+   *   `upsert()`, reached by `persistIncomingSnapshot` with no resolved figure
+   *   to offer. Mapping them in this shared method would NULL an
+   *   already-`ready` order's analytics figures on every re-poll, and leave
+   *   them permanently NULL once item resolution starts failing (see
+   *   `upsert()`'s own comment).
    *
    * Before adding an assignment here, ask which out-of-band writer owns that
    * column: #2101 excluded only `fulfillmentState` and left the two columns
@@ -1369,11 +1396,8 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     entity.recordStatus = orderRecord.recordStatus;
     entity.mappingFailureReason = orderRecord.mappingFailureReason;
     entity.dispatchByAt = orderRecord.dispatchByAt;
-    entity.placedAt = orderRecord.placedAt;
-    entity.currency = orderRecord.currency;
-    entity.taxTreatment = orderRecord.taxTreatment;
-    entity.totalAmount = orderRecord.totalAmount;
-    //
+    // The four analytics scalars (#1985) are deliberately NOT mapped here -
+    // see the class comment above and `upsertWithLineItems`, their sole writer.
     // The six FX snapshot columns (#2124) are deliberately NOT mapped here,
     // for the strongest version of the reason documented above for
     // `fulfillmentState` / `cancelledAt` / `salesDocument*`: this is a
