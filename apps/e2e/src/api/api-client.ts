@@ -514,16 +514,6 @@ export class ApiClient {
     bulkBatch: (batchId: string): Promise<BulkBatchSummary> =>
       this.request<BulkBatchSummary>(`/listings/bulk-create/${batchId}`),
     /**
-     * The destination's declared description format (ADR-046), or `null` when the
-     * API predates the endpoint.
-     *
-     * Returning `null` rather than throwing is the point: a stack whose API is
-     * older than the contract builds its publish payload with the PREVIOUS
-     * builder, so a publish assertion there would pass or fail for reasons that
-     * have nothing to do with the format. Callers use this as a capability probe
-     * and skip with a reason that names the cause.
-     */
-    /**
      * The destination's category projection, one level from the root (#1979).
      *
      * Used as a precondition, not as data: the wizard's row editor cannot resolve
@@ -536,17 +526,34 @@ export class ApiClient {
         return await this.request<unknown[]>(
           `/listings/connections/${connectionId}/taxonomy/categories`,
         );
-      } catch {
-        return null;
+      } catch (error) {
+        // ONLY a 404 means "this API does not have the route". Swallowing every
+        // status would turn a 500 or an expired token into "old stack", and the
+        // caller would skip with a reason that is not true.
+        if (error instanceof ApiError && error.status === 404) return null;
+        throw error;
       }
     },
+    /**
+     * The destination's declared description format (ADR-046), or `null` ONLY when
+     * the API has no such route.
+     *
+     * The `null` is a capability probe, not an error channel: a stack whose API is
+     * older than the contract builds its publish payload with the PREVIOUS
+     * builder, so an assertion there would pass or fail for reasons unrelated to
+     * the format. Every other failure propagates.
+     */
     descriptionFormat: async (connectionId: string): Promise<DescriptionFormatView | null> => {
       try {
         return await this.request<DescriptionFormatView>(
           `/listings/connections/${connectionId}/description-format`,
         );
-      } catch {
-        return null;
+      } catch (error) {
+        // Same rule as above, and it matters more here: this endpoint is what the
+        // ADR-046 assertions gate on, so reclassifying a 500 as "predates the
+        // endpoint" would let the whole suite go green against a broken contract.
+        if (error instanceof ApiError && error.status === 404) return null;
+        throw error;
       }
     },
     list: (query?: ListListingsQuery): Promise<Paginated<OfferMapping>> =>

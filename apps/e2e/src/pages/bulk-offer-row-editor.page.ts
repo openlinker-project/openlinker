@@ -459,6 +459,14 @@ export class BulkOfferRowEditor {
   private async authorDescription(dialog: Locator, markup: string): Promise<boolean> {
     const field = dialog.getByLabel('Description', { exact: true }).first();
     if ((await field.count()) === 0) return false;
+    // Report whether this actually CHANGED anything, so the caller's
+    // `if-changed` contract still holds. Returning an unconditional `true` would
+    // make a top-up walk that passes `descriptionMarkup` loop forever - and the
+    // walk has to pass it, because a row with no blocker is never visited by the
+    // needs-attention pass and would otherwise publish an unauthored description.
+    const wanted = markup.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    const current = (await currentText(field)).replace(/\s+/g, ' ').trim();
+    if (wanted !== '' && current === wanted) return false;
     await field.click();
     await field.press('ControlOrMeta+a');
     await field.evaluate((el, html) => {

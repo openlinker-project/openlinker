@@ -170,7 +170,7 @@ describe('BulkReviewStep', () => {
     expect(disclosure?.textContent).not.toContain('Produktowy opis');
   });
 
-  it('renders exactly one disclosure per row and none on the product row of a multi-variant product', () => {
+  it('keeps the disclosure off the product row of a multi-variant product', () => {
     // The product row carries the disclosure ONLY for a simple product; for a
     // multi-variant one each variant row carries its own. Asserting both halves
     // pins the non-duplication that makes the fix safe.

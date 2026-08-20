@@ -26,10 +26,13 @@
  * legitimate configuration, and the spec must pass there while still proving the
  * "not declared" note appears.
  *
- * Self-configuring. Every case but the last is read-mostly: it edits a
- * description DRAFT, scopes assertions to the connection it found, and skips
- * cleanly on a stack without that connection - safe on a demo database, a fresh
- * one, or a stack mid-ingestion.
+ * Self-configuring, and explicit about what it writes. One case SAVES a master
+ * description draft and discards it again in a `finally`, so a leftover draft
+ * cannot accumulate across runs or collide with an ingestion that moves the base
+ * value underneath it. One case CREATES AN OFFER (see below). The rest only read.
+ * Each skips cleanly, with a reason, on a stack that lacks what it needs - and a
+ * session without `content:write` is one of those: the draft case needs it, so it
+ * checks rather than failing on a disabled button.
  *
  * The last case DOES publish, because "the marketplace accepted what we sent" is
  * the epic's central claim and nothing short of a real create proves it. It is
@@ -105,6 +108,12 @@ function expectedControls(contract: DescriptionFormatView | null): {
     'Heading 1': has('h1'),
     'Heading 2': has('h2'),
     'Heading 3': has('h3'),
+    // 4-6 exist in the profile derivation, so a destination declaring `h4` must
+    // get an assertion rather than falling through both lists unchecked.
+    'Heading 4': has('h4'),
+    'Heading 5': has('h5'),
+    'Heading 6': has('h6'),
+    'Add or edit link': has('a'),
   };
 
   return {
@@ -141,14 +150,6 @@ function editorRoot(page: Page, name: RegExp): Locator {
 }
 
 /**
- * Replace a description through the editor's HTML view.
- *
- * A real operator path, and the only way to seed arbitrary markup: `fill()` on
- * the contenteditable would insert it as TEXT, which is the opposite of what
- * these cases are about. Leaving the view round-trips the markup through the
- * destination's schema, which is exactly the behaviour under test.
- */
-/**
  * The source-mode toggle is located by class, not by name: its label flips
  * between "HTML" and "Rich text" with the mode, so a name-based locator only
  * works in one direction and reads as a mystery timeout in the other.
@@ -169,6 +170,12 @@ async function setSourceMode(root: Locator, on: boolean): Promise<void> {
   if ((await toggle.getAttribute('aria-pressed')) === String(on)) return;
   await toggle.click();
   await expect(toggle).toHaveAttribute('aria-pressed', String(on));
+}
+
+/** `documentHtml`, retried until it stops being empty, like every other wait here. */
+async function pollDocumentHtml(root: Locator): Promise<string> {
+  await expect.poll(() => documentHtml(root), { timeout: 10_000 }).not.toBe('');
+  return documentHtml(root);
 }
 
 /**
@@ -236,9 +243,20 @@ test.describe('rich-text descriptions (#2201, ADR-046)', () => {
     const editor = surface(page, /description/i);
     await expect(editor).toBeVisible();
 
+    // A read-only session (viewer role, or demo mode) renders the panel with an
+    // explanatory info Alert and every action disabled, so no draft can be saved
+    // at all. That is a stack/session condition, not a defect: skip with the
+    // reason named rather than fail on a permanently disabled button.
+    const readOnlyNotice = page.getByRole('alert').filter({ hasText: /read-only access/i });
+    test.skip(
+      (await readOnlyNotice.count()) > 0,
+      'this session has read-only access to content, so no draft can be saved'
+    );
+
+    const save = page.getByRole('button', { name: 'Save draft' });
+
     // Save is gated on a real change - the mount-time normalization of the
     // seeded value must not count as one (#2200).
-    const save = page.getByRole('button', { name: 'Save draft' });
     await expect(save).toBeDisabled();
 
     // The assertion the unit suites cannot make: a real keystroke.
@@ -256,20 +274,36 @@ test.describe('rich-text descriptions (#2201, ADR-046)', () => {
     const publish = page.getByRole('button', { name: 'Publish' });
     await expect(publish).toBeDisabled();
 
-    await save.click();
-    await expect(publish).toBeEnabled({ timeout: 20_000 });
+    try {
+      await save.click();
+      await expect(publish).toBeEnabled({ timeout: 20_000 });
 
-    // The persisted fact, read back from the API: the typed buffer became the
-    // MASTER draft (`connectionId: null`), not a channel one. This is the case
-    // relocated from `content-editor.test.tsx`, where it survives as a skip.
-    const after = await api.content.forProduct(product.id);
-    expect(after.master.draftValue ?? '').toContain(marker);
-    expect(
-      after.channels.every((c) => !(c.draftValue ?? '').includes(marker)),
-      'the master edit must not land on a channel'
-    ).toBe(true);
-    // The base value is untouched by a draft save.
-    expect(after.master.baseValue).toEqual(before.master.baseValue);
+      // The persisted fact, read back from the API: the typed buffer became the
+      // MASTER draft (`connectionId: null`), not a channel one. This is the case
+      // relocated from `content-editor.test.tsx`, where it survives as a skip.
+      const after = await api.content.forProduct(product.id);
+      expect(after.master.draftValue ?? '').toContain(marker);
+      expect(
+        after.channels.every((c) => !(c.draftValue ?? '').includes(marker)),
+        'the master edit must not land on a channel'
+      ).toBe(true);
+      // The base value is untouched by a draft save.
+      expect(after.master.baseValue).toEqual(before.master.baseValue);
+    } finally {
+      // Leave the stack as found. A leftover draft grows by one marker per run
+      // and, once an ingestion moves the base value under it, raises a conflict
+      // that would fail the NEXT run's publish-enabled assertion for a reason
+      // unrelated to the code.
+      const discard = page.getByRole('button', { name: 'Discard draft' });
+      if (await discard.isEnabled().catch(() => false)) {
+        await discard.click();
+        await expect
+          .poll(async () => (await api.content.forProduct(product.id)).master.draftValue, {
+            timeout: 20_000,
+          })
+          .toBeNull();
+      }
+    }
   });
 
   test('bold applied to a selection reaches the document, not just the toolbar', async ({
@@ -330,6 +364,16 @@ test.describe('rich-text descriptions (#2201, ADR-046)', () => {
     // observable difference is the "not declared" note, so that is what
     // distinguishes them here.
     const contract = await api.listings.descriptionFormat(marketplace?.id ?? '');
+    // This branch is what SHIPS that endpoint, so when the stack serves it the
+    // declaration must be the adapter's own - not the fallback wearing its shape.
+    // Asserted in this case specifically because it is the one that never skips
+    // for want of a taxonomy or a contract, unlike the publish and Erli cases.
+    if (contract !== null) {
+      expect(contract.declared, 'an Allegro OfferManager connection declares its format').toBe(
+        true
+      );
+      expect(contract.resolvedVia).toBe('OfferManager');
+    }
     const expected = expectedControls(contract);
 
     const products = await api.products.list({ limit: 5 });
@@ -392,7 +436,9 @@ test.describe('rich-text descriptions (#2201, ADR-046)', () => {
     // The registered extensions ARE the schema, so what the surface holds is what
     // serialization walks - and unlike the source toggle it needs no second mode
     // switch inside a modal that remounts its editors as the form goes dirty.
-    const html = await documentHtml(editor);
+    // Polled, not read once: every other wait in this file auto-retries, and a
+    // paste that lands a tick late would otherwise flake on a bare string compare.
+    const html = await pollDocumentHtml(editor);
 
     // The pasted markup's tags, minus whatever the contract allows: a tag the
     // destination accepts must NOT be asserted absent (Erli accepts `br`, Allegro
@@ -433,9 +479,14 @@ test.describe('rich-text descriptions (#2201, ADR-046)', () => {
       "the destination's category projection is empty on this stack - no review row can resolve a category"
     );
 
-    const products = await api.products.list({ limit: 5 });
-    const product = products.items[0];
-    test.skip(product === undefined, 'no products on this stack');
+    // A SINGLE-variant product specifically: the disclosure this case asserts on
+    // lives on the product row only when the product has exactly one variant (a
+    // multi-variant product carries it per variant row, and those render only
+    // while the row is expanded). Picking blind would report a data condition as
+    // "expected 1, received 0".
+    const products = await api.products.list({ limit: 25 });
+    const product = products.items.find((candidate) => (candidate.variants ?? []).length === 1);
+    test.skip(product === undefined, 'no single-variant product on this stack');
 
     await pages.productsList.goto();
     await pages.productsList.selectProduct(product?.name ?? '');
@@ -534,13 +585,29 @@ test.describe('rich-text descriptions (#2201, ADR-046)', () => {
       "the destination's category projection is empty on this stack - the wizard cannot resolve a category to list under"
     );
 
+    const connectionId = marketplace?.id ?? '';
+
+    // A variant that is NOT already listed on this destination. Re-running against
+    // the same stack otherwise hits the #1837 duplicate guard: the variant is
+    // filtered out of the batch and an all-filtered submit is a 400, so the case
+    // would fail on its second run for a reason unrelated to descriptions.
     const products = await api.products.list({ limit: 25 });
-    const product = products.items.find(
+    const candidates = products.items.filter(
       (p) => (p.variants?.[0]?.ean ?? p.variants?.[0]?.gtin) != null
     );
-    test.skip(product === undefined, 'no product with a barcode to list on this stack');
+    test.skip(candidates.length === 0, 'no product with a barcode to list on this stack');
+    const listed = new Set(
+      await api.listings.publishedVariants(
+        connectionId,
+        candidates.map((p) => p.variants?.[0]?.id ?? '').filter((id) => id !== '')
+      )
+    );
+    const product = candidates.find((p) => !listed.has(p.variants?.[0]?.id ?? ''));
+    test.skip(
+      product === undefined,
+      'every barcoded product is already listed on this destination - nothing left to publish'
+    );
 
-    const connectionId = marketplace?.id ?? '';
     const before = (await api.listings.list({ connectionId, limit: 1 })).total;
 
     await pages.productsList.goto();
@@ -689,7 +756,7 @@ test.describe('rich-text descriptions (#2201, ADR-046)', () => {
       editor.locator('.rich-text__surface [role="textbox"]'),
       '<h3>Sekcja</h3><p>Pierwsza linia<br>Druga linia</p>'
     );
-    const html = await documentHtml(editor);
+    const html = await pollDocumentHtml(editor);
     expect(html).toContain('<h3>');
     expect(html).toContain('<br');
     expect(html).toContain('Druga linia');

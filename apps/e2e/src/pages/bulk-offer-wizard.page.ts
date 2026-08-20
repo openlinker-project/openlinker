@@ -311,7 +311,25 @@ export class BulkOfferWizard {
     // PARAMETER_REQUIRED (#1481). Allegro DOES surface those as
     // `needs-product-parameters`, so its rows are covered by the loop above.
     // Top up EVERY listable row's required params so both paths are covered.
-    await this.fillEveryRowRequiredParameters(opts.gtin);
+    await this.fillEveryRowRequiredParameters(opts.gtin, opts.descriptionMarkup);
+
+    // Authoring must be OBSERVED, not assumed. `resolveNeedsAttentionRows`
+    // returns immediately when nothing is flagged, so on a stack where the row
+    // resolves cleanly the markup would never reach the editor and the offer
+    // would publish whatever description the stack already held - a caller
+    // asserting "the authored description survived" would then be asserting
+    // nothing. Fail here, naming the cause, rather than there.
+    if (opts.descriptionMarkup !== undefined) {
+      const wanted = opts.descriptionMarkup
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 40);
+      await expect(
+        this.page.locator('.bulk-review__desc').filter({ hasText: wanted }).first(),
+        'the authored description should be visible on a review row before submit',
+      ).toBeVisible({ timeout: 20_000 });
+    }
 
     // `canApprove` also waits out platform parameter resolution (`paramsResolving`).
     await expect(this.createOffersButton).toBeEnabled({ timeout: 30_000 });
@@ -510,7 +528,10 @@ export class BulkOfferWizard {
    * needs-attention loop (Allegro): the reopened product's params are restored
    * from the FE stash, the fill finds nothing empty, and the modal is cancelled.
    */
-  private async fillEveryRowRequiredParameters(gtin?: string): Promise<void> {
+  private async fillEveryRowRequiredParameters(
+    gtin?: string,
+    descriptionMarkup?: string,
+  ): Promise<void> {
     // Reorder-safe: a "Save all" can re-render or reorder the review grid, so
     // iterating `nth(i)` against a pre-captured count could revisit an
     // already-filled row and SKIP another (its required params then surface
@@ -526,14 +547,15 @@ export class BulkOfferWizard {
       const count = await this.editableProductRows().count();
       let saved = false;
       for (let i = 0; i < count; i += 1) {
-        // Deliberately WITHOUT `descriptionMarkup`: authoring is unconditional,
-        // so passing it here would report "changed" on every pass and the top-up
-        // walk would never terminate. The description is authored once, in the
-        // `'always'` pass above.
+        // `descriptionMarkup` IS threaded here: a row with no blocker is never
+        // visited by the needs-attention pass, so this is the only walk that
+        // reaches it. Safe against the `if-changed` contract because
+        // `authorDescription` reports "unchanged" once the value already matches.
         saved = await this.rowEditor.fillRowEditor(
           this.editableProductRows().nth(i),
           gtin,
           'if-changed',
+          { descriptionMarkup },
         );
         if (saved) {
           // The save recomputes blockers / re-loads the schema (and may
