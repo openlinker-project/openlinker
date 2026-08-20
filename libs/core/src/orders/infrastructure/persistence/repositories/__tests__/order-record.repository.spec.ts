@@ -9,7 +9,8 @@
 import type { TestingModule } from '@nestjs/testing';
 import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import type { Repository } from 'typeorm';
+import type { Repository, UpdateResult } from 'typeorm';
+import { IsNull, LessThan, MoreThanOrEqual } from 'typeorm';
 import { OrderRecordRepository } from '../order-record.repository';
 import type { OrderSyncStatusJson } from '../../entities/order-record.orm-entity';
 import { OrderRecordOrmEntity } from '../../entities/order-record.orm-entity';
@@ -34,6 +35,7 @@ describe('OrderRecordRepository', () => {
       findOne: jest.fn(),
       find: jest.fn(),
       save: jest.fn(),
+      update: jest.fn(),
       query: jest.fn(),
       createQueryBuilder: jest.fn().mockReturnValue(qb),
     } as unknown as jest.Mocked<Repository<OrderRecordOrmEntity>> & { _qb: typeof qb };
@@ -546,6 +548,341 @@ describe('OrderRecordRepository', () => {
       await expect(
         repository.markCancelled('non-existent-order', new Date())
       ).resolves.toBeUndefined();
+    });
+  });
+
+  describe('FX snapshot (#2124)', () => {
+    const buildUpdateResult = (affected: number): UpdateResult =>
+      ({ affected, raw: [], generatedMaps: [] }) as UpdateResult;
+
+    const stamp = {
+      reportingCurrency: 'EUR',
+      reportingTotalAmount: 425,
+      exchangeRateId: 'e1f0c0de-0000-4000-8000-000000000001',
+      fxRule: 'prev-business-day',
+      fxStampedAt: new Date('2026-08-14T09:00:00Z'),
+    } as const;
+
+    describe('claimFxIntentIfAbsent', () => {
+      it('should guard the write on fxIntendedCurrency IS NULL and write only the intent', async () => {
+        (ormRepository.update as jest.Mock).mockResolvedValue(buildUpdateResult(1));
+
+        const won = await repository.claimFxIntentIfAbsent('order-123', {
+          reportingCurrency: 'EUR',
+          fxRule: 'prev-business-day',
+        });
+
+        expect(won).toBe(true);
+        expect(ormRepository.update).toHaveBeenCalledWith(
+          { internalOrderId: 'order-123', fxIntendedCurrency: IsNull() },
+          { fxIntendedCurrency: 'EUR', fxRule: 'prev-business-day' }
+        );
+      });
+
+      it('should report the claim lost when an intent already exists', async () => {
+        // The loser re-reads and adopts the winner's intent — two concurrent
+        // first attempts must never pin different currencies for one order.
+        (ormRepository.update as jest.Mock).mockResolvedValue(buildUpdateResult(0));
+
+        await expect(
+          repository.claimFxIntentIfAbsent('order-123', {
+            reportingCurrency: 'PLN',
+            fxRule: 'prev-business-day',
+          })
+        ).resolves.toBe(false);
+      });
+
+      it('should treat a missing affected count as a lost claim', async () => {
+        (ormRepository.update as jest.Mock).mockResolvedValue({
+          raw: [],
+          generatedMaps: [],
+        } as UpdateResult);
+
+        await expect(
+          repository.claimFxIntentIfAbsent('order-123', {
+            reportingCurrency: 'EUR',
+            fxRule: 'prev-business-day',
+          })
+        ).resolves.toBe(false);
+      });
+    });
+
+    describe('stampFxIfAbsent', () => {
+      it('should guard on reportingCurrency IS NULL and write all five stamp columns at once', async () => {
+        (ormRepository.update as jest.Mock).mockResolvedValue(buildUpdateResult(1));
+
+        const stamped = await repository.stampFxIfAbsent('order-123', stamp);
+
+        expect(stamped).toBe(true);
+        expect(ormRepository.update).toHaveBeenCalledWith(
+          { internalOrderId: 'order-123', reportingCurrency: IsNull() },
+          {
+            reportingCurrency: 'EUR',
+            reportingTotalAmount: 425,
+            exchangeRateId: 'e1f0c0de-0000-4000-8000-000000000001',
+            fxRule: 'prev-business-day',
+            fxStampedAt: stamp.fxStampedAt,
+          }
+        );
+      });
+
+      it('should NOT guard on fxIntendedCurrency, which is populated by then', async () => {
+        (ormRepository.update as jest.Mock).mockResolvedValue(buildUpdateResult(1));
+
+        await repository.stampFxIfAbsent('order-123', stamp);
+
+        const [where] = (ormRepository.update as jest.Mock).mock.calls[0] as [
+          Record<string, unknown>,
+        ];
+        expect(where).not.toHaveProperty('fxIntendedCurrency');
+      });
+
+      it('should report false and write nothing further when a stamp already exists', async () => {
+        (ormRepository.update as jest.Mock).mockResolvedValue(buildUpdateResult(0));
+
+        await expect(repository.stampFxIfAbsent('order-123', stamp)).resolves.toBe(false);
+      });
+
+      it('should keep exchangeRateId null on the same-currency path', async () => {
+        (ormRepository.update as jest.Mock).mockResolvedValue(buildUpdateResult(1));
+
+        await repository.stampFxIfAbsent('order-123', { ...stamp, exchangeRateId: null });
+
+        const [, values] = (ormRepository.update as jest.Mock).mock.calls[0] as [
+          unknown,
+          Record<string, unknown>,
+        ];
+        expect(values.exchangeRateId).toBeNull();
+        expect(values.reportingCurrency).toBe('EUR');
+      });
+    });
+
+    describe('markFxTerminal (#2135 review, finding 1)', () => {
+      it('should guard ONLY on reportingCurrency IS NULL so a re-answer can move the marker', async () => {
+        // No `fxStampedAt: IsNull()` predicate, deliberately. The sweep re-admits a
+        // terminal-but-figureless row once its marker ages past the cooldown, so a
+        // second terminal answer has to move the marker forward - otherwise the row
+        // would be re-tried on every subsequent tick instead of once per cooldown.
+        (ormRepository.update as jest.Mock).mockResolvedValue(buildUpdateResult(1));
+        const at = new Date('2026-08-20T10:00:00Z');
+
+        await expect(repository.markFxTerminal('order-123', at)).resolves.toBe(true);
+        expect(ormRepository.update).toHaveBeenCalledWith(
+          { internalOrderId: 'order-123', reportingCurrency: IsNull() },
+          { fxStampedAt: at }
+        );
+
+        const [where] = (ormRepository.update as jest.Mock).mock.calls[0] as [
+          Record<string, unknown>,
+        ];
+        expect(where).not.toHaveProperty('fxStampedAt');
+      });
+
+      it('should write nothing for a row that already carries a figure', async () => {
+        // The immutability that matters: a stamped row is untouchable here whatever
+        // its timestamp says.
+        (ormRepository.update as jest.Mock).mockResolvedValue(buildUpdateResult(0));
+
+        await expect(
+          repository.markFxTerminal('order-123', new Date('2026-08-20T10:00:00Z'))
+        ).resolves.toBe(false);
+      });
+    });
+
+    describe('findUnstampedFxOrderIds (#2135 review, finding 1)', () => {
+      it('should OR an unanswered arm with a cooled-down terminal arm, both keyed on no figure', async () => {
+        (ormRepository.find as jest.Mock).mockResolvedValue([{ internalOrderId: 'order-1' }]);
+        const createdSince = new Date('2026-07-01T00:00:00Z');
+        const terminalRetryBefore = new Date('2026-08-13T00:00:00Z');
+
+        const ids = await repository.findUnstampedFxOrderIds('conn-1', {
+          limit: 25,
+          createdSince,
+          terminalRetryBefore,
+        });
+
+        expect(ids).toEqual(['order-1']);
+        const [options] = (ormRepository.find as jest.Mock).mock.calls[0] as [
+          { where: Record<string, unknown>[]; take: number },
+        ];
+        expect(options.take).toBe(25);
+        expect(options.where).toHaveLength(2);
+        // `reportingCurrency IS NULL` in BOTH arms is the invariant that keeps a
+        // stamped row out of the frontier no matter how old its marker is.
+        for (const arm of options.where) {
+          expect(arm).toMatchObject({
+            sourceConnectionId: 'conn-1',
+            reportingCurrency: IsNull(),
+            createdAt: MoreThanOrEqual(createdSince),
+          });
+        }
+        expect(options.where[0]).toMatchObject({ fxStampedAt: IsNull() });
+        expect(options.where[1]).toMatchObject({
+          fxStampedAt: LessThan(terminalRetryBefore),
+        });
+      });
+    });
+
+    describe('listDistinctNativeCurrencies', () => {
+      it('should emit the jsonb_typeof-guarded expression with no LIMIT and no ordering', async () => {
+        (ormRepository.query as jest.Mock).mockResolvedValue([{ currency: 'PLN' }]);
+
+        await repository.listDistinctNativeCurrencies();
+
+        const [sql] = (ormRepository.query as jest.Mock).mock.calls[0] as [string];
+        expect(sql).toContain(`jsonb_typeof(rec."orderSnapshot"#>'{totals,currency}') = 'string'`);
+        expect(sql).toContain(`rec."orderSnapshot"#>>'{totals,currency}'`);
+        expect(sql).toContain('SELECT DISTINCT');
+        expect(sql).not.toContain('LIMIT');
+        expect(sql).not.toContain('ORDER BY');
+      });
+
+      it('should return a de-duplicated set of currency codes', async () => {
+        (ormRepository.query as jest.Mock).mockResolvedValue([
+          { currency: 'PLN' },
+          { currency: 'EUR' },
+          { currency: 'PLN' },
+        ]);
+
+        const result = await repository.listDistinctNativeCurrencies();
+
+        expect(result).toEqual(['PLN', 'EUR']);
+      });
+
+      it('should skip non-string values rather than leak them into the set', async () => {
+        (ormRepository.query as jest.Mock).mockResolvedValue([
+          { currency: 'PLN' },
+          { currency: null },
+          { currency: 7 },
+          {},
+        ]);
+
+        const result = await repository.listDistinctNativeCurrencies();
+
+        expect(result).toEqual(['PLN']);
+      });
+
+      it('should return [] when the driver hands back a non-array', async () => {
+        (ormRepository.query as jest.Mock).mockResolvedValue(undefined);
+
+        await expect(repository.listDistinctNativeCurrencies()).resolves.toEqual([]);
+      });
+    });
+
+    describe('toOrm', () => {
+      it('should NOT include any of the six FX columns in the entity passed to save()', async () => {
+        // upsert() is a full-row save() on an update-or-create ingestion path,
+        // so mapping these columns would let a re-poll of an already-stamped
+        // order write `null` over a reported financial figure. Leaving the
+        // properties unset makes TypeORM omit the columns from the UPDATE —
+        // claimFxIntentIfAbsent / stampFxIfAbsent are their only writers.
+        ormRepository.save.mockResolvedValue(createOrmEntity());
+
+        await repository.upsert(createDomainEntity());
+
+        const callArg = ormRepository.save.mock.calls[0][0] as OrderRecordOrmEntity;
+        expect(callArg.reportingCurrency).toBeUndefined();
+        expect(callArg.reportingTotalAmount).toBeUndefined();
+        expect(callArg.exchangeRateId).toBeUndefined();
+        expect(callArg.fxRule).toBeUndefined();
+        expect(callArg.fxStampedAt).toBeUndefined();
+        expect(callArg.fxIntendedCurrency).toBeUndefined();
+      });
+
+      it('should NOT write the FX columns even when the domain record carries a stamp', async () => {
+        // Guards against a future caller reintroducing the clobber by threading
+        // a stamped record back through the ingestion path.
+        const stamped = new OrderRecord(
+          'order-123',
+          null,
+          'conn-123',
+          null,
+          {},
+          [],
+          'ready',
+          new Date('2026-08-01T10:00:00Z'),
+          new Date('2026-08-01T10:00:00Z'),
+          [],
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          'EUR',
+          425,
+          'e1f0c0de-0000-4000-8000-000000000001',
+          'prev-business-day',
+          new Date('2026-08-14T09:00:00Z'),
+          'EUR'
+        );
+        ormRepository.save.mockResolvedValue(createOrmEntity());
+
+        await repository.upsert(stamped);
+
+        const callArg = ormRepository.save.mock.calls[0][0] as OrderRecordOrmEntity;
+        expect(callArg.reportingCurrency).toBeUndefined();
+        expect(callArg.reportingTotalAmount).toBeUndefined();
+        expect(callArg.exchangeRateId).toBeUndefined();
+        expect(callArg.fxRule).toBeUndefined();
+        expect(callArg.fxStampedAt).toBeUndefined();
+        expect(callArg.fxIntendedCurrency).toBeUndefined();
+      });
+    });
+
+    describe('toDomain', () => {
+      it('should hydrate the six FX columns, Number()-ing the numeric total', async () => {
+        const entity = createOrmEntity();
+        entity.reportingCurrency = 'EUR';
+        // pg returns `numeric` as a string; the column's TS type is `number`.
+        entity.reportingTotalAmount = '425.00' as unknown as number;
+        entity.exchangeRateId = 'e1f0c0de-0000-4000-8000-000000000001';
+        entity.fxRule = 'prev-business-day';
+        entity.fxStampedAt = new Date('2026-08-14T09:00:00Z');
+        entity.fxIntendedCurrency = 'EUR';
+        ormRepository.findOne.mockResolvedValue(entity);
+
+        const result = await repository.findById('order-123');
+
+        expect(result?.reportingCurrency).toBe('EUR');
+        expect(result?.reportingTotalAmount).toBe(425);
+        expect(result?.exchangeRateId).toBe('e1f0c0de-0000-4000-8000-000000000001');
+        expect(result?.fxRule).toBe('prev-business-day');
+        expect(result?.fxStampedAt).toEqual(new Date('2026-08-14T09:00:00Z'));
+        expect(result?.fxIntendedCurrency).toBe('EUR');
+      });
+
+      it('should keep an unstamped row null rather than coercing the total to 0', async () => {
+        const entity = createOrmEntity();
+        ormRepository.findOne.mockResolvedValue(entity);
+
+        const result = await repository.findById('order-123');
+
+        expect(result?.reportingCurrency).toBeNull();
+        expect(result?.reportingTotalAmount).toBeNull();
+        expect(result?.exchangeRateId).toBeNull();
+        expect(result?.fxRule).toBeNull();
+        expect(result?.fxStampedAt).toBeNull();
+        expect(result?.fxIntendedCurrency).toBeNull();
+      });
+
+      it('should hydrate an intent-only row without reporting it as stamped', async () => {
+        // The deferred state: fxRule + fxIntendedCurrency set while the stamp
+        // columns are still NULL. `reportingCurrency IS NULL` is the canonical
+        // "unstamped" test.
+        const entity = createOrmEntity();
+        entity.fxRule = 'prev-business-day';
+        entity.fxIntendedCurrency = 'EUR';
+        ormRepository.findOne.mockResolvedValue(entity);
+
+        const result = await repository.findById('order-123');
+
+        expect(result?.fxIntendedCurrency).toBe('EUR');
+        expect(result?.fxRule).toBe('prev-business-day');
+        expect(result?.reportingCurrency).toBeNull();
+        expect(result?.fxStampedAt).toBeNull();
+      });
     });
   });
 });

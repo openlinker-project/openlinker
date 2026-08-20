@@ -122,6 +122,21 @@ export {
 } from './domain/types/order-fulfillment.types';
 export { deriveSlaState } from './domain/order-sla';
 
+// Per-order reporting-currency snapshot (#2124, ADR-040).
+export type { OrderFxIntent, OrderFxStamp } from './domain/types/order-fx.types';
+// The stamp's own outcome vocabulary (#2125) — read by the worker handlers.
+export { FX_STAMP_TERMINAL_REASONS } from './domain/types/order-fx-stamp.types';
+export type {
+  FxStampDeferredOutcome,
+  FxStampOutcome,
+  FxStampStampedOutcome,
+  FxStampTerminalOutcome,
+  FxStampTerminalReason,
+  OrderFxSweepOptions,
+  OrderFxSweepResult,
+} from './domain/types/order-fx-stamp.types';
+export type { StampedReportingCurrencyCount } from './domain/types/order-fx-read.types';
+
 // Refund record capture (#2036).
 export {
   RefundReason,
@@ -139,6 +154,9 @@ export {
 } from './application/interfaces/order-ingestion.service.interface';
 export { IOrderRecordService } from './application/interfaces/order-record.service.interface';
 export { OrderRecordService } from './application/services/order-record.service';
+export type { IOrderFxStampService } from './application/interfaces/order-fx-stamp.service.interface';
+// FX aggregate reads for the reporting-currency settings surface (#2126).
+export type { IOrderFxReadService } from './application/interfaces/order-fx-read.service.interface';
 export {
   IOrderDestinationRetryService,
   OrderDestinationRetryInput,

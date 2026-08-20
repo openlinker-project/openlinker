@@ -47,6 +47,7 @@ import { McpModule } from './mcp/mcp.module';
 import { MailerApiModule } from './mailer/mailer.module';
 import { AnalyticsApiModule } from './analytics/analytics.module';
 import { AnalyticsTrustApiModule } from './analytics-trust/analytics-trust.module';
+import { CurrencyApiModule } from './currency/currency.module';
 import { RequestPriorityModule } from './http/request-priority.module';
 
 @Module({
@@ -92,6 +93,7 @@ import { RequestPriorityModule } from './http/request-priority.module';
     FiscalizationApiModule, // Fiscal registration trigger + read + reconcile HTTP API (#1908, ADR-042)
     SystemModule, // Server-driven runtime config (demoMode) via GET /system/config (#1127)
     McpModule, // MCP Resource-Server auth (PATs) + Streamable-HTTP ingress (#1486, ADR-034)
+    CurrencyApiModule, // Reporting-currency settings HTTP API (#2126, ADR-040)
   ],
   controllers: [AppController],
   providers: [AppService],

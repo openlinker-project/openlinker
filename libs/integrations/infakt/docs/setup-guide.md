@@ -39,7 +39,8 @@ The connection detail page shows the enabled capability roles for the connection
 ## Prerequisites
 
 1. An active [inFakt](https://www.infakt.pl/) account (or an inFakt **sandbox**
-   account for testing — the same API shape, a different `baseUrl`).
+   account for testing - the same API shape, selected with the **Environment**
+   dropdown on the connection form).
 2. **KSeF integration enabled** in your inFakt account settings. OL's adapter explicitly
    triggers KSeF submission right after creating each invoice — an inFakt draft does
    **not** submit to KSeF on its own — but that trigger only succeeds if KSeF
@@ -67,7 +68,7 @@ The guided wizard (`/connections/new/infakt`) collects:
 |---|---|---|
 | Connection name | ✅ | A label to identify this inFakt account in OpenLinker. |
 | API key | ✅ | The credential from [Prerequisites](#prerequisites). Stored encrypted server-side; never echoed back to the browser after creation. |
-| Base URL (optional) | ❌ | Advanced override for sandbox testing. Must use HTTPS. Leave blank to use inFakt's production API. |
+| Environment | ✅ | `Production` (default) or `Sandbox`. Sandbox targets `https://api.sandbox-infakt.pl/api/v3` and needs a separate inFakt sandbox account with its own API key - a production key is not accepted there, and vice versa. |
 | Default payment method | ❌ | `Cash` or `Transfer` - the `payment_method` stamped on every invoice issued through this connection. Leave it untouched to fall back to `Cash`. `Transfer` is rejected (422) by inFakt unless a bank account is configured on the seller's inFakt account. |
 
 ![inFakt wizard, empty](./assets/01-infakt-wizard-empty.png)
@@ -101,6 +102,21 @@ drift apart.
 ![Edit form, payment method disclosure](./assets/06-infakt-edit-payment-section.png)
 
 ![Edit form, changed bank account persisted](./assets/07-infakt-edit-bank-persisted.png)
+
+### Legacy Base URL override
+
+Connections created before the **Environment** select existed may carry a
+free-text `config.baseUrl` override, and that value still **wins over
+Environment** - picking a different Environment on such a connection changes
+nothing until the override is gone. It must be an `https` URL: the API key
+travels on every request against that host, so OL refuses a `http://` value both
+at save time (400) and when the connection is used (the connection test reports
+it, and no document is issued). The connection **Edit** form surfaces any
+surviving override in a banner whose clear action preserves the host currently in
+effect - clearing a sandbox override also sets Environment to Sandbox, so the
+connection cannot silently start issuing real invoices against production. When
+the override points at neither inFakt host, pick an Environment first; the clear
+action stays disabled until you do.
 
 ---
 
@@ -353,7 +369,7 @@ reaches inFakt.
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| Connection test fails immediately | Wrong or revoked API key, or `baseUrl` pointed at the wrong environment | Re-check the API key in inFakt account settings; confirm `baseUrl` is blank (production) or the correct sandbox host. |
+| Connection test fails immediately | Wrong or revoked API key, or the **Environment** select pointed at the wrong inFakt environment (a sandbox key does not work against production, and vice versa) | Re-check the API key in inFakt account settings; confirm the **Environment** select matches the account the key belongs to. If the connection edit form shows the legacy Base URL override banner, that override wins over Environment - clear it (see [Legacy Base URL override](#legacy-base-url-override)). |
 | Webhook deliveries return 401 | `X-Infakt-Signature` (HMAC-SHA256 hex of the raw body) doesn't match the secret OL resolved | Copy the secret from inFakt's webhook-details view and set `OPENLINKER_WEBHOOK_SECRET__INFAKT__<CONNECTION_ID_UPPERCASE>` (or `OPENLINKER_WEBHOOK_SECRET__INFAKT`); do **not** use the `secret/rotate` endpoint for inFakt (it generates a random secret inFakt doesn't know). See [Webhook configuration](#2-webhook-configuration). |
 | Webhook subscription never activates | The verification-ping echo didn't reach inFakt (host unreachable, TLS issue, or the connection ID in the URL is wrong) | Confirm the URL path matches `POST /webhooks/infakt/{connectionId}` exactly and the host is publicly reachable from inFakt's servers. |
 | Invoice stays `submitted` forever, never reaches `accepted` | KSeF itself rejected the document after inFakt submitted it, or (less likely, since OL's `sendToKsef` call would normally fail outright at issuance time if this were disabled) KSeF integration is off in inFakt's account settings | Check inFakt's own invoice/KSeF status in its dashboard first — `ksef_data.status: error` there means inFakt attempted submission and KSeF rejected it (fix the underlying document data and re-issue). If `getClearanceStatus()` keeps returning `not-applicable` with no `ksef_data` at all, confirm KSeF integration is enabled in inFakt's account settings (the [Prerequisites](#prerequisites) requirement). |

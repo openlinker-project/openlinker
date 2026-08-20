@@ -1,0 +1,3099 @@
+<title>Order FX Stamping</title>
+<style>
+
+  /* ══════════════════ 1. TOKENS — verbatim from apps/web/src/index.css ══════════════════ */
+  :root {
+    --font-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+      'Segoe UI', sans-serif;
+    --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+      'Liberation Mono', monospace;
+
+    --bg-canvas: oklch(99% 0.003 80);
+    --bg-shell: oklch(97.5% 0.004 80);
+    --bg-surface: #ffffff;
+    --bg-surface-elevated: oklch(99% 0.003 80);
+    --bg-muted: oklch(96% 0.005 80);
+    --bg-surface-muted: oklch(96% 0.005 80);
+    --bg-surface-hover: oklch(93% 0.006 80);
+    --bg-strong: oklch(93% 0.006 80);
+
+    --border-subtle: oklch(93.5% 0.006 80);
+    --border-default: oklch(88% 0.008 80);
+    --border-strong: oklch(78% 0.010 80);
+    --border-focus: oklch(68% 0.18 50);
+
+    --text-primary: oklch(20% 0.012 80);
+    --text-secondary: oklch(38% 0.010 80);
+    --text-muted: oklch(52% 0.008 80);
+    --text-disabled: oklch(70% 0.005 80);
+    --text-on-primary: oklch(18% 0.012 50);
+    --text-inverse: oklch(96% 0.005 80);
+    --text-link: oklch(50% 0.14 250);
+
+    --accent-primary: oklch(68% 0.18 50);
+    --accent-primary-hover: oklch(62% 0.19 50);
+    --accent-primary-active: oklch(56% 0.20 50);
+    --accent-primary-soft: oklch(96% 0.04 60);
+    --accent-primary-soft-strong: oklch(40% 0.16 50);
+    --accent-primary-border: oklch(85% 0.10 55);
+    --accent-focus: oklch(68% 0.18 50);
+    --accent-ring: oklch(68% 0.18 50 / 0.30);
+
+    --status-success: oklch(54% 0.14 150);
+    --status-success-soft: oklch(96% 0.04 150);
+    --status-success-border: oklch(85% 0.08 150);
+    --status-success-fg: oklch(36% 0.12 150);
+    --status-success-strong: oklch(36% 0.12 150);
+
+    --status-warning: oklch(72% 0.16 85);
+    --status-warning-soft: oklch(96% 0.05 85);
+    --status-warning-border: oklch(85% 0.10 85);
+    --status-warning-fg: oklch(42% 0.12 80);
+    --status-warning-strong: oklch(42% 0.12 80);
+
+    --status-error: oklch(58% 0.20 25);
+    --status-error-soft: oklch(96% 0.04 25);
+    --status-error-border: oklch(85% 0.10 25);
+    --status-error-fg: oklch(42% 0.16 25);
+    --status-error-strong: oklch(42% 0.16 25);
+
+    --status-info: oklch(56% 0.14 245);
+    --status-info-soft: oklch(96% 0.03 245);
+    --status-info-border: oklch(85% 0.08 245);
+    --status-info-fg: oklch(40% 0.12 245);
+    --status-info-strong: oklch(40% 0.12 245);
+
+    --status-review: oklch(58% 0.16 290);
+    --status-review-soft: oklch(96% 0.04 290);
+    --status-review-border: oklch(85% 0.08 290);
+    --status-review-fg: oklch(42% 0.14 290);
+    --status-review-strong: oklch(42% 0.14 290);
+
+    --status-disabled: oklch(55% 0.008 80);
+    --status-disabled-soft: oklch(95% 0.005 80);
+    --status-disabled-border: oklch(85% 0.008 80);
+    --status-disabled-fg: oklch(38% 0.010 80);
+    --status-disabled-strong: oklch(38% 0.010 80);
+
+    /* Channel brand hues (#1752) — identity, never health. */
+    --channel-allegro: oklch(70% 0.18 35);
+    --channel-prestashop: oklch(60% 0.18 250);
+    --channel-erli: oklch(66% 0.17 320);
+    --channel-woocommerce: oklch(64% 0.16 150);
+    --channel-amazon: oklch(72% 0.16 75);
+    --channel-shopify: oklch(64% 0.16 150);
+
+    --shadow-soft: 0 1px 2px rgb(15 18 26 / 0.04), 0 6px 16px rgb(15 18 26 / 0.06);
+    --shadow-xs: 0 1px 2px rgb(15 18 26 / 0.04);
+    --shadow-sm: 0 1px 2px rgb(15 18 26 / 0.04), 0 1px 3px rgb(15 18 26 / 0.06);
+    --shadow-md: 0 2px 4px rgb(15 18 26 / 0.04), 0 6px 16px rgb(15 18 26 / 0.08);
+    --shadow-lg: 0 6px 12px rgb(15 18 26 / 0.06), 0 16px 32px rgb(15 18 26 / 0.10);
+    --shadow-focus: 0 0 0 3px var(--accent-ring);
+    --shadow-inset-top: inset 0 1px 0 rgb(255 255 255 / 0.6);
+    --button-primary-bg-hover: oklch(62% 0.19 50);
+
+    --space-1: 0.25rem;
+    --space-2: 0.5rem;
+    --space-3: 0.75rem;
+    --space-4: 1rem;
+    --space-5: 1.5rem;
+    --space-6: 2rem;
+    --space-7: 3rem;
+    --space-8: 4rem;
+
+    --radius-xs: 4px;
+    --radius-sm: 6px;
+    --radius-md: 8px;
+    --radius-lg: 10px;
+    --radius-xl: 14px;
+    --radius-pill: 9999px;
+
+    --duration-fast: 120ms;
+    --duration-normal: 180ms;
+    --duration-slow: 280ms;
+    --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+    --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+
+    --tracking-tight: -0.012em;
+    --tracking-normal: 0;
+    --tracking-wide: 0.02em;
+    --tracking-caps: 0.08em;
+
+    color-scheme: light;
+  }
+
+  /* Dark theme. The app resolves light/dark in a FOUC guard in index.html and
+     stamps html[data-theme]; the boot script at the bottom of this file mirrors
+     that, so only one dark block is needed here (no duplicated media-query
+     copy) and the viewer's OS preference is still honoured. */
+  html[data-theme='dark'] {
+    color-scheme: dark;
+    --button-primary-bg-hover: oklch(78% 0.18 50);
+
+    --bg-canvas: oklch(14% 0.005 270);
+    --bg-shell: oklch(16% 0.006 270);
+    --bg-surface: oklch(19% 0.007 270);
+    --bg-surface-elevated: oklch(22% 0.008 270);
+    --bg-muted: oklch(24% 0.009 270);
+    --bg-surface-muted: oklch(24% 0.009 270);
+    --bg-surface-hover: oklch(28% 0.010 270);
+    --bg-strong: oklch(28% 0.010 270);
+
+    --border-subtle: oklch(24% 0.010 270);
+    --border-default: oklch(30% 0.012 270);
+    --border-strong: oklch(42% 0.014 270);
+    --border-focus: oklch(72% 0.18 50);
+
+    --text-primary: oklch(96% 0.006 270);
+    --text-secondary: oklch(78% 0.010 270);
+    --text-muted: oklch(60% 0.012 270);
+    --text-disabled: oklch(42% 0.012 270);
+    --text-on-primary: oklch(16% 0.012 50);
+    --text-inverse: oklch(20% 0.012 80);
+    --text-link: oklch(76% 0.14 245);
+
+    --accent-primary: oklch(72% 0.18 50);
+    --accent-primary-hover: oklch(78% 0.18 50);
+    --accent-primary-active: oklch(84% 0.16 50);
+    --accent-primary-soft: oklch(28% 0.08 50);
+    --accent-primary-soft-strong: oklch(86% 0.14 60);
+    --accent-primary-border: oklch(40% 0.14 55);
+    --accent-focus: oklch(72% 0.18 50);
+    --accent-ring: oklch(72% 0.18 50 / 0.40);
+
+    --status-success: oklch(68% 0.16 150); --status-success-soft: oklch(26% 0.06 150);
+    --status-success-border: oklch(36% 0.10 150); --status-success-fg: oklch(86% 0.14 150);
+    --status-success-strong: oklch(86% 0.14 150);
+    --status-warning: oklch(78% 0.16 85); --status-warning-soft: oklch(28% 0.07 85);
+    --status-warning-border: oklch(38% 0.10 85); --status-warning-fg: oklch(88% 0.14 85);
+    --status-warning-strong: oklch(88% 0.14 85);
+    --status-error: oklch(70% 0.18 25); --status-error-soft: oklch(28% 0.10 25);
+    --status-error-border: oklch(40% 0.14 25); --status-error-fg: oklch(86% 0.14 25);
+    --status-error-strong: oklch(86% 0.14 25);
+    --status-info: oklch(72% 0.14 245); --status-info-soft: oklch(26% 0.06 245);
+    --status-info-border: oklch(36% 0.10 245); --status-info-fg: oklch(86% 0.12 245);
+    --status-info-strong: oklch(86% 0.12 245);
+    --status-review: oklch(74% 0.14 290); --status-review-soft: oklch(28% 0.06 290);
+    --status-review-border: oklch(38% 0.10 290); --status-review-fg: oklch(88% 0.12 290);
+    --status-review-strong: oklch(88% 0.12 290);
+    --status-disabled: oklch(65% 0.010 270); --status-disabled-soft: oklch(24% 0.010 270);
+    --status-disabled-border: oklch(34% 0.012 270); --status-disabled-fg: oklch(82% 0.010 270);
+    --status-disabled-strong: oklch(82% 0.010 270);
+
+    --shadow-soft: 0 1px 2px rgb(0 0 0 / 0.40), 0 6px 16px rgb(0 0 0 / 0.36);
+    --shadow-xs: 0 1px 2px rgb(0 0 0 / 0.40);
+    --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.40), 0 1px 3px rgb(0 0 0 / 0.32);
+    --shadow-md: 0 2px 4px rgb(0 0 0 / 0.40), 0 6px 16px rgb(0 0 0 / 0.36);
+    --shadow-lg: 0 6px 12px rgb(0 0 0 / 0.42), 0 16px 32px rgb(0 0 0 / 0.40);
+    --shadow-inset-top: inset 0 1px 0 rgb(255 255 255 / 0.04);
+  }
+
+  /* ══════════════════ 2. BASE ══════════════════ */
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--bg-canvas);
+    color: var(--text-primary);
+    font-family: var(--font-sans);
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    font-feature-settings: 'cv11', 'ss01';
+  }
+  .mono-text { font-family: var(--font-mono); letter-spacing: -0.01em; overflow-wrap: anywhere; }
+  .tabular { font-variant-numeric: tabular-nums; }
+  .sr-only {
+    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+  }
+
+  /* ══════════════════ 3. MOCKUP SCAFFOLD (not part of the app) ══════════════════ */
+  .controls {
+    position: sticky; top: 0; z-index: 50; display: flex; gap: var(--space-2);
+    align-items: center; justify-content: flex-end;
+    padding: var(--space-3) var(--space-5);
+    background: color-mix(in oklab, var(--bg-shell) 88%, transparent);
+    backdrop-filter: blur(8px); border-bottom: 1px solid var(--border-subtle);
+  }
+  .controls__label {
+    margin-right: auto; font-family: var(--font-mono); font-size: 0.6875rem;
+    letter-spacing: var(--tracking-caps); text-transform: uppercase;
+    color: var(--text-muted); font-weight: 600;
+  }
+  .toggle-btn {
+    border: 1px solid var(--border-default); background: var(--bg-surface);
+    color: var(--text-secondary); border-radius: var(--radius-md);
+    padding: 5px 10px; font-size: 0.75rem; cursor: pointer; font-family: var(--font-sans);
+  }
+  .toggle-btn:hover { background: var(--bg-surface-hover); }
+  .toggle-btn:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+
+  .sheet { max-width: 1320px; margin: 0 auto; padding: var(--space-6) var(--space-5) var(--space-8); }
+  .sheet__title {
+    font-size: 26px; line-height: 32px; font-weight: 700;
+    letter-spacing: var(--tracking-tight); margin: 0 0 var(--space-1); text-wrap: balance;
+  }
+  .sheet__sub { color: var(--text-secondary); margin: 0 0 var(--space-4); max-width: 76ch; }
+  .sheet__note {
+    display: flex; gap: var(--space-3); align-items: flex-start;
+    font-size: 0.78125rem; color: var(--text-secondary); line-height: 1.6;
+    background: var(--bg-surface-muted); border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md); padding: var(--space-3) var(--space-4);
+    margin: 0 0 var(--space-6);
+  }
+  .sheet__note b { color: var(--text-primary); font-weight: 600; }
+  .sheet__note code { font-family: var(--font-mono); font-size: 0.75em; }
+  .sheet__note svg { width: 16px; height: 16px; flex: 0 0 auto; color: var(--accent-primary); margin-top: 2px; }
+
+  .viewport-frame { margin: 0 0 var(--space-7); }
+  .viewport-frame__label {
+    display: flex; align-items: baseline; gap: var(--space-3); flex-wrap: wrap;
+    margin: 0 0 var(--space-3); padding-bottom: var(--space-2);
+    border-bottom: 1px dashed var(--border-default);
+  }
+  .viewport-frame__label .eyebrow-mono {
+    font-family: var(--font-mono); font-size: 0.6875rem; font-weight: 600;
+    letter-spacing: var(--tracking-caps); text-transform: uppercase;
+    color: var(--accent-primary-hover);
+  }
+  .viewport-frame__label b { font-size: 0.875rem; font-weight: 600; color: var(--text-primary); }
+  .viewport-frame__label span.caption { font-size: 0.75rem; color: var(--text-muted); }
+  .viewport-frame__scroll {
+    overflow-x: auto; padding: var(--space-4);
+    background: var(--bg-shell); border-radius: var(--radius-xl);
+  }
+  .frame-grid { display: grid; gap: var(--space-4); }
+  @media (min-width: 900px) { .frame-grid--2 { grid-template-columns: 1fr 1fr; } }
+
+  /* The † gap marker — a mockup annotation, never shipped. */
+  .gap-mark {
+    font-family: var(--font-mono); font-size: 0.6875rem; font-weight: 600;
+    color: var(--status-warning-fg); cursor: help; vertical-align: super;
+    line-height: 1; margin-left: 2px;
+  }
+  .gap-legend {
+    display: flex; gap: var(--space-2); align-items: flex-start;
+    margin-top: var(--space-3); font-size: 0.75rem; color: var(--text-muted); line-height: 1.6;
+  }
+  .gap-legend .gap-mark { cursor: default; }
+
+  .gap-table { width: 100%; border-collapse: collapse; font-size: 0.8125rem; }
+  .gap-table th, .gap-table td {
+    text-align: left; padding: var(--space-3) var(--space-4);
+    border-top: 1px solid var(--border-subtle); vertical-align: top;
+  }
+  .gap-table thead th {
+    font-family: var(--font-mono); font-size: 0.6875rem; font-weight: 500;
+    letter-spacing: var(--tracking-caps); text-transform: uppercase;
+    color: var(--text-muted); border-top: 0;
+  }
+  .gap-table code { font-family: var(--font-mono); font-size: 0.75rem; color: var(--text-secondary); }
+  .gap-table__wrap {
+    border: 1px solid var(--border-subtle); border-radius: var(--radius-lg);
+    background: var(--bg-surface); box-shadow: var(--shadow-xs); overflow-x: auto;
+  }
+
+  /* ══════════════════ 4. APP PRIMITIVES — transcribed from index.css ══════════════════ */
+
+  /* Page shell */
+  .app-frame {
+    background: var(--bg-canvas); border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-lg); padding: var(--space-5);
+    box-shadow: var(--shadow-xs); min-width: 0;
+  }
+  .page-header { display: grid; gap: 0.45rem; }
+  .page-header--split { grid-template-columns: minmax(0, 1fr) auto; align-items: start; }
+  .page-header__actions { justify-items: end; }
+  .eyebrow {
+    margin: 0; font-size: 0.76rem; font-weight: 700; letter-spacing: var(--tracking-caps);
+    text-transform: uppercase; color: var(--accent-primary-hover);
+  }
+  .page-title { margin: 0; color: var(--text-primary); font-size: 1.5rem; font-weight: 700; letter-spacing: var(--tracking-tight); }
+  .page-description { margin: 0; color: var(--text-secondary); font-size: 0.875rem; max-width: 68ch; }
+
+  /* Button */
+  .button {
+    display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2);
+    height: 2rem; padding: 0 var(--space-4); border-radius: var(--radius-md);
+    border: 1px solid var(--accent-primary-border); background: var(--accent-primary);
+    color: var(--text-on-primary); font-family: var(--font-sans); font-size: 0.8125rem;
+    font-weight: 500; line-height: 1; cursor: pointer; white-space: nowrap;
+    box-shadow: var(--shadow-xs), var(--shadow-inset-top);
+    transition: background var(--duration-fast) var(--ease-standard);
+  }
+  .button:hover { background: var(--button-primary-bg-hover); }
+  .button:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+  .button--secondary {
+    background: var(--bg-surface); border-color: var(--border-default);
+    color: var(--text-primary); box-shadow: var(--shadow-xs);
+  }
+  .button--secondary:hover { background: var(--bg-surface-hover); }
+  .button--ghost { background: transparent; border-color: transparent; color: var(--text-secondary); box-shadow: none; }
+  .button--ghost:hover { background: var(--bg-surface-hover); color: var(--text-primary); }
+  .button--sm { height: 1.75rem; padding: 0 var(--space-3); font-size: 0.75rem; }
+
+  /* Controls */
+  .control {
+    width: 100%; height: 2rem; border: 1px solid var(--border-default);
+    border-radius: var(--radius-md); padding: 0 var(--space-3);
+    background: var(--bg-surface); color: var(--text-primary);
+    font-family: var(--font-sans); font-size: 0.8125rem; line-height: 1.5;
+    box-shadow: var(--shadow-xs);
+  }
+  .control::placeholder { color: var(--text-disabled); }
+  .control:hover { border-color: var(--border-strong); }
+  .control:focus { outline: none; box-shadow: var(--shadow-focus); border-color: var(--border-focus); }
+  .control--select {
+    appearance: none; padding-right: var(--space-7); cursor: pointer;
+    background-image:
+      linear-gradient(45deg, transparent 50%, var(--text-secondary) 50%),
+      linear-gradient(135deg, var(--text-secondary) 50%, transparent 50%);
+    background-position: calc(100% - 14px) calc(50% - 2px), calc(100% - 8px) calc(50% - 2px);
+    background-size: 5px 5px, 5px 5px;
+    background-repeat: no-repeat;
+  }
+
+  /* Toolbar */
+  .toolbar {
+    display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap;
+    padding: var(--space-3) var(--space-4); border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md); background: var(--bg-shell);
+  }
+  .toolbar--compact { gap: var(--space-2); }
+  .toolbar .control { width: 17.5rem; max-width: 17.5rem; }
+  .toolbar .control--search { width: 22rem; max-width: 22rem; }
+  .toolbar__spacer { margin-left: auto; }
+  @media (max-width: 640px) { .toolbar .control, .toolbar .control--search { width: 100%; max-width: 100%; } }
+
+  /* Tabs */
+  .tabs { display: flex; flex-direction: column; gap: 16px; }
+  .tabs__list {
+    display: inline-flex; gap: 0; border: none;
+    border-bottom: 1px solid var(--border-subtle); width: 100%; align-self: stretch;
+    overflow-x: auto;
+  }
+  .tabs__trigger {
+    display: inline-flex; align-items: center; gap: var(--space-2);
+    padding: var(--space-2) var(--space-3); margin-bottom: -1px;
+    font-family: var(--font-sans); font-size: 0.8125rem; font-weight: 500;
+    color: var(--text-secondary); background: transparent; border: none;
+    border-bottom: 2px solid transparent; cursor: pointer; white-space: nowrap;
+  }
+  .tabs__trigger:hover { color: var(--text-primary); border-bottom-color: var(--border-default); }
+  .tabs__trigger[data-state='active'] {
+    color: var(--text-primary); border-bottom-color: var(--accent-primary); font-weight: 600;
+  }
+  .tabs__trigger:focus-visible { outline: 2px solid var(--accent-focus); outline-offset: 2px; }
+  .tabs__count {
+    min-width: 1.125rem; padding: 1px 6px; font-family: var(--font-mono);
+    font-size: 0.625rem; font-weight: 500; color: var(--text-muted);
+    background: var(--bg-surface-muted); border-radius: var(--radius-pill);
+    font-variant-numeric: tabular-nums; text-align: center;
+  }
+  .tabs__trigger[data-state='active'] .tabs__count {
+    background: var(--accent-primary-soft); color: var(--accent-primary-soft-strong);
+  }
+  .tabs__content { display: flex; flex-direction: column; gap: 16px; }
+
+  /* DataTable */
+  .data-table__container {
+    overflow-x: auto; border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-lg); background: var(--bg-surface); box-shadow: var(--shadow-xs);
+  }
+  .data-table { width: auto; min-width: 100%; border-collapse: collapse; font-size: 0.8125rem; }
+  .data-table th, .data-table td {
+    padding: var(--space-3) var(--space-4); border-top: 1px solid var(--border-subtle);
+    text-align: left; vertical-align: middle; font-size: 0.8125rem; line-height: 1.4;
+  }
+  .data-table thead th {
+    color: var(--text-muted); font-family: var(--font-mono); font-size: 0.6875rem;
+    font-weight: 500; letter-spacing: var(--tracking-caps); text-transform: uppercase;
+    background: var(--bg-shell); border-top: 0; white-space: nowrap;
+  }
+  /* Specificity deliberately raised above the base `.data-table td` rule.
+     In the app today `.data-table__cell--right` (0,1,0 — index.css:2770) loses
+     to `.data-table th, .data-table td { text-align: left }` (0,1,1 —
+     index.css:2797) on BOTH specificity and source order, so every column
+     declaring `align: 'right'` renders left-aligned. 14 columns are affected.
+     Flagged as a follow-up; the mockup shows the intended behaviour. */
+  .data-table th.data-table__cell--right,
+  .data-table td.data-table__cell--right { text-align: right; font-variant-numeric: tabular-nums; }
+  .data-table__row--linked { cursor: pointer; }
+  .data-table__row--linked:hover { background: color-mix(in oklab, var(--bg-shell) 60%, transparent); }
+  .data-table__row-link { color: var(--text-primary); text-decoration: none; font-weight: 500; }
+  .data-table__row--linked:hover .data-table__row-link { color: var(--accent-primary); }
+  .data-table__row-link:focus-visible { outline: none; box-shadow: var(--shadow-focus); border-radius: var(--radius-xs); }
+  .data-table__stack { display: grid; gap: 2px; }
+
+  /* StatusBadge */
+  .status-badge {
+    display: inline-flex; align-items: center; gap: var(--space-2);
+    padding: 2px var(--space-2); border: 1px solid var(--status-disabled-border);
+    border-radius: var(--radius-sm); background: var(--status-disabled-soft);
+    color: var(--status-disabled-fg); font-family: var(--font-mono); font-size: 0.6875rem;
+    font-weight: 500; line-height: 1.5; letter-spacing: var(--tracking-wide);
+    text-transform: uppercase; white-space: nowrap;
+  }
+  .status-badge--compact { padding: 1px var(--space-2); font-size: 0.625rem; }
+  .status-badge__dot {
+    width: 0.375rem; height: 0.375rem; border-radius: 999px;
+    background: currentColor; opacity: 0.75; flex-shrink: 0;
+  }
+  .status-badge--success { border-color: var(--status-success-border); background: var(--status-success-soft); color: var(--status-success-fg); }
+  .status-badge--warning { border-color: var(--status-warning-border); background: var(--status-warning-soft); color: var(--status-warning-fg); }
+  .status-badge--error   { border-color: var(--status-error-border);   background: var(--status-error-soft);   color: var(--status-error-fg); }
+  .status-badge--info    { border-color: var(--status-info-border);    background: var(--status-info-soft);    color: var(--status-info-fg); }
+  .status-badge--review  { border-color: var(--status-review-border);  background: var(--status-review-soft);  color: var(--status-review-fg); }
+  .status-badge--pulse .status-badge__dot { animation: status-badge-pulse 1.6s var(--ease-out) infinite; }
+  @keyframes status-badge-pulse {
+    0%   { box-shadow: 0 0 0 0 currentColor; opacity: 0.95; }
+    70%  { box-shadow: 0 0 0 6px transparent; opacity: 0.55; }
+    100% { box-shadow: 0 0 0 0 transparent; }
+  }
+
+  /* Channel pill. NOTE the erli/woocommerce selectors below do NOT exist in
+     index.css today (only allegro/prestashop/amazon/shopify do, :9242-9245),
+     even though the --channel-erli / --channel-woocommerce vars are defined at
+     :288-293. Adding the two missing selectors is a one-line fix, flagged in
+     the follow-ups section at the bottom of this page. */
+  .channel-pill {
+    display: inline-flex; align-items: center; gap: var(--space-1);
+    padding: 2px var(--space-2); border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-pill); background: var(--bg-surface-muted);
+    color: var(--text-secondary); font-family: var(--font-mono);
+    font-size: 0.6875rem; white-space: nowrap;
+  }
+  .channel-pill::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--text-muted); }
+  .channel-pill[data-channel='allegro']::before     { background: var(--channel-allegro); }
+  .channel-pill[data-channel='prestashop']::before  { background: var(--channel-prestashop); }
+  .channel-pill[data-channel='amazon']::before      { background: var(--channel-amazon); }
+  .channel-pill[data-channel='shopify']::before     { background: var(--channel-shopify); }
+  .channel-pill[data-channel='erli']::before        { background: var(--channel-erli); }
+  .channel-pill[data-channel='woocommerce']::before { background: var(--channel-woocommerce); }
+
+  /* EntityLabel */
+  .entity-label { display: inline-flex; align-items: baseline; gap: 6px; min-width: 0; }
+  .entity-label__name {
+    font-weight: 500; color: var(--text-primary); white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis;
+  }
+  .entity-label__name--link { color: var(--accent-primary); text-decoration: none; }
+  .entity-label__name--link:hover { text-decoration: underline; }
+  .entity-label__id {
+    font-family: var(--font-mono); font-size: 11.5px; color: var(--text-muted);
+    background: var(--bg-surface-muted); border: 1px solid var(--border-subtle);
+    padding: 1px 6px; border-radius: 4px; white-space: nowrap;
+  }
+  .entity-label__copy {
+    border: none; background: transparent; padding: 2px 4px; color: var(--text-muted);
+    font-family: var(--font-mono); font-size: 11px; border-radius: 4px; cursor: pointer;
+    opacity: 0; transform: translateX(-4px);
+    transition: opacity var(--duration-fast) var(--ease-standard), transform var(--duration-fast) var(--ease-standard);
+  }
+  .data-table tbody tr:hover .entity-label__copy,
+  .entity-label:hover .entity-label__copy,
+  .entity-label__copy:focus-visible { opacity: 1; transform: translateX(0); }
+  .entity-label__copy:hover { background: var(--bg-surface-hover); color: var(--text-primary); }
+  .entity-label__copy:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+  .entity-label__copy[data-copied='true'] { opacity: 1; transform: translateX(0); color: var(--status-success-fg); }
+
+  /* ProductThumbnail */
+  .product-thumbnail {
+    display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
+    border: 1px solid var(--border-subtle); border-radius: 0.375rem;
+    background: var(--bg-surface-muted); overflow: hidden;
+    font-family: var(--font-mono); color: var(--text-muted);
+    text-transform: uppercase; line-height: 1; user-select: none;
+  }
+  .product-thumbnail--sm { width: 1.5rem; height: 1.5rem; font-size: 0.6875rem; }
+  .product-thumbnail--md { width: 2rem; height: 2rem; font-size: 0.8125rem; }
+
+  /* State cards */
+  .state-card {
+    border: 1px solid var(--border-default); border-radius: 0.5rem;
+    background: var(--bg-surface); box-shadow: var(--shadow-soft);
+    padding: 1rem; display: grid; gap: 0.75rem; text-align: left;
+  }
+  .state-card__header { display: grid; gap: 0.4rem; }
+  .state-card__title { margin: 0; font-size: 1.0625rem; font-weight: 600; letter-spacing: var(--tracking-tight); color: var(--text-primary); }
+  .state-card__message { margin: 0; color: var(--text-secondary); font-size: 0.875rem; }
+  .state-card__actions { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+  .state-card--error { border-color: var(--status-error-border); background: var(--status-error-soft); }
+  .state-card--error .state-card__message { color: var(--status-error-fg); }
+
+  /* Pagination */
+  .pagination { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; flex-wrap: wrap; }
+  .pagination__actions { display: flex; gap: 0.5rem; }
+  .text-muted { color: var(--text-muted); font-size: 0.8125rem; }
+
+  /* ══════════════════ 5. LISTINGS-SPECIFIC CELLS (new in #1965) ══════════════════ */
+
+  /* The Listing cell: thumbnail + a two-line identity stack. Product name leads;
+     the offer id, variant, SKU and EAN are secondary. */
+  /* The identity column carries four facts, so it gets the width to keep them
+     on two lines. Below this the row would grow to four lines and break the
+     36px-ish density the cockpit tables are budgeted at. */
+  .data-table th:first-child, .data-table td:first-child { min-width: 28rem; }
+  .listing-cell { display: flex; align-items: flex-start; gap: var(--space-3); min-width: 0; }
+  .listing-cell__body { display: grid; gap: 1px; min-width: 0; }
+  .listing-cell__head { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+  /* Shrink only when the row genuinely runs out of room (a long name next to a
+     badge), never at a fixed character cap — a truncated name with empty space
+     beside it reads as a bug. */
+  .listing-cell__name {
+    font-size: 0.8125rem; font-weight: 600; color: var(--text-primary);
+    text-decoration: none; min-width: 0; flex: 0 1 auto;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .listing-cell__variant, .listing-cell__offerid, .listing-cell__head .status-badge { flex: 0 0 auto; }
+  .data-table__row--linked:hover .listing-cell__name { color: var(--accent-primary); }
+  .listing-cell__name:focus-visible { outline: none; box-shadow: var(--shadow-focus); border-radius: var(--radius-xs); }
+  .listing-cell__variant {
+    font-size: 0.75rem; color: var(--text-secondary);
+    padding: 1px 6px; background: var(--bg-surface-muted);
+    border: 1px solid var(--border-subtle); border-radius: var(--radius-xs);
+    white-space: nowrap;
+  }
+  .listing-cell__offerid { font-family: var(--font-mono); font-size: 0.6875rem; color: var(--text-muted); }
+  .listing-cell__meta {
+    font-size: 0.75rem; color: var(--text-muted);
+    display: flex; gap: var(--space-2); align-items: center;
+    white-space: nowrap; overflow: hidden;
+  }
+  .listing-cell__meta span { white-space: nowrap; }
+  .listing-cell__meta span + span::before { content: '·'; margin-right: var(--space-2); color: var(--border-strong); }
+  .listing-cell__meta em { font-style: normal; font-family: var(--font-mono); color: var(--text-secondary); }
+  /* The validator's own words, verbatim — this is the one place the marketplace
+     speaks directly to the seller, so it is not paraphrased. */
+  .listing-cell__reason {
+    font-size: 0.6875rem; color: var(--status-error-strong);
+    max-width: 46ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+
+  /* Same two-level shape as the Listing and Quantity cells: what a person
+     reads on top, the identifier beneath. Matches the app's existing cell-stack
+     convention (`.orders-cell-stack` index.css:8783,
+     `.products-cell-stack` :15950 — both identical to this). */
+  .conn-cell { display: flex; flex-direction: column; gap: 2px; align-items: flex-start; }
+
+  /* CopyableId — transcribed verbatim from index.css:9291-9349. The app already
+     ships this exact primitive for "an id with no human name of its own"; the
+     name above it is a plain EntityLabel with showId={false}. */
+  .copyable-id { display: inline-flex; align-items: center; gap: var(--space-2); }
+  .copyable-id__value {
+    font-family: var(--font-mono); font-size: 0.75rem; letter-spacing: var(--tracking-wide);
+    color: var(--text-secondary); background: var(--bg-surface-muted);
+    padding: 1px 6px; border-radius: var(--radius-xs);
+    max-width: 18ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .copyable-id__copy {
+    display: inline-flex; align-items: center; padding: 1px 6px;
+    font-family: var(--font-mono); font-size: 0.625rem; letter-spacing: var(--tracking-wide);
+    color: var(--text-muted); background: transparent;
+    border: 1px solid var(--border-subtle); border-radius: var(--radius-xs); cursor: pointer;
+    opacity: 0; transform: translateX(-4px);
+    transition:
+      opacity var(--duration-fast) var(--ease-out),
+      transform var(--duration-fast) var(--ease-out),
+      color var(--duration-fast) var(--ease-out),
+      border-color var(--duration-fast) var(--ease-out);
+  }
+  .copyable-id__copy:hover { color: var(--text-primary); border-color: var(--border-default); }
+  .copyable-id__copy:focus-visible {
+    outline: none; box-shadow: var(--shadow-focus); opacity: 1; transform: translateX(0);
+  }
+  .data-table tbody tr:hover .copyable-id__copy,
+  .copyable-id:hover .copyable-id__copy,
+  .copyable-id:focus-within .copyable-id__copy { opacity: 1; transform: translateX(0); }
+  .copyable-id__copy[data-copied='true'] {
+    opacity: 1; transform: translateX(0); color: var(--status-success-fg);
+  }
+
+  /* The number keeps the same weight and colour at every value, zero included,
+     so the column still reads as one column of figures. The out-of-stock
+     signal sits under it rather than recolouring the digit — same shape as the
+     Listing cell: primary value first, qualifier beneath. */
+  .qty-cell { display: inline-flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+  .qty-cell__value { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+  /* The card view is a left-aligned definition list, so the same cell flips its
+     stack to the left edge — otherwise the digit floats right of the badge. */
+  .data-card .qty-cell { align-items: flex-start; }
+  .price-cell { font-family: var(--font-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .time-cell { font-family: var(--font-mono); font-size: 0.75rem; color: var(--text-secondary); white-space: nowrap; }
+
+  /* Skeleton */
+  .skeleton {
+    display: block; border-radius: var(--radius-xs);
+    background: linear-gradient(90deg, var(--bg-surface-muted) 25%, var(--bg-surface-hover) 37%, var(--bg-surface-muted) 63%);
+    background-size: 400% 100%; animation: skeleton-shimmer 1.4s ease-in-out infinite;
+  }
+  @keyframes skeleton-shimmer { 0% { background-position: 100% 50%; } 100% { background-position: 0 50%; } }
+  .skeleton--thumb { width: 2rem; height: 2rem; border-radius: 0.375rem; }
+  .skeleton--line { height: 0.6875rem; }
+
+  /* Card view (≤767px table-to-cards fold, per the style guide parity matrix) */
+  .card-list { display: grid; gap: var(--space-3); }
+  .data-card {
+    border: 1px solid var(--border-subtle); border-radius: var(--radius-lg);
+    background: var(--bg-surface); box-shadow: var(--shadow-xs);
+    padding: var(--space-3) var(--space-4); display: grid; gap: var(--space-3);
+  }
+  .data-card__head { display: flex; gap: var(--space-3); align-items: flex-start; }
+  .data-card__facts {
+    display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-2) var(--space-4);
+    border-top: 1px solid var(--border-subtle); padding-top: var(--space-3);
+  }
+  .data-card__fact { display: grid; gap: 2px; }
+  .data-card__fact dt {
+    font-family: var(--font-mono); font-size: 0.625rem; letter-spacing: var(--tracking-caps);
+    text-transform: uppercase; color: var(--text-muted);
+  }
+  .data-card__fact dd { margin: 0; font-size: 0.8125rem; color: var(--text-primary); }
+  /* Device scaffolds. The widths are the style guide's own breakpoints
+     (§ Responsive) — 360 is the mobile capture width, 768 the tablet floor —
+     not new design values. Each frame is a fixed-width box inside the 1320px
+     sheet, so no @media fires on it: what these show is the intended layout at
+     that width, not proof that a breakpoint works. */
+  .phone-frame { max-width: 360px; margin: 0 auto; }
+
+  /* Four lifecycle tabs at 360px come to 359px against 326px of room, so by
+     default the last one ("Ended") sits behind a horizontal scroll — which the
+     style guide reserves for a table's own overflow (§ Responsive). Stepping the
+     trigger padding and the label/count gap down one token each frees ~48px and
+     all four fit, with no new spacing value.
+
+     The app does ship a scroll-with-right-edge-fade treatment for a cramped tab
+     bar (index.css:16775-16787, #1784 S14) — deliberately not reused here. That
+     pattern earns its scroll because the mapping tab count is open-ended; the
+     offer lifecycle has exactly four states and always will, so fitting them
+     beats teaching the operator to scroll for one of the four. */
+  .phone-frame .tabs__trigger {
+    padding-left: var(--space-2); padding-right: var(--space-2); gap: var(--space-1);
+  }
+  .tablet-frame { max-width: 768px; margin: 0 auto; }
+
+  .empty-slot { display: grid; gap: var(--space-4); }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme='light']) {
+    color-scheme: dark;
+    --button-primary-bg-hover: oklch(78% 0.18 50);
+
+    --bg-canvas: oklch(14% 0.005 270);
+    --bg-shell: oklch(16% 0.006 270);
+    --bg-surface: oklch(19% 0.007 270);
+    --bg-surface-elevated: oklch(22% 0.008 270);
+    --bg-muted: oklch(24% 0.009 270);
+    --bg-surface-muted: oklch(24% 0.009 270);
+    --bg-surface-hover: oklch(28% 0.010 270);
+    --bg-strong: oklch(28% 0.010 270);
+
+    --border-subtle: oklch(24% 0.010 270);
+    --border-default: oklch(30% 0.012 270);
+    --border-strong: oklch(42% 0.014 270);
+    --border-focus: oklch(72% 0.18 50);
+
+    --text-primary: oklch(96% 0.006 270);
+    --text-secondary: oklch(78% 0.010 270);
+    --text-muted: oklch(60% 0.012 270);
+    --text-disabled: oklch(42% 0.012 270);
+    --text-on-primary: oklch(16% 0.012 50);
+    --text-inverse: oklch(20% 0.012 80);
+    --text-link: oklch(76% 0.14 245);
+
+    --accent-primary: oklch(72% 0.18 50);
+    --accent-primary-hover: oklch(78% 0.18 50);
+    --accent-primary-active: oklch(84% 0.16 50);
+    --accent-primary-soft: oklch(28% 0.08 50);
+    --accent-primary-soft-strong: oklch(86% 0.14 60);
+    --accent-primary-border: oklch(40% 0.14 55);
+    --accent-focus: oklch(72% 0.18 50);
+    --accent-ring: oklch(72% 0.18 50 / 0.40);
+
+    --status-success: oklch(68% 0.16 150); --status-success-soft: oklch(26% 0.06 150);
+    --status-success-border: oklch(36% 0.10 150); --status-success-fg: oklch(86% 0.14 150);
+    --status-success-strong: oklch(86% 0.14 150);
+    --status-warning: oklch(78% 0.16 85); --status-warning-soft: oklch(28% 0.07 85);
+    --status-warning-border: oklch(38% 0.10 85); --status-warning-fg: oklch(88% 0.14 85);
+    --status-warning-strong: oklch(88% 0.14 85);
+    --status-error: oklch(70% 0.18 25); --status-error-soft: oklch(28% 0.10 25);
+    --status-error-border: oklch(40% 0.14 25); --status-error-fg: oklch(86% 0.14 25);
+    --status-error-strong: oklch(86% 0.14 25);
+    --status-info: oklch(72% 0.14 245); --status-info-soft: oklch(26% 0.06 245);
+    --status-info-border: oklch(36% 0.10 245); --status-info-fg: oklch(86% 0.12 245);
+    --status-info-strong: oklch(86% 0.12 245);
+    --status-review: oklch(74% 0.14 290); --status-review-soft: oklch(28% 0.06 290);
+    --status-review-border: oklch(38% 0.10 290); --status-review-fg: oklch(88% 0.12 290);
+    --status-review-strong: oklch(88% 0.12 290);
+    --status-disabled: oklch(65% 0.010 270); --status-disabled-soft: oklch(24% 0.010 270);
+    --status-disabled-border: oklch(34% 0.012 270); --status-disabled-fg: oklch(82% 0.010 270);
+    --status-disabled-strong: oklch(82% 0.010 270);
+
+    --shadow-soft: 0 1px 2px rgb(0 0 0 / 0.40), 0 6px 16px rgb(0 0 0 / 0.36);
+    --shadow-xs: 0 1px 2px rgb(0 0 0 / 0.40);
+    --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.40), 0 1px 3px rgb(0 0 0 / 0.32);
+    --shadow-md: 0 2px 4px rgb(0 0 0 / 0.40), 0 6px 16px rgb(0 0 0 / 0.36);
+    --shadow-lg: 0 6px 12px rgb(0 0 0 / 0.42), 0 16px 32px rgb(0 0 0 / 0.40);
+    --shadow-inset-top: inset 0 1px 0 rgb(255 255 255 / 0.04);
+  }
+  }
+  :root[data-theme='dark'] {
+    color-scheme: dark;
+    --button-primary-bg-hover: oklch(78% 0.18 50);
+
+    --bg-canvas: oklch(14% 0.005 270);
+    --bg-shell: oklch(16% 0.006 270);
+    --bg-surface: oklch(19% 0.007 270);
+    --bg-surface-elevated: oklch(22% 0.008 270);
+    --bg-muted: oklch(24% 0.009 270);
+    --bg-surface-muted: oklch(24% 0.009 270);
+    --bg-surface-hover: oklch(28% 0.010 270);
+    --bg-strong: oklch(28% 0.010 270);
+
+    --border-subtle: oklch(24% 0.010 270);
+    --border-default: oklch(30% 0.012 270);
+    --border-strong: oklch(42% 0.014 270);
+    --border-focus: oklch(72% 0.18 50);
+
+    --text-primary: oklch(96% 0.006 270);
+    --text-secondary: oklch(78% 0.010 270);
+    --text-muted: oklch(60% 0.012 270);
+    --text-disabled: oklch(42% 0.012 270);
+    --text-on-primary: oklch(16% 0.012 50);
+    --text-inverse: oklch(20% 0.012 80);
+    --text-link: oklch(76% 0.14 245);
+
+    --accent-primary: oklch(72% 0.18 50);
+    --accent-primary-hover: oklch(78% 0.18 50);
+    --accent-primary-active: oklch(84% 0.16 50);
+    --accent-primary-soft: oklch(28% 0.08 50);
+    --accent-primary-soft-strong: oklch(86% 0.14 60);
+    --accent-primary-border: oklch(40% 0.14 55);
+    --accent-focus: oklch(72% 0.18 50);
+    --accent-ring: oklch(72% 0.18 50 / 0.40);
+
+    --status-success: oklch(68% 0.16 150); --status-success-soft: oklch(26% 0.06 150);
+    --status-success-border: oklch(36% 0.10 150); --status-success-fg: oklch(86% 0.14 150);
+    --status-success-strong: oklch(86% 0.14 150);
+    --status-warning: oklch(78% 0.16 85); --status-warning-soft: oklch(28% 0.07 85);
+    --status-warning-border: oklch(38% 0.10 85); --status-warning-fg: oklch(88% 0.14 85);
+    --status-warning-strong: oklch(88% 0.14 85);
+    --status-error: oklch(70% 0.18 25); --status-error-soft: oklch(28% 0.10 25);
+    --status-error-border: oklch(40% 0.14 25); --status-error-fg: oklch(86% 0.14 25);
+    --status-error-strong: oklch(86% 0.14 25);
+    --status-info: oklch(72% 0.14 245); --status-info-soft: oklch(26% 0.06 245);
+    --status-info-border: oklch(36% 0.10 245); --status-info-fg: oklch(86% 0.12 245);
+    --status-info-strong: oklch(86% 0.12 245);
+    --status-review: oklch(74% 0.14 290); --status-review-soft: oklch(28% 0.06 290);
+    --status-review-border: oklch(38% 0.10 290); --status-review-fg: oklch(88% 0.12 290);
+    --status-review-strong: oklch(88% 0.12 290);
+    --status-disabled: oklch(65% 0.010 270); --status-disabled-soft: oklch(24% 0.010 270);
+    --status-disabled-border: oklch(34% 0.012 270); --status-disabled-fg: oklch(82% 0.010 270);
+    --status-disabled-strong: oklch(82% 0.010 270);
+
+    --shadow-soft: 0 1px 2px rgb(0 0 0 / 0.40), 0 6px 16px rgb(0 0 0 / 0.36);
+    --shadow-xs: 0 1px 2px rgb(0 0 0 / 0.40);
+    --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.40), 0 1px 3px rgb(0 0 0 / 0.32);
+    --shadow-md: 0 2px 4px rgb(0 0 0 / 0.40), 0 6px 16px rgb(0 0 0 / 0.36);
+    --shadow-lg: 0 6px 12px rgb(0 0 0 / 0.42), 0 16px 32px rgb(0 0 0 / 0.40);
+    --shadow-inset-top: inset 0 1px 0 rgb(255 255 255 / 0.04);
+  }
+
+  /* ══════════════════ 4b. MORE APP PRIMITIVES — transcribed from index.css ══════════════════ */
+
+  /* Panel */
+  .panel {
+    border: 1px solid var(--border-default); border-radius: 0.5rem;
+    background: var(--bg-surface); box-shadow: var(--shadow-soft); padding: 1rem;
+    display: grid; gap: 0.75rem;
+  }
+  .panel__header { display: flex; align-items: center; gap: 0.75rem; }
+  .panel__title { margin: 0; font-size: 1.0625rem; font-weight: 600; letter-spacing: var(--tracking-tight); }
+  .panel__meta {
+    border: 1px solid var(--border-strong); border-radius: 999px;
+    padding: 0.25rem 0.65rem; background: var(--bg-surface-elevated);
+    color: var(--text-secondary); font-size: 0.75rem;
+  }
+  .panel-copy, .muted-text { margin: 0; color: var(--text-secondary); }
+
+  /* Section title (page-level) */
+  .section-title {
+    margin: 0; font-family: var(--font-mono); font-size: 0.6875rem; font-weight: 600;
+    letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--text-muted);
+  }
+  .page-section { display: grid; gap: 0.75rem; }
+
+  /* KpiCard + status-strip (#775) */
+  .status-strip { display: grid; gap: 0.75rem; grid-template-columns: minmax(0, 1fr); }
+  @media (min-width: 700px) { .status-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  @media (min-width: 1024px) { .status-strip { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+  .kpi-card {
+    position: relative; display: flex; flex-direction: column; gap: var(--space-3);
+    padding: var(--space-5); background: var(--bg-surface);
+    border: 1px solid var(--border-subtle); border-radius: var(--radius-lg);
+    color: var(--text-primary); text-decoration: none;
+    box-shadow: var(--shadow-xs); height: 100%; min-height: 7rem;
+  }
+  .kpi-card::before {
+    content: ''; position: absolute; inset: 0 auto auto 0; width: 100%; height: 1px;
+    background: linear-gradient(90deg, transparent,
+      color-mix(in oklab, var(--accent-primary) 60%, transparent), transparent);
+    opacity: 0.4; pointer-events: none;
+  }
+  .kpi-card__label { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
+  .kpi-card__label-text {
+    display: inline-flex; align-items: center; gap: var(--space-2);
+    font-family: var(--font-mono); font-size: 0.6875rem; font-weight: 500;
+    color: var(--text-muted); letter-spacing: var(--tracking-caps); text-transform: uppercase;
+  }
+  .kpi-card__value {
+    font-size: 2rem; line-height: 1; font-weight: 600; letter-spacing: var(--tracking-tight);
+    font-variant-numeric: tabular-nums; display: flex; align-items: baseline; gap: var(--space-2);
+    color: var(--text-primary);
+  }
+  .kpi-card__value-suffix {
+    font-size: 0.8125rem; font-weight: 500; color: var(--text-muted);
+    letter-spacing: var(--tracking-normal);
+  }
+  .kpi-card__description { font-family: var(--font-mono); font-size: 0.75rem; line-height: 1.4; color: var(--text-secondary); }
+  .kpi-card--warning { background: var(--status-warning-soft); border-color: var(--status-warning-border); }
+  .kpi-card--warning .kpi-card__label-text,
+  .kpi-card--warning .kpi-card__value,
+  .kpi-card--warning .kpi-card__description { color: var(--status-warning-strong); }
+
+  /* Sparkline */
+  .sparkline__line { stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; fill: none; }
+  .sparkline__area { fill: currentColor; opacity: 0.12; }
+  .sparkline--neutral { color: var(--text-muted); }
+  .sparkline--success { color: var(--status-success); }
+  .sparkline--warning { color: var(--status-warning); }
+
+  /* KeyValueList (#775) */
+  .key-value-list {
+    display: grid; grid-template-columns: 1fr; gap: 0; margin: 0; padding: 0;
+    background: var(--bg-surface); border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md); overflow: hidden;
+  }
+  @media (min-width: 700px) { .key-value-list { grid-template-columns: minmax(190px, max-content) 1fr; } }
+  .key-value-list__label, .key-value-list__value {
+    padding: var(--space-3) var(--space-4); border-top: 1px solid var(--border-subtle); margin: 0;
+  }
+  .key-value-list__label {
+    font-family: var(--font-mono); font-size: 0.6875rem; font-weight: 500; color: var(--text-muted);
+    letter-spacing: var(--tracking-caps); text-transform: uppercase; background: var(--bg-shell);
+  }
+  .key-value-list__value { color: var(--text-primary); font-size: 0.8125rem; word-break: break-word; }
+  .key-value-list__value--mono { font-family: var(--font-mono); font-size: 0.75rem; color: var(--text-secondary); }
+  .key-value-list > :nth-child(-n + 2) { border-top: 0; }
+
+  /* Alert */
+  .alert {
+    display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem;
+    border: 1px solid var(--border-default); border-radius: var(--radius-lg);
+    padding: 0.875rem 1rem 0.875rem 1.125rem; background: var(--bg-surface);
+    box-shadow: inset 3px 0 0 var(--border-default);
+  }
+  .alert--info { border-color: var(--status-info-border); background: var(--status-info-soft); box-shadow: inset 3px 0 0 var(--status-info); }
+  .alert--success { border-color: var(--status-success-border); background: var(--status-success-soft); box-shadow: inset 3px 0 0 var(--status-success); }
+  .alert--warning { border-color: var(--status-warning-border); background: var(--status-warning-soft); box-shadow: inset 3px 0 0 var(--status-warning); }
+  .alert--error { border-color: var(--status-error-border); background: var(--status-error-soft); box-shadow: inset 3px 0 0 var(--status-error); }
+  .alert__content { display: grid; gap: 0.35rem; min-width: 0; }
+  .alert__title { color: var(--text-primary); margin: 0; font-size: 0.875rem; font-weight: 600; }
+  .alert__description { color: var(--text-secondary); margin: 0; font-size: 0.8125rem; line-height: 1.55; }
+  .alert__description p { margin: 0; }
+  .alert__actions { flex-shrink: 0; display: flex; gap: var(--space-2); }
+  .alert__count { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-weight: 600; color: inherit; }
+
+  /* Chip */
+  .chip {
+    display: inline-flex; align-items: center; gap: 0.25rem; height: 1.375rem; padding: 0 0.5rem;
+    border: 1px solid var(--border-subtle); border-radius: var(--radius-pill);
+    background: var(--bg-surface-muted); color: var(--text-secondary);
+    font-size: 0.75rem; font-weight: 500; line-height: 1; cursor: pointer;
+  }
+  .chip--static { cursor: default; }
+  .chip--active {
+    background: var(--accent-primary-soft);
+    border-color: color-mix(in oklab, var(--accent-primary) 35%, transparent);
+    color: var(--accent-primary-soft-strong); font-weight: 600;
+  }
+  .chip--success { background: var(--status-success-soft); border-color: var(--status-success-border); color: var(--status-success-strong); }
+  .chip--warning { background: var(--status-warning-soft); border-color: var(--status-warning-border); color: var(--status-warning-strong); }
+  .chip--error { background: var(--status-error-soft); border-color: var(--status-error-border); color: var(--status-error-strong); }
+  .chip--info { background: var(--status-info-soft); border-color: var(--status-info-border); color: var(--status-info-strong); }
+  .chip--mono { font-family: var(--font-mono); font-size: 0.6875rem; letter-spacing: var(--tracking-caps); }
+
+  /* FormField (#775) */
+  .form-field { display: grid; gap: var(--space-2); max-width: 22rem; }
+  .form-field__label { color: var(--text-primary); font-size: 0.8125rem; font-weight: 500; }
+  .form-field__description { margin: 0; color: var(--text-muted); font-size: 0.75rem; line-height: 1.5; }
+  .form-field__description--match { color: var(--status-success-strong); }
+
+  /* Dialog */
+  .dialog-shell {
+    display: grid; place-items: center; padding: var(--space-5);
+    background: color-mix(in oklab, oklch(22% 0.02 260) 34%, transparent);
+    border-radius: var(--radius-xl);
+  }
+  .dialog {
+    display: grid; width: min(100%, 32rem); gap: 1rem;
+    border: 1px solid var(--border-default); border-radius: 0.75rem; padding: 1.25rem;
+    background: var(--bg-surface); box-shadow: var(--shadow-lg);
+  }
+  .dialog__header { display: grid; gap: 0.35rem; }
+  .dialog__title { margin: 0; color: var(--text-primary); font-size: 1.0625rem; font-weight: 600; }
+  .dialog__subtitle { margin: 0; color: var(--text-muted); font-size: 0.75rem; }
+  .dialog__body { color: var(--text-secondary); display: grid; gap: 0.75rem; font-size: 0.8125rem; }
+  .dialog__body p { margin: 0; line-height: 1.55; }
+  .dialog__actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.75rem; }
+
+  /* Checkbox row (acknowledgement) */
+  .ack-row {
+    display: flex; gap: var(--space-3); align-items: flex-start;
+    padding: var(--space-3); border: 1px solid var(--status-warning-border);
+    border-radius: var(--radius-md); background: var(--status-warning-soft);
+    font-size: 0.8125rem; line-height: 1.5; color: var(--status-warning-strong);
+  }
+  .ack-row input { margin-top: 3px; accent-color: var(--accent-primary); }
+
+  /* Segmented control */
+  .segmented {
+    display: inline-flex; border: 1px solid var(--border-default);
+    border-radius: var(--radius-md); background: var(--bg-surface); overflow: hidden;
+  }
+  .segmented button {
+    border: 0; background: transparent; color: var(--text-secondary);
+    font-family: var(--font-sans); font-size: 0.75rem; font-weight: 500;
+    padding: 5px 11px; cursor: pointer; border-right: 1px solid var(--border-subtle);
+  }
+  .segmented button:last-child { border-right: 0; }
+  .segmented button[aria-pressed='true'] {
+    background: var(--accent-primary-soft); color: var(--accent-primary-soft-strong); font-weight: 600;
+  }
+
+  /* ══════════════════ 5. FX-SPECIFIC CELLS (new in #2049) ══════════════════ */
+
+  /* The two-line money cell: native above, reporting below. */
+  .money-cell { display: grid; gap: 2px; justify-items: end; text-align: right; }
+  .money-cell__native {
+    font-family: var(--font-mono); font-variant-numeric: tabular-nums;
+    font-size: 0.8125rem; font-weight: 600; color: var(--text-primary); white-space: nowrap;
+  }
+  .money-cell__reporting {
+    font-family: var(--font-mono); font-variant-numeric: tabular-nums;
+    font-size: 0.6875rem; color: var(--text-muted); white-space: nowrap;
+  }
+  .money-cell__reporting b { font-weight: 600; color: var(--text-secondary); }
+  .money-cell__none {
+    font-family: var(--font-mono); font-size: 0.6875rem;
+    color: var(--status-warning-strong); white-space: nowrap;
+  }
+  .money-cell--left { justify-items: start; text-align: left; }
+
+  /* Currency-scope label that must ride every reporting figure. */
+  .ccy-label {
+    display: inline-flex; align-items: center; gap: 4px;
+    font-family: var(--font-mono); font-size: 0.625rem; font-weight: 600;
+    letter-spacing: var(--tracking-caps); text-transform: uppercase;
+    color: var(--text-muted);
+  }
+  .ccy-label--default { color: var(--status-warning-strong); }
+
+  /* Derivation legs (audit trail for an inverted / pivoted rate). */
+  .legs { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
+  .legs li {
+    font-family: var(--font-mono); font-size: 0.6875rem; color: var(--text-secondary);
+    display: flex; gap: var(--space-2); flex-wrap: wrap;
+  }
+  .legs li span:first-child { color: var(--text-primary); font-weight: 600; min-width: 5.5rem; }
+
+  /* Formula strip — how the stamped figure was arrived at. */
+  .formula {
+    display: flex; align-items: baseline; gap: var(--space-2); flex-wrap: wrap;
+    padding: var(--space-3) var(--space-4);
+    background: var(--bg-shell); border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    font-family: var(--font-mono); font-size: 0.8125rem; font-variant-numeric: tabular-nums;
+    color: var(--text-secondary);
+  }
+  .formula b { color: var(--text-primary); font-weight: 600; }
+  .formula i { font-style: normal; color: var(--text-muted); }
+
+  /* State-model table shading */
+  .gap-table td.state-set { color: var(--status-success-strong); font-weight: 600; }
+  .gap-table td.state-null { color: var(--text-disabled); }
+  .gap-table code.q { color: var(--accent-primary-soft-strong); }
+
+  /* Issue cards (the work breakdown) */
+  .issue {
+    border: 1px solid var(--border-default); border-left: 3px solid var(--accent-primary);
+    border-radius: var(--radius-lg); background: var(--bg-surface);
+    padding: var(--space-4) var(--space-5); display: grid; gap: var(--space-3);
+    box-shadow: var(--shadow-xs);
+  }
+  .issue--existing { border-left-color: var(--status-info); }
+  .issue--edit { border-left-color: var(--status-review); }
+  .issue__head { display: flex; align-items: baseline; gap: var(--space-3); flex-wrap: wrap; }
+  .issue__title { margin: 0; font-size: 0.9375rem; font-weight: 600; color: var(--text-primary); }
+  .issue__title code { font-family: var(--font-mono); font-size: 0.8125rem; }
+  .issue h5 {
+    margin: 0; font-family: var(--font-mono); font-size: 0.625rem; font-weight: 600;
+    letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--text-muted);
+  }
+  .issue p { margin: 0; font-size: 0.8125rem; line-height: 1.6; color: var(--text-secondary); }
+  .issue ul { margin: 0; padding-left: 1.15rem; display: grid; gap: 4px; }
+  .issue li { font-size: 0.8125rem; line-height: 1.55; color: var(--text-secondary); }
+  .issue code { font-family: var(--font-mono); font-size: 0.75rem; color: var(--text-primary); }
+  .issue__block { display: grid; gap: var(--space-2); }
+  .issue__meta {
+    display: flex; gap: var(--space-2); flex-wrap: wrap;
+    font-family: var(--font-mono); font-size: 0.6875rem; color: var(--text-muted);
+  }
+  .ac { display: grid; gap: 5px; margin: 0; padding: 0; list-style: none; }
+  .ac li { display: flex; gap: var(--space-2); font-size: 0.8125rem; line-height: 1.5; color: var(--text-secondary); }
+  .ac li::before { content: '☐'; color: var(--text-disabled); flex: 0 0 auto; }
+
+  /* Wave rail */
+  .waves { display: grid; gap: var(--space-3); }
+  .wave { display: grid; gap: var(--space-2); }
+  .wave__head {
+    display: flex; align-items: baseline; gap: var(--space-3);
+    font-family: var(--font-mono); font-size: 0.6875rem; font-weight: 600;
+    letter-spacing: var(--tracking-caps); text-transform: uppercase;
+    color: var(--accent-primary-hover);
+  }
+  .wave__head span { color: var(--text-muted); font-weight: 500; letter-spacing: 0; text-transform: none; }
+
+  /* Anchor nav */
+  .navbar {
+    display: flex; gap: var(--space-2); flex-wrap: wrap; align-items: center;
+    padding: var(--space-3) var(--space-5);
+    background: color-mix(in oklab, var(--bg-shell) 92%, transparent);
+    backdrop-filter: blur(8px); border-bottom: 1px solid var(--border-subtle);
+    position: sticky; top: 0; z-index: 50;
+  }
+  .navbar__brand {
+    margin-right: auto; font-family: var(--font-mono); font-size: 0.6875rem; font-weight: 600;
+    letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--text-muted);
+  }
+  .navbar a {
+    font-family: var(--font-mono); font-size: 0.6875rem; font-weight: 500;
+    letter-spacing: var(--tracking-caps); text-transform: uppercase;
+    color: var(--text-secondary); text-decoration: none;
+    padding: 4px 8px; border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-pill); background: var(--bg-surface);
+  }
+  .navbar a:hover { color: var(--text-primary); border-color: var(--border-strong); }
+
+  h2.sheet-h2 {
+    margin: var(--space-7) 0 var(--space-2); font-size: 1.375rem; font-weight: 700;
+    letter-spacing: var(--tracking-tight); scroll-margin-top: 4rem;
+  }
+  h2.sheet-h2:first-of-type { margin-top: var(--space-5); }
+  p.sheet-lede { margin: 0 0 var(--space-4); color: var(--text-secondary); max-width: 82ch; line-height: 1.65; font-size: 0.875rem; }
+  p.sheet-lede code, .sheet__note code, .sheet-lede code { font-family: var(--font-mono); font-size: 0.8em; }
+  .rule { height: 1px; background: var(--border-subtle); margin: var(--space-6) 0 0; }
+
+  /* ══════════════════ 6. MORE REAL CLASSES (index.css) ══════════════════ */
+
+  /* Categorical viz palette — index.css:273-279 / 424-429. NOT status hues. */
+  :root {
+    --viz-cat-1: oklch(75% 0.13 85);
+    --viz-cat-2: oklch(60% 0.15 20);
+    --viz-cat-3: oklch(58% 0.12 245);
+    --viz-cat-4: oklch(60% 0.13 150);
+    --viz-cat-muted: oklch(82% 0.008 80);
+  }
+  html[data-theme='dark'] {
+    --viz-cat-1: oklch(70% 0.12 85);
+    --viz-cat-2: oklch(62% 0.14 20);
+    --viz-cat-3: oklch(62% 0.11 245);
+    --viz-cat-4: oklch(62% 0.12 150);
+    --viz-cat-muted: oklch(42% 0.008 80);
+  }
+
+  /* workspace-grid — index.css:1994 */
+  .workspace-grid { display: grid; gap: 0.75rem; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
+
+  /* definition-list — index.css:2602-2628 */
+  .definition-list { display: grid; gap: 0.75rem; margin: 0; }
+  .definition-list > div { display: flex; align-items: baseline; gap: var(--space-3); justify-content: space-between; }
+  .definition-list dt { margin: 0; color: var(--text-muted); font-size: 0.8125rem; }
+  .definition-list dd { margin: 0; color: var(--text-primary); font-size: 0.8125rem; text-align: right; }
+
+  /* context-chip / toolbar-chip / panel__meta family — index.css:1612-1654 */
+  .context-chip, .toolbar-chip {
+    display: inline-flex; align-items: center; gap: var(--space-1);
+    border: 1px solid var(--border-strong); border-radius: 999px;
+    padding: 0.25rem 0.65rem; background: var(--bg-surface-elevated);
+    color: var(--text-secondary); font-size: 0.8125rem; white-space: nowrap;
+  }
+  .context-chip--success { border-color: var(--status-success-border); background: var(--status-success-soft); color: var(--status-success-strong); }
+  .context-chip--warning { border-color: var(--status-warning-border); background: var(--status-warning-soft); color: var(--status-warning-strong); }
+  .context-chip--info { border-color: var(--status-info-border); background: var(--status-info-soft); color: var(--status-info-strong); }
+  .context-chip--review { border-color: var(--status-review-border); background: var(--status-review-soft); color: var(--status-review-strong); }
+  .toolbar__group { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
+
+  .panel__header { justify-content: space-between; margin-bottom: var(--space-3); }
+  .section-title { font-size: 1.0625rem; font-weight: 600; letter-spacing: var(--tracking-tight); color: var(--text-primary); margin: 0; }
+
+  /* detail-section — index.css:7752-7768 */
+  .detail-section { display: grid; gap: 0.75rem; }
+  .detail-section__title { margin: 0; font-size: 0.9375rem; font-weight: 600; color: var(--text-primary); }
+  .detail-section__muted { margin: 0; color: var(--text-muted); font-size: 0.875rem; }
+
+  /* order-totals — index.css:8023-8065 */
+  .order-totals { display: grid; gap: 0.25rem; justify-items: end; margin: 0; }
+  .order-totals__row { display: flex; gap: 1.5rem; font-size: 0.875rem; align-items: baseline; }
+  .order-totals__row dt { margin: 0; min-width: 8rem; text-align: right; color: var(--text-muted); }
+  .order-totals__row dd { margin: 0; color: var(--text-primary); }
+  .order-totals__row--total { border-top: 1px solid var(--border-subtle); padding-top: 0.5rem; font-weight: 600; margin-top: 0.25rem; }
+  .order-totals__row--total dd { font-size: 1.25rem; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+  .order-totals__row--reporting dd { font-size: 1rem; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+
+  /* order-pricing note — index.css:12625 */
+  .order-pricing__summary { display: grid; gap: var(--space-3); justify-items: end; padding: var(--space-4); }
+  .order-pricing__note {
+    margin: 0; font-size: 0.75rem; line-height: 1.6; color: var(--text-secondary);
+    padding: var(--space-3) var(--space-4); background: var(--bg-surface-muted);
+    border-top: 1px solid var(--border-subtle);
+  }
+  .order-pricing {
+    border: 1px solid var(--border-subtle); border-radius: var(--radius-lg);
+    background: var(--bg-surface); box-shadow: var(--shadow-xs); overflow: hidden;
+  }
+
+  /* order-health — index.css:12554-12600 */
+  .order-health {
+    display: grid; gap: 1px; background: var(--border-subtle);
+    border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); overflow: hidden;
+    grid-template-columns: minmax(0, 1fr);
+  }
+  @media (min-width: 768px) { .order-health { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+  .order-health__cell { background: var(--bg-surface); padding: var(--space-4); display: grid; gap: 4px; position: relative; }
+  .order-health__k {
+    font-family: var(--font-mono); font-size: 0.6875rem; font-weight: 500; color: var(--text-muted);
+    letter-spacing: var(--tracking-caps); text-transform: uppercase;
+  }
+  .order-health__v { font-size: 1.125rem; font-weight: 600; letter-spacing: var(--tracking-tight); color: var(--text-primary); }
+  .order-health__hint { font-size: 0.6875rem; color: var(--text-muted); line-height: 1.4; }
+  .order-health__cell--alarm::before {
+    content: ''; position: absolute; inset: 0 auto 0 0; width: 3px; background: var(--status-error);
+  }
+  .order-health__cell--warn::before {
+    content: ''; position: absolute; inset: 0 auto 0 0; width: 3px; background: var(--status-warning);
+  }
+
+  /* orders list money cell — index.css:8783 (.orders-cell-stack) */
+  .orders-cell-stack { display: grid; gap: 3px; }
+  .orders-cell-stack--end { justify-items: end; text-align: right; }
+  .orders-money-total {
+    font-family: var(--font-mono); font-variant-numeric: tabular-nums;
+    font-size: 0.8125rem; font-weight: 600; color: var(--text-primary); white-space: nowrap;
+  }
+  .orders-cell-sub { font-size: 0.6875rem; color: var(--text-muted); white-space: nowrap; }
+  .orders-fx-sub {
+    font-family: var(--font-mono); font-variant-numeric: tabular-nums;
+    font-size: 0.6875rem; color: var(--text-secondary); white-space: nowrap;
+  }
+  .orders-fx-sub--none { color: var(--status-warning-strong); }
+  .orders-sortstack { display: grid; gap: 2px; }
+  .orders-sortstack--right { justify-items: end; }
+
+  /* Proportion bar built from --viz-cat-* (the routing-split precedent) */
+  .share-bar { display: flex; height: 6px; border-radius: var(--radius-pill); overflow: hidden; background: var(--viz-cat-muted); min-width: 92px; }
+  .share-bar span { display: block; height: 100%; }
+
+</style>
+
+<nav class="navbar">
+  <span class="navbar__brand">ADR-040 · surfaces</span>
+  <a href="#rules">Rules</a>
+  <a href="#settings">Settings</a>
+  <a href="#analytics">Analytics</a>
+  <a href="#orders">Orders</a>
+  <a href="#detail">Order detail</a>
+  <a href="#jobs">Jobs</a>
+  <a href="#invoicing">Invoicing</a>
+  <a href="#untouched">Untouched</a>
+  <a href="#states">States</a>
+  <a href="#work">Work</a>
+</nav>
+
+<div class="sheet">
+  <p class="eyebrow">ADR-040 · #2049 · merged in #2050</p>
+  <h1 class="sheet__title">Order-time FX stamping — every surface it touches</h1>
+  <p class="sheet__sub">
+    What an operator actually sees once each order carries a reporting-currency amount plus an immutable reference to
+    the rate used. Tokens and component CSS transcribed from <code>apps/web/src/index.css</code>; primitives from
+    <code>apps/web/src/shared/ui/</code> (<code>KpiCard</code>, <code>DataTable</code>, <code>StatusBadge</code>,
+    <code>KeyValueList</code>, <code>Alert</code>, <code>Chip</code>, <code>FormField</code>,
+    <code>Sparkline</code>, <code>PageLayout</code>). No new colour, radius, shadow or spacing value is introduced
+    anywhere in this file.
+  </p>
+
+  <p class="sheet__note">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 8h.01M11 12h1v4h1"/></svg>
+    <span>
+      <b>Read the frames as three different kinds of claim.</b>
+      <b>In #2049's scope</b> — only the settings tile; the plan's Phase&nbsp;4 ships
+      <code>features/currency-settings/*</code> and nothing else on the frontend.
+      <b>A page that does not exist yet</b> — <code>/analytics</code> has no route, no feature folder and no consumer
+      of <code>GET /analytics/trust</code>; it is #1986 / #1990 / #1991, and the frames below show what those issues
+      have to render once a stamp exists.
+      <b>Not filed anywhere</b> — the orders list and order-detail FX surfaces.
+      The <a href="#work">breakdown</a> assigns every frame to one of those. A
+      <span class="gap-mark" title="a design decision taken here rather than in ADR-040 — signed off, now recorded on the issues">†</span>
+      marks a design decision taken in this mockup rather than settled by the ADR. <b>All four are signed off</b> and
+      recorded on the relevant issues.
+    </span>
+  </p>
+
+  <h2 class="sheet-h2" id="rules">What every screen has to honour</h2>
+  <p class="sheet-lede">
+    Five constraints out of ADR-040. Each one is why a frame below looks the way it does — and each is a way to build
+    the UI that would produce a plausible wrong number.
+  </p>
+
+  <div class="gap-table__wrap">
+    <table class="gap-table">
+      <thead>
+        <tr><th style="width:2.2rem">#</th><th style="width:34%">Constraint</th><th>What it forces on screen</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="mono-text">1</td>
+          <td><b>The reporting currency is a choice, and its default converts.</b> Resolution is
+            <code>settings row → OL_REPORTING_CURRENCY → 'EUR'</code>.</td>
+          <td>Every reporting figure carries a currency label, and while nothing has been chosen it renders
+            <code>EUR (default)</code> — never a bare <code>EUR</code>. The discriminator is the response's
+            <code>source !== 'setting'</code>, never a client-side comparison against <code>'EUR'</code>.</td>
+        </tr>
+        <tr>
+          <td class="mono-text">2</td>
+          <td><b>Unstamped rows exist and never sum.</b> Provider outage, missing <code>placedAt</code>, unsupported
+            pair.</td>
+          <td>No money figure ships alone — it is always paired with an unstamped count. A total with nothing beside
+            it is a defect, not a simplification.</td>
+        </tr>
+        <tr>
+          <td class="mono-text">3</td>
+          <td><b><code>reportingCurrency IS NULL</code> means unstamped — never <code>exchangeRateId IS NULL</code>.</b></td>
+          <td>"No conversion needed" (same currency, <code>exchangeRateId = NULL</code>) has to read as a healthy
+            state, visually distinct from "not converted". Conflating them discards the overwhelming majority of
+            orders.</td>
+        </tr>
+        <tr>
+          <td class="mono-text">4</td>
+          <td><b>The stamp is immutable, so changing the setting splits history into eras.</b></td>
+          <td>The settings change is a confirm that reports the already-stamped row count. Analytics warns when the
+            selected range spans two reporting currencies.</td>
+        </tr>
+        <tr>
+          <td class="mono-text">5</td>
+          <td><b>The stamp is analytics-only and must never reach a fiscal document.</b></td>
+          <td>Nothing in the invoicing UI reads it. On a PLN-reporting deployment both figures come from NBP table A
+            and differ only by date — so each is shown with its own date and source, never as one number.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p class="gap-legend">
+    <span class="gap-mark">†</span>
+    <span><b>Decided.</b> Money is written as <span class="mono-text">48&nbsp;210,00 PLN</span> throughout, not
+      <span class="mono-text">48&nbsp;210,00 zł</span>. The app's <code>formatAmount</code> uses
+      <code>Intl … style:'currency'</code>, which renders a symbol — but on a surface whose subject is
+      <i>which currency</i>, two symbols are harder to tell apart than two ISO codes. An FX-surface-only deviation,
+      not a global change.</span>
+  </p>
+
+  <div class="rule"></div>
+
+  <h2 class="sheet-h2" id="settings">1 · Config — the <b>Currency</b> tile on <code>/settings</code></h2>
+  <p class="sheet-lede">
+    <b>Named <code>Platform → Currency</code>, not <code>Analytics → Reporting currency</code>.</b> The value is a
+    property of the deployment, not a setting belonging to one module — ADR-040's own words are that the reporting
+    currency is a property of the <i>reporting entity</i>, and analytics is merely its first consumer. The scope is
+    stated in the tile's body copy, where it can be precise, instead of in its name, where it would either
+    under-claim (analytics-only) or over-claim (implying invoices use it).
+  </p>
+  <p class="sheet-lede">
+    One system-level setting on the <code>ai_provider_active_setting</code> singleton shape:
+    <code>GET /currency-settings</code> + <code>PUT /currency-settings/reporting-currency</code>, both
+    <code>@Roles('admin')</code>. Structure copies <code>posthog-settings-tile.tsx</code> — an
+    <code>article.panel.panel--dense</code> inside <code>settings-page.tsx</code>'s
+    <code>.workspace-grid</code>, with <code>panel__header</code> (eyebrow + <code>section-title</code> +
+    <code>panel__meta</code>), <code>context-chip</code> badges, a <code>definition-list</code>, and an
+    <b>Edit</b> button opening a dialog. The <code>&lt;select&gt;</code> is fed by the response's
+    <code>supportedCurrencies</code>, which is what makes the 400 / 422 paths unreachable from the UI.
+  </p>
+
+  <div class="viewport-frame">
+    <div class="viewport-frame__label">
+      <span class="eyebrow-mono">1a</span>
+      <b>The tile in three resolution states</b>
+      <span class="caption">left <code>source: 'default'</code> · middle <code>'env'</code> · right <code>'setting'</code></span>
+    </div>
+    <div class="viewport-frame__scroll">
+      <div class="workspace-grid">
+
+        <!-- default -->
+        <article class="panel panel--dense">
+          <div class="panel__header">
+            <div>
+              <p class="eyebrow">Platform</p>
+              <h3 class="section-title">Currency</h3>
+            </div>
+            <span class="panel__meta">Admin only</span>
+          </div>
+
+          <dl class="definition-list">
+            <div><dt>Reporting in</dt><dd><span class="context-chip context-chip--warning">EUR (default)</span></dd></div>
+            <div><dt>Source</dt><dd>Built-in default</dd></div>
+            <div><dt>Rate source</dt><dd>ECB reference rates</dd></div>
+            <div><dt>Rate date rule</dt><dd class="mono-text">prev-business-day</dd></div>
+            <div><dt>Stamped orders</dt><dd class="mono-text tabular">0</dd></div>
+          </dl>
+
+          <p class="panel-copy" style="font-size:0.75rem;line-height:1.6">
+            Every figure on Analytics is reported in this. Invoices are unaffected — they compute their own rate.
+            <b>Nobody has chosen this value</b>, so a PLN order would convert through an ECB-inverted quote: exact and
+            auditable, but probably not what this business reports in.
+          </p>
+
+          <div><button class="button button--secondary button--sm" type="button">Edit</button></div>
+        </article>
+
+        <!-- env -->
+        <article class="panel panel--dense">
+          <div class="panel__header">
+            <div>
+              <p class="eyebrow">Platform</p>
+              <h3 class="section-title">Currency</h3>
+            </div>
+            <span class="panel__meta">Admin only</span>
+          </div>
+
+          <dl class="definition-list">
+            <div><dt>Reporting in</dt><dd><span class="context-chip context-chip--info">PLN (from env)</span></dd></div>
+            <div><dt>Source</dt><dd class="mono-text">OL_REPORTING_CURRENCY</dd></div>
+            <div><dt>Rate source</dt><dd>NBP table A</dd></div>
+            <div><dt>Rate date rule</dt><dd class="mono-text">prev-business-day</dd></div>
+            <div><dt>Stamped orders</dt><dd class="mono-text tabular">3 947</dd></div>
+          </dl>
+
+          <p class="panel-copy" style="font-size:0.75rem;line-height:1.6">
+            Every figure on Analytics is reported in this. Invoices are unaffected. The demo compose sets exactly this
+            value — and a value nobody chose in the UI must not look chosen, hence the rung in the chip rather than a
+            bare <span class="mono-text">PLN</span>.<span class="gap-mark" title="Mirrors the AI provider table's SOURCE_LABEL = { db:'Stored encrypted', env:'Env fallback', none:'None' } convention.">†</span>
+            Saving here writes a settings row, which outranks the env value.
+          </p>
+
+          <div><button class="button button--secondary button--sm" type="button">Edit</button></div>
+        </article>
+
+        <!-- setting -->
+        <article class="panel panel--dense">
+          <div class="panel__header">
+            <div>
+              <p class="eyebrow">Platform</p>
+              <h3 class="section-title">Currency</h3>
+            </div>
+            <span class="panel__meta">Admin only</span>
+          </div>
+
+          <dl class="definition-list">
+            <div><dt>Reporting in</dt><dd><span class="context-chip context-chip--success">PLN</span> <span class="context-chip context-chip--review">2 eras</span></dd></div>
+            <div><dt>Source</dt><dd>Saved setting</dd></div>
+            <div><dt>Rate source</dt><dd>NBP table A</dd></div>
+            <div><dt>Changed</dt><dd><time class="time-cell" datetime="2026-07-01T09:14:00Z">1 Jul, 09:14</time></dd></div>
+            <div><dt>Stamped orders</dt><dd class="mono-text tabular">3 947 PLN · 1 284 EUR</dd></div>
+          </dl>
+
+          <p class="panel-copy" style="font-size:0.75rem;line-height:1.6">
+            Every figure on Analytics is reported in this. Invoices are unaffected. Orders stamped before 1 Jul keep
+            EUR — stamps are immutable — so no analytics figure spans both eras; restating them is
+            <span class="mono-text">#2096</span>.
+          </p>
+
+          <div><button class="button button--secondary button--sm" type="button">Edit</button></div>
+        </article>
+      </div>
+    </div>
+    <p class="gap-legend">
+      <span class="gap-mark">†</span>
+      <span><b>Decided.</b> The plan specifies the FE renders <code>EUR (default)</code> when
+        <code>source !== 'setting'</code>, which collapses <code>'env'</code> and <code>'default'</code> into one
+        label. Three labels ship instead, because "an operator pinned this in configuration" and "nobody has decided"
+        are different facts and only one of them is a problem. Cost is zero — <code>source</code> is already on the
+        response. Recorded on <b>#2126</b>.</span>
+    </p>
+  </div>
+
+  <div class="viewport-frame">
+    <div class="viewport-frame__label">
+      <span class="eyebrow-mono">1b</span>
+      <b>The edit dialog — first choice, nothing stamped yet</b>
+      <span class="caption">the zero-cost path; no confirm needed</span>
+    </div>
+    <div class="viewport-frame__scroll">
+      <div class="dialog-shell">
+        <div class="dialog">
+          <div class="dialog__header">
+            <h3 class="dialog__title">Currency</h3>
+            <p class="dialog__subtitle">Read by Analytics · never used on an invoice</p>
+          </div>
+          <div class="dialog__body">
+            <div class="form-field" style="max-width:none">
+              <label class="form-field__label" for="rc-1">Report in</label>
+              <select class="control control--select" id="rc-1">
+                <option>PLN — Polish złoty</option>
+                <option selected>EUR — Euro</option>
+              </select>
+              <p class="form-field__description">
+                Two options, because those are the currencies the shipped rate sources quote against —
+                <span class="mono-text">PLN → NBP</span>, <span class="mono-text">EUR → ECB</span>. A third is a
+                provider plus one mapping entry.
+              </p>
+            </div>
+
+            <div class="alert alert--info">
+              <div class="alert__content">
+                <p class="alert__title">Nothing is stamped yet</p>
+                <p class="alert__description">
+                  <span class="alert__count">0</span> orders carry a stamp, so this choice costs nothing and can be
+                  changed freely. Once orders start stamping, changing it splits history.
+                </p>
+              </div>
+            </div>
+          </div>
+          <div class="dialog__actions">
+            <button class="button button--secondary" type="button">Cancel</button>
+            <button class="button" type="button">Save</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="viewport-frame">
+    <div class="viewport-frame__label">
+      <span class="eyebrow-mono">1c</span>
+      <b>The same dialog once orders are stamped — era split + coverage advisory</b>
+      <span class="caption">the <code>PUT</code> response carries both facts; the checkbox is <code>acknowledgeCoverageGaps</code></span>
+    </div>
+    <div class="viewport-frame__scroll">
+      <div class="dialog-shell">
+        <div class="dialog">
+          <div class="dialog__header">
+            <h3 class="dialog__title">Report in PLN from now on?</h3>
+            <p class="dialog__subtitle">EUR → PLN · forward-only</p>
+          </div>
+          <div class="dialog__body">
+            <p>
+              <span class="alert__count">1 284</span> orders already carry an EUR stamp. Those keep it, so this
+              deployment will hold <b>two reporting-currency eras</b> and no single figure will span them.
+            </p>
+
+            <div class="key-value-list">
+              <dt class="key-value-list__label">Stays EUR</dt>
+              <dd class="key-value-list__value"><span class="tabular mono-text">1 284</span> stamped orders</dd>
+              <dt class="key-value-list__label">Stamps PLN</dt>
+              <dd class="key-value-list__value">every order ingested from now on</dd>
+              <dt class="key-value-list__label">Rate source after</dt>
+              <dd class="key-value-list__value key-value-list__value--mono">NBP table A · prev-business-day</dd>
+              <dt class="key-value-list__label">Restatement</dt>
+              <dd class="key-value-list__value">not built — <span class="mono-text">#2096</span></dd>
+            </div>
+
+            <div class="ack-row">
+              <input type="checkbox" id="ack-cov" checked />
+              <label for="ack-cov">
+                <b>Coverage gap.</b> 7 orders were taken in <span class="mono-text">TRY</span>, which NBP does not
+                quote against PLN. Those will record as not convertible rather than blocking this change.
+                I understand.
+              </label>
+            </div>
+          </div>
+          <div class="dialog__actions">
+            <button class="button button--secondary" type="button">Keep EUR</button>
+            <button class="button" type="button">Report in PLN</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="gap-legend">
+      <span class="gap-mark">†</span>
+      <span>The advisory <b>warns and never blocks</b> — deliberately, per the plan: blocking on history would let one
+        junk currency in an old snapshot make a legitimate currency permanently unsettable. Which is why the primary
+        action stays enabled and the checkbox gates it rather than a second confirm.</span>
+    </p>
+  </div>
+
+  <div class="viewport-frame">
+    <div class="viewport-frame__label">
+      <span class="eyebrow-mono">1d</span>
+      <b>What the tile deliberately does not offer</b>
+      <span class="caption">two absences that a reviewer will ask about</span>
+    </div>
+    <div class="viewport-frame__scroll">
+      <div class="frame-grid frame-grid--2">
+        <div class="alert alert--info">
+          <div class="alert__content">
+            <p class="alert__title">No per-connection currency field</p>
+            <p class="alert__description">
+              An earlier draft of the ADR put <code>config.fx.reportingCurrency</code> on the connection. It was
+              deleted: per-connection values make a deployment-wide total impossible by construction, which is the
+              problem this feature exists to solve. <code>Connection.config.currency</code> (#362) keeps its single
+              existing meaning and is not consulted.
+            </p>
+          </div>
+        </div>
+        <div class="alert alert--info">
+          <div class="alert__content">
+            <p class="alert__title">No lock after the first stamp</p>
+            <p class="alert__description">
+              Also rejected: the default converts and nobody chose it, so a lock would make an <i>unchosen</i> default
+              permanent — one foreign-currency order and a deployment that never opened this page is stuck in a
+              currency it was never asked about.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="rule"></div>
+
+  <h2 class="sheet-h2" id="analytics">2 · Analytics — where the stamp is the whole point</h2>
+  <p class="sheet-lede">
+    <b><code>/analytics</code> does not exist yet</b> — no route, no <code>features/analytics*</code>, and
+    <code>GET /analytics/trust</code> has no frontend consumer. These frames are what #1986 / #1990 / #1991 have to
+    render once orders carry a stamp, laid out per the agreed Design&nbsp;1 "Ledger" cut
+    (<code>docs/specs/product-spec-1976-analytics.md</code>&nbsp;§6): <code>PageLayout</code> +
+    <code>.status-strip</code> of <code>KpiCard</code>s + two <code>DataTable</code>s, sparklines only, no chart
+    library. Channel proportions use <code>--viz-cat-1..4</code>, never status hues.
+  </p>
+
+  <div class="viewport-frame">
+    <div class="viewport-frame__label">
+      <span class="eyebrow-mono">2a</span>
+      <b>The page, whole</b>
+      <span class="caption">reporting currency PLN · 1–31 Jul 2026 · desktop ≥1024px</span>
+    </div>
+    <div class="viewport-frame__scroll">
+      <div class="app-frame">
+
+        <div class="page-header page-header--split">
+          <div class="page-header__content">
+            <p class="eyebrow">Analytics</p>
+            <h2 class="page-title">Business overview</h2>
+            <p class="page-description">
+              Sales across every channel OpenLinker ingests from, reported in one currency.
+            </p>
+          </div>
+          <div class="page-header__actions">
+            <div class="segmented">
+              <button type="button" aria-pressed="false">7d</button>
+              <button type="button" aria-pressed="true">30d</button>
+              <button type="button" aria-pressed="false">90d</button>
+              <button type="button" aria-pressed="false">Custom</button>
+            </div>
+          </div>
+        </div>
+
+        <div style="height:12px"></div>
+
+        <!-- Trust header (L1-L3) -->
+        <div class="toolbar">
+          <span class="context-chip context-chip--success">Data current to 14:32</span>
+          <span class="context-chip">Allegro · 8 mo</span>
+          <span class="context-chip">Shop · 8 mo</span>
+          <span class="context-chip context-chip--warning">Erli · 6 d only</span>
+          <span class="toolbar__spacer"></span>
+          <span class="context-chip context-chip--info">Reporting in PLN</span>
+        </div>
+
+        <div style="height:12px"></div>
+
+        <!-- KPI strip -->
+        <section class="status-strip">
+          <div class="kpi-card">
+            <div class="kpi-card__label">
+              <span class="kpi-card__label-text">Revenue · PLN</span>
+              <svg class="sparkline sparkline--neutral" width="72" height="20" viewBox="0 0 72 20" aria-hidden="true"><path class="sparkline__area" d="M0 16 L14 13 L29 14 L43 8 L58 6 L72 3 L72 20 L0 20 Z"/><path class="sparkline__line" d="M0 16 L14 13 L29 14 L43 8 L58 6 L72 3"/></svg>
+            </div>
+            <div class="kpi-card__value"><span>48 210,00</span><span class="kpi-card__value-suffix">PLN</span></div>
+            <div class="kpi-card__description">405 of 412 orders · +12% vs prev</div>
+          </div>
+
+          <div class="kpi-card">
+            <div class="kpi-card__label">
+              <span class="kpi-card__label-text">Orders</span>
+              <svg class="sparkline sparkline--neutral" width="72" height="20" viewBox="0 0 72 20" aria-hidden="true"><path class="sparkline__line" d="M0 15 L14 14 L29 12 L43 11 L58 9 L72 8"/></svg>
+            </div>
+            <div class="kpi-card__value"><span>412</span></div>
+            <div class="kpi-card__description">cancelled excluded · +4%</div>
+          </div>
+
+          <div class="kpi-card">
+            <div class="kpi-card__label">
+              <span class="kpi-card__label-text">AOV · PLN</span>
+            </div>
+            <div class="kpi-card__value"><span>119,04</span><span class="kpi-card__value-suffix">med. 89,00</span></div>
+            <div class="kpi-card__description">over the 405 converted orders</div>
+          </div>
+
+          <div class="kpi-card kpi-card--warning">
+            <div class="kpi-card__label">
+              <span class="kpi-card__label-text">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M12 3 L22 20 H2 Z M12 9v5M12 17h.01"/></svg>
+                Not converted
+              </span>
+            </div>
+            <div class="kpi-card__value"><span>7</span><span class="kpi-card__value-suffix">orders</span></div>
+            <div class="kpi-card__description">excluded from revenue · see below</div>
+          </div>
+        </section>
+
+        <div style="height:12px"></div>
+
+        <!-- Unstamped disclosure -->
+        <div class="alert alert--warning">
+          <div class="alert__content">
+            <p class="alert__title">7 orders in this range carry no converted amount</p>
+            <p class="alert__description">
+              <span class="alert__count">2</span> are still in flight — a rate lookup failed and a retry is queued, so
+              they will join the figures on their own.
+              <span class="alert__count">5</span> cannot be converted at all: the WooCommerce order source does not
+              record when the buyer placed the order, so there is no day to price the rate on
+              (<span class="mono-text">#2097</span>).
+              Their native value is <span class="alert__count">745,00 USD</span> — reported separately, never added in.
+            </p>
+          </div>
+          <div class="alert__actions">
+            <a class="button button--secondary button--sm" href="#orders">View orders</a>
+          </div>
+        </div>
+
+        <div style="height:16px"></div>
+
+        <!-- By channel -->
+        <p class="section-title" style="font-family:var(--font-mono);font-size:0.6875rem;letter-spacing:var(--tracking-caps);text-transform:uppercase;color:var(--text-muted)">By channel</p>
+        <div class="data-table__container">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Channel</th>
+                <th>Prices in</th>
+                <th class="data-table__cell--right">Revenue · PLN</th>
+                <th>Share</th>
+                <th class="data-table__cell--right">Orders</th>
+                <th class="data-table__cell--right">AOV</th>
+                <th class="data-table__cell--right">Units</th>
+                <th>Trend</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><span class="channel-pill" data-channel="allegro">Allegro</span></td>
+                <td><span class="chip chip--static chip--mono">PLN</span></td>
+                <td class="data-table__cell--right"><span class="mono-text tabular">31 400,00</span></td>
+                <td>
+                  <span class="orders-cell-stack">
+                    <span class="share-bar"><span style="width:65%;background:var(--viz-cat-1)"></span></span>
+                    <span class="orders-cell-sub mono-text tabular">65,1%</span>
+                  </span>
+                </td>
+                <td class="data-table__cell--right"><span class="mono-text tabular">268</span></td>
+                <td class="data-table__cell--right"><span class="mono-text tabular">117,16</span></td>
+                <td class="data-table__cell--right"><span class="mono-text tabular">445</span></td>
+                <td><svg class="sparkline sparkline--neutral" width="64" height="18" viewBox="0 0 64 18" aria-hidden="true"><path class="sparkline__line" d="M0 14 L13 12 L26 13 L38 7 L51 5 L64 3"/></svg></td>
+              </tr>
+              <tr>
+                <td><span class="channel-pill" data-channel="prestashop">Shop</span></td>
+                <td>
+                  <span class="orders-cell-stack">
+                    <span class="chip chip--static chip--mono">PLN + EUR</span>
+                    <span class="orders-cell-sub">2 in flight</span>
+                  </span>
+                </td>
+                <td class="data-table__cell--right"><span class="mono-text tabular">14 900,00</span></td>
+                <td>
+                  <span class="orders-cell-stack">
+                    <span class="share-bar"><span style="width:31%;background:var(--viz-cat-3)"></span></span>
+                    <span class="orders-cell-sub mono-text tabular">30,9%</span>
+                  </span>
+                </td>
+                <td class="data-table__cell--right">
+                  <span class="orders-cell-stack orders-cell-stack--end">
+                    <span class="mono-text tabular">116</span>
+                    <span class="orders-cell-sub mono-text tabular">of 118</span>
+                  </span>
+                </td>
+                <td class="data-table__cell--right"><span class="mono-text tabular">128,45</span></td>
+                <td class="data-table__cell--right"><span class="mono-text tabular">198</span></td>
+                <td><svg class="sparkline sparkline--neutral" width="64" height="18" viewBox="0 0 64 18" aria-hidden="true"><path class="sparkline__line" d="M0 13 L13 12 L26 12 L38 10 L51 9 L64 8"/></svg></td>
+              </tr>
+              <tr>
+                <td><span class="channel-pill" data-channel="erli">Erli</span></td>
+                <td><span class="chip chip--static chip--mono">PLN</span></td>
+                <td class="data-table__cell--right"><span class="mono-text tabular">1 910,00</span></td>
+                <td>
+                  <span class="orders-cell-stack">
+                    <span class="share-bar"><span style="width:4%;background:var(--viz-cat-4)"></span></span>
+                    <span class="orders-cell-sub mono-text tabular">4,0%</span>
+                  </span>
+                </td>
+                <td class="data-table__cell--right"><span class="mono-text tabular">21</span></td>
+                <td class="data-table__cell--right"><span class="mono-text tabular">90,95</span></td>
+                <td class="data-table__cell--right"><span class="mono-text tabular">46</span></td>
+                <td>
+                  <span class="orders-cell-stack">
+                    <svg class="sparkline sparkline--neutral" width="64" height="18" viewBox="0 0 64 18" aria-hidden="true"><path class="sparkline__line" d="M40 12 L48 9 L56 11 L64 7"/></svg>
+                    <span class="orders-cell-sub">6 d of data</span>
+                  </span>
+                </td>
+              </tr>
+              <tr>
+                <td><span class="channel-pill" data-channel="woocommerce">WooCommerce</span></td>
+                <td><span class="chip chip--static chip--mono">USD</span></td>
+                <td class="data-table__cell--right">
+                  <span class="orders-cell-stack orders-cell-stack--end">
+                    <span class="orders-fx-sub orders-fx-sub--none">not converted</span>
+                    <span class="orders-cell-sub mono-text tabular">745,00 USD native</span>
+                  </span>
+                </td>
+                <td><span class="orders-cell-sub">—</span></td>
+                <td class="data-table__cell--right">
+                  <span class="orders-cell-stack orders-cell-stack--end">
+                    <span class="mono-text tabular">0</span>
+                    <span class="orders-cell-sub mono-text tabular">of 5</span>
+                  </span>
+                </td>
+                <td class="data-table__cell--right"><span class="orders-cell-sub">—</span></td>
+                <td class="data-table__cell--right"><span class="mono-text tabular">7</span></td>
+                <td><span class="status-badge status-badge--warning status-badge--compact"><span class="status-badge__dot"></span>No order date</span></td>
+              </tr>
+              <tr style="background:var(--bg-shell)">
+                <td><b style="font-size:0.8125rem">Total</b></td>
+                <td></td>
+                <td class="data-table__cell--right"><b class="mono-text tabular" style="font-size:0.875rem">48 210,00</b></td>
+                <td></td>
+                <td class="data-table__cell--right">
+                  <span class="orders-cell-stack orders-cell-stack--end">
+                    <b class="mono-text tabular">405</b>
+                    <span class="orders-cell-sub mono-text tabular">of 412</span>
+                  </span>
+                </td>
+                <td class="data-table__cell--right"><b class="mono-text tabular">119,04</b></td>
+                <td class="data-table__cell--right"><b class="mono-text tabular">689</b></td>
+                <td></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div style="height:16px"></div>
+
+        <!-- Top products -->
+        <div class="toolbar toolbar--compact">
+          <p class="section-title" style="font-family:var(--font-mono);font-size:0.6875rem;letter-spacing:var(--tracking-caps);text-transform:uppercase;color:var(--text-muted);margin:0">Top products</p>
+          <span class="toolbar__spacer"></span>
+          <div class="segmented">
+            <button type="button" aria-pressed="true">By revenue</button>
+            <button type="button" aria-pressed="false">By units</button>
+          </div>
+        </div>
+        <div class="data-table__container">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Product</th>
+                <th>SKU</th>
+                <th class="data-table__cell--right">Units</th>
+                <th class="data-table__cell--right">Revenue · PLN</th>
+                <th class="data-table__cell--right">Allegro</th>
+                <th class="data-table__cell--right">Shop</th>
+                <th class="data-table__cell--right">Erli</th>
+                <th>Trend</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><span class="entity-label"><span class="entity-label__name">Widget A</span></span></td>
+                <td><span class="mono-text">WA-1</span></td>
+                <td class="data-table__cell--right"><span class="mono-text tabular">142</span></td>
+                <td class="data-table__cell--right"><span class="mono-text tabular">8 400,00</span></td>
+                <td class="data-table__cell--right"><span class="mono-text tabular">120</span></td>
+                <td class="data-table__cell--right"><span class="mono-text tabular">22</span></td>
+                <td class="data-table__cell--right"><span class="chip chip--static chip--warning">not listed</span></td>
+                <td><svg class="sparkline sparkline--neutral" width="64" height="18" viewBox="0 0 64 18" aria-hidden="true"><path class="sparkline__line" d="M0 15 L13 11 L26 12 L38 7 L51 5 L64 2"/></svg></td>
+              </tr>
+              <tr>
+                <td><span class="entity-label"><span class="entity-label__name">Widget B</span></span></td>
+                <td><span class="mono-text">WB-7</span></td>
+                <td class="data-table__cell--right"><span class="mono-text tabular">98</span></td>
+                <td class="data-table__cell--right"><span class="mono-text tabular">6 100,00</span></td>
+                <td class="data-table__cell--right"><span class="mono-text tabular">31</span></td>
+                <td class="data-table__cell--right"><span class="mono-text tabular">67</span></td>
+                <td class="data-table__cell--right"><span class="chip chip--static chip--warning">not listed</span></td>
+                <td><svg class="sparkline sparkline--neutral" width="64" height="18" viewBox="0 0 64 18" aria-hidden="true"><path class="sparkline__line" d="M0 12 L13 11 L26 11 L38 10 L51 10 L64 9"/></svg></td>
+              </tr>
+              <tr>
+                <td><span class="entity-label"><span class="entity-label__name">Cable C · 2 m</span></span></td>
+                <td><span class="mono-text">CC-3</span></td>
+                <td class="data-table__cell--right"><span class="mono-text tabular">76</span></td>
+                <td class="data-table__cell--right"><span class="mono-text tabular">3 040,00</span></td>
+                <td class="data-table__cell--right"><span class="mono-text tabular">44</span></td>
+                <td class="data-table__cell--right"><span class="mono-text tabular">18</span></td>
+                <td class="data-table__cell--right"><span class="mono-text tabular">14</span></td>
+                <td><svg class="sparkline sparkline--neutral" width="64" height="18" viewBox="0 0 64 18" aria-hidden="true"><path class="sparkline__line" d="M0 10 L13 12 L26 9 L38 11 L51 8 L64 9"/></svg></td>
+              </tr>
+              <tr>
+                <td colspan="8" style="background:var(--bg-shell)">
+                  <span class="orders-cell-sub" style="font-size:0.75rem">
+                    <b>7 units</b> sold on WooCommerce are counted here but contribute no revenue — the same 5 orders
+                    as above. Units never need a rate, so a unit count and a revenue figure can legitimately disagree
+                    about which orders they include.<span class="gap-mark" title="Consequence of ADR-040 constraint 2. Units and order counts are FX-free; only money narrows to the stamped set. Any table mixing them has to say which denominator each column uses.">†</span>
+                  </span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+      </div>
+    </div>
+    <p class="gap-legend">
+      <span class="gap-mark">†</span>
+      <span><b>Decided.</b> Three things here are decisions, not renderings.
+        <b>(1)</b> Every money column header carries <code>· PLN</code>, so a screenshot of one table is still
+        unambiguous.
+        <b>(2)</b> AOV divides by <b>405</b>, not 412 — mixing a stamped numerator with a full denominator would
+        under-report AOV by ~2% and look perfectly plausible. The card says which denominator it used.
+        <b>(3)</b> The WooCommerce channel row stays in the table with a native-only value rather than being dropped,
+        because a hidden channel reads as "no sales there".</span>
+    </p>
+  </div>
+
+  <div class="viewport-frame">
+    <div class="viewport-frame__label">
+      <span class="eyebrow-mono">2b</span>
+      <b>Degraded states the page has to survive</b>
+      <span class="caption">era split · provider outage · nothing stamped at all</span>
+    </div>
+    <div class="viewport-frame__scroll">
+      <div class="frame-grid">
+        <div class="alert alert--error">
+          <div class="alert__content">
+            <p class="alert__title">This range spans two reporting currencies</p>
+            <p class="alert__description">
+              Orders before <b>1 Jul 2026</b> were stamped in EUR and orders after in PLN. There is no single revenue
+              figure for 15 Jun – 15 Jul, and OpenLinker will not invent one by re-converting a stamped amount.
+              Narrow the range to one side of the change, or read the two figures separately.
+            </p>
+          </div>
+          <div class="alert__actions">
+            <button class="button button--secondary button--sm" type="button">Use 1–15 Jul</button>
+          </div>
+        </div>
+
+        <div class="alert alert--warning">
+          <div class="alert__content">
+            <p class="alert__title">Rate source unreachable for the last 40 minutes</p>
+            <p class="alert__description">
+              <span class="alert__count">31</span> orders ingested since 13:52 are waiting on an NBP rate. Ingestion is
+              unaffected — orders are stored, and each carries the reporting currency it will be stamped in. Today's
+              revenue will rise as the retries land.
+            </p>
+          </div>
+          <div class="alert__actions">
+            <a class="button button--secondary button--sm" href="#jobs">Jobs</a>
+          </div>
+        </div>
+
+        <div class="state-card empty-state">
+          <div class="state-card__header">
+            <p class="eyebrow">Analytics</p>
+            <h2 class="state-card__title">No converted orders yet</h2>
+          </div>
+          <p class="state-card__message">
+            412 orders are in range but none carry a converted amount. Every one of them was placed on a channel that
+            does not record the buyer's order date, so there is no day to price a rate on. Revenue cannot be reported
+            until that is fixed — this is not an empty shop.
+          </p>
+          <div class="state-card__actions">
+            <a class="button button--secondary" href="#orders">See the 412 orders</a>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="gap-legend">
+      <span class="gap-mark">†</span>
+      <span>The empty state is the one worth arguing about. A generic "no data for this period" would let an operator
+        conclude the shop had no sales, which is the exact failure mode ADR-040 constraint&nbsp;2 exists to prevent —
+        so this state distinguishes <i>no orders</i> from <i>no convertible orders</i> and names the cause.</span>
+    </p>
+  </div>
+
+  <div class="rule"></div>
+
+  <h2 class="sheet-h2" id="orders">3 · Orders list — the money cell grows a second line</h2>
+  <p class="sheet-lede">
+    The merged <code>money</code> column (<code>orders-list-page.tsx:846-901</code>) already stacks total, payment
+    badge, invoice badge and created-at in one <code>.orders-cell-stack--end</code>. The reporting amount is a fourth
+    line in the same stack, styled like <code>.orders-cell-sub</code> — no new column, no wider table.
+    <b>Not filed anywhere today.</b>
+  </p>
+
+  <div class="viewport-frame">
+    <div class="viewport-frame__label">
+      <span class="eyebrow-mono">3a</span>
+      <b>All five stamp states in one list</b>
+      <span class="caption">reporting currency PLN</span>
+    </div>
+    <div class="viewport-frame__scroll">
+      <div class="data-table__container">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Order</th>
+              <th>Channel</th>
+              <th>Placed</th>
+              <th class="data-table__cell--right">
+                <span class="orders-sortstack orders-sortstack--right">
+                  <span>Total</span>
+                  <span style="color:var(--text-disabled)">Reporting</span>
+                </span>
+              </th>
+              <th>Stamp</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><span class="copyable-id"><span class="copyable-id__value">ol_order_5c02b1d4…</span></span></td>
+              <td><span class="channel-pill" data-channel="allegro">Allegro</span></td>
+              <td><time class="time-cell" datetime="2026-07-24T09:41:00Z">24 Jul, 09:41</time></td>
+              <td class="data-table__cell--right">
+                <span class="orders-cell-stack orders-cell-stack--end">
+                  <span class="orders-money-total">189,00 PLN</span>
+                  <span class="orders-fx-sub">no conversion needed</span>
+                </span>
+              </td>
+              <td><span class="status-badge status-badge--success status-badge--compact"><span class="status-badge__dot"></span>Native</span></td>
+            </tr>
+            <tr>
+              <td><span class="copyable-id"><span class="copyable-id__value">ol_order_a71c4f9e…</span></span></td>
+              <td><span class="channel-pill" data-channel="prestashop">Shop</span></td>
+              <td><time class="time-cell" datetime="2026-07-24T11:12:00Z">24 Jul, 11:12</time></td>
+              <td class="data-table__cell--right">
+                <span class="orders-cell-stack orders-cell-stack--end">
+                  <span class="orders-money-total">249,90 EUR</span>
+                  <span class="orders-fx-sub">= 1 067,47 PLN</span>
+                </span>
+              </td>
+              <td><span class="status-badge status-badge--success status-badge--compact"><span class="status-badge__dot"></span>Converted</span></td>
+            </tr>
+            <tr>
+              <td><span class="copyable-id"><span class="copyable-id__value">ol_order_9be4470a…</span></span></td>
+              <td><span class="channel-pill" data-channel="prestashop">Shop</span></td>
+              <td><time class="time-cell" datetime="2026-07-31T14:03:00Z">31 Jul, 14:03</time></td>
+              <td class="data-table__cell--right">
+                <span class="orders-cell-stack orders-cell-stack--end">
+                  <span class="orders-money-total">89,50 EUR</span>
+                  <span class="orders-fx-sub">→ PLN pending</span>
+                </span>
+              </td>
+              <td><span class="status-badge status-badge--info status-badge--compact status-badge--pulse"><span class="status-badge__dot"></span>In flight</span></td>
+            </tr>
+            <tr>
+              <td><span class="copyable-id"><span class="copyable-id__value">ol_order_c30f81ab…</span></span></td>
+              <td><span class="channel-pill" data-channel="woocommerce">WooCommerce</span></td>
+              <td><span class="orders-cell-sub">not recorded</span></td>
+              <td class="data-table__cell--right">
+                <span class="orders-cell-stack orders-cell-stack--end">
+                  <span class="orders-money-total">149,00 USD</span>
+                  <span class="orders-fx-sub orders-fx-sub--none">not convertible</span>
+                </span>
+              </td>
+              <td><span class="status-badge status-badge--warning status-badge--compact"><span class="status-badge__dot"></span>No order date</span></td>
+            </tr>
+            <tr>
+              <td><span class="copyable-id"><span class="copyable-id__value">ol_order_1f7d0c55…</span></span></td>
+              <td><span class="channel-pill" data-channel="allegro">Allegro</span></td>
+              <td><time class="time-cell" datetime="2026-01-08T10:22:00Z">8 Jan, 10:22</time></td>
+              <td class="data-table__cell--right">
+                <span class="orders-cell-stack orders-cell-stack--end">
+                  <span class="orders-money-total">312,00 PLN</span>
+                  <span class="orders-cell-sub">—</span>
+                </span>
+              </td>
+              <td><span class="status-badge status-badge--compact"><span class="status-badge__dot"></span>Before FX</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <p class="gap-legend">
+      <span class="gap-mark">†</span>
+      <span><b>Decided.</b> Five badge labels, one per persisted state — and the two that look alike are the ones that matter.
+        <b>Native</b> is <code>reportingCurrency</code> set with <code>exchangeRateId NULL</code>: a healthy,
+        fully-counted order, which is why it is <code>success</code>-toned and not muted. <b>Before FX</b> is a
+        pre-feature row: nothing is wrong with it, it simply predates the column, so it is
+        <code>neutral</code> and never <code>warning</code> — an operator scrolling their back-catalogue must not see
+        a page of warnings. Copy is deliberately non-jargon: <b>No order date</b>, not
+        <code>terminal(no-placed-at)</code>.</span>
+    </p>
+  </div>
+  <div class="rule"></div>
+
+  <h2 class="sheet-h2" id="detail">4 · Order detail — the audit trail</h2>
+  <p class="sheet-lede">
+    Three real insertion points, all existing components. <code>.order-health</code>
+    (<code>order-health-summary.tsx</code>) goes from 3 cells to 4. <code>.order-totals</code>
+    (<code>order-totals-panel.tsx</code>) gains one row under <code>--total</code>, and
+    <code>.order-pricing__note</code> — which already carries the "buyer-paid price, source-authoritative"
+    disclosure — carries the rate line. The full provenance is a <code>KeyValueList</code> in its own
+    <code>.detail-section</code>, because "which rate did we use" has to be answerable without opening the raw
+    snapshot. <b>Not filed anywhere today.</b>
+  </p>
+
+  <div class="viewport-frame">
+    <div class="viewport-frame__label">
+      <span class="eyebrow-mono">4a</span>
+      <b>A converted order, end to end</b>
+      <span class="caption">249,90 EUR placed 24 Jul · reporting PLN</span>
+    </div>
+    <div class="viewport-frame__scroll">
+      <div class="app-frame">
+        <div class="page-header">
+          <p class="eyebrow">Orders</p>
+          <h2 class="page-title">Order detail</h2>
+        </div>
+
+        <div style="height:12px"></div>
+
+        <!-- order-health, 4 cells -->
+        <div class="order-health" role="group" aria-label="Order health">
+          <div class="order-health__cell">
+            <div class="order-health__k">Sync</div>
+            <div class="order-health__v">Synced</div>
+            <div class="order-health__hint">1 destination</div>
+          </div>
+          <div class="order-health__cell">
+            <div class="order-health__k">Fulfillment</div>
+            <div class="order-health__v">Dispatched</div>
+            <div class="order-health__hint">InPost · waybill attached</div>
+          </div>
+          <div class="order-health__cell">
+            <div class="order-health__k">Total</div>
+            <div class="order-health__v mono-text tabular">249,90 EUR</div>
+            <div class="order-health__hint">3 items · source-priced</div>
+          </div>
+          <div class="order-health__cell">
+            <div class="order-health__k">Reported as</div>
+            <div class="order-health__v mono-text tabular">1 067,47 PLN</div>
+            <div class="order-health__hint">1 EUR = 4,2716 PLN on 23 Jul</div>
+          </div>
+        </div>
+
+        <div style="height:16px"></div>
+
+        <section class="detail-section">
+          <h3 class="detail-section__title">Pricing &amp; tax</h3>
+          <div class="order-pricing">
+            <div class="order-pricing__summary">
+              <dl class="order-totals">
+                <div class="order-totals__row"><dt>Subtotal</dt><dd class="mono-text tabular">219,90 EUR</dd></div>
+                <div class="order-totals__row"><dt>Shipping</dt><dd class="mono-text tabular">14,90 EUR</dd></div>
+                <div class="order-totals__row"><dt>Tax</dt><dd class="mono-text tabular">15,10 EUR</dd></div>
+                <div class="order-totals__row order-totals__row--total"><dt>Total</dt><dd class="mono-text">249,90 EUR</dd></div>
+                <div class="order-totals__row order-totals__row--reporting">
+                  <dt>Reported as</dt><dd class="mono-text">1 067,47 PLN</dd>
+                </div>
+              </dl>
+              <span class="status-badge status-badge--compact">Net · source-authoritative</span>
+            </div>
+            <p class="order-pricing__note">
+              OpenLinker pins the <b>buyer-paid (net) price</b> onto the destination — it does not use the
+              destination's catalog price. The PLN figure is a <b>reporting conversion for Analytics only</b>, fixed at
+              the rate published for <b>23 Jul 2026</b> and never recalculated. It is not the rate on any invoice for
+              this order.
+            </p>
+          </div>
+        </section>
+
+        <div style="height:16px"></div>
+
+        <section class="detail-section">
+          <h3 class="detail-section__title">Currency conversion</h3>
+          <div class="key-value-list">
+            <dt class="key-value-list__label">Native total</dt>
+            <dd class="key-value-list__value"><span class="mono-text tabular">249,90 EUR</span></dd>
+
+            <dt class="key-value-list__label">Reported as</dt>
+            <dd class="key-value-list__value"><span class="mono-text tabular">1 067,47 PLN</span></dd>
+
+            <dt class="key-value-list__label">Arithmetic</dt>
+            <dd class="key-value-list__value">
+              <span class="formula" style="padding:var(--space-2) var(--space-3)">
+                <span>249,90</span><i>×</i><b>4,2716</b><i>=</i><b>1 067,47</b>
+              </span>
+            </dd>
+
+            <dt class="key-value-list__label">Rate</dt>
+            <dd class="key-value-list__value"><span class="mono-text">1 EUR = 4,2716 PLN</span>
+              <span class="chip chip--static chip--mono">direct</span></dd>
+
+            <dt class="key-value-list__label">Rate date</dt>
+            <dd class="key-value-list__value">
+              <time class="time-cell" datetime="2026-07-23">23 Jul 2026</time>
+              <span class="orders-cell-sub"> · last business day before the order</span>
+            </dd>
+
+            <dt class="key-value-list__label">Rule</dt>
+            <dd class="key-value-list__value key-value-list__value--mono">prev-business-day</dd>
+
+            <dt class="key-value-list__label">Source</dt>
+            <dd class="key-value-list__value">NBP table A · <span class="mono-text">141/A/NBP/2026</span></dd>
+
+            <dt class="key-value-list__label">Stamped at</dt>
+            <dd class="key-value-list__value"><time class="time-cell" datetime="2026-07-24T11:12:04Z">24 Jul 2026, 11:12:04</time>
+              <span class="orders-cell-sub"> · 4 s after ingestion</span></dd>
+
+            <dt class="key-value-list__label">Rate record</dt>
+            <dd class="key-value-list__value key-value-list__value--mono">9f3c8ad2-41b7-4e0c-b8d1-77aa2c0e5f19</dd>
+          </div>
+          <p class="detail-section__muted" style="font-size:0.75rem">
+            Immutable. Re-ingesting this order does not move the figure — the stamp is written by a conditional update
+            that fires only while no stamp exists.
+          </p>
+        </section>
+      </div>
+    </div>
+    <p class="gap-legend">
+      <span class="gap-mark">†</span>
+      <span><b>Decided.</b> The <b>Arithmetic</b> row is the one addition with no precedent in the app. It earns its place because the
+        direction is a stated ADR invariant — a stamp is always <code>total × rate</code>, never a division — and an
+        operator reconciling a figure against a bank statement will otherwise divide. Showing the multiplication makes
+        the invariant self-evident at the only place someone checks it.</span>
+    </p>
+  </div>
+
+  <div class="viewport-frame">
+    <div class="viewport-frame__label">
+      <span class="eyebrow-mono">4b</span>
+      <b>The other four states of the same panel</b>
+      <span class="caption">in flight · no order date · unsupported pair · a pivoted rate</span>
+    </div>
+    <div class="viewport-frame__scroll">
+      <div class="frame-grid frame-grid--2">
+
+        <section class="detail-section">
+          <h3 class="detail-section__title">Currency conversion
+            <span class="status-badge status-badge--info status-badge--compact status-badge--pulse" style="margin-left:8px"><span class="status-badge__dot"></span>In flight</span>
+          </h3>
+          <div class="key-value-list">
+            <dt class="key-value-list__label">Native total</dt>
+            <dd class="key-value-list__value"><span class="mono-text tabular">89,50 EUR</span></dd>
+            <dt class="key-value-list__label">Will report in</dt>
+            <dd class="key-value-list__value"><span class="mono-text">PLN</span>
+              <span class="orders-cell-sub"> · decided at ingestion, 31 Jul 14:03</span></dd>
+            <dt class="key-value-list__label">Waiting on</dt>
+            <dd class="key-value-list__value">NBP rate for <span class="mono-text">30 Jul 2026</span></dd>
+            <dt class="key-value-list__label">Retry</dt>
+            <dd class="key-value-list__value">attempt 3 of 10 ·
+              <span class="mono-text">fx:ol_order_9be4470a</span></dd>
+          </div>
+          <p class="detail-section__muted" style="font-size:0.75rem">
+            The currency was fixed the moment the order arrived, so a retry landing next week still stamps PLN even if
+            the setting changes in between.<span class="gap-mark" title="ADR-040 Decision 5 — fxIntendedCurrency + fxRule are claimed before any rate lookup, so provider availability can never become a silent input to a financial figure. This row is what makes that guarantee visible.">†</span>
+          </p>
+        </section>
+
+        <section class="detail-section">
+          <h3 class="detail-section__title">Currency conversion
+            <span class="status-badge status-badge--warning status-badge--compact" style="margin-left:8px"><span class="status-badge__dot"></span>Not convertible</span>
+          </h3>
+          <div class="key-value-list">
+            <dt class="key-value-list__label">Native total</dt>
+            <dd class="key-value-list__value"><span class="mono-text tabular">149,00 USD</span></dd>
+            <dt class="key-value-list__label">Would report in</dt>
+            <dd class="key-value-list__value"><span class="mono-text">PLN</span></dd>
+            <dt class="key-value-list__label">Blocked by</dt>
+            <dd class="key-value-list__value">
+              This channel does not record when the buyer placed the order, so there is no day to price a rate on.
+            </dd>
+            <dt class="key-value-list__label">Retrying</dt>
+            <dd class="key-value-list__value">No — this will not resolve on its own</dd>
+          </div>
+          <div class="alert alert--warning">
+            <div class="alert__content">
+              <p class="alert__description">
+                Affects every WooCommerce order. Fixing the source mapping also gives these orders an invoice sale
+                date, which is why it is tracked on its own — <span class="mono-text">#2097</span>.
+              </p>
+            </div>
+          </div>
+        </section>
+
+        <section class="detail-section">
+          <h3 class="detail-section__title">Currency conversion
+            <span class="status-badge status-badge--warning status-badge--compact" style="margin-left:8px"><span class="status-badge__dot"></span>Not convertible</span>
+          </h3>
+          <div class="key-value-list">
+            <dt class="key-value-list__label">Native total</dt>
+            <dd class="key-value-list__value"><span class="mono-text tabular">4 300,00 TRY</span></dd>
+            <dt class="key-value-list__label">Would report in</dt>
+            <dd class="key-value-list__value"><span class="mono-text">PLN</span></dd>
+            <dt class="key-value-list__label">Blocked by</dt>
+            <dd class="key-value-list__value">
+              The rate source does not publish a <span class="mono-text">TRY → PLN</span> quote.
+            </dd>
+            <dt class="key-value-list__label">Retrying</dt>
+            <dd class="key-value-list__value">No — a retry would fail identically</dd>
+          </div>
+          <p class="detail-section__muted" style="font-size:0.75rem">
+            The same terminal state as the panel to its left, reached for a different reason — so the copy names the
+            reason rather than the state. Changing the reporting currency to one whose source does quote TRY would
+            cover future orders, not this one.
+          </p>
+        </section>
+
+        <section class="detail-section">
+          <h3 class="detail-section__title">Currency conversion
+            <span class="status-badge status-badge--success status-badge--compact" style="margin-left:8px"><span class="status-badge__dot"></span>Converted</span>
+          </h3>
+          <div class="key-value-list">
+            <dt class="key-value-list__label">Arithmetic</dt>
+            <dd class="key-value-list__value">
+              <span class="formula" style="padding:var(--space-2) var(--space-3)">
+                <span>320,00</span><i>×</i><b>3,6512</b><i>=</i><b>1 168,38</b>
+              </span>
+            </dd>
+            <dt class="key-value-list__label">Rate</dt>
+            <dd class="key-value-list__value"><span class="mono-text">1 USD = 3,6512 PLN</span>
+              <span class="chip chip--static chip--info">pivoted</span></dd>
+            <dt class="key-value-list__label">Derived from</dt>
+            <dd class="key-value-list__value">
+              <ul class="legs">
+                <li><span>EUR/PLN</span><span>4,2716</span><span>141/A/NBP/2026</span><span>23 Jul</span></li>
+                <li><span>EUR/USD</span><span>1,1699</span><span>141/A/NBP/2026</span><span>23 Jul</span></li>
+              </ul>
+            </dd>
+            <dt class="key-value-list__label">Rate date</dt>
+            <dd class="key-value-list__value"><time class="time-cell" datetime="2026-07-23">23 Jul 2026</time></dd>
+          </div>
+          <p class="detail-section__muted" style="font-size:0.75rem">
+            Both legs come from the same published table on the same day, and each is cited — so a derived figure stays
+            as auditable as a direct one. Neither shipped reporting currency needs a pivot; this is the shape a third
+            one would take.
+          </p>
+        </section>
+      </div>
+    </div>
+  </div>
+
+  <div class="rule"></div>
+
+  <h2 class="sheet-h2" id="jobs">5 · Jobs &amp; logs — two new job types</h2>
+  <p class="sheet-lede">
+    <code>marketplace.order.fxStamp</code> (retry, idempotency key <code>fx:{internalOrderId}</code>) and the hourly
+    <code>marketplace.order.fxStampSweep</code>, which is the guarantee that survives a dead retry job — a key with
+    no TTL means a five-hour outage would otherwise lose the stamp permanently. Both render in the existing
+    <code>/jobs-logs</code> table with no new component; the only thing worth designing is the
+    <code>outcomeReason</code> copy, following the <code>master_deleted</code> precedent (#1689).
+  </p>
+
+  <div class="viewport-frame">
+    <div class="viewport-frame__label">
+      <span class="eyebrow-mono">5a</span>
+      <b>The four rows an operator will actually meet</b>
+      <span class="caption">status vs outcome per ADR-007</span>
+    </div>
+    <div class="viewport-frame__scroll">
+      <div class="data-table__container">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Job</th>
+              <th>Status</th>
+              <th>Outcome</th>
+              <th>Detail</th>
+              <th>Attempt</th>
+              <th>Finished</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>
+                <span class="orders-cell-stack">
+                  <span class="mono-text">marketplace.order.fxStamp</span>
+                  <span class="orders-cell-sub mono-text">fx:ol_order_a71c4f9e</span>
+                </span>
+              </td>
+              <td><span class="status-badge status-badge--success status-badge--compact"><span class="status-badge__dot"></span>Succeeded</span></td>
+              <td><span class="status-badge status-badge--success status-badge--compact"><span class="status-badge__dot"></span>OK</span></td>
+              <td><span class="orders-cell-sub">Stamped 1 067,47 PLN</span></td>
+              <td class="mono-text tabular">2 / 10</td>
+              <td><time class="time-cell" datetime="2026-07-24T11:12:04Z">24 Jul, 11:12</time></td>
+            </tr>
+            <tr>
+              <td>
+                <span class="orders-cell-stack">
+                  <span class="mono-text">marketplace.order.fxStamp</span>
+                  <span class="orders-cell-sub mono-text">fx:ol_order_c30f81ab</span>
+                </span>
+              </td>
+              <td><span class="status-badge status-badge--success status-badge--compact"><span class="status-badge__dot"></span>Succeeded</span></td>
+              <td><span class="status-badge status-badge--warning status-badge--compact"><span class="status-badge__dot"></span>Business failure</span></td>
+              <td><span class="orders-cell-sub">No order date — cannot price a rate</span></td>
+              <td class="mono-text tabular">1 / 10</td>
+              <td><time class="time-cell" datetime="2026-07-24T08:31:00Z">24 Jul, 08:31</time></td>
+            </tr>
+            <tr>
+              <td>
+                <span class="orders-cell-stack">
+                  <span class="mono-text">marketplace.order.fxStamp</span>
+                  <span class="orders-cell-sub mono-text">fx:ol_order_9be4470a</span>
+                </span>
+              </td>
+              <td><span class="status-badge status-badge--error status-badge--compact"><span class="status-badge__dot"></span>Dead</span></td>
+              <td><span class="orders-cell-sub">—</span></td>
+              <td><span class="orders-cell-sub">Rate source unreachable · 10 attempts over 4 h 15 m</span></td>
+              <td class="mono-text tabular">10 / 10</td>
+              <td><time class="time-cell" datetime="2026-07-31T18:18:00Z">31 Jul, 18:18</time></td>
+            </tr>
+            <tr>
+              <td>
+                <span class="orders-cell-stack">
+                  <span class="mono-text">marketplace.order.fxStampSweep</span>
+                  <span class="orders-cell-sub">hourly · reconcile</span>
+                </span>
+              </td>
+              <td><span class="status-badge status-badge--success status-badge--compact"><span class="status-badge__dot"></span>Succeeded</span></td>
+              <td><span class="status-badge status-badge--success status-badge--compact"><span class="status-badge__dot"></span>OK</span></td>
+              <td><span class="orders-cell-sub">31 unstamped rows found · 31 stamped, incl. the dead one above</span></td>
+              <td class="mono-text tabular">1 / 3</td>
+              <td><time class="time-cell" datetime="2026-07-31T19:00:00Z">31 Jul, 19:00</time></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <p class="gap-legend">
+      <span class="gap-mark">†</span>
+      <span>Row 2 is the pattern that matters: <b>succeeded + business failure</b>. The job did its work correctly and
+        the answer was "this order cannot be stamped" — so it must not sit in the failed-jobs bucket an operator is
+        expected to clear, and the detail column carries the human reason rather than
+        <code>outcomeReason: 'no-placed-at'</code>. Row 3 is a genuine dead job, and row 4 is why that is survivable:
+        the sweep reads unstamped rows straight from the table, so it recovers both a dead job <i>and</i> an enqueue
+        that never happened.</span>
+    </p>
+  </div>
+
+  <div class="rule"></div>
+
+  <h2 class="sheet-h2" id="invoicing">6 · Invoicing — the boundary, made visible</h2>
+  <p class="sheet-lede">
+    ADR-040's sharpest consequence: a stamped figure must <b>never</b> reach a fiscal document. The two differ on all
+    three axes that define a rate — <b>date</b> (placement vs the tax point, which for a prepaid marketplace order is
+    the payment instant no shipped source persists), <b>target</b> (always PLN statutorily), and <b>derivation</b> (a
+    statutory rate must be a directly published quote, never inverted or pivoted). This bites hardest where it looks
+    safest: on a PLN-reporting deployment both come from NBP table A and differ only by date, so the two rows look
+    interchangeable and are not.
+  </p>
+
+  <div class="viewport-frame">
+    <div class="viewport-frame__label">
+      <span class="eyebrow-mono">6a</span>
+      <b>One order, two rates, neither derived from the other</b>
+      <span class="caption">the invoice panel on the same order as frame 4a</span>
+    </div>
+    <div class="viewport-frame__scroll">
+      <div class="frame-grid frame-grid--2">
+        <section class="detail-section">
+          <h3 class="detail-section__title">Analytics conversion</h3>
+          <div class="key-value-list">
+            <dt class="key-value-list__label">Purpose</dt>
+            <dd class="key-value-list__value">Reporting only</dd>
+            <dt class="key-value-list__label">Target</dt>
+            <dd class="key-value-list__value"><span class="mono-text">PLN</span> — the chosen reporting currency</dd>
+            <dt class="key-value-list__label">Anchored on</dt>
+            <dd class="key-value-list__value">Order placement · <span class="mono-text">24 Jul</span></dd>
+            <dt class="key-value-list__label">Rate</dt>
+            <dd class="key-value-list__value"><span class="mono-text">4,2716</span> · 23 Jul · <span class="mono-text">141/A/NBP/2026</span></dd>
+            <dt class="key-value-list__label">Derivation</dt>
+            <dd class="key-value-list__value">direct, inverted or pivoted — all permitted</dd>
+          </div>
+        </section>
+
+        <section class="detail-section">
+          <h3 class="detail-section__title">Invoice conversion</h3>
+          <div class="key-value-list">
+            <dt class="key-value-list__label">Purpose</dt>
+            <dd class="key-value-list__value">Fiscal document</dd>
+            <dt class="key-value-list__label">Target</dt>
+            <dd class="key-value-list__value"><span class="mono-text">PLN</span> — statutory, not a choice</dd>
+            <dt class="key-value-list__label">Anchored on</dt>
+            <dd class="key-value-list__value">The tax point · <span class="mono-text">payment</span></dd>
+            <dt class="key-value-list__label">Rate</dt>
+            <dd class="key-value-list__value"><span class="mono-text">4,2688</span> · 21 Jul · computed by the provider</dd>
+            <dt class="key-value-list__label">Derivation</dt>
+            <dd class="key-value-list__value">directly published quote only</dd>
+          </div>
+        </section>
+      </div>
+
+      <div style="height:12px"></div>
+
+      <div class="alert alert--error">
+        <div class="alert__content">
+          <p class="alert__title">Two figures, both correct: 1 067,47 PLN and 1 066,77 PLN</p>
+          <p class="alert__description">
+            A 0,70 PLN difference on one order — small enough to read as a rounding bug and large enough to break a
+            reconciliation. It is neither: they are answers to different questions, and no arithmetic recovers one from
+            the other. Rate ownership stays per invoicing provider: inFakt and Subiekt nexo compute their own
+            server-side, and KSeF is the only path where OpenLinker builds the document and would own the rate. FA(3)
+            draws the same line — <code>KursWaluty</code> is scoped to <i>dział VI ustawy</i>, while
+            <code>KursUmowny</code> is scoped <i>"nie dotyczy przypadków, o których mowa w dziale VI"</i>.
+          </p>
+        </div>
+      </div>
+
+      <div style="height:12px"></div>
+
+      <div class="alert alert--info">
+        <div class="alert__content">
+          <p class="alert__title">So the invoicing UI shows nothing new</p>
+          <p class="alert__description">
+            No FX row on <code>OrderInvoicePanel</code>, no reporting amount on a document, no shared component
+            between the two panels above. The frames are here so the boundary is <i>reviewable</i> — the mockup's job
+            is to show that a plausible-looking reuse was considered and refused.
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="rule"></div>
+
+  <h2 class="sheet-h2" id="untouched">7 · Surfaces that deliberately do not change</h2>
+  <p class="sheet-lede">
+    Worth stating, because an earlier draft of the ADR changed two of them and a reviewer will look for the fields.
+  </p>
+
+  <div class="gap-table__wrap">
+    <table class="gap-table">
+      <thead><tr><th style="width:26%">Surface</th><th>Change</th><th>Why</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><b>Connection setup / edit</b><br><span class="orders-cell-sub">every platform</span></td>
+          <td><b>None.</b> No FX fields, no reporting-currency picker, no Allegro OAuth thread.</td>
+          <td>The first draft added three connection-setup fields. Deleted with the ladder — a per-connection
+            reporting currency makes a deployment-wide total impossible by construction.
+            <code>config.currency</code> (#362) keeps its single meaning.</td>
+        </tr>
+        <tr>
+          <td><b>Products, listings, offer creation</b></td>
+          <td><b>None.</b></td>
+          <td>Pricing to a destination is <code>pricingRule</code> (#1843) and stock is
+            <code>stockSafetyBuffer</code> (#1844). Neither reads a reporting figure; the stamp is a read-side fact
+            about an order that already happened.</td>
+        </tr>
+        <tr>
+          <td><b>Dashboard <code>/</code></b></td>
+          <td><b>None.</b></td>
+          <td>The operational dashboard is health, not money. The spec keeps it unchanged and puts business figures on
+            <code>/analytics</code>.</td>
+        </tr>
+        <tr>
+          <td><b>Exchange-rate registry</b></td>
+          <td><b>No browse UI.</b> Considered and not proposed.</td>
+          <td>Every stamped order already cites its rate, date, source and document reference on its own detail page,
+            which is where anyone actually checks one. A registry browser would be a second way to look up a number
+            nobody navigates to by rate.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="rule"></div>
+
+  <h2 class="sheet-h2" id="states">8 · The state model behind every badge</h2>
+  <p class="sheet-lede">
+    Six persisted columns, five legal combinations. The two predicates in the last column are the ones a consumer gets
+    wrong.
+  </p>
+
+  <div class="gap-table__wrap">
+    <table class="gap-table">
+      <thead>
+        <tr>
+          <th>State</th>
+          <th>UI</th>
+          <th class="mono-text" style="font-size:0.625rem">reportingCurrency</th>
+          <th class="mono-text" style="font-size:0.625rem">reportingTotalAmount</th>
+          <th class="mono-text" style="font-size:0.625rem">exchangeRateId</th>
+          <th class="mono-text" style="font-size:0.625rem">fxRule</th>
+          <th class="mono-text" style="font-size:0.625rem">fxStampedAt</th>
+          <th class="mono-text" style="font-size:0.625rem">fxIntendedCurrency</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Never attempted<br><span class="orders-cell-sub">pre-feature, or not reached yet</span></td>
+          <td><span class="status-badge status-badge--compact"><span class="status-badge__dot"></span>Before FX</span></td>
+          <td class="state-null">NULL</td><td class="state-null">NULL</td><td class="state-null">NULL</td>
+          <td class="state-null">NULL</td><td class="state-null">NULL</td><td class="state-null">NULL</td>
+        </tr>
+        <tr>
+          <td>Deferred to the retry job</td>
+          <td><span class="status-badge status-badge--info status-badge--compact status-badge--pulse"><span class="status-badge__dot"></span>In flight</span></td>
+          <td class="state-null">NULL</td><td class="state-null">NULL</td><td class="state-null">NULL</td>
+          <td class="state-set">set</td><td class="state-null">NULL</td><td class="state-set">set</td>
+        </tr>
+        <tr>
+          <td>Terminal<br><span class="orders-cell-sub">no order date, or unsupported pair</span></td>
+          <td><span class="status-badge status-badge--warning status-badge--compact"><span class="status-badge__dot"></span>Not convertible</span></td>
+          <td class="state-null">NULL</td><td class="state-null">NULL</td><td class="state-null">NULL</td>
+          <td class="state-set">set</td><td class="state-set">set</td><td class="state-set">set</td>
+        </tr>
+        <tr>
+          <td>Stamped, same currency</td>
+          <td><span class="status-badge status-badge--success status-badge--compact"><span class="status-badge__dot"></span>Native</span></td>
+          <td class="state-set">set</td><td class="state-set">set</td><td class="state-null">NULL</td>
+          <td class="state-set">set</td><td class="state-set">set</td><td class="state-set">set</td>
+        </tr>
+        <tr>
+          <td>Stamped, converted</td>
+          <td><span class="status-badge status-badge--success status-badge--compact"><span class="status-badge__dot"></span>Converted</span></td>
+          <td class="state-set">set</td><td class="state-set">set</td><td class="state-set">set</td>
+          <td class="state-set">set</td><td class="state-set">set</td><td class="state-set">set</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div style="height:12px"></div>
+
+  <div class="frame-grid frame-grid--2">
+    <div class="alert alert--error">
+      <div class="alert__content">
+        <p class="alert__title">Never test <code>exchangeRateId IS NULL</code> for "unstamped"</p>
+        <p class="alert__description">
+          It is <code>NULL</code> on the same-currency path too — the overwhelming majority of orders. A revenue query
+          written that way silently reports almost nothing and looks like a business collapse. The discriminator is
+          <code>reportingCurrency IS NULL</code>.
+        </p>
+      </div>
+    </div>
+    <div class="alert alert--warning">
+      <div class="alert__content">
+        <p class="alert__title"><code>fxStampedAt IS NULL</code> does not mean "unstamped" either</p>
+        <p class="alert__description">
+          It is also <code>NULL</code> on a deferred row, which is legitimately still in flight rather than
+          unstampable. The reconcile sweep deliberately uses <b>both</b> —
+          <code>fxStampedAt IS NULL AND reportingCurrency IS NULL</code> — because it wants exactly the first two
+          states and nothing else.
+        </p>
+      </div>
+    </div>
+  </div>
+  <div class="rule"></div>
+
+  <h2 class="sheet-h2" id="work">9 · How the work gets filed</h2>
+  <p class="sheet-lede">
+    Per the house rule — <b>one issue, one branch, one PR</b> — #2049 stays a single implementation issue and does not
+    get split by phase or by risk. What it got instead is six native sub-issues mirroring the plan's phases, so
+    progress is visible inside one branch. Everything below that is either genuinely separate work or an
+    acceptance-criteria edit on an issue that already exists.
+  </p>
+
+  <div class="alert alert--success">
+    <div class="alert__content">
+      <p class="alert__title">Filed — #2049 is now a mini-epic with six native sub-issues</p>
+      <p class="alert__description">
+        <span class="mono-text">#2122</span> Phase 0 shared calendar ·
+        <span class="mono-text">#2123</span> Phase 1 <code>currency</code> context + <code>integrations-fx</code> ·
+        <span class="mono-text">#2124</span> Phase 2 persistence ·
+        <span class="mono-text">#2125</span> Phase 3 stamp, retry, sweep ·
+        <span class="mono-text">#2126</span> Phase 4 settings API + tile + env ·
+        <span class="mono-text">#2127</span> Phase 5 docs.
+        All six linked as GitHub sub-issues; #2049's body carries the ordering, the ECB blocker and the four design
+        decisions taken here. One branch <code>2049-order-fx-rate-snapshot</code>, one PR closing all seven.
+      </p>
+    </div>
+  </div>
+
+  <div style="height:12px"></div>
+
+  <div class="alert alert--warning">
+    <div class="alert__content">
+      <p class="alert__title">Not filed — the three new issues and the five body edits</p>
+      <p class="alert__description">
+        Everything in Wave 2 and Wave 3 below, plus the acceptance-criteria edits on
+        <span class="mono-text">#1985 / #1987 / #1988 / #1990 / #1991</span>, is written and ready but
+        <b>not created</b> — it was not part of what was approved. Say the word and it goes up as specified.
+      </p>
+    </div>
+  </div>
+
+  <div class="alert alert--success">
+    <div class="alert__content">
+      <p class="alert__title">No open blocker — an earlier version of this page said otherwise, and was wrong</p>
+      <p class="alert__description">
+        ECB's historical endpoint was treated here as an unresolved Phase 1b blocker. That came from PR #2050's
+        <i>description</i>, which described an earlier draft rather than what merged: the plan's
+        <code>ECB reference rates</code> subsection in <code>main</code> is verified against the live API, and an
+        independent re-verification reproduced every claim in it. Every phase is unblocked, and the ordering below is
+        pure dependency rather than risk.
+      </p>
+    </div>
+  </div>
+
+  <div style="height:12px"></div>
+
+  <div class="alert alert--warning">
+    <div class="alert__content">
+      <p class="alert__title">The re-verification did surface a latent bug, now recorded on #2123</p>
+      <p class="alert__description">
+        <code>includeHistory=true</code> combined with <code>lastNObservations=1</code> injects a <b>phantom row</b> —
+        <code>ACTION=Delete</code>, an empty <code>OBS_VALUE</code> and an unrelated historical date — so an adapter
+        reading "the last row" would get an empty rate and a nonsense date. Alongside seven other additions: a 4xx body
+        may be HTML rather than JSON, the empty-<code>200</code> response is zero bytes in <i>every</i> format, the
+        maximum non-publication run is 4 days, and <b>ECB publishes no document identifier at all</b> — its
+        <code>header.id</code> is a fresh UUID per request — so the audit reference has to be a re-executable locator
+        OpenLinker constructs, which is a design gap to state rather than paper over.
+      </p>
+    </div>
+  </div>
+
+  <div style="height:16px"></div>
+
+  <div class="waves">
+    <div class="wave">
+      <div class="wave__head">Wave 1 — now <span>· three tracks in parallel, no dependency between them</span></div>
+      <div class="gap-table__wrap">
+        <table class="gap-table">
+          <thead><tr><th style="width:12rem">Item</th><th style="width:6rem">Status</th><th>What happens to it</th></tr></thead>
+          <tbody>
+            <tr>
+              <td><b>#2049</b><br><span class="orders-cell-sub">Order-time FX rate snapshot</span></td>
+              <td><span class="status-badge status-badge--success status-badge--compact"><span class="status-badge__dot"></span>Done</span></td>
+              <td>Mini-epic with <b>six native sub-issues</b> mirroring the plan's phases —
+                <b>#2122</b> Phase 0 calendar · <b>#2123</b> Phase 1 <code>libs/core/src/currency</code> +
+                <code>@openlinker/integrations-fx</code> · <b>#2124</b> Phase 2 persistence + migration ·
+                <b>#2125</b> Phase 3 orders integration + retry + sweep · <b>#2126</b> Phase 4 settings API, tile,
+                env · <b>#2127</b> Phase 5 docs. One branch <code>2049-order-fx-rate-snapshot</code>, one PR closing
+                all seven. The sub-issues are progress markers, not separate deliverables. Start with #2122 — it is
+                the only one with no upstream dependency.</td>
+            </tr>
+            <tr>
+              <td><b>#2097</b><br><span class="orders-cell-sub">WooCommerce <code>placedAt</code></span></td>
+              <td><span class="status-badge status-badge--info status-badge--compact"><span class="status-badge__dot"></span>Exists</span></td>
+              <td>Ship it independently — it does not wait on #2049 and #2049 does not wait on it. It is the difference
+                between the WooCommerce channel reporting revenue and reporting a permanent not-convertible count. Its
+                own review is fiscal (it moves an invoice's <code>saleDate</code> from empty to populated), which is why
+                it is separate.</td>
+            </tr>
+            <tr>
+              <td><b>#1985 #1987 #1988</b><br><span class="orders-cell-sub">+ FE #1990 #1991</span></td>
+              <td><span class="status-badge status-badge--warning status-badge--compact"><span class="status-badge__dot"></span>Not done</span></td>
+              <td>Acceptance-criteria reconciliation — see the table below. <b>Body edits, not new issues.</b> ADR-040
+                names this a precondition for those issues rather than for #2049, and the epic owner's call.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="wave">
+      <div class="wave__head">Wave 2 — once the columns exist <span>· both new, both blocked on #2049 only</span></div>
+      <div class="gap-table__wrap">
+        <table class="gap-table">
+          <thead><tr><th style="width:12rem">Item</th><th style="width:6rem">Status</th><th>Why it is not inside #2049</th></tr></thead>
+          <tbody>
+            <tr>
+              <td><b>FX-FE-1</b><br><span class="orders-cell-sub">orders list + detail</span></td>
+              <td><span class="status-badge status-badge--warning status-badge--compact"><span class="status-badge__dot"></span>To file</span></td>
+              <td>#2049's Phase 4 ships <code>features/currency-settings/*</code> and nothing else. Without this, an
+                order's stamp is invisible everywhere in the product and the only way to see one is
+                <code>psql</code>.</td>
+            </tr>
+            <tr>
+              <td><b>FX-FE-2</b><br><span class="orders-cell-sub">unstamped coverage read + disclosure</span></td>
+              <td><span class="status-badge status-badge--warning status-badge--compact"><span class="status-badge__dot"></span>To file</span></td>
+              <td>#1987 returns revenue, orders, AOV, median and units. Nothing returns the unstamped count or its
+                reasons — and ADR-040 constraint 2 says no money figure may ship without one.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="wave">
+      <div class="wave__head">Wave 3 — after the vertical slice is real <span>· neither blocks a release</span></div>
+      <div class="gap-table__wrap">
+        <table class="gap-table">
+          <thead><tr><th style="width:12rem">Item</th><th style="width:6rem">Status</th><th>Note</th></tr></thead>
+          <tbody>
+            <tr>
+              <td><b>FX-DEMO-1</b><br><span class="orders-cell-sub">demo seed</span></td>
+              <td><span class="status-badge status-badge--warning status-badge--compact"><span class="status-badge__dot"></span>To file</span></td>
+              <td>Explicitly out of #2049's scope, and stated there: with no OL-side order seeder and the WC orders
+                landing terminal-unstamped, the demo's first FX artefact is a non-zero unstamped count rather than a
+                conversion. Fine as a truthful demo of the honesty rail; not a demo of the feature.</td>
+            </tr>
+            <tr>
+              <td><b>#2096</b><br><span class="orders-cell-sub">restate stamped orders</span></td>
+              <td><span class="status-badge status-badge--info status-badge--compact"><span class="status-badge__dot"></span>Exists</span></td>
+              <td>The remedy for the era split. Everything needed is retained, so it is computable rather than a
+                data-recovery problem. The operator who needs it most is the one the default was wrong for.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div style="height:24px"></div>
+  <p class="section-title" style="font-family:var(--font-mono);font-size:0.6875rem;letter-spacing:var(--tracking-caps);text-transform:uppercase;color:var(--text-muted)">The two new issues, in full</p>
+  <div style="height:12px"></div>
+
+  <!-- ISSUE 1 -->
+  <div class="issue">
+    <div class="issue__head">
+      <h3 class="issue__title"><code>[TASK]</code> Frontend — surface the FX stamp on the orders list and order detail</h3>
+      <span class="chip chip--static chip--active">enhancement</span>
+    </div>
+
+    <div class="issue__block">
+      <h5>Problem / Context</h5>
+      <p>
+        #2049 persists six FX columns on <code>order_records</code> and ships exactly one frontend surface —
+        the reporting-currency tile at <code>features/currency-settings/*</code>. Nothing renders a per-order stamp,
+        so the product cannot answer the first question anyone asks of a converted figure: <i>which rate, from when,
+        from where</i>. Today <code>orders-list-page.tsx:846-901</code> renders only the native total via
+        <code>formatCurrency(parsed.totals.total, parsed.totals.currency, locale)</code>, and
+        <code>order-totals-panel.tsx:17-43</code> renders every row in <code>totals.currency</code> alone. An operator
+        reconciling an analytics figure against a bank statement has <code>psql</code> and nothing else.
+      </p>
+      <p>
+        Worse, the five persisted states are indistinguishable without UI. "No conversion needed" (same currency,
+        <code>exchangeRateId NULL</code>) and "not convertible" both render as a bare native total, and the first is a
+        healthy fully-counted order while the second is excluded from every money figure on <code>/analytics</code>.
+      </p>
+    </div>
+
+    <div class="issue__block">
+      <h5>Proposed Solution</h5>
+      <ul>
+        <li><b>Orders list</b> — a fourth line in the existing <code>.orders-cell-stack--end</code> of the merged
+          <code>money</code> column, styled like <code>.orders-cell-sub</code>, plus a compact
+          <code>StatusBadge</code> for the stamp state. No new column, no wider table.</li>
+        <li><b><code>order-health-summary.tsx</code></b> — a fourth cell, <i>Reported as</i>, with the rate as its
+          <code>__hint</code>. Drop the ≥768px grid from <code>repeat(3, …)</code> to <code>repeat(4, …)</code>.</li>
+        <li><b><code>order-totals-panel.tsx</code></b> — one <code>.order-totals__row--reporting</code> under
+          <code>--total</code>; and the FX disclosure line appended to the existing
+          <code>.order-pricing__note</code>, which already carries the "buyer-paid price, source-authoritative"
+          provenance sentence.</li>
+        <li><b>New <code>.detail-section</code></b> — <i>Currency conversion</i>, a <code>KeyValueList</code> carrying
+          native total, reported amount, the multiplication, rate, rate date, rule, source + document reference,
+          stamped-at, and the rate-record id. Derivation legs render as a nested list when the rate was inverted or
+          pivoted.</li>
+        <li>One shared state→label/tone map so the list badge and the detail heading cannot drift; five labels —
+          <i>Converted</i>, <i>Native</i>, <i>In flight</i>, <i>Not convertible</i>, <i>Before FX</i>.</li>
+        <li>Read from the existing order detail response — <b>no new endpoint</b> if #2049's response DTO exposes the
+          six columns. If it does not, that DTO change belongs here.</li>
+      </ul>
+    </div>
+
+    <div class="issue__block">
+      <h5>Classification</h5>
+      <p class="issue__meta">
+        <span><b>Type:</b> Frontend</span>
+        <span><b>Layer:</b> Interface</span>
+      </p>
+      <ul>
+        <li><code>apps/web/src/pages/orders/orders-list-page.tsx</code></li>
+        <li><code>apps/web/src/pages/orders/order-detail-page.tsx</code></li>
+        <li><code>apps/web/src/features/orders/components/{order-health-summary,order-totals-panel,order-pricing-panel}.tsx</code></li>
+        <li><code>apps/web/src/features/orders/components/order-fx-panel.tsx</code> <span class="orders-cell-sub">(new)</span></li>
+        <li><code>apps/web/src/index.css</code> <span class="orders-cell-sub">(the <code>.orders-fx-sub</code> / reporting-row rules)</span></li>
+      </ul>
+    </div>
+
+    <div class="issue__block">
+      <h5>Dependencies</h5>
+      <ul>
+        <li><b>#2049</b> — the columns and the order-response DTO. Hard blocker.</li>
+      </ul>
+    </div>
+
+    <div class="issue__block">
+      <h5>Assumptions</h5>
+      <ul>
+        <li>ISO codes rather than <code>Intl</code> symbol form on FX surfaces only, because the currency is the
+          subject of the comparison. If rejected, both figures use <code>formatAmount</code> and the note carries the
+          codes.</li>
+        <li>A pre-feature order renders <i>Before FX</i> in <code>neutral</code>, never <code>warning</code> — an
+          operator scrolling their back-catalogue must not meet a page of warnings for rows that are not wrong.</li>
+      </ul>
+    </div>
+
+    <div class="issue__block">
+      <h5>Acceptance Criteria</h5>
+      <ul class="ac">
+        <li>All five persisted states render a distinct, non-jargon badge in the list, and a same-currency order is
+          visually distinguishable from a not-convertible one</li>
+        <li>A converted order's detail page states the rate, the rate date, the rule, the source and its document
+          reference, and the multiplication that produced the figure</li>
+        <li>An inverted or pivoted rate lists every leg with its own document reference and effective date</li>
+        <li>A pre-feature order renders no FX section and no warning</li>
+        <li>An in-flight order names what it is waiting on and states that the reporting currency is already fixed</li>
+        <li>A terminal order names the reason (no order date / unsupported pair) and states that it will not resolve
+          on its own</li>
+        <li>The orders table gains no column and does not scroll horizontally at 1024px</li>
+        <li>Component tests cover all five states for both the list cell and the detail panel</li>
+        <li>No architecture boundary violations (<code>app → pages → features → shared</code>)</li>
+      </ul>
+    </div>
+  </div>
+
+  <div style="height:12px"></div>
+
+  <!-- ISSUE 2 -->
+  <div class="issue">
+    <div class="issue__head">
+      <h3 class="issue__title"><code>[TASK]</code> Full-Stack — unstamped-coverage read and its disclosure on <code>/analytics</code></h3>
+      <span class="chip chip--static chip--active">enhancement</span>
+    </div>
+
+    <div class="issue__block">
+      <h5>Problem / Context</h5>
+      <p>
+        ADR-040 § Consequences: <i>"any figure must be paired with an unstamped count."</i> Nothing produces one.
+        #1987 returns revenue, order count, AOV, median and units; #1988 returns ranked products. Neither reports how
+        many orders in the range carry no stamp, why, or what their native value was — so the frontend has no way to
+        satisfy the constraint even if it wants to, and the honest reading of a revenue figure is unavailable.
+      </p>
+      <p>
+        Two second-order traps come with it. <b>Denominator drift</b>: revenue narrows to the stamped set while unit
+        and order counts do not, so AOV computed as <code>revenue / orders</code> under-reports by whatever share is
+        unstamped — a plausible wrong number on the page's headline card. <b>Era split</b>: a range spanning a
+        reporting-currency change has no single figure at all, and ADR-040 forbids re-converting a stamped amount to
+        manufacture one.
+      </p>
+    </div>
+
+    <div class="issue__block">
+      <h5>Proposed Solution</h5>
+      <ul>
+        <li><b>Backend</b> — extend the #1987 aggregates response rather than adding an endpoint:
+          <code>reportingCurrency</code>, the stamped order count used as the money denominator, and a
+          <code>coverage</code> block — total in range, stamped, deferred, terminal-by-reason, and the unstamped rows'
+          native totals grouped by their own currency (never summed).</li>
+        <li>Report an <b>era list</b> when the range spans more than one <code>reportingCurrency</code>, and return
+          <b>no</b> single revenue figure in that case — the response says a single figure cannot be given, matching
+          the shape #1987's acceptance criteria already use for mixed currencies.</li>
+        <li><b>Frontend</b> — a <i>Not converted</i> <code>KpiCard</code> in the <code>.status-strip</code> when the
+          count is non-zero; an <code>Alert tone="warning"</code> below it breaking the count down by reason with
+          <code>.alert__count</code> numerals; the era-split <code>Alert tone="error"</code> with a
+          narrow-the-range action; a <i>no convertible orders</i> empty state that distinguishes itself from "no
+          sales"; and a <code>· PLN</code> suffix on every money column header and KPI label.</li>
+        <li>Every money figure renders the denominator it used. AOV divides by the stamped count, and says so.</li>
+      </ul>
+    </div>
+
+    <div class="issue__block">
+      <h5>Classification</h5>
+      <p class="issue__meta">
+        <span><b>Type:</b> CORE + Frontend</span>
+        <span><b>Layer:</b> Application + Interface</span>
+      </p>
+      <ul>
+        <li><code>libs/core/src/orders/…</code> <span class="orders-cell-sub">— the aggregates read introduced by #1987</span></li>
+        <li><code>apps/api/src/…/analytics</code> <span class="orders-cell-sub">— response DTO</span></li>
+        <li><code>apps/web/src/features/analytics/*</code> <span class="orders-cell-sub">— created by #1986/#1990</span></li>
+      </ul>
+    </div>
+
+    <div class="issue__block">
+      <h5>Dependencies</h5>
+      <ul>
+        <li><b>#2049</b> — the columns. Hard blocker.</li>
+        <li><b>#1987</b> — the aggregates endpoint this extends. Hard blocker.</li>
+        <li><b>#1986 / #1990</b> — the page shell and KPI strip this renders into.</li>
+      </ul>
+    </div>
+
+    <div class="issue__block">
+      <h5>Assumptions</h5>
+      <ul>
+        <li>Extending #1987's response beats a second endpoint: the two reads share a date range, a cancellation
+          filter and a connection scope, and splitting them invites a UI that renders a total before it knows whether
+          the total is honest.</li>
+        <li>If #1987 has already shipped by the time this starts, this becomes an additive response change and the
+          filing stands unmodified.</li>
+      </ul>
+    </div>
+
+    <div class="issue__block">
+      <h5>Acceptance Criteria</h5>
+      <ul class="ac">
+        <li>The aggregates response carries the resolved reporting currency, the stamped denominator, and an unstamped
+          breakdown by reason</li>
+        <li>Unstamped orders' native values are reported grouped by their own currency and never summed into the
+          reporting figure</li>
+        <li>A range spanning two reporting currencies returns no single revenue figure and states why</li>
+        <li>AOV is computed over the stamped denominator, and the UI names that denominator</li>
+        <li>Every money figure on the page carries its currency where it is consumed — a screenshot of one table is
+          unambiguous</li>
+        <li>A range with orders but no stamped orders renders an empty state that distinguishes itself from "no sales"
+          and names the cause</li>
+        <li>Unit and order counts are unaffected by stamping, and any table mixing them with money states which
+          denominator each column uses</li>
+        <li>Integration test: a range with one stamped, one deferred and one terminal order returns exactly one
+          revenue figure and a breakdown of two</li>
+        <li>No architecture boundary violations (CORE ↔ Integration; <code>shared</code> imports nothing upward)</li>
+      </ul>
+    </div>
+  </div>
+
+  <div style="height:12px"></div>
+
+  <!-- ISSUE 3 -->
+  <div class="issue">
+    <div class="issue__head">
+      <h3 class="issue__title"><code>[TASK]</code> Infrastructure — demo seed with foreign-currency PrestaShop orders and matching rates</h3>
+      <span class="chip chip--static chip--info">dx</span>
+    </div>
+
+    <div class="issue__block">
+      <h5>Problem / Context</h5>
+      <p>
+        #2049 states the consequence rather than fixing it: the demo will show the unstamped path, not a conversion.
+        There is no OL-side order seeder at all — zero <code>INSERT INTO order_records</code> repo-wide — and
+        <code>docker-compose.yml:229</code> sets <code>PS_DEMO_MODE: 0</code>, so PrestaShop's own fixtures are not
+        installed either. The only order-creating seeder is <code>docker/woocommerce/01-seed-wc-data.sh</code>, whose
+        two orders land in WooCommerce's install-default currency and, with <code>placedAt</code> unmapped, ingest as
+        terminal-unstamped. So the demo's first FX-visible artefact is a non-zero not-convertible count.
+      </p>
+    </div>
+
+    <div class="issue__block">
+      <h5>Proposed Solution</h5>
+      <ul>
+        <li>Add PrestaShop order creation to the demo seed. PrestaShop emits <code>placedAt</code>, and the demo shop
+          already has EUR and USD active — <code>docker/prestashop/post-install-lib/20-set-default-currency.php</code>
+          promotes PLN to default and leaves both active — so only order creation is missing.</li>
+        <li><b>Pin <code>date_add</code> to fixed historical dates</b> and ship the matching
+          <code>exchange_rates</code> rows as a data-only seed migration, following
+          <code>1831000000002-seed-woocommerce-prompt-template.ts</code>. The rate that matters is the one for the
+          order's own rate date, not today's — so a live provider call at seed time would be both non-deterministic
+          and insufficient.</li>
+        <li>Cover all five stamp states deliberately: a PLN order (native), a EUR order (converted), and leave the
+          WooCommerce orders as the terminal case so the honesty rail is demonstrable too.</li>
+      </ul>
+    </div>
+
+    <div class="issue__block">
+      <h5>Classification</h5>
+      <p class="issue__meta">
+        <span><b>Type:</b> Infrastructure / DX</span>
+        <span><b>Layer:</b> Infrastructure</span>
+      </p>
+      <ul>
+        <li><code>docker/prestashop/post-install-lib/*</code></li>
+        <li><code>apps/api/src/migrations/*-seed-demo-exchange-rates.ts</code> <span class="orders-cell-sub">(new, data-only)</span></li>
+        <li><code>docker-compose.demo.yml</code></li>
+      </ul>
+    </div>
+
+    <div class="issue__block">
+      <h5>Dependencies</h5>
+      <ul>
+        <li><b>#2049</b> — the <code>exchange_rates</code> table has to exist. Hard blocker.</li>
+        <li>Independent of #2097, deliberately: leaving the WooCommerce orders unstamped is the point.</li>
+      </ul>
+    </div>
+
+    <div class="issue__block">
+      <h5>Acceptance Criteria</h5>
+      <ul class="ac">
+        <li>A fresh demo boot yields at least one native-currency and one converted order</li>
+        <li>Seeded rates are deterministic — no provider call at seed time, and two boots produce identical stamps</li>
+        <li>The seed migration is data-only and reversible</li>
+        <li>The unstamped count remains non-zero, so the demo shows the honesty rail as well as the conversion</li>
+      </ul>
+    </div>
+  </div>
+
+  <div style="height:24px"></div>
+  <p class="section-title" style="font-family:var(--font-mono);font-size:0.6875rem;letter-spacing:var(--tracking-caps);text-transform:uppercase;color:var(--text-muted)">Acceptance-criteria edits on issues that already exist</p>
+  <div style="height:12px"></div>
+
+  <div class="gap-table__wrap">
+    <table class="gap-table">
+      <thead><tr><th style="width:7rem">Issue</th><th style="width:32%">What it says today</th><th>What has to change</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><b>#1985</b><br><span class="orders-cell-sub">read model</span></td>
+          <td><b>[X] Currency</b> — <i>"carried per order; no FX exists anywhere. Mixed-currency data must never
+            silently sum"</i></td>
+          <td>FX now exists. The dependency changes from <i>unsolved</i> to <i>solved by #2049</i>, and the read model
+            must expose the six columns plus the two correct predicates
+            (<code>reportingCurrency IS NULL</code> for unstamped; never <code>exchangeRateId IS NULL</code>).</td>
+        </tr>
+        <tr>
+          <td><b>#1987</b><br><span class="orders-cell-sub">sales aggregates</span></td>
+          <td><i>"Multiple currencies never sum into a single figure — results are per currency, or the response states
+            that a single figure cannot be given"</i></td>
+          <td>Reconcilable, not contradictory — and it has to be reconciled explicitly. A single figure <b>is</b>
+            available for stamped orders; the per-currency fallback survives for the <b>unstamped</b> remainder and
+            for an era-spanning range. Add the stamped denominator and the unstamped-count pairing.</td>
+        </tr>
+        <tr>
+          <td><b>#1988</b><br><span class="orders-cell-sub">top products</span></td>
+          <td><i>"Same correctness rules as the sales aggregates … currencies never silently summed"</i></td>
+          <td>Same edit, plus one this issue owns alone: <b>units and revenue can legitimately disagree about which
+            orders they include</b>, because units need no rate. A product row must not imply its unit count and its
+            revenue cover the same orders.</td>
+        </tr>
+        <tr>
+          <td><b>#1990</b><br><span class="orders-cell-sub">FE KPI strip</span></td>
+          <td>KPI strip + by-channel table</td>
+          <td>Add: every money figure carries its currency label; the resolved reporting currency renders with its
+            rung when <code>source !== 'setting'</code>; a channel with no stamped orders stays in the table with a
+            native-only value rather than being dropped.</td>
+        </tr>
+        <tr>
+          <td><b>#1991</b><br><span class="orders-cell-sub">FE top products</span></td>
+          <td>Top-products table with inline per-channel split</td>
+          <td>Add: the units-vs-revenue denominator disclosure, so a row cannot be read as one consistent set.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div style="height:16px"></div>
+  <p class="gap-legend">
+    <span class="gap-mark">†</span>
+    <span>Filed as <b>body edits</b> on the existing issues rather than as new issues — the ADR names the
+      reconciliation a precondition for those issues, not a deliverable of its own, and splitting it out would leave
+      five issues whose stated criteria contradict the model they are built on.</span>
+  </p>
+
+  <div class="rule"></div>
+  <p class="sheet-lede" style="margin-top:var(--space-4);color:var(--text-muted);font-size:0.75rem">
+    Sources: ADR-040 (<code>docs/architecture/adrs/040-order-time-fx-stamping-against-a-system-reporting-currency.md</code>),
+    the implementation plan (<code>docs/plans/implementation-plan-2049-order-fx-rate-snapshot.md</code>, phases 0–5),
+    the analytics product spec (<code>docs/specs/product-spec-1976-analytics.md</code> §5–6),
+    <code>docs/frontend-ui-style-guide.md</code>, and <code>apps/web/src/index.css</code>.
+  </p>
+</div>
