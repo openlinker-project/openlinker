@@ -8,7 +8,12 @@
  */
 import { describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../../../shared/api/api-error';
-import { createListingsApi, parseResolveCategoryStreamLine } from './listings.api';
+import {
+  createListingsApi,
+  parseResolveCategoryStreamLine,
+  RESOLVE_CATEGORY_STREAM_IDLE_TIMEOUT_MS,
+  RESOLVE_CATEGORY_STREAM_KEEP_ALIVE_INTERVAL_MS,
+} from './listings.api';
 import type { EanCategoryMatchStreamEvent } from './listings.types';
 
 function streamOf(chunks: readonly string[]): ReadableStream<Uint8Array> {
@@ -93,6 +98,87 @@ describe('resolveCategoriesStream', () => {
 
     expect(events).toHaveLength(2);
     expect(events[1].kind).toBe('done');
+  });
+
+  it('fails a body that opens and then goes quiet, instead of hanging forever', async () => {
+    // The streamed transport arms no wall clock on purpose (a 500-variant run
+    // takes minutes), so the reader's idle ceiling is the only thing standing
+    // between a dead worker and a step stuck on the shimmer panel with no error
+    // and no retry.
+    vi.useFakeTimers();
+    try {
+      const requestStream = vi.fn().mockResolvedValue(
+        new ReadableStream<Uint8Array>({
+          start(): void {
+            // Opens, never writes, never closes.
+          },
+        }),
+      );
+      const api = createListingsApi(vi.fn(), requestStream);
+
+      const settled = collect(
+        api.resolveCategoriesStream('conn_1', { items: [{ variantId: 'v1', ean: '123' }] }),
+      ).then(
+        () => null,
+        (error: unknown) => error,
+      );
+
+      await vi.advanceTimersByTimeAsync(RESOLVE_CATEGORY_STREAM_IDLE_TIMEOUT_MS + 1);
+      const error = await settled;
+      expect(error).toBeInstanceOf(ApiError);
+      // 408, not a 5xx or a network error: `shouldRetryTransient` must not
+      // re-run a silent stream and burn another idle window before the operator
+      // is told anything.
+      expect((error as ApiError).status).toBe(408);
+      expect((error as ApiError).message).toMatch(/stopped sending data/i);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('rearms the idle ceiling on keep-alive filler, so a long quiet run survives', async () => {
+    vi.useFakeTimers();
+    try {
+      const sink: { controller: ReadableStreamDefaultController<Uint8Array> | null } = {
+        controller: null,
+      };
+      const encoder = new TextEncoder();
+      const requestStream = vi.fn().mockResolvedValue(
+        new ReadableStream<Uint8Array>({
+          start(controller): void {
+            sink.controller = controller;
+          },
+        }),
+      );
+      const api = createListingsApi(vi.fn(), requestStream);
+
+      const settled = collect(
+        api.resolveCategoriesStream('conn_1', { items: [{ variantId: 'v1', ean: '123' }] }),
+      ).then(
+        (events) => events,
+        (error: unknown) => error,
+      );
+
+      // Well past the ceiling in total, but never quiet for a whole window.
+      const ticks =
+        Math.ceil(
+          RESOLVE_CATEGORY_STREAM_IDLE_TIMEOUT_MS / RESOLVE_CATEGORY_STREAM_KEEP_ALIVE_INTERVAL_MS,
+        ) + 2;
+      for (let i = 0; i < ticks; i += 1) {
+        await vi.advanceTimersByTimeAsync(RESOLVE_CATEGORY_STREAM_KEEP_ALIVE_INTERVAL_MS);
+        sink.controller?.enqueue(encoder.encode('{"kind":"keep-alive"}\n'));
+      }
+      sink.controller?.enqueue(encoder.encode(`${DONE_LINE}\n`));
+      sink.controller?.close();
+
+      await vi.advanceTimersByTimeAsync(0);
+      const outcome = await settled;
+      expect(Array.isArray(outcome)).toBe(true);
+      expect(outcome as EanCategoryMatchStreamEvent[]).toHaveLength(1);
+      expect((outcome as EanCategoryMatchStreamEvent[])[0].kind).toBe('done');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('propagates the gate rejection so 404 / 409 / 422 still surface', async () => {

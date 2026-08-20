@@ -106,6 +106,12 @@ export type ApiBlobRequest = (path: string, init?: RequestInit) => Promise<Blob>
  * on a clock would recreate exactly the 30 s cliff the streamed route was added
  * to remove. Cancellation is therefore the caller's: pass `init.signal` and
  * abort it on unmount.
+ *
+ * Dropping the wall clock does not mean dropping liveness. The reader that
+ * drains the body owns an IDLE ceiling instead - see
+ * `RESOLVE_CATEGORY_STREAM_IDLE_TIMEOUT_MS` in
+ * `features/listings/api/listings.api.ts` - so a socket that opens and then goes
+ * silent still fails with a retryable error rather than hanging forever.
  */
 export type ApiStreamRequest = (
   path: string,

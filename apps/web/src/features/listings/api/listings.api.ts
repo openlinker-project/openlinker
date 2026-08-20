@@ -50,6 +50,7 @@ import type {
   BulkOfferCreateResponse,
   BulkListingRetryResponse,
 } from './bulk-listings.types';
+import { ApiError } from '../../../shared/api/api-error';
 
 export interface CreateOfferOptions {
   /**
@@ -254,6 +255,31 @@ interface ApiStreamRequest {
 const RESOLVE_CATEGORY_STREAM_ACCEPT = 'application/x-ndjson';
 
 /**
+ * Quiet period after which the route emits a keep-alive line. Mirrors
+ * `RESOLVE_CATEGORY_STREAM_KEEP_ALIVE_INTERVAL_MS` in
+ * `apps/api/src/listings/http/dto/resolve-category-stream.dto.ts` (the FE cannot
+ * import it - the line is deliberately API-app-local, not core - so the mirror
+ * is stated here and the ceiling below is derived from it, never typed twice).
+ */
+export const RESOLVE_CATEGORY_STREAM_KEEP_ALIVE_INTERVAL_MS = 10_000;
+
+/**
+ * Idle ceiling: how long the reader tolerates a body that delivers nothing at
+ * all - not a result, not a terminal line, not even keep-alive filler.
+ *
+ * This is deliberately NOT a wall-clock budget. A legitimate 500-variant run
+ * takes minutes and is exactly why the streamed transport opted out of the
+ * SPA's 30 s timeout; what it must never do is hang forever behind a socket
+ * that opened and then went silent (stalled upstream, dead worker), which
+ * leaves the operator on a shimmer panel with no error and no retry. Because
+ * the route proves itself alive every keep-alive interval, silence is
+ * diagnosable, and six consecutive missed keep-alives is generous enough that
+ * no healthy run can trip it.
+ */
+export const RESOLVE_CATEGORY_STREAM_IDLE_TIMEOUT_MS =
+  RESOLVE_CATEGORY_STREAM_KEEP_ALIVE_INTERVAL_MS * 6;
+
+/**
  * Decode one NDJSON line into an outcome-bearing event, or `null` for anything
  * the consumer must ignore: a blank line, the transport's `keep-alive` filler,
  * a line kind added by a later API version, or a partial line left over when
@@ -276,8 +302,43 @@ export function parseResolveCategoryStreamLine(line: string): EanCategoryMatchSt
   return parsed as EanCategoryMatchStreamEvent;
 }
 
+/**
+ * One `reader.read()`, bounded by the idle ceiling. Every read that resolves
+ * rearms the window, so any traffic at all - including a keep-alive line the
+ * decoder then drops - counts as liveness.
+ *
+ * The rejection is an `ApiError` with 408 rather than a 5xx or a network error
+ * on purpose: `shouldRetryTransient` would treat those as worth re-running, and
+ * re-running a silent stream just burns another idle window before the operator
+ * is told anything. 408 surfaces the ordinary error state with its retry action
+ * immediately, and the operator decides.
+ */
+async function readWithIdleCeiling(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  idleTimeoutMs: number,
+): Promise<ReadableStreamReadResult<Uint8Array>> {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const idle = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => {
+      reject(
+        new ApiError(
+          `The resolver stopped sending data for ${Math.round(idleTimeoutMs / 1000)}s.`,
+          408,
+          { idleTimeoutMs },
+        ),
+      );
+    }, idleTimeoutMs);
+  });
+  try {
+    return await Promise.race([reader.read(), idle]);
+  } finally {
+    if (timer !== null) clearTimeout(timer);
+  }
+}
+
 async function* readResolveCategoryStream(
   stream: ReadableStream<Uint8Array>,
+  idleTimeoutMs: number = RESOLVE_CATEGORY_STREAM_IDLE_TIMEOUT_MS,
 ): AsyncGenerator<EanCategoryMatchStreamEvent, void, undefined> {
   const reader = stream.getReader();
   const decoder = new TextDecoder();
@@ -286,7 +347,7 @@ async function* readResolveCategoryStream(
   let buffer = '';
   try {
     for (;;) {
-      const { done, value } = await reader.read();
+      const { done, value } = await readWithIdleCeiling(reader, idleTimeoutMs);
       if (done) break;
       buffer += decoder.decode(value, { stream: true });
       let newline = buffer.indexOf('\n');
@@ -302,11 +363,13 @@ async function* readResolveCategoryStream(
     const tail = parseResolveCategoryStreamLine(buffer);
     if (tail !== null) yield tail;
   } finally {
-    reader.releaseLock();
-    // A consumer that stops early (unmount, terminal reached) cancels the body,
-    // which is how the server learns the reader left and stops spending the
-    // operator's marketplace quota on results nobody will read.
-    void stream.cancel().catch(() => undefined);
+    // A consumer that stops early (unmount, terminal reached, idle ceiling)
+    // cancels the body, which is how the server learns the reader left and
+    // stops spending the operator's marketplace quota on results nobody will
+    // read. Cancelling through the reader also releases the lock, and unlike a
+    // bare `releaseLock()` it is safe while a read is still pending - which is
+    // exactly the state the idle ceiling leaves behind.
+    void reader.cancel().catch(() => undefined);
   }
 }
 

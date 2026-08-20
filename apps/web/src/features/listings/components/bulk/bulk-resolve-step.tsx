@@ -142,7 +142,14 @@ interface ResolveStreamState {
 
 type ResolveStreamAction =
   | { type: 'result'; variantId: string; productId: string | null; result: EanMatchResult }
-  | { type: 'terminal'; catalogueLookupPerformed: boolean }
+  /**
+   * `catalogueLookupPerformed: null` means "this arm reached its end without a
+   * terminal event reporting it" - the empty-pending path. It must never be
+   * spelled as `true`: a retry that resolves no new variant would then overwrite
+   * the `false` an earlier stream did report, re-arming every category blocker
+   * the flag exists to suppress (the #1934/F10 shape, one retry click away).
+   */
+  | { type: 'terminal'; catalogueLookupPerformed: boolean | null }
   | { type: 'error'; message: string }
   | { type: 'restart' };
 
@@ -178,7 +185,10 @@ function resolveStreamReducer(
       return {
         ...state,
         phase: 'done',
-        catalogueLookupPerformed: action.catalogueLookupPerformed,
+        // Only an event that actually reported the value may assign it; an
+        // unobserved terminal keeps whatever a real terminal already said.
+        catalogueLookupPerformed:
+          action.catalogueLookupPerformed ?? state.catalogueLookupPerformed,
         errorMessage: null,
       };
     case 'error':
@@ -195,6 +205,13 @@ function resolveStreamReducer(
 
 const TRUNCATED_STREAM_MESSAGE =
   'The resolver stopped before reporting every variant, so the results are incomplete.';
+/**
+ * A `failed` terminal is a failure the server explicitly reported, which is a
+ * different fact from a body that was cut short - so it gets its own sentence
+ * rather than being described as truncation.
+ */
+const FAILED_STREAM_MESSAGE =
+  'The resolver reported a failure part-way through this batch, so the results are incomplete.';
 
 // ---------------------------------------------------------------------------
 
@@ -293,8 +310,37 @@ export function BulkResolveStep({
   const availabilitySettled = availabilityResults.every((q) => q.isSuccess);
   const availabilityError = availabilityResults.find((q) => q.isError)?.error ?? null;
 
+  /**
+   * The stream's content key: what this run would ask the destination about,
+   * order-independent. Two renders that describe the same work produce the same
+   * string even when every array around them is a fresh object, which is what
+   * the old `useQueries` path got for free from its content-derived `queryKey`.
+   */
+  const resolveSignature = useMemo(
+    () =>
+      resolveItems
+        .map((item) => {
+          const categories = [...(item.sourceCategoryIds ?? [])].sort().join('~');
+          return `${item.variantId}|${item.ean ?? ''}|${categories}`;
+        })
+        .sort()
+        .join(','),
+    [resolveItems],
+  );
+
   const [stream, dispatch] = useReducer(resolveStreamReducer, INITIAL_STREAM_STATE);
   const [runId, setRunId] = useState(0);
+  /**
+   * Latest values the stream effect needs, read without listing them as deps.
+   * Written in an effect declared BEFORE the stream effect, so a render that
+   * does change the content key still hands the stream the fresh values.
+   */
+  const resolveItemsRef = useRef<ResolveItem[]>(resolveItems);
+  const productIdByVariantIdRef = useRef<Map<string, string>>(productIdByVariantId);
+  useEffect(() => {
+    resolveItemsRef.current = resolveItems;
+    productIdByVariantIdRef.current = productIdByVariantId;
+  });
   /** Results across every attempt, read inside the effect without re-arming it. */
   const resultsRef = useRef<Record<string, EanMatchResult>>({});
   /** Total events ever delivered - the retry gate (epic #2205 decision 3). */
@@ -306,12 +352,17 @@ export function BulkResolveStep({
     let retryTimer: ReturnType<typeof setTimeout> | null = null;
     const controller = new AbortController();
 
+    const resolveItems = resolveItemsRef.current;
+    const productIdByVariantId = productIdByVariantIdRef.current;
+
     const pending = resolveItems.filter((i) => resultsRef.current[i.variantId] === undefined);
     if (pending.length === 0) {
-      // Nothing to ask the destination about. A run that never reaches the
-      // marketplace cannot claim a catalogue was consulted, but it also
-      // resolved nothing, so the conservative reading keeps every blocker.
-      dispatch({ type: 'terminal', catalogueLookupPerformed: true });
+      // Nothing to ask the destination about. The step is done, but this arm
+      // observed no terminal event, so it reports no reading of its own -
+      // `null`, never `true` (see `ResolveStreamAction`). A first run that never
+      // reaches the marketplace therefore leaves the value unset, and the
+      // conservative default below keeps every blocker.
+      dispatch({ type: 'terminal', catalogueLookupPerformed: null });
       return () => {
         cancelled = true;
       };
@@ -346,7 +397,11 @@ export function BulkResolveStep({
               catalogueLookupPerformed: event.catalogueLookupPerformed,
             });
           } else {
-            dispatch({ type: 'error', message: TRUNCATED_STREAM_MESSAGE });
+            dispatch({
+              type: 'error',
+              message:
+                event.completion === 'failed' ? FAILED_STREAM_MESSAGE : TRUNCATED_STREAM_MESSAGE,
+            });
           }
           return;
         }
@@ -379,11 +434,14 @@ export function BulkResolveStep({
       if (retryTimer !== null) clearTimeout(retryTimer);
       controller.abort();
     };
-    // `resolveItems` is stable while the step runs (the wizard only rewrites
-    // `rows` once this step completes), and every arm filters out variants that
-    // already resolved - so a re-arm resumes the remainder rather than
-    // restarting the run.
-  }, [apiClient, connectionId, resolveItems, runId, productIdByVariantId]);
+    // Keyed on CONTENT, never on array identity. `rows` is rebuilt as a new
+    // array holding the same rows on any parent re-render (a window-focus
+    // refetch, `staleTime` expiry), which would otherwise abort the in-flight
+    // stream mid-run and re-spend the marketplace calls already in flight - the
+    // regression an identity dep reintroduced over the old content-keyed
+    // `useQueries` path. `resolveItems` / `productIdByVariantId` are read from
+    // refs so their churn cannot re-arm the effect either.
+  }, [apiClient, connectionId, resolveSignature, runId]);
 
   const catalogueLookupPerformed = stream.catalogueLookupPerformed ?? true;
   // A destination that looked nothing up cannot have produced a meaningful
@@ -561,7 +619,7 @@ export function BulkResolveStep({
         Resolving {totalVariants} {totalVariants === 1 ? 'variant' : 'variants'}
       </h2>
 
-      <div className="bulk-wizard__resolve-track">
+      <div className="bulk-wizard__resolve-track bulk-wizard__resolve-track--batch">
         <p className="bulk-wizard__resolve-track-meta" role="status" aria-live="polite">
           <span>
             {resolvedVariants} of {totalVariants} variants resolved

@@ -9,6 +9,7 @@
  * nothing having been delivered, and `catalogueLookupPerformed: false` never
  * turns a `no-match` into a category blocker.
  */
+import type { ReactElement } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -266,6 +267,9 @@ describe('BulkResolveStep', () => {
     renderStep(apiClient, onComplete);
 
     expect(await screen.findByText(/Retry resolve/i)).toBeInTheDocument();
+    // A reported failure is not truncation, and does not read as one.
+    expect(screen.getByText(/reported a failure part-way through/i)).toBeInTheDocument();
+    expect(screen.queryByText(/stopped before reporting every variant/i)).toBeNull();
     expect(onComplete).not.toHaveBeenCalled();
   });
 
@@ -317,6 +321,102 @@ describe('BulkResolveStep', () => {
     });
     expect(calls[0].items.map((i) => i.variantId)).toEqual(['v1', 'v2']);
     expect(calls[1].items.map((i) => i.variantId)).toEqual(['v2']);
+  });
+
+  it('does not restart the stream when the parent hands back a new-but-equal rows array', async () => {
+    // The wizard rebuilds `rows` as a fresh array on any parent re-render (a
+    // window-focus refetch, `staleTime` expiry). Keyed on array identity that
+    // aborted the in-flight stream and re-spent the marketplace calls already
+    // in flight; keyed on content it must be a no-op.
+    const secondVariant = gate();
+    const onComplete = vi.fn<OnComplete>();
+    const streamFn = vi.fn<ResolveStreamFn>(() =>
+      scriptedStream([
+        result('v1', 'matched'),
+        secondVariant.wait,
+        result('v2', 'matched'),
+        done(),
+      ]),
+    );
+    const apiClient = createMockApiClient({
+      listings: { resolveCategoriesStream: streamFn },
+      inventory: { availability: vi.fn().mockResolvedValue({ items: [] }) },
+    });
+
+    const step = (rows: BulkWizardRow[]): ReactElement => (
+      <BulkResolveStep
+        rows={rows}
+        connectionId="conn_1"
+        pricingPolicy={{ mode: 'use-master' }}
+        stockPolicy={{ mode: 'use-master' }}
+        currency="PLN"
+        onComplete={onComplete}
+      />
+    );
+
+    const { rerender } = renderWithProviders(
+      step([makeRow('prod_1', [variantRow('v1'), variantRow('v2')])]),
+      { apiClient },
+    );
+
+    const overall = await screen.findByRole('progressbar', {
+      name: /variants resolved in this batch/i,
+    });
+    await waitFor(() => {
+      expect(overall).toHaveAttribute('aria-valuenow', '1');
+    });
+    expect(streamFn).toHaveBeenCalledTimes(1);
+
+    // Same work, all-new objects - exactly what the wizard's sync effect emits.
+    rerender(step([makeRow('prod_1', [variantRow('v1'), variantRow('v2')])]));
+    await waitFor(() => {
+      expect(screen.getByText(/1 of 2 variants resolved/i)).toBeInTheDocument();
+    });
+    expect(streamFn).toHaveBeenCalledTimes(1);
+
+    // The ORIGINAL stream is still the one being read: releasing its gate
+    // finishes the run, which a restart would have abandoned.
+    secondVariant.open();
+    await waitFor(() => {
+      expect(onComplete).toHaveBeenCalledTimes(1);
+    });
+    expect(streamFn).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps a reported catalogueLookupPerformed:false across a retry that resolves nothing new', async () => {
+    // An availability-only failure used to be retried through the empty-pending
+    // path, which asserted `catalogueLookupPerformed: true` it never observed -
+    // re-arming every category blocker the flag exists to suppress.
+    const onComplete = vi.fn<OnComplete>();
+    const availability = vi
+      .fn()
+      .mockRejectedValueOnce(new ApiError('availability unavailable', 400, undefined))
+      .mockResolvedValue({ items: [] });
+    const streamFn = vi.fn<ResolveStreamFn>(() =>
+      scriptedStream([
+        result('v1', 'no-match'),
+        result('v2', 'no-match'),
+        done({ catalogueLookupPerformed: false }),
+      ]),
+    );
+    const apiClient = createMockApiClient({
+      listings: { resolveCategoriesStream: streamFn },
+      inventory: { availability },
+    });
+
+    renderStep(apiClient, onComplete);
+
+    await userEvent.click(await screen.findByText(/Retry resolve/i));
+
+    await waitFor(() => {
+      expect(onComplete).toHaveBeenCalledTimes(1);
+    });
+    expect(onComplete.mock.calls[0][1]).toEqual({ catalogueLookupPerformed: false });
+    for (const variant of onComplete.mock.calls[0][0][0].variants) {
+      expect(variant.blockers).not.toContain('no-match');
+    }
+    // Every variant already resolved, so the retry asked the destination nothing.
+    expect(streamFn).toHaveBeenCalledTimes(1);
   });
 
   it('reports per-variant blockers when the catalogue was consulted', async () => {
