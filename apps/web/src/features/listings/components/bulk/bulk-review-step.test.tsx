@@ -146,41 +146,6 @@ describe('BulkReviewStep', () => {
     create.forEach((btn) => expect(btn).not.toBeDisabled());
   });
 
-  it('shows the variant-resolved description on a single-variant product row', () => {
-    // A simple product publishes from the PRODUCT row - its variant row is never
-    // rendered - so a disclosure that lives only on the variant row leaves the
-    // #2200 gap open for the most common case: copy submitted to a live
-    // destination that the operator never saw rendered.
-    //
-    // Asserting the resolved TEXT, not just the summary: the row must read the
-    // variant's own override, so dropping the variant argument from
-    // `effectiveDescription` has to fail here.
-    const variant = variantRow('v1', [], {
-      override: { overrides: { description: '<p>Wariantowy opis</p>' } },
-    } as Partial<BulkVariantRow>);
-    const row = makeRow('prod_1', [variant]);
-    row.override = { overrides: { description: '<p>Produktowy opis</p>' } } as typeof row.override;
-
-    renderWithProviders(<BulkReviewStep rows={[row]} {...baseProps()} />);
-
-    const disclosure = document.querySelector('.bulk-review__prow-main .bulk-review__desc');
-    expect(disclosure).not.toBeNull();
-    // Variant wins over product, matching what the submit path sends.
-    expect(disclosure?.textContent).toContain('Wariantowy opis');
-    expect(disclosure?.textContent).not.toContain('Produktowy opis');
-  });
-
-  it('keeps the disclosure off the product row of a multi-variant product', () => {
-    // The product row carries the disclosure ONLY for a simple product; for a
-    // multi-variant one each variant row carries its own. This asserts the
-    // absence half - that the product row does not add a second one - which is
-    // the half the fix could have got wrong.
-    const rows = [makeRow('prod_1', [variantRow('v1'), variantRow('v2')])];
-    renderWithProviders(<BulkReviewStep rows={rows} {...baseProps()} />);
-
-    expect(document.querySelectorAll('.bulk-review__prow-main .bulk-review__desc')).toHaveLength(0);
-  });
-
   it('disables Create offers when an included variant needs attention', () => {
     renderWithProviders(
       <BulkReviewStep

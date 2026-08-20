@@ -505,10 +505,13 @@ test.describe('rich-text descriptions (#2201, ADR-046)', () => {
     world,
     api,
   }) => {
-    const destination =
-      world.connectionWithCapability('OfferManager', PlatformType.allegro) ??
-      world.connectionWithCapability('ProductPublisher');
-    test.skip(!destination, 'no publish destination on this stack');
+    // A SHOP destination specifically. The marketplace Review step deliberately
+    // carries no description (an offer's copy is authored in the row editor and
+    // reviewed there), so the shop publish step is the only Review surface that
+    // renders one - which makes it the only place this claim can be made through
+    // a review row.
+    const destination = world.connectionWithCapability('ProductPublisher');
+    test.skip(!destination, 'no shop publish destination on this stack');
 
     // The row editor this case must open resolves a category first, and it cannot
     // when the destination's category projection is empty (`destination.taxonomy
@@ -520,8 +523,8 @@ test.describe('rich-text descriptions (#2201, ADR-046)', () => {
       "the destination's category projection is empty on this stack - no review row can resolve a category"
     );
 
-    // A SINGLE-variant product specifically: the disclosure this case asserts on
-    // lives on the product row only when the product has exactly one variant (a
+    // A SINGLE-variant product specifically: the shop step's disclosure lives on
+    // the product row only when the product has exactly one variant (a
     // multi-variant product carries it per variant row, and those render only
     // while the row is expanded). Picking blind would report a data condition as
     // "expected 1, received 0".

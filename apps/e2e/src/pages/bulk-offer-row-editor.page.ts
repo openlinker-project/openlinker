@@ -80,6 +80,17 @@ export function descriptionMarker(markup: string): string | null {
 }
 
 export class BulkOfferRowEditor {
+  /**
+   * How many times this editor actually pasted an authored description.
+   *
+   * The wizard asserts on it: with the marketplace Review step no longer showing
+   * a description, there is no rendered element to check, so the observation has
+   * to happen where the action does. Without it, "the authored description
+   * survived the validator" would once again be asserting nothing on a stack
+   * where no row is flagged.
+   */
+  authoredCount = 0;
+
   constructor(private readonly page: Page) {}
 
   /**
@@ -496,7 +507,15 @@ export class BulkOfferRowEditor {
         new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }),
       );
     }, markup);
-    await expect(field).not.toBeEmpty();
+    // Verified in place, at the point of action: a synthetic paste that the
+    // editor ignored would otherwise leave the old value and every downstream
+    // assertion would be about the wrong text.
+    if (marker !== null) {
+      await expect(field, 'the pasted description should reach the editor').toContainText(marker);
+    } else {
+      await expect(field).not.toBeEmpty();
+    }
+    this.authoredCount += 1;
     return true;
   }
 
