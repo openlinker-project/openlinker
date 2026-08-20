@@ -136,6 +136,7 @@ One pointer per section, identical format every time.
 | [ADR-045](./045-pack-policy-per-connection-config.md) | Pack policy as a validated per-connection config pair (flow entity deferred) | Proposed — not scheduled | 2026-08-14 |
 | [ADR-047](./047-streamed-per-variant-progress.md) | Streamed per-variant progress for long marketplace fan-outs - NDJSON over POST, a sibling streaming capability, retry only before the first event | Proposed | 2026-08-20 |
 | [ADR-048](./048-incremental-catalog-replication.md) | Incremental catalog replication - adapter-declared master capability ladder, two cadences with prune authority on the reconciliation pass, budget-bounded resumable runs | Proposed | 2026-08-20 |
+| [ADR-049](./049-durability-spine-and-domain-event-contract.md) | Durability spine and the domain-event contract - work row in the business transaction, contract without a bus | Proposed | 2026-08-20 |
 
 > *Dates for pre-trail ADRs (001, 004) are approximate to the month — the underlying decisions predate the project's current git history. Other dates are merge-date of the cited PR.*
 
