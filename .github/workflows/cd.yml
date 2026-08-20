@@ -37,8 +37,18 @@ jobs:
 
       - uses: actions/checkout@v6
 
+      # The VITE_OG_* trio badges the Open Graph share card (#2174) and must be
+      # passed as build args: Vite bakes them into index.html at build time, and
+      # root .dockerignore excludes `.env.*` so no env file can carry them in.
+      # Unset repo vars expand to empty, which is the plain production card.
       - name: Build web
-        run: docker build --build-arg VITE_API_BASE_URL=${{ vars.VITE_API_BASE_URL }} -f apps/web/Dockerfile . --tag openlinker-web
+        run: |
+          docker build \
+            --build-arg VITE_API_BASE_URL=${{ vars.VITE_API_BASE_URL }} \
+            --build-arg VITE_OG_TITLE_PREFIX="${{ vars.VITE_OG_TITLE_PREFIX }}" \
+            --build-arg VITE_OG_BADGE_TEXT="${{ vars.VITE_OG_BADGE_TEXT }}" \
+            --build-arg VITE_OG_SITE_URL="${{ vars.VITE_OG_SITE_URL }}" \
+            -f apps/web/Dockerfile . --tag openlinker-web
 
       - name: Export openlinker-web as tar
         run: docker save -o openlinker-web.tar openlinker-web

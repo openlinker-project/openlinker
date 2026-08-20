@@ -2,9 +2,59 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <!--
+      Favicons (#2182). Same icon set openlinker.io ships, so the admin app, the
+      marketing site and a shared link all read as one brand in a tab strip:
+      /favicon.ico (16/32/48) for legacy clients, the SVG for modern browsers, a
+      180px PNG for Apple. The dark-background icon is deliberate - browsers
+      paint a favicon on their own chrome, where the contained-square logo reads
+      best.
+
+      favicon.svg is a deliberate byte-for-byte copy of openlinker-logo.svg
+      rather than a link to it: the logo is the sidebar brand mark, and swapping
+      that for a wordmark or a wider lockup must not silently change every
+      browser tab and home-screen shortcut.
+
+      Every href below must resolve to a real file under public/: nginx.conf's
+      SPA fallback (`try_files … /index.html`) answers a missing icon with
+      index.html at HTTP 200 rather than a 404, so a typo here shows up only as
+      a silently absent icon. src/test/head-manifest.test.ts is the guard. These
+      root-level icons need no nginx rule of their own - they fall under
+      `location /` and inherit its `Cache-Control: no-cache`, which is correct
+      because the filenames are not content-hashed and so cannot be immutable.
+    -->
+    <link rel="icon" href="/favicon.ico" sizes="any" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>OpenLinker Web</title>
+    <title>%OG_TITLE_PREFIX%OpenLinker Admin</title>
+    <meta name="description" content="%OG_TITLE_PREFIX%E-commerce orchestration platform" />
+    <!--
+      Open Graph / Twitter Card (#2174). Every percent-delimited token below is
+      resolved by the `og-meta` plugin in src/build-time/og-meta.ts — deliberately NOT by
+      Vite's native VITE_-prefixed env substitution, which leaves the literal
+      token in the output (warning only, build still green) whenever the
+      variable is unset. See apps/web/.env.example for the three vars a demo
+      deployment sets to badge every shared link without touching this markup.
+
+      Tokens are mirrored in src/test/head-manifest.test.ts; adding one here
+      without teaching the plugin about it fails that guard, and the behaviour
+      each one produces is covered by src/test/og-meta-plugin.test.ts.
+    -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="OpenLinker" />
+    %OG_URL_TAG%
+    <meta property="og:title" content="%OG_TITLE_PREFIX%OpenLinker Admin" />
+    <meta property="og:description" content="%OG_TITLE_PREFIX%E-commerce orchestration platform" />
+    <meta property="og:image" content="%OG_IMAGE_URL%" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="%OG_TITLE_PREFIX%OpenLinker" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="%OG_TITLE_PREFIX%OpenLinker Admin" />
+    <meta name="twitter:description" content="%OG_TITLE_PREFIX%E-commerce orchestration platform" />
+    <meta name="twitter:image" content="%OG_IMAGE_URL%" />
+    <meta name="twitter:image:alt" content="%OG_TITLE_PREFIX%OpenLinker" />
     <script>
       // Theme FOUC guard: resolve light/dark before React hydrates so tokens
       // cascade correctly on first paint. Kept in sync with ThemeProvider.
