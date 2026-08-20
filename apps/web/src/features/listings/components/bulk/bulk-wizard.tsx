@@ -15,7 +15,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Alert, Button, PageLayout, SetupStepper } from '../../../../shared/ui';
+import { Alert, Button, ConfirmDialog, PageLayout, SetupStepper } from '../../../../shared/ui';
 import { useToast } from '../../../../shared/ui/toast-provider';
 import { usePlatforms, type OfferRowValidationInput } from '../../../../shared/plugins';
 import { resolvePlatformLabel } from '../../../mappings';
@@ -36,6 +36,7 @@ import type {
 import type { BulkShopPublishItemRequest } from '../../api/listings.types';
 import type { Product, ProductVariant } from '../../../products';
 import { BulkConfigStep } from './bulk-config-step';
+import { BulkDestinationBar } from './bulk-destination-bar';
 import {
   BulkResolveStep,
   type BulkResolveCompletion,
@@ -154,6 +155,19 @@ export function BulkWizard({
   const isShop = activeConnection ? publishDestinationKind(activeConnection) === 'shop' : false;
   const wizardSteps = isShop ? SHOP_WIZARD_STEPS : WIZARD_STEPS;
 
+  // #2227: name the destination in the browser tab too, so a screenshot that
+  // includes browser chrome identifies the batch. Deliberately a local effect -
+  // `apps/web` has no document-title convention, and one surface does not yet
+  // justify introducing a shared hook.
+  useEffect(() => {
+    if (!activeConnection) return;
+    const previousTitle = document.title;
+    document.title = `${isShop ? 'Bulk publish' : 'Bulk offers'} · ${activeConnection.name}`;
+    return () => {
+      document.title = previousTitle;
+    };
+  }, [activeConnection, isShop]);
+
   // #1837 duplicate guard: soft-warn when included variants are already
   // published on the destination (a duplicate offer on a marketplace, an
   // upsert on a shop). Never blocks - surfaced as a chip + a confirm before the
@@ -163,6 +177,13 @@ export function BulkWizard({
     items: BulkShopPublishItemRequest[];
     status: ShopPublishVisibility;
   } | null>(null);
+
+  // #2227 destination context bar. Both pieces of state live here rather than in
+  // the bar: the wizard re-renders its body on every step change, so a
+  // bar-owned disclosure would snap shut, and the confirm dialog has to outlive
+  // the bar it was opened from (confirming unmounts it by returning to Config).
+  const [destSettingsOpen, setDestSettingsOpen] = useState(false);
+  const [changeDestOpen, setChangeDestOpen] = useState(false);
 
   // Sync row state when the products list changes (dedup by product id so a
   // product surfaced twice yields one row / one fan-out, mirroring the BE seen
@@ -638,6 +659,22 @@ export function BulkWizard({
       }
     >
       <div className="bulk-wizard">
+        {/* #2227: every step but Config, which IS the destination form. Also
+            not once a shop batch has submitted - `step` still reads 'review'
+            there while the body is the publish tracker, and offering
+            `Change destination` on an already-submitted batch is a false
+            affordance. Post-submit identity is the tracker's + the batch
+            progress page's job. */}
+        {step !== 'config' && shopBatchId === null && activeConnection ? (
+          <BulkDestinationBar
+            connection={activeConnection}
+            config={config}
+            settingsOpen={destSettingsOpen}
+            onToggleSettings={() => setDestSettingsOpen((open) => !open)}
+            onChangeDestination={() => setChangeDestOpen(true)}
+          />
+        ) : null}
+
         <div className="bulk-wizard__stepper">
           <SetupStepper
             steps={wizardSteps.map((s) => s.label)}
@@ -758,6 +795,24 @@ export function BulkWizard({
             }}
           />
         ) : null}
+
+        <ConfirmDialog
+          open={changeDestOpen}
+          onOpenChange={setChangeDestOpen}
+          title="Change destination?"
+          description={
+            activeConnection
+              ? `This batch has matched categories and row edits that only apply to ${activeConnection.name}. Going back to step 1 discards them.`
+              : 'Going back to step 1 discards the matched categories and row edits for this batch.'
+          }
+          confirmLabel="Change destination"
+          cancelLabel="Keep this batch"
+          tone="danger"
+          onConfirm={() => {
+            setChangeDestOpen(false);
+            setStep('config');
+          }}
+        />
 
         {config ? (
           <DuplicateGuardModal
