@@ -4,7 +4,8 @@
  * Single-step wizard for creating an inFakt connection. Collects:
  *   - Connection name
  *   - inFakt API key (the only credential)
- *   - Optional advanced base URL override (config) — sandbox vs. production
+ *   - Environment (Production/Sandbox, #2174) — persisted as the neutral
+ *     `config.environment` choice; the BE resolves it to a base URL
  *   - Default payment method sent on every issued invoice/correction (#1303)
  *
  * Mirrors `ErliSetupForm`: one credential, no capabilities step (capabilities
@@ -259,18 +260,15 @@ export function InfaktSetupForm(): ReactElement {
       </FormField>
 
       <FormField
-        label="Base URL (optional)"
-        name="baseUrl"
-        error={form.formState.errors.baseUrl?.message}
-        description="Advanced — override the default inFakt API base URL for sandbox testing. Must use HTTPS. Leave blank to use production."
+        label="Environment"
+        name="environment"
+        error={form.formState.errors.environment?.message}
+        description="Choose Sandbox to test against inFakt's sandbox before switching to production."
       >
-        <Input
-          {...form.register('baseUrl')}
-          className="mono-text"
-          placeholder="https://api.infakt.pl"
-          autoComplete="off"
-          invalid={Boolean(form.formState.errors.baseUrl)}
-        />
+        <Select {...form.register('environment')}>
+          <option value="sandbox">Sandbox - https://api.sandbox-infakt.pl</option>
+          <option value="production">Production - https://api.infakt.pl</option>
+        </Select>
       </FormField>
 
       <FormField

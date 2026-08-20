@@ -16,6 +16,13 @@
  * requires a valid API key so a 2xx confirms both reachability and credential
  * validity, same posture as Erli's `GET /me`.
  *
+ * Logs the resolved environment + host before probing (#2179 review round 3,
+ * Suggestion #2): sandbox vs production is the difference between a test
+ * document and a legally issued invoice, so which host a "Test connection"
+ * click actually reached must be answerable from the log. A `baseUrl` that
+ * fails the https guard surfaces as a FAILED result naming the fix, never as
+ * an unhandled 500.
+ *
  * @module libs/integrations/infakt/src/infrastructure/adapters
  * @see {@link ConnectionTesterPort}
  */
@@ -27,8 +34,13 @@ import type {
 import type { Connection } from '@openlinker/core/identifier-mapping';
 import { Logger } from '@openlinker/shared/logging';
 import type { HttpTransportFactoryPort } from '@openlinker/shared/http';
-import { InfaktHttpClient, INFAKT_DEFAULT_BASE_URL } from '../http/infakt-http-client';
+import { InfaktHttpClient } from '../http/infakt-http-client';
 import { InfaktApiError } from '../../domain/exceptions/infakt-api.error';
+import { InfaktConfigException } from '../../domain/exceptions/infakt-config.exception';
+import {
+  describeInfaktTarget,
+  resolveInfaktBaseUrl,
+} from '../../domain/policies/infakt-base-url.policy';
 import type { InfaktCredentials, InfaktConnectionConfig } from '../../domain/types/infakt-connection.types';
 
 const INFAKT_CONNECTION_PROBE_PATH = 'clients.json';
@@ -59,8 +71,12 @@ export class InfaktConnectionTesterAdapter implements ConnectionTesterPort {
       // it must go through the same rate limiter as every other Infakt call
       // site, not a bare globalThis.fetch.
       const fetchImpl = this.http.forConnection(connection);
+      const baseUrl = resolveInfaktBaseUrl(config, connection.id);
+      this.logger.log(
+        `Infakt connection ${connection.id} probe target: ${describeInfaktTarget(config, baseUrl)}`,
+      );
       const client = new InfaktHttpClient(
-        { apiKey: credentials.apiKey, baseUrl: config.baseUrl ?? INFAKT_DEFAULT_BASE_URL },
+        { apiKey: credentials.apiKey, baseUrl },
         this.logger,
         fetchImpl,
       );
@@ -86,6 +102,23 @@ export class InfaktConnectionTesterAdapter implements ConnectionTesterPort {
     // the operator-facing result.
     if (error instanceof InfaktApiError) {
       return { success: false, status: error.statusCode, message: error.message, latencyMs };
+    }
+    // A misconfigured connection is an operator-fixable state, not an internal
+    // fault (#2179 review round 3, Important #1): `resolveInfaktBaseUrl` throws
+    // this for a non-https legacy `baseUrl` override, and it must read as an
+    // actionable failed test rather than collapsing into the opaque catch-all
+    // below (or, worse, escaping as a 500). The message is OL-authored and
+    // carries no credential.
+    if (error instanceof InfaktConfigException) {
+      return {
+        success: false,
+        status: undefined,
+        // The exception message is OL-authored and bounded, so it is forwarded
+        // verbatim rather than flattened - it names the offending field, which
+        // is the whole point of surfacing this separately.
+        message: `Infakt connection configuration is invalid: ${error.message}`,
+        latencyMs,
+      };
     }
     // Anything else (raw fetch/undici error, credential-resolution failure)
     // collapses to a fixed string — never let an internal detail leak.

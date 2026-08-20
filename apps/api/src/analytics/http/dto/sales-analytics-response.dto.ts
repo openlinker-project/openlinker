@@ -53,8 +53,13 @@ export class SalesAnalyticsHeadlineDto {
   @ApiProperty()
   averageOrderValue!: number;
 
-  @ApiProperty()
-  medianOrderValue!: number;
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    description:
+      'null when no stamped order matches the range (distinct from a genuine zero median).',
+  })
+  medianOrderValue!: number | null;
 
   @ApiProperty()
   unitsSold!: number;
