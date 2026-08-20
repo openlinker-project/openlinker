@@ -1,32 +1,39 @@
 /**
- * BulkResolveStep tests (#792 / #1741)
+ * BulkResolveStep tests (#792 / #1741 / #2211)
  *
- * The Resolve step fans category-match + availability out over EVERY sibling of
- * every product in chunked parallel calls, then hands per-variant outcomes back
- * via `onComplete` once the chunks settle. On error it surfaces a Retry
- * affordance.
+ * The Resolve step consumes the NDJSON `categories/resolve-stream` route and
+ * reports progress per variant: an overall bar, a per-product bar and a live
+ * outcome list. These specs pin the properties the streamed loader exists for -
+ * the bar advances per variant, an immediate terminal renders no 0% bars, a
+ * stream that ends without its terminal line is an error, retry is gated on
+ * nothing having been delivered, and `catalogueLookupPerformed: false` never
+ * turns a `no-match` into a category blocker.
  */
 import { describe, expect, it, vi } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { renderWithProviders, createMockApiClient } from '../../../../test/test-utils';
 import { ApiError } from '../../../../shared/api/api-error';
 import {
   BulkResolveStep,
   shouldRetryTransient,
+  type BulkResolveCompletion,
   type BulkResolveOutcome,
 } from './bulk-resolve-step';
 import type { BulkVariantRow, BulkWizardRow } from './bulk-wizard.types';
 import type { Product, ProductVariant } from '../../../products';
 import type {
-  EanMatchResult,
+  EanCategoryMatchStreamEvent,
   ResolveCategoriesBatchRequest,
-  ResolveCategoriesBatchResponse,
 } from '../../api/listings.types';
 
-type ResolveCategoriesBatchFn = (
+type OnComplete = (outcomes: BulkResolveOutcome[], completion: BulkResolveCompletion) => void;
+
+type ResolveStreamFn = (
   connectionId: string,
   body: ResolveCategoriesBatchRequest,
-) => Promise<ResolveCategoriesBatchResponse>;
+  options?: { signal?: AbortSignal },
+) => AsyncIterable<EanCategoryMatchStreamEvent>;
 
 function makeVariant(id: string, overrides: Partial<ProductVariant> = {}): ProductVariant {
   return {
@@ -69,7 +76,7 @@ function makeRow(productId: string, variants: BulkVariantRow[]): BulkWizardRow {
     productId,
     product: {
       id: productId,
-      name: 'Test product',
+      name: 'Merino Hiking Socks',
       currency: 'PLN',
       images: null,
       categories: [],
@@ -88,80 +95,275 @@ function makeRow(productId: string, variants: BulkVariantRow[]): BulkWizardRow {
   };
 }
 
-function mockClient(opts: {
-  results?: Record<string, EanMatchResult>;
-  availability?: Array<{ productVariantId: string; totalAvailable: number; locationCount: number }>;
-  categoryError?: Error;
-}): ReturnType<typeof createMockApiClient> {
-  const resolveCategoriesBatch = vi.fn<ResolveCategoriesBatchFn>();
-  if (opts.categoryError) {
-    resolveCategoriesBatch.mockRejectedValue(opts.categoryError);
-  } else {
-    resolveCategoriesBatch.mockResolvedValue({ results: opts.results ?? {} });
+/** A gate a test opens to let the stream emit its next event. */
+function gate(): { wait: Promise<void>; open: () => void } {
+  let open = (): void => undefined;
+  const wait = new Promise<void>((resolve) => {
+    open = (): void => resolve();
+  });
+  return { wait, open };
+}
+
+/**
+ * Build a stream from a script. `null` entries are gates the test opens; a
+ * thrown value ends the attempt; running out of entries ends the body WITHOUT
+ * a terminal line, which is the truncated case.
+ */
+function scriptedStream(
+  script: readonly (EanCategoryMatchStreamEvent | Promise<void> | Error)[],
+): AsyncIterable<EanCategoryMatchStreamEvent> {
+  async function* iterate(): AsyncGenerator<EanCategoryMatchStreamEvent, void, undefined> {
+    for (const entry of script) {
+      if (entry instanceof Error) throw entry;
+      if (entry instanceof Promise) {
+        await entry;
+        continue;
+      }
+      yield entry;
+    }
   }
+  return iterate();
+}
+
+function result(variantId: string, kind: 'matched' | 'no-match'): EanCategoryMatchStreamEvent {
+  return kind === 'matched'
+    ? {
+        kind: 'result',
+        variantId,
+        result: { kind: 'matched', allegroCategoryId: 'cat-A', productCardId: 'card-A' },
+      }
+    : { kind: 'result', variantId, result: { kind: 'no-match' } };
+}
+
+function done(
+  overrides: Partial<Omit<EanCategoryMatchStreamEvent & { kind: 'done' }, 'kind'>> = {},
+): EanCategoryMatchStreamEvent {
+  return {
+    kind: 'done',
+    resolvedCount: 0,
+    unresolvedCount: 0,
+    completion: 'complete',
+    catalogueLookupPerformed: true,
+    ...overrides,
+  };
+}
+
+function mockClient(
+  resolveCategoriesStream: ResolveStreamFn,
+  availability: Array<{ productVariantId: string; totalAvailable: number; locationCount: number }> = [],
+): ReturnType<typeof createMockApiClient> {
   return createMockApiClient({
-    listings: { resolveCategoriesBatch },
-    inventory: {
-      availability: vi.fn().mockResolvedValue({ items: opts.availability ?? [] }),
-    },
+    listings: { resolveCategoriesStream: vi.fn(resolveCategoriesStream) },
+    inventory: { availability: vi.fn().mockResolvedValue({ items: availability }) },
   });
 }
 
+function renderStep(
+  apiClient: ReturnType<typeof createMockApiClient>,
+  onComplete: OnComplete,
+  rows: BulkWizardRow[] = [makeRow('prod_1', [variantRow('v1'), variantRow('v2')])],
+): void {
+  renderWithProviders(
+    <BulkResolveStep
+      rows={rows}
+      connectionId="conn_1"
+      pricingPolicy={{ mode: 'use-master' }}
+      stockPolicy={{ mode: 'use-master' }}
+      currency="PLN"
+      onComplete={onComplete}
+    />,
+    { apiClient },
+  );
+}
+
 describe('BulkResolveStep', () => {
-  it('fans out over every sibling and reports per-variant blockers', async () => {
-    const onComplete = vi.fn<(outcomes: BulkResolveOutcome[]) => void>();
-    const apiClient = mockClient({
-      results: {
-        v1: { kind: 'matched', allegroCategoryId: 'cat-A', productCardId: 'card-A' },
-        v2: { kind: 'no-match' },
-      },
-      availability: [
-        { productVariantId: 'v1', totalAvailable: 5, locationCount: 1 },
-        { productVariantId: 'v2', totalAvailable: 9, locationCount: 1 },
-      ],
+  it('advances the overall bar once per variant, not once per chunk', async () => {
+    const secondVariant = gate();
+    const terminal = gate();
+    const onComplete = vi.fn<OnComplete>();
+    const apiClient = mockClient(() =>
+      scriptedStream([
+        result('v1', 'matched'),
+        secondVariant.wait,
+        result('v2', 'matched'),
+        terminal.wait,
+        done(),
+      ]),
+    );
+
+    renderStep(apiClient, onComplete);
+
+    const overall = await screen.findByRole('progressbar', { name: /variants resolved in this batch/i });
+    await waitFor(() => {
+      expect(overall).toHaveAttribute('aria-valuenow', '1');
+    });
+    expect(overall).toHaveAttribute('aria-valuemax', '2');
+    expect(screen.getByText(/1 of 2 variants resolved/i)).toBeInTheDocument();
+
+    secondVariant.open();
+    await waitFor(() => {
+      expect(overall).toHaveAttribute('aria-valuenow', '2');
+    });
+    expect(onComplete).not.toHaveBeenCalled();
+
+    terminal.open();
+    await waitFor(() => {
+      expect(onComplete).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it('renders the product currently in flight with its own variant count', async () => {
+    const onComplete = vi.fn<OnComplete>();
+    const held = gate();
+    const apiClient = mockClient(() =>
+      scriptedStream([result('v1', 'matched'), held.wait, done()]),
+    );
+
+    renderStep(apiClient, onComplete);
+
+    expect(
+      await screen.findByRole('progressbar', { name: /variants resolved for Merino Hiking Socks/i }),
+    ).toHaveAttribute('aria-valuenow', '1');
+    expect(screen.getByText(/variant 2 of 2/i)).toBeInTheDocument();
+    held.open();
+  });
+
+  it('renders no progress bars when the stream terminates immediately', async () => {
+    const onComplete = vi.fn<OnComplete>();
+    const apiClient = mockClient(() =>
+      scriptedStream([done({ catalogueLookupPerformed: false })]),
+    );
+
+    renderStep(apiClient, onComplete);
+
+    // No bar may appear at 0% while the terminal-only stream settles: a
+    // destination with no matcher must not flash two empty tracks (#2205 d.4).
+    expect(screen.queryByRole('progressbar')).toBeNull();
+    await waitFor(() => {
+      expect(onComplete).toHaveBeenCalledTimes(1);
+    });
+    expect(screen.queryByRole('progressbar')).toBeNull();
+    expect(onComplete.mock.calls[0][1]).toEqual({ catalogueLookupPerformed: false });
+  });
+
+  it('treats a stream that ends without its terminal line as an error', async () => {
+    const onComplete = vi.fn<OnComplete>();
+    const apiClient = mockClient(() => scriptedStream([result('v1', 'matched')]));
+
+    renderStep(apiClient, onComplete);
+
+    expect(await screen.findByText(/Retry resolve/i)).toBeInTheDocument();
+    expect(screen.getByText(/stopped before reporting every variant/i)).toBeInTheDocument();
+    expect(onComplete).not.toHaveBeenCalled();
+  });
+
+  it("treats completion 'failed' as an error rather than a clean finish", async () => {
+    const onComplete = vi.fn<OnComplete>();
+    const apiClient = mockClient(() =>
+      scriptedStream([result('v1', 'matched'), done({ completion: 'failed' })]),
+    );
+
+    renderStep(apiClient, onComplete);
+
+    expect(await screen.findByText(/Retry resolve/i)).toBeInTheDocument();
+    expect(onComplete).not.toHaveBeenCalled();
+  });
+
+  it('auto-retries a transient failure while nothing has been delivered', async () => {
+    const onComplete = vi.fn<OnComplete>();
+    let attempt = 0;
+    const apiClient = mockClient(() => {
+      attempt += 1;
+      return attempt === 1
+        ? scriptedStream([new ApiError('gateway', 503, undefined)])
+        : scriptedStream([result('v1', 'matched'), result('v2', 'matched'), done()]);
     });
 
-    const rows = [makeRow('prod_1', [variantRow('v1'), variantRow('v2')])];
+    renderStep(apiClient, onComplete);
 
-    renderWithProviders(
-      <BulkResolveStep
-        rows={rows}
-        connectionId="conn_1"
-        pricingPolicy={{ mode: 'use-master' }}
-        stockPolicy={{ mode: 'use-master' }}
-        currency="PLN"
-        onComplete={onComplete}
-      />,
-      { apiClient },
+    await waitFor(
+      () => {
+        expect(onComplete).toHaveBeenCalledTimes(1);
+      },
+      { timeout: 4000 },
     );
+    expect(attempt).toBe(2);
+    expect(screen.queryByText(/Retry resolve/i)).toBeNull();
+  });
+
+  it('never restarts after an event has been delivered, and resumes only the unresolved variants', async () => {
+    const onComplete = vi.fn<OnComplete>();
+    const calls: ResolveCategoriesBatchRequest[] = [];
+    let attempt = 0;
+    const apiClient = mockClient((_connectionId, body) => {
+      calls.push(body);
+      attempt += 1;
+      return attempt === 1
+        ? scriptedStream([result('v1', 'matched'), new ApiError('gateway', 503, undefined)])
+        : scriptedStream([result('v2', 'matched'), done()]);
+    });
+
+    renderStep(apiClient, onComplete);
+
+    // The failure is surfaced instead of silently re-running the chunk.
+    expect(await screen.findByText(/Retry resolve/i)).toBeInTheDocument();
+    expect(attempt).toBe(1);
+    expect(screen.getByText(/1 of 2 variants already resolved/i)).toBeInTheDocument();
+
+    await userEvent.click(screen.getByText(/Retry resolve/i));
 
     await waitFor(() => {
       expect(onComplete).toHaveBeenCalledTimes(1);
     });
-    const outcomes = onComplete.mock.calls[0][0];
-    const variants = outcomes[0].variants;
+    expect(calls[0].items.map((i) => i.variantId)).toEqual(['v1', 'v2']);
+    expect(calls[1].items.map((i) => i.variantId)).toEqual(['v2']);
+  });
+
+  it('reports per-variant blockers when the catalogue was consulted', async () => {
+    const onComplete = vi.fn<OnComplete>();
+    const apiClient = mockClient(
+      () => scriptedStream([result('v1', 'matched'), result('v2', 'no-match'), done()]),
+      [
+        { productVariantId: 'v1', totalAvailable: 5, locationCount: 1 },
+        { productVariantId: 'v2', totalAvailable: 9, locationCount: 1 },
+      ],
+    );
+
+    renderStep(apiClient, onComplete);
+
+    await waitFor(() => {
+      expect(onComplete).toHaveBeenCalledTimes(1);
+    });
+    const variants = onComplete.mock.calls[0][0][0].variants;
     expect(variants.find((v) => v.variantId === 'v1')?.blockers).toEqual([]);
     expect(variants.find((v) => v.variantId === 'v2')?.blockers).toContain('no-match');
   });
 
-  it('surfaces a Retry affordance on a persistent category error', async () => {
-    const onComplete = vi.fn();
-    const apiClient = mockClient({
-      categoryError: new ApiError('boom', 400, undefined),
-    });
-    renderWithProviders(
-      <BulkResolveStep
-        rows={[makeRow('prod_1', [variantRow('v1')])]}
-        connectionId="conn_1"
-        pricingPolicy={{ mode: 'use-master' }}
-        stockPolicy={{ mode: 'use-master' }}
-        currency="PLN"
-        onComplete={onComplete}
-      />,
-      { apiClient },
+  it('does not turn a no-match into a category blocker when no catalogue was consulted', async () => {
+    const onComplete = vi.fn<OnComplete>();
+    const apiClient = mockClient(
+      () =>
+        scriptedStream([
+          result('v1', 'no-match'),
+          result('v2', 'no-match'),
+          done({ catalogueLookupPerformed: false }),
+        ]),
+      [
+        { productVariantId: 'v1', totalAvailable: 5, locationCount: 1 },
+        { productVariantId: 'v2', totalAvailable: 9, locationCount: 1 },
+      ],
     );
-    expect(await screen.findByText(/Retry resolve/i)).toBeInTheDocument();
-    expect(onComplete).not.toHaveBeenCalled();
+
+    renderStep(apiClient, onComplete);
+
+    await waitFor(() => {
+      expect(onComplete).toHaveBeenCalledTimes(1);
+    });
+    const variants = onComplete.mock.calls[0][0][0].variants;
+    for (const variant of variants) {
+      expect(variant.blockers).not.toContain('no-match');
+    }
+    expect(onComplete.mock.calls[0][1]).toEqual({ catalogueLookupPerformed: false });
   });
 });
 

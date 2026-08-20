@@ -22,6 +22,7 @@ import type {
   RefreshOfferPublicationStatusResponse,
   OfferMapping,
   PaginatedOfferMappings,
+  EanCategoryMatchStreamEvent,
   ResolveCategoriesBatchRequest,
   ResolveCategoriesBatchResponse,
   ResolveCategoryRequest,
@@ -190,6 +191,26 @@ export interface ListingsApi {
     body: ResolveCategoriesBatchRequest,
   ) => Promise<ResolveCategoriesBatchResponse>;
   /**
+   * Streaming sibling of {@link ListingsApi.resolveCategoriesBatch} (#2211).
+   * Same request body and same resolution, delivered one variant at a time so
+   * the bulk wizard's Resolve step can show real progress instead of waiting on
+   * one all-or-nothing answer.
+   *
+   * Yields only outcome-bearing lines: `result` per variant, then exactly one
+   * terminal `done`. Keep-alive filler is dropped by the decoder. Reaching the
+   * end of the iterable WITHOUT a `done` event means the stream was truncated -
+   * the consumer must treat that as a failure, never as a clean finish.
+   *
+   * The connection gate runs before the first byte, so an unknown / disabled /
+   * non-marketplace connection still rejects with a real `ApiError`
+   * (404 / 409 / 422) rather than an empty stream.
+   */
+  resolveCategoriesStream: (
+    connectionId: string,
+    body: ResolveCategoriesBatchRequest,
+    options?: { signal?: AbortSignal },
+  ) => AsyncIterable<EanCategoryMatchStreamEvent>;
+  /**
    * Submit a bulk offer-creation batch (#736). Returns the persisted
    * `batchId` and per-job message IDs. 1..100 variants per batch.
    */
@@ -220,7 +241,79 @@ function buildQuery(filters?: ListingsFilters, pagination?: ListingsPagination):
   return qs.length > 0 ? `?${qs}` : '';
 }
 
-export function createListingsApi(request: ApiRequest): ListingsApi {
+/**
+ * Streaming transport handed in by `createApiClient`. Declared locally for the
+ * same reason `ApiRequest` above is: the API module states the shape it needs
+ * rather than importing the host's `app/api` type.
+ */
+interface ApiStreamRequest {
+  (path: string, init?: RequestInit): Promise<ReadableStream<Uint8Array>>;
+}
+
+/** NDJSON media type of the resolve-stream route. */
+const RESOLVE_CATEGORY_STREAM_ACCEPT = 'application/x-ndjson';
+
+/**
+ * Decode one NDJSON line into an outcome-bearing event, or `null` for anything
+ * the consumer must ignore: a blank line, the transport's `keep-alive` filler,
+ * a line kind added by a later API version, or a partial line left over when
+ * the body ended mid-write. Dropping a partial tail is safe precisely because
+ * the terminal `done` line is what proves completeness - a truncated stream
+ * still surfaces as truncated.
+ */
+export function parseResolveCategoryStreamLine(line: string): EanCategoryMatchStreamEvent | null {
+  const trimmed = line.trim();
+  if (trimmed === '') return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(trimmed);
+  } catch {
+    return null;
+  }
+  if (typeof parsed !== 'object' || parsed === null) return null;
+  const kind = (parsed as { kind?: unknown }).kind;
+  if (kind !== 'result' && kind !== 'done') return null;
+  return parsed as EanCategoryMatchStreamEvent;
+}
+
+async function* readResolveCategoryStream(
+  stream: ReadableStream<Uint8Array>,
+): AsyncGenerator<EanCategoryMatchStreamEvent, void, undefined> {
+  const reader = stream.getReader();
+  const decoder = new TextDecoder();
+  // Lines are not aligned to chunk boundaries, so a chunk can end mid-object.
+  // The buffer carries the remainder into the next read.
+  let buffer = '';
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let newline = buffer.indexOf('\n');
+      while (newline !== -1) {
+        const line = buffer.slice(0, newline);
+        buffer = buffer.slice(newline + 1);
+        const event = parseResolveCategoryStreamLine(line);
+        if (event !== null) yield event;
+        newline = buffer.indexOf('\n');
+      }
+    }
+    buffer += decoder.decode();
+    const tail = parseResolveCategoryStreamLine(buffer);
+    if (tail !== null) yield tail;
+  } finally {
+    reader.releaseLock();
+    // A consumer that stops early (unmount, terminal reached) cancels the body,
+    // which is how the server learns the reader left and stops spending the
+    // operator's marketplace quota on results nobody will read.
+    void stream.cancel().catch(() => undefined);
+  }
+}
+
+export function createListingsApi(
+  request: ApiRequest,
+  requestStream: ApiStreamRequest,
+): ListingsApi {
   return {
     list(filters, pagination): Promise<PaginatedOfferMappings> {
       return request<PaginatedOfferMappings>(`/listings${buildQuery(filters, pagination)}`);
@@ -395,6 +488,28 @@ export function createListingsApi(request: ApiRequest): ListingsApi {
           body: JSON.stringify(body),
         },
       );
+    },
+    resolveCategoriesStream(
+      connectionId,
+      body,
+      options,
+    ): AsyncIterable<EanCategoryMatchStreamEvent> {
+      async function* iterate(): AsyncGenerator<EanCategoryMatchStreamEvent, void, undefined> {
+        const stream = await requestStream(
+          `/listings/connections/${connectionId}/categories/resolve-stream`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Accept: RESOLVE_CATEGORY_STREAM_ACCEPT,
+            },
+            body: JSON.stringify(body),
+            ...(options?.signal ? { signal: options.signal } : {}),
+          },
+        );
+        yield* readResolveCategoryStream(stream);
+      }
+      return iterate();
     },
     bulkCreate(body, options): Promise<BulkOfferCreateResponse> {
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };

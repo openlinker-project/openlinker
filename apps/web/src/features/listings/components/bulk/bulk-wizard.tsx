@@ -36,7 +36,11 @@ import type {
 import type { BulkShopPublishItemRequest } from '../../api/listings.types';
 import type { Product, ProductVariant } from '../../../products';
 import { BulkConfigStep } from './bulk-config-step';
-import { BulkResolveStep, type BulkResolveOutcome } from './bulk-resolve-step';
+import {
+  BulkResolveStep,
+  type BulkResolveCompletion,
+  type BulkResolveOutcome,
+} from './bulk-resolve-step';
 import { BulkReviewStep } from './bulk-review-step';
 import {
   BulkShopReviewStep,
@@ -219,10 +223,22 @@ export function BulkWizard({
   // then every child died on `overrides.categoryId / REQUIRED`. The browse
   // predicate below already knows the per-connection truth - it just was not
   // consulted here.
-  const destinationResolvesCategoryAtSubmit = batchConnection
+  const destinationResolvesCategoryFromManifest = batchConnection
     ? !destinationBrowsesCategories &&
       !batchConnection.supportedCapabilities.includes('EanCategoryMatcher')
     : false;
+
+  // What the Resolve step's own stream reported (#2211). `false` means no
+  // catalogue was consulted for these barcodes, which the manifest cannot
+  // express - a destination that BORROWS a matcher advertises none of its own
+  // (#1045). Without this the manifest reading stands, every `no-match` becomes
+  // a category blocker, and the operator is told to pick a category for rows the
+  // destination never looked up. `null` = not resolved yet, so the manifest
+  // reading holds until the stream says otherwise.
+  const [catalogueLookupPerformed, setCatalogueLookupPerformed] = useState<boolean | null>(null);
+
+  const destinationResolvesCategoryAtSubmit =
+    destinationResolvesCategoryFromManifest || catalogueLookupPerformed === false;
 
   // Reconcile per-variant `needs-product-parameters` (and any policy-derived)
   // blockers whenever a category's schema resolves. Gated to Review so only
@@ -261,6 +277,9 @@ export function BulkWizard({
   const handleConfigProceed = useCallback(
     (next: BulkWizardConfig) => {
       setConfig(next);
+      // A new destination has not been observed yet, so the manifest reading
+      // takes over again until its stream reports.
+      setCatalogueLookupPerformed(null);
       // Shops skip Resolve (no category/EAN matching) and go straight to
       // Review; marketplaces resolve categories first (#1829). Derived from
       // the committed connection so a switch in Config is honoured.
@@ -279,10 +298,11 @@ export function BulkWizard({
   );
 
   const handleResolveComplete = useCallback(
-    (outcomes: BulkResolveOutcome[]) => {
+    (outcomes: BulkResolveOutcome[], completion: BulkResolveCompletion) => {
       captureDemoEvent('demo_offer_wizard_review_reached', {
         platform: batchConnection?.platformType ?? 'unknown',
       });
+      setCatalogueLookupPerformed(completion.catalogueLookupPerformed);
       setRows((prev) => mergeResolveOutcomes(prev, outcomes));
       setStep('review');
     },
@@ -654,7 +674,7 @@ export function BulkWizard({
                 stockPolicy={config.stockPolicy}
                 currency={config.currency}
                 platformValidate={platformValidate}
-                destinationResolvesCategoryAtSubmit={destinationResolvesCategoryAtSubmit}
+                destinationResolvesCategoryAtSubmit={destinationResolvesCategoryFromManifest}
                 onComplete={handleResolveComplete}
               />
             )}
