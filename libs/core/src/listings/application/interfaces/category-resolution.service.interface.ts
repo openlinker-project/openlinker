@@ -66,8 +66,16 @@ export interface ICategoryResolutionService {
    * lands (#2207, epic #2205) so a caller can report progress instead of
    * waiting on one all-or-nothing answer.
    *
-   * Emits one `result` event per input item followed by exactly one `done`
-   * event. Three paths, all gated on declared capabilities:
+   * Emits at most one `result` event per input item followed by exactly one
+   * `done` event, whose `completion` says whether the run finished
+   * (`complete`), was cut short by the caller's signal (`aborted`) or threw
+   * (`failed`). The terminal event is guaranteed on the failure path too - the
+   * error is rethrown after it, so a consumer can always tell a truncated
+   * stream from a finished one. A `result` for a variant the adapter re-emits,
+   * or for one that was never in the input, is dropped rather than forwarded,
+   * so `resolvedCount + unresolvedCount` can never exceed the input size.
+   *
+   * Three paths, all gated on declared capabilities:
    * - `EanCategoryMatcherStreaming` - streamed through as the adapter resolves.
    * - `EanCategoryMatcher` only - the batch call runs, then its results are
    *   emitted; the operator sees no intermediate progress, but the step works.
@@ -82,11 +90,17 @@ export interface ICategoryResolutionService {
    * Connection resolution is identical to `resolveCategoriesBatch`, so an
    * unknown/disabled connection or a non-marketplace one still surfaces its
    * usual error - raised from the first `next()`, since a generator body does
-   * not run until iteration starts.
+   * not run until iteration starts. The one exception is a signal that is
+   * *already* aborted at the first `next()`: the connection is then never
+   * resolved, so no such error can surface and the stream is a lone `done` with
+   * `completion: 'aborted'`.
    *
    * `options.signal`, once aborted, stops further work being scheduled and the
    * stream ends with its `done` tally; in-flight marketplace calls are left to
-   * settle (epic #2205 decision 5).
+   * settle (epic #2205 decision 5). An abort therefore *discards* verdicts the
+   * adapter had already paid a marketplace call for, which is the intended
+   * trade for a caller that aborts on navigation - a caller aborting on a
+   * timeout instead should not expect the partial results back.
    */
   resolveCategoriesStream(
     connectionId: string,

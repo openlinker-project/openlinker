@@ -47,20 +47,44 @@ export interface EanCategoryMatchStreamResultEvent {
 }
 
 /**
- * Terminal event, emitted exactly once and always last.
+ * How a stream ended, carried on the terminal event.
+ *
+ * The distinction is on the wire rather than left to a thrown exception because
+ * the transport (epic #2205 step 4) serializes these events as NDJSON: by the
+ * time a mid-run failure happens the response status is long since committed,
+ * so a consumer reading lines would otherwise see a `done` indistinguishable
+ * from a clean finish and treat a truncated run as authoritative. Epic #2205
+ * decision 3 turns exactly on that reading - resume the unresolved variants
+ * rather than re-run the chunk - so it has to survive the transport.
+ *
+ * - `complete` - every input item was reported; the tallies sum to the input size.
+ * - `aborted` - the caller's signal fired, so scheduling stopped early
+ *   (decision 5); the tallies cover only what had already landed.
+ * - `failed` - the run threw. The tallies still describe the results actually
+ *   delivered before the throw, which is what a resume needs.
+ */
+export const EanCategoryMatchStreamCompletionValues = ['complete', 'aborted', 'failed'] as const;
+
+export type EanCategoryMatchStreamCompletion =
+  (typeof EanCategoryMatchStreamCompletionValues)[number];
+
+/**
+ * Terminal event, emitted exactly once and always last - on the failure path too.
  *
  * `resolvedCount` counts variants that reached a single destination category
- * (`matched`); `failedCount` counts every other outcome (`multi-match`,
- * `no-ean`, `no-match`) - i.e. the variants still needing operator action.
- * The two are reported separately rather than as one progress number because a
- * consumer has to distinguish "the run finished, act on N rows" from "the run
- * finished, nothing to do". They sum to the number of `result` events actually
- * emitted, which is below the input size only on an aborted stream.
+ * (`matched`); `unresolvedCount` counts every other outcome (`multi-match`,
+ * `no-ean`, `no-match`) - the variants still needing operator action. It is
+ * deliberately not `failedCount`: a `multi-match` is a successful catalogue hit
+ * awaiting disambiguation and a `no-ean` is a data gap, so neither is an error,
+ * and the grouping a progress UI needs is "nothing to do" vs "N rows need you".
+ * They sum to the number of `result` events actually emitted, which equals the
+ * input size only when `completion` is `complete`.
  */
 export interface EanCategoryMatchStreamDoneEvent {
   kind: 'done';
   resolvedCount: number;
-  failedCount: number;
+  unresolvedCount: number;
+  completion: EanCategoryMatchStreamCompletion;
 }
 
 export type EanCategoryMatchStreamEvent =

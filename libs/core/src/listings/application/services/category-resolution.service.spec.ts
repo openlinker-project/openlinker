@@ -11,7 +11,8 @@
  * Also covers the #2207 streaming path (`resolveCategoriesStream`): pass-through
  * of an `EanCategoryMatcherStreaming` adapter, degradation to the batch
  * capability, the zero-call immediate stream for a destination with neither, the
- * shared #1522 mapping fallback, and abort handling.
+ * shared #1522 mapping fallback, abort handling, the per-input-item de-dup gate,
+ * and the guaranteed terminal event on a mid-stream throw.
  *
  * @module libs/core/src/listings/application/services
  */
@@ -379,7 +380,7 @@ describe('CategoryResolutionService', () => {
           result: { kind: 'matched', allegroCategoryId: 'cat-1', productCardId: 'card-1' },
         },
         { kind: 'result', variantId: 'v2', result: { kind: 'no-ean' } },
-        { kind: 'done', resolvedCount: 1, failedCount: 1 },
+        { kind: 'done', resolvedCount: 1, unresolvedCount: 1, completion: 'complete' },
       ]);
       // The adapter receives only the EAN-only shape, and the streaming
       // capability wins over the batch one when both are declared.
@@ -404,7 +405,7 @@ describe('CategoryResolutionService', () => {
       expect(events).toEqual([
         { kind: 'result', variantId: 'v1', result: { kind: 'no-match' } },
         { kind: 'result', variantId: 'v2', result: { kind: 'no-match' } },
-        { kind: 'done', resolvedCount: 0, failedCount: 2 },
+        { kind: 'done', resolvedCount: 0, unresolvedCount: 2, completion: 'complete' },
       ]);
     });
 
@@ -435,7 +436,7 @@ describe('CategoryResolutionService', () => {
             method: 'category_mapping',
           },
         },
-        { kind: 'done', resolvedCount: 1, failedCount: 0 },
+        { kind: 'done', resolvedCount: 1, unresolvedCount: 0, completion: 'complete' },
       ]);
       expect(mappingConfig.resolveDestinationCategory).toHaveBeenCalledWith(
         CONNECTION_ID,
@@ -467,7 +468,7 @@ describe('CategoryResolutionService', () => {
           result: { kind: 'matched', allegroCategoryId: 'cat-1', productCardId: 'card-1' },
         },
         { kind: 'result', variantId: 'v2', result: { kind: 'no-ean' } },
-        { kind: 'done', resolvedCount: 1, failedCount: 1 },
+        { kind: 'done', resolvedCount: 1, unresolvedCount: 1, completion: 'complete' },
       ]);
     });
 
@@ -476,16 +477,131 @@ describe('CategoryResolutionService', () => {
       // §3) is a first-class case: N no-match results, zero per-variant work.
       const adapter = { updateOfferQuantity: jest.fn() };
       integrationsService.getCapabilityAdapter.mockResolvedValue(adapter);
+      // A mapping that WOULD resolve, on an item that carries source categories:
+      // without both, the assertion below passes whether or not this path routes
+      // through the #1522 fallback, and the parity claim goes unchecked.
+      mappingConfig.resolveDestinationCategory.mockResolvedValue('cat-mapped');
 
-      const events = await collect(service.resolveCategoriesStream(CONNECTION_ID, twoItems));
+      const events = await collect(
+        service.resolveCategoriesStream(CONNECTION_ID, {
+          items: [
+            { variantId: 'v1', ean: '590111', sourceCategoryIds: ['src-1'] },
+            { variantId: 'v2', ean: null },
+          ],
+        })
+      );
 
+      // Byte-identical to `resolveCategoriesBatch` for the same destination: it
+      // returns `no-match` straight from the capability guard, before its own
+      // fallback loop, so the streaming path must not resolve the mapping either.
       expect(events).toEqual([
         { kind: 'result', variantId: 'v1', result: { kind: 'no-match' } },
         { kind: 'result', variantId: 'v2', result: { kind: 'no-match' } },
-        { kind: 'done', resolvedCount: 0, failedCount: 2 },
+        { kind: 'done', resolvedCount: 0, unresolvedCount: 2, completion: 'complete' },
       ]);
       expect(adapter.updateOfferQuantity).not.toHaveBeenCalled();
       expect(mappingConfig.resolveDestinationCategory).not.toHaveBeenCalled();
+    });
+
+    it('should drop a duplicated variant and one the input never carried', async () => {
+      const streamCategoriesForBatchByEan = streamingMatcher([
+        { variantId: 'v1', result: { kind: 'no-match' } },
+        // A retry wave inside the producer re-reports a variant it already sent.
+        { variantId: 'v1', result: { kind: 'matched', allegroCategoryId: 'cat-1', productCardId: 'card-1' } },
+        // And names one nobody asked about.
+        { variantId: 'v9', result: { kind: 'matched', allegroCategoryId: 'cat-9', productCardId: 'card-9' } },
+        { variantId: 'v2', result: { kind: 'no-ean' } },
+      ]);
+      integrationsService.getCapabilityAdapter.mockResolvedValue({
+        updateOfferQuantity: jest.fn(),
+        streamCategoriesForBatchByEan,
+      });
+
+      const events = await collect(service.resolveCategoriesStream(CONNECTION_ID, twoItems));
+
+      // One `result` per INPUT item, so the tallies stay within the input size
+      // and a progress bar keyed on it cannot run past 100%.
+      expect(events).toEqual([
+        { kind: 'result', variantId: 'v1', result: { kind: 'no-match' } },
+        { kind: 'result', variantId: 'v2', result: { kind: 'no-ean' } },
+        { kind: 'done', resolvedCount: 0, unresolvedCount: 2, completion: 'complete' },
+      ]);
+    });
+
+    it('should emit the terminal event and then rethrow when the adapter throws mid-stream', async () => {
+      const boom = new Error('token refresh failed');
+      const streamCategoriesForBatchByEan = jest.fn(() =>
+        (async function* (): AsyncGenerator<EanCategoryMatchStreamItem> {
+          await Promise.resolve();
+          yield {
+            variantId: 'v1',
+            result: { kind: 'matched', allegroCategoryId: 'cat-1', productCardId: 'card-1' },
+          };
+          throw boom;
+        })()
+      );
+      integrationsService.getCapabilityAdapter.mockResolvedValue({
+        updateOfferQuantity: jest.fn(),
+        streamCategoriesForBatchByEan,
+      });
+
+      const events: EanCategoryMatchStreamEvent[] = [];
+      // A truncated stream must still be self-describing on the wire, and still
+      // surface the underlying error to an in-process caller.
+      await expect(
+        (async (): Promise<void> => {
+          for await (const event of service.resolveCategoriesStream(CONNECTION_ID, twoItems)) {
+            events.push(event);
+          }
+        })()
+      ).rejects.toBe(boom);
+
+      expect(events).toEqual([
+        {
+          kind: 'result',
+          variantId: 'v1',
+          result: { kind: 'matched', allegroCategoryId: 'cat-1', productCardId: 'card-1' },
+        },
+        { kind: 'done', resolvedCount: 1, unresolvedCount: 0, completion: 'failed' },
+      ]);
+    });
+
+    it('should emit the terminal event when the shared mapping fallback throws', async () => {
+      const boom = new Error('mapping lookup failed');
+      const streamCategoriesForBatchByEan = streamingMatcher([
+        { variantId: 'v1', result: { kind: 'matched', allegroCategoryId: 'cat-1', productCardId: 'card-1' } },
+        { variantId: 'v2', result: { kind: 'no-match' } },
+      ]);
+      integrationsService.getCapabilityAdapter.mockResolvedValue({
+        updateOfferQuantity: jest.fn(),
+        streamCategoriesForBatchByEan,
+      });
+      // The fallback hits the DB, so it is a throw site the adapter's own
+      // no-throw contract says nothing about.
+      mappingConfig.resolveDestinationCategory.mockRejectedValue(boom);
+
+      const events: EanCategoryMatchStreamEvent[] = [];
+      await expect(
+        (async (): Promise<void> => {
+          for await (const event of service.resolveCategoriesStream(CONNECTION_ID, {
+            items: [
+              { variantId: 'v1', ean: '1' },
+              { variantId: 'v2', ean: '2', sourceCategoryIds: ['src-1'] },
+            ],
+          })) {
+            events.push(event);
+          }
+        })()
+      ).rejects.toBe(boom);
+
+      expect(events).toEqual([
+        {
+          kind: 'result',
+          variantId: 'v1',
+          result: { kind: 'matched', allegroCategoryId: 'cat-1', productCardId: 'card-1' },
+        },
+        { kind: 'done', resolvedCount: 1, unresolvedCount: 0, completion: 'failed' },
+      ]);
     });
 
     it('should schedule nothing at all when the signal is already aborted', async () => {
@@ -496,7 +612,9 @@ describe('CategoryResolutionService', () => {
         service.resolveCategoriesStream(CONNECTION_ID, twoItems, { signal: controller.signal })
       );
 
-      expect(events).toEqual([{ kind: 'done', resolvedCount: 0, failedCount: 0 }]);
+      expect(events).toEqual([
+        { kind: 'done', resolvedCount: 0, unresolvedCount: 0, completion: 'aborted' },
+      ]);
       // Resolving the adapter can decrypt credentials and mint a token — work
       // the caller already told us to stop scheduling.
       expect(integrationsService.getCapabilityAdapter).not.toHaveBeenCalled();
@@ -544,7 +662,7 @@ describe('CategoryResolutionService', () => {
       });
       expect(events).toEqual([
         { kind: 'result', variantId: 'v1', result: { kind: 'no-match' } },
-        { kind: 'done', resolvedCount: 0, failedCount: 1 },
+        { kind: 'done', resolvedCount: 0, unresolvedCount: 1, completion: 'aborted' },
       ]);
       expect(yielded).not.toContain('v3');
     });
@@ -581,7 +699,7 @@ describe('CategoryResolutionService', () => {
 
       expect(events).toEqual([
         { kind: 'result', variantId: 'v1', result: { kind: 'no-match' } },
-        { kind: 'done', resolvedCount: 0, failedCount: 1 },
+        { kind: 'done', resolvedCount: 0, unresolvedCount: 1, completion: 'aborted' },
       ]);
       expect(mappingConfig.resolveDestinationCategory).toHaveBeenCalledTimes(1);
     });

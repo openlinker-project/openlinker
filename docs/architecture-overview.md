@@ -562,7 +562,7 @@ interface OfferManagerPort {
 
 Each is an independent interface + co-located `is{Capability}(adapter)` type guard. Adapters declare the capabilities they support via `implements OfferManagerPort, OfferLister, OfferCreator, …`; call sites narrow via the guard before invoking the method — after the guard TypeScript knows the method is present.
 
-> The table below is a curated highlight. The **complete, code-synced inventory of all 45 sub-capabilities across every port** (with descriptions and guards) lives in [`docs/capabilities.md`](./capabilities.md).
+> The table below is a curated highlight. The **complete, code-synced inventory of all 46 sub-capabilities across every port** (with descriptions and guards) lives in [`docs/capabilities.md`](./capabilities.md).
 
 | Capability | Method |
 |---|---|

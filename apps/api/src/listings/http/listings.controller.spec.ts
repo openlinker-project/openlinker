@@ -187,6 +187,7 @@ describe('ListingsController', () => {
     categoryResolution = {
       resolveCategory: jest.fn(),
       resolveCategoriesBatch: jest.fn(),
+      resolveCategoriesStream: jest.fn(),
     };
     offerStatusRead = {
       getPublicationStatusForProduct: jest.fn(),

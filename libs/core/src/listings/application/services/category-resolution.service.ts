@@ -26,6 +26,8 @@ import { Injectable, Inject } from '@nestjs/common';
 import { Logger } from '@openlinker/shared/logging';
 import type {
   OfferManagerPort,
+  EanCategoryMatchStreamCompletion,
+  EanCategoryMatchStreamDoneEvent,
   EanCategoryMatchStreamEvent,
   EanCategoryMatchStreamOptions,
   EanMatchResult,
@@ -172,115 +174,156 @@ export class CategoryResolutionService implements ICategoryResolutionService {
   ): AsyncGenerator<EanCategoryMatchStreamEvent> {
     const signal = options?.signal;
     let resolvedCount = 0;
-    let failedCount = 0;
+    let unresolvedCount = 0;
     const tally = (result: EanMatchResult): void => {
       if (result.kind === 'matched') {
         resolvedCount += 1;
         return;
       }
-      failedCount += 1;
+      unresolvedCount += 1;
     };
+    const done = (
+      completion: EanCategoryMatchStreamCompletion
+    ): EanCategoryMatchStreamDoneEvent => ({
+      kind: 'done',
+      resolvedCount,
+      unresolvedCount,
+      completion,
+    });
+    // Every non-throwing exit reports the same way, so a path can never claim a
+    // clean finish while the caller's signal cut it short.
+    const settled = (): EanCategoryMatchStreamDoneEvent =>
+      done(signal?.aborted ? 'aborted' : 'complete');
 
-    // An already-aborted signal must not even resolve the adapter — connection
-    // resolution can decrypt credentials and mint a token, which is exactly the
-    // work the caller just told us to stop scheduling.
-    if (signal?.aborted) {
-      yield { kind: 'done', resolvedCount, failedCount };
-      return;
-    }
-
-    // Same gate as `resolveCategoriesBatch`: unknown/disabled connections
-    // surface as 404/409 and a non-marketplace connection as 422. It runs on the
-    // first `next()` rather than at call time — a generator body is lazy.
-    const adapter = await this.integrationsService.getCapabilityAdapter<OfferManagerPort>(
-      connectionId,
-      'OfferManager'
-    );
-    const eanOnlyItems = input.items.map((item) => ({
-      variantId: item.variantId,
-      ean: item.ean,
-    }));
-
-    if (isEanCategoryMatcherStreaming(adapter)) {
-      this.logger.debug(
-        `Streaming ${input.items.length} variant EAN(s) (connection=${connectionId})`
-      );
-      const byVariantId = new Map(input.items.map((item) => [item.variantId, item]));
-      const seen = new Set<string>();
-      for await (const streamed of adapter.streamCategoriesForBatchByEan(
-        { items: eanOnlyItems },
-        signal ? { signal } : undefined
-      )) {
-        if (signal?.aborted) {
-          break;
-        }
-        seen.add(streamed.variantId);
-        const item = byVariantId.get(streamed.variantId) ?? {
-          variantId: streamed.variantId,
-          ean: null,
-        };
-        const result = await this.applyMappingFallback(connectionId, item, streamed.result);
-        tally(result);
-        yield { kind: 'result', variantId: streamed.variantId, result };
+    try {
+      // An already-aborted signal must not even resolve the adapter — connection
+      // resolution can decrypt credentials and mint a token, which is exactly the
+      // work the caller just told us to stop scheduling. The `aborted` completion
+      // is what keeps this honest: a bare 0/0 tally is indistinguishable from a
+      // healthy connection with nothing to do.
+      if (signal?.aborted) {
+        yield done('aborted');
+        return;
       }
-      // A consumer's progress denominator is the input size, so an item the
-      // adapter never reported would leave the bar short of complete forever.
-      // Report it as unresolved rather than trusting the adapter's arithmetic.
-      if (!signal?.aborted) {
-        for (const item of input.items) {
-          if (seen.has(item.variantId)) {
+
+      // Same gate as `resolveCategoriesBatch`: unknown/disabled connections
+      // surface as 404/409 and a non-marketplace connection as 422. It runs on the
+      // first `next()` rather than at call time — a generator body is lazy.
+      const adapter = await this.integrationsService.getCapabilityAdapter<OfferManagerPort>(
+        connectionId,
+        'OfferManager'
+      );
+      const eanOnlyItems = input.items.map((item) => ({
+        variantId: item.variantId,
+        ean: item.ean,
+      }));
+
+      if (isEanCategoryMatcherStreaming(adapter)) {
+        this.logger.debug(
+          `Streaming ${input.items.length} variant EAN(s) (connection=${connectionId})`
+        );
+        const byVariantId = new Map(input.items.map((item) => [item.variantId, item]));
+        const seen = new Set<string>();
+        for await (const streamed of adapter.streamCategoriesForBatchByEan(
+          { items: eanOnlyItems },
+          signal ? { signal } : undefined
+        )) {
+          if (signal?.aborted) {
+            break;
+          }
+          // The per-item invariant a consumer's progress denominator relies on is
+          // one `result` per *input* item, so an adapter re-emitting a variant (a
+          // retry wave inside the producer is a realistic source) or naming one
+          // nobody asked about must not be passed upward - either would push the
+          // tallies past the input size and a progress bar past 100%.
+          if (seen.has(streamed.variantId)) {
             continue;
           }
-          const result = await this.applyMappingFallback(connectionId, item, {
-            kind: 'no-match',
-          });
+          const item = byVariantId.get(streamed.variantId);
+          if (!item) {
+            this.logger.warn(
+              `Adapter reported unknown variant ${streamed.variantId}; dropping the event ` +
+                `(connection=${connectionId})`
+            );
+            continue;
+          }
+          seen.add(streamed.variantId);
+          const result = await this.applyMappingFallback(connectionId, item, streamed.result);
+          tally(result);
+          yield { kind: 'result', variantId: streamed.variantId, result };
+        }
+        // A consumer's progress denominator is the input size, so an item the
+        // adapter never reported would leave the bar short of complete forever.
+        // Report it as unresolved rather than trusting the adapter's arithmetic.
+        if (!signal?.aborted) {
+          for (const item of input.items) {
+            if (seen.has(item.variantId)) {
+              continue;
+            }
+            const result = await this.applyMappingFallback(connectionId, item, {
+              kind: 'no-match',
+            });
+            tally(result);
+            yield { kind: 'result', variantId: item.variantId, result };
+          }
+        }
+        yield settled();
+        return;
+      }
+
+      if (isEanCategoryMatcher(adapter)) {
+        // Batch-only adapter: nothing is observable until the whole call returns,
+        // so the operator sees the results arrive together. The step still
+        // completes, which is the point of keeping the streaming capability a
+        // sibling rather than a replacement (epic #2205 decision 2).
+        this.logger.debug(
+          `Adapter lacks EanCategoryMatcherStreaming; batch-resolving ${input.items.length} ` +
+            `variant EAN(s) before emitting (connection=${connectionId})`
+        );
+        const eanResults = await adapter.resolveCategoriesForBatchByEan({ items: eanOnlyItems });
+        for (const item of input.items) {
+          if (signal?.aborted) {
+            break;
+          }
+          const result = await this.applyMappingFallback(
+            connectionId,
+            item,
+            eanResults.get(item.variantId) ?? { kind: 'no-match' }
+          );
           tally(result);
           yield { kind: 'result', variantId: item.variantId, result };
         }
+        yield settled();
+        return;
       }
-      yield { kind: 'done', resolvedCount, failedCount };
-      return;
-    }
 
-    if (isEanCategoryMatcher(adapter)) {
-      // Batch-only adapter: nothing is observable until the whole call returns,
-      // so the operator sees the results arrive together. The step still
-      // completes, which is the point of keeping the streaming capability a
-      // sibling rather than a replacement (epic #2205 decision 2).
+      // Neither capability: the mapping fallback is deliberately skipped here so
+      // the stream stays byte-identical to what `resolveCategoriesBatch` returns
+      // for the same destination (epic #2205 decision 4 — an immediate stream is a
+      // first-class case, not a failure).
       this.logger.debug(
-        `Adapter lacks EanCategoryMatcherStreaming; batch-resolving ${input.items.length} ` +
-          `variant EAN(s) before emitting (connection=${connectionId})`
+        `Adapter matches no EAN capability; streaming ${input.items.length} no-match result(s) ` +
+          `for manual category selection (connection=${connectionId})`
       );
-      const eanResults = await adapter.resolveCategoriesForBatchByEan({ items: eanOnlyItems });
       for (const item of input.items) {
-        if (signal?.aborted) {
-          break;
-        }
-        const result = await this.applyMappingFallback(
-          connectionId,
-          item,
-          eanResults.get(item.variantId) ?? { kind: 'no-match' }
-        );
+        const result: EanMatchResult = { kind: 'no-match' };
         tally(result);
         yield { kind: 'result', variantId: item.variantId, result };
       }
-      yield { kind: 'done', resolvedCount, failedCount };
-      return;
+      yield settled();
+    } catch (error) {
+      // The terminal event is emitted BEFORE rethrowing, and the error is then
+      // rethrown rather than being folded into the event. Both halves are needed
+      // for different consumers: over the NDJSON transport (epic #2205 step 4)
+      // the response status is already committed, so the only way a truncated
+      // run is distinguishable from a clean one is a `done` line that says
+      // `failed` - while an in-process caller needs the real error object for
+      // its log and its retry decision, which no serializable field carries.
+      // A consumer that stops iterating on the terminal event never observes the
+      // rethrow, which is fine: it already learned the run ended badly.
+      yield done('failed');
+      throw error;
     }
-
-    // Neither capability: the mapping fallback is deliberately skipped here so
-    // the stream stays byte-identical to what `resolveCategoriesBatch` returns
-    // for the same destination (epic #2205 decision 4 — an immediate stream is a
-    // first-class case, not a failure).
-    this.logger.debug(
-      `Adapter matches no EAN capability; streaming ${input.items.length} no-match result(s) ` +
-        `for manual category selection (connection=${connectionId})`
-    );
-    for (const item of input.items) {
-      failedCount += 1;
-      yield { kind: 'result', variantId: item.variantId, result: { kind: 'no-match' } };
-    }
-    yield { kind: 'done', resolvedCount, failedCount };
   }
 
   /**

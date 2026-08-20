@@ -276,9 +276,13 @@ export type {
   EanMatchCandidate,
   BatchCategoryByEanInput,
 } from './domain/types/ean-category-match.types';
-export { EanCategoryMatchStreamEventKindValues } from './domain/types/ean-category-match-stream.types';
+export {
+  EanCategoryMatchStreamEventKindValues,
+  EanCategoryMatchStreamCompletionValues,
+} from './domain/types/ean-category-match-stream.types';
 export type {
   EanCategoryMatchStreamEventKind,
+  EanCategoryMatchStreamCompletion,
   EanCategoryMatchStreamItem,
   EanCategoryMatchStreamResultEvent,
   EanCategoryMatchStreamDoneEvent,
