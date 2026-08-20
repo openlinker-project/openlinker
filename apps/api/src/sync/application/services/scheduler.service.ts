@@ -56,6 +56,14 @@ const PENDING_RECOVERY_DEFAULT_LIMIT = 100;
 const STALE_OFFER_PAUSE_DEFAULT_LIMIT = 200;
 
 /**
+ * Default bounds for the order FX-stamp reconcile sweep (#2125). `limit` bounds
+ * the per-connection page; `maxAgeDays` keeps the pre-feature backlog from
+ * crowding out live orders on every tick. The worker handler clamps both.
+ */
+const ORDER_FX_STAMP_SWEEP_DEFAULT_LIMIT = 100;
+const ORDER_FX_STAMP_SWEEP_DEFAULT_MAX_AGE_DAYS = 30;
+
+/**
  * Static descriptor for a core capability-scoped scheduler task. The four core
  * tasks (inventory / product / pickup-point / regulatory-reconcile) are
  * structurally identical — drain every active connection supporting `capability`
@@ -183,6 +191,31 @@ const CORE_CAPABILITY_TASKS: readonly CoreCapabilityTaskDescriptor[] = [
     idempotencyKey: (connectionId, timestamp) =>
       `marketplace:${connectionId}:offer:pauseStaleSweep:${timestamp}`,
     extraPayload: { limit: STALE_OFFER_PAUSE_DEFAULT_LIMIT },
+  },
+  {
+    taskId: 'order-fx-stamp-sweep',
+    jobType: 'marketplace.order.fxStampSweep',
+    // Scoped to `OrderSource` because `order_records.sourceConnectionId` is the
+    // only connection axis an order row carries, and `SyncJob.connectionId` is
+    // non-nullable — so the fan-out that already exists per source connection
+    // is also the natural partition of the unstamped frontier. The stamp itself
+    // is connection-agnostic.
+    capability: 'OrderSource',
+    enabledEnvVar: 'OL_ORDER_FX_STAMP_SWEEP_ENABLED',
+    // Default ON, like the stale-offer sweep and for the same shape of reason:
+    // running it re-attempts a stamp that is idempotent by construction, while
+    // NOT running it means a provider outage longer than the ~4.3 h retry
+    // window silently loses the figure forever (#2125).
+    cronEnvVar: 'OL_ORDER_FX_STAMP_SWEEP_CRON',
+    // Offset minute (23) so it doesn't pile onto the */15 and */20 master syncs
+    // or the :17 stale-offer sweep.
+    defaultCron: '23 * * * *',
+    idempotencyKey: (connectionId, timestamp) =>
+      `marketplace:${connectionId}:order:fxStampSweep:${timestamp}`,
+    extraPayload: {
+      limit: ORDER_FX_STAMP_SWEEP_DEFAULT_LIMIT,
+      maxAgeDays: ORDER_FX_STAMP_SWEEP_DEFAULT_MAX_AGE_DAYS,
+    },
   },
 ];
 

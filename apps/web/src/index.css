@@ -6475,6 +6475,27 @@ a.kpi-card:focus-visible {
   margin-top: 0.5rem;
 }
 
+/*
+ * ── Currency Settings (#2126, ADR-040) ──────────────────────────────
+ * The coverage-gap acknowledgement checkbox inside the dialog, same shape
+ * as `.posthog-settings-checkbox` / `.mailer-settings-checkbox`.
+ */
+.currency-settings-ack {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  color: var(--text-primary);
+  margin-top: 0.75rem;
+}
+
+/* Edit + Coverage sit side by side on the tile, matching .content-panel__actions */
+.currency-settings-tile__actions {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
 /* ── Product Events section (#1787) ── */
 .posthog-settings-product-events {
   margin-top: 1rem;

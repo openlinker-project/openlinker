@@ -1,8 +1,8 @@
 /**
  * Polish working-day arithmetic.
  *
- * Pure, dependency-free helpers for advancing a date by a number of WORKING
- * days under Polish rules: Saturdays, Sundays, and Polish public holidays
+ * Pure, dependency-free helpers for moving a date forwards or backwards across
+ * WORKING days under Polish rules: Saturdays, Sundays, and Polish public holidays
  * (ustawa o dniach wolnych od pracy) are non-working. No date library exists in
  * the repo, so the computus + timezone math is hand-rolled here.
  *
@@ -214,6 +214,46 @@ export function addWorkingDays(from: Date, days: number): Date {
       continue;
     }
     remaining -= 1;
+  }
+  return warsawCivilToInstant({
+    year: cursor.getUTCFullYear(),
+    month: cursor.getUTCMonth() + 1,
+    day: cursor.getUTCDate(),
+    hour: civil.hour,
+    minute: civil.minute,
+    second: civil.second,
+  });
+}
+
+/**
+ * Walk back from `from` to the nearest preceding Polish working day and return a
+ * new `Date`, preserving the source instant's Europe/Warsaw wall-clock
+ * time-of-day. Weekends and Polish public holidays are skipped. The source
+ * instant itself is never counted (the walk starts from the previous day), so a
+ * working-day input always moves at least one calendar day back.
+ *
+ * To resolve a candidate to the nearest working day AT OR BEFORE it - which is
+ * what a publication-calendar walk-back needs - guard with
+ * `isPlWorkingDay(d) ? d : previousWorkingDay(d)`. Calling this helper alone
+ * would step past a candidate that is itself a working day.
+ */
+export function previousWorkingDay(from: Date): Date {
+  const civil = toWarsawCivil(from);
+  // Iterate on a date-only UTC proxy whose UTC parts mirror the Warsaw civil
+  // date; weekday + holiday classification reads directly off those parts.
+  const cursor = new Date(Date.UTC(civil.year, civil.month - 1, civil.day));
+  for (;;) {
+    cursor.setUTCDate(cursor.getUTCDate() - 1);
+    const dow = cursor.getUTCDay();
+    if (dow === 0 || dow === 6) {
+      continue;
+    }
+    if (
+      isPlPublicHolidayYmd(cursor.getUTCFullYear(), cursor.getUTCMonth() + 1, cursor.getUTCDate())
+    ) {
+      continue;
+    }
+    break;
   }
   return warsawCivilToInstant({
     year: cursor.getUTCFullYear(),

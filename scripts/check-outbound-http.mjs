@@ -55,6 +55,7 @@ const SCAN_ROOTS = [
   'libs/integrations/allegro',
   'libs/integrations/dpd-polska',
   'libs/integrations/erli',
+  'libs/integrations/fx',
   'libs/integrations/infakt',
   'libs/integrations/inpost',
   'libs/integrations/ksef',

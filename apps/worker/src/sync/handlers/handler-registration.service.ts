@@ -12,6 +12,8 @@ import { SyncJobHandlerRegistry } from './sync-job-handler.registry';
 import { InventoryPropagateToMarketplacesHandler } from './inventory-propagate-to-marketplaces.handler';
 import { OrdersPollHandler } from './orders-poll.handler';
 import { MarketplaceOrderSyncHandler } from './marketplace-order-sync.handler';
+import { MarketplaceOrderFxStampHandler } from './marketplace-order-fx-stamp.handler';
+import { MarketplaceOrderFxStampSweepHandler } from './marketplace-order-fx-stamp-sweep.handler';
 import { MarketplaceOfferQuantityUpdateHandler } from './marketplace-offer-quantity-update.handler';
 import { MarketplaceOfferFieldUpdateHandler } from './marketplace-offer-field-update.handler';
 import { MarketplaceOfferCreateHandler } from './marketplace-offer-create.handler';
@@ -47,6 +49,8 @@ export class HandlerRegistrationService implements OnModuleInit {
     private readonly inventoryPropagateHandler: InventoryPropagateToMarketplacesHandler,
     private readonly marketplaceOrdersPollHandler: OrdersPollHandler,
     private readonly marketplaceOrderSyncHandler: MarketplaceOrderSyncHandler,
+    private readonly marketplaceOrderFxStampHandler: MarketplaceOrderFxStampHandler,
+    private readonly marketplaceOrderFxStampSweepHandler: MarketplaceOrderFxStampSweepHandler,
     private readonly marketplaceOfferQuantityUpdateHandler: MarketplaceOfferQuantityUpdateHandler,
     private readonly marketplaceOfferFieldUpdateHandler: MarketplaceOfferFieldUpdateHandler,
     private readonly marketplaceOfferCreateHandler: MarketplaceOfferCreateHandler,
@@ -80,6 +84,12 @@ export class HandlerRegistrationService implements OnModuleInit {
     // Register generic marketplace handlers (Option B)
     this.handlerRegistry.register('marketplace.orders.poll', this.marketplaceOrdersPollHandler);
     this.handlerRegistry.register('marketplace.order.sync', this.marketplaceOrderSyncHandler);
+    // Per-order reporting-currency stamp: bounded retry + hourly reconcile (#2125).
+    this.handlerRegistry.register('marketplace.order.fxStamp', this.marketplaceOrderFxStampHandler);
+    this.handlerRegistry.register(
+      'marketplace.order.fxStampSweep',
+      this.marketplaceOrderFxStampSweepHandler
+    );
     this.handlerRegistry.register('marketplace.offers.sync', this.marketplaceOffersSyncHandler);
     this.handlerRegistry.register(
       'marketplace.offerQuantity.update',

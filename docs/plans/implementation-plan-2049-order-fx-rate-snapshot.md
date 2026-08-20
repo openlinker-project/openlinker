@@ -939,7 +939,7 @@ which is strictly more durable and one fewer place to keep in sync.
    - **Dependencies**: step 7.
 
 9. **Migration**
-   - **File**: `apps/api/src/migrations/1834000000000-add-order-fx-stamp.ts`
+   - **File**: `apps/api/src/migrations/1836000000000-add-order-fx-stamp.ts`
    - **Action**: create `exchange_rates` (+ its unique index) **and `reporting_currency_setting`**, add the
      **six** `order_records` columns (+ the partial composite index, the group-integrity CHECK, and the
      `{totals,currency}` expression index for step 8b). `up()` and `down()` both implemented.
@@ -957,7 +957,9 @@ which is strictly more durable and one fewer place to keep in sync.
      and #1985's own `1832000000008-add-order-analytics-read-model.ts:26-29`. `CREATE TABLE` is
      mixed in the repo (`1830000000000:31` guards, `1831000000004:26` does not); guard it, matching
      the more recent of the two.
-   - **Why `1834000000000`** (re-verified 2026-08-14, after the second main merge): the invariant that
+   - **Why `1836000000000`** (re-prefixed 2026-08-19, third main merge: #2137's fiscalization stack
+     landed on `main` at `1835000000000` ahead of this branch, so the original `1834000000000` no longer
+     cleared the tail). The rationale below is the original derivation, kept for the reasoning: the invariant that
      matters is `scripts/check-migration-timestamps.mjs`' rule 4 — a migration not yet on `origin/main`
      must have a timestamp **strictly greater than every migration that is**. `origin/main`'s tail is now
      **`1833000000003-add-offer-commercial-snapshots-table.ts`** (#2032 having landed), and the one plugin
@@ -1513,8 +1515,8 @@ path.)
   params to the `OrderRecord` constructor, and a migration in the same range (#1985's is
   `1832000000008-add-order-analytics-read-model.ts`, which adds `placedAt`, `currency`,
   `taxTreatment`, `totalAmount`). *Mitigation*: additive changes appended at the end of both lists;
-  whichever merges second rebases. This migration is `1834000000000`, which clears `main`'s current tail
-  (`1833000000003`, step 9) — but `main` has moved three times during this plan's life, so re-verify at
+  whichever merges second rebases. This migration is `1836000000000`, which clears `main`'s current tail
+  (`1835000000000`) — but `main` has moved four times during this plan's life, so re-verify at
   rebase rather than trusting the number.
   **A bonus once #1985 lands**: `listDistinctNativeCurrencies` collapses to
   `SELECT DISTINCT "currency" FROM "order_records"`. Deliberately not depended on.
