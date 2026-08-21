@@ -52,6 +52,59 @@ export function trendTone(values: readonly number[]): TrendTone {
   return 'neutral';
 }
 
+/**
+ * Percentage-point change from `previous` to `current`, or `null` when
+ * `previous` is `0` — a zero denominator has no defined percentage change
+ * ("+∞%" would be a fabricated number), so this is treated the same as any
+ * other unavailable comparison (KPI card renders a `GapMark`, never a bogus
+ * figure).
+ */
+export function percentDelta(current: number, previous: number): number | null {
+  if (previous === 0) return null;
+  return ((current - previous) / previous) * 100;
+}
+
+/**
+ * Percentage-POINT change from `previous` to `current`, for metrics that are
+ * already themselves a rate/fraction (e.g. `cancellationRate`, 0–1). Per the
+ * design mockup: "a rate moves in points, not in percent" — "+10.1%" on a
+ * rate is ambiguous (ten percent of what?), whereas `pp` states the
+ * arithmetic a reader would do by hand (5.7% against 5.1% is +0.5 points).
+ * Unlike `percentDelta`, a zero `previous` is not a division and is always
+ * defined.
+ */
+export function pointsDelta(current: number, previous: number): number {
+  return (current - previous) * 100;
+}
+
+export type DeltaDirection = 'higher-is-better' | 'lower-is-better';
+
+/** Below this magnitude a delta reads as "unchanged" rather than a fabricated tiny move. */
+const FLAT_DELTA_THRESHOLD = 0.05;
+
+/**
+ * Tone for a delta value, given which direction is "better" for this
+ * specific metric — reuses `TrendTone`'s vocabulary (`success`/`error`/
+ * `neutral`) rather than inventing a parallel one. Per the design mockup's
+ * rule that colour follows meaning, not the arithmetic sign: a FALLING
+ * cancellation rate is a good, `success`-toned change even though the
+ * number itself is negative.
+ */
+export function deltaTone(delta: number, direction: DeltaDirection): TrendTone {
+  if (Math.abs(delta) < FLAT_DELTA_THRESHOLD) return 'neutral';
+  const isIncrease = delta > 0;
+  const isGood = direction === 'higher-is-better' ? isIncrease : !isIncrease;
+  return isGood ? 'success' : 'error';
+}
+
+export type DeltaGlyphDirection = 'up' | 'down' | 'flat';
+
+/** The arrow direction — independent of tone, since an "up" move can be `error`-toned (e.g. a rising cancellation rate). */
+export function deltaGlyphDirection(delta: number): DeltaGlyphDirection {
+  if (Math.abs(delta) < FLAT_DELTA_THRESHOLD) return 'flat';
+  return delta > 0 ? 'up' : 'down';
+}
+
 function sum<T>(items: T[], pick: (item: T) => number): number {
   return items.reduce((total, item) => total + pick(item), 0);
 }

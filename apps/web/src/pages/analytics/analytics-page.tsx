@@ -119,7 +119,7 @@ export function AnalyticsPage(): ReactElement {
             />
           ) : (
             <>
-              <AnalyticsKpiStrip filters={salesFilters} />
+              <AnalyticsKpiStrip filters={salesFilters} connections={trustQuery.data.connections} />
               <ChannelSalesTable filters={salesFilters} />
             </>
           )}

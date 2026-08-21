@@ -151,6 +151,12 @@ export function createMockApiClient(
         },
         channels: [],
       }),
+      getTopProducts: vi.fn().mockResolvedValue({
+        items: [],
+        total: 0,
+        unresolvedProductCount: 0,
+        coverageGapAvailable: true,
+      }),
       ...overrides.analytics,
     } as ApiClient['analytics'],
     analyticsTrust: {

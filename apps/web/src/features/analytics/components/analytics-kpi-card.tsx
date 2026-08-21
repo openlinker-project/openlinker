@@ -11,21 +11,32 @@
  * `shared/ui/kpi-card.tsx`'s own docstring already anticipates other pages
  * migrating onto it once a second consumer needs this shape.
  *
- * Every card always renders a delta line, but there is currently no
- * previous-period figure anywhere in `GET /analytics/sales` (#1987) — no
- * comparison range, no stored history — so `delta` is always the same
- * "not available yet" placeholder, never a computed number. Faking a
- * percentage here would be worse than showing nothing.
+ * Every card renders a delta line, but not every card can compute one — the
+ * caller passes `delta: null` (with `deltaGapReason` explaining why: no
+ * comparison range covered by data, a headline that's itself unavailable,
+ * a currency mismatch between the two periods) rather than this component
+ * ever fabricating a percentage. Period-over-period comparison itself is
+ * computed by the caller (`AnalyticsKpiStrip`) from a second
+ * `GET /analytics/sales` call over the immediately-preceding period — this
+ * component stays presentational and receives an already-formatted string.
  *
  * @module features/analytics/components
  */
 import type { ReactElement, ReactNode } from 'react';
 import { Sparkline, type SparklineTone } from '../../../shared/ui/sparkline';
+import type { DeltaGlyphDirection, TrendTone } from '../lib/sales-analytics-view-model';
 import { AnalyticsInfotip, type AnalyticsInfotipDefinition } from './analytics-infotip';
 import { GapMark } from './gap-mark';
 
-const DELTA_GAP_REASON =
-  'Period-over-period needs a comparison range — GET /analytics/sales takes a single from/to and stores no prior-period figure.';
+const DEFAULT_DELTA_GAP_REASON =
+  'Period-over-period needs a full previous-period range covered by order history.';
+
+/** aria-hidden — the direction is also stated in `AnalyticsKpiDelta.spokenText` for a screen reader. */
+const DELTA_GLYPH: Record<DeltaGlyphDirection, string> = {
+  up: '↑',
+  down: '↓',
+  flat: '→',
+};
 
 export interface AnalyticsKpiQualifier {
   label: ReactNode;
@@ -36,6 +47,18 @@ export interface AnalyticsKpiTrend {
   values: readonly number[];
   tone: SparklineTone;
   ariaLabel: string;
+}
+
+export interface AnalyticsKpiDelta {
+  /** Already formatted by the caller (e.g. "8.7%", "0.5 pp") — this component does no number formatting. */
+  formatted: string;
+  tone: TrendTone;
+  /** Arrow glyph direction — independent of `tone` (e.g. a RISING cancellation rate is `up` but `error`-toned). */
+  direction: DeltaGlyphDirection;
+  /** e.g. "vs previous 7 days". */
+  basisLabel: string;
+  /** Full sentence for a screen reader — "↑ 8.7%" read aloud loses the direction, so this states it in words. */
+  spokenText: string;
 }
 
 interface AnalyticsKpiCardProps {
@@ -52,10 +75,16 @@ interface AnalyticsKpiCardProps {
   valueSuffix?: ReactNode;
   trend?: AnalyticsKpiTrend;
   qualifiers?: AnalyticsKpiQualifier[];
+  /** `undefined`/`null` renders a `GapMark` with `deltaGapReason` instead of a figure. */
+  delta?: AnalyticsKpiDelta | null;
+  /** Ignored when `delta` is provided. */
+  deltaGapReason?: string;
 }
 
 export function AnalyticsKpiCard({
   definitions,
+  delta,
+  deltaGapReason = DEFAULT_DELTA_GAP_REASON,
   headlineUnavailable = false,
   infotipAlign = 'start',
   infotipLabel,
@@ -102,8 +131,23 @@ export function AnalyticsKpiCard({
         </div>
         <div className="kpi-card__metric">{metric}</div>
         <span className="kpi-card__delta">
-          <span className="kpi-card__delta-basis">— vs previous period</span>
-          <GapMark title={DELTA_GAP_REASON} />
+          {delta ? (
+            <>
+              <span className={`kpi-card__delta-value kpi-card__delta-value--${delta.tone}`}>
+                <span className="kpi-card__delta-glyph" aria-hidden="true">
+                  {DELTA_GLYPH[delta.direction]}
+                </span>{' '}
+                <span aria-hidden="true">{delta.formatted}</span>
+                <span className="sr-only">{delta.spokenText}</span>
+              </span>
+              <span className="kpi-card__delta-basis">{delta.basisLabel}</span>
+            </>
+          ) : (
+            <>
+              <span className="kpi-card__delta-basis">— vs previous period</span>
+              <GapMark title={deltaGapReason} />
+            </>
+          )}
         </span>
       </div>
       {qualifiers.length > 0 ? (

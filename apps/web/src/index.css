@@ -4697,7 +4697,27 @@ a.kpi-card:focus-visible {
   color: var(--text-muted);
 }
 
+.kpi-card__delta-glyph {
+  font-size: 0.8125rem;
+  line-height: 1;
+}
+
 .kpi-card__delta-basis {
+  color: var(--text-muted);
+}
+
+/* Period-over-period delta value — same success/error/neutral tone
+   vocabulary as `.sparkline--*` above, since `deltaTone()` reuses
+   `TrendTone` rather than a parallel one. */
+.kpi-card__delta-value--success {
+  color: var(--status-success);
+}
+
+.kpi-card__delta-value--error {
+  color: var(--status-error);
+}
+
+.kpi-card__delta-value--neutral {
   color: var(--text-muted);
 }
 

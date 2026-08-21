@@ -4,8 +4,12 @@ import {
   averageDailyOrders,
   cancellationRate,
   countUnconvertedOrders,
+  deltaGlyphDirection,
+  deltaTone,
   groupChannelTotalsByCurrency,
   orderCountTrendValues,
+  percentDelta,
+  pointsDelta,
   rangeDays,
   revenueTrendValues,
   trendTone,
@@ -187,5 +191,64 @@ describe('countUnconvertedOrders', () => {
 
   it('should return 0 when nothing is unconverted', () => {
     expect(countUnconvertedOrders([channel(), channel()])).toBe(0);
+  });
+});
+
+describe('percentDelta', () => {
+  it('should return null when previous is 0', () => {
+    expect(percentDelta(10, 0)).toBeNull();
+  });
+
+  it('should compute a relative percentage change', () => {
+    expect(percentDelta(40, 20)).toBe(100);
+    expect(percentDelta(10, 20)).toBe(-50);
+  });
+
+  it('should return 0 for no change', () => {
+    expect(percentDelta(20, 20)).toBe(0);
+  });
+});
+
+describe('pointsDelta', () => {
+  it('should compute an absolute percentage-point difference, never a relative change', () => {
+    expect(pointsDelta(0.057, 0.051)).toBeCloseTo(0.6, 5);
+  });
+
+  it('should stay defined when previous is 0, unlike percentDelta', () => {
+    expect(pointsDelta(0.05, 0)).toBeCloseTo(5, 5);
+  });
+});
+
+describe('deltaTone', () => {
+  it('should treat an increase as success when higher is better', () => {
+    expect(deltaTone(10, 'higher-is-better')).toBe('success');
+  });
+
+  it('should treat a decrease as error when higher is better', () => {
+    expect(deltaTone(-10, 'higher-is-better')).toBe('error');
+  });
+
+  it('should treat a decrease as success when lower is better (e.g. a falling cancellation rate)', () => {
+    expect(deltaTone(-10, 'lower-is-better')).toBe('success');
+  });
+
+  it('should treat a tiny move below the flat threshold as neutral', () => {
+    expect(deltaTone(0.01, 'higher-is-better')).toBe('neutral');
+    expect(deltaTone(-0.01, 'lower-is-better')).toBe('neutral');
+  });
+});
+
+describe('deltaGlyphDirection', () => {
+  it('should return "up" for a positive delta', () => {
+    expect(deltaGlyphDirection(10)).toBe('up');
+  });
+
+  it('should return "down" for a negative delta', () => {
+    expect(deltaGlyphDirection(-10)).toBe('down');
+  });
+
+  it('should return "flat" for a delta within the flat threshold', () => {
+    expect(deltaGlyphDirection(0.01)).toBe('flat');
+    expect(deltaGlyphDirection(-0.01)).toBe('flat');
   });
 });
