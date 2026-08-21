@@ -1,6 +1,6 @@
 # ADR-055: OL's OMS ships as a credential-less connection-backed plugin
 
-- **Status**: Proposed — draft (brainstorm output; number provisional, re-verify before filing)
+- **Status**: Proposed
 - **Date**: 2026-08-21
 - **Authors**: @piotrswierzy
 
@@ -80,6 +80,11 @@ when the repo's history goes public.
 - A connection row with no credentials is a new shape for the connections UI (trivial tester).
 - `SyncJob.connectionId` non-nullability (#1943) is leaned on again; a second consumer of that
   interim scaffold strengthens the case to fix it.
+
+**Reversal gate**: the end-of-Wave-3 contract freeze is the standing decision point — publishing
+`@openlinker/core` and/or extracting the package is evaluated there, once. The open-core licensing
+option expires when the repository's history goes public; past that date only the in-repo
+license-split remains.
 
 ## References
 

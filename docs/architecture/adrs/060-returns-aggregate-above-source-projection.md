@@ -1,6 +1,6 @@
 # ADR-060: Returns as an OL-owned aggregate above the source projection
 
-- **Status**: Proposed — draft (brainstorm output; number provisional, re-verify before filing)
+- **Status**: Proposed
 - **Date**: 2026-08-21
 - **Authors**: @piotrswierzy
 
@@ -65,6 +65,10 @@ must ignore under [ADR-056](./056-refund-and-fiscal-authority-never-leave-ol.md)
 every write OL owns has the operator as its sensor. **Cons:** every outbound-assuming shipment
 query must be audited for `direction`; the Allegro feed's cursor shape is unverified and gates
 Wave 1.
+
+**Reversal gate**: receive-node routing becoming a real decision (multiple receiving locations)
+introduces `ReverseFulfillmentWork`; a source exposing a genuinely machine-shaped return status
+re-opens the verbatim-`rawStatus` rule for that source.
 
 ## References
 

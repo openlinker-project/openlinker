@@ -1,6 +1,6 @@
 # ADR-054: `FulfillmentWork` as the unit of assignment; config for pre-existing scopes, handshake for flow-created objects
 
-- **Status**: Proposed — draft (brainstorm output; number provisional, re-verify before filing)
+- **Status**: Proposed
 - **Date**: 2026-08-21
 - **Authors**: @piotrswierzy
 
@@ -71,6 +71,10 @@ only `RoutingInput`/`RoutingPlan` (with a `pending {decisionId}` arm for async D
   ([ADR-012](./012-branch-1-fulfillment-modeling.md)); documented as *sourcing* vs
   *dispatch resolution*, and the shipping layer stays authoritative for label mechanics.
 - Observation-only work on `omp_fulfilled` closes coarsely (whole-order observed dispatch).
+
+**Reversal gate**: an operator demonstrably outgrowing the ordered filter/sort list (needing
+cross-rule conditions or arbitrary predicates) re-opens the no-rules-engine decision; a second
+executor needing batching re-opens the `awaiting_wave` deferral.
 
 ## References
 

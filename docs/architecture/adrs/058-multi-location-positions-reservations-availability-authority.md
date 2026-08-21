@@ -1,6 +1,6 @@
 # ADR-058: Multi-location inventory positions with provenance
 
-- **Status**: Proposed — draft (brainstorm output; number provisional, re-verify before filing).
+- **Status**: Proposed.
   R1: **narrowed** — reservations and `AvailabilityAuthority` moved to
   [ADR-061](./061-advisory-reservations-and-availability-authority.md); this ADR now carries only
   the Wave-1 location/provenance decisions, which are independently shippable.

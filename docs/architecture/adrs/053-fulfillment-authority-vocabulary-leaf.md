@@ -1,6 +1,6 @@
 # ADR-053: `fulfillment-authority` as a dependency-free vocabulary leaf; resolution in the owning contexts
 
-- **Status**: Proposed — draft (brainstorm output; number provisional, re-verify before filing)
+- **Status**: Proposed
 - **Date**: 2026-08-21
 - **Authors**: @piotrswierzy
 
@@ -17,8 +17,15 @@ guard + lock; gate-reports/caller-persists).
 ## Decision
 
 Create `libs/core/src/fulfillment-authority/` as a **types-and-pure-functions leaf**: no NestJS
-module, service, repository, port or tokens file (the documented `sales-documents` exemption),
-pinned by the barrel-purity spec. It publishes `AuthorityKind`, `AuthorityScope` (discriminated:
+module, service, repository, port or tokens file *at the outset* — the starting posture
+`sales-documents` established (#2100) and then outgrew when it gained persistence (#2170, in
+#2161). That history is instructive, not disqualifying, and this ADR adopts its lesson explicitly:
+the **load-bearing property is zero sibling-core-context value edges** (which is what makes
+cross-context value-imports CJS-cycle-safe, and what `barrel-purity.spec.ts` enforces after #2170
+narrowed it to exactly that); framework-freedom is **incidental** and ends the day the concern
+needs a binding — a plausible day, since `AuthorityScope` is operator-configured. When that
+happens, the leaf gains a module + `fulfillment-authority.tokens.ts` exactly as `sales-documents`
+did, keeping the sibling-edge property intact. It publishes `AuthorityKind`, `AuthorityScope` (discriminated:
 global/location/channel/order/work), `AuthorityAssignment`, the generic `selectAuthorityHolder()`
 (generalising `selectPrimaryInvoicingConnection`, single-candidate rule included),
 `parseAuthorityConfig()`, and `FulfillmentAuthorityBlockOutcome` (`none | blocked | indeterminate`)
@@ -42,7 +49,8 @@ value), columns excluded from `toOrm`.
 ## Consequences
 
 **Pros:**
-- Zero CJS load-cycle risk by construction; the barrel-purity walker enforces it.
+- Zero CJS load-cycle risk by construction — carried by the sibling-edge property, which survives
+  the leaf later gaining a module (the #2170 finding); the barrel-purity walker enforces it.
 - One selection rule, one config-coercion idiom, one block-outcome shape across all six
   authorities.
 
@@ -54,6 +62,6 @@ value), columns excluded from `toOrm`.
 
 ## References
 
-- Related issues: #2047, #2100
+- Related issues: #2047, #2100, #2170 (the `sales-documents` exemption's end — the precedent's own evolution)
 - Related ADRs: [ADR-041](./041-sales-document-routing-policy.md), [ADR-052](./052-independently-assignable-fulfillment-authorities.md)
 - Design doc: [DESIGN-oms-authority-model](../../plans/analysis/DESIGN-oms-authority-model.md) §2.1

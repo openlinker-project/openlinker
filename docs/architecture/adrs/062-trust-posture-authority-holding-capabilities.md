@@ -1,6 +1,6 @@
 # ADR-062: Trust posture for authority-holding capabilities
 
-- **Status**: Proposed — draft (brainstorm output; number provisional, re-verify before filing)
+- **Status**: Proposed
 - **Date**: 2026-08-21
 - **Authors**: @piotrswierzy
 
@@ -51,6 +51,9 @@ port is bounded by construction; a buggy authority degrades to alert-and-hold in
 zeroed or oversold catalogue.
 **Cons:** a legitimate mass stock change (warehouse onboarding) can trip the envelope — the
 operator clears it from the authority-status surface; envelope factor tuning is operational work.
+
+**Reversal gate**: a request to distribute an authority-holding plugin out-of-tree re-opens this
+ADR — its own decision text already routes that pressure here.
 
 ## References
 

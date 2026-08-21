@@ -114,8 +114,10 @@ Three properties are load-bearing:
 ### 2.1 The resolution layer
 
 One **dependency-free vocabulary leaf**, `libs/core/src/fulfillment-authority/` — types and pure
-functions only, no module/service/repository/port/tokens file (the `sales-documents` exemption),
-pinned by the barrel-purity spec. It publishes `AuthorityKind`, `AuthorityScope` (discriminated
+functions only, no module/service/repository/port/tokens file *at the outset* (the posture
+`sales-documents` established in #2100 and outgrew in #2170: the load-bearing property is **zero
+sibling-context value edges**, not framework-freedom — see ADR-053), pinned by the barrel-purity
+spec. It publishes `AuthorityKind`, `AuthorityScope` (discriminated
 union: global / location / channel / order / work), `AuthorityAssignment`, the generic
 `selectAuthorityHolder()` (the pure generalisation of `selectPrimaryInvoicingConnection`, including
 its single-candidate rule), `parseAuthorityConfig()`, and `FulfillmentAuthorityBlockOutcome` with

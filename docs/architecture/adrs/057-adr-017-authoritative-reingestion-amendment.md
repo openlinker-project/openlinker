@@ -1,6 +1,6 @@
 # ADR-057: Superseding ADR-017 for authoritative re-ingestion
 
-- **Status**: Proposed — draft (brainstorm output; number provisional, re-verify before filing).
+- **Status**: Proposed.
   R1: restated as a **supersession** — "amends without superseding" is not an operation this
   repo's ADR practice defines, and this ADR's predicate *replaces* ADR-017's.
 - **Date**: 2026-08-21

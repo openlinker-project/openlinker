@@ -1,6 +1,6 @@
 # ADR-061: OL-owned advisory reservations and the `AvailabilityAuthority` capability
 
-- **Status**: Proposed — draft (brainstorm output; number provisional, re-verify before filing).
+- **Status**: Proposed.
   Split from [ADR-058](./058-multi-location-positions-reservations-availability-authority.md) (R1).
 - **Date**: 2026-08-21
 - **Authors**: @piotrswierzy
@@ -56,6 +56,10 @@ applied only when the authority did not apply its own. `InventoryMaster` (stock-
 facts; a DOMS or 3PL answers ATP per scope with declared fidelity and bounded blast radius.
 **Cons:** `olReservedQuantity` is denormalised (reconciler required); the `'unknown'` floor is a
 deliberate underselling trade-off, stated rather than hidden.
+
+**Reversal gate**: an oversell traced to a topology where reservations are diagnostic-only
+re-opens the scoped-subtraction rule; a master adapter that can implement a hold primitive
+un-defers `MasterReservationWriter`.
 
 ## References
 

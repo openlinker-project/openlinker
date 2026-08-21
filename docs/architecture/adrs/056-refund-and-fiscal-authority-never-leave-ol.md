@@ -1,6 +1,6 @@
 # ADR-056: Refund and fiscal authority never leave OpenLinker
 
-- **Status**: Proposed — draft (brainstorm output; number provisional, re-verify before filing)
+- **Status**: Proposed
 - **Date**: 2026-08-21
 - **Authors**: @piotrswierzy
 
@@ -53,6 +53,10 @@ Where no refund executor exists (true of every shipped adapter today), the trigg
 **Cons / trade-offs:**
 - An enterprise DOMS that insists on owning refunds cannot be accommodated; its adapter degrades
   to request-and-observe. Stated in the adapter guide rather than discovered in production.
+
+**Reversal gate**: an OMS that itself holds the payment-instrument credential (or the fiscal
+provider connection) would shift the physical-scoping premise — that concrete case, and nothing
+weaker, re-opens this ADR.
 
 ## References
 
