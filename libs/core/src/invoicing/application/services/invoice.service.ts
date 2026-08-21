@@ -69,6 +69,7 @@ import type {
   IssueCorrectionCommand,
   IssuedDocumentContent,
   IssuedDocumentLine,
+  IssuedDocumentLineAmounts,
   IssuedDocumentSeller,
   IssuedLineSnapshot,
   IssueInvoiceCommand,
@@ -610,8 +611,10 @@ export class InvoiceService implements IInvoiceService {
       throw error;
     }
 
-    const { record: issued, seller, sourceDocument } = issueResult;
-    const documentContent = this.buildContent(cmd, issued, seller ?? null);
+    const { record: issued, seller, sourceDocument, documentLines } = issueResult;
+    // #2251: prefer the document's OWN per-line amounts over core's
+    // recomputation, so the stored figure matches the paper to the grosz.
+    const documentContent = this.buildContent(cmd, issued, seller ?? null, documentLines);
     // #1297: snapshot the exact issue-command inputs (buyer/currency/lines) so a
     // later correction diffs against the lines AS ISSUED, not the order's current
     // state. Verbatim from the command — no recomputation.
@@ -935,7 +938,7 @@ export class InvoiceService implements IInvoiceService {
       throw error;
     }
 
-    const { record: issued, seller, sourceDocument } = issueResult;
+    const { record: issued, seller, sourceDocument, documentLines } = issueResult;
 
     // #1297: snapshot the correction's OWN post-correction ("after") lines so a
     // correction-of-correction diffs against them, not the live order. Derived
@@ -970,6 +973,10 @@ export class InvoiceService implements IInvoiceService {
             },
             issued,
             seller ?? null,
+            // #2251: a correction is the LATEST EFFECTIVE document, so its own
+            // amounts overwrite the stored ones. Without this the record would
+            // keep the pre-correction figures while the paper says otherwise.
+            documentLines,
           )
         : null;
 
@@ -1071,19 +1078,42 @@ export class InvoiceService implements IInvoiceService {
    * rate and the totals sum across lines. `seller` is `null` when the adapter did
    * not surface one (graceful degradation — see {@link IssuedDocumentContent}).
    *
-   * NON-AUTHORITATIVE: this recomputes net/tax/gross from the neutral `taxRate`
-   * code rather than reading the provider's own figures — a display projection
-   * only, which can diverge from the provider's authoritative amounts under
-   * rounding or regime-specific tax rules. Adapters that can supply their own
-   * authoritative line money should do so via `IssueInvoiceResult` in a future
-   * revision rather than relying on this recomputation.
+   * AUTHORITATIVE WHERE THE ADAPTER REPORTS IT (#2251). `documentLines` carries
+   * the amounts the issued document actually states, matched by 1-based line
+   * number, and those win. Core computes no net and rounds nothing, so a copy
+   * is the only way a stored figure can agree with the paper to the grosz.
+   *
+   * A line with no reported amounts falls back to the pre-#2251 recomputation
+   * from the neutral `taxRate` code, which is a display projection and can
+   * diverge under rounding or regime-specific rules. The fallback is per LINE
+   * rather than per document, so a provider that reports some lines and not
+   * others still contributes what it has.
    */
   private buildContent(
     cmd: Pick<IssueInvoiceCommand, 'lines' | 'buyer' | 'currency'>,
     record: InvoiceRecord,
     seller: IssuedDocumentSeller | null,
+    documentLines?: IssuedDocumentLineAmounts[],
   ): IssuedDocumentContent {
-    const lines = cmd.lines.map((line): IssuedDocumentLine => {
+    const reported = new Map<number, IssuedDocumentLineAmounts>(
+      (documentLines ?? []).map((entry) => [entry.lineNumber, entry]),
+    );
+
+    const lines = cmd.lines.map((line, index): IssuedDocumentLine => {
+      // 1-based, matching the document's own numbering. Shipping lines are part
+      // of it - they are real document lines - so they never shift the mapping.
+      const stated = reported.get(index + 1);
+      if (stated) {
+        return {
+          name: line.name,
+          quantity: line.quantity,
+          unitNet: stated.unitNet,
+          taxRate: line.taxRate,
+          net: stated.net,
+          tax: stated.tax,
+          gross: stated.gross,
+        };
+      }
       const fraction = rateFraction(line.taxRate);
       const gross = round2(line.quantity * line.unitPriceGross);
       const net = round2(gross / (1 + fraction));
