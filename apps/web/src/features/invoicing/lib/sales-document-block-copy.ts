@@ -13,7 +13,11 @@ import type { OrderRecord } from '../../orders';
 
 /** One rendered explanation of why this order carries no fiscal document (#2100). */
 export interface SalesDocumentBlockCopy {
-  tone: 'warning' | 'error' | 'info';
+  /**
+   * Passed straight into `<Alert>`, so it must stay a subset of `AlertTone`.
+   * `'conflict'` (#2253) is available for a non-blocking source disagreement.
+   */
+  tone: 'conflict' | 'warning' | 'error' | 'info';
   title: string;
   body: string;
   /** PII-free elaboration the backend supplied, if any. */
