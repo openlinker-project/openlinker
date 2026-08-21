@@ -90,10 +90,6 @@ const KNOWN_CONFIG_KNOBS = new Map([
     { helper: 'parseTriggerModel', key: 'config.invoicing.triggerModel' },
   ],
   [
-    'libs/core/src/invoicing/domain/types/invoicing-primary.types.ts',
-    { helper: 'parseIsPrimaryInvoicing', key: 'config.invoicing.isPrimary' },
-  ],
-  [
     'libs/core/src/identifier-mapping/domain/types/stock-safety-buffer.types.ts',
     { helper: 'readStockSafetyBuffer', key: 'config.stockSafetyBuffer' },
   ],
@@ -101,14 +97,36 @@ const KNOWN_CONFIG_KNOBS = new Map([
     'libs/core/src/identifier-mapping/domain/types/pricing-rule.types.ts',
     { helper: 'readPricingRule', key: 'config.pricingRule' },
   ],
+  [
+    'libs/core/src/sales-documents/domain/types/sales-document-kind.types.ts',
+    {
+      helper: 'readSalesDocumentRouting',
+      key: 'config.invoicing.isPrimary + config.salesDocument.documentKind',
+    },
+  ],
 ]);
 
 /**
  * Files that match the discovery conjunction but are deliberately NOT knobs.
- * Empty today: the conjunction (breadcrumb AND an exported read/parse fn) already
- * excludes the known near-misses. An entry here must say why it is not a knob.
+ * An entry here must say why it is not a knob.
  */
-const NON_KNOBS = new Map([]);
+const NON_KNOBS = new Map([
+  [
+    'libs/core/src/invoicing/domain/types/invoicing-primary.types.ts',
+    // SUPERSEDED, not a second knob. #2161 (ADR-041 decision 4) moved the live
+    // read of `config.invoicing.isPrimary` into `readSalesDocumentRouting`,
+    // registered above — its own docblock says it reads "the EXACT shape #2047
+    // already writes (decision 4 fixes that shape, it does not introduce a
+    // second one)". `parseIsPrimaryInvoicing` has no production caller left
+    // (only its definition and the `@openlinker/core/invoicing` barrel
+    // re-export), so counting it would report five knobs where four keys are
+    // actually coerced, and would trip KNOB_THRESHOLD on a helper nothing
+    // calls. Deleting it — and `selectPrimaryInvoicingConnection` beside it,
+    // likewise superseded by `resolveSalesDocumentRouting` — is a public-barrel
+    // change that belongs in its own reviewed PR, tracked separately.
+    'superseded by readSalesDocumentRouting (#2161); dead export pending removal',
+  ],
+]);
 
 /**
  * At the fifth knob, the shared-rules-model conversation the #1032 cut named
