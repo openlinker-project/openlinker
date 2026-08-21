@@ -116,8 +116,22 @@ describe('groupChannelTotalsByCurrency', () => {
     ]);
   });
 
-  it('should not emit a reporting total for a single contributing channel', () => {
-    expect(groupChannelTotalsByCurrency([channel({ revenue: 3000 })])).toEqual([]);
+  it('should still emit a reporting total for a single contributing channel', () => {
+    const totals = groupChannelTotalsByCurrency([
+      channel({ revenue: 3000, orderCount: 25, unitsSold: 40, revenueShare: 1 }),
+    ]);
+
+    expect(totals).toEqual([
+      {
+        currency: 'PLN',
+        kind: 'reporting',
+        revenue: 3000,
+        orderCount: 25,
+        averageOrderValue: 120,
+        unitsSold: 40,
+        revenueShare: 1,
+      },
+    ]);
   });
 
   it('should emit an unconverted-currency subtotal across more than one contributing channel, separate from the reporting total', () => {
@@ -161,11 +175,21 @@ describe('groupChannelTotalsByCurrency', () => {
     ]);
   });
 
-  it('should not emit an unconverted subtotal for a single contributing channel', () => {
+  it('should still emit an unconverted subtotal for a single contributing channel', () => {
     const totals = groupChannelTotalsByCurrency([
       channel({ unconvertedCount: 5, unconvertedValue: 500, unconvertedCurrency: 'EUR' }),
     ]);
 
-    expect(totals.filter((t) => t.kind === 'unconverted')).toEqual([]);
+    expect(totals.filter((t) => t.kind === 'unconverted')).toEqual([
+      {
+        currency: 'EUR',
+        kind: 'unconverted',
+        revenue: 500,
+        orderCount: 5,
+        averageOrderValue: 100,
+        unitsSold: null,
+        revenueShare: null,
+      },
+    ]);
   });
 });
