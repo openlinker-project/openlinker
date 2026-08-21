@@ -13,7 +13,7 @@ import { PaymentStatusValues } from '../types/payment-status.types';
 import type { PaymentStatus } from '../types/payment-status.types';
 import type { CodToCollect } from '../types/cod-to-collect.types';
 import type { FulfillmentRollupState } from '../types/order-fulfillment.types';
-import type { OrderDispatchWindow } from '../types/order.types';
+import type { OrderDispatchWindow, PriceTaxTreatment } from '../types/order.types';
 import type {
   SalesDocumentGateBlockReason,
   SalesDocumentUnresolvedReason,
@@ -79,6 +79,37 @@ export class OrderRecord {
      * `null` for a `'ready'` record, or a historical row predating the column.
      */
     public readonly mappingFailureReason: string | null = null,
+    /**
+     * Order analytics read-model scalars (#1985) — denormalized from
+     * `order.placedAt` / `order.totals` at persist time, mirroring the
+     * `dispatchByAt`/`fulfillmentState` precedent so downstream aggregates
+     * (#1987/#1988) can filter/bucket without parsing `orderSnapshot`.
+     *
+     * `placedAt`: the buyer's true order time (#926); `null` when the source
+     * didn't expose one. No universal fallback here — `findEarliestOrderDateByConnection`
+     * (#2083) falls back to `createdAt` for its own coverage-window purpose via an
+     * explicit `COALESCE`, but the FX rate-date resolver (`OrderFxStampService`,
+     * ADR-040) reads this field with no fallback: `createdAt` is OpenLinker's
+     * ingestion instant, not the sale date, and substituting it would stamp a
+     * rate against a day the buyer never transacted on. Each consumer decides.
+     */
+    public readonly placedAt: Date | null = null,
+    /**
+     * ISO 4217 currency code from `order.totals.currency`. `null` only for a
+     * historical row predating this column (backfilled otherwise).
+     */
+    public readonly currency: string | null = null,
+    /**
+     * Whether `order.totals` is gross or net (#1985 [G]). `null` means the
+     * source did not assert it — this must never be defaulted by a consumer;
+     * an unasserted-tax-treatment order is not comparable to one that is.
+     */
+    public readonly taxTreatment: PriceTaxTreatment | null = null,
+    /**
+     * `order.totals.total`, denormalized so revenue aggregates read a plain
+     * indexed column instead of casting a JSONB path on every query.
+     */
+    public readonly totalAmount: number | null = null,
     /**
      * Instant the source reported this order cancelled (#1984). `null` = never
      * cancelled (or a historical row the backfill migration could not derive a
@@ -296,26 +327,5 @@ export class OrderRecord {
     return typeof total === 'number' && Number.isFinite(total) && typeof currency === 'string'
       ? { amount: total, currency }
       : undefined;
-  }
-
-  /**
-   * Typed, fail-safe read of the buyer-placed-on-marketplace instant (#2125)
-   * from the snapshot (`orderSnapshot.placedAt`, persisted as an ISO string).
-   * Pure derivation of an already-loaded field (ADR-011).
-   *
-   * `undefined` for an absent OR unparseable value - the same no-fallback
-   * semantics `orderFromReadySnapshot`'s `asOptionalDate` applies, so the two
-   * rehydration paths cannot disagree about whether `placedAt` exists. There is
-   * deliberately no fallback to `createdAt`: that is OpenLinker's ingestion
-   * instant, not the sale date, and substituting it would stamp a rate against
-   * a day the buyer never transacted on.
-   */
-  get placedAt(): Date | undefined {
-    const value = this.orderSnapshot.placedAt;
-    if (typeof value !== 'string' && !(value instanceof Date)) {
-      return undefined;
-    }
-    const parsed = value instanceof Date ? value : new Date(value);
-    return Number.isNaN(parsed.getTime()) ? undefined : parsed;
   }
 }

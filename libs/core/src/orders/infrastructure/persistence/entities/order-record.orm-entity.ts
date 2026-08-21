@@ -170,6 +170,32 @@ export class OrderRecordOrmEntity {
   salesDocumentBlockDetail!: string | null;
 
   /**
+   * Order analytics read-model scalars (#1985), denormalized from `orderSnapshot`
+   * at `persistOrder` time — see ADR-039 for the persistence-strategy decision.
+   * `placedAt`/`currency` are indexed (the two access patterns the analytics
+   * aggregates need: date-range + channel filtering); `taxTreatment`/`totalAmount`
+   * are not, since neither is filtered on directly today.
+   */
+  @Column({ type: 'timestamptz', nullable: true })
+  @Index()
+  placedAt!: Date | null;
+
+  @Column({ type: 'varchar', length: 3, nullable: true })
+  @Index()
+  currency!: string | null;
+
+  /** `null` = "not asserted by the source" (#1985 [G]) — never defaulted by a consumer. */
+  @Column({ type: 'varchar', nullable: true })
+  taxTreatment!: string | null;
+
+  // decimal (not numeric) to match the house convention on money columns
+  // (products.price, product_variants.price) — pg returns this as a string
+  // at the driver level; the repository's toDomain explicitly Number()s it,
+  // mirroring ProductRepository's existing price-column handling.
+  @Column({ type: 'decimal', precision: 12, scale: 2, nullable: true })
+  totalAmount!: number | null;
+
+  /**
    * Per-order reporting-currency snapshot (#2124, ADR-040) — six columns
    * written ONLY by the two narrow, conditional UPDATEs on the repository
    * (`claimFxIntentIfAbsent`, `stampFxIfAbsent`). The ingestion upsert

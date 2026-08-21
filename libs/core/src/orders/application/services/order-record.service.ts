@@ -29,6 +29,7 @@ import { getPiiConfig } from '@openlinker/shared/config';
 import { Logger } from '@openlinker/shared/logging';
 import { IOrderFxStampService } from '../interfaces/order-fx-stamp.service.interface';
 import { ORDER_FX_STAMP_SERVICE_TOKEN, ORDER_RECORD_REPOSITORY_TOKEN } from '../../orders.tokens';
+import { deriveOrderAnalyticsScalars, deriveOrderLineItems } from '../../domain/order-analytics-projection';
 
 @Injectable()
 export class OrderRecordService implements IOrderRecordService {
@@ -141,6 +142,11 @@ export class OrderRecordService implements IOrderRecordService {
     // and the upsert excludes the column so a re-ingestion can't reset the
     // value the shipping context wrote out-of-band (#2101). Same for
     // `cancelledAt` (#1984), recorded below via `recordCancellationIfNeeded`.
+
+    // Order analytics read-model scalars (#1985) — denormalized alongside
+    // dispatchByAt above, from the same already-resolved Order. See ADR-039.
+    const analyticsScalars = deriveOrderAnalyticsScalars(order);
+
     const orderRecord = new OrderRecord(
       order.id,
       order.customerId || null,
@@ -152,18 +158,28 @@ export class OrderRecordService implements IOrderRecordService {
       now,
       now,
       [],
-      this.deriveDispatchByAt(order.dispatchTime)
+      this.deriveDispatchByAt(order.dispatchTime),
+      null,
+      null,
+      analyticsScalars.placedAt,
+      analyticsScalars.currency,
+      analyticsScalars.taxTreatment,
+      analyticsScalars.totalAmount
     );
 
-    const saved = await this.repository.upsert(orderRecord);
+    // #1985: persist the order record AND its order_line_items rows in one
+    // transaction — replaces the prior line-item set for this order so a
+    // re-ingested order with a changed item list never leaves stale rows.
+    const lineItems = deriveOrderLineItems(order, sourceConnectionId);
+    const saved = await this.repository.upsertWithLineItems(orderRecord, lineItems);
 
     // Two post-upsert writers, ONE refresh (#2125). Both write columns that
-    // `upsert()` deliberately excludes from its statement, so `saved` cannot
-    // reflect either of them - and running each writer's own re-read in
-    // sequence would leave the record stale again, because the cancellation
-    // re-read happens before the stamp lands. So each writer only REPORTS
-    // whether the returned record is now behind the row, and the refresh runs
-    // at most once, after both.
+    // upsertWithLineItems() deliberately excludes from its statement, so
+    // `saved` cannot reflect either of them - and running each writer's own
+    // re-read in sequence would leave the record stale again, because the
+    // cancellation re-read happens before the stamp lands. So each writer
+    // only REPORTS whether the returned record is now behind the row, and
+    // the refresh runs at most once, after both.
     const cancellationWrote = await this.recordCancellationIfNeeded(
       order.id,
       order.status === 'cancelled',
@@ -435,6 +451,10 @@ export class OrderRecordService implements IOrderRecordService {
     filters: OrderHealthSummaryFilters
   ): Promise<FailedSyncValueSummary> {
     return this.repository.getFailedSyncValueSummary(filters);
+  }
+
+  async getEarliestOrderDateByConnection(connectionIds: string[]): Promise<Map<string, Date>> {
+    return this.repository.findEarliestOrderDateByConnection(connectionIds);
   }
 
   /**

@@ -17,10 +17,12 @@ import { OrderFxReadService } from './application/services/order-fx-read.service
 import { OrderDestinationRetryService } from './application/services/order-destination-retry.service';
 import { OrderLifecycleRelayService } from './application/services/order-lifecycle-relay.service';
 import { OrderRecordRepository } from './infrastructure/persistence/repositories/order-record.repository';
+import { OrderLineItemRepository } from './infrastructure/persistence/repositories/order-line-item.repository';
 import { OrderRecordOrmEntity } from './infrastructure/persistence/entities/order-record.orm-entity';
 import { OrderRefundService } from './application/services/order-refund.service';
 import { RefundRecordRepository } from './infrastructure/persistence/repositories/refund-record.repository';
 import { RefundRecordOrmEntity } from './infrastructure/persistence/entities/refund-record.orm-entity';
+import { OrderLineItemOrmEntity } from './infrastructure/persistence/entities/order-line-item.orm-entity';
 import {
   ORDER_SYNC_SERVICE_TOKEN,
   ORDER_INGESTION_SERVICE_TOKEN,
@@ -33,6 +35,7 @@ import {
   ORDER_REFUND_RECORD_REPOSITORY_TOKEN,
   ORDER_REFUND_SERVICE_TOKEN,
   ORDER_FX_READ_SERVICE_TOKEN,
+  ORDER_LINE_ITEM_REPOSITORY_TOKEN,
 } from './orders.tokens';
 import { IntegrationsModule } from '@openlinker/core/integrations';
 import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
@@ -48,7 +51,7 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([OrderRecordOrmEntity, RefundRecordOrmEntity]),
+    TypeOrmModule.forFeature([OrderRecordOrmEntity, RefundRecordOrmEntity, OrderLineItemOrmEntity]),
     IntegrationsModule, // Required for INTEGRATIONS_SERVICE_TOKEN and ADAPTER_FACTORY_RESOLVER_TOKEN
     IdentifierMappingModule, // Required for IDENTIFIER_MAPPING_SERVICE_TOKEN
     SyncModule, // Required for cursor repository, job queue, and locks
@@ -80,6 +83,7 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     OrderFxReadService,
     OrderRefundService,
     RefundRecordRepository,
+    OrderLineItemRepository,
     // Then provide token bindings using useExisting
     {
       provide: ORDER_SYNC_SERVICE_TOKEN,
@@ -124,6 +128,10 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     {
       provide: ORDER_FX_READ_SERVICE_TOKEN,
       useExisting: OrderFxReadService,
+    },
+    {
+      provide: ORDER_LINE_ITEM_REPOSITORY_TOKEN,
+      useExisting: OrderLineItemRepository,
     },
   ],
   exports: [
