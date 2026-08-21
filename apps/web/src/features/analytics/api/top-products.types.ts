@@ -42,6 +42,14 @@ export interface TopProductsResult {
   /** Distinct products matching scope, before pagination. */
   total: number;
   unresolvedProductCount: number;
+  /**
+   * `false` when the coverage-gap enrichment failed for this whole response
+   * — every row's `missingFromConnectionIds` is then an unreliable `[]`,
+   * never evidence the product is listed everywhere. A consumer rendering
+   * "Not listed"/"Publish" off `missingFromConnectionIds` MUST suppress
+   * that treatment when this is `false` (#2172 review, IMPORTANT 1).
+   */
+  coverageGapAvailable: boolean;
 }
 
 export const TopProductsSortByValues = ['revenue', 'units'] as const;

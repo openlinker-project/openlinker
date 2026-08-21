@@ -61,6 +61,20 @@
  * image field, which is only populated by some source adapters and would
  * make the column patchy depending on which channel a sale landed on.
  *
+ * `coverageGapAvailable` (#2172 review, IMPORTANT 1): `false` means the
+ * coverage-gap enrichment failed for this whole response, so every row's
+ * `missingFromConnectionIds` is an unreliable `[]` — indistinguishable from
+ * "listed everywhere" — rather than a real answer. `ChannelCell` therefore
+ * renders the real `0` unconditionally when this is `false`, never "Not
+ * listed"/Publish, and the table carries a footnote saying so. Reusing the
+ * `.data-table__footnote` convention from `ChannelSalesTable` (#2098
+ * follow-up) rather than inventing a new pattern.
+ *
+ * `unresolvedProductCount` (#2172 review, IMPORTANT 2) is surfaced the same
+ * way — a plain footnote line, not folded into the coverage-gap message,
+ * since the two are independent facts (a product can fail to resolve to a
+ * catalogue entry regardless of whether the coverage-gap enrichment ran).
+ *
  * @module features/analytics/components
  */
 import { type ReactElement, useState } from 'react';
@@ -179,11 +193,13 @@ function ChannelCell({
   connectionId,
   intFormat,
   demoMode,
+  coverageGapAvailable,
 }: {
   row: TopProductRow;
   connectionId: string;
   intFormat: Intl.NumberFormat;
   demoMode: boolean;
+  coverageGapAvailable: boolean;
 }): ReactElement {
   const channel = channelCellFor(row, connectionId);
   if (channel) {
@@ -195,7 +211,13 @@ function ChannelCell({
   // range) means "not listed"; anything else is a listed channel that
   // simply sold nothing in this window, and renders the same real,
   // full-weight `0` a genuine zero-unit channel would.
-  if (!isMissingFrom(row, connectionId)) {
+  //
+  // `!coverageGapAvailable` short-circuits to the same real `0` even when
+  // `isMissingFrom` would say otherwise — when the enrichment failed,
+  // `missingFromConnectionIds` is an unreliable `[]` on EVERY row, not
+  // evidence of being listed everywhere, so trusting it would render "Not
+  // listed" as a false claim (#2172 review, IMPORTANT 1).
+  if (!coverageGapAvailable || !isMissingFrom(row, connectionId)) {
     return <>{intFormat.format(0)}</>;
   }
 
@@ -243,6 +265,8 @@ export function ProductSalesTable({ filters }: ProductSalesTableProps): ReactEle
   }
 
   const channelColumns = deriveChannelColumns(items);
+  const coverageGapAvailable = query.data?.coverageGapAvailable ?? true;
+  const unresolvedProductCount = query.data?.unresolvedProductCount ?? 0;
 
   const columns: DataTableColumn<TopProductRow>[] = [
     {
@@ -278,7 +302,13 @@ export function ProductSalesTable({ filters }: ProductSalesTableProps): ReactEle
         header: connectionsById.get(connectionId)?.name ?? connectionId,
         align: 'right',
         cell: (row) => (
-          <ChannelCell row={row} connectionId={connectionId} intFormat={intFormat} demoMode={demoMode} />
+          <ChannelCell
+            row={row}
+            connectionId={connectionId}
+            intFormat={intFormat}
+            demoMode={demoMode}
+            coverageGapAvailable={coverageGapAvailable}
+          />
         ),
       })
     ),
@@ -322,6 +352,7 @@ export function ProductSalesTable({ filters }: ProductSalesTableProps): ReactEle
                     connectionId={connectionId}
                     intFormat={intFormat}
                     demoMode={demoMode}
+                    coverageGapAvailable={coverageGapAvailable}
                   />
                 </span>
               ))}
@@ -331,6 +362,18 @@ export function ProductSalesTable({ filters }: ProductSalesTableProps): ReactEle
         }}
         emptyState={<EmptyValue label="No orders in this range" />}
       />
+      {!coverageGapAvailable ? (
+        <p className="data-table__footnote">
+          Listing-coverage check unavailable — channel columns show sales only, never "Not
+          listed".
+        </p>
+      ) : null}
+      {unresolvedProductCount > 0 ? (
+        <p className="data-table__footnote">
+          {unresolvedProductCount} product{unresolvedProductCount === 1 ? '' : 's'} on this page
+          could not be resolved to a catalogue entry.
+        </p>
+      ) : null}
     </article>
   );
 }

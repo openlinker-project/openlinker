@@ -43,8 +43,14 @@ function row(overrides: Partial<TopProductRow> = {}): TopProductRow {
   };
 }
 
-function result(items: TopProductRow[]): TopProductsResult {
-  return { items, total: items.length, unresolvedProductCount: 0 };
+function result(items: TopProductRow[], overrides: Partial<TopProductsResult> = {}): TopProductsResult {
+  return {
+    items,
+    total: items.length,
+    unresolvedProductCount: 0,
+    coverageGapAvailable: true,
+    ...overrides,
+  };
 }
 
 const CONNECTIONS = [
@@ -300,6 +306,58 @@ describe('ProductSalesTable', () => {
 
     expect(
       await screen.findByLabelText('No FX-stamped order for this product in range')
+    ).toBeInTheDocument();
+  });
+
+  it('never renders "Not listed" when coverageGapAvailable is false, even for a flagged-missing channel (#2172 review, IMPORTANT 1)', async () => {
+    const apiClient = createMockApiClient({
+      analytics: {
+        getTopProducts: vi.fn().mockResolvedValue(
+          result(
+            [
+              row({
+                channels: [
+                  { sourceConnectionId: 'conn-a', units: 2, revenue: 110, unconvertedRevenue: 0, currency: 'PLN' },
+                ],
+                // Unreliable when coverageGapAvailable is false — must NOT be trusted.
+                missingFromConnectionIds: ['conn-b'],
+              }),
+            ],
+            { coverageGapAvailable: false }
+          )
+        ),
+      },
+      connections: { list: vi.fn().mockResolvedValue(CONNECTIONS) },
+    });
+
+    renderWithProviders(<ProductSalesTable filters={FILTERS} />, {
+      apiClient,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
+
+    await screen.findByText('Widget A');
+    expect(screen.queryByText('Not listed')).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /Publish/ })).not.toBeInTheDocument();
+    expect(screen.getAllByText('0').length).toBeGreaterThan(0);
+    expect(
+      screen.getByText(/Listing-coverage check unavailable/)
+    ).toBeInTheDocument();
+  });
+
+  it('shows an unresolved-products footnote when unresolvedProductCount is positive (#2172 review, IMPORTANT 2)', async () => {
+    const apiClient = createMockApiClient({
+      analytics: {
+        getTopProducts: vi.fn().mockResolvedValue(
+          result([row({ productId: 'p1', name: null, sku: null })], { unresolvedProductCount: 1 })
+        ),
+      },
+      connections: { list: vi.fn().mockResolvedValue(CONNECTIONS) },
+    });
+
+    renderWithProviders(<ProductSalesTable filters={FILTERS} />, { apiClient });
+
+    expect(
+      await screen.findByText('1 product on this page could not be resolved to a catalogue entry.')
     ).toBeInTheDocument();
   });
 

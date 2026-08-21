@@ -203,8 +203,16 @@ patterns this plan copies:
   }>;
   total: number;                // distinct products in scope, before pagination
   unresolvedProductCount: number;
+  coverageGapAvailable: boolean; // false = coverage-gap enrichment failed for the whole response
 }
 ```
+
+**`coverageGapAvailable` correction (#2172 review, IMPORTANT 1 — not in the original transcript above).**
+When `false`, every row's `missingFromConnectionIds` is an unreliable `[]` for the whole response,
+not evidence the product is listed everywhere. `ChannelCell` must render the real `0` unconditionally
+in that case, never "Not listed"/Publish, with a footnote stating the check is unavailable — the
+original plan text below (§ Acceptance) only covered the per-row `missingFromConnectionIds` case and
+missed this response-level flag entirely.
 
 Query params: `from`, `to` (ISO, required), `sourceConnectionId?`, `sortBy?: 'revenue' | 'units'`
 (default `'revenue'`), `limit?` (default 20, max 100), `offset?` (default 0).
@@ -385,7 +393,12 @@ file set exactly.
      - Toggling the segmented control swaps `aria-sort` between the Revenue and Units headers and
        re-issues the query with the new `sortBy`.
      - `unresolvedProductCount > 0` in the response does not hide the affected row — it still
-       renders with `ProductThumbnail`'s placeholder and no crash on `name: null`.
+       renders with `ProductThumbnail`'s placeholder and no crash on `name: null`, **and is
+       surfaced to the operator** as a footnote line below the table (#2172 review, IMPORTANT 2 —
+       the original AC only required "doesn't crash", not "is disclosed").
+     - `coverageGapAvailable: false` suppresses "Not listed"/Publish on every channel cell,
+       rendering the real `0` instead, and shows a footnote explaining the check is unavailable
+       (#2172 review, IMPORTANT 1).
      - `query.error` renders `ErrorState` with a retry action; `query.isLoading` renders
        `LoadingState`; an empty `items` array renders an empty-state message
        (`"No orders in this range"` — matches #1986/#1990's copy convention) rather than a

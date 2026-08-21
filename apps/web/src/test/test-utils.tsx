@@ -155,6 +155,7 @@ export function createMockApiClient(
         items: [],
         total: 0,
         unresolvedProductCount: 0,
+        coverageGapAvailable: true,
       }),
       ...overrides.analytics,
     } as ApiClient['analytics'],
