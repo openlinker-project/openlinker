@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { computePresetRange, derivePreset } from './date-range.lib';
+import { computePresetRange, derivePreset, toUtcRangeInstants } from './date-range.lib';
 
 const TODAY = new Date(2026, 7, 14); // 14 Aug 2026
 
@@ -37,5 +37,23 @@ describe('derivePreset', () => {
 
   it('should return "custom" for an incomplete range', () => {
     expect(derivePreset('', '2026-08-14', TODAY)).toBe('custom');
+  });
+});
+
+describe('toUtcRangeInstants', () => {
+  it('should map an inclusive local `to` day to the exclusive UTC instant after it', () => {
+    // A `to` day of 2026-08-14 must include every order placed anywhere on
+    // that day, so the API's exclusive bound is midnight the day after.
+    expect(toUtcRangeInstants('2026-08-08', '2026-08-14')).toEqual({
+      from: '2026-08-08T00:00:00.000Z',
+      to: '2026-08-15T00:00:00.000Z',
+    });
+  });
+
+  it('should cross a month/year boundary on the exclusive `to` bump', () => {
+    expect(toUtcRangeInstants('2025-12-26', '2025-12-31')).toEqual({
+      from: '2025-12-26T00:00:00.000Z',
+      to: '2026-01-01T00:00:00.000Z',
+    });
   });
 });
