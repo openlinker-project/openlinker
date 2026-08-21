@@ -16,6 +16,16 @@ import { ORDER_RECORD_SERVICE_TOKEN, type IOrderRecordService } from '@openlinke
 import { SalesAnalyticsQueryDto } from './dto/sales-analytics-query.dto';
 import { SalesAnalyticsResponseDto } from './dto/sales-analytics-response.dto';
 
+/**
+ * Upper bound on a requested range (#1987 review, suggestion 3). Unbounded,
+ * `getMedianOrderValue`'s `PERCENTILE_CONT` sorts the whole matching set with
+ * no index able to serve it, and the daily aggregate groups across the whole
+ * table — authenticated-only, so not a security issue, but one bookmarked
+ * `from=1970-01-01&to=2100-01-01` URL is enough to cost a full scan on every
+ * load.
+ */
+const MAX_SALES_ANALYTICS_RANGE_DAYS = 400;
+
 @ApiBearerAuth()
 @ApiTags('analytics')
 @Controller('analytics')
@@ -38,6 +48,12 @@ export class SalesAnalyticsController {
     const to = new Date(query.to);
     if (to.getTime() <= from.getTime()) {
       throw new BadRequestException('to must be after from');
+    }
+    const rangeDays = (to.getTime() - from.getTime()) / (24 * 60 * 60 * 1000);
+    if (rangeDays > MAX_SALES_ANALYTICS_RANGE_DAYS) {
+      throw new BadRequestException(
+        `Range too wide: ${Math.ceil(rangeDays)} days exceeds the ${MAX_SALES_ANALYTICS_RANGE_DAYS}-day limit`
+      );
     }
 
     const analytics = await this.orderRecordService.getSalesAndChannelAnalytics({

@@ -220,6 +220,44 @@ function renderStep(
 }
 
 describe('BulkShopReviewStep (render)', () => {
+  it('shows the resolved description on a single-variant product row', async () => {
+    // Same gap as the marketplace step: a simple product publishes from the
+    // PRODUCT row - no variant row is rendered - so a disclosure that lives only
+    // on the variant row never appears for the most common case (#2200). The
+    // assertion is on the resolved TEXT so that showing the wrong line's copy,
+    // or nothing, fails here.
+    const variant = makeVariantRow('v1', {
+      override: { overrides: { description: '<p>Opis sklepowy</p>' } },
+    } as Partial<BulkVariantRow>);
+    renderStep([makeRow('prod_1', [variant])], config(), {}, [
+      { productVariantId: 'v1', totalAvailable: 3 },
+    ]);
+
+    await screen.findAllByText('Description');
+    const disclosure = document.querySelector('.bulk-review__prow-main .bulk-review__desc');
+    expect(disclosure).not.toBeNull();
+    expect(disclosure?.textContent).toContain('Opis sklepowy');
+  });
+
+  it('keeps the disclosure off the product row of a multi-variant product', async () => {
+    // Non-duplication: for a multi-variant product each variant row carries its
+    // own disclosure, so the product row must not add a second one.
+    renderStep(
+      [makeRow('prod_1', [makeVariantRow('v1'), makeVariantRow('v2')])],
+      config(),
+      {},
+      [{ productVariantId: 'v1', totalAvailable: 3 }],
+    );
+
+    // Deliberately NOT waiting on the word "Description": for a multi-variant
+    // product it must not appear at all until a row is expanded, so waiting for
+    // it would be waiting for the very thing under test to be wrong.
+    await waitFor(() => {
+      expect(document.querySelector('.bulk-review__prow-main')).not.toBeNull();
+    });
+    expect(document.querySelectorAll('.bulk-review__prow-main .bulk-review__desc')).toHaveLength(0);
+  });
+
   it('renders one row per variant (included and excluded) and displays the resolved stock + price it will submit', async () => {
     const rows = [makeRow('prod_1', [makeVariantRow('v1'), makeVariantRow('v2', { included: false })])];
     // use-master stock (availability 7) + flat price 99 -> review must show both.

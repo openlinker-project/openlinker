@@ -54,10 +54,16 @@ export function PrestashopRateLimitReadout({
 
   const status = statusQuery.data;
 
+  // Scoped to the outbound limiter on purpose (#2229): a resolve ceiling is
+  // applied inside the adapter, below this mechanism, so the old blanket "this
+  // connection is not rate-limited" was a claim this component was not in a
+  // position to make.
   if (!status.enabled) {
     return (
       <div className="prestashop-rate-limit">
-        <span className="muted-text">No limit configured — this connection is not rate-limited.</span>
+        <span className="muted-text">
+          No outbound limit configured — requests to this connection are not paced.
+        </span>
       </div>
     );
   }

@@ -54,12 +54,15 @@ describe('EditOfferDrawer', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
-  it('should render title, price, and description fields when open', () => {
+  it('should render title, price, and description fields when open', async () => {
     renderDrawer(true);
     expect(screen.getByRole('dialog', { name: 'Edit offer' })).toBeInTheDocument();
     expect(screen.getByLabelText(/title/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/price/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/description/i)).toBeInTheDocument();
+    // Awaited, not synchronous: since ADR-046 the description editor is composed
+    // from the destination's fetched contract, so it mounts after that read
+    // resolves rather than on the first tick.
+    expect(await screen.findByLabelText(/description/i)).toBeInTheDocument();
   });
 
   it('should disable save button when form is pristine', () => {
@@ -146,6 +149,91 @@ describe('EditOfferDrawer', () => {
     expect(onClose).not.toHaveBeenCalled();
   });
 
+  describe('destination byte cap (ADR-046)', () => {
+    const NARROW_FORMAT = {
+      shape: 'html' as const,
+      allowedTags: ['p', 'b'],
+      allowedAttributes: {},
+      contentModel: null,
+      rewrites: [],
+      requiresBlockOpener: true,
+      selfClosingVoids: false,
+      maxBytes: 40,
+      declared: true,
+      resolvedVia: 'OfferManager' as const,
+    };
+
+    it('should block Save and explain when the description exceeds the destination cap', async () => {
+      // The counter under the editor only informs. An update is dispatched as a
+      // job, so without this gate the operator learns about the cap from a
+      // platform reject long after the drawer closed.
+      const suggest = vi.fn().mockResolvedValue({
+        suggestion: `<p>${'x'.repeat(200)}</p>`,
+        requestId: 'req-1',
+        templateKey: 'offer.description.suggest',
+        templateVersion: 1,
+        templateChannel: 'allegro',
+        modelUsed: 'fake',
+        latencyMs: 0,
+        usage: { inputTokens: 0, outputTokens: 0, cachedInputTokens: 0 },
+      });
+      renderDrawer(
+        true,
+        {
+          content: { suggest },
+          listings: { getDescriptionFormat: vi.fn().mockResolvedValue(NARROW_FORMAT) },
+        },
+        undefined,
+        { ...mockMapping, linkedProductId: 'ol_product_xyz789' },
+      );
+
+      await waitFor(() =>
+        expect(screen.getByRole('button', { name: /suggest with ai/i })).toBeEnabled(),
+      );
+      fireEvent.click(screen.getByRole('button', { name: /suggest with ai/i }));
+      fireEvent.click(await screen.findByRole('button', { name: /^generate$/i }));
+      fireEvent.click(await screen.findByRole('button', { name: /apply to editor/i }));
+
+      // Dirty (so the pristine gate is not what is blocking) AND over cap.
+      expect(await screen.findByText(/longer than the destination accepts/i)).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /save changes/i })).toBeDisabled();
+    });
+
+    it('should leave Save available when the description fits the destination cap', async () => {
+      const suggest = vi.fn().mockResolvedValue({
+        suggestion: 'Short copy',
+        requestId: 'req-1',
+        templateKey: 'offer.description.suggest',
+        templateVersion: 1,
+        templateChannel: 'allegro',
+        modelUsed: 'fake',
+        latencyMs: 0,
+        usage: { inputTokens: 0, outputTokens: 0, cachedInputTokens: 0 },
+      });
+      renderDrawer(
+        true,
+        {
+          content: { suggest },
+          listings: { getDescriptionFormat: vi.fn().mockResolvedValue(NARROW_FORMAT) },
+        },
+        undefined,
+        { ...mockMapping, linkedProductId: 'ol_product_xyz789' },
+      );
+
+      await waitFor(() =>
+        expect(screen.getByRole('button', { name: /suggest with ai/i })).toBeEnabled(),
+      );
+      fireEvent.click(screen.getByRole('button', { name: /suggest with ai/i }));
+      fireEvent.click(await screen.findByRole('button', { name: /^generate$/i }));
+      fireEvent.click(await screen.findByRole('button', { name: /apply to editor/i }));
+
+      await waitFor(() =>
+        expect(screen.getByRole('button', { name: /save changes/i })).not.toBeDisabled(),
+      );
+      expect(screen.queryByText(/longer than the destination accepts/i)).not.toBeInTheDocument();
+    });
+  });
+
   describe('AI suggest (#485)', () => {
     it('should render the Suggest button when linkedProductId and platformType resolve to a channel', async () => {
       const mappingWithLink: OfferMapping = {
@@ -203,8 +291,11 @@ describe('EditOfferDrawer', () => {
       fireEvent.click(applyButton);
 
       await waitFor(() => {
-        const textarea = screen.getByLabelText(/description/i);
-        expect(textarea).toHaveValue('Generated copy');
+        // ADR-046: the field is a contenteditable rich-text surface, so there is
+        // no form value to assert - the suggestion lands as the editor's content.
+        expect(screen.getByRole('textbox', { name: /offer description/i })).toHaveTextContent(
+          'Generated copy',
+        );
       });
       // Apply must mark the form dirty so Save activates.
       expect(screen.getByRole('button', { name: /save changes/i })).not.toBeDisabled();

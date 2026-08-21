@@ -20,6 +20,7 @@ describe('MasterProductSyncHandler', () => {
   beforeEach(() => {
     masterProductSync = {
       syncFromMasterByExternalId: jest.fn(),
+      markProductDeletedAtMaster: jest.fn(),
     };
     handler = new MasterProductSyncHandler(masterProductSync);
   });
@@ -45,6 +46,7 @@ describe('MasterProductSyncHandler', () => {
   const result = (masterDeleted: boolean, pruneSkipped = false): MasterProductSyncResult => ({
     internalProductId: 'ol_product_abc',
     variantsUpserted: masterDeleted ? 0 : 2,
+    pruneSkippedReason: pruneSkipped ? 'rival' : null,
     masterDeleted,
     pruneSkipped,
   });
