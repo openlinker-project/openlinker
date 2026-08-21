@@ -86,6 +86,8 @@ One pointer per section, identical format every time.
 5. Open the PR. Reviewers focus on whether the decision is well-stated, the alternatives section is honest, and specifics are accurate. Prose polish is not the bar.
 6. If an existing ADR is superseded by your new one, update the old ADR's Status line to `Superseded by ADR-NNN` and add a `## Supersedes` section to the new ADR pointing at the old one. Do not edit the old ADR's body.
 
+> *Reversal-gate markers (#2169):* if your ADR carries reversal gates, classify each one as `*Reversal gate (countable):*` (mechanically checkable — a count, a grep, a registry) or `*Reversal gate (prose-only):*` (needs human observation or judgment). `scripts/check-architecture-gates.mjs` (run from `pnpm lint`) fails the build on an unmarked gate in ADR-048 and later, and enforces the currently-countable ones. Pre-048 ADRs predate the convention and are deliberately not retrofitted.
+
 ## Index
 
 | ADR | Title | Status | Date |
