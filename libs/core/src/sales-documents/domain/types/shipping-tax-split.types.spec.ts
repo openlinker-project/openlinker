@@ -1,11 +1,11 @@
 /**
- * Shipping Tax Split Tests (#2248, ADR-052 § 5)
+ * Shipping Tax Split Tests (#2248 / #2252, ADR-052 § 5)
  *
  * The property that matters is arithmetic: however the parts fall, they add
  * back up to the shipping the buyer actually paid. Everything else is about
  * refusing to guess when the basket's rate mix is unknown.
  *
- * @module libs/core/src/invoicing/domain/types
+ * @module libs/core/src/sales-documents/domain/types
  */
 import { splitShippingAcrossRates } from './shipping-tax-split.types';
 import type { ShippingSplitLine } from './shipping-tax-split.types';

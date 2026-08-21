@@ -35,6 +35,7 @@ import { DuplicateFiscalRegistrationRecordException } from '../../domain/excepti
 import { FiscalRegistrationNotInDoubtException } from '../../domain/exceptions/fiscal-registration-not-in-doubt.exception';
 import { FiscalRegistrationRecordNotFoundException } from '../../domain/exceptions/fiscal-registration-record-not-found.exception';
 import { MissingIdempotencyKeyException } from '../../domain/exceptions/missing-idempotency-key.exception';
+import { MissingFiscalTaxRateException } from '../../domain/exceptions/missing-tax-rate.exception';
 import { OrderAlreadyRegisteredException } from '../../domain/exceptions/order-already-registered.exception';
 import { FISCAL_REGISTRATION_RECORD_REPOSITORY_TOKEN } from '../../fiscalization.tokens';
 import type {
@@ -163,6 +164,21 @@ export class FiscalRegistrationService implements IFiscalRegistrationService {
     // lookup AND the adapter - must see the SAME key, or a provider that echoes
     // OL's key back would be queried later under a value it never received.
     const normalized: RegisterTransactionCommand = { ...cmd, idempotencyKey: key };
+
+    // #2252 (ADR-052 § 6): a line with no tax rate is refused BEFORE the read
+    // gate and before any row is written - the same rule as the invoice, and
+    // for the same reason. A provider filling the gap from the connection's
+    // configured tax letter puts an unconfirmed rate on a real fiscal receipt,
+    // which reaches the buyer and the daily report and cannot be recalled.
+    //
+    // The accepted cost is LATE registration, chosen deliberately: a late
+    // registration can be completed, a wrong one has to be corrected. Placed
+    // ahead of the read gate so a held sale leaves no `pending` row behind to
+    // reconcile.
+    //
+    // THIS CALL IS THE REVERSAL POINT. Nothing else in this context consults
+    // the rate, so removing this one line restores the pre-#2252 behaviour.
+    this.assertEveryLineHasATaxRate(normalized);
 
     // (1) Read gate. An existing row is RESUMED under the fiscal-safety
     // invariant - never returned blindly and never re-sent blindly.
@@ -398,6 +414,25 @@ export class FiscalRegistrationService implements IFiscalRegistrationService {
    * belongs there, but inheriting a known stuck state is not a reason to ship
    * one on a new surface.
    */
+  /**
+   * Refuse a sale whose lines do not all name a tax rate (#2252).
+   *
+   * `'0'` passes - a zero rate is an answer, and refusing it would hold every
+   * deliberately exempt sale. A blank one does not: that is what core emits
+   * when nothing established the rate, and it is exactly the value each
+   * provider would silently replace with its own default.
+   */
+  private assertEveryLineHasATaxRate(cmd: RegisterTransactionCommand): void {
+    const missing = cmd.lines.filter((line) => line.taxRate.trim() === '');
+    if (missing.length === 0) return;
+    throw new MissingFiscalTaxRateException(
+      cmd.orderId,
+      missing.length,
+      cmd.lines.length,
+      missing[0]?.sku ?? missing[0]?.name ?? null,
+    );
+  }
+
   private async registerWithAdapter(
     cmd: RegisterTransactionCommand,
     recordId: string,
