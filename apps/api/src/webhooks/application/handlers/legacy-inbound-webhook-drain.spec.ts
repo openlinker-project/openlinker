@@ -89,9 +89,16 @@ describe('LegacyInboundWebhookDrain', () => {
     drain = module.get(LegacyInboundWebhookDrain);
   });
 
+  /**
+   * `onModuleInit` deliberately detaches the drain (it must not block boot), so
+   * a test drives the drain body directly rather than racing a `setImmediate`.
+   */
+  const runDrain = (): Promise<void> =>
+    (drain as unknown as { runDetachedDrain: () => Promise<void> }).runDetachedDrain();
+
   describe('group handling', () => {
     it('swallows BUSYGROUP (pre-existing group is the interesting case) and drains', async () => {
-      await drain.onModuleInit();
+      await runDrain();
 
       expect(redisClient.xPendingRange).toHaveBeenCalled();
       expect(redisClient.xReadGroup).toHaveBeenCalled();
@@ -100,16 +107,16 @@ describe('LegacyInboundWebhookDrain', () => {
     it('skips the drain entirely when the group cannot be ensured (Redis down)', async () => {
       redisClient.xGroupCreate.mockRejectedValue(new Error('ECONNREFUSED'));
 
-      await drain.onModuleInit();
+      await runDrain();
 
       expect(redisClient.xPendingRange).not.toHaveBeenCalled();
       expect(redisClient.xReadGroup).not.toHaveBeenCalled();
     });
 
-    it('never blocks boot on a drain failure', async () => {
+    it('swallows a drain failure so it can never disturb the running api', async () => {
       redisClient.xPendingRange.mockRejectedValue(new Error('redis exploded'));
 
-      await expect(drain.onModuleInit()).resolves.toBeUndefined();
+      await expect(runDrain()).resolves.toBeUndefined();
     });
   });
 
@@ -118,7 +125,7 @@ describe('LegacyInboundWebhookDrain', () => {
       redisClient.xPendingRange.mockResolvedValueOnce([pendingRow('1-1')]).mockResolvedValue([]);
       redisClient.xRange.mockResolvedValueOnce([{ id: '1-1', message: streamEntryFields('e1') }]);
 
-      await drain.onModuleInit();
+      await runDrain();
 
       expect(jobGate.insertDeliveryWithJob).toHaveBeenCalledWith(
         expect.objectContaining({ eventId: 'e1', status: 'job_enqueued' }),
@@ -136,7 +143,7 @@ describe('LegacyInboundWebhookDrain', () => {
       redisClient.xRange.mockResolvedValueOnce([{ id: '1-1', message: streamEntryFields('e1') }]);
       jobGate.insertDeliveryWithJob.mockResolvedValue({ isNew: false, jobId: 'job-uuid-1' });
 
-      await drain.onModuleInit();
+      await runDrain();
 
       expect(deliveryRepository.upsert).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -153,7 +160,7 @@ describe('LegacyInboundWebhookDrain', () => {
       redisClient.xPendingRange.mockResolvedValueOnce([pendingRow('1-1')]).mockResolvedValue([]);
       redisClient.xRange.mockResolvedValueOnce([]);
 
-      await drain.onModuleInit();
+      await runDrain();
 
       expect(jobGate.insertDeliveryWithJob).not.toHaveBeenCalled();
       expect(deliveryRepository.upsert).not.toHaveBeenCalled();
@@ -172,7 +179,7 @@ describe('LegacyInboundWebhookDrain', () => {
         reason: 'no-translator: foo.v1',
       });
 
-      await drain.onModuleInit();
+      await runDrain();
 
       expect(deliveryRepository.upsert).toHaveBeenCalledWith(
         expect.objectContaining({ status: 'deadlettered', dlqReason: 'no-translator: foo.v1' })
@@ -186,7 +193,7 @@ describe('LegacyInboundWebhookDrain', () => {
       redisClient.xRange.mockResolvedValueOnce([{ id: '1-1', message: streamEntryFields('e1') }]);
       inboundRouting.resolveEvent.mockRejectedValue(new Error('db blip'));
 
-      await drain.onModuleInit();
+      await runDrain();
 
       expect(redisClient.xAck).not.toHaveBeenCalled();
     });
@@ -196,7 +203,7 @@ describe('LegacyInboundWebhookDrain', () => {
       redisClient.xRange.mockResolvedValueOnce([{ id: '1-1', message: streamEntryFields('e1') }]);
       inboundRouting.resolveEvent.mockRejectedValue(new Error('db blip'));
 
-      await drain.onModuleInit();
+      await runDrain();
 
       expect(redisClient.xPendingRange).toHaveBeenNthCalledWith(
         2,
@@ -220,7 +227,7 @@ describe('LegacyInboundWebhookDrain', () => {
         ])
         .mockResolvedValue(null);
 
-      await drain.onModuleInit();
+      await runDrain();
 
       expect(jobGate.insertDeliveryWithJob).toHaveBeenCalledWith(
         expect.objectContaining({ eventId: 'e2' }),
@@ -255,7 +262,7 @@ describe('LegacyInboundWebhookDrain', () => {
         ])
         .mockResolvedValue(null);
 
-      await drain.onModuleInit();
+      await runDrain();
 
       expect(jobGate.insertDeliveryWithJob).not.toHaveBeenCalled();
       expect(redisClient.xAck).toHaveBeenCalledWith(

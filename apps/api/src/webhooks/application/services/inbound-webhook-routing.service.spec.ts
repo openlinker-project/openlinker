@@ -27,6 +27,7 @@ import {
 import type { IInboundRoutingPolicyService, SyncJobRequest } from '@openlinker/core/sync';
 import { INBOUND_ROUTING_POLICY_TOKEN } from '@openlinker/core/sync';
 import { InboundWebhookRoutingService } from './inbound-webhook-routing.service';
+import { WebhookRoutingUnavailableException } from '../errors/webhook-routing-unavailable.exception';
 
 const connectionId = '123e4567-e89b-12d3-a456-426614174000';
 
@@ -130,10 +131,31 @@ describe('InboundWebhookRoutingService', () => {
     expect(outcome).toMatchObject({ kind: 'unroutable' });
   });
 
-  it('rethrows any other adapter-resolution error so the source retries (ADR-015 invariant 3)', async () => {
-    integrationsService.getAdapter.mockRejectedValue(new Error('db blip'));
+  it('rethrows any other adapter-resolution error TYPED, so the controller answers 503 not 404', async () => {
+    // An untyped rethrow fell through the controller's legacy message matcher:
+    // `AdapterNotFoundException` reads "Adapter not found: …" and became a 404,
+    // which a marketplace commonly answers by deleting the subscription.
+    integrationsService.getAdapter.mockRejectedValue(new Error('Adapter not found: foo.v1'));
 
-    await expect(service.resolveEvent(makeEvent())).rejects.toThrow('db blip');
+    await expect(service.resolveEvent(makeEvent())).rejects.toBeInstanceOf(
+      WebhookRoutingUnavailableException
+    );
+    await expect(service.resolveEvent(makeEvent())).rejects.toThrow(/Adapter not found/);
+  });
+
+  it('dead-letters a THROWING translator rather than 5xx-ing forever with no record', async () => {
+    // Deterministic about this payload: it throws identically on every
+    // redelivery, so rethrowing would be ADR-049's poison-entry gap moved onto
+    // the request path — a permanent 5xx with nothing durable anywhere.
+    translator.translate.mockImplementation(() => {
+      throw new Error('unexpected shape');
+    });
+
+    const outcome = await service.resolveEvent(makeEvent());
+
+    expect(outcome).toMatchObject({ kind: 'unroutable' });
+    expect((outcome as { reason: string }).reason).toContain('translator-threw');
+    expect((outcome as { reason: string }).reason).toContain('unexpected shape');
   });
 
   it('classifies a plugin with no translator as unroutable, naming the adapterKey', async () => {

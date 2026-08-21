@@ -5,7 +5,8 @@
  * gated on the connection's resolved capabilities (ADR-015). This is the
  * single place that decides "which job does this inbound event become?" —
  * a deterministic, platform-agnostic table keyed on the event's `domain`.
- * The inbound webhook dispatcher (`WebhookToJobHandler`) carries zero
+ * The inbound webhook ingress (`InboundWebhookRoutingService` in `apps/api`,
+ * since #2280 — previously the async `WebhookToJobHandler`) carries zero
  * platform knowledge and delegates here.
  *
  * Gate = the adapter's `supportedCapabilities` (passed in by the dispatcher,

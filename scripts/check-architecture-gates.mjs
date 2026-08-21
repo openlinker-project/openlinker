@@ -55,8 +55,15 @@
  *     not whether events imports a producing context at all.
  *   - ADR-048 (enqueue site without a declared budget/ceiling) — needs its
  *     own structural-detection design.
- *   - ADR-050 D1 / ADR-051 D6 (lane assignment / role coverage) — blocked on
- *     Waves 3/4 (#2278/#2279) creating the registries to count.
+ *   - ADR-050 D1 (lane assignment) — still blocked on Wave 3 (#2278) creating
+ *     the registry to count.
+ *   - ADR-051 D6 (role coverage) — NO LONGER blocked: Wave 4 (#2279) shipped
+ *     the role vocabulary (`apps/worker/src/roles/worker-role.types.ts`) and a
+ *     runtime coverage assertion for the `jobs` role
+ *     (`apps/worker/src/sync/role-coverage-assertion.service.ts`). What is
+ *     missing here is the STATIC half — mapping every registered jobType to a
+ *     role without booting — which a single process cannot assert about a
+ *     fleet. Owned by #2169.
  *
  * Run from `pnpm lint` via `pnpm check:invariants`.
  *

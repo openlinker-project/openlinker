@@ -9,10 +9,16 @@
  * be stranded, and the source's redelivery would bounce off the Postgres gate
  * (`published` row exists) WITHOUT ever creating a job: silent order loss.
  *
- * This drain consumes the group's full backlog once at boot — the whole PEL
- * (any consumer's) plus unread entries — through the new resolve→gate path,
- * then exits. No infinite loop, no dedicated blocking client (pure
- * non-blocking reads: `XPENDING`/`XRANGE`/non-blocking `XREADGROUP`).
+ * It consumes the group's backlog — the PEL (any consumer's) plus unread
+ * entries — through the new resolve→gate path, then exits. No infinite loop,
+ * no dedicated blocking client (pure non-blocking reads: `XPENDING`/`XRANGE`/
+ * non-blocking `XREADGROUP`).
+ *
+ * It runs DETACHED from `onModuleInit` and is bounded per boot: awaiting it
+ * would delay the api from serving until the backlog finished, refusing the
+ * very webhooks it exists to protect. A backlog larger than one boot's budget
+ * is finished by the next boot, and hitting the cap is logged rather than
+ * silent.
  *
  * Ownership contention is deliberately NOT modelled: after this release no
  * live consumer of the group exists, and every step is idempotent (job insert
@@ -33,7 +39,6 @@ import type { EventEnvelope, InboundWebhookEvent } from '@openlinker/core/events
 import { Logger } from '@openlinker/shared/logging';
 import {
   ackTrimmed,
-  MAX_DRAIN_PAGES,
   REDIS_STREAM_NAMES,
   resolveConsumerName,
   toPendingRows,
@@ -57,6 +62,19 @@ import type { WebhookPayload, WebhookMetadata } from './webhook-handler.types';
 const PENDING_PAGE_SIZE = 50;
 const UNREAD_PAGE_SIZE = 50;
 
+/**
+ * Pages this drain will walk PER BOOT, per pass — deliberately far below the
+ * shared `MAX_DRAIN_PAGES` the recovery primitives use (1 000).
+ *
+ * Each entry costs an `XRANGE`, a routing DB read and a gate transaction, run
+ * serially. At the shared cap that is up to ~50 000 entries per pass, which on
+ * an install sitting near the stream's retention ceiling would take many
+ * minutes. The backlog is finite and every boot makes progress, so bounding
+ * the work per boot costs only latency for a stream this size, while an
+ * unbounded walk would hold the process busy for the whole drain.
+ */
+const MAX_PAGES_PER_BOOT = 20;
+
 @Injectable()
 export class LegacyInboundWebhookDrain implements OnModuleInit {
   private readonly logger = new Logger(LegacyInboundWebhookDrain.name);
@@ -76,12 +94,24 @@ export class LegacyInboundWebhookDrain implements OnModuleInit {
     private readonly deliveryRepository: WebhookDeliveryRepositoryPort
   ) {}
 
-  async onModuleInit(): Promise<void> {
+  onModuleInit(): void {
+    // Deliberately NOT awaited. Nest awaits `onModuleInit`, so awaiting the
+    // drain would keep the api from serving until the whole backlog was
+    // processed — during which every inbound webhook is refused, which is the
+    // loss this drain exists to prevent. Detaching it lets ingress come up
+    // immediately and the recovery proceed behind it; both paths write through
+    // the same idempotent gate, so a webhook arriving mid-drain is safe.
+    setImmediate(() => {
+      void this.runDetachedDrain();
+    });
+  }
+
+  private async runDetachedDrain(): Promise<void> {
     try {
       await this.drainOnce();
     } catch (error) {
       // The drain is recovery, not the request path — a failure here must not
-      // block api boot; un-ACKed entries are retried on the next boot.
+      // affect the running api; un-ACKed entries are retried on the next boot.
       this.logger.error(
         `Legacy inbound-webhook drain failed (will retry next boot)`,
         error instanceof Error ? error.stack : String(error)
@@ -97,6 +127,7 @@ export class LegacyInboundWebhookDrain implements OnModuleInit {
 
     let drained = 0;
     let deadRows = 0;
+    let discarded = 0;
     let trimmed = 0;
     let failed = 0;
 
@@ -106,7 +137,8 @@ export class LegacyInboundWebhookDrain implements OnModuleInit {
     // header). Exclusive cursor so a failing entry cannot re-present its page.
     const client = this.redisClient as unknown as StreamConsumerClient;
     let cursor = '-';
-    for (let page = 0; page < MAX_DRAIN_PAGES; page += 1) {
+    let pendingCapped = false;
+    for (let page = 0; page < MAX_PAGES_PER_BOOT; page += 1) {
       const pending = toPendingRows(
         await client.xPendingRange(this.STREAM_NAME, this.CONSUMER_GROUP, cursor, '+', PENDING_PAGE_SIZE)
       );
@@ -125,16 +157,19 @@ export class LegacyInboundWebhookDrain implements OnModuleInit {
         const outcome = await this.processEntry(row.id, body[0].message);
         if (outcome === 'drained') drained += 1;
         else if (outcome === 'deadlettered') deadRows += 1;
+        else if (outcome === 'discarded') discarded += 1;
         else failed += 1;
       }
       // Exclusive resume cursor (Redis 6.2 `(`-prefixed id), so a failing
       // entry cannot re-present its own page within this drain run.
       cursor = `(${pending[pending.length - 1].id}`;
+      pendingCapped = page === MAX_PAGES_PER_BOOT - 1;
     }
 
     // Pass 2 — unread entries (never delivered to any consumer). Non-blocking
     // XREADGROUP against our own drain consumer, looped until empty.
-    for (let page = 0; page < MAX_DRAIN_PAGES; page += 1) {
+    let unreadCapped = false;
+    for (let page = 0; page < MAX_PAGES_PER_BOOT; page += 1) {
       const response = await this.redisClient.xReadGroup(
         this.CONSUMER_GROUP,
         this.CONSUMER_NAME,
@@ -152,13 +187,23 @@ export class LegacyInboundWebhookDrain implements OnModuleInit {
         );
         if (outcome === 'drained') drained += 1;
         else if (outcome === 'deadlettered') deadRows += 1;
+        else if (outcome === 'discarded') discarded += 1;
         else failed += 1;
       }
+      unreadCapped = page === MAX_PAGES_PER_BOOT - 1;
     }
 
-    if (drained + deadRows + trimmed + failed > 0) {
+    if (pendingCapped || unreadCapped) {
+      // Never silent: an operator must be able to tell "backlog finished" from
+      // "backlog continues on the next boot".
+      this.logger.warn(
+        `Legacy inbound-webhook drain hit its per-boot page cap (${MAX_PAGES_PER_BOOT}) — the remaining backlog is drained on the next boot`
+      );
+    }
+
+    if (drained + deadRows + discarded + trimmed + failed > 0) {
       this.logger.log(
-        `Legacy inbound-webhook drain: ${drained} routed, ${deadRows} deadlettered, ${trimmed} trimmed, ${failed} failed (retried next boot)`
+        `Legacy inbound-webhook drain: ${drained} routed, ${deadRows} deadlettered, ${discarded} discarded (unparseable), ${trimmed} trimmed, ${failed} failed (retried next boot)`
       );
     } else {
       this.logger.debug('Legacy inbound-webhook drain: nothing to drain');
@@ -197,14 +242,32 @@ export class LegacyInboundWebhookDrain implements OnModuleInit {
   private async processEntry(
     messageId: string,
     fields: Record<string, string>
-  ): Promise<'drained' | 'deadlettered' | 'failed'> {
+  ): Promise<'drained' | 'discarded' | 'deadlettered' | 'failed'> {
+    // Parsing is separated from the work below because the two failure modes
+    // are opposites: a corrupt `payloadJson` throws and will throw identically
+    // on every future boot, so treating it as transient (leaving it un-ACKed)
+    // would retry it forever. It is discarded with a warning, exactly like the
+    // missing-identifier case beneath it.
+    let event: InboundWebhookEvent;
     try {
-      const event = this.mapToInboundWebhookEvent(this.parseEventEnvelope(fields));
+      event = this.mapToInboundWebhookEvent(this.parseEventEnvelope(fields));
+    } catch (parseError) {
+      this.logger.warn(
+        `Legacy drain: entry ${messageId} is structurally unparseable, discarding: ${parseError instanceof Error ? parseError.message : String(parseError)}`
+      );
+      await this.redisClient.xAck(this.STREAM_NAME, this.CONSUMER_GROUP, messageId);
+      return 'discarded';
+    }
+
+    try {
       if (!event.eventId || !event.connectionId) {
-        // Malformed beyond recording — ACK so it stops re-presenting.
-        this.logger.warn(`Legacy drain: unparseable entry ${messageId}, acking without a row`);
+        // Identifiers missing, so no delivery row can be keyed — discard with a
+        // warning rather than claim a dead-letter that was never written.
+        this.logger.warn(
+          `Legacy drain: entry ${messageId} carries no eventId/connectionId, discarding without a row`
+        );
         await this.redisClient.xAck(this.STREAM_NAME, this.CONSUMER_GROUP, messageId);
-        return 'deadlettered';
+        return 'discarded';
       }
 
       if (event.eventType.startsWith('test.')) {
@@ -231,7 +294,13 @@ export class LegacyInboundWebhookDrain implements OnModuleInit {
         await this.redisClient.xAck(this.STREAM_NAME, this.CONSUMER_GROUP, messageId);
         return 'deadlettered';
       }
-      if (routing.kind === 'ping') {
+      if (routing.kind !== 'routed') {
+        // Unreachable in practice: the `test.*` short-circuit above already
+        // handled the ping case, using the SAME predicate `resolveEvent`
+        // applies — and it additionally writes the `received` row this branch
+        // would not (the operator's "last test ping at" signal, #168). Kept as
+        // a narrowing guard that ACKs rather than leaving an entry pending
+        // forever, should those two predicates ever drift apart.
         await this.redisClient.xAck(this.STREAM_NAME, this.CONSUMER_GROUP, messageId);
         return 'drained';
       }

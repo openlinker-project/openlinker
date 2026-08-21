@@ -515,9 +515,13 @@ describe('Webhook Ingestion Integration', () => {
         publishedAt: now.toISOString(),
       });
 
-      // Re-trigger the one-shot drain (its boot run happened before this seed).
-      const drain = harness.getApp().get(LegacyInboundWebhookDrain);
-      await drain.onModuleInit();
+      // Re-trigger the one-shot drain (its boot run happened before this
+      // seed). `onModuleInit` detaches deliberately so it cannot block boot,
+      // so drive the drain body directly rather than racing a setImmediate.
+      const drain = harness.getApp().get(LegacyInboundWebhookDrain) as unknown as {
+        runDetachedDrain: () => Promise<void>;
+      };
+      await drain.runDetachedDrain();
 
       const jobs = await readJobRows(harness, `prestashop:${connection.id}:${eventId}`);
       expect(jobs).toHaveLength(1);
@@ -529,7 +533,7 @@ describe('Webhook Ingestion Integration', () => {
 
       // The drained entry is ACKed — a second drain run finds nothing new and
       // creates no second job.
-      await drain.onModuleInit();
+      await drain.runDetachedDrain();
       const jobsAfter = await readJobRows(harness, `prestashop:${connection.id}:${eventId}`);
       expect(jobsAfter).toHaveLength(1);
     });

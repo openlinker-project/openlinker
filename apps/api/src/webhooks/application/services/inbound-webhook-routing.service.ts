@@ -27,6 +27,7 @@ import {
   ConnectionDisabledException,
 } from '@openlinker/core/identifier-mapping';
 import { INBOUND_ROUTING_POLICY_TOKEN, IInboundRoutingPolicyService } from '@openlinker/core/sync';
+import { WebhookRoutingUnavailableException } from '../errors/webhook-routing-unavailable.exception';
 import type { IInboundWebhookRoutingService } from '../interfaces/inbound-webhook-routing.service.interface';
 import type { InboundWebhookRoutingOutcome } from '../types/inbound-webhook-routing.types';
 
@@ -52,7 +53,13 @@ export class InboundWebhookRoutingService implements IInboundWebhookRoutingServi
 
     // Resolve the connection + adapter metadata. A *permanent* config fault
     // dead-letters (a durable row now, not a Redis DLQ entry); any other
-    // (transient) error rethrows so the source retries (ADR-015 invariant 3).
+    // (transient) error is rethrown TYPED so the source retries (ADR-015
+    // invariant 3) and the controller answers 503 rather than letting the
+    // message fall through to a 404 a marketplace would read as permanent.
+    //
+    // Deliberately NO delivery row is written on the transient branch: the row
+    // is the ADR-005 dedup gate, so recording one here would make the unique
+    // constraint reject the very retry this branch is asking for (#711).
     let resolved;
     try {
       resolved = await this.integrationsService.getAdapter(event.connectionId);
@@ -63,7 +70,11 @@ export class InboundWebhookRoutingService implements IInboundWebhookRoutingServi
       ) {
         return { kind: 'unroutable', reason: `connection-unavailable: ${resolveError.message}` };
       }
-      throw resolveError;
+      throw new WebhookRoutingUnavailableException(
+        event.provider,
+        event.connectionId,
+        resolveError
+      );
     }
     const { connection, metadata } = resolved;
 
@@ -74,7 +85,22 @@ export class InboundWebhookRoutingService implements IInboundWebhookRoutingServi
       return { kind: 'unroutable', reason: `no-translator: ${metadata.adapterKey}` };
     }
 
-    const canonical = translator.translate(event);
+    // A translator THROWING is a deterministic fault about this payload, not a
+    // transient one — the same payload will throw on every redelivery. Left
+    // uncaught it became a permanent 5xx with no durable record anywhere,
+    // which is ADR-049's poison-entry gap relocated onto the request path.
+    // Dead-lettering it instead makes the event visible and answers 202.
+    let canonical;
+    try {
+      canonical = translator.translate(event);
+    } catch (translateError) {
+      return {
+        kind: 'unroutable',
+        reason: `translator-threw: ${metadata.adapterKey}: ${
+          translateError instanceof Error ? translateError.message : String(translateError)
+        }`,
+      };
+    }
     if (!canonical) {
       return {
         kind: 'unroutable',

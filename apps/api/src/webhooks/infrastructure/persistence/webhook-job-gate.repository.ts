@@ -82,9 +82,56 @@ export class WebhookJobGateRepository implements IWebhookJobGateService {
           `Gate replay: delivery row exists for ${delivery.provider}/${delivery.connectionId}/${delivery.eventId}` +
             (jobId ? ` (job ${jobId} present)` : '')
         );
+        if (jobId !== null) {
+          await this.repairDeadLetteredRow(manager, delivery, jobId, job?.jobType ?? null);
+        }
       }
       return { isNew, jobId };
     });
+  }
+
+  /**
+   * Repair a `deadlettered` delivery row that a later redelivery HAS routed.
+   *
+   * The sequence this exists for is ordinary operator remediation: an event
+   * arrives while its connection lacks the required capability, so it is
+   * dead-lettered; the operator enables the capability; the source redelivers
+   * the same `eventId`. Routing now succeeds and the job-first insert creates a
+   * REAL job that runs — but the delivery insert conflicts, so without this the
+   * row would keep saying `deadlettered` with a null `downstreamJobId`,
+   * permanently contradicting a job that executed.
+   *
+   * It cannot self-heal through the ordinary #1916 upsert, because that ladder
+   * ranks `deadlettered` (3) ABOVE `job_enqueued` (2) — deliberately, so a late
+   * `published` write cannot erase a dead-letter. This is the one transition
+   * where the demotion is correct, so it is written as an explicit, narrowly
+   * targeted UPDATE (`WHERE status = 'deadlettered'`) inside the same
+   * transaction rather than by weakening the rank guard for everyone.
+   */
+  private async repairDeadLetteredRow(
+    manager: EntityManager,
+    delivery: WebhookDeliveryUpsertInput,
+    jobId: string,
+    jobType: string | null
+  ): Promise<void> {
+    const repaired = (await manager.query<Array<{ id: string }>>(
+      `UPDATE webhook_deliveries
+          SET "status" = 'job_enqueued',
+              "downstreamJobId" = $1,
+              "downstreamJobType" = COALESCE($2, "downstreamJobType"),
+              "dlqReason" = NULL,
+              "updatedAt" = now()
+        WHERE "provider" = $3 AND "connectionId" = $4 AND "eventId" = $5
+          AND "status" = 'deadlettered'
+        RETURNING id`,
+      [jobId, jobType, delivery.provider, delivery.connectionId, delivery.eventId]
+    )) as Array<{ id: string }>;
+
+    if (repaired.length > 0) {
+      this.logger.log(
+        `Repaired dead-lettered delivery now routable: ${delivery.provider}/${delivery.connectionId}/${delivery.eventId} → job ${jobId}`
+      );
+    }
   }
 
   /**

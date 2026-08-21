@@ -89,11 +89,41 @@ describe('WebhookJobGateRepository', () => {
   it('reports isNew: false on a delivery replay while still returning the (self-healed) job id', async () => {
     managerQuery
       .mockResolvedValueOnce([{ id: 'job-uuid-1' }])
-      .mockResolvedValueOnce([]); // delivery insert conflicted → replay
+      .mockResolvedValueOnce([]) // delivery insert conflicted → replay
+      .mockResolvedValueOnce([]); // repair UPDATE matched nothing (not dead-lettered)
 
     const result = await repository.insertDeliveryWithJob(delivery, job);
 
     expect(result).toEqual({ isNew: false, jobId: 'job-uuid-1' });
+  });
+
+  it('repairs a dead-lettered row once a redelivery routes, so it cannot contradict a job that ran', async () => {
+    // The operator-remediation sequence: ungated event dead-letters, operator
+    // enables the capability, source redelivers. The job is created for real,
+    // but the delivery insert conflicts — and the #1916 rank ladder puts
+    // `deadlettered` ABOVE `job_enqueued`, so the ordinary upsert would refuse
+    // to correct it and the row would disagree with reality forever.
+    managerQuery
+      .mockResolvedValueOnce([{ id: 'job-uuid-1' }])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ id: 'delivery-uuid-1' }]); // repair matched
+
+    const result = await repository.insertDeliveryWithJob(delivery, job);
+
+    expect(result).toEqual({ isNew: false, jobId: 'job-uuid-1' });
+    const [sql, params] = managerQuery.mock.calls[2] as [string, unknown[]];
+    expect(sql).toContain('UPDATE webhook_deliveries');
+    expect(sql).toContain(`"status" = 'deadlettered'`);
+    expect(params).toContain('job-uuid-1');
+  });
+
+  it('does not attempt a repair on a replay that produced no job', async () => {
+    managerQuery.mockResolvedValueOnce([]); // delivery insert conflicted, no job
+
+    const result = await repository.insertDeliveryWithJob({ ...delivery, status: 'received' }, null);
+
+    expect(result).toEqual({ isNew: false, jobId: null });
+    expect(managerQuery).toHaveBeenCalledTimes(1);
   });
 
   it('inserts only the delivery row (no job statement) for a jobless outcome', async () => {
