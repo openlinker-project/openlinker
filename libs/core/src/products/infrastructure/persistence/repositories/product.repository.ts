@@ -320,4 +320,54 @@ export class ProductRepository implements ProductRepositoryPort {
       notChecked: Number(row?.notChecked ?? 0),
     };
   }
+
+  /**
+   * Per-connection breakdown (#2256).
+   *
+   * A read-model reporting join by table NAME rather than by importing the
+   * identifier-mapping context's ORM entity, which the cross-context contract
+   * forbids - the same posture the stock-aggregation join in `findMany`
+   * already takes. Columns are camelCase in Postgres and must stay quoted.
+   */
+  async countTaxRateStatesByConnection(): Promise<
+    Array<{
+      connectionId: string;
+      platformType: string;
+      total: number;
+      known: number;
+      missing: number;
+      notChecked: number;
+    }>
+  > {
+    const rows = (await this.repository.query(
+      `SELECT m."connectionId"   AS "connectionId",
+              m."platformType"   AS "platformType",
+              COUNT(*)                                                                        AS "total",
+              COUNT(*) FILTER (WHERE p."taxRateReadAt" IS NOT NULL AND p."taxRate" IS NOT NULL) AS "known",
+              COUNT(*) FILTER (WHERE p."taxRateReadAt" IS NOT NULL AND p."taxRate" IS NULL)     AS "missing",
+              COUNT(*) FILTER (WHERE p."taxRateReadAt" IS NULL)                                 AS "notChecked"
+         FROM "products" p
+         JOIN "identifier_mappings" m
+           ON m."internalId" = p."id" AND m."entityType" = $1
+        GROUP BY m."connectionId", m."platformType"
+        ORDER BY "missing" DESC, "notChecked" DESC`,
+      [CORE_ENTITY_TYPE.Product]
+    )) as Array<{
+      connectionId: string;
+      platformType: string;
+      total: string;
+      known: string;
+      missing: string;
+      notChecked: string;
+    }>;
+
+    return rows.map((row) => ({
+      connectionId: row.connectionId,
+      platformType: row.platformType,
+      total: Number(row.total),
+      known: Number(row.known),
+      missing: Number(row.missing),
+      notChecked: Number(row.notChecked),
+    }));
+  }
 }

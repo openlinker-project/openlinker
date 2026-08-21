@@ -175,7 +175,18 @@ export class OrderRecord {
      * lets a timeline say the order was held and then released - the reason
      * itself is gone by then.
      */
-    public readonly salesDocumentBlockReleasedAt: Date | null = null
+    public readonly salesDocumentBlockReleasedAt: Date | null = null,
+    /**
+     * `'pre-rollout'` for an order that arrived before per-line tax rates
+     * existed (#2256); `null` for everything after. A data marker for
+     * analytics, never an operator-facing state - such an order issues exactly
+     * as it does today, and no surface renders it.
+     *
+     * Excluded from any net-revenue figure rather than presented as a confirmed
+     * rate: its tax was whatever the provider defaulted to, and there is
+     * nothing to back-compute from.
+     */
+    public readonly taxRateEra: string | null = null
   ) {}
 
   /**

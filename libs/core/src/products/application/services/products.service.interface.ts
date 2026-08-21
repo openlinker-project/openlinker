@@ -75,6 +75,22 @@ export interface IProductsService {
   }>;
 
   /**
+   * The same coverage, per connection (#2256) - the unit an operator actually
+   * fixes. "The catalogue has no rates" is not actionable when three shops feed
+   * it and only one is incomplete.
+   */
+  getTaxRateCoverageByConnection(): Promise<
+    Array<{
+      connectionId: string;
+      platformType: string;
+      total: number;
+      known: number;
+      missing: number;
+      notChecked: number;
+    }>
+  >;
+
+  /**
    * Get a single product by internal ID
    */
   getProduct(id: string): Promise<Product | null>;
