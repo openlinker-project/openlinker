@@ -50,6 +50,10 @@ import type {
   UpsertCustomerResult,
 } from '@openlinker/core/invoicing';
 import { InvoiceRecord, UnsupportedRegulatoryDocumentKindError } from '@openlinker/core/invoicing';
+import {
+  assertPercentTaxRateNotation,
+  taxRatePercentToFraction,
+} from '@openlinker/core/invoicing';
 import type { IInfaktHttpClient } from '../http/infakt-http-client.interface';
 import { InfaktApiError } from '../../domain/exceptions/infakt-api.error';
 import type {
@@ -240,21 +244,29 @@ function toInfaktEmailLocale(locale: InvoiceEmailLocale | undefined): string | u
 const DEFAULT_PL_VAT_SYMBOL = '23';
 const DEFAULT_PL_VAT_RATE = 0.23;
 
-/** Maps neutral taxRate string to Infakt tax_symbol. */
+/**
+ * Maps a neutral taxRate string to an Infakt `tax_symbol`.
+ *
+ * The neutral code is percent-as-string (#2247), so the fractional spellings
+ * this switch used to accept (`'0.23'`, `'0.08'`, `'0.05'`) are gone -
+ * `assertPercentTaxRateNotation` rejects them instead of quietly treating
+ * `'0.23'` as 23%, which is the reading that made a genuine 1% rate resolve
+ * to 100%.
+ *
+ * `'0'` maps to `zw`, which is a deliberate PL-regime choice rather than a
+ * notation one: Infakt has no numeric zero symbol, so a zero-rated line is
+ * declared exempt. That mapping is the adapter's to own (ADR-026).
+ */
 function toInfaktTaxSymbol(taxRate: string): string {
-  // Common neutral→Infakt mapping; adapter owns this PL logic
-  switch (taxRate) {
+  const code = assertPercentTaxRateNotation(taxRate);
+  switch (code) {
     case '23':
-    case '0.23':
       return '23';
     case '8':
-    case '0.08':
       return '8';
     case '5':
-    case '0.05':
       return '5';
     case '0':
-    case '0.00':
     case 'zw':
     case 'exempt':
       return 'zw';
@@ -262,13 +274,17 @@ function toInfaktTaxSymbol(taxRate: string): string {
     case 'oo':
       return 'np';
     default:
-      return taxRate.trim() === '' ? DEFAULT_PL_VAT_SYMBOL : taxRate;
+      return code === '' ? DEFAULT_PL_VAT_SYMBOL : code;
   }
 }
 
 /**
- * Parses a tax-rate string (neutral `'23'`/`'0.23'` or Infakt `tax_symbol`
- * `'zw'`/`'np'`) to a decimal fraction.
+ * Parses a tax-rate string (a neutral percent-as-string code such as `'23'`,
+ * or an Infakt `tax_symbol` like `'zw'`/`'np'`) to a decimal fraction.
+ *
+ * Notation is settled centrally (#2247): `taxRatePercentToFraction` divides by
+ * 100 and throws on fractional input. The old `n > 1` heuristic that lived here
+ * accepted both spellings and, as a side effect, read a genuine 1% rate as 100%.
  *
  * Must stay consistent with `toInfaktTaxSymbol`'s empty-string fallback — a
  * mismatched net/gross split for the declared tax_symbol is itself rejected
@@ -276,10 +292,7 @@ function toInfaktTaxSymbol(taxRate: string): string {
  */
 function taxRateNumeric(taxRate: string): number {
   if (taxRate.trim() === '') return DEFAULT_PL_VAT_RATE;
-  const n = parseFloat(taxRate);
-  if (!isNaN(n) && n > 1) return n / 100;
-  if (!isNaN(n)) return n;
-  return 0;
+  return taxRatePercentToFraction(taxRate) ?? 0;
 }
 
 /** Converts a buyer-paid gross unit price (PLN) to Infakt's net unit price (PLN) for the given tax rate. */

@@ -22,6 +22,7 @@ import type { LoggerPort } from '@openlinker/shared/logging';
 import {
   BuyerProfile,
   CURRENCY_REJECTION_MARKERS,
+  FractionalTaxRateNotationError,
   InvoiceRecord,
   UnsupportedRegulatoryDocumentKindError,
 } from '@openlinker/core/invoicing';
@@ -586,6 +587,54 @@ describe('InfaktInvoicingAdapter', () => {
         .invoice.services;
       expect(services[0].tax_symbol).toBe('23');
       expect(services[0].unit_net_price).toBe(10000);
+    });
+
+    it('should read "23" as twenty-three percent when splitting gross into net (#2247)', async () => {
+      // Percent-as-string is the neutral contract. 123 gross at 23% is 100.00
+      // net, i.e. 10000 groszy - the same figure the empty-rate fallback
+      // produces, which is what makes the two readings comparable at all.
+      http.seed('POST', 'invoices.json', invoiceFixture());
+
+      await adapter.issueInvoice({
+        ...baseCmd,
+        lines: [{ name: 'Widget', quantity: 1, unitPriceGross: 123, taxRate: '23' }],
+      });
+
+      const invoiceCall = http.calls.find((c) => c.method === 'POST' && c.path === 'invoices.json');
+      const services = (
+        invoiceCall?.body as { invoice: { services: Array<{ tax_symbol: string; unit_net_price: number }> } }
+      ).invoice.services;
+      expect(services[0].tax_symbol).toBe('23');
+      expect(services[0].unit_net_price).toBe(10000);
+    });
+
+    it('should read "1" as one percent rather than one hundred percent (#2247)', async () => {
+      // The pre-#2247 `n > 1` heuristic read this as a fraction, so a 1% line
+      // was split as if it carried 100% tax - 61.50 net instead of 121.78.
+      http.seed('POST', 'invoices.json', invoiceFixture());
+
+      await adapter.issueInvoice({
+        ...baseCmd,
+        lines: [{ name: 'Widget', quantity: 1, unitPriceGross: 123, taxRate: '1' }],
+      });
+
+      const invoiceCall = http.calls.find((c) => c.method === 'POST' && c.path === 'invoices.json');
+      const services = (invoiceCall?.body as { invoice: { services: Array<{ unit_net_price: number }> } })
+        .invoice.services;
+      expect(services[0].unit_net_price).toBe(12178);
+    });
+
+    it('should reject a fractional-looking taxRate rather than reinterpreting it (#2247)', async () => {
+      // "0.23" read as a percentage is 0.23%, read as a fraction it is 23%.
+      // Nothing in the value says which, so it is refused before any request.
+      http.seed('POST', 'invoices.json', invoiceFixture());
+
+      await expect(
+        adapter.issueInvoice({
+          ...baseCmd,
+          lines: [{ name: 'Widget', quantity: 1, unitPriceGross: 123, taxRate: '0.23' }],
+        }),
+      ).rejects.toBeInstanceOf(FractionalTaxRateNotationError);
     });
 
     it('should propagate a 422 InfaktApiError with failureMode: rejected (error path)', async () => {
