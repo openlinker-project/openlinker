@@ -160,6 +160,19 @@ export interface ProductListFilters {
    * connection (#1720 - source filter).
    */
   sourceConnectionId?: string;
+
+  /**
+   * Tax-rate read state (#2255, ADR-052 § 4).
+   *
+   * Three values, because the third is what keeps the first honest:
+   *  - `missing` - the master was asked and has no rate. This is the population
+   *    that holds documents, and the one an operator fixes in the shop.
+   *  - `not-checked` - nobody has asked yet. It needs a product sync, not a
+   *    catalogue edit, and on the day the feature ships it is the whole
+   *    catalogue.
+   *  - `known` - a rate is on record (including a deliberate zero).
+   */
+  taxRateState?: 'missing' | 'not-checked' | 'known';
 }
 
 /**

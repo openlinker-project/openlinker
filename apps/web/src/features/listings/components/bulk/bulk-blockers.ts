@@ -10,7 +10,20 @@
  */
 import type { StatusBadgeTone } from '../../../../shared/ui';
 
-export type ChipDescriptor = { tone: StatusBadgeTone; label: string; fixable: boolean };
+export type ChipDescriptor = {
+  tone: StatusBadgeTone;
+  label: string;
+  fixable: boolean;
+  /**
+   * The chip is a LINK out of the app rather than a dotted-underline button
+   * that opens the row editor (#2255). Used where the fix is not in OpenLinker
+   * at all - a rate managed on the channel is set in the channel's own panel.
+   *
+   * Rendered underlined solid, the same carve-out `AlreadyListedChip` makes, so
+   * it does not read as the editor affordance it is not.
+   */
+  link?: boolean;
+};
 
 /** Host-neutral blocker chips - labels + tones verbatim from the design. */
 export const NEUTRAL_BLOCKER_CHIPS: Record<string, ChipDescriptor> = {
@@ -22,6 +35,19 @@ export const NEUTRAL_BLOCKER_CHIPS: Record<string, ChipDescriptor> = {
   'no-master-stock': { tone: 'error', label: 'no master stock', fixable: true },
   'currency-mismatch': { tone: 'warning', label: 'currency mismatch', fixable: true },
   'already-listed': { tone: 'neutral', label: 'already listed', fixable: false },
+  // #2255 — SOFT, like every other blocker here: the flagged rows are excluded
+  // and the rest publish. A hard block would be a behaviour change to a shipped
+  // component for no gain, since the document gate catches a rate-less sale
+  // later anyway.
+  'no-tax-rate': { tone: 'error', label: 'No tax rate', fixable: true },
+  // Not fixable in OpenLinker: the rate lives on the channel, so the chip is a
+  // link out rather than an editor affordance.
+  'tax-rate-on-channel': {
+    tone: 'neutral',
+    label: 'rate managed on the channel',
+    fixable: false,
+    link: true,
+  },
 };
 
 export const FALLBACK_CHIP: ChipDescriptor = {
