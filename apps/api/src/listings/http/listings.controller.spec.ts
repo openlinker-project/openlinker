@@ -181,6 +181,7 @@ describe('ListingsController', () => {
     productVariantRepository = {
       findById: jest.fn().mockResolvedValue(null),
       findByProductId: jest.fn(),
+      findByProductIds: jest.fn(),
       countByProductIds: jest.fn().mockResolvedValue(new Map<string, number>()),
       findBySku: jest.fn(),
       findBySkuIn: jest.fn(),

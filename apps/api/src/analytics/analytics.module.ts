@@ -16,6 +16,13 @@
  *    table. Single-context read (`orders` owns both source tables), so it
  *    injects `IOrderRecordService` directly rather than a new composition
  *    service — see `SalesAnalyticsController`'s own header.
+ * 4. **`/analytics/top-products`** (`TopProductsController`, #1988) — products
+ *    ranked by revenue/units with an inline per-channel breakdown, catalog
+ *    metadata, and a listing-coverage flag. Fans out across THREE core
+ *    contexts (`orders`, `products`, `listings`), so — like
+ *    `NeedsAttentionService` — it composes them via `TopProductsService` at
+ *    this layer rather than adding a new core-to-core dependency edge; see
+ *    that service's own header.
  *
  * The concerns share nothing except the URL prefix. If a future
  * `/analytics` route (#1986 route shell, KPI strip, etc.) needs its own
@@ -33,20 +40,39 @@ import { Module } from '@nestjs/common';
 import { AnalyticsModule as CoreAnalyticsModule } from '@openlinker/core/analytics';
 import { ListingsModule } from '@openlinker/core/listings/services';
 import { OrdersModule } from '@openlinker/core/orders';
+import { ProductsModule } from '@openlinker/core/products';
+// The apps/api-layer IntegrationsModule (not the core one, which ListingsModule
+// already imports for its own internal providers without re-exporting
+// INTEGRATIONS_SERVICE_TOKEN) — it re-exports the core module so this token
+// becomes resolvable here, mirroring how AppModule itself reaches it.
+import { IntegrationsModule as ApiIntegrationsModule } from '../integrations/integrations.module';
 import { PosthogSettingsController } from './http/posthog-settings.controller';
 import { NeedsAttentionController } from './http/needs-attention.controller';
 import { SalesAnalyticsController } from './http/sales-analytics.controller';
+import { TopProductsController } from './http/top-products.controller';
 import { NeedsAttentionService } from './application/services/needs-attention.service';
 import { NEEDS_ATTENTION_SERVICE_TOKEN } from './application/services/needs-attention.service.interface';
+import { TopProductsService } from './application/services/top-products.service';
+import { TOP_PRODUCTS_SERVICE_TOKEN } from './application/services/top-products.service.interface';
 
 @Module({
-  imports: [CoreAnalyticsModule, ListingsModule, OrdersModule],
-  controllers: [PosthogSettingsController, NeedsAttentionController, SalesAnalyticsController],
+  imports: [CoreAnalyticsModule, ListingsModule, OrdersModule, ProductsModule, ApiIntegrationsModule],
+  controllers: [
+    PosthogSettingsController,
+    NeedsAttentionController,
+    SalesAnalyticsController,
+    TopProductsController,
+  ],
   providers: [
     NeedsAttentionService,
     {
       provide: NEEDS_ATTENTION_SERVICE_TOKEN,
       useExisting: NeedsAttentionService,
+    },
+    TopProductsService,
+    {
+      provide: TOP_PRODUCTS_SERVICE_TOKEN,
+      useExisting: TopProductsService,
     },
   ],
 })

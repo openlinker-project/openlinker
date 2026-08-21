@@ -106,6 +106,7 @@ describe('FulfillmentStatusSyncService', () => {
       markSalesDocumentBlock: jest.fn(),
       getEarliestOrderDateByConnection: jest.fn(),
       getSalesAndChannelAnalytics: jest.fn(),
+      getTopProducts: jest.fn(),
     };
 
     routing = {

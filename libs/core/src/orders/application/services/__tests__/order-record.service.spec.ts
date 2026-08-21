@@ -65,10 +65,12 @@ describe('OrderRecordService', () => {
     lineItemRepository = {
       findByOrderId: jest.fn(),
       getUnitsSoldByConnection: jest.fn(),
+      getTopProductRanking: jest.fn(),
+      getProductChannelBreakdown: jest.fn(),
     } as unknown as jest.Mocked<OrderLineItemRepositoryPort>;
 
     reportingCurrencySettings = {
-      resolve: jest.fn().mockResolvedValue('EUR'),
+      resolve: jest.fn().mockResolvedValue('PLN'),
       getView: jest.fn(),
       setReportingCurrency: jest.fn(),
       listSelectableCurrencies: jest.fn(),
@@ -1099,6 +1101,7 @@ describe('OrderRecordService', () => {
     };
 
     it('composes the three raw reads + earliest-date lookup into the response', async () => {
+      reportingCurrencySettings.resolve.mockResolvedValue('EUR');
       const dailyRows = [
         {
           day: new Date('2026-08-01T00:00:00.000Z'),
@@ -1145,6 +1148,133 @@ describe('OrderRecordService', () => {
       expect(repository.findEarliestOrderDateByConnection).toHaveBeenCalledWith([]);
       expect(result.headline.revenue).toBe(0);
       expect(result.channels).toEqual([]);
+    });
+  });
+
+  describe('getTopProducts (#1988)', () => {
+    const filters = {
+      from: new Date('2026-08-01T00:00:00.000Z'),
+      to: new Date('2026-08-08T00:00:00.000Z'),
+      sortBy: 'revenue' as const,
+      limit: 20,
+      offset: 0,
+    };
+
+    it('composes the ranking read + a breakdown read scoped to the ranked page only', async () => {
+      const ranking = [
+        {
+          productId: 'p1',
+          units: 10,
+          revenue: 100,
+          unconvertedRevenue: 0,
+          unconvertedOrderCount: 0,
+          currency: 'EUR',
+          unconvertedCurrency: null,
+        },
+        {
+          productId: 'p2',
+          units: 5,
+          revenue: 50,
+          unconvertedRevenue: 0,
+          unconvertedOrderCount: 0,
+          currency: 'EUR',
+          unconvertedCurrency: null,
+        },
+      ];
+      const breakdown = [
+        {
+          productId: 'p1',
+          sourceConnectionId: 'conn-a',
+          units: 10,
+          revenue: 100,
+          unconvertedRevenue: 0,
+          currency: 'EUR',
+          unconvertedCurrency: null,
+        },
+        {
+          productId: 'p2',
+          sourceConnectionId: 'conn-b',
+          units: 5,
+          revenue: 50,
+          unconvertedRevenue: 0,
+          currency: 'EUR',
+          unconvertedCurrency: null,
+        },
+      ];
+      lineItemRepository.getTopProductRanking.mockResolvedValue({ rows: ranking, total: 2 });
+      lineItemRepository.getProductChannelBreakdown.mockResolvedValue(breakdown);
+
+      const result = await service.getTopProducts(filters);
+
+      expect(lineItemRepository.getTopProductRanking).toHaveBeenCalledWith(filters, 'PLN');
+      // Breakdown query MUST receive only the ranked page's product ids —
+      // never re-derived from the full scoped set — to keep its cost bounded
+      // by page size (#1988 correctness requirement).
+      expect(lineItemRepository.getProductChannelBreakdown).toHaveBeenCalledWith(
+        ['p1', 'p2'],
+        filters,
+        'PLN'
+      );
+      expect(result.total).toBe(2);
+      expect(result.items).toHaveLength(2);
+      expect(result.items[0].channels).toEqual([breakdown[0]]);
+      expect(result.items[1].channels).toEqual([breakdown[1]]);
+    });
+
+    it('does not call the breakdown read with product ids outside the ranked page', async () => {
+      lineItemRepository.getTopProductRanking.mockResolvedValue({
+        rows: [
+          {
+            productId: 'p1',
+            units: 1,
+            revenue: 1,
+            unconvertedRevenue: 0,
+            unconvertedOrderCount: 0,
+            currency: 'EUR',
+            unconvertedCurrency: null,
+          },
+        ],
+        total: 500,
+      });
+      lineItemRepository.getProductChannelBreakdown.mockResolvedValue([]);
+
+      await service.getTopProducts(filters);
+
+      expect(lineItemRepository.getProductChannelBreakdown).toHaveBeenCalledWith(
+        ['p1'],
+        filters,
+        'PLN'
+      );
+    });
+
+    it('returns an empty page and zero total when nothing matches', async () => {
+      lineItemRepository.getTopProductRanking.mockResolvedValue({ rows: [], total: 0 });
+      lineItemRepository.getProductChannelBreakdown.mockResolvedValue([]);
+
+      const result = await service.getTopProducts(filters);
+
+      expect(lineItemRepository.getProductChannelBreakdown).toHaveBeenCalledWith(
+        [],
+        filters,
+        'PLN'
+      );
+      expect(result).toEqual({ items: [], total: 0 });
+    });
+
+    it('resolves the CURRENT reporting currency and never mixes a prior era into revenue (#2049/ADR-040 bugfix)', async () => {
+      reportingCurrencySettings.resolve.mockResolvedValue('EUR');
+      lineItemRepository.getTopProductRanking.mockResolvedValue({ rows: [], total: 0 });
+      lineItemRepository.getProductChannelBreakdown.mockResolvedValue([]);
+
+      await service.getTopProducts(filters);
+
+      expect(reportingCurrencySettings.resolve).toHaveBeenCalled();
+      expect(lineItemRepository.getTopProductRanking).toHaveBeenCalledWith(filters, 'EUR');
+      expect(lineItemRepository.getProductChannelBreakdown).toHaveBeenCalledWith(
+        [],
+        filters,
+        'EUR'
+      );
     });
   });
 });

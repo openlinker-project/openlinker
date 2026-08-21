@@ -133,6 +133,7 @@ describe('ShipmentController', () => {
       markSalesDocumentBlock: jest.fn(),
       getEarliestOrderDateByConnection: jest.fn(),
       getSalesAndChannelAnalytics: jest.fn(),
+      getTopProducts: jest.fn(),
     };
     controller = new ShipmentController(
       query,
