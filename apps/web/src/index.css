@@ -2814,6 +2814,14 @@ a.delivery-rider-banner__button:focus-visible {
   gap: 2px;
 }
 
+/* ── Data table radio cell (#2159) ── */
+.data-table__radio {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  cursor: pointer;
+}
+
 .data-table__action {
   color: var(--accent-primary);
   font-weight: 500;
@@ -3530,6 +3538,17 @@ a.delivery-rider-banner__button:focus-visible {
   margin: 12px 0;
 }
 
+/* `.dialog__content` has no gap of its own (#2189 review) — sibling
+   `<section class="page-section">` tiers and `Alert` banners rendered
+   directly inside it stacked with zero space between them. This wrapper
+   gives the routing dialog's body the same grid+gap treatment every other
+   multi-section dialog body already has (mirrors `.trigger-sync-dialog__body`
+   above). */
+.sales-document-country-routing-dialog__body {
+  display: grid;
+  gap: var(--space-5);
+}
+
 .trigger-sync-dialog__description {
   margin: 0;
 }
@@ -3940,6 +3959,14 @@ a.delivery-rider-banner__button:focus-visible {
   padding: 0.25rem 0.5rem;
   background: var(--status-error-soft);
   border-radius: 0.375rem;
+}
+
+/* ── Catalog trust panel (#2258) ── */
+.catalog-trust-panel__note {
+  margin: var(--space-2) 0 0;
+  font-size: 0.75rem;
+  line-height: 1.35;
+  color: var(--text-muted);
 }
 
 /* Button group */
@@ -13955,74 +13982,12 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
 
 /* ── Invoicing redesign (#1240) ── */
 
-/* ── Invoice panel card parity with Shipment (#1449) ──────────────────
- * Brings `.order-invoice-panel` to the same card chrome, header layout,
- * and action-row treatment as `.order-shipment-panel` (see that rule
- * set above). Body/KV/provider-slot spacing lives in the sections below.
- */
-.order-invoice-panel {
-  gap: var(--space-3);
-  padding: var(--space-4);
-  background: var(--bg-surface);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-xs);
-}
-
-.order-invoice-panel__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-}
-
-.order-invoice-panel__header-badges {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-
-.order-invoice-panel__actions {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  border-top: 1px solid var(--border-subtle);
-  padding-top: var(--space-3);
-}
-
-.order-invoice-panel__actions .spacer {
-  flex: 1;
-}
-
-/* ─ Not-issued action row (#1622) ─
-   The document-type picker fills the row and the signal-orange primary
-   "Issue invoice" action anchors to the right, matching the panel mockup
-   (demo epic #1606, section 02). `flex-wrap` lets the button drop under a
-   full-width picker on narrow (mobile) panels rather than crushing either. */
-.order-invoice-panel__actions--issue {
-  flex-wrap: wrap;
-}
-
-.order-invoice-panel__doc-type {
-  flex: 1 1 auto;
-  min-width: 0;
-}
-
-.order-invoice-panel__actions--issue .button {
-  flex: 0 0 auto;
-}
-
-@media (max-width: 480px) {
-  .order-invoice-panel__doc-type {
-    flex-basis: 100%;
-  }
-  .order-invoice-panel__actions--issue .button {
-    flex: 1 1 auto;
-  }
-}
-
-/* ─ Skeletons (shared shimmer for panel + detail page) ─ */
-.order-invoice-panel__skeleton,
+/* ─ Skeletons (shared shimmer for panel + detail page) ─
+   `.order-invoice-panel__skeleton` / `.order-receipt-panel__skeleton` were
+   retired with their components by #2160; `.sales-document-panel__skeleton`
+   (the merged panel's own) joins this shared shimmer instead of duplicating
+   it. */
+.sales-document-panel__skeleton,
 .invoice-detail__skeleton {
   border-radius: var(--radius-sm);
   background: linear-gradient(
@@ -14034,7 +13999,7 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   background-size: 200% 100%;
   animation: invoice-skeleton-shimmer 1.4s ease-in-out infinite;
 }
-.order-invoice-panel__skeleton {
+.sales-document-panel__skeleton {
   height: 14px;
 }
 @keyframes invoice-skeleton-shimmer {
@@ -14042,21 +14007,11 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   100% { background-position: -100% 0; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .order-invoice-panel__skeleton,
+  .sales-document-panel__skeleton,
   .invoice-detail__skeleton {
     animation: none;
     background: var(--bg-surface-muted);
   }
-}
-
-/* ─ Panel body wrapper (#1449 — replaces the old padding-only wrapper now
-   that KeyValueList + the provider slot are siblings needing consistent
-   vertical rhythm; outer spacing is owned by `.order-invoice-panel`'s own
-   grid gap + padding, so this wrapper no longer adds its own padding) ─ */
-.order-invoice-panel__body {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
 }
 
 /* `.invoice-panel__kv` is kept — `OrderInvoicePanel` no longer renders it
@@ -14148,11 +14103,13 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   align-self: stretch;
 }
 
-/* ── Order receipt panel (#1909) ──────────────────────────────────────
-   Mirrors `.order-invoice-panel` exactly - same box, same header/actions/
-   body rhythm - because the two panels sit side by side on the order detail
-   page and must read as one family, not two unrelated widgets. */
-.order-receipt-panel {
+/* ── Sales document panel (#2160, ADR-041) ─────────────────────────────
+   Unifies `.order-invoice-panel` + `.order-receipt-panel` into ONE panel —
+   same card chrome, header/actions/body rhythm as its two predecessors
+   (which were visually identical). The `.doc-slot` family below is the new
+   piece: the boxed "one document, never a list" slot the panel wraps its
+   filled/empty content in. */
+.sales-document-panel {
   gap: var(--space-3);
   padding: var(--space-4);
   background: var(--bg-surface);
@@ -14160,13 +14117,18 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-xs);
 }
-.order-receipt-panel__header {
+.sales-document-panel__header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
 }
-.order-receipt-panel__actions {
+.sales-document-panel__header-badges {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.sales-document-panel__actions {
   display: flex;
   align-items: center;
   gap: var(--space-2);
@@ -14174,33 +14136,78 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   border-top: 1px solid var(--border-subtle);
   padding-top: var(--space-3);
 }
-.order-receipt-panel__body {
+.sales-document-panel__actions .spacer {
+  flex: 1;
+}
+.sales-document-panel__actions--issue {
+  flex-wrap: wrap;
+}
+.sales-document-panel__doc-type {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.sales-document-panel__actions--issue .button {
+  flex: 0 0 auto;
+}
+@media (max-width: 480px) {
+  .sales-document-panel__doc-type {
+    flex-basis: 100%;
+  }
+  .sales-document-panel__actions--issue .button {
+    flex: 1 1 auto;
+  }
+}
+.sales-document-panel__connection {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.sales-document-panel__connection-label {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+.sales-document-panel__body {
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
 }
-.order-receipt-panel__notice {
+.sales-document-panel__notice {
   margin: 0;
   color: var(--text-muted);
   font-size: 0.8125rem;
 }
-.order-receipt-panel__skeleton {
-  height: 14px;
-  border-radius: var(--radius-sm);
-  background: linear-gradient(
-    100deg,
-    var(--bg-surface-muted) 0%,
-    var(--bg-surface-hover) 50%,
-    var(--bg-surface-muted) 100%
-  );
-  background-size: 200% 100%;
-  animation: invoice-skeleton-shimmer 1.4s ease-in-out infinite;
+/* The one-document slot on an order. Filled or empty, never a list — carried
+   over verbatim from the epic's mockup (`apps/web/src/index.css` is what it
+   was transcribed from). */
+.doc-slot {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--bg-shell);
 }
-@media (prefers-reduced-motion: reduce) {
-  .order-receipt-panel__skeleton {
-    animation: none;
-    background: var(--bg-surface-muted);
-  }
+.doc-slot--filled {
+  border-style: solid;
+  border-color: var(--border-subtle);
+  background: var(--bg-surface);
+}
+.doc-slot__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+.doc-slot__kind {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.doc-slot__name {
+  font-size: 0.9375rem;
+  font-weight: 600;
 }
 
 /* An artefact row: the neutral (medium, disposition, content) triple a fiscal
@@ -14675,8 +14682,8 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   max-width: 22rem;
 }
 
-/* ─ Correction trigger in order invoice panel (issued state) ─ */
-.order-invoice-panel__correction {
+/* ─ Correction trigger in the sales document panel (issued state) ─ */
+.sales-document-panel__correction {
   margin-top: var(--space-3);
   padding-top: var(--space-3);
   border-top: 1px solid var(--border-subtle);
@@ -18451,10 +18458,6 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
 }
 
 .category-search-results__item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
   min-height: 44px;
   padding: var(--space-2) var(--space-3);
   border: 1px solid var(--border-subtle);
@@ -18722,4 +18725,143 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   font-size: 0.8125rem;
   max-height: 12rem;
   overflow-y: auto;
+}
+
+/* ── Sales-document rule engine (#2170) ── */
+.frame-grid {
+  display: grid;
+  gap: var(--space-3);
+}
+.frame-grid--2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+@media (max-width: 640px) {
+  .frame-grid--2 {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── Sales-document country index (#2187) ── */
+.sales-document-country-index__add-row {
+  margin-top: var(--space-3);
+}
+.sales-document-country-index__add-row-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.rule-card {
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  padding: var(--space-3);
+  margin-bottom: var(--space-2);
+}
+.rule-card__flow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+.rule-card__arrow {
+  width: 14px;
+  height: 14px;
+  color: var(--text-muted);
+}
+.rule-card__result {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.rule-card__meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-2);
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+.rule-card__dates {
+  font-family: var(--font-mono);
+}
+
+.condition-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface-muted);
+  border: 1px solid var(--border-subtle);
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+.condition-join {
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-caps);
+}
+
+.provenance-tag {
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.taxid-badge {
+  display: inline-flex;
+  padding: 1px var(--space-2);
+  border-radius: var(--radius-pill);
+  background: var(--status-info-soft);
+  color: var(--status-info-fg);
+  font-size: 0.6875rem;
+  margin-left: var(--space-1);
+}
+
+.template-card {
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface-elevated);
+  padding: var(--space-4);
+}
+.template-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+  flex-wrap: wrap;
+}
+.template-card__badge {
+  display: inline-flex;
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-pill);
+  background: var(--accent-primary-soft);
+  color: var(--accent-primary);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-caps);
+}
+.template-card__source {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+.template-card__preview {
+  margin-bottom: var(--space-3);
+}
+
+.ack-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+.ack-row input[type='checkbox'] {
+  margin-top: 3px;
 }

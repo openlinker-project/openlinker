@@ -1,9 +1,12 @@
 /**
- * `resolveSalesDocumentBlockCopy` unit tests (#2100).
+ * `resolveSalesDocumentBlockCopy` unit tests (#2100, generalized #2156/#2160).
  *
  * Every branch is exercised directly rather than through a component render — the
  * reason the helper was moved out of `order-invoice-panel.tsx`, where only three of
- * the seven were reachable.
+ * the seven were reachable. The `invoice`-kind cases pin the ORIGINAL #2100 wording
+ * verbatim (no `kind` argument = default `'invoice'`, so existing callers are
+ * unaffected); the `fiscal-receipt` / `mixed` cases pin that the same reasons now
+ * render kind-appropriate copy instead of always saying "invoice".
  */
 import { describe, expect, it } from 'vitest';
 import { resolveSalesDocumentBlockCopy } from './sales-document-block-copy';
@@ -28,7 +31,7 @@ function order(overrides: Partial<OrderRecord> = {}): OrderRecord {
   } as OrderRecord;
 }
 
-describe('resolveSalesDocumentBlockCopy', () => {
+describe('resolveSalesDocumentBlockCopy — invoice kind (default, #2100 wording pinned)', () => {
   it('returns null when nothing is blocking and the browser sees no ambiguity', () => {
     expect(resolveSalesDocumentBlockCopy(order(), false, t)).toBeNull();
   });
@@ -82,6 +85,33 @@ describe('resolveSalesDocumentBlockCopy', () => {
     );
     expect(copy).toMatchObject({ tone: 'error', offerSetPrimary: false });
     expect(copy?.title).toMatch(/no route/i);
+  });
+
+  it('renders dedicated copy for no-configuration-for-country (#2170)', () => {
+    const copy = resolveSalesDocumentBlockCopy(
+      order({
+        salesDocumentBlockReason: 'unresolved-routing',
+        salesDocumentUnresolvedReason: 'no-configuration-for-country',
+      }),
+      false,
+      t,
+    );
+    expect(copy).toMatchObject({ tone: 'error', offerSetPrimary: false });
+    expect(copy?.title).toMatch(/no rules configured for this country/i);
+  });
+
+  it('renders dedicated copy for threshold-currency-mismatch, and never implies a conversion (#2170)', () => {
+    const copy = resolveSalesDocumentBlockCopy(
+      order({
+        salesDocumentBlockReason: 'unresolved-routing',
+        salesDocumentUnresolvedReason: 'threshold-currency-mismatch',
+      }),
+      false,
+      t,
+    );
+    expect(copy).toMatchObject({ tone: 'error', offerSetPrimary: false });
+    expect(copy?.title).toMatch(/does not match the rule's threshold/i);
+    expect(copy?.body).toMatch(/never converts currencies/i);
   });
 
   it('renders manual quietly — info tone, no Set-a-primary', () => {
@@ -146,5 +176,78 @@ describe('resolveSalesDocumentBlockCopy', () => {
     const rendered = `${copy?.title ?? ''} ${copy?.body ?? ''}`;
     expect(rendered).not.toContain('unresolved-routing');
     expect(rendered).not.toContain('ambiguous-connection-no-primary');
+  });
+});
+
+describe('resolveSalesDocumentBlockCopy — fiscal-receipt kind (#2156/#2160)', () => {
+  it('talks about registering a receipt, never invoicing', () => {
+    const copy = resolveSalesDocumentBlockCopy(
+      order({ salesDocumentBlockReason: 'trigger-model-manual' }),
+      false,
+      t,
+      'fiscal-receipt',
+    );
+    expect(copy?.title).toMatch(/registers receipts by hand/i);
+    expect(copy?.title).not.toMatch(/invoice/i);
+    expect(copy?.body).not.toMatch(/invoice/i);
+  });
+
+  it('renders the no-primary pairing with receipt-flavored copy', () => {
+    const copy = resolveSalesDocumentBlockCopy(
+      order({
+        salesDocumentBlockReason: 'unresolved-routing',
+        salesDocumentUnresolvedReason: 'ambiguous-connection-no-primary',
+      }),
+      false,
+      t,
+      'fiscal-receipt',
+    );
+    expect(copy).toMatchObject({ tone: 'error', offerSetPrimary: true });
+    expect(copy?.title).toMatch(/no primary connection/i);
+    expect(copy?.body).toMatch(/register receipts/i);
+  });
+
+  it('the derived-ambiguity fallback also renders kind-aware copy', () => {
+    const copy = resolveSalesDocumentBlockCopy(order(), true, t, 'fiscal-receipt');
+    expect(copy?.title).toMatch(/Automatic fiscal registration is off/i);
+  });
+
+  it('warns on batched with a receipt-flavored title', () => {
+    const copy = resolveSalesDocumentBlockCopy(
+      order({ salesDocumentBlockReason: 'trigger-model-batched' }),
+      false,
+      t,
+      'fiscal-receipt',
+    );
+    expect(copy?.title).toMatch(/not registered/i);
+    expect(copy?.title).toMatch(/batched fiscal registration/i);
+  });
+});
+
+describe('resolveSalesDocumentBlockCopy — mixed kind (candidate pool spans both kinds)', () => {
+  it('never claims a specific document kind the data does not support', () => {
+    const copy = resolveSalesDocumentBlockCopy(
+      order({ salesDocumentBlockReason: 'trigger-model-manual' }),
+      false,
+      t,
+      'mixed',
+    );
+    expect(copy?.title).not.toMatch(/invoice/i);
+    expect(copy?.title).not.toMatch(/receipt/i);
+    expect(copy?.body).not.toMatch(/invoice/i);
+    expect(copy?.body).not.toMatch(/receipt/i);
+  });
+
+  it('the no-primary pairing still offers the Set-a-primary remediation', () => {
+    const copy = resolveSalesDocumentBlockCopy(
+      order({
+        salesDocumentBlockReason: 'unresolved-routing',
+        salesDocumentUnresolvedReason: 'ambiguous-connection-no-primary',
+      }),
+      false,
+      t,
+      'mixed',
+    );
+    expect(copy).toMatchObject({ tone: 'error', offerSetPrimary: true });
   });
 });

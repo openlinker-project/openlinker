@@ -16,13 +16,14 @@ import { useTranslation } from '../../../shared/i18n';
 const OPTIONS = ['invoice', 'receipt'] as const;
 
 /** EN fallbacks for the well-known document types (PL via `t()`). Exported as
- *  the single source of truth so the issued-state line in `OrderInvoicePanel`
- *  reuses the same labels instead of re-declaring them. Unknown adapter-supplied
+ *  the single source of truth so the issued-state line in the `orders` feature's
+ *  `SalesDocumentPanel` (#2160, previously `OrderInvoicePanel`) reuses the same
+ *  labels instead of re-declaring them. Unknown adapter-supplied
  *  types fall back to the raw string (open-world).
  *
  *  Covers all six of `DocumentTypeValues`, not just the two this picker offers
  *  (#2090): the map is read by the invoices list, the invoice detail page and
- *  `OrderInvoicePanel`, which render whatever a provider issued — Subiekt issues
+ *  `SalesDocumentPanel`, which render whatever a provider issued — Subiekt issues
  *  `credit-note`, KSeF and inFakt issue `corrected`, inFakt also `proforma`. With
  *  only `invoice`/`receipt` mapped, a correction read as the raw slug
  *  `corrected` on all three surfaces, and telling a correction from an original

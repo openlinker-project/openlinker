@@ -80,6 +80,14 @@ export class SyncJobsService implements ISyncJobsService {
     );
   }
 
+  findEnabledTaskByJobType(jobType: JobType): SchedulerTaskConfig | null {
+    return (
+      this.schedulerTaskRegistry
+        .getAll()
+        .find((task) => task.jobType === jobType && this.isTaskEnabled(task)) ?? null
+    );
+  }
+
   // Mirrors SchedulerService's own runtime enablement check (`enabledEnvVar`
   // literally 'false' disables; unset falls back to `enabledDefault`, which
   // itself defaults to enabled) — a task that is registered but disabled

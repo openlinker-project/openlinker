@@ -36,8 +36,7 @@ import {
 import { OrderCustomerCard } from '../../features/orders/components/order-customer-card';
 import { OrderActivityTimeline } from '../../features/orders/components/order-activity-timeline';
 import { OrderShipmentPanel } from '../../features/orders/components/order-shipment-panel';
-import { OrderInvoicePanel } from '../../features/invoicing';
-import { OrderReceiptPanel } from '../../features/fiscalization';
+import { SalesDocumentPanel } from '../../features/orders/components/sales-document-panel';
 import { OrderDetailHeader } from '../../features/orders/components/order-detail-header';
 import { OrderHealthSummary } from '../../features/orders/components/order-health-summary';
 import { OrderPricingPanel } from '../../features/orders/components/order-pricing-panel';
@@ -427,11 +426,14 @@ export function OrderDetailPage(): ReactElement {
           <div id="shipment" tabIndex={-1}>
             <OrderShipmentPanel order={order} autoOpenForShipmentId={retryShipmentId} />
           </div>
+          {/* #2160: one unified "Sales document" slot replaces the two
+              independent OrderInvoicePanel / OrderReceiptPanel siblings.
+              `id="invoicing"` is kept (not renamed to e.g. "sales-document")
+              because it is the actual deep-link target the orders-list page's
+              "Issue invoice" CTA already points at
+              (`/orders/{id}#invoicing`, orders-list-page.tsx). */}
           <div id="invoicing" tabIndex={-1}>
-            <OrderInvoicePanel order={order} />
-          </div>
-          <div id="fiscal-receipt" tabIndex={-1}>
-            <OrderReceiptPanel orderId={order.internalOrderId} />
+            <SalesDocumentPanel order={order} />
           </div>
           <OrderCustomerCard customerId={order.customerId} sourceConnectionId={order.sourceConnectionId} />
         </div>

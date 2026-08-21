@@ -248,6 +248,60 @@ describe('Job Intake → Execution Integration', () => {
 
       expect(lockedJobs.some((j) => j.id === insertedId)).toBe(true);
     });
+
+    // The lane claim (ADR-050, #2278) adds two SQL arms over the legacy one —
+    // `"jobType" = ANY($n)` and `"connectionId" != ALL($n)`, both bound to a
+    // JS array. The repository unit spec asserts the SQL *string* against a
+    // mocked EntityManager, so only a real Postgres round-trip proves the
+    // parameter binding actually works. This is the runner's sole production
+    // claim path, and a binding mistake would surface first in its hot loop.
+    it('should claim only the lane job types and skip excluded scopes', async () => {
+      const dataSource = harness.getDataSource();
+      const connectionA = await createTestConnection(dataSource, {
+        platformType: 'prestashop',
+        status: 'active',
+      });
+      const connectionB = await createTestConnection(dataSource, {
+        platformType: 'prestashop',
+        status: 'active',
+      });
+
+      const inLaneA = await createTestSyncJob(dataSource, {
+        jobType: 'master.product.syncByExternalId',
+        connectionId: connectionA.id,
+        status: 'queued',
+        nextRunAt: new Date(Date.now() - 1000),
+      });
+      const inLaneB = await createTestSyncJob(dataSource, {
+        jobType: 'master.product.syncByExternalId',
+        connectionId: connectionB.id,
+        status: 'queued',
+        nextRunAt: new Date(Date.now() - 1000),
+      });
+      const otherLane = await createTestSyncJob(dataSource, {
+        jobType: 'master.inventory.syncByExternalId',
+        connectionId: connectionB.id,
+        status: 'queued',
+        nextRunAt: new Date(Date.now() - 2000), // due earliest — would win without the jobType arm
+      });
+
+      const lockedJobs = await jobRepository.findAndLockDueJobsForLane({
+        jobTypes: ['master.product.syncByExternalId'],
+        limit: 10,
+        workerId: 'lane-worker',
+        excludedScopes: [connectionA.id],
+      });
+
+      const lockedIds = lockedJobs.map((j) => j.id);
+      expect(lockedIds).toContain(inLaneB.id);
+      expect(lockedIds).not.toContain(otherLane.id); // filtered by the jobType arm
+      expect(lockedIds).not.toContain(inLaneA.id); // filtered by the excluded-scope arm
+      expect(lockedJobs.every((j) => j.lockedBy === 'lane-worker')).toBe(true);
+
+      // The filtered-out rows are left claimable, never locked-and-released.
+      expect((await getSyncJobById(dataSource, inLaneA.id))?.status).toBe('queued');
+      expect((await getSyncJobById(dataSource, otherLane.id))?.status).toBe('queued');
+    });
   });
 
   describe('Job Status Transitions', () => {

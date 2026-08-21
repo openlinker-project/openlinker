@@ -1,0 +1,17 @@
+/**
+ * useSalesDocumentThresholdsQuery (#2170)
+ *
+ * @module apps/web/src/features/sales-documents/hooks
+ */
+import { useQuery, type UseQueryResult } from '@tanstack/react-query';
+import { useApiClient } from '../../../app/api/api-client-provider';
+import { salesDocumentRulesQueryKeys } from '../api/sales-document-rules.query-keys';
+import type { SalesDocumentThreshold } from '../api/sales-document-rules.types';
+
+export function useSalesDocumentThresholdsQuery(): UseQueryResult<SalesDocumentThreshold[]> {
+  const apiClient = useApiClient();
+  return useQuery({
+    queryKey: salesDocumentRulesQueryKeys.thresholds(),
+    queryFn: () => apiClient.salesDocumentRules.listThresholds(),
+  });
+}

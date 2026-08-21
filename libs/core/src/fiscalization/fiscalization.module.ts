@@ -8,13 +8,25 @@
  * No `FiscalizationPort` binding lives here: adapters are resolved per
  * connection through the integrations registry under the `'Fiscalization'`
  * capability, so `IntegrationsModule` is imported for the token the service
- * depends on. No cycle - integrations does not reference fiscalization.
+ * depends on.
+ *
+ * `InvoicingModule` is imported for `INVOICE_SERVICE_TOKEN` (the cross-KIND
+ * blocking-invoice read, #2157) and the `invoiceIssueLockKey` /
+ * `INVOICE_ISSUE_LOCK_TTL_MS` lock constants; `SyncModule` for `SYNC_LOCK_TOKEN`
+ * (the SAME per-order lock `InvoiceService.issueInvoice` takes). This is a
+ * ONE-WAY edge — `InvoicingModule` does NOT import `FiscalizationModule` back
+ * (its own cross-KIND read is resolved lazily via `ModuleRef`, see
+ * `InvoiceService.resolveFiscalRegistrationService`), so no module-level cycle
+ * is created. `InvoicingModule` does not reference fiscalization; `SyncModule`
+ * does not reference either.
  *
  * @module libs/core/src/fiscalization
  */
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { IntegrationsModule } from '@openlinker/core/integrations';
+import { InvoicingModule } from '@openlinker/core/invoicing';
+import { SyncModule } from '@openlinker/core/sync';
 
 import { FiscalRegistrationService } from './application/services/fiscal-registration.service';
 import { FiscalRegistrationRecordOrmEntity } from './infrastructure/persistence/entities/fiscal-registration-record.orm-entity';
@@ -30,7 +42,12 @@ import {
 // miss the other.
 
 @Module({
-  imports: [TypeOrmModule.forFeature([FiscalRegistrationRecordOrmEntity]), IntegrationsModule],
+  imports: [
+    TypeOrmModule.forFeature([FiscalRegistrationRecordOrmEntity]),
+    IntegrationsModule,
+    InvoicingModule,
+    SyncModule,
+  ],
   providers: [
     FiscalRegistrationRecordRepository,
     {

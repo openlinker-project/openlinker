@@ -7,6 +7,7 @@ import { EnableConnectionButton } from '../../features/connections/components/En
 import { ConnectionCapabilitiesPanel } from '../../features/connections/components/ConnectionCapabilitiesPanel';
 import { ConnectionConfigPanel } from '../../features/connections/components/ConnectionConfigPanel';
 import { ConnectionDiagnosticsPanel } from '../../features/connections/components/ConnectionDiagnosticsPanel';
+import { CatalogTrustPanel } from '../../features/connections/components/catalog-trust-panel';
 import type { Connection, ConnectionStatus } from '../../features/connections/api/connections.types';
 import { EmptyState, ErrorState, LoadingState } from '../../shared/ui/feedback-state';
 import { EntityLabel } from '../../shared/ui/entity-label';
@@ -345,6 +346,9 @@ export function ConnectionDetailPage(): ReactElement {
 
           <TabsContent value="health">
             <ConnectionDiagnosticsPanel connectionId={connection.id} />
+            {connection.enabledCapabilities.includes('ProductMaster') ? (
+              <CatalogTrustPanel connectionId={connection.id} />
+            ) : null}
           </TabsContent>
 
           <TabsContent value="actions">
