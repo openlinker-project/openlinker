@@ -50,6 +50,7 @@ import {
   invoiceIssueLockKey,
 } from './invoice-issue-lock';
 import { MissingNumberingSeriesException } from '../../domain/exceptions/missing-numbering-series.exception';
+import { taxRatePercentToFraction } from '../../domain/types/tax-rate-notation.types';
 import { CapabilityNotSupportedException } from '@openlinker/core/integrations';
 // Published so an adapter spec can pin its own pre-call refusal message against
 // the very markers this service matches on (#2103 review) — see the constant's doc.
@@ -173,10 +174,12 @@ function round2(value: number): number {
  * (`'23'`, `'8'`, `'0'`) are read as a percentage; non-numeric exemption codes
  * (`zw`/`np`/…) carry no tax (0). The adapter owns the authoritative regime
  * mapping; this is only for the non-authoritative content projection.
+ *
+ * Notation is settled once, in `taxRatePercentToFraction` (#2247) - fractional
+ * input throws there rather than being read as a hundredth of itself here.
  */
 function rateFraction(taxRate: string): number {
-  const parsed = Number.parseFloat(taxRate);
-  return Number.isFinite(parsed) ? parsed / 100 : 0;
+  return taxRatePercentToFraction(taxRate) ?? 0;
 }
 
 /**

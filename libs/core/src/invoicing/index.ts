@@ -33,6 +33,14 @@ export type {
   InvoicingConnectionSelection,
 } from './domain/types/invoicing-primary.types';
 export { normalizeShippingLineName } from './domain/types/shipping-line-label.types';
+// Canonical percent-as-string tax-rate notation (#2247).
+export {
+  FractionalTaxRateNotationError,
+  isFractionalTaxRateNotation,
+  parseTaxRatePercent,
+  taxRatePercentToFraction,
+  assertPercentTaxRateNotation,
+} from './domain/types/tax-rate-notation.types';
 export * from './domain/entities/buyer-profile.entity';
 export * from './domain/entities/invoice-record.entity';
 export * from './domain/entities/invoice-numbering-series.entity';
