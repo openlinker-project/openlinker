@@ -112,6 +112,7 @@ export class OrdersController {
       slaState,
       fulfillmentState,
       salesDocumentBlocked,
+      taxRateConflict,
       limit = 20,
       offset = 0,
     } = query;
@@ -131,6 +132,7 @@ export class OrdersController {
         slaState,
         fulfillmentState,
         salesDocumentBlocked,
+        taxRateConflict,
       },
       { limit, offset }
     );
@@ -189,12 +191,17 @@ export class OrdersController {
     @Query() query: OrderHealthSummaryQueryDto
   ): Promise<OrderHealthSummaryResponseDto> {
     const { sourceConnectionId, customerId, createdFrom, createdTo } = query;
-    return this.orderRecordRepository.countByHealth({
+    const summary = await this.orderRecordRepository.countByHealth({
       sourceConnectionId,
       customerId,
       createdFrom: createdFrom ? new Date(createdFrom) : undefined,
       createdTo: createdTo ? new Date(createdTo) : undefined,
     });
+    // The wire carries an ISO string; the domain summary carries a Date (#2254).
+    return {
+      ...summary,
+      salesDocumentBlockedOldestAt: summary.salesDocumentBlockedOldestAt?.toISOString() ?? null,
+    };
   }
 
   @Get('sla-summary')

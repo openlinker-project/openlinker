@@ -711,6 +711,7 @@ export class OrderIngestionService implements IOrderIngestionService {
     taxRateCountry?: string;
     taxSource?: TaxRateSource;
     taxRateReadAt?: string;
+    taxRateChannel?: string;
   }> {
     let shopRate: StoredTaxRate | null = null;
     try {
@@ -724,11 +725,19 @@ export class OrderIngestionService implements IOrderIngestionService {
     }
 
     if (shopRate && taxRateState(shopRate) === 'known' && shopRate.code) {
+      // #2254 (epic F1): when the channel ALSO reported a rate and it differs,
+      // record the other number. The shop still wins and the document still
+      // issues - this is the evidence for a non-blocking conflict, not a veto.
+      // Recorded only on disagreement, so its presence IS the conflict and no
+      // reader has to compare two fields to find out.
+      const channelCode = item.taxRate?.trim();
+      const conflicts = Boolean(channelCode) && channelCode !== shopRate.code;
       return {
         taxRate: shopRate.code,
         ...(shopRate.countryIso2 ? { taxRateCountry: shopRate.countryIso2 } : {}),
         taxSource: 'shop',
         ...(shopRate.readAt ? { taxRateReadAt: shopRate.readAt.toISOString() } : {}),
+        ...(conflicts ? { taxRateChannel: channelCode } : {}),
       };
     }
 
