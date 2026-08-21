@@ -332,6 +332,15 @@
   --button-primary-bg-hover: oklch(62% 0.19 50);
 
   /* ── Spacing scale (strict 4px grid) ─────────────────────────────── */
+  /* ── Layout heights (#2227) ────────────────────────────────────────
+   * The two pinned strips at the top of the shell, named once instead of
+   * repeated as a literal `52px` in `.shell-topbar` and `.demo-banner`. Height,
+   * not padding, so the value stays true: the banner carries a matching
+   * `min-height`.
+   */
+  --shell-topbar-height: 52px;
+  --demo-banner-height: 48px;
+
   --space-1: 0.25rem; /* 4px */
   --space-2: 0.5rem; /* 8px */
   --space-3: 0.75rem; /* 12px */
@@ -1291,6 +1300,14 @@ textarea,
   flex-direction: column;
 }
 
+/* The demo banner wraps to two lines on narrow viewports; from tablet up it is
+   one line, so the offset a sticky sub-header must clear gets smaller (#2227). */
+@media (min-width: 768px) {
+  :root {
+    --demo-banner-height: 32px;
+  }
+}
+
 .shell-topbar {
   position: sticky;
   top: 0;
@@ -1298,7 +1315,7 @@ textarea,
   display: flex;
   align-items: center;
   gap: 12px;
-  height: 52px;
+  height: var(--shell-topbar-height);
   padding: 0 16px;
   background: var(--bg-shell);
   border-bottom: 1px solid var(--border-subtle);
@@ -2437,8 +2454,10 @@ textarea,
    initial + visually-hidden full name carry the signal. */
 .conn-dot {
   display: inline-block;
-  width: 14px;
-  height: 14px;
+  /* `--conn-size` is set inline by connection-dot.tsx only where the dot is the
+     primary identity anchor (the bulk wizard destination bar, #2227). */
+  width: var(--conn-size, 14px);
+  height: var(--conn-size, 14px);
   border-radius: 50%;
   flex: 0 0 auto;
   vertical-align: -2px;
@@ -2449,8 +2468,8 @@ textarea,
    so it needs no line-box gymnastics - just fill the disc. */
 .conn-dot__glyph {
   display: block;
-  width: 14px;
-  height: 14px;
+  width: var(--conn-size, 14px);
+  height: var(--conn-size, 14px);
 }
 
 .conn-dot__glyph text {
@@ -10785,6 +10804,113 @@ input.bulk-dispatch__num--wide {
   flex: 1;
 }
 
+/* ── Bulk wizard destination context bar (#2227) ─────────────────────
+ * Sits above the stepper on every step after Config. The left edge carries
+ * the accent, re-tinted to the warning tone for a sandbox connection - the
+ * state that is most expensive to miss in a screenshot.
+ */
+/* Deliberately NOT sticky: `main.shell-content` declares `overflow-y: auto`, so
+   it is the scroll container a sticky descendant resolves against - but the
+   document scrolls instead of it, so the offset never engages and the element
+   just scrolls away. Pinning this bar needs that shell-wide scroll model fixed
+   first (it also disables DataTable's sticky headers today). */
+.bulk-destbar {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-left: 3px solid var(--accent-primary);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+.bulk-destbar[data-environment='sandbox'] {
+  border-left-color: var(--status-warning-strong);
+}
+
+.bulk-destbar__main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  padding: var(--space-2) var(--space-3);
+}
+
+.bulk-destbar__id {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+/* `display: block` is load-bearing: an inline span ignores text-overflow, so
+   a long connection name would set its own min-content width and push the
+   badges onto their own rows at 320 px. */
+.bulk-destbar__name {
+  display: block;
+  max-width: 26ch;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: var(--tracking-tight);
+  color: var(--text-primary);
+}
+
+.bulk-destbar__badges {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.bulk-destbar__changes {
+  display: inline-flex;
+}
+
+.bulk-destbar__toggle,
+.bulk-destbar__change {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  background: var(--bg-surface-muted);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  padding: 9px var(--space-3);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.bulk-destbar__toggle {
+  margin-left: auto;
+}
+
+.bulk-destbar__toggle:hover,
+.bulk-destbar__change:hover {
+  background: var(--bg-surface-hover);
+  color: var(--text-primary);
+}
+
+.bulk-destbar__panel {
+  border-top: 1px dashed var(--border-default);
+  padding: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+
+.bulk-destbar__panel[hidden] {
+  display: none;
+}
+
+
+/* KeyValueList owns its own responsive dt/dd grid - only the width is ours. */
+.bulk-destbar__panel .key-value-list {
+  width: 100%;
+}
+
 /* ── Bulk shop-publish review step (#1829) ──────────────────────────── */
 .bulk-shop-review {
   display: flex;
@@ -14859,7 +14985,8 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
      scrolled .shell-content but below the topbar (z-index: 10) so the two
      header blocks never overlap. */
   position: sticky;
-  top: 52px;
+  top: var(--shell-topbar-height);
+  min-height: var(--demo-banner-height);
   z-index: 9;
 }
 
