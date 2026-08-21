@@ -1,0 +1,64 @@
+/**
+ * Allegro Tax-Rate Mapper (#2249, ADR-052)
+ *
+ * Translates Allegro's per-line `tax` object and its offer tax settings to and
+ * from OpenLinker's neutral percent-as-string code. The platform vocabulary
+ * stays here, in the adapter (ADR-026).
+ *
+ * The one rule that matters: **a null stays a null**. Allegro reports every
+ * field of `lineItems[].tax` as nullable, and an offer published without tax
+ * settings reports nothing at all. Reading that as `'0'` would state a
+ * zero-rated sale that never happened.
+ *
+ * @module libs/integrations/allegro/src/infrastructure/adapters
+ */
+
+/** The `tax` object as Allegro reports it on an order line. */
+export interface AllegroLineTax {
+  rate?: string | null;
+  subject?: string | null;
+  exemption?: string | null;
+}
+
+/**
+ * Read Allegro's per-line tax as a neutral code, or `null` when it reported
+ * none.
+ *
+ * A numeric `rate` is normalised from Allegro's `"23.00"` to the bare `'23'`
+ * the neutral contract uses (#2247) - the FA(3) map and the Erli enum are both
+ * keyed on the bare form. An `exemption` with no rate is passed through
+ * lower-cased, which covers Allegro's `zw` / `np` tokens; anything else is
+ * `null` rather than a guess.
+ */
+export function toNeutralTaxRate(tax: AllegroLineTax | null | undefined): string | null {
+  if (!tax) return null;
+
+  const rate = tax.rate?.trim();
+  if (rate) {
+    const parsed = Number.parseFloat(rate);
+    if (Number.isFinite(parsed)) {
+      const rounded = Math.round(parsed * 100) / 100;
+      return String(rounded);
+    }
+  }
+
+  const exemption = tax.exemption?.trim().toLowerCase();
+  if (exemption === 'zw' || exemption === 'np' || exemption === 'oo') return exemption;
+
+  return null;
+}
+
+/**
+ * Express a neutral code as the numeric rate Allegro's `OfferTaxSettings`
+ * expects.
+ *
+ * Returns `null` for an exemption code: `rates[]` carries numbers, so `zw` /
+ * `np` / `oo` have no place in it. The caller must treat that as "cannot
+ * publish this rate" rather than as "publish without one" - omitting the
+ * setting is what produced the rate-less offers this epic exists to fix.
+ */
+export function toAllegroRate(neutralTaxRate: string | undefined | null): number | null {
+  if (!neutralTaxRate) return null;
+  const parsed = Number.parseFloat(neutralTaxRate.trim());
+  return Number.isFinite(parsed) ? parsed : null;
+}
