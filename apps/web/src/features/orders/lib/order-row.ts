@@ -227,7 +227,22 @@ const BADGE_BY_REASON = {
     hint: 'This order needs a buyer tax ID before it can be invoiced.',
     keepIssueAction: false,
   },
-  // Declared but never written today — blocked on #2057.
+  // #2248 (ADR-052). The one reason where `keepIssueAction: false` means the
+  // action is genuinely unavailable rather than merely unhelpful: issuing by
+  // hand would make a provider guess a rate onto a real fiscal document, so the
+  // backend refuses the manual paths too. Every other `false` above is a
+  // presentation choice; this one matches a server-side refusal.
+  'missing-tax-rate': {
+    label: 'No tax rate',
+    tone: 'error',
+    hint: 'A product on this order has no tax rate, so no document can state the tax charged.',
+    keepIssueAction: false,
+  },
+  // Declared but never written today, and it stays that way: a shop-versus-channel
+  // disagreement does not block (#2245 F1). It surfaces on its own field with its
+  // own resolver, because a badge routed through here would never render - the
+  // resolver below suppresses one whenever an invoice exists, and a non-blocking
+  // conflict always has one.
   'tax-rate-conflict': {
     label: 'Tax rate conflict',
     tone: 'error',
