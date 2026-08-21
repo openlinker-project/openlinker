@@ -115,7 +115,10 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
    * one native currency shared by every such order, or `null` when the set
    * mixes currencies — same "null if mixed" rule
    * `OrderRecordRepositoryPort.getDailyOrderAggregates` uses for its own
-   * `unconvertedCurrency`.
+   * `unconvertedCurrency`. The label guard also requires zero NULL
+   * `rec."currency"` rows in the filtered set (#2172 review, SUGGESTION 3):
+   * `COUNT(DISTINCT ...)` alone ignores NULLs, so a set of `{NULL, 'PLN'}`
+   * would otherwise count one distinct value and mislabel the mix as `PLN`.
    *
    * A stamped order with `totalAmount = 0` (fully discounted / free) also
    * folds into the unconverted bucket (#2172 review, IMPORTANT 2): the FX
@@ -161,6 +164,7 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
       )
       .addSelect(
         `CASE WHEN COUNT(DISTINCT rec."currency") FILTER (WHERE ${unconvertedOrZeroTotal}) <= 1
+              AND COUNT(*) FILTER (WHERE ${unconvertedOrZeroTotal} AND rec."currency" IS NULL) = 0
               THEN MAX(rec."currency") FILTER (WHERE ${unconvertedOrZeroTotal})
               ELSE NULL END`,
         'unconverted_currency'
@@ -255,6 +259,7 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
       )
       .addSelect(
         `CASE WHEN COUNT(DISTINCT rec."currency") FILTER (WHERE ${unconvertedOrZeroTotal}) <= 1
+              AND COUNT(*) FILTER (WHERE ${unconvertedOrZeroTotal} AND rec."currency" IS NULL) = 0
               THEN MAX(rec."currency") FILTER (WHERE ${unconvertedOrZeroTotal})
               ELSE NULL END`,
         'unconverted_currency'
@@ -288,12 +293,17 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
 
   /**
    * Shared scope for the #1988 top-products reads: only `'ready'` records
-   * (via the join), not cancelled, within `[filters.from, filters.to)` on
-   * `li."placedAt"`, optionally narrowed to one connection — mirrors {@link
-   * getUnitsSoldByConnection}'s inline predicates and
-   * `OrderRecordRepository.applySalesAnalyticsScope`'s semantics, kept
-   * byte-for-byte aligned so the two endpoints can never silently diverge on
-   * what counts as "an order in scope".
+   * (via the join), not cancelled, with a resolvable `totalAmount`, within
+   * `[filters.from, filters.to)` on `li."placedAt"`, optionally narrowed to
+   * one connection — mirrors {@link getUnitsSoldByConnection}'s inline
+   * predicates and `OrderRecordRepository.applySalesAnalyticsScope`'s
+   * semantics (#2172 review, IMPORTANT 1: the two are kept in agreement on
+   * what counts as "an order in scope" so a row counted here is never
+   * excluded from #1987's channel totals, or vice versa). `rec."placedAt" IS
+   * NOT NULL` is NOT repeated here — `li."placedAt"` is denormalized from the
+   * parent order at write time (#1985), so the `>= / <` range predicate below
+   * already excludes a NULL the same way `applySalesAnalyticsScope`'s
+   * explicit guard does on the parent column.
    */
   private applyTopProductsScope(
     qb: SelectQueryBuilder<OrderLineItemOrmEntity>,
@@ -301,6 +311,7 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
   ): void {
     qb.andWhere(`rec."recordStatus" = 'ready'`)
       .andWhere('rec."cancelledAt" IS NULL')
+      .andWhere('rec."totalAmount" IS NOT NULL')
       .andWhere('li."placedAt" >= :salesFrom', { salesFrom: filters.from })
       .andWhere('li."placedAt" < :salesTo', { salesTo: filters.to });
 
