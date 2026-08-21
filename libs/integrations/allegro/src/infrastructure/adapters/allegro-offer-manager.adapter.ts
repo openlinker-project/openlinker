@@ -121,7 +121,7 @@ import { AllegroApiException } from '../../domain/exceptions/allegro-api.excepti
 import { Logger, formatBodyForLog } from '@openlinker/shared/logging';
 import { createHash } from 'crypto';
 import { sanitizeAllegroName } from '../util/sanitize-allegro-name';
-import { toAllegroRate } from './allegro-tax-rate.mapper';
+import { readPermittedTaxRates, toAllegroRate } from './allegro-tax-rate.mapper';
 
 /**
  * Country the offer's tax settings are written for when the catalogue rate
@@ -2023,10 +2023,10 @@ export class AllegroOfferManagerAdapter
         '/sale/tax-settings',
         { queryParams: { 'category.id': categoryId, countryCode } },
       );
-      const rates = response.data.taxSettings?.flatMap((setting) => setting.rates ?? []) ?? [];
-      return rates
-        .map((entry) => Number.parseFloat(String(entry.rate)))
-        .filter((value) => Number.isFinite(value));
+      // Verified against the live sandbox (#2249). The parsing is a pure,
+      // spec-pinned function because the first version of it was a guess about
+      // the response shape and was silently wrong.
+      return readPermittedTaxRates(response.data.rates, countryCode);
     } catch (error) {
       this.logger.warn(
         `Could not read Allegro tax settings for category ${categoryId} (${countryCode}); ` +

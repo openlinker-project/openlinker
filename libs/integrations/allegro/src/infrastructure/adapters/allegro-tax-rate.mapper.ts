@@ -13,6 +13,37 @@
  * @module libs/integrations/allegro/src/infrastructure/adapters
  */
 
+/** One country's permitted-rate block from `GET /sale/tax-settings`. */
+export interface AllegroTaxSettingsRates {
+  countryCode?: string;
+  values?: Array<{ value?: string | null }>;
+}
+
+/**
+ * The rates a category permits in one country, read from Allegro's
+ * `/sale/tax-settings` body.
+ *
+ * Extracted as a pure function precisely because the FIRST version of this
+ * parsing was a guess about the response shape and was silently wrong - it read
+ * `taxSettings[].rates[]`, produced an empty list against the real body, and the
+ * category check never fired. A pure function can be pinned against a captured
+ * payload; a private method reached only through an HTTP fake cannot, easily.
+ *
+ * A `null` `value` is the UI's "Select" placeholder rather than a rate, so it is
+ * dropped instead of parsed to NaN. An entry with no `countryCode` is treated as
+ * applying everywhere.
+ */
+export function readPermittedTaxRates(
+  rates: readonly AllegroTaxSettingsRates[] | undefined,
+  countryCode: string,
+): number[] {
+  return (rates ?? [])
+    .filter((entry) => !entry.countryCode || entry.countryCode.toUpperCase() === countryCode)
+    .flatMap((entry) => entry.values ?? [])
+    .map((value) => (value.value == null ? Number.NaN : Number.parseFloat(value.value)))
+    .filter((value) => Number.isFinite(value));
+}
+
 /** The `tax` object as Allegro reports it on an order line. */
 export interface AllegroLineTax {
   rate?: string | null;

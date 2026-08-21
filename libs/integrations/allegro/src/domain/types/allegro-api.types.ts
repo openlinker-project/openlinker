@@ -895,9 +895,29 @@ export interface AllegroSmartOfferClassificationReport {
  * `GET /sale/tax-settings?category.id=&countryCode=` (#2249) - what tax rates a
  * category permits in a country. Read only to turn an Allegro rejection into an
  * actionable OpenLinker error naming the permitted values.
+ *
+ * The shape is verified against the live sandbox (21 Aug 2026), because the
+ * first version of this type was a guess and was wrong: rates are nested one
+ * level deeper than `taxSettings[].rates[]`, so the parser silently produced an
+ * empty list and the category check never fired.
+ *
+ * ```
+ * GET /sale/tax-settings?category.id=257366&countryCode=PL
+ * {"subjects":[…],
+ *  "rates":[{"countryCode":"PL",
+ *            "values":[{"label":"23%","value":"23.00","exemptionRequired":false},
+ *                      {"label":"Select","value":null,"exemptionRequired":false}]}],
+ *  "exemptions":[…]}
+ * ```
+ *
+ * Two details the live probe settled. A `null` `value` is the UI's "Select"
+ * placeholder and is not a rate. And a category with no tax options at all
+ * answers **404** with an `errors` array, not an empty 200 - which the caller's
+ * catch already degrades to "could not read", the correct outcome.
  */
 export interface AllegroTaxSettingsResponse {
-  taxSettings?: Array<{
-    rates?: Array<{ rate: number | string; countryCode?: string }>;
+  rates?: Array<{
+    countryCode?: string;
+    values?: Array<{ label?: string; value?: string | null; exemptionRequired?: boolean }>;
   }>;
 }
