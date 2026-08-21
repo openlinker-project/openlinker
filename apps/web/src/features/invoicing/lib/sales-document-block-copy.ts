@@ -49,6 +49,13 @@ export function resolveSalesDocumentBlockCopy(
   order: OrderRecord,
   derivedAmbiguity: boolean,
   t: (key: string, fallback: string) => string,
+  /**
+   * The rate-less lines, when the reason is `missing-tax-rate` (#2254).
+   *
+   * Passed in rather than re-derived, because the remedy depends on WHY a rate
+   * is absent and only the lines say which case this is. Omitted elsewhere.
+   */
+  rateLines: RateLessLine[] = [],
 ): SalesDocumentBlockCopy | null {
   const reason = order.salesDocumentBlockReason ?? null;
   const detail = order.salesDocumentBlockDetail ?? null;
@@ -137,9 +144,16 @@ export function resolveSalesDocumentBlockCopy(
     };
   }
 
+  if (reason === 'missing-tax-rate') {
+    return resolveMissingTaxRateCopy(rateLines, detail, t);
+  }
+
   if (reason === 'tax-rate-conflict') {
+    // Declared in the union but never written (#2245 F1): a shop-versus-channel
+    // disagreement does NOT block, so this arm only guards against a newer
+    // backend. Kept honest rather than deleted.
     return {
-      tone: 'error',
+      tone: 'conflict',
       title: t('invoice.panel.blockTaxRateTitle', 'Not invoiced: the tax rates disagree.'),
       body: t(
         'invoice.panel.blockTaxRateBody',
@@ -160,6 +174,99 @@ export function resolveSalesDocumentBlockCopy(
       'invoice.panel.blockUnknownBody',
       'OpenLinker declined to issue a document for this order. Issue it by hand if it should be invoiced.',
     ),
+    detail,
+    offerSetPrimary: false,
+  };
+}
+
+/**
+ * One line with no tax rate, as the panel knows it (#2254).
+ *
+ * `inCatalogue` is what separates the two hardest remedies: a product OL has
+ * mapped can be fixed in its shop, while an item that exists only as a
+ * marketplace offer cannot be released by fixing that offer at all - the
+ * marketplace stamped the rate at purchase.
+ */
+export interface RateLessLine {
+  name: string;
+  inCatalogue: boolean;
+  /** The shop answered, and its answer was ambiguous (several candidate rates). */
+  ambiguousTaxClass?: boolean;
+}
+
+/**
+ * The three remedy branches for a missing rate (#2254).
+ *
+ * One sentence would be wrong here, because the REASON a rate is absent decides
+ * the remedy and the three are not interchangeable:
+ *
+ *  1. blank on a mapped product - set it in the shop, and the fix releases this
+ *     order on the next sync;
+ *  2. the item is in no catalogue - fixing the offer will NOT release this
+ *     order, because the marketplace stamped the rate at purchase; the only
+ *     route is adding the item to a shop;
+ *  3. the shop's tax class is ambiguous - the rate table for the shop's own
+ *     country is what needs fixing, not the product.
+ *
+ * Plural-safe with a count, deliberately: a forty-line B2B order with six
+ * rate-less lines cannot be told about one product, and every other branch in
+ * this file is order-scoped and singular by nature.
+ */
+function resolveMissingTaxRateCopy(
+  lines: RateLessLine[],
+  detail: string | null,
+  t: (key: string, fallback: string) => string,
+): SalesDocumentBlockCopy {
+  const names = lines.map((line) => line.name).filter(Boolean);
+  const count = Math.max(names.length, 1);
+  const list = names.length > 0 ? names.join(', ') : t('invoice.panel.someLines', 'Some lines');
+
+  const uncatalogued = lines.filter((line) => !line.inCatalogue);
+  if (uncatalogued.length > 0 && uncatalogued.length === lines.length) {
+    const subject = uncatalogued.map((line) => line.name).join(', ');
+    return {
+      tone: 'error',
+      title:
+        uncatalogued.length === 1
+          ? `${t('invoice.panel.blockNoRateUncataloguedTitle', 'Not invoiced:')} ${subject} ${t('invoice.panel.blockNoRateUncataloguedTitleTail', 'is not in your catalogue.')}`
+          : `${t('invoice.panel.blockNoRateUncataloguedTitlePlural', 'Not invoiced:')} ${String(uncatalogued.length)} ${t('invoice.panel.blockNoRateUncataloguedTitlePluralTail', 'items are not in your catalogue.')}`,
+      body: t(
+        'invoice.panel.blockNoRateUncataloguedBody',
+        'The channel reported no rate at purchase, and fixing the offer now will not release this order. Add the item to a shop to release it.',
+      ),
+      detail,
+      offerSetPrimary: false,
+    };
+  }
+
+  if (lines.length > 0 && lines.every((line) => line.ambiguousTaxClass === true)) {
+    return {
+      tone: 'error',
+      title: `${t('invoice.panel.blockNoRateAmbiguousTitle', 'Not invoiced:')} ${String(count)} ${
+        count === 1
+          ? t('invoice.panel.blockNoRateAmbiguousTitleTail', 'line has an ambiguous tax class.')
+          : t('invoice.panel.blockNoRateAmbiguousTitleTailPlural', 'lines have an ambiguous tax class.')
+      }`,
+      body: t(
+        'invoice.panel.blockNoRateAmbiguousBody',
+        "The shop's tax class matches several rates for its own country, so OpenLinker cannot tell which one applies. Fix the rate table in the shop, not the product.",
+      ),
+      detail,
+      offerSetPrimary: false,
+    };
+  }
+
+  return {
+    tone: 'error',
+    title: `${t('invoice.panel.blockNoRateTitle', 'Not invoiced:')} ${String(count)} ${
+      count === 1
+        ? t('invoice.panel.blockNoRateTitleTail', 'line has no tax rate.')
+        : t('invoice.panel.blockNoRateTitleTailPlural', 'lines have no tax rate.')
+    }`,
+    body: `${list} ${t(
+      'invoice.panel.blockNoRateBody',
+      'have no rate in the shop, and the channel did not report one. Rates arrive with the product sync.',
+    )}`,
     detail,
     offerSetPrimary: false,
   };

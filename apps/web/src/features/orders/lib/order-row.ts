@@ -250,3 +250,23 @@ const BADGE_BY_REASON = {
     keepIssueAction: false,
   },
 } satisfies Record<SalesDocumentGateBlockReasonValue, InvoicingBlockedBadge>;
+
+/**
+ * The rate-conflict badge (#2254, epic F1).
+ *
+ * Its OWN resolver, deliberately separate from `invoicingBlockedBadge`. That
+ * one returns `null` whenever `invoiceSupersedesBlock` holds - which it does for
+ * any invoice that plausibly exists - and a conflict does not stop the invoice,
+ * so the invoice always exists and the badge would never render. Routing this
+ * through the gate machinery would also double-count it inside
+ * `salesDocumentBlocked`, against its own chip.
+ *
+ * It takes no invoice argument at all, which is the point: an issued invoice is
+ * the ordinary case here, not a reason to suppress.
+ */
+export function taxRateConflictBadge(): { label: string; hint: string } {
+  return {
+    label: 'Rate conflict',
+    hint: "The invoice used the shop's rate; the channel reported a different one.",
+  };
+}

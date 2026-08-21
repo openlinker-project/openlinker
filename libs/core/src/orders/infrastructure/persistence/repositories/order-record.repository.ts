@@ -175,6 +175,17 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       );
     }
 
+    if (filters.taxRateConflict !== undefined) {
+      // #2254 — its own axis, ANDed with the others exactly like
+      // `salesDocumentBlocked`: "issued AND the rates disagree" is the shape
+      // this filter exists to find, and it is invisible in every other view.
+      qb.andWhere(
+        filters.taxRateConflict
+          ? OrderRecordRepository.HAS_TAX_RATE_CONFLICT
+          : `NOT (${OrderRecordRepository.HAS_TAX_RATE_CONFLICT})`,
+      );
+    }
+
     this.applySort(qb, filters.sort, filters.dir);
 
     const [entities, total] = await qb.getManyAndCount();
@@ -229,6 +240,21 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       .addSelect(
         `COUNT(*) FILTER (WHERE ${OrderRecordRepository.IS_SALES_DOCUMENT_BLOCKED})`,
         'sales_document_blocked'
+      )
+      // #2254 — its own count, so it is never inside `sales_document_blocked`.
+      // The two populations overlap freely: an order can be both blocked and in
+      // conflict, and printing one number twice is what the separate field
+      // avoids.
+      .addSelect(
+        `COUNT(*) FILTER (WHERE ${OrderRecordRepository.HAS_TAX_RATE_CONFLICT})`,
+        'tax_rate_conflict'
+      )
+      // #2254 — the oldest still-held order, so the chip label can carry an age
+      // rather than a bare count. MIN over the held population only; NULL when
+      // nothing is held, which the caller renders as no age clause at all.
+      .addSelect(
+        `MIN(rec."salesDocumentBlockedAt") FILTER (WHERE ${OrderRecordRepository.IS_SALES_DOCUMENT_BLOCKED})`,
+        'sales_document_blocked_oldest_at'
       );
 
     if (filters.sourceConnectionId) {
@@ -254,6 +280,8 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       synced: string;
       awaiting_dispatch: string;
       sales_document_blocked: string;
+      tax_rate_conflict: string;
+      sales_document_blocked_oldest_at: Date | null;
     }>();
 
     return {
@@ -264,6 +292,8 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       synced: Number(raw?.synced ?? 0),
       awaitingDispatch: Number(raw?.awaiting_dispatch ?? 0),
       salesDocumentBlocked: Number(raw?.sales_document_blocked ?? 0),
+      taxRateConflict: Number(raw?.tax_rate_conflict ?? 0),
+      salesDocumentBlockedOldestAt: raw?.sales_document_blocked_oldest_at ?? null,
     };
   }
 
@@ -369,6 +399,20 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    * the IN-list replaced it. Coalescing to the empty string (never a valid reason)
    * keeps both directions two-valued.
    */
+  /**
+   * A line where the shop and the channel named DIFFERENT rates (#2254).
+   *
+   * `taxRateChannel` is written on a line only when the two disagreed, so its
+   * mere presence is the conflict - no comparison is needed here, and none is
+   * possible in SQL against a jsonb array without a lateral join.
+   *
+   * Deliberately NOT part of the block predicate: a conflict does not stop the
+   * invoice, so folding it in would both double-count it inside
+   * `salesDocumentBlocked` and route its badge through a resolver that
+   * suppresses itself whenever an invoice exists (epic F1).
+   */
+  private static readonly HAS_TAX_RATE_CONFLICT = `jsonb_path_exists(rec."orderSnapshot", '$.items[*].taxRateChannel')`;
+
   private static readonly IS_SALES_DOCUMENT_BLOCKED = `COALESCE(rec."salesDocumentBlockReason", '') IN (${SalesDocumentAttentionReasonValues.map(
     (reason) => `'${reason}'`,
   ).join(', ')})`;
