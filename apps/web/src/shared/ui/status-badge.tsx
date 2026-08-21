@@ -1,6 +1,19 @@
 import type { ReactElement, ReactNode } from 'react';
 
-export type StatusBadgeTone = 'error' | 'info' | 'neutral' | 'review' | 'success' | 'warning';
+/**
+ * `conflict` (#2253) is for two sources disagreeing about the same fact - a
+ * state that needs attention but is not an error, because the document still
+ * issued. Its family has no `-fg` member, so the CSS rule reads
+ * `--status-conflict-strong`.
+ */
+export type StatusBadgeTone =
+  | 'conflict'
+  | 'error'
+  | 'info'
+  | 'neutral'
+  | 'review'
+  | 'success'
+  | 'warning';
 
 interface StatusBadgeProps {
   children: ReactNode;
