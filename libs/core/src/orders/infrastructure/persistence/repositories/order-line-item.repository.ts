@@ -164,7 +164,7 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
       )
       .addSelect(
         `CASE WHEN COUNT(DISTINCT rec."currency") FILTER (WHERE ${unconvertedOrZeroTotal}) <= 1
-              AND COUNT(*) FILTER (WHERE ${unconvertedOrZeroTotal} AND rec."currency" IS NULL) = 0
+              AND COUNT(*) FILTER (WHERE (${unconvertedOrZeroTotal}) AND rec."currency" IS NULL) = 0
               THEN MAX(rec."currency") FILTER (WHERE ${unconvertedOrZeroTotal})
               ELSE NULL END`,
         'unconverted_currency'
@@ -259,7 +259,7 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
       )
       .addSelect(
         `CASE WHEN COUNT(DISTINCT rec."currency") FILTER (WHERE ${unconvertedOrZeroTotal}) <= 1
-              AND COUNT(*) FILTER (WHERE ${unconvertedOrZeroTotal} AND rec."currency" IS NULL) = 0
+              AND COUNT(*) FILTER (WHERE (${unconvertedOrZeroTotal}) AND rec."currency" IS NULL) = 0
               THEN MAX(rec."currency") FILTER (WHERE ${unconvertedOrZeroTotal})
               ELSE NULL END`,
         'unconverted_currency'
