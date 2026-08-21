@@ -49,6 +49,18 @@ import type { FiscalRegistrationRecord } from '../api/fiscalization.types';
 
 interface OrderReceiptPanelProps {
   orderId: string;
+  /**
+   * How many order lines carry no tax rate (#2255 / #2252).
+   *
+   * A fiscal receipt is refused for the same reason an invoice is, and it is
+   * the FIRST reason where refusing the MANUAL path is right too: registering
+   * anyway means a device stamping a tax letter nobody confirmed onto a receipt
+   * that reaches the buyer and the daily report and cannot be recalled.
+   *
+   * Passed in rather than re-derived here, because the panel reads the
+   * registration, not the order.
+   */
+  rateLessLineCount?: number;
 }
 
 function buildRegisteredFieldItems(
@@ -90,7 +102,10 @@ function buildRegisteredFieldItems(
   return items;
 }
 
-export function OrderReceiptPanel({ orderId }: OrderReceiptPanelProps): ReactElement | null {
+export function OrderReceiptPanel({
+  orderId,
+  rateLessLineCount = 0,
+}: OrderReceiptPanelProps): ReactElement | null {
   const { t } = useTranslation();
   const { showToast } = useToast();
   const connectionsQuery = useConnectionsQuery();
@@ -200,6 +215,24 @@ export function OrderReceiptPanel({ orderId }: OrderReceiptPanelProps): ReactEle
         <div className="order-receipt-panel__skeleton" aria-hidden="true" />
       ) : null}
 
+      {/* #2255 / #2252 — the same rule as the invoice, on the receipt path. The
+          per-connection tax letter is NOT used to fill the gap: a receipt
+          carrying an unconfirmed rate reaches the buyer and the daily report and
+          cannot be recalled, so the accepted cost is late registration. */}
+      {settled && displayStatus === 'not-registered' && rateLessLineCount > 0 ? (
+        <Alert tone="error">
+          <strong>
+            {rateLessLineCount === 1
+              ? t('fiscalReceipt.blockNoRateTitleOne', 'Not registered: 1 line has no tax rate.')
+              : `${t('fiscalReceipt.blockNoRateTitlePrefix', 'Not registered:')} ${String(rateLessLineCount)} ${t('fiscalReceipt.blockNoRateTitleSuffix', 'lines have no tax rate.')}`}
+          </strong>{' '}
+          {t(
+            'fiscalReceipt.blockNoRateBody',
+            "Add the rate in the shop's catalogue and re-sync the product. The connection's tax letter is not used to fill the gap.",
+          )}
+        </Alert>
+      ) : null}
+
       {/* ── not-registered: connection pick (when >1) + manual register ── */}
       {settled && displayStatus === 'not-registered' ? (
         <div className="order-receipt-panel__actions">
@@ -229,11 +262,20 @@ export function OrderReceiptPanel({ orderId }: OrderReceiptPanelProps): ReactEle
           ) : null}
           <Button
             tone="primary"
-            disabled={registerMutation.isPending}
+            disabled={registerMutation.isPending || rateLessLineCount > 0}
             onClick={() => handleRegister(selectedConnectionId || defaultConnectionId)}
           >
             {t('fiscalReceipt.action.register', 'Register receipt')}
           </Button>
+          {/* The reason sits ON the control. A disabled button with the
+              explanation only in an alert above reads as a bug. */}
+          {rateLessLineCount > 0 ? (
+            <span className="text-muted" style={{ fontSize: '0.82rem' }}>
+              {rateLessLineCount === 1
+                ? t('fiscalReceipt.refusedOne', 'no tax rate on 1 line')
+                : `${t('fiscalReceipt.refusedPrefix', 'no tax rate on')} ${String(rateLessLineCount)} ${t('fiscalReceipt.refusedSuffix', 'lines')}`}
+            </span>
+          ) : null}
         </div>
       ) : null}
 

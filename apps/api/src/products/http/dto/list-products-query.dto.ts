@@ -54,6 +54,18 @@ export class ListProductsQueryDto {
   stock?: ProductStockFilter;
 
   @ApiPropertyOptional({
+    enum: ['missing', 'not-checked', 'known'],
+    description:
+      'Tax-rate read state (#2255): "missing" = the shop was asked and has no rate (the ' +
+      'population that holds documents), "not-checked" = nobody has asked yet (needs a product ' +
+      'sync, not a catalogue edit), "known" = a rate is on record, including a deliberate zero. ' +
+      'Keeping the first two apart is what stops day one reading as a catalogue-wide failure.',
+  })
+  @IsOptional()
+  @IsIn(['missing', 'not-checked', 'known'])
+  taxRateState?: 'missing' | 'not-checked' | 'known';
+
+  @ApiPropertyOptional({
     description:
       'CSV of connection IDs (#1720). Matches products having at least one variant with no ' +
       'Offer mapping for at least one of the given connections. Capped at 20 IDs.',

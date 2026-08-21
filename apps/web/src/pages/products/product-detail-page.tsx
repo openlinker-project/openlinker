@@ -316,6 +316,7 @@ export function ProductDetailPage(): ReactElement {
                 variants={variants}
                 stockByVariant={stockByVariant}
                 currency={product.currency}
+                productTaxRate={product.taxRate ?? null}
                 connections={offerCreatorConnections}
                 canCreateOffers={write.visible}
                 onCreateOffers={handleCreateOffers}

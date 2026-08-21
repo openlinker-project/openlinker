@@ -77,6 +77,19 @@ export class ProductRepository implements ProductRepositoryPort {
       });
     }
 
+    if (filters.taxRateState) {
+      // #2255 — the three states are a partition of the catalogue, expressed
+      // against the two columns rather than a stored enum, so no writer can
+      // leave them disagreeing with the data they describe.
+      if (filters.taxRateState === 'missing') {
+        qb.andWhere('product."taxRateReadAt" IS NOT NULL AND product."taxRate" IS NULL');
+      } else if (filters.taxRateState === 'not-checked') {
+        qb.andWhere('product."taxRateReadAt" IS NULL');
+      } else {
+        qb.andWhere('product."taxRateReadAt" IS NOT NULL AND product."taxRate" IS NOT NULL');
+      }
+    }
+
     // Stock filter/sort needs the aggregated total; join the grouped
     // inventory_items subquery only when a caller asks for it. This is a
     // read-model reporting join by table name string (#1720) - importing the
@@ -227,6 +240,12 @@ export class ProductRepository implements ProductRepositoryPort {
       // Source-platform product-level attributes (#1752). DB `null` → omit
       // (optional + non-null on the domain interface).
       features: entity.features ?? undefined,
+      // #2255 — the read surface for the tax-rate state. `taxRateReadAt` is what
+      // separates "the shop has no rate" from "nobody has asked", so it travels
+      // with the code rather than being inferred from its absence.
+      taxRate: entity.taxRate,
+      taxRateCountry: entity.taxRateCountry,
+      taxRateReadAt: entity.taxRateReadAt,
       createdAt: entity.createdAt,
       updatedAt: entity.updatedAt,
     };
