@@ -27,7 +27,11 @@ import type {
   Inventory as InventoryPortInterface,
 } from '@openlinker/core/inventory';
 import { InventoryItemEntity as InventoryItem } from '@openlinker/core/inventory';
-import type { IProductsService, ProductVariant } from '@openlinker/core/products';
+import type {
+  IProductsService,
+  IMasterProductSyncService,
+  ProductVariant,
+} from '@openlinker/core/products';
 import { MasterProductNotFoundError } from '@openlinker/core/products';
 import type { EventPublisherPort } from '@openlinker/core/events';
 import { Logger } from '@openlinker/shared/logging';
@@ -41,6 +45,7 @@ describe('MasterInventorySyncService', () => {
   let productsService: jest.Mocked<Pick<IProductsService, 'getVariantsByProductId'>>;
   let eventPublisher: jest.Mocked<EventPublisherPort>;
   let entityClaims: jest.Mocked<IEntityClaimService>;
+  let masterProductSync: jest.Mocked<IMasterProductSyncService>;
 
   const connectionId = 'connection-123';
   const externalId = 'ext-product-9';
@@ -95,13 +100,25 @@ describe('MasterInventorySyncService', () => {
       findRivalClaimants: jest.fn().mockResolvedValue([]),
     } as unknown as jest.Mocked<IEntityClaimService>;
 
+    masterProductSync = {
+      syncFromMasterByExternalId: jest.fn(),
+      markProductDeletedAtMaster: jest.fn().mockResolvedValue({
+        internalProductId,
+        variantsUpserted: 0,
+        masterDeleted: true,
+        pruneSkipped: false,
+        pruneSkippedReason: null,
+      }),
+    } as unknown as jest.Mocked<IMasterProductSyncService>;
+
     service = new MasterInventorySyncService(
       integrationsService,
       identifierMapping,
       inventoryService,
       productsService as unknown as IProductsService,
       eventPublisher,
-      entityClaims
+      entityClaims,
+      masterProductSync
     );
   });
 
@@ -345,7 +362,7 @@ describe('MasterInventorySyncService', () => {
   // propagate as a retryable transient failure. Mirrors the equivalent
   // `MasterProductSyncService` coverage.
   describe('master deletion (#1688)', () => {
-    it('marks all rows stale, emits master.product.stale and reports masterDeleted on a not-found', async () => {
+    it('stales inventory rows AND routes the deletion to the products authority (#2222)', async () => {
       inventoryAdapter.listInventory.mockRejectedValueOnce(
         new MasterProductNotFoundError(internalProductId, connectionId)
       );
@@ -356,20 +373,22 @@ describe('MasterInventorySyncService', () => {
 
       const result = await service.syncFromMasterByExternalId(connectionId, externalId);
 
-      // Empty keep-set ⇒ mark every known row for the product stale.
+      // Empty keep-set ⇒ mark every known inventory row for the product stale.
       expect(inventoryService.pruneStaleVariants).toHaveBeenCalledWith(internalProductId, []);
       expect(inventoryService.setInventory).not.toHaveBeenCalled();
-      expect(eventPublisher.publish).toHaveBeenCalledWith(
-        'events.master.deletion',
-        expect.objectContaining({ eventType: 'master.product.stale' })
-      );
-      const [, envelope] = eventPublisher.publish.mock.calls[0];
-      expect(JSON.parse(envelope.payloadJson)).toMatchObject({
+
+      // THE REGRESSION THIS TEST EXISTS FOR (#2222). Staling `inventory_items`
+      // alone left `product_variants.isStale` false, and that is the flag
+      // `StaleOfferPauseService` re-verifies before pausing. The whole #1689
+      // chain fired and paused nothing, so a product deleted at the master kept
+      // selling on every marketplace. Removing this delegation reinstates that.
+      expect(masterProductSync.markProductDeletedAtMaster).toHaveBeenCalledWith({
         connectionId,
-        internalProductId,
-        variantIds: ['ol_variant_1', 'ol_variant_2'],
         externalId,
+        internalProductId,
+        correlationId: expect.any(String),
       });
+
       expect(result).toEqual({
         internalProductId,
         itemsWritten: 0,
@@ -380,7 +399,68 @@ describe('MasterInventorySyncService', () => {
       });
     });
 
-    it('does not publish when the deletion prune flags no variant rows', async () => {
+    it('does not publish master.product.stale itself — the products authority owns the event', async () => {
+      // One deletion, one event. Publishing here as well would double-fire
+      // `marketplace.offer.pauseStale` for the same product.
+      inventoryAdapter.listInventory.mockRejectedValueOnce(
+        new MasterProductNotFoundError(internalProductId, connectionId)
+      );
+      (inventoryService.pruneStaleVariants as jest.Mock).mockResolvedValueOnce({
+        markedCount: 2,
+        variantIds: ['ol_variant_1', 'ol_variant_2'],
+      });
+
+      await service.syncFromMasterByExternalId(connectionId, externalId);
+
+      expect(eventPublisher.publish).not.toHaveBeenCalled();
+    });
+
+    it('propagates a PRODUCTS-side rival block into its own pruneSkipped', async () => {
+      // The two guards test different capabilities — the inventory one checks
+      // InventoryMaster rivals, the delegate's checks ProductMaster rivals — so a
+      // connection carrying both can clear the first and still be withheld by the
+      // second. Reporting false here would claim a prune ran that did not, and
+      // architecture-overview.md § Products states the contract as "on a hit the
+      // prune is withheld ... and the sync result reports `pruneSkipped: true`".
+      inventoryAdapter.listInventory.mockRejectedValueOnce(
+        new MasterProductNotFoundError(internalProductId, connectionId)
+      );
+      (inventoryService.pruneStaleVariants as jest.Mock).mockResolvedValueOnce({
+        markedCount: 2,
+        variantIds: ['ol_variant_1', 'ol_variant_2'],
+      });
+      (masterProductSync.markProductDeletedAtMaster as jest.Mock).mockResolvedValueOnce({
+        internalProductId,
+        variantsUpserted: 0,
+        masterDeleted: true,
+        pruneSkipped: true,
+        pruneSkippedReason: 'rival',
+      });
+
+      const result = await service.syncFromMasterByExternalId(connectionId, externalId);
+
+      expect(result.pruneSkipped).toBe(true);
+      expect(result.masterDeleted).toBe(true);
+    });
+
+    it('does not delegate when the #1904 rival guard withholds the prune', async () => {
+      inventoryAdapter.listInventory.mockRejectedValueOnce(
+        new MasterProductNotFoundError(internalProductId, connectionId)
+      );
+      (entityClaims.findRivalClaimants as jest.Mock).mockResolvedValueOnce(['conn-rival']);
+
+      const result = await service.syncFromMasterByExternalId(connectionId, externalId);
+
+      expect(masterProductSync.markProductDeletedAtMaster).not.toHaveBeenCalled();
+      expect(inventoryService.pruneStaleVariants).not.toHaveBeenCalled();
+      expect(result.pruneSkipped).toBe(true);
+    });
+
+    it('still delegates when the inventory prune flags no rows — the variant flag is a separate table (#2222)', async () => {
+      // Before #2222 this case published nothing and therefore did nothing at
+      // all. But zero stale INVENTORY rows says nothing about whether the
+      // product still has live variants — the two live in different tables, and
+      // that split is the bug. The products authority applies its own gate.
       inventoryAdapter.listInventory.mockRejectedValueOnce(
         new MasterProductNotFoundError(internalProductId, connectionId)
       );
@@ -391,16 +471,16 @@ describe('MasterInventorySyncService', () => {
 
       await service.syncFromMasterByExternalId(connectionId, externalId);
 
-      expect(eventPublisher.publish).not.toHaveBeenCalled();
+      expect(masterProductSync.markProductDeletedAtMaster).toHaveBeenCalledTimes(1);
     });
 
-    it('still publishes master.product.stale when the deletion marks a product-level (NULL-variant) row stale, even though variantIds stays empty (#1688)', async () => {
+    it('delegates when only a product-level (NULL-variant) inventory row was staled (#1688)', async () => {
       inventoryAdapter.listInventory.mockRejectedValueOnce(
         new MasterProductNotFoundError(internalProductId, connectionId)
       );
       // Product-level rows contribute to markedCount but not variantIds (see
-      // PruneStaleVariantsResult's doc comment) - the emission gate must key
-      // off markedCount, or this case silently drops the event.
+      // PruneStaleVariantsResult's doc comment). The delegation is unconditional,
+      // so this case can no longer silently drop the deletion.
       (inventoryService.pruneStaleVariants as jest.Mock).mockResolvedValueOnce({
         markedCount: 1,
         variantIds: [],
@@ -408,17 +488,7 @@ describe('MasterInventorySyncService', () => {
 
       await service.syncFromMasterByExternalId(connectionId, externalId);
 
-      expect(eventPublisher.publish).toHaveBeenCalledWith(
-        'events.master.deletion',
-        expect.objectContaining({ eventType: 'master.product.stale' })
-      );
-      const [, envelope] = eventPublisher.publish.mock.calls[0];
-      expect(JSON.parse(envelope.payloadJson)).toMatchObject({
-        connectionId,
-        internalProductId,
-        variantIds: [],
-        externalId,
-      });
+      expect(masterProductSync.markProductDeletedAtMaster).toHaveBeenCalledTimes(1);
     });
 
     it('rethrows a transient (non-not-found) adapter error unchanged', async () => {

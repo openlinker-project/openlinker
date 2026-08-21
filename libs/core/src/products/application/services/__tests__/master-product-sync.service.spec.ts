@@ -114,6 +114,7 @@ describe('MasterProductSyncService', () => {
       variantsUpserted: 1,
       masterDeleted: false,
       pruneSkipped: false,
+      pruneSkippedReason: null,
     });
   });
 
@@ -169,7 +170,11 @@ describe('MasterProductSyncService', () => {
       internalProductId,
       variantsUpserted: 0,
       masterDeleted: false,
+      // `pruneSkipped` stays false — it means RIVAL-blocked. The zero-variant
+      // skip reports itself through the reason instead, so an operator can tell
+      // a #1904 collision from a flaky master response (#2222).
       pruneSkipped: false,
+      pruneSkippedReason: 'empty-response',
     });
   });
 
@@ -201,6 +206,7 @@ describe('MasterProductSyncService', () => {
       variantsUpserted: 0,
       masterDeleted: true,
       pruneSkipped: false,
+      pruneSkippedReason: null,
     });
   });
 
@@ -248,6 +254,7 @@ describe('MasterProductSyncService', () => {
         variantsUpserted: 1,
         masterDeleted: false,
         pruneSkipped: true,
+        pruneSkippedReason: 'rival',
       });
     });
 
@@ -266,6 +273,7 @@ describe('MasterProductSyncService', () => {
         variantsUpserted: 0,
         masterDeleted: true,
         pruneSkipped: true,
+        pruneSkippedReason: 'rival',
       });
     });
   });

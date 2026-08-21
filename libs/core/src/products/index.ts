@@ -44,7 +44,12 @@ export { coverImageUrl } from './domain/utils/product-cover-image';
 // Application Services
 export { IProductsService } from './application/services/products.service.interface';
 export { ProductsService } from './application/services/products.service';
-export { IMasterProductSyncService, MasterProductSyncResult } from './application/services/master-product-sync.service.interface';
+export {
+  IMasterProductSyncService,
+  MasterProductSyncResult,
+  PruneSkippedReason,
+  PruneSkippedReasonValues,
+} from './application/services/master-product-sync.service.interface';
 export { MasterProductSyncService } from './application/services/master-product-sync.service';
 export { IAutoMatchVariantOffersService } from './application/services/auto-match-variant-offers.service.interface';
 export { AutoMatchVariantOffersService } from './application/services/auto-match-variant-offers.service';

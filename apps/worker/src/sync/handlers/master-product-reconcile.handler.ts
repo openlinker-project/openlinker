@@ -1,28 +1,37 @@
 /**
- * Master Inventory Sync All Handler
+ * Master Product Reconcile Handler
  *
- * Handles jobs of type 'master.inventory.syncAll'. Enumerates known product
- * external IDs for a connection and enqueues per-product
- * 'master.inventory.syncByExternalId' sub-jobs.
+ * Handles jobs of type 'master.product.reconcile' — the deletion authority for the
+ * product catalog (#2222, ADR-048 decision 2).
  *
- * BOUNDED AND RESUMABLE since #2219 (ADR-048 decisions 4-6) — same shape as the
- * product sweep (`runBoundedSweep`), with one difference that matters: this sweep
- * does not read the platform at all. It enumerates OL's own identifier mappings,
- * which until #2219 was a bare unbounded `find({ entityType, connectionId })` —
- * every mapped product row for the connection loaded into memory every 15 minutes,
- * then fanned out one child per row with no cap.
+ * **It enumerates OL's OWN product mappings, not the master.** That inversion is the
+ * whole design. A catalog enumeration cannot reveal a deletion — the record simply
+ * stops appearing — so `master.product.syncAll`, which reads ids *from* the master,
+ * is structurally blind to it. Reading OL's mappings instead asks the opposite
+ * question ("does this still exist?"), and the answer comes from re-checking each id:
+ * the child's `MasterProductNotFoundError` is the authority, exactly as it already is
+ * on the webhook path. This is the same shape `master.inventory.syncAll` has had all
+ * along, which is why an `InventoryMaster` connection already had deletion detection
+ * and a `ProductMaster`-only one did not.
  *
- * **This sweep carries more weight than it looks.** `inventory.propagateToMarketplaces`
- * has no cron of its own — it fires from `InventoryService.setInventory` when a
- * quantity actually changed — so on a master with no stock webhook (WooCommerce,
- * whose translator handles only `order`) this is the ONLY thing that discovers
- * stock drift. It is paced, deliberately not slowed to a crawl, and never disabled.
+ * **Absence is never a signal here, and must not become one.** It would be cheaper to
+ * diff the enumerated set against the mappings and stale the difference — and it would
+ * be wrong. Neither shipped master paginates stably: `PrestashopProductMasterAdapter.listExternalIds`
+ * sends no `sort` and `WooCommerceProductMasterAdapter.listExternalIds` no `orderby`
+ * (WC defaults to `date DESC`). A cycle spans many ticks, so one mid-cycle delete
+ * shifts every later row left and a LIVE product is never read. Staling on that
+ * inference would zero a live product's offers on every marketplace via #1689. See
+ * the ADR's #2222 amendment.
  *
- * Stock is not on the catalog's modified-since rung on either shipped master
- * (ADR-048 decision 7), so this stays a full enumeration; a delta path is #2220.
+ * Because the child is the authority, this handler needs no guards of its own: an
+ * empty enumeration enqueues nothing and stales nothing, a missed mapping is simply
+ * re-checked next cycle, and the #1904 rival-claimant guard lives where the write is.
+ *
+ * Its own lock, for #2220's reason: sharing `master:product:sweep` would let the full
+ * sweep — mid-cycle more or less permanently on a large catalog — starve it.
  *
  * @module apps/worker/src/sync/handlers
- * @see {@link runBoundedSweep} for the shared shape, also used by the product sweep
+ * @see {@link runBoundedSweep} for the shared budget/cursor shape
  */
 
 import { randomUUID } from 'node:crypto';
@@ -33,7 +42,7 @@ import type {
   SyncJobHandlerResult,
   SyncJob as SyncJobEntity,
   SyncJobRequest,
-  MasterInventorySyncAllPayloadV1
+  MasterProductReconcilePayloadV1,
 } from '@openlinker/core/sync';
 import {
   SyncJobExecutionError,
@@ -41,9 +50,9 @@ import {
   JOB_ENQUEUE_TOKEN,
   SYNC_CURSORS_SERVICE_TOKEN,
   SYNC_LOCK_TOKEN,
-
   ISyncCursorsService,
-  SyncLockPort} from '@openlinker/core/sync';
+  SyncLockPort,
+} from '@openlinker/core/sync';
 import {
   IdentifierMappingQueryPort,
   IDENTIFIER_MAPPING_SERVICE_TOKEN,
@@ -64,11 +73,12 @@ import {
 type SyncJob = SyncJobEntity;
 
 @Injectable()
-export class MasterInventorySyncAllHandler implements SyncJobHandler {
-  private readonly logger = new Logger(MasterInventorySyncAllHandler.name);
+export class MasterProductReconcileHandler implements SyncJobHandler {
+  private readonly logger = new Logger(MasterProductReconcileHandler.name);
 
   constructor(
     @Inject(IDENTIFIER_MAPPING_SERVICE_TOKEN)
+    // The narrow QUERY port, matching the inventory sweep: this pass only reads.
     private readonly identifierMapping: IdentifierMappingQueryPort,
     @Inject(JOB_ENQUEUE_TOKEN)
     private readonly jobEnqueue: JobEnqueuePort,
@@ -81,7 +91,7 @@ export class MasterInventorySyncAllHandler implements SyncJobHandler {
 
   async execute(job: SyncJob): Promise<SyncJobHandlerResult> {
     const budget = resolveSweepBudget(this.getPayload(job).pageLimit);
-    const lockKey = sweepLockKey('inventory', job.connectionId);
+    const lockKey = sweepLockKey('product-reconcile', job.connectionId);
     const lockTtlMs = resolveSweepLockTtlMs(
       this.configService.get<string>('OL_MASTER_SWEEP_LOCK_TTL_MS')
     );
@@ -89,13 +99,13 @@ export class MasterInventorySyncAllHandler implements SyncJobHandler {
     const lockToken = await this.syncLock.acquire(lockKey, lockTtlMs);
     if (lockToken === null) {
       this.logger.log(
-        `master.inventory.syncAll skipped for connection ${job.connectionId}: ${lockKey} already in progress`
+        `master.product.reconcile skipped for connection ${job.connectionId}: ${lockKey} already in progress`
       );
       return { outcome: 'ok' };
     }
 
     try {
-      const cursorKey = sweepCursorKey('inventory', job.connectionId);
+      const cursorKey = sweepCursorKey('product-reconcile', job.connectionId);
       const cursor = parseSweepCursor(await this.cursors.getCursor(job.connectionId, cursorKey));
 
       const result = await runBoundedSweep({
@@ -124,12 +134,12 @@ export class MasterInventorySyncAllHandler implements SyncJobHandler {
 
       if (result.failed > 0) {
         this.logger.error(
-          `master.inventory.syncAll for connection ${job.connectionId}: ${result.enqueued} enqueued, ` +
+          `master.product.reconcile for connection ${job.connectionId}: ${result.enqueued} enqueued, ` +
             `${result.failed} failed; cursor held at offset ${String(result.nextCursor?.offset ?? 0)} so the page retries next tick`
         );
       } else {
         this.logger.log(
-          `master.inventory.syncAll for connection ${job.connectionId}: ${result.enqueued} inventory sync job(s) enqueued ` +
+          `master.product.reconcile for connection ${job.connectionId}: ${result.enqueued} product re-check(s) enqueued ` +
             `(cycle ${result.cycleId}, ${result.completed ? 'cycle complete' : `resuming at offset ${String(result.nextCursor?.offset ?? 0)}`})`
         );
       }
@@ -138,7 +148,7 @@ export class MasterInventorySyncAllHandler implements SyncJobHandler {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       throw new SyncJobExecutionError(
-        `master.inventory.syncAll failed: ${message}`,
+        `master.product.reconcile failed: ${message}`,
         job.id,
         job.jobType,
         job.connectionId,
@@ -157,32 +167,29 @@ export class MasterInventorySyncAllHandler implements SyncJobHandler {
 
   private async enqueueChild(job: SyncJob, externalId: string, cycleId: string): Promise<unknown> {
     const jobRequest: SyncJobRequest = {
-      jobType: 'master.inventory.syncByExternalId',
+      // The SAME child the sweeps enqueue. A live product simply re-syncs
+      // (idempotent); a deleted one raises MasterProductNotFoundError and flows
+      // into the deletion authority. This handler never writes staleness itself.
+      jobType: 'master.product.syncByExternalId',
       connectionId: job.connectionId,
       payload: {
         schemaVersion: 1,
         externalId,
         objectType: CORE_ENTITY_TYPE.Product,
       },
-      // Cycle-scoped, not job-scoped — see the product sweep's note.
-      idempotencyKey: `master:${job.connectionId}:inventory:sync:${externalId}:${cycleId}`,
+      // Cycle-scoped, in a namespace of its own so a re-check never dedups against
+      // a concurrent full-sweep or delta child for the same product (#2039).
+      idempotencyKey: `master:${job.connectionId}:product:reconcile:${externalId}:${cycleId}`,
     };
     return this.jobEnqueue.enqueueJob(jobRequest);
   }
 
-  /**
-   * Defaults rather than throwing on a malformed payload, unlike the taxonomy
-   * handler this pattern otherwise follows (`destination-taxonomy-sync.handler.ts`
-   * raises on a missing payload). A sweep's payload carries nothing the run needs
-   * — only an optional budget override — so refusing to run a scheduled sweep
-   * over a malformed one would trade a healthy default for a dead job.
-   */
-  private getPayload(job: SyncJob): MasterInventorySyncAllPayloadV1 {
-    const payload = job.payload as unknown as Partial<MasterInventorySyncAllPayloadV1> | null;
+  /** Defaults rather than throwing on a malformed payload — see the sweep handlers. */
+  private getPayload(job: SyncJob): MasterProductReconcilePayloadV1 {
+    const payload = job.payload as unknown as Partial<MasterProductReconcilePayloadV1> | null;
     return {
       schemaVersion: 1,
-      pageLimit:
-        payload && typeof payload.pageLimit === 'number' ? payload.pageLimit : undefined,
+      pageLimit: payload && typeof payload.pageLimit === 'number' ? payload.pageLimit : undefined,
     };
   }
 }

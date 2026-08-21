@@ -26,12 +26,62 @@ export interface MasterProductSyncResult {
    * `master.*.stale` event was emitted.
    */
   pruneSkipped: boolean;
+  /**
+   * Why the staleness prune did not run, when it did not.
+   *
+   * Distinct from `pruneSkipped` on purpose: that flag means RIVAL-BLOCKED and
+   * is documented and logged with exactly that meaning, so overloading it with
+   * the zero-variant skip would leave an operator unable to tell a #1904
+   * collision from a flaky master response - two conditions with completely
+   * different remediations. `'empty-response'` therefore reports a skip that
+   * leaves `pruneSkipped` false.
+   */
+  pruneSkippedReason: PruneSkippedReason;
 }
+
+/**
+ * `'rival'`  - another connection with `ProductMaster` enabled claims this
+ *              internal id, so the connection-blind prune was withheld (#1904).
+ * `'empty-response'` - the master returned zero variants for an existing
+ *              product; pruning against an empty keep-set would stale every
+ *              variant on what may be a transient response (#1599).
+ */
+export const PruneSkippedReasonValues = ['rival', 'empty-response'] as const;
+
+/** `null` is carried at the field rather than in the union, so the runtime array above stays a list of real reasons. */
+export type PruneSkippedReason = (typeof PruneSkippedReasonValues)[number] | null;
 
 export interface IMasterProductSyncService {
   syncFromMasterByExternalId(
     connectionId: string,
     externalId: string,
   ): Promise<MasterProductSyncResult>;
+
+  /**
+   * Record that a master has confirmed this product is gone: mark every one of
+   * its variants stale, emit `master.product.stale`, honouring the #1904
+   * rival-claimant guard.
+   *
+   * Public so the INVENTORY context can route its own confirmed deletion
+   * through this one authority (#2222). Before that, the inventory path staled
+   * `inventory_items` only, while `StaleOfferPauseService` re-verifies
+   * `product_variants` - so the whole #1689 chain fired and then paused
+   * nothing, and a deleted product's offers kept selling. Two writers to
+   * `isStale` would each need their own copy of the rival guard and the
+   * event gate, and would drift; the products context stays the single owner
+   * of `product_variants`.
+   *
+   * The caller must have an AUTHORITATIVE deletion signal - a platform 404
+   * surfaced as `MasterProductNotFoundError`. Never call this on inference
+   * from absence: catalog enumeration is unordered offset paging on both
+   * shipped masters, so a live product can be missed by a page (ADR-048's
+   * #2222 amendment).
+   */
+  markProductDeletedAtMaster(input: {
+    connectionId: string;
+    externalId: string;
+    internalProductId: string;
+    correlationId: string;
+  }): Promise<MasterProductSyncResult>;
 }
 
