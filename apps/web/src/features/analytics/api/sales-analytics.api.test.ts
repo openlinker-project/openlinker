@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { toExclusiveEndInstant } from './sales-analytics.api';
 
 describe('toExclusiveEndInstant', () => {
