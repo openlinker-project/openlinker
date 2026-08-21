@@ -262,6 +262,253 @@ describe('OrderRecordRepository', () => {
     });
   });
 
+  describe('getDailyOrderAggregates (#1987)', () => {
+    const baseFilters = {
+      from: new Date('2026-08-01T00:00:00.000Z'),
+      to: new Date('2026-08-08T00:00:00.000Z'),
+    };
+
+    it('returns an empty array when nothing matches', async () => {
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        select: jest.fn().mockReturnThis(),
+        addSelect: jest.fn().mockReturnThis(),
+        groupBy: jest.fn().mockReturnThis(),
+        addGroupBy: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        setParameter: jest.fn().mockReturnThis(),
+        getRawMany: jest.fn().mockResolvedValue([]),
+      });
+
+      const result = await repository.getDailyOrderAggregates(baseFilters, 'EUR');
+
+      expect(result).toEqual([]);
+    });
+
+    it('maps one row per (day, connection) with the cancelled split', async () => {
+      const day = new Date('2026-08-02T00:00:00.000Z');
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        select: jest.fn().mockReturnThis(),
+        addSelect: jest.fn().mockReturnThis(),
+        groupBy: jest.fn().mockReturnThis(),
+        addGroupBy: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        setParameter: jest.fn().mockReturnThis(),
+        getRawMany: jest.fn().mockResolvedValue([
+          {
+            day,
+            source_connection_id: 'conn-a',
+            order_count: '3',
+            revenue: '150.50',
+            unconverted_count: '1',
+            unconverted_value: '15.00',
+            unconverted_currency: 'PLN',
+            cancelled_count: '1',
+            cancelled_value: '20.00',
+            reporting_currency: 'EUR',
+          },
+        ]),
+      });
+
+      const result = await repository.getDailyOrderAggregates(baseFilters, 'EUR');
+
+      expect(result).toEqual([
+        {
+          day,
+          sourceConnectionId: 'conn-a',
+          orderCount: 3,
+          revenue: 150.5,
+          unconvertedCount: 1,
+          unconvertedValue: 15,
+          unconvertedCurrency: 'PLN',
+          cancelledCount: 1,
+          cancelledValue: 20,
+          reportingCurrency: 'EUR',
+        },
+      ]);
+    });
+
+    it('applies the sourceConnectionId filter when provided', async () => {
+      const andWhere = jest.fn().mockReturnThis();
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        select: jest.fn().mockReturnThis(),
+        addSelect: jest.fn().mockReturnThis(),
+        groupBy: jest.fn().mockReturnThis(),
+        addGroupBy: jest.fn().mockReturnThis(),
+        andWhere,
+        setParameter: jest.fn().mockReturnThis(),
+        getRawMany: jest.fn().mockResolvedValue([]),
+      });
+
+      await repository.getDailyOrderAggregates(
+        { ...baseFilters, sourceConnectionId: 'conn-a' },
+        'EUR'
+      );
+
+      expect(andWhere).toHaveBeenCalledWith('rec.sourceConnectionId = :salesConnectionId', {
+        salesConnectionId: 'conn-a',
+      });
+    });
+
+    it('buckets by an explicit UTC day boundary, not the session-timezone-dependent default (#1987 review, IMPORTANT 2)', async () => {
+      const select = jest.fn().mockReturnThis();
+      const groupBy = jest.fn().mockReturnThis();
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        select,
+        addSelect: jest.fn().mockReturnThis(),
+        groupBy,
+        addGroupBy: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        setParameter: jest.fn().mockReturnThis(),
+        getRawMany: jest.fn().mockResolvedValue([]),
+      });
+
+      await repository.getDailyOrderAggregates(baseFilters, 'EUR');
+
+      const utcDayFragment = `date_trunc('day', rec."placedAt" AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'`;
+      expect(select).toHaveBeenCalledWith(utcDayFragment, 'day');
+      expect(groupBy).toHaveBeenCalledWith(utcDayFragment);
+    });
+
+    it('binds the current reporting currency as a query parameter', async () => {
+      const setParameter = jest.fn().mockReturnThis();
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        select: jest.fn().mockReturnThis(),
+        addSelect: jest.fn().mockReturnThis(),
+        groupBy: jest.fn().mockReturnThis(),
+        addGroupBy: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        setParameter,
+        getRawMany: jest.fn().mockResolvedValue([]),
+      });
+
+      await repository.getDailyOrderAggregates(baseFilters, 'PLN');
+
+      expect(setParameter).toHaveBeenCalledWith('currentReportingCurrency', 'PLN');
+    });
+
+    it('scopes order_count/revenue to the CURRENT reporting currency, not a bare IS NOT NULL (#1987 review notes)', async () => {
+      const addSelect = jest.fn().mockReturnThis();
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        select: jest.fn().mockReturnThis(),
+        addSelect,
+        groupBy: jest.fn().mockReturnThis(),
+        addGroupBy: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        setParameter: jest.fn().mockReturnThis(),
+        getRawMany: jest.fn().mockResolvedValue([]),
+      });
+
+      await repository.getDailyOrderAggregates(baseFilters, 'EUR');
+
+      const calls = addSelect.mock.calls as Array<[string, string]>;
+      const orderCountCall = calls.find(([, alias]) => alias === 'order_count');
+      const reportingCurrencyCall = calls.find(([, alias]) => alias === 'reporting_currency');
+      expect(orderCountCall?.[0]).toContain('rec."reportingCurrency" = :currentReportingCurrency');
+      expect(orderCountCall?.[0]).not.toContain('IS NOT NULL');
+      expect(reportingCurrencyCall?.[0]).toContain('MAX(rec."reportingCurrency")');
+    });
+
+    it('folds a prior-era stamp into the unconverted bucket alongside never-stamped rows', async () => {
+      const addSelect = jest.fn().mockReturnThis();
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        select: jest.fn().mockReturnThis(),
+        addSelect,
+        groupBy: jest.fn().mockReturnThis(),
+        addGroupBy: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        setParameter: jest.fn().mockReturnThis(),
+        getRawMany: jest.fn().mockResolvedValue([]),
+      });
+
+      await repository.getDailyOrderAggregates(baseFilters, 'EUR');
+
+      const calls = addSelect.mock.calls as Array<[string, string]>;
+      const unconvertedCountCall = calls.find(([, alias]) => alias === 'unconverted_count');
+      expect(unconvertedCountCall?.[0]).toContain('rec."reportingCurrency" IS NULL');
+      expect(unconvertedCountCall?.[0]).toContain(
+        'rec."reportingCurrency" != :currentReportingCurrency'
+      );
+    });
+
+    it('treats a bucket with an unrecorded native currency as not-uniform (#1987 review, suggestion 4)', async () => {
+      const addSelect = jest.fn().mockReturnThis();
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        select: jest.fn().mockReturnThis(),
+        addSelect,
+        groupBy: jest.fn().mockReturnThis(),
+        addGroupBy: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        setParameter: jest.fn().mockReturnThis(),
+        getRawMany: jest.fn().mockResolvedValue([]),
+      });
+
+      await repository.getDailyOrderAggregates(baseFilters, 'EUR');
+
+      const calls = addSelect.mock.calls as Array<[string, string]>;
+      const unconvertedCurrencyCall = calls.find(([, alias]) => alias === 'unconverted_currency');
+      expect(unconvertedCurrencyCall?.[0]).toContain('rec."currency" IS NULL) = 0');
+    });
+  });
+
+  describe('getMedianOrderValue (#1987)', () => {
+    const baseFilters = {
+      from: new Date('2026-08-01T00:00:00.000Z'),
+      to: new Date('2026-08-08T00:00:00.000Z'),
+    };
+
+    it('returns the parsed median when a row matches', async () => {
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        select: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        getRawOne: jest.fn().mockResolvedValue({ median: '98.00' }),
+      });
+
+      const result = await repository.getMedianOrderValue(baseFilters, 'EUR');
+
+      expect(result).toBe(98);
+    });
+
+    it('returns null when no row matches (empty ordered-set aggregate)', async () => {
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        select: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        getRawOne: jest.fn().mockResolvedValue({ median: null }),
+      });
+
+      const result = await repository.getMedianOrderValue(baseFilters, 'EUR');
+
+      expect(result).toBeNull();
+    });
+
+    it('excludes cancelled orders', async () => {
+      const andWhere = jest.fn().mockReturnThis();
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        select: jest.fn().mockReturnThis(),
+        andWhere,
+        getRawOne: jest.fn().mockResolvedValue({ median: null }),
+      });
+
+      await repository.getMedianOrderValue(baseFilters, 'EUR');
+
+      expect(andWhere).toHaveBeenCalledWith('rec."cancelledAt" IS NULL');
+    });
+
+    it('excludes non-current-era orders (#1987 review notes, ported from #2172)', async () => {
+      const andWhere = jest.fn().mockReturnThis();
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        select: jest.fn().mockReturnThis(),
+        andWhere,
+        getRawOne: jest.fn().mockResolvedValue({ median: null }),
+      });
+
+      await repository.getMedianOrderValue(baseFilters, 'EUR');
+
+      expect(andWhere).toHaveBeenCalledWith('rec."reportingCurrency" = :currentReportingCurrency', {
+        currentReportingCurrency: 'EUR',
+      });
+    });
+  });
+
   describe('upsert', () => {
     it('should create new order record', async () => {
       const domainEntity = createDomainEntity();

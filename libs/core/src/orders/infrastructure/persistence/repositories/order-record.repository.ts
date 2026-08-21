@@ -45,6 +45,10 @@ import {
 import type { PriceTaxTreatment } from '../../../domain/types/order.types';
 import type { OrderFxIntent, OrderFxStamp } from '../../../domain/types/order-fx.types';
 import type { StampedReportingCurrencyCount } from '../../../domain/types/order-fx-read.types';
+import type {
+  DailyOrderAggregateRow,
+  SalesAnalyticsFilters,
+} from '../../../domain/types/order-sales-analytics.types';
 
 @Injectable()
 export class OrderRecordRepository implements OrderRecordRepositoryPort {
@@ -353,6 +357,182 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       mixedCurrency: Number(raw?.currency_count ?? 0) > 1,
       oldestFailedAt: raw?.oldest_failed_at ?? null,
     };
+  }
+
+  /**
+   * Daily, per-connection revenue/order-count aggregates (#1987). One row per
+   * `(day, sourceConnectionId)` with at least one matching order; the
+   * cancelled/non-cancelled split uses `FILTER (WHERE ...)`, mirroring
+   * `getFailedSyncValueSummary`'s `stuckPredicate` idiom.
+   *
+   * Currency correctness (#2049/ADR-040 follow-up): `order_count`/`revenue`
+   * are further restricted to `reportingCurrency IS NOT NULL` — one
+   * comparable currency, `SUM(reportingTotalAmount)` — with the complementary
+   * unstamped slice reported separately as `unconverted_count`/
+   * `unconverted_value` (native `totalAmount`, informational only) rather
+   * than silently mixed in or silently dropped. `cancelled_value` is left on
+   * native `totalAmount`, unchanged — a secondary figure, not revisited here.
+   *
+   * `unconverted_currency` (#1987 scope, not FX-epic scope — `order_records.
+   * currency` is the pre-existing native-currency column from #1985, untouched
+   * by #2049) labels the `unconverted_value` figure with the one native
+   * currency shared by every unconverted, non-cancelled order this
+   * day/connection, or `NULL` when that set already mixes currencies. A day
+   * with zero unconverted orders also reports `NULL` here (no currency to
+   * report), which the aggregation layer must not confuse with "mixed" — see
+   * `resolveUniformUnconvertedCurrency`.
+   */
+  async getDailyOrderAggregates(
+    filters: SalesAnalyticsFilters,
+    currentReportingCurrency: string
+  ): Promise<DailyOrderAggregateRow[]> {
+    const notCancelled = 'rec."cancelledAt" IS NULL';
+    const isCancelled = 'rec."cancelledAt" IS NOT NULL';
+    // Current-era stamp only (#1987 review notes) — `reportingCurrency` never
+    // moves once set (ADR-040), so `IS NOT NULL` alone would sum a prior era's
+    // figures into `revenue` after an operator changes the reporting setting.
+    // A prior-era stamp therefore reads as unconverted, same as never-stamped.
+    const isStamped = 'rec."reportingCurrency" = :currentReportingCurrency';
+    const isUnconverted = `(rec."reportingCurrency" IS NULL OR rec."reportingCurrency" != :currentReportingCurrency)`;
+    const stampedAndNotCancelled = `${notCancelled} AND ${isStamped}`;
+    const unconvertedAndNotCancelled = `${notCancelled} AND ${isUnconverted}`;
+
+    // UTC day boundary made explicit (#1987 review, IMPORTANT 2): `placedAt`
+    // is `timestamptz`, so a bare `date_trunc('day', ...)` truncates at local
+    // midnight per the Postgres session `TimeZone` GUC — on a non-UTC server
+    // every bucket would land on the wrong calendar day and silently mismatch
+    // `enumerateDayKeys`'s UTC day keys. The trailing `AT TIME ZONE 'UTC'` is
+    // required too: without it the column round-trips as a bare `timestamp`,
+    // which node-postgres parses in the Node process's own local time,
+    // reintroducing the same shift one layer up.
+    const utcDay = `date_trunc('day', rec."placedAt" AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'`;
+
+    const qb = this.repository
+      .createQueryBuilder('rec')
+      .select(utcDay, 'day')
+      .addSelect('rec.sourceConnectionId', 'source_connection_id')
+      .addSelect(`COUNT(*) FILTER (WHERE ${stampedAndNotCancelled})`, 'order_count')
+      .addSelect(
+        `COALESCE(SUM(rec."reportingTotalAmount") FILTER (WHERE ${stampedAndNotCancelled}), 0)`,
+        'revenue'
+      )
+      .addSelect(`COUNT(*) FILTER (WHERE ${unconvertedAndNotCancelled})`, 'unconverted_count')
+      .addSelect(
+        `COALESCE(SUM(rec."totalAmount") FILTER (WHERE ${unconvertedAndNotCancelled}), 0)`,
+        'unconverted_value'
+      )
+      .addSelect(
+        // The DISTINCT count alone ignores NULLs (#1987 review, suggestion
+        // 4): a bucket whose unconverted orders are {NULL, 'PLN'} counts one
+        // distinct value and would label the whole sum 'PLN' even though one
+        // order's native currency is unrecorded. The extra `COUNT(*) FILTER
+        // (... currency IS NULL) = 0` arm makes "partly unknown" a third,
+        // non-`NULL`-mislabelled outcome alongside "nothing to report" and
+        // "mixed".
+        `CASE WHEN COUNT(DISTINCT rec."currency") FILTER (WHERE ${unconvertedAndNotCancelled}) <= 1
+              AND COUNT(*) FILTER (WHERE ${unconvertedAndNotCancelled} AND rec."currency" IS NULL) = 0
+              THEN MAX(rec."currency") FILTER (WHERE ${unconvertedAndNotCancelled})
+              ELSE NULL END`,
+        'unconverted_currency'
+      )
+      .addSelect(`COUNT(*) FILTER (WHERE ${isCancelled})`, 'cancelled_count')
+      .addSelect(
+        `COALESCE(SUM(rec."totalAmount") FILTER (WHERE ${isCancelled}), 0)`,
+        'cancelled_value'
+      )
+      .addSelect(
+        // `isStamped` now filters on `reportingCurrency = :currentReportingCurrency`
+        // (#1987 review notes), so every row it matches already carries the
+        // same value — no cross-row DISTINCT guard is needed here the way
+        // `unconverted_currency` needs one. `NULL` when the bucket has no
+        // current-era stamped order (nothing to label), matching
+        // `unconverted_currency`'s "nothing to report" convention.
+        `MAX(rec."reportingCurrency") FILTER (WHERE ${isStamped})`,
+        'reporting_currency'
+      )
+      .groupBy(utcDay)
+      .addGroupBy('rec.sourceConnectionId');
+
+    qb.setParameter('currentReportingCurrency', currentReportingCurrency);
+    this.applySalesAnalyticsScope(qb, filters);
+
+    const rows = await qb.getRawMany<{
+      day: Date;
+      source_connection_id: string;
+      order_count: string;
+      revenue: string;
+      unconverted_count: string;
+      unconverted_value: string;
+      unconverted_currency: string | null;
+      cancelled_count: string;
+      cancelled_value: string;
+      reporting_currency: string | null;
+    }>();
+
+    return rows.map((row) => ({
+      day: row.day,
+      sourceConnectionId: row.source_connection_id,
+      orderCount: Number(row.order_count),
+      revenue: Number(row.revenue),
+      unconvertedCount: Number(row.unconverted_count),
+      unconvertedValue: Number(row.unconverted_value),
+      unconvertedCurrency: row.unconverted_currency,
+      cancelledCount: Number(row.cancelled_count),
+      cancelledValue: Number(row.cancelled_value),
+      reportingCurrency: row.reporting_currency,
+    }));
+  }
+
+  /**
+   * Headline median order value via `PERCENTILE_CONT` (#1987) — always
+   * excludes cancelled orders, unlike {@link getDailyOrderAggregates} (which
+   * reports them in a separate column rather than omitting them). `null`
+   * when no row matches (an empty ordered-set aggregate).
+   *
+   * Currency correctness (#1987 review notes): computed over
+   * `reportingTotalAmount`, restricted to `reportingCurrency =
+   * currentReportingCurrency` — the same current-era stamped subset
+   * {@link getDailyOrderAggregates} uses for `revenue`, so the headline
+   * median stays comparable with the headline revenue/AOV figures rather
+   * than mixing a native-currency or prior-era distribution into the
+   * current one.
+   */
+  async getMedianOrderValue(
+    filters: SalesAnalyticsFilters,
+    currentReportingCurrency: string
+  ): Promise<number | null> {
+    const qb = this.repository
+      .createQueryBuilder('rec')
+      .select(`PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY rec."reportingTotalAmount")`, 'median')
+      .andWhere('rec."cancelledAt" IS NULL')
+      .andWhere('rec."reportingCurrency" = :currentReportingCurrency', { currentReportingCurrency });
+
+    this.applySalesAnalyticsScope(qb, filters);
+
+    const raw = await qb.getRawOne<{ median: string | null }>();
+    return raw?.median != null ? Number(raw.median) : null;
+  }
+
+  /**
+   * Shared scope predicate for the #1987 sales-analytics reads: only
+   * `'ready'` records with a resolvable `placedAt`/`totalAmount`, within
+   * `[filters.from, filters.to)`, optionally narrowed to one connection.
+   */
+  private applySalesAnalyticsScope(
+    qb: SelectQueryBuilder<OrderRecordOrmEntity>,
+    filters: SalesAnalyticsFilters
+  ): void {
+    qb.andWhere(`rec."recordStatus" = 'ready'`)
+      .andWhere('rec."placedAt" IS NOT NULL')
+      .andWhere('rec."totalAmount" IS NOT NULL')
+      .andWhere('rec."placedAt" >= :salesFrom', { salesFrom: filters.from })
+      .andWhere('rec."placedAt" < :salesTo', { salesTo: filters.to });
+
+    if (filters.sourceConnectionId) {
+      qb.andWhere('rec.sourceConnectionId = :salesConnectionId', {
+        salesConnectionId: filters.sourceConnectionId,
+      });
+    }
   }
 
   /**

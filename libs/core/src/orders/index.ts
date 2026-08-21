@@ -135,6 +135,15 @@ export type {
   OrderFxSweepOptions,
   OrderFxSweepResult,
 } from './domain/types/order-fx-stamp.types';
+// Sales & channel analytics (#1987) — response shapes for
+// IOrderRecordService.getSalesAndChannelAnalytics.
+export {
+  SalesAnalyticsFilters,
+  SalesAnalyticsHeadline,
+  ChannelSalesAnalytics,
+  SalesAndChannelAnalytics,
+  DailyTrendPoint,
+} from './domain/types/order-sales-analytics.types';
 
 // Refund record capture (#2036).
 export {
