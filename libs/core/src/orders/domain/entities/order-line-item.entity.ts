@@ -27,6 +27,17 @@ export class OrderLineItem {
     public readonly sourceConnectionId: string,
     /** Denormalized from the parent order so a date-range query never joins back. `null` when the order carries no `placedAt`. */
     public readonly placedAt: Date | null,
-    public readonly createdAt: Date
+    public readonly createdAt: Date,
+    /**
+     * The settled per-line tax rate, transcribed from the order snapshot
+     * (#2250). Appended at the END of this positional constructor rather than
+     * placed beside the money fields: inserting mid-list would silently shift
+     * every argument after it at each call site.
+     */
+    public readonly taxRate: string | null = null,
+    /** `shop` | `channel` | `null`. Three facts a single null rate cannot separate. */
+    public readonly taxSource: string | null = null,
+    /** When that system was last read. Shown, never enforced. */
+    public readonly taxRateReadAt: Date | null = null
   ) {}
 }

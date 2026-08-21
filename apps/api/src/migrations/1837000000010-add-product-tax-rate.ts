@@ -16,8 +16,8 @@
  */
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AddProductTaxRate1837000000000 implements MigrationInterface {
-  name = 'AddProductTaxRate1837000000000';
+export class AddProductTaxRate1837000000010 implements MigrationInterface {
+  name = 'AddProductTaxRate1837000000010';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(

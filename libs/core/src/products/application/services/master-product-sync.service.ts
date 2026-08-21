@@ -20,7 +20,7 @@ import {
 import { IIdentifierMappingService, IDENTIFIER_MAPPING_SERVICE_TOKEN, CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
 import { EventPublisherPort, EVENT_PUBLISHER_TOKEN } from '@openlinker/core/events';
 import { PRODUCTS_SERVICE_TOKEN, TAX_RATE_JOURNAL_SERVICE_TOKEN } from '../../products.tokens';
-import type { ITaxRateJournalService } from './tax-rate-journal.service.interface';
+import { ITaxRateJournalService } from './tax-rate-journal.service.interface';
 import { IProductsService } from './products.service.interface';
 import type { ProductMasterPort } from '../../domain/ports/product-master.port';
 import { isProductTaxRateReader } from '../../domain/ports/capabilities/product-tax-rate-reader.capability';

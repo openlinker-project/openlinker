@@ -1352,6 +1352,12 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     entity.unitPrice = item.unitPrice;
     entity.sourceConnectionId = item.sourceConnectionId;
     entity.placedAt = item.placedAt;
+    // #2250 — transcribed verbatim from the snapshot line. This writer owns the
+    // whole row (delete-then-reinsert per order), so there is no second writer
+    // for these three to race with.
+    entity.taxRate = item.taxRate;
+    entity.taxSource = item.taxSource;
+    entity.taxRateReadAt = item.taxRateReadAt;
     return entity;
   }
 }
