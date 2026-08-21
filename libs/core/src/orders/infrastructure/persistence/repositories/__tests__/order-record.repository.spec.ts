@@ -189,9 +189,9 @@ describe('OrderRecordRepository', () => {
     });
   });
 
-  describe('findEarliestPlacedAtByConnection (#2083)', () => {
+  describe('findEarliestOrderDateByConnection (#2083)', () => {
     it('should return an empty Map without querying when given an empty array', async () => {
-      const result = await repository.findEarliestPlacedAtByConnection([]);
+      const result = await repository.findEarliestOrderDateByConnection([]);
 
       expect(result).toEqual(new Map());
       expect(ormRepository.createQueryBuilder).not.toHaveBeenCalled();
@@ -214,7 +214,7 @@ describe('OrderRecordRepository', () => {
         ]),
       });
 
-      const result = await repository.findEarliestPlacedAtByConnection(['conn-a', 'conn-b']);
+      const result = await repository.findEarliestOrderDateByConnection(['conn-a', 'conn-b']);
 
       expect(result.get('conn-a')).toEqual(earliestA);
       expect(result.get('conn-b')).toEqual(earliestB);
@@ -237,7 +237,7 @@ describe('OrderRecordRepository', () => {
         getRawMany: jest.fn().mockResolvedValue([]),
       });
 
-      const result = await repository.findEarliestPlacedAtByConnection(['conn-with-no-orders']);
+      const result = await repository.findEarliestOrderDateByConnection(['conn-with-no-orders']);
 
       expect(result.has('conn-with-no-orders')).toBe(false);
       expect(result.size).toBe(0);
@@ -254,7 +254,7 @@ describe('OrderRecordRepository', () => {
         getRawMany: jest.fn().mockResolvedValue([]),
       });
 
-      await repository.findEarliestPlacedAtByConnection(['conn-a']);
+      await repository.findEarliestOrderDateByConnection(['conn-a']);
 
       // This is a coverage/freshness fact, not a health or revenue figure —
       // no NOT_MAPPING_OR_DELETED-style gate applies (#2083 review finding).

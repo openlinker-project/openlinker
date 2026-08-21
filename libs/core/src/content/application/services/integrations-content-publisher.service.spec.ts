@@ -15,12 +15,14 @@
 import { IntegrationsContentPublisher } from './integrations-content-publisher.service';
 import { ChannelAdapterLacksFieldUpdaterException } from '../../domain/exceptions/channel-adapter-lacks-field-updater.exception';
 import { ContentPublishMissingVersionException } from '../../domain/exceptions/content-publish-missing-version.exception';
+import { EmptyAfterDescriptionFormatException } from '../../domain/exceptions/empty-after-description-format.exception';
 import { NoLinkedOffersException } from '../../domain/exceptions/no-linked-offers.exception';
 import { NoProductMasterAdapterException } from '../../domain/exceptions/no-product-master-adapter.exception';
 import type { IIntegrationsService } from '@openlinker/core/integrations';
 import type { ProductMasterPort } from '@openlinker/core/products';
 import type { Product } from '@openlinker/core/products';
 import type { ProductVariant } from '@openlinker/core/products';
+import type { DescriptionFormat } from '../../../listings';
 import type {
   IOfferMappingsService,
   OfferManagerPort,
@@ -198,6 +200,51 @@ describe('IntegrationsContentPublisher', () => {
       return { updateOfferFields, integrationsService, offerMappings };
     }
 
+    it('should refuse the publish when the description survives the format as empty', async () => {
+      // Sending the emptied field would call the marketplace once per offer,
+      // change nothing, and still return a fresh `baseVersion` - marking the
+      // draft published and clearing the conflict flag on a publish that never
+      // happened. Refusing names the real condition instead.
+      const { updateOfferFields, integrationsService, offerMappings } = channelFixture({
+        hasUpdateOfferFields: true,
+        variants: [{ id: 'ol_variant_a' } as ProductVariant],
+        offerMappingsByVariant: { ol_variant_a: ['offer-1'] },
+      });
+      // The reachable shape of "nothing survives": markup with no text of its
+      // own. An image-only description is an ordinary operator case, and a
+      // destination whose grammar has no `img` keeps none of it.
+      const adapter = await integrationsService.getCapabilityAdapter<OfferManagerPort>(
+        'conn-allegro-1',
+        'OfferManager',
+      );
+      (adapter as unknown as { getDescriptionFormat: () => DescriptionFormat }).getDescriptionFormat =
+        () => ({
+          shape: 'html',
+          allowedTags: ['h1'],
+          allowedAttributes: {},
+          contentModel: { root: ['h1'], h1: [] },
+          rewrites: [],
+          requiresBlockOpener: false,
+          selfClosingVoids: false,
+          maxBytes: null,
+        });
+      const publisher = new IntegrationsContentPublisher(
+        integrationsService,
+        offerMappings as unknown as IOfferMappingsService
+      );
+
+      await expect(
+        publisher.publish({
+          productId: 'ol_product_abc',
+          connectionId: 'conn-allegro-1',
+          fieldKey: 'description',
+          value: '<img src="https://shop.example/size-chart.png" alt="Size chart">',
+        }),
+      ).rejects.toThrow(EmptyAfterDescriptionFormatException);
+
+      expect(updateOfferFields).not.toHaveBeenCalled();
+    });
+
     it('should update every distinct offer on the connection when publishing a channel override', async () => {
       const { updateOfferFields, integrationsService, offerMappings } = channelFixture({
         hasUpdateOfferFields: true,
@@ -226,8 +273,14 @@ describe('IntegrationsContentPublisher', () => {
       const seenKeys = new Set<string>();
       for (const call of updateOfferFields.mock.calls) {
         const cmd = call[0];
+        // ADR-046: this path calls `updateOfferFields` directly, without either
+        // builder, so it applies the destination's declared format itself. The
+        // mock adapter declares none, so the fallback's block-opener rule wraps
+        // the plain-text draft.
         expect(cmd.fields).toEqual({
-          description: { sections: [{ items: [{ type: 'TEXT', content: 'channel text' }] }] },
+          description: {
+            sections: [{ items: [{ type: 'TEXT', content: '<p>channel text</p>' }] }],
+          },
         });
         // Each offer gets a distinct idempotency key scoped by externalOfferId.
         expect(cmd.idempotencyKey).toMatch(

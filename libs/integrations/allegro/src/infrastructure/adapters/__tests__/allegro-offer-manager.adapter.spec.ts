@@ -33,6 +33,7 @@ import {
   type CreateOfferCommand,
 } from '@openlinker/core/listings';
 import type { CachePort } from '@openlinker/shared';
+import { STREAM_CONCURRENCY } from '../../util/resolve-categories-for-batch-by-ean';
 import type { AllegroSellerDefaultsConfig } from '../../../domain/types/allegro-seller-defaults.types';
 
 /**
@@ -485,14 +486,16 @@ describe('AllegroOfferManagerAdapter', () => {
         fields: { description },
       });
 
-      // Plain-text content is wrapped in <p>…</p> by `sanitizeAllegroDescription`
-      // (#540) before the body is sent — Allegro's TEXT validator requires a
-      // block-level opener. The PATCH still carries only the description field.
+      // ADR-046: the adapter no longer shapes the description. Core applies the
+      // destination's declared format (`formatOfferFieldsForDestination`) before
+      // dispatch, so the content arrives already wrapped and attribute-free and
+      // the adapter passes it through verbatim. The block-opener rule (#540)
+      // lives in `applyDescriptionFormat` and is tested there.
       expect(httpClient.patch).toHaveBeenCalledWith(
         '/sale/product-offers/allegro-offer-1',
         expect.objectContaining({
           description: {
-            sections: [{ items: [{ type: 'TEXT', content: '<p>Hello world</p>' }] }],
+            sections: [{ items: [{ type: 'TEXT', content: 'Hello world' }] }],
           },
         })
       );
@@ -519,7 +522,7 @@ describe('AllegroOfferManagerAdapter', () => {
       expect(body).toHaveProperty('description');
     });
 
-    it('sanitizes attribute-laden HTML in description content (#392 fix — PATCH parity)', async () => {
+    it('passes description content through verbatim, since core already shaped it (ADR-046)', async () => {
       await adapter.updateOfferFields({
         externalOfferId: 'allegro-offer-1',
         fields: {
@@ -538,9 +541,23 @@ describe('AllegroOfferManagerAdapter', () => {
         },
       });
 
+      // Deliberately NOT sanitised here. The adapter keeps no defensive second
+      // pass (ADR-046): two sources of truth drift, and an adapter-local regex
+      // is exactly how the wrong allowlist shipped. Whether attribute-laden
+      // input is cleaned is `applyDescriptionFormat`'s contract, asserted in
+      // its own spec and in the Allegro declaration's spec.
       const body = (httpClient.patch.mock.calls[0] as [string, Record<string, unknown>])[1];
       expect(body.description).toEqual({
-        sections: [{ items: [{ type: 'TEXT', content: '<p>Hello world</p>' }] }],
+        sections: [
+          {
+            items: [
+              {
+                type: 'TEXT',
+                content: '<p style="color:#000;">Hello <span class="x">world</span></p>',
+              },
+            ],
+          },
+        ],
       });
     });
 
@@ -592,7 +609,7 @@ describe('AllegroOfferManagerAdapter', () => {
         const [, body] = httpClient.patch.mock.calls[0] as [string, Record<string, unknown>];
         // Caller field still present and sanitized as before.
         expect(body.description).toEqual({
-          sections: [{ items: [{ type: 'TEXT', content: '<p>Updated copy</p>' }] }],
+          sections: [{ items: [{ type: 'TEXT', content: 'Updated copy' }] }],
         });
         // Backfilled `location` mirrors `sellerDefaults.location` exactly.
         expect(body.location).toEqual({
@@ -637,7 +654,7 @@ describe('AllegroOfferManagerAdapter', () => {
         const [, body] = httpClient.patch.mock.calls[0] as [string, Record<string, unknown>];
         expect(body).toEqual({
           description: {
-            sections: [{ items: [{ type: 'TEXT', content: '<p>Plain</p>' }] }],
+            sections: [{ items: [{ type: 'TEXT', content: 'Plain' }] }],
           },
         });
         expect(body).not.toHaveProperty('location');
@@ -665,7 +682,7 @@ describe('AllegroOfferManagerAdapter', () => {
         });
         expect(body.name).toBe('Caller title');
         expect(body.description).toEqual({
-          sections: [{ items: [{ type: 'TEXT', content: '<p>Caller copy</p>' }] }],
+          sections: [{ items: [{ type: 'TEXT', content: 'Caller copy' }] }],
         });
         // Backfill is still present alongside.
         expect(body).toHaveProperty('location');
@@ -1048,6 +1065,91 @@ describe('AllegroOfferManagerAdapter', () => {
 
       expect(streamed).toEqual([]);
       expect(httpClient.get).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('getStreamConcurrency (#2229)', () => {
+    /**
+     * The adapter is constructed from a Connection, so the configured cap is
+     * expressed the way production expresses it rather than injected.
+     */
+    function adapterWithMaxConcurrent(maxConcurrent?: number): AllegroOfferManagerAdapter {
+      return new AllegroOfferManagerAdapter(
+        connectionId,
+        httpClient,
+        uploadHttpClient,
+        identifierMapping,
+        new Connection(
+          connectionId,
+          'allegro',
+          'Test Connection',
+          'active',
+          {
+            environment: 'sandbox',
+            ...(maxConcurrent !== undefined ? { rateLimit: { maxConcurrent } } : {}),
+          },
+          'credentials-ref',
+          new Date(),
+          new Date(),
+          undefined,
+          ['OfferManager', 'OrderSource']
+        ),
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        DEFAULT_SELLER_DEFAULTS
+      );
+    }
+
+    it('reports the adapter default when the connection configures no cap', () => {
+      expect(adapter.getStreamConcurrency()).toEqual({
+        maxInFlight: STREAM_CONCURRENCY,
+        source: 'adapter-default',
+        adapterDefault: STREAM_CONCURRENCY,
+      });
+    });
+
+    it('reports the operator cap when it is lower than the adapter default', () => {
+      expect(adapterWithMaxConcurrent(2)).toBeDefined();
+      expect(adapterWithMaxConcurrent(2).getStreamConcurrency()).toEqual({
+        maxInFlight: 2,
+        source: 'connection-config',
+        adapterDefault: STREAM_CONCURRENCY,
+      });
+    });
+
+    it('ENFORCES exactly the ceiling it reports', async () => {
+      // The whole point of #2229. A reported ceiling that drifts from the
+      // enforced one is worse than the invisible ceiling it replaced: the
+      // operator would act on a number that is not true. Asserted by observing
+      // real in-flight concurrency rather than by re-reading the same
+      // constant, so the two cannot pass by agreeing on a stale value.
+      const capped = adapterWithMaxConcurrent(2);
+      const reported = capped.getStreamConcurrency().maxInFlight;
+
+      let inFlight = 0;
+      let peak = 0;
+      httpClient.get.mockImplementation(async () => {
+        inFlight += 1;
+        peak = Math.max(peak, inFlight);
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        inFlight -= 1;
+        return { data: { products: [] }, status: 200, headers: {} };
+      });
+
+      const items = Array.from({ length: 8 }, (_, i) => ({
+        variantId: `v${i + 1}`,
+        ean: `590123412345${i}`,
+      }));
+      // Drained for its side effect: the peak concurrency the mock observed is
+      // the assertion, not the items.
+      for await (const item of capped.streamCategoriesForBatchByEan({ items })) {
+        expect(item.variantId).toBeDefined();
+      }
+
+      expect(peak).toBeLessThanOrEqual(reported);
+      expect(peak).toBe(2);
     });
   });
 
@@ -1812,34 +1914,57 @@ describe('AllegroOfferManagerAdapter', () => {
       expect(body).not.toHaveProperty('images');
     });
 
-    it('sanitizes attribute-laden HTML in description before wrapping (#392 fix)', async () => {
+    it('wraps the already-shaped description into a single TEXT section (ADR-046)', async () => {
       httpClient.post.mockResolvedValue(
         mockHttpResponse({ id: 'allegro-offer-desc', publication: { status: 'INACTIVE' } })
       );
 
+      // What reaches the adapter in production is the output of
+      // `applyDescriptionFormat` against `ALLEGRO_DESCRIPTION_FORMAT`, so this
+      // fixture is already attribute-free and block-opened. The adapter's only
+      // remaining job is the sections wrapper.
       await adapter.createOffer({
         ...baseCmd,
-        overrides: {
-          ...baseCmd.overrides,
-          description:
-            '<p style="color:rgba(0,0,0,0.87);font-family:\'Open Sans\';">Hello <span class="x">world</span></p>',
-        },
+        overrides: { ...baseCmd.overrides, description: '<p>Hello <b>world</b></p>' },
       });
 
       const body = httpClient.post.mock.calls[0][1] as Record<string, unknown>;
       expect(body.description).toEqual({
-        sections: [{ items: [{ type: 'TEXT', content: '<p>Hello world</p>' }] }],
+        sections: [{ items: [{ type: 'TEXT', content: '<p>Hello <b>world</b></p>' }] }],
       });
     });
 
-    it('omits description when sanitization yields whitespace-only content', async () => {
+    it('does not re-sanitise attribute-laden input, since it keeps no second pass (ADR-046)', async () => {
       httpClient.post.mockResolvedValue(
-        mockHttpResponse({ id: 'allegro-offer-desc-empty', publication: { status: 'INACTIVE' } })
+        mockHttpResponse({ id: 'allegro-offer-desc-raw', publication: { status: 'INACTIVE' } })
       );
 
       await adapter.createOffer({
         ...baseCmd,
-        overrides: { ...baseCmd.overrides, description: '<div><span>  </span></div>' },
+        overrides: { ...baseCmd.overrides, description: '<p style="color:#000">x</p>' },
+      });
+
+      // This is the accepted consequence of a single source of truth: hand the
+      // adapter unshaped HTML and unshaped HTML goes out. No production path
+      // does - all four apply the format first - and re-adding a defensive
+      // regex here is what ADR-046 rejects.
+      const body = httpClient.post.mock.calls[0][1] as Record<string, unknown>;
+      expect(body.description).toEqual({
+        sections: [{ items: [{ type: 'TEXT', content: '<p style="color:#000">x</p>' }] }],
+      });
+    });
+
+    it('omits description when the shaped value is whitespace only', async () => {
+      httpClient.post.mockResolvedValue(
+        mockHttpResponse({ id: 'allegro-offer-desc-empty', publication: { status: 'INACTIVE' } })
+      );
+
+      // Core returns `undefined` when nothing survives the format, so in
+      // production this branch is unreachable with an empty string. The adapter
+      // keeps its own trim guard as the last line before the wire.
+      await adapter.createOffer({
+        ...baseCmd,
+        overrides: { ...baseCmd.overrides, description: '   ' },
       });
 
       const body = httpClient.post.mock.calls[0][1] as Record<string, unknown>;

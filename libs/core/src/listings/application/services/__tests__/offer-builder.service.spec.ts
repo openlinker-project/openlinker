@@ -145,7 +145,11 @@ describe('OfferBuilderService', () => {
         publishImmediately: true,
         overrides: {
           title: 'Test Product',
-          description: 'A test product description.',
+          // ADR-046: the builder now shapes the description with the format the
+          // destination declares. This mock adapter declares none, so the
+          // defensive fallback (`CONSERVATIVE_DESCRIPTION_FORMAT`) applies and
+          // its block-opener rule wraps the plain-text master description.
+          description: '<p>A test product description.</p>',
           categoryId: 'allegro-cat-999',
           imageUrls: ['https://example.com/img1.jpg', 'https://example.com/img2.jpg'],
         },
@@ -667,8 +671,46 @@ describe('OfferBuilderService', () => {
       });
 
       expect(result.overrides?.title).toBe('Custom Title');
-      expect(result.overrides?.description).toBe('Custom desc');
+      // The operator's override wins over the master value, and is then shaped
+      // for the destination like any other description (ADR-046) - hence the
+      // block wrapper from the fallback format.
+      expect(result.overrides?.description).toBe('<p>Custom desc</p>');
       expect(result.overrides?.imageUrls).toEqual(['https://example.com/custom.jpg']);
+    });
+
+    it('shapes the description with the format the destination DECLARES, not the fallback', async () => {
+      // The point of ADR-046: the destination's own declaration drives the
+      // shaping. This format allows `h3`, which the conservative fallback does
+      // not, so a passing assertion proves the declared value was used and not
+      // the default.
+      integrationsService.getCapabilityAdapter.mockImplementation(
+        (_connId: string, capability: string) =>
+          Promise.resolve(
+            capability === 'OfferManager'
+              ? ({
+                  updateOfferQuantity: jest.fn(),
+                  getDescriptionFormat: () => ({
+                    shape: 'html',
+                    allowedTags: ['h3', 'p', 'b'],
+                    allowedAttributes: {},
+                    contentModel: null,
+                    rewrites: [{ from: 'strong', action: 'rename', to: 'b' }],
+                    requiresBlockOpener: false,
+                    maxBytes: null,
+                  }),
+                } as unknown as OfferManagerPort)
+              : (productMaster as unknown as OfferManagerPort)
+          )
+      );
+
+      const result = await service.buildCreateOfferCommand({
+        internalVariantId: VARIANT_ID,
+        connectionId: MARKETPLACE_CONN_ID,
+        stock: 1,
+        overrides: { description: '<h3>Kept</h3><p><strong>bold</strong></p>' },
+      });
+
+      expect(result.overrides?.description).toBe('<h3>Kept</h3><p><b>bold</b></p>');
     });
 
     it('strips description and imageUrls from command when product has null values and no overrides', async () => {
@@ -707,7 +749,7 @@ describe('OfferBuilderService', () => {
         },
       });
 
-      expect(result.overrides?.description).toBe('A test product description.');
+      expect(result.overrides?.description).toBe('<p>A test product description.</p>');
       expect(result.overrides?.imageUrls).toEqual([
         'https://example.com/img1.jpg',
         'https://example.com/img2.jpg',

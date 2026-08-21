@@ -61,7 +61,7 @@ export function deriveOrderLineItems(
   sourceConnectionId: string
 ): OrderLineItemDraft[] {
   const placedAt = order.placedAt ?? null;
-  return order.items.map((item, lineNumber) => ({
+  return (order.items ?? []).map((item, lineNumber) => ({
     lineNumber,
     productId: item.productId,
     variantId: item.variantId ?? null,

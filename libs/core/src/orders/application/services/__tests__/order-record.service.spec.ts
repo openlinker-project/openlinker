@@ -36,7 +36,7 @@ describe('OrderRecordService', () => {
     repository = {
       findById: jest.fn(),
       findByIds: jest.fn(),
-      findEarliestPlacedAtByConnection: jest.fn(),
+      findEarliestOrderDateByConnection: jest.fn(),
       upsert: jest.fn(),
       upsertWithLineItems: jest.fn(),
       updateSyncStatus: jest.fn(),
@@ -1002,12 +1002,12 @@ describe('OrderRecordService', () => {
   describe('getEarliestOrderDateByConnection (#2083)', () => {
     it('delegates to the repository as a pure passthrough', async () => {
       const map = new Map([['conn-1', new Date('2026-01-01T00:00:00.000Z')]]);
-      repository.findEarliestPlacedAtByConnection.mockResolvedValue(map);
+      repository.findEarliestOrderDateByConnection.mockResolvedValue(map);
 
       const result = await service.getEarliestOrderDateByConnection(['conn-1', 'conn-2']);
 
       expect(result).toBe(map);
-      expect(repository.findEarliestPlacedAtByConnection).toHaveBeenCalledWith([
+      expect(repository.findEarliestOrderDateByConnection).toHaveBeenCalledWith([
         'conn-1',
         'conn-2',
       ]);

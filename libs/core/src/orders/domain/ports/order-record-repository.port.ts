@@ -65,7 +65,7 @@ export interface OrderRecordRepositoryPort {
    * applies here. Mirrors the already-documented decision to also include
    * cancelled orders.
    */
-  findEarliestPlacedAtByConnection(connectionIds: string[]): Promise<Map<string, Date>>;
+  findEarliestOrderDateByConnection(connectionIds: string[]): Promise<Map<string, Date>>;
 
   /**
    * Upsert order record (create or update)
