@@ -33,8 +33,6 @@ export type {
   InvoicingConnectionSelection,
 } from './domain/types/invoicing-primary.types';
 export { normalizeShippingLineName } from './domain/types/shipping-line-label.types';
-// Proportional shipping split across the rates in a mixed-rate basket (#2248).
-export { splitShippingAcrossRates } from './domain/types/shipping-tax-split.types';
 // A missing per-line tax rate holds the document (#2248, ADR-052 § 6).
 export {
   describeMissingTaxRate,
@@ -45,10 +43,6 @@ export type {
   TaxRateGateLine,
 } from './domain/types/order-tax-rate-gate.types';
 export { MissingTaxRateException } from './domain/exceptions/missing-tax-rate.exception';
-export type {
-  ShippingSplitLine,
-  ShippingSplitPart,
-} from './domain/types/shipping-tax-split.types';
 // Canonical percent-as-string tax-rate notation (#2247).
 export {
   FractionalTaxRateNotationError,

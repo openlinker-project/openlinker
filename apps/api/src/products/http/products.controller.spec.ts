@@ -68,6 +68,7 @@ function createMockProductsService(): jest.Mocked<IProductsService> {
   recordVariantTaxRate: jest.fn(),
   getEffectiveTaxRate: jest.fn(),
   getTaxRateCoverage: jest.fn(),
+  getTaxRateCoverageByConnection: jest.fn(),
   };
 }
 

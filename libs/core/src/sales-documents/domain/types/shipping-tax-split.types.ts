@@ -1,5 +1,5 @@
 /**
- * Shipping Tax Split (#2248, ADR-052 § 5)
+ * Shipping Tax Split (#2248 / #2252, ADR-052 § 5)
  *
  * A basket can carry several tax rates. The shipping the buyer paid is one
  * amount, and a document has to state which rate applies to it - so on a
@@ -15,7 +15,13 @@
  *
  * Pure and dependency-free: no I/O, no framework, no regime knowledge.
  *
- * @module libs/core/src/invoicing/domain/types
+ * Lives in `sales-documents` rather than in `invoicing` because BOTH document
+ * contexts need it and a fiscal receipt is not an invoice (ADR-041). This
+ * concern is the shared, dependency-free leaf that exists for exactly that
+ * case - the module imports nothing, so `invoicing` and `fiscalization` can
+ * both value-import it with no risk of a module-load cycle.
+ *
+ * @module libs/core/src/sales-documents/domain/types
  */
 
 /** One product line's contribution to the basket, as the split sees it. */
