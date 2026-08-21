@@ -63,6 +63,8 @@ export {
   JobOutcomeReasonValues,
   BULK_RETRY_MAX_BATCH_SIZE,
 } from './domain/types/sync-job.types';
+export type { SyncJobLane } from './domain/types/sync-job-lane.types';
+export { SyncJobLaneValues, resolveJobScope } from './domain/types/sync-job-lane.types';
 export {
   MarketplaceOrdersPollPayloadV1,
   MarketplaceOrderSyncPayloadV1,

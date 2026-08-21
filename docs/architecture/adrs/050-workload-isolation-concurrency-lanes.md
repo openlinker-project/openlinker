@@ -49,7 +49,9 @@ its I/O shape or its bounded context.** Four lanes:
   while letting the wave monopolise slots is exactly the measured 35–80-minute failure above.
 - **`fiscal`** — deadline-bearing, at-most-once: `invoicing.issue`,
   `invoicing.regulatoryStatus.reconcile`, `invoicing.offlineSubmission.resubmit`,
-  `invoicing.pendingRecovery.sweep` (4). The three sweeps are paged like `bulk`, but starving them
+  `invoicing.pendingRecovery.sweep`, and `fiscalization.register` (5 — the last registered after
+  this mapping was authored, #2156, and assigned by the same rule during Wave 3, #2278). The three
+  sweeps are paged like `bulk`, but starving them
   costs a statutory deadline, so the rule places them here — the dual-profile cases are decided by
   cost-of-starvation, which is why the rule is stated before the mapping.
 - **`fan-out`** — near-zero HTTP of their own, output is child jobs: `marketplace.orders.poll`,
