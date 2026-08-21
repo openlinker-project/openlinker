@@ -81,9 +81,9 @@ export interface ChannelCurrencyTotal {
  * (the real, comparable KPI aggregate, all channels' `revenue` already share
  * one currency) plus one `'unconverted'` total per distinct native currency
  * found in channels' `unconvertedCurrency` — informational subtotals of
- * evidence with no FX stamp yet. A currency contributed by only one channel
- * is skipped entirely: a total that repeats a single row's own figures is
- * noise, not a summary.
+ * evidence with no FX stamp yet. Emitted for every distinct currency present
+ * in the data, regardless of how many channels contribute to it — a single
+ * EUR-only shop still needs its `Total · EUR` row.
  */
 export function groupChannelTotalsByCurrency(channels: ChannelSalesAnalytics[]): ChannelCurrencyTotal[] {
   const totals: ChannelCurrencyTotal[] = [];
@@ -91,19 +91,17 @@ export function groupChannelTotalsByCurrency(channels: ChannelSalesAnalytics[]):
   const reportingCurrency = channels.find((c) => c.currency !== null)?.currency ?? null;
   if (reportingCurrency) {
     const contributing = channels.filter((c) => c.currency === reportingCurrency);
-    if (contributing.length > 1) {
-      const revenue = sum(contributing, (c) => c.revenue);
-      const orderCount = sum(contributing, (c) => c.orderCount);
-      totals.push({
-        currency: reportingCurrency,
-        kind: 'reporting',
-        revenue,
-        orderCount,
-        averageOrderValue: orderCount === 0 ? 0 : revenue / orderCount,
-        unitsSold: sum(contributing, (c) => c.unitsSold),
-        revenueShare: sum(contributing, (c) => c.revenueShare),
-      });
-    }
+    const revenue = sum(contributing, (c) => c.revenue);
+    const orderCount = sum(contributing, (c) => c.orderCount);
+    totals.push({
+      currency: reportingCurrency,
+      kind: 'reporting',
+      revenue,
+      orderCount,
+      averageOrderValue: orderCount === 0 ? 0 : revenue / orderCount,
+      unitsSold: sum(contributing, (c) => c.unitsSold),
+      revenueShare: sum(contributing, (c) => c.revenueShare),
+    });
   }
 
   const unconvertedCurrencies = [
@@ -112,7 +110,6 @@ export function groupChannelTotalsByCurrency(channels: ChannelSalesAnalytics[]):
 
   for (const currency of unconvertedCurrencies) {
     const contributing = channels.filter((c) => c.unconvertedCurrency === currency);
-    if (contributing.length <= 1) continue;
     const value = sum(contributing, (c) => c.unconvertedValue);
     const count = sum(contributing, (c) => c.unconvertedCount);
     totals.push({
