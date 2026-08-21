@@ -37,7 +37,10 @@ marked **countable** or **prose-only** inline so #2169 can consume both ADRs wit
 - `EXPANDED_OFFER_CEILING = 1000` (`bulk-listing-submit.service.ts:94`) — one submit can enqueue up
   to 1000 children into the same undifferentiated queue.
 - **Handler inventory: 34 registered job types** (`handler-registration.service.ts`, 34 `register`
-  calls), not the issue's ~30. Corrected clustering (primary profile):
+  calls), not the issue's ~30. Provisional clustering from the research pass (primary profile) —
+  **the final, authoritative lane mapping is ADR-050 § Decision 1** (12 realtime / 12 bulk /
+  4 fiscal / 6 fan-out, after applying the cost-of-starvation rule below); the counts here predate
+  that rule's application:
   - **realtime** (~15): `marketplace.order.sync`, `order.fxStamp`, `offerQuantity.update`,
     `offer.updateFields`, `offer.create`*, `offer.pollCreationStatus`, `offer.refreshSnapshot`,
     `offer.stockRestore`, `offer.pauseStale`, `shipment.syncByExternalId`,
@@ -81,7 +84,8 @@ marked **countable** or **prose-only** inline so #2169 can consume both ADRs wit
 - Artifact: `Dockerfile:150` `FROM production AS worker`, differing only by two COPYs and CMD; base
   `docker-compose.yml` has **no worker service**; `docker-compose.demo.yml` has api + worker; no
   `replicas:` anywhere.
-- Module graph: worker boots all 36 handler providers and all 13 plugin entries unconditionally;
+- Module graph: worker boots a handler provider for each of the 34 registered job types plus all
+  13 plugin entries unconditionally;
   api boots the same 13; there is **zero conditional DI today** — every role-ish distinction is a
   runtime flag inside an already-instantiated provider (`WORKER_INTAKE_ENABLED`,
   `WORKER_RUNNER_ENABLED`, `OL_MASTER_DELETION_CONSUMER_ENABLED` — the last documented in **no**
@@ -130,7 +134,7 @@ future check script has one grep target across both ADRs.
 3. **Scheduling moves out of the API process** into the `scheduler` role; singleton enforced with a
    `SyncLockPort` lease (seventh key family) rather than trusted deployment discipline.
 4. **Roles select conditional module imports, not runtime flags** — a `scheduler` process must not
-   instantiate 36 handlers; today's flag-inside-instantiated-provider pattern is named as the
+   instantiate 34 job handlers; today's flag-inside-instantiated-provider pattern is named as the
    anti-pattern.
 5. **`OL_WORKER_ROLE`, default `all`** — a small install keeps exactly today's two containers;
    documented in **both** `.env.example` files (the `OL_MASTER_DELETION_CONSUMER_ENABLED` omission

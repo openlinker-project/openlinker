@@ -68,8 +68,9 @@ honest caveat about the mechanism: the port's contract today is exactly `acquire
 `release(key, token)` — the six existing families are short-lived critical sections, and a
 process-lifetime lease is a new usage shape, so Wave 4 either adds a token-checked extend to the
 port or implements renewal as periodic re-acquire by the same holder; the ADR commits to the lease,
-not to the port being sufficient unchanged. The same lease pattern covers `maintenance`. The API-hosted webhook consumer's target home is the `events`
-role — deciding that here retires the "MVP shortcut" comment; the move itself is Wave 4.
+not to the port being sufficient unchanged. The same lease pattern covers `maintenance`. The
+API-hosted webhook consumer's target home is the `events` role — deciding that here retires the
+"MVP shortcut" comment; the move itself is Wave 4.
 *Reversal gate (prose-only):* none — this corrects an accidental placement.
 
 **4. A role boots the modules it needs — conditional module imports, never a runtime flag on a
