@@ -115,6 +115,19 @@ export {
 export type { OfferLifecycle, OfferLifecycleCounts } from './domain/types/offer-lifecycle.types';
 export { UnfilterableOfferLifecycleException } from './domain/exceptions/unfilterable-offer-lifecycle.exception';
 
+// Why a listing cannot sell, and who it is about (#2231).
+export {
+  OfferValidationScopeValues,
+  isOfferValidationScope,
+  toOfferValidationProblem,
+  readValidationProblems,
+  splitOfferValidationProblems,
+} from './domain/types/offer-validation-problem.types';
+export type {
+  OfferValidationScope,
+  OfferValidationProblem,
+} from './domain/types/offer-validation-problem.types';
+
 export type { ICoverageGapReadService } from './application/services/coverage-gap-read.service.interface';
 export type { CoverageGapItem, CoverageGapsResult } from './domain/types/coverage-gap.types';
 export type { IStockAtRiskReadService } from './application/services/stock-at-risk-read.service.interface';

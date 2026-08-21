@@ -184,10 +184,53 @@ export type ErliProductPatchBody = Pick<
  */
 /**
  * Erli-side publication status of a product/offer (read side, #989).
- * PROVISIONAL (#992): exact value set unconfirmed; the adapter maps it to the
- * neutral closed `OfferPublicationStatus` union.
+ *
+ * These are the ONLY two values Erli declares (#2231): `ProductResponse.status`
+ * is `enum ["active","inactive"], nullable` in
+ * `docs/architecture/adrs/erli-sandbox-swagger.json`. The union previously also
+ * carried `'accepted'` and `'rejected'` as a #992 placeholder, and both branches
+ * of the status mapper that handled them were unreachable - which mattered,
+ * because the `rejected` branch was the only thing that ever populated
+ * `validationErrors` for Erli, so the neutral `Invalid` lifecycle bucket could
+ * never contain an Erli offer. Erli has no rejection status at all: an offer is
+ * active or inactive, and the REASONS live in
+ * {@link ErliProductResource.buyableProblems}.
+ *
+ * The adapter still keeps a `default:` arm, because the field is `nullable`.
  */
-export type ErliProductStatus = 'accepted' | 'active' | 'inactive' | 'rejected';
+export type ErliProductStatus = 'active' | 'inactive';
+
+/**
+ * Why Erli says a product cannot be bought - `ProductResponse.buyableProblems`
+ * (#2231), `required` in the schema and verbatim from
+ * `docs/architecture/adrs/erli-sandbox-swagger.json`.
+ *
+ * Three of these describe the SHOP rather than the product (`shop-activity`,
+ * `shopKyc`, `blocked`); when one is live Erli reports it against every offer.
+ * The adapter's copy map is what knows that, and it declares the neutral
+ * `OfferValidationScope` accordingly - core never learns these strings.
+ */
+export const ErliBuyableProblemValues = [
+  'delivery',
+  'stock',
+  'active',
+  'category',
+  'image',
+  'shop-activity',
+  'shopKyc',
+  'missingPrice',
+  'minPrice',
+  'maxPrice',
+  'terms',
+  'blocked',
+  'condition',
+  'archived',
+  'translations',
+  'name',
+  'missingTaxRate',
+  'marketInactive',
+] as const;
+export type ErliBuyableProblem = (typeof ErliBuyableProblemValues)[number];
 
 /**
  * One item from `GET /dictionaries/responsibleProducers` (#1531). Erli returns
@@ -236,10 +279,26 @@ export interface ErliProductResource {
    * the 404 fail-open branch) — treated as "unknown", never "nothing frozen".
    */
   frozen?: Record<string, boolean>;
-  /** Current Erli-side publication status (#989). */
-  status?: ErliProductStatus;
-  /** Rejection / inactivation detail Erli supplies, when present (#989). */
-  statusReason?: string;
+  /** Current Erli-side publication status (#989). Nullable per the schema. */
+  status?: ErliProductStatus | null;
+  /**
+   * Why the product cannot be bought (#2231). `required` in Erli's
+   * `ProductResponse`, so an empty array is the normal "nothing wrong" answer
+   * and an absent field means the read carried no body (the 404 fail-open
+   * branch), never "no problems".
+   *
+   * Typed as `string[]`, not the union: this is untyped wire JSON, and Erli can
+   * add a value before OL has a sentence for it. The mapper surfaces an
+   * unrecognised code with its raw value rather than dropping it.
+   */
+  buyableProblems?: string[];
+  /**
+   * Erli's own words: "Zarchiwizowanie produktu sprawia, że produktu nie da się
+   * kupić i znika z panelu sklepu" (#2231). An archived product cannot be bought
+   * and disappears from the seller panel, which is what the neutral `'ended'`
+   * publication status means - so the mapper reports `'ended'`, not `'inactive'`.
+   */
+  archived?: boolean | null;
 
   // ── Read-side offer-detail fields (OfferReader.getOffer) ──
   // Verified live against the sandbox GET /products/{externalId}: money is an

@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import type { OfferMapping, OfferMappingIdentity } from '../api/listings.types';
+import type {
+  OfferMapping,
+  OfferMappingChannelStatus,
+  OfferMappingIdentity,
+  OfferValidationProblem,
+} from '../api/listings.types';
 import { isOverselling, isUnlinked, listingRowAlert, listingRowBadges } from './listing-row-state';
 
 const IDENTITY: OfferMappingIdentity = {
@@ -235,7 +240,9 @@ describe('listingRowAlert', () => {
     expect(listingRowAlert(makeRow())).toBeNull();
   });
 
-  it('should surface the first validator message verbatim', () => {
+  it('should surface the first validator message verbatim, counting the rest', () => {
+    // A snapshot written before #2231 (and any older API build) carries only the
+    // flat message list. It still renders - and now says how many it is hiding.
     const alert = listingRowAlert(
       makeRow({
         channelStatus: {
@@ -247,7 +254,7 @@ describe('listingRowAlert', () => {
       }),
     );
 
-    expect(alert?.text).toBe('Brak wymaganego parametru: Materiał');
+    expect(alert?.text).toBe('Brak wymaganego parametru: Materiał · +1 more problem');
   });
 
   it('should outrank a validator message with the overselling warning', () => {
@@ -278,4 +285,101 @@ describe('listingRowAlert', () => {
     expect(listingRowAlert(makeRow({ identity: null, commercial: null }))).toBeNull();
     expect(listingRowAlert(makeRow({ identity: STALE_IDENTITY, commercial: null }))).toBeNull();
   });
+
+  it('should prefer a structured problem summary over its full sentence (#2231)', () => {
+    const alert = listingRowAlert(makeRow({ channelStatus: blockedStatus() }));
+
+    expect(alert?.text).toBe('No VAT rate set on Erli');
+    expect(alert?.muted).toBe(false);
+  });
+
+  it('should count the problems it could not show, on one line (#2231)', () => {
+    const alert = listingRowAlert(
+      makeRow({
+        channelStatus: blockedStatus([
+          problem('missingTaxRate', 'No VAT rate set on Erli', 'Set the tax rate.'),
+          problem('delivery', 'No delivery price list assigned', 'Pick a price list.'),
+        ]),
+      }),
+    );
+
+    expect(alert?.text).toBe('No VAT rate set on Erli · +1 more problem');
+    // The full list is what the hover carries; the line stays single-line.
+    expect(alert?.title).toBe('Set the tax rate.\nPick a price list.');
+    expect(alert?.text).not.toContain('\n');
+  });
+
+  it('should pluralise the overflow count (#2231)', () => {
+    const alert = listingRowAlert(
+      makeRow({
+        channelStatus: blockedStatus([
+          problem('missingTaxRate', 'No VAT rate set on Erli', 'a'),
+          problem('delivery', 'No delivery price list assigned', 'b'),
+          problem('image', 'No usable product image', 'c'),
+        ]),
+      }),
+    );
+
+    expect(alert?.text).toBe('No VAT rate set on Erli · +2 more problems');
+  });
+
+  it('should keep a shop-level problem off the row and point at the notice (#2231)', () => {
+    const alert = listingRowAlert(
+      makeRow({
+        channelStatus: blockedStatus([
+          {
+            code: 'shopKyc',
+            summary: 'Shop verification incomplete',
+            message: 'Finish it.',
+            scope: 'account',
+          },
+        ]),
+      }),
+    );
+
+    // Repeating it per row would stamp one sentence on every row.
+    expect(alert?.text).toBe('Blocked by a problem with the shop, not this listing');
+    expect(alert?.muted).toBe(true);
+  });
+
+  it('should say an inactive offer has nothing outstanding, quietly (#2231)', () => {
+    const alert = listingRowAlert(
+      makeRow({
+        channelStatus: {
+          publicationStatus: 'inactive',
+          lifecycle: 'Draft',
+          validationMessages: [],
+          validationProblems: [],
+          lastStatusSyncedAt: '2026-07-20T23:12:00.000Z',
+        },
+      }),
+    );
+
+    expect(alert?.text).toBe('Set to inactive on the channel, no problems reported');
+    expect(alert?.muted).toBe(true);
+  });
+
+  it('should stay silent on an active row with nothing wrong (#2231)', () => {
+    expect(listingRowAlert(makeRow())).toBeNull();
+  });
 });
+
+function problem(code: string, summary: string, message: string): OfferValidationProblem {
+  return { code, summary, message, scope: 'offer' };
+}
+
+function blockedStatus(
+  problems: OfferValidationProblem[] = [
+    problem('missingTaxRate', 'No VAT rate set on Erli', 'Set the tax rate on the product.'),
+  ],
+): OfferMappingChannelStatus {
+  return {
+    publicationStatus: 'inactive',
+    lifecycle: 'Invalid',
+    // Both halves are written together by the backend, and the flat list is what
+    // an older build would send on its own.
+    validationMessages: problems.map((entry) => entry.message),
+    validationProblems: problems,
+    lastStatusSyncedAt: '2026-07-20T23:12:00.000Z',
+  };
+}
