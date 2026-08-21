@@ -185,6 +185,13 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
    * #2049/ADR-040 bugfix as {@link getTopProductRanking}. Also shares that
    * method's `totalAmount = 0` fold into the unconverted bucket (#2172
    * review, IMPORTANT 2) — see its doc comment.
+   *
+   * `unconvertedCurrency` is computed per (product, connection), not
+   * inherited from the parent ranking row (#2172 review, still-open
+   * follow-up): the parent goes `null` whenever the full mixed-channel set
+   * disagrees on native currency, but one channel's own subset is routinely
+   * single-currency even then, so it is strictly more labelable than the
+   * product as a whole — never less.
    */
   async getProductChannelBreakdown(
     productIds: string[],
@@ -217,6 +224,12 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
         `CASE WHEN COUNT(*) FILTER (WHERE ${stampedNonZero}) > 0 THEN :reportingCurrency ELSE NULL END`,
         'reporting_currency'
       )
+      .addSelect(
+        `CASE WHEN COUNT(DISTINCT rec."currency") FILTER (WHERE ${unconvertedOrZeroTotal}) <= 1
+              THEN MAX(rec."currency") FILTER (WHERE ${unconvertedOrZeroTotal})
+              ELSE NULL END`,
+        'unconverted_currency'
+      )
       .setParameter('reportingCurrency', reportingCurrency)
       .andWhere('li."productId" IN (:...productIds)', { productIds })
       .groupBy('li.productId')
@@ -230,6 +243,7 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
       revenue: string;
       unconverted_revenue: string;
       reporting_currency: string | null;
+      unconverted_currency: string | null;
     }>();
 
     return rows.map((row) => ({
@@ -239,6 +253,7 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
       revenue: Number(row.revenue),
       unconvertedRevenue: Number(row.unconverted_revenue),
       currency: row.reporting_currency,
+      unconvertedCurrency: row.unconverted_currency,
     }));
   }
 

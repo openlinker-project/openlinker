@@ -441,4 +441,83 @@ describe('Top products ranking — currency correctness against real Postgres (#
       expect(product.units).toBe(2);
     }
   );
+
+  it(
+    'labels a channel\'s own unconvertedCurrency even when the mixed full set forces the parent row to null (#2172 review, still-open follow-up)',
+    async () => {
+      const dataSource = harness.getDataSource();
+      const connEur = await createTestConnection(dataSource, {
+        platformType: 'allegro',
+        name: 'Connection channel-currency test EUR',
+        adapterKey: 'allegro.test.unused-channel-currency-eur',
+      });
+      const connPln = await createTestConnection(dataSource, {
+        platformType: 'woocommerce',
+        name: 'Connection channel-currency test PLN',
+        adapterKey: 'woocommerce.test.unused-channel-currency-pln',
+      });
+
+      // Same product, unstamped on both channels, but each channel's native
+      // currency is uniform on its own — only the UNION across channels
+      // mixes EUR and PLN. The parent ranking row must report
+      // unconvertedCurrency: null (mixed), while each channel row keeps its
+      // own single-currency label.
+      await createTestOrderRecord(dataSource, {
+        internalOrderId: 'ol_order_channel_currency_eur',
+        sourceConnectionId: connEur.id,
+        orderSnapshot: { items: [] },
+        recordStatus: 'ready',
+        cancelledAt: null,
+        placedAt: new Date('2026-08-02T00:00:00.000Z'),
+        totalAmount: 20,
+        currency: 'EUR',
+        reportingCurrency: null,
+        reportingTotalAmount: null,
+      });
+      await seedLineItem(dataSource, {
+        orderRecordId: 'ol_order_channel_currency_eur',
+        productId: 'ol_product_channel_currency',
+        sourceConnectionId: connEur.id,
+        quantity: 1,
+        unitPrice: 20,
+        placedAt: new Date('2026-08-02T00:00:00.000Z'),
+      });
+
+      await createTestOrderRecord(dataSource, {
+        internalOrderId: 'ol_order_channel_currency_pln',
+        sourceConnectionId: connPln.id,
+        orderSnapshot: { items: [] },
+        recordStatus: 'ready',
+        cancelledAt: null,
+        placedAt: new Date('2026-08-03T00:00:00.000Z'),
+        totalAmount: 80,
+        currency: 'PLN',
+        reportingCurrency: null,
+        reportingTotalAmount: null,
+      });
+      await seedLineItem(dataSource, {
+        orderRecordId: 'ol_order_channel_currency_pln',
+        productId: 'ol_product_channel_currency',
+        sourceConnectionId: connPln.id,
+        quantity: 1,
+        unitPrice: 80,
+        placedAt: new Date('2026-08-03T00:00:00.000Z'),
+      });
+
+      const result = await orderRecordService.getTopProducts(filters);
+
+      expect(result.items).toHaveLength(1);
+      const product = result.items[0];
+      expect(product.productId).toBe('ol_product_channel_currency');
+      // Mixed across channels — the parent row cannot honestly pick one.
+      expect(product.unconvertedCurrency).toBeNull();
+
+      const eurChannel = product.channels.find((c) => c.sourceConnectionId === connEur.id);
+      const plnChannel = product.channels.find((c) => c.sourceConnectionId === connPln.id);
+      expect(eurChannel).toBeDefined();
+      expect(eurChannel!.unconvertedCurrency).toBe('EUR');
+      expect(plnChannel).toBeDefined();
+      expect(plnChannel!.unconvertedCurrency).toBe('PLN');
+    }
+  );
 });

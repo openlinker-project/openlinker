@@ -55,7 +55,15 @@ describe('TopProductsService', () => {
         currency: 'EUR',
         unconvertedCurrency: null,
         channels: [
-          { productId: 'p1', sourceConnectionId: 'conn-a', units: 10, revenue: 100, unconvertedRevenue: 0, currency: 'EUR' },
+          {
+            productId: 'p1',
+            sourceConnectionId: 'conn-a',
+            units: 10,
+            revenue: 100,
+            unconvertedRevenue: 0,
+            currency: 'EUR',
+            unconvertedCurrency: null,
+          },
         ],
       },
     ],

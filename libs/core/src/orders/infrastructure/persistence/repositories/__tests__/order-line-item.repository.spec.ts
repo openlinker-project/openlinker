@@ -300,6 +300,7 @@ describe('OrderLineItemRepository', () => {
             revenue: '40',
             unconverted_revenue: '0',
             reporting_currency: 'EUR',
+            unconverted_currency: null,
           },
         ]),
       });
@@ -318,6 +319,45 @@ describe('OrderLineItemRepository', () => {
           revenue: 40,
           unconvertedRevenue: 0,
           currency: 'EUR',
+          unconvertedCurrency: null,
+        },
+      ]);
+    });
+
+    it('labels unconvertedCurrency per channel, independently of the ranking row (#2172 review, still-open follow-up)', async () => {
+      const setParameter = jest.fn().mockReturnThis();
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        innerJoin: jest.fn().mockReturnThis(),
+        select: jest.fn().mockReturnThis(),
+        addSelect: jest.fn().mockReturnThis(),
+        setParameter,
+        andWhere: jest.fn().mockReturnThis(),
+        groupBy: jest.fn().mockReturnThis(),
+        addGroupBy: jest.fn().mockReturnThis(),
+        getRawMany: jest.fn().mockResolvedValue([
+          {
+            product_id: 'p1',
+            source_connection_id: 'conn-a',
+            units: '4',
+            revenue: '0',
+            unconverted_revenue: '40',
+            reporting_currency: null,
+            unconverted_currency: 'PLN',
+          },
+        ]),
+      });
+
+      const result = await repository.getProductChannelBreakdown(['p1'], baseFilters, 'EUR');
+
+      expect(result).toEqual([
+        {
+          productId: 'p1',
+          sourceConnectionId: 'conn-a',
+          units: 4,
+          revenue: 0,
+          unconvertedRevenue: 40,
+          currency: null,
+          unconvertedCurrency: 'PLN',
         },
       ]);
     });

@@ -42,6 +42,14 @@ export class ProductChannelBreakdownDto {
   @ApiProperty({ type: String, nullable: true })
   currency!: string | null;
 
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description:
+      'The one native currency shared by every order on this channel contributing to unconvertedRevenue, or null when that subset mixes currencies (or unconvertedRevenue is 0). Computed per-channel — not inherited from the parent row, which may go null on a mixed set this channel’s own subset does not share (#2172 review).',
+  })
+  unconvertedCurrency!: string | null;
+
   static fromDomain(row: ProductChannelBreakdownRow): ProductChannelBreakdownDto {
     const dto = new ProductChannelBreakdownDto();
     dto.sourceConnectionId = row.sourceConnectionId;
@@ -49,6 +57,7 @@ export class ProductChannelBreakdownDto {
     dto.revenue = row.revenue;
     dto.unconvertedRevenue = row.unconvertedRevenue;
     dto.currency = row.currency;
+    dto.unconvertedCurrency = row.unconvertedCurrency;
     return dto;
   }
 }
