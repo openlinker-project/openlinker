@@ -53,6 +53,7 @@ import {
 import { AllegroApiException } from '../../domain/exceptions/allegro-api.exception';
 import { AllegroOrderDispatchRejectedException } from '../../domain/exceptions/allegro-order-dispatch-rejected.exception';
 import { deriveAllegroPaymentStatus } from './allegro-payment-status';
+import { toNeutralTaxRate } from './allegro-tax-rate.mapper';
 
 type OrderFeedItem = OrderFeedOutput['items'][number];
 
@@ -388,17 +389,26 @@ export class AllegroOrderSourceAdapter
         status,
         customerExternalId: checkoutForm.buyer.id,
         customerEmail: checkoutForm.buyer.email,
-        items: checkoutForm.lineItems.map((lineItem) => ({
-          id: lineItem.id,
-          productRef: { type: 'offer', externalId: lineItem.offer.id },
-          quantity: lineItem.quantity,
-          price: Number.parseFloat(lineItem.price.amount),
-          sku: lineItem.offer.id,
-          name: lineItem.offer.name,
-          // imageUrl intentionally omitted — Allegro's checkout-form endpoint
-          // does not expose a product image URL. Future enrichment from the
-          // internal product catalog is tracked as a separate follow-up.
-        })),
+        items: checkoutForm.lineItems.map((lineItem) => {
+          // #2249: Allegro's per-line tax, read as the CHANNEL rung of the
+          // resolution chain. Nullable throughout, and a null stays absent -
+          // never `0`, which would state a zero-rated sale. Offers OL published
+          // before this epic report nothing here at all, which is exactly the
+          // gap the propagation half closes.
+          const neutralTaxRate = toNeutralTaxRate(lineItem.tax);
+          return {
+            id: lineItem.id,
+            productRef: { type: 'offer' as const, externalId: lineItem.offer.id },
+            quantity: lineItem.quantity,
+            price: Number.parseFloat(lineItem.price.amount),
+            sku: lineItem.offer.id,
+            name: lineItem.offer.name,
+            ...(neutralTaxRate ? { taxRate: neutralTaxRate } : {}),
+            // imageUrl intentionally omitted — Allegro's checkout-form endpoint
+            // does not expose a product image URL. Future enrichment from the
+            // internal product catalog is tracked as a separate follow-up.
+          };
+        }),
         totals: {
           subtotal: roundCurrency(subtotal),
           tax: 0,
