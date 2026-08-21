@@ -116,6 +116,19 @@ export interface ConnectionConfig {
    * hostname is not a quota axis.
    */
   rateLimit?: ConnectionRateLimit;
+  /**
+   * Sales-document routing configuration (#2155, ADR-041 decision 4). Which
+   * originating fiscal document kind THIS connection issues — e.g.
+   * `'invoice'` or `'fiscal-receipt'` (open-world, see
+   * `@openlinker/core/sales-documents`' `SalesDocumentKind`). A missing value
+   * means this connection is not a sales-document routing candidate at all.
+   * Read via `readSalesDocumentRouting`, which also reads the SAME
+   * `invoicing.isPrimary` flag above — decision 4 fixes that shape rather
+   * than introducing a second `isPrimary` key here.
+   */
+  salesDocument?: {
+    documentKind?: string;
+  };
   [key: string]: unknown;
 }
 

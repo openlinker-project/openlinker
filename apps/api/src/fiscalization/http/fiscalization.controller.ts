@@ -40,11 +40,13 @@ import {
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import {
   FISCAL_REGISTRATION_SERVICE_TOKEN,
+  FiscalRegistrationContendedException,
   FiscalRegistrationNotInDoubtException,
   FiscalRegistrationRecordNotFoundException,
   IFiscalRegistrationService,
   InvalidFiscalLineError,
   MissingIdempotencyKeyException,
+  OrderAlreadyHasInvoiceException,
   OrderAlreadyRegisteredException,
   UnsupportedFiscalPriceTreatmentError,
   toRegisterTransactionCommand,
@@ -233,7 +235,13 @@ export class FiscalizationController {
     }
     if (
       error instanceof FiscalRegistrationNotInDoubtException ||
-      error instanceof OrderAlreadyRegisteredException
+      error instanceof OrderAlreadyRegisteredException ||
+      // #2157, ADR-041 §3a/3b: the order already has an INVOICE — a different
+      // sales-document kind — on an invoicing connection; also a 409.
+      error instanceof OrderAlreadyHasInvoiceException ||
+      // #2157: a concurrent registration/issuance holds the per-order lock and
+      // has persisted nothing yet — retryable, same 409 treatment.
+      error instanceof FiscalRegistrationContendedException
     ) {
       return new ConflictException(error.message);
     }

@@ -69,10 +69,11 @@ export type FulfillmentRollupStateValue = (typeof FulfillmentRollupStateValues)[
 export const SlaStateValues = ['none', 'on_track', 'at_risk', 'overdue'] as const;
 export type SlaStateValue = (typeof SlaStateValues)[number];
 
-// Why OpenLinker issued no fiscal document for an order (#2100, ADR-041
-// decision 11). Hand-mirrored from `SalesDocumentGateBlockReasonValues` /
-// `SalesDocumentUnresolvedReasonValues` in `@openlinker/core/sales-documents`
-// per the FE-001 contract strategy (the browser bundle cannot import core).
+// Why OpenLinker issued no sales document (invoice or fiscal receipt) for an
+// order (#2100/#2156, ADR-041 decision 11). Hand-mirrored from
+// `SalesDocumentGateBlockReasonValues` / `SalesDocumentUnresolvedReasonValues` in
+// `@openlinker/core/sales-documents` per the FE-001 contract strategy (the
+// browser bundle cannot import core).
 //
 // ENFORCED, not merely commented: `scripts/check-sales-document-reason-mirror.mjs`
 // fails `pnpm check:invariants` on any drift in either direction. Drift here is
@@ -94,6 +95,9 @@ export const SalesDocumentUnresolvedReasonValues = [
   'ambiguous-connection-no-primary',
   'unsupported-document-kind-on-connection',
   'net-priced-order',
+  // #2170 rule-engine additions — see the backend file for the full rationale.
+  'no-configuration-for-country',
+  'threshold-currency-mismatch',
 ] as const;
 export type SalesDocumentUnresolvedReasonValue =
   (typeof SalesDocumentUnresolvedReasonValues)[number];
@@ -212,15 +216,15 @@ export interface OrderRecord {
    */
   mappingFailureReason?: string | null;
   /**
-   * Why OpenLinker issued no fiscal document for this order (#2100). `null` when
-   * nothing is blocking it. Independent of `recordStatus` — an order can be
-   * `ready` and `synced` while still carrying a block.
+   * Why OpenLinker issued no sales document for this order (#2100, #2156).
+   * `null` when nothing is blocking it. Independent of `recordStatus` — an
+   * order can be `ready` and `synced` while still carrying a block.
    */
   salesDocumentBlockReason?: SalesDocumentGateBlockReasonValue | null;
   /**
    * The routing reason paired with a `'unresolved-routing'` block (ADR-041
    * §107). This is what the operator-facing copy keys on: "routing was
-   * unresolved" is not actionable, "no primary invoicing connection" is.
+   * unresolved" is not actionable, "no primary connection" is.
    */
   salesDocumentUnresolvedReason?: SalesDocumentUnresolvedReasonValue | null;
   /** PII-free elaboration of the block reason (ids and counts only). */

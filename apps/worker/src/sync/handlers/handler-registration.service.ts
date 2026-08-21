@@ -39,6 +39,7 @@ import { ShopProductPublishHandler } from './shop-product-publish.handler';
 import { ShopProductStatusSyncHandler } from './shop-product-status-sync.handler';
 import { DestinationTaxonomySyncHandler } from './destination-taxonomy-sync.handler';
 import { InvoicingIssueHandler } from './invoicing-issue.handler';
+import { FiscalizationRegisterHandler } from './fiscalization-register.handler';
 import { RegulatoryStatusReconcileHandler } from './regulatory-status-reconcile.handler';
 import { OfflineResubmitHandler } from './offline-resubmit.handler';
 import { PendingRecoveryHandler } from './pending-recovery.handler';
@@ -78,6 +79,7 @@ export class HandlerRegistrationService implements OnModuleInit {
     private readonly shopProductStatusSyncHandler: ShopProductStatusSyncHandler,
     private readonly destinationTaxonomySyncHandler: DestinationTaxonomySyncHandler,
     private readonly invoicingIssueHandler: InvoicingIssueHandler,
+    private readonly fiscalizationRegisterHandler: FiscalizationRegisterHandler,
     private readonly regulatoryStatusReconcileHandler: RegulatoryStatusReconcileHandler,
     private readonly offlineResubmitHandler: OfflineResubmitHandler,
     private readonly pendingRecoveryHandler: PendingRecoveryHandler,
@@ -189,6 +191,8 @@ export class HandlerRegistrationService implements OnModuleInit {
 
     // Register invoicing issue handler (OL #1120 — auto-issue trigger)
     this.handlerRegistry.register('invoicing.issue', this.invoicingIssueHandler);
+    // Register fiscalization register handler (#2156 — auto-issue cross-capability gate)
+    this.handlerRegistry.register('fiscalization.register', this.fiscalizationRegisterHandler);
     // Register KSeF regulatory-status reconciliation handler (#1121)
     this.handlerRegistry.register(
       'invoicing.regulatoryStatus.reconcile',

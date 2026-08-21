@@ -57,17 +57,36 @@ describe('@openlinker/core/<context> barrel purity (#598)', () => {
   });
 
   /**
-   * `sales-documents` (#2100) is the one context whose value is that it depends on
-   * NOTHING: `invoicing` and `orders` both value-import it, and `invoicing` would
-   * close a CJS module-load cycle the moment this leaf grew an edge back into
-   * either. Three docblocks call that load-bearing; before this assertion nothing
-   * enforced it, so a future `import` here would have been caught only by a Nest
-   * boot failure in some unrelated suite.
+   * `sales-documents` (#2100) is the one context whose value is that it depends
+   * on almost NOTHING among its CORE siblings: `invoicing` and `orders` both
+   * value-import it, and `invoicing` would close a CJS module-load cycle the
+   * moment this leaf grew a VALUE edge back into either. Three docblocks call
+   * that load-bearing; before this assertion nothing enforced it, so a future
+   * `import` here would have been caught only by a Nest boot failure in some
+   * unrelated suite.
+   *
+   * **Narrowed by #2170** (see `sales-documents/index.ts`'s own doc comment):
+   * the concern gained a NestJS module + repositories + ORM entities, so it is
+   * no longer framework-free — but it must stay a zero-outbound-edge leaf with
+   * respect to sibling `@openlinker/core/<ctx>` barrels specifically. Those are
+   * two different properties ("no framework dependency" vs. "no sibling-context
+   * dependency"), and only the second is what prevents the CJS cycle. `@nestjs/*`,
+   * `typeorm`, and Node builtins (`node:*`) are therefore unrestricted; only a
+   * non-relative specifier starting with `@openlinker/core/` is checked below.
    *
    * Textual, deliberately: a `require()` cannot see whether the module pulled a
-   * dependency in, and the whole point is to forbid the import statement itself.
+   * dependency in, and the whole point is to forbid a VALUE import statement.
+   *
+   * #2155 carved out ONE authorized exception: `resolveSalesDocumentRouting`
+   * takes `Order` as a caller-supplied value parameter (ADR-041 decision 2),
+   * typed via `import type { Order } from '@openlinker/core/orders/types'`. A
+   * type-only import ERASES at compile time — there is no `require()` call in
+   * the emitted JS, so it adds no runtime edge and cannot close the cycle this
+   * spec exists to forbid. Any OTHER `@openlinker/core/*` import — a value
+   * import of anything, or a type-only import from any specifier other than
+   * that one cycle-breaker sub-barrel — still fails this spec.
    */
-  it('sales-documents stays a dependency-free leaf (no import statements at all)', () => {
+  it('sales-documents stays a zero-outbound-CORE-CONTEXT-edge leaf (only the one authorized type-only import reaches a sibling context)', () => {
     const root = join(__dirname, '..', 'sales-documents');
     const files: string[] = [];
     const walk = (dir: string): void => {
@@ -80,16 +99,58 @@ describe('@openlinker/core/<context> barrel purity (#598)', () => {
     walk(root);
 
     expect(files.length).toBeGreaterThan(0);
+
+    const AUTHORIZED_TYPE_ONLY_SPECIFIER = '@openlinker/core/orders/types';
+
     for (const file of files) {
       const source = readFileSync(file, 'utf8');
-      // Scanned over the WHOLE file, not line by line: a multi-line
-      // `import type {\n  X,\n} from '…'` — the prevailing style in this repo, and
-      // exactly what an edit here would produce — puts `import` and `from` on
-      // different lines, so a per-line matcher would let it through.
-      const specifiers = [...source.matchAll(/\bfrom\s+['"]([^'"]+)['"]/g)].map((m) => m[1]);
-      // The barrel's own `export * from './domain/...'` is the one allowed edge:
-      // internal to the concern, so it cannot reach another context.
-      expect(specifiers.filter((s) => !s.startsWith('./'))).toEqual([]);
+      // Doc comments in this repo's style routinely narrate the very import
+      // rule being checked (e.g. "typed via `import type` from the
+      // cycle-breaker … sub-barrel"), in prose that itself contains the bare
+      // words "import" and "from" with no quote/semicolon between them. A
+      // matcher run over the raw source would let such prose masquerade as
+      // (or worse, splice onto) a real import statement, so block AND line
+      // comments are stripped first — over-broad stripping is safe here
+      // (the source is scanned for import shape only, never executed).
+      const withoutComments = source.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/\/\/.*$/gm, '');
+      // Scanned over the WHOLE (comment-stripped) file, not line by line: a
+      // multi-line `import type {\n  X,\n} from '…'` — the prevailing style in
+      // this repo, and exactly what an edit here would produce — puts `import`
+      // and `from` on different lines, so a per-line matcher would let it
+      // through. Captures whether the statement is `import type ...` (group 1)
+      // and its specifier (group 2); `[^'";]*?` cannot cross a quote or
+      // semicolon, so it never accidentally spans into an unrelated later
+      // import.
+      const importStatements = [
+        ...withoutComments.matchAll(/import\s+(type\s+)?[^'";]*?from\s+['"]([^'"]+)['"]/g),
+      ];
+      for (const [, typeOnly, specifier] of importStatements) {
+        // Internal to the concern (index.ts's own `export * from './domain/...'`,
+        // and any relative reach from a nested file back up to `domain/types/`)
+        // — cannot reach another context either way.
+        if (specifier.startsWith('./') || specifier.startsWith('../')) {
+          continue;
+        }
+        // #2170: the concern is no longer framework-free (NestJS module +
+        // TypeORM repositories), and that is fine — it is NOT what this spec
+        // guards against. Only a sibling `@openlinker/core/<ctx>` edge can
+        // close the CJS cycle `invoicing`/`orders` value-importing this leaf
+        // depends on staying open; `@nestjs/*`, `typeorm`, `node:*`, etc. are
+        // ordinary infrastructure dependencies every other context has too.
+        if (!specifier.startsWith('@openlinker/core/')) {
+          continue;
+        }
+        // A VALUE import of a sibling context would close a real CJS
+        // require() cycle the moment any consumer value-imports this leaf —
+        // forbidden unconditionally, regardless of specifier.
+        expect(typeOnly).toBeTruthy();
+        // The ONLY authorized cross-context type this concern may borrow, and
+        // ONLY from the cycle-breaker sub-barrel — never the main
+        // `@openlinker/core/orders` barrel, which re-exports `OrdersModule` and
+        // would reintroduce exactly the cycle risk decision 2 exists to avoid
+        // if this import were ever (incorrectly) turned into a value import.
+        expect(specifier).toBe(AUTHORIZED_TYPE_ONLY_SPECIFIER);
+      }
     }
   });
 });

@@ -9,7 +9,8 @@
  * plugin defers most of its config surface the same way. No invoice-panel
  * slots either: the fiscal receipt surface (#1909) mounts directly on the
  * order page, the same way `OrderInvoicePanel` does, not through a
- * per-provider plugin slot.
+ * per-provider plugin slot. (#2160: that surface is now the `orders`
+ * feature's `SalesDocumentPanel`, not a standalone `OrderReceiptPanel`.)
  *
  * @module plugins/eparagony
  */
