@@ -29,7 +29,7 @@
  *     rules model (epic #2162 § Out of scope) — so the threshold fails the
  *     build with that message. Discovery is the CONJUNCTION of the
  *     `Connection.config` breadcrumb AND an exported `read*`/`parse*`
- *     function: the breadcrumb alone matches two non-knobs
+ *     helper (function or arrow const): the breadcrumb alone matches two non-knobs
  *     (`connection.types.ts` defines the config type; `resolve-concurrency.types.ts`
  *     mentions a key in a doc comment). Do NOT "correct" the count with
  *     `config.rateLimit`: it is a typed `ConnectionRateLimit` field consumed
@@ -245,7 +245,7 @@ function checkConfigKnobs() {
     if (!isKnobCandidate(text)) {
       failures.push(
         `stale registry entry: ${rel} no longer matches the knob pattern (Connection.config ` +
-          `breadcrumb + exported read*/parse* function) — update KNOWN_CONFIG_KNOBS.`
+          `breadcrumb + exported read*/parse* helper) — update KNOWN_CONFIG_KNOBS.`
       );
       continue;
     }
@@ -263,7 +263,7 @@ function checkConfigKnobs() {
     if (isKnobCandidate(readFileSync(abs, 'utf8'))) {
       failures.push(
         `${rel} — looks like a new per-connection config-coercion knob (Connection.config ` +
-          `breadcrumb + exported read*/parse* function). Register it deliberately: add it to ` +
+          `breadcrumb + exported read*/parse* helper). Register it deliberately: add it to ` +
           `KNOWN_CONFIG_KNOBS (it counts toward the #1032 threshold) or to NON_KNOBS with a ` +
           `reason, in scripts/check-architecture-gates.mjs.`
       );
