@@ -96,4 +96,25 @@ export interface ProductRepositoryPort {
    * them is what would make day one read as an outage.
    */
   countTaxRateStates(): Promise<{ total: number; known: number; missing: number; notChecked: number }>;
+
+  /**
+   * The same counts, broken down per connection (#2256).
+   *
+   * The pre-rollout measurement is per SHOP, because that is the unit an
+   * operator fixes: "the catalogue has no rates" is not actionable when three
+   * shops feed it and only one is incomplete. `products` carries no connection
+   * of its own, so the grouping comes from `identifier_mappings` - a product
+   * mapped on two connections is counted under both, which is the honest
+   * answer rather than an arbitrary pick.
+   */
+  countTaxRateStatesByConnection(): Promise<
+    Array<{
+      connectionId: string;
+      platformType: string;
+      total: number;
+      known: number;
+      missing: number;
+      notChecked: number;
+    }>
+  >;
 }

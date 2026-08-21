@@ -55,6 +55,7 @@ describe('ProductsService', () => {
     recordTaxRate: jest.fn(),
     findTaxRate: jest.fn(),
     countTaxRateStates: jest.fn(),
+    countTaxRateStatesByConnection: jest.fn(),
   };
 
   const mockVariantRepo: jest.Mocked<ProductVariantRepositoryPort> = {
