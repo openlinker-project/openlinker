@@ -1,0 +1,49 @@
+{
+  "projectId": "9811a593-63ff-4c9d-95bc-e80fe2651c8d",
+  "shape": "package",
+  "pkg": "@openlinker/web",
+  "globalName": "OpenLinkerUI",
+  "srcDir": "src/shared/ui",
+  "cssEntry": "src/index.css",
+  "tsconfig": "tsconfig.json",
+  "extraFonts": [
+    "../../.design-sync/fonts.css"
+  ],
+  "extraEntries": [
+    "react-router-dom"
+  ],
+  "provider": {
+    "component": "MemoryRouter"
+  },
+  "overrides": {
+    "DataTable": {
+      "cardMode": "column"
+    },
+    "BulkActionBar": {
+      "cardMode": "column"
+    },
+    "PageLayout": {
+      "cardMode": "column"
+    },
+    "Dialog": {
+      "cardMode": "single",
+      "viewport": "720x520"
+    },
+    "ConfirmDialog": {
+      "cardMode": "single",
+      "viewport": "720x520"
+    },
+    "CommandPalette": {
+      "cardMode": "single",
+      "viewport": "720x520"
+    },
+    "Tooltip": {
+      "cardMode": "single",
+      "viewport": "480x260"
+    },
+    "CheckboxCell": {
+      "viewport": "320x120"
+    }
+  },
+  "readmeHeader": ".design-sync/conventions.md"
+}
