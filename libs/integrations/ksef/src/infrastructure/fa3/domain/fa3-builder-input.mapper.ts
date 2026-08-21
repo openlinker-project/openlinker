@@ -58,7 +58,6 @@ export interface Fa3MappingContext {
    * not belong on `SellerProfile` (which mirrors `Podmiot1` XML fields only)
    * even though both are resolved from the same connection config.
    */
-  defaultTaxRate: string;
   /**
    * Connection-resolved fallback unit of measure (`P_8A`, #1525) applied to any
    * line whose neutral `unit` is absent/empty. `undefined` when the connection
@@ -110,7 +109,7 @@ export function mapToFa3BuilderInput(
 /**
  * Map one neutral line to a fully-mapped FA(3) line (applies the P_12 mapper).
  * An empty neutral `taxRate` (core has no per-line rate to give — ADR-026)
- * falls back to the connection's `defaultTaxRate` before resolution; a
+ * no longer falls back to any connection default (#2257); a
  * non-empty rate is never overridden, so a genuine unmapped/mis-keyed code
  * still surfaces loudly via `resolveP12`'s throw.
  */
@@ -135,7 +134,10 @@ function mapLine(line: InvoiceLine, context: Fa3MappingContext): Fa3Line {
     name: line.name,
     quantity: line.quantity,
     unitPriceGross: line.unitPriceGross,
-    p12: resolveP12(line.taxRate || context.defaultTaxRate),
+    // #2257 — no fallback. `resolveP12('')` throws UnmappedTaxRateException,
+    // which is the correct outcome: OpenLinker never invents a rate for a
+    // fiscal document, and core refuses such a command before this runs.
+    p12: resolveP12(line.taxRate),
     ...(unit !== undefined ? { unit } : {}),
   };
 }

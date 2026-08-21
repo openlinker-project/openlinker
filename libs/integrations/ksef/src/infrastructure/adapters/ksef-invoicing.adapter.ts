@@ -218,11 +218,6 @@ export class KsefInvoicingAdapter
     private readonly fa3Builder: IFa3XmlBuilder,
     private readonly seller: SellerProfile,
     /**
-     * Connection-resolved fallback `P_12` neutral code applied to any line
-     * whose neutral `taxRate` arrives empty (see `Fa3MappingContext.defaultTaxRate`).
-     */
-    private readonly defaultTaxRate: string,
-    /**
      * Trailing optional inputs (payment defaults #1311, injected clock) ride
      * in an options bag so a future addition never shifts positional call
      * sites (PR #1317 review).
@@ -264,7 +259,6 @@ export class KsefInvoicingAdapter
     this.logger.log(
       `Issuing KSeF document (connection ${this.connectionId}, order ${cmd.orderId}, lines ${cmd.lines.length})`,
     );
-    this.warnOnEmptyTaxRateFallback(cmd);
 
     // 1. neutral → FA(3) (C4). Deterministic build faults throw the mapper's own
     //    typed exceptions; the service maps those to a failed record (no retry).
@@ -273,7 +267,6 @@ export class KsefInvoicingAdapter
       issueDate: this.toIsoDate(issuedAt),
       generatedAt: issuedAt.toISOString(),
       invoiceNumber: documentNumber,
-      defaultTaxRate: this.defaultTaxRate,
       defaultLineUnit: this.defaultLineUnit,
       payment: this.payment,
     });
@@ -1188,24 +1181,6 @@ export class KsefInvoicingAdapter
     }
   }
 
-  /**
-   * The pure `mapToFa3BuilderInput` mapper cannot log, so the audit trail for
-   * the empty-`taxRate` → connection-`defaultTaxRate` substitution (#1290,
-   * #1291) lives here instead — a WARN per issuance whose command carries at
-   * least one line (plain or correction) with an empty neutral `taxRate`.
-   */
-  private warnOnEmptyTaxRateFallback(cmd: IssueInvoiceCommand): void {
-    const emptyLineCount =
-      cmd.lines.filter((line) => !line.taxRate).length +
-      (cmd.correction?.correctedLines.filter((line) => !line.taxRate).length ?? 0);
-    if (emptyLineCount > 0) {
-      this.logger.warn(
-        `KSeF document (connection ${this.connectionId}, order ${cmd.orderId}) has ` +
-          `${emptyLineCount} line(s) with an empty neutral taxRate — falling back to the ` +
-          `connection default (${this.defaultTaxRate}).`,
-      );
-    }
-  }
 
   private resolveDocumentType(documentType?: string): string {
     // Validated by assertDocumentTypeSupported at the top of issueInvoice; an
