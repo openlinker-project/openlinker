@@ -637,6 +637,7 @@ Defaults (FE-002):
 | Input / Select | `32 px` | Never taller. |
 | KPI card | auto, ~96 px | Label + value + hint. Sparkline floats top-right. |
 | Status banner | auto, ~64 px | Icon + title + message + actions. |
+| Analytics trust-header row (`.trust-header__row`) | auto, ~52 px | `var(--space-3) var(--space-4)` padding. Per-connection freshness list, denser than a status banner because it repeats per row. Collapses to one column, auto height on mobile. |
 
 Never introduce a row height that isn't on this list without updating the guide first. Variability across surfaces is the primary way a cockpit feels amateur.
 

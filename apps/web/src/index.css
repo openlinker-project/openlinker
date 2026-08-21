@@ -18325,6 +18325,143 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   }
 }
 
+/* ── Analytics date-range toolbar (#1986) ──
+   Mirrors .orders-toolbar__field / __label (line ~9097) — same inline
+   mono-caps label + native date input shape, wrap allowed on narrow
+   viewports so fields land on their own line instead of overflowing. */
+.analytics-toolbar .toolbar__group {
+  flex-wrap: wrap;
+}
+.analytics-toolbar__field {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.analytics-toolbar__label {
+  font-size: 0.6875rem;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+/* The † gap marker on the "Order date" chip — a real <button> opening a
+   Popover on click, not a Tooltip, so it's reachable on touch devices
+   (Radix Tooltip ignores pointerType === 'touch'). */
+.analytics-gap-mark {
+  color: var(--accent-primary-hover);
+  font-weight: 700;
+  font-family: var(--font-mono);
+  cursor: pointer;
+  border-radius: var(--radius-xs);
+  border: none;
+  background: none;
+  padding: 0;
+}
+
+.analytics-gap-mark:focus-visible {
+  box-shadow: var(--shadow-focus);
+}
+
+/* ── Analytics trust header (#1986) ──
+   Opens on click, never hover-only — Radix Tooltip ignores
+   `pointerType === 'touch'`, which would make a hover-only affordance
+   unreachable on mobile. */
+.analytics-info-popover-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: var(--radius-pill);
+}
+
+.analytics-info-popover-trigger:hover {
+  color: var(--accent-primary);
+}
+
+.analytics-info-popover-trigger:focus-visible {
+  box-shadow: var(--shadow-focus);
+}
+
+.trust-header {
+  display: flex;
+  flex-direction: column;
+}
+
+.trust-header__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: var(--space-2) var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.trust-header__title-group {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.trust-header__row:first-child {
+  border-top: 0;
+}
+
+.trust-header__name {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-weight: 600;
+  font-size: 0.8125rem;
+}
+
+.trust-header__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-pill);
+  flex-shrink: 0;
+  background: var(--text-muted);
+}
+
+.trust-header__dot[data-channel='allegro'] { background: var(--channel-allegro); }
+.trust-header__dot[data-channel='prestashop'] { background: var(--channel-prestashop); }
+.trust-header__dot[data-channel='erli'] { background: var(--channel-erli); }
+.trust-header__dot[data-channel='woocommerce'] { background: var(--channel-woocommerce); }
+.trust-header__dot[data-channel='amazon'] { background: var(--channel-amazon); }
+.trust-header__dot[data-channel='shopify'] { background: var(--channel-shopify); }
+
+.trust-header__facts {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+@media (max-width: 767.98px) {
+  .trust-header__row {
+    grid-template-columns: 1fr;
+    row-gap: var(--space-1);
+  }
+
+  .trust-header__facts {
+    justify-content: flex-start;
+    white-space: normal;
+  }
+}
+
 /* ── Rich text editor + view (ADR-046 / #2199) ──────────────────────────────
    Tiptap ships no stylesheet, so every pixel here is ours. The first three
    declarations on `.rich-text__surface .ProseMirror` are the functional half of
@@ -18516,10 +18653,6 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
 .bulk-review__desc > summary {
   cursor: pointer;
   font-family: var(--font-mono);
-  font-size: 0.6875rem;
-  letter-spacing: var(--tracking-caps);
-  text-transform: uppercase;
-  color: var(--text-muted);
 }
 .bulk-review__desc > summary:hover { color: var(--text-secondary); }
 .bulk-review__desc[open] > summary { margin-bottom: var(--space-1); }

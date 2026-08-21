@@ -133,6 +133,14 @@ export function createMockApiClient(
       setActive: vi.fn().mockResolvedValue(undefined),
       ...overrides.aiProviderSettings,
     } as ApiClient['aiProviderSettings'],
+    analyticsTrust: {
+      getTrust: vi.fn().mockResolvedValue({
+        generatedAt: '2026-01-01T00:00:00.000Z',
+        worstStatus: 'fresh',
+        connections: [],
+      }),
+      ...overrides.analyticsTrust,
+    } as ApiClient['analyticsTrust'],
     auth: {
       login: vi.fn().mockResolvedValue({ access_token: 'mock-jwt-token' }),
       register: vi.fn().mockResolvedValue({ ok: true }),
