@@ -22,6 +22,8 @@ import { EventPublisherPort, EVENT_PUBLISHER_TOKEN } from '@openlinker/core/even
 import { PRODUCTS_SERVICE_TOKEN } from '../../products.tokens';
 import { IProductsService } from './products.service.interface';
 import type { ProductMasterPort } from '../../domain/ports/product-master.port';
+import { isProductTaxRateReader } from '../../domain/ports/capabilities/product-tax-rate-reader.capability';
+import type { TaxRateResolution } from '../../domain/types/tax-rate.types';
 import type { Product } from '../../domain/entities/product.entity';
 import type { ProductVariant } from '../../domain/entities/product-variant.entity';
 import { MasterProductNotFoundError } from '../../domain/exceptions/master-product-not-found.error';
@@ -124,6 +126,13 @@ export class MasterProductSyncService implements IMasterProductSyncService {
       await this.productsService.upsertVariants(internalProductId, variants);
     }
 
+    // Pull the tax rate onto the catalogue projection (#2054, ADR-052 § 4), in
+    // the same pass that already refreshes price and currency. Best-effort and
+    // strictly after the upserts: a rate read that fails must not cost the
+    // catalogue its product body, and leaving the row untouched keeps it in the
+    // honest `never checked` state rather than recording a false `no rate`.
+    await this.syncTaxRate(productAdapter, internalProductId, variants, connectionId, correlationId);
+
     // Soft-mark any previously-known variant absent from this master response as
     // stale (#1599 — the products-context counterpart of the inventory prune).
     // Guarded against a false positive: a successful pull returning ZERO variants
@@ -184,6 +193,85 @@ export class MasterProductSyncService implements IMasterProductSyncService {
       pruneSkipped,
       pruneSkippedReason,
     };
+  }
+
+  /**
+   * Ask the master what tax the product carries and store the answer (#2054).
+   *
+   * Three properties are deliberate.
+   *
+   * **A master with no answer is not asked.** `isProductTaxRateReader` narrows
+   * the already-dispatched adapter; a master that does not implement the
+   * capability leaves the row untouched, so it stays *never checked* rather
+   * than being recorded as *checked, no rate*. The two drive different operator
+   * copy and only one of them holds documents.
+   *
+   * **An `unknown` answer IS recorded**, as a null code with a real timestamp.
+   * That is the whole reason the timestamp column exists: the master answered,
+   * and what it said was "I have no rate for this". Skipping the write here
+   * would make a configured-but-rate-less catalogue indistinguishable from one
+   * nobody has synced.
+   *
+   * **A throw is swallowed, and leaves the row untouched.** A transport failure
+   * says nothing about the shop's configuration, so recording anything would be
+   * a claim the read does not support; the next sync asks again.
+   */
+  private async syncTaxRate(
+    adapter: ProductMasterPort,
+    internalProductId: string,
+    variants: readonly ProductVariant[],
+    connectionId: string,
+    correlationId: string
+  ): Promise<void> {
+    if (!isProductTaxRateReader(adapter)) return;
+
+    const readAt = new Date();
+    try {
+      const productRate = await adapter.readProductTaxRate({ productId: internalProductId });
+      await this.productsService.recordProductTaxRate(
+        internalProductId,
+        this.toStoredTaxRate(productRate, readAt)
+      );
+
+      // Only a variant-keyed master gets per-variant reads. On a product-keyed
+      // one (PrestaShop) every variant would echo the product's rate, and
+      // storing that as an override would turn a shared value into N copies
+      // that drift the moment the product's changes.
+      if (adapter.readsTaxRatePerVariant?.() !== true) return;
+
+      for (const variant of variants) {
+        const variantRate = await adapter.readProductTaxRate({
+          productId: internalProductId,
+          variantId: variant.id,
+        });
+        // `inherited` means the variant defers to the product, which is not an
+        // override at all - so nothing is written and the row stays genuinely
+        // absent. Copying the product's code down would create a duplicate that
+        // goes stale the next time the product's rate changes.
+        if (variantRate.kind === 'inherited') continue;
+        await this.productsService.recordVariantTaxRate(
+          variant.id,
+          this.toStoredTaxRate(variantRate, readAt)
+        );
+      }
+    } catch (error) {
+      this.logger.warn(
+        `[master-sync] tax-rate read failed, leaving the catalogue row unchanged: ` +
+          `connectionId=${connectionId} internalProductId=${internalProductId} ` +
+          `correlationId=${correlationId} error=${(error as Error).message}`
+      );
+    }
+  }
+
+  /** A resolution becomes a stored row; `unknown` stores a null code, not a zero. */
+  private toStoredTaxRate(
+    resolution: TaxRateResolution,
+    readAt: Date
+  ): { code: string | null; countryIso2: string | null; readAt: Date } {
+    return resolution.kind === 'resolved'
+      ? { code: resolution.code, countryIso2: resolution.countryIso2, readAt }
+      : { code: null, countryIso2: null, readAt };
+
   }
 
   /**
