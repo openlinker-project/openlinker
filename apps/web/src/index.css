@@ -17347,6 +17347,43 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
 .offer-publication-status__row { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
 .offer-publication-status__id { font-size: 12px; color: var(--text-muted); }
 
+/* Every reason an offer cannot sell (#2231): the sentence for the seller, the
+   channel's own code for whoever checks it against the channel's docs. Takes a
+   full row of its own inside the flex-wrapped offer row, so it sits under the
+   badge/id/refresh line rather than squeezing between them. */
+.offer-publication-status__problems {
+  flex: 1 1 100%;
+  list-style: none;
+  margin: 0;
+  padding: var(--space-2) 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.problem-line {
+  display: flex;
+  gap: var(--space-2);
+  align-items: baseline;
+  font-size: 0.75rem;
+}
+.problem-line__mark {
+  color: var(--status-error-fg);
+  font-size: 0.6875rem;
+  flex: 0 0 auto;
+}
+.problem-line__text {
+  color: var(--text-secondary);
+}
+.problem-line__text b {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+.problem-line__code {
+  font-size: 0.625rem;
+  color: var(--text-disabled);
+  flex: 0 0 auto;
+}
+
 /* Compact per-variant row - attrs/EAN left, stock badge, available/reserved,
    listings count right. Deliberately NOT the dense VariantStockTable grid
    (kept for the product-detail page's own accordion); the cockpit's
@@ -18247,6 +18284,32 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+/* The same slot when it reports a state rather than outstanding work (#2231) -
+   an offer switched off deliberately, or one whose only problem is shop-level and
+   is carried by the notice above the table. Muted so the red treatment above
+   keeps meaning "someone has to change something". */
+.listing-cell__reason--muted {
+  color: var(--text-muted);
+}
+
+/* Shop-level channel problems, carried once per connection above the table
+   (#2231) instead of on every row that repeats them. */
+.listings-connection-notice {
+  margin-bottom: var(--space-3);
+}
+.listings-connection-notice__problems {
+  list-style: none;
+  margin: var(--space-1) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.listings-connection-notice__code {
+  margin-left: var(--space-2);
+  font-size: 0.625rem;
+  color: var(--text-disabled);
 }
 
 /* Mobile card head (#1965 frame 05): at 360px the name is what the card is
