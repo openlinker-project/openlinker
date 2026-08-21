@@ -269,9 +269,11 @@ describe('SyncJobsService', () => {
       ]);
 
       const result = service.findEnabledTaskByJobType('master.product.syncDelta');
+      // Cleared before the assertion so a failure cannot leak the var into
+      // later tests that rely on unset env defaults.
+      delete process.env.OL_FIRST_TASK_DISABLED;
 
       expect(result?.taskId).toBe('enabled-one');
-      delete process.env.OL_FIRST_TASK_DISABLED;
     });
   });
 });

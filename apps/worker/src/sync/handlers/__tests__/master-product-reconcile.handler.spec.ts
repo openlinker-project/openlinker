@@ -230,6 +230,21 @@ describe('MasterProductReconcileHandler', () => {
       expect(keys.indexOf(CURSOR_KEY)).toBeLessThan(keys.indexOf(COMPLETED_AT_KEY));
     });
 
+    it('should NOT fail the job when the completion stamp itself fails (best-effort)', async () => {
+      // The sweep cursor is already cleared at this point — throwing would
+      // retry into a fresh cycle and re-enqueue a page of children for a
+      // cycle that already completed. The stamp self-heals next cycle.
+      mappings(3);
+      cursors.advanceCursor.mockImplementation((_conn, key) =>
+        key === COMPLETED_AT_KEY ? Promise.reject(new Error('db down')) : Promise.resolve()
+      );
+
+      const result = await handler.execute(createJob());
+
+      expect(result).toEqual({ outcome: 'ok' });
+      expect(syncLock.release).toHaveBeenCalledWith(LOCK_KEY, 'lock-token');
+    });
+
     it('should NOT stamp completion when the cycle merely resumes', async () => {
       mappings(500);
 

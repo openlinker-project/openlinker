@@ -142,11 +142,25 @@ export class MasterProductReconcileHandler implements SyncJobHandler {
         // the worse direction. `advanceCursor` is non-monotonic; the per-
         // connection sweep lock makes overlapping completions effectively
         // unreachable, and last-writer-wins is acceptable for this fact.
-        await this.cursors.advanceCursor(
-          job.connectionId,
-          sweepCompletedAtCursorKey('product-reconcile', job.connectionId),
-          new Date().toISOString()
-        );
+        //
+        // Best-effort, never thrown (the #2024 supplementary-write posture):
+        // the sweep cursor is already cleared, so failing the job here would
+        // retry into a FRESH cycle — re-enqueueing a full page of per-product
+        // children for a cycle that already completed. The stamp self-heals
+        // on the next completing cycle.
+        try {
+          await this.cursors.advanceCursor(
+            job.connectionId,
+            sweepCompletedAtCursorKey('product-reconcile', job.connectionId),
+            new Date().toISOString()
+          );
+        } catch (stampError) {
+          this.logger.warn(
+            `Failed to stamp reconcile completion for connection ${job.connectionId}: ${
+              stampError instanceof Error ? stampError.message : String(stampError)
+            }`
+          );
+        }
       }
 
       if (result.failed > 0) {
