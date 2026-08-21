@@ -71,7 +71,7 @@ five existing event consumers; the ingestion line-diff.
   would put two live proposals on one subject in the index). Set ADR-043's status to
   `Superseded by ADR-059` when this merges.
 
-**Reversal gate**: a demonstrated operator-facing state the derivation cannot express (the
+*Reversal gate (prose-only):* a demonstrated operator-facing state the derivation cannot express (the
 ADR-043 test, re-applied) re-opens the persisted-state question; operator demand for custom stage
 labels re-opens only a one-way label overlay, never the derivation.
 

@@ -54,7 +54,7 @@ Where no refund executor exists (true of every shipped adapter today), the trigg
 - An enterprise DOMS that insists on owning refunds cannot be accommodated; its adapter degrades
   to request-and-observe. Stated in the adapter guide rather than discovered in production.
 
-**Reversal gate**: an OMS that itself holds the payment-instrument credential (or the fiscal
+*Reversal gate (prose-only):* an OMS that itself holds the payment-instrument credential (or the fiscal
 provider connection) would shift the physical-scoping premise — that concrete case, and nothing
 weaker, re-opens this ADR.
 

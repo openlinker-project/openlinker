@@ -57,7 +57,7 @@ facts; a DOMS or 3PL answers ATP per scope with declared fidelity and bounded bl
 **Cons:** `olReservedQuantity` is denormalised (reconciler required); the `'unknown'` floor is a
 deliberate underselling trade-off, stated rather than hidden.
 
-**Reversal gate**: an oversell traced to a topology where reservations are diagnostic-only
+*Reversal gate (prose-only):* an oversell traced to a topology where reservations are diagnostic-only
 re-opens the scoped-subtraction rule; a master adapter that can implement a hold primitive
 un-defers `MasterReservationWriter`.
 

@@ -66,7 +66,7 @@ every write OL owns has the operator as its sensor. **Cons:** every outbound-ass
 query must be audited for `direction`; the Allegro feed's cursor shape is unverified and gates
 Wave 1.
 
-**Reversal gate**: receive-node routing becoming a real decision (multiple receiving locations)
+*Reversal gate (prose-only):* receive-node routing becoming a real decision (multiple receiving locations)
 introduces `ReverseFulfillmentWork`; a source exposing a genuinely machine-shaped return status
 re-opens the verbatim-`rawStatus` rule for that source.
 

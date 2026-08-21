@@ -52,7 +52,7 @@ zeroed or oversold catalogue.
 **Cons:** a legitimate mass stock change (warehouse onboarding) can trip the envelope — the
 operator clears it from the authority-status surface; envelope factor tuning is operational work.
 
-**Reversal gate**: a request to distribute an authority-holding plugin out-of-tree re-opens this
+*Reversal gate (prose-only):* a request to distribute an authority-holding plugin out-of-tree re-opens this
 ADR — its own decision text already routes that pressure here.
 
 ## References

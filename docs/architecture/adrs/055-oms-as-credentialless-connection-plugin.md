@@ -81,7 +81,7 @@ when the repo's history goes public.
 - `SyncJob.connectionId` non-nullability (#1943) is leaned on again; a second consumer of that
   interim scaffold strengthens the case to fix it.
 
-**Reversal gate**: the end-of-Wave-3 contract freeze is the standing decision point — publishing
+*Reversal gate (prose-only):* the end-of-Wave-3 contract freeze is the standing decision point — publishing
 `@openlinker/core` and/or extracting the package is evaluated there, once. The open-core licensing
 option expires when the repository's history goes public; past that date only the in-repo
 license-split remains.

@@ -53,7 +53,7 @@ the same per-authority flags — one build, one contract, no mode switch.
 - Enforcement is distributed across owning contexts (see [ADR-053](./053-fulfillment-authority-vocabulary-leaf.md)),
   not centralised.
 
-**Reversal gate**: a credible OMS integration whose model cannot be expressed as
+*Reversal gate (prose-only):* a credible OMS integration whose model cannot be expressed as
 per-authority, per-scope assignment — i.e. one that requires global order ownership to function
 at all — re-opens the matrix decision.
 

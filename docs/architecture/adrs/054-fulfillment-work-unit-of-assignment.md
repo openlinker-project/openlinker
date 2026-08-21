@@ -72,7 +72,7 @@ only `RoutingInput`/`RoutingPlan` (with a `pending {decisionId}` arm for async D
   *dispatch resolution*, and the shipping layer stays authoritative for label mechanics.
 - Observation-only work on `omp_fulfilled` closes coarsely (whole-order observed dispatch).
 
-**Reversal gate**: an operator demonstrably outgrowing the ordered filter/sort list (needing
+*Reversal gate (prose-only):* an operator demonstrably outgrowing the ordered filter/sort list (needing
 cross-rule conditions or arbitrary predicates) re-opens the no-rules-engine decision; a second
 executor needing batching re-opens the `awaiting_wave` deferral.
 
