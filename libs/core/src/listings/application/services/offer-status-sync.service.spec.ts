@@ -587,7 +587,10 @@ describe('OfferStatusSyncService', () => {
 
       expect(snapshots.upsert).toHaveBeenCalledWith(
         expect.objectContaining({
-          statusDetails: { validationMessages: ['Missing parameter'] },
+          statusDetails: {
+            validationMessages: ['Missing parameter'],
+            validationProblems: [{ code: '', message: 'Missing parameter', scope: 'offer' }],
+          },
         }) as UpsertOfferStatusSnapshotCommand
       );
     });
