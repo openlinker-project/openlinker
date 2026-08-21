@@ -63,6 +63,7 @@ import {
   usePlatform,
   usePlatforms,
   type BulkOfferRowSectionProps,
+  type OfferBlockerField,
 } from '../../../../shared/plugins';
 import { resolvePlatformLabel } from '../../../mappings';
 import type { Connection } from '../../../connections';
@@ -264,6 +265,12 @@ interface BulkEditModalProps {
   /** Variant id to open focused on (from a Review-step blocker chip). */
   focusVariantId?: string;
   /**
+   * Field the operator was sent here to fix (#2243). A blocker chip knows which
+   * field it is about, so the modal opens with that field scrolled into view and
+   * focused instead of at the top of a long form. Absent ⇒ unchanged behaviour.
+   */
+  focusField?: OfferBlockerField;
+  /**
    * Which field set to render (#1830). `'marketplace'` (default) keeps the
    * legacy offer editor; `'shop'` renders the `ProductPublisher` editor
    * (category crumb + attributes + content + price/stock, no offer schema).
@@ -301,6 +308,7 @@ export function BulkEditModal({
   batchDeliveryPriceList,
   onSave,
   focusVariantId,
+  focusField,
   destinationKind = 'marketplace',
   canBrowseShopCategories = false,
   canPickShopAttributes = false,
@@ -378,6 +386,7 @@ export function BulkEditModal({
             />
           ) : (
             <BulkEditModalForm
+              focusField={focusField}
               row={row}
               connection={connection}
               canBrowseCategories={canBrowseCategories}
@@ -474,6 +483,7 @@ interface BulkEditModalFormProps {
   batchStockPolicy: StockPolicy;
   batchDeliveryPriceList: string;
   focusVariantId?: string;
+  focusField?: OfferBlockerField;
   demoReadOnly: boolean;
   onDirtyChange: (dirty: boolean) => void;
   onRequestClose: () => void;
@@ -491,6 +501,7 @@ function BulkEditModalForm({
   batchStockPolicy,
   batchDeliveryPriceList,
   focusVariantId,
+  focusField,
   demoReadOnly,
   onDirtyChange,
   onRequestClose,
@@ -519,6 +530,26 @@ function BulkEditModalForm({
   const [scope, setScope] = useState<string>(
     () => (isMultiVariant && focusVariantId ? focusVariantId : isMultiVariant ? 'base' : 'simple'),
   );
+
+  // Land on the field the operator was sent here to fix (#2243). Anchors are
+  // `data-focus-field` wrappers, so a field that moves inside the form keeps
+  // working and a field that does not exist in the open scope simply does
+  // nothing - a chip must never leave the modal in a broken scroll position.
+  useEffect(() => {
+    if (!focusField) return;
+    const frame = requestAnimationFrame(() => {
+      const anchor = document.querySelector(`[data-focus-field="${focusField}"]`);
+      if (!anchor) return;
+      anchor.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      const control = anchor.querySelector<HTMLElement>(
+        'input:not([type="hidden"]), select, textarea, button',
+      );
+      control?.focus({ preventScroll: true });
+    });
+    return () => {
+      cancelAnimationFrame(frame);
+    };
+  }, [focusField, scope]);
 
   // Per-variant edit model + inclusion (source of truth for override presence).
   const [variantEdits, setVariantEdits] = useState<Record<string, VariantEdit>>(() => {
@@ -1008,7 +1039,7 @@ function BulkEditModalForm({
         Edit the shared base offer and per-variant overrides for this product.
       </DialogDescription>
 
-      <div className="bulk-editor__cat-chip">
+      <div className="bulk-editor__cat-chip" data-focus-field="category">
         {canBrowseCategories ? (
           <Button
             tone="ghost"
@@ -1463,6 +1494,7 @@ function BaseScopeForm({
           )}
         </div>
 
+        <div data-focus-field="title">
         <FormField
           name="bulk-edit-title"
           label="Title"
@@ -1476,9 +1508,10 @@ function BaseScopeForm({
             aria-invalid={Boolean(form.formState.errors.title)}
           />
         </FormField>
+        </div>
 
         {mode === 'simple' ? (
-          <div className="bulk-editor__field">
+          <div className="bulk-editor__field" data-focus-field="ean">
             <label>EAN (GTIN)</label>
             <Input
               {...form.register('ean')}
@@ -1563,7 +1596,7 @@ function BaseScopeForm({
         />
 
         {mode === 'simple' ? (
-          <div className="bulk-editor__row2">
+          <div className="bulk-editor__row2" data-focus-field="price">
             <FormField
               name="bulk-edit-price"
               label="Price"
@@ -1688,7 +1721,7 @@ function BaseScopeForm({
               </button>
             ) : null}
           </label>
-          <div className="bulk-editor__img-strip bulk-editor__img-strip--editable">
+          <div className="bulk-editor__img-strip bulk-editor__img-strip--editable" data-focus-field="images">
             {effectiveImages.map((url, i) => (
               <span className="bulk-editor__img-thumb" key={`${url}-${i}`}>
                 <ThumbZoomButton url={url} onZoom={onZoom} />
@@ -1901,7 +1934,7 @@ function BaseParameterSection({
     );
   }
   return (
-    <div className="bulk-editor__platform-slot">
+    <div className="bulk-editor__platform-slot" data-focus-field="parameters">
       <div className="bulk-editor__slot-tag">
         <span className="eyebrow">Category parameters</span>
       </div>
@@ -2390,7 +2423,7 @@ function VariantScopeForm({
               </>
             ) : hasOwnCategory ? (
               <>
-                <div className="bulk-editor__cat-chip">
+                <div className="bulk-editor__cat-chip" data-focus-field="category">
                   <span className="mono-text">
                     {ownCategoryPathNames && ownCategoryPathNames.length > 0
                       ? ownCategoryPathNames.join(' › ')
@@ -2489,7 +2522,7 @@ function VariantScopeForm({
       ) : null}
 
       {/* EAN - from master, editable, GS1 + intra-group duplicate validated. */}
-      <div className="bulk-editor__field">
+      <div className="bulk-editor__field" data-focus-field="ean">
         <label>
           EAN (GTIN) {ean.trim() !== master ? <ProvBadge kind="override" /> : <ProvBadge kind="master" />}
         </label>
@@ -2552,7 +2585,7 @@ function VariantScopeForm({
             </button>
           ) : null}
         </label>
-        <div className="bulk-editor__img-strip bulk-editor__img-strip--editable">
+        <div className="bulk-editor__img-strip bulk-editor__img-strip--editable" data-focus-field="images">
           {effectiveImages.map((url, i) => (
             <span
               key={`${url}-${i}`}
@@ -2661,7 +2694,7 @@ function VariantScopeForm({
           this variant has its own category (#1924), the schema resolves from
           THAT category rather than the shared base's. */}
       {effectiveCategoryParameters.length > 0 ? (
-        <div className="bulk-editor__platform-slot">
+        <div className="bulk-editor__platform-slot" data-focus-field="parameters">
           <div className="bulk-editor__slot-tag">
             <span className="eyebrow">Category parameters</span>
           </div>

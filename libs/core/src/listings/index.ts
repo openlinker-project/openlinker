@@ -487,6 +487,23 @@ export type {
   RequiredToSellCheckInput,
 } from './domain/types/required-to-sell.types';
 
+// Category-parameter restrictions (#2243) — pure checker over the bounds a
+// destination already declared on `CategoryParameter.restrictions`, so a value
+// that cannot publish is reported by field name instead of by the marketplace's
+// own rejection. Mirrored client-side; the mirror is guarded by
+// `scripts/check-parameter-restriction-mirror.mjs`.
+export { checkParameterRestrictions } from './application/services/check-parameter-restrictions';
+export {
+  ParameterRestrictionSeverityValues,
+  ParameterRestrictionIssueCodeValues,
+} from './domain/types/parameter-restriction.types';
+export type {
+  ParameterRestrictionSeverity,
+  ParameterRestrictionIssueCode,
+  ParameterRestrictionIssue,
+  ParameterValueInput,
+} from './domain/types/parameter-restriction.types';
+
 // Shop publish execution (#1042, #1072) — pure contracts only (the two service
 // classes live on `@openlinker/core/listings/services`, never here).
 export { ListingCreationRecord } from './domain/entities/listing-creation-record.entity';
