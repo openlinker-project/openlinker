@@ -24,7 +24,10 @@ import type { CanonicalInboundEvent } from '@openlinker/core/integrations';
 import type { Connection } from '@openlinker/core/identifier-mapping';
 import type { OrderFeedEventType } from '@openlinker/core/orders';
 import type { IInboundRoutingPolicyService } from '../interfaces/inbound-routing-policy.service.interface';
-import type { RoutingOutcome } from '../types/inbound-routing-policy.types';
+import type {
+  InboundRouteResolution,
+  RoutingOutcome,
+} from '../types/inbound-routing-policy.types';
 import { JobEnqueuePort } from '../../domain/ports/job-enqueue.port';
 import { JOB_ENQUEUE_TOKEN } from '../../sync.tokens';
 import { buildInboundJobIdempotencyKey } from './inbound-job-idempotency-key';
@@ -77,12 +80,12 @@ export class InboundRoutingPolicyService implements IInboundRoutingPolicyService
     private readonly jobEnqueue: JobEnqueuePort
   ) {}
 
-  async route(
+  resolve(
     event: CanonicalInboundEvent,
     connection: Connection,
     supportedCapabilities: readonly string[],
     sourceEventId: string
-  ): Promise<RoutingOutcome> {
+  ): InboundRouteResolution {
     const { jobType, requiredCapability, payload } = this.resolveRoute(event, sourceEventId);
 
     const supported = supportedCapabilities.includes(requiredCapability);
@@ -95,22 +98,39 @@ export class InboundRoutingPolicyService implements IInboundRoutingPolicyService
       return { status: 'ungated', domain: event.domain, requiredCapability };
     }
 
-    const job: SyncJobRequest = {
-      jobType,
-      connectionId: connection.id,
-      payload,
-      idempotencyKey: buildInboundJobIdempotencyKey(
-        connection.platformType,
-        connection.id,
-        sourceEventId
-      ),
+    return {
+      status: 'resolved',
+      job: {
+        jobType,
+        connectionId: connection.id,
+        payload,
+        idempotencyKey: buildInboundJobIdempotencyKey(
+          connection.platformType,
+          connection.id,
+          sourceEventId
+        ),
+      },
     };
+  }
+
+  async route(
+    event: CanonicalInboundEvent,
+    connection: Connection,
+    supportedCapabilities: readonly string[],
+    sourceEventId: string
+  ): Promise<RoutingOutcome> {
+    const resolution = this.resolve(event, connection, supportedCapabilities, sourceEventId);
+    if (resolution.status === 'ungated') {
+      return resolution;
+    }
+
+    const job: SyncJobRequest = resolution.job;
     const { jobId } = await this.jobEnqueue.enqueueJob(job);
     this.logger.log(
       `Routed inbound ${event.domain} event (externalId=${event.externalId}) for connection ` +
-        `${connection.id} → ${jobType} (job ${jobId})`
+        `${connection.id} → ${job.jobType} (job ${jobId})`
     );
-    return { status: 'enqueued', jobId, jobType };
+    return { status: 'enqueued', jobId, jobType: job.jobType };
   }
 
   /**
