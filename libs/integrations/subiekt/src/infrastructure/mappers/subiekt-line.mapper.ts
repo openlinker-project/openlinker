@@ -13,24 +13,38 @@
  * `taxRate` empty by design — core never names a tax rate on the order contract
  * ("the provider adapter resolves the regime rate", see the core line mapper).
  * The Subiekt bridge REQUIRES a non-empty `stawkaVAT` ("StawkaVAT jest wymagana")
- * and parses Polish rate symbols ("23","8","5","0","zw","np"). When the neutral
+ * and parses Polish rate symbols ("23","8","5","0","zw","np") in percent-as-string
+ * notation (#2247). When the neutral
  * line carries no rate we therefore default to the Polish standard rate "23".
  * A rate the source DID supply passes through verbatim.
  *
  * @module libs/integrations/subiekt/src/infrastructure/mappers
  */
 import type { CorrectionLine, InvoiceLine } from '@openlinker/core/invoicing';
+import { assertPercentTaxRateNotation } from '@openlinker/core/invoicing';
 import type { BridgeKorektaLine, BridgeLine } from '../../bridge/subiekt-bridge.types';
 
 /** Polish standard VAT rate — used when the neutral line carries no rate. */
 const DEFAULT_PL_VAT_RATE = '23';
+
+/**
+ * The bridge parses the neutral code as a Polish rate symbol, so it is passed
+ * through verbatim - but the notation is still part of the contract (#2247).
+ * `assertPercentTaxRateNotation` rejects a fractional spelling here rather than
+ * letting `'0.23'` reach Subiekt, where it is neither a known symbol nor a rate
+ * anyone declared.
+ */
+function toStawkaVat(taxRate: string): string {
+  const code = assertPercentTaxRateNotation(taxRate);
+  return code.length > 0 ? code : DEFAULT_PL_VAT_RATE;
+}
 
 export function toBridgeLines(lines: InvoiceLine[]): BridgeLine[] {
   return lines.map((line) => ({
     name: line.name,
     ilosc: line.quantity,
     cenaBrutto: line.unitPriceGross,
-    stawkaVAT: line.taxRate.trim().length > 0 ? line.taxRate.trim() : DEFAULT_PL_VAT_RATE,
+    stawkaVAT: toStawkaVat(line.taxRate),
   }));
 }
 

@@ -313,6 +313,14 @@ export interface BuyerAddress {
  * One invoice line. `unitPriceGross` is numeric (matches core's `number` money
  * idiom); `taxRate` is a neutral string code the provider resolves to its
  * regime (a PL adapter maps `zw`/`np` onto UNCL 5305 `E`/`O`).
+ *
+ * **`taxRate` notation is percent-as-string (#2247):** `'23'` means twenty-three
+ * percent, `'0'` means a zero rate, and a non-numeric code (`zw`, `np`, `oo`)
+ * names an exemption that carries no percentage. Fractional notation (`'0.23'`)
+ * is **not** an alternative spelling - it is rejected, because read as a
+ * percentage it means 0.23% and nothing in the value says which was intended.
+ * Every reader goes through `parseTaxRatePercent` / `taxRatePercentToFraction`
+ * (`./tax-rate-notation.types`) rather than parsing the string itself.
  */
 export interface InvoiceLine {
   name: string;
