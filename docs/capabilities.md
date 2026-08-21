@@ -62,7 +62,7 @@ runtime gate validates a connection's request against the adapter's
 Each is an independent interface + co-located `is{Capability}` guard. Adapters
 declare what they support via `implements <BasePort>, <SubCapability>, …`.
 
-### `OfferManagerPort` (listings) — 18
+### `OfferManagerPort` (listings) — 19
 
 | Sub-capability | What it does | Method(s) | Guard |
 |---|---|---|---|
@@ -79,14 +79,18 @@ declare what they support via `implements <BasePort>, <SubCapability>, …`.
 | `CategoryBarcodeMatcher` | Auto-detect a category from a product barcode. | `matchCategoryByBarcode` | `isCategoryBarcodeMatcher` |
 | `CategoryParametersReader` | Read the parameter schema a category requires. | `fetchCategoryParameters` | `isCategoryParametersReader` |
 | `EanCategoryMatcher` | Resolve categories for a batch of products by EAN. | `resolveCategoriesForBatchByEan` | `isEanCategoryMatcher` |
+| `EanCategoryMatcherStreaming` | Resolve categories for a batch of products by EAN, yielding each variant's outcome as it lands instead of one map at the end. Incremental sibling of `EanCategoryMatcher`; an adapter that ships only the batch method keeps working. | `streamCategoriesForBatchByEan` | `isEanCategoryMatcherStreaming` |
 | `CatalogProductReader` | Look up marketplace catalog products by barcode / id. | `findProductsByBarcode` · `getProduct` | `isCatalogProductReader` |
 | `SellerPoliciesReader` | Surface the seller's saved return / shipping / warranty policies. | `fetchSellerPolicies` | `isSellerPoliciesReader` |
 | `ResponsibleProducerReader` | List GPSR responsible-producer entries. | `fetchResponsibleProducers` | `isResponsibleProducerReader` |
 | `SafetyAttachmentUploader` | Upload a GPSR safety attachment (manual, label, …). | `uploadSafetyAttachment` | `isSafetyAttachmentUploader` |
-| `TaxonomyBorrower` | Reuse another platform's resolved taxonomy for a destination. | `getBorrowedTaxonomy` | `isTaxonomyBorrower` |
+| `TaxonomyBorrower` | Reuse another platform's resolved taxonomy for a destination. | `getBorrowedTaxonomy`, `allowsBorrowedCatalogueLookup` (optional) | `isTaxonomyBorrower` |
 
 **Adapter coverage:** Allegro implements every sub-capability except
-`OfferQuantityBatchUpdater` (see the [README Implementations](../README.md#implementations)
+`OfferQuantityBatchUpdater`, including `EanCategoryMatcherStreaming` (#2208, epic
+#2205); an adapter that ships only `EanCategoryMatcher` keeps working, because
+`CategoryResolutionService` falls back to the batch method
+(see the [README Implementations](../README.md#implementations)
 section); Erli implements a reconciliation-first subset
 ([ADR-025](./architecture/adrs/025-erli-marketplace-adapter.md)).
 
@@ -173,6 +177,33 @@ adapter, not yet implemented by any shipped one.
 
 See [ADR-042](./architecture/adrs/042-fiscalization-capability.md) for the
 fiscalization capability design.
+
+### `ProductMasterPort` (products) — 1
+
+| Sub-capability | What it does | Method(s) | Guard |
+|---|---|---|---|
+| `ModifiedProductLister` | The **modified-since rung** of the master capability ladder — enumerate only the external ids whose product record changed after a caller-supplied watermark, instead of the whole catalog. | `listExternalIdsModifiedSince` | `isModifiedProductLister` |
+
+**Adapter coverage:** WooCommerce only (`modified_after` + `dates_are_gmt=true`,
+WC ≥ 5.8). PrestaShop deliberately does **not** declare it: a combination write
+does not bump the parent product's `date_upd`, and neither `ps_product_attribute`
+nor `ps_stock_available` carries a mutation timestamp to union against, so a delta
+path would look healthy while silently skipping every variant-level change
+(measured in #2221 — see the ADR-048 amendment). A master declaring nothing stays
+on the base port's enumerate-only behaviour, which is correct rather than degraded.
+
+**Guard-only**, unlike the advertised-without-dispatch sub-capabilities above: this
+name is absent from every adapter manifest and from `CoreCapabilityValues`, and is
+resolved solely by narrowing a dispatched `ProductMaster` adapter. A connection's
+`enabledCapabilities` is stamped at create and never retro-filled, so *gating* on a
+newly advertised name would drain nothing for every connection that already exists;
+not advertising it removes the temptation to gate on it.
+
+Read caveat: the freshness reported is **product-level only**. A WooCommerce
+variation edit does not bump the parent's `date_modified`
+([WC #19562](https://github.com/woocommerce/woocommerce/issues/19562)), and stock
+is not on this rung at all. See
+[ADR-048](./architecture/adrs/048-incremental-catalog-replication.md).
 
 ---
 

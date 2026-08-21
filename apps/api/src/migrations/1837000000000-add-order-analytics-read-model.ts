@@ -96,6 +96,15 @@ export class AddOrderAnalyticsReadModel1837000000000 implements MigrationInterfa
     // awaiting_mapping/source_deleted snapshot's items reference external,
     // not internal, ids (see OrderRecord's own doc comment) and must not be
     // written here. ON CONFLICT DO NOTHING makes re-running a no-op.
+    //
+    // The jsonb_typeof guards on quantity/price (#2014 review, SUGGESTION)
+    // mirror step 3's totalAmount guard: quantity/unitPrice are NOT NULL on
+    // order_line_items, so a legacy snapshot whose item is missing one or
+    // holds a non-numeric value would otherwise abort the whole migration
+    // with a cast error. The live path can't produce this (Order.items[]
+    // types both as required) — this is historical-data risk only, and a
+    // row that fails the guard is simply left un-backfilled rather than
+    // failing the deploy.
     await queryRunner.query(`
       INSERT INTO "order_line_items"
         ("orderRecordId", "lineNumber", "productId", "variantId", "quantity", "unitPrice", "sourceConnectionId", "placedAt")
@@ -115,6 +124,8 @@ export class AddOrderAnalyticsReadModel1837000000000 implements MigrationInterfa
       ) WITH ORDINALITY AS t(item, idx)
       WHERE rec."recordStatus" = 'ready'
         AND t.item->>'productId' IS NOT NULL
+        AND jsonb_typeof(t.item->'quantity') = 'number'
+        AND jsonb_typeof(t.item->'price') = 'number'
       ON CONFLICT ("orderRecordId", "lineNumber") DO NOTHING
     `);
   }

@@ -102,6 +102,40 @@ export type ApiRequest = <T>(path: string, init?: RequestInit) => Promise<T>;
 export type ApiBlobRequest = (path: string, init?: RequestInit) => Promise<Blob>;
 
 /**
+ * Streaming variant of {@link ApiRequest}. Same auth-header injection,
+ * 401-refresh and `ApiError` normalisation as `request`, but it hands the
+ * caller the undrained `ReadableStream` body instead of parsing it - the shape
+ * an NDJSON route needs (`POST .../categories/resolve-stream`, #2211), where
+ * the point is to read lines as they land rather than to await the last one.
+ *
+ * It deliberately arms NO wall-clock timeout. `DEFAULT_TIMEOUT_MS` exists to
+ * bound a request that should have answered by now; a stream is the opposite
+ * case - it is expected to stay open for minutes, proves itself alive with
+ * keep-alive lines, and reports a mid-run failure inside the body. Aborting it
+ * on a clock would recreate exactly the 30 s cliff the streamed route was added
+ * to remove. Cancellation is therefore the caller's: pass `init.signal` and
+ * abort it on unmount.
+ *
+ * Dropping the wall clock does not mean dropping liveness. The reader that
+ * drains the body owns an IDLE ceiling instead - see
+ * `RESOLVE_CATEGORY_STREAM_IDLE_TIMEOUT_MS` in
+ * `features/listings/api/listings.api.ts` - so a socket that opens and then goes
+ * silent still fails with a retryable error rather than hanging forever.
+ */
+export type ApiStreamRequest = (
+  path: string,
+  init?: RequestInit,
+) => Promise<ReadableStream<Uint8Array>>;
+
+/**
+ * Ceiling on time-to-first-byte for a streamed request. Generous, because the
+ * server answers before its first marketplace call (it resolves the connection
+ * first, precisely so the head is not held behind one), but finite: without it
+ * `timeout: false` leaves a pre-header stall unbounded.
+ */
+export const STREAM_HEAD_TIMEOUT_MS = 20_000;
+
+/**
  * Plugin-augmentable surface. Empty by default; each plugin extends it
  * via `declare module '../../app/api/api-client'` (see the allegro plugin
  * for the canonical pattern). The empty form is the documented TS shape
@@ -137,6 +171,7 @@ export interface CoreApiClient {
   mappings: MappingsApi;
   request: ApiRequest;
   requestBlob: ApiBlobRequest;
+  requestStream: ApiStreamRequest;
   shipments: ShipmentsApi;
   syncJobs: SyncJobsApi;
   system: SystemApi;
@@ -174,7 +209,11 @@ export function createApiClient({
 }: ApiClientConfig): ApiClient {
   function buildHeaders(init: RequestInit, accessToken: string | null): Headers {
     const headers = new Headers(init.headers);
-    headers.set('Accept', 'application/json');
+    // Only the default - a streaming caller sets `Accept: application/x-ndjson`
+    // and must not have it overwritten here.
+    if (!headers.has('Accept')) {
+      headers.set('Accept', 'application/json');
+    }
     if (
       init.body !== undefined &&
       !(init.body instanceof FormData) &&
@@ -209,13 +248,27 @@ export function createApiClient({
    * ONLY in how they consume that body — all auth/refresh/timeout/error
    * machinery lives here so the two paths can't drift.
    */
-  async function execute(path: string, init: RequestInit): Promise<Response> {
+  async function execute(
+    path: string,
+    init: RequestInit,
+    options: { timeout: boolean } = { timeout: true },
+  ): Promise<Response> {
     const accessToken = await sessionAdapter.getAccessToken();
 
+    // `timeout: false` is the streaming opt-out (see `ApiStreamRequest`): a body
+    // that is meant to stay open has no deadline to miss, so no timer is armed
+    // and only `init.signal` can cancel the call.
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => {
-      controller.abort();
-    }, requestTimeoutMs);
+    const timeoutId = options.timeout
+      ? setTimeout(() => {
+          controller.abort();
+        }, requestTimeoutMs)
+      : null;
+    const clearRequestTimeout = (): void => {
+      if (timeoutId !== null) {
+        clearTimeout(timeoutId);
+      }
+    };
     const signal = init.signal
       ? AbortSignal.any([controller.signal, init.signal])
       : controller.signal;
@@ -234,7 +287,7 @@ export function createApiClient({
         }
       }
 
-      clearTimeout(timeoutId);
+      clearRequestTimeout();
 
       if (!response.ok) {
         // Error bodies are JSON/text on every endpoint (even binary ones) —
@@ -246,7 +299,7 @@ export function createApiClient({
 
       return response;
     } catch (error) {
-      clearTimeout(timeoutId);
+      clearRequestTimeout();
 
       if (error instanceof ApiError) {
         throw error;
@@ -270,6 +323,48 @@ export function createApiClient({
     return response.blob();
   };
 
+  const requestStream: ApiStreamRequest = async (
+    path: string,
+    init: RequestInit = {},
+  ): Promise<ReadableStream<Uint8Array>> => {
+    // Two different stalls need two different bounds. Once the body exists, the
+    // reader's idle ceiling covers a socket that goes quiet (the backend sends a
+    // keep-alive line, so silence is diagnosable). BEFORE that, there is no
+    // reader yet and `timeout: false` has removed the ordinary deadline, so a
+    // server that accepts the connection and never answers would hang the caller
+    // with no error and nothing to retry. This bound covers only that window: it
+    // is armed until the response head arrives and then dropped, so a legitimate
+    // batch that streams for minutes is never cut off.
+    const headTimeout = new AbortController();
+    const headTimer = setTimeout(() => {
+      headTimeout.abort();
+    }, STREAM_HEAD_TIMEOUT_MS);
+    const signal = init.signal
+      ? AbortSignal.any([headTimeout.signal, init.signal])
+      : headTimeout.signal;
+    let response: Response;
+    try {
+      response = await execute(path, { ...init, signal }, { timeout: false });
+    } catch (error) {
+      if (headTimeout.signal.aborted) {
+        // Surfaced as a timeout on the shared error type so the caller's existing
+        // retry branch handles it, rather than as a bare abort the caller would
+        // mistake for its own cancellation.
+        throw ApiError.fromTimeout(path);
+      }
+      throw error;
+    } finally {
+      clearTimeout(headTimer);
+    }
+    if (response.body === null) {
+      // A 2xx with no body is not a stream the caller can read; surfacing it as
+      // an `ApiError` keeps every failure on the one type callers already
+      // branch on rather than adding a second null-shaped outcome.
+      throw new ApiError(`Response carried no readable body: ${path}`, response.status, null);
+    }
+    return response.body;
+  };
+
   const core: CoreApiClient = {
     adapters: createAdaptersApi(request),
     aiProviderSettings: createAiProviderSettingsApi(request),
@@ -285,7 +380,7 @@ export function createApiClient({
     health: createHealthApi(request),
     inventory: createInventoryApi(request),
     invoicing: createInvoicingApi(request, requestBlob),
-    listings: createListingsApi(request),
+    listings: createListingsApi(request, requestStream),
     mailerSettings: createMailerSettingsApi(request),
     mcpTokens: createMcpTokensApi(request),
     mappings: createMappingsApi(request),
@@ -295,6 +390,7 @@ export function createApiClient({
     promptTemplates: createPromptTemplatesApi(request),
     request,
     requestBlob,
+    requestStream,
     shipments: createShipmentsApi(request, requestBlob),
     syncJobs: createSyncJobsApi(request),
     system: createSystemApi(request),

@@ -2,15 +2,27 @@
  * Resolve Categories For Batch By EAN
  *
  * Batch EAN→Allegro-category resolver (#735). Implements the
- * `EanCategoryMatcher` capability for `AllegroOfferManagerAdapter`. Given
- * N `{ variantId, ean }` pairs, queries Allegro's product catalogue
- * (`GET /sale/products?phrase={ean}&mode=GTIN`) per non-empty EAN with a
- * concurrency cap, and returns a per-variant outcome envelope.
+ * `EanCategoryMatcher` and `EanCategoryMatcherStreaming` capabilities for
+ * `AllegroOfferManagerAdapter`. Given N `{ variantId, ean }` pairs, queries
+ * Allegro's product catalogue (`GET /sale/products?phrase={ean}&mode=GTIN`)
+ * per non-empty EAN with a concurrency cap, and reports a per-variant
+ * outcome envelope.
+ *
+ * `streamCategoriesForBatchByEan` is the primary shape (#2208, epic #2205):
+ * an async generator that yields each variant's outcome the moment it
+ * settles, so a batch stops withholding every result for the
+ * `ceil(n / STREAM_CONCURRENCY) * latency` it takes the last wave to land. Allegro exposes no
+ * bulk GTIN lookup, so the per-item work itself is unchanged - only the
+ * delivery point moved.
+ *
+ * `resolveCategoriesForBatchByEan` is kept as a thin collector over that
+ * generator. One resolution path means the batch and streaming call sites
+ * cannot drift in cache behaviour, GTIN filtering, or failure handling.
  *
  * No-throw contract: the util never throws for resolver-side failures.
  * HTTP errors collapse into `{ kind: 'no-match' }` (and are NOT cached, so
  * the next attempt can retry). Cache failures (Redis outage) are caught
- * + logged + bypassed — they MUST NOT abort the batch.
+ * + logged + bypassed - they MUST NOT abort the batch or the stream.
  *
  * Cache semantics:
  * - `matched` (unique exact-EAN hit)             → cached 24 h
@@ -24,12 +36,14 @@
  * the EAN; #431 resolves a card given an already-known category.
  *
  * @module libs/integrations/allegro/src/infrastructure/util
- * @see {@link EanCategoryMatcher} for the capability port
+ * @see {@link EanCategoryMatcher} for the batch capability port
+ * @see {@link EanCategoryMatcherStreaming} for the streaming capability port
  */
 import type { CachePort } from '@openlinker/shared';
 import { Logger } from '@openlinker/shared/logging';
 import type {
   BatchCategoryByEanInput,
+  EanCategoryMatchStreamItem,
   EanMatchCandidate,
   EanMatchResult,
 } from '@openlinker/core/listings';
@@ -38,13 +52,50 @@ import type {
   AllegroProductsSearchResponse,
 } from '../../domain/types/allegro-api.types';
 import type { IAllegroHttpClient } from '../http/allegro-http-client.interface';
-import type { ResolveCategoriesForBatchByEanOptions } from './resolve-categories-for-batch-by-ean.types';
+import type {
+  ResolveCategoriesForBatchByEanOptions,
+  StreamCategoriesForBatchByEanOptions,
+} from './resolve-categories-for-batch-by-ean.types';
 
-export type { ResolveCategoriesForBatchByEanOptions } from './resolve-categories-for-batch-by-ean.types';
+export type {
+  ResolveCategoriesForBatchByEanOptions,
+  StreamCategoriesForBatchByEanOptions,
+} from './resolve-categories-for-batch-by-ean.types';
 
 const DEFAULT_CACHE_TTL_SEC = 24 * 60 * 60;
 const DEFAULT_CACHE_KEY_PREFIX = 'allegro:ean-match';
 const DEFAULT_CONCURRENCY = 3;
+/**
+ * In-flight cap for the STREAMING path (#2215), deliberately higher than
+ * `DEFAULT_CONCURRENCY`.
+ *
+ * Before the streamed step existed, the wizard split a batch into 50-variant
+ * requests and fired them in parallel; each request built its own adapter, each
+ * capped at 3, so the effective in-flight count was `3 * ceil(variants / 50)` -
+ * 9 for a 120-variant batch, 18 for 300. Nobody chose those numbers, they fell
+ * out of the chunk size, but they ran routinely in production. One stream
+ * replaced the chunking, which dropped the cap to a flat 3 and made a
+ * 120-variant batch take about 25 s where it took about 10 s.
+ *
+ * 9 is what a 3-chunk batch already sustained, so it is a ceiling that ran in
+ * production rather than a new one. Two things it is NOT, stated because the
+ * arithmetic above invites both readings:
+ *
+ * - It does not "restore" the old number for every batch. The client now splits
+ *   at the route's 200-item cap, not at 50, so a batch of 40 ran 3 in flight
+ *   before and runs 9 now. The premise only holds from roughly 150 variants up;
+ *   below that this is a straight 3x on outbound `/sale/products`, accepted
+ *   deliberately because that is where the frozen-counter complaint came from.
+ * - It does not sit under a manifest floor. `allegroAdapterManifest` declares no
+ *   `defaultRateLimit` and deliberately never will (#1810 §1: a manifest default
+ *   is for merchant-hosted platforms; a fabricated RPM for a multi-tenant
+ *   marketplace would be surfaced to the operator as "adapter default"). So
+ *   "the operator's configured cap wins" is true only once the operator has
+ *   configured `connection.config.rateLimit`; with none set, 9 IS the cap.
+ *   Reactive protection still applies unconditionally - a 429 parks the client
+ *   on `Retry-After` (`AllegroHttpClient`).
+ */
+export const STREAM_CONCURRENCY = 9;
 const DEFAULT_SEARCH_LIMIT = 10;
 
 /**
@@ -65,6 +116,69 @@ type CachedOutcome =
   | { kind: 'matched'; allegroCategoryId: string; productCardId: string }
   | { kind: 'no-match' };
 
+/**
+ * Streaming resolver (#2208). Yields one item per input variant, each as soon
+ * as its own outcome settles rather than when its wave does.
+ *
+ * `no-ean` verdicts cost nothing to reach, so they are yielded up front in
+ * input order; the remaining items follow in settle order, which is why a
+ * consumer keys on `variantId` and never on position.
+ *
+ * `options.signal` ends the iteration promptly: no further wave is scheduled
+ * and the generator stops waiting on the wave already in flight, so an
+ * operator who navigated away is never held for the HTTP client's 30 s
+ * per-request timeout. Those calls are deliberately NOT cancelled - see
+ * `throttleStream` for why - their results are simply discarded.
+ */
+export async function* streamCategoriesForBatchByEan(
+  httpClient: IAllegroHttpClient,
+  cache: CachePort | undefined,
+  connectionId: string,
+  input: BatchCategoryByEanInput,
+  options?: StreamCategoriesForBatchByEanOptions,
+): AsyncGenerator<EanCategoryMatchStreamItem, void, undefined> {
+  const ttl = options?.cacheTtlSec ?? DEFAULT_CACHE_TTL_SEC;
+  const prefix = options?.cacheKeyPrefix ?? DEFAULT_CACHE_KEY_PREFIX;
+  // The streaming path is the wide one (#2215). The batch collector below
+  // narrows it back to `DEFAULT_CONCURRENCY`, so a caller that wants the old
+  // per-call pacing gets it by calling the batch function, not by remembering
+  // to pass a number.
+  const concurrency = options?.concurrency ?? STREAM_CONCURRENCY;
+  const searchLimit = options?.searchLimit ?? DEFAULT_SEARCH_LIMIT;
+  const signal = options?.signal;
+
+  const itemsToFetch: Array<{ variantId: string; ean: string }> = [];
+  const withoutEan: EanCategoryMatchStreamItem[] = [];
+
+  for (const item of input.items) {
+    if (!isResolvableEan(item.ean)) {
+      withoutEan.push({ variantId: item.variantId, result: { kind: 'no-ean' } });
+    } else {
+      itemsToFetch.push({ variantId: item.variantId, ean: item.ean.trim() });
+    }
+  }
+
+  if (signal?.aborted) return;
+
+  for (const item of withoutEan) {
+    yield item;
+  }
+
+  if (itemsToFetch.length === 0) return;
+
+  yield* throttleStream(itemsToFetch, concurrency, signal, (item) =>
+    resolveOne(httpClient, cache, connectionId, prefix, ttl, searchLimit, item),
+  );
+}
+
+/**
+ * Batch resolver (#735), kept as a thin collector over the generator so the
+ * two capability paths share one resolution implementation.
+ *
+ * The returned map is equal *by value* to the pre-#2208 one, not by iteration
+ * order: fetched entries are inserted in settle order rather than in chunk
+ * order. Both in-tree call sites read it with `.get(variantId)`.
+ */
 export async function resolveCategoriesForBatchByEan(
   httpClient: IAllegroHttpClient,
   cache: CachePort | undefined,
@@ -72,31 +186,20 @@ export async function resolveCategoriesForBatchByEan(
   input: BatchCategoryByEanInput,
   options?: ResolveCategoriesForBatchByEanOptions,
 ): Promise<Map<string, EanMatchResult>> {
-  const ttl = options?.cacheTtlSec ?? DEFAULT_CACHE_TTL_SEC;
-  const prefix = options?.cacheKeyPrefix ?? DEFAULT_CACHE_KEY_PREFIX;
-  const concurrency = options?.concurrency ?? DEFAULT_CONCURRENCY;
-  const searchLimit = options?.searchLimit ?? DEFAULT_SEARCH_LIMIT;
-
   const result = new Map<string, EanMatchResult>();
-  const itemsToFetch: Array<{ variantId: string; ean: string }> = [];
-
-  for (const item of input.items) {
-    if (!isResolvableEan(item.ean)) {
-      result.set(item.variantId, { kind: 'no-ean' });
-    } else {
-      itemsToFetch.push({ variantId: item.variantId, ean: item.ean.trim() });
-    }
+  for await (const item of streamCategoriesForBatchByEan(
+    httpClient,
+    cache,
+    connectionId,
+    input,
+    // A batch caller blocks on the whole map, so widening its in-flight count
+    // buys it nothing an operator can see while spending more of the
+    // marketplace's rate limit at once. Only the streaming path, whose whole
+    // point is that results land continuously, gets the wider cap (#2215).
+    { ...options, concurrency: options?.concurrency ?? DEFAULT_CONCURRENCY },
+  )) {
+    result.set(item.variantId, item.result);
   }
-
-  if (itemsToFetch.length === 0) return result;
-
-  const settled = await throttleProcess(itemsToFetch, concurrency, (item) =>
-    resolveOne(httpClient, cache, connectionId, prefix, ttl, searchLimit, item),
-  );
-  for (const entry of settled) {
-    result.set(entry.variantId, entry.outcome);
-  }
-
   return result;
 }
 
@@ -271,25 +374,107 @@ function errorMessage(err: unknown): string {
 }
 
 /**
- * Chunked Promise.allSettled with a fixed in-flight concurrency cap. Items
- * within a chunk run in parallel; the next chunk starts after the previous
- * fully settles. Per-item failures cannot be observed here because `fn`
- * never throws — the resolver maps HTTP errors to a fulfilled `no-match`
- * outcome.
+ * Chunked resolution with a fixed in-flight concurrency cap, yielding in
+ * settle order.
+ *
+ * Strict waves, NOT a sliding window: items within a chunk run in parallel and
+ * the next chunk starts only once the previous one has fully settled. That keeps
+ * the scheduling shape identical to the pre-#2208 `Promise.allSettled` wave
+ * loop, so #2208 changed only WHEN a result is delivered.
+ *
+ * How much traffic is generated is a separate axis, and #2215 did move it: the
+ * streaming entry point now runs at `STREAM_CONCURRENCY` instead of the batch
+ * default. Refilling a freed slot early - a sliding window rather than waves -
+ * would shorten the tail further without raising the ceiling, and is still
+ * unclaimed work.
+ *
+ * A rejection cannot take the rest of the batch down (no-throw contract): `fn`
+ * is the resolver, which already maps HTTP errors to a fulfilled `no-match`, so
+ * a rejection here can only be a defect. It is logged and reported as
+ * `no-match` rather than swallowed, because the capability promises every input
+ * item is yielded exactly once.
+ *
+ * Abort ends the iteration promptly: the drain races the in-flight wave against
+ * the signal and returns on the abort branch, leaving those promises un-awaited.
+ * The underlying HTTP calls are NOT cancelled, and must not be "fixed" into
+ * being cancelled: `AllegroHttpClient` builds its own `AbortController` per
+ * request and accepts no external signal, and ADR-047 § Consequences accepted
+ * that coarseness. Orphaning them costs one settled promise nobody reads;
+ * awaiting them costs the consumer up to the client's 30 s request timeout.
  */
-async function throttleProcess<T, R>(
-  items: T[],
+async function* throttleStream(
+  items: Array<{ variantId: string; ean: string }>,
   concurrency: number,
-  fn: (item: T) => Promise<R>,
-): Promise<R[]> {
-  const results: R[] = [];
+  signal: AbortSignal | undefined,
+  fn: (item: { variantId: string; ean: string }) => Promise<{
+    variantId: string;
+    outcome: EanMatchResult;
+  }>,
+): AsyncGenerator<EanCategoryMatchStreamItem, void, undefined> {
   const cap = Math.max(1, concurrency);
-  for (let i = 0; i < items.length; i += cap) {
-    const chunk = items.slice(i, i + cap);
-    const settled = await Promise.allSettled(chunk.map(fn));
-    for (const s of settled) {
-      if (s.status === 'fulfilled') results.push(s.value);
+  const abortRace = signal ? createAbortRace(signal) : null;
+  try {
+    for (let i = 0; i < items.length; i += cap) {
+      if (signal?.aborted) return;
+      const inFlight = new Map<number, Promise<SettledSlot>>();
+      items.slice(i, i + cap).forEach((item, slot) => {
+        inFlight.set(
+          slot,
+          fn(item).then(
+            (value): SettledSlot => ({ slot, outcome: value }),
+            (err): SettledSlot => {
+              getLogger().warn(
+                `Resolver rejected for variant ${item.variantId}, reporting no-match: ${errorMessage(err)}`,
+              );
+              return {
+                slot,
+                outcome: { variantId: item.variantId, outcome: { kind: 'no-match' } },
+              };
+            },
+          ),
+        );
+      });
+      while (inFlight.size > 0) {
+        const racers: Array<Promise<SettledSlot | typeof ABORTED>> = [...inFlight.values()];
+        if (abortRace) racers.push(abortRace.promise);
+        const first = await Promise.race(racers);
+        if (first === ABORTED) return;
+        inFlight.delete(first.slot);
+        yield { variantId: first.outcome.variantId, result: first.outcome.outcome };
+      }
     }
+  } finally {
+    abortRace?.dispose();
   }
-  return results;
+}
+
+/** Race marker for the abort branch of the drain. */
+const ABORTED = Symbol('aborted');
+
+/**
+ * A never-rejecting promise that settles when `signal` aborts, plus the
+ * listener teardown. Without `dispose` a long-lived signal (one per operator
+ * request in the #2205 NDJSON path) would accumulate a listener per wave.
+ */
+function createAbortRace(signal: AbortSignal): {
+  promise: Promise<typeof ABORTED>;
+  dispose: () => void;
+} {
+  let onAbort: () => void = (): void => undefined;
+  const promise = new Promise<typeof ABORTED>((resolve): void => {
+    onAbort = (): void => resolve(ABORTED);
+    if (signal.aborted) {
+      onAbort();
+      return;
+    }
+    signal.addEventListener('abort', onAbort, { once: true });
+  });
+  const dispose = (): void => signal.removeEventListener('abort', onAbort);
+  return { promise, dispose };
+}
+
+/** One settled slot of the current wave. */
+interface SettledSlot {
+  slot: number;
+  outcome: { variantId: string; outcome: EanMatchResult };
 }

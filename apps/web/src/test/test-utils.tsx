@@ -7,6 +7,7 @@ import type { ApiClient, CoreApiClient, PluginApiNamespaces } from '../app/api/a
 import { ApiClientProvider } from '../app/api/api-client-provider';
 import { ApiError } from '../shared/api/api-error';
 import type { Connection } from '../features/connections/api/connections.types';
+import type { EanCategoryMatchStreamEvent } from '../features/listings/api/listings.types';
 import { createNoopSessionAdapter } from '../shared/auth/noop-session-adapter';
 import type { SessionAdapter } from '../shared/auth/session-adapter';
 import { SessionProvider } from '../shared/auth/session-provider';
@@ -84,6 +85,26 @@ type DeepPartialApiClient = {
     : Partial<ApiClient[K]>;
 };
 
+/**
+ * Immediately-terminating resolve stream (#2211). `done` with no `result` lines
+ * is a real backend outcome (a destination with no EAN matcher), and
+ * `catalogueLookupPerformed: false` is the honest reading of it: nothing was
+ * looked up, so no row may be blocked on a missing category.
+ */
+async function* emptyResolveCategoryStream(): AsyncGenerator<
+  EanCategoryMatchStreamEvent,
+  void,
+  undefined
+> {
+  yield {
+    kind: 'done',
+    resolvedCount: 0,
+    unresolvedCount: 0,
+    completion: 'complete',
+    catalogueLookupPerformed: false,
+  };
+}
+
 export function createMockApiClient(
   overrides: DeepPartialApiClient = {},
   mockApiNamespaces: readonly PluginMockApiNamespacesFactory[] = IN_TREE_MOCK_API_NAMESPACES,
@@ -91,6 +112,7 @@ export function createMockApiClient(
   const core: CoreApiClient = {
     request: overrides.request ?? vi.fn(),
     requestBlob: overrides.requestBlob ?? vi.fn(),
+    requestStream: overrides.requestStream ?? vi.fn(),
     adapters: {
       list: vi.fn().mockResolvedValue([]),
       ...overrides.adapters,
@@ -429,6 +451,10 @@ export function createMockApiClient(
         allegroCategoryId: null,
         method: 'manual',
       }),
+      // #2211 - default to a stream that terminates immediately with no
+      // per-variant results, the shape a destination without an EAN matcher
+      // produces. Tests that exercise the Resolve step override it.
+      resolveCategoriesStream: vi.fn(() => emptyResolveCategoryStream()),
       ...overrides.listings,
     } as ApiClient['listings'],
     mailerSettings: {

@@ -88,6 +88,7 @@ interface ConnectionIngestionTrust {
   lastPollAt: Date | null;                  // pipe liveness
   lastOrderIngestedAt: Date | null;         // data recency — NOT thresholded
   connectionCreatedAt: Date;                // operator-configured-at, NOT a coverage-window claim
+  earliestOrderDate: Date | null;           // real coverage window, MIN(COALESCE(placedAt, createdAt)); shipped by #2083/PR #2121, on this plan's base
   expectedIntervalMs: number | null;
   staleAfterMs: number | null;
 }
@@ -95,7 +96,7 @@ interface ConnectionIngestionTrust {
 
 Route: `GET /analytics/trust` → `AnalyticsTrustResponseDto` (same shape, dates as ISO strings). Guarded by the global `JwtAuthGuard`, no extra role.
 
-**Important gap confirmed by reading the type file**: `connectionCreatedAt` was deliberately renamed from `coverageStartAt` because "the field never supported a 'coverage window' claim." There is **no** `MIN(placedAt)`-per-connection field anywhere in the current backend. The design mockup's "Data coverage" row (`data from {date}`) cannot be built from data that exists today — see Decision 3 below.
+**Gap closed on this plan's base branch**: `connectionCreatedAt` was deliberately renamed from `coverageStartAt` because "the field never supported a 'coverage window' claim," and at the time this section was first drafted there was no `MIN(placedAt)`-per-connection field anywhere in the backend. #2083/PR #2121 has since shipped `earliestOrderDate` on `1985-order-analytics-read-model` (this plan's base), so the design mockup's "Data coverage" row (`data from {date}`) *can* be built from data that exists today — see Decision 3 (resolved) below.
 
 **Design mockup** (`docs/plans/mockups/analytics-ledger-2003.html`, from the open PR #2018 for issue #2003), frames `01` and `01b`, are the literal behavior spec this plan follows. Key points transcribed:
 - URL carries `from`/`to` only (`YYYY-MM-DD`), never a `range` param — the lit preset is *derived* from the dates, not stored.
@@ -111,7 +112,8 @@ Route: `GET /analytics/trust` → `AnalyticsTrustResponseDto` (same shape, dates
 - Loading vs. recalculating are different states (`isLoading` vs `isFetching && !isLoading`); the trust-header panel gets its own error boundary independent of the rest of the page (a pattern later sections will repeat, not exercised by real failure here since the trust panel is the only section in this issue).
 
 ### Reusable Components (all pre-existing, no new shared primitive needed)
-- `PageLayout`, `SegmentedControl`, `Chip`, `KeyValueList`, `StatusBadge`, `Alert`, `Popover`/`PopoverTrigger`/`PopoverContent`, `Button`, `LoadingState`, `ErrorState`, `EmptyState` — all already in `shared/ui/index.ts`.
+- `SegmentedControl`, `Chip`, `KeyValueList`, `StatusBadge`, `Alert`, `Popover`/`PopoverTrigger`/`PopoverContent`, `Button`, `LoadingState`, `ErrorState`, `EmptyState`, `TimeDisplay` — all already in `shared/ui/index.ts`.
+- **Divergences from this list, as shipped**: `analytics-page.tsx` does not adopt `PageLayout` — its header is hand-rolled markup rather than the shared page-header composition primitive `docs/frontend-ui-style-guide.md` establishes; `Chip tone="info"` (the standard chip API) is not used for the "Order date †" disclaimer, which instead uses a bare `title`-attribute `Tooltip` (see the toolbar Tooltip/Popover note below); `TimeDisplay` *is* used in the shipped trust header despite not being listed above. These are tracked as known gaps rather than corrected in this pass — see the tech-review discussion on PR #2098.
 
 ---
 
@@ -136,8 +138,7 @@ Route: `GET /analytics/trust` → `AnalyticsTrustResponseDto` (same shape, dates
 **Decision 2 — "Order date" filters by ingestion time today, with a visible caveat.** The backend has no `placedAt` column yet (#1985, not merged). `from`/`to` are sent to `GET /analytics/trust` filtering is N/A for this issue (the trust endpoint takes no date params — see Decision 4), but the URL contract and the toolbar's own semantics are that of "order date," per the mockup. Ship the toolbar now with the mockup's **"Order date †"** disclaimer chip (tooltip: "placedAt is not a column and cannot be filtered today"). When #1985 lands, remove the chip — no URL contract change.
 
 **Decision 3 — trust header ships without a "data from" coverage-window row.** The mockup's coverage fact is `MIN(placedAt)` per connection, which doesn't exist in the current `GET /analytics/trust` response (`connectionCreatedAt` is explicitly documented as *not* a coverage claim — see the doc comment on the field in `connection-ingestion-trust.types.ts`). Ship the trust-header row set as **freshness + connection-configured-since + state** (using `connectionCreatedAt` labeled **"connected since"**, never "data from" or any wording that implies data history — the mockup's own copy rule ("coverage reads 'data from', never 'complete since'") is exactly the over-claim this labeling avoids repeating). **Tracked, not deferred silently**: [#2083](https://github.com/openlinker-project/openlinker/issues/2083) is filed and is the real fix (`MIN(COALESCE(placedAt, createdAt))` per connection), blocked by #1985. When #2083 ships, this is a one-line label + prop swap in `analytics-trust-header.tsx`, not a rewrite.
-
-**Decision 3 — resolved.** #2083 shipped as PR #2121 and is on this plan's base (`1985-order-analytics-read-model`). `ConnectionIngestionTrustResponseDto` / `ConnectionIngestionTrust` now carry a real `earliestOrderDate: string | null`. `analytics-trust-header.tsx` renders it as **"Data from"** (falling back to "No orders yet" when null), exactly the one-line swap anticipated above. `connectionCreatedAt` stays on the type and in test fixtures — it's still a real DTO field, just no longer the coverage-row value.
+**Resolved (#2083 / PR #2121):** shipped and on this plan's base (`1985-order-analytics-read-model`). `ConnectionIngestionTrustResponseDto` / `ConnectionIngestionTrust` now carry a real `earliestOrderDate: string | null`. `analytics-trust-header.tsx` renders it as **"Data from"** (falling back to "No orders yet" when null), exactly the one-line swap anticipated above. `connectionCreatedAt` stays on the type and in test fixtures — it's still a real DTO field, just no longer the coverage-row value.
 
 **Decision 3a — no "backfilling" state exists, and this plan does not invent one.** The same root cause as Decision 3 has a second symptom: `ConnectionIngestionStatusValues` (`never-ingested | fresh | stalled | disconnected | unknown`) cannot distinguish "just connected, still loading its first orders" from "connected long ago, currently ingesting nothing because there's genuinely no new order" — both read as whatever the last poll/sync job says, and a connection with zero orders so far is `never-ingested` regardless of *why* it has zero orders. This plan's "still arriving" empty-state variant (Phase 4 Step 2, mockup frame 10 variant 2) triggers on `status === 'never-ingested'` as an **approximation**, not a true backfilling signal — it will occasionally show "First orders are still arriving" for a connection that is simply quiet (e.g. a seasonal shop with no orders yet, not because it's new). This is accepted as a soft, non-misleading approximation (worst case: an accurate-but-oddly-worded empty state, never a false "everything's fine") and is not blocking; a real `'backfilling'` status value would also need #2083's coverage-window fact to derive correctly, so it is not proposed here as separate scope.
 
@@ -157,7 +158,7 @@ Route: `GET /analytics/trust` → `AnalyticsTrustResponseDto` (same shape, dates
 
 1. **`features/analytics/api/analytics-trust.types.ts`**
    - File: `apps/web/src/features/analytics/api/analytics-trust.types.ts`
-   - Action: Hand-written types mirroring `AnalyticsTrustResponseDto` (camelCase preserved per `docs/frontend-architecture.md § API Client Conventions`): `ConnectionIngestionStatus`, `ConnectionIngestionTrust` (with `lastPollAt`/`lastOrderIngestedAt`/`connectionCreatedAt` typed `string | null` / `string`, ISO wire format), `AnalyticsTrustSnapshot`.
+   - Action: Hand-written types mirroring `AnalyticsTrustResponseDto` (camelCase preserved per `docs/frontend-architecture.md § API Client Conventions`): `ConnectionIngestionStatus`, `ConnectionIngestionTrust` (with `lastPollAt`/`lastOrderIngestedAt`/`connectionCreatedAt`/`earliestOrderDate` typed `string | null` / `string`, ISO wire format — `earliestOrderDate` shipped with #2083/PR #2121, on this plan's base branch, and backs the trust-header's "Data from" row per Decision 3 (resolved) below), `AnalyticsTrustSnapshot`.
    - Acceptance: types compile; no `any`.
    - Dependencies: none.
 
@@ -206,7 +207,7 @@ Route: `GET /analytics/trust` → `AnalyticsTrustResponseDto` (same shape, dates
 
 3. **`features/analytics/components/analytics-trust-header.tsx`**
    - File: `apps/web/src/features/analytics/components/analytics-trust-header.tsx`
-   - Action: Renders one row per connection: `StatusBadge` (tone mapped from `ConnectionIngestionStatus`: `fresh→success`, `stalled→warning`, `disconnected→error`, `never-ingested→neutral`, `unknown→neutral`), `connectionName` (never `platformType`), a freshness fact ("Current to {time}" from `lastPollAt`, or "Never polled"), and a "Connected since {date}" fact from `connectionCreatedAt` (per Decision 3 — explicitly not labeled "data from"). A section-level info button (`Popover`/`PopoverTrigger` rendering the `ⓘ` glyph as a real `<button aria-label="About these dates">`, `PopoverContent` holding the standing caveat text from the mockup) sits in the panel header next to the `section-title`, per the mockup's rule that a permanent caveat is a popover, not an always-visible banner line.
+   - Action: Renders one row per connection: `StatusBadge` (tone mapped from `ConnectionIngestionStatus`: `fresh→success`, `stalled→warning`, `disconnected→error`, `never-ingested→neutral`, `unknown→neutral`), `connectionName` (never `platformType`), a freshness fact ("Current to {time}" from `lastPollAt`, or "Never polled"), and a **"Data from {date}"** fact from `earliestOrderDate` (falling back to "No orders yet" when null) — per Decision 3 (resolved): #2083/PR #2121 shipped the real per-connection coverage window on this plan's base branch, so the row renders the actual "data from" claim rather than the `connectionCreatedAt`-labeled placeholder originally planned here. A section-level info button (`Popover`/`PopoverTrigger` rendering the `ⓘ` glyph as a real `<button aria-label="About these dates">`, `PopoverContent` holding the standing caveat text from the mockup) sits in the panel header next to the `section-title`, per the mockup's rule that a permanent caveat is a popover, not an always-visible banner line.
    - Acceptance: component test — one row per connection entry, correct tone per status, popover opens on click (not hover-only), no row aggregation (asserts row count == connections.length even for 5+ connections).
    - Dependencies: Phase 1 Step 1.
 
@@ -285,7 +286,7 @@ Route: `GET /analytics/trust` → `AnalyticsTrustResponseDto` (same shape, dates
 ### Implementation Details
 
 **New Components**:
-- **Application (FE feature)**: `analyticsTrustQueryKeys`, `createAnalyticsTrustApi`, `useAnalyticsTrustQuery`, `hasSalesInRange`, `shouldShowDegradationBanner`, `computePresetRange`, `derivePreset`, `toUtcRangeInstants`
+- **Application (FE feature)**: `analyticsTrustQueryKeys`, `createAnalyticsTrustApi`, `useAnalyticsTrustQuery`, `shouldShowDegradationBanner`, `computePresetRange`, `derivePreset`, `toUtcRangeInstants` (`hasSalesInRange` dropped per Decision 4 — the range-gated banner it was scaffolding for is deferred, not shipped in this plan)
 - **Interface (FE components/pages)**: `AnalyticsTrustHeader`, `AnalyticsDegradationBanner`, `AnalyticsDateRangeToolbar`, `AnalyticsPage`, `analyticsRoute`
 
 **Configuration Changes**: None.
@@ -374,8 +375,8 @@ Route: `GET /analytics/trust` → `AnalyticsTrustResponseDto` (same shape, dates
 - [ ] `/analytics` reachable from nav, renders in the standard app shell — Phase 4
 - [ ] Date range changes update the URL; reloading restores it — Phase 3 + 4
 - [ ] Page states data freshness — Phase 2 (trust header `lastPollAt`)
-- [ ] Stalled ingestion for a channel with sales in range is called out explicitly, with a link to sync detail — Phase 2 (banner → `/cursors`)
-- [ ] Each channel's available history is visible — Phase 2 (trust header, with the Decision 3 caveat on exact semantics)
+- [ ] Stalled ingestion for a channel with sales in range is called out explicitly, with a link to sync detail — Phase 2 (banner → `/cursors`); satisfied only in the over-warning direction per Decision 4's status-only v1 rule (a `stalled`/`disconnected` channel banners regardless of whether it sold in the selected range, not just those that did)
+- [ ] Each channel's available history is visible — Phase 2 (trust header renders the real `earliestOrderDate` "Data from" fact per Decision 3, resolved)
 - [ ] No-history instance shows an explanatory empty state — Phase 4 Step 2
 - [ ] Loading/error states follow `LoadingState`/`ErrorState` with retry — Phase 4 Step 2
 - [ ] Responsive, no horizontal scroll, ≥44px tap targets — verified manually in the running dev server at mobile/tablet breakpoints per the mockup's frames 07/08

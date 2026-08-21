@@ -15,3 +15,7 @@ export function formatAbsoluteDate(iso: string): string {
 export function formatDateTime(iso: string): string {
   return new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
 }
+
+export function formatAbsoluteTime(iso: string): string {
+  return new Date(iso).toLocaleTimeString(undefined, { timeStyle: 'short' });
+}

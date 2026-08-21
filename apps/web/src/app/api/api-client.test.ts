@@ -8,7 +8,7 @@
  * and retry the original request once with the new token.
  */
 import { describe, expect, it, vi } from 'vitest';
-import { createApiClient } from './api-client';
+import { createApiClient, STREAM_HEAD_TIMEOUT_MS } from './api-client';
 import type { SessionAdapter } from '../../shared/auth/session-adapter';
 import { ApiError } from '../../shared/api/api-error';
 
@@ -138,5 +138,44 @@ describe('createApiClient — 401 retry (#710)', () => {
 
     const [, init] = fetchFn.mock.calls[0] as [string, RequestInit];
     expect(init.credentials).toBe('include');
+  });
+});
+
+describe('requestStream head timeout', () => {
+  it('fails with a retryable timeout when the response head never arrives', async () => {
+    vi.useFakeTimers();
+    try {
+      // A server that accepts the connection and then answers nothing. Without a
+      // bound on this window `timeout: false` would hang the caller forever.
+      let aborted = false;
+      const fetchFn = vi.fn(
+        (_input: RequestInfo | URL, init?: RequestInit) =>
+          new Promise<Response>((_resolve, reject) => {
+            init?.signal?.addEventListener('abort', () => {
+              aborted = true;
+              reject(new DOMException('aborted', 'AbortError'));
+            });
+          }),
+      );
+      const client = createApiClient({
+        baseUrl: BASE_URL,
+        fetchFn: fetchFn as unknown as typeof fetch,
+        sessionAdapter: makeAdapter({}),
+      });
+
+      const pending = client.requestStream('/stream', { method: 'POST' });
+      const assertion = expect(pending).rejects.toMatchObject({
+        // Asserted on the timeout marker, not merely on the error class: a
+        // network failure would also be an ApiError, so the class alone would
+        // let this pass for the wrong reason.
+        details: { timeout: true },
+      });
+      await vi.advanceTimersByTimeAsync(STREAM_HEAD_TIMEOUT_MS + 10);
+      await assertion;
+      expect(fetchFn).toHaveBeenCalledTimes(1);
+      expect(aborted).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

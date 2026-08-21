@@ -25,6 +25,7 @@ describe('buildTopProducts', () => {
     revenue: 100,
     unconvertedRevenue: 0,
     currency: 'EUR',
+    unconvertedCurrency: null,
     ...overrides,
   });
 

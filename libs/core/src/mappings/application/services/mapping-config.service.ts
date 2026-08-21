@@ -169,24 +169,59 @@ export class MappingConfigService implements IMappingConfigService {
     // 2. Borrowed-taxonomy fallback (#1045): a `borrows` destination reuses an
     //    owner-authored row under its borrowed provenance, source-scoped when known.
     if (opts?.borrowedTaxonomy) {
-      const reused = await this.categoryRepo.findBySourceCategoryByProvenance(
-        opts.borrowedTaxonomy,
-        sourceCategoryId,
-        opts.sourceConnectionId ?? null
-      );
-      return reused?.destinationCategoryId ?? null;
+      for (const provenance of this.provenanceCandidates(opts.borrowedTaxonomy)) {
+        const reused = await this.categoryRepo.findBySourceCategoryByProvenance(
+          provenance,
+          sourceCategoryId,
+          opts.sourceConnectionId ?? null
+        );
+        if (reused) {
+          return reused.destinationCategoryId;
+        }
+      }
+      return null;
     }
     return null;
+  }
+
+  /**
+   * Provenance values to try for a borrowed taxonomy, most specific first.
+   *
+   * Nothing in this store ever PERSISTS a qualified provenance: every writer
+   * goes through the repositories' `?? 'allegro'` default, so an operator's
+   * Allegro-authored rows carry the bare owner regardless of which environment
+   * the connection points at. A borrowing destination, on the other hand, names
+   * the owner whose TREE it consumes, and that value is environment-qualified
+   * (`'allegro:sandbox'`, #2063/#2210) precisely because sandbox and production
+   * publish different trees. Trying the qualified value first and then the bare
+   * owner keeps both true: a future qualified row wins where it exists, and a
+   * sandbox destination still reuses the mappings the operator already authored
+   * instead of silently resolving nothing.
+   */
+  private provenanceCandidates(borrowedTaxonomy: string): string[] {
+    const separator = borrowedTaxonomy.indexOf(':');
+    if (separator <= 0) {
+      return [borrowedTaxonomy];
+    }
+    return [borrowedTaxonomy, borrowedTaxonomy.slice(0, separator)];
   }
 
   getAttributeMappings(destinationConnectionId: string): Promise<AttributeMapping[]> {
     return this.attributeRepo.findByDestinationConnection(destinationConnectionId);
   }
 
-  getAttributeMappingsByProvenance(
+  async getAttributeMappingsByProvenance(
     destinationTaxonomyProvenance: string
   ): Promise<AttributeMapping[]> {
-    return this.attributeRepo.findByProvenance(destinationTaxonomyProvenance);
+    // Same qualified-then-bare rule as the category read above, for the same
+    // reason: the store persists only bare owner provenances today.
+    for (const provenance of this.provenanceCandidates(destinationTaxonomyProvenance)) {
+      const rows = await this.attributeRepo.findByProvenance(provenance);
+      if (rows.length > 0) {
+        return rows;
+      }
+    }
+    return [];
   }
 
   upsertAttributeMapping(

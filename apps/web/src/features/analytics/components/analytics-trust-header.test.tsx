@@ -54,31 +54,31 @@ describe('AnalyticsTrustHeader', () => {
       />,
     );
 
-    expect(screen.getByText('Fresh')).toBeInTheDocument();
+    expect(screen.getByText('Up to date')).toBeInTheDocument();
     expect(screen.getByText('Stalled')).toBeInTheDocument();
     expect(screen.getByText('Disconnected')).toBeInTheDocument();
     expect(screen.getByText('Never ingested')).toBeInTheDocument();
   });
 
-  it('should render "Never polled" when a connection has no lastPollAt', () => {
+  it('should render "never polled" when a connection has no lastPollAt', () => {
     render(<AnalyticsTrustHeader connections={[makeEntry({ lastPollAt: null })]} />);
 
-    expect(screen.getByText('Never polled')).toBeInTheDocument();
+    expect(screen.getByText(/never polled/)).toBeInTheDocument();
   });
 
   it('should open the info popover on click', async () => {
     const user = userEvent.setup();
     render(<AnalyticsTrustHeader connections={[makeEntry()]} />);
 
-    expect(screen.queryByText(/Data from/i, { selector: 'span.trust-header__fact-label' })).toBeInTheDocument();
+    expect(screen.queryByText(/data from/i, { selector: 'span.trust-header__facts' })).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'About these dates' }));
 
-    expect(screen.getByText(/earliest order OpenLinker has ingested/i)).toBeInTheDocument();
+    expect(screen.getByText(/earliest order stored for each channel/i)).toBeInTheDocument();
   });
 
-  it('should render "No orders yet" when a connection has no earliestOrderDate', () => {
+  it('should render "no orders yet" when a connection has no earliestOrderDate', () => {
     render(<AnalyticsTrustHeader connections={[makeEntry({ earliestOrderDate: null })]} />);
 
-    expect(screen.getByText('No orders yet')).toBeInTheDocument();
+    expect(screen.getByText(/no orders yet/)).toBeInTheDocument();
   });
 });

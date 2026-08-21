@@ -9,7 +9,6 @@
  */
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { EventsModule } from '@openlinker/core/events';
 import { RedisStreamsJobEnqueueService } from './infrastructure/adapters/redis-streams-job-enqueue.service';
 import { RetryClassifierRegistryService } from './infrastructure/adapters/retry-classifier-registry.service';
 import { AuthFailureClassifierRegistryService } from './infrastructure/adapters/auth-failure-classifier-registry.service';
@@ -56,7 +55,7 @@ export {
 } from './sync.tokens';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([SyncJobOrmEntity, ConnectionCursorOrmEntity]), EventsModule],
+  imports: [TypeOrmModule.forFeature([SyncJobOrmEntity, ConnectionCursorOrmEntity])],
   providers: [
     // Job enqueue service
     RedisStreamsJobEnqueueService,

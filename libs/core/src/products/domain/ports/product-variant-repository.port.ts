@@ -41,6 +41,17 @@ export interface ProductVariantRepositoryPort {
   findByProductId(productId: string): Promise<ProductVariant[]>;
 
   /**
+   * Batch variant lookup for the given product IDs (#2172 review,
+   * SUGGESTION 4) — a single query scoped to the given id set, as opposed to
+   * a `Promise.all` fan-out over {@link findByProductId} once per product.
+   * Empty input returns `[]` without a storage round-trip.
+   *
+   * @param productIds - Internal OpenLinker product IDs
+   * @returns Array of product variant domain entities across every matching product
+   */
+  findByProductIds(productIds: readonly string[]): Promise<ProductVariant[]>;
+
+  /**
    * Count variants per product for the given product IDs (#1720).
    * Returns a Map<productId, count>; products with zero variants are
    * omitted. Empty input returns an empty Map without a storage round-trip.
@@ -65,6 +76,18 @@ export interface ProductVariantRepositoryPort {
    * @returns Array of product variant domain entities
    */
   findBySkuIn(skus: string[]): Promise<ProductVariant[]>;
+
+  /**
+   * Find variants by internal variant id list
+   *
+   * Batched counterpart to `findById`. Used where a caller holds a set of
+   * variant ids and needs their owning products in one query rather than a
+   * per-id fan-out (e.g. the bulk-batch summary projection, #2234).
+   *
+   * @param ids - Array of internal OpenLinker variant IDs
+   * @returns Array of product variant domain entities (missing ids are omitted)
+   */
+  findByIdIn(ids: readonly string[]): Promise<ProductVariant[]>;
 
   /**
    * Find variants by EAN or GTIN list, scoped to master catalog connection

@@ -1188,6 +1188,7 @@ describe('OrderRecordService', () => {
           revenue: 100,
           unconvertedRevenue: 0,
           currency: 'EUR',
+          unconvertedCurrency: null,
         },
         {
           productId: 'p2',
@@ -1196,6 +1197,7 @@ describe('OrderRecordService', () => {
           revenue: 50,
           unconvertedRevenue: 0,
           currency: 'EUR',
+          unconvertedCurrency: null,
         },
       ];
       lineItemRepository.getTopProductRanking.mockResolvedValue({ rows: ranking, total: 2 });

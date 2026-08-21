@@ -13,7 +13,11 @@
  * `name`/`sku` and `missingFromConnectionIds` are populated by the apps/api
  * composition service (`TopProductsService`), NOT by the core
  * `TopProductView` this DTO otherwise mirrors — see that service's header
- * for why the enrichment lives at this layer.
+ * for why the enrichment lives at this layer. `coverageGapAvailable` (#2172
+ * review, SUGGESTION 5) is response-level: `false` means the coverage-gap
+ * enrichment failed for this whole response, so every row's
+ * `missingFromConnectionIds` is an unreliable `[]` rather than evidence the
+ * product is listed everywhere.
  *
  * @module apps/api/src/analytics/http/dto
  */
@@ -38,6 +42,14 @@ export class ProductChannelBreakdownDto {
   @ApiProperty({ type: String, nullable: true })
   currency!: string | null;
 
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description:
+      'The one native currency shared by every order on this channel contributing to unconvertedRevenue, or null when that subset mixes currencies (or unconvertedRevenue is 0). Computed per-channel — not inherited from the parent row, which may go null on a mixed set this channel’s own subset does not share (#2172 review).',
+  })
+  unconvertedCurrency!: string | null;
+
   static fromDomain(row: ProductChannelBreakdownRow): ProductChannelBreakdownDto {
     const dto = new ProductChannelBreakdownDto();
     dto.sourceConnectionId = row.sourceConnectionId;
@@ -45,6 +57,7 @@ export class ProductChannelBreakdownDto {
     dto.revenue = row.revenue;
     dto.unconvertedRevenue = row.unconvertedRevenue;
     dto.currency = row.currency;
+    dto.unconvertedCurrency = row.unconvertedCurrency;
     return dto;
   }
 }
@@ -138,4 +151,10 @@ export class TopProductsResponseDto {
       'Count of items in this page whose productId could not be resolved to a live catalogue entry (name/sku are null for those rows) — never silently dropped.',
   })
   unresolvedProductCount!: number;
+
+  @ApiProperty({
+    description:
+      'False when the coverage-gap enrichment failed for this response — every row’s missingFromConnectionIds is then an unreliable empty array (not evidence the product is listed everywhere), not a real answer. Render the column as unavailable rather than trusting an all-empty result.',
+  })
+  coverageGapAvailable!: boolean;
 }
