@@ -57,13 +57,12 @@
  *     own structural-detection design.
  *   - ADR-050 D1 (lane assignment) — still blocked on Wave 3 (#2278) creating
  *     the registry to count.
- *   - ADR-051 D6 (role coverage) — NO LONGER blocked: Wave 4 (#2279) shipped
- *     the role vocabulary (`apps/worker/src/roles/worker-role.types.ts`) and a
- *     runtime coverage assertion for the `jobs` role
- *     (`apps/worker/src/sync/role-coverage-assertion.service.ts`). What is
- *     missing here is the STATIC half — mapping every registered jobType to a
- *     role without booting — which a single process cannot assert about a
- *     fleet. Owned by #2169.
+ *   - ADR-051 D6 (role coverage) — the RUNTIME half already ships as
+ *     `SyncJobHandlerRegistry.assertFullLaneCoverage()` (#2278), which #2279's
+ *     role vocabulary (`apps/worker/src/roles/worker-role.types.ts`) reuses
+ *     rather than duplicating. What is missing HERE is the STATIC half —
+ *     mapping every registered jobType to a role without booting — which a
+ *     single process cannot assert about a fleet. Owned by #2169.
  *
  * Run from `pnpm lint` via `pnpm check:invariants`.
  *

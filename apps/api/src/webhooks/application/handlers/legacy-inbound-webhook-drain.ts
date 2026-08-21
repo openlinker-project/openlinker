@@ -137,12 +137,17 @@ export class LegacyInboundWebhookDrain implements OnModuleInit {
     // header). Exclusive cursor so a failing entry cannot re-present its page.
     const client = this.redisClient as unknown as StreamConsumerClient;
     let cursor = '-';
-    let pendingCapped = false;
+    // Starts true and is cleared by the empty-page break, so it means "we
+    // stopped because of the cap" rather than "we happened to touch the last
+    // allowed page" — otherwise a backlog that finishes exactly on that page
+    // warns the operator about work that does not exist.
+    let pendingCapped = true;
     for (let page = 0; page < MAX_PAGES_PER_BOOT; page += 1) {
       const pending = toPendingRows(
         await client.xPendingRange(this.STREAM_NAME, this.CONSUMER_GROUP, cursor, '+', PENDING_PAGE_SIZE)
       );
       if (pending.length === 0) {
+        pendingCapped = false;
         break;
       }
       for (const row of pending) {
@@ -163,12 +168,11 @@ export class LegacyInboundWebhookDrain implements OnModuleInit {
       // Exclusive resume cursor (Redis 6.2 `(`-prefixed id), so a failing
       // entry cannot re-present its own page within this drain run.
       cursor = `(${pending[pending.length - 1].id}`;
-      pendingCapped = page === MAX_PAGES_PER_BOOT - 1;
     }
 
     // Pass 2 — unread entries (never delivered to any consumer). Non-blocking
     // XREADGROUP against our own drain consumer, looped until empty.
-    let unreadCapped = false;
+    let unreadCapped = true;
     for (let page = 0; page < MAX_PAGES_PER_BOOT; page += 1) {
       const response = await this.redisClient.xReadGroup(
         this.CONSUMER_GROUP,
@@ -178,6 +182,7 @@ export class LegacyInboundWebhookDrain implements OnModuleInit {
       );
       const messages = response?.[0]?.messages ?? [];
       if (messages.length === 0) {
+        unreadCapped = false;
         break;
       }
       for (const message of messages) {
@@ -190,7 +195,6 @@ export class LegacyInboundWebhookDrain implements OnModuleInit {
         else if (outcome === 'discarded') discarded += 1;
         else failed += 1;
       }
-      unreadCapped = page === MAX_PAGES_PER_BOOT - 1;
     }
 
     if (pendingCapped || unreadCapped) {

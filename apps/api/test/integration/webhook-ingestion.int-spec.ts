@@ -16,7 +16,10 @@
 import { getTestHarness, resetTestHarness, teardownTestHarness } from './setup';
 import { IntegrationTestHarness } from './setup';
 import { createTestConnection } from './helpers/test-connection.helper';
+import type { EntityManager } from 'typeorm';
 import { LegacyInboundWebhookDrain } from '../../src/webhooks/application/handlers/legacy-inbound-webhook-drain';
+import type { IWebhookJobGateService } from '../../src/webhooks/application/interfaces/webhook-job-gate.service.interface';
+import { WEBHOOK_JOB_GATE_SERVICE_TOKEN } from '../../src/webhooks/application/interfaces/webhook-job-gate.service.interface';
 import * as crypto from 'crypto';
 
 const INBOUND_WEBHOOK_STREAM = 'events.inbound.webhooks';
@@ -201,6 +204,67 @@ describe('Webhook Ingestion Integration', () => {
       const delivery = await readDeliveryRow(harness, connection.id, eventId);
       expect(delivery!.status).toBe('job_enqueued');
       expect(delivery!.downstreamJobId).toBe(jobs[0].id);
+    });
+
+    it('rolls BOTH rows back when the gate transaction fails — no orphan job (#2280 atomicity)', async () => {
+      const connection = await createTestConnection(harness.getDataSource(), {
+        platformType: 'prestashop',
+        status: 'active',
+        enabledCapabilities: ['ProductMaster'],
+      });
+
+      const eventId = 'gate-rollback-event-1';
+      const payload = {
+        schemaVersion: 1,
+        eventId,
+        eventType: 'product.saved',
+        occurredAt: new Date().toISOString(),
+        object: { type: 'product', externalId: '12345' },
+      };
+      const { timestamp, signature } = signedRequest(payload, webhookSecret);
+
+      // Force the SECOND statement in the transaction (the delivery insert) to
+      // fail, after the job insert has already run. Two sequential committed
+      // writes would leave the job behind; one transaction must not.
+      const gate = harness.getApp().get<IWebhookJobGateService>(WEBHOOK_JOB_GATE_SERVICE_TOKEN);
+      const dataSource = harness.getDataSource();
+      const original = dataSource.transaction.bind(dataSource);
+      const spy = jest
+        .spyOn(dataSource, 'transaction')
+        .mockImplementation((async (runInTransaction: (manager: EntityManager) => Promise<unknown>) =>
+          original(async (manager: EntityManager) => {
+            const realQuery = manager.query.bind(manager);
+            let calls = 0;
+            (manager as { query: unknown }).query = async (
+              sql: string,
+              params?: unknown[]
+            ): Promise<unknown> => {
+              calls += 1;
+              if (calls === 2) {
+                throw new Error('simulated failure after the job insert');
+              }
+              return realQuery(sql, params as never);
+            };
+            return runInTransaction(manager);
+          })) as never);
+
+      try {
+        await harness
+          .getHttp()
+          .post(`/webhooks/prestashop/${connection.id}`)
+          .set('X-OpenLinker-Timestamp', timestamp)
+          .set('X-OpenLinker-Signature', `sha256=${signature}`)
+          .send(payload)
+          .expect(500);
+      } finally {
+        spy.mockRestore();
+      }
+
+      // The job insert DID run inside the transaction — and must be gone.
+      expect(await readJobRows(harness, `prestashop:${connection.id}:${eventId}`)).toHaveLength(0);
+      expect(await readDeliveryRow(harness, connection.id, eventId)).toBeUndefined();
+      // And because nothing was recorded, the source's retry re-enters cleanly.
+      expect(gate).toBeDefined();
     });
 
     it('records a capability-ungated event as a durable deadlettered row with no job', async () => {

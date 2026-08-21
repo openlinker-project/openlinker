@@ -71,6 +71,11 @@ export class WebhookController {
   @ApiResponse({ status: 401, description: 'Invalid signature or timestamp out of window' })
   @ApiResponse({ status: 404, description: 'Connection not found or disabled' })
   @ApiResponse({ status: 413, description: 'Request payload too large' })
+  @ApiResponse({
+    status: 503,
+    description:
+      'Routing temporarily unavailable (e.g. the connection could not be read). The delivery was NOT recorded — retry it.',
+  })
   async receiveWebhook(
     @Param('provider') provider: string,
     @Param('connectionId') connectionId: string,
@@ -156,9 +161,12 @@ export class WebhookController {
       // matcher would turn into a 404, and a marketplace commonly answers a
       // 404 by tearing the webhook subscription down.
       if (error instanceof WebhookRoutingUnavailableException) {
+        // Log the CAUSE's stack: this wrapper's own stack starts at the
+        // routing service and never shows where the failure originated.
+        const cause = error.cause;
         this.logger.error(
           `Webhook routing unavailable (asking the source to retry): provider=${provider}, connectionId=${connectionId}`,
-          error.stack,
+          cause instanceof Error ? (cause.stack ?? cause.message) : error.stack,
         );
         throw new ServiceUnavailableException(error.message);
       }

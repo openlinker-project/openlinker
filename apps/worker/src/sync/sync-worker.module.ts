@@ -57,7 +57,6 @@ import { OfflineResubmitHandler } from './handlers/offline-resubmit.handler';
 import { PendingRecoveryHandler } from './handlers/pending-recovery.handler';
 import { PaymentStatusRefreshHandler } from './handlers/payment-status-refresh.handler';
 import { HandlerRegistrationService } from './handlers/handler-registration.service';
-import { RoleCoverageAssertionService } from './role-coverage-assertion.service';
 
 @Module({
   imports: [
@@ -113,7 +112,6 @@ import { RoleCoverageAssertionService } from './role-coverage-assertion.service'
     PendingRecoveryHandler,
     PaymentStatusRefreshHandler,
     HandlerRegistrationService,
-    RoleCoverageAssertionService,
   ],
 })
 export class SyncWorkerModule {}

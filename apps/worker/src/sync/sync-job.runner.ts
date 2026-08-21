@@ -5,12 +5,20 @@
  * Continuously polls for due jobs, locks them atomically, executes handlers,
  * and manages job state transitions (queued → running → succeeded/failed/dead).
  *
+ * Scheduling is organised into ADR-050 concurrency lanes (#2278): each lane
+ * claims independently under its own cap (never strict priority — every lane
+ * can always pull), jobs run CONCURRENTLY under per-lane slot accounting
+ * keyed by `scope` (= connectionId today, `resolveJobScope`), and a lane's
+ * membership comes from the handler registry where lanes are declared at
+ * registration. Cap values are env-overridable illustrative defaults until
+ * #1134 supplies measurements (ADR-050 decision 6).
+ *
  * @module apps/worker/src/sync
  */
 import type { OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { Injectable, Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import type { SyncJobEntity, SyncJobHandlerResult } from '@openlinker/core/sync';
+import type { SyncJobEntity, SyncJobHandlerResult, SyncJobLane } from '@openlinker/core/sync';
 import {
   SyncJobRepositoryPort,
   SYNC_JOB_REPOSITORY_TOKEN,
@@ -19,6 +27,8 @@ import {
   RETRY_CLASSIFIER_REGISTRY_TOKEN,
   AuthFailureClassifierRegistryService,
   AUTH_FAILURE_CLASSIFIER_REGISTRY_TOKEN,
+  SyncJobLaneValues,
+  resolveJobScope,
 } from '@openlinker/core/sync';
 import { OfferCreationInvariantException } from '@openlinker/core/listings';
 import { ConnectionPort, CONNECTION_PORT_TOKEN } from '@openlinker/core/identifier-mapping';
@@ -30,7 +40,6 @@ import { runWithPriority, RateLimitTimeoutError } from '@openlinker/shared/rate-
 export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(SyncJobRunner.name);
   private readonly WORKER_ID = `worker-${process.pid}-${Date.now()}`;
-  private readonly BATCH_SIZE = 10; // Number of jobs to process per iteration
   private readonly POLL_INTERVAL_MS = 1000; // Poll interval when no jobs available
   private readonly JOB_HEARTBEAT_INTERVAL_MS = 3 * 60 * 1000; // Refresh lockedAt every 3 minutes while a job runs (#1810)
   private readonly RATE_LIMIT_TIMEOUT_REQUEUE_DELAY_SECONDS = 30; // Fixed short requeue delay for RateLimitTimeoutError — not exponential, since attempts never increments (#1810 review follow-up)
@@ -44,6 +53,28 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
   private isRunning = false;
   private restartTimer: NodeJS.Timeout | null = null;
   private runnerLoopPromise: Promise<void> | null = null;
+
+  /**
+   * Per-lane caps (ADR-050 decisions 2/6). Resolved once at startup from
+   * env-overridable ILLUSTRATIVE defaults — do not treat any number here as
+   * tuned until #1134's per-lane metrics exist. `total` bounds concurrent
+   * jobs in the lane; `perScope` bounds them per isolation scope
+   * (`resolveJobScope`, = connectionId today).
+   */
+  private laneCaps: Record<SyncJobLane, { total: number; perScope: number }> = {
+    realtime: { total: 4, perScope: 2 },
+    bulk: { total: 2, perScope: 1 },
+    fiscal: { total: 2, perScope: 1 },
+    'fan-out': { total: 1, perScope: 1 },
+  };
+
+  /** In-flight job counts per lane, keyed by scope. */
+  private readonly inFlightByLane = new Map<SyncJobLane, Map<string, number>>(
+    SyncJobLaneValues.map((lane) => [lane, new Map<string, number>()])
+  );
+
+  /** Tracked in-flight processJob promises, awaited (bounded) on shutdown. */
+  private readonly inFlightJobs = new Set<Promise<void>>();
 
   constructor(
     @Inject(SYNC_JOB_REPOSITORY_TOKEN)
@@ -66,10 +97,50 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
+    this.laneCaps = this.resolveLaneCaps();
     this.logger.log(`Starting sync job runner with worker ID: ${this.WORKER_ID}`);
     this.startRunner();
     // Stuck-job recovery moved to StuckJobRecoveryService (`maintenance` role,
     // #2279) — a runner replica no longer doubles as the fleet's janitor.
+  }
+
+  /**
+   * Resolve per-lane caps from env with coercion: a non-numeric, non-finite
+   * or non-positive value is IGNORED rather than honoured (a zero cap would
+   * silently stall a whole lane — the #2229 clamp posture).
+   */
+  private resolveLaneCaps(): Record<SyncJobLane, { total: number; perScope: number }> {
+    const read = (envVar: string, fallback: number): number => {
+      const raw = this.configService.get<string>(envVar);
+      if (raw === undefined || raw === null || raw === '') {
+        return fallback;
+      }
+      const parsed = Number(raw);
+      if (!Number.isFinite(parsed) || parsed < 1) {
+        this.logger.warn(`Ignoring invalid ${envVar}=${raw} — using default ${fallback}`);
+        return fallback;
+      }
+      return Math.floor(parsed);
+    };
+
+    return {
+      realtime: {
+        total: read('OL_LANE_REALTIME_CAP', 4),
+        perScope: read('OL_LANE_REALTIME_SCOPE_CAP', 2),
+      },
+      bulk: {
+        total: read('OL_LANE_BULK_CAP', 2),
+        perScope: read('OL_LANE_BULK_SCOPE_CAP', 1),
+      },
+      fiscal: {
+        total: read('OL_LANE_FISCAL_CAP', 2),
+        perScope: read('OL_LANE_FISCAL_SCOPE_CAP', 1),
+      },
+      'fan-out': {
+        total: read('OL_LANE_FANOUT_CAP', 1),
+        perScope: read('OL_LANE_FANOUT_SCOPE_CAP', 1),
+      },
+    };
   }
 
   async onModuleDestroy(): Promise<void> {
@@ -89,7 +160,8 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
     this.isRunning = true;
 
     this.logger.log(
-      `Starting sync job runner loop (worker: ${this.WORKER_ID}, batch size: ${this.BATCH_SIZE}, poll interval: ${this.POLL_INTERVAL_MS}ms)`
+      `Starting sync job runner loop (worker: ${this.WORKER_ID}, poll interval: ${this.POLL_INTERVAL_MS}ms, ` +
+        `lane caps: ${SyncJobLaneValues.map((lane) => `${lane}=${this.laneCaps[lane].total}/${this.laneCaps[lane].perScope}`).join(' ')})`
     );
 
     // Start runner loop in background (don't await)
@@ -130,11 +202,17 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
       this.restartTimer = null;
     }
 
-    // Wait for runner loop to finish, but with a timeout to prevent hanging
+    // Wait for the runner loop AND in-flight jobs to finish, but with a
+    // timeout to prevent hanging (in-flight handlers are cancellable via the
+    // shared abort signal passed to runWithPriority).
     const loopPromise = this.runnerLoopPromise;
+    const pending: Promise<unknown>[] = [...this.inFlightJobs];
     if (loopPromise) {
+      pending.push(loopPromise);
+    }
+    if (pending.length > 0) {
       await Promise.race([
-        loopPromise,
+        Promise.allSettled(pending),
         new Promise<void>((resolve) => setTimeout(resolve, 500)), // 500ms safety timeout
       ]);
     }
@@ -143,9 +221,14 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Main runner loop
+   * Main runner loop (ADR-050, #2278)
    *
-   * Continuously polls for due jobs, locks them, and executes them.
+   * Each tick, EVERY lane with free slots claims independently — never
+   * strict priority, so a saturated lane cannot delay a sibling lane beyond
+   * that sibling's own availability. Claimed jobs run concurrently under
+   * per-(lane, scope) slot accounting; the loop sleeps only when no lane
+   * started anything this tick (all-lanes-at-cap included), so it never
+   * spins hot while jobs are merely in flight.
    */
   private async runnerLoop(): Promise<void> {
     let lastHeartbeat = Date.now();
@@ -153,31 +236,26 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
 
     while (this.isRunning && !this.abortController?.signal.aborted) {
       try {
-        // Find and lock due jobs (atomic operation)
-        const jobs = await this.jobRepository.findAndLockDueJobs(this.BATCH_SIZE, this.WORKER_ID);
+        let startedAny = false;
+        for (const lane of SyncJobLaneValues) {
+          const started = await this.claimAndStartForLane(lane);
+          startedAny = startedAny || started > 0;
+        }
 
         // Log heartbeat periodically to show loop is alive
         const now = Date.now();
         if (now - lastHeartbeat >= HEARTBEAT_INTERVAL_MS) {
           this.logger.debug(
-            `Sync job runner is running (polling for queued jobs every ${this.POLL_INTERVAL_MS}ms)`
+            `Sync job runner is running (polling for queued jobs every ${this.POLL_INTERVAL_MS}ms; ` +
+              `in-flight: ${this.inFlightJobs.size})`
           );
           lastHeartbeat = now;
         }
 
-        // Handle case where repository returns undefined (shouldn't happen, but defensive)
-        if (!jobs || jobs.length === 0) {
-          // No jobs available, wait before next poll (abortable sleep)
+        if (!startedAny) {
+          // Nothing claimable this tick (no due jobs, or every lane/scope at
+          // cap) — wait before next poll (abortable sleep).
           await this.sleep(this.POLL_INTERVAL_MS, this.abortController?.signal);
-          continue;
-        }
-
-        this.logger.debug(`Found ${jobs.length} due job(s), processing...`);
-
-        // Process jobs in parallel (or sequentially for better error isolation)
-        // For MVP, process sequentially to avoid overwhelming adapters
-        for (const job of jobs) {
-          await this.processJob(job);
         }
       } catch (error) {
         // Handle abort signal (graceful shutdown)
@@ -195,6 +273,125 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
         // Backoff before retrying (abortable sleep)
         await this.sleep(1000, this.abortController?.signal);
       }
+    }
+  }
+
+  /**
+   * Claim due jobs for one lane up to its free slots and start them without
+   * awaiting completion. Returns how many jobs were started.
+   *
+   * Scopes already at their per-scope cap are excluded IN the claim (their
+   * rows stay `queued` — no lock-then-release churn). One claim can still
+   * return several jobs of a single scope, so the batch is trimmed here: the
+   * surplus is released back to `queued` immediately with no attempt penalty.
+   */
+  private async claimAndStartForLane(lane: SyncJobLane): Promise<number> {
+    const cap = this.laneCaps[lane];
+    const laneInFlight = this.inFlightByLane.get(lane);
+    if (!laneInFlight) {
+      return 0;
+    }
+
+    let inFlightTotal = 0;
+    for (const count of laneInFlight.values()) {
+      inFlightTotal += count;
+    }
+    const free = cap.total - inFlightTotal;
+    if (free <= 0) {
+      return 0;
+    }
+
+    const jobTypes = this.handlerRegistry.getJobTypesByLane(lane);
+    if (jobTypes.length === 0) {
+      return 0;
+    }
+
+    const excludedScopes = Array.from(laneInFlight.entries())
+      .filter(([, count]) => count >= cap.perScope)
+      .map(([scope]) => scope);
+
+    const jobs = await this.jobRepository.findAndLockDueJobsForLane({
+      jobTypes,
+      limit: free,
+      workerId: this.WORKER_ID,
+      excludedScopes,
+    });
+    if (!jobs || jobs.length === 0) {
+      return 0;
+    }
+
+    this.logger.debug(`Lane ${lane}: claimed ${jobs.length} due job(s)`);
+
+    let started = 0;
+    for (const job of jobs) {
+      const scope = resolveJobScope(job);
+      const current = laneInFlight.get(scope) ?? 0;
+      if (current >= cap.perScope) {
+        // Intra-batch surplus: the claim's scope exclusion is pre-claim only,
+        // so a same-scope burst can exceed the per-scope cap within one
+        // batch. Release the surplus back with no attempt penalty.
+        await this.releaseSurplusClaim(job, lane);
+        continue;
+      }
+      laneInFlight.set(scope, current + 1);
+      started += 1;
+      this.startJob(job, lane, scope);
+    }
+    return started;
+  }
+
+  /**
+   * Start one job without awaiting it, with slot release in `finally`.
+   * `processJob` never throws by contract; the catch is belt-and-braces so a
+   * defect there can never leak an unhandled rejection or a slot.
+   */
+  private startJob(job: SyncJobEntity, lane: SyncJobLane, scope: string): void {
+    const laneInFlight = this.inFlightByLane.get(lane);
+    const promise: Promise<void> = this.processJob(job)
+      .catch((error) => {
+        this.logger.error(
+          `Unexpected processJob error for job ${job.id}`,
+          error instanceof Error ? error.stack : String(error)
+        );
+      })
+      .finally(() => {
+        if (laneInFlight) {
+          const remaining = (laneInFlight.get(scope) ?? 1) - 1;
+          if (remaining <= 0) {
+            laneInFlight.delete(scope);
+          } else {
+            laneInFlight.set(scope, remaining);
+          }
+        }
+        this.inFlightJobs.delete(promise);
+      });
+    this.inFlightJobs.add(promise);
+  }
+
+  /**
+   * Release a claimed-but-over-scope-cap job straight back to `queued`
+   * without burning an attempt — the claim flipped it `running`, and the
+   * congestion is the scope's, not the job's (same reasoning as the
+   * rate-limit-timeout requeue, #1810).
+   */
+  private async releaseSurplusClaim(job: SyncJobEntity, lane: SyncJobLane): Promise<void> {
+    try {
+      // Worded as a DEFERRAL, not a failure: this lands in `sync_jobs.lastError`
+      // (what `requeueWithoutPenalty` writes) and fires routinely — roughly once
+      // per completed job for the length of an operator wave — so on the Jobs &
+      // Logs surface it must not read as something going wrong.
+      await this.jobRepository.requeueWithoutPenalty(
+        job.id,
+        `Deferred: lane '${lane}' per-scope cap reached within the claim batch — ` +
+          `re-queued immediately, no attempt consumed (ADR-050)`,
+        new Date()
+      );
+    } catch (error) {
+      // Best-effort: on failure the row is recovered by stuck-job recovery.
+      this.logger.error(
+        `Failed to release surplus claim for job ${job.id}`,
+        error instanceof Error ? error.stack : String(error)
+      );
     }
   }
 
@@ -222,8 +419,10 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
       }
 
       // Heartbeat while the handler runs so a job queued behind a saturated
-      // per-connection rate limiter for longer than STUCK_JOB_TIMEOUT_MINUTES
-      // is not duplicated by the stuck-job recovery sweep (#1810).
+      // per-connection rate limiter for longer than the recovery sweep's lock
+      // timeout is not duplicated by it (#1810). That sweep now lives in
+      // `StuckJobRecoveryService` under the `maintenance` role (#2279), so the
+      // heartbeat is a cross-process contract rather than an in-file one.
       const heartbeatInterval = setInterval(() => {
         void this.jobRepository.heartbeat(job.id, this.WORKER_ID).catch((error) => {
           this.logger.warn(

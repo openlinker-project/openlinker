@@ -87,131 +87,213 @@ export class HandlerRegistrationService implements OnModuleInit {
   ) {}
 
   onModuleInit(): void {
+    // Every registration declares its ADR-050 concurrency lane (#2278). The
+    // lane is chosen by cost-of-starvation, never by I/O shape or bounded
+    // context — the authoritative table is ADR-050 decision 1 (12 realtime /
+    // 12 bulk / 5 fiscal / 6 fan-out; `fiscalization.register` joined
+    // `fiscal` post-ADR, #2156).
+
     // Register generic marketplace handlers (Option B)
-    this.handlerRegistry.register('marketplace.orders.poll', this.marketplaceOrdersPollHandler);
-    this.handlerRegistry.register('marketplace.order.sync', this.marketplaceOrderSyncHandler);
+    this.handlerRegistry.register(
+      'marketplace.orders.poll',
+      this.marketplaceOrdersPollHandler,
+      'fan-out'
+    );
+    this.handlerRegistry.register(
+      'marketplace.order.sync',
+      this.marketplaceOrderSyncHandler,
+      'realtime'
+    );
     // Per-order reporting-currency stamp: bounded retry + hourly reconcile (#2125).
-    this.handlerRegistry.register('marketplace.order.fxStamp', this.marketplaceOrderFxStampHandler);
+    this.handlerRegistry.register(
+      'marketplace.order.fxStamp',
+      this.marketplaceOrderFxStampHandler,
+      'realtime'
+    );
     this.handlerRegistry.register(
       'marketplace.order.fxStampSweep',
-      this.marketplaceOrderFxStampSweepHandler
+      this.marketplaceOrderFxStampSweepHandler,
+      'bulk'
     );
-    this.handlerRegistry.register('marketplace.offers.sync', this.marketplaceOffersSyncHandler);
+    this.handlerRegistry.register(
+      'marketplace.offers.sync',
+      this.marketplaceOffersSyncHandler,
+      'bulk'
+    );
     this.handlerRegistry.register(
       'marketplace.offerQuantity.update',
-      this.marketplaceOfferQuantityUpdateHandler
+      this.marketplaceOfferQuantityUpdateHandler,
+      'realtime'
     );
     this.handlerRegistry.register(
       'marketplace.offer.updateFields',
-      this.marketplaceOfferFieldUpdateHandler
+      this.marketplaceOfferFieldUpdateHandler,
+      'realtime'
     );
-    this.handlerRegistry.register('marketplace.offer.create', this.marketplaceOfferCreateHandler);
+    // Operator-wave child: single-unit work, but arrives up to 1000 wide —
+    // `bulk` is ADR-050 decision 1's most consequential assignment.
+    this.handlerRegistry.register(
+      'marketplace.offer.create',
+      this.marketplaceOfferCreateHandler,
+      'bulk'
+    );
     this.handlerRegistry.register(
       'marketplace.offer.pollCreationStatus',
-      this.marketplaceOfferPollCreationStatusHandler
+      this.marketplaceOfferPollCreationStatusHandler,
+      'realtime'
     );
     this.handlerRegistry.register(
       'marketplace.offer.statusSync',
-      this.marketplaceOfferStatusSyncHandler
+      this.marketplaceOfferStatusSyncHandler,
+      'bulk'
     );
     this.handlerRegistry.register(
       'marketplace.offer.refreshSnapshot',
-      this.marketplaceOfferRefreshSnapshotHandler
+      this.marketplaceOfferRefreshSnapshotHandler,
+      'realtime'
     );
     this.handlerRegistry.register(
       'marketplace.offer.stockRestore',
-      this.marketplaceOfferStockRestoreHandler
+      this.marketplaceOfferStockRestoreHandler,
+      'realtime'
     );
     this.handlerRegistry.register(
       'marketplace.offer.pauseStale',
-      this.marketplaceOfferPauseStaleHandler
+      this.marketplaceOfferPauseStaleHandler,
+      'realtime'
     );
     this.handlerRegistry.register(
       'marketplace.offer.pauseStaleSweep',
-      this.marketplaceOfferPauseStaleSweepHandler
+      this.marketplaceOfferPauseStaleSweepHandler,
+      'bulk'
     );
     this.handlerRegistry.register(
       'marketplace.shipment.statusSync',
-      this.marketplaceShipmentStatusSyncHandler
+      this.marketplaceShipmentStatusSyncHandler,
+      'bulk'
     );
     this.handlerRegistry.register(
       'marketplace.shipment.syncByExternalId',
-      this.marketplaceShipmentSyncByExternalIdHandler
+      this.marketplaceShipmentSyncByExternalIdHandler,
+      'realtime'
     );
     this.handlerRegistry.register(
       'marketplace.fulfillment.statusSync',
-      this.marketplaceFulfillmentStatusSyncHandler
+      this.marketplaceFulfillmentStatusSyncHandler,
+      'bulk'
     );
 
     // Register generic master handlers (Option B)
-    this.handlerRegistry.register('master.product.syncByExternalId', this.masterProductSyncHandler);
+    this.handlerRegistry.register(
+      'master.product.syncByExternalId',
+      this.masterProductSyncHandler,
+      'realtime'
+    );
     this.handlerRegistry.register(
       'master.inventory.syncByExternalId',
-      this.masterInventorySyncHandler
+      this.masterInventorySyncHandler,
+      'realtime'
     );
 
     // Register auto-match variants handler
-    this.handlerRegistry.register('master.variants.autoMatch', this.autoMatchVariantsHandler);
+    this.handlerRegistry.register(
+      'master.variants.autoMatch',
+      this.autoMatchVariantsHandler,
+      'bulk'
+    );
 
     // Register master inventory sync all handler (periodic full sync)
-    this.handlerRegistry.register('master.inventory.syncAll', this.masterInventorySyncAllHandler);
+    this.handlerRegistry.register(
+      'master.inventory.syncAll',
+      this.masterInventorySyncAllHandler,
+      'fan-out'
+    );
 
     // Register master product sync all handler (catalog discovery / periodic full sync)
-    this.handlerRegistry.register('master.product.syncAll', this.masterProductSyncAllHandler);
-    this.handlerRegistry.register('master.product.syncDelta', this.masterProductSyncDeltaHandler);
+    this.handlerRegistry.register(
+      'master.product.syncAll',
+      this.masterProductSyncAllHandler,
+      'fan-out'
+    );
+    this.handlerRegistry.register(
+      'master.product.syncDelta',
+      this.masterProductSyncDeltaHandler,
+      'fan-out'
+    );
     this.handlerRegistry.register(
       'master.product.reconcile',
-      this.masterProductReconcileHandler
+      this.masterProductReconcileHandler,
+      'fan-out'
     );
 
     // Register pickup-point background-refresh handler (#849, daily re-warm)
     this.handlerRegistry.register(
       'shipping.pickupPoint.refreshFrequent',
-      this.pickupPointRefreshHandler
+      this.pickupPointRefreshHandler,
+      'bulk'
     );
 
     // Register inventory propagate to marketplaces handler
     this.handlerRegistry.register(
       'inventory.propagateToMarketplaces',
-      this.inventoryPropagateHandler
+      this.inventoryPropagateHandler,
+      'fan-out'
     );
 
-    // Register shop product publish handler (#1042, ADR-024)
-    this.handlerRegistry.register('shop.product.publish', this.shopProductPublishHandler);
+    // Register shop product publish handler (#1042, ADR-024) — operator-wave
+    // child, same `bulk` reasoning as marketplace.offer.create.
+    this.handlerRegistry.register('shop.product.publish', this.shopProductPublishHandler, 'bulk');
     // Register shop product status-sync handler (#1845)
     this.handlerRegistry.register(
       'shop.product.statusSync',
       this.shopProductStatusSyncHandler,
+      'bulk',
     );
     // Register destination-taxonomy projection refresh (#1979, ADR-037)
     this.handlerRegistry.register(
       'destination.taxonomy.sync',
       this.destinationTaxonomySyncHandler,
+      'bulk',
     );
 
     // Register invoicing issue handler (OL #1120 — auto-issue trigger)
-    this.handlerRegistry.register('invoicing.issue', this.invoicingIssueHandler);
-    // Register fiscalization register handler (#2156 — auto-issue cross-capability gate)
-    this.handlerRegistry.register('fiscalization.register', this.fiscalizationRegisterHandler);
+    this.handlerRegistry.register('invoicing.issue', this.invoicingIssueHandler, 'fiscal');
+    // Register fiscalization register handler (#2156 — auto-issue cross-capability
+    // gate). Post-ADR-050 registration; `fiscal` by the cost-of-starvation rule
+    // (deadline-bearing, at-most-once) — the ADR's lane table is amended in #2278.
+    this.handlerRegistry.register(
+      'fiscalization.register',
+      this.fiscalizationRegisterHandler,
+      'fiscal'
+    );
     // Register KSeF regulatory-status reconciliation handler (#1121)
     this.handlerRegistry.register(
       'invoicing.regulatoryStatus.reconcile',
-      this.regulatoryStatusReconcileHandler
+      this.regulatoryStatusReconcileHandler,
+      'fiscal'
     );
     // Register offline-submission resubmission sweep handler (#1702)
     this.handlerRegistry.register(
       'invoicing.offlineSubmission.resubmit',
-      this.offlineResubmitHandler
+      this.offlineResubmitHandler,
+      'fiscal'
     );
     // Register crash-recovery sweep handler (#1703)
     this.handlerRegistry.register(
       'invoicing.pendingRecovery.sweep',
-      this.pendingRecoveryHandler
+      this.pendingRecoveryHandler,
+      'fiscal'
     );
     // Register by-id payment-status refresh handler (#1354)
     this.handlerRegistry.register(
       'invoicing.paymentStatus.refreshByExternalId',
-      this.paymentStatusRefreshHandler
+      this.paymentStatusRefreshHandler,
+      'realtime'
     );
+
+    // Boot gate (ADR-050 D1 / ADR-051 D6): every JobTypeValues member must be
+    // in the lane partition, or lane-aware claiming would strand its queued
+    // rows silently. Throws (failing worker boot) naming the uncovered types.
+    this.handlerRegistry.assertFullLaneCoverage();
   }
 }

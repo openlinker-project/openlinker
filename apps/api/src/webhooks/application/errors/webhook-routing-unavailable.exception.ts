@@ -22,12 +22,17 @@ export class WebhookRoutingUnavailableException extends Error {
   constructor(
     public readonly provider: string,
     public readonly connectionId: string,
-    public readonly cause: unknown
+    // Native ES2022 `Error.cause` — NOT a same-named class field, which would
+    // shadow it. `captureStackTrace` below mints a fresh stack pointing here,
+    // so the underlying stack (adapter registry, TypeORM, credential
+    // decryption) survives ONLY on this chain; the controller logs it.
+    cause: unknown
   ) {
     super(
       `Webhook routing temporarily unavailable for provider=${provider}, connectionId=${connectionId}: ${
         cause instanceof Error ? cause.message : String(cause)
-      }`
+      }`,
+      { cause }
     );
     this.name = 'WebhookRoutingUnavailableException';
     Error.captureStackTrace(this, this.constructor);

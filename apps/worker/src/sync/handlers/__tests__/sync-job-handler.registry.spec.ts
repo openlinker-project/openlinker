@@ -51,7 +51,7 @@ describe('SyncJobHandlerRegistry', () => {
     it('should register handler for job type', () => {
       const jobType: JobType = 'master.product.syncByExternalId';
 
-      registry.register(jobType, mockHandler1);
+      registry.register(jobType, mockHandler1, 'realtime');
 
       const handler = registry.getHandler(jobType);
       expect(handler).toBe(mockHandler1);
@@ -60,8 +60,8 @@ describe('SyncJobHandlerRegistry', () => {
     it('should overwrite existing handler with warning', () => {
       const jobType: JobType = 'master.product.syncByExternalId';
 
-      registry.register(jobType, mockHandler1);
-      registry.register(jobType, mockHandler2);
+      registry.register(jobType, mockHandler1, 'realtime');
+      registry.register(jobType, mockHandler2, 'realtime');
 
       const handler = registry.getHandler(jobType);
       expect(handler).toBe(mockHandler2);
@@ -72,8 +72,8 @@ describe('SyncJobHandlerRegistry', () => {
       const jobType1: JobType = 'master.product.syncByExternalId';
       const jobType2: JobType = 'master.inventory.syncByExternalId';
 
-      registry.register(jobType1, mockHandler1);
-      registry.register(jobType2, mockHandler2);
+      registry.register(jobType1, mockHandler1, 'realtime');
+      registry.register(jobType2, mockHandler2, 'realtime');
 
       expect(registry.getHandler(jobType1)).toBe(mockHandler1);
       expect(registry.getHandler(jobType2)).toBe(mockHandler2);
@@ -84,7 +84,7 @@ describe('SyncJobHandlerRegistry', () => {
     it('should return handler for registered job type', () => {
       const jobType: JobType = 'master.product.syncByExternalId';
 
-      registry.register(jobType, mockHandler1);
+      registry.register(jobType, mockHandler1, 'realtime');
 
       const handler = registry.getHandler(jobType);
       expect(handler).toBe(mockHandler1);
@@ -111,7 +111,7 @@ describe('SyncJobHandlerRegistry', () => {
 
     it('should handle all valid job types', () => {
       for (const jobType of JobTypeValues) {
-        registry.register(jobType, mockHandler1);
+        registry.register(jobType, mockHandler1, 'realtime');
         const handler = registry.getHandler(jobType);
         expect(handler).toBe(mockHandler1);
       }
@@ -128,8 +128,8 @@ describe('SyncJobHandlerRegistry', () => {
       const jobType1: JobType = 'master.product.syncByExternalId';
       const jobType2: JobType = 'master.inventory.syncByExternalId';
 
-      registry.register(jobType1, mockHandler1);
-      registry.register(jobType2, mockHandler2);
+      registry.register(jobType1, mockHandler1, 'realtime');
+      registry.register(jobType2, mockHandler2, 'realtime');
 
       const registeredTypes = registry.getRegisteredJobTypes();
       expect(registeredTypes).toContain(jobType1);
@@ -139,7 +139,7 @@ describe('SyncJobHandlerRegistry', () => {
 
     it('should return all registered job types', () => {
       for (const jobType of JobTypeValues) {
-        registry.register(jobType, mockHandler1);
+        registry.register(jobType, mockHandler1, 'realtime');
       }
 
       const registeredTypes = registry.getRegisteredJobTypes();
@@ -150,11 +150,57 @@ describe('SyncJobHandlerRegistry', () => {
     it('should not include unregistered job types', () => {
       const jobType: JobType = 'master.product.syncByExternalId';
 
-      registry.register(jobType, mockHandler1);
+      registry.register(jobType, mockHandler1, 'realtime');
 
       const registeredTypes = registry.getRegisteredJobTypes();
       expect(registeredTypes).toHaveLength(1);
       expect(registeredTypes).toContain(jobType);
+    });
+  });
+
+  describe('lane metadata (ADR-050, #2278)', () => {
+    it('should return the lane a job type was registered under', () => {
+      registry.register('marketplace.order.sync', mockHandler1, 'realtime');
+      registry.register('marketplace.offer.create', mockHandler2, 'bulk');
+
+      expect(registry.getLane('marketplace.order.sync')).toBe('realtime');
+      expect(registry.getLane('marketplace.offer.create')).toBe('bulk');
+    });
+
+    it('should return null lane for an unregistered job type', () => {
+      expect(registry.getLane('marketplace.order.sync')).toBeNull();
+    });
+
+    it('should return the job types belonging to a lane', () => {
+      registry.register('marketplace.order.sync', mockHandler1, 'realtime');
+      registry.register('marketplace.offerQuantity.update', mockHandler1, 'realtime');
+      registry.register('marketplace.offer.create', mockHandler2, 'bulk');
+
+      expect(registry.getJobTypesByLane('realtime').sort()).toEqual([
+        'marketplace.offerQuantity.update',
+        'marketplace.order.sync',
+      ]);
+      expect(registry.getJobTypesByLane('bulk')).toEqual(['marketplace.offer.create']);
+      expect(registry.getJobTypesByLane('fiscal')).toEqual([]);
+    });
+  });
+
+  describe('assertFullLaneCoverage (ADR-050 D1 / ADR-051 D6)', () => {
+    it('should pass when every JobTypeValues member is registered with a lane', () => {
+      for (const jobType of JobTypeValues) {
+        registry.register(jobType, mockHandler1, 'realtime');
+      }
+
+      expect(() => registry.assertFullLaneCoverage()).not.toThrow();
+    });
+
+    it('should throw naming the uncovered job types when the partition is incomplete', () => {
+      for (const jobType of JobTypeValues) {
+        if (jobType === 'marketplace.order.sync') continue;
+        registry.register(jobType, mockHandler1, 'realtime');
+      }
+
+      expect(() => registry.assertFullLaneCoverage()).toThrow('marketplace.order.sync');
     });
   });
 });

@@ -109,12 +109,15 @@ unpullable or a consumer group unserved fails at startup with the uncovered name
 (countable):* the assertion itself is the countable check; #2169 wires the same rule into
 `check:invariants` for the static half (every registered jobType maps to a role).
 
-> **Amended by the implementation (#2279): scoped to what one process can honestly assert.** A
-> booting process knows its own module graph and nothing about its peers, so it cannot verify a
-> *fleet's* union of roles. What ships asserts that, **when the `jobs` role is booted**, every
-> `JobType` has a registered handler — and fails the boot naming the uncovered ones. The
-> fleet-level half (a deployment where no process carries `scheduler`, or none carries `events`)
-> boots silently and stays with #2169's static check, which can see the deployment manifest.
+> **Amended by the implementation (#2279): scoped to what one process can honestly assert, and
+> served by ADR-050's gate rather than a second one.** A booting process knows its own module graph
+> and nothing about its peers, so it cannot verify a *fleet's* union of roles. The per-process half
+> is already covered by `SyncJobHandlerRegistry.assertFullLaneCoverage()` (#2278): when the `jobs`
+> role is booted it asserts every `JobTypeValues` member has a registered handler+lane and fails the
+> boot naming the uncovered ones — the same predicate and the same failure mode this decision asked
+> for, so #2279 deliberately adds no second gate over one invariant. The fleet-level half (a
+> deployment where no process carries `scheduler`, or none carries `events`) boots silently and
+> stays with #2169's static check, which can see the deployment manifest.
 >
 > That gap has a concrete new trap this wave introduces, called out in `apps/worker/.env.example`:
 > stuck-job recovery used to run wherever the runner ran, and now runs only under `maintenance`. So
