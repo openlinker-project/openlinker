@@ -90,10 +90,6 @@ const KNOWN_CONFIG_KNOBS = new Map([
     { helper: 'parseTriggerModel', key: 'config.invoicing.triggerModel' },
   ],
   [
-    'libs/core/src/invoicing/domain/types/invoicing-primary.types.ts',
-    { helper: 'parseIsPrimaryInvoicing', key: 'config.invoicing.isPrimary' },
-  ],
-  [
     'libs/core/src/identifier-mapping/domain/types/stock-safety-buffer.types.ts',
     { helper: 'readStockSafetyBuffer', key: 'config.stockSafetyBuffer' },
   ],
@@ -101,14 +97,36 @@ const KNOWN_CONFIG_KNOBS = new Map([
     'libs/core/src/identifier-mapping/domain/types/pricing-rule.types.ts',
     { helper: 'readPricingRule', key: 'config.pricingRule' },
   ],
+  [
+    'libs/core/src/sales-documents/domain/types/sales-document-kind.types.ts',
+    {
+      helper: 'readSalesDocumentRouting',
+      key: 'config.invoicing.isPrimary + config.salesDocument.documentKind',
+    },
+  ],
 ]);
 
 /**
  * Files that match the discovery conjunction but are deliberately NOT knobs.
- * Empty today: the conjunction (breadcrumb AND an exported read/parse fn) already
- * excludes the known near-misses. An entry here must say why it is not a knob.
+ * An entry here must say why it is not a knob.
  */
-const NON_KNOBS = new Map([]);
+const NON_KNOBS = new Map([
+  [
+    'libs/core/src/invoicing/domain/types/invoicing-primary.types.ts',
+    // SUPERSEDED, not a second knob. #2161 (ADR-041 decision 4) moved the live
+    // read of `config.invoicing.isPrimary` into `readSalesDocumentRouting`,
+    // registered above — its own docblock says it reads "the EXACT shape #2047
+    // already writes (decision 4 fixes that shape, it does not introduce a
+    // second one)". `parseIsPrimaryInvoicing` has no production caller left
+    // (only its definition and the `@openlinker/core/invoicing` barrel
+    // re-export), so counting it would report five knobs where four keys are
+    // actually coerced, and would trip KNOB_THRESHOLD on a helper nothing
+    // calls. Deleting it — and `selectPrimaryInvoicingConnection` beside it,
+    // likewise superseded by `resolveSalesDocumentRouting` — is a public-barrel
+    // change that belongs in its own reviewed PR, tracked separately.
+    'superseded by readSalesDocumentRouting (#2161); dead export pending removal',
+  ],
+]);
 
 /**
  * At the fifth knob, the shared-rules-model conversation the #1032 cut named
@@ -257,6 +275,29 @@ function checkConfigKnobs() {
     }
   }
 
+  // NON_KNOBS gets the same staleness treatment as KNOWN_CONFIG_KNOBS above.
+  // A suppression that outlives the thing it suppresses is invisible — nothing
+  // else in this rule would ever mention the entry again — and this matters
+  // most for exactly the case that motivated the first entry: a superseded
+  // helper suppressed here, then deleted, leaves a dead exemption that the
+  // next reader has to disprove by hand.
+  for (const [rel, reason] of NON_KNOBS) {
+    const abs = join(REPO_ROOT, rel);
+    if (!existsSync(abs)) {
+      failures.push(
+        `stale NON_KNOBS entry: ${rel} ("${reason}") no longer exists — remove it from ` +
+          `NON_KNOBS in scripts/check-architecture-gates.mjs.`
+      );
+      continue;
+    }
+    if (!isKnobCandidate(readFileSync(abs, 'utf8'))) {
+      failures.push(
+        `stale NON_KNOBS entry: ${rel} ("${reason}") no longer matches the knob pattern, so the ` +
+          `exemption is doing nothing — remove it from NON_KNOBS.`
+      );
+    }
+  }
+
   for (const abs of walkTypesFiles(join(REPO_ROOT, CORE_SRC))) {
     const rel = abs.slice(REPO_ROOT.length + 1);
     if (KNOWN_CONFIG_KNOBS.has(rel) || NON_KNOBS.has(rel)) continue;
@@ -315,6 +356,16 @@ function checkLadderRungs() {
     if (!existsSync(join(dirAbs, rung))) {
       failures.push(
         `stale registry entry: ${RUNG_DIR}/${rung} no longer exists — remove it from KNOWN_RUNGS.`
+      );
+    }
+  }
+  // Symmetric with the NON_KNOBS staleness check in rule 2: an exemption that
+  // outlives its file is a silent one. NON_RUNGS is empty today, so this guard
+  // exists before the first entry rather than after the first rot.
+  for (const rung of NON_RUNGS) {
+    if (!existsSync(join(dirAbs, rung))) {
+      failures.push(
+        `stale NON_RUNGS entry: ${RUNG_DIR}/${rung} no longer exists — remove it from NON_RUNGS.`
       );
     }
   }
