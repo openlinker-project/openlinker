@@ -55,6 +55,7 @@ import {
   taxRatePercentToFraction,
 } from '@openlinker/core/invoicing';
 import type { IssuedDocumentLineAmounts } from '@openlinker/core/invoicing';
+import { MissingTaxRateException, findMissingTaxRate } from '@openlinker/core/invoicing';
 import type { IInfaktHttpClient } from '../http/infakt-http-client.interface';
 import { InfaktApiError } from '../../domain/exceptions/infakt-api.error';
 import type {
@@ -235,16 +236,24 @@ function toInfaktEmailLocale(locale: InvoiceEmailLocale | undefined): string | u
 }
 
 /**
- * Poland's standard VAT rate — the "regime rate" the adapter is documented
- * (`order-to-issue-invoice-command.mapper.ts`) to resolve when core leaves
- * `InvoiceLine.taxRate` empty, which it always does today (core never names
- * a tax rate on the order contract). Verified live (2026-07-01): an empty
- * `tax_symbol` doesn't just get rejected on its own field — Infakt cascades
- * it into `services.gross` / `value.tax_values` errors too, so EVERY line on
- * EVERY invoice 422'd before this fallback existed.
+ * There is no default any more (#2257).
+ *
+ * This adapter used to substitute Poland's standard 23% whenever core left
+ * `InvoiceLine.taxRate` empty - which it always did, because core had no
+ * per-line rate to give. That guess is what the whole #2245 epic exists to
+ * remove: a silent 23% is indistinguishable from a confirmed 23% on the issued
+ * document, and the entire cost of being wrong lands on the seller.
+ *
+ * Core now refuses an issuance whose lines do not all name a rate, so an empty
+ * value should never reach here. The guard below is defence in depth, and it
+ * FAILS rather than filling the gap.
+ *
+ * The historical note is worth keeping: an empty `tax_symbol` does not merely
+ * get rejected on its own field - inFakt cascades it into `services.gross` /
+ * `value.tax_values` errors too (verified live, 2026-07-01), so a rate-less
+ * line was never going to produce a document either way. The difference is that
+ * the failure now names the product instead of a wire field.
  */
-const DEFAULT_PL_VAT_SYMBOL = '23';
-const DEFAULT_PL_VAT_RATE = 0.23;
 
 /**
  * Maps a neutral taxRate string to an Infakt `tax_symbol`.
@@ -276,7 +285,7 @@ function toInfaktTaxSymbol(taxRate: string): string {
     case 'oo':
       return 'np';
     default:
-      return code === '' ? DEFAULT_PL_VAT_SYMBOL : code;
+      return code;
   }
 }
 
@@ -288,12 +297,11 @@ function toInfaktTaxSymbol(taxRate: string): string {
  * 100 and throws on fractional input. The old `n > 1` heuristic that lived here
  * accepted both spellings and, as a side effect, read a genuine 1% rate as 100%.
  *
- * Must stay consistent with `toInfaktTaxSymbol`'s empty-string fallback — a
- * mismatched net/gross split for the declared tax_symbol is itself rejected
- * by Infakt as an invalid `value.tax_values`.
+ * An empty rate no longer resolves to anything (#2257) - the caller refuses such
+ * a command before reaching this function, so there is nothing left to be
+ * consistent with.
  */
 function taxRateNumeric(taxRate: string): number {
-  if (taxRate.trim() === '') return DEFAULT_PL_VAT_RATE;
   return taxRatePercentToFraction(taxRate) ?? 0;
 }
 
@@ -544,6 +552,11 @@ export class InfaktInvoicingAdapter
   }
 
   async issueInvoice(cmd: IssueInvoiceCommand): Promise<IssueInvoiceResult> {
+    // #2257 — defence in depth. Core refuses a rate-less command before the
+    // adapter is reached, so this should be unreachable; it exists because the
+    // alternative to failing here is silently substituting a rate onto a real
+    // fiscal document, which is exactly what this change removes.
+    assertEveryLineHasATaxRate(cmd);
     const { lines, documentType, idempotencyKey, orderId } = cmd;
     // Resolved BEFORE the client upsert so a malformed currency costs no
     // provider round-trip and cannot leave a freshly-created client behind.
@@ -1349,4 +1362,19 @@ export class InfaktInvoicingAdapter
   private sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
+}
+
+/**
+ * Refuse a command whose lines do not all name a tax rate (#2257).
+ *
+ * The provider defaults are gone, so a rate-less line has nowhere to resolve
+ * to. Raising the same neutral exception core does keeps the failure legible at
+ * every layer - and keeps its existing 422 mapping - rather than surfacing as an
+ * inFakt wire-field rejection nobody can act on.
+ */
+function assertEveryLineHasATaxRate(cmd: IssueInvoiceCommand): void {
+  const finding = findMissingTaxRate(
+    cmd.lines.map((line) => ({ productId: line.name, taxRate: line.taxRate })),
+  );
+  if (finding) throw new MissingTaxRateException(cmd.orderId, finding);
 }

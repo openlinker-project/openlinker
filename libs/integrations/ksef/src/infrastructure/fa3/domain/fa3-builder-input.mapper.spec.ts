@@ -1,7 +1,7 @@
 /**
  * Neutral → FA(3) Builder-Input Mapper — Unit Specs
  *
- * Pins the empty-`taxRate` → connection-`defaultTaxRate` fallback (#1290):
+ * Pins the REMOVAL of the empty-`taxRate` fallback (#1290, removed in #2257):
  * an empty neutral rate resolves via the context's connection default; a
  * non-empty rate is never overridden (including a genuinely unmapped one,
  * which still throws); the same fallback applies to correction lines.
@@ -27,7 +27,6 @@ const CONTEXT: Fa3MappingContext = {
   issueDate: '2026-07-01',
   generatedAt: '2026-07-01T00:00:00.000Z',
   invoiceNumber: 'ol_order_test_001',
-  defaultTaxRate: '8',
 };
 
 function baseCommand(taxRate: string): IssueInvoiceCommand {
@@ -46,9 +45,15 @@ function baseCommand(taxRate: string): IssueInvoiceCommand {
 }
 
 describe('mapToFa3BuilderInput — tax-rate fallback', () => {
-  it('should resolve an empty neutral taxRate to the seller defaultTaxRate', () => {
-    const result = mapToFa3BuilderInput(baseCommand(''), CONTEXT);
-    expect(result.lines[0].p12).toBe('8');
+  it('should refuse an empty neutral taxRate rather than defaulting it (#2257)', () => {
+    // INVERTED deliberately. The connection default this used to assert is what
+    // #2245 removes: it put a flat rate on every line of every document, and on
+    // the paper a guessed 23% is indistinguishable from a confirmed one.
+    // `resolveP12('')` throwing IS the correct outcome now - and core refuses
+    // such a command before the builder is reached at all.
+    expect(() => mapToFa3BuilderInput(baseCommand(''), CONTEXT)).toThrow(
+      UnmappedTaxRateException,
+    );
   });
 
   it('should not override an explicit, mapped neutral taxRate with the default', () => {
