@@ -139,3 +139,18 @@ export interface ExternalIdMapping {
   connectionId: string;
   entityType: string;
 }
+
+/**
+ * Scan window for a paged mapping enumeration (#2219).
+ *
+ * Offset-based rather than keyset because the underlying order (`externalId`) is
+ * unindexed for a `(entityType, connectionId)` partition either way — a keyset
+ * would buy nothing without a new index, and the sweep that consumes this reads
+ * one bounded page per cron tick.
+ */
+export interface IdentifierMappingPage {
+  /** Maximum rows to return. */
+  limit: number;
+  /** Rows to skip, in `externalId` order. Defaults to 0. */
+  offset?: number;
+}

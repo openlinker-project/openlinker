@@ -578,8 +578,25 @@ describe('IdentifierMappingService', () => {
 
       const result = await service.listExternalIdsByConnection('Product', 'conn-1');
 
-      expect(repository.findByEntityTypeAndConnection).toHaveBeenCalledWith('Product', 'conn-1');
+      // The page argument is forwarded verbatim; `undefined` here means "every
+      // mapping", which is what every caller but the inventory sweep wants.
+      expect(repository.findByEntityTypeAndConnection).toHaveBeenCalledWith(
+        'Product',
+        'conn-1',
+        undefined
+      );
       expect(result).toEqual(['ext-1', 'ext-2']);
+    });
+
+    it('should forward a page window to the repository when one is supplied', async () => {
+      repository.findByEntityTypeAndConnection.mockResolvedValue([]);
+
+      await service.listExternalIdsByConnection('Product', 'conn-1', { limit: 50, offset: 100 });
+
+      expect(repository.findByEntityTypeAndConnection).toHaveBeenCalledWith('Product', 'conn-1', {
+        limit: 50,
+        offset: 100,
+      });
     });
 
     it('should return empty array when no mappings found', async () => {

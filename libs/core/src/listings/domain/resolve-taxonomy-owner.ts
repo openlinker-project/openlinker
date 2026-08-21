@@ -47,6 +47,17 @@ export function resolveTaxonomyOwner(adapter: OfferManagerPort): TaxonomyOwner |
   // Borrower FIRST: it reads the OWNER's rows, so the tree is stored once and a
   // borrowing connection needs no special handling at any call site (#1045). An
   // adapter somehow declaring both must still defer to the owner it borrows.
+  //
+  // The returned owner is used VERBATIM, deliberately, and this is where the
+  // taxonomy projection parts ways with mapping resolution (#2210). A borrower
+  // may name an environment-qualified owner (`allegro:sandbox`, #2063); mapping
+  // resolution falls back from the qualified owner to the bare one, because a
+  // mapping row written before the qualification existed is still the operator's
+  // own intent and reusing it is right. A projection row is not: falling back
+  // would hand a sandbox connection the PRODUCTION category tree, and an
+  // operator picking a category that does not exist on the environment they are
+  // publishing to is worse than an empty picker that says the tree has not
+  // synced. Empty is honest here; borrowed-and-wrong is not.
   if (isTaxonomyBorrower(adapter)) {
     return adapter.getBorrowedTaxonomy();
   }

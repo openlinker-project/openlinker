@@ -85,6 +85,54 @@ describe('ErliOfferManagerAdapter', () => {
     it("declares 'allegro' as the borrowed owner taxonomy", () => {
       expect(adapter.getBorrowedTaxonomy()).toBe('allegro');
     });
+
+    it("declares 'allegro' when no Allegro environment is configured", () => {
+      const noEnv = new ErliOfferManagerAdapter(
+        'conn-1',
+        ERLI_ADAPTER_KEY,
+        httpClient,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+      );
+
+      expect(noEnv.getBorrowedTaxonomy()).toBe('allegro');
+    });
+
+    it("declares 'allegro' for a production Allegro environment", () => {
+      const production = new ErliOfferManagerAdapter(
+        'conn-1',
+        ERLI_ADAPTER_KEY,
+        httpClient,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        'production',
+      );
+
+      expect(production.getBorrowedTaxonomy()).toBe('allegro');
+    });
+
+    it("declares 'allegro:sandbox' for a sandbox Allegro environment (#2210)", () => {
+      // An Allegro sandbox connection reports `'allegro:sandbox'` (#2063), so a
+      // bare `'allegro'` here would name an owner nothing answers to and every
+      // borrowed catalogue lookup would silently find nothing.
+      const sandbox = new ErliOfferManagerAdapter(
+        'conn-1',
+        ERLI_ADAPTER_KEY,
+        httpClient,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        'sandbox',
+      );
+
+      expect(sandbox.getBorrowedTaxonomy()).toBe('allegro:sandbox');
+    });
   });
 
   describe('Allegro category-catalog wiring (#1383, ADR-031)', () => {

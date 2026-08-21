@@ -225,7 +225,11 @@ describe('BulkListingController', () => {
           errors: [{ field: 'price', code: 'INVALID', message: 'Price too low' }],
         } as unknown as OfferCreationRecord,
       ];
-      bulkSubmit.getBatch.mockResolvedValue({ batch, records });
+      bulkSubmit.getBatch.mockResolvedValue({
+        batch,
+        records,
+        productIdByVariantId: { 'v-a': 'p-a' },
+      });
 
       const response = await controller.getBatch('b-1');
 
@@ -247,6 +251,7 @@ describe('BulkListingController', () => {
             createdAt: '2026-05-17T10:01:00.000Z',
             updatedAt: '2026-05-17T10:02:00.000Z',
             errors: null,
+            productId: 'p-a',
           },
           {
             id: 'r-2',
@@ -256,6 +261,7 @@ describe('BulkListingController', () => {
             createdAt: '2026-05-17T10:01:00.000Z',
             updatedAt: '2026-05-17T10:03:00.000Z',
             errors: [{ field: 'price', code: 'INVALID', message: 'Price too low' }],
+            productId: null,
           },
         ],
       });

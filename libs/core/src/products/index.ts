@@ -73,6 +73,16 @@ export {
   LOW_STOCK_THRESHOLD,
 } from './domain/types/product.types';
 
+// ProductMasterPort sub-capabilities (#2220, ADR-048 decision 1): optional rungs of
+// the master capability ladder, extracted into distinct interfaces + co-located type
+// guards. Call sites narrow support via `is{Capability}(adapter)`; a master that
+// declares nothing stays on the base port's enumerate-only behaviour.
+export type {
+  ModifiedProductLister,
+  ListExternalIdsModifiedSinceInput,
+} from './domain/ports/capabilities/modified-product-lister.capability';
+export { isModifiedProductLister } from './domain/ports/capabilities/modified-product-lister.capability';
+
 // ORM entities are exposed on the host-only `@openlinker/core/products/orm-entities`
 // sub-path (#594). Plugins must not import them from here.
 

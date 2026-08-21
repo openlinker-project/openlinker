@@ -26,15 +26,23 @@
  * `ConfigService`), Erli is wired via `createNestAdapterModule` and has no
  * plugin-scoped `ConfigService`, so this builder takes no config.
  *
- * **Opt-in, default OFF until #992 (review #1063).** The Erli `status` wire field
- * is still unconfirmed; if the real GET response doesn't carry it with the
- * expected values, `mapErliStatusToReadResult` falls to `inactive` and the
- * reconciliation would write `inactive` snapshots for every mapped offer —
- * surfacing live offers as inactive in the Listings UI. So this builder returns
- * the task ONLY when `OL_ERLI_OFFER_STATUS_SYNC_SCHEDULER_ENABLED === 'true'`
- * (inverting Allegro's default-on). Once enabled, the scheduler's per-tick env
- * gate still toggles it at runtime. Flip the default back to opt-out when #992
- * confirms the field.
+ * **Both tasks default ON (#2230).** Registration is unconditional; each task
+ * carries its own `enabledEnvVar`, which the scheduler re-reads at every tick and
+ * which disables the task only on the literal string `'false'`. So an absent env
+ * var means enabled, matching Allegro.
+ *
+ * The offer-status task was strict opt-in until #2230 (review #1063), guarding
+ * against a `status` wire field that was still #992-provisional: had the real GET
+ * response not carried it with the expected values, `mapErliStatusToReadResult`
+ * would fall through to `inactive` and the reconciliation would write `inactive`
+ * snapshots for every mapped offer. But a task that is never registered writes NO
+ * snapshot at all, so every Erli mapping resolved to the `Unsynced` lifecycle
+ * bucket permanently and was invisible on the default `/listings` tab - a worse
+ * failure than the one being guarded against. The guard's premise has also expired:
+ * Erli's `ProductResponse.status` is declared `enum ["active","inactive"]` in the
+ * sandbox swagger, and every mapped offer on the demo connection read back
+ * `active`. A deployment that still wants the task off sets
+ * `OL_ERLI_OFFER_STATUS_SYNC_SCHEDULER_ENABLED=false`.
  *
  * @module libs/integrations/erli/src/infrastructure/scheduler
  * @see {@link SchedulerTaskConfig} in `@openlinker/core/sync`.
@@ -59,34 +67,31 @@ const ERLI_ORDERS_POLL_LIMIT = 200;
 export function buildErliSchedulerTasks(): SchedulerTaskConfig[] {
   const tasks: SchedulerTaskConfig[] = [];
 
-  // offer-status-sync — OPT-IN, default OFF (review #1063): don't reconcile
-  // against the still-#992-provisional Erli `status` field until it's confirmed
-  // (a wrong/absent field would write `inactive` for every mapped offer). The
-  // scheduler's per-tick gate still toggles it at runtime once enabled. This
-  // gates ONLY this task — any other Erli task (e.g. the orders-poll backstop) is
-  // pushed unconditionally below.
-  if (process.env.OL_ERLI_OFFER_STATUS_SYNC_SCHEDULER_ENABLED === 'true') {
-    tasks.push({
-      taskId: 'erli-offer-status-sync',
-      platformType: 'erli',
-      jobType: 'marketplace.offer.statusSync',
-      cronExpression: ERLI_OFFER_STATUS_SYNC_CRON,
-      enabledEnvVar: 'OL_ERLI_OFFER_STATUS_SYNC_SCHEDULER_ENABLED',
-      generatePayload: () => ({
-        schemaVersion: 1,
-        limit: ERLI_OFFER_STATUS_SYNC_PAGE_LIMIT,
-        cursorKey: 'erli.offerStatus.scanOffset',
-      }),
-      generateIdempotencyKey: (connection, timestamp) =>
-        `marketplace:${connection.id}:offer:status:sync:${timestamp}`,
-    });
-  }
+  // offer-status-sync — registered unconditionally, default ON (#2230): the
+  // snapshot this reconciliation writes is the ONLY thing that lifts an Erli
+  // mapping out of the `Unsynced` lifecycle bucket, so skipping registration hid
+  // every Erli listing from the default `/listings` tab forever. Gated only by its
+  // own env var at each tick, so `…_ENABLED=false` still turns it off (the #1063
+  // escape hatch, now opt-OUT).
+  tasks.push({
+    taskId: 'erli-offer-status-sync',
+    platformType: 'erli',
+    jobType: 'marketplace.offer.statusSync',
+    cronExpression: ERLI_OFFER_STATUS_SYNC_CRON,
+    enabledEnvVar: 'OL_ERLI_OFFER_STATUS_SYNC_SCHEDULER_ENABLED',
+    generatePayload: () => ({
+      schemaVersion: 1,
+      limit: ERLI_OFFER_STATUS_SYNC_PAGE_LIMIT,
+      cursorKey: 'erli.offerStatus.scanOffset',
+    }),
+    generateIdempotencyKey: (connection, timestamp) =>
+      `marketplace:${connection.id}:offer:status:sync:${timestamp}`,
+  });
 
   // orders-poll — MANDATORY order-ingestion backstop (#993): Erli webhooks
   // fire-once with no retry, so this poll heals missed/dropped webhooks. Always
   // registered; gated only by its own env var
-  // (`OL_ERLI_ORDERS_POLL_SCHEDULER_ENABLED`) at each tick — NOT by the
-  // offer-status opt-in above.
+  // (`OL_ERLI_ORDERS_POLL_SCHEDULER_ENABLED`) at each tick.
   tasks.push({
     taskId: 'erli-orders-poll',
     platformType: 'erli',

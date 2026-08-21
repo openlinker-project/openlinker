@@ -84,6 +84,9 @@ export class WorkerIntegrationTestHarness {
     await this.dataSource.query('TRUNCATE TABLE product_variants CASCADE');
     await this.dataSource.query('TRUNCATE TABLE products CASCADE');
     await this.dataSource.query('TRUNCATE TABLE identifier_mappings CASCADE');
+    // #2219: the master sweeps persist a resume cursor here. Without this a
+    // spec inherits the previous one's cursor and silently resumes mid-cycle.
+    await this.dataSource.query('TRUNCATE TABLE connection_cursors CASCADE');
     await this.dataSource.query('TRUNCATE TABLE connections CASCADE');
 
     // Clear Redis cache and streams

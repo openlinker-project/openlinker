@@ -132,7 +132,13 @@ describe('WebhookToJobHandler (dispatcher)', () => {
     await process('msg-1', fields());
 
     expect(route).not.toHaveBeenCalled();
-    expect(redis.xAdd).toHaveBeenCalledWith(DLQ, '*', expect.objectContaining({ eventId: 'evt-1' }));
+    expect(redis.xAdd).toHaveBeenCalledWith(
+      DLQ,
+      '*',
+      expect.objectContaining({ eventId: 'evt-1' }),
+      // Dead-letter writes are bounded like every other stream write (#2163).
+      expect.objectContaining({ TRIM: expect.any(Object) })
+    );
     expect(upsert).toHaveBeenCalledWith(
       expect.objectContaining({
         status: 'deadlettered',

@@ -22,6 +22,7 @@ import type {
   RefreshOfferPublicationStatusResponse,
   OfferMapping,
   PaginatedOfferMappings,
+  EanCategoryMatchStreamEvent,
   ResolveCategoriesBatchRequest,
   ResolveCategoriesBatchResponse,
   ResolveCategoryRequest,
@@ -49,6 +50,7 @@ import type {
   BulkOfferCreateResponse,
   BulkListingRetryResponse,
 } from './bulk-listings.types';
+import { ApiError } from '../../../shared/api/api-error';
 
 export interface CreateOfferOptions {
   /**
@@ -181,14 +183,41 @@ export interface ListingsApi {
   ) => Promise<ResolveCategoryResponse>;
   /**
    * Batch-resolve N variant EANs to marketplace categories in one call (#795).
-   * Wraps the adapter's `EanCategoryMatcher` sub-capability; drives the bulk
-   * wizard's Resolve step, replacing the per-row `resolveCategory` loop. Max
-   * 200 items per request; results keyed by `variantId`.
+   * Wraps the adapter's `EanCategoryMatcher` sub-capability. Max
+   * `RESOLVE_CATEGORY_STREAM_CHUNK_SIZE` items per request; results keyed by
+   * `variantId`.
+   *
+   * No screen calls this since #2211 - the Resolve step moved to
+   * {@link ListingsApi.resolveCategoriesStream}. It is kept rather than deleted
+   * because the route is not deprecated (it is still the all-at-once answer, and
+   * the one a caller that cannot read a stream needs), and because a client
+   * method is the cheapest place to keep that parity honest. Delete it together
+   * with the route, not before.
    */
   resolveCategoriesBatch: (
     connectionId: string,
     body: ResolveCategoriesBatchRequest,
   ) => Promise<ResolveCategoriesBatchResponse>;
+  /**
+   * Streaming sibling of {@link ListingsApi.resolveCategoriesBatch} (#2211).
+   * Same request body and same resolution, delivered one variant at a time so
+   * the bulk wizard's Resolve step can show real progress instead of waiting on
+   * one all-or-nothing answer.
+   *
+   * Yields only outcome-bearing lines: `result` per variant, then exactly one
+   * terminal `done`. Keep-alive filler is dropped by the decoder. Reaching the
+   * end of the iterable WITHOUT a `done` event means the stream was truncated -
+   * the consumer must treat that as a failure, never as a clean finish.
+   *
+   * The connection gate runs before the first byte, so an unknown / disabled /
+   * non-marketplace connection still rejects with a real `ApiError`
+   * (404 / 409 / 422) rather than an empty stream.
+   */
+  resolveCategoriesStream: (
+    connectionId: string,
+    body: ResolveCategoriesBatchRequest,
+    options?: { signal?: AbortSignal },
+  ) => AsyncIterable<EanCategoryMatchStreamEvent>;
   /**
    * Submit a bulk offer-creation batch (#736). Returns the persisted
    * `batchId` and per-job message IDs. 1..100 variants per batch.
@@ -220,7 +249,179 @@ function buildQuery(filters?: ListingsFilters, pagination?: ListingsPagination):
   return qs.length > 0 ? `?${qs}` : '';
 }
 
-export function createListingsApi(request: ApiRequest): ListingsApi {
+/**
+ * Streaming transport handed in by `createApiClient`. Declared locally for the
+ * same reason `ApiRequest` above is: the API module states the shape it needs
+ * rather than importing the host's `app/api` type.
+ */
+interface ApiStreamRequest {
+  (path: string, init?: RequestInit): Promise<ReadableStream<Uint8Array>>;
+}
+
+/** NDJSON media type of the resolve-stream route. */
+const RESOLVE_CATEGORY_STREAM_ACCEPT = 'application/x-ndjson';
+
+/**
+ * Items per resolve request. Mirrors `RESOLVE_CATEGORY_ITEMS_MAX` in
+ * `apps/api/src/listings/http/dto/resolve-category-batch.dto.ts` - the route's
+ * own `@ArrayMaxSize` - so a caller with more variants than this splits them
+ * across sequential streams instead of being rejected by the validation pipe.
+ *
+ * The wizard caps a batch at 100 PRODUCTS and a product expands to every
+ * sibling variant (#824), so a batch above the cap is reachable in ordinary
+ * use. `scripts/check-resolve-stream-mirror.mjs` fails the build if the two
+ * numbers drift.
+ */
+export const RESOLVE_CATEGORY_STREAM_CHUNK_SIZE = 200;
+
+/**
+ * Quiet period after which the route emits a keep-alive line. Mirrors
+ * `RESOLVE_CATEGORY_STREAM_KEEP_ALIVE_INTERVAL_MS` in
+ * `apps/api/src/listings/http/dto/resolve-category-stream.dto.ts` (the FE cannot
+ * import it - the line is deliberately API-app-local, not core - so the mirror
+ * is stated here and the ceiling below is derived from it, never typed twice).
+ */
+export const RESOLVE_CATEGORY_STREAM_KEEP_ALIVE_INTERVAL_MS = 10_000;
+
+/**
+ * Idle ceiling: how long the reader tolerates a body that delivers nothing at
+ * all - not a result, not a terminal line, not even keep-alive filler.
+ *
+ * This is deliberately NOT a wall-clock budget. A legitimate 500-variant run
+ * takes minutes and is exactly why the streamed transport opted out of the
+ * SPA's 30 s timeout; what it must never do is hang forever behind a socket
+ * that opened and then went silent (stalled upstream, dead worker), which
+ * leaves the operator on a shimmer panel with no error and no retry. Because
+ * the route proves itself alive every keep-alive interval, silence is
+ * diagnosable, and six consecutive missed keep-alives is generous enough that
+ * no healthy run can trip it.
+ */
+export const RESOLVE_CATEGORY_STREAM_IDLE_TIMEOUT_MS =
+  RESOLVE_CATEGORY_STREAM_KEEP_ALIVE_INTERVAL_MS * 6;
+
+/**
+ * Decode one NDJSON line into an outcome-bearing event, or `null` for anything
+ * the consumer must ignore: a blank line, the transport's `keep-alive` filler,
+ * a line kind added by a later API version, or a partial line left over when
+ * the body ended mid-write. Dropping a partial tail is safe precisely because
+ * the terminal `done` line is what proves completeness - a truncated stream
+ * still surfaces as truncated.
+ *
+ * The narrowing checks the fields each kind is READ BY, not only `kind`, so the
+ * cast at the end is one the line has actually earned. A `result` missing its
+ * `variantId` would otherwise reach the reducer and key an outcome under
+ * `"undefined"` - a row that never clears, on data the consumer cannot see is
+ * wrong. `completion` is deliberately NOT checked against the known values: a
+ * value added by a later API version must surface through the consumer's
+ * existing "not `complete`" arm, which reports an incomplete run, rather than
+ * being dropped here and reported as a truncated body.
+ */
+export function parseResolveCategoryStreamLine(line: string): EanCategoryMatchStreamEvent | null {
+  const trimmed = line.trim();
+  if (trimmed === '') return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(trimmed);
+  } catch {
+    return null;
+  }
+  if (typeof parsed !== 'object' || parsed === null) return null;
+  const candidate = parsed as Record<string, unknown>;
+  if (candidate.kind === 'result') {
+    if (typeof candidate.variantId !== 'string' || candidate.variantId === '') return null;
+    // The component switches on `result.kind`, so a result without one is a
+    // crash rather than a rendered row.
+    const result = candidate.result;
+    if (typeof result !== 'object' || result === null) return null;
+    if (typeof (result as Record<string, unknown>).kind !== 'string') return null;
+    return parsed as EanCategoryMatchStreamEvent;
+  }
+  if (candidate.kind === 'done') {
+    // Both counts feed the operator's "resolved / unresolved" reading, so a
+    // terminal that cannot state them is not a terminal worth trusting -
+    // dropping it surfaces the run as truncated, which is the honest reading.
+    if (!Number.isFinite(candidate.resolvedCount)) return null;
+    if (!Number.isFinite(candidate.unresolvedCount)) return null;
+    return parsed as EanCategoryMatchStreamEvent;
+  }
+  return null;
+}
+
+/**
+ * One `reader.read()`, bounded by the idle ceiling. Every read that resolves
+ * rearms the window, so any traffic at all - including a keep-alive line the
+ * decoder then drops - counts as liveness.
+ *
+ * The rejection is an `ApiError` with 408 rather than a 5xx or a network error
+ * on purpose: `shouldRetryTransient` would treat those as worth re-running, and
+ * re-running a silent stream just burns another idle window before the operator
+ * is told anything. 408 surfaces the ordinary error state with its retry action
+ * immediately, and the operator decides.
+ */
+async function readWithIdleCeiling(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  idleTimeoutMs: number,
+): Promise<ReadableStreamReadResult<Uint8Array>> {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const idle = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => {
+      reject(
+        new ApiError(
+          `No response from the category lookup for ${Math.round(idleTimeoutMs / 1000)}s.`,
+          408,
+          { idleTimeoutMs },
+        ),
+      );
+    }, idleTimeoutMs);
+  });
+  try {
+    return await Promise.race([reader.read(), idle]);
+  } finally {
+    if (timer !== null) clearTimeout(timer);
+  }
+}
+
+async function* readResolveCategoryStream(
+  stream: ReadableStream<Uint8Array>,
+  idleTimeoutMs: number = RESOLVE_CATEGORY_STREAM_IDLE_TIMEOUT_MS,
+): AsyncGenerator<EanCategoryMatchStreamEvent, void, undefined> {
+  const reader = stream.getReader();
+  const decoder = new TextDecoder();
+  // Lines are not aligned to chunk boundaries, so a chunk can end mid-object.
+  // The buffer carries the remainder into the next read.
+  let buffer = '';
+  try {
+    for (;;) {
+      const { done, value } = await readWithIdleCeiling(reader, idleTimeoutMs);
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let newline = buffer.indexOf('\n');
+      while (newline !== -1) {
+        const line = buffer.slice(0, newline);
+        buffer = buffer.slice(newline + 1);
+        const event = parseResolveCategoryStreamLine(line);
+        if (event !== null) yield event;
+        newline = buffer.indexOf('\n');
+      }
+    }
+    buffer += decoder.decode();
+    const tail = parseResolveCategoryStreamLine(buffer);
+    if (tail !== null) yield tail;
+  } finally {
+    // A consumer that stops early (unmount, terminal reached, idle ceiling)
+    // cancels the body, which is how the server learns the reader left and
+    // stops spending the operator's marketplace quota on results nobody will
+    // read. Cancelling through the reader also releases the lock, and unlike a
+    // bare `releaseLock()` it is safe while a read is still pending - which is
+    // exactly the state the idle ceiling leaves behind.
+    void reader.cancel().catch(() => undefined);
+  }
+}
+
+export function createListingsApi(
+  request: ApiRequest,
+  requestStream: ApiStreamRequest,
+): ListingsApi {
   return {
     list(filters, pagination): Promise<PaginatedOfferMappings> {
       return request<PaginatedOfferMappings>(`/listings${buildQuery(filters, pagination)}`);
@@ -395,6 +596,28 @@ export function createListingsApi(request: ApiRequest): ListingsApi {
           body: JSON.stringify(body),
         },
       );
+    },
+    resolveCategoriesStream(
+      connectionId,
+      body,
+      options,
+    ): AsyncIterable<EanCategoryMatchStreamEvent> {
+      async function* iterate(): AsyncGenerator<EanCategoryMatchStreamEvent, void, undefined> {
+        const stream = await requestStream(
+          `/listings/connections/${connectionId}/categories/resolve-stream`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Accept: RESOLVE_CATEGORY_STREAM_ACCEPT,
+            },
+            body: JSON.stringify(body),
+            ...(options?.signal ? { signal: options.signal } : {}),
+          },
+        );
+        yield* readResolveCategoryStream(stream);
+      }
+      return iterate();
     },
     bulkCreate(body, options): Promise<BulkOfferCreateResponse> {
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };

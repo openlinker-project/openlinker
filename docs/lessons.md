@@ -23,6 +23,32 @@ When a lesson hardens into a rule, **graduate it** to the canonical doc and leav
 
 ---
 
+## An id is assigned before its transaction commits, so id order is not visibility order
+
+**Context**: designing the reader contract for ADR-049's durability spine — how a consumer advances
+through a table of work rows or events without missing any.
+
+**Problem**: the obvious cursor is a scalar `WHERE id > :cursor ORDER BY id`. It is wrong on any
+table written inside a transaction. A sequence (or ULID) hands out the id at **insert** time, but
+the row becomes visible at **commit** time, and those orders differ: transaction A can take id 100,
+transaction B take id 101 and commit first. A reader that sees 101 and advances its cursor past it
+will **never** see 100 — it committed into a position the reader has already passed. The loss is
+silent, permanent, and invisible to a lag metric, because the row is not late; it is simply behind
+a cursor that already moved.
+
+**Rule**: never advance a durable read cursor on a scalar monotonic id alone. Use a composite cursor
+read below a **visibility barrier** set at the oldest still-in-flight transaction (in Postgres,
+derived from the active-transaction horizon), so the reader never crosses a position an open
+transaction can still fill. If a scalar cursor is genuinely unavoidable, the reader must tolerate
+re-reading a bounded window and dedupe on a business-derived identity — never on the id.
+
+**Applies to**: any polling reader over a transactionally-written table — `sync_jobs`, the
+`destination_taxonomy_sync` frontier, and any future outbox/event log. Not applicable to Redis
+Streams ids, which are assigned by a single-threaded server at write time with no commit phase.
+
+**Source**: [ADR-049](./architecture/adrs/049-durability-spine-and-domain-event-contract.md)
+decision 3 (#2165, epic #2162)
+
 ## Never write a control character as a raw byte in source - escape it, or the file stops being reviewable
 
 **Context**: `libs/integrations/eparagony/src/domain/policies/document-token.policy.ts` joined the parts of a vendor idempotency key with `0x00`, written as three literal NUL bytes inside a template literal (and inside the comment describing them) rather than as `\0` escapes.
@@ -250,6 +276,15 @@ When a lesson hardens into a rule, **graduate it** to the canonical doc and leav
 **Rule**: When a union of string literals must be duplicated across the FE/BE boundary, add a textual-parse invariant script (`scripts/check-*-mirror.mjs`, no TS import, `--self-check` for the pure differ) and chain it into `check:invariants` - the same shape as `check-service-interfaces.mjs`. A comment is not enforcement.
 **Applies to**: `scripts/check-permission-mirror.mjs`; any future FE/BE mirrored `as const` vocabulary.
 **Source**: #1826 review round (PR #1905).
+
+## A hand-copied FE/BE *number* is the same mirror class as a literal union - guard it, and guard the differently-named twin too
+
+**Context**: The streamed resolve route (#2209/#2211) duplicated three things across the boundary, each with only a prose "mirrors X" comment: `RESOLVE_CATEGORY_STREAM_KEEP_ALIVE_INTERVAL_MS` (API stream DTO ↔ `listings.api.ts`), the items cap (`RESOLVE_CATEGORY_ITEMS_MAX`, the route's `@ArrayMaxSize`, ↔ the FE's `RESOLVE_CATEGORY_STREAM_CHUNK_SIZE`), and the FE mirror of `EanCategoryMatchStreamEvent`.
+**Problem**: The lesson above was written about *string unions*, so a duplicated **number** read as out of its scope - yet it fails harder and more quietly. The client derives its idle ceiling as `interval * 6` from its own copy, so raising only the server's interval past that ceiling aborts every healthy long run with "the resolver stopped sending data", and both sides stay green because each is unit-tested against its own copy. The cap is worse to spot because the two constants are deliberately named differently (a limit vs a chunk size), so no grep for a shared name finds the pair: reduce the server cap without touching the FE and every large batch 400s at the validation pipe.
+**Rule**: Treat *any* value duplicated across the FE/BE boundary as needing a `check:invariants` guard - numbers included, and especially a pair whose two names differ (state the pairing in the guard, since nothing else records it). For a duplicated *shape*, compare it structurally rather than as a text diff: derive the `kind` discriminants from each side's union members, compare property NAME sets (keeping `?`), and skip types the two sides declare independently. Blank comments before parsing (preserving offsets, so line numbers stay reportable) or a `{@link}` in a JSDoc block breaks the brace matching. Also check the authoritative side against *itself*: an `as const` kinds array sitting beside the union it describes can rot on its own, and only the BE has one to rot.
+**Applies to**: `scripts/check-resolve-stream-mirror.mjs` (keep-alive interval, items cap, stream-event vocabulary); any FE/BE mirrored constant or interface. NOT covered by that guard and still comment-only: `EanMatchResult` itself, the `* 6` idle-ceiling factor, and the Swagger schema in the stream DTO.
+**Source**: PR #2214 review (finding I9), guard added in the same PR.
+
 ## An upsert overlay must not assign a lifecycle-state column unconditionally when two decoupled writers share the row
 
 **Context**: `webhook_deliveries` is stamped by the ingress API (`received`, then `published` after the stream publish) and, independently, by the stream consumer that reads that publish (`job_enqueued` / `deadlettered`). Both go through the same `INSERT ... ON CONFLICT DO UPDATE`, whose set-list is built from the caller-supplied overlay columns.

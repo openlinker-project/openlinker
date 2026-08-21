@@ -709,4 +709,67 @@ describe('JobIntakeConsumer', () => {
       jest.useRealTimers();
     });
   });
+
+  describe('recovery outcome reporting (#2164)', () => {
+    // The drain's summary line is read by an operator during the incident it
+    // describes, so what it counts has to be exactly what happened. A boolean
+    // return once made a trimmed entry — whose payload retention destroyed —
+    // count as "Recovered", reporting permanent loss as successful recovery.
+
+    const runRecovery = async (entry: unknown): Promise<string> =>
+      await (consumer as any).recoverEntrySafely(entry, 'startup-drain');
+
+    it('should report a processed entry as recovered', async () => {
+      jest.spyOn(consumer as any, 'handleRecoveredEntry').mockResolvedValue(undefined);
+
+      const outcome = await runRecovery({
+        kind: 'entry',
+        id: '1-0',
+        fields: { jobType: 'a' },
+        deliveryCount: 1,
+      });
+
+      expect(outcome).toBe('recovered');
+    });
+
+    it('should report a trimmed entry as discarded, never as recovered', async () => {
+      // ACKing it succeeds, but nothing was recovered — the payload is gone.
+      jest.spyOn(consumer as any, 'handleRecoveredEntry').mockResolvedValue(undefined);
+
+      const outcome = await runRecovery({ kind: 'trimmed', id: '1-0' });
+
+      expect(outcome).toBe('discarded');
+    });
+
+    it('should report a throwing handler as failed rather than propagating', async () => {
+      // Isolation: one poison entry must not abort the pass for its siblings.
+      jest
+        .spyOn(consumer as any, 'handleRecoveredEntry')
+        .mockRejectedValue(new Error('handler blew up'));
+
+      const outcome = await runRecovery({
+        kind: 'entry',
+        id: '1-0',
+        fields: { jobType: 'a' },
+        deliveryCount: 1,
+      });
+
+      expect(outcome).toBe('failed');
+    });
+
+    it('should rethrow instead of swallowing when the consumer is shutting down', async () => {
+      // A quitting client is not a handler failure, and every later command on
+      // this pass would fail too.
+      jest
+        .spyOn(consumer as any, 'handleRecoveredEntry')
+        .mockRejectedValue(new Error('Socket closed'));
+      const aborter = new AbortController();
+      aborter.abort();
+      (consumer as any).abortController = aborter;
+
+      await expect(
+        runRecovery({ kind: 'entry', id: '1-0', fields: { jobType: 'a' }, deliveryCount: 1 })
+      ).rejects.toThrow('Socket closed');
+    });
+  });
 });
