@@ -186,10 +186,16 @@ export function BulkReviewStep({
   const overExpansionCeiling = counts.includedReady > BULK_SUBMIT_LIMIT;
   const overExclusionCap = counts.excluded > BULK_SUBMIT_LIMIT;
 
+  // A batch-level precondition LOCKS the submit rather than warning (#2240
+  // review). It is connection-wide and deterministic - every child job would be
+  // rejected - so a banner the operator can read past does not prevent the
+  // wasted batch, it explains it afterwards. Unlike a per-row blocker there is
+  // nothing to switch off: no subset of this batch can succeed.
   const canApprove =
     counts.includedReady > 0 &&
     counts.includedNeedsAttention === 0 &&
     duplicateEanIds.size === 0 &&
+    batchIssues.length === 0 &&
     !overExpansionCeiling &&
     !overExclusionCap &&
     !paramsResolving;
@@ -353,7 +359,7 @@ export function BulkReviewStep({
       {batchIssues.map((issue) => (
         <Alert
           key={issue.id}
-          tone="warning"
+          tone="error"
           title={issue.title}
           action={
             <Link className="button button--sm" to={`/connections/${config.connectionId}`}>
@@ -367,7 +373,9 @@ export function BulkReviewStep({
 
       <div
         className={
-          counts.includedNeedsAttention === 0 && duplicateEanIds.size === 0
+          counts.includedNeedsAttention === 0 &&
+          duplicateEanIds.size === 0 &&
+          batchIssues.length === 0
             ? 'bulk-review__banner bulk-review__banner--ok'
             : 'bulk-review__banner'
         }
@@ -397,6 +405,14 @@ export function BulkReviewStep({
             </b>{' '}
             The marketplace treats them as one product identity and the submit is rejected
             whole - give each one its own EAN, or switch the duplicates off.
+          </>
+        ) : batchIssues.length > 0 ? (
+          <>
+            <b>
+              This connection is not set up to create offers yet, so nothing can be submitted.
+            </b>{' '}
+            Every variant below would be rejected for the same reason - fix it above, on the
+            connection, and the submit unlocks.
           </>
         ) : counts.includedNeedsAttention === 0 ? (
           <>

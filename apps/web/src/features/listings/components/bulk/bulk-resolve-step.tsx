@@ -39,6 +39,7 @@ import {
   productCategoryIdOf,
   titleForVariant,
 } from './bulk-policy';
+import { collapseToInvalidBarcode } from './bulk-blockers';
 import {
   resolveRetryDelay,
   shouldRetryTransient,
@@ -305,13 +306,11 @@ export function BulkResolveStep({
         // (incl. 0 -> out-of-stock, not a create error). Plan §11.
         if (isMulti) blockers = blockers.filter((b) => b !== 'no-master-stock');
         // A supplied-but-invalid barcode is a hard GS1 gate (plan §10.1 / B5) and
-        // its own cause since #2240, replacing the downstream category cause so
-        // the row carries one explanation rather than two.
+        // its own cause since #2240. The collapse rule itself lives in
+        // `collapseToInvalidBarcode` - shared with `recomputeVariantBlockers`,
+        // which applies it after an edit.
         if (ean !== null && !isValidGtin(ean) && !blockers.includes('invalid-barcode')) {
-          blockers = [
-            ...blockers.filter((b) => b !== 'no-match' && b !== 'no-ean'),
-            'invalid-barcode',
-          ];
+          blockers = collapseToInvalidBarcode(blockers) as BulkRowBlocker[];
         }
 
         return {

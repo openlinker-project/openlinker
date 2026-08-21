@@ -106,7 +106,7 @@ describe('allegroOfferValidation', () => {
           postCode: '00-001',
         },
         responsibleProducerId: 'rp_1',
-        safetyInformation: { description: 'Safe' },
+        safetyInformation: { type: 'TEXT', description: 'Safe' },
       },
     };
 
@@ -151,6 +151,76 @@ describe('allegroOfferValidation', () => {
         }) ?? [];
 
       expect(issues[0]?.title).toContain('a responsible producer');
+    });
+
+    it('requires safetyInformation.type, which the adapter gate checks first', () => {
+      // The mirror used to accept any object here, so a connection carrying a
+      // description and no type read green and had every offer rejected - the
+      // under-reporting a mirror drifts into (#2240 review).
+      const issues =
+        allegroOfferValidation.validateBatch?.({
+          connectionConfig: {
+            sellerDefaults: { ...complete.sellerDefaults, safetyInformation: { description: 'Safe' } },
+          },
+        }) ?? [];
+
+      expect(issues[0]?.title).toContain('safety information');
+    });
+
+    it('requires a description on the TEXT arm', () => {
+      const issues =
+        allegroOfferValidation.validateBatch?.({
+          connectionConfig: {
+            sellerDefaults: {
+              ...complete.sellerDefaults,
+              safetyInformation: { type: 'TEXT', description: '' },
+            },
+          },
+        }) ?? [];
+
+      expect(issues[0]?.title).toContain('safety information');
+    });
+
+    it('requires at least one attachment on the ATTACHMENTS arm', () => {
+      const issues =
+        allegroOfferValidation.validateBatch?.({
+          connectionConfig: {
+            sellerDefaults: {
+              ...complete.sellerDefaults,
+              safetyInformation: { type: 'ATTACHMENTS', attachments: [] },
+            },
+          },
+        }) ?? [];
+
+      expect(issues[0]?.title).toContain('safety information');
+    });
+
+    it('accepts a filled ATTACHMENTS arm', () => {
+      expect(
+        allegroOfferValidation.validateBatch?.({
+          connectionConfig: {
+            sellerDefaults: {
+              ...complete.sellerDefaults,
+              safetyInformation: { type: 'ATTACHMENTS', attachments: [{ id: 'a1' }] },
+            },
+          },
+        })
+      ).toEqual([]);
+    });
+
+    it('accepts a type the adapter gate does not model rather than blocking on it', () => {
+      // The adapter only asserts `type` is present, so inventing a stricter rule
+      // here would refuse a batch Allegro allows.
+      expect(
+        allegroOfferValidation.validateBatch?.({
+          connectionConfig: {
+            sellerDefaults: {
+              ...complete.sellerDefaults,
+              safetyInformation: { type: 'SOMETHING_NEW' },
+            },
+          },
+        })
+      ).toEqual([]);
     });
   });
 });

@@ -386,6 +386,20 @@ export interface OfferBatchValidationInput {
  * renders it as a single banner and never as a per-row chip - a row cannot
  * observe a connection-level fact, and repeating it per row would state N times
  * something true once.
+ *
+ * **Reporting one BLOCKS the submit.** There is no advisory variant and no
+ * override, deliberately: a precondition at this level is connection-wide and
+ * deterministic, so every offer in the batch is rejected, and a banner an
+ * operator can read past does not prevent the wasted batch - it only explains it
+ * afterwards. That is materially different from a per-row blocker, where
+ * proceeding partially succeeds.
+ *
+ * The cost of that choice sits on the plugin: a platform must report here only
+ * what its own destination DECLARES, never an inference of its own, and a mirror
+ * of a destination gate must not be stricter than the gate - over-reporting
+ * locks an operator out of a batch the destination would have accepted. A
+ * platform that wants to warn without blocking has the per-row chip seam for it,
+ * not this one.
  */
 export interface OfferBatchIssue {
   /** Stable id, namespaced like a blocker (e.g. `allegro:missing-seller-details`). */
@@ -414,6 +428,9 @@ export interface OfferValidationContribution {
    * every offer on the connection: without this the batch read `ready`,
    * submitted, and then failed one child job at a time. Same failure shape as
    * `allegro:title-too-long` (#1962), one level up.
+   *
+   * A non-empty result LOCKS the submit - see `OfferBatchIssue` for why that is
+   * the contract and what it asks of the plugin.
    */
   validateBatch?: (input: OfferBatchValidationInput) => OfferBatchIssue[];
   /**

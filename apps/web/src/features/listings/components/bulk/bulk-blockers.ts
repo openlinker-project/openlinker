@@ -75,6 +75,24 @@ export function isCategoryBlocker(blocker: string): boolean {
 }
 
 /**
+ * Collapse a row's blockers onto `invalid-barcode` as the single category cause
+ * (#2240).
+ *
+ * A supplied-but-invalid barcode IS the cause, so it replaces the downstream
+ * category cause rather than joining it: one cause chip per row keeps the Review
+ * table readable, and `no catalog match` beside it would restate what the
+ * operator's own typo already explains. `no-match` and `no-ean` are the two
+ * outcomes a bad barcode produces upstream, and they are the two this drops.
+ *
+ * Lives here rather than at either call site because BOTH the Resolve step and
+ * `recomputeVariantBlockers` apply it - the same policy expression written twice
+ * is what `productCategoryIdOf` was extracted to stop one screen earlier.
+ */
+export function collapseToInvalidBarcode(blockers: readonly string[]): string[] {
+  return [...blockers.filter((b) => b !== 'no-match' && b !== 'no-ean'), 'invalid-barcode'];
+}
+
+/**
  * Blockers that are a per-variant field editable in the variant scope panel
  * itself (so their fix CTA should stay on the variant, not jump to base).
  */

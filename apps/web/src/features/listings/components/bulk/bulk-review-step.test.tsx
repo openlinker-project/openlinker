@@ -196,6 +196,35 @@ describe('BulkReviewStep', () => {
     expect(screen.queryByText('category not set')).not.toBeInTheDocument();
   });
 
+  it('LOCKS the submit while a batch-level precondition is unmet (#2240 review)', () => {
+    // Not a soft warning: the precondition is connection-wide and
+    // deterministic, so no subset of this batch can succeed and a banner an
+    // operator can read past would explain the wasted batch instead of
+    // preventing it.
+    renderWithProviders(
+      <BulkReviewStep
+        rows={[makeRow('prod_1', [variantRow('v1'), variantRow('v2')])]}
+        {...baseProps()}
+        batchIssues={[
+          {
+            id: 'allegro:missing-seller-details',
+            title: 'This connection is missing a responsible producer.',
+            detail: 'Allegro requires them on every offer.',
+          },
+        ]}
+      />,
+    );
+
+    for (const button of screen.getAllByRole('button', { name: /Create offers/ })) {
+      expect(button).toBeDisabled();
+    }
+    // And the readiness line must not still claim every variant is ready.
+    expect(screen.queryByText(/All included variants are ready/)).not.toBeInTheDocument();
+    expect(
+      screen.getByText(/This connection is not set up to create offers yet/),
+    ).toBeInTheDocument();
+  });
+
   it('warns once for the batch when the platform reports an unmet precondition (#2240)', () => {
     renderWithProviders(
       <BulkReviewStep

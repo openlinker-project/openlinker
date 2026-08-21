@@ -16,6 +16,7 @@
 import type { OfferRowValidationInput } from '../../../../shared/plugins';
 import type { BulkPerProductOverride } from '../../api/bulk-listings.types';
 import type { EanMatchResult } from '../../api/listings.types';
+import { collapseToInvalidBarcode } from './bulk-blockers';
 import type {
   BulkRowBlocker,
   BulkValueSource,
@@ -165,7 +166,7 @@ export interface ComputeBlockersInput {
    * for variant rows without a barcode (no BE call); `undefined` is treated
    * defensively as `no-match`.
    */
-  categoryResult: EanMatchResult | undefined;
+  categoryResult: CategoryOutcome | undefined;
   pricingPolicy: PricingPolicy;
   stockPolicy: StockPolicy;
   masterPrice: number | null;
@@ -596,11 +597,9 @@ export function recomputeVariantBlockers(
   // where the category is resolved server-side.
   const ean = effectiveVariantEan(variant);
   if (ean !== null && !isValidGtin(ean) && !filtered.includes('invalid-barcode')) {
-    // The invalid barcode IS the cause, so it replaces the downstream category
-    // cause rather than joining it - one cause chip per row keeps the Review
-    // table readable and stops "no catalog match" restating what the operator's
-    // own typo already explains.
-    return [...filtered.filter((b) => b !== 'no-match' && b !== 'no-ean'), 'invalid-barcode'];
+    // The collapse rule lives in `collapseToInvalidBarcode`, shared with the
+    // Resolve step, so the two cannot drift.
+    return collapseToInvalidBarcode(filtered) as BulkRowBlocker[];
   }
   // #1837: "already listed" is a SOFT warning surfaced as its own chip + a
   // publish-time confirm - never a readiness blocker (re-publishing is a valid
@@ -609,24 +608,38 @@ export function recomputeVariantBlockers(
 }
 
 /**
- * Stand-in for an outcome the build does not recognise (#2240).
+ * The wizard's own reading of a category outcome it cannot interpret (#2240).
  *
- * `EanMatchResult` is a closed union, so there is no member meaning "the
- * destination answered something this version cannot read" - and that state has
- * to survive a reblock, or a row degrades from `unknown result` to
- * `no catalog match` and starts asserting something the lookup never said. The
- * cast is confined to this constant, and `computeBlockers`' exhaustive branch is
- * the only thing that ever reads it.
+ * `EanMatchResult` is a closed union owned by the API contract, so there is no
+ * member meaning "the destination answered something this build cannot read" -
+ * and that state has to survive a reblock, or a row degrades from
+ * `unknown result` to `no catalog match` and starts asserting something the
+ * lookup never said.
+ *
+ * Declared as its own member of a wider union rather than cast into the closed
+ * one: `unrecognised` is a fact about THIS build's understanding, not a shape the
+ * destination sends, and the compiler can express that. A double cast through
+ * `unknown` is the `any` escape with more syntax, and it would also make
+ * `computeBlockers`' final arm reachable only around the type system rather than
+ * through it.
  */
-const UNRECOGNISED_CATEGORY_RESULT = {
-  kind: '__unrecognised__',
-} as unknown as EanMatchResult;
+export interface UnrecognisedCategoryResult {
+  kind: 'unrecognised';
+}
+
+/**
+ * A category outcome as the wizard holds it: whatever the API declared, plus the
+ * one state only the wizard can be in.
+ */
+export type CategoryOutcome = EanMatchResult | UnrecognisedCategoryResult;
+
+const UNRECOGNISED_CATEGORY_RESULT: UnrecognisedCategoryResult = { kind: 'unrecognised' };
 
 /** Reconstruct an `EanMatchResult` for a sibling from its resolved state. */
 function variantCategoryResult(
   variant: BulkVariantRow,
   resolvedCategoryId: string | null,
-): EanMatchResult {
+): CategoryOutcome {
   if (resolvedCategoryId) {
     return {
       kind: 'matched',

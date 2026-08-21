@@ -45,7 +45,7 @@ import {
 const COMPLETE_SELLER_DEFAULTS = {
   location: { countryCode: 'PL', province: 'MAZOWIECKIE', city: 'Warszawa', postCode: '00-001' },
   responsibleProducerId: 'rp-1',
-  safetyInformation: { description: 'Safe.' },
+  safetyInformation: { type: 'TEXT', description: 'Safe.' },
 };
 
 /** Most tests are about categories, not seller details - keep that noise off. */
@@ -458,11 +458,12 @@ test.describe('bulk wizard category blockers (#2240)', () => {
 
   // ── Batch-level preconditions ───────────────────────────────────────────────
 
-  test('incomplete seller details warn once for the batch, before submit', async ({
+  test('incomplete seller details lock the submit for the whole batch', async ({
     page,
   }, testInfo) => {
     // No `sellerDefaults`: Allegro's own gate is the first statement of
-    // `createOffer`, so every offer would be rejected after submit.
+    // `createOffer`, so every offer would be rejected after submit. Nothing in
+    // this batch can succeed, which is why it locks rather than warns.
     await openReview(page);
 
     await expect(page.getByText(/This connection is missing/)).toHaveCount(1);
@@ -472,19 +473,47 @@ test.describe('bulk wizard category blockers (#2240)', () => {
       'href',
       new RegExp(CONNECTION_ID)
     );
+    for (const cta of await page.getByRole('button', { name: /Create offers/ }).all()) {
+      await expect(cta).toBeDisabled();
+    }
+    await expect(page.getByText(/All included variants are ready/)).toHaveCount(0);
 
     await captureState(page, testInfo, 'batch-seller-details-missing', true);
   });
 
-  test('a complete connection carries no batch banner', async ({ page }, testInfo) => {
+  test('an incomplete safety-information type locks the submit too', async ({
+    page,
+  }, testInfo) => {
+    // The mirror used to accept any object under `safetyInformation`, so a
+    // connection carrying a description and no `type` read green and had every
+    // offer rejected - the drift a mirror falls into (#2240 review).
+    await openReview(page, {
+      sellerDefaults: {
+        ...COMPLETE_SELLER_DEFAULTS,
+        safetyInformation: { description: 'Safe.' },
+      },
+    });
+
+    await expect(page.getByText(/safety information/)).toBeVisible();
+    for (const cta of await page.getByRole('button', { name: /Create offers/ }).all()) {
+      await expect(cta).toBeDisabled();
+    }
+
+    await captureState(page, testInfo, 'batch-seller-details-safety-type-missing', true);
+  });
+
+  test('a complete connection carries no batch banner and can submit', async ({
+    page,
+  }, testInfo) => {
     await openReview(page, READY_CONNECTION);
 
     await expect(page.getByText(/This connection is missing/)).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /Create offers/ }).first()).toBeEnabled();
 
     await captureState(page, testInfo, 'batch-seller-details-complete', true);
   });
 
-  test('a partially filled ship-from location still warns', async ({ page }, testInfo) => {
+  test('a partially filled ship-from location still locks the submit', async ({ page }, testInfo) => {
     // The adapter's gate wants all four location fields, so three of four is a
     // rejection at create time, not something to soften here.
     await openReview(page, {
