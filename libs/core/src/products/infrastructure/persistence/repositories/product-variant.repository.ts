@@ -297,6 +297,11 @@ export class ProductVariantRepository implements ProductVariantRepositoryPort {
       price: entity.price !== null ? Number(entity.price) : undefined,
       isStale: entity.isStale,
       staleAt: entity.staleAt,
+      // #2255 — read surface for the variant table's rate column. An absent
+      // override is rendered as "inherited from the product", never as a gap.
+      taxRate: entity.taxRate,
+      taxRateCountry: entity.taxRateCountry,
+      taxRateReadAt: entity.taxRateReadAt,
       createdAt: entity.createdAt,
       updatedAt: entity.updatedAt,
     };
