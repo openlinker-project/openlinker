@@ -866,3 +866,44 @@ export interface ResolveCategoriesBatchRequest {
 export interface ResolveCategoriesBatchResponse {
   results: Record<string, EanMatchResult>;
 }
+
+/**
+ * NDJSON line vocabulary for `POST .../categories/resolve-stream` (#2211,
+ * epic #2205). Mirrors `EanCategoryMatchStreamEvent` from
+ * `@openlinker/core/listings`, duplicated FE-side per #591 - same convention as
+ * `EanMatchResult` above. The transport-only `keep-alive` line is deliberately
+ * NOT modelled: it carries no outcome, so the decoder drops it rather than
+ * widening this union with a kind every consumer would have to ignore.
+ */
+export const EanCategoryMatchStreamCompletionValues = ['complete', 'aborted', 'failed'] as const;
+export type EanCategoryMatchStreamCompletion =
+  (typeof EanCategoryMatchStreamCompletionValues)[number];
+
+/** One variant's outcome. At most one per requested item. */
+export interface EanCategoryMatchStreamResultEvent {
+  kind: 'result';
+  variantId: string;
+  result: EanMatchResult;
+}
+
+/**
+ * Terminal line, emitted exactly once and always last - on the failure path
+ * too, because the 200 status is committed with the first line. Reaching
+ * end-of-body without it means the run was truncated.
+ */
+export interface EanCategoryMatchStreamDoneEvent {
+  kind: 'done';
+  resolvedCount: number;
+  unresolvedCount: number;
+  completion: EanCategoryMatchStreamCompletion;
+  /**
+   * `false` means no destination catalogue was consulted at all, so every
+   * `no-match` in this stream says nothing about the operator's barcodes and
+   * must not become a category blocker (#1934/F10 is what the inverse costs).
+   */
+  catalogueLookupPerformed: boolean;
+}
+
+export type EanCategoryMatchStreamEvent =
+  | EanCategoryMatchStreamResultEvent
+  | EanCategoryMatchStreamDoneEvent;

@@ -19,6 +19,9 @@ import type {
   CategoryPathSegment,
   CategoryBarcodeMatcher,
   EanCategoryMatcher,
+  EanCategoryMatcherStreaming,
+  EanCategoryMatchStreamItem,
+  EanCategoryMatchStreamOptions,
   BatchCategoryByEanInput,
   EanMatchResult,
   CategoryParametersReader,
@@ -74,7 +77,10 @@ import {
   resolveAllegroProductCardByEan,
   type ResolveProductCardResult,
 } from '../util/resolve-allegro-product-card-by-ean';
-import { resolveCategoriesForBatchByEan } from '../util/resolve-categories-for-batch-by-ean';
+import {
+  resolveCategoriesForBatchByEan,
+  streamCategoriesForBatchByEan,
+} from '../util/resolve-categories-for-batch-by-ean';
 import { fetchAllegroProduct } from '../util/fetch-allegro-product';
 import type { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 import type { CachePort } from '@openlinker/shared';
@@ -267,6 +273,7 @@ export class AllegroOfferManagerAdapter
     CategoryPathReader,
     CategoryBarcodeMatcher,
     EanCategoryMatcher,
+    EanCategoryMatcherStreaming,
     CategoryParametersReader,
     CatalogProductReader,
     OfferCreator,
@@ -1121,6 +1128,26 @@ export class AllegroOfferManagerAdapter
     input: BatchCategoryByEanInput
   ): Promise<Map<string, EanMatchResult>> {
     return resolveCategoriesForBatchByEan(this.httpClient, this.cache, this.connectionId, input);
+  }
+
+  /**
+   * EanCategoryMatcherStreaming.streamCategoriesForBatchByEan (#2208).
+   *
+   * Same delegation as the batch sibling above, onto the generator the batch
+   * method itself collects over - so per-item cache, GTIN re-filter and
+   * no-throw semantics are one implementation, not two.
+   */
+  streamCategoriesForBatchByEan(
+    input: BatchCategoryByEanInput,
+    options?: EanCategoryMatchStreamOptions
+  ): AsyncIterable<EanCategoryMatchStreamItem> {
+    return streamCategoriesForBatchByEan(
+      this.httpClient,
+      this.cache,
+      this.connectionId,
+      input,
+      options?.signal ? { signal: options.signal } : undefined
+    );
   }
 
   /**

@@ -8,12 +8,12 @@
  */
 
 import { forwardRef, type ComponentPropsWithoutRef } from 'react';
-import { formatAbsoluteDate, formatDateTime } from '../format/format-date';
+import { formatAbsoluteDate, formatAbsoluteTime, formatDateTime } from '../format/format-date';
 import { formatRelativeTime } from '../format/format-relative-time';
 
 interface TimeDisplayProps extends Omit<ComponentPropsWithoutRef<'time'>, 'dateTime' | 'children'> {
   iso: string;
-  format?: 'date' | 'datetime' | 'relative';
+  format?: 'date' | 'datetime' | 'relative' | 'time';
 }
 
 export const TimeDisplay = forwardRef<HTMLTimeElement, TimeDisplayProps>(
@@ -21,6 +21,7 @@ export const TimeDisplay = forwardRef<HTMLTimeElement, TimeDisplayProps>(
     const label =
       format === 'relative' ? formatRelativeTime(iso) :
       format === 'date'     ? formatAbsoluteDate(iso) :
+      format === 'time'     ? formatAbsoluteTime(iso) :
                               formatDateTime(iso);
 
     return (

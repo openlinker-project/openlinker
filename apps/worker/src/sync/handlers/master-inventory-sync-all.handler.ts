@@ -1,32 +1,70 @@
 /**
  * Master Inventory Sync All Handler
  *
- * Handles jobs of type 'master.inventory.syncAll'. Enumerates all known product
- * external IDs for a connection and enqueues per-product 'master.inventory.syncByExternalId'
- * sub-jobs. Acts as a fan-out mechanism for periodic inventory synchronization.
+ * Handles jobs of type 'master.inventory.syncAll'. Enumerates known product
+ * external IDs for a connection and enqueues per-product
+ * 'master.inventory.syncByExternalId' sub-jobs.
  *
- * Fan-out resilience: individual sub-job enqueue failures are logged but do not
- * fail the outer job — partial fan-out is preferred over dropping the entire sweep.
- * Only failure to enumerate mappings (e.g., DB outage) propagates as a job failure.
+ * BOUNDED AND RESUMABLE since #2219 (ADR-048 decisions 4-6) — same shape as the
+ * product sweep (`runBoundedSweep`), with one difference that matters: this sweep
+ * does not read the platform at all. It enumerates OL's own identifier mappings,
+ * which until #2219 was a bare unbounded `find({ entityType, connectionId })` —
+ * every mapped product row for the connection loaded into memory every 15 minutes,
+ * then fanned out one child per row with no cap.
  *
- * Sub-job idempotency key is derived from the outer job ID, so retries of the same
- * outer job produce the same sub-job keys and dedupe against the queue.
+ * **This sweep carries more weight than it looks.** `inventory.propagateToMarketplaces`
+ * has no cron of its own — it fires from `InventoryService.setInventory` when a
+ * quantity actually changed — so on a master with no stock webhook (WooCommerce,
+ * whose translator handles only `order`) this is the ONLY thing that discovers
+ * stock drift. It is paced, deliberately not slowed to a crawl, and never disabled.
+ *
+ * Stock is not on the catalog's modified-since rung on either shipped master
+ * (ADR-048 decision 7), so this stays a full enumeration; a delta path is #2220.
  *
  * @module apps/worker/src/sync/handlers
+ * @see {@link runBoundedSweep} for the shared shape, also used by the product sweep
  */
 
+import { randomUUID } from 'node:crypto';
 import { Injectable, Inject } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import type {
   SyncJobHandler,
   SyncJobHandlerResult,
   SyncJob as SyncJobEntity,
   SyncJobRequest,
+  MasterInventorySyncAllPayloadV1
 } from '@openlinker/core/sync';
-import { SyncJobExecutionError, JobEnqueuePort, JOB_ENQUEUE_TOKEN } from '@openlinker/core/sync';
-import { IdentifierMappingQueryPort, IDENTIFIER_MAPPING_SERVICE_TOKEN, CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
+import {
+  SyncJobExecutionError,
+  JobEnqueuePort,
+  JOB_ENQUEUE_TOKEN,
+  SYNC_CURSORS_SERVICE_TOKEN,
+  SYNC_LOCK_TOKEN,
+
+  ISyncCursorsService,
+  SyncLockPort} from '@openlinker/core/sync';
+import {
+  IdentifierMappingQueryPort,
+  IDENTIFIER_MAPPING_SERVICE_TOKEN,
+  CORE_ENTITY_TYPE,
+} from '@openlinker/core/identifier-mapping';
 import { Logger } from '@openlinker/shared/logging';
+import {
+  formatSweepCursor,
+  parseSweepCursor,
+  resolveSweepBudget,
+  resolveSweepLockTtlMs,
+  runBoundedSweep,
+  sweepCursorKey,
+  sweepLockKey,
+} from '../bounded-sweep';
+import type { SweepPage } from '../bounded-sweep.types';
 
 type SyncJob = SyncJobEntity;
+
+/** Synthetic variant ids the PrestaShop adapter mints as offer-link targets. */
+const SYNTHETIC_VARIANT_PREFIX = 'product:';
 
 @Injectable()
 export class MasterInventorySyncAllHandler implements SyncJobHandler {
@@ -36,73 +74,56 @@ export class MasterInventorySyncAllHandler implements SyncJobHandler {
     @Inject(IDENTIFIER_MAPPING_SERVICE_TOKEN)
     private readonly identifierMapping: IdentifierMappingQueryPort,
     @Inject(JOB_ENQUEUE_TOKEN)
-    private readonly jobEnqueue: JobEnqueuePort
+    private readonly jobEnqueue: JobEnqueuePort,
+    @Inject(SYNC_CURSORS_SERVICE_TOKEN)
+    private readonly cursors: ISyncCursorsService,
+    @Inject(SYNC_LOCK_TOKEN)
+    private readonly syncLock: SyncLockPort,
+    private readonly configService: ConfigService
   ) {}
 
   async execute(job: SyncJob): Promise<SyncJobHandlerResult> {
-    this.logger.log(
-      `Executing master.inventory.syncAll job ${job.id} for connection ${job.connectionId}`
+    const budget = resolveSweepBudget(this.getPayload(job).pageLimit);
+    const lockKey = sweepLockKey('inventory', job.connectionId);
+    const lockTtlMs = resolveSweepLockTtlMs(
+      this.configService.get<string>('OL_MASTER_SWEEP_LOCK_TTL_MS')
     );
 
-    try {
-      const externalIds = await this.identifierMapping.listExternalIdsByConnection(
-        CORE_ENTITY_TYPE.Product,
-        job.connectionId
-      );
-
-      // Filter out synthetic variant external IDs (e.g. `product:13`).
-      // These are created by the PrestaShop adapter as stable offer-link targets for
-      // simple products; their internal ID is a variant ID, not a product ID, so
-      // trying to insert inventory for them violates the inventory_items.productId FK.
-      // Inventory for simple products is covered by the plain numeric externalId.
-      const productExternalIds = externalIds.filter((id) => !id.startsWith('product:'));
-
-      if (productExternalIds.length === 0) {
-        this.logger.log(
-          `No product mappings found for connection ${job.connectionId}. Skipping inventory sync.`
-        );
-        return { outcome: 'ok' };
-      }
-
+    const lockToken = await this.syncLock.acquire(lockKey, lockTtlMs);
+    if (lockToken === null) {
       this.logger.log(
-        `Found ${productExternalIds.length} product(s) for connection ${job.connectionId}. Enqueuing inventory sync jobs.`
+        `master.inventory.syncAll skipped for connection ${job.connectionId}: ${lockKey} already in progress`
       );
+      return { outcome: 'ok' };
+    }
 
-      const enqueuePromises = productExternalIds.map(async (externalId) => {
-        const jobRequest: SyncJobRequest = {
-          jobType: 'master.inventory.syncByExternalId',
-          connectionId: job.connectionId,
-          payload: {
-            schemaVersion: 1,
-            externalId,
-            objectType: CORE_ENTITY_TYPE.Product,
-          },
-          // Derive from outer job id so retries of this outer job produce the same
-          // sub-job keys and dedupe against the queue.
-          idempotencyKey: `master:${job.connectionId}:inventory:sync:${externalId}:${job.id}`,
-        };
-        return this.jobEnqueue.enqueueJob(jobRequest);
+    try {
+      const cursorKey = sweepCursorKey('inventory', job.connectionId);
+      const cursor = parseSweepCursor(await this.cursors.getCursor(job.connectionId, cursorKey));
+
+      const result = await runBoundedSweep({
+        cursor,
+        budget,
+        readPage: (offset, pageBudget) => this.readPage(job.connectionId, offset, pageBudget),
+        enqueue: (externalId, cycleId) => this.enqueueChild(job, externalId, cycleId),
+        newCycleId: () => randomUUID(),
       });
 
-      const results = await Promise.allSettled(enqueuePromises);
+      await this.cursors.advanceCursor(
+        job.connectionId,
+        cursorKey,
+        result.nextCursor === null ? '' : formatSweepCursor(result.nextCursor)
+      );
 
-      const succeeded = results.filter((r) => r.status === 'fulfilled').length;
-      const failed = results.filter((r) => r.status === 'rejected').length;
-
-      if (failed > 0) {
-        this.logger.warn(
-          `master.inventory.syncAll for connection ${job.connectionId}: ${succeeded} enqueued, ${failed} failed`
+      if (result.failed > 0) {
+        this.logger.error(
+          `master.inventory.syncAll for connection ${job.connectionId}: ${result.enqueued} enqueued, ` +
+            `${result.failed} failed; cursor held at offset ${String(result.nextCursor?.offset ?? 0)} so the page retries next tick`
         );
-        results.forEach((result, index) => {
-          if (result.status === 'rejected') {
-            this.logger.error(
-              `Failed to enqueue inventory sync for externalId ${productExternalIds[index]} (connection: ${job.connectionId}): ${String(result.reason)}`
-            );
-          }
-        });
       } else {
         this.logger.log(
-          `master.inventory.syncAll for connection ${job.connectionId}: ${succeeded} inventory sync job(s) enqueued (${externalIds.length - productExternalIds.length} synthetic variant IDs skipped)`
+          `master.inventory.syncAll for connection ${job.connectionId}: ${result.enqueued} inventory sync job(s) enqueued ` +
+            `(cycle ${result.cycleId}, ${result.completed ? 'cycle complete' : `resuming at offset ${String(result.nextCursor?.offset ?? 0)}`})`
         );
       }
 
@@ -116,6 +137,79 @@ export class MasterInventorySyncAllHandler implements SyncJobHandler {
         job.connectionId,
         error instanceof Error ? error : undefined
       );
+    } finally {
+      try {
+        await this.syncLock.release(lockKey, lockToken);
+      } catch (releaseError) {
+        this.logger.warn(
+          `Failed to release ${lockKey}: ${releaseError instanceof Error ? releaseError.message : String(releaseError)}`
+        );
+      }
     }
+  }
+
+  /**
+   * Reads one page of mapped product ids.
+   *
+   * The synthetic-variant filter runs AFTER the page is read, so a page can yield
+   * fewer children than the budget. That is correct: the budget bounds *enqueues*,
+   * and the cursor advances by what was READ (`consumed`), not by what survived —
+   * otherwise the filtered rows would be re-read on every tick.
+   */
+  private async readPage(
+    connectionId: string,
+    offset: number,
+    budget: number
+  ): Promise<SweepPage> {
+    const externalIds = await this.identifierMapping.listExternalIdsByConnection(
+      CORE_ENTITY_TYPE.Product,
+      connectionId,
+      { limit: budget, offset }
+    );
+
+    // Synthetic variant external IDs (e.g. `product:13`) are created by the
+    // PrestaShop adapter as stable offer-link targets for simple products; their
+    // internal ID is a variant ID, not a product ID, so inserting inventory for
+    // them violates the inventory_items.productId FK. Inventory for simple
+    // products is covered by the plain numeric externalId.
+    const items = externalIds.filter((id) => !id.startsWith(SYNTHETIC_VARIANT_PREFIX));
+
+    return {
+      items,
+      consumed: externalIds.length,
+      // A short page means the store had nothing more to give.
+      exhausted: externalIds.length < budget,
+    };
+  }
+
+  private async enqueueChild(job: SyncJob, externalId: string, cycleId: string): Promise<unknown> {
+    const jobRequest: SyncJobRequest = {
+      jobType: 'master.inventory.syncByExternalId',
+      connectionId: job.connectionId,
+      payload: {
+        schemaVersion: 1,
+        externalId,
+        objectType: CORE_ENTITY_TYPE.Product,
+      },
+      // Cycle-scoped, not job-scoped — see the product sweep's note.
+      idempotencyKey: `master:${job.connectionId}:inventory:sync:${externalId}:${cycleId}`,
+    };
+    return this.jobEnqueue.enqueueJob(jobRequest);
+  }
+
+  /**
+   * Defaults rather than throwing on a malformed payload, unlike the taxonomy
+   * handler this pattern otherwise follows (`destination-taxonomy-sync.handler.ts`
+   * raises on a missing payload). A sweep's payload carries nothing the run needs
+   * — only an optional budget override — so refusing to run a scheduled sweep
+   * over a malformed one would trade a healthy default for a dead job.
+   */
+  private getPayload(job: SyncJob): MasterInventorySyncAllPayloadV1 {
+    const payload = job.payload as unknown as Partial<MasterInventorySyncAllPayloadV1> | null;
+    return {
+      schemaVersion: 1,
+      pageLimit:
+        payload && typeof payload.pageLimit === 'number' ? payload.pageLimit : undefined,
+    };
   }
 }

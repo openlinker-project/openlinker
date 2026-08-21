@@ -83,7 +83,7 @@ export function AnalyticsKpiCard({
           <AnalyticsInfotip ariaLabel={infotipLabel} definitions={definitions} align={infotipAlign} />
         </span>
         {planned ? (
-          <span className="kpi-card__planned-tag">Data order</span>
+          <span className="kpi-card__planned-tag">Planned</span>
         ) : trend && trend.values.length >= 2 ? (
           <Sparkline
             values={trend.values}

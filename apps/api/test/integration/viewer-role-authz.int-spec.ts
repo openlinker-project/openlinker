@@ -226,6 +226,21 @@ describe('Viewer Role Authorization', () => {
       expect(res.status).not.toBe(403);
     });
 
+    // #2209 — the NDJSON sibling of resolve-batch. The wizard's Resolve step
+    // calls this route, not the batch one, so a viewer blocked here cannot walk
+    // the wizard at all. A real item is sent (rather than the empty array its
+    // batch sibling above uses) so the request gets past the ValidationPipe and
+    // the 404 comes from the handler's connection gate — which is what the
+    // describe block claims it is asserting.
+    it('POST /listings/connections/:connectionId/categories/resolve-stream', async () => {
+      const { http, viewerToken } = await seeds();
+      const res = await http
+        .post(`/v1/listings/connections/${FAKE_CONNECTION_ID}/categories/resolve-stream`)
+        .set('Authorization', `Bearer ${viewerToken}`)
+        .send({ items: [{ variantId: 'ol_variant_a', ean: '5901234123457' }] });
+      expect(res.status).not.toBe(403);
+    });
+
     it('POST /listings/connections/:connectionId/products/find-by-barcode', async () => {
       const { http, viewerToken } = await seeds();
       const res = await http

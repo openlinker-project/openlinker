@@ -73,4 +73,14 @@ describe('AnalyticsDateRangeToolbar', () => {
       screen.getByText((_content, element) => element?.textContent === 'Order date †')
     ).toBeInTheDocument();
   });
+
+  it('should open the "Order date" caveat on click, via a real button rather than hover-only', async () => {
+    const user = userEvent.setup();
+    render(<AnalyticsDateRangeToolbar from="2026-07-16" to="2026-08-14" onApply={vi.fn()} />);
+
+    expect(screen.queryByText(/coming soon/i)).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /Order date\. /i }));
+
+    expect(screen.getByText(/coming soon/i)).toBeInTheDocument();
+  });
 });

@@ -36,7 +36,11 @@ import type {
 import type { BulkShopPublishItemRequest } from '../../api/listings.types';
 import type { Product, ProductVariant } from '../../../products';
 import { BulkConfigStep } from './bulk-config-step';
-import { BulkResolveStep, type BulkResolveOutcome } from './bulk-resolve-step';
+import {
+  BulkResolveStep,
+  type BulkResolveCompletion,
+  type BulkResolveOutcome,
+} from './bulk-resolve-step';
 import { BulkReviewStep } from './bulk-review-step';
 import {
   BulkShopReviewStep,
@@ -79,6 +83,13 @@ interface BulkWizardProps {
    * to the `/products` entry point.
    */
   preSelectedVariantIds?: ReadonlySet<string>;
+  /**
+   * Set when the wizard was reopened from a failed bulk batch's "Fix and
+   * resubmit" action (#2234). Renders a banner naming the batch so the
+   * pre-filled selection reads as intentional rather than as a bug. Purely
+   * informational - nothing in the submit path consumes it.
+   */
+  resumedFromBatchId?: string;
 }
 
 const WIZARD_STEPS: { id: BulkWizardStep; label: string }[] = [
@@ -106,6 +117,7 @@ export function BulkWizard({
   resolveConnectionName,
   preselectedConnectionId,
   preSelectedVariantIds,
+  resumedFromBatchId,
 }: BulkWizardProps): ReactElement {
   const navigate = useNavigate();
   const { showToast } = useToast();
@@ -219,10 +231,22 @@ export function BulkWizard({
   // then every child died on `overrides.categoryId / REQUIRED`. The browse
   // predicate below already knows the per-connection truth - it just was not
   // consulted here.
-  const destinationResolvesCategoryAtSubmit = batchConnection
+  const destinationResolvesCategoryFromManifest = batchConnection
     ? !destinationBrowsesCategories &&
       !batchConnection.supportedCapabilities.includes('EanCategoryMatcher')
     : false;
+
+  // What the Resolve step's own stream reported (#2211). `false` means no
+  // catalogue was consulted for these barcodes, which the manifest cannot
+  // express - a destination that BORROWS a matcher advertises none of its own
+  // (#1045). Without this the manifest reading stands, every `no-match` becomes
+  // a category blocker, and the operator is told to pick a category for rows the
+  // destination never looked up. `null` = not resolved yet, so the manifest
+  // reading holds until the stream says otherwise.
+  const [catalogueLookupPerformed, setCatalogueLookupPerformed] = useState<boolean | null>(null);
+
+  const destinationResolvesCategoryAtSubmit =
+    destinationResolvesCategoryFromManifest || catalogueLookupPerformed === false;
 
   // Reconcile per-variant `needs-product-parameters` (and any policy-derived)
   // blockers whenever a category's schema resolves. Gated to Review so only
@@ -261,6 +285,9 @@ export function BulkWizard({
   const handleConfigProceed = useCallback(
     (next: BulkWizardConfig) => {
       setConfig(next);
+      // A new destination has not been observed yet, so the manifest reading
+      // takes over again until its stream reports.
+      setCatalogueLookupPerformed(null);
       // Shops skip Resolve (no category/EAN matching) and go straight to
       // Review; marketplaces resolve categories first (#1829). Derived from
       // the committed connection so a switch in Config is honoured.
@@ -279,10 +306,11 @@ export function BulkWizard({
   );
 
   const handleResolveComplete = useCallback(
-    (outcomes: BulkResolveOutcome[]) => {
+    (outcomes: BulkResolveOutcome[], completion: BulkResolveCompletion) => {
       captureDemoEvent('demo_offer_wizard_review_reached', {
         platform: batchConnection?.platformType ?? 'unknown',
       });
+      setCatalogueLookupPerformed(completion.catalogueLookupPerformed);
       setRows((prev) => mergeResolveOutcomes(prev, outcomes));
       setStep('review');
     },
@@ -618,6 +646,14 @@ export function BulkWizard({
           />
         </div>
 
+        {resumedFromBatchId !== undefined && resumedFromBatchId !== '' ? (
+          <Alert tone="info">
+            Resuming from batch <span className="mono-text">{resumedFromBatchId.slice(0, 8)}</span>
+            {' - '}the variants that failed there are pre-selected. Offers already live
+            are not included.
+          </Alert>
+        ) : null}
+
         {counts.noVariants > 0 ? (
           <Alert tone="warning">
             {counts.noVariants} of {rows.length} products have no variants and cannot be listed.
@@ -654,7 +690,10 @@ export function BulkWizard({
                 stockPolicy={config.stockPolicy}
                 currency={config.currency}
                 platformValidate={platformValidate}
-                destinationResolvesCategoryAtSubmit={destinationResolvesCategoryAtSubmit}
+                destinationResolvesCategoryAtSubmit={destinationResolvesCategoryFromManifest}
+                onBack={() => {
+                  setStep('config');
+                }}
                 onComplete={handleResolveComplete}
               />
             )}

@@ -9,8 +9,7 @@
  * @module apps/web/src/features/analytics/components
  */
 import { useEffect, useRef, useState, type ReactElement } from 'react';
-import { Button, SegmentedControl } from '../../../shared/ui';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../../shared/ui/tooltip';
+import { Button, Popover, PopoverContent, PopoverTrigger, SegmentedControl } from '../../../shared/ui';
 import {
   computePresetRange,
   derivePreset,
@@ -81,62 +80,67 @@ export function AnalyticsDateRangeToolbar({
   }
 
   return (
-    <TooltipProvider>
-      <div className="toolbar analytics-toolbar">
-        <div className="toolbar__group">
-          <SegmentedControl
-            aria-label="Date range"
-            options={PRESET_OPTIONS}
-            value={highlight}
-            onChange={handleSegmentChange}
+    <div className="toolbar analytics-toolbar">
+      <div className="toolbar__group">
+        <SegmentedControl
+          aria-label="Date range"
+          options={PRESET_OPTIONS}
+          value={highlight}
+          onChange={handleSegmentChange}
+        />
+        <label className="analytics-toolbar__field">
+          <span className="analytics-toolbar__label">From</span>
+          <input
+            ref={fromInputRef}
+            type="date"
+            className="control"
+            aria-label="Order date from"
+            value={draftFrom}
+            onChange={(event) => {
+              setForcedCustom(true);
+              setDraftFrom(event.target.value);
+            }}
           />
-          <label className="analytics-toolbar__field">
-            <span className="analytics-toolbar__label">From</span>
-            <input
-              ref={fromInputRef}
-              type="date"
-              className="control"
-              aria-label="Order date from"
-              value={draftFrom}
-              onChange={(event) => {
-                setForcedCustom(true);
-                setDraftFrom(event.target.value);
-              }}
-            />
-          </label>
-          <label className="analytics-toolbar__field">
-            <span className="analytics-toolbar__label">To</span>
-            <input
-              type="date"
-              className="control"
-              aria-label="Order date to"
-              value={draftTo}
-              onChange={(event) => {
-                setForcedCustom(true);
-                setDraftTo(event.target.value);
-              }}
-            />
-          </label>
-          <Button type="button" tone="secondary" disabled={!canApply} onClick={handleApply}>
-            Apply
-          </Button>
-          {/* Static disclaimer, not an interactive control — a plain chip
-            markup rather than the interactive Chip primitive, which would
-            render a toggle button that toggles nothing (aria-pressed with
-            no onClick). */}
-          <span className="chip chip--info" aria-label={`Order date. ${ORDER_DATE_CAVEAT}`}>
-            Order date{' '}
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span className="analytics-gap-mark" tabIndex={0}>
-                  †
-                </span>
-              </TooltipTrigger>
-              <TooltipContent>{ORDER_DATE_CAVEAT}</TooltipContent>
-            </Tooltip>
-          </span>
-        </div>
+        </label>
+        <label className="analytics-toolbar__field">
+          <span className="analytics-toolbar__label">To</span>
+          <input
+            type="date"
+            className="control"
+            aria-label="Order date to"
+            value={draftTo}
+            onChange={(event) => {
+              setForcedCustom(true);
+              setDraftTo(event.target.value);
+            }}
+          />
+        </label>
+        <Button type="button" tone="secondary" disabled={!canApply} onClick={handleApply}>
+          Apply
+        </Button>
+        {/* Static disclaimer, not an interactive control — a plain chip
+          markup rather than the interactive Chip primitive, which would
+          render a toggle button that toggles nothing (aria-pressed with
+          no onClick). The caveat itself is a Popover on a real <button>,
+          not a Tooltip: Radix Tooltip ignores pointerType === 'touch', so
+          a Tooltip-only caveat would be permanently unreachable on a phone
+          (mirrors the AnalyticsTrustHeader info-popover pattern). */}
+        <span className="chip chip--info">
+          Order date{' '}
+          <Popover>
+            <PopoverTrigger asChild>
+              <button
+                type="button"
+                className="analytics-gap-mark"
+                aria-label={`Order date. ${ORDER_DATE_CAVEAT}`}
+              >
+                †
+              </button>
+            </PopoverTrigger>
+            <PopoverContent>{ORDER_DATE_CAVEAT}</PopoverContent>
+          </Popover>
+        </span>
       </div>
-    </TooltipProvider>
+    </div>
   );
 }

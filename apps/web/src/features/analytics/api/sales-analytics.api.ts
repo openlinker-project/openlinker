@@ -25,13 +25,16 @@ interface ApiRequest {
 
 /**
  * Converts an inclusive `yyyy-mm-dd` end day into the exclusive ISO instant
- * the endpoint expects — midnight local time of the day AFTER `to`, so the
- * whole of `to` itself is included in `[from, to)`.
+ * the endpoint expects — UTC midnight of the day AFTER `to`, so the whole of
+ * `to` itself is included in `[from, to)`. Must stay UTC-anchored: `from` is
+ * sent as a bare `yyyy-mm-dd` and parsed by the controller as UTC midnight
+ * (`new Date(...)`), so a local-time anchor here would make the window
+ * `[UTC midnight, local midnight)` — off by the caller's UTC offset in
+ * either direction.
  */
 export function toExclusiveEndInstant(to: string): string {
   const [year, month, day] = to.split('-').map(Number);
-  const exclusiveEnd = new Date(year, month - 1, day + 1);
-  return exclusiveEnd.toISOString();
+  return new Date(Date.UTC(year, month - 1, day + 1)).toISOString();
 }
 
 function buildQuery(filters: SalesAnalyticsFilters): string {

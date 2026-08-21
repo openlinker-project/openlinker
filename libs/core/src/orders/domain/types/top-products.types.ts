@@ -79,6 +79,16 @@ export interface ProductChannelBreakdownRow {
   revenue: number;
   unconvertedRevenue: number;
   currency: string | null;
+  /**
+   * The one native currency shared by every order on THIS channel
+   * contributing to `unconvertedRevenue`, or `null` when that subset spans
+   * more than one native currency (or `unconvertedRevenue` is `0`). Computed
+   * per-channel rather than inherited from the parent {@link ProductRankingRow}
+   * (#2172 review, still-open) — the parent goes `null` whenever the FULL
+   * mixed set disagrees, but an individual channel's own subset is often
+   * single-currency even then, so it is strictly more labelable, never less.
+   */
+  unconvertedCurrency: string | null;
 }
 
 /**

@@ -40,7 +40,9 @@ describe('BulkListingSubmitService', () => {
   let offerMappings: jest.Mocked<Pick<OfferMappingRepositoryPort, 'countByConnectionAndVariants'>>;
   let enqueueService: jest.Mocked<IOfferCreationEnqueueService>;
   let integrations: jest.Mocked<IIntegrationsService>;
-  let products: jest.Mocked<Pick<IProductsService, 'getVariant' | 'getVariantsByProductId'>>;
+  let products: jest.Mocked<
+    Pick<IProductsService, 'getVariant' | 'getVariantsByProductId' | 'getVariantsByIds'>
+  >;
   let inventoryQuery: jest.Mocked<Pick<IInventoryQueryService, 'getAvailabilityByVariantIds'>>;
 
   const connectionId = 'conn-1';
@@ -156,6 +158,7 @@ describe('BulkListingSubmitService', () => {
     products = {
       getVariant: jest.fn().mockResolvedValue(null),
       getVariantsByProductId: jest.fn().mockResolvedValue([]),
+      getVariantsByIds: jest.fn().mockResolvedValue([]),
     };
     inventoryQuery = {
       getAvailabilityByVariantIds: jest.fn().mockResolvedValue([]),
@@ -1326,13 +1329,57 @@ describe('BulkListingSubmitService', () => {
     it('returns batch + per-product records when found', async () => {
       const batch = makeBatch();
       bulkBatchRepo.findById.mockResolvedValue(batch);
-      const records = [{ id: 'r-1' } as unknown as OfferCreationRecord];
+      const records = [
+        { id: 'r-1', internalVariantId: 'v-a' } as unknown as OfferCreationRecord,
+      ];
       offerCreationRecords.findByBulkBatchId.mockResolvedValue(records);
 
       const result = await service.getBatch('batch-1');
 
-      expect(result).toEqual({ batch, records });
+      expect(result).toEqual({ batch, records, productIdByVariantId: {} });
       expect(offerCreationRecords.findByBulkBatchId).toHaveBeenCalledWith('batch-1');
+    });
+
+    it('resolves each record variant to its owning product in one batched lookup (#2234)', async () => {
+      bulkBatchRepo.findById.mockResolvedValue(makeBatch());
+      offerCreationRecords.findByBulkBatchId.mockResolvedValue([
+        { id: 'r-1', internalVariantId: 'v-a' } as unknown as OfferCreationRecord,
+        { id: 'r-2', internalVariantId: 'v-b' } as unknown as OfferCreationRecord,
+        // Same variant twice: the lookup must be deduped.
+        { id: 'r-3', internalVariantId: 'v-a' } as unknown as OfferCreationRecord,
+      ]);
+      products.getVariantsByIds.mockResolvedValue([
+        { id: 'v-a', productId: 'p-1' } as unknown as ProductVariant,
+        { id: 'v-b', productId: 'p-2' } as unknown as ProductVariant,
+      ]);
+
+      const result = await service.getBatch('batch-1');
+
+      expect(products.getVariantsByIds).toHaveBeenCalledTimes(1);
+      expect(products.getVariantsByIds).toHaveBeenCalledWith(['v-a', 'v-b']);
+      expect(result?.productIdByVariantId).toEqual({ 'v-a': 'p-1', 'v-b': 'p-2' });
+    });
+
+    it('omits a variant that no longer resolves rather than defaulting it (#2234)', async () => {
+      bulkBatchRepo.findById.mockResolvedValue(makeBatch());
+      offerCreationRecords.findByBulkBatchId.mockResolvedValue([
+        { id: 'r-1', internalVariantId: 'v-gone' } as unknown as OfferCreationRecord,
+      ]);
+      products.getVariantsByIds.mockResolvedValue([]);
+
+      const result = await service.getBatch('batch-1');
+
+      expect(result?.productIdByVariantId).toEqual({});
+    });
+
+    it('skips the variant lookup for a batch with no records (#2234)', async () => {
+      bulkBatchRepo.findById.mockResolvedValue(makeBatch());
+      offerCreationRecords.findByBulkBatchId.mockResolvedValue([]);
+
+      const result = await service.getBatch('batch-1');
+
+      expect(products.getVariantsByIds).not.toHaveBeenCalled();
+      expect(result?.productIdByVariantId).toEqual({});
     });
   });
 });

@@ -34,6 +34,15 @@ describe('allegroAdapterManifest', () => {
     );
   });
 
+  it('advertises EanCategoryMatcherStreaming so the resolve step can stream per-variant progress (#2208)', () => {
+    // Added in lockstep with the adapter method (guard-verified in
+    // allegro-offer-manager.adapter.spec.ts); the batch `EanCategoryMatcher`
+    // stays advertised so non-streaming call sites are unaffected.
+    expect(allegroAdapterManifest.supportedCapabilities).toEqual(
+      expect.arrayContaining(['EanCategoryMatcher', 'EanCategoryMatcherStreaming']),
+    );
+  });
+
   it('advertises the CategoryPathReader OfferManager sub-capability so the bulk-wizard chip can resolve an EAN-auto-matched category id to a breadcrumb (#1741)', () => {
     expect(allegroAdapterManifest.supportedCapabilities).toEqual(
       expect.arrayContaining(['CategoryPathReader']),

@@ -12,6 +12,16 @@
  * Otherwise fall back to a connection-agnostic headline — the per-item
  * detail lives behind the row's deep link, not in this summary line.
  *
+ * Sample-vs-total rule (#2120 review, BLOCKING): `items` is a preview capped
+ * at `DEFAULT_AGGREGATE_LIMIT` (20) while `totalCount` is the true total, so
+ * a connection-named headline is only sound when the sample IS the total —
+ * `items.length === totalCount`. Otherwise the sampled items may all share
+ * one connection/buffer while the un-sampled remainder don't, and naming a
+ * channel for a total the sample can't speak for is exactly the false
+ * claim-about-your-own-catalogue defect this repo repeatedly refuses to ship
+ * (#2075, ADR-041 §54). A partial sample always falls through to the
+ * connection-agnostic headline.
+ *
  * Currency rule (Decision 2, corrected by the #1989 pre-implement gate):
  * `FailedSyncValueSummary` carries no currency field in either the mixed or
  * non-mixed case, so `totalValue` is always rendered currency-neutral here.
@@ -50,6 +60,7 @@ export function deriveCoverageHeadline(
 
   const sharesOneMissingConnection =
     items.length > 0 &&
+    items.length === totalCount &&
     items.every((item) => item.missingFromConnectionIds.length === 1) &&
     singleMissingConnectionIds.length === 1;
 
@@ -61,7 +72,7 @@ export function deriveCoverageHeadline(
   }
 
   return {
-    headline: `${totalCount} ${variantWord} have a listing gap on at least one channel`,
+    headline: `${totalCount} ${variantWord} with a listing gap on at least one channel`,
     sub: 'open the listing flow to see which channel is missing each one',
   };
 }
@@ -76,7 +87,10 @@ export function deriveStockHeadline(
   const buffers = uniqueValues(items.map((item) => item.stockSafetyBuffer));
 
   const sharesOneConnectionAndBuffer =
-    items.length > 0 && connectionIds.length === 1 && buffers.length === 1;
+    items.length > 0 &&
+    items.length === totalCount &&
+    connectionIds.length === 1 &&
+    buffers.length === 1;
 
   if (sharesOneConnectionAndBuffer) {
     return {
@@ -91,11 +105,14 @@ export function deriveStockHeadline(
   };
 }
 
-function formatCurrencyNeutral(value: number): string {
-  return value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+function formatCurrencyNeutral(value: number, bcp47Locale = 'en-US'): string {
+  return value.toLocaleString(bcp47Locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-export function deriveFailedSyncHeadline(summary: FailedSyncValueSummary): AttentionRowCopy {
+export function deriveFailedSyncHeadline(
+  summary: FailedSyncValueSummary,
+  bcp47Locale = 'en-US'
+): AttentionRowCopy {
   const orderWord = summary.count === 1 ? 'order' : 'orders';
 
   if (summary.mixedCurrency) {
@@ -106,7 +123,7 @@ export function deriveFailedSyncHeadline(summary: FailedSyncValueSummary): Atten
   }
 
   return {
-    headline: `${formatCurrencyNeutral(summary.totalValue)} of orders never reached a destination`,
+    headline: `${formatCurrencyNeutral(summary.totalValue, bcp47Locale)} of orders never reached a destination`,
     sub: `${summary.count} ${orderWord} affected`,
   };
 }

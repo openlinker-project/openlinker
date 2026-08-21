@@ -11,6 +11,7 @@ describe('TopProductsController', () => {
     items: [],
     total: 0,
     unresolvedProductCount: 0,
+    coverageGapAvailable: true,
   };
 
   const createService = (): jest.Mocked<ITopProductsService> => ({

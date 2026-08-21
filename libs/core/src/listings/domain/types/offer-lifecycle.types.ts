@@ -52,9 +52,9 @@ import type { OfferStatusSnapshotDetails } from './offer-status-snapshot.types';
  *   schedules its reconcile only on `POLL_TIMEOUT` and `Draft`, not on the
  *   `Active` terminal branch. So the happy path lands here too.
  * - **Permanently**, on a connection whose status-sync task is not scheduled -
- *   Erli's is strict opt-in and default OFF
- *   (`OL_ERLI_OFFER_STATUS_SYNC_SCHEDULER_ENABLED`), where Allegro's is
- *   default ON. Such a seller finds their whole catalog in this bucket forever.
+ *   every shipping platform's task is default ON (Erli's since #2230), but an
+ *   operator can still turn one off (`OL_ERLI_OFFER_STATUS_SYNC_SCHEDULER_ENABLED=false`).
+ *   Such a seller finds their whole catalog in this bucket forever.
  *
  * It also does NOT mean "unlisted": the duplicate guard deliberately reads an
  * absent snapshot as still-listed, so an `Unsynced` row still blocks a re-list.

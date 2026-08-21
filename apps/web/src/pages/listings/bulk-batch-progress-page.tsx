@@ -20,15 +20,28 @@ import {
   PageLayout,
   StatusBadge,
 } from '../../shared/ui';
+import { ReadOnlyLock } from '../../shared/ui/read-only-lock';
 import { useToast } from '../../shared/ui/toast-provider';
+import { useWriteAccess } from '../../shared/auth/use-permission';
+import { useDemoMode } from '../../features/system';
 import { BulkBatchProgressTable } from '../../features/listings/components/bulk/bulk-batch-progress-table';
+import {
+  buildBatchFixUrl,
+  describeBatchFixBlocker,
+  resolveBatchFixTarget,
+  selectFailedRecords,
+} from '../../features/listings/lib/batch-recovery';
 import { useBulkBatchQuery } from '../../features/listings/hooks/use-bulk-batch-query';
 import { useBulkRetryFailedMutation } from '../../features/listings/hooks/use-bulk-retry-failed-mutation';
 import { useConnectionsQuery } from '../../features/connections';
 import {
   TERMINAL_BULK_BATCH_STATUSES,
+  type BulkBatchRecordSummary,
   type BulkBatchStatus,
 } from '../../features/listings/api/bulk-listings.types';
+
+/** Tooltip copy for a demo viewer, matching the wizard's own locked submit. */
+const DEMO_LOCK_MESSAGE = 'Read-only demo - recovery actions are disabled.';
 
 export function BulkBatchProgressPage(): ReactElement {
   const { batchId } = useParams<{ batchId: string }>();
@@ -36,6 +49,35 @@ export function BulkBatchProgressPage(): ReactElement {
   const retryMutation = useBulkRetryFailedMutation();
   const connectionsQuery = useConnectionsQuery();
   const { showToast } = useToast();
+  const demoMode = useDemoMode();
+  // Both recovery actions are writes on the same resource, so they share the
+  // gate the wizard's own submit uses (#1615 visible-but-disabled in demo).
+  const write = useWriteAccess('listings:write', demoMode);
+
+  const failedRecords = useMemo(
+    () => selectFailedRecords(query.data?.records ?? []),
+    [query.data],
+  );
+  const fixTarget = useMemo(() => resolveBatchFixTarget(failedRecords), [failedRecords]);
+
+  const batchId_ = query.data?.id;
+  const batchConnectionId = query.data?.connectionId;
+  // Stable identity so the records table doesn't rebuild its column model on
+  // every poll tick.
+  const buildRowFixUrl = useCallback(
+    (record: BulkBatchRecordSummary): string | null => {
+      if (batchId_ === undefined || batchConnectionId === undefined) return null;
+      const target = resolveBatchFixTarget([record]);
+      if (target.blocker !== null) return null;
+      return buildBatchFixUrl({
+        productIds: target.productIds,
+        variantIds: target.variantIds,
+        connectionId: batchConnectionId,
+        batchId: batchId_,
+      });
+    },
+    [batchId_, batchConnectionId],
+  );
 
   const inProgress = useMemo(() => {
     if (!query.data) return 0;
@@ -161,7 +203,13 @@ export function BulkBatchProgressPage(): ReactElement {
         <MetricCard
           label={`Failed · ${failedPct.toString()}%`}
           value={batch.failedCount.toLocaleString()}
-          description={batch.failedCount > 0 ? 'Retry available below' : 'No failures'}
+          description={
+            batch.failedCount === 0
+              ? 'No failures'
+              : write.visible
+                ? 'Recovery available below'
+                : 'Recovery needs write access'
+          }
           tone={batch.failedCount > 0 ? 'error' : 'neutral'}
         />
         <MetricCard
@@ -178,27 +226,73 @@ export function BulkBatchProgressPage(): ReactElement {
         </Alert>
       ) : null}
 
-      {batch.status === 'partially-failed' && batch.failedCount > 0 ? (
+      {/* Recovery bar (#2234). Gated on the terminal-with-failures state, not
+          on `partially-failed` alone - a batch where everything failed used to
+          render no recovery control at all while the Failed metric card still
+          read "Retry available below". The two actions are ranked rather than
+          equivalent: a payload the platform rejected cannot be healed by
+          re-sending it, so the data fix leads and retry stays one click away
+          for the transient case. */}
+      {isTerminal && batch.failedCount > 0 && write.visible ? (
         <Alert tone="warning">
-          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
-            <div style={{ flex: 1 }}>
-              <strong>Batch ended with {batch.failedCount.toLocaleString()} {batch.failedCount === 1 ? 'failure' : 'failures'}.</strong>{' '}
-              You can retry all of them in one click — successful offers won't be touched.
+          <div className="bulk-batch__recovery">
+            <div className="bulk-batch__recovery-copy">
+              <strong>
+                {batch.succeededCount === 0
+                  ? `${batch.failedCount.toLocaleString()} ${batch.failedCount === 1 ? 'variant' : 'variants'} failed. Nothing went live.`
+                  : `${batch.failedCount.toLocaleString()} of ${batch.totalCount.toLocaleString()} variants failed. ${batch.succeededCount.toLocaleString()} ${batch.succeededCount === 1 ? 'offer is' : 'offers are'} live.`}
+              </strong>{' '}
+              Reopen the wizard with the failed variants already selected, or re-run the
+              batch exactly as saved.
+              {fixTarget.blocker !== null ? (
+                <div className="bulk-batch__recovery-reason">
+                  {describeBatchFixBlocker(fixTarget.blocker)}
+                </div>
+              ) : null}
             </div>
-            <Button
-              tone="primary"
-              onClick={() => { void handleRetryAll(); }}
-              disabled={retryMutation.isPending}
-            >
-              {retryMutation.isPending
-                ? 'Retrying…'
-                : `Retry all failed (${batch.failedCount.toLocaleString()})`}
-            </Button>
+            <div className="bulk-batch__recovery-actions">
+              <ReadOnlyLock active={write.demoReadOnly} message={DEMO_LOCK_MESSAGE}>
+                <Button
+                  tone="secondary"
+                  onClick={() => { void handleRetryAll(); }}
+                  disabled={!write.canWrite || retryMutation.isPending}
+                >
+                  {retryMutation.isPending
+                    ? 'Retrying…'
+                    : `Retry unchanged (${batch.failedCount.toLocaleString()})`}
+                </Button>
+              </ReadOnlyLock>
+              {fixTarget.blocker === null && write.canWrite ? (
+                <Link
+                  className="button button--primary"
+                  to={buildBatchFixUrl({
+                    productIds: fixTarget.productIds,
+                    variantIds: fixTarget.variantIds,
+                    connectionId: batch.connectionId,
+                    batchId: batch.id,
+                  })}
+                >
+                  Fix and resubmit ({failedRecords.length.toLocaleString()}) →
+                </Link>
+              ) : (
+                <ReadOnlyLock
+                  active={write.demoReadOnly}
+                  message={DEMO_LOCK_MESSAGE}
+                >
+                  <Button tone="primary" disabled>
+                    Fix and resubmit ({failedRecords.length.toLocaleString()}) →
+                  </Button>
+                </ReadOnlyLock>
+              )}
+            </div>
           </div>
         </Alert>
       ) : null}
 
-      <BulkBatchProgressTable records={batch.records} />
+      <BulkBatchProgressTable
+        records={batch.records}
+        buildFixUrl={write.canWrite ? buildRowFixUrl : undefined}
+      />
 
       {isTerminal ? (
         <div className="bulk-batch__summary">

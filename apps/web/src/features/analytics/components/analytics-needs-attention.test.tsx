@@ -179,7 +179,7 @@ describe('AnalyticsNeedsAttention', () => {
     renderWithProviders(<AnalyticsNeedsAttention />, { apiClient });
 
     expect(
-      await screen.findByText('2 variants have a listing gap on at least one channel'),
+      await screen.findByText('2 variants with a listing gap on at least one channel'),
     ).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Publish now' })).toHaveAttribute(
       'href',

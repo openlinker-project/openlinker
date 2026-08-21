@@ -63,6 +63,27 @@ describe('AnalyticsKpiStrip', () => {
     expect(screen.getByText('PLN 200.00')).toBeInTheDocument();
   });
 
+  it('should label the sparklines with the actual selected range, not a hardcoded "last 7 days"', async () => {
+    const apiClient = createMockApiClient({
+      analytics: {
+        getSales: vi.fn().mockResolvedValue(
+          analytics({
+            trend: [
+              { date: '2026-08-01', revenue: 100, orderCount: 1 },
+              { date: '2026-08-02', revenue: 200, orderCount: 2 },
+            ],
+          })
+        ),
+      },
+    });
+
+    renderWithProviders(<AnalyticsKpiStrip filters={FILTERS} />, { apiClient });
+
+    // FILTERS spans 2026-08-01..2026-08-14 inclusive — 14 days, not 7.
+    expect(await screen.findByLabelText('GMV trend, the last 14 days')).toBeInTheDocument();
+    expect(screen.getByLabelText('Order count trend, the last 14 days')).toBeInTheDocument();
+  });
+
   it('should render the cancellation rate, not the cancelled value, as the Cancellations headline', async () => {
     const apiClient = createMockApiClient({
       analytics: { getSales: vi.fn().mockResolvedValue(analytics()) },
