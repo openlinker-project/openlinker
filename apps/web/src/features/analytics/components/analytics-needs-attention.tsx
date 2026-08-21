@@ -20,7 +20,6 @@ import {
   type StatusBadgeTone,
 } from '../../../shared/ui';
 import { useConnectionsQuery } from '../../connections';
-import { getBcp47Locale, useTranslation } from '../../../shared/i18n';
 import { useNeedsAttentionQuery } from '../hooks/use-needs-attention-query';
 import {
   deriveCoverageHeadline,
@@ -44,7 +43,6 @@ function uniqueValues<T>(values: T[]): T[] {
 export function AnalyticsNeedsAttention(): ReactElement {
   const needsAttentionQuery = useNeedsAttentionQuery();
   const connectionsQuery = useConnectionsQuery();
-  const { locale } = useTranslation();
 
   const connectionName = useMemo(() => {
     const byId = new Map((connectionsQuery.data ?? []).map((c) => [c.id, c.name]));
@@ -104,15 +102,17 @@ export function AnalyticsNeedsAttention(): ReactElement {
     const isPartialSample = summary.coverageGaps.length < summary.coverageGapsTotalCount;
     const productIds = uniqueValues(summary.coverageGaps.map((item) => item.productId));
     const variantIds = uniqueValues(summary.coverageGaps.map((item) => item.variantId));
+    const missingConnectionIds = uniqueValues(
+      summary.coverageGaps
+        .filter((item) => item.missingFromConnectionIds.length === 1)
+        .map((item) => item.missingFromConnectionIds[0])
+    );
     const params = new URLSearchParams({
       productIds: productIds.join(','),
       variantIds: variantIds.join(','),
     });
-    // Reuse the headline's own connection resolution rather than re-deriving
-    // it here — a separate, weaker predicate could pin a `connectionId` the
-    // headline copy declined to name (#2120 re-review, IMPORTANT).
-    if (copy.resolvedConnectionId) {
-      params.set('connectionId', copy.resolvedConnectionId);
+    if (missingConnectionIds.length === 1) {
+      params.set('connectionId', missingConnectionIds[0]);
     }
 
     rows.push({
@@ -147,7 +147,7 @@ export function AnalyticsNeedsAttention(): ReactElement {
   }
 
   if (summary.failedSyncValue.count > 0) {
-    const copy = deriveFailedSyncHeadline(summary.failedSyncValue, getBcp47Locale(locale));
+    const copy = deriveFailedSyncHeadline(summary.failedSyncValue);
 
     rows.push({
       key: 'failed-sync-value',
@@ -159,14 +159,7 @@ export function AnalyticsNeedsAttention(): ReactElement {
     });
   }
 
-  // Derived from the categories actually evaluated above, rather than a
-  // hardcoded literal, so a future fourth category can't drift out of sync
-  // with the all-clear line's own claim (#2120 re-review, SUGGESTION 3).
-  const checkedCount = [
-    summary.coverageGapsTotalCount,
-    summary.stockAtRiskTotalCount,
-    summary.failedSyncValue.count,
-  ].length;
+  const checkedCount = 3;
 
   return (
     <article className="panel panel--dense">
