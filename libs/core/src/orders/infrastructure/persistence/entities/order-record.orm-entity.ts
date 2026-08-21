@@ -170,6 +170,30 @@ export class OrderRecordOrmEntity {
   salesDocumentBlockDetail!: string | null;
 
   /**
+   * When the CURRENT hold started (#2248 / #2245 F4).
+   *
+   * The reason column is level-triggered and nulled the moment it clears, so
+   * without an instant there is no clock for the operator-facing age and no
+   * "held since" to render. Stamped on the `none -> blocked` transition only,
+   * so a change of reason inside one episode does not reset an age somebody is
+   * watching, and written exclusively by `updateSalesDocumentBlock` - never by
+   * the ingestion upsert.
+   */
+  @Column({ type: 'timestamptz', nullable: true })
+  salesDocumentBlockedAt!: Date | null;
+
+  /**
+   * When the current hold ENDED. Stamped on `blocked -> none` and cleared
+   * whenever a new block starts, so the pair always describes one episode.
+   *
+   * It is what makes the "the rate arrived, the invoice issued" timeline entry
+   * possible: the reason itself is gone by then, so nothing else records that
+   * the order was ever held.
+   */
+  @Column({ type: 'timestamptz', nullable: true })
+  salesDocumentBlockReleasedAt!: Date | null;
+
+  /**
    * Per-order reporting-currency snapshot (#2124, ADR-040) — six columns
    * written ONLY by the two narrow, conditional UPDATEs on the repository
    * (`claimFxIntentIfAbsent`, `stampFxIfAbsent`). The ingestion upsert

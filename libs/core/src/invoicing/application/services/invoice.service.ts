@@ -51,6 +51,8 @@ import {
 } from './invoice-issue-lock';
 import { MissingNumberingSeriesException } from '../../domain/exceptions/missing-numbering-series.exception';
 import { taxRatePercentToFraction } from '../../domain/types/tax-rate-notation.types';
+import { findMissingTaxRate } from '../../domain/types/order-tax-rate-gate.types';
+import { MissingTaxRateException } from '../../domain/exceptions/missing-tax-rate.exception';
 import { CapabilityNotSupportedException } from '@openlinker/core/integrations';
 // Published so an adapter spec can pin its own pre-call refusal message against
 // the very markers this service matches on (#2103 review) — see the constant's doc.
@@ -256,6 +258,18 @@ export class InvoiceService implements IInvoiceService {
    * enforce.
    */
   async issueInvoice(cmd: IssueInvoiceCommand): Promise<InvoiceRecord> {
+    // #2248 (ADR-052 § 6): refuse before the lock and before any persisted
+    // state is touched. This is the write-path half of the gate, and it is what
+    // closes the MANUAL routes - `POST /invoices`, the panel button, bulk issue
+    // - which every other block reason deliberately leaves open. A command
+    // whose lines carry no rate can only be issued by a provider guessing one
+    // onto a real fiscal document.
+    //
+    // Checked on the COMMAND rather than on the order, so no caller can bypass
+    // it by composing lines itself, and so the correction path (which composes
+    // its own lines from an already-issued document) is unaffected.
+    this.assertEveryLineHasATaxRate(cmd);
+
     const lockKey = invoiceIssueLockKey(cmd.orderId);
     const token = await this.issueLock.acquire(lockKey, INVOICE_ISSUE_LOCK_TTL_MS);
 
@@ -276,6 +290,22 @@ export class InvoiceService implements IInvoiceService {
             `${releaseError instanceof Error ? releaseError.message : String(releaseError)}`,
         );
       }
+    }
+  }
+
+  /**
+   * Refuse an issuance whose lines do not all name a tax rate (#2248).
+   *
+   * `'0'` passes: a zero rate is an answer, not a gap. A blank one does not -
+   * that is what the mapper emits when nothing established the rate, and the
+   * three shipped providers each substitute a different default for it.
+   */
+  private assertEveryLineHasATaxRate(cmd: IssueInvoiceCommand): void {
+    const finding = findMissingTaxRate(
+      cmd.lines.map((line) => ({ productId: line.name, taxRate: line.taxRate })),
+    );
+    if (finding) {
+      throw new MissingTaxRateException(cmd.orderId, finding);
     }
   }
 
