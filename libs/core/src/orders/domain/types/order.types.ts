@@ -291,6 +291,22 @@ export interface OrderItem {
    * ahead and do not apply retroactively (ADR-052 § 4).
    */
   taxRateReadAt?: string;
+
+  /**
+   * The rate the CHANNEL reported, recorded ONLY when it disagreed with the
+   * shop's (#2254, epic F1).
+   *
+   * Present means a conflict: the shop won, the document was issued on its
+   * rate, and this is the other number so the operator can see both and decide
+   * which system to correct. Absent means the two agreed, or only one of them
+   * answered - neither of which is a conflict.
+   *
+   * It is deliberately NOT a gate reason. `invoicingBlockedBadge` suppresses a
+   * badge whenever an invoice exists, and a non-blocking conflict always has
+   * one, so routing this through the block machinery would make it unrenderable
+   * on the very rows it describes.
+   */
+  taxRateChannel?: string;
 }
 
 /**

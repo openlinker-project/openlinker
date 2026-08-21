@@ -30,7 +30,17 @@ export function OrderTotalsPanel({ totals }: OrderTotalsPanelProps): ReactElemen
       ) : null}
       {totals.tax > 0 ? (
         <div className="order-totals__row">
-          <dt>Tax</dt>
+          {/* #2254 — this number is the CHANNEL's, and it will visibly disagree
+              with the per-line rates: Allegro and Erli report zero here, so a 5%
+              line rate can sit beside a tax total of 0.00. Nothing here computes
+              a replacement, so the row keeps its snapshot value and says whose
+              number it is rather than letting the reader assume it is OL's. */}
+          <dt>
+            Tax{' '}
+            <span className="text-muted" style={{ fontWeight: 400 }}>
+              as reported by the channel
+            </span>
+          </dt>
           <dd className="mono-text">{formatAmount(totals.tax, currency)}</dd>
         </div>
       ) : null}

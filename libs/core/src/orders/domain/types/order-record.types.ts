@@ -100,6 +100,21 @@ export interface OrderHealthSummary {
    * failure behind an invoicing one.
    */
   salesDocumentBlocked: number;
+  /**
+   * Orders where the shop and the channel named DIFFERENT tax rates (#2254).
+   *
+   * Its OWN count, not part of `salesDocumentBlocked`. A conflict does not stop
+   * the invoice, so an order can be in conflict and perfectly healthy - and
+   * folding it into the blocked count would print one number twice on the same
+   * screen while making its badge unreachable (epic F1).
+   */
+  taxRateConflict: number;
+  /**
+   * When the OLDEST still-held order was held (#2254), or `null` when nothing
+   * is held. Lets the blocked chip carry an age inside its label rather than
+   * adding a third dotted badge to a row that already has two SLA badges.
+   */
+  salesDocumentBlockedOldestAt: Date | null;
 }
 
 /**
@@ -207,6 +222,15 @@ export interface OrderRecordFilters {
    * blocked", which is the most common shape of the problem).
    */
   salesDocumentBlocked?: boolean;
+  /**
+   * Restrict to orders where the shop and the channel named different tax rates
+   * (#2254). `undefined` means "don't filter".
+   *
+   * A separate axis from `salesDocumentBlocked`, and it has to be: the rows it
+   * finds are usually INVOICED, which is exactly why they are invisible in
+   * every other view.
+   */
+  taxRateConflict?: boolean;
   /**
    * Result ordering (#927/#944/#1108). Maps to a SQL `ORDER BY` by
    * `OrderRecordRepository.applySort`. `dispatchBy` (ship-by deadline, NULLs
