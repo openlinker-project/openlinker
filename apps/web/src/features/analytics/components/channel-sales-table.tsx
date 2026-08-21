@@ -12,12 +12,21 @@
  * are always comparable when `currency` is non-null. A channel with `currency
  * === null` has no FX-stamped revenue yet in range; the cell falls back to
  * its `unconvertedValue`/`unconvertedCurrency` native-currency evidence
- * (informational only, visually marked, never folded into a Total ·
- * {reporting currency} row) when that evidence is itself in one uniform
- * currency, and to an honest empty state when it isn't (or there's nothing
- * at all). `Orders`/`AOV` stay on the same FX-stamped basis as `Net sales` so
- * a row's own figures always reconcile with each other and with the
- * `Total · {currency}` rows below.
+ * (informational only, visually marked) when that evidence is itself in one
+ * uniform currency, and to an honest empty state when it isn't (or there's
+ * nothing at all). `Orders`/`AOV` stay on the same FX-stamped basis as
+ * `Net sales` so a row's own figures always reconcile with each other and
+ * with the single `Total · {currency}` row below.
+ *
+ * **No `Total · {currency} (unconverted)` row (#2098 follow-up review):**
+ * unconverted native-currency evidence can share its currency string with the
+ * real reporting-currency total (e.g. a domestic-currency channel simply
+ * awaiting its first FX-stamp pass) — a second "Total · PLN" row computed
+ * from unrelated fields (`unconvertedValue`/`unconvertedCount` vs
+ * `revenue`/`orderCount`) reads as a contradiction, not two distinct facts.
+ * `countUnconvertedOrders` reports the currency-agnostic total count as one
+ * plain footnote sentence instead — see `groupChannelTotalsByCurrency`'s own
+ * doc comment for the full rationale.
  *
  * Calls its own `useSalesAnalyticsQuery` rather than accepting a `query`
  * prop — a caller that renders both this table and `AnalyticsKpiStrip` for
@@ -41,6 +50,7 @@ import { ConnectionDot } from '../../orders';
 import { useSalesAnalyticsQuery } from '../hooks/use-sales-analytics-query';
 import type { ChannelSalesAnalytics, SalesAnalyticsFilters } from '../api/sales-analytics.types';
 import {
+  countUnconvertedOrders,
   groupChannelTotalsByCurrency,
   revenueTrendValues,
   trendTone,
@@ -171,12 +181,7 @@ export function ChannelSalesTable({ filters }: ChannelSalesTableProps): ReactEle
 
   function renderRevenueCell(row: ChannelRow): ReactElement {
     if (row.kind === 'total') {
-      const money = formatAmount(row.total.revenue, row.total.currency);
-      return row.total.kind === 'unconverted' ? (
-        <strong title={UNCONVERTED_EVIDENCE_TITLE}>{money}</strong>
-      ) : (
-        <strong>{money}</strong>
-      );
+      return <strong>{formatAmount(row.total.revenue, row.total.currency)}</strong>;
     }
     if (row.channel.currency !== null) {
       return <>{formatAmount(row.channel.revenue, row.channel.currency)}</>;
@@ -214,10 +219,7 @@ export function ChannelSalesTable({ filters }: ChannelSalesTableProps): ReactEle
       header: 'Channel',
       cell: (row) =>
         row.kind === 'total' ? (
-          <strong>
-            Total · {row.total.currency}
-            {row.total.kind === 'unconverted' ? ' (unconverted)' : ''}
-          </strong>
+          <strong>Total · {row.total.currency}</strong>
         ) : (
           <ChannelName connectionsLoading={connectionsQuery.isLoading} row={row} />
         ),
@@ -246,24 +248,14 @@ export function ChannelSalesTable({ filters }: ChannelSalesTableProps): ReactEle
       id: 'units',
       header: 'Units',
       align: 'right',
-      cell: (row) => {
-        const units = row.kind === 'total' ? row.total.unitsSold : row.channel.unitsSold;
-        return units === null ? <EmptyValue label="Not tracked for an unconverted-evidence total" /> : intFormat.format(units);
-      },
+      cell: (row) => intFormat.format(row.kind === 'total' ? row.total.unitsSold : row.channel.unitsSold),
       hideBelow: 1024,
     },
     {
       id: 'share',
       header: 'Share',
       align: 'right',
-      cell: (row) => {
-        const share = row.kind === 'total' ? row.total.revenueShare : row.channel.revenueShare;
-        return share === null ? (
-          <EmptyValue label="Share is only meaningful against reporting-currency revenue" />
-        ) : (
-          <>{pctFormat.format(share)}</>
-        );
-      },
+      cell: (row) => pctFormat.format(row.kind === 'total' ? row.total.revenueShare : row.channel.revenueShare),
       hideBelow: 768,
     },
     {
@@ -282,13 +274,23 @@ export function ChannelSalesTable({ filters }: ChannelSalesTableProps): ReactEle
     },
   ];
 
+  const unconvertedCount = countUnconvertedOrders(channels);
+
   return (
-    <DataTable
-      caption="Sales by channel"
-      rows={rows}
-      columns={columns}
-      rowKey={(row) => (row.kind === 'total' ? `total:${row.total.kind}:${row.total.currency}` : row.channel.sourceConnectionId)}
-      emptyState={<EmptyValue label="No channel has any orders in this range" />}
-    />
+    <>
+      <DataTable
+        caption="Sales by channel"
+        rows={rows}
+        columns={columns}
+        rowKey={(row) => (row.kind === 'total' ? `total:${row.total.currency}` : row.channel.sourceConnectionId)}
+        emptyState={<EmptyValue label="No channel has any orders in this range" />}
+      />
+      {unconvertedCount > 0 ? (
+        <p className="data-table__footnote">
+          {unconvertedCount} {unconvertedCount === 1 ? 'order' : 'orders'} not yet converted to the reporting
+          currency — excluded from the figures above.
+        </p>
+      ) : null}
+    </>
   );
 }

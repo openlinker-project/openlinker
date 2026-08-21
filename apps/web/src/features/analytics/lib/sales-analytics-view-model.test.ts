@@ -3,6 +3,7 @@ import type { ChannelSalesAnalytics, DailyTrendPoint } from '../api/sales-analyt
 import {
   averageDailyOrders,
   cancellationRate,
+  countUnconvertedOrders,
   groupChannelTotalsByCurrency,
   orderCountTrendValues,
   rangeDays,
@@ -106,7 +107,6 @@ describe('groupChannelTotalsByCurrency', () => {
     expect(totals).toEqual([
       {
         currency: 'PLN',
-        kind: 'reporting',
         revenue: 5000,
         orderCount: 40,
         averageOrderValue: 125,
@@ -124,7 +124,6 @@ describe('groupChannelTotalsByCurrency', () => {
     expect(totals).toEqual([
       {
         currency: 'PLN',
-        kind: 'reporting',
         revenue: 3000,
         orderCount: 25,
         averageOrderValue: 120,
@@ -134,7 +133,7 @@ describe('groupChannelTotalsByCurrency', () => {
     ]);
   });
 
-  it('should emit an unconverted-currency subtotal across more than one contributing channel, separate from the reporting total', () => {
+  it('should never emit a total row for unconverted-currency evidence — no matter how many channels share it', () => {
     const totals = groupChannelTotalsByCurrency([
       channel({ sourceConnectionId: 'a', revenue: 3000, orderCount: 25, revenueShare: 1 }),
       channel({
@@ -161,35 +160,32 @@ describe('groupChannelTotalsByCurrency', () => {
       }),
     ]);
 
-    expect(totals).toEqual([
-      expect.objectContaining({ currency: 'PLN', kind: 'reporting' }),
-      {
-        currency: 'EUR',
-        kind: 'unconverted',
-        revenue: 800,
-        orderCount: 8,
-        averageOrderValue: 100,
-        unitsSold: null,
-        revenueShare: null,
-      },
-    ]);
+    // Only the one reporting-currency total — no "Total · EUR (unconverted)" row.
+    expect(totals).toEqual([expect.objectContaining({ currency: 'PLN' })]);
+    expect(totals).toHaveLength(1);
   });
 
-  it('should still emit an unconverted subtotal for a single contributing channel', () => {
+  it('should not emit any total when nothing is stamped, even with unconverted evidence present', () => {
     const totals = groupChannelTotalsByCurrency([
-      channel({ unconvertedCount: 5, unconvertedValue: 500, unconvertedCurrency: 'EUR' }),
+      channel({ currency: null, revenue: 0, orderCount: 0, unconvertedCount: 5, unconvertedValue: 500, unconvertedCurrency: 'EUR' }),
     ]);
 
-    expect(totals.filter((t) => t.kind === 'unconverted')).toEqual([
-      {
-        currency: 'EUR',
-        kind: 'unconverted',
-        revenue: 500,
-        orderCount: 5,
-        averageOrderValue: 100,
-        unitsSold: null,
-        revenueShare: null,
-      },
+    expect(totals).toEqual([]);
+  });
+});
+
+describe('countUnconvertedOrders', () => {
+  it('should sum unconvertedCount across every channel', () => {
+    const count = countUnconvertedOrders([
+      channel({ unconvertedCount: 2 }),
+      channel({ unconvertedCount: 9 }),
+      channel({ unconvertedCount: 0 }),
     ]);
+
+    expect(count).toBe(11);
+  });
+
+  it('should return 0 when nothing is unconverted', () => {
+    expect(countUnconvertedOrders([channel(), channel()])).toBe(0);
   });
 });
