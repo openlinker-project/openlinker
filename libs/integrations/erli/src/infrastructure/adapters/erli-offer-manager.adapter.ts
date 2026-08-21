@@ -129,6 +129,7 @@ import {
   type UpdateOfferFieldsCommand,
   type UpdateOfferQuantityCommand,
 } from '@openlinker/core/listings';
+import { supportedErliTaxRates, toErliTaxRate } from './erli-tax-rate.mapper';
 
 import { ERLI_DESCRIPTION_FORMAT } from './erli-description-format';
 import type { CachePort } from '@openlinker/shared';
@@ -174,6 +175,11 @@ const PATCH_KEY_TO_ERLI_FROZEN_NAME: Partial<Record<keyof ErliProductPatchBody, 
   price: 'price',
   name: 'name',
   description: 'description',
+  // #2249: Erli sets `frozen.taxRate` the moment the seller edits the field in
+  // their panel. That is the signal a PERSON chose the value, so OL skips the
+  // write - and `force` stays deliberately unused, because overriding a
+  // deliberate human tax decision is the one write worth getting wrong least.
+  taxRate: 'taxRate',
 };
 
 /**
@@ -237,6 +243,13 @@ export class ErliOfferManagerAdapter
     ResponsibleProducerReader,
     DeliveryPriceListReader
 {
+  /**
+   * Connections already told that their Erli tax rate is seller-frozen (#2249).
+   * A module-level `Set` on the instance rather than a per-call log, so one
+   * deliberate seller decision is reported once instead of on every propagation.
+   */
+  private readonly frozenTaxRateReported = new Set<string>();
+
   private readonly logger = new Logger(ErliOfferManagerAdapter.name);
 
   /**
@@ -677,9 +690,25 @@ export class ErliOfferManagerAdapter
     for (const key of Object.keys(result) as (keyof ErliProductPatchBody)[]) {
       const erliName = PATCH_KEY_TO_ERLI_FROZEN_NAME[key];
       if (erliName !== undefined && frozen[erliName] === true) {
-        this.logger.debug(
-          `Skipping frozen Erli field "${erliName}" on field-update [connectionId=${this.connectionId}]`,
-        );
+        if (key === 'taxRate') {
+          // #2249: a frozen tax rate is INFORMATION, not an error - the seller
+          // set it in their panel deliberately, and that is exactly the signal
+          // that makes a later shop-versus-channel disagreement attributable to
+          // a person. Logged once per connection so a nightly propagation pass
+          // does not turn one deliberate decision into a recurring complaint,
+          // and `force` is never sent.
+          if (!this.frozenTaxRateReported.has(this.connectionId)) {
+            this.frozenTaxRateReported.add(this.connectionId);
+            this.logger.log(
+              `Erli tax rate is seller-frozen on this connection; OpenLinker will not overwrite it ` +
+                `[connectionId=${this.connectionId}]`,
+            );
+          }
+        } else {
+          this.logger.debug(
+            `Skipping frozen Erli field "${erliName}" on field-update [connectionId=${this.connectionId}]`,
+          );
+        }
         delete result[key];
       }
     }
@@ -844,6 +873,43 @@ export class ErliOfferManagerAdapter
     return erliProductPath(rawId);
   }
 
+  /**
+   * The Erli enum value for the command's neutral rate (#2249).
+   *
+   * Refuses rather than omitting, in both failure directions, because an
+   * omitted rate is the worse outcome on this platform: Erli publishes the
+   * product and then marks it not-buyable with `missingTaxRate`, which nobody
+   * sees until an operator wonders why the listing gets no orders.
+   */
+  private resolveErliTaxRate(cmd: CreateOfferCommand): string {
+    if (!cmd.taxRate) {
+      throw new OfferCreateRejectedException(this.adapterKey, 0, [
+        {
+          field: 'taxRate',
+          code: 'TAX_RATE_MISSING',
+          message:
+            `No tax rate is known for this product, and Erli blocks a product without one ` +
+            `("missingTaxRate"). Add the rate in the shop's catalogue and re-sync the product; ` +
+            `OpenLinker does not substitute one.`,
+        },
+      ]);
+    }
+    const erliTaxRate = toErliTaxRate(cmd.taxRate);
+    if (erliTaxRate === null) {
+      throw new OfferCreateRejectedException(this.adapterKey, 0, [
+        {
+          field: 'taxRate',
+          code: 'TAX_RATE_NOT_EXPRESSIBLE',
+          message:
+            `Erli has no tax value for "${cmd.taxRate}". Supported: ` +
+            `${supportedErliTaxRates().join(', ')}. Set one of those on the product in the shop, ` +
+            `or list it on a channel that supports the code.`,
+        },
+      ]);
+    }
+    return erliTaxRate;
+  }
+
   private buildCreateBody(cmd: CreateOfferCommand): ErliProductCreateBody {
     // Erli requires name, images, price, stock, dispatchTime on create. Fail
     // CLOSED locally on every required field (same posture as dispatchTime) so a
@@ -880,6 +946,13 @@ export class ErliOfferManagerAdapter
     if (cmd.variantBarcode != null) {
       body.ean = cmd.variantBarcode;
     }
+    // #2249 (ADR-052) — the shop's rate, propagated onto the Erli product.
+    // Refused rather than omitted: Erli's own `buyableProblems.missingTaxRate`
+    // blocks a rate-less product server-side, so omitting it trades an
+    // actionable error here for a silently not-buyable listing an operator has
+    // to go and discover. `oo` has no Erli equivalent and is refused for the
+    // same reason - a nearest-looking token would be a real sale taxed wrongly.
+    body.taxRate = this.resolveErliTaxRate(cmd);
     // Taxonomy (#985 / #1096): prefer the resolved Allegro id, else the master
     // shop's own categories (`source:"shop"`), else omit — Erli's API makes
     // category optional, so an uncategorised offer is valid rather than a hard
@@ -990,6 +1063,22 @@ export class ErliOfferManagerAdapter
     }
     if (fields.description !== undefined) {
       body.description = flattenDescription(fields.description);
+    }
+    // #2249: propagate a rate change onto the live product. An unmappable code
+    // is DROPPED rather than throwing, unlike on the create path: a create that
+    // cannot state its tax must not happen at all, while an update that cannot
+    // is a partial update of an offer that already exists and already sells.
+    // Throwing here would take a title or price fix down with it.
+    if (fields.taxRate !== undefined) {
+      const erliTaxRate = toErliTaxRate(fields.taxRate);
+      if (erliTaxRate === null) {
+        this.logger.warn(
+          `Erli has no tax value for "${fields.taxRate}"; leaving the offer's rate unchanged ` +
+            `[connectionId=${this.connectionId}]`,
+        );
+      } else {
+        body.taxRate = erliTaxRate;
+      }
     }
     return body;
   }

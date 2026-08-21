@@ -77,6 +77,25 @@ export interface AllegroCheckoutForm {
       currency: string;
     };
     boughtAt?: string;
+    /**
+     * Per-line tax as Allegro reports it (live since 28 Mar 2024, #2249).
+     *
+     * EVERY field is nullable, including the object itself, and a null must
+     * stay a null: an offer published without tax settings reports nothing
+     * here, and reading that as `0` would state a zero-rated sale that never
+     * happened. Offers OpenLinker itself published before this epic carry no
+     * rate at all - verified on the live sandbox, 24 lines across 11 offers all
+     * returned `tax: null`.
+     *
+     * `rate` is a percent string (`"23.00"`). `subject` and `exemption` are
+     * Allegro's own vocabulary for a non-percentage regime and are read only as
+     * provenance - core never learns them.
+     */
+    tax?: {
+      rate?: string | null;
+      subject?: string | null;
+      exemption?: string | null;
+    } | null;
   }>;
   summary: {
     totalToPay: {
@@ -516,6 +535,14 @@ export interface AllegroCategoryParametersResponse {
  */
 export interface AllegroOfferFieldsPatchBody extends Record<string, unknown> {
   name?: string;
+  /**
+   * Per-country tax rates (#2249). Patched so an offer's rate follows the
+   * catalogue instead of freezing at whatever it was when the offer was first
+   * published - the same reason price and stock are propagated.
+   */
+  taxSettings?: {
+    rates: Array<{ rate: number; countryCode: string }>;
+  };
   sellingMode?: {
     price?: {
       amount: string;
@@ -610,6 +637,22 @@ export interface AllegroProductOfferCreateRequest extends Record<string, unknown
     warranty?: { id: string };
   };
   payments?: { invoice?: 'VAT' | 'NO_INVOICE' | 'VAT_MARGIN' };
+  /**
+   * Per-country tax rates for the offer (#2249, ADR-052).
+   *
+   * OpenLinker wrote nothing here before this epic, which is why every offer it
+   * published reported `tax: null` on the resulting order lines - verified on
+   * the live sandbox: 24 lines across 11 offers, and a `PATCH` setting this
+   * field made the next purchase report `tax: {"rate": "23.00"}`.
+   *
+   * `rate` is a percent NUMBER (Allegro's own shape), not the neutral
+   * percent-as-string code; the adapter converts. Which rates a category allows
+   * is Allegro's own rule, readable at
+   * `GET /sale/tax-settings?category.id=&countryCode=`.
+   */
+  taxSettings?: {
+    rates: Array<{ rate: number; countryCode: string }>;
+  };
   publication?: { status: 'INACTIVE' | 'ACTIVE' };
   external?: { id: string };
   /**
@@ -845,5 +888,16 @@ export interface AllegroSmartOfferClassificationReport {
     name: string;
     description: string;
     fulfilled: boolean;
+  }>;
+}
+
+/**
+ * `GET /sale/tax-settings?category.id=&countryCode=` (#2249) - what tax rates a
+ * category permits in a country. Read only to turn an Allegro rejection into an
+ * actionable OpenLinker error naming the permitted values.
+ */
+export interface AllegroTaxSettingsResponse {
+  taxSettings?: Array<{
+    rates?: Array<{ rate: number | string; countryCode?: string }>;
   }>;
 }

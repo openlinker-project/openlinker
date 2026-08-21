@@ -152,6 +152,19 @@ export interface ErliProductCreateBody {
    * rejects one).
    */
   externalVariantGroup?: ErliVariantGroupRef;
+  /**
+   * VAT rate, as Erli's own enum (`TAX_0` / `TAX_5` / `TAX_8` / `TAX_23` /
+   * `NP` / `ZW` / `TAX_7` / `TAX_19`) - #2249, ADR-052.
+   *
+   * Erli treats it as required in practice: `buyableProblems` carries
+   * `missingTaxRate`, so a product published without one is blocked
+   * server-side. OpenLinker therefore refuses to publish rather than omitting
+   * it, which turns a silent not-buyable product into an actionable error.
+   *
+   * Which values a category allows is Erli's own rule and is not predicted
+   * here; Erli rejects a disallowed value itself.
+   */
+  taxRate?: string;
 }
 
 /**
@@ -164,7 +177,7 @@ export interface ErliProductCreateBody {
  */
 export type ErliProductPatchBody = Pick<
   ErliProductCreateBody,
-  'name' | 'price' | 'stock' | 'description'
+  'name' | 'price' | 'stock' | 'description' | 'taxRate'
 >;
 
 /**
