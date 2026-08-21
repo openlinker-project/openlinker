@@ -61,6 +61,10 @@ export const listingsQueryKeys = {
   /** #1835 — shop destination global attributes. */
   shopAttributes: (connectionId: string) =>
     ['listings', 'shopAttributes', connectionId] as const,
+
+  /** ADR-046: a destination's description contract, per connection. */
+  descriptionFormat: (connectionId: string) =>
+    ['listings', 'descriptionFormat', connectionId] as const,
   /** #1835 — predefined terms of one global attribute. */
   shopAttributeTerms: (connectionId: string, attributeId: string) =>
     ['listings', 'shopAttributeTerms', connectionId, attributeId] as const,

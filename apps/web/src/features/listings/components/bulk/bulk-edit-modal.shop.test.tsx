@@ -22,6 +22,28 @@ import type { Connection } from '../../../connections';
 import type { Product, ProductVariant } from '../../../products';
 
 vi.mock('../../../content', () => ({ SuggestionDialog: () => null }));
+vi.mock('../../hooks/use-description-format-query', () => ({
+  useDescriptionFormatQuery: () => ({
+    // The frontend holds no format of its own since ADR-046, so a test that
+    // needs an editor has to supply the destination's contract - a null format
+    // deliberately renders a disabled placeholder instead.
+    data: {
+      shape: 'html',
+      allowedTags: ['h1', 'h2', 'h3', 'p', 'b', 'strong', 'em', 'ul', 'ol', 'li', 'a', 'br'],
+      allowedAttributes: { a: ['href'] },
+      contentModel: null,
+      rewrites: [],
+      requiresBlockOpener: false,
+      selfClosingVoids: false,
+      maxBytes: null,
+      declared: true,
+      resolvedVia: 'ProductPublisher',
+    },
+    isLoading: false,
+    error: null,
+  }),
+}));
+
 vi.mock('../../hooks/use-shop-attributes-query', () => ({
   useShopAttributesQuery: () => ({
     data: [{ id: 'pa_color', name: 'Color', slug: 'color' }],
@@ -123,6 +145,7 @@ function renderShopEditor(
     included: Record<string, boolean>,
     editFormValues: Record<string, unknown>,
   ) => void,
+  extra: Partial<{ demoReadOnly: boolean }> = {},
 ): void {
   renderWithProviders(
     <BulkEditModal
@@ -130,6 +153,7 @@ function renderShopEditor(
       onOpenChange={() => undefined}
       row={row}
       connection={shopConnection}
+      {...extra}
       destinationKind="shop"
       canBrowseCategories={false}
       canBrowseShopCategories
@@ -263,6 +287,48 @@ describe('BulkEditModal (shop mode)', () => {
     ]);
   });
 
+/**
+ * Type a description into a rich-text field through the editor's HTML view.
+ *
+ * A `fireEvent.change` on the editing surface is impossible - it is a
+ * contenteditable, so it has no value setter - and `userEvent.type` inserts
+ * nothing into ProseMirror in any test DOM (see #2201). The HTML view is a real
+ * `<textarea>` and a real operator path: click HTML, edit, click Rich text, which
+ * round-trips the markup through the destination's schema and emits onChange.
+ */
+function setDescriptionViaHtmlView(scope: HTMLElement, html: string): void {
+  fireEvent.click(within(scope).getByRole('button', { name: 'HTML' }));
+  fireEvent.change(within(scope).getByRole('textbox', { name: /HTML source/ }), {
+    target: { value: html },
+  });
+  fireEvent.click(within(scope).getByRole('button', { name: 'Rich text' }));
+}
+
+  it('makes the description non-editable for a demo read-only viewer (#2200)', () => {
+    // The regression this pins: demo read-only is enforced by a wrapping
+    // `<fieldset disabled>`, and that cascade reaches FORM CONTROLS only. A
+    // contenteditable is not one, so when the description became rich text it
+    // silently went live for a public demo viewer while Save stayed locked -
+    // exactly the editable-but-uncommittable middle state the demo policy
+    // (#1615) exists to avoid. Each editor now takes an explicit `disabled`.
+    renderShopEditor(makeRow([makeVariant('v1')]), vi.fn(), { demoReadOnly: true });
+
+    const surfaces = screen.getAllByRole('textbox', { name: /description/i });
+    expect(surfaces.length).toBeGreaterThan(0);
+    for (const surface of surfaces) {
+      expect(surface).toHaveAttribute('contenteditable', 'false');
+    }
+  });
+
+  it('leaves the description editable for a normal operator', () => {
+    renderShopEditor(makeRow([makeVariant('v1')]), vi.fn());
+
+    expect(screen.getAllByRole('textbox', { name: /description/i })[0]).toHaveAttribute(
+      'contenteditable',
+      'true',
+    );
+  });
+
   it('emits a per-variant description override in the two-pane editor (#1830)', () => {
     const onSave = vi.fn();
     const row = makeRow([makeVariant('v1', { Size: 'M' }), makeVariant('v2', { Size: 'L' })]);
@@ -270,8 +336,9 @@ describe('BulkEditModal (shop mode)', () => {
 
     // Focus the first variant scope, override its description.
     fireEvent.click(screen.getByRole('radio', { name: /Size: M|M$/ }));
-    const descriptions = screen.getAllByLabelText(/Description for/);
-    fireEvent.change(descriptions[0], { target: { value: 'Only for M' } });
+    const editors = screen.getAllByLabelText(/Description for/);
+    const scope = editors[0].closest('.rich-text') as HTMLElement;
+    setDescriptionViaHtmlView(scope, 'Only for M');
     fireEvent.click(screen.getByRole('button', { name: 'Save all' }));
 
     const [, , perVariantOverrides] = onSave.mock.calls[0] as [
@@ -279,7 +346,9 @@ describe('BulkEditModal (shop mode)', () => {
       BulkPerProductOverride,
       Record<string, BulkPerProductOverride>,
     ];
-    expect(perVariantOverrides.v1.overrides?.description).toBe('Only for M');
+    // Wrapped in a paragraph on the way through the schema: the shop format
+    // requires a block opener, so this is the value that would really publish.
+    expect(perVariantOverrides.v1.overrides?.description).toBe('<p>Only for M</p>');
   });
 
   it('renders provenance badges + reset affordances in the variant panel, matching the marketplace panel (#1838)', () => {
@@ -291,7 +360,7 @@ describe('BulkEditModal (shop mode)', () => {
     // Description, Attributes, and Price all start inherited - muted styling,
     // no reset control yet (three "inherited" badges: description/attributes/price).
     const description = within(panel).getByLabelText(/Description for/);
-    expect(description).toHaveClass('bulk-editor__input--inherited');
+    expect(description.closest('.rich-text')).toHaveClass('bulk-editor__input--inherited');
     expect(within(panel).queryByText(/reset to base/)).not.toBeInTheDocument();
     expect(within(panel).getAllByText('inherited').length).toBeGreaterThanOrEqual(3);
 
@@ -302,13 +371,13 @@ describe('BulkEditModal (shop mode)', () => {
     expect(within(panel).getByText('from master')).toBeInTheDocument();
 
     // Overriding description flips the badge + input styling and surfaces reset.
-    fireEvent.change(description, { target: { value: 'Only for M' } });
-    expect(description).toHaveClass('bulk-editor__input--overridden');
+    setDescriptionViaHtmlView(description.closest('.rich-text') as HTMLElement, 'Only for M');
+    expect(description.closest('.rich-text')).toHaveClass('bulk-editor__input--overridden');
     const resetButton = within(panel).getByText(/reset to base/);
     expect(resetButton).toBeInTheDocument();
 
     fireEvent.click(resetButton);
-    expect(description).toHaveClass('bulk-editor__input--inherited');
+    expect(description.closest('.rich-text')).toHaveClass('bulk-editor__input--inherited');
     expect(within(panel).queryByText(/reset to base/)).not.toBeInTheDocument();
   });
 

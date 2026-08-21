@@ -120,6 +120,21 @@ export interface Product {
   sku: string | null;
   price: number | null;
   currency: string | null;
+  /**
+   * Master description, stored as raw HTML (#2201). Present on the list and
+   * detail reads; `null` when the source shop carries none.
+   */
+  description?: string | null;
+  /**
+   * How many variants the product has, on the LIST read.
+   *
+   * The list projection deliberately omits `variants` (pinned by
+   * `products.controller.spec.ts`), so this is the only variant fact available
+   * without a second request per product - which matters for a spec that needs
+   * to pick, say, a single-variant product out of a page.
+   */
+  variantCount?: number;
+  /** Only on the DETAIL read (`GET /products/:id`), never on the list. */
   variants?: ProductVariant[];
   externalIds?: ExternalIdMapping[];
   createdAt: string;
@@ -768,4 +783,39 @@ export interface InvoicingBankAccount {
 /** A raw binary response whose text body is also retained (source XML / documents). */
 export interface RawTextResponse extends RawResponse {
   text: string;
+}
+
+/**
+ * Per-product content state (#2201). Narrowed to what the rich-text specs read:
+ * which channels have an editable description for this product.
+ */
+export interface ProductContentState {
+  master: { baseValue: string | null; draftValue: string | null };
+  channels: Array<{
+    connectionId: string;
+    connectionName: string;
+    platformType: string;
+    baseValue: string | null;
+    draftValue: string | null;
+  }>;
+}
+
+/**
+ * A destination's declared description contract (ADR-046).
+ *
+ * Only the fields the e2e suite asserts on - the API returns more. `declared`
+ * false means the destination declared nothing and the response is the
+ * conservative shared subset, which the UI must say out loud rather than
+ * presenting as authoritative.
+ */
+export interface DescriptionFormatView {
+  shape: 'html' | 'plain-text';
+  allowedTags: string[];
+  allowedAttributes: Record<string, string[]>;
+  contentModel: Record<string, string[]> | null;
+  requiresBlockOpener: boolean;
+  selfClosingVoids: boolean;
+  maxBytes: number | null;
+  declared: boolean;
+  resolvedVia: 'OfferManager' | 'ProductPublisher' | null;
 }

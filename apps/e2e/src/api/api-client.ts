@@ -15,8 +15,10 @@
  */
 import { ApiError } from './api-error';
 import type {
+  ProductContentState,
   ApproveUserInput,
   BulkBatchSummary,
+  DescriptionFormatView,
   BulkIssueInvoicesInput,
   BulkIssueInvoicesResult,
   CategoryMappingInput,
@@ -475,6 +477,23 @@ export class ApiClient {
       this.request<Paginated<ProductVariant>>(`/products/${productId}/variants`),
   };
 
+  // ── Content (per-product, per-channel descriptions) ─────────────────────
+  content = {
+    /**
+     * Master + per-channel description state for a product (#2201).
+     *
+     * `channels` is what makes the Content tab's channel tabs exist - a channel
+     * appears only when an active connection with `OfferFieldUpdater` has at
+     * least one linked offer for the product. A spec that needs a channel editor
+     * uses this to FIND such a product rather than assuming one exists, so it
+     * skips cleanly on a stack where none does.
+     */
+    forProduct: (productId: string): Promise<ProductContentState> =>
+      // `products/:id/content`, not `content/products/:id` - the controller is
+      // mounted under the product resource (`content.controller.ts`).
+      this.request<ProductContentState>(`/products/${productId}/content`),
+  };
+
   // ── Inventory ───────────────────────────────────────────────────────────
   inventory = {
     availability: (variantIds: string[]): Promise<InventoryAvailability[]> =>
@@ -494,6 +513,51 @@ export class ApiClient {
      */
     bulkBatch: (batchId: string): Promise<BulkBatchSummary> =>
       this.request<BulkBatchSummary>(`/listings/bulk-create/${batchId}`),
+    /**
+     * The destination's category projection, one level from the root (#1979).
+     *
+     * Used as a precondition, not as data: the wizard's row editor cannot resolve
+     * a category when this is empty, so a spec that must open that editor skips
+     * with a reason naming the empty projection instead of failing deep inside a
+     * category browser. `null` when the API predates the route.
+     */
+    taxonomyCategories: async (connectionId: string): Promise<unknown[] | null> => {
+      try {
+        return await this.request<unknown[]>(
+          `/listings/connections/${connectionId}/taxonomy/categories`,
+        );
+      } catch (error) {
+        // ONLY a 404 means "this API does not have the route". Swallowing every
+        // status would turn a 500 or an expired token into "old stack", and the
+        // caller would skip with a reason that is not true. A 404 is also what an
+        // unknown connection returns, which is why callers pass a world-resolved
+        // id rather than a literal.
+        if (error instanceof ApiError && error.status === 404) return null;
+        throw error;
+      }
+    },
+    /**
+     * The destination's declared description format (ADR-046), or `null` ONLY when
+     * the API has no such route.
+     *
+     * The `null` is a capability probe, not an error channel: a stack whose API is
+     * older than the contract builds its publish payload with the PREVIOUS
+     * builder, so an assertion there would pass or fail for reasons unrelated to
+     * the format. Every other failure propagates.
+     */
+    descriptionFormat: async (connectionId: string): Promise<DescriptionFormatView | null> => {
+      try {
+        return await this.request<DescriptionFormatView>(
+          `/listings/connections/${connectionId}/description-format`,
+        );
+      } catch (error) {
+        // Same rule as above, and it matters more here: this endpoint is what the
+        // ADR-046 assertions gate on, so reclassifying a 500 as "predates the
+        // endpoint" would let the whole suite go green against a broken contract.
+        if (error instanceof ApiError && error.status === 404) return null;
+        throw error;
+      }
+    },
     list: (query?: ListListingsQuery): Promise<Paginated<OfferMapping>> =>
       this.request<Paginated<OfferMapping>>(
         `/listings${buildQuery({

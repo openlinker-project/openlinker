@@ -183,7 +183,7 @@ module.exports = {
                 message: 'Feature modules must not import page or plugin modules.',
               },
               {
-                group: ['@radix-ui/*', '@tanstack/react-table', '@tanstack/react-virtual', 'cmdk'],
+                group: ['@radix-ui/*', '@tanstack/react-table', '@tanstack/react-virtual', 'cmdk', '@tiptap/*', 'dompurify'],
                 message:
                   'Headless UI libraries are wrapped by primitives in shared/ui/. Import the project primitive (e.g. Dialog, DataTable, CommandPalette) instead of the library directly.',
               },
@@ -331,7 +331,7 @@ module.exports = {
                 message: 'Page modules must not import app or plugin modules.',
               },
               {
-                group: ['@radix-ui/*', '@tanstack/react-table', '@tanstack/react-virtual', 'cmdk'],
+                group: ['@radix-ui/*', '@tanstack/react-table', '@tanstack/react-virtual', 'cmdk', '@tiptap/*', 'dompurify'],
                 message:
                   'Headless UI libraries are wrapped by primitives in shared/ui/. Import the project primitive (e.g. Dialog, DataTable, CommandPalette) instead of the library directly.',
               },
@@ -356,7 +356,7 @@ module.exports = {
           {
             patterns: [
               {
-                group: ['@radix-ui/*', '@tanstack/react-table', '@tanstack/react-virtual', 'cmdk'],
+                group: ['@radix-ui/*', '@tanstack/react-table', '@tanstack/react-virtual', 'cmdk', '@tiptap/*', 'dompurify'],
                 message:
                   'Headless UI libraries are wrapped by primitives in shared/ui/. Import the project primitive instead of the library directly.',
               },
@@ -409,7 +409,7 @@ module.exports = {
                   'Plugin modules must not import host internals (router, routes, layouts, hooks, providers, the API client provider hook). The public surface plugins may consume is app/api/api-client (types) and app/app-shell (NavGroup types) — anything else couples plugins to host implementation.',
               },
               {
-                group: ['@radix-ui/*', '@tanstack/react-table', '@tanstack/react-virtual', 'cmdk'],
+                group: ['@radix-ui/*', '@tanstack/react-table', '@tanstack/react-virtual', 'cmdk', '@tiptap/*', 'dompurify'],
                 message:
                   'Headless UI libraries are wrapped by primitives in shared/ui/. Import the project primitive instead of the library directly.',
               },
@@ -660,9 +660,36 @@ module.exports = {
             message:
               '`IN_TREE_PLUGINS` was merged into the single `plugins` array (#702). Import `plugins` from `apps/web/src/plugins`.',
           },
+          {
+            // ADR-046: `shared/ui/rich-text-view.tsx` is the ONLY sanctioned
+            // `dangerouslySetInnerHTML` in the app - it sanitizes with DOMPurify
+            // first and carries the reasoning. Anywhere else, render through
+            // `<RichTextView>` instead of re-deriving the safety argument.
+            // `eslint-plugin-react` is not installed, so this is expressed as a
+            // syntax restriction rather than `react/no-danger`.
+            selector: "JSXAttribute[name.name='dangerouslySetInnerHTML']",
+            message:
+              'dangerouslySetInnerHTML is restricted. Render stored HTML through the RichTextView primitive (shared/ui/rich-text-view.tsx), which sanitizes with DOMPurify — see ADR-046.',
+          },
+          {
+            // The same hole, reached without JSX. A selector that only matches
+            // the JSX attribute leaves `el.innerHTML = untrusted` and
+            // `insertAdjacentHTML` completely unrestricted, which is the more
+            // likely shape in an imperative helper or a test utility.
+            selector:
+              "AssignmentExpression[left.type='MemberExpression'][left.property.name=/^(innerHTML|outerHTML)$/]",
+            message:
+              'Assigning innerHTML/outerHTML is restricted. Render stored HTML through the RichTextView primitive (shared/ui/rich-text-view.tsx) — see ADR-046.',
+          },
+          {
+            selector: "CallExpression[callee.property.name='insertAdjacentHTML']",
+            message:
+              'insertAdjacentHTML is restricted. Render stored HTML through the RichTextView primitive (shared/ui/rich-text-view.tsx) — see ADR-046.',
+          },
         ],
       },
     },
+
     {
       // Port, capability, and port-local type files form the public contract
       // surface plugin adapters implement. They must import cross-context

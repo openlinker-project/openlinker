@@ -358,6 +358,23 @@ export function createMockApiClient(
         .fn()
         .mockRejectedValue(new ApiError('Adapter does not support live offer reading', 422, null)),
       updateOfferFields: vi.fn().mockResolvedValue({ jobId: 'job-1' }),
+      // ADR-046: the frontend holds no default format, so a component that
+      // mounts a description editor renders a disabled placeholder until this
+      // read resolves. Defaulting it permissively here keeps every existing
+      // component test exercising the editor rather than the placeholder; a
+      // test that cares about a NARROW destination overrides it.
+      getDescriptionFormat: vi.fn().mockResolvedValue({
+        shape: 'html',
+        allowedTags: ['h1', 'h2', 'h3', 'p', 'b', 'strong', 'em', 'ul', 'ol', 'li', 'a', 'br'],
+        allowedAttributes: { a: ['href'] },
+        contentModel: null,
+        rewrites: [],
+        requiresBlockOpener: false,
+        selfClosingVoids: false,
+        maxBytes: null,
+        declared: true,
+        resolvedVia: 'OfferManager',
+      }),
       createOffer: vi.fn().mockResolvedValue({ jobId: 'job-1', offerCreationRecordId: 'rec-1' }),
       // Tests that render the tracker must override with a full-shape response — the `null`
       // default mirrors the `getById` pattern and forces explicit test setup.

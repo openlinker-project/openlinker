@@ -65,7 +65,10 @@ import type {
   TaxonomyIdentityProvider,
   TaxonomyOwner,
 } from '@openlinker/core/listings';
+
+import { ALLEGRO_DESCRIPTION_FORMAT } from '../util/allegro-description-format';
 import {
+  type DescriptionFormat,
   OfferCreateRejectedException,
   CategoryNotFoundException,
   OfferNotFoundOnMarketplaceException,
@@ -114,7 +117,6 @@ import type {
 import { AllegroApiException } from '../../domain/exceptions/allegro-api.exception';
 import { Logger, formatBodyForLog } from '@openlinker/shared/logging';
 import { createHash } from 'crypto';
-import { sanitizeAllegroDescription } from '../util/sanitize-allegro-description';
 import { sanitizeAllegroName } from '../util/sanitize-allegro-name';
 import { uploadImagesViaAllegro } from '../util/upload-images-via-allegro';
 import { uploadSafetyAttachmentViaAllegro } from '../util/upload-safety-attachment-via-allegro';
@@ -287,6 +289,29 @@ export class AllegroOfferManagerAdapter
     TaxonomyIdentityProvider
 {
   private readonly logger = new Logger(AllegroOfferManagerAdapter.name);
+
+  /**
+   * Allegro accepts seven tags with a CONTEXT-SENSITIVE content model, no
+   * attributes, a block opener, and 40 000 bytes (ADR-046).
+   *
+   * Allegro publishes no tag list. Every value below is reconstructed from
+   * verbatim validator rejection messages in `allegro/allegro-api`:
+   *   #11708 (2025-06-24)  Błędny tag "br", dozwolone są: {b}
+   *   #9714  (2024-08-22)  Błędny tag "strong", dozwolone są: {b}
+   *                        Błędny tag "b", dozwolone są: {h1, h2, p, ul, ol}
+   *   #10656 (2025-01-13)  Błędny tag "ul", dozwolone są: {b, p}
+   *   #3856               Błędny tag "h2", dozwolone są: {b}
+   * Two opposite allowed sets for one payload (#9714) is what makes this a
+   * grammar rather than a list. #3856 also carries an Allegro employee stating
+   * `<br>` is not accepted and that h1/h2 take no additional formatting.
+   *
+   * Do not widen this set without a new rejection message to cite - the spec
+   * pins it exactly so a widening is a deliberate test change.
+   */
+  getDescriptionFormat(): DescriptionFormat {
+    return ALLEGRO_DESCRIPTION_FORMAT;
+  }
+
 
   private readonly quantityPollConfig: QuantityPollConfig;
   private readonly catParamsTtlSec: number;
@@ -1342,7 +1367,13 @@ export class AllegroOfferManagerAdapter
         sections: cmd.fields.description.sections.map((section) => ({
           items: section.items.map((item) => ({
             type: item.type,
-            content: sanitizeAllegroDescription(item.content),
+            // ADR-046: core applied the destination's declared format before
+            // dispatch (`formatOfferFieldsForDestination`), so the content
+            // arrives already shaped. The adapter deliberately keeps no
+            // defensive second pass - two sources of truth drift, and the
+            // previous adapter-local regex is exactly how the wrong allowlist
+            // shipped.
+            content: item.content,
           })),
         })),
       };
@@ -1811,12 +1842,16 @@ export class AllegroOfferManagerAdapter
     };
 
     if (cmd.overrides?.description) {
-      const sanitized = sanitizeAllegroDescription(cmd.overrides.description).trim();
-      if (sanitized.length > 0) {
+      // ADR-046: already shaped by core. The emptiness check that used to live
+      // here moved with it - `formatDescriptionForDestination` returns
+      // undefined when nothing survives, so an empty description never reaches
+      // this branch at all.
+      const shaped = cmd.overrides.description.trim();
+      if (shaped.length > 0) {
         body.description = {
           sections: [
             {
-              items: [{ type: 'TEXT', content: sanitized }],
+              items: [{ type: 'TEXT', content: shaped }],
             },
           ],
         };

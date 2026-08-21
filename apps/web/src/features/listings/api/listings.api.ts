@@ -6,6 +6,7 @@
  *
  * @module apps/web/src/features/listings/api
  */
+import type { DescriptionFormat } from '../../../shared/ui/rich-text.types';
 import type {
   CatalogProduct,
   CatalogProductMatchResult,
@@ -133,6 +134,14 @@ export interface ListingsApi {
    * Backed by the shop `ShopAttributeReader` capability; 422 if the connection's
    * adapter does not implement it.
    */
+  /**
+   * Read what this destination accepts in a product description (ADR-046).
+   * Always resolves - a connection that declares nothing (or one whose adapter
+   * cannot be resolved at all) returns the conservative fallback with
+   * `declared: false`, which the editor surfaces rather than treating as
+   * authoritative.
+   */
+  getDescriptionFormat: (connectionId: string) => Promise<DescriptionFormat>;
   listShopAttributes: (connectionId: string) => Promise<ShopAttribute[]>;
   /** List the predefined terms of one global attribute (#1835). */
   listShopAttributeTerms: (
@@ -504,6 +513,11 @@ export function createListingsApi(
       const qs = parentId ? `?parentId=${encodeURIComponent(parentId)}` : '';
       return request<ShopCategory[]>(
         `/listings/connections/${connectionId}/shop-publish/categories${qs}`,
+      );
+    },
+    getDescriptionFormat(connectionId): Promise<DescriptionFormat> {
+      return request<DescriptionFormat>(
+        `/listings/connections/${connectionId}/description-format`,
       );
     },
     listShopAttributes(connectionId): Promise<ShopAttribute[]> {

@@ -15,6 +15,7 @@ import { ListingsController } from './http/listings.controller';
 import { BulkListingController } from './http/bulk-listing.controller';
 import { ShopPublishController } from './http/shop-publish.controller';
 import { BulkShopPublishController } from './http/bulk-shop-publish.controller';
+import { DescriptionFormatController } from './http/description-format.controller';
 import { TaxonomyController } from './http/taxonomy.controller';
 
 @Module({
@@ -30,6 +31,7 @@ import { TaxonomyController } from './http/taxonomy.controller';
     ShopPublishController,
     BulkShopPublishController,
     TaxonomyController,
+    DescriptionFormatController,
   ],
 })
 export class ListingsApiModule {}

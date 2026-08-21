@@ -59,6 +59,8 @@ export const SHOP_PRODUCT_STATUS_SNAPSHOT_REPOSITORY_TOKEN = Symbol(
 // Shop-side global attribute read (#1835)
 export const SHOP_ATTRIBUTE_READ_SERVICE_TOKEN = Symbol('IShopAttributeReadService');
 
+export const DESCRIPTION_FORMAT_READ_SERVICE_TOKEN = Symbol('IDescriptionFormatReadService');
+
 // Destination-aware duplicate guard (#1837)
 export const SHOP_PRODUCT_MAPPING_REPOSITORY_TOKEN = Symbol('ShopProductMappingRepositoryPort');
 export const PUBLISHED_VARIANTS_SERVICE_TOKEN = Symbol('IPublishedVariantsService');

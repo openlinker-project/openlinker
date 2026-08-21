@@ -88,3 +88,11 @@ export type { InlineDisclosureProps } from './inline-disclosure';
 // `ReadOnlyLock` instead — demo mode inverts the policy between the two.
 export { AccessGate } from './access-gate';
 export type { AccessGateProps } from './access-gate';
+export { RichTextEditor } from './rich-text-editor';
+export type { RichTextEditorProps } from './rich-text-editor';
+export { RichTextView } from './rich-text-view';
+export type { RichTextViewProps } from './rich-text-view';
+export { deriveRichTextProfile, byteLength, exceedsDescriptionCap } from './rich-text-profiles';
+export type { RichTextProfile } from './rich-text-profiles';
+export type { DescriptionFormat, DescriptionRewrite, RichTextMark } from './rich-text.types';
+export { MASTER_DESCRIPTION_FORMAT } from './rich-text.types';

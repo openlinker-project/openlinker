@@ -30,7 +30,7 @@ const sampleProduct: Product = {
   sku: 'SKU-001',
   price: 29.99,
   currency: null,
-  description: 'A test product',
+  description: '<p>A test product</p>',
   images: null,
   createdAt: '2026-01-15T10:00:00.000Z',
   updatedAt: '2026-01-15T10:00:00.000Z',
@@ -291,6 +291,26 @@ describe('ProductDetailPage', () => {
     expect(stockCell).toHaveClass('stock-cell--error');
     expect(stockCell).not.toHaveClass('stock-cell--warning');
     expect(stockCell).toHaveTextContent('0');
+  });
+
+  it('should route the description through RichTextView instead of printing its tags (ADR-046)', async () => {
+    const mockApi = createMockApiClient({
+      products: { getById: vi.fn().mockResolvedValue(sampleProduct) },
+    });
+
+    renderDetailPage(mockApi);
+
+    // Asserted as "the value goes through the primitive", not as rendered markup.
+    // Under happy-dom - this suite's environment - DOMPurify is LOSSY rather than
+    // absent: `sanitize('<p>a</p>')` returns `'a'`, stripping the block tag,
+    // which matches its own README calling happy-dom unsafe. So markup fidelity
+    // is asserted once, in `shared/ui/rich-text-view.test.tsx` on jsdom, instead
+    // of being asserted twice and trusted once.
+    expect(await screen.findByText('A test product')).toBeInTheDocument();
+    expect(document.querySelector('.rich-text-view, .rich-text-view__empty')).not.toBeNull();
+    // Whatever the environment does to the markup, the TAGS must never reach the
+    // operator as text - that is the defect this replaced.
+    expect(screen.queryByText(/<p>/)).toBeNull();
   });
 
   it('should render the Available KPI with warning tone and an oversold description when some stock is oversold but the total remains positive', async () => {

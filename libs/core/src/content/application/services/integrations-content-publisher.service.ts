@@ -9,6 +9,8 @@
  *     integrations registry and calls `updateProduct(productId, { [fieldKey]: value })`.
  *     Uses the adapter's response `updatedAt` as the opaque `baseVersion` so
  *     future inbound reconciles can detect divergence by string inequality.
+ *     Applies no `DescriptionFormat` - the master is the catalogue of record,
+ *     not a listing destination (ADR-046; see the call site).
  *
  *   - **Channel path**: resolves an `OfferManager` adapter for the target
  *     connection, confirms it implements `OfferFieldUpdater`, walks the
@@ -19,6 +21,9 @@
  *     inbound reconcile does not exist yet (tracked as a follow-up); when it
  *     lands, the strategy here will need to be reconciled with the
  *     marketplace-provided revision / lastUpdated.
+ *     Applies the destination's declared `DescriptionFormat` before dispatch
+ *     (ADR-046) - this path reaches `updateOfferFields` without passing through
+ *     either builder, so it is one of the four enforcement points.
  *
  * The `ChannelContentPublishNotSupportedException` class remains in the
  * domain for future branches (e.g. a connection type that fundamentally
@@ -29,6 +34,10 @@
  * @implements {ContentPublisherPort}
  */
 import { Inject, Injectable } from '@nestjs/common';
+import {
+  formatOfferFieldsForDestination,
+  resolveOfferDescriptionFormat,
+} from '@openlinker/core/listings';
 import { Logger } from '@openlinker/shared/logging';
 import { INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 import { IIntegrationsService } from '@openlinker/core/integrations';
@@ -41,6 +50,7 @@ import {
 } from '@openlinker/core/listings';
 import { ChannelAdapterLacksFieldUpdaterException } from '../../domain/exceptions/channel-adapter-lacks-field-updater.exception';
 import { ContentPublishMissingVersionException } from '../../domain/exceptions/content-publish-missing-version.exception';
+import { EmptyAfterDescriptionFormatException } from '../../domain/exceptions/empty-after-description-format.exception';
 import { NoLinkedOffersException } from '../../domain/exceptions/no-linked-offers.exception';
 import { NoProductMasterAdapterException } from '../../domain/exceptions/no-product-master-adapter.exception';
 import type {
@@ -98,6 +108,13 @@ export class IntegrationsContentPublisher implements ContentPublisherPort {
 
     const { adapter } = masters[0];
 
+    // ADR-046 deliberately does NOT apply a `DescriptionFormat` here, and this
+    // comment exists so the absence reads as a decision rather than a gap.
+    // The rule covers paths publishing to a LISTING destination (a marketplace
+    // offer, a shop product); the master is the catalogue of record, its own
+    // editor is the authority on what it accepts, and it is where the broad
+    // HTML originates - so there is nothing to narrow it to. `ProductMasterPort`
+    // carries no declaration for the same reason.
     const updated = await adapter.updateProduct(request.productId, {
       [request.fieldKey]: request.value,
     });
@@ -151,11 +168,31 @@ export class IntegrationsContentPublisher implements ContentPublisherPort {
 
     const publishedAtIso = new Date().toISOString();
     const payload = toChannelDescriptionPayload(request.value);
+    const descriptionFormat = resolveOfferDescriptionFormat(adapter);
+
+    // ADR-046: this path reaches `updateOfferFields` directly, without passing
+    // through either builder, so it applies the destination's declared format
+    // itself. It is the Content tab's publish path - the one an enumeration of
+    // "the two builders" silently misses.
+    const fields = formatOfferFieldsForDestination({ description: payload }, descriptionFormat);
+
+    // Nothing survived the destination's grammar. Sending `{}` would call the
+    // marketplace once per offer, change nothing, and still return a fresh
+    // `baseVersion` - marking the draft published and clearing the conflict flag
+    // on a publish that never happened. Refusing is the honest answer: the
+    // operator authored something the destination cannot represent at all.
+    if (fields.description === undefined) {
+      this.logger.warn(
+        `[content] channel publish refused: nothing survived the destination's description format. ` +
+          `productId=${request.productId} connectionId=${connectionId} fieldKey=${request.fieldKey}`
+      );
+      throw new EmptyAfterDescriptionFormatException(request.productId, connectionId);
+    }
 
     for (const externalOfferId of externalOfferIds) {
       await adapter.updateOfferFields({
         externalOfferId,
-        fields: { description: payload },
+        fields,
         idempotencyKey: `content:${request.productId}:${connectionId}:${externalOfferId}:${publishedAtIso}`,
       });
     }

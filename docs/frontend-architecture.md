@@ -538,12 +538,18 @@ No **styled** external UI library (no shadcn/ui, MUI, Mantine, Chakra, Ant Desig
 | `@radix-ui/react-popover` | popover positioning + dismissal | `shared/ui/popover.tsx` |
 | `@radix-ui/react-toast` | toast queue + swipe-to-dismiss | `shared/ui/toast-provider.tsx` |
 | `cmdk` | headless command-menu (keyboard nav, filtering, composable groups) | `shared/ui/command-palette.tsx` |
+| `@tiptap/*` | headless rich-text editing (ProseMirror schema + commands, zero visuals, no shipped CSS) | `shared/ui/rich-text-editor.tsx` |
+| `dompurify` | HTML sanitization before render | `shared/ui/rich-text-view.tsx` |
 
 Rules:
 
 - A headless library may only be imported from the wrapping primitive in `shared/ui/` — never from a page or feature module directly.
 - The wrapper is responsible for all CSS. No library-shipped CSS gets imported.
 - When a native HTML element covers the use case (`<dialog>`, `<select>`, `<details>`), prefer it over a Radix wrapper.
+
+**Rich text (ADR-046).** Tiptap ships no stylesheet, so the wrapper owns every pixel as usual. One mechanic is worth knowing: `prosemirror-view` ships an optional `style/prosemirror.css` which is **not** auto-injected - it only logs a console warning when `white-space` is unset. It is deliberately NOT imported; its handful of functional declarations are transcribed into `index.css` and its one cosmetic `outline` uses `var(--accent-primary)`. The editor's allowed formatting is not a frontend decision: it is derived from the destination's declared `DescriptionFormat`, fetched per connection, so adding a control means a destination declared a tag rather than a designer picked one.
+
+`shared/ui/rich-text-view.tsx` is the **only** sanctioned `dangerouslySetInnerHTML` in the app, enforced by a `no-restricted-syntax` selector in `.eslintrc.js` with that file as the sole override (`eslint-plugin-react` is not installed). Note the asymmetry with storage, which is deliberate: the inbound boundary (#2198) KEEPS `style` because stripping it would rewrite the operator's own catalogue, while the render pass drops it - arbitrary CSS in the admin page is a UI-redressing vector even where it cannot execute.
 
 ## Dependency Rules
 

@@ -4,9 +4,14 @@
  * Maps WooCommerce REST API v3 product and variation payloads to the
  * OpenLinker unified Product and ProductVariant domain entities.
  *
- * Description is stored as raw HTML — no stripping. This matches the
- * PrestaShop pattern; outbound adapters (e.g. Allegro) sanitise on publish
- * via sanitizeAllegroDescription.
+ * The mapper does not touch description HTML, and deliberately so - both passes
+ * over it live in core, one per direction:
+ *
+ *   - inbound, `MasterProductSyncService` sanitizes every master-supplied
+ *     description before persistence (#2198), so no adapter mapper needs the
+ *     dependency and every ProductMaster is covered by one call;
+ *   - outbound, the destination's declared `DescriptionFormat` shapes it at the
+ *     publish choke points (ADR-046).
  *
  * Price parsing uses Number.isFinite to correctly preserve zero-price
  * products (free downloads, giveaways) — `parseFloat('0') || null` would

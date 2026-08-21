@@ -52,7 +52,45 @@ export function isVisibleWithin(locator: Locator, timeoutMs: number): Promise<bo
     .catch(() => false);
 }
 
+/**
+ * Current text of a control that may be an `<input>`/`<textarea>` OR a
+ * contenteditable rich-text surface (ADR-046). `inputValue()` throws on the
+ * latter, so the element kind decides which read is legal.
+ */
+async function currentText(field: Locator): Promise<string> {
+  const isFormControl = await field.evaluate(
+    (node) => node instanceof HTMLInputElement || node instanceof HTMLTextAreaElement,
+  );
+  if (isFormControl) return field.inputValue();
+  return (await field.textContent()) ?? '';
+}
+
+/**
+ * The longest run of text between two tags in a markup string.
+ *
+ * The one substring that survives into a single DOM text node, which is all that
+ * Playwright's `hasText` and `textContent` can see - neither inserts a separator
+ * at a block boundary, so a needle spanning `</h1><p>` is unmatchable. Returns
+ * `null` when no run is long enough to be distinctive.
+ */
+export function descriptionMarker(markup: string): string | null {
+  const runs = [...markup.matchAll(/>([^<]+)</g)].map((m) => m[1].trim());
+  const longest = runs.sort((a, b) => b.length - a.length)[0] ?? '';
+  return longest.length >= 8 ? longest : null;
+}
+
 export class BulkOfferRowEditor {
+  /**
+   * How many times this editor actually pasted an authored description.
+   *
+   * The wizard asserts on it: with the marketplace Review step no longer showing
+   * a description, there is no rendered element to check, so the observation has
+   * to happen where the action does. Without it, "the authored description
+   * survived the validator" would once again be asserting nothing on a stack
+   * where no row is flagged.
+   */
+  authoredCount = 0;
+
   constructor(private readonly page: Page) {}
 
   /**
@@ -112,6 +150,7 @@ export class BulkOfferRowEditor {
     row: Locator,
     gtin: string | undefined,
     save: 'always' | 'if-changed',
+    opts: { descriptionMarkup?: string } = {},
   ): Promise<boolean> {
     await row
       .locator('.bulk-review__prow-main')
@@ -124,11 +163,13 @@ export class BulkOfferRowEditor {
     let changed = await this.ensureCategoryResolved(dialog);
     changed = (await this.fillRequiredTextField(dialog, 'Title', 'E2E offer')) || changed;
     changed =
-      (await this.fillRequiredTextField(
-        dialog,
-        'Description',
-        'Automated E2E golden-path offer.',
-      )) || changed;
+      opts.descriptionMarkup === undefined
+        ? (await this.fillRequiredTextField(
+            dialog,
+            'Description',
+            'Automated E2E golden-path offer.',
+          )) || changed
+        : (await this.authorDescription(dialog, opts.descriptionMarkup)) || changed;
     changed = (await this.fillRequiredCategoryParameters(dialog, gtin)) || changed;
 
     // Both footer actions are scoped to `.bulk-editor__foot`
@@ -408,9 +449,16 @@ export class BulkOfferRowEditor {
    *
    * `exact: true` is load-bearing: the editor also renders per-variant override
    * fields named "Title for {variant}" / "Description for {variant}"
-   * (`bulk-edit-modal.tsx:2009` / `:2028`), which a substring match would sweep
-   * in. The base controls' names come from `FormField`'s `<label htmlFor>`
-   * (`:1262-1274`) and the base textarea's `aria-label="Description"` (`:1628`).
+   * (`bulk-edit-modal.tsx`), which a substring match would sweep in. The base
+   * controls' names come from `FormField`'s `<label htmlFor>` and the base
+   * editor's `aria-label="Description"`.
+   *
+   * Since ADR-046 the Description is a contenteditable rich-text surface rather
+   * than a textarea, which splits the two operations this helper performs:
+   * `fill()` still works (Playwright supports contenteditable), but
+   * `inputValue()` THROWS on a non-input element. So emptiness is read from text
+   * content when the target is not a form control. Getting this wrong fails the
+   * whole golden path on a step that looks unrelated to descriptions.
    */
   private async fillRequiredTextField(
     dialog: Locator,
@@ -419,8 +467,55 @@ export class BulkOfferRowEditor {
   ): Promise<boolean> {
     const field = dialog.getByLabel(label, { exact: true }).first();
     if ((await field.count()) === 0) return false;
-    if ((await field.inputValue()).trim() !== '') return false;
+    if ((await currentText(field)).trim() !== '') return false;
     await field.fill(value);
+    return true;
+  }
+
+  /**
+   * Replace the description with authored MARKUP, via a real clipboard paste.
+   *
+   * `fill()` cannot do this: on a contenteditable it inserts the string as TEXT,
+   * so `<b>` would reach the marketplace as four visible characters. A paste is
+   * also the honest path - it round-trips through the editor's schema exactly as
+   * an operator's paste does, so a tag the destination rejects is dropped here
+   * rather than surviving into the payload (ADR-046).
+   */
+  private async authorDescription(dialog: Locator, markup: string): Promise<boolean> {
+    const field = dialog.getByLabel('Description', { exact: true }).first();
+    if ((await field.count()) === 0) return false;
+    // Report whether this actually CHANGED anything, so the caller's `if-changed`
+    // contract still holds - an unconditional `true` makes the top-up walk (which
+    // MUST pass the markup, since it is the only walk that visits an unflagged
+    // row) exhaust its pass budget and throw about required parameters.
+    //
+    // The comparison is a MARKER inside one text node, not the whole value
+    // stripped of tags: `textContent` inserts nothing at a block boundary, so
+    // `<h1>A</h1><p>B</p>` reads as `AB` and any tag-to-space expectation can
+    // never match. A marker also makes "unchanged" mean "we authored this" rather
+    // than "the same words happened to be here as plain text" - which is why the
+    // callers mint it per run.
+    const marker = descriptionMarker(markup);
+    if (marker !== null && (await currentText(field)).includes(marker)) return false;
+    await field.click();
+    await field.press('ControlOrMeta+a');
+    await field.evaluate((el, html) => {
+      const data = new DataTransfer();
+      data.setData('text/html', html);
+      data.setData('text/plain', html.replace(/<[^>]+>/g, ' '));
+      el.dispatchEvent(
+        new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }),
+      );
+    }, markup);
+    // Verified in place, at the point of action: a synthetic paste that the
+    // editor ignored would otherwise leave the old value and every downstream
+    // assertion would be about the wrong text.
+    if (marker !== null) {
+      await expect(field, 'the pasted description should reach the editor').toContainText(marker);
+    } else {
+      await expect(field).not.toBeEmpty();
+    }
+    this.authoredCount += 1;
     return true;
   }
 

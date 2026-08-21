@@ -9,6 +9,7 @@
  * @module apps/web/src/features/content/components
  */
 import { useCallback, useState, type ReactElement, type ReactNode } from 'react';
+import { RichTextView } from '../../../shared/ui';
 import { Link } from 'react-router-dom';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
@@ -215,7 +216,14 @@ export function SuggestionDialog({
           {suggestion !== null && (
             <div className="content-suggestion__preview">
               <h4 className="content-suggestion__preview-title">Suggested description</h4>
-              <pre className="content-suggestion__preview-body">{suggestion}</pre>
+              {/* #2200: the prompt is explicitly instructed to return semantic
+                  HTML, so a <pre> showed the operator angle brackets to
+                  proofread instead of the copy they are about to publish. */}
+              <RichTextView
+                html={suggestion}
+                className="content-suggestion__preview-body"
+                emptyLabel="The model returned nothing."
+              />
               {requestId && (
                 <p className="content-suggestion__preview-meta">
                   Request ID <span className="mono-text">{requestId}</span>

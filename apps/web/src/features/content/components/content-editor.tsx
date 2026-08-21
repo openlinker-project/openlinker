@@ -10,6 +10,8 @@
  * @module apps/web/src/features/content/components
  */
 import { useCallback, useMemo, useState, type ReactElement } from 'react';
+import { MASTER_DESCRIPTION_FORMAT } from '../../../shared/ui';
+import { ChannelContentPanel } from './channel-content-panel';
 import { useSearchParams } from 'react-router-dom';
 import { ConfirmDialog } from '../../../shared/ui/confirm-dialog';
 import { EmptyState, ErrorState, LoadingState } from '../../../shared/ui/feedback-state';
@@ -232,6 +234,7 @@ export function ContentEditor({ productId }: ContentEditorProps): ReactElement {
           <ContentPanel
             title="Master description"
             subtitle="Canonical description. Publishing updates the product master and clears the draft."
+            format={MASTER_DESCRIPTION_FORMAT}
             baseValue={master.baseValue}
             draftValue={master.draftValue}
             hasConflict={master.hasConflict}
@@ -246,7 +249,12 @@ export function ContentEditor({ productId }: ContentEditorProps): ReactElement {
               <SuggestionDialog
                 productId={productId}
                 channel={null}
-                disabled={busy || !isDesktop}
+                // `writeLockedReason` belongs here too: applying a suggestion
+                // calls `handleSave`. Since #2200 this button sits INSIDE the
+                // editor toolbar, where every sibling control is disabled for a
+                // viewer - leaving this one live was the odd one out. The channel
+                // branch below already gated it.
+                disabled={busy || !isDesktop || writeLockedReason !== null}
                 onApply={(text) => {
                   void handleSave({ kind: 'master' }, text);
                 }}
@@ -277,7 +285,8 @@ export function ContentEditor({ productId }: ContentEditorProps): ReactElement {
               : writeLockedReason;
           return (
             <TabsContent key={channel.connectionId} value={channel.connectionId}>
-              <ContentPanel
+              <ChannelContentPanel
+                connectionId={channel.connectionId}
                 title={channel.connectionName}
                 subtitle={
                   <>

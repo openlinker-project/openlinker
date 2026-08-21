@@ -61,6 +61,30 @@ decision 3 (#2165, epic #2162)
 
 **Source**: PR #2137 (finding B1), guard added in the same PR.
 
+## DOMPurify is LOSSY under happy-dom, not absent - so a rendered-HTML assertion there proves nothing
+
+**Context**: `apps/web` runs `vitest` on `happy-dom` (`apps/web/vite.config.ts`). ADR-046 introduced `shared/ui/rich-text-view.tsx`, which sanitizes stored description HTML with DOMPurify before rendering it.
+**Problem**: under happy-dom DOMPurify reports `isSupported: true` and `document.implementation.createHTMLDocument` exists, so nothing looks wrong - but `sanitize('<p>a</p>')` returns `'a'`. Block tags are silently stripped, a `<ul>` renders as bare text, and in an earlier probe a `<script>` element was left standing while an `<a href>` lost its href. DOMPurify's own README says happy-dom "is not considered safe at this point"; this is what that means in practice. The trap is the direction of the failure: a page test asserting "the description renders" can PASS on the surviving text while proving nothing about the sanitizer, and a test asserting real markup fails for a reason that has nothing to do with the component.
+**Rule**: assert markup fidelity and sanitizer behaviour ONLY in a suite carrying `/** @vitest-environment jsdom */` - today `shared/ui/rich-text-view.test.tsx`. In a page test on happy-dom, assert that the value went through the primitive (`.rich-text-view` present, the text content visible, and no literal `<p>` reaching the operator) and say in a comment where the real assertion lives. Do NOT switch a whole page suite to jsdom to get one assertion: `product-detail-page.test.tsx` was tried that way and six unrelated tests began timing out at ~1000 ms, because the suite was written against happy-dom's timing. And never "fix" a failing sanitizer assertion by loosening the sanitizer - it fails lossy, not open, so production in a real browser is unaffected.
+**Applies to**: `apps/web/src/**/*.test.tsx` that render `RichTextView` (or any DOMPurify consumer), and `apps/web/src/shared/ui/rich-text-*.test.*`.
+**Source**: #2199 / #2200 under [ADR-046](./architecture/adrs/046-adapter-declared-description-format.md).
+
+## A marketplace's accepted HTML is a grammar, not a tag list - and Allegro publishes neither
+
+**Context**: `sanitizeAllegroDescription` (`libs/integrations/allegro/src/infrastructure/util/`) filtered PrestaShop TinyMCE descriptions down to what its author believed Allegro's `description.sections[].items[].content` accepts, using a flat `ALLOWED_TAGS` set.
+**Problem**: the set was wrong in both directions and had been shipping 422s. Allegro accepts exactly `h1 h2 p ul ol li b`; the allowlist additionally admitted `br strong i em u`, and a special case actively normalised every self-closing variant to `<br>` before passing it through, so we deliberately emitted a tag Allegro rejects. Worse, even the correct seven tags are not enough: the validator is **context-sensitive**, so a flat list still passes `<h1><b>x</b></h1>` - which TinyMCE really produces and Allegro really rejects. None of this is documented by Allegro; the grammar is reconstructible only from validator rejection messages in the `allegro/allegro-api` tracker, where one payload can produce two opposite allowed sets (`Błędny tag "strong", dozwolone są: {b}` and `Błędny tag "b", dozwolone są: {h1, h2, p, ul, ol}`, both in #9714).
+**Rule**: never model a destination's accepted markup as a flat allowlist, and never as a regex private to one adapter - a flat list cannot express a rule like "a heading takes no formatting", so it passes markup the platform rejects while looking correct in review. Before widening an allowlist, ask what evidence backs the new tag: where the platform publishes no list, the only evidence is a rejection message, so pin the exact set in a spec and make any widening a deliberate test change. Prefer *converting* a rejected tag over stripping it, so the operator's formatting survives in some form. The canonical per-destination grammars and the contract that expresses them live in [ADR-046](./architecture/adrs/046-adapter-declared-description-format.md) - do not copy them back here.
+**Applies to**: any destination that accepts a markup subset - `DescriptionFormat` declarations in `libs/integrations/*/src/infrastructure/adapters/`, and `applyDescriptionFormat` in `libs/core/src/listings/application/services/`.
+**Source**: [ADR-046](./architecture/adrs/046-adapter-declared-description-format.md), #2193 epic (#2194 / #2196 / #2197). Evidence: `allegro/allegro-api` #11708 (2025-06-24), #9714 (2024-08-22), #10656 (2025-01-13), #3856.
+
+## A destination that never returns an error can still be silently discarding your formatting
+
+**Context**: the Erli adapter sends `description` as a flat string (`erli-product.types.ts`, `flattenDescription`) with no allowlist, no attribute stripping and no length cap - the only destination in the repo with zero description hygiene. The initial read of that gap was "this risks 4xx".
+**Problem**: that read was wrong, and the truth is harder to notice. Erli's API doc describes two paths: a structured `description.sections` tree restricted to nine tags (`h1 h2 h3 p b br/ ol ul li`, attributes forbidden, `<br/>` self-closing only), **and** a plain-text HTML field with no tag restriction whose content is *silently converted* into that structure - *"opis przesłany jako tekst po konwersji będzie wyglądał inaczej"*, with images relocated to their own paragraphs. We are on the second path, so the operator never sees an error and never learns their formatting changed. Absence of failures had been read as evidence of correctness.
+**Rule**: before concluding a destination tolerates your payload, find out whether it *rejects* malformed markup or *rewrites* it. A rewriting destination needs the same declared format as a rejecting one; the difference is only which of availability or fidelity you lose. And when a platform ships real documentation, read it before reconstructing behaviour from observation - Erli's list is published, unlike Allegro's. Probing endpoints is the fallback, not the first move: `erli.dev` and `docs.erli.dev` do not resolve and `developers.erli.pl` redirects to the storefront, but the doc is served from `erli.pl/svc/shop-api/doc/`.
+**Applies to**: `libs/integrations/erli/**`, and any new destination whose write path lacks an allowlist.
+**Source**: [ADR-046](./architecture/adrs/046-adapter-declared-description-format.md), #2193 epic (#2196).
+
 ## A column written by a narrow out-of-band UPDATE must be excluded from the full-row upsert's write set
 
 **Context**: `order_records` carries denormalized columns that no ingestion payload supplies and that a different context pushes in with a narrow `UPDATE` - `fulfillmentState` (a rollup over the order's shipments, written by `updateFulfillmentState`) and `cancelledAt` (written by `markCancelled`). `OrderRecordRepository.upsert` is a full-object TypeORM `save()`.
@@ -332,6 +356,17 @@ decision 3 (#2165, epic #2162)
 **Rule**: When a feature's justification is a claim about existing behaviour ("X always happens, so warn about it"), trace the claim from the **caller the feature actually sits in front of** down to the layer that performs it, and check for guards added in between - especially for sibling features shipping in parallel under one epic. Then make the tree consistent in one pass: code, FE copy, and the `architecture-overview.md` bullet that states the guarantee. A doc bullet describing operator-visible semantics is part of the contract, not commentary.
 **Applies to**: `libs/core/src/listings/application/services/bulk-listing-submit.service.ts`, `apps/web/src/features/listings/components/duplicate-guard-modal.tsx`, `docs/architecture-overview.md` §Listings; any pre-flight warning UI fronting a guarded pipeline.
 **Source**: #1933 (PR #1935); premise introduced by #1837 (PR #1857) against #1741 (PR #1757).
+
+## An exact dependency pin whose reason lives only in a source comment will be lifted by the next upgrade PR
+
+**Symptom.** `libs/shared` pins `sanitize-html` to `2.17.5` exactly - no caret - on the library that IS the XSS boundary. A dependency-bump PR (or Dependabot) touches `package.json`, not `libs/shared/src/html/sanitize-stored-html.ts`, so the person best placed to break it never sees why it is pinned.
+
+**Cause.** From `2.17.6` it depends on `htmlparser2@^12`, which is ESM-only; Jest 29 loads the repo's CJS build, so the bump turns every `libs/shared` spec red with a module-resolution error rather than a test failure - a symptom that reads like a broken test, not a deliberate constraint.
+
+**Rule.** A pin that exists for a reason belongs in this file as well as in a header comment, and the header should cite the entry. The pin is not a preference: it is a liability, so lift it immediately if an advisory lands on `2.17.5` - re-check `pnpm audit` first, and expect to have to solve the ESM/CJS question in the same change rather than deferring it.
+
+**Applies to**: `libs/shared/package.json`, `libs/shared/src/html/sanitize-stored-html.ts`, and any future exact pin on a security-relevant transitive.
+**Tracked**: [#2233](https://github.com/openlinker-project/openlinker/issues/2233) - the periodic `pnpm audit` re-check against `2.17.5`, so the pin is somebody's assigned item and not only a rule in this file.
 
 ## A gating primitive built for write affordances does not gate content — check which policy demo mode needs before reusing it
 

@@ -9,6 +9,8 @@
 
 import { randomUUID } from 'node:crypto';
 import { Injectable, Inject } from '@nestjs/common';
+import { Logger } from '@openlinker/shared/logging';
+import { sanitizeStoredHtml } from '@openlinker/shared/html';
 import {
   IIntegrationsService,
   INTEGRATIONS_SERVICE_TOKEN,
@@ -35,7 +37,6 @@ import type {
   IMasterProductSyncService,
   MasterProductSyncResult,
 } from './master-product-sync.service.interface';
-import { Logger } from '@openlinker/shared/logging';
 
 @Injectable()
 export class MasterProductSyncService implements IMasterProductSyncService {
@@ -93,6 +94,21 @@ export class MasterProductSyncService implements IMasterProductSyncService {
 
     // Convert port -> domain entities
     const product = this.toDomainProduct(productFromAdapter);
+    if (
+      (productFromAdapter.description ?? null) !== null &&
+      product.description !== productFromAdapter.description
+    ) {
+      // Logged, because the alternative is a silent rewrite of the operator's own
+      // catalogue copy: `ContentDraftService` warns on all three of its branches
+      // for the same reason. One line per altered product, with the ids needed to
+      // find it - this runs inside a catalogue loop, so it says what changed
+      // rather than dumping either value.
+      this.logger.warn(
+        `[master-sync] description sanitized on pull: connectionId=${connectionId} ` +
+          `externalId=${externalId} internalId=${internalProductId} correlationId=${correlationId} ` +
+          `before=${(productFromAdapter.description ?? '').length}B after=${(product.description ?? '').length}B`,
+      );
+    }
     const variants = variantsFromAdapter.map((v) => this.toDomainVariant(v, internalProductId));
 
     // Upsert into canonical storage (upsert clears any prior staleness on the
@@ -267,7 +283,12 @@ export class MasterProductSyncService implements IMasterProductSyncService {
       ...product,
       sku: product.sku ?? null,
       price: product.price ?? null,
-      description: product.description ?? null,
+      // #2198: shop-supplied HTML is untrusted - OpenLinker pulls whatever the
+      // master returns, so a compromised or hostile source shop could otherwise
+      // store a script vector that `RichTextView` would later render. Sanitized
+      // HERE rather than in each adapter's mapper so every current and future
+      // ProductMaster is covered by one call.
+      description: sanitizeStoredHtml(product.description ?? null),
       images: product.images ?? null,
     };
   }
