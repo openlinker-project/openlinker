@@ -28,6 +28,7 @@ import type {
   PaginatedProducts,
 } from '../../../domain/types/product.types';
 import { LOW_STOCK_THRESHOLD } from '../../../domain/types/product.types';
+import type { StoredTaxRate } from '../../../domain/types/tax-rate.types';
 
 /**
  * Aggregated total available stock for the joined `stock` subquery alias.
@@ -250,6 +251,73 @@ export class ProductRepository implements ProductRepositoryPort {
     entity.features = product.features ?? null;
     if (product.createdAt) entity.createdAt = product.createdAt;
     if (product.updatedAt) entity.updatedAt = product.updatedAt;
+    // `taxRate` / `taxRateCountry` / `taxRateReadAt` are deliberately absent
+    // here (#2054, the `order_records.cancelledAt` single-writer precedent).
+    // The ordinary sync upsert carries no rate, so round-tripping them would
+    // null a value `recordTaxRate` had just written - and a blanked rate holds
+    // documents, so the failure would be loud and confusing rather than
+    // cosmetic. `recordTaxRate` is the only writer.
     return entity;
+  }
+
+  /**
+   * Record the master's answer, including the answer "no rate" (#2054).
+   *
+   * A targeted `update` rather than a `save`, so no other column is touched
+   * and the row's own `updatedAt` is the only side effect. Writing a null code
+   * with a non-null `readAt` is the whole point of the second column: it
+   * records *asked, and the shop has none*, which the gate treats differently
+   * from *never asked*.
+   */
+  async recordTaxRate(productId: string, rate: StoredTaxRate): Promise<void> {
+    await this.repository.update(
+      { id: productId },
+      {
+        taxRate: rate.code,
+        taxRateCountry: rate.countryIso2,
+        taxRateReadAt: rate.readAt,
+      }
+    );
+  }
+
+  async findTaxRate(productId: string): Promise<StoredTaxRate | null> {
+    const row = await this.repository.findOne({
+      where: { id: productId },
+      select: { id: true, taxRate: true, taxRateCountry: true, taxRateReadAt: true },
+    });
+    if (!row) return null;
+    return { code: row.taxRate, countryIso2: row.taxRateCountry, readAt: row.taxRateReadAt };
+  }
+
+  /**
+   * One grouped pass rather than three counts, so the numbers cannot disagree
+   * with each other under concurrent syncs.
+   */
+  async countTaxRateStates(): Promise<{
+    total: number;
+    known: number;
+    missing: number;
+    notChecked: number;
+  }> {
+    const row = await this.repository
+      .createQueryBuilder('product')
+      .select('COUNT(*)', 'total')
+      .addSelect(
+        `COUNT(*) FILTER (WHERE product."taxRateReadAt" IS NOT NULL AND product."taxRate" IS NOT NULL)`,
+        'known'
+      )
+      .addSelect(
+        `COUNT(*) FILTER (WHERE product."taxRateReadAt" IS NOT NULL AND product."taxRate" IS NULL)`,
+        'missing'
+      )
+      .addSelect(`COUNT(*) FILTER (WHERE product."taxRateReadAt" IS NULL)`, 'notChecked')
+      .getRawOne<{ total: string; known: string; missing: string; notChecked: string }>();
+
+    return {
+      total: Number(row?.total ?? 0),
+      known: Number(row?.known ?? 0),
+      missing: Number(row?.missing ?? 0),
+      notChecked: Number(row?.notChecked ?? 0),
+    };
   }
 }
