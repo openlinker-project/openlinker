@@ -45,6 +45,7 @@ import {
   averageDailyOrders,
   cancellationRate,
   orderCountTrendValues,
+  rangeDays,
   revenueTrendValues,
   trendTone,
   unitsPerOrder,
@@ -119,6 +120,8 @@ export function AnalyticsKpiStrip({ filters }: AnalyticsKpiStripProps): ReactEle
   const cancelRate = cancellationRate(headline.cancelledCount, totalOrders);
   const currency = headline.currency ?? undefined;
   const stampedGapVisible = headline.unconvertedCount > 0;
+  const trendDays = rangeDays(filters.from, filters.to);
+  const trendRangeLabel = trendDays === 1 ? 'the selected day' : `the last ${trendDays} days`;
 
   return (
     <section className="status-strip status-strip--analytics" aria-label="Key sales figures">
@@ -147,7 +150,11 @@ export function AnalyticsKpiStrip({ filters }: AnalyticsKpiStripProps): ReactEle
           </>
         }
         value={<EmptyValue label="Not computable until refunds are captured" />}
-        trend={{ values: revenueTrend, tone: trendTone(revenueTrend), ariaLabel: 'GMV trend, last 7 days' }}
+        trend={{
+          values: revenueTrend,
+          tone: trendTone(revenueTrend),
+          ariaLabel: `GMV trend, ${trendRangeLabel}`,
+        }}
         qualifiers={[
           {
             label: stampedGapVisible ? (
@@ -177,7 +184,11 @@ export function AnalyticsKpiStrip({ filters }: AnalyticsKpiStripProps): ReactEle
         ]}
         metric="Placed orders"
         value={numberFormat.format(totalOrders)}
-        trend={{ values: orderTrend, tone: trendTone(orderTrend), ariaLabel: 'Order count trend, last 7 days' }}
+        trend={{
+          values: orderTrend,
+          tone: trendTone(orderTrend),
+          ariaLabel: `Order count trend, ${trendRangeLabel}`,
+        }}
         qualifiers={[{ label: 'Avg. daily', value: ratioFormat.format(avgDaily) }]}
       />
 

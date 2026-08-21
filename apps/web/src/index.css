@@ -4777,7 +4777,7 @@ a.kpi-card:focus-visible {
   background: none;
   border: 0;
   cursor: help;
-  font-size: 13px;
+  font-size: 0.8125rem;
   line-height: 1;
   color: var(--text-muted);
 }
