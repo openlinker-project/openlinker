@@ -28,6 +28,7 @@ import type {
 } from '../mappers/prestashop.mapper.interface';
 import type { PrestashopConnectionConfig } from '@openlinker/integrations-prestashop';
 import {
+  PrestashopApiException,
   PrestashopNotSupportedException,
   PrestashopResourceNotFoundException,
 } from '@openlinker/integrations-prestashop';
@@ -36,13 +37,19 @@ import type { PrestashopAttributeResolver } from '../provisioners/prestashop-att
 import type { PrestashopFeatureResolver } from '../provisioners/prestashop-feature.resolver';
 import type { PrestashopCategoryPathResolver } from '../provisioners/prestashop-category-path.resolver';
 import type { OptionValueResolver } from '../../domain/types/prestashop-product-option.types';
+import type { PrestashopTaxRateResolver } from '../provisioners/prestashop-tax-rate.resolver';
+import type {
+  ProductTaxRateReader,
+  ReadProductTaxRateInput,
+  TaxRateResolution,
+} from '@openlinker/core/products';
 
 /**
  * PrestaShop Product Master Adapter
  *
  * Read-only adapter for PrestaShop product catalog operations.
  */
-export class PrestashopProductMasterAdapter implements ProductMasterPort {
+export class PrestashopProductMasterAdapter implements ProductMasterPort, ProductTaxRateReader {
   private readonly logger = new Logger(PrestashopProductMasterAdapter.name);
 
   constructor(
@@ -62,8 +69,89 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort {
     // (root→leaf, {id,name}) (#1096 F3). A resolver failure never breaks product
     // sync — `categoryBreadcrumb` is left unset and the bare-id `categories`
     // fallback applies.
-    private readonly categoryPathResolver?: PrestashopCategoryPathResolver
+    private readonly categoryPathResolver?: PrestashopCategoryPathResolver,
+    // Optional, process-singleton (mirrors the resolvers above). Present makes
+    // this adapter a `ProductTaxRateReader` in practice; absent, the guard
+    // still narrows (the method exists) but every read reports `unreadable`,
+    // which is the honest answer for a shop whose resolver was never wired.
+    private readonly taxRateResolver?: PrestashopTaxRateResolver
   ) {}
+
+  /**
+   * PrestaShop keys tax on the **product**, through
+   * `id_tax_rules_group -> tax_rules -> taxes`. A combination carries no tax of
+   * its own, so `variantId` is ignored and every variant of a product shares
+   * the product's rate (#2054).
+   */
+  readsTaxRatePerVariant(): boolean {
+    return false;
+  }
+
+  /**
+   * State the product's tax rate (#2054, ADR-052).
+   *
+   * Delegates to the existing `PrestashopTaxRateResolver` rather than
+   * re-walking the three-hop chain: that resolver already draws the
+   * `id_tax_rules_group = 0` ("No tax", a deliberate operator statement) versus
+   * *unreadable* line the core contract needs, and duplicating it would give
+   * the two paths two chances to disagree about the same shop.
+   *
+   * Two translations happen here and nowhere else.
+   *
+   * **A `transport` unknown is re-raised, not reported as unknown.** The core
+   * contract reserves `kind: 'unknown'` for "the master answered and named no
+   * rate" - a condition an operator fixes in the shop. A failed call says
+   * nothing about the configuration, and recording it would freeze a false
+   * `no rate` onto the catalogue row until the next sync.
+   *
+   * **The rate is converted from a fraction to a percent code.** The resolver
+   * speaks fractions (`0.23`); the neutral contract is percent-as-string
+   * (`'23'`, #2247). Rounding to four decimal places before scaling keeps
+   * `0.23 * 100` from surfacing as `23.000000000000004`.
+   *
+   * No delivery country is passed: the master read is deliberately not
+   * parameterised by the buyer's country in this pass (ADR-052 § 7), so the
+   * resolver falls through to the catch-all rule - the same rate the shop shows
+   * on the product page.
+   */
+  async readProductTaxRate(input: ReadProductTaxRateInput): Promise<TaxRateResolution> {
+    if (!this.taxRateResolver) {
+      return { kind: 'unknown', reason: 'unreadable', detail: 'tax-rate resolver not configured' };
+    }
+
+    const externalIds = await this.identifierMapping.getExternalIds(
+      CORE_ENTITY_TYPE.Product,
+      input.productId
+    );
+    const externalId = externalIds.find((m) => m.connectionId === this.connection.id)?.externalId;
+    if (!externalId) {
+      throw new MasterProductNotFoundError(input.productId, this.connection.id);
+    }
+
+    const resolution = await this.taxRateResolver.resolveProductTaxRate(
+      externalId,
+      undefined,
+      this.connection.id,
+      this.httpClient
+    );
+
+    if (resolution.kind === 'resolved') {
+      return {
+        kind: 'resolved',
+        code: formatRateAsPercentCode(resolution.rate),
+        countryIso2: null,
+      };
+    }
+
+    if (resolution.reason === 'transport') {
+      throw new PrestashopApiException(
+        `Could not read the tax rate for product ${externalId}: ${resolution.evidence}`,
+        resolution.statusCode
+      );
+    }
+
+    return { kind: 'unknown', reason: 'not-configured', detail: resolution.evidence };
+  }
 
   async getProduct(productId: string): Promise<Product> {
     this.logger.debug(`Getting product: ${productId} (connection: ${this.connection.id})`);
@@ -706,4 +794,17 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort {
 
     return prestashopFilters;
   }
+}
+
+/**
+ * A fractional rate (`0.23`) becomes the neutral percent code (`'23'`, #2247).
+ *
+ * Rounded to four decimals before scaling so `0.23 * 100` cannot surface as
+ * `23.000000000000004`, and trailing zeros are dropped so an integer rate
+ * reads `'23'` rather than `'23.00'` - the FA(3) map and the Erli enum are
+ * both keyed on the bare form.
+ */
+function formatRateAsPercentCode(rate: number): string {
+  const percent = Math.round(rate * 10000) / 100;
+  return Number.isInteger(percent) ? String(percent) : String(Number(percent.toFixed(2)));
 }

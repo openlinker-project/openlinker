@@ -10,6 +10,7 @@
  * @see {@link ProductRepository} for the TypeORM implementation
  */
 import type { Product } from '../entities/product.entity';
+import type { StoredTaxRate } from '../types/tax-rate.types';
 import type {
   ProductListFilters,
   ProductPagination,
@@ -68,4 +69,31 @@ export interface ProductRepositoryPort {
    * @returns Upserted product domain entity
    */
   upsert(product: Product): Promise<Product>;
+
+  /**
+   * Record what the ProductMaster said about this product's tax rate (#2054).
+   *
+   * A **separate writer** from `upsert`, deliberately. The ordinary product
+   * upsert runs on every sync and does not carry a rate, so round-tripping the
+   * columns through it would null a value a tax read had just written - the
+   * single-writer precedent `order_records.cancelledAt` already follows.
+   *
+   * Writing `{ code: null, readAt: <now> }` is meaningful and must be
+   * persisted: it records *the master was asked and has no rate*, which is a
+   * different fact from the untouched *never asked*.
+   */
+  recordTaxRate(productId: string, rate: StoredTaxRate): Promise<void>;
+
+  /** Read the stored rate for one product. `null` when the product is unknown. */
+  findTaxRate(productId: string): Promise<StoredTaxRate | null>;
+
+  /**
+   * Count the catalogue by tax-rate read state (#2054, ADR-052 § 4).
+   *
+   * Both populations must be answerable as a query rather than a crawl: the
+   * missing count backs the operator surface and the pre-rollout coverage
+   * measurement, the unchecked count backs the sync suggestion. Conflating
+   * them is what would make day one read as an outage.
+   */
+  countTaxRateStates(): Promise<{ total: number; known: number; missing: number; notChecked: number }>;
 }
