@@ -1,97 +1,87 @@
 /**
  * Webhook Ingestion Integration Tests
  *
- * Integration tests for webhook ingestion flow, including signature verification,
- * deduplication, event publishing, and handler processing. Includes high-value
- * tests that catch real bugs (raw body signature, handler crash/retry).
+ * Integration tests for the durable webhook spine (#2280, ADR-049 decision 1):
+ * signature verification, ingress routing, and the single-transaction gate that
+ * commits the `webhook_deliveries` row and the `sync_jobs` work row together.
+ * Redis is asserted to be OUT of the durable path — no `jobs.sync` stream
+ * entry, no `jobdedup:*` key, and a wiped Redis neither loses a webhook nor
+ * lets a redelivery double-enqueue. The one-shot `LegacyInboundWebhookDrain`
+ * is exercised against a seeded pre-upgrade backlog. (The Redis-hard-down
+ * ingress case is unit-covered in `webhook.service.spec.ts` — stopping the
+ * shared Testcontainer here would poison sibling suites.)
  *
  * @module apps/api/test/integration
  */
 import { getTestHarness, resetTestHarness, teardownTestHarness } from './setup';
 import { IntegrationTestHarness } from './setup';
 import { createTestConnection } from './helpers/test-connection.helper';
+import type { EntityManager } from 'typeorm';
+import { LegacyInboundWebhookDrain } from '../../src/webhooks/application/handlers/legacy-inbound-webhook-drain';
+import type { IWebhookJobGateService } from '../../src/webhooks/application/interfaces/webhook-job-gate.service.interface';
+import { WEBHOOK_JOB_GATE_SERVICE_TOKEN } from '../../src/webhooks/application/interfaces/webhook-job-gate.service.interface';
 import * as crypto from 'crypto';
 
 const INBOUND_WEBHOOK_STREAM = 'events.inbound.webhooks';
 const WEBHOOK_HANDLER_CONSUMER_GROUP = 'webhook-handler';
 const JOBS_SYNC_STREAM = 'jobs.sync';
 
-type HarnessRedisClient = NonNullable<ReturnType<IntegrationTestHarness['getRedisClient']>>;
-
-/**
- * Ensure the `webhook-handler` consumer group exists on the inbound stream.
- *
- * The `WebhookToJobHandler` creates this group once at app boot, but
- * `resetTestHarness()` calls `flushDb()` between tests, which drops both the
- * stream and the group. Recreating it here (idempotently) lets the still-running
- * handler resume consuming new messages, so a test that runs after the first
- * `afterEach` reset still exercises the real drain path instead of a dead
- * consumer loop.
- */
-async function ensureWebhookConsumerGroup(redisClient: HarnessRedisClient): Promise<void> {
-  try {
-    await redisClient.xGroupCreate(INBOUND_WEBHOOK_STREAM, WEBHOOK_HANDLER_CONSUMER_GROUP, '$', {
-      MKSTREAM: true,
-    });
-  } catch (error) {
-    // BUSYGROUP = group already exists (boot-time creation survived) — fine.
-    if (!(error instanceof Error && error.message.includes('BUSYGROUP'))) {
-      throw error;
-    }
-  }
-}
-
-/**
- * Poll the `jobs.sync` stream until a message with the given idempotency key
- * appears, or time out. This is the downstream job the `WebhookToJobHandler`
- * enqueues after consuming + routing an inbound webhook event.
- */
-async function waitForEnqueuedJob(
-  redisClient: HarnessRedisClient,
-  idempotencyKey: string,
-  timeoutMs = 15000,
-): Promise<Record<string, string> | undefined> {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    const jobs = await redisClient.xRead([{ key: JOBS_SYNC_STREAM, id: '0' }], { COUNT: 100 });
-    const match = jobs?.[0]?.messages.find((msg) => msg.message.idempotencyKey === idempotencyKey);
-    if (match) {
-      return match.message;
-    }
-    await new Promise((resolve) => setTimeout(resolve, 250));
-  }
-  return undefined;
-}
-
 interface WebhookDeliveryRow {
   status: string;
   downstreamJobType: string | null;
   downstreamJobId: string | null;
+  dlqReason: string | null;
 }
 
-/**
- * Poll `webhook_deliveries` until the handler upserts the row to
- * `job_enqueued`, or time out. The handler records the delivery a hair after it
- * writes `jobs.sync`, so this avoids a race with {@link waitForEnqueuedJob}.
- */
-async function waitForEnqueuedDelivery(
+interface SyncJobRow {
+  id: string;
+  jobType: string;
+  status: string;
+  connectionId: string;
+  payloadJson: unknown;
+}
+
+/** `payloadJson` is jsonb — the driver returns it parsed; tolerate both. */
+function parseJobPayload<T>(value: unknown): T {
+  return (typeof value === 'string' ? JSON.parse(value) : value) as T;
+}
+
+async function readDeliveryRow(
   harness: IntegrationTestHarness,
   connectionId: string,
   eventId: string,
-  timeoutMs = 5000,
 ): Promise<WebhookDeliveryRow | undefined> {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    const rows = (await harness.getDataSource().query(
-      `SELECT status, "downstreamJobType", "downstreamJobId" FROM webhook_deliveries WHERE provider = $1 AND "connectionId" = $2 AND "eventId" = $3`,
-      ['prestashop', connectionId, eventId],
-    )) as WebhookDeliveryRow[];
-    if (rows[0]?.status === 'job_enqueued') {
-      return rows[0];
-    }
-    await new Promise((resolve) => setTimeout(resolve, 200));
-  }
-  return undefined;
+  const rows = (await harness.getDataSource().query(
+    `SELECT status, "downstreamJobType", "downstreamJobId", "dlqReason"
+       FROM webhook_deliveries
+      WHERE provider = $1 AND "connectionId" = $2 AND "eventId" = $3`,
+    ['prestashop', connectionId, eventId],
+  )) as WebhookDeliveryRow[];
+  return rows[0];
+}
+
+async function readJobRows(
+  harness: IntegrationTestHarness,
+  idempotencyKey: string,
+): Promise<SyncJobRow[]> {
+  return (await harness.getDataSource().query(
+    `SELECT id, "jobType", status, "connectionId", "payloadJson"
+       FROM sync_jobs WHERE "idempotencyKey" = $1`,
+    [idempotencyKey],
+  )) as SyncJobRow[];
+}
+
+function signedRequest(payload: object, secret: string): {
+  timestamp: string;
+  signature: string;
+} {
+  const rawBody = Buffer.from(JSON.stringify(payload));
+  const timestamp = Date.now().toString();
+  const signature = crypto
+    .createHmac('sha256', secret)
+    .update(timestamp + '.' + rawBody.toString())
+    .digest('hex');
+  return { timestamp, signature };
 }
 
 describe('Webhook Ingestion Integration', () => {
@@ -112,37 +102,24 @@ describe('Webhook Ingestion Integration', () => {
   });
 
   describe('POST /webhooks/:provider/:connectionId', () => {
-    it('should accept valid webhook and publish event', async () => {
-      // 1. Create test connection
+    it('commits the sync_jobs work row and the delivery row together, with no Redis job artefacts (#2280)', async () => {
       const connection = await createTestConnection(harness.getDataSource(), {
         platformType: 'prestashop',
         status: 'active',
+        enabledCapabilities: ['ProductMaster'],
       });
 
-      // 2. Prepare webhook payload
+      const eventId = 'spine-routed-event-1';
       const payload = {
         schemaVersion: 1,
-        eventId: 'test-event-123',
+        eventId,
         eventType: 'product.saved',
         occurredAt: new Date().toISOString(),
-        object: {
-          type: 'product',
-          externalId: '12345',
-        },
-        payload: {
-          name: 'Test Product',
-        },
+        object: { type: 'product', externalId: '12345' },
+        payload: { name: 'Test Product' },
       };
+      const { timestamp, signature } = signedRequest(payload, webhookSecret);
 
-      const rawBody = Buffer.from(JSON.stringify(payload));
-      const timestamp = Date.now().toString();
-      const signedPayload = timestamp + '.' + rawBody.toString();
-      const signature = crypto
-        .createHmac('sha256', webhookSecret)
-        .update(signedPayload)
-        .digest('hex');
-
-      // 3. Send webhook request
       await harness
         .getHttp()
         .post(`/webhooks/prestashop/${connection.id}`)
@@ -151,30 +128,178 @@ describe('Webhook Ingestion Integration', () => {
         .send(payload)
         .expect(202);
 
-      // 4. Verify event in Redis stream
+      // The gate is synchronous — no polling: by the time the 202 returns, both
+      // rows are committed.
+      const idempotencyKey = `prestashop:${connection.id}:${eventId}`;
+      const jobs = await readJobRows(harness, idempotencyKey);
+      expect(jobs).toHaveLength(1);
+      expect(jobs[0].jobType).toBe('master.product.syncByExternalId');
+      expect(jobs[0].status).toBe('queued');
+      expect(jobs[0].connectionId).toBe(connection.id);
+
+      const delivery = await readDeliveryRow(harness, connection.id, eventId);
+      expect(delivery).toBeDefined();
+      expect(delivery!.status).toBe('job_enqueued');
+      expect(delivery!.downstreamJobType).toBe('master.product.syncByExternalId');
+      expect(delivery!.downstreamJobId).toBe(jobs[0].id);
+
+      // Redis carries no part of the durable path: no jobs.sync stream entry,
+      // no jobdedup reservation, no inbound-webhook stream entry.
       const redisClient = harness.getRedisClient();
-      if (!redisClient) {
-        throw new Error('Redis client not available');
+      if (!redisClient) throw new Error('Redis client not available');
+      const streamJobs = await redisClient.xRead([{ key: JOBS_SYNC_STREAM, id: '0' }], {
+        COUNT: 100,
+      });
+      const streamedJob = streamJobs?.[0]?.messages.find(
+        (msg) => msg.message.idempotencyKey === idempotencyKey,
+      );
+      expect(streamedJob).toBeUndefined();
+      expect(await redisClient.exists(`jobdedup:${idempotencyKey}`)).toBe(0);
+      const inbound = await redisClient.xRead([{ key: INBOUND_WEBHOOK_STREAM, id: '0' }], {
+        COUNT: 100,
+      });
+      const inboundEntry = inbound?.[0]?.messages.find((msg) => msg.message.eventId === eventId);
+      expect(inboundEntry).toBeUndefined();
+    });
+
+    it('routes an order webhook to marketplace.order.sync with the translated payload (#1511 successor)', async () => {
+      const connection = await createTestConnection(harness.getDataSource(), {
+        platformType: 'prestashop',
+        status: 'active',
+        enabledCapabilities: ['OrderSource'],
+      });
+
+      const eventId = 'spine-order-event-1511';
+      const externalOrderId = '778899';
+      const payload = {
+        schemaVersion: 1,
+        eventId,
+        eventType: 'order.created',
+        occurredAt: new Date().toISOString(),
+        object: { type: 'order', externalId: externalOrderId },
+        payload: { id_order: externalOrderId },
+      };
+      const { timestamp, signature } = signedRequest(payload, webhookSecret);
+
+      await harness
+        .getHttp()
+        .post(`/webhooks/prestashop/${connection.id}`)
+        .set('X-OpenLinker-Timestamp', timestamp)
+        .set('X-OpenLinker-Signature', `sha256=${signature}`)
+        .send(payload)
+        .expect(202);
+
+      const jobs = await readJobRows(harness, `prestashop:${connection.id}:${eventId}`);
+      expect(jobs).toHaveLength(1);
+      expect(jobs[0].jobType).toBe('marketplace.order.sync');
+      const jobPayload = parseJobPayload<{
+        externalOrderId: string;
+        sourceEventId: string;
+        eventType: string;
+      }>(jobs[0].payloadJson);
+      expect(jobPayload.externalOrderId).toBe(externalOrderId);
+      expect(jobPayload.sourceEventId).toBe(eventId);
+      expect(jobPayload.eventType).toBe('created');
+
+      const delivery = await readDeliveryRow(harness, connection.id, eventId);
+      expect(delivery!.status).toBe('job_enqueued');
+      expect(delivery!.downstreamJobId).toBe(jobs[0].id);
+    });
+
+    it('rolls BOTH rows back when the gate transaction fails — no orphan job (#2280 atomicity)', async () => {
+      const connection = await createTestConnection(harness.getDataSource(), {
+        platformType: 'prestashop',
+        status: 'active',
+        enabledCapabilities: ['ProductMaster'],
+      });
+
+      const eventId = 'gate-rollback-event-1';
+      const payload = {
+        schemaVersion: 1,
+        eventId,
+        eventType: 'product.saved',
+        occurredAt: new Date().toISOString(),
+        object: { type: 'product', externalId: '12345' },
+      };
+      const { timestamp, signature } = signedRequest(payload, webhookSecret);
+
+      // Force the SECOND statement in the transaction (the delivery insert) to
+      // fail, after the job insert has already run. Two sequential committed
+      // writes would leave the job behind; one transaction must not.
+      const gate = harness.getApp().get<IWebhookJobGateService>(WEBHOOK_JOB_GATE_SERVICE_TOKEN);
+      const dataSource = harness.getDataSource();
+      const original = dataSource.transaction.bind(dataSource);
+      const spy = jest
+        .spyOn(dataSource, 'transaction')
+        .mockImplementation((async (runInTransaction: (manager: EntityManager) => Promise<unknown>) =>
+          original(async (manager: EntityManager) => {
+            const realQuery = manager.query.bind(manager);
+            let calls = 0;
+            (manager as { query: unknown }).query = async (
+              sql: string,
+              params?: unknown[]
+            ): Promise<unknown> => {
+              calls += 1;
+              if (calls === 2) {
+                throw new Error('simulated failure after the job insert');
+              }
+              return realQuery(sql, params as never);
+            };
+            return runInTransaction(manager);
+          })) as never);
+
+      try {
+        await harness
+          .getHttp()
+          .post(`/webhooks/prestashop/${connection.id}`)
+          .set('X-OpenLinker-Timestamp', timestamp)
+          .set('X-OpenLinker-Signature', `sha256=${signature}`)
+          .send(payload)
+          .expect(500);
+      } finally {
+        spy.mockRestore();
       }
 
-      // Wait a bit for handler to process
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      // The job insert DID run inside the transaction — and must be gone.
+      expect(await readJobRows(harness, `prestashop:${connection.id}:${eventId}`)).toHaveLength(0);
+      expect(await readDeliveryRow(harness, connection.id, eventId)).toBeUndefined();
+      // And because nothing was recorded, the source's retry re-enters cleanly.
+      expect(gate).toBeDefined();
+    });
 
-      const events = await redisClient.xRead(
-        [{ key: 'events.inbound.webhooks', id: '0' }],
-        { COUNT: 10 },
-      );
+    it('records a capability-ungated event as a durable deadlettered row with no job', async () => {
+      // Default connection: enabledCapabilities [] — product.saved needs
+      // ProductMaster, so routing classifies it unroutable (durable row, not a
+      // Redis DLQ entry).
+      const connection = await createTestConnection(harness.getDataSource(), {
+        platformType: 'prestashop',
+        status: 'active',
+      });
 
-      expect(events).toBeDefined();
-      if (!events || events.length === 0) {
-        throw new Error('Expected webhook event to be published');
-      }
+      const eventId = 'spine-ungated-event-1';
+      const payload = {
+        schemaVersion: 1,
+        eventId,
+        eventType: 'product.saved',
+        occurredAt: new Date().toISOString(),
+        object: { type: 'product', externalId: '12345' },
+      };
+      const { timestamp, signature } = signedRequest(payload, webhookSecret);
 
-      // Find our event
-      const ourEvent = events[0].messages.find(
-        (msg) => msg.message.eventId === 'test-event-123',
-      );
-      expect(ourEvent).toBeDefined();
+      await harness
+        .getHttp()
+        .post(`/webhooks/prestashop/${connection.id}`)
+        .set('X-OpenLinker-Timestamp', timestamp)
+        .set('X-OpenLinker-Signature', `sha256=${signature}`)
+        .send(payload)
+        .expect(202);
+
+      const delivery = await readDeliveryRow(harness, connection.id, eventId);
+      expect(delivery).toBeDefined();
+      expect(delivery!.status).toBe('deadlettered');
+      expect(delivery!.dlqReason).toContain('ungated');
+      const jobs = await readJobRows(harness, `prestashop:${connection.id}:${eventId}`);
+      expect(jobs).toHaveLength(0);
     });
 
     it('should reject invalid signature', async () => {
@@ -200,28 +325,59 @@ describe('Webhook Ingestion Integration', () => {
         .expect(401);
     });
 
-    it('should prevent duplicate events', async () => {
+    it('dedups a same-event redelivery on the Postgres gate: one delivery row, one job row', async () => {
       const connection = await createTestConnection(harness.getDataSource(), {
         platformType: 'prestashop',
         status: 'active',
+        enabledCapabilities: ['ProductMaster'],
       });
 
+      const eventId = 'duplicate-test-event';
       const payload = {
         schemaVersion: 1,
-        eventId: 'duplicate-test-event',
+        eventId,
         eventType: 'product.saved',
         occurredAt: new Date().toISOString(),
         object: { type: 'product', externalId: '12345' },
       };
+      const { timestamp, signature } = signedRequest(payload, webhookSecret);
 
-      const rawBody = Buffer.from(JSON.stringify(payload));
-      const timestamp = Date.now().toString();
-      const signature = crypto
-        .createHmac('sha256', webhookSecret)
-        .update(timestamp + '.' + rawBody.toString())
-        .digest('hex');
+      for (let i = 0; i < 2; i++) {
+        await harness
+          .getHttp()
+          .post(`/webhooks/prestashop/${connection.id}`)
+          .set('X-OpenLinker-Timestamp', timestamp)
+          .set('X-OpenLinker-Signature', `sha256=${signature}`)
+          .send(payload)
+          .expect(202);
+      }
 
-      // First request - should succeed
+      const rows = (await harness.getDataSource().query(
+        `SELECT id FROM webhook_deliveries WHERE provider = $1 AND "connectionId" = $2 AND "eventId" = $3`,
+        ['prestashop', connection.id, eventId],
+      )) as Array<{ id: string }>;
+      expect(rows).toHaveLength(1);
+      const jobs = await readJobRows(harness, `prestashop:${connection.id}:${eventId}`);
+      expect(jobs).toHaveLength(1);
+    });
+
+    it('survives a Redis wipe between deliveries: the Postgres gate still dedups and no second job is created (#2280)', async () => {
+      const connection = await createTestConnection(harness.getDataSource(), {
+        platformType: 'prestashop',
+        status: 'active',
+        enabledCapabilities: ['ProductMaster'],
+      });
+
+      const eventId = 'redis-wipe-event-1';
+      const payload = {
+        schemaVersion: 1,
+        eventId,
+        eventType: 'product.saved',
+        occurredAt: new Date().toISOString(),
+        object: { type: 'product', externalId: '12345' },
+      };
+      const { timestamp, signature } = signedRequest(payload, webhookSecret);
+
       await harness
         .getHttp()
         .post(`/webhooks/prestashop/${connection.id}`)
@@ -230,40 +386,27 @@ describe('Webhook Ingestion Integration', () => {
         .send(payload)
         .expect(202);
 
-      // Wait a bit
-      await new Promise((resolve) => setTimeout(resolve, 500));
-
-      // Second request with same eventId - should also succeed (202) but not publish duplicate
-      await harness
-        .getHttp()
-        .post(`/webhooks/prestashop/${connection.id}`)
-        .set('X-OpenLinker-Timestamp', timestamp)
-        .set('X-OpenLinker-Signature', `sha256=${signature}`)
-        .send(payload)
-        .expect(202);
-
-      // Wait for processing
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-
-      // Verify only one event in stream
+      // Wipe Redis — the pre-#2280 flow would lose its inner dedup marks here;
+      // the durable spine must not care.
       const redisClient = harness.getRedisClient();
-      if (!redisClient) {
-        throw new Error('Redis client not available');
-      }
+      if (!redisClient) throw new Error('Redis client not available');
+      await redisClient.flushDb();
 
-      const events = await redisClient.xRead(
-        [{ key: 'events.inbound.webhooks', id: '0' }],
-        { COUNT: 10 },
-      );
+      await harness
+        .getHttp()
+        .post(`/webhooks/prestashop/${connection.id}`)
+        .set('X-OpenLinker-Timestamp', timestamp)
+        .set('X-OpenLinker-Signature', `sha256=${signature}`)
+        .send(payload)
+        .expect(202);
 
-      if (!events || events.length === 0) {
-        throw new Error('Expected webhook events to exist');
-      }
-
-      const duplicateEvents = events[0].messages.filter(
-        (msg) => msg.message.eventId === 'duplicate-test-event',
-      );
-      expect(duplicateEvents.length).toBe(1);
+      const jobs = await readJobRows(harness, `prestashop:${connection.id}:${eventId}`);
+      expect(jobs).toHaveLength(1);
+      const rows = (await harness.getDataSource().query(
+        `SELECT id FROM webhook_deliveries WHERE provider = $1 AND "connectionId" = $2 AND "eventId" = $3`,
+        ['prestashop', connection.id, eventId],
+      )) as Array<{ id: string }>;
+      expect(rows).toHaveLength(1);
     });
 
     it('should validate raw body signature correctly (whitespace/property order)', async () => {
@@ -272,7 +415,6 @@ describe('Webhook Ingestion Integration', () => {
         status: 'active',
       });
 
-      // Original payload with specific formatting
       const originalPayload = {
         schemaVersion: 1,
         eventId: 'raw-body-test',
@@ -281,15 +423,8 @@ describe('Webhook Ingestion Integration', () => {
         object: { type: 'product', externalId: '12345' },
       };
 
-      // Create raw body with specific formatting (no extra spaces)
-      const rawBody = Buffer.from(JSON.stringify(originalPayload));
-      const timestamp = Date.now().toString();
-      const signature = crypto
-        .createHmac('sha256', webhookSecret)
-        .update(timestamp + '.' + rawBody.toString())
-        .digest('hex');
+      const { timestamp, signature } = signedRequest(originalPayload, webhookSecret);
 
-      // Send with exact raw body - should succeed
       await harness
         .getHttp()
         .post(`/webhooks/prestashop/${connection.id}`)
@@ -298,17 +433,12 @@ describe('Webhook Ingestion Integration', () => {
         .send(originalPayload)
         .expect(202);
 
-      // Now try with re-stringified JSON (different property order or whitespace)
-      // This should fail because signature was computed on original raw bytes
       const reStringified = JSON.parse(JSON.stringify(originalPayload));
-      const newTimestamp = Date.now().toString();
-      const newRawBody = Buffer.from(JSON.stringify(reStringified));
-      const newSignature = crypto
-        .createHmac('sha256', webhookSecret)
-        .update(newTimestamp + '.' + newRawBody.toString())
-        .digest('hex');
+      const { timestamp: newTimestamp, signature: newSignature } = signedRequest(
+        reStringified,
+        webhookSecret,
+      );
 
-      // This should work because we're using the correct raw body
       await harness
         .getHttp()
         .post(`/webhooks/prestashop/${connection.id}`)
@@ -317,190 +447,36 @@ describe('Webhook Ingestion Integration', () => {
         .send(reStringified)
         .expect(202);
 
-      // But if we use the old signature with new body, it should fail
+      // Old signature with a new timestamp must fail — signature covers the
+      // timestamp + raw bytes.
       await harness
         .getHttp()
         .post(`/webhooks/prestashop/${connection.id}`)
-        .set('X-OpenLinker-Timestamp', newTimestamp)
-        .set('X-OpenLinker-Signature', `sha256=${signature}`) // Old signature
-        .send(reStringified) // New body
+        .set('X-OpenLinker-Timestamp', Date.now().toString())
+        .set('X-OpenLinker-Signature', `sha256=${signature}`)
+        .send(reStringified)
         .expect(401);
     });
 
-    it('should handle handler crash/retry with job dedup', async () => {
-      const connection = await createTestConnection(harness.getDataSource(), {
-        platformType: 'prestashop',
-        status: 'active',
-      });
-
-      const payload = {
-        schemaVersion: 1,
-        eventId: 'crash-retry-test',
-        eventType: 'product.saved',
-        occurredAt: new Date().toISOString(),
-        object: { type: 'product', externalId: '12345' },
-      };
-
-      const rawBody = Buffer.from(JSON.stringify(payload));
-      const timestamp = Date.now().toString();
-      const signature = crypto
-        .createHmac('sha256', webhookSecret)
-        .update(timestamp + '.' + rawBody.toString())
-        .digest('hex');
-
-      // Publish event
-      await harness
-        .getHttp()
-        .post(`/webhooks/prestashop/${connection.id}`)
-        .set('X-OpenLinker-Timestamp', timestamp)
-        .set('X-OpenLinker-Signature', `sha256=${signature}`)
-        .send(payload)
-        .expect(202);
-
-      // Wait for handler to process (or simulate crash before ACK)
-      await new Promise((resolve) => setTimeout(resolve, 2000));
-
-      // Verify event was published
-      const redisClient = harness.getRedisClient();
-      if (!redisClient) {
-        throw new Error('Redis client not available');
-      }
-
-      const events = await redisClient.xRead(
-        [{ key: 'events.inbound.webhooks', id: '0' }],
-        { COUNT: 10 },
-      );
-
-      if (!events || events.length === 0) {
-        throw new Error('Expected crash-retry event to be published');
-      }
-
-      const ourEvent = events[0].messages.find(
-        (msg) => msg.message.eventId === 'crash-retry-test',
-      );
-      expect(ourEvent).toBeDefined();
-
-      // Check if job was enqueued (handler should have processed it)
-      // Job dedup should prevent double enqueue even if handler retries
-      const jobs = await redisClient.xRead(
-        [{ key: 'jobs.sync', id: '0' }],
-        { COUNT: 10 },
-      );
-
-      if (jobs && jobs.length > 0) {
-        const ourJobs = jobs[0].messages.filter(
-          (msg) => msg.message.idempotencyKey === `prestashop:${connection.id}:crash-retry-test`,
-        );
-        // Should be at most 1 job (idempotency prevents duplicates)
-        expect(ourJobs.length).toBeLessThanOrEqual(1);
-      }
-    });
-
-    // #1511: representative end-to-end webhook slice. Every other test in this
-    // file stops at "event published to the Redis stream" — none proves the
-    // running `WebhookToJobHandler` consumer (group `webhook-handler`) actually
-    // consumes that event, translates + capability-routes it, and enqueues the
-    // downstream sync job. A webhook that publishes correctly but whose handler
-    // is broken would pass every other assertion here. This drives the full
-    // inbound -> event bus -> job path and asserts the enqueued `jobs.sync`
-    // message. Other providers may follow this pattern later.
-    it('should drain the published event through the WebhookToJobHandler and enqueue the downstream sync job (#1511)', async () => {
-      const redisClient = harness.getRedisClient();
-      if (!redisClient) throw new Error('Redis client not available');
-
-      // `resetTestHarness()` flushed Redis (dropping the boot-time consumer
-      // group) after the previous test — recreate it so the running handler can
-      // consume the event we are about to publish.
-      await ensureWebhookConsumerGroup(redisClient);
-
-      // The order route requires the `OrderSource` capability to be BOTH
-      // supported by the adapter (prestashop manifest advertises it) AND enabled
-      // on the connection (routing-policy gate), else it dead-letters instead of
-      // enqueuing.
-      const connection = await createTestConnection(harness.getDataSource(), {
-        platformType: 'prestashop',
-        status: 'active',
-        enabledCapabilities: ['OrderSource'],
-      });
-
-      const eventId = 'drain-order-event-1511';
-      const externalOrderId = '778899';
-      const payload = {
-        schemaVersion: 1,
-        eventId,
-        eventType: 'order.created',
-        occurredAt: new Date().toISOString(),
-        object: { type: 'order', externalId: externalOrderId },
-        payload: { id_order: externalOrderId },
-      };
-
-      const rawBody = Buffer.from(JSON.stringify(payload));
-      const timestamp = Date.now().toString();
-      const signature = crypto
-        .createHmac('sha256', webhookSecret)
-        .update(timestamp + '.' + rawBody.toString())
-        .digest('hex');
-
-      await harness
-        .getHttp()
-        .post(`/webhooks/prestashop/${connection.id}`)
-        .set('X-OpenLinker-Timestamp', timestamp)
-        .set('X-OpenLinker-Signature', `sha256=${signature}`)
-        .send(payload)
-        .expect(202);
-
-      // The routing policy stamps `{platformType}:{connectionId}:{sourceEventId}`
-      // as the job idempotency key.
-      const expectedIdempotencyKey = `prestashop:${connection.id}:${eventId}`;
-      const jobMessage = await waitForEnqueuedJob(redisClient, expectedIdempotencyKey);
-
-      // The handler consumed the stream event and enqueued the downstream job —
-      // the segment none of the other tests cover.
-      expect(jobMessage).toBeDefined();
-      expect(jobMessage!.jobType).toBe('marketplace.order.sync');
-      expect(jobMessage!.connectionId).toBe(connection.id);
-      const jobPayload = JSON.parse(jobMessage!.payloadJson) as {
-        externalOrderId: string;
-        sourceEventId: string;
-        eventType: string;
-      };
-      expect(jobPayload.externalOrderId).toBe(externalOrderId);
-      expect(jobPayload.sourceEventId).toBe(eventId);
-      expect(jobPayload.eventType).toBe('created');
-
-      // The delivery row also records the handler's enqueue outcome (the handler
-      // upserts status='job_enqueued' with the downstream job type/id).
-      const delivery = await waitForEnqueuedDelivery(harness, connection.id, eventId);
-      expect(delivery).toBeDefined();
-      expect(delivery!.downstreamJobType).toBe('marketplace.order.sync');
-      expect(delivery!.downstreamJobId).not.toBeNull();
-    });
-
-    // #711: Postgres-authoritative replay protection. Three identical signed
-    // requests within 5 s should all return 202 (idempotent ack), but only
-    // ONE row should land in `webhook_deliveries` and only ONE message should
-    // be published.
+    // #711: Postgres-authoritative replay protection — three identical signed
+    // requests all 202, one delivery row, one job row.
     it('should reject replay attacks via the Postgres unique constraint (#711)', async () => {
       const connection = await createTestConnection(harness.getDataSource(), {
         platformType: 'prestashop',
         status: 'active',
+        enabledCapabilities: ['ProductMaster'],
       });
 
+      const eventId = 'replay-attack-test';
       const payload = {
         schemaVersion: 1,
-        eventId: 'replay-attack-test',
+        eventId,
         eventType: 'product.saved',
         occurredAt: new Date().toISOString(),
         object: { type: 'product', externalId: '99999' },
       };
-      const rawBody = Buffer.from(JSON.stringify(payload));
-      const timestamp = Date.now().toString();
-      const signature = crypto
-        .createHmac('sha256', webhookSecret)
-        .update(timestamp + '.' + rawBody.toString())
-        .digest('hex');
+      const { timestamp, signature } = signedRequest(payload, webhookSecret);
 
-      // Three identical replays.
       for (let i = 0; i < 3; i++) {
         await harness
           .getHttp()
@@ -511,32 +487,18 @@ describe('Webhook Ingestion Integration', () => {
           .expect(202);
       }
 
-      await new Promise((resolve) => setTimeout(resolve, 500));
-
-      // Assert: exactly one row in webhook_deliveries.
       const rows = (await harness.getDataSource().query(
         `SELECT id, status FROM webhook_deliveries WHERE provider = $1 AND "connectionId" = $2 AND "eventId" = $3`,
-        ['prestashop', connection.id, 'replay-attack-test']
+        ['prestashop', connection.id, eventId],
       )) as Array<{ id: string; status: string }>;
       expect(rows).toHaveLength(1);
-      expect(['received', 'published']).toContain(rows[0].status);
-
-      // Assert: exactly one inbound webhook event in the Redis stream.
-      const redisClient = harness.getRedisClient();
-      if (!redisClient) throw new Error('Redis client not available');
-      const events = await redisClient.xRead(
-        [{ key: 'events.inbound.webhooks', id: '0' }],
-        { COUNT: 100 }
-      );
-      const publishedReplays = events?.[0]?.messages.filter(
-        (msg) => msg.message.eventId === 'replay-attack-test'
-      );
-      expect(publishedReplays?.length ?? 0).toBe(1);
+      expect(rows[0].status).toBe('job_enqueued');
+      const jobs = await readJobRows(harness, `prestashop:${connection.id}:${eventId}`);
+      expect(jobs).toHaveLength(1);
     });
 
-    // #711: tightened replay window. A 5-minute-old timestamp would have been
-    // accepted under the old 5-min default; under the new 120 s default it
-    // is rejected before any row is inserted.
+    // #711: tightened replay window — a stale timestamp is rejected before any
+    // row is inserted.
     it('should reject a stale timestamp without inserting a row (#711)', async () => {
       const connection = await createTestConnection(harness.getDataSource(), {
         platformType: 'prestashop',
@@ -551,7 +513,6 @@ describe('Webhook Ingestion Integration', () => {
         object: { type: 'product', externalId: '11111' },
       };
       const rawBody = Buffer.from(JSON.stringify(payload));
-      // 5 minutes ago — well outside the new 120s window.
       const staleTimestamp = (Date.now() - 5 * 60 * 1000).toString();
       const signature = crypto
         .createHmac('sha256', webhookSecret)
@@ -566,14 +527,79 @@ describe('Webhook Ingestion Integration', () => {
         .send(payload)
         .expect(401);
 
-      // Assert: no row was inserted (per plan §4.4 — failed-validation paths
-      // skip the row insert to keep the unique constraint clean for retries).
       const rows = (await harness.getDataSource().query(
         `SELECT id FROM webhook_deliveries WHERE provider = $1 AND "connectionId" = $2 AND "eventId" = $3`,
-        ['prestashop', connection.id, 'stale-timestamp-test']
+        ['prestashop', connection.id, 'stale-timestamp-test'],
       )) as Array<{ id: string }>;
       expect(rows).toHaveLength(0);
     });
   });
-});
 
+  describe('LegacyInboundWebhookDrain (upgrade backlog, #2280)', () => {
+    it('drains a pre-upgrade stream entry: creates the job and advances the legacy published row', async () => {
+      const redisClient = harness.getRedisClient();
+      if (!redisClient) throw new Error('Redis client not available');
+
+      const connection = await createTestConnection(harness.getDataSource(), {
+        platformType: 'prestashop',
+        status: 'active',
+        enabledCapabilities: ['OrderSource'],
+      });
+
+      const eventId = 'legacy-drain-event-1';
+      const externalOrderId = '445566';
+      const now = new Date();
+
+      // Recreate the pre-upgrade state: the consumer group anchored at '0' (so
+      // the seeded entry is unread), a stream entry the retired publisher
+      // wrote, and a delivery row stuck at 'published' with no job.
+      try {
+        await redisClient.xGroupCreate(INBOUND_WEBHOOK_STREAM, WEBHOOK_HANDLER_CONSUMER_GROUP, '0', {
+          MKSTREAM: true,
+        });
+      } catch (error) {
+        if (!(error instanceof Error && error.message.includes('BUSYGROUP'))) throw error;
+      }
+      await harness.getDataSource().query(
+        `INSERT INTO webhook_deliveries
+           ("eventId", "provider", "connectionId", "status", "receivedAt", "createdAt", "updatedAt")
+         VALUES ($1, $2, $3, 'published', $4, now(), now())`,
+        [eventId, 'prestashop', connection.id, now],
+      );
+      await redisClient.xAdd(INBOUND_WEBHOOK_STREAM, '*', {
+        eventId,
+        eventType: 'inbound.webhook.order.created',
+        payloadJson: JSON.stringify({
+          objectType: 'order',
+          externalId: externalOrderId,
+          payload: { id_order: externalOrderId },
+        }),
+        metadataJson: JSON.stringify({ provider: 'prestashop', connectionId: connection.id }),
+        occurredAt: now.toISOString(),
+        publishedAt: now.toISOString(),
+      });
+
+      // Re-trigger the one-shot drain (its boot run happened before this
+      // seed). `onModuleInit` detaches deliberately so it cannot block boot,
+      // so drive the drain body directly rather than racing a setImmediate.
+      const drain = harness.getApp().get(LegacyInboundWebhookDrain) as unknown as {
+        runDetachedDrain: () => Promise<void>;
+      };
+      await drain.runDetachedDrain();
+
+      const jobs = await readJobRows(harness, `prestashop:${connection.id}:${eventId}`);
+      expect(jobs).toHaveLength(1);
+      expect(jobs[0].jobType).toBe('marketplace.order.sync');
+
+      const delivery = await readDeliveryRow(harness, connection.id, eventId);
+      expect(delivery!.status).toBe('job_enqueued');
+      expect(delivery!.downstreamJobId).toBe(jobs[0].id);
+
+      // The drained entry is ACKed — a second drain run finds nothing new and
+      // creates no second job.
+      await drain.runDetachedDrain();
+      const jobsAfter = await readJobRows(harness, `prestashop:${connection.id}:${eventId}`);
+      expect(jobsAfter).toHaveLength(1);
+    });
+  });
+});

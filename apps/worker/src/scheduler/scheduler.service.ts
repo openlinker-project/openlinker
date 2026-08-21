@@ -2,17 +2,23 @@
  * Scheduler Service
  *
  * Generic scheduled service that drains the platform-agnostic
- * `SchedulerTaskRegistryService` and the two capability-based core tasks
- * (`master-inventory-sync`, `master-product-sync`) at bootstrap, then
- * schedules each with `@nestjs/schedule`. Platform-specific tasks (Allegro
- * orders-poll, offers-sync, …) are contributed by integration modules at
- * `onModuleInit` and picked up here at `onApplicationBootstrap` — NestJS
- * guarantees the lifecycle order so every integration has registered
- * before this drains (#584).
+ * `SchedulerTaskRegistryService` and the capability-based core tasks
+ * (`CORE_CAPABILITY_TASKS`), then schedules each with `@nestjs/schedule`.
+ * Platform-specific tasks (Allegro orders-poll, offers-sync, …) are
+ * contributed by integration modules at `onModuleInit` and drained here on
+ * `start()`, which runs no earlier than `onApplicationBootstrap` — NestJS
+ * guarantees the lifecycle order so every integration has registered before
+ * the drain (#584).
  *
- * @module apps/api/src/sync/application/services
+ * Lives in the WORKER since #2279 (ADR-051): scheduling is background work,
+ * and the api hosting it forced every api replica to be a scheduler. It no
+ * longer self-starts — `SchedulerLeaseCoordinator` calls the idempotent
+ * `start()`/`stop()` pair as its `singleton:scheduler` lease is won and lost,
+ * so at most one process in the fleet ticks crons at a time.
+ *
+ * @module apps/worker/src/scheduler
  */
-import type { OnApplicationBootstrap, OnModuleDestroy } from '@nestjs/common';
+import type { OnModuleDestroy } from '@nestjs/common';
 import { Injectable, Inject } from '@nestjs/common';
 import { SchedulerRegistry } from '@nestjs/schedule';
 import { ConfigService } from '@nestjs/config';
@@ -271,9 +277,10 @@ const CORE_CAPABILITY_TASKS: readonly CoreCapabilityTaskDescriptor[] = [
 ];
 
 @Injectable()
-export class SchedulerService implements OnApplicationBootstrap, OnModuleDestroy {
+export class SchedulerService implements OnModuleDestroy {
   private readonly logger = new Logger(SchedulerService.name);
-  private readonly tasks: SchedulerTaskConfig[] = [];
+  private tasks: SchedulerTaskConfig[] = [];
+  private started = false;
 
   constructor(
     @Inject(CONNECTION_PORT_TOKEN)
@@ -288,35 +295,71 @@ export class SchedulerService implements OnApplicationBootstrap, OnModuleDestroy
     private readonly schedulerTaskRegistry: SchedulerTaskRegistryService
   ) {}
 
-  onApplicationBootstrap(): void {
-    // Register the capability-based core tasks (cross-platform — drain every
-    // connection that supports a given capability). These stay core-side; only
-    // platform-specific *triggers* move to integrations. Each is a row in
-    // CORE_CAPABILITY_TASKS — see registerCapabilityTask for the shared shape.
-    for (const descriptor of CORE_CAPABILITY_TASKS) {
-      this.registerCapabilityTask(descriptor);
+  /**
+   * Register + schedule every task. Idempotent — the lease coordinator may
+   * call it again after a lost-and-rewon lease, and a second call while
+   * started is a no-op. Must not run before `onApplicationBootstrap`: the
+   * plugin task registry is populated at `onModuleInit`, and the lease
+   * coordinator's first tick honours that ordering.
+   */
+  start(): void {
+    if (this.started) {
+      return;
     }
+    this.started = true;
+    this.tasks = [];
 
-    // Registered bespoke rather than as a CORE_CAPABILITY_TASKS row (#1979).
-    this.registerDestinationTaxonomyTask();
+    try {
+      // Register the capability-based core tasks (cross-platform — drain every
+      // connection that supports a given capability). These stay core-side; only
+      // platform-specific *triggers* move to integrations. Each is a row in
+      // CORE_CAPABILITY_TASKS — see registerCapabilityTask for the shared shape.
+      for (const descriptor of CORE_CAPABILITY_TASKS) {
+        this.registerCapabilityTask(descriptor);
+      }
 
-    // Drain plugin-contributed tasks. Integration modules have already
-    // populated the registry at `onModuleInit`; NestJS guarantees every
-    // `onModuleInit` hook fires before any `onApplicationBootstrap`, so
-    // the registry is fully populated by the time we read it here.
-    for (const task of this.schedulerTaskRegistry.getAll()) {
-      this.tasks.push(task);
+      // Registered bespoke rather than as a CORE_CAPABILITY_TASKS row (#1979).
+      this.registerDestinationTaxonomyTask();
+
+      // Drain plugin-contributed tasks — populated at `onModuleInit`, complete
+      // by the time any post-bootstrap start() runs.
+      for (const task of this.schedulerTaskRegistry.getAll()) {
+        this.tasks.push(task);
+      }
+
+      // Schedule everything.
+      this.tasks.forEach((task) => this.scheduleTask(task));
+    } catch (error) {
+      // A malformed cron expression (plugin env vars feed these verbatim)
+      // makes `new CronJob` throw and aborts the whole loop. Unwinding the
+      // latch is what keeps that recoverable: leaving `started = true` would
+      // make every later start() a silent no-op, pinning the process as a
+      // half-scheduled holder of the lease forever.
+      this.started = false;
+      try {
+        this.stop();
+      } catch (cleanupError) {
+        // Never let cleanup mask the real diagnostic — the cron expression
+        // that threw is what the operator needs to see.
+        this.logger.warn(
+          `Cleanup after a failed scheduler start also failed: ${cleanupError instanceof Error ? cleanupError.message : String(cleanupError)}`
+        );
+      }
+      throw error;
     }
-
-    // Schedule everything.
-    this.tasks.forEach((task) => this.scheduleTask(task));
   }
 
-  onModuleDestroy(): void {
-    // Stop all registered cron jobs so the Node.js event loop can drain cleanly.
-    // This is required for graceful shutdown in production and for integration
-    // tests where app.close() is called — without this, active CronJob timers
-    // keep the process alive indefinitely.
+  /**
+   * Stop and unregister every cron job. Idempotent; called on lease loss and
+   * at shutdown. Also required so the Node.js event loop can drain cleanly —
+   * without it, active CronJob timers keep the process alive indefinitely.
+   */
+  stop(): void {
+    // Deliberately unconditional rather than guarded on `started`: clearing an
+    // empty registry is a no-op, and a teardown that runs without a preceding
+    // start must still leave nothing behind (a lease lost before the first
+    // start, or a shutdown on a parked replica).
+    this.started = false;
     // Snapshot entries before iterating — deleteCronJob mutates the internal Map
     // that getCronJobs() returns a reference to, which is fragile to modify mid-loop.
     const entries = [...this.schedulerRegistry.getCronJobs().entries()];
@@ -326,9 +369,15 @@ export class SchedulerService implements OnApplicationBootstrap, OnModuleDestroy
         this.schedulerRegistry.deleteCronJob(name);
         this.logger.debug(`Stopped scheduler task: ${name}`);
       } catch {
-        // Ignore errors during teardown — the process is shutting down anyway
+        // Ignore errors during teardown — the lease moved or the process is
+        // shutting down anyway.
       }
     }
+    this.tasks = [];
+  }
+
+  onModuleDestroy(): void {
+    this.stop();
   }
 
   /**

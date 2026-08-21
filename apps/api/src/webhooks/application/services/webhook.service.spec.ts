@@ -1,10 +1,13 @@
 /**
  * Webhook Service Unit Tests
  *
- * Covers the ADR-021 decoder-dispatch flow (verify → replay → extract →
- * dedup/publish), the three-state decode (route / ignore / reject), and the
- * #711 dedup-gate + failure-recovery branches. Integration coverage of the
- * full happy path lives in `apps/api/test/integration/webhook-ingestion.int-spec.ts`.
+ * Covers the ADR-021 decoder-dispatch flow (verify → replay → extract), the
+ * three-state decode (route / ignore / reject), and the #2280 durable-spine
+ * gate: routing at ingress, the single-transaction gate write in its FINAL
+ * status, best-effort Redis marks, and the retirement of the #711
+ * compensating delete (a pre-commit failure rolls back both rows; after
+ * commit nothing deletes). Integration coverage of the full happy path lives
+ * in `apps/api/test/integration/webhook-ingestion.int-spec.ts`.
  *
  * @module apps/api/src/webhooks/application/services
  */
@@ -16,24 +19,20 @@ import type {
   InboundWebhookDecoderRegistryService,
 } from '@openlinker/core/integrations';
 import { INBOUND_WEBHOOK_DECODER_REGISTRY_TOKEN } from '@openlinker/core/integrations';
-import type {
-  WebhookDeliveryRepositoryPort,
-  WebhookDelivery,
-  WebhookDeliveryUpsertInput,
-  WebhookAuthRejectionRepositoryPort,
-} from '@openlinker/core/webhooks';
-import {
-  WEBHOOK_DELIVERY_REPOSITORY_TOKEN,
-  WEBHOOK_AUTH_REJECTION_REPOSITORY_TOKEN,
-} from '@openlinker/core/webhooks';
+import type { WebhookAuthRejectionRepositoryPort } from '@openlinker/core/webhooks';
+import { WEBHOOK_AUTH_REJECTION_REPOSITORY_TOKEN } from '@openlinker/core/webhooks';
+import type { SyncJobRequest } from '@openlinker/core/sync';
 import { WebhookService } from './webhook.service';
 import { WebhookAuthService } from './webhook-auth.service';
 import { WebhookDedupService } from './webhook-dedup.service';
-import { WebhookEventPublisher } from './webhook-event-publisher.service';
 import { DefaultWebhookDecoder } from '../decoders/default-webhook-decoder';
 import { WebhookReplayException } from '../errors/webhook-replay.exception';
 import { WebhookAuthenticationException } from '../errors/webhook-authentication.exception';
 import { WebhookDecodeException } from '../errors/webhook-decode.exception';
+import type { IInboundWebhookRoutingService } from '../interfaces/inbound-webhook-routing.service.interface';
+import { INBOUND_WEBHOOK_ROUTING_SERVICE_TOKEN } from '../interfaces/inbound-webhook-routing.service.interface';
+import type { IWebhookJobGateService } from '../interfaces/webhook-job-gate.service.interface';
+import { WEBHOOK_JOB_GATE_SERVICE_TOKEN } from '../interfaces/webhook-job-gate.service.interface';
 
 function routeResult(eventId: string): DecodeResult {
   return {
@@ -49,31 +48,14 @@ function routeResult(eventId: string): DecodeResult {
   };
 }
 
-function makeDelivery(input: WebhookDeliveryUpsertInput): WebhookDelivery {
-  return {
-    id: 'wd_test',
-    eventId: input.eventId,
-    provider: input.provider,
-    connectionId: input.connectionId,
-    eventType: input.eventType ?? null,
-    objectType: input.objectType ?? null,
-    externalId: input.externalId ?? null,
-    receivedAt: input.receivedAt ?? new Date(),
-    signatureValid: input.signatureValid ?? null,
-    dedupResult: input.dedupResult ?? null,
-    status: input.status ?? 'received',
-    rejectionReason: input.rejectionReason ?? null,
-    publishedMessageId: input.publishedMessageId ?? null,
-    downstreamJobId: input.downstreamJobId ?? null,
-    downstreamJobType: input.downstreamJobType ?? null,
-    dlqReason: input.dlqReason ?? null,
-    payload: input.payload ?? null,
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  } as WebhookDelivery;
-}
+const routedJob: SyncJobRequest = {
+  jobType: 'master.product.syncByExternalId',
+  connectionId: '123e4567-e89b-12d3-a456-426614174000',
+  payload: { schemaVersion: 1, externalId: '12345', objectType: 'Product' },
+  idempotencyKey: 'prestashop:123e4567-e89b-12d3-a456-426614174000:e1',
+};
 
-describe('WebhookService (ADR-021 decoder dispatch + #711 dedup/recovery)', () => {
+describe('WebhookService (ADR-021 decoder dispatch + #2280 durable-spine gate)', () => {
   let service: WebhookService;
   let authService: jest.Mocked<
     Pick<WebhookAuthService, 'assertConnectionUsable' | 'getSecret' | 'validateTimestampMs'>
@@ -83,8 +65,8 @@ describe('WebhookService (ADR-021 decoder dispatch + #711 dedup/recovery)', () =
   let dedupService: jest.Mocked<
     Pick<WebhookDedupService, 'markProcessing' | 'markDone' | 'clearProcessing'>
   >;
-  let eventPublisher: jest.Mocked<Pick<WebhookEventPublisher, 'publishInboundWebhook'>>;
-  let deliveryRepository: jest.Mocked<WebhookDeliveryRepositoryPort>;
+  let inboundRouting: jest.Mocked<IInboundWebhookRoutingService>;
+  let jobGate: jest.Mocked<IWebhookJobGateService>;
   let authRejectionRepository: jest.Mocked<WebhookAuthRejectionRepositoryPort>;
 
   const provider = 'prestashop';
@@ -112,17 +94,11 @@ describe('WebhookService (ADR-021 decoder dispatch + #711 dedup/recovery)', () =
       markDone: jest.fn().mockResolvedValue(undefined),
       clearProcessing: jest.fn().mockResolvedValue(undefined),
     };
-    eventPublisher = { publishInboundWebhook: jest.fn().mockResolvedValue('msg_1') };
-    deliveryRepository = {
-      upsert: jest
-        .fn()
-        .mockImplementation((input: WebhookDeliveryUpsertInput) =>
-          Promise.resolve(makeDelivery(input)),
-        ),
-      insertIfNew: jest.fn(),
-      deleteByEventKey: jest.fn().mockResolvedValue(undefined),
-      findById: jest.fn(),
-      findMany: jest.fn(),
+    inboundRouting = {
+      resolveEvent: jest.fn().mockResolvedValue({ kind: 'routed', job: routedJob }),
+    };
+    jobGate = {
+      insertDeliveryWithJob: jest.fn().mockResolvedValue({ isNew: true, jobId: 'job-uuid-1' }),
     };
     authRejectionRepository = {
       recordRejection: jest.fn().mockResolvedValue(undefined),
@@ -136,8 +112,8 @@ describe('WebhookService (ADR-021 decoder dispatch + #711 dedup/recovery)', () =
         { provide: DefaultWebhookDecoder, useValue: decoder },
         { provide: INBOUND_WEBHOOK_DECODER_REGISTRY_TOKEN, useValue: decoderRegistry },
         { provide: WebhookDedupService, useValue: dedupService },
-        { provide: WebhookEventPublisher, useValue: eventPublisher },
-        { provide: WEBHOOK_DELIVERY_REPOSITORY_TOKEN, useValue: deliveryRepository },
+        { provide: INBOUND_WEBHOOK_ROUTING_SERVICE_TOKEN, useValue: inboundRouting },
+        { provide: WEBHOOK_JOB_GATE_SERVICE_TOKEN, useValue: jobGate },
         { provide: WEBHOOK_AUTH_REJECTION_REPOSITORY_TOKEN, useValue: authRejectionRepository },
       ],
     }).compile();
@@ -145,7 +121,7 @@ describe('WebhookService (ADR-021 decoder dispatch + #711 dedup/recovery)', () =
   });
 
   describe('subscription-verification handshake', () => {
-    it('returns the handshake echo body and short-circuits before verify/dedup/publish', async () => {
+    it('returns the handshake echo body and short-circuits before verify/routing/gate', async () => {
       const handshakeDecoder: jest.Mocked<InboundWebhookDecoderPort> = {
         ...decoder,
         detectHandshake: jest.fn().mockReturnValue({ verification_code: 'abc123' }),
@@ -156,8 +132,8 @@ describe('WebhookService (ADR-021 decoder dispatch + #711 dedup/recovery)', () =
 
       expect(result).toEqual({ verification_code: 'abc123' });
       expect(handshakeDecoder.verify).not.toHaveBeenCalled();
-      expect(deliveryRepository.insertIfNew).not.toHaveBeenCalled();
-      expect(eventPublisher.publishInboundWebhook).not.toHaveBeenCalled();
+      expect(inboundRouting.resolveEvent).not.toHaveBeenCalled();
+      expect(jobGate.insertDeliveryWithJob).not.toHaveBeenCalled();
     });
 
     it('proceeds to verify when detectHandshake returns null', async () => {
@@ -166,10 +142,6 @@ describe('WebhookService (ADR-021 decoder dispatch + #711 dedup/recovery)', () =
         detectHandshake: jest.fn().mockReturnValue(null),
       };
       decoderRegistry.get.mockReturnValue(nonHandshakeDecoder);
-      deliveryRepository.insertIfNew.mockResolvedValue({
-        isNew: true,
-        delivery: makeDelivery({ eventId: 'e1', provider, connectionId }),
-      });
 
       const result = await service.processWebhook(provider, connectionId, rawBody, headers);
 
@@ -179,76 +151,120 @@ describe('WebhookService (ADR-021 decoder dispatch + #711 dedup/recovery)', () =
   });
 
   describe('decoder dispatch + three-state decode', () => {
-    it('publishes a routed event when the decoder verifies + routes and the row is new', async () => {
-      deliveryRepository.insertIfNew.mockResolvedValue({
-        isNew: true,
-        delivery: makeDelivery({ eventId: 'e1', provider, connectionId }),
-      });
-
+    it('routes at ingress and writes the gate row in its final job_enqueued status with the job', async () => {
       await service.processWebhook(provider, connectionId, rawBody, headers);
 
       expect(authService.assertConnectionUsable).toHaveBeenCalledWith(provider, connectionId);
       expect(decoder.verify).toHaveBeenCalled();
-      expect(eventPublisher.publishInboundWebhook).toHaveBeenCalledTimes(1);
-      expect(deliveryRepository.upsert).toHaveBeenCalledWith(
-        expect.objectContaining({ status: 'published', externalId: '12345' }),
+      expect(inboundRouting.resolveEvent).toHaveBeenCalledWith(
+        expect.objectContaining({ eventId: 'e1', provider, connectionId })
+      );
+      expect(jobGate.insertDeliveryWithJob).toHaveBeenCalledWith(
+        expect.objectContaining({
+          eventId: 'e1',
+          status: 'job_enqueued',
+          externalId: '12345',
+          signatureValid: true,
+        }),
+        routedJob
       );
     });
 
-    it('ignores (202, no publish, no row) when the decoder returns ignore', async () => {
+    it('ignores (202, no gate write) when the decoder returns ignore', async () => {
       decoder.extractEnvelope.mockReturnValue({ action: 'ignore', reason: 'unhandled topic' });
 
       await service.processWebhook(provider, connectionId, rawBody, headers);
 
-      expect(deliveryRepository.insertIfNew).not.toHaveBeenCalled();
-      expect(eventPublisher.publishInboundWebhook).not.toHaveBeenCalled();
+      expect(inboundRouting.resolveEvent).not.toHaveBeenCalled();
+      expect(jobGate.insertDeliveryWithJob).not.toHaveBeenCalled();
     });
 
-    it('throws WebhookDecodeException (→400) and inserts no row when the decoder rejects', async () => {
+    it('throws WebhookDecodeException (→400) and writes no row when the decoder rejects', async () => {
       decoder.extractEnvelope.mockReturnValue({ action: 'reject', reason: 'malformed' });
 
       await expect(
         service.processWebhook(provider, connectionId, rawBody, headers),
       ).rejects.toThrow(WebhookDecodeException);
 
-      expect(deliveryRepository.insertIfNew).not.toHaveBeenCalled();
+      expect(jobGate.insertDeliveryWithJob).not.toHaveBeenCalled();
     });
   });
 
-  describe('Postgres dedup gate', () => {
-    it('short-circuits with no publish when insertIfNew reports isNew=false (replay)', async () => {
-      deliveryRepository.insertIfNew.mockResolvedValue({
-        isNew: false,
-        existing: makeDelivery({ eventId: 'e1', provider, connectionId }),
+  describe('routing outcomes → durable rows (#2280)', () => {
+    it('records a test ping as a received row with no job', async () => {
+      inboundRouting.resolveEvent.mockResolvedValue({ kind: 'ping' });
+
+      await service.processWebhook(provider, connectionId, rawBody, headers);
+
+      expect(jobGate.insertDeliveryWithJob).toHaveBeenCalledWith(
+        expect.objectContaining({ status: 'received' }),
+        null
+      );
+    });
+
+    it('records a deterministically unroutable event as a deadlettered row with the reason', async () => {
+      inboundRouting.resolveEvent.mockResolvedValue({
+        kind: 'unroutable',
+        reason: 'no-translator: foo.v1',
       });
 
       await service.processWebhook(provider, connectionId, rawBody, headers);
 
-      expect(eventPublisher.publishInboundWebhook).not.toHaveBeenCalled();
-      expect(dedupService.markProcessing).not.toHaveBeenCalled();
-      expect(deliveryRepository.upsert).not.toHaveBeenCalled();
+      expect(jobGate.insertDeliveryWithJob).toHaveBeenCalledWith(
+        expect.objectContaining({ status: 'deadlettered', dlqReason: 'no-translator: foo.v1' }),
+        null
+      );
     });
-  });
 
-  describe('failure-recovery (the load-bearing #711 fix)', () => {
-    it('DELETEs the webhook_deliveries row when publish fails, so source can retry', async () => {
-      deliveryRepository.insertIfNew.mockResolvedValue({
-        isNew: true,
-        delivery: makeDelivery({ eventId: 'e1', provider, connectionId }),
-      });
-      eventPublisher.publishInboundWebhook.mockRejectedValueOnce(new Error('stream down'));
+    it('throws (→ source retry) when routing fails transiently, writing nothing', async () => {
+      inboundRouting.resolveEvent.mockRejectedValue(new Error('db blip'));
 
       await expect(
         service.processWebhook(provider, connectionId, rawBody, headers),
-      ).rejects.toThrow('stream down');
+      ).rejects.toThrow('db blip');
 
-      expect(deliveryRepository.deleteByEventKey).toHaveBeenCalledWith(provider, connectionId, 'e1');
-      expect(dedupService.clearProcessing).toHaveBeenCalledWith(provider, connectionId, 'e1');
+      expect(jobGate.insertDeliveryWithJob).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Postgres dedup gate', () => {
+    it('short-circuits to the idempotent 202 when the gate reports a replay', async () => {
+      jobGate.insertDeliveryWithJob.mockResolvedValue({ isNew: false, jobId: 'job-uuid-1' });
+
+      await service.processWebhook(provider, connectionId, rawBody, headers);
+
+      expect(dedupService.markDone).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Redis is best-effort, never part of the durable path (#2280)', () => {
+    it('still commits the gate when markProcessing throws (Redis down)', async () => {
+      dedupService.markProcessing.mockRejectedValue(new Error('redis down'));
+
+      await service.processWebhook(provider, connectionId, rawBody, headers);
+
+      expect(jobGate.insertDeliveryWithJob).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not throw — and deletes nothing — when markDone fails after the gate commit', async () => {
+      dedupService.markDone.mockRejectedValue(new Error('redis down'));
+
+      await expect(
+        service.processWebhook(provider, connectionId, rawBody, headers),
+      ).resolves.toBeUndefined();
+    });
+
+    it('propagates a gate failure so the source retries (transaction rolled back, nothing to delete)', async () => {
+      jobGate.insertDeliveryWithJob.mockRejectedValue(new Error('db down'));
+
+      await expect(
+        service.processWebhook(provider, connectionId, rawBody, headers),
+      ).rejects.toThrow('db down');
     });
   });
 
   describe('verify/replay rejection (no row inserted)', () => {
-    it('does not insert a row when the signature fails to verify (401)', async () => {
+    it('does not write a row when the signature fails to verify (401)', async () => {
       decoder.verify.mockReturnValue({ ok: false });
 
       await expect(
@@ -256,7 +272,7 @@ describe('WebhookService (ADR-021 decoder dispatch + #711 dedup/recovery)', () =
       ).rejects.toThrow(WebhookAuthenticationException);
 
       expect(decoder.extractEnvelope).not.toHaveBeenCalled();
-      expect(deliveryRepository.insertIfNew).not.toHaveBeenCalled();
+      expect(jobGate.insertDeliveryWithJob).not.toHaveBeenCalled();
     });
 
     it('records a durable auth-rejection signal when the signature fails (#1814)', async () => {
@@ -271,8 +287,7 @@ describe('WebhookService (ADR-021 decoder dispatch + #711 dedup/recovery)', () =
         connectionId,
         reason: 'invalid_signature',
       });
-      // The signal is separate from webhook_deliveries (ADR-005) — no row written.
-      expect(deliveryRepository.insertIfNew).not.toHaveBeenCalled();
+      expect(jobGate.insertDeliveryWithJob).not.toHaveBeenCalled();
     });
 
     it('still returns 401 when recording the auth-rejection fails (non-fatal, #1814)', async () => {
@@ -296,7 +311,7 @@ describe('WebhookService (ADR-021 decoder dispatch + #711 dedup/recovery)', () =
       expect(authRejectionRepository.recordRejection).not.toHaveBeenCalled();
     });
 
-    it('does not insert a row when the timestamp is outside the replay window', async () => {
+    it('does not write a row when the timestamp is outside the replay window', async () => {
       authService.validateTimestampMs.mockImplementation(() => {
         throw new WebhookReplayException('stale', '0', 120_000);
       });
@@ -306,7 +321,7 @@ describe('WebhookService (ADR-021 decoder dispatch + #711 dedup/recovery)', () =
       ).rejects.toThrow(WebhookReplayException);
 
       expect(decoder.extractEnvelope).not.toHaveBeenCalled();
-      expect(deliveryRepository.insertIfNew).not.toHaveBeenCalled();
+      expect(jobGate.insertDeliveryWithJob).not.toHaveBeenCalled();
     });
   });
 });

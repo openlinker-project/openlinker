@@ -160,9 +160,41 @@ entirely.
 - `events.sync.jobs` is removed rather than consumed (#2163) — the clearest instance of decision 2's
   reasoning applied to an existing stream.
 
+## Amendment (#2280) — decision 1 shipped on the webhook path
+
+Decision 1 is no longer "stated but not yet implemented": the webhook ingestion path now writes the
+`sync_jobs` work row in the same Postgres transaction as the `webhook_deliveries` gate row
+(`WebhookJobGateRepository`, `apps/api/src/webhooks/infrastructure/persistence/`). Points of contact
+with the decisions above, as built:
+
+- **No wake-up hint was needed at all.** The ADR anticipated Redis demoting to a hint; on this path
+  even the hint is omitted, because `SyncJobRunner` already polls Postgres every 1 s
+  (`findAndLockDueJobs`, `FOR UPDATE SKIP LOCKED`) — a committed `queued` row is picked up within
+  one poll interval with no extra moving part.
+- **Decision 4 as applied**: the job idempotency key is the derived
+  `{platformType}:{connectionId}:{sourceEventId}` — stable across a source redelivery, deduped by
+  the `sync_jobs` unique index *inside* the transaction (`ON CONFLICT DO NOTHING` + in-transaction
+  SELECT; the pre-existing catch-based dedup would have aborted the surrounding transaction).
+- **Decision 5 as applied**: no core port grew an `EntityManager`. The two-table transaction lives
+  in a host-owned repository behind an api-local interface (`IWebhookJobGateService`); core's
+  `InboundRoutingPolicyService` gained a side-effect-free `resolve()` split from `route()`, so the
+  routing decision is available without the enqueue.
+- **The known-poison-gap reversal gate fired**: the webhook path no longer has a PEL in its durable
+  path. Ingress routing failures are classified — deterministic faults become durable
+  `deadlettered` delivery rows with a reason (replacing the Redis DLQ on this path), transient
+  faults throw pre-insert so the source retries. The `webhook-handler` consumer loop is retired; a
+  one-shot `LegacyInboundWebhookDrain` recovers the upgrade backlog and is itself removed in a
+  follow-up release.
+- **Decision 1's reversal gate (write amplification on the enclosing write) now has a concrete
+  surface to watch**: the webhook 202 latency, which absorbed one extra insert inside an existing
+  transaction boundary.
+
+The non-webhook writers of `jobs.sync` (scheduler, cron sweeps, API-triggered enqueues) still use
+the stream + `jobdedup:*` path; extending the spine to them is future work under the same decision.
+
 ## References
 
-- Related issues: #2162, #2163, #2164, #2165, #1135, #1134, #1396
+- Related issues: #2162, #2163, #2164, #2165, #2280, #1135, #1134, #1396
 - Related ADRs: [ADR-001](./001-hexagonal-architecture-and-bounded-contexts.md),
   [ADR-005](./005-postgres-authoritative-job-dedup.md),
   [ADR-007](./007-syncjob-status-vs-outcome-split.md),

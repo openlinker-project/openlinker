@@ -1,9 +1,12 @@
 /**
  * Webhook Service
  *
- * Orchestrates the complete webhook processing flow including signature verification,
- * deduplication, and event publishing. Coordinates between WebhookAuthService,
- * WebhookDedupService, and WebhookEventPublisher to process inbound webhooks.
+ * Orchestrates the complete webhook processing flow: signature verification,
+ * synchronous translate→route at ingress (#2280), and the durable-spine gate
+ * write — the `sync_jobs` work row committed in the SAME Postgres transaction
+ * as the `webhook_deliveries` gate row (ADR-049 decision 1). Redis is not part
+ * of the durable path: the inner `webhook:*` dedup marks are best-effort, and
+ * the runner's 1 s Postgres poll picks up the committed job with no hint.
  *
  * @module apps/api/src/webhooks/application/services
  * @implements {IWebhookService}
@@ -12,7 +15,6 @@ import { Inject, Injectable } from '@nestjs/common';
 import type { IWebhookService } from '../interfaces/webhook.service.interface';
 import { WebhookAuthService } from './webhook-auth.service';
 import { WebhookDedupService } from './webhook-dedup.service';
-import { WebhookEventPublisher } from './webhook-event-publisher.service';
 import { DefaultWebhookDecoder } from '../decoders/default-webhook-decoder';
 import { WebhookAuthenticationException } from '../errors/webhook-authentication.exception';
 import { WebhookDecodeException } from '../errors/webhook-decode.exception';
@@ -25,11 +27,17 @@ import {
 import { Logger } from '@openlinker/shared/logging';
 import type { WebhookDeliveryUpsertInput } from '@openlinker/core/webhooks';
 import {
-  WebhookDeliveryRepositoryPort,
-  WEBHOOK_DELIVERY_REPOSITORY_TOKEN,
   WebhookAuthRejectionRepositoryPort,
   WEBHOOK_AUTH_REJECTION_REPOSITORY_TOKEN,
 } from '@openlinker/core/webhooks';
+import {
+  INBOUND_WEBHOOK_ROUTING_SERVICE_TOKEN,
+  IInboundWebhookRoutingService,
+} from '../interfaces/inbound-webhook-routing.service.interface';
+import {
+  WEBHOOK_JOB_GATE_SERVICE_TOKEN,
+  IWebhookJobGateService,
+} from '../interfaces/webhook-job-gate.service.interface';
 
 @Injectable()
 export class WebhookService implements IWebhookService {
@@ -38,25 +46,16 @@ export class WebhookService implements IWebhookService {
   constructor(
     private readonly authService: WebhookAuthService,
     private readonly dedupService: WebhookDedupService,
-    private readonly eventPublisher: WebhookEventPublisher,
     private readonly defaultDecoder: DefaultWebhookDecoder,
     @Inject(INBOUND_WEBHOOK_DECODER_REGISTRY_TOKEN)
     private readonly decoderRegistry: InboundWebhookDecoderRegistryService,
-    @Inject(WEBHOOK_DELIVERY_REPOSITORY_TOKEN)
-    private readonly deliveryRepository: WebhookDeliveryRepositoryPort,
     @Inject(WEBHOOK_AUTH_REJECTION_REPOSITORY_TOKEN)
-    private readonly authRejectionRepository: WebhookAuthRejectionRepositoryPort
+    private readonly authRejectionRepository: WebhookAuthRejectionRepositoryPort,
+    @Inject(INBOUND_WEBHOOK_ROUTING_SERVICE_TOKEN)
+    private readonly inboundRouting: IInboundWebhookRoutingService,
+    @Inject(WEBHOOK_JOB_GATE_SERVICE_TOKEN)
+    private readonly jobGate: IWebhookJobGateService
   ) {}
-
-  private async recordDelivery(input: WebhookDeliveryUpsertInput): Promise<void> {
-    try {
-      await this.deliveryRepository.upsert(input);
-    } catch (error) {
-      this.logger.warn(
-        `Failed to record webhook delivery (non-fatal): provider=${input.provider}, connectionId=${input.connectionId}, eventId=${input.eventId}: ${error instanceof Error ? error.message : String(error)}`
-      );
-    }
-  }
 
   /**
    * Record a signature-rejected delivery attempt (#1814). Deliberately non-fatal
@@ -150,11 +149,48 @@ export class WebhookService implements IWebhookService {
       `Processing webhook: provider=${provider}, connectionId=${connectionId}, eventId=${correlationId}, eventType=${envelope.eventType}`
     );
 
-    // Authoritative dedup gate (#711). INSERT ... ON CONFLICT DO NOTHING against
-    // `webhook_deliveries`'s unique constraint on `(provider, connectionId,
-    // eventId)`. A replay finds the existing row and short-circuits to a 202
-    // idempotent ack — durable, survives Redis outages.
-    const baseDelivery: WebhookDeliveryUpsertInput = {
+    // Translate → route synchronously at ingress (#2280) so the jobType /
+    // payload / idempotencyKey are known INSIDE the gate transaction. A
+    // transient failure here (e.g. DB blip resolving the adapter) throws
+    // before anything is inserted, so the source's retry re-enters cleanly —
+    // the #711 semantic is preserved by never needing a compensating delete.
+    const event: InboundWebhookEvent = {
+      eventId: envelope.eventId,
+      provider,
+      connectionId,
+      eventType: envelope.eventType,
+      occurredAt: envelope.occurredAt,
+      receivedAt: new Date().toISOString(),
+      objectType: envelope.objectType,
+      externalId: envelope.externalId,
+      payload: envelope.payload,
+    };
+    const routing = await this.inboundRouting.resolveEvent(event);
+
+    // Inner Redis dedup mark — BEST-EFFORT and non-fatal (#2280): Redis is a
+    // hint on this path, never a gate, so a Redis outage must not 5xx a
+    // webhook whose durable write is about to commit.
+    let redisSaidDuplicate = false;
+    try {
+      redisSaidDuplicate = !(await this.dedupService.markProcessing(
+        provider,
+        connectionId,
+        envelope.eventId
+      ));
+    } catch (redisError) {
+      this.logger.warn(
+        `Redis dedup markProcessing failed (non-fatal): provider=${provider}, connectionId=${connectionId}, eventId=${correlationId}: ${redisError instanceof Error ? redisError.message : String(redisError)}`
+      );
+    }
+
+    // The durable-spine gate (ADR-049 decision 1): the ADR-005 dedup INSERT on
+    // `webhook_deliveries` and — for a routed event — the `sync_jobs` work row,
+    // in ONE transaction. A replay finds the existing row and short-circuits to
+    // the 202 idempotent ack. The row is written in its FINAL status: routing
+    // already happened, so `received → published → job_enqueued` collapses to a
+    // single statement (`published` is unreachable for new webhook rows; the
+    // #1916 rank guard stays for legacy rows and the startup drain).
+    const delivery: WebhookDeliveryUpsertInput = {
       eventId: envelope.eventId,
       provider,
       connectionId,
@@ -164,101 +200,54 @@ export class WebhookService implements IWebhookService {
       receivedAt: new Date(),
       payload: envelope.payload as Record<string, unknown>,
       signatureValid: true,
-      status: 'received',
+      dedupResult: 'new',
+      status:
+        routing.kind === 'routed'
+          ? 'job_enqueued'
+          : routing.kind === 'ping'
+            ? 'received'
+            : 'deadlettered',
+      dlqReason: routing.kind === 'unroutable' ? routing.reason.slice(0, 500) : null,
     };
-    const insertResult = await this.deliveryRepository.insertIfNew(baseDelivery);
+    const gateResult = await this.jobGate.insertDeliveryWithJob(
+      delivery,
+      routing.kind === 'routed' ? routing.job : null
+    );
 
-    if (!insertResult.isNew) {
+    if (!gateResult.isNew) {
       this.logger.warn(
         `Duplicate webhook event (Postgres gate): provider=${provider}, connectionId=${connectionId}, eventId=${correlationId}`
       );
-      return; // 202 idempotent ack — no further processing.
+      return; // 202 idempotent ack.
     }
-
-    // Step 4: Inner dedup gate via Redis (existing two-phase markProcessing →
-    // markDone semantics, kept as a fast-path safety net while the Postgres
-    // gate beds in — see plan §4.2 and §7 for the deferred cleanup).
-    const isNewInRedis = await this.dedupService.markProcessing(
-      provider,
-      connectionId,
-      envelope.eventId
-    );
-
-    if (!isNewInRedis) {
-      // Postgres said new, Redis said duplicate — possible if a prior attempt
-      // succeeded in Redis but our Postgres row was just DELETEd via the
-      // failure-recovery path. Trust Postgres (the authoritative gate) and
-      // proceed; downstream is idempotent on `eventId`.
+    if (redisSaidDuplicate) {
+      // Postgres said new, Redis said duplicate — trust Postgres (the
+      // authoritative gate, ADR-005); downstream is idempotent on `eventId`.
       this.logger.warn(
-        `Postgres/Redis dedup disagreement (proceeding via Postgres): provider=${provider}, connectionId=${connectionId}, eventId=${correlationId}`
+        `Postgres/Redis dedup disagreement (proceeded via Postgres): provider=${provider}, connectionId=${connectionId}, eventId=${correlationId}`
       );
     }
 
-    try {
-      // Build and publish the inbound webhook event from the neutral envelope;
-      // the host owns provider / connectionId / receivedAt.
-      const event: InboundWebhookEvent = {
-        eventId: envelope.eventId,
-        provider,
-        connectionId,
-        eventType: envelope.eventType,
-        occurredAt: envelope.occurredAt,
-        receivedAt: new Date().toISOString(),
-        objectType: envelope.objectType,
-        externalId: envelope.externalId,
-        payload: envelope.payload,
-      };
-
-      const messageId = await this.eventPublisher.publishInboundWebhook(event);
+    if (routing.kind === 'routed') {
       this.logger.log(
-        `Published webhook event: provider=${provider}, connectionId=${connectionId}, eventId=${correlationId}, messageId=${messageId}`
+        `Webhook routed at ingress: provider=${provider}, connectionId=${connectionId}, eventId=${correlationId} → ${routing.job.jobType} (job ${gateResult.jobId ?? 'unknown'})`
       );
-      await this.recordDelivery({
-        ...baseDelivery,
-        signatureValid: true,
-        dedupResult: 'new',
-        status: 'published',
-        publishedMessageId: messageId,
-      });
-
-      // Step 6: Mark Redis-side dedup as done (non-fatal if it fails — the
-      // Postgres row's status='published' is the durable signal).
-      try {
-        await this.dedupService.markDone(provider, connectionId, envelope.eventId);
-      } catch (markDoneError) {
-        this.logger.warn(
-          `Failed to mark webhook as done (non-fatal): provider=${provider}, connectionId=${connectionId}, eventId=${correlationId}`,
-          markDoneError instanceof Error ? markDoneError.message : String(markDoneError)
-        );
-      }
-    } catch (error) {
-      // Publish failed — undo BOTH gates so the source-side retry can re-enter
-      // (#711). This is the load-bearing failure-recovery semantic that earlier
-      // drafts of this PR got wrong: leaving the row in place would block all
-      // future retries via the unique constraint.
-      try {
-        await this.deliveryRepository.deleteByEventKey(provider, connectionId, envelope.eventId);
-      } catch (deleteError) {
-        this.logger.error(
-          `Failed to delete webhook_deliveries row after publish failure: provider=${provider}, connectionId=${connectionId}, eventId=${correlationId}`,
-          deleteError instanceof Error ? deleteError.stack : String(deleteError)
-        );
-      }
-      try {
-        await this.dedupService.clearProcessing(provider, connectionId, envelope.eventId);
-      } catch (clearError) {
-        this.logger.error(
-          `Failed to clear Redis processing marker: provider=${provider}, connectionId=${connectionId}, eventId=${correlationId}`,
-          clearError instanceof Error ? clearError.stack : String(clearError)
-        );
-      }
-
-      this.logger.error(
-        `Failed to process webhook: provider=${provider}, connectionId=${connectionId}, eventId=${correlationId}`,
-        error instanceof Error ? error.stack : String(error)
+    } else if (routing.kind === 'unroutable') {
+      this.logger.warn(
+        `Webhook recorded as deadlettered: provider=${provider}, connectionId=${connectionId}, eventId=${correlationId}: ${routing.reason}`
       );
+    }
 
-      throw error;
+    // Post-commit: Redis mark only — best-effort, and deliberately NOT wrapped
+    // in a catch that deletes the delivery row. After the gate commit a delete
+    // would orphan the committed job and eat the source's retry (#2280).
+    try {
+      await this.dedupService.markDone(provider, connectionId, envelope.eventId);
+    } catch (markDoneError) {
+      this.logger.warn(
+        `Failed to mark webhook as done (non-fatal): provider=${provider}, connectionId=${connectionId}, eventId=${correlationId}`,
+        markDoneError instanceof Error ? markDoneError.message : String(markDoneError)
+      );
     }
   }
 }

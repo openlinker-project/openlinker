@@ -75,6 +75,7 @@ describe('OrderIngestionService', () => {
     lock = {
       acquire: jest.fn(),
       release: jest.fn(),
+      extend: jest.fn(),
     } as unknown as jest.Mocked<SyncLockPort>;
 
     identifierMapping = {
