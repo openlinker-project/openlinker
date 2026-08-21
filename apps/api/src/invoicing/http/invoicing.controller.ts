@@ -1411,7 +1411,7 @@ export class InvoicingController {
         retryable: false,
         lineCount: error.finding.lineCount,
         totalLines: error.finding.totalLines,
-        firstProductId: error.finding.firstProductId,
+        firstLineRef: error.finding.firstLineRef,
       });
     }
     if (

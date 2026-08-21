@@ -44,7 +44,7 @@ function toStawkaVat(taxRate: string, lineName: string): string {
     throw new MissingTaxRateException(lineName, {
       lineCount: 1,
       totalLines: 1,
-      firstProductId: lineName,
+      firstLineRef: lineName,
     });
   }
   return code;

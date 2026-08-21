@@ -27,11 +27,21 @@ export interface MissingTaxRateFinding {
   /** Total lines on the order, so "3 of 4" is expressible. */
   totalLines: number;
   /**
-   * The internal product id of the first line with no rate, so the remedy can
-   * name one thing to fix. An OL id, deliberately - a product NAME would be
-   * shop-authored free text on an operator screen that also renders to logs.
+   * How the first rate-less line is referred to, so the remedy can name one
+   * thing to fix.
+   *
+   * WHICH reference depends on the caller, and the field is named for that
+   * rather than pretending otherwise. The auto-issue gate reads order items and
+   * passes an internal product id. The write-path guard reads an
+   * `IssueInvoiceCommand`, whose lines carry only a name, so it passes the line
+   * label - which is shop-authored free text and therefore never used as a key,
+   * only rendered.
+   *
+   * It was called `firstProductId` until a curl pass showed it returning
+   * "Printed apron" on the write path. A field name that is true on one caller
+   * and false on the other is worse than a vaguer one.
    */
-  firstProductId: string | null;
+  firstLineRef: string | null;
 }
 
 /**
@@ -55,7 +65,7 @@ export function findMissingTaxRate(
   return {
     lineCount: missing.length,
     totalLines: lines.length,
-    firstProductId: missing[0]?.productId ?? null,
+    firstLineRef: missing[0]?.productId ?? null,
   };
 }
 
@@ -65,5 +75,5 @@ export function findMissingTaxRate(
  */
 export function describeMissingTaxRate(finding: MissingTaxRateFinding): string {
   const scope = `${String(finding.lineCount)} of ${String(finding.totalLines)} lines carry no tax rate`;
-  return finding.firstProductId ? `${scope}; first: ${finding.firstProductId}` : scope;
+  return finding.firstLineRef ? `${scope}; first: ${finding.firstLineRef}` : scope;
 }

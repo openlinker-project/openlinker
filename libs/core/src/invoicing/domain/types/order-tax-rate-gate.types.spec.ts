@@ -27,7 +27,7 @@ describe('findMissingTaxRate', () => {
         { productId: 'ol_product_a', taxRate: '23' },
         { productId: 'ol_product_b' },
       ])
-    ).toEqual({ lineCount: 1, totalLines: 2, firstProductId: 'ol_product_b' });
+    ).toEqual({ lineCount: 1, totalLines: 2, firstLineRef: 'ol_product_b' });
   });
 
   it('should report a line whose rate is blank', () => {
@@ -46,7 +46,7 @@ describe('findMissingTaxRate', () => {
       { productId: 'ol_product_a' },
       { productId: 'ol_product_b' },
     ]);
-    expect(finding?.firstProductId).toBe('ol_product_a');
+    expect(finding?.firstLineRef).toBe('ol_product_a');
     expect(finding?.lineCount).toBe(2);
   });
 });
@@ -54,12 +54,12 @@ describe('findMissingTaxRate', () => {
 describe('describeMissingTaxRate', () => {
   it('should state the scope and name the first product', () => {
     expect(
-      describeMissingTaxRate({ lineCount: 1, totalLines: 3, firstProductId: 'ol_product_a' })
+      describeMissingTaxRate({ lineCount: 1, totalLines: 3, firstLineRef: 'ol_product_a' })
     ).toBe('1 of 3 lines carry no tax rate; first: ol_product_a');
   });
 
   it('should omit the product clause when there is no id to name', () => {
-    expect(describeMissingTaxRate({ lineCount: 2, totalLines: 2, firstProductId: null })).toBe(
+    expect(describeMissingTaxRate({ lineCount: 2, totalLines: 2, firstLineRef: null })).toBe(
       '2 of 2 lines carry no tax rate'
     );
   });
