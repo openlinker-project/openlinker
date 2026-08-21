@@ -186,4 +186,32 @@ describe('AnalyticsNeedsAttention', () => {
       '/listings/bulk-create/wizard?productIds=p1&variantIds=v1%2Cv2',
     );
   });
+
+  it('should NOT pin a connectionId on the deep link when the sample is uniform but partial (#2120 re-review, IMPORTANT)', async () => {
+    // 20-item sample all missing from conn-1, but totalCount (340) says
+    // there are 320 more unsampled variants — same shape as the headline's
+    // own sample-vs-total guard, which must also gate the deep link.
+    const coverageGaps = Array.from({ length: 20 }, (_, i) => ({
+      variantId: `v${i}`,
+      productId: 'p1',
+      listedOnConnectionIds: ['conn-2'],
+      missingFromConnectionIds: ['conn-1'],
+    }));
+    const apiClient = createMockApiClient({
+      analyticsTrust: {
+        getNeedsAttention: vi.fn().mockResolvedValue(
+          summary({ coverageGaps, coverageGapsTotalCount: 340 }),
+        ),
+      },
+      connections: { list: vi.fn().mockResolvedValue([connection()]) },
+    });
+
+    renderWithProviders(<AnalyticsNeedsAttention />, { apiClient });
+
+    expect(
+      await screen.findByText('340 variants with a listing gap on at least one channel'),
+    ).toBeInTheDocument();
+    const href = screen.getByRole('link', { name: 'Publish now' }).getAttribute('href');
+    expect(href).not.toContain('connectionId');
+  });
 });

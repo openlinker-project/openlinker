@@ -104,17 +104,15 @@ export function AnalyticsNeedsAttention(): ReactElement {
     const isPartialSample = summary.coverageGaps.length < summary.coverageGapsTotalCount;
     const productIds = uniqueValues(summary.coverageGaps.map((item) => item.productId));
     const variantIds = uniqueValues(summary.coverageGaps.map((item) => item.variantId));
-    const missingConnectionIds = uniqueValues(
-      summary.coverageGaps
-        .filter((item) => item.missingFromConnectionIds.length === 1)
-        .map((item) => item.missingFromConnectionIds[0])
-    );
     const params = new URLSearchParams({
       productIds: productIds.join(','),
       variantIds: variantIds.join(','),
     });
-    if (missingConnectionIds.length === 1) {
-      params.set('connectionId', missingConnectionIds[0]);
+    // Reuse the headline's own connection resolution rather than re-deriving
+    // it here — a separate, weaker predicate could pin a `connectionId` the
+    // headline copy declined to name (#2120 re-review, IMPORTANT).
+    if (copy.resolvedConnectionId) {
+      params.set('connectionId', copy.resolvedConnectionId);
     }
 
     rows.push({
@@ -161,7 +159,14 @@ export function AnalyticsNeedsAttention(): ReactElement {
     });
   }
 
-  const checkedCount = 3;
+  // Derived from the categories actually evaluated above, rather than a
+  // hardcoded literal, so a future fourth category can't drift out of sync
+  // with the all-clear line's own claim (#2120 re-review, SUGGESTION 3).
+  const checkedCount = [
+    summary.coverageGapsTotalCount,
+    summary.stockAtRiskTotalCount,
+    summary.failedSyncValue.count,
+  ].length;
 
   return (
     <article className="panel panel--dense">
