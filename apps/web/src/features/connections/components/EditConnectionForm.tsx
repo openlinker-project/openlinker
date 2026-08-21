@@ -725,6 +725,7 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
 
       {/* #1810 — generic, platform-neutral: rendered for every connection regardless of platformType. */}
       <RateLimitSection
+        connectionId={connection.id}
         form={form}
         configIsParseable={configIsParseable}
         syncRateLimitToJson={syncRateLimitToJson}
