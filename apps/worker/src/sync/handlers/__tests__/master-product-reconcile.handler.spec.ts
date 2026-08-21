@@ -21,6 +21,7 @@ describe('MasterProductReconcileHandler', () => {
   let syncLock: jest.Mocked<SyncLockPort>;
 
   const CURSOR_KEY = 'master.product-reconcile.sweep:connection:conn-1';
+  const COMPLETED_AT_KEY = 'master.product-reconcile.completedAt:connection:conn-1';
   const LOCK_KEY = 'master:product-reconcile:sweep:conn-1';
 
   beforeEach(() => {
@@ -213,6 +214,41 @@ describe('MasterProductReconcileHandler', () => {
         'conn-1',
         expect.objectContaining({ offset: 100 })
       );
+    });
+
+    it('should stamp the completion timestamp when the cycle completes (#2258)', async () => {
+      mappings(3);
+
+      await handler.execute(createJob());
+
+      const stamp = cursors.advanceCursor.mock.calls.find((call) => call[1] === COMPLETED_AT_KEY);
+      expect(stamp).toBeDefined();
+      expect(new Date(stamp?.[2] as string).toISOString()).toBe(stamp?.[2]);
+      // Ordering: the sweep-cursor clear comes first — a crash between the two
+      // must leave a completed-but-unstamped cycle, never a stamped-but-open one.
+      const keys = cursors.advanceCursor.mock.calls.map((call) => call[1]);
+      expect(keys.indexOf(CURSOR_KEY)).toBeLessThan(keys.indexOf(COMPLETED_AT_KEY));
+    });
+
+    it('should NOT stamp completion when the cycle merely resumes', async () => {
+      mappings(500);
+
+      await handler.execute(createJob({ pageLimit: 10 }));
+
+      expect(
+        cursors.advanceCursor.mock.calls.find((call) => call[1] === COMPLETED_AT_KEY)
+      ).toBeUndefined();
+    });
+
+    it('should NOT stamp completion when an enqueue failed and the page will retry', async () => {
+      mappings(3);
+      jobEnqueue.enqueueJob.mockRejectedValueOnce(new Error('stream down'));
+
+      await handler.execute(createJob());
+
+      expect(
+        cursors.advanceCursor.mock.calls.find((call) => call[1] === COMPLETED_AT_KEY)
+      ).toBeUndefined();
     });
 
     it('should release the lock when enumeration throws', async () => {

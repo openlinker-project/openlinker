@@ -65,6 +65,7 @@ import {
   resolveSweepBudget,
   resolveSweepLockTtlMs,
   runBoundedSweep,
+  sweepCompletedAtCursorKey,
   sweepCursorKey,
   sweepLockKey,
   readMappingPage,
@@ -131,6 +132,22 @@ export class MasterProductReconcileHandler implements SyncJobHandler {
         cursorKey,
         result.nextCursor === null ? '' : formatSweepCursor(result.nextCursor)
       );
+
+      if (result.completed) {
+        // The operator-facing "deletion last reconciled" fact (#2258, ADR-048
+        // decision 2). Deliberately AFTER the sweep-cursor clear: a crash
+        // between the two leaves a completed-but-unstamped cycle, which is
+        // acceptable for a display fact — moving the write before the clear
+        // would instead stamp a completion whose cursor write may then fail,
+        // the worse direction. `advanceCursor` is non-monotonic; the per-
+        // connection sweep lock makes overlapping completions effectively
+        // unreachable, and last-writer-wins is acceptable for this fact.
+        await this.cursors.advanceCursor(
+          job.connectionId,
+          sweepCompletedAtCursorKey('product-reconcile', job.connectionId),
+          new Date().toISOString()
+        );
+      }
 
       if (result.failed > 0) {
         this.logger.error(

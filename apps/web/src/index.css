@@ -3942,6 +3942,14 @@ a.delivery-rider-banner__button:focus-visible {
   border-radius: 0.375rem;
 }
 
+/* ── Catalog trust panel (#2258) ── */
+.catalog-trust-panel__note {
+  margin: var(--space-2) 0 0;
+  font-size: 0.75rem;
+  line-height: 1.35;
+  color: var(--text-muted);
+}
+
 /* Button group */
 .button-group {
   display: flex;

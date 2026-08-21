@@ -78,6 +78,7 @@ describe('AutoIssueTriggerService', () => {
       requeueDeadByIdempotencyKey: jest.fn().mockResolvedValue(false),
       findLastSucceededJob: jest.fn().mockResolvedValue(null),
       findEnabledPollTask: jest.fn().mockReturnValue(null),
+      findEnabledTaskByJobType: jest.fn().mockReturnValue(null),
     };
     // #2100: the gate reads the order's own invoice projection before reporting a
     // block. Default = no document, so the block paths are reachable; the

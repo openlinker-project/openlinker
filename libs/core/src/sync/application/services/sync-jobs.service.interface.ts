@@ -65,4 +65,23 @@ export interface ISyncJobsService {
    * injected directly by a sibling context.
    */
   findEnabledPollTask(platformType: string, jobType: JobType): SchedulerTaskConfig | null;
+
+  /**
+   * Find the registered scheduler task for a job type, but only when it is
+   * currently *enabled* — the same runtime enablement semantics as
+   * `findEnabledPollTask`, without the `platformType` filter (#2258).
+   *
+   * Intended for CAPABILITY-scoped tasks (registered with a `connectionFilter`
+   * and no `platformType` — e.g. the master delta/reconcile sweeps), which
+   * `findEnabledPollTask` can never match. The registry permits multiple
+   * tasks per job type; this method returns the FIRST enabled match, so
+   * callers looking up a per-platform job type should use
+   * `findEnabledPollTask` instead.
+   *
+   * Process caveat: the scheduler-task registry is populated only where
+   * `SchedulerService` runs (the API process). In a process without a
+   * scheduler — the worker — the registry is empty and this method silently
+   * returns null; do not read "null" as "disabled" outside the API process.
+   */
+  findEnabledTaskByJobType(jobType: JobType): SchedulerTaskConfig | null;
 }
