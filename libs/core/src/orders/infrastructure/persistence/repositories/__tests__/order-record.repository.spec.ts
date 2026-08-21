@@ -21,6 +21,7 @@ import { OrderRecordNotFoundException } from '../../../../domain/exceptions/orde
 describe('OrderRecordRepository', () => {
   let repository: OrderRecordRepository;
   let ormRepository: jest.Mocked<Repository<OrderRecordOrmEntity>>;
+  let transactionalManager: { save: jest.Mock<Promise<unknown>, unknown[]>; delete: jest.Mock };
 
   beforeEach(async () => {
     const qb = {
@@ -31,6 +32,11 @@ describe('OrderRecordRepository', () => {
       getManyAndCount: jest.fn().mockResolvedValue([[], 0]),
     };
 
+    transactionalManager = {
+      save: jest.fn(),
+      delete: jest.fn(),
+    };
+
     const mockOrmRepository = {
       findOne: jest.fn(),
       find: jest.fn(),
@@ -38,6 +44,13 @@ describe('OrderRecordRepository', () => {
       update: jest.fn(),
       query: jest.fn(),
       createQueryBuilder: jest.fn().mockReturnValue(qb),
+      manager: {
+        connection: {
+          transaction: jest.fn(async (cb: (manager: unknown) => Promise<unknown>) =>
+            cb(transactionalManager)
+          ),
+        },
+      },
     } as unknown as jest.Mocked<Repository<OrderRecordOrmEntity>> & { _qb: typeof qb };
 
     (mockOrmRepository as unknown as { _qb: typeof qb })._qb = qb;
@@ -173,6 +186,79 @@ describe('OrderRecordRepository', () => {
       const result = await repository.findByIds(['missing-1', 'missing-2']);
 
       expect(result).toEqual([]);
+    });
+  });
+
+  describe('findEarliestPlacedAtByConnection (#2083)', () => {
+    it('should return an empty Map without querying when given an empty array', async () => {
+      const result = await repository.findEarliestPlacedAtByConnection([]);
+
+      expect(result).toEqual(new Map());
+      expect(ormRepository.createQueryBuilder).not.toHaveBeenCalled();
+    });
+
+    it('should return one Map entry per connection with the correct MIN', async () => {
+      const earliestA = new Date('2026-01-01T00:00:00.000Z');
+      const earliestB = new Date('2026-02-15T00:00:00.000Z');
+      const where = jest.fn().mockReturnThis();
+      const groupBy = jest.fn().mockReturnThis();
+      const addSelect = jest.fn().mockReturnThis();
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        select: jest.fn().mockReturnThis(),
+        addSelect,
+        where,
+        groupBy,
+        getRawMany: jest.fn().mockResolvedValue([
+          { source_connection_id: 'conn-a', earliest_at: earliestA },
+          { source_connection_id: 'conn-b', earliest_at: earliestB },
+        ]),
+      });
+
+      const result = await repository.findEarliestPlacedAtByConnection(['conn-a', 'conn-b']);
+
+      expect(result.get('conn-a')).toEqual(earliestA);
+      expect(result.get('conn-b')).toEqual(earliestB);
+      expect(where).toHaveBeenCalledWith('rec.sourceConnectionId IN (:...connectionIds)', {
+        connectionIds: ['conn-a', 'conn-b'],
+      });
+      expect(groupBy).toHaveBeenCalledWith('rec.sourceConnectionId');
+      expect(addSelect).toHaveBeenCalledWith(
+        expect.stringContaining('COALESCE(rec."placedAt", rec."createdAt")'),
+        'earliest_at'
+      );
+    });
+
+    it('should omit a connection with zero matching rows from the returned Map', async () => {
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        select: jest.fn().mockReturnThis(),
+        addSelect: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        groupBy: jest.fn().mockReturnThis(),
+        getRawMany: jest.fn().mockResolvedValue([]),
+      });
+
+      const result = await repository.findEarliestPlacedAtByConnection(['conn-with-no-orders']);
+
+      expect(result.has('conn-with-no-orders')).toBe(false);
+      expect(result.size).toBe(0);
+    });
+
+    it('should not filter by recordStatus — every row (source_deleted, awaiting_mapping, failed, cancelled) counts toward the earliest date', async () => {
+      const andWhere = jest.fn().mockReturnThis();
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        select: jest.fn().mockReturnThis(),
+        addSelect: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere,
+        groupBy: jest.fn().mockReturnThis(),
+        getRawMany: jest.fn().mockResolvedValue([]),
+      });
+
+      await repository.findEarliestPlacedAtByConnection(['conn-a']);
+
+      // This is a coverage/freshness fact, not a health or revenue figure —
+      // no NOT_MAPPING_OR_DELETED-style gate applies (#2083 review finding).
+      expect(andWhere).not.toHaveBeenCalled();
     });
   });
 
@@ -392,6 +478,92 @@ describe('OrderRecordRepository', () => {
 
       expect(result.syncStatus).toEqual([]);
       expect(result.syncAttempts).toEqual([]);
+    });
+  });
+
+  describe('upsertWithLineItems (#1985)', () => {
+    it('saves the order record and inserts the derived line items in one transaction', async () => {
+      const domainEntity = createDomainEntity();
+      const savedEntity = createOrmEntity();
+      transactionalManager.save.mockResolvedValue(savedEntity);
+      transactionalManager.delete.mockResolvedValue(undefined);
+
+      const result = await repository.upsertWithLineItems(domainEntity, [
+        {
+          lineNumber: 0,
+          productId: 'ol_product_1',
+          variantId: 'ol_variant_1',
+          quantity: 2,
+          unitPrice: 10,
+          sourceConnectionId: 'conn-123',
+          placedAt: null,
+        },
+      ]);
+
+      expect(result.internalOrderId).toBe('order-123');
+      // save() is called twice inside the transaction: once for the order
+      // record, once for the line-item batch — both on the SAME manager.
+      expect(transactionalManager.save).toHaveBeenCalledTimes(2);
+      expect(transactionalManager.delete).toHaveBeenCalledWith(expect.anything(), {
+        orderRecordId: 'order-123',
+      });
+    });
+
+    it('deletes the prior line-item set even when the new set is empty (order re-ingested with no items)', async () => {
+      const domainEntity = createDomainEntity();
+      const savedEntity = createOrmEntity();
+      transactionalManager.save.mockResolvedValue(savedEntity);
+      transactionalManager.delete.mockResolvedValue(undefined);
+
+      await repository.upsertWithLineItems(domainEntity, []);
+
+      expect(transactionalManager.delete).toHaveBeenCalledWith(expect.anything(), {
+        orderRecordId: 'order-123',
+      });
+      // Only the order-record save runs — no line-item save call for an empty set.
+      expect(transactionalManager.save).toHaveBeenCalledTimes(1);
+    });
+
+    it('propagates a failure from either write so the caller sees the transaction as failed', async () => {
+      const domainEntity = createDomainEntity();
+      transactionalManager.save.mockRejectedValue(new Error('db error'));
+
+      await expect(repository.upsertWithLineItems(domainEntity, [])).rejects.toThrow('db error');
+    });
+
+    it('includes the four analytics scalars (#1985 review, finding 1) in the entity passed to save()', async () => {
+      // upsertWithLineItems() is the sole writer of these four columns — see
+      // the `toOrm` describe block below, which asserts the sibling upsert()
+      // path (persistIncomingSnapshot) does NOT touch them.
+      const domainEntity = new OrderRecord(
+        'order-123',
+        'customer-456',
+        'source-connection-123',
+        'event-456',
+        { id: 'order-123', orderNumber: 'ORD-001', status: 'pending' },
+        [],
+        'ready',
+        new Date('2025-01-01T10:00:00Z'),
+        new Date('2025-01-01T10:00:00Z'),
+        [],
+        null,
+        null,
+        null,
+        new Date('2025-01-01T09:00:00Z'),
+        'PLN',
+        'inclusive',
+        199.99
+      );
+      transactionalManager.save.mockResolvedValue(createOrmEntity());
+      transactionalManager.delete.mockResolvedValue(undefined);
+
+      await repository.upsertWithLineItems(domainEntity, []);
+
+      const callArg = transactionalManager.save.mock.calls[0][1] as OrderRecordOrmEntity;
+      expect(callArg.placedAt).toEqual(new Date('2025-01-01T09:00:00Z'));
+      expect(callArg.currency).toBe('PLN');
+      expect(callArg.taxTreatment).toBe('inclusive');
+      expect(callArg.totalAmount).toBe(199.99);
     });
   });
 
@@ -810,6 +982,10 @@ describe('OrderRecordRepository', () => {
           null,
           null,
           null,
+          null,
+          null,
+          null,
+          null,
           'EUR',
           425,
           'e1f0c0de-0000-4000-8000-000000000001',
@@ -828,6 +1004,58 @@ describe('OrderRecordRepository', () => {
         expect(callArg.fxRule).toBeUndefined();
         expect(callArg.fxStampedAt).toBeUndefined();
         expect(callArg.fxIntendedCurrency).toBeUndefined();
+      });
+
+      it('should NOT include the four analytics scalars (#1985 review, finding 1) in the entity passed to save() via upsert()', async () => {
+        // upsert() is reached by persistIncomingSnapshot, whose OrderRecord
+        // never carries a resolved analytics figure. Mapping these columns
+        // here would NULL out an already-`ready` order's figures on every
+        // re-poll (transient), and leave them permanently NULL once item
+        // resolution starts failing (permanent) — upsertWithLineItems() is
+        // their sole writer instead.
+        ormRepository.save.mockResolvedValue(createOrmEntity());
+
+        await repository.upsert(createDomainEntity());
+
+        const callArg = ormRepository.save.mock.calls[0][0] as OrderRecordOrmEntity;
+        expect(callArg.placedAt).toBeUndefined();
+        expect(callArg.currency).toBeUndefined();
+        expect(callArg.taxTreatment).toBeUndefined();
+        expect(callArg.totalAmount).toBeUndefined();
+      });
+
+      it('should NOT write the analytics scalars via upsert() even when the domain record carries them', async () => {
+        // Guards against a future caller reintroducing the clobber by
+        // threading an already-resolved OrderRecord back through
+        // persistIncomingSnapshot's upsert() path.
+        const withScalars = new OrderRecord(
+          'order-123',
+          null,
+          'conn-123',
+          null,
+          {},
+          [],
+          'awaiting_mapping',
+          new Date('2026-08-01T10:00:00Z'),
+          new Date('2026-08-01T10:00:00Z'),
+          [],
+          null,
+          null,
+          null,
+          new Date('2026-08-01T09:00:00Z'),
+          'EUR',
+          'exclusive',
+          425
+        );
+        ormRepository.save.mockResolvedValue(createOrmEntity());
+
+        await repository.upsert(withScalars);
+
+        const callArg = ormRepository.save.mock.calls[0][0] as OrderRecordOrmEntity;
+        expect(callArg.placedAt).toBeUndefined();
+        expect(callArg.currency).toBeUndefined();
+        expect(callArg.taxTreatment).toBeUndefined();
+        expect(callArg.totalAmount).toBeUndefined();
       });
     });
 

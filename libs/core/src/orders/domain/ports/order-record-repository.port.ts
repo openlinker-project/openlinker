@@ -8,6 +8,7 @@
  * @module libs/core/src/orders/domain/ports
  */
 import type { OrderRecord } from '../entities/order-record.entity';
+import type { OrderLineItemDraft } from '../order-analytics-projection';
 import type {
   OrderRecordFilters,
   OrderRecordPagination,
@@ -44,6 +45,28 @@ export interface OrderRecordRepositoryPort {
   findByIds(internalOrderIds: string[]): Promise<OrderRecord[]>;
 
   /**
+   * Batch earliest-order-date lookup by source connection (#2083).
+   *
+   * `MIN(COALESCE(placedAt, createdAt))` per `sourceConnectionId`, in one
+   * `GROUP BY` query — the real batch analytics-trust's coverage-window
+   * read needs, as opposed to one query per connection. A connection with
+   * zero matching rows is simply absent from the returned Map (mirrors
+   * {@link findByIds}); callers treat a missing key as "no orders yet",
+   * distinct from a present key whose value is merely old.
+   *
+   * Deliberately unfiltered by `recordStatus`: every row this connection has
+   * ever ingested — including `source_deleted` / `awaiting_mapping` /
+   * `failed` rows — reflects a real order that was placed, so it counts
+   * toward "how far back this connection's data goes". This is a
+   * coverage/freshness fact, not a revenue or health figure — unlike
+   * {@link getFailedSyncValueSummary}'s `NOT_MAPPING_OR_DELETED` gate, which
+   * exists to keep administrative buckets out of a *value* sum, no such gate
+   * applies here. Mirrors the already-documented decision to also include
+   * cancelled orders.
+   */
+  findEarliestPlacedAtByConnection(connectionIds: string[]): Promise<Map<string, Date>>;
+
+  /**
    * Upsert order record (create or update)
    * Uses internalOrderId as the primary key.
    *
@@ -60,6 +83,19 @@ export interface OrderRecordRepositoryPort {
    * matters.
    */
   upsert(orderRecord: OrderRecord): Promise<OrderRecord>;
+
+  /**
+   * Upsert the order record AND its `order_line_items` rows in one
+   * transaction (#1985) — the `'ready'`-path write. `lineItems` replaces the
+   * order's entire prior line-item set (delete-then-reinsert), so re-ingesting
+   * an order with a changed item list never leaves stale rows behind. Both
+   * writes commit or roll back together; a failure on either side leaves
+   * `order_records` and `order_line_items` consistent with each other.
+   */
+  upsertWithLineItems(
+    orderRecord: OrderRecord,
+    lineItems: OrderLineItemDraft[]
+  ): Promise<OrderRecord>;
 
   /**
    * Update sync status for a destination connection.

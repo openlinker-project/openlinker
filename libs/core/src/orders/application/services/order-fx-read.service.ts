@@ -13,7 +13,7 @@
  * @implements {IOrderFxReadService}
  */
 import { Inject, Injectable } from '@nestjs/common';
-import { OrderRecordRepositoryPort } from '../../domain/ports/order-record-repository.port';
+import type { OrderRecordRepositoryPort } from '../../domain/ports/order-record-repository.port';
 import type { StampedReportingCurrencyCount } from '../../domain/types/order-fx-read.types';
 import { ORDER_RECORD_REPOSITORY_TOKEN } from '../../orders.tokens';
 import type { IOrderFxReadService } from '../interfaces/order-fx-read.service.interface';

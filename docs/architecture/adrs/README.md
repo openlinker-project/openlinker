@@ -128,6 +128,7 @@ One pointer per section, identical format every time.
 | [ADR-036](./036-cross-context-read-model-joins.md) | Cross-context read-model joins by table name (server-side sort/filter across contexts) | Accepted | 2026-07-17 |
 | [ADR-037](./037-destination-taxonomy-read-model.md) | Destination taxonomy as a synced read model in `listings` (retires the platform-named Allegro category cache) | Proposed | 2026-07-30 |
 | [ADR-038](./038-per-connection-outbound-rate-limiting.md) | Per-connection outbound rate limiting via a shared transport + ambient priority context | Proposed | 2026-07-30 |
+| [ADR-039](./039-order-analytics-read-model-persistence-strategy.md) | Order analytics read model — denormalized columns + line-item table, no materialized view | Proposed | 2026-08-07 |
 | [ADR-040](./040-order-time-fx-stamping-against-a-system-reporting-currency.md) | Order-time FX stamping against a system-wide reporting currency | Proposed | 2026-08-13 |
 | [ADR-041](./041-sales-document-routing-policy.md) | Sales-document routing policy - which document type and which connection an order gets | Proposed | 2026-08-13 |
 | [ADR-042](./042-fiscalization-capability.md) | Fiscalization as a capability distinct from invoicing | Proposed | 2026-08-13 |

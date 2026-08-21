@@ -65,13 +65,13 @@ function shiftIsoDay(isoDay: string, days: number): string {
  * HTTP 200 and no signal of any kind, so a clock skew or a bad source
  * timestamp would otherwise be stamped as fact.
  *
- * @param placedAt when the order was placed, or `undefined`
+ * @param placedAt when the order was placed, or `null`/`undefined`
  * @param rule which rule to apply
  * @param now injected only so specs can pin the clamp; defaults to the wall clock
  * @returns ISO `YYYY-MM-DD`, or `null` when no rate date can be derived
  */
 export function resolveRateDate(
-  placedAt: Date | undefined,
+  placedAt: Date | null | undefined,
   rule: FxRateRule,
   now: Date = new Date()
 ): string | null {

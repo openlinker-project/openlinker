@@ -109,6 +109,7 @@ describe('SchedulerService', () => {
         'OL_REGULATORY_RECONCILE_CRON',
         'OL_STALE_OFFER_PAUSE_CRON',
         'OL_TAXONOMY_SYNC_CRON',
+        'OL_ORDER_FX_STAMP_SWEEP_CRON',
       ];
       if (cronKeys.includes(key)) return defaultValue ?? '*/15 * * * *';
       return 'true';
@@ -449,6 +450,7 @@ describe('SchedulerService', () => {
         'OL_REGULATORY_RECONCILE_CRON',
         'OL_STALE_OFFER_PAUSE_CRON',
         'OL_TAXONOMY_SYNC_CRON',
+        'OL_ORDER_FX_STAMP_SWEEP_CRON',
       ];
       if (cronKeys.includes(key)) return defaultValue ?? '*/15 * * * *';
       return 'true';
@@ -541,6 +543,7 @@ describe('SchedulerService', () => {
         'OL_REGULATORY_RECONCILE_CRON',
         'OL_STALE_OFFER_PAUSE_CRON',
         'OL_TAXONOMY_SYNC_CRON',
+        'OL_ORDER_FX_STAMP_SWEEP_CRON',
       ];
       if (cronKeys.includes(key)) return defaultValue ?? '*/15 * * * *';
       return 'true';
@@ -630,6 +633,7 @@ describe('SchedulerService', () => {
         'OL_REGULATORY_RECONCILE_CRON',
         'OL_STALE_OFFER_PAUSE_CRON',
         'OL_TAXONOMY_SYNC_CRON',
+        'OL_ORDER_FX_STAMP_SWEEP_CRON',
       ];
       if (cronKeys.includes(key)) return defaultValue ?? '*/15 * * * *';
       return 'true';

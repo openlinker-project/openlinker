@@ -10,12 +10,14 @@
  */
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import type { SelectQueryBuilder } from 'typeorm';
+import type { DataSource, EntityManager, SelectQueryBuilder } from 'typeorm';
 import { In, IsNull, LessThan, MoreThanOrEqual, Repository } from 'typeorm';
 import type { OrderSyncStatusJson, SyncAttemptJson } from '../entities/order-record.orm-entity';
 import { OrderRecordOrmEntity } from '../entities/order-record.orm-entity';
+import { OrderLineItemOrmEntity } from '../entities/order-line-item.orm-entity';
 import type { OrderRecordRepositoryPort } from '../../../domain/ports/order-record-repository.port';
 import { OrderRecord } from '../../../domain/entities/order-record.entity';
+import type { OrderLineItemDraft } from '../../../domain/order-analytics-projection';
 import type { OrderSyncStatus, SyncAttempt } from '../../../domain/types/order-sync.types';
 import { SYNC_ATTEMPTS_PER_DESTINATION_CAP } from '../../../domain/types/order-sync.types';
 import { OrderRecordNotFoundException } from '../../../domain/exceptions/order-record-not-found.exception';
@@ -40,6 +42,7 @@ import {
   isSalesDocumentGateBlockReason,
   isSalesDocumentUnresolvedReason,
 } from '@openlinker/core/sales-documents';
+import type { PriceTaxTreatment } from '../../../domain/types/order.types';
 import type { OrderFxIntent, OrderFxStamp } from '../../../domain/types/order-fx.types';
 import type { StampedReportingCurrencyCount } from '../../../domain/types/order-fx-read.types';
 
@@ -49,6 +52,16 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     @InjectRepository(OrderRecordOrmEntity)
     private readonly repository: Repository<OrderRecordOrmEntity>
   ) {}
+
+  /**
+   * DataSource from the injected repository's connection — the established
+   * workaround for injecting DataSource in core library modules (mirrors
+   * `SyncJobRepository.dataSource`), used so `upsertWithLineItems` can run
+   * both writes in one transaction without a second NestJS-injected repository.
+   */
+  private get dataSource(): DataSource {
+    return this.repository.manager.connection;
+  }
 
   async findById(internalOrderId: string): Promise<OrderRecord | null> {
     const entity = await this.repository.findOne({
@@ -74,6 +87,29 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       where: { internalOrderId: In(internalOrderIds) },
     });
     return entities.map((e) => this.toDomain(e));
+  }
+
+  /**
+   * Batch earliest-order-date lookup by source connection (#2083). One
+   * `GROUP BY` aggregate query, not a per-connection fan-out — mirrors
+   * `findByIds`'s "absent id = no match" convention for connections with
+   * zero rows. Deliberately unfiltered by `recordStatus` — see the port's
+   * JSDoc for why no `NOT_MAPPING_OR_DELETED`-style gate applies here.
+   */
+  async findEarliestPlacedAtByConnection(connectionIds: string[]): Promise<Map<string, Date>> {
+    if (connectionIds.length === 0) {
+      return new Map();
+    }
+
+    const rows = await this.repository
+      .createQueryBuilder('rec')
+      .select('rec.sourceConnectionId', 'source_connection_id')
+      .addSelect(`MIN(COALESCE(rec."placedAt", rec."createdAt"))`, 'earliest_at')
+      .where('rec.sourceConnectionId IN (:...connectionIds)', { connectionIds })
+      .groupBy('rec.sourceConnectionId')
+      .getRawMany<{ source_connection_id: string; earliest_at: Date }>();
+
+    return new Map(rows.map((row) => [row.source_connection_id, row.earliest_at]));
   }
 
   async findMany(
@@ -993,18 +1029,64 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    * Full-row upsert of the ingestion-owned columns, keyed on the primary key.
    *
    * `syncStatus` / `syncAttempts` (#2140), `fulfillmentState` (#2101),
-   * `cancelledAt` (#1984), the three `salesDocument*` columns (#2100) and the
-   * six FX snapshot columns (#2124) are deliberately outside the write set -
-   * see the {@link toOrm} comments. A consequence is that the returned record
-   * reports all of them as empty (`[]` / `null`) regardless of what the row
-   * holds, because none of those columns was part of the statement; callers
-   * needing their true value re-read via {@link findById}.
+   * `cancelledAt` (#1984), the three `salesDocument*` columns (#2100), the
+   * six FX snapshot columns (#2124), and the four analytics scalars (#1985 —
+   * `placedAt` / `currency` / `taxTreatment` / `totalAmount`) are deliberately
+   * outside the write set - see the {@link toOrm} comments. A consequence is
+   * that the returned record reports all of them as empty (`[]` / `null`)
+   * regardless of what the row holds, because none of those columns was part
+   * of the statement; callers needing their true value re-read via
+   * {@link findById}.
+   *
+   * This is the sole writer reached by `persistIncomingSnapshot`, which never
+   * has a resolved analytics figure to offer (its `OrderRecord` carries the
+   * four scalars at their constructor `null` default) - mapping them here
+   * would NULL out whatever `upsertWithLineItems` below previously wrote on a
+   * re-poll of an already-`ready` order, and leave them permanently NULL if
+   * item resolution then fails, orphaning any `order_line_items` rows that
+   * survive the narrower `markItemResolutionFailure` update.
    */
   async upsert(orderRecord: OrderRecord): Promise<OrderRecord> {
     const entity = this.toOrm(orderRecord);
     // TypeORM save() performs upsert on primary key (internalOrderId)
     const saved = await this.repository.save(entity);
     return this.toDomain(saved);
+  }
+
+  /**
+   * Upsert the order record AND replace its `order_line_items` rows in one
+   * transaction (#1985). Delete-then-reinsert per order — simpler and
+   * equally correct at this table's size than a diffing upsert, and avoids
+   * ever leaving a stale row from a shrunk item list. Both writes go through
+   * the same transactional `EntityManager`, so a failure on either side rolls
+   * back both (no order_records/order_line_items desync).
+   *
+   * The sole writer of the four analytics scalars (#1985) - stamped onto the
+   * entity here, not in the shared {@link toOrm}, because `upsert()` above
+   * reaches the same conversion from `persistIncomingSnapshot`, which has no
+   * resolved figure to offer yet (see its comment there).
+   */
+  async upsertWithLineItems(
+    orderRecord: OrderRecord,
+    lineItems: OrderLineItemDraft[]
+  ): Promise<OrderRecord> {
+    const entity = this.toOrm(orderRecord);
+    entity.placedAt = orderRecord.placedAt;
+    entity.currency = orderRecord.currency;
+    entity.taxTreatment = orderRecord.taxTreatment;
+    entity.totalAmount = orderRecord.totalAmount;
+    const savedRecord = await this.dataSource.transaction(async (manager: EntityManager) => {
+      const saved = await manager.save(OrderRecordOrmEntity, entity);
+      await manager.delete(OrderLineItemOrmEntity, { orderRecordId: orderRecord.internalOrderId });
+      if (lineItems.length > 0) {
+        await manager.save(
+          OrderLineItemOrmEntity,
+          lineItems.map((item) => this.lineItemToOrm(orderRecord.internalOrderId, item))
+        );
+      }
+      return saved;
+    });
+    return this.toDomain(savedRecord);
   }
 
   /**
@@ -1135,6 +1217,12 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       entity.dispatchByAt,
       (entity.fulfillmentState as FulfillmentRollupState | null) ?? null,
       entity.mappingFailureReason ?? null,
+      entity.placedAt ?? null,
+      entity.currency ?? null,
+      (entity.taxTreatment as PriceTaxTreatment | null) ?? null,
+      // decimal columns arrive as strings from the pg driver — mirrors
+      // ProductRepository's existing `Number(entity.price)` handling.
+      entity.totalAmount !== null ? Number(entity.totalAmount) : null,
       entity.cancelledAt ?? null,
       // Coerced through the guard rather than cast: the column is a plain
       // `varchar`, so a value written by an older/newer release (or by hand)
@@ -1207,6 +1295,14 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    *   + `stampFxIfAbsent` (both guarded, both single-statement). Mapping them
    *   here would let a re-poll of an already-stamped order overwrite a
    *   REPORTED FINANCIAL FIGURE with the ingestion path's in-memory `null`.
+   * - The four analytics scalars (#1985) - `placedAt` / `currency` /
+   *   `taxTreatment` / `totalAmount` - are mapped by {@link upsertWithLineItems}
+   *   directly, NOT here, because this shared conversion also backs
+   *   `upsert()`, reached by `persistIncomingSnapshot` with no resolved figure
+   *   to offer. Mapping them in this shared method would NULL an
+   *   already-`ready` order's analytics figures on every re-poll, and leave
+   *   them permanently NULL once item resolution starts failing (see
+   *   `upsert()`'s own comment).
    *
    * Before adding an assignment here, ask which out-of-band writer owns that
    * column: #2101 excluded only `fulfillmentState` and left the two columns
@@ -1223,6 +1319,8 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     entity.recordStatus = orderRecord.recordStatus;
     entity.mappingFailureReason = orderRecord.mappingFailureReason;
     entity.dispatchByAt = orderRecord.dispatchByAt;
+    // The four analytics scalars (#1985) are deliberately NOT mapped here -
+    // see the class comment above and `upsertWithLineItems`, their sole writer.
     // The six FX snapshot columns (#2124) are deliberately NOT mapped here,
     // for the strongest version of the reason documented above for
     // `fulfillmentState` / `cancelledAt` / `salesDocument*`: this is a
@@ -1234,6 +1332,26 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     // guarded, both single-statement) are their only writers.
     entity.createdAt = orderRecord.createdAt;
     entity.updatedAt = orderRecord.updatedAt;
+    return entity;
+  }
+
+  /**
+   * Convert a derived {@link OrderLineItemDraft} to its ORM entity for
+   * insertion. `id`/`createdAt` are left for TypeORM to generate.
+   */
+  private lineItemToOrm(
+    orderRecordId: string,
+    item: OrderLineItemDraft
+  ): OrderLineItemOrmEntity {
+    const entity = new OrderLineItemOrmEntity();
+    entity.orderRecordId = orderRecordId;
+    entity.lineNumber = item.lineNumber;
+    entity.productId = item.productId;
+    entity.variantId = item.variantId;
+    entity.quantity = item.quantity;
+    entity.unitPrice = item.unitPrice;
+    entity.sourceConnectionId = item.sourceConnectionId;
+    entity.placedAt = item.placedAt;
     return entity;
   }
 }

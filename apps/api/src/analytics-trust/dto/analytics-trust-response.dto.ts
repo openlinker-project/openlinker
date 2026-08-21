@@ -74,6 +74,15 @@ export class ConnectionIngestionTrustResponseDto {
   @ApiProperty({
     nullable: true,
     description:
+      'Earliest ingested order date (ISO 8601) for this connection — MIN(placedAt) falling back to ' +
+      'createdAt for pre-#1985 rows. Null when the connection has zero ingested orders. The real ' +
+      'per-channel coverage-window fact; do not confuse with connectionCreatedAt.',
+  })
+  earliestOrderDate!: string | null;
+
+  @ApiProperty({
+    nullable: true,
+    description:
       'Expected interval (ms) between poll ticks, derived from the registered, currently-enabled poll ' +
       'cadence. Null when no matching, enabled scheduler task is registered for this platform.',
   })
