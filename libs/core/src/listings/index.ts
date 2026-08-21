@@ -295,6 +295,11 @@ export type {
   EanCategoryMatchStreamEvent,
   EanCategoryMatchStreamOptions,
 } from './domain/types/ean-category-match-stream.types';
+export { ResolveConcurrencySourceValues } from './domain/types/resolve-concurrency.types';
+export type {
+  ResolveConcurrencySource,
+  ResolveConcurrencyCeiling,
+} from './domain/types/resolve-concurrency.types';
 export type { CategoryParametersReader } from './domain/ports/capabilities/category-parameters-reader.capability';
 export { isCategoryParametersReader } from './domain/ports/capabilities/category-parameters-reader.capability';
 export type { CatalogProductReader } from './domain/ports/capabilities/catalog-product-reader.capability';

@@ -33,6 +33,7 @@ import {
   type CreateOfferCommand,
 } from '@openlinker/core/listings';
 import type { CachePort } from '@openlinker/shared';
+import { STREAM_CONCURRENCY } from '../../util/resolve-categories-for-batch-by-ean';
 import type { AllegroSellerDefaultsConfig } from '../../../domain/types/allegro-seller-defaults.types';
 
 /**
@@ -1064,6 +1065,91 @@ describe('AllegroOfferManagerAdapter', () => {
 
       expect(streamed).toEqual([]);
       expect(httpClient.get).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('getStreamConcurrency (#2229)', () => {
+    /**
+     * The adapter is constructed from a Connection, so the configured cap is
+     * expressed the way production expresses it rather than injected.
+     */
+    function adapterWithMaxConcurrent(maxConcurrent?: number): AllegroOfferManagerAdapter {
+      return new AllegroOfferManagerAdapter(
+        connectionId,
+        httpClient,
+        uploadHttpClient,
+        identifierMapping,
+        new Connection(
+          connectionId,
+          'allegro',
+          'Test Connection',
+          'active',
+          {
+            environment: 'sandbox',
+            ...(maxConcurrent !== undefined ? { rateLimit: { maxConcurrent } } : {}),
+          },
+          'credentials-ref',
+          new Date(),
+          new Date(),
+          undefined,
+          ['OfferManager', 'OrderSource']
+        ),
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        DEFAULT_SELLER_DEFAULTS
+      );
+    }
+
+    it('reports the adapter default when the connection configures no cap', () => {
+      expect(adapter.getStreamConcurrency()).toEqual({
+        maxInFlight: STREAM_CONCURRENCY,
+        source: 'adapter-default',
+        adapterDefault: STREAM_CONCURRENCY,
+      });
+    });
+
+    it('reports the operator cap when it is lower than the adapter default', () => {
+      expect(adapterWithMaxConcurrent(2)).toBeDefined();
+      expect(adapterWithMaxConcurrent(2).getStreamConcurrency()).toEqual({
+        maxInFlight: 2,
+        source: 'connection-config',
+        adapterDefault: STREAM_CONCURRENCY,
+      });
+    });
+
+    it('ENFORCES exactly the ceiling it reports', async () => {
+      // The whole point of #2229. A reported ceiling that drifts from the
+      // enforced one is worse than the invisible ceiling it replaced: the
+      // operator would act on a number that is not true. Asserted by observing
+      // real in-flight concurrency rather than by re-reading the same
+      // constant, so the two cannot pass by agreeing on a stale value.
+      const capped = adapterWithMaxConcurrent(2);
+      const reported = capped.getStreamConcurrency().maxInFlight;
+
+      let inFlight = 0;
+      let peak = 0;
+      httpClient.get.mockImplementation(async () => {
+        inFlight += 1;
+        peak = Math.max(peak, inFlight);
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        inFlight -= 1;
+        return { data: { products: [] }, status: 200, headers: {} };
+      });
+
+      const items = Array.from({ length: 8 }, (_, i) => ({
+        variantId: `v${i + 1}`,
+        ean: `590123412345${i}`,
+      }));
+      // Drained for its side effect: the peak concurrency the mock observed is
+      // the assertion, not the items.
+      for await (const item of capped.streamCategoriesForBatchByEan({ items })) {
+        expect(item.variantId).toBeDefined();
+      }
+
+      expect(peak).toBeLessThanOrEqual(reported);
+      expect(peak).toBe(2);
     });
   });
 

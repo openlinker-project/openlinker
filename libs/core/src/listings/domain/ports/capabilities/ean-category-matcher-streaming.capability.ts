@@ -24,6 +24,7 @@ import type {
   EanCategoryMatchStreamItem,
   EanCategoryMatchStreamOptions,
 } from '../../types/ean-category-match-stream.types';
+import type { ResolveConcurrencyCeiling } from '../../types/resolve-concurrency.types';
 
 /**
  * Manifest name an adapter advertises this sub-capability under. See
@@ -56,6 +57,29 @@ export interface EanCategoryMatcherStreaming {
     input: BatchCategoryByEanInput,
     options?: EanCategoryMatchStreamOptions,
   ): AsyncIterable<EanCategoryMatchStreamItem>;
+
+  /**
+   * How many marketplace calls this adapter keeps in flight during one streamed
+   * resolve run, and where that number came from (#2229).
+   *
+   * OPTIONAL, because an adapter may stream without pacing itself at all - and
+   * because the ceiling is a real, operator-affecting number, "I don't declare
+   * one" has to be expressible rather than fabricated by the caller.
+   *
+   * The value MUST be the ceiling the adapter actually enforces on its next
+   * `streamCategoriesForBatchByEan` call, not a nominal constant: a reported
+   * ceiling that differs from the enforced one is a worse defect than the
+   * invisible ceiling this method exists to remove. Implementations derive both
+   * from one function rather than stating the number twice.
+   *
+   * Callers MUST probe for the method (`typeof adapter.getStreamConcurrency ===
+   * 'function'`) rather than relying on `isEanCategoryMatcherStreaming`, which
+   * tests only `streamCategoriesForBatchByEan`. An out-of-tree plugin compiled
+   * against an older `libs/core` satisfies that guard and would throw here.
+   * Widening the guard was rejected for the same reason it was in ADR-046: it
+   * would silently stop recognising such a plugin for streaming at all.
+   */
+  getStreamConcurrency?(): ResolveConcurrencyCeiling;
 }
 
 export function isEanCategoryMatcherStreaming(
