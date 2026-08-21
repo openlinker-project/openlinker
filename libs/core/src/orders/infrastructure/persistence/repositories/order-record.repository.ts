@@ -383,12 +383,17 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    * `resolveUniformUnconvertedCurrency`.
    */
   async getDailyOrderAggregates(
-    filters: SalesAnalyticsFilters
+    filters: SalesAnalyticsFilters,
+    currentReportingCurrency: string
   ): Promise<DailyOrderAggregateRow[]> {
     const notCancelled = 'rec."cancelledAt" IS NULL';
     const isCancelled = 'rec."cancelledAt" IS NOT NULL';
-    const isStamped = 'rec."reportingCurrency" IS NOT NULL';
-    const isUnconverted = 'rec."reportingCurrency" IS NULL';
+    // Current-era stamp only (#1987 review notes) — `reportingCurrency` never
+    // moves once set (ADR-040), so `IS NOT NULL` alone would sum a prior era's
+    // figures into `revenue` after an operator changes the reporting setting.
+    // A prior-era stamp therefore reads as unconverted, same as never-stamped.
+    const isStamped = 'rec."reportingCurrency" = :currentReportingCurrency';
+    const isUnconverted = `(rec."reportingCurrency" IS NULL OR rec."reportingCurrency" != :currentReportingCurrency)`;
     const stampedAndNotCancelled = `${notCancelled} AND ${isStamped}`;
     const unconvertedAndNotCancelled = `${notCancelled} AND ${isUnconverted}`;
 
@@ -417,7 +422,15 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
         'unconverted_value'
       )
       .addSelect(
+        // The DISTINCT count alone ignores NULLs (#1987 review, suggestion
+        // 4): a bucket whose unconverted orders are {NULL, 'PLN'} counts one
+        // distinct value and would label the whole sum 'PLN' even though one
+        // order's native currency is unrecorded. The extra `COUNT(*) FILTER
+        // (... currency IS NULL) = 0` arm makes "partly unknown" a third,
+        // non-`NULL`-mislabelled outcome alongside "nothing to report" and
+        // "mixed".
         `CASE WHEN COUNT(DISTINCT rec."currency") FILTER (WHERE ${unconvertedAndNotCancelled}) <= 1
+              AND COUNT(*) FILTER (WHERE ${unconvertedAndNotCancelled} AND rec."currency" IS NULL) = 0
               THEN MAX(rec."currency") FILTER (WHERE ${unconvertedAndNotCancelled})
               ELSE NULL END`,
         'unconverted_currency'
@@ -428,21 +441,19 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
         'cancelled_value'
       )
       .addSelect(
-        // Guarded like `unconverted_currency` above (#1987 review, IMPORTANT
-        // 1): `reportingCurrency` isn't guaranteed single-valued within a
-        // (day, connection) bucket (an in-flight #2096 restatement can leave
-        // two values live at once), so a bare `array_agg(...)[1]` could label
-        // a cross-currency `revenue` sum with whichever value happened to
-        // sort first. `NULL` here is the same "not comparable" signal the FE
-        // already has to handle for `unconverted_currency`.
-        `CASE WHEN COUNT(DISTINCT rec."reportingCurrency") FILTER (WHERE ${isStamped}) <= 1
-              THEN MAX(rec."reportingCurrency") FILTER (WHERE ${isStamped})
-              ELSE NULL END`,
+        // `isStamped` now filters on `reportingCurrency = :currentReportingCurrency`
+        // (#1987 review notes), so every row it matches already carries the
+        // same value — no cross-row DISTINCT guard is needed here the way
+        // `unconverted_currency` needs one. `NULL` when the bucket has no
+        // current-era stamped order (nothing to label), matching
+        // `unconverted_currency`'s "nothing to report" convention.
+        `MAX(rec."reportingCurrency") FILTER (WHERE ${isStamped})`,
         'reporting_currency'
       )
       .groupBy(utcDay)
       .addGroupBy('rec.sourceConnectionId');
 
+    qb.setParameter('currentReportingCurrency', currentReportingCurrency);
     this.applySalesAnalyticsScope(qb, filters);
 
     const rows = await qb.getRawMany<{
@@ -478,19 +489,23 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    * reports them in a separate column rather than omitting them). `null`
    * when no row matches (an empty ordered-set aggregate).
    *
-   * Currency correctness (#2049/ADR-040 follow-up): computed over
-   * `reportingTotalAmount`, restricted to `reportingCurrency IS NOT NULL` —
-   * the same stamped subset {@link getDailyOrderAggregates} uses for
-   * `revenue`, so the headline median stays comparable with the headline
-   * revenue/AOV figures rather than mixing a native-currency distribution
-   * into a reporting-currency one.
+   * Currency correctness (#1987 review notes): computed over
+   * `reportingTotalAmount`, restricted to `reportingCurrency =
+   * currentReportingCurrency` — the same current-era stamped subset
+   * {@link getDailyOrderAggregates} uses for `revenue`, so the headline
+   * median stays comparable with the headline revenue/AOV figures rather
+   * than mixing a native-currency or prior-era distribution into the
+   * current one.
    */
-  async getMedianOrderValue(filters: SalesAnalyticsFilters): Promise<number | null> {
+  async getMedianOrderValue(
+    filters: SalesAnalyticsFilters,
+    currentReportingCurrency: string
+  ): Promise<number | null> {
     const qb = this.repository
       .createQueryBuilder('rec')
       .select(`PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY rec."reportingTotalAmount")`, 'median')
       .andWhere('rec."cancelledAt" IS NULL')
-      .andWhere('rec."reportingCurrency" IS NOT NULL');
+      .andWhere('rec."reportingCurrency" = :currentReportingCurrency', { currentReportingCurrency });
 
     this.applySalesAnalyticsScope(qb, filters);
 

@@ -101,33 +101,53 @@ describe('OrderLineItemRepository', () => {
         addSelect: jest.fn().mockReturnThis(),
         where: jest.fn().mockReturnThis(),
         andWhere: jest.fn().mockReturnThis(),
+        setParameter: jest.fn().mockReturnThis(),
         groupBy: jest.fn().mockReturnThis(),
         getRawMany: jest.fn().mockResolvedValue([]),
       });
 
-      const result = await repository.getUnitsSoldByConnection(baseFilters);
+      const result = await repository.getUnitsSoldByConnection(baseFilters, 'EUR');
 
       expect(result.size).toBe(0);
     });
 
-    it('returns one Map entry per connection with the summed quantity', async () => {
+    it('returns one Map entry per connection with the current-era and unconverted quantities split', async () => {
       (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
         innerJoin: jest.fn().mockReturnThis(),
         select: jest.fn().mockReturnThis(),
         addSelect: jest.fn().mockReturnThis(),
         where: jest.fn().mockReturnThis(),
         andWhere: jest.fn().mockReturnThis(),
+        setParameter: jest.fn().mockReturnThis(),
         groupBy: jest.fn().mockReturnThis(),
         getRawMany: jest.fn().mockResolvedValue([
-          { source_connection_id: 'conn-a', units: '12' },
-          { source_connection_id: 'conn-b', units: '3' },
+          { source_connection_id: 'conn-a', units: '12', unconverted_units: '2' },
+          { source_connection_id: 'conn-b', units: '3', unconverted_units: '0' },
         ]),
       });
 
-      const result = await repository.getUnitsSoldByConnection(baseFilters);
+      const result = await repository.getUnitsSoldByConnection(baseFilters, 'EUR');
 
-      expect(result.get('conn-a')).toBe(12);
-      expect(result.get('conn-b')).toBe(3);
+      expect(result.get('conn-a')).toEqual({ unitsSold: 12, unconvertedUnitsSold: 2 });
+      expect(result.get('conn-b')).toEqual({ unitsSold: 3, unconvertedUnitsSold: 0 });
+    });
+
+    it('binds the current reporting currency as a query parameter', async () => {
+      const setParameter = jest.fn().mockReturnThis();
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        innerJoin: jest.fn().mockReturnThis(),
+        select: jest.fn().mockReturnThis(),
+        addSelect: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        setParameter,
+        groupBy: jest.fn().mockReturnThis(),
+        getRawMany: jest.fn().mockResolvedValue([]),
+      });
+
+      await repository.getUnitsSoldByConnection(baseFilters, 'PLN');
+
+      expect(setParameter).toHaveBeenCalledWith('currentReportingCurrency', 'PLN');
     });
 
     it('applies the sourceConnectionId filter when provided', async () => {
@@ -138,11 +158,15 @@ describe('OrderLineItemRepository', () => {
         addSelect: jest.fn().mockReturnThis(),
         where: jest.fn().mockReturnThis(),
         andWhere,
+        setParameter: jest.fn().mockReturnThis(),
         groupBy: jest.fn().mockReturnThis(),
         getRawMany: jest.fn().mockResolvedValue([]),
       });
 
-      await repository.getUnitsSoldByConnection({ ...baseFilters, sourceConnectionId: 'conn-a' });
+      await repository.getUnitsSoldByConnection(
+        { ...baseFilters, sourceConnectionId: 'conn-a' },
+        'EUR'
+      );
 
       expect(andWhere).toHaveBeenCalledWith('li.sourceConnectionId = :salesConnectionId', {
         salesConnectionId: 'conn-a',

@@ -34,6 +34,7 @@
  */
 import type {
   ChannelSalesAnalytics,
+  ConnectionUnitsSold,
   DailyOrderAggregateRow,
   DailyTrendPoint,
   SalesAnalyticsFilters,
@@ -47,7 +48,7 @@ export interface BuildSalesAndChannelAnalyticsInput {
   filters: SalesAnalyticsFilters;
   dailyRows: DailyOrderAggregateRow[];
   medianOrderValue: number | null;
-  unitsByConnection: Map<string, number>;
+  unitsByConnection: Map<string, ConnectionUnitsSold>;
   earliestOrderDateByConnection: Map<string, Date>;
 }
 
@@ -67,7 +68,11 @@ export function buildSalesAndChannelAnalytics(
   const headlineOrderCount = sum(dailyRows, (r) => r.orderCount);
   const headlineCancelledCount = sum(dailyRows, (r) => r.cancelledCount);
   const headlineCancelledValue = sum(dailyRows, (r) => r.cancelledValue);
-  const headlineUnitsSold = sum([...unitsByConnection.values()], (units) => units);
+  const headlineUnitsSold = sum([...unitsByConnection.values()], (row) => row.unitsSold);
+  const headlineUnconvertedUnitsSold = sum(
+    [...unitsByConnection.values()],
+    (row) => row.unconvertedUnitsSold
+  );
   const headlineUnconvertedCount = sum(dailyRows, (r) => r.unconvertedCount);
   const headlineUnconvertedValue = sum(dailyRows, (r) => r.unconvertedValue);
   const currency = resolveUniformReportingCurrency(dailyRows);
@@ -75,12 +80,17 @@ export function buildSalesAndChannelAnalytics(
   const headline = {
     revenue: headlineRevenue,
     orderCount: headlineOrderCount,
-    averageOrderValue: headlineOrderCount > 0 ? headlineRevenue / headlineOrderCount : 0,
+    // `null` when nothing is stamped in range (#1987 review, IMPORTANT 2) —
+    // flattening to `0` made "nothing to report" indistinguishable from a
+    // genuine zero AOV, which read as a contradiction next to
+    // `medianOrderValue: null` on the same KPI strip.
+    averageOrderValue: headlineOrderCount > 0 ? headlineRevenue / headlineOrderCount : null,
     // Passed through verbatim, `null` included (#1987 review, suggestion 2) —
     // flattening to `0` made "no stamped order in range" indistinguishable
     // from a genuine zero-value median.
     medianOrderValue,
     unitsSold: headlineUnitsSold,
+    unconvertedUnitsSold: headlineUnconvertedUnitsSold,
     cancelledCount: headlineCancelledCount,
     cancelledValue: headlineCancelledValue,
     currency,
@@ -96,20 +106,28 @@ export function buildSalesAndChannelAnalytics(
       const revenue = sum(rows, (r) => r.revenue);
       const orderCount = sum(rows, (r) => r.orderCount);
       const earliestOrderDate = earliestOrderDateByConnection.get(sourceConnectionId);
+      const units: ConnectionUnitsSold = unitsByConnection.get(sourceConnectionId) ?? {
+        unitsSold: 0,
+        unconvertedUnitsSold: 0,
+      };
 
       return {
         sourceConnectionId,
         revenue,
         orderCount,
-        averageOrderValue: orderCount > 0 ? revenue / orderCount : 0,
-        unitsSold: unitsByConnection.get(sourceConnectionId) ?? 0,
+        averageOrderValue: orderCount > 0 ? revenue / orderCount : null,
+        unitsSold: units.unitsSold,
+        unconvertedUnitsSold: units.unconvertedUnitsSold,
         cancelledCount: sum(rows, (r) => r.cancelledCount),
         cancelledValue: sum(rows, (r) => r.cancelledValue),
         currency: resolveUniformReportingCurrency(rows),
         unconvertedCount: sum(rows, (r) => r.unconvertedCount),
         unconvertedValue: sum(rows, (r) => r.unconvertedValue),
         unconvertedCurrency: resolveUniformUnconvertedCurrency(rows),
-        revenueShare: headlineRevenue > 0 ? revenue / headlineRevenue : 0,
+        // `null` when the headline itself has nothing to share (#1987 review,
+        // IMPORTANT 2) — `0` would have claimed a real 0% share of a
+        // headline revenue that is itself unstamped/empty.
+        revenueShare: headlineRevenue > 0 ? revenue / headlineRevenue : null,
         trend: buildTrend(dayKeys, rows),
         // A connection present in `dailyRows` has ingested at least one order
         // in range, so `earliestOrderDateByConnection` should always carry an
