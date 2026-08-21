@@ -13,38 +13,41 @@ External System (PrestaShop)
     │ (with X-OpenLinker-Timestamp and X-OpenLinker-Signature headers)
     ▼
 ┌─────────────────────────────────────┐
-│  Webhook Controller                 │
-│  - Validates signature              │
-│  - Checks deduplication             │
-│  - Publishes to event bus           │
+│  Webhook Controller → Service       │
+│  - Verifies signature, then replay  │
+│  - Decodes to the neutral envelope  │
+│  - ROUTES synchronously (translator │
+│    + capability-gated policy)       │
 └─────────────────────────────────────┘
     │
-    │ EventEnvelope
+    │ one Postgres transaction
     ▼
 ┌─────────────────────────────────────┐
-│  Redis Streams:                    │
-│  events.inbound.webhooks            │
+│  THE GATE                           │
+│  INSERT sync_jobs (queued)          │
+│  + INSERT webhook_deliveries        │
+│    in its FINAL status              │
+│  (a replay conflicts → 202)         │
 └─────────────────────────────────────┘
     │
-    │ Consumer Group: webhook-handler
+    │ committed work row
     ▼
 ┌─────────────────────────────────────┐
-│  Webhook-to-Job Handler             │
-│  - Consumes events                  │
-│  - Maps to sync jobs                │
-│  - Enqueues to job queue            │
+│  Worker: SyncJobRunner              │
+│  1 s poll of sync_jobs              │
+│  (FOR UPDATE SKIP LOCKED)           │
 └─────────────────────────────────────┘
     │
-    │ SyncJob
-    ▼
-┌─────────────────────────────────────┐
-│  Redis Streams:                    │
-│  jobs.sync                          │
-└─────────────────────────────────────┘
-    │
-    │ (Future: Worker processes jobs)
-    ▼
+    │ pull-based sync via adapter APIs
+    ▼   (the webhook payload is never the source of truth)
 ```
+
+> **Since #2280** ([ADR-049](../architecture/adrs/049-durability-spine-and-domain-event-contract.md)
+> decision 1) this path touches **no Redis stream at all** — no
+> `events.inbound.webhooks` publish, no `jobs.sync` entry, no `jobdedup:*` key.
+> The durable write is hop one. The stream sections further down describe the
+> remaining, non-webhook producers of `jobs.sync` and the legacy stream that a
+> one-shot boot drain still empties after an upgrade.
 
 ## Key Features
 
@@ -68,27 +71,36 @@ Timestamps are validated against a configurable skew window (default: ±5 minute
 
 ### 3. **Deduplication**
 
-Two-phase deduplication prevents lost events and ensures idempotent processing:
+Deduplication is **Postgres-authoritative** (ADR-005): the unique constraint on
+`webhook_deliveries (provider, connectionId, eventId)` is the gate, and a replay
+short-circuits to the same idempotent 202.
 
-1. **Processing Phase**: Mark event as "processing" (short TTL: 60 seconds)
-2. **Done Phase**: Mark event as "done" (long TTL: 7 days)
+A Redis mark (`processing` / `done`) is kept as a fast-path observability hint
+only. Since #2280 it is **best-effort**: a Redis outage cannot fail a webhook
+whose durable write is about to commit, and nothing is deleted to "allow
+retries" — see step 5.
 
-If publish fails after marking as processing, the marker is cleared to allow retries. If publish succeeds but `markDone` fails, the event is still considered processed (non-fatal error).
+### 4. **Routing (at ingress)**
 
-### 4. **Event Publishing**
+Since #2280 the connection's translator and the capability-gated
+`InboundRoutingPolicy` run **synchronously**, so the jobType, payload and
+idempotency key are known before anything is written. Nothing is published to a
+stream on this path.
 
-Webhook events are published to Redis Streams as `InboundWebhookEvent` with:
-- Event metadata (provider, connectionId, schemaVersion)
-- Object reference (type, externalId)
-- Optional payload (minimal, webhook payload is not the source of truth)
+Deterministic faults — connection missing or disabled, no translator for the
+adapter, an undecodable or translator-throwing payload, a capability-ungated
+domain — resolve to `unroutable` and are recorded as a durable `deadlettered`
+delivery row carrying the reason. A transient fault (e.g. the connection read
+failing) answers **503** so the source retries, and writes nothing.
 
-### 5. **Job Enqueueing**
+### 5. **The gate: one transaction**
 
-The webhook-to-job handler:
-- Consumes events from `events.inbound.webhooks` stream
-- Maps events to sync jobs (e.g., `master.product.syncByExternalId`)
-- Enqueues jobs to `jobs.sync` stream with idempotency keys
-- Enforces job-level idempotency using Redis `SET NX` keys
+The `sync_jobs` work row and the `webhook_deliveries` row commit in the SAME
+Postgres transaction (ADR-049 decision 1), with the delivery written in its
+final status (`job_enqueued` / `received` for pings / `deadlettered`). The
+worker's 1-second poll of `sync_jobs` picks the job up — there is no queue hop
+that can lose it, so no compensating delete is needed: a pre-commit failure
+rolls both rows back, and after commit there is nothing left to undo.
 
 ## API Endpoint
 

@@ -1,11 +1,25 @@
 /**
  * Worker Application Root Module
  *
- * Root NestJS module that configures and imports all modules required for
- * the worker application, including database, Redis, and sync job processing.
+ * Root NestJS module for the worker. Since #2279 (ADR-051) the worker boots a
+ * ROLE SET (`OL_WORKER_ROLE`, default `all`): each role maps to a module
+ * import, so a role that is off contributes no providers, no consumers, and
+ * no timers — conditional imports at bootstrap, never runtime flags on an
+ * already-booted graph.
+ *
+ * Roles:
+ *  - `jobs`        → SyncWorkerModule (job intake + runner + handlers)
+ *  - `events`      → EventsConsumerModule (domain-event stream consumers)
+ *  - `scheduler`   → WorkerSchedulerModule (cron tasks, singleton via lease)
+ *  - `maintenance` → MaintenanceModule (stuck-job recovery)
+ *
+ * The infrastructure spine (config, DB, Redis, cache, core contexts, plugin
+ * registry) is shared by every role: plugins must register their adapters and
+ * scheduler tasks whichever role is booted.
  *
  * @module apps/worker/src
  */
+import type { DynamicModule, Type } from '@nestjs/common';
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { CacheModule } from '@openlinker/shared/cache';
@@ -19,26 +33,41 @@ import { SyncModule } from '@openlinker/core/sync';
 import { IntegrationsModule } from './integrations/integrations.module';
 import { SyncWorkerModule } from './sync/sync-worker.module';
 import { EventsConsumerModule } from './events/events-consumer.module';
+import { WorkerSchedulerModule } from './scheduler/worker-scheduler.module';
+import { MaintenanceModule } from './maintenance/maintenance.module';
 import { WorkerHeartbeatService } from './health/worker-heartbeat.service';
+import type { WorkerRole } from './roles/worker-role.types';
+import { WorkerRoleValues } from './roles/worker-role.types';
 
-@Module({
-  imports: [
-    ConfigModule.forRoot({
-      isGlobal: true,
-      envFilePath: ['.env.local', '.env'],
-    }),
-    DatabaseModule,
-    RedisConfigModule,
-    CacheModule,
-    IdentifierMappingModule,
-    CoreIntegrationsModule,
-    IntegrationsModule,
-    ProductsModule,
-    InventoryModule,
-    SyncModule,
-    SyncWorkerModule,
-    EventsConsumerModule,
-  ],
-  providers: [WorkerHeartbeatService],
-})
-export class AppModule {}
+const ROLE_MODULES: Record<WorkerRole, Type<unknown>> = {
+  jobs: SyncWorkerModule,
+  events: EventsConsumerModule,
+  scheduler: WorkerSchedulerModule,
+  maintenance: MaintenanceModule,
+};
+
+@Module({})
+export class AppModule {
+  static forRoles(roles: readonly WorkerRole[] = WorkerRoleValues): DynamicModule {
+    return {
+      module: AppModule,
+      imports: [
+        ConfigModule.forRoot({
+          isGlobal: true,
+          envFilePath: ['.env.local', '.env'],
+        }),
+        DatabaseModule,
+        RedisConfigModule,
+        CacheModule,
+        IdentifierMappingModule,
+        CoreIntegrationsModule,
+        IntegrationsModule,
+        ProductsModule,
+        InventoryModule,
+        SyncModule,
+        ...roles.map((role) => ROLE_MODULES[role]),
+      ],
+      providers: [WorkerHeartbeatService],
+    };
+  }
+}

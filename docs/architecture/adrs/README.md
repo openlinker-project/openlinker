@@ -141,7 +141,7 @@ One pointer per section, identical format every time.
 | [ADR-048](./048-incremental-catalog-replication.md) | Incremental catalog replication - adapter-declared master capability ladder, two cadences with prune authority on the reconciliation pass, budget-bounded resumable runs | Proposed | 2026-08-20 |
 | [ADR-049](./049-durability-spine-and-domain-event-contract.md) | Durability spine and the domain-event contract - work row in the business transaction, contract without a bus | Proposed | 2026-08-20 |
 | [ADR-050](./050-workload-isolation-concurrency-lanes.md) | Workload isolation - concurrency lanes by starvation cost, per-lane caps keyed by scope, not strict priority, not separate deployables | Proposed | 2026-08-21 |
-| [ADR-051](./051-worker-topology-one-artifact-roles.md) | Worker topology - one artifact, four roles (jobs/events/scheduler/maintenance), cardinality-driven with lease-enforced singletons | Proposed | 2026-08-21 |
+| [ADR-051](./051-worker-topology-one-artifact-roles.md) | Worker topology - one artifact, four roles (jobs/events/scheduler/maintenance), cardinality-driven with lease-enforced singletons | Accepted | 2026-08-21 |
 
 > *Dates for pre-trail ADRs (001, 004) are approximate to the month — the underlying decisions predate the project's current git history. Other dates are merge-date of the cited PR.*
 

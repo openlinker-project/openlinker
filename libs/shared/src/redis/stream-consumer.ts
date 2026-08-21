@@ -2,7 +2,8 @@
  * Redis Stream Consumer Primitives
  *
  * Recovery primitives shared by every Redis Streams consumer group in the system
- * (#2164). Three consumers — the webhook-to-job handler in `apps/api`, the
+ * (#2164). Three consumers — the webhook-to-job handler in `apps/api` (retired
+ * by #2280; only its one-shot upgrade drain still reads that group), the
  * master-deletion handler and the job-intake consumer in `apps/worker` — each
  * ran a structurally identical `XREADGROUP ... '>'` loop that could never reach
  * its own Pending Entries List. A process killed between read and ACK lost its

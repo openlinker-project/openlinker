@@ -9,7 +9,6 @@
  */
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { ScheduleModule } from '@nestjs/schedule';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AppInfoModule } from './app-info/app-info.module';
@@ -58,7 +57,6 @@ import { RequestPriorityModule } from './http/request-priority.module';
       isGlobal: true,
       envFilePath: ['.env.local', '.env'],
     }),
-    ScheduleModule.forRoot(),
     RequestPriorityModule, // Global APP_INTERCEPTOR: classifies interactive requests for rate-limit priority (#1810)
     DatabaseModule,
     RedisConfigModule,

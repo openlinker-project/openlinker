@@ -264,6 +264,9 @@ describe('InvoiceService', () => {
         }
         return Promise.resolve(heldLocks.delete(key));
       }),
+      extend: jest.fn((key: string, token: string) =>
+        Promise.resolve(token === `token:${key}` && heldLocks.has(key))
+      ),
     } as unknown as jest.Mocked<SyncLockPort>;
 
     // Default: fiscalization is not wired into this process (mirrors

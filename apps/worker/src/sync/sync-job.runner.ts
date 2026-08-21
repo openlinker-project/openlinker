@@ -41,8 +41,6 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(SyncJobRunner.name);
   private readonly WORKER_ID = `worker-${process.pid}-${Date.now()}`;
   private readonly POLL_INTERVAL_MS = 1000; // Poll interval when no jobs available
-  private readonly STUCK_JOB_TIMEOUT_MINUTES = 15; // Lock timeout for stuck jobs
-  private readonly STUCK_JOB_RECOVERY_INTERVAL_MS = 5 * 60 * 1000; // Check for stuck jobs every 5 minutes
   private readonly JOB_HEARTBEAT_INTERVAL_MS = 3 * 60 * 1000; // Refresh lockedAt every 3 minutes while a job runs (#1810)
   private readonly RATE_LIMIT_TIMEOUT_REQUEUE_DELAY_SECONDS = 30; // Fixed short requeue delay for RateLimitTimeoutError — not exponential, since attempts never increments (#1810 review follow-up)
 
@@ -53,7 +51,6 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
 
   private abortController: AbortController | null = null;
   private isRunning = false;
-  private stuckJobRecoveryInterval: NodeJS.Timeout | null = null;
   private restartTimer: NodeJS.Timeout | null = null;
   private runnerLoopPromise: Promise<void> | null = null;
 
@@ -103,7 +100,8 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
     this.laneCaps = this.resolveLaneCaps();
     this.logger.log(`Starting sync job runner with worker ID: ${this.WORKER_ID}`);
     this.startRunner();
-    this.startStuckJobRecovery();
+    // Stuck-job recovery moved to StuckJobRecoveryService (`maintenance` role,
+    // #2279) — a runner replica no longer doubles as the fleet's janitor.
   }
 
   /**
@@ -204,12 +202,6 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
       this.restartTimer = null;
     }
 
-    // Stop stuck job recovery
-    if (this.stuckJobRecoveryInterval) {
-      clearInterval(this.stuckJobRecoveryInterval);
-      this.stuckJobRecoveryInterval = null;
-    }
-
     // Wait for the runner loop AND in-flight jobs to finish, but with a
     // timeout to prevent hanging (in-flight handlers are cancellable via the
     // shared abort signal passed to runWithPriority).
@@ -226,50 +218,6 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
     }
 
     this.logger.log('Sync job runner stopped');
-  }
-
-  /**
-   * Start stuck job recovery loop
-   *
-   * Periodically checks for and requeues jobs stuck in 'running' status
-   * longer than the lock timeout threshold.
-   *
-   * @param intervalMs - Optional interval in milliseconds (defaults to STUCK_JOB_RECOVERY_INTERVAL_MS)
-   */
-  private startStuckJobRecovery(intervalMs?: number): void {
-    // Prevent multiple starts
-    if (this.stuckJobRecoveryInterval) {
-      return;
-    }
-
-    const interval = intervalMs ?? this.STUCK_JOB_RECOVERY_INTERVAL_MS;
-    this.stuckJobRecoveryInterval = setInterval(() => {
-      void (async (): Promise<void> => {
-        try {
-          const requeuedCount = await this.jobRepository.requeueStuckJobs(
-            this.STUCK_JOB_TIMEOUT_MINUTES
-          );
-          if (requeuedCount > 0) {
-            this.logger.warn(`Requeued ${requeuedCount} stuck job(s)`);
-          }
-        } catch (error) {
-          this.logger.error(
-            'Error in stuck job recovery',
-            error instanceof Error ? error.stack : String(error)
-          );
-        }
-      })();
-    }, interval);
-
-    // Don't keep process alive if only this interval is running
-    if (
-      this.stuckJobRecoveryInterval &&
-      typeof this.stuckJobRecoveryInterval.unref === 'function'
-    ) {
-      this.stuckJobRecoveryInterval.unref();
-    }
-
-    this.logger.log(`Started stuck job recovery (checking every ${interval / 1000}s)`);
   }
 
   /**
@@ -471,8 +419,10 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
       }
 
       // Heartbeat while the handler runs so a job queued behind a saturated
-      // per-connection rate limiter for longer than STUCK_JOB_TIMEOUT_MINUTES
-      // is not duplicated by the stuck-job recovery sweep (#1810).
+      // per-connection rate limiter for longer than the recovery sweep's lock
+      // timeout is not duplicated by it (#1810). That sweep now lives in
+      // `StuckJobRecoveryService` under the `maintenance` role (#2279), so the
+      // heartbeat is a cross-process contract rather than an in-file one.
       const heartbeatInterval = setInterval(() => {
         void this.jobRepository.heartbeat(job.id, this.WORKER_ID).catch((error) => {
           this.logger.warn(

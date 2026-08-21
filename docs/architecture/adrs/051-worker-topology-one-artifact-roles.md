@@ -1,6 +1,7 @@
 # ADR-051: Worker topology — one artifact, four roles, cardinality-driven
 
-- **Status**: Proposed
+- **Status**: Accepted (implemented in #2279; decisions 3 and 6 carry
+  implementation amendments inline)
 - **Date**: 2026-08-21
 - **Authors**: @piotrswierzy
 
@@ -73,6 +74,19 @@ API-hosted webhook consumer's target home is the `events` role — deciding that
 "MVP shortcut" comment; the move itself is Wave 4.
 *Reversal gate (prose-only):* none — this corrects an accidental placement.
 
+> **Amended by the implementation (#2279).** Three sentences above did not survive contact and are
+> corrected here rather than left describing work that will not happen.
+> (a) **The port gained `extend`** — a token-checked compare-and-PEXPIRE, not periodic re-acquire:
+> re-acquire cannot distinguish "I still hold it" from "it expired and I just took it back", which
+> is precisely the transition the holder must react to.
+> (b) **`maintenance` ships WITHOUT a lease, deliberately.** Its only occupant, stuck-job recovery,
+> is a single conditional UPDATE on a stale `lockedAt` — idempotent across replicas, so a lease
+> would buy nothing. This does **not** generalise: the future destructive work decision 2 names for
+> this role (retention sweeps, partition drops) is exactly the kind that does need one, and must
+> add it rather than assume the role is already covered.
+> (c) **The webhook consumer will never move to `events`** — Wave 5 (#2280) deleted it outright by
+> routing at ingress, so `EventsConsumerModule` carries only the master-deletion handler.
+
 **4. A role boots the modules it needs — conditional module imports, never a runtime flag on a
 fully-booted graph.** A `scheduler` process must not instantiate 34 job handlers it will never run;
 it only enqueues. Today's pattern — boot everything, gate behaviour with env flags inside live
@@ -94,6 +108,22 @@ prose-only form; the assertion makes it loud: a deployment whose union of roles 
 unpullable or a consumer group unserved fails at startup with the uncovered names. *Reversal gate
 (countable):* the assertion itself is the countable check; #2169 wires the same rule into
 `check:invariants` for the static half (every registered jobType maps to a role).
+
+> **Amended by the implementation (#2279): scoped to what one process can honestly assert, and
+> served by ADR-050's gate rather than a second one.** A booting process knows its own module graph
+> and nothing about its peers, so it cannot verify a *fleet's* union of roles. The per-process half
+> is already covered by `SyncJobHandlerRegistry.assertFullLaneCoverage()` (#2278): when the `jobs`
+> role is booted it asserts every `JobTypeValues` member has a registered handler+lane and fails the
+> boot naming the uncovered ones — the same predicate and the same failure mode this decision asked
+> for, so #2279 deliberately adds no second gate over one invariant. The fleet-level half (a
+> deployment where no process carries `scheduler`, or none carries `events`) boots silently and
+> stays with #2169's static check, which can see the deployment manifest.
+>
+> That gap has a concrete new trap this wave introduces, called out in `apps/worker/.env.example`:
+> stuck-job recovery used to run wherever the runner ran, and now runs only under `maintenance`. So
+> the natural "scale the runners" configuration — `OL_WORKER_ROLE=jobs` on every replica — silently
+> loses it, and a job whose worker was killed mid-flight stays `running` forever with nothing to
+> requeue it.
 
 ## Alternatives considered
 

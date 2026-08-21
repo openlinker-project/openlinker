@@ -153,7 +153,10 @@ export type { ISyncCursorsService } from './application/services/sync-cursors.se
 export { InboundRoutingPolicyService } from './application/services/inbound-routing-policy.service';
 export { buildInboundJobIdempotencyKey } from './application/services/inbound-job-idempotency-key';
 export type { IInboundRoutingPolicyService } from './application/interfaces/inbound-routing-policy.service.interface';
-export type { RoutingOutcome } from './application/types/inbound-routing-policy.types';
+export type {
+  RoutingOutcome,
+  InboundRouteResolution,
+} from './application/types/inbound-routing-policy.types';
 
 // Module and tokens
 export { SyncModule } from './sync.module';

@@ -44,6 +44,22 @@ export interface ISyncJobsService {
   requeueDeadByIdempotencyKey(idempotencyKey: string): Promise<boolean>;
 
   /**
+   * Requeue every job left `running` past the lock timeout — the fleet-level
+   * recovery sweep for a worker that died holding jobs (#2279's
+   * `StuckJobRecoveryService`, extracted from `SyncJobRunner` for the
+   * `maintenance` role).
+   *
+   * Idempotent across replicas by construction: the repository applies a
+   * single conditional UPDATE keyed on a stale `lockedAt`, so two maintenance
+   * processes sweeping concurrently cannot double-requeue a job.
+   *
+   * @param timeoutMinutes - Age of `lockedAt` past which a running job is
+   *   considered abandoned
+   * @returns how many jobs were requeued
+   */
+  requeueStuckJobs(timeoutMinutes: number): Promise<number>;
+
+  /**
    * Find the most recently succeeded job for a connection + job type,
    * ordered by completion time (`updatedAt`) — the cross-context read seam
    * for "when did this connection last successfully run job X" (#1982,

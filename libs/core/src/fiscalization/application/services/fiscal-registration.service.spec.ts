@@ -113,6 +113,7 @@ describe('FiscalRegistrationService', () => {
     registrationLock = {
       acquire: jest.fn().mockResolvedValue('lock-token'),
       release: jest.fn().mockResolvedValue(true),
+      extend: jest.fn().mockResolvedValue(true),
     };
     // Default: no blocking invoice exists elsewhere, so the cross-kind guard
     // (#2157, ADR-041 §3a/3b) passes. Cases that exercise it override it.
