@@ -20,6 +20,7 @@ import {
 } from '../../../domain/types/master-deletion-events.types';
 import type { IProductsService } from '../products.service.interface';
 import type { IEntityClaimService, IIntegrationsService } from '@openlinker/core/integrations';
+import type { ITaxRateJournalService } from '../tax-rate-journal.service.interface';
 import type { IIdentifierMappingService } from '@openlinker/core/identifier-mapping';
 import type { EventPublisherPort } from '@openlinker/core/events';
 import type { Product } from '../../../domain/entities/product.entity';
@@ -46,6 +47,7 @@ describe('MasterProductSyncService', () => {
   >;
   let eventPublisher: jest.Mocked<EventPublisherPort>;
   let entityClaims: jest.Mocked<IEntityClaimService>;
+  let taxRateJournal: jest.Mocked<ITaxRateJournalService>;
   let adapter: jest.Mocked<Pick<ProductMasterPort, 'getProduct' | 'getProductVariants'>>;
   let service: MasterProductSyncService;
 
@@ -79,12 +81,21 @@ describe('MasterProductSyncService', () => {
       findRivalClaimants: jest.fn().mockResolvedValue([]),
     } as unknown as jest.Mocked<IEntityClaimService>;
 
+
+    // #2250: the journal is provenance only, so these specs assert the sync's
+    // own behaviour with a no-op recorder.
+    taxRateJournal = {
+      record: jest.fn().mockResolvedValue(null),
+      getLatestPerConnection: jest.fn().mockResolvedValue([]),
+    } as unknown as jest.Mocked<ITaxRateJournalService>;
+
     service = new MasterProductSyncService(
       integrationsService,
       identifierMapping,
       productsService as unknown as IProductsService,
       eventPublisher,
-      entityClaims
+      entityClaims,
+      taxRateJournal
     );
   });
 
