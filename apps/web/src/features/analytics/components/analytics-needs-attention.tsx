@@ -93,7 +93,11 @@ export function AnalyticsNeedsAttention(): ReactElement {
   const rows: AttentionRow[] = [];
 
   if (summary.coverageGapsTotalCount > 0) {
-    const copy = deriveCoverageHeadline(summary.coverageGaps, summary.coverageGapsTotalCount, connectionName);
+    const { connectionId, ...copy } = deriveCoverageHeadline(
+      summary.coverageGaps,
+      summary.coverageGapsTotalCount,
+      connectionName
+    );
     // summary.coverageGaps is already a server-side-capped preview (≤
     // DEFAULT_AGGREGATE_LIMIT), so productIds/variantIds are derived from
     // the SAME item list rather than sliced independently — otherwise a
@@ -102,17 +106,16 @@ export function AnalyticsNeedsAttention(): ReactElement {
     const isPartialSample = summary.coverageGaps.length < summary.coverageGapsTotalCount;
     const productIds = uniqueValues(summary.coverageGaps.map((item) => item.productId));
     const variantIds = uniqueValues(summary.coverageGaps.map((item) => item.variantId));
-    const missingConnectionIds = uniqueValues(
-      summary.coverageGaps
-        .filter((item) => item.missingFromConnectionIds.length === 1)
-        .map((item) => item.missingFromConnectionIds[0])
-    );
     const params = new URLSearchParams({
       productIds: productIds.join(','),
       variantIds: variantIds.join(','),
     });
-    if (missingConnectionIds.length === 1) {
-      params.set('connectionId', missingConnectionIds[0]);
+    // `connectionId` is read from the headline's OWN resolution, never
+    // re-derived here — a separately-computed, weaker predicate could pin a
+    // channel into this link that the headline above explicitly declined to
+    // name (#2120 re-review, IMPORTANT).
+    if (connectionId) {
+      params.set('connectionId', connectionId);
     }
 
     rows.push({

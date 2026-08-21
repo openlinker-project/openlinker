@@ -46,6 +46,21 @@ export interface AttentionRowCopy {
   sub: string;
 }
 
+/**
+ * `deriveCoverageHeadline`'s result additionally reports the ONE connection
+ * id the headline named — `null` when it named none (ambiguous items, or a
+ * partial sample per the rule above). A caller building a deep link MUST
+ * read this field rather than re-deriving its own "single missing
+ * connection" predicate: a weaker, independently-computed predicate can
+ * pin a `connectionId` into a link that the headline copy right next to it
+ * explicitly declined to name (#2120 re-review, IMPORTANT) — the same
+ * false-claim-about-your-own-catalogue defect the sample-vs-total rule
+ * above exists to prevent, one field over.
+ */
+export interface CoverageHeadlineResult extends AttentionRowCopy {
+  connectionId: string | null;
+}
+
 type ConnectionNameResolver = (connectionId: string) => string;
 
 function uniqueValues<T>(values: T[]): T[] {
@@ -56,7 +71,7 @@ export function deriveCoverageHeadline(
   items: CoverageGapItem[],
   totalCount: number,
   connectionName: ConnectionNameResolver
-): AttentionRowCopy {
+): CoverageHeadlineResult {
   const variantWord = totalCount === 1 ? 'variant' : 'variants';
   const singleMissingConnectionIds = uniqueValues(
     items
@@ -74,12 +89,14 @@ export function deriveCoverageHeadline(
     return {
       headline: `${totalCount} ${variantWord} missing from ${connectionName(singleMissingConnectionIds[0])}`,
       sub: 'listed elsewhere, not yet published on this channel',
+      connectionId: singleMissingConnectionIds[0],
     };
   }
 
   return {
     headline: `${totalCount} ${variantWord} with a listing gap on at least one channel`,
     sub: 'open the listing flow to see which channel is missing each one',
+    connectionId: null,
   };
 }
 

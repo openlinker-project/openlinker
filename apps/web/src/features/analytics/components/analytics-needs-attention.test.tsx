@@ -151,6 +151,37 @@ describe('AnalyticsNeedsAttention', () => {
     );
   });
 
+  it('should NOT pin a connectionId in the Publish now link for a partial, uniform-connection sample (#2120 re-review, IMPORTANT)', async () => {
+    // 1-of-2 sample, all missing from conn-1 only — but the headline
+    // correctly declines to name a channel because the sample doesn't cover
+    // the total, so the deep link must not name one either.
+    const apiClient = createMockApiClient({
+      analyticsTrust: {
+        getNeedsAttention: vi.fn().mockResolvedValue(
+          summary({
+            coverageGaps: [
+              {
+                variantId: 'v1',
+                productId: 'p1',
+                listedOnConnectionIds: ['conn-2'],
+                missingFromConnectionIds: ['conn-1'],
+              },
+            ],
+            coverageGapsTotalCount: 2,
+          }),
+        ),
+      },
+      connections: { list: vi.fn().mockResolvedValue([connection()]) },
+    });
+
+    renderWithProviders(<AnalyticsNeedsAttention />, { apiClient });
+
+    expect(await screen.findByText('2 variants with a listing gap on at least one channel')).toBeInTheDocument();
+    const link = screen.getByRole('link', { name: 'Publish now' });
+    expect(link).toHaveAttribute('href', '/listings/bulk-create/wizard?productIds=p1&variantIds=v1');
+    expect(link.getAttribute('href')).not.toContain('connectionId');
+  });
+
   it('should fall back to a connection-agnostic headline for an ambiguous coverage gap', async () => {
     const apiClient = createMockApiClient({
       analyticsTrust: {
