@@ -8,6 +8,15 @@
  * row's history; this renders the real MIN(placedAt)-derived fact rather
  * than the connectionCreatedAt approximation that row shipped with.
  *
+ * Row layout follows the mockup's single-line fact string ("data from … ·
+ * synced …" + status badge, right-aligned, mono/tabular-nums) rather than
+ * stacked label/value pairs. The mockup's "Backfilling" state and its
+ * range-gated "Covers N of M days" coverage-ratio note are deliberately
+ * NOT implemented here — see Decision 3a / Decision 4 in the plan: neither
+ * `GET /analytics/trust` nor `ConnectionIngestionStatus` carries a
+ * range-aware coverage fact today, and inventing one would render a number
+ * this page cannot honestly support. Follow-up once #1990 exists.
+ *
  * @module apps/web/src/features/analytics/components
  */
 import type { ReactElement } from 'react';
@@ -30,14 +39,14 @@ interface AnalyticsTrustHeaderProps {
 
 const STATUS_TONE: Record<ConnectionIngestionStatus, StatusBadgeTone> = {
   fresh: 'success',
-  stalled: 'warning',
+  stalled: 'error',
   disconnected: 'error',
   'never-ingested': 'neutral',
   unknown: 'neutral',
 };
 
 const STATUS_LABEL: Record<ConnectionIngestionStatus, string> = {
-  fresh: 'Fresh',
+  fresh: 'Up to date',
   stalled: 'Stalled',
   disconnected: 'Disconnected',
   'never-ingested': 'Never ingested',
@@ -61,10 +70,8 @@ export function AnalyticsTrustHeader({ connections }: AnalyticsTrustHeaderProps)
               </button>
             </PopoverTrigger>
             <PopoverContent>
-              &ldquo;Last polled&rdquo; is when each channel&rsquo;s ingestion pipe last succeeded —
-              it is not proof that new order data has arrived. &ldquo;Data from&rdquo; is the
-              earliest order OpenLinker has ingested for this connection, so a recently-connected
-              channel isn&rsquo;t misread as underperforming.
+              Dates are the earliest order stored for each channel, not a guarantee of
+              completeness. Some later orders may also be missing.
             </PopoverContent>
           </Popover>
         </div>
@@ -73,30 +80,31 @@ export function AnalyticsTrustHeader({ connections }: AnalyticsTrustHeaderProps)
         {connections.map((entry) => (
           <div className="trust-header__row" key={entry.connectionId}>
             <span className="trust-header__name">
+              <span
+                className="trust-header__dot"
+                data-channel={entry.platformType}
+                aria-hidden="true"
+              />
+              {entry.connectionName}
+            </span>
+            <span className="trust-header__facts">
+              data from{' '}
+              {entry.earliestOrderDate ? (
+                <TimeDisplay iso={entry.earliestOrderDate} format="date" />
+              ) : (
+                'no orders yet'
+              )}
+              {' · '}
+              {entry.lastPollAt ? (
+                <>
+                  synced <TimeDisplay iso={entry.lastPollAt} format="time" />
+                </>
+              ) : (
+                'never polled'
+              )}
               <StatusBadge tone={STATUS_TONE[entry.status]} withDot>
                 {STATUS_LABEL[entry.status]}
               </StatusBadge>
-              {entry.connectionName}
-            </span>
-            <span>
-              <span className="trust-header__fact-label">Last polled</span>
-              <span className="trust-header__fact-value">
-                {entry.lastPollAt ? (
-                  <TimeDisplay iso={entry.lastPollAt} format="datetime" />
-                ) : (
-                  'Never polled'
-                )}
-              </span>
-            </span>
-            <span>
-              <span className="trust-header__fact-label">Data from</span>
-              <span className="trust-header__fact-value">
-                {entry.earliestOrderDate ? (
-                  <TimeDisplay iso={entry.earliestOrderDate} format="date" />
-                ) : (
-                  'No orders yet'
-                )}
-              </span>
             </span>
           </div>
         ))}
