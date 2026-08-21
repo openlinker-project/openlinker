@@ -9,7 +9,7 @@
  * @module libs/integrations/subiekt/src/infrastructure/mappers
  */
 import type { InvoiceLine } from '@openlinker/core/invoicing';
-import { FractionalTaxRateNotationError } from '@openlinker/core/invoicing';
+import { FractionalTaxRateNotationError, MissingTaxRateException } from '@openlinker/core/invoicing';
 import { toBridgeLines } from './subiekt-line.mapper';
 
 function line(taxRate: string): InvoiceLine {
@@ -29,10 +29,12 @@ describe('toBridgeLines', () => {
     expect(toBridgeLines([line('zw')])[0]?.stawkaVAT).toBe('zw');
   });
 
-  it('should fall back to the Polish standard rate when the neutral code is empty', () => {
-    // Unchanged pre-rollout behaviour; #2257 removes this default.
-    expect(toBridgeLines([line('')])[0]?.stawkaVAT).toBe('23');
-    expect(toBridgeLines([line('   ')])[0]?.stawkaVAT).toBe('23');
+  it('should refuse an empty rate rather than defaulting it (#2257)', () => {
+    // INVERTED deliberately: the 23% default this used to assert is what the
+    // epic removes. The bridge would reject the line anyway ("StawkaVAT jest
+    // wymagana"); the difference is that the failure now names the product.
+    expect(() => toBridgeLines([line('')])).toThrow(MissingTaxRateException);
+    expect(() => toBridgeLines([line('   ')])).toThrow(MissingTaxRateException);
   });
 
   it('should reject a fractional-looking rate rather than forwarding it', () => {

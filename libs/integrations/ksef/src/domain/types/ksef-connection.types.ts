@@ -47,11 +47,19 @@ export interface KsefSellerConfig {
     countryIso2: string;
   };
   /**
-   * Neutral tax-rate code (an `FA3_TAX_RATE_MAP` key, e.g. `'23'`) applied to
-   * any invoice line whose neutral `taxRate` is empty — core has no per-line
-   * tax rate to give (ADR-026), so this is the connection's flat fallback.
-   * Optional; falls back to the PL standard rate (`DEFAULT_FA3_TAX_RATE`)
-   * when absent.
+   * RETIRED (#2257). This was the connection's flat fallback for a line whose
+   * neutral `taxRate` was empty - which was every line, because core had no
+   * per-line rate to give.
+   *
+   * It is no longer read anywhere. Core now refuses an issuance whose lines do
+   * not all name a rate, and no adapter substitutes one, so a value left in an
+   * existing connection's config is inert: it is neither used nor validated,
+   * and it can be removed at leisure. It is deliberately NOT deleted from
+   * stored configs by a migration - an unread key is harmless, whereas a
+   * migration touching every KSeF connection's credentials blob to remove one
+   * is not.
+   *
+   * @deprecated Ignored since #2257. The rate comes from the ProductMaster.
    */
   defaultTaxRate?: string;
 }

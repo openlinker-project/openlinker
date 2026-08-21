@@ -23,6 +23,7 @@ import {
   BuyerProfile,
   CURRENCY_REJECTION_MARKERS,
   FractionalTaxRateNotationError,
+  MissingTaxRateException,
   InvoiceRecord,
   UnsupportedRegulatoryDocumentKindError,
 } from '@openlinker/core/invoicing';
@@ -573,26 +574,32 @@ describe('InfaktInvoicingAdapter', () => {
       expect(CURRENCY_REJECTION_MARKERS.some((marker) => haystack.includes(marker))).toBe(true);
     });
 
-    it('should default an empty taxRate to the Polish standard VAT rate (regime-rate fallback)', async () => {
-      // Core always leaves InvoiceLine.taxRate empty (documented contract:
-      // "the provider adapter resolves the regime rate"). Verified live
-      // (2026-07-01): an empty tax_symbol cascades into services.gross /
-      // value.tax_values rejections too — every real order line hit this.
+    it('should refuse an empty taxRate rather than defaulting it (#2257)', async () => {
+      // INVERTED deliberately. This test used to lock the 23% fallback in place;
+      // that fallback is the thing #2245 exists to remove. A silent 23% is
+      // indistinguishable from a confirmed 23% on the issued document, and the
+      // whole cost of being wrong lands on the seller.
+      //
+      // The old live finding still holds and is why nothing is lost: an empty
+      // tax_symbol cascades into services.gross / value.tax_values rejections
+      // (verified 2026-07-01), so a rate-less line was never going to produce a
+      // document anyway. It now fails naming the product instead of a wire field.
       http.seed('POST', 'invoices.json', invoiceFixture());
 
-      await adapter.issueInvoice({ ...baseCmd, lines: [{ name: 'Widget', quantity: 1, unitPriceGross: 123, taxRate: '' }] });
+      await expect(
+        adapter.issueInvoice({
+          ...baseCmd,
+          lines: [{ name: 'Widget', quantity: 1, unitPriceGross: 123, taxRate: '' }],
+        }),
+      ).rejects.toBeInstanceOf(MissingTaxRateException);
 
-      const invoiceCall = http.calls.find((c) => c.method === 'POST' && c.path === 'invoices.json');
-      const services = (invoiceCall?.body as { invoice: { services: Array<{ tax_symbol: string; unit_net_price: number }> } })
-        .invoice.services;
-      expect(services[0].tax_symbol).toBe('23');
-      expect(services[0].unit_net_price).toBe(10000);
+      // And nothing was sent: the refusal is local, so no draft is left behind.
+      expect(http.calls.find((c) => c.method === 'POST' && c.path === 'invoices.json')).toBeUndefined();
     });
 
     it('should read "23" as twenty-three percent when splitting gross into net (#2247)', async () => {
       // Percent-as-string is the neutral contract. 123 gross at 23% is 100.00
-      // net, i.e. 10000 groszy - the same figure the empty-rate fallback
-      // produces, which is what makes the two readings comparable at all.
+      // net, i.e. 10000 groszy.
       http.seed('POST', 'invoices.json', invoiceFixture());
 
       await adapter.issueInvoice({

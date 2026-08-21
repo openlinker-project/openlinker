@@ -102,6 +102,9 @@ describe('toIssueInvoiceCommand', () => {
 
     expect(cmd.currency).toBe('EUR');
     expect(cmd.lines).toHaveLength(3);
+    // An empty rate here is the honest passthrough of an order line that never
+    // got one, NOT a default (#2257): the mapper names no rate of its own, and
+    // the gate refuses such an order before it reaches a provider.
     expect(cmd.lines[0]).toEqual({ name: 'Named', quantity: 2, unitPriceGross: 10, taxRate: '' });
     expect(cmd.lines[1].name).toBe('SKU-9');
     expect(cmd.lines[2].name).toBe('PID-5');
@@ -296,7 +299,11 @@ describe('toIssueInvoiceCommand', () => {
     expect(gross).toBeCloseTo(order.totals.total, 2);
   });
 
-  it('shipping: taxRate left empty on the shipping line (provider adapter resolves the regime rate)', () => {
+  it('shipping: an empty line rate leaves the shipping rate empty rather than guessing (#2257)', () => {
+    // Reworded, not relaxed. It used to read "the provider adapter resolves the
+    // regime rate", which is no longer true - no adapter substitutes one. The
+    // shipping line is still EMITTED (dropping it would understate the total)
+    // and still carries an empty rate, and the gate refuses the whole document.
     const order = makeOrder({
       totals: { subtotal: 100, tax: 0, shipping: 15, total: 115, currency: 'PLN', taxTreatment: 'inclusive' },
     });
@@ -306,6 +313,20 @@ describe('toIssueInvoiceCommand', () => {
     const shippingLine = cmd.lines.find((l) => l.name === 'Shipping');
     expect(shippingLine).toBeDefined();
     expect(shippingLine?.taxRate).toBe('');
+  });
+
+  it('shipping: inherits the basket rate when every line carries the same one (#2248)', () => {
+    const order = makeOrder({
+      items: [
+        { id: 'i1', productId: 'p1', quantity: 1, price: 100, taxRate: '23' },
+      ],
+      totals: { subtotal: 100, tax: 0, shipping: 15, total: 115, currency: 'PLN', taxTreatment: 'inclusive' },
+    });
+
+    const cmd = toIssueInvoiceCommand({ order, connectionId: 'conn-1' });
+
+    const shippingLine = cmd.lines.find((l) => l.name === 'Shipping');
+    expect(shippingLine?.taxRate).toBe('23');
   });
 
   it.each([
