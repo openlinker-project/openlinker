@@ -54,6 +54,7 @@ import {
   assertPercentTaxRateNotation,
   taxRatePercentToFraction,
 } from '@openlinker/core/invoicing';
+import type { IssuedDocumentLineAmounts } from '@openlinker/core/invoicing';
 import type { IInfaktHttpClient } from '../http/infakt-http-client.interface';
 import { InfaktApiError } from '../../domain/exceptions/infakt-api.error';
 import type {
@@ -68,6 +69,7 @@ import type {
   InfaktKsefStatus,
   InfaktListResponse,
   InfaktSendToKsefResponse,
+  InfaktInvoiceService,
 } from '../../domain/types/infakt.types';
 import type { InfaktConnectionConfig } from '../../domain/types/infakt-connection.types';
 
@@ -298,6 +300,31 @@ function taxRateNumeric(taxRate: string): number {
 /** Converts a buyer-paid gross unit price (PLN) to Infakt's net unit price (PLN) for the given tax rate. */
 function grossToNet(unitPriceGross: number, taxRate: string): number {
   return unitPriceGross / (1 + taxRateNumeric(taxRate));
+}
+
+/**
+ * Read the created document's own per-line amounts (#2251).
+ *
+ * Infakt reports every money field in integer groszy, so each is divided back
+ * to PLN here rather than at the call site - the conversion is Infakt's wire
+ * detail and belongs on this side of the boundary.
+ *
+ * Line numbers are 1-based positions in the response's `services` array, which
+ * is the order the lines were submitted in and therefore the order the document
+ * shows them. A `correction: true` row on a corrective document occupies its own
+ * position exactly like any other line, so nothing shifts.
+ */
+function toDocumentLineAmounts(
+  services: readonly InfaktInvoiceService[] | undefined,
+): IssuedDocumentLineAmounts[] | undefined {
+  if (!services || services.length === 0) return undefined;
+  return services.map((service, index) => ({
+    lineNumber: index + 1,
+    unitNet: fromGroszy(service.unit_net_price ?? 0),
+    net: fromGroszy(service.net_price ?? 0),
+    tax: fromGroszy(service.tax_price ?? 0),
+    gross: fromGroszy(service.gross_price ?? 0),
+  }));
 }
 
 /**
@@ -612,7 +639,12 @@ export class InfaktInvoicingAdapter
     // builds itself (it submits to KSeF natively) — `IssueInvoiceResult`'s
     // optional `seller`/`sourceDocument` are for adapters that build their own
     // fiscal document (e.g. KSeF's FA(3) XML); Infakt omits both.
-    return { record };
+    //
+    // #2251: the created invoice's own per-line amounts ARE reported. Infakt is
+    // the calculator on this path, so core storing its own recomputation would
+    // leave the record disagreeing with the document by a grosz here and there,
+    // with no way for a reader to tell which is right.
+    return { record, documentLines: toDocumentLineAmounts(invoice.services) };
   }
 
   async getInvoice(query: GetInvoiceQuery): Promise<InvoiceRecord | null> {
@@ -989,6 +1021,11 @@ export class InfaktInvoicingAdapter
       // Infakt builds and owns its own FA(3)/KSeF session server-side (see the
       // module docstring) — there is no machine-readable document for OL to
       // capture, same as issueInvoice.
+      //
+      // #2251: the CORRECTION's own line amounts. A correction is the latest
+      // effective document, so these overwrite the stored figures rather than
+      // leaving the record showing the pre-correction ones.
+      documentLines: toDocumentLineAmounts(invoice.services),
     };
   }
 
