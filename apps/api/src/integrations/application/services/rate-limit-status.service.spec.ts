@@ -211,6 +211,36 @@ describe('RateLimitStatusService', () => {
       expect(await subject.getStatus(connectionId)).not.toHaveProperty('resolveConcurrency');
     });
 
+    it('warns rather than debug-logs when a declared getStreamConcurrency throws', async () => {
+      // A not-yet-credentialed connection is routine; a method whose entire
+      // contract is "report a number you already computed" throwing is a
+      // defect. Both degrade the same way, so the log level is the only thing
+      // that keeps them apart.
+      connectionPort.get.mockResolvedValue(connection({ rateLimit: { requestsPerMinute: 30 } }));
+      rateLimiterRegistry.getStatus.mockReturnValue(null);
+      advertises();
+      (integrationsService.getCapabilityAdapter as jest.Mock).mockResolvedValue({
+        updateOfferQuantity: jest.fn(),
+        streamCategoriesForBatchByEan: jest.fn(),
+        getStreamConcurrency: jest.fn(() => {
+          throw new Error('boom');
+        }),
+      });
+      const warn = jest
+        .spyOn(
+          (subject as unknown as { logger: { warn: (msg: string) => void } }).logger,
+          'warn'
+        )
+        .mockImplementation(() => undefined);
+
+      const status = await subject.getStatus(connectionId);
+
+      expect(status.enabled).toBe(true);
+      expect(status).not.toHaveProperty('resolveConcurrency');
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('getStreamConcurrency() threw'));
+      warn.mockRestore();
+    });
+
     it('never builds the adapter when the manifest does not advertise the capability', async () => {
       // Building one resolves credentials. A deployment full of shop
       // connections must not pay that on every settings-page read, nor log a
