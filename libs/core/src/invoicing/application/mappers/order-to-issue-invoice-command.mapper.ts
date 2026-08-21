@@ -22,7 +22,7 @@ import type {
 import { InvalidBuyerProfileError } from './errors/invalid-buyer-profile.error';
 import { InvalidInvoiceLineError } from './errors/invalid-invoice-line.error';
 import { UnsupportedPriceTreatmentError } from './errors/unsupported-price-treatment.error';
-import { splitShippingAcrossRates } from '../../domain/types/shipping-tax-split.types';
+import { splitShippingAcrossRates } from '@openlinker/core/sales-documents';
 
 /**
  * Default carrier-neutral label for the shipping invoice line (#1517). Core is
