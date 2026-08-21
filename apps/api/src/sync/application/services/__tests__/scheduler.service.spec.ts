@@ -100,6 +100,7 @@ describe('SchedulerService', () => {
         // must register its cron key here, in order.
         'OL_INVENTORY_SYNC_CRON',
         'OL_MASTER_PRODUCT_DELTA_SYNC_CRON',
+        'OL_MASTER_PRODUCT_RECONCILE_CRON',
         'OL_OFFLINE_RESUBMIT_CRON',
         'OL_ORDER_FX_STAMP_SWEEP_CRON',
         'OL_PENDING_RECOVERY_CRON',
@@ -217,6 +218,7 @@ describe('SchedulerService', () => {
         'destination-taxonomy-sync',
         'master-inventory-sync',
         'master-product-delta-sync',
+        'master-product-reconcile',
         'master-product-sync',
         'offline-resubmit',
         'order-fx-stamp-sweep',
@@ -438,6 +440,7 @@ describe('SchedulerService', () => {
         // must register its cron key here, in order.
         'OL_INVENTORY_SYNC_CRON',
         'OL_MASTER_PRODUCT_DELTA_SYNC_CRON',
+        'OL_MASTER_PRODUCT_RECONCILE_CRON',
         'OL_OFFLINE_RESUBMIT_CRON',
         'OL_ORDER_FX_STAMP_SWEEP_CRON',
         'OL_PENDING_RECOVERY_CRON',
@@ -529,6 +532,7 @@ describe('SchedulerService', () => {
         // must register its cron key here, in order.
         'OL_INVENTORY_SYNC_CRON',
         'OL_MASTER_PRODUCT_DELTA_SYNC_CRON',
+        'OL_MASTER_PRODUCT_RECONCILE_CRON',
         'OL_OFFLINE_RESUBMIT_CRON',
         'OL_ORDER_FX_STAMP_SWEEP_CRON',
         'OL_PENDING_RECOVERY_CRON',
@@ -617,6 +621,7 @@ describe('SchedulerService', () => {
         // must register its cron key here, in order.
         'OL_INVENTORY_SYNC_CRON',
         'OL_MASTER_PRODUCT_DELTA_SYNC_CRON',
+        'OL_MASTER_PRODUCT_RECONCILE_CRON',
         'OL_OFFLINE_RESUBMIT_CRON',
         'OL_ORDER_FX_STAMP_SWEEP_CRON',
         'OL_PENDING_RECOVERY_CRON',
