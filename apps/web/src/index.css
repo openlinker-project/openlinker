@@ -18649,6 +18649,9 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
 .attention-list {
   display: flex;
   flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
 
 .attention-list__item {

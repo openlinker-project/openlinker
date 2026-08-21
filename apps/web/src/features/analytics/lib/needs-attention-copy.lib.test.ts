@@ -19,9 +19,9 @@ describe('deriveCoverageHeadline', () => {
       { variantId: 'v2', productId: 'p1', listedOnConnectionIds: ['conn-2'], missingFromConnectionIds: ['conn-1'] },
     ];
 
-    const result = deriveCoverageHeadline(items, 12, connectionName);
+    const result = deriveCoverageHeadline(items, items.length, connectionName);
 
-    expect(result.headline).toBe('12 variants missing from Allegro');
+    expect(result.headline).toBe('2 variants missing from Allegro');
   });
 
   it('should fall back to a connection-agnostic headline when items miss different channels', () => {
@@ -32,7 +32,7 @@ describe('deriveCoverageHeadline', () => {
 
     const result = deriveCoverageHeadline(items, 2, connectionName);
 
-    expect(result.headline).toBe('2 variants have a listing gap on at least one channel');
+    expect(result.headline).toBe('2 variants with a listing gap on at least one channel');
   });
 
   it('should fall back to a connection-agnostic headline when an item misses more than one channel', () => {
@@ -47,7 +47,7 @@ describe('deriveCoverageHeadline', () => {
 
     const result = deriveCoverageHeadline(items, 1, connectionName);
 
-    expect(result.headline).toBe('1 variant have a listing gap on at least one channel');
+    expect(result.headline).toBe('1 variant with a listing gap on at least one channel');
   });
 
   it('should use singular wording for a totalCount of 1 in the connection-named branch', () => {
@@ -63,7 +63,24 @@ describe('deriveCoverageHeadline', () => {
   it('should fall back to the ambiguous headline when the items array is empty but totalCount is positive', () => {
     const result = deriveCoverageHeadline([], 5, connectionName);
 
-    expect(result.headline).toBe('5 variants have a listing gap on at least one channel');
+    expect(result.headline).toBe('5 variants with a listing gap on at least one channel');
+  });
+
+  it('should NOT name a connection when the sample shares one channel but the sample is smaller than the total (#2120 BLOCKING)', () => {
+    // 20-item sample (the DEFAULT_AGGREGATE_LIMIT preview) all missing from
+    // conn-1, but totalCount (412) says there are 392 more variants this
+    // sample never verified are also missing from conn-1.
+    const items: CoverageGapItem[] = Array.from({ length: 20 }, (_, i) => ({
+      variantId: `v${i}`,
+      productId: 'p1',
+      listedOnConnectionIds: ['conn-2'],
+      missingFromConnectionIds: ['conn-1'],
+    }));
+
+    const result = deriveCoverageHeadline(items, 412, connectionName);
+
+    expect(result.headline).toBe('412 variants with a listing gap on at least one channel');
+    expect(result.headline).not.toContain('Allegro');
   });
 });
 
@@ -74,9 +91,9 @@ describe('deriveStockHeadline', () => {
       { variantId: 'v2', productId: 'p1', connectionId: 'conn-1', masterStock: 0, stockSafetyBuffer: 2 },
     ];
 
-    const result = deriveStockHeadline(items, 4, connectionName);
+    const result = deriveStockHeadline(items, items.length, connectionName);
 
-    expect(result.headline).toBe('4 variants at or below the safety buffer on Allegro');
+    expect(result.headline).toBe('2 variants at or below the safety buffer on Allegro');
     expect(result.sub).toContain('buffer 2');
   });
 
@@ -100,6 +117,21 @@ describe('deriveStockHeadline', () => {
     const result = deriveStockHeadline(items, 2, connectionName);
 
     expect(result.headline).toBe("2 variants are at or below their channel's safety buffer");
+  });
+
+  it('should NOT name a connection/buffer when the sample shares both but the sample is smaller than the total (#2120 BLOCKING)', () => {
+    const items: StockAtRiskItem[] = Array.from({ length: 20 }, (_, i) => ({
+      variantId: `v${i}`,
+      productId: 'p1',
+      connectionId: 'conn-1',
+      masterStock: 1,
+      stockSafetyBuffer: 2,
+    }));
+
+    const result = deriveStockHeadline(items, 300, connectionName);
+
+    expect(result.headline).toBe("300 variants are at or below their channel's safety buffer");
+    expect(result.headline).not.toContain('Allegro');
   });
 });
 

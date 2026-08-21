@@ -20,6 +20,7 @@ import {
   type StatusBadgeTone,
 } from '../../../shared/ui';
 import { useConnectionsQuery } from '../../connections';
+import { getBcp47Locale, useTranslation } from '../../../shared/i18n';
 import { useNeedsAttentionQuery } from '../hooks/use-needs-attention-query';
 import {
   deriveCoverageHeadline,
@@ -27,8 +28,6 @@ import {
   deriveStockHeadline,
   type AttentionRowCopy,
 } from '../lib/needs-attention-copy.lib';
-
-const MAX_WIZARD_IDS = 100;
 
 interface AttentionRow extends AttentionRowCopy {
   key: string;
@@ -45,6 +44,7 @@ function uniqueValues<T>(values: T[]): T[] {
 export function AnalyticsNeedsAttention(): ReactElement {
   const needsAttentionQuery = useNeedsAttentionQuery();
   const connectionsQuery = useConnectionsQuery();
+  const { locale } = useTranslation();
 
   const connectionName = useMemo(() => {
     const byId = new Map((connectionsQuery.data ?? []).map((c) => [c.id, c.name]));
@@ -96,8 +96,14 @@ export function AnalyticsNeedsAttention(): ReactElement {
 
   if (summary.coverageGapsTotalCount > 0) {
     const copy = deriveCoverageHeadline(summary.coverageGaps, summary.coverageGapsTotalCount, connectionName);
-    const productIds = uniqueValues(summary.coverageGaps.map((item) => item.productId)).slice(0, MAX_WIZARD_IDS);
-    const variantIds = uniqueValues(summary.coverageGaps.map((item) => item.variantId)).slice(0, MAX_WIZARD_IDS);
+    // summary.coverageGaps is already a server-side-capped preview (≤
+    // DEFAULT_AGGREGATE_LIMIT), so productIds/variantIds are derived from
+    // the SAME item list rather than sliced independently — otherwise a
+    // variantId could survive its own product being dropped by a separate
+    // slice (#2120 review, SUGGESTION).
+    const isPartialSample = summary.coverageGaps.length < summary.coverageGapsTotalCount;
+    const productIds = uniqueValues(summary.coverageGaps.map((item) => item.productId));
+    const variantIds = uniqueValues(summary.coverageGaps.map((item) => item.variantId));
     const missingConnectionIds = uniqueValues(
       summary.coverageGaps
         .filter((item) => item.missingFromConnectionIds.length === 1)
@@ -118,6 +124,13 @@ export function AnalyticsNeedsAttention(): ReactElement {
       linkTo: `/listings/bulk-create/wizard?${params.toString()}`,
       linkLabel: 'Publish now',
       ...copy,
+      // "Publish now" only seeds the sampled variants when the row's own
+      // total exceeds the preview — say so, since a partial sample can
+      // otherwise be reviewed and submitted while the headline still
+      // reports the full total (#2120 review, IMPORTANT).
+      sub: isPartialSample
+        ? `${copy.sub} — showing the first ${summary.coverageGaps.length} of ${summary.coverageGapsTotalCount}`
+        : copy.sub,
     });
   }
 
@@ -136,7 +149,7 @@ export function AnalyticsNeedsAttention(): ReactElement {
   }
 
   if (summary.failedSyncValue.count > 0) {
-    const copy = deriveFailedSyncHeadline(summary.failedSyncValue);
+    const copy = deriveFailedSyncHeadline(summary.failedSyncValue, getBcp47Locale(locale));
 
     rows.push({
       key: 'failed-sync-value',
@@ -160,9 +173,9 @@ export function AnalyticsNeedsAttention(): ReactElement {
           </span>
         )}
       </div>
-      <div className="attention-list">
+      <ul className="attention-list">
         {rows.length === 0 ? (
-          <div className="attention-list__item attention-list__item--resolved">
+          <li className="attention-list__item attention-list__item--resolved">
             <StatusBadge tone="neutral" withDot>
               Clear
             </StatusBadge>
@@ -172,10 +185,10 @@ export function AnalyticsNeedsAttention(): ReactElement {
                 {checkedCount} checks · coverage, stock, destination syncs
               </span>
             </div>
-          </div>
+          </li>
         ) : (
           rows.map((row) => (
-            <div className="attention-list__item" key={row.key}>
+            <li className="attention-list__item" key={row.key}>
               <StatusBadge tone={row.tone} withDot>
                 {row.badgeLabel}
               </StatusBadge>
@@ -186,10 +199,10 @@ export function AnalyticsNeedsAttention(): ReactElement {
               <Link className="button button--secondary button--sm" to={row.linkTo}>
                 {row.linkLabel}
               </Link>
-            </div>
+            </li>
           ))
         )}
-      </div>
+      </ul>
     </article>
   );
 }
