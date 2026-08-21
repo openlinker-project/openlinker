@@ -24,6 +24,7 @@ import {
   createAiProviderSettingsApi,
   type AiProviderSettingsApi,
 } from '../../features/ai-provider-settings/api/ai-provider-settings.api';
+import { createAnalyticsApi, type AnalyticsApi } from '../../features/analytics/api/sales-analytics.api';
 import {
   createAnalyticsTrustApi,
   type AnalyticsTrustApi,
@@ -148,6 +149,7 @@ export interface PluginApiNamespaces {}
 export interface CoreApiClient {
   adapters: AdaptersApi;
   aiProviderSettings: AiProviderSettingsApi;
+  analytics: AnalyticsApi;
   analyticsTrust: AnalyticsTrustApi;
   auth: AuthApi;
   connections: ConnectionsApi;
@@ -366,6 +368,7 @@ export function createApiClient({
   const core: CoreApiClient = {
     adapters: createAdaptersApi(request),
     aiProviderSettings: createAiProviderSettingsApi(request),
+    analytics: createAnalyticsApi(request),
     analyticsTrust: createAnalyticsTrustApi(request),
     auth: createAuthApi(request),
     connections: createConnectionsApi(request),

@@ -4644,6 +4644,193 @@ a.kpi-card:focus-visible {
   color: var(--status-success-strong);
 }
 
+/* ── Analytics KPI card extras (#1990) ───────────────────────────────
+ * The richer anatomy the #1990 design mockup calls for, layered on top of
+ * the base `.kpi-card` chrome above: a headline+metric+delta stack, one or
+ * more qualifier rows pinned to the card floor by a hairline, a dashed
+ * "planned" treatment for a card with no real figure at all, and a
+ * click-to-open (ⓘ) definitions popover on the label row.
+ */
+/* `.status-strip.status-strip--analytics` (not bare `.status-strip--analytics`): the
+ * Phase 6 dashboard-triage `.status-strip` breakpoints below share this rule's
+ * specificity (0,1,0) and sit later in the file, so without the compound
+ * selector their `repeat(4, …)` at ≥1024px silently won, packing 6 KPI cards
+ * as 4-then-2 instead of the mockup's 3-per-row. */
+.status-strip.status-strip--analytics {
+  grid-template-columns: minmax(0, 1fr);
+}
+@media (min-width: 768px) {
+  .status-strip.status-strip--analytics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (min-width: 1024px) {
+  .status-strip.status-strip--analytics {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+.status-strip--analytics .kpi-card {
+  min-height: 9.5rem;
+}
+
+.kpi-card__headline {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.kpi-card__metric {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  line-height: 1.3;
+  color: var(--text-secondary);
+}
+
+.kpi-card__delta {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 3px;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--text-muted);
+}
+
+.kpi-card__delta-basis {
+  color: var(--text-muted);
+}
+
+.kpi-card__qualifiers {
+  display: flex;
+  flex-direction: column;
+  margin-top: auto;
+}
+
+.kpi-card__qualifier {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.kpi-card__qualifier + .kpi-card__qualifier {
+  margin-top: var(--space-3);
+}
+
+.kpi-card__qualifier-label {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  min-width: 0;
+}
+
+.kpi-card__qualifier-value {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.status-strip--analytics .kpi-card--planned {
+  border-style: dashed;
+  border-color: var(--border-strong);
+  background: var(--bg-shell);
+}
+.kpi-card--planned .kpi-card__value,
+.kpi-card--planned .kpi-card__qualifier-value {
+  color: var(--text-secondary);
+}
+.kpi-card--planned-half .kpi-card__value {
+  color: var(--text-muted);
+}
+
+.kpi-card__planned-tag {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  padding: 1px var(--space-2);
+  border-radius: var(--radius-sm);
+  border: 1px dashed var(--border-strong);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.gap-mark {
+  color: var(--accent-primary-hover);
+  font-weight: 700;
+  cursor: help;
+  font-family: var(--font-mono);
+}
+
+.section-infotip {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px;
+  margin-left: 2px;
+  background: none;
+  border: 0;
+  cursor: help;
+  font-size: 0.8125rem;
+  line-height: 1;
+  color: var(--text-muted);
+}
+.section-infotip:hover {
+  color: var(--text-secondary);
+}
+.section-infotip:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+  border-radius: var(--radius-xs);
+}
+
+.infotip-popover {
+  max-width: min(22rem, 70vw);
+  font-family: var(--font-sans);
+  font-size: 0.75rem;
+  line-height: 1.5;
+  text-transform: none;
+  letter-spacing: var(--tracking-normal);
+}
+.infotip-def {
+  display: block;
+}
+.infotip-def + .infotip-def {
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border-subtle);
+}
+.infotip-def__term {
+  display: block;
+  margin-bottom: 4px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.infotip-def__formula {
+  display: block;
+  margin-top: 6px;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  color: var(--text-primary);
+  background: var(--bg-shell);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 3px 6px;
+  width: max-content;
+  max-width: 100%;
+}
+.infotip-def__caveat {
+  display: block;
+  margin-top: 6px;
+  color: var(--text-muted);
+}
+
 .sparkline__line {
   stroke: currentColor;
   stroke-width: 1.5;
@@ -4671,6 +4858,17 @@ a.kpi-card:focus-visible {
 
 .sparkline--error {
   color: var(--status-error);
+}
+
+/* ── DataTable footnote (#1990 / #2098 follow-up) ──
+   A plain, low-emphasis line under a DataTable disclosing something the rows
+   above deliberately don't show — e.g. the by-channel table's count of
+   orders excluded because they have no reporting-currency FX stamp yet. No
+   box, no icon — reads as fine print, not a callout. */
+.data-table__footnote {
+  margin: var(--space-2) 0 0;
+  font-size: 0.8125rem;
+  color: var(--text-muted);
 }
 
 /* KeyValueList ------------------------------------------------------ */
@@ -18459,6 +18657,57 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   .trust-header__facts {
     justify-content: flex-start;
     white-space: normal;
+  }
+}
+
+/* ── Analytics needs-attention section (#1989) ──
+   Either the all-clear line or the open rows, never both
+   (docs/plans/mockups/analytics-ledger-2003.html, frame 02). */
+.attention-list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.attention-list__item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.attention-list__item:first-child {
+  border-top: 0;
+}
+
+.attention-list__item--resolved {
+  color: var(--text-muted);
+}
+
+.attention-list__body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  gap: 2px;
+}
+
+.attention-list__headline {
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.attention-list__sub {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+@media (max-width: 767.98px) {
+  .attention-list__item {
+    flex-wrap: wrap;
   }
 }
 

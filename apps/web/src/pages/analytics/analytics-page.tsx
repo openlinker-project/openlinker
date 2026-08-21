@@ -2,20 +2,27 @@
  * Analytics Page
  *
  * The /analytics route shell (#1986): page scaffold, date-range control,
- * and the trust/data-coverage disclosure every other /analytics section
- * (#1989, #1990, #1991) will mount alongside. Ships zero revenue/order
- * metrics — see docs/plans/implementation-plan-analytics-page-shell.md.
+ * the trust/data-coverage disclosure, the needs-attention section (#1989),
+ * and the sales KPI strip / by-channel table (#1990). Section #1991 will
+ * mount alongside. Ships zero revenue/order metrics of its own — see
+ * docs/plans/implementation-plan-analytics-page-shell.md,
+ * docs/plans/implementation-plan-analytics-needs-attention.md, and
+ * docs/plans/implementation-plan-sales-channel-aggregates.md.
  *
  * @module apps/web/src/pages/analytics
  */
-import { useEffect, useRef, type ReactElement } from 'react';
+import { useEffect, useMemo, useRef, type ReactElement } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
   AnalyticsDateRangeToolbar,
   AnalyticsDegradationBanner,
+  AnalyticsKpiStrip,
+  AnalyticsNeedsAttention,
   AnalyticsTrustHeader,
+  ChannelSalesTable,
   computePresetRange,
   useAnalyticsTrustQuery,
+  type SalesAnalyticsFilters,
 } from '../../features/analytics';
 import { Button, EmptyState, ErrorState, LoadingState, PageLayout } from '../../shared/ui';
 
@@ -53,6 +60,12 @@ export function AnalyticsPage(): ReactElement {
 
   const trustQuery = useAnalyticsTrustQuery();
 
+  // Built once per from/to so `AnalyticsKpiStrip` and `ChannelSalesTable`
+  // share a byte-identical query key and therefore one network request —
+  // and so a channel-table failure can never blank the KPI strip: they
+  // render independently even though they fetch from the same cache entry.
+  const salesFilters: SalesAnalyticsFilters = useMemo(() => ({ from, to }), [from, to]);
+
   return (
     <PageLayout
       eyebrow="Operations"
@@ -87,6 +100,13 @@ export function AnalyticsPage(): ReactElement {
         <>
           <AnalyticsDegradationBanner connections={trustQuery.data.connections} />
           <AnalyticsTrustHeader connections={trustQuery.data.connections} />
+          {/* Coverage gaps and stock-at-risk are listing facts, not order
+              facts, so they render regardless of ingestion status — a fresh
+              install with a full catalogue and no orders yet is exactly
+              when they matter most (#2120 review, SUGGESTION). Only the
+              order-derived sections below stay behind the never-ingested
+              gate. */}
+          <AnalyticsNeedsAttention />
           {trustQuery.data.connections.every((entry) => entry.status === 'never-ingested') ? (
             <EmptyState
               title="First orders are still arriving"
@@ -97,7 +117,12 @@ export function AnalyticsPage(): ReactElement {
                 </Link>
               }
             />
-          ) : null}
+          ) : (
+            <>
+              <AnalyticsKpiStrip filters={salesFilters} />
+              <ChannelSalesTable filters={salesFilters} />
+            </>
+          )}
         </>
       ) : null}
     </PageLayout>
