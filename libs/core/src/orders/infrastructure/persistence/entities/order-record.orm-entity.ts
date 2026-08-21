@@ -194,6 +194,27 @@ export class OrderRecordOrmEntity {
   salesDocumentBlockReleasedAt!: Date | null;
 
   /**
+   * Marks an order that arrived BEFORE per-line tax rates existed (#2256).
+   *
+   * `'pre-rollout'` on every row the enabling migration found; `null` on
+   * everything ingested afterwards. It is a DATA marker for analytics, not an
+   * operator-facing state - such an order issues exactly as it does today, and
+   * the frontend deliberately renders nothing for it.
+   *
+   * Its only job is to keep a net-revenue figure honest: a pre-rollout order's
+   * tax was whatever the provider defaulted to, so presenting it as a confirmed
+   * rate would be a claim the data does not support. Excluded rather than
+   * back-computed, because there is nothing to compute from.
+   *
+   * Recorded per RECORD rather than per line, deliberately. The lines live in a
+   * jsonb snapshot, so a per-line marker would mean rewriting every snapshot in
+   * the table for a value that is uniform across an order and that no surface
+   * renders per line.
+   */
+  @Column({ type: 'varchar', length: 16, nullable: true })
+  taxRateEra!: string | null;
+
+  /**
    * Per-order reporting-currency snapshot (#2124, ADR-040) — six columns
    * written ONLY by the two narrow, conditional UPDATEs on the repository
    * (`claimFxIntentIfAbsent`, `stampFxIfAbsent`). The ingestion upsert

@@ -1115,7 +1115,8 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       entity.fxStampedAt ?? null,
       entity.fxIntendedCurrency ?? null,
       entity.salesDocumentBlockedAt ?? null,
-      entity.salesDocumentBlockReleasedAt ?? null
+      entity.salesDocumentBlockReleasedAt ?? null,
+      entity.taxRateEra ?? null
     );
   }
 

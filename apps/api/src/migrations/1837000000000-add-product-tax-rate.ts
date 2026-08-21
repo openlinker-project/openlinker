@@ -14,7 +14,7 @@
  * query rather than a crawl: "which products have no rate" backs the operator
  * surface, "which have not been checked" backs the sync suggestion.
  */
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import type { MigrationInterface, QueryRunner } from 'typeorm';
 
 export class AddProductTaxRate1837000000000 implements MigrationInterface {
   name = 'AddProductTaxRate1837000000000';

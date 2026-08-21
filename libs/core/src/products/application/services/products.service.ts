@@ -105,6 +105,19 @@ export class ProductsService implements IProductsService {
     return this.productRepository.countTaxRateStates();
   }
 
+  async getTaxRateCoverageByConnection(): Promise<
+    Array<{
+      connectionId: string;
+      platformType: string;
+      total: number;
+      known: number;
+      missing: number;
+      notChecked: number;
+    }>
+  > {
+    return this.productRepository.countTaxRateStatesByConnection();
+  }
+
   async getProduct(id: string): Promise<Product | null> {
     return this.productRepository.findById(id);
   }

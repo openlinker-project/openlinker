@@ -18,7 +18,7 @@
  * statement that sets the reason, because the transition is the only place both
  * the old and the new value are known.
  */
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import type { MigrationInterface, QueryRunner } from 'typeorm';
 
 export class AddOrderRecordSalesDocumentBlockInstants1837000000001 implements MigrationInterface {
   name = 'AddOrderRecordSalesDocumentBlockInstants1837000000001';

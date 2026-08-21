@@ -13,7 +13,7 @@
  * entry for one item on one connection, and the latest per connection for one
  * item - because both walk the same prefix.
  */
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import type { MigrationInterface, QueryRunner } from 'typeorm';
 
 export class CreateTaxRateJournal1837000000002 implements MigrationInterface {
   name = 'CreateTaxRateJournal1837000000002';
