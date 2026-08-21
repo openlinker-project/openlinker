@@ -32,8 +32,6 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
   private readonly WORKER_ID = `worker-${process.pid}-${Date.now()}`;
   private readonly BATCH_SIZE = 10; // Number of jobs to process per iteration
   private readonly POLL_INTERVAL_MS = 1000; // Poll interval when no jobs available
-  private readonly STUCK_JOB_TIMEOUT_MINUTES = 15; // Lock timeout for stuck jobs
-  private readonly STUCK_JOB_RECOVERY_INTERVAL_MS = 5 * 60 * 1000; // Check for stuck jobs every 5 minutes
   private readonly JOB_HEARTBEAT_INTERVAL_MS = 3 * 60 * 1000; // Refresh lockedAt every 3 minutes while a job runs (#1810)
   private readonly RATE_LIMIT_TIMEOUT_REQUEUE_DELAY_SECONDS = 30; // Fixed short requeue delay for RateLimitTimeoutError — not exponential, since attempts never increments (#1810 review follow-up)
 
@@ -44,7 +42,6 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
 
   private abortController: AbortController | null = null;
   private isRunning = false;
-  private stuckJobRecoveryInterval: NodeJS.Timeout | null = null;
   private restartTimer: NodeJS.Timeout | null = null;
   private runnerLoopPromise: Promise<void> | null = null;
 
@@ -71,7 +68,8 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
 
     this.logger.log(`Starting sync job runner with worker ID: ${this.WORKER_ID}`);
     this.startRunner();
-    this.startStuckJobRecovery();
+    // Stuck-job recovery moved to StuckJobRecoveryService (`maintenance` role,
+    // #2279) — a runner replica no longer doubles as the fleet's janitor.
   }
 
   async onModuleDestroy(): Promise<void> {
@@ -132,12 +130,6 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
       this.restartTimer = null;
     }
 
-    // Stop stuck job recovery
-    if (this.stuckJobRecoveryInterval) {
-      clearInterval(this.stuckJobRecoveryInterval);
-      this.stuckJobRecoveryInterval = null;
-    }
-
     // Wait for runner loop to finish, but with a timeout to prevent hanging
     const loopPromise = this.runnerLoopPromise;
     if (loopPromise) {
@@ -148,50 +140,6 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
     }
 
     this.logger.log('Sync job runner stopped');
-  }
-
-  /**
-   * Start stuck job recovery loop
-   *
-   * Periodically checks for and requeues jobs stuck in 'running' status
-   * longer than the lock timeout threshold.
-   *
-   * @param intervalMs - Optional interval in milliseconds (defaults to STUCK_JOB_RECOVERY_INTERVAL_MS)
-   */
-  private startStuckJobRecovery(intervalMs?: number): void {
-    // Prevent multiple starts
-    if (this.stuckJobRecoveryInterval) {
-      return;
-    }
-
-    const interval = intervalMs ?? this.STUCK_JOB_RECOVERY_INTERVAL_MS;
-    this.stuckJobRecoveryInterval = setInterval(() => {
-      void (async (): Promise<void> => {
-        try {
-          const requeuedCount = await this.jobRepository.requeueStuckJobs(
-            this.STUCK_JOB_TIMEOUT_MINUTES
-          );
-          if (requeuedCount > 0) {
-            this.logger.warn(`Requeued ${requeuedCount} stuck job(s)`);
-          }
-        } catch (error) {
-          this.logger.error(
-            'Error in stuck job recovery',
-            error instanceof Error ? error.stack : String(error)
-          );
-        }
-      })();
-    }, interval);
-
-    // Don't keep process alive if only this interval is running
-    if (
-      this.stuckJobRecoveryInterval &&
-      typeof this.stuckJobRecoveryInterval.unref === 'function'
-    ) {
-      this.stuckJobRecoveryInterval.unref();
-    }
-
-    this.logger.log(`Started stuck job recovery (checking every ${interval / 1000}s)`);
   }
 
   /**

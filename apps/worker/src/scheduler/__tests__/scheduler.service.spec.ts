@@ -1,12 +1,15 @@
 /**
  * Scheduler Service Tests
  *
- * Unit tests for SchedulerService. Covers the two core capability-based
- * tasks (inventory + product), the registry-drain bootstrap path that
- * picks up plugin-contributed tasks (#584), executeTask scope routing,
- * and onModuleDestroy teardown.
+ * Unit tests for SchedulerService. Covers the core capability-based tasks
+ * (inventory + product), the registry-drain path that picks up
+ * plugin-contributed tasks (#584), executeTask scope routing, and teardown.
  *
- * @module apps/api/src/sync/application/services/__tests__
+ * Since #2279 the service lives in the worker and is driven by
+ * `SchedulerLeaseCoordinator` through the idempotent `start()`/`stop()` pair
+ * rather than self-starting on `onApplicationBootstrap`.
+ *
+ * @module apps/worker/src/scheduler/__tests__
  */
 import { SchedulerService } from '../scheduler.service';
 import type { ConnectionPort } from '@openlinker/core/identifier-mapping';
@@ -25,6 +28,7 @@ describe('SchedulerService', () => {
   let configService: jest.Mocked<ConfigService>;
   let schedulerRegistry: jest.Mocked<SchedulerRegistry>;
   let schedulerTaskRegistry: SchedulerTaskRegistryService;
+  let registeredCronJobs: Map<string, { stop: () => void }>;
 
   const createConnection = (id: string, platformType = 'prestashop'): Connection =>
     new Connection(
@@ -73,10 +77,19 @@ describe('SchedulerService', () => {
       get: jest.fn().mockReturnValue('true'),
     } as unknown as jest.Mocked<ConfigService>;
 
+    // The registry mock is STATEFUL on purpose (#2279): `scheduleTask` creates
+    // and starts a real `CronJob`, whose timer is only ever cleared by
+    // `stop()` walking `getCronJobs()`. A stub returning a fixed empty Map
+    // therefore leaks a live timer per registered task per test — harmless
+    // under `apps/api`'s `forceExit: true`, but this spec now runs under
+    // `apps/worker`'s config, which has none, so the leak hangs the suite.
+    registeredCronJobs = new Map<string, { stop: () => void }>();
     schedulerRegistry = {
-      addCronJob: jest.fn(),
-      getCronJobs: jest.fn().mockReturnValue(new Map()),
-      deleteCronJob: jest.fn(),
+      addCronJob: jest.fn((name: string, job: { stop: () => void }) => {
+        registeredCronJobs.set(name, job);
+      }),
+      getCronJobs: jest.fn(() => registeredCronJobs),
+      deleteCronJob: jest.fn((name: string) => registeredCronJobs.delete(name)),
     } as unknown as jest.Mocked<SchedulerRegistry>;
 
     schedulerTaskRegistry = new SchedulerTaskRegistryService();
@@ -91,12 +104,17 @@ describe('SchedulerService', () => {
     );
   });
 
-  describe('onApplicationBootstrap', () => {
+  afterEach(() => {
+    // Stop every CronJob this test started (see the stateful registry mock).
+    service.stop();
+  });
+
+  describe('start', () => {
     const defaultConfigGet = (key: string, defaultValue?: unknown): unknown => {
       const cronKeys = [
         // Kept ALPHABETICAL. A cron key missing from this list falls through to
         // `'true'` below, which CronJob rejects ("Unknown alias: tru") and which
-        // aborts onApplicationBootstrap for EVERY task - so a new scheduled task
+        // aborts start() for EVERY task - so a new scheduled task
         // must register its cron key here, in order.
         'OL_INVENTORY_SYNC_CRON',
         'OL_MASTER_PRODUCT_DELTA_SYNC_CRON',
@@ -117,10 +135,41 @@ describe('SchedulerService', () => {
     it('should register the core inventory sync task when enabled', () => {
       configService.get.mockImplementation(defaultConfigGet);
 
-      service.onApplicationBootstrap();
+      service.start();
 
       const registeredJobs = schedulerRegistry.addCronJob.mock.calls.map((c) => c[0]);
       expect(registeredJobs).toContain('master-inventory-sync');
+    });
+
+    it('is idempotent — a second start does not re-register the same tasks (#2279 lease re-acquire)', () => {
+      configService.get.mockImplementation(defaultConfigGet);
+
+      service.start();
+      const afterFirst = schedulerRegistry.addCronJob.mock.calls.length;
+      service.start();
+
+      expect(schedulerRegistry.addCronJob.mock.calls.length).toBe(afterFirst);
+    });
+
+    it('unwinds the started latch when scheduling throws, so a later start can recover (#2279)', () => {
+      // A malformed cron expression — plugin env vars feed these verbatim, so
+      // this is an operator typo, not a hypothetical.
+      configService.get.mockImplementation((key: string, defaultValue?: unknown) => {
+        if (key === 'OL_INVENTORY_SYNC_CRON') return 'not-a-cron';
+        return defaultConfigGet(key, defaultValue);
+      });
+
+      expect(() => service.start()).toThrow();
+
+      // Leaving the latch set would make every later start() a silent no-op,
+      // pinning this process as a half-scheduled holder of the lease forever.
+      configService.get.mockImplementation(defaultConfigGet);
+      service.start();
+
+      const registeredJobs = schedulerRegistry.addCronJob.mock.calls.map((c) => c[0]);
+      expect(registeredJobs).toContain('master-inventory-sync');
+
+      service.stop();
     });
 
     it('should not register the core inventory sync task when disabled', () => {
@@ -129,7 +178,7 @@ describe('SchedulerService', () => {
         return defaultConfigGet(key, defaultValue);
       });
 
-      service.onApplicationBootstrap();
+      service.start();
 
       const registeredJobs = schedulerRegistry.addCronJob.mock.calls.map((c) => c[0]);
       expect(registeredJobs).not.toContain('master-inventory-sync');
@@ -138,7 +187,7 @@ describe('SchedulerService', () => {
     it('should register the core product sync task when enabled', () => {
       configService.get.mockImplementation(defaultConfigGet);
 
-      service.onApplicationBootstrap();
+      service.start();
 
       const registeredJobs = schedulerRegistry.addCronJob.mock.calls.map((c) => c[0]);
       expect(registeredJobs).toContain('master-product-sync');
@@ -150,7 +199,7 @@ describe('SchedulerService', () => {
         return defaultConfigGet(key, defaultValue);
       });
 
-      service.onApplicationBootstrap();
+      service.start();
 
       const registeredJobs = schedulerRegistry.addCronJob.mock.calls.map((c) => c[0]);
       expect(registeredJobs).not.toContain('master-product-sync');
@@ -170,7 +219,7 @@ describe('SchedulerService', () => {
         return defaultConfigGet(key, defaultValue);
       });
 
-      service.onApplicationBootstrap();
+      service.start();
 
       const registeredJobs = schedulerRegistry.addCronJob.mock.calls.map((c) => c[0]);
       expect(registeredJobs).not.toContain('master-product-delta-sync');
@@ -182,7 +231,7 @@ describe('SchedulerService', () => {
         return defaultConfigGet(key, defaultValue);
       });
 
-      service.onApplicationBootstrap();
+      service.start();
 
       const registeredJobs = schedulerRegistry.addCronJob.mock.calls.map((c) => c[0]);
       expect(registeredJobs).toContain('master-product-delta-sync');
@@ -195,7 +244,7 @@ describe('SchedulerService', () => {
         makeTask('plugin-offers-sync', { cronExpression: '*/30 * * * *' })
       );
 
-      service.onApplicationBootstrap();
+      service.start();
 
       const registeredJobs = schedulerRegistry.addCronJob.mock.calls.map((c) => c[0]);
       expect(registeredJobs).toContain('plugin-orders-poll');
@@ -209,7 +258,7 @@ describe('SchedulerService', () => {
       // here; both must now be contributed by AllegroIntegrationModule.
       configService.get.mockImplementation(defaultConfigGet);
 
-      service.onApplicationBootstrap();
+      service.start();
 
       const registeredJobs = schedulerRegistry.addCronJob.mock.calls.map((c) => c[0]);
       expect(registeredJobs.sort()).toEqual([
@@ -237,7 +286,7 @@ describe('SchedulerService', () => {
         return defaultConfigGet(key, defaultValue);
       });
 
-      service.onApplicationBootstrap();
+      service.start();
 
       const registeredJobs = schedulerRegistry.addCronJob.mock.calls.map((c) => c[0]);
       expect(registeredJobs).not.toContain('offline-resubmit');
@@ -252,7 +301,7 @@ describe('SchedulerService', () => {
         return defaultConfigGet(key, defaultValue);
       });
 
-      service.onApplicationBootstrap();
+      service.start();
 
       const registeredJobs = schedulerRegistry.addCronJob.mock.calls.map((c) => c[0]);
       expect(registeredJobs).toContain('offline-resubmit');
@@ -267,7 +316,7 @@ describe('SchedulerService', () => {
         makeTask('gated-plugin-task', { enabledEnvVar: 'OL_PLUGIN_TASK_ENABLED' })
       );
 
-      service.onApplicationBootstrap();
+      service.start();
 
       const registeredJobs = schedulerRegistry.addCronJob.mock.calls.map((c) => c[0]);
       expect(registeredJobs).not.toContain('gated-plugin-task');
@@ -436,7 +485,7 @@ describe('SchedulerService', () => {
       const cronKeys = [
         // Kept ALPHABETICAL. A cron key missing from this list falls through to
         // `'true'` below, which CronJob rejects ("Unknown alias: tru") and which
-        // aborts onApplicationBootstrap for EVERY task - so a new scheduled task
+        // aborts start() for EVERY task - so a new scheduled task
         // must register its cron key here, in order.
         'OL_INVENTORY_SYNC_CRON',
         'OL_MASTER_PRODUCT_DELTA_SYNC_CRON',
@@ -459,10 +508,10 @@ describe('SchedulerService', () => {
         (t) => t.taskId === 'regulatory-status-reconcile'
       );
 
-    it('registers a regulatory-status-reconcile task on onApplicationBootstrap (like the other three core tasks)', () => {
+    it('registers a regulatory-status-reconcile task on start (like the other three core tasks)', () => {
       configService.get.mockImplementation(defaultConfigGet);
 
-      service.onApplicationBootstrap();
+      service.start();
 
       const registeredJobs = schedulerRegistry.addCronJob.mock.calls.map((c) => c[0]);
       expect(registeredJobs).toContain('regulatory-status-reconcile');
@@ -475,7 +524,7 @@ describe('SchedulerService', () => {
         { connectionId: 'conn-inv-1', connection: conn, adapter: {} as never, metadata: {} as never },
       ]);
 
-      service.onApplicationBootstrap();
+      service.start();
       const task = getRegisteredTask();
       expect(task?.connectionFilter).toBeDefined();
 
@@ -492,7 +541,7 @@ describe('SchedulerService', () => {
     it('uses jobType invoicing.regulatoryStatus.reconcile and a payload with schemaVersion + limit', () => {
       configService.get.mockImplementation(defaultConfigGet);
 
-      service.onApplicationBootstrap();
+      service.start();
       const task = getRegisteredTask();
 
       expect(task?.jobType).toBe('invoicing.regulatoryStatus.reconcile');
@@ -506,7 +555,7 @@ describe('SchedulerService', () => {
         return defaultConfigGet(key, defaultValue);
       });
 
-      service.onApplicationBootstrap();
+      service.start();
 
       const registeredJobs = schedulerRegistry.addCronJob.mock.calls.map((c) => c[0]);
       expect(registeredJobs).not.toContain('regulatory-status-reconcile');
@@ -515,7 +564,7 @@ describe('SchedulerService', () => {
     it('generates a minute-rounded per-connection idempotency key', () => {
       configService.get.mockImplementation(defaultConfigGet);
 
-      service.onApplicationBootstrap();
+      service.start();
       const task = getRegisteredTask();
 
       const key = task!.generateIdempotencyKey(createConnection('conn-inv-1'), '2026-06-05-03-30');
@@ -528,7 +577,7 @@ describe('SchedulerService', () => {
       const cronKeys = [
         // Kept ALPHABETICAL. A cron key missing from this list falls through to
         // `'true'` below, which CronJob rejects ("Unknown alias: tru") and which
-        // aborts onApplicationBootstrap for EVERY task - so a new scheduled task
+        // aborts start() for EVERY task - so a new scheduled task
         // must register its cron key here, in order.
         'OL_INVENTORY_SYNC_CRON',
         'OL_MASTER_PRODUCT_DELTA_SYNC_CRON',
@@ -554,7 +603,7 @@ describe('SchedulerService', () => {
     it('registers the task by default (opt-out, not opt-in — unlike offline-resubmit)', () => {
       configService.get.mockImplementation(defaultConfigGet);
 
-      service.onApplicationBootstrap();
+      service.start();
 
       const registeredJobs = schedulerRegistry.addCronJob.mock.calls.map((c) => c[0]);
       expect(registeredJobs).toContain('stale-offer-pause-sweep');
@@ -567,7 +616,7 @@ describe('SchedulerService', () => {
         { connectionId: 'conn-offer-1', connection: conn, adapter: {} as never, metadata: {} as never },
       ]);
 
-      service.onApplicationBootstrap();
+      service.start();
       const task = getRegisteredTask();
       const connections = await task!.connectionFilter!();
 
@@ -581,7 +630,7 @@ describe('SchedulerService', () => {
     it('uses jobType marketplace.offer.pauseStaleSweep and a payload with schemaVersion + limit', () => {
       configService.get.mockImplementation(defaultConfigGet);
 
-      service.onApplicationBootstrap();
+      service.start();
       const task = getRegisteredTask();
 
       expect(task?.jobType).toBe('marketplace.offer.pauseStaleSweep');
@@ -595,7 +644,7 @@ describe('SchedulerService', () => {
         return defaultConfigGet(key, defaultValue);
       });
 
-      service.onApplicationBootstrap();
+      service.start();
 
       const registeredJobs = schedulerRegistry.addCronJob.mock.calls.map((c) => c[0]);
       expect(registeredJobs).not.toContain('stale-offer-pause-sweep');
@@ -604,7 +653,7 @@ describe('SchedulerService', () => {
     it('generates a minute-rounded per-connection idempotency key', () => {
       configService.get.mockImplementation(defaultConfigGet);
 
-      service.onApplicationBootstrap();
+      service.start();
       const task = getRegisteredTask();
 
       const key = task!.generateIdempotencyKey(createConnection('conn-offer-1'), '2026-07-27-17-00');
@@ -617,7 +666,7 @@ describe('SchedulerService', () => {
       const cronKeys = [
         // Kept ALPHABETICAL. A cron key missing from this list falls through to
         // `'true'` below, which CronJob rejects ("Unknown alias: tru") and which
-        // aborts onApplicationBootstrap for EVERY task - so a new scheduled task
+        // aborts start() for EVERY task - so a new scheduled task
         // must register its cron key here, in order.
         'OL_INVENTORY_SYNC_CRON',
         'OL_MASTER_PRODUCT_DELTA_SYNC_CRON',
@@ -659,7 +708,7 @@ describe('SchedulerService', () => {
     });
 
     it('registers the task by default', () => {
-      service.onApplicationBootstrap();
+      service.start();
 
       const registeredJobs = schedulerRegistry.addCronJob.mock.calls.map((c) => c[0]);
       expect(registeredJobs).toContain('destination-taxonomy-sync');
@@ -671,7 +720,7 @@ describe('SchedulerService', () => {
         return defaultConfigGet(key, defaultValue);
       });
 
-      service.onApplicationBootstrap();
+      service.start();
 
       const registeredJobs = schedulerRegistry.addCronJob.mock.calls.map((c) => c[0]);
       expect(registeredJobs).not.toContain('destination-taxonomy-sync');
@@ -700,7 +749,7 @@ describe('SchedulerService', () => {
         })
       );
 
-      service.onApplicationBootstrap();
+      service.start();
       const connections = await getRegisteredTask()!.connectionFilter!();
 
       expect(connections).toEqual([first]);
@@ -717,7 +766,7 @@ describe('SchedulerService', () => {
           ) as never
       );
 
-      service.onApplicationBootstrap();
+      service.start();
       const task = getRegisteredTask()!;
       const connections = await task.connectionFilter!();
 
@@ -744,7 +793,7 @@ describe('SchedulerService', () => {
         metadata: {} as never,
       } as never);
 
-      service.onApplicationBootstrap();
+      service.start();
       const task = getRegisteredTask()!;
       await task.connectionFilter!();
 
@@ -773,7 +822,7 @@ describe('SchedulerService', () => {
         metadata: {} as never,
       } as never);
 
-      service.onApplicationBootstrap();
+      service.start();
       const task = getRegisteredTask()!;
       const connections = await task.connectionFilter!();
 
@@ -799,7 +848,7 @@ describe('SchedulerService', () => {
         metadata: {} as never,
       } as never);
 
-      service.onApplicationBootstrap();
+      service.start();
       const connections = await getRegisteredTask()!.connectionFilter!();
 
       expect(connections).toEqual([]);
@@ -808,7 +857,7 @@ describe('SchedulerService', () => {
     it('throws rather than emitting an undefined-owner key when the filter has not run', () => {
       // A silent miss would collapse EVERY owner's job onto one key and drop
       // all but one sync, so the failure must be loud.
-      service.onApplicationBootstrap();
+      service.start();
       const task = getRegisteredTask()!;
 
       expect(() =>

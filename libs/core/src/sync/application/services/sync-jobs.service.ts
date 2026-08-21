@@ -63,6 +63,10 @@ export class SyncJobsService implements ISyncJobsService {
     return this.syncJobRepository.requeueDeadByIdempotencyKey(idempotencyKey);
   }
 
+  async requeueStuckJobs(timeoutMinutes: number): Promise<number> {
+    return this.syncJobRepository.requeueStuckJobs(timeoutMinutes);
+  }
+
   async findLastSucceededJob(connectionId: string, jobType: JobType): Promise<SyncJob | null> {
     return this.syncJobRepository.findLastSucceededByConnectionAndJobType(connectionId, jobType);
   }

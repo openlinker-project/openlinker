@@ -92,6 +92,7 @@ function buildService(options: {
   const syncLock = {
     acquire: jest.fn().mockResolvedValue(options.lockAcquires === false ? null : 'token-1'),
     release: jest.fn().mockResolvedValue(true),
+    extend: jest.fn().mockResolvedValue(true),
   };
 
   return {

@@ -867,11 +867,6 @@ describe('SyncJobRunner', () => {
     });
 
     afterEach(() => {
-      // Clean up stuck job recovery interval
-      if ((runner as any).stuckJobRecoveryInterval) {
-        clearInterval((runner as any).stuckJobRecoveryInterval);
-        (runner as any).stuckJobRecoveryInterval = null;
-      }
       // Clean up any running loops
       (runner as any).isRunning = false;
       if ((runner as any).abortController) {
@@ -1062,7 +1057,7 @@ describe('SyncJobRunner', () => {
   });
 
   describe('onModuleInit', () => {
-    it('should start runner and stuck job recovery', () => {
+    it('should start the runner loop', () => {
       // Override ConfigService to enable runner for this test
       const configService = moduleRef.get<ConfigService>(ConfigService);
       jest.spyOn(configService, 'get').mockImplementation((key: string, defaultValue?: unknown) => {
@@ -1073,12 +1068,10 @@ describe('SyncJobRunner', () => {
       });
 
       jest.spyOn(runner as any, 'startRunner');
-      jest.spyOn(runner as any, 'startStuckJobRecovery');
 
       runner.onModuleInit();
 
       expect((runner as any).startRunner).toHaveBeenCalled();
-      expect((runner as any).startStuckJobRecovery).toHaveBeenCalled();
     });
 
     it('should not start runner when WORKER_RUNNER_ENABLED=false', () => {
@@ -1092,12 +1085,10 @@ describe('SyncJobRunner', () => {
       });
 
       jest.spyOn(runner as any, 'startRunner');
-      jest.spyOn(runner as any, 'startStuckJobRecovery');
 
       runner.onModuleInit();
 
       expect((runner as any).startRunner).not.toHaveBeenCalled();
-      expect((runner as any).startStuckJobRecovery).not.toHaveBeenCalled();
     });
   });
 
@@ -1106,74 +1097,12 @@ describe('SyncJobRunner', () => {
       jest.useFakeTimers();
       jest.spyOn(runner as any, 'stopRunner');
 
-      // Initialize stuck job recovery interval using the method
-      (runner as any).startStuckJobRecovery(1000);
-
       await runner.onModuleDestroy();
 
       expect((runner as any).stopRunner).toHaveBeenCalled();
-      expect((runner as any).stuckJobRecoveryInterval).toBeNull();
 
       jest.clearAllTimers();
       jest.useRealTimers();
-    });
-  });
-
-  describe('startStuckJobRecovery', () => {
-    beforeEach(() => {
-      jest.useFakeTimers();
-    });
-
-    afterEach(async () => {
-      // Ensure no timers leak
-      jest.clearAllTimers();
-      jest.useRealTimers();
-
-      // Clean up any running intervals
-      if (runner) {
-        await runner.onModuleDestroy();
-      }
-    });
-
-    it('should periodically check for stuck jobs', async () => {
-      jobRepository.requeueStuckJobs.mockResolvedValue(0);
-
-      // Use a short interval for testing (1 second instead of 5 minutes)
-      (runner as any).startStuckJobRecovery(1000);
-
-      // Fast-forward past recovery interval
-      jest.advanceTimersByTime(1000);
-      await Promise.resolve(); // Allow async operations to complete
-
-      expect(jobRepository.requeueStuckJobs).toHaveBeenCalledWith(15); // STUCK_JOB_TIMEOUT_MINUTES
-    });
-
-    it('should log warning when stuck jobs are requeued', async () => {
-      jobRepository.requeueStuckJobs.mockResolvedValue(3);
-
-      // Use a short interval for testing
-      (runner as any).startStuckJobRecovery(1000);
-
-      // Fast-forward past recovery interval
-      jest.advanceTimersByTime(1000);
-      await Promise.resolve();
-
-      expect(jobRepository.requeueStuckJobs).toHaveBeenCalled();
-    });
-
-    it('should handle errors in stuck job recovery gracefully', async () => {
-      const error = new Error('Database error');
-      jobRepository.requeueStuckJobs.mockRejectedValue(error);
-
-      // Use a short interval for testing
-      (runner as any).startStuckJobRecovery(1000);
-
-      // Fast-forward past recovery interval
-      jest.advanceTimersByTime(1000);
-      await Promise.resolve();
-
-      // Should not throw, error should be logged
-      expect(jobRepository.requeueStuckJobs).toHaveBeenCalled();
     });
   });
 });

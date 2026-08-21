@@ -35,5 +35,19 @@ export interface SyncLockPort {
    * @returns true if released, false otherwise
    */
   release(key: string, token: SyncLockToken): Promise<boolean>;
+
+  /**
+   * Extend a held lock's TTL if the token still matches (compare-and-PEXPIRE).
+   *
+   * The heartbeat primitive for a long-lived singleton lease (#2279): a holder
+   * extends well before expiry and treats `false` — the lock expired or was
+   * claimed by another holder — as loss of the lease, never as an error.
+   *
+   * @param key - Lock key
+   * @param token - Token returned from acquire()
+   * @param ttlMs - New TTL in milliseconds, measured from now
+   * @returns true if extended, false if the lock is no longer held by this token
+   */
+  extend(key: string, token: SyncLockToken, ttlMs: number): Promise<boolean>;
 }
 
