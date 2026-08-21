@@ -16,6 +16,7 @@
 import type { OfferRowValidationInput } from '../../../../shared/plugins';
 import type { BulkPerProductOverride } from '../../api/bulk-listings.types';
 import type { EanMatchResult } from '../../api/listings.types';
+import { collapseToInvalidBarcode } from './bulk-blockers';
 import type {
   BulkRowBlocker,
   BulkValueSource,
@@ -165,7 +166,7 @@ export interface ComputeBlockersInput {
    * for variant rows without a barcode (no BE call); `undefined` is treated
    * defensively as `no-match`.
    */
-  categoryResult: EanMatchResult | undefined;
+  categoryResult: CategoryOutcome | undefined;
   pricingPolicy: PricingPolicy;
   stockPolicy: StockPolicy;
   masterPrice: number | null;
@@ -215,6 +216,18 @@ export interface ComputeBlockersInput {
    * the row override. Omitted ⇒ false (the Allegro pre-flight-match path).
    */
   destinationResolvesCategoryAtSubmit?: boolean;
+  /**
+   * The PRODUCT-tier category the submit would pin for this row (#2240) - the
+   * shared-base override, else the product's own resolved category. A sibling
+   * inherits it (`handleSubmit`'s `familyCategoryId`), so it clears the category
+   * blocker exactly as a per-variant override does.
+   *
+   * Before #2240 readiness read the variant tier only, so setting the shared
+   * category - the action the blocker banner recommended - could never clear the
+   * chip on a multi-variant product, while the submit went on to pin that very
+   * category. Omitted ⇒ no product-tier category.
+   */
+  productCategoryId?: string | null;
 }
 
 /**
@@ -242,7 +255,9 @@ export function computeBlockers(input: ComputeBlockersInput): BulkRowBlocker[] {
   // Category - an operator-picked category override clears the category blocker.
   // A `borrows`-taxonomy destination resolves the category server-side at submit
   // (override → barcode → mapping), so a pre-flight non-match never blocks it.
-  const hasCategoryOverride = Boolean(input.override.overrides?.categoryId);
+  const hasCategoryOverride = Boolean(
+    input.override.overrides?.categoryId || input.productCategoryId,
+  );
   if (!hasCategoryOverride && !input.destinationResolvesCategoryAtSubmit) {
     const cat = input.categoryResult;
     if (!cat || cat.kind === 'no-match') {
@@ -251,8 +266,16 @@ export function computeBlockers(input: ComputeBlockersInput): BulkRowBlocker[] {
       blockers.push('no-ean');
     } else if (cat.kind === 'multi-match') {
       blockers.push('multi-match');
+    } else if (cat.kind === 'matched') {
+      // Resolved - no category blocker.
+    } else {
+      // An outcome this build does not know (#2240). The chain used to fall
+      // through every arm and emit NO category blocker, so a discriminant added
+      // backend-first - the planned `lookup-failed` is exactly that shape - would
+      // turn a failed lookup into a ready row with no category. Failing closed
+      // costs an operator one manual pick; failing open costs a dead batch.
+      blockers.push('unknown-category-result');
     }
-    // 'matched' → no category blocker
   }
 
   // Platform-specific blockers (#1096) - declared once per marketplace via its
@@ -504,6 +527,16 @@ export function toGtin14(code: string): string {
 }
 
 /**
+ * The product-tier category a row would submit under (#2240): the operator's
+ * shared-base override, else the product's own resolved category. Exactly the
+ * chain `handleSubmit` uses for `familyCategoryId`, exported so the readiness
+ * check and the required-parameter schema fetch cannot drift from the submit.
+ */
+export function productCategoryIdOf(row: BulkWizardRow): string | null {
+  return row.override.overrides?.categoryId ?? row.resolvedCategoryId ?? null;
+}
+
+/**
  * Recompute one sibling's blocker set from its own EAN + master values + the
  * batch policies (#1741). Mirrors `recomputeRowBlockers` but keyed on the
  * per-variant row. `no-master-stock` is downgraded for multi-variant siblings -
@@ -519,10 +552,19 @@ export function recomputeVariantBlockers(
   destinationResolvesCategoryAtSubmit = false,
   isMultiVariant = false,
 ): BulkRowBlocker[] {
-  const submitCategoryId = variant.override.overrides?.categoryId ?? variant.resolvedCategoryId;
+  // The category this sibling would actually submit under (#2240). The order
+  // mirrors `handleSubmit`: a per-variant override wins, then the product-tier
+  // value the family pin uses (`row.override` → `row.resolvedCategoryId`), then
+  // the sibling's own catalogue match. Reading only the variant tier - as this
+  // did before #2240 - made the shared category unable to clear a sibling's
+  // blocker even though the submit was about to pin it.
+  const productCategoryId = productCategoryIdOf(row);
+  const submitCategoryId =
+    variant.override.overrides?.categoryId ?? productCategoryId ?? variant.resolvedCategoryId;
   const blockers = computeBlockers({
     hasVariant: true,
     categoryResult: variantCategoryResult(variant, submitCategoryId),
+    productCategoryId,
     // Per-product policy (on the shared-base override) wins over the batch (#1741).
     pricingPolicy: effectivePricingPolicy(row.override, config.pricingPolicy),
     stockPolicy: effectiveStockPolicy(row.override, config.stockPolicy),
@@ -548,10 +590,16 @@ export function recomputeVariantBlockers(
     ? blockers.filter((b) => b !== 'no-master-stock')
     : blockers;
 
-  // A supplied-but-invalid EAN is a hard blocker (GS1 gate, plan §10.1 / B5).
+  // A supplied-but-invalid barcode is a hard blocker (GS1 gate, plan §10.1 / B5).
+  // Its own id since #2240: "no barcode" and "the barcode you typed fails its
+  // check digit" need different sentences and different fixes. Deliberately NOT
+  // gated on the destination - an invalid barcode is invalid everywhere, even
+  // where the category is resolved server-side.
   const ean = effectiveVariantEan(variant);
-  if (ean !== null && !isValidGtin(ean) && !filtered.includes('no-ean')) {
-    filtered.push('no-ean');
+  if (ean !== null && !isValidGtin(ean) && !filtered.includes('invalid-barcode')) {
+    // The collapse rule lives in `collapseToInvalidBarcode`, shared with the
+    // Resolve step, so the two cannot drift.
+    return collapseToInvalidBarcode(filtered) as BulkRowBlocker[];
   }
   // #1837: "already listed" is a SOFT warning surfaced as its own chip + a
   // publish-time confirm - never a readiness blocker (re-publishing is a valid
@@ -559,11 +607,39 @@ export function recomputeVariantBlockers(
   return filtered;
 }
 
+/**
+ * The wizard's own reading of a category outcome it cannot interpret (#2240).
+ *
+ * `EanMatchResult` is a closed union owned by the API contract, so there is no
+ * member meaning "the destination answered something this build cannot read" -
+ * and that state has to survive a reblock, or a row degrades from
+ * `unknown result` to `no catalog match` and starts asserting something the
+ * lookup never said.
+ *
+ * Declared as its own member of a wider union rather than cast into the closed
+ * one: `unrecognised` is a fact about THIS build's understanding, not a shape the
+ * destination sends, and the compiler can express that. A double cast through
+ * `unknown` is the `any` escape with more syntax, and it would also make
+ * `computeBlockers`' final arm reachable only around the type system rather than
+ * through it.
+ */
+export interface UnrecognisedCategoryResult {
+  kind: 'unrecognised';
+}
+
+/**
+ * A category outcome as the wizard holds it: whatever the API declared, plus the
+ * one state only the wizard can be in.
+ */
+export type CategoryOutcome = EanMatchResult | UnrecognisedCategoryResult;
+
+const UNRECOGNISED_CATEGORY_RESULT: UnrecognisedCategoryResult = { kind: 'unrecognised' };
+
 /** Reconstruct an `EanMatchResult` for a sibling from its resolved state. */
 function variantCategoryResult(
   variant: BulkVariantRow,
   resolvedCategoryId: string | null,
-): EanMatchResult {
+): CategoryOutcome {
   if (resolvedCategoryId) {
     return {
       kind: 'matched',
@@ -581,7 +657,20 @@ function variantCategoryResult(
   if (masterEan === '' && suppliedEan !== undefined && suppliedEan !== '' && isValidGtin(suppliedEan)) {
     return { kind: 'matched', allegroCategoryId: '', productCardId: variant.resolvedProductCardId ?? '' };
   }
-  if (variant.blockers.includes('no-ean')) return { kind: 'no-ean' };
+  if (variant.blockers.includes('unknown-category-result')) {
+    // Preserve "the answer was not understood" across a reblock (#2240).
+    // Falling through to `no-match` would state that the catalogue HAS no match
+    // for this barcode, which is precisely what the lookup did not say - and the
+    // row would then read `no catalog match` from its second recompute onwards.
+    return UNRECOGNISED_CATEGORY_RESULT;
+  }
+  if (variant.blockers.includes('no-ean') || variant.blockers.includes('invalid-barcode')) {
+    // Either way there is no usable barcode to have matched on (#2240). The
+    // barcode blocker itself is re-derived above from the effective value, so
+    // reporting `no-ean` here only picks the category cause, and the two are
+    // collapsed to one chip by the caller.
+    return { kind: 'no-ean' };
+  }
   if (variant.blockers.includes('multi-match')) {
     return { kind: 'multi-match', candidates: [...variant.categoryCandidates] };
   }

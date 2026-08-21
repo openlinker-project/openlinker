@@ -368,6 +368,49 @@ export interface OfferRowValidationInput {
 }
 
 /**
+ * Neutral input a platform's BATCH validator reads (#2240). Batch-level, not
+ * row-level: some platform preconditions are properties of the destination
+ * connection, and a row cannot observe them.
+ */
+export interface OfferBatchValidationInput {
+  /**
+   * The destination connection's stored config, as the API returned it. The
+   * plugin owns the shape of its own keys; the host never inspects them.
+   */
+  connectionConfig: Record<string, unknown>;
+}
+
+/**
+ * One batch-level precondition a platform reports as unmet (#2240). Copy comes
+ * from the plugin because only it knows what its platform requires; the host
+ * renders it as a single banner and never as a per-row chip - a row cannot
+ * observe a connection-level fact, and repeating it per row would state N times
+ * something true once.
+ *
+ * **Reporting one BLOCKS the submit.** There is no advisory variant and no
+ * override, deliberately: a precondition at this level is connection-wide and
+ * deterministic, so every offer in the batch is rejected, and a banner an
+ * operator can read past does not prevent the wasted batch - it only explains it
+ * afterwards. That is materially different from a per-row blocker, where
+ * proceeding partially succeeds.
+ *
+ * The cost of that choice sits on the plugin: a platform must report here only
+ * what its own destination DECLARES, never an inference of its own, and a mirror
+ * of a destination gate must not be stricter than the gate - over-reporting
+ * locks an operator out of a batch the destination would have accepted. A
+ * platform that wants to warn without blocking has the per-row chip seam for it,
+ * not this one.
+ */
+export interface OfferBatchIssue {
+  /** Stable id, namespaced like a blocker (e.g. `allegro:missing-seller-details`). */
+  id: string;
+  /** One sentence naming what is unmet. */
+  title: string;
+  /** One sentence naming the consequence and where to fix it. */
+  detail: string;
+}
+
+/**
  * Per-platform offer-validation contribution (#1096). Declares the platform's
  * blocker descriptors once and a pure row validator; serves BOTH the bulk
  * Review step and the single-offer wizard so a marketplace declares its
@@ -378,6 +421,18 @@ export interface OfferValidationContribution {
   blockers: readonly OfferBlockerDescriptor[];
   /** Returns the active platform-specific blocker ids for a row. Pure. */
   validateRow: (input: OfferRowValidationInput) => string[];
+  /**
+   * Returns the platform's unmet batch-level preconditions (#2240). Pure.
+   * Absent ⇒ the platform declares none. Introduced for Allegro's seller
+   * defaults, whose gate is the first statement of `createOffer` and applies to
+   * every offer on the connection: without this the batch read `ready`,
+   * submitted, and then failed one child job at a time. Same failure shape as
+   * `allegro:title-too-long` (#1962), one level up.
+   *
+   * A non-empty result LOCKS the submit - see `OfferBatchIssue` for why that is
+   * the contract and what it asks of the plugin.
+   */
+  validateBatch?: (input: OfferBatchValidationInput) => OfferBatchIssue[];
   /**
    * Whether this platform's `validateRow` reads `needsProductParameters` (#1096).
    * The host's per-category required-product-parameter schema fetch

@@ -28,6 +28,8 @@ export type {
   BulkOfferConfigSectionContribution,
   BulkOfferRowSectionProps,
   OfferBlockerTone,
+  OfferBatchIssue,
+  OfferBatchValidationInput,
   OfferBlockerDescriptor,
   OfferRowValidationInput,
   OfferValidationContribution,

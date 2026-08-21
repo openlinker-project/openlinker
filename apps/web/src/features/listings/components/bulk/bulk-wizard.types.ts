@@ -31,12 +31,20 @@ export type BulkWizardStep = (typeof BulkWizardStepValues)[number];
 export const BulkRowBlockerValues = [
   // Product has no primary variant - cannot bulk-list.
   'no-variant',
-  // Primary variant has no EAN/GTIN - operator must pick a category manually.
+  // Variant carries no barcode at all - nothing to match a category on.
   'no-ean',
-  // EAN present but Allegro returned zero matches.
+  // A barcode was supplied but fails its GS1 check digit (#2240) - split out of
+  // `no-ean` because "add one" and "correct the one you typed" are different fixes.
+  'invalid-barcode',
+  // Barcode present, the destination catalogue returned zero matches, and no
+  // configured category mapping covered the product either.
   'no-match',
-  // EAN matched several Allegro cards - operator picks one from the candidates.
+  // Barcode matched several catalogue cards - operator picks one from the candidates.
   'multi-match',
+  // The resolve pass reported an outcome this build does not recognise (#2240).
+  // Unreachable today; it exists so a discriminant added backend-first fails
+  // closed instead of producing a ready row with no category.
+  'unknown-category-result',
   // Active pricing policy needs a master price and the variant has none.
   'no-master-price',
   // Active stock policy needs a master stock value and it's 0 or null.

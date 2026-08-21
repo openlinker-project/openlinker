@@ -11,6 +11,7 @@ import {
   computeBlockers,
   computeResolvedPrice,
   computeResolvedStock,
+  productCategoryIdOf,
   roundHalfUp,
   type ComputeBlockersInput,
 } from './bulk-policy';
@@ -66,9 +67,9 @@ describe('computeResolvedPrice', () => {
   });
 
   it('blocks no-master-price under markup when master is null', () => {
-    expect(
-      computeResolvedPrice({ mode: 'markup', percent: 10 }, null, NO_OVERRIDE).blocker,
-    ).toBe('no-master-price');
+    expect(computeResolvedPrice({ mode: 'markup', percent: 10 }, null, NO_OVERRIDE).blocker).toBe(
+      'no-master-price'
+    );
   });
 
   it('blocks no-master-price when a markup zeroes the price (e.g. -100%)', () => {
@@ -79,7 +80,7 @@ describe('computeResolvedPrice', () => {
 
   it('blocks no-master-price under use-master when master price is 0', () => {
     expect(computeResolvedPrice({ mode: 'use-master' }, 0, NO_OVERRIDE).blocker).toBe(
-      'no-master-price',
+      'no-master-price'
     );
   });
 
@@ -112,10 +113,10 @@ describe('computeResolvedStock', () => {
 
   it('blocks no-master-stock under use-master when master is 0 or null', () => {
     expect(computeResolvedStock({ mode: 'use-master' }, 0, NO_OVERRIDE).blocker).toBe(
-      'no-master-stock',
+      'no-master-stock'
     );
     expect(computeResolvedStock({ mode: 'use-master' }, null, NO_OVERRIDE).blocker).toBe(
-      'no-master-stock',
+      'no-master-stock'
     );
   });
 
@@ -130,10 +131,10 @@ describe('computeResolvedStock', () => {
 
   it('blocks cap when master is null or the capped value is 0', () => {
     expect(computeResolvedStock({ mode: 'cap', value: 5 }, null, NO_OVERRIDE).blocker).toBe(
-      'no-master-stock',
+      'no-master-stock'
     );
     expect(computeResolvedStock({ mode: 'cap', value: 5 }, 0, NO_OVERRIDE).blocker).toBe(
-      'no-master-stock',
+      'no-master-stock'
     );
   });
 
@@ -182,9 +183,7 @@ describe('computeBlockers', () => {
     expect(computeBlockers(base({ categoryResult: { kind: 'no-ean' } }))).toEqual(['no-ean']);
     expect(computeBlockers(base({ categoryResult: { kind: 'no-match' } }))).toEqual(['no-match']);
     expect(
-      computeBlockers(
-        base({ categoryResult: { kind: 'multi-match', candidates: [] } }),
-      ),
+      computeBlockers(base({ categoryResult: { kind: 'multi-match', candidates: [] } }))
     ).toEqual(['multi-match']);
   });
 
@@ -198,7 +197,7 @@ describe('computeBlockers', () => {
     ];
     for (const categoryResult of cases) {
       expect(
-        computeBlockers(base({ categoryResult, destinationResolvesCategoryAtSubmit: true })),
+        computeBlockers(base({ categoryResult, destinationResolvesCategoryAtSubmit: true }))
       ).toEqual([]);
     }
   });
@@ -211,28 +210,26 @@ describe('computeBlockers', () => {
           categoryResult: { kind: 'no-match' },
           destinationResolvesCategoryAtSubmit: true,
           masterPrice: null,
-        }),
-      ),
+        })
+      )
     ).toEqual(['no-master-price']);
   });
 
   it('co-occurs no-ean + no-master-price', () => {
-    const result = computeBlockers(
-      base({ categoryResult: { kind: 'no-ean' }, masterPrice: null }),
-    );
+    const result = computeBlockers(base({ categoryResult: { kind: 'no-ean' }, masterPrice: null }));
     expect(result).toEqual(['no-ean', 'no-master-price']);
   });
 
   it('fires currency-mismatch under markup when master currency differs', () => {
     const result = computeBlockers(
-      base({ pricingPolicy: { mode: 'markup', percent: 10 }, masterCurrency: 'EUR' }),
+      base({ pricingPolicy: { mode: 'markup', percent: 10 }, masterCurrency: 'EUR' })
     );
     expect(result).toContain('currency-mismatch');
   });
 
   it('does NOT fire currency-mismatch under flat pricing', () => {
     const result = computeBlockers(
-      base({ pricingPolicy: { mode: 'flat', amount: 50 }, masterCurrency: 'EUR' }),
+      base({ pricingPolicy: { mode: 'flat', amount: 50 }, masterCurrency: 'EUR' })
     );
     expect(result).not.toContain('currency-mismatch');
   });
@@ -254,7 +251,7 @@ describe('computeBlockers', () => {
         masterPrice: null,
         masterStock: null,
         override,
-      }),
+      })
     );
     expect(result).toEqual([]);
   });
@@ -272,7 +269,7 @@ describe('computeBlockers', () => {
 
   it('fires needs-product-parameters when no card links and a required product param is missing', () => {
     const result = computeBlockers(
-      withPickedCategory({ requiredProductParamIds: ['brand', 'model'] }),
+      withPickedCategory({ requiredProductParamIds: ['brand', 'model'] })
     );
     expect(result).toContain(NEEDS_PARAMS);
   });
@@ -290,7 +287,7 @@ describe('computeBlockers', () => {
             ],
           },
         },
-      }),
+      })
     );
     expect(result).not.toContain(NEEDS_PARAMS);
   });
@@ -300,7 +297,7 @@ describe('computeBlockers', () => {
       withPickedCategory({
         willLinkProductCard: true,
         requiredProductParamIds: ['brand'],
-      }),
+      })
     );
     expect(result).not.toContain(NEEDS_PARAMS);
   });
@@ -321,7 +318,7 @@ describe('computeBlockers', () => {
         requiredProductParamIds: ['brand'],
         masterPrice: null,
         masterStock: null,
-      }),
+      })
     );
     expect(result).toEqual([NEEDS_PARAMS, 'no-master-price', 'no-master-stock']);
   });
@@ -331,14 +328,14 @@ describe('computeBlockers', () => {
   // failed per-record after submit.
   it('forwards the effective title so the platform length rule can fire', () => {
     const result = computeBlockers(
-      withPickedCategory({ effectiveTitle: 'x'.repeat(120), requiredProductParamIds: [] }),
+      withPickedCategory({ effectiveTitle: 'x'.repeat(120), requiredProductParamIds: [] })
     );
     expect(result).toContain(TITLE_TOO_LONG);
   });
 
   it('does NOT fire the length rule for a title within the limit', () => {
     const result = computeBlockers(
-      withPickedCategory({ effectiveTitle: 'Short enough', requiredProductParamIds: [] }),
+      withPickedCategory({ effectiveTitle: 'Short enough', requiredProductParamIds: [] })
     );
     expect(result).not.toContain(TITLE_TOO_LONG);
   });
@@ -361,11 +358,7 @@ import {
   titleForVariant,
   toGtin14,
 } from './bulk-policy';
-import type {
-  BulkVariantRow,
-  BulkWizardConfig,
-  BulkWizardRow,
-} from './bulk-wizard.types';
+import type { BulkVariantRow, BulkWizardConfig, BulkWizardRow } from './bulk-wizard.types';
 import type { ProductVariant } from '../../../products';
 
 function makeVariant(id: string, over: Partial<BulkVariantRow> = {}): BulkVariantRow {
@@ -437,7 +430,9 @@ describe('effectiveVariantEan', () => {
   it('prefers the override EAN, then the master barcode', () => {
     expect(effectiveVariantEan(makeVariant('ol_variant_1'))).toBe('5901234123457');
     expect(
-      effectiveVariantEan(makeVariant('ol_variant_1', { override: { overrides: { ean: '4006381333931' } } })),
+      effectiveVariantEan(
+        makeVariant('ol_variant_1', { override: { overrides: { ean: '4006381333931' } } })
+      )
     ).toBe('4006381333931');
   });
 });
@@ -445,9 +440,9 @@ describe('effectiveVariantEan', () => {
 describe('distinguishingLabel', () => {
   it('uses attributes, falling back to Variant {n}', () => {
     expect(distinguishingLabel(makeVariant('ol_variant_1'), 0)).toBe('Rozmiar: M');
-    expect(distinguishingLabel(makeVariant('ol_variant_1', { distinguishingAttributes: null }), 2)).toBe(
-      'Variant 3',
-    );
+    expect(
+      distinguishingLabel(makeVariant('ol_variant_1', { distinguishingAttributes: null }), 2)
+    ).toBe('Variant 3');
   });
 });
 
@@ -455,7 +450,9 @@ describe('imageCountForVariant', () => {
   it('counts the override image set when present, else the master', () => {
     const row = makeWizardRow([makeVariant('ol_variant_1')]);
     expect(imageCountForVariant(row, row.variants[0])).toBe(1);
-    const withOverride = makeVariant('ol_variant_1', { override: { overrides: { imageUrls: [] } } });
+    const withOverride = makeVariant('ol_variant_1', {
+      override: { overrides: { imageUrls: [] } },
+    });
     expect(imageCountForVariant(makeWizardRow([withOverride]), withOverride)).toBe(0);
   });
 });
@@ -475,7 +472,9 @@ describe('titleForRow / titleForVariant', () => {
     expect(titleForRow(withBase)).toBe('Base title');
     expect(titleForVariant(withBase, withBase.variants[0])).toBe('Base title');
 
-    const ownTitle = makeVariant('ol_variant_1', { override: { overrides: { title: 'Own title' } } });
+    const ownTitle = makeVariant('ol_variant_1', {
+      override: { overrides: { title: 'Own title' } },
+    });
     expect(titleForVariant({ ...withBase, variants: [ownTitle] }, ownTitle)).toBe('Own title');
   });
 });
@@ -515,18 +514,21 @@ describe('recomputeVariantBlockers', () => {
       new Map(),
       undefined,
       false,
-      true,
+      true
     );
     expect(blockers).not.toContain('no-master-stock');
   });
 
-  it('flags an invalid supplied EAN as no-ean', () => {
+  it('flags an invalid supplied barcode as invalid-barcode, not no-ean (#2240)', () => {
     const variant = makeVariant('ol_variant_1', {
       override: { overrides: { ean: '5901234567890' } },
     });
     const row = makeWizardRow([variant]);
     const blockers = recomputeVariantBlockers(row, variant, CONFIG, new Map());
-    expect(blockers).toContain('no-ean');
+    // "add a barcode" and "correct the barcode you typed" are different fixes,
+    // so they are different blockers with different sentences.
+    expect(blockers).toContain('invalid-barcode');
+    expect(blockers).not.toContain('no-ean');
   });
 
   it('resolves blockers using the per-product policy over the batch default (#1741)', () => {
@@ -563,7 +565,10 @@ describe('recomputeVariantBlockers', () => {
     expect(recomputeVariantBlockers(row, barcodeless, CONFIG, new Map())).toContain('no-ean');
 
     // Operator supplies a valid GTIN -> no-ean clears and the row is ready.
-    const rescued: BulkVariantRow = { ...barcodeless, override: { overrides: { ean: '5901234123457' } } };
+    const rescued: BulkVariantRow = {
+      ...barcodeless,
+      override: { overrides: { ean: '5901234123457' } },
+    };
     const blockers = recomputeVariantBlockers(row, rescued, CONFIG, new Map());
     expect(blockers).not.toContain('no-ean');
     expect(blockers).toHaveLength(0);
@@ -590,7 +595,7 @@ describe('recomputeVariantBlockers', () => {
       withOwnCategory,
       CONFIG,
       requiredByCategory,
-      allegroValidate,
+      allegroValidate
     );
 
     expect(blockers).toContain(NEEDS_PARAMS);
@@ -616,7 +621,7 @@ describe('recomputeVariantBlockers', () => {
       withOwnCategory,
       CONFIG,
       requiredByCategory,
-      allegroValidate,
+      allegroValidate
     );
 
     expect(blockers).not.toContain(NEEDS_PARAMS);
@@ -664,9 +669,7 @@ describe('#1934/F7 - duplicate EAN detection must normalise to GTIN-14', () => {
       ]),
     ];
 
-    expect(duplicateEanVariantIds(rows)).toEqual(
-      new Set(['ol_variant_a', 'ol_variant_b']),
-    );
+    expect(duplicateEanVariantIds(rows)).toEqual(new Set(['ol_variant_a', 'ol_variant_b']));
   });
 
   it('does not flag genuinely different barcodes', () => {
@@ -685,5 +688,129 @@ describe('#1934/F7 - duplicate EAN detection must normalise to GTIN-14', () => {
   it('normalises to the padded form', () => {
     expect(toGtin14('5901234123457')).toBe('05901234123457');
     expect(toGtin14('05901234123457')).toBe('05901234123457');
+  });
+});
+
+// ── #2240 - the product-tier category, and failing closed on an unknown outcome ──
+
+describe('productCategoryIdOf', () => {
+  it('prefers the shared-base override over the resolved product category', () => {
+    const row = makeWizardRow([makeVariant('ol_variant_1')]);
+    expect(productCategoryIdOf(row)).toBeNull();
+
+    row.resolvedCategoryId = 'cat-resolved';
+    expect(productCategoryIdOf(row)).toBe('cat-resolved');
+
+    row.override = { overrides: { categoryId: 'cat-picked' } };
+    expect(productCategoryIdOf(row)).toBe('cat-picked');
+  });
+});
+
+describe('recomputeVariantBlockers - product-tier category (#2240)', () => {
+  const EMPTY_SCHEMA = new Map<string, readonly string[]>();
+
+  it('clears a sibling category blocker once the shared category is set', () => {
+    const blocked = makeVariant('ol_variant_1', {
+      resolvedCategoryId: null,
+      resolvedProductCardId: null,
+      blockers: ['no-match'],
+    });
+    const row = makeWizardRow([blocked, makeVariant('ol_variant_2')]);
+
+    // The submit would pin the product category either way; before #2240
+    // readiness read the variant tier only, which is the defect.
+    expect(
+      recomputeVariantBlockers(row, blocked, CONFIG, EMPTY_SCHEMA, undefined, false, true)
+    ).toContain('no-match');
+
+    row.override = { overrides: { categoryId: 'cat-picked' } };
+    expect(
+      recomputeVariantBlockers(row, blocked, CONFIG, EMPTY_SCHEMA, undefined, false, true)
+    ).not.toContain('no-match');
+  });
+
+  it("keeps a sibling's own override winning over the shared category", () => {
+    const own = makeVariant('ol_variant_1', {
+      resolvedCategoryId: null,
+      resolvedProductCardId: null,
+      blockers: ['no-match'],
+      override: { overrides: { categoryId: 'cat-own' } },
+    });
+    const row = makeWizardRow([own]);
+    row.override = { overrides: { categoryId: 'cat-shared' } };
+
+    expect(
+      recomputeVariantBlockers(row, own, CONFIG, EMPTY_SCHEMA, undefined, false, true)
+    ).not.toContain('no-match');
+  });
+
+  it('reports an invalid barcode as its own cause, replacing the category cause', () => {
+    const bad = makeVariant('ol_variant_1', {
+      resolvedCategoryId: null,
+      resolvedProductCardId: null,
+      blockers: ['no-match'],
+      override: { overrides: { ean: '5901234123456' } },
+    });
+    const row = makeWizardRow([bad]);
+
+    const blockers = recomputeVariantBlockers(
+      row,
+      bad,
+      CONFIG,
+      EMPTY_SCHEMA,
+      undefined,
+      false,
+      true
+    );
+    expect(blockers).toContain('invalid-barcode');
+    expect(blockers).not.toContain('no-match');
+    expect(blockers).not.toContain('no-ean');
+  });
+});
+
+describe('computeBlockers - unknown resolve outcome (#2240)', () => {
+  const base: ComputeBlockersInput = {
+    hasVariant: true,
+    categoryResult: { kind: 'matched', allegroCategoryId: 'cat-1', productCardId: '' },
+    pricingPolicy: { mode: 'use-master' },
+    stockPolicy: { mode: 'use-master' },
+    masterPrice: 39,
+    masterStock: 5,
+    masterCurrency: 'PLN',
+    batchCurrency: 'PLN',
+    override: NO_OVERRIDE,
+  };
+
+  it('blocks rather than falling through when the discriminant is unrecognised', () => {
+    // The shape of a discriminant added backend-first (the planned `lookup-failed`).
+    const unknown = { kind: 'lookup-failed' } as unknown as ComputeBlockersInput['categoryResult'];
+
+    expect(computeBlockers({ ...base, categoryResult: unknown })).toEqual([
+      'unknown-category-result',
+    ]);
+  });
+
+  it('still clears the category when a product-tier category is pinned', () => {
+    const unknown = { kind: 'lookup-failed' } as unknown as ComputeBlockersInput['categoryResult'];
+
+    expect(
+      computeBlockers({ ...base, categoryResult: unknown, productCategoryId: 'cat-picked' })
+    ).toEqual([]);
+  });
+
+  it('keeps saying "not understood" across a reblock, rather than degrading to no-match', () => {
+    // The reblock reconstructs the outcome from the row's own blockers. Falling
+    // through to `no-match` there would make the row claim the catalogue has no
+    // match for this barcode - which is exactly what the lookup did not say.
+    const variant = makeVariant('ol_variant_1', {
+      resolvedCategoryId: null,
+      resolvedProductCardId: null,
+      blockers: ['unknown-category-result'],
+    });
+    const row = makeWizardRow([variant]);
+
+    expect(recomputeVariantBlockers(row, variant, CONFIG, new Map())).toEqual([
+      'unknown-category-result',
+    ]);
   });
 });

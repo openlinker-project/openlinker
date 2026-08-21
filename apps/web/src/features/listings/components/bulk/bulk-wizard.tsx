@@ -17,7 +17,11 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } 
 import { useNavigate } from 'react-router-dom';
 import { Alert, Button, ConfirmDialog, PageLayout, SetupStepper } from '../../../../shared/ui';
 import { useToast } from '../../../../shared/ui/toast-provider';
-import { usePlatforms, type OfferRowValidationInput } from '../../../../shared/plugins';
+import {
+  usePlatforms,
+  type OfferBatchIssue,
+  type OfferRowValidationInput,
+} from '../../../../shared/plugins';
 import { resolvePlatformLabel } from '../../../mappings';
 import { useWriteAccess } from '../../../../shared/auth/use-permission';
 import { useDemoMode } from '../../../system';
@@ -55,6 +59,7 @@ import {
   effectivePricingPolicy,
   effectiveStockPolicy,
   effectiveVariantEan,
+  productCategoryIdOf,
   recomputeVariantBlockers,
 } from './bulk-policy';
 import type {
@@ -209,7 +214,14 @@ export function BulkWizard({
           variant.resolvedProductCardId !== null ||
           Boolean(variant.override.overrides?.productCardId);
         if (hasCard) continue;
-        const categoryId = variant.override.overrides?.categoryId ?? variant.resolvedCategoryId;
+        // Same chain the readiness check and the submit use (#2240). Reading the
+        // variant tier only meant a category pinned at the product tier never
+        // fetched its required-parameter schema, so `needs-product-parameters`
+        // could not fire and the row read ready straight into a 422.
+        const categoryId =
+          variant.override.overrides?.categoryId ??
+          productCategoryIdOf(row) ??
+          variant.resolvedCategoryId;
         if (categoryId) set.add(categoryId);
       }
     }
@@ -236,6 +248,16 @@ export function BulkWizard({
   const platformValidate = useMemo<
     ((input: OfferRowValidationInput) => string[]) | undefined
   >(() => batchPlatform?.offerValidation?.validateRow, [batchPlatform]);
+
+  // Batch-level platform preconditions (#2240) - e.g. Allegro refuses every
+  // offer on a connection with incomplete seller details, from the first
+  // statement of `createOffer`. Reported once for the batch, never per row: the
+  // fact belongs to the connection and a row cannot observe it.
+  const batchIssues = useMemo<OfferBatchIssue[]>(() => {
+    const validateBatch = batchPlatform?.offerValidation?.validateBatch;
+    if (!validateBatch || !batchConnection) return [];
+    return validateBatch({ connectionConfig: batchConnection.config });
+  }, [batchPlatform, batchConnection]);
   const platformBlockerChips = batchPlatform?.offerValidation?.blockers ?? [];
 
   const destinationBrowsesCategories =
@@ -604,6 +626,27 @@ export function BulkWizard({
     return n;
   }, [rows, alreadyListedSet]);
 
+  // Included, READY and already listed there (#2240). On the marketplace path the
+  // backend excludes these at intake (`filterAlreadyListed`, #1837/#1933), so
+  // counting them among the offers the confirmation promises would overstate the
+  // batch. They carry no blocker by design, which is why they need their own count.
+  const readyButAlreadyListedCount = useMemo(() => {
+    if (alreadyListedSet.size === 0 || isShop) return 0;
+    let n = 0;
+    for (const row of rows) {
+      for (const variant of row.variants) {
+        if (
+          variant.included &&
+          variant.blockers.length === 0 &&
+          alreadyListedSet.has(variant.variantId)
+        ) {
+          n += 1;
+        }
+      }
+    }
+    return n;
+  }, [rows, alreadyListedSet, isShop]);
+
   const dupGuardKind = isShop ? 'shop' : 'marketplace';
   const dupGuardDestinationName = activeConnection?.name ?? marketplaceName;
 
@@ -768,6 +811,7 @@ export function BulkWizard({
                 config={config}
                 paramsResolving={paramsResolving}
                 platformBlockerChips={platformBlockerChips}
+                batchIssues={batchIssues}
                 canBrowseCategories={destinationBrowsesCategories}
                 batchDeliveryPriceList={
                   typeof config.platformParams.deliveryPriceList === 'string'
@@ -791,9 +835,11 @@ export function BulkWizard({
           <BulkConfirmModal
             open={confirmOpen}
             onOpenChange={setConfirmOpen}
-            offerCount={counts.includedReady}
+            offerCount={counts.includedReady - readyButAlreadyListedCount}
             productCount={counts.productsWithIncluded}
             excludedCount={counts.excluded}
+            blockedCount={counts.includedNeedsAttention}
+            alreadyListedCount={readyButAlreadyListedCount}
             mixedPublishWarning={counts.mixedPublish}
             connectionName={resolveConnectionName(config.connectionId)}
             marketplaceName={marketplaceName}
