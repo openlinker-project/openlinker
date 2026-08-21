@@ -32,11 +32,11 @@ import type {
 } from '../../domain/types/order-sales-analytics.types';
 import { getPiiConfig } from '@openlinker/shared/config';
 import { Logger } from '@openlinker/shared/logging';
-import { IOrderFxStampService } from '../interfaces/order-fx-stamp.service.interface';
 import {
-  IReportingCurrencySettingsService,
   REPORTING_CURRENCY_SETTINGS_SERVICE_TOKEN,
+  type IReportingCurrencySettingsService,
 } from '@openlinker/core/currency';
+import { IOrderFxStampService } from '../interfaces/order-fx-stamp.service.interface';
 import {
   ORDER_FX_STAMP_SERVICE_TOKEN,
   ORDER_LINE_ITEM_REPOSITORY_TOKEN,
@@ -474,7 +474,7 @@ export class OrderRecordService implements IOrderRecordService {
   }
 
   async getEarliestOrderDateByConnection(connectionIds: string[]): Promise<Map<string, Date>> {
-    return this.repository.findEarliestPlacedAtByConnection(connectionIds);
+    return this.repository.findEarliestOrderDateByConnection(connectionIds);
   }
 
   /**
@@ -489,10 +489,16 @@ export class OrderRecordService implements IOrderRecordService {
   async getSalesAndChannelAnalytics(
     filters: SalesAnalyticsFilters
   ): Promise<SalesAndChannelAnalytics> {
+    // Resolved once per read, never per row (#1987 review notes) — every
+    // downstream query is scoped against the SAME current-era reporting
+    // currency, so a setting change mid-read can't split one response
+    // across two eras.
+    const currentReportingCurrency = await this.reportingCurrencySettings.resolve();
+
     const [dailyRows, medianOrderValue, unitsByConnection] = await Promise.all([
-      this.repository.getDailyOrderAggregates(filters),
-      this.repository.getMedianOrderValue(filters),
-      this.lineItemRepository.getUnitsSoldByConnection(filters),
+      this.repository.getDailyOrderAggregates(filters, currentReportingCurrency),
+      this.repository.getMedianOrderValue(filters, currentReportingCurrency),
+      this.lineItemRepository.getUnitsSoldByConnection(filters, currentReportingCurrency),
     ]);
 
     const connectionIds = [...new Set(dailyRows.map((row) => row.sourceConnectionId))];

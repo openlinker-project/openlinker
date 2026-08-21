@@ -79,10 +79,13 @@ describe('Sales analytics daily aggregates (integration, #1987)', () => {
     await dataSource.query(`SET TIME ZONE 'Europe/Warsaw'`);
     let rows;
     try {
-      rows = await repository.getDailyOrderAggregates({
-        from: new Date('2026-08-01T00:00:00.000Z'),
-        to: new Date('2026-08-08T00:00:00.000Z'),
-      });
+      rows = await repository.getDailyOrderAggregates(
+        {
+          from: new Date('2026-08-01T00:00:00.000Z'),
+          to: new Date('2026-08-08T00:00:00.000Z'),
+        },
+        'EUR'
+      );
     } finally {
       await dataSource.query(`SET TIME ZONE 'UTC'`);
     }
@@ -92,33 +95,45 @@ describe('Sales analytics daily aggregates (integration, #1987)', () => {
     expect(rows[0].revenue).toBe(100);
   });
 
-  it('labels reporting_currency NULL — never the first array element — when a (day, connection) bucket mixes reportingCurrency (#1987 review, IMPORTANT 1)', async () => {
+  it('folds a prior-era stamp into the unconverted bucket rather than mixing it into revenue (#1987 review notes, ported from #2172)', async () => {
     const day = new Date('2026-08-03T10:00:00.000Z');
+    // Current-era stamp — the system reporting currency is EUR at read time.
     await seedStampedOrder({
       placedAt: day,
+      currency: 'EUR',
       totalAmount: 100,
       reportingCurrency: 'EUR',
       reportingTotalAmount: 100,
     });
+    // A stamp taken while the operator's reporting-currency setting held a
+    // different value (#2096) — `reportingCurrency` never moves once set
+    // (ADR-040), so this row must NOT be summed into `revenue` alongside the
+    // current-era row above.
     await seedStampedOrder({
       placedAt: day,
+      currency: 'PLN',
       totalAmount: 100,
       reportingCurrency: 'PLN',
       reportingTotalAmount: 430,
     });
 
-    const rows = await repository.getDailyOrderAggregates({
-      from: new Date('2026-08-01T00:00:00.000Z'),
-      to: new Date('2026-08-08T00:00:00.000Z'),
-    });
+    const rows = await repository.getDailyOrderAggregates(
+      {
+        from: new Date('2026-08-01T00:00:00.000Z'),
+        to: new Date('2026-08-08T00:00:00.000Z'),
+      },
+      'EUR'
+    );
 
     expect(rows).toHaveLength(1);
-    expect(rows[0].orderCount).toBe(2);
-    // Sum is still real (both stamped orders count toward revenue) — only
-    // the currency LABEL is suppressed, since it can't honestly describe a
-    // sum spanning two currencies.
-    expect(rows[0].revenue).toBe(530);
-    expect(rows[0].reportingCurrency).toBeNull();
+    expect(rows[0].orderCount).toBe(1);
+    expect(rows[0].revenue).toBe(100);
+    expect(rows[0].reportingCurrency).toBe('EUR');
+    // The prior-era row reads as unconverted, native-currency evidence —
+    // never silently summed into `revenue` or silently dropped.
+    expect(rows[0].unconvertedCount).toBe(1);
+    expect(rows[0].unconvertedValue).toBe(100);
+    expect(rows[0].unconvertedCurrency).toBe('PLN');
   });
 
   it('reports the shared reportingCurrency when a bucket agrees', async () => {
@@ -136,10 +151,13 @@ describe('Sales analytics daily aggregates (integration, #1987)', () => {
       reportingTotalAmount: 60,
     });
 
-    const rows = await repository.getDailyOrderAggregates({
-      from: new Date('2026-08-01T00:00:00.000Z'),
-      to: new Date('2026-08-08T00:00:00.000Z'),
-    });
+    const rows = await repository.getDailyOrderAggregates(
+      {
+        from: new Date('2026-08-01T00:00:00.000Z'),
+        to: new Date('2026-08-08T00:00:00.000Z'),
+      },
+      'EUR'
+    );
 
     expect(rows).toHaveLength(1);
     expect(rows[0].reportingCurrency).toBe('EUR');
@@ -147,10 +165,13 @@ describe('Sales analytics daily aggregates (integration, #1987)', () => {
   });
 
   it('getMedianOrderValue returns null when no stamped order matches the range', async () => {
-    const median = await repository.getMedianOrderValue({
-      from: new Date('2026-08-01T00:00:00.000Z'),
-      to: new Date('2026-08-08T00:00:00.000Z'),
-    });
+    const median = await repository.getMedianOrderValue(
+      {
+        from: new Date('2026-08-01T00:00:00.000Z'),
+        to: new Date('2026-08-08T00:00:00.000Z'),
+      },
+      'EUR'
+    );
 
     expect(median).toBeNull();
   });
@@ -184,10 +205,13 @@ describe('Sales analytics daily aggregates (integration, #1987)', () => {
       cancelledAt: new Date('2026-08-05T11:00:00.000Z'),
     });
 
-    const median = await repository.getMedianOrderValue({
-      from: new Date('2026-08-01T00:00:00.000Z'),
-      to: new Date('2026-08-08T00:00:00.000Z'),
-    });
+    const median = await repository.getMedianOrderValue(
+      {
+        from: new Date('2026-08-01T00:00:00.000Z'),
+        to: new Date('2026-08-08T00:00:00.000Z'),
+      },
+      'EUR'
+    );
 
     expect(median).toBe(20);
   });

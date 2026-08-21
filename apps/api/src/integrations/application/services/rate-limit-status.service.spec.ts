@@ -23,6 +23,9 @@ describe('RateLimitStatusService', () => {
     connectionPort = { get: jest.fn() } as unknown as jest.Mocked<ConnectionPort>;
     integrationsService = {
       resolveAdapterMetadata: jest.fn(),
+      // Default: no OfferManager adapter resolves, which is the ordinary case
+      // for a connection that is not a marketplace (#2229).
+      getCapabilityAdapter: jest.fn().mockRejectedValue(new Error('no adapter')),
     } as unknown as jest.Mocked<IIntegrationsService>;
     rateLimiterRegistry = {
       get: jest.fn(),
@@ -83,10 +86,19 @@ describe('RateLimitStatusService', () => {
   it('should prefer the explicit config.rateLimit over the adapter default', async () => {
     connectionPort.get.mockResolvedValue(connection({ rateLimit: { requestsPerMinute: 30 } }));
     rateLimiterRegistry.getStatus.mockReturnValue(null);
+    integrationsService.resolveAdapterMetadata.mockResolvedValue({
+      adapterKey: 'prestashop.webservice.v1',
+      platformType: 'prestashop',
+      // A manifest default that must NOT win over the explicit config below.
+      supportedCapabilities: [],
+      defaultRateLimit: { requestsPerMinute: 999, maxConcurrent: 99 },
+    });
 
     const status = await subject.getStatus(connectionId);
 
-    expect(integrationsService.resolveAdapterMetadata).not.toHaveBeenCalled();
+    // Metadata is resolved since #2229 — for capability discovery, not as a
+    // rate-limit fallback — so precedence is asserted on the reported values
+    // rather than on the call never happening.
     expect(status).toEqual({
       enabled: true,
       requestsPerMinute: 30,
@@ -105,5 +117,117 @@ describe('RateLimitStatusService', () => {
 
     expect(status).toEqual({ enabled: false });
     expect(rateLimiterRegistry.getStatus).not.toHaveBeenCalled();
+  });
+
+  describe('resolve-concurrency ceiling (#2229)', () => {
+    const ceiling = { maxInFlight: 9, source: 'adapter-default' as const, adapterDefault: 9 };
+
+    /** Manifest advertising the capability — the discovery gate before the adapter is built. */
+    const advertises = (): void => {
+      integrationsService.resolveAdapterMetadata.mockResolvedValue({
+        adapterKey: 'allegro.publicapi.v1',
+        platformType: 'allegro',
+        supportedCapabilities: ['OfferManager', 'EanCategoryMatcherStreaming'],
+      });
+    };
+
+    const streamingAdapter = (): unknown => ({
+      updateOfferQuantity: jest.fn(),
+      streamCategoriesForBatchByEan: jest.fn(),
+      getStreamConcurrency: jest.fn().mockReturnValue(ceiling),
+    });
+
+    it('reports the ceiling even when the shared limiter is off', async () => {
+      // The whole point: `enabled: false` used to be the connection page's
+      // evidence that nothing paced this connection, while a ceiling was in
+      // fact applied below the limiter.
+      connectionPort.get.mockResolvedValue(connection());
+      advertises();
+      (integrationsService.getCapabilityAdapter as jest.Mock).mockResolvedValue(streamingAdapter());
+
+      expect(await subject.getStatus(connectionId)).toEqual({
+        enabled: false,
+        resolveConcurrency: ceiling,
+      });
+    });
+
+    it('reports the ceiling alongside a live limiter status', async () => {
+      connectionPort.get.mockResolvedValue(connection({ rateLimit: { requestsPerMinute: 30 } }));
+      rateLimiterRegistry.getStatus.mockReturnValue(null);
+      advertises();
+      (integrationsService.getCapabilityAdapter as jest.Mock).mockResolvedValue(streamingAdapter());
+
+      const status = await subject.getStatus(connectionId);
+
+      expect(status.enabled).toBe(true);
+      expect(status.requestsPerMinute).toBe(30);
+      expect(status.resolveConcurrency).toEqual(ceiling);
+    });
+
+    it('omits the ceiling when the adapter cannot be built, without failing the read', async () => {
+      // Building a capability adapter resolves credentials and throws on a
+      // half-configured connection. Losing the whole rate-limit readout to a
+      // supplementary line would be a regression caused by an addition.
+      connectionPort.get.mockResolvedValue(connection({ rateLimit: { requestsPerMinute: 30 } }));
+      rateLimiterRegistry.getStatus.mockReturnValue(null);
+      advertises();
+      (integrationsService.getCapabilityAdapter as jest.Mock).mockRejectedValue(
+        new Error('Allegro credentials are not configured')
+      );
+
+      const status = await subject.getStatus(connectionId);
+
+      expect(status.enabled).toBe(true);
+      expect(status).not.toHaveProperty('resolveConcurrency');
+    });
+
+    it('omits the ceiling for an adapter that streams but declares no ceiling', async () => {
+      // `isEanCategoryMatcherStreaming` tests only `streamCategoriesForBatchByEan`,
+      // so an out-of-tree plugin compiled against an older core passes the
+      // guard without the method. Probing the method is what keeps that a
+      // silent omission rather than a TypeError on a settings page.
+      connectionPort.get.mockResolvedValue(connection({ rateLimit: { requestsPerMinute: 30 } }));
+      rateLimiterRegistry.getStatus.mockReturnValue(null);
+      advertises();
+      (integrationsService.getCapabilityAdapter as jest.Mock).mockResolvedValue({
+        updateOfferQuantity: jest.fn(),
+        streamCategoriesForBatchByEan: jest.fn(),
+      });
+
+      const status = await subject.getStatus(connectionId);
+
+      expect(status.enabled).toBe(true);
+      expect(status).not.toHaveProperty('resolveConcurrency');
+    });
+
+    it('omits the ceiling for an adapter that does not stream at all', async () => {
+      connectionPort.get.mockResolvedValue(connection({ rateLimit: { requestsPerMinute: 30 } }));
+      rateLimiterRegistry.getStatus.mockReturnValue(null);
+      advertises();
+      (integrationsService.getCapabilityAdapter as jest.Mock).mockResolvedValue({
+        updateOfferQuantity: jest.fn(),
+      });
+
+      expect(await subject.getStatus(connectionId)).not.toHaveProperty('resolveConcurrency');
+    });
+
+    it('never builds the adapter when the manifest does not advertise the capability', async () => {
+      // Building one resolves credentials. A deployment full of shop
+      // connections must not pay that on every settings-page read, nor log a
+      // credential failure for a destination that could not report a ceiling
+      // in the first place.
+      connectionPort.get.mockResolvedValue(connection({ rateLimit: { requestsPerMinute: 30 } }));
+      rateLimiterRegistry.getStatus.mockReturnValue(null);
+      integrationsService.resolveAdapterMetadata.mockResolvedValue({
+        adapterKey: 'woocommerce.restapi.v3',
+        platformType: 'woocommerce',
+        supportedCapabilities: ['OfferManager'],
+      });
+
+      const status = await subject.getStatus(connectionId);
+
+      expect(status).not.toHaveProperty('resolveConcurrency');
+      expect(integrationsService.getCapabilityAdapter).not.toHaveBeenCalled();
+    });
   });
 });

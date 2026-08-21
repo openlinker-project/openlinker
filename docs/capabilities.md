@@ -30,7 +30,7 @@ invoking, and degrade gracefully when an adapter doesn't implement it.
 | `OrderSourcePort` | orders | `OrderSource` | Cursor-based, read-only ingestion of orders from any source (marketplace journal or shop watermark). | `listOrderFeed` · `getOrder` |
 | `OrderProcessorManagerPort` | orders | `OrderProcessorManager` | Create orders on a destination shop. | `createOrder` |
 | `OfferManagerPort` | listings | `OfferManager` | Manage marketplace offers/listings; base contract is the inventory-driven quantity update. | `updateOfferQuantity` |
-| `ShopProductManagerPort` | listings | `ProductPublisher` | Publish a product as a native listing on a shop (the shop-publish flow). | `publishProduct` |
+| `ShopProductManagerPort` | listings | `ProductPublisher` | Publish a product as a native listing on a shop (the shop-publish flow), and declare the description grammar the shop accepts ([ADR-046](./architecture/adrs/046-adapter-declared-description-format.md)). | `publishProduct` · `getDescriptionFormat` |
 | `ShippingProviderManagerPort` | shipping | `ShippingProviderManager` *(open-world — see note)* | Generate shipping labels, read tracking, and list supported shipping methods. | `generateLabel` · `getTracking` · `getSupportedMethods` |
 | `InvoicingPort` | invoicing | `Invoicing` | Issue fiscal documents, fetch them, upsert a customer, and report supported document types. | `issueInvoice` · `getInvoice` · `upsertCustomer` · `getSupportedDocumentTypes` |
 | `FiscalizationPort` | fiscalization | `Fiscalization` | Hand a completed sale to a provider that performs or brokers its fiscal registration (never OL itself). | `registerTransaction` |
@@ -70,7 +70,7 @@ declare what they support via `implements <BasePort>, <SubCapability>, …`.
 | `OfferReader` | Fetch a single offer by external id. | `getOffer` | `isOfferReader` |
 | `OfferEventReader` | Read the marketplace's incremental offer-event journal. | `listOfferEvents` | `isOfferEventReader` |
 | `OfferCreator` | Create a new offer / listing. | `createOffer` | `isOfferCreator` |
-| `OfferFieldUpdater` | Partially update offer fields (e.g. description text). | `updateOfferFields` | `isOfferFieldUpdater` |
+| `OfferFieldUpdater` | Partially update offer fields (e.g. description text). Optionally declares the description grammar the marketplace accepts ([ADR-046](./architecture/adrs/046-adapter-declared-description-format.md)) - optional because a marketplace adapter may ship no field-update capability at all, so a destination that declares nothing resolves to a conservative shared subset. | `updateOfferFields`, `getDescriptionFormat?` | `isOfferFieldUpdater` |
 | `OfferStatusReader` | Read an offer's live publication status. | `getOfferStatus` | `isOfferStatusReader` |
 | `OfferStockRestorer` | Restore offer stock after a cancellation. | `restoreStockOnCancellation` | `isOfferStockRestorer` |
 | `OfferQuantityBatchUpdater` | Bulk-update quantities for many offers in one call. | `updateOfferQuantitiesBatch` | `isOfferQuantityBatchUpdater` |

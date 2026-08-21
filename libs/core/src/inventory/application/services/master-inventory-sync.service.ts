@@ -21,9 +21,10 @@ import {
   PRODUCTS_SERVICE_TOKEN,
   MASTER_DELETION_EVENT_STREAM,
   MASTER_DELETION_EVENT_SCHEMA_VERSION,
-  MASTER_PRODUCT_STALE_EVENT,
   MASTER_VARIANT_STALE_EVENT,
   MasterProductNotFoundError,
+  MASTER_PRODUCT_SYNC_SERVICE_TOKEN,
+  type IMasterProductSyncService,
   type MasterDeletionEventPayload,
 } from '@openlinker/core/products';
 import { EventPublisherPort, EVENT_PUBLISHER_TOKEN } from '@openlinker/core/events';
@@ -57,7 +58,13 @@ export class MasterInventorySyncService implements IMasterInventorySyncService {
     @Inject(EVENT_PUBLISHER_TOKEN)
     private readonly eventPublisher: EventPublisherPort,
     @Inject(ENTITY_CLAIM_SERVICE_TOKEN)
-    private readonly entityClaims: IEntityClaimService
+    private readonly entityClaims: IEntityClaimService,
+    // The products context owns `product_variants`, which is the flag #1689
+    // re-verifies against - so a confirmed deletion is routed there rather
+    // than written twice (#2222). Cross-context via the published `I*Service`
+    // seam; `inventory -> products` is an existing edge.
+    @Inject(MASTER_PRODUCT_SYNC_SERVICE_TOKEN)
+    private readonly masterProductSync: IMasterProductSyncService
   ) {}
 
   async syncFromMasterByExternalId(
@@ -217,19 +224,42 @@ export class MasterInventorySyncService implements IMasterInventorySyncService {
     }
 
     const pruneResult = await this.inventoryService.pruneStaleVariants(internalProductId, []);
-    // Gated on markedCount, not variantIds.length - see the identical note on
-    // the sibling emission above (#1688).
-    if (pruneResult.markedCount > 0) {
-      await this.publishDeletionEvent(MASTER_PRODUCT_STALE_EVENT, {
-        connectionId,
-        internalProductId,
-        variantIds: pruneResult.variantIds,
-        externalId,
-        correlationId: randomUUID(),
-      });
-    }
+
+    // ...and then hand the SAME confirmed deletion to the products context,
+    // which owns `product_variants.isStale` (#2222).
+    //
+    // This line is the whole point. Staling `inventory_items` alone made the
+    // #1689 chain fire and then do nothing: the emitted `master.product.stale`
+    // reached `marketplace.offer.pauseStale`, whose `StaleOfferPauseService`
+    // re-verifies `variant.isStale !== true` against `product_variants` - which
+    // this path had never written. Every variant failed that check, no offer was
+    // paused, and a product deleted at the master kept selling. The hourly
+    // `pauseStaleSweep` backstop reads the same variant flag, so it did not
+    // catch it either.
+    //
+    // The delegate emits `master.product.stale` itself (gated on having marked
+    // something) and applies its own #1904 rival guard, so this path no longer
+    // publishes - one deletion, one event, one authority.
+    const delegated = await this.masterProductSync.markProductDeletedAtMaster({
+      connectionId,
+      externalId,
+      internalProductId,
+      correlationId: randomUUID(),
+    });
+
+    // The delegate's own guard checks a DIFFERENT capability - `ProductMaster`
+    // rivals, where the guard above checked `InventoryMaster` rivals - so the two
+    // outcomes genuinely diverge: a connection carrying both capabilities can
+    // clear the inventory guard and still be withheld on the products side.
+    // Reporting `false` there would claim a prune ran that did not, and
+    // architecture-overview.md § Products states the contract as "on a hit the
+    // prune is withheld ... and the sync result reports `pruneSkipped: true`".
+    // At this point both flags mean the same thing - the deletion was not fully
+    // applied - so the withheld outcome propagates.
+    const pruneSkipped = delegated.pruneSkipped;
+
     this.logger.warn(
-      `Master inventory deleted at source — marked rows stale (connection: ${connectionId}, externalId: ${externalId}, internalProductId: ${internalProductId}, markedStale=${pruneResult.markedCount})`
+      `Master inventory deleted at source — marked rows stale (connection: ${connectionId}, externalId: ${externalId}, internalProductId: ${internalProductId}, markedStale=${pruneResult.markedCount}, variantPruneSkipped=${String(pruneSkipped)})`
     );
     return {
       internalProductId,
@@ -237,7 +267,7 @@ export class MasterInventorySyncService implements IMasterInventorySyncService {
       availableQuantity: 0,
       reservedQuantity: 0,
       masterDeleted: true,
-      pruneSkipped: false,
+      pruneSkipped,
     };
   }
 
@@ -272,21 +302,6 @@ export class MasterInventorySyncService implements IMasterInventorySyncService {
       `inventory_prune_skipped_rival_master_connections - internal product id is claimed by more than one InventoryMaster connection, so the staleness prune cannot be attributed and was withheld (connection: ${connectionId}, externalId: ${externalId}, internalProductId: ${internalProductId}, rivals=${rivals.join(',')})`
     );
     return true;
-  }
-
-  private async publishDeletionEvent(
-    eventType: typeof MASTER_VARIANT_STALE_EVENT | typeof MASTER_PRODUCT_STALE_EVENT,
-    payload: MasterDeletionEventPayload
-  ): Promise<void> {
-    const now = new Date().toISOString();
-    await this.eventPublisher.publish(MASTER_DELETION_EVENT_STREAM, {
-      eventId: randomUUID(),
-      eventType,
-      payloadJson: JSON.stringify(payload),
-      metadataJson: JSON.stringify({ schemaVersion: MASTER_DELETION_EVENT_SCHEMA_VERSION }),
-      occurredAt: now,
-      publishedAt: now,
-    });
   }
 
   private async toDomainInventoryItem(

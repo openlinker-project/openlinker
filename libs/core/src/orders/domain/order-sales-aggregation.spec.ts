@@ -39,9 +39,10 @@ describe('orderSalesAggregation', () => {
       expect(result.headline).toEqual({
         revenue: 0,
         orderCount: 0,
-        averageOrderValue: 0,
+        averageOrderValue: null,
         medianOrderValue: null,
         unitsSold: 0,
+        unconvertedUnitsSold: 0,
         cancelledCount: 0,
         cancelledValue: 0,
         currency: null,
@@ -71,7 +72,7 @@ describe('orderSalesAggregation', () => {
           row({ day: new Date('2026-08-02T00:00:00.000Z'), orderCount: 1, revenue: 50 }),
         ],
         medianOrderValue: 100,
-        unitsByConnection: new Map([['conn-a', 30]]),
+        unitsByConnection: new Map([['conn-a', { unitsSold: 30, unconvertedUnitsSold: 4 }]]),
         earliestOrderDateByConnection: new Map([['conn-a', new Date('2026-07-01T00:00:00.000Z')]]),
       });
 
@@ -80,6 +81,7 @@ describe('orderSalesAggregation', () => {
       expect(result.headline.averageOrderValue).toBeCloseTo(250 / 3);
       expect(result.headline.medianOrderValue).toBe(100);
       expect(result.headline.unitsSold).toBe(30);
+      expect(result.headline.unconvertedUnitsSold).toBe(4);
 
       expect(result.channels).toHaveLength(1);
       expect(result.channels[0]).toMatchObject({
@@ -87,6 +89,7 @@ describe('orderSalesAggregation', () => {
         revenue: 250,
         orderCount: 3,
         unitsSold: 30,
+        unconvertedUnitsSold: 4,
         revenueShare: 1,
         coverageComplete: true,
       });
@@ -114,7 +117,7 @@ describe('orderSalesAggregation', () => {
       expect(byId.get('conn-b')?.revenueShare).toBeCloseTo(0.25);
     });
 
-    it('reports revenueShare of 0 (not NaN) when headline revenue is 0', () => {
+    it('reports revenueShare of null (not NaN or 0) when headline revenue is 0 (#1987 review, IMPORTANT 2)', () => {
       const result = buildSalesAndChannelAnalytics({
         filters: filters(),
         dailyRows: [row({ revenue: 0, orderCount: 0 })],
@@ -125,8 +128,7 @@ describe('orderSalesAggregation', () => {
         ]),
       });
 
-      expect(result.channels[0].revenueShare).toBe(0);
-      expect(Number.isNaN(result.channels[0].revenueShare)).toBe(false);
+      expect(result.channels[0].revenueShare).toBeNull();
     });
   });
 
@@ -148,7 +150,7 @@ describe('orderSalesAggregation', () => {
       expect(result.headline.cancelledValue).toBe(80);
     });
 
-    it('reports 0 average (not NaN) and a null median when every order in range is cancelled', () => {
+    it('reports a null average (not 0 or NaN) and a null median when every order in range is cancelled', () => {
       const result = buildSalesAndChannelAnalytics({
         filters: filters(),
         dailyRows: [row({ revenue: 0, orderCount: 0, cancelledCount: 3, cancelledValue: 300 })],
@@ -157,7 +159,9 @@ describe('orderSalesAggregation', () => {
         earliestOrderDateByConnection: new Map(),
       });
 
-      expect(result.headline.averageOrderValue).toBe(0);
+      // null, not 0 (#1987 review, IMPORTANT 2) — no stamped order matched
+      // the range, distinct from a genuine zero AOV.
+      expect(result.headline.averageOrderValue).toBeNull();
       // null, not 0 (#1987 review, suggestion 2) — no stamped order matched
       // the range, distinct from a genuine zero-value median.
       expect(result.headline.medianOrderValue).toBeNull();

@@ -49,9 +49,13 @@ describe('PrestashopRateLimitReadout', () => {
 
     renderWithProviders(<PrestashopRateLimitReadout connectionId="conn_1" />, { apiClient });
 
+    // Scoped to the outbound limiter (#2229). The previous blanket "this
+    // connection is not rate-limited" was false for a connection whose adapter
+    // paces its own resolve path below this mechanism.
     expect(
-      await screen.findByText('No limit configured — this connection is not rate-limited.'),
+      await screen.findByText('No outbound limit configured — requests to this connection are not paced.'),
     ).toBeInTheDocument();
+    expect(screen.queryByText(/is not rate-limited/i)).not.toBeInTheDocument();
   });
 
   it('renders the cap + concurrency line and live counters plus a manual refresh button when enabled', async () => {

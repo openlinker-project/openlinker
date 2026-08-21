@@ -124,7 +124,7 @@ export interface IOrderRecordService {
    * repository ports are forbidden across context boundaries per
    * architecture-overview.md § "Cross-context dependencies in core", so
    * callers go through this service method instead of
-   * `OrderRecordRepositoryPort.findEarliestPlacedAtByConnection` directly.
+   * `OrderRecordRepositoryPort.findEarliestOrderDateByConnection` directly.
    * A connection absent from the returned Map has zero ingested orders.
    * Deliberately includes every `recordStatus` (including `source_deleted` /
    * `awaiting_mapping` / `failed` / cancelled) — a coverage/freshness fact

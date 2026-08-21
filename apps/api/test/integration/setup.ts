@@ -196,6 +196,11 @@ const harness = createIntegrationTestHarness({
     OL_ERLI_ORDERS_POLL_SCHEDULER_ENABLED: 'false',
     OL_INVENTORY_SYNC_ENABLED: 'false',
     OL_PRODUCT_SYNC_ENABLED: 'false',
+    // Deletion reconciliation (#2222). Unlike the delta pass, this task defaults
+    // ON, so it is the one core sweep that must be named here explicitly - left
+    // enabled it fires against the empty integration database and keeps the event
+    // loop alive, which is the Jest hang this whole block exists to prevent.
+    OL_MASTER_PRODUCT_RECONCILE_ENABLED: 'false',
     OL_PICKUP_POINT_REFRESH_ENABLED: 'false',
     OL_REGULATORY_RECONCILE_ENABLED: 'false',
     OL_OFFLINE_RESUBMIT_ENABLED: 'false',

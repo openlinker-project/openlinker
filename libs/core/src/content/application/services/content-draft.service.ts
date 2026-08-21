@@ -9,6 +9,7 @@
  * @implements {IContentDraftService}
  */
 import { Inject, Injectable } from '@nestjs/common';
+import { sanitizeStoredHtml } from '@openlinker/shared/html';
 import { Logger } from '@openlinker/shared/logging';
 import type { ProductContentField } from '../../domain/entities/product-content-field.entity';
 import { ContentConflictException } from '../../domain/exceptions/content-conflict.exception';
@@ -46,11 +47,24 @@ export class ContentDraftService implements IContentDraftService {
       fieldKey: cmd.fieldKey,
     });
 
+    // #2198: the inbound XSS boundary. An operator-authored draft is untrusted
+    // input the moment a surface renders it as HTML, and `RichTextView` does.
+    // Deliberately wider than any destination format - narrowing per channel is
+    // the publish path's job (ADR-046).
+    const draftValue = sanitizeStoredHtml(cmd.value);
+    if (draftValue !== cmd.value) {
+      this.logger.warn(
+        `[content] draft sanitized on save: productId=${cmd.productId} ` +
+          `connectionId=${cmd.connectionId ?? 'master'} fieldKey=${cmd.fieldKey} ` +
+          `before=${cmd.value.length}B after=${draftValue.length}B`
+      );
+    }
+
     return this.repository.upsert({
       productId: cmd.productId,
       connectionId: cmd.connectionId,
       fieldKey: cmd.fieldKey,
-      draftValue: cmd.value,
+      draftValue,
       baseValue: existing?.baseValue ?? null,
       baseVersion: existing?.baseVersion ?? null,
       // Saving a draft implicitly acknowledges any prior conflict — the user is taking ownership.
@@ -134,6 +148,24 @@ export class ContentDraftService implements IContentDraftService {
   }
 
   async reconcileExternal(cmd: ReconcileExternalCommand): Promise<ProductContentField> {
+    // #2198: `externalValue` is HTML read back from an external system, so it is
+    // untrusted for exactly the same reason a master-supplied description is -
+    // and `baseValue` IS rendered (the content panel falls back to it when no
+    // draft exists). Sanitized once here rather than at each of the three
+    // `upsert` calls below, so a fourth branch cannot be added without it.
+    //
+    // No production caller exists yet (inbound content reconcile is a documented
+    // follow-up), which is precisely why this is worth closing now: the day that
+    // pipeline is wired, the boundary is already complete rather than needing to
+    // be remembered.
+    const externalValue = sanitizeStoredHtml(cmd.externalValue);
+    if (externalValue !== cmd.externalValue) {
+      this.logger.warn(
+        `[content] external value sanitized on reconcile: productId=${cmd.productId} ` +
+          `connectionId=${cmd.connectionId ?? 'master'} fieldKey=${cmd.fieldKey}`
+      );
+    }
+
     const existing = await this.repository.findByKey({
       productId: cmd.productId,
       connectionId: cmd.connectionId,
@@ -147,7 +179,7 @@ export class ContentDraftService implements IContentDraftService {
         connectionId: cmd.connectionId,
         fieldKey: cmd.fieldKey,
         draftValue: null,
-        baseValue: cmd.externalValue,
+        baseValue: externalValue,
         baseVersion: cmd.externalVersion,
         hasConflict: false,
         updatedBy: null, // system-driven
@@ -167,7 +199,7 @@ export class ContentDraftService implements IContentDraftService {
         connectionId: cmd.connectionId,
         fieldKey: cmd.fieldKey,
         draftValue: null,
-        baseValue: cmd.externalValue,
+        baseValue: externalValue,
         baseVersion: cmd.externalVersion,
         hasConflict: false,
         updatedBy: null,
@@ -184,7 +216,7 @@ export class ContentDraftService implements IContentDraftService {
       connectionId: cmd.connectionId,
       fieldKey: cmd.fieldKey,
       draftValue: existing.draftValue,
-      baseValue: cmd.externalValue,
+      baseValue: externalValue,
       baseVersion: cmd.externalVersion,
       hasConflict: true,
       updatedBy: existing.updatedBy,

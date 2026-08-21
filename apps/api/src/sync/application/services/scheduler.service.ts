@@ -156,6 +156,30 @@ const CORE_CAPABILITY_TASKS: readonly CoreCapabilityTaskDescriptor[] = [
       `master:${connectionId}:product:syncDelta:${timestamp}`,
   },
   {
+    // Deletion reconciliation (#2222, ADR-048 decision 2). Re-checks OL's own
+    // product mappings by id so the adapter's 404 is the deletion authority —
+    // the catalog sweep enumerates FROM the master and is structurally blind to
+    // a deletion.
+    //
+    // Deliberately NOT gated to connections lacking InventoryMaster, even though
+    // `master.inventory.syncAll` gives those the same detection for free: a
+    // capability-shaped exclusion rots, and it would also skip the #1904 case
+    // where the inventory path withholds its prune to a rival claimant. The
+    // overlap is paid for with a slow cadence instead.
+    //
+    // Hourly, not 15-minutely: one platform call per mapped product per cycle is
+    // the cost, and deletion-detection latency is the thing being traded. The
+    // budget bounds each tick; the cycle spans as many ticks as it needs.
+    taskId: 'master-product-reconcile',
+    jobType: 'master.product.reconcile',
+    capability: 'ProductMaster',
+    enabledEnvVar: 'OL_MASTER_PRODUCT_RECONCILE_ENABLED',
+    cronEnvVar: 'OL_MASTER_PRODUCT_RECONCILE_CRON',
+    defaultCron: '0 * * * *',
+    idempotencyKey: (connectionId, timestamp) =>
+      `master:${connectionId}:product:reconcile:${timestamp}`,
+  },
+  {
     taskId: 'pickup-point-refresh',
     jobType: 'shipping.pickupPoint.refreshFrequent',
     capability: 'ShippingProviderManager',

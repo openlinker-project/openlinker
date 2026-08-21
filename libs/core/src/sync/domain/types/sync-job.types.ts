@@ -42,6 +42,10 @@ export const JobTypeValues = [
   // Incremental catalog pass (#2220, ADR-048). Opt-in; complements rather than
   // replaces `syncAll`, which remains the reconciliation/bootstrap path.
   'master.product.syncDelta',
+  // Deletion reconciliation (#2222, ADR-048 decision 2). Enumerates OL's OWN
+  // product mappings and re-checks each by id, so the adapter's 404 is the
+  // authority — never inference from absence in a catalog enumeration.
+  'master.product.reconcile',
   'master.inventory.syncByExternalId',
   'master.inventory.syncAll',
 

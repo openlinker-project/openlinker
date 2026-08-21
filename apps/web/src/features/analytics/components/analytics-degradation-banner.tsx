@@ -11,7 +11,7 @@ import type { ReactElement } from 'react';
 import { Link } from 'react-router-dom';
 import { Alert } from '../../../shared/ui';
 import { formatDateTime } from '../../../shared/format/format-date';
-import { shouldShowDegradationBanner } from '../lib/ingestion-trust.lib';
+import { selectDegradedConnections } from '../lib/ingestion-trust.lib';
 import type { ConnectionIngestionTrust } from '../api/analytics-trust.types';
 
 interface AnalyticsDegradationBannerProps {
@@ -21,7 +21,7 @@ interface AnalyticsDegradationBannerProps {
 export function AnalyticsDegradationBanner({
   connections,
 }: AnalyticsDegradationBannerProps): ReactElement | null {
-  const degraded = shouldShowDegradationBanner(connections);
+  const degraded = selectDegradedConnections(connections);
 
   if (degraded.length === 0) {
     return null;
