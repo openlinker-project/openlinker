@@ -24,11 +24,18 @@
  * of the date range) that decides the rendering, not the absence alone: a
  * listed-but-quiet channel renders the same real, full-weight, tabular `0`
  * a channel with actual sales would, and only a genuinely unlisted channel
- * renders muted "Not listed" prose with a "Publish" chip sharing the same
+ * renders muted "Not listed" prose with a "Publish" action sharing the same
  * slot, swapping in via CSS on hover/focus — see `.cell-not-listed` in
- * `index.css`. The chip must stay `position: absolute; right: 0` inside the
- * slot, never a flex sibling (an `opacity: 0` sibling still occupies layout
- * and misaligns the label from the column's right edge).
+ * `index.css`. The action must stay `position: absolute; right: 0` inside
+ * the slot, never a flex sibling (an `opacity: 0` sibling still occupies
+ * layout and misaligns the label from the column's right edge). On a
+ * touch pointer (no hover) the slot instead stacks label + action
+ * permanently visible — see the `@media (hover: none)` block, so #1991's
+ * label-vs-action distinction is not desktop-only. The action itself is
+ * gated behind `listings:write` (`useWriteAccess` + `ReadOnlyLock`) since
+ * publishing is a real write, and is a genuine `<Link>`-as-button rather
+ * than `Chip` (which hard-codes a filter-toggle `aria-pressed`) so it
+ * carries link semantics (middle-click, open-in-new-tab) for free.
  *
  * Money column terminology (see the #1991 plan § 4): labeled "Revenue", not
  * the design mockup's "Net sales" copy — #1988 computes a gross,
@@ -56,28 +63,26 @@
  *
  * @module features/analytics/components
  */
-import { useState, type ReactElement } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { type ReactElement, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { DataTable, type DataTableColumn } from '../../../shared/ui/data-table';
-import { Chip } from '../../../shared/ui/chip';
 import { Button } from '../../../shared/ui/button';
 import { EmptyValue } from '../../../shared/ui/empty-value';
 import { ErrorState, LoadingState } from '../../../shared/ui/feedback-state';
 import { ProductThumbnail } from '../../../shared/ui/product-thumbnail';
+import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
 import { SegmentedControl } from '../../../shared/ui/segmented-control';
 import { formatAmount } from '../../../shared/format/format-amount';
 import { useNumberFormat } from '../../../shared/i18n/use-number-format';
+import { useWriteAccess } from '../../../shared/auth/use-permission';
+import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
 import { useConnectionsQuery, type Connection } from '../../connections';
 import { useProductsBatchQuery, type Product } from '../../products';
+import { useDemoMode } from '../../system';
 import { useTopProductsQuery } from '../hooks/use-top-products-query';
 import type { SalesAnalyticsFilters } from '../api/sales-analytics.types';
 import type { TopProductRow, TopProductsSortBy } from '../api/top-products.types';
-import {
-  channelCellFor,
-  deriveChannelColumns,
-  isMissingFrom,
-  totalUnits,
-} from '../lib/top-products-view-model';
+import { channelCellFor, deriveChannelColumns, isMissingFrom } from '../lib/top-products-view-model';
 
 const DEFAULT_LIMIT = 20;
 
@@ -121,16 +126,64 @@ function ProductCell({ row, product }: { row: TopProductRow; product: Product | 
   );
 }
 
+function PublishAction({
+  row,
+  connectionId,
+  demoMode,
+}: {
+  row: TopProductRow;
+  connectionId: string;
+  demoMode: boolean;
+}): ReactElement | null {
+  // A one-shot navigation, not a filter toggle — a real link (styled as a
+  // button) rather than `Chip` (which hard-codes `aria-pressed`, exposing a
+  // permanently-"not pressed" toggle to AT) or a `Button` + `navigate()`
+  // (which loses middle-click / open-in-new-tab for free). This cell is
+  // never inside the row's own `rowHref` anchor (`linkifyFirstCell` only
+  // covers the first column), so nesting is not a concern.
+  const write = useWriteAccess('listings:write', demoMode);
+  if (!write.visible) {
+    return null;
+  }
+
+  const label = `Publish ${row.name ?? row.productId} on this channel — it already sells elsewhere`;
+
+  if (write.demoReadOnly) {
+    return (
+      <ReadOnlyLock active message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+        <button
+          type="button"
+          className="button button--secondary button--xs cell-not-listed__chip"
+          disabled
+          aria-label={label}
+        >
+          Publish
+        </button>
+      </ReadOnlyLock>
+    );
+  }
+
+  return (
+    <Link
+      to={buildPublishHref(row.productId, connectionId)}
+      className="button button--secondary button--xs cell-not-listed__chip"
+      aria-label={label}
+    >
+      Publish
+    </Link>
+  );
+}
+
 function ChannelCell({
   row,
   connectionId,
   intFormat,
-  onPublish,
+  demoMode,
 }: {
   row: TopProductRow;
   connectionId: string;
   intFormat: Intl.NumberFormat;
-  onPublish: (productId: string, connectionId: string) => void;
+  demoMode: boolean;
 }): ReactElement {
   const channel = channelCellFor(row, connectionId);
   if (channel) {
@@ -149,14 +202,7 @@ function ChannelCell({
   return (
     <span className="cell-not-listed">
       <span className="cell-not-listed__label">Not listed</span>
-      <Chip
-        tone="warning"
-        className="cell-not-listed__chip"
-        aria-label={`Publish ${row.name ?? row.productId} on this channel — it already sells elsewhere`}
-        onClick={() => onPublish(row.productId, connectionId)}
-      >
-        Publish
-      </Chip>
+      <PublishAction row={row} connectionId={connectionId} demoMode={demoMode} />
     </span>
   );
 }
@@ -166,11 +212,7 @@ export function ProductSalesTable({ filters }: ProductSalesTableProps): ReactEle
   const query = useTopProductsQuery({ ...filters, sortBy, limit: DEFAULT_LIMIT, offset: 0 });
   const connectionsQuery = useConnectionsQuery();
   const intFormat = useNumberFormat();
-  const navigate = useNavigate();
-
-  function handlePublish(productId: string, connectionId: string): void {
-    void navigate(buildPublishHref(productId, connectionId));
-  }
+  const demoMode = useDemoMode();
 
   const items = query.data?.items ?? [];
   const productIds = items.map((item) => item.productId);
@@ -224,7 +266,11 @@ export function ProductSalesTable({ filters }: ProductSalesTableProps): ReactEle
       id: 'units',
       header: sortBy === 'units' ? 'Units ↓' : 'Units',
       align: 'right',
-      cell: (row) => intFormat.format(totalUnits(row)),
+      // The server-ranked figure, not a re-sum of `row.channels[]` — that
+      // breakdown is a separate read (#2172) and could in principle be
+      // narrower than the full split, which would make the displayed total
+      // silently disagree with the sort order the header arrow claims.
+      cell: (row) => intFormat.format(row.units),
     },
     ...channelColumns.map(
       (connectionId): DataTableColumn<TopProductRow> => ({
@@ -232,7 +278,7 @@ export function ProductSalesTable({ filters }: ProductSalesTableProps): ReactEle
         header: connectionsById.get(connectionId)?.name ?? connectionId,
         align: 'right',
         cell: (row) => (
-          <ChannelCell row={row} connectionId={connectionId} intFormat={intFormat} onPublish={handlePublish} />
+          <ChannelCell row={row} connectionId={connectionId} intFormat={intFormat} demoMode={demoMode} />
         ),
       })
     ),
@@ -263,7 +309,7 @@ export function ProductSalesTable({ filters }: ProductSalesTableProps): ReactEle
             <>
               {renderRevenueCell(row)}
               {' · '}
-              {intFormat.format(totalUnits(row))} units
+              {intFormat.format(row.units)} units
             </>
           ),
           detail: (row) => (
@@ -275,7 +321,7 @@ export function ProductSalesTable({ filters }: ProductSalesTableProps): ReactEle
                     row={row}
                     connectionId={connectionId}
                     intFormat={intFormat}
-                    onPublish={handlePublish}
+                    demoMode={demoMode}
                   />
                 </span>
               ))}

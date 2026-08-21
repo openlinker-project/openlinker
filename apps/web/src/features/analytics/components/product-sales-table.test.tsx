@@ -1,11 +1,27 @@
 import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import { createMockApiClient, renderWithProviders } from '../../../test/test-utils';
+import {
+  createAuthenticatedSessionAdapter,
+  createMockApiClient,
+  renderWithProviders,
+} from '../../../test/test-utils';
+import type { SessionUser } from '../../../shared/auth/session.types';
 import type { TopProductRow, TopProductsResult } from '../api/top-products.types';
 import { ProductSalesTable } from './product-sales-table';
 
 const FILTERS = { from: '2026-08-01', to: '2026-08-14' };
+
+// The Publish action is gated on `listings:write` (#2191 tech review) — a
+// genuinely unauthorized, non-demo viewer sees it neither as a link nor as a
+// disabled button, so a viewer session only differs from admin by omitting it.
+const viewerUser: SessionUser = {
+  id: 'user_viewer',
+  username: 'viewer',
+  email: 'viewer@example.com',
+  role: 'viewer',
+  permissions: [],
+};
 
 function row(overrides: Partial<TopProductRow> = {}): TopProductRow {
   return {
@@ -114,15 +130,20 @@ describe('ProductSalesTable', () => {
       connections: { list: vi.fn().mockResolvedValue(CONNECTIONS) },
     });
 
-    renderWithProviders(<ProductSalesTable filters={FILTERS} />, { apiClient });
+    renderWithProviders(<ProductSalesTable filters={FILTERS} />, {
+      apiClient,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
 
     await screen.findByText('Widget A');
     expect(screen.queryByText('Not listed')).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Publish/ })).not.toBeInTheDocument();
+    // Full write access is granted here, so an absent Publish link proves the
+    // "not flagged missing" branch, not the permission gate tested above.
+    expect(screen.queryByRole('link', { name: /Publish/ })).not.toBeInTheDocument();
     expect(screen.getAllByText('0').length).toBeGreaterThan(0);
   });
 
-  it('shows a Publish chip for a channel the product is missing from', async () => {
+  it('shows a Publish link for a channel the product is missing from', async () => {
     const apiClient = createMockApiClient({
       analytics: {
         getTopProducts: vi.fn().mockResolvedValue(
@@ -139,9 +160,72 @@ describe('ProductSalesTable', () => {
       connections: { list: vi.fn().mockResolvedValue(CONNECTIONS) },
     });
 
-    renderWithProviders(<ProductSalesTable filters={FILTERS} />, { apiClient });
+    renderWithProviders(<ProductSalesTable filters={FILTERS} />, {
+      apiClient,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
 
-    expect(await screen.findByRole('button', { name: /Publish/ })).toBeInTheDocument();
+    const publishLink = await screen.findByRole('link', { name: /Publish/ });
+    expect(publishLink).toBeInTheDocument();
+    expect(publishLink).toHaveAttribute(
+      'href',
+      '/listings/bulk-create/wizard?productIds=p1&connectionId=conn-b'
+    );
+  });
+
+  it('hides the Publish action entirely for a genuinely unauthorized non-demo session', async () => {
+    const apiClient = createMockApiClient({
+      analytics: {
+        getTopProducts: vi.fn().mockResolvedValue(
+          result([
+            row({
+              channels: [
+                { sourceConnectionId: 'conn-a', units: 2, revenue: 110, unconvertedRevenue: 0, currency: 'PLN' },
+              ],
+              missingFromConnectionIds: ['conn-b'],
+            }),
+          ])
+        ),
+      },
+      connections: { list: vi.fn().mockResolvedValue(CONNECTIONS) },
+    });
+
+    renderWithProviders(<ProductSalesTable filters={FILTERS} />, {
+      apiClient,
+      sessionAdapter: createAuthenticatedSessionAdapter(viewerUser),
+    });
+
+    await screen.findByText('Not listed');
+    expect(screen.queryByRole('link', { name: /Publish/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Publish/ })).not.toBeInTheDocument();
+  });
+
+  it('renders the Publish action disabled with a read-only tooltip for a demo read-only session', async () => {
+    const apiClient = createMockApiClient({
+      analytics: {
+        getTopProducts: vi.fn().mockResolvedValue(
+          result([
+            row({
+              channels: [
+                { sourceConnectionId: 'conn-a', units: 2, revenue: 110, unconvertedRevenue: 0, currency: 'PLN' },
+              ],
+              missingFromConnectionIds: ['conn-b'],
+            }),
+          ])
+        ),
+      },
+      connections: { list: vi.fn().mockResolvedValue(CONNECTIONS) },
+      system: { getConfig: vi.fn().mockResolvedValue({ demoMode: true }) },
+    });
+
+    renderWithProviders(<ProductSalesTable filters={FILTERS} />, {
+      apiClient,
+      sessionAdapter: createAuthenticatedSessionAdapter(viewerUser),
+    });
+
+    const publishButton = await screen.findByRole('button', { name: /Publish/ });
+    expect(publishButton).toBeDisabled();
+    expect(screen.queryByRole('link', { name: /Publish/ })).not.toBeInTheDocument();
   });
 
   it('refetches with sortBy=units after switching the segmented control', async () => {

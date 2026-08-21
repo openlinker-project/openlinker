@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ProductChannelSales, TopProductRow } from '../api/top-products.types';
-import { channelCellFor, deriveChannelColumns, isMissingFrom, totalUnits } from './top-products-view-model';
+import { channelCellFor, deriveChannelColumns, isMissingFrom } from './top-products-view-model';
 
 function channel(overrides: Partial<ProductChannelSales> = {}): ProductChannelSales {
   return {
@@ -42,23 +42,6 @@ describe('deriveChannelColumns', () => {
     ];
 
     expect(deriveChannelColumns(rows)).toEqual(['conn-a', 'conn-b', 'conn-c']);
-  });
-});
-
-describe('totalUnits', () => {
-  it('sums units across every channel entry', () => {
-    const r = row({
-      channels: [
-        channel({ sourceConnectionId: 'conn-a', units: 3 }),
-        channel({ sourceConnectionId: 'conn-b', units: 7 }),
-      ],
-    });
-
-    expect(totalUnits(r)).toBe(10);
-  });
-
-  it('returns 0 for a row with no channels', () => {
-    expect(totalUnits(row({ channels: [] }))).toBe(0);
   });
 });
 

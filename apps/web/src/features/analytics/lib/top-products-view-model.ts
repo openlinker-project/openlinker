@@ -37,15 +37,6 @@ export function deriveChannelColumns(rows: TopProductRow[]): string[] {
   return columns;
 }
 
-/**
- * Units summed from the per-channel split rather than trusted off
- * `row.units` directly, so a channel column added later can never disagree
- * with the total it contributes to.
- */
-export function totalUnits(row: TopProductRow): number {
-  return row.channels.reduce((sum, channel) => sum + channel.units, 0);
-}
-
 export function channelCellFor(row: TopProductRow, connectionId: string): ProductChannelSales | undefined {
   return row.channels.find((channel) => channel.sourceConnectionId === connectionId);
 }

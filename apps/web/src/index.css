@@ -4864,11 +4864,16 @@ a.kpi-card:focus-visible {
  * A missing listing and a zero sale mean different things and must not
  * render identically: the "Not listed" label is muted prose, deliberately
  * non-tabular, so the column still scans as figures everywhere a real
- * number IS present. Where the product sells on another channel, a
- * "Publish" chip shares this SAME slot rather than living beside it as a
- * flex sibling — an `opacity: 0` sibling still occupies layout and would
- * push the label off the column's right edge by its own width. The label
- * never leaves the accessibility tree (`opacity`, never `display: none`).
+ * number IS present. On a hover-capable pointer, a "Publish" action shares
+ * this SAME slot rather than living beside it as a flex sibling — an
+ * `opacity: 0` sibling still occupies layout and would push the label off
+ * the column's right edge by its own width. The label never leaves the
+ * accessibility tree (`opacity`, never `display: none`).
+ *
+ * On touch (`hover: none`) there is no hover/focus-within moment to swap
+ * on, so the #1991 AC's label-vs-chip distinction would otherwise be
+ * unreachable — the block below drops the absolute-overlay layout in favor
+ * of a stacked column showing BOTH the label and the action, permanently.
  */
 .cell-not-listed {
   position: relative;
@@ -4876,7 +4881,7 @@ a.kpi-card:focus-visible {
   align-items: center;
   justify-content: flex-end;
   /* Room for the longest realistic channel figure ("1,234") plus the
-     "Publish" chip without either shifting the column's own width. */
+     "Publish" action without either shifting the column's own width. */
   min-width: 5.5rem;
 }
 
@@ -4894,24 +4899,31 @@ a.kpi-card:focus-visible {
   transition: opacity 120ms ease;
 }
 
-tr:hover .cell-not-listed .cell-not-listed__chip,
-tr:focus-within .cell-not-listed .cell-not-listed__chip {
+.data-table__row:hover .cell-not-listed .cell-not-listed__chip,
+.data-table__row:focus-within .cell-not-listed .cell-not-listed__chip {
   opacity: 1;
   pointer-events: auto;
 }
 
-tr:hover .cell-not-listed .cell-not-listed__label,
-tr:focus-within .cell-not-listed .cell-not-listed__label {
+.data-table__row:hover .cell-not-listed .cell-not-listed__label,
+.data-table__row:focus-within .cell-not-listed .cell-not-listed__label {
   opacity: 0;
 }
 
 @media (hover: none) {
+  .cell-not-listed {
+    flex-direction: column;
+    align-items: flex-end;
+    gap: var(--space-1);
+    min-width: 0;
+  }
   .cell-not-listed .cell-not-listed__chip {
+    position: static;
     opacity: 1;
     pointer-events: auto;
   }
   .cell-not-listed .cell-not-listed__label {
-    opacity: 0;
+    opacity: 1;
   }
 }
 
