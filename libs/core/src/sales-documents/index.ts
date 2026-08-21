@@ -24,3 +24,7 @@
  * @see docs/architecture/adrs/041-sales-document-routing-policy.md
  */
 export * from './domain/types/sales-document-reason.types';
+// Proportional shipping split across the rates in a mixed-rate basket (#2248 /
+// #2252). Lives here because BOTH document contexts consume it and a fiscal
+// receipt is not an invoice - the same reason the reason vocabularies do.
+export * from './domain/types/shipping-tax-split.types';
