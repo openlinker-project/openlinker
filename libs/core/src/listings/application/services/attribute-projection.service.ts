@@ -14,6 +14,18 @@
  * Mappings are source-scoped; a per-category mapping overrides the
  * connection-wide default for the same source attribute key.
  *
+ * **`restrictionIssues` is REPORTED-ONLY as of #2243, deliberately.** The
+ * projection runs the pure `checkParameterRestrictions` over every value it
+ * produces and returns what breaks a bound the destination declared, but no
+ * caller gates on it yet - neither `OfferBuilderService` nor
+ * `ProductPublishBuilderService` reads the field, so its only operator-visible
+ * surface today is the `warn` line below. That is a first slice, not an
+ * oversight: the values here come from attribute mappings and the #1841 rule
+ * layer, so a block would refuse a publish over data the operator cannot see or
+ * edit from the wizard, and the checker had to be observable before it could be
+ * trusted to gate. Making a builder gate on it is a follow-up; until it does,
+ * do not read "returned" as "enforced".
+ *
  * @module libs/core/src/listings/application/services
  * @implements {IAttributeProjectionService}
  */
@@ -127,18 +139,16 @@ export class AttributeProjectionService implements IAttributeProjectionService {
             })
           );
         } else {
-          // A dictionary miss. The parameter is still dropped (an unknown id is
-          // its own rejection), but it is no longer only a debug line - an offer
-          // published without the value looks fine and is not.
-          restrictionIssues.push({
-            code: 'VALUE_NOT_IN_DICTIONARY',
-            severity: 'block',
-            parameterId: param.id,
-            parameterName: param.name,
-            message:
-              `"${destinationValue}" is not one of the values ${param.name} allows in this category, ` +
-              `so the parameter was left out of the offer.`,
-          });
+          // A dictionary miss: `toResolvedParameter` drops the parameter for any
+          // dictionary non-match, so an offer publishes silently MISSING the
+          // value rather than visibly wrong. Whether that drop is a VIOLATION is
+          // the checker's call and not this branch's - a category whose
+          // parameter carries `customValuesEnabled` accepts the value, so
+          // asserting it is not allowed would be a positive false claim, worse
+          // than the debug line it replaces. One rule, one place.
+          restrictionIssues.push(
+            ...checkParameterRestrictions(param, { texts: [destinationValue] })
+          );
           if (param.required) {
             unresolvedRequired.push({ id: param.id, name: param.name, section: param.section });
           }

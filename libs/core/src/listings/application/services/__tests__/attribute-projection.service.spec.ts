@@ -500,6 +500,39 @@ describe('AttributeProjectionService', () => {
       expect(result.restrictionIssues[0].message).toContain('Cappuccino');
     });
 
+    it('does NOT claim a dictionary miss on a parameter that accepts custom values', async () => {
+      // The parameter is still dropped (`toResolvedParameter` returns null for
+      // any dictionary non-match, pre-existing), but Allegro would have accepted
+      // this value - so reporting it as VALUE_NOT_IN_DICTIONARY would upgrade a
+      // silent drop into a positive false claim. The miss goes through the same
+      // checker as every other value, which is what keeps the guard in one place.
+      const params = [
+        param({
+          id: 'p-color',
+          name: 'Kolor',
+          type: 'dictionary',
+          dictionary: [{ id: 'd-beige', value: 'Beżowy' }],
+          restrictions: { customValuesEnabled: true },
+        }),
+      ];
+      service = build(ownsAdapter(params), [mapping('Color', 'Kolor')]);
+
+      const result = await service.project(input({ Color: 'Cappuccino' }));
+
+      expect(result.parameters).toEqual([]);
+      expect(result.restrictionIssues).toEqual([]);
+    });
+
+    it('does NOT claim a dictionary miss when the destination enumerated no entries', async () => {
+      // A dictionary the destination did not enumerate cannot be checked against.
+      const params = [param({ id: 'p-color', name: 'Kolor', type: 'dictionary', dictionary: [] })];
+      service = build(ownsAdapter(params), [mapping('Color', 'Kolor')]);
+
+      const result = await service.project(input({ Color: 'Cappuccino' }));
+
+      expect(result.restrictionIssues).toEqual([]);
+    });
+
     it('reports nothing on the pass-through branch, which has no schema to check against', async () => {
       service = build(passthroughAdapter(), [mapping('CN', 'Kod taryfy celnej')]);
 

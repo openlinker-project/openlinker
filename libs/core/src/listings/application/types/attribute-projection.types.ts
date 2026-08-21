@@ -99,9 +99,17 @@ export interface AttributeProjectionResult {
    * and therefore cannot warn about them. Before this the marketplace was the
    * first thing to notice, one rejected record at a time.
    *
-   * A dictionary miss is in here too. It used to be a debug log and a dropped
-   * parameter, which published an offer that was silently MISSING the value
-   * rather than one that was visibly wrong.
+   * A dictionary miss is in here too - routed through the same checker, so a
+   * parameter that accepts custom values is never reported as breaking its own
+   * dictionary. It used to be a debug log and a dropped parameter, which
+   * published an offer that was silently MISSING the value rather than one that
+   * was visibly wrong.
+   *
+   * **Reported-only for now: no caller gates on this.** Neither
+   * `OfferBuilderService` nor `ProductPublishBuilderService` reads the field, so
+   * a populated array means "observed and logged", never "publish refused". A
+   * consumer that starts gating is a deliberate follow-up, not an
+   * implementation detail.
    */
   restrictionIssues: ParameterRestrictionIssue[];
 }

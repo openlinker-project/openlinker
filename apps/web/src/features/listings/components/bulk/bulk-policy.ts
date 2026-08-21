@@ -454,8 +454,19 @@ export interface PreflightContext {
  * How many INCLUDED siblings of a product would create their own catalogue card
  * (#2243). A multi-variant product only groups on Allegro when every sibling
  * resolves to its own card; when only some do, the marketplace binds the new
- * card to the first variant it accepts and rejects the rest. That is a fact
- * about the product, so it is computed once here rather than guessed per row.
+ * card to the first variant it accepts and rejects the rest.
+ *
+ * It is a PRODUCT-level fact derived from the whole variant list, which is why
+ * it lives in one function rather than being re-reasoned per row. Note what that
+ * does and does not say about cost: `recomputeVariantBlockers` calls this once
+ * per variant, so a product's variant list is walked once per variant - O(n^2)
+ * in siblings, which is nothing at the counts a bulk wizard actually carries
+ * (tens). It stays inside the recompute deliberately: a hoisted value passed in
+ * as an argument is one a caller can forget to refresh after an override edit,
+ * and a stale card-coverage count would block or unblock the wrong siblings.
+ * If variant counts ever make the walk matter, it belongs on a per-row memo at
+ * both call sites, not on the batch-wide `PreflightContext` - coverage is scoped
+ * to one product, not to the batch.
  */
 export function siblingCardCoverage(row: BulkWizardRow): {
   included: number;

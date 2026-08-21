@@ -16,6 +16,23 @@
  * `@openlinker/core`, which is why this is a copy at all - same reason and same
  * shape as `allegro-title.ts` and `lib/required-to-sell.ts`.
  *
+ * **Two divergences from core are intentional, and the guard cannot see either**
+ * (it compares the issue-code arrays, not behaviour):
+ *
+ * - This half filters `''` out of `texts` / `values` before counting them, core
+ *   does not. Harmless because core's only caller `continue`s on an empty
+ *   `destinationValue` before it ever reaches the checker, so the empty string
+ *   is unreachable there - but the browser really can hold one, from a field the
+ *   operator cleared, and counting it would report `TOO_MANY_VALUES` for a value
+ *   that will not be sent.
+ * - The FE `ParameterRestrictionIssue` carries no `severity`. Advisory-versus-
+ *   blocking is decided one level up here, by `ChipDescriptor.advisory`, so a
+ *   second per-issue copy of that decision would be a place for the two to
+ *   disagree. Core needs the field because it has no chip layer.
+ *
+ * Anything else that drifts is a bug, not a variant. Add to this list only with
+ * the reason, never to record a difference that just happened.
+ *
  * @module apps/web/src/features/listings/lib
  */
 
