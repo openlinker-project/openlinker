@@ -52,6 +52,9 @@ describe('ProductsService', () => {
     findByIds: jest.fn(),
     findMany: jest.fn(),
     upsert: jest.fn(),
+    recordTaxRate: jest.fn(),
+    findTaxRate: jest.fn(),
+    countTaxRateStates: jest.fn(),
   };
 
   const mockVariantRepo: jest.Mocked<ProductVariantRepositoryPort> = {
@@ -66,6 +69,8 @@ describe('ProductsService', () => {
     upsertMany: jest.fn(),
     findMany: jest.fn(),
     markStaleExceptVariants: jest.fn(),
+    recordTaxRate: jest.fn(),
+    findTaxRate: jest.fn(),
   };
 
   beforeEach(async () => {
