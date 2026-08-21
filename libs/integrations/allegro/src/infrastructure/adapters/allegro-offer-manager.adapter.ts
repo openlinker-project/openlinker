@@ -121,7 +121,12 @@ import { AllegroApiException } from '../../domain/exceptions/allegro-api.excepti
 import { Logger, formatBodyForLog } from '@openlinker/shared/logging';
 import { createHash } from 'crypto';
 import { sanitizeAllegroName } from '../util/sanitize-allegro-name';
-import { readPermittedTaxRates, toAllegroRate } from './allegro-tax-rate.mapper';
+import {
+  formatAllegroRate,
+  readPermittedTaxRates,
+  toAllegroRate,
+  type PermittedTaxRate,
+} from './allegro-tax-rate.mapper';
 
 /**
  * Country the offer's tax settings are written for when the catalogue rate
@@ -1409,8 +1414,13 @@ export class AllegroOfferManagerAdapter
             `connection=${this.connectionId}`
         );
       } else {
+        // Same exact-string rule as the create path (#2249). No permitted-values
+        // read here - this is the hot update path and Allegro validates the
+        // PATCH itself - so the two-decimal fallback is what goes on the wire.
         callerBody.taxSettings = {
-          rates: [{ rate, countryCode: DEFAULT_ALLEGRO_TAX_COUNTRY }],
+          rates: [
+            { rate: formatAllegroRate(rate, []), countryCode: DEFAULT_ALLEGRO_TAX_COUNTRY },
+          ],
         };
       }
     }
@@ -1960,7 +1970,7 @@ export class AllegroOfferManagerAdapter
    */
   private async resolveTaxSettings(
     cmd: CreateOfferCommand,
-  ): Promise<{ rates: Array<{ rate: number; countryCode: string }> } | undefined> {
+  ): Promise<{ rates: Array<{ rate: string; countryCode: string }> } | undefined> {
     const categoryId = cmd.overrides?.categoryId;
     const countryCode = cmd.taxRateCountry ?? DEFAULT_ALLEGRO_TAX_COUNTRY;
 
@@ -1992,20 +2002,27 @@ export class AllegroOfferManagerAdapter
     }
 
     const permitted = await this.fetchPermittedTaxRates(categoryId, countryCode);
-    if (permitted !== null && permitted.length > 0 && !permitted.includes(rate)) {
+    if (
+      permitted !== null &&
+      permitted.length > 0 &&
+      !permitted.some((entry) => entry.numeric === rate)
+    ) {
       throw new OfferCreateRejectedException(ALLEGRO_ADAPTER_KEY, 0, [
         {
           field: 'taxRate',
           code: 'TAX_RATE_NOT_ALLOWED_IN_CATEGORY',
           message:
             `This Allegro category does not allow a ${String(rate)}% rate in ${countryCode}. ` +
-            `Allowed: ${permitted.map((value) => `${String(value)}%`).join(', ')}. ` +
+            `Allowed: ${permitted.map((entry) => `${entry.wire}%`).join(', ')}. ` +
             `The shop's rate for this product is most likely the one to correct.`,
         },
       ]);
     }
 
-    return { rates: [{ rate, countryCode }] };
+    // The wire value is Allegro's own published string where we have it (#2249):
+    // the API matches it against the seller's VAT settings exactly, so a bare
+    // `23` is refused where `"23.00"` is accepted.
+    return { rates: [{ rate: formatAllegroRate(rate, permitted ?? []), countryCode }] };
   }
 
   /**
@@ -2016,7 +2033,7 @@ export class AllegroOfferManagerAdapter
   private async fetchPermittedTaxRates(
     categoryId: string | undefined,
     countryCode: string,
-  ): Promise<number[] | null> {
+  ): Promise<PermittedTaxRate[] | null> {
     if (!categoryId) return null;
     try {
       const response = await this.httpClient.get<AllegroTaxSettingsResponse>(

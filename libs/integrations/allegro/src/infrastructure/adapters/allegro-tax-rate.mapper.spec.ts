@@ -7,7 +7,12 @@
  *
  * @module libs/integrations/allegro/src/infrastructure/adapters
  */
-import { readPermittedTaxRates, toAllegroRate, toNeutralTaxRate } from './allegro-tax-rate.mapper';
+import {
+  formatAllegroRate,
+  readPermittedTaxRates,
+  toAllegroRate,
+  toNeutralTaxRate,
+} from './allegro-tax-rate.mapper';
 
 describe('Allegro tax-rate mapping', () => {
   describe('toNeutralTaxRate', () => {
@@ -86,11 +91,15 @@ describe('Allegro tax-rate mapping', () => {
     };
 
     it('should read the permitted rates out of the live response shape', () => {
-      expect(readPermittedTaxRates(LIVE_BODY.rates, 'PL')).toEqual([23]);
+      // Both forms: the number to compare against OL's own code, and the exact
+      // string Allegro published, which is what has to go back on the wire.
+      expect(readPermittedTaxRates(LIVE_BODY.rates, 'PL')).toEqual([
+        { numeric: 23, wire: '23.00' },
+      ]);
     });
 
     it('should drop the null "Select" placeholder rather than parsing it', () => {
-      expect(readPermittedTaxRates(LIVE_BODY.rates, 'PL')).not.toContain(Number.NaN);
+      expect(readPermittedTaxRates(LIVE_BODY.rates, 'PL')).toHaveLength(1);
     });
 
     it('should ignore a block for another country', () => {
@@ -98,11 +107,13 @@ describe('Allegro tax-rate mapping', () => {
         { countryCode: 'CZ', values: [{ value: '21.00' }] },
         { countryCode: 'PL', values: [{ value: '8.00' }] },
       ];
-      expect(readPermittedTaxRates(rates, 'PL')).toEqual([8]);
+      expect(readPermittedTaxRates(rates, 'PL')).toEqual([{ numeric: 8, wire: '8.00' }]);
     });
 
     it('should treat a block with no country as applying everywhere', () => {
-      expect(readPermittedTaxRates([{ values: [{ value: '5.00' }] }], 'PL')).toEqual([5]);
+      expect(readPermittedTaxRates([{ values: [{ value: '5.00' }] }], 'PL')).toEqual([
+        { numeric: 5, wire: '5.00' },
+      ]);
     });
 
     it('should report an absent or empty body as no permitted rates', () => {
@@ -110,6 +121,33 @@ describe('Allegro tax-rate mapping', () => {
       // NOT block - distinct from the `null` it uses for an unreadable listing.
       expect(readPermittedTaxRates(undefined, 'PL')).toEqual([]);
       expect(readPermittedTaxRates([], 'PL')).toEqual([]);
+    });
+  });
+
+  describe('formatAllegroRate', () => {
+    /**
+     * Allegro matches this value against the seller's configured VAT settings
+     * as a STRING, exactly. Verified live on the sandbox (21 Aug 2026): a PATCH
+     * carrying the number 23 answers
+     *   422 SETTING_NOT_FOUND "No VAT setting found for the rate: 23 of country: PL"
+     * while the published "23.00" is accepted. Without this, EVERY publish
+     * failed with an error an operator could not act on.
+     */
+    it('should send back the exact string Allegro published', () => {
+      expect(formatAllegroRate(23, [{ numeric: 23, wire: '23.00' }])).toBe('23.00');
+    });
+
+    it('should preserve a published form that is not two decimals', () => {
+      expect(formatAllegroRate(8, [{ numeric: 8, wire: '8.0' }])).toBe('8.0');
+    });
+
+    it('should fall back to two decimals when the listing was unavailable', () => {
+      expect(formatAllegroRate(23, [])).toBe('23.00');
+      expect(formatAllegroRate(0, [])).toBe('0.00');
+    });
+
+    it('should fall back when the listing has no entry for this rate', () => {
+      expect(formatAllegroRate(5, [{ numeric: 23, wire: '23.00' }])).toBe('5.00');
     });
   });
 });

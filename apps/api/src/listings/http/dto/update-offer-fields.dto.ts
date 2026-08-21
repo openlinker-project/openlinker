@@ -72,11 +72,12 @@ function AtLeastOneField(validationOptions?: ValidationOptions) {
           return (
             obj['price'] !== undefined ||
             obj['title'] !== undefined ||
-            obj['description'] !== undefined
+            obj['description'] !== undefined ||
+            obj['taxRate'] !== undefined
           );
         },
         defaultMessage(): string {
-          return 'At least one of price, title, or description must be provided';
+          return 'At least one of price, title, description, or taxRate must be provided';
         },
       },
     });
@@ -102,6 +103,21 @@ export class UpdateOfferFieldsDto {
   @ValidateNested()
   @Type(() => OfferDescriptionDto)
   description?: OfferDescriptionDto;
+
+  @ApiPropertyOptional({
+    description:
+      'Neutral percent-as-string tax rate (#2249): "23", "8", "5", "0", "zw", "np", "oo". ' +
+      'Propagates the shop\'s rate onto a LIVE offer, so an offer\'s rate follows the ' +
+      'catalogue instead of freezing at whatever it was when the offer was first published. ' +
+      'Omitting it means "this update does not touch the rate" — never "the product has no ' +
+      'rate", so an update can never blank a rate an offer already carries. An adapter whose ' +
+      'platform marks the field seller-frozen skips the write.',
+    maxLength: 16,
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(16)
+  taxRate?: string;
 }
 
 export class UpdateOfferFieldsResponseDto {

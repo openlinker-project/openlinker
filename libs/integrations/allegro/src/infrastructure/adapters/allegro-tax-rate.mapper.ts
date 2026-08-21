@@ -36,12 +36,50 @@ export interface AllegroTaxSettingsRates {
 export function readPermittedTaxRates(
   rates: readonly AllegroTaxSettingsRates[] | undefined,
   countryCode: string,
-): number[] {
+): PermittedTaxRate[] {
   return (rates ?? [])
     .filter((entry) => !entry.countryCode || entry.countryCode.toUpperCase() === countryCode)
     .flatMap((entry) => entry.values ?? [])
-    .map((value) => (value.value == null ? Number.NaN : Number.parseFloat(value.value)))
-    .filter((value) => Number.isFinite(value));
+    .flatMap((entry) => {
+      if (entry.value == null) return [];
+      const numeric = Number.parseFloat(entry.value);
+      return Number.isFinite(numeric) ? [{ numeric, wire: entry.value }] : [];
+    });
+}
+
+/**
+ * One rate a category permits, in both forms the adapter needs.
+ *
+ * `numeric` compares against OpenLinker's own percent code. `wire` is the
+ * string Allegro itself published, and it is what gets sent back - see
+ * {@link formatAllegroRate} for why the difference is not cosmetic.
+ */
+export interface PermittedTaxRate {
+  numeric: number;
+  wire: string;
+}
+
+/**
+ * Render a rate the way Allegro's `taxSettings.rates[].rate` expects.
+ *
+ * **Allegro matches this value against the seller's configured VAT settings as
+ * a STRING, and the match is exact.** Sending the number `23` against a setting
+ * published as `"23.00"` is rejected:
+ *
+ *     422 SETTING_NOT_FOUND
+ *     "No VAT setting found for the rate: 23 of country: PL"  (path: taxSettings)
+ *
+ * Verified live on the sandbox, 21 Aug 2026 - and it would have failed EVERY
+ * publish with an error an operator could not act on.
+ *
+ * So the published string is preferred verbatim when the permitted-values
+ * listing gave us one; two decimals is the fallback for when that read was
+ * unavailable, which matches every value the listing has been observed to
+ * return.
+ */
+export function formatAllegroRate(rate: number, permitted: readonly PermittedTaxRate[]): string {
+  const published = permitted.find((entry) => entry.numeric === rate);
+  return published ? published.wire : rate.toFixed(2);
 }
 
 /** The `tax` object as Allegro reports it on an order line. */

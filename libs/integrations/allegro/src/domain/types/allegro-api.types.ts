@@ -541,7 +541,12 @@ export interface AllegroOfferFieldsPatchBody extends Record<string, unknown> {
    * published - the same reason price and stock are propagated.
    */
   taxSettings?: {
-    rates: Array<{ rate: number; countryCode: string }>;
+    /**
+     * A STRING, not a number (#2249). Allegro matches it against the seller's
+     * configured VAT settings exactly, so `23` is rejected where `"23.00"` is
+     * accepted - verified live, 422 `SETTING_NOT_FOUND`.
+     */
+    rates: Array<{ rate: string; countryCode: string }>;
   };
   sellingMode?: {
     price?: {
@@ -651,7 +656,12 @@ export interface AllegroProductOfferCreateRequest extends Record<string, unknown
    * `GET /sale/tax-settings?category.id=&countryCode=`.
    */
   taxSettings?: {
-    rates: Array<{ rate: number; countryCode: string }>;
+    /**
+     * A STRING, not a number (#2249). Allegro matches it against the seller's
+     * configured VAT settings exactly, so `23` is rejected where `"23.00"` is
+     * accepted - verified live, 422 `SETTING_NOT_FOUND`.
+     */
+    rates: Array<{ rate: string; countryCode: string }>;
   };
   publication?: { status: 'INACTIVE' | 'ACTIVE' };
   external?: { id: string };
