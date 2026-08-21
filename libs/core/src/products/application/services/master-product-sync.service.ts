@@ -19,7 +19,8 @@ import {
 } from '@openlinker/core/integrations';
 import { IIdentifierMappingService, IDENTIFIER_MAPPING_SERVICE_TOKEN, CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
 import { EventPublisherPort, EVENT_PUBLISHER_TOKEN } from '@openlinker/core/events';
-import { PRODUCTS_SERVICE_TOKEN } from '../../products.tokens';
+import { PRODUCTS_SERVICE_TOKEN, TAX_RATE_JOURNAL_SERVICE_TOKEN } from '../../products.tokens';
+import type { ITaxRateJournalService } from './tax-rate-journal.service.interface';
 import { IProductsService } from './products.service.interface';
 import type { ProductMasterPort } from '../../domain/ports/product-master.port';
 import { isProductTaxRateReader } from '../../domain/ports/capabilities/product-tax-rate-reader.capability';
@@ -55,7 +56,11 @@ export class MasterProductSyncService implements IMasterProductSyncService {
     @Inject(EVENT_PUBLISHER_TOKEN)
     private readonly eventPublisher: EventPublisherPort,
     @Inject(ENTITY_CLAIM_SERVICE_TOKEN)
-    private readonly entityClaims: IEntityClaimService
+    private readonly entityClaims: IEntityClaimService,
+    // #2250: provenance for every rate this sync observes. Append-only and
+    // change-only, so an unchanged catalogue writes nothing.
+    @Inject(TAX_RATE_JOURNAL_SERVICE_TOKEN)
+    private readonly taxRateJournal: ITaxRateJournalService
   ) {}
 
   async syncFromMasterByExternalId(
@@ -228,9 +233,14 @@ export class MasterProductSyncService implements IMasterProductSyncService {
     const readAt = new Date();
     try {
       const productRate = await adapter.readProductTaxRate({ productId: internalProductId });
-      await this.productsService.recordProductTaxRate(
+      const storedProductRate = this.toStoredTaxRate(productRate, readAt);
+      await this.productsService.recordProductTaxRate(internalProductId, storedProductRate);
+      await this.journalObservation(
         internalProductId,
-        this.toStoredTaxRate(productRate, readAt)
+        null,
+        connectionId,
+        storedProductRate.code,
+        readAt
       );
 
       // Only a variant-keyed master gets per-variant reads. On a product-keyed
@@ -249,9 +259,14 @@ export class MasterProductSyncService implements IMasterProductSyncService {
         // absent. Copying the product's code down would create a duplicate that
         // goes stale the next time the product's rate changes.
         if (variantRate.kind === 'inherited') continue;
-        await this.productsService.recordVariantTaxRate(
+        const storedVariantRate = this.toStoredTaxRate(variantRate, readAt);
+        await this.productsService.recordVariantTaxRate(variant.id, storedVariantRate);
+        await this.journalObservation(
+          internalProductId,
           variant.id,
-          this.toStoredTaxRate(variantRate, readAt)
+          connectionId,
+          storedVariantRate.code,
+          readAt
         );
       }
     } catch (error) {
@@ -259,6 +274,38 @@ export class MasterProductSyncService implements IMasterProductSyncService {
         `[master-sync] tax-rate read failed, leaving the catalogue row unchanged: ` +
           `connectionId=${connectionId} internalProductId=${internalProductId} ` +
           `correlationId=${correlationId} error=${(error as Error).message}`
+      );
+    }
+  }
+
+  /**
+   * Journal what the shop said (#2250).
+   *
+   * Best-effort and separate from the catalogue write: the journal is
+   * provenance, so losing an entry costs an audit trail rather than a rate, and
+   * failing the sync over it would trade the thing that matters for the thing
+   * that explains it.
+   */
+  private async journalObservation(
+    productId: string,
+    variantId: string | null,
+    connectionId: string,
+    taxRate: string | null,
+    observedAt: Date
+  ): Promise<void> {
+    try {
+      await this.taxRateJournal.record({
+        productId,
+        variantId,
+        connectionId,
+        origin: 'shop',
+        taxRate,
+        observedAt,
+      });
+    } catch (error) {
+      this.logger.warn(
+        `[master-sync] tax-rate journal write failed (provenance only, catalogue is unaffected): ` +
+          `productId=${productId} variantId=${variantId ?? 'none'} error=${(error as Error).message}`
       );
     }
   }
