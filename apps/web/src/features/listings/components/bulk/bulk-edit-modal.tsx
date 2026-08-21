@@ -67,7 +67,17 @@ import {
 import { resolvePlatformLabel } from '../../../mappings';
 import type { Connection } from '../../../connections';
 import { resolveVariantGroupingModel } from '../../../connections';
-import { Alert, Button, ConfirmDialog, FormField, Input, Textarea } from '../../../../shared/ui';
+import {
+  Alert,
+  Button,
+  ConfirmDialog,
+  exceedsDescriptionCap,
+  FormField,
+  Input,
+  RichTextEditor,
+} from '../../../../shared/ui';
+import type { DescriptionFormat } from '../../../../shared/ui';
+import { useDescriptionFormatQuery } from '../../hooks/use-description-format-query';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../../../../shared/ui/tooltip';
 import { useToast } from '../../../../shared/ui/toast-provider';
 import { ReadOnlyLock } from '../../../../shared/ui/read-only-lock';
@@ -298,6 +308,16 @@ export function BulkEditModal({
 }: BulkEditModalProps): ReactElement | null {
   const [dirty, setDirty] = useState(false);
   const [discardOpen, setDiscardOpen] = useState(false);
+  // ADR-046: one read for the whole modal - both the marketplace and the shop
+  // branch render description fields, and each derives its toolbar and schema
+  // from this, so a control the destination would discard is never offered.
+  // Called before the early return below, or it would break the hook order on a
+  // row with no variants. `null` while in flight - the editor renders a disabled
+  // placeholder rather than authoring against a frontend-held guess.
+  const descriptionFormatQuery = useDescriptionFormatQuery(connection.id);
+  // `null` while in flight; the editor renders a disabled placeholder rather
+  // than authoring against a frontend-held guess (ADR-046).
+  const descriptionFormat = descriptionFormatQuery.data ?? null;
 
   if (row.variants.length === 0) return null;
 
@@ -338,6 +358,7 @@ export function BulkEditModal({
         >
           {destinationKind === 'shop' ? (
             <BulkShopEditModalForm
+              descriptionFormat={descriptionFormat}
               row={row}
               connection={connection}
               canBrowseShopCategories={canBrowseShopCategories}
@@ -477,6 +498,13 @@ function BulkEditModalForm({
   onClose,
 }: BulkEditModalFormProps): ReactElement {
   const connectionId = connection.id;
+  // ADR-046: one read for the whole modal. Every description field below derives
+  // its toolbar and schema from this, so a control the destination would discard
+  // is never offered.
+  const descriptionFormatQuery = useDescriptionFormatQuery(connectionId);
+  // `null` while in flight; the editor renders a disabled placeholder rather
+  // than authoring against a frontend-held guess (ADR-046).
+  const descriptionFormat = descriptionFormatQuery.data ?? null;
   const { showToast } = useToast();
   const platform = usePlatform(connection.platformType);
   const platforms = usePlatforms();
@@ -738,6 +766,28 @@ function BulkEditModalForm({
     }
 
     const values = baseForm.getValues();
+
+    // ADR-046: the destination's own byte cap, checked before the batch leaves
+    // the modal. The counter under each editor only informs, and a bulk submit
+    // fans out into jobs - an over-cap description would come back as a platform
+    // reject per offer, long after this modal closed. Blocking here also keeps
+    // the operator on the scope that has to change.
+    const overCapScope = exceedsDescriptionCap(values.description ?? '', descriptionFormat)
+      ? isMultiVariant
+        ? 'base'
+        : 'simple'
+      : row.variants.find((v) =>
+          exceedsDescriptionCap(variantEdits[v.variantId]?.description ?? '', descriptionFormat),
+        )?.variantId;
+    if (overCapScope !== undefined && descriptionFormat?.maxBytes != null) {
+      setScope(overCapScope);
+      showToast({
+        tone: 'error',
+        title: 'Description too long for this destination',
+        description: `Shorten it to ${descriptionFormat.maxBytes.toLocaleString()} bytes or fewer - ${platformName} rejects a longer one.`,
+      });
+      return;
+    }
 
     let baseParameters: OfferParameter[] = [];
     if (categoryParameters.length > 0 && values.parameters) {
@@ -1033,9 +1083,13 @@ function BulkEditModalForm({
 
         <div className="bulk-editor__scopes">
           {/* A demo read-only viewer can browse scopes (rail stays live) but
-              every field edit + image control is natively disabled; nothing can
-              be committed (`Save all` is locked below). `display:contents` keeps
-              the layout while `disabled` cascades to all nested controls. */}
+              cannot edit; nothing can be committed (`Save all` is locked below).
+              `display:contents` keeps the layout while `disabled` cascades to all
+              nested FORM CONTROLS.
+              Note the limit, because it bit once (#2200): the cascade does NOT
+              reach a `contenteditable`, so the rich-text description fields are
+              not covered by it and take an explicit `disabled` prop instead. Any
+              future non-form-control editor added here needs the same. */}
           <fieldset
             disabled={demoReadOnly}
             style={{ border: 0, margin: 0, padding: 0, minWidth: 0, display: 'contents' }}
@@ -1053,6 +1107,8 @@ function BulkEditModalForm({
             />
           ) : null}
           <BaseScopeForm
+            readOnly={demoReadOnly}
+            descriptionFormat={descriptionFormat}
             mode={isMultiVariant ? 'base' : 'simple'}
             active={scope === (isMultiVariant ? 'base' : 'simple')}
             row={row}
@@ -1097,6 +1153,8 @@ function BulkEditModalForm({
                   />
                   {scope === v.variantId ? (
                     <VariantScopeForm
+                      readOnly={demoReadOnly}
+                      descriptionFormat={descriptionFormat}
                       variant={v}
                       index={i}
                       edit={variantEdits[v.variantId]}
@@ -1262,6 +1320,20 @@ function ProvBadge({ kind }: { kind: Provenance }): ReactElement {
 // ── Base / simple scope form (the only RHF form) ─────────────────────────────
 
 interface BaseScopeFormProps {
+  /**
+   * Demo read-only. Passed explicitly rather than relying on the wrapping
+   * `fieldset[disabled]`, which does not reach a `contenteditable` (#2200).
+   */
+  readOnly: boolean;
+
+  /**
+   * The destination's declared description contract (ADR-046). Resolved once by
+   * the modal and threaded down, rather than each scope form running its own
+   * hook - one query, and `VariantScopeForm` has no `connectionId` of its own.
+   */
+  /** `null` until the destination's contract arrives (ADR-046). */
+  descriptionFormat: DescriptionFormat | null;
+
   mode: 'base' | 'simple';
   active: boolean;
   row: BulkWizardRow;
@@ -1297,6 +1369,8 @@ interface BaseScopeFormProps {
 }
 
 function BaseScopeForm({
+  readOnly,
+  descriptionFormat,
   mode,
   active,
   row,
@@ -1481,7 +1555,12 @@ function BaseScopeForm({
           </FormField>
         )}
 
-        <BaseDescriptionField productId={row.product?.id ?? ''} channel={connection.platformType} />
+        <BaseDescriptionField
+          productId={row.product?.id ?? ''}
+          channel={connection.platformType}
+          descriptionFormat={descriptionFormat}
+          readOnly={readOnly}
+        />
 
         {mode === 'simple' ? (
           <div className="bulk-editor__row2">
@@ -1743,7 +1822,18 @@ function BaseScopeForm({
   );
 }
 
-function BaseDescriptionField({ productId, channel }: { productId: string; channel: string }): ReactElement {
+function BaseDescriptionField({
+  productId,
+  channel,
+  descriptionFormat,
+  readOnly,
+}: {
+  productId: string;
+  channel: string;
+  /** `null` until the destination's contract arrives (ADR-046). */
+  descriptionFormat: DescriptionFormat | null;
+  readOnly: boolean;
+}): ReactElement {
   const form = useFormContext<BulkEditModalValues>();
   const error = form.formState.errors.description?.message;
   return (
@@ -1762,16 +1852,22 @@ function BaseDescriptionField({ productId, channel }: { productId: string; chann
           </span>
         ) : null}
       </label>
-      <Textarea
-        {...form.register('description')}
-        className="bulk-editor__input"
-        rows={6}
+      {/* ADR-046: rich text, derived from the destination's contract. Bound
+          through watch/setValue rather than `register` because the editor is a
+          custom control. The old hint said "Plain text." while the AI prompt was
+          explicitly producing semantic HTML into this very field. */}
+      <RichTextEditor
+        format={descriptionFormat}
+        disabled={readOnly}
+        value={form.watch('description') ?? ''}
+        onChange={(html) => {
+          form.setValue('description', html, { shouldDirty: true, shouldValidate: true });
+        }}
         aria-label="Description"
-        aria-invalid={Boolean(error)}
       />
       {error ? <div className="bulk-editor__ean-err">{error}</div> : null}
       <div className="hint" style={{ color: 'var(--text-muted)', fontSize: 12 }}>
-        Plain text. AI writes one description shared by every variant unless a variant overrides it.
+        AI writes one description shared by every variant unless a variant overrides it.
       </div>
     </div>
   );
@@ -1817,6 +1913,20 @@ function BaseParameterSection({
 // ── Variant scope form (controlled off the edit model) ───────────────────────
 
 interface VariantScopeFormProps {
+  /**
+   * Demo read-only. Passed explicitly rather than relying on the wrapping
+   * `fieldset[disabled]`, which does not reach a `contenteditable` (#2200).
+   */
+  readOnly: boolean;
+
+  /**
+   * The destination's declared description contract (ADR-046). Resolved once by
+   * the modal and threaded down, rather than each scope form running its own
+   * hook - one query, and `VariantScopeForm` has no `connectionId` of its own.
+   */
+  /** `null` until the destination's contract arrives (ADR-046). */
+  descriptionFormat: DescriptionFormat | null;
+
   variant: BulkVariantRow;
   index: number;
   edit: VariantEdit;
@@ -1855,6 +1965,8 @@ interface VariantScopeFormProps {
 }
 
 function VariantScopeForm({
+  readOnly,
+  descriptionFormat,
   variant,
   index,
   edit,
@@ -2234,16 +2346,18 @@ function VariantScopeForm({
                 </button>
               ) : null}
             </label>
-            <Textarea
-              className={[
-                'bulk-editor__input',
-                edit.description !== undefined ? 'bulk-editor__input--overridden' : 'bulk-editor__input--inherited',
-              ].join(' ')}
-              rows={4}
+            <RichTextEditor
+              disabled={readOnly}
+              className={
+                edit.description !== undefined
+                  ? 'bulk-editor__input--overridden'
+                  : 'bulk-editor__input--inherited'
+              }
+              format={descriptionFormat}
               value={edit.description !== undefined ? edit.description : baseValues.description}
               aria-label={`Description for ${label}`}
-              onChange={(e) =>
-                onPatch({ description: e.target.value === baseValues.description ? undefined : e.target.value })
+              onChange={(html) =>
+                onPatch({ description: html === baseValues.description ? undefined : html })
               }
             />
           </div>
@@ -2931,6 +3045,9 @@ function shopInheritedPrice(pricingPolicy: PricingPolicy, masterPrice: number | 
 }
 
 interface BulkShopEditModalFormProps {
+  /** ADR-046: resolved once by the modal, threaded to every description field. */
+  /** `null` until the destination's contract arrives (ADR-046). */
+  descriptionFormat: DescriptionFormat | null;
   row: BulkWizardRow;
   connection: Connection;
   canBrowseShopCategories: boolean;
@@ -2948,6 +3065,7 @@ interface BulkShopEditModalFormProps {
 }
 
 function BulkShopEditModalForm({
+  descriptionFormat,
   row,
   connection,
   canBrowseShopCategories,
@@ -2964,6 +3082,7 @@ function BulkShopEditModalForm({
   onClose,
 }: BulkShopEditModalFormProps): ReactElement {
   const connectionId = connection.id;
+  const { showToast } = useToast();
   const isMultiVariant = row.variants.length > 1;
   const masterImages = useMemo(
     () => (row.product?.images ?? []).filter((u): u is string => typeof u === 'string' && u.trim() !== ''),
@@ -3124,6 +3243,26 @@ function BulkShopEditModalForm({
       return;
     }
 
+    // ADR-046, same gate as the marketplace form: the shop declares a byte cap
+    // too, and a bulk publish fans out into jobs, so an over-cap description
+    // would surface as a per-product reject after this modal closed.
+    const overCapScope = exceedsDescriptionCap(description, descriptionFormat)
+      ? isMultiVariant
+        ? 'base'
+        : 'simple'
+      : row.variants.find((v) =>
+          exceedsDescriptionCap(variantEdits[v.variantId]?.description ?? '', descriptionFormat),
+        )?.variantId;
+    if (overCapScope !== undefined && descriptionFormat?.maxBytes != null) {
+      setScope(overCapScope);
+      showToast({
+        tone: 'error',
+        title: 'Description too long for this destination',
+        description: `Shorten it to ${descriptionFormat.maxBytes.toLocaleString()} bytes or fewer - the shop rejects a longer one.`,
+      });
+      return;
+    }
+
     const overrides: BulkOfferOverrides = {
       title: title.trim(),
       description: description.trim() === '' ? null : description.trim(),
@@ -3268,6 +3407,8 @@ function BulkShopEditModalForm({
               />
             ) : null}
             <ShopBaseScopeForm
+              readOnly={demoReadOnly}
+              descriptionFormat={descriptionFormat}
               mode={isMultiVariant ? 'base' : 'simple'}
               active={scope === (isMultiVariant ? 'base' : 'simple')}
               connectionId={connectionId}
@@ -3317,6 +3458,8 @@ function BulkShopEditModalForm({
                     />
                     {scope === v.variantId ? (
                       <ShopVariantScopeForm
+                        readOnly={demoReadOnly}
+                        descriptionFormat={descriptionFormat}
                         variant={v}
                         index={i}
                         edit={variantEdits[v.variantId]}
@@ -3384,6 +3527,20 @@ function BulkShopEditModalForm({
 // ── Shop base / simple scope form ────────────────────────────────────────────
 
 interface ShopBaseScopeFormProps {
+  /**
+   * Demo read-only. Passed explicitly rather than relying on the wrapping
+   * `fieldset[disabled]`, which does not reach a `contenteditable` (#2200).
+   */
+  readOnly: boolean;
+
+  /**
+   * The destination's declared description contract (ADR-046). Resolved once by
+   * the modal and threaded down, rather than each scope form running its own
+   * hook - one query, and `VariantScopeForm` has no `connectionId` of its own.
+   */
+  /** `null` until the destination's contract arrives (ADR-046). */
+  descriptionFormat: DescriptionFormat | null;
+
   mode: 'base' | 'simple';
   active: boolean;
   connectionId: string;
@@ -3417,6 +3574,8 @@ interface ShopBaseScopeFormProps {
 }
 
 function ShopBaseScopeForm({
+  readOnly,
+  descriptionFormat,
   mode,
   active,
   connectionId,
@@ -3501,15 +3660,15 @@ function ShopBaseScopeForm({
             </span>
           ) : null}
         </label>
-        <Textarea
+        <RichTextEditor
+          format={descriptionFormat}
+          disabled={readOnly}
           value={description}
-          onChange={(e) => onDescriptionChange(e.target.value)}
-          className="bulk-editor__input"
-          rows={6}
+          onChange={onDescriptionChange}
           aria-label="Description"
         />
         <div className="hint" style={{ color: 'var(--text-muted)', fontSize: 12 }}>
-          Plain text. Shared by every variant unless a variant overrides it.
+          Shared by every variant unless a variant overrides it.
         </div>
       </div>
 
@@ -3736,6 +3895,20 @@ function ShopBaseScopeForm({
 // ── Shop variant scope form ──────────────────────────────────────────────────
 
 interface ShopVariantScopeFormProps {
+  /**
+   * Demo read-only. Passed explicitly rather than relying on the wrapping
+   * `fieldset[disabled]`, which does not reach a `contenteditable` (#2200).
+   */
+  readOnly: boolean;
+
+  /**
+   * The destination's declared description contract (ADR-046). Resolved once by
+   * the modal and threaded down, rather than each scope form running its own
+   * hook - one query, and `VariantScopeForm` has no `connectionId` of its own.
+   */
+  /** `null` until the destination's contract arrives (ADR-046). */
+  descriptionFormat: DescriptionFormat | null;
+
   variant: BulkVariantRow;
   index: number;
   edit: ShopVariantEdit;
@@ -3754,6 +3927,8 @@ interface ShopVariantScopeFormProps {
 }
 
 function ShopVariantScopeForm({
+  readOnly,
+  descriptionFormat,
   variant,
   index,
   edit,
@@ -3809,15 +3984,17 @@ function ShopVariantScopeForm({
             </button>
           ) : null}
         </label>
-        <Textarea
-          className={[
-            'bulk-editor__input',
-            edit.description !== undefined ? 'bulk-editor__input--overridden' : 'bulk-editor__input--inherited',
-          ].join(' ')}
-          rows={4}
+        <RichTextEditor
+          disabled={readOnly}
+          className={
+            edit.description !== undefined
+              ? 'bulk-editor__input--overridden'
+              : 'bulk-editor__input--inherited'
+          }
+          format={descriptionFormat}
           value={edit.description !== undefined ? edit.description : baseDescription}
           aria-label={`Description for ${label}`}
-          onChange={(e) => onPatch({ description: e.target.value === baseDescription ? undefined : e.target.value })}
+          onChange={(html) => onPatch({ description: html === baseDescription ? undefined : html })}
         />
       </div>
 

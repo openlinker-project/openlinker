@@ -49,6 +49,7 @@ import { SellerPoliciesCacheRepository } from './infrastructure/persistence/repo
 import { SellerPoliciesService } from './application/services/seller-policies.service';
 import { ResponsibleProducerService } from './application/services/responsible-producer.service';
 import { DeliveryPriceListService } from './application/services/delivery-price-list.service';
+import { DescriptionFormatReadService } from './application/services/description-format-read.service';
 import { ShopCategoryBrowseService } from './application/services/shop-category-browse.service';
 import { DestinationTaxonomyService } from './application/services/destination-taxonomy.service';
 import { DestinationCategoryRepository } from './infrastructure/persistence/repositories/destination-category.repository';
@@ -100,6 +101,7 @@ import {
   PRODUCT_PUBLISH_ENQUEUE_SERVICE_TOKEN,
   LISTING_CREATION_QUERY_SERVICE_TOKEN,
   BULK_SHOP_PUBLISH_SUBMIT_SERVICE_TOKEN,
+  DESCRIPTION_FORMAT_READ_SERVICE_TOKEN,
   SHOP_CATEGORY_BROWSE_SERVICE_TOKEN,
   BULK_SHOP_PUBLISH_RETRY_SERVICE_TOKEN,
   SHOP_STATUS_SYNC_SERVICE_TOKEN,
@@ -224,6 +226,7 @@ export {
     SellerPoliciesService,
     ResponsibleProducerService,
     DeliveryPriceListService,
+    DescriptionFormatReadService,
     ShopCategoryBrowseService,
     DestinationTaxonomyService,
     DestinationCategoryRepository,
@@ -384,6 +387,10 @@ export {
       useExisting: ShopCategoryBrowseService,
     },
     {
+      provide: DESCRIPTION_FORMAT_READ_SERVICE_TOKEN,
+      useExisting: DescriptionFormatReadService,
+    },
+    {
       provide: DESTINATION_TAXONOMY_SERVICE_TOKEN,
       useExisting: DestinationTaxonomyService,
     },
@@ -446,6 +453,7 @@ export {
     LISTING_CREATION_QUERY_SERVICE_TOKEN,
     BULK_SHOP_PUBLISH_SUBMIT_SERVICE_TOKEN,
     SHOP_CATEGORY_BROWSE_SERVICE_TOKEN,
+    DESCRIPTION_FORMAT_READ_SERVICE_TOKEN,
     BULK_SHOP_PUBLISH_RETRY_SERVICE_TOKEN,
     SHOP_STATUS_SYNC_SERVICE_TOKEN,
     SHOP_PRODUCT_STATUS_SNAPSHOT_REPOSITORY_TOKEN,

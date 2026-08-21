@@ -15,6 +15,7 @@ export * from './domain/exceptions/content-conflict.exception';
 export * from './domain/exceptions/content-field-not-found.exception';
 export * from './domain/exceptions/channel-content-publish-not-supported.exception';
 export * from './domain/exceptions/channel-adapter-lacks-field-updater.exception';
+export * from './domain/exceptions/empty-after-description-format.exception';
 export * from './domain/exceptions/no-linked-offers.exception';
 export * from './domain/exceptions/no-product-master-adapter.exception';
 export * from './domain/exceptions/content-publish-missing-version.exception';

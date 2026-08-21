@@ -519,6 +519,8 @@ FE-002 expanded the primitive layer in `apps/web/src/shared/ui`. Every primitive
 - `ConnectionCell` (`features/connections`) — the standard table cell for a connection reference: an optional leading `adornment` + resolved name + shortened, copyable id + an attention-only status note, driven by **one batched `useConnectionsQuery` for the whole page**. The adornment is pluggable and per-page: a `channel-pill` where the platform is the point (Products), a `ConnectionDot` where a carrier is (Shipments), nothing where a dedicated Channel column already carries it (Listings). Never resolve a connection per row (#1996/#2027). Its `connection` prop distinguishes `undefined` (still loading) from `null` (resolved, not found) — coalesce with `?? null` at the call site or a per-row fetch is silently reinstated.
 - `OrderIdentityCell` (`features/orders`) — the standard table cell for an order reference on any list that shows one: 24 px `ProductThumbnail` + the marketplace order number (shortened past 18 chars, falling back to `shortenId` of the internal id) + first item name and a `+N` line-item chip. Copy writes the **internal** id and says so; the full order number is the line's `title`. Fed from the `orderSummary` projection (#1995) on Shipments and Invoices; `/orders` adopted it in #2091.
 - `ProductThumbnail` — 24 px (`sm`) / 32 px (`md`) square with a 6 px radius over `--bg-surface-muted`. Renders the product image (`loading="lazy"`, `decoding="async"`) when `src` is provided, otherwise a monospace first-letter placeholder derived from `name`; falls back to the placeholder on image load error. `alt=""` by default so it stays decorative next to an adjacent name label (`aria-hidden` set on the wrapper); callers pass an explicit `alt` when the thumbnail is the sole label. **Always render a `ProductThumbnail` when a product appears in a list/row** — the placeholder keeps row heights stable while images load and doubles as a visual affordance that the row is a product.
+- `RichTextEditor` — WYSIWYG description editor over Tiptap. Its toolbar, document schema and byte counter are all **derived from the destination's declared `DescriptionFormat`** (ADR-046), fetched per connection: a bold button exists because the destination declared `<b>`, and a byte counter appears only where the destination declared a cap. Before the declaration arrives it renders a loading surface (`aria-busy`, with no toolbar at all) — never a default toolbar. A control whose tag the destination *rewrites* (Allegro rewrites italic to bold) carries a lossy note so the operator is not surprised by what publishes. Also exposes a source (HTML) mode; leaving it commits on the toggle. Wires `aria-invalid` / `aria-describedby` like every other control primitive.
+- `RichTextView` — read-only render of stored description HTML, sanitized with DOMPurify. The **only** sanctioned `dangerouslySetInnerHTML` in the app (enforced by a `no-restricted-syntax` selector with this file as the sole per-line override). It drops `style` / `class` / `data-*` / `aria-*`, which is deliberately narrower than what storage keeps — arbitrary CSS in an admin page is a UI-redressing vector even where it cannot execute.
 - `RawPayloadPanel` — JSON viewer: header with title + byte count + copy button + collapse; syntax-highlighted body (mono font, 12 px, 18 px line-height). Replaces every bare `<pre>` block.
 - `Timeline` — vertical timeline with dot + time column + body. Used on order detail, job detail, connection activity.
 
@@ -601,6 +603,19 @@ Adopted (FE-002):
 | `@radix-ui/react-popover` | portal + positioning | `Popover` |
 | `@radix-ui/react-toast` | queue + focus management | `Toast` |
 | `@radix-ui/react-tabs` | roving tabindex | `Tabs` |
+| `cmdk` | headless command menu: keyboard nav, filtering, composable groups | `CommandPalette` |
+
+Adopted (#2193, [ADR-046](./architecture/adrs/046-adapter-declared-description-format.md)):
+
+| Library | Role | Wrapped by |
+|---|---|---|
+| `@tiptap/*` | headless rich-text editing: ProseMirror schema + commands, zero visuals, no shipped CSS | `RichTextEditor` (`shared/ui/rich-text-editor.tsx`) |
+| `dompurify` | HTML sanitization before render | `RichTextView` (`shared/ui/rich-text-view.tsx`) |
+
+Two rules apply to the rich-text pair specifically, because both are easy to get wrong from a design brief:
+
+- **The editor's toolbar is not a design decision.** Which marks, blocks and lists a `RichTextEditor` offers is derived at runtime from the destination's declared `DescriptionFormat` (ADR-046) — a control exists because a destination declared the tag, never because a designer picked it. Until the declaration arrives the editor renders a loading surface with no toolbar rather than a default one. Do not add a control to the mockup and expect it to appear.
+- **Tiptap ships no stylesheet, and `prosemirror-view`'s optional one is deliberately not imported.** Its functional declarations are transcribed into `index.css` and its one cosmetic `outline` uses `var(--accent-primary)`, so the surface stays token-driven like every other primitive.
 
 **Adding a library requires:** (1) a written rationale in the PR description explaining why the behavior can't be built from native HTML, (2) a wrapping primitive under `shared/ui/` with its own CSS, (3) an update to this section.
 

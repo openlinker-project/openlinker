@@ -96,6 +96,7 @@ export {
   MasterInventorySyncAllPayloadV1,
   MasterProductSyncAllPayloadV1,
   MasterProductSyncDeltaPayloadV1,
+  MasterProductReconcilePayloadV1,
 } from './domain/types/master-job-payloads.types';
 export {
   ShopProductPublishPayloadV1,

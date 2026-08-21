@@ -295,6 +295,11 @@ export type {
   EanCategoryMatchStreamEvent,
   EanCategoryMatchStreamOptions,
 } from './domain/types/ean-category-match-stream.types';
+export { ResolveConcurrencySourceValues } from './domain/types/resolve-concurrency.types';
+export type {
+  ResolveConcurrencySource,
+  ResolveConcurrencyCeiling,
+} from './domain/types/resolve-concurrency.types';
 export type { CategoryParametersReader } from './domain/ports/capabilities/category-parameters-reader.capability';
 export { isCategoryParametersReader } from './domain/ports/capabilities/category-parameters-reader.capability';
 export type { CatalogProductReader } from './domain/ports/capabilities/catalog-product-reader.capability';
@@ -404,6 +409,10 @@ export type { ShopCategory } from './domain/types/shop-category.types';
 export type { ShopCategoryBrowser } from './domain/ports/capabilities/shop-category-browser.capability';
 export { isShopCategoryBrowser } from './domain/ports/capabilities/shop-category-browser.capability';
 export type { IShopCategoryBrowseService } from './application/interfaces/shop-category-browse.service.interface';
+export type {
+  IDescriptionFormatReadService,
+  DescriptionFormatView,
+} from './application/services/description-format-read.service.interface';
 // Shop-side global attribute read (#1835): read the destination's store-wide
 // global attributes + terms so an operator can pick a structured attribute
 // (linked on publish), with free-text custom attributes as the fallback.
@@ -445,6 +454,28 @@ export { ProductPublishTargetNotFoundException } from './domain/exceptions/produ
 // but not be sellable" checker + shared shape (cross-cutting seam for a
 // future marketplace-side check).
 export { checkRequiredToSell } from './application/services/check-required-to-sell';
+export { applyDescriptionFormat } from './application/services/apply-description-format';
+export {
+  resolveOfferDescriptionFormat,
+  resolveShopDescriptionFormat,
+  formatDescriptionForDestination,
+  formatOfferFieldsForDestination,
+} from './application/services/description-format-resolution';
+export type {
+  DescriptionFormat,
+  DescriptionShape,
+  DescriptionRewrite,
+  DescriptionRewriteAction,
+  DescriptionContentModel,
+  DescriptionFormatSource,
+} from './domain/types/description-format.types';
+export {
+  CONSERVATIVE_DESCRIPTION_FORMAT,
+  DESCRIPTION_BLOCK_TAGS,
+  DescriptionShapeValues,
+  DescriptionRewriteActionValues,
+  DescriptionFormatSourceValues,
+} from './domain/types/description-format.types';
 export {
   RequiredToSellSeverityValues,
   RequiredToSellIssueCodeValues,
