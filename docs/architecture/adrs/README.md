@@ -141,7 +141,7 @@ One pointer per section, identical format every time.
 | [ADR-048](./048-incremental-catalog-replication.md) | Incremental catalog replication - adapter-declared master capability ladder, two cadences with prune authority on the reconciliation pass, budget-bounded resumable runs | Proposed | 2026-08-20 |
 | [ADR-049](./049-durability-spine-and-domain-event-contract.md) | Durability spine and the domain-event contract - work row in the business transaction, contract without a bus | Proposed | 2026-08-20 |
 | [ADR-050](./050-workload-isolation-concurrency-lanes.md) | Workload isolation - concurrency lanes by starvation cost, per-lane caps keyed by scope, not strict priority, not separate deployables | Proposed | 2026-08-21 |
-| [ADR-051](./051-worker-topology-one-artifact-roles.md) | Worker topology - one artifact, four roles (jobs/events/scheduler/maintenance), cardinality-driven with lease-enforced singletons | Proposed | 2026-08-21 |
+| [ADR-051](./051-worker-topology-one-artifact-roles.md) | Worker topology - one artifact, four roles (jobs/events/scheduler/maintenance), cardinality-driven with lease-enforced singletons | Accepted | 2026-08-21 |
 | [ADR-052](./052-independently-assignable-fulfillment-authorities.md) | Independently assignable, physically scoped fulfilment authorities (the OMS authority matrix) | Proposed | 2026-08-21 |
 | [ADR-053](./053-fulfillment-authority-vocabulary-leaf.md) | `fulfillment-authority` as a dependency-free vocabulary leaf; resolution in the owning contexts | Proposed | 2026-08-21 |
 | [ADR-054](./054-fulfillment-work-unit-of-assignment.md) | `FulfillmentWork` as the unit of assignment; config for pre-existing scopes, handshake for flow-created objects | Proposed | 2026-08-21 |
