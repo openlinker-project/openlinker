@@ -24,6 +24,7 @@ import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
 import { ErrorState, EmptyState } from '../../shared/ui/feedback-state';
 import { DataTableSkeleton } from '../../shared/ui/data-table-skeleton';
 import { Button } from '../../shared/ui/button';
+import { AbsentValue } from '../../shared/ui/absent-value';
 import { EmptyValue } from '../../shared/ui/empty-value';
 import { Input } from '../../shared/ui/input';
 import { Select } from '../../shared/ui/select';
@@ -161,21 +162,6 @@ function ColumnHead({
       {label}
       <span className="listings-col-head__note">{note}</span>
     </span>
-  );
-}
-
-/**
- * `EmptyValue` names itself with `aria-label` on a bare `<span>` - a generic
- * element ARIA prohibits naming, which screen readers commonly drop. The
- * never-read-versus-zero distinction is the whole point of this page's
- * commercial columns, so the wording is also carried visually-hidden.
- */
-function AbsentValue({ label }: { label: string }): ReactElement {
-  return (
-    <>
-      <EmptyValue label={label} />
-      <span className="sr-only">{label}</span>
-    </>
   );
 }
 

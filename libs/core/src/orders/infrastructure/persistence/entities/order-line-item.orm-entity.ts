@@ -61,6 +61,27 @@ export class OrderLineItemOrmEntity {
   @Column({ type: 'timestamptz', nullable: true })
   placedAt!: Date | null;
 
+  /**
+   * The settled per-line tax rate, transcribed from the snapshot (#2250).
+   *
+   * The snapshot is where a rate is DECIDED; this column is the queryable copy,
+   * so an analytics read never expands JSON to group revenue by rate. A single
+   * writer, the same `upsertWithLineItems` that writes every other column here.
+   */
+  @Column({ type: 'varchar', length: 16, nullable: true })
+  taxRate!: string | null;
+
+  /**
+   * Which system stated it. Carried rather than derived, because *no rate*,
+   * *never read* and *pre-rollout* are three different facts and one null rate
+   * cannot separate them (#2245 F3).
+   */
+  @Column({ type: 'varchar', length: 16, nullable: true })
+  taxSource!: string | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  taxRateReadAt!: Date | null;
+
   @CreateDateColumn()
   createdAt!: Date;
 }

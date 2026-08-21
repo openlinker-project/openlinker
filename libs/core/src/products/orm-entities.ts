@@ -19,3 +19,4 @@
  */
 export { ProductOrmEntity } from './infrastructure/persistence/entities/product.orm-entity';
 export { ProductVariantOrmEntity } from './infrastructure/persistence/entities/product-variant.orm-entity';
+export { TaxRateJournalOrmEntity } from './infrastructure/persistence/entities/tax-rate-journal.orm-entity';

@@ -81,6 +81,10 @@ import type {
   SalesDocumentBlockOutcome,
 } from '@openlinker/core/sales-documents';
 import { Logger } from '@openlinker/shared/logging';
+import {
+  describeMissingTaxRate,
+  findMissingTaxRate,
+} from '../../domain/types/order-tax-rate-gate.types';
 
 import type { IAutoIssueTriggerService } from './auto-issue-trigger.service.interface';
 import type {
@@ -314,6 +318,23 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     try {
       const triggerModel = parseTriggerModel(connection.config.invoicing?.triggerModel);
       this.warnOnceIfManualPrimaryDisablesInstall(triggerModel, connection.id, connections.length);
+
+      // #2248 (ADR-052 § 6): a line with no tax rate is checked BEFORE the
+      // trigger-model gate, and deliberately so. On a `manual` connection both
+      // would apply, and the two say different things - `trigger-model-manual`
+      // means "waiting for a human", which is a workflow state with a working
+      // CTA, while this one means "no human can issue it either". Reporting the
+      // weaker reason would leave an operator clicking a button that refuses.
+      const missingRate = findMissingTaxRate(order.items);
+      if (missingRate) {
+        return await this.reportBlock(
+          {
+            reason: 'missing-tax-rate',
+            detail: describeMissingTaxRate(missingRate),
+          },
+          order.id,
+        );
+      }
 
       const gate = this.evaluateGate(order, triggerModel, connection.id);
       if (gate.kind === 'waiting') {

@@ -63,7 +63,9 @@ import { useWriteAccess } from '../../../shared/auth/use-permission';
 import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
 import { useDemoMode } from '../../system';
 
-import type { OrderRecord } from '../../orders';
+import type { OrderRecord, ParsedOrderItem } from '../../orders';
+import { parseOrderSnapshot } from '../../orders';
+import type { RateLessLine } from '../lib/sales-document-block-copy';
 import type { InvoiceRecord } from '../api/invoicing.types';
 import { useOrderInvoiceQuery } from '../hooks/use-order-invoice-query';
 import { useIssueInvoiceMutation } from '../hooks/use-issue-invoice-mutation';
@@ -270,10 +272,36 @@ export function OrderInvoicePanel({ order }: OrderInvoicePanelProps): ReactEleme
   // failure — which may have produced a document — suppresses. Same rule as
   // `invoiceSupersedesBlock` on the row and as the backend gate; they have to
   // agree, or the aggregate counts blocks no surface can explain.
+  // #2254 — the rate-less lines, read from the order's own snapshot. The remedy
+  // depends on WHY a rate is absent, and only the lines say which case this is.
+  const snapshotItems = parseOrderSnapshot(order.orderSnapshot).items;
+  const rateLessLines = collectRateLessLines(snapshotItems);
+  const conflictLines = snapshotItems.filter((item) => Boolean(item.taxRateChannel));
   const blockCopy =
     invoice && !canRetryInvoice(invoice)
       ? null
-      : resolveSalesDocumentBlockCopy(order, requiresConnectionPick, t);
+      : resolveSalesDocumentBlockCopy(order, requiresConnectionPick, t, rateLessLines);
+  // #2254 (epic F2) — the FIRST reason where the manual path must close too.
+  // Every other block reason means "auto-issue did not happen" and issuing by
+  // hand is a legitimate action; this one means "this cannot be issued", and the
+  // backend refuses it with a 422. A live button above a red "will not be
+  // issued" alert would be an invitation to a failure OL already knows about.
+  const missingRateReason = order.salesDocumentBlockReason === 'missing-tax-rate';
+  // #2254 — what the document's shipping line(s) will say. A mixed-rate basket
+  // splits shipping proportionally, so the operator can see the shape of the
+  // document before it exists; one unknown line rate makes the proportion
+  // uncomputable, so the whole preview collapses to a single waiting row rather
+  // than showing a split OL cannot stand behind.
+  const shippingSplitPreview = renderShippingSplitPreview(
+    snapshotItems,
+    order.orderSnapshot,
+    t,
+  );
+  const issueRefusal = missingRateReason
+    ? rateLessLines.length === 1
+      ? t('invoice.panel.issueRefusedOne', 'no tax rate on 1 line')
+      : `${t('invoice.panel.issueRefusedPrefix', 'no tax rate on')} ${String(Math.max(rateLessLines.length, 1))} ${t('invoice.panel.issueRefusedSuffix', 'lines')}`
+    : null;
   // "Set a primary" follows the BACKEND's reason when it has one, so the button
   // appears for the state the gate actually recorded rather than for the state the
   // browser guessed.
@@ -399,6 +427,58 @@ export function OrderInvoicePanel({ order }: OrderInvoicePanelProps): ReactEleme
           </Alert>
         </div>
       ) : null}
+
+      {/* #2254 (epic F6) — the return path. Every remedy in this epic leaves the
+          app, is applied in a system OpenLinker does not read live, and returns
+          the operator to a screen that still says the old thing. Without naming
+          the latency, a correct fix looks like it did nothing and the operator
+          concludes the product is broken.
+
+          It links to the products list rather than opening a sync dialog here:
+          the connection to sync is the SHOP that owns the product, which this
+          panel does not know - it knows invoicing connections. A control that
+          synced the wrong connection would be worse than a link to the one
+          screen that does know. */}
+      {missingRateReason ? (
+        <div className="order-invoice-panel__body">
+          <p className="order-invoice-panel__notice">
+            {t(
+              'invoice.panel.fixAndRecheck',
+              'Rates are read during product sync, so a fix in the shop shows up on the next one.',
+            )}{' '}
+            <Link to="/products?taxRate=missing">
+              {t('invoice.panel.fixAndRecheckAction', 'Fix and re-check')}
+            </Link>
+          </p>
+        </div>
+      ) : null}
+
+      {/* #2254 — the conflict is INFORMATIONAL, never a block. The invoice
+          exists; the two systems simply disagree about the rate, and the shop's
+          won. `Alert` gives a non-error tone `role="status"`, which is the right
+          politeness level for an advisory nobody has to act on immediately. */}
+      {conflictLines.length > 0 ? (
+        <div className="order-invoice-panel__body">
+          <Alert tone="conflict">
+            <strong>
+              {t('invoice.panel.conflictTitle', "Invoiced on the shop's rate. The channel disagrees.")}
+            </strong>{' '}
+            {conflictLines
+              .map(
+                (line) =>
+                  `${line.name ?? line.sku ?? line.id}: shop ${String(line.taxRate)}, channel ${String(line.taxRateChannel)}`,
+              )
+              .join('; ')}
+            .
+          </Alert>
+        </div>
+      ) : null}
+
+      {/* #2254 — the shipping split preview lives HERE, not on the line-items
+          panel, because shipping has no order line: it is composed when the
+          document is. A single `waiting` row while any line rate is unknown,
+          since one unknown makes the proportion uncomputable. */}
+      {shippingSplitPreview}
 
       {/* The lock warning is about the pick, not about the primary — it must
           also show once the operator has picked on an install with NO primary,
@@ -768,14 +848,107 @@ export function OrderInvoicePanel({ order }: OrderInvoicePanelProps): ReactEleme
               tone="primary"
               onClick={handleIssue}
               disabled={
-                issueMutation.isPending || write.demoReadOnly || invoicingConnection === null
+                issueMutation.isPending ||
+                write.demoReadOnly ||
+                invoicingConnection === null ||
+                issueRefusal !== null
               }
             >
               {t('invoice.action.issue', 'Issue invoice')}
             </Button>
           </ReadOnlyLock>
+          {/* The reason sits ON the control, not only in the alert above: a
+              disabled button with no explanation beside it reads as a bug. */}
+          {issueRefusal ? (
+            <span className="text-muted" style={{ fontSize: '0.82rem' }}>
+              {issueRefusal}
+            </span>
+          ) : null}
         </div>
       ) : null}
     </section>
+  );
+}
+
+/**
+ * The lines with no tax rate, shaped for the remedy branches (#2254).
+ *
+ * "In the catalogue" is read off `productId`: a line OpenLinker resolved to an
+ * internal product can be fixed in the shop that owns it, while a line that
+ * resolved to none exists only as a marketplace offer - and fixing that offer
+ * cannot release THIS order, because the marketplace stamped the rate at
+ * purchase. Those are different instructions, so they cannot share a sentence.
+ */
+function collectRateLessLines(items: readonly ParsedOrderItem[]): RateLessLine[] {
+  return items
+    .filter((item) => !item.taxRate)
+    .map((item) => ({
+      name: item.name ?? item.sku ?? item.productId ?? item.id,
+      inCatalogue: Boolean(item.productId),
+      // The shop answered and its answer was ambiguous - distinguishable only
+      // because the read WAS made, which `taxSource` records.
+      ambiguousTaxClass: item.taxSource === 'shop',
+    }));
+}
+
+/**
+ * The shipping line(s) the document will carry (#2254).
+ *
+ * Rendered on the invoice panel rather than beside the order's line items,
+ * because shipping has no order line: it exists only once a document is being
+ * composed. One rate in the basket means one shipping line at that rate; a
+ * mixed basket means several, split in proportion to line gross.
+ *
+ * A single unknown line rate collapses the whole thing to one `waiting` row.
+ * Showing a partial split would state a proportion OpenLinker cannot compute,
+ * and the document is held anyway.
+ */
+function renderShippingSplitPreview(
+  items: readonly ParsedOrderItem[],
+  snapshot: Record<string, unknown>,
+  t: (key: string, fallback: string) => string,
+): ReactElement | null {
+  const totals = snapshot.totals as { shipping?: number; currency?: string } | undefined;
+  const shipping = totals?.shipping ?? 0;
+  if (!Number.isFinite(shipping) || shipping <= 0 || items.length === 0) return null;
+
+  const anyUnknown = items.some((item) => !item.taxRate);
+  if (anyUnknown) {
+    return (
+      <div className="order-invoice-panel__body">
+        <p className="order-invoice-panel__notice">
+          {t(
+            'invoice.panel.shippingSplitWaiting',
+            'Shipping is waiting with the document: it is split across the rates in the basket, and one line has no rate yet.',
+          )}
+        </p>
+      </div>
+    );
+  }
+
+  const grossByRate = new Map<string, number>();
+  for (const item of items) {
+    const rate = String(item.taxRate);
+    grossByRate.set(rate, (grossByRate.get(rate) ?? 0) + item.price * item.quantity);
+  }
+  if (grossByRate.size <= 1) return null;
+
+  const totalGross = [...grossByRate.values()].reduce((sum, gross) => sum + gross, 0);
+  if (totalGross <= 0) return null;
+
+  const parts = [...grossByRate.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([rate, gross]) => ({
+      rate,
+      amount: Math.round(((shipping * gross) / totalGross) * 100) / 100,
+    }));
+
+  return (
+    <div className="order-invoice-panel__body">
+      <p className="order-invoice-panel__notice">
+        {t('invoice.panel.shippingSplit', 'Shipping is split across the rates in this basket:')}{' '}
+        {parts.map((part) => `${part.amount.toFixed(2)} at ${part.rate}%`).join(', ')}.
+      </p>
+    </div>
   );
 }

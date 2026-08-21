@@ -25,6 +25,8 @@ import type {
   PaginatedProducts,
   PaginatedProductVariants,
 } from '../../domain/types/product.types';
+import type { StoredTaxRate } from '../../domain/types/tax-rate.types';
+import { effectiveTaxRate } from '../../domain/types/tax-rate.types';
 import { Logger } from '@openlinker/shared/logging';
 import { PRODUCT_REPOSITORY_TOKEN, PRODUCT_VARIANT_REPOSITORY_TOKEN } from '../../products.tokens';
 
@@ -67,6 +69,53 @@ export class ProductsService implements IProductsService {
 
     await this.variantRepository.upsertMany(variantsWithProductId);
     this.logger.debug(`Variants upserted for product: ${productId}`);
+  }
+
+  async recordProductTaxRate(productId: string, rate: StoredTaxRate): Promise<void> {
+    await this.productRepository.recordTaxRate(productId, rate);
+  }
+
+  async recordVariantTaxRate(variantId: string, rate: StoredTaxRate): Promise<void> {
+    await this.variantRepository.recordTaxRate(variantId, rate);
+  }
+
+  /**
+   * The rate that applies to a line (#2054).
+   *
+   * The variant override is read first and wins where the shop carries one -
+   * it is the more specific statement of the same fact, not a conflict to
+   * arbitrate. An absent override means "no opinion", never "no rate", so a
+   * product-keyed master (PrestaShop) resolves through the product row
+   * unchanged.
+   */
+  async getEffectiveTaxRate(productId: string, variantId?: string): Promise<StoredTaxRate> {
+    const [productRate, variantRate] = await Promise.all([
+      this.productRepository.findTaxRate(productId),
+      variantId ? this.variantRepository.findTaxRate(variantId) : Promise.resolve(null),
+    ]);
+    return effectiveTaxRate(productRate, variantRate);
+  }
+
+  async getTaxRateCoverage(): Promise<{
+    total: number;
+    known: number;
+    missing: number;
+    notChecked: number;
+  }> {
+    return this.productRepository.countTaxRateStates();
+  }
+
+  async getTaxRateCoverageByConnection(): Promise<
+    Array<{
+      connectionId: string;
+      platformType: string;
+      total: number;
+      known: number;
+      missing: number;
+      notChecked: number;
+    }>
+  > {
+    return this.productRepository.countTaxRateStatesByConnection();
   }
 
   async getProduct(id: string): Promise<Product | null> {

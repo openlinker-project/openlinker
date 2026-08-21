@@ -129,10 +129,17 @@ export class MarketplaceOfferFieldUpdateHandler implements SyncJobHandler {
       );
     }
 
-    const { price, title, description } = payload.fields;
-    if (price === undefined && title === undefined && description === undefined) {
+    const { price, title, description, taxRate } = payload.fields;
+    if (
+      price === undefined &&
+      title === undefined &&
+      description === undefined &&
+      // #2249 — a rate-only update is legitimate: propagating the shop's rate
+      // onto a live offer touches nothing else.
+      taxRate === undefined
+    ) {
       throw new SyncJobExecutionError(
-        `At least one field (price, title, description) must be present in payload: ${JSON.stringify(job.payload)}`,
+        `At least one field (price, title, description, taxRate) must be present in payload: ${JSON.stringify(job.payload)}`,
         job.id,
         job.jobType,
         job.connectionId

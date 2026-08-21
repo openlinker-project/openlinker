@@ -71,6 +71,7 @@ import {
   InvalidInvoiceLineError,
   UnsupportedPriceTreatmentError,
   DuplicateInvoiceRecordException,
+  MissingTaxRateException,
   OrderAlreadyInvoicedException,
   InvoiceIssueContendedException,
   InvoiceRecordNotFoundException,
@@ -717,6 +718,17 @@ export class InvoicingController {
           reason:
             `An invoice for this order already exists on connection ${error.issuingConnectionId} ` +
             `(invoice ${error.blockingInvoiceId}, status ${error.blockingStatus}).`,
+        };
+      }
+      if (error instanceof MissingTaxRateException) {
+        // #2248: a NAMED ineligibility, not a batch failure. The order cannot be
+        // invoiced by anyone until the rate is added in the shop, so pointing an
+        // operator at "retry" or at manual review would waste the click - the
+        // pattern bulk dispatch already uses for `source_deleted`.
+        return {
+          orderId,
+          outcome: 'skipped',
+          reason: error.message,
         };
       }
       if (error instanceof InvoiceIssueContendedException) {
@@ -1383,6 +1395,23 @@ export class InvoicingController {
         message: error.message,
         error: 'InvoiceIssueContendedException',
         retryable: true,
+      });
+    }
+    // #2248 (ADR-052 § 6): the order carries a line with no tax rate, so no
+    // document can state what tax was charged. 422 rather than 400 - the request
+    // is well formed, the DATA it names is not yet issuable - and rather than 409,
+    // which would say a document already exists. `retryable: false` distinguishes
+    // it from the contended 409 above: retrying changes nothing until the rate is
+    // added in the shop, which is what the body's ids point the operator at.
+    if (error instanceof MissingTaxRateException) {
+      return new UnprocessableEntityException({
+        message: error.message,
+        error: 'MissingTaxRateException',
+        reason: 'missing-tax-rate',
+        retryable: false,
+        lineCount: error.finding.lineCount,
+        totalLines: error.finding.totalLines,
+        firstLineRef: error.finding.firstLineRef,
       });
     }
     if (

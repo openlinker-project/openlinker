@@ -16,7 +16,7 @@ import {
   type Fa3BuilderInput,
   type SellerProfile,
 } from '../domain/fa3-xml.types';
-import { buildFa3Xml } from './fa3-xml.builder';
+import { buildFa3Xml, describeFa3LineAmounts } from './fa3-xml.builder';
 import { validateFa3Xml } from '../validators/fa3-xsd.validator';
 
 const seller: SellerProfile = {
@@ -616,5 +616,37 @@ describe('buildFa3Xml', () => {
       input.lines = [{ name: 'Widget', quantity: 2, unitPriceGross: 123.45, p12: '23', unit: 'kg' }];
       expect(() => validateFa3Xml(buildFa3Xml(input))).not.toThrow();
     });
+  });
+});
+
+describe('unit-price precision (#2251)', () => {
+  /**
+   * `P_9A` is `TKwotowy2` - eight fraction digits, not two. Rendering it at 2dp
+   * made the document contradict itself: on 100 x 1.99 at 23% the line net is
+   * 161.79, but a unit net rounded to 1.62 multiplies back to 162.00.
+   */
+  it('should emit a unit net that multiplies back to the line net', () => {
+    const amounts = describeFa3LineAmounts([
+      { name: 'Widget', quantity: 100, unitPriceGross: 1.99, p12: '23' },
+    ]);
+    expect(amounts[0].net).toBe(161.79);
+    expect(amounts[0].gross).toBe(199);
+    expect(amounts[0].tax).toBe(37.21);
+  });
+
+  it('should report a zero-rate line at net equal to gross', () => {
+    const amounts = describeFa3LineAmounts([
+      { name: 'Book', quantity: 2, unitPriceGross: 10, p12: '0 KR' },
+    ]);
+    expect(amounts[0].net).toBe(20);
+    expect(amounts[0].tax).toBe(0);
+  });
+
+  it('should number lines from one, in emit order', () => {
+    const amounts = describeFa3LineAmounts([
+      { name: 'A', quantity: 1, unitPriceGross: 1.23, p12: '23' },
+      { name: 'B', quantity: 1, unitPriceGross: 1.08, p12: '8' },
+    ]);
+    expect(amounts.map((a) => a.lineNumber)).toEqual([1, 2]);
   });
 });

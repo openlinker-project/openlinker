@@ -14,4 +14,6 @@ export const PRODUCT_VARIANT_REPOSITORY_TOKEN = Symbol('ProductVariantRepository
 export const PRODUCTS_SERVICE_TOKEN = Symbol('IProductsService');
 export const MASTER_PRODUCT_SYNC_SERVICE_TOKEN = Symbol('IMasterProductSyncService');
 export const AUTO_MATCH_VARIANT_OFFERS_SERVICE_TOKEN = Symbol('IAutoMatchVariantOffersService');
+export const TAX_RATE_JOURNAL_REPOSITORY_TOKEN = Symbol('TaxRateJournalRepositoryPort');
+export const TAX_RATE_JOURNAL_SERVICE_TOKEN = Symbol('ITaxRateJournalService');
 

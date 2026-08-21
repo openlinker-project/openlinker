@@ -81,6 +81,7 @@ export type SlaStateValue = (typeof SlaStateValues)[number];
 export const SalesDocumentGateBlockReasonValues = [
   'unresolved-routing',
   'missing-required-tax-id',
+  'missing-tax-rate',
   'tax-rate-conflict',
   'trigger-model-manual',
   'trigger-model-batched',
@@ -225,6 +226,14 @@ export interface OrderRecord {
   salesDocumentUnresolvedReason?: SalesDocumentUnresolvedReasonValue | null;
   /** PII-free elaboration of the block reason (ids and counts only). */
   salesDocumentBlockDetail?: string | null;
+  /**
+   * When the current sales-document hold started (ISO 8601), or null (#2248).
+   * The only clock an operator-facing age can run on: the reason itself is
+   * level-triggered and nulled the moment it clears.
+   */
+  salesDocumentBlockedAt?: string | null;
+  /** When the current hold ended (ISO 8601), cleared when a new one starts. */
+  salesDocumentBlockReleasedAt?: string | null;
 }
 
 // Result ordering for the orders list (#927, extended #944). Mirrors
@@ -279,6 +288,20 @@ export interface OrderHealthSummary {
    * Optional for graceful degradation against an older API.
    */
   salesDocumentBlocked?: number;
+  /**
+   * Orders where the shop and the channel named DIFFERENT tax rates (#2254).
+   * Its OWN count, never inside `salesDocumentBlocked` — a conflict does not
+   * stop the invoice, so an order can be in conflict and perfectly healthy.
+   * Optional for graceful degradation against an older API.
+   */
+  taxRateConflict?: number;
+  /**
+   * When the oldest still-held order was held (ISO 8601), or `null`/absent when
+   * nothing is held (#2254). The blocked chip folds an age into its own label
+   * from this, rather than adding a third dotted badge to a row that already
+   * carries two SLA badges.
+   */
+  salesDocumentBlockedOldestAt?: string | null;
 }
 
 export interface OrderFilters {
@@ -305,6 +328,12 @@ export interface OrderFilters {
    * `health` — "synced AND invoicing blocked" is the common shape of the problem.
    */
   salesDocumentBlocked?: boolean;
+  /**
+   * Tax-rate conflict filter (#2254). A separate axis, and it has to be: the
+   * rows it finds are usually already invoiced, which is exactly why they are
+   * invisible in every other view.
+   */
+  taxRateConflict?: boolean;
 }
 
 /**

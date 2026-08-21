@@ -185,7 +185,39 @@ export class OrderRecord {
      * lookup — so a retry or the sweep stamps against the same currency the
      * inline attempt resolved even if the system setting changed in between.
      */
-    public readonly fxIntendedCurrency: string | null = null
+    public readonly fxIntendedCurrency: string | null = null,
+    /**
+     * When the current sales-document hold started (#2248 / #2245 F4), or
+     * `null` when the order has never been held.
+     *
+     * Appended at the END of the parameter list rather than beside the three
+     * `salesDocument*` fields above: this is a positional constructor, and
+     * inserting mid-list would silently shift every argument after it at each
+     * of its call sites.
+     *
+     * Written only by `updateSalesDocumentBlock`, like the reason columns it
+     * belongs with, and stamped on the `none -> blocked` transition alone so it
+     * measures the whole episode rather than the latest reason within it.
+     */
+    public readonly salesDocumentBlockedAt: Date | null = null,
+    /**
+     * When the current hold ended, cleared whenever a new one starts. The pair
+     * with `salesDocumentBlockedAt` always describes one episode, which is what
+     * lets a timeline say the order was held and then released - the reason
+     * itself is gone by then.
+     */
+    public readonly salesDocumentBlockReleasedAt: Date | null = null,
+    /**
+     * `'pre-rollout'` for an order that arrived before per-line tax rates
+     * existed (#2256); `null` for everything after. A data marker for
+     * analytics, never an operator-facing state - such an order issues exactly
+     * as it does today, and no surface renders it.
+     *
+     * Excluded from any net-revenue figure rather than presented as a confirmed
+     * rate: its tax was whatever the provider defaulted to, and there is
+     * nothing to back-compute from.
+     */
+    public readonly taxRateEra: string | null = null
   ) {}
 
   /**

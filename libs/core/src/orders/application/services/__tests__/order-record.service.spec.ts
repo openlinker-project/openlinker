@@ -218,6 +218,51 @@ describe('OrderRecordService', () => {
       });
     });
 
+    // #2054/#2254 regression. The snapshot projection is an allowlist and is the
+    // WRITER half of the pair `orderFromReadySnapshot.readItems` reads back, so a
+    // field missing here is lost at persistence time and every MANUAL issuance
+    // path rehydrates a rate-less order. Found end to end against a live shop:
+    // the analytics line-item row carried the rate while the snapshot did not.
+    it('serialises the per-line tax rate, its source and its read time into the snapshot (#2254)', async () => {
+      const order = createMockOrder();
+      order.items[0].taxRate = '5';
+      order.items[0].taxRateCountry = 'PL';
+      order.items[0].taxSource = 'shop';
+      order.items[0].taxRateReadAt = '2026-08-21T13:20:33.602Z';
+      order.items[0].taxRateChannel = '23';
+
+      repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
+
+      await service.persistOrder(order, 'source-connection-123', 'event-456');
+
+      const [callArg] = repository.upsertWithLineItems.mock.calls[0];
+      const snapshotItems = (callArg.orderSnapshot as { items: Array<Record<string, unknown>> })
+        .items;
+      expect(snapshotItems[0]).toMatchObject({
+        taxRate: '5',
+        taxRateCountry: 'PL',
+        taxSource: 'shop',
+        taxRateReadAt: '2026-08-21T13:20:33.602Z',
+        taxRateChannel: '23',
+      });
+    });
+
+    it('keeps every tax key absent when the order line carries no rate (#2254)', async () => {
+      const order = createMockOrder();
+      expect(order.items[0].taxRate).toBeUndefined();
+
+      repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
+
+      await service.persistOrder(order, 'source-connection-123', 'event-456');
+
+      const [callArg] = repository.upsertWithLineItems.mock.calls[0];
+      const snapshotItems = (callArg.orderSnapshot as { items: Array<Record<string, unknown>> })
+        .items;
+      for (const key of ['taxRate', 'taxRateCountry', 'taxSource', 'taxRateReadAt', 'taxRateChannel']) {
+        expect(snapshotItems[0]).not.toHaveProperty(key);
+      }
+    });
+
     it('should omit name and imageUrl from the snapshot when the OrderItem does not carry them', async () => {
       const order = createMockOrder();
       // createMockOrder() leaves name/imageUrl unset; this asserts conditional

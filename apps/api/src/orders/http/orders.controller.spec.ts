@@ -517,7 +517,7 @@ describe('OrdersController', () => {
         needsAttention: 1,
         synced: 1,
         awaitingDispatch: 9,
-        salesDocumentBlocked: 0,
+        salesDocumentBlocked: 0, taxRateConflict: 0, salesDocumentBlockedOldestAt: null,
       });
 
       const result = await controller.statusSummary({});
@@ -535,7 +535,7 @@ describe('OrdersController', () => {
         needsAttention: 0,
         synced: 0,
         awaitingDispatch: 0,
-        salesDocumentBlocked: 0,
+        salesDocumentBlocked: 0, taxRateConflict: 0, salesDocumentBlockedOldestAt: null,
       });
 
       await controller.statusSummary({

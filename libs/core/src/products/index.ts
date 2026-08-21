@@ -88,6 +88,45 @@ export type {
 } from './domain/ports/capabilities/modified-product-lister.capability';
 export { isModifiedProductLister } from './domain/ports/capabilities/modified-product-lister.capability';
 
+// Neutral per-line tax rate (#2054, ADR-052). The vocabulary a ProductMaster
+// answers a tax question in, plus the shape OpenLinker stores that answer as.
+export type {
+  InheritedTaxRate,
+  ResolvedTaxRate,
+  StoredTaxRate,
+  TaxRateResolution,
+  TaxRateSource,
+  TaxRateState,
+  TaxRateUnknownReason,
+  UnknownTaxRate,
+} from './domain/types/tax-rate.types';
+export {
+  TaxRateSourceValues,
+  TaxRateStateValues,
+  TaxRateUnknownReasonValues,
+  effectiveTaxRate,
+  isResolvedTaxRate,
+  taxRateState,
+} from './domain/types/tax-rate.types';
+export type {
+  ProductTaxRateReader,
+  ReadProductTaxRateInput,
+} from './domain/ports/capabilities/product-tax-rate-reader.capability';
+export { isProductTaxRateReader } from './domain/ports/capabilities/product-tax-rate-reader.capability';
+
+// Append-only tax-rate provenance journal (#2250, ADR-052 § 4).
+export type {
+  TaxRateJournalEntry,
+  TaxRateJournalOrigin,
+  TaxRateObservation,
+} from './domain/types/tax-rate-journal.types';
+export {
+  TaxRateJournalOriginValues,
+  isNewTaxRateObservation,
+} from './domain/types/tax-rate-journal.types';
+export type { TaxRateJournalRepositoryPort } from './domain/ports/tax-rate-journal-repository.port';
+export type { ITaxRateJournalService } from './application/services/tax-rate-journal.service.interface';
+
 // ORM entities are exposed on the host-only `@openlinker/core/products/orm-entities`
 // sub-path (#594). Plugins must not import them from here.
 

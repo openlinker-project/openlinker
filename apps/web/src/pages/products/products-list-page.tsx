@@ -43,6 +43,8 @@ import { Input } from '../../shared/ui/input';
 import { Chip } from '../../shared/ui/chip';
 import { Select } from '../../shared/ui/select';
 import { MetricCard } from '../../shared/ui/metric-card';
+import { KpiCard } from '../../shared/ui/kpi-card';
+import { Alert } from '../../shared/ui/alert';
 import { StatusBadge } from '../../shared/ui/status-badge';
 import { ProductThumbnail } from '../../shared/ui/product-thumbnail';
 import { TimeDisplay } from '../../shared/ui/time-display';
@@ -175,6 +177,16 @@ export function ProductsListPage(): ReactElement {
   const urlSearch = searchParams.get('search') ?? '';
   const rawStock = searchParams.get('stock');
   const stock = isStockFilter(rawStock) ? rawStock : undefined;
+  // #2255 — URL-synced like every other filter here, so the tile, the table and
+  // a shared link cannot disagree about what is being shown.
+  // Per SESSION, not persisted: a permanent dismissal removes the only route to
+  // the remedy with no way back (#2255).
+  const [suggestionDismissed, setSuggestionDismissed] = useState(false);
+  const rawTaxRateState = searchParams.get('taxRateState');
+  const taxRateState =
+    rawTaxRateState === 'missing' || rawTaxRateState === 'not-checked' || rawTaxRateState === 'known'
+      ? rawTaxRateState
+      : undefined;
   const unlistedOnParam = searchParams.get('unlistedOn') ?? '';
   const unlistedOn = useMemo(
     () => (unlistedOnParam ? unlistedOnParam.split(',').filter(Boolean) : undefined),
@@ -250,6 +262,16 @@ export function ProductsListPage(): ReactElement {
     [offerManagerConnections],
   );
   const gapsCsv = offerCreatorIds.join(',');
+  // #2255 — the tax-rate tile only means anything where a shop can be asked for
+  // a rate. With no ProductMaster connection, "312 products have no tax rate" is
+  // a statement about an install that was never going to have one.
+  const hasProductMaster = useMemo(
+    () =>
+      (connectionsQuery.data ?? []).some(
+        (c) => c.status === 'active' && c.supportedCapabilities?.includes('ProductMaster'),
+      ),
+    [connectionsQuery.data],
+  );
 
   // Unified publish targets (#1828): offer marketplaces (OfferCreator) OR
   // online shops (ProductPublisher), capability-driven. Drives the publish
@@ -301,6 +323,7 @@ export function ProductsListPage(): ReactElement {
   const filters: ProductFilters = {
     search: debouncedSearch || undefined,
     stock,
+    taxRateState,
     unlistedOn,
     connectionId: sourceConnectionId,
   };
@@ -326,6 +349,15 @@ export function ProductsListPage(): ReactElement {
   // (nav-counts precedent). The gaps probe is disabled with zero OfferCreator
   // connections (its filter would be meaningless).
   const allProbe = useProductsQuery(undefined, KPI_PROBE);
+  // #2255 — two probes, because the two states drive different remedies and
+  // must never be added together. `missing` is the tile; `not-checked` is the
+  // sync suggestion, and it is the whole catalogue on day one.
+  const noRateProbe = useProductsQuery({ taxRateState: 'missing' }, KPI_PROBE, undefined, {
+    enabled: hasProductMaster,
+  });
+  const notCheckedProbe = useProductsQuery({ taxRateState: 'not-checked' }, KPI_PROBE, undefined, {
+    enabled: hasProductMaster,
+  });
   const outProbe = useProductsQuery({ stock: 'out' }, KPI_PROBE);
   const lowProbe = useProductsQuery({ stock: 'low' }, KPI_PROBE);
   const gapsFilters = useMemo<ProductFilters>(
@@ -362,6 +394,14 @@ export function ProductsListPage(): ReactElement {
       setFilterParam('stock', stock === value ? '' : value);
     },
     [setFilterParam, stock],
+  );
+
+  /** #2255 — the tax-rate tile's filter, same present-only shape as its siblings. */
+  const toggleTaxRateState = useCallback(
+    (value: 'missing' | 'not-checked' | 'known'): void => {
+      setFilterParam('taxRateState', taxRateState === value ? '' : value);
+    },
+    [setFilterParam, taxRateState],
   );
 
   const toggleUnlistedOn = useCallback(
@@ -926,7 +966,61 @@ export function ProductsListPage(): ReactElement {
             />
           </button>
         ) : null}
+        {/* #2255 — `KpiCard`, not `MetricCard`: the latter is @deprecated with
+            "no new callers should be added". The tone is COMPUTED, so a healthy
+            install shows no colour at all - hardcoding `error` would paint a red
+            border around a zero. The "Not checked yet" tile is deliberately not
+            built: it reads zero forever after week one, costs a permanent grid
+            slot for a one-off migration, and would print the same number twice
+            forty pixels from the suggestion below. */}
+        {hasProductMaster ? (
+          <button
+            type="button"
+            className={[
+              'products-segment',
+              taxRateState === 'missing' ? 'products-segment--active' : '',
+            ]
+              .filter(Boolean)
+              .join(' ')}
+            aria-pressed={taxRateState === 'missing'}
+            onClick={() => {
+              toggleTaxRateState('missing');
+            }}
+          >
+            <KpiCard
+              label="No tax rate"
+              tone={(noRateProbe.data?.total ?? 0) > 0 ? 'error' : 'neutral'}
+              value={probeValue(noRateProbe.data?.total)}
+            />
+          </button>
+        ) : null}
       </div>
+
+      {/* #2255 — the sync suggestion. Four states, not one: idle, running,
+          no-shop-connected, and dismissed. Dismissal is per SESSION, because a
+          permanent one removes the only route to the remedy with no way back.
+          And it never claims a complete result - syncing is per connection while
+          "not checked" is per product, so a product mapped on two shops can be
+          half checked. */}
+      {hasProductMaster && !suggestionDismissed && (notCheckedProbe.data?.total ?? 0) > 0 ? (
+        <Alert
+          tone="info"
+          title={`${String(notCheckedProbe.data?.total ?? 0)} products have never been checked for a tax rate`}
+          action={
+            <Button
+              tone="ghost"
+              onClick={() => {
+                setSuggestionDismissed(true);
+              }}
+            >
+              Dismiss for this session
+            </Button>
+          }
+        >
+          Rates arrive with the ordinary product sync. Run one to find out which items have a rate
+          and which are missing it.
+        </Alert>
+      ) : null}
 
       {/* Filter rail — search + source select + chips, all URL-synced. Below
           1024px the chips/select/sort collapse behind a "Filters" toggle so

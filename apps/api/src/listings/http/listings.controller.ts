@@ -418,6 +418,9 @@ export class ListingsController {
           ...(dto.price !== undefined && { price: dto.price }),
           ...(dto.title !== undefined && { title: dto.title }),
           ...(dto.description !== undefined && { description: dto.description }),
+          // #2249 — the rate the shop now carries. Without this the update
+          // half of the propagation shipped as a contract nothing could reach.
+          ...(dto.taxRate !== undefined && { taxRate: dto.taxRate }),
         },
       },
     });

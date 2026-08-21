@@ -24,6 +24,7 @@ import type { IOrderRecordService } from '../../interfaces/order-record.service.
 import type { IOrderItemRefResolverService } from '../../interfaces/order-item-ref-resolver.service.interface';
 import type { IOrderLifecycleRelayService } from '../../interfaces/order-lifecycle-relay.service.interface';
 import type { IAutoIssueTriggerService } from '@openlinker/core/invoicing';
+import type { IProductsService } from '@openlinker/core/products';
 import { MissingOrderItemMappingError } from '../../../domain/exceptions/missing-order-item-mapping.error';
 import type { OrderRecord } from '../../../domain/entities/order-record.entity';
 
@@ -45,6 +46,7 @@ describe('OrderIngestionService', () => {
   let customerProjectionUpdater: jest.Mocked<IOrderCustomerProjectionUpdaterService>;
   let orderLifecycleRelay: jest.Mocked<IOrderLifecycleRelayService>;
   let autoIssueTrigger: jest.Mocked<IAutoIssueTriggerService>;
+  let productsService: jest.Mocked<IProductsService>;
 
   const connectionId = 'connection-123';
   const cursorKey = 'allegro.orders.lastEventId';
@@ -125,6 +127,15 @@ describe('OrderIngestionService', () => {
     autoIssueTrigger = {
       onOrderTransition: jest.fn().mockResolvedValue({ kind: 'none' }),
     } as unknown as jest.Mocked<IAutoIssueTriggerService>;
+    // #2054: default to "the catalogue has never been asked", the honest
+    // post-deploy state - so these specs assert the pre-tax-rate behaviour.
+    productsService = {
+      getEffectiveTaxRate: jest.fn().mockResolvedValue({
+        code: null,
+        countryIso2: null,
+        readAt: null,
+      }),
+    } as unknown as jest.Mocked<IProductsService>;
 
     service = new OrderIngestionService(
       integrationsService,
@@ -138,7 +149,8 @@ describe('OrderIngestionService', () => {
       orderRecordService,
       customerProjectionUpdater,
       orderLifecycleRelay,
-      autoIssueTrigger
+      autoIssueTrigger,
+      productsService
     );
   });
 

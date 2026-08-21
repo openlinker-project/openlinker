@@ -431,7 +431,10 @@ export function OrderDetailPage(): ReactElement {
             <OrderInvoicePanel order={order} />
           </div>
           <div id="fiscal-receipt" tabIndex={-1}>
-            <OrderReceiptPanel orderId={order.internalOrderId} />
+            <OrderReceiptPanel
+              orderId={order.internalOrderId}
+              rateLessLineCount={snapshot.items.filter((item) => !item.taxRate).length}
+            />
           </div>
           <OrderCustomerCard customerId={order.customerId} sourceConnectionId={order.sourceConnectionId} />
         </div>
@@ -462,6 +465,8 @@ export function OrderDetailPage(): ReactElement {
           salesDocumentUnresolvedReason={order.salesDocumentUnresolvedReason}
           salesDocumentBlockDetail={order.salesDocumentBlockDetail}
           invoice={snapshot.invoice}
+          salesDocumentBlockedAt={order.salesDocumentBlockedAt}
+          salesDocumentBlockReleasedAt={order.salesDocumentBlockReleasedAt}
         />
       </section>
 

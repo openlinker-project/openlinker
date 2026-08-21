@@ -9,6 +9,7 @@
  * @module libs/core/src/orders/domain/types
  */
 import type { PickupPointType } from '@openlinker/core/shipping';
+import type { TaxRateSource } from '@openlinker/core/products';
 
 import type { PaymentStatus } from './payment-status.types';
 import type { CodToCollect } from './cod-to-collect.types';
@@ -252,6 +253,60 @@ export interface OrderItem {
    * future enrichment — no current adapter sets this on ingestion.
    */
   imageUrl?: string;
+
+  /**
+   * The tax rate this line carries, as a neutral percent-as-string code
+   * (`'23'`, `'8'`, `'5'`, `'0'`, `'zw'`, `'np'`, `'oo'`) — #2054, ADR-052.
+   *
+   * **The stored order snapshot is the only place a rate is settled.** It is
+   * resolved once at ingestion from OpenLinker's own catalogue projection
+   * (variant override first, then the product), so issuance never depends on
+   * the shop being reachable and re-reading the order cannot move a figure a
+   * document was already issued against.
+   *
+   * Absent means the rate was never established, which HOLDS the document
+   * rather than defaulting it. `'0'` is a rate, not an absence.
+   */
+  taxRate?: string;
+
+  /**
+   * ISO 3166-1 alpha-2 the rate was resolved against. **Provenance only** — it
+   * is never compared with the buyer's country and blocks nothing.
+   */
+  taxRateCountry?: string;
+
+  /**
+   * Which system stated the rate: the shop (ProductMaster) or the sales
+   * channel. Absent alongside an absent `taxRate` means it was never read.
+   *
+   * Carried on the line rather than derived downstream (#2245 F3): without it
+   * *no rate*, *never read* and *pre-rollout* all reach a reader as the same
+   * `undefined`, and a provenance caption has nothing to render.
+   */
+  taxSource?: TaxRateSource;
+
+  /**
+   * When the rate was read from that system, ISO 8601. Shown rather than
+   * enforced — there is no freshness rule, because rate changes are announced
+   * ahead and do not apply retroactively (ADR-052 § 4).
+   */
+  taxRateReadAt?: string;
+
+  /**
+   * The rate the CHANNEL reported, recorded ONLY when it disagreed with the
+   * shop's (#2254, epic F1).
+   *
+   * Present means a conflict: the shop won, the document was issued on its
+   * rate, and this is the other number so the operator can see both and decide
+   * which system to correct. Absent means the two agreed, or only one of them
+   * answered - neither of which is a conflict.
+   *
+   * It is deliberately NOT a gate reason. `invoicingBlockedBadge` suppresses a
+   * badge whenever an invoice exists, and a non-blocking conflict always has
+   * one, so routing this through the block machinery would make it unrenderable
+   * on the very rows it describes.
+   */
+  taxRateChannel?: string;
 }
 
 /**
@@ -277,8 +332,15 @@ export interface OrderTotals {
    * source-uniform: absent means "not asserted by the source", and a
    * destination falls back to its prior assumption. Destinations that price
    * net (e.g. PrestaShop `specific_price`) use this to decide whether the
-   * buyer-paid amount must be converted to net before pinning — the tax *rate*
-   * itself stays destination-side, never on the order contract.
+   * buyer-paid amount must be converted to net before pinning.
+   *
+   * **This is the order-wide inclusivity flag, and it is all it is.** It used
+   * to add that "the tax *rate* itself stays destination-side, never on the
+   * order contract"; ADR-052 reverses that half (adopting ADR-014's own
+   * amendment), because one aggregate `tax` plus one order-wide treatment
+   * cannot describe a mixed-rate basket. The per-line rate now lives on
+   * `OrderItem.taxRate`. The inclusivity half is unchanged: it really is
+   * source-uniform, and it stays here.
    */
   taxTreatment?: PriceTaxTreatment;
 }

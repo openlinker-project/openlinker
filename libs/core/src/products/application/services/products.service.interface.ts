@@ -17,6 +17,7 @@ import type {
   PaginatedProducts,
   PaginatedProductVariants,
 } from '../../domain/types/product.types';
+import type { StoredTaxRate } from '../../domain/types/tax-rate.types';
 
 /**
  * Products Service Interface
@@ -42,6 +43,52 @@ export interface IProductsService {
    * @param variants - Array of product variant domain entities
    */
   upsertVariants(productId: string, variants: ProductVariant[]): Promise<void>;
+
+  /**
+   * Record what a ProductMaster said about a product's tax rate (#2054).
+   *
+   * Separate from `upsertProduct` on purpose: the sync upsert carries no rate,
+   * so folding this into it would let an ordinary catalogue refresh blank a
+   * rate - and a blanked rate holds documents.
+   *
+   * Recording `{ code: null, readAt }` is meaningful: it says *the master was
+   * asked and has no rate*, which the gate treats differently from
+   * *never asked*.
+   */
+  recordProductTaxRate(productId: string, rate: StoredTaxRate): Promise<void>;
+
+  /** Record a per-variant override. Only a variant-keyed master calls this. */
+  recordVariantTaxRate(variantId: string, rate: StoredTaxRate): Promise<void>;
+
+  /**
+   * The rate that applies to a line, resolved from the catalogue projection.
+   * The variant override wins where present; otherwise the product's rate.
+   */
+  getEffectiveTaxRate(productId: string, variantId?: string): Promise<StoredTaxRate>;
+
+  /** Catalogue coverage by tax-rate read state (#2054 / #2256). */
+  getTaxRateCoverage(): Promise<{
+    total: number;
+    known: number;
+    missing: number;
+    notChecked: number;
+  }>;
+
+  /**
+   * The same coverage, per connection (#2256) - the unit an operator actually
+   * fixes. "The catalogue has no rates" is not actionable when three shops feed
+   * it and only one is incomplete.
+   */
+  getTaxRateCoverageByConnection(): Promise<
+    Array<{
+      connectionId: string;
+      platformType: string;
+      total: number;
+      known: number;
+      missing: number;
+      notChecked: number;
+    }>
+  >;
 
   /**
    * Get a single product by internal ID

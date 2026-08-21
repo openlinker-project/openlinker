@@ -1808,6 +1808,12 @@ textarea,
   box-shadow: inset 3px 0 0 var(--status-warning);
 }
 
+.alert--conflict {
+  border-color: var(--status-conflict-border);
+  background: var(--status-conflict-soft);
+  box-shadow: inset 3px 0 0 var(--status-conflict);
+}
+
 .alert--error {
   border-color: var(--status-error-border);
   background: var(--status-error-soft);
@@ -2357,6 +2363,18 @@ textarea,
   color: var(--status-review-fg);
 }
 
+/*
+ * The conflict family has no `-fg` member, so text reads from `-strong`.
+ * The ramp base gives roughly 2.5:1 here and fails contrast; the token
+ * checker is one-directional and would not catch a missing `-fg`, it would
+ * simply resolve to nothing.
+ */
+.status-badge--conflict {
+  border-color: var(--status-conflict-border);
+  background: var(--status-conflict-soft);
+  color: var(--status-conflict-strong);
+}
+
 .status-badge--info {
   border-color: var(--status-info-border);
   background: var(--status-info-soft);
@@ -2491,12 +2509,6 @@ html[data-theme='dark'] .conn-dot--generic {
   margin-left: 4px;
   opacity: 0.55;
   font-weight: 600;
-}
-
-.status-badge.delivery-rider-chip--not-connected {
-  border-color: var(--status-conflict-border);
-  background: var(--status-conflict-soft);
-  color: var(--status-conflict-strong);
 }
 
 .delivery-rider-banner {
@@ -8154,6 +8166,10 @@ a.kpi-card:focus-visible {
 
 .order-activity__dot--warning {
   background: var(--status-warning);
+}
+
+.order-activity__dot--conflict {
+  background: var(--status-conflict);
 }
 
 .order-activity__body {

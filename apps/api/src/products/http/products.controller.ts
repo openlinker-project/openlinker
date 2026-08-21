@@ -77,6 +77,13 @@ function variantToDto(variant: ProductVariant): ProductVariantResponseDto {
     // normalised to `null` at the wire boundary so the FE sees a consistent
     // nullable shape.
     price: variant.price ?? null,
+    // #2255 — the variant's own OVERRIDE, and only that. An absent override
+    // means the product's rate applies, which the table renders as "inherited"
+    // rather than as a gap; conflating the two would send the operator to fix
+    // the wrong record.
+    taxRate: variant.taxRate ?? null,
+    taxRateCountry: variant.taxRateCountry ?? null,
+    taxRateReadAt: variant.taxRateReadAt?.toISOString() ?? null,
     createdAt: variant.createdAt!.toISOString(),
     updatedAt: variant.updatedAt!.toISOString(),
   };
@@ -113,7 +120,7 @@ export class ProductsController {
     type: PaginatedProductsResponseDto,
   })
   async listProducts(@Query() query: ListProductsQueryDto): Promise<PaginatedProductsResponseDto> {
-    const { search, stock, connectionId, sort, dir, limit = 20, offset = 0 } = query;
+    const { search, stock, taxRateState, connectionId, sort, dir, limit = 20, offset = 0 } = query;
 
     const unlistedOnConnectionIds = this.parseUnlistedOn(query.unlistedOn);
     const sortSpec: ProductListSort | undefined = sort
@@ -121,7 +128,7 @@ export class ProductsController {
       : undefined;
 
     const { items, total } = await this.productsService.listProducts(
-      { search, stock, unlistedOnConnectionIds, sourceConnectionId: connectionId },
+      { search, stock, taxRateState, unlistedOnConnectionIds, sourceConnectionId: connectionId },
       { limit, offset },
       sortSpec
     );
@@ -328,6 +335,11 @@ export class ProductsController {
       images: product.images,
       categories: product.categories ?? null,
       ...(product.features ? { features: product.features } : {}),
+      // #2255 — `undefined` and `null` are collapsed to `null` here on purpose:
+      // the wire has one absence, and the STATE lives in `taxRateReadAt`.
+      taxRate: product.taxRate ?? null,
+      taxRateCountry: product.taxRateCountry ?? null,
+      taxRateReadAt: product.taxRateReadAt?.toISOString() ?? null,
       createdAt: product.createdAt!.toISOString(),
       updatedAt: product.updatedAt!.toISOString(),
     };

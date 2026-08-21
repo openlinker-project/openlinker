@@ -33,4 +33,16 @@ export interface OfferFieldUpdate {
   price?: OfferPriceUpdate;
   title?: string;
   description?: OfferDescriptionUpdate;
+  /**
+   * The shop's tax rate, as the neutral percent-as-string code (#2249,
+   * ADR-052). Propagated on an update the same way it is on a create, so an
+   * offer's rate follows the catalogue rather than freezing at whatever it was
+   * when the offer was first published.
+   *
+   * Optional and never inferred: absent means "this update does not touch the
+   * rate", which is different from "the product has no rate" - an update path
+   * must not be able to blank a rate an offer already carries. An adapter whose
+   * platform marks the field as seller-frozen skips the write.
+   */
+  taxRate?: string;
 }

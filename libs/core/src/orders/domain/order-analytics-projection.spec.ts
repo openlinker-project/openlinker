@@ -78,6 +78,13 @@ describe('orderAnalyticsProjection', () => {
         unitPrice: 10,
         sourceConnectionId: 'conn-123',
         placedAt: null,
+        // #2250 — the snapshot line carried none, so the row carries none. No
+        // default: a transcribed row that disagreed with the snapshot it copies
+        // would be worse than an empty one, because the snapshot is what issues
+        // documents.
+        taxRate: null,
+        taxSource: null,
+        taxRateReadAt: null,
       });
       expect(drafts[1]).toMatchObject({
         lineNumber: 1,
@@ -86,6 +93,39 @@ describe('orderAnalyticsProjection', () => {
         quantity: 1,
         unitPrice: 5,
       });
+    });
+
+    it('transcribes the settled tax rate, its source and its read time (#2250)', () => {
+      const readAt = '2026-08-20T09:00:00.000Z';
+      const order = baseOrder();
+      order.items[0] = {
+        ...order.items[0],
+        taxRate: '8',
+        taxSource: 'shop',
+        taxRateReadAt: readAt,
+      };
+
+      const drafts = deriveOrderLineItems(order, 'conn-123');
+
+      expect(drafts[0]).toMatchObject({
+        taxRate: '8',
+        taxSource: 'shop',
+        taxRateReadAt: new Date(readAt),
+      });
+    });
+
+    it('leaves an unparseable read time as a Date the driver will reject rather than silently dropping it', () => {
+      // Deliberately NOT sanitised here. The value comes from OpenLinker's own
+      // snapshot, so a bad one is a defect upstream, and swallowing it would
+      // hide that while quietly recording "never read" - one of the three
+      // states this column exists to keep apart.
+      const order = baseOrder();
+      order.items[0] = { ...order.items[0], taxRate: '8', taxRateReadAt: 'not-a-date' };
+
+      const drafts = deriveOrderLineItems(order, 'conn-123');
+
+      expect(drafts[0].taxRate).toBe('8');
+      expect(Number.isNaN(drafts[0].taxRateReadAt?.getTime())).toBe(true);
     });
 
     it('returns [] for an order with no items, never throws', () => {

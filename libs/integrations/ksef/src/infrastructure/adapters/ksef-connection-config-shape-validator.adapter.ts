@@ -3,7 +3,7 @@
  *
  * Validates the non-secret config for a KSeF connection: a required `env`
  * selecting the target environment (`test` | `demo` | `prod`), an optional
- * `seller.defaultTaxRate` check (must be a known `FA3_TAX_RATE_MAP` key when
+ * The `seller.defaultTaxRate` check was retired with the setting (#2257).
  * present, #1291) so a mistyped rate is rejected at connection-save time
  * instead of surfacing as `UnmappedTaxRateException` at issuance, and an
  * optional `payment` check (#1311): `payment`, `payment.bankAccount` and
@@ -38,7 +38,6 @@ import {
   InvalidConnectionConfigException,
 } from '@openlinker/core/integrations';
 import { KsefEnvironmentValues, KsefFormaPlatnosciValues } from '../../domain/types/ksef-connection.types';
-import { FA3_TAX_RATE_MAP } from '../fa3/domain/fa3-tax-rate.mapper';
 
 export class KsefConnectionConfigShapeValidatorAdapter
   implements ConnectionConfigShapeValidatorPort
@@ -58,23 +57,12 @@ export class KsefConnectionConfigShapeValidatorAdapter
       });
     }
 
-    const seller = config.seller;
-    if (seller !== undefined && seller !== null && typeof seller === 'object') {
-      const defaultTaxRate = (seller as Record<string, unknown>).defaultTaxRate;
-      if (defaultTaxRate !== undefined) {
-        if (typeof defaultTaxRate !== 'string' || defaultTaxRate.trim().length === 0) {
-          issues.push({
-            path: 'seller.defaultTaxRate',
-            message: 'must be a non-empty string',
-          });
-        } else if (!Object.prototype.hasOwnProperty.call(FA3_TAX_RATE_MAP, defaultTaxRate)) {
-          issues.push({
-            path: 'seller.defaultTaxRate',
-            message: `must be one of: ${Object.keys(FA3_TAX_RATE_MAP).join(', ')}`,
-          });
-        }
-      }
-    }
+    // #2257 — the `seller.defaultTaxRate` check is gone with the setting it
+    // guarded. Validating a key nothing reads would tell an operator their value
+    // is accepted, which is now the opposite of true: it is ignored. A value
+    // left behind in an existing config is inert and is deliberately not
+    // rejected either - failing a connection save over a dead key would be a
+    // gratuitous break for something that does nothing.
 
     const payment = config.payment;
     // A wrong-typed `payment` (or sub-object below) is rejected here rather

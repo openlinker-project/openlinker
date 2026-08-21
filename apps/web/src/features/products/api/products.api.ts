@@ -42,6 +42,7 @@ function buildQuery(
   const params = new URLSearchParams();
   if (filters?.search) params.set('search', filters.search);
   if (filters?.stock) params.set('stock', filters.stock);
+  if (filters?.taxRateState) params.set('taxRateState', filters.taxRateState);
   if (filters?.unlistedOn && filters.unlistedOn.length > 0) {
     params.set('unlistedOn', filters.unlistedOn.join(','));
   }
