@@ -88,9 +88,10 @@ export function AnalyticsTrustHeader({ connections }: AnalyticsTrustHeaderProps)
               {entry.connectionName}
             </span>
             <span className="trust-header__facts">
-              data from{' '}
               {entry.earliestOrderDate ? (
-                <TimeDisplay iso={entry.earliestOrderDate} format="date" />
+                <>
+                  data from <TimeDisplay iso={entry.earliestOrderDate} format="date" />
+                </>
               ) : (
                 'no orders yet'
               )}
