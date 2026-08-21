@@ -212,4 +212,68 @@ describe('SyncJobsService', () => {
       expect(result).toBeNull();
     });
   });
+
+  describe('findEnabledTaskByJobType (#2258)', () => {
+    it('matches a capability-scoped task that carries no platformType', () => {
+      schedulerTaskRegistry.getAll.mockReturnValue([
+        makeTask({
+          taskId: 'master-product-delta-sync',
+          jobType: 'master.product.syncDelta',
+          platformType: undefined,
+        }),
+      ]);
+
+      const result = service.findEnabledTaskByJobType('master.product.syncDelta');
+
+      expect(result?.taskId).toBe('master-product-delta-sync');
+    });
+
+    it('returns null when the task is registered but disabled via enabledEnvVar/enabledDefault', () => {
+      delete process.env.OL_MASTER_PRODUCT_DELTA_SYNC_ENABLED;
+      schedulerTaskRegistry.getAll.mockReturnValue([
+        makeTask({
+          jobType: 'master.product.syncDelta',
+          platformType: undefined,
+          enabledEnvVar: 'OL_MASTER_PRODUCT_DELTA_SYNC_ENABLED',
+          enabledDefault: false,
+        }),
+      ]);
+
+      const result = service.findEnabledTaskByJobType('master.product.syncDelta');
+
+      expect(result).toBeNull();
+    });
+
+    it('returns null when no task is registered for the job type', () => {
+      schedulerTaskRegistry.getAll.mockReturnValue([]);
+
+      const result = service.findEnabledTaskByJobType('master.product.syncDelta');
+
+      expect(result).toBeNull();
+    });
+
+    it('returns the first ENABLED match when several tasks share the job type', () => {
+      process.env.OL_FIRST_TASK_DISABLED = 'false';
+      schedulerTaskRegistry.getAll.mockReturnValue([
+        makeTask({
+          taskId: 'disabled-one',
+          jobType: 'master.product.syncDelta',
+          platformType: undefined,
+          enabledEnvVar: 'OL_FIRST_TASK_DISABLED',
+        }),
+        makeTask({
+          taskId: 'enabled-one',
+          jobType: 'master.product.syncDelta',
+          platformType: undefined,
+        }),
+      ]);
+
+      const result = service.findEnabledTaskByJobType('master.product.syncDelta');
+      // Cleared before the assertion so a failure cannot leak the var into
+      // later tests that rely on unset env defaults.
+      delete process.env.OL_FIRST_TASK_DISABLED;
+
+      expect(result?.taskId).toBe('enabled-one');
+    });
+  });
 });

@@ -11,6 +11,7 @@ export const connectionsQueryKeys = {
     ['connections', 'webhook-status', connectionId] as const,
   rateLimitStatus: (connectionId: string) =>
     ['connections', 'rate-limit-status', connectionId] as const,
+  catalogTrust: (connectionId: string) => ['connections', 'catalog-trust', connectionId] as const,
   subiektBankAccounts: (connectionId: string) =>
     ['connections', 'subiekt-bank-accounts', connectionId] as const,
   subiektCashRegisters: (connectionId: string) =>

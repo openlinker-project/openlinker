@@ -142,6 +142,7 @@ describe('AutoIssueTriggerService', () => {
       requeueDeadByIdempotencyKey: jest.fn().mockResolvedValue(false),
       findLastSucceededJob: jest.fn().mockResolvedValue(null),
       findEnabledPollTask: jest.fn().mockReturnValue(null),
+      findEnabledTaskByJobType: jest.fn().mockReturnValue(null),
     };
     // Every invoice-kind test defaults to a fully-supporting Invoicing
     // adapter, so the decision-7 deeper check never spuriously blocks

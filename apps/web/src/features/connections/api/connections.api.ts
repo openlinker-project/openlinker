@@ -1,5 +1,6 @@
 import type {
   BankAccount,
+  CatalogTrust,
   Connection,
   ConnectionDiagnostics,
   ConnectionFilters,
@@ -27,6 +28,7 @@ export interface ConnectionsApi {
   setWebhookSecret: (connectionId: string, secret: string) => Promise<void>;
   getWebhookStatus: (connectionId: string) => Promise<WebhookStatus>;
   getRateLimitStatus: (connectionId: string) => Promise<RateLimitStatus>;
+  getCatalogTrust: (connectionId: string) => Promise<CatalogTrust>;
   list: (filters?: ConnectionFilters) => Promise<Connection[]>;
   setDefaultBankAccount: (connectionId: string, accountId: string) => Promise<void>;
   test: (connectionId: string) => Promise<ConnectionTestResult>;
@@ -115,6 +117,9 @@ export function createConnectionsApi(request: ApiRequest): ConnectionsApi {
     },
     getRateLimitStatus(connectionId): Promise<RateLimitStatus> {
       return request<RateLimitStatus>(`/connections/${connectionId}/rate-limit-status`);
+    },
+    getCatalogTrust(connectionId): Promise<CatalogTrust> {
+      return request<CatalogTrust>(`/connections/${connectionId}/catalog-trust`);
     },
     list(filters): Promise<Connection[]> {
       return request<Connection[]>(`/connections${buildQuery(filters)}`);

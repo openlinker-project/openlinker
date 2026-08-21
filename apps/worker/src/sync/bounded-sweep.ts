@@ -18,6 +18,7 @@
  * @see {@link BoundedSweepInput} for the contract
  */
 
+import type { MasterSweepKind } from '@openlinker/core/sync';
 import type {
   BoundedSweepInput,
   BoundedSweepResult,
@@ -83,17 +84,22 @@ export function resolveSweepLockTtlMs(raw: string | undefined): number {
  * with the full pass. Sharing `product`'s lock would let the 20-minute full sweep —
  * which is mid-cycle more or less permanently on a large catalog — starve the delta
  * pass indefinitely while it logged "already in progress" and returned ok.
+ *
+ * The kind union and the CURSOR key builders moved to `@openlinker/core/sync`
+ * (#2258) so the catalog-trust read side builds the same keys from one source;
+ * they are re-exported here under their original names so the handlers and
+ * specs stay untouched. The LOCK key stays worker-local — nothing outside the
+ * worker takes a sweep lock.
  */
-export type SweepKind = 'product' | 'inventory' | 'product-delta' | 'product-reconcile';
+export type { MasterSweepKind as SweepKind } from '@openlinker/core/sync';
+export {
+  masterSweepCursorKey as sweepCursorKey,
+  masterSweepCompletedAtCursorKey as sweepCompletedAtCursorKey,
+} from '@openlinker/core/sync';
 
 /** `master:{kind}:sweep:{connectionId}` — one in-flight run per connection. */
-export function sweepLockKey(kind: SweepKind, connectionId: string): string {
+export function sweepLockKey(kind: MasterSweepKind, connectionId: string): string {
   return `master:${kind}:sweep:${connectionId}`;
-}
-
-/** `master.{kind}.sweep:connection:{connectionId}` */
-export function sweepCursorKey(kind: SweepKind, connectionId: string): string {
-  return `master.${kind}.sweep:connection:${connectionId}`;
 }
 
 /**
