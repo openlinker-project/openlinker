@@ -27,6 +27,14 @@
  * non-mixed case, so `totalValue` is always rendered currency-neutral here.
  * This is a documented interim pending #2049's reporting-currency stamping.
  *
+ * Single-predicate deep-link rule (#2120 re-review, IMPORTANT): the deep
+ * link into the bulk wizard must never name a channel the headline itself
+ * declined to name. `deriveCoverageHeadline` is therefore the ONLY place
+ * that decides whether a single connection can be named, and it reports
+ * that decision back as `resolvedConnectionId` — callers build the
+ * `connectionId` query param from this field, never by re-deriving their
+ * own (weaker) predicate over `items`.
+ *
  * @module apps/web/src/features/analytics/lib
  */
 import type {
@@ -40,6 +48,11 @@ export interface AttentionRowCopy {
   sub: string;
 }
 
+export interface CoverageHeadlineCopy extends AttentionRowCopy {
+  /** The single connection the headline named, or `null` when it fell back to the ambiguous copy. */
+  resolvedConnectionId: string | null;
+}
+
 type ConnectionNameResolver = (connectionId: string) => string;
 
 function uniqueValues<T>(values: T[]): T[] {
@@ -50,7 +63,7 @@ export function deriveCoverageHeadline(
   items: CoverageGapItem[],
   totalCount: number,
   connectionName: ConnectionNameResolver
-): AttentionRowCopy {
+): CoverageHeadlineCopy {
   const variantWord = totalCount === 1 ? 'variant' : 'variants';
   const singleMissingConnectionIds = uniqueValues(
     items
@@ -68,12 +81,14 @@ export function deriveCoverageHeadline(
     return {
       headline: `${totalCount} ${variantWord} missing from ${connectionName(singleMissingConnectionIds[0])}`,
       sub: 'listed elsewhere, not yet published on this channel',
+      resolvedConnectionId: singleMissingConnectionIds[0],
     };
   }
 
   return {
     headline: `${totalCount} ${variantWord} with a listing gap on at least one channel`,
     sub: 'open the listing flow to see which channel is missing each one',
+    resolvedConnectionId: null,
   };
 }
 

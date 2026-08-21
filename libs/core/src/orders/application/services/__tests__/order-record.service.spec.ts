@@ -39,7 +39,7 @@ describe('OrderRecordService', () => {
     repository = {
       findById: jest.fn(),
       findByIds: jest.fn(),
-      findEarliestPlacedAtByConnection: jest.fn(),
+      findEarliestOrderDateByConnection: jest.fn(),
       upsert: jest.fn(),
       upsertWithLineItems: jest.fn(),
       updateSyncStatus: jest.fn(),
@@ -1018,12 +1018,12 @@ describe('OrderRecordService', () => {
   describe('getEarliestOrderDateByConnection (#2083)', () => {
     it('delegates to the repository as a pure passthrough', async () => {
       const map = new Map([['conn-1', new Date('2026-01-01T00:00:00.000Z')]]);
-      repository.findEarliestPlacedAtByConnection.mockResolvedValue(map);
+      repository.findEarliestOrderDateByConnection.mockResolvedValue(map);
 
       const result = await service.getEarliestOrderDateByConnection(['conn-1', 'conn-2']);
 
       expect(result).toBe(map);
-      expect(repository.findEarliestPlacedAtByConnection).toHaveBeenCalledWith([
+      expect(repository.findEarliestOrderDateByConnection).toHaveBeenCalledWith([
         'conn-1',
         'conn-2',
       ]);
@@ -1101,6 +1101,7 @@ describe('OrderRecordService', () => {
     };
 
     it('composes the three raw reads + earliest-date lookup into the response', async () => {
+      reportingCurrencySettings.resolve.mockResolvedValue('EUR');
       const dailyRows = [
         {
           day: new Date('2026-08-01T00:00:00.000Z'),
@@ -1115,20 +1116,20 @@ describe('OrderRecordService', () => {
           reportingCurrency: 'EUR',
         },
       ];
-      const unitsByConnection = new Map([['conn-a', 5]]);
+      const unitsByConnection = new Map([['conn-a', { unitsSold: 5, unconvertedUnitsSold: 0 }]]);
       const earliestMap = new Map([['conn-a', new Date('2026-07-01T00:00:00.000Z')]]);
 
       repository.getDailyOrderAggregates.mockResolvedValue(dailyRows);
       repository.getMedianOrderValue.mockResolvedValue(90);
       lineItemRepository.getUnitsSoldByConnection.mockResolvedValue(unitsByConnection);
-      repository.findEarliestPlacedAtByConnection.mockResolvedValue(earliestMap);
+      repository.findEarliestOrderDateByConnection.mockResolvedValue(earliestMap);
 
       const result = await service.getSalesAndChannelAnalytics(filters);
 
-      expect(repository.getDailyOrderAggregates).toHaveBeenCalledWith(filters);
-      expect(repository.getMedianOrderValue).toHaveBeenCalledWith(filters);
-      expect(lineItemRepository.getUnitsSoldByConnection).toHaveBeenCalledWith(filters);
-      expect(repository.findEarliestPlacedAtByConnection).toHaveBeenCalledWith(['conn-a']);
+      expect(repository.getDailyOrderAggregates).toHaveBeenCalledWith(filters, 'EUR');
+      expect(repository.getMedianOrderValue).toHaveBeenCalledWith(filters, 'EUR');
+      expect(lineItemRepository.getUnitsSoldByConnection).toHaveBeenCalledWith(filters, 'EUR');
+      expect(repository.findEarliestOrderDateByConnection).toHaveBeenCalledWith(['conn-a']);
       expect(result.headline.revenue).toBe(200);
       expect(result.headline.medianOrderValue).toBe(90);
       expect(result.headline.unitsSold).toBe(5);
@@ -1140,11 +1141,11 @@ describe('OrderRecordService', () => {
       repository.getDailyOrderAggregates.mockResolvedValue([]);
       repository.getMedianOrderValue.mockResolvedValue(null);
       lineItemRepository.getUnitsSoldByConnection.mockResolvedValue(new Map());
-      repository.findEarliestPlacedAtByConnection.mockResolvedValue(new Map());
+      repository.findEarliestOrderDateByConnection.mockResolvedValue(new Map());
 
       const result = await service.getSalesAndChannelAnalytics(filters);
 
-      expect(repository.findEarliestPlacedAtByConnection).toHaveBeenCalledWith([]);
+      expect(repository.findEarliestOrderDateByConnection).toHaveBeenCalledWith([]);
       expect(result.headline.revenue).toBe(0);
       expect(result.channels).toEqual([]);
     });

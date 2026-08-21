@@ -50,8 +50,12 @@ export class SalesAnalyticsHeadlineDto {
   @ApiProperty()
   orderCount!: number;
 
-  @ApiProperty()
-  averageOrderValue!: number;
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    description: 'null when orderCount is 0 (distinct from a genuine zero AOV).',
+  })
+  averageOrderValue!: number | null;
 
   @ApiProperty({
     type: Number,
@@ -61,8 +65,15 @@ export class SalesAnalyticsHeadlineDto {
   })
   medianOrderValue!: number | null;
 
-  @ApiProperty()
+  @ApiProperty({
+    description: 'Units sold on the same current-era-stamped orders orderCount/revenue count.',
+  })
   unitsSold!: number;
+
+  @ApiProperty({
+    description: 'Units sold on unconvertedCount orders — the unitsSold companion to unconvertedValue.',
+  })
+  unconvertedUnitsSold!: number;
 
   @ApiProperty()
   cancelledCount!: number;
@@ -108,6 +119,7 @@ export class SalesAnalyticsHeadlineDto {
     dto.averageOrderValue = headline.averageOrderValue;
     dto.medianOrderValue = headline.medianOrderValue;
     dto.unitsSold = headline.unitsSold;
+    dto.unconvertedUnitsSold = headline.unconvertedUnitsSold;
     dto.cancelledCount = headline.cancelledCount;
     dto.cancelledValue = headline.cancelledValue;
     dto.currency = headline.currency;
@@ -129,11 +141,20 @@ export class ChannelSalesAnalyticsDto {
   @ApiProperty()
   orderCount!: number;
 
-  @ApiProperty()
-  averageOrderValue!: number;
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    description: 'Same meaning as the headline averageOrderValue field — null when orderCount is 0.',
+  })
+  averageOrderValue!: number | null;
 
   @ApiProperty()
   unitsSold!: number;
+
+  @ApiProperty({
+    description: 'Same meaning as the headline unconvertedUnitsSold field, scoped to this channel.',
+  })
+  unconvertedUnitsSold!: number;
 
   @ApiProperty()
   cancelledCount!: number;
@@ -165,8 +186,12 @@ export class ChannelSalesAnalyticsDto {
   })
   unconvertedCurrency!: string | null;
 
-  @ApiProperty({ description: 'Share of headline revenue, 0 when headline revenue is 0.' })
-  revenueShare!: number;
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    description: 'Share of headline revenue, null when headline revenue is 0.',
+  })
+  revenueShare!: number | null;
 
   @ApiProperty({ type: [DailyTrendPointDto] })
   trend!: DailyTrendPointDto[];
@@ -184,6 +209,7 @@ export class ChannelSalesAnalyticsDto {
     dto.orderCount = channel.orderCount;
     dto.averageOrderValue = channel.averageOrderValue;
     dto.unitsSold = channel.unitsSold;
+    dto.unconvertedUnitsSold = channel.unconvertedUnitsSold;
     dto.cancelledCount = channel.cancelledCount;
     dto.cancelledValue = channel.cancelledValue;
     dto.currency = channel.currency;

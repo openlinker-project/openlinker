@@ -114,7 +114,39 @@ describe('MasterProductSyncService', () => {
       variantsUpserted: 1,
       masterDeleted: false,
       pruneSkipped: false,
+      pruneSkippedReason: null,
     });
+  });
+
+  it('sanitizes a hostile master description before persisting it (#2198)', async () => {
+    // OpenLinker pulls whatever the master returns, so a compromised or hostile
+    // source shop is the realistic vector for stored XSS. Sanitized at this
+    // choke point rather than in each adapter's mapper, so every current and
+    // future ProductMaster is covered by one call.
+    adapter.getProduct.mockResolvedValueOnce({
+      ...makeProduct(),
+      description: '<p>Real copy</p><script>fetch("https://evil.example")</script>',
+    });
+
+    await service.syncFromMasterByExternalId(connectionId, externalId);
+
+    const persisted = productsService.upsertProduct.mock.calls[0][0] as { description: string };
+    expect(persisted.description).not.toContain('<script');
+    expect(persisted.description).not.toContain('evil.example');
+    expect(persisted.description).toContain('<p>Real copy</p>');
+  });
+
+  it('keeps a shop description the destinations would reject, since narrowing is the publish path', async () => {
+    adapter.getProduct.mockResolvedValueOnce({
+      ...makeProduct(),
+      description: '<div style="font-family:Verdana"><table><tbody><tr><td>620 g</td></tr></tbody></table></div>',
+    });
+
+    await service.syncFromMasterByExternalId(connectionId, externalId);
+
+    const persisted = productsService.upsertProduct.mock.calls[0][0] as { description: string };
+    expect(persisted.description).toContain('<table>');
+    expect(persisted.description).toContain('Verdana');
   });
 
   it('does not emit when nothing was newly marked stale', async () => {
@@ -138,7 +170,11 @@ describe('MasterProductSyncService', () => {
       internalProductId,
       variantsUpserted: 0,
       masterDeleted: false,
+      // `pruneSkipped` stays false — it means RIVAL-blocked. The zero-variant
+      // skip reports itself through the reason instead, so an operator can tell
+      // a #1904 collision from a flaky master response (#2222).
       pruneSkipped: false,
+      pruneSkippedReason: 'empty-response',
     });
   });
 
@@ -170,6 +206,7 @@ describe('MasterProductSyncService', () => {
       variantsUpserted: 0,
       masterDeleted: true,
       pruneSkipped: false,
+      pruneSkippedReason: null,
     });
   });
 
@@ -217,6 +254,7 @@ describe('MasterProductSyncService', () => {
         variantsUpserted: 1,
         masterDeleted: false,
         pruneSkipped: true,
+        pruneSkippedReason: 'rival',
       });
     });
 
@@ -235,6 +273,7 @@ describe('MasterProductSyncService', () => {
         variantsUpserted: 0,
         masterDeleted: true,
         pruneSkipped: true,
+        pruneSkippedReason: 'rival',
       });
     });
   });

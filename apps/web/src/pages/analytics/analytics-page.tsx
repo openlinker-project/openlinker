@@ -25,10 +25,14 @@ import {
   useAnalyticsTrustQuery,
   type SalesAnalyticsFilters,
 } from '../../features/analytics';
-import { Button, EmptyState, ErrorState, LoadingState } from '../../shared/ui';
+import { Button, EmptyState, ErrorState, LoadingState, PageLayout } from '../../shared/ui';
 
 export function AnalyticsPage(): ReactElement {
   const [searchParams, setSearchParams] = useSearchParams();
+  // Frozen once per mount rather than re-read on every render: a dashboard
+  // left open overnight keeps deriving "30d"/"7d" from the day it was
+  // opened, which is preferable to the preset ranges silently shifting
+  // under an operator mid-session (#2098 tech review).
   const today = useRef(new Date()).current;
   const defaultRange = useRef(computePresetRange('30d', today)).current;
 
@@ -64,17 +68,11 @@ export function AnalyticsPage(): ReactElement {
   const salesFilters: SalesAnalyticsFilters = useMemo(() => ({ from, to }), [from, to]);
 
   return (
-    <section className="page-section">
-      <div className="page-header">
-        <div className="page-header__content">
-          <p className="eyebrow">Operations</p>
-          <h2 className="page-title">Analytics</h2>
-          <p className="page-description">
-            Sales across connected channels, with clear data coverage.
-          </p>
-        </div>
-      </div>
-
+    <PageLayout
+      eyebrow="Operations"
+      title="Analytics"
+      description="Sales across connected channels, with clear data coverage."
+    >
       <AnalyticsDateRangeToolbar from={from} to={to} onApply={handleApply} />
 
       {trustQuery.isLoading ? (
@@ -129,6 +127,6 @@ export function AnalyticsPage(): ReactElement {
           )}
         </>
       ) : null}
-    </section>
+    </PageLayout>
   );
 }

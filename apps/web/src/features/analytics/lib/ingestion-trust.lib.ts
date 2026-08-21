@@ -10,11 +10,22 @@
  *
  * @module apps/web/src/features/analytics/lib
  */
-import type { ConnectionIngestionTrust } from '../api/analytics-trust.types';
+import type { ConnectionIngestionStatus, ConnectionIngestionTrust } from '../api/analytics-trust.types';
 
-const DEGRADED_STATUSES = new Set(['stalled', 'disconnected']);
+// `unknown` (a per-connection build failure — the worst status per
+// `computeWorstStatus`'s own ranking) is deliberately excluded: it isn't
+// the operator's fault and there's nothing to act on beyond what the trust
+// header already shows, so banner-worthy is a narrower set than
+// worst-status (#2098 tech review).
+const DEGRADED_STATUSES = new Set<ConnectionIngestionStatus>(['stalled', 'disconnected']);
 
-export function shouldShowDegradationBanner(
+/**
+ * Returns the subset of connections whose ingestion is degraded — never a
+ * boolean. Named for what it returns (not `shouldShow*`, which every
+ * plain-`if` caller would misread as truthy on a non-empty *or* the
+ * always-truthy array itself).
+ */
+export function selectDegradedConnections(
   entries: ConnectionIngestionTrust[],
 ): ConnectionIngestionTrust[] {
   return entries.filter((entry) => DEGRADED_STATUSES.has(entry.status));

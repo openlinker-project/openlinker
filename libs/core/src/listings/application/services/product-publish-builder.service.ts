@@ -24,6 +24,11 @@
  */
 
 import { Inject, Injectable } from '@nestjs/common';
+import {
+  formatDescriptionForDestination,
+  resolveShopDescriptionFormat,
+} from './description-format-resolution';
+import type { DescriptionFormat } from '../../domain/types/description-format.types';
 
 import { Logger } from '@openlinker/shared/logging';
 import {
@@ -127,7 +132,19 @@ export class ProductPublishBuilderService implements IProductPublishBuilderServi
             buildProjectionMetadata(product, variant, variant.gtin ?? variant.ean ?? null)
           );
 
-    const content = this.buildContent(input.content, product);
+    // ADR-046: the destination declares what it accepts in a description.
+    // Resolved here rather than inside `buildContent` so the resolution happens
+    // once per build and stays on the path that already awaits - the category
+    // provisioner's own resolution below is conditional and cannot be reused.
+    const destination = await this.integrationsService.getCapabilityAdapter<ShopProductManagerPort>(
+      input.connectionId,
+      'ProductPublisher'
+    );
+    const content = this.buildContent(
+      input.content,
+      product,
+      resolveShopDescriptionFormat(destination)
+    );
 
     // Master-derived barcode/weight: prefer the variant's own value, fall back
     // to the product's. Empty/absent ⇒ omitted (never sent as blank/zero).
@@ -332,10 +349,16 @@ export class ProductPublishBuilderService implements IProductPublishBuilderServi
    */
   private buildContent(
     overrides: PublishProductContent | undefined,
-    product: { name: string; description: string | null; images: string[] | null }
+    product: { name: string; description: string | null; images: string[] | null },
+    descriptionFormat: DescriptionFormat
   ): PublishProductContent | undefined {
     const title = overrides?.title ?? product.name;
-    const description = overrides?.description ?? product.description;
+    // ADR-046: shape for the shop's declared format. `getDescriptionFormat` is
+    // required on `ShopProductManagerPort`, so a shop always declares one.
+    const description = formatDescriptionForDestination(
+      overrides?.description ?? product.description,
+      descriptionFormat
+    );
     const imageUrls = overrides?.imageUrls ?? product.images;
 
     const content: PublishProductContent = {};

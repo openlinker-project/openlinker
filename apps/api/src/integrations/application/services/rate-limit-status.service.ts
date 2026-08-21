@@ -20,6 +20,13 @@ import { Inject, Injectable } from '@nestjs/common';
 import { ConnectionPort, CONNECTION_PORT_TOKEN } from '@openlinker/core/identifier-mapping';
 import type { ConnectionRateLimit } from '@openlinker/core/identifier-mapping';
 import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
+import {
+  EAN_CATEGORY_MATCHER_STREAMING_CAPABILITY,
+  isEanCategoryMatcherStreaming,
+  type EanCategoryMatcherStreaming,
+  type OfferManagerPort,
+  type ResolveConcurrencyCeiling,
+} from '@openlinker/core/listings';
 import { RATE_LIMITER_REGISTRY_TOKEN } from '@openlinker/plugin-sdk';
 // Non-type-only import: RateLimiterRegistry is the type of a constructor
 // parameter on an @Injectable() class, and `emitDecoratorMetadata` requires
@@ -48,8 +55,15 @@ export class RateLimitStatusService implements IRateLimitStatusService {
     const explicit = connection.config?.rateLimit;
     const effective = explicit ?? (await this.resolveDefaultRateLimit(connection));
 
+    // Read on BOTH paths below. A resolve ceiling is applied inside the
+    // adapter, below the shared limiter, so it is exactly the connection with
+    // no limiter policy — the one that used to answer a bare
+    // `{ enabled: false }` — whose ceiling the operator most needs to see
+    // (#2229).
+    const resolveConcurrency = await this.resolveConcurrencyCeiling(connectionId, connection);
+
     if (!effective || (effective.requestsPerMinute === undefined && effective.maxConcurrent === undefined)) {
-      return { enabled: false };
+      return resolveConcurrency ? { enabled: false, resolveConcurrency } : { enabled: false };
     }
 
     const live = this.rateLimiterRegistry.getStatus(connectionId);
@@ -61,7 +75,68 @@ export class RateLimitStatusService implements IRateLimitStatusService {
       inFlight: live?.inFlight ?? 0,
       queued: live?.queued ?? 0,
       lastAcquiredAt: live?.lastAcquiredAt ?? null,
+      ...(resolveConcurrency ? { resolveConcurrency } : {}),
     };
+  }
+
+  /**
+   * Ask the connection's own `OfferManager` adapter what ceiling it enforces on
+   * a streamed category resolve (#2229). Neutral in both directions: the host
+   * never names a platform, and an adapter that declares nothing produces no
+   * field rather than a fabricated number.
+   *
+   * Three outcomes yield no field rather than an error, because this is a
+   * supplementary line on a status read and none of them is something the
+   * operator can act on here:
+   *
+   * - **The manifest does not advertise the capability**, or cannot be
+   *   resolved at all (a legacy row with an unmapped `platformType`). Checked
+   *   first, so the adapter is never built for a destination that could not
+   *   report a ceiling anyway.
+   * - **Adapter construction throws.** Building a capability adapter resolves
+   *   credentials (`AllegroAdapterFactory.resolveCredentials` raises on a
+   *   connection that has none yet), so a half-configured connection would
+   *   otherwise lose its whole rate-limit readout to a cosmetic addition.
+   * - **The method is absent.** `isEanCategoryMatcherStreaming` tests only
+   *   `streamCategoriesForBatchByEan`, so an out-of-tree plugin compiled
+   *   against an older `libs/core` satisfies the guard without implementing
+   *   this method — hence the explicit `typeof` probe, mirroring ADR-046's
+   *   description-format resolver.
+   */
+  private async resolveConcurrencyCeiling(
+    connectionId: string,
+    connection: { platformType: string; adapterKey?: string }
+  ): Promise<ResolveConcurrencyCeiling | undefined> {
+    try {
+      // Manifest first, adapter second — the advertised-without-dispatch
+      // discovery pattern. Building the adapter resolves credentials, so
+      // skipping that for a destination whose manifest cannot report a ceiling
+      // keeps a settings-page read from touching the credential store for
+      // every non-marketplace connection in the deployment.
+      const metadata = await this.integrationsService.resolveAdapterMetadata({
+        platformType: connection.platformType,
+        adapterKey: connection.adapterKey,
+      });
+      if (!metadata.supportedCapabilities.includes(EAN_CATEGORY_MATCHER_STREAMING_CAPABILITY)) {
+        return undefined;
+      }
+
+      const adapter = await this.integrationsService.getCapabilityAdapter<OfferManagerPort>(
+        connectionId,
+        'OfferManager'
+      );
+      if (!isEanCategoryMatcherStreaming(adapter)) return undefined;
+
+      const streaming: Partial<EanCategoryMatcherStreaming> = adapter;
+      if (typeof streaming.getStreamConcurrency !== 'function') return undefined;
+
+      return streaming.getStreamConcurrency();
+    } catch (error) {
+      this.logger.debug(
+        `No resolve-concurrency ceiling reported for connection ${connectionId}: ${(error as Error).message}`
+      );
+      return undefined;
+    }
   }
 
   /**

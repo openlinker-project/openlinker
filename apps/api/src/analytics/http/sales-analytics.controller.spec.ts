@@ -13,6 +13,7 @@ describe('SalesAnalyticsController', () => {
       averageOrderValue: 129.72,
       medianOrderValue: 98,
       unitsSold: 311,
+      unconvertedUnitsSold: 5,
       cancelledCount: 4,
       cancelledValue: 612,
       currency: 'EUR',
@@ -28,6 +29,7 @@ describe('SalesAnalyticsController', () => {
         orderCount: 90,
         averageOrderValue: 133.1,
         unitsSold: 200,
+        unconvertedUnitsSold: 1,
         cancelledCount: 3,
         cancelledValue: 450,
         currency: 'EUR',
@@ -67,6 +69,7 @@ describe('SalesAnalyticsController', () => {
     expect(result.headline.unconvertedCount).toBe(2);
     expect(result.headline.unconvertedValue).toBe(145);
     expect(result.headline.unconvertedCurrency).toBe('PLN');
+    expect(result.headline.unconvertedUnitsSold).toBe(5);
     expect(result.channels).toHaveLength(1);
     expect(result.channels[0].sourceConnectionId).toBe('conn-a');
     expect(result.channels[0].coverageComplete).toBe(true);
@@ -102,4 +105,16 @@ describe('SalesAnalyticsController', () => {
     ).rejects.toThrow(BadRequestException);
   });
 
+  it('throws BadRequestException when the range exceeds the max window (#1987 review, suggestion 3)', async () => {
+    const service = createService();
+    const controller = new SalesAnalyticsController(service as unknown as IOrderRecordService);
+
+    await expect(
+      controller.getSalesAnalytics({
+        from: '1970-01-01T00:00:00.000Z',
+        to: '2100-01-01T00:00:00.000Z',
+      })
+    ).rejects.toThrow(BadRequestException);
+    expect(service.getSalesAndChannelAnalytics).not.toHaveBeenCalled();
+  });
 });

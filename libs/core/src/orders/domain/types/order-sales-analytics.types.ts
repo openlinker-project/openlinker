@@ -51,11 +51,18 @@ export interface SalesAnalyticsFilters {
 export interface DailyOrderAggregateRow {
   day: Date;
   sourceConnectionId: string;
-  /** Non-cancelled orders with a `reportingCurrency` stamp. */
+  /**
+   * Non-cancelled orders stamped with the CURRENT system reporting currency
+   * (#1987 review notes, ported from #2172's fix for `getTopProductRanking`):
+   * a prior-era stamp — one taken while the operator's reporting-currency
+   * setting held a different value (#2096) — is folded into
+   * `unconvertedCount`/`unconvertedValue` rather than counted here, so a
+   * setting change never silently mixes two currencies into one `revenue`.
+   */
   orderCount: number;
-  /** `SUM(reportingTotalAmount)` over the same stamped, non-cancelled set. */
+  /** `SUM(reportingTotalAmount)` over the same current-era stamped, non-cancelled set. */
   revenue: number;
-  /** Non-cancelled orders in range with no `reportingCurrency` stamp yet. */
+  /** Non-cancelled orders in range with no CURRENT-era `reportingCurrency` stamp. */
   unconvertedCount: number;
   /** Native-currency `SUM(totalAmount)` for `unconvertedCount` — informational, may mix currencies. */
   unconvertedValue: number;
@@ -81,6 +88,17 @@ export interface DailyOrderAggregateRow {
 }
 
 /**
+ * Per-connection units-sold split (#1987 review, IMPORTANT 1) — the same
+ * current-era-stamped / unconverted split `revenue`/`unconvertedValue` use,
+ * so a caller can never divide `orderCount` by a `unitsSold` drawn from a
+ * different population. See `OrderLineItemRepositoryPort.getUnitsSoldByConnection`.
+ */
+export interface ConnectionUnitsSold {
+  unitsSold: number;
+  unconvertedUnitsSold: number;
+}
+
+/**
  * One point of the 7-day daily trend series (revenue + order count only —
  * AOV/median/units carry no trend, per the #1987 scope).
  */
@@ -96,7 +114,13 @@ export interface DailyTrendPoint {
 export interface SalesAnalyticsHeadline {
   revenue: number;
   orderCount: number;
-  averageOrderValue: number;
+  /**
+   * `null` when `orderCount` is `0` (#1987 review, IMPORTANT 2) — flattening
+   * to `0` made "nothing stamped in range" indistinguishable from a genuine
+   * zero AOV, which read as a contradiction next to `medianOrderValue: null`
+   * on the same KPI strip.
+   */
+  averageOrderValue: number | null;
   /**
    * `null` when no stamped order matches the range (the underlying
    * `PERCENTILE_CONT` has no rows to aggregate) — distinct from a genuine
@@ -106,16 +130,26 @@ export interface SalesAnalyticsHeadline {
    * the same `0`).
    */
   medianOrderValue: number | null;
+  /**
+   * Units sold on orders in the SAME population `revenue`/`orderCount` count
+   * — current-era stamped, non-cancelled (#1987 review, IMPORTANT 1). Before
+   * this it summed every non-cancelled `order_line_items` row regardless of
+   * stamp state, so a deployment with pre-#2049 history could read
+   * `orderCount: 0` next to `unitsSold: 340` for the same range.
+   */
   unitsSold: number;
+  /** Units sold on orders in `unconvertedCount`'s population — the `unitsSold` companion, mirroring `unconvertedCount`/`unconvertedValue`. */
+  unconvertedUnitsSold: number;
   cancelledCount: number;
   cancelledValue: number;
   /**
-   * The reporting currency `revenue`/`averageOrderValue`/`medianOrderValue`
-   * are expressed in. `null` when no order in range has been stamped yet
-   * (every order falls into `unconvertedCount`/`unconvertedValue` instead).
+   * The reporting currency `revenue`/`averageOrderValue`/`medianOrderValue`/
+   * `unitsSold` are expressed in. `null` when no order in range has been
+   * stamped with the current reporting currency yet (every order falls into
+   * `unconvertedCount`/`unconvertedValue`/`unconvertedUnitsSold` instead).
    */
   currency: string | null;
-  /** Non-cancelled orders in range with no `reportingCurrency` stamp yet — not reflected in `revenue`. */
+  /** Non-cancelled orders in range with no CURRENT-era `reportingCurrency` stamp — not reflected in `revenue`/`unitsSold`. */
   unconvertedCount: number;
   /** Native-currency sum for `unconvertedCount` — informational, may mix currencies. */
   unconvertedValue: number;
@@ -136,8 +170,12 @@ export interface ChannelSalesAnalytics {
   sourceConnectionId: string;
   revenue: number;
   orderCount: number;
-  averageOrderValue: number;
+  /** Same meaning as {@link SalesAnalyticsHeadline.averageOrderValue}, scoped to this channel — `null` when `orderCount` is `0`. */
+  averageOrderValue: number | null;
+  /** Same meaning as {@link SalesAnalyticsHeadline.unitsSold}, scoped to this channel. */
   unitsSold: number;
+  /** Same meaning as {@link SalesAnalyticsHeadline.unconvertedUnitsSold}, scoped to this channel. */
+  unconvertedUnitsSold: number;
   cancelledCount: number;
   cancelledValue: number;
   /** Same meaning as {@link SalesAnalyticsHeadline.currency}, scoped to this channel. */
@@ -148,8 +186,13 @@ export interface ChannelSalesAnalytics {
   unconvertedValue: number;
   /** Same meaning as {@link SalesAnalyticsHeadline.unconvertedCurrency}, scoped to this channel. */
   unconvertedCurrency: string | null;
-  /** Share of headline revenue, `0` when headline revenue is `0`. */
-  revenueShare: number;
+  /**
+   * Share of headline revenue, `null` when headline revenue is `0` (#1987
+   * review, IMPORTANT 2) — mirrors `averageOrderValue`'s "nothing to report"
+   * fix; `0` would have claimed a real 0% share of a headline that itself
+   * has nothing to share.
+   */
+  revenueShare: number | null;
   trend: DailyTrendPoint[];
   /**
    * `false` when this channel's oldest ingested order (per

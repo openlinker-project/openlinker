@@ -33,7 +33,9 @@
  * the description sanitizer follows.
  *
  * @module infrastructure/util
- * @see {@link sanitizeAllegroDescription} for the parallel description sanitizer
+ * @see `DescriptionFormat` / `applyDescriptionFormat` (@openlinker/core/listings) for
+ *      the description contract, which replaced the parallel description sanitizer
+ *      this file used to point at (ADR-046)
  */
 
 /**
@@ -65,7 +67,7 @@ export const BANNED_NAME_CHAR_MAP: Readonly<Record<string, string>> = {
  * - Idempotent on clean ASCII input (round-trips unchanged).
  * - Whitespace collapse covers both substitution-introduced runs (`a — b`
  *   → `a - b`, not `a  -  b`) and pre-existing operator-typed double
- *   spaces. This is a deliberate divergence from `sanitizeAllegroDescription`
+ *   spaces. This was a deliberate divergence from the removed description sanitizer (ADR-046)
  *   which preserves whitespace; for short name fields it's a UX nicety.
  * - Returns the empty string for empty or whitespace-only input.
  */
