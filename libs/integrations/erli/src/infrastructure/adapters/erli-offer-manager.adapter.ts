@@ -42,13 +42,12 @@
  * reconciliation-first / eventual-consistency posture of ADR-025 §1 (window
  * bounded by the cron cadence, not the cache TTL).
  *
- * CAVEAT — inert in the default config (#1063 review): the PRIMARY cache writer,
- * the `erli-offer-status-sync` reconciliation, is opt-in / default-OFF until #992
- * (`OL_ERLI_OFFER_STATUS_SYNC_SCHEDULER_ENABLED=true`). Until it's enabled the only
- * active writer is `updateOfferFields` (content-publish), so most offers never get
- * a cached flag and `updateOfferQuantity` fails open (pushes) — i.e. frozen-stock
- * is NOT effectively honored in the out-of-the-box config. Accepted as a pre-#992
- * limitation; full honoring activates together with the reconciliation task.
+ * The PRIMARY cache writer, the `erli-offer-status-sync` reconciliation, runs by
+ * DEFAULT since #2230 (it was opt-in / default-OFF under review #1063, which left
+ * frozen-stock effectively unhonored out of the box because `updateOfferFields`
+ * was then the only active writer). A deployment that sets
+ * `OL_ERLI_OFFER_STATUS_SYNC_SCHEDULER_ENABLED=false` re-enters that state: most
+ * offers never get a cached flag and `updateOfferQuantity` fails open (pushes).
  *
  * Stock-restore-on-cancel (#997 Half B / ADR-025 §4a, wired by #1146): the
  * MECHANISM lands here as `restoreStockOnCancellation` (the #1146
@@ -134,7 +133,10 @@ import { Logger } from '@openlinker/shared/logging';
 import { ErliApiException } from '../../domain/exceptions/erli-api.exception';
 import { ErliConfigException } from '../../domain/exceptions/erli-config.exception';
 import { ERLI_PRODUCT_ID_PATTERN, erliProductPath } from '../../erli.constants';
-import type { ErliDispatchTime } from '../../domain/types/erli-connection.types';
+import type {
+  AllegroCatalogEnvironment,
+  ErliDispatchTime,
+} from '../../domain/types/erli-connection.types';
 import type { AllegroCategoryCatalogClient } from '../http/allegro-category-catalog-client';
 import type { IErliHttpClient } from '../http/erli-http-client.interface';
 import type {
@@ -240,9 +242,41 @@ export class ErliOfferManagerAdapter
    * `CategoryBrowser` / `CategoryParametersReader` of its own. Declaring this
    * lets core reuse an operator's existing PrestaShop→Allegro category/attribute
    * mappings for an Erli destination with zero re-authoring (#1045).
+   *
+   * The value is ENVIRONMENT-QUALIFIED (#2210), because Allegro publishes a
+   * different tree per environment and an Allegro connection declares itself
+   * accordingly (`'allegro:sandbox'` for a sandbox connection, #2063). Returning
+   * a bare `'allegro'` from a connection that borrows the SANDBOX catalogue
+   * would name an owner no sandbox connection answers to, so every borrowed
+   * lookup would silently find nothing.
+   *
+   * The environment is resolved by `resolveErliAllegroTaxonomyEnvironment`, the
+   * same helper the factory uses to build the catalogue client, so the owner
+   * declared here always names the tree this connection actually reads. It is
+   * NOT derived from Erli's own `config.environment`: that selects the Erli Shop
+   * API host, a different axis, and an Erli sandbox connection borrowing the
+   * real Allegro catalogue is the ordinary test topology - the one that broke
+   * when the two values were derived independently.
    */
   getBorrowedTaxonomy(): TaxonomyOwner {
-    return 'allegro';
+    return this.allegroEnvironment === 'sandbox' ? 'allegro:sandbox' : 'allegro';
+  }
+
+  /**
+   * `TaxonomyBorrower.allowsBorrowedCatalogueLookup` - whether core may resolve
+   * this destination's EAN lookups through a PEER connection that owns the
+   * borrowed taxonomy (#2210).
+   *
+   * `false` is the operator's ADR-031 "Allegro category access" opt-out
+   * (#1934/F10). Borrowing is a different mechanism from this connection's own
+   * category browsing - it spends the peer's OAuth credentials and the peer's
+   * rate-limit budget, not this connection's Allegro keys - so it slips that
+   * toggle unless it is answered here. It is still the effect the operator
+   * switched off: up to one Allegro catalogue call per variant, caused by this
+   * connection.
+   */
+  allowsBorrowedCatalogueLookup(): boolean {
+    return this.allegroCatalogueAccessAllowed;
   }
 
   /**
@@ -297,6 +331,23 @@ export class ErliOfferManagerAdapter
      * pre-fix behaviour.
      */
     private readonly webBaseUrl?: string,
+    /**
+     * Which Allegro environment this connection borrows its taxonomy from
+     * (`config.allegroEnvironment`, ADR-031). Read by
+     * {@link getBorrowedTaxonomy} so the declared owner matches the identity the
+     * corresponding Allegro connection reports (#2210). Optional: absent means
+     * production, the pre-#2210 behaviour.
+     */
+    private readonly allegroEnvironment?: AllegroCatalogEnvironment,
+    /**
+     * Whether the operator left ADR-031 Allegro category access enabled for this
+     * connection (#1934/F10). Read by
+     * {@link allowsBorrowedCatalogueLookup} so the opt-out also covers the
+     * borrowed EAN lookup core performs through a peer Allegro connection
+     * (#2210). Defaults to `true`: absent means "not opted out", which is what
+     * every caller predating the flag means.
+     */
+    private readonly allegroCatalogueAccessAllowed: boolean = true,
   ) {
     if (allegroCategoryCatalog) {
       this.fetchCategories = (parentId?: string): Promise<OfferCategory[]> =>

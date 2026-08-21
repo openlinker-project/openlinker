@@ -30,6 +30,7 @@ import type {
   MappingContext,
   IdentifierMappingRequest,
   ExternalIdMapping,
+  IdentifierMappingPage,
 } from '../../domain/types/identifier-mapping.types';
 import { formatInternalId } from '../../domain/types/identifier-mapping.types';
 import {
@@ -158,8 +159,16 @@ export class IdentifierMappingService implements IIdentifierMappingService {
     );
   }
 
-  async listExternalIdsByConnection(entityType: string, connectionId: string): Promise<string[]> {
-    const mappings = await this.repository.findByEntityTypeAndConnection(entityType, connectionId);
+  async listExternalIdsByConnection(
+    entityType: string,
+    connectionId: string,
+    page?: IdentifierMappingPage
+  ): Promise<string[]> {
+    const mappings = await this.repository.findByEntityTypeAndConnection(
+      entityType,
+      connectionId,
+      page
+    );
     return mappings.map((m) => m.externalId);
   }
 

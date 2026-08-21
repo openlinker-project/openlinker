@@ -174,6 +174,32 @@ describe('BulkBatchProgressTable', () => {
     ).toBeInTheDocument();
   });
 
+  it('renders a per-row Fix this one link when the record has a fix URL (#2234)', () => {
+    renderWithProviders(
+      <BulkBatchProgressTable
+        records={[rec({ productId: 'ol_product_1' })]}
+        buildFixUrl={(record) =>
+          `/listings/bulk-create/wizard?variantIds=${record.internalVariantId}`
+        }
+      />,
+    );
+
+    const link = screen.getByRole('link', { name: /Fix and resubmit ol_variant_abc/ });
+    expect(link).toHaveAttribute(
+      'href',
+      '/listings/bulk-create/wizard?variantIds=ol_variant_abc',
+    );
+  });
+
+  it('omits the per-row fix action when the record resolves to no fix URL (#2234)', () => {
+    renderWithProviders(
+      <BulkBatchProgressTable records={[rec()]} buildFixUrl={() => null} />,
+    );
+
+    expect(screen.queryByText('Fix this one')).not.toBeInTheDocument();
+    expect(screen.getByText('Details')).toBeInTheDocument();
+  });
+
   it('prefers the variant label over the raw id in the flat records table (#1741)', () => {
     renderWithProviders(
       <BulkBatchProgressTable

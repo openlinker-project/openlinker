@@ -4,12 +4,22 @@
  * Pins `mergeResolveOutcomes`: per-variant resolve outcomes are folded into each
  * row's `variants[]` by variant id, preserving operator overrides; rows without
  * a matching outcome keep their identity.
+ *
+ * Also pins `destinationResolvesCategoryAtSubmit` (#2211): the two-source
+ * derivation that decides whether a pre-flight `no-match` reaches the operator
+ * as a blocker at all. Getting it wrong is silent in both directions - too
+ * strict asks for a category the destination never looks up, too lax turns the
+ * whole Review green and kills every child on `categoryId / REQUIRED`.
  */
 import { fireEvent, screen, waitFor, cleanup } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderWithProviders, createMockApiClient } from '../../../../test/test-utils';
 import { BulkWizard, mergeResolveOutcomes, seedRows } from './bulk-wizard';
-import type { BulkResolveOutcome, BulkResolveVariantOutcome } from './bulk-resolve-step';
+import type {
+  BulkResolveCompletion,
+  BulkResolveOutcome,
+  BulkResolveVariantOutcome,
+} from './bulk-resolve-step';
 import type { BulkVariantRow, BulkWizardRow } from './bulk-wizard.types';
 import type { Product, ProductVariant } from '../../../products';
 import type { Connection } from '../../../connections';
@@ -17,6 +27,44 @@ import type { Connection } from '../../../connections';
 const captureDemoEvent = vi.fn();
 vi.mock('../../../demo', () => ({
   captureDemoEvent: (...args: unknown[]): unknown => captureDemoEvent(...args),
+}));
+
+/** The subset of the Resolve step's props these tests drive or observe. */
+interface ResolveStepStubProps {
+  destinationResolvesCategoryAtSubmit?: boolean;
+  onComplete: (outcomes: BulkResolveOutcome[], completion: BulkResolveCompletion) => void;
+}
+
+/**
+ * Test-controlled stand-in for the Resolve step. Stubbed rather than driven
+ * through its real stream on purpose: what is under test is the wizard's own
+ * derivation, so the step's internals (chunking, retries, progress copy) must
+ * not be able to fail or flake these assertions.
+ */
+const resolveStub: {
+  received: (boolean | undefined)[];
+  outcomes: BulkResolveOutcome[];
+  completion: BulkResolveCompletion;
+} = {
+  received: [],
+  outcomes: [],
+  completion: { catalogueLookupPerformed: true },
+};
+
+vi.mock('./bulk-resolve-step', () => ({
+  BulkResolveStep: (props: ResolveStepStubProps) => {
+    resolveStub.received.push(props.destinationResolvesCategoryAtSubmit);
+    return (
+      <button
+        type="button"
+        onClick={() => {
+          props.onComplete(resolveStub.outcomes, resolveStub.completion);
+        }}
+      >
+        finish resolve
+      </button>
+    );
+  },
 }));
 
 function makeVariantRow(id: string, over: Partial<BulkVariantRow> = {}): BulkVariantRow {
@@ -232,4 +280,145 @@ describe('seedRows (#1754 pre-selected variants)', () => {
     // p2 is variant-scoped -> only v3 included.
     expect(rows[1].variants.map((v) => v.included)).toEqual([true, false]);
   });
+});
+
+describe('BulkWizard — destinationResolvesCategoryAtSubmit (#2211)', () => {
+  const VALID_EAN = '5901234123457';
+
+  beforeEach(() => {
+    resolveStub.received = [];
+    resolveStub.outcomes = [];
+    resolveStub.completion = { catalogueLookupPerformed: true };
+  });
+  afterEach(cleanup);
+
+  /**
+   * `platformType` is deliberately one no in-tree plugin registers: the wizard's
+   * derivation is capability-driven, and an unregistered platform contributes no
+   * `bulkOfferConfigSection` (so Proceed is gated only by the shared slice) and
+   * no `offerValidation` (so no platform blocker can be mistaken for the
+   * category one these tests are about).
+   */
+  function connection(capabilities: string[]): Connection {
+    return {
+      id: 'conn-1',
+      name: 'Test destination',
+      status: 'active',
+      platformType: 'testmarket',
+      supportedCapabilities: ['OfferManager', 'OfferCreator', ...capabilities],
+      config: { masterCatalogConnectionId: 'conn-master' },
+    } as unknown as Connection;
+  }
+
+  function products(): Product[] {
+    return [
+      {
+        id: 'prod_1',
+        name: 'Test product',
+        sku: 'prod_1',
+        currency: 'PLN',
+        variants: [
+          {
+            id: 'ol_variant_1',
+            productId: 'prod_1',
+            sku: 'v1',
+            attributes: { Rozmiar: 'M' },
+            ean: VALID_EAN,
+            gtin: null,
+            price: 39,
+          } as unknown as ProductVariant,
+        ],
+      } as unknown as Product,
+    ];
+  }
+
+  /**
+   * The one outcome shape that matters here: master values complete (so price /
+   * stock never blocks) and no category resolved, which is what makes the
+   * category blocker the ONLY thing separating a ready row from a blocked one.
+   */
+  function unresolvedCategoryOutcome(): BulkResolveOutcome {
+    return {
+      productId: 'prod_1',
+      variants: [
+        {
+          variantId: 'ol_variant_1',
+          blockers: ['no-match'],
+          resolvedCategoryId: null,
+          resolvedProductCardId: null,
+          resolutionMethod: null,
+          masterPrice: 39,
+          masterStock: 5,
+          masterCurrency: 'PLN',
+          categoryCandidates: [],
+          ean: VALID_EAN,
+        },
+      ],
+    };
+  }
+
+  async function renderAndResolve(capabilities: string[]): Promise<void> {
+    const apiClient = createMockApiClient({
+      connections: { list: vi.fn().mockResolvedValue([connection(capabilities)]) },
+      listings: {
+        checkPublishedVariants: vi.fn().mockResolvedValue({ publishedVariantIds: [] }),
+      },
+    });
+
+    renderWithProviders(
+      <BulkWizard
+        products={products()}
+        resolveConnectionName={() => 'Test destination'}
+        preselectedConnectionId="conn-1"
+      />,
+      { apiClient },
+    );
+
+    const proceed = await screen.findByRole('button', { name: /Proceed/ }, { timeout: 5000 });
+    await waitFor(() => expect(proceed).toBeEnabled(), { timeout: 5000 });
+    fireEvent.click(proceed);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'finish resolve' }));
+  }
+
+  it('suppresses the category blocker when the manifest says the destination resolves it at submit', async () => {
+    // No `EanCategoryMatcher` and no category browsing => the destination has no
+    // pre-flight match to fail, so a `no-match` says nothing about the row.
+    // A lookup that DID happen must not re-block it either.
+    resolveStub.outcomes = [unresolvedCategoryOutcome()];
+    resolveStub.completion = { catalogueLookupPerformed: true };
+
+    await renderAndResolve([]);
+
+    // The manifest half is what the Resolve step itself is handed.
+    expect(resolveStub.received).toContain(true);
+    expect(await screen.findByText('All included variants are ready.')).toBeInTheDocument();
+    const cta = await screen.findAllByRole('button', { name: 'Create offers (1)' });
+    expect(cta[0]).toBeEnabled();
+  }, 15000);
+
+  it('suppresses the category blocker when the stream reports no catalogue was consulted', async () => {
+    // The manifest advertises a matcher, so it alone would block the row - but
+    // the run looked nothing up (a destination that BORROWS a matcher advertises
+    // none of its own, #1045), so every `no-match` in it is uninformative.
+    resolveStub.outcomes = [unresolvedCategoryOutcome()];
+    resolveStub.completion = { catalogueLookupPerformed: false };
+
+    await renderAndResolve(['EanCategoryMatcher']);
+
+    // The manifest reading held while the step ran; only its report flips it.
+    expect(resolveStub.received).toContain(false);
+    expect(await screen.findByText('All included variants are ready.')).toBeInTheDocument();
+  }, 15000);
+
+  it('keeps the category blocker when a catalogue lookup did run and matched nothing', async () => {
+    resolveStub.outcomes = [unresolvedCategoryOutcome()];
+    resolveStub.completion = { catalogueLookupPerformed: true };
+
+    await renderAndResolve(['EanCategoryMatcher']);
+
+    expect(await screen.findByText('1 variant needs attention.')).toBeInTheDocument();
+    const cta = await screen.findAllByRole('button', { name: 'Create offers (0)' });
+    expect(cta[0]).toBeDisabled();
+  }, 15000);
 });

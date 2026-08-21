@@ -95,6 +95,11 @@ export class ProductsService implements IProductsService {
     return this.variantRepository.findBySkuIn(skus);
   }
 
+  async getVariantsByIds(ids: readonly string[]): Promise<ProductVariant[]> {
+    if (ids.length === 0) return [];
+    return this.variantRepository.findByIdIn(ids);
+  }
+
   async getVariantsByBarcodes(
     connectionId: string,
     values: string[],

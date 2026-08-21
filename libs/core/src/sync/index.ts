@@ -62,7 +62,6 @@ export {
   JobOutcomeValues,
   JobOutcomeReasonValues,
   BULK_RETRY_MAX_BATCH_SIZE,
-  SYNC_JOBS_EVENT_STREAM,
 } from './domain/types/sync-job.types';
 export {
   MarketplaceOrdersPollPayloadV1,
@@ -96,6 +95,7 @@ export {
   MasterInventorySyncByExternalIdPayloadV1,
   MasterInventorySyncAllPayloadV1,
   MasterProductSyncAllPayloadV1,
+  MasterProductSyncDeltaPayloadV1,
 } from './domain/types/master-job-payloads.types';
 export {
   ShopProductPublishPayloadV1,

@@ -18,15 +18,39 @@ import {
   JobTypeValues,
 } from '@openlinker/core/sync';
 import { Logger } from '@openlinker/shared/logging';
+import {
+  ackTrimmed,
+  MAX_DRAIN_PAGES,
+  MIN_RECLAIM_IDLE_MS,
+  nextPendingCursor,
+  readOwnPending,
+  RECOVERY_PAGES_PER_TICK,
+  RECLAIM_INTERVAL_MS,
+  reclaimOrphans,
+  RecoveryAttemptTracker,
+  resolveConsumerName,
+  type RecoveryOutcome,
+  type StreamConsumerClient,
+  type StreamEntry,
+} from '@openlinker/shared/redis';
 
 @Injectable()
 export class JobIntakeConsumer implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(JobIntakeConsumer.name);
   private readonly STREAM_NAME = 'jobs.sync';
   private readonly CONSUMER_GROUP = 'job-intake';
-  private readonly CONSUMER_NAME = `job-intake-${process.pid}`;
+  // Stable across restarts of the same logical worker and distinct across
+  // replicas, so this process can reach its own pending history (#2164).
+  private readonly CONSUMER_NAME = resolveConsumerName('job-intake');
   private readonly BLOCK_MS = 5000; // 5 seconds
   private readonly COUNT = 10; // Read up to 10 messages at a time
+  // Must exceed p99 handler duration or a reclaim steals live work. The intake
+  // handler is a single parse plus one insert, so the shared floor is already
+  // orders of magnitude above it.
+  private readonly RECLAIM_IDLE_MS = MIN_RECLAIM_IDLE_MS;
+
+  private lastReclaimAt = 0;
+  private readonly recoveryAttempts = new RecoveryAttemptTracker();
 
   private abortController: AbortController | null = null;
   private isRunning = false;
@@ -49,6 +73,15 @@ export class JobIntakeConsumer implements OnModuleInit, OnModuleDestroy {
     }
 
     await this.initializeConsumerGroup();
+
+    // Created BEFORE the drain, not inside `startConsumptionLoop`. The drain is
+    // awaited here and can run for many pages, so without this its own abort
+    // check and `recoverEntrySafely`'s shutdown rethrow are both reading an
+    // undefined controller — two guards documented as live that never fire, and
+    // a shutdown mid-drain would keep issuing commands against a quitting client.
+    this.abortController = new AbortController();
+
+    await this.drainOwnPending();
     this.startConsumptionLoop();
   }
 
@@ -94,7 +127,11 @@ export class JobIntakeConsumer implements OnModuleInit, OnModuleDestroy {
    * Uses AbortController for graceful shutdown.
    */
   private startConsumptionLoop(): void {
-    this.abortController = new AbortController();
+    // Reuse the controller created in `onModuleInit`; replace it only when a
+    // previous run aborted, which is the restart-after-backoff path.
+    if (!this.abortController || this.abortController.signal.aborted) {
+      this.abortController = new AbortController();
+    }
     this.isRunning = true;
 
     this.logger.log(
@@ -181,6 +218,11 @@ export class JobIntakeConsumer implements OnModuleInit, OnModuleDestroy {
           );
           lastHeartbeat = now;
         }
+
+        // Before the empty-batch check: an idle stream is exactly when stranded
+        // entries need recovering, so gating recovery on a batch arriving would
+        // make it dead code in the case it exists for. Throttled internally.
+        await this.maybeReclaimOrphans();
 
         if (!messages || messages.length === 0) {
           // No messages, continue loop
@@ -302,10 +344,251 @@ export class JobIntakeConsumer implements OnModuleInit, OnModuleDestroy {
         }
       }
 
-      // Don't ACK - message will be re-delivered after timeout
-      // In production, you might want to implement retry limits and dead-letter queue
+      // Deliberately not ACKed: the entry stays in this consumer's Pending
+      // Entries List. Redis never expires a PEL entry on its own, so recovery is
+      // this consumer's own job — the startup drain (`drainOwnPending`) picks it
+      // up on restart, and `maybeReclaimOrphans` claims it if this process
+      // never returns. Before #2164 no code path read a PEL at all, and the
+      // comment here claimed a redelivery timeout that does not exist, which is
+      // why permanent message loss went unnoticed.
       throw error;
     }
+  }
+
+  /**
+   * Drain this consumer's own pending history before reading new messages.
+   *
+   * `XPENDING` scoped to this consumer returns entries already delivered to it
+   * and never ACKed — the messages a previous incarnation of this worker was holding
+   * when it died. Without this they would sit in the PEL forever, because the
+   * steady-state loop reads `'>'`, which returns only never-delivered entries.
+   */
+  private async drainOwnPending(): Promise<void> {
+    let drained = 0;
+    let discarded = 0;
+    let cursor: string | undefined;
+
+    try {
+      for (let page = 0; ; page += 1) {
+        if (page >= MAX_DRAIN_PAGES) {
+          this.logger.warn(
+            `Stopping startup drain after ${MAX_DRAIN_PAGES} pages; entries remain pending for ${this.CONSUMER_NAME}`
+          );
+          break;
+        }
+        if (this.abortController?.signal.aborted) {
+          break;
+        }
+
+        const entries = await readOwnPending(
+          this.redisClient as unknown as StreamConsumerClient,
+          this.STREAM_NAME,
+          this.CONSUMER_GROUP,
+          this.CONSUMER_NAME,
+          this.COUNT,
+          cursor
+        );
+
+        if (entries.length === 0) {
+          break;
+        }
+
+        // Counted by outcome. A failed entry is not recovered, and a trimmed
+        // entry is not either — its payload is gone. The operator reading this
+        // line is reading it during the incident it describes.
+        for (const entry of entries) {
+          const outcome = await this.recoverEntrySafely(entry, 'startup-drain');
+          if (outcome === 'recovered') {
+            drained += 1;
+          } else if (outcome === 'discarded') {
+            discarded += 1;
+          }
+        }
+
+        // Advance past this page rather than re-reading from the oldest id. An
+        // entry whose handler threw is still pending, so without this the same
+        // page returns forever and the drain — which onModuleInit awaits —
+        // stalls boot until the page cap. A failed entry is retried by the next
+        // recovery pass, not by spinning inside this one.
+        cursor = nextPendingCursor(entries) ?? cursor;
+      }
+    } catch (error) {
+      // Never block startup on recovery: the steady-state loop is still correct
+      // without it, and the periodic reclaim will retry the same entries.
+      this.logger.error(
+        'Failed to drain pending history; continuing to new messages',
+        error instanceof Error ? error.stack : String(error)
+      );
+      return;
+    }
+
+    if (drained > 0) {
+      this.logger.log(`Recovered ${drained} pending message(s) as ${this.CONSUMER_NAME}`);
+    }
+
+    // Reported separately and at warn: these were not recovered, they were lost
+    // to retention before anything could process them.
+    if (discarded > 0) {
+      this.logger.warn(
+        `Discarded ${discarded} pending message(s) as ${this.CONSUMER_NAME}: retention removed the payload before processing`
+      );
+    }
+  }
+
+  /**
+   * Periodically claim entries stranded by a consumer that never came back.
+   *
+   * Stable identity lets a restarted process drain its own history; it cannot
+   * help when a replica disappears permanently. An `XPENDING ... IDLE` + `XCLAIM`
+   * pass covers that case, and only processes what the claim actually
+   * transferred — an entry a live consumer still owns is left alone.
+   */
+  private async maybeReclaimOrphans(): Promise<void> {
+    const now = Date.now();
+    if (now - this.lastReclaimAt < RECLAIM_INTERVAL_MS) {
+      return;
+    }
+    this.lastReclaimAt = now;
+
+    try {
+      // Own failed messages first — the orphan pass below skips self-owned rows.
+      //
+      // Paged with the same exclusive cursor the startup drain uses. Without it
+      // this re-reads the oldest COUNT ids from '-' on every tick, so a poison
+      // entry at the head starves every later own-pending entry for the life of
+      // the process — the drain only runs at boot. Capped per tick so recovery
+      // cannot monopolise the consume loop.
+      let retryCursor: string | undefined;
+      for (let page = 0; page < RECOVERY_PAGES_PER_TICK; page += 1) {
+        if (this.abortController?.signal.aborted) {
+          break;
+        }
+
+        const ownRetries = await readOwnPending(
+          this.redisClient as unknown as StreamConsumerClient,
+          this.STREAM_NAME,
+          this.CONSUMER_GROUP,
+          this.CONSUMER_NAME,
+          this.COUNT,
+          retryCursor
+        );
+
+        if (ownRetries.length === 0) {
+          break;
+        }
+
+        for (const entry of ownRetries) {
+          await this.recoverEntrySafely(entry, 'pending-retry');
+        }
+
+        retryCursor = nextPendingCursor(ownRetries) ?? retryCursor;
+      }
+
+      const entries = await reclaimOrphans(
+        this.redisClient as unknown as StreamConsumerClient,
+        this.STREAM_NAME,
+        this.CONSUMER_GROUP,
+        this.CONSUMER_NAME,
+        this.RECLAIM_IDLE_MS,
+        this.COUNT
+      );
+
+      for (const entry of entries) {
+        await this.recoverEntrySafely(entry, 'orphan-reclaim');
+      }
+      // Only entries whose XCLAIM actually transferred. `reclaimOrphans` also
+      // returns a `trimmed` entry on the path where the claim did NOT transfer
+      // and the data was gone — nothing was reclaimed there, so counting it
+      // would overstate what this pass took ownership of.
+      const reclaimed = entries.filter((entry) => entry.kind === 'entry').length;
+
+      if (reclaimed > 0) {
+        this.logger.warn(
+          `Reclaimed ${reclaimed} orphaned message(s) idle > ${this.RECLAIM_IDLE_MS}ms into ${this.CONSUMER_NAME}`
+        );
+      }
+    } catch (error) {
+      this.logger.error(
+        'Failed to reclaim orphaned messages',
+        error instanceof Error ? error.stack : String(error)
+      );
+    }
+  }
+
+  /**
+   * Run one recovered entry, isolating a handler failure to that entry.
+   *
+   * Without this the enclosing try/catch spans the whole page loop, so a single
+   * entry whose handler throws aborts the entire pass — and because the PEL is
+   * always paged from the oldest id, that same entry leads every later drain and
+   * reclaim. One poison message would permanently block recovery of every other
+   * stranded message, which is the precise failure this recovery path exists to
+   * prevent. The entry stays un-ACKed and is retried on the next pass; what does
+   * not happen is its siblings being starved behind it.
+   */
+  private async recoverEntrySafely(entry: StreamEntry, source: string): Promise<RecoveryOutcome> {
+    try {
+      await this.handleRecoveredEntry(entry, source);
+      this.recoveryAttempts.succeeded(entry.id);
+      // A trimmed entry was ACKed, but nothing was recovered — retention
+      // destroyed its payload. Reporting that as recovered would tell an
+      // operator the opposite of what happened.
+      return entry.kind === 'trimmed' ? 'discarded' : 'recovered';
+    } catch (error) {
+      // A shutdown-time failure is not a handler failure: the client is quitting
+      // and every later command would fail too. Rethrow so the enclosing pass
+      // ends instead of grinding through the rest of the page against a dead
+      // connection.
+      if (this.abortController?.signal.aborted) {
+        throw error;
+      }
+
+      const attempts = this.recoveryAttempts.recordFailure(entry.id);
+
+      this.logger.error(
+        `Failed to recover stream entry ${entry.id} (${source}, attempt ${attempts}, redis deliveries ${entry.kind === 'entry' ? entry.deliveryCount : 'n/a'}); leaving it pending and continuing`,
+        error instanceof Error ? error.stack : String(error)
+      );
+
+      // Once, on the crossing — a poison entry recurs by definition, so an
+      // unguarded alarm per pass is alert fatigue. Auto-dead-lettering is
+      // deliberately NOT done: two of the three consumers cannot build their
+      // dead-letter payload from a raw pending entry (one needs a decoded
+      // webhook event, one a parsed job request), and discarding it would be
+      // unrecoverable loss. See ADR-049.
+      if (this.recoveryAttempts.justCrossedThreshold(attempts)) {
+        this.logger.error(
+          `Stream entry ${entry.id} has now failed recovery ${attempts} times (${source}); it is stuck and needs manual intervention`
+        );
+      }
+
+      return 'failed';
+    }
+  }
+
+  /**
+   * Route one recovered entry, separating a trimmed id from real work.
+   *
+   * A trimmed entry keeps its PEL id after retention removed its data, so it has
+   * no body to process. Routing it into `processMessage` would fail the
+   * required-field check and persist a bogus dead `sync_jobs` row, inventing a
+   * job that never existed — so it is ACKed to clear the dangling id instead.
+   */
+  private async handleRecoveredEntry(entry: StreamEntry, source: string): Promise<void> {
+    if (entry.kind === 'trimmed') {
+      this.logger.warn(
+        `Discarding trimmed stream entry ${entry.id} (${source}): retention removed its data before it was processed`
+      );
+      await ackTrimmed(
+        this.redisClient as unknown as StreamConsumerClient,
+        this.STREAM_NAME,
+        this.CONSUMER_GROUP,
+        entry.id
+      );
+      return;
+    }
+
+    await this.processMessage(entry.id, entry.fields);
   }
 
   /**
@@ -373,7 +656,17 @@ export class JobIntakeConsumer implements OnModuleInit, OnModuleDestroy {
       maxAttempts: 10,
     });
 
-    // Mark as dead immediately
+    // Only mark a freshly-created row dead. `createIfNotExistsByIdempotencyKey`
+    // returns the existing row when one is already present, and startup drain /
+    // orphan reclaim (#2164) make redelivery real — so an unguarded markDead
+    // would flip a job that has since run to 'dead' on a repeat delivery.
+    if (deadJob.status !== 'queued') {
+      this.logger.warn(
+        `Skipping markDead for ${deadJob.id}: job already in status '${deadJob.status}' (redelivered message)`
+      );
+      return;
+    }
+
     await this.jobRepository.markDead(deadJob.id, errorMessage);
   }
 }

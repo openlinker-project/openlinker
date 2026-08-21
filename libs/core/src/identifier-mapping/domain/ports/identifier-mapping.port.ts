@@ -16,6 +16,7 @@ import type {
   MappingContext,
   IdentifierMappingRequest,
   ExternalIdMapping,
+  IdentifierMappingPage,
 } from '../types/identifier-mapping.types';
 
 /**
@@ -42,12 +43,27 @@ export interface IdentifierMappingQueryPort {
   getExternalIds(entityType: string, internalId: string): Promise<ExternalIdMapping[]>;
 
   /**
-   * List all external IDs for a given entity type and connection.
+   * List external IDs for a given entity type and connection.
    *
-   * Used by periodic sync to enumerate all known entities for a connection
-   * without calling the external platform API.
+   * Used by periodic sync to enumerate known entities for a connection without
+   * calling the external platform API.
+   *
+   * `page` is OPTIONAL and additive (#2219). Omitting it returns every mapping,
+   * which is what every caller but the inventory sweep wants — and keeping the
+   * parameter optional is what keeps this signature source-compatible for the
+   * ~12 plugin sites that type-depend on `IdentifierMappingPort` without calling
+   * this method. The return type stays `string[]` rather than a page object for
+   * the same reason: a caller detects completion from a short page.
+   *
+   * A paged read is ordered by `externalId` so an offset means the same thing
+   * across runs. That order is UNINDEXED for a `(entityType, connectionId)`
+   * partition, so each page costs a sort — see the repository implementation.
    */
-  listExternalIdsByConnection(entityType: string, connectionId: string): Promise<string[]>;
+  listExternalIdsByConnection(
+    entityType: string,
+    connectionId: string,
+    page?: IdentifierMappingPage
+  ): Promise<string[]>;
 }
 
 /**

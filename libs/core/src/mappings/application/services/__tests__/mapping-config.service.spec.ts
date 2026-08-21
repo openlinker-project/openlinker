@@ -23,6 +23,7 @@ import type { CategoryMappingRepositoryPort } from '../../../domain/ports/catego
 import type { OrderStateMappingRepositoryPort } from '../../../domain/ports/order-state-mapping-repository.port';
 import type { AttributeMappingRepositoryPort } from '../../../domain/ports/attribute-mapping-repository.port';
 import type { AttributeMappingRuleRepositoryPort } from '../../../domain/ports/attribute-mapping-rule-repository.port';
+import { AttributeMapping } from '../../../domain/entities/attribute-mapping.entity';
 import { AttributeMappingRule } from '../../../domain/entities/attribute-mapping-rule.entity';
 import { StatusMapping } from '../../../domain/entities/status-mapping.entity';
 import { CarrierMapping } from '../../../domain/entities/carrier-mapping.entity';
@@ -428,6 +429,35 @@ describe('MappingConfigService', () => {
       expect(result).toBeNull();
     });
 
+    it('should fall back to the bare owner provenance for an environment-qualified borrower (#2210)', async () => {
+      categoryRepo.findBySourceCategory.mockResolvedValue(null);
+      const borrowed = new CategoryMapping('id-3', 'src-1', 'allegro-conn', '3', '258066', 'X', null, 'allegro');
+      // Nothing persists a qualified provenance today, so a sandbox borrower
+      // must still reuse the rows the operator already authored.
+      categoryRepo.findBySourceCategoryByProvenance
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(borrowed);
+
+      const result = await service.resolveDestinationCategory(CONNECTION_ID, '3', {
+        borrowedTaxonomy: 'allegro:sandbox',
+        sourceConnectionId: 'src-1',
+      });
+
+      expect(result).toBe('258066');
+      expect(categoryRepo.findBySourceCategoryByProvenance).toHaveBeenNthCalledWith(
+        1,
+        'allegro:sandbox',
+        '3',
+        'src-1'
+      );
+      expect(categoryRepo.findBySourceCategoryByProvenance).toHaveBeenNthCalledWith(
+        2,
+        'allegro',
+        '3',
+        'src-1'
+      );
+    });
+
     it('should not consult the borrowed fallback when no borrowedTaxonomy is given (#1045)', async () => {
       categoryRepo.findBySourceCategory.mockResolvedValue(null);
 
@@ -444,6 +474,26 @@ describe('MappingConfigService', () => {
       await service.getAttributeMappingsByProvenance('allegro');
 
       expect(attributeRepo.findByProvenance).toHaveBeenCalledWith('allegro');
+    });
+
+    it('should fall back to the bare owner provenance when the qualified one has no rows (#2210)', async () => {
+      const row = new AttributeMapping(
+        'a-1',
+        'src-1',
+        CONNECTION_ID,
+        'Brand',
+        'Marka',
+        null,
+        [],
+        'allegro'
+      );
+      attributeRepo.findByProvenance.mockResolvedValueOnce([]).mockResolvedValueOnce([row]);
+
+      const result = await service.getAttributeMappingsByProvenance('allegro:sandbox');
+
+      expect(result).toEqual([row]);
+      expect(attributeRepo.findByProvenance).toHaveBeenNthCalledWith(1, 'allegro:sandbox');
+      expect(attributeRepo.findByProvenance).toHaveBeenNthCalledWith(2, 'allegro');
     });
   });
 

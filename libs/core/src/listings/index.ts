@@ -259,7 +259,15 @@ export { isCategoryPathReader } from './domain/ports/capabilities/category-path-
 export type { CategoryBarcodeMatcher } from './domain/ports/capabilities/category-barcode-matcher.capability';
 export { isCategoryBarcodeMatcher } from './domain/ports/capabilities/category-barcode-matcher.capability';
 export type { EanCategoryMatcher } from './domain/ports/capabilities/ean-category-matcher.capability';
-export { isEanCategoryMatcher } from './domain/ports/capabilities/ean-category-matcher.capability';
+export {
+  EAN_CATEGORY_MATCHER_CAPABILITY,
+  isEanCategoryMatcher,
+} from './domain/ports/capabilities/ean-category-matcher.capability';
+export type { EanCategoryMatcherStreaming } from './domain/ports/capabilities/ean-category-matcher-streaming.capability';
+export {
+  EAN_CATEGORY_MATCHER_STREAMING_CAPABILITY,
+  isEanCategoryMatcherStreaming,
+} from './domain/ports/capabilities/ean-category-matcher-streaming.capability';
 export type { OfferSmartClassificationReader } from './domain/ports/capabilities/offer-smart-classification-reader.capability';
 export { isOfferSmartClassificationReader } from './domain/ports/capabilities/offer-smart-classification-reader.capability';
 export type {
@@ -274,6 +282,19 @@ export type {
   EanMatchCandidate,
   BatchCategoryByEanInput,
 } from './domain/types/ean-category-match.types';
+export {
+  EanCategoryMatchStreamEventKindValues,
+  EanCategoryMatchStreamCompletionValues,
+} from './domain/types/ean-category-match-stream.types';
+export type {
+  EanCategoryMatchStreamEventKind,
+  EanCategoryMatchStreamCompletion,
+  EanCategoryMatchStreamItem,
+  EanCategoryMatchStreamResultEvent,
+  EanCategoryMatchStreamDoneEvent,
+  EanCategoryMatchStreamEvent,
+  EanCategoryMatchStreamOptions,
+} from './domain/types/ean-category-match-stream.types';
 export type { CategoryParametersReader } from './domain/ports/capabilities/category-parameters-reader.capability';
 export { isCategoryParametersReader } from './domain/ports/capabilities/category-parameters-reader.capability';
 export type { CatalogProductReader } from './domain/ports/capabilities/catalog-product-reader.capability';

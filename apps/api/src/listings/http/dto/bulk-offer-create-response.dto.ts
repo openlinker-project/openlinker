@@ -61,6 +61,13 @@ export class BulkBatchRecordSummaryDto {
     description: 'Structured failure reasons populated when status=failed; null otherwise.',
   })
   errors!: OfferCreationError[] | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      'OL product id owning this record\'s variant (#2234). Lets the operator reopen the bulk wizard on a failed batch\'s variants. Null when the variant no longer resolves.',
+  })
+  productId!: string | null;
 }
 
 export class BulkBatchSummaryDto {
