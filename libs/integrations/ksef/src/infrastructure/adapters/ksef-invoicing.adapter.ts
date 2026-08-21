@@ -110,6 +110,8 @@ import {
   FA3_SYSTEM_CODE,
 } from '../fa3/domain/fa3-xml.types';
 import { mapToFa3BuilderInput } from '../fa3/domain/fa3-builder-input.mapper';
+import { describeFa3LineAmounts } from '../fa3/builders/fa3-xml.builder';
+import type { IssuedDocumentLineAmounts } from '@openlinker/core/invoicing';
 import { KsefNetworkException } from '../../domain/exceptions/ksef-network.exception';
 import { decodeProviderInvoiceId, encodeProviderInvoiceId } from './ksef-provider-invoice-id';
 import { KsefSessionException } from '../../domain/exceptions/ksef-session.exception';
@@ -266,17 +268,21 @@ export class KsefInvoicingAdapter
 
     // 1. neutral → FA(3) (C4). Deterministic build faults throw the mapper's own
     //    typed exceptions; the service maps those to a failed record (no retry).
-    const xml = this.fa3Builder.build(
-      mapToFa3BuilderInput(cmd, {
-        seller: this.seller,
-        issueDate: this.toIsoDate(issuedAt),
-        generatedAt: issuedAt.toISOString(),
-        invoiceNumber: documentNumber,
-        defaultTaxRate: this.defaultTaxRate,
-        defaultLineUnit: this.defaultLineUnit,
-        payment: this.payment,
-      }),
-    );
+    const builderInput = mapToFa3BuilderInput(cmd, {
+      seller: this.seller,
+      issueDate: this.toIsoDate(issuedAt),
+      generatedAt: issuedAt.toISOString(),
+      invoiceNumber: documentNumber,
+      defaultTaxRate: this.defaultTaxRate,
+      defaultLineUnit: this.defaultLineUnit,
+      payment: this.payment,
+    });
+    const xml = this.fa3Builder.build(builderInput);
+    // #2251: KSeF has nothing external to copy back - OpenLinker builds the
+    // FA(3) itself, so this adapter IS the calculator and reports the figures it
+    // put in the document. Derived from the same `lineNet` the XML uses, so the
+    // reported net cannot drift from `P_11`.
+    const documentLines = describeFa3LineAmounts(builderInput.lines);
 
     // 2. Open session → encrypt → submit → close (one invoice per session).
     //    Establishing the session (crypto init + open) can fail because KSeF is
@@ -291,7 +297,7 @@ export class KsefInvoicingAdapter
       sessionRef = await this.openOnlineSession(cryptoContext);
     } catch (error) {
       if (isKsefUnavailable(error)) {
-        return this.buildOfflineResult(cmd, xml, issuedAt, documentNumber, error);
+        return this.buildOfflineResult(cmd, xml, issuedAt, documentNumber, error, documentLines);
       }
       throw error;
     }
@@ -310,7 +316,7 @@ export class KsefInvoicingAdapter
         // transmitted, so nothing landed at KSeF. Return the neutral offline
         // record — the finally below still closes the session best-effort, and
         // with `submitError` set a close failure is swallowed (never masks this).
-        return this.buildOfflineResult(cmd, xml, issuedAt, documentNumber, error);
+        return this.buildOfflineResult(cmd, xml, issuedAt, documentNumber, error, documentLines);
       }
       throw error;
     } finally {
@@ -355,7 +361,12 @@ export class KsefInvoicingAdapter
     );
     // Persist the FA(3) source XML as a neutral opaque blob so the core service can
     // re-serve `GET .../document?kind=source` without a KSeF round-trip (#1224 W3).
-    return { record, seller: this.toNeutralSeller(), sourceDocument: this.toSourceDocument(xml) };
+    return {
+      record,
+      seller: this.toNeutralSeller(),
+      sourceDocument: this.toSourceDocument(xml),
+      documentLines,
+    };
   }
 
   /**
@@ -559,6 +570,10 @@ export class KsefInvoicingAdapter
     issuedAt: Date,
     documentNumber: string,
     cause: unknown,
+    // #2251: the document was BUILT locally even though the session never
+    // landed, so its own line amounts are known and reported here too - the
+    // offline window is about transmission, not about what the paper says.
+    documentLines: IssuedDocumentLineAmounts[],
   ): IssueInvoiceResult {
     this.logger.warn(
       `KSeF unavailable during issuance (connection ${this.connectionId}, order ${cmd.orderId}); ` +
@@ -583,7 +598,12 @@ export class KsefInvoicingAdapter
       issuedAt,
       issuedAt,
     );
-    return { record, seller: this.toNeutralSeller(), sourceDocument: this.toSourceDocument(xml) };
+    return {
+      record,
+      seller: this.toNeutralSeller(),
+      sourceDocument: this.toSourceDocument(xml),
+      documentLines,
+    };
   }
 
   /**

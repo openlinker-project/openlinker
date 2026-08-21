@@ -703,9 +703,47 @@ export interface IssueCorrectionCommand {
  * content snapshot then persists `seller: null` and the content endpoint degrades
  * gracefully.
  */
+/**
+ * Per-line amounts **as the issued document states them** (#2251, ADR-052 § 5).
+ *
+ * Core computes no net and rounds nothing, so a stored per-line net has to be a
+ * COPY of the document's own figure rather than a recomputation - otherwise it
+ * disagrees with the paper by a grosz here and there and no reader can tell
+ * which is right.
+ *
+ * Matched to the command's lines by 1-based `lineNumber`, which is the position
+ * on the document. Shipping lines are part of that numbering (they are real
+ * document lines) - what "skip shipping" means downstream is that they have no
+ * ORDER line to transcribe onto, not that they shift the numbering.
+ *
+ * An adapter reports this only when it can. inFakt and Subiekt read it off the
+ * provider's response; KSeF is the calculator (OpenLinker builds the FA(3)
+ * itself), so it reports the figures it put in the XML. An adapter that has
+ * neither omits the field, and core falls back to its own non-authoritative
+ * recomputation for those lines.
+ */
+export interface IssuedDocumentLineAmounts {
+  /** 1-based position on the document. */
+  lineNumber: number;
+  /** Net price of one unit, as the document states it. */
+  unitNet: number;
+  /** Net value of the line. */
+  net: number;
+  /** Tax amount of the line. */
+  tax: number;
+  /** Gross value of the line. */
+  gross: number;
+}
+
 export interface IssueInvoiceResult {
   record: InvoiceRecord;
   seller?: IssuedDocumentSeller;
+  /**
+   * The document's OWN per-line amounts (#2251). Present makes
+   * `IssuedDocumentContent.lines` authoritative for those lines instead of a
+   * recomputation; absent keeps the pre-#2251 behaviour.
+   */
+  documentLines?: IssuedDocumentLineAmounts[];
   /**
    * OPTIONAL machine-readable source document the adapter built and submitted to
    * the authority (PL/KSeF: the FA(3) XML). Core persists it as an opaque
