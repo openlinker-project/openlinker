@@ -74,13 +74,17 @@ export function resolveSweepLockTtlMs(raw: string | undefined): number {
 /**
  * The sweep families that own a lock + cursor namespace.
  *
+ * `product-reconcile` (#2222) is the deletion pass: it enumerates OL's own
+ * mappings rather than the master, so it is a fourth kind for the same reason
+ * `product-delta` is a third — its own lock, so the full sweep cannot starve it.
+ *
  * `product-delta` (#2220) is deliberately a THIRD kind rather than a mode of
  * `product`: the incremental pass takes its own lock so it can run concurrently
  * with the full pass. Sharing `product`'s lock would let the 20-minute full sweep —
  * which is mid-cycle more or less permanently on a large catalog — starve the delta
  * pass indefinitely while it logged "already in progress" and returned ok.
  */
-export type SweepKind = 'product' | 'inventory' | 'product-delta';
+export type SweepKind = 'product' | 'inventory' | 'product-delta' | 'product-reconcile';
 
 /** `master:{kind}:sweep:{connectionId}` — one in-flight run per connection. */
 export function sweepLockKey(kind: SweepKind, connectionId: string): string {
@@ -139,6 +143,51 @@ export async function readPagedIds(
 
   // Some sources repeat ids across pages; the cursor still counts what was read.
   return { items: [...new Set(collected)], consumed, exhausted };
+}
+
+/**
+ * Synthetic variant external ids (e.g. `product:13`) are minted by the PrestaShop
+ * adapter as stable offer-link targets for simple products. Their internal id is a
+ * VARIANT id, not a product id, so any sweep enumerating `Product` mappings must
+ * filter them: the inventory sweep would violate the `inventory_items.productId` FK,
+ * and the reconcile pass would re-check the wrong entity. The plain numeric
+ * externalId of the same simple product is enumerated alongside and covers it.
+ *
+ * Shared rather than re-declared per handler: this is a fact about an ADAPTER's id
+ * minting that two sweeps must agree on, so two copies of the literal are drift with
+ * no upside.
+ */
+export const SYNTHETIC_VARIANT_PREFIX = 'product:';
+
+/**
+ * Reads one page of OL's OWN mapped external ids for a connection, filtering the
+ * synthetic variant ids.
+ *
+ * Shared by the two sweeps that enumerate MAPPINGS rather than a master's catalog —
+ * `master.inventory.syncAll` and `master.product.reconcile`. Deliberately NOT
+ * `readPagedIds`: that helper loops pages until the budget fills and derives
+ * `exhausted` inside its own loop, whereas this shape issues ONE paged read and
+ * filters afterwards, so its `consumed` counts rows read from the mapping page.
+ * Forcing the two together would break the cursor invariant.
+ *
+ * The filter runs AFTER the read, so a page can yield fewer children than the
+ * budget. That is correct: the budget bounds *enqueues*, and the cursor advances by
+ * what was READ — advancing by what survived would re-read the filtered rows on
+ * every tick, forever.
+ */
+export async function readMappingPage(
+  listExternalIds: (page: { limit: number; offset: number }) => Promise<readonly string[]>,
+  offset: number,
+  budget: number
+): Promise<SweepPage> {
+  const externalIds = await listExternalIds({ limit: budget, offset });
+
+  return {
+    items: externalIds.filter((id) => !id.startsWith(SYNTHETIC_VARIANT_PREFIX)),
+    consumed: externalIds.length,
+    // A short page means the store had nothing more to give.
+    exhausted: externalIds.length < budget,
+  };
 }
 
 /** Floors then clamps a payload-supplied budget. */

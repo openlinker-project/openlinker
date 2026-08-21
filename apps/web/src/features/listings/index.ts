@@ -40,6 +40,7 @@ export type { ShopCategory } from './api/listings.types';
 // `OfferParameter`s (product-section) the caller threads onto publish parameters.
 export { ShopAttributePicker } from './components/bulk/shop-attribute-picker';
 export { useShopAttributesQuery } from './hooks/use-shop-attributes-query';
+export { useDescriptionFormatQuery } from './hooks/use-description-format-query';
 export { useShopAttributeTermsQuery } from './hooks/use-shop-attribute-terms-query';
 export type { ShopAttribute, ShopAttributeTerm } from './api/listings.types';
 // NOTE: `ShopPublishLauncher` is intentionally NOT re-exported here. It

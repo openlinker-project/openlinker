@@ -79,7 +79,10 @@ export class TopProductRowDto {
   @ApiProperty()
   units!: number;
 
-  @ApiProperty({ description: 'Comparable (reporting-currency) revenue — see currency.' })
+  @ApiProperty({
+    description:
+      'Comparable (reporting-currency) revenue — see currency. This is LINE revenue (unit price × quantity, at the order’s own implicit FX rate), summed per product — not a per-product slice of an order’s total. It therefore will not sum to the order-level revenue reported by GET /analytics/sales, which also includes shipping, order-level discounts, and anything else an order’s total carries beyond its line sum (#2172 review, IMPORTANT 2). Ranking is also blind to unconvertedRevenue: a product selling entirely in unstamped orders ranks at 0 and may not appear in a top page even though it sells.',
+  })
   revenue!: number;
 
   @ApiProperty({

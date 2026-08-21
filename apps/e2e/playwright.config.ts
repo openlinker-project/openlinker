@@ -54,6 +54,12 @@
  *                      publish wizard (#2205). Every OL route the wizard touches
  *                      is stubbed in-test, so it needs no seeded catalogue and
  *                      runs on any stack. `retries: 1` (nothing is mutated).
+ *   - `rich-text`    — adapter-declared description formats (#2201, ADR-046):
+ *                      typing into a ProseMirror surface, paste-time schema
+ *                      filtering, sanitized rendering, and one authored offer
+ *                      published to the destination. The first three are
+ *                      unreachable under jsdom AND happy-dom. Self-configuring;
+ *                      `retries: 0` — the publish case creates a real offer.
  *
  * Reporters: html + list. Retries are per-project: read-only projects (setup,
  * smoke) retry once; the mutating golden-path project runs with `retries: 0` —
@@ -242,6 +248,24 @@ export default defineConfig({
       name: 'perf',
       testMatch: /perf\/.*\.spec\.ts/,
       retries: 1,
+      dependencies: ['setup'],
+      use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
+    },
+    {
+      // Rich-text description coverage (#2201, ADR-046). The only place typing
+      // into a ProseMirror surface, paste-time schema filtering, and sanitized
+      // rendering can be asserted at all - none of the three is reachable under
+      // jsdom or happy-dom.
+      //
+      // `retries: 0`, following the `invoicing` precedent: the last case CREATES
+      // AN OFFER on the destination, and a retry would create a second one. The
+      // other cases are read-mostly (a description draft at most) and would be
+      // safe to retry, but retry granularity is per project, and silently
+      // duplicating a live listing is the worse failure - so the whole project
+      // takes the strict setting rather than the convenient one.
+      name: 'rich-text',
+      testMatch: /rich-text\/.*\.spec\.ts/,
+      retries: 0,
       dependencies: ['setup'],
       use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
     },

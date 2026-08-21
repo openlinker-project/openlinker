@@ -12,7 +12,7 @@
  * @module libs/core/src/orders/domain/ports
  */
 import type { OrderLineItem } from '../entities/order-line-item.entity';
-import type { SalesAnalyticsFilters } from '../types/order-sales-analytics.types';
+import type { ConnectionUnitsSold, SalesAnalyticsFilters } from '../types/order-sales-analytics.types';
 import type { ProductChannelBreakdownRow, ProductRankingRow, TopProductFilters } from '../types/top-products.types';
 
 export interface OrderLineItemRepositoryPort {
@@ -32,16 +32,19 @@ export interface OrderLineItemRepositoryPort {
    * matching lines is simply absent from the returned Map (mirrors the
    * "absent key = no data" convention used elsewhere in this context).
    *
-   * Scoped differently from `orderCount`/`revenue` (#1987 review, suggestion
-   * 1): unlike {@link OrderRecordRepositoryPort.getDailyOrderAggregates},
-   * this reads the order-level `reportingCurrency IS NOT NULL` restriction
-   * OFF — units aren't money, so an unstamped order's items still count here
-   * even though the same order is excluded from `orderCount`. A caller
-   * computing units-per-order therefore divides by a denominator that can be
-   * smaller than the numerator's population; don't build that ratio without
-   * accounting for the mismatch.
+   * Split into `unitsSold`/`unconvertedUnitsSold` on the SAME
+   * `reportingCurrency = currentReportingCurrency` population
+   * `getDailyOrderAggregates` uses for `orderCount`/`revenue` (#1987 review,
+   * IMPORTANT 1) — before this fix `units` summed every non-cancelled line
+   * regardless of stamp state, so a deployment with pre-#2049 history could
+   * read `orderCount: 0` next to a non-zero `unitsSold` for the same range. A
+   * caller computing units-per-order now divides two numbers describing the
+   * same orders.
    */
-  getUnitsSoldByConnection(filters: SalesAnalyticsFilters): Promise<Map<string, number>>;
+  getUnitsSoldByConnection(
+    filters: SalesAnalyticsFilters,
+    currentReportingCurrency: string
+  ): Promise<Map<string, ConnectionUnitsSold>>;
 
   /**
    * A page of products ranked by `filters.sortBy`, aggregated across every

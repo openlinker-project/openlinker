@@ -9,6 +9,8 @@
 
 import { randomUUID } from 'node:crypto';
 import { Injectable, Inject } from '@nestjs/common';
+import { Logger } from '@openlinker/shared/logging';
+import { sanitizeStoredHtml } from '@openlinker/shared/html';
 import {
   IIntegrationsService,
   INTEGRATIONS_SERVICE_TOKEN,
@@ -34,8 +36,8 @@ import { normalizeBarcode, normalizeToEan13 } from '../../domain/utils/barcode-n
 import type {
   IMasterProductSyncService,
   MasterProductSyncResult,
+  PruneSkippedReason,
 } from './master-product-sync.service.interface';
-import { Logger } from '@openlinker/shared/logging';
 
 @Injectable()
 export class MasterProductSyncService implements IMasterProductSyncService {
@@ -86,13 +88,33 @@ export class MasterProductSyncService implements IMasterProductSyncService {
       variantsFromAdapter = await productAdapter.getProductVariants(internalProductId);
     } catch (error) {
       if (error instanceof MasterProductNotFoundError) {
-        return this.handleMasterDeletion(connectionId, externalId, internalProductId, correlationId);
+        return this.markProductDeletedAtMaster({
+          connectionId,
+          externalId,
+          internalProductId,
+          correlationId,
+        });
       }
       throw error;
     }
 
     // Convert port -> domain entities
     const product = this.toDomainProduct(productFromAdapter);
+    if (
+      (productFromAdapter.description ?? null) !== null &&
+      product.description !== productFromAdapter.description
+    ) {
+      // Logged, because the alternative is a silent rewrite of the operator's own
+      // catalogue copy: `ContentDraftService` warns on all three of its branches
+      // for the same reason. One line per altered product, with the ids needed to
+      // find it - this runs inside a catalogue loop, so it says what changed
+      // rather than dumping either value.
+      this.logger.warn(
+        `[master-sync] description sanitized on pull: connectionId=${connectionId} ` +
+          `externalId=${externalId} internalId=${internalProductId} correlationId=${correlationId} ` +
+          `before=${(productFromAdapter.description ?? '').length}B after=${(product.description ?? '').length}B`,
+      );
+    }
     const variants = variantsFromAdapter.map((v) => this.toDomainVariant(v, internalProductId));
 
     // Upsert into canonical storage (upsert clears any prior staleness on the
@@ -107,11 +129,12 @@ export class MasterProductSyncService implements IMasterProductSyncService {
     // Guarded against a false positive: a successful pull returning ZERO variants
     // is ambiguous (a genuinely emptied product vs. a flaky master response), and
     // pruning against an empty keep-set would stale every variant. A real full
-    // deletion arrives as MasterProductNotFoundError (handleMasterDeletion) — the
+    // deletion arrives as MasterProductNotFoundError (markProductDeletedAtMaster) — the
     // authoritative signal — so here we only prune when the master actually
     // enumerated variants, and skip (with a warning) on an empty response.
     let markedStale: string[] = [];
     let pruneSkipped = false;
+    let pruneSkippedReason: PruneSkippedReason = null;
     if (variants.length > 0) {
       // The prune is connection-blind (it keys on internalProductId alone), so
       // it is only safe while this connection is the sole ProductMaster claiming
@@ -121,7 +144,9 @@ export class MasterProductSyncService implements IMasterProductSyncService {
         externalId,
         internalProductId
       );
-      if (!pruneSkipped) {
+      if (pruneSkipped) {
+        pruneSkippedReason = 'rival';
+      } else {
         markedStale = await this.productsService.markVariantsStaleExcept(
           internalProductId,
           variants.map((v) => v.id)
@@ -140,6 +165,9 @@ export class MasterProductSyncService implements IMasterProductSyncService {
         }
       }
     } else {
+      // Reported, not just logged: before #2222 a skipped prune was invisible to
+      // the caller, because `pruneSkipped` means rival-blocked only.
+      pruneSkippedReason = 'empty-response';
       this.logger.warn(
         `Master product sync returned 0 variants for an existing product — skipping prune to avoid staling all variants on a possibly-transient empty response (connection: ${connectionId}, externalId: ${externalId}, internalProductId: ${internalProductId}, correlationId: ${correlationId})`
       );
@@ -154,6 +182,7 @@ export class MasterProductSyncService implements IMasterProductSyncService {
       variantsUpserted: variants.length,
       masterDeleted: false,
       pruneSkipped,
+      pruneSkippedReason,
     };
   }
 
@@ -162,12 +191,13 @@ export class MasterProductSyncService implements IMasterProductSyncService {
    * keep-set), emit `master.product.stale`, and signal a business failure so
    * the handler does NOT retry a permanent condition (#1599, ADR-007).
    */
-  private async handleMasterDeletion(
-    connectionId: string,
-    externalId: string,
-    internalProductId: string,
-    correlationId: string
-  ): Promise<MasterProductSyncResult> {
+  async markProductDeletedAtMaster(input: {
+    connectionId: string;
+    externalId: string;
+    internalProductId: string;
+    correlationId: string;
+  }): Promise<MasterProductSyncResult> {
+    const { connectionId, externalId, internalProductId, correlationId } = input;
     // Same guard as the partial-prune path: a 404 from ONE master must not stale
     // rows a sibling ProductMaster still considers live (#1904).
     if (await this.isPruneBlockedByRivalMaster(connectionId, externalId, internalProductId)) {
@@ -176,6 +206,7 @@ export class MasterProductSyncService implements IMasterProductSyncService {
         variantsUpserted: 0,
         masterDeleted: true,
         pruneSkipped: true,
+        pruneSkippedReason: 'rival',
       };
     }
 
@@ -197,6 +228,7 @@ export class MasterProductSyncService implements IMasterProductSyncService {
       variantsUpserted: 0,
       masterDeleted: true,
       pruneSkipped: false,
+      pruneSkippedReason: null,
     };
   }
 
@@ -234,7 +266,7 @@ export class MasterProductSyncService implements IMasterProductSyncService {
 
   /**
    * Derives the event type from whether the whole product was pruned (empty
-   * keep-set, `handleMasterDeletion`) versus a partial variant-level prune —
+   * keep-set, `markProductDeletedAtMaster`) versus a partial variant-level prune —
    * a single derivation point so the two call sites can't drift out of sync.
    */
   private async publishDeletionEvent(
@@ -267,7 +299,12 @@ export class MasterProductSyncService implements IMasterProductSyncService {
       ...product,
       sku: product.sku ?? null,
       price: product.price ?? null,
-      description: product.description ?? null,
+      // #2198: shop-supplied HTML is untrusted - OpenLinker pulls whatever the
+      // master returns, so a compromised or hostile source shop could otherwise
+      // store a script vector that `RichTextView` would later render. Sanitized
+      // HERE rather than in each adapter's mapper so every current and future
+      // ProductMaster is covered by one call.
+      description: sanitizeStoredHtml(product.description ?? null),
       images: product.images ?? null,
     };
   }

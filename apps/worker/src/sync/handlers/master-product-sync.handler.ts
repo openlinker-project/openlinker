@@ -55,13 +55,20 @@ export class MasterProductSyncHandler implements SyncJobHandler {
         payload.externalId
       );
 
-      // The staleness prune was withheld because a second ProductMaster
-      // connection claims the same internal product id (#1904). Not a business
-      // failure on its own - the upserts (or the deletion signal below) still
-      // stand; it needs operator attention, so it is logged with job context.
-      if (result.pruneSkipped) {
+      // The staleness prune did not run. Two causes with completely different
+      // remediations, so they are reported as different lines rather than one
+      // ambiguous "prune skipped" (#2222): a #1904 collision needs the operator
+      // to resolve which connection owns the id, while a zero-variant response
+      // needs nothing at all unless it persists, in which case the master is
+      // flaky. Neither is a business failure - the upserts (or the deletion
+      // signal below) still stand.
+      if (result.pruneSkippedReason === 'rival') {
         this.logger.warn(
           `Master product sync: staleness prune skipped - internal product id claimed by more than one ProductMaster connection (job ${job.id}, connection: ${job.connectionId}, externalId: ${String(payload.externalId)}, internalProductId: ${result.internalProductId})`
+        );
+      } else if (result.pruneSkippedReason === 'empty-response') {
+        this.logger.warn(
+          `Master product sync: staleness prune skipped - the master returned zero variants for an existing product, which is ambiguous enough that pruning would risk staling every variant (job ${job.id}, connection: ${job.connectionId}, externalId: ${String(payload.externalId)}, internalProductId: ${result.internalProductId})`
         );
       }
 
