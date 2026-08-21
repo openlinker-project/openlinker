@@ -66,10 +66,26 @@ describe('Sales analytics daily aggregates (integration, #1987)', () => {
       reportingTotalAmount: 100,
     });
 
-    const rows = await repository.getDailyOrderAggregates({
-      from: new Date('2026-08-01T00:00:00.000Z'),
-      to: new Date('2026-08-08T00:00:00.000Z'),
-    });
+    // Testcontainers Postgres boots with TimeZone = UTC, so this assertion
+    // would pass identically with or without the `AT TIME ZONE 'UTC'` pair —
+    // it documents intent but can't fail on a regression (#2151 review,
+    // SUGGESTION). Force the session TimeZone to Warsaw (east of UTC) for
+    // this one read so a regression to a bare `date_trunc('day', placedAt)`
+    // actually flips the bucket to 2026-08-03 and fails the test. `SET TIME
+    // ZONE` is session-scoped; `dataSource.query` and `repository.
+    // getDailyOrderAggregates` run back-to-back with no concurrent query in
+    // flight, so the pool hands back the same just-released client.
+    const dataSource = harness.getDataSource();
+    await dataSource.query(`SET TIME ZONE 'Europe/Warsaw'`);
+    let rows;
+    try {
+      rows = await repository.getDailyOrderAggregates({
+        from: new Date('2026-08-01T00:00:00.000Z'),
+        to: new Date('2026-08-08T00:00:00.000Z'),
+      });
+    } finally {
+      await dataSource.query(`SET TIME ZONE 'UTC'`);
+    }
 
     expect(rows).toHaveLength(1);
     expect(rows[0].day.toISOString()).toBe('2026-08-02T00:00:00.000Z');

@@ -19,6 +19,7 @@
  * @module apps/web/src/features/listings/components/bulk
  */
 import { useMemo, useState, type ReactElement } from 'react';
+import { Link } from 'react-router-dom';
 import { Button, DataTable, StatusBadge, TimeDisplay } from '../../../../shared/ui';
 import type { DataTableColumn } from '../../../../shared/ui';
 import {
@@ -36,6 +37,13 @@ interface BulkBatchProgressTableProps {
   records: BulkBatchRecordSummary[];
   /** Marketplace URL builder (e.g. for Allegro: allegro.pl/oferta/...). */
   buildExternalOfferUrl?: (externalOfferId: string) => string;
+  /**
+   * Per-record bulk-wizard URL for the data-fix path (#2234). Returns null
+   * when this record carries no product link, so a mixed batch can still
+   * offer the action on the rows that do. Omitted entirely when the viewer
+   * cannot write.
+   */
+  buildFixUrl?: (record: BulkBatchRecordSummary) => string | null;
 }
 
 /** Statuses that count as a live offer for the per-product rollup (#1741). */
@@ -52,6 +60,7 @@ const VIRTUALIZE_THRESHOLD = 200;
 export function BulkBatchProgressTable({
   records,
   buildExternalOfferUrl,
+  buildFixUrl,
 }: BulkBatchProgressTableProps): ReactElement {
   const [detailRecord, setDetailRecord] = useState<BulkBatchRecordSummary | null>(null);
 
@@ -100,6 +109,7 @@ export function BulkBatchProgressTable({
           }
           if (record.status === 'failed') {
             const firstMessage = record.errors?.[0]?.message;
+            const fixUrl = buildFixUrl?.(record);
             return (
               <span className="bulk-batch__err-cell">
                 <span className="bulk-batch__err" title={firstMessage ?? 'Failed'}>
@@ -115,6 +125,15 @@ export function BulkBatchProgressTable({
                 >
                   Details
                 </Button>
+                {fixUrl !== null && fixUrl !== undefined ? (
+                  <Link
+                    className="button button--ghost button--xs"
+                    to={fixUrl}
+                    aria-label={`Fix and resubmit ${record.internalVariantId}`}
+                  >
+                    Fix this one
+                  </Link>
+                ) : null}
               </span>
             );
           }
@@ -146,7 +165,7 @@ export function BulkBatchProgressTable({
         hideBelow: 768,
       },
     ],
-    [buildExternalOfferUrl],
+    [buildExternalOfferUrl, buildFixUrl],
   );
 
   return (
@@ -160,8 +179,8 @@ export function BulkBatchProgressTable({
           </ul>
           {hasFailedGroup ? (
             <p className="dim" style={{ marginTop: 'var(--space-3)', fontSize: 12 }}>
-              Retry re-runs the saved data; a data fix is a new batch excluding the
-              already-live siblings.
+              Retry re-runs the saved data. Fix and resubmit opens the wizard on the
+              failed variants; already-live siblings are excluded.
             </p>
           ) : null}
         </section>

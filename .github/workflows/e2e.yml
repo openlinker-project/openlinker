@@ -3,10 +3,10 @@ name: E2E
 # Deliberately NOT wired to `pull_request` / `push`.
 #
 # `apps/e2e` is a black-box suite: it drives a *running* six-system stack over
-# HTTP, and every project except `smoke` mutates that stack (publishes products,
-# creates marketplace offers, dispatches real ShipX labels, issues fiscal
-# documents). None of that belongs on the critical path of an unrelated PR, and
-# there is no ephemeral stack to point it at.
+# HTTP, and every project except `smoke`, `orders` and `perf` mutates that stack
+# (publishes products, creates marketplace offers, dispatches real ShipX labels,
+# issues fiscal documents). None of that belongs on the critical path of an
+# unrelated PR, and there is no ephemeral stack to point it at.
 #
 # What the ordinary CI workflow *does* guarantee for this package is that it
 # compiles and lints — `apps/e2e` sits inside the `apps/*` workspace glob, so
@@ -26,6 +26,14 @@ name: E2E
 #     against whichever stack they explicitly name. Mutating runs are a human
 #     decision, every time.
 #
+# `orders` and `perf` are read-only as well, but they stay dispatch-only rather
+# than joining the weekly run. Neither is a rot detector: they assert on
+# `apps/web` copy, URL state and selectors, so the run that matters is the one
+# whoever changed that UI triggers, and `perf` additionally stubs the entire OL
+# API surface it drives - a green `perf` says nothing about a deployed stack.
+# Selectable, not scheduled. `full-flow` is deliberately absent from the list
+# below: it is attended by construction (it pauses for a real purchase).
+#
 # The scheduled run is gated on the `E2E_SCHEDULED_ENABLED` repository variable
 # so it stays dormant (rather than failing every week) until the secrets and a
 # target stack are actually configured.
@@ -34,7 +42,7 @@ on:
   workflow_dispatch:
     inputs:
       project:
-        description: 'Playwright project to run. Everything except `smoke` MUTATES the target stack.'
+        description: 'Playwright project to run. `smoke`, `orders` and `perf` are read-only; every other project MUTATES the target stack.'
         required: true
         default: smoke
         type: choice
@@ -47,6 +55,8 @@ on:
           - invoicing
           - lifecycle
           - access-control
+          - orders
+          - perf
       web_url:
         description: 'OL web URL (overrides the OL_WEB_URL secret).'
         required: false

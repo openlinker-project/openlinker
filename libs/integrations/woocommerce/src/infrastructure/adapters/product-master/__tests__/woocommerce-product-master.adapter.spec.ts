@@ -122,6 +122,73 @@ describe('WooCommerceProductMasterAdapter', () => {
     });
   });
 
+  describe('listExternalIdsModifiedSince (#2220 modified-since rung)', () => {
+    const SINCE = new Date('2026-08-20T09:55:00.000Z');
+
+    it('should pass dates_are_gmt=true so the window is not compared against site-local time', async () => {
+      // The single most important literal in this rung. WooCommerce defaults this
+      // to false and then compares `modified_after` against the SITE's timezone, so
+      // without it products modified inside the local-offset window are silently
+      // skipped once the watermark moves past them. Same flag, same reason, as the
+      // order source adapter.
+      const httpClient = makeHttpClient();
+      httpClient.get.mockResolvedValue([]);
+      const adapter = makeAdapter(httpClient, makeIdentifierMapping(), makeMapper());
+
+      await adapter.listExternalIdsModifiedSince({ since: SINCE, limit: 100, offset: 0 });
+
+      expect(httpClient.get).toHaveBeenCalledWith(
+        '/wp-json/wc/v3/products',
+        expect.objectContaining({ dates_are_gmt: true }),
+      );
+    });
+
+    it('should send the watermark as an ISO instant and order by modified ascending', async () => {
+      const httpClient = makeHttpClient();
+      httpClient.get.mockResolvedValue([]);
+      const adapter = makeAdapter(httpClient, makeIdentifierMapping(), makeMapper());
+
+      await adapter.listExternalIdsModifiedSince({ since: SINCE, limit: 100, offset: 0 });
+
+      expect(httpClient.get).toHaveBeenCalledWith(
+        '/wp-json/wc/v3/products',
+        expect.objectContaining({
+          modified_after: '2026-08-20T09:55:00.000Z',
+          orderby: 'modified',
+          order: 'asc',
+          _fields: 'id',
+        }),
+      );
+    });
+
+    it('should translate offset to page the same way listExternalIds does', async () => {
+      const httpClient = makeHttpClient();
+      httpClient.get.mockResolvedValue([]);
+      const adapter = makeAdapter(httpClient, makeIdentifierMapping(), makeMapper());
+
+      await adapter.listExternalIdsModifiedSince({ since: SINCE, limit: 100, offset: 200 });
+
+      expect(httpClient.get).toHaveBeenCalledWith(
+        '/wp-json/wc/v3/products',
+        expect.objectContaining({ page: 3, per_page: 100 }),
+      );
+    });
+
+    it('should return string IDs and drop rows with no id', async () => {
+      const httpClient = makeHttpClient();
+      httpClient.get.mockResolvedValue([{ id: 7 }, { id: undefined }, { id: 9 }]);
+      const adapter = makeAdapter(httpClient, makeIdentifierMapping(), makeMapper());
+
+      const result = await adapter.listExternalIdsModifiedSince({
+        since: SINCE,
+        limit: 100,
+        offset: 0,
+      });
+
+      expect(result).toEqual(['7', '9']);
+    });
+  });
+
   describe('getProduct', () => {
     it('should return product with internal ID', async () => {
       const httpClient = makeHttpClient();

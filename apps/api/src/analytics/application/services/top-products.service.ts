@@ -13,6 +13,11 @@
  * The coverage-gap enrichment is a best-effort addition: any failure there is
  * caught and degrades to an empty flag on every row rather than 500ing the
  * whole endpoint, mirroring `NeedsAttentionService`'s `settleSection` pattern.
+ * That degradation is reported via `TopProductsResponseDto.coverageGapAvailable`
+ * (#2172 review, SUGGESTION 5) rather than silently: an empty
+ * `missingFromConnectionIds` on every row is otherwise indistinguishable from
+ * "listed on every channel", the opposite of the truth when the enrichment
+ * itself failed.
  *
  * @module apps/api/src/analytics/application/services
  */
@@ -54,7 +59,7 @@ export class TopProductsService implements ITopProductsService {
     const core = await this.orderRecordService.getTopProducts(filters);
     const productIds = core.items.map((item) => item.productId);
 
-    const [catalogByProductId, missingFromConnectionIdsByProductId] = await Promise.all([
+    const [catalogByProductId, coverageGaps] = await Promise.all([
       this.resolveCatalog(productIds),
       this.resolveCoverageGaps(productIds),
     ]);
@@ -64,11 +69,12 @@ export class TopProductsService implements ITopProductsService {
       TopProductRowDto.fromDomain(
         item,
         catalogByProductId.entries.get(item.productId) ?? { name: null, sku: null },
-        missingFromConnectionIdsByProductId.get(item.productId) ?? []
+        coverageGaps.byProductId.get(item.productId) ?? []
       )
     );
     dto.total = core.total;
     dto.unresolvedProductCount = catalogByProductId.unresolvedCount;
+    dto.coverageGapAvailable = coverageGaps.available;
     return dto;
   }
 
@@ -104,37 +110,46 @@ export class TopProductsService implements ITopProductsService {
   /**
    * For each of the page's products, which listing-capable connections carry
    * no listing for any of its variants. Bounded by page size × capable-
-   * connection count, never catalogue size: variant ids are resolved once per
-   * page product, and `getPublishedVariantIds` is called once PER CONNECTION
-   * over the union of every page product's variant ids — never once per
-   * product — mirroring `CoverageGapReadService`'s O(connections) fan-out.
+   * connection count, never catalogue size: variant ids are resolved once for
+   * the whole page via a single batch call (#2172 review, SUGGESTION 4 —
+   * `getVariantsByProductIds`, not a `Promise.all` fan-out of one call per
+   * product), and `getPublishedVariantIds` is called once PER CONNECTION over
+   * the union of every page product's variant ids — never once per product —
+   * mirroring `CoverageGapReadService`'s O(connections) fan-out.
+   *
+   * `available: false` on a failure (#2172 review, SUGGESTION 5) — every row
+   * still gets an empty `missingFromConnectionIds`, but the response also
+   * says the flag couldn't be computed, so the FE can suppress the column
+   * rather than assert a false "listed everywhere".
    */
-  private async resolveCoverageGaps(productIds: string[]): Promise<Map<string, string[]>> {
-    const result = new Map<string, string[]>();
+  private async resolveCoverageGaps(
+    productIds: string[]
+  ): Promise<{ byProductId: Map<string, string[]>; available: boolean }> {
+    const byProductId = new Map<string, string[]>();
     if (productIds.length === 0) {
-      return result;
+      return { byProductId, available: true };
     }
 
     try {
       const capableConnectionIds = await this.resolveListingCapableConnectionIds();
       if (capableConnectionIds.length === 0) {
-        return result;
+        return { byProductId, available: true };
       }
 
+      const variants = await this.productsService.getVariantsByProductIds(productIds);
       const variantIdsByProductId = new Map<string, string[]>();
-      await Promise.all(
-        productIds.map(async (productId) => {
-          const variants = await this.productsService.getVariantsByProductId(productId);
-          variantIdsByProductId.set(
-            productId,
-            variants.map((variant) => variant.id)
-          );
-        })
-      );
+      for (const variant of variants) {
+        const existing = variantIdsByProductId.get(variant.productId);
+        if (existing) {
+          existing.push(variant.id);
+        } else {
+          variantIdsByProductId.set(variant.productId, [variant.id]);
+        }
+      }
 
       const allVariantIds = [...new Set([...variantIdsByProductId.values()].flat())];
       if (allVariantIds.length === 0) {
-        return result;
+        return { byProductId, available: true };
       }
 
       const publishedByConnection = new Map<string, Set<string>>();
@@ -154,15 +169,15 @@ export class TopProductsService implements ITopProductsService {
           const published = publishedByConnection.get(connectionId);
           return !variantIds.some((variantId) => published?.has(variantId));
         });
-        result.set(productId, missingFromConnectionIds);
+        byProductId.set(productId, missingFromConnectionIds);
       }
 
-      return result;
+      return { byProductId, available: true };
     } catch (error) {
       this.logger.warn(
         `Coverage-gap enrichment failed for top-products, degrading to empty flags: ${(error as Error).message}`
       );
-      return result;
+      return { byProductId, available: false };
     }
   }
 

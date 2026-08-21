@@ -147,7 +147,13 @@ export interface BulkBatchRecordSummary {
    * #1741). When absent the progress table falls back to the raw variant id.
    */
   variantLabel?: string | null;
-  /** OL product id, for grouping records into a per-product rollup (#1741). */
+  /**
+   * OL product id owning this record's variant. Populated by the BE record
+   * projection since #2234 (resolved with one batched variant lookup); null
+   * when the variant no longer resolves. Drives the per-product rollup
+   * grouping (#1741) and the failed-batch "Fix and resubmit" wizard link.
+   * Kept optional so a response from an older API still type-checks.
+   */
   productId?: string | null;
 }
 

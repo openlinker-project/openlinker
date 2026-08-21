@@ -18,6 +18,16 @@ import type {
   EanMatchResult,
 } from '../../types/ean-category-match.types';
 
+/**
+ * Manifest name an adapter advertises this sub-capability under (#2210 review
+ * S7). Exported so `AdapterMetadata.supportedCapabilities` pre-filters - which
+ * read a plain string, since the name is deliberately absent from
+ * `CoreCapabilityValues` (advertised-without-dispatch) - reference the same
+ * literal the manifests do, instead of a hand-typed copy a rename would leave
+ * behind with no compile error.
+ */
+export const EAN_CATEGORY_MATCHER_CAPABILITY = 'EanCategoryMatcher';
+
 export interface EanCategoryMatcher {
   /**
    * Resolve marketplace categories for N variant EANs in one batch.

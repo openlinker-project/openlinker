@@ -9,15 +9,17 @@ env flags, known Erli platform quirks, and troubleshooting. For first-time setup
 
 ## Scheduler env flags (worker)
 
-Two Erli schedulers are **opt-in** — enable them on the worker process:
+Both Erli schedulers register unconditionally and are **on by default**. Each is
+gated by its own env var, which the worker re-reads at every tick and which
+disables the task only on the literal value `false`:
 
 | Env var | Effect | Default |
 |---|---|---|
-| `OL_ERLI_ORDERS_POLL_SCHEDULER_ENABLED=true` | `erli-orders-poll` reads Erli's unread inbox on an interval (order backstop for missed/dropped webhooks). | off |
-| `OL_ERLI_OFFER_STATUS_SYNC_SCHEDULER_ENABLED=true` | `erli-offer-status-sync` reconciles live offer status into `offer_status_snapshots` and populates the frozen-stock cache. | off |
+| `OL_ERLI_ORDERS_POLL_SCHEDULER_ENABLED` | `erli-orders-poll` reads Erli's unread inbox on an interval (order backstop for missed/dropped webhooks). | on |
+| `OL_ERLI_OFFER_STATUS_SYNC_SCHEDULER_ENABLED` | `erli-offer-status-sync` reconciles live offer status into `offer_status_snapshots` + `offer_commercial_snapshots` and populates the frozen-stock cache. Default ON since #2230 - without it no Erli listing ever leaves the `Unsynced` bucket on `/listings`. | on |
 
-> The orders poll is the correctness backstop for order ingestion — keep it
-> enabled in any deployment that relies on Erli orders, since webhooks are
+> The orders poll is the correctness backstop for order ingestion - never set it
+> to `false` in a deployment that relies on Erli orders, since webhooks are
 > fire-once with no retry (see below).
 
 ---

@@ -24,6 +24,19 @@ import {
 
 import type { EanMatchResult } from '@openlinker/core/listings';
 
+/**
+ * Hard cap on items per request, shared by the batch route and its NDJSON
+ * sibling (#2209/#2205). It bounds one request, never a batch: a caller with
+ * more variants than this splits them across requests, which the streaming
+ * client does explicitly (`RESOLVE_CATEGORY_STREAM_CHUNK_SIZE` in
+ * `apps/web/src/features/listings/api/listings.api.ts`, kept in step by
+ * `scripts/check-resolve-stream-mirror.mjs`).
+ *
+ * Exported as a named constant rather than inlined in the decorator so the
+ * mirror guard has something to read and a test can pin the boundary.
+ */
+export const RESOLVE_CATEGORY_ITEMS_MAX = 200;
+
 export class ResolveCategoryBatchItemDto {
   @ApiProperty({ description: 'Internal product-variant ID; echoed back as the result key.' })
   @IsString()
@@ -55,12 +68,14 @@ export class ResolveCategoryBatchItemDto {
 
 export class ResolveCategoryBatchRequestDto {
   @ApiProperty({
-    description: 'Per-variant EAN items to resolve (max 200). One result entry per item.',
+    description: `Per-variant EAN items to resolve (max ${RESOLVE_CATEGORY_ITEMS_MAX}). One result entry per item.`,
     type: [ResolveCategoryBatchItemDto],
   })
   @IsArray()
   @ArrayMinSize(1, { message: 'items must contain at least one entry' })
-  @ArrayMaxSize(200, { message: 'items may contain at most 200 entries per request' })
+  @ArrayMaxSize(RESOLVE_CATEGORY_ITEMS_MAX, {
+    message: `items may contain at most ${RESOLVE_CATEGORY_ITEMS_MAX} entries per request`,
+  })
   @ValidateNested({ each: true })
   @Type(() => ResolveCategoryBatchItemDto)
   items!: ResolveCategoryBatchItemDto[];

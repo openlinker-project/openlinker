@@ -21,7 +21,7 @@ import { IdentifierMappingOrmEntity } from '../entities/identifier-mapping.orm-e
 import type { IdentifierMappingRepositoryPort } from '../../../domain/ports/identifier-mapping-repository.port';
 import { IdentifierMapping } from '../../../domain/entities/identifier-mapping.entity';
 import { DuplicateIdentifierMappingError } from '../../../domain/exceptions/duplicate-identifier-mapping.error';
-import type { MappingContext } from '@openlinker/core/identifier-mapping';
+import type { MappingContext, IdentifierMappingPage } from '@openlinker/core/identifier-mapping';
 
 @Injectable()
 export class IdentifierMappingRepository implements IdentifierMappingRepositoryPort {
@@ -98,15 +98,40 @@ export class IdentifierMappingRepository implements IdentifierMappingRepositoryP
     }
   }
 
+  /**
+   * A paged read is ordered by `externalId` so an offset means the same thing on
+   * the next run (#2219).
+   *
+   * That order is NOT indexed for this partition and the cost is accepted rather
+   * than overlooked: the entity declares `(entityType, platformType, connectionId,
+   * externalId)` unique — unusable for an `entityType + connectionId` range scan
+   * because `platformType` sits between them — and the only ordered/keyset-shaped
+   * index in the table is partial on `entityType = 'Offer'`. Each page therefore
+   * sorts the connection's partition. At realistic catalogue sizes that is
+   * survivable and strictly cheaper than the unbounded read this replaced; adding
+   * a partial index mirroring the `Offer` one is additive and needs no contract
+   * change (ADR-048).
+   *
+   * The unpaged branch keeps its original unordered shape so existing callers see
+   * no behavioural change.
+   */
   async findByEntityTypeAndConnection(
     entityType: string,
-    connectionId: string
+    connectionId: string,
+    page?: IdentifierMappingPage
   ): Promise<IdentifierMapping[]> {
     const entities = await this.repository.find({
       where: {
         entityType,
         connectionId,
       },
+      ...(page
+        ? {
+            order: { externalId: 'ASC' as const },
+            take: page.limit,
+            skip: page.offset ?? 0,
+          }
+        : {}),
     });
     return entities.map((entity: IdentifierMappingOrmEntity) => this.toDomain(entity));
   }

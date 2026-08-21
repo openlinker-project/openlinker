@@ -7,17 +7,33 @@
  * discovery path — the mechanism by which OpenLinker learns about products that
  * exist on a freshly connected source platform but have no identifier mapping yet.
  *
- * Paginates through the source catalog until a short page is returned. Individual
- * sub-job enqueue failures are logged but do not fail the outer job (partial
- * fan-out is preferred over dropping the entire sweep). Only failure to enumerate
- * IDs (e.g. upstream API outage) propagates as a job failure.
+ * BOUNDED AND RESUMABLE since #2218 (ADR-048 decisions 4-6). Each run enqueues at
+ * most `budget` children, records where it stopped on a connection cursor, and the
+ * next cron tick resumes; runs are serialised per connection by a lock. It used to
+ * page the entire catalog and `map(...)` one child per product with no cap, every
+ * 20 minutes, into a runner whose execution concurrency is 1.
  *
- * Sub-job idempotency key is derived from the outer job ID, so retries of the same
- * outer job produce the same sub-job keys and dedupe against the queue.
+ * Two properties are deliberate and easy to get wrong on a later edit:
+ *
+ * - **A budgeted run is the healthy steady state, not an incident**, so it returns
+ *   a plain `outcome: 'ok'` like every other sweep (`fxStampSweep`, taxonomy,
+ *   offer-status). The cursor — non-empty means a cycle is in flight — is the
+ *   observable, not `sync_jobs`. #2218's acceptance criterion asked for the
+ *   distinction to live in `sync_jobs`; that was declined because
+ *   `JobOutcomeReasonValues` is FE-mirrored and adding a value would put an
+ *   attention-shaped label on normal operation.
+ * - **Nothing throws on a bound.** The old `MAX_PAGES` guard warned
+ *   "pagination may be truncated" and then returned `{ outcome: 'ok' }` — a
+ *   silently half-replicated catalog reporting healthy. It is gone: a run that hits
+ *   its budget resumes rather than truncates. Throwing instead would cost
+ *   `maxAttempts=10` with backoff to 6 h and one accumulating dead row per tick,
+ *   while the catalog stays unreplicated (ADR-048 decision 5).
  *
  * @module apps/worker/src/sync/handlers
+ * @see {@link runBoundedSweep} for the shared shape, also used by the inventory sweep
  */
 
+import { randomUUID } from 'node:crypto';
 import { Injectable, Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type {
@@ -25,22 +41,39 @@ import type {
   SyncJobHandlerResult,
   SyncJob as SyncJobEntity,
   SyncJobRequest,
+  MasterProductSyncAllPayloadV1
 } from '@openlinker/core/sync';
-import { SyncJobExecutionError, JobEnqueuePort, JOB_ENQUEUE_TOKEN } from '@openlinker/core/sync';
+import {
+  SyncJobExecutionError,
+  JobEnqueuePort,
+  JOB_ENQUEUE_TOKEN,
+  SYNC_CURSORS_SERVICE_TOKEN,
+  SYNC_LOCK_TOKEN,
+
+  ISyncCursorsService,
+  SyncLockPort} from '@openlinker/core/sync';
 import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 import type { ProductMasterPort } from '@openlinker/core/products';
 import { Logger } from '@openlinker/shared/logging';
 import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
+import {
+  formatSweepCursor,
+  parseSweepCursor,
+  readPagedIds,
+  resolveSweepBudget,
+  resolveSweepLockTtlMs,
+  runBoundedSweep,
+  sweepCursorKey,
+  sweepLockKey,
+} from '../bounded-sweep';
 
 type SyncJob = SyncJobEntity;
 
 // 100 is the lowest common denominator across ProductMasterPort adapters —
 // WooCommerce's REST API hard-caps `per_page` at 100 and rejects anything
 // higher with a 400, so a larger default permanently fails WC master syncs
-// (#1723). PrestaShop has no such cap; MAX_PAGES still bounds a full sweep
-// at 100,000 products.
+// (#1723). PrestaShop has no such cap.
 const DEFAULT_PAGE_SIZE = 100;
-const MAX_PAGES = 1000; // Safety guard against infinite loops.
 
 @Injectable()
 export class MasterProductSyncAllHandler implements SyncJobHandler {
@@ -51,67 +84,73 @@ export class MasterProductSyncAllHandler implements SyncJobHandler {
     private readonly integrationsService: IIntegrationsService,
     @Inject(JOB_ENQUEUE_TOKEN)
     private readonly jobEnqueue: JobEnqueuePort,
+    // `ISyncCursorsService`, not `ConnectionCursorRepositoryPort`: a repository
+    // port is an intra-context contract and reaching across to `sync`'s would
+    // trip `check-cross-context-imports` (the same reasoning as
+    // `destination-taxonomy-sync.handler.ts`).
+    @Inject(SYNC_CURSORS_SERVICE_TOKEN)
+    private readonly cursors: ISyncCursorsService,
+    @Inject(SYNC_LOCK_TOKEN)
+    private readonly syncLock: SyncLockPort,
     private readonly configService: ConfigService
   ) {}
 
   async execute(job: SyncJob): Promise<SyncJobHandlerResult> {
-    this.logger.log(
-      `Executing master.product.syncAll job ${job.id} for connection ${job.connectionId}`
+    const budget = resolveSweepBudget(this.getPayload(job).pageLimit);
+    const lockKey = sweepLockKey('product', job.connectionId);
+    const lockTtlMs = resolveSweepLockTtlMs(
+      this.configService.get<string>('OL_MASTER_SWEEP_LOCK_TTL_MS')
     );
+
+    const lockToken = await this.syncLock.acquire(lockKey, lockTtlMs);
+    if (lockToken === null) {
+      // Contention is not a failure — the holder is doing this connection's work.
+      // Same semantics as the taxonomy sync: log and return ok, never throw.
+      this.logger.log(
+        `master.product.syncAll skipped for connection ${job.connectionId}: ${lockKey} already in progress`
+      );
+      return { outcome: 'ok' };
+    }
 
     try {
       const productMaster = await this.integrationsService.getCapabilityAdapter<ProductMasterPort>(
         job.connectionId,
         'ProductMaster'
       );
+      const cursorKey = sweepCursorKey('product', job.connectionId);
+      const cursor = parseSweepCursor(await this.cursors.getCursor(job.connectionId, cursorKey));
 
-      const pageSize = this.getPageSize();
-      const externalIds = await this.collectExternalIds(productMaster, pageSize, job.connectionId);
-
-      if (externalIds.length === 0) {
-        this.logger.log(
-          `No products found on source platform for connection ${job.connectionId}. Nothing to sync.`
-        );
-        return { outcome: 'ok' };
-      }
-
-      this.logger.log(
-        `Discovered ${externalIds.length} product(s) on source for connection ${job.connectionId}. Fanning out sync jobs.`
-      );
-
-      const enqueuePromises = externalIds.map(async (externalId) => {
-        const jobRequest: SyncJobRequest = {
-          jobType: 'master.product.syncByExternalId',
-          connectionId: job.connectionId,
-          payload: {
-            schemaVersion: 1,
-            externalId,
-            objectType: CORE_ENTITY_TYPE.Product,
-          },
-          idempotencyKey: `master:${job.connectionId}:product:sync:${externalId}:${job.id}`,
-        };
-        return this.jobEnqueue.enqueueJob(jobRequest);
+      const result = await runBoundedSweep({
+        cursor,
+        budget,
+        readPage: (offset, pageBudget) =>
+          readPagedIds(
+            (pageOffset, limit) => productMaster.listExternalIds({ limit, offset: pageOffset }),
+            offset,
+            pageBudget,
+            this.getPageSize()
+          ),
+        enqueue: (externalId, cycleId) => this.enqueueChild(job, externalId, cycleId),
+        newCycleId: () => randomUUID(),
       });
 
-      const results = await Promise.allSettled(enqueuePromises);
+      await this.cursors.advanceCursor(
+        job.connectionId,
+        cursorKey,
+        // '' clears the cursor so the next tick starts a fresh cycle rather than
+        // resuming a completed one.
+        result.nextCursor === null ? '' : formatSweepCursor(result.nextCursor)
+      );
 
-      const succeeded = results.filter((r) => r.status === 'fulfilled').length;
-      const failed = results.filter((r) => r.status === 'rejected').length;
-
-      if (failed > 0) {
-        this.logger.warn(
-          `master.product.syncAll for connection ${job.connectionId}: ${succeeded} enqueued, ${failed} failed`
+      if (result.failed > 0) {
+        this.logger.error(
+          `master.product.syncAll for connection ${job.connectionId}: ${result.enqueued} enqueued, ` +
+            `${result.failed} failed; cursor held at offset ${String(result.nextCursor?.offset ?? 0)} so the page retries next tick`
         );
-        results.forEach((result, index) => {
-          if (result.status === 'rejected') {
-            this.logger.error(
-              `Failed to enqueue product sync for externalId ${externalIds[index]} (connection: ${job.connectionId}): ${String(result.reason)}`
-            );
-          }
-        });
       } else {
         this.logger.log(
-          `master.product.syncAll for connection ${job.connectionId}: ${succeeded} product sync job(s) enqueued`
+          `master.product.syncAll for connection ${job.connectionId}: ${result.enqueued} product sync job(s) enqueued ` +
+            `(cycle ${result.cycleId}, ${result.completed ? 'cycle complete' : `resuming at offset ${String(result.nextCursor?.offset ?? 0)}`})`
         );
       }
 
@@ -125,39 +164,53 @@ export class MasterProductSyncAllHandler implements SyncJobHandler {
         job.connectionId,
         error instanceof Error ? error : undefined
       );
+    } finally {
+      // Best-effort: a release failure must never mask the run's own result. The
+      // TTL bounds the damage, and an overlapping run is safe anyway because the
+      // child key is cycle-scoped.
+      try {
+        await this.syncLock.release(lockKey, lockToken);
+      } catch (releaseError) {
+        this.logger.warn(
+          `Failed to release ${lockKey}: ${releaseError instanceof Error ? releaseError.message : String(releaseError)}`
+        );
+      }
     }
   }
 
-  private async collectExternalIds(
-    productMaster: ProductMasterPort,
-    pageSize: number,
-    connectionId: string
-  ): Promise<string[]> {
-    const collected: string[] = [];
-    let offset = 0;
+  private async enqueueChild(job: SyncJob, externalId: string, cycleId: string): Promise<unknown> {
+    const jobRequest: SyncJobRequest = {
+      jobType: 'master.product.syncByExternalId',
+      connectionId: job.connectionId,
+      payload: {
+        schemaVersion: 1,
+        externalId,
+        objectType: CORE_ENTITY_TYPE.Product,
+      },
+      // Keyed on the CYCLE, not on `job.id`. A resuming tick is a different job,
+      // so a job-scoped key would re-enqueue the same child under a fresh key on
+      // every overlapping page (#2039's `reconcileId` lesson: a job id is not a
+      // run identity). Cycle-scoping also makes a crash between enqueue and
+      // cursor write safe — the retry produces identical keys.
+      idempotencyKey: `master:${job.connectionId}:product:sync:${externalId}:${cycleId}`,
+    };
+    return this.jobEnqueue.enqueueJob(jobRequest);
+  }
 
-    for (let page = 0; page < MAX_PAGES; page++) {
-      const batch = await productMaster.listExternalIds({ limit: pageSize, offset });
-      if (batch.length === 0) {
-        break;
-      }
-      collected.push(...batch);
-      if (batch.length < pageSize) {
-        break;
-      }
-      offset += batch.length;
-    }
-
-    // Only true if every page returned was full — i.e., we never saw a short page
-    // that would have terminated the loop naturally. Signals the guard truncated us.
-    if (collected.length >= MAX_PAGES * pageSize) {
-      this.logger.warn(
-        `master.product.syncAll hit MAX_PAGES guard for connection ${connectionId}; pagination may be truncated`
-      );
-    }
-
-    // De-duplicate defensively — some sources may repeat IDs across pages.
-    return [...new Set(collected)];
+  /**
+   * Defaults rather than throwing on a malformed payload, unlike the taxonomy
+   * handler this pattern otherwise follows (`destination-taxonomy-sync.handler.ts`
+   * raises on a missing payload). A sweep's payload carries nothing the run needs
+   * — only an optional budget override — so refusing to run a scheduled sweep
+   * over a malformed one would trade a healthy default for a dead job.
+   */
+  private getPayload(job: SyncJob): MasterProductSyncAllPayloadV1 {
+    const payload = job.payload as unknown as Partial<MasterProductSyncAllPayloadV1> | null;
+    return {
+      schemaVersion: 1,
+      pageLimit:
+        payload && typeof payload.pageLimit === 'number' ? payload.pageLimit : undefined,
+    };
   }
 
   private getPageSize(): number {

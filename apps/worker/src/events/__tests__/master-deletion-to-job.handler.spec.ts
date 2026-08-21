@@ -157,7 +157,10 @@ describe('MasterDeletionToJobHandler', () => {
       expect(redis.xAdd).toHaveBeenCalledWith(
         DLQ,
         '*',
-        expect.objectContaining({ errorReason: expect.stringContaining('unparseable') })
+        expect.objectContaining({ errorReason: expect.stringContaining('unparseable') }),
+        // Age-bounded (#2163): this DLQ has no Postgres counterpart, so it is
+        // the sole record that a deletion event was discarded.
+        expect.objectContaining({ TRIM: expect.objectContaining({ strategy: 'MINID' }) })
       );
       expect(redis.xAck).toHaveBeenCalledWith(STREAM, GROUP, '1-0');
     });

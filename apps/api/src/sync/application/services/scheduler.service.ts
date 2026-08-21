@@ -129,6 +129,33 @@ const CORE_CAPABILITY_TASKS: readonly CoreCapabilityTaskDescriptor[] = [
       `master:${connectionId}:product:syncAll:${timestamp}`,
   },
   {
+    // Incremental catalog pass (#2220, ADR-048). OPT-IN: it is additive work on top
+    // of the unchanged 20-minute full sweep, and only a master declaring the
+    // modified-since rung does anything with it. #2222 owns the two-cadence policy
+    // that would make it the default and relax the full pass.
+    //
+    // Gated on `ProductMaster`, not on the rung's own name: a connection's
+    // `enabledCapabilities` is stamped at create and never retro-filled, so gating
+    // on a newly advertised capability would drain nothing for every connection
+    // that already exists. The handler narrows with `isModifiedProductLister`.
+    taskId: 'master-product-delta-sync',
+    jobType: 'master.product.syncDelta',
+    capability: 'ProductMaster',
+    enabledEnvVar: 'OL_MASTER_PRODUCT_DELTA_SYNC_ENABLED',
+    defaultEnabled: false,
+    cronEnvVar: 'OL_MASTER_PRODUCT_DELTA_SYNC_CRON',
+    // 15 min, derived from the same drain-rate rule `bounded-sweep.ts` states for
+    // the budget: budget x per-child-duration must fit inside the tick. One child
+    // is a full per-product platform sync (~2-5 s) against an execution
+    // concurrency of 1 that `syncAll` and `master.inventory.syncAll` are already
+    // feeding, so the default budget of 100 needs ~500 s worst case. A 5-minute
+    // tick would be ~167% of that and would pile up during exactly the event this
+    // pass exists for — a bulk catalog edit, when pages come back full.
+    defaultCron: '*/15 * * * *',
+    idempotencyKey: (connectionId, timestamp) =>
+      `master:${connectionId}:product:syncDelta:${timestamp}`,
+  },
+  {
     taskId: 'pickup-point-refresh',
     jobType: 'shipping.pickupPoint.refreshFrequent',
     capability: 'ShippingProviderManager',

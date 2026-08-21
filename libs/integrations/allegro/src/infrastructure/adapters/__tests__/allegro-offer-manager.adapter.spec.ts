@@ -26,6 +26,7 @@ import {
   isCategoryBrowser,
   isCategoryPathReader,
   isEanCategoryMatcher,
+  isEanCategoryMatcherStreaming,
   isOfferSmartClassificationReader,
   isOfferStatusReader,
   isSafetyAttachmentUploader,
@@ -986,6 +987,67 @@ describe('AllegroOfferManagerAdapter', () => {
       expect(httpClient.get).toHaveBeenCalledWith('/sale/products', {
         queryParams: { phrase: '5901234123457', mode: 'GTIN', limit: 10 },
       });
+    });
+  });
+
+  describe('streamCategoriesForBatchByEan (#2208)', () => {
+    it('declares the EanCategoryMatcherStreaming capability via the runtime guard', () => {
+      // Drift-guard for the manifest entry (allegro-plugin.spec.ts):
+      // CategoryResolutionService narrows on the guard to pick the incremental
+      // path, so advertising it without the method would silently downgrade.
+      expect(isEanCategoryMatcherStreaming(adapter)).toBe(true);
+    });
+
+    it('yields the same per-variant outcome the batch method returns', async () => {
+      httpClient.get.mockResolvedValue({
+        data: {
+          products: [
+            {
+              id: 'prod-1',
+              name: 'Card',
+              category: { id: 'cat-A' },
+              parameters: [
+                { id: 'gtin', name: 'EAN', values: ['5901234123457'], options: { isGTIN: true } },
+              ],
+            },
+          ],
+        },
+        status: 200,
+        headers: {},
+      });
+
+      const streamed = [];
+      for await (const item of adapter.streamCategoriesForBatchByEan({
+        items: [{ variantId: 'v1', ean: '5901234123457' }],
+      })) {
+        streamed.push(item);
+      }
+
+      expect(streamed).toEqual([
+        {
+          variantId: 'v1',
+          result: { kind: 'matched', allegroCategoryId: 'cat-A', productCardId: 'prod-1' },
+        },
+      ]);
+      expect(httpClient.get).toHaveBeenCalledWith('/sale/products', {
+        queryParams: { phrase: '5901234123457', mode: 'GTIN', limit: 10 },
+      });
+    });
+
+    it('ends the stream without calling Allegro when the signal is already aborted', async () => {
+      const controller = new AbortController();
+      controller.abort();
+
+      const streamed = [];
+      for await (const item of adapter.streamCategoriesForBatchByEan(
+        { items: [{ variantId: 'v1', ean: '5901234123457' }] },
+        { signal: controller.signal }
+      )) {
+        streamed.push(item);
+      }
+
+      expect(streamed).toEqual([]);
+      expect(httpClient.get).not.toHaveBeenCalled();
     });
   });
 

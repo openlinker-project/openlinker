@@ -19,13 +19,40 @@ export interface ResolveCategoriesForBatchByEanOptions {
   /** Cache-key prefix. Default `'allegro:ean-match'`. Override for tests. */
   cacheKeyPrefix?: string;
   /**
-   * In-flight concurrency cap. Default 3 — straddles the spec's 5-10 req/sec
-   * target at Allegro's typical 200-500ms p50 latency. Higher values are
-   * tolerated by `AllegroHttpClient`'s `Retry-After`-aware 429 backoff,
-   * but deliberately staying under the rate-limit ceiling is cheaper than
-   * relying on the backpressure net.
+   * In-flight concurrency cap.
+   *
+   * The default differs by entry point (#2215): the batch collector uses 3,
+   * which straddles the spec's 5-10 req/sec target at Allegro's typical
+   * 200-500 ms p50 latency, while the streaming generator uses
+   * `STREAM_CONCURRENCY` because results land continuously there and the
+   * pre-#2208 chunking already sustained that many in flight. Higher values are
+   * tolerated by `AllegroHttpClient`'s `Retry-After`-aware 429 backoff, and
+   * `HttpTransportFactory` still paces every call against the connection's own
+   * `config.rateLimit`, so an operator's configured cap wins over either number.
    */
   concurrency?: number;
   /** Allegro `GET /sale/products?limit=` cap. Default 10 — mirrors #431. */
   searchLimit?: number;
+}
+
+/**
+ * Options for `streamCategoriesForBatchByEan` (#2208). Same tuning knobs plus
+ * the cancellation seam the `EanCategoryMatcherStreaming` capability declares.
+ */
+export interface StreamCategoriesForBatchByEanOptions
+  extends ResolveCategoriesForBatchByEanOptions {
+  /**
+   * Aborting stops further marketplace calls from being *scheduled*; calls
+   * already issued are left to settle and their results DISCARDED, so the
+   * stream can end short of the input size (ADR-047 § Consequences,
+   * "Cancellation is coarse" - `AllegroHttpClient` mints its own controller per
+   * request and accepts no external signal, so the calls cannot be torn down).
+   */
+  signal?: AbortSignal;
+
+  /**
+   * In-flight concurrency cap. Defaults to `STREAM_CONCURRENCY` on this path
+   * (#2215), not the batch collector's 3 - see the inherited field's doc.
+   */
+  concurrency?: number;
 }
