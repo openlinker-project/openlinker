@@ -57,7 +57,9 @@ describe('PrestashopExtraSection', () => {
     renderWithProviders(<Harness connection={makeConnection()} />, { apiClient });
 
     expect(
-      await screen.findByText('No limit configured — this connection is not rate-limited.'),
+      await screen.findByText(
+        'No outbound limit configured — requests to this connection are not paced.',
+      ),
     ).toBeInTheDocument();
   });
 

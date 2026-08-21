@@ -16,6 +16,7 @@ import type { IAllegroHttpClient } from '../../http/allegro-http-client.interfac
 import { AllegroApiException } from '../../../domain/exceptions/allegro-api.exception';
 import {
   resolveCategoriesForBatchByEan,
+  resolveStreamConcurrency,
   streamCategoriesForBatchByEan,
   STREAM_CONCURRENCY,
 } from '../resolve-categories-for-batch-by-ean';
@@ -743,5 +744,44 @@ describe('streamCategoriesForBatchByEan (#2208)', () => {
 
     expect(Object.fromEntries(streamed)).toEqual(Object.fromEntries(collected));
     expect(collected.get('v2')).toEqual({ kind: 'no-ean' });
+  });
+});
+
+describe('resolveStreamConcurrency (#2229)', () => {
+  it('reports the adapter default when the operator configured no cap', () => {
+    expect(resolveStreamConcurrency(undefined)).toEqual({
+      maxInFlight: STREAM_CONCURRENCY,
+      source: 'adapter-default',
+      adapterDefault: STREAM_CONCURRENCY,
+    });
+  });
+
+  it('clamps down to the operator cap and names what it clamped', () => {
+    expect(resolveStreamConcurrency(4)).toEqual({
+      maxInFlight: 4,
+      source: 'connection-config',
+      adapterDefault: STREAM_CONCURRENCY,
+    });
+  });
+
+  it('never lets the operator cap RAISE the adapter ceiling', () => {
+    // `maxConcurrent` is a safety valve on the operator's own quota. Letting a
+    // generous value lift the adapter's pacing would turn a cap into a
+    // throttle-release, which is not what the field says it does.
+    expect(resolveStreamConcurrency(64).maxInFlight).toBe(STREAM_CONCURRENCY);
+    expect(resolveStreamConcurrency(64).source).toBe('adapter-default');
+    expect(resolveStreamConcurrency(STREAM_CONCURRENCY).source).toBe('adapter-default');
+  });
+
+  it('ignores a non-positive or non-finite cap rather than stalling every run', () => {
+    // A 0 ceiling would schedule nothing and hang the resolve step with no
+    // error anywhere — strictly worse than ignoring a nonsense value.
+    for (const bad of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(resolveStreamConcurrency(bad).maxInFlight).toBe(STREAM_CONCURRENCY);
+    }
+  });
+
+  it('floors a fractional cap instead of passing it to the scheduler', () => {
+    expect(resolveStreamConcurrency(4.7).maxInFlight).toBe(4);
   });
 });
