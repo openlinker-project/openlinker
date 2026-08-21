@@ -45,8 +45,17 @@ export type OfferValidationScope = (typeof OfferValidationScopeValues)[number];
  * sentence for it.
  */
 export interface OfferValidationProblem {
-  /** The platform's own code, verbatim. Never invented, never translated. */
-  code: string;
+  /**
+   * The platform's own code, verbatim. Never invented, never translated.
+   *
+   * OPTIONAL, so the type carries the rule rather than each surface remembering
+   * it: a legacy snapshot holds flattened sentences with no code at all, and an
+   * empty-string sentinel would reach a React `key` and the panel's raw-code
+   * span looking like a code the operator could search for. Absent means "the
+   * platform reported no code", and every writer here normalises a blank one to
+   * absent so there is one representation of that.
+   */
+  code?: string;
   /**
    * One short line, for a surface with exactly one line to spend (the
    * `/listings` row). Absent when the adapter supplied only a full sentence;
@@ -68,13 +77,17 @@ export function isOfferValidationScope(value: unknown): value is OfferValidation
  * behaving exactly as it did.
  */
 export function toOfferValidationProblem(error: {
-  code: string;
+  code?: string;
   message: string;
   summary?: string;
   scope?: OfferValidationScope;
 }): OfferValidationProblem {
+  // A blank code is normalised to absent, not stored as `''`: the two mean the
+  // same thing to every reader, and one representation is what keeps a surface
+  // from having to test truthiness where it tests presence.
+  const code = error.code?.trim();
   return {
-    code: error.code,
+    ...(code === undefined || code === '' ? {} : { code }),
     ...(error.summary === undefined ? {} : { summary: error.summary }),
     message: error.message,
     scope: error.scope ?? 'offer',
@@ -89,10 +102,13 @@ export function toOfferValidationProblem(error: {
  * the compiler and enforced by nothing. A malformed element is dropped rather
  * than half-typed onto a render path - a `code` that is not a string would
  * reach a `key` prop and a `message` that is not a string would reach the DOM.
+ * `message` is the field a problem cannot do without; a missing or blank `code`
+ * is normalised away rather than dropping the sentence with it.
  *
  * A snapshot written before #2231 carries no `validationProblems` at all and
  * yields `[]`; consumers fall back to `validationMessages`, i.e. to exactly
- * what they rendered before.
+ * what they rendered before. A row written by an older build of #2231 may hold
+ * `code: ''`, which normalises to absent here.
  */
 export function readValidationProblems(
   statusDetails: OfferStatusSnapshotDetails | null
@@ -103,9 +119,10 @@ export function readValidationProblems(
   for (const entry of raw) {
     if (entry === null || typeof entry !== 'object') continue;
     const candidate = entry as Partial<OfferValidationProblem>;
-    if (typeof candidate.code !== 'string' || typeof candidate.message !== 'string') continue;
+    if (typeof candidate.message !== 'string') continue;
+    const code = typeof candidate.code === 'string' ? candidate.code.trim() : '';
     problems.push({
-      code: candidate.code,
+      ...(code === '' ? {} : { code }),
       ...(typeof candidate.summary === 'string' ? { summary: candidate.summary } : {}),
       message: candidate.message,
       // An unrecognised scope reads as `offer`: attributing an account problem

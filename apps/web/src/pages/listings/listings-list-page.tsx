@@ -298,23 +298,30 @@ function ListingCell({
  * them and this carries them instead - naming the connection, because a page can
  * legitimately show two, and stating how many of the listings SHOWN are affected,
  * because the list is paged and filtered and cannot honestly claim a total.
+ *
+ * The title says the channel REPORTS a shop-level block, not that the shop
+ * cannot sell: an offer whose channel status is `active` keeps its Active badge
+ * even while carrying problems, because the channel is the authority on its own
+ * publication - so a stronger claim here would contradict rows on the same
+ * screen. The per-problem sentences below say what is blocked, in the channel's
+ * own words.
  */
 function ConnectionProblemNotice({ notice }: { notice: ListingConnectionNotice }): ReactElement {
   return (
     <Alert
       tone="error"
       className="listings-connection-notice"
-      title={`${notice.connectionLabel} cannot sell anything right now`}
+      title={`${notice.connectionLabel} reports a shop-level block`}
     >
       <p>
         {notice.problems.map((problem) => problem.summary ?? problem.message).join(' \u00b7 ')} -
-        every listing on this connection is blocked regardless of its own settings.
+        this is reported against every listing on the connection, not against any one of them.
       </p>
       <ul className="listings-connection-notice__problems">
         {notice.problems.map((problem) => (
-          <li key={problem.code.length > 0 ? problem.code : problem.message}>
+          <li key={problem.code ?? problem.message}>
             {problem.message}
-            {problem.code.length > 0 ? (
+            {problem.code !== undefined ? (
               <span className="listings-connection-notice__code mono-text">{problem.code}</span>
             ) : null}
           </li>
@@ -1007,9 +1014,9 @@ export function ListingsListPage(): ReactElement {
                           value: readListingProblems(m.channelStatus).length ? (
                             <ul className="listings-card-messages">
                               {readListingProblems(m.channelStatus).map((problem, index) => (
-                                <li key={`${problem.code}:${index}`}>
+                                <li key={`${problem.code ?? problem.message}:${index}`}>
                                   {problem.message}
-                                  {problem.code.length > 0 ? (
+                                  {problem.code !== undefined ? (
                                     <span className="problem-line__code mono-text">
                                       {problem.code}
                                     </span>

@@ -38,12 +38,21 @@ describe('mapErliBuyableProblems (#2231)', () => {
     );
   });
 
-  it('should scope exactly the three shop-level reasons to the account', () => {
+  it('should scope exactly the two unambiguously shop-level reasons to the account', () => {
     const errors = mapErliBuyableProblems([...ErliBuyableProblemValues]);
 
     expect(
       errors.filter((error) => error.scope === 'account').map((error) => error.code),
-    ).toEqual(['shop-activity', 'shopKyc', 'blocked']);
+    ).toEqual(['shop-activity', 'shopKyc']);
+  });
+
+  it('should keep `blocked` on the offer, since Erli says it may be per-offer', () => {
+    // Scoping it to the account pulls it off the row and into a
+    // once-per-connection banner, so a genuinely offer-level block becomes
+    // invisible on the offer it blocks. Over-reporting is the recoverable arm.
+    const errors = mapErliBuyableProblems(['blocked']);
+
+    expect(errors[0]?.scope).toBe('offer');
   });
 
   it('should order shop-level and money-blocking reasons ahead of a deliberate switch-off', () => {

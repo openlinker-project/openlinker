@@ -24,8 +24,9 @@
  * `scope` is the seam that keeps the shop-level reasons off the rows: they
  * describe the SHOP, so when one is live Erli reports it against every offer,
  * and rendering it per row stamps one sentence on every row while burying the
- * single fact worth acting on. The adapter declares `'account'` for those three;
- * core splits on that neutral field.
+ * single fact worth acting on. The adapter declares `'account'` for the two that
+ * are unambiguously about the shop (`shop-activity`, `shopKyc`); core splits on
+ * that neutral field. `blocked` stays offer-scoped - see the note at its entry.
  *
  * @module libs/integrations/erli/src/infrastructure/adapters
  * @see {@link ErliBuyableProblemValues} for the enum, verbatim from the swagger
@@ -171,11 +172,19 @@ const ERLI_BUYABLE_PROBLEM_COPY: Record<ErliBuyableProblem, ErliBuyableProblemCo
     scope: 'account',
     priority: 2,
   },
+  // `blocked` is the one code whose own wording admits it may be per-offer, so
+  // it is scoped to the OFFER despite sitting with the shop-level reasons.
+  // Scoping it `account` pulls it off the row entirely and into a
+  // once-per-connection banner, which makes a genuinely offer-level block
+  // invisible on the offer it blocks - the loss this seam exists to prevent, in
+  // the other direction. Over-reporting is the recoverable arm: if the block
+  // really is shop-wide, Erli reports it on every offer and the operator sees a
+  // repeated line, which is noisy and true.
   blocked: {
     summary: 'Blocked by Erli',
     message:
       'Erli has blocked this shop or offer. Contact Erli support; OpenLinker cannot clear this.',
-    scope: 'account',
+    scope: 'offer',
     priority: 3,
   },
 };

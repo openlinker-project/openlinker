@@ -8,10 +8,10 @@ const SHOP_KYC: OfferValidationProblem = {
   message: 'Finish verification in the Erli seller panel.',
   scope: 'account',
 };
-const BLOCKED: OfferValidationProblem = {
-  code: 'blocked',
-  summary: 'Blocked by Erli',
-  message: 'Contact Erli support.',
+const SHOP_INACTIVE: OfferValidationProblem = {
+  code: 'shop-activity',
+  summary: 'Shop is not active on Erli',
+  message: 'Every listing on this connection is blocked until the shop is active again.',
   scope: 'account',
 };
 const OFFER_PROBLEM: OfferValidationProblem = {
@@ -81,19 +81,22 @@ describe('deriveListingConnectionNotices (#2231)', () => {
 
   it('should keep two shop-level problems on the same connection', () => {
     const notices = deriveListingConnectionNotices(
-      [makeRow('a', 'conn-1', [SHOP_KYC, BLOCKED])],
+      [makeRow('a', 'conn-1', [SHOP_KYC, SHOP_INACTIVE])],
       NAMES
     );
 
-    expect(notices[0].problems.map((problem) => problem.code)).toEqual(['shopKyc', 'blocked']);
+    expect(notices[0].problems.map((problem) => problem.code)).toEqual([
+      'shopKyc',
+      'shop-activity',
+    ]);
   });
 
   it('should raise one notice per connection, in first-seen order', () => {
     const notices = deriveListingConnectionNotices(
       [
-        makeRow('a', 'conn-2', [BLOCKED]),
+        makeRow('a', 'conn-2', [SHOP_INACTIVE]),
         makeRow('b', 'conn-1', [SHOP_KYC]),
-        makeRow('c', 'conn-2', [BLOCKED]),
+        makeRow('c', 'conn-2', [SHOP_INACTIVE]),
       ],
       NAMES
     );

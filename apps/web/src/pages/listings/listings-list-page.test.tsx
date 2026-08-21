@@ -207,7 +207,7 @@ describe('ListingsListPage', () => {
       renderWithProviders(<ListingsListPage />, { apiClient: mockApi });
 
       expect(
-        await screen.findByText('Erli Demo cannot sell anything right now'),
+        await screen.findByText('Erli Demo reports a shop-level block'),
       ).toBeInTheDocument();
       expect(screen.getByText('1 of the listings shown here is affected.')).toBeInTheDocument();
       // The raw channel code stays reachable for a support ticket.
@@ -222,7 +222,7 @@ describe('ListingsListPage', () => {
 
       const { container } = renderWithProviders(<ListingsListPage />, { apiClient: mockApi });
 
-      await screen.findByText('Erli Demo cannot sell anything right now');
+      await screen.findByText('Erli Demo reports a shop-level block');
       const reason = container.querySelector('.listing-cell__reason');
       expect(reason?.textContent).toBe('No VAT rate set on Erli');
       expect(reason?.className).not.toContain('listing-cell__reason--muted');
@@ -236,12 +236,12 @@ describe('ListingsListPage', () => {
               channelStatus: {
                 publicationStatus: 'inactive',
                 lifecycle: 'Invalid',
-                validationMessages: ['Contact Erli support.'],
+                validationMessages: ['Finish verification in the Erli seller panel.'],
                 validationProblems: [
                   {
-                    code: 'blocked',
-                    summary: 'Blocked by Erli',
-                    message: 'Contact Erli support.',
+                    code: 'shopKyc',
+                    summary: 'Shop verification incomplete',
+                    message: 'Finish verification in the Erli seller panel.',
                     scope: 'account',
                   },
                 ],
@@ -255,7 +255,7 @@ describe('ListingsListPage', () => {
 
       const { container } = renderWithProviders(<ListingsListPage />, { apiClient: mockApi });
 
-      await screen.findByText('Erli Demo cannot sell anything right now');
+      await screen.findByText('Erli Demo reports a shop-level block');
       const reason = container.querySelector('.listing-cell__reason');
       expect(reason?.textContent).toBe('Blocked by a problem with the shop, not this listing');
       expect(reason?.className).toContain('listing-cell__reason--muted');
@@ -289,7 +289,7 @@ describe('ListingsListPage', () => {
       renderWithProviders(<ListingsListPage />, { apiClient: mockApi });
 
       expect(await screen.findByText('No VAT rate set on Erli')).toBeInTheDocument();
-      expect(screen.queryByText('Erli Demo cannot sell anything right now')).not.toBeInTheDocument();
+      expect(screen.queryByText('Erli Demo reports a shop-level block')).not.toBeInTheDocument();
     });
   });
 

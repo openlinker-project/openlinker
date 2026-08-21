@@ -59,11 +59,16 @@ export function deriveListingConnectionNotices(
     notice.affectedShownCount += 1;
 
     // Deduplicated by code, because every affected row repeats the same list -
-    // that repetition is the whole reason this notice exists. A problem with no
-    // code (an older API build) falls back to its sentence as the key.
+    // that repetition is the whole reason this notice exists.
+    //
+    // The `message` fallback is DEFENSIVE, not a live path: a codeless problem
+    // can only come from the flattened-messages fallback, which is always
+    // offer-scoped and so never reaches this function. It stays because the key
+    // must not collapse two distinct problems onto `undefined` if that ever
+    // stops being true.
     const codes = seenCodes.get(row.connectionId) as Set<string>;
     for (const problem of problems) {
-      const key = problem.code.length > 0 ? problem.code : problem.message;
+      const key = problem.code ?? problem.message;
       if (codes.has(key)) continue;
       codes.add(key);
       notice.problems.push(problem);

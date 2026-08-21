@@ -1282,7 +1282,7 @@ export class ListingsController {
         lifecycle: item.channelStatus.lifecycle,
         validationMessages: [...item.channelStatus.validationMessages],
         validationProblems: item.channelStatus.validationProblems.map((problem) => ({
-          code: problem.code,
+          ...(problem.code === undefined ? {} : { code: problem.code }),
           ...(problem.summary === undefined ? {} : { summary: problem.summary }),
           message: problem.message,
           scope: problem.scope,
@@ -1331,7 +1331,7 @@ export class ListingsController {
       validationProblems:
         view.validationProblems.length > 0
           ? view.validationProblems.map((problem) => ({
-              code: problem.code,
+              ...(problem.code === undefined ? {} : { code: problem.code }),
               ...(problem.summary === undefined ? {} : { summary: problem.summary }),
               message: problem.message,
               scope: problem.scope,

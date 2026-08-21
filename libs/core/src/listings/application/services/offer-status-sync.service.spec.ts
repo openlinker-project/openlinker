@@ -580,6 +580,10 @@ describe('OfferStatusSyncService', () => {
     });
 
     it('should persist observed validation messages as status details', async () => {
+      // No structured half: the flattened sentences carry no code, no summary
+      // and offer scope, so `validationProblems` would say nothing they do not -
+      // and writing it would stop every reader's "absent ⇒ fall back to
+      // validationMessages" path from ever firing (#2231 review).
       await service.recordObservedStatus(CONNECTION_ID, target, {
         publicationStatus: 'inactive',
         validationMessages: ['Missing parameter'],
@@ -587,9 +591,26 @@ describe('OfferStatusSyncService', () => {
 
       expect(snapshots.upsert).toHaveBeenCalledWith(
         expect.objectContaining({
+          statusDetails: { validationMessages: ['Missing parameter'] },
+        }) as UpsertOfferStatusSnapshotCommand
+      );
+    });
+
+    it('should persist the structured half as soon as it carries anything the messages do not', async () => {
+      await service.recordObservedStatus(CONNECTION_ID, target, {
+        publicationStatus: 'inactive',
+        validationProblems: [
+          { code: 'shopKyc', message: 'Finish verification.', scope: 'account' },
+        ],
+      });
+
+      expect(snapshots.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
           statusDetails: {
-            validationMessages: ['Missing parameter'],
-            validationProblems: [{ code: '', message: 'Missing parameter', scope: 'offer' }],
+            validationMessages: ['Finish verification.'],
+            validationProblems: [
+              { code: 'shopKyc', message: 'Finish verification.', scope: 'account' },
+            ],
           },
         }) as UpsertOfferStatusSnapshotCommand
       );

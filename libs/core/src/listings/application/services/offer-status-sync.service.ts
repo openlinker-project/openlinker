@@ -288,13 +288,17 @@ export class OfferStatusSyncService implements IOfferStatusSyncService {
   /**
    * Build the detail blob from whatever the reader reported.
    *
-   * BOTH keys are written off the same input (#2231). `validationMessages` stays
-   * first and stays the field the lifecycle rule and its SQL twin read, so this
-   * change cannot move a row between the Draft and Invalid buckets;
-   * `validationProblems` is the additive structured half the row, the panel and
-   * the connection banner read. A problem carrying no platform code is emitted
-   * with an empty `code` rather than being dropped - the sentence is still the
-   * operator's answer, and the surfaces render the code only when it is there.
+   * `validationMessages` stays first and stays the field the lifecycle rule and
+   * its SQL twin read, so this change cannot move a row between the Draft and
+   * Invalid buckets; `validationProblems` is the additive structured half the
+   * row, the panel and the connection banner read.
+   *
+   * `validationProblems` is OMITTED when it would carry nothing the flattened
+   * messages do not already say - no code, no summary, offer scope throughout.
+   * The legacy create path is exactly that case, and writing a structured half
+   * for it stopped the readers' "absent ⇒ fall back to `validationMessages`"
+   * path from ever firing on newly written snapshots, leaving two stories for
+   * one state. Omission keeps it one.
    */
   private toStatusDetails(
     validationErrors: ReadonlyArray<{
@@ -307,11 +311,15 @@ export class OfferStatusSyncService implements IOfferStatusSyncService {
     if (validationErrors.length === 0) {
       return null;
     }
+    const validationMessages = validationErrors.map((error) => error.message);
+    const validationProblems = validationErrors.map((error) => toOfferValidationProblem(error));
+    const addsNothing = validationProblems.every(
+      (problem) =>
+        problem.code === undefined && problem.summary === undefined && problem.scope === 'offer'
+    );
     return {
-      validationMessages: validationErrors.map((error) => error.message),
-      validationProblems: validationErrors.map((error) =>
-        toOfferValidationProblem({ ...error, code: error.code ?? '' })
-      ),
+      validationMessages,
+      ...(addsNothing ? {} : { validationProblems }),
     };
   }
 

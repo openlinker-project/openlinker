@@ -66,13 +66,14 @@ export class OfferMappingIdentityResponseDto {
 }
 
 export class OfferValidationProblemResponseDto {
-  @ApiProperty({
+  @ApiPropertyOptional({
     description:
       "The platform's OWN code, verbatim (e.g. Erli `missingTaxRate`). Never translated and never " +
       'invented: it is what an operator quotes in a support ticket and what a maintainer greps for ' +
-      "in the platform's docs. Empty string when the platform reported a message with no code.",
+      "in the platform's docs. ABSENT when the platform reported a message with no code - never an " +
+      'empty string, so a client can test presence rather than truthiness before rendering it.',
   })
-  code!: string;
+  code?: string;
 
   @ApiPropertyOptional({
     description:

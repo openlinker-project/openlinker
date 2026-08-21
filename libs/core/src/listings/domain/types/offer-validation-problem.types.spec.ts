@@ -76,7 +76,8 @@ describe('readValidationProblems', () => {
 
   it('should drop entries the unconstrained jsonb column cannot be trusted to type', () => {
     // The column has no check constraint, and these values would otherwise
-    // reach a `key` prop and the DOM.
+    // reach a `key` prop and the DOM. `message` is the field a problem cannot do
+    // without; a bad `code` costs the code, not the operator's sentence.
     const details = {
       validationProblems: [
         null,
@@ -88,8 +89,23 @@ describe('readValidationProblems', () => {
     } as unknown as OfferStatusSnapshotDetails;
 
     expect(readValidationProblems(details)).toEqual([
+      { message: 'ok', scope: 'offer' },
       { code: 'stock', message: 'Out of stock.', scope: 'offer' },
     ]);
+  });
+
+  it('should normalise a blank code to absent rather than carrying an empty string', () => {
+    // A row written by the first build of #2231 holds `code: ''`. An empty
+    // string would reach a React `key` and the panel's raw-code span looking
+    // like a code the operator could search for.
+    const details = {
+      validationProblems: [{ code: '', message: 'Missing parameter.', scope: 'offer' }],
+    } as unknown as OfferStatusSnapshotDetails;
+
+    const problems = readValidationProblems(details);
+
+    expect(problems).toEqual([{ message: 'Missing parameter.', scope: 'offer' }]);
+    expect('code' in problems[0]).toBe(false);
   });
 
   it('should read a non-array blob as no problems at all', () => {

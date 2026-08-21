@@ -164,7 +164,7 @@ function OfferProblemList({
   return (
     <ul className="offer-publication-status__problems">
       {problems.map((problem, index) => (
-        <li className="problem-line" key={`${problem.code}:${index}`}>
+        <li className="problem-line" key={`${problem.code ?? problem.message}:${index}`}>
           <span className="problem-line__mark" aria-hidden="true">
             ●
           </span>
@@ -172,7 +172,7 @@ function OfferProblemList({
             {problem.summary ? <b>{problem.summary}. </b> : null}
             {problem.message}
           </span>
-          {problem.code.length > 0 ? (
+          {problem.code !== undefined ? (
             <span className="problem-line__code mono-text">{problem.code}</span>
           ) : null}
         </li>

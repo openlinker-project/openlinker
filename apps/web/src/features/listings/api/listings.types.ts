@@ -82,10 +82,13 @@ export interface OfferValidationProblem {
   /**
    * The channel's own code, verbatim (e.g. `missingTaxRate`). Rendered for
    * whoever has to check it against the channel's docs or quote it in a support
-   * ticket - never in place of the sentence. Empty when the channel reported a
-   * message with no code.
+   * ticket - never in place of the sentence.
+   *
+   * OPTIONAL: absent when the channel reported a message with no code. The
+   * backend normalises a blank one away, so no surface has to test truthiness
+   * where it tests presence.
    */
-  code: string;
+  code?: string;
   /** One short line, for the row's single-line reason slot. */
   summary?: string;
   /** The operator-facing sentence: what is wrong and what to change. */
