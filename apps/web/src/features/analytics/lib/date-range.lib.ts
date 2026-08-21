@@ -80,3 +80,52 @@ export function toUtcRangeInstants(from: string, to: string): { from: string; to
   toExclusive.setUTCDate(toExclusive.getUTCDate() + 1);
   return { from: fromInstant, to: toExclusive.toISOString() };
 }
+
+/** Parses a bare `YYYY-MM-DD` as a LOCAL calendar day, matching `computePresetRange`'s clock — never `new Date(dateStr)`, which parses as UTC midnight and would silently shift by a day for a non-UTC operator. */
+function parseLocalDate(dateStr: string): Date {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  return new Date(year, month - 1, day);
+}
+
+/**
+ * The immediately-preceding period of the same length — "the N days before
+ * `from`", never "the same period a year ago". `from`/`to` are both
+ * inclusive local calendar days (this module's contract), and the result
+ * keeps that contract: a 7-day range gets a 7-day previous range ending the
+ * day before `from` starts. Works identically for a preset-derived range or
+ * an arbitrary custom one — the caller never needs to know which.
+ */
+export function computePreviousPeriodRange(from: string, to: string): { from: string; to: string } {
+  const fromDate = parseLocalDate(from);
+  const toDate = parseLocalDate(to);
+  const windowDays =
+    Math.round((toDate.getTime() - fromDate.getTime()) / (24 * 60 * 60 * 1000)) + 1;
+
+  const previousTo = new Date(fromDate);
+  previousTo.setDate(previousTo.getDate() - 1);
+  const previousFrom = new Date(previousTo);
+  previousFrom.setDate(previousFrom.getDate() - (windowDays - 1));
+
+  return { from: formatDate(previousFrom), to: formatDate(previousTo) };
+}
+
+/**
+ * Whether a previous-period range starting on `previousFrom` is FULLY
+ * covered by ingested order history, given the earliest order date across
+ * the connection(s) in scope (`IOrderRecordService.getEarliestOrderDateByConnection`,
+ * surfaced on `GET /analytics/trust`, #2083). A PARTIAL previous window
+ * (`earliestOrderDate` falls inside it) is refused outright rather than
+ * compared against a full current-period window — a shorter window's totals
+ * are naturally smaller, and reporting that as a real period-over-period
+ * drop would misrepresent a data-coverage gap as a demand signal.
+ * `earliestOrderDate: null` (nothing ever ingested) is never covered.
+ * Compares calendar days as plain strings — up to a day of imprecision from
+ * `earliestOrderDate`'s time-of-day component is accepted, the same posture
+ * this module already takes on the local/UTC toolbar displacement above.
+ */
+export function isPreviousPeriodCovered(previousFrom: string, earliestOrderDate: string | null): boolean {
+  if (earliestOrderDate === null) {
+    return false;
+  }
+  return previousFrom >= earliestOrderDate.slice(0, 10);
+}

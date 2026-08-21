@@ -21,7 +21,6 @@ import {
   AnalyticsTrustHeader,
   ChannelSalesTable,
   computePresetRange,
-  ProductSalesTable,
   useAnalyticsTrustQuery,
   type SalesAnalyticsFilters,
 } from '../../features/analytics';
@@ -120,9 +119,8 @@ export function AnalyticsPage(): ReactElement {
             />
           ) : (
             <>
-              <AnalyticsKpiStrip filters={salesFilters} />
+              <AnalyticsKpiStrip filters={salesFilters} connections={trustQuery.data.connections} />
               <ChannelSalesTable filters={salesFilters} />
-              <ProductSalesTable filters={salesFilters} />
             </>
           )}
         </>

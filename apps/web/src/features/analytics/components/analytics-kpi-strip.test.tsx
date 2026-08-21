@@ -1,10 +1,27 @@
 import { screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { createMockApiClient, renderWithProviders } from '../../../test/test-utils';
-import type { SalesAndChannelAnalytics } from '../api/sales-analytics.types';
+import type { ConnectionIngestionTrust } from '../api/analytics-trust.types';
+import type { SalesAndChannelAnalytics, SalesAnalyticsFilters } from '../api/sales-analytics.types';
 import { AnalyticsKpiStrip } from './analytics-kpi-strip';
 
 const FILTERS = { from: '2026-08-01', to: '2026-08-14' };
+
+function connectionWithEarliestOrder(earliestOrderDate: string | null): ConnectionIngestionTrust {
+  return {
+    connectionId: 'conn-1',
+    connectionName: 'Allegro — main',
+    platformType: 'allegro',
+    connectionStatus: 'active',
+    status: 'fresh',
+    lastPollAt: null,
+    lastOrderIngestedAt: null,
+    connectionCreatedAt: '2020-01-01T00:00:00.000Z',
+    earliestOrderDate,
+    expectedIntervalMs: null,
+    staleAfterMs: null,
+  };
+}
 
 function analytics(overrides: Partial<SalesAndChannelAnalytics['headline']> = {}): SalesAndChannelAnalytics {
   return {
@@ -33,7 +50,7 @@ describe('AnalyticsKpiStrip', () => {
       analytics: { getSales: vi.fn(() => new Promise<SalesAndChannelAnalytics>(() => {})) },
     });
 
-    renderWithProviders(<AnalyticsKpiStrip filters={FILTERS} />, { apiClient });
+    renderWithProviders(<AnalyticsKpiStrip filters={FILTERS} connections={[]} />, { apiClient });
 
     expect(screen.getByText('Loading sales figures')).toBeInTheDocument();
   });
@@ -43,7 +60,7 @@ describe('AnalyticsKpiStrip', () => {
       analytics: { getSales: vi.fn().mockRejectedValue(new Error('boom')) },
     });
 
-    renderWithProviders(<AnalyticsKpiStrip filters={FILTERS} />, { apiClient });
+    renderWithProviders(<AnalyticsKpiStrip filters={FILTERS} connections={[]} />, { apiClient });
 
     expect(await screen.findByText('Unable to load sales figures')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
@@ -54,7 +71,7 @@ describe('AnalyticsKpiStrip', () => {
       analytics: { getSales: vi.fn().mockResolvedValue(analytics()) },
     });
 
-    renderWithProviders(<AnalyticsKpiStrip filters={FILTERS} />, { apiClient });
+    renderWithProviders(<AnalyticsKpiStrip filters={FILTERS} connections={[]} />, { apiClient });
 
     expect(await screen.findByText('40')).toBeInTheDocument();
     expect(screen.getByText('PLN 120.00')).toBeInTheDocument();
@@ -77,7 +94,7 @@ describe('AnalyticsKpiStrip', () => {
       },
     });
 
-    renderWithProviders(<AnalyticsKpiStrip filters={FILTERS} />, { apiClient });
+    renderWithProviders(<AnalyticsKpiStrip filters={FILTERS} connections={[]} />, { apiClient });
 
     // FILTERS spans 2026-08-01..2026-08-14 inclusive — 14 days, not 7.
     expect(await screen.findByLabelText('GMV trend, the last 14 days')).toBeInTheDocument();
@@ -89,7 +106,7 @@ describe('AnalyticsKpiStrip', () => {
       analytics: { getSales: vi.fn().mockResolvedValue(analytics()) },
     });
 
-    renderWithProviders(<AnalyticsKpiStrip filters={FILTERS} />, { apiClient });
+    renderWithProviders(<AnalyticsKpiStrip filters={FILTERS} connections={[]} />, { apiClient });
 
     // cancelledCount=2, totalOrders=40 (orderCount) + 0 (unconverted) → 2 / (40 + 2) = 4.8%
     expect(await screen.findByText('4.8%')).toBeInTheDocument();
@@ -103,7 +120,7 @@ describe('AnalyticsKpiStrip', () => {
       },
     });
 
-    renderWithProviders(<AnalyticsKpiStrip filters={FILTERS} />, { apiClient });
+    renderWithProviders(<AnalyticsKpiStrip filters={FILTERS} connections={[]} />, { apiClient });
 
     expect(
       await screen.findAllByTitle(
@@ -132,7 +149,7 @@ describe('AnalyticsKpiStrip', () => {
       },
     });
 
-    renderWithProviders(<AnalyticsKpiStrip filters={FILTERS} />, { apiClient });
+    renderWithProviders(<AnalyticsKpiStrip filters={FILTERS} connections={[]} />, { apiClient });
 
     expect((await screen.findAllByText('0.00')).length).toBeGreaterThan(0);
     expect(screen.getByText('17.50')).toBeInTheDocument();
@@ -143,11 +160,76 @@ describe('AnalyticsKpiStrip', () => {
       analytics: { getSales: vi.fn().mockResolvedValue(analytics()) },
     });
 
-    renderWithProviders(<AnalyticsKpiStrip filters={FILTERS} />, { apiClient });
+    renderWithProviders(<AnalyticsKpiStrip filters={FILTERS} connections={[]} />, { apiClient });
 
     expect(
       await screen.findByLabelText('Not computable until refunds are captured')
     ).toBeInTheDocument();
     expect(screen.getByLabelText('No return/refund entity exists yet')).toBeInTheDocument();
+  });
+
+  it('renders a period-over-period delta on the Orders card when the previous period is fully covered by history', async () => {
+    const getSales = vi.fn((filters: SalesAnalyticsFilters) =>
+      Promise.resolve(
+        filters.from === FILTERS.from
+          ? analytics({ orderCount: 40, unconvertedCount: 0 })
+          : analytics({ orderCount: 20, unconvertedCount: 0 })
+      )
+    );
+    const apiClient = createMockApiClient({ analytics: { getSales } });
+
+    renderWithProviders(
+      <AnalyticsKpiStrip
+        filters={FILTERS}
+        connections={[connectionWithEarliestOrder('2020-01-01T00:00:00.000Z')]}
+      />,
+      { apiClient }
+    );
+
+    // current totalOrders=40, previous totalOrders=20 → (40-20)/20*100 = 100.0%
+    // (a count delta is relative "%", never "pp" — that's reserved for
+    // rate deltas like Cancellation rate).
+    expect(await screen.findByText('100.0%')).toBeInTheDocument();
+    // Every card with a delta shares the same basis label — assert at least one renders it.
+    expect(screen.getAllByText(/vs previous 14 days/).length).toBeGreaterThan(0);
+    expect(getSales).toHaveBeenCalledTimes(2);
+  });
+
+  it('shows a not-enough-history GapMark instead of a delta when the previous period predates the earliest order', async () => {
+    const apiClient = createMockApiClient({
+      analytics: { getSales: vi.fn().mockResolvedValue(analytics({ orderCount: 40 })) },
+    });
+
+    // Earliest order is inside the naive previous-period window (2026-07-25),
+    // so the previous period is only partially covered — delta must refuse.
+    renderWithProviders(
+      <AnalyticsKpiStrip
+        filters={FILTERS}
+        connections={[connectionWithEarliestOrder('2026-08-10T00:00:00.000Z')]}
+      />,
+      { apiClient }
+    );
+
+    await screen.findByText('40');
+    expect(screen.queryByText(/pp$/)).not.toBeInTheDocument();
+    expect(
+      screen.getAllByTitle(/Not enough order history to compare a full previous period/).length
+    ).toBeGreaterThan(0);
+  });
+
+  it('shows a no-history GapMark when no connection has ever ingested an order', async () => {
+    const apiClient = createMockApiClient({
+      analytics: { getSales: vi.fn().mockResolvedValue(analytics({ orderCount: 40 })) },
+    });
+
+    renderWithProviders(
+      <AnalyticsKpiStrip filters={FILTERS} connections={[connectionWithEarliestOrder(null)]} />,
+      { apiClient }
+    );
+
+    await screen.findByText('40');
+    expect(
+      screen.getAllByTitle('No order history yet — nothing to compare against.').length
+    ).toBeGreaterThan(0);
   });
 });

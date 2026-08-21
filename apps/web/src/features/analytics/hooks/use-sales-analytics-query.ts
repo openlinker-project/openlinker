@@ -9,12 +9,14 @@ import { salesAnalyticsQueryKeys } from '../api/sales-analytics.query-keys';
 import type { SalesAndChannelAnalytics, SalesAnalyticsFilters } from '../api/sales-analytics.types';
 
 export function useSalesAnalyticsQuery(
-  filters: SalesAnalyticsFilters
+  filters: SalesAnalyticsFilters,
+  options?: { enabled?: boolean }
 ): UseQueryResult<SalesAndChannelAnalytics> {
   const apiClient = useApiClient();
 
   return useQuery({
     queryKey: salesAnalyticsQueryKeys.sales(filters),
     queryFn: () => apiClient.analytics.getSales(filters),
+    enabled: options?.enabled,
   });
 }
