@@ -32,7 +32,7 @@ interface TimelineEvent {
   /** Actor eyebrow (e.g. "system · ingest", "system · attempt 2"). */
   by?: string;
   description?: ReactElement | string;
-  tone: 'default' | 'success' | 'error' | 'warning';
+  tone: 'default' | 'success' | 'error' | 'warning' | 'conflict';
   /**
    * Footer rendered below the row body — used to attach the "view all
    * attempts" deep link to the **last** attempt of a capped destination.
@@ -95,6 +95,7 @@ const BLOCK_TONE_FOR_BADGE: Record<StatusBadgeTone, TimelineEvent['tone']> = {
   error: 'error',
   warning: 'warning',
   success: 'success',
+  conflict: 'conflict',
   neutral: 'default',
   info: 'default',
   review: 'default',
@@ -259,6 +260,7 @@ const TONE_CLASS: Record<TimelineEvent['tone'], string> = {
   success: 'order-activity__dot--success',
   error: 'order-activity__dot--error',
   warning: 'order-activity__dot--warning',
+  conflict: 'order-activity__dot--conflict',
 };
 
 export function OrderActivityTimeline({

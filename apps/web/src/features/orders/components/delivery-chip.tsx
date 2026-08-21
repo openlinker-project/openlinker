@@ -17,8 +17,8 @@
  * Colours reuse the design tokens via `StatusBadge`: green (`success`) =
  * resolved, blue (`info`) = awaiting-label, grey (`neutral`, dashed) = no
  * method / shop-fulfilled, amber (`warning`) = unmapped, semantic conflict
- * orange (`--status-conflict`, via a className override — distinct from the
- * brand accent) = not-connected. Colour is never the only signal — every
+ * orange (the shared `conflict` tone — distinct from the brand accent) =
+ * not-connected. Colour is never the only signal — every
  * chip carries its text label + tone dot.
  *
  * @module apps/web/src/features/orders/components
@@ -164,15 +164,18 @@ export function DeliveryRiderChip({
   if (!isActionableRider(rider)) {
     return null;
   }
+  // `not-connected` / `disabled` read as the shared `conflict` tone (#2253).
+  // The className that used to carry those colours is kept as a hook for
+  // layout and for the tests that assert on it, but it no longer paints.
+  const needsConnection = rider.rider === 'not-connected' || rider.rider === 'disabled';
   return (
     <StatusBadge
-      tone="warning"
+      tone={needsConnection ? 'conflict' : 'warning'}
       withDot
       compact
       className={cx(
         'delivery-rider-chip',
-        rider.rider === 'not-connected' && 'delivery-rider-chip--not-connected',
-        rider.rider === 'disabled' && 'delivery-rider-chip--not-connected',
+        needsConnection && 'delivery-rider-chip--not-connected',
         className,
       )}
     >

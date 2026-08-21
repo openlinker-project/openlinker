@@ -19,6 +19,7 @@
  */
 
 // ── Feedback / status ──────────────────────────────────────────────
+export { AbsentValue } from './absent-value';
 export { Alert } from './alert';
 export type { AlertTone } from './alert';
 export { StatusBadge } from './status-badge';
