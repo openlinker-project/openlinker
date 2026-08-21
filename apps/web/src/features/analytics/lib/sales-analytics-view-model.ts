@@ -57,33 +57,32 @@ function sum<T>(items: T[], pick: (item: T) => number): number {
 }
 
 export interface ChannelCurrencyTotal {
+  /** Always the one system-wide reporting currency — every contributing channel's `revenue` already shares it. */
   currency: string;
-  /**
-   * `'reporting'` — a real KPI aggregate: every contributing channel's
-   * `revenue` is already expressed in this one system-wide currency.
-   * `'unconverted'` — an informational subtotal of native-currency evidence
-   * that has no FX stamp yet (`unconvertedValue`/`unconvertedCount`) — never
-   * part of headline revenue, and never comparable across channels the way
-   * a `'reporting'` total is.
-   */
-  kind: 'reporting' | 'unconverted';
   revenue: number;
   orderCount: number;
   averageOrderValue: number;
-  /** `null` for an `'unconverted'` total — units aren't split by stamp status, so there is nothing honest to sum here. */
-  unitsSold: number | null;
-  /** `null` for an `'unconverted'` total — share is only meaningful against headline (reporting-currency) revenue. */
-  revenueShare: number | null;
+  unitsSold: number;
+  revenueShare: number;
 }
 
 /**
- * `Total · {currency}` rows for the by-channel table: one `'reporting'` total
- * (the real, comparable KPI aggregate, all channels' `revenue` already share
- * one currency) plus one `'unconverted'` total per distinct native currency
- * found in channels' `unconvertedCurrency` — informational subtotals of
- * evidence with no FX stamp yet. Emitted for every distinct currency present
- * in the data, regardless of how many channels contribute to it — a single
- * EUR-only shop still needs its `Total · EUR` row.
+ * `Total · {currency}` row(s) for the by-channel table — the real, comparable
+ * KPI aggregate, since every contributing channel's `revenue` already shares
+ * one currency. Emitted whenever at least one channel has a stamped
+ * `currency`, regardless of contributor count — a single-channel instance
+ * still needs its `Total · {currency}` row.
+ *
+ * Deliberately does NOT emit a row for `unconvertedCurrency` evidence
+ * (#2098 follow-up review): a `Total · {currency} (unconverted)` row reused
+ * the same currency label as the real reporting total whenever a channel's
+ * not-yet-stamped native currency happened to match the reporting currency
+ * (e.g. a domestic-currency channel simply awaiting its first FX-stamp pass)
+ * — two same-labelled "Total" rows, computed from unrelated fields
+ * (`revenue`/`orderCount` vs `unconvertedValue`/`unconvertedCount`), reading
+ * as a contradiction rather than two distinct facts. `countUnconvertedOrders`
+ * below is the replacement: a single, currency-agnostic count the caller
+ * renders as one plain sentence, never a competing "Total" row.
  */
 export function groupChannelTotalsByCurrency(channels: ChannelSalesAnalytics[]): ChannelCurrencyTotal[] {
   const totals: ChannelCurrencyTotal[] = [];
@@ -95,7 +94,6 @@ export function groupChannelTotalsByCurrency(channels: ChannelSalesAnalytics[]):
     const orderCount = sum(contributing, (c) => c.orderCount);
     totals.push({
       currency: reportingCurrency,
-      kind: 'reporting',
       revenue,
       orderCount,
       averageOrderValue: orderCount === 0 ? 0 : revenue / orderCount,
@@ -104,24 +102,18 @@ export function groupChannelTotalsByCurrency(channels: ChannelSalesAnalytics[]):
     });
   }
 
-  const unconvertedCurrencies = [
-    ...new Set(channels.map((c) => c.unconvertedCurrency).filter((c): c is string => c !== null)),
-  ].sort((a, b) => a.localeCompare(b));
-
-  for (const currency of unconvertedCurrencies) {
-    const contributing = channels.filter((c) => c.unconvertedCurrency === currency);
-    const value = sum(contributing, (c) => c.unconvertedValue);
-    const count = sum(contributing, (c) => c.unconvertedCount);
-    totals.push({
-      currency,
-      kind: 'unconverted',
-      revenue: value,
-      orderCount: count,
-      averageOrderValue: count === 0 ? 0 : value / count,
-      unitsSold: null,
-      revenueShare: null,
-    });
-  }
-
   return totals;
+}
+
+/**
+ * Total count of orders across every channel that have no reporting-currency
+ * FX stamp yet (`unconvertedCount`) — a single, currency-agnostic number for
+ * the by-channel table's footnote. Deliberately a COUNT only, never a summed
+ * amount: `unconvertedValue` is a native-currency figure that may mix
+ * currencies across channels, and rendering it as a bare number (no symbol)
+ * misrepresents it as a real, comparable total — the same mistake already
+ * corrected for the needs-attention "stuck orders" row (#2098 follow-up).
+ */
+export function countUnconvertedOrders(channels: ChannelSalesAnalytics[]): number {
+  return sum(channels, (c) => c.unconvertedCount);
 }

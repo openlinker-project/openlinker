@@ -136,7 +136,7 @@ describe('deriveStockHeadline', () => {
 });
 
 describe('deriveFailedSyncHeadline', () => {
-  it('should render a currency-neutral total when currency is not mixed', () => {
+  it('should render only the count, never the total value', () => {
     const summary: FailedSyncValueSummary = {
       count: 3,
       totalValue: 1234.5,
@@ -146,11 +146,12 @@ describe('deriveFailedSyncHeadline', () => {
 
     const result = deriveFailedSyncHeadline(summary);
 
-    expect(result.headline).toBe('1,234.50 of orders never reached a destination');
-    expect(result.sub).toBe('3 orders affected');
+    expect(result.headline).toBe('3 orders never reached a destination');
+    expect(result.headline).not.toContain('1,234.5');
+    expect(result.headline).not.toContain('1234.5');
   });
 
-  it('should omit a total value and state the currency mismatch when mixedCurrency is true', () => {
+  it('should note the currency mismatch in the sub-line when mixedCurrency is true', () => {
     const summary: FailedSyncValueSummary = {
       count: 5,
       totalValue: 999,
@@ -160,8 +161,9 @@ describe('deriveFailedSyncHeadline', () => {
 
     const result = deriveFailedSyncHeadline(summary);
 
-    expect(result.headline).toBe('5 orders across multiple currencies never reached a destination');
+    expect(result.headline).toBe('5 orders never reached a destination');
     expect(result.headline).not.toContain('999');
+    expect(result.sub).toBe('affected orders span multiple currencies');
   });
 
   it('should use singular order wording when count is 1', () => {
@@ -174,6 +176,6 @@ describe('deriveFailedSyncHeadline', () => {
 
     const result = deriveFailedSyncHeadline(summary);
 
-    expect(result.sub).toBe('1 order affected');
+    expect(result.headline).toBe('1 order never reached a destination');
   });
 });

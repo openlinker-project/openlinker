@@ -20,7 +20,6 @@ import {
   type StatusBadgeTone,
 } from '../../../shared/ui';
 import { useConnectionsQuery } from '../../connections';
-import { getBcp47Locale, useTranslation } from '../../../shared/i18n';
 import { useNeedsAttentionQuery } from '../hooks/use-needs-attention-query';
 import {
   deriveCoverageHeadline,
@@ -44,7 +43,6 @@ function uniqueValues<T>(values: T[]): T[] {
 export function AnalyticsNeedsAttention(): ReactElement {
   const needsAttentionQuery = useNeedsAttentionQuery();
   const connectionsQuery = useConnectionsQuery();
-  const { locale } = useTranslation();
 
   const connectionName = useMemo(() => {
     const byId = new Map((connectionsQuery.data ?? []).map((c) => [c.id, c.name]));
@@ -95,7 +93,11 @@ export function AnalyticsNeedsAttention(): ReactElement {
   const rows: AttentionRow[] = [];
 
   if (summary.coverageGapsTotalCount > 0) {
-    const copy = deriveCoverageHeadline(summary.coverageGaps, summary.coverageGapsTotalCount, connectionName);
+    const { connectionId, ...copy } = deriveCoverageHeadline(
+      summary.coverageGaps,
+      summary.coverageGapsTotalCount,
+      connectionName
+    );
     // summary.coverageGaps is already a server-side-capped preview (≤
     // DEFAULT_AGGREGATE_LIMIT), so productIds/variantIds are derived from
     // the SAME item list rather than sliced independently — otherwise a
@@ -108,11 +110,12 @@ export function AnalyticsNeedsAttention(): ReactElement {
       productIds: productIds.join(','),
       variantIds: variantIds.join(','),
     });
-    // Reuse the headline's own connection resolution rather than re-deriving
-    // it here — a separate, weaker predicate could pin a `connectionId` the
-    // headline copy declined to name (#2120 re-review, IMPORTANT).
-    if (copy.resolvedConnectionId) {
-      params.set('connectionId', copy.resolvedConnectionId);
+    // `connectionId` is read from the headline's OWN resolution, never
+    // re-derived here — a separately-computed, weaker predicate could pin a
+    // channel into this link that the headline above explicitly declined to
+    // name (#2120 re-review, IMPORTANT).
+    if (connectionId) {
+      params.set('connectionId', connectionId);
     }
 
     rows.push({
@@ -147,7 +150,7 @@ export function AnalyticsNeedsAttention(): ReactElement {
   }
 
   if (summary.failedSyncValue.count > 0) {
-    const copy = deriveFailedSyncHeadline(summary.failedSyncValue, getBcp47Locale(locale));
+    const copy = deriveFailedSyncHeadline(summary.failedSyncValue);
 
     rows.push({
       key: 'failed-sync-value',
@@ -159,14 +162,7 @@ export function AnalyticsNeedsAttention(): ReactElement {
     });
   }
 
-  // Derived from the categories actually evaluated above, rather than a
-  // hardcoded literal, so a future fourth category can't drift out of sync
-  // with the all-clear line's own claim (#2120 re-review, SUGGESTION 3).
-  const checkedCount = [
-    summary.coverageGapsTotalCount,
-    summary.stockAtRiskTotalCount,
-    summary.failedSyncValue.count,
-  ].length;
+  const checkedCount = 3;
 
   return (
     <article className="panel panel--dense">

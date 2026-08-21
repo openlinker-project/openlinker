@@ -22,18 +22,16 @@
  * (#2075, ADR-041 §54). A partial sample always falls through to the
  * connection-agnostic headline.
  *
- * Currency rule (Decision 2, corrected by the #1989 pre-implement gate):
- * `FailedSyncValueSummary` carries no currency field in either the mixed or
- * non-mixed case, so `totalValue` is always rendered currency-neutral here.
- * This is a documented interim pending #2049's reporting-currency stamping.
- *
- * Single-predicate deep-link rule (#2120 re-review, IMPORTANT): the deep
- * link into the bulk wizard must never name a channel the headline itself
- * declined to name. `deriveCoverageHeadline` is therefore the ONLY place
- * that decides whether a single connection can be named, and it reports
- * that decision back as `resolvedConnectionId` — callers build the
- * `connectionId` query param from this field, never by re-deriving their
- * own (weaker) predicate over `items`.
+ * Currency rule: `FailedSyncValueSummary.totalValue` is never rendered.
+ * It carries no currency field in either the mixed or non-mixed case, and a
+ * bare number formatted with no currency symbol ("6,120.64 of orders never
+ * reached a destination") reads as a real, currency-denominated figure —
+ * exactly the false claim this repo's currency-neutral-total precedent
+ * exists to avoid making, just less obviously so than the mixed-currency
+ * case. `deriveFailedSyncHeadline` therefore always renders the
+ * currency-agnostic count, matching what the `mixedCurrency: true` branch
+ * already did. `totalValue` stays on the wire (backend keeps computing it —
+ * unrelated consumers may still want it) but this headline never reads it.
  *
  * @module apps/web/src/features/analytics/lib
  */
@@ -48,9 +46,19 @@ export interface AttentionRowCopy {
   sub: string;
 }
 
-export interface CoverageHeadlineCopy extends AttentionRowCopy {
-  /** The single connection the headline named, or `null` when it fell back to the ambiguous copy. */
-  resolvedConnectionId: string | null;
+/**
+ * `deriveCoverageHeadline`'s result additionally reports the ONE connection
+ * id the headline named — `null` when it named none (ambiguous items, or a
+ * partial sample per the rule above). A caller building a deep link MUST
+ * read this field rather than re-deriving its own "single missing
+ * connection" predicate: a weaker, independently-computed predicate can
+ * pin a `connectionId` into a link that the headline copy right next to it
+ * explicitly declined to name (#2120 re-review, IMPORTANT) — the same
+ * false-claim-about-your-own-catalogue defect the sample-vs-total rule
+ * above exists to prevent, one field over.
+ */
+export interface CoverageHeadlineResult extends AttentionRowCopy {
+  connectionId: string | null;
 }
 
 type ConnectionNameResolver = (connectionId: string) => string;
@@ -63,7 +71,7 @@ export function deriveCoverageHeadline(
   items: CoverageGapItem[],
   totalCount: number,
   connectionName: ConnectionNameResolver
-): CoverageHeadlineCopy {
+): CoverageHeadlineResult {
   const variantWord = totalCount === 1 ? 'variant' : 'variants';
   const singleMissingConnectionIds = uniqueValues(
     items
@@ -81,14 +89,14 @@ export function deriveCoverageHeadline(
     return {
       headline: `${totalCount} ${variantWord} missing from ${connectionName(singleMissingConnectionIds[0])}`,
       sub: 'listed elsewhere, not yet published on this channel',
-      resolvedConnectionId: singleMissingConnectionIds[0],
+      connectionId: singleMissingConnectionIds[0],
     };
   }
 
   return {
     headline: `${totalCount} ${variantWord} with a listing gap on at least one channel`,
     sub: 'open the listing flow to see which channel is missing each one',
-    resolvedConnectionId: null,
+    connectionId: null,
   };
 }
 
@@ -120,25 +128,13 @@ export function deriveStockHeadline(
   };
 }
 
-function formatCurrencyNeutral(value: number, bcp47Locale = 'en-US'): string {
-  return value.toLocaleString(bcp47Locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
-
-export function deriveFailedSyncHeadline(
-  summary: FailedSyncValueSummary,
-  bcp47Locale = 'en-US'
-): AttentionRowCopy {
+export function deriveFailedSyncHeadline(summary: FailedSyncValueSummary): AttentionRowCopy {
   const orderWord = summary.count === 1 ? 'order' : 'orders';
 
-  if (summary.mixedCurrency) {
-    return {
-      headline: `${summary.count} ${orderWord} across multiple currencies never reached a destination`,
-      sub: 'currency-naive — a single total would misrepresent this sum',
-    };
-  }
-
   return {
-    headline: `${formatCurrencyNeutral(summary.totalValue, bcp47Locale)} of orders never reached a destination`,
-    sub: `${summary.count} ${orderWord} affected`,
+    headline: `${summary.count} ${orderWord} never reached a destination`,
+    sub: summary.mixedCurrency
+      ? 'affected orders span multiple currencies'
+      : 'open the list to see which orders and destinations',
   };
 }

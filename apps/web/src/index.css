@@ -4927,6 +4927,17 @@ a.kpi-card:focus-visible {
   }
 }
 
+/* ── DataTable footnote (#1990 / #2098 follow-up) ──
+   A plain, low-emphasis line under a DataTable disclosing something the rows
+   above deliberately don't show — e.g. the by-channel table's count of
+   orders excluded because they have no reporting-currency FX stamp yet. No
+   box, no icon — reads as fine print, not a callout. */
+.data-table__footnote {
+  margin: var(--space-2) 0 0;
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+
 /* KeyValueList ------------------------------------------------------ */
 
 /* ── KeyValueList (#775) ────────────────────────────────────────────
