@@ -21,13 +21,19 @@ concurrency:
 
 jobs:
   # Cheap path gate. Runs on GitHub-hosted runners so it never consumes a
-  # self-hosted slot. The four self-hosted heavy jobs (lint/test/integration/
-  # build) gate on `code == 'true'`; `Type Check` is intentionally NOT gated so
-  # it always reports — a docs-only or draft PR then spends 1 self-hosted slot
-  # instead of 5. (Which checks are *required* is branch-protection state, not
-  # readable from this file — see GOVERNANCE.md § Who can merge. It is asserted
-  # here deliberately no longer, because ci.yml and GOVERNANCE.md disagreed and
-  # neither can be verified from the tree.)
+  # self-hosted slot.
+  #
+  # FIVE jobs gate on `code == 'true'` — lint / test / integration / build /
+  # docker-build-smoke — but only the first FOUR are self-hosted
+  # (`docker-build-smoke` is `ubuntu-latest`). `Type Check` is self-hosted and
+  # intentionally NOT gated, so it always reports. That is where the slot
+  # arithmetic comes from: five self-hosted jobs exist, four of them gate away,
+  # so a docs-only or draft PR spends 1 self-hosted slot instead of 5.
+  #
+  # Which checks are *required* is branch-protection state and is not readable
+  # from this file. This comment used to claim `Type Check` was the only one;
+  # GOVERNANCE.md § Who can merge says otherwise, and neither can be verified
+  # from the tree, so the claim is deliberately no longer made here.
   #
   # `code` matches any changed file EXCEPT pure docs / markdown / the dev-stack
   # compose file (none of which any CI job consumes — integration tests use
@@ -43,19 +49,15 @@ jobs:
   # and `code` is `true` for literally any change. That was the state from
   # this job's introduction until #2296: the gate never once fired.
   #
-  # Two traps when editing this list:
+  # Two ways to silently re-break this:
   #   1. It is an AND. Adding a pattern meaning "also match X" NARROWS the
   #      filter to near-nothing instead of widening it — and removing the
-  #      quantifier restores the original inert-gate bug, silently.
+  #      quantifier restores the original inert-gate bug, with no symptom.
   #   2. `paths-filter` FAILS the step on an unrecognised quantifier value,
   #      and every gated job below is `needs: changes` with no `always()`, so
   #      a failed step SKIPS them all. On a code PR that reads as five skips
   #      plus two green checks — indistinguishable from a healthy docs PR.
   #      `Type Check` staying ungated is what bounds that.
-  #
-  # Five jobs gate on `code`; only FOUR of them are self-hosted
-  # (`docker-build-smoke` is `ubuntu-latest`), which is why the slot
-  # arithmetic above says 4-of-5 rather than 5.
   changes:
     name: Detect changed paths
     runs-on: ubuntu-latest
