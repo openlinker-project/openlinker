@@ -454,7 +454,7 @@ export class OrderRecordService implements IOrderRecordService {
   }
 
   async getEarliestOrderDateByConnection(connectionIds: string[]): Promise<Map<string, Date>> {
-    return this.repository.findEarliestPlacedAtByConnection(connectionIds);
+    return this.repository.findEarliestOrderDateByConnection(connectionIds);
   }
 
   /**

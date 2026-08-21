@@ -1,7 +1,7 @@
 /**
  * Earliest Order Date Integration Test (#2083)
  *
- * Exercises the real `OrderRecordRepository.findEarliestPlacedAtByConnection`
+ * Exercises the real `OrderRecordRepository.findEarliestOrderDateByConnection`
  * — the batched `MIN(COALESCE("placedAt", "createdAt"))` `GROUP BY` query —
  * against Testcontainers Postgres. A mocked query builder can only assert
  * that the right SQL fragments were requested; this asserts the aggregate
@@ -58,7 +58,7 @@ describe('Earliest order date by connection (integration)', () => {
       createdAt: new Date('2026-02-10T00:00:00Z'),
     });
 
-    const result = await repository.findEarliestPlacedAtByConnection([
+    const result = await repository.findEarliestOrderDateByConnection([
       CONNECTION_A,
       CONNECTION_B,
       CONNECTION_C,
@@ -84,7 +84,7 @@ describe('Earliest order date by connection (integration)', () => {
       placedAt: new Date('2026-01-01T00:00:00Z'),
     });
 
-    const result = await repository.findEarliestPlacedAtByConnection([CONNECTION_A]);
+    const result = await repository.findEarliestOrderDateByConnection([CONNECTION_A]);
 
     expect(result.get(CONNECTION_A)?.toISOString()).toBe(
       new Date('2026-01-01T00:00:00Z').toISOString()
@@ -92,7 +92,7 @@ describe('Earliest order date by connection (integration)', () => {
   });
 
   it('returns an empty Map without querying when given no connection ids', async () => {
-    const result = await repository.findEarliestPlacedAtByConnection([]);
+    const result = await repository.findEarliestOrderDateByConnection([]);
 
     expect(result.size).toBe(0);
   });

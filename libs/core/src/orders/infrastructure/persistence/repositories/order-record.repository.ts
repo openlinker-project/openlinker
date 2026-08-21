@@ -96,7 +96,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    * zero rows. Deliberately unfiltered by `recordStatus` — see the port's
    * JSDoc for why no `NOT_MAPPING_OR_DELETED`-style gate applies here.
    */
-  async findEarliestPlacedAtByConnection(connectionIds: string[]): Promise<Map<string, Date>> {
+  async findEarliestOrderDateByConnection(connectionIds: string[]): Promise<Map<string, Date>> {
     if (connectionIds.length === 0) {
       return new Map();
     }
