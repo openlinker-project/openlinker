@@ -18,11 +18,33 @@ export interface MasterInventorySyncByExternalIdPayloadV1 {
   objectType: 'Inventory' | 'Product';
 }
 
+/**
+ * `pageLimit` bounds how many child jobs one sweep run may enqueue (#2219,
+ * ADR-048 decision 4). Optional: omitting it takes the handler's drain-rate
+ * derived default. The handler floors and clamps whatever arrives.
+ */
 export interface MasterInventorySyncAllPayloadV1 {
   schemaVersion: 1;
+  pageLimit?: number;
 }
 
+/** See `MasterInventorySyncAllPayloadV1.pageLimit` (#2218). */
 export interface MasterProductSyncAllPayloadV1 {
   schemaVersion: 1;
+  pageLimit?: number;
+}
+
+/**
+ * Incremental catalog pass (#2220, ADR-048 decisions 1/3).
+ *
+ * `pageLimit` behaves exactly as on the full sweep. `lookbackSeconds` overlaps the
+ * change window backwards so a row whose timestamp precedes its commit is re-read
+ * rather than skipped (decision 3) — never `since = lastRunAt`. Both optional; the
+ * handler floors and clamps whatever arrives.
+ */
+export interface MasterProductSyncDeltaPayloadV1 {
+  schemaVersion: 1;
+  pageLimit?: number;
+  lookbackSeconds?: number;
 }
 

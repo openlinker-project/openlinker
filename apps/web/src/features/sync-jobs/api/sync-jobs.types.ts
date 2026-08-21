@@ -57,6 +57,7 @@ export const JOB_TYPE_VALUES = [
   'marketplace.offer.updateFields', // Internal job — not user-triggerable; listed here for status display only.
   'marketplace.offer.create',
   'master.product.syncAll',
+  'master.product.syncDelta', // Internal job — not user-triggerable; listed here so an operator can filter the incremental pass (#2220).
   'master.product.syncByExternalId',
   'master.inventory.syncAll',
   'master.inventory.syncByExternalId',

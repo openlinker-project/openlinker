@@ -32,6 +32,7 @@ import { MasterInventorySyncHandler } from './master-inventory-sync.handler';
 import { AutoMatchVariantsHandler } from './auto-match-variants.handler';
 import { MasterInventorySyncAllHandler } from './master-inventory-sync-all.handler';
 import { MasterProductSyncAllHandler } from './master-product-sync-all.handler';
+import { MasterProductSyncDeltaHandler } from './master-product-sync-delta.handler';
 import { PickupPointRefreshHandler } from './pickup-point-refresh.handler';
 import { ShopProductPublishHandler } from './shop-product-publish.handler';
 import { ShopProductStatusSyncHandler } from './shop-product-status-sync.handler';
@@ -69,6 +70,7 @@ export class HandlerRegistrationService implements OnModuleInit {
     private readonly autoMatchVariantsHandler: AutoMatchVariantsHandler,
     private readonly masterInventorySyncAllHandler: MasterInventorySyncAllHandler,
     private readonly masterProductSyncAllHandler: MasterProductSyncAllHandler,
+    private readonly masterProductSyncDeltaHandler: MasterProductSyncDeltaHandler,
     private readonly pickupPointRefreshHandler: PickupPointRefreshHandler,
     private readonly shopProductPublishHandler: ShopProductPublishHandler,
     private readonly shopProductStatusSyncHandler: ShopProductStatusSyncHandler,
@@ -152,6 +154,7 @@ export class HandlerRegistrationService implements OnModuleInit {
 
     // Register master product sync all handler (catalog discovery / periodic full sync)
     this.handlerRegistry.register('master.product.syncAll', this.masterProductSyncAllHandler);
+    this.handlerRegistry.register('master.product.syncDelta', this.masterProductSyncDeltaHandler);
 
     // Register pickup-point background-refresh handler (#849, daily re-warm)
     this.handlerRegistry.register(

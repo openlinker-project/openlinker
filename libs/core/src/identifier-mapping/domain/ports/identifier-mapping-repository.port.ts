@@ -13,6 +13,7 @@
  * @see {@link IdentifierMappingRepository} for the implementation
  */
 import type { IdentifierMapping } from '../entities/identifier-mapping.entity';
+import type { IdentifierMappingPage } from '../types/identifier-mapping.types';
 
 export interface IdentifierMappingRepositoryPort {
   /**
@@ -53,10 +54,14 @@ export interface IdentifierMappingRepositoryPort {
   ): Promise<void>;
 
   /**
-   * Find all mappings for a given entity type and connection.
+   * Find mappings for a given entity type and connection.
+   *
+   * `page` is optional (#2219); omitting it returns every mapping. A paged read
+   * is ordered by `externalId` so an offset is stable across runs.
    */
   findByEntityTypeAndConnection(
     entityType: string,
-    connectionId: string
+    connectionId: string,
+    page?: IdentifierMappingPage
   ): Promise<IdentifierMapping[]>;
 }

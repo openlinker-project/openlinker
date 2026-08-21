@@ -87,6 +87,12 @@ export const allegroAdapterManifest: AdapterMetadata = {
   // never via `getCapabilityAdapter('CategoryBrowser')`, so no dispatch-table
   // entry is needed.
   //
+  // `EanCategoryMatcherStreaming` (#2208, epic #2205) is added in lockstep with
+  // the adapter method that delivers it: the batch `EanCategoryMatcher` stays
+  // advertised, so a call site that cannot consume a stream is unaffected, and
+  // `CategoryResolutionService` narrows with `isEanCategoryMatcherStreaming` to
+  // pick the incremental path.
+  //
   // `OfferCreator` + `OfferEventReader` (#1498) follow the same pattern:
   // `AllegroOfferManagerAdapter` implements both, and the FE gates
   // offer-creation flows on `OfferCreator` and the offer-events sync trigger on
@@ -99,6 +105,7 @@ export const allegroAdapterManifest: AdapterMetadata = {
     'CategoryBrowser',
     'CategoryPathReader',
     'EanCategoryMatcher',
+    'EanCategoryMatcherStreaming',
     'OfferCreator',
     'OfferEventReader',
   ],

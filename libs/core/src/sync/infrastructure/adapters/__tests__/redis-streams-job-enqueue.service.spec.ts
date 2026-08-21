@@ -77,6 +77,11 @@ describe('RedisStreamsJobEnqueueService', () => {
           idempotencyKey: jobRequest.idempotencyKey,
           // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
           createdAt: expect.any(String),
+        }),
+        // Age-bounded, not count-bounded (#2163).
+        expect.objectContaining({
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
+          TRIM: expect.objectContaining({ strategy: 'MINID' }),
         })
       );
       expect(redisClient.set).toHaveBeenCalledWith(idempotencyKey, messageId, {
@@ -125,7 +130,9 @@ describe('RedisStreamsJobEnqueueService', () => {
         '*',
         expect.objectContaining({
           payloadJson: JSON.stringify(jobRequest.payload),
-        })
+        }),
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
+        expect.objectContaining({ TRIM: expect.any(Object) })
       );
     });
 
@@ -243,7 +250,9 @@ describe('RedisStreamsJobEnqueueService', () => {
         '*',
         expect.objectContaining({
           payloadJson: JSON.stringify(complexPayload),
-        })
+        }),
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
+        expect.objectContaining({ TRIM: expect.any(Object) })
       );
     });
 
@@ -262,7 +271,9 @@ describe('RedisStreamsJobEnqueueService', () => {
         '*',
         expect.objectContaining({
           payloadJson: '{}',
-        })
+        }),
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
+        expect.objectContaining({ TRIM: expect.any(Object) })
       );
     });
   });

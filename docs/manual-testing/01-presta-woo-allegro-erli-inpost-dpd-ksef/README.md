@@ -95,8 +95,8 @@ explicitly rather than relying on the default:
 
 | Env flag | Flow | Default | Demo value |
 |---|---|---|---|
-| `OL_ERLI_ORDERS_POLL_SCHEDULER_ENABLED` | Erli order ingestion (`erli-orders-poll`, ~5 min) | **OFF** | `true` |
-| `OL_ERLI_OFFER_STATUS_SYNC_SCHEDULER_ENABLED` | Erli offer-status / frozen-stock sync | **OFF** | `true` |
+| `OL_ERLI_ORDERS_POLL_SCHEDULER_ENABLED` | Erli order ingestion (`erli-orders-poll`, ~5 min) | **ON** (`(env ?? 'true') !== 'false'`) | leave unset / `true` |
+| `OL_ERLI_OFFER_STATUS_SYNC_SCHEDULER_ENABLED` | Erli offer-status / frozen-stock sync | **ON** since #2230 (`… !== 'false'`) | leave unset / `true` |
 | `OL_ERLI_DISPATCH_WRITEBACK_ENABLED` | Erli dispatch/tracking write-back (else reports `unsupported`) | **OFF** | `true` (if dispatch write-back is wanted) |
 | `OL_WOOCOMMERCE_POLL_SCHEDULER_ENABLED` | WooCommerce order ingestion (`woocommerce-orders-poll`, ~5 min) — only polls connections that have `OrderSource` enabled | **OFF** | `true` |
 | `OL_DPD_SHIPMENT_STATUS_SYNC_SCHEDULER_ENABLED` | DPD tracking poll (`dpd-shipment-status-sync`, ~30 min; DPD has no webhook) | **ON** (`(env ?? 'true') !== 'false'`) | leave unset / `true` |

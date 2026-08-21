@@ -14,17 +14,7 @@ import { RedisClientType } from 'redis';
 import type { EventPublisherPort } from '../../domain/ports/event-publisher.port';
 import type { EventEnvelope } from '../../domain/types/event.types';
 import { Logger } from '@openlinker/shared/logging';
-
-/**
- * Approximate `MAXLEN` retention cap per stream, keyed by stream name. A
- * stream with no entry here is left unbounded (today's default behaviour).
- * `~` (approximate trimming) is used deliberately — exact trimming forces
- * Redis to walk the radix tree node-by-node, which is unnecessary cost for a
- * retention policy that only needs to bound growth, not enforce an exact count.
- */
-const STREAM_MAXLEN: Record<string, number> = {
-  'events.master.deletion': 10_000,
-};
+import { xAddBoundedDynamic } from '@openlinker/shared/redis';
 
 @Injectable()
 export class RedisStreamsEventPublisher implements EventPublisherPort {
@@ -55,12 +45,12 @@ export class RedisStreamsEventPublisher implements EventPublisherPort {
       // Publish to Redis Stream using XADD
       // XADD streamName * field1 value1 field2 value2 ...
       // Returns message ID (e.g., "1234567890-0")
-      const maxLen = STREAM_MAXLEN[streamName];
-      const messageId = await this.redisClient.xAdd(streamName, '*', fields, {
-        ...(maxLen !== undefined && {
-          TRIM: { strategy: 'MAXLEN', strategyModifier: '~', threshold: maxLen },
-        }),
-      });
+      // Every stream is bounded, including one this adapter has never seen:
+      // `streamTrimOptions` resolves a conservative default rather than
+      // returning undefined, so an unlisted stream can no longer grow forever
+      // (#2163). `publish` takes a dynamic stream name, which is why the
+      // resolver accepts a plain string here rather than the name union.
+      const messageId = await xAddBoundedDynamic(this.redisClient, streamName, fields);
 
       if (!messageId) {
         throw new Error(`Failed to publish event to stream: ${streamName}`);
