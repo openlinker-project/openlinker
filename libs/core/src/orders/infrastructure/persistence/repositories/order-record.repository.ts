@@ -719,11 +719,33 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     // `IS DISTINCT FROM` is NULL-safe, so this is exact for the clear case too, and
     // it keeps the `@UpdateDateColumn` bump off the overwhelmingly common
     // `null -> null` path without giving up last-write-wins.
+    // The two instants (#2248 / #2245 F4) are derived from the TRANSITION, in the
+    // same statement, because they are facts about when the reason column changed
+    // and only this UPDATE knows both the old and the new value. Computing them
+    // caller-side would need a read first, which is exactly the race the no-op
+    // guard below exists to avoid.
+    //
+    // `blockedAt` is stamped only on none -> blocked, so it survives a change of
+    // reason and keeps measuring how long the order has actually been held. A
+    // reason that changes (manual, then missing-tax-rate) is the same episode from
+    // the operator's point of view; restamping would reset an age they are
+    // watching. `releasedAt` is stamped on blocked -> none and cleared whenever a
+    // block starts, so the pair always describes the CURRENT episode rather than
+    // an arbitrary mix of two.
     await this.repository.query(
       `UPDATE "order_records"
           SET "salesDocumentBlockReason" = $1,
               "salesDocumentUnresolvedReason" = $2,
               "salesDocumentBlockDetail" = $3,
+              "salesDocumentBlockedAt" = CASE
+                WHEN $1 IS NOT NULL AND "salesDocumentBlockReason" IS NULL THEN now()
+                ELSE "salesDocumentBlockedAt"
+              END,
+              "salesDocumentBlockReleasedAt" = CASE
+                WHEN $1 IS NULL AND "salesDocumentBlockReason" IS NOT NULL THEN now()
+                WHEN $1 IS NOT NULL THEN NULL
+                ELSE "salesDocumentBlockReleasedAt"
+              END,
               "updatedAt" = now()
         WHERE "internalOrderId" = $4
           AND ("salesDocumentBlockReason" IS DISTINCT FROM $1
@@ -1091,7 +1113,9 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       entity.exchangeRateId ?? null,
       entity.fxRule ?? null,
       entity.fxStampedAt ?? null,
-      entity.fxIntendedCurrency ?? null
+      entity.fxIntendedCurrency ?? null,
+      entity.salesDocumentBlockedAt ?? null,
+      entity.salesDocumentBlockReleasedAt ?? null
     );
   }
 

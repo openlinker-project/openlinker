@@ -81,6 +81,7 @@ export type SlaStateValue = (typeof SlaStateValues)[number];
 export const SalesDocumentGateBlockReasonValues = [
   'unresolved-routing',
   'missing-required-tax-id',
+  'missing-tax-rate',
   'tax-rate-conflict',
   'trigger-model-manual',
   'trigger-model-batched',
