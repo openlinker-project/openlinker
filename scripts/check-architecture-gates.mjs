@@ -275,6 +275,29 @@ function checkConfigKnobs() {
     }
   }
 
+  // NON_KNOBS gets the same staleness treatment as KNOWN_CONFIG_KNOBS above.
+  // A suppression that outlives the thing it suppresses is invisible — nothing
+  // else in this rule would ever mention the entry again — and this matters
+  // most for exactly the case that motivated the first entry: a superseded
+  // helper suppressed here, then deleted, leaves a dead exemption that the
+  // next reader has to disprove by hand.
+  for (const [rel, reason] of NON_KNOBS) {
+    const abs = join(REPO_ROOT, rel);
+    if (!existsSync(abs)) {
+      failures.push(
+        `stale NON_KNOBS entry: ${rel} ("${reason}") no longer exists — remove it from ` +
+          `NON_KNOBS in scripts/check-architecture-gates.mjs.`
+      );
+      continue;
+    }
+    if (!isKnobCandidate(readFileSync(abs, 'utf8'))) {
+      failures.push(
+        `stale NON_KNOBS entry: ${rel} ("${reason}") no longer matches the knob pattern, so the ` +
+          `exemption is doing nothing — remove it from NON_KNOBS.`
+      );
+    }
+  }
+
   for (const abs of walkTypesFiles(join(REPO_ROOT, CORE_SRC))) {
     const rel = abs.slice(REPO_ROOT.length + 1);
     if (KNOWN_CONFIG_KNOBS.has(rel) || NON_KNOBS.has(rel)) continue;
@@ -333,6 +356,16 @@ function checkLadderRungs() {
     if (!existsSync(join(dirAbs, rung))) {
       failures.push(
         `stale registry entry: ${RUNG_DIR}/${rung} no longer exists — remove it from KNOWN_RUNGS.`
+      );
+    }
+  }
+  // Symmetric with the NON_KNOBS staleness check in rule 2: an exemption that
+  // outlives its file is a silent one. NON_RUNGS is empty today, so this guard
+  // exists before the first entry rather than after the first rot.
+  for (const rung of NON_RUNGS) {
+    if (!existsSync(join(dirAbs, rung))) {
+      failures.push(
+        `stale NON_RUNGS entry: ${RUNG_DIR}/${rung} no longer exists — remove it from NON_RUNGS.`
       );
     }
   }
