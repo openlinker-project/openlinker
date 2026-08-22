@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<!-- @template name="Who decides what" description="Settings page: pick an orchestration arrangement, then read the full decision matrix." -->
+<helmet><script src="./ds-base.js"></script><style>body{margin:0;background:var(--bg-canvas)}.arrangement-card{border:1px solid var(--border-subtle);background:var(--bg-surface)}.arrangement-card:has(input:checked){border-color:var(--accent-primary);background:var(--accent-primary-soft);box-shadow:var(--shadow-focus)}a{color:var(--accent-primary);text-decoration:none}a:hover{color:var(--accent-primary-hover);text-decoration:underline}</style></helmet>
+<x-import component-from-global-scope="OpenLinkerUI.MemoryRouter" hint-size="100%,100%">
+<x-import component-from-global-scope="OpenLinkerUI.PageLayout" hint-size="100%,900px" eyebrow="Settings" title="Who decides what" description="OpenLinker, your shop, your marketplaces and your warehouse each get to decide different things. This page shows who decides what right now, and lets you hand some of those decisions to OpenLinker — or keep them where they are.">
+<div style="display:grid;gap:var(--space-8);padding-top:var(--space-2);max-width:1180px">
+<section style="display:grid;gap:var(--space-4)">
+<div style="display:grid;gap:var(--space-1)">
+<span style="font-family:var(--font-mono);font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-secondary)">Choose an arrangement</span>
+<h2 style="margin:0;font-family:var(--font-sans);font-size:19px;font-weight:600;letter-spacing:var(--tracking-tight);color:var(--text-primary)">How should this work?</h2>
+</div>
+<div role="radiogroup" aria-label="How should this work?" style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--space-4);align-items:stretch">
+<label class="arrangement-card" style="display:grid;gap:var(--space-3);align-content:start;padding:var(--space-5);border-radius:var(--radius-lg);cursor:pointer">
+<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:var(--space-3)">
+<span style="display:flex;align-items:flex-start;gap:var(--space-3)">
+<input type="radio" name="who-decides-arrangement" value="as-is" checked="{{ sel1 }}" onChange="{{ pick1 }}" style="margin-top:2px;accent-color:var(--accent-primary);width:15px;height:15px">
+<span style="font-size:14.5px;font-weight:600;color:var(--text-primary);line-height:1.35">Leave things as they are</span>
+</span>
+<x-import component-from-global-scope="OpenLinkerUI.StatusBadge" hint-size="80px,20px" tone="info">Current</x-import>
+</div>
+<p style="margin:0;font-size:13px;line-height:1.6;color:var(--text-secondary);text-wrap:pretty">Your shop and your marketplaces keep making every decision, exactly as they do now. OpenLinker connects them, publishes your stock and offers, files your invoices, and stays out of the way.</p>
+<p style="margin:0;font-size:12.5px;line-height:1.55;font-style:italic;color:var(--text-secondary);text-wrap:pretty">Best if: one shop, one warehouse, and nothing about your current setup is annoying you.</p>
+<p style="margin:auto 0 0;padding-top:var(--space-3);border-top:1px solid var(--border-subtle);font-size:12.5px;line-height:1.55;font-weight:600;color:var(--text-primary);text-wrap:pretty">Nothing changes when you pick this. It is what OpenLinker already does.</p>
+</label>
+<label class="arrangement-card" style="display:grid;gap:var(--space-3);align-content:start;padding:var(--space-5);border-radius:var(--radius-lg);cursor:pointer">
+<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:var(--space-3)">
+<span style="display:flex;align-items:flex-start;gap:var(--space-3)">
+<input type="radio" name="who-decides-arrangement" value="openlinker" checked="{{ sel2 }}" onChange="{{ pick2 }}" style="margin-top:2px;accent-color:var(--accent-primary);width:15px;height:15px">
+<span style="font-size:14.5px;font-weight:600;color:var(--text-primary);line-height:1.35">Let OpenLinker decide</span>
+</span>
+</div>
+<p style="margin:0;font-size:13px;line-height:1.6;color:var(--text-secondary);text-wrap:pretty">OpenLinker becomes the place where decisions get made: it works out how much stock you can safely promise, holds orders that shouldn't go out yet, and decides what happens to goods that come back. Your shop and your carriers still do the physical work.</p>
+<p style="margin:0;font-size:12.5px;line-height:1.55;font-style:italic;color:var(--text-secondary);text-wrap:pretty">Best if: you sell the same stock on more than one channel, or you keep finding orders you wish had been stopped before they shipped.</p>
+</label>
+<label aria-disabled="true" style="display:grid;gap:var(--space-3);align-content:start;padding:var(--space-5);border:1px solid var(--border-subtle);border-radius:var(--radius-lg);background:var(--bg-surface-muted);cursor:not-allowed">
+<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:var(--space-3)">
+<span style="display:flex;align-items:flex-start;gap:var(--space-3)">
+<input type="radio" name="who-decides-arrangement" value="other" disabled="{{ true }}" style="margin-top:2px;width:15px;height:15px">
+<span style="font-size:14.5px;font-weight:600;color:var(--text-disabled);line-height:1.35">Keep my other system in charge</span>
+</span>
+<x-import component-from-global-scope="OpenLinkerUI.StatusBadge" hint-size="120px,20px">Not available yet</x-import>
+</div>
+<p style="margin:0;font-family:var(--font-mono);font-size:11.5px;line-height:1.5;color:var(--text-secondary)">Needs a system that can take over. Connect one first.</p>
+<p style="margin:0;font-size:13px;line-height:1.6;color:var(--text-disabled);text-wrap:pretty">Your existing warehouse or order system keeps deciding. OpenLinker gives it marketplace connectivity — offers, stock publication, order feed, status relay — and files your Polish invoices and receipts, which it can't.</p>
+</label>
+</div>
+<p style="margin:0;padding:var(--space-3) var(--space-4);border:1px solid var(--border-subtle);border-left:3px solid var(--border-strong);border-radius:var(--radius-sm);background:var(--bg-surface-muted);font-size:12.5px;line-height:1.6;color:var(--text-secondary);text-wrap:pretty">Changing this only affects what happens from now on. Anything already in progress — an order already sent to your shop, a label already bought — keeps its current arrangement until it finishes.</p>
+<div style="display:flex;gap:var(--space-3);align-items:center">
+<x-import component-from-global-scope="OpenLinkerUI.Button" hint-size="150px,32px" tone="primary" class="button--sm" disabled="{{ saveDisabled }}" onClick="{{ save }}">Save arrangement</x-import>
+<span style="font-family:var(--font-mono);font-size:11.5px;color:var(--text-secondary)">{{ saveHint }}</span>
+</div>
+</section>
+<section style="display:grid;gap:var(--space-4)">
+<div style="display:flex;align-items:flex-end;justify-content:space-between;gap:var(--space-4)">
+<div style="display:grid;gap:var(--space-1)">
+<span style="font-family:var(--font-mono);font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-secondary)">Right now</span>
+<h2 style="margin:0;font-size:19px;font-weight:600;letter-spacing:var(--tracking-tight);color:var(--text-primary)">Who decides what</h2>
+</div>
+<span class="toolbar-chip" style="font-variant-numeric:tabular-nums">7 decisions</span>
+</div>
+<x-import component-from-global-scope="OpenLinkerUI.DataTable" hint-size="100%,420px" columns="{{ columns }}" rows="{{ rows }}" row-key="{{ rowKey }}" caption="Who decides what, and why"></x-import>
+</section>
+<section style="display:grid;gap:var(--space-4)">
+<div style="display:grid;gap:var(--space-1)">
+<span style="font-family:var(--font-mono);font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-secondary)">Not working</span>
+<h2 style="margin:0;font-size:19px;font-weight:600;letter-spacing:var(--tracking-tight);color:var(--text-primary)">Needs attention (1)</h2>
+<p style="margin:var(--space-1) 0 0;font-size:13px;line-height:1.6;color:var(--text-secondary)">Only things that are stopping something. Defaults are never listed here.</p>
+</div>
+<x-import component-from-global-scope="OpenLinkerUI.Alert" hint-size="100%,140px" tone="warning" title="Nothing is deciding what happens to returns from Allegro">
+<div style="display:grid;gap:var(--space-3);padding-top:var(--space-1);justify-items:start">
+<x-import component-from-global-scope="OpenLinkerUI.StatusBadge" hint-size="80px,20px" tone="warning" with-dot="{{ true }}">Stopped</x-import>
+<p style="margin:0;font-size:13px;line-height:1.6;color:var(--text-primary);max-width:70ch;text-wrap:pretty">Two systems are set up to decide, so OpenLinker is doing neither. Returns are still being recorded, but nothing is being restocked or scrapped automatically.</p>
+<p style="margin:0;font-size:12.5px;line-height:1.6;color:var(--text-secondary);max-width:70ch">Fix: turn returns handling off in one of them — <a href="/connections/allegro-main-store">Allegro · Main store</a> or <a href="/connections/my-shop-returns">My shop · Returns rules</a>.</p>
+</div>
+</x-import>
+</section>
+</div>
+</x-import>
+</x-import>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1280,&quot;height&quot;:1200},&quot;arrangement&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;as-is&quot;,&quot;openlinker&quot;],&quot;default&quot;:&quot;as-is&quot;,&quot;tsType&quot;:&quot;'as-is' | 'openlinker'&quot;,&quot;section&quot;:&quot;Arrangement&quot;}}">
+const DECISIONS = [
+  { id: 'promise', q: 'How much stock can we promise?', a: 'OpenLinker', aKind: 'mono', why: 'Worked out from your stock master, minus your safety buffer. Nobody else has claimed it.', badge: 'Default', tone: 'neutral' },
+  { id: 'ship-from', q: 'Where does an order ship from?', a: 'Each shop decides (nothing to route)', aKind: 'text', why: 'You sell from one place, so there is nothing to choose between.', badge: 'Nothing to route', tone: 'neutral' },
+  { id: 'pick-ship', q: 'Who picks and ships?', a: 'My shop · Allegro', aKind: 'mono', why: 'Marketplace-fulfilled orders are picked and shipped by the marketplace. Everything else lands with your shop.', badge: 'Default', tone: 'neutral' },
+  { id: 'order-state', q: 'What state is an order in?', a: 'OpenLinker', aKind: 'mono', why: 'OpenLinker works it out from what it can see — the shipment, the invoice, any hold you placed.', badge: 'Default', tone: 'neutral' },
+  { id: 'returns', q: 'What happens to returned goods?', a: "OpenLinker can't tell", aKind: 'text', why: 'Two systems are set up to decide, so OpenLinker is doing neither. Returns are still being recorded, but nothing is being restocked or scrapped automatically.', badge: 'Nothing is deciding', tone: 'error' },
+  { id: 'refunds', q: 'Who issues refunds?', a: 'OpenLinker', aKind: 'mono', why: "Only OpenLinker holds the payment credentials, so only OpenLinker can do it. This one can't be handed over.", badge: 'Always', tone: 'info' },
+  { id: 'invoices', q: 'Who issues invoices and receipts?', a: 'Set up under Sales documents', aKind: 'link', href: '/settings/sales-documents', why: 'Configured per country under Sales documents.', badge: 'Elsewhere', tone: 'neutral' },
+];
+
+class Component extends DCLogic {
+  state = { choice: null, ds: false, saved: false };
+
+  componentDidMount() {
+    const tick = () => {
+      if (window.OpenLinkerUI && window.OpenLinkerUI.StatusBadge) { this.setState({ ds: true }); return; }
+      this._t = setTimeout(tick, 60);
+    };
+    tick();
+  }
+
+  componentWillUnmount() { clearTimeout(this._t); }
+
+  choice() { return this.state.choice ?? this.props.arrangement ?? 'as-is'; }
+
+  badge(row) {
+    const SB = this.state.ds ? window.OpenLinkerUI.StatusBadge : null;
+    if (!SB) return React.createElement('span', { style: { fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-secondary)' } }, row.badge);
+    return React.createElement(SB, { tone: row.tone, withDot: true }, row.badge);
+  }
+
+  answer(row) {
+    if (row.aKind === 'link') return React.createElement('a', { href: row.href, style: { fontSize: 13 } }, row.a);
+    const mono = row.aKind === 'mono';
+    return React.createElement('span', {
+      style: {
+        fontFamily: mono ? 'var(--font-mono)' : 'var(--font-sans)',
+        fontSize: mono ? 12.5 : 13, fontWeight: mono ? 500 : 400,
+        color: 'var(--text-primary)',
+        lineHeight: 1.5,
+      },
+    }, row.a);
+  }
+
+  renderVals() {
+    const choice = this.choice();
+    const columns = [
+      { id: 'q', header: 'Question', accessor: (r) => r.q, cell: (r) => React.createElement('div', { style: { minWidth: 190, maxWidth: 250, fontSize: 13, fontWeight: 600, lineHeight: 1.45, color: 'var(--text-primary)', textWrap: 'pretty' } }, r.q) },
+      { id: 'a', header: 'Answer', cell: (r) => React.createElement('div', { style: { minWidth: 150, maxWidth: 210, textWrap: 'pretty' } }, this.answer(r)) },
+      { id: 'why', header: 'Why', cell: (r) => React.createElement('div', { style: { minWidth: 320, maxWidth: 520, fontSize: 13, lineHeight: 1.6, color: 'var(--text-primary)', textWrap: 'pretty' } }, r.why) },
+      { id: 'status', header: 'Status', cell: (r) => React.createElement('div', { style: { minWidth: 130 } }, this.badge(r)) },
+    ];
+    const pick = (v) => () => this.setState({ choice: v, saved: false });
+    return {
+      columns, rows: DECISIONS, rowKey: (r) => r.id,
+      sel1: choice === 'as-is', sel2: choice === 'openlinker',
+      pick1: pick('as-is'), pick2: pick('openlinker'),
+      saveDisabled: choice === 'as-is' || this.state.saved,
+      saveHint: choice === 'as-is' ? 'No change to save' : this.state.saved ? 'Saved' : 'Applies to new activity only',
+      save: () => this.setState({ saved: true }),
+    };
+  }
+}
+
+</script>
+</body>
+</html>
