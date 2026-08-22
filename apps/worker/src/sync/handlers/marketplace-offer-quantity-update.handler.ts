@@ -42,6 +42,7 @@ export class MarketplaceOfferQuantityUpdateHandler implements SyncJobHandler {
         offerId: payload.offerId,
         quantity: payload.quantity,
         idempotencyKey: payload.idempotencyKey,
+        observedAt: payload.observedAt,
       });
 
       if (result.failed.length > 0) {
@@ -100,11 +101,24 @@ export class MarketplaceOfferQuantityUpdateHandler implements SyncJobHandler {
         job.connectionId
       );
     }
+    // #2285 — `observedAt` is an optional versioning hint, not a requirement: a
+    // payload enqueued before it existed carries none, so ANY non-string value
+    // (including null) coerces to absent with one warn. Never fail the job on it.
+    let observedAt: string | undefined;
+    if (typeof payload.observedAt === 'string') {
+      observedAt = payload.observedAt;
+    } else if (payload.observedAt !== undefined) {
+      this.logger.warn(
+        `Ignoring non-string observedAt in payload for job ${job.id} (offerId=${payload.offerId}); the derived idempotency key will be unversioned`
+      );
+    }
+
     return {
       schemaVersion: 1,
       offerId: payload.offerId,
       quantity: payload.quantity,
       idempotencyKey: payload.idempotencyKey,
+      observedAt,
     };
   }
 }
