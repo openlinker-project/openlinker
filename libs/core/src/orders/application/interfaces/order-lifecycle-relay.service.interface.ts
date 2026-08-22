@@ -11,8 +11,26 @@
  * @module libs/core/src/orders/application/interfaces
  * @see {@link OrderStatusWriteback} for the per-participant writeback contract
  */
-import type { DispatchCarrierHint } from '../../domain/types/dispatch-carrier-hint.types';
-import type { OrderWritebackOutcome } from '../../domain/types/order-lifecycle-event.types';
+import type {
+  OrderLifecycleEvent,
+  OrderWritebackOutcome,
+} from '../../domain/types/order-lifecycle-event.types';
+
+/**
+ * The relay-facing projection of {@link OrderLifecycleEvent}: the same union,
+ * minus the per-participant `externalOrderId` the relay resolves itself.
+ *
+ * **Derived, never restated (#2286).** This union used to be hand-written, so a
+ * new `OrderLifecycleEvent` member did not widen the relay input and the relay's
+ * own branch kept compiling — defeating the exhaustiveness guard everywhere else.
+ * The distribution over the union (rather than a plain `Omit`) is what preserves
+ * the discriminated shape: a non-distributed `Omit` would collapse the members
+ * into one object with optional fields, which narrows on `type` but no longer
+ * fails to compile when a member is added.
+ */
+export type OrderLifecycleRelayEvent<E = OrderLifecycleEvent> = E extends unknown
+  ? Omit<E, 'externalOrderId'>
+  : never;
 
 /**
  * A lifecycle event to relay, keyed on the internal order. The relay resolves
@@ -23,9 +41,7 @@ export interface OrderLifecycleRelayInput {
   internalOrderId: string;
   /** The participant that authored the event — excluded from the targets (self-echo suppression at the participant level). */
   originConnectionId: string;
-  event:
-    | { type: 'dispatched'; trackingNumber?: string; carrier?: DispatchCarrierHint }
-    | { type: 'cancelled'; reason?: string };
+  event: OrderLifecycleRelayEvent;
 }
 
 /**

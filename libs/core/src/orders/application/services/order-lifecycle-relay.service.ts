@@ -30,6 +30,7 @@ import {
   CORE_ENTITY_TYPE,
 } from '@openlinker/core/identifier-mapping';
 import { Logger } from '@openlinker/shared/logging';
+import { assertNever } from '@openlinker/shared/types';
 import {
   isOrderStatusWriteback,
   type OrderStatusWriteback,
@@ -119,15 +120,27 @@ export class OrderLifecycleRelayService implements IOrderLifecycleRelayService {
     }
     const { adapter, capability } = resolved;
 
-    const event: OrderLifecycleEvent =
-      input.event.type === 'dispatched'
-        ? {
+    // Switch (not a ternary) over a narrowed local, so that adding an
+    // `OrderLifecycleEvent` member is a compile error here rather than a silent
+    // relay of the new event as a cancellation (#2286). The default throws: a
+    // member core itself cannot map is an in-tree defect, and stamping some
+    // other `type` onto it would push a wrong fact to every participant.
+    const relayEvent = input.event;
+    const event: OrderLifecycleEvent = ((): OrderLifecycleEvent => {
+      switch (relayEvent.type) {
+        case 'dispatched':
+          return {
             type: 'dispatched',
             externalOrderId,
-            trackingNumber: input.event.trackingNumber,
-            carrier: input.event.carrier,
-          }
-        : { type: 'cancelled', externalOrderId, reason: input.event.reason };
+            trackingNumber: relayEvent.trackingNumber,
+            carrier: relayEvent.carrier,
+          };
+        case 'cancelled':
+          return { type: 'cancelled', externalOrderId, reason: relayEvent.reason };
+        default:
+          return assertNever(relayEvent, 'OrderLifecycleRelayInput.event');
+      }
+    })();
 
     try {
       const result = await adapter.write(event);
