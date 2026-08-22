@@ -103,14 +103,28 @@ export class AllegroOrderSourceAdapter
    */
   async write(event: OrderLifecycleEvent): Promise<OrderWritebackResult> {
     try {
-      if (event.type === 'dispatched') {
-        await this.markSent(event.externalOrderId, event.trackingNumber, event.carrier);
-        return { outcome: 'applied' };
+      switch (event.type) {
+        case 'dispatched': {
+          await this.markSent(event.externalOrderId, event.trackingNumber, event.carrier);
+          return { outcome: 'applied' };
+        }
+        case 'cancelled': {
+          await this.putFulfillment(event.externalOrderId, ALLEGRO_FULFILLMENT_STATUS_CANCELLED);
+          return { outcome: 'applied' };
+        }
+        default: {
+          // Unreachable in-tree: the binding is the compile break when an
+          // `OrderLifecycleEvent` member is added without an arm here (#2286).
+          // It still degrades rather than throwing, so a caller compiled against
+          // a widened union gets a surfaced no-op, not a `rejected` from the
+          // enclosing catch (ADR-055 forward-compat).
+          const unhandled: never = event;
+          return {
+            outcome: 'unsupported',
+            detail: `unsupported order lifecycle event: ${JSON.stringify(unhandled)}`,
+          };
+        }
       }
-
-      // event.type === 'cancelled'
-      await this.putFulfillment(event.externalOrderId, ALLEGRO_FULFILLMENT_STATUS_CANCELLED);
-      return { outcome: 'applied' };
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
       this.logger.warn(

@@ -6,6 +6,7 @@
 import { OrderLifecycleRelayService } from '../order-lifecycle-relay.service';
 import { CapabilityNotSupportedException, type IIntegrationsService } from '@openlinker/core/integrations';
 import type { IIdentifierMappingService } from '@openlinker/core/identifier-mapping';
+import type { OrderLifecycleRelayInput } from '../../interfaces/order-lifecycle-relay.service.interface';
 
 const origin = 'allegro-conn';
 
@@ -228,6 +229,32 @@ describe('OrderLifecycleRelayService', () => {
       // able to tell this apart from a structural capability gap, or it records
       // a delivery that never happened.
       unsupportedReason: 'adapter-unresolved',
+    });
+  });
+
+  // #2286 — the runtime half of the exhaustiveness guard. The relay's default
+  // arm THROWS (unlike the adapters', which degrade to `unsupported`): a member
+  // core itself cannot map is an in-tree defect, and the pre-#2286 ternary
+  // stamped `type: 'cancelled'` onto anything that was not `dispatched` — i.e.
+  // it would have pushed a cancellation to every participant of the order.
+  describe('unknown member (never-default, #2286)', () => {
+    it('throws and writes to no participant, rather than relaying it as a cancellation', async () => {
+      identifierMapping.getExternalIds.mockResolvedValue([
+        mapping(origin, 'allegro-1'),
+        mapping('ps-conn', 'ps-7'),
+      ]);
+      const adapter = { write: jest.fn().mockResolvedValue({ outcome: 'applied' }) };
+      integrations.getCapabilityAdapter.mockResolvedValue(adapter);
+
+      await expect(
+        service.relay({
+          internalOrderId: 'ol_order_1',
+          originConnectionId: origin,
+          event: { type: 'amended' } as unknown as OrderLifecycleRelayInput['event'],
+        })
+      ).rejects.toThrow(/Unhandled union member.*amended/);
+
+      expect(adapter.write).not.toHaveBeenCalled();
     });
   });
 });

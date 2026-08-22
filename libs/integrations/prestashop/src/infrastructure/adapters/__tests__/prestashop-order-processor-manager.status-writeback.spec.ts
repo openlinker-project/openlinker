@@ -11,6 +11,7 @@ import {
   createOrderProcessorManagerHarness,
   type OrderProcessorHarness,
 } from '../../../__tests__/mocks/prestashop-order-processor-manager.factory';
+import type { OrderLifecycleEvent } from '@openlinker/core/orders';
 
 const STATE_ID: Record<string, number> = { shipped: 4, delivered: 5, cancelled: 6 };
 
@@ -99,6 +100,25 @@ describe('PrestashopOrderProcessorManagerAdapter — OrderStatusWriteback.write'
         expect.anything(),
         expect.anything()
       );
+    });
+  });
+
+  // #2286 — the runtime half of the exhaustiveness guard. Before the switch
+  // conversion an unrecognised member fell into the cancel branch and could
+  // transition a live shop order to `cancelled`.
+  describe('unknown member (never-default, #2286)', () => {
+    it('returns unsupported without reading or writing the order', async () => {
+      mockHttpClient.getResource = jest.fn();
+
+      const result = await adapter.write({
+        type: 'amended',
+        externalOrderId: PS_ORDER_ID,
+      } as unknown as OrderLifecycleEvent);
+
+      expect(result.outcome).toBe('unsupported');
+      expect(result.detail).toContain('amended');
+      expect(mockHttpClient.getResource).not.toHaveBeenCalled();
+      expect(mockHttpClient.createResource).not.toHaveBeenCalled();
     });
   });
 });
