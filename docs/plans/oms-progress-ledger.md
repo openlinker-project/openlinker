@@ -37,12 +37,12 @@ Legend: ☐ not started · ◐ plan in review · ◑ implementing · ◕ diff in
 | Issue | Subject | Status |
 |---|---|---|
 | #2282 | persistOrder source-attribution immutability | ☑ merged b91088599 (commit a5f59a370; reviewed, approved) |
-| #2283 | ingestion line-diff + `amended` fact | ◐ plan agent running (lands AFTER #2286-style case arms; both prerequisites merged) |
+| #2283 | ingestion line-diff + `amended` fact | ◑ implementing (READY; ANALYSIS-2283; scope = internal fact only, no union member; migration 1841000000000) |
 | #2284 | `WHERE cancelledAt IS NULL` provisioning predicate | ☑ merged 4587122c9 (commit 99ab27462; reviewed, approved) |
-| #2285 | `inv:{hash}` idempotency-key swap | ◕ diff in review (gates green, committing) |
+| #2285 | `inv:{hash}` idempotency-key swap | ☑ merged 641e07bad (commit 97dfdf1d0; reviewed, approved) |
 | #2286 | `never`-default exhaustiveness (5 consumers) | ☑ merged 9b48585b4 (commit 885b63f9e; reviewed, approved) |
-| #2287 | `packedAt` BE | ◑ implementing (READY; ANALYSIS-2287; migration 1840000000000 reserved) |
-| #2288 | `packedAt` FE | ◐ planned (plan-2288; audit running; blocked on #2287) |
+| #2287 | `packedAt` BE | ☑ merged b6b06df76 (commit 943e0fa91; reviewed, approved) |
+| #2288 | `packedAt` FE | ⛔ gate-cleared (ANALYSIS-2288: control OUT of capability-gated panel, orders:write); queued behind #2283 merge (shared timeline files) |
 | #2289 | Allegro returns-feed spike → 1c fork | ☑ verdict 4A (two-pass); findings on branch + issue comment |
 
 ### Wave 1a (epic #2312) — gated on #2284 #2286 #2283 merged; #2298 resolved
