@@ -73,3 +73,13 @@ e2e-out/
 
 # Playwright documentation-capture output (apps/web/e2e/*.mjs)
 e2e-out/
+
+# design-sync (claude.ai/design) — staged scripts, build output, machine state
+.ds-sync/
+ds-bundle/
+.design-sync/.cache/
+.design-sync/learnings/
+.design-sync/node_modules
+# generated declaration tree used only by the design-sync converter
+apps/web/types/
+apps/web/index.d.ts
