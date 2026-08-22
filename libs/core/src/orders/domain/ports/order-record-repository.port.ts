@@ -58,6 +58,16 @@ export interface OrderRecordRepositoryPort {
    * returned record therefore reports all of them as empty (`[]` / `null`)
    * whatever the row holds; re-read via {@link findById} when their live value
    * matters.
+   *
+   * Source attribution is immutable at this write path (#2282, ADR-057). The
+   * rule is: *same-source may advance, cross-source frozen*. `sourceConnectionId`
+   * is established by the first write and can never be changed by a later one;
+   * `sourceEventId` is refreshed only when the write arrives from the row's own
+   * `sourceConnectionId`, and is left as committed otherwise. An implementation
+   * MUST enforce this in the statement itself, so the invariant holds for every
+   * caller and not only for the ADR-017 destination-echo guard in
+   * `OrderIngestionService`. The returned record therefore reports the row's
+   * true, possibly pre-existing attribution rather than what was requested.
    */
   upsert(orderRecord: OrderRecord): Promise<OrderRecord>;
 

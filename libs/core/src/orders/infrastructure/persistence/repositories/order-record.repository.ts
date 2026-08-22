@@ -933,12 +933,114 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    * reports all of them as empty (`[]` / `null`) regardless of what the row
    * holds, because none of those columns was part of the statement; callers
    * needing their true value re-read via {@link findById}.
+   *
+   * ## Source attribution is immutable at the write path (#2282, ADR-057)
+   *
+   * `sourceConnectionId` is INSERT-ONLY: it is absent from the `DO UPDATE` set,
+   * so the first write establishes the order's origin and no later re-ingestion
+   * can move it. `sourceEventId` follows the rule *same-source may advance,
+   * cross-source frozen*: a write arriving from the row's own source still
+   * refreshes it to the latest event id (byte-identical to the pre-#2282
+   * behaviour), while a write arriving from any other connection leaves it as
+   * committed.
+   *
+   * This is why the statement is raw SQL rather than the previous full-object
+   * `save()`. `sourceConnectionId` is `uuid NOT NULL` with no DB default, so it
+   * MUST be on the INSERT half and MUST NOT be on the UPDATE half - a shape
+   * `save()` cannot express, and one a read-before-write cannot emulate safely
+   * (see the race doctrine in {@link toOrm}). The `markCancelled` COALESCE
+   * statement is the same precedent.
+   *
+   * The caller-side ADR-017 destination-echo guard in `OrderIngestionService`
+   * stays in place as defence in depth; this makes the invariant hold for every
+   * caller of the write path, not just that one.
    */
   async upsert(orderRecord: OrderRecord): Promise<OrderRecord> {
+    // The write set is defined once, by `toOrm` - the parameter tuple below is
+    // built from it so the two cannot drift. Every column NOT named here keeps
+    // its committed value (on conflict) or its DB default (on insert):
+    // `syncStatus`, `syncAttempts` (#2140), `fulfillmentState` (#2101),
+    // `cancelledAt` (#1984), the three `salesDocument*` columns (#2100) and the
+    // six FX snapshot columns `reportingCurrency` / `reportingTotalAmount` /
+    // `exchangeRateId` / `fxRule` / `fxStampedAt` / `fxIntendedCurrency`
+    // (#2124). Do not add one of them to either half of this statement - each
+    // has a narrow, atomic out-of-band writer that owns it.
     const entity = this.toOrm(orderRecord);
-    // TypeORM save() performs upsert on primary key (internalOrderId)
-    const saved = await this.repository.save(entity);
-    return this.toDomain(saved);
+
+    const rows = (await this.repository.query(
+      `INSERT INTO "order_records" (
+         "internalOrderId", "customerId", "sourceConnectionId", "sourceEventId",
+         "orderSnapshot", "recordStatus", "mappingFailureReason", "dispatchByAt",
+         "createdAt", "updatedAt"
+       ) VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, $8, $9, $10)
+       ON CONFLICT ("internalOrderId") DO UPDATE SET
+         "customerId" = EXCLUDED."customerId",
+         -- Source attribution (#2282): "sourceConnectionId" is absent from this
+         -- SET list on purpose. "sourceEventId" advances only when the write
+         -- comes from the row's own source.
+         "sourceEventId" = CASE
+           WHEN "order_records"."sourceConnectionId" = EXCLUDED."sourceConnectionId"
+             THEN EXCLUDED."sourceEventId"
+           ELSE "order_records"."sourceEventId"
+         END,
+         "orderSnapshot" = EXCLUDED."orderSnapshot",
+         "recordStatus" = EXCLUDED."recordStatus",
+         "mappingFailureReason" = EXCLUDED."mappingFailureReason",
+         "dispatchByAt" = EXCLUDED."dispatchByAt",
+         -- "createdAt" is deliberately NOT updated: it records the first write.
+         "updatedAt" = EXCLUDED."updatedAt"
+       RETURNING *`,
+      [
+        entity.internalOrderId,
+        entity.customerId,
+        entity.sourceConnectionId,
+        entity.sourceEventId,
+        // Serialized explicitly rather than relying on the driver's object
+        // handling, so the jsonb column receives a document in every case.
+        JSON.stringify(entity.orderSnapshot ?? {}),
+        entity.recordStatus,
+        entity.mappingFailureReason,
+        entity.dispatchByAt,
+        entity.createdAt,
+        entity.updatedAt,
+      ]
+    )) as unknown;
+
+    if (!Array.isArray(rows) || rows.length === 0) {
+      // Unreachable: `ON CONFLICT ... DO UPDATE` always produces a row.
+      throw new OrderRecordNotFoundException(orderRecord.internalOrderId);
+    }
+
+    return this.toDomain(this.fromRawRow(rows[0] as Record<string, unknown>));
+  }
+
+  /**
+   * Project a `RETURNING *` row onto an {@link OrderRecordOrmEntity}, resetting
+   * every column outside the upsert's write set to its empty default.
+   *
+   * The reset is the point, not tidiness. `RETURNING *` carries the row's TRUE
+   * values for the out-of-band columns, whereas the pre-#2282 `save()` returned
+   * only what it wrote - and {@link upsert}'s contract (repeated on the port)
+   * promises callers that those columns read empty and must be re-read via
+   * {@link findById}. Passing the true values through would silently change
+   * what both `OrderRecordService` call sites return.
+   */
+  private fromRawRow(row: Record<string, unknown>): OrderRecordOrmEntity {
+    const entity = Object.assign(new OrderRecordOrmEntity(), row);
+    entity.syncStatus = [];
+    entity.syncAttempts = [];
+    entity.fulfillmentState = null;
+    entity.cancelledAt = null;
+    entity.salesDocumentBlockReason = null;
+    entity.salesDocumentUnresolvedReason = null;
+    entity.salesDocumentBlockDetail = null;
+    entity.reportingCurrency = null;
+    entity.reportingTotalAmount = null;
+    entity.exchangeRateId = null;
+    entity.fxRule = null;
+    entity.fxStampedAt = null;
+    entity.fxIntendedCurrency = null;
+    return entity;
   }
 
   /**
@@ -1138,6 +1240,14 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    *   + `stampFxIfAbsent` (both guarded, both single-statement). Mapping them
    *   here would let a re-poll of an already-stamped order overwrite a
    *   REPORTED FINANCIAL FIGURE with the ingestion path's in-memory `null`.
+   *
+   * ## The insert-only column
+   *
+   * `sourceConnectionId` IS assigned here, but it is insert-only at the
+   * statement level (#2282): {@link upsert} places it on the INSERT half and
+   * omits it from `DO UPDATE`. It cannot simply be left unset like the columns
+   * above, because it is `uuid NOT NULL` with no DB default and so must be
+   * present on a first write.
    *
    * Before adding an assignment here, ask which out-of-band writer owns that
    * column: #2101 excluded only `fulfillmentState` and left the two columns
