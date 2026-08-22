@@ -156,7 +156,16 @@ describe('rollupSyncStatus', () => {
       status({ status: 'pending' }),
       status({ status: 'syncing' }),
     ]);
-    expect(rollup).toEqual({ total: 4, failed: 1, synced: 1, pending: 2 });
+    expect(rollup).toEqual({ total: 4, failed: 1, synced: 1, pending: 2, skipped: 0 });
+  });
+
+  // #2284 — terminal, and neither failed nor pending.
+  it('counts skipped_cancelled in its own bucket', () => {
+    const rollup = rollupSyncStatus([
+      status({ status: 'skipped_cancelled' }),
+      status({ status: 'synced' }),
+    ]);
+    expect(rollup).toEqual({ total: 2, failed: 0, synced: 1, pending: 0, skipped: 1 });
   });
 });
 
@@ -177,6 +186,12 @@ describe('deriveHealthLevel + healthLabel', () => {
     expect(deriveHealthLevel(rollupSyncStatus([status({ status: 'syncing' })]))).toBe('pending');
   });
 
+  it('does not read a skipped_cancelled destination as pending or attention', () => {
+    expect(deriveHealthLevel(rollupSyncStatus([status({ status: 'skipped_cancelled' })]))).toBe(
+      'healthy',
+    );
+  });
+
   it('reports healthy when all synced', () => {
     const level = deriveHealthLevel(rollupSyncStatus([status({ status: 'synced' })]));
     expect(level).toBe('healthy');
@@ -192,6 +207,13 @@ describe('syncCellLabel', () => {
     expect(syncCellLabel(rollupSyncStatus([status({ status: 'synced' }), status({ status: 'syncing' })]))).toBe(
       '1 of 2 synced',
     );
+  });
+  it('surfaces the skipped count alongside the synced count', () => {
+    expect(
+      syncCellLabel(
+        rollupSyncStatus([status({ status: 'synced' }), status({ status: 'skipped_cancelled' })]),
+      ),
+    ).toBe('1 of 2 synced (1 skipped)');
   });
   it('handles no destinations', () => {
     expect(syncCellLabel(rollupSyncStatus([]))).toBe('No destinations');

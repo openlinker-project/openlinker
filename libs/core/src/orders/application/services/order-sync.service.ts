@@ -35,6 +35,8 @@ import { Logger } from '@openlinker/shared/logging';
 import { NoOrderDestinationsAvailableException } from '../../domain/exceptions/no-order-destinations-available.exception';
 import { OrderCreateContendedException } from '../../domain/exceptions/order-create-contended.exception';
 import { ORDER_CREATE_LOCK_TTL_MS, orderCreateLockKey } from './order-create-lock';
+import { IOrderRecordService } from '../interfaces/order-record.service.interface';
+import { ORDER_RECORD_SERVICE_TOKEN } from '../../orders.tokens';
 
 @Injectable()
 export class OrderSyncService implements IOrderSyncService {
@@ -48,7 +50,9 @@ export class OrderSyncService implements IOrderSyncService {
     @Inject(SYNC_LOCK_TOKEN)
     private readonly syncLock: SyncLockPort,
     @Inject(IDENTIFIER_MAPPING_SERVICE_TOKEN)
-    private readonly identifierMapping: IIdentifierMappingService
+    private readonly identifierMapping: IIdentifierMappingService,
+    @Inject(ORDER_RECORD_SERVICE_TOKEN)
+    private readonly orderRecordService: IOrderRecordService
   ) {}
 
   async syncOrder(request: OrderSyncRequest): Promise<OrderSyncResult[]> {
@@ -62,6 +66,30 @@ export class OrderSyncService implements IOrderSyncService {
 
     if (destinations.length === 0) {
       throw new NoOrderDestinationsAvailableException(order.id, sourceConnectionId);
+    }
+
+    // #2284 — the `WHERE cancelledAt IS NULL` provisioning predicate. A source
+    // cancellation is an observation, never gated (DESIGN-oms-authority-model
+    // § 6.4), so a create/update job enqueued before the cancel — or an operator
+    // retry afterwards — would otherwise still create the order in every
+    // destination. Withhold instead: no lock, no `createOrder`, no mapping write.
+    //
+    // Deliberately RE-READ rather than threaded from ingestion: ingestion's own
+    // snapshot is taken before item resolution and persist, so it is stale in
+    // exactly the race this closes. A missing record means "nothing known", which
+    // is not "cancelled" — proceed. A read failure PROPAGATES: provisioning a
+    // possibly-cancelled order because a read blipped is the worse outcome.
+    const record = await this.orderRecordService.getOrderRecord(order.id);
+    if (record?.isCancelled) {
+      const cancelledAt = record.cancelledAt as Date;
+      this.logger.warn(
+        `Order ${order.id} was cancelled at source (${cancelledAt.toISOString()}); skipping destination provisioning for ${destinations.length} destination(s)`
+      );
+      return destinations.map(({ connectionId }) => ({
+        destinationConnectionId: connectionId,
+        status: 'skipped_cancelled' as const,
+        cancelledAt,
+      }));
     }
 
     // Resolve status mapping once — identical across all destinations

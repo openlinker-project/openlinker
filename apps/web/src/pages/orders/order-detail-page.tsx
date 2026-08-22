@@ -54,6 +54,8 @@ const SYNC_STATUS_TONES: Record<OrderSyncStatusValue, StatusBadgeTone> = {
   syncing: 'warning',
   synced: 'success',
   failed: 'error',
+  // #2284 — provisioning withheld because the source cancelled; never an error.
+  skipped_cancelled: 'neutral',
 };
 
 /** Ship-by urgency level (#927) → StatusBadge tone. */

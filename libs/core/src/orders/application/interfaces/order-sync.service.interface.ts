@@ -38,6 +38,10 @@ export interface OrderSyncRequest {
  * destination processor. `status: 'success'` carries the destination order
  * reference; `status: 'failed'` carries the error message so callers can
  * surface partial failures without losing track of successful destinations.
+ *
+ * `status: 'skipped_cancelled'` (#2284) is a THIRD, terminal arm rather than a
+ * `'failed'` with a code: nothing went wrong, and a distinct arm is what stops
+ * any consumer routing the skip into a retry.
  */
 export type OrderSyncResult =
   | {
@@ -55,6 +59,12 @@ export type OrderSyncResult =
         message: string;
         code?: string;
       };
+    }
+  | {
+      destinationConnectionId: string;
+      status: 'skipped_cancelled';
+      /** When the source cancellation was first recorded (first-write-wins). */
+      cancelledAt: Date;
     };
 
 /**

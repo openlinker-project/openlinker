@@ -519,6 +519,27 @@ describe('OrderIngestionService', () => {
       );
     });
 
+    it('should call updateSyncStatus with skipped_cancelled when the order was cancelled at source', async () => {
+      orderSyncService.syncOrder.mockResolvedValue([
+        {
+          status: 'skipped_cancelled',
+          destinationConnectionId: 'dest-conn-1',
+          cancelledAt: new Date('2026-08-01T10:00:00.000Z'),
+        },
+      ]);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(orderRecordService.updateSyncStatus).toHaveBeenCalledWith(
+        'ol_order_test',
+        'dest-conn-1',
+        expect.objectContaining({
+          status: 'skipped_cancelled',
+          error: 'Order cancelled at source before destination create',
+        })
+      );
+    });
+
     it('should persist snapshot and order even when syncOrder throws', async () => {
       orderSyncService.syncOrder.mockRejectedValue(new Error('no destinations'));
 

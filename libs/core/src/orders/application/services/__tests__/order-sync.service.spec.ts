@@ -17,6 +17,8 @@ import { NoOrderDestinationsAvailableException } from '../../../domain/exception
 import { OrderCreateContendedException } from '../../../domain/exceptions/order-create-contended.exception';
 import type { SyncLockPort } from '@openlinker/core/sync';
 import type { IIdentifierMappingService } from '@openlinker/core/identifier-mapping';
+import type { IOrderRecordService } from '../../interfaces/order-record.service.interface';
+import type { OrderRecord } from '../../../domain/entities/order-record.entity';
 import {
   DuplicateIdentifierMappingError,
   MappingAlreadyExistsError,
@@ -28,6 +30,7 @@ describe('OrderSyncService', () => {
   let mappingConfigService: jest.Mocked<IMappingConfigService>;
   let syncLock: jest.Mocked<SyncLockPort>;
   let identifierMapping: jest.Mocked<IIdentifierMappingService>;
+  let orderRecordService: jest.Mocked<IOrderRecordService>;
 
   const makeAdapter = (orderRef: OrderRef = { orderId: 'dest_order' }) =>
     ({
@@ -119,11 +122,16 @@ describe('OrderSyncService', () => {
       batchGetOrCreateInternalIds: jest.fn(),
     } as unknown as jest.Mocked<IIdentifierMappingService>;
 
+    orderRecordService = {
+      getOrderRecord: jest.fn().mockResolvedValue(null),
+    } as unknown as jest.Mocked<IOrderRecordService>;
+
     service = new OrderSyncService(
       integrationsService,
       mappingConfigService,
       syncLock,
-      identifierMapping
+      identifierMapping,
+      orderRecordService
     );
   });
 
@@ -575,6 +583,92 @@ describe('OrderSyncService', () => {
         status: 'success',
         orderRef: { orderId: 'PS-555' },
       });
+    });
+  });
+
+  // #2284 — the `WHERE cancelledAt IS NULL` provisioning predicate.
+  describe('source-cancelled orders', () => {
+    const cancelledAt = new Date('2026-08-01T10:00:00.000Z');
+    const cancelledRecord = { isCancelled: true, cancelledAt } as unknown as OrderRecord;
+
+    it('should skip destination provisioning when the order was cancelled at source', async () => {
+      const adapterA = makeAdapter();
+      const adapterB = makeAdapter();
+      registerDestinations([
+        { connectionId: 'dest-a', adapter: adapterA },
+        { connectionId: 'dest-b', adapter: adapterB },
+      ]);
+      orderRecordService.getOrderRecord.mockResolvedValue(cancelledRecord);
+
+      const results = await service.syncOrder({
+        order: createOrder(),
+        sourceConnectionId: 'source-1',
+      });
+
+      expect(results).toEqual([
+        { destinationConnectionId: 'dest-a', status: 'skipped_cancelled', cancelledAt },
+        { destinationConnectionId: 'dest-b', status: 'skipped_cancelled', cancelledAt },
+      ]);
+      expect(adapterA.createOrder).not.toHaveBeenCalled();
+      expect(adapterB.createOrder).not.toHaveBeenCalled();
+      expect(syncLock.acquire).not.toHaveBeenCalled();
+      expect(identifierMapping.createMapping).not.toHaveBeenCalled();
+    });
+
+    it('should provision normally when the order record reports no cancellation', async () => {
+      const adapter = makeAdapter({ orderId: 'dest_order_1' });
+      registerDestinations([{ connectionId: 'dest-a', adapter }]);
+      orderRecordService.getOrderRecord.mockResolvedValue({
+        isCancelled: false,
+        cancelledAt: null,
+      } as unknown as OrderRecord);
+
+      const results = await service.syncOrder({
+        order: createOrder(),
+        sourceConnectionId: 'source-1',
+      });
+
+      expect(results[0]).toMatchObject({ status: 'success' });
+      expect(adapter.createOrder).toHaveBeenCalledTimes(1);
+    });
+
+    it('should provision when no order record exists (absence is not cancellation)', async () => {
+      const adapter = makeAdapter({ orderId: 'dest_order_1' });
+      registerDestinations([{ connectionId: 'dest-a', adapter }]);
+      orderRecordService.getOrderRecord.mockResolvedValue(null);
+
+      const results = await service.syncOrder({
+        order: createOrder(),
+        sourceConnectionId: 'source-1',
+      });
+
+      expect(results[0]).toMatchObject({ status: 'success' });
+      expect(adapter.createOrder).toHaveBeenCalledTimes(1);
+    });
+
+    // A read failure must never fall through into a create: provisioning a
+    // possibly-cancelled order is the worse outcome, so the throw propagates
+    // and the sync job retries.
+    it('should propagate a record-read failure instead of provisioning', async () => {
+      const adapter = makeAdapter();
+      registerDestinations([{ connectionId: 'dest-a', adapter }]);
+      orderRecordService.getOrderRecord.mockRejectedValue(new Error('db down'));
+
+      await expect(
+        service.syncOrder({ order: createOrder(), sourceConnectionId: 'source-1' })
+      ).rejects.toThrow('db down');
+      expect(adapter.createOrder).not.toHaveBeenCalled();
+    });
+
+    // The guard sits AFTER the no-destinations throw, so a cancelled order with
+    // no destinations still reports the configuration problem.
+    it('should still throw NoOrderDestinationsAvailableException with zero destinations', async () => {
+      registerDestinations([]);
+      orderRecordService.getOrderRecord.mockResolvedValue(cancelledRecord);
+
+      await expect(
+        service.syncOrder({ order: createOrder(), sourceConnectionId: 'source-1' })
+      ).rejects.toThrow(NoOrderDestinationsAvailableException);
     });
   });
 });
