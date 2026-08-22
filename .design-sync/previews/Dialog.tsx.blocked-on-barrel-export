@@ -1,0 +1,36 @@
+import {
+  Button,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogTitle,
+} from '@openlinker/web';
+
+const noop = () => {};
+
+export const TriggerSync = () => (
+  <Dialog open modal={false} onOpenChange={noop}>
+    <DialogContent onOpenAutoFocus={(e: Event) => e.preventDefault()}>
+      <DialogTitle>Trigger sync job</DialogTitle>
+      <DialogDescription>
+        Enqueue a one-off job for <span className="mono">Allegro · Main store</span>. The job runs
+        on the next worker tick.
+      </DialogDescription>
+      <div style={{ display: 'grid', gap: 'var(--space-3)', padding: 'var(--space-1) 0' }}>
+        <label style={{ display: 'grid', gap: 'var(--space-1)' }}>
+          <span className="muted-text">Job type</span>
+          <span className="mono">marketplace.offers.sync</span>
+        </label>
+        <label style={{ display: 'grid', gap: 'var(--space-1)' }}>
+          <span className="muted-text">Idempotency key</span>
+          <span className="mono">sync:8f21c4:2026-08-22T09:14Z</span>
+        </label>
+      </div>
+      <DialogFooter>
+        <Button tone="secondary">Cancel</Button>
+        <Button tone="primary">Enqueue job</Button>
+      </DialogFooter>
+    </DialogContent>
+  </Dialog>
+);
