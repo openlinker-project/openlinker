@@ -18,10 +18,11 @@ The authority surface's shape is prototyped in
 
 ## Reading the slugs
 
-Backlog issues are referenced here by **W-slug** (`W1a-3`, `W2-14`, `W3a-19`, `W4-7`). GitHub
-numbers are assigned at filing time; every issue in the programme carries the **`oms`** label, so
-`label:oms` is the durable way to find them. Wave 0 is the exception — it is already filed and is
-referenced by its real numbers.
+Backlog issues are referenced here by **W-slug** (`W1a-3`, `W2-14`, `W3a-19`, `W4-7`). The full
+backlog is **filed** — each wave's epic carries a number-mapped checklist resolving every slug to
+its GitHub number, so the epic is the place to go from a slug to an issue. Every issue in the
+programme carries the **`oms`** label, so `label:oms` is the durable way to find them. Wave 0 is
+the exception — it has no epic and is referenced here by its real numbers.
 
 Streams used throughout: **S1** = core inventory/fulfillment BE · **S2** = orders/returns BE ·
 **S3** = product/FE. Sizes: **S** ≤2d · **M** ≤5d · **L** ≤10d.
@@ -33,13 +34,13 @@ Streams used throughout: **S1** = core inventory/fulfillment BE · **S2** = orde
 | Wave | Subject | Children | Status |
 |---|---|---|---|
 | **0** | Preconditions and correctness fixes | 8 | **Filed** — #2282–#2289 |
-| **1a** | Vocabulary leaves + derived order lifecycle phase | 8 | To file |
-| **1b** | Inventory foundations: locations, provenance, availability seam | 11 | To file (+1 unscheduled, Wave 1d) |
-| **1c** | Returns, observed | 10 filed / 9 active | To file (scope fork on #2289) |
-| **2** | The majority's OMS value | 51 | To file |
-| **3a** | Fulfilment routing, work objects, desktop worklist | 22 | To file |
-| **3b** | Store-associate scan/pick surface | 8 | To file |
-| **4** | Third-party OMS, posture B, port hardening | 11 | To file |
+| **1a** | Vocabulary leaves + derived order lifecycle phase | 8 | **Filed** — epic #2312 |
+| **1b** | Inventory foundations: locations, provenance, availability seam | 11 | **Filed** — epic #2326 (+ #2325, Wave 1d, unscheduled) |
+| **1c** | Returns, observed | 10 filed / 9 active | **Filed** — epic #2337 (scope fork on #2289) |
+| **2** | The majority's OMS value | 51 | **Filed** — epic #2389 |
+| **3a** | Fulfilment routing, work objects, desktop worklist | 22 | **Filed** — epic #2412 |
+| **3b** | Store-associate scan/pick surface | 8 | **Filed** — epic #2422 |
+| **4** | Third-party OMS, posture B, port hardening | 11 | **Filed** — epic #2434 |
 
 Both demand gates have **fired**: a live multi-location routing pain case exists (Wave 3) and
 third-party OMS/3PL demand exists (Wave 4). Only `W4-9` — the vendor adapter — stays parameterized,
@@ -59,7 +60,7 @@ BE/FE (#2287/#2288 — automation trigger T5's backing fact), and the Allegro cu
 spike (#2289, which sets Wave 1c's scope fork). #2296/#2297 (CI) are done; #2298 is the
 design-freshness reconciliation.
 
-## Wave 1a — vocabulary leaves + derived lifecycle phase (8 children)
+## Wave 1a — vocabulary leaves + derived lifecycle phase (8 children, epic #2312)
 
 The only genuinely zero-behaviour wave in the programme — the delivery panel split the original
 Wave 1 into 1a/1b/1c/1d precisely because the "zero behaviour" label was false of the other three.
@@ -74,7 +75,7 @@ implements them.
 
 **Gated on:** #2284, #2286, #2283 merged; the ADR 052–062 block merged; #2298 resolved.
 
-## Wave 1b — inventory foundations (11 children)
+## Wave 1b — inventory foundations (11 children, epic #2326)
 
 `inventory_items` is nominally location-aware and behaviourally single-location: one line in
 `inventory.service.ts` disables propagation outright for a non-null `locationId`, the row carries no
@@ -91,7 +92,7 @@ recreation would hold `ACCESS EXCLUSIVE` on the live oversell table.
 
 **Gated on:** #2285 merged; ADR-058 merged; `W1a-8` landed.
 
-## Wave 1c — returns, observed (10 filed / 9 active)
+## Wave 1c — returns, observed (10 filed / 9 active, epic #2337)
 
 OL has no returns model; `libs/core/src/returns/` does not exist and the only adjacent persistence
 is the capture-only `RefundRecord` (#2036). ADR-060 keeps ANALYSIS-1032's source-shape findings
@@ -108,7 +109,7 @@ bucket, read API and FE do not depend on how the observation arrived.
 
 **Gated on:** #2289 resolved with the fork decided; Wave 1a landed; ADR-060 merged.
 
-## Wave 2 — the majority's OMS value (51 children)
+## Wave 2 — the majority's OMS value (51 children, epic #2389)
 
 Waves 1a–1c land vocabulary, a derived phase, inventory foundations and an observed returns record.
 None of them change what an operator can **do**. Wave 2 is the first wave with operator value on the
@@ -137,7 +138,7 @@ answers constrain later work.
 1c landed with its fork decided; `W1c-6` (`order_changes` — reused, never rebuilt); and both product
 specs signed off including spec §8 Q1. A `no` on Q1 deletes `W2-21`…`W2-29` and nothing else.
 
-## Wave 3a — routing, work objects, desktop worklist (22 children)
+## Wave 3a — routing, work objects, desktop worklist (22 children, epic #2412)
 
 OL can route nothing today: `OrderIngestionService` goes `persistOrder` → `syncOrder`, fanning every
 order out to every destination. A seller with two locations, a 3PL, or a no-shop topology cannot say
@@ -155,7 +156,7 @@ and `nearest` rules are unimplementable without them) and the availability seam;
 and conformance checklist; Wave 2's holds, reservation ledger and authority surface; #2282. Only
 `W3a-1` (package scaffold) is startable immediately.
 
-## Wave 3b — the store-associate scan surface (8 children)
+## Wave 3b — the store-associate scan surface (8 children, epic #2422)
 
 3a's desktop worklist is enough for a 3PL, not for a human on a floor with a scanner. REVIEW D10
 sizes this honestly as its own wizard-scale FE epic (~30 files / ~10k lines) and refuses to hide it
@@ -167,7 +168,7 @@ something on the floor can report a shortfall, so the re-sourcing logic ships he
 terminal is not an ordinary logged-in admin session; this epic consumes #2080's answer and does not
 re-open it.
 
-## Wave 4 — third-party OMS, posture B, port hardening (11 children)
+## Wave 4 — third-party OMS, posture B, port hardening (11 children, epic #2434)
 
 The plugin-contracts panel's verdict was blunt: *"a competent third party cannot ship an adapter
 against this contract as it stands"* — nine referenced I/O types undefined, no per-port error
