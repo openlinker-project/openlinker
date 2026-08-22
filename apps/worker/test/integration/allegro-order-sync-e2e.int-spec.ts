@@ -33,6 +33,8 @@ import {
   IDENTIFIER_MAPPING_SERVICE_TOKEN,
 } from '@openlinker/core/identifier-mapping';
 import { ProductOrmEntity, ProductVariantOrmEntity } from '@openlinker/core/products/orm-entities';
+import { OrderRecordOrmEntity } from '@openlinker/core/orders/orm-entities';
+import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
 import { DataSource } from 'typeorm';
 import { randomUUID } from 'crypto';
 
@@ -223,6 +225,89 @@ describe('Allegro Order Sync End-to-End Integration', () => {
       const cursor = await cursorRepository.get(connection.id, 'allegro.orders.lastEventId');
       expect(cursor).toBeDefined();
       expect(cursor).not.toBeNull();
+    });
+
+    // #2284 — AC 4: a cancellation landing between ingestion and the sync job
+    // must withhold destination provisioning entirely.
+    it('should not create a destination order when the source cancelled it first', async () => {
+      const connection = await createTestConnection(dataSource, {
+        platformType: 'allegro',
+        status: 'active',
+        credentialsRef: 'test-credentials-ref',
+        adapterKey: 'allegro.publicapi.v1',
+      });
+
+      const product = new ProductOrmEntity();
+      product.id = 'ol_product_cancel_1';
+      product.name = 'Test Product';
+      await dataSource.getRepository(ProductOrmEntity).save(product);
+
+      const variant = new ProductVariantOrmEntity();
+      variant.id = 'ol_variant_cancel_1';
+      variant.productId = product.id;
+      await dataSource.getRepository(ProductVariantOrmEntity).save(variant);
+
+      await identifierMapping.createMapping('Offer', 'offer-1', connection.id, variant.id);
+
+      // Pre-resolve the internal order id the ingestion path will land on, then
+      // seed a record already cancelled at source — the window this closes.
+      const internalOrderId = await identifierMapping.getOrCreateInternalId(
+        CORE_ENTITY_TYPE.Order,
+        'checkout-form-001',
+        connection.id
+      );
+
+      const cancelledAt = new Date('2026-08-01T10:00:00.000Z');
+      const recordRepo = dataSource.getRepository(OrderRecordOrmEntity);
+      const record = recordRepo.create({
+        internalOrderId,
+        customerId: null,
+        sourceConnectionId: connection.id,
+        sourceEventId: null,
+        orderSnapshot: {},
+        syncStatus: [],
+        syncAttempts: [],
+        recordStatus: 'ready',
+        cancelledAt,
+      });
+      await recordRepo.save(record);
+
+      const orderSyncPersisted = await jobRepository.createIfNotExistsByIdempotencyKey({
+        jobType: 'marketplace.order.sync',
+        connectionId: connection.id,
+        payload: {
+          schemaVersion: 1,
+          externalOrderId: 'checkout-form-001',
+          sourceEventId: 'event-001',
+        },
+        idempotencyKey: `test-order-sync-cancelled-${randomUUID()}`,
+        maxAttempts: 10,
+      });
+
+      const {
+        MarketplaceOrderSyncHandler,
+      } = require('../../src/sync/handlers/marketplace-order-sync.handler');
+      const orderSyncHandler = harness.get(MarketplaceOrderSyncHandler);
+      await orderSyncHandler.execute(orderSyncPersisted);
+
+      // No destination order was created, and no destination mapping was written.
+      expect(mockOrderProcessor.createOrder).not.toHaveBeenCalled();
+      const orderMappings = await identifierMapping.getExternalIds(
+        CORE_ENTITY_TYPE.Order,
+        internalOrderId
+      );
+      expect(orderMappings.some((m) => m.connectionId === 'dest-prestashop-1')).toBe(false);
+
+      // The skip is visible per destination, terminal, and carries its reason.
+      const persisted = await recordRepo.findOne({ where: { internalOrderId } });
+      expect(persisted?.cancelledAt).not.toBeNull();
+      expect(persisted?.syncStatus).toEqual([
+        expect.objectContaining({
+          destinationConnectionId: 'dest-prestashop-1',
+          status: 'skipped_cancelled',
+          error: 'Order cancelled at source before destination create',
+        }),
+      ]);
     });
 
     it('should handle cursor persistence correctly', async () => {

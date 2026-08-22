@@ -102,23 +102,42 @@ export interface SyncRollup {
   synced: number;
   /** pending + syncing — anything not yet terminal. */
   pending: number;
+  /**
+   * `skipped_cancelled` (#2284) — terminal, and neither a failure nor
+   * outstanding work: the source cancelled the order before any destination
+   * order existed, so provisioning was deliberately withheld. Counted on its own
+   * so it can never inflate `failed` (it is not an error) or `pending` (it would
+   * leave the order reading as stuck forever).
+   */
+  skipped: number;
 }
 
 export function rollupSyncStatus(syncStatus: readonly OrderSyncStatus[]): SyncRollup {
   let failed = 0;
   let synced = 0;
   let pending = 0;
+  let skipped = 0;
   for (const s of syncStatus) {
     if (s.status === 'failed') failed += 1;
     else if (s.status === 'synced') synced += 1;
+    // Explicit branch on purpose: the catch-all `else` below is not
+    // compiler-guarded, so a widened union would silently land here and be
+    // counted as pending.
+    else if (s.status === 'skipped_cancelled') skipped += 1;
     else pending += 1;
   }
-  return { total: syncStatus.length, failed, synced, pending };
+  return { total: syncStatus.length, failed, synced, pending, skipped };
 }
 
 export const OrderHealthLevelValues = ['attention', 'pending', 'healthy', 'unknown'] as const;
 export type OrderHealthLevel = (typeof OrderHealthLevelValues)[number];
 
+/**
+ * A `skipped_cancelled`-only order resolves to `'healthy'`: it is terminal with
+ * no outstanding work and nothing failed (#2284). The health PARTITION is
+ * deliberately unchanged — a dedicated bucket would need the SQL twin plus the
+ * list KPI cards, which is out of scope.
+ */
 export function deriveHealthLevel(rollup: SyncRollup): OrderHealthLevel {
   if (rollup.total === 0) return 'unknown';
   if (rollup.failed > 0) return 'attention';
@@ -143,6 +162,8 @@ export function healthLabel(level: OrderHealthLevel): string {
 export function syncCellLabel(rollup: SyncRollup): string {
   if (rollup.total === 0) return 'No destinations';
   if (rollup.failed > 0) return `${rollup.failed} of ${rollup.total} failed`;
+  if (rollup.skipped > 0)
+    return `${rollup.synced} of ${rollup.total} synced (${rollup.skipped} skipped)`;
   return `${rollup.synced} of ${rollup.total} synced`;
 }
 

@@ -9,6 +9,7 @@
  *
  * @module domain/types
  */
+import type { OrderSyncStatusFilter } from './order-record.types';
 
 /**
  * Current sync state for one destination connection.
@@ -19,8 +20,12 @@
 export interface OrderSyncStatus {
   /** Destination connection ID */
   destinationConnectionId: string;
-  /** Sync status: pending, syncing, synced, or failed */
-  status: 'pending' | 'syncing' | 'synced' | 'failed';
+  /**
+   * Sync status. `'skipped_cancelled'` is terminal — the source cancelled the
+   * order before the destination create ran, so provisioning was withheld
+   * (#2284); the reason rides in `error`.
+   */
+  status: OrderSyncStatusFilter;
   /** Timestamp when sync completed (for synced status) */
   syncedAt?: Date;
   /** External order ID in destination system */
@@ -42,7 +47,7 @@ export interface OrderSyncStatus {
  */
 export interface SyncAttempt {
   destinationConnectionId: string;
-  status: 'pending' | 'syncing' | 'synced' | 'failed';
+  status: OrderSyncStatusFilter;
   attemptedAt: Date;
   error?: string;
   externalOrderId?: string;

@@ -8,7 +8,21 @@
  * @module apps/web/src/features/orders/api
  */
 
-export const OrderSyncStatusValues = ['pending', 'syncing', 'synced', 'failed'] as const;
+/**
+ * Mirrors CORE `OrderSyncStatusFilterValues` (`order-record.types.ts`).
+ *
+ * `'skipped_cancelled'` (#2284) is terminal and is NOT a failure: the source
+ * cancelled the order before any destination order existed, so provisioning was
+ * deliberately withheld. It must never borrow an error colour and is never
+ * retryable.
+ */
+export const OrderSyncStatusValues = [
+  'pending',
+  'syncing',
+  'synced',
+  'failed',
+  'skipped_cancelled',
+] as const;
 export type OrderSyncStatusValue = (typeof OrderSyncStatusValues)[number];
 
 export interface OrderSyncStatus {

@@ -431,6 +431,20 @@ export class OrderIngestionService implements IOrderIngestionService {
               externalOrderNumber: result.orderRef.orderNumber,
             }
           );
+        } else if (result.status === 'skipped_cancelled') {
+          // #2284 — terminal, and NOT a failure: the source cancelled before the
+          // destination create ran, so provisioning was withheld. `error` carries
+          // the human reason (no new column); the same string lands on the
+          // append-only attempt entry so the timeline narrates the skip.
+          return this.orderRecordService.updateSyncStatus(
+            order.id,
+            result.destinationConnectionId,
+            {
+              destinationConnectionId: result.destinationConnectionId,
+              status: 'skipped_cancelled',
+              error: 'Order cancelled at source before destination create',
+            }
+          );
         } else {
           return this.orderRecordService.updateSyncStatus(
             order.id,

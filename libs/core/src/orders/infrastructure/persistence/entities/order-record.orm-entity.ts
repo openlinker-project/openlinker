@@ -8,13 +8,14 @@
  * @module libs/core/src/orders/infrastructure/persistence/entities
  */
 import { Entity, PrimaryColumn, Column, CreateDateColumn, UpdateDateColumn, Index } from 'typeorm';
+import type { OrderSyncStatusFilter } from '../../../domain/types/order-record.types';
 
 /**
  * Sync status JSONB structure
  */
 export interface OrderSyncStatusJson {
   destinationConnectionId: string;
-  status: 'pending' | 'syncing' | 'synced' | 'failed';
+  status: OrderSyncStatusFilter;
   syncedAt?: string;
   externalOrderId?: string;
   externalOrderNumber?: string;
@@ -27,7 +28,7 @@ export interface OrderSyncStatusJson {
  */
 export interface SyncAttemptJson {
   destinationConnectionId: string;
-  status: 'pending' | 'syncing' | 'synced' | 'failed';
+  status: OrderSyncStatusFilter;
   attemptedAt: string;
   error?: string;
   externalOrderId?: string;

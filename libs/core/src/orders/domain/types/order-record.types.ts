@@ -11,9 +11,32 @@ import type { SlaState } from './order-sla.types';
 import type { FulfillmentRollupState } from './order-fulfillment.types';
 
 /**
- * Sync status filter values for order queries
+ * Per-destination sync status values (#2284).
+ *
+ * The single source of truth for the vocabulary: the persisted jsonb payload
+ * (`OrderSyncStatus` / `SyncAttempt`, `OrderSyncStatusJson` / `SyncAttemptJson`),
+ * the `/orders` query filter, and the response DTO all type off this one const —
+ * so the persisted set and the queryable set can never drift.
+ *
+ * `'skipped_cancelled'` (#2284) is **terminal**: the source cancelled the order
+ * before any destination order existed, so provisioning was deliberately
+ * withheld. It is never retried (`OrderDestinationRetryService` retries only
+ * `'failed'`) and must never read as a failure — nothing went wrong. Two
+ * consequences of typing the query filter off the same const, both intended:
+ * the response DTO widens with no edit, and `GET /orders?syncStatus=…`
+ * legitimately accepts the new value.
+ *
+ * Health partitioning is deliberately unchanged: a cancelled-and-skipped order
+ * falls into the residual `awaiting_dispatch` bucket. A dedicated bucket needs
+ * the SQL twin plus the FE KPI cards and is out of scope for #2284.
  */
-export const OrderSyncStatusFilterValues = ['pending', 'syncing', 'synced', 'failed'] as const;
+export const OrderSyncStatusFilterValues = [
+  'pending',
+  'syncing',
+  'synced',
+  'failed',
+  'skipped_cancelled',
+] as const;
 
 /**
  * Sync status filter type

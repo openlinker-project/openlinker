@@ -82,6 +82,7 @@ const STATUS_PAST_TENSE: Record<OrderSyncStatusValue, string> = {
   syncing: 'syncing to',
   synced: 'synced to',
   failed: 'failed to sync to',
+  skipped_cancelled: 'skipped (cancelled at source) for',
 };
 
 /**
@@ -105,6 +106,8 @@ const TONE_FOR_STATUS: Record<OrderSyncStatusValue, TimelineEvent['tone']> = {
   syncing: 'default',
   synced: 'success',
   failed: 'error',
+  // Terminal, and not a failure — a deliberate withholding reads neutral (#2284).
+  skipped_cancelled: 'default',
 };
 
 function buildEvents(
