@@ -15,6 +15,7 @@ import { OrderRecord } from '../../domain/entities/order-record.entity';
 import type { OrderSyncStatus, SyncAttempt } from '../../domain/types/order-sync.types';
 import type { IOrderRecordService } from '../interfaces/order-record.service.interface';
 import type { IncomingOrder } from '../../domain/types/incoming-order.types';
+import { OrderRecordNotFoundException } from '../../domain/exceptions/order-record-not-found.exception';
 import type {
   FailedSyncValueSummary,
   OrderHealthSummaryFilters,
@@ -486,6 +487,43 @@ export class OrderRecordService implements IOrderRecordService {
     block: SalesDocumentBlock | null
   ): Promise<void> {
     await this.repository.updateSalesDocumentBlock(internalOrderId, block);
+  }
+
+  /**
+   * Mark this order packed (#2287). The instant is stamped HERE rather than
+   * taken from the caller: unlike `markCancelled`, which relays an instant an
+   * external cancel event carries, "packed" is OpenLinker's own observation of
+   * an operator action, so accepting a caller-supplied timestamp would let a
+   * client backdate an audit fact.
+   *
+   * The repository write is guarded (`packedAt IS NULL`), so `false` means one
+   * of exactly two things and they must be told apart: the order is already
+   * packed (the idempotent replay — return the existing stamp untouched) or no
+   * such order exists (throw). Only the re-read can distinguish them, and it is
+   * also what makes the returned record authoritative on the winner's stamp
+   * rather than on this call's discarded one.
+   */
+  async markPacked(internalOrderId: string, packedByUserId: string): Promise<OrderRecord> {
+    await this.repository.markPacked(internalOrderId, new Date(), packedByUserId);
+    const record = await this.repository.findById(internalOrderId);
+    if (!record) {
+      throw new OrderRecordNotFoundException(internalOrderId);
+    }
+    return record;
+  }
+
+  /**
+   * Clear this order's packed fact (#2287). Same missing-row disambiguation as
+   * {@link markPacked}: the guarded write reports `false` both for an already-
+   * unpacked order and for an absent one, so the re-read decides.
+   */
+  async clearPacked(internalOrderId: string): Promise<OrderRecord> {
+    await this.repository.clearPacked(internalOrderId);
+    const record = await this.repository.findById(internalOrderId);
+    if (!record) {
+      throw new OrderRecordNotFoundException(internalOrderId);
+    }
+    return record;
   }
 
   /**

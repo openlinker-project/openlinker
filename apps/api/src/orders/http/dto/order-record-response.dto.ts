@@ -131,6 +131,23 @@ export class OrderRecordResponseDto {
   })
   cancelledAt!: string | null;
 
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      'Instant an operator marked this order packed (ISO 8601, #2287). null = not packed. ' +
+      'A fact, not a state: independent of recordStatus / fulfillmentState / slaState, and it gates nothing. ' +
+      'Set once — a repeat mark replays the original stamp rather than re-stamping.',
+  })
+  packedAt!: string | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      'OL user id of whoever marked this order packed (#2287). null when not packed. ' +
+      'Moves as one group with packedAt, so the FIRST actor is never overwritten.',
+  })
+  packedByUserId!: string | null;
+
   @ApiProperty({
     description:
       'True when `dispatchByAt` is an OL-side ESTIMATE rather than a marketplace-authoritative ' +

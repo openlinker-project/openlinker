@@ -10,6 +10,7 @@ import { OrdersController } from './orders.controller';
 import {
   ORDER_RECORD_REPOSITORY_TOKEN,
   ORDER_DESTINATION_RETRY_SERVICE_TOKEN,
+  ORDER_RECORD_SERVICE_TOKEN,
   OrderRecord,
   OrderRecordNotFoundException,
   OrderDestinationNotFoundException,
@@ -19,6 +20,7 @@ import {
 import type {
   OrderRecordRepositoryPort,
   IOrderDestinationRetryService,
+  IOrderRecordService,
 } from '@openlinker/core/orders';
 import { INVOICE_SERVICE_TOKEN } from '@openlinker/core/invoicing';
 import type { IInvoiceService } from '@openlinker/core/invoicing';
@@ -35,6 +37,7 @@ import type {
 describe('OrdersController', () => {
   let controller: OrdersController;
   let repository: jest.Mocked<OrderRecordRepositoryPort>;
+  let orderRecordService: jest.Mocked<IOrderRecordService>;
   let retryService: jest.Mocked<IOrderDestinationRetryService>;
   let invoiceService: jest.Mocked<IInvoiceService>;
   let fulfillmentRouting: jest.Mocked<IFulfillmentRoutingService>;
@@ -80,7 +83,14 @@ describe('OrdersController', () => {
       findUnstampedFxOrderIds: jest.fn(),
       listDistinctNativeCurrencies: jest.fn(),
       countStampedByReportingCurrency: jest.fn(),
+      markPacked: jest.fn(),
+      clearPacked: jest.fn(),
     };
+
+    const mockOrderRecordService = {
+      markPacked: jest.fn(),
+      clearPacked: jest.fn(),
+    } as unknown as jest.Mocked<IOrderRecordService>;
 
     const mockRetryService: jest.Mocked<IOrderDestinationRetryService> = {
       retry: jest.fn(),
@@ -126,6 +136,10 @@ describe('OrdersController', () => {
           useValue: mockRepository,
         },
         {
+          provide: ORDER_RECORD_SERVICE_TOKEN,
+          useValue: mockOrderRecordService,
+        },
+        {
           provide: ORDER_DESTINATION_RETRY_SERVICE_TOKEN,
           useValue: mockRetryService,
         },
@@ -146,6 +160,7 @@ describe('OrdersController', () => {
 
     controller = module.get<OrdersController>(OrdersController);
     repository = module.get(ORDER_RECORD_REPOSITORY_TOKEN);
+    orderRecordService = module.get(ORDER_RECORD_SERVICE_TOKEN);
     retryService = module.get(ORDER_DESTINATION_RETRY_SERVICE_TOKEN);
     invoiceService = module.get(INVOICE_SERVICE_TOKEN);
     fulfillmentRouting = module.get(FULFILLMENT_ROUTING_SERVICE_TOKEN);
@@ -796,6 +811,81 @@ describe('OrdersController', () => {
       await expect(
         controller.retryDestination(internalOrderId, connectionId)
       ).rejects.toBeInstanceOf(InternalServerErrorException);
+    });
+  });
+  describe('packed (#2287)', () => {
+    const actor = {
+      id: 'user-op-001',
+      email: 'op@example.com',
+      role: 'operator',
+    } as unknown as Parameters<typeof controller.markPacked>[1];
+
+    const packedOrder = new OrderRecord(
+      'ol_order_001',
+      'ol_customer_001',
+      'conn-source-001',
+      'event-001',
+      { externalOrderId: 'EXT-123', items: [] },
+      [],
+      'ready',
+      new Date('2026-04-01T00:00:00Z'),
+      new Date('2026-04-01T12:00:00Z'),
+      [],
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      new Date('2026-04-02T09:30:00Z'),
+      'user-op-001'
+    );
+
+    it('should pass the acting user id when marking packed', async () => {
+      orderRecordService.markPacked.mockResolvedValue(packedOrder);
+
+      const result = await controller.markPacked('ol_order_001', actor);
+
+      expect(orderRecordService.markPacked).toHaveBeenCalledWith('ol_order_001', 'user-op-001');
+      expect(result.packedAt).toBe('2026-04-02T09:30:00.000Z');
+      expect(result.packedByUserId).toBe('user-op-001');
+    });
+
+    it('should project null packed fields for an unpacked order', async () => {
+      orderRecordService.clearPacked.mockResolvedValue(mockOrder);
+
+      const result = await controller.clearPacked('ol_order_001');
+
+      expect(orderRecordService.clearPacked).toHaveBeenCalledWith('ol_order_001');
+      expect(result.packedAt).toBeNull();
+      expect(result.packedByUserId).toBeNull();
+    });
+
+    it('should map OrderRecordNotFoundException to NotFoundException when marking', async () => {
+      orderRecordService.markPacked.mockRejectedValue(
+        new OrderRecordNotFoundException('ol_order_missing')
+      );
+
+      await expect(controller.markPacked('ol_order_missing', actor)).rejects.toBeInstanceOf(
+        NotFoundException
+      );
+    });
+
+    it('should map OrderRecordNotFoundException to NotFoundException when clearing', async () => {
+      orderRecordService.clearPacked.mockRejectedValue(
+        new OrderRecordNotFoundException('ol_order_missing')
+      );
+
+      await expect(controller.clearPacked('ol_order_missing')).rejects.toBeInstanceOf(
+        NotFoundException
+      );
     });
   });
 });

@@ -53,7 +53,8 @@ export interface OrderRecordRepositoryPort {
    * {@link updateFulfillmentState}), `cancelledAt` (#1984,
    * {@link markCancelled}), the three `salesDocument*` columns (#2100,
    * {@link updateSalesDocumentBlock}) and the six FX snapshot columns (#2124,
-   * {@link claimFxIntentIfAbsent} / {@link stampFxIfAbsent}) - are NOT part of
+   * {@link claimFxIntentIfAbsent} / {@link stampFxIfAbsent}) and the two packed
+   * columns (#2287, {@link markPacked} / {@link clearPacked}) - are NOT part of
    * the write set, so a re-ingestion of the same order cannot reset them. The
    * returned record therefore reports all of them as empty (`[]` / `null`)
    * whatever the row holds; re-read via {@link findById} when their live value
@@ -202,6 +203,38 @@ export interface OrderRecordRepositoryPort {
    * NULL by definition.
    */
   claimFxIntentIfAbsent(internalOrderId: string, intent: OrderFxIntent): Promise<boolean>;
+
+  /**
+   * Mark this order packed (#2287) — writes `packedAt` + `packedByUserId` and
+   * nothing else, guarded on `packedAt IS NULL` so the FIRST mark wins.
+   *
+   * Both columns move in ONE guarded statement rather than via a per-column
+   * `COALESCE`: they are one fact, and a `COALESCE` on `packedAt` alone would
+   * preserve the original instant while letting a second caller overwrite
+   * `packedByUserId` — "who packed it first is never overwritten" is the
+   * explicit requirement.
+   *
+   * Returns `true` when this call wrote and `false` when it did not — either
+   * because the order is already packed (an idempotent replay) or because no
+   * row matches the id at all. It never throws, so a caller that must tell
+   * those two apart re-reads via {@link findById}.
+   */
+  markPacked(
+    internalOrderId: string,
+    packedAt: Date,
+    packedByUserId: string
+  ): Promise<boolean>;
+
+  /**
+   * Clear this order's packed fact (#2287) — nulls `packedAt` +
+   * `packedByUserId` together, guarded on `packedAt IS NOT NULL` so unmarking
+   * an already-unpacked order affects no row and does not bump `updatedAt`.
+   *
+   * Returns `true` when this call cleared, `false` otherwise (already unpacked,
+   * or no row matched). Never throws — same disambiguation rule as
+   * {@link markPacked}.
+   */
+  clearPacked(internalOrderId: string): Promise<boolean>;
 
   /**
    * Stamp the order's reporting-currency figures at most once (#2124) — one

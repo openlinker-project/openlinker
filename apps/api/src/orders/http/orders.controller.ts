@@ -10,6 +10,7 @@ import {
   Controller,
   Get,
   Post,
+  Delete,
   Query,
   Param,
   HttpCode,
@@ -22,10 +23,14 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { Roles } from '../../auth/decorators/roles.decorator';
+import { CurrentUser } from '../../auth/decorators/current-user.decorator';
+import { AuthenticatedUser } from '../../auth/auth.types';
 import {
   OrderRecordRepositoryPort,
   ORDER_RECORD_REPOSITORY_TOKEN,
   ORDER_DESTINATION_RETRY_SERVICE_TOKEN,
+  ORDER_RECORD_SERVICE_TOKEN,
+  IOrderRecordService,
   OrderRecordNotFoundException,
   OrderDestinationNotFoundException,
   OrderDestinationNotRetryableException,
@@ -74,6 +79,13 @@ export class OrdersController {
   constructor(
     @Inject(ORDER_RECORD_REPOSITORY_TOKEN)
     private readonly orderRecordRepository: OrderRecordRepositoryPort,
+    // #2287: the packed writes go through the SERVICE, not the repository port
+    // this controller injects for its reads. The two guarded statements plus
+    // the re-read that tells "already packed" from "no such order" are one
+    // policy, and it belongs in the application layer where the other writers
+    // (`markCancelled`, `markSalesDocumentBlock`) already live.
+    @Inject(ORDER_RECORD_SERVICE_TOKEN)
+    private readonly orderRecordService: IOrderRecordService,
     @Inject(ORDER_DESTINATION_RETRY_SERVICE_TOKEN)
     private readonly destinationRetryService: IOrderDestinationRetryService,
     @Inject(INVOICE_SERVICE_TOKEN)
@@ -311,6 +323,57 @@ export class OrdersController {
     }
   }
 
+  @Roles('admin', 'operator')
+  @Post(':internalOrderId/packed')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Mark an order packed',
+    description:
+      'Records the plain operator fact that this order is packed, stamping the instant (server-side) and the acting user. ' +
+      'It is a fact, not a state: recordStatus, fulfillmentState, slaState and the order-health buckets are untouched, and nothing is gated on it. ' +
+      'Idempotent — a repeat call returns the EXISTING stamp and actor rather than re-stamping, which is why it answers 200 and not 201.',
+  })
+  @ApiResponse({ status: 200, description: 'Order is packed', type: OrderRecordResponseDto })
+  @ApiResponse({ status: 404, description: 'Order not found' })
+  @ApiResponse({ status: 403, description: 'Insufficient permissions' })
+  async markPacked(
+    @Param('internalOrderId') internalOrderId: string,
+    @CurrentUser() user: AuthenticatedUser
+  ): Promise<OrderRecordResponseDto> {
+    try {
+      return this.toDto(await this.orderRecordService.markPacked(internalOrderId, user.id));
+    } catch (error) {
+      if (error instanceof OrderRecordNotFoundException) {
+        throw new NotFoundException(error.message);
+      }
+      throw error;
+    }
+  }
+
+  @Roles('admin', 'operator')
+  @Delete(':internalOrderId/packed')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Clear an order’s packed mark',
+    description:
+      'Clears both packed fields together. Clearing an order that is not packed is a no-op that returns the record unchanged.',
+  })
+  @ApiResponse({ status: 200, description: 'Order is not packed', type: OrderRecordResponseDto })
+  @ApiResponse({ status: 404, description: 'Order not found' })
+  @ApiResponse({ status: 403, description: 'Insufficient permissions' })
+  async clearPacked(
+    @Param('internalOrderId') internalOrderId: string
+  ): Promise<OrderRecordResponseDto> {
+    try {
+      return this.toDto(await this.orderRecordService.clearPacked(internalOrderId));
+    } catch (error) {
+      if (error instanceof OrderRecordNotFoundException) {
+        throw new NotFoundException(error.message);
+      }
+      throw error;
+    }
+  }
+
   private toDto(order: OrderRecord): OrderRecordResponseDto {
     const fulfillmentState = order.fulfillmentState ?? 'not-shipped';
     return {
@@ -330,6 +393,10 @@ export class OrdersController {
       updatedAt: order.updatedAt instanceof Date ? order.updatedAt.toISOString() : order.updatedAt,
       dispatchByAt: order.dispatchByAt ? order.dispatchByAt.toISOString() : null,
       cancelledAt: order.cancelledAt ? order.cancelledAt.toISOString() : null,
+      // Operator packed fact (#2287). Projected on the SHARED toDto, so it
+      // reaches the list and the detail response from one place.
+      packedAt: order.packedAt ? order.packedAt.toISOString() : null,
+      packedByUserId: order.packedByUserId,
       // Ship-by estimate flag (#1776): a typed, fail-safe read off the snapshot's
       // dispatch window. Erli marks its derived window `estimated: true`; Allegro
       // leaves it absent (authoritative). Narrowing lives on the entity getter.

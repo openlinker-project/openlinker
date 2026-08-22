@@ -131,6 +131,8 @@ describe('ShipmentController', () => {
       getFailedSyncValueSummary: jest.fn(),
       markCancelled: jest.fn(),
       markSalesDocumentBlock: jest.fn(),
+      markPacked: jest.fn(),
+      clearPacked: jest.fn(),
     };
     controller = new ShipmentController(
       query,
