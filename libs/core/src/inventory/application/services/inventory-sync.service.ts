@@ -74,11 +74,21 @@ export class InventorySyncService implements IInventorySyncService {
       idempotencyKey: cmd.idempotencyKey,
       items: cmd.items.map((i) => {
         const quantity = applyStockSafetyBuffer(i.quantity, reserve);
+        if (!i.idempotencyKey && !i.observedAt) {
+          // #2285 — a quantity-only key cannot distinguish two writes of the same
+          // value, so a corrective write is swallowed by the destination's command-id
+          // dedup. Keep the legacy key (nothing else to derive from) but make the
+          // degradation observable rather than silent.
+          this.logger.warn(
+            `inventory_quantity_key_unversioned connection=${connectionId} offer=${i.offerId} quantity=${quantity}`
+          );
+        }
         return {
           ...i,
           quantity,
           idempotencyKey:
-            i.idempotencyKey ?? this.buildIdempotencyKey(connectionId, i.offerId, quantity),
+            i.idempotencyKey ??
+            this.buildIdempotencyKey(connectionId, i.offerId, quantity, i.observedAt),
         };
       }),
     };
@@ -113,9 +123,22 @@ export class InventorySyncService implements IInventorySyncService {
     return result;
   }
 
-  private buildIdempotencyKey(connectionId: string, offerId: string, quantity: number): string {
+  /**
+   * Deterministic, compact idempotency key over the 4-tuple
+   * `(connectionId, offerId, quantity, observedAt)`. The observation token is what
+   * lets two writes of the same quantity be told apart (#2285); with no token the
+   * key degrades to the pre-#2285 quantity-only form, marked `unversioned`.
+   *
+   * Never derives from wall-clock time — see `UpdateOfferQuantityCommand.observedAt`.
+   */
+  private buildIdempotencyKey(
+    connectionId: string,
+    offerId: string,
+    quantity: number,
+    observedAt?: string
+  ): string {
     // Deterministic, compact idempotency key (avoid long hashes).
-    const raw = `inventory:${connectionId}:${offerId}:${quantity}`;
+    const raw = `inventory:${connectionId}:${offerId}:${quantity}:${observedAt ?? 'unversioned'}`;
     const digest = createHash('sha256').update(raw).digest('hex').slice(0, 16);
     return `inv:${digest}`;
   }

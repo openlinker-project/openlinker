@@ -88,6 +88,11 @@ export interface MarketplaceOfferQuantityUpdatePayloadV1 {
   offerId: string;
   quantity: number;
   idempotencyKey?: string;
+  /**
+   * ISO-8601 observation token for the state this write expresses (#2285) — never
+   * wall-clock `now()`. Optional, so payloads enqueued before #2285 stay valid.
+   */
+  observedAt?: string;
 }
 
 export interface MarketplaceOfferFieldUpdatePayloadV1 {

@@ -139,7 +139,8 @@ describe('InventorySyncService', () => {
   it('should auto-generate a deterministic idempotency key when an item omits one', async () => {
     // Single-item path (length === 1) forces per-item loop, which lets us inspect the
     // normalized item passed to updateOfferQuantity. The key is a SHA-256 truncation
-    // of (connectionId, offerId, quantity) — same tuple → same key, distinct tuple → distinct key.
+    // of (connectionId, offerId, quantity, observedAt) — same tuple → same key,
+    // distinct tuple → distinct key (#2285).
     marketplace.updateOfferQuantity.mockResolvedValue(undefined);
 
     await service.updateOfferQuantities(connectionId, {
@@ -164,6 +165,103 @@ describe('InventorySyncService', () => {
     const thirdCallArg = marketplace.updateOfferQuantity.mock.calls[2][0];
     expect(thirdCallArg.idempotencyKey).toMatch(/^inv:[a-f0-9]{16}$/);
     expect(thirdCallArg.idempotencyKey).not.toBe(firstCallArg.idempotencyKey);
+  });
+
+  describe('observation-token idempotency key (#2285)', () => {
+    const keyOf = (call: number): string | undefined =>
+      marketplace.updateOfferQuantity.mock.calls[call][0].idempotencyKey;
+
+    beforeEach(() => {
+      marketplace.updateOfferQuantity.mockResolvedValue(undefined);
+    });
+
+    it('should derive different keys when the quantity is identical but the observation differs', async () => {
+      await service.updateOfferQuantity(connectionId, {
+        offerId: 'o1',
+        quantity: 0,
+        observedAt: '2026-08-01T00:00:00.000Z',
+      });
+      await service.updateOfferQuantity(connectionId, {
+        offerId: 'o1',
+        quantity: 0,
+        observedAt: '2026-08-02T00:00:00.000Z',
+      });
+
+      expect(keyOf(0)).toMatch(/^inv:[a-f0-9]{16}$/);
+      expect(keyOf(1)).toMatch(/^inv:[a-f0-9]{16}$/);
+      expect(keyOf(1)).not.toBe(keyOf(0));
+    });
+
+    it('should derive the same key when the observation is the same', async () => {
+      const observedAt = '2026-08-01T00:00:00.000Z';
+      await service.updateOfferQuantity(connectionId, { offerId: 'o1', quantity: 3, observedAt });
+      await service.updateOfferQuantity(connectionId, { offerId: 'o1', quantity: 3, observedAt });
+
+      expect(keyOf(1)).toBe(keyOf(0));
+    });
+
+    it('should keep an explicit idempotency key ahead of the derived one', async () => {
+      await service.updateOfferQuantity(connectionId, {
+        offerId: 'o1',
+        quantity: 3,
+        idempotencyKey: 'caller-key',
+        observedAt: '2026-08-01T00:00:00.000Z',
+      });
+
+      expect(keyOf(0)).toBe('caller-key');
+    });
+
+    it('should fall back to an unversioned key and warn when no observation is supplied', async () => {
+      const warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+
+      await service.updateOfferQuantity(connectionId, { offerId: 'o1', quantity: 3 });
+
+      expect(keyOf(0)).toMatch(/^inv:[a-f0-9]{16}$/);
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('inventory_quantity_key_unversioned')
+      );
+      warnSpy.mockRestore();
+    });
+
+    it('should mint three distinct keys for a restock-to-the-same-quantity sequence', async () => {
+      // qty 5 @ t0 -> qty 0 @ t1 -> qty 5 @ t2. Pre-#2285 the third write reused the
+      // first write's key and was swallowed by the destination's command-id dedup,
+      // leaving the offer selling at a quantity it no longer had.
+      await service.updateOfferQuantity(connectionId, {
+        offerId: 'o1',
+        quantity: 5,
+        observedAt: '2026-08-01T00:00:00.000Z',
+      });
+      await service.updateOfferQuantity(connectionId, {
+        offerId: 'o1',
+        quantity: 0,
+        observedAt: '2026-08-02T00:00:00.000Z',
+      });
+      await service.updateOfferQuantity(connectionId, {
+        offerId: 'o1',
+        quantity: 5,
+        observedAt: '2026-08-03T00:00:00.000Z',
+      });
+
+      expect(marketplace.updateOfferQuantity).toHaveBeenCalledTimes(3);
+      expect(new Set([keyOf(0), keyOf(1), keyOf(2)]).size).toBe(3);
+    });
+
+    it('should never derive the key from wall-clock time', async () => {
+      const input = {
+        offerId: 'o1',
+        quantity: 5,
+        observedAt: '2026-08-01T00:00:00.000Z',
+      };
+
+      jest.useFakeTimers().setSystemTime(new Date('2026-08-10T00:00:00.000Z'));
+      await service.updateOfferQuantity(connectionId, input);
+      jest.setSystemTime(new Date('2027-01-01T00:00:00.000Z'));
+      await service.updateOfferQuantity(connectionId, input);
+      jest.useRealTimers();
+
+      expect(keyOf(1)).toBe(keyOf(0));
+    });
   });
 
   describe('stock safety buffer (#1844)', () => {
@@ -224,7 +322,9 @@ describe('InventorySyncService', () => {
 
       await service.updateOfferQuantity(connectionId, { offerId: 'o1', quantity: 10 });
 
-      expect(warnSpy).not.toHaveBeenCalled();
+      // Scoped to the buffer warn: an item with no observation token separately warns
+      // about its unversioned idempotency key (#2285).
+      expect(warnSpy).not.toHaveBeenCalledWith(expect.stringContaining('present but invalid'));
       warnSpy.mockRestore();
     });
 
