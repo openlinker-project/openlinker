@@ -1,0 +1,252 @@
+<title>Who Decides What</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --font-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --bg-canvas: oklch(99% 0.003 80);
+  --bg-surface: #ffffff;
+  --bg-muted: oklch(96% 0.005 80);
+  --border-subtle: oklch(93.5% 0.006 80);
+  --border-default: oklch(88% 0.008 80);
+  --text-primary: oklch(20% 0.012 80);
+  --text-secondary: oklch(38% 0.010 80);
+  --text-muted: oklch(52% 0.008 80);
+  --accent-primary: oklch(68% 0.18 50);
+  --accent-primary-soft: oklch(96% 0.04 60);
+  --accent-primary-border: oklch(85% 0.10 55);
+  --accent-primary-strong: oklch(40% 0.16 50);
+  --status-error-soft: oklch(96% 0.04 25); --status-error-border: oklch(85% 0.10 25); --status-error-fg: oklch(42% 0.16 25);
+  --status-warning-soft: oklch(96% 0.05 85); --status-warning-border: oklch(85% 0.10 85); --status-warning-fg: oklch(42% 0.12 80);
+  --status-info-soft: oklch(96% 0.03 245); --status-info-border: oklch(85% 0.08 245); --status-info-fg: oklch(40% 0.12 245);
+  --status-disabled-soft: oklch(95% 0.005 80); --status-disabled-border: oklch(85% 0.008 80); --status-disabled-fg: oklch(38% 0.010 80);
+  --shadow-soft: 0 1px 2px rgb(15 18 26 / 0.04), 0 6px 16px rgb(15 18 26 / 0.06);
+  --radius: 8px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg-canvas: oklch(17% 0.008 80); --bg-surface: oklch(21% 0.009 80); --bg-muted: oklch(25% 0.009 80);
+    --border-subtle: oklch(28% 0.010 80); --border-default: oklch(34% 0.012 80);
+    --text-primary: oklch(95% 0.005 80); --text-secondary: oklch(78% 0.008 80); --text-muted: oklch(62% 0.008 80);
+    --accent-primary-soft: oklch(30% 0.07 55); --accent-primary-border: oklch(45% 0.12 55); --accent-primary-strong: oklch(85% 0.10 55);
+    --status-error-soft: oklch(28% 0.07 25); --status-error-border: oklch(42% 0.11 25); --status-error-fg: oklch(85% 0.10 25);
+    --status-warning-soft: oklch(28% 0.06 85); --status-warning-border: oklch(42% 0.10 85); --status-warning-fg: oklch(88% 0.10 85);
+    --status-info-soft: oklch(27% 0.05 245); --status-info-border: oklch(40% 0.09 245); --status-info-fg: oklch(86% 0.08 245);
+    --status-disabled-soft: oklch(25% 0.006 80); --status-disabled-border: oklch(34% 0.008 80); --status-disabled-fg: oklch(72% 0.006 80);
+  }
+}
+:root[data-theme="dark"] {
+  --bg-canvas: oklch(17% 0.008 80); --bg-surface: oklch(21% 0.009 80); --bg-muted: oklch(25% 0.009 80);
+  --border-subtle: oklch(28% 0.010 80); --border-default: oklch(34% 0.012 80);
+  --text-primary: oklch(95% 0.005 80); --text-secondary: oklch(78% 0.008 80); --text-muted: oklch(62% 0.008 80);
+  --accent-primary-soft: oklch(30% 0.07 55); --accent-primary-border: oklch(45% 0.12 55); --accent-primary-strong: oklch(85% 0.10 55);
+  --status-error-soft: oklch(28% 0.07 25); --status-error-border: oklch(42% 0.11 25); --status-error-fg: oklch(85% 0.10 25);
+  --status-warning-soft: oklch(28% 0.06 85); --status-warning-border: oklch(42% 0.10 85); --status-warning-fg: oklch(88% 0.10 85);
+  --status-info-soft: oklch(27% 0.05 245); --status-info-border: oklch(40% 0.09 245); --status-info-fg: oklch(86% 0.08 245);
+  --status-disabled-soft: oklch(25% 0.006 80); --status-disabled-border: oklch(34% 0.008 80); --status-disabled-fg: oklch(72% 0.006 80);
+}
+body { margin:0; background:var(--bg-canvas); color:var(--text-primary); font-family:var(--font-sans); font-size:14px; line-height:1.5; }
+.wrap { max-width:1040px; margin:0 auto; padding:32px 20px 80px; }
+.eyebrow { font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--text-muted); font-weight:600; margin:0 0 4px; }
+h1 { font-size:24px; margin:0 0 6px; letter-spacing:-.01em; }
+h2 { font-size:16px; margin:0; letter-spacing:-.005em; }
+.lede { color:var(--text-secondary); margin:0 0 28px; max-width:64ch; }
+.panel { background:var(--bg-surface); border:1px solid var(--border-subtle); border-radius:var(--radius); box-shadow:var(--shadow-soft); padding:20px; margin-bottom:24px; }
+.panel__header { display:flex; justify-content:space-between; align-items:flex-start; gap:16px; margin-bottom:16px; }
+.cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(268px,1fr)); gap:12px; }
+.card { border:1px solid var(--border-default); border-radius:var(--radius); padding:14px; background:var(--bg-surface); display:flex; flex-direction:column; gap:8px; }
+.card--on { border-color:var(--accent-primary-border); background:var(--accent-primary-soft); }
+.card--off { opacity:.62; }
+.card h3 { margin:0; font-size:14px; display:flex; align-items:center; gap:8px; }
+.card p { margin:0; font-size:13px; color:var(--text-secondary); }
+.card .best { font-size:12px; color:var(--text-muted); font-style:italic; }
+.card .effect { font-size:12px; color:var(--text-secondary); border-top:1px dashed var(--border-subtle); padding-top:8px; }
+.radio { width:14px; height:14px; border-radius:50%; border:2px solid var(--border-strong,var(--border-default)); flex:0 0 auto; }
+.radio--on { border-color:var(--accent-primary); background:radial-gradient(circle,var(--accent-primary) 0 42%, transparent 44%); }
+.badge { display:inline-block; font-size:11px; font-weight:600; padding:2px 8px; border-radius:999px; border:1px solid; white-space:nowrap; }
+.b-neutral { background:var(--status-disabled-soft); border-color:var(--status-disabled-border); color:var(--status-disabled-fg); }
+.b-info { background:var(--status-info-soft); border-color:var(--status-info-border); color:var(--status-info-fg); }
+.b-warn { background:var(--status-warning-soft); border-color:var(--status-warning-border); color:var(--status-warning-fg); }
+.b-err  { background:var(--status-error-soft); border-color:var(--status-error-border); color:var(--status-error-fg); }
+.b-acc  { background:var(--accent-primary-soft); border-color:var(--accent-primary-border); color:var(--accent-primary-strong); }
+.tablewrap { overflow-x:auto; }
+table { width:100%; border-collapse:collapse; min-width:640px; }
+th { text-align:left; font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--text-muted); font-weight:600; padding:8px 10px; border-bottom:1px solid var(--border-default); }
+td { padding:11px 10px; border-bottom:1px solid var(--border-subtle); vertical-align:top; }
+tr:last-child td { border-bottom:none; }
+.q { font-weight:600; }
+.why { display:block; font-size:12px; color:var(--text-muted); margin-top:3px; max-width:46ch; }
+.note { font-size:12.5px; color:var(--text-secondary); background:var(--bg-muted); border:1px solid var(--border-subtle); border-radius:var(--radius); padding:10px 12px; margin-top:16px; }
+.att-row { display:flex; gap:12px; align-items:flex-start; padding:12px 0; border-bottom:1px solid var(--border-subtle); }
+.att-row:last-child { border-bottom:none; }
+.att-body { flex:1; min-width:0; }
+.att-title { font-weight:600; font-size:13.5px; }
+.att-text { font-size:12.5px; color:var(--text-secondary); margin-top:2px; }
+.att-fix { font-size:12px; margin-top:4px; }
+a { color:var(--text-link,var(--accent-primary-strong)); }
+.link { color:var(--accent-primary-strong); text-decoration:underline; text-underline-offset:2px; cursor:pointer; }
+.callout { font-size:12.5px; color:var(--text-secondary); }
+.mono { font-family:var(--font-mono); font-size:12px; }
+.foot { font-size:12px; color:var(--text-muted); border-top:1px solid var(--border-subtle); margin-top:32px; padding-top:14px; }
+</style>
+
+<div class="wrap">
+  <p class="eyebrow">Settings</p>
+  <h1>Who decides what</h1>
+  <p class="lede">OpenLinker, your shop, your marketplaces and your warehouse each get to decide
+  different things. This page shows who decides what right now, and lets you hand some of those
+  decisions to OpenLinker — or keep them where they are.</p>
+
+  <!-- ── PRESETS ────────────────────────────────────────────── -->
+  <section class="panel">
+    <div class="panel__header">
+      <div>
+        <p class="eyebrow">Choose an arrangement</p>
+        <h2>How should this work?</h2>
+      </div>
+    </div>
+
+    <div class="cards">
+      <div class="card card--on">
+        <h3><span class="radio radio--on"></span> Leave things as they are <span class="badge b-acc">Current</span></h3>
+        <p>Your shop and your marketplaces keep making every decision, exactly as they do now.
+        OpenLinker connects them, publishes your stock and offers, files your invoices, and stays
+        out of the way.</p>
+        <span class="best">Best if: one shop, one warehouse, and nothing about your current setup is annoying you.</span>
+        <span class="effect"><strong>Nothing changes when you pick this.</strong> It is what OpenLinker already does.</span>
+      </div>
+
+      <div class="card">
+        <h3><span class="radio"></span> Let OpenLinker decide</h3>
+        <p>OpenLinker becomes the place where decisions get made: it works out how much stock you
+        can safely promise, holds orders that shouldn’t go out yet, and decides what happens to
+        goods that come back. Your shop and your carriers still do the physical work.</p>
+        <span class="best">Best if: you sell the same stock on more than one channel, or you keep finding orders you wish had been stopped before they shipped.</span>
+        <span class="effect"><strong>What this changes:</strong> OpenLinker starts subtracting orders it has seen from the stock numbers it publishes, and can hold an order so it never reaches your shop. Your existing stock, order and invoice flows are untouched.</span>
+      </div>
+
+      <div class="card card--off">
+        <h3><span class="radio"></span> Keep my other system in charge <span class="badge b-neutral">Not available yet</span></h3>
+        <p>Your existing warehouse or order system keeps deciding. OpenLinker gives it marketplace
+        connectivity — offers, stock publication, order feed, status relay — and files your Polish
+        invoices and receipts, which it can’t.</p>
+        <span class="best">Best if: you already run a warehouse or ERP system that you trust and don’t want to replace.</span>
+        <span class="effect">Needs a system that can take over. <span class="link">Connect one first.</span></span>
+      </div>
+    </div>
+
+    <p class="note">Changing this only affects what happens <strong>from now on</strong>. Anything
+    already in progress — an order already sent to your shop, a label already bought — keeps its
+    current arrangement until it finishes.</p>
+  </section>
+
+  <!-- ── WHO DECIDES TABLE ──────────────────────────────────── -->
+  <section class="panel">
+    <div class="panel__header">
+      <div>
+        <p class="eyebrow">Right now</p>
+        <h2>Who decides what</h2>
+      </div>
+      <span class="callout">7 decisions</span>
+    </div>
+
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th style="width:52%">Question</th><th style="width:30%">Decided by</th><th>State</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><span class="q">How much stock can we promise?</span>
+              <span class="why">Worked out from your stock master, minus your safety buffer. Nobody else has claimed it.</span></td>
+            <td>OpenLinker</td><td><span class="badge b-neutral">Default</span></td>
+          </tr>
+          <tr>
+            <td><span class="q">Where does an order ship from?</span>
+              <span class="why">You sell from one place, so there is nothing to choose between.</span></td>
+            <td>Each shop decides</td><td><span class="badge b-neutral">Nothing to route</span></td>
+          </tr>
+          <tr>
+            <td><span class="q">Who picks and ships?</span>
+              <span class="why">Marketplace-fulfilled orders are picked and shipped by the marketplace. Everything else lands with your shop.</span></td>
+            <td>My shop · Allegro</td><td><span class="badge b-neutral">Default</span></td>
+          </tr>
+          <tr>
+            <td><span class="q">What state is an order in?</span>
+              <span class="why">OpenLinker works it out from what it can see — the shipment, the invoice, any hold you placed.</span></td>
+            <td>OpenLinker</td><td><span class="badge b-neutral">Default</span></td>
+          </tr>
+          <tr>
+            <td><span class="q">What happens to returned goods?</span>
+              <span class="why">Two systems are set up to decide, so OpenLinker is doing neither. Returns are still being recorded, but nothing is being restocked or scrapped automatically.</span></td>
+            <td>OpenLinker can’t tell</td><td><span class="badge b-err">Nothing is deciding</span></td>
+          </tr>
+          <tr>
+            <td><span class="q">Who issues refunds?</span>
+              <span class="why">Only OpenLinker holds the payment credentials, so only OpenLinker can do it. This one can’t be handed over.</span></td>
+            <td>OpenLinker</td><td><span class="badge b-info">Always</span></td>
+          </tr>
+          <tr>
+            <td><span class="q">Who issues invoices and receipts?</span>
+              <span class="why">Configured per country under Sales documents.</span></td>
+            <td><span class="link">Set up under Sales documents →</span></td><td><span class="badge b-neutral">Elsewhere</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ── NEEDS ATTENTION ────────────────────────────────────── -->
+  <section class="panel">
+    <div class="panel__header">
+      <div>
+        <p class="eyebrow">Not working</p>
+        <h2>Needs attention <span class="badge b-err">4</span></h2>
+      </div>
+      <span class="callout">Only things that are stopping something. Defaults are never listed here.</span>
+    </div>
+
+    <div class="att-row">
+      <span class="badge b-err">Stopped</span>
+      <div class="att-body">
+        <div class="att-title">Nothing is deciding what happens to returns from Allegro</div>
+        <div class="att-text">Two systems are set up to decide, so OpenLinker is doing neither. Returns are still being recorded, but nothing is being restocked or scrapped automatically.</div>
+        <div class="att-fix"><span class="link">Subiekt nexo</span> · <span class="link">Warehouse OMS</span> — turn one of them off.</div>
+      </div>
+    </div>
+
+    <div class="att-row">
+      <span class="badge b-warn">At risk</span>
+      <div class="att-body">
+        <div class="att-title">Order <span class="mono">OL-2026-0184</span> is short 2 × <span class="mono">SKU-4471</span></div>
+        <div class="att-text">Your stock master dropped below what this order was promised. Nothing was silently reduced — this order is the one at risk.</div>
+        <div class="att-fix"><span class="link">Open order</span> · <span class="link">Open product</span></div>
+      </div>
+    </div>
+
+    <div class="att-row">
+      <span class="badge b-err">Stopped</span>
+      <div class="att-body">
+        <div class="att-title">Couldn’t buy the label for order <span class="mono">OL-2026-0191</span></div>
+        <div class="att-text">The automation “Packed → label → tell Allegro” tried and DPD said: <em>no service available for this postcode</em>. Nothing else in that automation ran, so Allegro has not been told. The order is waiting for you.</div>
+        <div class="att-fix"><span class="link">Open order</span> · <span class="link">Open automation</span> · <span class="link">Try again</span></div>
+      </div>
+    </div>
+
+    <div class="att-row">
+      <span class="badge b-err">Blocked</span>
+      <div class="att-body">
+        <div class="att-title">Stock was not added</div>
+        <div class="att-text">OpenLinker recorded the disposition, but <strong>PrestaShop</strong> does not accept stock adjustments from OpenLinker, so <strong>your stock has not changed</strong>. Add 1 × <span class="mono">SKU-1180</span> in PrestaShop yourself, then mark this handled.</div>
+        <div class="att-fix"><span class="link">Open return</span> · <span class="link">Open PrestaShop</span></div>
+      </div>
+    </div>
+  </section>
+
+  <p class="foot">Mockup for the Wave-2 operator-experience product spec. Layout is indicative; every
+  string on this page is verbatim from the spec, which is the record — page furniture and badge
+  vocabulary from §3.2/§3.3, attention copy from §4.2. The two states owned by the returns spec
+  (<em>Stock was not added</em>, orphan returns) carry that spec’s §5.4/§5.5 strings, imported rather
+  than restated. No model vocabulary (“authority”, “posture”, “FulfillmentWork”) appears anywhere on
+  this page — by rule.</p>
+</div>
