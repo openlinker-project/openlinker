@@ -156,6 +156,7 @@ export class OrderRecordService implements IOrderRecordService {
     );
 
     const saved = await this.repository.upsert(orderRecord);
+    this.warnOnAttributionDivergence(orderRecord, saved);
 
     // Two post-upsert writers, ONE refresh (#2125). Both write columns that
     // `upsert()` deliberately excludes from its statement, so `saved` cannot
@@ -279,6 +280,7 @@ export class OrderRecordService implements IOrderRecordService {
     );
 
     const saved = await this.repository.upsert(orderRecord);
+    this.warnOnAttributionDivergence(orderRecord, saved);
 
     // No FX stamp on this path, deliberately: an `awaiting_mapping` snapshot is
     // overwritten by `persistOrder` as soon as item resolution succeeds, so
@@ -292,6 +294,32 @@ export class OrderRecordService implements IOrderRecordService {
     );
 
     return cancellationWrote ? (await this.repository.findById(internalOrderId)) ?? saved : saved;
+  }
+
+  /**
+   * Report - never refuse - an attempted change of an order's source
+   * attribution (#2282).
+   *
+   * The write path itself is the enforcement point: `upsert` establishes
+   * `sourceConnectionId` on the first write and cannot move it afterwards, so
+   * the returned record carries the row's TRUE origin. When that differs from
+   * what this call asked for, the caller reached the write path for an order
+   * that belongs to another source - the #940 destination-echo shape, which the
+   * ADR-017 guard in `OrderIngestionService` normally catches upstream. Silently
+   * preserving and warn-logging is deliberate: throwing would turn a benign,
+   * already-correct outcome into a failed ingestion job.
+   */
+  private warnOnAttributionDivergence(requested: OrderRecord, saved: OrderRecord): void {
+    if (saved.sourceConnectionId === requested.sourceConnectionId) {
+      return;
+    }
+
+    this.logger.warn(
+      `Source attribution change refused for order ${requested.internalOrderId}: ` +
+        `write from connection ${requested.sourceConnectionId} left the record ` +
+        `attributed to its original source ${saved.sourceConnectionId} ` +
+        `(source attribution is immutable after the first write)`
+    );
   }
 
   /**

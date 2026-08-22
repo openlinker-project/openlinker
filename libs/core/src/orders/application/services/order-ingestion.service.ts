@@ -231,6 +231,11 @@ export class OrderIngestionService implements IOrderIngestionService {
     // history — so skip. The real source stays authoritative; destination-side
     // fulfillment flows through the dedicated *.statusSync jobs (which key on
     // destinationConnectionId, not the source) and is unaffected.
+    //
+    // Since #2282 the write path enforces the attribution half of this itself
+    // (`sourceConnectionId` is insert-only in the upsert statement), so this
+    // guard is defence in depth. It is still load-bearing: only skipping here
+    // also spares the SNAPSHOT, which the write path does still overwrite.
     const existing = await this.orderRecordService.getOrderRecord(internalOrderId);
     if (existing && existing.sourceConnectionId !== connectionId) {
       // `debug` not `log`: this is an expected, per-order steady-state skip that

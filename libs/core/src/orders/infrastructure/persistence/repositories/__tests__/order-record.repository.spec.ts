@@ -176,36 +176,63 @@ describe('OrderRecordRepository', () => {
     });
   });
 
+  /**
+   * Since #2282 `upsert()` is a raw `INSERT ... ON CONFLICT DO UPDATE` with
+   * `RETURNING *`, not a `save()`. The write set is still defined by `toOrm`,
+   * but a column is now excluded by never being NAMED in the statement - so
+   * that is what these tests assert, instead of an unset entity property.
+   */
+  function mockUpsertReturning(entity: OrderRecordOrmEntity): void {
+    (ormRepository.query as jest.Mock).mockResolvedValue([entity]);
+  }
+
+  function upsertCall(): [string, unknown[]] {
+    const calls = (ormRepository.query as jest.Mock).mock.calls as unknown[][];
+    return calls[0] as [string, unknown[]];
+  }
+
+  function upsertSql(): string {
+    return upsertCall()[0];
+  }
+
+  function upsertParams(): unknown[] {
+    return upsertCall()[1];
+  }
+
+  function expectColumnAbsentFromUpsert(column: string): void {
+    expect(upsertSql()).not.toContain(`"${column}"`);
+  }
+
   describe('upsert', () => {
     it('should create new order record', async () => {
       const domainEntity = createDomainEntity();
       const savedEntity = createOrmEntity();
-      ormRepository.save.mockResolvedValue(savedEntity);
+      mockUpsertReturning(savedEntity);
 
       const result = await repository.upsert(domainEntity);
 
       expect(result).toBeDefined();
       expect(result.internalOrderId).toBe('order-123');
-      expect(ormRepository.save).toHaveBeenCalledTimes(1);
+      expect(ormRepository.query).toHaveBeenCalledTimes(1);
     });
 
     it('should update existing order record', async () => {
       const domainEntity = createDomainEntity();
       const existingEntity = createOrmEntity();
       existingEntity.updatedAt = new Date('2025-01-02T10:00:00Z');
-      ormRepository.save.mockResolvedValue(existingEntity);
+      mockUpsertReturning(existingEntity);
 
       const result = await repository.upsert(domainEntity);
 
       expect(result).toBeDefined();
-      expect(ormRepository.save).toHaveBeenCalledTimes(1);
+      expect(ormRepository.query).toHaveBeenCalledTimes(1);
     });
 
     it('should NOT write syncStatus even when the domain record carries one (#2140)', async () => {
       // Guards against a future caller reintroducing the clobber by passing
       // destination sync state through the ingestion path. updateSyncStatus is
-      // the sole writer; a full-object save() that carries this column resets
-      // the per-destination rows it committed.
+      // the sole writer; a statement that carries this column resets the
+      // per-destination rows it committed.
       const syncStatus: OrderSyncStatus[] = [
         {
           destinationConnectionId: 'dest-connection-789',
@@ -231,12 +258,11 @@ describe('OrderRecordRepository', () => {
         new Date('2025-01-01T10:00:00Z')
       );
       const savedEntity = createOrmEntity();
-      ormRepository.save.mockResolvedValue(savedEntity);
+      mockUpsertReturning(savedEntity);
 
       await repository.upsert(domainEntity);
 
-      const callArg = ormRepository.save.mock.calls[0][0] as OrderRecordOrmEntity;
-      expect(callArg.syncStatus).toBeUndefined();
+      expectColumnAbsentFromUpsert('syncStatus');
     });
 
     it('should map recordStatus to ORM entity on toOrm path', async () => {
@@ -252,51 +278,51 @@ describe('OrderRecordRepository', () => {
         new Date()
       );
       const savedEntity = createOrmEntity();
-      ormRepository.save.mockResolvedValue(savedEntity);
+      mockUpsertReturning(savedEntity);
 
       await repository.upsert(domainEntity);
 
-      const callArg = ormRepository.save.mock.calls[0][0] as OrderRecordOrmEntity;
-      expect(callArg.recordStatus).toBe('awaiting_mapping');
+      // `recordStatus` IS in the write set - the 6th bound parameter.
+      expect(upsertParams()[5]).toBe('awaiting_mapping');
     });
 
-    it('should read cancelledAt back via toDomain when present on the ORM row', async () => {
-      const cancelledAt = new Date('2026-08-01T12:00:00Z');
+    it('should report cancelledAt as null even though RETURNING carries it (#2282)', async () => {
+      // The pre-#2282 mock handed back whatever `save()` was given, so this
+      // read-back could not happen in production either - the docblock has
+      // always promised the excluded columns read empty. `RETURNING *` now
+      // really does carry the row's value, so `fromRawRow` has to reset it or
+      // both `OrderRecordService` call sites silently change behaviour.
       const savedEntity = createOrmEntity();
-      savedEntity.cancelledAt = cancelledAt;
-      ormRepository.save.mockResolvedValue(savedEntity);
+      savedEntity.cancelledAt = new Date('2026-08-01T12:00:00Z');
+      mockUpsertReturning(savedEntity);
 
       const result = await repository.upsert(createDomainEntity());
 
-      expect(result.cancelledAt).toBe(cancelledAt);
+      expect(result.cancelledAt).toBeNull();
     });
 
-    it('should NOT include cancelledAt in the entity passed to save() (#1984)', async () => {
-      // upsert() is a full-object save() with no per-order lock around it, so
-      // writing cancelledAt here would race with the atomic, COALESCE-based
-      // markCancelled() a concurrent cancel-event call may commit at the same
-      // time. Leaving the property unset lets TypeORM omit the column from
-      // the generated UPDATE entirely — markCancelled is the sole writer.
+    it('should NOT include cancelledAt in the upsert statement (#1984)', async () => {
+      // upsert() has no per-order lock around it, so writing cancelledAt here
+      // would race with the atomic, COALESCE-based markCancelled() a concurrent
+      // cancel-event call may commit at the same time. Never naming the column
+      // in the statement is what keeps markCancelled its sole writer.
       const domainEntity = createDomainEntity();
-      ormRepository.save.mockResolvedValue(createOrmEntity());
+      mockUpsertReturning(createOrmEntity());
 
       await repository.upsert(domainEntity);
 
-      const callArg = ormRepository.save.mock.calls[0][0] as OrderRecordOrmEntity;
-      expect(callArg.cancelledAt).toBeUndefined();
+      expectColumnAbsentFromUpsert('cancelledAt');
     });
 
-    it('should NOT include fulfillmentState in the entity passed to save() (#2101)', async () => {
+    it('should NOT include fulfillmentState in the upsert statement (#2101)', async () => {
       // The ingestion path never carries a fulfillment rollup, so writing the
       // column here reset a `'dispatched'` order to NULL on every re-poll.
-      // Leaving the property unset lets TypeORM omit the column from the
-      // generated UPDATE - updateFulfillmentState is the sole writer.
-      ormRepository.save.mockResolvedValue(createOrmEntity());
+      // Absent from the statement - updateFulfillmentState is the sole writer.
+      mockUpsertReturning(createOrmEntity());
 
       await repository.upsert(createDomainEntity());
 
-      const callArg = ormRepository.save.mock.calls[0][0] as OrderRecordOrmEntity;
-      expect(callArg.fulfillmentState).toBeUndefined();
+      expectColumnAbsentFromUpsert('fulfillmentState');
     });
 
     it('should NOT write fulfillmentState even when the domain record carries one', async () => {
@@ -316,38 +342,72 @@ describe('OrderRecordRepository', () => {
         null,
         'dispatched'
       );
-      ormRepository.save.mockResolvedValue(createOrmEntity());
+      mockUpsertReturning(createOrmEntity());
 
       await repository.upsert(domainEntity);
 
-      const callArg = ormRepository.save.mock.calls[0][0] as OrderRecordOrmEntity;
-      expect(callArg.fulfillmentState).toBeUndefined();
+      expectColumnAbsentFromUpsert('fulfillmentState');
     });
 
-    it('should read fulfillmentState back via toDomain when present on the ORM row', async () => {
+    it('should report every excluded column empty even though RETURNING carries them (#2282)', async () => {
+      // The load-bearing half of the save() -> raw-SQL swap: the return
+      // contract stays byte-identical, so callers still re-read via findById.
       const savedEntity = createOrmEntity();
       savedEntity.fulfillmentState = 'dispatched';
-      ormRepository.save.mockResolvedValue(savedEntity);
+      savedEntity.syncStatus = [
+        { destinationConnectionId: 'dest-connection-789', status: 'synced' },
+      ];
+      savedEntity.syncAttempts = [
+        {
+          destinationConnectionId: 'dest-connection-789',
+          status: 'synced',
+          attemptedAt: '2026-08-01T12:00:00Z',
+        },
+      ];
+      savedEntity.cancelledAt = new Date('2026-08-01T12:00:00Z');
+      savedEntity.salesDocumentBlockReason = 'trigger-model-manual';
+      savedEntity.salesDocumentUnresolvedReason = 'no-configuration-for-country';
+      savedEntity.salesDocumentBlockDetail = 'seeded';
+      savedEntity.reportingCurrency = 'EUR';
+      savedEntity.reportingTotalAmount = 425;
+      savedEntity.exchangeRateId = 'e1f0c0de-0000-4000-8000-000000000001';
+      savedEntity.fxRule = 'prev-business-day';
+      savedEntity.fxStampedAt = new Date('2026-08-14T09:00:00Z');
+      savedEntity.fxIntendedCurrency = 'EUR';
+      mockUpsertReturning(savedEntity);
 
       const result = await repository.upsert(createDomainEntity());
 
-      expect(result.fulfillmentState).toBe('dispatched');
+      expect(result.syncStatus).toEqual([]);
+      expect(result.syncAttempts).toEqual([]);
+      expect(result.fulfillmentState).toBeNull();
+      expect(result.cancelledAt).toBeNull();
+      expect(result.salesDocumentBlockReason).toBeNull();
+      expect(result.salesDocumentUnresolvedReason).toBeNull();
+      expect(result.salesDocumentBlockDetail).toBeNull();
+      expect(result.reportingCurrency).toBeNull();
+      expect(result.reportingTotalAmount).toBeNull();
+      expect(result.exchangeRateId).toBeNull();
+      expect(result.fxRule).toBeNull();
+      expect(result.fxStampedAt).toBeNull();
+      expect(result.fxIntendedCurrency).toBeNull();
+      // The ingestion-owned columns still come back.
+      expect(result.internalOrderId).toBe('order-123');
+      expect(result.recordStatus).toBe('ready');
     });
 
-    it('should NOT include syncStatus or syncAttempts in the entity passed to save() (#2140)', async () => {
+    it('should NOT include syncStatus or syncAttempts in the upsert statement (#2140)', async () => {
       // The ingestion path never carries destination sync state, so writing
       // these columns wiped the per-destination rows and the whole attempt
-      // history on every re-poll. Leaving the properties unset lets TypeORM omit
-      // both columns from the generated statement - updateSyncStatus is the sole
-      // writer, and Postgres fills an omitted column on INSERT from its
-      // `DEFAULT '[]'`.
-      ormRepository.save.mockResolvedValue(createOrmEntity());
+      // history on every re-poll. Naming neither column in either half of the
+      // statement keeps updateSyncStatus the sole writer, and Postgres fills an
+      // omitted column on INSERT from its `DEFAULT '[]'`.
+      mockUpsertReturning(createOrmEntity());
 
       await repository.upsert(createDomainEntity());
 
-      const callArg = ormRepository.save.mock.calls[0][0] as OrderRecordOrmEntity;
-      expect(callArg.syncStatus).toBeUndefined();
-      expect(callArg.syncAttempts).toBeUndefined();
+      expectColumnAbsentFromUpsert('syncStatus');
+      expectColumnAbsentFromUpsert('syncAttempts');
     });
 
     it('should NOT write syncAttempts even when the domain record carries history', async () => {
@@ -371,27 +431,58 @@ describe('OrderRecordRepository', () => {
         new Date('2025-01-01T10:00:00Z'),
         attempts
       );
-      ormRepository.save.mockResolvedValue(createOrmEntity());
+      mockUpsertReturning(createOrmEntity());
 
       await repository.upsert(domainEntity);
 
-      const callArg = ormRepository.save.mock.calls[0][0] as OrderRecordOrmEntity;
-      expect(callArg.syncAttempts).toBeUndefined();
+      expectColumnAbsentFromUpsert('syncAttempts');
     });
 
-    it('should report both columns empty when save() hands back the entity it was given', async () => {
-      // The update path has no RETURNING clause, so the entity TypeORM returns
-      // still carries the unset properties. toDomain must read that as "not part
-      // of this statement" rather than throwing on `undefined.map`.
+    it('should report both columns empty when the returned row omits them', async () => {
+      // toDomain must read an absent property as "not part of this statement"
+      // rather than throwing on `undefined.map`.
       const unsetEntity = createOrmEntity();
       delete (unsetEntity as Partial<OrderRecordOrmEntity>).syncStatus;
       delete (unsetEntity as Partial<OrderRecordOrmEntity>).syncAttempts;
-      ormRepository.save.mockResolvedValue(unsetEntity);
+      mockUpsertReturning(unsetEntity);
 
       const result = await repository.upsert(createDomainEntity());
 
       expect(result.syncStatus).toEqual([]);
       expect(result.syncAttempts).toEqual([]);
+    });
+
+    it('should keep sourceConnectionId and createdAt out of the DO UPDATE set (#2282)', async () => {
+      mockUpsertReturning(createOrmEntity());
+
+      await repository.upsert(createDomainEntity());
+
+      const doUpdate = upsertSql().slice(upsertSql().indexOf('DO UPDATE'));
+      // Matched at the start of a SET line, so the CASE's comparison against
+      // EXCLUDED."sourceConnectionId" is not mistaken for an assignment.
+      expect(doUpdate).not.toMatch(/^\s*"sourceConnectionId" =/m);
+      expect(doUpdate).not.toMatch(/^\s*"createdAt" =/m);
+      // save() auto-bumped @UpdateDateColumn; the raw statement must not lose that.
+      expect(doUpdate).toContain('"updatedAt" = EXCLUDED."updatedAt"');
+      // Same-source may advance, cross-source frozen.
+      expect(doUpdate).toContain('"sourceEventId" = CASE');
+    });
+
+    it('should bind every value as a parameter and serialize the jsonb snapshot (#2282)', async () => {
+      mockUpsertReturning(createOrmEntity());
+
+      await repository.upsert(createDomainEntity());
+
+      // No interpolation: the connection id reaches Postgres as a bound param.
+      expect(upsertSql()).not.toContain('source-connection-123');
+      expect(upsertParams()).toHaveLength(10);
+      expect(upsertParams()[2]).toBe('source-connection-123');
+      expect(typeof upsertParams()[4]).toBe('string');
+      expect(JSON.parse(upsertParams()[4] as string)).toEqual({
+        id: 'order-123',
+        orderNumber: 'ORD-001',
+        status: 'pending',
+      });
     });
   });
 
@@ -770,23 +861,22 @@ describe('OrderRecordRepository', () => {
     });
 
     describe('toOrm', () => {
-      it('should NOT include any of the six FX columns in the entity passed to save()', async () => {
-        // upsert() is a full-row save() on an update-or-create ingestion path,
-        // so mapping these columns would let a re-poll of an already-stamped
-        // order write `null` over a reported financial figure. Leaving the
-        // properties unset makes TypeORM omit the columns from the UPDATE —
-        // claimFxIntentIfAbsent / stampFxIfAbsent are their only writers.
-        ormRepository.save.mockResolvedValue(createOrmEntity());
+      it('should NOT include any of the six FX columns in the upsert statement', async () => {
+        // upsert() is an update-or-create on the ingestion path, so naming
+        // these columns would let a re-poll of an already-stamped order write
+        // `null` over a reported financial figure. They appear in neither half
+        // of the statement — claimFxIntentIfAbsent / stampFxIfAbsent are their
+        // only writers.
+        mockUpsertReturning(createOrmEntity());
 
         await repository.upsert(createDomainEntity());
 
-        const callArg = ormRepository.save.mock.calls[0][0] as OrderRecordOrmEntity;
-        expect(callArg.reportingCurrency).toBeUndefined();
-        expect(callArg.reportingTotalAmount).toBeUndefined();
-        expect(callArg.exchangeRateId).toBeUndefined();
-        expect(callArg.fxRule).toBeUndefined();
-        expect(callArg.fxStampedAt).toBeUndefined();
-        expect(callArg.fxIntendedCurrency).toBeUndefined();
+        expectColumnAbsentFromUpsert('reportingCurrency');
+        expectColumnAbsentFromUpsert('reportingTotalAmount');
+        expectColumnAbsentFromUpsert('exchangeRateId');
+        expectColumnAbsentFromUpsert('fxRule');
+        expectColumnAbsentFromUpsert('fxStampedAt');
+        expectColumnAbsentFromUpsert('fxIntendedCurrency');
       });
 
       it('should NOT write the FX columns even when the domain record carries a stamp', async () => {
@@ -817,17 +907,16 @@ describe('OrderRecordRepository', () => {
           new Date('2026-08-14T09:00:00Z'),
           'EUR'
         );
-        ormRepository.save.mockResolvedValue(createOrmEntity());
+        mockUpsertReturning(createOrmEntity());
 
         await repository.upsert(stamped);
 
-        const callArg = ormRepository.save.mock.calls[0][0] as OrderRecordOrmEntity;
-        expect(callArg.reportingCurrency).toBeUndefined();
-        expect(callArg.reportingTotalAmount).toBeUndefined();
-        expect(callArg.exchangeRateId).toBeUndefined();
-        expect(callArg.fxRule).toBeUndefined();
-        expect(callArg.fxStampedAt).toBeUndefined();
-        expect(callArg.fxIntendedCurrency).toBeUndefined();
+        expectColumnAbsentFromUpsert('reportingCurrency');
+        expectColumnAbsentFromUpsert('reportingTotalAmount');
+        expectColumnAbsentFromUpsert('exchangeRateId');
+        expectColumnAbsentFromUpsert('fxRule');
+        expectColumnAbsentFromUpsert('fxStampedAt');
+        expectColumnAbsentFromUpsert('fxIntendedCurrency');
       });
     });
 
