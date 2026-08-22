@@ -46,6 +46,8 @@ describe('RefundsController', () => {
       markSalesDocumentBlock: jest.fn(),
       markItemResolutionFailure: jest.fn(),
       getFailedSyncValueSummary: jest.fn(),
+      markPacked: jest.fn(),
+      clearPacked: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({

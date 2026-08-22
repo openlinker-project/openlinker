@@ -154,7 +154,27 @@ export class OrderRecord {
      * lookup — so a retry or the sweep stamps against the same currency the
      * inline attempt resolved even if the system setting changed in between.
      */
-    public readonly fxIntendedCurrency: string | null = null
+    public readonly fxIntendedCurrency: string | null = null,
+    /**
+     * Instant an operator marked this order packed (#2287). A plain operator
+     * FACT, not a state: it is deliberately independent of `recordStatus`,
+     * `fulfillmentState`, `slaState` and `OrderHealth`, and carries no pack
+     * policy (no scan verification, no dispatch gating) per ADR-045. It is
+     * therefore meaningful for 100% of orders, including `omp_fulfilled` ones
+     * OpenLinker never dispatches. `null` = not packed.
+     *
+     * Single-writer, like `cancelledAt` and the FX columns: only the guarded
+     * `markPacked` / `clearPacked` statements write it, and the ingestion
+     * upsert excludes it entirely, so a re-poll can never reset it.
+     */
+    public readonly packedAt: Date | null = null,
+    /**
+     * The OL user id of whoever marked this order packed (#2287). Moves as one
+     * group with `packedAt` — a repeat mark is a no-op replay, so the FIRST
+     * actor is preserved. No FK to `users`: a deleted user leaving a dangling
+     * id the UI renders raw is the honest outcome for an audit fact.
+     */
+    public readonly packedByUserId: string | null = null
   ) {}
 
   /**

@@ -235,6 +235,25 @@ export class OrderRecordOrmEntity {
   @Column({ type: 'varchar', length: 3, nullable: true })
   fxIntendedCurrency!: string | null;
 
+  /**
+   * Instant an operator marked this order packed (#2287). `null` = not packed.
+   * A fact, not a state — independent of `recordStatus` / `fulfillmentState` /
+   * `slaState`. Indexed because "is it packed" is an operator-facing scan axis,
+   * mirroring `cancelledAt`.
+   */
+  @Column({ type: 'timestamptz', nullable: true })
+  @Index()
+  packedAt!: Date | null;
+
+  /**
+   * OL user id of whoever marked this order packed (#2287). Deliberately
+   * unindexed: it is display + attribution only and is never filtered on. No FK
+   * to `users` — this table FKs across no context, and a dangling id from a
+   * deleted user is the honest outcome for an audit fact.
+   */
+  @Column({ type: 'uuid', nullable: true })
+  packedByUserId!: string | null;
+
   @CreateDateColumn()
   createdAt!: Date;
 

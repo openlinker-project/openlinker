@@ -104,6 +104,8 @@ describe('FulfillmentStatusSyncService', () => {
       getFailedSyncValueSummary: jest.fn(),
       markCancelled: jest.fn(),
       markSalesDocumentBlock: jest.fn(),
+      markPacked: jest.fn(),
+      clearPacked: jest.fn(),
     };
 
     routing = {

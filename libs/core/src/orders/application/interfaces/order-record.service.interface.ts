@@ -180,4 +180,26 @@ export interface IOrderRecordService {
     internalOrderId: string,
     block: SalesDocumentBlock | null
   ): Promise<void>;
+
+  /**
+   * Mark this order packed (#2287), stamping the instant and the acting
+   * operator. A plain fact — it touches no state column (`recordStatus`,
+   * `fulfillmentState`, `slaState`, `OrderHealth` are all untouched) and gates
+   * nothing, so it applies to every order including `omp_fulfilled` ones OL
+   * never dispatches.
+   *
+   * Idempotent: a repeat call is a replay that returns the EXISTING stamp and
+   * actor rather than re-stamping. Throws `OrderRecordNotFoundException` when
+   * no record exists for `internalOrderId` — a missing row is a caller error
+   * here (an operator acting on an order), unlike the residual-race tolerance
+   * the event-driven writers carry.
+   */
+  markPacked(internalOrderId: string, packedByUserId: string): Promise<OrderRecord>;
+
+  /**
+   * Clear this order's packed fact (#2287), nulling both columns together.
+   * Clearing an already-unpacked order is a no-op that returns the record
+   * unchanged; an unknown order throws `OrderRecordNotFoundException`.
+   */
+  clearPacked(internalOrderId: string): Promise<OrderRecord>;
 }

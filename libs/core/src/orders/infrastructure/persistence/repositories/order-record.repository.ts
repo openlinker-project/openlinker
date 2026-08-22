@@ -11,7 +11,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import type { SelectQueryBuilder } from 'typeorm';
-import { In, IsNull, LessThan, MoreThanOrEqual, Repository } from 'typeorm';
+import { In, IsNull, LessThan, MoreThanOrEqual, Not, Repository } from 'typeorm';
 import type { OrderSyncStatusJson, SyncAttemptJson } from '../entities/order-record.orm-entity';
 import { OrderRecordOrmEntity } from '../entities/order-record.orm-entity';
 import type { OrderRecordRepositoryPort } from '../../../domain/ports/order-record-repository.port';
@@ -779,6 +779,44 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
   }
 
   /**
+   * Mark this order packed (#2287). Conditional write in the
+   * `claimFxIntentIfAbsent` / `ShipmentRepository.claimWaybillRelay` shape:
+   * `packedAt: IsNull()` in the WHERE is what makes the first mark win, so a
+   * second POST (double-click, retry, a second operator) affects zero rows and
+   * leaves the original instant AND the original actor intact.
+   *
+   * Both columns move in the same statement deliberately. A `markCancelled`-style
+   * `COALESCE("packedAt", $1)` would keep the timestamp but still overwrite
+   * `packedByUserId` — the two are one fact and must move together.
+   */
+  async markPacked(
+    internalOrderId: string,
+    packedAt: Date,
+    packedByUserId: string
+  ): Promise<boolean> {
+    const result = await this.repository.update(
+      { internalOrderId, packedAt: IsNull() },
+      { packedAt, packedByUserId, updatedAt: new Date() }
+    );
+    return (result.affected ?? 0) > 0;
+  }
+
+  /**
+   * Clear this order's packed fact (#2287). The `Not(IsNull())` guard is the
+   * no-op idea `updateSalesDocumentBlock` puts in its WHERE: unmarking an
+   * already-unpacked order affects no row, so it neither bumps `updatedAt` nor
+   * is distinguishable from a missing row without a re-read (the service does
+   * that re-read).
+   */
+  async clearPacked(internalOrderId: string): Promise<boolean> {
+    const result = await this.repository.update(
+      { internalOrderId, packedAt: Not(IsNull()) },
+      { packedAt: null, packedByUserId: null, updatedAt: new Date() }
+    );
+    return (result.affected ?? 0) > 0;
+  }
+
+  /**
    * Distinct order-native currencies already ingested (#2124), for the
    * reporting-currency coverage advisory.
    *
@@ -927,10 +965,10 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    * Full-row upsert of the ingestion-owned columns, keyed on the primary key.
    *
    * `syncStatus` / `syncAttempts` (#2140), `fulfillmentState` (#2101),
-   * `cancelledAt` (#1984), the three `salesDocument*` columns (#2100) and the
-   * six FX snapshot columns (#2124) are deliberately outside the write set -
-   * see the {@link toOrm} comments. A consequence is that the returned record
-   * reports all of them as empty (`[]` / `null`) regardless of what the row
+   * `cancelledAt` (#1984), the three `salesDocument*` columns (#2100), the six
+   * FX snapshot columns (#2124) and the two packed columns (#2287) are
+   * deliberately outside the write set - see the {@link toOrm} comments. A
+   * consequence is that the returned record reports all of them as empty (`[]` / `null`) regardless of what the row
    * holds, because none of those columns was part of the statement; callers
    * needing their true value re-read via {@link findById}.
    *
@@ -963,8 +1001,9 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     // `cancelledAt` (#1984), the three `salesDocument*` columns (#2100) and the
     // six FX snapshot columns `reportingCurrency` / `reportingTotalAmount` /
     // `exchangeRateId` / `fxRule` / `fxStampedAt` / `fxIntendedCurrency`
-    // (#2124). Do not add one of them to either half of this statement - each
-    // has a narrow, atomic out-of-band writer that owns it.
+    // (#2124), and `packedAt` / `packedByUserId` (#2287). Do not add one of
+    // them to either half of this statement - each has a narrow, atomic
+    // out-of-band writer that owns it.
     const entity = this.toOrm(orderRecord);
 
     const rows = (await this.repository.query(
@@ -1040,6 +1079,14 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     entity.fxRule = null;
     entity.fxStampedAt = null;
     entity.fxIntendedCurrency = null;
+    // #2287: reset like every other out-of-band column. `RETURNING *` DOES
+    // carry the row's true packed fact, but surfacing it here would make
+    // `upsert`'s return value inconsistent with its documented contract - and
+    // inconsistently so, since the pre-#2282 `save()` path could not have
+    // reported it. The row itself is untouched; callers needing the live value
+    // re-read via `findById`.
+    entity.packedAt = null;
+    entity.packedByUserId = null;
     return entity;
   }
 
@@ -1193,7 +1240,9 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       entity.exchangeRateId ?? null,
       entity.fxRule ?? null,
       entity.fxStampedAt ?? null,
-      entity.fxIntendedCurrency ?? null
+      entity.fxIntendedCurrency ?? null,
+      entity.packedAt ?? null,
+      entity.packedByUserId ?? null
     );
   }
 
@@ -1240,6 +1289,12 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    *   + `stampFxIfAbsent` (both guarded, both single-statement). Mapping them
    *   here would let a re-poll of an already-stamped order overwrite a
    *   REPORTED FINANCIAL FIGURE with the ingestion path's in-memory `null`.
+   * - `packedAt` / `packedByUserId` (#2287) - sole writers {@link markPacked} +
+   *   {@link clearPacked} (both guarded, both single-statement). No order source
+   *   reports whether an operator packed a box, so the ingestion path's value is
+   *   always `null`; mapping them here would silently un-pack an order on every
+   *   re-poll, and the operator would have no way to tell the un-pack from a
+   *   colleague's deliberate one.
    *
    * ## The insert-only column
    *
