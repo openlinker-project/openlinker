@@ -57,7 +57,9 @@ import type { OrderRecord } from '../../domain/entities/order-record.entity';
 import type { SalesDocumentBlockOutcome } from '@openlinker/core/sales-documents';
 import type { OrderRecordStatus } from '../../domain/types/order-record.types';
 import type { ItemResolutionFailureKind } from './order-item-ref-resolver.types';
+import { getEnvBoolean } from '@openlinker/shared/config';
 import { Logger } from '@openlinker/shared/logging';
+import { diffOrderAmendment } from '../../domain/order-amendment-diff';
 import { MissingOrderItemMappingError } from '../../domain/exceptions/missing-order-item-mapping.error';
 
 @Injectable()
@@ -256,6 +258,20 @@ export class OrderIngestionService implements IOrderIngestionService {
     // fire once on a first-seen already-cancelled order — the restore is a
     // harmless absolute-set).
     const priorStatus = this.readSnapshotStatus(existing);
+
+    // Source-amendment diff (#2283) — taken HERE, against the already-loaded
+    // prior record, and deliberately BEFORE `persistIncomingSnapshot` below.
+    // Two properties depend on the placement:
+    //   - `persistIncomingSnapshot` overwrites `orderSnapshot`, so after it the
+    //     prior state this diff needs no longer exists anywhere;
+    //   - Step 4 throws `MissingOrderItemMappingError` before `persistOrder` is
+    //     ever reached, so writing the fact later would lose it permanently on
+    //     exactly the orders most likely to have been amended (a line the source
+    //     changed is a line whose mapping may well have gone with it).
+    // The fact is an observation about the SOURCE and is true whether or not
+    // item resolution subsequently succeeds. The destination-echo early return
+    // above is untouched: an echo is not an amendment.
+    await this.recordSourceAmendment(existing, incoming, internalOrderId, connectionId);
 
     const internalCustomerId = await this.resolveCustomerId(
       incoming,
@@ -640,6 +656,54 @@ export class OrderIngestionService implements IOrderIngestionService {
    * value isn't a string — both treated as non-cancelled by the caller. Pure
    * read; binds only to the snapshot's `status` key, not its full JSON layout.
    */
+  /**
+   * Diff the stored snapshot against the incoming order and persist the fact
+   * when something moved (#2283).
+   *
+   * Best-effort throughout: an ingestion must never fail because an
+   * observability fact could not be written, so a repository error is logged and
+   * swallowed. The `changes.length > 0` gate is the primary suppressor — on a
+   * steady-state poll nothing changed and no statement is issued at all.
+   *
+   * The log line is PII-free (ids, change kinds and line ids only) and is `warn`
+   * rather than `log` on purpose: an adapter with UNSTABLE line ids would report
+   * every poll as a removal plus an addition, and that noise must be immediately
+   * visible rather than accumulating silently in the column.
+   */
+  private async recordSourceAmendment(
+    existing: OrderRecord | null,
+    incoming: IncomingOrder,
+    internalOrderId: string,
+    connectionId: string
+  ): Promise<void> {
+    try {
+      // `getEnvBoolean` rather than `getPiiConfig()`: the diff needs the FLAG,
+      // not the hash salt, and `getPiiConfig` throws when `OL_PII_HASH_SALT` is
+      // unset. Reading it here would put an unrelated configuration failure on
+      // the ingestion path — swallowed by the catch below, so the fact would go
+      // silently unrecorded. The default matches `getPiiConfig`'s own.
+      const changes = diffOrderAmendment(existing?.orderSnapshot ?? null, incoming, {
+        storePii: getEnvBoolean('OL_STORE_PII', true),
+      });
+      if (changes.length === 0) {
+        return;
+      }
+
+      this.logger.warn(
+        `Source amended order ${internalOrderId} on connection ${connectionId} after ingestion: ` +
+          changes
+            .map((c) => (c.lineId ? `${c.kind}(${c.lineId})` : `${c.kind}(${(c.fields ?? []).join(',')})`))
+            .join('; ')
+      );
+      await this.orderRecordService.recordAmendment(internalOrderId, new Date(), changes);
+    } catch (error) {
+      this.logger.error(
+        `Failed to record source amendment for order ${internalOrderId}`,
+        (error as Error).stack
+      );
+    }
+  }
+
   private readSnapshotStatus(existing: OrderRecord | null): string | undefined {
     const value = existing?.orderSnapshot?.status;
     return typeof value === 'string' ? value : undefined;

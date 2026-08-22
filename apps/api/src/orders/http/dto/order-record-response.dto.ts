@@ -22,6 +22,7 @@ import type {
   SalesDocumentGateBlockReason,
   SalesDocumentUnresolvedReason,
 } from '@openlinker/core/sales-documents';
+import { OrderAmendmentChangeDto } from './order-amendment-change.dto';
 import { OrderSyncStatusResponseDto } from './order-sync-status-response.dto';
 import { SyncAttemptResponseDto } from './sync-attempt-response.dto';
 import type { OrderInvoiceProjectionDto } from './order-invoice-projection.dto';
@@ -147,6 +148,25 @@ export class OrderRecordResponseDto {
       'Moves as one group with packedAt, so the FIRST actor is never overwritten.',
   })
   packedByUserId!: string | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      'Instant OpenLinker last observed the SOURCE amend this order after ingestion (ISO 8601, #2283) — ' +
+      'a line removed, added or re-quantified, or the shipping address edited. null = never observed amended. ' +
+      'An internal fact: it moves no status and gates nothing.',
+  })
+  lastAmendedAt!: string | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    type: [OrderAmendmentChangeDto],
+    description:
+      'What changed at lastAmendedAt (#2283) — the most recent observation only, not a history. ' +
+      'PII-free by construction: line ids, SKUs and quantities verbatim, and for an address change only ' +
+      'the NAMES of the fields that moved, never their values.',
+  })
+  lastAmendmentChanges!: OrderAmendmentChangeDto[] | null;
 
   @ApiProperty({
     description:

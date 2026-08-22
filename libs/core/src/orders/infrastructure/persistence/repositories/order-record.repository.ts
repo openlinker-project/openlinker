@@ -42,6 +42,7 @@ import {
 } from '@openlinker/core/sales-documents';
 import type { OrderFxIntent, OrderFxStamp } from '../../../domain/types/order-fx.types';
 import type { StampedReportingCurrencyCount } from '../../../domain/types/order-fx-read.types';
+import type { OrderAmendmentChange } from '../../../domain/order-amendment-diff';
 
 @Injectable()
 export class OrderRecordRepository implements OrderRecordRepositoryPort {
@@ -817,6 +818,38 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
   }
 
   /**
+   * Record a source-side amendment (#2283). Narrow absolute-set on the two
+   * amendment columns only, in `updateSalesDocumentBlock`'s shape: raw
+   * parameterized statement, no read-modify-write, last-write-wins.
+   *
+   * The `IS DISTINCT FROM` guard compares ONLY `lastAmendmentChanges`, never
+   * `lastAmendedAt`. Every call carries a fresh instant, so including the
+   * timestamp in the comparison would make the row always look changed and the
+   * guard would suppress nothing — the caller's `changes.length > 0` gate is the
+   * primary suppressor, and this is the second line of defence against a source
+   * that re-reports the SAME amendment on every poll (which is the steady state
+   * for as long as the amended snapshot is what we hold).
+   *
+   * `$1::jsonb` is explicit because the binder cannot infer the type of a
+   * parameter that appears only inside `IS DISTINCT FROM`.
+   */
+  async recordAmendment(
+    internalOrderId: string,
+    observedAt: Date,
+    changes: OrderAmendmentChange[]
+  ): Promise<void> {
+    await this.repository.query(
+      `UPDATE "order_records"
+          SET "lastAmendmentChanges" = $1::jsonb,
+              "lastAmendedAt" = $2,
+              "updatedAt" = now()
+        WHERE "internalOrderId" = $3
+          AND "lastAmendmentChanges" IS DISTINCT FROM $1::jsonb`,
+      [JSON.stringify(changes), observedAt, internalOrderId]
+    );
+  }
+
+  /**
    * Distinct order-native currencies already ingested (#2124), for the
    * reporting-currency coverage advisory.
    *
@@ -1087,6 +1120,11 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     // re-read via `findById`.
     entity.packedAt = null;
     entity.packedByUserId = null;
+    // #2283: same reset, same reason. `recordAmendment` owns both columns; the
+    // upsert never writes them, so reporting the row's true values here would
+    // break `upsert`'s documented all-out-of-band-columns-read-empty contract.
+    entity.lastAmendedAt = null;
+    entity.lastAmendmentChanges = null;
     return entity;
   }
 
@@ -1242,7 +1280,13 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       entity.fxStampedAt ?? null,
       entity.fxIntendedCurrency ?? null,
       entity.packedAt ?? null,
-      entity.packedByUserId ?? null
+      entity.packedByUserId ?? null,
+      entity.lastAmendedAt ?? null,
+      // The jsonb column is written only by `recordAmendment`, which always
+      // stores an array; `?? null` covers the never-amended row and a hand-edited
+      // value is passed through rather than coerced - the FE renders what it
+      // recognises and a change kind from a newer release must not vanish.
+      entity.lastAmendmentChanges ?? null
     );
   }
 
@@ -1295,6 +1339,13 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    *   always `null`; mapping them here would silently un-pack an order on every
    *   re-poll, and the operator would have no way to tell the un-pack from a
    *   colleague's deliberate one.
+   *
+   * - `lastAmendedAt` / `lastAmendmentChanges` (#2283) - sole writer
+   *   {@link recordAmendment}. The sharpest case of the shared reason: the write
+   *   is triggered BY an ingestion, from a diff taken against the snapshot this
+   *   very upsert is about to overwrite, so mapping them here would have the
+   *   detecting re-poll erase its own finding. No source payload carries them
+   *   either - they are OpenLinker's observation, not the source's report.
    *
    * ## The insert-only column
    *

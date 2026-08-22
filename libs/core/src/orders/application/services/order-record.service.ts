@@ -26,6 +26,8 @@ import type {
 } from '../../domain/types/order-record.types';
 import type { FulfillmentRollupState } from '../../domain/types/order-fulfillment.types';
 import type { SalesDocumentBlock } from '@openlinker/core/sales-documents';
+import { redactAddress } from '../../domain/order-address-redaction';
+import type { OrderAmendmentChange } from '../../domain/order-amendment-diff';
 import { getPiiConfig } from '@openlinker/shared/config';
 import { Logger } from '@openlinker/shared/logging';
 import { IOrderFxStampService } from '../interfaces/order-fx-stamp.service.interface';
@@ -85,12 +87,12 @@ export class OrderRecordService implements IOrderRecordService {
       totals: order.totals,
       shippingAddress: piiConfig.storePii
         ? order.shippingAddress
-        : this.sanitizeAddress(order.shippingAddress),
+        : redactAddress(order.shippingAddress),
       billingAddress: piiConfig.storePii
         ? order.billingAddress
-        : this.sanitizeAddress(order.billingAddress),
+        : redactAddress(order.billingAddress),
       // Buyer email (#948) — PII-gated + present-only. Unlike addresses (which
-      // get a `[REDACTED]` placeholder via sanitizeAddress), email is omitted
+      // get a `[REDACTED]` placeholder via redactAddress), email is omitted
       // entirely under hash-only mode: there's no meaningful redaction of an
       // atomic identifier, and the privacy model keeps only `emailHash` on the
       // customer projection. Needed for the Generate-Label recipient.
@@ -233,10 +235,10 @@ export class OrderRecordService implements IOrderRecordService {
       totals: incoming.totals,
       shippingAddress: piiConfig.storePii
         ? incoming.shippingAddress
-        : this.sanitizeAddress(incoming.shippingAddress),
+        : redactAddress(incoming.shippingAddress),
       billingAddress: piiConfig.storePii
         ? incoming.billingAddress
-        : this.sanitizeAddress(incoming.billingAddress),
+        : redactAddress(incoming.billingAddress),
       // Buyer email (#948) — PII-gated + present-only; see persistOrder for the
       // omit-vs-redact rationale. For "ready" orders this awaiting_mapping
       // snapshot is overwritten by persistOrder, so this write is for
@@ -527,26 +529,17 @@ export class OrderRecordService implements IOrderRecordService {
   }
 
   /**
-   * Sanitize address by removing PII fields
-   *
-   * When PII storage is disabled, removes sensitive fields from addresses
-   * while keeping structural information (hash can be computed separately).
+   * Record a source-side amendment (#2283). A thin pass-through: the diff that
+   * produced `changes` is pure and lives in the domain, the no-op suppression
+   * lives in the repository's WHERE clause, and there is no re-read — unlike
+   * {@link markPacked}, no caller needs the resulting record, and this runs on
+   * the hot ingestion path where a second query would buy nothing.
    */
-  private sanitizeAddress(
-    address:
-      | { address1?: string; city?: string; postalCode?: string; country?: string }
-      | null
-      | undefined
-  ): { address1: string; city: string; postalCode: string; country: string } | undefined {
-    if (!address) {
-      return undefined;
-    }
-
-    return {
-      address1: '[REDACTED]',
-      city: '[REDACTED]',
-      postalCode: '[REDACTED]',
-      country: address.country ?? '', // Country code is not PII
-    };
+  async recordAmendment(
+    internalOrderId: string,
+    observedAt: Date,
+    changes: OrderAmendmentChange[]
+  ): Promise<void> {
+    await this.repository.recordAmendment(internalOrderId, observedAt, changes);
   }
 }

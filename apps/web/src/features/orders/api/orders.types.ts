@@ -170,6 +170,31 @@ export interface OrderDeliveryRider {
   candidateCarrier?: DeliveryRiderCandidateCarrier;
 }
 
+// Source-side amendment kinds (#2283). Hand-mirrored from
+// `OrderAmendmentChangeKindValues` in `@openlinker/core/orders` per the FE-001
+// contract strategy — keep in sync.
+export const OrderAmendmentChangeKindValues = [
+  'line-removed',
+  'line-added',
+  'line-quantity-changed',
+  'shipping-address-changed',
+] as const;
+export type OrderAmendmentChangeKindValue = (typeof OrderAmendmentChangeKindValues)[number];
+
+/**
+ * One observed source amendment. PII-free by backend contract: ids, SKUs and
+ * quantities verbatim, and for an address change only the NAMES of the fields
+ * that moved.
+ */
+export interface OrderAmendmentChange {
+  kind: OrderAmendmentChangeKindValue;
+  lineId?: string;
+  sku?: string;
+  fromQuantity?: number;
+  toQuantity?: number;
+  fields?: string[];
+}
+
 export interface OrderRecord {
   internalOrderId: string;
   customerId: string | null;
@@ -243,6 +268,20 @@ export interface OrderRecord {
   salesDocumentUnresolvedReason?: SalesDocumentUnresolvedReasonValue | null;
   /** PII-free elaboration of the block reason (ids and counts only). */
   salesDocumentBlockDetail?: string | null;
+  /**
+   * Instant OpenLinker last observed the SOURCE amend this order after it was
+   * already ingested (#2283) — a line removed, added or re-quantified, or the
+   * shipping address edited. `null`/absent = never observed amended. An internal
+   * fact: it moves no status and gates nothing, so it is rendered as one more
+   * timeline entry rather than a state.
+   */
+  lastAmendedAt?: string | null;
+  /**
+   * What changed at `lastAmendedAt` (#2283) — most recent observation only.
+   * PII-free by contract: an address change names the FIELDS that moved and
+   * never their values, so this is safe to render verbatim.
+   */
+  lastAmendmentChanges?: OrderAmendmentChange[] | null;
 }
 
 // Result ordering for the orders list (#927, extended #944). Mirrors

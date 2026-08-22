@@ -133,6 +133,7 @@ describe('ShipmentController', () => {
       markSalesDocumentBlock: jest.fn(),
       markPacked: jest.fn(),
       clearPacked: jest.fn(),
+      recordAmendment: jest.fn(),
     };
     controller = new ShipmentController(
       query,

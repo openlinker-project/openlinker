@@ -397,6 +397,11 @@ export class OrdersController {
       // reaches the list and the detail response from one place.
       packedAt: order.packedAt ? order.packedAt.toISOString() : null,
       packedByUserId: order.packedByUserId,
+      // Source-amendment fact (#2283). On the SHARED toDto for the same reason
+      // as `packedAt`: one projection reaches both the list and the detail
+      // response, so a follow-up list badge needs no second wiring.
+      lastAmendedAt: order.lastAmendedAt ? order.lastAmendedAt.toISOString() : null,
+      lastAmendmentChanges: order.lastAmendmentChanges,
       // Ship-by estimate flag (#1776): a typed, fail-safe read off the snapshot's
       // dispatch window. Erli marks its derived window `estimated: true`; Allegro
       // leaves it absent (authoritative). Narrowing lives on the entity getter.

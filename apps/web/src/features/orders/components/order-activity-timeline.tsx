@@ -20,6 +20,7 @@ import {
   type SyncAttempt,
   type SalesDocumentGateBlockReasonValue,
   type SalesDocumentUnresolvedReasonValue,
+  type OrderAmendmentChange,
 } from '../api/orders.types';
 import type { StatusBadgeTone } from '../../../shared/ui/status-badge';
 import type { ParsedOrderInvoice } from '../api/order-snapshot.schema';
@@ -75,6 +76,14 @@ interface OrderActivityTimelineProps {
    * see the shared rule on `invoicingBlockedBadge`.
    */
   invoice?: ParsedOrderInvoice | null;
+  /**
+   * Instant the source last amended this order after ingestion (#2283). Unlike
+   * the #2100 invoicing block, a real instant IS persisted here, so the entry is
+   * DATED and sorts into place with the rest of the history.
+   */
+  lastAmendedAt?: string | null;
+  /** What changed then (#2283) — PII-free by backend contract. */
+  lastAmendmentChanges?: OrderAmendmentChange[] | null;
 }
 
 const STATUS_PAST_TENSE: Record<OrderSyncStatusValue, string> = {
@@ -110,6 +119,37 @@ const TONE_FOR_STATUS: Record<OrderSyncStatusValue, TimelineEvent['tone']> = {
   skipped_cancelled: 'default',
 };
 
+/**
+ * Operator-facing sentence for a change list (#2283).
+ *
+ * Renders only what the backend sent: an address change names the FIELDS that
+ * moved and never their values, because the values are deliberately not on the
+ * wire. An unrecognised `kind` from a newer backend degrades to the raw value
+ * rather than vanishing — a change the operator cannot see is worse than one
+ * labelled awkwardly.
+ */
+function describeAmendment(changes?: OrderAmendmentChange[] | null): string {
+  const parts = (changes ?? []).map((change) => {
+    const line = change.sku ?? change.lineId ?? 'a line';
+    switch (change.kind) {
+      case 'line-removed':
+        return `line ${line} removed`;
+      case 'line-added':
+        return `line ${line} added`;
+      case 'line-quantity-changed':
+        return `line ${line} quantity ${change.fromQuantity} \u2192 ${change.toQuantity}`;
+      case 'shipping-address-changed':
+        return `shipping address changed (${(change.fields ?? []).join(', ')})`;
+      default:
+        return change.kind;
+    }
+  });
+
+  return parts.length > 0
+    ? `The source changed this order after ingestion: ${parts.join('; ')}.`
+    : 'The source changed this order after ingestion.';
+}
+
 function buildEvents(
   createdAt: string,
   recordStatus: string,
@@ -120,6 +160,8 @@ function buildEvents(
   salesDocumentUnresolvedReason?: SalesDocumentUnresolvedReasonValue | null,
   salesDocumentBlockDetail?: string | null,
   invoice?: ParsedOrderInvoice | null,
+  lastAmendedAt?: string | null,
+  lastAmendmentChanges?: OrderAmendmentChange[] | null,
 ): TimelineEvent[] {
   const events: TimelineEvent[] = [];
 
@@ -229,6 +271,22 @@ function buildEvents(
     });
   });
 
+  // #2283 — the source amended this order after we ingested it. DATED, unlike
+  // the #2100 entry below: a real instant is persisted for it, so it belongs in
+  // the history rather than beside it. Pushed BEFORE that entry so the undated
+  // current-state row stays last, and `warning` because it is outstanding work —
+  // a shipment may already reference a line the source removed.
+  if (lastAmendedAt) {
+    events.push({
+      id: 'source-amended',
+      timestamp: lastAmendedAt,
+      title: 'Order changed at the source',
+      by: 'system · ingest',
+      description: describeAmendment(lastAmendmentChanges),
+      tone: 'warning',
+    });
+  }
+
   // #2100 — appended last and DELIBERATELY UNDATED (`timestamp: null`): the block
   // is a current-state fact re-decided on every transition, not a historical
   // event, and no instant is persisted for it. Dating it with `createdAt` or
@@ -274,6 +332,8 @@ export function OrderActivityTimeline({
   salesDocumentUnresolvedReason,
   salesDocumentBlockDetail,
   invoice,
+  lastAmendedAt,
+  lastAmendmentChanges,
 }: OrderActivityTimelineProps): ReactElement {
   const events = useMemo(
     () =>
@@ -287,6 +347,8 @@ export function OrderActivityTimeline({
         salesDocumentUnresolvedReason,
         salesDocumentBlockDetail,
         invoice,
+        lastAmendedAt,
+        lastAmendmentChanges,
       ),
     [
       createdAt,
@@ -298,6 +360,8 @@ export function OrderActivityTimeline({
       salesDocumentUnresolvedReason,
       salesDocumentBlockDetail,
       invoice,
+      lastAmendedAt,
+      lastAmendmentChanges,
     ],
   );
 

@@ -106,6 +106,7 @@ describe('FulfillmentStatusSyncService', () => {
       markSalesDocumentBlock: jest.fn(),
       markPacked: jest.fn(),
       clearPacked: jest.fn(),
+      recordAmendment: jest.fn(),
     };
 
     routing = {

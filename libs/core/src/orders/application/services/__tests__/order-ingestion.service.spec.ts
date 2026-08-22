@@ -106,6 +106,7 @@ describe('OrderIngestionService', () => {
       markItemResolutionFailure: jest.fn().mockResolvedValue(undefined),
       markCancelled: jest.fn().mockResolvedValue(undefined),
       markSalesDocumentBlock: jest.fn().mockResolvedValue(undefined),
+      recordAmendment: jest.fn().mockResolvedValue(undefined),
     } as unknown as jest.Mocked<IOrderRecordService>;
 
     customerIdentityResolver = {
@@ -1312,6 +1313,139 @@ describe('OrderIngestionService', () => {
       });
       expect(errorSpy).toHaveBeenCalledWith(
         expect.stringContaining('Failed to record cancellation'),
+        expect.anything()
+      );
+    });
+  });
+
+  describe('source-amendment fact (#2283)', () => {
+    const externalOrderId = 'amend-1';
+    const internalOrderId = 'ol_order_amend';
+
+    const incoming = {
+      externalOrderId,
+      orderNumber: externalOrderId,
+      status: 'BOUGHT',
+      items: [
+        {
+          id: 'l1',
+          productRef: { type: 'offer' as const, externalId: 'offer-l1' },
+          quantity: 1,
+          price: 10,
+          sku: 'SKU-l1',
+        },
+      ],
+      totals: { subtotal: 10, tax: 0, shipping: 0, total: 10, currency: 'PLN' },
+      createdAt: '2026-08-01T00:00:00Z',
+      updatedAt: '2026-08-01T00:00:00Z',
+    };
+
+    beforeEach(() => {
+      identifierMapping.getOrCreateInternalId.mockResolvedValue(internalOrderId);
+      orderSource.getOrder.mockResolvedValue(incoming);
+      integrationsService.getCapabilityAdapter.mockResolvedValue(orderSource);
+      orderSyncService.syncOrder.mockResolvedValue([]);
+      orderItemRefResolver.tryResolve.mockResolvedValue({
+        resolved: true,
+        internalProductId: 'ol_product_1',
+        internalVariantId: 'ol_variant_1',
+      });
+    });
+
+    const priorWithQuantity = (quantity: number): OrderRecord =>
+      ({
+        sourceConnectionId: connectionId,
+        orderSnapshot: { status: 'BOUGHT', items: [{ id: 'l1', quantity, sku: 'SKU-l1' }] },
+      }) as unknown as OrderRecord;
+
+    it('should record the fact once with the observed changes when the source amended the order', async () => {
+      orderRecordService.getOrderRecord.mockResolvedValue(priorWithQuantity(3));
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(orderRecordService.recordAmendment).toHaveBeenCalledTimes(1);
+      expect(orderRecordService.recordAmendment).toHaveBeenCalledWith(
+        internalOrderId,
+        expect.any(Date),
+        [
+          {
+            kind: 'line-quantity-changed',
+            lineId: 'l1',
+            sku: 'SKU-l1',
+            fromQuantity: 3,
+            toQuantity: 1,
+          },
+        ]
+      );
+    });
+
+    it('should record the fact BEFORE the snapshot write that would destroy the evidence', async () => {
+      orderRecordService.getOrderRecord.mockResolvedValue(priorWithQuantity(3));
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(orderRecordService.recordAmendment.mock.invocationCallOrder[0]).toBeLessThan(
+        orderRecordService.persistIncomingSnapshot.mock.invocationCallOrder[0]
+      );
+    });
+
+    it('should not record anything on an identical re-poll', async () => {
+      orderRecordService.getOrderRecord.mockResolvedValue(priorWithQuantity(1));
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(orderRecordService.recordAmendment).not.toHaveBeenCalled();
+    });
+
+    it('should not record anything on a first ingestion', async () => {
+      orderRecordService.getOrderRecord.mockResolvedValue(null);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(orderRecordService.recordAmendment).not.toHaveBeenCalled();
+    });
+
+    it('should not record anything on the destination-echo skip', async () => {
+      orderRecordService.getOrderRecord.mockResolvedValue({
+        sourceConnectionId: 'some-other-connection',
+        orderSnapshot: { items: [{ id: 'l1', quantity: 99 }] },
+      } as unknown as OrderRecord);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(orderRecordService.recordAmendment).not.toHaveBeenCalled();
+    });
+
+    it('should still record the fact when item resolution later throws', async () => {
+      orderRecordService.getOrderRecord.mockResolvedValue(priorWithQuantity(3));
+      orderItemRefResolver.tryResolve.mockResolvedValue({
+        resolved: false,
+        productRef: { type: 'offer', externalId: 'unmapped' },
+        reason: 'no mapping',
+        kind: 'missing_mapping' as const,
+      });
+
+      await expect(
+        service.syncOrderFromSource(connectionId, externalOrderId)
+      ).rejects.toBeInstanceOf(MissingOrderItemMappingError);
+
+      expect(orderRecordService.recordAmendment).toHaveBeenCalledTimes(1);
+    });
+
+    it('should not fail the ingestion when recording the fact throws', async () => {
+      orderRecordService.getOrderRecord.mockResolvedValue(priorWithQuantity(3));
+      orderRecordService.recordAmendment.mockRejectedValueOnce(new Error('db down'));
+      const errorSpy = jest
+        .spyOn((service as unknown as { logger: { error: jest.Mock } }).logger, 'error')
+        .mockImplementation(() => undefined);
+
+      await expect(service.syncOrderFromSource(connectionId, externalOrderId)).resolves.toEqual(
+        []
+      );
+
+      expect(orderRecordService.persistOrder).toHaveBeenCalled();
+      expect(errorSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Failed to record source amendment'),
         expect.anything()
       );
     });

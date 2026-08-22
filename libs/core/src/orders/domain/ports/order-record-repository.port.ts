@@ -23,6 +23,7 @@ import type { SyncAttempt } from '../types/order-sync.types';
 import type { SalesDocumentBlock } from '@openlinker/core/sales-documents';
 import type { OrderFxIntent, OrderFxStamp } from '../types/order-fx.types';
 import type { StampedReportingCurrencyCount } from '../types/order-fx-read.types';
+import type { OrderAmendmentChange } from '../order-amendment-diff';
 
 export interface OrderRecordRepositoryPort {
   /**
@@ -235,6 +236,30 @@ export interface OrderRecordRepositoryPort {
    * {@link markPacked}.
    */
   clearPacked(internalOrderId: string): Promise<boolean>;
+
+  /**
+   * Record that the source amended this order after ingestion (#2283) — writes
+   * `lastAmendedAt` + `lastAmendmentChanges` together and nothing else.
+   *
+   * Last-write-wins, like {@link updateSalesDocumentBlock} and unlike
+   * {@link markCancelled}: an amendment is always NEWER information about the
+   * source, so the freshest observation is the truthful one. Only the most
+   * recent observation is kept — this is a fact, not a history.
+   *
+   * The implementation MUST suppress a no-op write, and MUST compare only
+   * `lastAmendmentChanges` when doing so. Comparing the timestamp too would
+   * defeat the guard entirely: every call carries a fresh instant, so the row
+   * would always look changed and `updatedAt` would be bumped on writes that
+   * changed nothing.
+   *
+   * No-op (no throw) when the order row doesn't exist, mirroring
+   * {@link updateFulfillmentState}'s residual-race tolerance.
+   */
+  recordAmendment(
+    internalOrderId: string,
+    observedAt: Date,
+    changes: OrderAmendmentChange[]
+  ): Promise<void>;
 
   /**
    * Stamp the order's reporting-currency figures at most once (#2124) — one

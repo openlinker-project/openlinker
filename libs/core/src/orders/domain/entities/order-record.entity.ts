@@ -14,6 +14,7 @@ import type { PaymentStatus } from '../types/payment-status.types';
 import type { CodToCollect } from '../types/cod-to-collect.types';
 import type { FulfillmentRollupState } from '../types/order-fulfillment.types';
 import type { OrderDispatchWindow } from '../types/order.types';
+import type { OrderAmendmentChange } from '../order-amendment-diff';
 import type {
   SalesDocumentGateBlockReason,
   SalesDocumentUnresolvedReason,
@@ -174,7 +175,33 @@ export class OrderRecord {
      * actor is preserved. No FK to `users`: a deleted user leaving a dangling
      * id the UI renders raw is the honest outcome for an audit fact.
      */
-    public readonly packedByUserId: string | null = null
+    public readonly packedByUserId: string | null = null,
+    /**
+     * Instant OpenLinker last observed the SOURCE amend this order after it was
+     * already ingested (#2283) — a line removed, added or re-quantified, or the
+     * shipping address edited. `null` = never observed amended.
+     *
+     * An internal FACT, not a lifecycle state: it appears in no status union, no
+     * relay event and no health bucket, and nothing is gated on it. It exists
+     * because ingestion overwrites `orderSnapshot` wholesale, so before this the
+     * amendment left no trace whatsoever.
+     *
+     * Single-writer, like `cancelledAt` / `packedAt` / the FX columns: only the
+     * narrow `recordAmendment` statement writes it, and the ingestion upsert
+     * excludes it, so the re-poll that DETECTS the amendment cannot also erase it.
+     */
+    public readonly lastAmendedAt: Date | null = null,
+    /**
+     * What changed at that instant (#2283) — the most recent observation only,
+     * not a history. Moves as one group with `lastAmendedAt`.
+     *
+     * PII-free by construction: line ids, SKUs and quantities verbatim, and for
+     * an address change only the NAMES of the fields that moved. It is persisted
+     * and rendered to operators, so carrying address values would put buyer PII
+     * into a second store with none of the `OL_STORE_PII` discipline the snapshot
+     * itself has.
+     */
+    public readonly lastAmendmentChanges: OrderAmendmentChange[] | null = null
   ) {}
 
   /**
