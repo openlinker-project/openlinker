@@ -20,6 +20,7 @@ import type {
 } from '../../domain/types/order-record.types';
 import type { FulfillmentRollupState } from '../../domain/types/order-fulfillment.types';
 import type { SalesDocumentBlock } from '@openlinker/core/sales-documents';
+import type { OrderAmendmentChange } from '../../domain/order-amendment-diff';
 
 export interface IOrderRecordService {
   /**
@@ -202,4 +203,27 @@ export interface IOrderRecordService {
    * unchanged; an unknown order throws `OrderRecordNotFoundException`.
    */
   clearPacked(internalOrderId: string): Promise<OrderRecord>;
+
+  /**
+   * Record that the source amended this order after it was already ingested
+   * (#2283) — a line removed, added or re-quantified, or the shipping address
+   * edited. An internal FACT: it moves no status, fires no relay event and gates
+   * nothing; it exists because ingestion overwrites the snapshot wholesale and
+   * the change would otherwise leave no trace.
+   *
+   * Callers pass a non-empty change list — an empty one has nothing to record
+   * and must not reach here. Last-write-wins (the newest observation is the
+   * truthful one) and a re-observation of the SAME change list is suppressed at
+   * the write, so it neither bumps `updatedAt` nor re-dates the fact.
+   *
+   * No-op (no throw) when no record exists for `internalOrderId`: this is
+   * event-driven, so it carries the residual-race tolerance the other
+   * ingestion-path writers carry rather than the operator-error posture of
+   * {@link markPacked}.
+   */
+  recordAmendment(
+    internalOrderId: string,
+    observedAt: Date,
+    changes: OrderAmendmentChange[]
+  ): Promise<void>;
 }

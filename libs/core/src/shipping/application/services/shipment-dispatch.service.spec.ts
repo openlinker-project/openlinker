@@ -171,6 +171,7 @@ describe('ShipmentDispatchService', () => {
       markSalesDocumentBlock: jest.fn(),
       markPacked: jest.fn(),
       clearPacked: jest.fn(),
+      recordAmendment: jest.fn(),
     };
     const fulfillmentProjection = { recompute: jest.fn() };
     // Uncontended by default (#1917): every pre-existing test asserts the

@@ -9,6 +9,7 @@
  */
 import { Entity, PrimaryColumn, Column, CreateDateColumn, UpdateDateColumn, Index } from 'typeorm';
 import type { OrderSyncStatusFilter } from '../../../domain/types/order-record.types';
+import type { OrderAmendmentChange } from '../../../domain/order-amendment-diff';
 
 /**
  * Sync status JSONB structure
@@ -253,6 +254,26 @@ export class OrderRecordOrmEntity {
    */
   @Column({ type: 'uuid', nullable: true })
   packedByUserId!: string | null;
+
+  /**
+   * Instant OpenLinker last observed the source amend this order after ingestion
+   * (#2283). `null` = never observed amended. Indexed because "which orders did
+   * the source change under us" is an operator-facing scan axis, and it is the
+   * index that makes a follow-up list badge/filter cheap. Plain rather than
+   * partial, mirroring `packedAt`: an operator filters both ways.
+   */
+  @Column({ type: 'timestamptz', nullable: true })
+  @Index()
+  lastAmendedAt!: Date | null;
+
+  /**
+   * The change list observed at `lastAmendedAt` (#2283) — most recent
+   * observation only, not a history. `jsonb` because the shape is a small
+   * open-ended list the FE renders; nothing queries inside it. PII-free by
+   * construction (ids, SKUs, quantities and address FIELD NAMES only).
+   */
+  @Column({ type: 'jsonb', nullable: true })
+  lastAmendmentChanges!: OrderAmendmentChange[] | null;
 
   @CreateDateColumn()
   createdAt!: Date;

@@ -197,6 +197,15 @@ export { orderFromReadySnapshot } from './domain/order-from-ready-snapshot';
 export type { OrderFromReadySnapshotOptions } from './domain/order-from-ready-snapshot';
 
 // Order-identity list projection for Shipments/Invoices (#1995).
+export { diffOrderAmendment, OrderAmendmentChangeKindValues } from './domain/order-amendment-diff';
+export type {
+  OrderAmendmentChange,
+  OrderAmendmentChangeKind,
+  OrderAmendmentDiffOptions,
+} from './domain/order-amendment-diff';
+export { redactAddress, REDACTED_PLACEHOLDER } from './domain/order-address-redaction';
+export type { RedactableAddress, RedactedAddress } from './domain/order-address-redaction';
+
 export { buildOrderSummary } from './domain/order-summary-projection';
 export type { OrderSummary } from './domain/order-summary-projection';
 

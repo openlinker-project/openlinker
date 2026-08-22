@@ -22,9 +22,14 @@
 import type { OrderRecord } from './entities/order-record.entity';
 import type { Address, Order, OrderItem, OrderTotals } from './types/order.types';
 import { OrderSnapshotUnavailableError } from './exceptions/order-snapshot-unavailable.error';
+import { REDACTED_PLACEHOLDER } from './order-address-redaction';
 
-/** The `OrderRecordService.sanitizeAddress` placeholder for a PII-redacted field. */
-const REDACTED = '[REDACTED]';
+/**
+ * The placeholder `redactAddress` writes for a PII-redacted field. Imported
+ * from the one implementation (#2283) rather than re-declared, so a change to
+ * the redaction rule cannot leave this reader silently matching the old token.
+ */
+const REDACTED = REDACTED_PLACEHOLDER;
 
 /** Caller-declared expectations of the rehydrated order. */
 export interface OrderFromReadySnapshotOptions {

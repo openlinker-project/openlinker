@@ -48,6 +48,7 @@ describe('RefundsController', () => {
       getFailedSyncValueSummary: jest.fn(),
       markPacked: jest.fn(),
       clearPacked: jest.fn(),
+      recordAmendment: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({

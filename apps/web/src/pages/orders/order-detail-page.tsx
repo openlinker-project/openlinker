@@ -466,6 +466,8 @@ export function OrderDetailPage(): ReactElement {
           salesDocumentUnresolvedReason={order.salesDocumentUnresolvedReason}
           salesDocumentBlockDetail={order.salesDocumentBlockDetail}
           invoice={snapshot.invoice}
+          lastAmendedAt={order.lastAmendedAt}
+          lastAmendmentChanges={order.lastAmendmentChanges}
         />
       </section>
 

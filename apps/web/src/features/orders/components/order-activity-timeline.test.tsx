@@ -239,4 +239,61 @@ describe('OrderActivityTimeline', () => {
       expect(screen.queryByText('No invoice issued')).toBeNull();
     });
   });
+
+  describe('source amendment (#2283)', () => {
+    it('renders a dated warning entry naming the lines that changed', () => {
+      renderTimeline({
+        createdAt: '2026-04-20T10:00:00.000Z',
+        recordStatus: 'ready',
+        syncAttempts: [],
+        sourceConnectionId: SOURCE_CONNECTION_ID,
+        lastAmendedAt: '2026-04-21T08:15:00.000Z',
+        lastAmendmentChanges: [
+          { kind: 'line-removed', lineId: 'l2', sku: 'SKU-2', fromQuantity: 1 },
+          { kind: 'line-quantity-changed', lineId: 'l1', sku: 'SKU-1', fromQuantity: 2, toQuantity: 1 },
+        ],
+      });
+
+      const entry = screen.getByText('Order changed at the source').closest('li');
+      expect(entry).not.toBeNull();
+      // Dated, unlike the #2100 block entry: a real instant is persisted.
+      expect(entry?.querySelector('time')?.getAttribute('dateTime')).toBe(
+        '2026-04-21T08:15:00.000Z',
+      );
+      expect(entry?.querySelector('.order-activity__dot--warning')).not.toBeNull();
+      expect(within(entry as HTMLElement).getByText(/line SKU-2 removed/)).toBeTruthy();
+      expect(within(entry as HTMLElement).getByText(/line SKU-1 quantity 2 → 1/)).toBeTruthy();
+    });
+
+    it('names the address fields that changed and shows no address values', () => {
+      renderTimeline({
+        createdAt: '2026-04-20T10:00:00.000Z',
+        recordStatus: 'ready',
+        syncAttempts: [],
+        sourceConnectionId: SOURCE_CONNECTION_ID,
+        lastAmendedAt: '2026-04-21T08:15:00.000Z',
+        lastAmendmentChanges: [
+          { kind: 'shipping-address-changed', fields: ['city', 'postalCode'] },
+        ],
+      });
+
+      const entry = screen.getByText('Order changed at the source').closest('li');
+      expect(
+        within(entry as HTMLElement).getByText(/shipping address changed \(city, postalCode\)/),
+      ).toBeTruthy();
+    });
+
+    it('renders no amendment entry when the order was never amended', () => {
+      renderTimeline({
+        createdAt: '2026-04-20T10:00:00.000Z',
+        recordStatus: 'ready',
+        syncAttempts: [],
+        sourceConnectionId: SOURCE_CONNECTION_ID,
+        lastAmendedAt: null,
+        lastAmendmentChanges: null,
+      });
+
+      expect(screen.queryByText('Order changed at the source')).toBeNull();
+    });
+  });
 });

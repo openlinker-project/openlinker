@@ -85,11 +85,13 @@ describe('OrdersController', () => {
       countStampedByReportingCurrency: jest.fn(),
       markPacked: jest.fn(),
       clearPacked: jest.fn(),
+      recordAmendment: jest.fn(),
     };
 
     const mockOrderRecordService = {
       markPacked: jest.fn(),
       clearPacked: jest.fn(),
+      recordAmendment: jest.fn(),
     } as unknown as jest.Mocked<IOrderRecordService>;
 
     const mockRetryService: jest.Mocked<IOrderDestinationRetryService> = {
