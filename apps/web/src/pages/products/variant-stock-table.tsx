@@ -21,6 +21,7 @@ import { useCategoryPathQuery } from '../../features/listings/hooks/use-category
 import type { OfferMapping } from '../../features/listings/api/listings.types';
 import type { ProductVariant } from '../../features/products/api/products.types';
 import type { InventoryItem } from '../../features/inventory/api/inventory.types';
+import { formatTaxRate } from '../../shared/format/format-tax-rate';
 import { TimeDisplay } from '../../shared/ui/time-display';
 import { StatusBadge, type StatusBadgeTone } from '../../shared/ui/status-badge';
 import { useMediaQuery } from '../../shared/ui/use-media-query';
@@ -810,9 +811,4 @@ function VariantTaxRateCell({
       <span className="variant-stock-table__meta">product has none either</span>
     </span>
   );
-}
-
-/** A numeric code reads as a percentage; an exemption code reads as itself. */
-function formatTaxRate(code: string): string {
-  return /^[0-9.]+$/.test(code) ? `${code}%` : code;
 }

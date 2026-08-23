@@ -36,8 +36,10 @@ import {
   BuyerProfile,
   BuyerTypeValues,
   OrderAlreadyInvoicedException,
+  MissingTaxRateException,
 } from '@openlinker/core/invoicing';
 import type { IssueInvoiceCommand } from '@openlinker/core/invoicing';
+import { isTaxRateEra } from '@openlinker/core/sales-documents';
 import { Logger } from '@openlinker/shared/logging';
 
 type SyncJob = SyncJobEntity;
@@ -87,6 +89,27 @@ export class InvoicingIssueHandler implements SyncJobHandler {
           `invoicing.issue skipped: orderId=${payload.orderId} is already invoiced on ` +
             `connectionId=${error.issuingConnectionId} (invoice ${error.blockingInvoiceId}, ` +
             `status ${error.blockingStatus}); requested connectionId=${payload.connectionId}`,
+        );
+        return { outcome: 'business_failure' };
+      }
+      // #2245 review: ADR-052's tax-rate refusal. Terminal for the same reason
+      // the guard above is: it is a decision about persisted data (a line with
+      // no rate), not a transport fault, so it throws identically on every
+      // attempt. Left in the retryable catch-all it burned the whole
+      // `maxAttempts` budget with backoff and then landed as a `dead` sync job,
+      // which reads as an infrastructure incident rather than the catalogue gap
+      // it is - and the order already carries the operator-facing
+      // `missing-tax-rate` reason from the gate. Follows the
+      // OrderAlreadyInvoicedException precedent exactly (ADR-007).
+      if (error instanceof MissingTaxRateException) {
+        this.logger.warn(
+          // Counts only. `describeMissingTaxRate` can name the first rate-less
+          // line, and on the write path that reference is the shop-authored line
+          // LABEL - free text this handler's PII rule forbids logging.
+          `invoicing.issue refused: orderId=${payload.orderId} has ` +
+            `${String(error.finding.lineCount)} of ${String(error.finding.totalLines)} ` +
+            `line(s) with no tax rate; connectionId=${payload.connectionId}. Add the rate ` +
+            `in the shop's catalogue and re-sync the product.`,
         );
         return { outcome: 'business_failure' };
       }
@@ -224,6 +247,13 @@ export class InvoicingIssueHandler implements SyncJobHandler {
     // #1694: thread the order-origin onto the command's `source` numbering axis.
     if (payload.source !== undefined) {
       command.source = payload.source;
+    }
+    // #2245 review: the era marker exempts pre-rollout history from the
+    // write-path tax-rate guard. Coerced through the union's guard rather than
+    // cast - an unrecognised value from an older/newer release must read as "no
+    // era" (i.e. the guard applies) instead of silently exempting the order.
+    if (isTaxRateEra(payload.taxRateEra)) {
+      command.taxRateEra = payload.taxRateEra;
     }
 
     return command;

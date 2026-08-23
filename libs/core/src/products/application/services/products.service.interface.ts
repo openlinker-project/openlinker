@@ -18,6 +18,10 @@ import type {
   PaginatedProductVariants,
 } from '../../domain/types/product.types';
 import type { StoredTaxRate } from '../../domain/types/tax-rate.types';
+import type {
+  ConnectionTaxRateCoverage,
+  TaxRateCoverage,
+} from '../../domain/types/tax-rate-coverage.types';
 
 /**
  * Products Service Interface
@@ -61,34 +65,35 @@ export interface IProductsService {
   recordVariantTaxRate(variantId: string, rate: StoredTaxRate): Promise<void>;
 
   /**
+   * Drop a per-variant override, because the shop says this variant inherits
+   * the product's rate (#2054 review).
+   *
+   * Not the same write as `recordVariantTaxRate({ code: null, readAt })`: that
+   * one records *asked, and this variant has no rate*, which reads as a gap on
+   * an operator surface. This one restores the genuinely-absent override, so
+   * `effectiveTaxRate` falls back to the product.
+   *
+   * Required rather than optional, because without it an override written once
+   * was never removed - a variation moved back to `tax_class: 'parent'` kept
+   * every order line at its stale rate, silently.
+   */
+  clearVariantTaxRate(variantId: string): Promise<void>;
+
+  /**
    * The rate that applies to a line, resolved from the catalogue projection.
    * The variant override wins where present; otherwise the product's rate.
    */
   getEffectiveTaxRate(productId: string, variantId?: string): Promise<StoredTaxRate>;
 
   /** Catalogue coverage by tax-rate read state (#2054 / #2256). */
-  getTaxRateCoverage(): Promise<{
-    total: number;
-    known: number;
-    missing: number;
-    notChecked: number;
-  }>;
+  getTaxRateCoverage(): Promise<TaxRateCoverage>;
 
   /**
    * The same coverage, per connection (#2256) - the unit an operator actually
    * fixes. "The catalogue has no rates" is not actionable when three shops feed
    * it and only one is incomplete.
    */
-  getTaxRateCoverageByConnection(): Promise<
-    Array<{
-      connectionId: string;
-      platformType: string;
-      total: number;
-      known: number;
-      missing: number;
-      notChecked: number;
-    }>
-  >;
+  getTaxRateCoverageByConnection(): Promise<ConnectionTaxRateCoverage[]>;
 
   /**
    * Get a single product by internal ID

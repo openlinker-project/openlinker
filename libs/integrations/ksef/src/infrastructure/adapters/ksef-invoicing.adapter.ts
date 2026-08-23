@@ -135,6 +135,7 @@ import { mapKsefStatusToRegulatoryStatus } from './ksef-clearance-status.mapper'
 import { isKsefUnavailable, NON_RETRYABLE_KSEF_STATUS_CODES } from './ksef-availability';
 import { KsefApiException } from '../../domain/exceptions/ksef-api.exception';
 import type { KsefInvoicingAdapterOptions } from './ksef-invoicing-adapter.types';
+import { isTaxRateEnforced } from '@openlinker/core/sales-documents';
 
 /** Neutral document types KSeF issues. Open-world `DocumentType` is narrowed to these two. */
 const SUPPORTED_DOCUMENT_TYPES: DocumentType[] = ['invoice', 'corrected'];
@@ -208,6 +209,12 @@ export class KsefInvoicingAdapter
    */
   private readonly defaultLineUnit: string | undefined;
 
+  /**
+   * Connection-level fallback `P_12` neutral code (#1290/#1291), honoured only
+   * while strict per-line enforcement is off - see the options type.
+   */
+  private readonly defaultTaxRate: string | undefined;
+
   /** Injected clock so the adapter (and its FA(3) timestamps) stay testable. */
   private readonly now: () => Date;
 
@@ -226,6 +233,7 @@ export class KsefInvoicingAdapter
   ) {
     this.payment = options.payment;
     this.defaultLineUnit = options.defaultLineUnit;
+    this.defaultTaxRate = options.defaultTaxRate;
     this.now = options.now ?? ((): Date => new Date());
     this.numberingTimeZone = options.numberingTimeZone ?? DEFAULT_NUMBERING_TIME_ZONE;
   }
@@ -267,6 +275,13 @@ export class KsefInvoicingAdapter
       issueDate: this.toIsoDate(issuedAt),
       generatedAt: issuedAt.toISOString(),
       invoiceNumber: documentNumber,
+      // #2257, gated in the #2245 review: the connection's fallback rate is
+      // withheld under strict enforcement, so a rate-less line raises instead of
+      // being silently taxed at the configured default. The env is read here
+      // rather than in the pure mapper, which must stay side-effect-free.
+      ...(isTaxRateEnforced(cmd.taxRateEra)
+        ? {}
+        : { defaultTaxRate: this.defaultTaxRate }),
       defaultLineUnit: this.defaultLineUnit,
       payment: this.payment,
     });

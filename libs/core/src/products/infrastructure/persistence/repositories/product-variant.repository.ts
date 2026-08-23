@@ -351,6 +351,22 @@ export class ProductVariantRepository implements ProductVariantRepositoryPort {
     );
   }
 
+  /**
+   * Drop a per-variant override (#2054 review).
+   *
+   * All three columns go back to null, which is the same state a variant that
+   * was never read carries - and that is the point: an absent override means
+   * "resolve through the product", while `{ taxRate: null, taxRateReadAt: <now> }`
+   * would mean "asked, and this variant has no rate", i.e. the `no-rate` state
+   * an operator surface renders as a gap.
+   */
+  async clearTaxRate(variantId: string): Promise<void> {
+    await this.repository.update(
+      { id: variantId },
+      { taxRate: null, taxRateCountry: null, taxRateReadAt: null }
+    );
+  }
+
   async findTaxRate(variantId: string): Promise<StoredTaxRate | null> {
     const row = await this.repository.findOne({
       where: { id: variantId },

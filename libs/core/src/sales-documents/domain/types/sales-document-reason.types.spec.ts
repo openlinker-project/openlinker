@@ -32,6 +32,7 @@ describe('sales-document reason vocabularies (ADR-041 decision 11)', () => {
     expect(SalesDocumentGateBlockReasonValues).toEqual([
       'unresolved-routing',
       'missing-required-tax-id',
+      'missing-tax-rate',
       'tax-rate-conflict',
       'trigger-model-manual',
       'trigger-model-batched',
@@ -57,6 +58,7 @@ describe('sales-document reason vocabularies (ADR-041 decision 11)', () => {
     expect(SalesDocumentAttentionReasonValues).toEqual([
       'unresolved-routing',
       'missing-required-tax-id',
+      'missing-tax-rate',
       'tax-rate-conflict',
       'trigger-model-batched',
     ]);

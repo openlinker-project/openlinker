@@ -24,7 +24,13 @@ function makeOrder(overrides: Partial<Order> = {}): Order {
     id: 'order-1',
     status: 'processing',
     paymentStatus: 'awaiting',
-    items: [{ id: 'i1', productId: 'p1', quantity: 2, price: 10, name: 'Widget' }],
+    // A rated line is the ordinary case now (#2248): the gate refuses a
+    // rate-less order before the trigger-model gate is even reached, so an
+    // unrated fixture would make every test here exercise the refusal instead
+    // of the behaviour it names. The refusal has its own tests below.
+    items: [
+      { id: 'i1', productId: 'p1', quantity: 2, price: 10, name: 'Widget', taxRate: '23' },
+    ],
     totals: {
       subtotal: 20,
       tax: 0,
@@ -295,7 +301,9 @@ describe('AutoIssueTriggerService', () => {
     const paidShippingOrder = (): Order =>
       makeOrder({
         paymentStatus: 'paid',
-        items: [{ id: 'i1', productId: 'p1', quantity: 1, price: 100, name: 'Widget' }],
+        items: [
+          { id: 'i1', productId: 'p1', quantity: 1, price: 100, name: 'Widget', taxRate: '23' },
+        ],
         totals: {
           subtotal: 100,
           tax: 0,
@@ -526,6 +534,78 @@ describe('AutoIssueTriggerService', () => {
 
       expect(outcome).toEqual({ kind: 'blocked', block: { reason: 'trigger-model-manual' } });
       expect(syncJobs.schedule).not.toHaveBeenCalled();
+    });
+
+    it('should report missing-tax-rate, and report it INSTEAD of trigger-model-manual', async () => {
+      // The ordering is the point (#2248). On a `manual` connection both apply,
+      // and they say different things: `trigger-model-manual` means "waiting for
+      // a human" and keeps a working CTA, while this one means no human can
+      // issue it either. Reporting the weaker reason leaves the operator
+      // clicking a button that refuses.
+      //
+      // The gate only fires where the deployment opted in (#2245 review), so
+      // the switch is set here explicitly. The default is covered below.
+      const previousStrict = process.env['OL_TAX_RATE_STRICT_ENABLED'];
+      process.env['OL_TAX_RATE_STRICT_ENABLED'] = 'true';
+      try {
+        connectionPort.list.mockResolvedValue([makeConnection('manual')]);
+
+        const outcome = await service.onOrderTransition(
+          makeOrder({
+            paymentStatus: 'paid',
+            items: [{ id: 'i1', productId: 'p1', quantity: 1, price: 10, name: 'Widget' }],
+          }),
+          'src-1',
+        );
+
+        expect(outcome).toMatchObject({ kind: 'blocked', block: { reason: 'missing-tax-rate' } });
+        expect(syncJobs.schedule).not.toHaveBeenCalled();
+      } finally {
+        if (previousStrict === undefined) delete process.env['OL_TAX_RATE_STRICT_ENABLED'];
+        else process.env['OL_TAX_RATE_STRICT_ENABLED'] = previousStrict;
+      }
+    });
+
+    it('should NOT block a rate-less order with no switch set - that is the default', async () => {
+      // Coverage is zero on deploy, so the refusal ships off. If this ever goes
+      // red, the default flipped and every uninvoiced order on every existing
+      // install just became blocked.
+      const previousStrict = process.env['OL_TAX_RATE_STRICT_ENABLED'];
+      delete process.env['OL_TAX_RATE_STRICT_ENABLED'];
+      try {
+        connectionPort.list.mockResolvedValue([makeConnection('auto-on-paid')]);
+
+        const outcome = await service.onOrderTransition(
+          makeOrder({
+            paymentStatus: 'paid',
+            items: [{ id: 'i1', productId: 'p1', quantity: 1, price: 10, name: 'Widget' }],
+          }),
+          'src-1',
+        );
+
+        expect(outcome).toEqual({ kind: 'none' });
+        expect(syncJobs.schedule).toHaveBeenCalledTimes(1);
+      } finally {
+        if (previousStrict === undefined) delete process.env['OL_TAX_RATE_STRICT_ENABLED'];
+        else process.env['OL_TAX_RATE_STRICT_ENABLED'] = previousStrict;
+      }
+    });
+
+    it("should NOT block on '0' - a zero rate is an answer, not a gap", async () => {
+      connectionPort.list.mockResolvedValue([makeConnection('auto-on-paid')]);
+
+      const outcome = await service.onOrderTransition(
+        makeOrder({
+          paymentStatus: 'paid',
+          items: [
+            { id: 'i1', productId: 'p1', quantity: 1, price: 10, name: 'Book', taxRate: '0' },
+          ],
+        }),
+        'src-1',
+      );
+
+      expect(outcome).toEqual({ kind: 'none' });
+      expect(syncJobs.schedule).toHaveBeenCalledTimes(1);
     });
 
     it('should report trigger-model-batched, keeping the existing PII-safe log', async () => {

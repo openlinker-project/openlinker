@@ -37,9 +37,11 @@ export { normalizeShippingLineName } from './domain/types/shipping-line-label.ty
 export {
   describeMissingTaxRate,
   findMissingTaxRate,
+  findOrderTaxRateGap,
 } from './domain/types/order-tax-rate-gate.types';
 export type {
   MissingTaxRateFinding,
+  TaxRateGateBasketLine,
   TaxRateGateLine,
 } from './domain/types/order-tax-rate-gate.types';
 export { MissingTaxRateException } from './domain/exceptions/missing-tax-rate.exception';

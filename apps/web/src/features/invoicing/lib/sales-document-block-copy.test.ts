@@ -113,13 +113,15 @@ describe('resolveSalesDocumentBlockCopy', () => {
         t,
       ),
     ).toMatchObject({ tone: 'error' });
+    // `tax-rate-conflict` carries the dedicated `conflict` tone (#2253): a
+    // shop-versus-channel disagreement is an advisory, not a failure.
     expect(
       resolveSalesDocumentBlockCopy(
         order({ salesDocumentBlockReason: 'tax-rate-conflict' }),
         false,
         t,
       ),
-    ).toMatchObject({ tone: 'error' });
+    ).toMatchObject({ tone: 'conflict' });
   });
 
   it('states the honest minimum for a reason this build does not recognise', () => {
@@ -146,5 +148,50 @@ describe('resolveSalesDocumentBlockCopy', () => {
     const rendered = `${copy?.title ?? ''} ${copy?.body ?? ''}`;
     expect(rendered).not.toContain('unresolved-routing');
     expect(rendered).not.toContain('ambiguous-connection-no-primary');
+  });
+});
+
+describe('resolveSalesDocumentBlockCopy - missing tax rate (#2254)', () => {
+  const blocked = order({ salesDocumentBlockReason: 'missing-tax-rate' });
+
+  it('points at the shop for a line OpenLinker has in its catalogue', () => {
+    const copy = resolveSalesDocumentBlockCopy(blocked, false, t, [
+      { name: 'Blue mug', inCatalogue: true },
+    ]);
+    expect(copy?.title).toContain('1 line has no tax rate.');
+    expect(copy?.body).toContain('Blue mug');
+    expect(copy?.body).toContain('Rates arrive with the product sync.');
+  });
+
+  it('says the fix will not release the order when nothing is in the catalogue', () => {
+    const copy = resolveSalesDocumentBlockCopy(blocked, false, t, [
+      { name: 'Marketplace-only widget', inCatalogue: false },
+    ]);
+    expect(copy?.title).toContain('is not in your catalogue.');
+    expect(copy?.body).toContain('will not release this order');
+  });
+
+  it('counts the lines rather than naming one product on a long order', () => {
+    const copy = resolveSalesDocumentBlockCopy(blocked, false, t, [
+      { name: 'A', inCatalogue: true },
+      { name: 'B', inCatalogue: true },
+      { name: 'C', inCatalogue: true },
+    ]);
+    expect(copy?.title).toContain('3 lines have no tax rate.');
+  });
+
+  it('never claims an ambiguous tax class', () => {
+    // The reason a rate is unknown (`TaxRateUnknownReason`) is dropped when the
+    // master's answer is projected onto the catalogue, so the panel cannot tell
+    // "ambiguous" apart from "blank". Copy that claimed it pointed the operator
+    // at the product when the fix is in the shop's rate table.
+    for (const lines of [
+      [{ name: 'A', inCatalogue: true }],
+      [{ name: 'A', inCatalogue: false }],
+      [] as { name: string; inCatalogue: boolean }[],
+    ]) {
+      const copy = resolveSalesDocumentBlockCopy(blocked, false, t, lines);
+      expect(`${copy?.title ?? ''} ${copy?.body ?? ''}`).not.toContain('ambiguous');
+    }
   });
 });

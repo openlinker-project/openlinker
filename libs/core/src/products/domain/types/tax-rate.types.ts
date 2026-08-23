@@ -94,6 +94,32 @@ export function isResolvedTaxRate(resolution: TaxRateResolution): resolution is 
 }
 
 /**
+ * Whether an answer may be written onto the catalogue row.
+ *
+ * Pure, and the single definition of the rule, because getting it wrong is
+ * silent: `{ code: null, readAt: <now> }` is the *no-rate* state, which blocks
+ * documents and refuses publishes, so only an answer that really means "the
+ * master answered and named no rate" may produce it.
+ *
+ * - `resolved` - the rate itself. Persist.
+ * - `unknown` / `not-configured`, `unknown` / `ambiguous` - the master answered
+ *   and its answer does not name a rate. An operator fixes it in the shop.
+ *   Persist.
+ * - `unknown` / `unreadable` - the read established nothing (a settings call
+ *   that failed, a partial response). The capability contract says a transport
+ *   failure throws rather than becoming an answer; where a reason survives
+ *   anyway it must NOT persist, or one 500 during a sweep flips a whole
+ *   catalogue from *not checked* to *no rate*.
+ * - `inherited` - not a rate at all. The caller CLEARS the variant override
+ *   instead, so the row goes genuinely absent rather than reading as a gap.
+ */
+export function isPersistableTaxRateRead(resolution: TaxRateResolution): boolean {
+  if (resolution.kind === 'resolved') return true;
+  if (resolution.kind === 'inherited') return false;
+  return resolution.reason !== 'unreadable';
+}
+
+/**
  * The rate as OpenLinker holds it for one catalogue row, with the read state
  * made explicit so a consumer cannot mistake "never checked" for "no rate".
  *

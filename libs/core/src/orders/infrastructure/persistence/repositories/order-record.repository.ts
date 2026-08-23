@@ -41,6 +41,7 @@ import {
   SalesDocumentAttentionReasonValues,
   isSalesDocumentGateBlockReason,
   isSalesDocumentUnresolvedReason,
+  isTaxRateEra,
 } from '@openlinker/core/sales-documents';
 import type { PriceTaxTreatment } from '../../../domain/types/order.types';
 import type { OrderFxIntent, OrderFxStamp } from '../../../domain/types/order-fx.types';
@@ -1248,7 +1249,11 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       entity.fxIntendedCurrency ?? null,
       entity.salesDocumentBlockedAt ?? null,
       entity.salesDocumentBlockReleasedAt ?? null,
-      entity.taxRateEra ?? null
+      // Coerced through the guard rather than cast, for the same reason the two
+      // reason columns above are: the column is a plain `varchar`, and a value
+      // this build does not recognise must read as "no era" - i.e. the tax-rate
+      // guard applies - rather than silently exempting the order from it.
+      isTaxRateEra(entity.taxRateEra) ? entity.taxRateEra : null
     );
   }
 

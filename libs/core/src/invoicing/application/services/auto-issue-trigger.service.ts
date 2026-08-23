@@ -80,10 +80,11 @@ import type {
   SalesDocumentBlock,
   SalesDocumentBlockOutcome,
 } from '@openlinker/core/sales-documents';
+import { isTaxRateEnforced } from '@openlinker/core/sales-documents';
 import { Logger } from '@openlinker/shared/logging';
 import {
   describeMissingTaxRate,
-  findMissingTaxRate,
+  findOrderTaxRateGap,
 } from '../../domain/types/order-tax-rate-gate.types';
 
 import type { IAutoIssueTriggerService } from './auto-issue-trigger.service.interface';
@@ -230,6 +231,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     order: Order,
     sourceConnectionId: string,
     sourceEventId?: string,
+    taxRateEra?: string | null,
   ): Promise<SalesDocumentBlockOutcome> {
     // D8: only ACTIVE invoicing connections receive issuance jobs. The
     // scheduler's `status: 'active'` filter already excludes disabled/error/
@@ -325,15 +327,37 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
       // means "waiting for a human", which is a workflow state with a working
       // CTA, while this one means "no human can issue it either". Reporting the
       // weaker reason would leave an operator clicking a button that refuses.
-      const missingRate = findMissingTaxRate(order.items);
-      if (missingRate) {
-        return await this.reportBlock(
-          {
-            reason: 'missing-tax-rate',
-            detail: describeMissingTaxRate(missingRate),
-          },
-          order.id,
+      //
+      // Two gates on the check itself (#2245 review). It is off unless the
+      // deployment switched strict enforcement on - with catalogue coverage at
+      // zero on deploy an ungated gate blocks every order - and it never applies
+      // to a pre-rollout order, which ADR-052 § Consequences says issues exactly
+      // as it always did.
+      //
+      // `findOrderTaxRateGap`, not `findMissingTaxRate`: the write path guards
+      // the COMPOSED command, which carries a shipping line the order's items do
+      // not. An order whose goods total 0 but which still charges delivery
+      // passed an items-only scan, enqueued, composed a blank-rate shipping line
+      // and then threw on every attempt with no reason persisted anywhere - the
+      // silent decline ADR-041 §54 forbids.
+      if (isTaxRateEnforced(taxRateEra)) {
+        const missingRate = findOrderTaxRateGap(
+          order.items.map((item) => ({
+            productId: item.productId,
+            taxRate: item.taxRate,
+            gross: item.price * item.quantity,
+          })),
+          order.totals.shipping,
         );
+        if (missingRate) {
+          return await this.reportBlock(
+            {
+              reason: 'missing-tax-rate',
+              detail: describeMissingTaxRate(missingRate),
+            },
+            order.id,
+          );
+        }
       }
 
       const gate = this.evaluateGate(order, triggerModel, connection.id);
@@ -360,6 +384,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
         sourceEventId,
         this.readShippingLineName(connection),
         sourcePlatformType,
+        taxRateEra,
       );
 
       await this.syncJobs.schedule({
@@ -527,6 +552,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     sourceEventId?: string,
     shippingLineName?: string,
     sourcePlatformType?: string,
+    taxRateEra?: string | null,
   ): InvoicingIssuePayloadV1 {
     // The mapper owns the neutral Order->command rules and may surface
     // InvalidBuyerProfileError / UnsupportedPriceTreatmentError (both PII-clean).
@@ -541,6 +567,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
       connectionId: invoicingConnectionId,
       idempotencyKey,
       shippingLineName,
+      taxRateEra,
     });
 
     // #12: flatten the BuyerProfile class into the PLAIN, jsonb-safe field-set.
@@ -577,6 +604,13 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     // thread it onto the command's `source` numbering axis.
     if (sourcePlatformType !== undefined && sourcePlatformType.trim().length > 0) {
       payload.source = sourcePlatformType;
+    }
+    // #2245 review: a pre-rollout order is exempt from the write-path tax-rate
+    // guard, and the worker is where that guard runs - so the marker has to
+    // survive the hop. Without it the gate would let the order through and the
+    // handler would refuse it, which is worse than either answer alone.
+    if (command.taxRateEra !== undefined && command.taxRateEra !== null) {
+      payload.taxRateEra = command.taxRateEra;
     }
 
     return payload;

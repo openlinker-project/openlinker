@@ -56,6 +56,7 @@ import {
 } from '@openlinker/core/invoicing';
 import type { IssuedDocumentLineAmounts } from '@openlinker/core/invoicing';
 import { MissingTaxRateException, findMissingTaxRate } from '@openlinker/core/invoicing';
+import { isTaxRateEnforced } from '@openlinker/core/sales-documents';
 import type { IInfaktHttpClient } from '../http/infakt-http-client.interface';
 import { InfaktApiError } from '../../domain/exceptions/infakt-api.error';
 import type {
@@ -236,24 +237,28 @@ function toInfaktEmailLocale(locale: InvoiceEmailLocale | undefined): string | u
 }
 
 /**
- * There is no default any more (#2257).
+ * Poland's standard VAT rate - the "regime rate" this adapter substitutes when
+ * core leaves `InvoiceLine.taxRate` empty.
  *
- * This adapter used to substitute Poland's standard 23% whenever core left
- * `InvoiceLine.taxRate` empty - which it always did, because core had no
- * per-line rate to give. That guess is what the whole #2245 epic exists to
- * remove: a silent 23% is indistinguishable from a confirmed 23% on the issued
- * document, and the entire cost of being wrong lands on the seller.
+ * That substitution is what the whole #2245 epic exists to remove: a silent 23%
+ * is indistinguishable from a confirmed 23% on the issued document, and the
+ * entire cost of being wrong lands on the seller. It is removed BY THE ROLLOUT
+ * SWITCH rather than by a deploy (#2257, gated in the #2245 review) - with
+ * `OL_TAX_RATE_STRICT_ENABLED=true` a rate-less line is refused; with the switch
+ * off (the default) the pre-epic default stands, because catalogue coverage is
+ * zero on deploy and refusing here would 422 every invoice on day one.
  *
- * Core now refuses an issuance whose lines do not all name a rate, so an empty
- * value should never reach here. The guard below is defence in depth, and it
- * FAILS rather than filling the gap.
+ * The two constants MUST stay consistent with each other: a net/gross split that
+ * does not match the declared `tax_symbol` is itself rejected by inFakt as an
+ * invalid `value.tax_values`.
  *
- * The historical note is worth keeping: an empty `tax_symbol` does not merely
- * get rejected on its own field - inFakt cascades it into `services.gross` /
- * `value.tax_values` errors too (verified live, 2026-07-01), so a rate-less
- * line was never going to produce a document either way. The difference is that
- * the failure now names the product instead of a wire field.
+ * Verified live (2026-07-01): an empty `tax_symbol` does not merely get rejected
+ * on its own field - inFakt cascades it into `services.gross` /
+ * `value.tax_values` errors too, so EVERY line on EVERY invoice 422'd before
+ * this fallback existed. That is precisely the outage the switch defers.
  */
+const DEFAULT_PL_VAT_SYMBOL = '23';
+const DEFAULT_PL_VAT_RATE = 0.23;
 
 /**
  * Maps a neutral taxRate string to an Infakt `tax_symbol`.
@@ -285,7 +290,10 @@ function toInfaktTaxSymbol(taxRate: string): string {
     case 'oo':
       return 'np';
     default:
-      return code;
+      // An empty code resolves to the regime default only while strict
+      // enforcement is off; under it, `assertEveryLineHasATaxRate` has already
+      // refused the command before this runs.
+      return code === '' ? DEFAULT_PL_VAT_SYMBOL : code;
   }
 }
 
@@ -297,11 +305,13 @@ function toInfaktTaxSymbol(taxRate: string): string {
  * 100 and throws on fractional input. The old `n > 1` heuristic that lived here
  * accepted both spellings and, as a side effect, read a genuine 1% rate as 100%.
  *
- * An empty rate no longer resolves to anything (#2257) - the caller refuses such
- * a command before reaching this function, so there is nothing left to be
- * consistent with.
+ * Must stay consistent with `toInfaktTaxSymbol`'s empty-string fallback - a
+ * mismatched net/gross split for the declared tax_symbol is itself rejected by
+ * Infakt as an invalid `value.tax_values`. Under strict enforcement neither is
+ * reachable: the command is refused first.
  */
 function taxRateNumeric(taxRate: string): number {
+  if (taxRate.trim() === '') return DEFAULT_PL_VAT_RATE;
   return taxRatePercentToFraction(taxRate) ?? 0;
 }
 
@@ -552,10 +562,12 @@ export class InfaktInvoicingAdapter
   }
 
   async issueInvoice(cmd: IssueInvoiceCommand): Promise<IssueInvoiceResult> {
-    // #2257 — defence in depth. Core refuses a rate-less command before the
-    // adapter is reached, so this should be unreachable; it exists because the
-    // alternative to failing here is silently substituting a rate onto a real
-    // fiscal document, which is exactly what this change removes.
+    // #2257 — defence in depth, and only under the rollout switch. With strict
+    // enforcement on, core refuses a rate-less command before the adapter is
+    // reached, so this should be unreachable; it exists because the alternative
+    // to failing is silently substituting a rate onto a real fiscal document.
+    // With the switch off the regime default below stands, which is what keeps
+    // a zero-coverage catalogue issuing while its rates are filled in.
     assertEveryLineHasATaxRate(cmd);
     const { lines, documentType, idempotencyKey, orderId } = cmd;
     // Resolved BEFORE the client upsert so a malformed currency costs no
@@ -1365,14 +1377,19 @@ export class InfaktInvoicingAdapter
 }
 
 /**
- * Refuse a command whose lines do not all name a tax rate (#2257).
+ * Refuse a command whose lines do not all name a tax rate (#2257), when the
+ * deployment has switched strict enforcement on.
  *
- * The provider defaults are gone, so a rate-less line has nowhere to resolve
- * to. Raising the same neutral exception core does keeps the failure legible at
- * every layer - and keeps its existing 422 mapping - rather than surfacing as an
- * inFakt wire-field rejection nobody can act on.
+ * Under strict enforcement a rate-less line has nowhere to resolve to. Raising
+ * the same neutral exception core does keeps the failure legible at every layer
+ * - and keeps its existing 422 mapping - rather than surfacing as an inFakt
+ * wire-field rejection nobody can act on. A pre-rollout order never reaches
+ * here: core's own guard exempts it and passes the command through, and this
+ * adapter has no order era to consult, so the substitution below is what serves
+ * it.
  */
 function assertEveryLineHasATaxRate(cmd: IssueInvoiceCommand): void {
+  if (!isTaxRateEnforced(cmd.taxRateEra)) return;
   const finding = findMissingTaxRate(
     cmd.lines.map((line) => ({ productId: line.name, taxRate: line.taxRate })),
   );

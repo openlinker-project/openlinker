@@ -9,23 +9,40 @@
  *   - `unitPriceGross` -> `cenaBrutto`
  *   - `taxRate`        -> `stawkaVAT`
  *
- * NO TAX-REGIME DEFAULT (#2257). This mapper used to substitute the Polish
- * standard "23" whenever the neutral line carried no rate - which was always,
- * because core had no per-line rate to give. That guess is what #2245 removes:
- * on the issued document a silent 23% is indistinguishable from a confirmed
- * one, and the seller carries the whole cost of it being wrong.
+ * THE TAX-REGIME DEFAULT IS ROLLOUT-GATED (#2257, gated in the #2245 review).
+ * This mapper substitutes the Polish standard "23" whenever the neutral line
+ * carries no rate - which, until a catalogue carries rates, is always. That
+ * guess is what #2245 exists to remove: on the issued document a silent 23% is
+ * indistinguishable from a confirmed one, and the seller carries the whole cost
+ * of it being wrong.
  *
- * Core now refuses a rate-less command before any adapter runs, so the guard
- * here is defence in depth. The Subiekt bridge would reject the line anyway
- * ("StawkaVAT jest wymagana"); the difference is that the failure now names the
- * product rather than a bridge field. The bridge parses Polish rate symbols
- * ("23","8","5","0","zw","np") in percent-as-string notation (#2247), and a
- * rate the source supplied passes through verbatim.
+ * So it is removed BY A SWITCH, not by a deploy. With
+ * `OL_TAX_RATE_STRICT_ENABLED=true` a rate-less line raises instead; with the
+ * switch off (the default) the pre-#2245 default survives, because catalogue
+ * coverage is zero on deploy and refusing here would refuse every invoice on
+ * day one. See docs/operations/tax-rate-coverage.md for the order the two steps
+ * go in.
+ *
+ * Under strict enforcement core refuses a rate-less command before any adapter
+ * runs, so this guard is defence in depth. The Subiekt bridge would reject the
+ * line anyway ("StawkaVAT jest wymagana"); the difference is that the failure
+ * names the product rather than a bridge field. The bridge parses Polish rate
+ * symbols ("23","8","5","0","zw","np") in percent-as-string notation (#2247),
+ * and a rate the source supplied passes through verbatim.
  *
  * @module libs/integrations/subiekt/src/infrastructure/mappers
  */
 import type { CorrectionLine, InvoiceLine } from '@openlinker/core/invoicing';
 import { MissingTaxRateException, assertPercentTaxRateNotation } from '@openlinker/core/invoicing';
+import { isTaxRateStrictEnabled } from '@openlinker/core/sales-documents';
+
+/**
+ * The Polish standard rate, and the value this mapper substituted for every
+ * rate-less line before #2245. Kept - not deleted - because it is still the
+ * behaviour with `OL_TAX_RATE_STRICT_ENABLED` off, which is the default while
+ * catalogue coverage is being filled in.
+ */
+const DEFAULT_PL_VAT_RATE = '23';
 import type { BridgeKorektaLine, BridgeLine } from '../../bridge/subiekt-bridge.types';
 
 /**
@@ -35,12 +52,16 @@ import type { BridgeKorektaLine, BridgeLine } from '../../bridge/subiekt-bridge.
  * letting `'0.23'` reach Subiekt, where it is neither a known symbol nor a rate
  * anyone declared.
  *
- * An empty code now raises (#2257) instead of resolving to "23". Nothing here
- * is allowed to invent a rate for a fiscal document.
+ * An empty code raises under strict enforcement (#2257) and otherwise resolves
+ * to {@link DEFAULT_PL_VAT_RATE}, which is what every document issued through
+ * this bridge before #2245 carried.
  */
 function toStawkaVat(taxRate: string, lineName: string): string {
   const code = assertPercentTaxRateNotation(taxRate);
   if (code.length === 0) {
+    if (!isTaxRateStrictEnabled()) {
+      return DEFAULT_PL_VAT_RATE;
+    }
     throw new MissingTaxRateException(lineName, {
       lineCount: 1,
       totalLines: 1,

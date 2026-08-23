@@ -29,6 +29,10 @@ import type {
 } from '../../../domain/types/product.types';
 import { LOW_STOCK_THRESHOLD } from '../../../domain/types/product.types';
 import type { StoredTaxRate } from '../../../domain/types/tax-rate.types';
+import type {
+  ConnectionTaxRateCoverage,
+  TaxRateCoverage,
+} from '../../../domain/types/tax-rate-coverage.types';
 
 /**
  * Aggregated total available stock for the joined `stock` subquery alias.
@@ -312,12 +316,7 @@ export class ProductRepository implements ProductRepositoryPort {
    * One grouped pass rather than three counts, so the numbers cannot disagree
    * with each other under concurrent syncs.
    */
-  async countTaxRateStates(): Promise<{
-    total: number;
-    known: number;
-    missing: number;
-    notChecked: number;
-  }> {
+  async countTaxRateStates(): Promise<TaxRateCoverage> {
     const row = await this.repository
       .createQueryBuilder('product')
       .select('COUNT(*)', 'total')
@@ -348,16 +347,7 @@ export class ProductRepository implements ProductRepositoryPort {
    * forbids - the same posture the stock-aggregation join in `findMany`
    * already takes. Columns are camelCase in Postgres and must stay quoted.
    */
-  async countTaxRateStatesByConnection(): Promise<
-    Array<{
-      connectionId: string;
-      platformType: string;
-      total: number;
-      known: number;
-      missing: number;
-      notChecked: number;
-    }>
-  > {
+  async countTaxRateStatesByConnection(): Promise<ConnectionTaxRateCoverage[]> {
     const rows = (await this.repository.query(
       `SELECT m."connectionId"   AS "connectionId",
               m."platformType"   AS "platformType",

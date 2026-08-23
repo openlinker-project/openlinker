@@ -437,6 +437,11 @@ export class InvoicingController {
         idempotencyKey,
         shippingLineName,
         source,
+        // #2245 review: a pre-rollout order is exempt from the write-path
+        // tax-rate guard, so the marker has to reach the command on the MANUAL
+        // route too - this endpoint is exactly where an operator releases an
+        // order the auto path skipped.
+        taxRateEra: record.taxRateEra,
       });
     } catch (error) {
       throw this.toHttpException(error);
@@ -569,6 +574,8 @@ export class InvoicingController {
         shippingLineName: await this.resolveShippingLineName(record.connectionId),
         // #1694: same per-source numbering axis as the single-issue path.
         source: await this.resolveSourcePlatformType(orderRecord.sourceConnectionId),
+        // #2245 review: same pre-rollout exemption as the single-issue path.
+        taxRateEra: orderRecord.taxRateEra,
       });
       await this.invoiceService.issueInvoice(command);
       await this.clearSalesDocumentBlock(record.orderId);
@@ -696,6 +703,8 @@ export class InvoicingController {
         shippingLineName: await this.resolveShippingLineName(connectionId),
         // #1694: same per-source numbering axis as the single-issue path.
         source: await this.resolveSourcePlatformType(record.sourceConnectionId),
+        // #2245 review: same pre-rollout exemption as the single-issue path.
+        taxRateEra: record.taxRateEra,
       });
       const issued = await this.invoiceService.issueInvoice(command);
       await this.clearSalesDocumentBlock(orderId);

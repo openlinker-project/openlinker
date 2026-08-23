@@ -13,7 +13,7 @@
  * @module libs/core/src/fiscalization/application/mappers
  */
 import type { Order, OrderItem } from '@openlinker/core/orders';
-import { splitShippingAcrossRates } from '@openlinker/core/sales-documents';
+import { minorUnitExponentFor, splitShippingAcrossRates } from '@openlinker/core/sales-documents';
 
 import type {
   FiscalRecipient,
@@ -29,57 +29,6 @@ import { UnsupportedFiscalPriceTreatmentError } from './errors/unsupported-fisca
  * overrides it via {@link OrderToRegisterTransactionCommandInput.shippingLineName}.
  */
 const SHIPPING_LINE_NAME = 'Shipping';
-
-/**
- * Minor-unit digits per ISO 4217 currency, for every currency whose exponent is
- * NOT 2. Exhaustive as of ISO 4217:2015 amendments - the vast majority of
- * currencies are 2-digit, so listing the exceptions keeps the table small and
- * makes an unknown code fall through to the safe default below.
- *
- * This is a UNIT COUNT, not a rate and not an amount: it says how finely a
- * currency can express money, which is what "one minor unit of tolerance" needs
- * to mean the same thing in JPY as in PLN.
- */
-const CURRENCY_MINOR_UNIT_DIGITS: Readonly<Record<string, number>> = {
-  // Exponent 0 - no minor unit at all.
-  BIF: 0,
-  CLP: 0,
-  DJF: 0,
-  GNF: 0,
-  ISK: 0,
-  JPY: 0,
-  KMF: 0,
-  KRW: 0,
-  PYG: 0,
-  RWF: 0,
-  UGX: 0,
-  UYI: 0,
-  VND: 0,
-  VUV: 0,
-  XAF: 0,
-  XOF: 0,
-  XPF: 0,
-  // Exponent 3.
-  BHD: 3,
-  IQD: 3,
-  JOD: 3,
-  KWD: 3,
-  LYD: 3,
-  OMR: 3,
-  TND: 3,
-  // Exponent 4 - unit-of-account currencies; included for completeness.
-  CLF: 4,
-  UYW: 4,
-};
-
-/**
- * Minor-unit digits assumed for a currency the table doesn't name. Two is both
- * the ISO default and the conservative choice here: an unknown 0-digit currency
- * merely gets a tolerance finer than its own smallest coin (stricter, never
- * laxer), while assuming 0 for an unknown 2-digit currency would reject every
- * ordinary basket carrying a grosz of float dust.
- */
-const DEFAULT_MINOR_UNIT_DIGITS = 2;
 
 /**
  * Tolerance, in the currency's own units, when checking that the composed lines
@@ -103,10 +52,11 @@ const DEFAULT_MINOR_UNIT_DIGITS = 2;
  * amount, it only decides whether two reported amounts agree.
  */
 function totalReconciliationEpsilon(currency: string | undefined): number {
-  const digits =
-    CURRENCY_MINOR_UNIT_DIGITS[(currency ?? '').trim().toUpperCase()] ??
-    DEFAULT_MINOR_UNIT_DIGITS;
-  return 10 ** -digits;
+  // One table for the whole repository (#2260 review). The shipping split needs
+  // the same answer to make its parts sum in the currency the buyer paid in, so
+  // the exponents live in the `sales-documents` leaf both document contexts
+  // already share rather than once per consumer.
+  return 10 ** -minorUnitExponentFor(currency);
 }
 
 /** Inputs to {@link toRegisterTransactionCommand}. */
@@ -154,7 +104,9 @@ export function toRegisterTransactionCommand(
 
   const lines = order.items.map((item) => toFiscalLine(item, order.id));
 
-  lines.push(...toShippingLines(order.totals.shipping, order.items, shippingLineName));
+  lines.push(
+    ...toShippingLines(order.totals.shipping, order.items, order.totals.currency, shippingLineName),
+  );
 
   assertLinesSumToTotal(lines, order.totals.total, order.id, order.totals.currency);
 
@@ -271,6 +223,7 @@ function toFiscalLine(item: OrderItem, orderId: string): FiscalTransactionLine {
 function toShippingLines(
   shipping: number,
   items: readonly OrderItem[],
+  currency: string | null | undefined,
   name?: string,
 ): FiscalTransactionLine[] {
   if (!Number.isFinite(shipping) || shipping <= 0) {
@@ -283,6 +236,9 @@ function toShippingLines(
       taxRate: item.taxRate?.trim() ?? null,
       gross: item.price * item.quantity,
     })),
+    // The order's own currency decides how many decimals the parts round to, so
+    // they sum exactly in the units the buyer paid in (#2260 review).
+    minorUnitExponentFor(currency),
   );
 
   if (parts === null) {

@@ -6,7 +6,12 @@
  *
  * @module libs/core/src/products/domain/types
  */
-import { effectiveTaxRate, isResolvedTaxRate, taxRateState } from './tax-rate.types';
+import {
+  effectiveTaxRate,
+  isPersistableTaxRateRead,
+  isResolvedTaxRate,
+  taxRateState,
+} from './tax-rate.types';
 import type { StoredTaxRate } from './tax-rate.types';
 
 const READ_AT = new Date('2026-08-21T10:00:00Z');
@@ -88,5 +93,31 @@ describe('isResolvedTaxRate', () => {
     expect(isResolvedTaxRate({ kind: 'resolved', code: '23', countryIso2: 'PL' })).toBe(true);
     expect(isResolvedTaxRate({ kind: 'unknown', reason: 'not-configured' })).toBe(false);
     expect(isResolvedTaxRate({ kind: 'inherited' })).toBe(false);
+  });
+});
+
+describe('isPersistableTaxRateRead', () => {
+  it('should persist a resolved rate', () => {
+    expect(isPersistableTaxRateRead({ kind: 'resolved', code: '23', countryIso2: 'PL' })).toBe(true);
+  });
+
+  it('should persist the two unknowns that mean the master answered', () => {
+    // `{ code: null, readAt: <now> }` is the *no-rate* state, and only an answer
+    // may produce it: both of these are the shop saying it names no rate, which
+    // an operator fixes in the shop.
+    expect(isPersistableTaxRateRead({ kind: 'unknown', reason: 'not-configured' })).toBe(true);
+    expect(isPersistableTaxRateRead({ kind: 'unknown', reason: 'ambiguous' })).toBe(true);
+  });
+
+  it('should NOT persist an unreadable read', () => {
+    // One flaky settings call would otherwise flip a whole catalogue from
+    // *not checked* to *no rate*, which blocks documents and refuses publishes.
+    expect(isPersistableTaxRateRead({ kind: 'unknown', reason: 'unreadable' })).toBe(false);
+  });
+
+  it('should NOT persist an inherited read', () => {
+    // It is not a rate at all - the caller clears the override instead, so the
+    // row goes genuinely absent rather than reading as a gap.
+    expect(isPersistableTaxRateRead({ kind: 'inherited' })).toBe(false);
   });
 });

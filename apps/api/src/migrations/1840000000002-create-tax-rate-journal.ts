@@ -15,8 +15,8 @@
  */
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class CreateTaxRateJournal1837000000012 implements MigrationInterface {
-  name = 'CreateTaxRateJournal1837000000012';
+export class CreateTaxRateJournal1840000000002 implements MigrationInterface {
+  name = 'CreateTaxRateJournal1840000000002';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`

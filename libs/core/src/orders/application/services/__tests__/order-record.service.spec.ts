@@ -441,6 +441,12 @@ describe('OrderRecordService', () => {
             unitPrice: 10.99,
             sourceConnectionId: 'source-connection-123',
             placedAt: null,
+            // #2250 - the snapshot line carried no rate, so the transcribed row
+            // carries none. No default: a row that disagreed with the snapshot
+            // it copies would be worse than an empty one.
+            taxRate: null,
+            taxSource: null,
+            taxRateReadAt: null,
           },
         ]);
       });

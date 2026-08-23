@@ -23,6 +23,7 @@ import {
   createAuthenticatedSessionAdapter,
 } from '../../../test/test-utils';
 import { ApiError } from '../../../shared/api/api-error';
+import { formatAmount } from '../../../shared/format/format-amount';
 import type { Connection } from '../../connections';
 import type { OrderRecord } from '../../orders';
 import type { InvoiceRecord } from '../api/invoicing.types';
@@ -785,5 +786,109 @@ describe('OrderInvoicePanel — write-access gating (#1613, mirrors #1615)', () 
       expect(await screen.findByRole('button', { name: /check provider/i })).toBeInTheDocument();
       expect(screen.queryByText(/This connection invoices by hand/i)).toBeNull();
     });
+  });
+});
+
+describe('OrderInvoicePanel — shipping split preview (#2254)', () => {
+  /** An order whose snapshot carries line rates and a shipping charge. */
+  function orderWithBasket(
+    lines: { id: string; rate: string | null; price: number; quantity: number }[],
+    shipping: number,
+  ): OrderRecord {
+    return {
+      ...order,
+      orderSnapshot: {
+        items: lines.map((line) => ({
+          id: line.id,
+          productId: `prod_${line.id}`,
+          quantity: line.quantity,
+          price: line.price,
+          name: `Item ${line.id}`,
+          taxRate: line.rate,
+        })),
+        totals: { shipping, currency: 'PLN', total: 0 },
+      },
+    };
+  }
+
+  function renderPanel(record: OrderRecord): void {
+    renderWithProviders(<OrderInvoicePanel order={record} />, {
+      apiClient: createMockApiClient({
+        connections: { list: vi.fn().mockResolvedValue([invoicingConnection]) },
+        invoicing: { getForOrder: vi.fn().mockRejectedValue(notFound()) },
+      }),
+      ...adminSession,
+    });
+  }
+
+  it('previews parts that add up to the shipping the buyer paid', async () => {
+    // 10 across three equal-gross rates does not divide into cents. The document
+    // puts the remainder on the largest part; the preview must say the same,
+    // or the operator reads a split that is a cent short of what was charged.
+    renderPanel(
+      orderWithBasket(
+        [
+          { id: 'a', rate: '23', price: 100, quantity: 1 },
+          { id: 'b', rate: '8', price: 100, quantity: 1 },
+          { id: 'c', rate: '5', price: 100, quantity: 1 },
+        ],
+        10,
+      ),
+    );
+
+    const notice = await screen.findByText(/Shipping is split across the rates/i);
+    const text = notice.textContent ?? '';
+    expect(text).toContain(`${formatAmount(3.34, 'PLN')} at 23%`);
+    expect(text).toContain(`${formatAmount(3.33, 'PLN')} at 8%`);
+    expect(text).toContain(`${formatAmount(3.33, 'PLN')} at 5%`);
+    expect(3.34 + 3.33 + 3.33).toBeCloseTo(10, 2);
+  });
+
+  it('renders an exemption code without a percent suffix', async () => {
+    renderPanel(
+      orderWithBasket(
+        [
+          { id: 'a', rate: 'zw', price: 100, quantity: 1 },
+          { id: 'b', rate: '23', price: 100, quantity: 1 },
+        ],
+        10,
+      ),
+    );
+
+    const notice = await screen.findByText(/Shipping is split across the rates/i);
+    const text = notice.textContent ?? '';
+    expect(text).toContain(`${formatAmount(5, 'PLN')} at zw`);
+    expect(text).not.toContain('zw%');
+  });
+
+  it('waits instead of splitting when a line has no rate', async () => {
+    renderPanel(
+      orderWithBasket(
+        [
+          { id: 'a', rate: '23', price: 100, quantity: 1 },
+          { id: 'b', rate: null, price: 100, quantity: 1 },
+        ],
+        10,
+      ),
+    );
+
+    expect(await screen.findByText(/Shipping is waiting with the document/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Shipping is split across the rates/i)).toBeNull();
+  });
+
+  it('renders no preview when the whole basket is at one rate', async () => {
+    renderPanel(
+      orderWithBasket(
+        [
+          { id: 'a', rate: '23', price: 100, quantity: 1 },
+          { id: 'b', rate: '23', price: 50, quantity: 2 },
+        ],
+        10,
+      ),
+    );
+
+    expect(await screen.findByRole('button', { name: /issue invoice/i })).toBeInTheDocument();
+    expect(screen.queryByText(/Shipping is split across the rates/i)).toBeNull();
+    expect(screen.queryByText(/Shipping is waiting with the document/i)).toBeNull();
   });
 });

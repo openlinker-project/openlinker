@@ -52,6 +52,7 @@ import {
 import { MissingNumberingSeriesException } from '../../domain/exceptions/missing-numbering-series.exception';
 import { taxRatePercentToFraction } from '../../domain/types/tax-rate-notation.types';
 import { findMissingTaxRate } from '../../domain/types/order-tax-rate-gate.types';
+import { isTaxRateEnforced } from '@openlinker/core/sales-documents';
 import { MissingTaxRateException } from '../../domain/exceptions/missing-tax-rate.exception';
 import { CapabilityNotSupportedException } from '@openlinker/core/integrations';
 // Published so an adapter spec can pin its own pre-call refusal message against
@@ -269,6 +270,9 @@ export class InvoiceService implements IInvoiceService {
     // Checked on the COMMAND rather than on the order, so no caller can bypass
     // it by composing lines itself, and so the correction path (which composes
     // its own lines from an already-issued document) is unaffected.
+    //
+    // Off unless the deployment opted in, and never applied to a pre-rollout
+    // order - see the method's own docblock for why both gates are there.
     this.assertEveryLineHasATaxRate(cmd);
 
     const lockKey = invoiceIssueLockKey(cmd.orderId);
@@ -300,8 +304,19 @@ export class InvoiceService implements IInvoiceService {
    * `'0'` passes: a zero rate is an answer, not a gap. A blank one does not -
    * that is what the mapper emits when nothing established the rate, and the
    * three shipped providers each substitute a different default for it.
+   *
+   * Gated twice (#2245 review). The refusal applies only when the deployment
+   * has switched strict enforcement on - catalogue coverage is zero on deploy,
+   * so an ungated guard refuses 100% of issuance on day one - and never to a
+   * pre-rollout order, whose lines carry no rate because none was ever
+   * collected and which ADR-052 § Consequences says must issue as it always
+   * did. `isTaxRateEnforced` answers both at once so this site cannot check one
+   * half and forget the other.
    */
   private assertEveryLineHasATaxRate(cmd: IssueInvoiceCommand): void {
+    if (!isTaxRateEnforced(cmd.taxRateEra)) {
+      return;
+    }
     const finding = findMissingTaxRate(
       cmd.lines.map((line) => ({ productId: line.name, taxRate: line.taxRate })),
     );

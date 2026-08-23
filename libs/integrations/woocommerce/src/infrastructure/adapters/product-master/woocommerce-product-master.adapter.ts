@@ -724,8 +724,14 @@ export class WooCommerceProductMasterAdapter
    *   rows agreeing on one rate is **not** ambiguous - the answer is the same
    *   whichever the shop picks.
    *
-   * Transport failures propagate, so the sync retries rather than freezing a
-   * false "no rate" onto the catalogue row.
+   * - A store declaring no selling country is `not-configured` too: nothing can
+   *   be matched against the rate table, and the fix is a WooCommerce setting.
+   *
+   * Transport failures propagate - including the store-country read, whose
+   * failure used to be swallowed into `unreadable` and then persisted as
+   * *no rate*, so one 500 on `/settings/general` during a sweep flipped a whole
+   * catalogue from *not checked* to *rate-less* (#2054 review). The sync
+   * swallows the throw per product and leaves the row untouched.
    */
   async readProductTaxRate(input: ReadProductTaxRateInput): Promise<TaxRateResolution> {
     const wcProductId = await this.resolveWcProductId(input.productId);
@@ -737,14 +743,23 @@ export class WooCommerceProductMasterAdapter
     if (taxed === 'inherited') return { kind: 'inherited' };
 
     if (taxed.taxStatus === 'none') {
-      return { kind: 'resolved', code: '0', countryIso2: await this.readStoreCountrySafe() };
+      return {
+        kind: 'resolved',
+        code: '0',
+        countryIso2: await this.readStoreCountryForProvenance(),
+      };
     }
 
-    const storeCountry = await this.readStoreCountrySafe();
+    // Throws on a failed settings call, so the sync leaves the catalogue row
+    // untouched instead of recording a false "no rate" (#2054 review).
+    const storeCountry = await this.readStoreCountry();
     if (!storeCountry) {
+      // The store answered and declares no selling country, so no rate row can
+      // be matched: an answer, and one the operator fixes in WooCommerce - hence
+      // `not-configured` rather than `unreadable`, which never persists.
       return {
         kind: 'unknown',
-        reason: 'unreadable',
+        reason: 'not-configured',
         detail: 'the store does not declare a selling country',
       };
     }
@@ -841,25 +856,50 @@ export class WooCommerceProductMasterAdapter
    * The store's own selling country, from `woocommerce_default_country`.
    *
    * The setting is `PL` or `PL:MZ` (country plus state), so only the part
-   * before the colon is the country. Cached for the adapter's lifetime - it is
-   * a store setting, and the master sync builds one adapter per product.
+   * before the colon is the country. `null` means the store answered and
+   * declares none.
+   *
+   * **A transport failure throws**, per the capability contract: `unknown` is
+   * reserved for "the master answered", and the caller persists an `unknown` as
+   * the *no-rate* state. Swallowing a 500 on `/settings/general` here therefore
+   * used to record a whole catalogue as rate-less off one failed call - blocking
+   * documents and refusing publishes for products whose shop configuration was
+   * perfectly fine. The master sync already swallows a throw per product and
+   * leaves the row untouched, which is the honest outcome.
+   *
+   * **Only a successful read is cached.** Caching the failure would keep the
+   * false answer alive for the adapter's lifetime, and the resolved-zero path
+   * below deliberately tolerates a failure to fetch provenance - so a cached
+   * `null` from that tolerance must not become the rate path's answer.
    */
-  private async readStoreCountrySafe(): Promise<string | null> {
+  private async readStoreCountry(): Promise<string | null> {
     if (this.storeCountry !== undefined) return this.storeCountry;
+    const settings = await this.httpClient.get<WooCommerceGeneralSetting[]>(
+      '/wp-json/wc/v3/settings/general'
+    );
+    const raw = settings?.find((s) => s.id === 'woocommerce_default_country')?.value;
+    const value = Array.isArray(raw) ? raw[0] : raw;
+    this.storeCountry = value ? (value.split(':')[0]?.toUpperCase() ?? null) : null;
+    return this.storeCountry;
+  }
+
+  /**
+   * The same read, for the country carried as **provenance only**.
+   *
+   * A `tax_status: 'none'` product is a resolved zero whatever the store's
+   * country turns out to be, so losing the country must not lose the rate:
+   * here, and only here, a failure degrades to `null` (`ResolvedTaxRate.countryIso2`
+   * is documented as provenance that blocks nothing).
+   */
+  private async readStoreCountryForProvenance(): Promise<string | null> {
     try {
-      const settings = await this.httpClient.get<WooCommerceGeneralSetting[]>(
-        '/wp-json/wc/v3/settings/general'
-      );
-      const raw = settings?.find((s) => s.id === 'woocommerce_default_country')?.value;
-      const value = Array.isArray(raw) ? raw[0] : raw;
-      this.storeCountry = value ? (value.split(':')[0]?.toUpperCase() ?? null) : null;
+      return await this.readStoreCountry();
     } catch (error) {
       this.logger.warn(
-        `Could not read the store's selling country (connection: ${this.connection.id}): ${(error as Error).message}`
+        `Could not read the store's selling country for provenance (connection: ${this.connection.id}): ${(error as Error).message}`
       );
-      this.storeCountry = null;
+      return null;
     }
-    return this.storeCountry;
   }
 
   private storeCountry: string | null | undefined;

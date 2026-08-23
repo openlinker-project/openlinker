@@ -190,23 +190,28 @@ export function resolveSalesDocumentBlockCopy(
 export interface RateLessLine {
   name: string;
   inCatalogue: boolean;
-  /** The shop answered, and its answer was ambiguous (several candidate rates). */
-  ambiguousTaxClass?: boolean;
 }
 
 /**
- * The three remedy branches for a missing rate (#2254).
+ * The two remedy branches for a missing rate (#2254).
  *
  * One sentence would be wrong here, because the REASON a rate is absent decides
- * the remedy and the three are not interchangeable:
+ * the remedy and the two are not interchangeable:
  *
  *  1. blank on a mapped product - set it in the shop, and the fix releases this
  *     order on the next sync;
  *  2. the item is in no catalogue - fixing the offer will NOT release this
  *     order, because the marketplace stamped the rate at purchase; the only
- *     route is adding the item to a shop;
- *  3. the shop's tax class is ambiguous - the rate table for the shop's own
- *     country is what needs fixing, not the product.
+ *     route is adding the item to a shop.
+ *
+ * A third case exists in the domain - the shop's tax class matches several
+ * rates, so the rate TABLE is what needs fixing rather than the product - and it
+ * is deliberately NOT branched on here. The reason (`TaxRateUnknownReason`,
+ * `libs/core/src/products/domain/types/tax-rate.types.ts`) is dropped when the
+ * master's answer is projected onto the catalogue, so it never reaches the order
+ * snapshot the panel reads. A branch keyed on a flag that is always false is
+ * copy the operator can never see, and it pointed at the product when the fix is
+ * in the shop's rate table - worse than saying less.
  *
  * Plural-safe with a count, deliberately: a forty-line B2B order with six
  * rate-less lines cannot be told about one product, and every other branch in
@@ -233,23 +238,6 @@ function resolveMissingTaxRateCopy(
       body: t(
         'invoice.panel.blockNoRateUncataloguedBody',
         'The channel reported no rate at purchase, and fixing the offer now will not release this order. Add the item to a shop to release it.',
-      ),
-      detail,
-      offerSetPrimary: false,
-    };
-  }
-
-  if (lines.length > 0 && lines.every((line) => line.ambiguousTaxClass === true)) {
-    return {
-      tone: 'error',
-      title: `${t('invoice.panel.blockNoRateAmbiguousTitle', 'Not invoiced:')} ${String(count)} ${
-        count === 1
-          ? t('invoice.panel.blockNoRateAmbiguousTitleTail', 'line has an ambiguous tax class.')
-          : t('invoice.panel.blockNoRateAmbiguousTitleTailPlural', 'lines have an ambiguous tax class.')
-      }`,
-      body: t(
-        'invoice.panel.blockNoRateAmbiguousBody',
-        "The shop's tax class matches several rates for its own country, so OpenLinker cannot tell which one applies. Fix the rate table in the shop, not the product.",
       ),
       detail,
       offerSetPrimary: false,

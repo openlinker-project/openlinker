@@ -150,6 +150,15 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort, Produc
       );
     }
 
+    // The resolver's own reasons map straight onto the neutral vocabulary: an
+    // `ambiguous` group (several candidate rules, no unambiguous pick) is the
+    // same answer the WooCommerce master gives for the same shape, and must not
+    // collapse into `not-configured` - the shop is not misconfigured, it just
+    // cannot be reduced to one rate without a country to ask for.
+    if (resolution.reason === 'ambiguous') {
+      return { kind: 'unknown', reason: 'ambiguous', detail: resolution.evidence };
+    }
+
     return { kind: 'unknown', reason: 'not-configured', detail: resolution.evidence };
   }
 

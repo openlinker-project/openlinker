@@ -27,6 +27,13 @@ export interface IAutoIssueTriggerService {
    * @param sourceConnectionId - The order's source connection id.
    * @param sourceEventId - The only trace token at the seam (NO `correlationId`
    *   exists — D10); threaded into the job payload and every log envelope.
+   * @param taxRateEra - The order's persisted `taxRateEra` marker (#2245
+   *   review), or `null`/absent for an order ingested after per-line rates
+   *   existed. Passed in as an ARGUMENT, like everything else here, so the
+   *   one-way edge holds: the caller already owns the record. `'pre-rollout'`
+   *   exempts the order from the tax-rate gate, because such an order carries no
+   *   rate on any line and no catalogue edit can add one after the sale
+   *   (ADR-052 § Consequences).
    *
    * @returns A `SalesDocumentBlockOutcome` (#2100, ADR-041 decision 11) the caller
    *   persists onto the order:
@@ -55,5 +62,6 @@ export interface IAutoIssueTriggerService {
     order: Order,
     sourceConnectionId: string,
     sourceEventId?: string,
+    taxRateEra?: string | null,
   ): Promise<SalesDocumentBlockOutcome>;
 }

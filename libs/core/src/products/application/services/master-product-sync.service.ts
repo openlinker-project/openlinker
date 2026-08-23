@@ -25,6 +25,7 @@ import { IProductsService } from './products.service.interface';
 import type { ProductMasterPort } from '../../domain/ports/product-master.port';
 import { isProductTaxRateReader } from '../../domain/ports/capabilities/product-tax-rate-reader.capability';
 import type { TaxRateResolution } from '../../domain/types/tax-rate.types';
+import { isPersistableTaxRateRead } from '../../domain/types/tax-rate.types';
 import type { Product } from '../../domain/entities/product.entity';
 import type { ProductVariant } from '../../domain/entities/product-variant.entity';
 import { MasterProductNotFoundError } from '../../domain/exceptions/master-product-not-found.error';
@@ -211,15 +212,27 @@ export class MasterProductSyncService implements IMasterProductSyncService {
    * than being recorded as *checked, no rate*. The two drive different operator
    * copy and only one of them holds documents.
    *
-   * **An `unknown` answer IS recorded**, as a null code with a real timestamp.
-   * That is the whole reason the timestamp column exists: the master answered,
-   * and what it said was "I have no rate for this". Skipping the write here
-   * would make a configured-but-rate-less catalogue indistinguishable from one
-   * nobody has synced.
+   * **An `unknown` answer IS recorded - unless it is `unreadable`.** A null code
+   * with a real timestamp says "the master answered, and what it said was 'I
+   * have no rate for this'", which is why the timestamp column exists;
+   * `not-configured` and `ambiguous` are exactly that, and skipping them would
+   * make a configured-but-rate-less catalogue indistinguishable from one nobody
+   * has synced. `unreadable` is the opposite: the read did not establish
+   * anything, so persisting it would turn one flaky settings call into a whole
+   * catalogue recorded as *no rate* - a state that blocks documents and refuses
+   * publishes. It leaves the row untouched, exactly like a throw does
+   * (`product-tax-rate-reader.capability.ts` states the same rule).
    *
    * **A throw is swallowed, and leaves the row untouched.** A transport failure
    * says nothing about the shop's configuration, so recording anything would be
-   * a claim the read does not support; the next sync asks again.
+   * a claim the read does not support; the next sync asks again. Swallowed per
+   * product, and per variant inside the loop, so one unreadable row cannot cost
+   * the rest of the sweep its rates.
+   *
+   * **An `inherited` variant read CLEARS any stored override.** It is the
+   * variant saying it has no rate of its own, so the honest row is the absent
+   * one - and until this cleared, a variation moved back to the product's tax
+   * class kept settling every order line at the override it used to carry.
    */
   private async syncTaxRate(
     adapter: ProductMasterPort,
@@ -233,15 +246,19 @@ export class MasterProductSyncService implements IMasterProductSyncService {
     const readAt = new Date();
     try {
       const productRate = await adapter.readProductTaxRate({ productId: internalProductId });
-      const storedProductRate = this.toStoredTaxRate(productRate, readAt);
-      await this.productsService.recordProductTaxRate(internalProductId, storedProductRate);
-      await this.journalObservation(
-        internalProductId,
-        null,
-        connectionId,
-        storedProductRate.code,
-        readAt
-      );
+      if (isPersistableTaxRateRead(productRate)) {
+        const storedProductRate = this.toStoredTaxRate(productRate, readAt);
+        await this.productsService.recordProductTaxRate(internalProductId, storedProductRate);
+        await this.journalObservation(
+          internalProductId,
+          null,
+          connectionId,
+          storedProductRate.code,
+          readAt
+        );
+      } else {
+        this.logUnpersistedRead(productRate, connectionId, internalProductId, null, correlationId);
+      }
 
       // Only a variant-keyed master gets per-variant reads. On a product-keyed
       // one (PrestaShop) every variant would echo the product's rate, and
@@ -250,24 +267,65 @@ export class MasterProductSyncService implements IMasterProductSyncService {
       if (adapter.readsTaxRatePerVariant?.() !== true) return;
 
       for (const variant of variants) {
-        const variantRate = await adapter.readProductTaxRate({
-          productId: internalProductId,
-          variantId: variant.id,
-        });
-        // `inherited` means the variant defers to the product, which is not an
-        // override at all - so nothing is written and the row stays genuinely
-        // absent. Copying the product's code down would create a duplicate that
-        // goes stale the next time the product's rate changes.
-        if (variantRate.kind === 'inherited') continue;
-        const storedVariantRate = this.toStoredTaxRate(variantRate, readAt);
-        await this.productsService.recordVariantTaxRate(variant.id, storedVariantRate);
-        await this.journalObservation(
-          internalProductId,
-          variant.id,
-          connectionId,
-          storedVariantRate.code,
-          readAt
-        );
+        // Per variant, so an unreadable or failing variant leaves its own row
+        // untouched without costing its siblings their reads.
+        try {
+          const variantRate = await adapter.readProductTaxRate({
+            productId: internalProductId,
+            variantId: variant.id,
+          });
+
+          // `inherited` means the variant defers to the product, which is not an
+          // override at all - so any override the shop used to carry is REMOVED
+          // rather than left standing. Skipping the row (the pre-review
+          // behaviour) meant a variation moved back to `tax_class: 'parent'`
+          // kept its old code forever, and `effectiveTaxRate` prefers a known
+          // variant code over the product's - so every later order line settled
+          // at the stale rate, with no journal entry to show it had happened.
+          if (variantRate.kind === 'inherited') {
+            await this.productsService.clearVariantTaxRate(variant.id);
+            // Journalled like the other two states: the transition off an
+            // override is precisely the change an operator needs to see, and
+            // the journal is change-only, so a variant that never had one
+            // writes nothing.
+            await this.journalObservation(
+              internalProductId,
+              variant.id,
+              connectionId,
+              null,
+              readAt
+            );
+            continue;
+          }
+
+          if (!isPersistableTaxRateRead(variantRate)) {
+            this.logUnpersistedRead(
+              variantRate,
+              connectionId,
+              internalProductId,
+              variant.id,
+              correlationId
+            );
+            continue;
+          }
+
+          const storedVariantRate = this.toStoredTaxRate(variantRate, readAt);
+          await this.productsService.recordVariantTaxRate(variant.id, storedVariantRate);
+          await this.journalObservation(
+            internalProductId,
+            variant.id,
+            connectionId,
+            storedVariantRate.code,
+            readAt
+          );
+        } catch (error) {
+          this.logger.warn(
+            `[master-sync] variant tax-rate read failed, leaving the override unchanged: ` +
+              `connectionId=${connectionId} internalProductId=${internalProductId} ` +
+              `variantId=${variant.id} correlationId=${correlationId} ` +
+              `error=${(error as Error).message}`
+          );
+        }
       }
     } catch (error) {
       this.logger.warn(
@@ -276,6 +334,28 @@ export class MasterProductSyncService implements IMasterProductSyncService {
           `correlationId=${correlationId} error=${(error as Error).message}`
       );
     }
+  }
+
+  /**
+   * An answer that establishes nothing is worth a line, because it leaves the
+   * catalogue row as it was and would otherwise be invisible.
+   */
+  private logUnpersistedRead(
+    resolution: TaxRateResolution,
+    connectionId: string,
+    internalProductId: string,
+    variantId: string | null,
+    correlationId: string
+  ): void {
+    const detail =
+      resolution.kind === 'unknown'
+        ? `reason=${resolution.reason} detail=${resolution.detail ?? 'none'}`
+        : `kind=${resolution.kind}`;
+    this.logger.warn(
+      `[master-sync] tax-rate read established nothing, leaving the row unchanged: ` +
+        `connectionId=${connectionId} internalProductId=${internalProductId} ` +
+        `variantId=${variantId ?? 'none'} correlationId=${correlationId} ${detail}`
+    );
   }
 
   /**

@@ -574,27 +574,56 @@ describe('InfaktInvoicingAdapter', () => {
       expect(CURRENCY_REJECTION_MARKERS.some((marker) => haystack.includes(marker))).toBe(true);
     });
 
-    it('should refuse an empty taxRate rather than defaulting it (#2257)', async () => {
-      // INVERTED deliberately. This test used to lock the 23% fallback in place;
-      // that fallback is the thing #2245 exists to remove. A silent 23% is
+    it('should refuse an empty taxRate rather than defaulting it when the switch is on (#2257)', async () => {
+      // The 23% fallback is the thing #2245 exists to remove. A silent 23% is
       // indistinguishable from a confirmed 23% on the issued document, and the
-      // whole cost of being wrong lands on the seller.
+      // whole cost of being wrong lands on the seller. Under strict enforcement
+      // the refusal is local, so no draft is left behind.
       //
       // The old live finding still holds and is why nothing is lost: an empty
       // tax_symbol cascades into services.gross / value.tax_values rejections
       // (verified 2026-07-01), so a rate-less line was never going to produce a
       // document anyway. It now fails naming the product instead of a wire field.
-      http.seed('POST', 'invoices.json', invoiceFixture());
+      const previous = process.env['OL_TAX_RATE_STRICT_ENABLED'];
+      process.env['OL_TAX_RATE_STRICT_ENABLED'] = 'true';
+      try {
+        http.seed('POST', 'invoices.json', invoiceFixture());
 
-      await expect(
-        adapter.issueInvoice({
+        await expect(
+          adapter.issueInvoice({
+            ...baseCmd,
+            lines: [{ name: 'Widget', quantity: 1, unitPriceGross: 123, taxRate: '' }],
+          }),
+        ).rejects.toBeInstanceOf(MissingTaxRateException);
+
+        expect(
+          http.calls.find((c) => c.method === 'POST' && c.path === 'invoices.json'),
+        ).toBeUndefined();
+      } finally {
+        if (previous === undefined) delete process.env['OL_TAX_RATE_STRICT_ENABLED'];
+        else process.env['OL_TAX_RATE_STRICT_ENABLED'] = previous;
+      }
+    });
+
+    it('should substitute its documented default while the switch is off - the default', async () => {
+      // Coverage is zero on deploy, so the default survives until an operator
+      // opts in. If this goes red the rollout became an outage.
+      const previous = process.env['OL_TAX_RATE_STRICT_ENABLED'];
+      delete process.env['OL_TAX_RATE_STRICT_ENABLED'];
+      try {
+        http.seed('POST', 'invoices.json', invoiceFixture());
+
+        await adapter.issueInvoice({
           ...baseCmd,
           lines: [{ name: 'Widget', quantity: 1, unitPriceGross: 123, taxRate: '' }],
-        }),
-      ).rejects.toBeInstanceOf(MissingTaxRateException);
+        });
 
-      // And nothing was sent: the refusal is local, so no draft is left behind.
-      expect(http.calls.find((c) => c.method === 'POST' && c.path === 'invoices.json')).toBeUndefined();
+        const call = http.calls.find((c) => c.method === 'POST' && c.path === 'invoices.json');
+        expect(call).toBeDefined();
+      } finally {
+        if (previous === undefined) delete process.env['OL_TAX_RATE_STRICT_ENABLED'];
+        else process.env['OL_TAX_RATE_STRICT_ENABLED'] = previous;
+      }
     });
 
     it('should read "23" as twenty-three percent when splitting gross into net (#2247)', async () => {

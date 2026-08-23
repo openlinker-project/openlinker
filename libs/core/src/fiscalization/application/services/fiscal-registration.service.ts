@@ -36,6 +36,7 @@ import { FiscalRegistrationNotInDoubtException } from '../../domain/exceptions/f
 import { FiscalRegistrationRecordNotFoundException } from '../../domain/exceptions/fiscal-registration-record-not-found.exception';
 import { MissingIdempotencyKeyException } from '../../domain/exceptions/missing-idempotency-key.exception';
 import { MissingFiscalTaxRateException } from '../../domain/exceptions/missing-tax-rate.exception';
+import { isTaxRateStrictEnabled } from '@openlinker/core/sales-documents';
 import { OrderAlreadyRegisteredException } from '../../domain/exceptions/order-already-registered.exception';
 import { FISCAL_REGISTRATION_RECORD_REPOSITORY_TOKEN } from '../../fiscalization.tokens';
 import type {
@@ -177,7 +178,10 @@ export class FiscalRegistrationService implements IFiscalRegistrationService {
     // reconcile.
     //
     // THIS CALL IS THE REVERSAL POINT. Nothing else in this context consults
-    // the rate, so removing this one line restores the pre-#2252 behaviour.
+    // the rate, so removing this one line restores the pre-#2252 behaviour -
+    // and switching `OL_TAX_RATE_STRICT_ENABLED` off does the same without a
+    // deploy (#2245 review), which is what keeps day one from being an outage
+    // while catalogue coverage is still zero.
     this.assertEveryLineHasATaxRate(normalized);
 
     // (1) Read gate. An existing row is RESUMED under the fiscal-safety
@@ -395,6 +399,30 @@ export class FiscalRegistrationService implements IFiscalRegistrationService {
   }
 
   /**
+   * Refuse a sale whose lines do not all name a tax rate (#2252).
+   *
+   * `'0'` passes - a zero rate is an answer, and refusing it would hold every
+   * deliberately exempt sale. A blank one does not: that is what core emits
+   * when nothing established the rate, and it is exactly the value each
+   * provider would silently replace with its own default.
+   */
+  private assertEveryLineHasATaxRate(cmd: RegisterTransactionCommand): void {
+    // #2245 review: off unless the deployment opted in. A receipt path has no
+    // order era to consult - `RegisterTransactionCommand` carries none - so the
+    // switch is the only gate here; see the report on #2260 for why the era
+    // exemption stops at the two invoice sites.
+    if (!isTaxRateStrictEnabled()) return;
+    const missing = cmd.lines.filter((line) => line.taxRate.trim() === '');
+    if (missing.length === 0) return;
+    throw new MissingFiscalTaxRateException(
+      cmd.orderId,
+      missing.length,
+      cmd.lines.length,
+      missing[0]?.sku ?? missing[0]?.name ?? null,
+    );
+  }
+
+  /**
    * Resolve the per-connection adapter, claim the in-flight slot atomically,
    * cross the CORE <-> Integration boundary and patch the record with the
    * outcome.
@@ -414,24 +442,6 @@ export class FiscalRegistrationService implements IFiscalRegistrationService {
    * belongs there, but inheriting a known stuck state is not a reason to ship
    * one on a new surface.
    */
-  /**
-   * Refuse a sale whose lines do not all name a tax rate (#2252).
-   *
-   * `'0'` passes - a zero rate is an answer, and refusing it would hold every
-   * deliberately exempt sale. A blank one does not: that is what core emits
-   * when nothing established the rate, and it is exactly the value each
-   * provider would silently replace with its own default.
-   */
-  private assertEveryLineHasATaxRate(cmd: RegisterTransactionCommand): void {
-    const missing = cmd.lines.filter((line) => line.taxRate.trim() === '');
-    if (missing.length === 0) return;
-    throw new MissingFiscalTaxRateException(
-      cmd.orderId,
-      missing.length,
-      cmd.lines.length,
-      missing[0]?.sku ?? missing[0]?.name ?? null,
-    );
-  }
 
   private async registerWithAdapter(
     cmd: RegisterTransactionCommand,

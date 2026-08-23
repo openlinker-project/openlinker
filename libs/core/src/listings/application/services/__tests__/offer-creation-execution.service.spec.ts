@@ -13,6 +13,15 @@ import {
 } from '@openlinker/core/identifier-mapping';
 import type { IIdentifierMappingService } from '@openlinker/core/identifier-mapping';
 import { INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
+import {
+  PRODUCTS_SERVICE_TOKEN,
+  TAX_RATE_JOURNAL_SERVICE_TOKEN,
+} from '@openlinker/core/products';
+import type {
+  IProductsService,
+  ITaxRateJournalService,
+  ProductVariant,
+} from '@openlinker/core/products';
 import { OfferCreateRejectedException } from '@openlinker/core/listings';
 import type {
   OfferManagerPort,
@@ -42,6 +51,7 @@ import type { IOfferStatusPollService } from '../../interfaces/offer-status-poll
 const VARIANT_ID = 'ol_variant_123';
 const CONNECTION_ID = 'conn-allegro';
 const EXTERNAL_OFFER_ID = 'allegro-offer-42';
+const PRODUCT_ID = 'ol_product_9';
 
 describe('OfferCreationExecutionService', () => {
   let service: OfferCreationExecutionService;
@@ -54,6 +64,8 @@ describe('OfferCreationExecutionService', () => {
   let adapter: { createOffer: jest.Mock };
   let offerStatusPoll: jest.Mocked<IOfferStatusPollService>;
   let offerStatusSync: jest.Mocked<Pick<IOfferStatusSyncService, 'recordObservedStatus'>>;
+  let productsService: jest.Mocked<Pick<IProductsService, 'getVariant'>>;
+  let taxRateJournal: jest.Mocked<ITaxRateJournalService>;
 
   const builtCommand: CreateOfferCommand = {
     internalVariantId: VARIANT_ID,
@@ -128,6 +140,18 @@ describe('OfferCreationExecutionService', () => {
     offerStatusSync = {
       recordObservedStatus: jest.fn().mockResolvedValue(undefined),
     };
+    productsService = {
+      getVariant: jest.fn().mockResolvedValue({
+        id: VARIANT_ID,
+        productId: PRODUCT_ID,
+        sku: 'SKU-1',
+        attributes: {},
+      } as ProductVariant),
+    };
+    taxRateJournal = {
+      record: jest.fn().mockResolvedValue(null),
+      getLatestPerConnection: jest.fn().mockResolvedValue([]),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -138,6 +162,8 @@ describe('OfferCreationExecutionService', () => {
         { provide: INTEGRATIONS_SERVICE_TOKEN, useValue: integrationsService },
         { provide: OFFER_STATUS_POLL_SERVICE_TOKEN, useValue: offerStatusPoll },
         { provide: OFFER_STATUS_SYNC_SERVICE_TOKEN, useValue: offerStatusSync },
+        { provide: PRODUCTS_SERVICE_TOKEN, useValue: productsService },
+        { provide: TAX_RATE_JOURNAL_SERVICE_TOKEN, useValue: taxRateJournal },
       ],
     }).compile();
 
@@ -802,6 +828,69 @@ describe('OfferCreationExecutionService', () => {
 
       expect(result.outcome).toBe('ok');
       expect(offerStatusSync.recordObservedStatus).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('tax-rate journal (#2250, ADR-052 § 4)', () => {
+    const commandWithRate: CreateOfferCommand = { ...builtCommand, taxRate: '8' };
+
+    it('records a written-by-us entry when the create carried a rate', async () => {
+      builder.buildCreateOfferCommand.mockResolvedValue(commandWithRate);
+
+      await service.executeCreation(baseInput);
+
+      expect(productsService.getVariant).toHaveBeenCalledWith(VARIANT_ID);
+      expect(taxRateJournal.record).toHaveBeenCalledWith({
+        productId: PRODUCT_ID,
+        variantId: VARIANT_ID,
+        connectionId: CONNECTION_ID,
+        origin: 'written-by-us',
+        taxRate: '8',
+        observedAt: expect.any(Date),
+      });
+    });
+
+    it('records nothing when the command carried no rate', async () => {
+      // A publish with no rate wrote no rate - an entry would claim a write
+      // that never happened and misattribute a later channel disagreement.
+      await service.executeCreation(baseInput);
+
+      expect(taxRateJournal.record).not.toHaveBeenCalled();
+      expect(productsService.getVariant).not.toHaveBeenCalled();
+    });
+
+    it('records nothing when the create was rejected by the marketplace', async () => {
+      builder.buildCreateOfferCommand.mockResolvedValue(commandWithRate);
+      adapter.createOffer.mockRejectedValue(
+        new OfferCreateRejectedException('allegro.publicapi.v1', 422, [
+          { field: 'taxRate', code: 'NOT_ALLOWED', message: 'rate not allowed in category' },
+        ])
+      );
+
+      const result = await service.executeCreation(baseInput);
+
+      expect(result.outcome).toBe('business_failure');
+      expect(taxRateJournal.record).not.toHaveBeenCalled();
+    });
+
+    it('never fails the create when the journal write throws', async () => {
+      builder.buildCreateOfferCommand.mockResolvedValue(commandWithRate);
+      taxRateJournal.record.mockRejectedValue(new Error('journal down'));
+
+      const result = await service.executeCreation(baseInput);
+
+      expect(result.outcome).toBe('ok');
+      expect(result.offerCreationRecord.externalOfferId).toBe(EXTERNAL_OFFER_ID);
+    });
+
+    it('skips the entry when the variant cannot be read', async () => {
+      builder.buildCreateOfferCommand.mockResolvedValue(commandWithRate);
+      productsService.getVariant.mockResolvedValue(null);
+
+      const result = await service.executeCreation(baseInput);
+
+      expect(result.outcome).toBe('ok');
+      expect(taxRateJournal.record).not.toHaveBeenCalled();
     });
   });
 });

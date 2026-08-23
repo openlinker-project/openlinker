@@ -418,9 +418,9 @@ export class ListingsController {
           ...(dto.price !== undefined && { price: dto.price }),
           ...(dto.title !== undefined && { title: dto.title }),
           ...(dto.description !== undefined && { description: dto.description }),
-          // #2249 — the rate the shop now carries. Without this the update
-          // half of the propagation shipped as a contract nothing could reach.
-          ...(dto.taxRate !== undefined && { taxRate: dto.taxRate }),
+          // No `taxRate` (ADR-052): the neutral contract carries one, but its
+          // producer is OpenLinker propagating the shop's rate, never an
+          // operator typing a value on this route. See the note on the DTO.
         },
       },
     });

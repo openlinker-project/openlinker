@@ -581,6 +581,21 @@ export interface IssueInvoiceCommand {
    * provider that numbers documents itself (inFakt/Subiekt).
    */
   documentNumber?: string;
+  /**
+   * The order's tax-rate era (#2245 review) - `'pre-rollout'` for an order that
+   * arrived before per-line rates existed, absent/`null` for everything after.
+   *
+   * Read ONLY by the write-path tax-rate guard, which exempts a pre-rollout
+   * order so it issues exactly as it did before the epic (ADR-052
+   * § Consequences). It is not sent to any provider and never reaches a
+   * document.
+   *
+   * Carried on the command rather than read back from the order record, because
+   * `InvoiceService` depends on no orders-context token and adding one to answer
+   * a marker question would be a new module edge. Every issuance caller already
+   * has the record in hand.
+   */
+  taxRateEra?: string | null;
 }
 
 /**

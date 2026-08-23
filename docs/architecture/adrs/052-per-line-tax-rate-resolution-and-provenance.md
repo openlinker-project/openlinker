@@ -147,11 +147,22 @@ the offer is the one OL wrote, which is exactly the attribution a mismatch inves
   marketplace stamps the rate at purchase. The only remedy is adding it to the shop catalogue.
 - **Held receipts mean late fiscal registration.** Accepted, and chosen over a receipt carrying an
   unconfirmed rate letter. Reversible in one place.
-- **Rollout order is load-bearing.** The notation fix lands first and alone; the adapter defaults come
-  out last, and only once catalogue coverage is non-trivial. With coverage at zero (see Context), an
-  early removal reads as an outage rather than a diagnosis.
+- **Rollout order is load-bearing, and it is enforced by a switch rather than by sequencing alone.**
+  The notation fix lands first and alone; the adapter defaults come out last, and only once catalogue
+  coverage is non-trivial. With coverage at zero (see Context), an early removal reads as an outage
+  rather than a diagnosis. Because the whole epic ships as one branch, "last" cannot be a merge order,
+  so every refusal this ADR describes sits behind a single environment switch,
+  `OL_TAX_RATE_STRICT_ENABLED`, **off by default**: with it off each provider substitutes its
+  documented default, both issuance gates and the fiscal-registration gate pass, and the marketplace
+  publishes omit the rate exactly as before. An operator takes the coverage count
+  ([docs/operations/tax-rate-coverage.md](../../operations/tax-rate-coverage.md)) and turns it on when
+  the answer says so. Two refusals are deliberately **not** switched - an exemption code the channel
+  cannot express, and a rate the target category rejects - because both mean the shop DID state a rate
+  the channel cannot carry, which is a conflict at any coverage level.
 - **Pre-rollout orders are marked historical** and issue exactly as they do today, excluded from any
-  net-revenue figure rather than presented as a confirmed rate.
+  net-revenue figure rather than presented as a confirmed rate. The marker is read, not merely
+  written: both the auto-issue gate and the issuance write-path guard exempt a pre-rollout order even
+  with the switch on, so enabling enforcement cannot strand the back catalogue.
 - **Erli gains a real read and a real write**; Allegro gains a propagation write. A category refusing
   the rate fails the publish with an actionable error naming the allowed values - never a publish with
   the rate silently omitted. A frozen field is neither written nor reported as a recurring error, and

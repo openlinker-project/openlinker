@@ -127,6 +127,15 @@ import {
   toAllegroRate,
   type PermittedTaxRate,
 } from './allegro-tax-rate.mapper';
+import { isTaxRateStrictEnabled } from '@openlinker/core/sales-documents';
+
+import { uploadImagesViaAllegro } from '../util/upload-images-via-allegro';
+import { uploadSafetyAttachmentViaAllegro } from '../util/upload-safety-attachment-via-allegro';
+import type { AllegroQuantityCommandRepositoryPort } from '../../index';
+import { AllegroQuantityCommand } from '../../index';
+
+/** Adapter key registered for the Allegro marketplace integration. */
+const ALLEGRO_ADAPTER_KEY = 'allegro.publicapi.v1';
 
 /**
  * Country the offer's tax settings are written for when the catalogue rate
@@ -135,13 +144,6 @@ import {
  * a named constant rather than an inline literal so the assumption is visible.
  */
 const DEFAULT_ALLEGRO_TAX_COUNTRY = 'PL';
-import { uploadImagesViaAllegro } from '../util/upload-images-via-allegro';
-import { uploadSafetyAttachmentViaAllegro } from '../util/upload-safety-attachment-via-allegro';
-import type { AllegroQuantityCommandRepositoryPort } from '../../index';
-import { AllegroQuantityCommand } from '../../index';
-
-/** Adapter key registered for the Allegro marketplace integration. */
-const ALLEGRO_ADAPTER_KEY = 'allegro.publicapi.v1';
 
 /**
  * Allegro's hard limit on `body.name` (the offer title). Platform-specific, so
@@ -1948,10 +1950,19 @@ export class AllegroOfferManagerAdapter
   /**
    * Resolve the offer's `taxSettings` from the neutral command rate (#2249).
    *
-   * Three refusals, and each names what the operator can act on. Nothing is
-   * ever published with the rate silently omitted - that is precisely how the
-   * rate-less offers this epic exists to fix were produced, and the failure it
-   * causes surfaces months later on somebody's invoice rather than here.
+   * Three refusals, and each names what the operator can act on. Publishing
+   * with the rate silently omitted is precisely how the rate-less offers this
+   * epic exists to fix were produced, and the failure it causes surfaces months
+   * later on somebody's invoice rather than here.
+   *
+   * The first refusal - no rate at all - is gated on
+   * `OL_TAX_RATE_STRICT_ENABLED` (#2245 review). Catalogue coverage is zero on
+   * deploy, so refusing every rate-less publish on day one fails every child of
+   * every bulk batch with no badge, no counter and no held state to read it
+   * from. With the switch off the offer publishes with no `taxSettings`, byte
+   * for byte as it did before this epic. The other two refusals are NOT gated:
+   * they mean the shop DID name a rate and Allegro cannot carry that exact
+   * value, which is a real conflict at any coverage level.
    *
    * - **No rate at all.** The shop does not know, and Allegro is not going to
    *   invent one either. The remedy is in the shop's catalogue.
@@ -1975,6 +1986,15 @@ export class AllegroOfferManagerAdapter
     const countryCode = cmd.taxRateCountry ?? DEFAULT_ALLEGRO_TAX_COUNTRY;
 
     if (!cmd.taxRate) {
+      if (!isTaxRateStrictEnabled()) {
+        this.logger.warn(
+          `Publishing an Allegro offer with no tax rate because ` +
+            `OL_TAX_RATE_STRICT_ENABLED is off. The resulting offer states no tax, so the ` +
+            `orders it produces will carry no rate either. Add the rate in the shop's ` +
+            `catalogue and re-sync the product.`,
+        );
+        return undefined;
+      }
       throw new OfferCreateRejectedException(ALLEGRO_ADAPTER_KEY, 0, [
         {
           field: 'taxRate',

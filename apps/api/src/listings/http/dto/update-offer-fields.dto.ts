@@ -72,12 +72,11 @@ function AtLeastOneField(validationOptions?: ValidationOptions) {
           return (
             obj['price'] !== undefined ||
             obj['title'] !== undefined ||
-            obj['description'] !== undefined ||
-            obj['taxRate'] !== undefined
+            obj['description'] !== undefined
           );
         },
         defaultMessage(): string {
-          return 'At least one of price, title, description, or taxRate must be provided';
+          return 'At least one of price, title, or description must be provided';
         },
       },
     });
@@ -104,20 +103,19 @@ export class UpdateOfferFieldsDto {
   @Type(() => OfferDescriptionDto)
   description?: OfferDescriptionDto;
 
-  @ApiPropertyOptional({
-    description:
-      'Neutral percent-as-string tax rate (#2249): "23", "8", "5", "0", "zw", "np", "oo". ' +
-      'Propagates the shop\'s rate onto a LIVE offer, so an offer\'s rate follows the ' +
-      'catalogue instead of freezing at whatever it was when the offer was first published. ' +
-      'Omitting it means "this update does not touch the rate" — never "the product has no ' +
-      'rate", so an update can never blank a rate an offer already carries. An adapter whose ' +
-      'platform marks the field seller-frozen skips the write.',
-    maxLength: 16,
-  })
-  @IsOptional()
-  @IsString()
-  @MaxLength(16)
-  taxRate?: string;
+  /*
+   * Deliberately NO `taxRate` here (ADR-052).
+   *
+   * `OfferFieldUpdate.taxRate` is a real part of the neutral contract and both
+   * marketplace adapters write it, but the producer must be OpenLinker
+   * propagating the rate the shop catalogue carries - never a value an operator
+   * typed. A rate typed here would be a fourth authority that no master and no
+   * channel can be corrected from: it is journalled nowhere, it cannot be
+   * attributed in a mismatch investigation, and the real remedy for a wrong
+   * rate is fixing the shop record the whole chain reads from. The global
+   * `forbidNonWhitelisted` validation pipe therefore rejects a `taxRate` key on
+   * this route with a 400 rather than patching it onto the live offer.
+   */
 }
 
 export class UpdateOfferFieldsResponseDto {

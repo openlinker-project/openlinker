@@ -60,6 +60,8 @@ import { ApiError } from '../../../shared/api/api-error';
 import { usePlatform } from '../../../shared/plugins';
 import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
 import { useWriteAccess } from '../../../shared/auth/use-permission';
+import { formatAmount } from '../../../shared/format/format-amount';
+import { formatTaxRate } from '../../../shared/format/format-tax-rate';
 import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
 import { useDemoMode } from '../../system';
 
@@ -72,6 +74,7 @@ import { useIssueInvoiceMutation } from '../hooks/use-issue-invoice-mutation';
 import { resolveIssueErrorMessage, isMissingNumberingSeriesError } from '../lib/issue-error-message';
 import { deriveInvoiceDisplayStatus, canRetryInvoice, resolveFailureCopy } from '../lib/derive-invoice-display';
 import { resolveSalesDocumentBlockCopy } from '../lib/sales-document-block-copy';
+import { minorUnitExponentFor, splitShippingAcrossRates } from '../lib/shipping-tax-split';
 import {
   isPrimaryInvoicingConnection,
   resolveIssuableConnection,
@@ -466,7 +469,7 @@ export function OrderInvoicePanel({ order }: OrderInvoicePanelProps): ReactEleme
             {conflictLines
               .map(
                 (line) =>
-                  `${line.name ?? line.sku ?? line.id}: shop ${String(line.taxRate)}, channel ${String(line.taxRateChannel)}`,
+                  `${line.name ?? line.sku ?? line.id}: shop ${formatTaxRate(String(line.taxRate))}, channel ${formatTaxRate(String(line.taxRateChannel))}`,
               )
               .join('; ')}
             .
@@ -885,9 +888,6 @@ function collectRateLessLines(items: readonly ParsedOrderItem[]): RateLessLine[]
     .map((item) => ({
       name: item.name ?? item.sku ?? item.productId ?? item.id,
       inCatalogue: Boolean(item.productId),
-      // The shop answered and its answer was ambiguous - distinguishable only
-      // because the read WAS made, which `taxSource` records.
-      ambiguousTaxClass: item.taxSource === 'shop',
     }));
 }
 
@@ -926,28 +926,33 @@ function renderShippingSplitPreview(
     );
   }
 
-  const grossByRate = new Map<string, number>();
-  for (const item of items) {
-    const rate = String(item.taxRate);
-    grossByRate.set(rate, (grossByRate.get(rate) ?? 0) + item.price * item.quantity);
-  }
-  if (grossByRate.size <= 1) return null;
-
-  const totalGross = [...grossByRate.values()].reduce((sum, gross) => sum + gross, 0);
-  if (totalGross <= 0) return null;
-
-  const parts = [...grossByRate.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .map(([rate, gross]) => ({
-      rate,
-      amount: Math.round(((shipping * gross) / totalGross) * 100) / 100,
-    }));
+  // The arithmetic is the document's own, not a lookalike: `splitShippingAcrossRates`
+  // is the mirror of the core function the document is composed with, so the
+  // parts previewed here add up to the shipping the buyer paid.
+  const parts = splitShippingAcrossRates(
+    shipping,
+    items.map((item) => ({
+      taxRate: item.taxRate ?? null,
+      gross: item.price * item.quantity,
+    })),
+    minorUnitExponentFor(totals?.currency)
+  );
+  // `null` past the unknown-rate check means there was nothing to be
+  // proportional to (every line grosses zero). Claim nothing rather than
+  // preview a split that does not exist.
+  if (parts === null || parts.length <= 1) return null;
 
   return (
     <div className="order-invoice-panel__body">
       <p className="order-invoice-panel__notice">
         {t('invoice.panel.shippingSplit', 'Shipping is split across the rates in this basket:')}{' '}
-        {parts.map((part) => `${part.amount.toFixed(2)} at ${part.rate}%`).join(', ')}.
+        {parts
+          .map(
+            (part) =>
+              `${formatAmount(part.amount, totals?.currency)} at ${formatTaxRate(part.taxRate)}`
+          )
+          .join(', ')}
+        .
       </p>
     </div>
   );

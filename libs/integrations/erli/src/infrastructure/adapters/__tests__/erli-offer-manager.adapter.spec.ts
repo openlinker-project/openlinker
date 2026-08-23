@@ -204,6 +204,65 @@ describe('ErliOfferManagerAdapter', () => {
     });
   });
 
+  describe('createOffer - the tax rate (#2249, gated by #2260 review)', () => {
+    const withStrict = (value: string | undefined, run: () => Promise<void>) => async () => {
+      const previous = process.env['OL_TAX_RATE_STRICT_ENABLED'];
+      if (value === undefined) delete process.env['OL_TAX_RATE_STRICT_ENABLED'];
+      else process.env['OL_TAX_RATE_STRICT_ENABLED'] = value;
+      try {
+        await run();
+      } finally {
+        if (previous === undefined) delete process.env['OL_TAX_RATE_STRICT_ENABLED'];
+        else process.env['OL_TAX_RATE_STRICT_ENABLED'] = previous;
+      }
+    };
+
+    it(
+      'should publish with taxRate omitted when the switch is off - the default',
+      withStrict(undefined, async () => {
+        // Catalogue coverage is zero on deploy, so a refusal here would fail
+        // every child of every bulk batch on day one. Erli's own
+        // `buyableProblems.missingTaxRate` remains the signal instead.
+        await adapter.createOffer(createCmd());
+
+        const body = httpClient.post.mock.calls[0][1] as { taxRate?: string };
+        expect(body.taxRate).toBeUndefined();
+      }),
+    );
+
+    it(
+      'should refuse a rate-less publish when the switch is on',
+      withStrict('true', async () => {
+        await expect(adapter.createOffer(createCmd())).rejects.toBeInstanceOf(
+          OfferCreateRejectedException,
+        );
+        expect(httpClient.post).not.toHaveBeenCalled();
+      }),
+    );
+
+    it(
+      'should send the shop rate as the Erli enum value when one is known',
+      withStrict(undefined, async () => {
+        await adapter.createOffer(createCmd({ taxRate: '23' }));
+
+        const body = httpClient.post.mock.calls[0][1] as { taxRate?: string };
+        expect(body.taxRate).toBeDefined();
+      }),
+    );
+
+    it(
+      'should refuse a code Erli cannot express even with the switch off',
+      withStrict(undefined, async () => {
+        // Not gated: the shop DID state a rate and Erli's enum cannot carry it.
+        // That is a conflict at any coverage level, not a coverage problem.
+        await expect(adapter.createOffer(createCmd({ taxRate: 'oo' }))).rejects.toBeInstanceOf(
+          OfferCreateRejectedException,
+        );
+        expect(httpClient.post).not.toHaveBeenCalled();
+      }),
+    );
+  });
+
   describe('createOffer', () => {
     it("should submit to the seller-keyed product path and return status 'draft' on 202", async () => {
       const result = await adapter.createOffer(createCmd());

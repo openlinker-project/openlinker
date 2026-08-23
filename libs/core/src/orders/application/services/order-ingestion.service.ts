@@ -54,7 +54,9 @@ import type { IncomingOrder, IncomingOrderItem } from '../../domain/types/incomi
 import {
   IProductsService,
   PRODUCTS_SERVICE_TOKEN,
+  TAX_RATE_JOURNAL_SERVICE_TOKEN,
   taxRateState,
+  type ITaxRateJournalService,
   type StoredTaxRate,
   type TaxRateSource,
 } from '@openlinker/core/products';
@@ -106,7 +108,12 @@ export class OrderIngestionService implements IOrderIngestionService {
     // A read of OL's own store, never a live shop call - issuance must not
     // depend on the shop being reachable.
     @Inject(PRODUCTS_SERVICE_TOKEN)
-    private readonly productsService: IProductsService
+    private readonly productsService: IProductsService,
+    // #2250: an inbound order line is the one place a CHANNEL states a rate in
+    // its own voice, so it is where the `channel` half of the provenance
+    // journal is fed. Token/interface edge into `products`, like the read above.
+    @Inject(TAX_RATE_JOURNAL_SERVICE_TOKEN)
+    private readonly taxRateJournal: ITaxRateJournalService
   ) {}
 
   async ingestOrders(
@@ -324,6 +331,17 @@ export class OrderIngestionService implements IOrderIngestionService {
           result.internalVariantId,
           item
         );
+        // #2250 - journal what the CHANNEL said, separately from what the line
+        // settled on. Deliberately keyed off `item.taxRate` and not off `tax`:
+        // `tax` is OpenLinker's resolution, so recording it as a channel
+        // observation would attribute our own fallback to the marketplace and
+        // destroy the very attribution the journal exists for.
+        await this.journalChannelTaxRate(
+          connectionId,
+          result.internalProductId,
+          result.internalVariantId ?? null,
+          item
+        );
         resolvedItems.push({
           id: item.id,
           productId: result.internalProductId,
@@ -481,7 +499,15 @@ export class OrderIngestionService implements IOrderIngestionService {
       const outcome = await this.autoIssueTrigger.onOrderTransition(
         order,
         connectionId,
-        sourceEventId
+        sourceEventId,
+        // #2245 review: the PRE-persist record is the right read. `persistOrder`
+        // deliberately omits `taxRateEra` from its write set, so the marker the
+        // migration stamped survives every re-ingestion - and a first-seen order
+        // has no record and therefore no era, which is correct: it arrived after
+        // the feature. Without this the marker was write-only and every
+        // already-ingested uninvoiced order became un-issuable under strict
+        // enforcement.
+        existing?.taxRateEra ?? null
       );
       // #2100 (ADR-041 §54/§105): a block is never log-only. The trigger REPORTS
       // the outcome and this service — which owns the order record — writes it,
@@ -682,6 +708,46 @@ export class OrderIngestionService implements IOrderIngestionService {
     }
 
     return undefined;
+  }
+
+  /**
+   * Record the rate the CHANNEL itself reported for this line (#2250,
+   * ADR-052 § 4).
+   *
+   * Written only where the source order line really carried one. Most sources
+   * carry none (Allegro's `lineItems[].tax` is nullable and an OL-published
+   * offer reported no rate at all before this epic), and a row written on their
+   * behalf would be OpenLinker's own resolved value wearing the channel's name -
+   * which is exactly the attribution the journal exists to keep separable.
+   *
+   * Best-effort and never throws. The journal is provenance: losing an entry
+   * costs an audit trail, while failing the ingestion over it would cost the
+   * order.
+   */
+  private async journalChannelTaxRate(
+    connectionId: string,
+    productId: string,
+    variantId: string | null,
+    item: IncomingOrderItem
+  ): Promise<void> {
+    const channelCode = item.taxRate?.trim();
+    if (!channelCode) {
+      return;
+    }
+    try {
+      await this.taxRateJournal.record({
+        productId,
+        variantId,
+        connectionId,
+        origin: 'channel',
+        taxRate: channelCode,
+      });
+    } catch (error) {
+      this.logger.warn(
+        `Tax-rate journal write failed for an order line (provenance only, the order is unaffected) ` +
+          `[connectionId=${connectionId}, productId=${productId}, variantId=${variantId ?? 'none'}]: ${(error as Error).message}`
+      );
+    }
   }
 
   /**

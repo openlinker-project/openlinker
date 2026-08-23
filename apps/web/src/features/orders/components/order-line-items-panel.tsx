@@ -24,6 +24,7 @@ import { DataTable, type DataTableColumn } from '../../../shared/ui/data-table';
 import { EmptyState } from '../../../shared/ui/feedback-state';
 import { ProductThumbnail } from '../../../shared/ui/product-thumbnail';
 import { formatAmount } from '../../../shared/format/format-amount';
+import { formatTaxRate } from '../../../shared/format/format-tax-rate';
 import { AbsentValue } from '../../../shared/ui/absent-value';
 import { Button } from '../../../shared/ui/button';
 import { StatusBadge } from '../../../shared/ui/status-badge';
@@ -179,12 +180,12 @@ function TaxRateCell({ item }: { item: ParsedOrderItem }): ReactElement {
   if (item.taxRateChannel) {
     return (
       <span className="order-line-item__product-info" data-line-id={item.id} tabIndex={-1}>
-        <span className="mono-text">{formatRate(item.taxRate)}</span>
+        <span className="mono-text">{formatTaxRate(item.taxRate)}</span>
         <StatusBadge tone="conflict" withDot compact>
           Rate conflict
         </StatusBadge>
         <span className="order-line-item__sku text-muted">
-          shop {formatRate(item.taxRate)}, channel {formatRate(item.taxRateChannel)}
+          shop {formatTaxRate(item.taxRate)}, channel {formatTaxRate(item.taxRateChannel)}
         </span>
       </span>
     );
@@ -192,19 +193,10 @@ function TaxRateCell({ item }: { item: ParsedOrderItem }): ReactElement {
 
   return (
     <span className="order-line-item__product-info">
-      <span className="mono-text">{formatRate(item.taxRate)}</span>
+      <span className="mono-text">{formatTaxRate(item.taxRate)}</span>
       <span className="order-line-item__sku text-muted">{provenanceCaption(item)}</span>
     </span>
   );
-}
-
-/**
- * A numeric code reads as a percentage; an exemption code reads as itself.
- * `'0'` renders as `0%` rather than as a dash - it is a rate, and the dash is
- * reserved for absence (`AbsentValue`).
- */
-function formatRate(code: string): string {
-  return /^[0-9.]+$/.test(code) ? `${code}%` : code;
 }
 
 /**

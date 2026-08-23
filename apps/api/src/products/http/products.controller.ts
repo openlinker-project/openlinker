@@ -21,10 +21,27 @@ import {
   NotFoundException,
   Inject,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiTags, ApiOperation, ApiResponse, ApiParam } from '@nestjs/swagger';
-import { PRODUCTS_SERVICE_TOKEN, IProductsService } from '@openlinker/core/products';
+import {
+  ApiBearerAuth,
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiParam,
+  ApiQuery,
+} from '@nestjs/swagger';
+import {
+  PRODUCTS_SERVICE_TOKEN,
+  IProductsService,
+  TAX_RATE_JOURNAL_SERVICE_TOKEN,
+  ITaxRateJournalService,
+} from '@openlinker/core/products';
 import { IDENTIFIER_MAPPING_SERVICE_TOKEN, CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
-import type { Product, ProductVariant, ProductListSort } from '@openlinker/core/products';
+import type {
+  Product,
+  ProductVariant,
+  ProductListSort,
+  TaxRateJournalEntry,
+} from '@openlinker/core/products';
 import { IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 import { IInventoryQueryService, INVENTORY_QUERY_SERVICE_TOKEN } from '@openlinker/core/inventory';
 import {
@@ -44,6 +61,8 @@ import { PaginatedProductsResponseDto } from './dto/paginated-products-response.
 import { PaginatedProductVariantsResponseDto } from './dto/paginated-product-variants-response.dto';
 import type { ExternalIdMappingDto } from './dto/external-id-mapping.dto';
 import type { ProductListingsCoverageDto } from './dto/product-listings-coverage.dto';
+import type { TaxRateJournalEntryResponseDto } from './dto/tax-rate-journal-entry-response.dto';
+import { TaxRateJournalResponseDto } from './dto/tax-rate-journal-entry-response.dto';
 
 const MAX_VARIANTS_IN_DETAIL = 100;
 
@@ -89,6 +108,27 @@ function variantToDto(variant: ProductVariant): ProductVariantResponseDto {
   };
 }
 
+/**
+ * Shared journal-entry-to-DTO mapper (#2250).
+ *
+ * `frozen` is optional on the observation type (a `shop` reading has no such
+ * concept) and is normalised to `false` at the wire boundary, matching what the
+ * column stores.
+ */
+function toTaxRateJournalEntryDto(entry: TaxRateJournalEntry): TaxRateJournalEntryResponseDto {
+  return {
+    id: entry.id,
+    productId: entry.productId,
+    variantId: entry.variantId,
+    connectionId: entry.connectionId,
+    origin: entry.origin,
+    taxRate: entry.taxRate,
+    frozen: entry.frozen ?? false,
+    observedAt: entry.observedAt.toISOString(),
+    createdAt: entry.createdAt.toISOString(),
+  };
+}
+
 @ApiBearerAuth()
 @ApiTags('products')
 @Controller('products')
@@ -105,7 +145,11 @@ export class ProductsController {
     @Inject(OFFER_MAPPINGS_SERVICE_TOKEN)
     private readonly offerMappings: IOfferMappingsService,
     @Inject(SHOP_PRODUCT_MAPPINGS_SERVICE_TOKEN)
-    private readonly shopProductMappings: IShopProductMappingsService
+    private readonly shopProductMappings: IShopProductMappingsService,
+    // #2250 - the provenance read. A plain query through the context's own
+    // service interface; no new service and no new context for a read.
+    @Inject(TAX_RATE_JOURNAL_SERVICE_TOKEN)
+    private readonly taxRateJournal: ITaxRateJournalService
   ) {}
 
   @Get()
@@ -317,6 +361,58 @@ export class ProductsController {
       limit,
       offset,
     };
+  }
+
+  /**
+   * The tax-rate provenance journal for one catalogue item (#2250, ADR-052 § 4).
+   *
+   * The journal's whole point is that "the shop changed it", "we wrote this to
+   * the offer" and "somebody overwrote it afterwards" are separable facts, and
+   * a stored value alone cannot separate them - so this is the read an operator
+   * uses to attribute a shop-versus-channel disagreement instead of guessing.
+   *
+   * Scoped exactly the way the journal stores its rows: no `variantId` reads the
+   * PRODUCT-level entries, and a `variantId` reads that variant's. The two are
+   * deliberately not merged here - a variant with no override of its own has no
+   * entries, and folding the product's in would present them as the variant's.
+   */
+  @Get(':productId/tax-rate-journal')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Tax-rate provenance journal for a product or variant',
+    description:
+      'Returns the latest journal entry per connection for one catalogue item: what the shop said, what OpenLinker wrote onto a channel, and what a channel reported back. Omit `variantId` for the product-level entries; pass one for that variant\'s.',
+  })
+  @ApiParam({ name: 'productId', description: 'Internal product ID (e.g. ol_product_...)' })
+  @ApiQuery({
+    name: 'variantId',
+    required: false,
+    description:
+      'Internal variant ID (e.g. ol_variant_...). Omitted reads the product-level entries.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Latest tax-rate journal entry per connection',
+    type: TaxRateJournalResponseDto,
+  })
+  @ApiResponse({ status: 404, description: 'Product not found' })
+  async getTaxRateJournal(
+    @Param('productId') productId: string,
+    @Query('variantId') variantId?: string
+  ): Promise<TaxRateJournalResponseDto> {
+    // A 404 for an unknown product rather than an empty list: an empty journal
+    // is a real answer ("nothing has been observed yet") and must not be
+    // indistinguishable from a mistyped id.
+    const product = await this.productsService.getProduct(productId);
+    if (!product) {
+      throw new NotFoundException(`Product not found: ${productId}`);
+    }
+
+    const entries = await this.taxRateJournal.getLatestPerConnection(
+      productId,
+      variantId ?? null
+    );
+    return { items: entries.map((entry) => toTaxRateJournalEntryDto(entry)) };
   }
 
   private toProductDto(product: Product): ProductResponseDto {

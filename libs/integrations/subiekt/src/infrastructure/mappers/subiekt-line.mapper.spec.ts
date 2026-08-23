@@ -29,12 +29,39 @@ describe('toBridgeLines', () => {
     expect(toBridgeLines([line('zw')])[0]?.stawkaVAT).toBe('zw');
   });
 
-  it('should refuse an empty rate rather than defaulting it (#2257)', () => {
-    // INVERTED deliberately: the 23% default this used to assert is what the
-    // epic removes. The bridge would reject the line anyway ("StawkaVAT jest
-    // wymagana"); the difference is that the failure now names the product.
-    expect(() => toBridgeLines([line('')])).toThrow(MissingTaxRateException);
-    expect(() => toBridgeLines([line('   ')])).toThrow(MissingTaxRateException);
+  describe('an empty rate (#2257, gated by #2260 review)', () => {
+    const withStrict = (value: string | undefined, run: () => void) => () => {
+      const previous = process.env['OL_TAX_RATE_STRICT_ENABLED'];
+      if (value === undefined) delete process.env['OL_TAX_RATE_STRICT_ENABLED'];
+      else process.env['OL_TAX_RATE_STRICT_ENABLED'] = value;
+      try {
+        run();
+      } finally {
+        if (previous === undefined) delete process.env['OL_TAX_RATE_STRICT_ENABLED'];
+        else process.env['OL_TAX_RATE_STRICT_ENABLED'] = previous;
+      }
+    };
+
+    it(
+      'should substitute the documented default while the switch is off - the default',
+      withStrict(undefined, () => {
+        // Catalogue coverage is zero on deploy, so removing the default outright
+        // would refuse 100% of issuance on day one. It survives until an
+        // operator opts in.
+        expect(toBridgeLines([line('')])[0]?.stawkaVAT).toBe('23');
+        expect(toBridgeLines([line('   ')])[0]?.stawkaVAT).toBe('23');
+      }),
+    );
+
+    it(
+      'should refuse rather than defaulting when the switch is on',
+      withStrict('true', () => {
+        // The bridge would reject the line anyway ("StawkaVAT jest wymagana");
+        // the difference is that the failure now names the product.
+        expect(() => toBridgeLines([line('')])).toThrow(MissingTaxRateException);
+        expect(() => toBridgeLines([line('   ')])).toThrow(MissingTaxRateException);
+      }),
+    );
   });
 
   it('should reject a fractional-looking rate rather than forwarding it', () => {

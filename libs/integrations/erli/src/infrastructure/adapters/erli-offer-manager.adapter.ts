@@ -130,6 +130,7 @@ import {
   type UpdateOfferQuantityCommand,
 } from '@openlinker/core/listings';
 import { supportedErliTaxRates, toErliTaxRate } from './erli-tax-rate.mapper';
+import { isTaxRateStrictEnabled } from '@openlinker/core/sales-documents';
 
 import { ERLI_DESCRIPTION_FORMAT } from './erli-description-format';
 import type { CachePort } from '@openlinker/shared';
@@ -874,15 +875,34 @@ export class ErliOfferManagerAdapter
   }
 
   /**
-   * The Erli enum value for the command's neutral rate (#2249).
+   * The Erli enum value for the command's neutral rate (#2249), or `undefined`
+   * when there is no rate and strict enforcement is off.
    *
    * Refuses rather than omitting, in both failure directions, because an
    * omitted rate is the worse outcome on this platform: Erli publishes the
    * product and then marks it not-buyable with `missingTaxRate`, which nobody
    * sees until an operator wonders why the listing gets no orders.
+   *
+   * The no-rate refusal is gated on `OL_TAX_RATE_STRICT_ENABLED` (#2245
+   * review). Catalogue coverage is zero on deploy, so refusing every rate-less
+   * publish on day one fails every child of every bulk batch, and unlike
+   * issuance there is no badge or counter to read that from. With the switch
+   * off the field is omitted exactly as it was before this epic, and Erli's own
+   * `missingTaxRate` remains the signal. The not-expressible refusal is NOT
+   * gated: there the shop DID name a rate Erli cannot carry, which is a real
+   * conflict at any coverage level.
    */
-  private resolveErliTaxRate(cmd: CreateOfferCommand): string {
+  private resolveErliTaxRate(cmd: CreateOfferCommand): string | undefined {
     if (!cmd.taxRate) {
+      if (!isTaxRateStrictEnabled()) {
+        this.logger.warn(
+          `Publishing an Erli product with no tax rate because ` +
+            `OL_TAX_RATE_STRICT_ENABLED is off. Erli will mark it not-buyable ` +
+            `("missingTaxRate") until the rate is added in the shop's catalogue and the ` +
+            `product is re-synced.`,
+        );
+        return undefined;
+      }
       throw new OfferCreateRejectedException(this.adapterKey, 0, [
         {
           field: 'taxRate',
@@ -952,7 +972,10 @@ export class ErliOfferManagerAdapter
     // actionable error here for a silently not-buyable listing an operator has
     // to go and discover. `oo` has no Erli equivalent and is refused for the
     // same reason - a nearest-looking token would be a real sale taxed wrongly.
-    body.taxRate = this.resolveErliTaxRate(cmd);
+    const erliTaxRate = this.resolveErliTaxRate(cmd);
+    if (erliTaxRate !== undefined) {
+      body.taxRate = erliTaxRate;
+    }
     // Taxonomy (#985 / #1096): prefer the resolved Allegro id, else the master
     // shop's own categories (`source:"shop"`), else omit — Erli's API makes
     // category optional, so an uncategorised offer is valid rather than a hard

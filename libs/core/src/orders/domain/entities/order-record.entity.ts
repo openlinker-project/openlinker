@@ -17,6 +17,7 @@ import type { OrderDispatchWindow, PriceTaxTreatment } from '../types/order.type
 import type {
   SalesDocumentGateBlockReason,
   SalesDocumentUnresolvedReason,
+  TaxRateEra,
 } from '@openlinker/core/sales-documents';
 
 export type { OrderSyncStatus, SyncAttempt } from '../types/order-sync.types';
@@ -209,15 +210,21 @@ export class OrderRecord {
     public readonly salesDocumentBlockReleasedAt: Date | null = null,
     /**
      * `'pre-rollout'` for an order that arrived before per-line tax rates
-     * existed (#2256); `null` for everything after. A data marker for
-     * analytics, never an operator-facing state - such an order issues exactly
-     * as it does today, and no surface renders it.
+     * existed (#2256); `null` for everything after. Never an operator-facing
+     * state - no surface renders it.
+     *
+     * READ (#2245 review) by the invoicing gate and the write-path guard, which
+     * exempt a pre-rollout order so it issues exactly as it did before the epic
+     * (ADR-052 § Consequences). Without that read the marker was write-only and
+     * the promise was unimplemented: every already-ingested uninvoiced order
+     * would have become permanently un-issuable the moment strict enforcement
+     * was switched on.
      *
      * Excluded from any net-revenue figure rather than presented as a confirmed
      * rate: its tax was whatever the provider defaulted to, and there is
      * nothing to back-compute from.
      */
-    public readonly taxRateEra: string | null = null
+    public readonly taxRateEra: TaxRateEra | null = null
   ) {}
 
   /**

@@ -12,6 +12,10 @@
 import type { Product } from '../entities/product.entity';
 import type { StoredTaxRate } from '../types/tax-rate.types';
 import type {
+  ConnectionTaxRateCoverage,
+  TaxRateCoverage,
+} from '../types/tax-rate-coverage.types';
+import type {
   ProductListFilters,
   ProductPagination,
   ProductListSort,
@@ -95,7 +99,7 @@ export interface ProductRepositoryPort {
    * measurement, the unchecked count backs the sync suggestion. Conflating
    * them is what would make day one read as an outage.
    */
-  countTaxRateStates(): Promise<{ total: number; known: number; missing: number; notChecked: number }>;
+  countTaxRateStates(): Promise<TaxRateCoverage>;
 
   /**
    * The same counts, broken down per connection (#2256).
@@ -107,14 +111,5 @@ export interface ProductRepositoryPort {
    * mapped on two connections is counted under both, which is the honest
    * answer rather than an arbitrary pick.
    */
-  countTaxRateStatesByConnection(): Promise<
-    Array<{
-      connectionId: string;
-      platformType: string;
-      total: number;
-      known: number;
-      missing: number;
-      notChecked: number;
-    }>
-  >;
+  countTaxRateStatesByConnection(): Promise<ConnectionTaxRateCoverage[]>;
 }

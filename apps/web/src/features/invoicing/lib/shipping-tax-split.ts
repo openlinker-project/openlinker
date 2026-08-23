@@ -1,27 +1,22 @@
 /**
- * Shipping Tax Split (#2248 / #2252, ADR-052 § 5)
+ * Shipping Tax Split - frontend mirror (#2254, ADR-052 § 5)
  *
- * A basket can carry several tax rates. The shipping the buyer paid is one
- * amount, and a document has to state which rate applies to it - so on a
- * mixed-rate basket it is split across the rates present, in proportion to
- * what was actually bought at each.
+ * Hand-maintained copy of `splitShippingAcrossRates` in
+ * `libs/core/src/sales-documents/domain/types/shipping-tax-split.types.ts`.
  *
- * **This is division, not tax computation.** Core groups an amount it was given
- * and cuts it into parts that sum back to it; it never derives a tax figure and
- * never rounds a tax value. The rounding rule for a rate stays in the provider
- * adapter, which is what ADR-052 § 5 reserves to it. The rounding that happens
- * here is on the *split*, and its only obligation is that the parts add up
- * exactly to the amount paid.
+ * The browser bundle does not depend on `@openlinker/core` (#591), so the
+ * function exists twice - the same constraint the sales-document reason
+ * vocabularies live under. The panel previews the shipping line(s) the document
+ * will carry, and a preview computed by different arithmetic than the document
+ * is worse than no preview: it shows the operator parts that do not add up to
+ * the shipping the buyer paid.
  *
- * Pure and dependency-free: no I/O, no framework, no regime knowledge.
+ * `scripts/check-shipping-tax-split-mirror.mjs` (run from `pnpm check:invariants`)
+ * compares the two implementations token-for-token, so the halves cannot drift
+ * silently. Keep this file a literal copy of the core function and its `round2`
+ * helper: edit core first, then paste.
  *
- * Lives in `sales-documents` rather than in `invoicing` because BOTH document
- * contexts need it and a fiscal receipt is not an invoice (ADR-041). This
- * concern is the shared, dependency-free leaf that exists for exactly that
- * case - the module imports nothing, so `invoicing` and `fiscalization` can
- * both value-import it with no risk of a module-load cycle.
- *
- * @module libs/core/src/sales-documents/domain/types
+ * @module apps/web/src/features/invoicing/lib
  */
 
 /** One product line's contribution to the basket, as the split sees it. */

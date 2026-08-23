@@ -27,6 +27,10 @@ import type {
 } from '../../domain/types/product.types';
 import type { StoredTaxRate } from '../../domain/types/tax-rate.types';
 import { effectiveTaxRate } from '../../domain/types/tax-rate.types';
+import type {
+  ConnectionTaxRateCoverage,
+  TaxRateCoverage,
+} from '../../domain/types/tax-rate-coverage.types';
 import { Logger } from '@openlinker/shared/logging';
 import { PRODUCT_REPOSITORY_TOKEN, PRODUCT_VARIANT_REPOSITORY_TOKEN } from '../../products.tokens';
 
@@ -79,6 +83,10 @@ export class ProductsService implements IProductsService {
     await this.variantRepository.recordTaxRate(variantId, rate);
   }
 
+  async clearVariantTaxRate(variantId: string): Promise<void> {
+    await this.variantRepository.clearTaxRate(variantId);
+  }
+
   /**
    * The rate that applies to a line (#2054).
    *
@@ -96,25 +104,11 @@ export class ProductsService implements IProductsService {
     return effectiveTaxRate(productRate, variantRate);
   }
 
-  async getTaxRateCoverage(): Promise<{
-    total: number;
-    known: number;
-    missing: number;
-    notChecked: number;
-  }> {
+  async getTaxRateCoverage(): Promise<TaxRateCoverage> {
     return this.productRepository.countTaxRateStates();
   }
 
-  async getTaxRateCoverageByConnection(): Promise<
-    Array<{
-      connectionId: string;
-      platformType: string;
-      total: number;
-      known: number;
-      missing: number;
-      notChecked: number;
-    }>
-  > {
+  async getTaxRateCoverageByConnection(): Promise<ConnectionTaxRateCoverage[]> {
     return this.productRepository.countTaxRateStatesByConnection();
   }
 

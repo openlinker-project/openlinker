@@ -39,6 +39,12 @@ import {
   OFFER_CREATION_STATUS,
 } from '@openlinker/core/listings';
 import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
+import {
+  IProductsService,
+  ITaxRateJournalService,
+  PRODUCTS_SERVICE_TOKEN,
+  TAX_RATE_JOURNAL_SERVICE_TOKEN,
+} from '@openlinker/core/products';
 import type {
   CreateOfferCommand,
   CreateOfferResult,
@@ -87,7 +93,13 @@ export class OfferCreationExecutionService implements IOfferCreationExecutionSer
     @Inject(OFFER_STATUS_POLL_SERVICE_TOKEN)
     private readonly offerStatusPoll: IOfferStatusPollService,
     @Inject(OFFER_STATUS_SYNC_SERVICE_TOKEN)
-    private readonly offerStatusSync: IOfferStatusSyncService
+    private readonly offerStatusSync: IOfferStatusSyncService,
+    // #2250 - the offer's owning product, needed because the journal is
+    // product-scoped while an offer is keyed to a variant.
+    @Inject(PRODUCTS_SERVICE_TOKEN)
+    private readonly productsService: IProductsService,
+    @Inject(TAX_RATE_JOURNAL_SERVICE_TOKEN)
+    private readonly taxRateJournal: ITaxRateJournalService
   ) {}
 
   async executeCreation(input: ExecuteOfferCreationInput): Promise<ExecuteOfferCreationResult> {
@@ -211,6 +223,12 @@ export class OfferCreationExecutionService implements IOfferCreationExecutionSer
     // write nothing rather than guessing a status the operator would act on.
     await this.recordObservedStatus(input, result, observedAt);
 
+    // #2250 (ADR-052 § 4) - record that OpenLinker put this rate on the channel.
+    // Placed after the create returned, never before it: the journal's
+    // `written-by-us` entry is the claim a write HAPPENED, and a claim about an
+    // attempt would make a later channel disagreement unattributable.
+    await this.journalWrittenTaxRate(input, command, observedAt);
+
     if (finalRecord.status === 'validating') {
       try {
         await this.offerStatusPoll.scheduleFirstPoll({
@@ -237,6 +255,54 @@ export class OfferCreationExecutionService implements IOfferCreationExecutionSer
     }
 
     return this.buildResult(finalRecord, input.connectionId);
+  }
+
+  /**
+   * Journal the rate this create actually wrote onto the channel (#2250,
+   * ADR-052 § 4).
+   *
+   * Two rules, both load-bearing.
+   *
+   * **Only when the command carried one.** A publish with no rate wrote no
+   * rate, so an entry here would claim a write that never happened - and the
+   * journal exists precisely so a later channel observation can be attributed.
+   *
+   * **Never throws.** By this point the offer exists on the marketplace and
+   * `loadOrCreateRecord` carries no terminal-state guard, so a throw would let
+   * a retry call `createOffer` again - trading a missing provenance row for a
+   * duplicate live offer. Same posture as `recordObservedStatus`.
+   */
+  private async journalWrittenTaxRate(
+    input: ExecuteOfferCreationInput,
+    command: CreateOfferCommand,
+    observedAt: Date
+  ): Promise<void> {
+    if (!command.taxRate) {
+      return;
+    }
+    try {
+      const variant = await this.productsService.getVariant(input.internalVariantId);
+      if (!variant) {
+        this.logger.warn(
+          `Offer created but its variant could not be read, so the tax-rate journal entry was skipped. ` +
+            `variantId=${input.internalVariantId} connectionId=${input.connectionId}`
+        );
+        return;
+      }
+      await this.taxRateJournal.record({
+        productId: variant.productId,
+        variantId: input.internalVariantId,
+        connectionId: input.connectionId,
+        origin: 'written-by-us',
+        taxRate: command.taxRate,
+        observedAt,
+      });
+    } catch (err) {
+      this.logger.warn(
+        `Offer created but its tax-rate journal entry failed (provenance only, the offer is unaffected). ` +
+          `variantId=${input.internalVariantId} connectionId=${input.connectionId} error=${(err as Error).message}`
+      );
+    }
   }
 
   /**

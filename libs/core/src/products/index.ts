@@ -105,6 +105,7 @@ export {
   TaxRateStateValues,
   TaxRateUnknownReasonValues,
   effectiveTaxRate,
+  isPersistableTaxRateRead,
   isResolvedTaxRate,
   taxRateState,
 } from './domain/types/tax-rate.types';
@@ -113,6 +114,14 @@ export type {
   ReadProductTaxRateInput,
 } from './domain/ports/capabilities/product-tax-rate-reader.capability';
 export { isProductTaxRateReader } from './domain/ports/capabilities/product-tax-rate-reader.capability';
+
+// Catalogue tax-rate coverage counts (#2054 / #2256) - named because they are
+// the return shape of two `IProductsService` methods a consumer must be able to
+// annotate.
+export type {
+  ConnectionTaxRateCoverage,
+  TaxRateCoverage,
+} from './domain/types/tax-rate-coverage.types';
 
 // Append-only tax-rate provenance journal (#2250, ADR-052 § 4).
 export type {

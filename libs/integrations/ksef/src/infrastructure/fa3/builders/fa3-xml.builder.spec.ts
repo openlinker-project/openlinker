@@ -538,23 +538,31 @@ describe('buildFa3Xml', () => {
     });
   });
 
-  describe('P_9A net unit price (#1525)', () => {
-    it('should equal P_11 for quantity 1', () => {
+  describe('P_9A net unit price (#1525, rendering replaced by #2251)', () => {
+    // #2251 changed how P_9A is RENDERED, and these expectations follow it.
+    // `TKwotowy2` permits eight fraction digits, and the line - not the unit -
+    // is the unit of rounding, so the unit net is emitted at full precision with
+    // trailing zeros trimmed. A 2dp unit price used to multiply back to a figure
+    // that contradicted P_11 (100 x 1.99 at 23% gave P_9A x P_8B = 162.00
+    // against P_11 = 161.79), which is the defect that change fixed.
+    it('should reconcile with P_11 for quantity 1', () => {
       const input = b2bInput();
       input.lines = [{ name: 'A', quantity: 1, unitPriceGross: 123, p12: '23' }];
       const xml = buildFa3Xml(input);
-      expect(xml).toContain('<P_9A>100.00</P_9A>');
+      // Trailing zeros trimmed, with one digit kept because the pattern needs
+      // at least one fraction digit.
+      expect(xml).toContain('<P_9A>100.0</P_9A>');
       expect(xml).toContain('<P_11>100.00</P_11>');
     });
 
-    it('should carry the documented rounding drift for quantity > 1 (net 100.00 / qty 3)', () => {
+    it('should emit the full-precision unit net for quantity > 1 (net 100.00 / qty 3)', () => {
       const input = b2bInput();
-      // gross = 3 x 41 = 123, net = 123 / 1.23 = 100.00; P_9A = 100 / 3 = 33.33
-      // so P_9A x P_8B = 99.99 differs from P_11 = 100.00 by a cent - the
-      // accepted drift; P_11 stays authoritative.
+      // gross = 3 x 41 = 123, net = 123 / 1.23 = 100.00, unit net = 33.3333...
+      // Emitted at the schema's precision rather than rounded to 33.33, so
+      // P_9A x P_8B lands on P_11 instead of a cent short of it.
       input.lines = [{ name: 'A', quantity: 3, unitPriceGross: 41, p12: '23' }];
       const xml = buildFa3Xml(input);
-      expect(xml).toContain('<P_9A>33.33</P_9A>');
+      expect(xml).toContain('<P_9A>33.33333333</P_9A>');
       expect(xml).toContain('<P_11>100.00</P_11>');
     });
 
@@ -573,7 +581,7 @@ describe('buildFa3Xml', () => {
       };
       const xml = buildFa3Xml(input);
       // Both rows share the same unit price, so both emit the same P_9A.
-      expect(xml.match(/<P_9A>100\.00<\/P_9A>/g)?.length).toBe(2);
+      expect(xml.match(/<P_9A>100\.0<\/P_9A>/g)?.length).toBe(2);
     });
 
     it('should omit P_9A (never emit NaN) for a zero-quantity line', () => {

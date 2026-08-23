@@ -22,7 +22,7 @@ import type {
 import { InvalidBuyerProfileError } from './errors/invalid-buyer-profile.error';
 import { InvalidInvoiceLineError } from './errors/invalid-invoice-line.error';
 import { UnsupportedPriceTreatmentError } from './errors/unsupported-price-treatment.error';
-import { splitShippingAcrossRates } from '@openlinker/core/sales-documents';
+import { minorUnitExponentFor, splitShippingAcrossRates } from '@openlinker/core/sales-documents';
 
 /**
  * Default carrier-neutral label for the shipping invoice line (#1517). Core is
@@ -62,6 +62,13 @@ export interface OrderToIssueInvoiceCommandInput {
    * of national wording per ADR-026). Wiring it is tracked as a follow-up (#1562).
    */
   shippingLineName?: string;
+  /**
+   * The order's `order_records.taxRateEra` marker (#2245 review), passed
+   * straight through onto the command so the write-path tax-rate guard can
+   * exempt pre-rollout history. Caller-supplied: the `Order` carries no era,
+   * and every issuance caller already reads the record.
+   */
+  taxRateEra?: string | null;
 }
 
 /**
@@ -75,8 +82,16 @@ export interface OrderToIssueInvoiceCommandInput {
 export function toIssueInvoiceCommand(
   input: OrderToIssueInvoiceCommandInput,
 ): IssueInvoiceCommand {
-  const { order, connectionId, buyerTaxId, documentType, idempotencyKey, shippingLineName, source } =
-    input;
+  const {
+    order,
+    connectionId,
+    buyerTaxId,
+    documentType,
+    idempotencyKey,
+    shippingLineName,
+    source,
+    taxRateEra,
+  } = input;
 
   // GROSS-only MVP: an `exclusive` (net) order would mislabel net as gross.
   // Fail loud rather than corrupt totals. Absent treatment = documented gross
@@ -94,7 +109,9 @@ export function toIssueInvoiceCommand(
   // order total, #1517). Emit it as a normal gross line so the provider adapter
   // resolves its tax rate the same way it does for product lines; core never
   // names a tax rate. Skipped when shipping is 0 (no phantom line).
-  lines.push(...toShippingLines(order.totals.shipping, order.items, shippingLineName));
+  lines.push(
+    ...toShippingLines(order.totals.shipping, order.items, order.totals.currency, shippingLineName)
+  );
 
   const command: IssueInvoiceCommand = {
     connectionId,
@@ -122,6 +139,11 @@ export function toIssueInvoiceCommand(
   // stays undefined so routing falls back past the source axis.
   if (source !== undefined && source.trim().length > 0) {
     command.source = source;
+  }
+  // #2245 review: pass-through only. The write-path guard reads it; nothing
+  // else does, and it never reaches a provider or a document.
+  if (taxRateEra !== undefined && taxRateEra !== null) {
+    command.taxRateEra = taxRateEra;
   }
 
   return command;
@@ -256,6 +278,7 @@ function toInvoiceLine(item: OrderItem, orderId: string): InvoiceLine {
 function toShippingLines(
   shipping: number,
   items: readonly OrderItem[],
+  currency: string | null | undefined,
   name?: string
 ): InvoiceLine[] {
   if (!Number.isFinite(shipping) || shipping <= 0) {
@@ -267,7 +290,10 @@ function toShippingLines(
     items.map((item) => ({
       taxRate: item.taxRate?.trim() ?? null,
       gross: item.price * item.quantity,
-    }))
+    })),
+    // The order's own currency decides how many decimals the parts round to, so
+    // they sum exactly in the units the buyer paid in (#2260 review).
+    minorUnitExponentFor(currency)
   );
 
   if (parts === null) {
