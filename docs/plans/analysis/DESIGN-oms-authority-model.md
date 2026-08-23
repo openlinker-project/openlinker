@@ -15,8 +15,8 @@ the revised, demand-gated roadmap; §14 reflects the panel's story additions and
 while #2161 was an open PR; it has since merged, shipping ADR-041's router, its rule engine and
 its persistence as real code. A7's matrix row, §2.1, §5.3(c), §8, §10's automation-layer spec and
 ADRs 052/054/056 now describe that code as shipped rather than proposed, and §5.3(c) carries a
-storage-shape **recommendation** (rows over `Connection.config.routing` jsonb) whose flagged ADR
-amendment sits in ADR-054, pending adjudication. The authority matrix is unchanged: #2161
+storage-shape **decision** (rows over `Connection.config.routing` jsonb), adopted at orchestrator
+adjudication on 2026-08-23 and amending ADR-054. The authority matrix is unchanged: #2161
 implements A7's "already specified" cell.
 
 **The ask**: OpenLinker gets a state-of-the-art full OMS — multi-location inventory + ATP,
@@ -493,7 +493,7 @@ conflict and not a coin flip), **rows in dedicated tables** (`sales_document_rul
 closed vocabulary, pure evaluator, rows, composer — and `RoutingExplanationStep` is the routing
 counterpart of the engine's reported `unresolved` reason.
 
-**RECOMMENDATION (adopt/differ, pending adjudication) — storage shape: rows, not
+**DECISION (adopted 2026-08-23, #2298 adjudication) — storage shape: rows, not
 `Connection.config.routing` jsonb; in the plugin's own table, not core.** The design previously argued jsonb from the `stockSafetyBuffer` precedent
 (#1844); the newer precedent is the closer analogue and supersedes it, because `stockSafetyBuffer`
 is a single scalar while a routing ruleset is an ordered, individually-addressable, individually-
@@ -512,9 +512,9 @@ coercer leave core survives intact, and core still keeps only `RoutingInput` / `
 narrowing an untrusted persisted `conditions` column, which is what
 `isSalesDocumentCondition` does today.
 
-*This is a **recommendation pending orchestrator adjudication**, not an applied change*: it
-touches ADR-054's reversal
-gate, and the flagged amendment paragraph lives there. Nothing binds until Wave 3's demand gate
+*Adopted at orchestrator adjudication (2026-08-23)*: the amendment it flagged on ADR-054 —
+which supersedes that ADR's `Connection.config.routing` sentence and carries its own active
+reversal gate — is adopted there. Nothing binds until Wave 3's demand gate
 fires (§10).
 
 **Exactly one router per order** — the #2047 four-part copy, verbatim shape: pure

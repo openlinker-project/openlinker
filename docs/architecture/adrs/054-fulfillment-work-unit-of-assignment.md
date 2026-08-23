@@ -47,25 +47,25 @@ named routing filters/sorts and their coercer are **owned by the OL-OMS plugin**
 only `RoutingInput`/`RoutingPlan` (with a `pending {decisionId}` arm for async DOMS sourcing) /
 `RoutingExplanationStep` with opaque rule names.
 
-> **PROPOSED AMENDMENT — routing-rule storage shape (#2298; PENDING ORCHESTRATOR ADJUDICATION,
-> not adopted).** This ADR and the design (§5.3(c)) assume the ordered filter/sort list is
+> **AMENDMENT (ADOPTED 2026-08-23, #2298 adjudication) — routing-rule storage shape.** This ADR and the design (§5.3(c)) assume the ordered filter/sort list is
 > operator-authored into `Connection.config.routing` jsonb on the `stockSafetyBuffer` precedent
 > (#1844). #2161/#2170 have since shipped a closer precedent — the `sales-documents` rule engine:
 > a closed condition vocabulary, a pure caller-fed evaluator, and **rows** in
 > `sales_document_rules` / `sales_document_thresholds` / `sales_document_country_defaults` with
 > per-row effective dating and an application-computed `conditionsHash` behind a unique index.
-> The amendment would store routing rules as rows too — in the plugin's own `oms_routing_rules`
-> table, never core — for three reasons: a `RoutingExplanationStep` persisted on a
+> Routing rules **are** stored as rows too — in the plugin's own `oms_routing_rules`
+> table, never core — superseding the `Connection.config.routing` sentence in the Decision above,
+> for three reasons: a `RoutingExplanationStep` persisted on a
 > `routing_decisions` row needs a **stable rule id** to remain readable after the operator edits
 > the list; per-rule effective dating and duplicate detection already exist in the newer precedent
 > and have no jsonb equivalent; and moving to rows changes only *placement*, so H7's ruling that
 > the named filters/sorts and their coercer are owned by `@openlinker/oms` is untouched (the
 > coercer narrows an untrusted persisted `conditions` column instead of a config blob — what
-> `isSalesDocumentCondition` does today). Were it adopted it would carry its own
+> `isSalesDocumentCondition` does today). This amendment carries its own
 > *Reversal gate (prose-only):* an
 > operator-authored routing list that never needs to be cited by a persisted explanation and never
 > needs per-rule dating would return the decision to jsonb. Nothing binds until Wave 3's demand
-> gate fires; until adjudicated, the `Connection.config.routing` shape above stands as written.
+> gate fires.
 
 ## Alternatives considered
 
