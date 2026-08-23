@@ -999,7 +999,8 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    *
    * `syncStatus` / `syncAttempts` (#2140), `fulfillmentState` (#2101),
    * `cancelledAt` (#1984), the three `salesDocument*` columns (#2100), the six
-   * FX snapshot columns (#2124) and the two packed columns (#2287) are
+   * FX snapshot columns (#2124), the two packed columns (#2287) and the two
+   * amendment columns `lastAmendedAt` / `lastAmendmentChanges` (#2283) are
    * deliberately outside the write set - see the {@link toOrm} comments. A
    * consequence is that the returned record reports all of them as empty (`[]` / `null`) regardless of what the row
    * holds, because none of those columns was part of the statement; callers
@@ -1034,7 +1035,8 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     // `cancelledAt` (#1984), the three `salesDocument*` columns (#2100) and the
     // six FX snapshot columns `reportingCurrency` / `reportingTotalAmount` /
     // `exchangeRateId` / `fxRule` / `fxStampedAt` / `fxIntendedCurrency`
-    // (#2124), and `packedAt` / `packedByUserId` (#2287). Do not add one of
+    // (#2124), `packedAt` / `packedByUserId` (#2287), and `lastAmendedAt` /
+    // `lastAmendmentChanges` (#2283). Do not add one of
     // them to either half of this statement - each has a narrow, atomic
     // out-of-band writer that owns it.
     const entity = this.toOrm(orderRecord);
@@ -1301,7 +1303,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    * property unset makes TypeORM omit the column from the generated statement
    * entirely, so the row's committed value survives untouched.
    *
-   * This is not optional tidiness. `upsert()` is a full-object `save()` with no
+   * This is not optional tidiness. `upsert()` is a single statement with no
    * per-order lock around it (webhook + reconciliation poll legitimately race
    * for the same order, per `docs/architecture-overview.md` § "Webhook =
    * trigger, poll = reconciliation backstop"), so mapping any of them lets the

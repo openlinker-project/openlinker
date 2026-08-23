@@ -7,10 +7,14 @@ and commit it with the work.
 
 ## Owner decisions (2026-08-22, binding)
 
-1. **Integration model**: one long-lived feature branch; per-issue work happens on short issue
-   branches off it; the orchestrator merges them back after review. At each wave boundary run
-   `/pr-review` over the wave's accumulated diff, apply all findings, then continue. PRs to `main`
-   at wave boundaries; owner merges those.
+1. **Integration model (amended 2026-08-23 — stacked waves)**: per-issue work happens on short
+   issue branches off the current wave branch; the orchestrator merges them back after review. At
+   each wave boundary run `/pr-review` over the wave's accumulated diff, apply all findings, open
+   the wave PR to `main` (owner merges) — and IMMEDIATELY branch the next wave's long-lived branch
+   off the reviewed wave tip (`oms-programme-waves-0-2` carries Wave 0; then `oms-programme-wave-1`
+   off it; then `oms-programme-wave-2` off Wave 1) and continue the loop there without waiting for
+   the PR merge. When an earlier wave's PR merges to main, merge `origin/main` forward into the
+   active wave branch.
 2. **Spec §8 Q1 = YES** — automation v1 is in scope (W2-21…W2-29 stay).
 3. **Severity rule (spec §4.3 ambiguity)**: decision-table row carries the fact's severity (red
    where nothing decides); the attention card is **always amber** (it is a to-do list). Fold into
@@ -42,10 +46,12 @@ Legend: ☐ not started · ◐ plan in review · ◑ implementing · ◕ diff in
 | #2285 | `inv:{hash}` idempotency-key swap | ☑ merged 641e07bad (commit 97dfdf1d0; reviewed, approved) |
 | #2286 | `never`-default exhaustiveness (5 consumers) | ☑ merged 9b48585b4 (commit 885b63f9e; reviewed, approved) |
 | #2287 | `packedAt` BE | ☑ merged b6b06df76 (commit 943e0fa91; reviewed, approved) |
-| #2288 | `packedAt` FE | ⛔ gate-cleared (ANALYSIS-2288: control OUT of capability-gated panel, orders:write); queued behind #2283 merge (shared timeline files) |
+| #2288 | `packedAt` FE | ☑ committed 8a2567199 directly on the wave branch (reviewed, approved; agent lost worktree isolation across sleep-resumes — work verified additive + green) |
+
+**WAVE 0 COMPLETE (8/8).** Boundary: /pr-review sweep → findings applied → PR to main → `oms-programme-wave-1` branched off the reviewed tip (owner decision 1, amended).
 | #2289 | Allegro returns-feed spike → 1c fork | ☑ verdict 4A (two-pass); findings on branch + issue comment |
 
-### Wave 1a (epic #2312) — gated on #2284 #2286 #2283 merged; #2298 resolved
+### Wave 1a (epic #2312) — gated on #2284 #2286 #2283 merged (✓ all on branch); #2298 resolved (✓ merged 1373784cd: R2 freshness pass + ADOPTED ADR-054 storage amendment — routing rules are ROWS in the plugin's `oms_routing_rules`, never `Connection.config.routing` jsonb; design artifact re-synced)
 ### Wave 1b (epic #2326) — gated on #2285 merged; W1a-8 (#2308)
 ### Wave 1c (epic #2337) — gated on #2289 fork decided; Wave 1a
 ### Wave 2 (epic #2389) — gated per its epic body; §8 Q1 = YES (decision 2 above)
