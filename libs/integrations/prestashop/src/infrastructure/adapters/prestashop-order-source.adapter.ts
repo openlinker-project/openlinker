@@ -34,6 +34,7 @@ import type {
   PrestashopOrderRow,
 } from '../mappers/prestashop.mapper.interface';
 import { PRESTASHOP_DEFAULT_CANCELLED_STATE_ID } from '../mappers/prestashop-order-state.types';
+import type { PrestashopOrderCurrencyResolver } from '../provisioners/prestashop-order-currency.resolver';
 import {
   PrestashopApiException,
   PrestashopResourceNotFoundException,
@@ -54,7 +55,13 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort {
   constructor(
     private readonly httpClient: IPrestashopWebserviceClient,
     private readonly orderMapper: IPrestashopOrderMapper,
-    private readonly connection: Connection
+    private readonly connection: Connection,
+    /**
+     * Supplies `totals.currency`, which the mapper cannot (#2277) - resolving
+     * an order's denomination is a WebService read and `mapOrder` is
+     * synchronous by contract.
+     */
+    private readonly orderCurrencyResolver: PrestashopOrderCurrencyResolver
   ) {}
 
   async listOrderFeed(input: OrderFeedInput): Promise<OrderFeedOutput> {
@@ -175,6 +182,19 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort {
     const mapped = this.orderMapper.mapOrder(prestashopOrder, orderRows);
     const config = this.connection.config as unknown as PrestashopConnectionConfig;
 
+    // Resolved BEFORE the hydration reads below, and awaited rather than raced
+    // alongside them, because this is the one step that can REFUSE the order
+    // (#2277): a shop whose currency is unresolvable should cost one read, not
+    // a full hydration, and a rejected promise held across those awaits would
+    // be an unhandled rejection on every other failure path. The read is cached
+    // per (connection, id_currency), so the added round-trip amortises away.
+    const currency = await this.orderCurrencyResolver.resolveOrderCurrencyIso({
+      connectionId: this.connection.id,
+      client: this.httpClient,
+      idCurrency: prestashopOrder.id_currency,
+      orderRef: mapped.orderNumber || externalOrderId,
+    });
+
     // Started before the pickup-point / address awaits so the extra customer
     // read overlaps them rather than lengthening the hydration chain (#1928).
     // `hydrateCustomerEmail` never rejects, so the pending promise is safe to
@@ -243,7 +263,7 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort {
         prestashopOrder.id_customer !== undefined ? String(prestashopOrder.id_customer) : undefined,
       customerEmail: await customerEmailPromise,
       items,
-      totals: mapped.totals,
+      totals: { ...mapped.totals, currency },
       shippingAddress,
       billingAddress,
       placedAt: placedAtIso,
