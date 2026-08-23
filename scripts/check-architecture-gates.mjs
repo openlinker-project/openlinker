@@ -110,6 +110,10 @@ const KNOWN_CONFIG_KNOBS = new Map([
       key: 'config.invoicing.isPrimary + config.salesDocument.documentKind',
     },
   ],
+  [
+    'libs/core/src/order-lifecycle/domain/types/lifecycle-authority.types.ts',
+    { helper: 'readLifecycleAuthority', key: 'config.lifecycleAuthority' },
+  ],
 ]);
 
 /**
@@ -139,8 +143,34 @@ const NON_KNOBS = new Map([
  * is due. Raising this constant is allowed — in the same reviewed change,
  * with a rationale, which is exactly the deliberate revisit the gate exists
  * to force.
+ *
+ * **Raised 5 → 6 by #2305 (ADR-059's `order-lifecycle` vocabulary leaf).**
+ * `readLifecycleAuthority` (`config.lifecycleAuthority`) is registered above as
+ * a genuine fifth knob — it is deliberately NOT filed under `NON_KNOBS`, because
+ * it really is a per-connection JSONB coercion of exactly the shape this rule
+ * counts, and suppressing it would have made the count lie in the one direction
+ * that matters.
+ *
+ * So the gate fired correctly and the conversation IS due. It is deferred here,
+ * not dismissed, on these grounds:
+ *
+ * 1. **#2305 cannot host the consolidation.** It is a types-and-pure-guards
+ *    vocabulary leaf with zero sibling-context edges and no module (ADR-053);
+ *    a shared per-connection rules model needs persistence and a binding, which
+ *    is precisely what the leaf must not grow in this slice.
+ * 2. **The knob is required by the design, not accreted casually.** ADR-059 /
+ *    design §6.2 R1 puts `LifecycleAuthority` on `Connection.config` on the
+ *    SOURCE connection, following the `parseTriggerModel` precedent, because it
+ *    is a property of the channel relationship with a zero-config default.
+ * 3. **The consolidation already has an owner**: #2169 (epic #2162 § Out of
+ *    scope). Raising the bar by one buys exactly one more knob before the gate
+ *    fires again — it does not switch the gate off, and the sixth knob will
+ *    re-open this same conversation with no further headroom.
+ *
+ * A reviewer who disagrees should push back on this raise specifically; that
+ * argument is the deliberate revisit the gate was built to provoke.
  */
-const KNOB_THRESHOLD = 5;
+const KNOB_THRESHOLD = 6;
 
 /** Ladder rungs (ADR-048): sub-capabilities that declare master freshness. */
 const KNOWN_RUNGS = new Set(['modified-product-lister.capability.ts']);

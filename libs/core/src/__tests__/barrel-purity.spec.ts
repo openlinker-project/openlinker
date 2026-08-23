@@ -39,6 +39,7 @@ const CONTEXT_BARRELS = [
   'inventory',
   'listings',
   'mappings',
+  'order-lifecycle',
   'orders',
   'products',
   'sales-documents',

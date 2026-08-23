@@ -23,6 +23,16 @@
  * `@openlinker/core/shipping`; both erase at build time, so re-exporting
  * `Order` here adds NO runtime edge beyond `PAYMENT_STATUS`'s existing one.
  *
+ * `OrderStatus` / `OrderStatusValues` (#2305, ADR-059) are exported for the
+ * `order-lifecycle` vocabulary leaf, which projects its derived phase one-way
+ * onto the transport vocabulary via `phaseToOrderStatus`. The leaf satisfies
+ * both gate conditions above: `OrderStatusValues` is a dependency-free `as
+ * const` leaf, and the leaf cannot use the main `@openlinker/core/orders`
+ * barrel without acquiring the very sibling-context value edge ADR-053 forbids
+ * it. `phaseToOrderStatus` imports the TYPE only (erasing at build time, so no
+ * runtime edge is added); the runtime `OrderStatusValues` array is exported for
+ * the leaf's totality spec, which iterates it — specs are walker-exempt.
+ *
  * @module libs/core/src/orders/types
  */
 export {
@@ -31,3 +41,5 @@ export {
 } from './domain/types/payment-status.types';
 export type { PaymentStatus } from './domain/types/payment-status.types';
 export type { Order } from './domain/types/order.types';
+export { OrderStatusValues } from './domain/types/order.types';
+export type { OrderStatus } from './domain/types/order.types';
