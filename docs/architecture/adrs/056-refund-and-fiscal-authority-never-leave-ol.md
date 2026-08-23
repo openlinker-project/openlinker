@@ -28,7 +28,11 @@ blocking like `pending` and cleared only by a terminal observation, so a crash b
 marketplace's 200 and the predicate write cannot double-refund; and order transitions that feed
 ADR-041's
 `AutoIssueTriggerService` exactly as OL's own ingestion does — its inputs change in posture B, its
-authority does not, and since it already reports rather than persists, no new DI edge appears.
+authority does not, and since it reports a `SalesDocumentBlockOutcome` for the caller in `orders`
+to persist rather than writing one itself, **no new `orders` edge** appears. That is the property
+`invoicing-auto-issue-boot.int-spec.ts` pins, and it survived #2156/#2173 giving that service
+three unrelated new dependencies (`integrations`, the `sales-documents` rule service, a lazy
+`ModuleRef` resolve of `IFiscalRegistrationService`).
 Where no refund executor exists (true of every shipped adapter today), the trigger confirms to
 `executedBy: 'operator_out_of_band'` — an honest description of who moves money.
 
@@ -60,6 +64,6 @@ weaker, re-opens this ADR.
 
 ## References
 
-- Related issues: #2047
+- Related issues: #2047, #2156/#2173 (the gate's new dependencies; the `orders` edge still absent)
 - Related ADRs: [ADR-041](./041-sales-document-routing-policy.md), [ADR-042](./042-fiscalization-capability.md), [ADR-052](./052-independently-assignable-fulfillment-authorities.md)
 - Design doc: [DESIGN-oms-authority-model](../../plans/analysis/DESIGN-oms-authority-model.md) §8

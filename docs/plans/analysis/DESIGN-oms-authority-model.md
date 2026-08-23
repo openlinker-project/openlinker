@@ -11,6 +11,14 @@ conformance, distributed correctness, product value, plugin contracts, delivery 
 adjudication record is [REVIEW-oms-authority-model.md](./REVIEW-oms-authority-model.md). §10 is
 the revised, demand-gated roadmap; §14 reflects the panel's story additions and cuts.
 
+**Revision R2 (2026-08-23, #2298)**: freshness pass only — no architectural change. R1 was written
+while #2161 was an open PR; it has since merged, shipping ADR-041's router, its rule engine and
+its persistence as real code. A7's matrix row, §2.1, §5.3(c), §8, §10's automation-layer spec and
+ADRs 052/054/056 now describe that code as shipped rather than proposed, and §5.3(c) carries a
+storage-shape **recommendation** (rows over `Connection.config.routing` jsonb) whose flagged ADR
+amendment sits in ADR-054, pending adjudication. The authority matrix is unchanged: #2161
+implements A7's "already specified" cell.
+
 **The ask**: OpenLinker gets a state-of-the-art full OMS — multi-location inventory + ATP,
 sourcing/routing + fulfillment execution, an OL-owned order lifecycle, returns/RMA — implemented as
 a **first-party plugin** behind neutral capability ports, so that a **third-party OMS** can plug
@@ -96,7 +104,7 @@ reuses the four separable parts of the shipped #2047 shape:
 | A4 | **Order lifecycle** | per **order**, by fact class | OL derives (default); external OMS as **fact producer** | OL derives from its own persisted facts | Facts are recorded at their own grain with their producer; conflicting facts are **both kept**, the projection resolves by precedence, disagreement is displayed | (4) only |
 | A5 | **Returns disposition** | per **return**, configured per **channel** | OL-OMS, external OMS, the marketplace itself (Allegro decides, OL records) | OL's own `ReturnDispositionService` (once returns exist; today: none) | One per return; a second enabled `ReturnsAuthority` connection is `ambiguous` → no automated disposition, reason persisted on the return and surfaced — inert, per the matrix rule (R1: boot-failure clause retired) | (1)+(4) |
 | A6 | **Refund trigger** | per **payment instrument** = per source connection | **OL only** | OL, manual | **Never assignable away** — the OMS *requests*, OL executes or refuses with a persisted reason | (3) — per-order lock + attempted-predicate, the `blocksIssuanceElsewhere` shape |
-| A7 | **Invoicing / fiscalization** | per order, one originating document | ADR-041's resolved connection | #2047 selection, unchanged | Already specified | (1)(2)(3)(4) — the source of the shape |
+| A7 | **Invoicing / fiscalization** | per order, one originating document | ADR-041's resolved connection | Shipped and unchanged by this design (#2161): the rule engine (`evaluateSalesDocumentRules`) first, `resolveSalesDocumentRouting` — carrying #2047's single-candidate/operator-primary rules — as the fallback | Already specified | (1)(2)(3)(4) — the source of the shape |
 
 Three properties are load-bearing:
 
@@ -120,8 +128,9 @@ sibling-context value edges**, not framework-freedom — see ADR-053), pinned by
 spec. It publishes `AuthorityKind`, `AuthorityScope` (discriminated
 union: global / location / channel / order / work), `AuthorityAssignment`, the generic
 `selectAuthorityHolder()` (the pure generalisation of `selectPrimaryInvoicingConnection`, including
-its single-candidate rule), `parseAuthorityConfig()`, and `FulfillmentAuthorityBlockOutcome` with
-its reason unions.
+its single-candidate rule — a rule the shipped `resolveSalesDocumentRouting` already mirrors
+verbatim, so the generalisation has two consumers to keep honest, not one), `parseAuthorityConfig()`,
+and `FulfillmentAuthorityBlockOutcome` with its reason unions.
 
 **Resolution lives where the write lives** — A1 in `inventory`, A2/A3 in the new `fulfillment`
 context, A4 in the projection itself, A5 in `returns`, A6 in `orders`. A single `oms-policy`
@@ -206,7 +215,10 @@ diverged, these rulings apply throughout this document:
    routing-rule rows, pick-list state, wave state later).
 7. **Two vocabulary leaves, not one.** `fulfillment-authority` (authority vocabulary) and
    `order-lifecycle` (phase/hold/amendment vocabulary) are separate concerns, each following the
-   `sales-documents` leaf pattern. Merging them would couple two unrelated release cadences.
+   `sales-documents` leaf pattern — in its post-#2170 reading (ADR-053): what each leaf copies is
+   the **zero sibling-context value edge**, not framework-freedom, which `sales-documents` itself
+   gave up when the rule engine landed it a module, repositories and a tokens file. Merging them
+   would couple two unrelated release cadences.
 8. **Returns' restock into an OL-owned book routes through the OMS plugin's own
    `InventoryMaster` `adjustInventory` implementation** — the QC bucket flow
    (`received → quality_control → available`) is deferred with the `inspected` custody state; v1/v2
@@ -456,15 +468,54 @@ records that nothing planned produces a dry-run; `evaluate()` closes that, and
 here" answer commercial DOMSes rarely show. It never mints an internal id (operates on ingested
 orders only). **(c) Rules are a closed set of named filters + sorts, not a rules engine** —
 `method-capable`, `in-stock`, `country-served`, `not-blocked-by-reject`; sorts `priority`,
-`nearest`, `most-complete`, `least-splits`; sequenced by an operator-authored ordered list in
-`Connection.config.routing` (pure coercer, the `stockSafetyBuffer` precedent), with `afterAction:
+`nearest`, `most-complete`, `least-splits`; sequenced by an operator-authored ordered list (storage
+shape: see the rule-engine precedent below), with `afterAction:
 line-split | quantity-split | no-split` declared on the rule. **The named filters/sorts and
 their coercer are owned by `@openlinker/oms`** — they configure OL's own router and
 bind no vendor; core keeps only what crosses the port (`RoutingInput`, `RoutingPlan`,
 `RoutingExplanationStep`, whose rule names are opaque strings with display labels so a vendor's
 own names render). `RoutingPlan` carries a third arm, `pending {decisionId}`, for genuinely
-asynchronous DOMS sourcing (R1). ANALYSIS-1032 cut Wave 3's rules
-engine on evidence; filters+sorts is the smaller true shape.
+asynchronous DOMS sourcing (R1). ANALYSIS-1032 cut Wave 3's *routing* rules
+engine on evidence; filters+sorts is the smaller true shape — a cut about
+routing's decision vocabulary, not about rule layers in general, which is why the shipped
+sales-document engine below is precedent for the *mechanics* without reopening it.
+
+**The house pattern for an operator-authored rule layer now exists in shipped code, and this
+design mirrors it (#2161/#2170).** The `sales-documents` rule engine is the repo's one worked
+example of exactly this problem: a **closed** condition vocabulary
+(`SalesDocumentConditionFieldValues`, a discriminated union per field, no arbitrary predicates and
+no country literals), a **pure evaluator** with the caller loading every fact it needs
+(`evaluateSalesDocumentRules` — no I/O, `now` passed in, ambiguity resolving `unresolved` rather
+than to a silent winner, and *no priority field*, so two rules matching one order is a reported
+conflict and not a coin flip), **rows in dedicated tables** (`sales_document_rules` +
+`sales_document_thresholds` + `sales_document_country_defaults`), and a **FE composer dialog**
+(`SalesDocumentRuleComposerDialog`) over that shape. Routing's filters+sorts should copy all four —
+closed vocabulary, pure evaluator, rows, composer — and `RoutingExplanationStep` is the routing
+counterpart of the engine's reported `unresolved` reason.
+
+**RECOMMENDATION (adopt/differ, pending adjudication) — storage shape: rows, not
+`Connection.config.routing` jsonb; in the plugin's own table, not core.** The design previously argued jsonb from the `stockSafetyBuffer` precedent
+(#1844); the newer precedent is the closer analogue and supersedes it, because `stockSafetyBuffer`
+is a single scalar while a routing ruleset is an ordered, individually-addressable, individually-
+dated collection. Three reasons decide it. (1) **Rule identity has to be citable.** The
+`routing_decisions` intent row and its `RoutingExplanationStep[]` persist *why* an order went where
+it did; an array inside a config blob has no stable id, so an explanation written today becomes
+unreadable the moment the operator reorders or edits the list — `sales_document_rules` carries a
+uuid PK for precisely this. (2) **Effective dating and conflict detection are already solved
+once.** #2170 ships per-row `effectiveFrom`/`effectiveTo` filtering and an application-computed
+`conditionsHash` behind a unique index; `Connection.config` jsonb has neither history nor any
+uniqueness surface to guard a duplicate rule with. (3) **This changes placement, not ownership.**
+Adjudication #6 already assigns the plugin's private working state to `oms_*` tables, so the table
+is `oms_routing_rules` in `@openlinker/oms` — H7's ruling that the named filters/sorts and their
+coercer leave core survives intact, and core still keeps only `RoutingInput` / `RoutingPlan` /
+`RoutingExplanationStep`. The coercer does not disappear: it moves from parsing a config blob to
+narrowing an untrusted persisted `conditions` column, which is what
+`isSalesDocumentCondition` does today.
+
+*This is a **recommendation pending orchestrator adjudication**, not an applied change*: it
+touches ADR-054's reversal
+gate, and the flagged amendment paragraph lives there. Nothing binds until Wave 3's demand gate
+fires (§10).
 
 **Exactly one router per order** — the #2047 four-part copy, verbatim shape: pure
 `selectPrimaryFulfillmentRouter` (`none` = run today's path; `ambiguous` does nothing and persists
@@ -573,8 +624,10 @@ authors and derives the phase, which is the distinction the revert was reaching 
 
 ### 6.2 Vocabulary (the revert's second demand, supplied)
 
-In a new dependency-free leaf `libs/core/src/order-lifecycle/` (the `sales-documents` pattern:
-types + pure guards, zero outbound imports, no tokens file, pinned by barrel-purity):
+In a new dependency-free leaf `libs/core/src/order-lifecycle/` (the `sales-documents` pattern in
+its post-#2170 reading, ADR-053: types + pure guards, zero outbound sibling-context value edges,
+pinned by barrel-purity — the no-tokens-file posture is the *starting* one and ends the day the
+concern needs a binding, exactly as `sales-documents`' did):
 
 **`OrderLifecyclePhase`** — nine values, derived, precedence highest-wins, mirrored FE + SQL with a
 mirror-check script: `cancelled` (1: cancel wins over everything, a cancel-after-dispatch shows the
@@ -813,8 +866,10 @@ OL's A6 guard executes or refuses with a persisted reason — the attempted-pred
 boundary (R1: the ordering that makes the invoicing guard safe, restated rather than inherited by
 analogy), so a crash cannot double-refund (unexecuted is recoverable; a double refund is not) —
 and order transitions that feed ADR-041's `AutoIssueTriggerService` exactly as OL's own
-ingestion does today (its inputs change; its authority does not; it already reports rather than
-persists, so no new DI edge). The problem with no vendor precedent has a clean answer under the
+ingestion does today (its inputs change; its authority does not; it reports a
+`SalesDocumentBlockOutcome` and the caller in `orders` persists it, so **no new `orders` edge**
+appears — the precise property `invoicing-auto-issue-boot.int-spec.ts` pins, and the one that
+survived #2156/#2173 adding this service three unrelated dependencies). The problem with no vendor precedent has a clean answer under the
 matrix and none under any order-ownership model — the strongest single piece of evidence for the
 design.
 
@@ -996,8 +1051,12 @@ claim, shortfall surfacing, ADR-028 ordering); returns custody + the `adjustInve
 flow from the buyer refund, and the PL-specific story that makes the returns module read as
 complete); **automation layer v1** — a small **closed** set of triggers OL already owns (phase
 held N days, hold placed, work short-picked, dispatch deadline within X) × actions OL already
-ships (issue invoice, dispatch label, relay status, email buyer). The automation layer is the
-sellable product layer above the phase; the phase is plumbing.
+ships (issue invoice, dispatch label, relay status, email buyer), built on the **shipped
+`sales-documents` rule engine as the house pattern** (#2161/#2170 — closed condition vocabulary,
+pure evaluator with caller-loaded facts and no priority tie-break, rows in dedicated tables, a
+composer dialog over them; see §5.3(c) for the four properties and the storage-shape decision that
+follows from them). The automation layer is the sellable product layer above the phase; the phase
+is plumbing.
 
 **Wave 3 — routing + execution + the OL-OMS plugin** — **GATED on a fired demand trigger** (a
 live 2+-location deployment in pain; a no-shop/WMS seller; a late-penalty case): 3a — router +

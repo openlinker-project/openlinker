@@ -22,7 +22,11 @@ handshake — never "who owns the Order".
 location), sourcing/routing (per order, configured per channel), fulfillment execution (per work
 object, by handshake), order lifecycle (per order, as fact producer), returns disposition (per
 return), refund trigger (per payment instrument, **never assignable away from OL**) — with
-invoicing/fiscalization integrated as already resolved by [ADR-041](./041-sales-document-routing-policy.md).
+invoicing/fiscalization integrated as already resolved by [ADR-041](./041-sales-document-routing-policy.md),
+whose router is shipped code, not a proposal: `AutoIssueTriggerService` consults the
+`evaluateSalesDocumentRules` rule engine first and falls back to `resolveSalesDocumentRouting`
+(which carries #2047's single-candidate and operator-primary rules) only where no country
+configuration exists.
 Each authority's default holder is **today's shipped behaviour, reachable with zero config**; each
 conflict resolves to **inert-and-reported ambiguity** (the #2047 rule: an unrouted order is
 recoverable, a double-shipped one is not). The two postures ship as two named **presets** writing
@@ -59,6 +63,6 @@ at all — re-opens the matrix decision.
 
 ## References
 
-- Related issues: #1032, #2047
+- Related issues: #1032, #2047, #2161 (ADR-041's router shipped — A7 is built, not proposed)
 - Related ADRs: [ADR-041](./041-sales-document-routing-policy.md), [ADR-044](./044-order-changeset-proposed-then-confirmed.md), [ADR-053](./053-fulfillment-authority-vocabulary-leaf.md), [ADR-057](./057-adr-017-authoritative-reingestion-amendment.md)
 - Design doc: [DESIGN-oms-authority-model](../../plans/analysis/DESIGN-oms-authority-model.md)
