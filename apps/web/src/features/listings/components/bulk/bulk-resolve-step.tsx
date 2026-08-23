@@ -310,7 +310,7 @@ export function BulkResolveStep({
         // `collapseToInvalidBarcode` - shared with `recomputeVariantBlockers`,
         // which applies it after an edit.
         if (ean !== null && !isValidGtin(ean) && !blockers.includes('invalid-barcode')) {
-          blockers = collapseToInvalidBarcode(blockers) as BulkRowBlocker[];
+          blockers = collapseToInvalidBarcode(blockers);
         }
 
         return {

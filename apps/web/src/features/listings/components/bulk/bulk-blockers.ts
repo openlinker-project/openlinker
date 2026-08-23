@@ -18,6 +18,7 @@
  * @module apps/web/src/features/listings/components/bulk
  */
 import type { StatusBadgeTone } from '../../../../shared/ui';
+import type { BulkRowBlocker } from './bulk-wizard.types';
 
 export type ChipDescriptor = { tone: StatusBadgeTone; label: string; fixable: boolean };
 
@@ -88,7 +89,7 @@ export function isCategoryBlocker(blocker: string): boolean {
  * `recomputeVariantBlockers` apply it - the same policy expression written twice
  * is what `productCategoryIdOf` was extracted to stop one screen earlier.
  */
-export function collapseToInvalidBarcode(blockers: readonly string[]): string[] {
+export function collapseToInvalidBarcode(blockers: readonly string[]): BulkRowBlocker[] {
   return [...blockers.filter((b) => b !== 'no-match' && b !== 'no-ean'), 'invalid-barcode'];
 }
 

@@ -599,7 +599,7 @@ export function recomputeVariantBlockers(
   if (ean !== null && !isValidGtin(ean) && !filtered.includes('invalid-barcode')) {
     // The collapse rule lives in `collapseToInvalidBarcode`, shared with the
     // Resolve step, so the two cannot drift.
-    return collapseToInvalidBarcode(filtered) as BulkRowBlocker[];
+    return collapseToInvalidBarcode(filtered);
   }
   // #1837: "already listed" is a SOFT warning surfaced as its own chip + a
   // publish-time confirm - never a readiness blocker (re-publishing is a valid
