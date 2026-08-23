@@ -47,6 +47,26 @@ named routing filters/sorts and their coercer are **owned by the OL-OMS plugin**
 only `RoutingInput`/`RoutingPlan` (with a `pending {decisionId}` arm for async DOMS sourcing) /
 `RoutingExplanationStep` with opaque rule names.
 
+> **AMENDMENT (ADOPTED 2026-08-23, #2298 adjudication) — routing-rule storage shape.** This ADR and the design (§5.3(c)) assume the ordered filter/sort list is
+> operator-authored into `Connection.config.routing` jsonb on the `stockSafetyBuffer` precedent
+> (#1844). #2161/#2170 have since shipped a closer precedent — the `sales-documents` rule engine:
+> a closed condition vocabulary, a pure caller-fed evaluator, and **rows** in
+> `sales_document_rules` / `sales_document_thresholds` / `sales_document_country_defaults` with
+> per-row effective dating and an application-computed `conditionsHash` behind a unique index.
+> Routing rules **are** stored as rows too — in the plugin's own `oms_routing_rules`
+> table, never core — superseding the `Connection.config.routing` sentence in the Decision above,
+> for three reasons: a `RoutingExplanationStep` persisted on a
+> `routing_decisions` row needs a **stable rule id** to remain readable after the operator edits
+> the list; per-rule effective dating and duplicate detection already exist in the newer precedent
+> and have no jsonb equivalent; and moving to rows changes only *placement*, so H7's ruling that
+> the named filters/sorts and their coercer are owned by `@openlinker/oms` is untouched (the
+> coercer narrows an untrusted persisted `conditions` column instead of a config blob — what
+> `isSalesDocumentCondition` does today). This amendment carries its own
+> *Reversal gate (prose-only):* an
+> operator-authored routing list that never needs to be cited by a persisted explanation and never
+> needs per-rule dating would return the decision to jsonb. Nothing binds until Wave 3's demand
+> gate fires.
+
 ## Alternatives considered
 
 - **Split the order**: structurally impossible (bijection) and manufactures a
@@ -78,6 +98,6 @@ executor needing batching re-opens the `awaiting_wave` deferral.
 
 ## References
 
-- Related issues: #1032, #1917
+- Related issues: #1032, #1917, #2170/#2298 (the proposed storage-shape amendment above)
 - Related ADRs: [ADR-007](./007-syncjob-status-vs-outcome-split.md), [ADR-012](./012-branch-1-fulfillment-modeling.md), [ADR-020](./020-neutral-delivery-intent-shipping-dispatch.md), [ADR-027](./027-order-status-writeback-capability-and-relay.md), [ADR-044](./044-order-changeset-proposed-then-confirmed.md)
 - Design doc: [DESIGN-oms-authority-model](../../plans/analysis/DESIGN-oms-authority-model.md) §5
