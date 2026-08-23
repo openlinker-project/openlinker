@@ -296,4 +296,59 @@ describe('OrderActivityTimeline', () => {
       expect(screen.queryByText('Order changed at the source')).toBeNull();
     });
   });
+
+  describe('packed (#2288)', () => {
+    it('renders a DATED packed entry naming the operator', () => {
+      renderTimeline({
+        createdAt: '2026-04-20T10:00:00.000Z',
+        recordStatus: 'ready',
+        syncAttempts: [],
+        sourceConnectionId: SOURCE_CONNECTION_ID,
+        packedAt: '2026-04-21T09:00:00.000Z',
+        packedByUserId: 'user_7',
+      });
+
+      const entry = screen.getByText('Order packed').closest('li');
+      expect(within(entry as HTMLElement).getByText(/Marked packed by user_7\./)).toBeTruthy();
+      // A real instant is persisted, so the entry carries a <time> — unlike the
+      // deliberately undated invoicing-block entry.
+      expect(
+        (entry as HTMLElement).querySelector('time[datetime="2026-04-21T09:00:00.000Z"]'),
+      ).toBeTruthy();
+    });
+
+    it('renders no packed entry when the order was never packed', () => {
+      renderTimeline({
+        createdAt: '2026-04-20T10:00:00.000Z',
+        recordStatus: 'ready',
+        syncAttempts: [],
+        sourceConnectionId: SOURCE_CONNECTION_ID,
+        packedAt: null,
+        packedByUserId: null,
+      });
+
+      expect(screen.queryByText('Order packed')).toBeNull();
+    });
+
+    it('places the packed entry BEFORE the undated invoicing-block entry', () => {
+      renderTimeline({
+        createdAt: '2026-04-20T10:00:00.000Z',
+        recordStatus: 'ready',
+        syncAttempts: [],
+        sourceConnectionId: SOURCE_CONNECTION_ID,
+        packedAt: '2026-04-21T09:00:00.000Z',
+        packedByUserId: 'user_7',
+        salesDocumentBlockReason: 'trigger-model-manual',
+      });
+
+      const titles = Array.from(document.querySelectorAll('.order-activity__item')).map(
+        (li) => li.textContent ?? '',
+      );
+      const packedIndex = titles.findIndex((t) => t.includes('Order packed'));
+      const blockedIndex = titles.findIndex((t) => t.includes('No invoice issued'));
+
+      expect(packedIndex).toBeGreaterThanOrEqual(0);
+      expect(blockedIndex).toBeGreaterThan(packedIndex);
+    });
+  });
 });

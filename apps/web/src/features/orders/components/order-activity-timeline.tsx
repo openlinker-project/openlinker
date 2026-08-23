@@ -84,6 +84,14 @@ interface OrderActivityTimelineProps {
   lastAmendedAt?: string | null;
   /** What changed then (#2283) — PII-free by backend contract. */
   lastAmendmentChanges?: OrderAmendmentChange[] | null;
+  /**
+   * Instant an operator marked this order packed (#2288). DATED, like the
+   * #2283 amendment entry and unlike the #2100 invoicing block: a real instant
+   * is persisted, so it belongs in the history rather than beside it.
+   */
+  packedAt?: string | null;
+  /** OL user id of whoever marked it packed (#2288) — rendered as the actor. */
+  packedByUserId?: string | null;
 }
 
 const STATUS_PAST_TENSE: Record<OrderSyncStatusValue, string> = {
@@ -162,6 +170,8 @@ function buildEvents(
   invoice?: ParsedOrderInvoice | null,
   lastAmendedAt?: string | null,
   lastAmendmentChanges?: OrderAmendmentChange[] | null,
+  packedAt?: string | null,
+  packedByUserId?: string | null,
 ): TimelineEvent[] {
   const events: TimelineEvent[] = [];
 
@@ -287,6 +297,23 @@ function buildEvents(
     });
   }
 
+  // #2288 — an operator marked this order packed. DATED for the same reason the
+  // amendment entry above is: a real instant is persisted. `success` because it
+  // is progress through the workflow, not outstanding work. Pushed BEFORE the
+  // undated entry below so the current-state row stays last.
+  if (packedAt) {
+    events.push({
+      id: 'packed',
+      timestamp: packedAt,
+      title: 'Order packed',
+      by: 'operator',
+      description: packedByUserId
+        ? `Marked packed by ${packedByUserId}.`
+        : 'Marked packed by an operator.',
+      tone: 'success',
+    });
+  }
+
   // #2100 — appended last and DELIBERATELY UNDATED (`timestamp: null`): the block
   // is a current-state fact re-decided on every transition, not a historical
   // event, and no instant is persisted for it. Dating it with `createdAt` or
@@ -334,6 +361,8 @@ export function OrderActivityTimeline({
   invoice,
   lastAmendedAt,
   lastAmendmentChanges,
+  packedAt,
+  packedByUserId,
 }: OrderActivityTimelineProps): ReactElement {
   const events = useMemo(
     () =>
@@ -349,6 +378,8 @@ export function OrderActivityTimeline({
         invoice,
         lastAmendedAt,
         lastAmendmentChanges,
+        packedAt,
+        packedByUserId,
       ),
     [
       createdAt,
@@ -362,6 +393,8 @@ export function OrderActivityTimeline({
       invoice,
       lastAmendedAt,
       lastAmendmentChanges,
+      packedAt,
+      packedByUserId,
     ],
   );
 

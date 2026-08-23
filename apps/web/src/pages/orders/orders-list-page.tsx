@@ -57,6 +57,7 @@ import { deriveOrderHealth, slaBadge, fulfillmentBadge } from '../../features/or
 import { paymentBadge } from '../../features/orders/lib/order-row';
 import { OrderIdentityCell } from '../../features/orders';
 import { OrderInvoicingCell } from '../../features/orders/components/order-invoicing-cell';
+import { OrderPackedTick } from '../../features/orders/components/order-packed-tick';
 import { deriveDeliveryOutcome, hasLiveOlCarrierRoute } from '../../features/orders/lib/delivery-outcome';
 import { DeliveryOutcomeChip } from '../../features/orders/components/delivery-chip';
 import { resolveDeliveryOwner } from '../../features/orders/lib/delivery-owner';
@@ -859,6 +860,11 @@ export function OrdersListPage(): ReactElement {
             hasLiveOlCarrierRoute(order.deliveryResolution);
           return (
             <span className="orders-cell-stack">
+              {/* Packed sits FIRST: the shipment cell reads as time (packed →
+                  shipped → due → carrier), and packing precedes everything else
+                  in it. It is also the one slot that never depends on a sibling —
+                  the fulfillment badge below is conditional. */}
+              <OrderPackedTick packedAt={order.packedAt} layout="stack" emptyFallback={null} />
               {/* When the row offers "Generate label" the CTA is deferred to sit
                   directly under the Awaiting-label delivery chip (the state it
                   resolves), so the top slot only carries the passive fulfillment
@@ -1569,6 +1575,20 @@ export function OrdersListPage(): ReactElement {
                       <div>
                         <dt>Customer</dt>
                         <dd>{cust ?? '—'}</dd>
+                      </div>
+                      <div>
+                        <dt>Packed</dt>
+                        <dd>
+                          {/* SAME component as the desktop cell. On a narrow
+                              viewport the desktop tick becomes a labelled fact,
+                              so the empty case needs a dash rather than nothing —
+                              a <dd> may not be empty. */}
+                          <OrderPackedTick
+                            packedAt={order.packedAt}
+                            layout="row"
+                            emptyFallback="—"
+                          />
+                        </dd>
                       </div>
                       <div className="orders-card-facts__wide">
                         <dt>Shipment</dt>

@@ -26,6 +26,14 @@ export interface OrdersApi {
     internalOrderId: string,
     destinationConnectionId: string,
   ) => Promise<RetryOrderDestinationResult>;
+  /**
+   * Mark the order packed (#2287). Returns the updated record, and returns 200
+   * on an idempotent replay too — marking an already-packed order keeps the
+   * FIRST actor and instant rather than restamping them.
+   */
+  markPacked: (internalOrderId: string) => Promise<OrderRecord>;
+  /** Clear the packed mark (#2287). Clearing an unpacked order is a no-op 200. */
+  unmarkPacked: (internalOrderId: string) => Promise<OrderRecord>;
 }
 
 interface ApiRequest {
@@ -86,6 +94,16 @@ export function createOrdersApi(request: ApiRequest): OrdersApi {
         `/orders/${encodeURIComponent(internalOrderId)}/destinations/${encodeURIComponent(destinationConnectionId)}/retry`,
         { method: 'POST' },
       );
+    },
+    markPacked(internalOrderId): Promise<OrderRecord> {
+      return request<OrderRecord>(`/orders/${encodeURIComponent(internalOrderId)}/packed`, {
+        method: 'POST',
+      });
+    },
+    unmarkPacked(internalOrderId): Promise<OrderRecord> {
+      return request<OrderRecord>(`/orders/${encodeURIComponent(internalOrderId)}/packed`, {
+        method: 'DELETE',
+      });
     },
   };
 }

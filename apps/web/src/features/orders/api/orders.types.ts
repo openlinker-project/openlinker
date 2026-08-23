@@ -282,6 +282,19 @@ export interface OrderRecord {
    * never their values, so this is safe to render verbatim.
    */
   lastAmendmentChanges?: OrderAmendmentChange[] | null;
+  /**
+   * Instant an operator marked this order packed (#2287/#2288). `null`/absent =
+   * not packed. A plain operator fact: it moves no status, gates nothing and is
+   * owned by neither the source nor a destination — which is why the list shows
+   * it as a tick rather than a badge, and the detail page (not the row) acts.
+   * Optional for graceful degradation on a pre-#2287 payload.
+   */
+  packedAt?: string | null;
+  /**
+   * OL user id of whoever marked it packed (#2287). Moves as one group with
+   * `packedAt`, so it is non-null exactly when `packedAt` is.
+   */
+  packedByUserId?: string | null;
 }
 
 // Result ordering for the orders list (#927, extended #944). Mirrors

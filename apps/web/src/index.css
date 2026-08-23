@@ -9093,6 +9093,15 @@ a.kpi-card:focus-visible {
 .orders-shipby-row { display: inline-flex; align-items: center; gap: 6px; }
 .orders-carrier { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+/* Packed tick (#2288). A workflow POSITION, so it reads as a tick rather than
+   one more badge — the row already carries four badge vocabularies. Colour is
+   never the only signal: the glyph and the word carry the fact on their own. */
+.orders-packed-tick { display: inline-flex; align-items: center; gap: 4px; font-size: 0.75rem; }
+.orders-packed-tick__mark { color: var(--status-success-fg); font-weight: 600; }
+.orders-packed-tick__label { color: var(--text-muted); }
+.orders-packed-control { gap: var(--space-3); }
+.orders-packed-state { display: inline-flex; align-items: center; gap: 4px; }
+
 /* Channel folds under the order name below the Channel column's 1024px hide
    breakpoint — hidden on wide screens where the standalone column shows. */
 .orders-order-channel { display: none; align-items: center; gap: 6px; }

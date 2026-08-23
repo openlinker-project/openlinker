@@ -91,3 +91,36 @@ describe('orders api — buildQuery', () => {
     expect(paths[0]).not.toContain('salesDocumentBlocked');
   });
 });
+
+
+describe('orders api — packed writes (#2288)', () => {
+  function recordingApiWithInit(): {
+    api: ReturnType<typeof createOrdersApi>;
+    calls: { path: string; init?: RequestInit }[];
+  } {
+    const calls: { path: string; init?: RequestInit }[] = [];
+    const request = vi.fn(async (path: string, init?: RequestInit) => {
+      calls.push({ path, init });
+      return {} as never;
+    });
+    return { api: createOrdersApi(request), calls };
+  }
+
+  it('POSTs to the packed sub-resource and encodes the order id', async () => {
+    const { api, calls } = recordingApiWithInit();
+
+    await api.markPacked('ol/order 1');
+
+    expect(calls[0].path).toBe('/orders/ol%2Forder%201/packed');
+    expect(calls[0].init?.method).toBe('POST');
+  });
+
+  it('DELETEs the same path to clear the mark', async () => {
+    const { api, calls } = recordingApiWithInit();
+
+    await api.unmarkPacked('ol_order_1');
+
+    expect(calls[0].path).toBe('/orders/ol_order_1/packed');
+    expect(calls[0].init?.method).toBe('DELETE');
+  });
+});

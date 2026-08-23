@@ -35,6 +35,7 @@ import {
 } from '../../features/shipments';
 import { OrderCustomerCard } from '../../features/orders/components/order-customer-card';
 import { OrderActivityTimeline } from '../../features/orders/components/order-activity-timeline';
+import { OrderPackedControl } from '../../features/orders/components/order-packed-control';
 import { OrderShipmentPanel } from '../../features/orders/components/order-shipment-panel';
 import { SalesDocumentPanel } from '../../features/orders/components/sales-document-panel';
 import { OrderDetailHeader } from '../../features/orders/components/order-detail-header';
@@ -374,6 +375,16 @@ export function OrderDetailPage(): ReactElement {
             <KeyValueList items={summaryItems} />
           </section>
 
+          {/* Packing is a fact about EVERY order, so this sits in the always
+              rendered left stack rather than inside the capability-gated
+              shipment panel — an order with no shipping-capable connection
+              still gets packed. */}
+          <OrderPackedControl
+            internalOrderId={order.internalOrderId}
+            packedAt={order.packedAt}
+            packedByUserId={order.packedByUserId}
+          />
+
           <section className="detail-section">
             <h3 className="detail-section__title">
               Sync status{order.syncStatus.length > 0 ? ` (${order.syncStatus.length})` : ''}
@@ -468,6 +479,8 @@ export function OrderDetailPage(): ReactElement {
           invoice={snapshot.invoice}
           lastAmendedAt={order.lastAmendedAt}
           lastAmendmentChanges={order.lastAmendmentChanges}
+          packedAt={order.packedAt}
+          packedByUserId={order.packedByUserId}
         />
       </section>
 
