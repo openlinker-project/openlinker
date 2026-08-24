@@ -47,7 +47,7 @@ describe('allegroOfferValidation', () => {
         ...base,
         needsProductParameters: true,
         willLinkProductCard: true,
-      }),
+      })
     ).toEqual([]);
   });
 
@@ -347,5 +347,134 @@ describe('allegroOfferValidation', () => {
 
   it('opts into the host category-parameter schema fetch (its validator reads it)', () => {
     expect(allegroOfferValidation.needsCategoryParameterSchema).toBe(true);
+  });
+
+  // ── #2240 - seller details are a connection-level precondition ──
+  describe('validateBatch', () => {
+    const complete = {
+      sellerDefaults: {
+        location: {
+          countryCode: 'PL',
+          province: 'MAZOWIECKIE',
+          city: 'Warszawa',
+          postCode: '00-001',
+        },
+        responsibleProducerId: 'rp_1',
+        safetyInformation: { type: 'TEXT', description: 'Safe' },
+      },
+    };
+
+    it('reports nothing when every group is filled in', () => {
+      expect(allegroOfferValidation.validateBatch?.({ connectionConfig: complete })).toEqual([]);
+    });
+
+    it('names every missing group on an empty connection config', () => {
+      const issues = allegroOfferValidation.validateBatch?.({ connectionConfig: {} }) ?? [];
+
+      expect(issues).toHaveLength(1);
+      expect(issues[0]?.id).toBe('allegro:missing-seller-details');
+      expect(issues[0]?.title).toContain('a ship-from location');
+      expect(issues[0]?.title).toContain('a responsible producer');
+      expect(issues[0]?.title).toContain('safety information');
+    });
+
+    it('treats a partially filled ship-from location as missing', () => {
+      // The adapter's gate requires all four fields, so three of four is a
+      // rejection at create time - not a warning we can soften here.
+      const issues =
+        allegroOfferValidation.validateBatch?.({
+          connectionConfig: {
+            sellerDefaults: {
+              ...complete.sellerDefaults,
+              location: { countryCode: 'PL', province: 'MAZOWIECKIE', city: 'Warszawa' },
+            },
+          },
+        }) ?? [];
+
+      expect(issues).toHaveLength(1);
+      expect(issues[0]?.title).toContain('a ship-from location');
+      expect(issues[0]?.title).not.toContain('responsible producer');
+    });
+
+    it('treats a blank string as missing, not as a value', () => {
+      const issues =
+        allegroOfferValidation.validateBatch?.({
+          connectionConfig: {
+            sellerDefaults: { ...complete.sellerDefaults, responsibleProducerId: '   ' },
+          },
+        }) ?? [];
+
+      expect(issues[0]?.title).toContain('a responsible producer');
+    });
+
+    it('requires safetyInformation.type, which the adapter gate checks first', () => {
+      // The mirror used to accept any object here, so a connection carrying a
+      // description and no type read green and had every offer rejected - the
+      // under-reporting a mirror drifts into (#2240 review).
+      const issues =
+        allegroOfferValidation.validateBatch?.({
+          connectionConfig: {
+            sellerDefaults: { ...complete.sellerDefaults, safetyInformation: { description: 'Safe' } },
+          },
+        }) ?? [];
+
+      expect(issues[0]?.title).toContain('safety information');
+    });
+
+    it('requires a description on the TEXT arm', () => {
+      const issues =
+        allegroOfferValidation.validateBatch?.({
+          connectionConfig: {
+            sellerDefaults: {
+              ...complete.sellerDefaults,
+              safetyInformation: { type: 'TEXT', description: '' },
+            },
+          },
+        }) ?? [];
+
+      expect(issues[0]?.title).toContain('safety information');
+    });
+
+    it('requires at least one attachment on the ATTACHMENTS arm', () => {
+      const issues =
+        allegroOfferValidation.validateBatch?.({
+          connectionConfig: {
+            sellerDefaults: {
+              ...complete.sellerDefaults,
+              safetyInformation: { type: 'ATTACHMENTS', attachments: [] },
+            },
+          },
+        }) ?? [];
+
+      expect(issues[0]?.title).toContain('safety information');
+    });
+
+    it('accepts a filled ATTACHMENTS arm', () => {
+      expect(
+        allegroOfferValidation.validateBatch?.({
+          connectionConfig: {
+            sellerDefaults: {
+              ...complete.sellerDefaults,
+              safetyInformation: { type: 'ATTACHMENTS', attachments: [{ id: 'a1' }] },
+            },
+          },
+        })
+      ).toEqual([]);
+    });
+
+    it('accepts a type the adapter gate does not model rather than blocking on it', () => {
+      // The adapter only asserts `type` is present, so inventing a stricter rule
+      // here would refuse a batch Allegro allows.
+      expect(
+        allegroOfferValidation.validateBatch?.({
+          connectionConfig: {
+            sellerDefaults: {
+              ...complete.sellerDefaults,
+              safetyInformation: { type: 'SOMETHING_NEW' },
+            },
+          },
+        })
+      ).toEqual([]);
+    });
   });
 });

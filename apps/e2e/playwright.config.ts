@@ -60,6 +60,11 @@
  *                      published to the destination. The first three are
  *                      unreachable under jsdom AND happy-dom. Self-configuring;
  *                      `retries: 0` — the publish case creates a real offer.
+ *   - `wizard-blockers` - category-blocker states in the same wizard (#2240):
+ *                      which cause is reported, where the fix lives, and what
+ *                      the confirmation says about variants that will not be
+ *                      listed. Stubbed the same way, screenshots attached per
+ *                      state. `retries: 1` (nothing is mutated).
  *
  * Reporters: html + list. Retries are per-project: read-only projects (setup,
  * smoke) retry once; the mutating golden-path project runs with `retries: 0` —
@@ -268,6 +273,20 @@ export default defineConfig({
       retries: 0,
       dependencies: ['setup'],
       use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
+    },
+    {
+      // Category-blocker states in the bulk publish wizard (#2240). Every OL
+      // route the wizard touches is stubbed in-test, so it needs no seeded
+      // catalogue and no Allegro connection. `retries: 1` (nothing is mutated).
+      name: 'wizard-blockers',
+      testMatch: /wizard-blockers\/.*\.spec\.ts/,
+      retries: 1,
+      // No `setup` dependency and no shared storage state: the spec stubs the
+      // session bootstrap along with every other route, so it needs only a
+      // served web app. The states it pins are decided by resolve outcomes and
+      // connection config - a real session would add a stack dependency without
+      // making any assertion more truthful.
+      use: { ...devices['Desktop Chrome'] },
     },
   ],
 });

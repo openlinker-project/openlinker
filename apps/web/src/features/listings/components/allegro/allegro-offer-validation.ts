@@ -49,6 +49,113 @@ export const ALLEGRO_NO_PHOTO_BLOCKER = 'allegro:no-photo';
 export const ALLEGRO_SIBLINGS_WITHOUT_CARD_BLOCKER = 'allegro:siblings-without-card';
 export const ALLEGRO_EAN_UNVERIFIED_BLOCKER = 'allegro:ean-unverified';
 export const ALLEGRO_IN_STORE_BARCODE_BLOCKER = 'allegro:in-store-barcode';
+export const ALLEGRO_MISSING_SELLER_DEFAULTS_ISSUE = 'allegro:missing-seller-details';
+
+/**
+ * Every `sellerDefaults` path Allegro's own create-time gate can report as
+ * missing - a declared mirror of `collectMissingSellerDefaultsFields` in
+ * `libs/integrations/allegro/src/infrastructure/adapters/allegro-offer-manager.adapter.ts`,
+ * which is the FIRST statement of `createOffer` and unconditional (card-linked
+ * offers are not exempt), so a connection missing any of these cannot create
+ * anything.
+ *
+ * The list exists so the two halves can be compared by machine:
+ * `scripts/check-allegro-seller-defaults-mirror.mjs` (under
+ * `pnpm check:invariants`) fails the build when the adapter's gate grows,
+ * renames or drops a path this file does not know about. Without it the mirror
+ * goes quietly stale and the banner starts UNDER-reporting - the same
+ * silent-green failure the pre-submit check exists to close, one layer up.
+ *
+ * `description` and `attachments` are the two arms of `safetyInformation.type`;
+ * the adapter reports at most one, this file requires whichever the declared
+ * type selects.
+ */
+export const ALLEGRO_SELLER_DEFAULT_PATHS = [
+  'sellerDefaults.location',
+  'sellerDefaults.location.countryCode',
+  'sellerDefaults.location.province',
+  'sellerDefaults.location.city',
+  'sellerDefaults.location.postCode',
+  'sellerDefaults.responsibleProducerId',
+  'sellerDefaults.safetyInformation',
+  'sellerDefaults.safetyInformation.type',
+  'sellerDefaults.safetyInformation.description',
+  'sellerDefaults.safetyInformation.attachments',
+] as const;
+
+const SELLER_LOCATION_FIELDS = ['countryCode', 'province', 'city', 'postCode'] as const;
+
+/**
+ * Present-and-non-blank, matching the adapter's own `!loc?.countryCode` /
+ * `!safety?.type` truthiness checks.
+ *
+ * ONE divergence, deliberate and in the safe direction: a whitespace-only string
+ * is reported missing here and passes the adapter's gate. Blank-after-trim is
+ * not a value in any reading, and Allegro rejects it, so the batch is wasted
+ * either way - naming it before submit is the whole point. Everything else
+ * matches the adapter exactly, because this check now BLOCKS the submit (see
+ * `OfferBatchIssue`) and a mirror stricter than the gate would lock an operator
+ * out of a batch the destination would have accepted.
+ */
+const isFilled = (value: unknown): boolean =>
+  typeof value === 'string' ? value.trim() !== '' : Boolean(value);
+
+const asRecord = (value: unknown): Record<string, unknown> | undefined =>
+  typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
+
+/**
+ * Whether `safetyInformation` is complete on the adapter's terms: a `type` is
+ * required, and the arm that type selects must carry a value. An unrecognised
+ * type is accepted here because the adapter accepts it too - it only asserts
+ * `type` is present - and inventing a stricter rule would block a submit the
+ * destination allows.
+ */
+function isSafetyInformationComplete(raw: unknown): boolean {
+  const safety = asRecord(raw);
+  if (!safety || !isFilled(safety['type'])) return false;
+  if (safety['type'] === 'TEXT') {
+    const description = safety['description'];
+    return typeof description === 'string' && description.length > 0;
+  }
+  if (safety['type'] === 'ATTACHMENTS') {
+    const attachments = safety['attachments'];
+    return Array.isArray(attachments) && attachments.length > 0;
+  }
+  return true;
+}
+
+/**
+ * Which seller-detail groups the connection is missing, in the operator's
+ * words. Empty ⇒ nothing to report.
+ *
+ * Grouped rather than path-by-path on purpose: `sellerDefaults.location.postCode`
+ * is not a sentence an operator can act on, and all four location fields are
+ * edited in one place. The path list above is what the guard compares; this is
+ * what the banner says.
+ */
+export function missingAllegroSellerDetails(config: Record<string, unknown>): string[] {
+  const defaults = asRecord(config['sellerDefaults']);
+  const missing: string[] = [];
+
+  const location = asRecord(defaults?.['location']);
+  const locationComplete =
+    location !== undefined && SELLER_LOCATION_FIELDS.every((field) => isFilled(location[field]));
+  if (!locationComplete) missing.push('a ship-from location');
+  if (!isFilled(defaults?.['responsibleProducerId'])) missing.push('a responsible producer');
+  if (!isSafetyInformationComplete(defaults?.['safetyInformation'])) {
+    missing.push('safety information');
+  }
+
+  return missing;
+}
+
+/** "a, b and c" - a plain list, no Oxford comma, no trailing punctuation. */
+function joinPlainly(parts: readonly string[]): string {
+  if (parts.length <= 1) return parts[0] ?? '';
+  return `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`;
+}
 
 export const allegroOfferValidation: OfferValidationContribution = {
   blockers: [
@@ -158,6 +265,18 @@ export const allegroOfferValidation: OfferValidationContribution = {
     }
 
     return blockers;
+  },
+  validateBatch: (input) => {
+    const missing = missingAllegroSellerDetails(input.connectionConfig);
+    if (missing.length === 0) return [];
+    return [
+      {
+        id: ALLEGRO_MISSING_SELLER_DEFAULTS_ISSUE,
+        title: `This connection is missing ${joinPlainly(missing)}.`,
+        detail:
+          'Allegro requires them on every offer, so every offer in this batch would be rejected. Add them in the connection settings, then come back - the submit stays locked until they are set.',
+      },
+    ];
   },
   // Allegro's validator reads `needsProductParameters` and the parameter schema
   // itself (#2243), so the host must fetch the per-category schema for this

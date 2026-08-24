@@ -590,7 +590,7 @@ describe('BulkEditModal', () => {
 
     // The chip's change button opens the external picker (no inline picker now).
     expect(screen.queryByTestId('category-picker')).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /change/ }));
+    fireEvent.click(screen.getByRole('button', { name: /set category|change/ }));
 
     fireEvent.click(await screen.findByRole('button', { name: 'Select' }));
     fireEvent.click(screen.getByRole('button', { name: 'Save all' }));
@@ -660,6 +660,32 @@ describe('BulkEditModal', () => {
       expect(screen.getByRole('radio', { name: /Rozmiar: M/ })).toBeInTheDocument();
       // Opened focused on var_m → its EAN field is present + prefilled from master.
       expect(screen.getByLabelText('EAN for Rozmiar: M')).toHaveValue('5900531001130');
+    });
+
+    it('shows the variant category without expanding the disclosure (#2240)', () => {
+      renderWithProviders(
+        <BulkEditModal
+          open
+          onOpenChange={() => undefined}
+          row={makeMultiRow()}
+          connection={connection}
+          canBrowseCategories={true}
+          currency="PLN"
+          defaults={DEFAULTS}
+          focusVariantId="var_m"
+          onSave={() => undefined}
+        />,
+      );
+
+      // The category is the field a blocked variant is blocked on. It used to sit
+      // last inside a collapsed accordion named after title and description.
+      const disclosure = screen.getByText('Override base title / description').closest('details');
+      expect(disclosure).not.toHaveAttribute('open');
+      expect(disclosure?.textContent).not.toContain('Category');
+      // …and it is on the panel itself, whatever the destination's grouping model
+      // allows (interactive ladder for catalog-implicit, read-only otherwise).
+      expect(screen.getByLabelText('EAN for Rozmiar: M')).toBeInTheDocument();
+      expect(screen.getAllByText(/Category/).length).toBeGreaterThan(0);
     });
 
     it('pre-fills the inherited base price as the per-variant Price value, and toggles override on divergence (#1741)', () => {
@@ -993,7 +1019,7 @@ describe('BulkEditModal', () => {
         );
 
         // Category lives inside the collapsed per-variant accordion (#1924).
-        fireEvent.click(screen.getByText('Override base title / description / category'));
+        fireEvent.click(screen.getByText('Override base title / description'));
 
         fireEvent.click(screen.getByRole('button', { name: 'Override for this variant' }));
         expect(screen.getByText(/splits it into its own Allegro listing/)).toBeInTheDocument();
@@ -1032,7 +1058,7 @@ describe('BulkEditModal', () => {
           { apiClient },
         );
 
-        fireEvent.click(screen.getByText('Override base title / description / category'));
+        fireEvent.click(screen.getByText('Override base title / description'));
         fireEvent.click(screen.getByRole('button', { name: 'Override for this variant' }));
         fireEvent.click(screen.getByRole('button', { name: 'Override anyway' }));
         fireEvent.click(await screen.findByRole('button', { name: 'Select' }));
@@ -1066,7 +1092,7 @@ describe('BulkEditModal', () => {
           { apiClient },
         );
 
-        fireEvent.click(screen.getByText('Override base title / description / category'));
+        fireEvent.click(screen.getByText('Override base title / description'));
         fireEvent.click(screen.getByRole('button', { name: 'Override for this variant' }));
         fireEvent.click(screen.getByRole('button', { name: 'Override anyway' }));
         fireEvent.click(await screen.findByRole('button', { name: 'Select' }));
@@ -1092,7 +1118,7 @@ describe('BulkEditModal', () => {
           />,
         );
 
-        fireEvent.click(screen.getByText('Override base title / description / category'));
+        fireEvent.click(screen.getByText('Override base title / description'));
         expect(screen.queryByRole('button', { name: 'Override for this variant' })).not.toBeInTheDocument();
         expect(screen.getByText(/cannot be overridden per variant here/)).toBeInTheDocument();
       });
@@ -1112,7 +1138,7 @@ describe('BulkEditModal', () => {
           />,
         );
 
-        fireEvent.click(screen.getByText('Override base title / description / category'));
+        fireEvent.click(screen.getByText('Override base title / description'));
         expect(screen.queryByRole('button', { name: 'Override for this variant' })).not.toBeInTheDocument();
       });
     });
