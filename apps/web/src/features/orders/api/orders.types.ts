@@ -7,6 +7,7 @@
  *
  * @module apps/web/src/features/orders/api
  */
+import type { OrderLifecyclePhaseValue } from '../lib/order-lifecycle-phase';
 
 /**
  * Mirrors CORE `OrderSyncStatusFilterValues` (`order-record.types.ts`).
@@ -295,6 +296,14 @@ export interface OrderRecord {
    * `packedAt`, so it is non-null exactly when `packedAt` is.
    */
   packedByUserId?: string | null;
+  /**
+   * The derived lifecycle phase (#2305/#2309) — "what is this order waiting on".
+   * Derived server-side on every read; the FE never re-derives it. A SECOND
+   * orthogonal partition beside the health bucket, never a sixth health value
+   * (ADR-059). Optional for graceful degradation on a pre-#2309 payload, which
+   * is the one case the phase badge renders nothing.
+   */
+  lifecyclePhase?: OrderLifecyclePhaseValue;
 }
 
 // Result ordering for the orders list (#927, extended #944). Mirrors
@@ -381,6 +390,12 @@ export interface OrderFilters {
    * its rows match the counts `slaSummary` returns under the same scope.
    */
   cancelled?: boolean;
+  /**
+   * Filter to a single derived lifecycle phase (#2310), `?phase=`. Composes with
+   * `health` rather than replacing it — the two axes are orthogonal, so "synced
+   * AND blocked" is a real and common shape.
+   */
+  phase?: OrderLifecyclePhaseValue;
 }
 
 /**
@@ -431,4 +446,26 @@ export interface RetryOrderDestinationResult {
   destinationConnectionId: string;
   jobId: string;
   jobType: string;
+}
+
+/**
+ * Per-lifecycle-phase counts from `GET /orders/lifecycle-summary` (#2309).
+ * Mirrors `OrderLifecyclePhaseSummaryResponseDto` (BE), camelCase per phase.
+ * The phases partition the set, so the nine buckets sum to `total`.
+ *
+ * `vendorAuthoritative`, `held` and `amending` are structurally 0 until Waves 2
+ * and 4 supply their producers — a correct report about a fact OL does not yet
+ * record, not a gap.
+ */
+export interface OrderLifecyclePhaseSummary {
+  total: number;
+  cancelled: number;
+  vendorAuthoritative: number;
+  delivered: number;
+  inTransit: number;
+  fulfillmentFailed: number;
+  held: number;
+  amending: number;
+  blocked: number;
+  ready: number;
 }

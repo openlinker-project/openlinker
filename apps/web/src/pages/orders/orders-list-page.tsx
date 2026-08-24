@@ -46,6 +46,14 @@ import type { LocaleCode } from '../../shared/i18n';
 import { useOrdersQuery } from '../../features/orders/hooks/use-orders-query';
 import { useOrderStatusSummaryQuery } from '../../features/orders/hooks/use-order-status-summary-query';
 import { useOrderSlaSummaryQuery } from '../../features/orders/hooks/use-order-sla-summary-query';
+import { useOrderLifecycleSummaryQuery } from '../../features/orders/hooks/use-order-lifecycle-summary-query';
+import { OrderPhaseBadge } from '../../features/orders/components/order-phase-badge';
+import {
+  OrderLifecyclePhaseValues,
+  ORDER_LIFECYCLE_PHASE_META,
+  isOrderLifecyclePhase,
+  type OrderLifecyclePhaseValue,
+} from '../../features/orders/lib/order-lifecycle-phase';
 import { useRetryOrderDestinationMutation } from '../../features/orders/hooks/use-retry-order-destination-mutation';
 import { ReadOnlyLock } from '../../shared/ui/read-only-lock';
 import { useWriteAccess } from '../../shared/auth/use-permission';
@@ -74,6 +82,7 @@ import type {
   OrderSortDirection,
   SlaStateValue,
   FulfillmentRollupStateValue,
+  OrderLifecyclePhaseSummary,
 } from '../../features/orders/api/orders.types';
 import {
   OrderHealthValues,
@@ -262,6 +271,28 @@ const NARROWING_FILTER_URL_PARAM: Record<NarrowingOrderFilterKey, string> = {
   slaState: 'slaState',
   fulfillmentState: 'fulfillmentState',
   salesDocumentBlocked: 'invoicing',
+  phase: 'phase',
+};
+
+/**
+ * Phase → `OrderLifecyclePhaseSummary` field (#2310). The summary is camelCase
+ * per bucket while the phase union is snake_case, so the two cannot be derived
+ * from one another; an exhaustive `Record` makes a new phase a compile error
+ * here rather than a silently missing count.
+ */
+const PHASE_SUMMARY_KEY: Record<
+  OrderLifecyclePhaseValue,
+  keyof Omit<OrderLifecyclePhaseSummary, 'total'>
+> = {
+  cancelled: 'cancelled',
+  vendor_authoritative: 'vendorAuthoritative',
+  delivered: 'delivered',
+  in_transit: 'inTransit',
+  fulfillment_failed: 'fulfillmentFailed',
+  held: 'held',
+  amending: 'amending',
+  blocked: 'blocked',
+  ready: 'ready',
 };
 
 /** Every URL param that narrows the result set — derived, not hand-maintained (#2148). */
@@ -317,6 +348,11 @@ export function OrdersListPage(): ReactElement {
   // `health` rather than replacing it. Present-only toggle: the URL never carries
   // `invoicing=false`, so the filter is either "blocked only" or absent.
   const invoicingBlocked = searchParams.get('invoicing') === 'blocked';
+  // #2310 — the derived lifecycle phase. An unrecognised value falls back to
+  // "unfiltered" rather than being passed through: the server would reject it,
+  // and an operator with a stale bookmark should see their orders, not an error.
+  const rawPhase = searchParams.get('phase');
+  const phase = isOrderLifecyclePhase(rawPhase) ? rawPhase : undefined;
   const offset = Number(searchParams.get('offset') ?? '0');
 
   // "Breaching soon / overdue" cutoff — stable per toggle (not recomputed each
@@ -342,6 +378,8 @@ export function OrdersListPage(): ReactElement {
     // never `false`, which would mean "hide blocked orders" and is not something
     // the UI offers.
     salesDocumentBlocked: invoicingBlocked ? true : undefined,
+    // #2310 — orthogonal to `health`; both compose server-side.
+    phase,
   };
   const pagination = { limit: PAGE_SIZE, offset };
 
@@ -364,6 +402,10 @@ export function OrdersListPage(): ReactElement {
   // SLA KPI counts (#1108) — same scope as the health summary.
   const slaSummaryQuery = useOrderSlaSummaryQuery(summaryScope);
   const slaSummary = slaSummaryQuery.data;
+  // Lifecycle-phase chip counts (#2310) — same scope again, so the chips cannot
+  // be self-filtered by the phase they set.
+  const lifecycleSummaryQuery = useOrderLifecycleSummaryQuery(summaryScope);
+  const lifecycleSummary = lifecycleSummaryQuery.data;
 
   const retryMutation = useRetryOrderDestinationMutation();
   const demoMode = useDemoMode();
@@ -781,6 +823,10 @@ export function OrdersListPage(): ReactElement {
               <StatusBadge tone={h.tone} withDot compact>
                 {h.label}
               </StatusBadge>
+              {/* #2310 — BESIDE the health badge, never instead of it: health
+                  says "is something wrong", the phase says "what stage is it
+                  at" (ADR-059). */}
+              <OrderPhaseBadge phase={order.lifecyclePhase} compact />
               {h.reason ? (
                 <span className="orders-status-reason" title={h.reason}>
                   {h.reason}
@@ -1094,6 +1140,31 @@ export function OrdersListPage(): ReactElement {
     });
   }
 
+  /**
+   * Select / deselect a lifecycle-phase chip (#2310). ONE `setSearchParams`
+   * write, like every sibling handler: two calls in one handler both build from
+   * the current render's params, so the second supersedes the first and all but
+   * the last change is lost. Clicking the active chip clears the param, which
+   * restores the unfiltered list.
+   */
+  function togglePhase(next: OrderLifecyclePhaseValue): void {
+    const clearing = phase === next;
+    captureDemoEvent('demo_orders_filtered', {
+      filter: 'phase',
+      value: clearing ? 'all' : next,
+    });
+    setSearchParams((prev) => {
+      const p = new URLSearchParams(prev);
+      if (clearing) {
+        p.delete('phase');
+      } else {
+        p.set('phase', next);
+      }
+      p.delete('offset');
+      return p;
+    });
+  }
+
   function setOffset(next: number): void {
     setSearchParams((prev) => {
       const p = new URLSearchParams(prev);
@@ -1308,6 +1379,46 @@ export function OrdersListPage(): ReactElement {
             {query.data.total.toLocaleString()} results
           </span>
         )}
+      </div>
+
+      {/*
+        Lifecycle-phase chips (#2310) — a SECOND orthogonal partition beside the
+        health segments above, deliberately NOT a sixth health segment: the KPI
+        cards are a partition whose counts must keep summing to the total, and a
+        held order is usually also `synced` (ADR-059).
+
+        Visibility follows the invoicing chip (#2100): a zero-count chip is
+        hidden so an install that never reaches a phase sees no dead control —
+        but the ACTIVE chip is always rendered, even at zero, or the only way to
+        clear an applied `?phase=` unmounts the moment its last order moves on.
+        `vendor_authoritative` / `held` / `amending` are therefore simply absent
+        until Waves 2 and 4 give them producers, which is correct, not a gap.
+      */}
+      <div
+        className="ds-row orders-phase-chips"
+        style={{ gap: 'var(--space-2)', flexWrap: 'wrap', alignItems: 'center' }}
+        role="group"
+        aria-label="Filter by lifecycle phase"
+      >
+        {OrderLifecyclePhaseValues.map((value) => {
+          const count = lifecycleSummary?.[PHASE_SUMMARY_KEY[value]];
+          const active = phase === value;
+          if (!active && !count) return null;
+          const meta = ORDER_LIFECYCLE_PHASE_META[value];
+          return (
+            <Chip
+              key={value}
+              tone={meta.tone === 'review' ? 'neutral' : meta.tone}
+              active={active}
+              onClick={() => { togglePhase(value); }}
+            >
+              {/* The count is omitted until the summary resolves rather than
+                  defaulted to 0 — the same rule the invoicing chip follows. */}
+              {meta.label}
+              {count === undefined ? '' : ` ${count}`}
+            </Chip>
+          );
+        })}
       </div>
 
       {query.isLoading ? (
@@ -1656,6 +1767,7 @@ export function OrdersListPage(): ReactElement {
                     <StatusBadge tone={h.tone} withDot compact>
                       {h.label}
                     </StatusBadge>
+                    <OrderPhaseBadge phase={order.lifecyclePhase} compact />
                     <StatusBadge tone={fulfillment.tone} withDot compact>
                       {fulfillment.label}
                     </StatusBadge>

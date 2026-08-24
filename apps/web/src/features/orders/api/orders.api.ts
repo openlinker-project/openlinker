@@ -15,12 +15,15 @@ import type {
   OrderHealthSummary,
   OrderHealthSummaryFilters,
   OrderSlaSummary,
+  OrderLifecyclePhaseSummary,
 } from './orders.types';
 
 export interface OrdersApi {
   list: (filters?: OrderFilters, pagination?: OrderPagination) => Promise<PaginatedOrders>;
   statusSummary: (filters?: OrderHealthSummaryFilters) => Promise<OrderHealthSummary>;
   slaSummary: (filters?: OrderHealthSummaryFilters) => Promise<OrderSlaSummary>;
+  /** Per-lifecycle-phase counts (#2310) — the chip-row counts on the orders list. */
+  lifecycleSummary: (filters?: OrderHealthSummaryFilters) => Promise<OrderLifecyclePhaseSummary>;
   getById: (internalOrderId: string) => Promise<OrderRecord>;
   retryDestination: (
     internalOrderId: string,
@@ -54,6 +57,9 @@ function buildQuery(filters?: OrderFilters, pagination?: OrderPagination): strin
   if (filters?.dueBefore) params.set('dueBefore', filters.dueBefore);
   if (filters?.slaState) params.set('slaState', filters.slaState);
   if (filters?.fulfillmentState) params.set('fulfillmentState', filters.fulfillmentState);
+  // #2310 — the derived lifecycle phase, an axis orthogonal to `health`; both
+  // can be applied at once and the server ANDs them.
+  if (filters?.phase) params.set('phase', filters.phase);
   // #2100 — a boolean, so it needs the `!== undefined` guard the truthy checks
   // above don't: `false` ("exclude blocked orders") is a real predicate.
   if (filters?.salesDocumentBlocked !== undefined) {
@@ -95,6 +101,11 @@ export function createOrdersApi(request: ApiRequest): OrdersApi {
     },
     slaSummary(filters): Promise<OrderSlaSummary> {
       return request<OrderSlaSummary>(`/orders/sla-summary${buildSummaryQuery(filters)}`);
+    },
+    lifecycleSummary(filters): Promise<OrderLifecyclePhaseSummary> {
+      return request<OrderLifecyclePhaseSummary>(
+        `/orders/lifecycle-summary${buildSummaryQuery(filters)}`,
+      );
     },
     getById(internalOrderId): Promise<OrderRecord> {
       return request<OrderRecord>(`/orders/${internalOrderId}`);

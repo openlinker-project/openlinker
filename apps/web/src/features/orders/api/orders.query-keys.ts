@@ -8,5 +8,7 @@ export const ordersQueryKeys = {
     ['orders', 'status-summary', filters ?? {}] as const,
   slaSummary: (filters?: OrderHealthSummaryFilters) =>
     ['orders', 'sla-summary', filters ?? {}] as const,
+  lifecycleSummary: (filters?: OrderHealthSummaryFilters) =>
+    ['orders', 'lifecycle-summary', filters ?? {}] as const,
   detail: (internalOrderId: string) => ['orders', 'detail', internalOrderId] as const,
 };

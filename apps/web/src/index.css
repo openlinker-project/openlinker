@@ -13291,6 +13291,20 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
 .order-header__summary-sep {
   color: var(--text-disabled);
 }
+/*
+ * #2310 — the one-line "what is this order waiting on" note under the header
+ * badges. Detail only: the list row has no room for a sentence and already
+ * carries five badge vocabularies.
+ */
+.order-header__phase-note {
+  margin: 0;
+  font-size: 0.8125rem;
+}
+/* Wraps a channel-reported phase badge with its attribution (title + SR text). */
+.order-phase-badge {
+  display: inline-flex;
+  align-items: center;
+}
 .order-product-link {
   color: var(--text-primary);
   text-decoration: none;

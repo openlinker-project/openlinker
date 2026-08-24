@@ -334,6 +334,20 @@ export function createMockApiClient(
         synced: 0,
         awaitingDispatch: 0,
       }),
+      // #2310 — every phase count defaults to 0 so the chip row renders empty
+      // (a zero-count chip is hidden); a test that cares overrides this.
+      lifecycleSummary: vi.fn().mockResolvedValue({
+        total: 0,
+        cancelled: 0,
+        vendorAuthoritative: 0,
+        delivered: 0,
+        inTransit: 0,
+        fulfillmentFailed: 0,
+        held: 0,
+        amending: 0,
+        blocked: 0,
+        ready: 0,
+      }),
       getById: vi.fn().mockResolvedValue(null),
       retryDestination: vi.fn().mockResolvedValue({
         internalOrderId: '',
