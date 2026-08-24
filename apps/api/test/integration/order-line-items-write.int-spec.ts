@@ -43,10 +43,11 @@ describe('OrderRecord line-item transactional write (integration, #1985)', () =>
   async function findLineItems(
     orderRecordId: string
   ): Promise<Array<{ lineNumber: number; productId: string; quantity: number }>> {
-    const rows = (await harness.getDataSource().query(
-      `SELECT "lineNumber", "productId", "quantity" FROM "order_line_items" WHERE "orderRecordId" = $1 ORDER BY "lineNumber" ASC`,
-      [orderRecordId]
-    )) as Array<{ lineNumber: number; productId: string; quantity: number }>;
+    const rows: Array<{ lineNumber: number; productId: string; quantity: number }> =
+      await harness.getDataSource().query(
+        `SELECT "lineNumber", "productId", "quantity" FROM "order_line_items" WHERE "orderRecordId" = $1 ORDER BY "lineNumber" ASC`,
+        [orderRecordId]
+      );
     return rows;
   }
 

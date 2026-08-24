@@ -57,6 +57,7 @@ describe('ProductsService', () => {
   const mockVariantRepo: jest.Mocked<ProductVariantRepositoryPort> = {
     findById: jest.fn(),
     findByProductId: jest.fn(),
+    findByProductIds: jest.fn(),
     countByProductIds: jest.fn(),
     findBySku: jest.fn(),
     findBySkuIn: jest.fn(),
@@ -182,6 +183,18 @@ describe('ProductsService', () => {
       const result = await service.getVariantsByProductId('ol_product_unknown');
 
       expect(result).toEqual([]);
+    });
+  });
+
+  describe('getVariantsByProductIds', () => {
+    it('forwards the id list to the repository and returns the result', async () => {
+      const variants = [makeVariant(), makeVariant({ id: 'ol_variant_2', productId: 'ol_product_2' })];
+      variantRepo.findByProductIds.mockResolvedValue(variants);
+
+      const result = await service.getVariantsByProductIds(['ol_product_1', 'ol_product_2']);
+
+      expect(result).toBe(variants);
+      expect(variantRepo.findByProductIds).toHaveBeenCalledWith(['ol_product_1', 'ol_product_2']);
     });
   });
 

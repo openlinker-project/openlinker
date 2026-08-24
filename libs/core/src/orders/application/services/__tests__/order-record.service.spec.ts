@@ -10,13 +10,17 @@ import type { TestingModule } from '@nestjs/testing';
 import { Test } from '@nestjs/testing';
 import { OrderRecordService } from '../order-record.service';
 import type { OrderRecordRepositoryPort } from '../../../domain/ports/order-record-repository.port';
+import type { OrderLineItemRepositoryPort } from '../../../domain/ports/order-line-item-repository.port';
 import type { OrderSyncStatus } from '../../../domain/entities/order-record.entity';
 import { OrderRecord } from '../../../domain/entities/order-record.entity';
 import type { Order } from '../../../domain/types/order.types';
 import type { IncomingOrder } from '../../../domain/types/incoming-order.types';
 import type { IOrderFxStampService } from '../../interfaces/order-fx-stamp.service.interface';
+import type { IReportingCurrencySettingsService } from '@openlinker/core/currency';
+import { REPORTING_CURRENCY_SETTINGS_SERVICE_TOKEN } from '@openlinker/core/currency';
 import {
   ORDER_FX_STAMP_SERVICE_TOKEN,
+  ORDER_LINE_ITEM_REPOSITORY_TOKEN,
   ORDER_RECORD_REPOSITORY_TOKEN,
 } from '../../../orders.tokens';
 
@@ -24,6 +28,8 @@ describe('OrderRecordService', () => {
   let service: OrderRecordService;
   let repository: jest.Mocked<OrderRecordRepositoryPort>;
   let fxStamp: jest.Mocked<IOrderFxStampService>;
+  let lineItemRepository: jest.Mocked<OrderLineItemRepositoryPort>;
+  let reportingCurrencySettings: jest.Mocked<IReportingCurrencySettingsService>;
 
   const originalEnv = process.env.OL_STORE_PII;
   const originalPiiHashSalt = process.env.OL_PII_HASH_SALT;
@@ -40,6 +46,8 @@ describe('OrderRecordService', () => {
       updateItemResolutionFailure: jest.fn(),
       markCancelled: jest.fn(),
       updateSalesDocumentBlock: jest.fn(),
+      getDailyOrderAggregates: jest.fn(),
+      getMedianOrderValue: jest.fn(),
     } as unknown as jest.Mocked<OrderRecordRepositoryPort>;
 
     // Defaults to `deferred`, which is the outcome that owes NO refresh - so
@@ -54,6 +62,20 @@ describe('OrderRecordService', () => {
       sweep: jest.fn(),
     } as unknown as jest.Mocked<IOrderFxStampService>;
 
+    lineItemRepository = {
+      findByOrderId: jest.fn(),
+      getUnitsSoldByConnection: jest.fn(),
+      getTopProductRanking: jest.fn(),
+      getProductChannelBreakdown: jest.fn(),
+    } as unknown as jest.Mocked<OrderLineItemRepositoryPort>;
+
+    reportingCurrencySettings = {
+      resolve: jest.fn().mockResolvedValue('PLN'),
+      getView: jest.fn(),
+      setReportingCurrency: jest.fn(),
+      listSelectableCurrencies: jest.fn(),
+    } as unknown as jest.Mocked<IReportingCurrencySettingsService>;
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         OrderRecordService,
@@ -64,6 +86,14 @@ describe('OrderRecordService', () => {
         {
           provide: ORDER_FX_STAMP_SERVICE_TOKEN,
           useValue: fxStamp,
+        },
+        {
+          provide: ORDER_LINE_ITEM_REPOSITORY_TOKEN,
+          useValue: lineItemRepository,
+        },
+        {
+          provide: REPORTING_CURRENCY_SETTINGS_SERVICE_TOKEN,
+          useValue: reportingCurrencySettings,
         },
       ],
     }).compile();
@@ -162,7 +192,7 @@ describe('OrderRecordService', () => {
   describe('persistOrder - PII enabled', () => {
     beforeEach(() => {
       process.env.OL_STORE_PII = 'true';
-      service = new OrderRecordService(repository, fxStamp);
+      service = new OrderRecordService(repository, fxStamp, lineItemRepository, reportingCurrencySettings);
     });
 
     it('should persist order with all PII fields when PII storage is enabled', async () => {
@@ -405,7 +435,7 @@ describe('OrderRecordService', () => {
   describe('persistOrder - PII disabled', () => {
     beforeEach(() => {
       process.env.OL_STORE_PII = 'false';
-      service = new OrderRecordService(repository, fxStamp);
+      service = new OrderRecordService(repository, fxStamp, lineItemRepository, reportingCurrencySettings);
     });
 
     it('should persist order with sanitized addresses when PII storage is disabled', async () => {
@@ -497,7 +527,7 @@ describe('OrderRecordService', () => {
   describe('persistOrder — cancellation recorded via markCancelled (#1984)', () => {
     beforeEach(() => {
       process.env.OL_STORE_PII = 'true';
-      service = new OrderRecordService(repository, fxStamp);
+      service = new OrderRecordService(repository, fxStamp, lineItemRepository, reportingCurrencySettings);
     });
 
     it('never constructs the OrderRecord passed to upsertWithLineItems() with a non-null cancelledAt, even for a cancelled order', async () => {
@@ -568,7 +598,7 @@ describe('OrderRecordService', () => {
   describe('persistOrder - fulfillment rollup left to updateFulfillmentState (#2101)', () => {
     beforeEach(() => {
       process.env.OL_STORE_PII = 'true';
-      service = new OrderRecordService(repository, fxStamp);
+      service = new OrderRecordService(repository, fxStamp, lineItemRepository, reportingCurrencySettings);
     });
 
     it('never constructs the OrderRecord passed to upsertWithLineItems() with a fulfillment state', async () => {
@@ -589,7 +619,7 @@ describe('OrderRecordService', () => {
   describe('persist paths - destination sync state left to updateSyncStatus (#2140)', () => {
     beforeEach(() => {
       process.env.OL_STORE_PII = 'true';
-      service = new OrderRecordService(repository, fxStamp);
+      service = new OrderRecordService(repository, fxStamp, lineItemRepository, reportingCurrencySettings);
     });
 
     it('never constructs the OrderRecord passed to upsertWithLineItems() with sync state', async () => {
@@ -627,7 +657,7 @@ describe('OrderRecordService', () => {
   describe('persistIncomingSnapshot', () => {
     beforeEach(() => {
       process.env.OL_STORE_PII = 'true';
-      service = new OrderRecordService(repository, fxStamp);
+      service = new OrderRecordService(repository, fxStamp, lineItemRepository, reportingCurrencySettings);
     });
 
     it('should persist incoming snapshot with awaiting_mapping status', async () => {
@@ -691,7 +721,7 @@ describe('OrderRecordService', () => {
 
     it('should sanitize addresses in snapshot when PII is disabled', async () => {
       process.env.OL_STORE_PII = 'false';
-      service = new OrderRecordService(repository, fxStamp);
+      service = new OrderRecordService(repository, fxStamp, lineItemRepository, reportingCurrencySettings);
 
       const incoming = createMockIncomingOrder();
       const expectedRecord = new OrderRecord(
@@ -766,7 +796,7 @@ describe('OrderRecordService', () => {
 
     it('should omit customerEmail from the snapshot under hash-only PII mode (#948)', async () => {
       process.env.OL_STORE_PII = 'false';
-      service = new OrderRecordService(repository, fxStamp);
+      service = new OrderRecordService(repository, fxStamp, lineItemRepository, reportingCurrencySettings);
 
       const incoming = createMockIncomingOrder();
       repository.upsert.mockResolvedValue({} as OrderRecord);
@@ -817,7 +847,7 @@ describe('OrderRecordService', () => {
   describe('persistIncomingSnapshot — cancellation recorded via markCancelled (#1984)', () => {
     beforeEach(() => {
       process.env.OL_STORE_PII = 'true';
-      service = new OrderRecordService(repository, fxStamp);
+      service = new OrderRecordService(repository, fxStamp, lineItemRepository, reportingCurrencySettings);
     });
 
     it('never constructs the OrderRecord passed to upsert() with a non-null cancelledAt, even for a cancelled order', async () => {
@@ -1061,6 +1091,190 @@ describe('OrderRecordService', () => {
       for (const call of repository.updateSalesDocumentBlock.mock.calls) {
         expect(call).toEqual(['ol_order_abc', block]);
       }
+    });
+  });
+
+  describe('getSalesAndChannelAnalytics (#1987)', () => {
+    const filters = {
+      from: new Date('2026-08-01T00:00:00.000Z'),
+      to: new Date('2026-08-08T00:00:00.000Z'),
+    };
+
+    it('composes the three raw reads + earliest-date lookup into the response', async () => {
+      reportingCurrencySettings.resolve.mockResolvedValue('EUR');
+      const dailyRows = [
+        {
+          day: new Date('2026-08-01T00:00:00.000Z'),
+          sourceConnectionId: 'conn-a',
+          orderCount: 2,
+          revenue: 200,
+          unconvertedCount: 0,
+          unconvertedValue: 0,
+          unconvertedCurrency: null,
+          cancelledCount: 0,
+          cancelledValue: 0,
+          reportingCurrency: 'EUR',
+        },
+      ];
+      const unitsByConnection = new Map([['conn-a', { unitsSold: 5, unconvertedUnitsSold: 0 }]]);
+      const earliestMap = new Map([['conn-a', new Date('2026-07-01T00:00:00.000Z')]]);
+
+      repository.getDailyOrderAggregates.mockResolvedValue(dailyRows);
+      repository.getMedianOrderValue.mockResolvedValue(90);
+      lineItemRepository.getUnitsSoldByConnection.mockResolvedValue(unitsByConnection);
+      repository.findEarliestOrderDateByConnection.mockResolvedValue(earliestMap);
+
+      const result = await service.getSalesAndChannelAnalytics(filters);
+
+      expect(repository.getDailyOrderAggregates).toHaveBeenCalledWith(filters, 'EUR');
+      expect(repository.getMedianOrderValue).toHaveBeenCalledWith(filters, 'EUR');
+      expect(lineItemRepository.getUnitsSoldByConnection).toHaveBeenCalledWith(filters, 'EUR');
+      expect(repository.findEarliestOrderDateByConnection).toHaveBeenCalledWith(['conn-a']);
+      expect(result.headline.revenue).toBe(200);
+      expect(result.headline.medianOrderValue).toBe(90);
+      expect(result.headline.unitsSold).toBe(5);
+      expect(result.channels).toHaveLength(1);
+      expect(result.channels[0].coverageComplete).toBe(true);
+    });
+
+    it('derives the earliest-date lookup scope from the connections present in dailyRows only', async () => {
+      repository.getDailyOrderAggregates.mockResolvedValue([]);
+      repository.getMedianOrderValue.mockResolvedValue(null);
+      lineItemRepository.getUnitsSoldByConnection.mockResolvedValue(new Map());
+      repository.findEarliestOrderDateByConnection.mockResolvedValue(new Map());
+
+      const result = await service.getSalesAndChannelAnalytics(filters);
+
+      expect(repository.findEarliestOrderDateByConnection).toHaveBeenCalledWith([]);
+      expect(result.headline.revenue).toBe(0);
+      expect(result.channels).toEqual([]);
+    });
+  });
+
+  describe('getTopProducts (#1988)', () => {
+    const filters = {
+      from: new Date('2026-08-01T00:00:00.000Z'),
+      to: new Date('2026-08-08T00:00:00.000Z'),
+      sortBy: 'revenue' as const,
+      limit: 20,
+      offset: 0,
+    };
+
+    it('composes the ranking read + a breakdown read scoped to the ranked page only', async () => {
+      const ranking = [
+        {
+          productId: 'p1',
+          units: 10,
+          revenue: 100,
+          unconvertedRevenue: 0,
+          unconvertedOrderCount: 0,
+          currency: 'EUR',
+          unconvertedCurrency: null,
+        },
+        {
+          productId: 'p2',
+          units: 5,
+          revenue: 50,
+          unconvertedRevenue: 0,
+          unconvertedOrderCount: 0,
+          currency: 'EUR',
+          unconvertedCurrency: null,
+        },
+      ];
+      const breakdown = [
+        {
+          productId: 'p1',
+          sourceConnectionId: 'conn-a',
+          units: 10,
+          revenue: 100,
+          unconvertedRevenue: 0,
+          currency: 'EUR',
+          unconvertedCurrency: null,
+        },
+        {
+          productId: 'p2',
+          sourceConnectionId: 'conn-b',
+          units: 5,
+          revenue: 50,
+          unconvertedRevenue: 0,
+          currency: 'EUR',
+          unconvertedCurrency: null,
+        },
+      ];
+      lineItemRepository.getTopProductRanking.mockResolvedValue({ rows: ranking, total: 2 });
+      lineItemRepository.getProductChannelBreakdown.mockResolvedValue(breakdown);
+
+      const result = await service.getTopProducts(filters);
+
+      expect(lineItemRepository.getTopProductRanking).toHaveBeenCalledWith(filters, 'PLN');
+      // Breakdown query MUST receive only the ranked page's product ids —
+      // never re-derived from the full scoped set — to keep its cost bounded
+      // by page size (#1988 correctness requirement).
+      expect(lineItemRepository.getProductChannelBreakdown).toHaveBeenCalledWith(
+        ['p1', 'p2'],
+        filters,
+        'PLN'
+      );
+      expect(result.total).toBe(2);
+      expect(result.items).toHaveLength(2);
+      expect(result.items[0].channels).toEqual([breakdown[0]]);
+      expect(result.items[1].channels).toEqual([breakdown[1]]);
+    });
+
+    it('does not call the breakdown read with product ids outside the ranked page', async () => {
+      lineItemRepository.getTopProductRanking.mockResolvedValue({
+        rows: [
+          {
+            productId: 'p1',
+            units: 1,
+            revenue: 1,
+            unconvertedRevenue: 0,
+            unconvertedOrderCount: 0,
+            currency: 'EUR',
+            unconvertedCurrency: null,
+          },
+        ],
+        total: 500,
+      });
+      lineItemRepository.getProductChannelBreakdown.mockResolvedValue([]);
+
+      await service.getTopProducts(filters);
+
+      expect(lineItemRepository.getProductChannelBreakdown).toHaveBeenCalledWith(
+        ['p1'],
+        filters,
+        'PLN'
+      );
+    });
+
+    it('returns an empty page and zero total when nothing matches', async () => {
+      lineItemRepository.getTopProductRanking.mockResolvedValue({ rows: [], total: 0 });
+      lineItemRepository.getProductChannelBreakdown.mockResolvedValue([]);
+
+      const result = await service.getTopProducts(filters);
+
+      expect(lineItemRepository.getProductChannelBreakdown).toHaveBeenCalledWith(
+        [],
+        filters,
+        'PLN'
+      );
+      expect(result).toEqual({ items: [], total: 0 });
+    });
+
+    it('resolves the CURRENT reporting currency and never mixes a prior era into revenue (#2049/ADR-040 bugfix)', async () => {
+      reportingCurrencySettings.resolve.mockResolvedValue('EUR');
+      lineItemRepository.getTopProductRanking.mockResolvedValue({ rows: [], total: 0 });
+      lineItemRepository.getProductChannelBreakdown.mockResolvedValue([]);
+
+      await service.getTopProducts(filters);
+
+      expect(reportingCurrencySettings.resolve).toHaveBeenCalled();
+      expect(lineItemRepository.getTopProductRanking).toHaveBeenCalledWith(filters, 'EUR');
+      expect(lineItemRepository.getProductChannelBreakdown).toHaveBeenCalledWith(
+        [],
+        filters,
+        'EUR'
+      );
     });
   });
 });

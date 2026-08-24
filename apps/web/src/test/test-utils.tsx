@@ -133,6 +133,47 @@ export function createMockApiClient(
       setActive: vi.fn().mockResolvedValue(undefined),
       ...overrides.aiProviderSettings,
     } as ApiClient['aiProviderSettings'],
+    analytics: {
+      getSales: vi.fn().mockResolvedValue({
+        headline: {
+          revenue: 0,
+          currency: 'PLN',
+          orderCount: 0,
+          averageOrderValue: 0,
+          medianOrderValue: 0,
+          unitsSold: 0,
+          cancelledCount: 0,
+          cancelledValue: 0,
+          unconvertedCount: 0,
+          unconvertedValue: 0,
+          unconvertedCurrency: null,
+          trend: [],
+        },
+        channels: [],
+      }),
+      getTopProducts: vi.fn().mockResolvedValue({
+        items: [],
+        total: 0,
+        unresolvedProductCount: 0,
+        coverageGapAvailable: true,
+      }),
+      ...overrides.analytics,
+    } as ApiClient['analytics'],
+    analyticsTrust: {
+      getTrust: vi.fn().mockResolvedValue({
+        generatedAt: '2026-01-01T00:00:00.000Z',
+        worstStatus: 'fresh',
+        connections: [],
+      }),
+      getNeedsAttention: vi.fn().mockResolvedValue({
+        coverageGaps: [],
+        coverageGapsTotalCount: 0,
+        stockAtRisk: [],
+        stockAtRiskTotalCount: 0,
+        failedSyncValue: { count: 0, totalValue: 0, mixedCurrency: false, oldestFailedAt: null },
+      }),
+      ...overrides.analyticsTrust,
+    } as ApiClient['analyticsTrust'],
     auth: {
       login: vi.fn().mockResolvedValue({ access_token: 'mock-jwt-token' }),
       register: vi.fn().mockResolvedValue({ ok: true }),

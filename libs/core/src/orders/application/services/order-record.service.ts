@@ -11,6 +11,7 @@
 import { Injectable, Inject } from '@nestjs/common';
 import type { Order, OrderDispatchWindow } from '../../domain/types/order.types';
 import { OrderRecordRepositoryPort } from '../../domain/ports/order-record-repository.port';
+import { OrderLineItemRepositoryPort } from '../../domain/ports/order-line-item-repository.port';
 import { OrderRecord } from '../../domain/entities/order-record.entity';
 import type { OrderSyncStatus, SyncAttempt } from '../../domain/types/order-sync.types';
 import type { IOrderRecordService } from '../interfaces/order-record.service.interface';
@@ -25,11 +26,26 @@ import type {
 } from '../../domain/types/order-record.types';
 import type { FulfillmentRollupState } from '../../domain/types/order-fulfillment.types';
 import type { SalesDocumentBlock } from '@openlinker/core/sales-documents';
+import type {
+  SalesAnalyticsFilters,
+  SalesAndChannelAnalytics,
+} from '../../domain/types/order-sales-analytics.types';
 import { getPiiConfig } from '@openlinker/shared/config';
 import { Logger } from '@openlinker/shared/logging';
+import {
+  REPORTING_CURRENCY_SETTINGS_SERVICE_TOKEN,
+  type IReportingCurrencySettingsService,
+} from '@openlinker/core/currency';
 import { IOrderFxStampService } from '../interfaces/order-fx-stamp.service.interface';
-import { ORDER_FX_STAMP_SERVICE_TOKEN, ORDER_RECORD_REPOSITORY_TOKEN } from '../../orders.tokens';
+import {
+  ORDER_FX_STAMP_SERVICE_TOKEN,
+  ORDER_LINE_ITEM_REPOSITORY_TOKEN,
+  ORDER_RECORD_REPOSITORY_TOKEN,
+} from '../../orders.tokens';
 import { deriveOrderAnalyticsScalars, deriveOrderLineItems } from '../../domain/order-analytics-projection';
+import { buildSalesAndChannelAnalytics } from '../../domain/order-sales-aggregation';
+import { buildTopProducts } from '../../domain/top-products-aggregation';
+import type { TopProductFilters, TopProductsResult } from '../../domain/types/top-products.types';
 
 @Injectable()
 export class OrderRecordService implements IOrderRecordService {
@@ -39,7 +55,11 @@ export class OrderRecordService implements IOrderRecordService {
     @Inject(ORDER_RECORD_REPOSITORY_TOKEN)
     private readonly repository: OrderRecordRepositoryPort,
     @Inject(ORDER_FX_STAMP_SERVICE_TOKEN)
-    private readonly fxStamp: IOrderFxStampService
+    private readonly fxStamp: IOrderFxStampService,
+    @Inject(ORDER_LINE_ITEM_REPOSITORY_TOKEN)
+    private readonly lineItemRepository: OrderLineItemRepositoryPort,
+    @Inject(REPORTING_CURRENCY_SETTINGS_SERVICE_TOKEN)
+    private readonly reportingCurrencySettings: IReportingCurrencySettingsService
   ) {}
 
   /**
@@ -464,6 +484,65 @@ export class OrderRecordService implements IOrderRecordService {
    */
   async markCancelled(internalOrderId: string, cancelledAt: Date): Promise<void> {
     await this.repository.markCancelled(internalOrderId, cancelledAt);
+  }
+
+  async getSalesAndChannelAnalytics(
+    filters: SalesAnalyticsFilters
+  ): Promise<SalesAndChannelAnalytics> {
+    // Resolved once per read, never per row (#1987 review notes) — every
+    // downstream query is scoped against the SAME current-era reporting
+    // currency, so a setting change mid-read can't split one response
+    // across two eras.
+    const currentReportingCurrency = await this.reportingCurrencySettings.resolve();
+
+    const [dailyRows, medianOrderValue, unitsByConnection] = await Promise.all([
+      this.repository.getDailyOrderAggregates(filters, currentReportingCurrency),
+      this.repository.getMedianOrderValue(filters, currentReportingCurrency),
+      this.lineItemRepository.getUnitsSoldByConnection(filters, currentReportingCurrency),
+    ]);
+
+    const connectionIds = [...new Set(dailyRows.map((row) => row.sourceConnectionId))];
+    const earliestOrderDateByConnection = await this.getEarliestOrderDateByConnection(
+      connectionIds
+    );
+
+    return buildSalesAndChannelAnalytics({
+      filters,
+      dailyRows,
+      medianOrderValue,
+      unitsByConnection,
+      earliestOrderDateByConnection,
+    });
+  }
+
+  /**
+   * Resolves the CURRENT system reporting currency (#2049/ADR-040 bugfix)
+   * before ranking, so `revenue` sums only orders stamped in that currency —
+   * an order stamped under a PREVIOUS setting is a different currency era
+   * (settings changes are forward-only) and would otherwise get silently
+   * summed in under an arbitrary label. See {@link
+   * OrderLineItemRepositoryPort.getTopProductRanking}.
+   *
+   * The ranking and breakdown reads below are deliberately SEQUENTIAL, not
+   * `Promise.all`-parallelised like {@link getSalesAndChannelAnalytics}'s
+   * three independent reads above — `getProductChannelBreakdown` is scoped
+   * to the current page's `productIds`, which only exist once the ranking
+   * query has returned (#2172 review, SUGGESTION 2).
+   */
+  async getTopProducts(filters: TopProductFilters): Promise<TopProductsResult> {
+    const reportingCurrency = await this.reportingCurrencySettings.resolve();
+    const { rows: ranking, total } = await this.lineItemRepository.getTopProductRanking(
+      filters,
+      reportingCurrency
+    );
+    const productIds = ranking.map((row) => row.productId);
+    const breakdown = await this.lineItemRepository.getProductChannelBreakdown(
+      productIds,
+      filters,
+      reportingCurrency
+    );
+
+    return buildTopProducts({ ranking, total, breakdown });
   }
 
   /**
