@@ -90,14 +90,17 @@ const COLUMNS: DataTableColumn<OrderRecord>[] = [
       // the backend. Re-deriving it here would create a second SLA vocabulary.
       const view = formatShipBy(due);
       const sla = slaBadge(order.slaState);
+      // #2441 review S4 — an `<abbr>`, not a `<span aria-label>`. A `span` has no
+      // ARIA role, so the label is not reliably exposed, and where it is it
+      // REPLACES the visible "est." rather than expanding it. `<abbr title>` is
+      // the element for exactly this and keeps the visible text intact.
       const estMark = order.dispatchByEstimated ? (
-        <span
+        <abbr
           className="text-muted"
-          aria-label="Estimated"
-          title="OpenLinker estimate - not a marketplace-confirmed deadline"
+          title="OpenLinker estimate — not a marketplace-confirmed deadline"
         >
           est.{' '}
-        </span>
+        </abbr>
       ) : null;
 
       return (
@@ -212,13 +215,19 @@ export function DispatchRiskPage(): ReactElement {
                 key={candidate}
                 tone={BUCKET_META[candidate].tone}
                 active={candidate === bucket}
-                aria-pressed={candidate === bucket}
+                // #2441 review S3 — no `aria-pressed` here: `Chip` already sets
+                // it from `active`, and because it writes it BEFORE spreading
+                // `...props`, a caller's copy overrides the primitive's. Passing
+                // it re-opens a hole the primitive closed.
                 onClick={() => {
                   selectBucket(candidate);
                 }}
               >
                 {BUCKET_META[candidate].label}
-                {count === null ? '' : ` (${count})`}
+                {/* #2441 review S2 — bare-number form, matching the orders-list
+                    invoicing and phase chips. Two adjacent Operations surfaces
+                    were formatting one primitive two ways. */}
+                {count === null ? '' : ` ${count}`}
               </Chip>
             );
           })}

@@ -49,6 +49,38 @@ const CONTEXT_BARRELS = [
   'webhooks',
 ] as const;
 
+/**
+ * Extracts every module-specifier-bearing statement from an already-
+ * comment-stripped source, as `[typeOnly, specifier]` pairs.
+ *
+ * **Both `import … from` AND `export … from` are matched (#2441 review I-3).**
+ * Anchoring on the literal `import` alone left the guarantee evadable: a leaf's
+ * `index.ts` doing `export * from '@openlinker/core/orders';` emits a real
+ * `require()` and closes exactly the CJS cycle this spec is the sole guard
+ * against — while matching nothing and passing. That is not a hypothetical
+ * shape, either: every one of these leaves' `index.ts` files is composed
+ * entirely of `export … from` statements (relative ones today), so the evasion
+ * is one specifier edit away from the file's own prevailing style.
+ *
+ * Group 1 captures `type ` when present, so `export type { X } from …` is
+ * correctly classified type-only alongside `import type { X } from …`.
+ * `[^'";]*?` cannot cross a quote or semicolon, so a match never spans into an
+ * unrelated later statement.
+ *
+ * Note the INLINE type form — `import { type OrderStatus } from '…'` — is
+ * classified as a VALUE import and therefore fails. That is the safe direction
+ * (a false positive, never a false negative), but it does mean the repo's
+ * inline-type style cannot be used inside a leaf: write `import type { … }`.
+ */
+const findModuleSpecifierStatements = (
+  withoutComments: string
+): Array<[typeOnly: string | undefined, specifier: string]> =>
+  [
+    ...withoutComments.matchAll(
+      /(?:import|export)\s+(type\s+)?[^'";]*?from\s+['"]([^'"]+)['"]/g
+    ),
+  ].map(([, typeOnly, specifier]) => [typeOnly, specifier]);
+
 describe('@openlinker/core/<context> barrel purity (#598)', () => {
   it.each(CONTEXT_BARRELS)('imports @openlinker/core/%s without throwing', (context) => {
     expect(() => {
@@ -156,14 +188,10 @@ describe('@openlinker/core/<context> barrel purity (#598)', () => {
         // multi-line `import type {\n  X,\n} from '…'` — the prevailing style in
         // this repo, and exactly what an edit here would produce — puts `import`
         // and `from` on different lines, so a per-line matcher would let it
-        // through. Captures whether the statement is `import type ...` (group 1)
-        // and its specifier (group 2); `[^'";]*?` cannot cross a quote or
-        // semicolon, so it never accidentally spans into an unrelated later
-        // import.
-        const importStatements = [
-          ...withoutComments.matchAll(/import\s+(type\s+)?[^'";]*?from\s+['"]([^'"]+)['"]/g),
-        ];
-        for (const [, typeOnly, specifier] of importStatements) {
+        // through. `findModuleSpecifierStatements` additionally covers
+        // `export ... from` re-exports — see its docblock for why anchoring on
+        // the literal `import` alone left the guarantee evadable (#2441 I-3).
+        for (const [typeOnly, specifier] of findModuleSpecifierStatements(withoutComments)) {
           // Internal to the concern (index.ts's own `export * from './domain/...'`,
           // and any relative reach from a nested file back up to `domain/types/`)
           // — cannot reach another context either way.
@@ -197,6 +225,41 @@ describe('@openlinker/core/<context> barrel purity (#598)', () => {
       }
     }
   );
+
+  /**
+   * The evasion the matcher used to permit (#2441 review I-3).
+   *
+   * Fed the exact shape a leaf's `index.ts` already has — a file composed
+   * entirely of `export … from` statements — the pre-fix matcher, anchored on
+   * the literal `import`, saw NOTHING. So a one-word edit turning a relative
+   * re-export into `export * from '@openlinker/core/products'` emitted a real
+   * `require()`, closed the CJS cycle, and passed the spec that exists solely
+   * to forbid it.
+   *
+   * Asserted on the matcher itself rather than by writing a file into a leaf
+   * directory: the walk reads from disk, so a fixture-based version would have
+   * to mutate real source and restore it, which fails dirty. The pairing below
+   * is the whole property — the relative re-exports are ignored, the sibling
+   * one is caught, and the type-only one is still classified type-only so the
+   * per-leaf allow-set stays the thing that decides it.
+   */
+  it('the matcher sees `export ... from` re-exports, not just imports (#2441)', () => {
+    const leafBarrelShape = [
+      "export * from './domain/types/order-lifecycle-phase.types';",
+      "export { deriveOrderLifecyclePhase } from './domain/types/order-lifecycle-phase.types';",
+      "export * from '@openlinker/core/products';",
+      "export type { Order } from '@openlinker/core/orders/types';",
+    ].join('\n');
+
+    expect(findModuleSpecifierStatements(leafBarrelShape)).toEqual([
+      [undefined, './domain/types/order-lifecycle-phase.types'],
+      [undefined, './domain/types/order-lifecycle-phase.types'],
+      // The evasion — a VALUE re-export of a sibling context, now visible.
+      [undefined, '@openlinker/core/products'],
+      // …and `export type { … } from` is still correctly type-only.
+      ['type ', '@openlinker/core/orders/types'],
+    ]);
+  });
 
   /**
    * The root `.` barrel (`libs/core/src/index.ts`) is an AGGREGATING re-export:

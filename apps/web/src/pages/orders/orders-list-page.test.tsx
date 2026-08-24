@@ -1932,6 +1932,35 @@ describe('OrdersListPage — lifecycle phase (#2310)', () => {
     expect(within(row).getByText('Blocked')).toBeInTheDocument();
   });
 
+  // #2441 review S1 — the ACCUMULATED row. #2288's packed tick, #1108's SLA
+  // badge and #2310's phase badge had never been rendered together, which is
+  // exactly the composition the style-guide amendment (#2081 rule 2, ADR-059
+  // exception) now permits. Pins I1/I2 empirically rather than by review.
+  it('should render the packed tick, SLA badge, phase badge and health badge on one row (#2441)', async () => {
+    const composed: OrderRecord = {
+      ...syncedOrder,
+      lifecyclePhase: 'blocked',
+      packedAt: '2026-01-15T11:00:00.000Z',
+      slaState: 'overdue',
+      fulfillmentState: 'not-shipped',
+      dispatchByAt: '2026-01-15T09:00:00.000Z',
+    };
+    const mockApi = createMockApiClient({
+      orders: { list: vi.fn().mockResolvedValue(paginated([composed])) },
+    });
+
+    renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+    await screen.findByText('ALG-882414');
+    const row = screen.getByText('ALG-882414').closest('tr') as HTMLElement;
+    // All four signal vocabularies coexist and stay independently readable —
+    // none replaces or suppresses another.
+    expect(within(row).getByText('Synced')).toBeInTheDocument();
+    expect(within(row).getByText('Blocked')).toBeInTheDocument();
+    expect(within(row).getByText('Packed')).toBeInTheDocument();
+    expect(within(row).getByText('Overdue')).toBeInTheDocument();
+  });
+
   it('should render nothing for a payload predating the phase field', async () => {
     const mockApi = createMockApiClient({
       orders: { list: vi.fn().mockResolvedValue(paginated([syncedOrder])) },
@@ -1942,6 +1971,24 @@ describe('OrdersListPage — lifecycle phase (#2310)', () => {
     const row = (await screen.findByText('ALG-882414')).closest('tr') as HTMLElement;
     expect(within(row).getByText('Synced')).toBeInTheDocument();
     expect(within(row).queryByText('Ready')).toBeNull();
+  });
+
+  // #2441 review I3 — the dispatch-risk page's most useful states (the
+  // `on_track` bucket, and the `noDeadlinesAnywhere` configuration diagnostic)
+  // are only reachable when nothing is breaching, so gating its sole entry
+  // point on a breach made them unreachable from the UI.
+  it('should link to the dispatch-risk page even when nothing is breaching (#2441)', async () => {
+    const mockApi = createMockApiClient({
+      orders: { list: vi.fn().mockResolvedValue(paginated([syncedOrder])) },
+    });
+
+    renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+    await screen.findByText('ALG-882414');
+    const link = await screen.findByRole('link', { name: /dispatch risk/i });
+    expect(link).toHaveAttribute('href', '/orders/dispatch-risk');
+    // #2441 review I4 — carries the ≥44 px coarse-pointer tap-target class.
+    expect(link).toHaveClass('nav-link');
   });
 
   it('should hide a zero-count chip and render the ones with orders behind them', async () => {

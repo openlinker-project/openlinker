@@ -242,20 +242,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
         'sales_document_blocked'
       );
 
-    if (filters.sourceConnectionId) {
-      qb.andWhere('rec.sourceConnectionId = :sourceConnectionId', {
-        sourceConnectionId: filters.sourceConnectionId,
-      });
-    }
-    if (filters.customerId) {
-      qb.andWhere('rec.customerId = :customerId', { customerId: filters.customerId });
-    }
-    if (filters.createdFrom) {
-      qb.andWhere('rec.createdAt >= :createdFrom', { createdFrom: filters.createdFrom });
-    }
-    if (filters.createdTo) {
-      qb.andWhere('rec.createdAt <= :createdTo', { createdTo: filters.createdTo });
-    }
+    OrderRecordRepository.applySummaryScope(qb, filters);
 
     const raw = await qb.getRawOne<{
       total: string;
@@ -300,20 +287,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
         'oldest_failed_at'
       );
 
-    if (filters.sourceConnectionId) {
-      qb.andWhere('rec.sourceConnectionId = :sourceConnectionId', {
-        sourceConnectionId: filters.sourceConnectionId,
-      });
-    }
-    if (filters.customerId) {
-      qb.andWhere('rec.customerId = :customerId', { customerId: filters.customerId });
-    }
-    if (filters.createdFrom) {
-      qb.andWhere('rec.createdAt >= :createdFrom', { createdFrom: filters.createdFrom });
-    }
-    if (filters.createdTo) {
-      qb.andWhere('rec.createdAt <= :createdTo', { createdTo: filters.createdTo });
-    }
+    OrderRecordRepository.applySummaryScope(qb, filters);
 
     const raw = await qb.getRawOne<{
       count: string;
@@ -628,20 +602,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       )
       .setParameters({ slaNow: now, slaCutoff: riskCutoff });
 
-    if (filters.sourceConnectionId) {
-      qb.andWhere('rec.sourceConnectionId = :sourceConnectionId', {
-        sourceConnectionId: filters.sourceConnectionId,
-      });
-    }
-    if (filters.customerId) {
-      qb.andWhere('rec.customerId = :customerId', { customerId: filters.customerId });
-    }
-    if (filters.createdFrom) {
-      qb.andWhere('rec.createdAt >= :createdFrom', { createdFrom: filters.createdFrom });
-    }
-    if (filters.createdTo) {
-      qb.andWhere('rec.createdAt <= :createdTo', { createdTo: filters.createdTo });
-    }
+    OrderRecordRepository.applySummaryScope(qb, filters);
     if (filters.cancelled !== undefined) {
       // #2306 — the summary twin of the `findMany` clause above; the two MUST stay
       // in lockstep, or the dispatch-risk page's bucket counts stop agreeing with
@@ -748,7 +709,54 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    *
    * Clock-free by ADR-059, so unlike `applySlaFilter` this can never disagree
    * with the row's own `lifecyclePhase` by milliseconds.
+   *
+   * **Cost, recorded as known rather than discovered (#2441 review S-2):** the
+   * predicate is a `CASE` over four columns, so it is NON-SARGABLE — no index
+   * can serve it — and `findMany` ends in `getManyAndCount()`, which evaluates
+   * it twice per request (once for the page, once for the count). This matches
+   * the `IS_SALES_DOCUMENT_BLOCKED` precedent above, so it is consistent rather
+   * than novel. The escape hatch, if `?phase=` ever becomes a default chip on
+   * `/orders` rather than an opt-in one, is an expression index on this same
+   * `LIFECYCLE_PHASE_EXPR` — which is available precisely because the filter and
+   * the summary buckets test ONE expression rather than per-arm predicates.
    */
+  /**
+   * The three scope arms every summary reader shares (#2441 review S-3).
+   *
+   * `countByHealth`, `countFailedSyncValue`, `countBySla` and
+   * `countByLifecyclePhase` each hand-copied this identical block, which
+   * `countByLifecyclePhase`'s own docblock flagged as a drift hazard — a fifth
+   * filter added to `OrderHealthSummaryFilters` had to be remembered in four
+   * places, and being remembered in three of them is the silent failure.
+   *
+   * **`cancelled` is deliberately NOT here.** It is the one arm the four readers
+   * genuinely disagree about — `countBySla` honours it (#2306), the other three
+   * ignore it, each for its own documented reason — so it stays an explicit
+   * statement at the call site that wants it. Folding it in would either impose
+   * one reader's stance on all four or need a flag, and a flag is how the
+   * disagreement stops being visible. This helper carries only what is
+   * genuinely common; the asymmetry stays where a reader can see it.
+   */
+  private static applySummaryScope(
+    qb: SelectQueryBuilder<OrderRecordOrmEntity>,
+    filters: OrderHealthSummaryFilters
+  ): void {
+    if (filters.sourceConnectionId) {
+      qb.andWhere('rec.sourceConnectionId = :sourceConnectionId', {
+        sourceConnectionId: filters.sourceConnectionId,
+      });
+    }
+    if (filters.customerId) {
+      qb.andWhere('rec.customerId = :customerId', { customerId: filters.customerId });
+    }
+    if (filters.createdFrom) {
+      qb.andWhere('rec.createdAt >= :createdFrom', { createdFrom: filters.createdFrom });
+    }
+    if (filters.createdTo) {
+      qb.andWhere('rec.createdAt <= :createdTo', { createdTo: filters.createdTo });
+    }
+  }
+
   private applyLifecyclePhaseFilter(
     qb: SelectQueryBuilder<OrderRecordOrmEntity>,
     lifecyclePhase: OrderLifecyclePhase
@@ -772,8 +780,20 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    * reason of its own: cancellation is this partition's TOP arm, so scoping by it
    * would re-scope the very axis the partition expresses — `cancelled: false`
    * would report a `cancelled` bucket of 0 while still labelling it a count of
-   * cancellations. The four source/customer/date arms are enumerated
-   * deliberately; `OrderHealthSummaryFilters` now carries five.
+   * cancellations. The source/customer/date arms it DOES honour now come from
+   * the shared `applySummaryScope` (#2441 review S-3), so a filter added to
+   * `OrderHealthSummaryFilters` reaches all four summary readers at once
+   * instead of needing to be remembered in four places.
+   *
+   * **Cost, recorded as known rather than discovered (#2441 review S-1):**
+   * Postgres does not CSE the repeated `CASE` across the nine `FILTER` clauses,
+   * so this evaluates the 9-arm expression up to nine times per scanned row. A
+   * `SELECT <expr> AS phase … GROUP BY 1` would evaluate it once. It is kept in
+   * the `FILTER` shape deliberately: it is the shape `countByHealth` and
+   * `countBySla` both use, and it returns ONE row whose `total` and buckets are
+   * computed in the same pass — which is what makes `total` = Σ buckets true by
+   * construction rather than by reassembly in application code. Revisit if this
+   * summary ever shows up in profiling; the rewrite is local to this method.
    */
   async countByLifecyclePhase(
     filters: OrderHealthSummaryFilters
@@ -786,20 +806,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       );
     }
 
-    if (filters.sourceConnectionId) {
-      qb.andWhere('rec.sourceConnectionId = :sourceConnectionId', {
-        sourceConnectionId: filters.sourceConnectionId,
-      });
-    }
-    if (filters.customerId) {
-      qb.andWhere('rec.customerId = :customerId', { customerId: filters.customerId });
-    }
-    if (filters.createdFrom) {
-      qb.andWhere('rec.createdAt >= :createdFrom', { createdFrom: filters.createdFrom });
-    }
-    if (filters.createdTo) {
-      qb.andWhere('rec.createdAt <= :createdTo', { createdTo: filters.createdTo });
-    }
+    OrderRecordRepository.applySummaryScope(qb, filters);
 
     const raw = await qb.getRawOne<Record<string, string>>();
     const count = (key: string): number => Number(raw?.[key] ?? 0);

@@ -153,7 +153,8 @@ const NON_KNOBS = new Map([
  * with a rationale, which is exactly the deliberate revisit the gate exists
  * to force.
  *
- * **Raised 5 → 6 by #2305 (ADR-059's `order-lifecycle` vocabulary leaf).**
+ * **Contributing raise — #2305 (ADR-059's `order-lifecycle` vocabulary leaf),
+ * one of the two summed into the merged 5 → 7 below.**
  * `readLifecycleAuthority` (`config.lifecycleAuthority`) is registered above as
  * a genuine fifth knob — it is deliberately NOT filed under `NON_KNOBS`, because
  * it really is a per-connection JSONB coercion of exactly the shape this rule
@@ -179,7 +180,8 @@ const NON_KNOBS = new Map([
  * A reviewer who disagrees should push back on this raise specifically; that
  * argument is the deliberate revisit the gate was built to provoke.
  *
- * **Raised 5 -> 6 by #2304 (ADR-052 / ADR-053), with this rationale.** The gate
+ * **Contributing raise — #2304 (ADR-052 / ADR-053), the other half of the
+ * merged 5 → 7 below, with this rationale.** The gate
  * fired on `parseAuthorityConfig`, and the entry above is registered rather than
  * exempted because it genuinely is per-connection JSONB coercion. What it is
  * NOT is a fifth instance of the accretion the threshold watches for: it is one

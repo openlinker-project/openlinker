@@ -46,8 +46,8 @@
  * synthetic inputs (no filesystem), including deliberately drifted fixtures.
  */
 
-import { readFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { readFile, stat } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
@@ -435,6 +435,30 @@ async function main() {
   for (const mirror of PENDING_MIRRORS) {
     const content = await readIfPresent(join(repoRoot, mirror.file));
     if (content === null) {
+      // #2441 review S-6 — an absent mirror is a PASS, so without this a typo in
+      // the declared path would be indistinguishable from a genuinely-pending
+      // mirror, forever: the note would print the wrong path and CI would stay
+      // green even after the real mirror shipped. Asserting the parent directory
+      // exists catches the likely typo (a misspelt feature/lib segment) while
+      // still allowing the file itself to be legitimately absent. The pending
+      // entry must still be retired by hand when its issue lands — which is why
+      // the note names that issue.
+      const parent = dirname(join(repoRoot, mirror.file));
+      const parentExists = await stat(parent).then(
+        (s) => s.isDirectory(),
+        () => false,
+      );
+      if (!parentExists) {
+        drifts.push({
+          rule: "a PENDING mirror's declared directory must exist (a typo here would pass forever)",
+          locations: [`${mirror.file}  (declared mirror path, pending ${mirror.pending})`],
+          issues: [
+            `the parent directory '${dirname(mirror.file)}' does not exist, so this path can ` +
+              'never resolve — fix the declared path, or remove the pending entry',
+          ],
+        });
+        continue;
+      }
       pendingNotes.push(`${mirror.file} — pending ${mirror.pending}`);
       continue;
     }

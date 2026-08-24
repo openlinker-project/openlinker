@@ -123,9 +123,10 @@ describe('DispatchRiskPage', () => {
 
     renderWithProviders(<DispatchRiskPage />, { apiClient: mockApi });
 
-    expect(await screen.findByRole('button', { name: /Overdue \(3\)/ })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Due soon \(2\)/ })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /On track \(4\)/ })).toBeInTheDocument();
+    // #2441 review S2 — bare-number form, matching the orders-list chips.
+    expect(await screen.findByRole('button', { name: /Overdue 3/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Due soon 2/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /On track 4/ })).toBeInTheDocument();
   });
 
   it('should refetch with the selected bucket when a tab is clicked', async () => {

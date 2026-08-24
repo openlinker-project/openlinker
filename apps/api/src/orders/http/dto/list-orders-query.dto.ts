@@ -36,8 +36,7 @@ import {
   SlaState,
   FulfillmentRollupState,
 } from '@openlinker/core/orders';
-import { OrderLifecyclePhaseValues } from '@openlinker/core/order-lifecycle';
-import { OrderLifecyclePhase } from '@openlinker/core/order-lifecycle';
+import { OrderLifecyclePhaseValues, type OrderLifecyclePhase } from '@openlinker/core/order-lifecycle';
 
 export class ListOrdersQueryDto {
   @ApiPropertyOptional({ description: 'Filter by source connection ID (UUID)' })
@@ -167,7 +166,10 @@ export class ListOrdersQueryDto {
       'orders, false excludes them, omitted does not filter. Maps directly to ' +
       '`cancelledAt IS [NOT] NULL` — the repository already honoured this field, it simply had ' +
       'no query surface. The dispatch-risk page passes false so the rows it lists match the ' +
-      'bucket counts GET /orders/sla-summary returns under the same scope.',
+      'bucket counts GET /orders/sla-summary returns under the same scope. NOT orthogonal to ' +
+      '`phase`: the lifecycle phase `cancelled` IS this filter\'s `true` set, so a ' +
+      'contradictory pair (`cancelled=false&phase=cancelled`, or `cancelled=true` with any ' +
+      'other phase) is rejected with a 400 rather than returning a structurally empty list.',
   })
   @IsOptional()
   // Same string-literal mapping + pass-through-to-400 posture as
@@ -187,7 +189,9 @@ export class ListOrdersQueryDto {
       'beside `health`, not a sixth health bucket — it composes with `health` rather than ' +
       'competing with it (a held order is usually also synced). Three values ' +
       '(vendor_authoritative, held, amending) have no persisted source yet and match nothing ' +
-      'until Waves 2 and 4 wire their facts.',
+      'until Waves 2 and 4 wire their facts. Orthogonal to `health`, but NOT to `cancelled`: ' +
+      'the `cancelled` phase is derived from the same `cancelledAt IS NOT NULL` fact that ' +
+      'filter reads, so a contradictory pair is rejected with a 400 — see `cancelled`.',
   })
   @IsOptional()
   @IsEnum(OrderLifecyclePhaseValues)

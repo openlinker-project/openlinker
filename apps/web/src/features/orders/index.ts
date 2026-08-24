@@ -28,6 +28,12 @@ export type {
   OrderPagination,
   PaginatedOrders,
 } from './api/orders.types';
+// #2441 review S9 — `OrderRecord.lifecyclePhase` is part of the shape the
+// `invoicing` and `shipments` features type-import from this barrel, so the
+// union naming its values belongs here too. Structural typing kept them
+// compiling without it, but no cross-feature consumer could NAME the type.
+// From the types-only module, never the label/tone lib (see S10).
+export type { OrderLifecyclePhaseValue } from './lib/order-lifecycle-phase.types';
 export { ConnectionDot } from './components/connection-dot';
 export { OrderIdentityCell, formatOrderRef } from './components/order-identity-cell';
 export type { OrderIdentityCellProps } from './components/order-identity-cell';

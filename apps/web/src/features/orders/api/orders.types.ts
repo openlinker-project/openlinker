@@ -7,7 +7,10 @@
  *
  * @module apps/web/src/features/orders/api
  */
-import type { OrderLifecyclePhaseValue } from '../lib/order-lifecycle-phase';
+// #2441 review S10 — the types-only sibling, never `order-lifecycle-phase.ts`:
+// that module imports `StatusBadgeTone`, which would have this wire-shape module
+// transitively naming a component module.
+import type { OrderLifecyclePhaseValue } from '../lib/order-lifecycle-phase.types';
 
 /**
  * Mirrors CORE `OrderSyncStatusFilterValues` (`order-record.types.ts`).
