@@ -85,8 +85,26 @@ export interface InheritedTaxRate {
 export type TaxRateResolution = ResolvedTaxRate | UnknownTaxRate | InheritedTaxRate;
 
 /** Where the rate on a stored line came from. Absent means it was never read. */
-export const TaxRateSourceValues = ['shop', 'channel'] as const;
+/**
+ * `'backfill'` (#2440) is distinct from both a live `'shop'` read and a
+ * `'channel'` report: it means the rate was derived from the CURRENT
+ * catalogue state by `TaxRateBackfillService`, for a line that predates the
+ * per-line tax-rate epic and was never asked at order time. It is best-effort
+ * provenance for internal reporting, never a confirmed read — an operator
+ * surface must render it as "estimated from catalogue", not "shop confirmed".
+ */
+export const TaxRateSourceValues = ['shop', 'channel', 'backfill'] as const;
 export type TaxRateSource = (typeof TaxRateSourceValues)[number];
+
+/**
+ * Coercion guard for a value read off a snapshot line or the wire. A value
+ * written by an older or newer release degrades to "not a recognised
+ * source" rather than being trusted as a literal (mirrors
+ * `isTaxRateEra` in `@openlinker/core/sales-documents`).
+ */
+export function isTaxRateSource(value: unknown): value is TaxRateSource {
+  return typeof value === 'string' && (TaxRateSourceValues as readonly string[]).includes(value);
+}
 
 /** Narrow a resolution to the resolved arm. */
 export function isResolvedTaxRate(resolution: TaxRateResolution): resolution is ResolvedTaxRate {

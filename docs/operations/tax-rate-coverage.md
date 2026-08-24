@@ -167,10 +167,24 @@ WooCommerce store had an empty tax table. The full measurement is on #2256.
 
 ## Pre-rollout orders
 
-Orders ingested before the feature carry no rate on any line, and the documents
+Orders ingested before the feature carried no rate on any line, and the documents
 issued for them used the provider defaults. The
 `MarkPreRolloutOrdersHistorical` migration stamps `order_records.taxRateEra =
 'pre-rollout'` on them.
+
+**Superseded by the tax-rate backfill sweep (#2440).** A pre-rollout order's
+`taxRateEra` marker is untouched and still permanently exempts it from every
+fiscal-issuance gate (below) — that guarantee never changes, so enabling
+strict enforcement can never strand the back catalogue. But its
+`order_line_items` rows are no longer permanently rate-less: the
+`orders.taxRate.backfill` job (default ON, hourly per `OrderSource`
+connection) fills a line's rate from the CURRENT catalogue state whenever the
+catalogue has one, tagging it `taxSource: 'backfill'` — best-effort
+provenance for internal reporting, never a confirmed shop/channel read at
+order time, and never used to satisfy a *new* fiscal document's rate
+requirement. This is what lets `/analytics` compute Net Sales/AOV/Median for
+historical orders once the underlying product syncs, even though those
+orders remain forever exempt from strict enforcement.
 
 They **issue exactly as they do today** - blocking would stop history nobody is
 going to retrofit. That is enforced, not merely intended: every refusal that can

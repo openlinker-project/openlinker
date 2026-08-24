@@ -210,7 +210,9 @@ function provenanceCaption(item: ParsedOrderItem): ReactElement | string {
       ? 'from the shop'
       : item.taxSource === 'channel'
         ? 'from the channel'
-        : null;
+        : item.taxSource === 'backfill'
+          ? 'estimated from catalogue'
+          : null;
   if (!from) return <AbsentValue label="source not recorded" />;
   if (!item.taxRateReadAt) return from;
   const readAt = new Date(item.taxRateReadAt);

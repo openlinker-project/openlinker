@@ -1,13 +1,19 @@
 /**
  * Order Line Item Repository Port
  *
- * Read-only contract for `order_line_items` (#1985). The write path is owned
- * by `OrderRecordRepositoryPort.upsertWithLineItems` (a single transaction
- * with the parent `order_records` row) — this port exists for standalone
- * reads by tests and future downstream aggregates (#1987/#1988), which query
- * this table directly rather than through a generic method here (mirrors how
+ * Mostly read-only contract for `order_line_items` (#1985). The write path
+ * for a line's normal lifecycle (create/replace) is owned by
+ * `OrderRecordRepositoryPort.upsertWithLineItems` (a single transaction with
+ * the parent `order_records` row) — most methods here exist for standalone
+ * reads by tests and downstream aggregates (#1987/#1988), which query this
+ * table directly rather than through a generic method here (mirrors how
  * `countByHealth`/`countBySla` were added straight to `OrderRecordRepository`
  * rather than through a generic query API).
+ *
+ * {@link findPageWithNoTaxRate} and {@link backfillTaxRate} (#2440) are the
+ * one deliberate exception: a narrow, guarded write for a line whose rate was
+ * never settled at ingestion, owned by `TaxRateBackfillService` alone. It
+ * never touches the ordinary upsert path.
  *
  * @module libs/core/src/orders/domain/ports
  */
@@ -83,4 +89,39 @@ export interface OrderLineItemRepositoryPort {
     filters: SalesAnalyticsFilters,
     reportingCurrency: string
   ): Promise<ProductChannelBreakdownRow[]>;
+
+  /**
+   * A page of one connection's rate-less lines for the tax-rate backfill
+   * sweep (#2440), scanning `IDX_order_line_items_no_tax_rate` (`WHERE
+   * "taxRate" IS NULL`) further scoped to `sourceConnectionId`.
+   *
+   * Partitioned by connection for the same reason
+   * `marketplace.order.fxStampSweep` partitions by `OrderSource` connection
+   * despite the underlying fact being connection-agnostic: `SyncJob.connectionId`
+   * is non-nullable, so the fan-out that already exists per source connection
+   * is also the natural partition of this frontier — the rate itself is not
+   * connection-scoped, only the sweep's unit of work is.
+   *
+   * Ordered by `id` for a stable, resumable cursor — `afterId` excludes rows
+   * at or before the given id rather than paging by offset, so a row the
+   * previous page already wrote past can never be re-served after a
+   * concurrent write shifts an offset-based page.
+   */
+  findPageWithNoTaxRate(input: {
+    sourceConnectionId: string;
+    limit: number;
+    afterId: string | null;
+  }): Promise<OrderLineItem[]>;
+
+  /**
+   * Write a backfilled rate onto exactly one line (#2440), guarded by
+   * `WHERE "taxRate" IS NULL` so a concurrent live ingestion that has since
+   * settled the same line is never overwritten — the guard is redundant with
+   * the caller's own page predicate but is not trusted alone, since the two
+   * reads are not in the same transaction.
+   */
+  backfillTaxRate(
+    id: string,
+    patch: { taxRate: string; taxSource: 'backfill'; taxRateReadAt: Date }
+  ): Promise<void>;
 }

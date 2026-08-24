@@ -189,6 +189,11 @@ export type {
 } from './application/interfaces/order-lifecycle-relay.service.interface';
 export type { IOrderRefundService } from './application/interfaces/order-refund.service.interface';
 export { OrderRefundService } from './application/services/order-refund.service';
+export type {
+  ITaxRateBackfillService,
+  TaxRateBackfillPageInput,
+  TaxRateBackfillPageResult,
+} from './application/services/tax-rate-backfill.service.interface';
 export * from './orders.tokens';
 
 // Domain entities

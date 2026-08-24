@@ -284,4 +284,13 @@ describe('orderFromReadySnapshot', () => {
 
     expect(orderFromReadySnapshot(record).items[0].taxSource).toBeUndefined();
   });
+
+  it('round-trips the backfill provenance (#2440) — never confused with a live shop/channel read', () => {
+    const record = makeRecord({
+      ...READY_SNAPSHOT,
+      items: [{ id: 'li_1', productId: 'p_1', quantity: 1, price: 42, taxSource: 'backfill' }],
+    });
+
+    expect(orderFromReadySnapshot(record).items[0].taxSource).toBe('backfill');
+  });
 });

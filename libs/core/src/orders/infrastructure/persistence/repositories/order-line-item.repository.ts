@@ -397,4 +397,36 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
       entity.taxRateReadAt
     );
   }
+
+  async findPageWithNoTaxRate(input: {
+    sourceConnectionId: string;
+    limit: number;
+    afterId: string | null;
+  }): Promise<OrderLineItem[]> {
+    const qb = this.repository
+      .createQueryBuilder('li')
+      .where('li."taxRate" IS NULL')
+      .andWhere('li."sourceConnectionId" = :sourceConnectionId', {
+        sourceConnectionId: input.sourceConnectionId,
+      })
+      .orderBy('li."id"', 'ASC')
+      .take(input.limit);
+    if (input.afterId) {
+      qb.andWhere('li."id" > :afterId', { afterId: input.afterId });
+    }
+    const entities = await qb.getMany();
+    return entities.map((e) => this.toDomain(e));
+  }
+
+  async backfillTaxRate(
+    id: string,
+    patch: { taxRate: string; taxSource: 'backfill'; taxRateReadAt: Date }
+  ): Promise<void> {
+    await this.repository.query(
+      `UPDATE "order_line_items"
+       SET "taxRate" = $1, "taxSource" = $2, "taxRateReadAt" = $3
+       WHERE "id" = $4 AND "taxRate" IS NULL`,
+      [patch.taxRate, patch.taxSource, patch.taxRateReadAt, id]
+    );
+  }
 }

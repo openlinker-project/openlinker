@@ -109,6 +109,7 @@ export {
   isPersistableTaxRateRead,
   readTaxRateUnknownReason,
   isResolvedTaxRate,
+  isTaxRateSource,
   taxRateState,
 } from './domain/types/tax-rate.types';
 export type {

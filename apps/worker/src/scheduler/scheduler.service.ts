@@ -70,6 +70,12 @@ const ORDER_FX_STAMP_SWEEP_DEFAULT_LIMIT = 100;
 const ORDER_FX_STAMP_SWEEP_DEFAULT_MAX_AGE_DAYS = 30;
 
 /**
+ * Default page size for the tax-rate backfill sweep (#2440). Bounds the
+ * per-connection, per-tick scan of `IDX_order_line_items_no_tax_rate`.
+ */
+const ORDERS_TAX_RATE_BACKFILL_DEFAULT_LIMIT = 100;
+
+/**
  * Static descriptor for a core capability-scoped scheduler task. The four core
  * tasks (inventory / product / pickup-point / regulatory-reconcile) are
  * structurally identical — drain every active connection supporting `capability`
@@ -273,6 +279,28 @@ const CORE_CAPABILITY_TASKS: readonly CoreCapabilityTaskDescriptor[] = [
       limit: ORDER_FX_STAMP_SWEEP_DEFAULT_LIMIT,
       maxAgeDays: ORDER_FX_STAMP_SWEEP_DEFAULT_MAX_AGE_DAYS,
     },
+  },
+  {
+    taskId: 'orders-tax-rate-backfill',
+    jobType: 'orders.taxRate.backfill',
+    // Same reasoning as `order-fx-stamp-sweep` immediately above: the rate
+    // being backfilled is connection-agnostic, but `order_line_items.
+    // sourceConnectionId` is the connection axis every row actually carries,
+    // and `SyncJob.connectionId` is non-nullable — so the per-`OrderSource`-
+    // connection fan-out is the natural partition of the rate-less frontier.
+    capability: 'OrderSource',
+    enabledEnvVar: 'OL_ORDERS_TAX_RATE_BACKFILL_ENABLED',
+    // Default ON: every write is additively guarded (`WHERE taxRate IS NULL`)
+    // and reads only the current catalogue state — there is no failure mode
+    // where running it does harm, only one where NOT running it leaves
+    // historical orders excluded from a net revenue figure indefinitely.
+    cronEnvVar: 'OL_ORDERS_TAX_RATE_BACKFILL_CRON',
+    // Offset minute (37) so it doesn't pile onto the other hourly sweeps
+    // above (:17, :23).
+    defaultCron: '37 * * * *',
+    idempotencyKey: (connectionId, timestamp) =>
+      `orders:${connectionId}:taxRate:backfill:${timestamp}`,
+    extraPayload: { limit: ORDERS_TAX_RATE_BACKFILL_DEFAULT_LIMIT },
   },
 ];
 

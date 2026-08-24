@@ -265,6 +265,10 @@ function mapTotals(order: WooCommerceOrder): IncomingOrderTotals {
     shipping: roundCurrency(shipping),
     total: roundCurrency(total),
     currency: order.currency,
+    // `line_items[].price` (mapped onto `OrderItem.price`) is net — WooCommerce
+    // reports `total_tax` as a separate amount rather than folding it into the
+    // line price (#2440).
+    taxTreatment: 'exclusive',
   };
 }
 

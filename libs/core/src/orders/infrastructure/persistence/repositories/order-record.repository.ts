@@ -1275,6 +1275,43 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       .filter((entry) => Number.isFinite(entry.count));
   }
 
+  async patchSnapshotTaxRates(
+    internalOrderId: string,
+    lineNumber: number,
+    patch: { taxRate: string; taxSource: 'backfill'; taxRateReadAt: Date }
+  ): Promise<void> {
+    const lineNumberStr = String(lineNumber);
+    await this.repository.query(
+      `UPDATE "order_records"
+       SET "orderSnapshot" = jsonb_set(
+             jsonb_set(
+               jsonb_set(
+                 "orderSnapshot",
+                 ARRAY['items', $1, 'taxRate'],
+                 to_jsonb($2::text),
+                 true
+               ),
+               ARRAY['items', $1, 'taxSource'],
+               to_jsonb($3::text),
+               true
+             ),
+             ARRAY['items', $1, 'taxRateReadAt'],
+             to_jsonb($4::text),
+             true
+           )
+       WHERE "internalOrderId" = $5
+         AND jsonb_typeof("orderSnapshot"#>ARRAY['items', $1]) = 'object'
+         AND NOT ("orderSnapshot"#>ARRAY['items', $1] ? 'taxRate')`,
+      [
+        lineNumberStr,
+        patch.taxRate,
+        patch.taxSource,
+        patch.taxRateReadAt.toISOString(),
+        internalOrderId,
+      ]
+    );
+  }
+
   /**
    * Per-row order-native currency, guarded so a non-string `totals.currency`
    * reads as NULL instead of leaking a JSON scalar into the result set. Kept as

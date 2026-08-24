@@ -55,7 +55,13 @@ const orderItemSchema = z.object({
    */
   taxRate: z.string().nullish(),
   taxRateCountry: z.string().nullish(),
-  taxSource: z.enum(['shop', 'channel']).nullish(),
+  /**
+   * `'backfill'` (#2440) is a rate derived from the CURRENT catalogue by the
+   * backfill sweep, for a line that predates the per-line tax-rate epic —
+   * best-effort provenance, never a confirmed shop/channel read. Render it
+   * as "estimated from catalogue", distinct from both other sources.
+   */
+  taxSource: z.enum(['shop', 'channel', 'backfill']).nullish(),
   taxRateReadAt: z.string().nullish(),
   taxRateChannel: z.string().nullish(),
 });
