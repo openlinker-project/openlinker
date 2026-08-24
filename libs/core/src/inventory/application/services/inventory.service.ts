@@ -130,6 +130,24 @@ export class InventoryService implements IInventoryService {
     return result;
   }
 
+  async staleLocationlessPositionsForSource(
+    productId: string,
+    locatedVariantKeys: readonly (string | null)[],
+    scope: ProvenanceScope
+  ): Promise<PruneStaleVariantsResult> {
+    const result = await this.inventoryRepository.markLocationlessStaleForSource(
+      productId,
+      locatedVariantKeys,
+      scope
+    );
+    if (result.markedCount > 0) {
+      this.logger.warn(
+        `inventory_pooled_position_staled_by_located_write product=${productId} rows=${result.markedCount} variants=${result.variantIds.length} located=${locatedVariantKeys.length} source=${scope.sourceConnectionId}`
+      );
+    }
+    return result;
+  }
+
   private buildPropagationDedupeKey(item: InventoryItem, writeEventToken: string): string {
     return [
       'inventory:propagate',

@@ -419,6 +419,77 @@ export class InventoryRepository implements InventoryRepositoryPort {
     return { markedCount: result.affected ?? raw.length, variantIds };
   }
 
+  /**
+   * Second `isStale` writer on this table (#2322, ADR-058 decision (2)) —
+   * see the port docblock for what the rule is and why it is a repair.
+   *
+   * Two preconditions the SQL itself cannot state. It is called AFTER the
+   * `setInventory` loop, so the located rows it is reacting to are already
+   * committed and a contradiction inside one payload resolves deterministically
+   * (located wins). And it is called only where the caller has established sole
+   * claim, which is what makes `includeUnattributedProvenance` safe.
+   *
+   * The empty-set early return is behavioural, not an optimisation: with no
+   * located variants there is nothing to enforce, and a round-trip that could
+   * only ever match zero rows should not touch storage at all.
+   */
+  async markLocationlessStaleForSource(
+    productId: string,
+    locatedVariantKeys: readonly (string | null)[],
+    scope: ProvenanceScope
+  ): Promise<PruneStaleVariantsResult> {
+    if (locatedVariantKeys.length === 0) {
+      return { markedCount: 0, variantIds: [] };
+    }
+
+    const nonNullLocated = locatedVariantKeys.filter((v): v is string => v !== null);
+    const locatedNull = locatedVariantKeys.includes(null);
+
+    const qb = this.repository
+      .createQueryBuilder()
+      .update(InventoryItemOrmEntity)
+      .set({ isStale: true })
+      .where('productId = :productId', { productId })
+      .andWhere('isStale = false')
+      // The pooled half of the rule: only a row that declines to locate is an
+      // orphan of a located write. A row AT a location is the located write.
+      .andWhere('"locationId" IS NULL')
+      .andWhere(
+        // A row is an orphan iff its variant is one the master just located.
+        // Each branch guards its own NULL so the predicate stays total, and IN
+        // is only applied to guaranteed-non-null values — the same discipline
+        // `markStaleExceptVariants` keeps, in the mirror-image direction.
+        new Brackets((inner) => {
+          if (nonNullLocated.length > 0) {
+            inner.where('productVariantId IN (:...located)', { located: nonNullLocated });
+          }
+          if (locatedNull) {
+            if (nonNullLocated.length > 0) {
+              inner.orWhere('productVariantId IS NULL');
+            } else {
+              inner.where('productVariantId IS NULL');
+            }
+          }
+        })
+      );
+
+    // Per-source restriction (#2320), bracketed and appended AFTER the variant
+    // group so the two OR-groups stay independent. REQUIRED here: an unscoped
+    // sweep would stale a rival master's pooled row over this master's choice.
+    this.applyProvenanceScope(qb, scope, '"sourceConnectionId"');
+
+    // No `updatedAt` in the SET: the stock facts did not change, only their
+    // liveness, and moving the timestamp would misreport when stock was last
+    // observed (the #2321 `stockUpdatedAt` read).
+    const result = await qb.returning(['productVariantId']).execute();
+
+    const raw = result.raw as { productVariantId: string | null }[];
+    const variantIds = [
+      ...new Set(raw.map((r) => r.productVariantId).filter((v): v is string => v !== null)),
+    ];
+    return { markedCount: result.affected ?? raw.length, variantIds };
+  }
+
 
   /**
    * Read-only duplicate-position scan (#2319, ADR-058 ladder step (iii)).

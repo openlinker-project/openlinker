@@ -79,7 +79,7 @@ Branch: `oms-programme-wave-1` (stacked off Wave-0 tip feb78054d; Wave-0 PR to m
 | #2319 | W1b-9 | duplicate-position detection pass | ☑ merged a2b557e4b (commit 671a050df; reviewed, approved; finding: duplicates only reachable via NULL key columns — recorded in ops doc) |
 | #2321 | W1b-6 | IAvailabilityService computed seam | ☑ merged bdcdb6711 (commit 104d37869; reviewed, approved; consumed by nobody until #2323) |
 | #2320 | W1b-5 | provenance-scoped lookup + per-source prune | ◑ implementing (ANALYSIS-2320; imports LEGACY const from #2317; Decision A typed InventoryCrossSourcePositionConflictError naming #2325; #1904 guard unchanged) |
-| #2322 | W1b-10 | enforce locationId-NULL semantics | ◐ planned (plan-2322; audits+dispatches after #2320) |
+| #2322 | W1b-10 | enforce locationId-NULL semantics | ◑ implementing (ANALYSIS-2322; same-source pooled-row soft-stale repair on the write path, required ProvenanceScope, no event emission, no propagation enqueue — ATP-drop gap left to #2324) |
 ### Wave 1c (epic #2337) — gated on #2289 fork decided; Wave 1a
 ### Wave 2 (epic #2389) — gated per its epic body; §8 Q1 = YES (decision 2 above)
 

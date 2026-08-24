@@ -1005,6 +1005,114 @@ describe('InventoryRepository', () => {
       ]);
     });
 
+    // ADR-058 decision (2) enforcement (#2322).
+    describe('markLocationlessStaleForSource', () => {
+      it('touches storage not at all when nothing was located', async () => {
+        const qb = buildPruneMock();
+        ormRepository.createQueryBuilder.mockReturnValue(
+          qb as unknown as ReturnType<typeof ormRepository.createQueryBuilder>
+        );
+
+        const result = await repository.markLocationlessStaleForSource('ol_product_1', [], {
+          sourceConnectionId: 'conn-alpha',
+          includeUnattributedProvenance: true,
+        });
+
+        expect(ormRepository.createQueryBuilder).not.toHaveBeenCalled();
+        expect(result).toEqual({ markedCount: 0, variantIds: [] });
+      });
+
+      it('restricts to pooled rows of the located variants and stamps only isStale', async () => {
+        const qb = buildPruneMock();
+        ormRepository.createQueryBuilder.mockReturnValue(
+          qb as unknown as ReturnType<typeof ormRepository.createQueryBuilder>
+        );
+
+        await repository.markLocationlessStaleForSource(
+          'ol_product_1',
+          ['ol_variant_1', 'ol_variant_2'],
+          { sourceConnectionId: 'conn-alpha', includeUnattributedProvenance: true }
+        );
+
+        // The stock facts did not change, only their liveness — an `updatedAt`
+        // bump here would misreport when stock was last observed (#2321).
+        expect(qb.set).toHaveBeenCalledWith({ isStale: true });
+        const conditions = (qb.andWhere.mock.calls as unknown[][]).map((c) => c[0]);
+        expect(conditions).toContain('isStale = false');
+        // The pooled half of the rule: a row AT a location IS the located write.
+        expect(conditions).toContain('"locationId" IS NULL');
+        // IN over guaranteed-non-null values only — never an unguarded NOT IN
+        // on a nullable column.
+        expect(renderBrackets(conditions[conditions.length - 2]).sql).toEqual([
+          'productVariantId IN (:...located)',
+        ]);
+        // Provenance group appended last, bracketed, so the two OR-groups stay
+        // independent.
+        expect(renderBrackets(lastBracket(qb)).sql).toEqual([
+          '"sourceConnectionId" = :scopeConnectionId',
+          '"sourceConnectionId" IS NULL',
+          '"sourceConnectionId" = :legacyProvenance',
+        ]);
+      });
+
+      it('carries a product-level located position as its own NULL-guarded arm', async () => {
+        const qb = buildPruneMock();
+        ormRepository.createQueryBuilder.mockReturnValue(
+          qb as unknown as ReturnType<typeof ormRepository.createQueryBuilder>
+        );
+
+        await repository.markLocationlessStaleForSource('ol_product_1', ['ol_variant_1', null], {
+          sourceConnectionId: 'conn-alpha',
+          includeUnattributedProvenance: true,
+        });
+
+        const conditions = (qb.andWhere.mock.calls as unknown[][]).map((c) => c[0]);
+        expect(renderBrackets(conditions[conditions.length - 2]).sql).toEqual([
+          'productVariantId IN (:...located)',
+          'productVariantId IS NULL',
+        ]);
+      });
+
+      it('drops the unattributed arm when the scope claims strictly its own rows', async () => {
+        const qb = buildPruneMock();
+        ormRepository.createQueryBuilder.mockReturnValue(
+          qb as unknown as ReturnType<typeof ormRepository.createQueryBuilder>
+        );
+
+        await repository.markLocationlessStaleForSource('ol_product_1', ['ol_variant_1'], {
+          sourceConnectionId: 'conn-alpha',
+          includeUnattributedProvenance: false,
+        });
+
+        expect(renderBrackets(lastBracket(qb)).sql).toEqual([
+          '"sourceConnectionId" = :scopeConnectionId',
+        ]);
+      });
+
+      it('reports the distinct non-null variant ids it flagged', async () => {
+        const qb = buildPruneMock();
+        qb.execute.mockResolvedValue({
+          raw: [
+            { productVariantId: 'ol_variant_1' },
+            { productVariantId: 'ol_variant_1' },
+            { productVariantId: null },
+          ],
+          affected: 3,
+        });
+        ormRepository.createQueryBuilder.mockReturnValue(
+          qb as unknown as ReturnType<typeof ormRepository.createQueryBuilder>
+        );
+
+        const result = await repository.markLocationlessStaleForSource(
+          'ol_product_1',
+          ['ol_variant_1', null],
+          { sourceConnectionId: 'conn-alpha', includeUnattributedProvenance: true }
+        );
+
+        expect(result).toEqual({ markedCount: 3, variantIds: ['ol_variant_1'] });
+      });
+    });
+
     it('applies the read filter with strict equality, never the claim rule', async () => {
       ormRepository.findAndCount.mockResolvedValue([[], 0]);
 

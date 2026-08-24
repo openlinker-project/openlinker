@@ -103,6 +103,13 @@ export class MasterInventorySyncService implements IMasterInventorySyncService {
     let availableQuantity = 0;
     let reservedQuantity = 0;
     const currentVariantIds: (string | null)[] = [];
+    // ADR-058 decision (2) enforcement input (#2322): the variant keys this
+    // master just reported AT a location. A pooled (`locationId IS NULL`) row
+    // this same source left behind for one of these variants is not a second
+    // warehouse - `NULL` is the master declining to locate, never a default
+    // location - so it double-counts stock and is repaired below.
+    const locatedVariantKeys: (string | null)[] = [];
+    const pooledVariantKeys = new Set<string>();
     for (const inventory of inventories) {
       const inventoryItem = await this.toDomainInventoryItem(
         inventory,
@@ -111,6 +118,11 @@ export class MasterInventorySyncService implements IMasterInventorySyncService {
       );
       await this.inventoryService.setInventory(inventoryItem);
       currentVariantIds.push(inventoryItem.productVariantId);
+      if ((inventory.locationId ?? null) !== null) {
+        locatedVariantKeys.push(inventoryItem.productVariantId);
+      } else {
+        pooledVariantKeys.add(inventoryItem.productVariantId ?? '__product_level__');
+      }
       availableQuantity += inventoryItem.availableQuantity;
       reservedQuantity += inventoryItem.reservedQuantity;
     }
@@ -137,6 +149,47 @@ export class MasterInventorySyncService implements IMasterInventorySyncService {
       externalId,
       internalProductId
     );
+    // ADR-058 decision (2) - "`locationId IS NULL` means the master declines to
+    // locate, never a default location" - enforced here, on the write path
+    // (#2322). A DB constraint cannot express it before the four-column index
+    // (#2325), and a read-time filter would be wrong: a DIFFERENT source's
+    // pooled row is legitimate stock and must keep summing. So this is a
+    // same-source REPAIR, run after the writes above so the located rows it
+    // reacts to already exist.
+    //
+    // The rejected alternative is worth naming: minting a synthetic DEFAULT
+    // location for pooled rows would make the two shapes comparable, and ADR-058
+    // forbids it precisely because it invents an answer the master declined to
+    // give.
+    //
+    // A contradiction inside ONE payload (the same variant reported both pooled
+    // and located) resolves deterministically - located wins, because the
+    // enforcement runs after the whole loop - but it means the master
+    // contradicted itself, so it is reported separately from the ordinary case.
+    const contradicted = locatedVariantKeys.filter((key) =>
+      pooledVariantKeys.has(key ?? '__product_level__')
+    );
+    if (contradicted.length > 0) {
+      this.logger.warn(
+        `inventory_pooled_and_located_in_one_response connection=${connectionId} externalId=${externalId} internalProductId=${internalProductId} variants=${contradicted.length} - the master reported the same variant both pooled and located in a single response; the located position wins and the pooled row is staled`
+      );
+    }
+
+    const pooledStaleResult =
+      locatedVariantKeys.length === 0
+        ? { markedCount: 0, variantIds: [] }
+        : await this.inventoryService.staleLocationlessPositionsForSource(
+            internalProductId,
+            locatedVariantKeys,
+            // INVARIANT (#2320/#2322), mirroring the prune call below:
+            // `includeUnattributedProvenance` claims rows no connection owns
+            // yet, which is safe only where this connection is the sole
+            // `InventoryMaster` claiming the id. With a rival present the claim
+            // cannot be attributed, so the repair falls back to strict matching
+            // rather than staling a row it cannot prove is its own.
+            { sourceConnectionId: connectionId, includeUnattributedProvenance: !pruneSkipped }
+          );
+
     const pruneResult: PruneStaleVariantsResult = pruneSkipped
       ? { markedCount: 0, variantIds: [] }
       : await this.inventoryService.pruneStaleVariants(
@@ -200,7 +253,7 @@ export class MasterInventorySyncService implements IMasterInventorySyncService {
     }
 
     this.logger.debug(
-      `Master inventory sync complete (connection: ${connectionId}, externalId: ${externalId}, internalProductId: ${internalProductId}, itemsWritten=${inventories.length}, markedStale=${pruneResult.markedCount}, pruneSkipped=${pruneSkipped}, available=${availableQuantity}, reserved=${reservedQuantity})`
+      `Master inventory sync complete (connection: ${connectionId}, externalId: ${externalId}, internalProductId: ${internalProductId}, itemsWritten=${inventories.length}, markedStale=${pruneResult.markedCount}, pooledPositionsStaled=${pooledStaleResult.markedCount}, pruneSkipped=${pruneSkipped}, available=${availableQuantity}, reserved=${reservedQuantity})`
     );
 
     return {
@@ -210,6 +263,7 @@ export class MasterInventorySyncService implements IMasterInventorySyncService {
       reservedQuantity,
       masterDeleted: false,
       pruneSkipped,
+      pooledPositionsStaled: pooledStaleResult.markedCount,
     };
   }
 
@@ -235,6 +289,7 @@ export class MasterInventorySyncService implements IMasterInventorySyncService {
         reservedQuantity: 0,
         masterDeleted: true,
         pruneSkipped: true,
+        pooledPositionsStaled: 0,
       };
     }
 
@@ -289,6 +344,7 @@ export class MasterInventorySyncService implements IMasterInventorySyncService {
       reservedQuantity: 0,
       masterDeleted: true,
       pruneSkipped,
+      pooledPositionsStaled: 0,
     };
   }
 

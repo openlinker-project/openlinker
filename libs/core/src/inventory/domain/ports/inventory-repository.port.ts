@@ -215,6 +215,53 @@ export interface InventoryRepositoryPort {
   ): Promise<PruneStaleVariantsResult>;
 
   /**
+   * Enforce ADR-058 decision (2) — "`locationId IS NULL` means the master
+   * declines to locate, never a default location" (#2322).
+   *
+   * A source that starts reporting located positions for a variant it used to
+   * report pooled leaves its OWN pooled row behind. That row is not a second
+   * warehouse: it is the same stock, counted twice, because a `NULL`
+   * `locationId` is an absence of an answer rather than a location named
+   * "default". This soft-stales exactly those orphans — the source's own
+   * `locationId IS NULL` rows for the variants it just located — using the
+   * existing `isStale` mechanism (#1478): no DELETE, no `updatedAt` bump, and
+   * the row leaves availability through the `isStale = false` filters every
+   * read already applies.
+   *
+   * **A repair, not a refusal.** The located write has already happened when
+   * this runs; refusing it would leave the master's own answer unrecorded, and
+   * a DB constraint cannot express the rule at all before the four-column index
+   * (#2325). Reversal is free and needs no code: a source that stops locating
+   * re-creates and un-stales its pooled row through the ordinary
+   * `setInventory` upsert, and its located rows then stale via the ordinary
+   * `markStaleExceptVariants` prune.
+   *
+   * **The scope is REQUIRED, unlike `markStaleExceptVariants`'s.** An unscoped
+   * sweep here would stale a RIVAL master's legitimately-pooled row on the
+   * strength of THIS master's decision to locate — a decision that says nothing
+   * about the rival's stock. There is no meaningful unscoped form, so the type
+   * does not offer one. `includeUnattributedProvenance` carries the same
+   * caveat as everywhere else: claiming a row nobody owns is only safe for a
+   * caller that has established it is the sole claimant (#1904).
+   *
+   * Emits nothing. Re-locating a variant is not a master-side deletion, so the
+   * `master.variant.stale` event (#1599/#1689) must NOT fire off this count —
+   * it would pause live marketplace offers for stock that is still there.
+   *
+   * @param productId internal OpenLinker product ID
+   * @param locatedVariantKeys variant keys the master just reported at a
+   *   non-null location (may include `null` for a product-level position)
+   * @param scope the claiming connection's provenance restriction
+   * @returns rows newly marked stale (`markedCount`) + the distinct non-null
+   *   variant ids flagged (`variantIds`), reported for logging only
+   */
+  markLocationlessStaleForSource(
+    productId: string,
+    locatedVariantKeys: readonly (string | null)[],
+    scope: ProvenanceScope
+  ): Promise<PruneStaleVariantsResult>;
+
+  /**
    * Read-only scan for duplicate inventory positions (#2319, ADR-058 step (iii)).
    *
    * Groups every `inventory_items` row by the FOUR-column position key
