@@ -9,3 +9,4 @@
  * @module libs/core/src/inventory/orm-entities
  */
 export { InventoryItemOrmEntity } from './infrastructure/persistence/entities/inventory-item.orm-entity';
+export { InventoryLocationOrmEntity } from './infrastructure/persistence/entities/inventory-location.orm-entity';

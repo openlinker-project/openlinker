@@ -16,13 +16,17 @@ export * from './inventory.tokens';
 // Ports
 export { InventoryMasterPort, Inventory } from './domain/ports/inventory-master.port';
 export { InventoryRepositoryPort } from './domain/ports/inventory-repository.port';
+export { LocationRepositoryPort } from './domain/ports/location-repository.port';
 
 // Domain Entities
 export { InventoryItem as InventoryItemEntity } from './domain/entities/inventory-item.entity';
+export { InventoryLocation } from './domain/entities/inventory-location.entity';
 
 // Domain exceptions
 export { InventoryReturningUnsupportedError } from './domain/exceptions/inventory-returning-unsupported.error';
 export { InventoryRowVanishedError } from './domain/exceptions/inventory-row-vanished.error';
+export { DuplicateLocationCodeError } from './domain/exceptions/duplicate-location-code.error';
+export { LocationNotFoundException } from './domain/exceptions/location-not-found.exception';
 
 // Application Services
 export { IInventoryService } from './application/services/inventory.service.interface';
@@ -33,6 +37,8 @@ export { IMasterInventorySyncService, MasterInventorySyncResult } from './applic
 export { MasterInventorySyncService } from './application/services/master-inventory-sync.service';
 export { IInventoryQueryService } from './application/services/inventory-query.service.interface';
 export { InventoryQueryService } from './application/services/inventory-query.service';
+export { ILocationService } from './application/services/location.service.interface';
+export { LocationService } from './application/services/location.service';
 
 // Application Types
 export {
@@ -51,6 +57,17 @@ export {
   ProductStockAggregate,
   PruneStaleVariantsResult,
 } from './domain/types/inventory.types';
+export {
+  InventoryLocationKindValues,
+  InventoryLocationKind,
+  InventoryLocationStatusValues,
+  InventoryLocationStatus,
+  CreateInventoryLocationInput,
+  UpdateInventoryLocationInput,
+  InventoryLocationFilters,
+  InventoryLocationPagination,
+  PaginatedInventoryLocations,
+} from './domain/types/location.types';
 
 // ORM entities are exposed on the host-only `@openlinker/core/inventory/orm-entities`
 // sub-path (#594). Plugins must not import them from here.
