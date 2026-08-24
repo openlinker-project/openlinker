@@ -735,6 +735,7 @@ export function ListingsListPage(): ReactElement {
       </div>
 
       <Tabs
+        className="listings-tabs"
         value={tab}
         onValueChange={(value) => {
           if (isLifecycleTab(value)) setTab(value);

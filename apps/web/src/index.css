@@ -5978,6 +5978,16 @@ a.kpi-card:focus-visible {
   gap: 16px;
 }
 
+/* Listings' 4 force-mounted, non-selected panels (kept in the DOM only so
+   their trigger's aria-controls resolves - see listings-list-page.tsx) sit
+   empty in `.tabs`'s gapped column. The `hidden` attribute on them doesn't
+   collapse the `.tabs` gap around them, so the default 16px reads as a
+   visible dead strip under the tab bar; tightened to 4px here instead of
+   removing the gap outright. */
+.listings-tabs {
+  gap: 4px;
+}
+
 .tabs__content:focus-visible {
   outline: none;
 }
