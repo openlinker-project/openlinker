@@ -50,7 +50,16 @@ import {
 import { IOrderRecordService } from '../interfaces/order-record.service.interface';
 import { IOrderItemRefResolverService } from '../interfaces/order-item-ref-resolver.service.interface';
 import { IOrderLifecycleRelayService } from '../interfaces/order-lifecycle-relay.service.interface';
-import type { IncomingOrder } from '../../domain/types/incoming-order.types';
+import type { IncomingOrder, IncomingOrderItem } from '../../domain/types/incoming-order.types';
+import {
+  IProductsService,
+  PRODUCTS_SERVICE_TOKEN,
+  TAX_RATE_JOURNAL_SERVICE_TOKEN,
+  taxRateState,
+  type ITaxRateJournalService,
+  type StoredTaxRate,
+  type TaxRateSource,
+} from '@openlinker/core/products';
 import type { Order } from '../../domain/types/order.types';
 import type { OrderFeedEventType } from '../../domain/types/order-feed.types';
 import type { OrderRecord } from '../../domain/entities/order-record.entity';
@@ -94,7 +103,17 @@ export class OrderIngestionService implements IOrderIngestionService {
     // issuance jobs. One-way edge (F3) — this service is consumed via the token,
     // never the reverse.
     @Inject(AUTO_ISSUE_TRIGGER_SERVICE_TOKEN)
-    private readonly autoIssueTrigger: IAutoIssueTriggerService
+    private readonly autoIssueTrigger: IAutoIssueTriggerService,
+    // #2054: the catalogue projection the per-line tax rate is settled from.
+    // A read of OL's own store, never a live shop call - issuance must not
+    // depend on the shop being reachable.
+    @Inject(PRODUCTS_SERVICE_TOKEN)
+    private readonly productsService: IProductsService,
+    // #2250: an inbound order line is the one place a CHANNEL states a rate in
+    // its own voice, so it is where the `channel` half of the provenance
+    // journal is fed. Token/interface edge into `products`, like the read above.
+    @Inject(TAX_RATE_JOURNAL_SERVICE_TOKEN)
+    private readonly taxRateJournal: ITaxRateJournalService
   ) {}
 
   async ingestOrders(
@@ -307,6 +326,22 @@ export class OrderIngestionService implements IOrderIngestionService {
     for (const item of incoming.items) {
       const result = await this.orderItemRefResolver.tryResolve(connectionId, item.productRef);
       if (result.resolved) {
+        const tax = await this.resolveLineTaxRate(
+          result.internalProductId,
+          result.internalVariantId,
+          item
+        );
+        // #2250 - journal what the CHANNEL said, separately from what the line
+        // settled on. Deliberately keyed off `item.taxRate` and not off `tax`:
+        // `tax` is OpenLinker's resolution, so recording it as a channel
+        // observation would attribute our own fallback to the marketplace and
+        // destroy the very attribution the journal exists for.
+        await this.journalChannelTaxRate(
+          connectionId,
+          result.internalProductId,
+          result.internalVariantId ?? null,
+          item
+        );
         resolvedItems.push({
           id: item.id,
           productId: result.internalProductId,
@@ -316,6 +351,7 @@ export class OrderIngestionService implements IOrderIngestionService {
           sku: item.sku,
           name: item.name,
           imageUrl: item.imageUrl,
+          ...tax,
         });
       } else {
         unresolvedRefs.push({ itemId: item.id, reason: result.reason, kind: result.kind });
@@ -463,7 +499,15 @@ export class OrderIngestionService implements IOrderIngestionService {
       const outcome = await this.autoIssueTrigger.onOrderTransition(
         order,
         connectionId,
-        sourceEventId
+        sourceEventId,
+        // #2245 review: the PRE-persist record is the right read. `persistOrder`
+        // deliberately omits `taxRateEra` from its write set, so the marker the
+        // migration stamped survives every re-ingestion - and a first-seen order
+        // has no record and therefore no era, which is correct: it arrived after
+        // the feature. Without this the marker was write-only and every
+        // already-ingested uninvoiced order became un-issuable under strict
+        // enforcement.
+        existing?.taxRateEra ?? null
       );
       // #2100 (ADR-041 §54/§105): a block is never log-only. The trigger REPORTS
       // the outcome and this service — which owns the order record — writes it,
@@ -664,6 +708,120 @@ export class OrderIngestionService implements IOrderIngestionService {
     }
 
     return undefined;
+  }
+
+  /**
+   * Record the rate the CHANNEL itself reported for this line (#2250,
+   * ADR-063 § 4).
+   *
+   * Written only where the source order line really carried one. Most sources
+   * carry none (Allegro's `lineItems[].tax` is nullable and an OL-published
+   * offer reported no rate at all before this epic), and a row written on their
+   * behalf would be OpenLinker's own resolved value wearing the channel's name -
+   * which is exactly the attribution the journal exists to keep separable.
+   *
+   * Best-effort and never throws. The journal is provenance: losing an entry
+   * costs an audit trail, while failing the ingestion over it would cost the
+   * order.
+   */
+  private async journalChannelTaxRate(
+    connectionId: string,
+    productId: string,
+    variantId: string | null,
+    item: IncomingOrderItem
+  ): Promise<void> {
+    const channelCode = item.taxRate?.trim();
+    if (!channelCode) {
+      return;
+    }
+    try {
+      await this.taxRateJournal.record({
+        productId,
+        variantId,
+        connectionId,
+        origin: 'channel',
+        taxRate: channelCode,
+      });
+    } catch (error) {
+      this.logger.warn(
+        `Tax-rate journal write failed for an order line (provenance only, the order is unaffected) ` +
+          `[connectionId=${connectionId}, productId=${productId}, variantId=${variantId ?? 'none'}]: ${(error as Error).message}`
+      );
+    }
+  }
+
+  /**
+   * Settle the line's tax rate at ingestion (#2054, ADR-063 § 1 and § 4).
+   *
+   * Shop first, channel second. The order of the two rungs is the decision, not
+   * an implementation detail: a rate fixed in the shop serves every channel,
+   * while a rate only the marketplace knows was stamped at purchase and can
+   * never be corrected afterwards - so preferring the channel would quietly
+   * make the unfixable answer authoritative.
+   *
+   * The shop is read from OpenLinker's own catalogue projection, never live.
+   * Issuance must not depend on the shop being reachable, and re-ingesting an
+   * order must not be able to move a figure a document was already issued
+   * against.
+   *
+   * Returning **nothing** is a real outcome and is left as absent fields, not
+   * an empty string or a zero. It is what holds the document, and the gate
+   * child is what reports it.
+   */
+  private async resolveLineTaxRate(
+    productId: string,
+    variantId: string | undefined,
+    item: IncomingOrderItem
+  ): Promise<{
+    taxRate?: string;
+    taxRateCountry?: string;
+    taxSource?: TaxRateSource;
+    taxRateReadAt?: string;
+    taxRateChannel?: string;
+  }> {
+    let shopRate: StoredTaxRate | null = null;
+    try {
+      shopRate = await this.productsService.getEffectiveTaxRate(productId, variantId);
+    } catch (error) {
+      // A catalogue read failure is not a statement about the rate. Fall
+      // through to the channel rung rather than recording a false absence.
+      this.logger.warn(
+        `Tax-rate catalogue read failed for order line [productId=${productId}, variantId=${variantId ?? 'none'}]: ${(error as Error).message}`
+      );
+    }
+
+    if (shopRate && taxRateState(shopRate) === 'known' && shopRate.code) {
+      // #2254 (epic F1): when the channel ALSO reported a rate and it differs,
+      // record the other number. The shop still wins and the document still
+      // issues - this is the evidence for a non-blocking conflict, not a veto.
+      // Recorded only on disagreement, so its presence IS the conflict and no
+      // reader has to compare two fields to find out.
+      const channelCode = item.taxRate?.trim();
+      const conflicts = Boolean(channelCode) && channelCode !== shopRate.code;
+      return {
+        taxRate: shopRate.code,
+        ...(shopRate.countryIso2 ? { taxRateCountry: shopRate.countryIso2 } : {}),
+        taxSource: 'shop',
+        ...(shopRate.readAt ? { taxRateReadAt: shopRate.readAt.toISOString() } : {}),
+        ...(conflicts ? { taxRateChannel: channelCode } : {}),
+      };
+    }
+
+    const channelCode = item.taxRate?.trim();
+    if (channelCode) {
+      return {
+        taxRate: channelCode,
+        ...(item.taxRateCountry ? { taxRateCountry: item.taxRateCountry } : {}),
+        taxSource: 'channel',
+        // The channel reported it with this order, so the read instant is now.
+        taxRateReadAt: new Date().toISOString(),
+      };
+    }
+
+    // Neither rung answered. `taxRateReadAt` still travels when the shop was
+    // asked, so a reader can tell "the shop has no rate for this" apart from
+    // "nothing has ever looked" - the distinction #2245 F3 exists for.
+    return shopRate?.readAt ? { taxRateReadAt: shopRate.readAt.toISOString() } : {};
   }
 
   private buildUnifiedOrder(

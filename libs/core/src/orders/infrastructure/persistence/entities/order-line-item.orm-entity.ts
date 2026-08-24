@@ -16,7 +16,7 @@ import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, Index, Unique
 // single-column index per column (review finding: five single-column
 // indexes on a table written on every order ingest is real write
 // amplification, and none of them served the actual queries well). See the
-// 1837000000000 migration's comment for the per-index query it backs.
+// 1839000000001 migration's comment for the per-index query it backs.
 // variantId and a standalone placedAt index are deferred until a query
 // actually needs them.
 @Index(['sourceConnectionId', 'placedAt'])
@@ -60,6 +60,27 @@ export class OrderLineItemOrmEntity {
   /** Denormalized from the parent order (#1985) so a date-range query never joins back. */
   @Column({ type: 'timestamptz', nullable: true })
   placedAt!: Date | null;
+
+  /**
+   * The settled per-line tax rate, transcribed from the snapshot (#2250).
+   *
+   * The snapshot is where a rate is DECIDED; this column is the queryable copy,
+   * so an analytics read never expands JSON to group revenue by rate. A single
+   * writer, the same `upsertWithLineItems` that writes every other column here.
+   */
+  @Column({ type: 'varchar', length: 16, nullable: true })
+  taxRate!: string | null;
+
+  /**
+   * Which system stated it. Carried rather than derived, because *no rate*,
+   * *never read* and *pre-rollout* are three different facts and one null rate
+   * cannot separate them (#2245 F3).
+   */
+  @Column({ type: 'varchar', length: 16, nullable: true })
+  taxSource!: string | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  taxRateReadAt!: Date | null;
 
   @CreateDateColumn()
   createdAt!: Date;

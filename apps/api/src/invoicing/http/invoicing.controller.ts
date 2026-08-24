@@ -71,7 +71,9 @@ import {
   InvalidInvoiceLineError,
   UnsupportedPriceTreatmentError,
   DuplicateInvoiceRecordException,
+  MissingTaxRateException,
   OrderAlreadyInvoicedException,
+  OrderAlreadyHasFiscalReceiptException,
   InvoiceIssueContendedException,
   InvoiceRecordNotFoundException,
   MissingNumberingSeriesException,
@@ -436,6 +438,11 @@ export class InvoicingController {
         idempotencyKey,
         shippingLineName,
         source,
+        // #2245 review: a pre-rollout order is exempt from the write-path
+        // tax-rate guard, so the marker has to reach the command on the MANUAL
+        // route too - this endpoint is exactly where an operator releases an
+        // order the auto path skipped.
+        taxRateEra: record.taxRateEra,
       });
     } catch (error) {
       throw this.toHttpException(error);
@@ -568,6 +575,8 @@ export class InvoicingController {
         shippingLineName: await this.resolveShippingLineName(record.connectionId),
         // #1694: same per-source numbering axis as the single-issue path.
         source: await this.resolveSourcePlatformType(orderRecord.sourceConnectionId),
+        // #2245 review: same pre-rollout exemption as the single-issue path.
+        taxRateEra: orderRecord.taxRateEra,
       });
       await this.invoiceService.issueInvoice(command);
       await this.clearSalesDocumentBlock(record.orderId);
@@ -695,6 +704,8 @@ export class InvoicingController {
         shippingLineName: await this.resolveShippingLineName(connectionId),
         // #1694: same per-source numbering axis as the single-issue path.
         source: await this.resolveSourcePlatformType(record.sourceConnectionId),
+        // #2245 review: same pre-rollout exemption as the single-issue path.
+        taxRateEra: record.taxRateEra,
       });
       const issued = await this.invoiceService.issueInvoice(command);
       await this.clearSalesDocumentBlock(orderId);
@@ -717,6 +728,31 @@ export class InvoicingController {
           reason:
             `An invoice for this order already exists on connection ${error.issuingConnectionId} ` +
             `(invoice ${error.blockingInvoiceId}, status ${error.blockingStatus}).`,
+        };
+      }
+      if (error instanceof OrderAlreadyHasFiscalReceiptException) {
+        // #2157, ADR-041 §3a/3b: the order already has a fiscal RECEIPT (a
+        // different document kind) on a fiscalization connection. Same
+        // `skipped` treatment as the already-invoiced branch above — one sale
+        // still has one originating document.
+        return {
+          orderId,
+          outcome: 'skipped',
+          reason:
+            `A fiscal receipt for this order already exists on connection ` +
+            `${error.registeringConnectionId} (registration ${error.blockingRecordId}, ` +
+            `status ${error.blockingStatus}).`,
+        };
+      }
+      if (error instanceof MissingTaxRateException) {
+        // #2248: a NAMED ineligibility, not a batch failure. The order cannot be
+        // invoiced by anyone until the rate is added in the shop, so pointing an
+        // operator at "retry" or at manual review would waste the click - the
+        // pattern bulk dispatch already uses for `source_deleted`.
+        return {
+          orderId,
+          outcome: 'skipped',
+          reason: error.message,
         };
       }
       if (error instanceof InvoiceIssueContendedException) {
@@ -1373,6 +1409,19 @@ export class InvoicingController {
         blockingStatus: error.blockingStatus,
       });
     }
+    // #2157, ADR-041 §3a/3b: the order already has a fiscal RECEIPT — a
+    // different sales-document KIND — on a fiscalization connection. Also a
+    // 409: one sale gets one originating document, invoice or receipt, never
+    // both.
+    if (error instanceof OrderAlreadyHasFiscalReceiptException) {
+      return new ConflictException({
+        message: error.message,
+        error: 'OrderAlreadyHasFiscalReceiptException',
+        registeringConnectionId: error.registeringConnectionId,
+        blockingRecordId: error.blockingRecordId,
+        blockingStatus: error.blockingStatus,
+      });
+    }
     // #2047: a concurrent issuance holds the per-order lock and has persisted
     // nothing yet, so there is no document to point at — only a timing accident.
     // Also a 409, but RETRYABLE and carrying no connection/invoice ids (there are
@@ -1383,6 +1432,23 @@ export class InvoicingController {
         message: error.message,
         error: 'InvoiceIssueContendedException',
         retryable: true,
+      });
+    }
+    // #2248 (ADR-063 § 6): the order carries a line with no tax rate, so no
+    // document can state what tax was charged. 422 rather than 400 - the request
+    // is well formed, the DATA it names is not yet issuable - and rather than 409,
+    // which would say a document already exists. `retryable: false` distinguishes
+    // it from the contended 409 above: retrying changes nothing until the rate is
+    // added in the shop, which is what the body's ids point the operator at.
+    if (error instanceof MissingTaxRateException) {
+      return new UnprocessableEntityException({
+        message: error.message,
+        error: 'MissingTaxRateException',
+        reason: 'missing-tax-rate',
+        retryable: false,
+        lineCount: error.finding.lineCount,
+        totalLines: error.finding.totalLines,
+        firstLineRef: error.finding.firstLineRef,
       });
     }
     if (

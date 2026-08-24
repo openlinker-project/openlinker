@@ -41,6 +41,27 @@ type Translator = (error: StructuredError) => StructuredErrorTranslation;
  * prefix because Allegro's own docs use the full identifier.
  */
 const TRANSLATIONS: Record<string, Translator> = {
+  // #2255 / #2249. The adapter already puts the permitted values in the
+  // message, so this only frames whose entry is probably wrong: when Allegro
+  // says the category allows 23% and OpenLinker sent 5%, the shop record is the
+  // likelier mistake, and the shop is where a fix serves every channel.
+  TAX_RATE_NOT_ALLOWED_IN_CATEGORY: (error) => ({
+    message:
+      `${error.message ?? 'This Allegro category does not allow the tax rate on this product.'} ` +
+      'Correct the rate in the shop and re-sync the product; OpenLinker never publishes an offer ' +
+      'with the rate omitted.',
+  }),
+  TAX_RATE_MISSING: () => ({
+    message:
+      'No tax rate is known for this product, so the offer cannot state what tax it charges. ' +
+      "Add the rate in the shop's catalogue and re-sync the product.",
+  }),
+  TAX_RATE_NOT_EXPRESSIBLE: (error) => ({
+    message:
+      error.message ??
+      'This channel cannot express the tax code on this product. Set a rate the channel supports, ' +
+        'or list the product where the code is supported.',
+  }),
   SAFETY_INFO_NOT_DEFINED: () => ({
     message:
       "Allegro rejected the safety information for this category. Verify the discriminator (`type`) and re-save the connection's seller defaults. If the issue persists, the category likely requires a TEXT discriminator with substantive content rather than NO_SAFETY_INFORMATION.",

@@ -24,6 +24,7 @@ import type {
   ProductPagination,
   PaginatedProductVariants,
 } from '../../../domain/types/product.types';
+import type { StoredTaxRate } from '../../../domain/types/tax-rate.types';
 import { normalizeBarcode, normalizeToEan13 } from '../../../domain/utils/barcode-normalization';
 import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
 
@@ -306,6 +307,11 @@ export class ProductVariantRepository implements ProductVariantRepositoryPort {
       price: entity.price !== null ? Number(entity.price) : undefined,
       isStale: entity.isStale,
       staleAt: entity.staleAt,
+      // #2255 — read surface for the variant table's rate column. An absent
+      // override is rendered as "inherited from the product", never as a gap.
+      taxRate: entity.taxRate,
+      taxRateCountry: entity.taxRateCountry,
+      taxRateReadAt: entity.taxRateReadAt,
       createdAt: entity.createdAt,
       updatedAt: entity.updatedAt,
     };
@@ -332,6 +338,51 @@ export class ProductVariantRepository implements ProductVariantRepositoryPort {
     // and @UpdateDateColumn populate them in that case.
     if (variant.createdAt) entity.createdAt = variant.createdAt;
     if (variant.updatedAt) entity.updatedAt = variant.updatedAt;
+    // The three tax-rate columns are deliberately absent (#2054): the sync
+    // upsert carries no rate, so writing them here would blank an override
+    // `recordTaxRate` had just written. Same single-writer rule as the
+    // product side.
     return entity;
+  }
+
+  /**
+   * Record a per-variant tax-rate override (#2054). Written only by a master
+   * that keys tax per variant; a product-keyed master never calls this, which
+   * is what leaves the override genuinely absent rather than read-as-empty.
+   */
+  async recordTaxRate(variantId: string, rate: StoredTaxRate): Promise<void> {
+    await this.repository.update(
+      { id: variantId },
+      {
+        taxRate: rate.code,
+        taxRateCountry: rate.countryIso2,
+        taxRateReadAt: rate.readAt,
+      }
+    );
+  }
+
+  /**
+   * Drop a per-variant override (#2054 review).
+   *
+   * All three columns go back to null, which is the same state a variant that
+   * was never read carries - and that is the point: an absent override means
+   * "resolve through the product", while `{ taxRate: null, taxRateReadAt: <now> }`
+   * would mean "asked, and this variant has no rate", i.e. the `no-rate` state
+   * an operator surface renders as a gap.
+   */
+  async clearTaxRate(variantId: string): Promise<void> {
+    await this.repository.update(
+      { id: variantId },
+      { taxRate: null, taxRateCountry: null, taxRateReadAt: null }
+    );
+  }
+
+  async findTaxRate(variantId: string): Promise<StoredTaxRate | null> {
+    const row = await this.repository.findOne({
+      where: { id: variantId },
+      select: { id: true, taxRate: true, taxRateCountry: true, taxRateReadAt: true },
+    });
+    if (!row) return null;
+    return { code: row.taxRate, countryIso2: row.taxRateCountry, readAt: row.taxRateReadAt };
   }
 }

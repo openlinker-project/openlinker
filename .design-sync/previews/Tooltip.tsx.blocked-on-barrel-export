@@ -1,0 +1,16 @@
+import { Button, Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@openlinker/web';
+
+export const OnAction = () => (
+  <TooltipProvider>
+    <Tooltip open>
+      <TooltipTrigger asChild>
+        <Button tone="secondary" className="button--sm">
+          Pause offers
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent side="bottom">
+        Sets quantity to 0 on every mapped marketplace. Nothing is deleted.
+      </TooltipContent>
+    </Tooltip>
+  </TooltipProvider>
+);

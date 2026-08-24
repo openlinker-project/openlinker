@@ -35,9 +35,16 @@
  * out (#2047). It reaches the order paired with the gate's `'unresolved-routing'`
  * bridge value.
  *
- * DECLARED BUT NEVER WRITTEN: the other four need the rule engine that produces
- * them, which is #1908-era work. Declaring the full set now is deliberate — a
- * later reader must not mistake an unwritten value for a bug.
+ * DECLARED BUT NEVER WRITTEN (pre-#2170): the other four needed the rule
+ * engine that produces them. #2170 ships that engine
+ * (`evaluateSalesDocumentRules`) — `'no-matching-rule'`,
+ * `'conflicting-rules-equal-priority'`, and `'net-priced-order'` are now
+ * reachable through it, alongside two ADDITIONS the mechanism itself required
+ * (`'no-configuration-for-country'`, `'threshold-currency-mismatch'`) — see
+ * the two entries appended below. Neither is a rename of an ADR-041 value;
+ * both are new failure shapes the engine's own fallback ladder and
+ * currency-safety rule surface that the ADR's original four-value sketch did
+ * not anticipate.
  */
 export const SalesDocumentUnresolvedReasonValues = [
   'no-matching-rule',
@@ -45,6 +52,23 @@ export const SalesDocumentUnresolvedReasonValues = [
   'ambiguous-connection-no-primary',
   'unsupported-document-kind-on-connection',
   'net-priced-order',
+  /**
+   * The order's own country carries no rules and no default, AND `★ Rest of
+   * world` is either unconfigured too or was not consulted because the
+   * order's own country WAS configured but still failed to resolve down a
+   * different branch (#2170 fallback-ladder tier 4). Never a silent
+   * "assume Poland's rules for everyone" — an operator must configure
+   * something, even if that something is just `★ Rest of world`.
+   */
+  'no-configuration-for-country',
+  /**
+   * A matched rule's `orderTotalGross` condition references a `thresholdRef`
+   * whose `currency` differs from the order's own `totals.currency` (#2170).
+   * Never silently converted — the existing FX stamp (ADR-040) is
+   * analytics-only and explicitly forbidden as a fiscal-document rate source,
+   * so a currency mismatch here is exactly as terminal as `net-priced-order`.
+   */
+  'threshold-currency-mismatch',
 ] as const;
 
 export type SalesDocumentUnresolvedReason = (typeof SalesDocumentUnresolvedReasonValues)[number];
@@ -57,18 +81,32 @@ export type SalesDocumentUnresolvedReason = (typeof SalesDocumentUnresolvedReaso
  * and `'trigger-model-batched'` — the three reachable non-issuing exits of
  * `AutoIssueTriggerService.onOrderTransition`.
  *
+ * ALSO WRITTEN (#2248, ADR-063): `'missing-tax-rate'` — a line carries no tax
+ * rate, so no document can state what tax was charged.
+ *
+ * **It is the first reason for which "this cannot be issued" is literally true.**
+ * Every other value means "auto-issue did not happen", and ADR-041 says so
+ * explicitly; a manual issue past those is a legitimate operator action. This
+ * one is not: issuing anyway means a provider substituting a guessed rate onto
+ * a real fiscal document. So it closes the manual paths too — the invoice
+ * panel's issue button, the receipt's register button, and bulk issue — which
+ * no other reason does.
+ *
  * DECLARED BUT NEVER WRITTEN, each blocked on a prerequisite ADR-041 names:
  *   - `'missing-required-tax-id'` — needs a buyer tax id on the order contract;
  *     no such field exists on `Order` today.
- *   - `'tax-rate-conflict'`       — needs #2057. An unknown tax rate is currently
- *     indistinguishable from a resolved zero (a failed read returns the number
- *     `0`, which is also a legitimate exemption), so "a channel-reported rate
- *     diverging from the master's" is not computable and the gate would read
- *     "no conflict" on precisely the unknown-rate orders it exists to catch.
+ *   - `'tax-rate-conflict'`       — and it stays unwritten even after #2245.
+ *     A shop-versus-channel disagreement does NOT block (epic F1): the shop
+ *     wins, the document issues, and the mismatch is surfaced on its own
+ *     projection field with its own resolver. Writing it here would make its
+ *     badge unreachable — `invoicingBlockedBadge` suppresses the badge whenever
+ *     an invoice exists, and a non-blocking conflict always has one — and would
+ *     additionally double-count it inside `salesDocumentBlocked`.
  */
 export const SalesDocumentGateBlockReasonValues = [
   'unresolved-routing',
   'missing-required-tax-id',
+  'missing-tax-rate',
   'tax-rate-conflict',
   'trigger-model-manual',
   'trigger-model-batched',

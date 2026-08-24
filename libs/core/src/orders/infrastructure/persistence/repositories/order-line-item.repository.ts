@@ -349,7 +349,10 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
       Number(entity.unitPrice),
       entity.sourceConnectionId,
       entity.placedAt,
-      entity.createdAt
+      entity.createdAt,
+      entity.taxRate,
+      entity.taxSource,
+      entity.taxRateReadAt
     );
   }
 }

@@ -204,6 +204,65 @@ describe('ErliOfferManagerAdapter', () => {
     });
   });
 
+  describe('createOffer - the tax rate (#2249, gated by #2260 review)', () => {
+    const withStrict = (value: string | undefined, run: () => Promise<void>) => async () => {
+      const previous = process.env['OL_TAX_RATE_STRICT_ENABLED'];
+      if (value === undefined) delete process.env['OL_TAX_RATE_STRICT_ENABLED'];
+      else process.env['OL_TAX_RATE_STRICT_ENABLED'] = value;
+      try {
+        await run();
+      } finally {
+        if (previous === undefined) delete process.env['OL_TAX_RATE_STRICT_ENABLED'];
+        else process.env['OL_TAX_RATE_STRICT_ENABLED'] = previous;
+      }
+    };
+
+    it(
+      'should publish with taxRate omitted when the switch is off - the default',
+      withStrict(undefined, async () => {
+        // Catalogue coverage is zero on deploy, so a refusal here would fail
+        // every child of every bulk batch on day one. Erli's own
+        // `buyableProblems.missingTaxRate` remains the signal instead.
+        await adapter.createOffer(createCmd());
+
+        const body = httpClient.post.mock.calls[0][1] as { taxRate?: string };
+        expect(body.taxRate).toBeUndefined();
+      }),
+    );
+
+    it(
+      'should refuse a rate-less publish when the switch is on',
+      withStrict('true', async () => {
+        await expect(adapter.createOffer(createCmd())).rejects.toBeInstanceOf(
+          OfferCreateRejectedException,
+        );
+        expect(httpClient.post).not.toHaveBeenCalled();
+      }),
+    );
+
+    it(
+      'should send the shop rate as the Erli enum value when one is known',
+      withStrict(undefined, async () => {
+        await adapter.createOffer(createCmd({ taxRate: '23' }));
+
+        const body = httpClient.post.mock.calls[0][1] as { taxRate?: string };
+        expect(body.taxRate).toBeDefined();
+      }),
+    );
+
+    it(
+      'should refuse a code Erli cannot express even with the switch off',
+      withStrict(undefined, async () => {
+        // Not gated: the shop DID state a rate and Erli's enum cannot carry it.
+        // That is a conflict at any coverage level, not a coverage problem.
+        await expect(adapter.createOffer(createCmd({ taxRate: 'oo' }))).rejects.toBeInstanceOf(
+          OfferCreateRejectedException,
+        );
+        expect(httpClient.post).not.toHaveBeenCalled();
+      }),
+    );
+  });
+
   describe('createOffer', () => {
     it("should submit to the seller-keyed product path and return status 'draft' on 202", async () => {
       const result = await adapter.createOffer(createCmd());
@@ -1085,9 +1144,9 @@ describe('ErliOfferManagerAdapter', () => {
 
     it.each([
       ['active', 'active'],
-      ['accepted', 'activating'],
       ['inactive', 'inactive'],
       [undefined, 'inactive'],
+      [null, 'inactive'],
     ])('should map Erli status %s → publicationStatus %s', async (erliStatus, expected) => {
       httpClient.get.mockResolvedValueOnce({ status: 200, data: { status: erliStatus } });
 
@@ -1098,17 +1157,66 @@ describe('ErliOfferManagerAdapter', () => {
       expect(httpClient.get).toHaveBeenCalledWith(`products/${VALID_ID}`);
     });
 
-    it('should map rejected → inactive carrying the reason in validationErrors', async () => {
+    it('should carry each buyableProblem as a neutral validation error keyed by its raw Erli code (#2231)', async () => {
       httpClient.get.mockResolvedValueOnce({
         status: 200,
-        data: { status: 'rejected', statusReason: 'EAN already used' },
+        data: { status: 'inactive', buyableProblems: ['missingTaxRate'] },
       });
 
       const result = await adapter.getOfferStatus(VALID_ID);
 
       expect(result.publicationStatus).toBe('inactive');
       expect(result.validationErrors).toEqual([
-        { code: 'ERLI_REJECTED', message: 'EAN already used' },
+        {
+          code: 'missingTaxRate',
+          summary: 'No VAT rate set on Erli',
+          message:
+            'Erli needs a tax rate before the offer can be sold. Set it on the product and publish again.',
+          scope: 'offer',
+        },
+      ]);
+    });
+
+    it('should report an archived product as ended, not inactive (#2231)', async () => {
+      httpClient.get.mockResolvedValueOnce({
+        status: 200,
+        data: { status: 'inactive', archived: true, buyableProblems: ['archived'] },
+      });
+
+      const result = await adapter.getOfferStatus(VALID_ID);
+
+      // `ended` is the only bucket the duplicate guard treats as re-listable, and
+      // an archived Erli product genuinely cannot be bought.
+      expect(result.publicationStatus).toBe('ended');
+      expect(result.validationErrors.map((error) => error.code)).toEqual(['archived']);
+    });
+
+    it('should keep an active offer active while still reporting its problems (#2231)', async () => {
+      httpClient.get.mockResolvedValueOnce({
+        status: 200,
+        data: { status: 'active', buyableProblems: ['stock'] },
+      });
+
+      const result = await adapter.getOfferStatus(VALID_ID);
+
+      // Erli is the authority on publication; OL does not overrule it.
+      expect(result.publicationStatus).toBe('active');
+      expect(result.validationErrors.map((error) => error.code)).toEqual(['stock']);
+    });
+
+    it('should scope the three shop-level reasons to the account (#2231)', async () => {
+      httpClient.get.mockResolvedValueOnce({
+        status: 200,
+        data: { status: 'inactive', buyableProblems: ['shopKyc', 'delivery'] },
+      });
+
+      const result = await adapter.getOfferStatus(VALID_ID);
+
+      expect(result.validationErrors.map((error) => [error.code, error.scope])).toEqual([
+        // Shop-level sorts first: it is the one an operator can fix once for
+        // every offer on the connection.
+        ['shopKyc', 'account'],
+        ['delivery', 'offer'],
       ]);
     });
 

@@ -18,13 +18,15 @@ import {
 } from './sales-document-reason.types';
 
 describe('sales-document reason vocabularies (ADR-041 decision 11)', () => {
-  it('should declare the unresolved reasons exactly as the ADR does', () => {
+  it('should declare the unresolved reasons exactly as the ADR does, plus the #2170 rule-engine additions', () => {
     expect(SalesDocumentUnresolvedReasonValues).toEqual([
       'no-matching-rule',
       'conflicting-rules-equal-priority',
       'ambiguous-connection-no-primary',
       'unsupported-document-kind-on-connection',
       'net-priced-order',
+      'no-configuration-for-country',
+      'threshold-currency-mismatch',
     ]);
   });
 
@@ -32,6 +34,7 @@ describe('sales-document reason vocabularies (ADR-041 decision 11)', () => {
     expect(SalesDocumentGateBlockReasonValues).toEqual([
       'unresolved-routing',
       'missing-required-tax-id',
+      'missing-tax-rate',
       'tax-rate-conflict',
       'trigger-model-manual',
       'trigger-model-batched',
@@ -57,6 +60,7 @@ describe('sales-document reason vocabularies (ADR-041 decision 11)', () => {
     expect(SalesDocumentAttentionReasonValues).toEqual([
       'unresolved-routing',
       'missing-required-tax-id',
+      'missing-tax-rate',
       'tax-rate-conflict',
       'trigger-model-batched',
     ]);

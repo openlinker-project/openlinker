@@ -58,6 +58,7 @@ describe('SyncJobRunner', () => {
     // Mock repository
     const mockRepository = {
       findAndLockDueJobs: jest.fn(),
+      findAndLockDueJobsForLane: jest.fn().mockResolvedValue([]),
       markSucceeded: jest.fn(),
       markFailed: jest.fn(),
       markDead: jest.fn(),
@@ -66,11 +67,16 @@ describe('SyncJobRunner', () => {
       requeueWithoutPenalty: jest.fn().mockResolvedValue(undefined),
     } as unknown as jest.Mocked<SyncJobRepositoryPort>;
 
-    // Mock handler registry
+    // Mock handler registry — every lane resolves a small membership so the
+    // lane-aware loop (#2278) issues claims in tests without the full
+    // registration table.
     const mockRegistry = {
       getHandler: jest.fn(),
       register: jest.fn(),
       getRegisteredJobTypes: jest.fn(),
+      getLane: jest.fn(),
+      getJobTypesByLane: jest.fn().mockReturnValue(['master.product.syncByExternalId']),
+      assertFullLaneCoverage: jest.fn(),
     } as unknown as jest.Mocked<SyncJobHandlerRegistry>;
 
     // Real registry + real Allegro classifier — the runner's behaviour
@@ -867,11 +873,6 @@ describe('SyncJobRunner', () => {
     });
 
     afterEach(() => {
-      // Clean up stuck job recovery interval
-      if ((runner as any).stuckJobRecoveryInterval) {
-        clearInterval((runner as any).stuckJobRecoveryInterval);
-        (runner as any).stuckJobRecoveryInterval = null;
-      }
       // Clean up any running loops
       (runner as any).isRunning = false;
       if ((runner as any).abortController) {
@@ -906,7 +907,7 @@ describe('SyncJobRunner', () => {
         new Date()
       );
 
-      jobRepository.findAndLockDueJobs.mockResolvedValueOnce([job1]).mockResolvedValueOnce([]);
+      jobRepository.findAndLockDueJobsForLane.mockResolvedValueOnce([job1]).mockResolvedValueOnce([]);
 
       mockHandler.execute.mockResolvedValueOnce({ outcome: 'ok' });
       handlerRegistry.getHandler.mockReturnValue(mockHandler);
@@ -943,11 +944,11 @@ describe('SyncJobRunner', () => {
         new Promise((resolve) => setTimeout(resolve, 100)),
       ]);
 
-      expect(jobRepository.findAndLockDueJobs).toHaveBeenCalled();
+      expect(jobRepository.findAndLockDueJobsForLane).toHaveBeenCalled();
     }, 10000);
 
     it('should wait when no jobs are available', async () => {
-      jobRepository.findAndLockDueJobs.mockResolvedValue([]);
+      jobRepository.findAndLockDueJobsForLane.mockResolvedValue([]);
 
       (runner as any).isRunning = true;
       const abortController = new AbortController();
@@ -976,12 +977,12 @@ describe('SyncJobRunner', () => {
         new Promise((resolve) => setTimeout(resolve, 100)),
       ]);
 
-      expect(jobRepository.findAndLockDueJobs).toHaveBeenCalled();
+      expect(jobRepository.findAndLockDueJobsForLane).toHaveBeenCalled();
     }, 10000);
 
     it('should handle errors gracefully and continue polling', async () => {
       const error = new Error('Database error');
-      jobRepository.findAndLockDueJobs.mockRejectedValueOnce(error).mockResolvedValueOnce([]);
+      jobRepository.findAndLockDueJobsForLane.mockRejectedValueOnce(error).mockResolvedValueOnce([]);
 
       (runner as any).isRunning = true;
       const abortController = new AbortController();
@@ -989,12 +990,19 @@ describe('SyncJobRunner', () => {
 
       const runnerLoopPromise = (runner as any).runnerLoop();
 
-      // Process pending promises to allow first call (which will error)
+      // Process pending promises to allow first call (which will error).
+      // The lane-aware loop (#2278) adds an async hop (claimAndStartForLane)
+      // between the loop body and the repository call, so the rejection needs
+      // extra microtask turns to propagate into the catch and schedule the
+      // backoff sleep before timers are advanced.
+      await Promise.resolve();
+      await Promise.resolve();
       await Promise.resolve();
 
       // The error should be caught and logged, then loop waits 1000ms before retry
       // Advance timers by 1000ms to allow the retry setTimeout to complete
       jest.advanceTimersByTime(1000);
+      await Promise.resolve();
       await Promise.resolve();
 
       // Process the retry call (which should succeed with empty array)
@@ -1022,11 +1030,13 @@ describe('SyncJobRunner', () => {
       ]);
 
       // Should have retried after error
-      expect(jobRepository.findAndLockDueJobs).toHaveBeenCalledTimes(2);
+      expect(
+        jobRepository.findAndLockDueJobsForLane.mock.calls.length
+      ).toBeGreaterThanOrEqual(2);
     }, 10000);
 
     it('should stop when abort signal is received', async () => {
-      jobRepository.findAndLockDueJobs.mockResolvedValue([]);
+      jobRepository.findAndLockDueJobsForLane.mockResolvedValue([]);
 
       (runner as any).isRunning = true;
       const abortController = new AbortController();
@@ -1057,12 +1067,153 @@ describe('SyncJobRunner', () => {
         new Promise((resolve) => setTimeout(resolve, 100)),
       ]);
 
-      expect(jobRepository.findAndLockDueJobs).toHaveBeenCalled();
+      expect(jobRepository.findAndLockDueJobsForLane).toHaveBeenCalled();
     }, 10000);
   });
 
+  describe('lane scheduling (ADR-050, #2278)', () => {
+    const createLaneJob = (connectionId: string): SyncJob =>
+      new SyncJob(
+        randomUUID(),
+        'master.product.syncByExternalId',
+        connectionId,
+        { externalId: '1', objectType: 'Product' },
+        'running',
+        `test-key-${randomUUID()}`,
+        0,
+        10,
+        new Date(),
+        new Date(),
+        'worker-test',
+        null,
+        new Date(),
+        new Date()
+      );
+
+    const laneInFlight = (lane: string): Map<string, number> =>
+      (runner as any).inFlightByLane.get(lane);
+
+    const flushInFlight = async (): Promise<void> => {
+      await Promise.race([
+        Promise.allSettled([...(runner as any).inFlightJobs]),
+        new Promise((resolve) => setTimeout(resolve, 200)),
+      ]);
+      // Let the finally-based slot release settle.
+      await Promise.resolve();
+      await Promise.resolve();
+    };
+
+    it('should not let a saturated bulk lane stop a realtime claim in the same tick', async () => {
+      // Saturate bulk (total cap 2 by default).
+      laneInFlight('bulk').set('conn-b', 2);
+
+      const bulkStarted = await (runner as any).claimAndStartForLane('bulk');
+      await (runner as any).claimAndStartForLane('realtime');
+
+      expect(bulkStarted).toBe(0);
+      // Bulk at cap issued NO claim; realtime still claimed independently, with
+      // its own full headroom — that pair is the no-starvation property.
+      expect(jobRepository.findAndLockDueJobsForLane).toHaveBeenCalledTimes(1);
+      expect(jobRepository.findAndLockDueJobsForLane).toHaveBeenCalledWith(
+        expect.objectContaining({ limit: 4 })
+      );
+    });
+
+    it('should let every lane pull its own membership (no strict priority)', async () => {
+      (handlerRegistry.getJobTypesByLane as jest.Mock).mockImplementation((lane: string) => [
+        `${lane}-member`,
+      ]);
+
+      for (const lane of ['realtime', 'bulk', 'fiscal', 'fan-out']) {
+        await (runner as any).claimAndStartForLane(lane);
+      }
+
+      const claimedTypeSets = (jobRepository.findAndLockDueJobsForLane as jest.Mock).mock.calls.map(
+        ([input]: [{ jobTypes: string[] }]) => input.jobTypes[0]
+      );
+      expect(claimedTypeSets).toEqual([
+        'realtime-member',
+        'bulk-member',
+        'fiscal-member',
+        'fan-out-member',
+      ]);
+    });
+
+    it('should pass scopes at their per-scope cap as claim exclusions', async () => {
+      // realtime per-scope cap is 2 by default.
+      laneInFlight('realtime').set('conn-at-cap', 2);
+      laneInFlight('realtime').set('conn-under-cap', 1);
+
+      await (runner as any).claimAndStartForLane('realtime');
+
+      expect(jobRepository.findAndLockDueJobsForLane).toHaveBeenCalledWith(
+        expect.objectContaining({ excludedScopes: ['conn-at-cap'] })
+      );
+    });
+
+    it('should release intra-batch surplus beyond the per-scope cap without penalty', async () => {
+      // bulk per-scope cap is 1 by default; one claim returns two same-scope jobs.
+      const jobA = createLaneJob('conn-wave');
+      const jobB = createLaneJob('conn-wave');
+      jobRepository.findAndLockDueJobsForLane.mockResolvedValueOnce([jobA, jobB]);
+      mockHandler.execute.mockResolvedValue({ outcome: 'ok' });
+      handlerRegistry.getHandler.mockReturnValue(mockHandler);
+      jobRepository.markSucceeded.mockResolvedValue(undefined);
+
+      const started = await (runner as any).claimAndStartForLane('bulk');
+
+      expect(started).toBe(1);
+      expect(jobRepository.requeueWithoutPenalty).toHaveBeenCalledWith(
+        jobB.id,
+        expect.stringContaining('per-scope cap'),
+        expect.any(Date)
+      );
+      await flushInFlight();
+    });
+
+    it('should release the slot when a rate-limited job requeues, in its own lane', async () => {
+      const job = createLaneJob('conn-rl');
+      jobRepository.findAndLockDueJobsForLane.mockResolvedValueOnce([job]);
+      handlerRegistry.getHandler.mockReturnValue(mockHandler);
+      mockHandler.execute.mockRejectedValueOnce(new RateLimitTimeoutError(120_000));
+
+      const started = await (runner as any).claimAndStartForLane('realtime');
+      expect(started).toBe(1);
+      expect(laneInFlight('realtime').get('conn-rl')).toBe(1);
+
+      await flushInFlight();
+
+      // Penalty-free requeue happened and the lane slot was released.
+      expect(jobRepository.requeueWithoutPenalty).toHaveBeenCalledWith(
+        job.id,
+        expect.any(String),
+        expect.any(Date)
+      );
+      expect(laneInFlight('realtime').has('conn-rl')).toBe(false);
+    });
+
+    it('should sleep rather than spin when every lane is at cap with jobs in flight', async () => {
+      laneInFlight('realtime').set('a', 4);
+      laneInFlight('bulk').set('a', 2);
+      laneInFlight('fiscal').set('a', 2);
+      laneInFlight('fan-out').set('a', 1);
+
+      const sleepSpy = jest.spyOn(runner as any, 'sleep').mockImplementation(() => {
+        (runner as any).isRunning = false; // exit after the first sleep
+        return Promise.resolve();
+      });
+
+      (runner as any).isRunning = true;
+      (runner as any).abortController = new AbortController();
+      await (runner as any).runnerLoop();
+
+      expect(jobRepository.findAndLockDueJobsForLane).not.toHaveBeenCalled();
+      expect(sleepSpy).toHaveBeenCalled();
+    });
+  });
+
   describe('onModuleInit', () => {
-    it('should start runner and stuck job recovery', () => {
+    it('should start the runner loop', () => {
       // Override ConfigService to enable runner for this test
       const configService = moduleRef.get<ConfigService>(ConfigService);
       jest.spyOn(configService, 'get').mockImplementation((key: string, defaultValue?: unknown) => {
@@ -1073,12 +1224,10 @@ describe('SyncJobRunner', () => {
       });
 
       jest.spyOn(runner as any, 'startRunner');
-      jest.spyOn(runner as any, 'startStuckJobRecovery');
 
       runner.onModuleInit();
 
       expect((runner as any).startRunner).toHaveBeenCalled();
-      expect((runner as any).startStuckJobRecovery).toHaveBeenCalled();
     });
 
     it('should not start runner when WORKER_RUNNER_ENABLED=false', () => {
@@ -1092,12 +1241,10 @@ describe('SyncJobRunner', () => {
       });
 
       jest.spyOn(runner as any, 'startRunner');
-      jest.spyOn(runner as any, 'startStuckJobRecovery');
 
       runner.onModuleInit();
 
       expect((runner as any).startRunner).not.toHaveBeenCalled();
-      expect((runner as any).startStuckJobRecovery).not.toHaveBeenCalled();
     });
   });
 
@@ -1106,74 +1253,12 @@ describe('SyncJobRunner', () => {
       jest.useFakeTimers();
       jest.spyOn(runner as any, 'stopRunner');
 
-      // Initialize stuck job recovery interval using the method
-      (runner as any).startStuckJobRecovery(1000);
-
       await runner.onModuleDestroy();
 
       expect((runner as any).stopRunner).toHaveBeenCalled();
-      expect((runner as any).stuckJobRecoveryInterval).toBeNull();
 
       jest.clearAllTimers();
       jest.useRealTimers();
-    });
-  });
-
-  describe('startStuckJobRecovery', () => {
-    beforeEach(() => {
-      jest.useFakeTimers();
-    });
-
-    afterEach(async () => {
-      // Ensure no timers leak
-      jest.clearAllTimers();
-      jest.useRealTimers();
-
-      // Clean up any running intervals
-      if (runner) {
-        await runner.onModuleDestroy();
-      }
-    });
-
-    it('should periodically check for stuck jobs', async () => {
-      jobRepository.requeueStuckJobs.mockResolvedValue(0);
-
-      // Use a short interval for testing (1 second instead of 5 minutes)
-      (runner as any).startStuckJobRecovery(1000);
-
-      // Fast-forward past recovery interval
-      jest.advanceTimersByTime(1000);
-      await Promise.resolve(); // Allow async operations to complete
-
-      expect(jobRepository.requeueStuckJobs).toHaveBeenCalledWith(15); // STUCK_JOB_TIMEOUT_MINUTES
-    });
-
-    it('should log warning when stuck jobs are requeued', async () => {
-      jobRepository.requeueStuckJobs.mockResolvedValue(3);
-
-      // Use a short interval for testing
-      (runner as any).startStuckJobRecovery(1000);
-
-      // Fast-forward past recovery interval
-      jest.advanceTimersByTime(1000);
-      await Promise.resolve();
-
-      expect(jobRepository.requeueStuckJobs).toHaveBeenCalled();
-    });
-
-    it('should handle errors in stuck job recovery gracefully', async () => {
-      const error = new Error('Database error');
-      jobRepository.requeueStuckJobs.mockRejectedValue(error);
-
-      // Use a short interval for testing
-      (runner as any).startStuckJobRecovery(1000);
-
-      // Fast-forward past recovery interval
-      jest.advanceTimersByTime(1000);
-      await Promise.resolve();
-
-      // Should not throw, error should be logged
-      expect(jobRepository.requeueStuckJobs).toHaveBeenCalled();
     });
   });
 });

@@ -33,6 +33,7 @@
 
 import type { CreateOfferValidationError } from './offer-create.types';
 import type { MarketplaceOfferPrice } from './marketplace-offer.types';
+import type { OfferValidationProblem } from './offer-validation-problem.types';
 
 export const OfferPublicationStatusValues = [
   'active',
@@ -109,6 +110,13 @@ export interface OfferPublicationStatusView {
   publicationStatus: OfferPublicationStatus | null;
   /** Marketplace validation messages captured with the status. */
   validationMessages: string[];
+  /**
+   * The same refusals in structured form (#2231) - the panel renders the
+   * sentence for the seller and the platform's own `code` for whoever has to
+   * check it against the platform's docs or quote it in a support ticket. Empty
+   * on a snapshot written before #2231.
+   */
+  validationProblems: OfferValidationProblem[];
   /** `null` when the offer has never been read from the marketplace. */
   lastStatusSyncedAt: Date | null;
 }

@@ -27,7 +27,7 @@
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { StatusBadge } from '../../../shared/ui/status-badge';
-import { invoiceBadge, invoicingBlockedBadge } from '../lib/order-row';
+import { invoiceBadge, invoicingBlockedBadge, taxRateConflictBadge } from '../lib/order-row';
 import type { ParsedOrderInvoice } from '../api/order-snapshot.schema';
 import type {
   SalesDocumentGateBlockReasonValue,
@@ -48,6 +48,14 @@ export interface OrderInvoicingCellProps {
    * (mobile). Layout only — the parts and their conditions are identical.
    */
   layout: 'stack' | 'row';
+  /**
+   * The shop and the channel named different rates on at least one line
+   * (#2254). A FOURTH independent part, not a variant of the block badge:
+   * `invoicingBlockedBadge` suppresses itself whenever an invoice plausibly
+   * exists, and a conflict does not stop the invoice, so routing this through
+   * it would make it unrenderable on exactly the rows it describes.
+   */
+  hasTaxRateConflict?: boolean;
   /** Rendered when there is nothing at all to say. */
   emptyFallback: ReactNode;
 }
@@ -58,18 +66,20 @@ export function OrderInvoicingCell({
   blockReason,
   unresolvedReason,
   hasInvoicingCapability,
+  hasTaxRateConflict = false,
   layout,
   emptyFallback,
 }: OrderInvoicingCellProps): ReactNode {
   const inv = invoice ? invoiceBadge(invoice) : null;
   const blocked = invoicingBlockedBadge(blockReason, unresolvedReason, invoice);
+  const conflict = hasTaxRateConflict ? taxRateConflictBadge() : null;
 
   // An existing record — even a failed one — means the next step is Retry in the
   // invoice panel, not a fresh issue; so the CTA never sits beside an invoice
   // pill. `keepIssueAction` is true only for `trigger-model-manual`.
   const showCta = hasInvoicingCapability && !inv && (!blocked || blocked.keepIssueAction);
 
-  if (!inv && !blocked && !showCta) return emptyFallback;
+  if (!inv && !blocked && !conflict && !showCta) return emptyFallback;
 
   const cta = (
     <Link className="orders-row-cta" to={`/orders/${internalOrderId}#invoicing`}>
@@ -97,6 +107,22 @@ export function OrderInvoicingCell({
           <StatusBadge tone={blocked.tone} withDot compact>
             {blocked.label}
           </StatusBadge>
+        </span>
+      ) : null}
+      {conflict ? (
+        // Same shape as the block badge's, and for the same reason: this hint is
+        // the only statement of the fact on the list. Visible label plus the
+        // wording repeated in a visually-hidden span (the listings page's
+        // `RowBadge` pattern) - `aria-label` on a bare span is prohibited and
+        // commonly dropped, and `title` alone is unreachable by keyboard and
+        // absent on touch.
+        <span title={conflict.hint}>
+          <StatusBadge tone="conflict" withDot compact>
+            {conflict.label}
+          </StatusBadge>
+          <span className="sr-only">
+            {conflict.label}: {conflict.hint}
+          </span>
         </span>
       ) : null}
       {showCta ? cta : null}

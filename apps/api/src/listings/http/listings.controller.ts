@@ -418,6 +418,9 @@ export class ListingsController {
           ...(dto.price !== undefined && { price: dto.price }),
           ...(dto.title !== undefined && { title: dto.title }),
           ...(dto.description !== undefined && { description: dto.description }),
+          // No `taxRate` (ADR-063): the neutral contract carries one, but its
+          // producer is OpenLinker propagating the shop's rate, never an
+          // operator typing a value on this route. See the note on the DTO.
         },
       },
     });
@@ -1281,6 +1284,12 @@ export class ListingsController {
         publicationStatus: item.channelStatus.publicationStatus,
         lifecycle: item.channelStatus.lifecycle,
         validationMessages: [...item.channelStatus.validationMessages],
+        validationProblems: item.channelStatus.validationProblems.map((problem) => ({
+          ...(problem.code === undefined ? {} : { code: problem.code }),
+          ...(problem.summary === undefined ? {} : { summary: problem.summary }),
+          message: problem.message,
+          scope: problem.scope,
+        })),
         lastStatusSyncedAt: item.channelStatus.lastStatusSyncedAt?.toISOString() ?? null,
       },
       commercial: item.commercial
@@ -1322,6 +1331,15 @@ export class ListingsController {
       internalVariantId: view.internalVariantId,
       publicationStatus: view.publicationStatus,
       validationMessages: view.validationMessages.length > 0 ? view.validationMessages : undefined,
+      validationProblems:
+        view.validationProblems.length > 0
+          ? view.validationProblems.map((problem) => ({
+              ...(problem.code === undefined ? {} : { code: problem.code }),
+              ...(problem.summary === undefined ? {} : { summary: problem.summary }),
+              message: problem.message,
+              scope: problem.scope,
+            }))
+          : undefined,
       lastStatusSyncedAt:
         view.lastStatusSyncedAt === null ? null : view.lastStatusSyncedAt.toISOString(),
     };

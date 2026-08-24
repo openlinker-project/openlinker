@@ -1,12 +1,20 @@
 /**
- * Auto-Issue Trigger Service Interface (ADR-026 §3 — core policy composer)
+ * Auto-Issue Trigger Service Interface (ADR-026 §3 — core policy composer;
+ * ADR-041 decision 7 — cross-capability gate, #2156)
  *
  * Outward contract of the core policy service that turns a qualifying order
- * transition into per-connection issuance jobs (OL #1120). It sits ABOVE the
- * invoicing port: it reads the per-connection trigger model, evaluates whether
- * the transition qualifies, composes the `IssueInvoiceCommand` from the clean
- * in-hand `Order`, and enqueues one deterministic-keyed `invoicing.issue` job
- * per matching invoicing connection. No rules engine — direct enqueue.
+ * transition into AT MOST ONE sales-document issuance job (OL #1120, #2156,
+ * #2173). It resolves EXACTLY ONE `(documentKind, connectionId)` pair —
+ * invoice **or** fiscal receipt, never both (ADR-041 decision 3a) — first by
+ * consulting the country-agnostic rule engine (`ISalesDocumentRulesService`,
+ * #2170) and, only when that engine reports no configuration at all for the
+ * order's country, falling back to the pre-#2170 single-primary
+ * `resolveSalesDocumentRouting` (#2155). It then validates the resolved
+ * connection actually supports that kind, reads its trigger model, evaluates
+ * whether the transition qualifies, composes the matching job payload from
+ * the clean in-hand `Order`, and enqueues one deterministic-keyed job
+ * (`invoicing.issue` for `'invoice'`, `fiscalization.register` for
+ * `'fiscal-receipt'`).
  *
  * ONE-WAY EDGE INVARIANT (F3): the implementation MUST NOT inject any
  * OrdersModule-provided token. The `Order` (and `sourceConnectionId` /
@@ -27,6 +35,13 @@ export interface IAutoIssueTriggerService {
    * @param sourceConnectionId - The order's source connection id.
    * @param sourceEventId - The only trace token at the seam (NO `correlationId`
    *   exists — D10); threaded into the job payload and every log envelope.
+   * @param taxRateEra - The order's persisted `taxRateEra` marker (#2245
+   *   review), or `null`/absent for an order ingested after per-line rates
+   *   existed. Passed in as an ARGUMENT, like everything else here, so the
+   *   one-way edge holds: the caller already owns the record. `'pre-rollout'`
+   *   exempts the order from the tax-rate gate, because such an order carries no
+   *   rate on any line and no catalogue edit can add one after the sale
+   *   (ADR-063 § Consequences).
    *
    * @returns A `SalesDocumentBlockOutcome` (#2100, ADR-041 decision 11) the caller
    *   persists onto the order:
@@ -55,5 +70,6 @@ export interface IAutoIssueTriggerService {
     order: Order,
     sourceConnectionId: string,
     sourceEventId?: string,
+    taxRateEra?: string | null,
   ): Promise<SalesDocumentBlockOutcome>;
 }

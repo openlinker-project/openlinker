@@ -272,7 +272,7 @@ describe('Erli Offers Vertical Slice Integration (#991)', () => {
   });
 
   // ── S6: offer-status reconciliation into offer_status_snapshots ────────────
-  it('S6: reconciliation transitions a snapshot activating → active across two syncs', async () => {
+  it('S6: reconciliation transitions a snapshot inactive → active across two syncs', async () => {
     const app = harness.getApp();
     const identifierMapping = app.get<IIdentifierMappingService>(IDENTIFIER_MAPPING_SERVICE_TOKEN);
     const syncService = app.get<IOfferStatusSyncService>(OFFER_STATUS_SYNC_SERVICE_TOKEN);
@@ -286,15 +286,16 @@ describe('Erli Offers Vertical Slice Integration (#991)', () => {
     // entityType='Offer'. externalId is the Erli product id (the GET-by-path key).
     await identifierMapping.createMapping('Offer', VARIANT_A, connectionId, internalVariantId);
 
-    // Model Erli's async settle: accepted (→ activating) then active (→ active).
+    // Model Erli's settle: inactive (the only pre-publication state the Shop API
+    // reports - `status` is `active | inactive`, #2231) then active.
     erli.fake.enqueueGet(VARIANT_A, [
-      { status: 'accepted', frozen: {} },
+      { status: 'inactive', frozen: {} },
       { status: 'active', frozen: {} },
     ]);
 
     await syncService.sync(connectionId, { limit: 50, offset: 0 });
     const afterFirst = await snapshots.findByConnectionAndExternalOfferId(connectionId, VARIANT_A);
-    expect(afterFirst?.publicationStatus).toBe('activating');
+    expect(afterFirst?.publicationStatus).toBe('inactive');
     expect(afterFirst?.internalVariantId).toBe(internalVariantId);
 
     await syncService.sync(connectionId, { limit: 50, offset: 0 });

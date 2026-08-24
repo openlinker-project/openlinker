@@ -332,6 +332,15 @@
   --button-primary-bg-hover: oklch(62% 0.19 50);
 
   /* ── Spacing scale (strict 4px grid) ─────────────────────────────── */
+  /* ── Layout heights (#2227) ────────────────────────────────────────
+   * The two pinned strips at the top of the shell, named once instead of
+   * repeated as a literal `52px` in `.shell-topbar` and `.demo-banner`. Height,
+   * not padding, so the value stays true: the banner carries a matching
+   * `min-height`.
+   */
+  --shell-topbar-height: 52px;
+  --demo-banner-height: 48px;
+
   --space-1: 0.25rem; /* 4px */
   --space-2: 0.5rem; /* 8px */
   --space-3: 0.75rem; /* 12px */
@@ -1291,6 +1300,14 @@ textarea,
   flex-direction: column;
 }
 
+/* The demo banner wraps to two lines on narrow viewports; from tablet up it is
+   one line, so the offset a sticky sub-header must clear gets smaller (#2227). */
+@media (min-width: 768px) {
+  :root {
+    --demo-banner-height: 32px;
+  }
+}
+
 .shell-topbar {
   position: sticky;
   top: 0;
@@ -1298,7 +1315,7 @@ textarea,
   display: flex;
   align-items: center;
   gap: 12px;
-  height: 52px;
+  height: var(--shell-topbar-height);
   padding: 0 16px;
   background: var(--bg-shell);
   border-bottom: 1px solid var(--border-subtle);
@@ -1669,6 +1686,10 @@ textarea,
   font-weight: 500;
   line-height: 1;
   cursor: pointer;
+  /* `.chip` is also used on an `<a>`/`<Link>` (e.g. the top-products
+     "Publish" action) — the global `a { text-decoration: underline }` must
+     not leak through a pill styled to look like a button. */
+  text-decoration: none;
   transition:
     background var(--duration-fast) var(--ease-out),
     border-color var(--duration-fast) var(--ease-out),
@@ -1806,6 +1827,12 @@ textarea,
   border-color: var(--status-warning-border);
   background: var(--status-warning-soft);
   box-shadow: inset 3px 0 0 var(--status-warning);
+}
+
+.alert--conflict {
+  border-color: var(--status-conflict-border);
+  background: var(--status-conflict-soft);
+  box-shadow: inset 3px 0 0 var(--status-conflict);
 }
 
 .alert--error {
@@ -2357,6 +2384,18 @@ textarea,
   color: var(--status-review-fg);
 }
 
+/*
+ * The conflict family has no `-fg` member, so text reads from `-strong`.
+ * The ramp base gives roughly 2.5:1 here and fails contrast; the token
+ * checker is one-directional and would not catch a missing `-fg`, it would
+ * simply resolve to nothing.
+ */
+.status-badge--conflict {
+  border-color: var(--status-conflict-border);
+  background: var(--status-conflict-soft);
+  color: var(--status-conflict-strong);
+}
+
 .status-badge--info {
   border-color: var(--status-info-border);
   background: var(--status-info-soft);
@@ -2437,8 +2476,10 @@ textarea,
    initial + visually-hidden full name carry the signal. */
 .conn-dot {
   display: inline-block;
-  width: 14px;
-  height: 14px;
+  /* `--conn-size` is set inline by connection-dot.tsx only where the dot is the
+     primary identity anchor (the bulk wizard destination bar, #2227). */
+  width: var(--conn-size, 14px);
+  height: var(--conn-size, 14px);
   border-radius: 50%;
   flex: 0 0 auto;
   vertical-align: -2px;
@@ -2449,8 +2490,8 @@ textarea,
    so it needs no line-box gymnastics - just fill the disc. */
 .conn-dot__glyph {
   display: block;
-  width: 14px;
-  height: 14px;
+  width: var(--conn-size, 14px);
+  height: var(--conn-size, 14px);
 }
 
 .conn-dot__glyph text {
@@ -2491,12 +2532,6 @@ html[data-theme='dark'] .conn-dot--generic {
   margin-left: 4px;
   opacity: 0.55;
   font-weight: 600;
-}
-
-.status-badge.delivery-rider-chip--not-connected {
-  border-color: var(--status-conflict-border);
-  background: var(--status-conflict-soft);
-  color: var(--status-conflict-strong);
 }
 
 .delivery-rider-banner {
@@ -2793,6 +2828,14 @@ a.delivery-rider-banner__button:focus-visible {
 .data-table__stack {
   display: grid;
   gap: 2px;
+}
+
+/* ── Data table radio cell (#2159) ── */
+.data-table__radio {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  cursor: pointer;
 }
 
 .data-table__action {
@@ -3511,6 +3554,17 @@ a.delivery-rider-banner__button:focus-visible {
   margin: 12px 0;
 }
 
+/* `.dialog__content` has no gap of its own (#2189 review) — sibling
+   `<section class="page-section">` tiers and `Alert` banners rendered
+   directly inside it stacked with zero space between them. This wrapper
+   gives the routing dialog's body the same grid+gap treatment every other
+   multi-section dialog body already has (mirrors `.trigger-sync-dialog__body`
+   above). */
+.sales-document-country-routing-dialog__body {
+  display: grid;
+  gap: var(--space-5);
+}
+
 .trigger-sync-dialog__description {
   margin: 0;
 }
@@ -3921,6 +3975,14 @@ a.delivery-rider-banner__button:focus-visible {
   padding: 0.25rem 0.5rem;
   background: var(--status-error-soft);
   border-radius: 0.375rem;
+}
+
+/* ── Catalog trust panel (#2258) ── */
+.catalog-trust-panel__note {
+  margin: var(--space-2) 0 0;
+  font-size: 0.75rem;
+  line-height: 1.35;
+  color: var(--text-muted);
 }
 
 /* Button group */
@@ -4889,6 +4951,65 @@ a.kpi-card:focus-visible {
   margin: var(--space-2) 0 0;
   font-size: 0.8125rem;
   color: var(--text-muted);
+}
+
+/* ── Top products "Not listed" cell (#1991) ──────────────────────────
+   A channel cell that renders "Not listed" prose and a "Publish" action
+   sharing the same slot — the label is visible at rest, and the action
+   swaps in via opacity on hover/focus of the row (never a flex sibling,
+   which would occupy layout and misalign the label from the column's
+   right edge even at opacity 0). On a touch pointer (no hover) both stay
+   permanently visible, stacked, since there's no hover to reveal them. */
+.cell-not-listed {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  min-height: 1.75rem;
+  width: 100%;
+}
+
+.cell-not-listed__label {
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+  transition: opacity 0.12s ease;
+}
+
+.cell-not-listed__chip {
+  position: absolute;
+  right: 0;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s ease;
+}
+
+.data-table__row:hover .cell-not-listed__chip,
+.data-table__row:focus-within .cell-not-listed__chip {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.data-table__row:hover .cell-not-listed__label,
+.data-table__row:focus-within .cell-not-listed__label {
+  opacity: 0;
+}
+
+@media (hover: none) {
+  .cell-not-listed {
+    flex-direction: column;
+    align-items: flex-end;
+    gap: var(--space-1);
+  }
+
+  .cell-not-listed__chip {
+    position: static;
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .cell-not-listed__label {
+    opacity: 1;
+  }
 }
 
 /* KeyValueList ------------------------------------------------------ */
@@ -8374,6 +8495,10 @@ a.kpi-card:focus-visible {
   background: var(--status-warning);
 }
 
+.order-activity__dot--conflict {
+  background: var(--status-conflict);
+}
+
 .order-activity__body {
   min-width: 0;
 }
@@ -11001,6 +11126,113 @@ input.bulk-dispatch__num--wide {
 
 .bulk-wizard__footer-spacer {
   flex: 1;
+}
+
+/* ── Bulk wizard destination context bar (#2227) ─────────────────────
+ * Sits above the stepper on every step after Config. The left edge carries
+ * the accent, re-tinted to the warning tone for a sandbox connection - the
+ * state that is most expensive to miss in a screenshot.
+ */
+/* Deliberately NOT sticky: `main.shell-content` declares `overflow-y: auto`, so
+   it is the scroll container a sticky descendant resolves against - but the
+   document scrolls instead of it, so the offset never engages and the element
+   just scrolls away. Pinning this bar needs that shell-wide scroll model fixed
+   first (it also disables DataTable's sticky headers today). */
+.bulk-destbar {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-left: 3px solid var(--accent-primary);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+.bulk-destbar[data-environment='sandbox'] {
+  border-left-color: var(--status-warning-strong);
+}
+
+.bulk-destbar__main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  padding: var(--space-2) var(--space-3);
+}
+
+.bulk-destbar__id {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+/* `display: block` is load-bearing: an inline span ignores text-overflow, so
+   a long connection name would set its own min-content width and push the
+   badges onto their own rows at 320 px. */
+.bulk-destbar__name {
+  display: block;
+  max-width: 26ch;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: var(--tracking-tight);
+  color: var(--text-primary);
+}
+
+.bulk-destbar__badges {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.bulk-destbar__changes {
+  display: inline-flex;
+}
+
+.bulk-destbar__toggle,
+.bulk-destbar__change {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  background: var(--bg-surface-muted);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  padding: 9px var(--space-3);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.bulk-destbar__toggle {
+  margin-left: auto;
+}
+
+.bulk-destbar__toggle:hover,
+.bulk-destbar__change:hover {
+  background: var(--bg-surface-hover);
+  color: var(--text-primary);
+}
+
+.bulk-destbar__panel {
+  border-top: 1px dashed var(--border-default);
+  padding: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+
+.bulk-destbar__panel[hidden] {
+  display: none;
+}
+
+
+/* KeyValueList owns its own responsive dt/dd grid - only the width is ours. */
+.bulk-destbar__panel .key-value-list {
+  width: 100%;
 }
 
 /* ── Bulk shop-publish review step (#1829) ──────────────────────────── */
@@ -14047,74 +14279,12 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
 
 /* ── Invoicing redesign (#1240) ── */
 
-/* ── Invoice panel card parity with Shipment (#1449) ──────────────────
- * Brings `.order-invoice-panel` to the same card chrome, header layout,
- * and action-row treatment as `.order-shipment-panel` (see that rule
- * set above). Body/KV/provider-slot spacing lives in the sections below.
- */
-.order-invoice-panel {
-  gap: var(--space-3);
-  padding: var(--space-4);
-  background: var(--bg-surface);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-xs);
-}
-
-.order-invoice-panel__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-}
-
-.order-invoice-panel__header-badges {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-
-.order-invoice-panel__actions {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  border-top: 1px solid var(--border-subtle);
-  padding-top: var(--space-3);
-}
-
-.order-invoice-panel__actions .spacer {
-  flex: 1;
-}
-
-/* ─ Not-issued action row (#1622) ─
-   The document-type picker fills the row and the signal-orange primary
-   "Issue invoice" action anchors to the right, matching the panel mockup
-   (demo epic #1606, section 02). `flex-wrap` lets the button drop under a
-   full-width picker on narrow (mobile) panels rather than crushing either. */
-.order-invoice-panel__actions--issue {
-  flex-wrap: wrap;
-}
-
-.order-invoice-panel__doc-type {
-  flex: 1 1 auto;
-  min-width: 0;
-}
-
-.order-invoice-panel__actions--issue .button {
-  flex: 0 0 auto;
-}
-
-@media (max-width: 480px) {
-  .order-invoice-panel__doc-type {
-    flex-basis: 100%;
-  }
-  .order-invoice-panel__actions--issue .button {
-    flex: 1 1 auto;
-  }
-}
-
-/* ─ Skeletons (shared shimmer for panel + detail page) ─ */
-.order-invoice-panel__skeleton,
+/* ─ Skeletons (shared shimmer for panel + detail page) ─
+   `.order-invoice-panel__skeleton` / `.order-receipt-panel__skeleton` were
+   retired with their components by #2160; `.sales-document-panel__skeleton`
+   (the merged panel's own) joins this shared shimmer instead of duplicating
+   it. */
+.sales-document-panel__skeleton,
 .invoice-detail__skeleton {
   border-radius: var(--radius-sm);
   background: linear-gradient(
@@ -14126,7 +14296,7 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   background-size: 200% 100%;
   animation: invoice-skeleton-shimmer 1.4s ease-in-out infinite;
 }
-.order-invoice-panel__skeleton {
+.sales-document-panel__skeleton {
   height: 14px;
 }
 @keyframes invoice-skeleton-shimmer {
@@ -14134,21 +14304,11 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   100% { background-position: -100% 0; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .order-invoice-panel__skeleton,
+  .sales-document-panel__skeleton,
   .invoice-detail__skeleton {
     animation: none;
     background: var(--bg-surface-muted);
   }
-}
-
-/* ─ Panel body wrapper (#1449 — replaces the old padding-only wrapper now
-   that KeyValueList + the provider slot are siblings needing consistent
-   vertical rhythm; outer spacing is owned by `.order-invoice-panel`'s own
-   grid gap + padding, so this wrapper no longer adds its own padding) ─ */
-.order-invoice-panel__body {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
 }
 
 /* `.invoice-panel__kv` is kept — `OrderInvoicePanel` no longer renders it
@@ -14240,11 +14400,13 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   align-self: stretch;
 }
 
-/* ── Order receipt panel (#1909) ──────────────────────────────────────
-   Mirrors `.order-invoice-panel` exactly - same box, same header/actions/
-   body rhythm - because the two panels sit side by side on the order detail
-   page and must read as one family, not two unrelated widgets. */
-.order-receipt-panel {
+/* ── Sales document panel (#2160, ADR-041) ─────────────────────────────
+   Unifies `.order-invoice-panel` + `.order-receipt-panel` into ONE panel —
+   same card chrome, header/actions/body rhythm as its two predecessors
+   (which were visually identical). The `.doc-slot` family below is the new
+   piece: the boxed "one document, never a list" slot the panel wraps its
+   filled/empty content in. */
+.sales-document-panel {
   gap: var(--space-3);
   padding: var(--space-4);
   background: var(--bg-surface);
@@ -14252,13 +14414,18 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-xs);
 }
-.order-receipt-panel__header {
+.sales-document-panel__header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
 }
-.order-receipt-panel__actions {
+.sales-document-panel__header-badges {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.sales-document-panel__actions {
   display: flex;
   align-items: center;
   gap: var(--space-2);
@@ -14266,33 +14433,78 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   border-top: 1px solid var(--border-subtle);
   padding-top: var(--space-3);
 }
-.order-receipt-panel__body {
+.sales-document-panel__actions .spacer {
+  flex: 1;
+}
+.sales-document-panel__actions--issue {
+  flex-wrap: wrap;
+}
+.sales-document-panel__doc-type {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.sales-document-panel__actions--issue .button {
+  flex: 0 0 auto;
+}
+@media (max-width: 480px) {
+  .sales-document-panel__doc-type {
+    flex-basis: 100%;
+  }
+  .sales-document-panel__actions--issue .button {
+    flex: 1 1 auto;
+  }
+}
+.sales-document-panel__connection {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.sales-document-panel__connection-label {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+.sales-document-panel__body {
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
 }
-.order-receipt-panel__notice {
+.sales-document-panel__notice {
   margin: 0;
   color: var(--text-muted);
   font-size: 0.8125rem;
 }
-.order-receipt-panel__skeleton {
-  height: 14px;
-  border-radius: var(--radius-sm);
-  background: linear-gradient(
-    100deg,
-    var(--bg-surface-muted) 0%,
-    var(--bg-surface-hover) 50%,
-    var(--bg-surface-muted) 100%
-  );
-  background-size: 200% 100%;
-  animation: invoice-skeleton-shimmer 1.4s ease-in-out infinite;
+/* The one-document slot on an order. Filled or empty, never a list — carried
+   over verbatim from the epic's mockup (`apps/web/src/index.css` is what it
+   was transcribed from). */
+.doc-slot {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--bg-shell);
 }
-@media (prefers-reduced-motion: reduce) {
-  .order-receipt-panel__skeleton {
-    animation: none;
-    background: var(--bg-surface-muted);
-  }
+.doc-slot--filled {
+  border-style: solid;
+  border-color: var(--border-subtle);
+  background: var(--bg-surface);
+}
+.doc-slot__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+.doc-slot__kind {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.doc-slot__name {
+  font-size: 0.9375rem;
+  font-weight: 600;
 }
 
 /* An artefact row: the neutral (medium, disposition, content) triple a fiscal
@@ -14767,8 +14979,8 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   max-width: 22rem;
 }
 
-/* ─ Correction trigger in order invoice panel (issued state) ─ */
-.order-invoice-panel__correction {
+/* ─ Correction trigger in the sales document panel (issued state) ─ */
+.sales-document-panel__correction {
   margin-top: var(--space-3);
   padding-top: var(--space-3);
   border-top: 1px solid var(--border-subtle);
@@ -15068,7 +15280,8 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
      scrolled .shell-content but below the topbar (z-index: 10) so the two
      header blocks never overlap. */
   position: sticky;
-  top: 52px;
+  top: var(--shell-topbar-height);
+  min-height: var(--demo-banner-height);
   z-index: 9;
 }
 
@@ -17439,6 +17652,43 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
 .offer-publication-status__row { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
 .offer-publication-status__id { font-size: 12px; color: var(--text-muted); }
 
+/* Every reason an offer cannot sell (#2231): the sentence for the seller, the
+   channel's own code for whoever checks it against the channel's docs. Takes a
+   full row of its own inside the flex-wrapped offer row, so it sits under the
+   badge/id/refresh line rather than squeezing between them. */
+.offer-publication-status__problems {
+  flex: 1 1 100%;
+  list-style: none;
+  margin: 0;
+  padding: var(--space-2) 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.problem-line {
+  display: flex;
+  gap: var(--space-2);
+  align-items: baseline;
+  font-size: 0.75rem;
+}
+.problem-line__mark {
+  color: var(--status-error-fg);
+  font-size: 0.6875rem;
+  flex: 0 0 auto;
+}
+.problem-line__text {
+  color: var(--text-secondary);
+}
+.problem-line__text b {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+.problem-line__code {
+  font-size: 0.625rem;
+  color: var(--text-disabled);
+  flex: 0 0 auto;
+}
+
 /* Compact per-variant row - attrs/EAN left, stock badge, available/reserved,
    listings count right. Deliberately NOT the dense VariantStockTable grid
    (kept for the product-detail page's own accordion); the cockpit's
@@ -18340,6 +18590,32 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* The same slot when it reports a state rather than outstanding work (#2231) -
+   an offer switched off deliberately, or one whose only problem is shop-level and
+   is carried by the notice above the table. Muted so the red treatment above
+   keeps meaning "someone has to change something". */
+.listing-cell__reason--muted {
+  color: var(--text-muted);
+}
+
+/* Shop-level channel problems, carried once per connection above the table
+   (#2231) instead of on every row that repeats them. */
+.listings-connection-notice {
+  margin-bottom: var(--space-3);
+}
+.listings-connection-notice__problems {
+  list-style: none;
+  margin: var(--space-1) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.listings-connection-notice__code {
+  margin-left: var(--space-2);
+  font-size: 0.625rem;
+  color: var(--text-disabled);
+}
 
 /* Mobile card head (#1965 frame 05): at 360px the name is what the card is
    about, so nothing next to it may hold a fixed width and nothing may clip. */
@@ -18479,10 +18755,6 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
 }
 
 .category-search-results__item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
   min-height: 44px;
   padding: var(--space-2) var(--space-3);
   border: 1px solid var(--border-subtle);
@@ -18934,4 +19206,143 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   font-size: 0.8125rem;
   max-height: 12rem;
   overflow-y: auto;
+}
+
+/* ── Sales-document rule engine (#2170) ── */
+.frame-grid {
+  display: grid;
+  gap: var(--space-3);
+}
+.frame-grid--2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+@media (max-width: 640px) {
+  .frame-grid--2 {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── Sales-document country index (#2187) ── */
+.sales-document-country-index__add-row {
+  margin-top: var(--space-3);
+}
+.sales-document-country-index__add-row-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.rule-card {
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  padding: var(--space-3);
+  margin-bottom: var(--space-2);
+}
+.rule-card__flow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+.rule-card__arrow {
+  width: 14px;
+  height: 14px;
+  color: var(--text-muted);
+}
+.rule-card__result {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.rule-card__meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-2);
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+.rule-card__dates {
+  font-family: var(--font-mono);
+}
+
+.condition-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface-muted);
+  border: 1px solid var(--border-subtle);
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+.condition-join {
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-caps);
+}
+
+.provenance-tag {
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.taxid-badge {
+  display: inline-flex;
+  padding: 1px var(--space-2);
+  border-radius: var(--radius-pill);
+  background: var(--status-info-soft);
+  color: var(--status-info-fg);
+  font-size: 0.6875rem;
+  margin-left: var(--space-1);
+}
+
+.template-card {
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface-elevated);
+  padding: var(--space-4);
+}
+.template-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+  flex-wrap: wrap;
+}
+.template-card__badge {
+  display: inline-flex;
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-pill);
+  background: var(--accent-primary-soft);
+  color: var(--accent-primary);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-caps);
+}
+.template-card__source {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+.template-card__preview {
+  margin-bottom: var(--space-3);
+}
+
+.ack-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+.ack-row input[type='checkbox'] {
+  margin-top: 3px;
 }

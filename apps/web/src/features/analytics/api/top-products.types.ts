@@ -2,12 +2,13 @@
  * Top products types
  *
  * Mirrors `apps/api/src/analytics/http/dto/top-products-*.dto.ts` (#1988).
- * Money column note (see the #1991 implementation plan § 4): the backend
- * `revenue` figure is a comparable, reporting-currency, FX-stamped-orders-only
- * sum — the same gross figure `sales-analytics.types.ts`'s `ChannelSalesAnalytics.revenue`
- * is, not the "Net sales" (VAT- and returns-netted) figure the design mockup's
- * copy names. This component renders it as "Revenue", matching the label the
- * sibling by-channel table (#1990) already settled on for the identical figure.
+ * Money column note (see the #1991 implementation plan § 4 and the
+ * net-sales-tax-rate plan): the backend `revenue` figure is a comparable,
+ * reporting-currency, FX-stamped-orders-only sum — GMV, not net. `netRevenue`
+ * (net-sales tax-rate epic) is the VAT-exclusive counterpart, still gross of
+ * returns/refunds (no such entity exists yet). `product-sales-table.tsx`
+ * renders only `netRevenue`, labeled "Net sales" — unlike the by-channel
+ * table, which shows GMV and Net sales as two separate columns.
  *
  * @module features/analytics/api
  */
@@ -17,6 +18,9 @@ export interface ProductChannelSales {
   revenue: number;
   unconvertedRevenue: number;
   currency: string | null;
+  netRevenue: number;
+  netExcludedRevenue: number;
+  netExcludedLineCount: number;
 }
 
 export interface TopProductRow {
@@ -35,6 +39,12 @@ export interface TopProductRow {
   channels: ProductChannelSales[];
   /** Listing-capable connections where this product has sales but no listed variant. */
   missingFromConnectionIds: string[];
+  /** VAT-exclusive counterpart of `revenue` (net-sales tax-rate epic) — see the module doc comment. */
+  netRevenue: number;
+  /** Comparable sum for lines excluded from `netRevenue` due to an unresolvable tax rate. */
+  netExcludedRevenue: number;
+  /** Count of lines contributing to `netExcludedRevenue`. */
+  netExcludedLineCount: number;
 }
 
 export interface TopProductsResult {

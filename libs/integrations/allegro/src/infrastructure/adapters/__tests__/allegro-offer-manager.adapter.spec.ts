@@ -33,7 +33,6 @@ import {
   type CreateOfferCommand,
 } from '@openlinker/core/listings';
 import type { CachePort } from '@openlinker/shared';
-import { STREAM_CONCURRENCY } from '../../util/resolve-categories-for-batch-by-ean';
 import type { AllegroSellerDefaultsConfig } from '../../../domain/types/allegro-seller-defaults.types';
 
 /**
@@ -1104,9 +1103,9 @@ describe('AllegroOfferManagerAdapter', () => {
 
     it('reports the adapter default when the connection configures no cap', () => {
       expect(adapter.getStreamConcurrency()).toEqual({
-        maxInFlight: STREAM_CONCURRENCY,
+        maxInFlight: 9,
         source: 'adapter-default',
-        adapterDefault: STREAM_CONCURRENCY,
+        adapterDefault: 9,
       });
     });
 
@@ -1115,7 +1114,7 @@ describe('AllegroOfferManagerAdapter', () => {
       expect(adapterWithMaxConcurrent(2).getStreamConcurrency()).toEqual({
         maxInFlight: 2,
         source: 'connection-config',
-        adapterDefault: STREAM_CONCURRENCY,
+        adapterDefault: 9,
       });
     });
 
@@ -1150,6 +1149,32 @@ describe('AllegroOfferManagerAdapter', () => {
 
       expect(peak).toBeLessThanOrEqual(reported);
       expect(peak).toBe(2);
+    });
+
+    it('clamps the NON-streamed batch path with the same operator cap', async () => {
+      // The batch collector keeps its narrower default (#2215), but it was the
+      // one resolve path outside both the clamp and the declared ceiling, so a
+      // connection capped below it went on running 3 in flight (#2229 review).
+      const capped = adapterWithMaxConcurrent(1);
+
+      let inFlight = 0;
+      let peak = 0;
+      httpClient.get.mockImplementation(async () => {
+        inFlight += 1;
+        peak = Math.max(peak, inFlight);
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        inFlight -= 1;
+        return { data: { products: [] }, status: 200, headers: {} };
+      });
+
+      await capped.resolveCategoriesForBatchByEan({
+        items: Array.from({ length: 6 }, (_, i) => ({
+          variantId: `v${i + 1}`,
+          ean: `590123412345${i}`,
+        })),
+      });
+
+      expect(peak).toBe(1);
     });
   });
 
@@ -1472,6 +1497,78 @@ describe('AllegroOfferManagerAdapter', () => {
 
     afterEach(() => {
       fetchSpy.mockRestore();
+    });
+
+    describe('the tax rate (#2249, gated by #2260 review)', () => {
+      const withStrict = (value: string | undefined, run: () => Promise<void>) => async () => {
+        const previous = process.env['OL_TAX_RATE_STRICT_ENABLED'];
+        if (value === undefined) delete process.env['OL_TAX_RATE_STRICT_ENABLED'];
+        else process.env['OL_TAX_RATE_STRICT_ENABLED'] = value;
+        try {
+          await run();
+        } finally {
+          if (previous === undefined) delete process.env['OL_TAX_RATE_STRICT_ENABLED'];
+          else process.env['OL_TAX_RATE_STRICT_ENABLED'] = previous;
+        }
+      };
+
+      const okResponse = () =>
+        mockHttpResponse({ id: 'allegro-offer-tax', publication: { status: 'INACTIVE' } });
+
+      it(
+        'publishes with no taxSettings when the switch is off - the default',
+        withStrict(undefined, async () => {
+          // Catalogue coverage is zero on deploy, so refusing here would fail
+          // every child of every bulk batch on day one, with no badge and no
+          // counter to read the reason from.
+          httpClient.post.mockResolvedValue(okResponse());
+
+          await adapter.createOffer(baseCmd);
+
+          const body = httpClient.post.mock.calls[0][1] as { taxSettings?: unknown };
+          expect(body.taxSettings).toBeUndefined();
+        })
+      );
+
+      it(
+        'refuses a rate-less publish when the switch is on',
+        withStrict('true', async () => {
+          httpClient.post.mockResolvedValue(okResponse());
+
+          await expect(adapter.createOffer(baseCmd)).rejects.toBeInstanceOf(
+            OfferCreateRejectedException
+          );
+          expect(httpClient.post).not.toHaveBeenCalled();
+        })
+      );
+
+      it(
+        'writes the shop rate onto taxSettings when one is known',
+        withStrict(undefined, async () => {
+          httpClient.post.mockResolvedValue(okResponse());
+
+          await adapter.createOffer({ ...baseCmd, taxRate: '23' });
+
+          const body = httpClient.post.mock.calls[0][1] as {
+            taxSettings?: { rates?: Array<{ rate: string; countryCode: string }> };
+          };
+          expect(body.taxSettings?.rates?.[0]).toMatchObject({ countryCode: 'PL' });
+        })
+      );
+
+      it(
+        'refuses an exemption code even with the switch off',
+        withStrict(undefined, async () => {
+          // Not gated: the shop DID state a rate, and Allegro's numeric
+          // `rates[]` cannot express `zw`. A conflict at any coverage level.
+          httpClient.post.mockResolvedValue(okResponse());
+
+          await expect(adapter.createOffer({ ...baseCmd, taxRate: 'zw' })).rejects.toBeInstanceOf(
+            OfferCreateRejectedException
+          );
+          expect(httpClient.post).not.toHaveBeenCalled();
+        })
+      );
     });
 
     it('returns draft status when INACTIVE without validation errors', async () => {

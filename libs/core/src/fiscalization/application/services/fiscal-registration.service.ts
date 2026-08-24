@@ -22,6 +22,13 @@ import {
   IIntegrationsService,
   INTEGRATIONS_SERVICE_TOKEN,
 } from '@openlinker/core/integrations';
+import { type SyncLockPort, SYNC_LOCK_TOKEN } from '@openlinker/core/sync';
+import { IInvoiceService } from '@openlinker/core/invoicing';
+import {
+  INVOICE_SERVICE_TOKEN,
+  invoiceIssueLockKey,
+  INVOICE_ISSUE_LOCK_TTL_MS,
+} from '@openlinker/core/invoicing';
 
 import type {
   FiscalReconcileResult,
@@ -35,7 +42,11 @@ import { DuplicateFiscalRegistrationRecordException } from '../../domain/excepti
 import { FiscalRegistrationNotInDoubtException } from '../../domain/exceptions/fiscal-registration-not-in-doubt.exception';
 import { FiscalRegistrationRecordNotFoundException } from '../../domain/exceptions/fiscal-registration-record-not-found.exception';
 import { MissingIdempotencyKeyException } from '../../domain/exceptions/missing-idempotency-key.exception';
+import { MissingFiscalTaxRateException } from '../../domain/exceptions/missing-tax-rate.exception';
+import { isTaxRateStrictEnabled } from '@openlinker/core/sales-documents';
 import { OrderAlreadyRegisteredException } from '../../domain/exceptions/order-already-registered.exception';
+import { OrderAlreadyHasInvoiceException } from '../../domain/exceptions/order-already-has-invoice.exception';
+import { FiscalRegistrationContendedException } from '../../domain/exceptions/fiscal-registration-contended.exception';
 import { FISCAL_REGISTRATION_RECORD_REPOSITORY_TOKEN } from '../../fiscalization.tokens';
 import type {
   FiscalRegistrationFailureMode,
@@ -148,8 +159,27 @@ export class FiscalRegistrationService implements IFiscalRegistrationService {
     private readonly repo: FiscalRegistrationRecordRepositoryPort,
     @Inject(INTEGRATIONS_SERVICE_TOKEN)
     private readonly integrations: IIntegrationsService,
+    @Inject(SYNC_LOCK_TOKEN)
+    private readonly registrationLock: SyncLockPort,
+    @Inject(INVOICE_SERVICE_TOKEN)
+    private readonly invoiceService: IInvoiceService,
   ) {}
 
+  /**
+   * Register a completed sale, serialized per ORDER under the SAME per-order
+   * lock `InvoiceService.issueInvoice` acquires (#2157, `invoiceIssueLockKey` —
+   * imported verbatim from `@openlinker/core/invoicing` rather than
+   * reimplemented, so both write paths key on the byte-identical string). Two
+   * concurrent attempts on the same order — one issuing an invoice, one
+   * registering a receipt, on different connections — must not both succeed;
+   * that is exactly the read-then-act race #2047's lock exists to close,
+   * generalized cross-KIND by ADR-041 §3a/3b.
+   *
+   * Mirrors `InvoiceService.issueInvoice`'s lock shape: acquired here, released
+   * in `finally`; a failed acquisition answers from PERSISTED STATE ONLY
+   * ({@link registerContended}), never crossing the provider boundary while a
+   * peer holds the lock.
+   */
   async register(cmd: RegisterTransactionCommand): Promise<FiscalRegistrationRecord> {
     const key = cmd.idempotencyKey?.trim() ?? '';
     if (key.length === 0) {
@@ -163,6 +193,86 @@ export class FiscalRegistrationService implements IFiscalRegistrationService {
     // lookup AND the adapter - must see the SAME key, or a provider that echoes
     // OL's key back would be queried later under a value it never received.
     const normalized: RegisterTransactionCommand = { ...cmd, idempotencyKey: key };
+
+    // #2252 (ADR-063 § 6): a line with no tax rate is refused BEFORE the read
+    // gate and before any row is written - the same rule as the invoice, and
+    // for the same reason. A provider filling the gap from the connection's
+    // configured tax letter puts an unconfirmed rate on a real fiscal receipt,
+    // which reaches the buyer and the daily report and cannot be recalled.
+    //
+    // The accepted cost is LATE registration, chosen deliberately: a late
+    // registration can be completed, a wrong one has to be corrected. Placed
+    // ahead of the read gate so a held sale leaves no `pending` row behind to
+    // reconcile.
+    //
+    // THIS CALL IS THE REVERSAL POINT. Nothing else in this context consults
+    // the rate, so removing this one line restores the pre-#2252 behaviour -
+    // and switching `OL_TAX_RATE_STRICT_ENABLED` off does the same without a
+    // deploy (#2245 review), which is what keeps day one from being an outage
+    // while catalogue coverage is still zero.
+    this.assertEveryLineHasATaxRate(normalized);
+    // Placed ahead of the per-order LOCK as well as the read gate (#2157 put the
+    // gate behind a lock): a refusal here is a pure function of the command, so
+    // taking a lock to reject it would only widen the contended window.
+
+    const lockKey = invoiceIssueLockKey(normalized.orderId);
+    const token = await this.registrationLock.acquire(lockKey, INVOICE_ISSUE_LOCK_TTL_MS);
+    if (!token) {
+      return this.registerContended(normalized);
+    }
+
+    try {
+      return await this.registerLocked(normalized);
+    } finally {
+      // Best-effort release — never let a release failure mask the
+      // registration result (a real fiscal document may already exist here).
+      try {
+        await this.registrationLock.release(lockKey, token);
+      } catch (releaseError) {
+        this.logger.warn(
+          `Failed to release fiscal-registration lock ${lockKey}: ` +
+            `${releaseError instanceof Error ? releaseError.message : String(releaseError)}`,
+        );
+      }
+    }
+  }
+
+  /**
+   * Answer a registration request whose per-order lock is held by a peer,
+   * using PERSISTED STATE ONLY — this path never reaches the `Fiscalization`
+   * adapter, so it cannot be the second registration.
+   *
+   * Mirrors `InvoiceService`'s `issueContended`: (1) the same-kind + cross-kind
+   * guard (identical to what the locked path runs) — if the peer already
+   * persisted its row, the honest answer is a blocking refusal, not
+   * "contended"; (2) an already-`registered` same-key row on the REQUESTED
+   * connection, returned verbatim (idempotent replay); (3) otherwise the peer
+   * is mid-flight with nothing persisted yet, so raise the retryable
+   * {@link FiscalRegistrationContendedException} rather than proceed into the
+   * race.
+   */
+  private async registerContended(
+    cmd: RegisterTransactionCommand,
+  ): Promise<FiscalRegistrationRecord> {
+    await this.assertNotAlreadyRegistered(cmd.orderId, cmd.connectionId);
+
+    const existing = await this.repo.findByIdempotencyKey(cmd.connectionId, cmd.idempotencyKey);
+    if (existing?.status === 'registered') {
+      return existing;
+    }
+
+    this.logger.warn(
+      `Registration for order ${cmd.orderId} is contended and no blocking record is ` +
+        `persisted yet; refusing to race a concurrent registration on connection ` +
+        `${cmd.connectionId}`,
+    );
+    throw new FiscalRegistrationContendedException(cmd.orderId);
+  }
+
+  private async registerLocked(
+    normalized: RegisterTransactionCommand,
+  ): Promise<FiscalRegistrationRecord> {
+    const key = normalized.idempotencyKey;
 
     // (1) Read gate. An existing row is RESUMED under the fiscal-safety
     // invariant - never returned blindly and never re-sent blindly.
@@ -297,22 +407,20 @@ export class FiscalRegistrationService implements IFiscalRegistrationService {
    * terminal `rejected` record (the provider definitely created nothing) leaves
    * the sale registrable again.
    *
-   * Scope differences from invoicing's `assertNotInvoicedElsewhere` (#2047), both
-   * deliberate:
-   *   - records on the REQUESTED connection are NOT skipped. That is the whole
-   *     point: a second key on the same connection is the interleaving the index
-   *     cannot see. Skipping it here would be safe there only because the read
-   *     gate already returned - which it did, or this method would not run.
-   *   - no `SyncLockPort` is taken. This is a read, so it is read-then-act:
-   *     two SIMULTANEOUS attempts on two DIFFERENT connections for a
-   *     never-registered order can both observe nothing and both proceed. The
-   *     same-connection case (the only one the shipped HTTP surface can produce,
-   *     since it mints one deterministic key per (connection, order)) is closed
-   *     by the unique index instead. Narrowing that last window means adopting
-   *     the per-order `SyncLockPort` invoicing takes around the same check
-   *     (`invoiceIssueLockKey`); deliberately not done here, so the residual
-   *     window is: two fiscalization connections, one never-registered order,
-   *     two truly simultaneous operator requests.
+   * Scope difference from invoicing's `assertNotInvoicedElsewhere` (#2047):
+   * records on the REQUESTED connection are NOT skipped. That is the whole
+   * point: a second key on the same connection is the interleaving the index
+   * cannot see. Skipping it here would be safe there only because the read
+   * gate already returned - which it did, or this method would not run.
+   *
+   * UPDATE (#2157): this method now ALSO enforces ADR-041 §3a's cross-KIND
+   * exclusivity - throwing `OrderAlreadyHasInvoiceException` when the order
+   * already carries a blocking `InvoiceRecord` on ANY invoicing connection - and
+   * the per-order `SyncLockPort` this docstring previously said was
+   * "deliberately not done here" is now taken by `register` around this whole
+   * method (`invoiceIssueLockKey`, the SAME key `InvoiceService.issueInvoice`
+   * locks), closing the residual same-context race this docstring used to name
+   * as the accepted gap. See `register` for the lock shape.
    */
   private async assertNotAlreadyRegistered(
     orderId: string,
@@ -320,25 +428,45 @@ export class FiscalRegistrationService implements IFiscalRegistrationService {
   ): Promise<void> {
     const records = await this.repo.findAllByOrderId(orderId);
     const blocking = records.find((record) => record.blocksFurtherRegistration);
-    if (!blocking) {
-      return;
+    if (blocking) {
+      // `warn`, not `error`: a refusal here is the guard WORKING, and it is
+      // raised to the caller as a 409 rather than left in a log.
+      this.logger.warn(
+        `Refusing a second fiscal registration of order ${orderId} on connection ` +
+          `${requestedConnectionId}: record ${blocking.id} on connection ` +
+          `${blocking.connectionId} is ${blocking.status}` +
+          `${blocking.status === 'failed' ? ` (failureMode=${blocking.failureMode ?? 'unknown'})` : ''}`,
+      );
+      throw new OrderAlreadyRegisteredException(
+        orderId,
+        blocking.connectionId,
+        requestedConnectionId,
+        blocking.status,
+        blocking.id,
+      );
     }
 
-    // `warn`, not `error`: a refusal here is the guard WORKING, and it is raised
-    // to the caller as a 409 rather than left in a log.
-    this.logger.warn(
-      `Refusing a second fiscal registration of order ${orderId} on connection ` +
-        `${requestedConnectionId}: record ${blocking.id} on connection ` +
-        `${blocking.connectionId} is ${blocking.status}` +
-        `${blocking.status === 'failed' ? ` (failureMode=${blocking.failureMode ?? 'unknown'})` : ''}`,
-    );
-    throw new OrderAlreadyRegisteredException(
-      orderId,
-      blocking.connectionId,
-      requestedConnectionId,
-      blocking.status,
-      blocking.id,
-    );
+    // Cross-KIND half (#2157, ADR-041 §3a/3b): refuse when the order already
+    // carries a blocking INVOICE on any invoicing connection. Normal
+    // constructor DI (`fiscalization -> invoicing`) — safe in this direction
+    // because, unlike the reverse (see `InvoiceService.assertNoBlockingFiscalReceipt`),
+    // nothing in `invoicing` depends on `fiscalization`, so this is an ordinary
+    // one-way edge, not a cycle.
+    const blockingInvoice = await this.invoiceService.findBlockingInvoiceForOrder(orderId);
+    if (blockingInvoice) {
+      this.logger.warn(
+        `Refusing to register a fiscal receipt for order ${orderId} on connection ` +
+          `${requestedConnectionId}: invoice ${blockingInvoice.id} on connection ` +
+          `${blockingInvoice.connectionId} is ${blockingInvoice.status}`,
+      );
+      throw new OrderAlreadyHasInvoiceException(
+        orderId,
+        blockingInvoice.connectionId,
+        requestedConnectionId,
+        blockingInvoice.status,
+        blockingInvoice.id,
+      );
+    }
   }
 
   /**
@@ -379,6 +507,30 @@ export class FiscalRegistrationService implements IFiscalRegistrationService {
   }
 
   /**
+   * Refuse a sale whose lines do not all name a tax rate (#2252).
+   *
+   * `'0'` passes - a zero rate is an answer, and refusing it would hold every
+   * deliberately exempt sale. A blank one does not: that is what core emits
+   * when nothing established the rate, and it is exactly the value each
+   * provider would silently replace with its own default.
+   */
+  private assertEveryLineHasATaxRate(cmd: RegisterTransactionCommand): void {
+    // #2245 review: off unless the deployment opted in. A receipt path has no
+    // order era to consult - `RegisterTransactionCommand` carries none - so the
+    // switch is the only gate here; see the report on #2260 for why the era
+    // exemption stops at the two invoice sites.
+    if (!isTaxRateStrictEnabled()) return;
+    const missing = cmd.lines.filter((line) => line.taxRate.trim() === '');
+    if (missing.length === 0) return;
+    throw new MissingFiscalTaxRateException(
+      cmd.orderId,
+      missing.length,
+      cmd.lines.length,
+      missing[0]?.sku ?? missing[0]?.name ?? null,
+    );
+  }
+
+  /**
    * Resolve the per-connection adapter, claim the in-flight slot atomically,
    * cross the CORE <-> Integration boundary and patch the record with the
    * outcome.
@@ -398,6 +550,7 @@ export class FiscalRegistrationService implements IFiscalRegistrationService {
    * belongs there, but inheriting a known stuck state is not a reason to ship
    * one on a new surface.
    */
+
   private async registerWithAdapter(
     cmd: RegisterTransactionCommand,
     recordId: string,

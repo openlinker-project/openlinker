@@ -20,11 +20,14 @@ import {
 } from '../../../domain/types/master-deletion-events.types';
 import type { IProductsService } from '../products.service.interface';
 import type { IEntityClaimService, IIntegrationsService } from '@openlinker/core/integrations';
+import type { ITaxRateJournalService } from '../tax-rate-journal.service.interface';
 import type { IIdentifierMappingService } from '@openlinker/core/identifier-mapping';
 import type { EventPublisherPort } from '@openlinker/core/events';
 import type { Product } from '../../../domain/entities/product.entity';
 import type { ProductVariant } from '../../../domain/entities/product-variant.entity';
 import type { ProductMasterPort } from '../../../domain/ports/product-master.port';
+import type { StoredTaxRate, TaxRateResolution } from '../../../domain/types/tax-rate.types';
+import { effectiveTaxRate } from '../../../domain/types/tax-rate.types';
 
 const connectionId = 'connection-1';
 const externalId = 'ext-9';
@@ -42,11 +45,23 @@ describe('MasterProductSyncService', () => {
   let integrationsService: jest.Mocked<IIntegrationsService>;
   let identifierMapping: jest.Mocked<IIdentifierMappingService>;
   let productsService: jest.Mocked<
-    Pick<IProductsService, 'upsertProduct' | 'upsertVariants' | 'markVariantsStaleExcept'>
+    Pick<
+      IProductsService,
+      | 'upsertProduct'
+      | 'upsertVariants'
+      | 'markVariantsStaleExcept'
+      | 'recordProductTaxRate'
+      | 'recordVariantTaxRate'
+      | 'clearVariantTaxRate'
+    >
   >;
   let eventPublisher: jest.Mocked<EventPublisherPort>;
   let entityClaims: jest.Mocked<IEntityClaimService>;
-  let adapter: jest.Mocked<Pick<ProductMasterPort, 'getProduct' | 'getProductVariants'>>;
+  let taxRateJournal: jest.Mocked<ITaxRateJournalService>;
+  let adapter: jest.Mocked<Pick<ProductMasterPort, 'getProduct' | 'getProductVariants'>> & {
+    readProductTaxRate?: jest.Mock;
+    readsTaxRatePerVariant?: jest.Mock;
+  };
   let service: MasterProductSyncService;
 
   beforeEach(() => {
@@ -67,6 +82,9 @@ describe('MasterProductSyncService', () => {
       upsertProduct: jest.fn().mockResolvedValue(makeProduct()),
       upsertVariants: jest.fn().mockResolvedValue(undefined),
       markVariantsStaleExcept: jest.fn().mockResolvedValue([]),
+      recordProductTaxRate: jest.fn().mockResolvedValue(undefined),
+      recordVariantTaxRate: jest.fn().mockResolvedValue(undefined),
+      clearVariantTaxRate: jest.fn().mockResolvedValue(undefined),
     };
 
     eventPublisher = {
@@ -79,12 +97,21 @@ describe('MasterProductSyncService', () => {
       findRivalClaimants: jest.fn().mockResolvedValue([]),
     } as unknown as jest.Mocked<IEntityClaimService>;
 
+
+    // #2250: the journal is provenance only, so these specs assert the sync's
+    // own behaviour with a no-op recorder.
+    taxRateJournal = {
+      record: jest.fn().mockResolvedValue(null),
+      getLatestPerConnection: jest.fn().mockResolvedValue([]),
+    } as unknown as jest.Mocked<ITaxRateJournalService>;
+
     service = new MasterProductSyncService(
       integrationsService,
       identifierMapping,
       productsService as unknown as IProductsService,
       eventPublisher,
-      entityClaims
+      entityClaims,
+      taxRateJournal
     );
   });
 
@@ -275,6 +302,175 @@ describe('MasterProductSyncService', () => {
         pruneSkipped: true,
         pruneSkippedReason: 'rival',
       });
+    });
+  });
+
+  // #2054 review — the tax-rate projection pulled in the same pass as price and
+  // currency. Three properties, each of which was a live silent-wrong-rate
+  // defect before this round: an override that is never cleared, an unreadable
+  // answer persisted as *no rate*, and one bad variant costing its siblings.
+  describe('tax-rate read (#2054)', () => {
+    /** A variant-keyed master, the shape WooCommerce reports. */
+    function makeTaxReader(
+      answers: (input: { productId: string; variantId?: string }) => TaxRateResolution
+    ): void {
+      adapter.readsTaxRatePerVariant = jest.fn().mockReturnValue(true);
+      adapter.readProductTaxRate = jest
+        .fn()
+        .mockImplementation((input: { productId: string; variantId?: string }) =>
+          Promise.resolve(answers(input))
+        );
+    }
+
+    it('clears a stale variant override when the shop says the variant now inherits', async () => {
+      // The whole scenario, end to end. The variation was published at 5% and
+      // stored an override; the operator moved it back to the product's tax
+      // class and set the product to 23%. Before this fix the `inherited` read
+      // was skipped, `effectiveTaxRate` kept preferring the known variant code,
+      // and every later order line settled at 5% - on a 23% sale, with no
+      // journal entry to show it.
+      let productRow: StoredTaxRate | null = null;
+      let variantRow: StoredTaxRate | null = {
+        code: '5',
+        countryIso2: 'PL',
+        readAt: new Date('2026-08-01T00:00:00Z'),
+      };
+      productsService.recordProductTaxRate.mockImplementation((_id, rate) => {
+        productRow = rate;
+        return Promise.resolve();
+      });
+      productsService.recordVariantTaxRate.mockImplementation((_id, rate) => {
+        variantRow = rate;
+        return Promise.resolve();
+      });
+      productsService.clearVariantTaxRate.mockImplementation(() => {
+        variantRow = null;
+        return Promise.resolve();
+      });
+
+      makeTaxReader((input) =>
+        input.variantId
+          ? { kind: 'inherited' }
+          : { kind: 'resolved', code: '23', countryIso2: 'PL' }
+      );
+
+      await service.syncFromMasterByExternalId(connectionId, externalId);
+
+      expect(productsService.clearVariantTaxRate).toHaveBeenCalledWith('ol_variant_1');
+      expect(productsService.recordVariantTaxRate).not.toHaveBeenCalled();
+      // The line now settles at the product's rate, which is what the shop says.
+      expect(effectiveTaxRate(productRow, variantRow).code).toBe('23');
+    });
+
+    it('journals the transition off an override, so the clear is not silent', async () => {
+      makeTaxReader((input) =>
+        input.variantId
+          ? { kind: 'inherited' }
+          : { kind: 'resolved', code: '23', countryIso2: 'PL' }
+      );
+
+      await service.syncFromMasterByExternalId(connectionId, externalId);
+
+      expect(taxRateJournal.record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          productId: internalProductId,
+          variantId: 'ol_variant_1',
+          connectionId,
+          origin: 'shop',
+          taxRate: null,
+        })
+      );
+    });
+
+    it('does NOT persist an unreadable answer, at either level', async () => {
+      // `unreadable` means the read established nothing (a failed settings
+      // call), and persisting it writes the *no-rate* state - which blocks
+      // documents and refuses publishes for a shop that is configured fine.
+      makeTaxReader(() => ({ kind: 'unknown', reason: 'unreadable', detail: 'settings 500' }));
+
+      await service.syncFromMasterByExternalId(connectionId, externalId);
+
+      expect(productsService.recordProductTaxRate).not.toHaveBeenCalled();
+      expect(productsService.recordVariantTaxRate).not.toHaveBeenCalled();
+      expect(productsService.clearVariantTaxRate).not.toHaveBeenCalled();
+      expect(taxRateJournal.record).not.toHaveBeenCalled();
+    });
+
+    it('persists the unknowns that mean the master answered', async () => {
+      makeTaxReader((input) =>
+        input.variantId
+          ? { kind: 'unknown', reason: 'ambiguous' }
+          : { kind: 'unknown', reason: 'not-configured' }
+      );
+
+      await service.syncFromMasterByExternalId(connectionId, externalId);
+
+      expect(productsService.recordProductTaxRate).toHaveBeenCalledWith(
+        internalProductId,
+        expect.objectContaining({ code: null, readAt: expect.any(Date) })
+      );
+      expect(productsService.recordVariantTaxRate).toHaveBeenCalledWith(
+        'ol_variant_1',
+        expect.objectContaining({ code: null, readAt: expect.any(Date) })
+      );
+    });
+
+    it('records the rate the master states, at both levels', async () => {
+      makeTaxReader((input) =>
+        input.variantId
+          ? { kind: 'resolved', code: '5', countryIso2: 'PL' }
+          : { kind: 'resolved', code: '23', countryIso2: 'PL' }
+      );
+
+      await service.syncFromMasterByExternalId(connectionId, externalId);
+
+      expect(productsService.recordProductTaxRate).toHaveBeenCalledWith(
+        internalProductId,
+        expect.objectContaining({ code: '23', countryIso2: 'PL' })
+      );
+      expect(productsService.recordVariantTaxRate).toHaveBeenCalledWith(
+        'ol_variant_1',
+        expect.objectContaining({ code: '5', countryIso2: 'PL' })
+      );
+    });
+
+    it('keeps reading the remaining variants when one variant read throws', async () => {
+      adapter.getProductVariants.mockResolvedValue([
+        makeVariant('ol_variant_1'),
+        makeVariant('ol_variant_2'),
+      ]);
+      adapter.readsTaxRatePerVariant = jest.fn().mockReturnValue(true);
+      adapter.readProductTaxRate = jest
+        .fn()
+        .mockImplementation((input: { productId: string; variantId?: string }) => {
+          if (input.variantId === 'ol_variant_1') return Promise.reject(new Error('502'));
+          if (input.variantId === 'ol_variant_2')
+            return Promise.resolve({ kind: 'resolved', code: '5', countryIso2: 'PL' });
+          return Promise.resolve({ kind: 'resolved', code: '23', countryIso2: 'PL' });
+        });
+
+      await service.syncFromMasterByExternalId(connectionId, externalId);
+
+      expect(productsService.recordVariantTaxRate).toHaveBeenCalledTimes(1);
+      expect(productsService.recordVariantTaxRate).toHaveBeenCalledWith(
+        'ol_variant_2',
+        expect.objectContaining({ code: '5' })
+      );
+    });
+
+    it('never touches a variant row on a product-keyed master', async () => {
+      // PrestaShop keys tax on the product, so a per-variant write would turn
+      // one shared value into N copies that drift.
+      adapter.readsTaxRatePerVariant = jest.fn().mockReturnValue(false);
+      adapter.readProductTaxRate = jest
+        .fn()
+        .mockResolvedValue({ kind: 'resolved', code: '23', countryIso2: 'PL' });
+
+      await service.syncFromMasterByExternalId(connectionId, externalId);
+
+      expect(productsService.recordProductTaxRate).toHaveBeenCalledTimes(1);
+      expect(productsService.recordVariantTaxRate).not.toHaveBeenCalled();
+      expect(productsService.clearVariantTaxRate).not.toHaveBeenCalled();
     });
   });
 });

@@ -744,6 +744,11 @@ describe('OrderRecordRepository', () => {
           unitPrice: 10,
           sourceConnectionId: 'conn-123',
           placedAt: null,
+          // #2250 — transcribed from the snapshot; null here is the honest
+          // pre-rollout shape, not a default.
+          taxRate: null,
+          taxSource: null,
+          taxRateReadAt: null,
         },
       ]);
 

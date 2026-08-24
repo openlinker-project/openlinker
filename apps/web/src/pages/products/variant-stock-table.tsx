@@ -21,6 +21,7 @@ import { useCategoryPathQuery } from '../../features/listings/hooks/use-category
 import type { OfferMapping } from '../../features/listings/api/listings.types';
 import type { ProductVariant } from '../../features/products/api/products.types';
 import type { InventoryItem } from '../../features/inventory/api/inventory.types';
+import { formatTaxRate } from '../../shared/format/format-tax-rate';
 import { TimeDisplay } from '../../shared/ui/time-display';
 import { StatusBadge, type StatusBadgeTone } from '../../shared/ui/status-badge';
 import { useMediaQuery } from '../../shared/ui/use-media-query';
@@ -37,6 +38,12 @@ interface VariantStockTableProps {
   stockByVariant: Map<string, InventoryItem>;
   /** Product currency, used to format the master variant price. */
   currency: string | null;
+  /**
+   * The PRODUCT's tax rate (#2255). A variant with no override of its own
+   * inherits it, and rendering that as an absence would send the operator to
+   * fix the wrong record.
+   */
+  productTaxRate?: string | null;
   /** Active OfferCreator connections — the coverage pill set is derived from these. */
   connections: readonly Connection[];
   /** Whether the "+ Create offer" CTA renders (write access, incl. demo). */
@@ -78,6 +85,7 @@ export function VariantStockTable(props: VariantStockTableProps): ReactElement {
           <tr>
             <th aria-hidden="true"></th>
             <th>Variant</th>
+            <th>Tax rate</th>
             <th>Stock</th>
             <th>Listings</th>
             <th className="data-table__cell--right">Price</th>
@@ -88,6 +96,7 @@ export function VariantStockTable(props: VariantStockTableProps): ReactElement {
             <VariantStockRow
               key={variant.id}
               variant={variant}
+              productTaxRate={props.productTaxRate ?? null}
               stock={props.stockByVariant.get(variant.id)}
               currency={props.currency}
               connections={props.connections}
@@ -568,6 +577,7 @@ function ListingDetailCard({
 
 function VariantStockRow({
   variant,
+  productTaxRate,
   stock,
   currency,
   connections,
@@ -576,6 +586,7 @@ function VariantStockRow({
   onListingsCount,
 }: {
   variant: ProductVariant;
+  productTaxRate: string | null;
   stock: InventoryItem | undefined;
   currency: string | null;
   connections: readonly Connection[];
@@ -612,6 +623,9 @@ function VariantStockRow({
             <span className="variant-stock-table__sku mono-text">{variantHeadline(variant)}</span>
             {meta ? <span className="variant-stock-table__meta">{meta}</span> : null}
           </div>
+        </td>
+        <td>
+          <VariantTaxRateCell variant={variant} productTaxRate={productTaxRate} />
         </td>
         <td>
           <span className="variant-stock-table__stock">
@@ -751,5 +765,50 @@ function VariantStockCard({
         </div>
       ) : null}
     </div>
+  );
+}
+
+/**
+ * One variant's tax rate (#2255).
+ *
+ * **Inherited is not the same as absent**, and drawing it as absent sends the
+ * operator to fix the wrong record. A variant with no override of its own takes
+ * the product's rate, so it renders that rate with an `inherited from the
+ * product` caption. Only a variant whose PRODUCT has no rate either shows the
+ * badge - and then the fix is on the product, not the variant.
+ *
+ * A present override wins outright, matching `effectiveTaxRate` on the backend:
+ * it is the more specific statement of the same fact, not a conflict.
+ */
+function VariantTaxRateCell({
+  variant,
+  productTaxRate,
+}: {
+  variant: ProductVariant;
+  productTaxRate: string | null;
+}): ReactElement {
+  if (variant.taxRate) {
+    return (
+      <span className="variant-stock-table__name">
+        <span className="mono-text">{formatTaxRate(variant.taxRate)}</span>
+        <span className="variant-stock-table__meta">variant override</span>
+      </span>
+    );
+  }
+  if (productTaxRate) {
+    return (
+      <span className="variant-stock-table__name">
+        <span className="mono-text">{formatTaxRate(productTaxRate)}</span>
+        <span className="variant-stock-table__meta">inherited from the product</span>
+      </span>
+    );
+  }
+  return (
+    <span className="variant-stock-table__name">
+      <StatusBadge tone="error" withDot compact>
+        No tax rate
+      </StatusBadge>
+      <span className="variant-stock-table__meta">product has none either</span>
+    </span>
   );
 }

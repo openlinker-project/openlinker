@@ -48,6 +48,24 @@ export interface OrderLineItemDraft {
   unitPrice: number;
   sourceConnectionId: string;
   placedAt: Date | null;
+  /**
+   * The settled per-line tax rate, transcribed from the order snapshot (#2250).
+   *
+   * TRANSCRIBED, never settled here. The snapshot is the only place a rate is
+   * decided (ADR-063 § 4); this row is the queryable copy, so an analytics read
+   * never has to expand JSON to answer "which lines carry which rate".
+   */
+  taxRate: string | null;
+  /**
+   * Which system stated it - `shop` or `channel` - or `null` when nothing did.
+   *
+   * Carried alongside the rate rather than derived from it, because *no rate*,
+   * *never read* and *pre-rollout* are three different facts and a single null
+   * rate cannot tell them apart (#2245 F3).
+   */
+  taxSource: string | null;
+  /** When that system was last read. Shown, never enforced: there is no freshness rule. */
+  taxRateReadAt: Date | null;
 }
 
 /**
@@ -69,5 +87,11 @@ export function deriveOrderLineItems(
     unitPrice: item.price,
     sourceConnectionId,
     placedAt,
+    // #2250 — a straight copy. Parsing or defaulting here would make the row
+    // disagree with the snapshot it transcribes, and the snapshot is the one
+    // that issues documents.
+    taxRate: item.taxRate ?? null,
+    taxSource: item.taxSource ?? null,
+    taxRateReadAt: item.taxRateReadAt ? new Date(item.taxRateReadAt) : null,
   }));
 }

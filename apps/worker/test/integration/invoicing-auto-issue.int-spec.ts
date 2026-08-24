@@ -26,6 +26,10 @@ import {
 } from '@openlinker/core/invoicing';
 import type { Order } from '@openlinker/core/orders';
 import type { InvoiceTriggerModel } from '@openlinker/core/invoicing';
+import {
+  SALES_DOCUMENT_RULES_SERVICE_TOKEN,
+  type ISalesDocumentRulesService,
+} from '@openlinker/core/sales-documents';
 
 /** Build a clean unified Order fixture (mirrors the unit-suite shape). */
 function makeOrder(overrides: Partial<Order> = {}): Order {
@@ -57,7 +61,36 @@ function makeOrder(overrides: Partial<Order> = {}): Order {
   } as Order;
 }
 
-/** Seed an ACTIVE connection that declares the Invoicing capability + trigger model. */
+/**
+ * `makeOrder()` plus a delivery (shipping) address — the one fact the #2173
+ * order-facts mapper needs to build a non-null projection and reach the rule
+ * engine at all. Every pre-#2173 fixture in this file uses `makeOrder()`
+ * (billing address only), which keeps the rule engine out of the loop
+ * entirely — this helper is for the new rule-engine-wiring tests below.
+ */
+function makeOrderWithDelivery(country: string, overrides: Partial<Order> = {}): Order {
+  return makeOrder({
+    shippingAddress: {
+      firstName: 'Jan',
+      lastName: 'Kowalski',
+      address1: 'ul. Testowa 1',
+      city: 'Poznań',
+      postalCode: '60-001',
+      country,
+    },
+    ...overrides,
+  });
+}
+
+/**
+ * Seed an ACTIVE connection that declares the Invoicing capability + trigger
+ * model. `config.salesDocument.documentKind: 'invoice'` is what makes the
+ * connection an ELIGIBLE `resolveSalesDocumentRouting` candidate at all post-
+ * #2155/#2156 (`readSalesDocumentRouting` reads that key, not the bare
+ * capability) — without it every seeded connection has zero eligible
+ * candidates and `AutoIssueTriggerService` short-circuits to `none` before
+ * ever reaching a resolver.
+ */
 async function seedInvoicingConnection(
   harness: WorkerIntegrationTestHarness,
   triggerModel: InvoiceTriggerModel,
@@ -67,11 +100,31 @@ async function seedInvoicingConnection(
     platformType: 'subiekt',
     name: `Invoicing (${triggerModel})`,
     status: 'active',
-    adapterKey: 'subiekt.bridge.v1',
+    // The real registered adapterKey (`subiektAdapterManifest.adapterKey`) is
+    // `'subiekt.invoicing.v1'`, not `'subiekt.bridge.v1'` — the decision-7
+    // deeper capability check (#2156) resolves this key against the REAL
+    // adapter factory registry, so a wrong key here fails closed with
+    // `AdapterNotFoundException` and every positive test in this file silently
+    // enqueues zero jobs.
+    adapterKey: 'subiekt.invoicing.v1',
+    // The Subiekt bridge token is OPTIONAL and only resolved when
+    // `credentialsRef` is truthy (`SubiektAdapterFactory.createAdapters`) —
+    // `createTestConnection`'s default `'test-credentials-ref'` does not
+    // resolve against the real encrypted-credentials store, so decision-7's
+    // deeper capability check would otherwise fail on a generic lookup error.
+    // Falsy (not just non-resolvable) — `SubiektAdapterFactory.createAdapters`
+    // only resolves credentials when `credentialsRef` is truthy, and the
+    // column is NOT NULL so `''` (not `undefined`/`null`) is required here.
+    credentialsRef: '',
     // #2047: `isPrimary` resolves WHICH connection auto-issues once several are
     // eligible; a single-connection install ignores it entirely.
+    // `bridgeBaseUrl` is required for `SubiektAdapterFactory` to construct the
+    // real adapter at all (decision-7's deeper capability check resolves it) —
+    // never dialed in these tests, only used to pass config validation.
     config: {
+      bridgeBaseUrl: 'http://localhost:9999',
       invoicing: { triggerModel, ...(options.isPrimary === true ? { isPrimary: true } : {}) },
+      salesDocument: { documentKind: 'invoice' },
     },
     enabledCapabilities: ['Invoicing'],
   });
@@ -87,10 +140,14 @@ async function invoicingJobs(harness: WorkerIntegrationTestHarness) {
 describe('Invoicing Auto-Issue Integration (OL #1120)', () => {
   let harness: WorkerIntegrationTestHarness;
   let trigger: IAutoIssueTriggerService;
+  let salesDocumentRules: ISalesDocumentRulesService;
 
   beforeAll(async () => {
     harness = await getTestHarness();
     trigger = harness.get<IAutoIssueTriggerService>(AUTO_ISSUE_TRIGGER_SERVICE_TOKEN);
+    salesDocumentRules = harness.get<ISalesDocumentRulesService>(
+      SALES_DOCUMENT_RULES_SERVICE_TOKEN,
+    );
   });
 
   afterEach(async () => {
@@ -221,6 +278,68 @@ describe('Invoicing Auto-Issue Integration (OL #1120)', () => {
         makeOrder({ id: 'order-manual-primary', status: 'processing', paymentStatus: 'paid' }),
         'src-conn-1',
       );
+
+      expect(await invoicingJobs(harness)).toHaveLength(0);
+    });
+  });
+
+  // #2173: `AutoIssueTriggerService` now consults the country-agnostic rule
+  // engine (#2170) BEFORE the single-primary resolver, against the REAL
+  // Postgres-backed `SalesDocumentRulesService` (not a mock) — complementing
+  // the mocked-rule-engine unit tests in `auto-issue-trigger.service.spec.ts`.
+  // `sales_document_rules` / `sales_document_country_defaults` cascade-delete
+  // with their referenced connection (migration FK, `ON DELETE CASCADE`), so
+  // `resetTestHarness()`'s `TRUNCATE TABLE connections CASCADE` also clears
+  // them between tests — no manual cleanup needed.
+  describe('rule-engine-first routing (#2173)', () => {
+    it("an order whose country has a configured country default (no rules, no tax-id condition) routes to that default's connection/kind", async () => {
+      const connId = await seedInvoicingConnection(harness, 'auto-on-paid');
+      await salesDocumentRules.upsertCountryDefault({
+        country: 'DE',
+        documentKind: 'invoice',
+        connectionId: connId,
+      });
+
+      const order = makeOrderWithDelivery('DE', {
+        id: 'order-de-country-default',
+        paymentStatus: 'paid',
+      });
+      await trigger.onOrderTransition(order, 'src-conn-1', 'evt-1');
+
+      const jobs = await invoicingJobs(harness);
+      expect(jobs).toHaveLength(1);
+      expect(jobs[0].connectionId).toBe(connId);
+      expect(jobs[0].idempotencyKey).toBe(`invoice:${connId}:order-de-country-default`);
+    });
+
+    it('an order whose country has NO rule-engine configuration at all falls back to the exact pre-#2170 single-primary behavior', async () => {
+      // No `sales_document_rules` / `sales_document_country_defaults` row
+      // exists for 'PL' at all (only the unrelated seeded
+      // `pl-simplified-invoice-2026` threshold row, which no rule references
+      // here) — this IS what "an untouched install" means.
+      const connId = await seedInvoicingConnection(harness, 'auto-on-paid');
+      const order = makeOrderWithDelivery('PL', {
+        id: 'order-pl-legacy-fallback',
+        paymentStatus: 'paid',
+      });
+
+      await trigger.onOrderTransition(order, 'src-conn-1', 'evt-1');
+
+      const jobs = await invoicingJobs(harness);
+      expect(jobs).toHaveLength(1);
+      expect(jobs[0].connectionId).toBe(connId);
+      expect(jobs[0].idempotencyKey).toBe(`invoice:${connId}:order-pl-legacy-fallback`);
+    });
+
+    it('several eligible operator-configured connections with no primary still enqueue NOTHING when the rule engine has no configuration for the order country (#2047 regression)', async () => {
+      await seedInvoicingConnection(harness, 'auto-on-paid');
+      await seedInvoicingConnection(harness, 'auto-on-paid');
+
+      const order = makeOrderWithDelivery('PL', {
+        id: 'order-pl-ambiguous-fallback',
+        paymentStatus: 'paid',
+      });
+      await trigger.onOrderTransition(order, 'src-conn-1', 'evt-1');
 
       expect(await invoicingJobs(harness)).toHaveLength(0);
     });

@@ -17,6 +17,7 @@ import type { OfferStatusSnapshot } from '../../domain/entities/offer-status-sna
 import { OfferMappingRepositoryPort } from '../../domain/ports/offer-mapping-repository.port';
 import { OfferStatusSnapshotRepositoryPort } from '../../domain/ports/offer-status-snapshot-repository.port';
 import type { OfferPublicationStatusView } from '../../domain/types/offer-status-read.types';
+import { readValidationProblems } from '../../domain/types/offer-validation-problem.types';
 import {
   OFFER_MAPPING_REPOSITORY_TOKEN,
   OFFER_STATUS_SNAPSHOT_REPOSITORY_TOKEN,
@@ -86,6 +87,7 @@ export class OfferStatusReadService implements IOfferStatusReadService {
               internalVariantId: mapping.internalId,
               publicationStatus: null,
               validationMessages: [],
+              validationProblems: [],
               lastStatusSyncedAt: null,
             }
       );
@@ -140,6 +142,9 @@ export class OfferStatusReadService implements IOfferStatusReadService {
       internalVariantId: snapshot.internalVariantId,
       publicationStatus: snapshot.publicationStatus,
       validationMessages: snapshot.statusDetails?.validationMessages ?? [],
+      // Guarded read rather than a cast (#2231): `statusDetails` is unconstrained
+      // jsonb, and these values reach a render path.
+      validationProblems: [...readValidationProblems(snapshot.statusDetails)],
       lastStatusSyncedAt: snapshot.lastStatusSyncedAt,
     };
   }

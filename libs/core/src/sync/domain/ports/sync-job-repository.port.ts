@@ -74,6 +74,37 @@ export interface SyncJobRepositoryPort {
   findAndLockDueJobs(limit: number, workerId: string): Promise<SyncJob[]>;
 
   /**
+   * Find and lock due jobs restricted to one concurrency lane's job types
+   * (ADR-050, #2278).
+   *
+   * Same transactional FOR UPDATE SKIP LOCKED shape and the same in-lane
+   * ordering (`ORDER BY "nextRunAt" ASC`) as {@link findAndLockDueJobs}; the
+   * restriction axes are additive. Lane membership is the CALLER's knowledge —
+   * the authoritative jobType→lane mapping lives at handler registration in
+   * the worker, so this method takes the lane's job types verbatim rather
+   * than a lane name.
+   *
+   * `excludedScopes` lists scopes (today: connection ids — see
+   * `resolveJobScope`) already at their per-scope cap; their rows stay
+   * `queued` for a later tick instead of being locked and released back
+   * (claim-side exclusion avoids churn). An empty/absent list adds no SQL arm.
+   * Note the exclusion is pre-claim only: one claim can still return several
+   * jobs of a single scope, and the runner trims that intra-batch surplus.
+   *
+   * @param input.jobTypes - The lane's job types (from the handler registry)
+   * @param input.limit - Maximum number of jobs to lock (the lane's free slots)
+   * @param input.workerId - Worker instance ID that will lock the jobs
+   * @param input.excludedScopes - Scopes at their per-scope cap, skipped in the claim
+   * @returns Array of locked sync job domain entities
+   */
+  findAndLockDueJobsForLane(input: {
+    jobTypes: JobType[];
+    limit: number;
+    workerId: string;
+    excludedScopes?: string[];
+  }): Promise<SyncJob[]>;
+
+  /**
    * Mark job as succeeded and record its business outcome.
    *
    * The outcome captures whether the underlying business operation

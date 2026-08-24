@@ -41,6 +41,7 @@ import {
   SalesDocumentAttentionReasonValues,
   isSalesDocumentGateBlockReason,
   isSalesDocumentUnresolvedReason,
+  isTaxRateEra,
 } from '@openlinker/core/sales-documents';
 import type { PriceTaxTreatment } from '../../../domain/types/order.types';
 import type { OrderFxIntent, OrderFxStamp } from '../../../domain/types/order-fx.types';
@@ -215,6 +216,17 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       );
     }
 
+    if (filters.taxRateConflict !== undefined) {
+      // #2254 — its own axis, ANDed with the others exactly like
+      // `salesDocumentBlocked`: "issued AND the rates disagree" is the shape
+      // this filter exists to find, and it is invisible in every other view.
+      qb.andWhere(
+        filters.taxRateConflict
+          ? OrderRecordRepository.HAS_TAX_RATE_CONFLICT
+          : `NOT (${OrderRecordRepository.HAS_TAX_RATE_CONFLICT})`,
+      );
+    }
+
     this.applySort(qb, filters.sort, filters.dir);
 
     const [entities, total] = await qb.getManyAndCount();
@@ -269,6 +281,21 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       .addSelect(
         `COUNT(*) FILTER (WHERE ${OrderRecordRepository.IS_SALES_DOCUMENT_BLOCKED})`,
         'sales_document_blocked'
+      )
+      // #2254 — its own count, so it is never inside `sales_document_blocked`.
+      // The two populations overlap freely: an order can be both blocked and in
+      // conflict, and printing one number twice is what the separate field
+      // avoids.
+      .addSelect(
+        `COUNT(*) FILTER (WHERE ${OrderRecordRepository.HAS_TAX_RATE_CONFLICT})`,
+        'tax_rate_conflict'
+      )
+      // #2254 — the oldest still-held order, so the chip label can carry an age
+      // rather than a bare count. MIN over the held population only; NULL when
+      // nothing is held, which the caller renders as no age clause at all.
+      .addSelect(
+        `MIN(rec."salesDocumentBlockedAt") FILTER (WHERE ${OrderRecordRepository.IS_SALES_DOCUMENT_BLOCKED})`,
+        'sales_document_blocked_oldest_at'
       );
 
     if (filters.sourceConnectionId) {
@@ -294,6 +321,8 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       synced: string;
       awaiting_dispatch: string;
       sales_document_blocked: string;
+      tax_rate_conflict: string;
+      sales_document_blocked_oldest_at: Date | null;
     }>();
 
     return {
@@ -304,6 +333,8 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       synced: Number(raw?.synced ?? 0),
       awaitingDispatch: Number(raw?.awaiting_dispatch ?? 0),
       salesDocumentBlocked: Number(raw?.sales_document_blocked ?? 0),
+      taxRateConflict: Number(raw?.tax_rate_conflict ?? 0),
+      salesDocumentBlockedOldestAt: raw?.sales_document_blocked_oldest_at ?? null,
     };
   }
 
@@ -585,6 +616,20 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    * the IN-list replaced it. Coalescing to the empty string (never a valid reason)
    * keeps both directions two-valued.
    */
+  /**
+   * A line where the shop and the channel named DIFFERENT rates (#2254).
+   *
+   * `taxRateChannel` is written on a line only when the two disagreed, so its
+   * mere presence is the conflict - no comparison is needed here, and none is
+   * possible in SQL against a jsonb array without a lateral join.
+   *
+   * Deliberately NOT part of the block predicate: a conflict does not stop the
+   * invoice, so folding it in would both double-count it inside
+   * `salesDocumentBlocked` and route its badge through a resolver that
+   * suppresses itself whenever an invoice exists (epic F1).
+   */
+  private static readonly HAS_TAX_RATE_CONFLICT = `jsonb_path_exists(rec."orderSnapshot", '$.items[*].taxRateChannel')`;
+
   private static readonly IS_SALES_DOCUMENT_BLOCKED = `COALESCE(rec."salesDocumentBlockReason", '') IN (${SalesDocumentAttentionReasonValues.map(
     (reason) => `'${reason}'`,
   ).join(', ')})`;
@@ -935,11 +980,33 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     // `IS DISTINCT FROM` is NULL-safe, so this is exact for the clear case too, and
     // it keeps the `@UpdateDateColumn` bump off the overwhelmingly common
     // `null -> null` path without giving up last-write-wins.
+    // The two instants (#2248 / #2245 F4) are derived from the TRANSITION, in the
+    // same statement, because they are facts about when the reason column changed
+    // and only this UPDATE knows both the old and the new value. Computing them
+    // caller-side would need a read first, which is exactly the race the no-op
+    // guard below exists to avoid.
+    //
+    // `blockedAt` is stamped only on none -> blocked, so it survives a change of
+    // reason and keeps measuring how long the order has actually been held. A
+    // reason that changes (manual, then missing-tax-rate) is the same episode from
+    // the operator's point of view; restamping would reset an age they are
+    // watching. `releasedAt` is stamped on blocked -> none and cleared whenever a
+    // block starts, so the pair always describes the CURRENT episode rather than
+    // an arbitrary mix of two.
     await this.repository.query(
       `UPDATE "order_records"
           SET "salesDocumentBlockReason" = $1,
               "salesDocumentUnresolvedReason" = $2,
               "salesDocumentBlockDetail" = $3,
+              "salesDocumentBlockedAt" = CASE
+                WHEN $1 IS NOT NULL AND "salesDocumentBlockReason" IS NULL THEN now()
+                ELSE "salesDocumentBlockedAt"
+              END,
+              "salesDocumentBlockReleasedAt" = CASE
+                WHEN $1 IS NULL AND "salesDocumentBlockReason" IS NOT NULL THEN now()
+                WHEN $1 IS NOT NULL THEN NULL
+                ELSE "salesDocumentBlockReleasedAt"
+              END,
               "updatedAt" = now()
         WHERE "internalOrderId" = $4
           AND ("salesDocumentBlockReason" IS DISTINCT FROM $1
@@ -1359,7 +1426,14 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       entity.exchangeRateId ?? null,
       entity.fxRule ?? null,
       entity.fxStampedAt ?? null,
-      entity.fxIntendedCurrency ?? null
+      entity.fxIntendedCurrency ?? null,
+      entity.salesDocumentBlockedAt ?? null,
+      entity.salesDocumentBlockReleasedAt ?? null,
+      // Coerced through the guard rather than cast, for the same reason the two
+      // reason columns above are: the column is a plain `varchar`, and a value
+      // this build does not recognise must read as "no era" - i.e. the tax-rate
+      // guard applies - rather than silently exempting the order from it.
+      isTaxRateEra(entity.taxRateEra) ? entity.taxRateEra : null
     );
   }
 
@@ -1463,6 +1537,12 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     entity.unitPrice = item.unitPrice;
     entity.sourceConnectionId = item.sourceConnectionId;
     entity.placedAt = item.placedAt;
+    // #2250 — transcribed verbatim from the snapshot line. This writer owns the
+    // whole row (delete-then-reinsert per order), so there is no second writer
+    // for these three to race with.
+    entity.taxRate = item.taxRate;
+    entity.taxSource = item.taxSource;
+    entity.taxRateReadAt = item.taxRateReadAt;
     return entity;
   }
 }

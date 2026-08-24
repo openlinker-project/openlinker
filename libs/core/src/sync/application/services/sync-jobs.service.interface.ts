@@ -44,6 +44,22 @@ export interface ISyncJobsService {
   requeueDeadByIdempotencyKey(idempotencyKey: string): Promise<boolean>;
 
   /**
+   * Requeue every job left `running` past the lock timeout — the fleet-level
+   * recovery sweep for a worker that died holding jobs (#2279's
+   * `StuckJobRecoveryService`, extracted from `SyncJobRunner` for the
+   * `maintenance` role).
+   *
+   * Idempotent across replicas by construction: the repository applies a
+   * single conditional UPDATE keyed on a stale `lockedAt`, so two maintenance
+   * processes sweeping concurrently cannot double-requeue a job.
+   *
+   * @param timeoutMinutes - Age of `lockedAt` past which a running job is
+   *   considered abandoned
+   * @returns how many jobs were requeued
+   */
+  requeueStuckJobs(timeoutMinutes: number): Promise<number>;
+
+  /**
    * Find the most recently succeeded job for a connection + job type,
    * ordered by completion time (`updatedAt`) — the cross-context read seam
    * for "when did this connection last successfully run job X" (#1982,
@@ -65,4 +81,23 @@ export interface ISyncJobsService {
    * injected directly by a sibling context.
    */
   findEnabledPollTask(platformType: string, jobType: JobType): SchedulerTaskConfig | null;
+
+  /**
+   * Find the registered scheduler task for a job type, but only when it is
+   * currently *enabled* — the same runtime enablement semantics as
+   * `findEnabledPollTask`, without the `platformType` filter (#2258).
+   *
+   * Intended for CAPABILITY-scoped tasks (registered with a `connectionFilter`
+   * and no `platformType` — e.g. the master delta/reconcile sweeps), which
+   * `findEnabledPollTask` can never match. The registry permits multiple
+   * tasks per job type; this method returns the FIRST enabled match, so
+   * callers looking up a per-platform job type should use
+   * `findEnabledPollTask` instead.
+   *
+   * Process caveat: the scheduler-task registry is populated only where
+   * `SchedulerService` runs (the API process). In a process without a
+   * scheduler — the worker — the registry is empty and this method silently
+   * returns null; do not read "null" as "disabled" outside the API process.
+   */
+  findEnabledTaskByJobType(jobType: JobType): SchedulerTaskConfig | null;
 }
