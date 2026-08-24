@@ -59,6 +59,11 @@ function buildQuery(filters?: OrderFilters, pagination?: OrderPagination): strin
   if (filters?.salesDocumentBlocked !== undefined) {
     params.set('salesDocumentBlocked', String(filters.salesDocumentBlocked));
   }
+  // #2306 — boolean, same `!== undefined` guard as above: `false` ("exclude
+  // cancelled orders") is a real predicate the dispatch-risk page depends on.
+  if (filters?.cancelled !== undefined) {
+    params.set('cancelled', String(filters.cancelled));
+  }
   if (pagination?.limit !== undefined) params.set('limit', String(pagination.limit));
   if (pagination?.offset !== undefined) params.set('offset', String(pagination.offset));
   const qs = params.toString();
@@ -71,6 +76,11 @@ function buildSummaryQuery(filters?: OrderHealthSummaryFilters): string {
   if (filters?.customerId) params.set('customerId', filters.customerId);
   if (filters?.createdFrom) params.set('createdFrom', filters.createdFrom);
   if (filters?.createdTo) params.set('createdTo', filters.createdTo);
+  // #2306 — only `GET /orders/sla-summary` honours this; `status-summary`
+  // ignores an unknown extra param, and no caller passes it there.
+  if (filters?.cancelled !== undefined) {
+    params.set('cancelled', String(filters.cancelled));
+  }
   const qs = params.toString();
   return qs.length > 0 ? `?${qs}` : '';
 }

@@ -254,6 +254,47 @@ describe('Orders Read API Integration', () => {
           response.body.none,
       ).toBe(response.body.total);
     });
+
+    // #2306 — a cancelled order that never shipped still satisfies the
+    // repository's NOT_SHIPPED guard, so its past deadline counts as `overdue`
+    // unless the caller scopes it out. The dispatch-risk surface passes
+    // `cancelled=false` to BOTH reads, so the two must agree under that scope —
+    // asserted here rather than left to inspection, because a textual merge
+    // keeping only one of the two clauses breaks exactly that agreement.
+    it('should count a cancelled, past-deadline, unshipped order as overdue only when unscoped', async () => {
+      const http = harness.getHttp();
+      const dataSource = harness.getDataSource();
+      const token = await loginAsAdmin(http, dataSource);
+
+      const pastDeadline = new Date(Date.now() - 60_000);
+      await createTestOrderRecord(dataSource, { dispatchByAt: pastDeadline });
+      await createTestOrderRecord(dataSource, {
+        dispatchByAt: pastDeadline,
+        cancelledAt: new Date(),
+      });
+
+      const unscoped = await http
+        .get('/v1/orders/sla-summary')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+      expect(unscoped.body.total).toBe(2);
+      expect(unscoped.body.overdue).toBe(2);
+
+      const excludingCancelled = await http
+        .get('/v1/orders/sla-summary?cancelled=false')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+      expect(excludingCancelled.body.total).toBe(1);
+      expect(excludingCancelled.body.overdue).toBe(1);
+
+      // The rows the risk list renders must match the count above.
+      const rows = await http
+        .get('/v1/orders?slaState=overdue&cancelled=false')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+      expect(rows.body.total).toBe(excludingCancelled.body.overdue);
+      expect(rows.body.items[0].cancelledAt).toBeNull();
+    });
   });
 
   describe('GET /orders/:internalOrderId', () => {

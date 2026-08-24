@@ -158,6 +158,23 @@ export class ListOrdersQueryDto {
   @IsBoolean()
   salesDocumentBlocked?: boolean;
 
+  @ApiPropertyOptional({
+    type: Boolean,
+    description:
+      'Cancellation filter (#1984, exposed on this route by #2306): true keeps only cancelled ' +
+      'orders, false excludes them, omitted does not filter. Maps directly to ' +
+      '`cancelledAt IS [NOT] NULL` — the repository already honoured this field, it simply had ' +
+      'no query surface. The dispatch-risk page passes false so the rows it lists match the ' +
+      'bucket counts GET /orders/sla-summary returns under the same scope.',
+  })
+  @IsOptional()
+  // Same string-literal mapping + pass-through-to-400 posture as
+  // `salesDocumentBlocked` above; see that comment for why a stray value must not
+  // collapse to `undefined`.
+  @Transform(({ value }): unknown => (value === 'true' ? true : value === 'false' ? false : value))
+  @IsBoolean()
+  cancelled?: boolean;
+
   @ApiPropertyOptional({ default: 0, minimum: 0, description: 'Number of items to skip' })
   @IsOptional()
   @Type(() => Number)
