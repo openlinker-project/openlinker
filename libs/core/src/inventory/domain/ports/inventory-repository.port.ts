@@ -14,7 +14,7 @@ import type {
   InventoryFilters,
   InventoryPagination,
   PaginatedInventoryItems,
-  VariantAvailability,
+  VariantStockRow,
   ProductStockAggregate,
   PruneStaleVariantsResult,
   ProvenanceScope,
@@ -148,11 +148,11 @@ export interface InventoryRepositoryPort {
    * `IAvailabilityService` reports as `PromisableQuantity.observedAt`.
    *
    * @param variantIds list of internal product-variant IDs to look up
-   * @returns one VariantAvailability row per variant with inventory
+   * @returns one VariantStockRow per variant with inventory
    */
   findAvailabilityByVariantIds(
     variantIds: readonly string[]
-  ): Promise<readonly VariantAvailability[]>;
+  ): Promise<readonly VariantStockRow[]>;
 
   /**
    * Product-level stock aggregates for the given product IDs (#1720).

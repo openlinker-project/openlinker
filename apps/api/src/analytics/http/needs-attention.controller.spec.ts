@@ -17,7 +17,7 @@ describe('NeedsAttentionController', () => {
       ],
       coverageGapsTotalCount: 3,
       stockAtRisk: [
-        { variantId: 'v2', productId: 'p2', connectionId: 'conn-a', masterStock: 0, stockSafetyBuffer: 5 },
+        { variantId: 'v2', productId: 'p2', connectionId: 'conn-a', masterStock: 0, stockSafetyBuffer: 5, availableToPromise: 0, shortfall: 0 },
       ],
       stockAtRiskTotalCount: 6,
       failedSyncValue: {
@@ -34,7 +34,20 @@ describe('NeedsAttentionController', () => {
 
     expect(result.coverageGaps).toEqual(summary.coverageGaps);
     expect(result.coverageGapsTotalCount).toBe(3);
-    expect(result.stockAtRisk).toEqual(summary.stockAtRisk);
+    // The DTO is an explicit allowlist, not a pass-through. `StockAtRiskItem`
+    // gained `availableToPromise` / `shortfall` in #2323; surfacing them on the
+    // operator-facing response is a deliberate follow-up (this slice is
+    // backend-only), so the projection is asserted field-by-field rather than
+    // by whole-object equality with the domain item.
+    expect(result.stockAtRisk).toEqual(
+      summary.stockAtRisk.map((item) => ({
+        variantId: item.variantId,
+        productId: item.productId,
+        connectionId: item.connectionId,
+        masterStock: item.masterStock,
+        stockSafetyBuffer: item.stockSafetyBuffer,
+      }))
+    );
     expect(result.stockAtRiskTotalCount).toBe(6);
     expect(result.failedSyncValue).toEqual({
       count: 2,

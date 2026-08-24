@@ -109,16 +109,42 @@ export class OfferStockRestoreService implements IOfferStockRestoreService {
 
     const mappedVariantIds = [...externalOfferIdByVariant.keys()];
     const availability = await this.inventoryQuery.getAvailabilityByVariantIds(mappedVariantIds);
+    // #2323 — restore to available-to-promise, not raw master stock: this
+    // writes a live marketplace quantity, so it must be net of OL's own
+    // outstanding holds. On a Wave-1b install (empty ledger) the two numbers
+    // are identical, so no restore changes today.
+    //
+    // ORDERING (ADR-028): this read must happen AFTER the cancelled order's own
+    // reservations are released, or the cancelled order's holds are still
+    // counted and the restore under-writes by exactly the quantity being
+    // cancelled — restoring the offer to less than it should sell. The release
+    // is upstream of this call today; the pinning spec exists so a future
+    // reordering fails loudly rather than silently under-restoring.
     const targetByVariant = new Map(
-      availability.map((row) => [row.productVariantId, row.totalAvailable]),
+      availability
+        .filter((row): row is typeof row & { availableToPromise: number } =>
+          row.availableToPromise !== null,
+        )
+        .map((row) => [row.productVariantId, row.availableToPromise]),
     );
 
     const targets: OfferStockRestoreTarget[] = [];
     for (const [variantId, externalOfferId] of externalOfferIdByVariant) {
-      // Master is authoritative including 0; a variant absent from the read
-      // zero-fills via getAvailabilityByVariantIds, so default to 0 defensively.
-      const quantity = targetByVariant.get(variantId) ?? 0;
+      const quantity = targetByVariant.get(variantId);
+      // OMITTED, not zeroed, when availability is unknown. `getAvailability
+      // ByVariantIds` zero-fills every id it can answer for, so an absent entry
+      // means OL does not know — and writing 0 there would DEACTIVATE a live
+      // offer (#1689 uses exactly that primitive to pause one) on the strength
+      // of a failed read.
+      if (quantity === undefined) continue;
       targets.push({ externalOfferId, quantity });
+    }
+
+    if (targets.length === 0) {
+      this.logger.debug(
+        `Stock-restore skipped: availability unknown for every mapped variant [connectionId=${connectionId}, orderId=${internalOrderId}]`,
+      );
+      return;
     }
 
     this.logger.debug(

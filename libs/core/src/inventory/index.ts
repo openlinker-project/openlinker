@@ -60,6 +60,8 @@ export { LocationService } from './application/services/location.service';
 export {
   IAvailabilityService,
   GetPromisableQuantitiesInput,
+  ApplyPublishControlsInput,
+  PublishControlResult,
 } from './application/services/availability.service.interface';
 export { AvailabilityService } from './application/services/availability.service';
 export { EmptyReservationLedgerReader } from './infrastructure/reservations/empty-reservation-ledger.reader';
@@ -77,6 +79,7 @@ export {
   InventoryFilters,
   InventoryPagination,
   PaginatedInventoryItems,
+  VariantStockRow,
   VariantAvailability,
   ProductStockAggregate,
   PruneStaleVariantsResult,

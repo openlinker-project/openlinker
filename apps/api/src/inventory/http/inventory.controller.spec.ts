@@ -137,8 +137,8 @@ describe('InventoryController', () => {
   describe('getAvailability (#792)', () => {
     it('passes the parsed variantIds through to the service and wraps the response in items[]', async () => {
       queryService.getAvailabilityByVariantIds.mockResolvedValue([
-        { productVariantId: 'var-a', totalAvailable: 5, locationCount: 1 },
-        { productVariantId: 'var-b', totalAvailable: 0, locationCount: 0 },
+        { productVariantId: 'var-a', totalAvailable: 5, locationCount: 1, availableToPromise: 5 },
+        { productVariantId: 'var-b', totalAvailable: 0, locationCount: 0, availableToPromise: 0 },
       ]);
 
       const result = await controller.getAvailability({
@@ -148,8 +148,8 @@ describe('InventoryController', () => {
       expect(queryService.getAvailabilityByVariantIds).toHaveBeenCalledWith(['var-a', 'var-b']);
       expect(result).toEqual({
         items: [
-          { productVariantId: 'var-a', totalAvailable: 5, locationCount: 1 },
-          { productVariantId: 'var-b', totalAvailable: 0, locationCount: 0 },
+          { productVariantId: 'var-a', totalAvailable: 5, locationCount: 1, availableToPromise: 5 },
+          { productVariantId: 'var-b', totalAvailable: 0, locationCount: 0, availableToPromise: 0 },
         ],
       });
     });

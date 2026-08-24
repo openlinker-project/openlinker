@@ -75,7 +75,7 @@ Branch: `oms-programme-wave-1` (stacked off Wave-0 tip feb78054d; Wave-0 PR to m
 | #2314 | W1b-3 | ladder step (i): sourceConnectionId + OL-owned group | ☑ merged 426f6bdc4 (commit 4f77854ea; reviewed, approved; migration 1844000000000) |
 | #2315 | W1b-11 | deprecate reserve/releaseInventory in place | ☑ merged 4692d815d (commit 9f3ebd5a6; reviewed, approved; 3 files docs-only) |
 | #2317 | W1b-4 | ladder step (ii): 'legacy' sentinel backfill sweep | ☑ merged dd262a818 (commit 483a2e561; reviewed, approved; survived one transient API-403 agent death + resume; union-resolved tokens/module conflicts with #2321) |
-| #2323 | W1b-7 | rewire buffer sites onto the seam | ◐ planned (plan-2323; D1 applyPublishControls fork — audit in flight) |
+| #2323 | W1b-7 | rewire buffer sites onto the seam | ◑ implemented (D1 `applyPublishControls` + `getAppliedReserve`; buffer helpers now single-reader, gated by `no-direct-buffer-read.spec.ts` with NO exemptions; `VariantAvailability.availableToPromise` required; byte-identity int-spec over the #2321 fixture) |
 | #2319 | W1b-9 | duplicate-position detection pass | ☑ merged a2b557e4b (commit 671a050df; reviewed, approved; finding: duplicates only reachable via NULL key columns — recorded in ops doc) |
 | #2321 | W1b-6 | IAvailabilityService computed seam | ☑ merged bdcdb6711 (commit 104d37869; reviewed, approved; consumed by nobody until #2323) |
 | #2320 | W1b-5 | provenance-scoped lookup + per-source prune | ◑ implementing (ANALYSIS-2320; imports LEGACY const from #2317; Decision A typed InventoryCrossSourcePositionConflictError naming #2325; #1904 guard unchanged) |

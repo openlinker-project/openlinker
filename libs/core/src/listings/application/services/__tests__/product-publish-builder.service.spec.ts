@@ -12,6 +12,7 @@
 import { ProductPublishBuilderValidationException } from '../../../domain/exceptions/product-publish-builder-validation.exception';
 import { MasterCatalogConnectionNotConfiguredException } from '../../../domain/exceptions/master-catalog-connection-not-configured.exception';
 import { ProductPublishBuilderService } from '../product-publish-builder.service';
+import { createFakeAvailabilityService } from './fake-availability-service';
 
 const CONN = 'conn-shop-1';
 const MASTER = 'conn-master-1';
@@ -21,6 +22,9 @@ describe('ProductPublishBuilderService', () => {
   let products: { getVariant: jest.Mock; getVariantsByProductId: jest.Mock };
   let connectionPort: { get: jest.Mock };
   let integrations: { getCapabilityAdapter: jest.Mock };
+  // #2323 — the seam owns the stock safety buffer. These fixtures configure
+  // none, so the caller's quantity passes through exactly as it did pre-rewire.
+  let availabilityService: ReturnType<typeof createFakeAvailabilityService>;
   let projection: { project: jest.Mock };
   let productMaster: { getProduct: jest.Mock; getProductCategories: jest.Mock };
   let shopAdapter: { publishProduct: jest.Mock; provisionCategory?: jest.Mock };
@@ -67,6 +71,10 @@ describe('ProductPublishBuilderService', () => {
         .fn()
         .mockResolvedValue({ parameters: [{ id: 'Brand', values: ['Acme'], section: 'product' }], unmappedSourceKeys: [], unresolvedRequired: [] }),
     };
+    availabilityService = createFakeAvailabilityService(
+      (id): Promise<{ config?: Record<string, unknown> | null }> =>
+        connectionPort.get(id) as Promise<{ config?: Record<string, unknown> | null }>
+    );
     integrations = {
       getCapabilityAdapter: jest.fn((_id: string, capability: string) =>
         capability === 'ProductMaster' ? Promise.resolve(productMaster) : Promise.resolve(shopAdapter)
@@ -77,7 +85,8 @@ describe('ProductPublishBuilderService', () => {
       products as never,
       connectionPort as never,
       integrations as never,
-      projection as never
+      projection as never,
+      availabilityService as never
     );
   });
 

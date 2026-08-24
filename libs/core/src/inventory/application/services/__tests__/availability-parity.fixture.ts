@@ -18,7 +18,7 @@
  *
  * @module libs/core/src/inventory/application/services/__tests__
  */
-import type { VariantAvailability } from '../../../domain/types/inventory.types';
+import type { VariantStockRow } from '../../../domain/types/inventory.types';
 
 export interface AvailabilityParityCase {
   readonly name: string;
@@ -118,12 +118,12 @@ export const AVAILABILITY_PARITY_CASES: readonly AvailabilityParityCase[] = STOC
     )
 );
 
-/** The `VariantAvailability` row the repository would return for a case, or `null` when it has no live rows. */
+/** The `VariantStockRow` the repository would return for a case, or `null` when it has no live rows. */
 export function toVariantAvailabilityRow(
   variantId: string,
   testCase: AvailabilityParityCase,
   stockUpdatedAt: Date
-): VariantAvailability | null {
+): VariantStockRow | null {
   const live = testCase.rows.filter((r) => !r.isStale);
   if (live.length === 0) return null;
   return {

@@ -9,19 +9,31 @@
 import { InventorySyncService } from '../inventory-sync.service';
 import type { OfferManagerPort, OfferQuantityBatchUpdater } from '@openlinker/core/listings';
 import type { IIntegrationsService } from '@openlinker/core/integrations';
-import type { Connection, ConnectionConfig, ConnectionPort } from '@openlinker/core/identifier-mapping';
+import type { IAvailabilityService } from '../availability.service.interface';
 import { Logger } from '@openlinker/shared/logging';
 
 describe('InventorySyncService', () => {
   let service: InventorySyncService;
   let integrationsService: jest.Mocked<IIntegrationsService>;
-  let connectionPort: jest.Mocked<ConnectionPort>;
+  let availabilityService: jest.Mocked<IAvailabilityService>;
   let marketplace: jest.Mocked<OfferManagerPort & OfferQuantityBatchUpdater>;
 
   const connectionId = 'connection-123';
 
-  const connectionWithConfig = (config: ConnectionConfig): Connection =>
-    ({ id: connectionId, config } as unknown as Connection);
+  /** Seed the seam with the post-Control quantity a given reserve would produce. */
+  const withBuffer = (reserve: number): void => {
+    availabilityService.applyPublishControls.mockImplementation(({ quantity }) =>
+      Promise.resolve({ quantity: Math.max(0, Math.max(0, quantity) - reserve), provenance: 'computed' })
+    );
+  };
+
+  /** Seed the seam with the arm that means "OL could not resolve the Controls". */
+  const withUnknownControls = (): void => {
+    availabilityService.applyPublishControls.mockResolvedValue({
+      quantity: null,
+      provenance: 'unknown',
+    });
+  };
 
   beforeEach(() => {
     marketplace = {
@@ -37,15 +49,14 @@ describe('InventorySyncService', () => {
       listCapabilityAdapters: jest.fn(),
     } as unknown as jest.Mocked<IIntegrationsService>;
 
-    connectionPort = {
-      get: jest.fn().mockResolvedValue(connectionWithConfig({})),
-      list: jest.fn(),
-      create: jest.fn(),
-      update: jest.fn(),
-      disable: jest.fn(),
-    } as unknown as jest.Mocked<ConnectionPort>;
+    availabilityService = {
+      getPromisableQuantities: jest.fn(),
+      applyPublishControls: jest.fn(),
+      getAppliedReserve: jest.fn().mockResolvedValue(0),
+    } as unknown as jest.Mocked<IAvailabilityService>;
+    withBuffer(0);
 
-    service = new InventorySyncService(integrationsService, connectionPort);
+    service = new InventorySyncService(integrationsService, availabilityService);
   });
 
   it('uses batch API when available and multiple items provided', async () => {
@@ -264,9 +275,10 @@ describe('InventorySyncService', () => {
     });
   });
 
-  describe('stock safety buffer (#1844)', () => {
+
+  describe('publish controls — stock safety buffer (#1844, seam-owned since #2323)', () => {
     it('should pass master quantity through unchanged when the connection has no buffer (default 0)', async () => {
-      connectionPort.get.mockResolvedValue(connectionWithConfig({}));
+      withBuffer(0);
       marketplace.updateOfferQuantity.mockResolvedValue(undefined);
 
       await service.updateOfferQuantity(connectionId, { offerId: 'o1', quantity: 10 });
@@ -276,8 +288,20 @@ describe('InventorySyncService', () => {
       );
     });
 
+    it('should ask the seam for the destination connection scope', async () => {
+      withBuffer(0);
+      marketplace.updateOfferQuantity.mockResolvedValue(undefined);
+
+      await service.updateOfferQuantity(connectionId, { offerId: 'o1', quantity: 10 });
+
+      expect(availabilityService.applyPublishControls).toHaveBeenCalledWith({
+        quantity: 10,
+        scope: { kind: 'channel', connectionId },
+      });
+    });
+
     it('should subtract the per-connection reserve from the written-back quantity', async () => {
-      connectionPort.get.mockResolvedValue(connectionWithConfig({ stockSafetyBuffer: 3 }));
+      withBuffer(3);
       marketplace.updateOfferQuantity.mockResolvedValue(undefined);
 
       await service.updateOfferQuantity(connectionId, { offerId: 'o1', quantity: 10 });
@@ -288,7 +312,7 @@ describe('InventorySyncService', () => {
     });
 
     it('should floor the written-back quantity at 0 when the reserve exceeds master stock', async () => {
-      connectionPort.get.mockResolvedValue(connectionWithConfig({ stockSafetyBuffer: 5 }));
+      withBuffer(5);
       marketplace.updateOfferQuantity.mockResolvedValue(undefined);
 
       await service.updateOfferQuantity(connectionId, { offerId: 'o1', quantity: 2 });
@@ -298,38 +322,8 @@ describe('InventorySyncService', () => {
       );
     });
 
-    it('should warn (but still pass through) when the buffer is present but invalid', async () => {
-      const warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
-      connectionPort.get.mockResolvedValue(
-        connectionWithConfig({ stockSafetyBuffer: -3 as unknown as number })
-      );
-      marketplace.updateOfferQuantity.mockResolvedValue(undefined);
-
-      await service.updateOfferQuantity(connectionId, { offerId: 'o1', quantity: 10 });
-
-      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('present but invalid'));
-      // Coerces to 0 reserve => quantity passes through unchanged.
-      expect(marketplace.updateOfferQuantity).toHaveBeenCalledWith(
-        expect.objectContaining({ offerId: 'o1', quantity: 10 })
-      );
-      warnSpy.mockRestore();
-    });
-
-    it('should not warn when the buffer is absent (default 0)', async () => {
-      const warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
-      connectionPort.get.mockResolvedValue(connectionWithConfig({}));
-      marketplace.updateOfferQuantity.mockResolvedValue(undefined);
-
-      await service.updateOfferQuantity(connectionId, { offerId: 'o1', quantity: 10 });
-
-      // Scoped to the buffer warn: an item with no observation token separately warns
-      // about its unversioned idempotency key (#2285).
-      expect(warnSpy).not.toHaveBeenCalledWith(expect.stringContaining('present but invalid'));
-      warnSpy.mockRestore();
-    });
-
     it('should apply the reserve to every item in a batch update', async () => {
-      connectionPort.get.mockResolvedValue(connectionWithConfig({ stockSafetyBuffer: 2 }));
+      withBuffer(2);
       (marketplace.updateOfferQuantitiesBatch as unknown as jest.Mock).mockResolvedValueOnce({
         succeeded: ['o1', 'o2'],
         failed: [],
@@ -350,6 +344,39 @@ describe('InventorySyncService', () => {
           ],
         })
       );
+    });
+  });
+
+  describe('availability unknown (#2323)', () => {
+    it('should write nothing and fail every item when the publish controls cannot be resolved', async () => {
+      withUnknownControls();
+
+      const result = await service.updateOfferQuantities(connectionId, {
+        items: [
+          { offerId: 'o1', quantity: 10, idempotencyKey: 'k1' },
+          { offerId: 'o2', quantity: 1, idempotencyKey: 'k2' },
+        ],
+      });
+
+      expect(result.succeeded).toEqual([]);
+      expect(result.failed).toEqual([
+        expect.objectContaining({ offerId: 'o1', errorCode: 'availability_unknown' }),
+        expect.objectContaining({ offerId: 'o2', errorCode: 'availability_unknown' }),
+      ]);
+    });
+
+    it('should not reach the marketplace at all when controls are unknown', async () => {
+      withUnknownControls();
+
+      await service.updateOfferQuantities(connectionId, {
+        items: [{ offerId: 'o1', quantity: 10, idempotencyKey: 'k1' }],
+      });
+
+      // Never publish the unbuffered quantity: that drives straight through the
+      // operator's oversell cushion. Nothing is even resolved.
+      expect(integrationsService.getCapabilityAdapter).not.toHaveBeenCalled();
+      expect(marketplace.updateOfferQuantity).not.toHaveBeenCalled();
+      expect(marketplace.updateOfferQuantitiesBatch).not.toHaveBeenCalled();
     });
   });
 });

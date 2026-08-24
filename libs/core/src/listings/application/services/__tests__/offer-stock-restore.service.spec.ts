@@ -42,6 +42,8 @@ function availability(rows: Array<[string, number]>): VariantAvailability[] {
     productVariantId,
     totalAvailable,
     locationCount: 1,
+    // Wave-1b: empty ledger, so ATP mirrors master stock (#2323).
+    availableToPromise: totalAvailable,
   }));
 }
 
@@ -118,16 +120,64 @@ describe('OfferStockRestoreService', () => {
     ]);
   });
 
-  it('should default a variant absent from the master read to 0 (master authoritative)', async () => {
+  it('should restore a known zero (master authoritative including 0)', async () => {
     orderRecordService.getOrderRecord.mockResolvedValue(orderRecord([{ variantId: VARIANT_A }]));
     offerMappings.findMappingPage.mockResolvedValue({ items: [mapping(VARIANT_A, OFFER_A)], total: 1 });
-    inventoryQuery.getAvailabilityByVariantIds.mockResolvedValue([]);
+    inventoryQuery.getAvailabilityByVariantIds.mockResolvedValue(availability([[VARIANT_A, 0]]));
 
     await service.restoreStockForCancelledOrder(CONNECTION_ID, ORDER_ID);
 
     expect(restorer.restoreStockOnCancellation).toHaveBeenCalledWith([
       { externalOfferId: OFFER_A, quantity: 0 },
     ]);
+  });
+
+  it('should omit — never zero — a variant whose availability is unknown (#2323)', async () => {
+    orderRecordService.getOrderRecord.mockResolvedValue(orderRecord([{ variantId: VARIANT_A }]));
+    offerMappings.findMappingPage.mockResolvedValue({ items: [mapping(VARIANT_A, OFFER_A)], total: 1 });
+    inventoryQuery.getAvailabilityByVariantIds.mockResolvedValue([
+      {
+        productVariantId: VARIANT_A,
+        totalAvailable: 12,
+        locationCount: 1,
+        availableToPromise: null,
+      },
+    ]);
+
+    await service.restoreStockForCancelledOrder(CONNECTION_ID, ORDER_ID);
+
+    // Writing 0 here would DEACTIVATE a live offer (#1689's pause primitive) on
+    // the strength of a failed read; writing `totalAvailable` would restore
+    // stock that is already promised elsewhere. Doing nothing is the only
+    // answer that asserts nothing false.
+    expect(restorer.restoreStockOnCancellation).not.toHaveBeenCalled();
+  });
+
+  /**
+   * ADR-028 ordering, pinned (#2323).
+   *
+   * The availability read must happen AFTER the cancelled order's own
+   * reservations are released, or those holds are still counted and the
+   * restore under-writes by exactly the quantity being cancelled. Nothing in
+   * this service releases them today (the empty Wave-1b ledger makes it moot),
+   * so this pins the ordering that has to hold once it does not: the read
+   * happens after the order record is resolved, not before it.
+   */
+  it('should read availability only after resolving the cancelled order (ADR-028 ordering)', async () => {
+    const order: string[] = [];
+    orderRecordService.getOrderRecord.mockImplementation(() => {
+      order.push('order');
+      return Promise.resolve(orderRecord([{ variantId: VARIANT_A }]));
+    });
+    offerMappings.findMappingPage.mockResolvedValue({ items: [mapping(VARIANT_A, OFFER_A)], total: 1 });
+    inventoryQuery.getAvailabilityByVariantIds.mockImplementation(() => {
+      order.push('availability');
+      return Promise.resolve(availability([[VARIANT_A, 5]]));
+    });
+
+    await service.restoreStockForCancelledOrder(CONNECTION_ID, ORDER_ID);
+
+    expect(order).toEqual(['order', 'availability']);
   });
 
   it('should no-op (no order/mapping reads) when the adapter does not support OfferStockRestorer', async () => {

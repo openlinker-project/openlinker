@@ -142,16 +142,18 @@ export interface PaginatedInventoryItems {
 }
 
 /**
- * Per-variant inventory availability summed across all locations.
+ * Per-variant stock facts summed across all live positions — the REPOSITORY
+ * layer's shape.
  *
- * Returned by `InventoryRepositoryPort.findAvailabilityByVariantIds` and
- * `IInventoryQueryService.getAvailabilityByVariantIds`. The service-layer
- * call zero-fills entries for variants that have no inventory rows; the
- * repo-layer call returns only matched rows.
- *
- * Used by the bulk-wizard master-pull resolver (#792 PR 3).
+ * Returned by `InventoryRepositoryPort.findAvailabilityByVariantIds`, which
+ * returns only matched rows. It is deliberately the narrower half of
+ * {@link VariantAvailability}: the repository can sum positions, but it holds
+ * neither the reservation ledger nor the per-destination buffer, so it cannot
+ * answer available-to-promise. Splitting the two shapes (#2323) is what lets
+ * `availableToPromise` be REQUIRED on the service-layer row without asking
+ * persistence to populate a number it is in no position to know.
  */
-export interface VariantAvailability {
+export interface VariantStockRow {
   productVariantId: string;
   totalAvailable: number;
   locationCount: number;
@@ -164,14 +166,39 @@ export interface VariantAvailability {
    * position exists); the shape allows it for the service layer's zero-filled
    * entries, where "no positions" legitimately means "nothing was observed".
    * `IAvailabilityService` carries it through as `PromisableQuantity.observedAt`.
-   *
-   * **Optional, so the addition is additive in fact and not merely in name.**
-   * The repository always populates it; declaring it required would have forced
-   * edits to four unrelated listings spec files that build this shape by hand —
-   * churn a seam-only slice has no business creating, in exactly the files
-   * #2323 rewires next.
    */
   stockUpdatedAt?: Date | null;
+}
+
+/**
+ * Per-variant inventory availability summed across all locations, plus the
+ * available-to-promise answer (#2323, ADR-061).
+ *
+ * Returned by `IInventoryQueryService.getAvailabilityByVariantIds`, which
+ * zero-fills entries for variants that have no inventory rows.
+ *
+ * Used by the bulk-wizard master-pull resolver (#792 PR 3).
+ */
+export interface VariantAvailability extends VariantStockRow {
+  /**
+   * Units OpenLinker will promise for this variant in the GLOBAL scope
+   * (#2323) — `max(0, totalAvailable − Σ olReserved[published])`, with no
+   * per-destination buffer applied, because a global read has no destination
+   * whose cushion it could defensibly borrow. A publishing caller applies the
+   * channel Control downstream through
+   * `IAvailabilityService.applyPublishControls`, so nothing double-buffers.
+   *
+   * **`null` means OpenLinker does not know** (`provenance: 'unknown'` — the
+   * reservation-ledger read failed), never "zero". A publishing caller MUST
+   * suppress its write on `null` rather than fall back to `totalAvailable`:
+   * falling back publishes the un-reserved quantity, overselling by exactly
+   * the outstanding holds. A variant with no positions at all carries `0`,
+   * which is a *known* zero (see `toPromisableQuantity`).
+   *
+   * Required rather than optional so a publishing caller cannot silently keep
+   * reading `totalAvailable` while believing it honours reservations.
+   */
+  availableToPromise: number | null;
 }
 
 /**

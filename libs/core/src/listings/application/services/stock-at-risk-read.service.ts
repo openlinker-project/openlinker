@@ -2,8 +2,13 @@
  * Stock At Risk Read Service
  *
  * Computes the stock-at-risk "needs attention" aggregate (#1983): variants
- * listed on a connection whose master stock, minus that connection's
- * configured stock safety buffer (#1844), is at or below zero.
+ * listed on a connection that the connection cannot currently sell.
+ *
+ * The predicate is `availableToPromise <= 0` in the destination's `channel`
+ * scope (#2323), asked of `IAvailabilityService` rather than recomputed from
+ * master stock and a locally-read buffer. On a Wave-1b install the two agree
+ * exactly (`max(0, totalAvailable − buffer)` with an empty ledger), so no row
+ * moves; the predicate widens as intended once `published` holds exist.
  *
  * Lives in the `listings` context (not `inventory`) so it can inject the two
  * listing-mapping repository ports intra-context while reaching `inventory`
@@ -17,10 +22,12 @@
  * @implements {IStockAtRiskReadService}
  */
 import { Inject, Injectable } from '@nestjs/common';
-import { readStockSafetyBuffer } from '@openlinker/core/identifier-mapping';
+import { Logger } from '@openlinker/shared/logging';
 import { INTEGRATIONS_SERVICE_TOKEN, type IIntegrationsService } from '@openlinker/core/integrations';
 import {
+  AVAILABILITY_SERVICE_TOKEN,
   INVENTORY_QUERY_SERVICE_TOKEN,
+  type IAvailabilityService,
   type IInventoryQueryService,
 } from '@openlinker/core/inventory';
 import { OfferMappingRepositoryPort } from '../../domain/ports/offer-mapping-repository.port';
@@ -38,6 +45,8 @@ const MAX_STOCK_AT_RISK_CANDIDATES = 500;
 
 @Injectable()
 export class StockAtRiskReadService implements IStockAtRiskReadService {
+  private readonly logger = new Logger(StockAtRiskReadService.name);
+
   constructor(
     @Inject(OFFER_MAPPING_REPOSITORY_TOKEN)
     private readonly offerMappingRepository: OfferMappingRepositoryPort,
@@ -46,7 +55,9 @@ export class StockAtRiskReadService implements IStockAtRiskReadService {
     @Inject(INTEGRATIONS_SERVICE_TOKEN)
     private readonly integrationsService: IIntegrationsService,
     @Inject(INVENTORY_QUERY_SERVICE_TOKEN)
-    private readonly inventoryQueryService: IInventoryQueryService
+    private readonly inventoryQueryService: IInventoryQueryService,
+    @Inject(AVAILABILITY_SERVICE_TOKEN)
+    private readonly availabilityService: IAvailabilityService
   ) {}
 
   async findStockAtRisk(limit: number): Promise<StockAtRiskResult> {
@@ -62,7 +73,6 @@ export class StockAtRiskReadService implements IStockAtRiskReadService {
 
   private async findAtRiskForConnection(connection: {
     connectionId: string;
-    buffer: number;
   }): Promise<StockAtRiskItem[]> {
     const [offerRows, shopRows] = await Promise.all([
       this.offerMappingRepository.findRecentlyListedVariantIds({
@@ -81,38 +91,68 @@ export class StockAtRiskReadService implements IStockAtRiskReadService {
     }
     if (productIdByVariantId.size === 0) return [];
 
-    const availabilities = await this.inventoryQueryService.getAvailabilityByVariantIds([
-      ...productIdByVariantId.keys(),
+    const variantIds = [...productIdByVariantId.keys()];
+    const scope = { kind: 'channel' as const, connectionId: connection.connectionId };
+
+    const [availabilities, promisable, buffer] = await Promise.all([
+      // Still the master-stock read: `masterStock` is a display field, and it is
+      // what the shortfall is measured against.
+      this.inventoryQueryService.getAvailabilityByVariantIds(variantIds),
+      // The predicate. Channel-scoped, so the destination's own Controls are
+      // already inside the number — nothing is subtracted again below.
+      this.availabilityService.getPromisableQuantities({ variantIds, scope }),
+      // Display only (#2323): `getAppliedReserve` exists so this surface can
+      // show the cushion without reading the buffer helpers directly.
+      this.availabilityService.getAppliedReserve(scope),
     ]);
 
+    const masterStockByVariant = new Map(
+      availabilities.map((a) => [a.productVariantId, a.totalAvailable])
+    );
+
     const items: StockAtRiskItem[] = [];
-    for (const availability of availabilities) {
-      if (availability.totalAvailable - connection.buffer <= 0) {
-        items.push({
-          variantId: availability.productVariantId,
-          productId:
-            productIdByVariantId.get(availability.productVariantId) ??
-            availability.productVariantId,
-          connectionId: connection.connectionId,
-          masterStock: availability.totalAvailable,
-          stockSafetyBuffer: connection.buffer,
-        });
+    let warnedUnknown = false;
+    for (const entry of promisable) {
+      if (entry.quantity === null) {
+        // Never emit a row asserting a number OL does not have. One line per
+        // connection, not per variant: an unknown is batch-wide by contract.
+        if (!warnedUnknown) {
+          warnedUnknown = true;
+          this.logger.warn(
+            `stock_at_risk_skipped_availability_unknown connection=${connection.connectionId} ` +
+              `variants=${promisable.length} — availability could not be resolved, so these ` +
+              `variants are omitted from the at-risk aggregate rather than reported as at risk`
+          );
+        }
+        continue;
       }
+      if (entry.quantity > 0) continue;
+
+      const masterStock = masterStockByVariant.get(entry.productVariantId) ?? 0;
+      items.push({
+        variantId: entry.productVariantId,
+        productId:
+          productIdByVariantId.get(entry.productVariantId) ?? entry.productVariantId,
+        connectionId: connection.connectionId,
+        masterStock,
+        stockSafetyBuffer: buffer,
+        availableToPromise: entry.quantity,
+        shortfall: Math.max(0, masterStock - buffer - entry.quantity),
+      });
     }
     return items;
   }
 
   /**
-   * Every active connection with `OfferManager` or `ProductPublisher`
-   * enabled, carrying its configured stock safety buffer (0 when unset —
-   * per `checkRequiredToSell`'s `OUT_OF_STOCK` rule (#1842), zero master
-   * stock is unsellable regardless of buffer, so a buffer-0 connection is
-   * still included and reported "at risk" via `findAtRiskForConnection`'s
-   * `totalAvailable - buffer <= 0` check).
+   * Every active connection with `OfferManager` or `ProductPublisher` enabled.
+   *
+   * Carries no buffer of its own since #2323 — the cushion is a Control the
+   * availability seam owns, resolved per connection in
+   * `findAtRiskForConnection`. A connection with no configured buffer is still
+   * included: per `checkRequiredToSell`'s `OUT_OF_STOCK` rule (#1842), zero
+   * available-to-promise is unsellable regardless of the cushion.
    */
-  private async resolveBufferedConnections(): Promise<
-    Array<{ connectionId: string; buffer: number }>
-  > {
+  private async resolveBufferedConnections(): Promise<Array<{ connectionId: string }>> {
     const [offerManagerAdapters, productPublisherAdapters] = await Promise.all([
       this.integrationsService.listCapabilityAdapters({ capability: 'OfferManager', lazy: true }),
       this.integrationsService.listCapabilityAdapters({
@@ -121,10 +161,9 @@ export class StockAtRiskReadService implements IStockAtRiskReadService {
       }),
     ]);
 
-    const byConnectionId = new Map<string, { connectionId: string; buffer: number }>();
+    const byConnectionId = new Map<string, { connectionId: string }>();
     for (const entry of [...offerManagerAdapters, ...productPublisherAdapters]) {
-      const buffer = readStockSafetyBuffer(entry.connection.config);
-      byConnectionId.set(entry.connectionId, { connectionId: entry.connectionId, buffer });
+      byConnectionId.set(entry.connectionId, { connectionId: entry.connectionId });
     }
     return [...byConnectionId.values()];
   }
