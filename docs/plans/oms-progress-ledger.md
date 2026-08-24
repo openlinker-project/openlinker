@@ -71,9 +71,11 @@ Branch: `oms-programme-wave-1` (stacked off Wave-0 tip feb78054d; Wave-0 PR to m
 | Issue | Slug | Subject | Status |
 |---|---|---|---|
 | #2313 | W1b-1 | inventory_locations table/entity/repo | ☑ merged fbcf24b27 (commit bbe58cf1d; reviewed, approved; migration 1843000000000; port trimmed to 5 methods; synchronize-parity index names) |
-| #2316 | W1b-2 | locations CRUD API | ◐ plan in progress (depends on #2313 shapes, now on branch) |
-| #2314 | W1b-3 | ladder step (i): sourceConnectionId + OL-owned group | ◑ implementing (ANALYSIS-2314 gate-cleared; migration 1844000000000; text RULED; update-set RULED) |
-| #2315 | W1b-11 | deprecate reserve/releaseInventory in place | ◑ implementing (ANALYSIS-2315; 3 files, docs-only; @deprecated (#2315, ADR-061) style) |
+| #2316 | W1b-2 | locations CRUD API | ◑ implementing (ANALYSIS-2316 gate-cleared; base 745e74fc9) |
+| #2314 | W1b-3 | ladder step (i): sourceConnectionId + OL-owned group | ☑ merged 426f6bdc4 (commit 4f77854ea; reviewed, approved; migration 1844000000000) |
+| #2315 | W1b-11 | deprecate reserve/releaseInventory in place | ☑ merged 4692d815d (commit 9f3ebd5a6; reviewed, approved; 3 files docs-only) |
+| #2317 | W1b-4 | ladder step (ii): 'legacy' sentinel backfill sweep | ◐ plan in progress |
+| #2319 | W1b-9 | duplicate-position detection pass | ◐ plan in progress |
 ### Wave 1c (epic #2337) — gated on #2289 fork decided; Wave 1a
 ### Wave 2 (epic #2389) — gated per its epic body; §8 Q1 = YES (decision 2 above)
 
