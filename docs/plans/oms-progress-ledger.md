@@ -41,7 +41,7 @@ Legend: ☐ not started · ◐ plan in review · ◑ implementing · ◕ diff in
 | Issue | Subject | Status |
 |---|---|---|
 | #2282 | persistOrder source-attribution immutability | ☑ merged b91088599 (commit a5f59a370; reviewed, approved) |
-| #2283 | ingestion line-diff + `amended` fact | ◑ implementing (READY; ANALYSIS-2283; scope = internal fact only, no union member; migration 1841000000000) |
+| #2283 | ingestion line-diff + `amended` fact | ☑ merged 45aa9351c (reviewed, approved; migration 1841000000000) |
 | #2284 | `WHERE cancelledAt IS NULL` provisioning predicate | ☑ merged 4587122c9 (commit 99ab27462; reviewed, approved) |
 | #2285 | `inv:{hash}` idempotency-key swap | ☑ merged 641e07bad (commit 97dfdf1d0; reviewed, approved) |
 | #2286 | `never`-default exhaustiveness (5 consumers) | ☑ merged 9b48585b4 (commit 885b63f9e; reviewed, approved) |
@@ -67,7 +67,7 @@ Branch: `oms-programme-wave-1` (stacked off Wave-0 tip feb78054d; Wave-0 PR to m
 | #2308 | W1a-8 | walker generalisation + ADR pointers | ☑ merged c2278a549 (commit 3423580e5; 3-injection proof; root barrel resolved by removal; epic ADR table resolved to live issues) |
 
 **WAVE 1a COMPLETE (8/8).** Boundary sweep clean (knob gate 6/7, three-way mirrors green, walker 22/22, FE coexistence verified); ledger was the only divergence.
-### Wave 1b (epic #2326) — gated on #2285 merged; W1a-8 (#2308)
+### Wave 1b (epic #2326) — OPEN (gates ✓: #2285, #2308). #2313 (`inventory_locations` persistence): ◑ implementing (plan-2313 + ANALYSIS-2313 gate-cleared; migration **1843000000000**)
 ### Wave 1c (epic #2337) — gated on #2289 fork decided; Wave 1a
 ### Wave 2 (epic #2389) — gated per its epic body; §8 Q1 = YES (decision 2 above)
 
@@ -76,7 +76,8 @@ Branch: `oms-programme-wave-1` (stacked off Wave-0 tip feb78054d; Wave-0 PR to m
 ## Wave boundaries completed
 
 - **Wave 0** (2026-08-23): 8 issues + #2298 on `oms-programme-waves-0-2`; boundary review applied at feb78054d; **PR #2438 to main OPEN, awaiting owner merge**.
-- **Wave 1a** (2026-08-24): 8 issues on `oms-programme-wave-1` (feb78054d..c2278a549, 70 files +6419/−97); boundary sweep clean; wave PR opens next (based on the Wave-0 branch until #2438 merges).
+- **Wave 1a** (2026-08-24): 8 issues on `oms-programme-wave-1` (feb78054d..c2278a549, 70 files +6419/−97); boundary sweep clean. Formal `/pr-review` of **PR #2441** ran (0 BLOCKING, 7 IMPORTANT, 16 SUGGESTIONS; adjudication in scratchpad `prreview-2441-adjudication.md`); ALL 23 applied in fix commit `b1adacdc9`, merged `debcb59a7`. #2441 based on `oms-programme-waves-0-2`; retarget to main after #2438 merges, then merge `origin/main` forward.
+- **Migration re-timestamp** (2026-08-24): main gained `1840000000000-reset-fx-stamp…` after the branches were cut, tying with #2287's packed migration. Renamed `1840→1842` on BOTH lineages (wave-1 via `b1adacdc9`; waves-0-2 via `53cbf6f74`, byte-identical → stacked merge stays clean). Consequence: **1842 is consumed — #2313 uses 1843000000000**, next free 1844.
 
 ## Resume instructions
 
