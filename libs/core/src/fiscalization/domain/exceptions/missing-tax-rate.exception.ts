@@ -19,7 +19,10 @@
  * one: the two contexts do not import each other, the messages name different
  * remedies, and a fiscal receipt is not an invoice.
  *
- * PII-clean: an order id, a count and an internal product reference.
+ * No buyer data, but not PII-clean (#1985 review): `firstLineName` is
+ * `sku ?? name` off the missing line, and a SKU is not always set, so the
+ * fallback is a shop-authored product name (e.g. "Printed apron") - free
+ * text, not an internal identifier.
  *
  * @module libs/core/src/fiscalization/domain/exceptions
  */

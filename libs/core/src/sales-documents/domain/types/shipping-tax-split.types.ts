@@ -149,6 +149,14 @@ export function splitShippingAcrossRates(
   const remainder = round(round(shipping) - allocated);
   if (remainder !== 0) {
     // `rates` is sorted by descending gross, so index 0 is the largest part.
+    // The remainder is bounded by rounding error (at most half a minor unit
+    // per part, so under one minor unit total for any realistic rate count),
+    // and the largest part's own amount is proportional to the largest gross
+    // share of a positive `shipping` - in every reachable case that dwarfs a
+    // sub-minor-unit remainder, so this cannot drive it negative. It could in
+    // principle if `shipping` were near-zero and split across many distinct
+    // rates each carrying a near-equal, tiny gross share (#1985 review) -
+    // unreached today because callers gate this function on a real charge.
     parts[0].amount = round(parts[0].amount + remainder);
   }
 

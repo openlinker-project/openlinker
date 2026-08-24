@@ -12,8 +12,12 @@
  * in OpenLinker - which is why the message names the product rather than
  * offering an override.
  *
- * PII-clean by construction: it carries the order id, a count and an internal
- * product id. No buyer data, no line names.
+ * No buyer data. It carries the order id, a count, and - per
+ * {@link MissingTaxRateFinding.firstLineRef} - either an internal product id
+ * (the auto-issue gate) or a shop-authored line label (the write-path guard,
+ * whose command carries no product id). That label is free text, not
+ * classic PII, but it is not PII-clean either (#1985 review) - see the field's
+ * own doc for why the name stayed `firstLineRef` rather than `firstProductId`.
  *
  * @module libs/core/src/invoicing/domain/exceptions
  */

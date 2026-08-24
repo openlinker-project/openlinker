@@ -19,6 +19,16 @@
  *
  * @module libs/core/src/invoicing/domain/types
  * @see {@link InvoiceLine.taxRate}
+ *
+ * COUPLED NOTATION RULE (#1985 review): `orders`'s
+ * `net-sales-tax-rate.types.ts#resolveNetSalesTaxRate` deliberately mirrors
+ * this file's vocabulary rather than importing it (see that file's own
+ * docblock for why), but the fractional-notation bound - a numeric value
+ * strictly between 0 and 1 rejected as unresolvable - is the one piece that
+ * MUST move together across both files. If this file ever starts accepting
+ * fractional notation (e.g. `'0.23'`), the net-sales resolver must be updated
+ * in the same commit, or orders using that notation would silently and
+ * permanently drop out of every net-sales figure with no error anywhere.
  */
 
 /**

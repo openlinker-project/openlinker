@@ -23,4 +23,9 @@ describe('formatTaxRate', () => {
       expect(formatTaxRate(code)).toBe(code);
     }
   });
+
+  it('does not glue a % onto a malformed multi-dot string (#1985 review)', () => {
+    expect(formatTaxRate('1.2.3')).toBe('1.2.3');
+    expect(formatTaxRate('.')).toBe('.');
+  });
 });

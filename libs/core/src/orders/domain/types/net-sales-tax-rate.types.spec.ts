@@ -43,6 +43,15 @@ describe('netSalesRateFractionSql', () => {
     expect(sql).toContain('li."taxRate" IN (\'zw\',\'np\',\'oo\')');
     expect(sql).toContain('li."taxRate"::numeric / 100');
   });
+
+  it('rejects fractional notation the same way resolveNetSalesTaxRate does (#1985 review)', () => {
+    // JS twin: resolveNetSalesTaxRate('0.23') must resolve to 'unknown', never a
+    // guessed rate. The SQL twin must exclude the same open interval (0, 1) or
+    // the two aggregates disagree on a historical fractional-notation row.
+    expect(resolveNetSalesTaxRate('0.23')).toEqual({ kind: 'unknown' });
+    const sql = netSalesRateFractionSql('li."taxRate"');
+    expect(sql).toContain('NOT (li."taxRate"::numeric > 0 AND li."taxRate"::numeric < 1)');
+  });
 });
 
 describe('deriveNetLineAmount', () => {

@@ -23,6 +23,14 @@
  *
  * @module libs/core/src/orders/domain/types
  * @see docs/architecture/adrs/063-per-line-tax-rate-resolution-and-provenance.md
+ *
+ * COUPLED NOTATION RULE (#1985 review): the fractional-notation bound below
+ * (numeric, strictly between 0 and 1, rejected as `unknown`) must track
+ * invoicing's `tax-rate-notation.types.ts#isFractionalTaxRateNotation`
+ * exactly, even though this file deliberately does not import it. If
+ * invoicing ever widens that bound (e.g. to accept `'0.23'`), this resolver
+ * must be updated in the same commit - otherwise it silently keeps excluding
+ * orders that invoicing would now accept, with no error surfaced anywhere.
  */
 import type { PriceTaxTreatment } from './order.types';
 
@@ -127,6 +135,7 @@ export function netSalesRateFractionSql(taxRateColumnRef: string): string {
       WHEN ${taxRateColumnRef} IN (${exemptList}) THEN 0
       WHEN ${taxRateColumnRef} ~ '^[0-9]+(\\.[0-9]+)?$'
            AND ${taxRateColumnRef}::numeric >= 0 AND ${taxRateColumnRef}::numeric <= 100
+           AND NOT (${taxRateColumnRef}::numeric > 0 AND ${taxRateColumnRef}::numeric < 1)
       THEN (${taxRateColumnRef}::numeric / 100)
       ELSE NULL
     END`;

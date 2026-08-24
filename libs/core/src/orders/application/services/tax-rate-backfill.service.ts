@@ -19,7 +19,12 @@
  * @implements {ITaxRateBackfillService}
  */
 import { Inject, Injectable } from '@nestjs/common';
-import { IProductsService, PRODUCTS_SERVICE_TOKEN, taxRateState } from '@openlinker/core/products';
+import {
+  IProductsService,
+  PRODUCTS_SERVICE_TOKEN,
+  taxRateState,
+  type StoredTaxRate,
+} from '@openlinker/core/products';
 import { Logger } from '@openlinker/shared/logging';
 import type {
   ITaxRateBackfillService,
@@ -74,7 +79,7 @@ export class TaxRateBackfillService implements ITaxRateBackfillService {
     productId: string;
     variantId: string | null;
   }): Promise<boolean> {
-    let rate;
+    let rate: StoredTaxRate;
     try {
       rate = await this.productsService.getEffectiveTaxRate(
         line.productId,

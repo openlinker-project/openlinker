@@ -917,5 +917,5 @@ function normalizeWcRate(raw: string | undefined): string | null {
   const parsed = Number.parseFloat(raw);
   if (!Number.isFinite(parsed)) return null;
   const rounded = Math.round(parsed * 100) / 100;
-  return Number.isInteger(rounded) ? String(rounded) : String(rounded);
+  return String(rounded);
 }

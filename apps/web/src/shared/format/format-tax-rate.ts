@@ -17,5 +17,5 @@
  */
 
 export function formatTaxRate(code: string): string {
-  return /^[0-9.]+$/.test(code) ? `${code}%` : code;
+  return /^\d+(\.\d+)?$/.test(code) ? `${code}%` : code;
 }
