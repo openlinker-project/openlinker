@@ -19,11 +19,17 @@
  *     definition, never as a second qualifier row. Its GMV qualifier
  *     (`headline.revenue`, real, FX-stamped, in `headline.currency`) renders
  *     normally, unchanged.
- *   - Orders, Order value (AOV + median), Units: fully real. `headline.
- *     orderCount` only counts FX-stamped orders (ADR-040) — `totalOrders`
- *     below adds back `headline.unconvertedCount` so Orders/Avg. daily/Units
- *     per order/Cancellation rate count every placed order, while AOV/median
- *     stay on the stamped subset and disclose the gap explicitly.
+ *   - Orders, Units: fully real. `headline.orderCount` only counts
+ *     FX-stamped orders (ADR-040) — `totalOrders` below adds back `headline.
+ *     unconvertedCount` so Orders/Avg. daily/Units per order/Cancellation
+ *     rate count every placed order.
+ *   - Order value (AOV + median): renders `headline.netAverageOrderValue` /
+ *     `netMedianOrderValue` (net-sales tax-rate epic), not the gross
+ *     `averageOrderValue`/`medianOrderValue` — same VAT-exclusive basis as
+ *     the Revenue card's headline figure, so a reader comparing "Revenue"
+ *     against "Order value" isn't silently comparing net against gross.
+ *     Both stay on the FX-stamped subset and disclose that gap explicitly,
+ *     same as before.
  *   - Returns & refunds: no return/refund entity exists anywhere in the
  *     orders domain — fully planned.
  *   - Cancellations: `cancelledCount`/`cancelledValue` are real fields —
@@ -236,7 +242,7 @@ export function AnalyticsKpiStrip({ connections, filters }: AnalyticsKpiStripPro
   const orderValueCurrenciesMatch =
     headline.currency !== null && headline.currency === previousHeadline?.currency;
   const orderValueDelta = orderValueCurrenciesMatch
-    ? buildDelta(headline.averageOrderValue, previousHeadline?.averageOrderValue, 'higher-is-better')
+    ? buildDelta(headline.netAverageOrderValue, previousHeadline?.netAverageOrderValue, 'higher-is-better')
     : null;
   const orderValueDeltaGapReason =
     !orderValueCurrenciesMatch && previousHeadline
@@ -315,12 +321,12 @@ export function AnalyticsKpiStrip({ connections, filters }: AnalyticsKpiStripPro
         definitions={[
           {
             term: 'Average order value (AOV)',
-            text: 'Revenue divided by the number of FX-stamped orders it was computed from — not by every placed order.',
+            text: 'Net sales divided by the number of FX-stamped, net-eligible orders it was computed from — not by every placed order.',
             caveat: stampedGapVisible ? STAMPED_GAP : undefined,
           },
           {
             term: 'Median order value',
-            text: 'The middle value of every FX-stamped order in the range — less skewed by a handful of very large or very small orders than the average.',
+            text: 'The middle net-sales value of every FX-stamped, net-eligible order in the range — less skewed by a handful of very large or very small orders than the average.',
           },
         ]}
         metric={
@@ -332,8 +338,8 @@ export function AnalyticsKpiStrip({ connections, filters }: AnalyticsKpiStripPro
             'Average'
           )
         }
-        value={formatAmount(headline.averageOrderValue, currency)}
-        qualifiers={[{ label: 'Median', value: formatAmount(headline.medianOrderValue, currency) }]}
+        value={formatAmount(headline.netAverageOrderValue, currency)}
+        qualifiers={[{ label: 'Median', value: formatAmount(headline.netMedianOrderValue, currency) }]}
         delta={orderValueDelta}
         deltaGapReason={orderValueDeltaGapReason}
       />

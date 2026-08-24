@@ -79,8 +79,8 @@ describe('AnalyticsKpiStrip', () => {
     renderWithProviders(<AnalyticsKpiStrip filters={FILTERS} connections={[]} />, { apiClient });
 
     expect(await screen.findByText('40')).toBeInTheDocument();
-    expect(screen.getByText('PLN 120.00')).toBeInTheDocument();
-    expect(screen.getByText('PLN 100.00')).toBeInTheDocument();
+    expect(screen.getByText('PLN 105.00')).toBeInTheDocument();
+    expect(screen.getByText('PLN 90.00')).toBeInTheDocument();
     expect(screen.getByText('60')).toBeInTheDocument();
     expect(screen.getByText('PLN 200.00')).toBeInTheDocument();
   });
@@ -146,6 +146,8 @@ describe('AnalyticsKpiStrip', () => {
             orderCount: 0,
             averageOrderValue: 0,
             medianOrderValue: 17.5,
+            netAverageOrderValue: 0,
+            netMedianOrderValue: 17.5,
             unconvertedCount: 3,
             unconvertedValue: 450,
             unconvertedCurrency: 'EUR',

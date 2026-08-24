@@ -92,7 +92,7 @@ describe('ChannelSalesTable', () => {
     // Appears twice: the channel's own row, plus the Total · PLN row it
     // fully composes (a single-contributor Total is intentionally still
     // emitted, matching groupChannelTotalsByCurrency's documented rule).
-    expect(screen.getAllByText('PLN 3,000.00')).toHaveLength(2);
+    expect(screen.getAllByText('PLN 2,700.00')).toHaveLength(2);
     expect(screen.getAllByText('62.5%')).toHaveLength(2);
   });
 
@@ -111,7 +111,7 @@ describe('ChannelSalesTable', () => {
     expect(await screen.findByText('Partial history')).toBeInTheDocument();
   });
 
-  it('should flag a channel carrying not-yet-FX-stamped orders and fall back to its unconverted evidence', async () => {
+  it('should flag a channel carrying not-yet-FX-stamped orders and render an empty Net sales figure (no unconverted fallback for net)', async () => {
     const apiClient = createMockApiClient({
       analytics: {
         getSales: vi.fn().mockResolvedValue(
@@ -137,7 +137,12 @@ describe('ChannelSalesTable', () => {
     renderWithProviders(<ChannelSalesTable filters={FILTERS} />, { apiClient });
 
     expect(await screen.findByText('Awaiting FX stamp')).toBeInTheDocument();
-    expect(screen.getByText('€500.00')).toBeInTheDocument();
+    // Net sales has no unconverted counterpart to fall back to — an
+    // unconverted amount is a GROSS figure and would misrepresent itself as
+    // net — so the cell renders the plain empty state instead.
+    expect(
+      screen.getByLabelText('No Net sales figure can be given for this channel in range')
+    ).toBeInTheDocument();
     // Share is 0 (nothing FX-stamped), still rendered as a real percentage, not an empty state.
     expect(screen.getByText('0.0%')).toBeInTheDocument();
     // No "Total · X" row at all — nothing has a stamped currency yet — and
@@ -167,7 +172,9 @@ describe('ChannelSalesTable', () => {
     renderWithProviders(<ChannelSalesTable filters={FILTERS} />, { apiClient });
 
     expect(await screen.findByText('Total · PLN')).toBeInTheDocument();
-    expect(screen.getByText('PLN 5,000.00')).toBeInTheDocument();
+    // Both channels keep their default netRevenue (2700 each) — the
+    // overrides above only touch revenue/orderCount/revenueShare.
+    expect(screen.getByText('PLN 5,400.00')).toBeInTheDocument();
   });
 
   it('should NOT render a separate unconverted-currency Total row — only a footnote count', async () => {
@@ -230,7 +237,7 @@ describe('ChannelSalesTable', () => {
     expect(screen.getByText('Total · PLN')).toBeInTheDocument();
   });
 
-  it('should render an empty revenue value for a channel with no revenue and no unconverted evidence', async () => {
+  it('should render an empty Net sales value for a channel with no FX-stamped revenue', async () => {
     const apiClient = createMockApiClient({
       analytics: {
         getSales: vi.fn().mockResolvedValue(
@@ -248,7 +255,7 @@ describe('ChannelSalesTable', () => {
 
     expect(await screen.findByRole('link', { name: 'Erli' })).toBeInTheDocument();
     expect(
-      screen.getByLabelText('No non-cancelled revenue recorded for this channel in range')
+      screen.getByLabelText('No Net sales figure can be given for this channel in range')
     ).toBeInTheDocument();
   });
 });
