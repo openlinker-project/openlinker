@@ -139,7 +139,18 @@ export class MasterInventorySyncService implements IMasterInventorySyncService {
     );
     const pruneResult: PruneStaleVariantsResult = pruneSkipped
       ? { markedCount: 0, variantIds: [] }
-      : await this.inventoryService.pruneStaleVariants(internalProductId, currentVariantIds);
+      : await this.inventoryService.pruneStaleVariants(
+          internalProductId,
+          currentVariantIds,
+          // INVARIANT (#2320): `includeUnattributedProvenance: true` claims rows
+          // no connection owns yet, and that is safe here ONLY because this line
+          // is unreachable unless `isPruneBlockedByRivalMaster` returned false —
+          // i.e. this connection is the sole InventoryMaster claiming the id, so
+          // an unattributed row can only be its own. A refactor that moves this
+          // prune above the guard, or drops the guard before ADR-058 step (iii),
+          // makes the claim unsafe and must flip this flag to false.
+          { sourceConnectionId: connectionId, includeUnattributedProvenance: true }
+        );
 
     // A successful-but-empty master response that stales every currently-known
     // row is the one case where this side's unconditional prune diverges from
@@ -227,7 +238,13 @@ export class MasterInventorySyncService implements IMasterInventorySyncService {
       };
     }
 
-    const pruneResult = await this.inventoryService.pruneStaleVariants(internalProductId, []);
+    // Same invariant as the partial-prune path above: the rival guard has
+    // already returned false, so unattributed rows can only be this
+    // connection's (#2320).
+    const pruneResult = await this.inventoryService.pruneStaleVariants(internalProductId, [], {
+      sourceConnectionId: connectionId,
+      includeUnattributedProvenance: true,
+    });
 
     // ...and then hand the SAME confirmed deletion to the products context,
     // which owns `product_variants.isStale` (#2222).
@@ -278,6 +295,14 @@ export class MasterInventorySyncService implements IMasterInventorySyncService {
   /**
    * Connection-ownership guard for the staleness prune (#1904).
    *
+   * **Unchanged by #2320, and deliberately so.** The prune is now
+   * provenance-scoped, which narrows what it sweeps but does not make this
+   * guard redundant: the scope claims unattributed rows (NULL / `'legacy'`),
+   * and only this guard establishes that such a row can safely be assumed to be
+   * ours. The column also still flaps where two masters claim one id (#2314),
+   * so it is not yet authoritative. The guard retires with ADR-058 step (iii)
+   * (#2325), not before — `pruneSkipped` reporting is likewise untouched.
+   *
    * `inventory_items` carries no connection provenance, so a prune keyed on the
    * internal product id sweeps every row of that id regardless of which
    * connection wrote it. That is safe only while ONE connection with
@@ -321,10 +346,15 @@ export class MasterInventorySyncService implements IMasterInventorySyncService {
   ): Promise<InventoryItemDomainEntity> {
     const variantId = await this.resolveVariantId(inventory, productId);
 
+    // Provenance-scoped (#2320) and load-bearing: `existing?.id` below is
+    // reused as the row identity, so an unscoped lookup would hand this
+    // connection a RIVAL connection's row id and the upsert would clobber it —
+    // the exact defect ADR-058 decision (4) closes.
     const existing = await this.inventoryService.getInventory(
       productId,
       variantId,
-      inventory.locationId ?? null
+      inventory.locationId ?? null,
+      connectionId
     );
 
     const inventoryItemId = existing?.id ?? randomUUID();

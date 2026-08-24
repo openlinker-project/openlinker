@@ -267,7 +267,10 @@ describe('MasterInventorySyncService', () => {
       expect(inventoryService.getInventory).toHaveBeenCalledWith(
         internalProductId,
         'var-1',
-        'loc-1'
+        'loc-1',
+        // The provenance axis (#2320): without it, `existing?.id` could reuse a
+        // rival connection's row id and the upsert would clobber it.
+        connectionId
       );
       expect(inventoryService.setInventory).toHaveBeenCalledWith(
         expect.objectContaining({ id: 'preserved-inv-id' })
@@ -290,7 +293,12 @@ describe('MasterInventorySyncService', () => {
 
       await service.syncFromMasterByExternalId(connectionId, externalId);
 
-      expect(inventoryService.getInventory).toHaveBeenCalledWith(internalProductId, null, null);
+      expect(inventoryService.getInventory).toHaveBeenCalledWith(
+        internalProductId,
+        null,
+        null,
+        connectionId
+      );
       expect(inventoryService.setInventory).toHaveBeenCalledWith(
         expect.objectContaining({
           id: expect.stringMatching(
@@ -374,7 +382,10 @@ describe('MasterInventorySyncService', () => {
       const result = await service.syncFromMasterByExternalId(connectionId, externalId);
 
       // Empty keep-set ⇒ mark every known inventory row for the product stale.
-      expect(inventoryService.pruneStaleVariants).toHaveBeenCalledWith(internalProductId, []);
+      expect(inventoryService.pruneStaleVariants).toHaveBeenCalledWith(internalProductId, [], {
+        sourceConnectionId: connectionId,
+        includeUnattributedProvenance: true,
+      });
       expect(inventoryService.setInventory).not.toHaveBeenCalled();
 
       // THE REGRESSION THIS TEST EXISTS FOR (#2222). Staling `inventory_items`
@@ -530,10 +541,14 @@ describe('MasterInventorySyncService', () => {
       await service.syncFromMasterByExternalId(connectionId, externalId);
 
       expect(inventoryService.pruneStaleVariants).toHaveBeenCalledTimes(1);
-      expect(inventoryService.pruneStaleVariants).toHaveBeenCalledWith(internalProductId, [
-        'ol_variant_a',
-        'ol_variant_b',
-      ]);
+      expect(inventoryService.pruneStaleVariants).toHaveBeenCalledWith(
+        internalProductId,
+        ['ol_variant_a', 'ol_variant_b'],
+        {
+        sourceConnectionId: connectionId,
+        includeUnattributedProvenance: true,
+      }
+      );
     });
 
     it('prunes with an empty keep set when the master returns no inventory (product fully removed)', async () => {
@@ -542,7 +557,10 @@ describe('MasterInventorySyncService', () => {
       await service.syncFromMasterByExternalId(connectionId, externalId);
 
       expect(inventoryService.setInventory).not.toHaveBeenCalled();
-      expect(inventoryService.pruneStaleVariants).toHaveBeenCalledWith(internalProductId, []);
+      expect(inventoryService.pruneStaleVariants).toHaveBeenCalledWith(internalProductId, [], {
+        sourceConnectionId: connectionId,
+        includeUnattributedProvenance: true,
+      });
     });
 
     it('prunes with the resolved variant key (null) when the row keys product-level', async () => {
@@ -560,7 +578,14 @@ describe('MasterInventorySyncService', () => {
 
       await service.syncFromMasterByExternalId(connectionId, externalId);
 
-      expect(inventoryService.pruneStaleVariants).toHaveBeenCalledWith(internalProductId, [null]);
+      expect(inventoryService.pruneStaleVariants).toHaveBeenCalledWith(
+        internalProductId,
+        [null],
+        {
+        sourceConnectionId: connectionId,
+        includeUnattributedProvenance: true,
+      }
+      );
     });
 
     it('publishes master.variant.stale when the prune flags variant rows (#1599)', async () => {
@@ -767,7 +792,8 @@ describe('MasterInventorySyncService', () => {
       expect(inventoryService.getInventory).toHaveBeenCalledWith(
         internalProductId,
         'ol_variant_a',
-        null
+        null,
+        connectionId
       );
       expect(inventoryService.setInventory).toHaveBeenCalledWith(
         expect.objectContaining({ productVariantId: 'ol_variant_a' })

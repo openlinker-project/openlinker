@@ -187,11 +187,50 @@ describe('InventoryService', () => {
 
     const result = await service.pruneStaleVariants('product-id', ['ol_variant_a', null]);
 
-    expect(inventoryRepository.markStaleExceptVariants).toHaveBeenCalledWith('product-id', [
+    // `undefined` is forwarded verbatim rather than normalised: the repository
+    // distinguishes "no provenance scope" from every real value (#2320).
+    expect(inventoryRepository.markStaleExceptVariants).toHaveBeenCalledWith(
+      'product-id',
+      ['ol_variant_a', null],
+      undefined
+    );
+    expect(result).toEqual({ markedCount: 3, variantIds: ['ol_variant_b'] });
+  });
+
+  it('forwards a provenance scope to the repository prune verbatim (#2320)', async () => {
+    (inventoryRepository.markStaleExceptVariants as jest.Mock).mockResolvedValue({
+      markedCount: 0,
+      variantIds: [],
+    });
+    const scope = { sourceConnectionId: 'conn-alpha', includeUnattributedProvenance: true };
+
+    await service.pruneStaleVariants('product-id', [], scope);
+
+    expect(inventoryRepository.markStaleExceptVariants).toHaveBeenCalledWith(
+      'product-id',
+      [],
+      scope
+    );
+  });
+
+  it('forwards the getInventory provenance axis verbatim, undefined included (#2320)', async () => {
+    (inventoryRepository.findByProductAndVariant as jest.Mock).mockResolvedValue(null);
+
+    await service.getInventory('product-id', 'ol_variant_a', null, 'conn-alpha');
+    expect(inventoryRepository.findByProductAndVariant).toHaveBeenLastCalledWith(
+      'product-id',
       'ol_variant_a',
       null,
-    ]);
-    expect(result).toEqual({ markedCount: 3, variantIds: ['ol_variant_b'] });
+      'conn-alpha'
+    );
+
+    await service.getInventory('product-id', 'ol_variant_a', null);
+    expect(inventoryRepository.findByProductAndVariant).toHaveBeenLastCalledWith(
+      'product-id',
+      'ol_variant_a',
+      null,
+      undefined
+    );
   });
 
   it('uses persisted updatedAt as write event token', async () => {

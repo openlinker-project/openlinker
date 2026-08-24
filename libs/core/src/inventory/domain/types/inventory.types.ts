@@ -78,6 +78,51 @@ export interface InventoryFilters {
   productId?: string;
   productVariantId?: string;
   locationId?: string;
+  /**
+   * Restrict the read to positions attributed to one connection (#2320).
+   *
+   * Repository-level only — no request DTO exposes it, and
+   * `IInventoryQueryService` passes the filter object through opaquely. It
+   * inherits this method's existing truthy-check semantics: an empty string is
+   * indistinguishable from an absent filter and both mean "no provenance axis".
+   * That is deliberate rather than a gap — there is no caller wanting to select
+   * unattributed rows through this seam, and `''` is not a legal provenance
+   * value, so no reachable query loses meaning.
+   *
+   * Strict equality, never the claim predicate {@link ProvenanceScope}
+   * describes: a filtered READ that silently returned another connection's
+   * unattributed rows would misreport whose stock the operator is looking at.
+   */
+  sourceConnectionId?: string;
+}
+
+/**
+ * The provenance axis a write-path lookup or a staleness prune is scoped to
+ * (#2320, ADR-058 decision (4)).
+ *
+ * An OBJECT rather than a bare string because the two fields are meaningless
+ * apart: `sourceConnectionId` names the connection, and
+ * `includeUnattributedProvenance` says whether rows nobody has claimed yet
+ * count as this connection's. #2322 imports this same type, so keep the shape
+ * and the field names stable.
+ *
+ * **NULL and `'legacy'` are ONE class — "unattributed".** A row that predates
+ * the provenance column carries NULL until the #2317 sweep stamps
+ * {@link LEGACY_SOURCE_CONNECTION_ID} on it; both mean the same thing ("no
+ * connection has claimed this position"), so treating them as one class is what
+ * makes the sweep's progress irrelevant to correctness here. Neither value is a
+ * wildcard: the class is claimable, not matchable-by-everyone, and a row bearing
+ * a RIVAL connection's id is never in it.
+ */
+export interface ProvenanceScope {
+  /** The claiming connection. Matched with strict equality. */
+  sourceConnectionId: string;
+  /**
+   * When true, rows whose provenance is NULL or `'legacy'` are treated as
+   * belonging to `sourceConnectionId` — the claim rule above. When false, only
+   * rows already stamped with that exact id match.
+   */
+  includeUnattributedProvenance: boolean;
 }
 
 /**

@@ -14,7 +14,7 @@ import { Injectable, Inject } from '@nestjs/common';
 import type { IInventoryService } from './inventory.service.interface';
 import { InventoryRepositoryPort } from '../../domain/ports/inventory-repository.port';
 import type { InventoryItem } from '../../domain/entities/inventory-item.entity';
-import type { PruneStaleVariantsResult } from '../../domain/types/inventory.types';
+import type { PruneStaleVariantsResult, ProvenanceScope } from '../../domain/types/inventory.types';
 import { Logger } from '@openlinker/shared/logging';
 import { INVENTORY_REPOSITORY_TOKEN } from '../../inventory.tokens';
 import { SyncJobQueuePort, SYNC_JOB_QUEUE_TOKEN } from '@openlinker/core/sync';
@@ -95,29 +95,36 @@ export class InventoryService implements IInventoryService {
   async getInventory(
     productId: string,
     productVariantId?: string | null,
-    locationId?: string | null
+    locationId?: string | null,
+    sourceConnectionId?: string | null
   ): Promise<InventoryItem | null> {
     this.logger.debug(
-      `Getting inventory for product: ${productId}, variant: ${productVariantId ?? 'base'}, location: ${locationId ?? 'default'}`
+      `Getting inventory for product: ${productId}, variant: ${productVariantId ?? 'base'}, location: ${locationId ?? 'default'}, source: ${sourceConnectionId ?? 'unscoped'}`
     );
+    // Forwarded verbatim, `undefined` included: the repository distinguishes
+    // "no provenance axis" from every real value, and normalising here would
+    // erase that distinction one layer above the code that relies on it.
     return this.inventoryRepository.findByProductAndVariant(
       productId,
       productVariantId,
-      locationId
+      locationId,
+      sourceConnectionId
     );
   }
 
   async pruneStaleVariants(
     productId: string,
-    currentVariantIds: readonly (string | null)[]
+    currentVariantIds: readonly (string | null)[],
+    scope?: ProvenanceScope
   ): Promise<PruneStaleVariantsResult> {
     const result = await this.inventoryRepository.markStaleExceptVariants(
       productId,
-      currentVariantIds
+      currentVariantIds,
+      scope
     );
     if (result.markedCount > 0) {
       this.logger.warn(
-        `inventory_prune_marked_stale product=${productId} rows=${result.markedCount} variants=${result.variantIds.length} kept=${currentVariantIds.length}`
+        `inventory_prune_marked_stale product=${productId} rows=${result.markedCount} variants=${result.variantIds.length} kept=${currentVariantIds.length} source=${scope?.sourceConnectionId ?? 'unscoped'}`
       );
     }
     return result;
