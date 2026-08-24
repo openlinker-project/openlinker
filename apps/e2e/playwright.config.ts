@@ -47,6 +47,9 @@
  *                      `retries: 0` — the propagation/pruning specs mutate
  *                      real PrestaShop stock (propagation restores it in
  *                      `afterAll`; pruning is opt-in and irreversible).
+ *   - `order-ingestion` - per-order ingestion behaviour against a real source
+ *                      (#2277 currency). Mutating: synthesizes PrestaShop
+ *                      orders through the webservice; `retries: 0`.
  *   - `orders`       - orders list/detail UI coverage (#2148). Read-only:
  *                      every spec narrows with URL params that cannot match and
  *                      asserts on copy and URL state. `retries: 1`.
@@ -233,6 +236,20 @@ export default defineConfig({
       name: 'orders',
       testMatch: /orders\/.*\.spec\.ts/,
       retries: 1,
+      dependencies: ['setup'],
+      use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
+    },
+    {
+      // Order-ingestion behaviour asserted against a real source (#2277 — the
+      // per-order currency). MUTATING: each spec synthesizes PrestaShop orders
+      // through the webservice (customer, address, cart, order), so `retries: 0`
+      // — a silent retry would create a second order and assert against the
+      // wrong one. Deliberately NOT folded into `orders` above, whose
+      // strictly-read-only contract that project's comment states; its regex
+      // does not reach this directory.
+      name: 'order-ingestion',
+      testMatch: /order-ingestion\/.*\.spec\.ts/,
+      retries: 0,
       dependencies: ['setup'],
       use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
     },
