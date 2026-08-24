@@ -103,6 +103,7 @@ function variantToDto(variant: ProductVariant): ProductVariantResponseDto {
     taxRate: variant.taxRate ?? null,
     taxRateCountry: variant.taxRateCountry ?? null,
     taxRateReadAt: variant.taxRateReadAt?.toISOString() ?? null,
+    taxRateUnknownReason: variant.taxRateUnknownReason ?? null,
     createdAt: variant.createdAt!.toISOString(),
     updatedAt: variant.updatedAt!.toISOString(),
   };
@@ -436,6 +437,7 @@ export class ProductsController {
       taxRate: product.taxRate ?? null,
       taxRateCountry: product.taxRateCountry ?? null,
       taxRateReadAt: product.taxRateReadAt?.toISOString() ?? null,
+      taxRateUnknownReason: product.taxRateUnknownReason ?? null,
       createdAt: product.createdAt!.toISOString(),
       updatedAt: product.updatedAt!.toISOString(),
     };

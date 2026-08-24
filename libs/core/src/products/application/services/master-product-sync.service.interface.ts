@@ -37,6 +37,33 @@ export interface MasterProductSyncResult {
    * leaves `pruneSkipped` false.
    */
   pruneSkippedReason: PruneSkippedReason;
+  /**
+   * Variants whose EFFECTIVE tax rate the shop just changed (#2263, ADR-063).
+   *
+   * Reported rather than acted on: propagating a rate onto a live offer is an
+   * outbound marketplace write, and enqueueing it is the worker handler's job,
+   * not this service's - the `products` context has no edge to `sync` and
+   * gaining one to schedule an offer write would invert the direction the
+   * offer-side already owns.
+   *
+   * Three properties matter to a consumer. It reports a **change**, never a
+   * read: the entries come from the journal's own change-only rule (#2250), so
+   * a twenty-minute sweep over an unchanged catalogue reports an empty array
+   * and enqueues nothing. It is **per variant and already effective**, because
+   * offers are variant-keyed and a product-level change reaches every variant
+   * that carries no override of its own (`effectiveTaxRate`). And it names only
+   * a **known** rate - a rate the shop cleared, or never had, is never
+   * propagated, because "the shop does not know" is not a value a channel can
+   * be told.
+   */
+  taxRateChanges: readonly MasterTaxRateChange[];
+}
+
+/** One variant whose effective rate moved, as the sync observed it (#2263). */
+export interface MasterTaxRateChange {
+  variantId: string;
+  /** The neutral percent-as-string code now in force. Never null - see above. */
+  taxRate: string;
 }
 
 /**

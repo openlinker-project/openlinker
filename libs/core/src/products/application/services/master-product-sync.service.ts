@@ -24,7 +24,7 @@ import { ITaxRateJournalService } from './tax-rate-journal.service.interface';
 import { IProductsService } from './products.service.interface';
 import type { ProductMasterPort } from '../../domain/ports/product-master.port';
 import { isProductTaxRateReader } from '../../domain/ports/capabilities/product-tax-rate-reader.capability';
-import type { TaxRateResolution } from '../../domain/types/tax-rate.types';
+import type { TaxRateResolution, TaxRateUnknownReason } from '../../domain/types/tax-rate.types';
 import { isPersistableTaxRateRead } from '../../domain/types/tax-rate.types';
 import type { Product } from '../../domain/entities/product.entity';
 import type { ProductVariant } from '../../domain/entities/product-variant.entity';
@@ -40,6 +40,7 @@ import { normalizeBarcode, normalizeToEan13 } from '../../domain/utils/barcode-n
 import type {
   IMasterProductSyncService,
   MasterProductSyncResult,
+  MasterTaxRateChange,
   PruneSkippedReason,
 } from './master-product-sync.service.interface';
 
@@ -137,7 +138,13 @@ export class MasterProductSyncService implements IMasterProductSyncService {
     // strictly after the upserts: a rate read that fails must not cost the
     // catalogue its product body, and leaving the row untouched keeps it in the
     // honest `never checked` state rather than recording a false `no rate`.
-    await this.syncTaxRate(productAdapter, internalProductId, variants, connectionId, correlationId);
+    const taxRateChanges = await this.syncTaxRate(
+      productAdapter,
+      internalProductId,
+      variants,
+      connectionId,
+      correlationId
+    );
 
     // Soft-mark any previously-known variant absent from this master response as
     // stale (#1599 — the products-context counterpart of the inventory prune).
@@ -198,6 +205,12 @@ export class MasterProductSyncService implements IMasterProductSyncService {
       masterDeleted: false,
       pruneSkipped,
       pruneSkippedReason,
+      // #2263: a variant marked stale by the prune above is deliberately NOT
+      // filtered out here. Its offers are being paused by the #1689 chain, and
+      // dropping the rate would leave a paused offer carrying a rate the shop
+      // no longer states - the propagation is idempotent and harmless, whereas
+      // a silently-skipped rate is invisible.
+      taxRateChanges,
     };
   }
 
@@ -240,22 +253,34 @@ export class MasterProductSyncService implements IMasterProductSyncService {
     variants: readonly ProductVariant[],
     connectionId: string,
     correlationId: string
-  ): Promise<void> {
-    if (!isProductTaxRateReader(adapter)) return;
+  ): Promise<MasterTaxRateChange[]> {
+    if (!isProductTaxRateReader(adapter)) return [];
 
     const readAt = new Date();
+    // #2263: what the shop's own override was BEFORE this read, per variant, so
+    // a product-level change can be resolved to the variants it actually
+    // reaches. Seeded from the upserted entities and updated as the loop below
+    // stores or clears each override.
+    const ownVariantRate = new Map<string, string | null>(
+      variants.map((variant) => [variant.id, variant.taxRate ?? null])
+    );
+    let productRateChangedTo: string | null = null;
+    const variantChanges: MasterTaxRateChange[] = [];
     try {
       const productRate = await adapter.readProductTaxRate({ productId: internalProductId });
       if (isPersistableTaxRateRead(productRate)) {
         const storedProductRate = this.toStoredTaxRate(productRate, readAt);
         await this.productsService.recordProductTaxRate(internalProductId, storedProductRate);
-        await this.journalObservation(
+        const productRateChanged = await this.journalObservation(
           internalProductId,
           null,
           connectionId,
           storedProductRate.code,
           readAt
         );
+        if (productRateChanged && storedProductRate.code !== null) {
+          productRateChangedTo = storedProductRate.code;
+        }
       } else {
         this.logUnpersistedRead(productRate, connectionId, internalProductId, null, correlationId);
       }
@@ -264,7 +289,9 @@ export class MasterProductSyncService implements IMasterProductSyncService {
       // one (PrestaShop) every variant would echo the product's rate, and
       // storing that as an override would turn a shared value into N copies
       // that drift the moment the product's changes.
-      if (adapter.readsTaxRatePerVariant?.() !== true) return;
+      if (adapter.readsTaxRatePerVariant?.() !== true) {
+        return this.resolveTaxRateChanges(productRateChangedTo, ownVariantRate, variantChanges);
+      }
 
       for (const variant of variants) {
         // Per variant, so an unreadable or failing variant leaves its own row
@@ -284,6 +311,10 @@ export class MasterProductSyncService implements IMasterProductSyncService {
           // at the stale rate, with no journal entry to show it had happened.
           if (variantRate.kind === 'inherited') {
             await this.productsService.clearVariantTaxRate(variant.id);
+            // The variant now defers to the product, so the product's rate is
+            // what reaches its offers - which `resolveTaxRateChanges` derives
+            // from this map rather than from the value the variant used to hold.
+            ownVariantRate.set(variant.id, null);
             // Journalled like the other two states: the transition off an
             // override is precisely the change an operator needs to see, and
             // the journal is change-only, so a variant that never had one
@@ -311,13 +342,17 @@ export class MasterProductSyncService implements IMasterProductSyncService {
 
           const storedVariantRate = this.toStoredTaxRate(variantRate, readAt);
           await this.productsService.recordVariantTaxRate(variant.id, storedVariantRate);
-          await this.journalObservation(
+          const variantRateChanged = await this.journalObservation(
             internalProductId,
             variant.id,
             connectionId,
             storedVariantRate.code,
             readAt
           );
+          ownVariantRate.set(variant.id, storedVariantRate.code);
+          if (variantRateChanged && storedVariantRate.code !== null) {
+            variantChanges.push({ variantId: variant.id, taxRate: storedVariantRate.code });
+          }
         } catch (error) {
           this.logger.warn(
             `[master-sync] variant tax-rate read failed, leaving the override unchanged: ` +
@@ -334,6 +369,36 @@ export class MasterProductSyncService implements IMasterProductSyncService {
           `correlationId=${correlationId} error=${(error as Error).message}`
       );
     }
+    return this.resolveTaxRateChanges(productRateChangedTo, ownVariantRate, variantChanges);
+  }
+
+  /**
+   * Turn what changed at the shop into the per-variant rates that reach offers
+   * (#2263).
+   *
+   * A product-level change reaches every variant with no override of its own -
+   * the `effectiveTaxRate` rule, applied here rather than restated at the
+   * consumer, so the propagation and an invoice line can never disagree about
+   * which value a variant carries. A variant that changed on its own account
+   * wins over the product's, and is never listed twice.
+   */
+  private resolveTaxRateChanges(
+    productRateChangedTo: string | null,
+    ownVariantRate: ReadonlyMap<string, string | null>,
+    variantChanges: readonly MasterTaxRateChange[]
+  ): MasterTaxRateChange[] {
+    const changes = [...variantChanges];
+    if (productRateChangedTo === null) return changes;
+
+    const alreadyNamed = new Set(changes.map((change) => change.variantId));
+    for (const [variantId, ownRate] of ownVariantRate) {
+      // An own rate the shop actually states masks the product's; an absent or
+      // blank one is "no opinion", matching `taxRateState`'s own reading.
+      const hasOwnRate = ownRate !== null && ownRate.trim() !== '';
+      if (hasOwnRate || alreadyNamed.has(variantId)) continue;
+      changes.push({ variantId, taxRate: productRateChangedTo });
+    }
+    return changes;
   }
 
   /**
@@ -372,21 +437,28 @@ export class MasterProductSyncService implements IMasterProductSyncService {
     connectionId: string,
     taxRate: string | null,
     observedAt: Date
-  ): Promise<void> {
+  ): Promise<boolean> {
     try {
-      await this.taxRateJournal.record({
+      // #2263: the journal's change-only rule is also the propagation trigger.
+      // An entry means the shop's answer MOVED, so reusing it is what keeps a
+      // twenty-minute sweep over an unchanged catalogue from enqueueing an
+      // offer write per product per tick.
+      return (await this.taxRateJournal.record({
         productId,
         variantId,
         connectionId,
         origin: 'shop',
         taxRate,
         observedAt,
-      });
+      })) !== null;
     } catch (error) {
       this.logger.warn(
         `[master-sync] tax-rate journal write failed (provenance only, catalogue is unaffected): ` +
           `productId=${productId} variantId=${variantId ?? 'none'} error=${(error as Error).message}`
       );
+      // A lost provenance row must not become a propagated rate: the trigger is
+      // "the journal recorded a change", and this run cannot say that it did.
+      return false;
     }
   }
 
@@ -394,11 +466,18 @@ export class MasterProductSyncService implements IMasterProductSyncService {
   private toStoredTaxRate(
     resolution: TaxRateResolution,
     readAt: Date
-  ): { code: string | null; countryIso2: string | null; readAt: Date } {
+  ): { code: string | null; countryIso2: string | null; readAt: Date; unknownReason: TaxRateUnknownReason | null } {
     return resolution.kind === 'resolved'
-      ? { code: resolution.code, countryIso2: resolution.countryIso2, readAt }
-      : { code: null, countryIso2: null, readAt };
-
+      ? { code: resolution.code, countryIso2: resolution.countryIso2, readAt, unknownReason: null }
+      // #2264: `resolution.kind === 'unknown'` is the only other persistable
+      // arm here (`inherited` clears the row through a different path), so
+      // `resolution.reason` is always in scope.
+      : {
+          code: null,
+          countryIso2: null,
+          readAt,
+          unknownReason: resolution.kind === 'unknown' ? resolution.reason : null,
+        };
   }
 
   /**
@@ -422,6 +501,9 @@ export class MasterProductSyncService implements IMasterProductSyncService {
         masterDeleted: true,
         pruneSkipped: true,
         pruneSkippedReason: 'rival',
+        // A deletion read no rate, so it changed none. Never an empty array
+        // standing in for "we did not look" - this path did not look.
+        taxRateChanges: [],
       };
     }
 
@@ -444,6 +526,7 @@ export class MasterProductSyncService implements IMasterProductSyncService {
       masterDeleted: true,
       pruneSkipped: false,
       pruneSkippedReason: null,
+      taxRateChanges: [],
     };
   }
 

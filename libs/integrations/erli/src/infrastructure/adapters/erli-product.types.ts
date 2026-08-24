@@ -331,6 +331,15 @@ export interface ErliProductResource {
   sku?: string;
   /** Price in INTEGER minor units (grosze). PLN-only — no currency field. */
   price?: number;
+  /**
+   * Erli-side tax value (#2262). Read DEFENSIVELY, like the other read-side
+   * fields here: the create/patch body sets it, and the sandbox swagger does
+   * not promise it back on `GET /products/{externalId}`. Its only consumer is
+   * the frozen-field report - when the seller froze the rate, this is the value
+   * they froze - so an absent field degrades to "the destination could not name
+   * it", never to a claim about the rate.
+   */
+  taxRate?: string;
   stock?: number;
   images?: ErliProductImage[];
   /** Category breadcrumb paths; the first path's leaf is the offer's category. */

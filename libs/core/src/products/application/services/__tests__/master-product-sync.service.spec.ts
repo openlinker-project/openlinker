@@ -142,6 +142,7 @@ describe('MasterProductSyncService', () => {
       masterDeleted: false,
       pruneSkipped: false,
       pruneSkippedReason: null,
+      taxRateChanges: [],
     });
   });
 
@@ -202,6 +203,7 @@ describe('MasterProductSyncService', () => {
       // a #1904 collision from a flaky master response (#2222).
       pruneSkipped: false,
       pruneSkippedReason: 'empty-response',
+      taxRateChanges: [],
     });
   });
 
@@ -234,6 +236,7 @@ describe('MasterProductSyncService', () => {
       masterDeleted: true,
       pruneSkipped: false,
       pruneSkippedReason: null,
+      taxRateChanges: [],
     });
   });
 
@@ -282,6 +285,7 @@ describe('MasterProductSyncService', () => {
         masterDeleted: false,
         pruneSkipped: true,
         pruneSkippedReason: 'rival',
+        taxRateChanges: [],
       });
     });
 
@@ -301,6 +305,7 @@ describe('MasterProductSyncService', () => {
         masterDeleted: true,
         pruneSkipped: true,
         pruneSkippedReason: 'rival',
+        taxRateChanges: [],
       });
     });
   });
@@ -471,6 +476,115 @@ describe('MasterProductSyncService', () => {
       expect(productsService.recordProductTaxRate).toHaveBeenCalledTimes(1);
       expect(productsService.recordVariantTaxRate).not.toHaveBeenCalled();
       expect(productsService.clearVariantTaxRate).not.toHaveBeenCalled();
+    });
+  });
+
+  // #2263: what the sync REPORTS so the worker can push a changed rate onto the
+  // offers already selling under the old one. The trigger is the journal's own
+  // change-only rule, which is what keeps a twenty-minute sweep over an
+  // unchanged catalogue from enqueueing an offer write per product per tick.
+  describe('tax-rate change reporting (#2263)', () => {
+    /** The journal saying "this observation was a change". */
+    function journalRecordsAChange(): void {
+      taxRateJournal.record.mockImplementation((observation) =>
+        Promise.resolve({
+          ...observation,
+          id: 'entry-1',
+          observedAt: observation.observedAt ?? new Date(),
+          createdAt: new Date(),
+        })
+      );
+    }
+
+    function readsPerVariant(
+      answers: (input: { productId: string; variantId?: string }) => TaxRateResolution
+    ): void {
+      adapter.readsTaxRatePerVariant = jest.fn().mockReturnValue(true);
+      adapter.readProductTaxRate = jest
+        .fn()
+        .mockImplementation((input: { productId: string; variantId?: string }) =>
+          Promise.resolve(answers(input))
+        );
+    }
+
+    it('reports nothing when the journal saw no change', async () => {
+      // The default `record` mock returns null, i.e. a repeat observation.
+      readsPerVariant(() => ({ kind: 'resolved', code: '23', countryIso2: 'PL' }));
+
+      const result = await service.syncFromMasterByExternalId(connectionId, externalId);
+
+      expect(result.taxRateChanges).toEqual([]);
+    });
+
+    it("reports the variant's own changed rate", async () => {
+      journalRecordsAChange();
+      readsPerVariant((input) =>
+        input.variantId
+          ? { kind: 'resolved', code: '5', countryIso2: 'PL' }
+          : { kind: 'resolved', code: '23', countryIso2: 'PL' }
+      );
+
+      const result = await service.syncFromMasterByExternalId(connectionId, externalId);
+
+      // The variant's own rate wins and is never listed twice, even though the
+      // product's rate also changed in this run.
+      expect(result.taxRateChanges).toEqual([{ variantId: 'ol_variant_1', taxRate: '5' }]);
+    });
+
+    it("reports the product's changed rate for a variant carrying no override", async () => {
+      journalRecordsAChange();
+      readsPerVariant((input) =>
+        input.variantId
+          ? { kind: 'inherited' }
+          : { kind: 'resolved', code: '23', countryIso2: 'PL' }
+      );
+
+      const result = await service.syncFromMasterByExternalId(connectionId, externalId);
+
+      expect(result.taxRateChanges).toEqual([{ variantId: 'ol_variant_1', taxRate: '23' }]);
+    });
+
+    it("reports the product's changed rate on a product-keyed master", async () => {
+      // PrestaShop keys tax on the product and runs no variant loop at all, so
+      // every variant inherits and every one must be reported.
+      journalRecordsAChange();
+      adapter.getProductVariants.mockResolvedValue([
+        makeVariant('ol_variant_1'),
+        makeVariant('ol_variant_2'),
+      ]);
+      adapter.readsTaxRatePerVariant = jest.fn().mockReturnValue(false);
+      adapter.readProductTaxRate = jest
+        .fn()
+        .mockResolvedValue({ kind: 'resolved', code: '23', countryIso2: 'PL' });
+
+      const result = await service.syncFromMasterByExternalId(connectionId, externalId);
+
+      expect(result.taxRateChanges).toEqual([
+        { variantId: 'ol_variant_1', taxRate: '23' },
+        { variantId: 'ol_variant_2', taxRate: '23' },
+      ]);
+    });
+
+    it('never reports a rate the shop cleared or never had', async () => {
+      // "The shop does not know" is not a value a channel can be told, so a
+      // null code changes the catalogue row and propagates nothing.
+      journalRecordsAChange();
+      readsPerVariant(() => ({ kind: 'unknown', reason: 'not-configured' }));
+
+      const result = await service.syncFromMasterByExternalId(connectionId, externalId);
+
+      expect(result.taxRateChanges).toEqual([]);
+    });
+
+    it('reports nothing when the journal write itself failed', async () => {
+      // The trigger is "the journal recorded a change", and this run cannot say
+      // that it did - so it must not propagate on the strength of it.
+      taxRateJournal.record.mockRejectedValue(new Error('journal down'));
+      readsPerVariant(() => ({ kind: 'resolved', code: '23', countryIso2: 'PL' }));
+
+      const result = await service.syncFromMasterByExternalId(connectionId, externalId);
+
+      expect(result.taxRateChanges).toEqual([]);
     });
   });
 });

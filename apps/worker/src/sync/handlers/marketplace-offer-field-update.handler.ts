@@ -16,7 +16,11 @@ import type {
 } from '@openlinker/core/sync';
 import { SyncJobExecutionError } from '@openlinker/core/sync';
 import { IIdentifierMappingService, IDENTIFIER_MAPPING_SERVICE_TOKEN, CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
-import type { OfferManagerPort } from '@openlinker/core/listings';
+import type {
+  FrozenOfferField,
+  OfferManagerPort,
+  UpdateOfferFieldsReport,
+} from '@openlinker/core/listings';
 import {
   formatOfferFieldsForDestination,
   isOfferFieldUpdater,
@@ -84,8 +88,9 @@ export class MarketplaceOfferFieldUpdateHandler implements SyncJobHandler {
       );
     }
 
+    let report: UpdateOfferFieldsReport | void;
     try {
-      await adapter.updateOfferFields({
+      report = await adapter.updateOfferFields({
         externalOfferId: mapping.externalId,
         // ADR-046: the fourth path that hands a description to a destination -
         // the edit-offer drawer's `marketplace.offer.updateFields` job. It calls
@@ -114,7 +119,7 @@ export class MarketplaceOfferFieldUpdateHandler implements SyncJobHandler {
     // what makes a later channel observation carrying a different value
     // evidence that somebody changed it afterwards. Outside the try so a
     // provenance failure can never be reported as an update failure.
-    await this.journalWrittenTaxRate(job.connectionId, payload);
+    await this.journalWrittenTaxRate(job.connectionId, payload, report);
 
     return { outcome: 'ok' };
   }
@@ -128,20 +133,28 @@ export class MarketplaceOfferFieldUpdateHandler implements SyncJobHandler {
    * the marketplace, and losing a provenance row must not turn a completed write
    * into a retried one.
    *
-   * Known limit of the capability, not of this call site: `updateOfferFields`
-   * returns `void`, so an adapter that silently DROPS a field the seller froze
-   * (Erli, #988 / ADR-025 §4b) is indistinguishable from one that applied it.
-   * A frozen rate would therefore be journalled as written. Making that exact
-   * needs `OfferFieldUpdater` to report which fields it applied.
+   * A frozen rate is journalled as a CHANNEL observation, not as our write
+   * (#2262). `updateOfferFields` now reports the fields a destination refused
+   * because the seller froze them (Erli, #988 / ADR-025 §4b), so the entry can
+   * say what actually happened: the value on the channel is one a person set,
+   * and OpenLinker did not write it. Recording it as `written-by-us` would make
+   * every later reading of that offer look like somebody overwrote us.
+   *
+   * An adapter that returns nothing declared nothing, which is NOT the same as
+   * "nothing was frozen" - that case keeps the pre-#2262 behaviour and is
+   * journalled as written, because the destination gave no reason to think
+   * otherwise.
    */
   private async journalWrittenTaxRate(
     connectionId: string,
-    payload: MarketplaceOfferFieldUpdatePayloadV1
+    payload: MarketplaceOfferFieldUpdatePayloadV1,
+    report?: UpdateOfferFieldsReport | void
   ): Promise<void> {
     const taxRate = payload.fields.taxRate;
     if (!taxRate) {
       return;
     }
+    const frozenRate = this.findFrozenTaxRate(report);
     try {
       // An `Offer` mapping's internal id IS the internal variant id (every
       // writer of that entityType maps `externalOfferId -> internalVariantId`).
@@ -152,19 +165,51 @@ export class MarketplaceOfferFieldUpdateHandler implements SyncJobHandler {
         );
         return;
       }
-      await this.taxRateJournal.record({
-        productId: variant.productId,
-        variantId: payload.offerId,
-        connectionId,
-        origin: 'written-by-us',
-        taxRate,
-      });
+      await this.taxRateJournal.record(
+        frozenRate === undefined
+          ? {
+              productId: variant.productId,
+              variantId: payload.offerId,
+              connectionId,
+              origin: 'written-by-us',
+              taxRate,
+            }
+          : {
+              productId: variant.productId,
+              variantId: payload.offerId,
+              connectionId,
+              origin: 'channel',
+              // `null` when the destination could not name the frozen value.
+              // That is honest about what we know - it is never a claim that
+              // the channel holds no rate, which `frozen: true` alongside it
+              // makes unambiguous.
+              taxRate: frozenRate.currentValue ?? null,
+              frozen: true,
+            }
+      );
+      if (frozenRate !== undefined) {
+        this.logger.log(
+          `The destination reports its tax rate as seller-frozen, so OpenLinker's rate was not written. ` +
+            `Recorded as a channel observation. offerId=${payload.offerId} connectionId=${connectionId}`
+        );
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.logger.warn(
         `Offer fields updated but the tax-rate journal entry failed (provenance only, the offer is unaffected). offerId=${payload.offerId} connectionId=${connectionId} error=${message}`
       );
     }
+  }
+
+  /**
+   * The destination's frozen-field entry for the tax rate, when it reported one
+   * (#2262). `undefined` means either the destination declared nothing or it
+   * did not freeze the rate - both leave the write claim standing.
+   */
+  private findFrozenTaxRate(
+    report?: UpdateOfferFieldsReport | void
+  ): FrozenOfferField | undefined {
+    return report?.frozenFields?.find((entry) => entry.field === 'taxRate');
   }
 
   private getPayload(job: SyncJob): MarketplaceOfferFieldUpdatePayloadV1 {

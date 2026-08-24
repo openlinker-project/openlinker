@@ -35,6 +35,11 @@ export interface ProductVariant {
   taxRate?: string | null;
   taxRateCountry?: string | null;
   taxRateReadAt?: string | null;
+  /**
+   * Why the shop named no rate for this variant's own override (#2264),
+   * meaningful only alongside `taxRate: null` and a set `taxRateReadAt`.
+   */
+  taxRateUnknownReason?: TaxRateUnknownReason | null;
   createdAt: string;
   updatedAt: string;
   externalIds?: ExternalIdMapping[];
@@ -70,6 +75,12 @@ export interface Product {
   taxRate?: string | null;
   taxRateCountry?: string | null;
   taxRateReadAt?: string | null;
+  /**
+   * Why the shop named no rate (#2264), meaningful only alongside
+   * `taxRate: null` and a set `taxRateReadAt`. `null`/absent means no reason
+   * was recorded - never "not-configured", a real answer the shop gave.
+   */
+  taxRateUnknownReason?: TaxRateUnknownReason | null;
   createdAt: string;
   updatedAt: string;
   variants?: ProductVariant[];
@@ -113,6 +124,14 @@ export interface ProductFilters {
    */
   taxRateState?: 'missing' | 'not-checked' | 'known';
 }
+
+/**
+ * Why the shop named no rate (#2264). Mirrors
+ * `TaxRateUnknownReasonValues` in `libs/core/src/products/domain/types/tax-rate.types.ts` -
+ * the frontend bundle cannot depend on `@openlinker/core` (#591).
+ */
+export const TaxRateUnknownReasonValues = ['not-configured', 'ambiguous', 'unreadable'] as const;
+export type TaxRateUnknownReason = (typeof TaxRateUnknownReasonValues)[number];
 
 /** Server-side sort axes for the products list (#1720). */
 export const ProductListSortFieldValues = [

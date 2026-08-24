@@ -83,6 +83,17 @@ export class ProductResponseDto {
   })
   taxRateReadAt?: string | null;
 
+  @ApiPropertyOptional({
+    nullable: true,
+    enum: ['not-configured', 'ambiguous', 'unreadable'],
+    description:
+      'Why the shop named no rate (#2264), meaningful only when taxRateReadAt is set and ' +
+      'taxRate is null. null means no reason was recorded, which is NOT "not-configured" ' +
+      '(a real answer the shop gave). "ambiguous" is the case a plain taxRate:null cannot ' +
+      'tell apart from a shop with none configured at all.',
+  })
+  taxRateUnknownReason?: string | null;
+
   @ApiProperty({ description: 'Creation timestamp (ISO 8601)' })
   createdAt!: string;
 

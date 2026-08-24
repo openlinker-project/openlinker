@@ -29,6 +29,7 @@ import type {
 } from '../../../domain/types/product.types';
 import { LOW_STOCK_THRESHOLD } from '../../../domain/types/product.types';
 import type { StoredTaxRate } from '../../../domain/types/tax-rate.types';
+import { readTaxRateUnknownReason } from '../../../domain/types/tax-rate.types';
 import type {
   ConnectionTaxRateCoverage,
   TaxRateCoverage,
@@ -250,6 +251,7 @@ export class ProductRepository implements ProductRepositoryPort {
       taxRate: entity.taxRate,
       taxRateCountry: entity.taxRateCountry,
       taxRateReadAt: entity.taxRateReadAt,
+      taxRateUnknownReason: readTaxRateUnknownReason(entity.taxRateUnknownReason),
       createdAt: entity.createdAt,
       updatedAt: entity.updatedAt,
     };
@@ -299,6 +301,9 @@ export class ProductRepository implements ProductRepositoryPort {
         taxRate: rate.code,
         taxRateCountry: rate.countryIso2,
         taxRateReadAt: rate.readAt,
+        // #2264 — meaningful only alongside a null code; harmless to write
+        // alongside a real one, since nothing reads it there.
+        taxRateUnknownReason: rate.unknownReason ?? null,
       }
     );
   }
@@ -306,10 +311,21 @@ export class ProductRepository implements ProductRepositoryPort {
   async findTaxRate(productId: string): Promise<StoredTaxRate | null> {
     const row = await this.repository.findOne({
       where: { id: productId },
-      select: { id: true, taxRate: true, taxRateCountry: true, taxRateReadAt: true },
+      select: {
+        id: true,
+        taxRate: true,
+        taxRateCountry: true,
+        taxRateReadAt: true,
+        taxRateUnknownReason: true,
+      },
     });
     if (!row) return null;
-    return { code: row.taxRate, countryIso2: row.taxRateCountry, readAt: row.taxRateReadAt };
+    return {
+      code: row.taxRate,
+      countryIso2: row.taxRateCountry,
+      readAt: row.taxRateReadAt,
+      unknownReason: readTaxRateUnknownReason(row.taxRateUnknownReason),
+    };
   }
 
   /**
