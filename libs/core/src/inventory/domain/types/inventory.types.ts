@@ -122,3 +122,74 @@ export interface PruneStaleVariantsResult {
 
 
 
+/**
+ * One physical `inventory_items` row inside a duplicate group (#2319).
+ *
+ * Reported so an operator can decide which row survives remediation without a
+ * second query. `updatedAt` is the DB-stamped write time, which is what the
+ * documented survivor rule ("highest `updatedAt` among live rows") keys on.
+ */
+export interface DuplicatePositionRow {
+  id: string;
+  availableQuantity: number;
+  reservedQuantity: number;
+  /** Stale rows are INCLUDED in the report — see {@link DuplicatePositionGroup}. */
+  isStale: boolean;
+  updatedAt: Date;
+}
+
+/**
+ * A set of `inventory_items` rows sharing one inventory-position key (#2319).
+ *
+ * **The key is all FOUR columns** — `productId`, `productVariantId`,
+ * `locationId`, `sourceConnectionId` — matched with SQL `GROUP BY` NULL-equality
+ * semantics (NULLs group together, the opposite of the NULL-distinct index
+ * semantics that let these rows in). Provenance is part of the key because
+ * ADR-058 decision (2) is explicit that cross-source coexistence is legitimate:
+ * two rows for the same product/variant/location that differ only in which
+ * connection's sync owns them are NOT duplicates, and reporting them as such
+ * would permanently block the #2325 `SET NOT NULL` + unique-index step on a
+ * healthy multi-source install.
+ *
+ * **Stale rows are included on purpose.** This is stricter than the availability
+ * read (which excludes `isStale` rows): a stale duplicate still occupies the
+ * key and would still collide under the index #2325 creates. `liveRowCount`
+ * reports how many of the group's rows are live so an operator can see whether
+ * the duplication is currently double-counting available-to-promise.
+ */
+export interface DuplicatePositionGroup {
+  productId: string;
+  productVariantId: string | null;
+  locationId: string | null;
+  sourceConnectionId: string | null;
+  /** Total rows on this key (always > 1). */
+  rowCount: number;
+  /** Rows on this key with `isStale = false`. */
+  liveRowCount: number;
+  rows: DuplicatePositionRow[];
+}
+
+/**
+ * Read-only duplicate-inventory-position report (#2319, ADR-058 ladder step (iii)).
+ *
+ * Detection only — nothing is repaired, nothing is written. Remediation is the
+ * manual procedure in `docs/operations/inventory-duplicate-positions.md`.
+ *
+ * **`groupCount` is the Wave-1d gate for #2325 and is UNCAPPED**: it counts every
+ * duplicate group in the table, not just the groups returned in `groups`. A
+ * value of 0 means the recreated four-column unique index can be created; any
+ * other value means it cannot. Keep the field name and its uncapped meaning
+ * stable — #2325's precondition is expressed in terms of it.
+ */
+export interface DuplicatePositionReport {
+  /** UNCAPPED count of duplicate groups — the #2325 gate. 0 ⇒ clean. */
+  groupCount: number;
+  /** UNCAPPED total rows across all duplicate groups. */
+  rowCount: number;
+  /** `rowCount - groupCount`: rows that would have to disappear for the index to build. */
+  excessRowCount: number;
+  /** Detail for at most `maxGroups` groups, largest first. */
+  groups: DuplicatePositionGroup[];
+  /** True when `groups.length < groupCount` — detail was capped, totals were not. */
+  truncated: boolean;
+}

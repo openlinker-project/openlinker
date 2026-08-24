@@ -35,6 +35,8 @@ import type {
   VariantAvailability,
   ProductStockAggregate,
   PruneStaleVariantsResult,
+  DuplicatePositionReport,
+  DuplicatePositionGroup,
 } from '../../../domain/types/inventory.types';
 
 /**
@@ -299,6 +301,180 @@ export class InventoryRepository implements InventoryRepositoryPort {
       ...new Set(raw.map((r) => r.productVariantId).filter((v): v is string => v !== null)),
     ];
     return { markedCount: result.affected ?? raw.length, variantIds };
+  }
+
+
+  /**
+   * Read-only duplicate-position scan (#2319, ADR-058 ladder step (iii)).
+   *
+   * ## Why this is raw SQL — a first for this repository
+   *
+   * Two things the query builder cannot express drive the departure, and both
+   * are load-bearing rather than stylistic:
+   *
+   * 1. **`IS NOT DISTINCT FROM`.** The detail query has to join the capped set
+   *    of duplicate keys back to the rows carrying them, and three of the four
+   *    key columns are nullable. A naive `=` join drops every group whose
+   *    variant, location or provenance is NULL — which is most of them on a
+   *    pre-#2317 install, i.e. it would report a clean table while the very
+   *    rows #2325 will trip over sit there unlisted.
+   * 2. **A CTE with `LIMIT` feeding a self-join.** The cap has to be applied to
+   *    the GROUPS, not to the rows, or a single large group would consume the
+   *    whole budget and hide every other one.
+   *
+   * ## Two statements on purpose
+   *
+   * The totals are computed by their own uncapped statement. `groupCount` is
+   * the #2325 readiness gate, so it must count the whole table; deriving it
+   * from the capped detail would silently report "clean" the moment detail
+   * truncates. Precedent for `repository.query` in `libs/core`:
+   * `order-record.repository.ts` and `user.repository.ts`.
+   *
+   * ## Deliberate non-optimisations
+   *
+   * Both statements are full scans of `inventory_items` and there is no index
+   * that helps a four-column grouping including two nullable columns. That is
+   * accepted: this is an operator-run diagnostic, not a hot path. Do **not**
+   * "optimise" it onto either partial unique index — those indexes are
+   * NULL-distinct, which is precisely the semantics that admitted these rows,
+   * so an index-backed scan would fail to see what it is looking for.
+   *
+   * There is **no `WHERE` clause restricting rows** in either statement: stale
+   * rows are included, because a stale duplicate still collides under the index
+   * #2325 creates. `liveRowCount` reports the live subset instead. A unit test
+   * asserts the absence of that predicate so a later refactor cannot blind the
+   * gate.
+   *
+   * The table name is the literal `inventory_items` (matching the `@Entity`
+   * decorator); `maxGroups` is a bound parameter, never interpolated.
+   */
+  async findDuplicatePositions(maxGroups: number): Promise<DuplicatePositionReport> {
+    const [totals] = (await this.repository.query(
+      `SELECT COUNT(*)::int AS "groupCount",
+              COALESCE(SUM(dup.row_count), 0)::int AS "rowCount"
+         FROM (
+           SELECT COUNT(*) AS row_count
+             FROM "inventory_items"
+            GROUP BY "productId", "productVariantId", "locationId", "sourceConnectionId"
+           HAVING COUNT(*) > 1
+         ) dup`
+    )) as { groupCount: number | string; rowCount: number | string }[];
+
+    // `::int` already narrows these, but the pg driver's typing for a raw query
+    // is `any`, and COUNT/SUM have come back as strings on other paths in this
+    // file — normalise rather than trust.
+    const groupCount = Number(totals?.groupCount ?? 0);
+    const rowCount = Number(totals?.rowCount ?? 0);
+
+    if (groupCount === 0) {
+      return { groupCount: 0, rowCount: 0, excessRowCount: 0, groups: [], truncated: false };
+    }
+
+    const rows = (await this.repository.query(
+      `WITH dup_keys AS (
+         SELECT "productId",
+                "productVariantId",
+                "locationId",
+                "sourceConnectionId",
+                COUNT(*) AS row_count,
+                COUNT(*) FILTER (WHERE NOT "isStale") AS live_row_count
+           FROM "inventory_items"
+          GROUP BY "productId", "productVariantId", "locationId", "sourceConnectionId"
+         HAVING COUNT(*) > 1
+          ORDER BY row_count DESC,
+                   "productId" ASC,
+                   "productVariantId" ASC NULLS FIRST,
+                   "locationId" ASC NULLS FIRST,
+                   "sourceConnectionId" ASC NULLS FIRST
+          LIMIT $1
+       )
+       SELECT k."productId"           AS "productId",
+              k."productVariantId"    AS "productVariantId",
+              k."locationId"          AS "locationId",
+              k."sourceConnectionId"  AS "sourceConnectionId",
+              k.row_count::int        AS "rowCount",
+              k.live_row_count::int   AS "liveRowCount",
+              i."id"                  AS "id",
+              i."availableQuantity"   AS "availableQuantity",
+              i."reservedQuantity"    AS "reservedQuantity",
+              i."isStale"             AS "isStale",
+              i."updatedAt"           AS "updatedAt"
+         FROM dup_keys k
+         JOIN "inventory_items" i
+           ON i."productId" = k."productId"
+          -- IS NOT DISTINCT FROM, not =: NULL variant / location / provenance
+          -- must match its NULL counterpart or the group vanishes from the report.
+          AND i."productVariantId"   IS NOT DISTINCT FROM k."productVariantId"
+          AND i."locationId"         IS NOT DISTINCT FROM k."locationId"
+          AND i."sourceConnectionId" IS NOT DISTINCT FROM k."sourceConnectionId"
+        ORDER BY k.row_count DESC,
+                 k."productId" ASC,
+                 k."productVariantId" ASC NULLS FIRST,
+                 k."locationId" ASC NULLS FIRST,
+                 k."sourceConnectionId" ASC NULLS FIRST,
+                 -- Newest first inside a group: the documented survivor rule
+                 -- picks the most recently written live row.
+                 i."updatedAt" DESC,
+                 i."id" ASC`,
+      [maxGroups]
+    )) as {
+      productId: string;
+      productVariantId: string | null;
+      locationId: string | null;
+      sourceConnectionId: string | null;
+      rowCount: number | string;
+      liveRowCount: number | string;
+      id: string;
+      availableQuantity: number | string;
+      reservedQuantity: number | string;
+      isStale: boolean;
+      updatedAt: Date | string;
+    }[];
+
+    // The ORDER BY keeps a group's rows contiguous, so folding is a single pass
+    // keyed on the four columns (JSON-encoded so a NULL cannot collide with the
+    // literal string 'null').
+    const groups: DuplicatePositionGroup[] = [];
+    const byKey = new Map<string, DuplicatePositionGroup>();
+    for (const row of rows) {
+      const key = JSON.stringify([
+        row.productId,
+        row.productVariantId,
+        row.locationId,
+        row.sourceConnectionId,
+      ]);
+      let group = byKey.get(key);
+      if (!group) {
+        group = {
+          productId: row.productId,
+          productVariantId: row.productVariantId,
+          locationId: row.locationId,
+          sourceConnectionId: row.sourceConnectionId,
+          rowCount: Number(row.rowCount),
+          liveRowCount: Number(row.liveRowCount),
+          rows: [],
+        };
+        byKey.set(key, group);
+        groups.push(group);
+      }
+      group.rows.push({
+        id: row.id,
+        availableQuantity: Number(row.availableQuantity),
+        reservedQuantity: Number(row.reservedQuantity),
+        isStale: row.isStale,
+        updatedAt: row.updatedAt instanceof Date ? row.updatedAt : new Date(row.updatedAt),
+      });
+    }
+
+    return {
+      groupCount,
+      rowCount,
+      // Rows that must disappear before the #2325 index can build: one row per
+      // group is allowed to survive.
+      excessRowCount: rowCount - groupCount,
+      groups,
+      truncated: groups.length < groupCount,
+    };
   }
 
   async upsert(item: InventoryItem): Promise<InventoryItem> {

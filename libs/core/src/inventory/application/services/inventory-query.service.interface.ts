@@ -14,6 +14,7 @@ import type {
   InventoryPagination,
   VariantAvailability,
   ProductStockAggregate,
+  DuplicatePositionReport,
 } from '../../domain/types/inventory.types';
 import type { PaginatedInventoryView } from '../types/inventory-view.types';
 
@@ -56,4 +57,22 @@ export interface IInventoryQueryService {
   getProductStockAggregates(
     productIds: readonly string[]
   ): Promise<readonly ProductStockAggregate[]>;
+
+  /**
+   * Read-only duplicate inventory-position report (#2319, ADR-058 step (iii)).
+   *
+   * Detection only: nothing is repaired and nothing is written. Groups rows by
+   * the FOUR-column position key (product, variant, location, source
+   * connection) — provenance is part of the key because ADR-058 decision (2)
+   * makes cross-source coexistence legitimate, so rows differing only in which
+   * connection owns them are not duplicates.
+   *
+   * `groupCount` is the UNCAPPED #2325 readiness gate (0 ⇒ the recreated unique
+   * index can be built); `maxGroups` bounds only the returned detail.
+   *
+   * @param maxGroups detail cap, default 100, hard maximum
+   *   {@link MAX_DUPLICATE_POSITION_GROUPS}
+   * @throws Error when `maxGroups` is out of range
+   */
+  getDuplicatePositionReport(maxGroups?: number): Promise<DuplicatePositionReport>;
 }

@@ -40,6 +40,8 @@ describe('StockAtRiskReadService', () => {
       listInventoryItems: jest.fn(),
       getAvailabilityByVariantIds: jest.fn().mockResolvedValue([]),
       getProductStockAggregates: jest.fn(),
+      // Unused here — the mock satisfies the full IInventoryQueryService shape (#2319).
+      getDuplicatePositionReport: jest.fn(),
     };
     service = new StockAtRiskReadService(
       offerRepo,

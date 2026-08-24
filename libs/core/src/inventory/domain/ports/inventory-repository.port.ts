@@ -17,6 +17,7 @@ import type {
   VariantAvailability,
   ProductStockAggregate,
   PruneStaleVariantsResult,
+  DuplicatePositionReport,
 } from '../types/inventory.types';
 
 /**
@@ -137,4 +138,26 @@ export interface InventoryRepositoryPort {
     productId: string,
     keepVariantIds: readonly (string | null)[]
   ): Promise<PruneStaleVariantsResult>;
+
+  /**
+   * Read-only scan for duplicate inventory positions (#2319, ADR-058 step (iii)).
+   *
+   * Groups every `inventory_items` row by the FOUR-column position key
+   * (`productId`, `productVariantId`, `locationId`, `sourceConnectionId`) under
+   * SQL `GROUP BY` NULL-equality and reports the groups holding more than one
+   * row. Provenance is part of the key deliberately — see
+   * {@link DuplicatePositionGroup}.
+   *
+   * Writes nothing. Includes stale rows (a stale duplicate still collides under
+   * the index #2325 creates). Reports UNCAPPED totals alongside capped detail:
+   * `groupCount` is the #2325 readiness gate and must reflect the whole table
+   * even when `maxGroups` truncates `groups`.
+   *
+   * Deliberately takes no filter arguments. A filtered scan could report a clean
+   * subset of a dirty table, and the gate's whole value is that it speaks for
+   * the table the index will be built over.
+   *
+   * @param maxGroups upper bound on returned group DETAIL (totals are unbounded)
+   */
+  findDuplicatePositions(maxGroups: number): Promise<DuplicatePositionReport>;
 }

@@ -36,7 +36,11 @@ export { InventorySyncService } from './application/services/inventory-sync.serv
 export { IMasterInventorySyncService, MasterInventorySyncResult } from './application/services/master-inventory-sync.service.interface';
 export { MasterInventorySyncService } from './application/services/master-inventory-sync.service';
 export { IInventoryQueryService } from './application/services/inventory-query.service.interface';
-export { InventoryQueryService } from './application/services/inventory-query.service';
+export {
+  InventoryQueryService,
+  MAX_DUPLICATE_POSITION_GROUPS,
+  DEFAULT_DUPLICATE_POSITION_GROUPS,
+} from './application/services/inventory-query.service';
 export { ILocationService } from './application/services/location.service.interface';
 export { LocationService } from './application/services/location.service';
 
@@ -56,6 +60,9 @@ export {
   VariantAvailability,
   ProductStockAggregate,
   PruneStaleVariantsResult,
+  DuplicatePositionRow,
+  DuplicatePositionGroup,
+  DuplicatePositionReport,
 } from './domain/types/inventory.types';
 export {
   InventoryLocationKindValues,

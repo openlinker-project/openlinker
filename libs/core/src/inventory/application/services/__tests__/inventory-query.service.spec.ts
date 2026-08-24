@@ -77,6 +77,7 @@ describe('InventoryQueryService', () => {
       findAvailabilityByVariantIds: jest.fn(),
       findStockAggregatesByProductIds: jest.fn(),
       markStaleExceptVariants: jest.fn(),
+      findDuplicatePositions: jest.fn(),
     };
 
     productsService = {
@@ -256,6 +257,73 @@ describe('InventoryQueryService', () => {
         /at most 200 productIds/
       );
       expect(inventoryRepository.findStockAggregatesByProductIds).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('getDuplicatePositionReport (#2319)', () => {
+    const cleanReport = {
+      groupCount: 0,
+      rowCount: 0,
+      excessRowCount: 0,
+      groups: [],
+      truncated: false,
+    };
+
+    it('defaults the detail cap to 100', async () => {
+      inventoryRepository.findDuplicatePositions.mockResolvedValue(cleanReport);
+
+      await service.getDuplicatePositionReport();
+
+      expect(inventoryRepository.findDuplicatePositions).toHaveBeenCalledWith(100);
+    });
+
+    it('passes an explicit cap straight through', async () => {
+      inventoryRepository.findDuplicatePositions.mockResolvedValue(cleanReport);
+
+      await service.getDuplicatePositionReport(25);
+
+      expect(inventoryRepository.findDuplicatePositions).toHaveBeenCalledWith(25);
+    });
+
+    it('throws rather than clamping when the cap is exceeded', async () => {
+      // Matches the MAX_STOCK_AGGREGATE_PRODUCT_IDS precedent above: a caller
+      // that asked for more than it can have learns so, instead of silently
+      // receiving a different answer than the one it requested.
+      await expect(service.getDuplicatePositionReport(501)).rejects.toThrow(
+        /at most 500 groups/
+      );
+      expect(inventoryRepository.findDuplicatePositions).not.toHaveBeenCalled();
+    });
+
+    it('rejects a non-positive or non-integer cap', async () => {
+      await expect(service.getDuplicatePositionReport(0)).rejects.toThrow(/positive integer/);
+      await expect(service.getDuplicatePositionReport(1.5)).rejects.toThrow(/positive integer/);
+      expect(inventoryRepository.findDuplicatePositions).not.toHaveBeenCalled();
+    });
+
+    it('returns the repository report verbatim, including uncapped totals', async () => {
+      // groupCount is the #2325 gate and must survive the service layer
+      // untouched even when the detail was truncated.
+      const truncated = {
+        groupCount: 3,
+        rowCount: 9,
+        excessRowCount: 6,
+        groups: [
+          {
+            productId: 'prod-1',
+            productVariantId: null,
+            locationId: null,
+            sourceConnectionId: null,
+            rowCount: 4,
+            liveRowCount: 2,
+            rows: [],
+          },
+        ],
+        truncated: true,
+      };
+      inventoryRepository.findDuplicatePositions.mockResolvedValue(truncated);
+
+      await expect(service.getDuplicatePositionReport(1)).resolves.toBe(truncated);
     });
   });
 });

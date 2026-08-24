@@ -302,6 +302,17 @@ describe('Viewer Role Authorization', () => {
         .expect(403);
     });
 
+    it('GET /inventory/duplicate-positions (#2319 — admin-only diagnostic)', async () => {
+      const { http, viewerToken } = await seeds();
+      // A read, but an admin-only one: it enumerates raw row ids for a manual
+      // DELETE remediation, so it lives with the writes here rather than with
+      // the viewer-readable reads above.
+      await http
+        .get('/v1/inventory/duplicate-positions')
+        .set('Authorization', `Bearer ${viewerToken}`)
+        .expect(403);
+    });
+
     it('POST /sync/jobs', async () => {
       const { http, viewerToken } = await seeds();
       await http
