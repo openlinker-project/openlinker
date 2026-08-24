@@ -33,6 +33,20 @@
  * runtime edge is added); the runtime `OrderStatusValues` array is exported for
  * the leaf's totality spec, which iterates it — specs are walker-exempt.
  *
+ * `FulfillmentRollupState` / `FulfillmentRollupStateOrNull` /
+ * `OrderRecordStatus` (#2307, ADR-059) are exported TYPE-ONLY for the same
+ * leaf, whose pure `deriveOrderLifecyclePhase` takes both as caller-supplied
+ * VALUE PARAMETERS and switches exhaustively over them. Both satisfy the gate
+ * conditions: each is an `as const`-derived union in a dependency-free
+ * domain-types file, and the leaf cannot reach the main `@openlinker/core/orders`
+ * barrel without acquiring the sibling-context value edge ADR-053 forbids it.
+ * `import type` erases at build time, so no runtime edge is added. Restating
+ * the four rollup values and three record statuses inside the leaf was
+ * considered and rejected: the SQL `CASE` twin (#2309) must match these
+ * vocabularies exactly, and a local copy would make the derivation's
+ * `never`-typed default arms — the whole point of which is to fail the build
+ * when a value is added here — vacuous.
+ *
  * @module libs/core/src/orders/types
  */
 export {
@@ -43,3 +57,8 @@ export type { PaymentStatus } from './domain/types/payment-status.types';
 export type { Order } from './domain/types/order.types';
 export { OrderStatusValues } from './domain/types/order.types';
 export type { OrderStatus } from './domain/types/order.types';
+export type {
+  FulfillmentRollupState,
+  FulfillmentRollupStateOrNull,
+} from './domain/types/order-fulfillment.types';
+export type { OrderRecordStatus } from './domain/types/order-record.types';

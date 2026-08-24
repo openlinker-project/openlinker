@@ -56,3 +56,4 @@ export * from './domain/types/order-amendment-kind.types';
 export * from './domain/types/lifecycle-authority.types';
 export * from './domain/types/oms-lifecycle-fact.types';
 export * from './domain/domain-services/phase-to-order-status';
+export * from './domain/domain-services/derive-order-lifecycle-phase';
