@@ -1075,6 +1075,89 @@ describe('ErliOfferManagerAdapter', () => {
         expect(httpClient.patch).not.toHaveBeenCalled();
       });
 
+      describe('frozen-field report (#2262)', () => {
+        it('should name the frozen fields by their NEUTRAL keys, not Erli wire names', async () => {
+          // `title` -> `name` is the one place the two vocabularies differ, and
+          // a core caller must not have to know Erli's spelling to read this.
+          httpClient.get.mockResolvedValue({
+            status: 200,
+            data: { frozen: { name: true, price: false } },
+          });
+
+          const report = await adapter.updateOfferFields({
+            externalOfferId: VALID_ID,
+            fields: { title: 'T', price: { amount: '5.00', currency: 'PLN' } },
+          });
+
+          expect(report).toEqual({ frozenFields: [{ field: 'title' }] });
+        });
+
+        it('should carry the frozen rate the destination still holds', async () => {
+          httpClient.get.mockResolvedValue({
+            status: 200,
+            data: { frozen: { taxRate: true }, taxRate: 'TAX_8' },
+          });
+
+          const report = await adapter.updateOfferFields({
+            externalOfferId: VALID_ID,
+            fields: { taxRate: '23' },
+          });
+
+          expect(report).toEqual({
+            frozenFields: [{ field: 'taxRate', currentValue: 'TAX_8' }],
+          });
+        });
+
+        it('should omit currentValue when the read did not echo the rate back', async () => {
+          httpClient.get.mockResolvedValue({ status: 200, data: { frozen: { taxRate: true } } });
+
+          const report = await adapter.updateOfferFields({
+            externalOfferId: VALID_ID,
+            fields: { taxRate: '23' },
+          });
+
+          expect(report).toEqual({ frozenFields: [{ field: 'taxRate' }] });
+        });
+
+        it('should still report when every supplied field was frozen and no PATCH went out', async () => {
+          // The all-frozen case is exactly the one a caller most needs to hear
+          // about; returning nothing would read as "declared nothing".
+          httpClient.get.mockResolvedValue({ status: 200, data: { frozen: { taxRate: true } } });
+
+          const report = await adapter.updateOfferFields({
+            externalOfferId: VALID_ID,
+            fields: { taxRate: '23' },
+          });
+
+          expect(httpClient.patch).not.toHaveBeenCalled();
+          expect(report).toEqual({ frozenFields: [{ field: 'taxRate' }] });
+        });
+
+        it('should report an EMPTY frozen set when nothing was frozen', async () => {
+          httpClient.get.mockResolvedValue({ status: 200, data: { frozen: { taxRate: false } } });
+
+          const report = await adapter.updateOfferFields({
+            externalOfferId: VALID_ID,
+            fields: { taxRate: '23' },
+          });
+
+          expect(report).toEqual({ frozenFields: [] });
+        });
+
+        it('should report an empty frozen set on the 404 fail-open branch (unknown, not frozen)', async () => {
+          // A read that carried no frozen info means UNKNOWN. Naming a field
+          // here would assert a freeze the destination never reported.
+          httpClient.get.mockRejectedValue(new ErliApiException('not found', 404));
+
+          const report = await adapter.updateOfferFields({
+            externalOfferId: VALID_ID,
+            fields: { taxRate: '23' },
+          });
+
+          expect(report).toEqual({ frozenFields: [] });
+        });
+      });
+
       it('should fail open and PATCH the full body when the GET 404s in the cache-lag window', async () => {
         // ADR-025: a just-created offer GET-404s during Erli's ~20-min cache lag (#1061).
         httpClient.get.mockRejectedValue(new ErliApiException('not found', 404));

@@ -19,7 +19,7 @@ import { useListingsQuery } from '../../features/listings/hooks/use-listings-que
 import { useListingMarketplaceOfferQuery } from '../../features/listings/hooks/use-listing-marketplace-offer-query';
 import { useCategoryPathQuery } from '../../features/listings/hooks/use-category-path-query';
 import type { OfferMapping } from '../../features/listings/api/listings.types';
-import type { ProductVariant } from '../../features/products/api/products.types';
+import type { ProductVariant, TaxRateUnknownReason } from '../../features/products/api/products.types';
 import type { InventoryItem } from '../../features/inventory/api/inventory.types';
 import { formatTaxRate } from '../../shared/format/format-tax-rate';
 import { TimeDisplay } from '../../shared/ui/time-display';
@@ -44,6 +44,13 @@ interface VariantStockTableProps {
    * fix the wrong record.
    */
   productTaxRate?: string | null;
+  /**
+   * Why the product's rate is missing (#2264), when it is. Threaded through
+   * only as far as the "product has none either" fallback needs it - a
+   * variant's own override never carries this reason on this cell, because a
+   * variant that named its own rate is not in the no-rate branch at all.
+   */
+  productTaxRateUnknownReason?: TaxRateUnknownReason | null;
   /** Active OfferCreator connections — the coverage pill set is derived from these. */
   connections: readonly Connection[];
   /** Whether the "+ Create offer" CTA renders (write access, incl. demo). */
@@ -97,6 +104,7 @@ export function VariantStockTable(props: VariantStockTableProps): ReactElement {
               key={variant.id}
               variant={variant}
               productTaxRate={props.productTaxRate ?? null}
+              productTaxRateUnknownReason={props.productTaxRateUnknownReason ?? null}
               stock={props.stockByVariant.get(variant.id)}
               currency={props.currency}
               connections={props.connections}
@@ -578,6 +586,7 @@ function ListingDetailCard({
 function VariantStockRow({
   variant,
   productTaxRate,
+  productTaxRateUnknownReason,
   stock,
   currency,
   connections,
@@ -587,6 +596,7 @@ function VariantStockRow({
 }: {
   variant: ProductVariant;
   productTaxRate: string | null;
+  productTaxRateUnknownReason?: TaxRateUnknownReason | null;
   stock: InventoryItem | undefined;
   currency: string | null;
   connections: readonly Connection[];
@@ -625,7 +635,11 @@ function VariantStockRow({
           </div>
         </td>
         <td>
-          <VariantTaxRateCell variant={variant} productTaxRate={productTaxRate} />
+          <VariantTaxRateCell
+            variant={variant}
+            productTaxRate={productTaxRate}
+            productTaxRateUnknownReason={productTaxRateUnknownReason}
+          />
         </td>
         <td>
           <span className="variant-stock-table__stock">
@@ -783,9 +797,11 @@ function VariantStockCard({
 function VariantTaxRateCell({
   variant,
   productTaxRate,
+  productTaxRateUnknownReason,
 }: {
   variant: ProductVariant;
   productTaxRate: string | null;
+  productTaxRateUnknownReason?: TaxRateUnknownReason | null;
 }): ReactElement {
   if (variant.taxRate) {
     return (
@@ -808,7 +824,27 @@ function VariantTaxRateCell({
       <StatusBadge tone="error" withDot compact>
         No tax rate
       </StatusBadge>
-      <span className="variant-stock-table__meta">product has none either</span>
+      <span className="variant-stock-table__meta">
+        {taxRateUnknownReasonCaption(productTaxRateUnknownReason)}
+      </span>
     </span>
   );
+}
+
+/**
+ * Distinguish WHY the product has no rate (#2264) - a plain "product has none
+ * either" collapsed a shop with no tax configuration and one with several
+ * candidate rates and no unambiguous pick into one caption, and the two need
+ * different fixes: add a rate versus resolve which of several is right.
+ */
+function taxRateUnknownReasonCaption(reason: TaxRateUnknownReason | null | undefined): string {
+  switch (reason) {
+    case 'ambiguous':
+      return 'product has several candidate rates - resolve which one is right in the shop';
+    case 'unreadable':
+      return 'product has none either';
+    case 'not-configured':
+    default:
+      return 'product has none either';
+  }
 }

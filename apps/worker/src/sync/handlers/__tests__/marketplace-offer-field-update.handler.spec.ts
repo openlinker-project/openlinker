@@ -251,5 +251,69 @@ describe('MarketplaceOfferFieldUpdateHandler', () => {
       });
       expect(taxRateJournal.record).not.toHaveBeenCalled();
     });
+
+    describe('a destination that reports the rate as seller-frozen (#2262)', () => {
+      it('should record a channel observation carrying the frozen value, not our write', async () => {
+        updateOfferFields.mockResolvedValue({
+          frozenFields: [{ field: 'taxRate', currentValue: '8' }],
+        });
+
+        await expect(handler.execute(makeJob({ taxRate: '23' }))).resolves.toEqual({
+          outcome: 'ok',
+        });
+        expect(taxRateJournal.record).toHaveBeenCalledWith({
+          productId: PRODUCT_ID,
+          variantId: OFFER_ID,
+          connectionId: CONN_ID,
+          origin: 'channel',
+          taxRate: '8',
+          frozen: true,
+        });
+      });
+
+      it('should record taxRate null when the destination could not name the frozen value', async () => {
+        // Honest about what is known. `frozen: true` alongside it is what keeps
+        // the null from reading as "the channel holds no rate".
+        updateOfferFields.mockResolvedValue({ frozenFields: [{ field: 'taxRate' }] });
+
+        await handler.execute(makeJob({ taxRate: '23' }));
+
+        expect(taxRateJournal.record).toHaveBeenCalledWith(
+          expect.objectContaining({ origin: 'channel', taxRate: null, frozen: true }),
+        );
+      });
+
+      it('should still claim the write when only another field was frozen', async () => {
+        updateOfferFields.mockResolvedValue({ frozenFields: [{ field: 'title' }] });
+
+        await handler.execute(makeJob({ taxRate: '23' }));
+
+        expect(taxRateJournal.record).toHaveBeenCalledWith(
+          expect.objectContaining({ origin: 'written-by-us', taxRate: '23' }),
+        );
+      });
+
+      it('should claim the write when the destination declared nothing', async () => {
+        // Returning nothing means the destination declared nothing, which is
+        // NOT the same as "nothing was frozen" - the pre-#2262 behaviour stands.
+        updateOfferFields.mockResolvedValue(undefined);
+
+        await handler.execute(makeJob({ taxRate: '23' }));
+
+        expect(taxRateJournal.record).toHaveBeenCalledWith(
+          expect.objectContaining({ origin: 'written-by-us', taxRate: '23' }),
+        );
+      });
+
+      it('should claim the write on an explicitly empty frozen set', async () => {
+        updateOfferFields.mockResolvedValue({ frozenFields: [] });
+
+        await handler.execute(makeJob({ taxRate: '23' }));
+
+        expect(taxRateJournal.record).toHaveBeenCalledWith(
+          expect.objectContaining({ origin: 'written-by-us' }),
+        );
+      });
+    });
   });
 });

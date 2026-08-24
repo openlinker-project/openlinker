@@ -71,6 +71,17 @@ export class ProductOrmEntity {
   @Column({ type: 'timestamptz', nullable: true })
   taxRateReadAt!: Date | null;
 
+  /**
+   * Why the master could not state a rate (#2264), when it could not.
+   *
+   * Meaningful ONLY alongside `taxRateReadAt IS NOT NULL AND taxRate IS NULL`.
+   * Null means no reason was recorded - never `not-configured`, which is a real
+   * answer the shop gave. Untyped varchar on purpose: a new reason must not
+   * need a migration, and an unrecognised value degrades to "no reason given".
+   */
+  @Column({ type: 'varchar', length: 32, nullable: true })
+  taxRateUnknownReason!: string | null;
+
   @CreateDateColumn()
   createdAt!: Date;
 

@@ -51,6 +51,15 @@ export class ProductVariantResponseDto {
   })
   taxRateReadAt?: string | null;
 
+  @ApiPropertyOptional({
+    nullable: true,
+    enum: ['not-configured', 'ambiguous', 'unreadable'],
+    description:
+      "Why the shop named no rate for this variant's own OVERRIDE (#2264), meaningful only " +
+      'alongside a null taxRate with a non-null taxRateReadAt.',
+  })
+  taxRateUnknownReason?: string | null;
+
 
   @ApiProperty({ description: 'Creation timestamp (ISO 8601)' })
   createdAt!: string;

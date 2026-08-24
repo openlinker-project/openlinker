@@ -131,6 +131,34 @@ export interface StoredTaxRate {
   code: string | null;
   countryIso2: string | null;
   readAt: Date | null;
+  /**
+   * Why the master named no rate (#2264), for the `no-rate` state only.
+   *
+   * `null` means no reason was recorded - which is NOT `not-configured`, a real
+   * answer the shop gave. It is provenance for the operator surface and never
+   * control flow: nothing gates on it, exactly like `countryIso2`.
+   *
+   * Optional so every existing caller that builds a `StoredTaxRate` (a
+   * variant-vs-product fallback, a test fixture, a projection) keeps compiling
+   * and simply reports no reason.
+   */
+  unknownReason?: TaxRateUnknownReason | null;
+}
+
+/**
+ * Coerce a stored string into the reason union (#2264).
+ *
+ * The column is an untyped varchar so a new reason needs no migration, which
+ * means a read can meet a value this build does not know. That degrades to
+ * `null` - "no reason given" - rather than being surfaced raw, because the
+ * consumer is operator copy and a code with no sentence for it explains
+ * nothing. Pure, and beside the union it coerces, per the pure-rule exception.
+ */
+export function readTaxRateUnknownReason(value: unknown): TaxRateUnknownReason | null {
+  return typeof value === 'string' &&
+    (TaxRateUnknownReasonValues as readonly string[]).includes(value)
+    ? (value as TaxRateUnknownReason)
+    : null;
 }
 
 /** The three states a stored rate can be in, derived rather than stored. */

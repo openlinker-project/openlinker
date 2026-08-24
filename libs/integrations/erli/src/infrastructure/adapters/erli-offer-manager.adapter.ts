@@ -117,6 +117,7 @@ import {
   type OfferFieldUpdate,
   type OfferFieldUpdater,
   type OfferManagerPort,
+  type FrozenOfferField,
   type OfferReader,
   type OfferStatusReadResult,
   type OfferStatusReader,
@@ -127,6 +128,7 @@ import {
   type TaxonomyBorrower,
   type TaxonomyOwner,
   type UpdateOfferFieldsCommand,
+  type UpdateOfferFieldsReport,
   type UpdateOfferQuantityCommand,
 } from '@openlinker/core/listings';
 import { supportedErliTaxRates, toErliTaxRate } from './erli-tax-rate.mapper';
@@ -181,6 +183,21 @@ const PATCH_KEY_TO_ERLI_FROZEN_NAME: Partial<Record<keyof ErliProductPatchBody, 
   // their panel. That is the signal a PERSON chose the value, so OL skips the
   // write - and `force` stays deliberately unused, because overriding a
   // deliberate human tax decision is the one write worth getting wrong least.
+  taxRate: 'taxRate',
+};
+
+/**
+ * Erli patch-body key -> the neutral `OfferFieldUpdate` key it came from
+ * (#2262). Needed because the two vocabularies differ on exactly one field
+ * (`title` -> `name`), and the frozen-field report speaks the NEUTRAL name: a
+ * core caller must not have to know Erli's wire spelling to read it.
+ */
+const PATCH_KEY_TO_OFFER_FIELD: Partial<
+  Record<keyof ErliProductPatchBody, keyof OfferFieldUpdate>
+> = {
+  price: 'price',
+  name: 'title',
+  description: 'description',
   taxRate: 'taxRate',
 };
 
@@ -452,7 +469,7 @@ export class ErliOfferManagerAdapter
     return { externalOfferId, status: 'draft' };
   }
 
-  async updateOfferFields(cmd: UpdateOfferFieldsCommand): Promise<void> {
+  async updateOfferFields(cmd: UpdateOfferFieldsCommand): Promise<UpdateOfferFieldsReport> {
     const body = this.buildPatchFromFields(cmd.fields);
     // #988 / ADR-025 §4b: never overwrite a field the seller froze in the panel.
     // Read the live product, drop frozen keys per-field; an empty body is a no-op.
@@ -474,14 +491,23 @@ export class ErliOfferManagerAdapter
     // is already in hand from the read above. On the 404 fail-open branch `current`
     // is `{}` so `frozen` is undefined and the helper no-ops.
     await this.writeFrozenStockFlag(cmd.externalOfferId, current.frozen);
-    const filtered = this.dropFrozenFields(body, current.frozen);
+    const { body: filtered, frozenFields } = this.dropFrozenFields(
+      body,
+      current.frozen,
+      current,
+    );
     if (Object.keys(filtered).length === 0) {
       this.logger.debug(
         `Erli field-update is a no-op — all supplied fields are frozen [connectionId=${this.connectionId}]`,
       );
-      return;
+      // #2262: still a report, not silence. An all-frozen update is exactly the
+      // case a caller most needs to hear about - returning nothing here would
+      // read as "the destination declared nothing" and the tax-rate journal
+      // would record a write that never left this method.
+      return { frozenFields };
     }
     await this.httpClient.patch(this.productPath(cmd.externalOfferId), filtered);
+    return { frozenFields };
   }
 
   /**
@@ -682,10 +708,15 @@ export class ErliOfferManagerAdapter
   private dropFrozenFields(
     body: ErliProductPatchBody,
     frozen: Record<string, boolean> | undefined,
-  ): ErliProductPatchBody {
+    current: ErliProductResource,
+  ): { body: ErliProductPatchBody; frozenFields: FrozenOfferField[] } {
     if (!frozen) {
-      return body;
+      // `frozen` absent means the read carried no frozen info (bodyless 2xx or
+      // the 404 fail-open branch), which is UNKNOWN, not "nothing frozen" - so
+      // the report names nothing rather than asserting an empty freeze set.
+      return { body, frozenFields: [] };
     }
+    const frozenFields: FrozenOfferField[] = [];
     // Shallow-copy then delete frozen keys — avoids a per-key index-write cast
     // while preserving each value's own type.
     const result: ErliProductPatchBody = { ...body };
@@ -711,10 +742,20 @@ export class ErliOfferManagerAdapter
             `Skipping frozen Erli field "${erliName}" on field-update [connectionId=${this.connectionId}]`,
           );
         }
+        const offerField = PATCH_KEY_TO_OFFER_FIELD[key];
+        if (offerField !== undefined) {
+          // #2262: `currentValue` is only ever the rate, because that is the
+          // only frozen value Erli's read carries and the only one a caller
+          // (the tax-rate journal) has anywhere to put.
+          const currentValue = offerField === 'taxRate' ? current.taxRate : undefined;
+          frozenFields.push(
+            currentValue === undefined ? { field: offerField } : { field: offerField, currentValue },
+          );
+        }
         delete result[key];
       }
     }
-    return result;
+    return { body: result, frozenFields };
   }
 
   async updateOfferQuantity(cmd: UpdateOfferQuantityCommand): Promise<void> {

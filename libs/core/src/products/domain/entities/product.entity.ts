@@ -15,6 +15,8 @@
  *
  * @module libs/core/src/products/domain/entities
  */
+
+import type { TaxRateUnknownReason } from '../types/tax-rate.types';
 export interface Product {
   id: string;
   name: string;
@@ -66,4 +68,10 @@ export interface Product {
    * apart.
    */
   taxRateReadAt?: Date | null;
+  /**
+   * Why the master named no rate (#2264), when it named none. Provenance only -
+   * nothing gates on it. `null` means no reason was recorded, which is NOT
+   * `not-configured` (a real answer the shop gave).
+   */
+  taxRateUnknownReason?: TaxRateUnknownReason | null;
 }

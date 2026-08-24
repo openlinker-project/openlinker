@@ -47,6 +47,7 @@ export { ProductsService } from './application/services/products.service';
 export {
   IMasterProductSyncService,
   MasterProductSyncResult,
+  MasterTaxRateChange,
   PruneSkippedReason,
   PruneSkippedReasonValues,
 } from './application/services/master-product-sync.service.interface';
@@ -106,6 +107,7 @@ export {
   TaxRateUnknownReasonValues,
   effectiveTaxRate,
   isPersistableTaxRateRead,
+  readTaxRateUnknownReason,
   isResolvedTaxRate,
   taxRateState,
 } from './domain/types/tax-rate.types';

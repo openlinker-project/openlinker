@@ -25,6 +25,7 @@ import type {
   PaginatedProductVariants,
 } from '../../../domain/types/product.types';
 import type { StoredTaxRate } from '../../../domain/types/tax-rate.types';
+import { readTaxRateUnknownReason } from '../../../domain/types/tax-rate.types';
 import { normalizeBarcode, normalizeToEan13 } from '../../../domain/utils/barcode-normalization';
 import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
 
@@ -312,6 +313,7 @@ export class ProductVariantRepository implements ProductVariantRepositoryPort {
       taxRate: entity.taxRate,
       taxRateCountry: entity.taxRateCountry,
       taxRateReadAt: entity.taxRateReadAt,
+      taxRateUnknownReason: readTaxRateUnknownReason(entity.taxRateUnknownReason),
       createdAt: entity.createdAt,
       updatedAt: entity.updatedAt,
     };
@@ -357,6 +359,7 @@ export class ProductVariantRepository implements ProductVariantRepositoryPort {
         taxRate: rate.code,
         taxRateCountry: rate.countryIso2,
         taxRateReadAt: rate.readAt,
+        taxRateUnknownReason: rate.unknownReason ?? null,
       }
     );
   }
@@ -373,16 +376,27 @@ export class ProductVariantRepository implements ProductVariantRepositoryPort {
   async clearTaxRate(variantId: string): Promise<void> {
     await this.repository.update(
       { id: variantId },
-      { taxRate: null, taxRateCountry: null, taxRateReadAt: null }
+      { taxRate: null, taxRateCountry: null, taxRateReadAt: null, taxRateUnknownReason: null }
     );
   }
 
   async findTaxRate(variantId: string): Promise<StoredTaxRate | null> {
     const row = await this.repository.findOne({
       where: { id: variantId },
-      select: { id: true, taxRate: true, taxRateCountry: true, taxRateReadAt: true },
+      select: {
+        id: true,
+        taxRate: true,
+        taxRateCountry: true,
+        taxRateReadAt: true,
+        taxRateUnknownReason: true,
+      },
     });
     if (!row) return null;
-    return { code: row.taxRate, countryIso2: row.taxRateCountry, readAt: row.taxRateReadAt };
+    return {
+      code: row.taxRate,
+      countryIso2: row.taxRateCountry,
+      readAt: row.taxRateReadAt,
+      unknownReason: readTaxRateUnknownReason(row.taxRateUnknownReason),
+    };
   }
 }
