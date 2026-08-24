@@ -75,11 +75,12 @@ Branch: `oms-programme-wave-1` (stacked off Wave-0 tip feb78054d; Wave-0 PR to m
 | #2314 | W1b-3 | ladder step (i): sourceConnectionId + OL-owned group | ☑ merged 426f6bdc4 (commit 4f77854ea; reviewed, approved; migration 1844000000000) |
 | #2315 | W1b-11 | deprecate reserve/releaseInventory in place | ☑ merged 4692d815d (commit 9f3ebd5a6; reviewed, approved; 3 files docs-only) |
 | #2317 | W1b-4 | ladder step (ii): 'legacy' sentinel backfill sweep | ☑ merged dd262a818 (commit 483a2e561; reviewed, approved; survived one transient API-403 agent death + resume; union-resolved tokens/module conflicts with #2321) |
-| #2323 | W1b-7 | rewire buffer sites onto the seam | ◐ planned (plan-2323; D1 applyPublishControls fork — audit in flight) |
+| #2323 | W1b-7 | rewire buffer sites onto the seam | ◑ implementing (ANALYSIS-2323; D1 approved + getAppliedReserve; base a9bd024da) |
+| #2324 | W1b-8 | retire locationId propagation skip (BREAKING) | ☐ plan after #2323 |
 | #2319 | W1b-9 | duplicate-position detection pass | ☑ merged a2b557e4b (commit 671a050df; reviewed, approved; finding: duplicates only reachable via NULL key columns — recorded in ops doc) |
 | #2321 | W1b-6 | IAvailabilityService computed seam | ☑ merged bdcdb6711 (commit 104d37869; reviewed, approved; consumed by nobody until #2323) |
 | #2320 | W1b-5 | provenance-scoped lookup + per-source prune | ◑ implementing (ANALYSIS-2320; imports LEGACY const from #2317; Decision A typed InventoryCrossSourcePositionConflictError naming #2325; #1904 guard unchanged) |
-| #2322 | W1b-10 | enforce locationId-NULL semantics | ◐ planned (plan-2322; audits+dispatches after #2320) |
+| #2322 | W1b-10 | enforce locationId-NULL semantics | ◐ audit in flight vs post-#2320 tree |
 ### Wave 1c (epic #2337) — gated on #2289 fork decided; Wave 1a
 ### Wave 2 (epic #2389) — gated per its epic body; §8 Q1 = YES (decision 2 above)
 
@@ -89,6 +90,7 @@ Branch: `oms-programme-wave-1` (stacked off Wave-0 tip feb78054d; Wave-0 PR to m
 
 - **Wave 0** (2026-08-23): 8 issues + #2298 on `oms-programme-waves-0-2`; boundary review applied at feb78054d; **PR #2438 to main OPEN, awaiting owner merge**.
 - **Wave 1a** (2026-08-24): 8 issues on `oms-programme-wave-1` (feb78054d..c2278a549, 70 files +6419/−97); boundary sweep clean. Formal `/pr-review` of **PR #2441** ran (0 BLOCKING, 7 IMPORTANT, 16 SUGGESTIONS; adjudication in scratchpad `prreview-2441-adjudication.md`); ALL 23 applied in fix commit `b1adacdc9`, merged `debcb59a7`. #2441 based on `oms-programme-waves-0-2`; retarget to main after #2438 merges, then merge `origin/main` forward.
+- **Migration re-timestamp #2** (2026-08-24 evening): main gained `1841000000006` (#2014 analytics), outranking #2283's amendment migration — renamed `1841→1845` on BOTH lineages (wave-1 `88c92b947`, waves-0-2 `09554111a`). Every unmerged week risks another; merging #2438 then #2441 stops the churn.
 - **Migration re-timestamp** (2026-08-24): main gained `1840000000000-reset-fx-stamp…` after the branches were cut, tying with #2287's packed migration. Renamed `1840→1842` on BOTH lineages (wave-1 via `b1adacdc9`; waves-0-2 via `53cbf6f74`, byte-identical → stacked merge stays clean). Consequence: **1842 is consumed — #2313 uses 1843000000000**, next free 1844.
 
 ## Resume instructions
