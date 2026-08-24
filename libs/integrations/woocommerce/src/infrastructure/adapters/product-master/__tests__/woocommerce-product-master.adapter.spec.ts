@@ -843,7 +843,10 @@ describe('WooCommerceProductMasterAdapter', () => {
       httpClient: jest.Mocked<IWooCommerceHttpClient>,
       routes: {
         product?: unknown;
-        settings?: unknown | (() => never);
+        // Either a settings payload or a zero-arg thunk simulating a throwing
+        // read — `unknown` already covers a function value, so the explicit
+        // union is redundant for TS but documents the intended shape.
+        settings?: unknown;
         taxes?: unknown;
         variation?: unknown;
       },
