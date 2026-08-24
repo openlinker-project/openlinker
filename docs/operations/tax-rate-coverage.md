@@ -91,12 +91,11 @@ per-product state the publish and issuance paths already act on.
 
 Strict enforcement is a single environment switch, and it is **OFF by default**.
 
-With it off, every enforcement point behaves as it did before the epic: the
+With it off, every *coverage* refusal behaves as it did before the epic: the
 three invoicing providers substitute their documented default (inFakt 23%,
 Subiekt 23%, KSeF the per-connection value), the auto-issue gate and the
 issuance write-path guard both pass, the fiscal-registration gate passes, and
-the Allegro and Erli offer creates publish with the rate omitted. So deploying
-this epic changes nothing operationally until an operator decides it should.
+the Allegro and Erli offer creates publish with the rate omitted.
 
 With it on, ADR-063 applies: a rate-less line holds the document, and a
 rate-less publish is refused with an error naming what to fix.
@@ -110,11 +109,48 @@ Only the exact string `true` enables it. Anything else - absent, empty, `1`,
 `yes`, a typo - reads as off, deliberately: a mistyped value must never be the
 thing that stops a seller invoicing.
 
-Two refusals are **not** switched: an exemption code a channel cannot express
-(`zw` / `np` / `oo` on Allegro, `oo` on Erli), and a rate the target category
-refuses. Both mean the shop DID name a rate and the channel cannot carry that
-exact value, which is a real conflict at any coverage level rather than a
-coverage problem.
+### What can still fail with the switch off
+
+Two publish refusals are **not** behind the switch, and they can fire on a
+deployment that has touched nothing:
+
+| Refusal | Where | When |
+|---|---|---|
+| `TAX_RATE_NOT_EXPRESSIBLE` | Allegro and Erli offer create | The shop's rate is an exemption code the channel cannot express (`zw` / `np` / `oo` on Allegro, `oo` on Erli). |
+| `TAX_RATE_NOT_ALLOWED_IN_CATEGORY` | Allegro offer create | The shop's rate is not among the rates Allegro's target category allows (a 23% product published into a reduced-rate category). |
+
+Both mean the shop **did** state a rate and the channel cannot carry that exact
+value. That is a conflict at any coverage level rather than a coverage problem,
+which is why it is not switchable: publishing the offer anyway would state the
+wrong tax to real buyers, and a failed batch an operator can see is the better
+failure.
+
+**When it becomes reachable.** Not on deploy - with an empty rate column there
+is nothing to conflict with. It becomes reachable as soon as a product sync
+fills the rates in, which is the step this page tells you to run *before*
+enabling anything. So the order is: sync, then expect these two, then take the
+count, then switch.
+
+**What it looks like.** The offer-create child job fails. There is no badge, no
+counter and no held state for it - only the failed child in the bulk batch and
+the job error, which names the offending rate and, for the category refusal, the
+rates the category does allow. On a large bulk publish every affected child
+fails, so a catalogue-wide misconfiguration (exempt goods carried as `zw`, or a
+whole category published at the wrong rate) shows up as a mostly-failed batch.
+
+**What the operator does.** Read the rate off the error, then fix it in the
+place that owns it:
+
+- a rate the category refuses - either the shop's rate is wrong for that product,
+  or the product is being published into the wrong category. Fix whichever is
+  wrong; both fixes are outside OpenLinker.
+- an exemption code the channel cannot express - that product cannot be sold on
+  that channel at that rate. Either the shop's exemption is wrong, or the product
+  does not belong on that channel. There is no OpenLinker-side override, by
+  design.
+
+Nothing else on the publish path refuses. A missing rate with the switch off
+still publishes with the rate omitted, byte for byte as before.
 
 ## Why this gates #2257
 
@@ -137,15 +173,20 @@ issued for them used the provider defaults. The
 'pre-rollout'` on them.
 
 They **issue exactly as they do today** - blocking would stop history nobody is
-going to retrofit. That is enforced, not merely intended: both the auto-issue
-gate and the issuance write-path guard read the marker and exempt a pre-rollout
-order **even with the switch on**, so turning enforcement on cannot strand the
-back catalogue. Its lines carry no rate because no rate was ever collected for
+going to retrofit. That is enforced, not merely intended: every refusal that can
+see an order reads the marker and exempts a pre-rollout one **even with the
+switch on**, so turning enforcement on cannot strand the back catalogue. That is
+five places: the auto-issue invoice gate, the auto-issue receipt gate, the
+invoice issuance write path, the fiscal-registration write path, and the Subiekt
+line mapper. Its lines carry no rate because no rate was ever collected for
 them, and no catalogue edit changes that after the sale.
 
-They are also **excluded from any net-revenue figure** rather than presented as
-a confirmed rate. Nothing renders the marker to an operator: it appeared in one
-place with no action attached, so it is analytics data, not a badge.
+The marker exists so a later net-revenue figure can **exclude** them rather than
+present a defaulted rate as a confirmed one. Nothing reads it for that yet -
+there is no net-revenue figure and no analytics consumer of `taxRateEra` today,
+which is why the migration's own comment is conditional. Nothing renders the
+marker to an operator either: it would appear in one place with no action
+attached, so it is analytics data, not a badge.
 
 ```sql
 -- orders whose tax is stated rather than defaulted

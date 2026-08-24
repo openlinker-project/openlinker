@@ -147,6 +147,7 @@ export {
 } from './lib/resolve-invoicing-connection';
 export {
   resolveSalesDocumentBlockCopy,
+  resolveMissingTaxRateScope,
   type SalesDocumentBlockCopy,
   type SalesDocumentBlockCopyKind,
   type RateLessLine,

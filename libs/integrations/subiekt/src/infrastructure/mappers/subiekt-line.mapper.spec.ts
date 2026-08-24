@@ -62,6 +62,22 @@ describe('toBridgeLines', () => {
         expect(() => toBridgeLines([line('   ')])).toThrow(MissingTaxRateException);
       }),
     );
+
+    it(
+      'should exempt a PRE-ROLLOUT order even with the switch on (#2260 review)',
+      withStrict('true', () => {
+        // Core's own guard lets a pre-rollout order through, so refusing it here
+        // made this route disagree with inFakt and KSeF for the same order.
+        expect(toBridgeLines([line('')], 'pre-rollout')[0]?.stawkaVAT).toBe('23');
+      }),
+    );
+
+    it(
+      'should still refuse when the era marker is unrecognised (#2260 review)',
+      withStrict('true', () => {
+        expect(() => toBridgeLines([line('')], 'legacy')).toThrow(MissingTaxRateException);
+      }),
+    );
   });
 
   it('should reject a fractional-looking rate rather than forwarding it', () => {

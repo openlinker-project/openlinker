@@ -1383,10 +1383,11 @@ export class InfaktInvoicingAdapter
  * Under strict enforcement a rate-less line has nowhere to resolve to. Raising
  * the same neutral exception core does keeps the failure legible at every layer
  * - and keeps its existing 422 mapping - rather than surfacing as an inFakt
- * wire-field rejection nobody can act on. A pre-rollout order never reaches
- * here: core's own guard exempts it and passes the command through, and this
- * adapter has no order era to consult, so the substitution below is what serves
- * it.
+ * wire-field rejection nobody can act on. A pre-rollout order is exempt at both
+ * ends: core's own guard passes it through, and `isTaxRateEnforced` reads the
+ * command's own era here too, so the documented default is what serves it. The
+ * two must agree - a guard that read only the switch would refuse on this route
+ * what the other routes issue.
  */
 function assertEveryLineHasATaxRate(cmd: IssueInvoiceCommand): void {
   if (!isTaxRateEnforced(cmd.taxRateEra)) return;

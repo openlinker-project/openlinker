@@ -9,7 +9,10 @@
  * render kind-appropriate copy instead of always saying "invoice".
  */
 import { describe, expect, it } from 'vitest';
-import { resolveSalesDocumentBlockCopy } from './sales-document-block-copy';
+import {
+  resolveMissingTaxRateScope,
+  resolveSalesDocumentBlockCopy,
+} from './sales-document-block-copy';
 import type { OrderRecord } from '../../orders';
 
 /** `t(key, fallback)` behaves like the host's empty catalogue: always the fallback. */
@@ -281,6 +284,28 @@ describe('resolveSalesDocumentBlockCopy - missing tax rate (#2254)', () => {
       { name: 'C', inCatalogue: true },
     ]);
     expect(copy?.title).toContain('3 lines have no tax rate.');
+  });
+
+  it('is about the delivery charge, not a line, when every line has a rate (#2260 review)', () => {
+    // The gate also blocks when every product line IS rated but the shipping
+    // charge cannot be attributed to any of them. Claiming "1 line has no tax
+    // rate" there is flatly false, and there is no count to report.
+    const copy = resolveSalesDocumentBlockCopy(blocked, false, t, 'invoice', []);
+    expect(copy?.title).toBe('Not invoiced: the delivery charge has no tax rate.');
+    expect(copy?.body).toContain('Every product line has a rate');
+    expect(`${copy?.title ?? ''} ${copy?.body ?? ''}`).not.toMatch(/\d+ lines? has|Some lines/);
+    expect(copy?.title).not.toContain('1 line');
+  });
+
+  it('renders the delivery-charge block with receipt-flavored copy', () => {
+    const copy = resolveSalesDocumentBlockCopy(blocked, false, t, 'fiscal-receipt', []);
+    expect(copy?.title).toBe('Not registered: the delivery charge has no tax rate.');
+    expect(copy?.body).toContain('register this one outside OpenLinker');
+  });
+
+  it('scopes the block off the lines, so copy and controls read one answer', () => {
+    expect(resolveMissingTaxRateScope([])).toBe('shipping');
+    expect(resolveMissingTaxRateScope([{ name: 'A', inCatalogue: true }])).toBe('lines');
   });
 
   it('never claims an ambiguous tax class', () => {

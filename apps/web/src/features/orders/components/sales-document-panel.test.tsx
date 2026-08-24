@@ -328,6 +328,7 @@ describe('SalesDocumentPanel — shipping split preview (#2254)', () => {
     lines: { id: string; rate: string | null; price: number; quantity: number }[],
     shipping: number,
   ): OrderRecord {
+    const subtotal = lines.reduce((sum, line) => sum + line.price * line.quantity, 0);
     return {
       ...order,
       orderSnapshot: {
@@ -339,7 +340,11 @@ describe('SalesDocumentPanel — shipping split preview (#2254)', () => {
           name: `Item ${line.id}`,
           taxRate: line.rate,
         })),
-        totals: { shipping, currency: 'PLN', total: 0 },
+        // A COMPLETE totals object (#2260 review): the panel reads totals through
+        // `parseOrderSnapshot`, whose schema requires every field. A fixture
+        // missing `subtotal`/`tax` used to pass only because the panel bypassed
+        // its own validator with a cast.
+        totals: { subtotal, tax: 0, shipping, total: subtotal + shipping, currency: 'PLN' },
       },
     };
   }
@@ -437,6 +442,137 @@ describe('SalesDocumentPanel — shipping split preview (#2254)', () => {
 
     expect(await screen.findByRole('button', { name: /issue invoice/i })).toBeDisabled();
     expect(screen.getByText(/no tax rate on 1 line/i)).toBeInTheDocument();
-    expect(screen.getByText(/Fix and re-check/i)).toBeInTheDocument();
+    // The HREF, not just the text (#2260 review): the products list filters on
+    // `taxRateState`, and the old `taxRate` param landed on the unfiltered
+    // catalogue with no signal the filter had been dropped.
+    expect(screen.getByRole('link', { name: /Fix and re-check/i })).toHaveAttribute(
+      'href',
+      '/products?taxRateState=missing',
+    );
+  });
+});
+
+describe('SalesDocumentPanel - delivery-charge rate block (#2260 review)', () => {
+  /**
+   * The gate's second refusal shape: every product line HAS a rate, but the
+   * delivery charge cannot be attributed to one (here, lines grossing zero while
+   * delivery is charged). There is no rate-less line to name, so the panel must
+   * not claim one - and the disabled control still needs a reason beside it.
+   */
+  function deliveryBlockedOrder(): OrderRecord {
+    return {
+      ...order,
+      orderSnapshot: {
+        items: [
+          {
+            id: 'a',
+            productId: 'prod_a',
+            quantity: 1,
+            price: 0,
+            name: 'Free sample',
+            taxRate: '23',
+          },
+        ],
+        totals: { subtotal: 0, tax: 0, shipping: 10, total: 10, currency: 'PLN' },
+      },
+      salesDocumentBlockReason: 'missing-tax-rate',
+      salesDocumentBlockDetail:
+        'the shipping charge cannot be attributed to a tax rate (1 product line(s), none with a usable amount)',
+    };
+  }
+
+  it('never tells the operator a line has no rate when every line has one', async () => {
+    renderWithProviders(<SalesDocumentPanel order={deliveryBlockedOrder()} />, {
+      apiClient: createMockApiClient({
+        connections: { list: vi.fn().mockResolvedValue([invoicingConnection]) },
+        invoicing: { getForOrder: vi.fn().mockRejectedValue(notFound()) },
+      }),
+      ...adminSession,
+    });
+
+    expect(
+      await screen.findByText(/Not invoiced: the delivery charge has no tax rate\./i),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/line has no tax rate/i)).toBeNull();
+    expect(screen.queryByText(/lines have no tax rate/i)).toBeNull();
+    expect(screen.queryByText(/Some lines/i)).toBeNull();
+  });
+
+  it('states the refusal beside the disabled Issue button, and does not point at the catalogue', async () => {
+    renderWithProviders(<SalesDocumentPanel order={deliveryBlockedOrder()} />, {
+      apiClient: createMockApiClient({
+        connections: { list: vi.fn().mockResolvedValue([invoicingConnection]) },
+        invoicing: { getForOrder: vi.fn().mockRejectedValue(notFound()) },
+      }),
+      ...adminSession,
+    });
+
+    expect(await screen.findByRole('button', { name: /issue invoice/i })).toBeDisabled();
+    expect(screen.getByText(/no tax rate for the delivery charge/i)).toBeInTheDocument();
+    // A delivery charge with nowhere to sit is not fixed in the catalogue.
+    expect(screen.queryByRole('link', { name: /Fix and re-check/i })).toBeNull();
+  });
+});
+
+describe('SalesDocumentPanel - receipt path, missing rate (#2255/#2252)', () => {
+  function renderFiscal(record: OrderRecord): void {
+    renderWithProviders(<SalesDocumentPanel order={record} />, {
+      apiClient: createMockApiClient({
+        connections: { list: vi.fn().mockResolvedValue([fiscalConnection]) },
+        fiscalization: { listForOrder: vi.fn().mockResolvedValue([]) },
+      }),
+      ...adminSession,
+    });
+  }
+
+  const rateLessBasket: OrderRecord = {
+    ...order,
+    orderSnapshot: {
+      items: [
+        { id: 'a', productId: 'prod_a', quantity: 1, price: 100, name: 'Blue mug', taxRate: null },
+      ],
+      totals: { subtotal: 100, tax: 0, shipping: 0, total: 100, currency: 'PLN' },
+    },
+    salesDocumentBlockReason: 'missing-tax-rate',
+  };
+
+  const deliveryOnlyGap: OrderRecord = {
+    ...order,
+    orderSnapshot: {
+      items: [
+        { id: 'a', productId: 'prod_a', quantity: 1, price: 0, name: 'Free sample', taxRate: '23' },
+      ],
+      totals: { subtotal: 0, tax: 0, shipping: 10, total: 10, currency: 'PLN' },
+    },
+    salesDocumentBlockReason: 'missing-tax-rate',
+  };
+
+  it('disables Register receipt and says why for a rate-less line', async () => {
+    renderFiscal(rateLessBasket);
+
+    expect(await screen.findByRole('button', { name: 'Register receipt' })).toBeDisabled();
+    expect(screen.getByText(/Not registered: 1 line has no tax rate\./i)).toBeInTheDocument();
+    expect(screen.getByText(/tax letter is not used to fill the gap/i)).toBeInTheDocument();
+  });
+
+  it('never disables Register receipt with nothing beside it', async () => {
+    // The button is disabled on the reason alone, so the alert must render for
+    // EVERY shape of that reason - including the one with no rate-less line.
+    renderFiscal(deliveryOnlyGap);
+
+    expect(await screen.findByRole('button', { name: 'Register receipt' })).toBeDisabled();
+    // Rendered twice on this pool - once as the empty-state block reason, once
+    // beside the control - and both say the same true thing.
+    expect(
+      screen.getAllByText(/Not registered: the delivery charge has no tax rate\./i).length,
+    ).toBeGreaterThan(0);
+    expect(screen.queryByText(/line has no tax rate/i)).toBeNull();
+  });
+
+  it('leaves Register receipt live when no rate is missing', async () => {
+    renderFiscal({ ...rateLessBasket, salesDocumentBlockReason: null });
+
+    expect(await screen.findByRole('button', { name: 'Register receipt' })).toBeEnabled();
+    expect(screen.queryByText(/has no tax rate/i)).toBeNull();
   });
 });

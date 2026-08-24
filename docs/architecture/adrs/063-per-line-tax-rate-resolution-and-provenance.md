@@ -156,13 +156,29 @@ the offer is the one OL wrote, which is exactly the attribution a mismatch inves
   documented default, both issuance gates and the fiscal-registration gate pass, and the marketplace
   publishes omit the rate exactly as before. An operator takes the coverage count
   ([docs/operations/tax-rate-coverage.md](../../operations/tax-rate-coverage.md)) and turns it on when
-  the answer says so. Two refusals are deliberately **not** switched - an exemption code the channel
-  cannot express, and a rate the target category rejects - because both mean the shop DID state a rate
-  the channel cannot carry, which is a conflict at any coverage level.
-- **Pre-rollout orders are marked historical** and issue exactly as they do today, excluded from any
-  net-revenue figure rather than presented as a confirmed rate. The marker is read, not merely
-  written: both the auto-issue gate and the issuance write-path guard exempt a pre-rollout order even
-  with the switch on, so enabling enforcement cannot strand the back catalogue.
+  the answer says so.
+- **Two publish refusals are deliberately NOT switched**, and the cost of that is accepted rather than
+  overlooked. An exemption code the channel cannot express, and a rate the target category rejects,
+  both mean the shop DID state a rate the channel cannot carry - a conflict at any coverage level, not
+  a coverage problem, so there is nothing for the coverage switch to gate. Their blast radius is the
+  same one that justified gating the third refusal: they become reachable the moment a product sync
+  fills the rate column (the step the rollout runbook prescribes *before* the switch is touched), and
+  on a bulk publish a catalogue-wide misconfiguration - exempt goods carried as `zw`, a whole category
+  published at the wrong rate - fails every affected child, on a surface with no badge, no counter and
+  no held state, with no way to switch it off. Accepted anyway: a published offer that states the
+  wrong tax charges real buyers wrongly and cannot be un-charged, whereas a failed batch is visible
+  and the error names the offending rate and, for the category refusal, the rates the category allows.
+  A switch here would let an operator trade a visible failure for a silent wrong tax, which is the one
+  trade this epic exists to remove. Surfacing both in the bulk wizard's pre-submit validation
+  (#2243/#2244) so the operator sees them before submitting is the follow-up; the runbook
+  ([docs/operations/tax-rate-coverage.md](../../operations/tax-rate-coverage.md) § What can still fail
+  with the switch off) states them meanwhile.
+- **Pre-rollout orders are marked historical** and issue exactly as they do today, so that a later
+  net-revenue figure can exclude them rather than present a defaulted rate as a confirmed one - no
+  such figure reads the marker yet. The marker is read where it matters: every refusal that can see an
+  order exempts a pre-rollout one even with the switch on - the auto-issue invoice gate, the
+  auto-issue receipt gate, the invoice issuance write path, the fiscal-registration write path and the
+  Subiekt line mapper - so enabling enforcement cannot strand the back catalogue.
 - **Erli gains a real read and a real write**; Allegro gains a propagation write. A category refusing
   the rate fails the publish with an actionable error naming the allowed values - never a publish with
   the rate silently omitted. A frozen field is neither written nor reported as a recurring error, and

@@ -16,7 +16,7 @@ import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, Index, Unique
 // single-column index per column (review finding: five single-column
 // indexes on a table written on every order ingest is real write
 // amplification, and none of them served the actual queries well). See the
-// 1839000000001 migration's comment for the per-index query it backs.
+// 1840000000001 migration's comment for the per-index query it backs.
 // variantId and a standalone placedAt index are deferred until a query
 // actually needs them.
 @Index(['sourceConnectionId', 'placedAt'])

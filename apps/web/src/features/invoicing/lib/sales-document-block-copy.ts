@@ -253,7 +253,7 @@ export function resolveSalesDocumentBlockCopy(
   }
 
   if (reason === 'missing-tax-rate') {
-    return resolveMissingTaxRateCopy(rateLines, detail, t);
+    return resolveMissingTaxRateCopy(rateLines, detail, t, v);
   }
 
   if (reason === 'tax-rate-conflict') {
@@ -310,6 +310,25 @@ export interface RateLessLine {
 }
 
 /**
+ * Which subject a `missing-tax-rate` block is about (#2260 review).
+ *
+ * The backend gate (`findOrderTaxRateGap`) refuses in two shapes: a product line
+ * with no rate, and - with every product line rated - a delivery charge that
+ * cannot be attributed to any rate (an empty basket, or every line grossing
+ * zero). The persisted reason is the same in both, so the panel reads the scope
+ * off the same fact the gate did: no rate-less line means the delivery charge is
+ * the only thing left with nowhere to sit.
+ *
+ * It exists so the copy AND the disabled control agree on one answer, instead of
+ * each deriving its own.
+ */
+export function resolveMissingTaxRateScope(
+  rateLines: readonly RateLessLine[],
+): 'lines' | 'shipping' {
+  return rateLines.length === 0 ? 'shipping' : 'lines';
+}
+
+/**
  * The two remedy branches for a missing rate (#2254).
  *
  * One sentence would be wrong here, because the REASON a rate is absent decides
@@ -338,9 +357,34 @@ function resolveMissingTaxRateCopy(
   lines: RateLessLine[],
   detail: string | null,
   t: (key: string, fallback: string) => string,
+  v: KindVocabulary,
 ): SalesDocumentBlockCopy {
+  // Shipping scope (#2260 review): the gate blocked on a missing rate while
+  // every product line HAS one, so the subject is the delivery charge, not a
+  // line. Saying "1 line has no tax rate" here would be flatly false, and
+  // naming a count no line supports would be an invention.
+  if (resolveMissingTaxRateScope(lines) === 'shipping') {
+    return {
+      tone: 'error',
+      title: t(
+        'salesDocument.panel.blockNoRateShippingTitle',
+        `Not ${v.pastParticiplePhrase}: the delivery charge has no tax rate.`,
+      ),
+      body: t(
+        'salesDocument.panel.blockNoRateShippingBody',
+        `Every product line has a rate, but nothing in this order carries an amount the delivery charge could follow. Check the order's lines and delivery charge, or ${v.actionVerb} this one outside OpenLinker.`,
+      ),
+      detail,
+      offerSetPrimary: false,
+    };
+  }
+
   const names = lines.map((line) => line.name).filter(Boolean);
-  const count = Math.max(names.length, 1);
+  // Count the LINES, never a floor: past the shipping branch there is at least
+  // one rate-less line, so the number is always a real one. `names` can still be
+  // short of `lines` if a line carried no printable name at all, which is the
+  // only case the unnamed-subject wording is reached for - and it is true there.
+  const count = lines.length;
   const list = names.length > 0 ? names.join(', ') : t('invoice.panel.someLines', 'Some lines');
 
   const uncatalogued = lines.filter((line) => !line.inCatalogue);

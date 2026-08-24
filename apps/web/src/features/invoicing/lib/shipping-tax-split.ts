@@ -13,8 +13,9 @@
  *
  * `scripts/check-shipping-tax-split-mirror.mjs` (run from `pnpm check:invariants`)
  * compares the two implementations token-for-token, so the halves cannot drift
- * silently. Keep this file a literal copy of the core function and its `round2`
- * helper: edit core first, then paste.
+ * silently. Keep this file a literal copy of the core function and its
+ * `roundToMinorUnits` / `minorUnitExponentFor` helpers: edit core first, then
+ * paste.
  *
  * @module apps/web/src/features/invoicing/lib
  */

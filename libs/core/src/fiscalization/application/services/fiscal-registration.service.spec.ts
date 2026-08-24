@@ -489,6 +489,48 @@ describe('FiscalRegistrationService', () => {
       expect(adapter.registerTransaction).toHaveBeenCalled();
     });
 
+    it('accepts a PRE-ROLLOUT order with the switch on (#2260 review)', async () => {
+      // The gate is era-aware because `AutoIssueTriggerService` is: without
+      // this, the gate reported `none` (clearing any persisted reason), the job
+      // enqueued, and this write gate refused it with no badge, no count and no
+      // filter hit - a silent decline along the era axis.
+      repo.findByIdempotencyKey.mockResolvedValue(null);
+      repo.findAllByOrderId.mockResolvedValue([]);
+      repo.create.mockResolvedValue(record('pending'));
+      repo.claimForRegistration.mockResolvedValue(record('registering'));
+      repo.updateOutcome.mockImplementation((_id, patch) =>
+        Promise.resolve(record(patch.status ?? 'registered')),
+      );
+      adapter.registerTransaction.mockResolvedValue({
+        providerType: 'provider-a',
+        providerReference: 'p-1',
+        documentReference: 'd-1',
+        signingIdentity: 's-1',
+        registeredAt: NOW,
+        artefacts: [],
+      });
+
+      await service.register(
+        command({
+          lines: [{ name: 'Widget', quantity: 1, unitPriceGross: 10, taxRate: '', sku: null }],
+          taxRateEra: 'pre-rollout',
+        }),
+      );
+
+      expect(adapter.registerTransaction).toHaveBeenCalled();
+    });
+
+    it('still refuses an order whose era marker is unrecognised (#2260 review)', async () => {
+      await expect(
+        service.register(
+          command({
+            lines: [{ name: 'Widget', quantity: 1, unitPriceGross: 10, taxRate: '', sku: null }],
+            taxRateEra: 'something-else',
+          }),
+        ),
+      ).rejects.toBeInstanceOf(MissingFiscalTaxRateException);
+    });
+
     it('names the first offending line so the operator knows where to look', async () => {
       const promise = service.register(
         command({

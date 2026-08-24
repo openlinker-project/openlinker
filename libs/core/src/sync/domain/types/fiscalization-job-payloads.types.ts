@@ -56,4 +56,16 @@ export interface FiscalizationRegisterPayloadV1 {
   sourceConnectionId: string;
   /** Only trace token at the seam (D10); optional — NO `correlationId` exists. */
   sourceEventId?: string;
+  /**
+   * The order's tax-rate era marker (#2260 review) - today only
+   * `'pre-rollout'`, for an order that existed before per-line rates did.
+   * Optional additive field (no `schemaVersion` bump); absent means "after the
+   * feature", which is the ordinary case.
+   *
+   * Typed as a plain string, not the `TaxRateEra` union, for the same reasons
+   * `InvoicingIssuePayloadV1.taxRateEra` is: this is a jsonb wire shape, so an
+   * unrecognised value must arrive rather than fail to type, and the handler
+   * coerces it through the union's guard.
+   */
+  taxRateEra?: string;
 }

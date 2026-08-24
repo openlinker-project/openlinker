@@ -43,7 +43,7 @@ import { FiscalRegistrationNotInDoubtException } from '../../domain/exceptions/f
 import { FiscalRegistrationRecordNotFoundException } from '../../domain/exceptions/fiscal-registration-record-not-found.exception';
 import { MissingIdempotencyKeyException } from '../../domain/exceptions/missing-idempotency-key.exception';
 import { MissingFiscalTaxRateException } from '../../domain/exceptions/missing-tax-rate.exception';
-import { isTaxRateStrictEnabled } from '@openlinker/core/sales-documents';
+import { isTaxRateEnforced } from '@openlinker/core/sales-documents';
 import { OrderAlreadyRegisteredException } from '../../domain/exceptions/order-already-registered.exception';
 import { OrderAlreadyHasInvoiceException } from '../../domain/exceptions/order-already-has-invoice.exception';
 import { FiscalRegistrationContendedException } from '../../domain/exceptions/fiscal-registration-contended.exception';
@@ -515,11 +515,13 @@ export class FiscalRegistrationService implements IFiscalRegistrationService {
    * provider would silently replace with its own default.
    */
   private assertEveryLineHasATaxRate(cmd: RegisterTransactionCommand): void {
-    // #2245 review: off unless the deployment opted in. A receipt path has no
-    // order era to consult - `RegisterTransactionCommand` carries none - so the
-    // switch is the only gate here; see the report on #2260 for why the era
-    // exemption stops at the two invoice sites.
-    if (!isTaxRateStrictEnabled()) return;
+    // #2260 review: one helper answers BOTH halves - has the deployment opted
+    // in, and is this order pre-rollout history. Reading the switch alone here
+    // was a silent decline along the era axis: `AutoIssueTriggerService` is
+    // era-aware, so a pre-rollout order passed the gate (which then reported
+    // `none` and cleared any persisted reason), the job enqueued, and this gate
+    // refused it with no badge, no count and no filter hit.
+    if (!isTaxRateEnforced(cmd.taxRateEra)) return;
     const missing = cmd.lines.filter((line) => line.taxRate.trim() === '');
     if (missing.length === 0) return;
     throw new MissingFiscalTaxRateException(

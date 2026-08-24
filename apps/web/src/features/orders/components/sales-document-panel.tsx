@@ -115,6 +115,7 @@ import {
   DOCUMENT_TYPE_LABEL_FALLBACK,
   InvoicePdfLink,
   resolveSalesDocumentBlockCopy,
+  resolveMissingTaxRateScope,
   splitShippingAcrossRates,
   minorUnitExponentFor,
   type InvoiceRecord,
@@ -137,7 +138,7 @@ import {
 
 import type { OrderRecord } from '../api/orders.types';
 import { parseOrderSnapshot } from '../api/order-snapshot.schema';
-import type { ParsedOrderItem } from '../api/order-snapshot.schema';
+import type { ParsedOrderItem, ParsedOrderTotals } from '../api/order-snapshot.schema';
 
 interface SalesDocumentPanelProps {
   order: OrderRecord;
@@ -481,7 +482,12 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
   const derivedAmbiguity = blockCopyKind === 'invoice' && requiresConnectionPick;
   // #2254 - the rate-less lines, read from the order's own snapshot. The remedy
   // depends on WHY a rate is absent, and only the lines say which case this is.
-  const snapshotItems = parseOrderSnapshot(order.orderSnapshot).items;
+  // One parse, one source of truth (#2260 review): `totals` is read from the
+  // same validated result as `items`, never re-read off the raw snapshot with a
+  // cast - a cast is strictly more permissive than `orderTotalsSchema`, so the
+  // preview could render off totals this app's own validator rejects.
+  const parsedSnapshot = parseOrderSnapshot(order.orderSnapshot);
+  const snapshotItems = parsedSnapshot.items;
   const rateLessLines = collectRateLessLines(snapshotItems);
   const conflictLines = snapshotItems.filter((item) => Boolean(item.taxRateChannel));
   const blockCopy = showEmptyState
@@ -501,12 +507,18 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
   // document before it exists; one unknown line rate makes the proportion
   // uncomputable, so the whole preview collapses to a single waiting row rather
   // than showing a split OL cannot stand behind.
-  const shippingSplitPreview = renderShippingSplitPreview(snapshotItems, order.orderSnapshot, t);
-  const issueRefusal = missingRateReason
-    ? rateLessLines.length === 1
-      ? t('invoice.panel.issueRefusedOne', 'no tax rate on 1 line')
-      : `${t('invoice.panel.issueRefusedPrefix', 'no tax rate on')} ${String(Math.max(rateLessLines.length, 1))} ${t('invoice.panel.issueRefusedSuffix', 'lines')}`
-    : null;
+  const shippingSplitPreview = renderShippingSplitPreview(snapshotItems, parsedSnapshot.totals, t);
+  // #2260 review - which subject the block is about. Read once, so the copy, the
+  // refusal beside the button and the receipt-side alert cannot disagree.
+  const missingRateScope = missingRateReason ? resolveMissingTaxRateScope(rateLessLines) : null;
+  const issueRefusal =
+    missingRateScope === 'shipping'
+      ? t('invoice.panel.issueRefusedShipping', 'no tax rate for the delivery charge')
+      : missingRateScope === 'lines'
+        ? rateLessLines.length === 1
+          ? t('invoice.panel.issueRefusedOne', 'no tax rate on 1 line')
+          : `${t('invoice.panel.issueRefusedPrefix', 'no tax rate on')} ${String(rateLessLines.length)} ${t('invoice.panel.issueRefusedSuffix', 'lines')}`
+        : null;
 
   return (
     <section className="detail-section sales-document-panel">
@@ -940,13 +952,19 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
               which this panel does not know - it knows document connections. A
               control that synced the wrong connection would be worse than a link
               to the one screen that does know. */}
-          {missingRateReason ? (
+          {/* `taxRateState` is the param the products list reads (#2260 review);
+              `taxRate` is the ORDERS list's own conflict filter, and pointing
+              here at that one landed on the unfiltered catalogue with no signal
+              the filter had been ignored. Only rendered for a LINE-scoped block:
+              a delivery charge with nowhere to sit is not fixed in the
+              catalogue, so the link would point at the wrong screen. */}
+          {missingRateScope === 'lines' ? (
             <p className="panel-copy">
               {t(
                 'invoice.panel.fixAndRecheck',
                 'Rates are read during product sync, so a fix in the shop shows up on the next one.',
               )}{' '}
-              <Link to="/products?taxRate=missing">
+              <Link to="/products?taxRateState=missing">
                 {t('invoice.panel.fixAndRecheckAction', 'Fix and re-check')}
               </Link>
             </p>
@@ -1085,20 +1103,35 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
                   gap: a receipt carrying an unconfirmed rate reaches the buyer
                   and the daily report and cannot be recalled, so the accepted
                   cost is late registration. */}
-              {missingRateReason && rateLessLines.length > 0 ? (
+              {/* Gated on the REASON, not on a line count (#2260 review): the
+                  Register button below is disabled on the reason alone, and a
+                  dead control with nothing beside it reads as a bug. A
+                  shipping-scope block has no rate-less line to name, so it gets
+                  its own true sentence rather than a count it cannot support. */}
+              {missingRateScope !== null ? (
                 <Alert tone="error">
                   <strong>
-                    {rateLessLines.length === 1
+                    {missingRateScope === 'shipping'
                       ? t(
-                          'fiscalReceipt.blockNoRateTitleOne',
-                          'Not registered: 1 line has no tax rate.',
+                          'fiscalReceipt.blockNoRateShippingTitle',
+                          'Not registered: the delivery charge has no tax rate.',
                         )
-                      : `${t('fiscalReceipt.blockNoRateTitlePrefix', 'Not registered:')} ${String(rateLessLines.length)} ${t('fiscalReceipt.blockNoRateTitleSuffix', 'lines have no tax rate.')}`}
+                      : rateLessLines.length === 1
+                        ? t(
+                            'fiscalReceipt.blockNoRateTitleOne',
+                            'Not registered: 1 line has no tax rate.',
+                          )
+                        : `${t('fiscalReceipt.blockNoRateTitlePrefix', 'Not registered:')} ${String(rateLessLines.length)} ${t('fiscalReceipt.blockNoRateTitleSuffix', 'lines have no tax rate.')}`}
                   </strong>{' '}
-                  {t(
-                    'fiscalReceipt.blockNoRateBody',
-                    "Add the rate in the shop's catalogue and re-sync the product. The connection's tax letter is not used to fill the gap.",
-                  )}
+                  {missingRateScope === 'shipping'
+                    ? t(
+                        'fiscalReceipt.blockNoRateShippingBody',
+                        "Every product line has a rate, but nothing in this order carries an amount the delivery charge could follow. Check the order's lines and delivery charge.",
+                      )
+                    : t(
+                        'fiscalReceipt.blockNoRateBody',
+                        "Add the rate in the shop's catalogue and re-sync the product. The connection's tax letter is not used to fill the gap.",
+                      )}
                 </Alert>
               ) : null}
               <span className="spacer" />
@@ -1149,10 +1182,9 @@ function collectRateLessLines(items: readonly ParsedOrderItem[]): RateLessLine[]
  */
 function renderShippingSplitPreview(
   items: readonly ParsedOrderItem[],
-  snapshot: Record<string, unknown>,
+  totals: ParsedOrderTotals | undefined,
   t: (key: string, fallback: string) => string,
 ): ReactElement | null {
-  const totals = snapshot.totals as { shipping?: number; currency?: string } | undefined;
   const shipping = totals?.shipping ?? 0;
   if (!Number.isFinite(shipping) || shipping <= 0 || items.length === 0) return null;
 

@@ -71,6 +71,12 @@ export interface OrderToRegisterTransactionCommandInput {
   idempotencyKey: string;
   /** Optional locale-specific override for the shipping line label. */
   shippingLineName?: string;
+  /**
+   * The order's `order_records.taxRateEra` marker (#2260 review), passed
+   * through onto the command so the write-path tax-rate guard can exempt
+   * pre-rollout history. Mirrors the invoice mapper's own input field.
+   */
+  taxRateEra?: string | null;
 }
 
 /**
@@ -89,7 +95,7 @@ export interface OrderToRegisterTransactionCommandInput {
 export function toRegisterTransactionCommand(
   input: OrderToRegisterTransactionCommandInput,
 ): RegisterTransactionCommand {
-  const { order, connectionId, idempotencyKey, shippingLineName } = input;
+  const { order, connectionId, idempotencyKey, shippingLineName, taxRateEra } = input;
 
   // GROSS-only: a net-priced order would register net amounts labelled as gross,
   // and core may not convert (it never computes or defaults a tax rate). Fail
@@ -128,6 +134,13 @@ export function toRegisterTransactionCommand(
   const recipient = toRecipient(order);
   if (recipient) {
     command.recipient = recipient;
+  }
+
+  // #2260 review: only when the caller actually has a marker. An absent era is
+  // the ordinary case and must stay absent rather than becoming `null` on the
+  // wire, exactly as the invoice mapper treats it.
+  if (taxRateEra !== undefined && taxRateEra !== null) {
+    command.taxRateEra = taxRateEra;
   }
 
   return command;
