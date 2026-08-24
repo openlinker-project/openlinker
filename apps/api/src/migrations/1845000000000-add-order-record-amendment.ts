@@ -29,8 +29,8 @@
  */
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AddOrderRecordAmendment1841000000000 implements MigrationInterface {
-  name = 'AddOrderRecordAmendment1841000000000';
+export class AddOrderRecordAmendment1845000000000 implements MigrationInterface {
+  name = 'AddOrderRecordAmendment1845000000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(
