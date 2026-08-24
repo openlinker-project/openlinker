@@ -28,6 +28,7 @@ import {
   type MasterDeletionEventPayload,
 } from '@openlinker/core/products';
 import { EventPublisherPort, EVENT_PUBLISHER_TOKEN } from '@openlinker/core/events';
+import { SyncJobQueuePort, SYNC_JOB_QUEUE_TOKEN } from '@openlinker/core/sync';
 import { INVENTORY_SERVICE_TOKEN } from '../../inventory.tokens';
 import { IInventoryService } from './inventory.service.interface';
 import type {
@@ -45,6 +46,9 @@ import { Logger } from '@openlinker/shared/logging';
 @Injectable()
 export class MasterInventorySyncService implements IMasterInventorySyncService {
   private readonly logger = new Logger(MasterInventorySyncService.name);
+  // inventory.propagateToMarketplaces is global and not tied to one connection
+  // (same sentinel InventoryService uses, so both writers enqueue alike).
+  private readonly SYSTEM_CONNECTION_ID = '00000000-0000-0000-0000-000000000000';
 
   constructor(
     @Inject(INTEGRATIONS_SERVICE_TOKEN)
@@ -64,7 +68,13 @@ export class MasterInventorySyncService implements IMasterInventorySyncService {
     // than written twice (#2222). Cross-context via the published `I*Service`
     // seam; `inventory -> products` is an existing edge.
     @Inject(MASTER_PRODUCT_SYNC_SERVICE_TOKEN)
-    private readonly masterProductSync: IMasterProductSyncService
+    private readonly masterProductSync: IMasterProductSyncService,
+    // #2324 - staling a pooled position CHANGES the variant's aggregate but
+    // writes no `inventory_items` row, so `InventoryService.setInventory` never
+    // runs for it and nothing would propagate. The enqueue below closes that
+    // transition gap.
+    @Inject(SYNC_JOB_QUEUE_TOKEN)
+    private readonly jobQueue: SyncJobQueuePort
   ) {}
 
   async syncFromMasterByExternalId(
@@ -252,6 +262,24 @@ export class MasterInventorySyncService implements IMasterInventorySyncService {
       });
     }
 
+    // #2324 (ADR-058 decision 5) - the #2322 transition. When a source that used
+    // to report one pooled position starts locating its stock, the pooled row is
+    // staled here rather than overwritten: the variant's aggregate drops by the
+    // pooled quantity with NO write to any `inventory_items` row, so
+    // `InventoryService.setInventory`'s propagation enqueue never fires for it.
+    // Without this the marketplace keeps selling the old pooled number until the
+    // next unrelated quantity change - which is precisely the stale-stock shape
+    // retiring the located-write skip exists to close.
+    //
+    // The key mirrors `InventoryService.buildPropagationDedupeKey` exactly -
+    // variant-keyed and LOCATION-FREE - so a same-tick located `setInventory`
+    // enqueue for the same variant collapses into one job. That collapse is
+    // DESIRABLE, not a hazard: the handler republishes the aggregate either way,
+    // so one job is the correct number of jobs.
+    if (pooledStaleResult.markedCount > 0) {
+      await this.enqueueAggregatePropagation(internalProductId, pooledStaleResult.variantIds);
+    }
+
     this.logger.debug(
       `Master inventory sync complete (connection: ${connectionId}, externalId: ${externalId}, internalProductId: ${internalProductId}, itemsWritten=${inventories.length}, markedStale=${pruneResult.markedCount}, pooledPositionsStaled=${pooledStaleResult.markedCount}, pruneSkipped=${pruneSkipped}, available=${availableQuantity}, reserved=${reservedQuantity})`
     );
@@ -265,6 +293,61 @@ export class MasterInventorySyncService implements IMasterInventorySyncService {
       pruneSkipped,
       pooledPositionsStaled: pooledStaleResult.markedCount,
     };
+  }
+
+  /**
+   * Enqueue one variant-keyed, location-free `inventory.propagateToMarketplaces`
+   * job per variant whose aggregate a pooled-position staling just changed.
+   *
+   * Best-effort by design, unlike `InventoryService.setInventory`'s fail-fast
+   * enqueue: this runs at the tail of a completed master sync whose writes are
+   * already durable, so throwing here would re-run the whole pull (and its
+   * platform calls) to retry a job the hourly reconcile sweep re-derives from
+   * persisted state anyway. A failure is logged loudly instead.
+   */
+  private async enqueueAggregatePropagation(
+    internalProductId: string,
+    variantIds: readonly (string | null)[]
+  ): Promise<void> {
+    // One staling moment for the whole batch, so N variants staled by one pull
+    // carry one comparable token rather than N clock reads.
+    const writeEventToken = new Date().toISOString();
+    // A product-level (NULL-variant) pooled row still changes the product's
+    // aggregate, so it propagates too - as the legacy product-level arm, which
+    // is what `variantId: null` means to the handler.
+    const targets = variantIds.length > 0 ? variantIds : [null];
+
+    await Promise.all(
+      targets.map(async (variantId) => {
+        try {
+          await this.jobQueue.enqueue({
+            type: 'inventory.propagateToMarketplaces',
+            connectionId: this.SYSTEM_CONNECTION_ID,
+            payload: {
+              productId: internalProductId,
+              variantId,
+              inventoryUpdatedAt: writeEventToken,
+            },
+            options: {
+              dedupeKey: [
+                'inventory:propagate',
+                internalProductId,
+                variantId ?? 'base',
+                writeEventToken,
+              ].join(':'),
+            },
+          });
+          this.logger.debug(
+            `inventory_pooled_stale_propagation_enqueued product=${internalProductId} variant=${variantId ?? 'base'} event=${writeEventToken}`
+          );
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          this.logger.error(
+            `inventory_pooled_stale_propagation_enqueue_failed product=${internalProductId} variant=${variantId ?? 'base'} event=${writeEventToken} reason=${message}`
+          );
+        }
+      })
+    );
   }
 
   /**

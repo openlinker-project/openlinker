@@ -8,7 +8,7 @@
  */
 import { InventoryPropagateToMarketplacesHandler } from '../inventory-propagate-to-marketplaces.handler';
 import type { IIdentifierMappingService, ExternalIdMapping } from '@openlinker/core/identifier-mapping';
-import type { IInventoryService } from '@openlinker/core/inventory';
+import type { IInventoryService, IAvailabilityService } from '@openlinker/core/inventory';
 import type { IIntegrationsService } from '@openlinker/core/integrations';
 import type { JobEnqueuePort } from '@openlinker/core/sync';
 import type { SyncJobEntity as SyncJob } from '@openlinker/core/sync';
@@ -36,6 +36,30 @@ describe('InventoryPropagateToMarketplacesHandler', () => {
   let jobEnqueue: jest.Mocked<JobEnqueuePort>;
   let integrationsService: jest.Mocked<IIntegrationsService>;
   let productsService: jest.Mocked<Pick<IProductsService, 'getVariant'>>;
+  let availabilityService: jest.Mocked<IAvailabilityService>;
+
+  /**
+   * #2324 — the variant-keyed path now reads the AGGREGATE through the
+   * availability seam. Helper mirrors the seam's contract: a real number with
+   * `provenance: 'computed'`, or the batch-wide `'unknown'` answer.
+   */
+  const mockAvailability = (
+    quantity: number | null,
+    provenance: 'computed' | 'authority' | 'unknown' = quantity === null ? 'unknown' : 'computed',
+    observedAt: Date | null = quantity === null ? null : new Date('2026-01-01T09:00:00.000Z')
+  ): void => {
+    availabilityService.getPromisableQuantities.mockImplementation((input) =>
+      Promise.resolve(
+        input.variantIds.map((productVariantId) => ({
+          productVariantId,
+          quantity,
+          provenance,
+          observedAt,
+          stalenessMs: observedAt === null ? null : 0,
+        }))
+      )
+    );
+  };
 
   /** Route getExternalIds by entityType so the two fan-out branches are independent. */
   const mockMappings = (byEntityType: Partial<Record<string, ExternalIdMapping[]>>): void => {
@@ -72,12 +96,20 @@ describe('InventoryPropagateToMarketplacesHandler', () => {
       getVariant: jest.fn().mockResolvedValue(null),
     };
 
+    availabilityService = {
+      getPromisableQuantities: jest.fn(),
+      applyPublishControls: jest.fn(),
+      getAppliedReserve: jest.fn(),
+    } as unknown as jest.Mocked<IAvailabilityService>;
+    mockAvailability(100);
+
     handler = new InventoryPropagateToMarketplacesHandler(
       identifierMapping,
       inventoryService,
       jobEnqueue,
       integrationsService,
-      productsService as unknown as IProductsService
+      productsService as unknown as IProductsService,
+      availabilityService
     );
   });
 
@@ -253,18 +285,105 @@ describe('InventoryPropagateToMarketplacesHandler', () => {
       );
     });
 
-    it('should handle variant-specific inventory', async () => {
+    // #2324 — the variant-keyed read is the LOCATION-BLIND aggregate from the
+    // availability seam, asked in the GLOBAL scope (the channel buffer is
+    // applied exactly once downstream by InventorySyncService, #2323).
+    it('should read the variant aggregate from the availability seam in the global scope', async () => {
       const job = createJob({ productId: 'product-id', variantId: 'variant-id' });
+      mockAvailability(50);
+      identifierMapping.getExternalIds.mockResolvedValue([
+        {
+          entityType: 'Offer',
+          platformType: 'allegro',
+          connectionId: 'connection-id',
+          externalId: 'offer-id',
+        },
+      ]);
+      jobEnqueue.enqueueJob.mockResolvedValue({ jobId: 'enqueued-job-id', isExisting: false });
+
+      await handler.execute(job);
+
+      expect(availabilityService.getPromisableQuantities).toHaveBeenCalledWith({
+        variantIds: ['variant-id'],
+        scope: { kind: 'global' },
+      });
+      // The single-row, location-scoped read is gone from the variant path.
+      expect(inventoryService.getInventory).not.toHaveBeenCalled();
+      expect(identifierMapping.getExternalIds).toHaveBeenCalledWith('Offer', 'variant-id');
+      expect(jobEnqueue.enqueueJob).toHaveBeenCalledWith(
+        expect.objectContaining({
+          payload: expect.objectContaining({
+            quantity: 50,
+          }),
+        })
+      );
+    });
+
+    it('should throw and enqueue nothing on either branch when availability is unknown', async () => {
+      const job = createJob({ productId: 'product-id', variantId: 'variant-id' });
+      mockAvailability(null);
+      mockMappings({
+        Offer: [
+          {
+            entityType: 'Offer',
+            platformType: 'allegro',
+            connectionId: 'connection-id',
+            externalId: 'offer-id',
+          },
+        ],
+        ShopProduct: [
+          {
+            entityType: 'ShopProduct',
+            platformType: 'woocommerce',
+            connectionId: 'wc-connection',
+            externalId: '123',
+          },
+        ],
+      });
+      const errorSpy = jest.spyOn(
+        (handler as unknown as { logger: { error: (m: string) => void } }).logger,
+        'error'
+      );
+
+      await expect(handler.execute(job)).rejects.toThrow(SyncJobExecutionError);
+
+      expect(jobEnqueue.enqueueJob).not.toHaveBeenCalled();
+      expect(errorSpy.mock.calls.flat().join(' ')).toContain(
+        'inventory_propagation_suppressed_availability_unknown'
+      );
+    });
+
+    it('should publish a known zero for a variant with no observed positions', async () => {
+      const job = createJob({ productId: 'product-id', variantId: 'variant-id' });
+      mockAvailability(0, 'computed', null);
+      identifierMapping.getExternalIds.mockResolvedValue([
+        {
+          entityType: 'Offer',
+          platformType: 'allegro',
+          connectionId: 'connection-id',
+          externalId: 'offer-id',
+        },
+      ]);
+      jobEnqueue.enqueueJob.mockResolvedValue({ jobId: 'enqueued-job-id', isExisting: false });
+
+      await handler.execute(job);
+
+      expect(jobEnqueue.enqueueJob).toHaveBeenCalledWith(
+        expect.objectContaining({ payload: expect.objectContaining({ quantity: 0 }) })
+      );
+    });
+
+    it('should keep the legacy product-level arm on the single-row read', async () => {
+      const job = createJob({ productId: 'product-id' });
       const inventory = new InventoryItemEntity(
         'inventory-id',
         'product-id',
-        'variant-id',
-        50,
+        null,
+        42,
         0,
         null,
         new Date()
       );
-
       inventoryService.getInventory.mockResolvedValue(inventory);
       identifierMapping.getExternalIds.mockResolvedValue([
         {
@@ -278,14 +397,10 @@ describe('InventoryPropagateToMarketplacesHandler', () => {
 
       await handler.execute(job);
 
-      expect(inventoryService.getInventory).toHaveBeenCalledWith('product-id', 'variant-id', null);
-      expect(identifierMapping.getExternalIds).toHaveBeenCalledWith('Offer', 'variant-id');
+      expect(inventoryService.getInventory).toHaveBeenCalledWith('product-id', null, null);
+      expect(availabilityService.getPromisableQuantities).not.toHaveBeenCalled();
       expect(jobEnqueue.enqueueJob).toHaveBeenCalledWith(
-        expect.objectContaining({
-          payload: expect.objectContaining({
-            quantity: 50,
-          }),
-        })
+        expect.objectContaining({ payload: expect.objectContaining({ quantity: 42 }) })
       );
     });
 
@@ -449,6 +564,9 @@ describe('InventoryPropagateToMarketplacesHandler', () => {
 
     beforeEach(() => {
       inventoryService.getInventory.mockResolvedValue(variantInventory);
+      // #2324 — the variant-keyed path reads the seam; keep the same number the
+      // legacy single-row fixture carried so the key assertions are unchanged.
+      mockAvailability(25);
       jobEnqueue.enqueueJob.mockResolvedValue({ jobId: 'enqueued-job-id', isExisting: false });
     });
 

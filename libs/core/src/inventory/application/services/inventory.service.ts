@@ -46,14 +46,20 @@ export class InventoryService implements IInventoryService {
     const upserted = await this.inventoryRepository.upsert(item);
     this.logger.debug(`Inventory set: ${upserted.id}`);
 
-    // Marketplace propagation currently assumes canonical single-location inventory.
-    if (upserted.locationId !== null) {
-      this.logger.debug(
-        `inventory_write_propagation_skipped_non_default_location product=${upserted.productId} variant=${upserted.productVariantId ?? 'base'} location=${upserted.locationId}`
-      );
-      return upserted;
-    }
-
+    // ADR-058 decision (5), #2324 - BREAKING. The located-write skip that stood
+    // here is retired: propagation is variant-keyed and LOCATION-BLIND, because
+    // the downstream handler re-reads the variant's aggregate across every live
+    // position. Skipping a located write meant a master that locates its stock
+    // never propagated at all - the marketplace kept the last pooled number
+    // forever, which reads as healthy and is stale stock.
+    //
+    // The no-change guard below stays ROW-scoped on purpose. It is sound under
+    // an aggregate publish because each changed sibling position enqueues its
+    // own job, and the handler re-reads the whole aggregate - so ANY one of
+    // those enqueues publishes the correct total. A row that genuinely did not
+    // change contributes nothing new to the sum, and suppressing it costs
+    // nothing. Making this guard aggregate-aware would put an N+1 read on the
+    // hottest write path in the system.
     if (previous && previous.availableQuantity === upserted.availableQuantity) {
       this.logger.debug(
         `inventory_write_propagation_skipped_no_change product=${upserted.productId} variant=${upserted.productVariantId ?? 'base'} quantity=${upserted.availableQuantity}`
@@ -148,6 +154,18 @@ export class InventoryService implements IInventoryService {
     return result;
   }
 
+  /**
+   * The propagation dedupe key is deliberately LOCATION-FREE (#2324).
+   *
+   * The omission is load-bearing, not an oversight: a master that reports N
+   * located positions for one variant in a single pull writes them with a
+   * shared `updatedAt`, so a location-free key collapses N enqueues into one
+   * job - and one job is exactly right, because the handler publishes the
+   * aggregate. Adding `locationId` here would fan out N identical publishes.
+   *
+   * Never quantity-derived (#2285): a quantity-keyed token cannot distinguish
+   * two writes of the same value, so a corrective write would be swallowed.
+   */
   private buildPropagationDedupeKey(item: InventoryItem, writeEventToken: string): string {
     return [
       'inventory:propagate',
