@@ -18,6 +18,7 @@ describe('OrderLineItemRepository', () => {
     const mockOrmRepository = {
       find: jest.fn(),
       createQueryBuilder: jest.fn(),
+      query: jest.fn(),
     } as unknown as jest.Mocked<Repository<OrderLineItemOrmEntity>>;
 
     const module: TestingModule = await Test.createTestingModule({
@@ -226,6 +227,9 @@ describe('OrderLineItemRepository', () => {
           unconverted_order_count: '1',
           reporting_currency: 'EUR',
           unconverted_currency: 'PLN',
+          net_revenue: '100',
+          net_excluded_revenue: '23.45',
+          net_excluded_line_count: '2',
         },
       ]);
       const totalQb = makeTotalQb('7');
@@ -246,6 +250,9 @@ describe('OrderLineItemRepository', () => {
             unconvertedOrderCount: 1,
             currency: 'EUR',
             unconvertedCurrency: 'PLN',
+            netRevenue: 100,
+            netExcludedRevenue: 23.45,
+            netExcludedLineCount: 2,
           },
         ],
         total: 7,
@@ -325,6 +332,9 @@ describe('OrderLineItemRepository', () => {
             unconverted_revenue: '0',
             reporting_currency: 'EUR',
             unconverted_currency: null,
+            net_revenue: '40',
+            net_excluded_revenue: '0',
+            net_excluded_line_count: '0',
           },
         ]),
       });
@@ -344,6 +354,9 @@ describe('OrderLineItemRepository', () => {
           unconvertedRevenue: 0,
           currency: 'EUR',
           unconvertedCurrency: null,
+          netRevenue: 40,
+          netExcludedRevenue: 0,
+          netExcludedLineCount: 0,
         },
       ]);
     });
@@ -367,6 +380,9 @@ describe('OrderLineItemRepository', () => {
             unconverted_revenue: '40',
             reporting_currency: null,
             unconverted_currency: 'PLN',
+            net_revenue: '0',
+            net_excluded_revenue: '0',
+            net_excluded_line_count: '0',
           },
         ]),
       });
@@ -382,8 +398,73 @@ describe('OrderLineItemRepository', () => {
           unconvertedRevenue: 40,
           currency: null,
           unconvertedCurrency: 'PLN',
+          netRevenue: 0,
+          netExcludedRevenue: 0,
+          netExcludedLineCount: 0,
         },
       ]);
+    });
+  });
+
+  describe('findPageWithNoTaxRate', () => {
+    const makeQb = (rows: OrderLineItemOrmEntity[]) => ({
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      orderBy: jest.fn().mockReturnThis(),
+      take: jest.fn().mockReturnThis(),
+      getMany: jest.fn().mockResolvedValue(rows),
+    });
+
+    it('scopes to the connection and scans the no-tax-rate predicate ordered by id, with no afterId cursor on the first page', async () => {
+      const qb = makeQb([createOrmEntity({ id: 'line-1' })]);
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue(qb);
+
+      const result = await repository.findPageWithNoTaxRate({
+        sourceConnectionId: 'conn-1',
+        limit: 100,
+        afterId: null,
+      });
+
+      expect(qb.where).toHaveBeenCalledWith('li."taxRate" IS NULL');
+      expect(qb.andWhere).toHaveBeenCalledWith('li."sourceConnectionId" = :sourceConnectionId', {
+        sourceConnectionId: 'conn-1',
+      });
+      expect(qb.andWhere).toHaveBeenCalledTimes(1);
+      expect(qb.orderBy).toHaveBeenCalledWith('li."id"', 'ASC');
+      expect(qb.take).toHaveBeenCalledWith(100);
+      expect(result).toHaveLength(1);
+      expect(result[0].id).toBe('line-1');
+    });
+
+    it('excludes rows at or before the cursor on a resumed page', async () => {
+      const qb = makeQb([]);
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue(qb);
+
+      await repository.findPageWithNoTaxRate({
+        sourceConnectionId: 'conn-1',
+        limit: 50,
+        afterId: 'line-99',
+      });
+
+      expect(qb.andWhere).toHaveBeenCalledWith('li."id" > :afterId', { afterId: 'line-99' });
+      expect(qb.andWhere).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe('backfillTaxRate', () => {
+    it('writes the rate/source/readAt triple guarded by taxRate IS NULL', async () => {
+      const readAt = new Date('2026-08-24T00:00:00.000Z');
+
+      await repository.backfillTaxRate('line-1', {
+        taxRate: '23',
+        taxSource: 'backfill',
+        taxRateReadAt: readAt,
+      });
+
+      expect(ormRepository.query).toHaveBeenCalledTimes(1);
+      const [sql, params] = (ormRepository.query as jest.Mock).mock.calls[0] as [string, unknown[]];
+      expect(sql).toMatch(/WHERE\s+"id"\s*=\s*\$4\s+AND\s+"taxRate"\s+IS\s+NULL/);
+      expect(params).toEqual(['23', 'backfill', readAt, 'line-1']);
     });
   });
 });

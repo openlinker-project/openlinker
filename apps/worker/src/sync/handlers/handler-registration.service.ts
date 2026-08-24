@@ -14,6 +14,7 @@ import { OrdersPollHandler } from './orders-poll.handler';
 import { MarketplaceOrderSyncHandler } from './marketplace-order-sync.handler';
 import { MarketplaceOrderFxStampHandler } from './marketplace-order-fx-stamp.handler';
 import { MarketplaceOrderFxStampSweepHandler } from './marketplace-order-fx-stamp-sweep.handler';
+import { OrdersTaxRateBackfillHandler } from './orders-tax-rate-backfill.handler';
 import { MarketplaceOfferQuantityUpdateHandler } from './marketplace-offer-quantity-update.handler';
 import { MarketplaceOfferFieldUpdateHandler } from './marketplace-offer-field-update.handler';
 import { MarketplaceOfferCreateHandler } from './marketplace-offer-create.handler';
@@ -54,6 +55,7 @@ export class HandlerRegistrationService implements OnModuleInit {
     private readonly marketplaceOrderSyncHandler: MarketplaceOrderSyncHandler,
     private readonly marketplaceOrderFxStampHandler: MarketplaceOrderFxStampHandler,
     private readonly marketplaceOrderFxStampSweepHandler: MarketplaceOrderFxStampSweepHandler,
+    private readonly ordersTaxRateBackfillHandler: OrdersTaxRateBackfillHandler,
     private readonly marketplaceOfferQuantityUpdateHandler: MarketplaceOfferQuantityUpdateHandler,
     private readonly marketplaceOfferFieldUpdateHandler: MarketplaceOfferFieldUpdateHandler,
     private readonly marketplaceOfferCreateHandler: MarketplaceOfferCreateHandler,
@@ -289,6 +291,15 @@ export class HandlerRegistrationService implements OnModuleInit {
       'invoicing.paymentStatus.refreshByExternalId',
       this.paymentStatusRefreshHandler,
       'realtime'
+    );
+
+    // Tax-rate backfill sweep for pre-#2245 order_line_items rows (#2440).
+    // 'bulk' lane: large-batch, resumable, non-realtime — the same class of
+    // work the master product/inventory syncAll sweeps occupy.
+    this.handlerRegistry.register(
+      'orders.taxRate.backfill',
+      this.ordersTaxRateBackfillHandler,
+      'bulk'
     );
 
     // Boot gate (ADR-050 D1 / ADR-051 D6): every JobTypeValues member must be

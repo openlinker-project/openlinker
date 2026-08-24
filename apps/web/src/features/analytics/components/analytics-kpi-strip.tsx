@@ -8,14 +8,28 @@
  * silently dropped.
  *
  * Real vs. not-yet-real, per card:
- *   - Revenue: the headline ("Net sales") needs a refund amount that exists
- *     nowhere in the repo — unavailable. Its GMV qualifier (`headline.
- *     revenue`, real, FX-stamped, in `headline.currency`) renders normally.
- *   - Orders, Order value (AOV + median), Units: fully real. `headline.
- *     orderCount` only counts FX-stamped orders (ADR-040) — `totalOrders`
- *     below adds back `headline.unconvertedCount` so Orders/Avg. daily/Units
- *     per order/Cancellation rate count every placed order, while AOV/median
- *     stay on the stamped subset and disclose the gap explicitly.
+ *   - Revenue: the spec's "Net Sales" is NOV (net order value, VAT-exclusive)
+ *     minus the value of returns (`docs/specs/metrics-analytics-dashboard.md`
+ *     § Net Sales). The net-sales tax-rate epic made NOV real
+ *     (`headline.netRevenue`) — per the reference design mockup this renders
+ *     as a normal, complete "Net sales" headline (no gap badge on the card
+ *     face); the still-open returns caveat and the tax-rate exclusion count
+ *     (`headline.netExcludedCount` — pre-rollout orders, or an order with an
+ *     unresolvable line-level tax rate) live only in the (i) tooltip's
+ *     definition, never as a second qualifier row. Its GMV qualifier
+ *     (`headline.revenue`, real, FX-stamped, in `headline.currency`) renders
+ *     normally, unchanged.
+ *   - Orders, Units: fully real. `headline.orderCount` only counts
+ *     FX-stamped orders (ADR-040) — `totalOrders` below adds back `headline.
+ *     unconvertedCount` so Orders/Avg. daily/Units per order/Cancellation
+ *     rate count every placed order.
+ *   - Order value (AOV + median): renders `headline.netAverageOrderValue` /
+ *     `netMedianOrderValue` (net-sales tax-rate epic), not the gross
+ *     `averageOrderValue`/`medianOrderValue` — same VAT-exclusive basis as
+ *     the Revenue card's headline figure, so a reader comparing "Revenue"
+ *     against "Order value" isn't silently comparing net against gross.
+ *     Both stay on the FX-stamped subset and disclose that gap explicitly,
+ *     same as before.
  *   - Returns & refunds: no return/refund entity exists anywhere in the
  *     orders domain — fully planned.
  *   - Cancellations: `cancelledCount`/`cancelledValue` are real fields —
@@ -71,8 +85,12 @@ import {
 import { AnalyticsKpiCard, type AnalyticsKpiDelta } from './analytics-kpi-card';
 import { GapMark } from './gap-mark';
 
-const NET_SALES_GAP =
-  'Net sales needs the value of returns/refunds, and no return or refund entity exists anywhere in the repo yet.';
+// The metrics spec defines Net Sales as NOV minus the value of returns
+// (docs/specs/metrics-analytics-dashboard.md § Net Sales) — quoted, not
+// paraphrased, per .claude/rules/analytics-metrics.md. NOV itself is now
+// real (net-sales tax-rate epic); this is the ONE remaining, distinct gap.
+const NET_SALES_RETURNS_GAP =
+  'Net Sales additionally subtracts the value of returns, and no return or refund entity exists anywhere in the repo yet — this figure is NOV (net order value), not yet Net Sales.';
 const RETURN_RATE_GAP =
   'No return entity exists anywhere in the repo — nothing records a return or a refund.';
 const STAMPED_GAP =
@@ -160,6 +178,8 @@ export function AnalyticsKpiStrip({ connections, filters }: AnalyticsKpiStripPro
   const cancelRate = cancellationRate(headline.cancelledCount, totalOrders);
   const currency = headline.currency ?? undefined;
   const stampedGapVisible = headline.unconvertedCount > 0;
+  const netExcludedVisible = headline.netExcludedCount > 0;
+  const netExcludedNote = `${headline.netExcludedCount} order(s) predate per-line tax rates or carry a line with an unresolvable rate, and are excluded from NOV.`;
   const trendDays = rangeDays(filters.from, filters.to);
   const trendRangeLabel = trendDays === 1 ? 'the selected day' : `the last ${trendDays} days`;
 
@@ -222,7 +242,7 @@ export function AnalyticsKpiStrip({ connections, filters }: AnalyticsKpiStripPro
   const orderValueCurrenciesMatch =
     headline.currency !== null && headline.currency === previousHeadline?.currency;
   const orderValueDelta = orderValueCurrenciesMatch
-    ? buildDelta(headline.averageOrderValue, previousHeadline?.averageOrderValue, 'higher-is-better')
+    ? buildDelta(headline.netAverageOrderValue, previousHeadline?.netAverageOrderValue, 'higher-is-better')
     : null;
   const orderValueDeltaGapReason =
     !orderValueCurrenciesMatch && previousHeadline
@@ -236,10 +256,10 @@ export function AnalyticsKpiStrip({ connections, filters }: AnalyticsKpiStripPro
         infotipLabel="About the Revenue figures"
         definitions={[
           {
-            term: 'Net sales',
-            text: 'The value of product sales after discounts and after customer refunds, excluding VAT.',
+            term: 'Net Sales',
+            text: 'The value of product sales after discounts and after customer refunds, excluding VAT. Rendered here as NOV (net order value, before the returns subtraction) — the exact figure is what the metrics spec calls Net Sales once returns are also modeled.',
             formula: 'Net order value (after discounts, excluding VAT) − Refunded value',
-            caveat: NET_SALES_GAP,
+            caveat: netExcludedVisible ? netExcludedNote : NET_SALES_RETURNS_GAP,
           },
           {
             term: 'GMV (Gross Merchandise Value)',
@@ -249,13 +269,8 @@ export function AnalyticsKpiStrip({ connections, filters }: AnalyticsKpiStripPro
               : 'Cancelled orders and cancelled items are excluded. Returned/refunded items remain included.',
           },
         ]}
-        headlineUnavailable
-        metric={
-          <>
-            Net sales <GapMark title={NET_SALES_GAP} />
-          </>
-        }
-        value={<EmptyValue label="Not computable until refunds are captured" />}
+        metric="Net sales"
+        value={formatAmount(headline.netRevenue, currency)}
         trend={{
           values: revenueTrend,
           tone: trendTone(revenueTrend),
@@ -306,12 +321,12 @@ export function AnalyticsKpiStrip({ connections, filters }: AnalyticsKpiStripPro
         definitions={[
           {
             term: 'Average order value (AOV)',
-            text: 'Revenue divided by the number of FX-stamped orders it was computed from — not by every placed order.',
+            text: 'Net sales divided by the number of FX-stamped, net-eligible orders it was computed from — not by every placed order.',
             caveat: stampedGapVisible ? STAMPED_GAP : undefined,
           },
           {
             term: 'Median order value',
-            text: 'The middle value of every FX-stamped order in the range — less skewed by a handful of very large or very small orders than the average.',
+            text: 'The middle net-sales value of every FX-stamped, net-eligible order in the range — less skewed by a handful of very large or very small orders than the average.',
           },
         ]}
         metric={
@@ -323,8 +338,8 @@ export function AnalyticsKpiStrip({ connections, filters }: AnalyticsKpiStripPro
             'Average'
           )
         }
-        value={formatAmount(headline.averageOrderValue, currency)}
-        qualifiers={[{ label: 'Median', value: formatAmount(headline.medianOrderValue, currency) }]}
+        value={formatAmount(headline.netAverageOrderValue, currency)}
+        qualifiers={[{ label: 'Median', value: formatAmount(headline.netMedianOrderValue, currency) }]}
         delta={orderValueDelta}
         deltaGapReason={orderValueDeltaGapReason}
       />

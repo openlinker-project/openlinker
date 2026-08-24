@@ -85,4 +85,22 @@ describe('OrderLineItemsPanel', () => {
     expect(screen.getByText('ol_product_x')).toBeInTheDocument();
     expect(screen.getByText('ol_orderitem_noProduct')).toBeInTheDocument();
   });
+
+  it('renders a backfilled rate as estimated from catalogue, never as a live shop/channel read (#2440)', () => {
+    const backfilledItems: ParsedOrderItem[] = [
+      {
+        id: 'ol_orderitem_backfilled',
+        productId: 'ol_product_a',
+        quantity: 1,
+        price: 10,
+        taxRate: '23',
+        taxSource: 'backfill',
+      },
+    ];
+    renderWithProviders(<OrderLineItemsPanel items={backfilledItems} />);
+
+    expect(screen.getByText(/estimated from catalogue/)).toBeInTheDocument();
+    expect(screen.queryByText(/from the shop/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/from the channel/)).not.toBeInTheDocument();
+  });
 });

@@ -54,6 +54,9 @@ describe('TopProductsService', () => {
         unconvertedOrderCount: 0,
         currency: 'EUR',
         unconvertedCurrency: null,
+        netRevenue: 100,
+        netExcludedRevenue: 0,
+        netExcludedLineCount: 0,
         channels: [
           {
             productId: 'p1',
@@ -63,6 +66,9 @@ describe('TopProductsService', () => {
             unconvertedRevenue: 0,
             currency: 'EUR',
             unconvertedCurrency: null,
+            netRevenue: 100,
+            netExcludedRevenue: 0,
+            netExcludedLineCount: 0,
           },
         ],
       },
@@ -140,8 +146,8 @@ describe('TopProductsService', () => {
       orderRecordService.getTopProducts.mockResolvedValue(
         coreResult({
           items: [
-            { productId: 'p1', units: 1, revenue: 1, unconvertedRevenue: 0, unconvertedOrderCount: 0, currency: 'EUR', unconvertedCurrency: null, channels: [] },
-            { productId: 'p2', units: 1, revenue: 1, unconvertedRevenue: 0, unconvertedOrderCount: 0, currency: 'EUR', unconvertedCurrency: null, channels: [] },
+            { productId: 'p1', units: 1, revenue: 1, unconvertedRevenue: 0, unconvertedOrderCount: 0, currency: 'EUR', unconvertedCurrency: null, netRevenue: 1, netExcludedRevenue: 0, netExcludedLineCount: 0, channels: [] },
+            { productId: 'p2', units: 1, revenue: 1, unconvertedRevenue: 0, unconvertedOrderCount: 0, currency: 'EUR', unconvertedCurrency: null, netRevenue: 1, netExcludedRevenue: 0, netExcludedLineCount: 0, channels: [] },
           ],
           total: 2,
         })

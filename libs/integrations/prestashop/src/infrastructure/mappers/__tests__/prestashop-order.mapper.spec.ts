@@ -121,6 +121,8 @@ describe('PrestashopOrderMapper', () => {
       // PrestaShop order came to be recorded as EUR. `PrestashopOrderSourceAdapter`
       // fills the field from `PrestashopOrderCurrencyResolver`.
       expect(result.totals).not.toHaveProperty('currency');
+      // Line prices (`order_details.product_price`) are net (#2440).
+      expect(result.totals.taxTreatment).toBe('exclusive');
     });
 
     it('should map order status correctly', () => {

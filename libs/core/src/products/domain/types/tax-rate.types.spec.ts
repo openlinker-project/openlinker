@@ -10,6 +10,7 @@ import {
   effectiveTaxRate,
   isPersistableTaxRateRead,
   isResolvedTaxRate,
+  isTaxRateSource,
   taxRateState,
 } from './tax-rate.types';
 import type { StoredTaxRate } from './tax-rate.types';
@@ -119,5 +120,20 @@ describe('isPersistableTaxRateRead', () => {
     // It is not a rate at all - the caller clears the override instead, so the
     // row goes genuinely absent rather than reading as a gap.
     expect(isPersistableTaxRateRead({ kind: 'inherited' })).toBe(false);
+  });
+});
+
+describe('isTaxRateSource', () => {
+  it('should accept all three recognised values, including the backfill provenance (#2440)', () => {
+    expect(isTaxRateSource('shop')).toBe(true);
+    expect(isTaxRateSource('channel')).toBe(true);
+    expect(isTaxRateSource('backfill')).toBe(true);
+  });
+
+  it('should reject an unrecognised or malformed value rather than trusting it', () => {
+    expect(isTaxRateSource('operator')).toBe(false);
+    expect(isTaxRateSource(null)).toBe(false);
+    expect(isTaxRateSource(undefined)).toBe(false);
+    expect(isTaxRateSource(42)).toBe(false);
   });
 });

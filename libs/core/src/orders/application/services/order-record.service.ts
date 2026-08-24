@@ -510,11 +510,13 @@ export class OrderRecordService implements IOrderRecordService {
     // across two eras.
     const currentReportingCurrency = await this.reportingCurrencySettings.resolve();
 
-    const [dailyRows, medianOrderValue, unitsByConnection] = await Promise.all([
-      this.repository.getDailyOrderAggregates(filters, currentReportingCurrency),
-      this.repository.getMedianOrderValue(filters, currentReportingCurrency),
-      this.lineItemRepository.getUnitsSoldByConnection(filters, currentReportingCurrency),
-    ]);
+    const [dailyRows, medianOrderValue, netMedianOrderValue, unitsByConnection] =
+      await Promise.all([
+        this.repository.getDailyOrderAggregates(filters, currentReportingCurrency),
+        this.repository.getMedianOrderValue(filters, currentReportingCurrency),
+        this.repository.getNetMedianOrderValue(filters, currentReportingCurrency),
+        this.lineItemRepository.getUnitsSoldByConnection(filters, currentReportingCurrency),
+      ]);
 
     const connectionIds = [...new Set(dailyRows.map((row) => row.sourceConnectionId))];
     const earliestOrderDateByConnection = await this.getEarliestOrderDateByConnection(
@@ -525,6 +527,7 @@ export class OrderRecordService implements IOrderRecordService {
       filters,
       dailyRows,
       medianOrderValue,
+      netMedianOrderValue,
       unitsByConnection,
       earliestOrderDateByConnection,
     });

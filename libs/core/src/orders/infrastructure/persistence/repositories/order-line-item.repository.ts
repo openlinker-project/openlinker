@@ -26,6 +26,10 @@ import type {
   ProductRankingRow,
   TopProductFilters,
 } from '../../../domain/types/top-products.types';
+import {
+  netSalesLineNetAmountSql,
+  netSalesLineNetEligibleConditionSql,
+} from '../../../domain/types/net-sales-tax-rate.types';
 
 @Injectable()
 export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
@@ -148,6 +152,23 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
     const unconvertedOrZeroTotal =
       '(rec."reportingCurrency" IS DISTINCT FROM :reportingCurrency OR rec."totalAmount" = 0)';
 
+    // Net-sales (VAT-exclusive) eligibility for a LINE — this read already
+    // operates at line grain, so unlike #1987's order-level aggregates no
+    // correlated subquery is needed: the rate fraction is read directly off
+    // this row's own `li."taxRate"`, unless the order is net-priced.
+    const lineNetAmount = netSalesLineNetAmountSql(
+      'li."unitPrice"',
+      'li."quantity"',
+      'li."taxRate"',
+      'rec."taxTreatment"'
+    );
+    const netEligibleCondition = netSalesLineNetEligibleConditionSql(
+      'li."taxRate"',
+      'rec."taxTreatment"'
+    );
+    const stampedNonZeroKnownRate = `${stampedNonZero} AND ${netEligibleCondition}`;
+    const stampedNonZeroUnknownRate = `${stampedNonZero} AND NOT ${netEligibleCondition}`;
+
     const rankingQb = this.repository
       .createQueryBuilder('li')
       .innerJoin(OrderRecordOrmEntity, 'rec', 'rec."internalOrderId" = li."orderRecordId"')
@@ -171,11 +192,20 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
       )
       .addSelect(
         `CASE WHEN COUNT(DISTINCT rec."currency") FILTER (WHERE ${unconvertedOrZeroTotal}) <= 1
-              AND COUNT(*) FILTER (WHERE (${unconvertedOrZeroTotal}) AND rec."currency" IS NULL) = 0
+              AND COUNT(*) FILTER (WHERE ${unconvertedOrZeroTotal} AND rec."currency" IS NULL) = 0
               THEN MAX(rec."currency") FILTER (WHERE ${unconvertedOrZeroTotal})
               ELSE NULL END`,
         'unconverted_currency'
       )
+      .addSelect(
+        `COALESCE(SUM((${lineNetAmount}) * (rec."reportingTotalAmount" / NULLIF(rec."totalAmount", 0))) FILTER (WHERE ${stampedNonZeroKnownRate}), 0)`,
+        'net_revenue'
+      )
+      .addSelect(
+        `COALESCE(SUM(li."unitPrice" * li."quantity" * (rec."reportingTotalAmount" / NULLIF(rec."totalAmount", 0))) FILTER (WHERE ${stampedNonZeroUnknownRate}), 0)`,
+        'net_excluded_revenue'
+      )
+      .addSelect(`COUNT(*) FILTER (WHERE ${stampedNonZeroUnknownRate})`, 'net_excluded_line_count')
       .setParameter('reportingCurrency', reportingCurrency)
       .groupBy('li.productId')
       .orderBy(filters.sortBy === 'units' ? 'units' : 'revenue', 'DESC')
@@ -199,6 +229,9 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
         unconverted_order_count: string;
         reporting_currency: string | null;
         unconverted_currency: string | null;
+        net_revenue: string;
+        net_excluded_revenue: string;
+        net_excluded_line_count: string;
       }>(),
       totalQb.getRawOne<{ total: string }>(),
     ]);
@@ -212,6 +245,9 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
         unconvertedOrderCount: Number(row.unconverted_order_count),
         currency: row.reporting_currency,
         unconvertedCurrency: row.unconverted_currency,
+        netRevenue: Number(row.net_revenue),
+        netExcludedRevenue: Number(row.net_excluded_revenue),
+        netExcludedLineCount: Number(row.net_excluded_line_count),
       })),
       total: Number(totalRow?.total ?? 0),
     };
@@ -252,6 +288,18 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
     // NULL whenever any row's reportingCurrency mismatched).
     const unconvertedOrZeroTotal =
       '(rec."reportingCurrency" IS DISTINCT FROM :reportingCurrency OR rec."totalAmount" = 0)';
+    const lineNetAmount = netSalesLineNetAmountSql(
+      'li."unitPrice"',
+      'li."quantity"',
+      'li."taxRate"',
+      'rec."taxTreatment"'
+    );
+    const netEligibleCondition = netSalesLineNetEligibleConditionSql(
+      'li."taxRate"',
+      'rec."taxTreatment"'
+    );
+    const stampedNonZeroKnownRate = `${stampedNonZero} AND ${netEligibleCondition}`;
+    const stampedNonZeroUnknownRate = `${stampedNonZero} AND NOT ${netEligibleCondition}`;
 
     const qb = this.repository
       .createQueryBuilder('li')
@@ -273,11 +321,20 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
       )
       .addSelect(
         `CASE WHEN COUNT(DISTINCT rec."currency") FILTER (WHERE ${unconvertedOrZeroTotal}) <= 1
-              AND COUNT(*) FILTER (WHERE (${unconvertedOrZeroTotal}) AND rec."currency" IS NULL) = 0
+              AND COUNT(*) FILTER (WHERE ${unconvertedOrZeroTotal} AND rec."currency" IS NULL) = 0
               THEN MAX(rec."currency") FILTER (WHERE ${unconvertedOrZeroTotal})
               ELSE NULL END`,
         'unconverted_currency'
       )
+      .addSelect(
+        `COALESCE(SUM((${lineNetAmount}) * (rec."reportingTotalAmount" / NULLIF(rec."totalAmount", 0))) FILTER (WHERE ${stampedNonZeroKnownRate}), 0)`,
+        'net_revenue'
+      )
+      .addSelect(
+        `COALESCE(SUM(li."unitPrice" * li."quantity" * (rec."reportingTotalAmount" / NULLIF(rec."totalAmount", 0))) FILTER (WHERE ${stampedNonZeroUnknownRate}), 0)`,
+        'net_excluded_revenue'
+      )
+      .addSelect(`COUNT(*) FILTER (WHERE ${stampedNonZeroUnknownRate})`, 'net_excluded_line_count')
       .setParameter('reportingCurrency', reportingCurrency)
       .andWhere('li."productId" IN (:...productIds)', { productIds })
       .groupBy('li.productId')
@@ -292,6 +349,9 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
       unconverted_revenue: string;
       reporting_currency: string | null;
       unconverted_currency: string | null;
+      net_revenue: string;
+      net_excluded_revenue: string;
+      net_excluded_line_count: string;
     }>();
 
     return rows.map((row) => ({
@@ -302,6 +362,9 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
       unconvertedRevenue: Number(row.unconverted_revenue),
       currency: row.reporting_currency,
       unconvertedCurrency: row.unconverted_currency,
+      netRevenue: Number(row.net_revenue),
+      netExcludedRevenue: Number(row.net_excluded_revenue),
+      netExcludedLineCount: Number(row.net_excluded_line_count),
     }));
   }
 
@@ -353,6 +416,38 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
       entity.taxRate,
       entity.taxSource,
       entity.taxRateReadAt
+    );
+  }
+
+  async findPageWithNoTaxRate(input: {
+    sourceConnectionId: string;
+    limit: number;
+    afterId: string | null;
+  }): Promise<OrderLineItem[]> {
+    const qb = this.repository
+      .createQueryBuilder('li')
+      .where('li."taxRate" IS NULL')
+      .andWhere('li."sourceConnectionId" = :sourceConnectionId', {
+        sourceConnectionId: input.sourceConnectionId,
+      })
+      .orderBy('li."id"', 'ASC')
+      .take(input.limit);
+    if (input.afterId) {
+      qb.andWhere('li."id" > :afterId', { afterId: input.afterId });
+    }
+    const entities = await qb.getMany();
+    return entities.map((e) => this.toDomain(e));
+  }
+
+  async backfillTaxRate(
+    id: string,
+    patch: { taxRate: string; taxSource: 'backfill'; taxRateReadAt: Date }
+  ): Promise<void> {
+    await this.repository.query(
+      `UPDATE "order_line_items"
+       SET "taxRate" = $1, "taxSource" = $2, "taxRateReadAt" = $3
+       WHERE "id" = $4 AND "taxRate" IS NULL`,
+      [patch.taxRate, patch.taxSource, patch.taxRateReadAt, id]
     );
   }
 }

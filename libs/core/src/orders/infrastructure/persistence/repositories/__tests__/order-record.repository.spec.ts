@@ -1365,4 +1365,43 @@ describe('OrderRecordRepository', () => {
       });
     });
   });
+
+  describe('patchSnapshotTaxRates', () => {
+    it('guards the whole write on the absence of the taxRate key alone (#2440)', async () => {
+      (ormRepository.query as jest.Mock).mockResolvedValue(undefined);
+      const readAt = new Date('2026-08-24T00:00:00.000Z');
+
+      await repository.patchSnapshotTaxRates('ol_order_1', 2, {
+        taxRate: '23',
+        taxSource: 'backfill',
+        taxRateReadAt: readAt,
+      });
+
+      expect(ormRepository.query).toHaveBeenCalledTimes(1);
+      const [sql, params] = (ormRepository.query as jest.Mock).mock.calls[0] as [string, unknown[]];
+      expect(sql).toMatch(/NOT\s*\(\s*"orderSnapshot"#>ARRAY\['items',\s*\$1\]\s*\?\s*'taxRate'\s*\)/);
+      expect(sql).toMatch(/jsonb_typeof\("orderSnapshot"#>ARRAY\['items',\s*\$1\]\)\s*=\s*'object'/);
+      expect(params).toEqual(['2', '23', 'backfill', readAt.toISOString(), 'ol_order_1']);
+    });
+
+    it('never touches any snapshot key other than the three tax fields', async () => {
+      (ormRepository.query as jest.Mock).mockResolvedValue(undefined);
+
+      await repository.patchSnapshotTaxRates('ol_order_1', 0, {
+        taxRate: 'zw',
+        taxSource: 'backfill',
+        taxRateReadAt: new Date('2026-08-24T00:00:00.000Z'),
+      });
+
+      const [sql] = (ormRepository.query as jest.Mock).mock.calls[0] as [string];
+      const setClauseOnly = sql.slice(sql.indexOf('SET'), sql.indexOf('WHERE'));
+      for (const key of ['taxRate', 'taxSource', 'taxRateReadAt']) {
+        expect(setClauseOnly).toContain(`'${key}'`);
+      }
+      const pathKeyMatches = [...setClauseOnly.matchAll(/'items',\s*\$1,\s*'([a-zA-Z]+)'/g)].map(
+        (m) => m[1]
+      );
+      expect(new Set(pathKeyMatches)).toEqual(new Set(['taxRate', 'taxSource', 'taxRateReadAt']));
+    });
+  });
 });

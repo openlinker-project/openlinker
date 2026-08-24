@@ -1686,6 +1686,10 @@ textarea,
   font-weight: 500;
   line-height: 1;
   cursor: pointer;
+  /* `.chip` is also used on an `<a>`/`<Link>` (e.g. the top-products
+     "Publish" action) — the global `a { text-decoration: underline }` must
+     not leak through a pill styled to look like a button. */
+  text-decoration: none;
   transition:
     background var(--duration-fast) var(--ease-out),
     border-color var(--duration-fast) var(--ease-out),

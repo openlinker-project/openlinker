@@ -4,7 +4,10 @@
  * @module libs/core/src/orders/domain
  */
 import { buildSalesAndChannelAnalytics } from './order-sales-aggregation';
-import type { DailyOrderAggregateRow, SalesAnalyticsFilters } from './types/order-sales-analytics.types';
+import type {
+  DailyOrderAggregateRow,
+  SalesAnalyticsFilters,
+} from './types/order-sales-analytics.types';
 
 describe('orderSalesAggregation', () => {
   const filters = (): SalesAnalyticsFilters => ({
@@ -23,6 +26,9 @@ describe('orderSalesAggregation', () => {
     cancelledCount: 0,
     cancelledValue: 0,
     reportingCurrency: 'EUR',
+    netRevenue: 0,
+    netExcludedCount: 0,
+    netExcludedValue: 0,
     ...overrides,
   });
 
@@ -32,6 +38,7 @@ describe('orderSalesAggregation', () => {
         filters: filters(),
         dailyRows: [],
         medianOrderValue: null,
+        netMedianOrderValue: null,
         unitsByConnection: new Map(),
         earliestOrderDateByConnection: new Map(),
       });
@@ -41,6 +48,7 @@ describe('orderSalesAggregation', () => {
         orderCount: 0,
         averageOrderValue: null,
         medianOrderValue: null,
+        netMedianOrderValue: null,
         unitsSold: 0,
         unconvertedUnitsSold: 0,
         cancelledCount: 0,
@@ -49,6 +57,10 @@ describe('orderSalesAggregation', () => {
         unconvertedCount: 0,
         unconvertedValue: 0,
         unconvertedCurrency: null,
+        netRevenue: 0,
+        netAverageOrderValue: null,
+        netExcludedCount: 0,
+        netExcludedValue: 0,
         trend: [
           { date: '2026-08-01', revenue: 0, orderCount: 0 },
           { date: '2026-08-02', revenue: 0, orderCount: 0 },
@@ -72,6 +84,7 @@ describe('orderSalesAggregation', () => {
           row({ day: new Date('2026-08-02T00:00:00.000Z'), orderCount: 1, revenue: 50 }),
         ],
         medianOrderValue: 100,
+        netMedianOrderValue: null,
         unitsByConnection: new Map([['conn-a', { unitsSold: 30, unconvertedUnitsSold: 4 }]]),
         earliestOrderDateByConnection: new Map([['conn-a', new Date('2026-07-01T00:00:00.000Z')]]),
       });
@@ -105,6 +118,7 @@ describe('orderSalesAggregation', () => {
           row({ sourceConnectionId: 'conn-b', revenue: 100, orderCount: 1 }),
         ],
         medianOrderValue: 100,
+        netMedianOrderValue: null,
         unitsByConnection: new Map(),
         earliestOrderDateByConnection: new Map([
           ['conn-a', new Date('2026-07-01T00:00:00.000Z')],
@@ -122,10 +136,9 @@ describe('orderSalesAggregation', () => {
         filters: filters(),
         dailyRows: [row({ revenue: 0, orderCount: 0 })],
         medianOrderValue: null,
+        netMedianOrderValue: null,
         unitsByConnection: new Map(),
-        earliestOrderDateByConnection: new Map([
-          ['conn-a', new Date('2026-07-01T00:00:00.000Z')],
-        ]),
+        earliestOrderDateByConnection: new Map([['conn-a', new Date('2026-07-01T00:00:00.000Z')]]),
       });
 
       expect(result.channels[0].revenueShare).toBeNull();
@@ -136,10 +149,9 @@ describe('orderSalesAggregation', () => {
     it('excludes cancelled totals from revenue/orderCount but reports them separately', () => {
       const result = buildSalesAndChannelAnalytics({
         filters: filters(),
-        dailyRows: [
-          row({ revenue: 100, orderCount: 1, cancelledCount: 2, cancelledValue: 80 }),
-        ],
+        dailyRows: [row({ revenue: 100, orderCount: 1, cancelledCount: 2, cancelledValue: 80 })],
         medianOrderValue: 100,
+        netMedianOrderValue: null,
         unitsByConnection: new Map(),
         earliestOrderDateByConnection: new Map(),
       });
@@ -155,6 +167,7 @@ describe('orderSalesAggregation', () => {
         filters: filters(),
         dailyRows: [row({ revenue: 0, orderCount: 0, cancelledCount: 3, cancelledValue: 300 })],
         medianOrderValue: null,
+        netMedianOrderValue: null,
         unitsByConnection: new Map(),
         earliestOrderDateByConnection: new Map(),
       });
@@ -189,6 +202,7 @@ describe('orderSalesAggregation', () => {
           }),
         ],
         medianOrderValue: 75,
+        netMedianOrderValue: null,
         unitsByConnection: new Map(),
         earliestOrderDateByConnection: new Map(),
       });
@@ -208,6 +222,7 @@ describe('orderSalesAggregation', () => {
         filters: filters(),
         dailyRows: [row({ day: new Date('2026-08-03T00:00:00.000Z'), revenue: 40, orderCount: 1 })],
         medianOrderValue: null,
+        netMedianOrderValue: null,
         unitsByConnection: new Map(),
         earliestOrderDateByConnection: new Map(),
       });
@@ -244,6 +259,7 @@ describe('orderSalesAggregation', () => {
         filters: longFilters,
         dailyRows: [],
         medianOrderValue: null,
+        netMedianOrderValue: null,
         unitsByConnection: new Map(),
         earliestOrderDateByConnection: new Map(),
       });
@@ -259,7 +275,12 @@ describe('orderSalesAggregation', () => {
       const result = buildSalesAndChannelAnalytics({
         filters: filters(),
         dailyRows: [
-          row({ sourceConnectionId: 'conn-a', revenue: 100, orderCount: 1, reportingCurrency: 'EUR' }),
+          row({
+            sourceConnectionId: 'conn-a',
+            revenue: 100,
+            orderCount: 1,
+            reportingCurrency: 'EUR',
+          }),
           row({
             sourceConnectionId: 'conn-a',
             revenue: 0,
@@ -270,6 +291,7 @@ describe('orderSalesAggregation', () => {
           }),
         ],
         medianOrderValue: 100,
+        netMedianOrderValue: null,
         unitsByConnection: new Map(),
         earliestOrderDateByConnection: new Map(),
       });
@@ -289,9 +311,16 @@ describe('orderSalesAggregation', () => {
       const result = buildSalesAndChannelAnalytics({
         filters: filters(),
         dailyRows: [
-          row({ revenue: 0, orderCount: 0, unconvertedCount: 1, unconvertedValue: 40, reportingCurrency: null }),
+          row({
+            revenue: 0,
+            orderCount: 0,
+            unconvertedCount: 1,
+            unconvertedValue: 40,
+            reportingCurrency: null,
+          }),
         ],
         medianOrderValue: null,
+        netMedianOrderValue: null,
         unitsByConnection: new Map(),
         earliestOrderDateByConnection: new Map(),
       });
@@ -307,10 +336,21 @@ describe('orderSalesAggregation', () => {
       const result = buildSalesAndChannelAnalytics({
         filters: filters(),
         dailyRows: [
-          row({ sourceConnectionId: 'conn-a', revenue: 100, orderCount: 1, reportingCurrency: 'EUR' }),
-          row({ sourceConnectionId: 'conn-a', revenue: 100, orderCount: 1, reportingCurrency: 'PLN' }),
+          row({
+            sourceConnectionId: 'conn-a',
+            revenue: 100,
+            orderCount: 1,
+            reportingCurrency: 'EUR',
+          }),
+          row({
+            sourceConnectionId: 'conn-a',
+            revenue: 100,
+            orderCount: 1,
+            reportingCurrency: 'PLN',
+          }),
         ],
         medianOrderValue: 100,
+        netMedianOrderValue: null,
         unitsByConnection: new Map(),
         earliestOrderDateByConnection: new Map(),
       });
@@ -327,7 +367,12 @@ describe('orderSalesAggregation', () => {
       const result = buildSalesAndChannelAnalytics({
         filters: filters(),
         dailyRows: [
-          row({ sourceConnectionId: 'conn-a', revenue: 100, orderCount: 1, reportingCurrency: 'EUR' }),
+          row({
+            sourceConnectionId: 'conn-a',
+            revenue: 100,
+            orderCount: 1,
+            reportingCurrency: 'EUR',
+          }),
           row({
             sourceConnectionId: 'conn-a',
             revenue: 0,
@@ -338,6 +383,7 @@ describe('orderSalesAggregation', () => {
           }),
         ],
         medianOrderValue: 100,
+        netMedianOrderValue: null,
         unitsByConnection: new Map(),
         earliestOrderDateByConnection: new Map(),
       });
@@ -365,6 +411,7 @@ describe('orderSalesAggregation', () => {
           }),
         ],
         medianOrderValue: null,
+        netMedianOrderValue: null,
         unitsByConnection: new Map(),
         earliestOrderDateByConnection: new Map(),
       });
@@ -391,6 +438,7 @@ describe('orderSalesAggregation', () => {
           }),
         ],
         medianOrderValue: null,
+        netMedianOrderValue: null,
         unitsByConnection: new Map(),
         earliestOrderDateByConnection: new Map(),
       });
@@ -402,10 +450,9 @@ describe('orderSalesAggregation', () => {
     it('reports null when a single day/connection bucket already mixes currencies', () => {
       const result = buildSalesAndChannelAnalytics({
         filters: filters(),
-        dailyRows: [
-          row({ unconvertedCount: 2, unconvertedValue: 100, unconvertedCurrency: null }),
-        ],
+        dailyRows: [row({ unconvertedCount: 2, unconvertedValue: 100, unconvertedCurrency: null })],
         medianOrderValue: null,
+        netMedianOrderValue: null,
         unitsByConnection: new Map(),
         earliestOrderDateByConnection: new Map(),
       });
@@ -435,6 +482,7 @@ describe('orderSalesAggregation', () => {
           }),
         ],
         medianOrderValue: null,
+        netMedianOrderValue: null,
         unitsByConnection: new Map(),
         earliestOrderDateByConnection: new Map(),
       });
@@ -448,6 +496,7 @@ describe('orderSalesAggregation', () => {
         filters: filters(),
         dailyRows: [row({ unconvertedCount: 0, unconvertedValue: 0, unconvertedCurrency: null })],
         medianOrderValue: null,
+        netMedianOrderValue: null,
         unitsByConnection: new Map(),
         earliestOrderDateByConnection: new Map(),
       });
@@ -463,10 +512,9 @@ describe('orderSalesAggregation', () => {
         filters: filters(),
         dailyRows: [row({})],
         medianOrderValue: null,
+        netMedianOrderValue: null,
         unitsByConnection: new Map(),
-        earliestOrderDateByConnection: new Map([
-          ['conn-a', new Date('2026-01-01T00:00:00.000Z')],
-        ]),
+        earliestOrderDateByConnection: new Map([['conn-a', new Date('2026-01-01T00:00:00.000Z')]]),
       });
 
       expect(result.channels[0].coverageComplete).toBe(true);
@@ -477,10 +525,9 @@ describe('orderSalesAggregation', () => {
         filters: filters(),
         dailyRows: [row({})],
         medianOrderValue: null,
+        netMedianOrderValue: null,
         unitsByConnection: new Map(),
-        earliestOrderDateByConnection: new Map([
-          ['conn-a', new Date('2026-08-05T00:00:00.000Z')],
-        ]),
+        earliestOrderDateByConnection: new Map([['conn-a', new Date('2026-08-05T00:00:00.000Z')]]),
       });
 
       expect(result.channels[0].coverageComplete).toBe(false);
@@ -491,11 +538,99 @@ describe('orderSalesAggregation', () => {
         filters: filters(),
         dailyRows: [row({})],
         medianOrderValue: null,
+        netMedianOrderValue: null,
         unitsByConnection: new Map(),
         earliestOrderDateByConnection: new Map(),
       });
 
       expect(result.channels[0].coverageComplete).toBe(false);
+    });
+  });
+
+  describe('net sales (VAT-exclusive)', () => {
+    it('rolls up netRevenue/netExcludedCount/netExcludedValue across rows, headline and per channel', () => {
+      const result = buildSalesAndChannelAnalytics({
+        filters: filters(),
+        dailyRows: [
+          row({
+            sourceConnectionId: 'conn-a',
+            orderCount: 3,
+            revenue: 300,
+            netRevenue: 200,
+            netExcludedCount: 1,
+            netExcludedValue: 100,
+          }),
+          row({
+            sourceConnectionId: 'conn-b',
+            orderCount: 2,
+            revenue: 200,
+            netRevenue: 150,
+            netExcludedCount: 0,
+            netExcludedValue: 0,
+          }),
+        ],
+        medianOrderValue: 100,
+        netMedianOrderValue: 90,
+        unitsByConnection: new Map(),
+        earliestOrderDateByConnection: new Map(),
+      });
+
+      expect(result.headline.netRevenue).toBe(350);
+      expect(result.headline.netExcludedCount).toBe(1);
+      expect(result.headline.netExcludedValue).toBe(100);
+      // headlineOrderCount (5) - headlineNetExcludedCount (1) = 4 net-eligible orders
+      expect(result.headline.netAverageOrderValue).toBe(350 / 4);
+      expect(result.headline.netMedianOrderValue).toBe(90);
+
+      const connA = result.channels.find((c) => c.sourceConnectionId === 'conn-a');
+      expect(connA?.netRevenue).toBe(200);
+      expect(connA?.netExcludedCount).toBe(1);
+      expect(connA?.netExcludedValue).toBe(100);
+      // orderCount (3) - netExcludedCount (1) = 2 net-eligible orders
+      expect(connA?.netAverageOrderValue).toBe(100);
+
+      const connB = result.channels.find((c) => c.sourceConnectionId === 'conn-b');
+      expect(connB?.netExcludedCount).toBe(0);
+      expect(connB?.netAverageOrderValue).toBe(75);
+    });
+
+    it('reports null netAverageOrderValue when every order in scope is net-excluded', () => {
+      const result = buildSalesAndChannelAnalytics({
+        filters: filters(),
+        dailyRows: [
+          row({
+            orderCount: 2,
+            revenue: 200,
+            netRevenue: 0,
+            netExcludedCount: 2,
+            netExcludedValue: 200,
+          }),
+        ],
+        medianOrderValue: 100,
+        netMedianOrderValue: null,
+        unitsByConnection: new Map(),
+        earliestOrderDateByConnection: new Map(),
+      });
+
+      expect(result.headline.netAverageOrderValue).toBeNull();
+      expect(result.headline.netMedianOrderValue).toBeNull();
+      expect(result.channels[0].netAverageOrderValue).toBeNull();
+    });
+
+    it('never throws on empty input for the net figures', () => {
+      const result = buildSalesAndChannelAnalytics({
+        filters: filters(),
+        dailyRows: [],
+        medianOrderValue: null,
+        netMedianOrderValue: null,
+        unitsByConnection: new Map(),
+        earliestOrderDateByConnection: new Map(),
+      });
+
+      expect(result.headline.netRevenue).toBe(0);
+      expect(result.headline.netExcludedCount).toBe(0);
+      expect(result.headline.netExcludedValue).toBe(0);
+      expect(result.headline.netAverageOrderValue).toBeNull();
     });
   });
 
@@ -505,6 +640,7 @@ describe('orderSalesAggregation', () => {
         filters: filters(),
         dailyRows: [],
         medianOrderValue: null,
+        netMedianOrderValue: null,
         unitsByConnection: new Map(),
         earliestOrderDateByConnection: new Map(),
       })

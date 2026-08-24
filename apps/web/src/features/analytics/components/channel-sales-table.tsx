@@ -8,15 +8,29 @@
  * the per-channel colour.
  *
  * Money column (#1987/#2049/ADR-040): there is exactly ONE system-wide
- * reporting currency — a channel's `revenue`/`averageOrderValue`/`revenueShare`
- * are always comparable when `currency` is non-null. A channel with `currency
- * === null` has no FX-stamped revenue yet in range; the cell falls back to
- * its `unconvertedValue`/`unconvertedCurrency` native-currency evidence
- * (informational only, visually marked) when that evidence is itself in one
- * uniform currency, and to an honest empty state when it isn't (or there's
- * nothing at all). `Orders`/`AOV` stay on the same FX-stamped basis as
- * `Net sales` so a row's own figures always reconcile with each other and
- * with the single `Total · {currency}` row below.
+ * reporting currency — a channel's `netRevenue`/`netAverageOrderValue`/
+ * `revenueShare` are always comparable when `currency` is non-null.
+ * `Orders` stays on the same FX-stamped basis as `Net sales`/`AOV` so a
+ * row's own figures always reconcile with each other and with the single
+ * `Total · {currency}` row below.
+ *
+ * `Net sales`/`AOV`, not `GMV`/gross AOV (net-sales tax-rate epic): both
+ * money columns here are VAT-exclusive — `netRevenue` (technically the
+ * spec's NOV until returns are also modeled, but shown under the "Net
+ * sales" label per the reference design mockup) and `netAverageOrderValue`
+ * (`netRevenue` divided by the net-eligible order count, computed once in
+ * `groupChannelTotalsByCurrency` for the Total row and per-channel by the
+ * API). A prior revision showed gross `revenue`/`averageOrderValue`
+ * alongside them; those columns are gone — the KPI strip above already
+ * carries the GMV qualifier for the same range, so this table doesn't need
+ * to repeat it, and a row's Net sales and AOV can never disagree with each
+ * other about which basis they're on (the bug this fixed: AOV kept reading
+ * gross while Net sales read net, so a channel with nothing net-eligible
+ * showed "Net sales 0.00" next to a real, nonzero gross AOV). Neither
+ * column falls back to unconverted evidence when `currency` is null (an
+ * unconverted amount is a GROSS figure and would misrepresent itself as
+ * net), so that channel's cells render a plain empty state instead — see
+ * the KPI strip's own doc comment for the full nuance on that tradeoff.
  *
  * **No `Total · {currency} (unconverted)` row (#2098 follow-up review):**
  * unconverted native-currency evidence can share its currency string with the
@@ -62,9 +76,6 @@ const PERCENT_FORMAT_OPTIONS: Intl.NumberFormatOptions = {
   minimumFractionDigits: 1,
   maximumFractionDigits: 1,
 };
-
-const UNCONVERTED_EVIDENCE_TITLE =
-  'Native-currency evidence with no FX stamp yet — informational only, not part of Net sales or any Total · {currency} row.';
 
 type ChannelRow =
   | { kind: 'channel'; channel: ChannelSalesAnalytics; connection: Connection | undefined }
@@ -179,38 +190,27 @@ export function ChannelSalesTable({ filters }: ChannelSalesTableProps): ReactEle
   }));
   const rows: ChannelRow[] = [...channelRows, ...totalRows];
 
-  function renderRevenueCell(row: ChannelRow): ReactElement {
-    if (row.kind === 'total') {
-      return <strong>{formatAmount(row.total.revenue, row.total.currency)}</strong>;
-    }
-    if (row.channel.currency !== null) {
-      return <>{formatAmount(row.channel.revenue, row.channel.currency)}</>;
-    }
-    if (row.channel.unconvertedCurrency !== null) {
-      return (
-        <span title={UNCONVERTED_EVIDENCE_TITLE}>
-          {formatAmount(row.channel.unconvertedValue, row.channel.unconvertedCurrency)}
-        </span>
-      );
-    }
-    return <EmptyValue label="No non-cancelled revenue recorded for this channel in range" />;
-  }
-
   function renderAovCell(row: ChannelRow): ReactElement {
     if (row.kind === 'total') {
-      return <>{formatAmount(row.total.averageOrderValue, row.total.currency)}</>;
+      return <>{formatAmount(row.total.netAverageOrderValue, row.total.currency)}</>;
     }
     if (row.channel.currency !== null) {
-      return <>{formatAmount(row.channel.averageOrderValue, row.channel.currency)}</>;
+      return <>{formatAmount(row.channel.netAverageOrderValue, row.channel.currency)}</>;
     }
-    if (row.channel.unconvertedCurrency !== null && row.channel.unconvertedCount > 0) {
-      return (
-        <span title={UNCONVERTED_EVIDENCE_TITLE}>
-          {formatAmount(row.channel.unconvertedValue / row.channel.unconvertedCount, row.channel.unconvertedCurrency)}
-        </span>
-      );
+    // No unconverted-evidence fallback, same reasoning as Net sales: an
+    // unconverted amount is a GROSS figure and would misrepresent itself as
+    // a net average.
+    return <EmptyValue label="No AOV figure can be given for this channel in range" />;
+  }
+
+  function renderNovCell(row: ChannelRow): ReactElement {
+    if (row.kind === 'total') {
+      return <strong>{formatAmount(row.total.netRevenue, row.total.currency)}</strong>;
     }
-    return <EmptyValue label="No average order value can be given for this channel in range" />;
+    if (row.channel.currency !== null) {
+      return <>{formatAmount(row.channel.netRevenue, row.channel.currency)}</>;
+    }
+    return <EmptyValue label="No Net sales figure can be given for this channel in range" />;
   }
 
   const columns: DataTableColumn<ChannelRow>[] = [
@@ -225,10 +225,10 @@ export function ChannelSalesTable({ filters }: ChannelSalesTableProps): ReactEle
         ),
     },
     {
-      id: 'revenue',
+      id: 'nov',
       header: 'Net sales',
       align: 'right',
-      cell: renderRevenueCell,
+      cell: renderNovCell,
     },
     {
       id: 'orders',

@@ -50,6 +50,20 @@ export class ProductChannelBreakdownDto {
   })
   unconvertedCurrency!: string | null;
 
+  @ApiProperty({
+    description:
+      'VAT-exclusive counterpart of revenue for this channel — see the parent row’s netRevenue for the full definition.',
+  })
+  netRevenue!: number;
+
+  @ApiProperty({
+    description: 'Comparable sum for this channel’s lines excluded from netRevenue due to an unresolvable tax rate.',
+  })
+  netExcludedRevenue!: number;
+
+  @ApiProperty({ description: 'Count of lines contributing to netExcludedRevenue on this channel.' })
+  netExcludedLineCount!: number;
+
   static fromDomain(row: ProductChannelBreakdownRow): ProductChannelBreakdownDto {
     const dto = new ProductChannelBreakdownDto();
     dto.sourceConnectionId = row.sourceConnectionId;
@@ -58,6 +72,9 @@ export class ProductChannelBreakdownDto {
     dto.unconvertedRevenue = row.unconvertedRevenue;
     dto.currency = row.currency;
     dto.unconvertedCurrency = row.unconvertedCurrency;
+    dto.netRevenue = row.netRevenue;
+    dto.netExcludedRevenue = row.netExcludedRevenue;
+    dto.netExcludedLineCount = row.netExcludedLineCount;
     return dto;
   }
 }
@@ -121,6 +138,20 @@ export class TopProductRowDto {
   })
   missingFromConnectionIds!: string[];
 
+  @ApiProperty({
+    description:
+      'VAT-exclusive counterpart of revenue (net-sales tax-rate epic). Excludes a line whose order predates per-line tax rates or whose own tax rate is unresolvable — see netExcludedRevenue/netExcludedLineCount for what was excluded. Still gross of returns/refunds, which are not modeled.',
+  })
+  netRevenue!: number;
+
+  @ApiProperty({
+    description: 'Comparable sum for lines excluded from netRevenue due to an unresolvable tax rate.',
+  })
+  netExcludedRevenue!: number;
+
+  @ApiProperty({ description: 'Count of lines contributing to netExcludedRevenue.' })
+  netExcludedLineCount!: number;
+
   static fromDomain(
     view: TopProductView,
     catalog: { name: string | null; sku: string | null },
@@ -138,6 +169,9 @@ export class TopProductRowDto {
     dto.unconvertedCurrency = view.unconvertedCurrency;
     dto.channels = view.channels.map((row) => ProductChannelBreakdownDto.fromDomain(row));
     dto.missingFromConnectionIds = missingFromConnectionIds;
+    dto.netRevenue = view.netRevenue;
+    dto.netExcludedRevenue = view.netExcludedRevenue;
+    dto.netExcludedLineCount = view.netExcludedLineCount;
     return dto;
   }
 }

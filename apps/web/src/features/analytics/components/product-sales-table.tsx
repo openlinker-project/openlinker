@@ -3,7 +3,7 @@
  *
  * One row per product, one column per connected sales channel — the
  * flagship cross-channel view (see the #1991 implementation plan). Ranks by
- * revenue or units via a `SegmentedControl`; both figures stay visible in
+ * net sales or units via a `SegmentedControl`; both figures stay visible in
  * both states, because an operator comparing "sells most money" against
  * "sells most items" needs the pair, not one swapped for the other. The
  * sort choice is local UI state (not URL state) — a per-section toggle
@@ -33,28 +33,32 @@
  * permanently visible — see the `@media (hover: none)` block, so #1991's
  * label-vs-action distinction is not desktop-only. The action itself is
  * gated behind `listings:write` (`useWriteAccess` + `ReadOnlyLock`) since
- * publishing is a real write, and is a genuine `<Link>`-as-button rather
- * than `Chip` (which hard-codes a filter-toggle `aria-pressed`) so it
- * carries link semantics (middle-click, open-in-new-tab) for free.
+ * publishing is a real write, and is a genuine `<Link>`-as-button (styled
+ * with the `chip chip--warning` classes, not the `Chip` component itself —
+ * `Chip` hard-codes a filter-toggle `aria-pressed`, which is wrong for a
+ * one-shot navigation) so it carries link semantics (middle-click,
+ * open-in-new-tab) for free, in the warning-toned pill from the reference
+ * design.
  *
- * Money column terminology (see the #1991 plan § 4): labeled "Revenue", not
- * the design mockup's "Net sales" copy — #1988 computes a gross,
- * reporting-currency figure with no VAT/returns netting, and the sibling
- * by-channel table (#1990) already resolved this identical tension the same
- * way. Do not relabel this column without also revisiting that decision.
+ * Money column terminology (net-sales tax-rate epic): the single money
+ * column here renders `row.netRevenue` — the VAT-exclusive figure,
+ * technically the spec's NOV until returns are also modeled, but labeled
+ * "Net sales" per the reference design mockup and per the KPI strip's /
+ * by-channel table's identical naming decision (the returns nuance lives in
+ * a tooltip, not repeated as a header here). Unlike the by-channel table
+ * (#1990), which renders GMV and Net sales as two separate columns, this
+ * table shows only Net sales — a deliberate choice to keep the flagship
+ * cross-channel view from doubling its money columns on top of the
+ * per-channel unit columns it already has.
  *
- * Revenue cell fallback (#2049/ADR-040): a product whose only orders in
- * range were stamped under a PREVIOUS reporting-currency setting (a
- * different currency era, per the #1988 bugfix) has `currency: null` — same
- * as a never-stamped product. Rather than rendering a bare `EmptyValue` for
- * either case, the cell falls back to `unconvertedRevenue`/
- * `unconvertedCurrency` (when that evidence is itself in one uniform
- * currency) so an operator still sees the figure, clearly marked
- * informational — mirroring `ChannelSalesTable`'s identical fallback for the
- * #1987 by-channel read. This does NOT render two currencies side by side
- * for one row (the mockup's two-money-column "currency-split" mode is
- * out of scope, see the #1991 implementation plan § non-goals) — it shows
- * whichever one figure the row actually has.
+ * Net sales cell fallback: `netRevenue` shares the same `isStamped`
+ * precondition as gross revenue (net and gross must be comparable, same
+ * currency era — see the net-sales-tax-rate plan § Phase 2/3), so a product
+ * with `currency: null` has no net figure either. Unlike the gross column
+ * this table used to render, there is no `unconvertedNetRevenue` to fall
+ * back to — an unconverted amount is a GROSS figure and would misrepresent
+ * itself as net — so the cell renders a plain `EmptyValue` instead,
+ * mirroring `ChannelSalesTable`'s `renderNovCell`.
  *
  * Thumbnails come from the product catalogue (`Product.images[0]`), joined
  * FE-side via `useProductsBatchQuery` — never from a per-channel order-item
@@ -100,25 +104,15 @@ import { channelCellFor, deriveChannelColumns, isMissingFrom } from '../lib/top-
 
 const DEFAULT_LIMIT = 20;
 
-const UNCONVERTED_EVIDENCE_TITLE =
-  'Native-currency evidence with no current-era FX stamp — informational only, not part of ranked revenue.';
-
-function renderRevenueCell(row: TopProductRow): ReactElement {
+function renderNovCell(row: TopProductRow): ReactElement {
   if (row.currency) {
-    return <>{formatAmount(row.revenue, row.currency)}</>;
+    return <>{formatAmount(row.netRevenue, row.currency)}</>;
   }
-  if (row.unconvertedCurrency) {
-    return (
-      <span title={UNCONVERTED_EVIDENCE_TITLE}>
-        {formatAmount(row.unconvertedRevenue, row.unconvertedCurrency)}
-      </span>
-    );
-  }
-  return <EmptyValue label="No FX-stamped order for this product in range" />;
+  return <EmptyValue label="No Net sales figure for this product in range" />;
 }
 
 const SORT_OPTIONS = [
-  { value: 'revenue' as const, label: 'By revenue' },
+  { value: 'revenue' as const, label: 'By net sales' },
   { value: 'units' as const, label: 'By units' },
 ];
 
@@ -167,7 +161,7 @@ function PublishAction({
       <ReadOnlyLock active message={DEMO_READ_ONLY_ACTION_MESSAGE}>
         <button
           type="button"
-          className="button button--secondary button--xs cell-not-listed__chip"
+          className="chip chip--warning cell-not-listed__chip"
           disabled
           aria-label={label}
         >
@@ -180,7 +174,7 @@ function PublishAction({
   return (
     <Link
       to={buildPublishHref(row.productId, connectionId)}
-      className="button button--secondary button--xs cell-not-listed__chip"
+      className="chip chip--warning cell-not-listed__chip"
       aria-label={label}
     >
       Publish
@@ -249,7 +243,7 @@ export function ProductSalesTable({ filters }: ProductSalesTableProps): ReactEle
       <LoadingState
         eyebrow="Loading"
         title="Loading top products"
-        message="Fetching revenue and units per product, split by channel…"
+        message="Fetching net sales and units per product, split by channel…"
       />
     );
   }
@@ -282,9 +276,9 @@ export function ProductSalesTable({ filters }: ProductSalesTableProps): ReactEle
     },
     {
       id: 'revenue',
-      header: sortBy === 'revenue' ? 'Revenue ↓' : 'Revenue',
+      header: sortBy === 'revenue' ? 'Net sales ↓' : 'Net sales',
       align: 'right',
-      cell: renderRevenueCell,
+      cell: renderNovCell,
     },
     {
       id: 'units',
@@ -337,7 +331,7 @@ export function ProductSalesTable({ filters }: ProductSalesTableProps): ReactEle
           subtitle: (row) => row.sku ?? undefined,
           summary: (row) => (
             <>
-              {renderRevenueCell(row)}
+              {renderNovCell(row)}
               {' · '}
               {intFormat.format(row.units)} units
             </>

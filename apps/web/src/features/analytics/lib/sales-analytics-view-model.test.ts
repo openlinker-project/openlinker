@@ -29,6 +29,10 @@ function channel(overrides: Partial<ChannelSalesAnalytics> = {}): ChannelSalesAn
     unconvertedCount: 0,
     unconvertedValue: 0,
     unconvertedCurrency: null,
+    netRevenue: 100,
+    netAverageOrderValue: 10,
+    netExcludedCount: 0,
+    netExcludedValue: 0,
     revenueShare: 0.5,
     trend: [],
     coverageComplete: true,
@@ -104,8 +108,8 @@ describe('revenueTrendValues / orderCountTrendValues', () => {
 describe('groupChannelTotalsByCurrency', () => {
   it('should sum a reporting-currency total across more than one contributing channel', () => {
     const totals = groupChannelTotalsByCurrency([
-      channel({ sourceConnectionId: 'a', revenue: 3000, orderCount: 25, unitsSold: 40, revenueShare: 0.6 }),
-      channel({ sourceConnectionId: 'b', revenue: 2000, orderCount: 15, unitsSold: 20, revenueShare: 0.4 }),
+      channel({ sourceConnectionId: 'a', revenue: 3000, orderCount: 25, unitsSold: 40, revenueShare: 0.6, netRevenue: 2400, netExcludedCount: 5 }),
+      channel({ sourceConnectionId: 'b', revenue: 2000, orderCount: 15, unitsSold: 20, revenueShare: 0.4, netRevenue: 1600, netExcludedCount: 0 }),
     ]);
 
     expect(totals).toEqual([
@@ -116,13 +120,16 @@ describe('groupChannelTotalsByCurrency', () => {
         averageOrderValue: 125,
         unitsSold: 60,
         revenueShare: 1,
+        // netOrderCount = 40 - (5 + 0) = 35; netRevenue = 2400 + 1600 = 4000
+        netRevenue: 4000,
+        netAverageOrderValue: 4000 / 35,
       },
     ]);
   });
 
   it('should still emit a reporting total for a single contributing channel', () => {
     const totals = groupChannelTotalsByCurrency([
-      channel({ revenue: 3000, orderCount: 25, unitsSold: 40, revenueShare: 1 }),
+      channel({ revenue: 3000, orderCount: 25, unitsSold: 40, revenueShare: 1, netRevenue: 2700, netExcludedCount: 0 }),
     ]);
 
     expect(totals).toEqual([
@@ -133,6 +140,8 @@ describe('groupChannelTotalsByCurrency', () => {
         averageOrderValue: 120,
         unitsSold: 40,
         revenueShare: 1,
+        netRevenue: 2700,
+        netAverageOrderValue: 108,
       },
     ]);
   });

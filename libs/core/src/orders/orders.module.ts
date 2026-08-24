@@ -23,6 +23,7 @@ import { OrderRefundService } from './application/services/order-refund.service'
 import { RefundRecordRepository } from './infrastructure/persistence/repositories/refund-record.repository';
 import { RefundRecordOrmEntity } from './infrastructure/persistence/entities/refund-record.orm-entity';
 import { OrderLineItemOrmEntity } from './infrastructure/persistence/entities/order-line-item.orm-entity';
+import { TaxRateBackfillService } from './application/services/tax-rate-backfill.service';
 import {
   ORDER_SYNC_SERVICE_TOKEN,
   ORDER_INGESTION_SERVICE_TOKEN,
@@ -36,6 +37,7 @@ import {
   ORDER_REFUND_SERVICE_TOKEN,
   ORDER_FX_READ_SERVICE_TOKEN,
   ORDER_LINE_ITEM_REPOSITORY_TOKEN,
+  TAX_RATE_BACKFILL_SERVICE_TOKEN,
 } from './orders.tokens';
 import { IntegrationsModule } from '@openlinker/core/integrations';
 import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
@@ -84,6 +86,7 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     OrderRefundService,
     RefundRecordRepository,
     OrderLineItemRepository,
+    TaxRateBackfillService,
     // Then provide token bindings using useExisting
     {
       provide: ORDER_SYNC_SERVICE_TOKEN,
@@ -133,6 +136,10 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
       provide: ORDER_LINE_ITEM_REPOSITORY_TOKEN,
       useExisting: OrderLineItemRepository,
     },
+    {
+      provide: TAX_RATE_BACKFILL_SERVICE_TOKEN,
+      useExisting: TaxRateBackfillService,
+    },
   ],
   exports: [
     OrderRecordService, // Export service class for direct injection
@@ -148,6 +155,9 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     ORDER_LIFECYCLE_RELAY_SERVICE_TOKEN,
     ORDER_REFUND_SERVICE_TOKEN,
     ORDER_FX_READ_SERVICE_TOKEN,
+    // Exported so the worker's `orders.taxRate.backfill` handler can inject
+    // the backfill seam (#2440).
+    TAX_RATE_BACKFILL_SERVICE_TOKEN,
   ],
 })
 export class OrdersModule {}

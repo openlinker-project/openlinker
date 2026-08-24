@@ -117,6 +117,10 @@ export interface ChannelCurrencyTotal {
   averageOrderValue: number;
   unitsSold: number;
   revenueShare: number;
+  /** VAT-exclusive counterpart of `revenue` — see `SalesAnalyticsHeadline.netRevenue` (net-sales tax-rate epic). */
+  netRevenue: number;
+  /** `netRevenue` divided by the net-eligible order count (`orderCount` minus every contributing channel's `netExcludedCount`). `0` when that count is `0`. */
+  netAverageOrderValue: number;
 }
 
 /**
@@ -145,6 +149,9 @@ export function groupChannelTotalsByCurrency(channels: ChannelSalesAnalytics[]):
     const contributing = channels.filter((c) => c.currency === reportingCurrency);
     const revenue = sum(contributing, (c) => c.revenue);
     const orderCount = sum(contributing, (c) => c.orderCount);
+    const netRevenue = sum(contributing, (c) => c.netRevenue);
+    const netExcludedCount = sum(contributing, (c) => c.netExcludedCount);
+    const netOrderCount = orderCount - netExcludedCount;
     totals.push({
       currency: reportingCurrency,
       revenue,
@@ -152,6 +159,8 @@ export function groupChannelTotalsByCurrency(channels: ChannelSalesAnalytics[]):
       averageOrderValue: orderCount === 0 ? 0 : revenue / orderCount,
       unitsSold: sum(contributing, (c) => c.unitsSold),
       revenueShare: sum(contributing, (c) => c.revenueShare),
+      netRevenue,
+      netAverageOrderValue: netOrderCount === 0 ? 0 : netRevenue / netOrderCount,
     });
   }
 

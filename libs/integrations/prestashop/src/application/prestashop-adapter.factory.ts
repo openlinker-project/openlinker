@@ -73,14 +73,6 @@ export class PrestashopAdapterFactory implements IPrestashopAdapterFactory {
   // connection config leaves `currency` unset.
   private readonly shopCurrencyResolver = new PrestashopShopCurrencyResolver();
 
-  // Same placement and reasoning as `shopCurrencyResolver`, whose shop-default
-  // read it falls back to: a process-singleton field so the per-(connection,
-  // id_currency) cache of order denominations (#2277) survives across the
-  // adapter instances built per capability resolution.
-  private readonly orderCurrencyResolver = new PrestashopOrderCurrencyResolver(
-    this.shopCurrencyResolver
-  );
-
   // Process-singleton for the same reason: master sync builds one adapter per
   // product, so a per-adapter tax-rate cache would never hit (#2054). The
   // order-create path keeps its own instance, built inside the customer-
@@ -88,6 +80,14 @@ export class PrestashopAdapterFactory implements IPrestashopAdapterFactory {
   // wired.
   private readonly productTaxRateResolver = new PrestashopTaxRateResolver(
     new PrestashopCountryResolver()
+  );
+
+  // Same placement and reasoning as `shopCurrencyResolver`, whose shop-default
+  // read it falls back to: a process-singleton field so the per-(connection,
+  // id_currency) cache of order denominations (#2277) survives across the
+  // adapter instances built per capability resolution.
+  private readonly orderCurrencyResolver = new PrestashopOrderCurrencyResolver(
+    this.shopCurrencyResolver
   );
 
   constructor(

@@ -87,6 +87,10 @@ export class PrestashopOrderMapper implements IPrestashopOrderMapper {
         (this.parseNumber(prestashopOrder.total_paid_tax_excl) || 0),
       shipping: this.parseNumber(prestashopOrder.total_shipping) || 0,
       total: this.parseNumber(prestashopOrder.total_paid_tax_incl) || 0,
+      // PrestaShop's line prices (`order_details.product_price`, mapped onto
+      // `OrderItem.price` above) are net — `specific_price` and every catalogue
+      // read this adapter does elsewhere already treat them that way (#2440).
+      taxTreatment: 'exclusive',
     };
 
     return {

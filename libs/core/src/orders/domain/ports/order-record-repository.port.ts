@@ -210,6 +210,18 @@ export interface OrderRecordRepositoryPort {
   ): Promise<number | null>;
 
   /**
+   * VAT-exclusive counterpart of {@link getMedianOrderValue} (net-sales
+   * tax-rate epic) — same scope, additionally restricted to orders that are
+   * not pre-rollout history (ADR-063 § Consequences) and carry a resolvable
+   * tax-rate fraction on every line. `null` on an empty ordered-set, same
+   * convention as the gross median.
+   */
+  getNetMedianOrderValue(
+    filters: SalesAnalyticsFilters,
+    currentReportingCurrency: string
+  ): Promise<number | null>;
+
+  /**
    * Push a per-order fulfillment rollup (#1108) onto the order record. Called
    * from the shipping context after a shipment-status change (best-effort
    * projection). Idempotent absolute-set; a missing order row is a no-op (never
@@ -394,4 +406,33 @@ export interface OrderRecordRepositoryPort {
    * the result rather than reported under a `null` key.
    */
   countStampedByReportingCurrency(): Promise<StampedReportingCurrencyCount[]>;
+
+  /**
+   * Additively patch one line's tax provenance onto `orderSnapshot.items[lineNumber]`
+   * (#2440) — the tax-rate backfill's snapshot-side write, kept alongside
+   * {@link OrderLineItemRepositoryPort.backfillTaxRate} so the analytics
+   * read-model row and the order-detail page's own source (the snapshot)
+   * never disagree about a backfilled rate.
+   *
+   * ADDITIVE-ONLY BY CONSTRUCTION, not merely by caller discipline: the
+   * three keys are written together as one guarded group (mirrors
+   * `stampFxIfAbsent`'s "the group can never half-apply" precedent), gated
+   * on the ABSENCE of `taxRate` alone — `taxSource` is only ever written
+   * paired with `taxRate` by ingestion (`resolveLineTaxRate`), so a real
+   * line never carries one without the other, and a stale `taxRateReadAt`
+   * (the "shop was asked, found nothing, as of an earlier instant" case) is
+   * correctly superseded by the newer backfill read rather than preserved.
+   * A line whose `taxRate` key is already present is untouched entirely. No
+   * other snapshot key is ever read or written. A missing `lineNumber`
+   * (order has fewer items than expected, or no snapshot at all) is a
+   * silent no-op — the same best-effort posture
+   * {@link findUnstampedFxOrderIds}'s consumers already carry, since this
+   * is provenance for internal reporting, not a write anything downstream
+   * depends on succeeding.
+   */
+  patchSnapshotTaxRates(
+    internalOrderId: string,
+    lineNumber: number,
+    patch: { taxRate: string; taxSource: 'backfill'; taxRateReadAt: Date }
+  ): Promise<void>;
 }

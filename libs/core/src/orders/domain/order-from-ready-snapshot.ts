@@ -22,6 +22,7 @@
 import type { OrderRecord } from './entities/order-record.entity';
 import type { Address, Order, OrderItem, OrderTotals } from './types/order.types';
 import { OrderSnapshotUnavailableError } from './exceptions/order-snapshot-unavailable.error';
+import { isTaxRateSource } from '@openlinker/core/products';
 
 /** The `OrderRecordService.sanitizeAddress` placeholder for a PII-redacted field. */
 const REDACTED = '[REDACTED]';
@@ -190,7 +191,7 @@ function readItems(value: unknown): OrderItem[] {
     // not by a unit test, precisely because the two paths diverge here.
     if (typeof item.taxRate === 'string') orderItem.taxRate = item.taxRate;
     if (typeof item.taxRateCountry === 'string') orderItem.taxRateCountry = item.taxRateCountry;
-    if (item.taxSource === 'shop' || item.taxSource === 'channel') {
+    if (isTaxRateSource(item.taxSource)) {
       orderItem.taxSource = item.taxSource;
     }
     if (typeof item.taxRateReadAt === 'string') orderItem.taxRateReadAt = item.taxRateReadAt;

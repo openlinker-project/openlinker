@@ -48,6 +48,26 @@ export interface SalesAnalyticsHeadline {
   /** The one native currency `unconvertedValue` is expressed in; `null` when that set mixes currencies (or `unconvertedCount` is `0`). */
   unconvertedCurrency: string | null;
   trend: DailyTrendPoint[];
+  /**
+   * VAT-exclusive counterpart of `revenue` (net-sales tax-rate epic) — this
+   * is the metrics spec's **NOV** (Net Order Value), not yet its **Net
+   * Sales** figure, which additionally subtracts the value of returns. No
+   * returns/refund entity exists yet — rendered under the "Net sales" label
+   * per the reference design mockup regardless (the NOV-vs-Net-Sales nuance
+   * lives in the tooltip, not the header) until that gap closes too.
+   * Excludes an order that predates per-line tax rates or carries a line
+   * with an unresolvable rate — see
+   * `netExcludedCount`/`netExcludedValue`.
+   */
+  netRevenue: number;
+  /** `netRevenue` divided by the net-eligible order count (`orderCount - netExcludedCount`). `0` when that count is `0` — the FE renders that as a gap, mirroring `averageOrderValue`. */
+  netAverageOrderValue: number;
+  /** VAT-exclusive counterpart of `medianOrderValue`. */
+  netMedianOrderValue: number;
+  /** Orders excluded from `netRevenue` — pre-rollout history or an unresolvable line-level tax rate. Disjoint from `unconvertedCount` (a currency-stamp exclusion, not a tax-rate one). */
+  netExcludedCount: number;
+  /** Native-currency sum for `netExcludedCount` — informational only, may mix currencies. */
+  netExcludedValue: number;
 }
 
 export interface ChannelSalesAnalytics {
@@ -64,6 +84,14 @@ export interface ChannelSalesAnalytics {
   unconvertedCount: number;
   unconvertedValue: number;
   unconvertedCurrency: string | null;
+  /** Same meaning as {@link SalesAnalyticsHeadline.netRevenue}, scoped to this channel. */
+  netRevenue: number;
+  /** Same meaning as {@link SalesAnalyticsHeadline.netAverageOrderValue}, scoped to this channel. */
+  netAverageOrderValue: number;
+  /** Same meaning as {@link SalesAnalyticsHeadline.netExcludedCount}, scoped to this channel. */
+  netExcludedCount: number;
+  /** Same meaning as {@link SalesAnalyticsHeadline.netExcludedValue}, scoped to this channel. */
+  netExcludedValue: number;
   /** Share of headline revenue, `0` when headline revenue is `0` — always comparable, since every channel's `revenue` is in the same `currency`. */
   revenueShare: number;
   trend: DailyTrendPoint[];
