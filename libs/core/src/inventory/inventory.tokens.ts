@@ -18,3 +18,7 @@ export const INVENTORY_QUERY_SERVICE_TOKEN = Symbol('IInventoryQueryService');
 // Inventory locations (#2313, ADR-058 decision 1)
 export const LOCATION_REPOSITORY_TOKEN = Symbol('LocationRepositoryPort');
 export const LOCATION_SERVICE_TOKEN = Symbol('ILocationService');
+
+// Available-to-promise seam (#2321, ADR-061)
+export const AVAILABILITY_SERVICE_TOKEN = Symbol('IAvailabilityService');
+export const RESERVATION_LEDGER_READER_TOKEN = Symbol('ReservationLedgerReaderPort');

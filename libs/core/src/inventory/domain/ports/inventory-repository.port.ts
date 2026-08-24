@@ -88,6 +88,10 @@ export interface InventoryRepositoryPort {
    * least one matching inventory row; zero-filling for unknown variants is
    * the service layer's responsibility. Empty input → empty output.
    *
+   * Each row also carries `stockUpdatedAt` (`MAX(updatedAt)` across the
+   * variant's live positions, #2321) — the observation time
+   * `IAvailabilityService` reports as `PromisableQuantity.observedAt`.
+   *
    * @param variantIds list of internal product-variant IDs to look up
    * @returns one VariantAvailability row per variant with inventory
    */
