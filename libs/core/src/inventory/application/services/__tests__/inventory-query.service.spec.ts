@@ -78,6 +78,8 @@ describe('InventoryQueryService', () => {
       findStockAggregatesByProductIds: jest.fn(),
       markStaleExceptVariants: jest.fn(),
       findDuplicatePositions: jest.fn(),
+      backfillLegacyProvenance: jest.fn(),
+      countMissingProvenance: jest.fn(),
     };
 
     productsService = {

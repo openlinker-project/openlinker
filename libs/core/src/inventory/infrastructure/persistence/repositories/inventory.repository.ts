@@ -28,6 +28,7 @@ import type { InventoryRepositoryPort } from '../../../domain/ports/inventory-re
 import { InventoryItem } from '../../../domain/entities/inventory-item.entity';
 import { InventoryReturningUnsupportedError } from '../../../domain/exceptions/inventory-returning-unsupported.error';
 import { InventoryRowVanishedError } from '../../../domain/exceptions/inventory-row-vanished.error';
+import { LEGACY_SOURCE_CONNECTION_ID } from '../../../domain/types/inventory.types';
 import type {
   InventoryFilters,
   InventoryPagination,
@@ -614,6 +615,88 @@ export class InventoryRepository implements InventoryRepositoryPort {
       throw new InventoryReturningUnsupportedError(rowId);
     }
     return resolved;
+  }
+
+  /**
+   * One bounded page of the `'legacy'` provenance backfill (#2317, ADR-058
+   * ladder step (ii)).
+   *
+   * ## Why raw SQL is mandatory here, not merely preferred
+   *
+   * `updatedAt` is an `@UpdateDateColumn`, and the docblocks above
+   * ({@link INVENTORY_DB_MANAGED_COLUMNS}, and the upsert's update branch)
+   * record the behaviour that decides this: TypeORM APPENDS its auto-timestamp
+   * to any `.update().set()` whose SET clause does not already name the column.
+   * That is exactly right for the master-sync upsert — a real stock write
+   * SHOULD move `updatedAt` — and exactly wrong here. This pass changes no
+   * stock, yet a query-builder update would bump `updatedAt` on every row it
+   * touched, and `InventorySyncService` builds the propagation job's dedupe key
+   * from that value. A table-wide bump would either replay a propagation for
+   * every SKU on every marketplace, or collide the keys and drop them silently.
+   * Neither is acceptable from a backfill whose entire job is to be invisible.
+   *
+   * A raw statement writes precisely the columns it names. Precedent:
+   * `order-record.repository.ts` `markCancelled`, raw for the same reason — and
+   * its sibling `updateSalesDocumentBlock`, which names `"updatedAt" = now()`
+   * explicitly where it DOES want the bump. The two together are the proof that
+   * this is a deliberate choice in both directions rather than an idiom.
+   *
+   * ## The sub-select, clause by clause
+   *
+   * - `WHERE "sourceConnectionId" IS NULL` appears in BOTH the sub-select and
+   *   the outer UPDATE. The inner one selects the page; the outer one re-checks
+   *   under the row lock, so a row a live sync claimed in between is not
+   *   stamped back down to the sentinel. The sentinel may only ever lose to a
+   *   real connection id, never overwrite one.
+   * - `ORDER BY "id"` makes a page deterministic, which is what lets the e2e
+   *   spec assert a drain sequence rather than only a total.
+   * - `FOR UPDATE SKIP LOCKED`, never a plain `FOR UPDATE`: a row mid-write by
+   *   `setInventory` is skipped and collected next tick. Waiting on it would put
+   *   a backfill in the blocking path of a buyer-facing stock write.
+   * - It is a sub-select because Postgres has no `LIMIT` on `UPDATE`. Never
+   *   rewrite this as a predicate-less `COALESCE` over the table: that locks
+   *   every row in one statement, which is the hazard the whole bounded-pass
+   *   design exists to avoid.
+   *
+   * The sentinel is the shared {@link LEGACY_SOURCE_CONNECTION_ID} and `limit`
+   * is bound too — nothing is interpolated into the statement.
+   */
+  async backfillLegacyProvenance(limit: number): Promise<number> {
+    const result = (await this.repository.query(
+      `UPDATE "inventory_items"
+          SET "sourceConnectionId" = $1
+        WHERE "id" IN (
+                SELECT "id"
+                  FROM "inventory_items"
+                 WHERE "sourceConnectionId" IS NULL
+                 ORDER BY "id"
+                 LIMIT $2
+                 FOR UPDATE SKIP LOCKED
+              )
+          AND "sourceConnectionId" IS NULL`,
+      [LEGACY_SOURCE_CONNECTION_ID, limit]
+    )) as [unknown[], number] | undefined;
+
+    // node-postgres surfaces a non-RETURNING UPDATE as `[rows, affectedCount]`
+    // through TypeORM's raw query. Normalised rather than trusted: the driver's
+    // typing for a raw query is `any`.
+    return Number(result?.[1] ?? 0);
+  }
+
+  /**
+   * Uncapped, unfiltered count of rows still missing provenance (#2317).
+   *
+   * Unfiltered on purpose — including stale rows, which #2325's `SET NOT NULL`
+   * will trip over exactly as readily as live ones.
+   */
+  async countMissingProvenance(): Promise<number> {
+    const [row] = (await this.repository.query(
+      `SELECT COUNT(*)::int AS "remaining"
+         FROM "inventory_items"
+        WHERE "sourceConnectionId" IS NULL`
+    )) as { remaining: number | string }[];
+
+    return Number(row?.remaining ?? 0);
   }
 
   /**

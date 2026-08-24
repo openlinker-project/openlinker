@@ -9,10 +9,14 @@
  * This is step (i) of the three-step ADR-058 ladder and **only** step (i):
  * additive, nullable, no `DEFAULT`. On PG11+ that is a catalogue-only change —
  * no table rewrite, no lock beyond the brief `ACCESS EXCLUSIVE` for the DDL.
- * Step (ii) is the `'legacy'`-sentinel backfill (#2317, a `runBoundedSweep`
- * pass — never a migration, because a backfill inside DDL would hold that lock
- * across every existing row). Step (iii) is `SET NOT NULL` plus the index
- * recreation (#2325). Rows are legitimately NULL until step (ii) runs.
+ * Step (ii) is the `'legacy'`-sentinel backfill (#2317, the
+ * `inventory.provenance.backfill` job — never a migration, because a backfill
+ * inside DDL would hold that lock across every existing row). It stamps
+ * `LEGACY_SOURCE_CONNECTION_ID`, declared in
+ * `libs/core/src/inventory/domain/types/inventory.types.ts`; that constant is
+ * the single source for the literal, so do not re-spell `'legacy'` here or in a
+ * later migration. Step (iii) is `SET NOT NULL` plus the index recreation
+ * (#2325). Rows are legitimately NULL until step (ii) has drained.
  *
  * **Neither partial unique index is touched here** — not
  * `IDX`-on-(`productId`, `locationId`) `WHERE "productVariantId" IS NULL`, nor
@@ -24,8 +28,8 @@
  * point the column is non-nullable and that failure mode is unreachable.
  *
  * `text`, not `uuid`, and **no FK to `connections`**. Step (ii) writes the
- * literal `'legacy'` sentinel (DESIGN §4.1), which a `uuid` column could not
- * represent at all. The missing FK mirrors `packedByUserId` in
+ * `'legacy'` sentinel (DESIGN §4.1), which a `uuid` column could not represent
+ * at all. The missing FK mirrors `packedByUserId` in
  * `1842000000000-add-order-record-packed.ts`: provenance is an audit fact, so
  * it must survive deletion of the connection it names — the alternatives are
  * blocking the delete or silently erasing who synced the position.

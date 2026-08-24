@@ -16,6 +16,7 @@ import { getMetadataArgsStorage, type Repository, type SelectQueryBuilder } from
 import { InventoryItem } from '../../../domain/entities/inventory-item.entity';
 import { InventoryReturningUnsupportedError } from '../../../domain/exceptions/inventory-returning-unsupported.error';
 import { InventoryRowVanishedError } from '../../../domain/exceptions/inventory-row-vanished.error';
+import { LEGACY_SOURCE_CONNECTION_ID } from '../../../domain/types/inventory.types';
 import { InventoryItemOrmEntity } from '../entities/inventory-item.orm-entity';
 import {
   INVENTORY_DB_MANAGED_COLUMNS,
@@ -248,6 +249,113 @@ describe('InventoryRepository', () => {
       expect(result.excessRowCount).toBe(6);
       expect(result.groups).toHaveLength(1);
       expect(result.truncated).toBe(true);
+    });
+  });
+
+  describe('backfillLegacyProvenance / countMissingProvenance (#2317)', () => {
+    /** The statement the SUT issued, plus its bound parameters. */
+    function issued(index = 0): [string, unknown[] | undefined] {
+      return (ormRepository.query as jest.Mock).mock.calls[index] as [string, unknown[] | undefined];
+    }
+
+    it('issues exactly ONE statement per page', async () => {
+      (ormRepository.query as jest.Mock).mockResolvedValueOnce([[], 3]);
+
+      await repository.backfillLegacyProvenance(500);
+
+      // A read-then-write pair would race a live sync between the two halves.
+      expect(ormRepository.query).toHaveBeenCalledTimes(1);
+    });
+
+    it('never names updatedAt in the statement', async () => {
+      (ormRepository.query as jest.Mock).mockResolvedValueOnce([[], 1]);
+
+      await repository.backfillLegacyProvenance(10);
+
+      const [sql] = issued();
+      // THE reason this is raw SQL. A query-builder update APPENDS the
+      // @UpdateDateColumn stamp (see INVENTORY_DB_MANAGED_COLUMNS), and
+      // InventorySyncService derives the propagation dedupe key from that
+      // column - a table-wide bump either replays every propagation or collides
+      // the keys and drops them silently. This pass changes no stock and must
+      // stay invisible to that key.
+      expect(sql).not.toContain('updatedAt');
+      expect(INVENTORY_DB_MANAGED_COLUMNS).toContain('updatedAt');
+    });
+
+    it('sets exactly one column, and that column is the provenance column', async () => {
+      (ormRepository.query as jest.Mock).mockResolvedValueOnce([[], 1]);
+
+      await repository.backfillLegacyProvenance(10);
+
+      const [sql] = issued();
+      const setClause = /SET([\s\S]*?)WHERE/.exec(sql)?.[1] ?? '';
+      expect(setClause).toContain('"sourceConnectionId"');
+      // Exactly one assignment - a second would mean a column joined the write
+      // set without anyone deciding it should.
+      expect(setClause.split('=')).toHaveLength(2);
+    });
+
+    it('binds the shared sentinel and the limit as parameters', async () => {
+      (ormRepository.query as jest.Mock).mockResolvedValueOnce([[], 1]);
+
+      await repository.backfillLegacyProvenance(250);
+
+      const [sql, params] = issued();
+      expect(params).toEqual([LEGACY_SOURCE_CONNECTION_ID, 250]);
+      // Neither value is interpolated into the statement text.
+      expect(sql).not.toContain("'legacy'");
+      expect(sql).not.toContain('250');
+    });
+
+    it('filters on IS NULL in BOTH the page sub-select and the outer update', async () => {
+      (ormRepository.query as jest.Mock).mockResolvedValueOnce([[], 1]);
+
+      await repository.backfillLegacyProvenance(10);
+
+      const [sql] = issued();
+      // The inner predicate picks the page; the outer one re-checks under the
+      // row lock, so a row a live sync claimed in between is not stamped back
+      // down to the sentinel. The sentinel may only ever LOSE to a real id.
+      expect(sql.match(/"sourceConnectionId" IS NULL/g) ?? []).toHaveLength(2);
+    });
+
+    it('selects the page with SKIP LOCKED so it never blocks a live stock write', async () => {
+      (ormRepository.query as jest.Mock).mockResolvedValueOnce([[], 1]);
+
+      await repository.backfillLegacyProvenance(10);
+
+      const [sql] = issued();
+      expect(sql).toContain('FOR UPDATE SKIP LOCKED');
+      expect(sql).not.toMatch(/FOR UPDATE(?! SKIP LOCKED)/);
+      // Deterministic pages are what let the e2e spec assert a drain sequence.
+      expect(sql).toContain('ORDER BY "id"');
+    });
+
+    it('reports the affected-row count from the driver tuple', async () => {
+      (ormRepository.query as jest.Mock).mockResolvedValueOnce([[], 7]);
+      await expect(repository.backfillLegacyProvenance(10)).resolves.toBe(7);
+    });
+
+    it('reports zero rather than NaN when the driver returns nothing usable', async () => {
+      (ormRepository.query as jest.Mock).mockResolvedValueOnce(undefined);
+      await expect(repository.backfillLegacyProvenance(10)).resolves.toBe(0);
+    });
+
+    it('counts remaining NULL-provenance rows with no other predicate', async () => {
+      (ormRepository.query as jest.Mock).mockResolvedValueOnce([{ remaining: 42 }]);
+
+      await expect(repository.countMissingProvenance()).resolves.toBe(42);
+
+      const [sql] = issued();
+      expect(sql).toContain('"sourceConnectionId" IS NULL');
+      // Stale rows count too: #2325's SET NOT NULL trips over them identically.
+      expect(sql).not.toContain('isStale');
+    });
+
+    it('normalises a string COUNT into a number', async () => {
+      (ormRepository.query as jest.Mock).mockResolvedValueOnce([{ remaining: '5' }]);
+      await expect(repository.countMissingProvenance()).resolves.toBe(5);
     });
   });
 

@@ -100,6 +100,7 @@ export {
   MasterProductSyncDeltaPayloadV1,
   MasterProductReconcilePayloadV1,
 } from './domain/types/master-job-payloads.types';
+export type { InventoryProvenanceBackfillPayloadV1 } from './domain/types/inventory-job-payloads.types';
 export {
   ShopProductPublishPayloadV1,
   ShopProductPublishPayloadV2,
@@ -139,6 +140,7 @@ export {
   MasterSweepKindValues,
   masterSweepCursorKey,
   masterSweepCompletedAtCursorKey,
+  masterSweepRemainingCountCursorKey,
 } from './domain/types/master-sweep-cursor.types';
 
 // Application Services (interfaces)

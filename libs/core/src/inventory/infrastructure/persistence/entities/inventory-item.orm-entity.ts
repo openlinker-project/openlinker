@@ -9,8 +9,9 @@
  * Uses partial unique indexes to prevent duplicate base inventory rows when productVariantId is NULL.
  *
  * `sourceConnectionId` records which connection's sync owns the position
- * (ADR-058 ladder step (i), #2314). Nullable until the #2317 `'legacy'`-sentinel
- * backfill; neither partial unique index includes it — see the column comment.
+ * (ADR-058 ladder step (i), #2314). Nullable until the #2317 backfill stamps
+ * the `LEGACY_SOURCE_CONNECTION_ID` (`'legacy'`) sentinel onto pre-existing
+ * rows; neither partial unique index includes it — see the column comment.
  *
  * @module libs/core/src/inventory/infrastructure/persistence/entities
  */
@@ -68,13 +69,20 @@ export class InventoryItemOrmEntity {
 
   // Connection provenance for the position (ADR-058 ladder step (i), #2314):
   // which connection's sync owns this row. `text` rather than `uuid`, and no FK
-  // to `connections` — step (ii) writes the literal `'legacy'` sentinel, and
-  // provenance must survive deletion of the connection it names.
+  // to `connections` — step (ii) writes the `'legacy'` sentinel, declared once
+  // as `LEGACY_SOURCE_CONNECTION_ID` in `domain/types/inventory.types.ts`
+  // (which a `uuid` column could not hold at all), and provenance must survive
+  // deletion of the connection it names.
   //
-  // Nullable until the #2317 backfill; SET NOT NULL is #2325. Deliberately NOT
-  // in either partial unique index: a NULL-bearing column makes the index
-  // NULL-distinct, admitting duplicate positions that double-count
-  // available-to-promise.
+  // Three values are therefore legal here, and they mean different things: a
+  // real connection id (this sync owns the position), the `'legacy'` sentinel
+  // (the position predates provenance and its owner is unknown — a VALUE, never
+  // a wildcard that matches every connection), and NULL (not yet reached by the
+  // #2317 backfill). SET NOT NULL is #2325, which retires the third.
+  //
+  // Deliberately NOT in either partial unique index: a NULL-bearing column
+  // makes the index NULL-distinct, admitting duplicate positions that
+  // double-count available-to-promise.
   @Column({ type: 'text', nullable: true })
   sourceConnectionId!: string | null;
 

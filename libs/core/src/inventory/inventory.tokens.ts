@@ -22,3 +22,7 @@ export const LOCATION_SERVICE_TOKEN = Symbol('ILocationService');
 // Available-to-promise seam (#2321, ADR-061)
 export const AVAILABILITY_SERVICE_TOKEN = Symbol('IAvailabilityService');
 export const RESERVATION_LEDGER_READER_TOKEN = Symbol('ReservationLedgerReaderPort');
+// Connection-provenance backfill (#2317, ADR-058 ladder step (ii))
+export const INVENTORY_PROVENANCE_BACKFILL_SERVICE_TOKEN = Symbol(
+  'IInventoryProvenanceBackfillService'
+);

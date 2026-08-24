@@ -211,6 +211,10 @@ const harness = createIntegrationTestHarness({
     // enabled it fires against the empty integration database and keeps the event
     // loop alive, which is the Jest hang this whole block exists to prevent.
     OL_MASTER_PRODUCT_RECONCILE_ENABLED: 'false',
+    // Connection-provenance backfill (#2317). Also defaults ON, for the same
+    // reason and with the same consequence - left enabled it ticks against the
+    // integration database every 5 minutes and keeps the event loop alive.
+    OL_INVENTORY_PROVENANCE_BACKFILL_ENABLED: 'false',
     OL_PICKUP_POINT_REFRESH_ENABLED: 'false',
     OL_REGULATORY_RECONCILE_ENABLED: 'false',
     OL_OFFLINE_RESUBMIT_ENABLED: 'false',

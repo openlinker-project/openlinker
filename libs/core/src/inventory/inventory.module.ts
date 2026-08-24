@@ -20,6 +20,7 @@ import { InventoryQueryService } from './application/services/inventory-query.se
 import { LocationService } from './application/services/location.service';
 import { AvailabilityService } from './application/services/availability.service';
 import { EmptyReservationLedgerReader } from './infrastructure/reservations/empty-reservation-ledger.reader';
+import { InventoryProvenanceBackfillService } from './application/services/inventory-provenance-backfill.service';
 import {
   AVAILABILITY_SERVICE_TOKEN,
   RESERVATION_LEDGER_READER_TOKEN,
@@ -30,6 +31,7 @@ import {
   INVENTORY_QUERY_SERVICE_TOKEN,
   LOCATION_REPOSITORY_TOKEN,
   LOCATION_SERVICE_TOKEN,
+  INVENTORY_PROVENANCE_BACKFILL_SERVICE_TOKEN,
 } from './inventory.tokens';
 import { ProductsModule } from '@openlinker/core/products';
 import { IntegrationsModule } from '@openlinker/core/integrations';
@@ -48,6 +50,7 @@ export {
   INVENTORY_QUERY_SERVICE_TOKEN,
   LOCATION_REPOSITORY_TOKEN,
   LOCATION_SERVICE_TOKEN,
+  INVENTORY_PROVENANCE_BACKFILL_SERVICE_TOKEN,
 } from './inventory.tokens';
 
 @Module({
@@ -73,6 +76,7 @@ export {
     // repository, which is why the ATP formula already carries the term.
     EmptyReservationLedgerReader,
     AvailabilityService,
+    InventoryProvenanceBackfillService,
     // Then provide token bindings using useExisting
     {
       provide: INVENTORY_REPOSITORY_TOKEN,
@@ -110,6 +114,10 @@ export {
       provide: AVAILABILITY_SERVICE_TOKEN,
       useExisting: AvailabilityService,
     },
+    {
+      provide: INVENTORY_PROVENANCE_BACKFILL_SERVICE_TOKEN,
+      useExisting: InventoryProvenanceBackfillService,
+    },
   ],
   exports: [
     INVENTORY_REPOSITORY_TOKEN,
@@ -121,6 +129,7 @@ export {
     LOCATION_SERVICE_TOKEN,
     RESERVATION_LEDGER_READER_TOKEN,
     AVAILABILITY_SERVICE_TOKEN,
+    INVENTORY_PROVENANCE_BACKFILL_SERVICE_TOKEN,
   ],
 })
 export class InventoryModule {}
