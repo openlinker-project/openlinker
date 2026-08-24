@@ -284,7 +284,7 @@ export class OfferBuilderService implements IOfferBuilderService {
       productCardId: input.overrides?.productCardId ?? null,
     };
 
-    // #2249 (ADR-052) — propagate the shop's rate onto the offer, in the same
+    // #2249 (ADR-063) — propagate the shop's rate onto the offer, in the same
     // pass that already carries price and stock. Read from OL's own catalogue
     // projection, so publishing does not depend on the shop being reachable and
     // the offer carries the same rate an invoice for it would.

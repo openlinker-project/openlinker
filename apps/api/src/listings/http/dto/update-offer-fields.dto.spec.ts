@@ -1,7 +1,7 @@
 /**
  * Update-Offer-Fields DTO validation tests
  *
- * Pins the boundary rule ADR-052 states: there is no OpenLinker-side tax-rate
+ * Pins the boundary rule ADR-063 states: there is no OpenLinker-side tax-rate
  * field to type into. The neutral `OfferFieldUpdate.taxRate` exists and both
  * marketplace adapters write it, but its producer must be OpenLinker
  * propagating the shop catalogue's rate - so this route must reject a `taxRate`
@@ -38,7 +38,7 @@ describe('UpdateOfferFieldsDto', () => {
     expect(await errorsFor({ price: { amount: '99.99', currency: 'PLN' } })).toEqual([]);
   });
 
-  it('should reject a taxRate key because the rate is never operator-typed (ADR-052)', async () => {
+  it('should reject a taxRate key because the rate is never operator-typed (ADR-063)', async () => {
     const errs = await errorsFor({ title: 'A new title', taxRate: '23' });
     expect(errs).toContain('whitelistValidation');
   });

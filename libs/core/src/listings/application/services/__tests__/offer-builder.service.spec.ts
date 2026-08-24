@@ -37,7 +37,7 @@ describe('OfferBuilderService', () => {
   const emptyProjection: AttributeProjectionResult = {
     parameters: [],
     unmappedSourceKeys: [],
-    unresolvedRequired: [],
+    unresolvedRequired: [], restrictionIssues: [],
   };
 
   const VARIANT_ID = 'ol_variant_123';
@@ -792,7 +792,7 @@ describe('OfferBuilderService', () => {
       attributeProjection.project.mockResolvedValue({
         parameters: [{ id: '224017', valuesIds: ['11954'], section: 'product' }],
         unmappedSourceKeys: [],
-        unresolvedRequired: [],
+        unresolvedRequired: [], restrictionIssues: [],
       });
 
       const result = await service.buildCreateOfferCommand({
@@ -829,7 +829,7 @@ describe('OfferBuilderService', () => {
       attributeProjection.project.mockResolvedValue({
         parameters: [],
         unmappedSourceKeys: [],
-        unresolvedRequired: [{ id: 'cond-1', name: 'Stan', section: 'offer' }],
+        unresolvedRequired: [{ id: 'cond-1', name: 'Stan', section: 'offer' }], restrictionIssues: [],
       });
 
       const error = await service
@@ -859,7 +859,7 @@ describe('OfferBuilderService', () => {
       attributeProjection.project.mockResolvedValue({
         parameters: [],
         unmappedSourceKeys: [],
-        unresolvedRequired: [{ id: 'cond-1', name: 'Stan', section: 'offer' }],
+        unresolvedRequired: [{ id: 'cond-1', name: 'Stan', section: 'offer' }], restrictionIssues: [],
       });
 
       const result = await service.buildCreateOfferCommand({
@@ -883,6 +883,7 @@ describe('OfferBuilderService', () => {
           { id: 'cond-1', name: 'Stan', section: 'offer' },
           { id: 'qty-1', name: 'Liczba sztuk w ofercie', section: 'offer' },
         ],
+        restrictionIssues: [],
       });
 
       const error = await service
@@ -906,7 +907,7 @@ describe('OfferBuilderService', () => {
       attributeProjection.project.mockResolvedValue({
         parameters: [],
         unmappedSourceKeys: [],
-        unresolvedRequired: [{ id: 'brand-1', name: 'Marka', section: 'product' }],
+        unresolvedRequired: [{ id: 'brand-1', name: 'Marka', section: 'product' }], restrictionIssues: [],
       });
 
       const result = await service.buildCreateOfferCommand({
@@ -925,7 +926,7 @@ describe('OfferBuilderService', () => {
           { id: 'brand-1', valuesIds: ['canon'], section: 'product' },
         ],
         unmappedSourceKeys: [],
-        unresolvedRequired: [],
+        unresolvedRequired: [], restrictionIssues: [],
       });
 
       const result = await service.buildCreateOfferCommand({
@@ -951,7 +952,7 @@ describe('OfferBuilderService', () => {
       attributeProjection.project.mockResolvedValue({
         parameters: [],
         unmappedSourceKeys: [],
-        unresolvedRequired: [{ id: 'cond-1', name: 'Stan', section: 'offer' }],
+        unresolvedRequired: [{ id: 'cond-1', name: 'Stan', section: 'offer' }], restrictionIssues: [],
       });
 
       const result = await service.buildCreateOfferCommand({
@@ -968,7 +969,7 @@ describe('OfferBuilderService', () => {
       attributeProjection.project.mockResolvedValue({
         parameters: [],
         unmappedSourceKeys: [],
-        unresolvedRequired: [{ id: 'cond-1', name: 'Stan', section: 'offer' }],
+        unresolvedRequired: [{ id: 'cond-1', name: 'Stan', section: 'offer' }], restrictionIssues: [],
       });
 
       // No overrides.parameters → fallback reads platformParams.{parameters,productParameters}.
@@ -998,7 +999,7 @@ describe('OfferBuilderService', () => {
       attributeProjection.project.mockResolvedValue({
         parameters: [],
         unmappedSourceKeys: ['Material', 'Pattern'],
-        unresolvedRequired: [],
+        unresolvedRequired: [], restrictionIssues: [],
       });
 
       const result = await service.buildCreateOfferCommand({

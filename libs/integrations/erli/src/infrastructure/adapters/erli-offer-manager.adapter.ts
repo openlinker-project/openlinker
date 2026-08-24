@@ -154,6 +154,7 @@ import type {
   ErliProductResource,
   ErliResponsibleProducerItem,
 } from './erli-product.types';
+import { mapErliBuyableProblems } from './erli-buyable-problem.mapper';
 
 /** Erli prices are PLN-only integers in minor units (grosze) — no currency field on the wire. */
 const ERLI_CURRENCY = 'PLN';
@@ -966,7 +967,7 @@ export class ErliOfferManagerAdapter
     if (cmd.variantBarcode != null) {
       body.ean = cmd.variantBarcode;
     }
-    // #2249 (ADR-052) — the shop's rate, propagated onto the Erli product.
+    // #2249 (ADR-063) — the shop's rate, propagated onto the Erli product.
     // Refused rather than omitted: Erli's own `buyableProblems.missingTaxRate`
     // blocks a rate-less product server-side, so omitting it trades an
     // actionable error here for a silently not-buyable listing an operator has
@@ -1282,12 +1283,32 @@ function readDeliveryPriceListParam(
 }
 
 /**
- * Map Erli's native product status onto the neutral closed `OfferPublicationStatus`
- * union (#989). Erli has no `'rejected'` member in OL's union, so a rejection is
- * surfaced as `'inactive'` carrying the reason in `validationErrors` (no core enum
- * change — additive-only per offer-status-read.types ADR-009 note). `'accepted'`
- * (stored but still propagating through Erli's ~20-min cache) → `'activating'`.
- * Unknown/absent → `'inactive'` (conservative; never claims live).
+ * Map Erli's native product read onto the neutral `OfferStatusReadResult` (#989,
+ * corrected by #2231).
+ *
+ * Erli reports two independent things and OL needs both. `status` is publication
+ * (`active` | `inactive`, nullable), and `buyableProblems` is WHY the offer
+ * cannot be bought. Before #2231 only `status` was read, so `validationErrors`
+ * was always empty and every blocked Erli offer landed in the neutral `Draft`
+ * bucket - the one an operator has no reason to open - while `Invalid` stayed
+ * permanently empty. The reasons now ride along as neutral validation errors,
+ * which is all it takes: `resolveOfferLifecycle` already splits `inactive` on
+ * whether messages are present.
+ *
+ * Three deliberate mapping decisions:
+ *
+ * - `archived: true` reports `'ended'`, not `'inactive'`. Erli's own description
+ *   is that an archived product cannot be bought and disappears from the seller
+ *   panel, which is what `'ended'` means - and it is also the only status the
+ *   duplicate guard (`countByConnectionAndVariants`) treats as re-listable, so
+ *   an archived offer becomes fixable through the wizard instead of being
+ *   silently skipped.
+ * - `status: 'active'` stays `'active'` even when problems are present. Erli is
+ *   the authority on whether it published the offer; inventing `'inactive'`
+ *   because OL judged the offer unbuyable would put words in the marketplace's
+ *   mouth. The problems still ride along, so the row still carries its reason.
+ * - Absent/unrecognised `status` keeps the conservative `'inactive'` (never
+ *   claims live). The field is `nullable`, so this arm is reachable.
  *
  * `commercial` (#2024) is read off this SAME already-fetched `product` resource
  * (the identical `price`/`stock` fields `toMarketplaceOffer` maps for `getOffer`)
@@ -1295,22 +1316,16 @@ function readDeliveryPriceListParam(
  */
 function mapErliStatusToReadResult(product: ErliProductResource): OfferStatusReadResult {
   const commercial = toErliCommercialObservation(product);
+  const validationErrors = mapErliBuyableProblems(product.buyableProblems);
+  if (product.archived === true) {
+    return { publicationStatus: 'ended', validationErrors, commercial };
+  }
   switch (product.status) {
     case 'active':
-      return { publicationStatus: 'active', validationErrors: [], commercial };
-    case 'accepted':
-      return { publicationStatus: 'activating', validationErrors: [], commercial };
-    case 'rejected':
-      return {
-        publicationStatus: 'inactive',
-        validationErrors: [
-          { code: 'ERLI_REJECTED', message: product.statusReason ?? 'Erli rejected the offer.' },
-        ],
-        commercial,
-      };
+      return { publicationStatus: 'active', validationErrors, commercial };
     case 'inactive':
     default:
-      return { publicationStatus: 'inactive', validationErrors: [], commercial };
+      return { publicationStatus: 'inactive', validationErrors, commercial };
   }
 }
 

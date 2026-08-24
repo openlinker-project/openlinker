@@ -88,7 +88,7 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort, Produc
   }
 
   /**
-   * State the product's tax rate (#2054, ADR-052).
+   * State the product's tax rate (#2054, ADR-063).
    *
    * Delegates to the existing `PrestashopTaxRateResolver` rather than
    * re-walking the three-hop chain: that resolver already draws the
@@ -110,7 +110,7 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort, Produc
    * `0.23 * 100` from surfacing as `23.000000000000004`.
    *
    * No delivery country is passed: the master read is deliberately not
-   * parameterised by the buyer's country in this pass (ADR-052 § 7), so the
+   * parameterised by the buyer's country in this pass (ADR-063 § 7), so the
    * resolver falls through to the catch-all rule - the same rate the shop shows
    * on the product page.
    */

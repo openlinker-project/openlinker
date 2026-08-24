@@ -104,7 +104,7 @@ export class UpdateOfferFieldsDto {
   description?: OfferDescriptionDto;
 
   /*
-   * Deliberately NO `taxRate` here (ADR-052).
+   * Deliberately NO `taxRate` here (ADR-063).
    *
    * `OfferFieldUpdate.taxRate` is a real part of the neutral contract and both
    * marketplace adapters write it, but the producer must be OpenLinker

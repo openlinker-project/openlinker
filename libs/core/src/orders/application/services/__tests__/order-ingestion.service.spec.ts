@@ -79,6 +79,7 @@ describe('OrderIngestionService', () => {
     lock = {
       acquire: jest.fn(),
       release: jest.fn(),
+      extend: jest.fn(),
     } as unknown as jest.Mocked<SyncLockPort>;
 
     identifierMapping = {
@@ -1316,7 +1317,7 @@ describe('OrderIngestionService', () => {
     });
   });
 
-  describe('tax-rate journal - channel observations (#2250, ADR-052 § 4)', () => {
+  describe('tax-rate journal - channel observations (#2250, ADR-063 § 4)', () => {
     const externalOrderId = 'checkout-journal';
 
     const incomingWith = (

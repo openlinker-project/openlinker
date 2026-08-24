@@ -1,5 +1,5 @@
 /**
- * Order Tax-Rate Gate Tests (#2248, ADR-052 § 6)
+ * Order Tax-Rate Gate Tests (#2248, ADR-063 § 6)
  *
  * @module libs/core/src/invoicing/domain/types
  */

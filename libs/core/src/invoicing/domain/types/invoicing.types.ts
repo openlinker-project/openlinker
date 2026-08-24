@@ -586,7 +586,7 @@ export interface IssueInvoiceCommand {
    * arrived before per-line rates existed, absent/`null` for everything after.
    *
    * Read ONLY by the write-path tax-rate guard, which exempts a pre-rollout
-   * order so it issues exactly as it did before the epic (ADR-052
+   * order so it issues exactly as it did before the epic (ADR-063
    * § Consequences). It is not sent to any provider and never reaches a
    * document.
    *
@@ -719,7 +719,7 @@ export interface IssueCorrectionCommand {
  * gracefully.
  */
 /**
- * Per-line amounts **as the issued document states them** (#2251, ADR-052 § 5).
+ * Per-line amounts **as the issued document states them** (#2251, ADR-063 § 5).
  *
  * Core computes no net and rounds nothing, so a stored per-line net has to be a
  * COPY of the document's own figure rather than a recomputation - otherwise it

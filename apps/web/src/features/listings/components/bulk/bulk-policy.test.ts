@@ -266,6 +266,10 @@ describe('computeBlockers', () => {
       categoryResult: { kind: 'no-match' },
       override: { overrides: { categoryId: 'cat-1' } },
       willLinkProductCard: false,
+      // These cases are about the product-parameter blocker, so the row carries
+      // an image - otherwise the #2243 no-photo rule fires and every assertion
+      // here is really testing two rules at once.
+      imageCount: 1,
       platformValidate: allegroValidate,
       ...extra,
     });

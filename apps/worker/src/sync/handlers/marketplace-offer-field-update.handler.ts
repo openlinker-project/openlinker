@@ -108,7 +108,7 @@ export class MarketplaceOfferFieldUpdateHandler implements SyncJobHandler {
       );
     }
 
-    // #2250 (ADR-052 § 4) - the update succeeded, so if it carried a rate,
+    // #2250 (ADR-063 § 4) - the update succeeded, so if it carried a rate,
     // OpenLinker just wrote one onto the channel. Recorded after the call
     // rather than before: the entry is the claim a write HAPPENED, which is
     // what makes a later channel observation carrying a different value

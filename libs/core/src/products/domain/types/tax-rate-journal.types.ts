@@ -1,5 +1,5 @@
 /**
- * Tax-Rate Journal Types (#2250, ADR-052 § 4)
+ * Tax-Rate Journal Types (#2250, ADR-063 § 4)
  *
  * A mutable "rate source" field only says how things stand now. It cannot
  * answer *when* the shop changed the rate, *what* OpenLinker last wrote onto a

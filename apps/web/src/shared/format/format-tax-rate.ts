@@ -1,7 +1,7 @@
 /**
  * Tax Rate Formatter
  *
- * Renders the neutral per-line tax-rate code (#2054, ADR-052). The vocabulary
+ * Renders the neutral per-line tax-rate code (#2054, ADR-063). The vocabulary
  * is percent-as-string plus exemption codes - `'23'`, `'8'`, `'5'`, `'0'`,
  * `'zw'`, `'np'`, `'oo'` - so a blanket `%` suffix is wrong: `'zw%'` is not a
  * rate any document carries.

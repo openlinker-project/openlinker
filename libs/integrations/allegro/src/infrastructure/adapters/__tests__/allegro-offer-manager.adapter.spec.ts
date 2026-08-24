@@ -33,7 +33,6 @@ import {
   type CreateOfferCommand,
 } from '@openlinker/core/listings';
 import type { CachePort } from '@openlinker/shared';
-import { STREAM_CONCURRENCY } from '../../util/resolve-categories-for-batch-by-ean';
 import type { AllegroSellerDefaultsConfig } from '../../../domain/types/allegro-seller-defaults.types';
 
 /**
@@ -1104,9 +1103,9 @@ describe('AllegroOfferManagerAdapter', () => {
 
     it('reports the adapter default when the connection configures no cap', () => {
       expect(adapter.getStreamConcurrency()).toEqual({
-        maxInFlight: STREAM_CONCURRENCY,
+        maxInFlight: 9,
         source: 'adapter-default',
-        adapterDefault: STREAM_CONCURRENCY,
+        adapterDefault: 9,
       });
     });
 
@@ -1115,7 +1114,7 @@ describe('AllegroOfferManagerAdapter', () => {
       expect(adapterWithMaxConcurrent(2).getStreamConcurrency()).toEqual({
         maxInFlight: 2,
         source: 'connection-config',
-        adapterDefault: STREAM_CONCURRENCY,
+        adapterDefault: 9,
       });
     });
 
@@ -1150,6 +1149,32 @@ describe('AllegroOfferManagerAdapter', () => {
 
       expect(peak).toBeLessThanOrEqual(reported);
       expect(peak).toBe(2);
+    });
+
+    it('clamps the NON-streamed batch path with the same operator cap', async () => {
+      // The batch collector keeps its narrower default (#2215), but it was the
+      // one resolve path outside both the clamp and the declared ceiling, so a
+      // connection capped below it went on running 3 in flight (#2229 review).
+      const capped = adapterWithMaxConcurrent(1);
+
+      let inFlight = 0;
+      let peak = 0;
+      httpClient.get.mockImplementation(async () => {
+        inFlight += 1;
+        peak = Math.max(peak, inFlight);
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        inFlight -= 1;
+        return { data: { products: [] }, status: 200, headers: {} };
+      });
+
+      await capped.resolveCategoriesForBatchByEan({
+        items: Array.from({ length: 6 }, (_, i) => ({
+          variantId: `v${i + 1}`,
+          ean: `590123412345${i}`,
+        })),
+      });
+
+      expect(peak).toBe(1);
     });
   });
 

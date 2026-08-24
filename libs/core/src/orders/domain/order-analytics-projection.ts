@@ -52,7 +52,7 @@ export interface OrderLineItemDraft {
    * The settled per-line tax rate, transcribed from the order snapshot (#2250).
    *
    * TRANSCRIBED, never settled here. The snapshot is the only place a rate is
-   * decided (ADR-052 § 4); this row is the queryable copy, so an analytics read
+   * decided (ADR-063 § 4); this row is the queryable copy, so an analytics read
    * never has to expand JSON to answer "which lines carry which rate".
    */
   taxRate: string | null;

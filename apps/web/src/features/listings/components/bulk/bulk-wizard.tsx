@@ -15,7 +15,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Alert, Button, PageLayout, SetupStepper } from '../../../../shared/ui';
+import { Alert, Button, ConfirmDialog, PageLayout, SetupStepper } from '../../../../shared/ui';
 import { useToast } from '../../../../shared/ui/toast-provider';
 import { usePlatforms, type OfferRowValidationInput } from '../../../../shared/plugins';
 import { resolvePlatformLabel } from '../../../mappings';
@@ -36,6 +36,7 @@ import type {
 import type { BulkShopPublishItemRequest } from '../../api/listings.types';
 import type { Product, ProductVariant } from '../../../products';
 import { BulkConfigStep } from './bulk-config-step';
+import { BulkDestinationBar } from './bulk-destination-bar';
 import {
   BulkResolveStep,
   type BulkResolveCompletion,
@@ -55,6 +56,7 @@ import {
   effectiveStockPolicy,
   effectiveVariantEan,
   recomputeVariantBlockers,
+  type PreflightContext,
 } from './bulk-policy';
 import type {
   BulkRowBlocker,
@@ -154,6 +156,19 @@ export function BulkWizard({
   const isShop = activeConnection ? publishDestinationKind(activeConnection) === 'shop' : false;
   const wizardSteps = isShop ? SHOP_WIZARD_STEPS : WIZARD_STEPS;
 
+  // #2227: name the destination in the browser tab too, so a screenshot that
+  // includes browser chrome identifies the batch. Deliberately a local effect -
+  // `apps/web` has no document-title convention, and one surface does not yet
+  // justify introducing a shared hook.
+  useEffect(() => {
+    if (!activeConnection) return;
+    const previousTitle = document.title;
+    document.title = `${isShop ? 'Bulk publish' : 'Bulk offers'} · ${activeConnection.name}`;
+    return () => {
+      document.title = previousTitle;
+    };
+  }, [activeConnection, isShop]);
+
   // #1837 duplicate guard: soft-warn when included variants are already
   // published on the destination (a duplicate offer on a marketplace, an
   // upsert on a shop). Never blocks - surfaced as a chip + a confirm before the
@@ -163,6 +178,13 @@ export function BulkWizard({
     items: BulkShopPublishItemRequest[];
     status: ShopPublishVisibility;
   } | null>(null);
+
+  // #2227 destination context bar. Both pieces of state live here rather than in
+  // the bar: the wizard re-renders its body on every step change, so a
+  // bar-owned disclosure would snap shut, and the confirm dialog has to outlive
+  // the bar it was opened from (confirming unmounts it by returning to Config).
+  const [destSettingsOpen, setDestSettingsOpen] = useState(false);
+  const [changeDestOpen, setChangeDestOpen] = useState(false);
 
   // Sync row state when the products list changes (dedup by product id so a
   // product surfaced twice yields one row / one fan-out, mirroring the BE seen
@@ -177,17 +199,18 @@ export function BulkWizard({
     });
   }, [productsSignature, dedupedProducts, preSelectedVariantIds]);
 
-  // Distinct categories of INCLUDED variants that submit WITHOUT a card link
-  // (#810 / #1741). Only these can hit the missing-product-parameters 422.
-  const noCardCategoryIds = useMemo(() => {
+  // Distinct submit categories of every INCLUDED variant (#810 / #1741 / #2243).
+  // This used to be card-LESS rows only, because the schema was read for one
+  // purpose: which product-section parameters are required (a card-linked row
+  // inherits those, so its category was irrelevant). The value-level checks
+  // read the same schema for its declared bounds, which apply to any row that
+  // sends a value - so the set is now every submit category. The card-link
+  // exemption did not move; it lives where it belongs, in the checks themselves.
+  const submitCategoryIds = useMemo(() => {
     const set = new Set<string>();
     for (const row of rows) {
       for (const variant of row.variants) {
         if (!variant.included) continue;
-        const hasCard =
-          variant.resolvedProductCardId !== null ||
-          Boolean(variant.override.overrides?.productCardId);
-        if (hasCard) continue;
         const categoryId = variant.override.overrides?.categoryId ?? variant.resolvedCategoryId;
         if (categoryId) set.add(categoryId);
       }
@@ -205,12 +228,14 @@ export function BulkWizard({
   );
 
   const categoryIdsForParamSchema = batchPlatform?.offerValidation?.needsCategoryParameterSchema
-    ? noCardCategoryIds
+    ? submitCategoryIds
     : EMPTY_CATEGORY_IDS;
-  const { requiredByCategory, isResolving: paramsResolving } = useBulkRequiredProductParams(
-    config?.connectionId,
-    categoryIdsForParamSchema,
-  );
+  const {
+    requiredByCategory,
+    schemaByCategory,
+    failedCategoryIds,
+    isResolving: paramsResolving,
+  } = useBulkRequiredProductParams(config?.connectionId, categoryIdsForParamSchema);
 
   const platformValidate = useMemo<
     ((input: OfferRowValidationInput) => string[]) | undefined
@@ -248,6 +273,19 @@ export function BulkWizard({
   const destinationResolvesCategoryAtSubmit =
     destinationResolvesCategoryFromManifest || catalogueLookupPerformed === false;
 
+  // Batch-wide facts the per-row checks read (#2243). `catalogueConsulted` is
+  // deliberately a strict `=== true`: `null` means the Resolve stream has not
+  // reported yet, and "no card found" is only meaningful once a lookup actually
+  // ran, so an unresolved batch must raise no barcode warning at all.
+  const preflightContext = useMemo<PreflightContext>(
+    () => ({
+      schemaByCategory,
+      failedCategoryIds,
+      catalogueConsulted: catalogueLookupPerformed === true,
+    }),
+    [schemaByCategory, failedCategoryIds, catalogueLookupPerformed],
+  );
+
   // Reconcile per-variant `needs-product-parameters` (and any policy-derived)
   // blockers whenever a category's schema resolves. Gated to Review so only
   // rows with resolved master data recompute.
@@ -269,6 +307,7 @@ export function BulkWizard({
             platformValidate,
             destinationResolvesCategoryAtSubmit,
             isMulti,
+            preflightContext,
           );
           if (sameBlockers(blockers, variant.blockers)) return variant;
           rowChanged = true;
@@ -280,7 +319,15 @@ export function BulkWizard({
       });
       return changed ? next : prev;
     });
-  }, [config, step, isShop, requiredByCategory, platformValidate, destinationResolvesCategoryAtSubmit]);
+  }, [
+    config,
+    step,
+    isShop,
+    requiredByCategory,
+    platformValidate,
+    destinationResolvesCategoryAtSubmit,
+    preflightContext,
+  ]);
 
   const handleConfigProceed = useCallback(
     (next: BulkWizardConfig) => {
@@ -322,7 +369,7 @@ export function BulkWizard({
   const setVariantIncluded = useCallback(
     (productId: string, variantId: string, included: boolean) => {
       if (!config) return;
-      setRows((prev) => reblockRows(prev, config, requiredByCategory, platformValidate, destinationResolvesCategoryAtSubmit, (row) =>
+      setRows((prev) => reblockRows(prev, config, requiredByCategory, platformValidate, destinationResolvesCategoryAtSubmit, preflightContext, (row) =>
         row.productId !== productId
           ? row
           : {
@@ -340,7 +387,7 @@ export function BulkWizard({
   const setProductIncluded = useCallback(
     (productId: string, included: boolean) => {
       if (!config) return;
-      setRows((prev) => reblockRows(prev, config, requiredByCategory, platformValidate, destinationResolvesCategoryAtSubmit, (row) =>
+      setRows((prev) => reblockRows(prev, config, requiredByCategory, platformValidate, destinationResolvesCategoryAtSubmit, preflightContext, (row) =>
         row.productId !== productId
           ? row
           : { ...row, variants: row.variants.map((v) => ({ ...v, included })) },
@@ -360,7 +407,7 @@ export function BulkWizard({
       editFormValues: Record<string, unknown>,
     ) => {
       if (!config) return;
-      setRows((prev) => reblockRows(prev, config, requiredByCategory, platformValidate, destinationResolvesCategoryAtSubmit, (row) => {
+      setRows((prev) => reblockRows(prev, config, requiredByCategory, platformValidate, destinationResolvesCategoryAtSubmit, preflightContext, (row) => {
         if (row.productId !== productId) return row;
         // A simple product has no per-variant scope: its offer-level fields
         // (barcode, price, ...) live on the base override. Fold that base into
@@ -627,10 +674,21 @@ export function BulkWizard({
   );
   const stepperCurrent = shopBatchId !== null ? wizardSteps.length : currentStepIndex;
 
+  // #2227: name the destination in the heading, so even a screenshot cropped to
+  // the top of the page identifies the batch. Only after Config - on Config the
+  // destination is still being chosen, and the picker itself carries the name.
+  // The action verb matches the step's primary button ("Create offers" /
+  // "Publish"), so the flow keeps one vocabulary.
+  const baseTitle = isShop ? 'Bulk shop product publishing' : 'Bulk marketplace offer creation';
+  const pageTitle =
+    step !== 'config' && activeConnection !== null
+      ? `${isShop ? 'Publish products to' : 'Create offers on'} ${activeConnection.name}`
+      : baseTitle;
+
   return (
     <PageLayout
       eyebrow="Operations · Listings"
-      title={isShop ? 'Bulk shop product publishing' : 'Bulk marketplace offer creation'}
+      title={pageTitle}
       description={
         isShop
           ? `Publishing ${rows.length} ${rows.length === 1 ? 'product' : 'products'} · ${counts.totalVariants} variants to a shop.`
@@ -638,6 +696,22 @@ export function BulkWizard({
       }
     >
       <div className="bulk-wizard">
+        {/* #2227: every step but Config, which IS the destination form. Also
+            not once a shop batch has submitted - `step` still reads 'review'
+            there while the body is the publish tracker, and offering
+            `Change destination` on an already-submitted batch is a false
+            affordance. Post-submit identity is the tracker's + the batch
+            progress page's job. */}
+        {step !== 'config' && shopBatchId === null && activeConnection ? (
+          <BulkDestinationBar
+            connection={activeConnection}
+            config={config}
+            settingsOpen={destSettingsOpen}
+            onToggleSettings={() => setDestSettingsOpen((open) => !open)}
+            onChangeDestination={() => setChangeDestOpen(true)}
+          />
+        ) : null}
+
         <div className="bulk-wizard__stepper">
           <SetupStepper
             steps={wizardSteps.map((s) => s.label)}
@@ -759,6 +833,24 @@ export function BulkWizard({
           />
         ) : null}
 
+        <ConfirmDialog
+          open={changeDestOpen}
+          onOpenChange={setChangeDestOpen}
+          title="Change destination?"
+          description={
+            activeConnection
+              ? `This batch has matched categories and row edits that only apply to ${activeConnection.name}. Going back to step 1 discards them.`
+              : 'Going back to step 1 discards the matched categories and row edits for this batch.'
+          }
+          confirmLabel="Change destination"
+          cancelLabel="Keep this batch"
+          tone="danger"
+          onConfirm={() => {
+            setChangeDestOpen(false);
+            setStep('config');
+          }}
+        />
+
         {config ? (
           <DuplicateGuardModal
             open={dupGuardOpen}
@@ -800,6 +892,7 @@ function reblockRows(
   requiredByCategory: Map<string, readonly string[]>,
   platformValidate: ((input: OfferRowValidationInput) => string[]) | undefined,
   destinationResolvesCategoryAtSubmit: boolean,
+  preflightContext: PreflightContext,
   transform: (row: BulkWizardRow) => BulkWizardRow,
 ): BulkWizardRow[] {
   return rows.map((row) => {
@@ -818,6 +911,7 @@ function reblockRows(
           platformValidate,
           destinationResolvesCategoryAtSubmit,
           isMulti,
+          preflightContext,
         ),
       })),
     };

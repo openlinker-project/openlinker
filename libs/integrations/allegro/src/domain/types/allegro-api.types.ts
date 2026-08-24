@@ -643,7 +643,7 @@ export interface AllegroProductOfferCreateRequest extends Record<string, unknown
   };
   payments?: { invoice?: 'VAT' | 'NO_INVOICE' | 'VAT_MARGIN' };
   /**
-   * Per-country tax rates for the offer (#2249, ADR-052).
+   * Per-country tax rates for the offer (#2249, ADR-063).
    *
    * OpenLinker wrote nothing here before this epic, which is why every offer it
    * published reported `tax: null` on the resulting order lines - verified on

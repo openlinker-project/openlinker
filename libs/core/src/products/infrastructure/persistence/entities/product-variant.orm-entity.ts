@@ -60,7 +60,7 @@ export class ProductVariantOrmEntity {
   staleAt!: Date | null;
 
   /**
-   * Per-variant tax-rate OVERRIDE (#2054, ADR-052). Set only by a master that
+   * Per-variant tax-rate OVERRIDE (#2054, ADR-063). Set only by a master that
    * keys tax per variant (WooCommerce can; PrestaShop keys on the product, so
    * these stay null there and the product's rate applies).
    *

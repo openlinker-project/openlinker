@@ -1,5 +1,5 @@
 /**
- * Neutral Product Tax Rate (#2054, ADR-052)
+ * Neutral Product Tax Rate (#2054, ADR-063)
  *
  * The vocabulary a ProductMaster answers "what tax does this product carry?"
  * in, and the shape OpenLinker stores that answer as.
@@ -52,7 +52,7 @@ export interface ResolvedTaxRate {
    *
    * **Provenance only.** It is never compared with the buyer's country and it
    * blocks nothing - OSS and distance-selling rules are out of scope
-   * (ADR-052 § 7). It exists so an operator reading a surprising rate can see
+   * (ADR-063 § 7). It exists so an operator reading a surprising rate can see
    * which country's table produced it.
    */
   countryIso2: string | null;

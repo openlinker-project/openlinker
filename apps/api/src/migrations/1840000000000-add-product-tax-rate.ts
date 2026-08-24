@@ -1,5 +1,5 @@
 /**
- * Add the per-line tax-rate projection to the catalogue (#2054, ADR-052).
+ * Add the per-line tax-rate projection to the catalogue (#2054, ADR-063).
  *
  * Additive and nullable, with **no backfill**: inventing a rate is exactly the
  * failure this epic removes. Every existing row therefore lands in the

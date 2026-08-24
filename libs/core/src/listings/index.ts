@@ -115,6 +115,19 @@ export {
 export type { OfferLifecycle, OfferLifecycleCounts } from './domain/types/offer-lifecycle.types';
 export { UnfilterableOfferLifecycleException } from './domain/exceptions/unfilterable-offer-lifecycle.exception';
 
+// Why a listing cannot sell, and who it is about (#2231).
+export {
+  OfferValidationScopeValues,
+  isOfferValidationScope,
+  toOfferValidationProblem,
+  readValidationProblems,
+  splitOfferValidationProblems,
+} from './domain/types/offer-validation-problem.types';
+export type {
+  OfferValidationScope,
+  OfferValidationProblem,
+} from './domain/types/offer-validation-problem.types';
+
 export type { ICoverageGapReadService } from './application/services/coverage-gap-read.service.interface';
 export type { CoverageGapItem, CoverageGapsResult } from './domain/types/coverage-gap.types';
 export type { IStockAtRiskReadService } from './application/services/stock-at-risk-read.service.interface';
@@ -486,6 +499,23 @@ export type {
   RequiredToSellIssue,
   RequiredToSellCheckInput,
 } from './domain/types/required-to-sell.types';
+
+// Category-parameter restrictions (#2243) — pure checker over the bounds a
+// destination already declared on `CategoryParameter.restrictions`, so a value
+// that cannot publish is reported by field name instead of by the marketplace's
+// own rejection. Mirrored client-side; the mirror is guarded by
+// `scripts/check-parameter-restriction-mirror.mjs`.
+export { checkParameterRestrictions } from './application/services/check-parameter-restrictions';
+export {
+  ParameterRestrictionSeverityValues,
+  ParameterRestrictionIssueCodeValues,
+} from './domain/types/parameter-restriction.types';
+export type {
+  ParameterRestrictionSeverity,
+  ParameterRestrictionIssueCode,
+  ParameterRestrictionIssue,
+  ParameterValueInput,
+} from './domain/types/parameter-restriction.types';
 
 // Shop publish execution (#1042, #1072) — pure contracts only (the two service
 // classes live on `@openlinker/core/listings/services`, never here).

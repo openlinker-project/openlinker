@@ -364,7 +364,7 @@ export class ProductsController {
   }
 
   /**
-   * The tax-rate provenance journal for one catalogue item (#2250, ADR-052 § 4).
+   * The tax-rate provenance journal for one catalogue item (#2250, ADR-063 § 4).
    *
    * The journal's whole point is that "the shop changed it", "we wrote this to
    * the offer" and "somebody overwrote it afterwards" are separable facts, and

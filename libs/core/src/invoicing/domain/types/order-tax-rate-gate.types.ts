@@ -1,5 +1,5 @@
 /**
- * Order Tax-Rate Gate (#2248, ADR-052 § 6)
+ * Order Tax-Rate Gate (#2248, ADR-063 § 6)
  *
  * The one predicate that answers "can a document state what tax was charged on
  * this order?". A line with no rate means no, and the document is held rather

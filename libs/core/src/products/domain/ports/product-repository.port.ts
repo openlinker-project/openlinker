@@ -92,7 +92,7 @@ export interface ProductRepositoryPort {
   findTaxRate(productId: string): Promise<StoredTaxRate | null>;
 
   /**
-   * Count the catalogue by tax-rate read state (#2054, ADR-052 § 4).
+   * Count the catalogue by tax-rate read state (#2054, ADR-063 § 4).
    *
    * Both populations must be answerable as a query rather than a crawl: the
    * missing count backs the operator surface and the pre-rollout coverage

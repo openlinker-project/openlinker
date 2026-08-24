@@ -1,5 +1,5 @@
 /**
- * Mark orders that predate per-line tax rates (#2256, ADR-052 § Consequences).
+ * Mark orders that predate per-line tax rates (#2256, ADR-063 § Consequences).
  *
  * Orders ingested before this epic carry no rate on any line, and the document
  * issued for them used whatever the provider adapter defaulted to. They are

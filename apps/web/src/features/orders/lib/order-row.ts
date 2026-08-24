@@ -227,7 +227,7 @@ const BADGE_BY_REASON = {
     hint: 'This order needs a buyer tax ID before it can be invoiced.',
     keepIssueAction: false,
   },
-  // #2248 (ADR-052). The one reason where `keepIssueAction: false` means the
+  // #2248 (ADR-063). The one reason where `keepIssueAction: false` means the
   // action is genuinely unavailable rather than merely unhelpful: issuing by
   // hand would make a provider guess a rate onto a real fiscal document, so the
   // backend refuses the manual paths too. Every other `false` above is a

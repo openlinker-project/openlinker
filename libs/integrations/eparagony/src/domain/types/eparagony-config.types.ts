@@ -74,7 +74,7 @@ export interface EparagonyConnectionConfig {
   /**
    * The connection's own device slot, declared by the operator.
    *
-   * **It is no longer a fallback for an unknown rate (#2252, ADR-052).** Core
+   * **It is no longer a fallback for an unknown rate (#2252, ADR-063).** Core
    * now refuses to hand over a sale whose lines do not all name a rate, so a
    * line reaches this adapter with an empty `taxRate` only if that gate is
    * removed. The setting is kept, and still supported, because it describes the

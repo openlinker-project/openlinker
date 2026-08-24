@@ -1,5 +1,5 @@
 /**
- * Missing Tax Rate Exception - fiscalization (#2252, ADR-052 § 6)
+ * Missing Tax Rate Exception - fiscalization (#2252, ADR-063 § 6)
  *
  * Raised when a sale is handed for fiscal registration with a line that carries
  * no tax rate.

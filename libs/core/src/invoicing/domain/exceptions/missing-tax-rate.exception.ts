@@ -1,5 +1,5 @@
 /**
- * Missing Tax Rate Exception (#2248, ADR-052 § 6)
+ * Missing Tax Rate Exception (#2248, ADR-063 § 6)
  *
  * Raised when issuance is attempted for an order whose lines do not all carry
  * a tax rate.

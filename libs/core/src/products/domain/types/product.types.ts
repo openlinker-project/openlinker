@@ -162,7 +162,7 @@ export interface ProductListFilters {
   sourceConnectionId?: string;
 
   /**
-   * Tax-rate read state (#2255, ADR-052 § 4).
+   * Tax-rate read state (#2255, ADR-063 § 4).
    *
    * Three values, because the third is what keeps the first honest:
    *  - `missing` - the master was asked and has no rate. This is the population

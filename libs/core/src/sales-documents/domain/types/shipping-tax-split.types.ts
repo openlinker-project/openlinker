@@ -1,5 +1,5 @@
 /**
- * Shipping Tax Split (#2248 / #2252, ADR-052 § 5)
+ * Shipping Tax Split (#2248 / #2252, ADR-063 § 5)
  *
  * A basket can carry several tax rates. The shipping the buyer paid is one
  * amount, and a document has to state which rate applies to it - so on a
@@ -9,7 +9,7 @@
  * **This is division, not tax computation.** Core groups an amount it was given
  * and cuts it into parts that sum back to it; it never derives a tax figure and
  * never rounds a tax value. The rounding rule for a rate stays in the provider
- * adapter, which is what ADR-052 § 5 reserves to it. The rounding that happens
+ * adapter, which is what ADR-063 § 5 reserves to it. The rounding that happens
  * here is on the *split*, and its only obligation is that the parts add up
  * exactly to the amount paid.
  *

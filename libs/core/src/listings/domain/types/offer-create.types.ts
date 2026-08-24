@@ -12,6 +12,7 @@
 
 import type { OfferParameter } from './offer-parameter.types';
 import type { OfferPublicationStatus } from './offer-status-read.types';
+import type { OfferValidationScope } from './offer-validation-problem.types';
 
 /**
  * Marketplace-neutral item condition (#1500).
@@ -250,7 +251,7 @@ export interface CreateOfferCommand {
   sourceAttributes?: SourceAttribute[];
   /**
    * The shop's tax rate for this variant, as the neutral percent-as-string
-   * code (#2249, ADR-052) - `'23'`, `'8'`, `'5'`, `'0'`, `'zw'`, `'np'`, `'oo'`.
+   * code (#2249, ADR-063) - `'23'`, `'8'`, `'5'`, `'0'`, `'zw'`, `'np'`, `'oo'`.
    *
    * Propagated exactly as price and stock already are, at create and at every
    * update. **There is no OpenLinker-side rate field to type into**: a rate
@@ -268,7 +269,7 @@ export interface CreateOfferCommand {
    * ISO 3166-1 alpha-2 the rate was resolved against - provenance for the
    * platforms whose tax settings are country-keyed (Allegro's
    * `OfferTaxSettings.rates[] = {rate, countryCode}`). Never compared with a
-   * buyer's country; OSS is out of scope (ADR-052 § 7).
+   * buyer's country; OSS is out of scope (ADR-063 § 7).
    */
   taxRateCountry?: string;
 }
@@ -301,6 +302,21 @@ export interface CreateOfferValidationError {
   code: string;
   /** Human-readable message suitable for displaying to an operator. */
   message: string;
+  /**
+   * One short line for a surface with exactly one line to spend - the
+   * `/listings` row (#2231). Optional: an adapter that supplies only `message`
+   * behaves exactly as it did, and the consumer falls back to it.
+   */
+  summary?: string;
+  /**
+   * Who the error is about (#2231). Omitted ⇒ `'offer'`, i.e. this listing.
+   * An adapter sets `'account'` for a refusal that describes the SELLER's shop
+   * rather than the product (unverified, suspended, switched off) - reported by
+   * the platform against every offer, so a consumer renders it once per
+   * connection instead of once per row. The adapter decides, because only it
+   * knows its own taxonomy; core never holds a list of platform codes.
+   */
+  scope?: OfferValidationScope;
 }
 
 /**

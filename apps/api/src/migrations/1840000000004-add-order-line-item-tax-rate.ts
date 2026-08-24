@@ -1,5 +1,5 @@
 /**
- * Transcribe the per-line tax rate onto `order_line_items` (#2250, ADR-052 § 4).
+ * Transcribe the per-line tax rate onto `order_line_items` (#2250, ADR-063 § 4).
  *
  * The order snapshot is where a rate is SETTLED. This table is the queryable
  * copy (#1985), so an analytics read never has to expand JSON to answer "which

@@ -50,6 +50,7 @@ describe('SyncController', () => {
   const mockSyncJobRepository: jest.Mocked<SyncJobRepositoryPort> = {
     createIfNotExistsByIdempotencyKey: jest.fn(),
     findAndLockDueJobs: jest.fn(),
+    findAndLockDueJobsForLane: jest.fn(),
     findById: jest.fn(),
     findByIdempotencyKey: jest.fn(),
     findMany: jest.fn(),

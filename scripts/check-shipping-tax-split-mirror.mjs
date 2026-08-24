@@ -3,7 +3,7 @@
  * check-shipping-tax-split-mirror.mjs
  *
  * Lint-time invariant for the hand-maintained frontend mirror of the shipping
- * tax split (#2248 / #2252 / #2254, ADR-052 § 5).
+ * tax split (#2248 / #2252 / #2254, ADR-063 § 5).
  *
  * Rule. `splitShippingAcrossRates` and its `roundToMinorUnits` /
  * `minorUnitExponentFor` helpers in
@@ -70,7 +70,7 @@ const FRONTEND_FILE = join(
 /** The functions this script keeps identical. */
 const MIRRORED_FUNCTIONS = ['splitShippingAcrossRates', 'roundToMinorUnits', 'minorUnitExponentFor'];
 
-const DOCS_REF = 'docs/architecture/adrs/052-per-line-tax-rate-resolution-and-provenance.md';
+const DOCS_REF = 'docs/architecture/adrs/063-per-line-tax-rate-resolution-and-provenance.md';
 
 // --------------------------------------------------------------------------
 // Pure helpers. Exported so `--self-check` can exercise them directly.

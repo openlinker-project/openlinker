@@ -229,7 +229,7 @@ function toBuyerAddress(address: Address): BuyerAddress {
  * `sku` then `productId` when the source omitted a label.
  *
  * `taxRate` now carries the rate the order line was settled with (#2248,
- * ADR-052) instead of the empty string it used to emit. It stays a passthrough:
+ * ADR-063) instead of the empty string it used to emit. It stays a passthrough:
  * the code was resolved once at ingestion, and this mapper neither derives one
  * nor substitutes a default. An empty value still reaches the adapter unchanged
  * — the gate is what refuses such an order, not this function, because a mapper

@@ -88,7 +88,7 @@ Model source-authoritative pricing as a **core invariant**, implemented natively
 
 ## Amendment (#2054, 2026-08-13; accepted 2026-08-21): reverse the per-line tax-rate rejection
 
-> **Accepted 2026-08-21 by [ADR-052](./052-per-line-tax-rate-resolution-and-provenance.md).** Recorded in
+> **Accepted 2026-08-21 by [ADR-063](./063-per-line-tax-rate-resolution-and-provenance.md).** Recorded in
 > place following this repo's convention for a partial change: six amendment sections exist across four
 > ADRs ([009](./009-persisted-offer-status-snapshots.md) x3 - #1760, #2024, #2039 -
 > [026](./026-country-agnostic-invoicing-domain.md),
@@ -258,9 +258,9 @@ section fixes the constraint the set must satisfy, the annex fixes the set.
   rather than exposed.
 
 **On the status line.** This ADR is now **Accepted**, which is what the amendment below asked for. Its
-`Status` is deliberately *not* `Superseded by ADR-052`: the [README](./README.md) taxonomy has no
+`Status` is deliberately *not* `Superseded by ADR-063`: the [README](./README.md) taxonomy has no
 per-alternative value, and supersession would announce a whole-ADR replacement that is not happening -
-[ADR-052](./052-per-line-tax-rate-resolution-and-provenance.md) adopts one reversed alternative and
+[ADR-063](./063-per-line-tax-rate-resolution-and-provenance.md) adopts one reversed alternative and
 leaves Decisions 1-3 standing. The bidirectional link is the two inline pointers plus this section
 naming what it reverses.
 
@@ -271,7 +271,7 @@ and a new ADR would additionally need a number from a pool with three live claim
 the append-only rule this design defers to (`README.md:40`) binds an **accepted** ADR, and ADR-014 was
 `Proposed` when the edit was made - so the in-place edit is not even the case that rule governs.
 
-**Both edits this amendment owed are now made** (in the #2246 / [ADR-052](./052-per-line-tax-rate-resolution-and-provenance.md)
+**Both edits this amendment owed are now made** (in the #2246 / [ADR-063](./063-per-line-tax-rate-resolution-and-provenance.md)
 change): the "proposal, not a recorded refinement" preamble is gone, and ADR-014's own
 `Proposed`-while-its-decisions-shipped status is resolved to **Accepted**. Doing only the first would
 have cleared this proposal by leaving a second bookkeeping gap behind.

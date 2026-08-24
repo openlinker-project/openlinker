@@ -1,5 +1,5 @@
 /**
- * Erli Tax-Rate Mapper (#2249, ADR-052)
+ * Erli Tax-Rate Mapper (#2249, ADR-063)
  *
  * Translates between Erli's PL-specific tax-rate enum and OpenLinker's neutral
  * percent-as-string code. The mapping lives here, in the adapter, because the

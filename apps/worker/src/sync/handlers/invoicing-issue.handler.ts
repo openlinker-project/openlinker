@@ -92,7 +92,7 @@ export class InvoicingIssueHandler implements SyncJobHandler {
         );
         return { outcome: 'business_failure' };
       }
-      // #2245 review: ADR-052's tax-rate refusal. Terminal for the same reason
+      // #2245 review: ADR-063's tax-rate refusal. Terminal for the same reason
       // the guard above is: it is a decision about persisted data (a line with
       // no rate), not a transport fault, so it throws identically on every
       // attempt. Left in the retryable catch-all it burned the whole

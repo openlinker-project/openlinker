@@ -196,7 +196,7 @@ describe('PrestashopTaxRateResolver', () => {
   });
 
   // The shape the master read always hits: no delivery country is passed
-  // (ADR-052 § 7), so a group of per-country rules with no catch-all has nothing
+  // (ADR-063 § 7), so a group of per-country rules with no catch-all has nothing
   // to single a rule out. `rules[0]` used to win, so a PL shop could project
   // DE 19% onto every line.
   it('should report an ambiguous unknown when several candidate rules and no catch-all exist', async () => {
@@ -261,7 +261,7 @@ describe('PrestashopTaxRateResolver', () => {
   });
 
   it('should still resolve an explicit zero-rate tax group', async () => {
-    // ADR-052: `0` is an answer, not a gap. A group whose tax record really says
+    // ADR-063: `0` is an answer, not a gap. A group whose tax record really says
     // 0% must keep resolving, or every legitimately zero-rated product blocks.
     httpClient.getResource
       .mockResolvedValueOnce({ id_tax_rules_group: '4' })

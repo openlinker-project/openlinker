@@ -1,5 +1,5 @@
 /**
- * Allegro Tax-Rate Mapper (#2249, ADR-052)
+ * Allegro Tax-Rate Mapper (#2249, ADR-063)
  *
  * Translates Allegro's per-line `tax` object and its offer tax settings to and
  * from OpenLinker's neutral percent-as-string code. The platform vocabulary

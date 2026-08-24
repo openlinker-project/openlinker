@@ -18,13 +18,15 @@ import {
 } from './sales-document-reason.types';
 
 describe('sales-document reason vocabularies (ADR-041 decision 11)', () => {
-  it('should declare the unresolved reasons exactly as the ADR does', () => {
+  it('should declare the unresolved reasons exactly as the ADR does, plus the #2170 rule-engine additions', () => {
     expect(SalesDocumentUnresolvedReasonValues).toEqual([
       'no-matching-rule',
       'conflicting-rules-equal-priority',
       'ambiguous-connection-no-primary',
       'unsupported-document-kind-on-connection',
       'net-priced-order',
+      'no-configuration-for-country',
+      'threshold-currency-mismatch',
     ]);
   });
 

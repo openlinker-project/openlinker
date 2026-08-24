@@ -132,7 +132,7 @@ export class MasterProductSyncService implements IMasterProductSyncService {
       await this.productsService.upsertVariants(internalProductId, variants);
     }
 
-    // Pull the tax rate onto the catalogue projection (#2054, ADR-052 § 4), in
+    // Pull the tax rate onto the catalogue projection (#2054, ADR-063 § 4), in
     // the same pass that already refreshes price and currency. Best-effort and
     // strictly after the upserts: a rate read that fails must not cost the
     // catalogue its product body, and leaving the row untouched keeps it in the

@@ -1,17 +1,17 @@
 /**
  * Webhooks Module
  *
- * NestJS module for webhook ingestion functionality. Configures webhook controller,
- * services, middleware, and dependency injection. Imports core modules for events,
- * integrations, and connections.
+ * NestJS module for webhook ingestion. Since #2280 (ADR-049 decision 1) the
+ * webhook path is ingress-transactional: routing runs synchronously in
+ * `WebhookService` and the `sync_jobs` work row commits in the same Postgres
+ * transaction as the `webhook_deliveries` gate row (`WebhookJobGateRepository`).
+ * The always-on stream consumer and its dedicated blocking Redis client are
+ * retired; `LegacyInboundWebhookDrain` runs once at boot to recover any
+ * pre-upgrade backlog, and is itself removed in a follow-up release.
  *
  * @module apps/api/src/webhooks
  */
 import { Module } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import type { RedisClientType } from 'redis';
-import { createClient } from 'redis';
-import { EventsModule } from '@openlinker/core/events';
 import { IntegrationsModule } from '@openlinker/core/integrations';
 import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
 import {
@@ -26,25 +26,24 @@ import { WebhookService } from './application/services/webhook.service';
 import { WebhookAuthService } from './application/services/webhook-auth.service';
 import { DefaultWebhookDecoder } from './application/decoders/default-webhook-decoder';
 import { WebhookDedupService } from './application/services/webhook-dedup.service';
-import { WebhookEventPublisher } from './application/services/webhook-event-publisher.service';
 import { WebhookDeliveryQueryService } from './application/services/webhook-delivery-query.service';
 import { WEBHOOK_DELIVERY_QUERY_SERVICE_TOKEN } from './application/interfaces/webhook-delivery-query.service.interface';
-import { WebhookToJobHandler } from './application/handlers/webhook-to-job.handler';
-import { REDIS_CLIENT_BLOCKING_TOKEN } from './webhooks.tokens';
+import { InboundWebhookRoutingService } from './application/services/inbound-webhook-routing.service';
+import { INBOUND_WEBHOOK_ROUTING_SERVICE_TOKEN } from './application/interfaces/inbound-webhook-routing.service.interface';
+import { WebhookJobGateRepository } from './infrastructure/persistence/webhook-job-gate.repository';
+import { WEBHOOK_JOB_GATE_SERVICE_TOKEN } from './application/interfaces/webhook-job-gate.service.interface';
+import { LegacyInboundWebhookDrain } from './application/handlers/legacy-inbound-webhook-drain';
 
 /**
- * Webhooks Module
- *
  * Note: Raw body capture for webhook signature verification is handled at the
  * application level in main.ts using express.json() with verify hook for /webhooks routes.
  * This ensures the verify hook fires before any other body parsing.
  */
 @Module({
   imports: [
-    EventsModule, // For EventPublisherPort
-    IntegrationsModule, // For WebhookSecretProviderPort
+    IntegrationsModule, // For WebhookSecretProviderPort + translator registry
     IdentifierMappingModule, // For ConnectionPort
-    SyncModule, // For JobEnqueuePort
+    SyncModule, // For JobEnqueuePort (route()) + routing policy deps
     WebhooksCoreModule, // For WebhookDeliveryRepositoryPort
   ],
   controllers: [WebhookController, WebhookDeliveryController],
@@ -53,37 +52,20 @@ import { REDIS_CLIENT_BLOCKING_TOKEN } from './webhooks.tokens';
     WebhookAuthService,
     DefaultWebhookDecoder,
     WebhookDedupService,
-    WebhookEventPublisher,
     WebhookDeliveryQueryService,
     { provide: WEBHOOK_DELIVERY_QUERY_SERVICE_TOKEN, useExisting: WebhookDeliveryQueryService },
     // Inbound routing policy (ADR-015 / #903) — core class bound here, where its
     // deps (IIntegrationsService, JobEnqueuePort) are already imported.
     InboundRoutingPolicyService,
     { provide: INBOUND_ROUTING_POLICY_TOKEN, useExisting: InboundRoutingPolicyService },
-    WebhookToJobHandler,
-    {
-      // Dedicated client for blocking xReadGroup loop — must not share with health check client
-      provide: REDIS_CLIENT_BLOCKING_TOKEN,
-      useFactory: async (configService: ConfigService): Promise<RedisClientType> => {
-        const client = createClient({
-          socket: {
-            host: configService.get<string>('REDIS_HOST', 'localhost'),
-            port: configService.get<number>('REDIS_PORT', 6379),
-          },
-          password: configService.get<string>('REDIS_PASSWORD'),
-          database: configService.get<number>('REDIS_DB', 0),
-        });
-        try {
-          await client.connect();
-        } catch (error) {
-          throw new Error(
-            `WebhooksModule: Failed to connect REDIS_CLIENT_BLOCKING: ${error instanceof Error ? error.message : String(error)}`
-          );
-        }
-        return client as RedisClientType;
-      },
-      inject: [ConfigService],
-    },
+    // Ingress translate→resolve + the transactional gate (#2280).
+    InboundWebhookRoutingService,
+    { provide: INBOUND_WEBHOOK_ROUTING_SERVICE_TOKEN, useExisting: InboundWebhookRoutingService },
+    WebhookJobGateRepository,
+    { provide: WEBHOOK_JOB_GATE_SERVICE_TOKEN, useExisting: WebhookJobGateRepository },
+    // One-shot recovery of the pre-#2280 stream backlog (shared Redis client,
+    // non-blocking reads only).
+    LegacyInboundWebhookDrain,
   ],
 })
 export class WebhooksModule {}

@@ -5,8 +5,10 @@
  * a genuine `X-Infakt-Signature` HMAC-SHA256 delivery, in Infakt's real
  * `{ event, resource }` body shape, through the registered
  * `InfaktInboundWebhookDecoderAdapter` (detectHandshake + verify +
- * extractEnvelope) → dedup → publish → the real
- * `InfaktWebhookEventTranslatorAdapter` → the real `InboundRoutingPolicy`.
+ * extractEnvelope) → the real `InfaktWebhookEventTranslatorAdapter` → the real
+ * `InboundRoutingPolicy` → the durable-spine gate (#2280): the `sync_jobs`
+ * work row commits in the same transaction as the delivery row, so job
+ * assertions read Postgres directly — no stream polling.
  *
  * Complements the existing unit coverage (decoder / event-translator / the
  * `InfaktWebhookTranslator` HMAC + parse + handshake specs) by exercising the
@@ -36,31 +38,29 @@ function infaktSign(rawBody: Buffer, secret: string): string {
   return createHmac('sha256', secret).update(rawBody).digest('hex');
 }
 
-/** Job stream field shape (all values are strings on the Redis stream). */
-type JobFields = { jobType: string; connectionId: string; payloadJson: string };
+interface SyncJobRow {
+  jobType: string;
+  connectionId: string;
+  payloadJson: unknown;
+}
+
+/** `payloadJson` is jsonb — the driver returns it parsed; tolerate both. */
+function parseJobPayload<T>(value: unknown): T {
+  return (typeof value === 'string' ? JSON.parse(value) : value) as T;
+}
 
 /**
- * Ingestion is async (HTTP 202 → event bus → WebhookToJobHandler → enqueue), so
- * poll the `jobs.sync` stream until a job matching `predicate` appears rather
- * than relying on a single fixed sleep (which races under full-suite load).
+ * The gate is synchronous (#2280): by the time the 202 returns, any enqueued
+ * job is committed to `sync_jobs` — read it back directly.
  */
-async function waitForJob(
+async function readJobsForConnection(
   harness: IntegrationTestHarness,
-  predicate: (fields: JobFields) => boolean,
-  timeoutMs = 5000,
-): Promise<JobFields | undefined> {
-  const redisClient = harness.getRedisClient();
-  if (!redisClient) throw new Error('Redis client not available');
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    const jobs = await redisClient.xRead([{ key: 'jobs.sync', id: '0' }], { COUNT: 50 });
-    const match = jobs?.[0]?.messages
-      .map((msg) => msg.message as JobFields)
-      .find((fields) => predicate(fields));
-    if (match) return match;
-    await new Promise((resolve) => setTimeout(resolve, 150));
-  }
-  return undefined;
+  connectionId: string,
+): Promise<SyncJobRow[]> {
+  return (await harness.getDataSource().query(
+    `SELECT "jobType", "connectionId", "payloadJson" FROM sync_jobs WHERE "connectionId" = $1`,
+    [connectionId],
+  )) as SyncJobRow[];
 }
 
 describe('Infakt Webhook Ingestion Integration (#1509)', () => {
@@ -101,13 +101,6 @@ describe('Infakt Webhook Ingestion Integration (#1509)', () => {
     });
   }
 
-  // Both OL-actionable routing branches are asserted in a SINGLE test on
-  // purpose: `resetTestHarness()` flushes Redis (`flushDb`), which destroys the
-  // `webhook-handler` consumer group the handler created at boot — so only the
-  // first pre-reset test can observe a handler-processed enqueue (the same
-  // reason the Erli/InPost webhook int-specs each assert exactly one enqueue).
-  // Firing both signed deliveries here, before any reset, keeps the consumer
-  // group alive across both.
   it('routes real Infakt-signed KSeF-clearance and payment webhooks to their respective jobs', async () => {
     const ksefConnection = await createInfaktConnection();
     const paymentConnection = await createInfaktConnection();
@@ -153,40 +146,30 @@ describe('Infakt Webhook Ingestion Integration (#1509)', () => {
 
     // KSeF-clearance event → regulatory-status reconcile (a trigger, not the
     // source of truth: it nudges the page-scan reconciler; no by-id job exists).
-    const reconcileJob = await waitForJob(
-      harness,
-      (fields) =>
-        fields.jobType === 'invoicing.regulatoryStatus.reconcile' &&
-        fields.connectionId === ksefConnection.id,
-    );
-    expect(reconcileJob).toBeDefined();
+    const ksefJobs = await readJobsForConnection(harness, ksefConnection.id);
+    expect(ksefJobs).toHaveLength(1);
+    expect(ksefJobs[0].jobType).toBe('invoicing.regulatoryStatus.reconcile');
 
     // Payment event → by-id payment-status refresh keyed by the invoice uuid.
-    const paymentJob = await waitForJob(harness, (fields) => {
-      if (fields.jobType !== 'invoicing.paymentStatus.refreshByExternalId') return false;
-      if (fields.connectionId !== paymentConnection.id) return false;
-      try {
-        const payload = JSON.parse(fields.payloadJson) as { externalInvoiceId?: string };
-        return payload.externalInvoiceId === paidInvoiceUuid;
-      } catch {
-        return false;
-      }
-    });
-    expect(paymentJob).toBeDefined();
-
-    // The controller's own 'published' delivery-recording write and the
-    // handler's later 'job_enqueued' write race independently of the enqueue
-    // itself (both best-effort, #711) — assert only that a signature-verified
-    // delivery row exists, not its exact terminal status. Dedup/replay is not
-    // re-asserted here: it is provider-agnostic and already covered in
-    // `webhook-ingestion.int-spec.ts` ('should prevent duplicate events' +
-    // 'handler crash/retry with job dedup').
-    const deliveryRows: Array<{ signatureValid: boolean }> = await harness.getDataSource().query(
-      `SELECT "signatureValid" FROM webhook_deliveries WHERE provider = 'infakt' AND "connectionId" = $1`,
-      [ksefConnection.id],
+    const paymentJobs = await readJobsForConnection(harness, paymentConnection.id);
+    expect(paymentJobs).toHaveLength(1);
+    expect(paymentJobs[0].jobType).toBe('invoicing.paymentStatus.refreshByExternalId');
+    const paymentPayload = parseJobPayload<{ externalInvoiceId?: string }>(
+      paymentJobs[0].payloadJson,
     );
+    expect(paymentPayload.externalInvoiceId).toBe(paidInvoiceUuid);
+
+    // The delivery row commits in the same transaction as the job (#2280), in
+    // its final status — no race with a separate handler write to tolerate.
+    const deliveryRows: Array<{ signatureValid: boolean; status: string }> = await harness
+      .getDataSource()
+      .query(
+        `SELECT "signatureValid", status FROM webhook_deliveries WHERE provider = 'infakt' AND "connectionId" = $1`,
+        [ksefConnection.id],
+      );
     expect(deliveryRows).toHaveLength(1);
     expect(deliveryRows[0].signatureValid).toBe(true);
+    expect(deliveryRows[0].status).toBe('job_enqueued');
   });
 
   it('rejects an Infakt webhook with a wrong signature (401), records no delivery, enqueues no job', async () => {
@@ -208,31 +191,14 @@ describe('Infakt Webhook Ingestion Integration (#1509)', () => {
       .send(body)
       .expect(401);
 
-    // Proving the *absence* of an effect can't be polled, so wait a fixed bound
-    // for any (erroneous) downstream enqueue to have surfaced before asserting
-    // none did. The rejection happens pre-publish (401 at the controller), so
-    // this is inherently low-risk; 500 ms is a comfortable margin.
-    await new Promise((resolve) => setTimeout(resolve, 500));
-
-    // Load-bearing assertions: the 401 status above + zero `webhook_deliveries`
-    // rows (per #711, a failed-validation delivery inserts no row).
+    // The spine is synchronous — a rejected delivery cannot have written
+    // anything, and there is no async consumer whose lag could hide a write.
     const deliveryRows: Array<{ n: number }> = await harness.getDataSource().query(
       `SELECT count(*)::int AS n FROM webhook_deliveries WHERE provider = 'infakt' AND "connectionId" = $1`,
       [connection.id],
     );
     expect(deliveryRows[0].n).toBe(0);
-
-    // Corroborating only: `afterEach`'s `resetTestHarness()` flushes Redis and
-    // destroys the `webhook-handler` consumer group, so from the second test
-    // onward there is no live consumer - this no-job check would pass even if
-    // the handler were broken. The real proof is the status code + delivery-row
-    // count above, both of which reject before the publish step.
-    const redisClient = harness.getRedisClient();
-    if (!redisClient) throw new Error('Redis client not available');
-    const jobs = await redisClient.xRead([{ key: 'jobs.sync', id: '0' }], { COUNT: 50 });
-    const infaktJobs =
-      jobs?.[0]?.messages.filter((msg) => msg.message.connectionId === connection.id) ?? [];
-    expect(infaktJobs).toHaveLength(0);
+    expect(await readJobsForConnection(harness, connection.id)).toHaveLength(0);
   });
 
   it('echoes the verification_code handshake with 200 and enqueues no job', async () => {
@@ -248,21 +214,10 @@ describe('Infakt Webhook Ingestion Integration (#1509)', () => {
       .send({ verification_code: verificationCode })
       .expect(200);
 
-    // Load-bearing: the 200 status + the echoed `verification_code` body above.
     expect(response.body).toEqual({ verification_code: verificationCode });
 
-    // Fixed bound to let any (erroneous) enqueue surface; the handshake
-    // short-circuits before routing, so this is inherently low-risk.
-    await new Promise((resolve) => setTimeout(resolve, 500));
-
-    // Corroborating only: Redis was flushed by the prior `resetTestHarness()`,
-    // so the `webhook-handler` consumer group is gone and no job could be
-    // enqueued regardless. The status + echoed body above are the real proof.
-    const redisClient = harness.getRedisClient();
-    if (!redisClient) throw new Error('Redis client not available');
-    const jobs = await redisClient.xRead([{ key: 'jobs.sync', id: '0' }], { COUNT: 50 });
-    const infaktJobs =
-      jobs?.[0]?.messages.filter((msg) => msg.message.connectionId === connection.id) ?? [];
-    expect(infaktJobs).toHaveLength(0);
+    // The handshake short-circuits before routing — synchronously, so the
+    // absence of a job row is provable immediately (#2280).
+    expect(await readJobsForConnection(harness, connection.id)).toHaveLength(0);
   });
 });

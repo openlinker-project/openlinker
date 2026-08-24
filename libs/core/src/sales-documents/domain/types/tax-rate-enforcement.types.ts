@@ -1,7 +1,7 @@
 /**
- * Per-line Tax-rate Enforcement Switch (#2245 review, ADR-052 § Consequences)
+ * Per-line Tax-rate Enforcement Switch (#2245 review, ADR-063 § Consequences)
  *
- * ADR-052 holds a document when a line carries no tax rate. That is the right
+ * ADR-063 holds a document when a line carries no tax rate. That is the right
  * steady state and the wrong first day: catalogue coverage is zero on deploy
  * (measured 2026-08-21, #2256), so switching every enforcement point on at once
  * refuses 100% of issuance, 100% of receipt registration and 100% of offer
@@ -11,7 +11,7 @@
  * So enforcement is a switch, and it is OFF by default. With it off every
  * enforcement point behaves as it did before the epic: the three invoicing
  * providers substitute their documented default, the two gates pass, and the
- * two channel adapters publish with the rate omitted. With it on, ADR-052's
+ * two channel adapters publish with the rate omitted. With it on, ADR-063's
  * rules apply.
  *
  * Two answers live here because they are two halves of one question:
@@ -29,12 +29,12 @@
  * helper: the module imports nothing, and `barrel-purity.spec.ts` enforces it.
  *
  * @module libs/core/src/sales-documents/domain/types
- * @see docs/architecture/adrs/052-per-line-tax-rate-resolution-and-provenance.md
+ * @see docs/architecture/adrs/063-per-line-tax-rate-resolution-and-provenance.md
  * @see docs/operations/tax-rate-coverage.md
  */
 
 /**
- * The one environment variable that turns ADR-052's refusals on.
+ * The one environment variable that turns ADR-063's refusals on.
  *
  * Named as a constant so a spec can flip it without repeating the literal, and
  * so the rollout runbook and the code cannot drift on the spelling.
@@ -93,7 +93,7 @@ export function isTaxRateEra(value: unknown): value is TaxRateEra {
 /**
  * Whether this order predates per-line tax rates.
  *
- * ADR-052 § Consequences: such an order "issues exactly as it does today".
+ * ADR-063 § Consequences: such an order "issues exactly as it does today".
  * Blocking it would stop history nobody is going to retrofit - its lines carry
  * no rate because no rate was ever collected for them, and no catalogue edit
  * changes that after the sale.
@@ -103,7 +103,7 @@ export function isPreRolloutOrder(era: string | null | undefined): boolean {
 }
 
 /**
- * The single question every enforcement point asks: should ADR-052's refusals
+ * The single question every enforcement point asks: should ADR-063's refusals
  * apply to this order?
  *
  * Both halves must hold - the deployment has opted in, AND the order is not

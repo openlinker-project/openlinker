@@ -1,5 +1,5 @@
 /**
- * Tax-Rate Coverage Types (#2054 / #2256, ADR-052 § 4)
+ * Tax-Rate Coverage Types (#2054 / #2256, ADR-063 § 4)
  *
  * The shape of the catalogue's tax-rate read state, counted as a query rather
  * than a crawl. One named type per shape, shared by the repository port, its

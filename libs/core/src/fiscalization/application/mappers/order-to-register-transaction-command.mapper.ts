@@ -188,7 +188,7 @@ function assertLinesSumToTotal(
  * back to `sku` then `productId` when the source omitted a label.
  *
  * `taxRate` now carries the rate the order line was settled with (#2252,
- * ADR-052), where it used to be left empty for the adapter's regime mapping to
+ * ADR-063), where it used to be left empty for the adapter's regime mapping to
  * fill. It is a PASSTHROUGH: core still names no rate of its own, and an empty
  * value still reaches the service - which refuses the registration rather than
  * letting the connection's tax letter stand in for one nobody confirmed.

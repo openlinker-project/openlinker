@@ -1,7 +1,7 @@
 /**
  * Tax-Rate Journal Entry Response DTO
  *
- * Wire projection of one `TaxRateJournalEntry` (#2250, ADR-052 § 4) returned by
+ * Wire projection of one `TaxRateJournalEntry` (#2250, ADR-063 § 4) returned by
  * `GET /products/:id/tax-rate-journal` - the latest entry per connection for
  * one catalogue item.
  *

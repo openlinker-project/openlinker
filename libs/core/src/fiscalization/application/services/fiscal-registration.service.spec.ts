@@ -10,6 +10,8 @@
  * @module libs/core/src/fiscalization/application/services
  */
 import type { IIntegrationsService } from '@openlinker/core/integrations';
+import type { SyncLockPort } from '@openlinker/core/sync';
+import type { IInvoiceService } from '@openlinker/core/invoicing';
 
 import {
   FiscalRegistrationService,
@@ -23,6 +25,8 @@ import { FiscalRegistrationRecordNotFoundException } from '../../domain/exceptio
 import { MissingIdempotencyKeyException } from '../../domain/exceptions/missing-idempotency-key.exception';
 import { MissingFiscalTaxRateException } from '../../domain/exceptions/missing-tax-rate.exception';
 import { OrderAlreadyRegisteredException } from '../../domain/exceptions/order-already-registered.exception';
+import { OrderAlreadyHasInvoiceException } from '../../domain/exceptions/order-already-has-invoice.exception';
+import { FiscalRegistrationContendedException } from '../../domain/exceptions/fiscal-registration-contended.exception';
 import type { FiscalRegistrationRecordRepositoryPort } from '../../domain/ports/fiscal-registration-record-repository.port';
 import type { FiscalizationPort } from '../../domain/ports/fiscalization.port';
 import type { FiscalRegistrationLocator } from '../../domain/ports/capabilities/fiscal-registration-locator.capability';
@@ -89,6 +93,8 @@ describe('FiscalRegistrationService', () => {
   let repo: jest.Mocked<FiscalRegistrationRecordRepositoryPort>;
   let integrations: jest.Mocked<Pick<IIntegrationsService, 'getCapabilityAdapter'>>;
   let adapter: jest.Mocked<FiscalizationPort>;
+  let registrationLock: jest.Mocked<SyncLockPort>;
+  let invoiceService: jest.Mocked<Pick<IInvoiceService, 'findBlockingInvoiceForOrder'>>;
   let service: FiscalRegistrationService;
 
   beforeEach(() => {
@@ -107,9 +113,23 @@ describe('FiscalRegistrationService', () => {
     integrations = {
       getCapabilityAdapter: jest.fn().mockResolvedValue(adapter),
     };
+    // Default: the lock is always free, so tests exercise `registerLocked`
+    // unless a case explicitly simulates contention (#2157).
+    registrationLock = {
+      acquire: jest.fn().mockResolvedValue('lock-token'),
+      release: jest.fn().mockResolvedValue(true),
+      extend: jest.fn().mockResolvedValue(true),
+    };
+    // Default: no blocking invoice exists elsewhere, so the cross-kind guard
+    // (#2157, ADR-041 §3a/3b) passes. Cases that exercise it override it.
+    invoiceService = {
+      findBlockingInvoiceForOrder: jest.fn().mockResolvedValue(null),
+    };
     service = new FiscalRegistrationService(
       repo,
       integrations as unknown as IIntegrationsService,
+      registrationLock,
+      invoiceService as unknown as IInvoiceService,
     );
   });
 
@@ -288,6 +308,124 @@ describe('FiscalRegistrationService', () => {
 
       expect(repo.findAllByOrderId).not.toHaveBeenCalled();
       expect(adapter.registerTransaction).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('register - cross-kind sales-document guard (#2157, ADR-041 §3a/3b)', () => {
+    beforeEach(() => {
+      repo.findByIdempotencyKey.mockResolvedValue(null);
+      repo.findAllByOrderId.mockResolvedValue([]);
+      repo.create.mockResolvedValue(record('pending'));
+      repo.claimForRegistration.mockResolvedValue(record('registering'));
+      repo.updateOutcome.mockResolvedValue(record('registered'));
+    });
+
+    it('should refuse to register when the order already has a blocking invoice on any connection', async () => {
+      invoiceService.findBlockingInvoiceForOrder.mockResolvedValue({
+        id: 'invoice-1',
+        connectionId: 'invoicing-conn-1',
+        status: 'issued',
+      } as unknown as Awaited<ReturnType<IInvoiceService['findBlockingInvoiceForOrder']>>);
+
+      await expect(service.register(command())).rejects.toBeInstanceOf(
+        OrderAlreadyHasInvoiceException,
+      );
+      expect(repo.create).not.toHaveBeenCalled();
+      expect(adapter.registerTransaction).not.toHaveBeenCalled();
+    });
+
+    it('should name the blocking invoice connection and id on the refusal', async () => {
+      invoiceService.findBlockingInvoiceForOrder.mockResolvedValue({
+        id: 'invoice-blocking-1',
+        connectionId: 'invoicing-conn-1',
+        status: 'pending',
+      } as unknown as Awaited<ReturnType<IInvoiceService['findBlockingInvoiceForOrder']>>);
+
+      await expect(service.register(command())).rejects.toMatchObject({
+        orderId: ORDER_ID,
+        invoicingConnectionId: 'invoicing-conn-1',
+        requestedConnectionId: CONNECTION_ID,
+        blockingInvoiceId: 'invoice-blocking-1',
+        blockingStatus: 'pending',
+      });
+    });
+
+    it('should register normally when no invoice blocks the order', async () => {
+      adapter.registerTransaction.mockResolvedValue({
+        providerType: 'provider-a',
+        providerReference: 'p-1',
+        documentReference: null,
+        signingIdentity: null,
+        registeredAt: NOW,
+        artefacts: [],
+      });
+
+      await service.register(command());
+
+      expect(invoiceService.findBlockingInvoiceForOrder).toHaveBeenCalledWith(ORDER_ID);
+      expect(adapter.registerTransaction).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('register - per-order lock (#2157, shared with InvoiceService.issueInvoice)', () => {
+    beforeEach(() => {
+      repo.findByIdempotencyKey.mockResolvedValue(null);
+      repo.findAllByOrderId.mockResolvedValue([]);
+      repo.create.mockResolvedValue(record('pending'));
+      repo.claimForRegistration.mockResolvedValue(record('registering'));
+      repo.updateOutcome.mockResolvedValue(record('registered'));
+    });
+
+    it('should acquire the lock under the SAME key InvoiceService.issueInvoice uses', async () => {
+      adapter.registerTransaction.mockResolvedValue({
+        providerType: 'provider-a',
+        providerReference: 'p-1',
+        documentReference: null,
+        signingIdentity: null,
+        registeredAt: NOW,
+        artefacts: [],
+      });
+
+      await service.register(command());
+
+      expect(registrationLock.acquire).toHaveBeenCalledWith(
+        `invoice:issue:${ORDER_ID}`,
+        expect.any(Number),
+      );
+      expect(registrationLock.release).toHaveBeenCalledWith(
+        `invoice:issue:${ORDER_ID}`,
+        'lock-token',
+      );
+    });
+
+    it('should refuse with a retryable contended exception when the lock is held and nothing is persisted yet', async () => {
+      registrationLock.acquire.mockResolvedValue(null);
+
+      await expect(service.register(command())).rejects.toBeInstanceOf(
+        FiscalRegistrationContendedException,
+      );
+      expect(adapter.registerTransaction).not.toHaveBeenCalled();
+      expect(repo.create).not.toHaveBeenCalled();
+    });
+
+    it('should replay an already-registered same-key row when contended', async () => {
+      registrationLock.acquire.mockResolvedValue(null);
+      const existing = record('registered');
+      repo.findByIdempotencyKey.mockResolvedValue(existing);
+
+      await expect(service.register(command())).resolves.toBe(existing);
+      expect(adapter.registerTransaction).not.toHaveBeenCalled();
+    });
+
+    it('should surface a truthful blocking refusal when contended and a peer already persisted its row', async () => {
+      registrationLock.acquire.mockResolvedValue(null);
+      repo.findAllByOrderId.mockResolvedValue([
+        record('registered', { id: 'rec-peer', connectionId: 'conn-other' }),
+      ]);
+
+      await expect(service.register(command())).rejects.toBeInstanceOf(
+        OrderAlreadyRegisteredException,
+      );
     });
   });
 

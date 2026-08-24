@@ -197,7 +197,7 @@ describe('MarketplaceOfferFieldUpdateHandler', () => {
     await expect(handler.execute(makeJob({ title: 'x' }))).rejects.toThrow(SyncJobExecutionError);
   });
 
-  describe('tax-rate journal (#2250, ADR-052 § 4)', () => {
+  describe('tax-rate journal (#2250, ADR-063 § 4)', () => {
     beforeEach(() => {
       wireAdapter({ getDescriptionFormat: () => ALLEGRO_LIKE });
     });

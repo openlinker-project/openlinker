@@ -35,7 +35,7 @@ export interface OfferFieldUpdate {
   description?: OfferDescriptionUpdate;
   /**
    * The shop's tax rate, as the neutral percent-as-string code (#2249,
-   * ADR-052). Propagated on an update the same way it is on a create, so an
+   * ADR-063). Propagated on an update the same way it is on a create, so an
    * offer's rate follows the catalogue rather than freezing at whatever it was
    * when the offer was first published.
    *

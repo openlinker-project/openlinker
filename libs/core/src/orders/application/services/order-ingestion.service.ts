@@ -712,7 +712,7 @@ export class OrderIngestionService implements IOrderIngestionService {
 
   /**
    * Record the rate the CHANNEL itself reported for this line (#2250,
-   * ADR-052 § 4).
+   * ADR-063 § 4).
    *
    * Written only where the source order line really carried one. Most sources
    * carry none (Allegro's `lineItems[].tax` is nullable and an OL-published
@@ -751,7 +751,7 @@ export class OrderIngestionService implements IOrderIngestionService {
   }
 
   /**
-   * Settle the line's tax rate at ingestion (#2054, ADR-052 § 1 and § 4).
+   * Settle the line's tax rate at ingestion (#2054, ADR-063 § 1 and § 4).
    *
    * Shop first, channel second. The order of the two rungs is the decision, not
    * an implementation detail: a rate fixed in the shop serves every channel,

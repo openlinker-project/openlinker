@@ -166,15 +166,16 @@ const harness = createIntegrationTestHarness({
     // salt still wins (this only fills the gap).
     OL_PII_HASH_SALT: process.env.OL_PII_HASH_SALT ?? 'integration-test-pii-salt',
 
-    // Disable all background schedulers in integration tests. Cron jobs fire
-    // against an empty database and keep the Node.js event loop alive,
-    // causing Jest to hang after tests complete. If a future int-spec needs
-    // to exercise scheduler behaviour, write a `SchedulerTaskConfig` into
-    // `SchedulerTaskRegistryService` (or mirror a real Allegro task via
-    // `buildAllegroSchedulerTasks`) and re-invoke
-    // `SchedulerService.onApplicationBootstrap()` — these env vars were
-    // evaluated at boot and cannot be flipped back on mid-test, but the
-    // registry is the seam for adding ad-hoc tasks (#584).
+    // Disable all background schedulers in integration tests.
+    //
+    // Since #2279 (ADR-051) the api hosts NO scheduler at all — it moved to
+    // the worker's `scheduler` role — so these are belt-and-braces rather
+    // than load-bearing here: they keep a plugin that reads its own gate at
+    // registration time quiet, and they document the full task inventory in
+    // one place. Scheduler behaviour is exercised in the worker's own specs
+    // (`apps/worker/src/scheduler/__tests__`), where `SchedulerService.start()`
+    // can be invoked directly and `SchedulerTaskRegistryService` remains the
+    // seam for ad-hoc tasks (#584).
     OL_ALLEGRO_POLL_SCHEDULER_ENABLED: 'false',
     OL_ALLEGRO_OFFERS_SYNC_SCHEDULER_ENABLED: 'false',
     OL_ALLEGRO_OFFER_STATUS_SYNC_SCHEDULER_ENABLED: 'false',

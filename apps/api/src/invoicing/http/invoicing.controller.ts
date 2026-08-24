@@ -73,6 +73,7 @@ import {
   DuplicateInvoiceRecordException,
   MissingTaxRateException,
   OrderAlreadyInvoicedException,
+  OrderAlreadyHasFiscalReceiptException,
   InvoiceIssueContendedException,
   InvoiceRecordNotFoundException,
   MissingNumberingSeriesException,
@@ -727,6 +728,20 @@ export class InvoicingController {
           reason:
             `An invoice for this order already exists on connection ${error.issuingConnectionId} ` +
             `(invoice ${error.blockingInvoiceId}, status ${error.blockingStatus}).`,
+        };
+      }
+      if (error instanceof OrderAlreadyHasFiscalReceiptException) {
+        // #2157, ADR-041 §3a/3b: the order already has a fiscal RECEIPT (a
+        // different document kind) on a fiscalization connection. Same
+        // `skipped` treatment as the already-invoiced branch above — one sale
+        // still has one originating document.
+        return {
+          orderId,
+          outcome: 'skipped',
+          reason:
+            `A fiscal receipt for this order already exists on connection ` +
+            `${error.registeringConnectionId} (registration ${error.blockingRecordId}, ` +
+            `status ${error.blockingStatus}).`,
         };
       }
       if (error instanceof MissingTaxRateException) {
@@ -1394,6 +1409,19 @@ export class InvoicingController {
         blockingStatus: error.blockingStatus,
       });
     }
+    // #2157, ADR-041 §3a/3b: the order already has a fiscal RECEIPT — a
+    // different sales-document KIND — on a fiscalization connection. Also a
+    // 409: one sale gets one originating document, invoice or receipt, never
+    // both.
+    if (error instanceof OrderAlreadyHasFiscalReceiptException) {
+      return new ConflictException({
+        message: error.message,
+        error: 'OrderAlreadyHasFiscalReceiptException',
+        registeringConnectionId: error.registeringConnectionId,
+        blockingRecordId: error.blockingRecordId,
+        blockingStatus: error.blockingStatus,
+      });
+    }
     // #2047: a concurrent issuance holds the per-order lock and has persisted
     // nothing yet, so there is no document to point at — only a timing accident.
     // Also a 409, but RETRYABLE and carrying no connection/invoice ids (there are
@@ -1406,7 +1434,7 @@ export class InvoicingController {
         retryable: true,
       });
     }
-    // #2248 (ADR-052 § 6): the order carries a line with no tax rate, so no
+    // #2248 (ADR-063 § 6): the order carries a line with no tax rate, so no
     // document can state what tax was charged. 422 rather than 400 - the request
     // is well formed, the DATA it names is not yet issuable - and rather than 409,
     // which would say a document already exists. `retryable: false` distinguishes

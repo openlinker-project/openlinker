@@ -256,7 +256,7 @@ export interface OrderItem {
 
   /**
    * The tax rate this line carries, as a neutral percent-as-string code
-   * (`'23'`, `'8'`, `'5'`, `'0'`, `'zw'`, `'np'`, `'oo'`) — #2054, ADR-052.
+   * (`'23'`, `'8'`, `'5'`, `'0'`, `'zw'`, `'np'`, `'oo'`) — #2054, ADR-063.
    *
    * **The stored order snapshot is the only place a rate is settled.** It is
    * resolved once at ingestion from OpenLinker's own catalogue projection
@@ -288,7 +288,7 @@ export interface OrderItem {
   /**
    * When the rate was read from that system, ISO 8601. Shown rather than
    * enforced — there is no freshness rule, because rate changes are announced
-   * ahead and do not apply retroactively (ADR-052 § 4).
+   * ahead and do not apply retroactively (ADR-063 § 4).
    */
   taxRateReadAt?: string;
 
@@ -336,7 +336,7 @@ export interface OrderTotals {
    *
    * **This is the order-wide inclusivity flag, and it is all it is.** It used
    * to add that "the tax *rate* itself stays destination-side, never on the
-   * order contract"; ADR-052 reverses that half (adopting ADR-014's own
+   * order contract"; ADR-063 reverses that half (adopting ADR-014's own
    * amendment), because one aggregate `tax` plus one order-wide treatment
    * cannot describe a mixed-rate basket. The per-line rate now lives on
    * `OrderItem.taxRate`. The inclusivity half is unchanged: it really is

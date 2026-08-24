@@ -215,7 +215,7 @@ export class OrderRecord {
      *
      * READ (#2245 review) by the invoicing gate and the write-path guard, which
      * exempt a pre-rollout order so it issues exactly as it did before the epic
-     * (ADR-052 § Consequences). Without that read the marker was write-only and
+     * (ADR-063 § Consequences). Without that read the marker was write-only and
      * the promise was unimplemented: every already-ingested uninvoiced order
      * would have become permanently un-issuable the moment strict enforcement
      * was switched on.

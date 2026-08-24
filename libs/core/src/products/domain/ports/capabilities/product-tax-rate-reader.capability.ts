@@ -1,5 +1,5 @@
 /**
- * Product Tax Rate Reader Capability (#2054, ADR-052)
+ * Product Tax Rate Reader Capability (#2054, ADR-063)
  *
  * Optional sub-capability of `ProductMasterPort`: the master states the tax
  * rate a product carries. A master that can answer declares

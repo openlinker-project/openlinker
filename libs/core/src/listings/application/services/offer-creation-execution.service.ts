@@ -223,7 +223,7 @@ export class OfferCreationExecutionService implements IOfferCreationExecutionSer
     // write nothing rather than guessing a status the operator would act on.
     await this.recordObservedStatus(input, result, observedAt);
 
-    // #2250 (ADR-052 § 4) - record that OpenLinker put this rate on the channel.
+    // #2250 (ADR-063 § 4) - record that OpenLinker put this rate on the channel.
     // Placed after the create returned, never before it: the journal's
     // `written-by-us` entry is the claim a write HAPPENED, and a claim about an
     // attempt would make a later channel disagreement unattributable.
@@ -259,7 +259,7 @@ export class OfferCreationExecutionService implements IOfferCreationExecutionSer
 
   /**
    * Journal the rate this create actually wrote onto the channel (#2250,
-   * ADR-052 § 4).
+   * ADR-063 § 4).
    *
    * Two rules, both load-bearing.
    *

@@ -279,6 +279,24 @@ export interface RateLimitStatus {
   resolveConcurrency?: ResolveConcurrencyCeiling;
 }
 
+/**
+ * Catalog trust (#2258) — the declared master capability rung + deletion-
+ * reconcile recency for a ProductMaster connection. Mirrors the backend
+ * `MasterCatalogRungValues` union (`@openlinker/core/catalog-trust`).
+ */
+export type MasterCatalogRung = 'modified-since' | 'full-enumeration' | 'unknown';
+
+export interface CatalogTrust {
+  connectionId: string;
+  rung: MasterCatalogRung;
+  /** Deployment-wide delta scheduler-task enablement — a declared rung can be dormant. */
+  deltaPassEnabled: boolean;
+  /** ISO timestamp of the last COMPLETED reconcile cycle; null = never. */
+  lastReconcileCompletedAt: string | null;
+  /** A cycle started and has not completed — not "actively running". */
+  reconcileCycleOpen: boolean;
+}
+
 export interface ConnectionDiagnostics {
   connectionId: string;
   connectionName: string;

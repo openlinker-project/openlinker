@@ -49,7 +49,7 @@ export class ProductOrmEntity {
 
   /**
    * Neutral tax-rate code the ProductMaster stated for this product (#2054,
-   * ADR-052) - percent-as-string (`'23'`) or an exemption code (`'zw'`).
+   * ADR-063) - percent-as-string (`'23'`) or an exemption code (`'zw'`).
    * Populated by product sync, never by a person.
    *
    * Null carries TWO meanings, disambiguated by `taxRateReadAt`: null with a

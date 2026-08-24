@@ -88,7 +88,7 @@ export type {
 } from './domain/ports/capabilities/modified-product-lister.capability';
 export { isModifiedProductLister } from './domain/ports/capabilities/modified-product-lister.capability';
 
-// Neutral per-line tax rate (#2054, ADR-052). The vocabulary a ProductMaster
+// Neutral per-line tax rate (#2054, ADR-063). The vocabulary a ProductMaster
 // answers a tax question in, plus the shape OpenLinker stores that answer as.
 export type {
   InheritedTaxRate,
@@ -123,7 +123,7 @@ export type {
   TaxRateCoverage,
 } from './domain/types/tax-rate-coverage.types';
 
-// Append-only tax-rate provenance journal (#2250, ADR-052 § 4).
+// Append-only tax-rate provenance journal (#2250, ADR-063 § 4).
 export type {
   TaxRateJournalEntry,
   TaxRateJournalOrigin,

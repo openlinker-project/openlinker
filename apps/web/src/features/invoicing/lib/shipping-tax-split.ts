@@ -1,5 +1,5 @@
 /**
- * Shipping Tax Split - frontend mirror (#2254, ADR-052 § 5)
+ * Shipping Tax Split - frontend mirror (#2254, ADR-063 § 5)
  *
  * Hand-maintained copy of `splitShippingAcrossRates` in
  * `libs/core/src/sales-documents/domain/types/shipping-tax-split.types.ts`.

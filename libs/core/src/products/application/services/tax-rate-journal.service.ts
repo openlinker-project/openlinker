@@ -1,5 +1,5 @@
 /**
- * Tax-Rate Journal Service (#2250, ADR-052 § 4)
+ * Tax-Rate Journal Service (#2250, ADR-063 § 4)
  *
  * Owns the one rule that keeps the journal a record of CHANGES rather than a
  * log of reads.

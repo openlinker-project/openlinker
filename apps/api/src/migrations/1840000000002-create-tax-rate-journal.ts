@@ -1,5 +1,5 @@
 /**
- * Append-only tax-rate provenance journal (#2250, ADR-052 § 4).
+ * Append-only tax-rate provenance journal (#2250, ADR-063 § 4).
  *
  * One row per CHANGE in an observed rate, never one per read. A mutable
  * "source" field can only say how things stand now; it cannot answer when the

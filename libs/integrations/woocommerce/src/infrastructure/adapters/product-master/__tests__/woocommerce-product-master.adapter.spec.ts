@@ -829,7 +829,7 @@ describe('WooCommerceProductMasterAdapter', () => {
   // the *no-rate* state, which blocks documents and refuses publishes, so the
   // line between "the store answered" and "the read established nothing" is the
   // whole subject here.
-  describe('readProductTaxRate (#2054, ADR-052)', () => {
+  describe('readProductTaxRate (#2054, ADR-063)', () => {
     function mappingFor(externalId: string, entityType: string) {
       return {
         externalId,

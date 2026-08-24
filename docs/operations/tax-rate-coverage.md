@@ -1,6 +1,6 @@
 # Measuring tax-rate coverage before rollout
 
-Per-line tax rates ([ADR-052](../architecture/adrs/052-per-line-tax-rate-resolution-and-provenance.md))
+Per-line tax rates ([ADR-063](../architecture/adrs/063-per-line-tax-rate-resolution-and-provenance.md))
 hold a document when a line has no rate. That is the right behaviour and the wrong
 first day, if the catalogue has no rates in it: every order stops at once, and an
 operator reads an outage rather than a diagnosis.
@@ -98,7 +98,7 @@ issuance write-path guard both pass, the fiscal-registration gate passes, and
 the Allegro and Erli offer creates publish with the rate omitted. So deploying
 this epic changes nothing operationally until an operator decides it should.
 
-With it on, ADR-052 applies: a rate-less line holds the document, and a
+With it on, ADR-063 applies: a rate-less line holds the document, and a
 rate-less publish is refused with an error naming what to fix.
 
 ```bash

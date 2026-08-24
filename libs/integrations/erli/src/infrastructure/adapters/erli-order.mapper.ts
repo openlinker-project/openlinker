@@ -156,7 +156,7 @@ function derivePaymentStatus(status: ErliOrderStatus, cod: boolean): PaymentStat
  */
 function mapItem(item: ErliOrderItem): IncomingOrderItem {
   // #2249: Erli reports a REQUIRED per-line tax rate and OL used to discard it.
-  // It is the channel rung of the resolution chain (ADR-052 § 1) - consulted
+  // It is the channel rung of the resolution chain (ADR-063 § 1) - consulted
   // only when the shop does not know, but the only rate that exists at all for
   // a product that lives solely as an Erli offer.
   //

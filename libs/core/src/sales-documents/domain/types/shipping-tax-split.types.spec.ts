@@ -1,5 +1,5 @@
 /**
- * Shipping Tax Split Tests (#2248 / #2252, ADR-052 § 5)
+ * Shipping Tax Split Tests (#2248 / #2252, ADR-063 § 5)
  *
  * The property that matters is arithmetic: however the parts fall, they add
  * back up to the shipping the buyer actually paid. Everything else is about

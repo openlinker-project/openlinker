@@ -688,7 +688,7 @@ export class WooCommerceProductMasterAdapter
     return Number.isFinite(n) ? n : undefined;
   }
 
-  // ─── Tax rate (#2054, ADR-052) ─────────────────────────────────────────────
+  // ─── Tax rate (#2054, ADR-063) ─────────────────────────────────────────────
 
   /**
    * WooCommerce keys tax per variation as well as per product: a variation
@@ -720,7 +720,7 @@ export class WooCommerceProductMasterAdapter
    *   the operator has not given it a rate here, which they fix in WooCommerce.
    * - Several rows with different rates is `ambiguous`. WooCommerce would pick
    *   by priority, postcode and city at checkout; reproducing that here would
-   *   be OpenLinker computing tax, which ADR-052 forbids. Note that several
+   *   be OpenLinker computing tax, which ADR-063 forbids. Note that several
    *   rows agreeing on one rate is **not** ambiguous - the answer is the same
    *   whichever the shop picks.
    *

@@ -102,6 +102,12 @@ export class RateLimitStatusService implements IRateLimitStatusService {
    *   against an older `libs/core` satisfies the guard without implementing
    *   this method — hence the explicit `typeof` probe, mirroring ADR-046's
    *   description-format resolver.
+   *
+   * A fourth outcome is a defect rather than a configuration state and is
+   * logged at `warn`: `getStreamConcurrency()`'s whole contract is to report a
+   * number the adapter has already computed, so it throwing means the adapter
+   * is broken. Folding it into the `debug` line above would hide that behind
+   * the routine not-yet-credentialed case.
    */
   private async resolveConcurrencyCeiling(
     connectionId: string,
@@ -130,7 +136,14 @@ export class RateLimitStatusService implements IRateLimitStatusService {
       const streaming: Partial<EanCategoryMatcherStreaming> = adapter;
       if (typeof streaming.getStreamConcurrency !== 'function') return undefined;
 
-      return streaming.getStreamConcurrency();
+      try {
+        return streaming.getStreamConcurrency();
+      } catch (error) {
+        this.logger.warn(
+          `Adapter for connection ${connectionId} advertises EanCategoryMatcherStreaming but its getStreamConcurrency() threw: ${(error as Error).message}`
+        );
+        return undefined;
+      }
     } catch (error) {
       this.logger.debug(
         `No resolve-concurrency ceiling reported for connection ${connectionId}: ${(error as Error).message}`

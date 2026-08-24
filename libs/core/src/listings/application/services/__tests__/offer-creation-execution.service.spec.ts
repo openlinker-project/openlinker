@@ -831,7 +831,7 @@ describe('OfferCreationExecutionService', () => {
     });
   });
 
-  describe('tax-rate journal (#2250, ADR-052 § 4)', () => {
+  describe('tax-rate journal (#2250, ADR-063 § 4)', () => {
     const commandWithRate: CreateOfferCommand = { ...builtCommand, taxRate: '8' };
 
     it('records a written-by-us entry when the create carried a rate', async () => {
