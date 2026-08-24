@@ -64,6 +64,11 @@
       "require": "./dist/sales-documents/index.js",
       "default": "./dist/sales-documents/index.js"
     },
+    "./order-lifecycle": {
+      "types": "./dist/order-lifecycle/index.d.ts",
+      "require": "./dist/order-lifecycle/index.js",
+      "default": "./dist/order-lifecycle/index.js"
+    },
     "./orders": {
       "types": "./dist/orders/index.d.ts",
       "require": "./dist/orders/index.js",
