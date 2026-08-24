@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { selectDegradedConnections } from './ingestion-trust.lib';
+import { resolveEarliestOrderDate, selectDegradedConnections } from './ingestion-trust.lib';
 import type { ConnectionIngestionStatus, ConnectionIngestionTrust } from '../api/analytics-trust.types';
 
 function makeEntry(
@@ -57,5 +57,38 @@ describe('selectDegradedConnections', () => {
       first,
       second,
     ]);
+  });
+});
+
+describe('resolveEarliestOrderDate', () => {
+  it('should return null when nothing has ever ingested', () => {
+    const entries = [makeEntry('never-ingested', { earliestOrderDate: null })];
+
+    expect(resolveEarliestOrderDate(entries)).toBeNull();
+  });
+
+  it('should return the earliest date across every connection when unscoped', () => {
+    const entries = [
+      makeEntry('fresh', { connectionId: 'a', earliestOrderDate: '2026-07-30T10:59:51.000Z' }),
+      makeEntry('fresh', { connectionId: 'b', earliestOrderDate: '2026-06-22T10:37:39.849Z' }),
+      makeEntry('never-ingested', { connectionId: 'c', earliestOrderDate: null }),
+    ];
+
+    expect(resolveEarliestOrderDate(entries)).toBe('2026-06-22T10:37:39.849Z');
+  });
+
+  it('should scope to a single connection when sourceConnectionId is given', () => {
+    const entries = [
+      makeEntry('fresh', { connectionId: 'a', earliestOrderDate: '2026-07-30T10:59:51.000Z' }),
+      makeEntry('fresh', { connectionId: 'b', earliestOrderDate: '2026-06-22T10:37:39.849Z' }),
+    ];
+
+    expect(resolveEarliestOrderDate(entries, 'a')).toBe('2026-07-30T10:59:51.000Z');
+  });
+
+  it('should return null when sourceConnectionId matches no connection', () => {
+    const entries = [makeEntry('fresh', { connectionId: 'a' })];
+
+    expect(resolveEarliestOrderDate(entries, 'does-not-exist')).toBeNull();
   });
 });

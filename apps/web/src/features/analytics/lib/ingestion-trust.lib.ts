@@ -30,3 +30,25 @@ export function selectDegradedConnections(
 ): ConnectionIngestionTrust[] {
   return entries.filter((entry) => DEGRADED_STATUSES.has(entry.status));
 }
+
+/**
+ * The earliest order date across the given connections — scoped to one
+ * connection when `sourceConnectionId` is set, mirroring the same filter
+ * `GET /analytics/sales` itself respects, so "how far back can we compare"
+ * never disagrees with "which connections the figures actually cover".
+ * `null` when nothing has ever been ingested in scope (or a specific
+ * `sourceConnectionId` matches no connection / has never ingested).
+ */
+export function resolveEarliestOrderDate(
+  connections: ConnectionIngestionTrust[],
+  sourceConnectionId?: string,
+): string | null {
+  const scoped = sourceConnectionId
+    ? connections.filter((c) => c.connectionId === sourceConnectionId)
+    : connections;
+  const dates = scoped
+    .map((c) => c.earliestOrderDate)
+    .filter((d): d is string => d !== null);
+  if (dates.length === 0) return null;
+  return dates.reduce((earliest, date) => (date < earliest ? date : earliest));
+}

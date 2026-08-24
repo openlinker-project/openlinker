@@ -138,8 +138,15 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
     reportingCurrency: string
   ): Promise<{ rows: ProductRankingRow[]; total: number }> {
     const stampedNonZero = 'rec."reportingCurrency" = :reportingCurrency AND rec."totalAmount" <> 0';
+    // Parenthesized even though it's the only clause needing it today —
+    // this constant is later spliced into `${unconvertedOrZeroTotal} AND
+    // rec."currency" IS NULL`, and SQL's AND-before-OR precedence silently
+    // turned that into `X OR (Y AND Z)` instead of the intended `(X OR Y)
+    // AND Z` when this was a bare, unparenthesized OR (#2172 review — this
+    // is what actually broke `unconverted_currency`, always falling to
+    // NULL whenever any row's reportingCurrency mismatched).
     const unconvertedOrZeroTotal =
-      'rec."reportingCurrency" IS DISTINCT FROM :reportingCurrency OR rec."totalAmount" = 0';
+      '(rec."reportingCurrency" IS DISTINCT FROM :reportingCurrency OR rec."totalAmount" = 0)';
 
     const rankingQb = this.repository
       .createQueryBuilder('li')
@@ -236,8 +243,15 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
     }
 
     const stampedNonZero = 'rec."reportingCurrency" = :reportingCurrency AND rec."totalAmount" <> 0';
+    // Parenthesized even though it's the only clause needing it today —
+    // this constant is later spliced into `${unconvertedOrZeroTotal} AND
+    // rec."currency" IS NULL`, and SQL's AND-before-OR precedence silently
+    // turned that into `X OR (Y AND Z)` instead of the intended `(X OR Y)
+    // AND Z` when this was a bare, unparenthesized OR (#2172 review — this
+    // is what actually broke `unconverted_currency`, always falling to
+    // NULL whenever any row's reportingCurrency mismatched).
     const unconvertedOrZeroTotal =
-      'rec."reportingCurrency" IS DISTINCT FROM :reportingCurrency OR rec."totalAmount" = 0';
+      '(rec."reportingCurrency" IS DISTINCT FROM :reportingCurrency OR rec."totalAmount" = 0)';
 
     const qb = this.repository
       .createQueryBuilder('li')
