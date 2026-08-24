@@ -331,6 +331,35 @@ describe('toRegisterTransactionCommand', () => {
     expect(cmd.recipient).toEqual({ email: 'buyer@example.test', phone: null });
   });
 
+  describe("the order's tax-rate era (#2260 review)", () => {
+    it('should carry a pre-rollout marker onto the command', () => {
+      // The write-path guard reads it; without it a pre-rollout order passes the
+      // era-aware auto-issue gate and is then refused by the era-blind one.
+      const cmd = toRegisterTransactionCommand({
+        order: order(),
+        connectionId: 'conn-1',
+        idempotencyKey: 'k',
+        taxRateEra: 'pre-rollout',
+      });
+      expect(cmd.taxRateEra).toBe('pre-rollout');
+    });
+
+    it('should leave the field absent when the caller has no marker', () => {
+      expect(
+        toRegisterTransactionCommand({ order: order(), connectionId: 'conn-1', idempotencyKey: 'k' })
+          .taxRateEra,
+      ).toBeUndefined();
+      expect(
+        toRegisterTransactionCommand({
+          order: order(),
+          connectionId: 'conn-1',
+          idempotencyKey: 'k',
+          taxRateEra: null,
+        }).taxRateEra,
+      ).toBeUndefined();
+    });
+  });
+
   it('should omit the delivery target entirely under a hash-only PII configuration', () => {
     // Not an error: an adapter whose provider returns the artefact inline needs
     // no target at all.

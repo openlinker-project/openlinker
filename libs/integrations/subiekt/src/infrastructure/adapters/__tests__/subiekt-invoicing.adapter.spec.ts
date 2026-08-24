@@ -14,6 +14,7 @@ import {
   isBankAccountsReader,
   isCorrectionIssuer,
   isRegulatoryStatusReader,
+  MissingTaxRateException,
 } from '@openlinker/core/invoicing';
 import type {
   BuyerAddress,
@@ -102,6 +103,48 @@ function makeConfiguredAdapter(
 }
 
 describe('SubiektInvoicingAdapter', () => {
+  describe('the per-line tax-rate era reaches the line mapper (#2260 review)', () => {
+    const withStrict = async (run: () => Promise<void>): Promise<void> => {
+      const previous = process.env['OL_TAX_RATE_STRICT_ENABLED'];
+      process.env['OL_TAX_RATE_STRICT_ENABLED'] = 'true';
+      try {
+        await run();
+      } finally {
+        if (previous === undefined) delete process.env['OL_TAX_RATE_STRICT_ENABLED'];
+        else process.env['OL_TAX_RATE_STRICT_ENABLED'] = previous;
+      }
+    };
+
+    it('issues a rate-less PRE-ROLLOUT order, keeping the documented default', async () => {
+      await withStrict(async () => {
+        const { adapter, bridge } = makeAdapter();
+        const spy = jest.spyOn(bridge, 'issueInvoice');
+
+        await adapter.issueInvoice(
+          command({
+            lines: [{ name: 'Widget', quantity: 1, unitPriceGross: 123.0, taxRate: '' }],
+            taxRateEra: 'pre-rollout',
+          }),
+        );
+
+        expect(spy.mock.calls[0]?.[0].lines[0]?.stawkaVAT).toBe('23');
+      });
+    });
+
+    it('refuses the same rate-less order when it is NOT pre-rollout', async () => {
+      await withStrict(async () => {
+        const { adapter } = makeAdapter();
+        await expect(
+          adapter.issueInvoice(
+            command({
+              lines: [{ name: 'Widget', quantity: 1, unitPriceGross: 123.0, taxRate: '' }],
+            }),
+          ),
+        ).rejects.toBeInstanceOf(MissingTaxRateException);
+      });
+    });
+  });
+
   describe('issueInvoice', () => {
     it('builds a correct transient issued InvoiceRecord on success', async () => {
       const { adapter } = makeAdapter();

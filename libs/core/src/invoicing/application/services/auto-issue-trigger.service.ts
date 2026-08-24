@@ -915,6 +915,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
         idempotencyKey,
         sourceConnectionId,
         sourceEventId,
+        taxRateEra,
       );
 
       await this.syncJobs.schedule({
@@ -1188,6 +1189,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     idempotencyKey: string,
     sourceConnectionId: string,
     sourceEventId?: string,
+    taxRateEra?: string | null,
   ): FiscalizationRegisterPayloadV1 {
     // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires -- lazy require needed to break a CommonJS barrel-load cycle with `@openlinker/core/fiscalization` (see the doc comment above)
     const { toRegisterTransactionCommand } = require('@openlinker/core/fiscalization') as {
@@ -1198,6 +1200,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
       connectionId: connection.id,
       idempotencyKey,
       shippingLineName: this.readShippingLineName(connection),
+      taxRateEra,
     });
 
     const payload: FiscalizationRegisterPayloadV1 = {
@@ -1221,6 +1224,13 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     }
     if (sourceEventId !== undefined) {
       payload.sourceEventId = sourceEventId;
+    }
+    // #2260 review: the gate above is era-aware, so the marker HAS to survive
+    // the hop or the write gate in `FiscalRegistrationService` re-decides the
+    // question without it - passing the order here and refusing it there, with
+    // no persisted reason for the refusal.
+    if (command.taxRateEra !== undefined && command.taxRateEra !== null) {
+      payload.taxRateEra = command.taxRateEra;
     }
 
     return payload;

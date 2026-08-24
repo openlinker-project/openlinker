@@ -23,10 +23,15 @@
  * day one. See docs/operations/tax-rate-coverage.md for the order the two steps
  * go in.
  *
- * Under strict enforcement core refuses a rate-less command before any adapter
- * runs, so this guard is defence in depth. The Subiekt bridge would reject the
- * line anyway ("StawkaVAT jest wymagana"); the difference is that the failure
- * names the product rather than a bridge field. The bridge parses Polish rate
+ * ENFORCEMENT IS PER ORDER, NOT PER DEPLOYMENT (#2260 review). The switch is
+ * only half the question: a pre-rollout order is exempt, and core's own guard
+ * lets it through. So this mapper takes the order's era and resolves both halves
+ * through `isTaxRateEnforced`, exactly as the inFakt and KSeF adapters do -
+ * reading the switch alone refused a pre-rollout order on this route while the
+ * same order issued on the other two. Past that, core has already refused any
+ * command this guard would refuse, so it is defence in depth. The Subiekt bridge
+ * would reject the line anyway ("StawkaVAT jest wymagana"); the difference is
+ * that the failure names the product rather than a bridge field. The bridge parses Polish rate
  * symbols ("23","8","5","0","zw","np") in percent-as-string notation (#2247),
  * and a rate the source supplied passes through verbatim.
  *
@@ -34,7 +39,7 @@
  */
 import type { CorrectionLine, InvoiceLine } from '@openlinker/core/invoicing';
 import { MissingTaxRateException, assertPercentTaxRateNotation } from '@openlinker/core/invoicing';
-import { isTaxRateStrictEnabled } from '@openlinker/core/sales-documents';
+import { isTaxRateEnforced } from '@openlinker/core/sales-documents';
 
 /**
  * The Polish standard rate, and the value this mapper substituted for every
@@ -52,14 +57,14 @@ import type { BridgeKorektaLine, BridgeLine } from '../../bridge/subiekt-bridge.
  * letting `'0.23'` reach Subiekt, where it is neither a known symbol nor a rate
  * anyone declared.
  *
- * An empty code raises under strict enforcement (#2257) and otherwise resolves
- * to {@link DEFAULT_PL_VAT_RATE}, which is what every document issued through
- * this bridge before #2245 carried.
+ * An empty code raises when enforcement applies to this order (#2257) and
+ * otherwise resolves to {@link DEFAULT_PL_VAT_RATE}, which is what every
+ * document issued through this bridge before #2245 carried.
  */
-function toStawkaVat(taxRate: string, lineName: string): string {
+function toStawkaVat(taxRate: string, lineName: string, enforced: boolean): string {
   const code = assertPercentTaxRateNotation(taxRate);
   if (code.length === 0) {
-    if (!isTaxRateStrictEnabled()) {
+    if (!enforced) {
       return DEFAULT_PL_VAT_RATE;
     }
     throw new MissingTaxRateException(lineName, {
@@ -71,12 +76,21 @@ function toStawkaVat(taxRate: string, lineName: string): string {
   return code;
 }
 
-export function toBridgeLines(lines: InvoiceLine[]): BridgeLine[] {
+/**
+ * Map the neutral lines onto the bridge shape.
+ *
+ * `taxRateEra` is the order's own marker (`IssueInvoiceCommand.taxRateEra`) and
+ * is what makes this route agree with inFakt and KSeF for the same order: it is
+ * resolved ONCE here, so a pre-rollout order keeps the pre-#2245 default even
+ * with the switch on. Omitting it means "not pre-rollout", the ordinary case.
+ */
+export function toBridgeLines(lines: InvoiceLine[], taxRateEra?: string | null): BridgeLine[] {
+  const enforced = isTaxRateEnforced(taxRateEra);
   return lines.map((line) => ({
     name: line.name,
     ilosc: line.quantity,
     cenaBrutto: line.unitPriceGross,
-    stawkaVAT: toStawkaVat(line.taxRate, line.name),
+    stawkaVAT: toStawkaVat(line.taxRate, line.name, enforced),
   }));
 }
 

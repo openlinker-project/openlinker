@@ -583,10 +583,12 @@ export class OfferBuilderService implements IOfferBuilderService {
   /**
    * The catalogue's rate for this variant (#2249).
    *
-   * Best-effort: a read failure degrades to "no rate", which the adapter then
-   * refuses on - the same outcome as a genuinely rate-less product, and a
-   * safer one than publishing an offer whose tax nobody stated. The gate on the
-   * invoicing side is what makes that visible.
+   * Best-effort: a read failure degrades to "no rate" - the same outcome as a
+   * genuinely rate-less product, so the two are handled identically downstream.
+   * What happens then depends on `OL_TAX_RATE_STRICT_ENABLED`: with it off (the
+   * default) the adapter warns and publishes with the rate omitted, exactly as
+   * before this epic; with it on the adapter refuses. The gate on the invoicing
+   * side is what makes a rate-less line visible either way.
    */
   private async resolveTaxRate(
     productId: string,

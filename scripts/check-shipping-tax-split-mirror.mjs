@@ -5,8 +5,10 @@
  * Lint-time invariant for the hand-maintained frontend mirror of the shipping
  * tax split (#2248 / #2252 / #2254, ADR-063 § 5).
  *
- * Rule. `splitShippingAcrossRates` and its `roundToMinorUnits` /
- * `minorUnitExponentFor` helpers in
+ * Rule. `splitShippingAcrossRates`, its `roundToMinorUnits` /
+ * `minorUnitExponentFor` helpers, and the four module-level constants those
+ * helpers read (`DEFAULT_MINOR_UNIT_EXPONENT` plus the zero-, three- and
+ * four-decimal currency sets) in
  *   libs/core/src/sales-documents/domain/types/shipping-tax-split.types.ts   (backend, authoritative)
  * and
  *   apps/web/src/features/invoicing/lib/shipping-tax-split.ts                (frontend mirror)
@@ -28,11 +30,16 @@
  * `export` on the mirror side is ignored (core keeps `roundToMinorUnits` private;
  * the mirror keeps it module-private too, but either is accepted).
  *
- * SCOPE, so the wrong guard is not trusted: this script compares the two
- * function implementations only. The `ShippingSplitLine` / `ShippingSplitPart`
- * interfaces are NOT compared - a field added to one side only is caught by the
- * call sites, which type-check against their own declarations - and nothing
- * here asserts that the panel actually calls the mirror.
+ * SCOPE, so the wrong guard is not trusted: this script compares the three
+ * function implementations and the four currency-table constants they read.
+ * Covering the constants is not optional decoration - the functions are pure
+ * lookups over them, so dropping `'JPY'` from one side's zero-decimal set, or
+ * changing one side's default exponent, changes the answer while leaving every
+ * compared function byte-identical. That was the hole this scope note used to
+ * paper over. The `ShippingSplitLine` / `ShippingSplitPart` interfaces are still
+ * NOT compared - a field added to one side only is caught by the call sites,
+ * which type-check against their own declarations - and nothing here asserts
+ * that the panel actually calls the mirror.
  *
  * Both files are parsed TEXTUALLY (no TypeScript import, no transpile) so this
  * stays a zero-dependency `check:invariants` step like its siblings.
@@ -69,6 +76,18 @@ const FRONTEND_FILE = join(
 
 /** The functions this script keeps identical. */
 const MIRRORED_FUNCTIONS = ['splitShippingAcrossRates', 'roundToMinorUnits', 'minorUnitExponentFor'];
+
+/**
+ * The module-level constants those functions read. A currency missing from one
+ * side's table, or a different default exponent, silently changes the split
+ * without touching a single compared function body.
+ */
+const MIRRORED_CONSTANTS = [
+  'DEFAULT_MINOR_UNIT_EXPONENT',
+  'ZERO_DECIMAL_CURRENCIES',
+  'THREE_DECIMAL_CURRENCIES',
+  'FOUR_DECIMAL_CURRENCIES',
+];
 
 const DOCS_REF = 'docs/architecture/adrs/063-per-line-tax-rate-resolution-and-provenance.md';
 
@@ -209,6 +228,56 @@ export function extractFunction(content, name) {
   return { line, source };
 }
 
+/**
+ * Extract one module-level `const` declaration's full source, with the 1-based
+ * line it starts on. Scanning runs over comment-blanked text and skips string
+ * literals, so a `;` in a comment or inside a quoted value cannot end the
+ * declaration early; bracket depth is tracked so a multi-line `new Set([...])`
+ * is captured whole. Returns `null` when absent.
+ */
+export function extractConstant(content, name) {
+  const declRe = new RegExp(`(?:export\\s+)?const\\s+${name}\\b`);
+  const declMatch = declRe.exec(content);
+  if (!declMatch) return null;
+
+  const blanked = stripCommentsPreservingLength(content);
+  let depth = 0;
+  let end = -1;
+  let i = declMatch.index;
+  while (i < blanked.length) {
+    const ch = blanked[i];
+    if (ch === "'" || ch === '"' || ch === '`') {
+      const quote = ch;
+      i += 1;
+      while (i < blanked.length) {
+        if (blanked[i] === '\\') {
+          i += 2;
+          continue;
+        }
+        if (blanked[i] === quote) {
+          i += 1;
+          break;
+        }
+        i += 1;
+      }
+      continue;
+    }
+    if (ch === '(' || ch === '[' || ch === '{') depth += 1;
+    else if (ch === ')' || ch === ']' || ch === '}') depth -= 1;
+    else if (ch === ';' && depth === 0) {
+      end = i;
+      break;
+    }
+    i += 1;
+  }
+  if (end === -1) return null;
+
+  // `export` is dropped: the two files may legitimately differ on visibility.
+  const source = content.slice(declMatch.index, end + 1).replace(/^export\s+/, '');
+  const line = content.slice(0, declMatch.index).split('\n').length;
+  return { line, source };
+}
+
 /** Blank comments while preserving total length, so offsets stay valid. */
 function stripCommentsPreservingLength(source) {
   let out = '';
@@ -266,21 +335,26 @@ async function main() {
   const fatal = [];
   const drifts = [];
 
-  for (const name of MIRRORED_FUNCTIONS) {
-    const backend = extractFunction(backendContent, name);
-    const frontend = extractFunction(frontendContent, name);
+  const targets = [
+    ...MIRRORED_FUNCTIONS.map((name) => ({ name, kind: 'function', extract: extractFunction })),
+    ...MIRRORED_CONSTANTS.map((name) => ({ name, kind: 'const', extract: extractConstant })),
+  ];
+
+  for (const { name, kind, extract } of targets) {
+    const backend = extract(backendContent, name);
+    const frontend = extract(frontendContent, name);
 
     if (!backend) {
-      fatal.push(`${BACKEND_FILE}: no 'function ${name}(...)' found`);
+      fatal.push(`${BACKEND_FILE}: no '${kind} ${name}' found`);
       continue;
     }
     if (!frontend) {
-      fatal.push(`${FRONTEND_FILE}: no 'function ${name}(...)' found`);
+      fatal.push(`${FRONTEND_FILE}: no '${kind} ${name}' found`);
       continue;
     }
 
     if (normalizeCode(backend.source) !== normalizeCode(frontend.source)) {
-      drifts.push({ name, backend, frontend });
+      drifts.push({ name, kind, backend, frontend });
     }
   }
 
@@ -293,19 +367,20 @@ async function main() {
 
   if (drifts.length === 0) {
     console.log(
-      `✓ check-shipping-tax-split-mirror: ${MIRRORED_FUNCTIONS.length} function(s) identical in ` +
+      `✓ check-shipping-tax-split-mirror: ${MIRRORED_FUNCTIONS.length} function(s) and ` +
+        `${MIRRORED_CONSTANTS.length} constant(s) identical in ` +
         `${BACKEND_FILE} and ${FRONTEND_FILE}.`
     );
     process.exit(0);
   }
 
-  console.error(`✗ check-shipping-tax-split-mirror: ${drifts.length} drifted function(s).\n`);
-  for (const { name, backend, frontend } of drifts) {
-    console.error(`  ${name}`);
+  console.error(`✗ check-shipping-tax-split-mirror: ${drifts.length} drifted declaration(s).\n`);
+  for (const { name, kind, backend, frontend } of drifts) {
+    console.error(`  ${kind} ${name}`);
     console.error(`    ${BACKEND_FILE}:${backend.line}  (authoritative)`);
     console.error(`    ${FRONTEND_FILE}:${frontend.line}  (hand-maintained mirror)`);
     console.error(
-      `      rule: the two implementations must be the same code - edit core first, then paste ` +
+      `      rule: the two declarations must be the same code - edit core first, then paste ` +
         `into the mirror. Comments and formatting are free; the code is not.`
     );
   }
@@ -377,13 +452,65 @@ function selfCheck() {
   );
   expect('a // inside a string is not a comment', stripComments("const a = 'http://x';").trim(), "const a = 'http://x';");
 
+  // The constant extractor: a multi-line Set, and a plain scalar.
+  const coreConsts = [
+    'const DEFAULT_X = 2;',
+    '',
+    '/** doc with a stray ; semicolon */',
+    'export const TABLE = new Set([',
+    "  'JPY', // no minor unit",
+    "  'ISK',",
+    ']);',
+    '',
+    "const OTHER = new Set(['CLF']);",
+  ].join('\n');
+
+  const table = extractConstant(coreConsts, 'TABLE');
+  expect('const: captures the whole multi-line Set', table?.source.endsWith(']);'), true);
+  expect('const: drops the export keyword', table?.source.startsWith('const TABLE'), true);
+  expect('const: reports the declaration line', table?.line, 4);
+  expect('const: stops at its own semicolon', table?.source.includes('OTHER'), false);
+  expect('const: a scalar is captured', extractConstant(coreConsts, 'DEFAULT_X')?.source, 'const DEFAULT_X = 2;');
+  expect('const: absent -> null', extractConstant(coreConsts, 'NOPE'), null);
+
+  // Reformatted + re-commented copy of the same table compares equal.
+  const mirrorConsts = [
+    'const TABLE = new Set([',
+    "  'JPY',",
+    "  /* reworded */ 'ISK',",
+    ']);',
+  ].join('\n');
+  expect(
+    'const: formatting + comments are free',
+    normalizeCode(extractConstant(coreConsts, 'TABLE').source) ===
+      normalizeCode(extractConstant(mirrorConsts, 'TABLE').source),
+    true
+  );
+
+  // A dropped currency drifts.
+  const droppedCurrency = mirrorConsts.replace("  'JPY',\n", '');
+  expect(
+    'const: a dropped member drifts',
+    normalizeCode(extractConstant(coreConsts, 'TABLE').source) ===
+      normalizeCode(extractConstant(droppedCurrency, 'TABLE').source),
+    false
+  );
+
+  // A changed scalar drifts.
+  expect(
+    'const: a changed scalar drifts',
+    normalizeCode(extractConstant(coreConsts, 'DEFAULT_X').source) ===
+      normalizeCode(extractConstant('const DEFAULT_X = 0;', 'DEFAULT_X').source),
+    false
+  );
+
   if (failures.length > 0) {
     console.error('✗ check-shipping-tax-split-mirror --self-check failed:\n');
     for (const f of failures) console.error(f);
     console.error('');
     process.exit(1);
   }
-  console.log('✓ check-shipping-tax-split-mirror --self-check: extractor + normalizer behave.');
+  console.log('✓ check-shipping-tax-split-mirror --self-check: extractors + normalizer behave.');
   process.exit(0);
 }
 

@@ -575,6 +575,62 @@ describe('AutoIssueTriggerService', () => {
       expect('buyer' in payload).toBe(false);
     });
 
+    it("carries the order's tax-rate era into the payload (#2260 review)", async () => {
+      // The gate is era-aware; the write gate in `FiscalRegistrationService` is
+      // too. The marker has to survive the hop or the two disagree, and the
+      // refusal lands with no persisted reason behind it.
+      connectionPort.list.mockResolvedValue([makeFiscalConnection('auto-on-paid')]);
+      await service.onOrderTransition(
+        makeOrder({ paymentStatus: 'paid' }),
+        'src-1',
+        undefined,
+        'pre-rollout',
+      );
+      const payload = syncJobs.schedule.mock.calls[0][0].payload;
+      expect(payload.taxRateEra).toBe('pre-rollout');
+    });
+
+    it('omits the era from the payload for an ordinary order (#2260 review)', async () => {
+      connectionPort.list.mockResolvedValue([makeFiscalConnection('auto-on-paid')]);
+      await service.onOrderTransition(makeOrder({ paymentStatus: 'paid' }), 'src-1');
+      const payload = syncJobs.schedule.mock.calls[0][0].payload;
+      expect('taxRateEra' in payload).toBe(false);
+    });
+
+    it('enqueues a rate-less PRE-ROLLOUT order with the switch ON (#2260 review)', async () => {
+      // Both gates exempt it, so the job is enqueued and the registration goes
+      // through exactly as it did before the epic.
+      const previous = process.env['OL_TAX_RATE_STRICT_ENABLED'];
+      process.env['OL_TAX_RATE_STRICT_ENABLED'] = 'true';
+      try {
+        connectionPort.list.mockResolvedValue([makeFiscalConnection('auto-on-paid')]);
+
+        const outcome = await service.onOrderTransition(
+          makeOrder({
+            paymentStatus: 'paid',
+            items: [{ id: 'i1', productId: 'p1', quantity: 1, price: 10, name: 'Widget' }],
+            totals: {
+              subtotal: 10,
+              tax: 0,
+              shipping: 0,
+              total: 10,
+              currency: 'PLN',
+              taxTreatment: 'inclusive',
+            },
+          }),
+          'src-1',
+          undefined,
+          'pre-rollout',
+        );
+
+        expect(outcome).toEqual({ kind: 'none' });
+        expect(syncJobs.schedule).toHaveBeenCalledTimes(1);
+      } finally {
+        if (previous === undefined) delete process.env['OL_TAX_RATE_STRICT_ENABLED'];
+        else process.env['OL_TAX_RATE_STRICT_ENABLED'] = previous;
+      }
+    });
+
     it('does NOT call the Invoicing capability-adapter check for a fiscal-receipt candidate', async () => {
       connectionPort.list.mockResolvedValue([makeFiscalConnection('auto-on-paid')]);
       await service.onOrderTransition(makeOrder({ paymentStatus: 'paid' }), 'src-1');

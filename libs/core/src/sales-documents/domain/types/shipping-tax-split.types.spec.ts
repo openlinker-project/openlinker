@@ -7,7 +7,7 @@
  *
  * @module libs/core/src/sales-documents/domain/types
  */
-import { splitShippingAcrossRates } from './shipping-tax-split.types';
+import { minorUnitExponentFor, splitShippingAcrossRates } from './shipping-tax-split.types';
 import type { ShippingSplitLine } from './shipping-tax-split.types';
 
 function line(taxRate: string | null, gross: number): ShippingSplitLine {
@@ -110,5 +110,42 @@ describe('splitShippingAcrossRates', () => {
       expect(parts?.every((p) => p.amount !== 0)).toBe(true);
       expect(sum(parts!)).toBe(0.01);
     });
+  });
+});
+
+describe('minorUnitExponentFor', () => {
+  it('should report zero decimals for a zero-decimal currency', () => {
+    expect(minorUnitExponentFor('JPY')).toBe(0);
+  });
+
+  it('should report three decimals for a three-decimal currency', () => {
+    expect(minorUnitExponentFor('KWD')).toBe(3);
+  });
+
+  it('should report four decimals for a four-decimal unit of account', () => {
+    expect(minorUnitExponentFor('CLF')).toBe(4);
+  });
+
+  it('should report two decimals for an ordinary currency', () => {
+    expect(minorUnitExponentFor('PLN')).toBe(2);
+  });
+
+  it('should fall back to two decimals for an unrecognised code', () => {
+    // Degrading to today's behaviour beats a split that loses the fraction.
+    expect(minorUnitExponentFor('ZZZ')).toBe(2);
+  });
+
+  it('should accept a lowercase code', () => {
+    expect(minorUnitExponentFor('jpy')).toBe(0);
+  });
+
+  it('should accept an untrimmed code', () => {
+    expect(minorUnitExponentFor('  kwd \n')).toBe(3);
+  });
+
+  it('should fall back to two decimals when the currency is absent', () => {
+    expect(minorUnitExponentFor(null)).toBe(2);
+    expect(minorUnitExponentFor(undefined)).toBe(2);
+    expect(minorUnitExponentFor('')).toBe(2);
   });
 });

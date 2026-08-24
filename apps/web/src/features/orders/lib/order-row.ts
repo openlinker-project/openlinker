@@ -235,7 +235,12 @@ const BADGE_BY_REASON = {
   'missing-tax-rate': {
     label: 'No tax rate',
     tone: 'error',
-    hint: 'A product on this order has no tax rate, so no document can state the tax charged.',
+    // Subject-neutral on purpose (#2260 review): the gate blocks on a rate-less
+    // product line AND on a delivery charge that cannot be attributed to any
+    // rate, and a row carries no line data to tell the two apart. Naming a
+    // product here was false for the second shape; the panel, which does hold
+    // the lines, names the subject.
+    hint: 'Something on this order has no tax rate, so no document can state the tax charged.',
     keepIssueAction: false,
   },
   // Declared but never written today, and it stays that way: a shop-versus-channel
