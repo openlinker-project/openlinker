@@ -19,6 +19,7 @@ import {
   BadRequestException,
   UnauthorizedException,
   NotFoundException,
+  ServiceUnavailableException,
   PayloadTooLargeException,
   VERSION_NEUTRAL,
 } from '@nestjs/common';
@@ -30,6 +31,7 @@ import { RequestWithRawBody } from './middleware/raw-body.middleware';
 import { WebhookAuthenticationException } from '../application/errors/webhook-authentication.exception';
 import { WebhookReplayException } from '../application/errors/webhook-replay.exception';
 import { WebhookDecodeException } from '../application/errors/webhook-decode.exception';
+import { WebhookRoutingUnavailableException } from '../application/errors/webhook-routing-unavailable.exception';
 import { Logger } from '@openlinker/shared/logging';
 
 @Public()
@@ -69,6 +71,11 @@ export class WebhookController {
   @ApiResponse({ status: 401, description: 'Invalid signature or timestamp out of window' })
   @ApiResponse({ status: 404, description: 'Connection not found or disabled' })
   @ApiResponse({ status: 413, description: 'Request payload too large' })
+  @ApiResponse({
+    status: 503,
+    description:
+      'Routing temporarily unavailable (e.g. the connection could not be read). The delivery was NOT recorded — retry it.',
+  })
   async receiveWebhook(
     @Param('provider') provider: string,
     @Param('connectionId') connectionId: string,
@@ -146,6 +153,22 @@ export class WebhookController {
           error.message,
         );
         throw new UnauthorizedException(error.message);
+      }
+
+      // Transient routing failure (#2280): 503, so the source retries. This
+      // MUST precede the legacy message matcher below — an inner
+      // `AdapterNotFoundException` reads "Adapter not found: …", which that
+      // matcher would turn into a 404, and a marketplace commonly answers a
+      // 404 by tearing the webhook subscription down.
+      if (error instanceof WebhookRoutingUnavailableException) {
+        // Log the CAUSE's stack: this wrapper's own stack starts at the
+        // routing service and never shows where the failure originated.
+        const cause = error.cause;
+        this.logger.error(
+          `Webhook routing unavailable (asking the source to retry): provider=${provider}, connectionId=${connectionId}`,
+          cause instanceof Error ? (cause.stack ?? cause.message) : error.stack,
+        );
+        throw new ServiceUnavailableException(error.message);
       }
 
       if (error instanceof Error) {

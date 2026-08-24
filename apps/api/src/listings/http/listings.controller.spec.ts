@@ -115,6 +115,14 @@ describe('ListingsController', () => {
       publicationStatus: 'inactive',
       lifecycle: 'Invalid',
       validationMessages: ['Brak parametru: Marka'],
+      validationProblems: [
+        {
+          code: 'PARAMETER_REQUIRED',
+          summary: 'Missing parameter: Marka',
+          message: 'Brak parametru: Marka',
+          scope: 'offer' as const,
+        },
+      ],
       lastStatusSyncedAt: new Date('2026-01-02T00:00:00Z'),
     },
     commercial: {
@@ -478,6 +486,7 @@ describe('ListingsController', () => {
               publicationStatus: null,
               lifecycle: 'Unsynced',
               validationMessages: [],
+              validationProblems: [],
               lastStatusSyncedAt: null,
             },
             commercial: null,
@@ -501,6 +510,7 @@ describe('ListingsController', () => {
               publicationStatus: null,
               lifecycle: 'Unsynced',
               validationMessages: [],
+              validationProblems: [],
               lastStatusSyncedAt: null,
             },
           },
@@ -515,6 +525,7 @@ describe('ListingsController', () => {
         publicationStatus: null,
         lifecycle: 'Unsynced',
         validationMessages: [],
+        validationProblems: [],
         lastStatusSyncedAt: null,
       });
     });
@@ -1929,6 +1940,7 @@ describe('ListingsController', () => {
           connectionId: 'conn-1',
           externalOfferId: '7781896308',
           internalVariantId: 'ol_variant_1',
+          validationProblems: [],
           publicationStatus: 'active',
           validationMessages: ['note'],
           lastStatusSyncedAt: syncedAt,
@@ -1961,6 +1973,7 @@ describe('ListingsController', () => {
           internalVariantId: 'ol_variant_1',
           publicationStatus: null,
           validationMessages: [],
+          validationProblems: [],
           lastStatusSyncedAt: null,
         },
       ]);

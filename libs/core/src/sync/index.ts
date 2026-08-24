@@ -63,6 +63,8 @@ export {
   JobOutcomeReasonValues,
   BULK_RETRY_MAX_BATCH_SIZE,
 } from './domain/types/sync-job.types';
+export type { SyncJobLane } from './domain/types/sync-job-lane.types';
+export { SyncJobLaneValues, resolveJobScope } from './domain/types/sync-job-lane.types';
 export {
   MarketplaceOrdersPollPayloadV1,
   MarketplaceOrderSyncPayloadV1,
@@ -113,6 +115,7 @@ export type { RegulatoryStatusReconcilePayloadV1 } from './domain/types/invoicin
 export type { OfflineResubmitPayloadV1 } from './domain/types/invoicing-job-payloads.types';
 export type { PendingRecoverySweepPayloadV1 } from './domain/types/invoicing-job-payloads.types';
 export type { PaymentStatusRefreshByExternalIdPayloadV1 } from './domain/types/invoicing-job-payloads.types';
+export type { FiscalizationRegisterPayloadV1 } from './domain/types/fiscalization-job-payloads.types';
 
 // Exceptions
 export { SyncJobExecutionError } from './domain/exceptions/sync-job-execution.error';
@@ -128,6 +131,16 @@ export { SchedulerTaskRegistryService } from './infrastructure/adapters/schedule
 // Scheduler task contract (consumed by integration modules to contribute cron tasks)
 export type { SchedulerTaskConfig } from './domain/types/scheduler-task.types';
 
+// Master sweep cursor-key vocabulary (#2258) — value exports: the builders are
+// runtime functions called by the worker sweeps (writers) and catalog-trust
+// (reader). Single source of truth for the `connection_cursors` key formats.
+export type { MasterSweepKind } from './domain/types/master-sweep-cursor.types';
+export {
+  MasterSweepKindValues,
+  masterSweepCursorKey,
+  masterSweepCompletedAtCursorKey,
+} from './domain/types/master-sweep-cursor.types';
+
 // Application Services (interfaces)
 export type { ISyncJobRetryService } from './application/services/sync-job-retry.service.interface';
 export type { ISyncJobBulkRetryService } from './application/services/sync-job-bulk-retry.service.interface';
@@ -140,7 +153,10 @@ export type { ISyncCursorsService } from './application/services/sync-cursors.se
 export { InboundRoutingPolicyService } from './application/services/inbound-routing-policy.service';
 export { buildInboundJobIdempotencyKey } from './application/services/inbound-job-idempotency-key';
 export type { IInboundRoutingPolicyService } from './application/interfaces/inbound-routing-policy.service.interface';
-export type { RoutingOutcome } from './application/types/inbound-routing-policy.types';
+export type {
+  RoutingOutcome,
+  InboundRouteResolution,
+} from './application/types/inbound-routing-policy.types';
 
 // Module and tokens
 export { SyncModule } from './sync.module';

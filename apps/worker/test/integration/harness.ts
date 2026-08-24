@@ -52,6 +52,10 @@ export async function startHarness(): Promise<void> {
   process.env.REDIS_PASSWORD = '';
   process.env.REDIS_DB = '0';
   process.env.NODE_ENV = 'test';
+  // The harness boots the full role set (`AppModule.forRoles()` default) so
+  // handler/DI specs see the complete graph, but the scheduler must not start
+  // real cron timers under tests — opt this process out of the lease (#2279).
+  process.env.OL_SCHEDULER_ENABLED = 'false';
 
   harness = { postgres, redis };
 }

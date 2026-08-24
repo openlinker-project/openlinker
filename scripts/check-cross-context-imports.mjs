@@ -297,8 +297,18 @@ const ALLOW_LIST = new Map([
   ],
 
   // apps → webhooks.WebhookDeliveryRepositoryPort — rewire via IWebhooksService
+  //
+  // `webhook-to-job.handler.ts` was deleted by #2280 (routing moved to ingress).
+  // Its coupling transferred verbatim to the one-shot upgrade drain that
+  // replaced it — same repository, same `upsert` call, and the file is itself
+  // scheduled for deletion a release later, so it inherits the entry rather
+  // than justifying a new service seam.
   [
-    'apps/api/src/webhooks/application/handlers/webhook-to-job.handler.ts',
+    'apps/api/src/webhooks/application/handlers/legacy-inbound-webhook-drain.ts',
+    new Set(['WebhookDeliveryRepositoryPort']),
+  ],
+  [
+    'apps/api/src/webhooks/application/handlers/legacy-inbound-webhook-drain.spec.ts',
     new Set(['WebhookDeliveryRepositoryPort']),
   ],
   [
@@ -310,13 +320,17 @@ const ALLOW_LIST = new Map([
     new Set(['WebhookDeliveryRepositoryPort']),
   ],
   // WebhookAuthRejectionRepositoryPort added for the auth-failing signal (#1814).
+  // `WebhookDeliveryRepositoryPort` was DROPPED from both entries by #2280:
+  // `WebhookService` no longer touches the delivery repository (the gate owns
+  // that write), and the per-symbol gate means leaving the stale symbol here
+  // would silently permit its reintroduction.
   [
     'apps/api/src/webhooks/application/services/webhook.service.ts',
-    new Set(['WebhookDeliveryRepositoryPort', 'WebhookAuthRejectionRepositoryPort']),
+    new Set(['WebhookAuthRejectionRepositoryPort']),
   ],
   [
     'apps/api/src/webhooks/application/services/webhook.service.spec.ts',
-    new Set(['WebhookDeliveryRepositoryPort', 'WebhookAuthRejectionRepositoryPort']),
+    new Set(['WebhookAuthRejectionRepositoryPort']),
   ],
   // apps → webhooks.WebhookAuthRejectionRepositoryPort (#1814) — rewire via IWebhooksService
   [

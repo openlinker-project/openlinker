@@ -16,6 +16,11 @@
  */
 import type { StatusBadgeTone } from '../../../shared/ui/status-badge';
 import type { OfferLifecycle, OfferMapping } from '../api/listings.types';
+import {
+  problemLine,
+  readAccountScopedProblems,
+  readOfferScopedProblems,
+} from './listing-problems';
 
 export interface ListingRowBadge {
   id: string;
@@ -31,6 +36,14 @@ export interface ListingRowAlert {
   text: string;
   /** Rendered verbatim when it is the marketplace validator speaking. */
   title: string;
+  /**
+   * Muted styling: this line reports a state, not outstanding work (#2231). It
+   * exists so the red line always means "someone has to change something" - an
+   * offer the seller switched off deliberately says so quietly instead of
+   * looking like a failure, and a row whose only problem is shop-level points at
+   * the banner that carries it rather than repeating it.
+   */
+  muted?: boolean;
 }
 
 /**
@@ -202,6 +215,46 @@ export function listingRowAlert(row: OfferMapping): ListingRowAlert | null {
     }
   }
 
-  const message = row.channelStatus?.validationMessages[0];
-  return message ? { text: message, title: message } : null;
+  // Offer-scoped only: a shop-level problem is reported on every offer of the
+  // connection, so it is rendered once above the table (#2231).
+  const problems = readOfferScopedProblems(row);
+  if (problems.length > 0) {
+    const first = problemLine(problems[0]);
+    const overflow = problems.length - 1;
+    return {
+      // One line, always: `.listing-cell__reason` is single-line by design, and
+      // a second line would push every neighbouring row taller. The count is
+      // what says the first line is not the whole story.
+      text: overflow > 0 ? `${first} · +${overflow} more problem${overflow > 1 ? 's' : ''}` : first,
+      // The full list, in the channel's own sentences, for the hover.
+      title: problems.map((problem) => problem.message).join('\n'),
+      muted: false,
+    };
+  }
+
+  const status = row.channelStatus;
+  if (!status) return null;
+
+  // Everything below is muted: the row has nothing outstanding of its own.
+  if (readAccountScopedProblems(row).length > 0) {
+    return {
+      text: 'Blocked by a problem with the shop, not this listing',
+      title:
+        'The channel reports a problem with the seller account rather than with this listing. See the notice above the table - fixing it there unblocks every listing on this connection.',
+      muted: true,
+    };
+  }
+
+  if (status.publicationStatus === 'inactive') {
+    // Draft with nothing to say about why. Said out loud, quietly, so an empty
+    // reason slot is never mistaken for "we did not look".
+    return {
+      text: 'Set to inactive on the channel, no problems reported',
+      title:
+        'The channel reports this listing as not live and lists no problems with it. Nothing is outstanding on our side.',
+      muted: true,
+    };
+  }
+
+  return null;
 }

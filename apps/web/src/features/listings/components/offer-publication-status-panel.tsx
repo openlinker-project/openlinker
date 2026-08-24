@@ -13,6 +13,13 @@
  * the panel fell through to an empty state and the manual refresh, which is
  * rendered per offer row, could not be reached for the offers that needed it.
  *
+ * Where the `/listings` row has one line and shows one reason, this panel has
+ * room for all of them (#2231) and is where the operator lands after clicking
+ * through. Each reason renders twice over: the sentence for the seller, and the
+ * channel's own `code` in mono for whoever has to check it against the channel's
+ * documentation or quote it in a support ticket. An offer with nothing wrong adds
+ * nothing, so the panel stays quiet where nothing is wrong.
+ *
  * @module apps/web/src/features/listings/components
  */
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -22,7 +29,10 @@ import { Button } from '../../../shared/ui/button';
 import { EmptyState, ErrorState, LoadingState } from '../../../shared/ui/feedback-state';
 import { TimeDisplay } from '../../../shared/ui/time-display';
 import { listingsQueryKeys } from '../api/listings.query-keys';
-import type { OfferPublicationStatusResponse } from '../api/listings.types';
+import type {
+  OfferPublicationStatusResponse,
+  OfferValidationProblem,
+} from '../api/listings.types';
 import { useOfferPublicationStatusQuery } from '../hooks/use-offer-publication-status-query';
 import { OfferPublicationStatusBadge } from './offer-publication-status-badge';
 
@@ -118,10 +128,55 @@ export function OfferPublicationStatusPanel({
                     ? 'Check status'
                     : 'Refresh'}
               </Button>
+              <OfferProblemList offer={offer} />
             </li>
           );
         })}
       </ul>
     </div>
+  );
+}
+
+/**
+ * Every reason this offer cannot sell, sentence plus raw channel code.
+ *
+ * Falls back to the flat `validationMessages` for a snapshot written before
+ * #2231 (and for an older API build), so the panel renders what it always did
+ * rather than going blank. Shop-level reasons are NOT filtered out here: unlike
+ * the list, this panel shows one product's offers and has no table to put a
+ * connection-level notice above, so hiding them would leave the operator with an
+ * `Invalid` offer and no reason at all.
+ */
+function OfferProblemList({
+  offer,
+}: {
+  offer: OfferPublicationStatusResponse;
+}): ReactElement | null {
+  const problems: OfferValidationProblem[] =
+    offer.validationProblems && offer.validationProblems.length > 0
+      ? offer.validationProblems
+      : (offer.validationMessages ?? []).map((message) => ({ code: '', message, scope: 'offer' }));
+
+  if (problems.length === 0) {
+    return null;
+  }
+
+  return (
+    <ul className="offer-publication-status__problems">
+      {problems.map((problem, index) => (
+        <li className="problem-line" key={`${problem.code ?? problem.message}:${index}`}>
+          <span className="problem-line__mark" aria-hidden="true">
+            ●
+          </span>
+          <span className="problem-line__text">
+            {problem.summary ? <b>{problem.summary}. </b> : null}
+            {problem.message}
+          </span>
+          {problem.code !== undefined ? (
+            <span className="problem-line__code mono-text">{problem.code}</span>
+          ) : null}
+        </li>
+      ))}
+    </ul>
   );
 }

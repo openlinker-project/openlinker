@@ -11,6 +11,7 @@ import type { IdentifierMapping } from '@openlinker/core/identifier-mapping';
 
 import type { OfferLifecycle } from './offer-lifecycle.types';
 import type { OfferPublicationStatus } from './offer-status-read.types';
+import type { OfferValidationProblem } from './offer-validation-problem.types';
 
 /**
  * Offer mapping list filters
@@ -108,6 +109,14 @@ export interface OfferMappingChannelStatus {
   lifecycle: OfferLifecycle;
   /** Marketplace validator messages; empty when the validator raised none. */
   validationMessages: readonly string[];
+  /**
+   * The same refusals in structured form (#2231): platform code, one-line
+   * summary, and the scope that decides WHERE each renders - offer-scoped on the
+   * row, account-scoped once per connection above the table. Empty on a snapshot
+   * written before #2231, in which case a consumer falls back to
+   * `validationMessages` and renders exactly what it rendered then.
+   */
+  validationProblems: readonly OfferValidationProblem[];
   /**
    * When the channel status was last read - the list's "Updated" column.
    * `null` exactly when `lifecycle` is `Unsynced`.

@@ -124,9 +124,47 @@ export class SyncJobRepository implements SyncJobRepositoryPort {
   }
 
   async findAndLockDueJobs(limit: number, workerId: string): Promise<SyncJob[]> {
+    return this.claimDueJobs({ limit, workerId });
+  }
+
+  async findAndLockDueJobsForLane(input: {
+    jobTypes: JobType[];
+    limit: number;
+    workerId: string;
+    excludedScopes?: string[];
+  }): Promise<SyncJob[]> {
+    if (input.jobTypes.length === 0) {
+      return [];
+    }
+    return this.claimDueJobs(input);
+  }
+
+  /**
+   * Shared claim body for both claim methods (ADR-050, #2278). The lane axes
+   * (`jobTypes`, `excludedScopes`) are additive SQL arms over the original
+   * claim; in-lane ordering stays `ORDER BY "nextRunAt" ASC`.
+   */
+  private async claimDueJobs(input: {
+    limit: number;
+    workerId: string;
+    jobTypes?: JobType[];
+    excludedScopes?: string[];
+  }): Promise<SyncJob[]> {
     // Use transaction with FOR UPDATE SKIP LOCKED for atomic locking
     return this.dataSource.transaction(async (manager: EntityManager) => {
       const now = new Date();
+
+      const params: unknown[] = ['queued', now];
+      let where = `status = $1 AND "nextRunAt" <= $2`;
+      if (input.jobTypes && input.jobTypes.length > 0) {
+        params.push(input.jobTypes);
+        where += ` AND "jobType" = ANY($${params.length})`;
+      }
+      if (input.excludedScopes && input.excludedScopes.length > 0) {
+        params.push(input.excludedScopes);
+        where += ` AND "connectionId" != ALL($${params.length})`;
+      }
+      params.push(input.limit);
 
       // Use raw SQL for FOR UPDATE SKIP LOCKED (TypeORM doesn't support SKIP LOCKED directly)
       // Note: Column names use camelCase with quotes to match migration schema
@@ -134,12 +172,12 @@ export class SyncJobRepository implements SyncJobRepositoryPort {
       const rawEntities = await manager.query(
         `
         SELECT * FROM sync_jobs
-        WHERE status = $1 AND "nextRunAt" <= $2
+        WHERE ${where}
         ORDER BY "nextRunAt" ASC
-        LIMIT $3
+        LIMIT $${params.length}
         FOR UPDATE SKIP LOCKED
         `,
-        ['queued', now, limit]
+        params
       );
 
       // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access -- typeorm raw-query / find result is untyped; shape verified by the surrounding mapper
@@ -157,7 +195,7 @@ export class SyncJobRepository implements SyncJobRepositoryPort {
         .set({
           status: 'running',
           lockedAt: now,
-          lockedBy: workerId,
+          lockedBy: input.workerId,
         })
         // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- typeorm raw-query / find result is untyped; shape verified by the surrounding mapper
         .where('id IN (:...ids)', { ids })

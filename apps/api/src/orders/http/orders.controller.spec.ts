@@ -91,6 +91,7 @@ describe('OrdersController', () => {
     const mockInvoiceService: jest.Mocked<IInvoiceService> = {
       getInvoiceById: jest.fn(),
       getLatestInvoiceForOrder: jest.fn(),
+      findBlockingInvoiceForOrder: jest.fn().mockResolvedValue(null),
       listInvoiceConnectionIdsForOrder: jest.fn().mockResolvedValue([]),
       getLatestInvoicesForOrders: jest.fn().mockResolvedValue([]),
       issueInvoice: jest.fn(),

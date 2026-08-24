@@ -27,6 +27,7 @@ import {
   readValidationMessages,
   resolveOfferLifecycle,
 } from '../../../domain/types/offer-lifecycle.types';
+import { readValidationProblems } from '../../../domain/types/offer-validation-problem.types';
 import type {
   OfferLifecycle,
   OfferLifecycleCounts,
@@ -671,6 +672,7 @@ export class OfferMappingRepository implements OfferMappingRepositoryPort {
         publicationStatus: null,
         lifecycle: 'Unsynced',
         validationMessages: [],
+        validationProblems: [],
         lastStatusSyncedAt: null,
       };
     }
@@ -684,6 +686,11 @@ export class OfferMappingRepository implements OfferMappingRepositoryPort {
         hasValidationMessages: validationMessages.length > 0,
       }),
       validationMessages,
+      // Read from the same blob, by its own guarded reader (#2231). Deliberately
+      // NOT derived from `validationMessages`: a message list carries no code and
+      // no scope, so a shop-level block would be indistinguishable from an
+      // offer-level one and would be stamped on every row.
+      validationProblems: readValidationProblems(row.statusDetails),
       lastStatusSyncedAt: row.lastStatusSyncedAt,
     };
   }

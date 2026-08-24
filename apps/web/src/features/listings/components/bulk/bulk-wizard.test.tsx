@@ -233,6 +233,62 @@ describe('BulkWizard — demo instrumentation (#1788)', () => {
   }, 15000);
 });
 
+describe('BulkWizard — destination context (#2227)', () => {
+  afterEach(cleanup);
+
+  it('should name the destination in the heading and show the context bar once Config is left', async () => {
+    const connection = {
+      id: 'conn-1',
+      name: 'My Allegro',
+      status: 'active',
+      platformType: 'allegro',
+      supportedCapabilities: ['OfferManager', 'OfferCreator'],
+      config: { environment: 'sandbox', masterCatalogConnectionId: 'conn-master' },
+    } as unknown as Connection;
+    const apiClient = createMockApiClient({
+      connections: { list: vi.fn().mockResolvedValue([connection]) },
+      listings: {
+        getSellerPolicies: vi.fn().mockResolvedValue({
+          deliveryPolicies: [{ id: 'dp1', name: 'Courier 24h' }],
+        }),
+      },
+    });
+    const products: Product[] = [
+      { id: 'prod_1', name: 'P', currency: 'PLN' } as unknown as Product,
+    ];
+
+    renderWithProviders(
+      <BulkWizard
+        products={products}
+        resolveConnectionName={() => 'My Allegro'}
+        preselectedConnectionId="conn-1"
+      />,
+      { apiClient },
+    );
+
+    // Config IS the destination form: plain heading, no bar repeating the picker.
+    expect(
+      await screen.findByRole('heading', { name: 'Bulk marketplace offer creation' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId('bulk-destination-bar')).not.toBeInTheDocument();
+
+    await screen.findByRole('option', { name: 'Courier 24h' }, { timeout: 5000 });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Shipping rate package' }), {
+      target: { value: 'dp1' },
+    });
+    const proceed = screen.getByRole('button', { name: /Proceed/ });
+    await waitFor(() => expect(proceed).toBeEnabled(), { timeout: 5000 });
+    fireEvent.click(proceed);
+
+    expect(
+      await screen.findByRole('heading', { name: 'Create offers on My Allegro' }),
+    ).toBeInTheDocument();
+    const bar = screen.getByTestId('bulk-destination-bar');
+    expect(bar).toHaveAttribute('data-environment', 'sandbox');
+    expect(document.title).toBe('Bulk offers · My Allegro');
+  }, 15000);
+});
+
 describe('seedRows (#1754 pre-selected variants)', () => {
   function makeProduct(id: string, variantIds: string[]): Product {
     return {

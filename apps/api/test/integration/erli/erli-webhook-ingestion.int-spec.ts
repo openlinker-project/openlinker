@@ -83,36 +83,34 @@ describe('Erli Webhook Ingestion Integration (#1081 / #1294)', () => {
       .send(body)
       .expect(202);
 
-    await new Promise((resolve) => setTimeout(resolve, 1500));
+    // The gate is synchronous (#2280): the work row commits in the same
+    // transaction as the delivery row — read Postgres directly, no polling.
+    const jobs: Array<{ jobType: string; payloadJson: unknown }> = await harness
+      .getDataSource()
+      .query(
+        `SELECT "jobType", "payloadJson" FROM sync_jobs
+          WHERE "connectionId" = $1 AND "jobType" = 'marketplace.order.sync'`,
+        [connection.id],
+      );
+    expect(jobs).toHaveLength(1);
+    // `payloadJson` is jsonb — the driver returns it parsed; tolerate both.
+    const raw = jobs[0].payloadJson;
+    const payload = (typeof raw === 'string' ? JSON.parse(raw) : raw) as {
+      externalOrderId?: string;
+    };
+    expect(payload.externalOrderId).toBe(orderId);
 
-    const redisClient = harness.getRedisClient();
-    if (!redisClient) throw new Error('Redis client not available');
-
-    const jobs = await redisClient.xRead([{ key: 'jobs.sync', id: '0' }], { COUNT: 50 });
-    const orderJob = jobs?.[0]?.messages.find((msg) => {
-      if (msg.message.jobType !== 'marketplace.order.sync') return false;
-      if (msg.message.connectionId !== connection.id) return false;
-      try {
-        const payload = JSON.parse(msg.message.payloadJson) as {
-          externalOrderId?: string;
-        };
-        return payload.externalOrderId === orderId;
-      } catch {
-        return false;
-      }
-    });
-    expect(orderJob).toBeDefined();
-
-    // The controller's own 'published' delivery-recording write and the
-    // handler's later 'job_enqueued' write race independently of the job
-    // enqueue itself (both are best-effort, #711) — assert only that a
-    // signature-verified delivery row exists, not its exact terminal status.
-    const deliveryRows: Array<{ signatureValid: boolean }> = await harness.getDataSource().query(
-      `SELECT "signatureValid" FROM webhook_deliveries WHERE provider = 'erli' AND "connectionId" = $1`,
-      [connection.id],
-    );
+    // The delivery row commits alongside the job in its final status (#2280) —
+    // no separate handler write to race against.
+    const deliveryRows: Array<{ signatureValid: boolean; status: string }> = await harness
+      .getDataSource()
+      .query(
+        `SELECT "signatureValid", status FROM webhook_deliveries WHERE provider = 'erli' AND "connectionId" = $1`,
+        [connection.id],
+      );
     expect(deliveryRows).toHaveLength(1);
     expect(deliveryRows[0].signatureValid).toBe(true);
+    expect(deliveryRows[0].status).toBe('job_enqueued');
   });
 
   it('rejects an Erli webhook with a wrong Bearer token (401), records no delivery, enqueues no job', async () => {

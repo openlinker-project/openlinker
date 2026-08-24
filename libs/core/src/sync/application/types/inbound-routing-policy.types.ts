@@ -6,7 +6,23 @@
  * @module libs/core/src/sync/application/types
  */
 import type { InboundEventDomain } from '@openlinker/core/integrations';
-import type { JobType } from '../../domain/types/sync-job.types';
+import type { JobType, SyncJobRequest } from '../../domain/types/sync-job.types';
+
+/**
+ * The PURE half of routing (#2280): the decision without the enqueue. A
+ * `'resolved'` outcome carries the fully-built `SyncJobRequest` (jobType,
+ * payload, idempotency key) so the caller can persist it inside its own
+ * transaction — the durable-spine gate writes it in the same Postgres
+ * transaction as the webhook_deliveries row (ADR-049 decision 1).
+ */
+export type InboundRouteResolution =
+  | { status: 'resolved'; job: SyncJobRequest }
+  | {
+      status: 'ungated';
+      domain: InboundEventDomain;
+      /** Open-world capability — see the note on `RoutingOutcome` below. */
+      requiredCapability: string;
+    };
 
 export type RoutingOutcome =
   | { status: 'enqueued'; jobId: string; jobType: JobType }

@@ -60,6 +60,7 @@ function makeSyncLock(): SyncLockPort {
   return {
     acquire: jest.fn(() => Promise.resolve('tok')),
     release: jest.fn(() => Promise.resolve(true)),
+    extend: jest.fn(() => Promise.resolve(true)),
   };
 }
 

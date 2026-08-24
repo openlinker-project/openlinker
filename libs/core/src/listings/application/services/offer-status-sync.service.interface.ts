@@ -11,6 +11,7 @@
  */
 import type { OfferStatusSyncResult } from '../../domain/types/offer-status-snapshot.types';
 import type { OfferPublicationStatus } from '../../domain/types/offer-status-read.types';
+import type { OfferValidationProblem } from '../../domain/types/offer-validation-problem.types';
 
 export interface OfferStatusSyncOptions {
   /** Page size: number of mapped offers to refresh this run. */
@@ -40,6 +41,14 @@ export interface OfferStatusObservation {
   publicationStatus: OfferPublicationStatus;
   /** Marketplace messages observed alongside the status. Omitted ⇒ none. */
   validationMessages?: string[];
+  /**
+   * The same refusals in structured form (#2231) - platform code, optional
+   * one-line summary, and whether each is about this offer or the seller's whole
+   * account. Optional, because a create-path caller has only messages; when it
+   * is present it is what gets persisted, so a caller supplying both must not
+   * let them disagree (`refreshOne` derives both from one list).
+   */
+  validationProblems?: OfferValidationProblem[];
   /** When the status was observed. Defaults to "now" at the write. */
   observedAt?: Date;
 }
