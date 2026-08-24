@@ -375,6 +375,12 @@ export interface OrderFilters {
    * `health` — "synced AND invoicing blocked" is the common shape of the problem.
    */
   salesDocumentBlocked?: boolean;
+  /**
+   * Cancellation filter (#2306): `false` excludes cancelled orders, `true` keeps
+   * only them, omitted does not filter. The dispatch-risk page passes `false` so
+   * its rows match the counts `slaSummary` returns under the same scope.
+   */
+  cancelled?: boolean;
 }
 
 /**
@@ -399,6 +405,13 @@ export interface OrderHealthSummaryFilters {
   customerId?: string;
   createdFrom?: string;
   createdTo?: string;
+  /**
+   * Cancellation scope (#2306). Honoured by `GET /orders/sla-summary` only —
+   * `status-summary` ignores it, since health is an orthogonal axis. Omitted
+   * means unscoped; the dispatch-risk page passes `false` because a cancelled,
+   * never-shipped order otherwise counts as `overdue`.
+   */
+  cancelled?: boolean;
 }
 
 export interface OrderPagination {

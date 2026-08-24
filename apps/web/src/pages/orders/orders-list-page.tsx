@@ -245,11 +245,12 @@ function formatFreshness(items: readonly OrderRecord[], locale: LocaleCode): str
  * Excluded deliberately: `sort` / `dir` change presentation, not membership (an empty
  * result is never their doing, and "View all orders" has no business resetting the
  * operator's column sort); `syncStatus` / `customerId` / `recordStatus` are query-only
- * filters this page's UI does not expose as controls.
+ * filters this page's UI does not expose as controls — `cancelled` (#2306) joins
+ * that group: the dispatch-risk page pins it, this list does not surface it.
  */
 type NarrowingOrderFilterKey = Exclude<
   keyof OrderFilters,
-  'sort' | 'dir' | 'syncStatus' | 'customerId' | 'recordStatus'
+  'sort' | 'dir' | 'syncStatus' | 'customerId' | 'recordStatus' | 'cancelled'
 >;
 
 const NARROWING_FILTER_URL_PARAM: Record<NarrowingOrderFilterKey, string> = {
@@ -1294,6 +1295,9 @@ export function OrdersListPage(): ReactElement {
             <StatusBadge tone="warning" withDot compact>
               {slaSummary.atRisk} at risk
             </StatusBadge>
+            {/* #2306 — the ranked triage surface; this list keeps SLA as one
+                column among many, the risk page makes it the primary axis. */}
+            <Link to="/orders/dispatch-risk">Review dispatch risk</Link>
           </span>
         )}
         {query.data && (

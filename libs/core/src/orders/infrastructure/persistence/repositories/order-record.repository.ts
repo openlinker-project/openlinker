@@ -632,6 +632,13 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     if (filters.createdTo) {
       qb.andWhere('rec.createdAt <= :createdTo', { createdTo: filters.createdTo });
     }
+    if (filters.cancelled !== undefined) {
+      // #2306 — the summary twin of the `findMany` clause above; the two MUST stay
+      // in lockstep, or the dispatch-risk page's bucket counts stop agreeing with
+      // the rows it lists. A cancelled order that never shipped passes NOT_SHIPPED,
+      // so without this scope its past deadline is counted `overdue`.
+      qb.andWhere(filters.cancelled ? 'rec.cancelledAt IS NOT NULL' : 'rec.cancelledAt IS NULL');
+    }
 
     const raw = await qb.getRawOne<{
       total: string;

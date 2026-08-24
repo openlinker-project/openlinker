@@ -63,6 +63,7 @@ import { ListOrdersQueryDto } from './dto/list-orders-query.dto';
 import { OrderHealthSummaryQueryDto } from './dto/order-health-summary-query.dto';
 import { OrderHealthSummaryResponseDto } from './dto/order-health-summary-response.dto';
 import { OrderSlaSummaryResponseDto } from './dto/order-sla-summary-response.dto';
+import { OrderSlaSummaryQueryDto } from './dto/order-sla-summary-query.dto';
 import { OrderRecordResponseDto } from './dto/order-record-response.dto';
 import type { OrderSyncStatusResponseDto } from './dto/order-sync-status-response.dto';
 import type { SyncAttemptResponseDto } from './dto/sync-attempt-response.dto';
@@ -124,6 +125,7 @@ export class OrdersController {
       slaState,
       fulfillmentState,
       salesDocumentBlocked,
+      cancelled,
       limit = 20,
       offset = 0,
     } = query;
@@ -143,6 +145,7 @@ export class OrdersController {
         slaState,
         fulfillmentState,
         salesDocumentBlocked,
+        cancelled,
       },
       { limit, offset }
     );
@@ -223,14 +226,15 @@ export class OrdersController {
   })
   @ApiResponse({ status: 403, description: 'Insufficient permissions' })
   async slaSummary(
-    @Query() query: OrderHealthSummaryQueryDto
+    @Query() query: OrderSlaSummaryQueryDto
   ): Promise<OrderSlaSummaryResponseDto> {
-    const { sourceConnectionId, customerId, createdFrom, createdTo } = query;
+    const { sourceConnectionId, customerId, createdFrom, createdTo, cancelled } = query;
     return this.orderRecordRepository.countBySla({
       sourceConnectionId,
       customerId,
       createdFrom: createdFrom ? new Date(createdFrom) : undefined,
       createdTo: createdTo ? new Date(createdTo) : undefined,
+      cancelled,
     });
   }
 

@@ -152,6 +152,19 @@ export interface OrderHealthSummaryFilters {
   customerId?: string;
   createdFrom?: Date;
   createdTo?: Date;
+  /**
+   * Cancellation scope (#2306). The summary twin of `OrderRecordFilters.cancelled`
+   * — omitted means unscoped (byte-identical to pre-#2306 behaviour), `false`
+   * means `cancelledAt IS NULL`, `true` means `cancelledAt IS NOT NULL`.
+   *
+   * Honoured by `countBySla` ONLY. A cancelled order that never shipped still
+   * satisfies the `NOT_SHIPPED` guard, so without this scope its past deadline
+   * counts as `overdue` — the dispatch-risk surface passes `cancelled: false` to
+   * both the list read and this summary so rows and counts agree by construction.
+   * `countByHealth` deliberately ignores it: health is an orthogonal axis and
+   * silently re-scoping it would move numbers on surfaces not in scope here.
+   */
+  cancelled?: boolean;
 }
 
 /**
