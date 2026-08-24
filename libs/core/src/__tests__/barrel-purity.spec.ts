@@ -34,6 +34,7 @@ const CONTEXT_BARRELS = [
   'content',
   'customers',
   'events',
+  'fulfillment-authority',
   'identifier-mapping',
   'integrations',
   'inventory',

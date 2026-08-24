@@ -114,6 +114,15 @@ const KNOWN_CONFIG_KNOBS = new Map([
     'libs/core/src/order-lifecycle/domain/types/lifecycle-authority.types.ts',
     { helper: 'readLifecycleAuthority', key: 'config.lifecycleAuthority' },
   ],
+  [
+    'libs/core/src/fulfillment-authority/domain/types/authority-config.types.ts',
+    {
+      helper: 'parseAuthorityConfig',
+      key:
+        'config.availabilityAuthority + config.sourcingAuthority + config.fulfillmentExecutor + ' +
+        'config.orderLifecycleAuthority + config.returnsAuthority + config.refundTrigger',
+    },
+  ],
 ]);
 
 /**
@@ -169,8 +178,31 @@ const NON_KNOBS = new Map([
  *
  * A reviewer who disagrees should push back on this raise specifically; that
  * argument is the deliberate revisit the gate was built to provoke.
+ *
+ * **Raised 5 -> 6 by #2304 (ADR-052 / ADR-053), with this rationale.** The gate
+ * fired on `parseAuthorityConfig`, and the entry above is registered rather than
+ * exempted because it genuinely is per-connection JSONB coercion. What it is
+ * NOT is a fifth instance of the accretion the threshold watches for: it is one
+ * helper reading SIX authority keys through a single enumerated descriptor
+ * table (`AUTHORITY_KIND_DESCRIPTORS`), which is the shared model the gate asks
+ * for, applied inside one domain — the alternative shape, six sibling
+ * `read*`/`parse*` files, would have tripped this same gate five more times and
+ * been the accretion. Authority assignment is deliberately config and not a
+ * table in v1 (DESIGN-oms-authority-model §3 adjudication 3), so a table is not
+ * the available consolidation here.
+ *
+ * The rung is raised by exactly one, so the NEXT unrelated knob still stops and
+ * has this conversation. #2169 remains the tracked revisit.
+ *
+ * **Merge resolution (#2304 + #2305, orchestrator).** The two vocabulary leaves
+ * landed concurrently, each registering its own genuine knob and each raising
+ * the rung by one from the same base. The merged tree therefore carries SIX
+ * registered knobs, and the threshold is the sum of both raises: 5 -> 7. Both
+ * rationales above stand; the invariant preserved is the same in each — the
+ * NEXT unrelated knob (the seventh) fires this gate again with zero headroom,
+ * and #2169 remains the tracked consolidation.
  */
-const KNOB_THRESHOLD = 6;
+const KNOB_THRESHOLD = 7;
 
 /** Ladder rungs (ADR-048): sub-capabilities that declare master freshness. */
 const KNOWN_RUNGS = new Set(['modified-product-lister.capability.ts']);
