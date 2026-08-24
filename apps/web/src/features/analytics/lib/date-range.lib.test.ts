@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { computePresetRange, derivePreset, toUtcRangeInstants } from './date-range.lib';
+import {
+  computePresetRange,
+  computePreviousPeriodRange,
+  derivePreset,
+  isPreviousPeriodCovered,
+  toUtcRangeInstants,
+} from './date-range.lib';
 
 const TODAY = new Date(2026, 7, 14); // 14 Aug 2026
 
@@ -55,5 +61,50 @@ describe('toUtcRangeInstants', () => {
       from: '2025-12-26T00:00:00.000Z',
       to: '2026-01-01T00:00:00.000Z',
     });
+  });
+});
+
+describe('computePreviousPeriodRange', () => {
+  it('should compute the immediately-preceding period of the same length for a 7-day range', () => {
+    expect(computePreviousPeriodRange('2026-08-15', '2026-08-21')).toEqual({
+      from: '2026-08-08',
+      to: '2026-08-14',
+    });
+  });
+
+  it('should compute the immediately-preceding period of the same length for a 30-day range', () => {
+    expect(computePreviousPeriodRange('2026-07-23', '2026-08-21')).toEqual({
+      from: '2026-06-23',
+      to: '2026-07-22',
+    });
+  });
+
+  it('should work for a single-day range', () => {
+    expect(computePreviousPeriodRange('2026-08-21', '2026-08-21')).toEqual({
+      from: '2026-08-20',
+      to: '2026-08-20',
+    });
+  });
+
+  it('should cross a month/year boundary', () => {
+    expect(computePreviousPeriodRange('2026-01-01', '2026-01-07')).toEqual({
+      from: '2025-12-25',
+      to: '2025-12-31',
+    });
+  });
+});
+
+describe('isPreviousPeriodCovered', () => {
+  it('should return false when earliestOrderDate is null', () => {
+    expect(isPreviousPeriodCovered('2026-06-23', null)).toBe(false);
+  });
+
+  it('should return true when the previous period starts on or after the earliest order date', () => {
+    expect(isPreviousPeriodCovered('2026-06-23', '2026-06-22T10:37:39.849Z')).toBe(true);
+    expect(isPreviousPeriodCovered('2026-06-22', '2026-06-22T10:37:39.849Z')).toBe(true);
+  });
+
+  it('should return false when the previous period starts before the earliest order date', () => {
+    expect(isPreviousPeriodCovered('2026-06-21', '2026-06-22T10:37:39.849Z')).toBe(false);
   });
 });

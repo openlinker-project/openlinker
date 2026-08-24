@@ -4697,7 +4697,27 @@ a.kpi-card:focus-visible {
   color: var(--text-muted);
 }
 
+.kpi-card__delta-glyph {
+  font-size: 0.8125rem;
+  line-height: 1;
+}
+
 .kpi-card__delta-basis {
+  color: var(--text-muted);
+}
+
+/* Period-over-period delta value — same success/error/neutral tone
+   vocabulary as `.sparkline--*` above, since `deltaTone()` reuses
+   `TrendTone` rather than a parallel one. */
+.kpi-card__delta-value--success {
+  color: var(--status-success);
+}
+
+.kpi-card__delta-value--error {
+  color: var(--status-error);
+}
+
+.kpi-card__delta-value--neutral {
   color: var(--text-muted);
 }
 
@@ -18914,4 +18934,69 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   font-size: 0.8125rem;
   max-height: 12rem;
   overflow-y: auto;
+}
+
+/* ── Top-products "Not listed" cell (#1991) ──────────────────────────
+   Label and Publish action share one slot: "Not listed" reads at rest,
+   and swaps for the Publish action on hover/focus so the column stays
+   calm prose until an operator actually reaches for it. The action is
+   `position: absolute; right: 0` so it never claims layout width — an
+   `opacity: 0` flex sibling would still occupy space and misalign the
+   label from the column's right edge. A light warning-yellow glow marks
+   the action as reachable the instant it appears (not only on its own
+   hover), reusing the warning hue rather than an error one since nothing
+   here is wrong. Touch has no hover, so `@media (hover: none)` keeps
+   both stacked and permanently visible instead of hiding the action
+   behind a gesture that pointer has no way to trigger. */
+.cell-not-listed {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  min-height: 1.75rem;
+  min-width: 5.5rem;
+}
+
+.cell-not-listed__label {
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+  transition: opacity 120ms ease;
+}
+
+.cell-not-listed__chip {
+  position: absolute;
+  right: 0;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease, box-shadow 120ms ease;
+}
+
+.cell-not-listed:hover .cell-not-listed__label,
+.cell-not-listed:focus-within .cell-not-listed__label {
+  opacity: 0;
+}
+
+.cell-not-listed:hover .cell-not-listed__chip,
+.cell-not-listed:focus-within .cell-not-listed__chip {
+  opacity: 1;
+  pointer-events: auto;
+  box-shadow: 0 0 0 3px var(--status-warning-soft), 0 0 10px 1px var(--status-warning-border);
+}
+
+@media (hover: none) {
+  .cell-not-listed {
+    flex-direction: column;
+    align-items: flex-end;
+    gap: var(--space-1);
+    min-height: 0;
+  }
+
+  .cell-not-listed__label { opacity: 1; }
+
+  .cell-not-listed__chip {
+    position: static;
+    opacity: 1;
+    pointer-events: auto;
+    box-shadow: none;
+  }
 }

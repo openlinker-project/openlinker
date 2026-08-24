@@ -23,3 +23,14 @@ export type {
   SalesAnalyticsHeadline,
   SalesAndChannelAnalytics,
 } from './api/sales-analytics.types';
+
+export { useTopProductsQuery } from './hooks/use-top-products-query';
+export { ProductSalesTable } from './components/product-sales-table';
+export { TopProductsSortByValues } from './api/top-products.types';
+export type {
+  ProductChannelSales,
+  TopProductRow,
+  TopProductsFilters,
+  TopProductsResult,
+  TopProductsSortBy,
+} from './api/top-products.types';
