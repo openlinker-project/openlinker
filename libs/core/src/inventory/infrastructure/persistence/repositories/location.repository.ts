@@ -25,6 +25,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { ILike, QueryFailedError, Repository } from 'typeorm';
 import { formatInternalId } from '@openlinker/core/identifier-mapping';
+import { InventoryItemOrmEntity } from '../entities/inventory-item.orm-entity';
 import { InventoryLocationOrmEntity } from '../entities/inventory-location.orm-entity';
 import type { LocationRepositoryPort } from '../../../domain/ports/location-repository.port';
 import { InventoryLocation } from '../../../domain/entities/inventory-location.entity';
@@ -43,7 +44,13 @@ import type {
 export class LocationRepository implements LocationRepositoryPort {
   constructor(
     @InjectRepository(InventoryLocationOrmEntity)
-    private readonly ormRepository: Repository<InventoryLocationOrmEntity>
+    private readonly ormRepository: Repository<InventoryLocationOrmEntity>,
+    // The position count for #2316's referenced-delete 409. Both entities are
+    // already registered on this context's `TypeOrmModule.forFeature`, so this
+    // adds no module wiring; keeping the read here rather than on
+    // `InventoryRepositoryPort` also keeps it off the file another wave owns.
+    @InjectRepository(InventoryItemOrmEntity)
+    private readonly inventoryItems: Repository<InventoryItemOrmEntity>
   ) {}
 
   async create(input: CreateInventoryLocationInput): Promise<InventoryLocation> {
@@ -135,6 +142,10 @@ export class LocationRepository implements LocationRepositoryPort {
       page: pagination.page,
       limit: pagination.limit,
     };
+  }
+
+  async countPositionsAtLocation(locationId: string): Promise<number> {
+    return this.inventoryItems.count({ where: { locationId } });
   }
 
   async delete(id: string): Promise<boolean> {

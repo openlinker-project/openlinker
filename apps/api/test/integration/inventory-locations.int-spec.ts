@@ -21,6 +21,9 @@
  * `category_mappings` and `fulfillment_routing_rules`, and `setup.ts` records
  * the same consequence for the truncate list.
  *
+ * Since #2316 the file also carries its first HTTP surface — the locations CRUD
+ * API — exercised through the harness's supertest client under the `/v1` prefix.
+ *
  * @module apps/api/test/integration
  */
 import {
@@ -36,6 +39,8 @@ import {
   teardownTestHarness,
 } from './setup';
 import { createTestConnection } from './helpers/test-connection.helper';
+import { loginAsAdmin, loginAsOperator } from './helpers/test-auth.helper';
+import { createTestInventoryItem } from './fixtures/inventory.fixtures';
 
 describe('Inventory Locations Integration', () => {
   let harness: IntegrationTestHarness;
@@ -271,6 +276,216 @@ describe('Inventory Locations Integration', () => {
       const names: string[] = rows.map((r: { indexname: string }) => r.indexname);
       expect(names).toContain('UQ_inventory_locations_code');
       expect(names).toContain('IDX_inventory_locations_owner_connection');
+    });
+  });
+
+  describe('HTTP CRUD API (#2316)', () => {
+    const BASE = '/v1/inventory/locations';
+
+    async function adminToken(): Promise<string> {
+      return loginAsAdmin(harness.getHttp(), harness.getDataSource());
+    }
+
+    it('should round-trip create -> get -> list -> patch -> delete', async () => {
+      const http = harness.getHttp();
+      const token = await adminToken();
+
+      const created = await http
+        .post(BASE)
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          code: 'wh1',
+          name: 'Main warehouse',
+          kind: 'warehouse',
+          countryIso2: 'pl',
+          postcode: '00-001',
+          latitude: 52.2297,
+          longitude: 21.0122,
+        })
+        .expect(201);
+
+      // The service normalises; the response is the allowlist projection.
+      expect(created.body.code).toBe('WH1');
+      expect(created.body.countryIso2).toBe('PL');
+      expect(created.body.latitude).toBe(52.2297);
+      expect(typeof created.body.latitude).toBe('number');
+      expect(typeof created.body.createdAt).toBe('string');
+      expect(created.body.id).toMatch(/^ol_location_/);
+
+      const id: string = created.body.id;
+
+      await http
+        .get(`${BASE}/${id}`)
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200)
+        .expect((res) => {
+          expect(res.body.code).toBe('WH1');
+        });
+
+      const listed = await http.get(BASE).set('Authorization', `Bearer ${token}`).expect(200);
+      expect(listed.body).toMatchObject({ total: 1, page: 1, limit: 25 });
+      expect(listed.body.items[0].id).toBe(id);
+
+      await http
+        .patch(`${BASE}/${id}`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ name: 'Renamed warehouse' })
+        .expect(200)
+        .expect((res) => {
+          expect(res.body.name).toBe('Renamed warehouse');
+          // An omitted field is untouched, not cleared.
+          expect(res.body.postcode).toBe('00-001');
+        });
+
+      await http
+        .patch(`${BASE}/${id}`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ postcode: null })
+        .expect(200)
+        .expect((res) => {
+          expect(res.body.postcode).toBeNull();
+        });
+
+      await http.delete(`${BASE}/${id}`).set('Authorization', `Bearer ${token}`).expect(204);
+
+      await http.get(`${BASE}/${id}`).set('Authorization', `Bearer ${token}`).expect(404);
+    });
+
+    it('should reject a duplicate code with 409, case-insensitively', async () => {
+      const http = harness.getHttp();
+      const token = await adminToken();
+
+      await http
+        .post(BASE)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ code: 'WH1', name: 'First', kind: 'warehouse' })
+        .expect(201);
+
+      await http
+        .post(BASE)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ code: 'wh1', name: 'Second', kind: 'store' })
+        .expect(409)
+        .expect((res) => {
+          expect(res.body.error).toBe('DuplicateLocationCodeError');
+        });
+    });
+
+    it('should refuse a delete with 409 while positions reference the location', async () => {
+      const http = harness.getHttp();
+      const token = await adminToken();
+
+      const created = await http
+        .post(BASE)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ code: 'WH2', name: 'Stocked', kind: 'warehouse' })
+        .expect(201);
+      const id: string = created.body.id;
+
+      await createTestInventoryItem(harness.getDataSource(), { locationId: id });
+
+      await http
+        .delete(`${BASE}/${id}`)
+        .set('Authorization', `Bearer ${token}`)
+        .expect(409)
+        .expect((res) => {
+          expect(res.body.error).toBe('LocationInUseError');
+        });
+
+      // The refusal is a refusal: the row is still there.
+      await http.get(`${BASE}/${id}`).set('Authorization', `Bearer ${token}`).expect(200);
+    });
+
+    it('should 404 a patch or delete against an unknown id', async () => {
+      const http = harness.getHttp();
+      const token = await adminToken();
+
+      await http
+        .patch(`${BASE}/ol_location_missing`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ name: 'Nope' })
+        .expect(404)
+        .expect((res) => {
+          expect(res.body.error).toBe('LocationNotFoundException');
+        });
+
+      await http
+        .delete(`${BASE}/ol_location_missing`)
+        .set('Authorization', `Bearer ${token}`)
+        .expect(404);
+    });
+
+    it('should 400 an unknown kind, a code sent to PATCH, and an explicit null name', async () => {
+      const http = harness.getHttp();
+      const token = await adminToken();
+
+      await http
+        .post(BASE)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ code: 'WH3', name: 'Bad kind', kind: 'spaceship' })
+        .expect(400);
+
+      const created = await http
+        .post(BASE)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ code: 'WH4', name: 'Fine', kind: 'warehouse' })
+        .expect(201);
+
+      // `code` is not patchable, and forbidNonWhitelisted turns that into a
+      // 400 rather than a silently ignored field.
+      await http
+        .patch(`${BASE}/${created.body.id}`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ code: 'WH5' })
+        .expect(400);
+
+      // An explicit null on a NOT NULL column is bad input, not a 500.
+      await http
+        .patch(`${BASE}/${created.body.id}`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ name: null })
+        .expect(400);
+    });
+
+    it('should let an operator read but not write', async () => {
+      const http = harness.getHttp();
+      const admin = await adminToken();
+      const operator = await loginAsOperator(http, harness.getDataSource());
+
+      await http
+        .post(BASE)
+        .set('Authorization', `Bearer ${admin}`)
+        .send({ code: 'WH6', name: 'Readable', kind: 'warehouse' })
+        .expect(201);
+
+      await http.get(BASE).set('Authorization', `Bearer ${operator}`).expect(200);
+
+      await http
+        .post(BASE)
+        .set('Authorization', `Bearer ${operator}`)
+        .send({ code: 'WH7', name: 'Denied', kind: 'warehouse' })
+        .expect(403);
+    });
+
+    it('should find a row by a lowercase countryIso2 filter', async () => {
+      const http = harness.getHttp();
+      const token = await adminToken();
+
+      await http
+        .post(BASE)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ code: 'WH8', name: 'Warsaw', kind: 'warehouse', countryIso2: 'PL' })
+        .expect(201);
+
+      // Stored uppercase; the controller uppercases the filter, so a lowercase
+      // query still matches the repository's equality filter.
+      await http
+        .get(`${BASE}?countryIso2=pl`)
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200)
+        .expect((res) => {
+          expect(res.body.total).toBe(1);
+        });
     });
   });
 });

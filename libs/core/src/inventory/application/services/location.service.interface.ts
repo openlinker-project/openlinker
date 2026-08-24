@@ -44,6 +44,15 @@ export interface ILocationService {
   ): Promise<PaginatedInventoryLocations>;
 
   /**
+   * Count the inventory positions pointing at this location.
+   *
+   * A read, not a guard — see `LocationRepositoryPort.countPositionsAtLocation`.
+   * The CRUD API (#2316) calls it before `deleteLocation` so it can refuse with
+   * a count the operator can act on.
+   */
+  countPositionsAtLocation(locationId: string): Promise<number>;
+
+  /**
    * Delete a location.
    *
    * @throws LocationNotFoundException when no location carries that id

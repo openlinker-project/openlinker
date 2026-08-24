@@ -44,6 +44,7 @@ describe('LocationService', () => {
       findById: jest.fn().mockResolvedValue(sample),
       list: jest.fn(),
       delete: jest.fn().mockResolvedValue(true),
+      countPositionsAtLocation: jest.fn().mockResolvedValue(0),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -146,6 +147,15 @@ describe('LocationService', () => {
       repository.findById.mockResolvedValue(null);
 
       await expect(service.getLocation('missing')).resolves.toBeNull();
+    });
+  });
+
+  describe('countPositionsAtLocation', () => {
+    it('should delegate to the repository unchanged', async () => {
+      repository.countPositionsAtLocation.mockResolvedValue(4);
+
+      await expect(service.countPositionsAtLocation('ol_location_x')).resolves.toBe(4);
+      expect(repository.countPositionsAtLocation).toHaveBeenCalledWith('ol_location_x');
     });
   });
 });

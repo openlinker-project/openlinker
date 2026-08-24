@@ -20,6 +20,7 @@ import type { IAppInfoService } from './app-info/app-info.service.interface';
 import { API_VERSION } from './app-info/app-info.types';
 import { CapabilityNotSupportedFilter } from './common/filters/capability-not-supported.filter';
 import { TaxonomySourceUnavailableFilter } from './common/filters/taxonomy-source-unavailable.filter';
+import { InventoryLocationExceptionFilter } from './common/filters/inventory-location-exception.filter';
 import { ConnectionExceptionFilter } from './common/filters/connection-exception.filter';
 
 async function bootstrap(): Promise<void> {
@@ -86,6 +87,7 @@ async function bootstrap(): Promise<void> {
     new CapabilityNotSupportedFilter(),
     new ConnectionExceptionFilter(),
     new TaxonomySourceUnavailableFilter(),
+    new InventoryLocationExceptionFilter(),
   );
 
   // HTTP API URI versioning (#1133 / ADR-029 Axis 3) — every route is served

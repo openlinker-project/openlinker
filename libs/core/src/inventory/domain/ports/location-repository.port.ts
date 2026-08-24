@@ -4,7 +4,7 @@
  * Persistence contract for the operator-authored inventory locations of
  * ADR-058 decision (1).
  *
- * Deliberately narrow: it declares only the five operations this slice (#2313)
+ * Deliberately narrow: it declares only the operations this slice (#2313)
  * and the CRUD API on top of it (#2316) demonstrably use. It does not mirror
  * TypeORM's `Repository<T>` surface and carries no `save(entity)` catch-all —
  * a method lands here when a caller needs it, not in anticipation.
@@ -49,6 +49,18 @@ export interface LocationRepositoryPort {
     filters: InventoryLocationFilters,
     pagination: InventoryLocationPagination
   ): Promise<PaginatedInventoryLocations>;
+
+  /**
+   * Count the inventory positions currently pointing at this location.
+   *
+   * A count, not a guard: it exists solely so the CRUD API (#2316) can report
+   * a 409 with a number the operator can act on before `delete` runs. It
+   * decides nothing and refuses nothing — the refusal lives with the caller
+   * that reports the status, per `delete`'s docblock below.
+   *
+   * @returns the number of `inventory_items` rows carrying this `locationId`
+   */
+  countPositionsAtLocation(locationId: string): Promise<number>;
 
   /**
    * Remove a location.

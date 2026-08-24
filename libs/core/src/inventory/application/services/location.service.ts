@@ -76,6 +76,10 @@ export class LocationService implements ILocationService {
     return this.repository.list(filters, pagination);
   }
 
+  async countPositionsAtLocation(locationId: string): Promise<number> {
+    return this.repository.countPositionsAtLocation(locationId);
+  }
+
   async deleteLocation(id: string): Promise<void> {
     const deleted = await this.repository.delete(id);
     if (!deleted) {
