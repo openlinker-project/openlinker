@@ -59,11 +59,16 @@ import type {
   DeliveryRiderInput,
   DeliveryRiderResolution,
 } from '@openlinker/core/mappings';
+import {
+  deriveOrderLifecyclePhase,
+  DEFAULT_LIFECYCLE_AUTHORITY,
+} from '@openlinker/core/order-lifecycle';
 import { ListOrdersQueryDto } from './dto/list-orders-query.dto';
 import { OrderHealthSummaryQueryDto } from './dto/order-health-summary-query.dto';
 import { OrderHealthSummaryResponseDto } from './dto/order-health-summary-response.dto';
 import { OrderSlaSummaryResponseDto } from './dto/order-sla-summary-response.dto';
 import { OrderSlaSummaryQueryDto } from './dto/order-sla-summary-query.dto';
+import { OrderLifecyclePhaseSummaryResponseDto } from './dto/order-lifecycle-phase-summary-response.dto';
 import { OrderRecordResponseDto } from './dto/order-record-response.dto';
 import type { OrderSyncStatusResponseDto } from './dto/order-sync-status-response.dto';
 import type { SyncAttemptResponseDto } from './dto/sync-attempt-response.dto';
@@ -126,6 +131,7 @@ export class OrdersController {
       fulfillmentState,
       salesDocumentBlocked,
       cancelled,
+      phase,
       limit = 20,
       offset = 0,
     } = query;
@@ -146,6 +152,10 @@ export class OrdersController {
         fulfillmentState,
         salesDocumentBlocked,
         cancelled,
+        // #2309 — the query param is `phase`; the repository filter names the
+        // full axis, since `OrderRecordFilters` already carries several
+        // orthogonal ones.
+        lifecyclePhase: phase,
       },
       { limit, offset }
     );
@@ -235,6 +245,33 @@ export class OrdersController {
       createdFrom: createdFrom ? new Date(createdFrom) : undefined,
       createdTo: createdTo ? new Date(createdTo) : undefined,
       cancelled,
+    });
+  }
+
+  @Get('lifecycle-summary')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Order lifecycle-phase summary counts',
+    description:
+      'Returns the count of order records per derived lifecycle phase (cancelled | vendor_authoritative | delivered | in_transit | fulfillment_failed | held | amending | blocked | ready) for the given source/customer/date scope (#2309, ADR-059). Every bucket tests the same expression the `?phase=` filter tests, so `total` equals their sum and each count matches the rows that filter returns. A SECOND ORTHOGONAL PARTITION beside GET /orders/status-summary, never a sixth health bucket. Three buckets are structurally 0 until Waves 2 and 4 persist the facts they read.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Per-lifecycle-phase counts',
+    type: OrderLifecyclePhaseSummaryResponseDto,
+  })
+  @ApiResponse({ status: 403, description: 'Insufficient permissions' })
+  async lifecycleSummary(
+    @Query() query: OrderHealthSummaryQueryDto
+  ): Promise<OrderLifecyclePhaseSummaryResponseDto> {
+    const { sourceConnectionId, customerId, createdFrom, createdTo } = query;
+    // Deliberately no `cancelled` scope: cancellation is this partition's TOP
+    // arm, so scoping by it would re-scope the axis the partition expresses.
+    return this.orderRecordRepository.countByLifecyclePhase({
+      sourceConnectionId,
+      customerId,
+      createdFrom: createdFrom ? new Date(createdFrom) : undefined,
+      createdTo: createdTo ? new Date(createdTo) : undefined,
     });
   }
 
@@ -414,6 +451,21 @@ export class OrdersController {
       // BE-owned SLA bucket (#1108): single source of truth so the list filter +
       // badge agree. The FE renders only the live countdown off dispatchByAt.
       slaState: deriveSlaState(order.dispatchByAt, order.fulfillmentState, new Date()),
+      // BE-owned derived lifecycle phase (#2309, ADR-059). Produced by the ONE
+      // pure derivation, whose SQL twin backs `?phase=` — so the badge and the
+      // filter agree. On the SHARED toDto, so list and detail read it from one
+      // place. Clock-free, unlike slaState above: no `new Date()` here, and none
+      // inside. Each not-yet-persisted input carries the wave that wires it, so
+      // the wiring points stay greppable.
+      lifecyclePhase: deriveOrderLifecyclePhase({
+        cancelledAt: order.cancelledAt ?? null,
+        fulfillmentState: order.fulfillmentState,
+        activeHoldReason: null, // Wave 2 — `order_holds` + its denormalised column
+        hasOpenAmendment: false, // Wave 2 — widened `order_changes.kind`
+        recordStatus: order.recordStatus,
+        authority: DEFAULT_LIFECYCLE_AUTHORITY, // Wave 4 binds this per order at ingestion
+        vendorDeclaredPhase: null, // Wave 4 — posture-B columns
+      }),
       // Typed projection of the source delivery method (#1791/#1792) so the
       // #1794 Add-mapping deep link reads named fields, not the untyped
       // orderSnapshot blob. Read off the OrderRecord getters; null when absent.

@@ -73,6 +73,7 @@ describe('OrdersController', () => {
       countByHealth: jest.fn(),
       getFailedSyncValueSummary: jest.fn(),
       countBySla: jest.fn(),
+      countByLifecyclePhase: jest.fn(),
       updateFulfillmentState: jest.fn(),
       updateItemResolutionFailure: jest.fn(),
       markCancelled: jest.fn(),

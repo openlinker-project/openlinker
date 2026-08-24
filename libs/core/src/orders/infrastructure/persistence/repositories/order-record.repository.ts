@@ -30,8 +30,11 @@ import type {
   OrderRecordSort,
   OrderRecordSortDirection,
   FailedSyncValueSummary,
+  OrderLifecyclePhaseSummary,
 } from '../../../domain/types/order-record.types';
 import type { SlaState, OrderSlaSummary } from '../../../domain/types/order-sla.types';
+import type { OrderLifecyclePhase } from '@openlinker/core/order-lifecycle';
+import { OrderLifecyclePhaseValues } from '@openlinker/core/order-lifecycle';
 import { SLA_AT_RISK_WINDOW_MS } from '../../../domain/types/order-sla.types';
 import type { FulfillmentRollupState } from '../../../domain/types/order-fulfillment.types';
 import type { SalesDocumentBlock } from '@openlinker/core/sales-documents';
@@ -174,6 +177,13 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
           ? OrderRecordRepository.IS_SALES_DOCUMENT_BLOCKED
           : `NOT (${OrderRecordRepository.IS_SALES_DOCUMENT_BLOCKED})`,
       );
+    }
+
+    if (filters.lifecyclePhase) {
+      // #2309 — the derived-phase axis, deliberately ANDed with `health` rather
+      // than folded into it (ADR-059, the #2100 trap): a held order is usually
+      // also `synced`.
+      this.applyLifecyclePhaseFilter(qb, filters.lifecyclePhase);
     }
 
     this.applySort(qb, filters.sort, filters.dir);
@@ -654,6 +664,157 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       atRisk: Number(raw?.at_risk ?? 0),
       overdue: Number(raw?.overdue ?? 0),
       none: Number(raw?.none ?? 0),
+    };
+  }
+
+  /**
+   * Fulfillment rollup with the documented `NULL ≡ 'not-shipped'` rule applied
+   * ONCE (#2309) — the SQL counterpart of the single normalisation at the top of
+   * `deriveOrderLifecyclePhase`, so no arm of the `CASE` below re-tests for null.
+   *
+   * Note the deliberate idiom divergence from `NOT_SHIPPED` above, which spells
+   * the same rule as an explicit `IS NULL OR ...`: that fragment is a boolean
+   * PREDICATE, this one is a VALUE the `CASE` arms compare against, so folding
+   * them into one form is not possible without making one of the two clumsier.
+   */
+  private static readonly LIFECYCLE_FULFILLMENT = `COALESCE(rec."fulfillmentState", 'not-shipped')`;
+
+  /**
+   * The per-phase SQL predicates of the derived-lifecycle `CASE` (#2309,
+   * ADR-059) — the twin of `deriveOrderLifecyclePhase`'s `if` ladder, arm for
+   * arm.
+   *
+   * **Typed `Record<OrderLifecyclePhase, string>` on purpose**: a phase added to
+   * the vocabulary is then a COMPILE error here rather than a silently missing
+   * `WHEN`, which would misfile every row that should have matched it.
+   *
+   * **Three arms are documented `FALSE` placeholders**, kept textually in
+   * precedence position rather than deleted, so the ladder reads top-to-bottom
+   * identically to the TS file and #2311's mirror-check script can diff the two.
+   * `FALSE` is the only honest twin while the facts they test have no persisted
+   * source: writing anything else would claim a state OL does not record.
+   */
+  private static readonly LIFECYCLE_PHASE_PREDICATES: Record<OrderLifecyclePhase, string> = {
+    // 1. A cancel wins over everything, incl. a dispatched or delivered shipment.
+    cancelled: `rec."cancelledAt" IS NOT NULL`,
+    // 2. Posture B — no persisted source until Wave 4 (`authority` lives on
+    //    `Connection.config`, not on `order_records`, so it is not even joinable
+    //    here). NOTE FOR #2311: this is NOT a single-phase equivalence in TS —
+    //    the corresponding arm is a declared-phase PASSTHROUGH that can return
+    //    ANY phase in the vocabulary (`vendorDeclaredPhase ?? 'vendor_authoritative'`).
+    //    A mirror check must therefore not read `FALSE` as "this arm means
+    //    `vendor_authoritative`"; it means "unreachable until Wave 4".
+    vendor_authoritative: 'FALSE',
+    // 3-5. Observed fulfilment outcomes, in rollup precedence. The rollup has no
+    //      `in-transit` value: `dispatched` is what derives to `in_transit`.
+    delivered: `${OrderRecordRepository.LIFECYCLE_FULFILLMENT} = 'delivered'`,
+    in_transit: `${OrderRecordRepository.LIFECYCLE_FULFILLMENT} = 'dispatched'`,
+    fulfillment_failed: `${OrderRecordRepository.LIFECYCLE_FULFILLMENT} = 'failed'`,
+    // 6. A hold is a DECISION; no persisted source until Wave 2 (`order_holds`
+    //    plus its denormalised column).
+    held: 'FALSE',
+    // 7. An OL-authored intention in flight; no persisted source until Wave 2
+    //    widens `order_changes.kind`.
+    amending: 'FALSE',
+    // 8. OL's own ingest incompleteness.
+    blocked: `rec."recordStatus" IN ('awaiting_mapping','source_deleted')`,
+    // 9. Residual — always matches, which is what makes the `CASE` total.
+    ready: 'TRUE',
+  };
+
+  /**
+   * The one derived-phase expression (#2309). Built by ITERATING
+   * `OrderLifecyclePhaseValues`, which is declared in precedence order, so the
+   * precedence is **imported here, never restated** — reordering the vocabulary
+   * propagates to this `CASE` for free, the same property the pure derivation
+   * holds.
+   *
+   * Every phase literal is a compile-time constant off that frozen vocabulary
+   * and never request data (same posture as `IS_SALES_DOCUMENT_BLOCKED`), so the
+   * interpolation carries no injection surface. The trailing `ELSE` is
+   * unreachable given the `ready: 'TRUE'` arm and exists only so the expression
+   * can never evaluate to NULL.
+   */
+  private static readonly LIFECYCLE_PHASE_EXPR = `CASE ${OrderLifecyclePhaseValues.map(
+    (phase) => `WHEN ${OrderRecordRepository.LIFECYCLE_PHASE_PREDICATES[phase]} THEN '${phase}'`
+  ).join(' ')} ELSE 'ready' END`;
+
+  /**
+   * Narrow a `findMany` query to a single derived lifecycle phase (#2309).
+   *
+   * Tests the SAME single expression the phase summary buckets test — so no
+   * per-arm predicate can drift from its own count, unlike the hand-composed
+   * health pair. Parameterised on the requested phase.
+   *
+   * Clock-free by ADR-059, so unlike `applySlaFilter` this can never disagree
+   * with the row's own `lifecyclePhase` by milliseconds.
+   */
+  private applyLifecyclePhaseFilter(
+    qb: SelectQueryBuilder<OrderRecordOrmEntity>,
+    lifecyclePhase: OrderLifecyclePhase
+  ): void {
+    qb.andWhere(`${OrderRecordRepository.LIFECYCLE_PHASE_EXPR} = :lifecyclePhase`, {
+      lifecyclePhase,
+    });
+  }
+
+  /**
+   * Derived lifecycle-phase count summary (#2309, ADR-059) — the lifecycle twin
+   * of `countByHealth` / `countBySla`.
+   *
+   * Every bucket tests the SAME `LIFECYCLE_PHASE_EXPR` for equality with a
+   * different phase, so the partition invariant (`total` = Σ buckets) holds by
+   * construction rather than by review, and the chip counts always match the
+   * rows `?phase=` returns.
+   *
+   * **`filters.cancelled` is deliberately IGNORED**, mirroring `countByHealth`'s
+   * stance (`countBySla` is the one honouring it, #2306) and for a stronger
+   * reason of its own: cancellation is this partition's TOP arm, so scoping by it
+   * would re-scope the very axis the partition expresses — `cancelled: false`
+   * would report a `cancelled` bucket of 0 while still labelling it a count of
+   * cancellations. The four source/customer/date arms are enumerated
+   * deliberately; `OrderHealthSummaryFilters` now carries five.
+   */
+  async countByLifecyclePhase(
+    filters: OrderHealthSummaryFilters
+  ): Promise<OrderLifecyclePhaseSummary> {
+    const qb = this.repository.createQueryBuilder('rec').select('COUNT(*)', 'total');
+    for (const phase of OrderLifecyclePhaseValues) {
+      qb.addSelect(
+        `COUNT(*) FILTER (WHERE ${OrderRecordRepository.LIFECYCLE_PHASE_EXPR} = '${phase}')`,
+        phase
+      );
+    }
+
+    if (filters.sourceConnectionId) {
+      qb.andWhere('rec.sourceConnectionId = :sourceConnectionId', {
+        sourceConnectionId: filters.sourceConnectionId,
+      });
+    }
+    if (filters.customerId) {
+      qb.andWhere('rec.customerId = :customerId', { customerId: filters.customerId });
+    }
+    if (filters.createdFrom) {
+      qb.andWhere('rec.createdAt >= :createdFrom', { createdFrom: filters.createdFrom });
+    }
+    if (filters.createdTo) {
+      qb.andWhere('rec.createdAt <= :createdTo', { createdTo: filters.createdTo });
+    }
+
+    const raw = await qb.getRawOne<Record<string, string>>();
+    const count = (key: string): number => Number(raw?.[key] ?? 0);
+
+    return {
+      total: count('total'),
+      cancelled: count('cancelled'),
+      vendorAuthoritative: count('vendor_authoritative'),
+      delivered: count('delivered'),
+      inTransit: count('in_transit'),
+      fulfillmentFailed: count('fulfillment_failed'),
+      held: count('held'),
+      amending: count('amending'),
+      blocked: count('blocked'),
+      ready: count('ready'),
     };
   }
 

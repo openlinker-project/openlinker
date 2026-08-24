@@ -36,6 +36,8 @@ import {
   SlaState,
   FulfillmentRollupState,
 } from '@openlinker/core/orders';
+import { OrderLifecyclePhaseValues } from '@openlinker/core/order-lifecycle';
+import { OrderLifecyclePhase } from '@openlinker/core/order-lifecycle';
 
 export class ListOrdersQueryDto {
   @ApiPropertyOptional({ description: 'Filter by source connection ID (UUID)' })
@@ -174,6 +176,22 @@ export class ListOrdersQueryDto {
   @Transform(({ value }): unknown => (value === 'true' ? true : value === 'false' ? false : value))
   @IsBoolean()
   cancelled?: boolean;
+
+  @ApiPropertyOptional({
+    enum: OrderLifecyclePhaseValues,
+    description:
+      'Derived lifecycle-phase filter (#2309, ADR-059): cancelled | vendor_authoritative | ' +
+      'delivered | in_transit | fulfillment_failed | held | amending | blocked | ready. ' +
+      'Server-derived from the order\'s own facts and clock-free, so it always matches the ' +
+      '`lifecyclePhase` the same order carries on its response. A SECOND ORTHOGONAL PARTITION ' +
+      'beside `health`, not a sixth health bucket — it composes with `health` rather than ' +
+      'competing with it (a held order is usually also synced). Three values ' +
+      '(vendor_authoritative, held, amending) have no persisted source yet and match nothing ' +
+      'until Waves 2 and 4 wire their facts.',
+  })
+  @IsOptional()
+  @IsEnum(OrderLifecyclePhaseValues)
+  phase?: OrderLifecyclePhase;
 
   @ApiPropertyOptional({ default: 0, minimum: 0, description: 'Number of items to skip' })
   @IsOptional()

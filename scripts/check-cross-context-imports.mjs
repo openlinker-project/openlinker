@@ -438,6 +438,10 @@ const ALLOW_LIST = new Map([
     new Set(['OrderRecordRepositoryPort']),
   ],
   [
+    'apps/api/test/integration/order-lifecycle-phase.int-spec.ts',
+    new Set(['OrderRecordRepositoryPort']),
+  ],
+  [
     'apps/api/test/integration/order-column-sort.int-spec.ts',
     new Set(['OrderRecordRepositoryPort']),
   ],

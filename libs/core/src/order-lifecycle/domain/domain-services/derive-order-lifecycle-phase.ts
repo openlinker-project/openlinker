@@ -97,8 +97,11 @@ export interface DeriveOrderLifecyclePhaseInput {
    * additionally reports this phase via `describeLifecycle().declaredPhase`.
    * `null` therefore means "the vendor is the authority and declared nothing OL
    * can classify" — which is precisely what `vendor_authoritative` reports.
-   * **No persisted source until Wave 4** (posture-B columns; label persistence
-   * is #2309's).
+   * **No persisted source until Wave 4** — both this classified phase and the
+   * verbatim `vendorLifecycleLabel` beside it are posture-B columns, and label
+   * persistence is Wave 4's too. (#2309 is the SQL twin and API projection
+   * only: it adds no column, so its `CASE` writes this arm as a documented
+   * `FALSE` placeholder.)
    */
   vendorDeclaredPhase: OrderLifecyclePhase | null;
 }
