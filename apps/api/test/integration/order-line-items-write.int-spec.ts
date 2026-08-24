@@ -91,6 +91,9 @@ describe('OrderRecord line-item transactional write (integration, #1985)', () =>
         unitPrice: 10,
         sourceConnectionId: SOURCE_CONNECTION,
         placedAt: orderRecord.placedAt,
+        taxRate: null,
+        taxSource: null,
+        taxRateReadAt: null,
       },
       {
         lineNumber: 1,
@@ -100,6 +103,9 @@ describe('OrderRecord line-item transactional write (integration, #1985)', () =>
         unitPrice: 80,
         sourceConnectionId: SOURCE_CONNECTION,
         placedAt: orderRecord.placedAt,
+        taxRate: null,
+        taxSource: null,
+        taxRateReadAt: null,
       },
     ]);
 
@@ -132,6 +138,9 @@ describe('OrderRecord line-item transactional write (integration, #1985)', () =>
         unitPrice: 10,
         sourceConnectionId: SOURCE_CONNECTION,
         placedAt: orderRecord.placedAt,
+        taxRate: null,
+        taxSource: null,
+        taxRateReadAt: null,
       },
       {
         lineNumber: 1,
@@ -141,6 +150,9 @@ describe('OrderRecord line-item transactional write (integration, #1985)', () =>
         unitPrice: 80,
         sourceConnectionId: SOURCE_CONNECTION,
         placedAt: orderRecord.placedAt,
+        taxRate: null,
+        taxSource: null,
+        taxRateReadAt: null,
       },
     ]);
 
@@ -154,6 +166,9 @@ describe('OrderRecord line-item transactional write (integration, #1985)', () =>
         unitPrice: 10,
         sourceConnectionId: SOURCE_CONNECTION,
         placedAt: orderRecord.placedAt,
+        taxRate: null,
+        taxSource: null,
+        taxRateReadAt: null,
       },
     ]);
 
@@ -182,6 +197,9 @@ describe('OrderRecord line-item transactional write (integration, #1985)', () =>
           unitPrice: 10,
           sourceConnectionId: SOURCE_CONNECTION,
           placedAt: orderRecord.placedAt,
+          taxRate: null,
+          taxSource: null,
+          taxRateReadAt: null,
         },
         {
           lineNumber: 0,
@@ -191,6 +209,9 @@ describe('OrderRecord line-item transactional write (integration, #1985)', () =>
           unitPrice: 20,
           sourceConnectionId: SOURCE_CONNECTION,
           placedAt: orderRecord.placedAt,
+          taxRate: null,
+          taxSource: null,
+          taxRateReadAt: null,
         },
       ])
     ).rejects.toThrow();
@@ -219,6 +240,9 @@ describe('OrderRecord line-item transactional write (integration, #1985)', () =>
         unitPrice: 55.5,
         sourceConnectionId: SOURCE_CONNECTION,
         placedAt: orderRecord.placedAt,
+        taxRate: null,
+        taxSource: null,
+        taxRateReadAt: null,
       },
     ]);
 
