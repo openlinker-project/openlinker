@@ -14,6 +14,8 @@ import {
   FulfillmentRollupStateValues,
 } from '@openlinker/core/orders';
 import { OrderRecordStatus, SlaState, FulfillmentRollupState } from '@openlinker/core/orders';
+import { OrderLifecyclePhaseValues } from '@openlinker/core/order-lifecycle';
+import { OrderLifecyclePhase } from '@openlinker/core/order-lifecycle';
 import {
   SalesDocumentGateBlockReasonValues,
   SalesDocumentUnresolvedReasonValues,
@@ -191,6 +193,18 @@ export class OrderRecordResponseDto {
       'Ship-by SLA bucket (#1108), server-derived from dispatchByAt + fulfillmentState (cleared to "none" once shipped). The single source of truth the list badge + filter agree on; the FE renders only the live countdown from dispatchByAt.',
   })
   slaState!: SlaState;
+
+  @ApiProperty({
+    enum: OrderLifecyclePhaseValues,
+    description:
+      'Derived lifecycle phase (#2309, ADR-059) — "what is this order waiting on, and who holds ' +
+      'it up". Server-derived by the one pure `deriveOrderLifecyclePhase`, whose SQL twin backs ' +
+      'the `?phase=` filter, so the badge and the filter always agree. CLOCK-FREE, unlike ' +
+      'slaState: two reads of an unchanged order can never differ. A SECOND ORTHOGONAL ' +
+      'PARTITION beside the order-health buckets, never a sixth one — a held order is usually ' +
+      'also synced. Nothing persists a phase; it is recomputed from facts each read.',
+  })
+  lifecyclePhase!: OrderLifecyclePhase;
 
   @ApiPropertyOptional({
     type: OrderDeliveryResolutionDto,

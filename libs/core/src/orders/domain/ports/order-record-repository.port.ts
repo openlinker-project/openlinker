@@ -14,6 +14,7 @@ import type {
   PaginatedOrderRecords,
   OrderHealthSummary,
   OrderHealthSummaryFilters,
+  OrderLifecyclePhaseSummary,
   OrderRecordStatus,
   FailedSyncValueSummary,
 } from '../types/order-record.types';
@@ -118,6 +119,25 @@ export interface OrderRecordRepositoryPort {
    * server clock.
    */
   countBySla(filters: OrderHealthSummaryFilters): Promise<OrderSlaSummary>;
+
+  /**
+   * Count order records per derived lifecycle phase (#2309, ADR-059) — the
+   * lifecycle twin of {@link countByHealth}. One aggregate query testing the
+   * single `CASE` expression `applyLifecyclePhaseFilter` also tests, so the
+   * counts and the rows a `lifecyclePhase` filter yields agree by construction
+   * and `total` equals the sum of the nine buckets.
+   *
+   * Scope is the source/customer/date subset only. **`cancelled` is
+   * deliberately IGNORED** — mirroring `countByHealth`'s stance and for a
+   * stronger reason: cancellation is already this partition's TOP arm, so
+   * scoping by it would re-scope the axis the partition itself expresses (asking
+   * for `cancelled: false` would empty the `cancelled` bucket while leaving the
+   * label claiming to count cancellations). `lifecyclePhase` itself is likewise
+   * not a valid input.
+   */
+  countByLifecyclePhase(
+    filters: OrderHealthSummaryFilters
+  ): Promise<OrderLifecyclePhaseSummary>;
 
   /**
    * "Value stuck in failed syncs" — the needs-attention aggregate (#1983).

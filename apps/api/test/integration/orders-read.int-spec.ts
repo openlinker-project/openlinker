@@ -297,6 +297,70 @@ describe('Orders Read API Integration', () => {
     });
   });
 
+  describe('lifecyclePhase projection (#2309)', () => {
+    it('should carry the server-derived lifecyclePhase on every list row', async () => {
+      const http = harness.getHttp();
+      const dataSource = harness.getDataSource();
+      const token = await loginAsAdmin(http, dataSource);
+
+      const delivered = await createTestOrderRecord(dataSource, {
+        recordStatus: 'ready',
+        fulfillmentState: 'delivered',
+      });
+      const plain = await createTestOrderRecord(dataSource, { recordStatus: 'ready' });
+
+      const response = await http
+        .get('/v1/orders')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+
+      expect(response.body.total).toBe(2);
+      const byId = new Map<string, string>(
+        response.body.items.map((item: { internalOrderId: string; lifecyclePhase: string }) => [
+          item.internalOrderId,
+          item.lifecyclePhase,
+        ]),
+      );
+      expect(byId.get(delivered.internalOrderId)).toBe('delivered');
+      // NULL rollup ≡ not-shipped, ready recordStatus → the residual phase.
+      expect(byId.get(plain.internalOrderId)).toBe('ready');
+    });
+
+    it('should filter the list by ?phase=, matching the phase each row reports', async () => {
+      const http = harness.getHttp();
+      const dataSource = harness.getDataSource();
+      const token = await loginAsAdmin(http, dataSource);
+
+      const delivered = await createTestOrderRecord(dataSource, {
+        recordStatus: 'ready',
+        fulfillmentState: 'delivered',
+      });
+      await createTestOrderRecord(dataSource, { recordStatus: 'ready' });
+
+      const response = await http
+        .get('/v1/orders?phase=delivered')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+
+      expect(response.body.total).toBe(1);
+      expect(response.body.items[0].internalOrderId).toBe(delivered.internalOrderId);
+      // The filter and the projection are one rule, so the row it returns
+      // reports the phase that was asked for.
+      expect(response.body.items[0].lifecyclePhase).toBe('delivered');
+    });
+
+    it('should reject an unknown ?phase= value with 400', async () => {
+      const http = harness.getHttp();
+      const dataSource = harness.getDataSource();
+      const token = await loginAsAdmin(http, dataSource);
+
+      await http
+        .get('/v1/orders?phase=not_a_phase')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(400);
+    });
+  });
+
   describe('GET /orders/:internalOrderId', () => {
     it('should return order detail by internal order id', async () => {
       const http = harness.getHttp();
@@ -312,6 +376,8 @@ describe('Orders Read API Integration', () => {
 
       expect(response.body.internalOrderId).toBe(order.internalOrderId);
       expect(response.body.sourceConnectionId).toBe(order.sourceConnectionId);
+      // #2309 — the SHARED toDto projects the phase, so detail carries it too.
+      expect(response.body.lifecyclePhase).toBe('ready');
     });
 
     it('should return 404 for non-existent order', async () => {

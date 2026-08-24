@@ -9,6 +9,7 @@
 import type { OrderRecord } from '../entities/order-record.entity';
 import type { SlaState } from './order-sla.types';
 import type { FulfillmentRollupState } from './order-fulfillment.types';
+import type { OrderLifecyclePhase } from '@openlinker/core/order-lifecycle';
 
 /**
  * Per-destination sync status values (#2284).
@@ -168,6 +169,38 @@ export interface OrderHealthSummaryFilters {
 }
 
 /**
+ * Aggregate count of order records per derived lifecycle phase (#2309,
+ * ADR-059). One field per `OrderLifecyclePhaseValues` member, in that
+ * vocabulary's own precedence order.
+ *
+ * **`total` equals the sum of the nine buckets, by construction** — unlike
+ * `OrderHealthSummary`, whose bucket predicates are hand-composed, every bucket
+ * here tests the SAME single `CASE` expression for equality with a different
+ * phase, so no row can be counted twice or missed.
+ *
+ * **Three buckets are structurally zero in Wave 1a.** `vendor_authoritative`
+ * has no producer until posture-B columns land (Wave 4), and `held` /
+ * `amending` have no persisted source until Wave 2 — their SQL arms are
+ * documented `FALSE` placeholders, so a count of 0 is a correct report about a
+ * fact OL does not yet record, not a bug.
+ *
+ * Scope reuses `OrderHealthSummaryFilters`, whose `cancelled` arm this summary
+ * deliberately IGNORES — see `countByLifecyclePhase`.
+ */
+export interface OrderLifecyclePhaseSummary {
+  total: number;
+  cancelled: number;
+  vendorAuthoritative: number;
+  delivered: number;
+  inTransit: number;
+  fulfillmentFailed: number;
+  held: number;
+  amending: number;
+  blocked: number;
+  ready: number;
+}
+
+/**
  * Order record filters for list queries
  */
 export interface OrderRecordFilters {
@@ -243,6 +276,22 @@ export interface OrderRecordFilters {
    * blocked", which is the most common shape of the problem).
    */
   salesDocumentBlocked?: boolean;
+  /**
+   * Derived lifecycle-phase filter (#2309, ADR-059). Translated to a SQL
+   * predicate by `OrderRecordRepository.applyLifecyclePhaseFilter`, which tests
+   * the ONE `CASE` expression the phase count also tests — so the chip's number
+   * and the rows it yields agree by construction.
+   *
+   * The SQL is the **twin** of the pure `deriveOrderLifecyclePhase` (#2307),
+   * which stays authoritative per row and is what the response `lifecyclePhase`
+   * carries. Unlike `slaState`, the phase is CLOCK-FREE (ADR-059), so the row
+   * value and this filter can never disagree by milliseconds.
+   *
+   * A SECOND ORTHOGONAL PARTITION beside `health`, never a sixth health bucket
+   * (the #2100 trap): a held order is usually also `synced`, so this filter
+   * composes with `health` rather than competing with it.
+   */
+  lifecyclePhase?: OrderLifecyclePhase;
   /**
    * Result ordering (#927/#944/#1108). Maps to a SQL `ORDER BY` by
    * `OrderRecordRepository.applySort`. `dispatchBy` (ship-by deadline, NULLs
