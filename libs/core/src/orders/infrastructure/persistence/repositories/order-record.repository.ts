@@ -36,7 +36,10 @@ import type {
 import type { SlaState, OrderSlaSummary } from '../../../domain/types/order-sla.types';
 import { SLA_AT_RISK_WINDOW_MS } from '../../../domain/types/order-sla.types';
 import type { FulfillmentRollupState } from '../../../domain/types/order-fulfillment.types';
-import { netSalesRateFractionSql } from '../../../domain/types/net-sales-tax-rate.types';
+import {
+  netSalesLineNetAmountSql,
+  netSalesOrderNetEligibleSql,
+} from '../../../domain/types/net-sales-tax-rate.types';
 import type { SalesDocumentBlock } from '@openlinker/core/sales-documents';
 import {
   SalesDocumentAttentionReasonValues,
@@ -597,25 +600,29 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    * Shared SQL fragments for net-sales (VAT-exclusive) order eligibility
    * (net-sales tax-rate epic) — an order counts toward a net figure only
    * when it is not pre-rollout history (ADR-063 § Consequences) AND carries
-   * at least one line AND every one of its lines resolves to a known
-   * tax-rate fraction via {@link resolveNetSalesTaxRate}. Expressed as
-   * correlated subqueries rather than a JOIN to `order_line_items`: joining
-   * would multiply the caller's row cardinality (one row per order-line
-   * instead of one per order), corrupting every `COUNT(*)`/`SUM` aggregate
-   * grouped at the order level.
+   * at least one line AND, for gross-priced orders, every line resolves to a
+   * known tax-rate fraction via {@link resolveNetSalesTaxRate}. Net-priced
+   * (`taxTreatment = 'exclusive'`) orders need no resolvable rate — unit
+   * prices are already VAT-exclusive (#2440). Expressed as correlated
+   * subqueries rather than a JOIN to `order_line_items`: joining would
+   * multiply the caller's row cardinality (one row per order-line instead of
+   * one per order), corrupting every `COUNT(*)`/`SUM` aggregate grouped at
+   * the order level.
    */
   private buildNetSalesOrderFragments(): { netEligible: string; netOrderAmount: string } {
-    const netRateFraction = netSalesRateFractionSql('net_li."taxRate"');
-    const netEligible = `(
-      rec."taxRateEra" IS DISTINCT FROM 'pre-rollout'
-      AND EXISTS (SELECT 1 FROM order_line_items net_li WHERE net_li."orderRecordId" = rec."internalOrderId")
-      AND NOT EXISTS (
-        SELECT 1 FROM order_line_items net_li
-        WHERE net_li."orderRecordId" = rec."internalOrderId" AND (${netRateFraction}) IS NULL
-      )
-    )`;
+    const netEligible = netSalesOrderNetEligibleSql(
+      'rec."internalOrderId"',
+      'net_li',
+      'rec."taxTreatment"'
+    );
+    const lineNetAmount = netSalesLineNetAmountSql(
+      'net_li."unitPrice"',
+      'net_li."quantity"',
+      'net_li."taxRate"',
+      'rec."taxTreatment"'
+    );
     const netOrderAmount = `(
-      SELECT COALESCE(SUM(net_li."unitPrice" * net_li."quantity" * (1 - (${netRateFraction}))), 0)
+      SELECT COALESCE(SUM(${lineNetAmount}), 0)
       FROM order_line_items net_li
       WHERE net_li."orderRecordId" = rec."internalOrderId"
     )`;

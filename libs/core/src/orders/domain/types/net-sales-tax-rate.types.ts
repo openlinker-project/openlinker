@@ -24,6 +24,7 @@
  * @module libs/core/src/orders/domain/types
  * @see docs/architecture/adrs/063-per-line-tax-rate-resolution-and-provenance.md
  */
+import type { PriceTaxTreatment } from './order.types';
 
 /**
  * Non-numeric `order_line_items.taxRate` codes that carry an effective 0% VAT
@@ -85,6 +86,30 @@ export function resolveNetSalesTaxRate(
 }
 
 /**
+ * Derive one line's VAT-exclusive amount for net-sales aggregates.
+ *
+ * - `'exclusive'`: `unitPrice` is already net — return `unitPrice × quantity`.
+ * - `'inclusive'` or absent: treat `unitPrice` as gross and strip VAT via the
+ *   resolved rate fraction; return `null` when the rate is unresolvable.
+ */
+export function deriveNetLineAmount(
+  unitPrice: number,
+  quantity: number,
+  taxRate: string | null | undefined,
+  taxTreatment: PriceTaxTreatment | null | undefined
+): number | null {
+  const lineTotal = unitPrice * quantity;
+  if (taxTreatment === 'exclusive') {
+    return lineTotal;
+  }
+  const rateOutcome = resolveNetSalesTaxRate(taxRate);
+  if (rateOutcome.kind === 'unknown') {
+    return null;
+  }
+  return lineTotal * (1 - rateOutcome.rateFraction);
+}
+
+/**
  * The SQL `CASE` expression implementing {@link resolveNetSalesTaxRate}'s
  * numeric/exempt-code rule, parameterized on a qualified column reference
  * (e.g. `li."taxRate"`) so every SQL call site shares one expression instead
@@ -105,4 +130,61 @@ export function netSalesRateFractionSql(taxRateColumnRef: string): string {
       THEN (${taxRateColumnRef}::numeric / 100)
       ELSE NULL
     END`;
+}
+
+/**
+ * SQL for one line's VAT-exclusive amount, honoring the parent order's
+ * {@link PriceTaxTreatment}. Mirrors {@link deriveNetLineAmount}.
+ */
+export function netSalesLineNetAmountSql(
+  unitPriceColumnRef: string,
+  quantityColumnRef: string,
+  taxRateColumnRef: string,
+  taxTreatmentColumnRef: string
+): string {
+  const lineTotal = `${unitPriceColumnRef} * ${quantityColumnRef}`;
+  const rateFraction = netSalesRateFractionSql(taxRateColumnRef);
+  return `CASE
+      WHEN ${taxTreatmentColumnRef} = 'exclusive' THEN ${lineTotal}
+      ELSE ${lineTotal} * (1 - (${rateFraction}))
+    END`;
+}
+
+/**
+ * Order-level net-sales eligibility predicate: post-rollout, has line items,
+ * and either net-priced (`exclusive`) or every line resolves a tax rate.
+ */
+export function netSalesOrderNetEligibleSql(
+  orderRecordIdColumnRef: string,
+  lineItemTableAlias: string,
+  taxTreatmentColumnRef: string
+): string {
+  const rateFraction = netSalesRateFractionSql(`${lineItemTableAlias}."taxRate"`);
+  return `(
+      rec."taxRateEra" IS DISTINCT FROM 'pre-rollout'
+      AND EXISTS (
+        SELECT 1 FROM order_line_items ${lineItemTableAlias}
+        WHERE ${lineItemTableAlias}."orderRecordId" = ${orderRecordIdColumnRef}
+      )
+      AND (
+        ${taxTreatmentColumnRef} = 'exclusive'
+        OR NOT EXISTS (
+          SELECT 1 FROM order_line_items ${lineItemTableAlias}
+          WHERE ${lineItemTableAlias}."orderRecordId" = ${orderRecordIdColumnRef}
+            AND (${rateFraction}) IS NULL
+        )
+      )
+    )`;
+}
+
+/**
+ * Line-level net-sales eligibility for stamped orders: post-rollout and
+ * either net-priced or the line's own tax rate resolves.
+ */
+export function netSalesLineNetEligibleConditionSql(
+  taxRateColumnRef: string,
+  taxTreatmentColumnRef: string
+): string {
+  const rateFraction = netSalesRateFractionSql(taxRateColumnRef);
+  return `(rec."taxRateEra" IS DISTINCT FROM 'pre-rollout' AND (${taxTreatmentColumnRef} = 'exclusive' OR (${rateFraction}) IS NOT NULL))`;
 }

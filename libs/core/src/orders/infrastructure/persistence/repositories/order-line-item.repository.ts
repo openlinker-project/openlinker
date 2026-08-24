@@ -26,7 +26,10 @@ import type {
   ProductRankingRow,
   TopProductFilters,
 } from '../../../domain/types/top-products.types';
-import { netSalesRateFractionSql } from '../../../domain/types/net-sales-tax-rate.types';
+import {
+  netSalesLineNetAmountSql,
+  netSalesLineNetEligibleConditionSql,
+} from '../../../domain/types/net-sales-tax-rate.types';
 
 @Injectable()
 export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
@@ -152,10 +155,19 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
     // Net-sales (VAT-exclusive) eligibility for a LINE — this read already
     // operates at line grain, so unlike #1987's order-level aggregates no
     // correlated subquery is needed: the rate fraction is read directly off
-    // this row's own `li."taxRate"`.
-    const netRateFraction = netSalesRateFractionSql('li."taxRate"');
-    const stampedNonZeroKnownRate = `${stampedNonZero} AND rec."taxRateEra" IS DISTINCT FROM 'pre-rollout' AND (${netRateFraction}) IS NOT NULL`;
-    const stampedNonZeroUnknownRate = `${stampedNonZero} AND NOT (rec."taxRateEra" IS DISTINCT FROM 'pre-rollout' AND (${netRateFraction}) IS NOT NULL)`;
+    // this row's own `li."taxRate"`, unless the order is net-priced.
+    const lineNetAmount = netSalesLineNetAmountSql(
+      'li."unitPrice"',
+      'li."quantity"',
+      'li."taxRate"',
+      'rec."taxTreatment"'
+    );
+    const netEligibleCondition = netSalesLineNetEligibleConditionSql(
+      'li."taxRate"',
+      'rec."taxTreatment"'
+    );
+    const stampedNonZeroKnownRate = `${stampedNonZero} AND ${netEligibleCondition}`;
+    const stampedNonZeroUnknownRate = `${stampedNonZero} AND NOT ${netEligibleCondition}`;
 
     const rankingQb = this.repository
       .createQueryBuilder('li')
@@ -186,7 +198,7 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
         'unconverted_currency'
       )
       .addSelect(
-        `COALESCE(SUM(li."unitPrice" * li."quantity" * (1 - (${netRateFraction})) * (rec."reportingTotalAmount" / NULLIF(rec."totalAmount", 0))) FILTER (WHERE ${stampedNonZeroKnownRate}), 0)`,
+        `COALESCE(SUM((${lineNetAmount}) * (rec."reportingTotalAmount" / NULLIF(rec."totalAmount", 0))) FILTER (WHERE ${stampedNonZeroKnownRate}), 0)`,
         'net_revenue'
       )
       .addSelect(
@@ -276,9 +288,18 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
     // NULL whenever any row's reportingCurrency mismatched).
     const unconvertedOrZeroTotal =
       '(rec."reportingCurrency" IS DISTINCT FROM :reportingCurrency OR rec."totalAmount" = 0)';
-    const netRateFraction = netSalesRateFractionSql('li."taxRate"');
-    const stampedNonZeroKnownRate = `${stampedNonZero} AND rec."taxRateEra" IS DISTINCT FROM 'pre-rollout' AND (${netRateFraction}) IS NOT NULL`;
-    const stampedNonZeroUnknownRate = `${stampedNonZero} AND NOT (rec."taxRateEra" IS DISTINCT FROM 'pre-rollout' AND (${netRateFraction}) IS NOT NULL)`;
+    const lineNetAmount = netSalesLineNetAmountSql(
+      'li."unitPrice"',
+      'li."quantity"',
+      'li."taxRate"',
+      'rec."taxTreatment"'
+    );
+    const netEligibleCondition = netSalesLineNetEligibleConditionSql(
+      'li."taxRate"',
+      'rec."taxTreatment"'
+    );
+    const stampedNonZeroKnownRate = `${stampedNonZero} AND ${netEligibleCondition}`;
+    const stampedNonZeroUnknownRate = `${stampedNonZero} AND NOT ${netEligibleCondition}`;
 
     const qb = this.repository
       .createQueryBuilder('li')
@@ -306,7 +327,7 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
         'unconverted_currency'
       )
       .addSelect(
-        `COALESCE(SUM(li."unitPrice" * li."quantity" * (1 - (${netRateFraction})) * (rec."reportingTotalAmount" / NULLIF(rec."totalAmount", 0))) FILTER (WHERE ${stampedNonZeroKnownRate}), 0)`,
+        `COALESCE(SUM((${lineNetAmount}) * (rec."reportingTotalAmount" / NULLIF(rec."totalAmount", 0))) FILTER (WHERE ${stampedNonZeroKnownRate}), 0)`,
         'net_revenue'
       )
       .addSelect(

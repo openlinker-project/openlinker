@@ -1,4 +1,9 @@
-import { netSalesRateFractionSql, resolveNetSalesTaxRate } from './net-sales-tax-rate.types';
+import {
+  deriveNetLineAmount,
+  netSalesLineNetAmountSql,
+  netSalesRateFractionSql,
+  resolveNetSalesTaxRate,
+} from './net-sales-tax-rate.types';
 
 describe('resolveNetSalesTaxRate', () => {
   it.each([
@@ -37,5 +42,38 @@ describe('netSalesRateFractionSql', () => {
     const sql = netSalesRateFractionSql('li."taxRate"');
     expect(sql).toContain('li."taxRate" IN (\'zw\',\'np\',\'oo\')');
     expect(sql).toContain('li."taxRate"::numeric / 100');
+  });
+});
+
+describe('deriveNetLineAmount', () => {
+  it('returns unitPrice × quantity when taxTreatment is exclusive', () => {
+    expect(deriveNetLineAmount(100, 2, null, 'exclusive')).toBe(200);
+    expect(deriveNetLineAmount(100, 2, '23', 'exclusive')).toBe(200);
+  });
+
+  it('strips VAT from gross-priced lines when taxTreatment is inclusive', () => {
+    expect(deriveNetLineAmount(100, 1, '23', 'inclusive')).toBe(77);
+  });
+
+  it('treats absent taxTreatment as gross-priced', () => {
+    expect(deriveNetLineAmount(100, 1, '23', null)).toBe(77);
+    expect(deriveNetLineAmount(100, 1, '23', undefined)).toBe(77);
+  });
+
+  it('returns null when a gross-priced line has an unresolvable tax rate', () => {
+    expect(deriveNetLineAmount(100, 1, null, 'inclusive')).toBeNull();
+  });
+});
+
+describe('netSalesLineNetAmountSql', () => {
+  it('branches on taxTreatment before applying the rate fraction', () => {
+    const sql = netSalesLineNetAmountSql(
+      'li."unitPrice"',
+      'li."quantity"',
+      'li."taxRate"',
+      'rec."taxTreatment"'
+    );
+    expect(sql).toContain("rec.\"taxTreatment\" = 'exclusive'");
+    expect(sql).toContain('li."unitPrice" * li."quantity"');
   });
 });
