@@ -8,6 +8,10 @@
  * Supports both product-level and variant-level inventory (productVariantId is nullable).
  * Uses partial unique indexes to prevent duplicate base inventory rows when productVariantId is NULL.
  *
+ * `sourceConnectionId` records which connection's sync owns the position
+ * (ADR-058 ladder step (i), #2314). Nullable until the #2317 `'legacy'`-sentinel
+ * backfill; neither partial unique index includes it — see the column comment.
+ *
  * @module libs/core/src/inventory/infrastructure/persistence/entities
  */
 import {
@@ -61,6 +65,18 @@ export class InventoryItemOrmEntity {
 
   @Column({ type: 'varchar', nullable: true })
   locationId!: string | null;
+
+  // Connection provenance for the position (ADR-058 ladder step (i), #2314):
+  // which connection's sync owns this row. `text` rather than `uuid`, and no FK
+  // to `connections` — step (ii) writes the literal `'legacy'` sentinel, and
+  // provenance must survive deletion of the connection it names.
+  //
+  // Nullable until the #2317 backfill; SET NOT NULL is #2325. Deliberately NOT
+  // in either partial unique index: a NULL-bearing column makes the index
+  // NULL-distinct, admitting duplicate positions that double-count
+  // available-to-promise.
+  @Column({ type: 'text', nullable: true })
+  sourceConnectionId!: string | null;
 
   // Soft-mark for a row whose variant no longer appears in the master's
   // listInventory response (#1478). Excluded from the variant-availability read;

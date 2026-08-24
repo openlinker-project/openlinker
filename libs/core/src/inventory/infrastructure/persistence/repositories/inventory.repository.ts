@@ -8,7 +8,7 @@
  * Implements InventoryRepositoryPort to maintain proper dependency
  * direction and enable easy testing/mocking.
  *
- * The update path is column-scoped (#2071): the three exported column groups
+ * The update path is column-scoped (#2071): the four exported column groups
  * below state which columns the master sync owns, and a spec asserts every
  * declared entity column is classified into exactly one of them — so a column
  * added later cannot silently join the write set on the row every published
@@ -38,7 +38,7 @@ import type {
 } from '../../../domain/types/inventory.types';
 
 /**
- * The three column groups below are exported for the classification spec, which
+ * The four column groups below are exported for the classification spec, which
  * asserts every declared entity column falls into exactly one of them — so a new
  * column fails the build until someone decides who owns it. They are NOT part of
  * the context's public surface (deliberately absent from `inventory/index.ts`)
@@ -74,11 +74,22 @@ export const INVENTORY_IDENTITY_COLUMNS = [
  *   disjoint and an upsert cannot un-stale a row the same run just flagged.
  *   **Precondition:** any new `upsert` caller must preserve that ordering, or
  *   `isStale` has to leave this set.
+ * - `sourceConnectionId` — connection provenance (ADR-058 ladder step (i),
+ *   #2314), written by whichever sync creates or refreshes the row. It is in
+ *   the UPDATE set deliberately, so a pre-existing row acquires provenance on
+ *   its next sync rather than waiting for the #2317 backfill. The consequence
+ *   is accepted and known: where two `InventoryMaster` connections claim the
+ *   same internal product id, each sync rewrites the other's value and the
+ *   column flaps. That is exactly the condition the #1904 rival-claimant guard
+ *   already detects (and withholds the prune for), so the guard stays until
+ *   ladder step (iii) makes the column authoritative; #2320 inherits the
+ *   flapping as a known state.
  */
 export const INVENTORY_MASTER_OWNED_COLUMNS = [
   'availableQuantity',
   'reservedQuantity',
   'isStale',
+  'sourceConnectionId',
 ] as const;
 
 /**
@@ -92,6 +103,27 @@ export const INVENTORY_MASTER_OWNED_COLUMNS = [
  * collide the key and the propagation would be silently dropped.
  */
 export const INVENTORY_DB_MANAGED_COLUMNS = ['updatedAt'] as const;
+
+/**
+ * Columns OpenLinker itself owns, which the master sync must NOT write (#2314).
+ *
+ * **Empty by decomposition, not by oversight.** ADR-058 decision 4 names
+ * exactly one such column — `olReservedQuantity`, OL's own reservation counter
+ * — and that lands with ADR-061 in Wave 2. The group is declared now so the
+ * fourth ownership answer exists before there is a column needing it: the
+ * classification spec already forces every new column into exactly one group,
+ * and without this group the only available answer for an OL-owned column would
+ * be the master-owned set, which is the one place it must never go.
+ *
+ * Note the neighbouring trap this group exists to keep separate:
+ * `reservedQuantity` reads like an OL counter and is not — it is a mirror of
+ * the master's value, rewritten every sync.
+ *
+ * The type annotation is explicit because `[] as const` infers `readonly []`,
+ * whose element type is `never` — a spread of that into the classification
+ * union would type-check today and silently reject the Wave-2 append.
+ */
+export const INVENTORY_OL_OWNED_COLUMNS: readonly (keyof InventoryItemOrmEntity)[] = [];
 
 @Injectable()
 export class InventoryRepository implements InventoryRepositoryPort {
@@ -302,6 +334,7 @@ export class InventoryRepository implements InventoryRepositoryPort {
           availableQuantity: item.availableQuantity,
           reservedQuantity: item.reservedQuantity,
           isStale: item.isStale,
+          sourceConnectionId: item.sourceConnectionId,
         })
         .where('id = :id', { id: existing.id })
         .returning(['updatedAt'])
@@ -332,7 +365,8 @@ export class InventoryRepository implements InventoryRepositoryPort {
         item.reservedQuantity,
         existing.locationId,
         persistedUpdatedAt,
-        item.isStale
+        item.isStale,
+        item.sourceConnectionId
       );
     } else {
       // Insert new inventory item.
@@ -424,7 +458,8 @@ export class InventoryRepository implements InventoryRepositoryPort {
       entity.reservedQuantity,
       entity.locationId,
       entity.updatedAt,
-      entity.isStale
+      entity.isStale,
+      entity.sourceConnectionId
     );
   }
 
@@ -442,6 +477,10 @@ export class InventoryRepository implements InventoryRepositoryPort {
     // A freshly-synced/upserted row is always live — this is what clears a
     // previously-stale flag when a deleted variant reappears at the master (#1478).
     entity.isStale = item.isStale;
+    // Connection provenance (#2314). `null` here is legal and means "unknown" —
+    // an insert from a caller that carries no connection axis, which the #2317
+    // sweep later stamps with the `'legacy'` sentinel.
+    entity.sourceConnectionId = item.sourceConnectionId;
     // `updatedAt` is deliberately NOT assigned (#2071). Assigning an
     // @UpdateDateColumn puts it in the change map and suppresses
     // CURRENT_TIMESTAMP, which would persist the master's timestamp on INSERT

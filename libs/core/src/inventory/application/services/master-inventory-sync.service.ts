@@ -104,7 +104,11 @@ export class MasterInventorySyncService implements IMasterInventorySyncService {
     let reservedQuantity = 0;
     const currentVariantIds: (string | null)[] = [];
     for (const inventory of inventories) {
-      const inventoryItem = await this.toDomainInventoryItem(inventory, internalProductId);
+      const inventoryItem = await this.toDomainInventoryItem(
+        inventory,
+        internalProductId,
+        connectionId
+      );
       await this.inventoryService.setInventory(inventoryItem);
       currentVariantIds.push(inventoryItem.productVariantId);
       availableQuantity += inventoryItem.availableQuantity;
@@ -304,9 +308,16 @@ export class MasterInventorySyncService implements IMasterInventorySyncService {
     return true;
   }
 
+  /**
+   * `connectionId` stamps the row's provenance (ADR-058 ladder step (i), #2314):
+   * this sync is by definition the connection that owns the position it just
+   * pulled. It is threaded as a parameter rather than read off a field so no
+   * call site can reach the constructor without supplying one.
+   */
   private async toDomainInventoryItem(
     inventory: InventoryPortInterface,
-    productId: string
+    productId: string,
+    connectionId: string
   ): Promise<InventoryItemDomainEntity> {
     const variantId = await this.resolveVariantId(inventory, productId);
 
@@ -328,7 +339,12 @@ export class MasterInventorySyncService implements IMasterInventorySyncService {
       availableQuantity,
       inventory.reserved ?? 0,
       inventory.locationId ?? null,
-      inventory.updatedAt ?? new Date()
+      inventory.updatedAt ?? new Date(),
+      // `isStale` must now be passed explicitly to reach `sourceConnectionId`.
+      // `false` is the constructor default this call site previously relied on,
+      // and is the correct value: a row the master just reported is live (#1478).
+      false,
+      connectionId
     );
   }
 

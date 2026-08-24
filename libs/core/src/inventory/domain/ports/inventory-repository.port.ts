@@ -49,7 +49,8 @@ export interface InventoryRepositoryPort {
    *
    * On an EXISTING row the write is **column-scoped** (#2071): only the columns
    * the master sync owns are written (`availableQuantity`, `reservedQuantity`,
-   * `isStale`). The row's identity columns are never rewritten, and `updatedAt`
+   * `isStale`, `sourceConnectionId`). The row's identity columns are never
+   * rewritten, and `updatedAt`
    * is left to the database — so the returned item's `updatedAt` is the
    * DB-stamped value, NOT the `item.updatedAt` the caller passed in.
    * `InventorySyncService` builds the propagation dedupe key from that value,
@@ -59,6 +60,11 @@ export interface InventoryRepositoryPort {
    * `MasterInventorySyncService` runs its `setInventory` loop BEFORE
    * `pruneStaleVariants`, keeping the two write sets disjoint. A new caller that
    * breaks that ordering must move `isStale` out of the owned set.
+   *
+   * `sourceConnectionId` (ADR-058 ladder step (i), #2314) is written on both
+   * branches, so a pre-existing row acquires provenance on its next sync. A
+   * caller with no connection axis passes `null`, which persists as "provenance
+   * unknown" — legal until the #2317 backfill.
    *
    * @param item - Inventory item domain entity with internal IDs
    * @returns Upserted inventory item domain entity, carrying the DB-stamped `updatedAt`
