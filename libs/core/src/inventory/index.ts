@@ -31,6 +31,7 @@ export { InventoryLocation } from './domain/entities/inventory-location.entity';
 // Domain exceptions
 export { InventoryReturningUnsupportedError } from './domain/exceptions/inventory-returning-unsupported.error';
 export { InventoryRowVanishedError } from './domain/exceptions/inventory-row-vanished.error';
+export { InventoryCrossSourcePositionConflictError } from './domain/exceptions/inventory-cross-source-position-conflict.error';
 export { DuplicateLocationCodeError } from './domain/exceptions/duplicate-location-code.error';
 export { LocationNotFoundException } from './domain/exceptions/location-not-found.exception';
 export { LocationInUseError } from './domain/exceptions/location-in-use.error';
@@ -79,6 +80,7 @@ export {
   VariantAvailability,
   ProductStockAggregate,
   PruneStaleVariantsResult,
+  ProvenanceScope,
   DuplicatePositionRow,
   DuplicatePositionGroup,
   DuplicatePositionReport,

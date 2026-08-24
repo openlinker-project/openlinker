@@ -17,6 +17,7 @@ import type {
   VariantAvailability,
   ProductStockAggregate,
   PruneStaleVariantsResult,
+  ProvenanceScope,
   DuplicatePositionReport,
 } from '../types/inventory.types';
 
@@ -29,17 +30,54 @@ import type {
  */
 export interface InventoryRepositoryPort {
   /**
-   * Find inventory by product and variant
+   * Find inventory by product and variant, optionally scoped to one connection's
+   * provenance (#2320, ADR-058 decision (4)).
+   *
+   * ## The null/undefined asymmetry — read this before adding a caller
+   *
+   * The last two parameters are IDENTITY columns and the fourth is a PROVENANCE
+   * axis, and they read `null` differently on purpose:
+   *
+   * - `productVariantId` / `locationId` — `undefined` and `null` are the same
+   *   and both mean **"match rows whose column IS NULL"**. A product-level row
+   *   is genuinely the row with `productVariantId IS NULL`; there is no
+   *   "unspecified" reading available, because omitting the column would match
+   *   a different row.
+   * - `sourceConnectionId` — `undefined` and `null` are the same and both mean
+   *   **"no provenance axis: behave exactly as this method did before #2320"**,
+   *   i.e. an unscoped lookup that matches a row whatever its provenance.
+   *
+   * Reading `null` here as "match rows whose provenance IS NULL" would be the
+   * wrong half of the asymmetry and is a real defect, not a nuance: the three
+   * axis-less callers would then stop finding rows that already carry
+   * provenance, and each would insert a duplicate position instead of updating
+   * the row it meant to. The #2314 "stamps provenance onto an existing NULL row
+   * in place" integration test is the canary for exactly that mistake.
+   *
+   * When an axis IS supplied, the match is the claim rule
+   * {@link ProvenanceScope} documents: the row's provenance equals the given id,
+   * OR is unattributed (NULL or `'legacy'`). Unattributed rows are always
+   * claimable here, with no rival check — the repository cannot reach the claim
+   * service (layering), and refusing to claim would insert a duplicate row on
+   * every single-source install, which is the regression this slice must not
+   * cause. The staleness prune, which CAN reach the guard, keeps it.
+   *
+   * Several rows can satisfy a scoped match (one owned, one unattributed), so
+   * the result is deterministic by construction: own-provenance rows sort first,
+   * then by `id`. Preferring the connection's own row is what makes repeated
+   * syncs converge on one position instead of alternating.
    *
    * @param productId - Internal OpenLinker product ID
    * @param productVariantId - Internal OpenLinker variant ID (optional, for variant-level stock)
    * @param locationId - Location ID (optional, for multi-location inventory)
+   * @param sourceConnectionId - Claiming connection, or `null`/omitted for an unscoped lookup
    * @returns Inventory item domain entity or null if not found
    */
   findByProductAndVariant(
     productId: string,
     productVariantId?: string | null,
-    locationId?: string | null
+    locationId?: string | null,
+    sourceConnectionId?: string | null
   ): Promise<InventoryItem | null>;
 
   /**
@@ -67,15 +105,32 @@ export interface InventoryRepositoryPort {
    * caller with no connection axis passes `null`, which persists as "provenance
    * unknown" — legal until the #2317 backfill.
    *
+   * **The internal lookup is provenance-scoped (#2320).** The axis is derived
+   * from `item.sourceConnectionId` — there is no signature change and no second
+   * argument, because the item already carries the only value that could be
+   * passed and a caller able to disagree with itself would be a bug surface
+   * rather than a feature. An item with `null` provenance keeps the pre-#2320
+   * unscoped lookup exactly. This is what stops connection B matching and
+   * clobbering connection A's row (ADR-058 decision (4)); B now correctly finds
+   * no row of its own and inserts one.
+   *
    * @param item - Inventory item domain entity with internal IDs
    * @returns Upserted inventory item domain entity, carrying the DB-stamped `updatedAt`
    * @throws InventoryRowVanishedError if the matched row disappeared before the scoped UPDATE
    * @throws InventoryReturningUnsupportedError if the driver returned no usable `updatedAt`
+   * @throws InventoryCrossSourcePositionConflictError if a second source's INSERT
+   *   collides with an existing row's position at a NON-NULL `locationId`, where
+   *   the NULL-distinct partial unique indexes cannot admit both rows until #2325
    */
   upsert(item: InventoryItem): Promise<InventoryItem>;
 
   /**
-   * Find inventory items with filters and pagination
+   * Find inventory items with filters and pagination.
+   *
+   * `filters.sourceConnectionId` (#2320) narrows to one connection's positions
+   * with STRICT equality — unlike the write-path lookup, a read never claims
+   * unattributed rows, because reporting another connection's unowned stock as
+   * this one's would misstate whose inventory the operator is looking at.
    */
   findMany(
     filters: InventoryFilters,
@@ -133,14 +188,30 @@ export interface InventoryRepositoryPort {
    * rows live (the variant is still in `keepVariantIds`). Multi-location pruning
    * is out of scope.
    *
+   * **Optionally scoped to one connection's provenance (#2320).** With `scope`
+   * omitted the sweep is unscoped and byte-identical to its pre-#2320 behaviour
+   * — which is what the published port promises every existing caller, and what
+   * the same-named `ProductVariantRepository` sibling (which has no provenance
+   * column at all) keeps doing. With `scope` supplied, only rows matching the
+   * claim rule in {@link ProvenanceScope} are eligible, so one master's prune
+   * can no longer stale a rival master's rows.
+   *
+   * Note what the scope does NOT do: it is not a substitute for the #1904
+   * rival-claimant guard. `includeUnattributedProvenance: true` claims rows
+   * nobody owns, and that is only safe where a caller has already established
+   * it is the sole claimant — see the invariant comment at the
+   * `MasterInventorySyncService` call sites.
+   *
    * @param productId internal OpenLinker product ID
    * @param keepVariantIds variant keys to keep live (may include `null`)
+   * @param scope optional provenance restriction; omitted ⇒ unscoped sweep
    * @returns rows newly marked stale (`markedCount`) + the distinct non-null
    *   variant ids flagged (`variantIds`, for the master-deletion event)
    */
   markStaleExceptVariants(
     productId: string,
-    keepVariantIds: readonly (string | null)[]
+    keepVariantIds: readonly (string | null)[],
+    scope?: ProvenanceScope
   ): Promise<PruneStaleVariantsResult>;
 
   /**

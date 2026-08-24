@@ -11,11 +11,17 @@
 import type { TestingModule } from '@nestjs/testing';
 import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { getMetadataArgsStorage, type Repository, type SelectQueryBuilder } from 'typeorm';
+import {
+  getMetadataArgsStorage,
+  QueryFailedError,
+  type Repository,
+  type SelectQueryBuilder,
+} from 'typeorm';
 
 import { InventoryItem } from '../../../domain/entities/inventory-item.entity';
 import { InventoryReturningUnsupportedError } from '../../../domain/exceptions/inventory-returning-unsupported.error';
 import { InventoryRowVanishedError } from '../../../domain/exceptions/inventory-row-vanished.error';
+import { InventoryCrossSourcePositionConflictError } from '../../../domain/exceptions/inventory-cross-source-position-conflict.error';
 import { LEGACY_SOURCE_CONNECTION_ID } from '../../../domain/types/inventory.types';
 import { InventoryItemOrmEntity } from '../entities/inventory-item.orm-entity';
 import {
@@ -438,18 +444,32 @@ describe('InventoryRepository', () => {
     /** The SET payload the SUT hands the builder — typed so it is not `any`. */
     type UpdatePayload = Record<string, unknown>;
 
-    /** Chainable update-builder stub capturing the SET payload. */
-    function buildUpdateBuilderMock(): {
+    /**
+     * Chainable stub capturing the SET payload.
+     *
+     * It serves BOTH statements `upsert` issues, because both go through the
+     * same `createQueryBuilder` mock: the provenance-scoped lookup (#2320 — the
+     * `incoming` item below carries a connection id, so the lookup no longer
+     * takes the `findOne` path) and the column-scoped UPDATE this block is
+     * actually about. `getOne` is what decides which upsert branch runs.
+     */
+    function buildUpdateBuilderMock(found: InventoryItemOrmEntity | null = null): {
       set: jest.Mock<unknown, [UpdatePayload]>;
       where: jest.Mock<unknown, [string, Record<string, unknown>]>;
       returning: jest.Mock<unknown, [string[]]>;
       execute: jest.Mock;
       update: jest.Mock;
+      getOne: jest.Mock;
     } {
       const qb = {
         update: jest.fn(),
         set: jest.fn<unknown, [UpdatePayload]>(),
         where: jest.fn<unknown, [string, Record<string, unknown>]>(),
+        andWhere: jest.fn(),
+        orderBy: jest.fn(),
+        addOrderBy: jest.fn(),
+        setParameter: jest.fn(),
+        getOne: jest.fn().mockResolvedValue(found),
         returning: jest.fn<unknown, [string[]]>(),
         execute: jest
           .fn()
@@ -458,7 +478,27 @@ describe('InventoryRepository', () => {
       qb.update.mockReturnValue(qb);
       qb.set.mockReturnValue(qb);
       qb.where.mockReturnValue(qb);
+      qb.andWhere.mockReturnValue(qb);
+      qb.orderBy.mockReturnValue(qb);
+      qb.addOrderBy.mockReturnValue(qb);
+      qb.setParameter.mockReturnValue(qb);
       qb.returning.mockReturnValue(qb);
+      return qb;
+    }
+
+    /**
+     * Point BOTH lookup paths at the same answer: `findOne` for an item with no
+     * provenance, `getOne` for the scoped builder path a provenance-bearing item
+     * takes (#2320). Tests here assert the write, not which path was read.
+     */
+    function mockLookup(found: InventoryItemOrmEntity | null): ReturnType<
+      typeof buildUpdateBuilderMock
+    > {
+      const qb = buildUpdateBuilderMock(found);
+      ormRepository.findOne.mockResolvedValue(found);
+      ormRepository.createQueryBuilder.mockReturnValue(
+        qb as unknown as ReturnType<typeof ormRepository.createQueryBuilder>
+      );
       return qb;
     }
 
@@ -475,11 +515,7 @@ describe('InventoryRepository', () => {
     );
 
     it('should write exactly the master-owned columns, sourced from the item', async () => {
-      const qb = buildUpdateBuilderMock();
-      ormRepository.findOne.mockResolvedValue(existingRow);
-      ormRepository.createQueryBuilder.mockReturnValue(
-        qb as unknown as ReturnType<typeof ormRepository.createQueryBuilder>
-      );
+      const qb = mockLookup(existingRow);
 
       await repository.upsert(incoming);
 
@@ -497,11 +533,7 @@ describe('InventoryRepository', () => {
     });
 
     it('should never write an identity or DB-managed column on the existing-row branch', async () => {
-      const qb = buildUpdateBuilderMock();
-      ormRepository.findOne.mockResolvedValue(existingRow);
-      ormRepository.createQueryBuilder.mockReturnValue(
-        qb as unknown as ReturnType<typeof ormRepository.createQueryBuilder>
-      );
+      const qb = mockLookup(existingRow);
 
       await repository.upsert(incoming);
 
@@ -518,11 +550,7 @@ describe('InventoryRepository', () => {
     });
 
     it('should return the DB-stamped updatedAt rather than the inbound one', async () => {
-      const qb = buildUpdateBuilderMock();
-      ormRepository.findOne.mockResolvedValue(existingRow);
-      ormRepository.createQueryBuilder.mockReturnValue(
-        qb as unknown as ReturnType<typeof ormRepository.createQueryBuilder>
-      );
+      const qb = mockLookup(existingRow);
 
       const result = await repository.upsert(incoming);
 
@@ -534,44 +562,32 @@ describe('InventoryRepository', () => {
     });
 
     it('should throw rather than return a phantom row when the update matches nothing', async () => {
-      const qb = buildUpdateBuilderMock();
+      const qb = mockLookup(existingRow);
       // The row was read, then deleted before the UPDATE ran. `save()` would have
       // re-INSERTed it; a scoped UPDATE cannot, and the old fallback would have
       // returned an item for a row that no longer exists.
       qb.execute.mockResolvedValue({ raw: [], affected: 0 });
-      ormRepository.findOne.mockResolvedValue(existingRow);
-      ormRepository.createQueryBuilder.mockReturnValue(
-        qb as unknown as ReturnType<typeof ormRepository.createQueryBuilder>
-      );
 
       await expect(repository.upsert(incoming)).rejects.toThrow(InventoryRowVanishedError);
     });
 
     it('should throw when the driver ignores RETURNING rather than using the master timestamp', async () => {
-      const qb = buildUpdateBuilderMock();
+      const qb = mockLookup(existingRow);
       // TypeORM makes `.returning()` a silent no-op on drivers that lack support.
       // Falling back to `item.updatedAt` would put the master-supplied value into
       // the propagation dedupe key — the exact failure this exclusion prevents.
       qb.execute.mockResolvedValue({ raw: [], affected: 1 });
-      ormRepository.findOne.mockResolvedValue(existingRow);
-      ormRepository.createQueryBuilder.mockReturnValue(
-        qb as unknown as ReturnType<typeof ormRepository.createQueryBuilder>
-      );
 
       await expect(repository.upsert(incoming)).rejects.toThrow(InventoryReturningUnsupportedError);
     });
 
     it('should throw when RETURNING yields a row whose updatedAt is unparseable', async () => {
-      const qb = buildUpdateBuilderMock();
+      const qb = mockLookup(existingRow);
       // The raw key is literally `updatedAt` only because no `namingStrategy` is
       // configured. Under a snake_case strategy the row object stays truthy while
       // the property reads `undefined`, so guarding the ROW is not enough — an
       // unguarded `new Date(undefined)` would sail past as `Invalid Date`.
       qb.execute.mockResolvedValue({ raw: [{ created_at: persistedUpdatedAt }], affected: 1 });
-      ormRepository.findOne.mockResolvedValue(existingRow);
-      ormRepository.createQueryBuilder.mockReturnValue(
-        qb as unknown as ReturnType<typeof ormRepository.createQueryBuilder>
-      );
 
       await expect(repository.upsert(incoming)).rejects.toThrow(InventoryReturningUnsupportedError);
     });
@@ -580,7 +596,7 @@ describe('InventoryRepository', () => {
     // but `updatedAt` is omitted from `toOrmEntity` for the same reason, which
     // means it too can only come back from the database.
     it('should throw when an inserted row comes back without a DB-stamped updatedAt', async () => {
-      ormRepository.findOne.mockResolvedValue(null);
+      mockLookup(null);
       ormRepository.save.mockResolvedValue({
         ...existingRow,
         id: '6f1d2b3c-4e5f-4a7b-8c9d-0e1f2a3b4c5d',
@@ -606,7 +622,7 @@ describe('InventoryRepository', () => {
     it('should throw on a regenerated-id insert that comes back without updatedAt', async () => {
       // The non-UUID branch strips the caller id and regenerates one; it must
       // carry the same guarantee as its sibling, not just the happy path.
-      ormRepository.findOne.mockResolvedValue(null);
+      mockLookup(null);
       ormRepository.create.mockImplementation((v: unknown) => v as InventoryItemOrmEntity);
       ormRepository.save.mockResolvedValue({
         ...existingRow,
@@ -619,11 +635,7 @@ describe('InventoryRepository', () => {
     // ---- ADR-058 ladder step (i): provenance + the OL-owned group (#2314) ----
 
     it('should never write an OL-owned column on the existing-row branch', async () => {
-      const qb = buildUpdateBuilderMock();
-      ormRepository.findOne.mockResolvedValue(existingRow);
-      ormRepository.createQueryBuilder.mockReturnValue(
-        qb as unknown as ReturnType<typeof ormRepository.createQueryBuilder>
-      );
+      const qb = mockLookup(existingRow);
 
       await repository.upsert(incoming);
 
@@ -654,11 +666,7 @@ describe('InventoryRepository', () => {
     });
 
     it('should write the incoming provenance on the existing-row branch and carry it back', async () => {
-      const qb = buildUpdateBuilderMock();
-      ormRepository.findOne.mockResolvedValue(existingRow);
-      ormRepository.createQueryBuilder.mockReturnValue(
-        qb as unknown as ReturnType<typeof ormRepository.createQueryBuilder>
-      );
+      const qb = mockLookup(existingRow);
 
       const result = await repository.upsert(incoming);
 
@@ -671,7 +679,7 @@ describe('InventoryRepository', () => {
 
     it('should write provenance on the insert branch and carry it back', async () => {
       const stampedAt = new Date('2026-06-02T09:30:00Z');
-      ormRepository.findOne.mockResolvedValue(null);
+      mockLookup(null);
       ormRepository.save.mockImplementation((v: unknown) =>
         Promise.resolve({ ...(v as InventoryItemOrmEntity), updatedAt: stampedAt })
       );
@@ -699,7 +707,7 @@ describe('InventoryRepository', () => {
       // The non-UUID branch rebuilds the entity through `create({...rest, id})`;
       // a column dropped by that destructure would be lost silently.
       const stampedAt = new Date('2026-06-02T09:30:00Z');
-      ormRepository.findOne.mockResolvedValue(null);
+      mockLookup(null);
       ormRepository.create.mockImplementation((v: unknown) => v as InventoryItemOrmEntity);
       ormRepository.save.mockImplementation((v: unknown) =>
         Promise.resolve({ ...(v as InventoryItemOrmEntity), updatedAt: stampedAt })
@@ -716,7 +724,7 @@ describe('InventoryRepository', () => {
       // A caller with no connection axis is legal until the #2317 backfill;
       // NULL must reach the row as NULL, not be coerced to a placeholder.
       const stampedAt = new Date('2026-06-02T09:30:00Z');
-      ormRepository.findOne.mockResolvedValue(null);
+      mockLookup(null);
       ormRepository.save.mockImplementation((v: unknown) =>
         Promise.resolve({ ...(v as InventoryItemOrmEntity), updatedAt: stampedAt })
       );
@@ -757,6 +765,259 @@ describe('InventoryRepository', () => {
       ].sort();
 
       expect(declared).toEqual(classified);
+    });
+  });
+
+  describe('provenance-scoped lookup and prune (#2320)', () => {
+    /** Chainable select-builder stub recording every predicate the SUT adds. */
+    function buildScopedSelectMock(found: InventoryItemOrmEntity | null): Record<string, jest.Mock> {
+      const qb: Record<string, jest.Mock> = {
+        where: jest.fn(),
+        andWhere: jest.fn(),
+        orderBy: jest.fn(),
+        addOrderBy: jest.fn(),
+        setParameter: jest.fn(),
+        getOne: jest.fn().mockResolvedValue(found),
+      };
+      for (const key of ['where', 'andWhere', 'orderBy', 'addOrderBy', 'setParameter']) {
+        qb[key].mockReturnValue(qb);
+      }
+      return qb;
+    }
+
+    /** Chainable update-builder stub for the prune path. */
+    function buildPruneMock(): Record<string, jest.Mock> {
+      const qb: Record<string, jest.Mock> = {
+        update: jest.fn(),
+        set: jest.fn(),
+        where: jest.fn(),
+        andWhere: jest.fn(),
+        returning: jest.fn(),
+        execute: jest.fn().mockResolvedValue({ raw: [], affected: 0 }),
+      };
+      for (const key of ['update', 'set', 'where', 'andWhere', 'returning']) {
+        qb[key].mockReturnValue(qb);
+      }
+      return qb;
+    }
+
+    /** Renders a `Brackets` argument to SQL so its shape can be asserted. */
+    function renderBrackets(brackets: unknown): { sql: string[]; params: Record<string, unknown> } {
+      const sql: string[] = [];
+      const params: Record<string, unknown> = {};
+      const inner: {
+        where: (condition: string, p?: Record<string, unknown>) => unknown;
+        orWhere: (condition: string, p?: Record<string, unknown>) => unknown;
+      } = {
+        where: (condition, p) => {
+          sql.push(condition);
+          Object.assign(params, p ?? {});
+          return inner;
+        },
+        orWhere: (condition, p) => {
+          sql.push(condition);
+          Object.assign(params, p ?? {});
+          return inner;
+        },
+      };
+      (brackets as { whereFactory: (qb: unknown) => void }).whereFactory(inner);
+      return { sql, params };
+    }
+
+    /** The last `andWhere` argument — the provenance group is always appended last. */
+    function lastBracket(qb: Record<string, jest.Mock>): unknown {
+      const calls = qb.andWhere.mock.calls as unknown[][];
+      return calls[calls.length - 1][0];
+    }
+
+    const row = {
+      id: 'inv-own',
+      productId: 'ol_product_1',
+      productVariantId: 'ol_variant_1',
+      availableQuantity: 4,
+      reservedQuantity: 0,
+      locationId: null,
+      isStale: false,
+      sourceConnectionId: 'conn-alpha',
+      updatedAt: new Date('2026-06-02T09:30:00Z'),
+    } as InventoryItemOrmEntity;
+
+    it('keeps the exact unscoped findOne path when no provenance axis is given', async () => {
+      ormRepository.findOne.mockResolvedValue(row);
+
+      await repository.findByProductAndVariant('ol_product_1', 'ol_variant_1', null);
+
+      expect(ormRepository.createQueryBuilder).not.toHaveBeenCalled();
+      expect(ormRepository.findOne).toHaveBeenCalledWith({
+        where: { productId: 'ol_product_1', productVariantId: 'ol_variant_1', locationId: null },
+      });
+    });
+
+    // The asymmetry that keeps the #2314 in-place-claim spec passing: for the
+    // provenance axis `null` means "no axis", NOT "provenance IS NULL".
+    it('treats a null provenance axis as unscoped, not as "provenance IS NULL"', async () => {
+      ormRepository.findOne.mockResolvedValue(row);
+
+      await repository.findByProductAndVariant('ol_product_1', 'ol_variant_1', null, null);
+
+      expect(ormRepository.createQueryBuilder).not.toHaveBeenCalled();
+      expect(ormRepository.findOne).toHaveBeenCalledTimes(1);
+    });
+
+    it('matches own-or-unattributed provenance and prefers the connection own row', async () => {
+      const qb = buildScopedSelectMock(row);
+      ormRepository.createQueryBuilder.mockReturnValue(
+        qb as unknown as ReturnType<typeof ormRepository.createQueryBuilder>
+      );
+
+      const found = await repository.findByProductAndVariant(
+        'ol_product_1',
+        'ol_variant_1',
+        null,
+        'conn-alpha'
+      );
+
+      expect(found?.id).toBe('inv-own');
+      expect(ormRepository.findOne).not.toHaveBeenCalled();
+
+      const { sql, params } = renderBrackets(lastBracket(qb));
+      expect(sql).toEqual([
+        'inv."sourceConnectionId" = :scopeConnectionId',
+        'inv."sourceConnectionId" IS NULL',
+        'inv."sourceConnectionId" = :legacyProvenance',
+      ]);
+      expect(params).toEqual({
+        scopeConnectionId: 'conn-alpha',
+        legacyProvenance: LEGACY_SOURCE_CONNECTION_ID,
+      });
+
+      // Deterministic: own provenance first, `id` breaking the remaining tie.
+      expect(qb.orderBy).toHaveBeenCalledWith(
+        'CASE WHEN inv."sourceConnectionId" = :ownConnectionId THEN 0 ELSE 1 END',
+        'ASC'
+      );
+      expect(qb.setParameter).toHaveBeenCalledWith('ownConnectionId', 'conn-alpha');
+      expect(qb.addOrderBy).toHaveBeenCalledWith('inv.id', 'ASC');
+    });
+
+    it('derives the upsert lookup axis from the item provenance', async () => {
+      const qb = buildScopedSelectMock(null);
+      ormRepository.createQueryBuilder.mockReturnValue(
+        qb as unknown as ReturnType<typeof ormRepository.createQueryBuilder>
+      );
+      ormRepository.save.mockResolvedValue({
+        ...row,
+        id: '11111111-1111-4111-8111-111111111111',
+      } as never);
+
+      await repository.upsert(
+        new InventoryItem(
+          '11111111-1111-4111-8111-111111111111',
+          'ol_product_1',
+          'ol_variant_1',
+          9,
+          0,
+          null,
+          new Date(),
+          false,
+          'conn-beta'
+        )
+      );
+
+      expect(renderBrackets(lastBracket(qb)).params).toMatchObject({
+        scopeConnectionId: 'conn-beta',
+      });
+    });
+
+    it('translates a position unique violation into the typed cross-source error', async () => {
+      const qb = buildScopedSelectMock(null);
+      ormRepository.createQueryBuilder.mockReturnValue(
+        qb as unknown as ReturnType<typeof ormRepository.createQueryBuilder>
+      );
+      ormRepository.save.mockRejectedValue(
+        new QueryFailedError(
+          'INSERT',
+          [],
+          new Error(
+            'duplicate key value violates unique constraint "IDX_inventory_items_product_variant_unique"'
+          )
+        )
+      );
+
+      await expect(
+        repository.upsert(
+          new InventoryItem(
+            '11111111-1111-4111-8111-111111111111',
+            'ol_product_1',
+            'ol_variant_1',
+            9,
+            0,
+            'loc-1',
+            new Date(),
+            false,
+            'conn-beta'
+          )
+        )
+      ).rejects.toBeInstanceOf(InventoryCrossSourcePositionConflictError);
+    });
+
+    it('adds no provenance predicate to an unscoped prune, and a bracketed one when scoped', async () => {
+      const unscoped = buildPruneMock();
+      ormRepository.createQueryBuilder.mockReturnValue(
+        unscoped as unknown as ReturnType<typeof ormRepository.createQueryBuilder>
+      );
+      await repository.markStaleExceptVariants('ol_product_1', ['ol_variant_1']);
+      const unscopedCalls = unscoped.andWhere.mock.calls.length;
+
+      const scoped = buildPruneMock();
+      ormRepository.createQueryBuilder.mockReturnValue(
+        scoped as unknown as ReturnType<typeof ormRepository.createQueryBuilder>
+      );
+      await repository.markStaleExceptVariants('ol_product_1', ['ol_variant_1'], {
+        sourceConnectionId: 'conn-alpha',
+        includeUnattributedProvenance: true,
+      });
+
+      // Exactly one predicate more than the unscoped sweep, and it is the
+      // bracketed provenance group — an unbracketed OR here would re-associate
+      // with the variant-keep group and stale another connection's rows.
+      expect(scoped.andWhere.mock.calls).toHaveLength(unscopedCalls + 1);
+      expect(renderBrackets(lastBracket(scoped)).sql).toEqual([
+        '"sourceConnectionId" = :scopeConnectionId',
+        '"sourceConnectionId" IS NULL',
+        '"sourceConnectionId" = :legacyProvenance',
+      ]);
+    });
+
+    it('omits the unattributed arm when the scope claims strictly its own rows', async () => {
+      const qb = buildPruneMock();
+      ormRepository.createQueryBuilder.mockReturnValue(
+        qb as unknown as ReturnType<typeof ormRepository.createQueryBuilder>
+      );
+
+      await repository.markStaleExceptVariants('ol_product_1', [], {
+        sourceConnectionId: 'conn-alpha',
+        includeUnattributedProvenance: false,
+      });
+
+      expect(renderBrackets(lastBracket(qb)).sql).toEqual([
+        '"sourceConnectionId" = :scopeConnectionId',
+      ]);
+    });
+
+    it('applies the read filter with strict equality, never the claim rule', async () => {
+      ormRepository.findAndCount.mockResolvedValue([[], 0]);
+
+      await repository.findMany(
+        { productId: 'ol_product_1', sourceConnectionId: 'conn-alpha' },
+        { limit: 10, offset: 0 }
+      );
+
+      expect(ormRepository.findAndCount).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { productId: 'ol_product_1', sourceConnectionId: 'conn-alpha' },
+        })
+      );
     });
   });
 });
