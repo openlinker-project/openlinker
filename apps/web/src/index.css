@@ -4953,65 +4953,6 @@ a.kpi-card:focus-visible {
   color: var(--text-muted);
 }
 
-/* ── Top products "Not listed" cell (#1991) ──────────────────────────
-   A channel cell that renders "Not listed" prose and a "Publish" action
-   sharing the same slot — the label is visible at rest, and the action
-   swaps in via opacity on hover/focus of the row (never a flex sibling,
-   which would occupy layout and misalign the label from the column's
-   right edge even at opacity 0). On a touch pointer (no hover) both stay
-   permanently visible, stacked, since there's no hover to reveal them. */
-.cell-not-listed {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  justify-content: flex-end;
-  min-height: 1.75rem;
-  width: 100%;
-}
-
-.cell-not-listed__label {
-  color: var(--text-muted);
-  font-size: 0.8125rem;
-  transition: opacity 0.12s ease;
-}
-
-.cell-not-listed__chip {
-  position: absolute;
-  right: 0;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.12s ease;
-}
-
-.data-table__row:hover .cell-not-listed__chip,
-.data-table__row:focus-within .cell-not-listed__chip {
-  opacity: 1;
-  pointer-events: auto;
-}
-
-.data-table__row:hover .cell-not-listed__label,
-.data-table__row:focus-within .cell-not-listed__label {
-  opacity: 0;
-}
-
-@media (hover: none) {
-  .cell-not-listed {
-    flex-direction: column;
-    align-items: flex-end;
-    gap: var(--space-1);
-  }
-
-  .cell-not-listed__chip {
-    position: static;
-    opacity: 1;
-    pointer-events: auto;
-  }
-
-  .cell-not-listed__label {
-    opacity: 1;
-  }
-}
-
 /* KeyValueList ------------------------------------------------------ */
 
 /* ── KeyValueList (#775) ────────────────────────────────────────────

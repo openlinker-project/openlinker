@@ -55,7 +55,7 @@ const lazyRoutes = collectLazyRoutes([
  *     because grouped routes like orders/customers expose multiple
  *     lazy nodes — includes `/dev/ui` design-system page (#775), `/shipments` (#770),
  *     `/users` user-management page (#1125), `/invoices/:invoiceId` detail (#1240),
- *     `/analytics` (#1986), and `/settings/mcp-tokens` MCP token management (#1486/#1932);
+ *     `/analytics` (#1986), `/settings/mcp-tokens` MCP token management (#1486/#1932),
  *     and `/settings/sales-documents` (#2159);
  *     the former `/inventory/:id` detail route was removed (#1305/#1609) once
  *     `product-detail-page.tsx` subsumed per-item stock detail, and the
