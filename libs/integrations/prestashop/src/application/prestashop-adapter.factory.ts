@@ -39,6 +39,7 @@ import { PrestashopAddressProvisioner } from '../infrastructure/provisioners/pre
 import { PrestashopCountryResolver } from '../infrastructure/provisioners/prestashop-country-resolver';
 import { PrestashopCurrencyResolver } from '../infrastructure/provisioners/prestashop-currency-resolver';
 import { PrestashopShopCurrencyResolver } from '../infrastructure/provisioners/prestashop-shop-currency.resolver';
+import { PrestashopOrderCurrencyResolver } from '../infrastructure/provisioners/prestashop-order-currency.resolver';
 import { PrestashopTaxRateResolver } from '../infrastructure/provisioners/prestashop-tax-rate.resolver';
 import { PrestashopAttributeResolver } from '../infrastructure/provisioners/prestashop-attribute.resolver';
 import { PrestashopFeatureResolver } from '../infrastructure/provisioners/prestashop-feature.resolver';
@@ -79,6 +80,14 @@ export class PrestashopAdapterFactory implements IPrestashopAdapterFactory {
   // wired.
   private readonly productTaxRateResolver = new PrestashopTaxRateResolver(
     new PrestashopCountryResolver()
+  );
+
+  // Same placement and reasoning as `shopCurrencyResolver`, whose shop-default
+  // read it falls back to: a process-singleton field so the per-(connection,
+  // id_currency) cache of order denominations (#2277) survives across the
+  // adapter instances built per capability resolution.
+  private readonly orderCurrencyResolver = new PrestashopOrderCurrencyResolver(
+    this.shopCurrencyResolver
   );
 
   constructor(
@@ -165,7 +174,12 @@ export class PrestashopAdapterFactory implements IPrestashopAdapterFactory {
       connection
     );
 
-    const orderSource = new PrestashopOrderSourceAdapter(httpClient, orderMapper, connection);
+    const orderSource = new PrestashopOrderSourceAdapter(
+      httpClient,
+      orderMapper,
+      connection,
+      this.orderCurrencyResolver
+    );
 
     // Create orderProcessorManager only if customer provisioning dependencies
     // and the outbound webhook-secret provider (#516) are provided.
