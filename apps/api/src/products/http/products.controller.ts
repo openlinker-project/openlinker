@@ -167,7 +167,17 @@ export class ProductsController {
     type: PaginatedProductsResponseDto,
   })
   async listProducts(@Query() query: ListProductsQueryDto): Promise<PaginatedProductsResponseDto> {
-    const { search, stock, taxRateState, connectionId, sort, dir, limit = 20, offset = 0 } = query;
+    const {
+      search,
+      stock,
+      taxRateState,
+      connectionId,
+      sort,
+      dir,
+      hideFullyStale,
+      limit = 20,
+      offset = 0,
+    } = query;
 
     const unlistedOnConnectionIds = this.parseUnlistedOn(query.unlistedOn);
     const sortSpec: ProductListSort | undefined = sort
@@ -175,7 +185,14 @@ export class ProductsController {
       : undefined;
 
     const { items, total } = await this.productsService.listProducts(
-      { search, stock, taxRateState, unlistedOnConnectionIds, sourceConnectionId: connectionId },
+      {
+        search,
+        stock,
+        taxRateState,
+        unlistedOnConnectionIds,
+        sourceConnectionId: connectionId,
+        hideFullyStale,
+      },
       { limit, offset },
       sortSpec
     );
@@ -188,7 +205,7 @@ export class ProductsController {
     // ids (identifier mapping), all in parallel.
     if (items.length > 0) {
       const ids = items.map((p) => p.id);
-      const [aggregates, offerCoverage, shopCoverage, variantCounts, externalIdLists] =
+      const [aggregates, offerCoverage, shopCoverage, variantCounts, staleVariantCounts, externalIdLists] =
         await Promise.all([
           this.inventoryQuery.getProductStockAggregates(ids),
           this.offerMappings.countListedVariantsByProducts(ids),
@@ -197,6 +214,9 @@ export class ProductsController {
           // because only Offer mappings fed this pipeline.
           this.shopProductMappings.countListedVariantsByProducts(ids),
           this.productsService.getVariantCountsByProductIds(ids),
+          // #2447 — the list-row "deleted at source" badge. Paired with
+          // variantCount below so the FE can tell "some" stale apart from "all".
+          this.productsService.getStaleVariantCountsByProductIds(ids),
           Promise.all(ids.map((id) => this.identifierMapping.getExternalIds(CORE_ENTITY_TYPE.Product, id))),
         ]);
 
@@ -216,6 +236,7 @@ export class ProductsController {
         dto.totalReserved = aggregate?.totalReserved ?? 0;
         dto.stockUpdatedAt = aggregate?.stockUpdatedAt ? aggregate.stockUpdatedAt.toISOString() : null;
         dto.variantCount = variantCounts.get(dto.id) ?? 0;
+        dto.staleVariantCount = staleVariantCounts.get(dto.id) ?? 0;
         dto.listingsCoverage = coverageByProduct.get(dto.id) ?? [];
         dto.externalIds = externalIdLists[i].map((e) => this.toExternalIdDto(e));
       });

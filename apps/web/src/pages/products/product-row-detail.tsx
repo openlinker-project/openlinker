@@ -217,9 +217,17 @@ function ProductVariantRow({
           <span className="products-variant-row__meta mono-text">{metaParts.join(' · ')}</span>
         ) : null}
       </div>
-      <StatusBadge tone={STOCK_STATUS_BADGE_TONE[status]} withDot compact>
-        {STOCK_STATUS_LABEL[status]}
-      </StatusBadge>
+      {/* #2447 — the master deleted this specific variant; its offers are
+          auto-paused (#1689), so stock/listings below are historical. */}
+      {variant.isStale ? (
+        <StatusBadge tone="error" withDot compact>
+          Deleted at source
+        </StatusBadge>
+      ) : (
+        <StatusBadge tone={STOCK_STATUS_BADGE_TONE[status]} withDot compact>
+          {STOCK_STATUS_LABEL[status]}
+        </StatusBadge>
+      )}
       <span className="products-variant-row__stock mono tabular">
         {available}
         <span className="products-variant-row__stock-reserved">/ res {reserved}</span>
