@@ -72,6 +72,7 @@ import { DuplicateBatchEanException } from '../../domain/exceptions/duplicate-ba
 import { CurrencyMismatchException } from '../../domain/exceptions/currency-mismatch.exception';
 import { InvalidOverrideKeyException } from '../../domain/exceptions/invalid-override-key.exception';
 import { ExpandedOfferCeilingExceededException } from '../../domain/exceptions/expanded-offer-ceiling-exceeded.exception';
+import { AvailabilityUnknownError } from '../../domain/exceptions/availability-unknown.error';
 import {
   BULK_LISTING_BATCH_REPOSITORY_TOKEN,
   OFFER_CREATION_RECORD_REPOSITORY_TOKEN,
@@ -195,8 +196,8 @@ export class BulkListingSubmitService implements IBulkListingSubmitService {
     // batches, and Allegro doesn't enforce uniqueness on product-offer
     // `external.id`) and fragment the grouped listing. The FE `alreadyListed`
     // hint is advisory only; this is the authoritative backend guard.
-    const jobs = await this.filterAlreadyListed(input.connectionId, expandedJobs);
-    const skippedAlreadyListedCount = expandedJobs.length - jobs.length;
+    const listableJobs = await this.filterAlreadyListed(input.connectionId, expandedJobs);
+    const skippedAlreadyListedCount = expandedJobs.length - listableJobs.length;
 
     // Post-exclusion empty guard (#1741). Two distinct causes, #1933: if the
     // expansion itself produced no jobs (every submitted id was excluded /
@@ -207,7 +208,7 @@ export class BulkListingSubmitService implements IBulkListingSubmitService {
     // such rather than reusing the generic "requires at least one productId"
     // message, which the #1837 duplicate-guard confirm flow renders after an
     // explicit "Publish anyway (creates duplicate)" click.
-    if (jobs.length === 0) {
+    if (listableJobs.length === 0) {
       if (expandedJobs.length > 0) {
         throw new AllVariantsAlreadyListedException(skippedAlreadyListedCount);
       }
@@ -217,10 +218,38 @@ export class BulkListingSubmitService implements IBulkListingSubmitService {
     // effective EAN + batch-wide effective-identifier uniqueness. Done before
     // persisting so a bad/duplicate barcode never creates a batch row (the
     // #742 retry rebuilds from the snapshot and does NOT re-validate).
-    this.enforceIdentifierRules(input, jobs, variantsById);
+    this.enforceIdentifierRules(input, listableJobs, variantsById);
     const masterStock = await this.resolveMasterStock(
-      jobs.filter((job) => job.useMasterStock).map((job) => job.variantId)
+      listableJobs.filter((job) => job.useMasterStock).map((job) => job.variantId)
     );
+
+    // #2323 — a master-stock job whose availability came back UNKNOWN is
+    // EXCLUDED from the batch. `resolveMasterStock` zero-fills every id it
+    // could answer for, so an absent entry means "OL does not know", never
+    // "no stock": listing it would either publish a guessed number or (via the
+    // old `?? 0`) create a permanently-draft 0-stock offer the operator never
+    // asked for. Excluding is the only answer that asserts nothing false.
+    const unknownAvailability = listableJobs.filter(
+      (job) => job.useMasterStock && !masterStock.has(job.variantId)
+    );
+    const jobs =
+      unknownAvailability.length === 0
+        ? listableJobs
+        : listableJobs.filter((job) => !job.useMasterStock || masterStock.has(job.variantId));
+    if (unknownAvailability.length > 0) {
+      this.logger.warn(
+        `bulk_listing_variant_excluded_availability_unknown connection=${input.connectionId} ` +
+          `excluded=${unknownAvailability.length} of=${listableJobs.length} — availability could ` +
+          `not be resolved for these variants; they were left out of the batch rather than ` +
+          `published at a guessed quantity`
+      );
+      // Every job excluded means the whole read failed, which is transient.
+      // Reporting an empty submission would blame the operator's selection for
+      // an infrastructure outage and invite them to re-pick the same variants.
+      if (jobs.length === 0) {
+        throw new AvailabilityUnknownError(input.connectionId, unknownAvailability[0].variantId);
+      }
+    }
 
     // 3. Persist the batch row. Status defaults to 'pending' per the
     //    `CreateBulkListingBatchInput` contract; `sharedConfig` is
@@ -676,11 +705,28 @@ export class BulkListingSubmitService implements IBulkListingSubmitService {
    * variant ids into a `Map<variantId, available>`. Returns an empty map
    * for an empty input (no multi-variant expansion in the submission), so
    * the single-variant / passthrough path issues no inventory query.
+   *
+   * Reads `availableToPromise` (#2323) rather than `totalAvailable`: this is a
+   * PUBLISHING path, so the quantity it resolves becomes a live marketplace
+   * offer, and it must be net of OL's own outstanding holds. On a Wave-1b
+   * install (empty ledger) the two are the same number, so nothing published
+   * changes today.
+   *
+   * A variant whose availability is UNKNOWN is left OUT of the map — never
+   * backfilled from `totalAvailable`, which would publish the un-reserved
+   * quantity and oversell by exactly the outstanding holds. The caller excludes
+   * such variants from the batch rather than listing them at a guessed number.
    */
   private async resolveMasterStock(variantIds: string[]): Promise<Map<string, number>> {
     if (variantIds.length === 0) return new Map();
     const rows = await this.inventoryQuery.getAvailabilityByVariantIds(variantIds);
-    return new Map(rows.map((row) => [row.productVariantId, row.totalAvailable]));
+    return new Map(
+      rows
+        .filter((row): row is typeof row & { availableToPromise: number } =>
+          row.availableToPromise !== null
+        )
+        .map((row) => [row.productVariantId, row.availableToPromise])
+    );
   }
 
   /**

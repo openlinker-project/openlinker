@@ -109,6 +109,11 @@
       "require": "./dist/inventory/orm-entities.js",
       "default": "./dist/inventory/orm-entities.js"
     },
+    "./inventory/testing": {
+      "types": "./dist/inventory/testing/index.d.ts",
+      "require": "./dist/inventory/testing/index.js",
+      "default": "./dist/inventory/testing/index.js"
+    },
     "./events": {
       "types": "./dist/events/index.d.ts",
       "require": "./dist/events/index.js",

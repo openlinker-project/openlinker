@@ -35,7 +35,7 @@ import type {
   InventoryFilters,
   InventoryPagination,
   PaginatedInventoryItems,
-  VariantAvailability,
+  VariantStockRow,
   ProductStockAggregate,
   PruneStaleVariantsResult,
   ProvenanceScope,
@@ -302,7 +302,7 @@ export class InventoryRepository implements InventoryRepositoryPort {
 
   async findAvailabilityByVariantIds(
     variantIds: readonly string[]
-  ): Promise<readonly VariantAvailability[]> {
+  ): Promise<readonly VariantStockRow[]> {
     if (variantIds.length === 0) return [];
 
     const rows = await this.repository

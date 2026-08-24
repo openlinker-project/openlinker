@@ -5,11 +5,12 @@
  * `max(0, Σ available[live] − Σ olReserved[published]) − buffer`, with the
  * provenance that says where the number came from.
  *
- * **Consumed by nobody in this wave.** The four shipped buffer sites
- * (`InventorySyncService`, `OfferBuilderService`, `ProductPublishBuilderService`,
- * the stock-at-risk read) still apply the buffer themselves; #2323 rewires them
- * onto this seam, and the exported parity fixture is the contract it checks
- * itself against.
+ * **This service is now the sole owner of the `stockSafetyBuffer` helpers**
+ * (#2323). The four shipped buffer sites — `InventorySyncService`, the two
+ * publish builders and the stock-at-risk read — used to each keep a private
+ * copy of the read-warn-apply sequence; they now call `applyPublishControls`
+ * (or, for display only, `getAppliedReserve`) and the arithmetic lives here.
+ * The exported parity fixture is the contract that rewire is checked against.
  *
  * @module libs/core/src/inventory/application/services
  * @implements {IAvailabilityService}
@@ -19,6 +20,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import {
   CONNECTION_PORT_TOKEN,
   ConnectionPort,
+  applyStockSafetyBuffer,
   isPresentButInvalidStockSafetyBuffer,
   readStockSafetyBuffer,
 } from '@openlinker/core/identifier-mapping';
@@ -40,8 +42,10 @@ import {
 } from '../../domain/types/availability.types';
 import { UnsupportedAvailabilityScopeError } from '../../domain/exceptions/unsupported-availability-scope.error';
 import type {
+  ApplyPublishControlsInput,
   GetPromisableQuantitiesInput,
   IAvailabilityService,
+  PublishControlResult,
 } from './availability.service.interface';
 
 @Injectable()
@@ -105,6 +109,38 @@ export class AvailabilityService implements IAvailabilityService {
         now,
       });
     });
+  }
+
+  async applyPublishControls(input: ApplyPublishControlsInput): Promise<PublishControlResult> {
+    const { quantity, scope } = input;
+
+    let buffer: number;
+    try {
+      buffer = await this.resolveBuffer(scope);
+    } catch (error) {
+      // An unsupported scope is a CALLER BUG and must keep throwing — dressing
+      // it as `'unknown'` would send an operator hunting a healthy integration
+      // (see UnsupportedAvailabilityScopeError). Only a genuine failure to read
+      // the Controls degrades.
+      if (error instanceof UnsupportedAvailabilityScopeError) throw error;
+      this.logger.error(
+        `availability_controls_read_failed scope=${scope.kind} — reporting provenance ` +
+          `'unknown'; the caller must suppress its publish write rather than publish ` +
+          `the unbuffered quantity`,
+        (error as Error).stack
+      );
+      return { quantity: null, provenance: 'unknown' };
+    }
+
+    // Byte-identical to what the four shipped publish sites did before #2323.
+    return {
+      quantity: applyStockSafetyBuffer(Math.max(0, quantity), buffer),
+      provenance: 'computed',
+    };
+  }
+
+  async getAppliedReserve(scope: AvailabilityScope): Promise<number> {
+    return this.resolveBuffer(scope);
   }
 
   /**

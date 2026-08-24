@@ -104,5 +104,8 @@ function projectVariantAvailability(availability: VariantAvailability): Record<s
     variantId: availability.productVariantId,
     totalAvailable: availability.totalAvailable,
     locationCount: availability.locationCount,
+    // #2323 - net of OpenLinker's own published reservations; `null` means OL
+    // could not determine it, which an agent must not read as zero.
+    availableToPromise: availability.availableToPromise,
   };
 }

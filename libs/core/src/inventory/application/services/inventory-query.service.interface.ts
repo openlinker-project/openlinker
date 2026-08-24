@@ -34,10 +34,17 @@ export interface IInventoryQueryService {
    *
    * Returns one row per requested variant ID with `availableQuantity`
    * summed across all locations and the distinct-location count. Variants
-   * with no inventory rows are zero-filled
-   * (`{ totalAvailable: 0, locationCount: 0 }`) so the caller can build a
+   * with no inventory rows are zero-filled so the caller can build a
    * `Map<variantId, VariantAvailability>` directly. Output order matches
    * input order.
+   *
+   * Each row also carries `availableToPromise` (#2323) — the GLOBAL-scope
+   * answer from `IAvailabilityService`, i.e. `totalAvailable` net of OL's own
+   * published reservations and with NO per-destination buffer applied (a
+   * publishing caller applies the channel Control downstream). It is `null`
+   * exactly when OpenLinker does not know, which a publishing caller must
+   * treat as "suppress the write", never as zero and never as a reason to fall
+   * back to `totalAvailable`.
    */
   getAvailabilityByVariantIds(
     variantIds: readonly string[]

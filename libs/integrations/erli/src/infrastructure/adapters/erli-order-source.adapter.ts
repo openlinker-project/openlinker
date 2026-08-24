@@ -651,6 +651,10 @@ export class ErliOrderSourceAdapter
     //    — output order is NOT guaranteed to match input order, so positional
     //    indexing would silently assign wrong quantities. `?? 0` is the zero-fill
     //    safety net for any variant id the service doesn't return a row for.
+    //    Deliberately still `totalAvailable` and not the additive
+    //    `availableToPromise` (#2323): moving this adapter's restore onto the
+    //    availability seam is a behaviour change to a plugin, out of scope for
+    //    the core rewire, and is tracked with the rest of the reservation work.
     const availability = await inventoryQuery.getAvailabilityByVariantIds(offerIds);
     const stockByVariantId = new Map(
       availability.map((row) => [row.productVariantId, row.totalAvailable]),

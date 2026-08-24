@@ -19,7 +19,8 @@ import {
   PRODUCTS_SERVICE_TOKEN,
 } from '@openlinker/core/products';
 import type { Product } from '@openlinker/core/products';
-import { INVENTORY_REPOSITORY_TOKEN } from '../../inventory.tokens';
+import { AVAILABILITY_SERVICE_TOKEN, INVENTORY_REPOSITORY_TOKEN } from '../../inventory.tokens';
+import { IAvailabilityService } from './availability.service.interface';
 import { InventoryRepositoryPort } from '../../domain/ports/inventory-repository.port';
 import type { InventoryItem } from '../../domain/entities/inventory-item.entity';
 import type {
@@ -59,7 +60,9 @@ export class InventoryQueryService implements IInventoryQueryService {
     @Inject(INVENTORY_REPOSITORY_TOKEN)
     private readonly inventoryRepository: InventoryRepositoryPort,
     @Inject(PRODUCTS_SERVICE_TOKEN)
-    private readonly productsService: IProductsService
+    private readonly productsService: IProductsService,
+    @Inject(AVAILABILITY_SERVICE_TOKEN)
+    private readonly availabilityService: IAvailabilityService
   ) {}
 
   async listInventoryItems(
@@ -83,18 +86,33 @@ export class InventoryQueryService implements IInventoryQueryService {
     // than crashing on `undefined.map(...)`.
     if (variantIds.length === 0) return [];
 
-    const rows = await this.inventoryRepository.findAvailabilityByVariantIds(variantIds);
+    const [rows, promisable] = await Promise.all([
+      this.inventoryRepository.findAvailabilityByVariantIds(variantIds),
+      // GLOBAL scope, deliberately (#2323): this read has no destination, and
+      // the per-connection buffer is applied downstream by whichever publish
+      // site consumes the row — asking for a channel scope here would either
+      // require picking one connection arbitrarily or double-buffer.
+      this.availabilityService.getPromisableQuantities({ variantIds, scope: { kind: 'global' } }),
+    ]);
     const byId = new Map(rows.map((r) => [r.productVariantId, r]));
+    // `getPromisableQuantities` is zero-filled and order-preserving, so this
+    // map is total over `variantIds`; the `?? null` is unreachable defence.
+    const atpById = new Map(promisable.map((p) => [p.productVariantId, p.quantity]));
     // Zero-fill unknowns so the caller can build a Map<variantId, …> directly
     // without re-walking the input list. Output order preserves input order.
-    return variantIds.map(
-      (id) =>
-        byId.get(id) ?? {
-          productVariantId: id,
-          totalAvailable: 0,
-          locationCount: 0,
-        }
-    );
+    return variantIds.map((id) => {
+      const row = byId.get(id);
+      return {
+        productVariantId: id,
+        totalAvailable: row?.totalAvailable ?? 0,
+        locationCount: row?.locationCount ?? 0,
+        ...(row?.stockUpdatedAt !== undefined ? { stockUpdatedAt: row.stockUpdatedAt } : {}),
+        // A variant with no positions carries a KNOWN zero, not `null` — the
+        // #1844 master-is-authoritative-including-zero rule and #1689's
+        // stale-variant pause both depend on a zero publish actually happening.
+        availableToPromise: atpById.get(id) ?? null,
+      };
+    });
   }
 
   async getProductStockAggregates(

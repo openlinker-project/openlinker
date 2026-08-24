@@ -11,13 +11,8 @@ import { createHash } from 'crypto';
 import type { OfferManagerPort } from '@openlinker/core/listings';
 import { isOfferQuantityBatchUpdater } from '@openlinker/core/listings';
 import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
-import {
-  CONNECTION_PORT_TOKEN,
-  ConnectionPort,
-  applyStockSafetyBuffer,
-  isPresentButInvalidStockSafetyBuffer,
-  readStockSafetyBuffer,
-} from '@openlinker/core/identifier-mapping';
+import { AVAILABILITY_SERVICE_TOKEN } from '../../inventory.tokens';
+import { IAvailabilityService } from './availability.service.interface';
 import type {
   UpdateOfferQuantityCommand,
   UpdateOfferQuantitiesBatchCommand,
@@ -33,8 +28,8 @@ export class InventorySyncService implements IInventorySyncService {
   constructor(
     @Inject(INTEGRATIONS_SERVICE_TOKEN)
     private readonly integrationsService: IIntegrationsService,
-    @Inject(CONNECTION_PORT_TOKEN)
-    private readonly connectionPort: ConnectionPort
+    @Inject(AVAILABILITY_SERVICE_TOKEN)
+    private readonly availabilityService: IAvailabilityService
   ) {}
 
   async updateOfferQuantity(
@@ -52,28 +47,61 @@ export class InventorySyncService implements IInventorySyncService {
       return { succeeded: [], failed: [] };
     }
 
+    // #1844 / #2323 — the destination's publish Controls (today: the
+    // per-connection stock safety buffer) are applied by the availability seam,
+    // which is now their sole owner. Resolved BEFORE the adapter is built so an
+    // unresolvable Control costs no marketplace call.
+    //
+    // Note the batch has no variant authority to ask about: neither
+    // `UpdateOfferQuantityCommand` nor its payload carries a `productVariantId`,
+    // so the quantity is the caller's and only the Controls come from the seam.
+    // Threading the variant id (and with it real available-to-promise) is
+    // #2324's declared work; this slice deliberately changes no number.
+    const controls = await Promise.all(
+      cmd.items.map((i) =>
+        this.availabilityService.applyPublishControls({
+          quantity: i.quantity,
+          scope: { kind: 'channel', connectionId },
+        })
+      )
+    );
+
+    // ADR-061: `unknown` means OpenLinker could not resolve the Controls. Write
+    // NOTHING — not the unbuffered quantity, which would publish straight
+    // through the operator's oversell cushion. The batch fails wholesale
+    // (`failed` non-empty), which the worker handler turns into a
+    // SyncJobExecutionError and retries; a partial write would leave some
+    // offers buffered and others not, with nothing recording which.
+    const unknown = controls.find((c) => c.provenance === 'unknown');
+    if (unknown) {
+      this.logger.error(
+        `inventory_writeback_suppressed_availability_unknown connection=${connectionId} ` +
+          `offers=${cmd.items.length} — publish Controls could not be resolved; no marketplace ` +
+          `call was made`
+      );
+      return {
+        succeeded: [],
+        failed: cmd.items.map((i) => ({
+          offerId: i.offerId,
+          errorCode: 'availability_unknown',
+          message:
+            'Publish controls could not be resolved for this connection; the quantity write was ' +
+            'suppressed rather than published without the configured stock safety buffer.',
+        })),
+      };
+    }
+
     const marketplace = await this.integrationsService.getCapabilityAdapter<OfferManagerPort>(
       connectionId,
       'OfferManager'
     );
 
-    // #1844 — apply the destination's per-connection stock safety buffer to every
-    // written-back quantity: published quantity = max(0, masterStock - reserve).
-    // Read once per batch (single connection); default reserve 0 => pass-through.
-    const connection = await this.connectionPort.get(connectionId);
-    if (isPresentButInvalidStockSafetyBuffer(connection.config)) {
-      this.logger.warn(
-        `Connection ${connectionId} has a stockSafetyBuffer that is present but invalid ` +
-          `(non-numeric, negative, zero, or non-finite) — it coerces to 0, so no stock ` +
-          `reserve is applied to write-back. Set a positive integer to enable oversell protection.`
-      );
-    }
-    const reserve = readStockSafetyBuffer(connection.config);
-
     const normalized: UpdateOfferQuantitiesBatchCommand = {
       idempotencyKey: cmd.idempotencyKey,
-      items: cmd.items.map((i) => {
-        const quantity = applyStockSafetyBuffer(i.quantity, reserve);
+      items: cmd.items.map((i, index) => {
+        // Non-null: every `unknown` arm returned above, and the seam's contract
+        // is `quantity === null` iff `provenance === 'unknown'`.
+        const quantity = controls[index].quantity as number;
         if (!i.idempotencyKey && !i.observedAt) {
           // #2285 — a quantity-only key cannot distinguish two writes of the same
           // value, so a corrective write is swallowed by the destination's command-id
