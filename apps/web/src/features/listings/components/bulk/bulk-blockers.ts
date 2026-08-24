@@ -95,16 +95,6 @@ export const CATEGORY_EFFECT_CHIP: ChipDescriptor = {
   fixable: true,
 };
 
-/**
- * The consequence chip that accompanies a category cause in the variant editor.
- * Deliberately NOT a blocker id - see the module header.
- */
-export const CATEGORY_EFFECT_CHIP: ChipDescriptor = {
-  tone: 'error',
-  label: 'category not set',
-  fixable: true,
-};
-
 export const FALLBACK_CHIP: ChipDescriptor = {
   tone: 'warning',
   label: 'needs attention',
