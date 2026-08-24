@@ -18,7 +18,11 @@ import { InventorySyncService } from './application/services/inventory-sync.serv
 import { MasterInventorySyncService } from './application/services/master-inventory-sync.service';
 import { InventoryQueryService } from './application/services/inventory-query.service';
 import { LocationService } from './application/services/location.service';
+import { AvailabilityService } from './application/services/availability.service';
+import { EmptyReservationLedgerReader } from './infrastructure/reservations/empty-reservation-ledger.reader';
 import {
+  AVAILABILITY_SERVICE_TOKEN,
+  RESERVATION_LEDGER_READER_TOKEN,
   INVENTORY_REPOSITORY_TOKEN,
   INVENTORY_SERVICE_TOKEN,
   INVENTORY_SYNC_SERVICE_TOKEN,
@@ -35,6 +39,8 @@ import { EventsModule } from '@openlinker/core/events';
 
 // Re-export tokens for convenience
 export {
+  AVAILABILITY_SERVICE_TOKEN,
+  RESERVATION_LEDGER_READER_TOKEN,
   INVENTORY_REPOSITORY_TOKEN,
   INVENTORY_SERVICE_TOKEN,
   INVENTORY_SYNC_SERVICE_TOKEN,
@@ -49,7 +55,7 @@ export {
     TypeOrmModule.forFeature([InventoryItemOrmEntity, InventoryLocationOrmEntity]),
     ProductsModule, // Required for FK relationship to ProductOrmEntity
     IntegrationsModule, // Required for INTEGRATIONS_SERVICE_TOKEN (marketplace adapter resolution)
-    IdentifierMappingModule, // Required for IDENTIFIER_MAPPING_SERVICE_TOKEN
+    IdentifierMappingModule, // Required for IDENTIFIER_MAPPING_SERVICE_TOKEN and CONNECTION_PORT_TOKEN (per-connection stock safety buffer, #1844/#2321)
     SyncModule, // Required for SYNC_JOB_QUEUE_TOKEN (inventory propagation enqueue)
     EventsModule, // Required for EVENT_PUBLISHER_TOKEN (master-deletion event, #1599)
   ],
@@ -62,6 +68,11 @@ export {
     InventoryQueryService,
     LocationRepository,
     LocationService,
+    // #2321 — the computed availability seam. `EmptyReservationLedgerReader` is
+    // the Wave-1b stand-in: Wave 2 swaps this one binding for a real ledger
+    // repository, which is why the ATP formula already carries the term.
+    EmptyReservationLedgerReader,
+    AvailabilityService,
     // Then provide token bindings using useExisting
     {
       provide: INVENTORY_REPOSITORY_TOKEN,
@@ -91,6 +102,14 @@ export {
       provide: LOCATION_SERVICE_TOKEN,
       useExisting: LocationService,
     },
+    {
+      provide: RESERVATION_LEDGER_READER_TOKEN,
+      useExisting: EmptyReservationLedgerReader,
+    },
+    {
+      provide: AVAILABILITY_SERVICE_TOKEN,
+      useExisting: AvailabilityService,
+    },
   ],
   exports: [
     INVENTORY_REPOSITORY_TOKEN,
@@ -100,6 +119,8 @@ export {
     INVENTORY_QUERY_SERVICE_TOKEN,
     LOCATION_REPOSITORY_TOKEN,
     LOCATION_SERVICE_TOKEN,
+    RESERVATION_LEDGER_READER_TOKEN,
+    AVAILABILITY_SERVICE_TOKEN,
   ],
 })
 export class InventoryModule {}

@@ -17,6 +17,12 @@ export * from './inventory.tokens';
 export { InventoryMasterPort, Inventory } from './domain/ports/inventory-master.port';
 export { InventoryRepositoryPort } from './domain/ports/inventory-repository.port';
 export { LocationRepositoryPort } from './domain/ports/location-repository.port';
+export {
+  ReservationLedgerReaderPort,
+  SumReservedInput,
+  ReservationAtpEffect,
+  ReservationAtpEffectValues,
+} from './domain/ports/reservation-ledger-reader.port';
 
 // Domain Entities
 export { InventoryItem as InventoryItemEntity } from './domain/entities/inventory-item.entity';
@@ -28,6 +34,7 @@ export { InventoryRowVanishedError } from './domain/exceptions/inventory-row-van
 export { DuplicateLocationCodeError } from './domain/exceptions/duplicate-location-code.error';
 export { LocationNotFoundException } from './domain/exceptions/location-not-found.exception';
 export { LocationInUseError } from './domain/exceptions/location-in-use.error';
+export { UnsupportedAvailabilityScopeError } from './domain/exceptions/unsupported-availability-scope.error';
 
 // Application Services
 export { IInventoryService } from './application/services/inventory.service.interface';
@@ -44,6 +51,12 @@ export {
 } from './application/services/inventory-query.service';
 export { ILocationService } from './application/services/location.service.interface';
 export { LocationService } from './application/services/location.service';
+export {
+  IAvailabilityService,
+  GetPromisableQuantitiesInput,
+} from './application/services/availability.service.interface';
+export { AvailabilityService } from './application/services/availability.service';
+export { EmptyReservationLedgerReader } from './infrastructure/reservations/empty-reservation-ledger.reader';
 
 // Application Types
 export {
@@ -65,6 +78,15 @@ export {
   DuplicatePositionGroup,
   DuplicatePositionReport,
 } from './domain/types/inventory.types';
+export {
+  AvailabilityScope,
+  AvailabilityProvenance,
+  AvailabilityProvenanceValues,
+  PromisableQuantity,
+  computeAtp,
+  toPromisableQuantity,
+  unknownPromisableQuantity,
+} from './domain/types/availability.types';
 export {
   InventoryLocationKindValues,
   InventoryLocationKind,

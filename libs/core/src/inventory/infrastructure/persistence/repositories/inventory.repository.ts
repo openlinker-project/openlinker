@@ -205,6 +205,7 @@ export class InventoryRepository implements InventoryRepositoryPort {
       .select('inv.productVariantId', 'productVariantId')
       .addSelect('COALESCE(SUM(inv.availableQuantity), 0)', 'totalAvailable')
       .addSelect('COUNT(DISTINCT inv.locationId)', 'locationCount')
+      .addSelect('MAX(inv.updatedAt)', 'stockUpdatedAt')
       .where('inv.productVariantId IN (:...variantIds)', { variantIds: [...variantIds] })
       // Exclude soft-deleted rows so offer flows never act on dead stock (#1478).
       .andWhere('inv.isStale = false')
@@ -213,15 +214,20 @@ export class InventoryRepository implements InventoryRepositoryPort {
         productVariantId: string;
         totalAvailable: string;
         locationCount: string;
+        stockUpdatedAt: Date | string;
       }>();
 
     // Postgres returns SUM as numeric (string) and COUNT(DISTINCT) as bigint
     // (string) through TypeORM's raw-query path — explicit Number() cast
-    // surfaces the right shape to consumers.
+    // surfaces the right shape to consumers. MAX(timestamptz) comes back as a
+    // Date via the pg driver but is defensively normalised in case the driver
+    // hands back a string (the findStockAggregatesByProductIds precedent).
     return rows.map((row) => ({
       productVariantId: row.productVariantId,
       totalAvailable: Number(row.totalAvailable),
       locationCount: Number(row.locationCount),
+      stockUpdatedAt:
+        row.stockUpdatedAt instanceof Date ? row.stockUpdatedAt : new Date(row.stockUpdatedAt),
     }));
   }
 

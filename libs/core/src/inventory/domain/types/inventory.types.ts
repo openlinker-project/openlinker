@@ -86,6 +86,23 @@ export interface VariantAvailability {
   productVariantId: string;
   totalAvailable: number;
   locationCount: number;
+  /**
+   * `MAX(updatedAt)` across the variant's live positions (#2321) — when the
+   * stock facts behind `totalAvailable` were last written.
+   *
+   * Additive, mirroring the `ProductStockAggregate.stockUpdatedAt` sibling.
+   * `null` never occurs on a repo-returned row (a row exists only because a
+   * position exists); the shape allows it for the service layer's zero-filled
+   * entries, where "no positions" legitimately means "nothing was observed".
+   * `IAvailabilityService` carries it through as `PromisableQuantity.observedAt`.
+   *
+   * **Optional, so the addition is additive in fact and not merely in name.**
+   * The repository always populates it; declaring it required would have forced
+   * edits to four unrelated listings spec files that build this shape by hand —
+   * churn a seam-only slice has no business creating, in exactly the files
+   * #2323 rewires next.
+   */
+  stockUpdatedAt?: Date | null;
 }
 
 /**
