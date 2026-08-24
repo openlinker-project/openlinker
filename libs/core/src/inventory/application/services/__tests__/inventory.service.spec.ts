@@ -102,13 +102,78 @@ describe('InventoryService', () => {
     expect(jobQueue.enqueue).not.toHaveBeenCalled();
   });
 
-  it('skips enqueue for non-default location inventory', async () => {
+  // #2324 (ADR-058 decision 5) — INVERTED. A located write used to be skipped,
+  // which meant a locating master never propagated at all.
+  it('enqueues propagation for a located write', async () => {
     const input = createItem({
+      productVariantId: 'variant-1',
       locationId: 'warehouse-a',
       availableQuantity: 7,
+      updatedAt: new Date('2026-01-01T12:00:00.000Z'),
     });
 
     inventoryRepository.findByProductAndVariant.mockResolvedValue(null);
+    inventoryRepository.upsert.mockResolvedValue(input);
+
+    await service.setInventory(input);
+
+    expect(jobQueue.enqueue).toHaveBeenCalledTimes(1);
+    expect(jobQueue.enqueue).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'inventory.propagateToMarketplaces',
+        payload: {
+          productId: 'product-id',
+          variantId: 'variant-1',
+          inventoryUpdatedAt: '2026-01-01T12:00:00.000Z',
+        },
+        options: {
+          // Variant-keyed and LOCATION-FREE: the location is deliberately
+          // absent from the key.
+          dedupeKey: 'inventory:propagate:product-id:variant-1:2026-01-01T12:00:00.000Z',
+        },
+      })
+    );
+  });
+
+  it('collapses sibling located writes sharing an updatedAt onto one dedupe key', async () => {
+    const updatedAt = new Date('2026-01-01T12:00:00.000Z');
+    const keys: string[] = [];
+
+    for (const locationId of ['warehouse-a', 'warehouse-b', 'warehouse-c']) {
+      const input = createItem({
+        productVariantId: 'variant-1',
+        locationId,
+        availableQuantity: 3,
+        updatedAt,
+      });
+      inventoryRepository.findByProductAndVariant.mockResolvedValue(null);
+      inventoryRepository.upsert.mockResolvedValue(input);
+      await service.setInventory(input);
+    }
+
+    for (const call of jobQueue.enqueue.mock.calls) {
+      keys.push((call[0] as { options: { dedupeKey: string } }).options.dedupeKey);
+    }
+
+    expect(keys).toHaveLength(3);
+    expect(new Set(keys).size).toBe(1);
+  });
+
+  it('still suppresses a located write whose own row quantity did not change', async () => {
+    const input = createItem({
+      productVariantId: 'variant-1',
+      locationId: 'warehouse-a',
+      availableQuantity: 5,
+      updatedAt: new Date('2026-01-01T12:00:00.000Z'),
+    });
+    const previous = createItem({
+      productVariantId: 'variant-1',
+      locationId: 'warehouse-a',
+      availableQuantity: 5,
+      updatedAt: new Date('2026-01-01T11:00:00.000Z'),
+    });
+
+    inventoryRepository.findByProductAndVariant.mockResolvedValue(previous);
     inventoryRepository.upsert.mockResolvedValue(input);
 
     await service.setInventory(input);

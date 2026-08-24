@@ -18,6 +18,7 @@
  * @module libs/core/src/inventory/application/services/__tests__
  */
 
+import type { SyncJobQueuePort } from '@openlinker/core/sync';
 import { MasterInventorySyncService } from '../master-inventory-sync.service';
 import type { IEntityClaimService, IIntegrationsService } from '@openlinker/core/integrations';
 import type { IIdentifierMappingService } from '@openlinker/core/identifier-mapping';
@@ -45,6 +46,7 @@ describe('MasterInventorySyncService', () => {
   let productsService: jest.Mocked<Pick<IProductsService, 'getVariantsByProductId'>>;
   let eventPublisher: jest.Mocked<EventPublisherPort>;
   let entityClaims: jest.Mocked<IEntityClaimService>;
+  let jobQueue: jest.Mocked<SyncJobQueuePort>;
   let masterProductSync: jest.Mocked<IMasterProductSyncService>;
 
   const connectionId = 'connection-123';
@@ -103,6 +105,11 @@ describe('MasterInventorySyncService', () => {
       findRivalClaimants: jest.fn().mockResolvedValue([]),
     } as unknown as jest.Mocked<IEntityClaimService>;
 
+    jobQueue = {
+      enqueue: jest.fn().mockResolvedValue('job-id'),
+      enqueueBulk: jest.fn(),
+    } as unknown as jest.Mocked<SyncJobQueuePort>;
+
     masterProductSync = {
       syncFromMasterByExternalId: jest.fn(),
       markProductDeletedAtMaster: jest.fn().mockResolvedValue({
@@ -121,7 +128,8 @@ describe('MasterInventorySyncService', () => {
       productsService as unknown as IProductsService,
       eventPublisher,
       entityClaims,
-      masterProductSync
+      masterProductSync,
+      jobQueue
     );
   });
 
@@ -1037,6 +1045,45 @@ describe('MasterInventorySyncService', () => {
         { sourceConnectionId: connectionId, includeUnattributedProvenance: true }
       );
       expect(result.pooledPositionsStaled).toBe(1);
+    });
+
+    // #2324 (ADR-058 decision 5): staling a pooled position changes the
+    // variant's aggregate without writing any inventory row, so nothing else
+    // would propagate it.
+    it('should enqueue variant-keyed propagation for each staled pooled position', async () => {
+      inventoryAdapter.listInventory.mockResolvedValue([located('ol_variant_a', 'loc-1')]);
+      (
+        inventoryService.staleLocationlessPositionsForSource as jest.Mock
+      ).mockResolvedValueOnce({ markedCount: 1, variantIds: ['ol_variant_a'] });
+
+      await service.syncFromMasterByExternalId(connectionId, externalId);
+
+      const propagations = jobQueue.enqueue.mock.calls
+        .map((c) => c[0] as { type: string; payload: Record<string, unknown>; options?: { dedupeKey?: string } })
+        .filter((c) => c.type === 'inventory.propagateToMarketplaces');
+
+      expect(propagations).toHaveLength(1);
+      expect(propagations[0].payload).toEqual(
+        expect.objectContaining({ productId: internalProductId, variantId: 'ol_variant_a' })
+      );
+      // Location-free key, mirroring InventoryService's, so a same-tick located
+      // setInventory enqueue for the same variant collapses into one job.
+      expect(propagations[0].options?.dedupeKey).toMatch(
+        new RegExp(`^inventory:propagate:${internalProductId}:ol_variant_a:`)
+      );
+      expect(propagations[0].options?.dedupeKey).not.toContain('loc-1');
+    });
+
+    it('should not enqueue propagation when nothing was staled', async () => {
+      inventoryAdapter.listInventory.mockResolvedValue([pooled('ol_variant_b')]);
+
+      await service.syncFromMasterByExternalId(connectionId, externalId);
+
+      expect(
+        jobQueue.enqueue.mock.calls.filter(
+          (c) => (c[0] as { type: string }).type === 'inventory.propagateToMarketplaces'
+        )
+      ).toHaveLength(0);
     });
 
     it('should carry a product-level located position as a null variant key', async () => {
