@@ -45,3 +45,25 @@ function sanitizeAllegroTitle(title: string): string {
 export function isAllegroTitleTooLong(title: string): boolean {
   return sanitizeAllegroTitle(title).length > ALLEGRO_OFFER_TITLE_MAX_LENGTH;
 }
+
+/**
+ * Allegro's floor: at least 12 characters and at least 3 space-separated words
+ * (#2243). Measured on the same sanitized string as the ceiling above, so a
+ * whitespace-collapsing title cannot read as long enough here and short on the
+ * wire. A short master product name ("Fotel Ergo") reads ready in the wizard
+ * today and is rejected after submit; this is the other half of that rule.
+ */
+const ALLEGRO_OFFER_TITLE_MIN_LENGTH = 12;
+const ALLEGRO_OFFER_TITLE_MIN_WORDS = 3;
+
+export function isAllegroTitleTooShort(title: string): boolean {
+  const sanitized = sanitizeAllegroTitle(title);
+  // An empty title is a different, already-reported condition (the row has no
+  // title at all) - flagging it here would double-chip the same row.
+  if (sanitized === '') return false;
+  const words = sanitized.split(' ').filter((w) => w !== '');
+  return (
+    sanitized.length < ALLEGRO_OFFER_TITLE_MIN_LENGTH ||
+    words.length < ALLEGRO_OFFER_TITLE_MIN_WORDS
+  );
+}

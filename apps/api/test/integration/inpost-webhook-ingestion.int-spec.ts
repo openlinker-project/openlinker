@@ -3,10 +3,11 @@
  *
  * End-to-end proof of the third-party-native ingress: an InPost-HMAC-signed
  * `Shipment.Tracking` webhook → per-provider decoder (verify + extract) →
- * publish → translate → routing policy (`shipment` domain, gated on
- * ShippingProviderManager) → `marketplace.shipment.syncByExternalId` job.
- * Complements `webhook-ingestion.int-spec.ts` (the OL-enveloped/default-decoder
- * path) by exercising a registered per-provider decoder.
+ * translate → routing policy (`shipment` domain, gated on
+ * ShippingProviderManager) → the durable-spine gate (#2280) committing the
+ * `marketplace.shipment.syncByExternalId` work row synchronously. Complements
+ * `webhook-ingestion.int-spec.ts` (the OL-enveloped/default-decoder path) by
+ * exercising a registered per-provider decoder.
  *
  * @module apps/api/test/integration
  */
@@ -20,6 +21,27 @@ function inpostSign(rawBody: Buffer, timestamp: string, secret: string): string 
     .createHmac('sha256', secret)
     .update(Buffer.concat([Buffer.from(timestamp), Buffer.from('.'), rawBody]))
     .digest('base64');
+}
+
+interface SyncJobRow {
+  jobType: string;
+  payloadJson: unknown;
+}
+
+/** `payloadJson` is jsonb — the driver returns it parsed; tolerate both. */
+function parseJobPayload<T>(value: unknown): T {
+  return (typeof value === 'string' ? JSON.parse(value) : value) as T;
+}
+
+async function readShipmentJobs(
+  harness: IntegrationTestHarness,
+  connectionId: string,
+): Promise<SyncJobRow[]> {
+  return (await harness.getDataSource().query(
+    `SELECT "jobType", "payloadJson" FROM sync_jobs
+      WHERE "connectionId" = $1 AND "jobType" = 'marketplace.shipment.syncByExternalId'`,
+    [connectionId],
+  )) as SyncJobRow[];
 }
 
 describe('InPost Webhook Ingestion Integration (#768)', () => {
@@ -66,38 +88,23 @@ describe('InPost Webhook Ingestion Integration (#768)', () => {
       .send(body)
       .expect(202);
 
-    await new Promise((resolve) => setTimeout(resolve, 1500));
+    // The gate is synchronous (#2280): the work row is committed by the time
+    // the 202 returns — no stream polling, no sleep.
+    const jobs = await readShipmentJobs(harness, connection.id);
+    expect(jobs).toHaveLength(1);
+    const payload = parseJobPayload<{ externalId?: string }>(jobs[0].payloadJson);
+    expect(payload.externalId).toBe('6200000000001');
 
-    const redisClient = harness.getRedisClient();
-    if (!redisClient) throw new Error('Redis client not available');
-
-    // Inbound event published with the neutral shipment shape. The publisher
-    // packs objectType + externalId into the `payloadJson` stream field.
-    const events = await redisClient.xRead(
-      [{ key: 'events.inbound.webhooks', id: '0' }],
-      { COUNT: 50 },
-    );
-    const shipmentEvent = events?.[0]?.messages.find((msg) => {
-      try {
-        const p = JSON.parse(msg.message.payloadJson as string) as {
-          objectType?: string;
-          externalId?: string;
-        };
-        return p.objectType === 'shipment' && p.externalId === '6200000000001';
-      } catch {
-        return false;
-      }
-    });
-    expect(shipmentEvent).toBeDefined();
-
-    // Routed to the parcel-targeted shipment-sync job.
-    const jobs = await redisClient.xRead([{ key: 'jobs.sync', id: '0' }], { COUNT: 50 });
-    const shipmentJob = jobs?.[0]?.messages.find(
-      (msg) =>
-        msg.message.jobType === 'marketplace.shipment.syncByExternalId' &&
-        msg.message.connectionId === connection.id,
-    );
-    expect(shipmentJob).toBeDefined();
+    // Delivery row committed alongside the job, in its final status.
+    const deliveries: Array<{ status: string; downstreamJobType: string | null }> = await harness
+      .getDataSource()
+      .query(
+        `SELECT status, "downstreamJobType" FROM webhook_deliveries WHERE provider = 'inpost' AND "connectionId" = $1`,
+        [connection.id],
+      );
+    expect(deliveries).toHaveLength(1);
+    expect(deliveries[0].status).toBe('job_enqueued');
+    expect(deliveries[0].downstreamJobType).toBe('marketplace.shipment.syncByExternalId');
   });
 
   it('rejects an InPost webhook with an invalid signature (401)', async () => {
@@ -129,17 +136,7 @@ describe('InPost Webhook Ingestion Integration (#768)', () => {
       .send(body)
       .expect(202);
 
-    await new Promise((resolve) => setTimeout(resolve, 750));
-
-    const redisClient = harness.getRedisClient();
-    if (!redisClient) throw new Error('Redis client not available');
-    const jobs = await redisClient.xRead([{ key: 'jobs.sync', id: '0' }], { COUNT: 50 });
-    const shipmentJobs =
-      jobs?.[0]?.messages.filter(
-        (msg) =>
-          msg.message.jobType === 'marketplace.shipment.syncByExternalId' &&
-          msg.message.connectionId === connection.id,
-      ) ?? [];
-    expect(shipmentJobs).toHaveLength(0);
+    // Synchronous spine: absence is provable immediately (#2280).
+    expect(await readShipmentJobs(harness, connection.id)).toHaveLength(0);
   });
 });

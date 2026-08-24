@@ -13,7 +13,11 @@
  *
  * @module apps/web/src/features/listings/components/bulk
  */
-import type { OfferRowValidationInput } from '../../../../shared/plugins';
+import type {
+  CategoryParameterLike,
+  OfferRowValidationInput,
+  SuppliedParameterLike,
+} from '../../../../shared/plugins';
 import type { BulkPerProductOverride } from '../../api/bulk-listings.types';
 import type { EanMatchResult } from '../../api/listings.types';
 import { collapseToInvalidBarcode } from './bulk-blockers';
@@ -228,6 +232,27 @@ export interface ComputeBlockersInput {
    * category. Omitted ⇒ no product-tier category.
    */
   productCategoryId?: string | null;
+  /**
+   * The submit category's full parameter schema (#2243). Every bound a value is
+   * checked against comes from here; absent ⇒ nothing value-level runs.
+   */
+  categoryParameters?: readonly CategoryParameterLike[];
+  /** Parameters the OPERATOR supplied for this row (#2243). */
+  suppliedParameters?: readonly SuppliedParameterLike[];
+  /** Effective barcode for the row - operator override, else the master's (#2243). */
+  barcode?: string | null;
+  /** Whether a catalogue lookup actually ran for this batch (#2211/#2243). */
+  catalogueConsulted?: boolean;
+  /** Included siblings of this row's product that would create their own card (#2243). */
+  siblingsWithoutCatalogueCard?: number;
+  /** Included sibling count for the row's product; 1 ⇒ nothing to group (#2243). */
+  includedSiblingCount?: number;
+  /**
+   * True when the submit category's schema could NOT be fetched (#2243). The
+   * schema-derived checks are then blind, and saying so is the point: before
+   * this a failed fetch silently cleared the required-parameter blocker.
+   */
+  categorySchemaUnavailable?: boolean;
 }
 
 /**
@@ -291,8 +316,19 @@ export function computeBlockers(input: ComputeBlockersInput): BulkRowBlocker[] {
         needsProductParameters: computeNeedsProductParameters(input),
         willLinkProductCard: input.willLinkProductCard ?? false,
         title: input.effectiveTitle ?? '',
+        categoryParameters: input.categoryParameters,
+        suppliedParameters: input.suppliedParameters,
+        barcode: input.barcode,
+        catalogueConsulted: input.catalogueConsulted,
+        siblingsWithoutCatalogueCard: input.siblingsWithoutCatalogueCard,
+        includedSiblingCount: input.includedSiblingCount,
       }),
     );
+  }
+
+  // A schema we could not load is reported, never assumed away (#2243).
+  if (input.categorySchemaUnavailable === true) {
+    blockers.push('params-not-checked');
   }
 
   // Price / stock - override-aware via the resolvers above.
@@ -426,6 +462,52 @@ export function recomputeRowBlockers(
   });
 }
 
+/**
+ * Batch-wide facts a per-row check cannot derive on its own (#2243): the schemas
+ * that loaded, the ones that failed, whether a catalogue lookup ran at all.
+ * Passed as one object rather than five more positional arguments.
+ */
+export interface PreflightContext {
+  schemaByCategory?: Map<string, readonly CategoryParameterLike[]>;
+  failedCategoryIds?: readonly string[];
+  catalogueConsulted?: boolean;
+}
+
+/**
+ * How many INCLUDED siblings of a product would create their own catalogue card
+ * (#2243). A multi-variant product only groups on Allegro when every sibling
+ * resolves to its own card; when only some do, the marketplace binds the new
+ * card to the first variant it accepts and rejects the rest.
+ *
+ * It is a PRODUCT-level fact derived from the whole variant list, which is why
+ * it lives in one function rather than being re-reasoned per row. Note what that
+ * does and does not say about cost: `recomputeVariantBlockers` calls this once
+ * per variant, so a product's variant list is walked once per variant - O(n^2)
+ * in siblings, which is nothing at the counts a bulk wizard actually carries
+ * (tens). It stays inside the recompute deliberately: a hoisted value passed in
+ * as an argument is one a caller can forget to refresh after an override edit,
+ * and a stale card-coverage count would block or unblock the wrong siblings.
+ * If variant counts ever make the walk matter, it belongs on a per-row memo at
+ * both call sites, not on the batch-wide `PreflightContext` - coverage is scoped
+ * to one product, not to the batch.
+ */
+export function siblingCardCoverage(row: BulkWizardRow): {
+  included: number;
+  withoutCard: number;
+} {
+  let included = 0;
+  let withoutCard = 0;
+  for (const variant of row.variants) {
+    if (!variant.included) continue;
+    included += 1;
+    const hasCard =
+      variant.resolvedProductCardId !== null ||
+      Boolean(variant.override.overrides?.productCardId);
+    if (!hasCard) withoutCard += 1;
+  }
+  return { included, withoutCard };
+}
+
 /** Resolved master image count for a row (#1096) - Erli image gate input. */
 export function imageCountForRow(row: BulkWizardRow): number {
   return row.product?.images?.filter((u) => typeof u === 'string' && u.trim() !== '').length ?? 0;
@@ -551,6 +633,7 @@ export function recomputeVariantBlockers(
   platformValidate?: (input: OfferRowValidationInput) => string[],
   destinationResolvesCategoryAtSubmit = false,
   isMultiVariant = false,
+  context: PreflightContext = {},
 ): BulkRowBlocker[] {
   // The category this sibling would actually submit under (#2240). The order
   // mirrors `handleSubmit`: a per-variant override wins, then the product-tier
@@ -561,6 +644,7 @@ export function recomputeVariantBlockers(
   const productCategoryId = productCategoryIdOf(row);
   const submitCategoryId =
     variant.override.overrides?.categoryId ?? productCategoryId ?? variant.resolvedCategoryId;
+  const coverage = siblingCardCoverage(row);
   const blockers = computeBlockers({
     hasVariant: true,
     categoryResult: variantCategoryResult(variant, submitCategoryId),
@@ -582,6 +666,16 @@ export function recomputeVariantBlockers(
     effectiveTitle: titleForVariant(row, variant),
     platformValidate,
     destinationResolvesCategoryAtSubmit,
+    categoryParameters: submitCategoryId
+      ? context.schemaByCategory?.get(submitCategoryId)
+      : undefined,
+    suppliedParameters: variant.override.overrides?.parameters,
+    barcode: effectiveVariantEan(variant),
+    catalogueConsulted: context.catalogueConsulted,
+    siblingsWithoutCatalogueCard: coverage.withoutCard,
+    includedSiblingCount: coverage.included,
+    categorySchemaUnavailable:
+      submitCategoryId !== null && (context.failedCategoryIds ?? []).includes(submitCategoryId),
   });
 
   // Master stock is authoritative + read-only for multi-variant siblings - a

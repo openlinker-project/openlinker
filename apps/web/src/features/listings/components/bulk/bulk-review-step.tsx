@@ -37,9 +37,11 @@ import type {
 import { BulkEditModal } from './bulk-edit-modal';
 import { BulkImageLightbox } from './bulk-image-lightbox';
 import { AlreadyListedChip } from '../already-listed-chip';
+import type { OfferBlockerField } from '../../../../shared/plugins';
 import {
   FALLBACK_CHIP,
   NEUTRAL_BLOCKER_CHIPS,
+  gatingBlockers,
   type ChipDescriptor,
 } from './bulk-blockers';
 import { describeBlocker, type BlockerCopyContext } from './bulk-blocker-copy';
@@ -104,8 +106,11 @@ interface VariantReadiness {
   ready: boolean;
 }
 
-function variantReadiness(v: BulkVariantRow): VariantReadiness {
-  return { included: v.included, ready: v.included && v.blockers.length === 0 };
+function variantReadiness(
+  v: BulkVariantRow,
+  chips: Record<string, ChipDescriptor>,
+): VariantReadiness {
+  return { included: v.included, ready: v.included && gatingBlockers(v.blockers, chips).length === 0 };
 }
 
 /**
@@ -148,7 +153,12 @@ export function BulkReviewStep({
   const blockerChips = useMemo<Record<string, ChipDescriptor>>(() => {
     const merged: Record<string, ChipDescriptor> = { ...NEUTRAL_BLOCKER_CHIPS };
     for (const chip of platformBlockerChips) {
-      merged[chip.id] = { tone: chip.tone as StatusBadgeTone, label: chip.label, fixable: true };
+      merged[chip.id] = {
+        tone: chip.tone as StatusBadgeTone,
+        label: chip.label,
+        fixable: true,
+        advisory: chip.advisory === true,
+      };
     }
     return merged;
   }, [platformBlockerChips]);
@@ -156,9 +166,11 @@ export function BulkReviewStep({
   const [filter, setFilter] = useState('');
   const [onlyFlagged, setOnlyFlagged] = useState(false);
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
-  const [editing, setEditing] = useState<{ productId: string; focusVariantId?: string } | null>(
-    null,
-  );
+  const [editing, setEditing] = useState<{
+    productId: string;
+    focusVariantId?: string;
+    focusField?: OfferBlockerField;
+  } | null>(null);
   const [zoom, setZoom] = useState<{ src: string; name: string } | null>(null);
   // "Jump to next flagged" cursor + deferred scroll target so the jump can cross
   // pagination boundaries: it advances a cursor through the flagged set, flips to
@@ -166,7 +178,7 @@ export function BulkReviewStep({
   const [jumpIndex, setJumpIndex] = useState(-1);
   const [pendingScroll, setPendingScroll] = useState<string | null>(null);
 
-  const counts = useMemo(() => countBatch(rows), [rows]);
+  const counts = useMemo(() => countBatch(rows, blockerChips), [rows, blockerChips]);
 
   // Batch-wide effective-EAN collision (#1934/F7). `enforceIdentifierRules`
   // server-side throws `DuplicateBatchEanException` -> 400 for the WHOLE
@@ -209,11 +221,13 @@ export function BulkReviewStep({
         if (!name.includes(needle) && !sku.includes(needle)) return false;
       }
       if (onlyFlagged) {
-        return r.variants.some((v) => v.included && v.blockers.length > 0);
+        return r.variants.some(
+          (v) => v.included && gatingBlockers(v.blockers, blockerChips).length > 0,
+        );
       }
       return true;
     });
-  }, [rows, filter, onlyFlagged]);
+  }, [rows, filter, onlyFlagged, blockerChips]);
 
   // Client-side pagination so a large batch (50+ products) does not render every
   // expandable product row at once. The filter runs across the whole set, then
@@ -258,7 +272,7 @@ export function BulkReviewStep({
     // Flagged rows in current filter/display order, so "next" is relative to the
     // whole list, not just the rendered page.
     const flagged = filteredRows.filter((r) =>
-      r.variants.some((v) => v.included && v.blockers.length > 0),
+      r.variants.some((v) => v.included && gatingBlockers(v.blockers, blockerChips).length > 0),
     );
     if (flagged.length === 0) return;
     const nextIndex = (jumpIndex + 1) % flagged.length;
@@ -456,8 +470,8 @@ export function BulkReviewStep({
             }}
             onSetVariantIncluded={onSetVariantIncluded}
             onSetProductIncluded={onSetProductIncluded}
-            onEdit={(focusVariantId) => {
-              setEditing({ productId: row.productId, focusVariantId });
+            onEdit={(focusVariantId, focusField) => {
+              setEditing({ productId: row.productId, focusVariantId, focusField });
             }}
             onZoom={(src, name) => {
               setZoom({ src, name });
@@ -530,6 +544,7 @@ export function BulkReviewStep({
           stockPolicy={config.stockPolicy}
           batchDeliveryPriceList={batchDeliveryPriceList}
           focusVariantId={editing?.focusVariantId}
+          focusField={editing?.focusField}
           demoReadOnly={demoReadOnly}
           onSave={onSaveEditor}
         />
@@ -558,7 +573,7 @@ interface ProductRowProps {
   onToggleExpand: () => void;
   onSetVariantIncluded: (productId: string, variantId: string, included: boolean) => void;
   onSetProductIncluded: (productId: string, included: boolean) => void;
-  onEdit: (focusVariantId?: string) => void;
+  onEdit: (focusVariantId?: string, focusField?: OfferBlockerField) => void;
   onZoom: (src: string, name: string) => void;
 }
 
@@ -590,13 +605,13 @@ function ProductRow({
     let attn = 0;
     let off = 0;
     for (const v of row.variants) {
-      const r = variantReadiness(v);
+      const r = variantReadiness(v, chips);
       if (!r.included) off += 1;
       else if (r.ready) ready += 1;
       else attn += 1;
     }
     return { ready, attn, off };
-  }, [row.variants]);
+  }, [row.variants, chips]);
 
   const productPrice =
     row.variants[0]?.masterPrice ?? row.masterPrice ?? null;
@@ -690,8 +705,8 @@ function ProductRow({
               alreadyListed={alreadyListedVariantIds.has(row.variants[0].variantId)}
               destinationName={destinationName}
               copyContext={blockerCopyContext(row, row.variants[0], destinationName, config)}
-              onFix={() => {
-                onEdit(row.variants[0].variantId);
+              onFix={(focusField) => {
+                onEdit(row.variants[0].variantId, focusField);
               }}
             />
           ) : (
@@ -747,8 +762,8 @@ function ProductRow({
               alreadyListed={alreadyListedVariantIds.has(variant.variantId)}
               destinationName={destinationName}
               onSetVariantIncluded={onSetVariantIncluded}
-              onEdit={() => {
-                onEdit(variant.variantId);
+              onEdit={(focusField) => {
+                onEdit(variant.variantId, focusField);
               }}
             />
           ))}
@@ -767,7 +782,7 @@ interface VariantRowProps {
   alreadyListed: boolean;
   destinationName: string;
   onSetVariantIncluded: (productId: string, variantId: string, included: boolean) => void;
-  onEdit: () => void;
+  onEdit: (focusField?: OfferBlockerField) => void;
 }
 
 function VariantRow({
@@ -836,7 +851,15 @@ function VariantRow({
         {price.value !== null ? `${price.value.toFixed(2)} ${config.currency}` : '-'}
       </div>
       <div className="bulk-review__c-action">
-        <Button tone="ghost" className="button--xs bulk-review__edit" onClick={onEdit}>
+        <Button
+          tone="ghost"
+          className="button--xs bulk-review__edit"
+          onClick={() => {
+            // No field: the plain Edit button is not about one, and passing the
+            // click event as a field would route the modal nowhere.
+            onEdit();
+          }}
+        >
           Edit
         </Button>
       </div>
@@ -855,7 +878,7 @@ function VariantChips({
 }: {
   variant: BulkVariantRow;
   chips: Record<string, ChipDescriptor>;
-  onFix: () => void;
+  onFix: (focusField?: OfferBlockerField) => void;
   /** Human variant label ("Colour: Red" / "Variant 2") — never the raw ol_variant id. */
   label: string;
   /** Already published on the destination (#1837) - soft warning, not a blocker. */
@@ -895,7 +918,7 @@ function VariantChips({
           <Chip
             key={b}
             descriptor={descriptor}
-            onFix={descriptor.fixable ? onFix : undefined}
+            onFix={descriptor.fixable ? () => onFix(descriptor.field) : undefined}
             fixLabel={`Fix: ${descriptor.label} - ${label}. ${cause.title}`}
             title={cause.title}
           />
@@ -931,7 +954,7 @@ function Chip({
   title,
 }: {
   descriptor: ChipDescriptor;
-  onFix?: () => void;
+  onFix?: (focusField?: OfferBlockerField) => void;
   fixLabel?: string;
   /** Cause sentence, shown on hover; also folded into the accessible name. */
   title?: string;
@@ -968,7 +991,10 @@ interface BatchCounts {
   excluded: number;
 }
 
-function countBatch(rows: BulkWizardRow[]): BatchCounts {
+function countBatch(
+  rows: BulkWizardRow[],
+  chips: Record<string, ChipDescriptor> = {},
+): BatchCounts {
   let includedReady = 0;
   let includedNeedsAttention = 0;
   let excluded = 0;
@@ -978,7 +1004,7 @@ function countBatch(rows: BulkWizardRow[]): BatchCounts {
         excluded += 1;
         continue;
       }
-      if (v.blockers.length === 0) includedReady += 1;
+      if (gatingBlockers(v.blockers, chips).length === 0) includedReady += 1;
       else includedNeedsAttention += 1;
     }
   }

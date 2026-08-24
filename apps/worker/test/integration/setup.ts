@@ -35,8 +35,10 @@ export class WorkerIntegrationTestHarness {
     // Environment variables are already set by globalSetup
     // We just need to boot the Nest application context
 
-    // Create Nest application context (no HTTP server for worker)
-    this.appContext = await NestFactory.createApplicationContext(AppModule, {
+    // Create Nest application context (no HTTP server for worker). Boots the
+    // full role set — the per-service enable gates (WORKER_RUNNER_ENABLED,
+    // OL_SCHEDULER_ENABLED, …) keep background loops quiet under tests.
+    this.appContext = await NestFactory.createApplicationContext(AppModule.forRoles(), {
       logger: ['error', 'warn', 'log'],
     });
 

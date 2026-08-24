@@ -12,6 +12,7 @@
 
 import type { OfferParameter } from './offer-parameter.types';
 import type { OfferPublicationStatus } from './offer-status-read.types';
+import type { OfferValidationScope } from './offer-validation-problem.types';
 
 /**
  * Marketplace-neutral item condition (#1500).
@@ -278,6 +279,21 @@ export interface CreateOfferValidationError {
   code: string;
   /** Human-readable message suitable for displaying to an operator. */
   message: string;
+  /**
+   * One short line for a surface with exactly one line to spend - the
+   * `/listings` row (#2231). Optional: an adapter that supplies only `message`
+   * behaves exactly as it did, and the consumer falls back to it.
+   */
+  summary?: string;
+  /**
+   * Who the error is about (#2231). Omitted ⇒ `'offer'`, i.e. this listing.
+   * An adapter sets `'account'` for a refusal that describes the SELLER's shop
+   * rather than the product (unverified, suspended, switched off) - reported by
+   * the platform against every offer, so a consumer renders it once per
+   * connection instead of once per row. The adapter decides, because only it
+   * knows its own taxonomy; core never holds a list of platform codes.
+   */
+  scope?: OfferValidationScope;
 }
 
 /**

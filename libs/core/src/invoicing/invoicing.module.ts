@@ -16,6 +16,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { IntegrationsModule } from '@openlinker/core/integrations';
 import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
 import { SyncModule } from '@openlinker/core/sync';
+import { SalesDocumentsModule } from '@openlinker/core/sales-documents';
 
 import { InvoiceService } from './application/services/invoice.service';
 import { InvoiceRecordOrmEntity } from './infrastructure/persistence/entities/invoice-record.orm-entity';
@@ -81,6 +82,13 @@ export {
     // apps/worker/test/integration/invoicing-auto-issue-boot.int-spec.ts).
     IdentifierMappingModule,
     SyncModule,
+    // #2173: AutoIssueTriggerService injects SALES_DOCUMENT_RULES_SERVICE_TOKEN
+    // to consult the country-agnostic rule engine before falling back to the
+    // single-primary resolver. `sales-documents` is a dependency-free leaf
+    // concern with zero outbound core-context edges of its own (see
+    // docs/architecture-overview.md § Cross-context dependencies in core), so
+    // this cannot introduce a DI cycle.
+    SalesDocumentsModule,
   ],
   providers: [
     InvoiceRecordRepository,

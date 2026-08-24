@@ -336,6 +336,96 @@ describe('SyncJobRepository', () => {
     });
   });
 
+  describe('findAndLockDueJobsForLane (ADR-050, #2278)', () => {
+    const makeManager = (rows: unknown[]): jest.Mocked<EntityManager> =>
+      ({
+        query: jest.fn().mockResolvedValue(rows),
+        createQueryBuilder: jest.fn().mockReturnValue({
+          update: jest.fn().mockReturnThis(),
+          set: jest.fn().mockReturnThis(),
+          where: jest.fn().mockReturnThis(),
+          execute: jest.fn().mockResolvedValue({ affected: rows.length }),
+        }),
+        find: jest.fn().mockResolvedValue(rows),
+      }) as unknown as jest.Mocked<EntityManager>;
+
+    const runInManager = (manager: EntityManager): void => {
+      dataSource.transaction = jest
+        .fn()
+        .mockImplementation(
+          async <T>(runInTransaction: (entityManager: EntityManager) => Promise<T>): Promise<T> => {
+            return runInTransaction(manager);
+          }
+        );
+    };
+
+    it('should restrict the claim to the lane job types', async () => {
+      const manager = makeManager([]);
+      runInManager(manager);
+
+      await repository.findAndLockDueJobsForLane({
+        jobTypes: ['marketplace.order.sync'],
+        limit: 3,
+        workerId: 'worker-1',
+      });
+
+      expect(manager.query).toHaveBeenCalledWith(
+        expect.stringContaining('"jobType" = ANY($3)'),
+        ['queued', expect.any(Date), ['marketplace.order.sync'], 3]
+      );
+      expect(manager.query).toHaveBeenCalledWith(
+        expect.stringContaining('FOR UPDATE SKIP LOCKED'),
+        expect.any(Array)
+      );
+    });
+
+    it('should exclude capped scopes in the claim when excludedScopes is non-empty', async () => {
+      const manager = makeManager([]);
+      runInManager(manager);
+
+      await repository.findAndLockDueJobsForLane({
+        jobTypes: ['marketplace.order.sync'],
+        limit: 2,
+        workerId: 'worker-1',
+        excludedScopes: ['conn-at-cap'],
+      });
+
+      expect(manager.query).toHaveBeenCalledWith(
+        expect.stringContaining('"connectionId" != ALL($4)'),
+        ['queued', expect.any(Date), ['marketplace.order.sync'], ['conn-at-cap'], 2]
+      );
+    });
+
+    it('should add no scope arm when excludedScopes is empty', async () => {
+      const manager = makeManager([]);
+      runInManager(manager);
+
+      await repository.findAndLockDueJobsForLane({
+        jobTypes: ['marketplace.order.sync'],
+        limit: 2,
+        workerId: 'worker-1',
+        excludedScopes: [],
+      });
+
+      const [sql] = (manager.query as jest.Mock).mock.calls[0] as [string];
+      expect(sql).not.toContain('!= ALL');
+    });
+
+    it('should return empty without querying when the lane has no job types', async () => {
+      const manager = makeManager([]);
+      runInManager(manager);
+
+      const result = await repository.findAndLockDueJobsForLane({
+        jobTypes: [],
+        limit: 5,
+        workerId: 'worker-1',
+      });
+
+      expect(result).toEqual([]);
+      expect(dataSource.transaction).not.toHaveBeenCalled();
+    });
+  });
+
   describe('markSucceeded', () => {
     it('should update job status to succeeded with outcome=ok and clear lock', async () => {
       const jobId = randomUUID();

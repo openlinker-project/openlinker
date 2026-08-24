@@ -34,7 +34,7 @@ import type {
   OfferStatusReadResult
 } from '@openlinker/core/listings';
 import { isOfferStatusReader, OfferNotFoundOnMarketplaceException ,
-  OfferMappingRepositoryPort} from '@openlinker/core/listings';
+  OfferMappingRepositoryPort, toOfferValidationProblem} from '@openlinker/core/listings';
 import { Logger } from '@openlinker/shared/logging';
 import { OfferStatusSnapshotRepositoryPort } from '../../domain/ports/offer-status-snapshot-repository.port';
 import type { OfferStatusSnapshotDetails } from '../../domain/types/offer-status-snapshot.types';
@@ -53,6 +53,7 @@ import type {
 import type { OfferStatusSyncResult } from '../../domain/types/offer-status-snapshot.types';
 import type { OfferCommercialWriteOutcome } from '../../domain/types/offer-commercial-snapshot.types';
 import type { OfferPublicationStatus } from '../../domain/types/offer-status-read.types';
+import type { OfferValidationScope } from '../../domain/types/offer-validation-problem.types';
 
 @Injectable()
 export class OfferStatusSyncService implements IOfferStatusSyncService {
@@ -225,6 +226,11 @@ export class OfferStatusSyncService implements IOfferStatusSyncService {
     const applied = await this.recordObservedStatus(connectionId, target, {
       publicationStatus: status.publicationStatus,
       validationMessages: status.validationErrors.map((error) => error.message),
+      // Threaded through as well as flattened (#2231): the observation shape is
+      // the ONLY hop between the adapter's read and the snapshot on this path,
+      // so dropping the codes and scopes here would make the manual "Refresh"
+      // action quietly downgrade a snapshot the hourly sync writes in full.
+      validationProblems: status.validationErrors.map(toOfferValidationProblem),
       observedAt,
     });
 
@@ -256,7 +262,8 @@ export class OfferStatusSyncService implements IOfferStatusSyncService {
       internalVariantId: target.internalVariantId,
       publicationStatus: observation.publicationStatus,
       statusDetails: this.toStatusDetails(
-        (observation.validationMessages ?? []).map((message) => ({ message }))
+        observation.validationProblems ??
+          (observation.validationMessages ?? []).map((message) => ({ code: '', message }))
       ),
       lastStatusSyncedAt: observation.observedAt ?? new Date(),
     });
@@ -278,13 +285,42 @@ export class OfferStatusSyncService implements IOfferStatusSyncService {
     return true;
   }
 
+  /**
+   * Build the detail blob from whatever the reader reported.
+   *
+   * `validationMessages` stays first and stays the field the lifecycle rule and
+   * its SQL twin read, so this change cannot move a row between the Draft and
+   * Invalid buckets; `validationProblems` is the additive structured half the
+   * row, the panel and the connection banner read.
+   *
+   * `validationProblems` is OMITTED when it would carry nothing the flattened
+   * messages do not already say - no code, no summary, offer scope throughout.
+   * The legacy create path is exactly that case, and writing a structured half
+   * for it stopped the readers' "absent ⇒ fall back to `validationMessages`"
+   * path from ever firing on newly written snapshots, leaving two stories for
+   * one state. Omission keeps it one.
+   */
   private toStatusDetails(
-    validationErrors: ReadonlyArray<{ message: string }>
+    validationErrors: ReadonlyArray<{
+      code?: string;
+      message: string;
+      summary?: string;
+      scope?: OfferValidationScope;
+    }>
   ): OfferStatusSnapshotDetails | null {
     if (validationErrors.length === 0) {
       return null;
     }
-    return { validationMessages: validationErrors.map((error) => error.message) };
+    const validationMessages = validationErrors.map((error) => error.message);
+    const validationProblems = validationErrors.map((error) => toOfferValidationProblem(error));
+    const addsNothing = validationProblems.every(
+      (problem) =>
+        problem.code === undefined && problem.summary === undefined && problem.scope === 'offer'
+    );
+    return {
+      validationMessages,
+      ...(addsNothing ? {} : { validationProblems }),
+    };
   }
 
   /**
