@@ -24,6 +24,8 @@ import type { IOrderRecordService } from '../../interfaces/order-record.service.
 import type { IOrderItemRefResolverService } from '../../interfaces/order-item-ref-resolver.service.interface';
 import type { IOrderLifecycleRelayService } from '../../interfaces/order-lifecycle-relay.service.interface';
 import type { IAutoIssueTriggerService } from '@openlinker/core/invoicing';
+import type { IProductsService, ITaxRateJournalService } from '@openlinker/core/products';
+import type { IncomingOrder } from '../../../domain/types/incoming-order.types';
 import { MissingOrderItemMappingError } from '../../../domain/exceptions/missing-order-item-mapping.error';
 import type { OrderRecord } from '../../../domain/entities/order-record.entity';
 
@@ -45,6 +47,8 @@ describe('OrderIngestionService', () => {
   let customerProjectionUpdater: jest.Mocked<IOrderCustomerProjectionUpdaterService>;
   let orderLifecycleRelay: jest.Mocked<IOrderLifecycleRelayService>;
   let autoIssueTrigger: jest.Mocked<IAutoIssueTriggerService>;
+  let productsService: jest.Mocked<IProductsService>;
+  let taxRateJournal: jest.Mocked<ITaxRateJournalService>;
 
   const connectionId = 'connection-123';
   const cursorKey = 'allegro.orders.lastEventId';
@@ -75,6 +79,7 @@ describe('OrderIngestionService', () => {
     lock = {
       acquire: jest.fn(),
       release: jest.fn(),
+      extend: jest.fn(),
     } as unknown as jest.Mocked<SyncLockPort>;
 
     identifierMapping = {
@@ -125,6 +130,21 @@ describe('OrderIngestionService', () => {
     autoIssueTrigger = {
       onOrderTransition: jest.fn().mockResolvedValue({ kind: 'none' }),
     } as unknown as jest.Mocked<IAutoIssueTriggerService>;
+    // #2054: default to "the catalogue has never been asked", the honest
+    // post-deploy state - so these specs assert the pre-tax-rate behaviour.
+    productsService = {
+      getEffectiveTaxRate: jest.fn().mockResolvedValue({
+        code: null,
+        countryIso2: null,
+        readAt: null,
+      }),
+    } as unknown as jest.Mocked<IProductsService>;
+    // #2250: the provenance journal. Default resolves to `null` (a repeat
+    // observation), which is what `record` returns when nothing changed.
+    taxRateJournal = {
+      record: jest.fn().mockResolvedValue(null),
+      getLatestPerConnection: jest.fn().mockResolvedValue([]),
+    };
 
     service = new OrderIngestionService(
       integrationsService,
@@ -138,7 +158,9 @@ describe('OrderIngestionService', () => {
       orderRecordService,
       customerProjectionUpdater,
       orderLifecycleRelay,
-      autoIssueTrigger
+      autoIssueTrigger,
+      productsService,
+      taxRateJournal
     );
   });
 
@@ -1292,6 +1314,109 @@ describe('OrderIngestionService', () => {
         expect.stringContaining('Failed to record cancellation'),
         expect.anything()
       );
+    });
+  });
+
+  describe('tax-rate journal - channel observations (#2250, ADR-063 § 4)', () => {
+    const externalOrderId = 'checkout-journal';
+
+    const incomingWith = (
+      items: Array<{ id: string; externalId: string; taxRate?: string }>
+    ): IncomingOrder => ({
+      externalOrderId,
+      orderNumber: externalOrderId,
+      status: 'BOUGHT',
+      items: items.map((i) => ({
+        id: i.id,
+        productRef: { type: 'offer' as const, externalId: i.externalId },
+        quantity: 1,
+        price: 9.99,
+        ...(i.taxRate === undefined ? {} : { taxRate: i.taxRate }),
+      })),
+      totals: { subtotal: 9.99, tax: 0, shipping: 0, total: 9.99, currency: 'PLN' },
+      createdAt: '2024-01-01T00:00:00Z',
+      updatedAt: '2024-01-01T00:00:00Z',
+    });
+
+    beforeEach(() => {
+      identifierMapping.getOrCreateInternalId.mockResolvedValue('ol_order_journal');
+      integrationsService.getCapabilityAdapter.mockResolvedValue(orderSource);
+      orderSyncService.syncOrder.mockResolvedValue([]);
+      orderItemRefResolver.tryResolve.mockResolvedValue({
+        resolved: true,
+        internalProductId: 'p-1',
+        internalVariantId: 'v-1',
+      });
+    });
+
+    it('records a channel entry for a line whose source reported its own rate', async () => {
+      orderSource.getOrder.mockResolvedValue(
+        incomingWith([{ id: 'item-1', externalId: 'offer-a', taxRate: '8' }])
+      );
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(taxRateJournal.record).toHaveBeenCalledTimes(1);
+      expect(taxRateJournal.record).toHaveBeenCalledWith({
+        productId: 'p-1',
+        variantId: 'v-1',
+        connectionId,
+        origin: 'channel',
+        taxRate: '8',
+      });
+    });
+
+    it('records nothing when the channel reported no rate', async () => {
+      orderSource.getOrder.mockResolvedValue(
+        incomingWith([{ id: 'item-1', externalId: 'offer-a' }])
+      );
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(taxRateJournal.record).not.toHaveBeenCalled();
+    });
+
+    it('records nothing for a blank channel rate', async () => {
+      orderSource.getOrder.mockResolvedValue(
+        incomingWith([{ id: 'item-1', externalId: 'offer-a', taxRate: '   ' }])
+      );
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(taxRateJournal.record).not.toHaveBeenCalled();
+    });
+
+    it('records the CHANNEL value even when the shop rate wins the line', async () => {
+      // The line settles on the shop's 23, but the journal must still record
+      // that the channel said 8 - otherwise the disagreement is unattributable.
+      productsService.getEffectiveTaxRate = jest.fn().mockResolvedValue({
+        code: '23',
+        countryIso2: 'PL',
+        readAt: new Date('2026-02-01T00:00:00Z'),
+      });
+      orderSource.getOrder.mockResolvedValue(
+        incomingWith([{ id: 'item-1', externalId: 'offer-a', taxRate: '8' }])
+      );
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(taxRateJournal.record).toHaveBeenCalledWith(
+        expect.objectContaining({ origin: 'channel', taxRate: '8' })
+      );
+      const persistedOrder = orderRecordService.persistOrder.mock.calls[0][0];
+      expect(persistedOrder.items[0]).toMatchObject({ taxRate: '23', taxSource: 'shop' });
+    });
+
+    it('never fails the ingestion when the journal write throws', async () => {
+      taxRateJournal.record.mockRejectedValue(new Error('journal down'));
+      orderSource.getOrder.mockResolvedValue(
+        incomingWith([{ id: 'item-1', externalId: 'offer-a', taxRate: '8' }])
+      );
+
+      await expect(
+        service.syncOrderFromSource(connectionId, externalOrderId)
+      ).resolves.toEqual([]);
+      expect(orderRecordService.persistOrder).toHaveBeenCalledTimes(1);
     });
   });
 });

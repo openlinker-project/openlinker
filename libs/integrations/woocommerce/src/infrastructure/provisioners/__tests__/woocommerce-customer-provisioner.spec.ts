@@ -41,6 +41,7 @@ function makeSyncLock(): SyncLockPort {
       }
       return Promise.resolve(false);
     }),
+    extend: jest.fn((key: string, token: string) => Promise.resolve(locks.get(key) === token)),
   };
 }
 

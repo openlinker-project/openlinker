@@ -42,41 +42,41 @@ two of three targets.
 business fact and the work it implies commit together, the outbox and the queue are the same table,
 the fire-after-commit window disappears, and the at-most-once caveat documented in
 `master-deletion-events.types.ts` becomes unnecessary. Redis becomes a *wake-up hint*, not a system
-of record. *Reversal gate:* a durable work row is contended enough to show measurable write
+of record. *Reversal gate (prose-only):* a durable work row is contended enough to show measurable write
 amplification on the business transaction — observable as p99 latency on the enclosing write.
 
 **2. Build the contract; keep exactly one transport implementation. Do not build a general bus.**
 With zero fan-out, a bus is speculative infrastructure; but the *contract* (envelope shape, identity
 rule, payload constraints) is cheap now and expensive to retrofit once producers ship against its
-absence. *Reversal gate:* the first stream to acquire a **second independent consumer** — a consumer
+absence. *Reversal gate (countable):* the first stream to acquire a **second independent consumer** — a consumer
 that is not a job-creating shim — at which point the transport question is reopened.
 
 **3. If a bus: a composite cursor plus a visibility barrier. Never a scalar `id > cursor`.** A
 reader must not advance past a position that a still-in-flight transaction can later fill. The
 known-good shape is a composite cursor read below a barrier set at the oldest in-flight transaction.
-*Reversal gate:* not applicable while decision 2 holds — this decision exists so that the shape is
+*Reversal gate (prose-only):* not applicable while decision 2 holds — this decision exists so that the shape is
 already settled if it is.
 
 **4. `eventId` is derived from the business fact, never minted at insert.** A transaction retry
 would otherwise produce two identities for one fact, and consumer-side dedup could not collapse
-them. Derivation is deterministic from the identifiers already in the payload. *Reversal gate:* a
+them. Derivation is deterministic from the identifiers already in the payload. *Reversal gate (prose-only):* a
 fact is found whose natural key is not stable across a retry.
 
 **5. No `EntityManager` in a core port signature.** Domain-layer independence (ADR-001) forbids a
 persistence handle in a port. Composition belongs in the repository performing the business write,
-or behind an opaque transaction handle owned by `events`. *Reversal gate:* none — this follows from
+or behind an opaque transaction handle owned by `events`. *Reversal gate (prose-only):* none — this follows from
 an existing decision.
 
 **6. Payload schemas are structurally incapable of carrying PII.** Allowlisted identifiers and
 scalars, validated at catalog registration. A months-retained log is a new PII surface that
 `OL_STORE_PII` does not cover, and redaction-on-write fails open — a new field ships unredacted
-until someone notices. Structural exclusion fails closed. *Reversal gate:* a consumer requires a
+until someone notices. Structural exclusion fails closed. *Reversal gate (prose-only):* a consumer requires a
 field that cannot be expressed as an identifier or scalar.
 
 **7. Catalog enforcement is registration-time validation, not a central type union.** Compile-time
 enforcement needs a union importing from `orders`, `products`, `listings`, `invoicing` — inverting
 the infrastructure spine, since `events` is depended upon by those contexts and must not depend back.
-Registration-time validation is the shape `AdapterRegistryService` already uses. *Reversal gate:*
+Registration-time validation is the shape `AdapterRegistryService` already uses. *Reversal gate (countable):*
 `events` gains a legitimate compile-time dependency on every producing context (i.e. the spine is
 restructured).
 
@@ -85,14 +85,14 @@ plain `MAXLEN` and `MINID` only. (`XAUTOCLAIM` is also 6.2, but #2164 deliberate
 node-redis throws while transforming a reply that describes a trimmed entry, so recovery is built
 from `XPENDING` + `XCLAIM` + `XRANGE`, whose replies it can always transform.) This keeps #1396 (Valkey) a drop-in retag rather than a redesign, and it
 is a further argument for Postgres as the transport of record: the durable path then does not care
-which engine serves the hint. *Reversal gate:* #1396 is closed without merging **and** a newer
+which engine serves the hint. *Reversal gate (prose-only):* #1396 is closed without merging **and** a newer
 primitive measurably fixes a problem the 6.2 floor cannot.
 
 **9. Redis is never the sole record of a fact.** Stated because it is currently false in at least
 three places (see Context). Each is tracked to a durable counterpart or an accepted, documented loss:
 the master-deletion DLQ gets an age bound rather than a count bound so an incident's first entries
 survive (#2163); `jobdedup:*` is a Redis-authoritative gate whose loss window is bounded by the
-retention horizon exceeding its TTL; PEL entries become recoverable via #2164. *Reversal gate:* any
+retention horizon exceeding its TTL; PEL entries become recoverable via #2164. *Reversal gate (prose-only):* any
 new write that makes Redis the only record of an operator-visible fact.
 
 ## Alternatives considered
@@ -148,7 +148,8 @@ so keying the alarm on it would leave it unreachable on precisely the path where
 accumulates. What is deliberately *not* done is
 auto-dead-lettering: two of the three consumers cannot construct their dead-letter payload from a
 raw pending entry (the webhook handler needs a decoded event, job-intake a parsed job request), and
-discarding the entry instead would be unrecoverable loss. *Reversal gate:* the first poison entry
+discarding the entry instead would be unrecoverable loss. *Reversal gate (prose-only):* the first
+poison entry
 observed in production, or the Wave 5 spine (decision 1) removing the PEL from the durable path
 entirely.
 
@@ -159,9 +160,41 @@ entirely.
 - `events.sync.jobs` is removed rather than consumed (#2163) — the clearest instance of decision 2's
   reasoning applied to an existing stream.
 
+## Amendment (#2280) — decision 1 shipped on the webhook path
+
+Decision 1 is no longer "stated but not yet implemented": the webhook ingestion path now writes the
+`sync_jobs` work row in the same Postgres transaction as the `webhook_deliveries` gate row
+(`WebhookJobGateRepository`, `apps/api/src/webhooks/infrastructure/persistence/`). Points of contact
+with the decisions above, as built:
+
+- **No wake-up hint was needed at all.** The ADR anticipated Redis demoting to a hint; on this path
+  even the hint is omitted, because `SyncJobRunner` already polls Postgres every 1 s
+  (`findAndLockDueJobs`, `FOR UPDATE SKIP LOCKED`) — a committed `queued` row is picked up within
+  one poll interval with no extra moving part.
+- **Decision 4 as applied**: the job idempotency key is the derived
+  `{platformType}:{connectionId}:{sourceEventId}` — stable across a source redelivery, deduped by
+  the `sync_jobs` unique index *inside* the transaction (`ON CONFLICT DO NOTHING` + in-transaction
+  SELECT; the pre-existing catch-based dedup would have aborted the surrounding transaction).
+- **Decision 5 as applied**: no core port grew an `EntityManager`. The two-table transaction lives
+  in a host-owned repository behind an api-local interface (`IWebhookJobGateService`); core's
+  `InboundRoutingPolicyService` gained a side-effect-free `resolve()` split from `route()`, so the
+  routing decision is available without the enqueue.
+- **The known-poison-gap reversal gate fired**: the webhook path no longer has a PEL in its durable
+  path. Ingress routing failures are classified — deterministic faults become durable
+  `deadlettered` delivery rows with a reason (replacing the Redis DLQ on this path), transient
+  faults throw pre-insert so the source retries. The `webhook-handler` consumer loop is retired; a
+  one-shot `LegacyInboundWebhookDrain` recovers the upgrade backlog and is itself removed in a
+  follow-up release.
+- **Decision 1's reversal gate (write amplification on the enclosing write) now has a concrete
+  surface to watch**: the webhook 202 latency, which absorbed one extra insert inside an existing
+  transaction boundary.
+
+The non-webhook writers of `jobs.sync` (scheduler, cron sweeps, API-triggered enqueues) still use
+the stream + `jobdedup:*` path; extending the spine to them is future work under the same decision.
+
 ## References
 
-- Related issues: #2162, #2163, #2164, #2165, #1135, #1134, #1396
+- Related issues: #2162, #2163, #2164, #2165, #2280, #1135, #1134, #1396
 - Related ADRs: [ADR-001](./001-hexagonal-architecture-and-bounded-contexts.md),
   [ADR-005](./005-postgres-authoritative-job-dedup.md),
   [ADR-007](./007-syncjob-status-vs-outcome-split.md),

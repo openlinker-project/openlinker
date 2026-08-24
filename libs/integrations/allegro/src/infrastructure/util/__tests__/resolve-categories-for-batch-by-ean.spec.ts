@@ -15,10 +15,10 @@ import type { CachePort } from '@openlinker/shared';
 import type { IAllegroHttpClient } from '../../http/allegro-http-client.interface';
 import { AllegroApiException } from '../../../domain/exceptions/allegro-api.exception';
 import {
+  resolveBatchConcurrency,
   resolveCategoriesForBatchByEan,
   resolveStreamConcurrency,
   streamCategoriesForBatchByEan,
-  STREAM_CONCURRENCY,
 } from '../resolve-categories-for-batch-by-ean';
 
 const CONNECTION_ID = 'conn-123';
@@ -612,11 +612,12 @@ describe('streamCategoriesForBatchByEan (#2208)', () => {
   it('streams at the wider in-flight cap', async () => {
     // The streaming path exists so results land continuously, and the wizard's
     // pre-#2208 chunking already sustained this many in flight (#2215).
-    // Asserted against a LITERAL, not the constant: a test written in terms of
-    // `STREAM_CONCURRENCY` stays green if someone reverts it to the batch
-    // default, which is exactly the regression worth catching (#2215).
-    expect(STREAM_CONCURRENCY).toBe(9);
-    const total = STREAM_CONCURRENCY + 3;
+    // Asserted against a LITERAL, not against whatever the resolver reports: a
+    // test written in terms of the adapter's own number stays green if someone
+    // reverts it to the batch default, which is exactly the regression worth
+    // catching (#2215).
+    expect(resolveStreamConcurrency().adapterDefault).toBe(9);
+    const total = 9 + 3;
     const gates = gateCallsByPhrase();
     const stream = streamCategoriesForBatchByEan(httpClient, undefined, CONNECTION_ID, {
       items: Array.from({ length: total }, (_, i) => ({
@@ -750,9 +751,9 @@ describe('streamCategoriesForBatchByEan (#2208)', () => {
 describe('resolveStreamConcurrency (#2229)', () => {
   it('reports the adapter default when the operator configured no cap', () => {
     expect(resolveStreamConcurrency(undefined)).toEqual({
-      maxInFlight: STREAM_CONCURRENCY,
+      maxInFlight: 9,
       source: 'adapter-default',
-      adapterDefault: STREAM_CONCURRENCY,
+      adapterDefault: 9,
     });
   });
 
@@ -760,7 +761,7 @@ describe('resolveStreamConcurrency (#2229)', () => {
     expect(resolveStreamConcurrency(4)).toEqual({
       maxInFlight: 4,
       source: 'connection-config',
-      adapterDefault: STREAM_CONCURRENCY,
+      adapterDefault: 9,
     });
   });
 
@@ -768,20 +769,53 @@ describe('resolveStreamConcurrency (#2229)', () => {
     // `maxConcurrent` is a safety valve on the operator's own quota. Letting a
     // generous value lift the adapter's pacing would turn a cap into a
     // throttle-release, which is not what the field says it does.
-    expect(resolveStreamConcurrency(64).maxInFlight).toBe(STREAM_CONCURRENCY);
+    expect(resolveStreamConcurrency(64).maxInFlight).toBe(9);
     expect(resolveStreamConcurrency(64).source).toBe('adapter-default');
-    expect(resolveStreamConcurrency(STREAM_CONCURRENCY).source).toBe('adapter-default');
+    expect(resolveStreamConcurrency(9).source).toBe('adapter-default');
   });
 
   it('ignores a non-positive or non-finite cap rather than stalling every run', () => {
     // A 0 ceiling would schedule nothing and hang the resolve step with no
     // error anywhere — strictly worse than ignoring a nonsense value.
     for (const bad of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
-      expect(resolveStreamConcurrency(bad).maxInFlight).toBe(STREAM_CONCURRENCY);
+      expect(resolveStreamConcurrency(bad).maxInFlight).toBe(9);
+    }
+  });
+
+  it('ignores a cap that is not a number at all', () => {
+    // `Connection.config` is JSONB, so `maxConcurrent` can arrive as the string
+    // an operator typed into a hand-edited config rather than as a number.
+    for (const bad of ['4', null, {}, [], true]) {
+      expect(resolveStreamConcurrency(bad).maxInFlight).toBe(9);
     }
   });
 
   it('floors a fractional cap instead of passing it to the scheduler', () => {
     expect(resolveStreamConcurrency(4.7).maxInFlight).toBe(4);
+  });
+});
+
+describe('resolveBatchConcurrency (#2229 review)', () => {
+  it('reports the narrower batch default, not the streamed one', () => {
+    expect(resolveBatchConcurrency(undefined)).toEqual({
+      maxInFlight: 3,
+      source: 'adapter-default',
+      adapterDefault: 3,
+    });
+  });
+
+  it('honours the operator cap on the batch path too', () => {
+    // The batch path used to be the one resolve path outside both the clamp and
+    // the declared ceiling.
+    expect(resolveBatchConcurrency(2)).toEqual({
+      maxInFlight: 2,
+      source: 'connection-config',
+      adapterDefault: 3,
+    });
+  });
+
+  it('never lets a generous cap widen the batch default', () => {
+    expect(resolveBatchConcurrency(50).maxInFlight).toBe(3);
+    expect(resolveBatchConcurrency(50).source).toBe('adapter-default');
   });
 });

@@ -9,7 +9,6 @@
  */
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { ScheduleModule } from '@nestjs/schedule';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AppInfoModule } from './app-info/app-info.module';
@@ -41,12 +40,14 @@ import { ContentApiModule } from './content/content.module';
 import { ShippingApiModule } from './shipping/shipping.module';
 import { InvoicingApiModule } from './invoicing/invoicing.module';
 import { FiscalizationApiModule } from './fiscalization/fiscalization.module';
+import { SalesDocumentsApiModule } from './sales-documents/sales-documents-api.module';
 import { UsersApiModule } from './users/users.module';
 import { SystemModule } from './system/system.module';
 import { McpModule } from './mcp/mcp.module';
 import { MailerApiModule } from './mailer/mailer.module';
 import { AnalyticsApiModule } from './analytics/analytics.module';
 import { AnalyticsTrustApiModule } from './analytics-trust/analytics-trust.module';
+import { CatalogTrustApiModule } from './catalog-trust/catalog-trust.module';
 import { CurrencyApiModule } from './currency/currency.module';
 import { RequestPriorityModule } from './http/request-priority.module';
 
@@ -56,7 +57,6 @@ import { RequestPriorityModule } from './http/request-priority.module';
       isGlobal: true,
       envFilePath: ['.env.local', '.env'],
     }),
-    ScheduleModule.forRoot(),
     RequestPriorityModule, // Global APP_INTERCEPTOR: classifies interactive requests for rate-limit priority (#1810)
     DatabaseModule,
     RedisConfigModule,
@@ -86,11 +86,13 @@ import { RequestPriorityModule } from './http/request-priority.module';
     CoreAnalyticsModule, // DB-backed PostHog analytics settings resolution (#1685)
     AnalyticsApiModule, // Admin REST surface for PostHog analytics settings (#1685)
     AnalyticsTrustApiModule, // GET /analytics/trust — data-trust snapshot for the /analytics page (#1982)
+    CatalogTrustApiModule, // GET /connections/:id/catalog-trust — master rung + reconcile recency (#2258)
     ContentApiModule, // REST surface for product content editor + AI suggest (#339 + #342)
     ShippingApiModule, // Shipment read + command HTTP API (#846); imports core ShippingModule (#763/#835)
     UsersApiModule, // User management: list, approve/reject pending, role + status ops (#1125)
     InvoicingApiModule, // Invoicing issue/read HTTP API (#1119); UPO download endpoint (#1224, epic #1142 C15)
     FiscalizationApiModule, // Fiscal registration trigger + read + reconcile HTTP API (#1908, ADR-042)
+    SalesDocumentsApiModule, // Country-agnostic sales-document rule engine HTTP API (#2170, ADR-041 dec. 5)
     SystemModule, // Server-driven runtime config (demoMode) via GET /system/config (#1127)
     McpModule, // MCP Resource-Server auth (PATs) + Streamable-HTTP ingress (#1486, ADR-034)
     CurrencyApiModule, // Reporting-currency settings HTTP API (#2126, ADR-040)

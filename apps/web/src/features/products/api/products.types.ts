@@ -26,6 +26,15 @@ export interface ProductVariant {
    * column on the next sync (no historical backfill — see #792 PR 1).
    */
   price: number | null;
+  /**
+   * The variant's OWN tax-rate override (#2255). `null` means NO OVERRIDE - the
+   * product's rate applies - never "no rate". Only a master that keys tax per
+   * variant sets it, so on PrestaShop every variant is null and the product's
+   * rate is the answer.
+   */
+  taxRate?: string | null;
+  taxRateCountry?: string | null;
+  taxRateReadAt?: string | null;
   createdAt: string;
   updatedAt: string;
   externalIds?: ExternalIdMapping[];
@@ -53,6 +62,14 @@ export interface Product {
    * the stock drawer). Absent/empty until a sync populates them.
    */
   features?: { name: string; value: string }[];
+  /**
+   * Neutral tax-rate code the shop stated (#2255), or `null` when it stated
+   * none. Paired with `taxRateReadAt`, which is what separates "the shop has no
+   * rate" from "nobody has asked yet" - the two need different remedies.
+   */
+  taxRate?: string | null;
+  taxRateCountry?: string | null;
+  taxRateReadAt?: string | null;
   createdAt: string;
   updatedAt: string;
   variants?: ProductVariant[];
@@ -88,6 +105,13 @@ export interface ProductFilters {
   unlistedOn?: string[];
   /** Source filter: product has a Product identifier mapping for this connection. */
   connectionId?: string;
+  /**
+   * Tax-rate read state (#2255). `missing` is the population that holds
+   * documents; `not-checked` needs a product sync rather than a catalogue edit,
+   * and on the day the feature ships it is the whole catalogue. Keeping them
+   * apart is what stops day one reading as a catalogue-wide failure.
+   */
+  taxRateState?: 'missing' | 'not-checked' | 'known';
 }
 
 /** Server-side sort axes for the products list (#1720). */

@@ -20,10 +20,12 @@ import {
 } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
+import { Alert } from '../../shared/ui/alert';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
 import { ErrorState, EmptyState } from '../../shared/ui/feedback-state';
 import { DataTableSkeleton } from '../../shared/ui/data-table-skeleton';
 import { Button } from '../../shared/ui/button';
+import { AbsentValue } from '../../shared/ui/absent-value';
 import { EmptyValue } from '../../shared/ui/empty-value';
 import { Input } from '../../shared/ui/input';
 import { Select } from '../../shared/ui/select';
@@ -49,6 +51,11 @@ import {
   listingRowBadges,
   type ListingRowBadge,
 } from '../../features/listings/lib/listing-row-state';
+import { readListingProblems } from '../../features/listings/lib/listing-problems';
+import {
+  deriveListingConnectionNotices,
+  type ListingConnectionNotice,
+} from '../../features/listings/lib/listing-connection-notices';
 import { useWriteAccess } from '../../shared/auth/use-permission';
 import { useDemoMode } from '../../features/system';
 import type {
@@ -164,21 +171,6 @@ function ColumnHead({
   );
 }
 
-/**
- * `EmptyValue` names itself with `aria-label` on a bare `<span>` - a generic
- * element ARIA prohibits naming, which screen readers commonly drop. The
- * never-read-versus-zero distinction is the whole point of this page's
- * commercial columns, so the wording is also carried visually-hidden.
- */
-function AbsentValue({ label }: { label: string }): ReactElement {
-  return (
-    <>
-      <EmptyValue label={label} />
-      <span className="sr-only">{label}</span>
-    </>
-  );
-}
-
 function RowBadge({ badge }: { badge: ListingRowBadge }): ReactElement {
   return (
     <StatusBadge
@@ -267,12 +259,66 @@ function ListingCell({
           ) : null}
         </span>
         {alert ? (
-          <span className="listing-cell__reason" title={alert.title}>
+          <span
+            // Muted when the line reports a state rather than outstanding work,
+            // so the red treatment keeps meaning "someone has to act" (#2231).
+            className={
+              alert.muted
+                ? 'listing-cell__reason listing-cell__reason--muted'
+                : 'listing-cell__reason'
+            }
+            title={alert.title}
+          >
             {alert.text}
           </span>
         ) : null}
       </span>
     </span>
+  );
+}
+
+/**
+ * One shop-level problem, rendered once for the whole connection (#2231).
+ *
+ * The channel reports these against every offer of the shop, so the rows drop
+ * them and this carries them instead - naming the connection, because a page can
+ * legitimately show two, and stating how many of the listings SHOWN are affected,
+ * because the list is paged and filtered and cannot honestly claim a total.
+ *
+ * The title says the channel REPORTS a shop-level block, not that the shop
+ * cannot sell: an offer whose channel status is `active` keeps its Active badge
+ * even while carrying problems, because the channel is the authority on its own
+ * publication - so a stronger claim here would contradict rows on the same
+ * screen. The per-problem sentences below say what is blocked, in the channel's
+ * own words.
+ */
+function ConnectionProblemNotice({ notice }: { notice: ListingConnectionNotice }): ReactElement {
+  return (
+    <Alert
+      tone="error"
+      className="listings-connection-notice"
+      title={`${notice.connectionLabel} reports a shop-level block`}
+    >
+      <p>
+        {notice.problems.map((problem) => problem.summary ?? problem.message).join(' \u00b7 ')} -
+        this is reported against every listing on the connection, not against any one of them.
+      </p>
+      <ul className="listings-connection-notice__problems">
+        {notice.problems.map((problem) => (
+          <li key={problem.code ?? problem.message}>
+            {problem.message}
+            {problem.code !== undefined ? (
+              <span className="listings-connection-notice__code mono-text">{problem.code}</span>
+            ) : null}
+          </li>
+        ))}
+      </ul>
+      <p className="text-muted">
+        {notice.affectedShownCount === 1
+          ? '1 of the listings shown here is affected.'
+          : `${notice.affectedShownCount} of the listings shown here are affected.`}
+      </p>
+    </Alert>
   );
 }
 
@@ -470,6 +516,18 @@ export function ListingsListPage(): ReactElement {
     }
     return map;
   }, [connectionsQuery.data]);
+
+  // Shop-level channel problems, lifted out of the rows and grouped per
+  // connection (#2231). Derived from the page's own rows: no extra request, and
+  // the notice is therefore honest about counting only the listings shown.
+  const connectionNotices = useMemo(
+    () =>
+      deriveListingConnectionNotices(
+        query.data?.items ?? [],
+        new Map([...connectionsById].map(([id, facts]) => [id, facts.name])),
+      ),
+    [query.data?.items, connectionsById],
+  );
 
   const channelLabel = useCallback(
     (row: OfferMapping): string => resolvePlatformLabel(platforms, row),
@@ -826,6 +884,9 @@ export function ListingsListPage(): ReactElement {
             )
           ) : (
             <>
+              {connectionNotices.map((notice) => (
+                <ConnectionProblemNotice key={notice.connectionId} notice={notice} />
+              ))}
               <DataTable
                 caption="Listings"
                 // Scopes the identity column's width floor to this table - the
@@ -930,15 +991,27 @@ export function ListingsListPage(): ReactElement {
                         },
                         {
                           id: 'validation',
-                          label: 'Validator messages',
-                          value: m.channelStatus?.validationMessages.length ? (
+                          label: 'Channel problems',
+                          // The card's disclosure is the mobile counterpart of
+                          // the publication-status panel, so it lists EVERY
+                          // reason - shop-level ones included, since the notice
+                          // above the list is off-screen by the time this is
+                          // open (#2231).
+                          value: readListingProblems(m.channelStatus).length ? (
                             <ul className="listings-card-messages">
-                              {m.channelStatus.validationMessages.map((message) => (
-                                <li key={message}>{message}</li>
+                              {readListingProblems(m.channelStatus).map((problem, index) => (
+                                <li key={`${problem.code ?? problem.message}:${index}`}>
+                                  {problem.message}
+                                  {problem.code !== undefined ? (
+                                    <span className="problem-line__code mono-text">
+                                      {problem.code}
+                                    </span>
+                                  ) : null}
+                                </li>
                               ))}
                             </ul>
                           ) : (
-                            <EmptyValue label="No validator messages" />
+                            <EmptyValue label="No problems reported" />
                           ),
                         },
                       ]}

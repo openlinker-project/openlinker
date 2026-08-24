@@ -7,17 +7,36 @@
  * genuinely tax-exempt product — so a failed read silently priced a gross line
  * as net and PrestaShop then added its own VAT on top (#895 / ADR-014).
  *
- * `reason` separates the two classes of unknown because they need opposite
+ * `reason` separates the classes of unknown because they need different
  * operator handling: a `configuration` unknown will not fix itself (the shop's
- * tax record is incomplete) and must stop retrying; a `transport` unknown is a
- * failed call to PrestaShop and may well succeed on the next attempt.
+ * tax record is incomplete) and must stop retrying; an `ambiguous` unknown is
+ * the shop offering several candidate rules with no unambiguous pick, which
+ * likewise needs a human rather than a retry; a `transport` unknown is a failed
+ * call to PrestaShop and may well succeed on the next attempt.
  *
  * This file contains types only (per engineering standards).
  *
  * @module libs/integrations/prestashop/src/infrastructure/provisioners
  */
 
-export const PrestashopTaxRateUnknownReasonValues = ['configuration', 'transport'] as const;
+export const PrestashopTaxRateUnknownReasonValues = [
+  /** The shop's tax record is incomplete or unusable. Fixed in the shop's admin. */
+  'configuration',
+  /**
+   * Several candidate rules and no unambiguous pick.
+   *
+   * A third reason rather than a flavour of `configuration`, because it is the
+   * one the neutral `ProductTaxRateReader` contract also names (`ambiguous`,
+   * the answer the WooCommerce master gives for the same shape) - and because
+   * the shop is not necessarily misconfigured: a group with per-country rules
+   * and no catch-all is legitimate, it simply cannot be reduced to one rate
+   * without a country to ask for. Picking whichever row the webservice returned
+   * first would state a rate the shop never claimed (#2245 review).
+   */
+  'ambiguous',
+  /** A failed call to PrestaShop. Retryable. */
+  'transport',
+] as const;
 export type PrestashopTaxRateUnknownReason = (typeof PrestashopTaxRateUnknownReasonValues)[number];
 
 export interface PrestashopTaxRateResolved {

@@ -48,6 +48,8 @@ export interface BuildSalesAndChannelAnalyticsInput {
   filters: SalesAnalyticsFilters;
   dailyRows: DailyOrderAggregateRow[];
   medianOrderValue: number | null;
+  /** VAT-exclusive counterpart of `medianOrderValue` — see `SalesAnalyticsHeadline.netMedianOrderValue`. */
+  netMedianOrderValue: number | null;
   unitsByConnection: Map<string, ConnectionUnitsSold>;
   earliestOrderDateByConnection: Map<string, Date>;
 }
@@ -59,8 +61,14 @@ export interface BuildSalesAndChannelAnalyticsInput {
 export function buildSalesAndChannelAnalytics(
   input: BuildSalesAndChannelAnalyticsInput
 ): SalesAndChannelAnalytics {
-  const { filters, dailyRows, medianOrderValue, unitsByConnection, earliestOrderDateByConnection } =
-    input;
+  const {
+    filters,
+    dailyRows,
+    medianOrderValue,
+    netMedianOrderValue,
+    unitsByConnection,
+    earliestOrderDateByConnection,
+  } = input;
 
   const dayKeys = enumerateDayKeys(filters.from, filters.to);
 
@@ -76,6 +84,13 @@ export function buildSalesAndChannelAnalytics(
   const headlineUnconvertedCount = sum(dailyRows, (r) => r.unconvertedCount);
   const headlineUnconvertedValue = sum(dailyRows, (r) => r.unconvertedValue);
   const currency = resolveUniformReportingCurrency(dailyRows);
+  const headlineNetRevenue = sum(dailyRows, (r) => r.netRevenue);
+  const headlineNetExcludedCount = sum(dailyRows, (r) => r.netExcludedCount);
+  const headlineNetExcludedValue = sum(dailyRows, (r) => r.netExcludedValue);
+  // Same population `netRevenue` counts: orders in scope minus the ones
+  // excluded from net (pre-rollout or unresolvable-rate), never a
+  // separately-tracked count that could drift from what was actually summed.
+  const headlineNetOrderCount = headlineOrderCount - headlineNetExcludedCount;
 
   const headline = {
     revenue: headlineRevenue,
@@ -98,6 +113,14 @@ export function buildSalesAndChannelAnalytics(
     unconvertedValue: headlineUnconvertedValue,
     unconvertedCurrency: resolveUniformUnconvertedCurrency(dailyRows),
     trend: buildTrend(dayKeys, dailyRows),
+    netRevenue: headlineNetRevenue,
+    netAverageOrderValue:
+      headlineNetOrderCount > 0 ? headlineNetRevenue / headlineNetOrderCount : null,
+    // Passed through verbatim, `null` included — same "nothing to report"
+    // convention as `medianOrderValue`.
+    netMedianOrderValue,
+    netExcludedCount: headlineNetExcludedCount,
+    netExcludedValue: headlineNetExcludedValue,
   };
 
   const rowsByConnection = groupByConnection(dailyRows);
@@ -110,6 +133,10 @@ export function buildSalesAndChannelAnalytics(
         unitsSold: 0,
         unconvertedUnitsSold: 0,
       };
+      const netRevenue = sum(rows, (r) => r.netRevenue);
+      const netExcludedCount = sum(rows, (r) => r.netExcludedCount);
+      const netExcludedValue = sum(rows, (r) => r.netExcludedValue);
+      const netOrderCount = orderCount - netExcludedCount;
 
       return {
         sourceConnectionId,
@@ -124,6 +151,10 @@ export function buildSalesAndChannelAnalytics(
         unconvertedCount: sum(rows, (r) => r.unconvertedCount),
         unconvertedValue: sum(rows, (r) => r.unconvertedValue),
         unconvertedCurrency: resolveUniformUnconvertedCurrency(rows),
+        netRevenue,
+        netAverageOrderValue: netOrderCount > 0 ? netRevenue / netOrderCount : null,
+        netExcludedCount,
+        netExcludedValue,
         // `null` when the headline itself has nothing to share (#1987 review,
         // IMPORTANT 2) — `0` would have claimed a real 0% share of a
         // headline revenue that is itself unstamped/empty.

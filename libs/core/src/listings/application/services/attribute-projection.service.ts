@@ -14,14 +14,30 @@
  * Mappings are source-scoped; a per-category mapping overrides the
  * connection-wide default for the same source attribute key.
  *
+ * **`restrictionIssues` is REPORTED-ONLY as of #2243, deliberately.** The
+ * projection runs the pure `checkParameterRestrictions` over every value it
+ * produces and returns what breaks a bound the destination declared, but no
+ * caller gates on it yet - neither `OfferBuilderService` nor
+ * `ProductPublishBuilderService` reads the field, so its only operator-visible
+ * surface today is the `warn` line below. That is a first slice, not an
+ * oversight: the values here come from attribute mappings and the #1841 rule
+ * layer, so a block would refuse a publish over data the operator cannot see or
+ * edit from the wizard, and the checker had to be observable before it could be
+ * trusted to gate. Making a builder gate on it is a follow-up; until it does,
+ * do not read "returned" as "enforced".
+ *
  * @module libs/core/src/listings/application/services
  * @implements {IAttributeProjectionService}
  */
 
 import { Injectable, Inject } from '@nestjs/common';
 import { Logger } from '@openlinker/shared/logging';
-import type { OfferManagerPort, CategoryParameter } from '@openlinker/core/listings';
-import { isCategoryParametersReader } from '@openlinker/core/listings';
+import type {
+  OfferManagerPort,
+  CategoryParameter,
+  ParameterRestrictionIssue,
+} from '@openlinker/core/listings';
+import { isCategoryParametersReader, checkParameterRestrictions } from '@openlinker/core/listings';
 import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 import {
   IMappingConfigService,
@@ -79,6 +95,7 @@ export class AttributeProjectionService implements IAttributeProjectionService {
 
     const parameters: ResolvedParameter[] = [];
     const unresolvedRequired: AttributeProjectionResult['unresolvedRequired'] = [];
+    const restrictionIssues: ParameterRestrictionIssue[] = [];
     const usedSourceKeys = new Set<string>();
 
     // Operator-authored rule layer (#1841): a deterministic, sequenced overlay
@@ -111,8 +128,30 @@ export class AttributeProjectionService implements IAttributeProjectionService {
         const resolved = this.toResolvedParameter(param, destinationValue);
         if (resolved) {
           parameters.push(resolved);
-        } else if (param.required) {
-          unresolvedRequired.push({ id: param.id, name: param.name, section: param.section });
+          // The value never passes through any UI on this path, so this is the
+          // only place a declared bound can be checked before the marketplace
+          // answers (#2243). Reported, not corrected: rewriting an operator's
+          // mapped value would be a worse failure than naming it.
+          restrictionIssues.push(
+            ...checkParameterRestrictions(param, {
+              values: resolved.valuesIds,
+              texts: resolved.values,
+            })
+          );
+        } else {
+          // A dictionary miss: `toResolvedParameter` drops the parameter for any
+          // dictionary non-match, so an offer publishes silently MISSING the
+          // value rather than visibly wrong. Whether that drop is a VIOLATION is
+          // the checker's call and not this branch's - a category whose
+          // parameter carries `customValuesEnabled` accepts the value, so
+          // asserting it is not allowed would be a positive false claim, worse
+          // than the debug line it replaces. One rule, one place.
+          restrictionIssues.push(
+            ...checkParameterRestrictions(param, { texts: [destinationValue] })
+          );
+          if (param.required) {
+            unresolvedRequired.push({ id: param.id, name: param.name, section: param.section });
+          }
         }
       }
     } else {
@@ -144,7 +183,15 @@ export class AttributeProjectionService implements IAttributeProjectionService {
       return true;
     });
 
-    return { parameters, unmappedSourceKeys, unresolvedRequired };
+    if (restrictionIssues.length > 0) {
+      this.logger.warn(
+        `Projected ${restrictionIssues.length} parameter value(s) that break a declared bound ` +
+          `(destination=${destinationConnectionId}, category=${destinationCategoryId}): ` +
+          restrictionIssues.map((i) => `${i.parameterName}: ${i.code}`).join('; ')
+      );
+    }
+
+    return { parameters, unmappedSourceKeys, unresolvedRequired, restrictionIssues };
   }
 
   /**

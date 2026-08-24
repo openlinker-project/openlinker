@@ -132,10 +132,34 @@ deleting the corresponding `webhook_deliveries` row before the source's
 redelivery can get through. `GET /sync/jobs/lookup?platformType&connectionId&eventId`
 returning 404 for a delivery whose row reads `job_enqueued` is how you find one.
 
-Closing this gap properly is the durability-spine work in
-[ADR-049](../architecture/adrs/049-durability-spine-and-domain-event-contract.md)
-decision 1 — writing the work row in the same transaction as the business change,
-so no queue hop can lose it.
+**Since #2280 this gap is closed for the webhook path**: a webhook-derived job
+commits straight to `sync_jobs` in the same transaction as its
+`webhook_deliveries` row (ADR-049 decision 1) and never transits `jobs.sync` or
+`jobdedup:*`. The recovery recipe above still applies to any pre-upgrade loss,
+and the trim-vs-TTL reasoning still governs the stream's remaining non-webhook
+writers (scheduler, cron sweeps, API-triggered enqueues).
+
+## Webhook-stream sunset (#2280)
+
+`events.inbound.webhooks` no longer receives writes — routing runs at ingress
+and no event is published. The always-on `webhook-handler` consumer loop is
+retired; the only remaining reader is the one-shot `LegacyInboundWebhookDrain`,
+which runs at every api boot and drains any pre-upgrade backlog (the group's
+full PEL plus unread entries) into durable `sync_jobs` / `webhook_deliveries`
+rows. Practical consequences:
+
+- **Do not delete the stream or the `webhook-handler` group until at least one
+  post-upgrade api boot has completed cleanly** (look for the
+  `Legacy inbound-webhook drain: … routed, … deadlettered` log line, or the
+  `nothing to drain` debug line). A transiently-failing entry is left un-ACKed
+  and retried on the next boot.
+- After a clean drain, `DEL events.inbound.webhooks` (which also removes the
+  group) and `DEL events.inbound.webhooks.dead` are safe and reclaim their
+  memory; the retention caps for both become irrelevant. A later release removes
+  the drain and the stream names.
+- If you skip the manual `DEL`, nothing breaks — the streams simply sit at
+  whatever size the last trim left them, since a stream with no writes is never
+  trimmed again (lazy trimming, above).
 
 ## Related
 

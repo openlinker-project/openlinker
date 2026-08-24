@@ -7,6 +7,18 @@ import type { ConfigService } from '@nestjs/config';
 import { DemoAccountCleanupService } from './demo-account-cleanup.service';
 import type { IDemoModeService } from './demo-mode.service.interface';
 import { User, type UserRepositoryPort } from '@openlinker/core/users';
+import type { SyncLockPort } from '@openlinker/core/sync';
+
+/**
+ * Per-tick singleton lock across api replicas (#2279) — acquires by default;
+ * `held: false` models a peer replica already running this tick.
+ */
+const makeSyncLock = (held = true): jest.Mocked<SyncLockPort> =>
+  ({
+    acquire: jest.fn().mockResolvedValue(held ? 'tok-1' : null),
+    release: jest.fn().mockResolvedValue(true),
+    extend: jest.fn().mockResolvedValue(true),
+  }) as unknown as jest.Mocked<SyncLockPort>;
 
 const makeUser = (id: string): User =>
   new User(id, `user-${id}`, `${id}@test.com`, 'hash', 'viewer', 'active', new Date(), new Date());
@@ -41,7 +53,12 @@ const makeRepo = (): jest.Mocked<UserRepositoryPort> => ({
 describe('DemoAccountCleanupService', () => {
   it('should do nothing when demo mode is off', async () => {
     const repo = makeRepo();
-    const service = new DemoAccountCleanupService(repo, makeDemoService(false), makeConfig());
+    const service = new DemoAccountCleanupService(
+      repo,
+      makeDemoService(false),
+      makeConfig(),
+      makeSyncLock(),
+    );
 
     await service.cleanup();
 
@@ -56,6 +73,7 @@ describe('DemoAccountCleanupService', () => {
       repo,
       makeDemoService(true),
       makeConfig({ OL_DEMO_ACCOUNT_RETENTION_HOURS: '24' }),
+      makeSyncLock(),
     );
 
     await service.cleanup();
@@ -74,6 +92,7 @@ describe('DemoAccountCleanupService', () => {
       repo,
       makeDemoService(true),
       makeConfig({ OL_DEMO_ACCOUNT_RETENTION_HOURS: '24' }),
+      makeSyncLock(),
     );
 
     await service.cleanup();
@@ -90,6 +109,7 @@ describe('DemoAccountCleanupService', () => {
       repo,
       makeDemoService(true),
       makeConfig({ OL_DEMO_ACCOUNT_RETENTION_HOURS: '24' }),
+      makeSyncLock(),
     );
 
     await service.cleanup();
@@ -101,10 +121,94 @@ describe('DemoAccountCleanupService', () => {
   it('should not delete anything when no accounts are stale', async () => {
     const repo = makeRepo();
     repo.findStaleViewerAccounts.mockResolvedValue([]);
-    const service = new DemoAccountCleanupService(repo, makeDemoService(true), makeConfig());
+    const service = new DemoAccountCleanupService(
+      repo,
+      makeDemoService(true),
+      makeConfig(),
+      makeSyncLock(),
+    );
 
     await service.cleanup();
 
     expect(repo.deleteById).not.toHaveBeenCalled();
+  });
+
+  describe('per-tick singleton lock across api replicas (#2279)', () => {
+    it('skips the tick entirely when a peer replica holds the lock', async () => {
+      const repo = makeRepo();
+      const service = new DemoAccountCleanupService(
+        repo,
+        makeDemoService(true),
+        makeConfig(),
+        makeSyncLock(false),
+      );
+
+      await service.cleanup();
+
+      expect(repo.findStaleViewerAccounts).not.toHaveBeenCalled();
+    });
+
+    it('releases the lock after a successful sweep', async () => {
+      const repo = makeRepo();
+      repo.findStaleViewerAccounts.mockResolvedValue([]);
+      const syncLock = makeSyncLock();
+      const service = new DemoAccountCleanupService(
+        repo,
+        makeDemoService(true),
+        makeConfig(),
+        syncLock,
+      );
+
+      await service.cleanup();
+
+      expect(syncLock.release).toHaveBeenCalledWith('singleton:demo-cleanup', 'tok-1');
+    });
+
+    it('swallows a sweep failure and still releases the lock — the caller is a bare interval callback', async () => {
+      const repo = makeRepo();
+      repo.findStaleViewerAccounts.mockRejectedValue(new Error('db down'));
+      const syncLock = makeSyncLock();
+      const service = new DemoAccountCleanupService(
+        repo,
+        makeDemoService(true),
+        makeConfig(),
+        syncLock,
+      );
+
+      // Propagating here would be an unhandled rejection on the interval
+      // callback and would take the API process down over a transient blip.
+      await expect(service.cleanup()).resolves.toBeUndefined();
+      expect(syncLock.release).toHaveBeenCalledWith('singleton:demo-cleanup', 'tok-1');
+    });
+
+    it('skips the tick rather than throwing when Redis is unavailable', async () => {
+      const repo = makeRepo();
+      const syncLock = makeSyncLock();
+      syncLock.acquire.mockRejectedValue(new Error('redis down'));
+      const service = new DemoAccountCleanupService(
+        repo,
+        makeDemoService(true),
+        makeConfig(),
+        syncLock,
+      );
+
+      await expect(service.cleanup()).resolves.toBeUndefined();
+      expect(repo.findStaleViewerAccounts).not.toHaveBeenCalled();
+    });
+
+    it('does not take the lock at all when demo mode is off', async () => {
+      const repo = makeRepo();
+      const syncLock = makeSyncLock();
+      const service = new DemoAccountCleanupService(
+        repo,
+        makeDemoService(false),
+        makeConfig(),
+        syncLock,
+      );
+
+      await service.cleanup();
+
+      expect(syncLock.acquire).not.toHaveBeenCalled();
+    });
   });
 });

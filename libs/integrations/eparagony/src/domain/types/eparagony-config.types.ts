@@ -72,15 +72,19 @@ export interface EparagonyConnectionConfig {
   taxRates?: Partial<EparagonyTaxRateTable>;
 
   /**
-   * Rate letter used ONLY for a line whose neutral `taxRate` is empty, i.e. when
-   * OpenLinker resolved no rate at all (ADR-042 decision 8's negative half: OL
-   * never computes, infers or defaults a rate).
+   * The connection's own device slot, declared by the operator.
    *
-   * This is not OL defaulting a rate - it is the OPERATOR declaring, per
-   * connection, which slot their catalogue sells under while the per-line rate
-   * contract (#2054) is still outstanding. Absent means an un-rated line BLOCKS
-   * the registration with an operator-facing reason, which is the ADR's stated
-   * behaviour.
+   * **It is no longer a fallback for an unknown rate (#2252, ADR-063).** Core
+   * now refuses to hand over a sale whose lines do not all name a rate, so a
+   * line reaches this adapter with an empty `taxRate` only if that gate is
+   * removed. The setting is kept, and still supported, because it describes the
+   * seller's device rather than a rate OpenLinker invented - but it must never
+   * be presented to an operator as "what we use when we do not know". A receipt
+   * carrying an unconfirmed rate reaches the buyer and the daily report and
+   * cannot be recalled; that is the trade this setting used to make silently.
+   *
+   * Absent still means an un-rated line blocks, which is now the same answer
+   * core gives one step earlier.
    */
   defaultTaxRateCode?: EparagonyTaxRateCode;
 

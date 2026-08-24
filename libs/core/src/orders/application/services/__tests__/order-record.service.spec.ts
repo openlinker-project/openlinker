@@ -48,6 +48,7 @@ describe('OrderRecordService', () => {
       updateSalesDocumentBlock: jest.fn(),
       getDailyOrderAggregates: jest.fn(),
       getMedianOrderValue: jest.fn(),
+      getNetMedianOrderValue: jest.fn(),
     } as unknown as jest.Mocked<OrderRecordRepositoryPort>;
 
     // Defaults to `deferred`, which is the outcome that owes NO refresh - so
@@ -248,6 +249,51 @@ describe('OrderRecordService', () => {
       });
     });
 
+    // #2054/#2254 regression. The snapshot projection is an allowlist and is the
+    // WRITER half of the pair `orderFromReadySnapshot.readItems` reads back, so a
+    // field missing here is lost at persistence time and every MANUAL issuance
+    // path rehydrates a rate-less order. Found end to end against a live shop:
+    // the analytics line-item row carried the rate while the snapshot did not.
+    it('serialises the per-line tax rate, its source and its read time into the snapshot (#2254)', async () => {
+      const order = createMockOrder();
+      order.items[0].taxRate = '5';
+      order.items[0].taxRateCountry = 'PL';
+      order.items[0].taxSource = 'shop';
+      order.items[0].taxRateReadAt = '2026-08-21T13:20:33.602Z';
+      order.items[0].taxRateChannel = '23';
+
+      repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
+
+      await service.persistOrder(order, 'source-connection-123', 'event-456');
+
+      const [callArg] = repository.upsertWithLineItems.mock.calls[0];
+      const snapshotItems = (callArg.orderSnapshot as { items: Array<Record<string, unknown>> })
+        .items;
+      expect(snapshotItems[0]).toMatchObject({
+        taxRate: '5',
+        taxRateCountry: 'PL',
+        taxSource: 'shop',
+        taxRateReadAt: '2026-08-21T13:20:33.602Z',
+        taxRateChannel: '23',
+      });
+    });
+
+    it('keeps every tax key absent when the order line carries no rate (#2254)', async () => {
+      const order = createMockOrder();
+      expect(order.items[0].taxRate).toBeUndefined();
+
+      repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
+
+      await service.persistOrder(order, 'source-connection-123', 'event-456');
+
+      const [callArg] = repository.upsertWithLineItems.mock.calls[0];
+      const snapshotItems = (callArg.orderSnapshot as { items: Array<Record<string, unknown>> })
+        .items;
+      for (const key of ['taxRate', 'taxRateCountry', 'taxSource', 'taxRateReadAt', 'taxRateChannel']) {
+        expect(snapshotItems[0]).not.toHaveProperty(key);
+      }
+    });
+
     it('should omit name and imageUrl from the snapshot when the OrderItem does not carry them', async () => {
       const order = createMockOrder();
       // createMockOrder() leaves name/imageUrl unset; this asserts conditional
@@ -426,6 +472,12 @@ describe('OrderRecordService', () => {
             unitPrice: 10.99,
             sourceConnectionId: 'source-connection-123',
             placedAt: null,
+            // #2250 - the snapshot line carried no rate, so the transcribed row
+            // carries none. No default: a row that disagreed with the snapshot
+            // it copies would be worse than an empty one.
+            taxRate: null,
+            taxSource: null,
+            taxRateReadAt: null,
           },
         ]);
       });
@@ -1114,6 +1166,9 @@ describe('OrderRecordService', () => {
           cancelledCount: 0,
           cancelledValue: 0,
           reportingCurrency: 'EUR',
+          netRevenue: 150,
+          netExcludedCount: 0,
+          netExcludedValue: 0,
         },
       ];
       const unitsByConnection = new Map([['conn-a', { unitsSold: 5, unconvertedUnitsSold: 0 }]]);
@@ -1121,6 +1176,7 @@ describe('OrderRecordService', () => {
 
       repository.getDailyOrderAggregates.mockResolvedValue(dailyRows);
       repository.getMedianOrderValue.mockResolvedValue(90);
+      repository.getNetMedianOrderValue.mockResolvedValue(80);
       lineItemRepository.getUnitsSoldByConnection.mockResolvedValue(unitsByConnection);
       repository.findEarliestOrderDateByConnection.mockResolvedValue(earliestMap);
 
@@ -1128,10 +1184,13 @@ describe('OrderRecordService', () => {
 
       expect(repository.getDailyOrderAggregates).toHaveBeenCalledWith(filters, 'EUR');
       expect(repository.getMedianOrderValue).toHaveBeenCalledWith(filters, 'EUR');
+      expect(repository.getNetMedianOrderValue).toHaveBeenCalledWith(filters, 'EUR');
       expect(lineItemRepository.getUnitsSoldByConnection).toHaveBeenCalledWith(filters, 'EUR');
       expect(repository.findEarliestOrderDateByConnection).toHaveBeenCalledWith(['conn-a']);
       expect(result.headline.revenue).toBe(200);
       expect(result.headline.medianOrderValue).toBe(90);
+      expect(result.headline.netMedianOrderValue).toBe(80);
+      expect(result.headline.netRevenue).toBe(150);
       expect(result.headline.unitsSold).toBe(5);
       expect(result.channels).toHaveLength(1);
       expect(result.channels[0].coverageComplete).toBe(true);
@@ -1140,6 +1199,7 @@ describe('OrderRecordService', () => {
     it('derives the earliest-date lookup scope from the connections present in dailyRows only', async () => {
       repository.getDailyOrderAggregates.mockResolvedValue([]);
       repository.getMedianOrderValue.mockResolvedValue(null);
+      repository.getNetMedianOrderValue.mockResolvedValue(null);
       lineItemRepository.getUnitsSoldByConnection.mockResolvedValue(new Map());
       repository.findEarliestOrderDateByConnection.mockResolvedValue(new Map());
 
@@ -1170,6 +1230,9 @@ describe('OrderRecordService', () => {
           unconvertedOrderCount: 0,
           currency: 'EUR',
           unconvertedCurrency: null,
+          netRevenue: 80,
+          netExcludedRevenue: 20,
+          netExcludedLineCount: 1,
         },
         {
           productId: 'p2',
@@ -1179,6 +1242,9 @@ describe('OrderRecordService', () => {
           unconvertedOrderCount: 0,
           currency: 'EUR',
           unconvertedCurrency: null,
+          netRevenue: 50,
+          netExcludedRevenue: 0,
+          netExcludedLineCount: 0,
         },
       ];
       const breakdown = [
@@ -1190,6 +1256,9 @@ describe('OrderRecordService', () => {
           unconvertedRevenue: 0,
           currency: 'EUR',
           unconvertedCurrency: null,
+          netRevenue: 80,
+          netExcludedRevenue: 20,
+          netExcludedLineCount: 1,
         },
         {
           productId: 'p2',
@@ -1199,6 +1268,9 @@ describe('OrderRecordService', () => {
           unconvertedRevenue: 0,
           currency: 'EUR',
           unconvertedCurrency: null,
+          netRevenue: 50,
+          netExcludedRevenue: 0,
+          netExcludedLineCount: 0,
         },
       ];
       lineItemRepository.getTopProductRanking.mockResolvedValue({ rows: ranking, total: 2 });
@@ -1232,6 +1304,9 @@ describe('OrderRecordService', () => {
             unconvertedOrderCount: 0,
             currency: 'EUR',
             unconvertedCurrency: null,
+            netRevenue: 1,
+            netExcludedRevenue: 0,
+            netExcludedLineCount: 0,
           },
         ],
         total: 500,

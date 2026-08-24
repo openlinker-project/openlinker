@@ -1,9 +1,11 @@
 /**
- * use-bulk-required-product-params tests (#810)
+ * use-bulk-required-product-params tests (#810, #2243)
  *
  * Verifies the per-category fan-out returns the required, unconditional,
- * product-section parameter ids — and only those — and stays inert with no
- * categories to resolve.
+ * product-section parameter ids — and only those — stays inert with no
+ * categories to resolve, exposes the full schema for the value-level checks, and
+ * REPORTS a failed fetch instead of looking like a category with no
+ * requirements.
  *
  * @module apps/web/src/features/listings/hooks
  */
@@ -127,5 +129,42 @@ describe('useBulkRequiredProductParams', () => {
     });
 
     expect(getCategoryParameters).not.toHaveBeenCalled();
+  });
+
+  it('exposes the full category schema for the value-level checks', async () => {
+    const getCategoryParameters = vi.fn().mockResolvedValue({
+      parameters: [
+        param({ id: 'cn', required: false, section: 'product', restrictions: { minLength: 8 } }),
+      ],
+    });
+    const apiClient = createMockApiClient({ listings: { getCategoryParameters } });
+
+    const { result } = renderHook(() => useBulkRequiredProductParams('conn-1', ['cat-A']), {
+      wrapper: wrap(apiClient),
+    });
+
+    await waitFor(() => expect(result.current.schemaByCategory.has('cat-A')).toBe(true));
+    expect(result.current.schemaByCategory.get('cat-A')).toHaveLength(1);
+    expect(result.current.schemaByCategory.get('cat-A')?.[0].restrictions.minLength).toBe(8);
+    // The projection down to required ids is still there, and this parameter is
+    // optional - so a schema-carrying category can legitimately require nothing.
+    expect(result.current.requiredByCategory.get('cat-A')).toEqual([]);
+    expect(result.current.failedCategoryIds).toEqual([]);
+  });
+
+  it('reports a category whose schema fetch failed instead of silently dropping it', async () => {
+    const getCategoryParameters = vi.fn().mockRejectedValue(new Error('502 from Allegro'));
+    const apiClient = createMockApiClient({ listings: { getCategoryParameters } });
+
+    const { result } = renderHook(() => useBulkRequiredProductParams('conn-1', ['cat-A']), {
+      wrapper: wrap(apiClient),
+    });
+
+    await waitFor(() => expect(result.current.failedCategoryIds).toEqual(['cat-A']));
+    // The dangerous part of the old behaviour: settled, not loading, no key -
+    // which the wizard reads as "nothing to block on".
+    expect(result.current.isResolving).toBe(false);
+    expect(result.current.requiredByCategory.has('cat-A')).toBe(false);
+    expect(result.current.schemaByCategory.has('cat-A')).toBe(false);
   });
 });

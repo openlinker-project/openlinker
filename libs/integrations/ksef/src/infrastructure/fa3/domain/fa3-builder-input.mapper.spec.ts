@@ -1,7 +1,7 @@
 /**
  * Neutral → FA(3) Builder-Input Mapper — Unit Specs
  *
- * Pins the empty-`taxRate` → connection-`defaultTaxRate` fallback (#1290):
+ * Pins the REMOVAL of the empty-`taxRate` fallback (#1290, removed in #2257):
  * an empty neutral rate resolves via the context's connection default; a
  * non-empty rate is never overridden (including a genuinely unmapped one,
  * which still throws); the same fallback applies to correction lines.
@@ -27,6 +27,17 @@ const CONTEXT: Fa3MappingContext = {
   issueDate: '2026-07-01',
   generatedAt: '2026-07-01T00:00:00.000Z',
   invoiceNumber: 'ol_order_test_001',
+};
+
+/**
+ * The same context WITH the connection fallback rate the adapter supplies while
+ * `OL_TAX_RATE_STRICT_ENABLED` is off (#2245 review). Two contexts rather than
+ * one, because the presence of `defaultTaxRate` is exactly what the switch
+ * decides - so the mapper is exercised on both sides of it here, and stays a
+ * pure function that reads no environment of its own.
+ */
+const CONTEXT_WITH_FALLBACK: Fa3MappingContext = {
+  ...CONTEXT,
   defaultTaxRate: '8',
 };
 
@@ -46,8 +57,22 @@ function baseCommand(taxRate: string): IssueInvoiceCommand {
 }
 
 describe('mapToFa3BuilderInput — tax-rate fallback', () => {
-  it('should resolve an empty neutral taxRate to the seller defaultTaxRate', () => {
-    const result = mapToFa3BuilderInput(baseCommand(''), CONTEXT);
+  it('should refuse an empty neutral taxRate when no fallback is supplied (#2257)', () => {
+    // The connection default is what #2245 removes: it put a flat rate on every
+    // line of every document, and on the paper a guessed 23% is
+    // indistinguishable from a confirmed one. Under strict enforcement the
+    // adapter withholds it, so `resolveP12('')` throwing IS the correct outcome
+    // - and core refuses such a command before the builder is reached at all.
+    expect(() => mapToFa3BuilderInput(baseCommand(''), CONTEXT)).toThrow(
+      UnmappedTaxRateException,
+    );
+  });
+
+  it('should apply the supplied fallback to an empty neutral taxRate', () => {
+    // The switch-off path, which is the default until an operator opts in: the
+    // adapter passes the connection's rate and a rate-less line still produces
+    // a document, exactly as before the epic.
+    const result = mapToFa3BuilderInput(baseCommand(''), CONTEXT_WITH_FALLBACK);
     expect(result.lines[0].p12).toBe('8');
   });
 
@@ -62,6 +87,11 @@ describe('mapToFa3BuilderInput — tax-rate fallback', () => {
     );
   });
 
+  it('should not override an explicit rate with the fallback', () => {
+    const result = mapToFa3BuilderInput(baseCommand('23'), CONTEXT_WITH_FALLBACK);
+    expect(result.lines[0].p12).toBe('23');
+  });
+
   it('should apply the same fallback to correction lines', () => {
     const cmd = baseCommand('23');
     cmd.correction = {
@@ -72,7 +102,7 @@ describe('mapToFa3BuilderInput — tax-rate fallback', () => {
       correctedLines: [{ name: 'Widget', quantity: 1, unitPriceGross: 90, taxRate: '' }],
     };
 
-    const result = mapToFa3BuilderInput(cmd, CONTEXT);
+    const result = mapToFa3BuilderInput(cmd, CONTEXT_WITH_FALLBACK);
 
     expect(result.correction?.correctedLines[0].p12).toBe('8');
   });

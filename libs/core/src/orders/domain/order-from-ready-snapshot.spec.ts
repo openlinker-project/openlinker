@@ -241,4 +241,47 @@ describe('orderFromReadySnapshot', () => {
       expect(message).not.toContain('Kowalski');
     }
   });
+
+  // #2248 regression. `readItems` is an allowlist, so a field it does not name
+  // is silently dropped - and every MANUAL issuance path rehydrates through it.
+  // Omitting the tax fields made a correctly rated order arrive at the mapper
+  // with no rate and be refused by the missing-rate gate, pointing the operator
+  // at a product that was already configured. The auto-issue path composes from
+  // the live `Order` and never touches this function, which is why nothing else
+  // covered it.
+  it('carries the per-line tax rate, its source and its read time through (#2248)', () => {
+    const record = makeRecord({
+      ...READY_SNAPSHOT,
+      items: [
+        {
+          id: 'li_1',
+          productId: 'p_1',
+          quantity: 1,
+          price: 42,
+          taxRate: '5',
+          taxRateCountry: 'PL',
+          taxSource: 'shop',
+          taxRateReadAt: '2026-08-19T10:00:00.000Z',
+          taxRateChannel: '23',
+        },
+      ],
+    });
+
+    const item = orderFromReadySnapshot(record).items[0];
+
+    expect(item.taxRate).toBe('5');
+    expect(item.taxRateCountry).toBe('PL');
+    expect(item.taxSource).toBe('shop');
+    expect(item.taxRateReadAt).toBe('2026-08-19T10:00:00.000Z');
+    expect(item.taxRateChannel).toBe('23');
+  });
+
+  it('drops a taxSource outside the union rather than passing it through', () => {
+    const record = makeRecord({
+      ...READY_SNAPSHOT,
+      items: [{ id: 'li_1', productId: 'p_1', quantity: 1, price: 42, taxSource: 'guessed' }],
+    });
+
+    expect(orderFromReadySnapshot(record).items[0].taxSource).toBeUndefined();
+  });
 });

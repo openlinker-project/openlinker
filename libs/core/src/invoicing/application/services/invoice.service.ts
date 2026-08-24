@@ -19,12 +19,21 @@
  * @implements {IInvoiceService}
  */
 import { Inject, Injectable } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import { Logger } from '@openlinker/shared/logging';
 import {
   IIntegrationsService,
   INTEGRATIONS_SERVICE_TOKEN,
 } from '@openlinker/core/integrations';
 import { type SyncLockPort, SYNC_LOCK_TOKEN } from '@openlinker/core/sync';
+import type { IFiscalRegistrationService } from '@openlinker/core/fiscalization';
+// Type-only NAMED import (never a wildcard — see
+// docs/architecture-overview.md#cross-context-dependencies-in-core) of just
+// the one token used in the lazy require below. Erases at compile time, never
+// emits a runtime require(), so it cannot reintroduce the CommonJS cycle that
+// require breaks; used only to type its return value without an inline
+// `import()` type (banned by `@typescript-eslint/consistent-type-imports`).
+import type { FISCAL_REGISTRATION_SERVICE_TOKEN as FiscalRegistrationServiceTokenType } from '@openlinker/core/fiscalization';
 
 import type { IInvoiceService } from './invoice.service.interface';
 import { InvoiceRecordRepositoryPort } from '../../domain/ports/invoice-record-repository.port';
@@ -44,12 +53,17 @@ import { isDocumentNumberConsumer } from '../../domain/ports/capabilities/docume
 import { DuplicateInvoiceRecordException } from '../../domain/exceptions/duplicate-invoice-record.exception';
 import { InvoiceRecordNotFoundException } from '../../domain/exceptions/invoice-record-not-found.exception';
 import { OrderAlreadyInvoicedException } from '../../domain/exceptions/order-already-invoiced.exception';
+import { OrderAlreadyHasFiscalReceiptException } from '../../domain/exceptions/order-already-has-fiscal-receipt.exception';
 import { InvoiceIssueContendedException } from '../../domain/exceptions/invoice-issue-contended.exception';
 import {
   INVOICE_ISSUE_LOCK_TTL_MS,
   invoiceIssueLockKey,
 } from './invoice-issue-lock';
 import { MissingNumberingSeriesException } from '../../domain/exceptions/missing-numbering-series.exception';
+import { taxRatePercentToFraction } from '../../domain/types/tax-rate-notation.types';
+import { findMissingTaxRate } from '../../domain/types/order-tax-rate-gate.types';
+import { isTaxRateEnforced } from '@openlinker/core/sales-documents';
+import { MissingTaxRateException } from '../../domain/exceptions/missing-tax-rate.exception';
 import { CapabilityNotSupportedException } from '@openlinker/core/integrations';
 // Published so an adapter spec can pin its own pre-call refusal message against
 // the very markers this service matches on (#2103 review) — see the constant's doc.
@@ -66,6 +80,7 @@ import type {
   IssueCorrectionCommand,
   IssuedDocumentContent,
   IssuedDocumentLine,
+  IssuedDocumentLineAmounts,
   IssuedDocumentSeller,
   IssuedLineSnapshot,
   IssueInvoiceCommand,
@@ -173,10 +188,12 @@ function round2(value: number): number {
  * (`'23'`, `'8'`, `'0'`) are read as a percentage; non-numeric exemption codes
  * (`zw`/`np`/…) carry no tax (0). The adapter owns the authoritative regime
  * mapping; this is only for the non-authoritative content projection.
+ *
+ * Notation is settled once, in `taxRatePercentToFraction` (#2247) - fractional
+ * input throws there rather than being read as a hundredth of itself here.
  */
 function rateFraction(taxRate: string): number {
-  const parsed = Number.parseFloat(taxRate);
-  return Number.isFinite(parsed) ? parsed / 100 : 0;
+  return taxRatePercentToFraction(taxRate) ?? 0;
 }
 
 /**
@@ -224,6 +241,9 @@ export class InvoiceService implements IInvoiceService {
     private readonly numberingRepo: InvoiceNumberingSeriesRepositoryPort,
     @Inject(SYNC_LOCK_TOKEN)
     private readonly issueLock: SyncLockPort,
+    // Resolved LAZILY via ModuleRef, never via a static `InvoicingModule.imports`
+    // edge to `FiscalizationModule` — see `resolveFiscalRegistrationService`.
+    private readonly moduleRef: ModuleRef,
   ) {}
 
   /**
@@ -253,6 +273,21 @@ export class InvoiceService implements IInvoiceService {
    * enforce.
    */
   async issueInvoice(cmd: IssueInvoiceCommand): Promise<InvoiceRecord> {
+    // #2248 (ADR-063 § 6): refuse before the lock and before any persisted
+    // state is touched. This is the write-path half of the gate, and it is what
+    // closes the MANUAL routes - `POST /invoices`, the panel button, bulk issue
+    // - which every other block reason deliberately leaves open. A command
+    // whose lines carry no rate can only be issued by a provider guessing one
+    // onto a real fiscal document.
+    //
+    // Checked on the COMMAND rather than on the order, so no caller can bypass
+    // it by composing lines itself, and so the correction path (which composes
+    // its own lines from an already-issued document) is unaffected.
+    //
+    // Off unless the deployment opted in, and never applied to a pre-rollout
+    // order - see the method's own docblock for why both gates are there.
+    this.assertEveryLineHasATaxRate(cmd);
+
     const lockKey = invoiceIssueLockKey(cmd.orderId);
     const token = await this.issueLock.acquire(lockKey, INVOICE_ISSUE_LOCK_TTL_MS);
 
@@ -273,6 +308,33 @@ export class InvoiceService implements IInvoiceService {
             `${releaseError instanceof Error ? releaseError.message : String(releaseError)}`,
         );
       }
+    }
+  }
+
+  /**
+   * Refuse an issuance whose lines do not all name a tax rate (#2248).
+   *
+   * `'0'` passes: a zero rate is an answer, not a gap. A blank one does not -
+   * that is what the mapper emits when nothing established the rate, and the
+   * three shipped providers each substitute a different default for it.
+   *
+   * Gated twice (#2245 review). The refusal applies only when the deployment
+   * has switched strict enforcement on - catalogue coverage is zero on deploy,
+   * so an ungated guard refuses 100% of issuance on day one - and never to a
+   * pre-rollout order, whose lines carry no rate because none was ever
+   * collected and which ADR-063 § Consequences says must issue as it always
+   * did. `isTaxRateEnforced` answers both at once so this site cannot check one
+   * half and forget the other.
+   */
+  private assertEveryLineHasATaxRate(cmd: IssueInvoiceCommand): void {
+    if (!isTaxRateEnforced(cmd.taxRateEra)) {
+      return;
+    }
+    const finding = findMissingTaxRate(
+      cmd.lines.map((line) => ({ productId: line.name, taxRate: line.taxRate })),
+    );
+    if (finding) {
+      throw new MissingTaxRateException(cmd.orderId, finding);
     }
   }
 
@@ -372,16 +434,24 @@ export class InvoiceService implements IInvoiceService {
   }
 
   /**
-   * One-invoice-per-order guard (#2047). Throws
-   * {@link OrderAlreadyInvoicedException} when ANY record on a DIFFERENT
-   * connection blocks issuance (`InvoiceRecord.blocksIssuanceElsewhere`:
-   * `pending` / `issuing` / `issued`, or `failed` with a `failureMode` other than
-   * `rejected`).
+   * One-invoice-per-order guard (#2047), extended cross-KIND (#2157,
+   * ADR-041 §3a/3b). Throws {@link OrderAlreadyInvoicedException} when ANY
+   * record on a DIFFERENT invoicing connection blocks issuance
+   * (`InvoiceRecord.blocksIssuanceElsewhere`: `pending` / `issuing` / `issued`,
+   * or `failed` with a `failureMode` other than `rejected`), and throws
+   * {@link OrderAlreadyHasFiscalReceiptException} when the order already
+   * carries a blocking `FiscalRegistrationRecord` on ANY fiscalization
+   * connection — ADR-041 decision 3a is exclusive across document KINDS, not
+   * just within one: invoice or fiscal receipt, never both.
    *
-   * Records on the REQUESTED connection are deliberately ignored here — the
-   * per-connection lifecycle (idempotency read-gate + `resumeExisting` + the CAS
-   * claim) already owns retry/replay semantics there, and re-checking them here
-   * would break the idempotent replay of an already-`issued` row.
+   * Records on the REQUESTED connection are deliberately ignored for the
+   * SAME-kind check — the per-connection lifecycle (idempotency read-gate +
+   * `resumeExisting` + the CAS claim) already owns retry/replay semantics
+   * there, and re-checking them here would break the idempotent replay of an
+   * already-`issued` row. The CROSS-kind check has no such exemption: an
+   * invoicing connection id can never collide with a fiscalization connection
+   * id's own retry/replay state, so every blocking fiscal-receipt record
+   * refuses regardless of which connection is asking.
    *
    * A `failed` + `rejected` record elsewhere is NOT blocking: the provider
    * refused the document and created nothing, so moving the order to another
@@ -393,15 +463,18 @@ export class InvoiceService implements IInvoiceService {
    * unlocked it would be read-then-act: two concurrent attempts on different
    * connections would both observe no blocking record and both proceed. Every
    * caller must therefore either hold the lock or, like {@link issueContended},
-   * be unable to reach the provider at all.
+   * be unable to reach the provider at all. `FiscalRegistrationService.register`
+   * (#2157) acquires the SAME lock key before registering, so a concurrent
+   * cross-kind attempt is serialized the same way a same-kind one is.
    *
    * Logged at `warn`, not `error`, deliberately: a refusal here is the guard
    * WORKING — the expected outcome whenever an operator (or a stale tab) aims a
    * second connection at an invoiced order. The signal is not left to the log
-   * either way: it is raised as {@link OrderAlreadyInvoicedException}, mapped to
-   * a 409 the FE renders against the real document. That is the opposite case to
-   * the auto-issue ambiguity, which logs at `error` because nothing is raised to
-   * a caller there — the install silently stops issuing.
+   * either way: it is raised as {@link OrderAlreadyInvoicedException} /
+   * {@link OrderAlreadyHasFiscalReceiptException}, mapped to a 409 the FE
+   * renders against the real document. That is the opposite case to the
+   * auto-issue ambiguity, which logs at `error` because nothing is raised to a
+   * caller there — the install silently stops issuing.
    */
   private async assertNotInvoicedElsewhere(
     orderId: string,
@@ -412,23 +485,139 @@ export class InvoiceService implements IInvoiceService {
       (record) =>
         record.connectionId !== requestedConnectionId && record.blocksIssuanceElsewhere,
     );
+    if (blocking) {
+      this.logger.warn(
+        `Refusing to issue a second document for order ${orderId} on connection ` +
+          `${requestedConnectionId}: invoice ${blocking.id} on connection ` +
+          `${blocking.connectionId} is ${blocking.status}` +
+          `${blocking.status === 'failed' ? ` (failureMode=${blocking.failureMode ?? 'unknown'})` : ''}`,
+      );
+      throw new OrderAlreadyInvoicedException(
+        orderId,
+        blocking.connectionId,
+        requestedConnectionId,
+        blocking.status,
+        blocking.id,
+      );
+    }
+
+    await this.assertNoBlockingFiscalReceipt(orderId, requestedConnectionId);
+  }
+
+  /**
+   * Cross-KIND half of the one-document-per-order guard (#2157, ADR-041 §3a/3b).
+   * Refuses to issue an invoice when the order already carries a BLOCKING
+   * `FiscalRegistrationRecord` on ANY fiscalization connection.
+   *
+   * Resolved via `ModuleRef.get(FISCAL_REGISTRATION_SERVICE_TOKEN, { strict:
+   * false })` rather than a normal `@Inject` constructor dependency, and
+   * deliberately NOT via a static `InvoicingModule.imports` edge to
+   * `FiscalizationModule`: this repo's own ADR-041 decision 2 states "there is
+   * no `forwardRef` anywhere in `libs/core`, `apps/api` or `apps/worker`", and a
+   * normal two-way constructor dependency here (`FiscalRegistrationService`
+   * already injects `IInvoiceService` the other direction, see
+   * `assertNotAlreadyRegistered`) would require exactly that. `ModuleRef`'s
+   * lazy, whole-container lookup breaks the cycle without it: NEITHER core
+   * module's `imports` array references the other.
+   *
+   * A `NestJS` "provider not found" throw (fiscalization not wired into THIS
+   * process) is read as "nothing can have been registered here either", which
+   * is accurate: the SAME missing wiring that would hide the fiscalization
+   * read also means `FiscalRegistrationService.register` cannot run in that
+   * process. This is not a silent safety gap — it degrades exactly where the
+   * write path it would guard against is itself unreachable. Both
+   * `apps/api` and `apps/worker` import `FiscalizationModule` today (the
+   * latter since #2156, for the `fiscalization.register` handler), so this
+   * fallback is defensive rather than a live gap in either host process.
+   *
+   * CommonJS-CYCLE NOTE (found live during epic #2154 Phase 4 e2e — the
+   * `ModuleRef` lookup above breaks the NestJS DI-graph cycle, but a plain
+   * top-level `import { FISCAL_REGISTRATION_SERVICE_TOKEN } from
+   * '@openlinker/core/fiscalization'` in THIS file still closes a REQUIRE
+   * cycle one layer down: `app.module.ts` requires `@openlinker/core/invoicing`
+   * first, which (via this file) requires `@openlinker/core/fiscalization`
+   * mid-load, whose `fiscalization.module.ts` requires
+   * `@openlinker/core/invoicing` back — landing on invoicing's own
+   * still-partially-populated `module.exports`, where `InvoicingModule` (the
+   * barrel's LAST export) is not yet assigned. Node hands back `undefined`,
+   * and NestJS's `@Module({ imports: [...] })` decorator captures that
+   * `undefined` PERMANENTLY (decorator arguments evaluate once, synchronously,
+   * at class-definition time — they are not live bindings), crashing
+   * `apps/api` / `apps/worker` boot with "the module at index [n] of the
+   * FiscalizationModule imports array is undefined". {@link
+   * resolveFiscalRegistrationService} therefore requires the token LAZILY,
+   * deferred past application boot to first actual call — by then both
+   * barrels have fully finished loading via `app.module.ts`'s own top-level
+   * imports, so the cycle never closes mid-load. A dynamic `require()`, not
+   * `import()`, because `ModuleRef.get` needs the token SYNCHRONOUSLY and by
+   * exact Symbol identity — a second `Symbol('...')` with the same
+   * description would not `===` the one `FiscalRegistrationService` registers
+   * against.
+   */
+  private async assertNoBlockingFiscalReceipt(
+    orderId: string,
+    requestedConnectionId: string,
+  ): Promise<void> {
+    const fiscalRegistrationService = this.resolveFiscalRegistrationService();
+    if (!fiscalRegistrationService) {
+      return;
+    }
+
+    const records = await fiscalRegistrationService.getByOrderId(orderId);
+    const blocking = records.find((record) => record.blocksFurtherRegistration);
     if (!blocking) {
       return;
     }
 
     this.logger.warn(
-      `Refusing to issue a second document for order ${orderId} on connection ` +
-        `${requestedConnectionId}: invoice ${blocking.id} on connection ` +
+      `Refusing to issue a document for order ${orderId} on connection ` +
+        `${requestedConnectionId}: fiscal registration ${blocking.id} on connection ` +
         `${blocking.connectionId} is ${blocking.status}` +
         `${blocking.status === 'failed' ? ` (failureMode=${blocking.failureMode ?? 'unknown'})` : ''}`,
     );
-    throw new OrderAlreadyInvoicedException(
+    throw new OrderAlreadyHasFiscalReceiptException(
       orderId,
       blocking.connectionId,
       requestedConnectionId,
       blocking.status,
       blocking.id,
     );
+  }
+
+  /**
+   * Lazily resolve `IFiscalRegistrationService` from anywhere in the running
+   * application's DI container. Returns `null` (never throws) when
+   * fiscalization is not wired into this process — see
+   * {@link assertNoBlockingFiscalReceipt}.
+   */
+  private resolveFiscalRegistrationService(): IFiscalRegistrationService | null {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires -- lazy require needed to break a CommonJS barrel-load cycle with `@openlinker/core/fiscalization` (see the doc comment above)
+      const fiscalization = require('@openlinker/core/fiscalization') as {
+        FISCAL_REGISTRATION_SERVICE_TOKEN: typeof FiscalRegistrationServiceTokenType;
+      };
+      return this.moduleRef.get<IFiscalRegistrationService>(
+        fiscalization.FISCAL_REGISTRATION_SERVICE_TOKEN,
+        { strict: false },
+      );
+    } catch (error) {
+      // Expected on every process that never imports `FiscalizationModule`
+      // (e.g. a deployment that only ever uses Invoicing) — `ModuleRef.get`
+      // throws when the token was never bound. That case is a normal,
+      // silent no-op. Anything else caught here (a malformed require, a
+      // provider that threw during lazy instantiation, …) is NOT expected
+      // and must not vanish without a trace: this guard is the one thing
+      // standing between a fiscal receipt and a second, duplicate invoice
+      // for the same order (#2157), so a swallowed unexpected error here
+      // would silently disable that protection. Logged, not thrown — this
+      // resolver still can't distinguish "not wired" from "broken" by type,
+      // and failing closed would also break the fully-expected not-wired case.
+      this.logger.warn(
+        `Could not resolve IFiscalRegistrationService (treating fiscalization as not wired ` +
+          `into this process): ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return null;
+    }
   }
 
   /**
@@ -577,8 +766,10 @@ export class InvoiceService implements IInvoiceService {
       throw error;
     }
 
-    const { record: issued, seller, sourceDocument } = issueResult;
-    const documentContent = this.buildContent(cmd, issued, seller ?? null);
+    const { record: issued, seller, sourceDocument, documentLines } = issueResult;
+    // #2251: prefer the document's OWN per-line amounts over core's
+    // recomputation, so the stored figure matches the paper to the grosz.
+    const documentContent = this.buildContent(cmd, issued, seller ?? null, documentLines);
     // #1297: snapshot the exact issue-command inputs (buyer/currency/lines) so a
     // later correction diffs against the lines AS ISSUED, not the order's current
     // state. Verbatim from the command — no recomputation.
@@ -902,7 +1093,7 @@ export class InvoiceService implements IInvoiceService {
       throw error;
     }
 
-    const { record: issued, seller, sourceDocument } = issueResult;
+    const { record: issued, seller, sourceDocument, documentLines } = issueResult;
 
     // #1297: snapshot the correction's OWN post-correction ("after") lines so a
     // correction-of-correction diffs against them, not the live order. Derived
@@ -937,6 +1128,10 @@ export class InvoiceService implements IInvoiceService {
             },
             issued,
             seller ?? null,
+            // #2251: a correction is the LATEST EFFECTIVE document, so its own
+            // amounts overwrite the stored ones. Without this the record would
+            // keep the pre-correction figures while the paper says otherwise.
+            documentLines,
           )
         : null;
 
@@ -973,6 +1168,17 @@ export class InvoiceService implements IInvoiceService {
 
   async getLatestInvoiceForOrder(orderId: string): Promise<InvoiceRecord | null> {
     return this.repo.findLatestByOrderId(orderId);
+  }
+
+  async findBlockingInvoiceForOrder(orderId: string): Promise<InvoiceRecord | null> {
+    // Same predicate `assertNotInvoicedElsewhere` uses, exposed as a projection
+    // read for cross-context consumption (#2157) — `FiscalRegistrationService`
+    // calls this via `IInvoiceService` to enforce ADR-041's cross-kind
+    // exclusivity. No connection exemption here: unlike the same-context guard,
+    // a caller from OUTSIDE invoicing has no "requested connection" of its own
+    // to exclude.
+    const records = await this.repo.findAllByOrderId(orderId);
+    return records.find((record) => record.blocksIssuanceElsewhere) ?? null;
   }
 
   async listInvoiceConnectionIdsForOrder(orderId: string): Promise<string[]> {
@@ -1038,19 +1244,42 @@ export class InvoiceService implements IInvoiceService {
    * rate and the totals sum across lines. `seller` is `null` when the adapter did
    * not surface one (graceful degradation — see {@link IssuedDocumentContent}).
    *
-   * NON-AUTHORITATIVE: this recomputes net/tax/gross from the neutral `taxRate`
-   * code rather than reading the provider's own figures — a display projection
-   * only, which can diverge from the provider's authoritative amounts under
-   * rounding or regime-specific tax rules. Adapters that can supply their own
-   * authoritative line money should do so via `IssueInvoiceResult` in a future
-   * revision rather than relying on this recomputation.
+   * AUTHORITATIVE WHERE THE ADAPTER REPORTS IT (#2251). `documentLines` carries
+   * the amounts the issued document actually states, matched by 1-based line
+   * number, and those win. Core computes no net and rounds nothing, so a copy
+   * is the only way a stored figure can agree with the paper to the grosz.
+   *
+   * A line with no reported amounts falls back to the pre-#2251 recomputation
+   * from the neutral `taxRate` code, which is a display projection and can
+   * diverge under rounding or regime-specific rules. The fallback is per LINE
+   * rather than per document, so a provider that reports some lines and not
+   * others still contributes what it has.
    */
   private buildContent(
     cmd: Pick<IssueInvoiceCommand, 'lines' | 'buyer' | 'currency'>,
     record: InvoiceRecord,
     seller: IssuedDocumentSeller | null,
+    documentLines?: IssuedDocumentLineAmounts[],
   ): IssuedDocumentContent {
-    const lines = cmd.lines.map((line): IssuedDocumentLine => {
+    const reported = new Map<number, IssuedDocumentLineAmounts>(
+      (documentLines ?? []).map((entry) => [entry.lineNumber, entry]),
+    );
+
+    const lines = cmd.lines.map((line, index): IssuedDocumentLine => {
+      // 1-based, matching the document's own numbering. Shipping lines are part
+      // of it - they are real document lines - so they never shift the mapping.
+      const stated = reported.get(index + 1);
+      if (stated) {
+        return {
+          name: line.name,
+          quantity: line.quantity,
+          unitNet: stated.unitNet,
+          taxRate: line.taxRate,
+          net: stated.net,
+          tax: stated.tax,
+          gross: stated.gross,
+        };
+      }
       const fraction = rateFraction(line.taxRate);
       const gross = round2(line.quantity * line.unitPriceGross);
       const net = round2(gross / (1 + fraction));

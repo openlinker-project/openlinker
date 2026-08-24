@@ -35,15 +35,39 @@ function row(overrides: Partial<TopProductRow> = {}): TopProductRow {
     currency: 'PLN',
     unconvertedCurrency: null,
     channels: [
-      { sourceConnectionId: 'conn-a', units: 2, revenue: 110, unconvertedRevenue: 0, currency: 'PLN' },
-      { sourceConnectionId: 'conn-b', units: 2, revenue: 0, unconvertedRevenue: 50, currency: null },
+      {
+        sourceConnectionId: 'conn-a',
+        units: 2,
+        revenue: 110,
+        unconvertedRevenue: 0,
+        currency: 'PLN',
+        netRevenue: 0,
+        netExcludedRevenue: 0,
+        netExcludedLineCount: 0,
+      },
+      {
+        sourceConnectionId: 'conn-b',
+        units: 2,
+        revenue: 0,
+        unconvertedRevenue: 50,
+        currency: null,
+        netRevenue: 0,
+        netExcludedRevenue: 0,
+        netExcludedLineCount: 0,
+      },
     ],
     missingFromConnectionIds: [],
+    netRevenue: 100,
+    netExcludedRevenue: 0,
+    netExcludedLineCount: 0,
     ...overrides,
   };
 }
 
-function result(items: TopProductRow[], overrides: Partial<TopProductsResult> = {}): TopProductsResult {
+function result(
+  items: TopProductRow[],
+  overrides: Partial<TopProductsResult> = {}
+): TopProductsResult {
   return {
     items,
     total: items.length,
@@ -86,7 +110,16 @@ describe('ProductSalesTable', () => {
           result([
             row({
               channels: [
-                { sourceConnectionId: 'conn-a', units: 0, revenue: 0, unconvertedRevenue: 0, currency: 'PLN' },
+                {
+                  sourceConnectionId: 'conn-a',
+                  units: 0,
+                  revenue: 0,
+                  unconvertedRevenue: 0,
+                  currency: 'PLN',
+                  netRevenue: 0,
+                  netExcludedRevenue: 0,
+                  netExcludedLineCount: 0,
+                },
               ],
               missingFromConnectionIds: [],
             }),
@@ -121,13 +154,35 @@ describe('ProductSalesTable', () => {
             row({
               productId: 'p1',
               name: 'Widget A',
-              channels: [{ sourceConnectionId: 'conn-a', units: 2, revenue: 50, unconvertedRevenue: 0, currency: 'PLN' }],
+              channels: [
+                {
+                  sourceConnectionId: 'conn-a',
+                  units: 2,
+                  revenue: 50,
+                  unconvertedRevenue: 0,
+                  currency: 'PLN',
+                  netRevenue: 0,
+                  netExcludedRevenue: 0,
+                  netExcludedLineCount: 0,
+                },
+              ],
               missingFromConnectionIds: [],
             }),
             row({
               productId: 'p2',
               name: 'Widget B',
-              channels: [{ sourceConnectionId: 'conn-b', units: 3, revenue: 60, unconvertedRevenue: 0, currency: 'PLN' }],
+              channels: [
+                {
+                  sourceConnectionId: 'conn-b',
+                  units: 3,
+                  revenue: 60,
+                  unconvertedRevenue: 0,
+                  currency: 'PLN',
+                  netRevenue: 0,
+                  netExcludedRevenue: 0,
+                  netExcludedLineCount: 0,
+                },
+              ],
               missingFromConnectionIds: [],
             }),
           ])
@@ -156,7 +211,16 @@ describe('ProductSalesTable', () => {
           result([
             row({
               channels: [
-                { sourceConnectionId: 'conn-a', units: 2, revenue: 110, unconvertedRevenue: 0, currency: 'PLN' },
+                {
+                  sourceConnectionId: 'conn-a',
+                  units: 2,
+                  revenue: 110,
+                  unconvertedRevenue: 0,
+                  currency: 'PLN',
+                  netRevenue: 0,
+                  netExcludedRevenue: 0,
+                  netExcludedLineCount: 0,
+                },
               ],
               missingFromConnectionIds: ['conn-b'],
             }),
@@ -186,7 +250,16 @@ describe('ProductSalesTable', () => {
           result([
             row({
               channels: [
-                { sourceConnectionId: 'conn-a', units: 2, revenue: 110, unconvertedRevenue: 0, currency: 'PLN' },
+                {
+                  sourceConnectionId: 'conn-a',
+                  units: 2,
+                  revenue: 110,
+                  unconvertedRevenue: 0,
+                  currency: 'PLN',
+                  netRevenue: 0,
+                  netExcludedRevenue: 0,
+                  netExcludedLineCount: 0,
+                },
               ],
               missingFromConnectionIds: ['conn-b'],
             }),
@@ -213,7 +286,16 @@ describe('ProductSalesTable', () => {
           result([
             row({
               channels: [
-                { sourceConnectionId: 'conn-a', units: 2, revenue: 110, unconvertedRevenue: 0, currency: 'PLN' },
+                {
+                  sourceConnectionId: 'conn-a',
+                  units: 2,
+                  revenue: 110,
+                  unconvertedRevenue: 0,
+                  currency: 'PLN',
+                  netRevenue: 0,
+                  netExcludedRevenue: 0,
+                  netExcludedLineCount: 0,
+                },
               ],
               missingFromConnectionIds: ['conn-b'],
             }),
@@ -265,14 +347,14 @@ describe('ProductSalesTable', () => {
     expect(screen.getByRole('link', { name: /Widget A/ })).toHaveAttribute('href', '/products/p1');
   });
 
-  it('falls back to the native-currency evidence when the product carries no current-era stamp (#2049/ADR-040 bugfix)', async () => {
+  it('renders an empty Net sales value for a product with no current-era FX stamp, with no unconverted fallback (net requires the same stamp as gross)', async () => {
     const apiClient = createMockApiClient({
       analytics: {
         getTopProducts: vi.fn().mockResolvedValue(
           result([
             row({
-              revenue: 0,
               currency: null,
+              netRevenue: 0,
               unconvertedRevenue: 100,
               unconvertedCurrency: 'EUR',
               unconvertedOrderCount: 1,
@@ -285,27 +367,8 @@ describe('ProductSalesTable', () => {
 
     renderWithProviders(<ProductSalesTable filters={FILTERS} />, { apiClient });
 
-    await screen.findByText('Widget A');
-    expect(screen.queryByText('No FX-stamped order for this product in range')).not.toBeInTheDocument();
-    expect(screen.getByTitle(/informational only/)).toBeInTheDocument();
-  });
-
-  it('renders an empty value when a product has neither a current-era stamp nor unconverted evidence', async () => {
-    const apiClient = createMockApiClient({
-      analytics: {
-        getTopProducts: vi.fn().mockResolvedValue(
-          result([
-            row({ revenue: 0, currency: null, unconvertedRevenue: 0, unconvertedCurrency: null }),
-          ])
-        ),
-      },
-      connections: { list: vi.fn().mockResolvedValue(CONNECTIONS) },
-    });
-
-    renderWithProviders(<ProductSalesTable filters={FILTERS} />, { apiClient });
-
     expect(
-      await screen.findByLabelText('No FX-stamped order for this product in range')
+      await screen.findByLabelText('No Net sales figure for this product in range')
     ).toBeInTheDocument();
   });
 
@@ -317,7 +380,16 @@ describe('ProductSalesTable', () => {
             [
               row({
                 channels: [
-                  { sourceConnectionId: 'conn-a', units: 2, revenue: 110, unconvertedRevenue: 0, currency: 'PLN' },
+                  {
+                    sourceConnectionId: 'conn-a',
+                    units: 2,
+                    revenue: 110,
+                    unconvertedRevenue: 0,
+                    currency: 'PLN',
+                    netRevenue: 0,
+                    netExcludedRevenue: 0,
+                    netExcludedLineCount: 0,
+                  },
                 ],
                 // Unreliable when coverageGapAvailable is false — must NOT be trusted.
                 missingFromConnectionIds: ['conn-b'],
@@ -339,17 +411,17 @@ describe('ProductSalesTable', () => {
     expect(screen.queryByText('Not listed')).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /Publish/ })).not.toBeInTheDocument();
     expect(screen.getAllByText('0').length).toBeGreaterThan(0);
-    expect(
-      screen.getByText(/Listing-coverage check unavailable/)
-    ).toBeInTheDocument();
+    expect(screen.getByText(/Listing-coverage check unavailable/)).toBeInTheDocument();
   });
 
   it('shows an unresolved-products footnote when unresolvedProductCount is positive (#2172 review, IMPORTANT 2)', async () => {
     const apiClient = createMockApiClient({
       analytics: {
-        getTopProducts: vi.fn().mockResolvedValue(
-          result([row({ productId: 'p1', name: null, sku: null })], { unresolvedProductCount: 1 })
-        ),
+        getTopProducts: vi
+          .fn()
+          .mockResolvedValue(
+            result([row({ productId: 'p1', name: null, sku: null })], { unresolvedProductCount: 1 })
+          ),
       },
       connections: { list: vi.fn().mockResolvedValue(CONNECTIONS) },
     });

@@ -11,9 +11,26 @@
  */
 import type { CanonicalInboundEvent } from '@openlinker/core/integrations';
 import type { Connection } from '@openlinker/core/identifier-mapping';
-import type { RoutingOutcome } from '../types/inbound-routing-policy.types';
+import type {
+  InboundRouteResolution,
+  RoutingOutcome,
+} from '../types/inbound-routing-policy.types';
 
 export interface IInboundRoutingPolicyService {
+  /**
+   * The PURE routing decision (#2280): same capability gate and routing
+   * table as `route`, but no enqueue — a `'resolved'` outcome returns the
+   * fully-built `SyncJobRequest` so the caller can persist the work row in
+   * its own transaction (the webhook-path durable spine, ADR-049 decision 1).
+   * No I/O of any kind.
+   */
+  resolve(
+    event: CanonicalInboundEvent,
+    connection: Connection,
+    supportedCapabilities: readonly string[],
+    sourceEventId: string
+  ): InboundRouteResolution;
+
   /**
    * Route a canonical inbound event to a sync job for the given connection.
    *

@@ -22,6 +22,13 @@ interface ConnectionDotProps {
   platformType?: string | null;
   /** Only affects the generic (name === null) glyph. */
   variant?: 'shop' | 'carrier';
+  /**
+   * Disc diameter in px (default 14). The glyph is an SVG with a `viewBox`, so
+   * the initial scales with the disc. Raised where the dot is the primary
+   * identity anchor rather than a marker beside other text - the bulk wizard's
+   * destination bar (#2227) uses 26.
+   */
+  size?: number;
 }
 
 /** Deterministic 0–359 hue from a seed so a connection always gets the same colour. */
@@ -56,15 +63,17 @@ export function ConnectionDot({
   name,
   platformType = null,
   variant = 'shop',
+  size,
 }: ConnectionDotProps): ReactElement {
   const isGeneric = name === null;
   const fullName = name ?? (variant === 'carrier' ? 'a carrier' : 'the destination shop');
   const initial = computeInitial(name, platformType, variant);
   // Generic dots ignore the hash (muted grey via the modifier class); named/known
   // dots carry a stable hue seeded on platformType (falling back to the name).
-  const style: CSSProperties | undefined = isGeneric
-    ? undefined
-    : ({ '--conn-hue': stableHue(platformType ?? name ?? '') } as CSSProperties);
+  const style: CSSProperties = {
+    ...(isGeneric ? {} : { '--conn-hue': stableHue(platformType ?? name ?? '') }),
+    ...(size === undefined ? {} : { '--conn-size': `${size}px` }),
+  } as CSSProperties;
 
   return (
     <span className={cx('conn-dot', isGeneric && 'conn-dot--generic')} style={style} title={fullName}>

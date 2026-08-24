@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<!-- @template name="Automation composer" description="Modal composer for one automation rule: trigger, AND-ed conditions, ordered steps, window, dry run." -->
+<helmet><script src="./ds-base.js"></script><style>body{margin:0;background:var(--bg-canvas)}a{color:var(--accent-primary);text-decoration:none}a:hover{color:var(--accent-primary-hover);text-decoration:underline}</style></helmet>
+<x-import component-from-global-scope="OpenLinkerUI.MemoryRouter" hint-size="100%,100%">
+<div style="position:relative;min-height:100vh;background:var(--bg-canvas)">
+<div style="position:absolute;inset:0;background:var(--overlay-scrim);backdrop-filter:blur(1px)"></div>
+<div style="position:relative;display:grid;justify-items:center;padding:var(--space-6) var(--space-4)">
+<div role="dialog" aria-modal="true" aria-label="Add automation" style="width:100%;max-width:760px;background:var(--bg-surface-elevated);border:1px solid var(--border-default);border-radius:var(--radius-xl);box-shadow:var(--shadow-overlay);overflow:hidden">
+<div style="display:flex;align-items:center;justify-content:space-between;gap:var(--space-4);padding:var(--space-5) var(--space-6);border-bottom:1px solid var(--border-subtle);background:var(--bg-surface)">
+<h2 style="margin:0;font-size:17px;font-weight:600;letter-spacing:var(--tracking-tight);color:var(--text-primary)">Add automation</h2>
+<x-import component-from-global-scope="OpenLinkerUI.Button" hint-size="28px,28px" tone="ghost" class-name="button--xs" aria-label="Close">×</x-import>
+</div>
+<div style="display:grid;gap:var(--space-6);padding:var(--space-6)">
+<section style="display:grid;grid-template-columns:96px minmax(0,1fr);gap:var(--space-4);align-items:start">
+<span style="padding-top:7px;font-family:var(--font-mono);font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-secondary)">When</span>
+<div style="display:grid;gap:var(--space-2)">
+<x-import component-from-global-scope="OpenLinkerUI.Select" hint-size="100%,32px" aria-label="Trigger" default-value="packed">
+<option value="packed">An order is marked packed</option>
+<option value="hold">An order is put on hold</option>
+<option value="deadline">A marketplace dispatch deadline is close</option>
+</x-import>
+<p style="margin:0;padding:var(--space-3);border:1px dashed var(--border-default);border-radius:var(--radius-sm);font-family:var(--font-mono);font-size:11.5px;line-height:1.5;color:var(--text-secondary)">Trigger parameters appear here when the chosen trigger has any. This one has none.</p>
+</div>
+</section>
+<section style="display:grid;grid-template-columns:96px minmax(0,1fr);gap:var(--space-4);align-items:start;padding-top:var(--space-5);border-top:1px solid var(--border-subtle)">
+<span style="padding-top:7px;font-family:var(--font-mono);font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-secondary)">Only if</span>
+<div style="display:grid;gap:var(--space-3)">
+<div style="display:grid;grid-template-columns:minmax(0,200px) minmax(0,1fr) 32px;gap:var(--space-3);align-items:center">
+<x-import component-from-global-scope="OpenLinkerUI.Select" hint-size="100%,32px" aria-label="Condition field" default-value="marketplace">
+<option value="marketplace">Marketplace is</option>
+<option value="country">Order country is</option>
+</x-import>
+<x-import component-from-global-scope="OpenLinkerUI.Select" hint-size="100%,32px" aria-label="Marketplace" default-value="allegro">
+<option value="allegro">Allegro</option>
+<option value="shop">My shop</option>
+</x-import>
+<x-import component-from-global-scope="OpenLinkerUI.Button" hint-size="28px,28px" tone="ghost" class-name="button--xs" aria-label="Remove condition">×</x-import>
+</div>
+<div style="display:flex;align-items:center;gap:var(--space-3)">
+<x-import component-from-global-scope="OpenLinkerUI.StatusBadge" hint-size="52px,20px" compact="{{ true }}">AND</x-import>
+<span style="flex:1;height:1px;background:var(--border-subtle)"></span>
+</div>
+<div style="display:grid;grid-template-columns:minmax(0,200px) minmax(0,1fr) 32px;gap:var(--space-3);align-items:center">
+<x-import component-from-global-scope="OpenLinkerUI.Select" hint-size="100%,32px" aria-label="Condition field" default-value="country">
+<option value="country">Order country is</option>
+<option value="marketplace">Marketplace is</option>
+</x-import>
+<div style="max-width:120px"><x-import component-from-global-scope="OpenLinkerUI.Input" hint-size="100%,32px" aria-label="Order country" default-value="PL" class-name="mono-text" style="text-transform:uppercase"></x-import></div>
+<x-import component-from-global-scope="OpenLinkerUI.Button" hint-size="28px,28px" tone="ghost" class-name="button--xs" aria-label="Remove condition">×</x-import>
+</div>
+<div style="justify-self:start">
+<x-import component-from-global-scope="OpenLinkerUI.Button" hint-size="130px,28px" tone="ghost" class-name="button--xs">+ Add condition</x-import>
+</div>
+<p style="margin:0;font-size:12px;line-height:1.55;color:var(--text-muted)">Every added condition must ALL be true for this rule to match (AND).</p>
+</div>
+</section>
+<section style="display:grid;grid-template-columns:96px minmax(0,1fr);gap:var(--space-4);align-items:start;padding-top:var(--space-5);border-top:1px solid var(--border-subtle)">
+<span style="padding-top:7px;font-family:var(--font-mono);font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-secondary)">Then</span>
+<ol style="margin:0;padding:0;list-style:none;display:grid;gap:var(--space-3)">
+<li style="display:grid;grid-template-columns:26px minmax(0,1fr);gap:var(--space-3);align-items:start;padding:var(--space-4);border:1px solid var(--border-subtle);border-radius:var(--radius-md);background:var(--bg-surface)">
+<span style="display:grid;place-items:center;width:22px;height:22px;margin-top:5px;border-radius:var(--radius-pill);background:var(--accent-primary);color:var(--text-inverse);font-family:var(--font-mono);font-size:11px;font-weight:600;font-variant-numeric:tabular-nums">1</span>
+<div style="display:grid;gap:var(--space-3)">
+<x-import component-from-global-scope="OpenLinkerUI.Select" hint-size="100%,32px" aria-label="Step 1" default-value="label">
+<option value="label">Buy the shipping label</option>
+<option value="notify">Tell the marketplace</option>
+</x-import>
+<div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--space-3)">
+<div class="form-field"><label class="form-field__label" for="step-1-carrier">Carrier</label><x-import id="step-1-carrier" component-from-global-scope="OpenLinkerUI.Select" hint-size="100%,32px" default-value="auto"><option value="auto">Cheapest available</option><option value="inpost">InPost</option></div>
+</x-import>
+<div class="form-field"><label class="form-field__label" for="step-1-payer">Pay from</label><x-import id="step-1-payer" component-from-global-scope="OpenLinkerUI.Select" hint-size="100%,32px" default-value="account"><option value="account">My carrier account</option><option value="prepaid">Prepaid balance</option></div>
+</x-import>
+</div>
+</div>
+</li>
+<li style="display:grid;grid-template-columns:26px minmax(0,1fr);gap:var(--space-3);align-items:start;padding:var(--space-4);border:1px solid var(--border-subtle);border-radius:var(--radius-md);background:var(--bg-surface)">
+<span style="display:grid;place-items:center;width:22px;height:22px;margin-top:5px;border-radius:var(--radius-pill);background:var(--accent-primary);color:var(--text-inverse);font-family:var(--font-mono);font-size:11px;font-weight:600;font-variant-numeric:tabular-nums">2</span>
+<div style="display:grid;gap:var(--space-3)">
+<x-import component-from-global-scope="OpenLinkerUI.Select" hint-size="100%,32px" aria-label="Step 2" default-value="notify">
+<option value="notify">Tell the marketplace</option>
+<option value="label">Buy the shipping label</option>
+</x-import>
+<div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--space-3)">
+<div class="form-field"><label class="form-field__label" for="step-2-status">Status to send</label><x-import id="step-2-status" component-from-global-scope="OpenLinkerUI.Select" hint-size="100%,32px" default-value="sent"><option value="sent">Sent</option><option value="ready">Ready for pickup</option></div>
+</x-import>
+<div class="form-field"><label class="form-field__label" for="step-2-tracking">Include tracking number</label><x-import id="step-2-tracking" component-from-global-scope="OpenLinkerUI.Select" hint-size="100%,32px" default-value="yes"><option value="yes">Yes</option><option value="no">No</option></div>
+</x-import>
+</div>
+</div>
+</li>
+<li style="display:flex;align-items:center;gap:var(--space-3);flex-wrap:wrap">
+<x-import component-from-global-scope="OpenLinkerUI.Button" hint-size="110px,28px" tone="ghost" class-name="button--xs">+ Add step</x-import>
+<span style="font-family:var(--font-mono);font-size:11.5px;color:var(--text-muted)">Max 3 steps, run in order, stop on first failure.</span>
+</li>
+</ol>
+</section>
+<section style="display:grid;grid-template-columns:96px minmax(0,1fr);gap:var(--space-4);align-items:start;padding-top:var(--space-5);border-top:1px solid var(--border-subtle)">
+<span style="padding-top:7px;font-family:var(--font-mono);font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-secondary)">Active</span>
+<div style="display:grid;gap:var(--space-3)">
+<div style="display:grid;grid-template-columns:repeat(2,minmax(0,220px));gap:var(--space-4)">
+<div class="form-field"><label class="form-field__label" for="active-from">Active from</label><x-import id="active-from" component-from-global-scope="OpenLinkerUI.Input" hint-size="100%,32px" type="date" default-value="2026-09-01" style="font-family:var(--font-mono)"></x-import></div>
+<div class="form-field"><label class="form-field__label" for="active-until">until</label><x-import id="active-until" component-from-global-scope="OpenLinkerUI.Input" hint-size="100%,32px" type="date" style="font-family:var(--font-mono)"></x-import><p class="form-field__description">(optional)</p></div>
+</div>
+<x-import component-from-global-scope="OpenLinkerUI.Alert" hint-size="100%,52px" tone="info">An automation only acts on things that happen after you save it.</x-import>
+</div>
+</section>
+<div style="display:grid;grid-template-columns:minmax(0,1fr) auto;gap:var(--space-4);align-items:center;padding:var(--space-4) var(--space-5);border:1px solid var(--accent-primary-border);border-radius:var(--radius-md);background:var(--accent-primary-soft)">
+<p style="margin:0;font-size:12.5px;line-height:1.6;color:var(--text-primary);text-wrap:pretty">Pick any order from the last 30 days and see whether each condition matched and whether this rule would have fired — without doing anything.</p>
+<x-import component-from-global-scope="OpenLinkerUI.Button" hint-size="190px,32px" tone="secondary" class-name="button--sm">Test on a recent order</x-import>
+</div>
+</div>
+<div style="display:flex;align-items:center;justify-content:flex-end;gap:var(--space-3);padding:var(--space-4) var(--space-6);border-top:1px solid var(--border-subtle);background:var(--bg-surface)">
+<x-import component-from-global-scope="OpenLinkerUI.Button" hint-size="80px,32px" tone="ghost" class-name="button--sm">Cancel</x-import>
+<x-import component-from-global-scope="OpenLinkerUI.Button" hint-size="150px,32px" tone="primary" class-name="button--sm">Save automation</x-import>
+</div>
+</div>
+</div>
+</div>
+</x-import>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1180,&quot;height&quot;:1180}}"></script>
+</body>
+</html>

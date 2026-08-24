@@ -64,6 +64,22 @@ export interface ProductRankingRow {
    * `DailyOrderAggregateRow.unconvertedCurrency`.
    */
   unconvertedCurrency: string | null;
+  /**
+   * VAT-exclusive counterpart of `revenue` (net-sales tax-rate epic) —
+   * `SUM(unitPrice × quantity × (1 - rateFraction) × orderFxMultiplier)` over
+   * lines that are stamped, non-zero-total, not pre-rollout, and carry a
+   * resolvable {@link resolveNetSalesTaxRate} outcome. A line failing any of
+   * those does not appear here — see `netExcludedRevenue`/
+   * `netExcludedLineCount` for what was excluded. This axis (tax-rate
+   * resolvability) is independent of the currency axis `unconvertedRevenue`
+   * already covers; the two exclusions can overlap without either hiding the
+   * other.
+   */
+  netRevenue: number;
+  /** Comparable (reporting-currency) sum for stamped, non-zero-total lines excluded from `netRevenue` because their tax rate is unresolvable. */
+  netExcludedRevenue: number;
+  /** Count of lines contributing to `netExcludedRevenue`. */
+  netExcludedLineCount: number;
 }
 
 /**
@@ -89,6 +105,12 @@ export interface ProductChannelBreakdownRow {
    * single-currency even then, so it is strictly more labelable, never less.
    */
   unconvertedCurrency: string | null;
+  /** Same meaning as {@link ProductRankingRow.netRevenue}, scoped to this channel. */
+  netRevenue: number;
+  /** Same meaning as {@link ProductRankingRow.netExcludedRevenue}, scoped to this channel. */
+  netExcludedRevenue: number;
+  /** Same meaning as {@link ProductRankingRow.netExcludedLineCount}, scoped to this channel. */
+  netExcludedLineCount: number;
 }
 
 /**
@@ -106,6 +128,9 @@ export interface TopProductView {
   unconvertedOrderCount: number;
   currency: string | null;
   unconvertedCurrency: string | null;
+  netRevenue: number;
+  netExcludedRevenue: number;
+  netExcludedLineCount: number;
   channels: ProductChannelBreakdownRow[];
 }
 

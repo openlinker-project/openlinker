@@ -47,4 +47,12 @@ export interface ProductVariant {
   isStale?: boolean;
   /** Timestamp of the most recent stale-marking; `null`/absent when live. */
   staleAt?: Date | null;
+  /**
+   * Per-variant tax-rate OVERRIDE (#2054). Absent means "no opinion" - the
+   * product's rate applies - never "no rate". Only a master that keys tax per
+   * variant writes it.
+   */
+  taxRate?: string | null;
+  taxRateCountry?: string | null;
+  taxRateReadAt?: Date | null;
 }

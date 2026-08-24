@@ -110,6 +110,8 @@ import {
   FA3_SYSTEM_CODE,
 } from '../fa3/domain/fa3-xml.types';
 import { mapToFa3BuilderInput } from '../fa3/domain/fa3-builder-input.mapper';
+import { describeFa3LineAmounts } from '../fa3/builders/fa3-xml.builder';
+import type { IssuedDocumentLineAmounts } from '@openlinker/core/invoicing';
 import { KsefNetworkException } from '../../domain/exceptions/ksef-network.exception';
 import { decodeProviderInvoiceId, encodeProviderInvoiceId } from './ksef-provider-invoice-id';
 import { KsefSessionException } from '../../domain/exceptions/ksef-session.exception';
@@ -133,6 +135,7 @@ import { mapKsefStatusToRegulatoryStatus } from './ksef-clearance-status.mapper'
 import { isKsefUnavailable, NON_RETRYABLE_KSEF_STATUS_CODES } from './ksef-availability';
 import { KsefApiException } from '../../domain/exceptions/ksef-api.exception';
 import type { KsefInvoicingAdapterOptions } from './ksef-invoicing-adapter.types';
+import { isTaxRateEnforced } from '@openlinker/core/sales-documents';
 
 /** Neutral document types KSeF issues. Open-world `DocumentType` is narrowed to these two. */
 const SUPPORTED_DOCUMENT_TYPES: DocumentType[] = ['invoice', 'corrected'];
@@ -206,6 +209,12 @@ export class KsefInvoicingAdapter
    */
   private readonly defaultLineUnit: string | undefined;
 
+  /**
+   * Connection-level fallback `P_12` neutral code (#1290/#1291), honoured only
+   * while strict per-line enforcement is off - see the options type.
+   */
+  private readonly defaultTaxRate: string | undefined;
+
   /** Injected clock so the adapter (and its FA(3) timestamps) stay testable. */
   private readonly now: () => Date;
 
@@ -216,11 +225,6 @@ export class KsefInvoicingAdapter
     private readonly fa3Builder: IFa3XmlBuilder,
     private readonly seller: SellerProfile,
     /**
-     * Connection-resolved fallback `P_12` neutral code applied to any line
-     * whose neutral `taxRate` arrives empty (see `Fa3MappingContext.defaultTaxRate`).
-     */
-    private readonly defaultTaxRate: string,
-    /**
      * Trailing optional inputs (payment defaults #1311, injected clock) ride
      * in an options bag so a future addition never shifts positional call
      * sites (PR #1317 review).
@@ -229,6 +233,7 @@ export class KsefInvoicingAdapter
   ) {
     this.payment = options.payment;
     this.defaultLineUnit = options.defaultLineUnit;
+    this.defaultTaxRate = options.defaultTaxRate;
     this.now = options.now ?? ((): Date => new Date());
     this.numberingTimeZone = options.numberingTimeZone ?? DEFAULT_NUMBERING_TIME_ZONE;
   }
@@ -262,21 +267,30 @@ export class KsefInvoicingAdapter
     this.logger.log(
       `Issuing KSeF document (connection ${this.connectionId}, order ${cmd.orderId}, lines ${cmd.lines.length})`,
     );
-    this.warnOnEmptyTaxRateFallback(cmd);
 
     // 1. neutral → FA(3) (C4). Deterministic build faults throw the mapper's own
     //    typed exceptions; the service maps those to a failed record (no retry).
-    const xml = this.fa3Builder.build(
-      mapToFa3BuilderInput(cmd, {
-        seller: this.seller,
-        issueDate: this.toIsoDate(issuedAt),
-        generatedAt: issuedAt.toISOString(),
-        invoiceNumber: documentNumber,
-        defaultTaxRate: this.defaultTaxRate,
-        defaultLineUnit: this.defaultLineUnit,
-        payment: this.payment,
-      }),
-    );
+    const builderInput = mapToFa3BuilderInput(cmd, {
+      seller: this.seller,
+      issueDate: this.toIsoDate(issuedAt),
+      generatedAt: issuedAt.toISOString(),
+      invoiceNumber: documentNumber,
+      // #2257, gated in the #2245 review: the connection's fallback rate is
+      // withheld under strict enforcement, so a rate-less line raises instead of
+      // being silently taxed at the configured default. The env is read here
+      // rather than in the pure mapper, which must stay side-effect-free.
+      ...(isTaxRateEnforced(cmd.taxRateEra)
+        ? {}
+        : { defaultTaxRate: this.defaultTaxRate }),
+      defaultLineUnit: this.defaultLineUnit,
+      payment: this.payment,
+    });
+    const xml = this.fa3Builder.build(builderInput);
+    // #2251: KSeF has nothing external to copy back - OpenLinker builds the
+    // FA(3) itself, so this adapter IS the calculator and reports the figures it
+    // put in the document. Derived from the same `lineNet` the XML uses, so the
+    // reported net cannot drift from `P_11`.
+    const documentLines = describeFa3LineAmounts(builderInput.lines);
 
     // 2. Open session → encrypt → submit → close (one invoice per session).
     //    Establishing the session (crypto init + open) can fail because KSeF is
@@ -291,7 +305,7 @@ export class KsefInvoicingAdapter
       sessionRef = await this.openOnlineSession(cryptoContext);
     } catch (error) {
       if (isKsefUnavailable(error)) {
-        return this.buildOfflineResult(cmd, xml, issuedAt, documentNumber, error);
+        return this.buildOfflineResult(cmd, xml, issuedAt, documentNumber, error, documentLines);
       }
       throw error;
     }
@@ -310,7 +324,7 @@ export class KsefInvoicingAdapter
         // transmitted, so nothing landed at KSeF. Return the neutral offline
         // record — the finally below still closes the session best-effort, and
         // with `submitError` set a close failure is swallowed (never masks this).
-        return this.buildOfflineResult(cmd, xml, issuedAt, documentNumber, error);
+        return this.buildOfflineResult(cmd, xml, issuedAt, documentNumber, error, documentLines);
       }
       throw error;
     } finally {
@@ -355,7 +369,12 @@ export class KsefInvoicingAdapter
     );
     // Persist the FA(3) source XML as a neutral opaque blob so the core service can
     // re-serve `GET .../document?kind=source` without a KSeF round-trip (#1224 W3).
-    return { record, seller: this.toNeutralSeller(), sourceDocument: this.toSourceDocument(xml) };
+    return {
+      record,
+      seller: this.toNeutralSeller(),
+      sourceDocument: this.toSourceDocument(xml),
+      documentLines,
+    };
   }
 
   /**
@@ -559,6 +578,10 @@ export class KsefInvoicingAdapter
     issuedAt: Date,
     documentNumber: string,
     cause: unknown,
+    // #2251: the document was BUILT locally even though the session never
+    // landed, so its own line amounts are known and reported here too - the
+    // offline window is about transmission, not about what the paper says.
+    documentLines: IssuedDocumentLineAmounts[],
   ): IssueInvoiceResult {
     this.logger.warn(
       `KSeF unavailable during issuance (connection ${this.connectionId}, order ${cmd.orderId}); ` +
@@ -583,7 +606,12 @@ export class KsefInvoicingAdapter
       issuedAt,
       issuedAt,
     );
-    return { record, seller: this.toNeutralSeller(), sourceDocument: this.toSourceDocument(xml) };
+    return {
+      record,
+      seller: this.toNeutralSeller(),
+      sourceDocument: this.toSourceDocument(xml),
+      documentLines,
+    };
   }
 
   /**
@@ -1168,24 +1196,6 @@ export class KsefInvoicingAdapter
     }
   }
 
-  /**
-   * The pure `mapToFa3BuilderInput` mapper cannot log, so the audit trail for
-   * the empty-`taxRate` → connection-`defaultTaxRate` substitution (#1290,
-   * #1291) lives here instead — a WARN per issuance whose command carries at
-   * least one line (plain or correction) with an empty neutral `taxRate`.
-   */
-  private warnOnEmptyTaxRateFallback(cmd: IssueInvoiceCommand): void {
-    const emptyLineCount =
-      cmd.lines.filter((line) => !line.taxRate).length +
-      (cmd.correction?.correctedLines.filter((line) => !line.taxRate).length ?? 0);
-    if (emptyLineCount > 0) {
-      this.logger.warn(
-        `KSeF document (connection ${this.connectionId}, order ${cmd.orderId}) has ` +
-          `${emptyLineCount} line(s) with an empty neutral taxRate — falling back to the ` +
-          `connection default (${this.defaultTaxRate}).`,
-      );
-    }
-  }
 
   private resolveDocumentType(documentType?: string): string {
     // Validated by assertDocumentTypeSupported at the top of issueInvoice; an

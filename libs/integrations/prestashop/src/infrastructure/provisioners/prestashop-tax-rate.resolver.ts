@@ -11,7 +11,11 @@
  * leaks onto the core order contract. Resolution walks
  * product → `id_tax_rules_group` → `tax_rules` → `taxes`, selecting the rule for
  * the order's delivery country when resolvable (PS taxes on the delivery address
- * by default), else the catch-all (`id_country = 0`) rule, else the first rule.
+ * by default), else the catch-all (`id_country = 0`) rule. Where neither singles
+ * a rule out it reports `ambiguous` rather than taking whichever row the
+ * webservice listed first: since #2245 the same resolver also states the rate a
+ * fiscal document carries, and an arbitrary pick there is a wrong VAT rate on an
+ * invoice rather than a slightly-off net price.
  *
  * **"Untaxed" and "unknown" are different answers (#2052).** A product whose
  * `id_tax_rules_group` reads `0` resolves to `0` — that is the "No tax" entry in
@@ -58,6 +62,18 @@ interface CacheEntry {
   rate: number;
   timestamp: number;
 }
+
+/**
+ * What the rule walk concluded. A discriminated result rather than
+ * `rule | undefined`, because "no rule at all" and "several and I cannot
+ * choose" are different answers to the operator and were both collapsed into a
+ * fabricated 0% before (#2245 review).
+ */
+type TaxRuleSelection =
+  /** `taxId` is carried resolved: only a rule naming a usable tax gets here. */
+  | { kind: 'rule'; taxId: number }
+  | { kind: 'none' }
+  | { kind: 'ambiguous'; candidateTaxIds: string[] };
 
 export class PrestashopTaxRateResolver {
   private readonly logger = new Logger(PrestashopTaxRateResolver.name);
@@ -170,19 +186,48 @@ export class PrestashopTaxRateResolver {
       );
     }
 
-    const rule = this.selectRule(rules, countryId);
-    if (!rule || !rule.id_tax) {
+    const selection = this.selectRule(rules, countryId);
+    if (selection.kind === 'none') {
+      // NOT a resolved zero. The absence of a usable rule is the shop failing
+      // to say what it charges, and `0` is a rate a document then STATES - so
+      // inferring one here put an unclaimed 0% VAT on invoices and receipts
+      // (#2245 review). A deliberate zero still resolves: it arrives as
+      // `id_tax_rules_group = 0` above, which is PrestaShop's own "No tax"
+      // choice and is handled before this point.
       this.logger.warn(
-        `No usable tax rule for group ${groupId} (product ${externalProductId}); treating as untaxed.`
+        `Tax rate unknown for product ${externalProductId}: tax-rule group ${groupId} has no usable rule.`
       );
-      return { kind: 'resolved', rate: 0 };
+      return {
+        kind: 'unknown',
+        reason: 'configuration',
+        evidence: `tax-rule group ${groupId} has no usable rule`,
+      };
     }
+    if (selection.kind === 'ambiguous') {
+      // Several candidate rules pointing at different taxes and nothing that
+      // singles one out - no delivery country matched, and no catch-all row.
+      // The pre-review code returned `rules[0]`, i.e. whichever row the
+      // webservice happened to list first, so a PL shop with per-country rules
+      // could project DE 19% onto every line.
+      this.logger.warn(
+        `Tax rate unknown for product ${externalProductId}: tax-rule group ${groupId} offers ` +
+          `${String(selection.candidateTaxIds.length)} candidate rates with no unambiguous pick.`
+      );
+      return {
+        kind: 'unknown',
+        reason: 'ambiguous',
+        evidence:
+          `tax-rule group ${groupId} offers ${String(selection.candidateTaxIds.length)} candidate ` +
+          `rates (taxes ${this.cap(selection.candidateTaxIds.join(', '))}) with no unambiguous pick`,
+      };
+    }
+    const taxId = selection.taxId;
 
     let tax: PrestashopTaxRow | undefined;
     try {
-      tax = await webserviceClient.getResource<PrestashopTaxRow>('taxes', rule.id_tax);
+      tax = await webserviceClient.getResource<PrestashopTaxRow>('taxes', String(taxId));
     } catch (error) {
-      return this.transportUnknown(`taxes/${rule.id_tax}`, error, externalProductId);
+      return this.transportUnknown(`taxes/${taxId}`, error, externalProductId);
     }
 
     const rawRate = tax?.rate;
@@ -191,26 +236,26 @@ export class PrestashopTaxRateResolver {
       // was the worst of the zero paths: `String(undefined ?? '0')` parsed to a
       // finite, non-negative 0 and flowed out as a SUCCESS.
       this.logger.warn(
-        `Tax rate unknown for product ${externalProductId}: tax rule ${rule.id_tax} in group ` +
+        `Tax rate unknown for product ${externalProductId}: tax rule ${taxId} in group ` +
           `${groupId} carries no rate.`
       );
       return {
         kind: 'unknown',
         reason: 'configuration',
-        evidence: `tax rule ${rule.id_tax} in group ${groupId} carries no rate`,
+        evidence: `tax rule ${taxId} in group ${groupId} carries no rate`,
       };
     }
 
     const ratePercent = Number.parseFloat(String(rawRate));
     if (!Number.isFinite(ratePercent) || ratePercent < 0) {
       this.logger.warn(
-        `Tax rate unknown for product ${externalProductId}: tax rule ${rule.id_tax} in group ` +
+        `Tax rate unknown for product ${externalProductId}: tax rule ${taxId} in group ` +
           `${groupId} reports an unusable rate '${String(rawRate)}'.`
       );
       return {
         kind: 'unknown',
         reason: 'configuration',
-        evidence: `tax rule ${rule.id_tax} in group ${groupId} reports an unusable rate '${this.cap(String(rawRate))}'`,
+        evidence: `tax rule ${taxId} in group ${groupId} reports an unusable rate '${this.cap(String(rawRate))}'`,
       };
     }
     return { kind: 'resolved', rate: ratePercent / 100 };
@@ -249,25 +294,67 @@ export class PrestashopTaxRateResolver {
 
   /**
    * Pick the tax rule for the delivery country, falling back to the catch-all
-   * (`id_country = 0`) rule and finally the first rule. Among rows matching the
-   * country, prefer the country-level rule (`id_state = 0`) over state-specific
-   * rows so a multi-state group (e.g. US) doesn't return an arbitrary state rate.
+   * (`id_country = 0`) rule - and reporting *ambiguous* rather than guessing
+   * when neither singles a rule out.
+   *
+   * Three answers, mirroring what the WooCommerce master reports for the same
+   * shapes (`not-configured` / `ambiguous` / a rate):
+   *
+   * - `none` - no rule carries a usable `id_tax`. The shop has not said what it
+   *   charges for this group.
+   * - `rule` - one rule, or several that all point at the SAME tax. Several
+   *   rows agreeing is not ambiguous: the answer is the same whichever the shop
+   *   picks (the rule WooCommerce's `distinctRates` dedup already follows).
+   * - `ambiguous` - several candidate taxes and nothing that singles one out.
+   *
+   * Among rows matching the country, the country-level rule (`id_state = 0`) is
+   * the unambiguous pick over state-specific rows; a multi-state group with no
+   * country-level row (e.g. US) is genuinely ambiguous rather than "whichever
+   * state came first".
    */
   private selectRule(
     rules: PrestashopTaxRuleRow[],
     countryId: number | undefined
-  ): PrestashopTaxRuleRow | undefined {
+  ): TaxRuleSelection {
     if (!rules || rules.length === 0) {
-      return undefined;
+      return { kind: 'none' };
     }
+    // A rule with no (or a zero) `id_tax` names no tax record, so it is not a
+    // candidate for anything.
+    const usable = rules.filter((r) => this.toInt(r.id_tax) > 0);
+    if (usable.length === 0) {
+      return { kind: 'none' };
+    }
+
     if (countryId !== undefined) {
-      const countryMatches = rules.filter((r) => this.toInt(r.id_country) === countryId);
+      const countryMatches = usable.filter((r) => this.toInt(r.id_country) === countryId);
       if (countryMatches.length > 0) {
-        return countryMatches.find((r) => this.toInt(r.id_state) === 0) ?? countryMatches[0];
+        const countryLevel = countryMatches.find((r) => this.toInt(r.id_state) === 0);
+        if (countryLevel) {
+          return { kind: 'rule', taxId: this.toInt(countryLevel.id_tax) };
+        }
+        return this.singleTaxOrAmbiguous(countryMatches);
       }
     }
-    const catchAll = rules.find((r) => this.toInt(r.id_country) === 0);
-    return catchAll ?? rules[0];
+
+    const catchAll = usable.filter((r) => this.toInt(r.id_country) === 0);
+    if (catchAll.length > 0) {
+      return this.singleTaxOrAmbiguous(catchAll);
+    }
+    return this.singleTaxOrAmbiguous(usable);
+  }
+
+  /**
+   * One candidate tax across the rows resolves; more than one is ambiguous.
+   * Deduplicated by `id_tax` rather than by rate, so it costs no extra read -
+   * two rows naming one tax record cannot disagree about its rate.
+   */
+  private singleTaxOrAmbiguous(rules: PrestashopTaxRuleRow[]): TaxRuleSelection {
+    const taxIds = [...new Set(rules.map((r) => this.toInt(r.id_tax)))];
+    if (taxIds.length === 1) {
+      return { kind: 'rule', taxId: taxIds[0] };
+    }
+    return { kind: 'ambiguous', candidateTaxIds: taxIds.map((id) => String(id)) };
   }
 
   private async resolveCountryIdSafe(

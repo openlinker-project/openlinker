@@ -50,6 +50,13 @@ import type {
   UpsertCustomerResult,
 } from '@openlinker/core/invoicing';
 import { InvoiceRecord, UnsupportedRegulatoryDocumentKindError } from '@openlinker/core/invoicing';
+import {
+  assertPercentTaxRateNotation,
+  taxRatePercentToFraction,
+} from '@openlinker/core/invoicing';
+import type { IssuedDocumentLineAmounts } from '@openlinker/core/invoicing';
+import { MissingTaxRateException, findMissingTaxRate } from '@openlinker/core/invoicing';
+import { isTaxRateEnforced } from '@openlinker/core/sales-documents';
 import type { IInfaktHttpClient } from '../http/infakt-http-client.interface';
 import { InfaktApiError } from '../../domain/exceptions/infakt-api.error';
 import type {
@@ -64,6 +71,7 @@ import type {
   InfaktKsefStatus,
   InfaktListResponse,
   InfaktSendToKsefResponse,
+  InfaktInvoiceService,
 } from '../../domain/types/infakt.types';
 import type { InfaktConnectionConfig } from '../../domain/types/infakt-connection.types';
 
@@ -229,32 +237,52 @@ function toInfaktEmailLocale(locale: InvoiceEmailLocale | undefined): string | u
 }
 
 /**
- * Poland's standard VAT rate — the "regime rate" the adapter is documented
- * (`order-to-issue-invoice-command.mapper.ts`) to resolve when core leaves
- * `InvoiceLine.taxRate` empty, which it always does today (core never names
- * a tax rate on the order contract). Verified live (2026-07-01): an empty
- * `tax_symbol` doesn't just get rejected on its own field — Infakt cascades
- * it into `services.gross` / `value.tax_values` errors too, so EVERY line on
- * EVERY invoice 422'd before this fallback existed.
+ * Poland's standard VAT rate - the "regime rate" this adapter substitutes when
+ * core leaves `InvoiceLine.taxRate` empty.
+ *
+ * That substitution is what the whole #2245 epic exists to remove: a silent 23%
+ * is indistinguishable from a confirmed 23% on the issued document, and the
+ * entire cost of being wrong lands on the seller. It is removed BY THE ROLLOUT
+ * SWITCH rather than by a deploy (#2257, gated in the #2245 review) - with
+ * `OL_TAX_RATE_STRICT_ENABLED=true` a rate-less line is refused; with the switch
+ * off (the default) the pre-epic default stands, because catalogue coverage is
+ * zero on deploy and refusing here would 422 every invoice on day one.
+ *
+ * The two constants MUST stay consistent with each other: a net/gross split that
+ * does not match the declared `tax_symbol` is itself rejected by inFakt as an
+ * invalid `value.tax_values`.
+ *
+ * Verified live (2026-07-01): an empty `tax_symbol` does not merely get rejected
+ * on its own field - inFakt cascades it into `services.gross` /
+ * `value.tax_values` errors too, so EVERY line on EVERY invoice 422'd before
+ * this fallback existed. That is precisely the outage the switch defers.
  */
 const DEFAULT_PL_VAT_SYMBOL = '23';
 const DEFAULT_PL_VAT_RATE = 0.23;
 
-/** Maps neutral taxRate string to Infakt tax_symbol. */
+/**
+ * Maps a neutral taxRate string to an Infakt `tax_symbol`.
+ *
+ * The neutral code is percent-as-string (#2247), so the fractional spellings
+ * this switch used to accept (`'0.23'`, `'0.08'`, `'0.05'`) are gone -
+ * `assertPercentTaxRateNotation` rejects them instead of quietly treating
+ * `'0.23'` as 23%, which is the reading that made a genuine 1% rate resolve
+ * to 100%.
+ *
+ * `'0'` maps to `zw`, which is a deliberate PL-regime choice rather than a
+ * notation one: Infakt has no numeric zero symbol, so a zero-rated line is
+ * declared exempt. That mapping is the adapter's to own (ADR-026).
+ */
 function toInfaktTaxSymbol(taxRate: string): string {
-  // Common neutral→Infakt mapping; adapter owns this PL logic
-  switch (taxRate) {
+  const code = assertPercentTaxRateNotation(taxRate);
+  switch (code) {
     case '23':
-    case '0.23':
       return '23';
     case '8':
-    case '0.08':
       return '8';
     case '5':
-    case '0.05':
       return '5';
     case '0':
-    case '0.00':
     case 'zw':
     case 'exempt':
       return 'zw';
@@ -262,29 +290,59 @@ function toInfaktTaxSymbol(taxRate: string): string {
     case 'oo':
       return 'np';
     default:
-      return taxRate.trim() === '' ? DEFAULT_PL_VAT_SYMBOL : taxRate;
+      // An empty code resolves to the regime default only while strict
+      // enforcement is off; under it, `assertEveryLineHasATaxRate` has already
+      // refused the command before this runs.
+      return code === '' ? DEFAULT_PL_VAT_SYMBOL : code;
   }
 }
 
 /**
- * Parses a tax-rate string (neutral `'23'`/`'0.23'` or Infakt `tax_symbol`
- * `'zw'`/`'np'`) to a decimal fraction.
+ * Parses a tax-rate string (a neutral percent-as-string code such as `'23'`,
+ * or an Infakt `tax_symbol` like `'zw'`/`'np'`) to a decimal fraction.
  *
- * Must stay consistent with `toInfaktTaxSymbol`'s empty-string fallback — a
- * mismatched net/gross split for the declared tax_symbol is itself rejected
- * by Infakt as an invalid `value.tax_values`.
+ * Notation is settled centrally (#2247): `taxRatePercentToFraction` divides by
+ * 100 and throws on fractional input. The old `n > 1` heuristic that lived here
+ * accepted both spellings and, as a side effect, read a genuine 1% rate as 100%.
+ *
+ * Must stay consistent with `toInfaktTaxSymbol`'s empty-string fallback - a
+ * mismatched net/gross split for the declared tax_symbol is itself rejected by
+ * Infakt as an invalid `value.tax_values`. Under strict enforcement neither is
+ * reachable: the command is refused first.
  */
 function taxRateNumeric(taxRate: string): number {
   if (taxRate.trim() === '') return DEFAULT_PL_VAT_RATE;
-  const n = parseFloat(taxRate);
-  if (!isNaN(n) && n > 1) return n / 100;
-  if (!isNaN(n)) return n;
-  return 0;
+  return taxRatePercentToFraction(taxRate) ?? 0;
 }
 
 /** Converts a buyer-paid gross unit price (PLN) to Infakt's net unit price (PLN) for the given tax rate. */
 function grossToNet(unitPriceGross: number, taxRate: string): number {
   return unitPriceGross / (1 + taxRateNumeric(taxRate));
+}
+
+/**
+ * Read the created document's own per-line amounts (#2251).
+ *
+ * Infakt reports every money field in integer groszy, so each is divided back
+ * to PLN here rather than at the call site - the conversion is Infakt's wire
+ * detail and belongs on this side of the boundary.
+ *
+ * Line numbers are 1-based positions in the response's `services` array, which
+ * is the order the lines were submitted in and therefore the order the document
+ * shows them. A `correction: true` row on a corrective document occupies its own
+ * position exactly like any other line, so nothing shifts.
+ */
+function toDocumentLineAmounts(
+  services: readonly InfaktInvoiceService[] | undefined,
+): IssuedDocumentLineAmounts[] | undefined {
+  if (!services || services.length === 0) return undefined;
+  return services.map((service, index) => ({
+    lineNumber: index + 1,
+    unitNet: fromGroszy(service.unit_net_price ?? 0),
+    net: fromGroszy(service.net_price ?? 0),
+    tax: fromGroszy(service.tax_price ?? 0),
+    gross: fromGroszy(service.gross_price ?? 0),
+  }));
 }
 
 /**
@@ -504,6 +562,13 @@ export class InfaktInvoicingAdapter
   }
 
   async issueInvoice(cmd: IssueInvoiceCommand): Promise<IssueInvoiceResult> {
+    // #2257 — defence in depth, and only under the rollout switch. With strict
+    // enforcement on, core refuses a rate-less command before the adapter is
+    // reached, so this should be unreachable; it exists because the alternative
+    // to failing is silently substituting a rate onto a real fiscal document.
+    // With the switch off the regime default below stands, which is what keeps
+    // a zero-coverage catalogue issuing while its rates are filled in.
+    assertEveryLineHasATaxRate(cmd);
     const { lines, documentType, idempotencyKey, orderId } = cmd;
     // Resolved BEFORE the client upsert so a malformed currency costs no
     // provider round-trip and cannot leave a freshly-created client behind.
@@ -599,7 +664,12 @@ export class InfaktInvoicingAdapter
     // builds itself (it submits to KSeF natively) — `IssueInvoiceResult`'s
     // optional `seller`/`sourceDocument` are for adapters that build their own
     // fiscal document (e.g. KSeF's FA(3) XML); Infakt omits both.
-    return { record };
+    //
+    // #2251: the created invoice's own per-line amounts ARE reported. Infakt is
+    // the calculator on this path, so core storing its own recomputation would
+    // leave the record disagreeing with the document by a grosz here and there,
+    // with no way for a reader to tell which is right.
+    return { record, documentLines: toDocumentLineAmounts(invoice.services) };
   }
 
   async getInvoice(query: GetInvoiceQuery): Promise<InvoiceRecord | null> {
@@ -976,6 +1046,11 @@ export class InfaktInvoicingAdapter
       // Infakt builds and owns its own FA(3)/KSeF session server-side (see the
       // module docstring) — there is no machine-readable document for OL to
       // capture, same as issueInvoice.
+      //
+      // #2251: the CORRECTION's own line amounts. A correction is the latest
+      // effective document, so these overwrite the stored figures rather than
+      // leaving the record showing the pre-correction ones.
+      documentLines: toDocumentLineAmounts(invoice.services),
     };
   }
 
@@ -1299,4 +1374,24 @@ export class InfaktInvoicingAdapter
   private sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
+}
+
+/**
+ * Refuse a command whose lines do not all name a tax rate (#2257), when the
+ * deployment has switched strict enforcement on.
+ *
+ * Under strict enforcement a rate-less line has nowhere to resolve to. Raising
+ * the same neutral exception core does keeps the failure legible at every layer
+ * - and keeps its existing 422 mapping - rather than surfacing as an inFakt
+ * wire-field rejection nobody can act on. A pre-rollout order never reaches
+ * here: core's own guard exempts it and passes the command through, and this
+ * adapter has no order era to consult, so the substitution below is what serves
+ * it.
+ */
+function assertEveryLineHasATaxRate(cmd: IssueInvoiceCommand): void {
+  if (!isTaxRateEnforced(cmd.taxRateEra)) return;
+  const finding = findMissingTaxRate(
+    cmd.lines.map((line) => ({ productId: line.name, taxRate: line.taxRate })),
+  );
+  if (finding) throw new MissingTaxRateException(cmd.orderId, finding);
 }

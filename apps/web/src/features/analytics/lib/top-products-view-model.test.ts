@@ -9,6 +9,9 @@ function channel(overrides: Partial<ProductChannelSales> = {}): ProductChannelSa
     revenue: 100,
     unconvertedRevenue: 0,
     currency: 'PLN',
+    netRevenue: 0,
+    netExcludedRevenue: 0,
+    netExcludedLineCount: 0,
     ...overrides,
   };
 }
@@ -26,6 +29,9 @@ function row(overrides: Partial<TopProductRow> = {}): TopProductRow {
     unconvertedCurrency: null,
     channels: [channel()],
     missingFromConnectionIds: [],
+    netRevenue: 90,
+    netExcludedRevenue: 0,
+    netExcludedLineCount: 0,
     ...overrides,
   };
 }

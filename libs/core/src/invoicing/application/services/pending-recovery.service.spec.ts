@@ -126,6 +126,7 @@ describe('PendingRecoveryService', () => {
     syncJobs = {
       schedule: jest.fn(),
       requeueDeadByIdempotencyKey: jest.fn().mockResolvedValue(false),
+      requeueStuckJobs: jest.fn().mockResolvedValue(0),
     } as unknown as jest.Mocked<ISyncJobsService>;
 
     service = new PendingRecoveryService(repo, integrations, syncJobs);

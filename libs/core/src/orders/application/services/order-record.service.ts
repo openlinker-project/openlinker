@@ -101,6 +101,21 @@ export class OrderRecordService implements IOrderRecordService {
         // the wire shape clean and let consumers tell "missing" from "blank".
         ...(item.name !== undefined && { name: item.name }),
         ...(item.imageUrl !== undefined && { imageUrl: item.imageUrl }),
+        // #2054/#2254 - the per-line tax fields. This projection is an
+        // ALLOWLIST, and it is the WRITER half of the pair `readItems`
+        // (`orderFromReadySnapshot`) reads back. Omitting them here loses the
+        // settled rate at persistence time, so every MANUAL issuance path
+        // (`POST /invoices`, bulk issue, corrections) rehydrates a rate-less
+        // order and the #2248 gate refuses it - pointing the operator at a
+        // product that was already configured correctly. The auto-issue path
+        // composes from the live `Order` and never reads the snapshot, which is
+        // why the two paths disagree unless both allowlists name the same
+        // fields. Caught end to end against a live shop, not by a unit test.
+        ...(item.taxRate !== undefined && { taxRate: item.taxRate }),
+        ...(item.taxRateCountry !== undefined && { taxRateCountry: item.taxRateCountry }),
+        ...(item.taxSource !== undefined && { taxSource: item.taxSource }),
+        ...(item.taxRateReadAt !== undefined && { taxRateReadAt: item.taxRateReadAt }),
+        ...(item.taxRateChannel !== undefined && { taxRateChannel: item.taxRateChannel }),
       })),
       totals: order.totals,
       shippingAddress: piiConfig.storePii
@@ -495,11 +510,13 @@ export class OrderRecordService implements IOrderRecordService {
     // across two eras.
     const currentReportingCurrency = await this.reportingCurrencySettings.resolve();
 
-    const [dailyRows, medianOrderValue, unitsByConnection] = await Promise.all([
-      this.repository.getDailyOrderAggregates(filters, currentReportingCurrency),
-      this.repository.getMedianOrderValue(filters, currentReportingCurrency),
-      this.lineItemRepository.getUnitsSoldByConnection(filters, currentReportingCurrency),
-    ]);
+    const [dailyRows, medianOrderValue, netMedianOrderValue, unitsByConnection] =
+      await Promise.all([
+        this.repository.getDailyOrderAggregates(filters, currentReportingCurrency),
+        this.repository.getMedianOrderValue(filters, currentReportingCurrency),
+        this.repository.getNetMedianOrderValue(filters, currentReportingCurrency),
+        this.lineItemRepository.getUnitsSoldByConnection(filters, currentReportingCurrency),
+      ]);
 
     const connectionIds = [...new Set(dailyRows.map((row) => row.sourceConnectionId))];
     const earliestOrderDateByConnection = await this.getEarliestOrderDateByConnection(
@@ -510,6 +527,7 @@ export class OrderRecordService implements IOrderRecordService {
       filters,
       dailyRows,
       medianOrderValue,
+      netMedianOrderValue,
       unitsByConnection,
       earliestOrderDateByConnection,
     });

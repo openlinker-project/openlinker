@@ -284,6 +284,21 @@ export class OfferBuilderService implements IOfferBuilderService {
       productCardId: input.overrides?.productCardId ?? null,
     };
 
+    // #2249 (ADR-063) — propagate the shop's rate onto the offer, in the same
+    // pass that already carries price and stock. Read from OL's own catalogue
+    // projection, so publishing does not depend on the shop being reachable and
+    // the offer carries the same rate an invoice for it would.
+    //
+    // Set only when the shop actually has one: an absent rate must reach the
+    // adapter as absent, so it can refuse rather than publish an offer with no
+    // tax settings. Publishing rate-less is exactly what produced the offers
+    // whose orders report `tax: null` today.
+    const taxRate = await this.resolveTaxRate(product.id, input.internalVariantId);
+    if (taxRate.code) {
+      command.taxRate = taxRate.code;
+      if (taxRate.countryIso2) command.taxRateCountry = taxRate.countryIso2;
+    }
+
     // #1065 — only set when populated, keeping the command shape tidy (mirrors
     // the `?? null` / cleanedOverrides posture above).
     if (variantGroup) {
@@ -563,6 +578,29 @@ export class OfferBuilderService implements IOfferBuilderService {
       );
     }
     return readStockSafetyBuffer(config);
+  }
+
+  /**
+   * The catalogue's rate for this variant (#2249).
+   *
+   * Best-effort: a read failure degrades to "no rate", which the adapter then
+   * refuses on - the same outcome as a genuinely rate-less product, and a
+   * safer one than publishing an offer whose tax nobody stated. The gate on the
+   * invoicing side is what makes that visible.
+   */
+  private async resolveTaxRate(
+    productId: string,
+    variantId: string
+  ): Promise<{ code: string | null; countryIso2: string | null }> {
+    try {
+      const stored = await this.productsService.getEffectiveTaxRate(productId, variantId);
+      return { code: stored.code, countryIso2: stored.countryIso2 };
+    } catch (error) {
+      this.logger.warn(
+        `Could not read the catalogue tax rate for variant ${variantId}: ${(error as Error).message}`
+      );
+      return { code: null, countryIso2: null };
+    }
   }
 }
 

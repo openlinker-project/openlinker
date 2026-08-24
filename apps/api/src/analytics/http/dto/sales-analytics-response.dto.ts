@@ -112,6 +112,38 @@ export class SalesAnalyticsHeadlineDto {
   @ApiProperty({ type: [DailyTrendPointDto] })
   trend!: DailyTrendPointDto[];
 
+  @ApiProperty({
+    description:
+      'VAT-exclusive counterpart of revenue (net-sales tax-rate epic). Excludes an order that predates per-line tax rates or carries any line with an unresolvable rate — see netExcludedCount/netExcludedValue for what was excluded. Still gross of returns/refunds, which are not modeled — this is not yet the fully-netted "Net Sales" figure the metrics spec defines.',
+  })
+  netRevenue!: number;
+
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    description:
+      'netRevenue divided by the net-eligible order count (orderCount minus netExcludedCount). null when that count is 0.',
+  })
+  netAverageOrderValue!: number | null;
+
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    description: 'VAT-exclusive counterpart of medianOrderValue. null when no net-eligible order matches the range.',
+  })
+  netMedianOrderValue!: number | null;
+
+  @ApiProperty({
+    description:
+      'Orders in range excluded from netRevenue — pre-rollout history (no tax rate was ever collected) or carrying at least one line with an unresolvable tax rate. Disjoint from unconvertedCount, which is a currency-stamp exclusion, not a tax-rate one.',
+  })
+  netExcludedCount!: number;
+
+  @ApiProperty({
+    description: 'Native-currency sum for netExcludedCount — informational only, may mix currencies.',
+  })
+  netExcludedValue!: number;
+
   static fromDomain(headline: SalesAnalyticsHeadline): SalesAnalyticsHeadlineDto {
     const dto = new SalesAnalyticsHeadlineDto();
     dto.revenue = headline.revenue;
@@ -127,6 +159,11 @@ export class SalesAnalyticsHeadlineDto {
     dto.unconvertedValue = headline.unconvertedValue;
     dto.unconvertedCurrency = headline.unconvertedCurrency;
     dto.trend = headline.trend.map((point) => DailyTrendPointDto.fromDomain(point));
+    dto.netRevenue = headline.netRevenue;
+    dto.netAverageOrderValue = headline.netAverageOrderValue;
+    dto.netMedianOrderValue = headline.netMedianOrderValue;
+    dto.netExcludedCount = headline.netExcludedCount;
+    dto.netExcludedValue = headline.netExcludedValue;
     return dto;
   }
 }
@@ -202,6 +239,26 @@ export class ChannelSalesAnalyticsDto {
   })
   coverageComplete!: boolean;
 
+  @ApiProperty({ description: 'Same meaning as the headline netRevenue field, scoped to this channel.' })
+  netRevenue!: number;
+
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    description: 'Same meaning as the headline netAverageOrderValue field, scoped to this channel.',
+  })
+  netAverageOrderValue!: number | null;
+
+  @ApiProperty({
+    description: 'Same meaning as the headline netExcludedCount field, scoped to this channel.',
+  })
+  netExcludedCount!: number;
+
+  @ApiProperty({
+    description: 'Same meaning as the headline netExcludedValue field, scoped to this channel.',
+  })
+  netExcludedValue!: number;
+
   static fromDomain(channel: ChannelSalesAnalytics): ChannelSalesAnalyticsDto {
     const dto = new ChannelSalesAnalyticsDto();
     dto.sourceConnectionId = channel.sourceConnectionId;
@@ -219,6 +276,10 @@ export class ChannelSalesAnalyticsDto {
     dto.revenueShare = channel.revenueShare;
     dto.trend = channel.trend.map((point) => DailyTrendPointDto.fromDomain(point));
     dto.coverageComplete = channel.coverageComplete;
+    dto.netRevenue = channel.netRevenue;
+    dto.netAverageOrderValue = channel.netAverageOrderValue;
+    dto.netExcludedCount = channel.netExcludedCount;
+    dto.netExcludedValue = channel.netExcludedValue;
     return dto;
   }
 }

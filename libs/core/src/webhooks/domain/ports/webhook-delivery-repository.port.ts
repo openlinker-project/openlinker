@@ -52,10 +52,15 @@ export interface WebhookDeliveryRepositoryPort {
   insertIfNew(input: WebhookDeliveryUpsertInput): Promise<WebhookDeliveryInsertResult>;
 
   /**
-   * Deletes a webhook-delivery row by event-key (#711). Called when downstream
-   * publishing fails after `insertIfNew` succeeded — the deletion allows the
-   * source's retry to re-enter the dedup gate cleanly. Mirrors the
-   * `clearProcessing` semantics of the Redis-side dedup service.
+   * Deletes a webhook-delivery row by event-key (#711).
+   *
+   * @deprecated Has NO production caller since #2280. It implemented the
+   * compensating delete that covered a publish failure after `insertIfNew`
+   * succeeded; the durable spine replaced compensation with a transaction, so a
+   * pre-commit failure rolls both rows back and a post-commit delete would
+   * orphan the committed job and eat the source's retry. Kept for the
+   * non-webhook callers a future path might need — do NOT reintroduce it on
+   * the webhook path (see the #2280 amendment in ADR-049).
    *
    * No-op if the row doesn't exist.
    */

@@ -226,6 +226,9 @@ describe('OrderLineItemRepository', () => {
           unconverted_order_count: '1',
           reporting_currency: 'EUR',
           unconverted_currency: 'PLN',
+          net_revenue: '100',
+          net_excluded_revenue: '23.45',
+          net_excluded_line_count: '2',
         },
       ]);
       const totalQb = makeTotalQb('7');
@@ -246,6 +249,9 @@ describe('OrderLineItemRepository', () => {
             unconvertedOrderCount: 1,
             currency: 'EUR',
             unconvertedCurrency: 'PLN',
+            netRevenue: 100,
+            netExcludedRevenue: 23.45,
+            netExcludedLineCount: 2,
           },
         ],
         total: 7,
@@ -325,6 +331,9 @@ describe('OrderLineItemRepository', () => {
             unconverted_revenue: '0',
             reporting_currency: 'EUR',
             unconverted_currency: null,
+            net_revenue: '40',
+            net_excluded_revenue: '0',
+            net_excluded_line_count: '0',
           },
         ]),
       });
@@ -344,6 +353,9 @@ describe('OrderLineItemRepository', () => {
           unconvertedRevenue: 0,
           currency: 'EUR',
           unconvertedCurrency: null,
+          netRevenue: 40,
+          netExcludedRevenue: 0,
+          netExcludedLineCount: 0,
         },
       ]);
     });
@@ -367,6 +379,9 @@ describe('OrderLineItemRepository', () => {
             unconverted_revenue: '40',
             reporting_currency: null,
             unconverted_currency: 'PLN',
+            net_revenue: '0',
+            net_excluded_revenue: '0',
+            net_excluded_line_count: '0',
           },
         ]),
       });
@@ -382,6 +397,9 @@ describe('OrderLineItemRepository', () => {
           unconvertedRevenue: 40,
           currency: null,
           unconvertedCurrency: 'PLN',
+          netRevenue: 0,
+          netExcludedRevenue: 0,
+          netExcludedLineCount: 0,
         },
       ]);
     });

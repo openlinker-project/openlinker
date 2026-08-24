@@ -8,6 +8,7 @@
  */
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
+import { resolveWorkerRoles } from './roles/worker-role.types';
 import { Logger } from '@openlinker/shared/logging';
 import { installNestLogger } from '@openlinker/shared/logging/nest';
 
@@ -18,11 +19,16 @@ async function bootstrap(): Promise<void> {
   // so even pre-Nest-init failures from this bootstrap land in Nest's formatter.
   installNestLogger();
 
-  const app = await NestFactory.createApplicationContext(AppModule, {
+  // Role selection happens BEFORE module composition (#2279, ADR-051): an
+  // unknown role throws here, failing the boot loudly instead of running a
+  // worker that silently carries nothing.
+  const roles = resolveWorkerRoles(process.env.OL_WORKER_ROLE);
+
+  const app = await NestFactory.createApplicationContext(AppModule.forRoles(roles), {
     logger: ['error', 'warn', 'log', 'debug', 'verbose'],
   });
 
-  logger.log('Worker application started');
+  logger.log(`Worker application started (roles: ${roles.join(', ')})`);
   logger.log('Background workers are running...');
 
   // Graceful shutdown

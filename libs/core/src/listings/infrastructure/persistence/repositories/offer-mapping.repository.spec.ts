@@ -300,6 +300,7 @@ describe('OfferMappingRepository', () => {
         publicationStatus: 'active',
         lifecycle: 'Active',
         validationMessages: [],
+        validationProblems: [],
         lastStatusSyncedAt: now,
       });
       expect(result.items[0].commercial).toEqual({
@@ -375,6 +376,7 @@ describe('OfferMappingRepository', () => {
         publicationStatus: null,
         lifecycle: 'Unsynced',
         validationMessages: [],
+        validationProblems: [],
         lastStatusSyncedAt: null,
       });
     });
@@ -391,6 +393,7 @@ describe('OfferMappingRepository', () => {
         publicationStatus: null,
         lifecycle: 'Unsynced',
         validationMessages: [],
+        validationProblems: [],
         lastStatusSyncedAt: null,
       });
     });

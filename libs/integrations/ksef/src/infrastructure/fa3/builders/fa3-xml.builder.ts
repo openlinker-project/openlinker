@@ -42,6 +42,11 @@ import { serializeXml, XML_ATTR_PREFIX, type XmlNode, type XmlNodeObject } from 
 
 /** Number of decimal places FA(3) monetary fields are rendered to. */
 const MONEY_SCALE = 2;
+/**
+ * Fraction digits `TKwotowy2` permits (XSD line 1152) - the type `P_9A` uses.
+ * Distinct from `MONEY_SCALE`, and the distinction is the #2251 fix.
+ */
+const UNIT_MONEY_SCALE = 8;
 
 /**
  * Max fraction digits FA(3) renders a quantity (`P_8B`, type `TIlosci`) to.
@@ -114,6 +119,32 @@ const BAND_EMIT_ORDER: ReadonlyArray<Fa3P12Value> = [
  */
 function money(value: number): string {
   return (Math.round((value + Number.EPSILON) * 100) / 100 + 0).toFixed(MONEY_SCALE);
+}
+
+/**
+ * Render a UNIT price. `TKwotowy2` (XSD line 1152) permits **8** fraction
+ * digits, not 2, and that difference is load-bearing (#2251).
+ *
+ * THE ROUNDING RULE, stated once: **the LINE is the unit of rounding, and the
+ * unit price is derived from it at the schema's full precision** - never the
+ * other way round. The buyer paid a gross LINE amount, so the line's net
+ * (`P_11`) is what anchors to a real figure; a unit net is a derived display
+ * value that only sometimes has an exact 2dp form.
+ *
+ * Rendering `P_9A` through `money()` broke that. On 100 x 1.99 at 23% the line
+ * net is 161.79, but the unit net 1.61788... rounded to 1.62 multiplies back to
+ * **162.00** - so the document contradicted itself by 21 grosze, and a reader
+ * checking `P_9A x P_8B == P_11` was right to complain. Emitting the full
+ * precision the schema already allows makes the two agree.
+ *
+ * Trailing zeros are trimmed so an ordinary 2dp price still reads as `1.99`
+ * rather than `1.99000000`; the pattern permits 1-8 digits, so a bare integer
+ * keeps a single `.0`.
+ */
+function unitMoney(value: number): string {
+  const fixed = (Math.round((value + Number.EPSILON) * 1e8) / 1e8 + 0).toFixed(UNIT_MONEY_SCALE);
+  const trimmed = fixed.replace(/0+$/, '');
+  return trimmed.endsWith('.') ? `${trimmed}0` : trimmed;
 }
 
 /**
@@ -191,7 +222,9 @@ function lineNode(line: Fa3Line, ordinal: number, stanPrzed = false): XmlNodeObj
     // catch but KSeF rejects at clearance - the optional element is omitted
     // instead (defense-in-depth with the command composer's positive-quantity
     // gate, which covers only the plain-issue path).
-    ...(line.quantity > 0 ? { P_9A: money(lineNet(line) / line.quantity) } : {}),
+    // `TKwotowy2` allows 8 fraction digits, so the unit net is emitted at full
+    // precision and `P_9A x P_8B` reconciles with `P_11` (#2251).
+    ...(line.quantity > 0 ? { P_9A: unitMoney(lineNet(line) / line.quantity) } : {}),
     // P_11 is the line's NET sale value — never the gross. Shared with the
     // band aggregation via `lineNet` so the two can't diverge.
     P_11: money(lineNet(line)),
@@ -511,4 +544,40 @@ export function buildFa3Xml(input: Fa3BuilderInput): RawFa3Xml {
   faktura.Fa = faNode(input);
   const tree: XmlNodeObject = { Faktura: faktura };
   return serializeXml(tree) as RawFa3Xml;
+}
+
+/**
+ * The per-line amounts THIS builder puts in the document (#2251).
+ *
+ * For KSeF there is nothing external to copy back - OpenLinker builds the
+ * FA(3) itself, so the adapter is the calculator and has to report the figures
+ * it wrote rather than let core recompute them and disagree with the XML.
+ *
+ * Uses the same `lineNet` the XML does, so the reported net cannot drift from
+ * `P_11` - and the unit net is the unrounded line net divided by quantity, the
+ * same value `P_9A` renders at `TKwotowy2`'s eight fraction digits. Rounding
+ * here is 2dp, because a reported figure is money rather than a schema field.
+ *
+ * `lineNumber` is the 1-based position in `lines`, which is the order the
+ * builder emits `FaWiersz` nodes in.
+ */
+export function describeFa3LineAmounts(
+  lines: readonly Fa3Line[],
+): Array<{ lineNumber: number; unitNet: number; net: number; tax: number; gross: number }> {
+  return lines.map((line, index) => {
+    const gross = round2(line.quantity * line.unitPriceGross);
+    const net = round2(lineNet(line));
+    return {
+      lineNumber: index + 1,
+      unitNet: line.quantity > 0 ? round2(lineNet(line) / line.quantity) : 0,
+      net,
+      tax: round2(gross - net),
+      gross,
+    };
+  });
+}
+
+/** 2dp, matching `money()`'s rounding so the reported figures agree with the XML. */
+function round2(value: number): number {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
 }

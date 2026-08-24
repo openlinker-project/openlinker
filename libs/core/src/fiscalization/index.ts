@@ -21,7 +21,11 @@ export * from './domain/exceptions/duplicate-fiscal-registration-record.exceptio
 export * from './domain/exceptions/fiscal-registration-record-not-found.exception';
 export * from './domain/exceptions/fiscal-registration-not-in-doubt.exception';
 export * from './domain/exceptions/missing-idempotency-key.exception';
+// A missing per-line rate holds the registration (#2252, ADR-063 § 6).
+export * from './domain/exceptions/missing-tax-rate.exception';
 export * from './domain/exceptions/order-already-registered.exception';
+export * from './domain/exceptions/order-already-has-invoice.exception';
+export * from './domain/exceptions/fiscal-registration-contended.exception';
 export { InvalidFiscalLineError } from './application/mappers/errors/invalid-fiscal-line.error';
 export { UnsupportedFiscalPriceTreatmentError } from './application/mappers/errors/unsupported-fiscal-price-treatment.error';
 export {

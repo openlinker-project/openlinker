@@ -129,6 +129,8 @@ import {
   type UpdateOfferFieldsCommand,
   type UpdateOfferQuantityCommand,
 } from '@openlinker/core/listings';
+import { supportedErliTaxRates, toErliTaxRate } from './erli-tax-rate.mapper';
+import { isTaxRateStrictEnabled } from '@openlinker/core/sales-documents';
 
 import { ERLI_DESCRIPTION_FORMAT } from './erli-description-format';
 import type { CachePort } from '@openlinker/shared';
@@ -152,6 +154,7 @@ import type {
   ErliProductResource,
   ErliResponsibleProducerItem,
 } from './erli-product.types';
+import { mapErliBuyableProblems } from './erli-buyable-problem.mapper';
 
 /** Erli prices are PLN-only integers in minor units (grosze) — no currency field on the wire. */
 const ERLI_CURRENCY = 'PLN';
@@ -174,6 +177,11 @@ const PATCH_KEY_TO_ERLI_FROZEN_NAME: Partial<Record<keyof ErliProductPatchBody, 
   price: 'price',
   name: 'name',
   description: 'description',
+  // #2249: Erli sets `frozen.taxRate` the moment the seller edits the field in
+  // their panel. That is the signal a PERSON chose the value, so OL skips the
+  // write - and `force` stays deliberately unused, because overriding a
+  // deliberate human tax decision is the one write worth getting wrong least.
+  taxRate: 'taxRate',
 };
 
 /**
@@ -237,6 +245,13 @@ export class ErliOfferManagerAdapter
     ResponsibleProducerReader,
     DeliveryPriceListReader
 {
+  /**
+   * Connections already told that their Erli tax rate is seller-frozen (#2249).
+   * A module-level `Set` on the instance rather than a per-call log, so one
+   * deliberate seller decision is reported once instead of on every propagation.
+   */
+  private readonly frozenTaxRateReported = new Set<string>();
+
   private readonly logger = new Logger(ErliOfferManagerAdapter.name);
 
   /**
@@ -677,9 +692,25 @@ export class ErliOfferManagerAdapter
     for (const key of Object.keys(result) as (keyof ErliProductPatchBody)[]) {
       const erliName = PATCH_KEY_TO_ERLI_FROZEN_NAME[key];
       if (erliName !== undefined && frozen[erliName] === true) {
-        this.logger.debug(
-          `Skipping frozen Erli field "${erliName}" on field-update [connectionId=${this.connectionId}]`,
-        );
+        if (key === 'taxRate') {
+          // #2249: a frozen tax rate is INFORMATION, not an error - the seller
+          // set it in their panel deliberately, and that is exactly the signal
+          // that makes a later shop-versus-channel disagreement attributable to
+          // a person. Logged once per connection so a nightly propagation pass
+          // does not turn one deliberate decision into a recurring complaint,
+          // and `force` is never sent.
+          if (!this.frozenTaxRateReported.has(this.connectionId)) {
+            this.frozenTaxRateReported.add(this.connectionId);
+            this.logger.log(
+              `Erli tax rate is seller-frozen on this connection; OpenLinker will not overwrite it ` +
+                `[connectionId=${this.connectionId}]`,
+            );
+          }
+        } else {
+          this.logger.debug(
+            `Skipping frozen Erli field "${erliName}" on field-update [connectionId=${this.connectionId}]`,
+          );
+        }
         delete result[key];
       }
     }
@@ -844,6 +875,62 @@ export class ErliOfferManagerAdapter
     return erliProductPath(rawId);
   }
 
+  /**
+   * The Erli enum value for the command's neutral rate (#2249), or `undefined`
+   * when there is no rate and strict enforcement is off.
+   *
+   * Refuses rather than omitting, in both failure directions, because an
+   * omitted rate is the worse outcome on this platform: Erli publishes the
+   * product and then marks it not-buyable with `missingTaxRate`, which nobody
+   * sees until an operator wonders why the listing gets no orders.
+   *
+   * The no-rate refusal is gated on `OL_TAX_RATE_STRICT_ENABLED` (#2245
+   * review). Catalogue coverage is zero on deploy, so refusing every rate-less
+   * publish on day one fails every child of every bulk batch, and unlike
+   * issuance there is no badge or counter to read that from. With the switch
+   * off the field is omitted exactly as it was before this epic, and Erli's own
+   * `missingTaxRate` remains the signal. The not-expressible refusal is NOT
+   * gated: there the shop DID name a rate Erli cannot carry, which is a real
+   * conflict at any coverage level.
+   */
+  private resolveErliTaxRate(cmd: CreateOfferCommand): string | undefined {
+    if (!cmd.taxRate) {
+      if (!isTaxRateStrictEnabled()) {
+        this.logger.warn(
+          `Publishing an Erli product with no tax rate because ` +
+            `OL_TAX_RATE_STRICT_ENABLED is off. Erli will mark it not-buyable ` +
+            `("missingTaxRate") until the rate is added in the shop's catalogue and the ` +
+            `product is re-synced.`,
+        );
+        return undefined;
+      }
+      throw new OfferCreateRejectedException(this.adapterKey, 0, [
+        {
+          field: 'taxRate',
+          code: 'TAX_RATE_MISSING',
+          message:
+            `No tax rate is known for this product, and Erli blocks a product without one ` +
+            `("missingTaxRate"). Add the rate in the shop's catalogue and re-sync the product; ` +
+            `OpenLinker does not substitute one.`,
+        },
+      ]);
+    }
+    const erliTaxRate = toErliTaxRate(cmd.taxRate);
+    if (erliTaxRate === null) {
+      throw new OfferCreateRejectedException(this.adapterKey, 0, [
+        {
+          field: 'taxRate',
+          code: 'TAX_RATE_NOT_EXPRESSIBLE',
+          message:
+            `Erli has no tax value for "${cmd.taxRate}". Supported: ` +
+            `${supportedErliTaxRates().join(', ')}. Set one of those on the product in the shop, ` +
+            `or list it on a channel that supports the code.`,
+        },
+      ]);
+    }
+    return erliTaxRate;
+  }
+
   private buildCreateBody(cmd: CreateOfferCommand): ErliProductCreateBody {
     // Erli requires name, images, price, stock, dispatchTime on create. Fail
     // CLOSED locally on every required field (same posture as dispatchTime) so a
@@ -879,6 +966,16 @@ export class ErliOfferManagerAdapter
     }
     if (cmd.variantBarcode != null) {
       body.ean = cmd.variantBarcode;
+    }
+    // #2249 (ADR-063) — the shop's rate, propagated onto the Erli product.
+    // Refused rather than omitted: Erli's own `buyableProblems.missingTaxRate`
+    // blocks a rate-less product server-side, so omitting it trades an
+    // actionable error here for a silently not-buyable listing an operator has
+    // to go and discover. `oo` has no Erli equivalent and is refused for the
+    // same reason - a nearest-looking token would be a real sale taxed wrongly.
+    const erliTaxRate = this.resolveErliTaxRate(cmd);
+    if (erliTaxRate !== undefined) {
+      body.taxRate = erliTaxRate;
     }
     // Taxonomy (#985 / #1096): prefer the resolved Allegro id, else the master
     // shop's own categories (`source:"shop"`), else omit — Erli's API makes
@@ -990,6 +1087,22 @@ export class ErliOfferManagerAdapter
     }
     if (fields.description !== undefined) {
       body.description = flattenDescription(fields.description);
+    }
+    // #2249: propagate a rate change onto the live product. An unmappable code
+    // is DROPPED rather than throwing, unlike on the create path: a create that
+    // cannot state its tax must not happen at all, while an update that cannot
+    // is a partial update of an offer that already exists and already sells.
+    // Throwing here would take a title or price fix down with it.
+    if (fields.taxRate !== undefined) {
+      const erliTaxRate = toErliTaxRate(fields.taxRate);
+      if (erliTaxRate === null) {
+        this.logger.warn(
+          `Erli has no tax value for "${fields.taxRate}"; leaving the offer's rate unchanged ` +
+            `[connectionId=${this.connectionId}]`,
+        );
+      } else {
+        body.taxRate = erliTaxRate;
+      }
     }
     return body;
   }
@@ -1170,12 +1283,32 @@ function readDeliveryPriceListParam(
 }
 
 /**
- * Map Erli's native product status onto the neutral closed `OfferPublicationStatus`
- * union (#989). Erli has no `'rejected'` member in OL's union, so a rejection is
- * surfaced as `'inactive'` carrying the reason in `validationErrors` (no core enum
- * change — additive-only per offer-status-read.types ADR-009 note). `'accepted'`
- * (stored but still propagating through Erli's ~20-min cache) → `'activating'`.
- * Unknown/absent → `'inactive'` (conservative; never claims live).
+ * Map Erli's native product read onto the neutral `OfferStatusReadResult` (#989,
+ * corrected by #2231).
+ *
+ * Erli reports two independent things and OL needs both. `status` is publication
+ * (`active` | `inactive`, nullable), and `buyableProblems` is WHY the offer
+ * cannot be bought. Before #2231 only `status` was read, so `validationErrors`
+ * was always empty and every blocked Erli offer landed in the neutral `Draft`
+ * bucket - the one an operator has no reason to open - while `Invalid` stayed
+ * permanently empty. The reasons now ride along as neutral validation errors,
+ * which is all it takes: `resolveOfferLifecycle` already splits `inactive` on
+ * whether messages are present.
+ *
+ * Three deliberate mapping decisions:
+ *
+ * - `archived: true` reports `'ended'`, not `'inactive'`. Erli's own description
+ *   is that an archived product cannot be bought and disappears from the seller
+ *   panel, which is what `'ended'` means - and it is also the only status the
+ *   duplicate guard (`countByConnectionAndVariants`) treats as re-listable, so
+ *   an archived offer becomes fixable through the wizard instead of being
+ *   silently skipped.
+ * - `status: 'active'` stays `'active'` even when problems are present. Erli is
+ *   the authority on whether it published the offer; inventing `'inactive'`
+ *   because OL judged the offer unbuyable would put words in the marketplace's
+ *   mouth. The problems still ride along, so the row still carries its reason.
+ * - Absent/unrecognised `status` keeps the conservative `'inactive'` (never
+ *   claims live). The field is `nullable`, so this arm is reachable.
  *
  * `commercial` (#2024) is read off this SAME already-fetched `product` resource
  * (the identical `price`/`stock` fields `toMarketplaceOffer` maps for `getOffer`)
@@ -1183,22 +1316,16 @@ function readDeliveryPriceListParam(
  */
 function mapErliStatusToReadResult(product: ErliProductResource): OfferStatusReadResult {
   const commercial = toErliCommercialObservation(product);
+  const validationErrors = mapErliBuyableProblems(product.buyableProblems);
+  if (product.archived === true) {
+    return { publicationStatus: 'ended', validationErrors, commercial };
+  }
   switch (product.status) {
     case 'active':
-      return { publicationStatus: 'active', validationErrors: [], commercial };
-    case 'accepted':
-      return { publicationStatus: 'activating', validationErrors: [], commercial };
-    case 'rejected':
-      return {
-        publicationStatus: 'inactive',
-        validationErrors: [
-          { code: 'ERLI_REJECTED', message: product.statusReason ?? 'Erli rejected the offer.' },
-        ],
-        commercial,
-      };
+      return { publicationStatus: 'active', validationErrors, commercial };
     case 'inactive':
     default:
-      return { publicationStatus: 'inactive', validationErrors: [], commercial };
+      return { publicationStatus: 'inactive', validationErrors, commercial };
   }
 }
 

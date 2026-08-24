@@ -83,6 +83,7 @@ import {
 } from '../util/resolve-allegro-product-card-by-ean';
 import {
   resolveCategoriesForBatchByEan,
+  resolveBatchConcurrency,
   resolveStreamConcurrency,
   streamCategoriesForBatchByEan,
 } from '../util/resolve-categories-for-batch-by-ean';
@@ -104,6 +105,7 @@ import type {
   AllegroOfferEventsResponse,
   AllegroOfferFieldsPatchBody,
   AllegroProductOfferCreateRequest,
+  AllegroTaxSettingsResponse,
   AllegroProductOfferCreateResponse,
   AllegroProductSetEntry,
   AllegroValidationError,
@@ -120,6 +122,14 @@ import { AllegroApiException } from '../../domain/exceptions/allegro-api.excepti
 import { Logger, formatBodyForLog } from '@openlinker/shared/logging';
 import { createHash } from 'crypto';
 import { sanitizeAllegroName } from '../util/sanitize-allegro-name';
+import {
+  formatAllegroRate,
+  readPermittedTaxRates,
+  toAllegroRate,
+  type PermittedTaxRate,
+} from './allegro-tax-rate.mapper';
+import { isTaxRateStrictEnabled } from '@openlinker/core/sales-documents';
+
 import { uploadImagesViaAllegro } from '../util/upload-images-via-allegro';
 import { uploadSafetyAttachmentViaAllegro } from '../util/upload-safety-attachment-via-allegro';
 import type { AllegroQuantityCommandRepositoryPort } from '../../index';
@@ -127,6 +137,14 @@ import { AllegroQuantityCommand } from '../../index';
 
 /** Adapter key registered for the Allegro marketplace integration. */
 const ALLEGRO_ADAPTER_KEY = 'allegro.publicapi.v1';
+
+/**
+ * Country the offer's tax settings are written for when the catalogue rate
+ * carries no provenance country (#2249). Allegro's marketplace is PL-first and
+ * `taxSettings.rates[]` requires a country, so a default is unavoidable; it is
+ * a named constant rather than an inline literal so the assumption is visible.
+ */
+const DEFAULT_ALLEGRO_TAX_COUNTRY = 'PL';
 
 /**
  * Allegro's hard limit on `body.name` (the offer title). Platform-specific, so
@@ -319,11 +337,17 @@ export class AllegroOfferManagerAdapter
   private readonly catParamsTtlSec: number;
   /**
    * The operator's own outbound concurrency cap, read once at construction
-   * (#2229). Clamps the streamed resolve ceiling downward - see
-   * `resolveStreamConcurrency`. Read from the connection rather than injected
-   * so the reported and enforced ceilings share one input.
+   * (#2229). Clamps the resolve ceilings downward - see
+   * `resolveStreamConcurrency` / `resolveBatchConcurrency`. Read from the
+   * connection rather than injected so the reported and enforced ceilings share
+   * one input.
+   *
+   * Typed `unknown` on purpose: `Connection.config` is a JSONB column, so the
+   * declared `ConnectionRateLimit.maxConcurrent?: number` is a shape the read
+   * cannot guarantee. The coercion lives in one covered place, inside the
+   * resolver.
    */
-  private readonly configuredMaxConcurrent: number | undefined;
+  private readonly configuredMaxConcurrent: unknown;
 
   constructor(
     private readonly connectionId: string,
@@ -1161,7 +1185,12 @@ export class AllegroOfferManagerAdapter
   async resolveCategoriesForBatchByEan(
     input: BatchCategoryByEanInput
   ): Promise<Map<string, EanMatchResult>> {
-    return resolveCategoriesForBatchByEan(this.httpClient, this.cache, this.connectionId, input);
+    return resolveCategoriesForBatchByEan(this.httpClient, this.cache, this.connectionId, input, {
+      // The batch default stays narrower than the streamed one (#2215), but it
+      // goes through the same clamp so the operator's `maxConcurrent` binds on
+      // every resolve path rather than only the one that reports itself (#2229).
+      concurrency: resolveBatchConcurrency(this.configuredMaxConcurrent).maxInFlight,
+    });
   }
 
   /**
@@ -1382,6 +1411,34 @@ export class AllegroOfferManagerAdapter
       callerBody.name = sanitized;
     }
 
+    // #2249 — propagate a rate change onto the live offer. An unmappable code is
+    // DROPPED rather than raising, unlike on the create path: a create that
+    // cannot state its tax must not happen at all, while an update that cannot
+    // is a partial update of an offer that already exists and already sells, and
+    // raising would take a title or price fix down with it. The category's
+    // permitted-values check is not repeated here - Allegro validates the PATCH
+    // itself, and a second discovery call per update would double the request
+    // count on the hot path.
+    if (cmd.fields.taxRate !== undefined) {
+      const rate = toAllegroRate(cmd.fields.taxRate);
+      if (rate === null) {
+        this.logger.warn(
+          `Allegro offer tax settings carry a numeric rate, so "${cmd.fields.taxRate}" cannot be ` +
+            `patched; leaving the offer's rate unchanged: offerId=${cmd.externalOfferId} ` +
+            `connection=${this.connectionId}`
+        );
+      } else {
+        // Same exact-string rule as the create path (#2249). No permitted-values
+        // read here - this is the hot update path and Allegro validates the
+        // PATCH itself - so the two-decimal fallback is what goes on the wire.
+        callerBody.taxSettings = {
+          rates: [
+            { rate: formatAllegroRate(rate, []), countryCode: DEFAULT_ALLEGRO_TAX_COUNTRY },
+          ],
+        };
+      }
+    }
+
     if (cmd.fields.description !== undefined) {
       callerBody.description = {
         sections: cmd.fields.description.sections.map((section) => ({
@@ -1570,6 +1627,13 @@ export class AllegroOfferManagerAdapter
       ]);
     }
 
+    // #2249 (ADR-063) — preflight the tax rate BEFORE anything is created.
+    // Allegro's own tax settings are what make an order line report a rate at
+    // all: OL wrote nothing here until this epic, so every offer it published
+    // produced `tax: null` on purchase. Resolved up front so a refusal costs no
+    // image upload and no product card.
+    const taxSettings = await this.resolveTaxSettings(cmd);
+
     // #431 — smart-link pre-step. Compute once at the top so the body
     // builder + platform-params applier stay synchronous (their current
     // contract). On `unique`, `productSet[0]` becomes a card-link reference
@@ -1578,6 +1642,9 @@ export class AllegroOfferManagerAdapter
     const cardLinkResult = await this.maybeResolveProductCard(cmd);
 
     const body = this.buildCreateOfferRequest(cmd, cardLinkResult);
+    if (taxSettings) {
+      body.taxSettings = taxSettings;
+    }
 
     // Pre-step: re-host any operator image URLs onto Allegro's CDN. Allegro
     // resolves URLs in `images[]` server-side and rejects offer creation when
@@ -1890,6 +1957,133 @@ export class AllegroOfferManagerAdapter
     this.applyPlatformParams(body, platformParams, cmd.parameters, cardLinkResult, cmd.condition);
 
     return body;
+  }
+
+  /**
+   * Resolve the offer's `taxSettings` from the neutral command rate (#2249).
+   *
+   * Three refusals, and each names what the operator can act on. Publishing
+   * with the rate silently omitted is precisely how the rate-less offers this
+   * epic exists to fix were produced, and the failure it causes surfaces months
+   * later on somebody's invoice rather than here.
+   *
+   * The first refusal - no rate at all - is gated on
+   * `OL_TAX_RATE_STRICT_ENABLED` (#2245 review). Catalogue coverage is zero on
+   * deploy, so refusing every rate-less publish on day one fails every child of
+   * every bulk batch with no badge, no counter and no held state to read it
+   * from. With the switch off the offer publishes with no `taxSettings`, byte
+   * for byte as it did before this epic. The other two refusals are NOT gated:
+   * they mean the shop DID name a rate and Allegro cannot carry that exact
+   * value, which is a real conflict at any coverage level.
+   *
+   * - **No rate at all.** The shop does not know, and Allegro is not going to
+   *   invent one either. The remedy is in the shop's catalogue.
+   * - **An exemption code.** `taxSettings.rates[]` carries numbers, so `zw` /
+   *   `np` / `oo` cannot be expressed. Publishing without them would list a
+   *   product at the category's default rate, which is a different sale.
+   * - **A rate the category refuses.** `GET /sale/tax-settings` lists what the
+   *   category allows; when OpenLinker's value is not among them the shop
+   *   record is almost certainly the wrong one, so the error names the
+   *   permitted values rather than picking one.
+   *
+   * The permitted-values read is best-effort: a failure to LIST is not a
+   * failure to publish, so it warns and proceeds with the value the shop gave.
+   * Allegro validates the body itself, and refusing a publish because a
+   * secondary discovery call was unavailable would be worse than the check.
+   */
+  private async resolveTaxSettings(
+    cmd: CreateOfferCommand,
+  ): Promise<{ rates: Array<{ rate: string; countryCode: string }> } | undefined> {
+    const categoryId = cmd.overrides?.categoryId;
+    const countryCode = cmd.taxRateCountry ?? DEFAULT_ALLEGRO_TAX_COUNTRY;
+
+    if (!cmd.taxRate) {
+      if (!isTaxRateStrictEnabled()) {
+        this.logger.warn(
+          `Publishing an Allegro offer with no tax rate because ` +
+            `OL_TAX_RATE_STRICT_ENABLED is off. The resulting offer states no tax, so the ` +
+            `orders it produces will carry no rate either. Add the rate in the shop's ` +
+            `catalogue and re-sync the product.`,
+        );
+        return undefined;
+      }
+      throw new OfferCreateRejectedException(ALLEGRO_ADAPTER_KEY, 0, [
+        {
+          field: 'taxRate',
+          code: 'TAX_RATE_MISSING',
+          message:
+            `No tax rate is known for this product, so the offer cannot state what tax it ` +
+            `charges. Add the rate in the shop's catalogue and re-sync the product; ` +
+            `OpenLinker does not substitute one.`,
+        },
+      ]);
+    }
+
+    const rate = toAllegroRate(cmd.taxRate);
+    if (rate === null) {
+      throw new OfferCreateRejectedException(ALLEGRO_ADAPTER_KEY, 0, [
+        {
+          field: 'taxRate',
+          code: 'TAX_RATE_NOT_EXPRESSIBLE',
+          message:
+            `Allegro offer tax settings carry a numeric rate, so the exemption code ` +
+            `"${cmd.taxRate}" cannot be published. Set a numeric rate on the product in the ` +
+            `shop, or list it on a channel that supports the exemption.`,
+        },
+      ]);
+    }
+
+    const permitted = await this.fetchPermittedTaxRates(categoryId, countryCode);
+    if (
+      permitted !== null &&
+      permitted.length > 0 &&
+      !permitted.some((entry) => entry.numeric === rate)
+    ) {
+      throw new OfferCreateRejectedException(ALLEGRO_ADAPTER_KEY, 0, [
+        {
+          field: 'taxRate',
+          code: 'TAX_RATE_NOT_ALLOWED_IN_CATEGORY',
+          message:
+            `This Allegro category does not allow a ${String(rate)}% rate in ${countryCode}. ` +
+            `Allowed: ${permitted.map((entry) => `${entry.wire}%`).join(', ')}. ` +
+            `The shop's rate for this product is most likely the one to correct.`,
+        },
+      ]);
+    }
+
+    // The wire value is Allegro's own published string where we have it (#2249):
+    // the API matches it against the seller's VAT settings exactly, so a bare
+    // `23` is refused where `"23.00"` is accepted.
+    return { rates: [{ rate: formatAllegroRate(rate, permitted ?? []), countryCode }] };
+  }
+
+  /**
+   * What rates the category allows, or `null` when the listing could not be
+   * read. `null` is deliberately distinct from `[]`: an empty list means
+   * Allegro answered and named none, which is not a reason to block.
+   */
+  private async fetchPermittedTaxRates(
+    categoryId: string | undefined,
+    countryCode: string,
+  ): Promise<PermittedTaxRate[] | null> {
+    if (!categoryId) return null;
+    try {
+      const response = await this.httpClient.get<AllegroTaxSettingsResponse>(
+        '/sale/tax-settings',
+        { queryParams: { 'category.id': categoryId, countryCode } },
+      );
+      // Verified against the live sandbox (#2249). The parsing is a pure,
+      // spec-pinned function because the first version of it was a guess about
+      // the response shape and was silently wrong.
+      return readPermittedTaxRates(response.data.rates, countryCode);
+    } catch (error) {
+      this.logger.warn(
+        `Could not read Allegro tax settings for category ${categoryId} (${countryCode}); ` +
+          `publishing with the shop's rate and letting Allegro validate: ` +
+          `${(error as Error).message}`,
+      );
+      return null;
+    }
   }
 
   /**

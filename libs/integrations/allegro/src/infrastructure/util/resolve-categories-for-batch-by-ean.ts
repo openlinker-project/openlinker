@@ -46,6 +46,7 @@ import type {
   EanCategoryMatchStreamItem,
   EanMatchCandidate,
   EanMatchResult,
+  ResolveConcurrencyCeiling,
 } from '@openlinker/core/listings';
 import type {
   AllegroProductCardSummary,
@@ -95,30 +96,28 @@ const DEFAULT_CONCURRENCY = 3;
  *   Reactive protection still applies unconditionally - a 429 parks the client
  *   on `Retry-After` (`AllegroHttpClient`).
  */
-export const STREAM_CONCURRENCY = 9;
+const STREAM_CONCURRENCY = 9;
 const DEFAULT_SEARCH_LIMIT = 10;
 
 /**
- * Resolve the effective in-flight ceiling for one streamed run (#2229).
+ * Clamp one adapter default against the operator's own outbound concurrency
+ * cap (#2229).
  *
- * The single source of truth for BOTH what the adapter reports through
- * `getStreamConcurrency()` and what it actually passes as `concurrency` below.
- * Two call sites, one function, on purpose: a ceiling shown to the operator
- * that differs from the one enforced would be a worse defect than the
- * invisible ceiling #2229 exists to remove.
+ * `Connection.config` is a JSONB column, so `configuredMaxConcurrent` arrives
+ * as `unknown` and is narrowed HERE rather than at the read - one covered place
+ * for the coercion, mirroring `readStockSafetyBuffer`'s shape.
  *
  * An operator's `Connection.config.rateLimit.maxConcurrent` clamps the ceiling
  * DOWNWARD only. Raising it is deliberately not supported - that knob is a
  * safety valve on the operator's own quota, and letting it lift the adapter's
- * pacing would turn a cap into a throttle-release. A non-finite or
- * non-positive configured value is ignored rather than treated as zero, since
- * a zero ceiling would stall every resolve run silently.
+ * pacing would turn a cap into a throttle-release. A non-numeric, non-finite or
+ * non-positive configured value is ignored rather than treated as zero, since a
+ * zero ceiling would stall every resolve run silently.
  */
-export function resolveStreamConcurrency(configuredMaxConcurrent?: number): {
-  maxInFlight: number;
-  source: 'connection-config' | 'adapter-default';
-  adapterDefault: number;
-} {
+function clampToConfiguredMax(
+  adapterDefault: number,
+  configuredMaxConcurrent: unknown,
+): ResolveConcurrencyCeiling {
   const usable =
     typeof configuredMaxConcurrent === 'number' &&
     Number.isFinite(configuredMaxConcurrent) &&
@@ -126,19 +125,44 @@ export function resolveStreamConcurrency(configuredMaxConcurrent?: number): {
       ? Math.floor(configuredMaxConcurrent)
       : undefined;
 
-  if (usable !== undefined && usable < STREAM_CONCURRENCY) {
-    return {
-      maxInFlight: usable,
-      source: 'connection-config',
-      adapterDefault: STREAM_CONCURRENCY,
-    };
+  if (usable !== undefined && usable < adapterDefault) {
+    return { maxInFlight: usable, source: 'connection-config', adapterDefault };
   }
 
-  return {
-    maxInFlight: STREAM_CONCURRENCY,
-    source: 'adapter-default',
-    adapterDefault: STREAM_CONCURRENCY,
-  };
+  return { maxInFlight: adapterDefault, source: 'adapter-default', adapterDefault };
+}
+
+/**
+ * Resolve the effective in-flight ceiling for one STREAMED run (#2229).
+ *
+ * The single source of truth for BOTH what the adapter reports through
+ * `getStreamConcurrency()` and what it actually passes as `concurrency` below.
+ * Two call sites, one function, on purpose: a ceiling shown to the operator
+ * that differs from the one enforced would be a worse defect than the
+ * invisible ceiling #2229 exists to remove. `STREAM_CONCURRENCY` is
+ * deliberately NOT exported, so a third call site cannot reopen that gap by
+ * reaching for the raw number - specs read it back as `adapterDefault`.
+ */
+export function resolveStreamConcurrency(
+  configuredMaxConcurrent?: unknown,
+): ResolveConcurrencyCeiling {
+  return clampToConfiguredMax(STREAM_CONCURRENCY, configuredMaxConcurrent);
+}
+
+/**
+ * Resolve the effective in-flight ceiling for one BATCH run (#2229 review).
+ *
+ * Same clamp, a narrower default. The batch collector stays at
+ * `DEFAULT_CONCURRENCY` because a caller that blocks on the whole map gains
+ * nothing an operator can see from a wider in-flight count while spending more
+ * of the marketplace's rate limit at once (#2215) - but it must still honour
+ * the operator's cap, or the one path outside the declared ceiling would be the
+ * one nobody clamps.
+ */
+export function resolveBatchConcurrency(
+  configuredMaxConcurrent?: unknown,
+): ResolveConcurrencyCeiling {
+  return clampToConfiguredMax(DEFAULT_CONCURRENCY, configuredMaxConcurrent);
 }
 
 /**

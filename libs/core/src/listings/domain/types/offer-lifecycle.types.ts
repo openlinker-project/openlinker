@@ -33,8 +33,9 @@ import type { OfferStatusSnapshotDetails } from './offer-status-snapshot.types';
  * snapshot cannot support that claim: both shipping adapters map a deliberately
  * DEACTIVATED formerly-live offer to `inactive` too, and Erli's
  * `mapErliStatusToReadResult` additionally routes its `default:` branch (a
- * status OL does not recognise, or none at all) to `inactive` with empty
- * `validationErrors`. Operator-facing copy must not promise more than that.
+ * status OL does not recognise, or none at all) to `inactive` - carrying whatever
+ * reasons the channel reported, and empty `validationErrors` when it reported
+ * none (#2231). Operator-facing copy must not promise more than that.
  *
  * `Unsynced` is a deliberate deviation from the #1965 mockup's four tabs, not
  * drift: the status scan is hourly at 100 offers/tick, so most of a large
