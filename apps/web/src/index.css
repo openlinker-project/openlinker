@@ -12076,6 +12076,15 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
 .bulk-editor__banner--error { border-color: var(--status-error-border); background: var(--status-error-soft); color: var(--status-error-fg); }
 .bulk-editor__banner b { color: var(--text-primary); }
 
+/* Variant blocker chips (#2240) - cause + consequence above the banner, so
+   the panel states what is wrong before it states what to do about it. */
+.bulk-editor__blocker-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
 .bulk-editor__img-strip { display: flex; gap: var(--space-2); flex-wrap: wrap; align-items: center; }
 .bulk-editor__img-thumb {
   width: 64px; height: 64px;

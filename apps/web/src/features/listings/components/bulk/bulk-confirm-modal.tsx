@@ -21,6 +21,17 @@ import {
   DialogTitle,
 } from '../../../../shared/ui/dialog';
 
+/** "1 offer" / "2 offers" - the modal used to say "1 offers" (#2240). */
+function countNoun(count: number, noun: string): string {
+  return `${count} ${noun}${count === 1 ? '' : 's'}`;
+}
+
+/** "2 need attention and 1 switched off" - plain list, no Oxford comma. */
+function joinReasons(parts: readonly string[]): string {
+  if (parts.length <= 1) return parts[0] ?? '';
+  return `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`;
+}
+
 interface BulkConfirmModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -30,6 +41,19 @@ interface BulkConfirmModalProps {
   productCount: number;
   /** Sibling variants the operator switched off; skipped in the fan-out (#1741). */
   excludedCount: number;
+  /**
+   * Included variants that still carry a blocker (#2240). Review's Create gate
+   * normally keeps this at 0, but the submit force-excludes any that get
+   * through, so the modal must be able to say so - "1 of 3 variants" is the
+   * whole point of a confirmation.
+   */
+  blockedCount: number;
+  /**
+   * Included, ready variants already listed on the destination (#1837/#2240).
+   * They carry no blocker by design and the backend excludes them at intake, so
+   * counting them as offers would promise work that will not happen.
+   */
+  alreadyListedCount: number;
   /**
    * True when a multi-variant product has both publish + draft variants - the
    * listing goes live with a partial variant selector until completed (#1741).
@@ -55,6 +79,8 @@ export function BulkConfirmModal({
   offerCount,
   productCount,
   excludedCount,
+  blockedCount,
+  alreadyListedCount,
   mixedPublishWarning,
   connectionName,
   marketplaceName,
@@ -65,6 +91,17 @@ export function BulkConfirmModal({
   onConfirm,
 }: BulkConfirmModalProps): ReactElement {
   const [publish, setPublish] = useState(initialPublishImmediately);
+
+  // What the operator selected vs what will actually be created. The gap is the
+  // thing this dialog exists to state.
+  const selectedCount = offerCount + excludedCount + blockedCount + alreadyListedCount;
+  const skipped = [
+    blockedCount > 0
+      ? `${blockedCount} still ${blockedCount === 1 ? 'needs' : 'need'} attention`
+      : '',
+    alreadyListedCount > 0 ? `${alreadyListedCount} already on ${connectionName}` : '',
+    excludedCount > 0 ? `${excludedCount} switched off` : '',
+  ].filter((part) => part !== '');
 
   // Re-sync the local toggle when the parent's shared config changes (e.g.
   // operator went back to Step 1, flipped publishImmediately, returned).
@@ -77,18 +114,20 @@ export function BulkConfirmModal({
     <Dialog open={open} onOpenChange={isSubmitting ? undefined : onOpenChange}>
       <DialogContent>
         <DialogTitle>
-          Create {offerCount} {marketplaceName} offers on {connectionName}?
+          {selectedCount > offerCount
+            ? `List ${offerCount} of ${selectedCount} selected variants on ${connectionName}?`
+            : `Create ${countNoun(offerCount, `${marketplaceName} offer`)} on ${connectionName}?`}
         </DialogTitle>
         <DialogDescription>
-          You're about to create <strong>{offerCount} offers</strong> on{' '}
+          You're about to create <strong>{countNoun(offerCount, 'offer')}</strong> on{' '}
           <strong>{connectionName}</strong> ({marketplaceName}) across{' '}
-          <strong>{productCount} products</strong>
-          {excludedCount > 0 ? (
-            <>
-              , with <strong>{excludedCount}</strong> variant(s) excluded
-            </>
-          ) : null}
-          . Each offer is a separate job; you can follow per-product progress on the
+          <strong>{countNoun(productCount, 'product')}</strong>.{' '}
+          {/* Each reason is named separately (#2240): "excluded" is the operator's
+              own choice, "blocked" is work they can still recover, and "already
+              listed" is the backend skipping a duplicate. Rolling them into one
+              number told the operator nothing about which one applied. */}
+          {skipped.length > 0 ? <>Not listed: {joinReasons(skipped)}. </> : null}
+          Each offer is a separate job; you can follow per-product progress on the
           next page.
         </DialogDescription>
 

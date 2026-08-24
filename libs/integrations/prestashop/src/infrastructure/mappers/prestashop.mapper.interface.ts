@@ -9,7 +9,7 @@
  */
 import type { Product, ProductVariant } from '@openlinker/core/products';
 import type { Inventory } from '@openlinker/core/inventory';
-import type { Order, OrderCreate, OrderStatus } from '@openlinker/core/orders';
+import type { Order, OrderCreate, OrderStatus, OrderTotals } from '@openlinker/core/orders';
 import type { OptionValueResolver } from '../../domain/types/prestashop-product-option.types';
 
 /**
@@ -92,6 +92,16 @@ export interface PrestashopOrder {
   id_customer?: string | number;
   id_address_delivery?: string | number;
   current_state?: string | number;
+  /**
+   * PrestaShop currency id the order was placed in (#2277). Declared rather
+   * than left to the index signature because the order's denomination is read
+   * from it: PrestaShop is multi-currency per ORDER, so this - not any
+   * connection-level setting - is the only field that says what the buyer paid
+   * in. Resolved to an ISO 4217 code by `PrestashopOrderCurrencyResolver`
+   * (the mapper does no I/O), which falls back to the shop default when the
+   * payload omits it.
+   */
+  id_currency?: string | number;
   total_paid?: string | number;
   total_paid_tax_incl?: string | number;
   total_paid_tax_excl?: string | number;
@@ -223,6 +233,21 @@ export interface IPrestashopInventoryMapper {
 }
 
 /**
+ * What `mapOrder` can answer without I/O (#2277).
+ *
+ * `totals.currency` is deliberately absent. Resolving an order's denomination
+ * needs a `GET /currencies/{id}` read, and this mapper is synchronous and does
+ * no I/O by contract - which is exactly how it came to emit a hardcoded
+ * `'EUR'` on every ingested order. Omitting the field makes that a compile
+ * error rather than a plausible literal: `PrestashopOrderSourceAdapter` fills
+ * it from `PrestashopOrderCurrencyResolver` before the order leaves the
+ * adapter, and `IncomingOrderTotals.currency` stays a required string.
+ */
+export type MappedPrestashopOrder = Omit<Order, 'id' | 'totals'> & {
+  totals: Omit<OrderTotals, 'currency'>;
+};
+
+/**
  * PrestaShop Order Mapper Interface
  */
 export interface IPrestashopOrderMapper {
@@ -231,9 +256,13 @@ export interface IPrestashopOrderMapper {
    *
    * @param prestashopOrder - PrestaShop order data
    * @param orderRows - PrestaShop order rows (line items)
-   * @returns OpenLinker Order (without ID - ID mapping handled by adapter)
+   * @returns OpenLinker Order (without ID or currency - see
+   *   {@link MappedPrestashopOrder})
    */
-  mapOrder(prestashopOrder: PrestashopOrder, orderRows: PrestashopOrderRow[]): Omit<Order, 'id'>;
+  mapOrder(
+    prestashopOrder: PrestashopOrder,
+    orderRows: PrestashopOrderRow[]
+  ): MappedPrestashopOrder;
 
   /**
    * Map OpenLinker OrderCreate to PrestaShop cart format

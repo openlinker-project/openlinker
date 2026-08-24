@@ -30,6 +30,17 @@ import { waitForOrderByExternalId } from './orders';
 export interface SynthesizeOrderOptions {
   /** Quantity of the driver variant to sell. Defaults to 1. */
   quantity?: number;
+  /**
+   * PrestaShop currency id to denominate the order in. Defaults to the
+   * webservice client's own default, which is the shop's first currency.
+   *
+   * Threaded onto BOTH the cart and the order: PrestaShop stores
+   * `id_currency` on each, and an order whose cart disagrees is a shape no
+   * storefront checkout produces. Resolve the id with
+   * `PrestashopWebserviceClient.getCurrencyIdByIso` rather than hardcoding
+   * one - ids are per-install.
+   */
+  currencyId?: string;
   /** Override unit gross (tax-incl) price; defaults to the variant/product price. */
   unitPriceTaxIncl?: number;
   /**
@@ -173,6 +184,7 @@ export async function synthesizeOrder(
     idCustomer: customer.id,
     idAddressDelivery: address.id,
     idAddressInvoice: address.id,
+    idCurrency: options.currencyId,
     rows: [{ productId: externalProductId, productAttributeId: externalVariantId ?? '0', quantity }],
   });
 
@@ -184,6 +196,7 @@ export async function synthesizeOrder(
     idAddressDelivery: address.id,
     idAddressInvoice: address.id,
     idCart: cart.id,
+    currencyId: options.currencyId,
     totalProducts,
     totalProductsWt: totalProducts,
     totalPaidTaxExcl: totalPaid,

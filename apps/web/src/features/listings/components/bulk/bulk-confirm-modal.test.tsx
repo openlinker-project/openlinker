@@ -29,6 +29,8 @@ function renderModal(props: Partial<Parameters<typeof BulkConfirmModal>[0]> = {}
       offerCount={5}
       productCount={2}
       excludedCount={0}
+      blockedCount={0}
+      alreadyListedCount={0}
       mixedPublishWarning={false}
       connectionName="My Allegro"
       marketplaceName="Allegro"
@@ -88,14 +90,32 @@ describe('BulkConfirmModal', () => {
     expect(screen.getByText(/across/i)).toHaveTextContent('across 2 products');
   });
 
-  it('mentions excluded variants only when excludedCount > 0', () => {
-    renderModal({ excludedCount: 3 });
-    expect(screen.getByText(/variant\(s\) excluded/i)).toBeInTheDocument();
+  it('names each not-listed reason separately (#2240)', () => {
+    renderModal({ offerCount: 5, excludedCount: 3, blockedCount: 2, alreadyListedCount: 1 });
+
+    // The operator selected 11 variants and 5 will be created; rolling the other
+    // six into one number said nothing about which reason applied to which.
+    expect(
+      screen.getByRole('heading', { name: /list 5 of 11 selected variants on my allegro\?/i }),
+    ).toBeInTheDocument();
+    const summary = screen.getByText(/not listed:/i);
+    expect(summary).toHaveTextContent('2 still need attention');
+    expect(summary).toHaveTextContent('1 already on My Allegro');
+    expect(summary).toHaveTextContent('3 switched off');
   });
 
-  it('omits the excluded-variant clause when excludedCount is 0', () => {
-    renderModal({ excludedCount: 0 });
-    expect(screen.queryByText(/variant\(s\) excluded/i)).not.toBeInTheDocument();
+  it('pluralises correctly at one offer (#2240)', () => {
+    renderModal({ offerCount: 1, productCount: 1 });
+
+    expect(
+      screen.getByRole('heading', { name: /create 1 allegro offer on my allegro\?/i }),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/across/i)).toHaveTextContent('1 product');
+  });
+
+  it('omits the not-listed clause when nothing is skipped', () => {
+    renderModal({ excludedCount: 0, blockedCount: 0, alreadyListedCount: 0 });
+    expect(screen.queryByText(/not listed:/i)).not.toBeInTheDocument();
   });
 
   it('shows the mixed-publish warning when a listing has publish + draft variants', () => {
