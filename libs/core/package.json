@@ -59,6 +59,11 @@
       "require": "./dist/mappings/index.js",
       "default": "./dist/mappings/index.js"
     },
+    "./fulfillment-authority": {
+      "types": "./dist/fulfillment-authority/index.d.ts",
+      "require": "./dist/fulfillment-authority/index.js",
+      "default": "./dist/fulfillment-authority/index.js"
+    },
     "./sales-documents": {
       "types": "./dist/sales-documents/index.d.ts",
       "require": "./dist/sales-documents/index.js",

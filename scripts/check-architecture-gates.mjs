@@ -110,6 +110,15 @@ const KNOWN_CONFIG_KNOBS = new Map([
       key: 'config.invoicing.isPrimary + config.salesDocument.documentKind',
     },
   ],
+  [
+    'libs/core/src/fulfillment-authority/domain/types/authority-config.types.ts',
+    {
+      helper: 'parseAuthorityConfig',
+      key:
+        'config.availabilityAuthority + config.sourcingAuthority + config.fulfillmentExecutor + ' +
+        'config.orderLifecycleAuthority + config.returnsAuthority + config.refundTrigger',
+    },
+  ],
 ]);
 
 /**
@@ -139,8 +148,23 @@ const NON_KNOBS = new Map([
  * is due. Raising this constant is allowed — in the same reviewed change,
  * with a rationale, which is exactly the deliberate revisit the gate exists
  * to force.
+ *
+ * **Raised 5 -> 6 by #2304 (ADR-052 / ADR-053), with this rationale.** The gate
+ * fired on `parseAuthorityConfig`, and the entry above is registered rather than
+ * exempted because it genuinely is per-connection JSONB coercion. What it is
+ * NOT is a fifth instance of the accretion the threshold watches for: it is one
+ * helper reading SIX authority keys through a single enumerated descriptor
+ * table (`AUTHORITY_KIND_DESCRIPTORS`), which is the shared model the gate asks
+ * for, applied inside one domain — the alternative shape, six sibling
+ * `read*`/`parse*` files, would have tripped this same gate five more times and
+ * been the accretion. Authority assignment is deliberately config and not a
+ * table in v1 (DESIGN-oms-authority-model §3 adjudication 3), so a table is not
+ * the available consolidation here.
+ *
+ * The rung is raised by exactly one, so the NEXT unrelated knob still stops and
+ * has this conversation. #2169 remains the tracked revisit.
  */
-const KNOB_THRESHOLD = 5;
+const KNOB_THRESHOLD = 6;
 
 /** Ladder rungs (ADR-048): sub-capabilities that declare master freshness. */
 const KNOWN_RUNGS = new Set(['modified-product-lister.capability.ts']);
