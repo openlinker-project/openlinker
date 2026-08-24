@@ -197,7 +197,9 @@ name is absent from every adapter manifest and from `CoreCapabilityValues`, and 
 resolved solely by narrowing a dispatched `ProductMaster` adapter. A connection's
 `enabledCapabilities` is stamped at create and never retro-filled, so *gating* on a
 newly advertised name would drain nothing for every connection that already exists;
-not advertising it removes the temptation to gate on it.
+not advertising it removes the temptation to gate on it. Consumers of the guard:
+the worker's `master.product.syncDelta` handler and the catalog-trust read
+(`CatalogTrustService`, #2258), which reports the declared rung to the operator.
 
 Read caveat: the freshness reported is **product-level only**. A WooCommerce
 variation edit does not bump the parent's `date_modified`

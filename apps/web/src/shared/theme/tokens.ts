@@ -41,6 +41,11 @@ export const tokens = {
   'space-7': 'var(--space-7)',
   'space-8': 'var(--space-8)',
 
+  // ── Layout heights (#2227) ──────────────────────────────────────
+  // The two pinned strips at the top of the shell.
+  'shell-topbar-height': 'var(--shell-topbar-height)',
+  'demo-banner-height': 'var(--demo-banner-height)',
+
   // ── Radii ───────────────────────────────────────────────────────
   'radius-xs': 'var(--radius-xs)',
   'radius-sm': 'var(--radius-sm)',

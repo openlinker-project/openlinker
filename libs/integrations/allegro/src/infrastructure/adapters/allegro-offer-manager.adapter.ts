@@ -83,6 +83,7 @@ import {
 } from '../util/resolve-allegro-product-card-by-ean';
 import {
   resolveCategoriesForBatchByEan,
+  resolveBatchConcurrency,
   resolveStreamConcurrency,
   streamCategoriesForBatchByEan,
 } from '../util/resolve-categories-for-batch-by-ean';
@@ -319,11 +320,17 @@ export class AllegroOfferManagerAdapter
   private readonly catParamsTtlSec: number;
   /**
    * The operator's own outbound concurrency cap, read once at construction
-   * (#2229). Clamps the streamed resolve ceiling downward - see
-   * `resolveStreamConcurrency`. Read from the connection rather than injected
-   * so the reported and enforced ceilings share one input.
+   * (#2229). Clamps the resolve ceilings downward - see
+   * `resolveStreamConcurrency` / `resolveBatchConcurrency`. Read from the
+   * connection rather than injected so the reported and enforced ceilings share
+   * one input.
+   *
+   * Typed `unknown` on purpose: `Connection.config` is a JSONB column, so the
+   * declared `ConnectionRateLimit.maxConcurrent?: number` is a shape the read
+   * cannot guarantee. The coercion lives in one covered place, inside the
+   * resolver.
    */
-  private readonly configuredMaxConcurrent: number | undefined;
+  private readonly configuredMaxConcurrent: unknown;
 
   constructor(
     private readonly connectionId: string,
@@ -1161,7 +1168,12 @@ export class AllegroOfferManagerAdapter
   async resolveCategoriesForBatchByEan(
     input: BatchCategoryByEanInput
   ): Promise<Map<string, EanMatchResult>> {
-    return resolveCategoriesForBatchByEan(this.httpClient, this.cache, this.connectionId, input);
+    return resolveCategoriesForBatchByEan(this.httpClient, this.cache, this.connectionId, input, {
+      // The batch default stays narrower than the streamed one (#2215), but it
+      // goes through the same clamp so the operator's `maxConcurrent` binds on
+      // every resolve path rather than only the one that reports itself (#2229).
+      concurrency: resolveBatchConcurrency(this.configuredMaxConcurrent).maxInFlight,
+    });
   }
 
   /**

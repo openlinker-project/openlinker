@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<!-- @template name="Automations" description="Operator-facing automation rules index: eight triggers, rule counts, last fired, status." -->
+<helmet><script src="./ds-base.js"></script><style>body{margin:0;background:var(--bg-canvas)}a{color:var(--accent-primary);text-decoration:none}a:hover{color:var(--accent-primary-hover);text-decoration:underline}</style></helmet>
+<x-import component-from-global-scope="OpenLinkerUI.MemoryRouter" hint-size="100%,100%">
+<x-import component-from-global-scope="OpenLinkerUI.PageLayout" hint-size="100%,700px" eyebrow="Operations" title="Automations" actions="{{ headerActions }}">
+<div style="display:grid;gap:var(--space-5);padding-top:var(--space-2);max-width:1180px">
+<sc-if value="{{ showTable }}" hint-placeholder-val="{{ true }}">
+<div style="display:grid;gap:var(--space-4)">
+<div style="display:flex;align-items:flex-end;justify-content:space-between;gap:var(--space-4)">
+<span style="font-family:var(--font-mono);font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-secondary)">Triggers</span>
+<span class="toolbar-chip" style="font-variant-numeric:tabular-nums">8 triggers · 4 rules</span>
+</div>
+<x-import component-from-global-scope="OpenLinkerUI.DataTable" hint-size="100%,420px" columns="{{ columns }}" rows="{{ rows }}" row-key="{{ rowKey }}" caption="Automation triggers"></x-import>
+</div>
+</sc-if>
+<sc-if value="{{ firstRunOn }}" hint-placeholder-val="{{ false }}">
+<div style="display:grid;gap:var(--space-4);max-width:640px;padding:var(--space-6);border:1px solid var(--border-subtle);border-radius:var(--radius-lg);background:var(--bg-surface);box-shadow:var(--shadow-soft)">
+<h2 style="margin:0;font-size:19px;font-weight:600;letter-spacing:var(--tracking-tight);color:var(--text-primary)">You have no automations yet.</h2>
+<p style="margin:0;font-size:13px;line-height:1.6;color:var(--text-secondary)">Most sellers start with this one:</p>
+<p style="margin:0;padding:var(--space-4);border:1px solid var(--border-subtle);border-left:3px solid var(--accent-primary);border-radius:var(--radius-sm);background:var(--bg-surface-muted);font-size:14px;font-weight:600;line-height:1.55;color:var(--text-primary);text-wrap:pretty">When an order is marked packed, buy the shipping label, then tell the marketplace.</p>
+<p style="margin:0;font-size:13px;line-height:1.6;color:var(--text-secondary);text-wrap:pretty">One click at the packing bench instead of three, and the marketplace hears about it straight away.</p>
+<div style="display:flex;gap:var(--space-3);align-items:center;padding-top:var(--space-1)">
+<x-import component-from-global-scope="OpenLinkerUI.Button" hint-size="120px,32px" tone="primary" class="button--sm">Set this up</x-import>
+<x-import component-from-global-scope="OpenLinkerUI.Button" hint-size="150px,32px" tone="secondary" class="button--sm">Start from scratch</x-import>
+</div>
+</div>
+</sc-if>
+</div>
+</x-import>
+</x-import>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1280,&quot;height&quot;:720},&quot;firstRun&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;State&quot;}}">
+const TRIGGERS = [
+  { id: 'hold-on', trigger: 'An order is put on hold', rules: '1 rule', fired: 'never fired', badge: 'Off', tone: 'neutral', kind: 'off' },
+  { id: 'hold-lifted', trigger: 'A hold is lifted', rules: '0 rules', fired: '—', badge: 'None', tone: 'neutral', kind: 'none' },
+  { id: 'hold-long', trigger: 'An order has been on hold for too long', rules: '0 rules', fired: '—', badge: 'None', tone: 'neutral', kind: 'none' },
+  { id: 'deadline', trigger: 'A marketplace dispatch deadline is close', rules: '1 rule', fired: '3 hours ago', badge: 'Active', tone: 'success', kind: 'active' },
+  { id: 'packed', trigger: 'An order is marked packed', rules: '2 rules', fired: '12 minutes ago', badge: 'Active', tone: 'success', kind: 'active' },
+  { id: 'returns-arrive', trigger: 'Returned goods arrive', rules: '0 rules', fired: '—', badge: 'None', tone: 'neutral', kind: 'none' },
+  { id: 'returns-settled', trigger: 'A return is restocked or scrapped', rules: '0 rules', fired: '—', badge: 'None', tone: 'neutral', kind: 'none' },
+  { id: 'oversold', trigger: "We've promised more of something than we have", rules: '0 rules', fired: '—', badge: 'None', tone: 'neutral', kind: 'none' },
+];
+
+class Component extends DCLogic {
+  state = { ds: false };
+
+  componentDidMount() {
+    const tick = () => {
+      if (window.OpenLinkerUI && window.OpenLinkerUI.StatusBadge) { this.setState({ ds: true }); return; }
+      this._t = setTimeout(tick, 60);
+    };
+    tick();
+  }
+
+  componentWillUnmount() { clearTimeout(this._t); }
+
+  badge(row) {
+    const UI = this.state.ds ? window.OpenLinkerUI : null;
+    if (!UI) return React.createElement('span', { style: { fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-secondary)' } }, row.badge);
+    const el = React.createElement(UI.StatusBadge, { tone: row.tone, withDot: row.kind !== 'none' }, row.badge);
+    if (row.kind !== 'none') return el;
+    return React.createElement('span', { style: { opacity: 0.62 } }, el);
+  }
+
+  action(row) {
+    const UI = this.state.ds ? window.OpenLinkerUI : null;
+    if (!UI) return null;
+    return React.createElement(UI.Button, { tone: 'ghost', className: 'button--xs' }, 'Configure');
+  }
+
+  renderVals() {
+    const firstRunOn = Boolean(this.props.firstRun);
+    const columns = [
+      {
+        id: 'trigger', header: 'Trigger', accessor: (r) => r.trigger,
+        cell: (r) => React.createElement('div', { style: { minWidth: 260, maxWidth: 380, fontSize: 13, fontWeight: 500, lineHeight: 1.45, color: 'var(--text-primary)', textWrap: 'pretty' } }, r.trigger),
+      },
+      {
+        id: 'rules', header: 'Rules',
+        cell: (r) => React.createElement('div', {
+          style: { minWidth: 84, fontFamily: 'var(--font-mono)', fontSize: 12, fontVariantNumeric: 'tabular-nums', color: r.rules === '0 rules' ? 'var(--text-muted)' : 'var(--text-secondary)' },
+        }, r.rules),
+      },
+      {
+        id: 'fired', header: 'Last fired', accessor: (r) => r.fired,
+        cell: (r) => React.createElement('div', {
+          style: {
+            minWidth: 150, fontFamily: 'var(--font-mono)', fontSize: 13, fontWeight: r.kind === 'active' ? 600 : 400,
+            fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.01em',
+            color: r.kind === 'active' ? 'var(--text-primary)' : 'var(--text-muted)',
+          },
+        }, r.fired),
+      },
+      { id: 'status', header: 'Status', cell: (r) => React.createElement('div', { style: { minWidth: 110 } }, this.badge(r)) },
+      { id: 'act', header: '', cell: (r) => React.createElement('div', { style: { minWidth: 96, textAlign: 'right' } }, this.action(r)) },
+    ];
+    const UI = this.state.ds ? window.OpenLinkerUI : null;
+    return {
+      columns, rows: TRIGGERS, rowKey: (r) => r.id,
+      firstRunOn, showTable: !firstRunOn,
+      headerActions: UI ? React.createElement(UI.Button, { tone: 'secondary', className: 'button--sm' }, 'Run log') : null,
+    };
+  }
+}
+
+</script>
+</body>
+</html>

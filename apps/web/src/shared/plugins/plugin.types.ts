@@ -342,7 +342,41 @@ export interface OfferBlockerDescriptor {
   id: string;
   tone: OfferBlockerTone;
   label: string;
+  /**
+   * `true` for a signal the operator may publish through (#2243) - it renders
+   * as a chip but does NOT make the row unready, so it never gates the batch.
+   * Reserved for checks where OUR knowledge is incomplete: an unmatched barcode
+   * may still be a perfectly licensed GTIN, so refusing to submit would be us
+   * asserting something we cannot know. Anything the destination itself
+   * declared (a length, a range, a dictionary) is not advisory - it is a fact,
+   * and stays a blocker. Absent ⇒ blocking, so a new descriptor that forgets
+   * the field fails safe.
+   */
+  advisory?: boolean;
+  /**
+   * Which field the operator has to touch to clear it (#2243). The host uses it
+   * to open the edit modal focused on that field - a chip that knows what it is
+   * about should not drop the operator at the top of a long form. The platform
+   * declares it because the platform owns the blocker; the host owns only the
+   * neutral ids. Absent ⇒ the modal opens unfocused, as before.
+   */
+  field?: OfferBlockerField;
 }
+
+/**
+ * Fields a blocker chip can route to in the bulk edit modal (#2243). A closed
+ * set on purpose: each value corresponds to a `data-focus-field` anchor that
+ * exists in the modal, so a typo cannot silently route nowhere.
+ */
+export const OfferBlockerFieldValues = [
+  'title',
+  'ean',
+  'price',
+  'images',
+  'parameters',
+  'category',
+] as const;
+export type OfferBlockerField = (typeof OfferBlockerFieldValues)[number];
 
 /**
  * Neutral, host-mapped inputs a platform validator reads (#1096). NOT the
@@ -365,6 +399,68 @@ export interface OfferRowValidationInput {
    * length of the product name is the only thing there is to check (#1962).
    */
   title: string;
+  /**
+   * The submit category's parameter schema, when the host has it (#2243). Every
+   * bound a value is checked against comes from here - the validator carries
+   * none of its own. Absent ⇒ the schema is not loaded (or the platform opted
+   * out via `needsCategoryParameterSchema`), and no value-level check runs.
+   */
+  categoryParameters?: readonly CategoryParameterLike[];
+  /**
+   * Parameters the OPERATOR supplied for this row. Deliberately only those: a
+   * value injected server-side by an attribute mapping rule (#1841) is
+   * assembled in the worker and has no HTTP surface, so the browser cannot see
+   * it and must not pretend to have checked it. CORE checks that half.
+   */
+  suppliedParameters?: readonly SuppliedParameterLike[];
+  /** Effective barcode for the row (operator override, else the master's). */
+  barcode?: string | null;
+  /**
+   * Whether a catalogue lookup actually ran for this batch (#2211). `false`
+   * means no catalogue was consulted, so "no card found" says nothing at all
+   * and no barcode warning may be raised from it.
+   */
+  catalogueConsulted?: boolean;
+  /**
+   * How many INCLUDED siblings of this row's product would create a catalogue
+   * card of their own. On a multi-variant product Allegro binds the new card to
+   * the first variant it accepts and rejects the others, so this is a
+   * product-level fact a per-row check cannot see on its own.
+   */
+  siblingsWithoutCatalogueCard?: number;
+  /** Included sibling count for the row's product; 1 ⇒ nothing to group. */
+  includedSiblingCount?: number;
+}
+
+/**
+ * The subset of a destination's category-parameter schema a validator reads
+ * (#2243). Structurally compatible with `features/listings`'s `CategoryParameter`
+ * without importing it - the plugin contract stays free of feature types, the
+ * same reason `OfferRowValidationInput` exists at all.
+ */
+export interface CategoryParameterLike {
+  id: string;
+  name: string;
+  type: 'string' | 'integer' | 'float' | 'dictionary';
+  required: boolean;
+  dictionary?: readonly { id: string; value: string }[];
+  restrictions: {
+    min?: number;
+    max?: number;
+    minLength?: number;
+    maxLength?: number;
+    precision?: number;
+    allowedNumberOfValues?: number;
+    customValuesEnabled?: boolean;
+  };
+}
+
+/** One operator-supplied parameter value for a row (#2243). */
+export interface SuppliedParameterLike {
+  id: string;
+  values?: readonly string[];
+  valuesIds?: readonly string[];
+  rangeValue?: { from: string; to: string };
 }
 
 /**

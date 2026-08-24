@@ -190,6 +190,7 @@ describe('IntegrationsContentPublisher', () => {
               publicationStatus: null,
               lifecycle: 'Unsynced',
               validationMessages: [],
+              validationProblems: [],
               lastStatusSyncedAt: null,
             },
             commercial: null,

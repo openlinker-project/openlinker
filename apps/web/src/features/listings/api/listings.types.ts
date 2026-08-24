@@ -70,6 +70,32 @@ export interface OfferMappingIdentity {
   isStale: boolean;
 }
 
+/**
+ * Who a channel refusal is about (#2231). `account` means the seller's shop on
+ * the channel, which the platform reports against EVERY one of its offers - so
+ * it belongs above the table, once, not on every row.
+ */
+export type OfferValidationScope = 'offer' | 'account';
+
+/** One reason a listing cannot sell, as the channel reported it (#2231). */
+export interface OfferValidationProblem {
+  /**
+   * The channel's own code, verbatim (e.g. `missingTaxRate`). Rendered for
+   * whoever has to check it against the channel's docs or quote it in a support
+   * ticket - never in place of the sentence.
+   *
+   * OPTIONAL: absent when the channel reported a message with no code. The
+   * backend normalises a blank one away, so no surface has to test truthiness
+   * where it tests presence.
+   */
+  code?: string;
+  /** One short line, for the row's single-line reason slot. */
+  summary?: string;
+  /** The operator-facing sentence: what is wrong and what to change. */
+  message: string;
+  scope: OfferValidationScope;
+}
+
 /** Live channel publication state plus its derived lifecycle bucket (#2025). */
 export interface OfferMappingChannelStatus {
   /** Null exactly when `lifecycle` is `Unsynced`. */
@@ -77,6 +103,12 @@ export interface OfferMappingChannelStatus {
   lifecycle: OfferLifecycle;
   /** Marketplace validator messages; empty when the validator raised none. */
   validationMessages: string[];
+  /**
+   * The same refusals in structured form (#2231). Optional on the type because a
+   * snapshot written before #2231 carries none and an older API build omits the
+   * field - consumers fall back to `validationMessages`.
+   */
+  validationProblems?: OfferValidationProblem[];
   /** Null exactly when `lifecycle` is `Unsynced`. */
   lastStatusSyncedAt: string | null;
 }
@@ -315,6 +347,8 @@ export interface OfferPublicationStatusResponse {
    */
   publicationStatus: OfferPublicationStatus | null;
   validationMessages?: string[];
+  /** The same refusals in structured form, with their raw channel codes (#2231). */
+  validationProblems?: OfferValidationProblem[];
   /** ISO 8601 timestamp of the last marketplace read; `null` when never read. */
   lastStatusSyncedAt: string | null;
 }

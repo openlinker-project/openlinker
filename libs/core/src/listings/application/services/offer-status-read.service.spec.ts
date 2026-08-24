@@ -89,6 +89,7 @@ describe('OfferStatusReadService', () => {
         internalVariantId: 'ol_variant_1',
         publicationStatus: 'active',
         validationMessages: [],
+        validationProblems: [],
         lastStatusSyncedAt: syncedAt,
       },
     ]);
@@ -110,6 +111,7 @@ describe('OfferStatusReadService', () => {
         internalVariantId: 'ol_variant_1',
         publicationStatus: null,
         validationMessages: [],
+        validationProblems: [],
         lastStatusSyncedAt: null,
       },
     ]);

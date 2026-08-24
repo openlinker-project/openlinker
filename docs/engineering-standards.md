@@ -61,7 +61,7 @@ All TypeScript projects must use strict mode:
 - **Domain Events**: `*.event.ts` (e.g., `product-created.event.ts`)
 - **Ports (Interfaces)**: `*.port.ts` (e.g., `inventory-master.port.ts`) - interface definition only
 - **Port sub-capabilities**: `*.capability.ts` (e.g., `offer-creator.capability.ts`) - optional capability interface + co-located `is{Capability}` type-guard. Used when a port has optional methods that can be extracted as distinct composable capabilities; lives under `domain/ports/capabilities/`.
-- **Types**: `*.types.ts` (e.g., `product.types.ts`) - type definitions only
+- **Types**: `*.types.ts` (e.g., `product.types.ts`) - type definitions, plus the narrow **pure-rule** exception below
 
 #### Application Layer Files
 
@@ -69,7 +69,7 @@ All TypeScript projects must use strict mode:
 - **Service Interfaces**: `*.service.interface.ts` (e.g., `product-sync.service.interface.ts`)
 - **Application Services**: `*.service.ts` (e.g., `product-sync.service.ts`) - implements interface from `*.service.interface.ts`
 - **DTOs**: `*.dto.ts` (e.g., `product-sync.dto.ts`)
-- **Types**: `*.types.ts` (e.g., `product.types.ts`) - type definitions only
+- **Types**: `*.types.ts` (e.g., `product.types.ts`) - type definitions, plus the narrow **pure-rule** exception below
 
 #### Infrastructure Layer Files
 
@@ -78,7 +78,7 @@ All TypeScript projects must use strict mode:
 - **Adapter Interfaces**: `*.adapter.interface.ts` (e.g., `prestashop-inventory-master.adapter.interface.ts`) - interface definition only (if needed)
 - **Adapters**: `*.adapter.ts` (e.g., `prestashop-inventory-master.adapter.ts`) - implements port interface
 - **Mappers**: `*.mapper.ts` (e.g., `product.mapper.ts`)
-- **Types**: `*.types.ts` (e.g., `adapter.types.ts`) - type definitions only
+- **Types**: `*.types.ts` (e.g., `adapter.types.ts`) - type definitions, plus the narrow **pure-rule** exception below
 
 #### Interface Layer Files
 
@@ -86,6 +86,18 @@ All TypeScript projects must use strict mode:
 - **Request DTOs**: `create-*.dto.ts`, `update-*.dto.ts` (e.g., `create-product.dto.ts`)
 - **Response DTOs**: `*-response.dto.ts` (e.g., `product-response.dto.ts`)
 - **Event Handlers**: `*-event.handler.ts` (e.g., `product-event.handler.ts`)
+
+##### The pure-rule exception to "types only" (#2231)
+
+A `*.types.ts` file MAY export runtime functions when all of the following hold. Anything else belongs in a service, a domain service, or a plainly-named module.
+
+1. **Pure.** No I/O, no injected dependency, no framework import, no mutation of its arguments - a function of its inputs alone.
+2. **It IS the rule for the type it sits with.** Coercing an untyped value into the type, normalising it, partitioning it, or deriving a value from it. Not a use case that happens to take the type as a parameter.
+3. **Both halves change together.** Adding a member to the union means editing the function in the same commit - which is the point: splitting them across two files invites a consumer to restate the rule instead, and then there are two rules.
+
+The pattern is already the repo's practice in four places, and this entry records it rather than introducing it: `pricing-rule.types.ts` (`readPricingRule` / `applyPricingRule`), `stock-safety-buffer.types.ts` (`readStockSafetyBuffer` / `applyStockSafetyBuffer`), `offer-lifecycle.types.ts` (`resolveOfferLifecycle`) and `offer-validation-problem.types.ts` (`readValidationProblems` / `splitOfferValidationProblems`). The alternative - a `*.rules.ts` beside every `*.types.ts` - was rejected as a file per type with nothing else in it.
+
+A function that grows a dependency has outgrown the exception: move it, do not widen this.
 
 #### Test Files
 
@@ -803,7 +815,7 @@ export class ProductService {
 5. **Token-naming convention**: `{CONTEXT}_{INTERFACE}_TOKEN` — e.g. `INVENTORY_REPOSITORY_TOKEN`, `OFFER_LINKING_SERVICE_TOKEN`, `IDENTIFIER_MAPPING_PORT_TOKEN`. Symbol description matches the underlying interface name (`Symbol('InventoryRepositoryPort')`).
 6. **`<ctx>.tokens.ts` files must contain only `export const <NAME>_TOKEN = Symbol(...);` declarations.** Non-Symbol exports (types, helpers, constants) belong in `<ctx>.types.ts` or another dedicated file — `export *` from the tokens file in the sub-barrel would otherwise widen the public surface unintentionally.
 
-**Exception — a vocabulary-only concern has no tokens file (#2100).** Rule 1 exists so a context's DI bindings are discoverable from one place. A concern that publishes only value types and pure guards — no service, no repository, no port, and therefore no NestJS module either — has no bindings to discover, so an empty `<ctx>.tokens.ts` would be ceremony and `export *` from it would widen the barrel with nothing. Today the only such concern is `sales-documents` (ADR-041 decision 1's "module now, context later" first slice), whose barrel header states the exemption in place. The exception ends the moment the concern needs a token: add the file then, together with its sub-barrel `export *` line.
+**Exception — a vocabulary-only concern has no tokens file, until it needs one.** Rule 1 exists so a context's DI bindings are discoverable from one place. A concern that publishes only value types and pure guards — no service, no repository, no port, and therefore no NestJS module either — has no bindings to discover, so an empty `<ctx>.tokens.ts` would be ceremony and `export *` from it would widen the barrel with nothing. `sales-documents` was this concern from #2100 (ADR-041 decision 1's "module now, context later" first slice) until #2170 gave its rule engine a real module + repositories; the exception ended there, exactly as designed — it now owns an ordinary `sales-documents.tokens.ts` with the usual sub-barrel `export *` line.
 
 ✅ **Good:**
 ```typescript

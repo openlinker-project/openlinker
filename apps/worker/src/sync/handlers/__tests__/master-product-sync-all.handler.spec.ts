@@ -50,6 +50,7 @@ describe('MasterProductSyncAllHandler', () => {
     syncLock = {
       acquire: jest.fn().mockResolvedValue('lock-token'),
       release: jest.fn().mockResolvedValue(true),
+      extend: jest.fn().mockResolvedValue(true),
     } as unknown as jest.Mocked<SyncLockPort>;
 
     const configService = {
