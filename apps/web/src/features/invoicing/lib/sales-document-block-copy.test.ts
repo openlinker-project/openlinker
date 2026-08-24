@@ -9,7 +9,10 @@
  * render kind-appropriate copy instead of always saying "invoice".
  */
 import { describe, expect, it } from 'vitest';
-import { resolveSalesDocumentBlockCopy } from './sales-document-block-copy';
+import {
+  resolveMissingTaxRateScope,
+  resolveSalesDocumentBlockCopy,
+} from './sales-document-block-copy';
 import type { OrderRecord } from '../../orders';
 
 /** `t(key, fallback)` behaves like the host's empty catalogue: always the fallback. */
@@ -143,13 +146,15 @@ describe('resolveSalesDocumentBlockCopy — invoice kind (default, #2100 wording
         t,
       ),
     ).toMatchObject({ tone: 'error' });
+    // `tax-rate-conflict` carries the dedicated `conflict` tone (#2253): a
+    // shop-versus-channel disagreement is an advisory, not a failure.
     expect(
       resolveSalesDocumentBlockCopy(
         order({ salesDocumentBlockReason: 'tax-rate-conflict' }),
         false,
         t,
       ),
-    ).toMatchObject({ tone: 'error' });
+    ).toMatchObject({ tone: 'conflict' });
   });
 
   it('states the honest minimum for a reason this build does not recognise', () => {
@@ -251,3 +256,71 @@ describe('resolveSalesDocumentBlockCopy — mixed kind (candidate pool spans bot
     expect(copy).toMatchObject({ tone: 'error', offerSetPrimary: true });
   });
 });
+
+describe('resolveSalesDocumentBlockCopy - missing tax rate (#2254)', () => {
+  const blocked = order({ salesDocumentBlockReason: 'missing-tax-rate' });
+
+  it('points at the shop for a line OpenLinker has in its catalogue', () => {
+    const copy = resolveSalesDocumentBlockCopy(blocked, false, t, 'invoice', [
+      { name: 'Blue mug', inCatalogue: true },
+    ]);
+    expect(copy?.title).toContain('1 line has no tax rate.');
+    expect(copy?.body).toContain('Blue mug');
+    expect(copy?.body).toContain('Rates arrive with the product sync.');
+  });
+
+  it('says the fix will not release the order when nothing is in the catalogue', () => {
+    const copy = resolveSalesDocumentBlockCopy(blocked, false, t, 'invoice', [
+      { name: 'Marketplace-only widget', inCatalogue: false },
+    ]);
+    expect(copy?.title).toContain('is not in your catalogue.');
+    expect(copy?.body).toContain('will not release this order');
+  });
+
+  it('counts the lines rather than naming one product on a long order', () => {
+    const copy = resolveSalesDocumentBlockCopy(blocked, false, t, 'invoice', [
+      { name: 'A', inCatalogue: true },
+      { name: 'B', inCatalogue: true },
+      { name: 'C', inCatalogue: true },
+    ]);
+    expect(copy?.title).toContain('3 lines have no tax rate.');
+  });
+
+  it('is about the delivery charge, not a line, when every line has a rate (#2260 review)', () => {
+    // The gate also blocks when every product line IS rated but the shipping
+    // charge cannot be attributed to any of them. Claiming "1 line has no tax
+    // rate" there is flatly false, and there is no count to report.
+    const copy = resolveSalesDocumentBlockCopy(blocked, false, t, 'invoice', []);
+    expect(copy?.title).toBe('Not invoiced: the delivery charge has no tax rate.');
+    expect(copy?.body).toContain('Every product line has a rate');
+    expect(`${copy?.title ?? ''} ${copy?.body ?? ''}`).not.toMatch(/\d+ lines? has|Some lines/);
+    expect(copy?.title).not.toContain('1 line');
+  });
+
+  it('renders the delivery-charge block with receipt-flavored copy', () => {
+    const copy = resolveSalesDocumentBlockCopy(blocked, false, t, 'fiscal-receipt', []);
+    expect(copy?.title).toBe('Not registered: the delivery charge has no tax rate.');
+    expect(copy?.body).toContain('register this one outside OpenLinker');
+  });
+
+  it('scopes the block off the lines, so copy and controls read one answer', () => {
+    expect(resolveMissingTaxRateScope([])).toBe('shipping');
+    expect(resolveMissingTaxRateScope([{ name: 'A', inCatalogue: true }])).toBe('lines');
+  });
+
+  it('never claims an ambiguous tax class', () => {
+    // The reason a rate is unknown (`TaxRateUnknownReason`) is dropped when the
+    // master's answer is projected onto the catalogue, so the panel cannot tell
+    // "ambiguous" apart from "blank". Copy that claimed it pointed the operator
+    // at the product when the fix is in the shop's rate table.
+    for (const lines of [
+      [{ name: 'A', inCatalogue: true }],
+      [{ name: 'A', inCatalogue: false }],
+      [] as { name: string; inCatalogue: boolean }[],
+    ]) {
+      const copy = resolveSalesDocumentBlockCopy(blocked, false, t, 'invoice', lines);
+      expect(`${copy?.title ?? ''} ${copy?.body ?? ''}`).not.toContain('ambiguous');
+    }
+  });
+});
+

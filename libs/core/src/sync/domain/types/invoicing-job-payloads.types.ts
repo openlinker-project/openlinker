@@ -86,6 +86,19 @@ export interface InvoicingIssuePayloadV1 {
   sourceEventId?: string;
   /** The trigger model that produced this job. */
   trigger: InvoiceTriggerModel;
+  /**
+   * The order's tax-rate era marker (#2245 review) - today only `'pre-rollout'`,
+   * for an order that existed before per-line rates did. Optional additive field
+   * (no `schemaVersion` bump); absent means "after the feature", which is the
+   * ordinary case.
+   *
+   * Typed as a plain string, not the `TaxRateEra` union: this is a jsonb wire
+   * shape, so an unrecognised value must arrive rather than fail to type, and
+   * the handler coerces it through the union's guard. Keeping it a string also
+   * spares the `sync` context a new dependency on `sales-documents` for one
+   * marker.
+   */
+  taxRateEra?: string;
 }
 
 /**

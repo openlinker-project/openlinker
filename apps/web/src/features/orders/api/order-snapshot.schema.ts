@@ -40,6 +40,30 @@ const orderItemSchema = z.object({
   sku: z.string().nullish(),
   name: z.string().nullish(),
   imageUrl: z.string().nullish(),
+  /**
+   * Per-line tax (#2054 / #2254). The neutral percent-as-string code, plus the
+   * provenance the column's caption needs.
+   *
+   * `taxSource` and `taxRateReadAt` are on the SNAPSHOT line rather than only on
+   * a line-item table, and that is what makes the column buildable: without
+   * them, *no rate*, *never read* and *pre-rollout* all arrive as the same
+   * `null` and a caption has no source to name.
+   *
+   * `taxRateChannel` is written only when the channel disagreed with the shop,
+   * so its presence IS the conflict - no client-side comparison, and nothing to
+   * get wrong when only one side answered.
+   */
+  taxRate: z.string().nullish(),
+  taxRateCountry: z.string().nullish(),
+  /**
+   * `'backfill'` (#2440) is a rate derived from the CURRENT catalogue by the
+   * backfill sweep, for a line that predates the per-line tax-rate epic —
+   * best-effort provenance, never a confirmed shop/channel read. Render it
+   * as "estimated from catalogue", distinct from both other sources.
+   */
+  taxSource: z.enum(['shop', 'channel', 'backfill']).nullish(),
+  taxRateReadAt: z.string().nullish(),
+  taxRateChannel: z.string().nullish(),
 });
 
 /**

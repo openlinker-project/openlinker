@@ -9,8 +9,14 @@ import type { TestingModule } from '@nestjs/testing';
 import { Test } from '@nestjs/testing';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { ProductsController, VariantsController } from './products.controller';
-import { PRODUCTS_SERVICE_TOKEN } from '@openlinker/core/products';
-import type { IProductsService, Product, ProductVariant } from '@openlinker/core/products';
+import { PRODUCTS_SERVICE_TOKEN, TAX_RATE_JOURNAL_SERVICE_TOKEN } from '@openlinker/core/products';
+import type {
+  IProductsService,
+  ITaxRateJournalService,
+  Product,
+  ProductVariant,
+  TaxRateJournalEntry,
+} from '@openlinker/core/products';
 import { IDENTIFIER_MAPPING_SERVICE_TOKEN } from '@openlinker/core/identifier-mapping';
 import type { IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 import { INVENTORY_QUERY_SERVICE_TOKEN } from '@openlinker/core/inventory';
@@ -57,6 +63,7 @@ function createMockProductsService(): jest.Mocked<IProductsService> {
     getProductsByIds: jest.fn(),
     getVariant: jest.fn(),
     getVariantsByProductId: jest.fn(),
+    getVariantsByProductIds: jest.fn(),
     getVariantsBySkus: jest.fn(),
   getVariantsByIds: jest.fn(),
     getVariantsByBarcodes: jest.fn(),
@@ -64,6 +71,12 @@ function createMockProductsService(): jest.Mocked<IProductsService> {
     listVariants: jest.fn(),
     getVariantCountsByProductIds: jest.fn(),
     markVariantsStaleExcept: jest.fn(),
+  recordProductTaxRate: jest.fn(),
+  recordVariantTaxRate: jest.fn(),
+  clearVariantTaxRate: jest.fn(),
+  getEffectiveTaxRate: jest.fn(),
+  getTaxRateCoverage: jest.fn(),
+  getTaxRateCoverageByConnection: jest.fn(),
   };
 }
 
@@ -89,6 +102,27 @@ function createMockShopProductMappings(): jest.Mocked<IShopProductMappingsServic
   };
 }
 
+function createMockTaxRateJournal(): jest.Mocked<ITaxRateJournalService> {
+  return {
+    record: jest.fn(),
+    getLatestPerConnection: jest.fn(),
+  };
+}
+
+function makeJournalEntry(overrides: Partial<TaxRateJournalEntry> = {}): TaxRateJournalEntry {
+  return {
+    id: overrides.id ?? 'entry-1',
+    productId: overrides.productId ?? 'ol_product_1',
+    variantId: overrides.variantId ?? null,
+    connectionId: overrides.connectionId ?? 'conn-shop',
+    origin: overrides.origin ?? 'shop',
+    taxRate: overrides.taxRate ?? '23',
+    frozen: overrides.frozen,
+    observedAt: overrides.observedAt ?? new Date('2026-02-01T10:00:00Z'),
+    createdAt: overrides.createdAt ?? new Date('2026-02-01T10:00:01Z'),
+  };
+}
+
 function createMockIdentifierMapping(): jest.Mocked<IdentifierMappingPort> {
   return {
     getOrCreateInternalId: jest.fn(),
@@ -109,6 +143,7 @@ describe('ProductsController', () => {
   let inventoryQuery: jest.Mocked<IInventoryQueryService>;
   let offerMappings: jest.Mocked<IOfferMappingsService>;
   let shopProductMappings: jest.Mocked<IShopProductMappingsService>;
+  let taxRateJournal: jest.Mocked<ITaxRateJournalService>;
 
   beforeEach(async () => {
     const mockProductsService = createMockProductsService();
@@ -116,6 +151,7 @@ describe('ProductsController', () => {
     const mockInventoryQuery = createMockInventoryQuery();
     const mockOfferMappings = createMockOfferMappings();
     const mockShopProductMappings = createMockShopProductMappings();
+    const mockTaxRateJournal = createMockTaxRateJournal();
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [ProductsController],
@@ -125,6 +161,7 @@ describe('ProductsController', () => {
         { provide: INVENTORY_QUERY_SERVICE_TOKEN, useValue: mockInventoryQuery },
         { provide: OFFER_MAPPINGS_SERVICE_TOKEN, useValue: mockOfferMappings },
         { provide: SHOP_PRODUCT_MAPPINGS_SERVICE_TOKEN, useValue: mockShopProductMappings },
+        { provide: TAX_RATE_JOURNAL_SERVICE_TOKEN, useValue: mockTaxRateJournal },
       ],
     }).compile();
 
@@ -134,6 +171,7 @@ describe('ProductsController', () => {
     inventoryQuery = module.get(INVENTORY_QUERY_SERVICE_TOKEN);
     offerMappings = module.get(OFFER_MAPPINGS_SERVICE_TOKEN);
     shopProductMappings = module.get(SHOP_PRODUCT_MAPPINGS_SERVICE_TOKEN);
+    taxRateJournal = module.get(TAX_RATE_JOURNAL_SERVICE_TOKEN);
 
     jest.clearAllMocks();
 
@@ -482,6 +520,72 @@ describe('ProductsController', () => {
       productsService.getVariant.mockResolvedValue(null);
 
       await expect(controller.getVariantSummary('missing')).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('getTaxRateJournal (#2250)', () => {
+    it('should project the latest entry per connection for the product level', async () => {
+      productsService.getProduct.mockResolvedValue(makeProduct());
+      taxRateJournal.getLatestPerConnection.mockResolvedValue([
+        makeJournalEntry({ id: 'e1', connectionId: 'conn-shop', origin: 'shop', taxRate: '23' }),
+        makeJournalEntry({
+          id: 'e2',
+          connectionId: 'conn-allegro',
+          origin: 'written-by-us',
+          taxRate: '23',
+          variantId: 'ol_variant_1',
+          frozen: true,
+        }),
+      ]);
+
+      const result = await controller.getTaxRateJournal('ol_product_1');
+
+      expect(taxRateJournal.getLatestPerConnection).toHaveBeenCalledWith('ol_product_1', null);
+      expect(result.items).toEqual([
+        {
+          id: 'e1',
+          productId: 'ol_product_1',
+          variantId: null,
+          connectionId: 'conn-shop',
+          origin: 'shop',
+          taxRate: '23',
+          frozen: false,
+          observedAt: '2026-02-01T10:00:00.000Z',
+          createdAt: '2026-02-01T10:00:01.000Z',
+        },
+        {
+          id: 'e2',
+          productId: 'ol_product_1',
+          variantId: 'ol_variant_1',
+          connectionId: 'conn-allegro',
+          origin: 'written-by-us',
+          taxRate: '23',
+          frozen: true,
+          observedAt: '2026-02-01T10:00:00.000Z',
+          createdAt: '2026-02-01T10:00:01.000Z',
+        },
+      ]);
+    });
+
+    it('should scope the read to a variant when one is given', async () => {
+      productsService.getProduct.mockResolvedValue(makeProduct());
+      taxRateJournal.getLatestPerConnection.mockResolvedValue([]);
+
+      const result = await controller.getTaxRateJournal('ol_product_1', 'ol_variant_9');
+
+      expect(taxRateJournal.getLatestPerConnection).toHaveBeenCalledWith(
+        'ol_product_1',
+        'ol_variant_9'
+      );
+      // An empty journal is a real answer ("nothing observed yet"), not a 404.
+      expect(result.items).toEqual([]);
+    });
+
+    it('should throw NotFoundException when the product does not exist', async () => {
+      productsService.getProduct.mockResolvedValue(null);
+
+      await expect(controller.getTaxRateJournal('missing')).rejects.toThrow(NotFoundException);
+      expect(taxRateJournal.getLatestPerConnection).not.toHaveBeenCalled();
     });
   });
 });

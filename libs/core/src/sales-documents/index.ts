@@ -1,5 +1,5 @@
 /**
- * Sales Documents — public barrel (#2100, #2155, #2158, #2170)
+ * Sales Documents - public barrel (#2100, #2155, #2158, #2170, #2245, #2248/#2252)
  *
  * ADR-041 decision 1 ("module now, context later"): this concern owns the
  * neutral reason vocabularies both the invoicing gate and the routing
@@ -33,6 +33,14 @@
  * bound to a single base port for exactly the same dependency-discipline
  * reason (see its own doc comment).
  *
+ * Two further vocabularies live here for the same reason the reason unions do -
+ * BOTH document contexts need one answer and a fiscal receipt is not an
+ * invoice. `shipping-tax-split.types` is the proportional split of a shipping
+ * charge across the rates in a mixed-rate basket (#2248 / #2252, ADR-063 § 5),
+ * and `tax-rate-enforcement.types` is the per-line tax-rate enforcement switch
+ * plus the pre-rollout era marker (#2245, ADR-063 § Consequences). Both are
+ * import-free, so any context or channel adapter can value-import them.
+ *
  * @module libs/core/src/sales-documents
  * @see docs/architecture/adrs/041-sales-document-routing-policy.md
  */
@@ -61,3 +69,12 @@ export {
 export type { ISalesDocumentRulesService } from './application/interfaces/sales-document-rules.service.interface';
 export { SalesDocumentsModule } from './sales-documents.module';
 export * from './sales-documents.tokens';
+// Proportional shipping split across the rates in a mixed-rate basket (#2248 /
+// #2252). Lives here because BOTH document contexts consume it and a fiscal
+// receipt is not an invoice - the same reason the reason vocabularies do.
+export * from './domain/types/shipping-tax-split.types';
+// The per-line tax-rate enforcement switch and the pre-rollout era marker
+// (#2245 review, ADR-063 § Consequences). Here for the same reason the shipping
+// split is: both document contexts and both channel adapters need one answer,
+// and this leaf imports nothing so any of them can value-import it.
+export * from './domain/types/tax-rate-enforcement.types';

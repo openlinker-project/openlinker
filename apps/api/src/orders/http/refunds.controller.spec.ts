@@ -44,8 +44,11 @@ describe('RefundsController', () => {
       updateFulfillmentState: jest.fn(),
       markCancelled: jest.fn(),
       markSalesDocumentBlock: jest.fn(),
+      getEarliestOrderDateByConnection: jest.fn(),
       markItemResolutionFailure: jest.fn(),
       getFailedSyncValueSummary: jest.fn(),
+      getSalesAndChannelAnalytics: jest.fn(),
+      getTopProducts: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({

@@ -14,6 +14,7 @@ import type { RouteObject } from 'react-router-dom';
 import { plugins } from '../../plugins';
 import { AuthenticatedAppLayout } from '../layouts/authenticated-app-layout';
 import { adaptersRoute } from './adapters.route';
+import { analyticsRoute } from './analytics.route';
 import { connectionDetailRoute } from './connection-detail.route';
 import { connectionCategoryMappingsRoute } from './connection-category-mappings.route';
 import { connectionMappingsRoute } from './connection-mappings.route';
@@ -52,6 +53,7 @@ import { webhookDeliveriesRoute } from './webhook-deliveries.route';
  */
 export const coreChildren: RouteObject[] = [
   dashboardRoute,
+  analyticsRoute,
   ordersRoute,
   productsRoute,
   cursorsRoute,

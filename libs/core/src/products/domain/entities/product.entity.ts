@@ -15,6 +15,8 @@
  *
  * @module libs/core/src/products/domain/entities
  */
+
+import type { TaxRateUnknownReason } from '../types/tax-rate.types';
 export interface Product {
   id: string;
   name: string;
@@ -53,4 +55,23 @@ export interface Product {
    * jsonb column (#1752).
    */
   features?: { name: string; value: string }[];
+  /**
+   * Neutral tax-rate code the ProductMaster stated (#2054), or `null` when it
+   * stated none. Persisted on the products table, written only by the tax read.
+   */
+  taxRate?: string | null;
+  /** ISO 3166-1 alpha-2 the rate was resolved against. Provenance only. */
+  taxRateCountry?: string | null;
+  /**
+   * When the master was last asked. `null` means NEVER - which is a different
+   * fact from "asked, and has no rate", and the only thing that tells them
+   * apart.
+   */
+  taxRateReadAt?: Date | null;
+  /**
+   * Why the master named no rate (#2264), when it named none. Provenance only -
+   * nothing gates on it. `null` means no reason was recorded, which is NOT
+   * `not-configured` (a real answer the shop gave).
+   */
+  taxRateUnknownReason?: TaxRateUnknownReason | null;
 }

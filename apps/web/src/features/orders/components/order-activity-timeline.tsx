@@ -32,7 +32,7 @@ interface TimelineEvent {
   /** Actor eyebrow (e.g. "system · ingest", "system · attempt 2"). */
   by?: string;
   description?: ReactElement | string;
-  tone: 'default' | 'success' | 'error' | 'warning';
+  tone: 'default' | 'success' | 'error' | 'warning' | 'conflict';
   /**
    * Footer rendered below the row body — used to attach the "view all
    * attempts" deep link to the **last** attempt of a capped destination.
@@ -75,6 +75,17 @@ interface OrderActivityTimelineProps {
    * see the shared rule on `invoicingBlockedBadge`.
    */
   invoice?: ParsedOrderInvoice | null;
+  /**
+   * When the current hold started (#2248). Dates the block entry, which was
+   * previously undated because no instant was persisted for it.
+   */
+  salesDocumentBlockedAt?: string | null;
+  /**
+   * When the hold ended. The release entry can only exist because of it: by the
+   * time an order is released the reason is gone, so nothing else records that
+   * it was ever held.
+   */
+  salesDocumentBlockReleasedAt?: string | null;
 }
 
 const STATUS_PAST_TENSE: Record<OrderSyncStatusValue, string> = {
@@ -95,6 +106,7 @@ const BLOCK_TONE_FOR_BADGE: Record<StatusBadgeTone, TimelineEvent['tone']> = {
   error: 'error',
   warning: 'warning',
   success: 'success',
+  conflict: 'conflict',
   neutral: 'default',
   info: 'default',
   review: 'default',
@@ -117,6 +129,8 @@ function buildEvents(
   salesDocumentUnresolvedReason?: SalesDocumentUnresolvedReasonValue | null,
   salesDocumentBlockDetail?: string | null,
   invoice?: ParsedOrderInvoice | null,
+  salesDocumentBlockedAt?: string | null,
+  salesDocumentBlockReleasedAt?: string | null,
 ): TimelineEvent[] {
   const events: TimelineEvent[] = [];
 
@@ -226,10 +240,14 @@ function buildEvents(
     });
   });
 
-  // #2100 — appended last and DELIBERATELY UNDATED (`timestamp: null`): the block
-  // is a current-state fact re-decided on every transition, not a historical
-  // event, and no instant is persisted for it. Dating it with `createdAt` or
-  // `updatedAt` would assert a moment the data does not support.
+  // #2100 — appended last. It used to be DELIBERATELY UNDATED, because the block
+  // is a current-state fact re-decided on every transition and no instant was
+  // persisted for it; dating it with `createdAt` or `updatedAt` would have
+  // asserted a moment the data did not support.
+  //
+  // #2248 persists that instant, so the entry is dated when one exists and stays
+  // undated when it does not (an order held before the columns landed). The
+  // fallback is still `null` rather than a guess, for the original reason.
   // `invoice` is passed so the shared suppression rule applies here too: without
   // it this entry claimed "No invoice issued" directly under the panel showing the
   // issued invoice (#2100 review).
@@ -241,13 +259,33 @@ function buildEvents(
   if (blocked) {
     events.push({
       id: 'invoicing-blocked',
-      timestamp: null,
+      timestamp: salesDocumentBlockedAt ?? null,
       title: 'No invoice issued',
       by: 'system · invoicing',
       description: `${blocked.hint}${
         salesDocumentBlockDetail ? ` (${salesDocumentBlockDetail})` : ''
       }`,
       tone: BLOCK_TONE_FOR_BADGE[blocked.tone],
+    });
+  }
+
+  // #2254 — the RELEASE entry, which can only exist because the instant is
+  // persisted: by the time an order is released the reason itself is gone, so
+  // nothing else records that it was ever held. It is what answers "why did this
+  // suddenly issue".
+  //
+  // Rendered only when the hold has actually ended and nothing is blocking now -
+  // a released instant alongside a live block would be describing a previous
+  // episode, and the pair is cleared on each new one precisely so it cannot.
+  if (!blocked && salesDocumentBlockReleasedAt) {
+    events.push({
+      id: 'invoicing-released',
+      timestamp: salesDocumentBlockReleasedAt,
+      title: 'Rates arrived, invoice released',
+      by: 'system · invoicing',
+      description:
+        'The tax rate this order was waiting on is now known, so OpenLinker stopped holding the document.',
+      tone: 'success',
     });
   }
 
@@ -259,6 +297,7 @@ const TONE_CLASS: Record<TimelineEvent['tone'], string> = {
   success: 'order-activity__dot--success',
   error: 'order-activity__dot--error',
   warning: 'order-activity__dot--warning',
+  conflict: 'order-activity__dot--conflict',
 };
 
 export function OrderActivityTimeline({
@@ -271,6 +310,8 @@ export function OrderActivityTimeline({
   salesDocumentUnresolvedReason,
   salesDocumentBlockDetail,
   invoice,
+  salesDocumentBlockedAt,
+  salesDocumentBlockReleasedAt,
 }: OrderActivityTimelineProps): ReactElement {
   const events = useMemo(
     () =>
@@ -284,6 +325,8 @@ export function OrderActivityTimeline({
         salesDocumentUnresolvedReason,
         salesDocumentBlockDetail,
         invoice,
+        salesDocumentBlockedAt,
+        salesDocumentBlockReleasedAt,
       ),
     [
       createdAt,
@@ -295,6 +338,8 @@ export function OrderActivityTimeline({
       salesDocumentUnresolvedReason,
       salesDocumentBlockDetail,
       invoice,
+      salesDocumentBlockedAt,
+      salesDocumentBlockReleasedAt,
     ],
   );
 

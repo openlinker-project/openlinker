@@ -56,6 +56,7 @@ import type {
   ErliOrderPickupPlace,
   ErliOrderStatus,
 } from './erli-order.types';
+import { toNeutralTaxRate } from './erli-tax-rate.mapper';
 
 /** Erli prices are integer minor units (grosze); the neutral DTO is decimal PLN. */
 function toMajorUnits(minor: number | undefined): number {
@@ -154,6 +155,16 @@ function derivePaymentStatus(status: ErliOrderStatus, cod: boolean): PaymentStat
  * `price` is the per-unit amount in decimal PLN.
  */
 function mapItem(item: ErliOrderItem): IncomingOrderItem {
+  // #2249: Erli reports a REQUIRED per-line tax rate and OL used to discard it.
+  // It is the channel rung of the resolution chain (ADR-063 § 1) - consulted
+  // only when the shop does not know, but the only rate that exists at all for
+  // a product that lives solely as an Erli offer.
+  //
+  // An unrecognised value maps to `undefined`, never to `'0'`: Erli's enum is
+  // category-dependent and may gain values, and reading an unknown token as a
+  // zero-rated sale is exactly the conflation this epic removes. The line then
+  // simply carries no channel rate, and the gate treats it as unresolved.
+  const neutralTaxRate = toNeutralTaxRate(item.taxRate);
   return {
     id: String(item.id),
     productRef: { type: 'offer', externalId: item.externalId },
@@ -161,6 +172,7 @@ function mapItem(item: ErliOrderItem): IncomingOrderItem {
     price: toMajorUnits(item.unitPrice),
     sku: item.sku,
     name: item.name,
+    ...(neutralTaxRate ? { taxRate: neutralTaxRate, taxRateCountry: 'PL' } : {}),
   };
 }
 

@@ -39,6 +39,7 @@ import type { Connection } from '@openlinker/core/identifier-mapping';
 import { IIntegrationsService } from '@openlinker/core/integrations';
 import { INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 import { SYNC_JOBS_SERVICE_TOKEN, ISyncJobsService } from '@openlinker/core/sync';
+import { ORDER_RECORD_SERVICE_TOKEN, IOrderRecordService } from '@openlinker/core/orders';
 import type { IAnalyticsTrustService } from './analytics-trust.service.interface';
 import type {
   AnalyticsTrustSnapshot,
@@ -67,7 +68,9 @@ export class AnalyticsTrustService implements IAnalyticsTrustService {
     @Inject(INTEGRATIONS_SERVICE_TOKEN)
     private readonly integrationsService: IIntegrationsService,
     @Inject(SYNC_JOBS_SERVICE_TOKEN)
-    private readonly syncJobsService: ISyncJobsService
+    private readonly syncJobsService: ISyncJobsService,
+    @Inject(ORDER_RECORD_SERVICE_TOKEN)
+    private readonly orderRecordService: IOrderRecordService
   ) {}
 
   async getIngestionTrustSnapshot(): Promise<AnalyticsTrustSnapshot> {
@@ -78,8 +81,18 @@ export class AnalyticsTrustService implements IAnalyticsTrustService {
     });
 
     const now = new Date();
+    // Batched once across every enumerated connection (#2083) — never move
+    // this inside buildTrustEntry, which would silently reintroduce an N+1
+    // query per connection for this one field. This is a supplementary
+    // field: a failure here must degrade to an empty Map (every connection
+    // reports earliestOrderDate: null) rather than throw out of the whole
+    // snapshot — the per-connection isolation this service documents about
+    // itself would otherwise not hold for this one batched read.
+    const connectionIds = entries.map((entry) => entry.connection.id);
+    const earliestOrderDates = await this.getEarliestOrderDatesSafely(connectionIds);
+
     const connections = await Promise.all(
-      entries.map((entry) => this.buildTrustEntry(entry.connection, now))
+      entries.map((entry) => this.buildTrustEntry(entry.connection, now, earliestOrderDates))
     );
 
     return {
@@ -89,7 +102,25 @@ export class AnalyticsTrustService implements IAnalyticsTrustService {
     };
   }
 
-  private async buildTrustEntry(connection: Connection, now: Date): Promise<ConnectionIngestionTrust> {
+  private async getEarliestOrderDatesSafely(connectionIds: string[]): Promise<Map<string, Date>> {
+    try {
+      return await this.orderRecordService.getEarliestOrderDateByConnection(connectionIds);
+    } catch (error) {
+      this.logger.warn(
+        `Failed to batch-read earliest order dates: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+      return new Map();
+    }
+  }
+
+  private async buildTrustEntry(
+    connection: Connection,
+    now: Date,
+    earliestOrderDates: Map<string, Date>
+  ): Promise<ConnectionIngestionTrust> {
+    const earliestOrderDate = earliestOrderDates.get(connection.id) ?? null;
     try {
       // Always read the jobs — never gated on a scheduler task existing.
       // A poll task can be disabled while the connection ingests fine via
@@ -138,6 +169,7 @@ export class AnalyticsTrustService implements IAnalyticsTrustService {
         lastPollAt,
         lastOrderIngestedAt,
         connectionCreatedAt: connection.createdAt,
+        earliestOrderDate,
         expectedIntervalMs,
         staleAfterMs,
       };
@@ -147,11 +179,14 @@ export class AnalyticsTrustService implements IAnalyticsTrustService {
           error instanceof Error ? error.message : String(error)
         }`
       );
-      return this.buildDegradedEntry(connection);
+      return this.buildDegradedEntry(connection, earliestOrderDate);
     }
   }
 
-  private buildDegradedEntry(connection: Connection): ConnectionIngestionTrust {
+  private buildDegradedEntry(
+    connection: Connection,
+    earliestOrderDate: Date | null
+  ): ConnectionIngestionTrust {
     return {
       connectionId: connection.id,
       connectionName: connection.name,
@@ -167,6 +202,12 @@ export class AnalyticsTrustService implements IAnalyticsTrustService {
       lastPollAt: null,
       lastOrderIngestedAt: null,
       connectionCreatedAt: connection.createdAt,
+      // The job-lookup failure that lands us here is orthogonal to the
+      // batched earliest-order-date lookup (#2083), which already
+      // succeeded (or failed) for every connection before this method ever
+      // ran — so a degraded entry still carries a real value when one is
+      // available, rather than forcing null.
+      earliestOrderDate,
       expectedIntervalMs: null,
       staleAfterMs: null,
     };

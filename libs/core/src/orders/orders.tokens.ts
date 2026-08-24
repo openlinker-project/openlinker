@@ -23,6 +23,9 @@ export const ORDER_FX_READ_SERVICE_TOKEN = Symbol('IOrderFxReadService');
 // Refund record capture (#2036).
 export const ORDER_REFUND_RECORD_REPOSITORY_TOKEN = Symbol('RefundRecordRepositoryPort');
 export const ORDER_REFUND_SERVICE_TOKEN = Symbol('IOrderRefundService');
+export const ORDER_LINE_ITEM_REPOSITORY_TOKEN = Symbol('OrderLineItemRepositoryPort');
+// Tax-rate backfill sweep for pre-#2245 lines (#2440).
+export const TAX_RATE_BACKFILL_SERVICE_TOKEN = Symbol('ITaxRateBackfillService');
 
 
 

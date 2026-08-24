@@ -75,7 +75,7 @@ export class CreateSalesDocumentRuleTables1838000000000 implements MigrationInte
     `);
 
     await queryRunner.query(`
-      CREATE UNIQUE INDEX "UQ_sales_document_rules_country_hash_from"
+      CREATE UNIQUE INDEX IF NOT EXISTS "UQ_sales_document_rules_country_hash_from"
         ON "sales_document_rules" ("country", "conditions_hash", "effective_from")
     `);
 
@@ -89,7 +89,7 @@ export class CreateSalesDocumentRuleTables1838000000000 implements MigrationInte
     // join target), which the unique index's leading columns do not prefix.
 
     await queryRunner.query(`
-      CREATE INDEX "IDX_sales_document_rules_connection_id"
+      CREATE INDEX IF NOT EXISTS "IDX_sales_document_rules_connection_id"
         ON "sales_document_rules" ("connection_id")
     `);
 
@@ -108,7 +108,7 @@ export class CreateSalesDocumentRuleTables1838000000000 implements MigrationInte
     `);
 
     await queryRunner.query(`
-      CREATE UNIQUE INDEX "UQ_sales_document_country_defaults_country_kind"
+      CREATE UNIQUE INDEX IF NOT EXISTS "UQ_sales_document_country_defaults_country_kind"
         ON "sales_document_country_defaults" ("country", "document_kind")
     `);
 

@@ -147,9 +147,20 @@ export {
 } from './lib/resolve-invoicing-connection';
 export {
   resolveSalesDocumentBlockCopy,
+  resolveMissingTaxRateScope,
   type SalesDocumentBlockCopy,
   type SalesDocumentBlockCopyKind,
+  type RateLessLine,
 } from './lib/sales-document-block-copy';
+// #2254: the frontend mirror of core's `splitShippingAcrossRates`, guarded by
+// `scripts/check-shipping-tax-split-mirror.mjs`. Exported so the order-detail
+// sales-document panel can preview the shipping line(s) the document will carry.
+export {
+  splitShippingAcrossRates,
+  minorUnitExponentFor,
+  type ShippingSplitLine,
+  type ShippingSplitPart,
+} from './lib/shipping-tax-split';
 export {
   buildNumberingPreview,
   type NumberingPreview,

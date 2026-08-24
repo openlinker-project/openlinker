@@ -1,7 +1,7 @@
 # ADR-014: Source-authoritative order pricing
 
-- **Status**: Proposed
-- **Date**: 2026-05-30
+- **Status**: Accepted
+- **Date**: 2026-05-30 (accepted 2026-08-21; see § Amendment)
 - **Authors**: @piotrswierzy
 
 ## Context
@@ -86,18 +86,17 @@ Model source-authoritative pricing as a **core invariant**, implemented natively
 - Plan: [implementation-plan-source-authoritative-order-pricing.md](../../plans/implementation-plan-source-authoritative-order-pricing.md)
 - Primary doc section: [docs/architecture-overview.md](../../architecture-overview.md) § Orders
 
-## Proposed amendment (#2054, 2026-08-13): reverse the per-line tax-rate rejection
+## Amendment (#2054, 2026-08-13; accepted 2026-08-21): reverse the per-line tax-rate rejection
 
-> **This is a proposal, not a recorded refinement - it needs an explicit accept.** Recorded in place
-> following this repo's convention for a partial change: six amendment sections exist across four
+> **Accepted 2026-08-21 by [ADR-063](./063-per-line-tax-rate-resolution-and-provenance.md).** Recorded in
+> place following this repo's convention for a partial change: six amendment sections exist across four
 > ADRs ([009](./009-persisted-offer-status-snapshots.md) x3 - #1760, #2024, #2039 -
 > [026](./026-country-agnostic-invoicing-domain.md),
 > [030](./030-infakt-ksef-indirection.md), [037](./037-destination-taxonomy-read-model.md)), and
 > ADR-037 additionally reverses a recorded decision detail *in place* (`**Corrected by #2063**`), as
-> ADR-031 does with an inline `**Correction**`. So an in-place reversal is precedented; what is new
-> here is that it is offered for acceptance rather than recorded after the fact. The prose above is
-> not rewritten - the two sentences it contradicts carry inline forward pointers (Decision 2 and the
-> rejected bullet under § Alternatives considered) and nothing else in the body is touched.
+> ADR-031 does with an inline `**Correction**`. The prose above is not rewritten - the two sentences it
+> contradicts carry inline forward pointers (Decision 2 and the rejected bullet under § Alternatives
+> considered) and nothing else in the body is touched.
 
 **Scope.** Exactly one entry under § Alternatives considered changes: the **tax-rate** half of
 "Per-line tax-inclusivity / tax rate on `OrderItem`". Everything else stands.
@@ -258,19 +257,21 @@ section fixes the constraint the set must satisfy, the annex fixes the set.
   and its `tax_class` is a class name rather than a rate, so a second master would have to be built
   rather than exposed.
 
-**On the status line and on where this section lives.** ADR-014's `Status` metadata is deliberately
-**unchanged**. The [README](./README.md) taxonomy has no per-alternative value, and
-`Superseded by ADR-NNN` would announce a whole-ADR replacement that is not happening. The bidirectional
-link is instead the two inline pointers plus this section naming what it reverses.
+**On the status line.** This ADR is now **Accepted**, which is what the amendment below asked for. Its
+`Status` is deliberately *not* `Superseded by ADR-063`: the [README](./README.md) taxonomy has no
+per-alternative value, and supersession would announce a whole-ADR replacement that is not happening -
+[ADR-063](./063-per-line-tax-rate-resolution-and-provenance.md) adopts one reversed alternative and
+leaves Decisions 1-3 standing. The bidirectional link is the two inline pointers plus this section
+naming what it reverses.
 
 **The location question is settled (review on PR #2058): the section stays here.** A standalone
 superseding ADR was offered as an alternative for a reviewer holding that a reversal must not live
 inside the ADR it reverses; it was declined, because the README ladder describes whole-ADR replacement
 and a new ADR would additionally need a number from a pool with three live claimants. Note also that
-the append-only rule this design defers to (`README.md:40`) binds an **accepted** ADR, and ADR-014 is
-`Proposed` - so the in-place edit is not even the case that rule governs.
+the append-only rule this design defers to (`README.md:40`) binds an **accepted** ADR, and ADR-014 was
+`Proposed` when the edit was made - so the in-place edit is not even the case that rule governs.
 
-What remains is **recording the decision**, and the PR that adopts this amendment owes two edits, not
-one: drop the "proposal, not a recorded refinement" preamble above, **and** resolve ADR-014's own
-`Proposed`-while-its-decisions-shipped status. Doing only the first would clear this proposal by
-leaving a second bookkeeping gap behind.
+**Both edits this amendment owed are now made** (in the #2246 / [ADR-063](./063-per-line-tax-rate-resolution-and-provenance.md)
+change): the "proposal, not a recorded refinement" preamble is gone, and ADR-014's own
+`Proposed`-while-its-decisions-shipped status is resolved to **Accepted**. Doing only the first would
+have cleared this proposal by leaving a second bookkeeping gap behind.

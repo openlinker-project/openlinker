@@ -33,7 +33,13 @@ function makeOrder(overrides: Partial<Order> = {}): Order {
     id: 'order-1',
     status: 'processing',
     paymentStatus: 'awaiting',
-    items: [{ id: 'i1', productId: 'p1', quantity: 2, price: 10, name: 'Widget' }],
+    // A rated line is the ordinary case now (#2248): the gate refuses a
+    // rate-less order before the trigger-model gate is even reached, so an
+    // unrated fixture would make every test here exercise the refusal instead
+    // of the behaviour it names. The refusal has its own tests below.
+    items: [
+      { id: 'i1', productId: 'p1', quantity: 2, price: 10, name: 'Widget', taxRate: '23' },
+    ],
     totals: {
       subtotal: 20,
       tax: 0,
@@ -413,7 +419,9 @@ describe('AutoIssueTriggerService', () => {
     const paidShippingOrder = (): Order =>
       makeOrder({
         paymentStatus: 'paid',
-        items: [{ id: 'i1', productId: 'p1', quantity: 1, price: 100, name: 'Widget' }],
+        items: [
+          { id: 'i1', productId: 'p1', quantity: 1, price: 100, name: 'Widget', taxRate: '23' },
+        ],
         totals: {
           subtotal: 100,
           tax: 0,
@@ -481,6 +489,72 @@ describe('AutoIssueTriggerService', () => {
       expect(syncJobs.schedule).not.toHaveBeenCalled();
     });
 
+    it('reports missing-tax-rate instead of enqueueing, when the switch is on (#2252)', async () => {
+      // The receipt route runs the same gate as the invoice route, in the same
+      // position. Without it the job enqueued and could only fail at the write
+      // gate, with no reason persisted for the operator.
+      const previous = process.env['OL_TAX_RATE_STRICT_ENABLED'];
+      process.env['OL_TAX_RATE_STRICT_ENABLED'] = 'true';
+      try {
+        connectionPort.list.mockResolvedValue([makeFiscalConnection('auto-on-paid')]);
+
+        const outcome = await service.onOrderTransition(
+          makeOrder({
+            paymentStatus: 'paid',
+            items: [{ id: 'i1', productId: 'p1', quantity: 1, price: 10, name: 'Widget' }],
+            // Totals kept consistent with the single line, or the compose step
+            // fails its own sum check and the outcome is `indeterminate` rather
+            // than the block this test is about.
+            totals: {
+              subtotal: 10,
+              tax: 0,
+              shipping: 0,
+              total: 10,
+              currency: 'PLN',
+              taxTreatment: 'inclusive',
+            },
+          }),
+          'src-1',
+        );
+
+        expect(outcome).toMatchObject({ kind: 'blocked', block: { reason: 'missing-tax-rate' } });
+        expect(syncJobs.schedule).not.toHaveBeenCalled();
+      } finally {
+        if (previous === undefined) delete process.env['OL_TAX_RATE_STRICT_ENABLED'];
+        else process.env['OL_TAX_RATE_STRICT_ENABLED'] = previous;
+      }
+    });
+
+    it('enqueues a rate-less order with the switch off - the default', async () => {
+      const previous = process.env['OL_TAX_RATE_STRICT_ENABLED'];
+      delete process.env['OL_TAX_RATE_STRICT_ENABLED'];
+      try {
+        connectionPort.list.mockResolvedValue([makeFiscalConnection('auto-on-paid')]);
+
+        const outcome = await service.onOrderTransition(
+          makeOrder({
+            paymentStatus: 'paid',
+            items: [{ id: 'i1', productId: 'p1', quantity: 1, price: 10, name: 'Widget' }],
+            totals: {
+              subtotal: 10,
+              tax: 0,
+              shipping: 0,
+              total: 10,
+              currency: 'PLN',
+              taxTreatment: 'inclusive',
+            },
+          }),
+          'src-1',
+        );
+
+        expect(outcome).toEqual({ kind: 'none' });
+        expect(syncJobs.schedule).toHaveBeenCalledTimes(1);
+      } finally {
+        if (previous === undefined) delete process.env['OL_TAX_RATE_STRICT_ENABLED'];
+        else process.env['OL_TAX_RATE_STRICT_ENABLED'] = previous;
+      }
+    });
+
     it('schedules with deterministic idempotencyKey `fiscal:{connId}:{orderId}` threaded twice', async () => {
       connectionPort.list.mockResolvedValue([makeFiscalConnection('auto-on-paid')]);
       await service.onOrderTransition(makeOrder({ id: 'order-Z', paymentStatus: 'paid' }), 'src-1');
@@ -499,6 +573,62 @@ describe('AutoIssueTriggerService', () => {
       expect(payload.totalGross).toBe(20);
       expect(Array.isArray(payload.lines)).toBe(true);
       expect('buyer' in payload).toBe(false);
+    });
+
+    it("carries the order's tax-rate era into the payload (#2260 review)", async () => {
+      // The gate is era-aware; the write gate in `FiscalRegistrationService` is
+      // too. The marker has to survive the hop or the two disagree, and the
+      // refusal lands with no persisted reason behind it.
+      connectionPort.list.mockResolvedValue([makeFiscalConnection('auto-on-paid')]);
+      await service.onOrderTransition(
+        makeOrder({ paymentStatus: 'paid' }),
+        'src-1',
+        undefined,
+        'pre-rollout',
+      );
+      const payload = syncJobs.schedule.mock.calls[0][0].payload;
+      expect(payload.taxRateEra).toBe('pre-rollout');
+    });
+
+    it('omits the era from the payload for an ordinary order (#2260 review)', async () => {
+      connectionPort.list.mockResolvedValue([makeFiscalConnection('auto-on-paid')]);
+      await service.onOrderTransition(makeOrder({ paymentStatus: 'paid' }), 'src-1');
+      const payload = syncJobs.schedule.mock.calls[0][0].payload;
+      expect('taxRateEra' in payload).toBe(false);
+    });
+
+    it('enqueues a rate-less PRE-ROLLOUT order with the switch ON (#2260 review)', async () => {
+      // Both gates exempt it, so the job is enqueued and the registration goes
+      // through exactly as it did before the epic.
+      const previous = process.env['OL_TAX_RATE_STRICT_ENABLED'];
+      process.env['OL_TAX_RATE_STRICT_ENABLED'] = 'true';
+      try {
+        connectionPort.list.mockResolvedValue([makeFiscalConnection('auto-on-paid')]);
+
+        const outcome = await service.onOrderTransition(
+          makeOrder({
+            paymentStatus: 'paid',
+            items: [{ id: 'i1', productId: 'p1', quantity: 1, price: 10, name: 'Widget' }],
+            totals: {
+              subtotal: 10,
+              tax: 0,
+              shipping: 0,
+              total: 10,
+              currency: 'PLN',
+              taxTreatment: 'inclusive',
+            },
+          }),
+          'src-1',
+          undefined,
+          'pre-rollout',
+        );
+
+        expect(outcome).toEqual({ kind: 'none' });
+        expect(syncJobs.schedule).toHaveBeenCalledTimes(1);
+      } finally {
+        if (previous === undefined) delete process.env['OL_TAX_RATE_STRICT_ENABLED'];
+        else process.env['OL_TAX_RATE_STRICT_ENABLED'] = previous;
+      }
     });
 
     it('does NOT call the Invoicing capability-adapter check for a fiscal-receipt candidate', async () => {
@@ -752,6 +882,78 @@ describe('AutoIssueTriggerService', () => {
 
       expect(outcome).toEqual({ kind: 'blocked', block: { reason: 'trigger-model-manual' } });
       expect(syncJobs.schedule).not.toHaveBeenCalled();
+    });
+
+    it('should report missing-tax-rate, and report it INSTEAD of trigger-model-manual', async () => {
+      // The ordering is the point (#2248). On a `manual` connection both apply,
+      // and they say different things: `trigger-model-manual` means "waiting for
+      // a human" and keeps a working CTA, while this one means no human can
+      // issue it either. Reporting the weaker reason leaves the operator
+      // clicking a button that refuses.
+      //
+      // The gate only fires where the deployment opted in (#2245 review), so
+      // the switch is set here explicitly. The default is covered below.
+      const previousStrict = process.env['OL_TAX_RATE_STRICT_ENABLED'];
+      process.env['OL_TAX_RATE_STRICT_ENABLED'] = 'true';
+      try {
+        connectionPort.list.mockResolvedValue([makeConnection('manual')]);
+
+        const outcome = await service.onOrderTransition(
+          makeOrder({
+            paymentStatus: 'paid',
+            items: [{ id: 'i1', productId: 'p1', quantity: 1, price: 10, name: 'Widget' }],
+          }),
+          'src-1',
+        );
+
+        expect(outcome).toMatchObject({ kind: 'blocked', block: { reason: 'missing-tax-rate' } });
+        expect(syncJobs.schedule).not.toHaveBeenCalled();
+      } finally {
+        if (previousStrict === undefined) delete process.env['OL_TAX_RATE_STRICT_ENABLED'];
+        else process.env['OL_TAX_RATE_STRICT_ENABLED'] = previousStrict;
+      }
+    });
+
+    it('should NOT block a rate-less order with no switch set - that is the default', async () => {
+      // Coverage is zero on deploy, so the refusal ships off. If this ever goes
+      // red, the default flipped and every uninvoiced order on every existing
+      // install just became blocked.
+      const previousStrict = process.env['OL_TAX_RATE_STRICT_ENABLED'];
+      delete process.env['OL_TAX_RATE_STRICT_ENABLED'];
+      try {
+        connectionPort.list.mockResolvedValue([makeConnection('auto-on-paid')]);
+
+        const outcome = await service.onOrderTransition(
+          makeOrder({
+            paymentStatus: 'paid',
+            items: [{ id: 'i1', productId: 'p1', quantity: 1, price: 10, name: 'Widget' }],
+          }),
+          'src-1',
+        );
+
+        expect(outcome).toEqual({ kind: 'none' });
+        expect(syncJobs.schedule).toHaveBeenCalledTimes(1);
+      } finally {
+        if (previousStrict === undefined) delete process.env['OL_TAX_RATE_STRICT_ENABLED'];
+        else process.env['OL_TAX_RATE_STRICT_ENABLED'] = previousStrict;
+      }
+    });
+
+    it("should NOT block on '0' - a zero rate is an answer, not a gap", async () => {
+      connectionPort.list.mockResolvedValue([makeConnection('auto-on-paid')]);
+
+      const outcome = await service.onOrderTransition(
+        makeOrder({
+          paymentStatus: 'paid',
+          items: [
+            { id: 'i1', productId: 'p1', quantity: 1, price: 10, name: 'Book', taxRate: '0' },
+          ],
+        }),
+        'src-1',
+      );
+
+      expect(outcome).toEqual({ kind: 'none' });
+      expect(syncJobs.schedule).toHaveBeenCalledTimes(1);
     });
 
     it('should report trigger-model-batched, keeping the existing PII-safe log', async () => {

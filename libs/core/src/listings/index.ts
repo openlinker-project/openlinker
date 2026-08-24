@@ -230,7 +230,11 @@ export type {
   UpdateOfferQuantitiesBatchResult,
   UpdateOfferQuantitiesBatchFailure,
 } from './domain/types/offer-quantity-update.types';
-export type { UpdateOfferFieldsCommand } from './domain/types/offer-fields-update.types';
+export type {
+  FrozenOfferField,
+  UpdateOfferFieldsCommand,
+  UpdateOfferFieldsReport,
+} from './domain/types/offer-fields-update.types';
 export type { OfferCategory, CategoryPathSegment } from './domain/types/category.types';
 export { CreateOfferResultStatusValues, OfferConditionValues } from './domain/types/offer-create.types';
 export type {

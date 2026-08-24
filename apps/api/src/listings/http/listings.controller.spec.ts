@@ -189,6 +189,7 @@ describe('ListingsController', () => {
     productVariantRepository = {
       findById: jest.fn().mockResolvedValue(null),
       findByProductId: jest.fn(),
+      findByProductIds: jest.fn(),
       countByProductIds: jest.fn().mockResolvedValue(new Map<string, number>()),
       findBySku: jest.fn(),
       findBySkuIn: jest.fn(),
@@ -198,6 +199,9 @@ describe('ListingsController', () => {
       upsertMany: jest.fn(),
       findMany: jest.fn(),
       markStaleExceptVariants: jest.fn(),
+    recordTaxRate: jest.fn(),
+    findTaxRate: jest.fn(),
+    clearTaxRate: jest.fn(),
     };
     categoryResolution = {
       resolveCategory: jest.fn(),

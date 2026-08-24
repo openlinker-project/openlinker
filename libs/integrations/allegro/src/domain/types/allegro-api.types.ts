@@ -77,6 +77,25 @@ export interface AllegroCheckoutForm {
       currency: string;
     };
     boughtAt?: string;
+    /**
+     * Per-line tax as Allegro reports it (live since 28 Mar 2024, #2249).
+     *
+     * EVERY field is nullable, including the object itself, and a null must
+     * stay a null: an offer published without tax settings reports nothing
+     * here, and reading that as `0` would state a zero-rated sale that never
+     * happened. Offers OpenLinker itself published before this epic carry no
+     * rate at all - verified on the live sandbox, 24 lines across 11 offers all
+     * returned `tax: null`.
+     *
+     * `rate` is a percent string (`"23.00"`). `subject` and `exemption` are
+     * Allegro's own vocabulary for a non-percentage regime and are read only as
+     * provenance - core never learns them.
+     */
+    tax?: {
+      rate?: string | null;
+      subject?: string | null;
+      exemption?: string | null;
+    } | null;
   }>;
   summary: {
     totalToPay: {
@@ -516,6 +535,19 @@ export interface AllegroCategoryParametersResponse {
  */
 export interface AllegroOfferFieldsPatchBody extends Record<string, unknown> {
   name?: string;
+  /**
+   * Per-country tax rates (#2249). Patched so an offer's rate follows the
+   * catalogue instead of freezing at whatever it was when the offer was first
+   * published - the same reason price and stock are propagated.
+   */
+  taxSettings?: {
+    /**
+     * A STRING, not a number (#2249). Allegro matches it against the seller's
+     * configured VAT settings exactly, so `23` is rejected where `"23.00"` is
+     * accepted - verified live, 422 `SETTING_NOT_FOUND`.
+     */
+    rates: Array<{ rate: string; countryCode: string }>;
+  };
   sellingMode?: {
     price?: {
       amount: string;
@@ -610,6 +642,27 @@ export interface AllegroProductOfferCreateRequest extends Record<string, unknown
     warranty?: { id: string };
   };
   payments?: { invoice?: 'VAT' | 'NO_INVOICE' | 'VAT_MARGIN' };
+  /**
+   * Per-country tax rates for the offer (#2249, ADR-063).
+   *
+   * OpenLinker wrote nothing here before this epic, which is why every offer it
+   * published reported `tax: null` on the resulting order lines - verified on
+   * the live sandbox: 24 lines across 11 offers, and a `PATCH` setting this
+   * field made the next purchase report `tax: {"rate": "23.00"}`.
+   *
+   * `rate` is a percent NUMBER (Allegro's own shape), not the neutral
+   * percent-as-string code; the adapter converts. Which rates a category allows
+   * is Allegro's own rule, readable at
+   * `GET /sale/tax-settings?category.id=&countryCode=`.
+   */
+  taxSettings?: {
+    /**
+     * A STRING, not a number (#2249). Allegro matches it against the seller's
+     * configured VAT settings exactly, so `23` is rejected where `"23.00"` is
+     * accepted - verified live, 422 `SETTING_NOT_FOUND`.
+     */
+    rates: Array<{ rate: string; countryCode: string }>;
+  };
   publication?: { status: 'INACTIVE' | 'ACTIVE' };
   external?: { id: string };
   /**
@@ -845,5 +898,36 @@ export interface AllegroSmartOfferClassificationReport {
     name: string;
     description: string;
     fulfilled: boolean;
+  }>;
+}
+
+/**
+ * `GET /sale/tax-settings?category.id=&countryCode=` (#2249) - what tax rates a
+ * category permits in a country. Read only to turn an Allegro rejection into an
+ * actionable OpenLinker error naming the permitted values.
+ *
+ * The shape is verified against the live sandbox (21 Aug 2026), because the
+ * first version of this type was a guess and was wrong: rates are nested one
+ * level deeper than `taxSettings[].rates[]`, so the parser silently produced an
+ * empty list and the category check never fired.
+ *
+ * ```
+ * GET /sale/tax-settings?category.id=257366&countryCode=PL
+ * {"subjects":[…],
+ *  "rates":[{"countryCode":"PL",
+ *            "values":[{"label":"23%","value":"23.00","exemptionRequired":false},
+ *                      {"label":"Select","value":null,"exemptionRequired":false}]}],
+ *  "exemptions":[…]}
+ * ```
+ *
+ * Two details the live probe settled. A `null` `value` is the UI's "Select"
+ * placeholder and is not a rate. And a category with no tax options at all
+ * answers **404** with an `errors` array, not an empty 200 - which the caller's
+ * catch already degrades to "could not read", the correct outcome.
+ */
+export interface AllegroTaxSettingsResponse {
+  rates?: Array<{
+    countryCode?: string;
+    values?: Array<{ label?: string; value?: string | null; exemptionRequired?: boolean }>;
   }>;
 }

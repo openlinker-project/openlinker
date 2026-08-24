@@ -20,12 +20,14 @@ import {
   PrestashopNotSupportedException,
 } from '@openlinker/integrations-prestashop';
 import { MasterProductNotFoundError } from '@openlinker/core/products';
+import { PrestashopApiException } from '@openlinker/integrations-prestashop';
 import type {
   PrestashopProduct,
   PrestashopCombination,
 } from '../../mappers/prestashop.mapper.interface';
 import type { IPrestashopWebserviceClient } from '../../http/prestashop-webservice.client.interface';
 import type { IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
+import type { PrestashopTaxRateResolver } from '../../provisioners/prestashop-tax-rate.resolver';
 
 describe('PrestashopProductMasterAdapter', () => {
   let adapter: PrestashopProductMasterAdapter;
@@ -866,6 +868,178 @@ describe('PrestashopProductMasterAdapter', () => {
 
       expect(result).toHaveLength(1);
       expect(result[0].attributes).toEqual({ option_0: '20' });
+    });
+  });
+
+  describe('readProductTaxRate (#2054, ADR-063 — #1985 review parity with WooCommerce)', () => {
+    const internalId = 'internal-product-123';
+    const externalId = '42';
+
+    function makeTaxRateResolver(): jest.Mocked<
+      Pick<PrestashopTaxRateResolver, 'resolveProductTaxRate'>
+    > {
+      return { resolveProductTaxRate: jest.fn() };
+    }
+
+    function seedMapping(): void {
+      mockIdentifierMapping.getExternalIds = jest.fn().mockResolvedValue([
+        { connectionId: connection.id, externalId, entityType: 'Product' },
+      ]);
+    }
+
+    it('readsTaxRatePerVariant reports false — PrestaShop taxes the product, never the combination', () => {
+      expect(adapter.readsTaxRatePerVariant()).toBe(false);
+    });
+
+    it('should resolve the rate as a percent code when the resolver names one', async () => {
+      seedMapping();
+      const taxRateResolver = makeTaxRateResolver();
+      taxRateResolver.resolveProductTaxRate.mockResolvedValue({ kind: 'resolved', rate: 0.23 });
+      const adapterWithResolver = new PrestashopProductMasterAdapter(
+        mockHttpClient,
+        mockIdentifierMapping,
+        productMapper,
+        connection,
+        undefined,
+        undefined,
+        undefined,
+        taxRateResolver as unknown as PrestashopTaxRateResolver
+      );
+
+      await expect(
+        adapterWithResolver.readProductTaxRate({ productId: internalId })
+      ).resolves.toEqual({ kind: 'resolved', code: '23', countryIso2: null });
+      expect(taxRateResolver.resolveProductTaxRate).toHaveBeenCalledWith(
+        externalId,
+        undefined,
+        connection.id,
+        mockHttpClient
+      );
+    });
+
+    it('should keep a genuinely untaxed product as a resolved zero, not unknown', async () => {
+      seedMapping();
+      const taxRateResolver = makeTaxRateResolver();
+      taxRateResolver.resolveProductTaxRate.mockResolvedValue({ kind: 'resolved', rate: 0 });
+      const adapterWithResolver = new PrestashopProductMasterAdapter(
+        mockHttpClient,
+        mockIdentifierMapping,
+        productMapper,
+        connection,
+        undefined,
+        undefined,
+        undefined,
+        taxRateResolver as unknown as PrestashopTaxRateResolver
+      );
+
+      await expect(
+        adapterWithResolver.readProductTaxRate({ productId: internalId })
+      ).resolves.toEqual({ kind: 'resolved', code: '0', countryIso2: null });
+    });
+
+    it('should THROW a PrestashopApiException on a transport failure, instead of reporting unknown', async () => {
+      seedMapping();
+      const taxRateResolver = makeTaxRateResolver();
+      taxRateResolver.resolveProductTaxRate.mockResolvedValue({
+        kind: 'unknown',
+        reason: 'transport',
+        evidence: 'GET products/42 returned 503',
+        statusCode: 503,
+      });
+      const adapterWithResolver = new PrestashopProductMasterAdapter(
+        mockHttpClient,
+        mockIdentifierMapping,
+        productMapper,
+        connection,
+        undefined,
+        undefined,
+        undefined,
+        taxRateResolver as unknown as PrestashopTaxRateResolver
+      );
+
+      await expect(
+        adapterWithResolver.readProductTaxRate({ productId: internalId })
+      ).rejects.toBeInstanceOf(PrestashopApiException);
+    });
+
+    it('should report ambiguous when several candidate rules and no unambiguous pick', async () => {
+      seedMapping();
+      const taxRateResolver = makeTaxRateResolver();
+      taxRateResolver.resolveProductTaxRate.mockResolvedValue({
+        kind: 'unknown',
+        reason: 'ambiguous',
+        evidence: 'tax rules group 2 carries several country rules with no catch-all',
+      });
+      const adapterWithResolver = new PrestashopProductMasterAdapter(
+        mockHttpClient,
+        mockIdentifierMapping,
+        productMapper,
+        connection,
+        undefined,
+        undefined,
+        undefined,
+        taxRateResolver as unknown as PrestashopTaxRateResolver
+      );
+
+      const result = await adapterWithResolver.readProductTaxRate({ productId: internalId });
+
+      expect(result).toEqual(
+        expect.objectContaining({ kind: 'unknown', reason: 'ambiguous' })
+      );
+    });
+
+    it('should report not-configured when the shop tax record is incomplete', async () => {
+      seedMapping();
+      const taxRateResolver = makeTaxRateResolver();
+      taxRateResolver.resolveProductTaxRate.mockResolvedValue({
+        kind: 'unknown',
+        reason: 'configuration',
+        evidence: 'tax rule 7 in group 2 carries no rate',
+      });
+      const adapterWithResolver = new PrestashopProductMasterAdapter(
+        mockHttpClient,
+        mockIdentifierMapping,
+        productMapper,
+        connection,
+        undefined,
+        undefined,
+        undefined,
+        taxRateResolver as unknown as PrestashopTaxRateResolver
+      );
+
+      const result = await adapterWithResolver.readProductTaxRate({ productId: internalId });
+
+      expect(result).toEqual(
+        expect.objectContaining({ kind: 'unknown', reason: 'not-configured' })
+      );
+    });
+
+    it('should report unreadable when no resolver was wired for this connection', async () => {
+      seedMapping();
+
+      await expect(adapter.readProductTaxRate({ productId: internalId })).resolves.toEqual(
+        expect.objectContaining({ kind: 'unknown', reason: 'unreadable' })
+      );
+    });
+
+    it('should throw MasterProductNotFoundError when no external ID mapping exists', async () => {
+      mockIdentifierMapping.getExternalIds = jest.fn().mockResolvedValue([]);
+      const taxRateResolver = makeTaxRateResolver();
+      const adapterWithResolver = new PrestashopProductMasterAdapter(
+        mockHttpClient,
+        mockIdentifierMapping,
+        productMapper,
+        connection,
+        undefined,
+        undefined,
+        undefined,
+        taxRateResolver as unknown as PrestashopTaxRateResolver
+      );
+
+      await expect(
+        adapterWithResolver.readProductTaxRate({ productId: internalId })
+      ).rejects.toBeInstanceOf(MasterProductNotFoundError);
+      expect(taxRateResolver.resolveProductTaxRate).not.toHaveBeenCalled();
     });
   });
 });

@@ -26,7 +26,11 @@ export type SalesDocumentBlockCopyKind = 'invoice' | 'fiscal-receipt' | 'mixed';
 
 /** One rendered explanation of why this order carries no fiscal document (#2100). */
 export interface SalesDocumentBlockCopy {
-  tone: 'warning' | 'error' | 'info';
+  /**
+   * Passed straight into `<Alert>`, so it must stay a subset of `AlertTone`.
+   * `'conflict'` (#2253) is available for a non-blocking source disagreement.
+   */
+  tone: 'conflict' | 'warning' | 'error' | 'info';
   title: string;
   body: string;
   /** PII-free elaboration the backend supplied, if any. */
@@ -103,6 +107,13 @@ export function resolveSalesDocumentBlockCopy(
   derivedAmbiguity: boolean,
   t: (key: string, fallback: string) => string,
   kind: SalesDocumentBlockCopyKind = 'invoice',
+  /**
+   * The rate-less lines, when the reason is `missing-tax-rate` (#2254).
+   *
+   * Passed in rather than re-derived, because the remedy depends on WHY a rate
+   * is absent and only the lines say which case this is. Omitted elsewhere.
+   */
+  rateLines: RateLessLine[] = [],
 ): SalesDocumentBlockCopy | null {
   const reason = order.salesDocumentBlockReason ?? null;
   const detail = order.salesDocumentBlockDetail ?? null;
@@ -241,9 +252,18 @@ export function resolveSalesDocumentBlockCopy(
     };
   }
 
+  if (reason === 'missing-tax-rate') {
+    return resolveMissingTaxRateCopy(rateLines, detail, t, v);
+  }
+
   if (reason === 'tax-rate-conflict') {
+    // Declared in the union but never written (#2245 F1): a shop-versus-channel
+    // disagreement does NOT block, so this arm only guards against a newer
+    // backend. Kept honest rather than deleted.
     return {
-      tone: 'error',
+      // Tone stays `conflict` (#2253): a rate disagreement is a source
+      // conflict, not a hard failure, and the panel renders the two apart.
+      tone: 'conflict',
       title: t(
         'salesDocument.panel.blockTaxRateTitle',
         `Not ${v.pastParticiplePhrase}: the tax rates disagree.`,
@@ -274,4 +294,129 @@ export function resolveSalesDocumentBlockCopy(
 
 function capitalize(word: string): string {
   return word.length === 0 ? word : `${word[0].toUpperCase()}${word.slice(1)}`;
+}
+
+/**
+ * One line with no tax rate, as the panel knows it (#2254).
+ *
+ * `inCatalogue` is what separates the two hardest remedies: a product OL has
+ * mapped can be fixed in its shop, while an item that exists only as a
+ * marketplace offer cannot be released by fixing that offer at all - the
+ * marketplace stamped the rate at purchase.
+ */
+export interface RateLessLine {
+  name: string;
+  inCatalogue: boolean;
+}
+
+/**
+ * Which subject a `missing-tax-rate` block is about (#2260 review).
+ *
+ * The backend gate (`findOrderTaxRateGap`) refuses in two shapes: a product line
+ * with no rate, and - with every product line rated - a delivery charge that
+ * cannot be attributed to any rate (an empty basket, or every line grossing
+ * zero). The persisted reason is the same in both, so the panel reads the scope
+ * off the same fact the gate did: no rate-less line means the delivery charge is
+ * the only thing left with nowhere to sit.
+ *
+ * It exists so the copy AND the disabled control agree on one answer, instead of
+ * each deriving its own.
+ */
+export function resolveMissingTaxRateScope(
+  rateLines: readonly RateLessLine[],
+): 'lines' | 'shipping' {
+  return rateLines.length === 0 ? 'shipping' : 'lines';
+}
+
+/**
+ * The two remedy branches for a missing rate (#2254).
+ *
+ * One sentence would be wrong here, because the REASON a rate is absent decides
+ * the remedy and the two are not interchangeable:
+ *
+ *  1. blank on a mapped product - set it in the shop, and the fix releases this
+ *     order on the next sync;
+ *  2. the item is in no catalogue - fixing the offer will NOT release this
+ *     order, because the marketplace stamped the rate at purchase; the only
+ *     route is adding the item to a shop.
+ *
+ * A third case exists in the domain - the shop's tax class matches several
+ * rates, so the rate TABLE is what needs fixing rather than the product - and it
+ * is deliberately NOT branched on here. The reason (`TaxRateUnknownReason`,
+ * `libs/core/src/products/domain/types/tax-rate.types.ts`) is dropped when the
+ * master's answer is projected onto the catalogue, so it never reaches the order
+ * snapshot the panel reads. A branch keyed on a flag that is always false is
+ * copy the operator can never see, and it pointed at the product when the fix is
+ * in the shop's rate table - worse than saying less.
+ *
+ * Plural-safe with a count, deliberately: a forty-line B2B order with six
+ * rate-less lines cannot be told about one product, and every other branch in
+ * this file is order-scoped and singular by nature.
+ */
+function resolveMissingTaxRateCopy(
+  lines: RateLessLine[],
+  detail: string | null,
+  t: (key: string, fallback: string) => string,
+  v: KindVocabulary,
+): SalesDocumentBlockCopy {
+  // Shipping scope (#2260 review): the gate blocked on a missing rate while
+  // every product line HAS one, so the subject is the delivery charge, not a
+  // line. Saying "1 line has no tax rate" here would be flatly false, and
+  // naming a count no line supports would be an invention.
+  if (resolveMissingTaxRateScope(lines) === 'shipping') {
+    return {
+      tone: 'error',
+      title: t(
+        'salesDocument.panel.blockNoRateShippingTitle',
+        `Not ${v.pastParticiplePhrase}: the delivery charge has no tax rate.`,
+      ),
+      body: t(
+        'salesDocument.panel.blockNoRateShippingBody',
+        `Every product line has a rate, but nothing in this order carries an amount the delivery charge could follow. Check the order's lines and delivery charge, or ${v.actionVerb} this one outside OpenLinker.`,
+      ),
+      detail,
+      offerSetPrimary: false,
+    };
+  }
+
+  const names = lines.map((line) => line.name).filter(Boolean);
+  // Count the LINES, never a floor: past the shipping branch there is at least
+  // one rate-less line, so the number is always a real one. `names` can still be
+  // short of `lines` if a line carried no printable name at all, which is the
+  // only case the unnamed-subject wording is reached for - and it is true there.
+  const count = lines.length;
+  const list = names.length > 0 ? names.join(', ') : t('invoice.panel.someLines', 'Some lines');
+
+  const uncatalogued = lines.filter((line) => !line.inCatalogue);
+  if (uncatalogued.length > 0 && uncatalogued.length === lines.length) {
+    const subject = uncatalogued.map((line) => line.name).join(', ');
+    return {
+      tone: 'error',
+      title:
+        uncatalogued.length === 1
+          ? `${t('invoice.panel.blockNoRateUncataloguedTitle', 'Not invoiced:')} ${subject} ${t('invoice.panel.blockNoRateUncataloguedTitleTail', 'is not in your catalogue.')}`
+          : `${t('invoice.panel.blockNoRateUncataloguedTitlePlural', 'Not invoiced:')} ${String(uncatalogued.length)} ${t('invoice.panel.blockNoRateUncataloguedTitlePluralTail', 'items are not in your catalogue.')}`,
+      body: t(
+        'invoice.panel.blockNoRateUncataloguedBody',
+        'The channel reported no rate at purchase, and fixing the offer now will not release this order. Add the item to a shop to release it.',
+      ),
+      detail,
+      offerSetPrimary: false,
+    };
+  }
+
+  return {
+    tone: 'error',
+    title: `${t('invoice.panel.blockNoRateTitle', 'Not invoiced:')} ${String(count)} ${
+      count === 1
+        ? t('invoice.panel.blockNoRateTitleTail', 'line has no tax rate.')
+        : t('invoice.panel.blockNoRateTitleTailPlural', 'lines have no tax rate.')
+    }`,
+    body: `${list} ${t(
+      'invoice.panel.blockNoRateBody',
+      'have no rate in the shop, and the channel did not report one. Rates arrive with the product sync.',
+    )}`,
+    detail,
+    offerSetPrimary: false,
+  };
 }

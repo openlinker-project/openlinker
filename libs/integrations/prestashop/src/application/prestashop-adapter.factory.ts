@@ -73,6 +73,15 @@ export class PrestashopAdapterFactory implements IPrestashopAdapterFactory {
   // connection config leaves `currency` unset.
   private readonly shopCurrencyResolver = new PrestashopShopCurrencyResolver();
 
+  // Process-singleton for the same reason: master sync builds one adapter per
+  // product, so a per-adapter tax-rate cache would never hit (#2054). The
+  // order-create path keeps its own instance, built inside the customer-
+  // provisioning branch - catalogue sync must not depend on that branch being
+  // wired.
+  private readonly productTaxRateResolver = new PrestashopTaxRateResolver(
+    new PrestashopCountryResolver()
+  );
+
   // Same placement and reasoning as `shopCurrencyResolver`, whose shop-default
   // read it falls back to: a process-singleton field so the per-(connection,
   // id_currency) cache of order denominations (#2277) survives across the
@@ -149,7 +158,13 @@ export class PrestashopAdapterFactory implements IPrestashopAdapterFactory {
       connection,
       this.attributeResolver,
       this.featureResolver,
-      this.categoryPathResolver
+      this.categoryPathResolver,
+      // #2054: the product master reads the shop's tax rate through the same
+      // resolver the order-create path uses, so the two cannot disagree about
+      // one shop. Its own instance (and so its own 5-minute cache) rather than
+      // the order branch's, because that one is built only when customer
+      // provisioning is wired and the catalogue sync must not depend on that.
+      this.productTaxRateResolver
     );
 
     const inventoryMaster = new PrestashopInventoryMasterAdapter(

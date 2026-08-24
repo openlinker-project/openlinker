@@ -16,12 +16,17 @@ import { ProductVariantRepository } from './infrastructure/persistence/repositor
 import { ProductsService } from './application/services/products.service';
 import { MasterProductSyncService } from './application/services/master-product-sync.service';
 import { AutoMatchVariantOffersService } from './application/services/auto-match-variant-offers.service';
+import { TaxRateJournalOrmEntity } from './infrastructure/persistence/entities/tax-rate-journal.orm-entity';
+import { TaxRateJournalRepository } from './infrastructure/persistence/repositories/tax-rate-journal.repository';
+import { TaxRateJournalService } from './application/services/tax-rate-journal.service';
 import {
   PRODUCT_REPOSITORY_TOKEN,
   PRODUCT_VARIANT_REPOSITORY_TOKEN,
   PRODUCTS_SERVICE_TOKEN,
   MASTER_PRODUCT_SYNC_SERVICE_TOKEN,
   AUTO_MATCH_VARIANT_OFFERS_SERVICE_TOKEN,
+  TAX_RATE_JOURNAL_REPOSITORY_TOKEN,
+  TAX_RATE_JOURNAL_SERVICE_TOKEN,
 } from './products.tokens';
 import { IntegrationsModule } from '@openlinker/core/integrations';
 import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
@@ -37,7 +42,7 @@ export {
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([ProductOrmEntity, ProductVariantOrmEntity]),
+    TypeOrmModule.forFeature([ProductOrmEntity, ProductVariantOrmEntity, TaxRateJournalOrmEntity]),
     IntegrationsModule,
     IdentifierMappingModule,
     EventsModule,
@@ -49,6 +54,8 @@ export {
     ProductsService,
     MasterProductSyncService,
     AutoMatchVariantOffersService,
+    TaxRateJournalRepository,
+    TaxRateJournalService,
     // Then provide token bindings using useExisting
     {
       provide: PRODUCT_REPOSITORY_TOKEN,
@@ -70,6 +77,14 @@ export {
       provide: AUTO_MATCH_VARIANT_OFFERS_SERVICE_TOKEN,
       useExisting: AutoMatchVariantOffersService,
     },
+    {
+      provide: TAX_RATE_JOURNAL_REPOSITORY_TOKEN,
+      useExisting: TaxRateJournalRepository,
+    },
+    {
+      provide: TAX_RATE_JOURNAL_SERVICE_TOKEN,
+      useExisting: TaxRateJournalService,
+    },
   ],
   exports: [
     PRODUCT_REPOSITORY_TOKEN,
@@ -77,6 +92,8 @@ export {
     PRODUCTS_SERVICE_TOKEN,
     MASTER_PRODUCT_SYNC_SERVICE_TOKEN,
     AUTO_MATCH_VARIANT_OFFERS_SERVICE_TOKEN,
+    TAX_RATE_JOURNAL_SERVICE_TOKEN,
+    TAX_RATE_JOURNAL_REPOSITORY_TOKEN,
   ],
 })
 export class ProductsModule {}

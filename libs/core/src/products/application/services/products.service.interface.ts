@@ -17,6 +17,11 @@ import type {
   PaginatedProducts,
   PaginatedProductVariants,
 } from '../../domain/types/product.types';
+import type { StoredTaxRate } from '../../domain/types/tax-rate.types';
+import type {
+  ConnectionTaxRateCoverage,
+  TaxRateCoverage,
+} from '../../domain/types/tax-rate-coverage.types';
 
 /**
  * Products Service Interface
@@ -42,6 +47,53 @@ export interface IProductsService {
    * @param variants - Array of product variant domain entities
    */
   upsertVariants(productId: string, variants: ProductVariant[]): Promise<void>;
+
+  /**
+   * Record what a ProductMaster said about a product's tax rate (#2054).
+   *
+   * Separate from `upsertProduct` on purpose: the sync upsert carries no rate,
+   * so folding this into it would let an ordinary catalogue refresh blank a
+   * rate - and a blanked rate holds documents.
+   *
+   * Recording `{ code: null, readAt }` is meaningful: it says *the master was
+   * asked and has no rate*, which the gate treats differently from
+   * *never asked*.
+   */
+  recordProductTaxRate(productId: string, rate: StoredTaxRate): Promise<void>;
+
+  /** Record a per-variant override. Only a variant-keyed master calls this. */
+  recordVariantTaxRate(variantId: string, rate: StoredTaxRate): Promise<void>;
+
+  /**
+   * Drop a per-variant override, because the shop says this variant inherits
+   * the product's rate (#2054 review).
+   *
+   * Not the same write as `recordVariantTaxRate({ code: null, readAt })`: that
+   * one records *asked, and this variant has no rate*, which reads as a gap on
+   * an operator surface. This one restores the genuinely-absent override, so
+   * `effectiveTaxRate` falls back to the product.
+   *
+   * Required rather than optional, because without it an override written once
+   * was never removed - a variation moved back to `tax_class: 'parent'` kept
+   * every order line at its stale rate, silently.
+   */
+  clearVariantTaxRate(variantId: string): Promise<void>;
+
+  /**
+   * The rate that applies to a line, resolved from the catalogue projection.
+   * The variant override wins where present; otherwise the product's rate.
+   */
+  getEffectiveTaxRate(productId: string, variantId?: string): Promise<StoredTaxRate>;
+
+  /** Catalogue coverage by tax-rate read state (#2054 / #2256). */
+  getTaxRateCoverage(): Promise<TaxRateCoverage>;
+
+  /**
+   * The same coverage, per connection (#2256) - the unit an operator actually
+   * fixes. "The catalogue has no rates" is not actionable when three shops feed
+   * it and only one is incomplete.
+   */
+  getTaxRateCoverageByConnection(): Promise<ConnectionTaxRateCoverage[]>;
 
   /**
    * Get a single product by internal ID
@@ -70,6 +122,14 @@ export interface IProductsService {
    * product's canonical variant (#822).
    */
   getVariantsByProductId(productId: string): Promise<ProductVariant[]>;
+
+  /**
+   * Batch variant lookup for the given product IDs (#2172 review,
+   * SUGGESTION 4) — a single query, as opposed to a `Promise.all` fan-out
+   * over {@link getVariantsByProductId} once per product. Empty input
+   * returns `[]` without a storage round-trip.
+   */
+  getVariantsByProductIds(productIds: readonly string[]): Promise<ProductVariant[]>;
 
   /**
    * Variant lookup by SKU list. Used by offer-mapping reconciliation flows

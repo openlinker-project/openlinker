@@ -154,7 +154,12 @@ import type {
   SalesDocumentRoutingCandidate,
   SalesDocumentUnresolvedReason,
 } from '@openlinker/core/sales-documents';
+import { isTaxRateEnforced } from '@openlinker/core/sales-documents';
 import { Logger } from '@openlinker/shared/logging';
+import {
+  describeMissingTaxRate,
+  findOrderTaxRateGap,
+} from '../../domain/types/order-tax-rate-gate.types';
 // Type-only NAMED import (never a wildcard — see
 // docs/architecture-overview.md#cross-context-dependencies-in-core) of just
 // the one function used in the lazy require below. Erases at compile time,
@@ -384,6 +389,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     order: Order,
     sourceConnectionId: string,
     sourceEventId?: string,
+    taxRateEra?: string | null,
   ): Promise<SalesDocumentBlockOutcome> {
     // D8: only ACTIVE connections receive issuance jobs. The scheduler's
     // `status: 'active'` filter already excludes disabled/error/needs_reauth
@@ -453,7 +459,15 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
         );
         return { kind: 'indeterminate' };
       case 'route':
-        return this.dispatchRoute(decision, connections, eligibleCount, order, sourceConnectionId, sourceEventId);
+        return this.dispatchRoute(
+          decision,
+          connections,
+          eligibleCount,
+          order,
+          sourceConnectionId,
+          sourceEventId,
+          taxRateEra,
+        );
     }
   }
 
@@ -613,6 +627,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     order: Order,
     sourceConnectionId: string,
     sourceEventId?: string,
+    taxRateEra?: string | null,
   ): Promise<SalesDocumentBlockOutcome> {
     const connection = connections.find((candidate) => candidate.id === decision.connectionId);
     if (connection === undefined) {
@@ -646,10 +661,24 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     }
 
     if (decision.documentKind === 'invoice') {
-      return this.dispatchInvoice(connection, eligibleCount, order, sourceConnectionId, sourceEventId);
+      return this.dispatchInvoice(
+        connection,
+        eligibleCount,
+        order,
+        sourceConnectionId,
+        sourceEventId,
+        taxRateEra,
+      );
     }
     if (decision.documentKind === 'fiscal-receipt') {
-      return this.dispatchFiscalReceipt(connection, eligibleCount, order, sourceConnectionId, sourceEventId);
+      return this.dispatchFiscalReceipt(
+        connection,
+        eligibleCount,
+        order,
+        sourceConnectionId,
+        sourceEventId,
+        taxRateEra,
+      );
     }
 
     // Open-world kind (decision 10): core recognizes no dispatch for it. The
@@ -685,6 +714,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     order: Order,
     sourceConnectionId: string,
     sourceEventId?: string,
+    taxRateEra?: string | null,
   ): Promise<SalesDocumentBlockOutcome> {
     const supported = await this.connectionSupportsInvoiceDocumentType(connection.id);
     if (!supported) {
@@ -711,6 +741,45 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
       const triggerModel = parseTriggerModel(connection.config.invoicing?.triggerModel);
       this.warnOnceIfManualWinnerDisablesInstall(triggerModel, connection.id, eligibleCount);
 
+      // #2248 (ADR-063 § 6): a line with no tax rate is checked BEFORE the
+      // trigger-model gate, and deliberately so. On a `manual` connection both
+      // would apply, and the two say different things - `trigger-model-manual`
+      // means "waiting for a human", which is a workflow state with a working
+      // CTA, while this one means "no human can issue it either". Reporting the
+      // weaker reason would leave an operator clicking a button that refuses.
+      //
+      // Two gates on the check itself (#2245 review). It is off unless the
+      // deployment switched strict enforcement on - with catalogue coverage at
+      // zero on deploy an ungated gate blocks every order - and it never applies
+      // to a pre-rollout order, which ADR-063 § Consequences says issues exactly
+      // as it always did.
+      //
+      // `findOrderTaxRateGap`, not `findMissingTaxRate`: the write path guards
+      // the COMPOSED command, which carries a shipping line the order's items do
+      // not. An order whose goods total 0 but which still charges delivery
+      // passed an items-only scan, enqueued, composed a blank-rate shipping line
+      // and then threw on every attempt with no reason persisted anywhere - the
+      // silent decline ADR-041 §54 forbids.
+      if (isTaxRateEnforced(taxRateEra)) {
+        const missingRate = findOrderTaxRateGap(
+          order.items.map((item) => ({
+            productId: item.productId,
+            taxRate: item.taxRate,
+            gross: item.price * item.quantity,
+          })),
+          order.totals.shipping,
+        );
+        if (missingRate) {
+          return await this.reportBlock(
+            {
+              reason: 'missing-tax-rate',
+              detail: describeMissingTaxRate(missingRate),
+            },
+            order.id,
+          );
+        }
+      }
+
       const gate = this.evaluateGate(order, triggerModel, connection.id);
       if (gate.kind === 'waiting') {
         return { kind: 'none' };
@@ -735,6 +804,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
         sourceEventId,
         this.readShippingLineName(connection),
         sourcePlatformType,
+        taxRateEra,
       );
 
       await this.syncJobs.schedule({
@@ -780,10 +850,10 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
    * so the resolver's structural check (`Fiscalization` capability enabled)
    * is the whole validation story for this kind today.
    *
-   * Mirrors `dispatchInvoice`'s trigger-model gate + block-reporting shape
-   * (#2100) so a blocked fiscal-receipt candidate is exactly as
-   * operator-visible as a blocked invoice candidate — the persisted reason
-   * columns are document-kind-agnostic.
+   * Mirrors `dispatchInvoice`'s tax-rate gate, trigger-model gate and
+   * block-reporting shape (#2100, #2252) so a blocked fiscal-receipt candidate
+   * is exactly as operator-visible as a blocked invoice candidate — the
+   * persisted reason columns are document-kind-agnostic.
    */
   private async dispatchFiscalReceipt(
     connection: Connection,
@@ -791,6 +861,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     order: Order,
     sourceConnectionId: string,
     sourceEventId?: string,
+    taxRateEra?: string | null,
   ): Promise<SalesDocumentBlockOutcome> {
     try {
       // Reused verbatim from `config.invoicing.triggerModel` — see the
@@ -798,6 +869,33 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
       // oversight.
       const triggerModel = parseTriggerModel(connection.config.invoicing?.triggerModel);
       this.warnOnceIfManualWinnerDisablesInstall(triggerModel, connection.id, eligibleCount);
+
+      // The same tax-rate gate `dispatchInvoice` runs, in the same position
+      // (#2252). A receipt is not an invoice, but the reason an operator needs
+      // to see is identical, and the write gate in `FiscalRegistrationService`
+      // refuses either way - without this the receipt route enqueued a job that
+      // could only fail, and persisted no reason for it, which is the silent
+      // decline ADR-041 §54 forbids. The persisted reason columns are
+      // document-kind-agnostic, so nothing else has to change to render it.
+      if (isTaxRateEnforced(taxRateEra)) {
+        const missingRate = findOrderTaxRateGap(
+          order.items.map((item) => ({
+            productId: item.productId,
+            taxRate: item.taxRate,
+            gross: item.price * item.quantity,
+          })),
+          order.totals.shipping,
+        );
+        if (missingRate) {
+          return await this.reportBlock(
+            {
+              reason: 'missing-tax-rate',
+              detail: describeMissingTaxRate(missingRate),
+            },
+            order.id,
+          );
+        }
+      }
 
       const gate = this.evaluateGate(order, triggerModel, connection.id);
       if (gate.kind === 'waiting') {
@@ -817,6 +915,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
         idempotencyKey,
         sourceConnectionId,
         sourceEventId,
+        taxRateEra,
       );
 
       await this.syncJobs.schedule({
@@ -1000,6 +1099,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     sourceEventId?: string,
     shippingLineName?: string,
     sourcePlatformType?: string,
+    taxRateEra?: string | null,
   ): InvoicingIssuePayloadV1 {
     // The mapper owns the neutral Order->command rules and may surface
     // InvalidBuyerProfileError / UnsupportedPriceTreatmentError (both PII-clean).
@@ -1014,6 +1114,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
       connectionId: invoicingConnectionId,
       idempotencyKey,
       shippingLineName,
+      taxRateEra,
     });
 
     // #12: flatten the BuyerProfile class into the PLAIN, jsonb-safe field-set.
@@ -1051,6 +1152,13 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     if (sourcePlatformType !== undefined && sourcePlatformType.trim().length > 0) {
       payload.source = sourcePlatformType;
     }
+    // #2245 review: a pre-rollout order is exempt from the write-path tax-rate
+    // guard, and the worker is where that guard runs - so the marker has to
+    // survive the hop. Without it the gate would let the order through and the
+    // handler would refuse it, which is worse than either answer alone.
+    if (command.taxRateEra !== undefined && command.taxRateEra !== null) {
+      payload.taxRateEra = command.taxRateEra;
+    }
 
     return payload;
   }
@@ -1081,6 +1189,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     idempotencyKey: string,
     sourceConnectionId: string,
     sourceEventId?: string,
+    taxRateEra?: string | null,
   ): FiscalizationRegisterPayloadV1 {
     // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires -- lazy require needed to break a CommonJS barrel-load cycle with `@openlinker/core/fiscalization` (see the doc comment above)
     const { toRegisterTransactionCommand } = require('@openlinker/core/fiscalization') as {
@@ -1091,6 +1200,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
       connectionId: connection.id,
       idempotencyKey,
       shippingLineName: this.readShippingLineName(connection),
+      taxRateEra,
     });
 
     const payload: FiscalizationRegisterPayloadV1 = {
@@ -1114,6 +1224,13 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     }
     if (sourceEventId !== undefined) {
       payload.sourceEventId = sourceEventId;
+    }
+    // #2260 review: the gate above is era-aware, so the marker HAS to survive
+    // the hop or the write gate in `FiscalRegistrationService` re-decides the
+    // question without it - passing the order here and refusing it there, with
+    // no persisted reason for the refusal.
+    if (command.taxRateEra !== undefined && command.taxRateEra !== null) {
+      payload.taxRateEra = command.taxRateEra;
     }
 
     return payload;

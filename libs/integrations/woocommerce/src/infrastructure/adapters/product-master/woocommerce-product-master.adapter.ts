@@ -45,6 +45,9 @@ import { MasterProductNotFoundError } from '@openlinker/core/products';
 import type {
   ModifiedProductLister,
   ListExternalIdsModifiedSinceInput,
+  ProductTaxRateReader,
+  ReadProductTaxRateInput,
+  TaxRateResolution,
 } from '@openlinker/core/products';
 import type { IdentifierMappingPort, Connection } from '@openlinker/core/identifier-mapping';
 import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
@@ -52,7 +55,10 @@ import { Logger } from '@openlinker/shared/logging';
 import type { IWooCommerceHttpClient } from '../../http/woocommerce-http-client.interface';
 import { WooCommerceHttpResponseException } from '../../http/woocommerce-http-response.exception';
 import type { IWooCommerceProductMapper } from '../../mappers/woocommerce-product.mapper.interface';
-import { buildSyntheticVariantExternalId } from '../../mappers/woocommerce-variant-id';
+import {
+  buildSyntheticVariantExternalId,
+  isSyntheticVariantExternalId,
+} from '../../mappers/woocommerce-variant-id';
 import { WooCommerceResourceNotFoundException } from '../../../domain/exceptions/woocommerce-resource-not-found.exception';
 import { WooCommerceDuplicateSkuException } from '../../../domain/exceptions/woocommerce-duplicate-sku.exception';
 import type {
@@ -61,10 +67,14 @@ import type {
   WooCommerceProductCategory,
   WooCommerceProductWriteRequest,
   WooCommerceVariationWriteRequest,
+  WooCommerceTaxRate,
+  WooCommerceGeneralSetting,
 } from './woocommerce-product.types';
 import { fetchAllPages } from '../../utils/woocommerce-utils';
 
-export class WooCommerceProductMasterAdapter implements ProductMasterPort, ModifiedProductLister {
+export class WooCommerceProductMasterAdapter
+  implements ProductMasterPort, ModifiedProductLister, ProductTaxRateReader
+{
   private readonly logger = new Logger(WooCommerceProductMasterAdapter.name);
 
   constructor(
@@ -677,4 +687,235 @@ export class WooCommerceProductMasterAdapter implements ProductMasterPort, Modif
     const n = parseFloat(value);
     return Number.isFinite(n) ? n : undefined;
   }
+
+  // ─── Tax rate (#2054, ADR-063) ─────────────────────────────────────────────
+
+  /**
+   * WooCommerce keys tax per variation as well as per product: a variation
+   * carries its own `tax_class`, defaulting to `'parent'`. So the caller reads
+   * both levels, and an inheriting variation answers `inherited` rather than
+   * echoing the product's code.
+   */
+  readsTaxRatePerVariant(): boolean {
+    return true;
+  }
+
+  /**
+   * Resolve the store's tax rate for a product or variation.
+   *
+   * WooCommerce does not store a rate on the product. It stores a **class
+   * name**, and the rate table lives in store settings, keyed by country. So
+   * the read is three hops: the product's `tax_class` and `tax_status`, the
+   * store's own country, and the rows of that class.
+   *
+   * Four answers, and the boundaries between them are the point.
+   *
+   * - `tax_status: 'none'` is a **resolved zero**. It is the operator saying
+   *   this product is not taxed, exactly like PrestaShop's "No tax" - not a
+   *   gap. (`'shipping'` means only the shipping portion is taxed, which is a
+   *   statement about shipping and not about this line, so it is treated as
+   *   taxable here.)
+   * - Exactly one matching row is the rate.
+   * - No row for the store's country is `not-configured`: the class exists but
+   *   the operator has not given it a rate here, which they fix in WooCommerce.
+   * - Several rows with different rates is `ambiguous`. WooCommerce would pick
+   *   by priority, postcode and city at checkout; reproducing that here would
+   *   be OpenLinker computing tax, which ADR-063 forbids. Note that several
+   *   rows agreeing on one rate is **not** ambiguous - the answer is the same
+   *   whichever the shop picks.
+   *
+   * - A store declaring no selling country is `not-configured` too: nothing can
+   *   be matched against the rate table, and the fix is a WooCommerce setting.
+   *
+   * Transport failures propagate - including the store-country read, whose
+   * failure used to be swallowed into `unreadable` and then persisted as
+   * *no rate*, so one 500 on `/settings/general` during a sweep flipped a whole
+   * catalogue from *not checked* to *rate-less* (#2054 review). The sync
+   * swallows the throw per product and leaves the row untouched.
+   */
+  async readProductTaxRate(input: ReadProductTaxRateInput): Promise<TaxRateResolution> {
+    const wcProductId = await this.resolveWcProductId(input.productId);
+
+    const taxed = input.variantId
+      ? await this.readVariationTaxFields(wcProductId, input.variantId)
+      : await this.readProductTaxFields(wcProductId);
+
+    if (taxed === 'inherited') return { kind: 'inherited' };
+
+    if (taxed.taxStatus === 'none') {
+      return {
+        kind: 'resolved',
+        code: '0',
+        countryIso2: await this.readStoreCountryForProvenance(),
+      };
+    }
+
+    // Throws on a failed settings call, so the sync leaves the catalogue row
+    // untouched instead of recording a false "no rate" (#2054 review).
+    const storeCountry = await this.readStoreCountry();
+    if (!storeCountry) {
+      // The store answered and declares no selling country, so no rate row can
+      // be matched: an answer, and one the operator fixes in WooCommerce - hence
+      // `not-configured` rather than `unreadable`, which never persists.
+      return {
+        kind: 'unknown',
+        reason: 'not-configured',
+        detail: 'the store does not declare a selling country',
+      };
+    }
+
+    // `''` is WooCommerce's own slug for the standard class; the taxes endpoint
+    // spells it `standard`.
+    const classSlug = taxed.taxClass === '' || taxed.taxClass === undefined ? 'standard' : taxed.taxClass;
+    const rows = await this.httpClient.get<WooCommerceTaxRate[]>('/wp-json/wc/v3/taxes', {
+      class: classSlug,
+      per_page: 100,
+    });
+
+    // An empty `country` is WooCommerce's wildcard row - it applies everywhere,
+    // so it is a match rather than a row to skip.
+    const applicable = (rows ?? []).filter(
+      (row) => !row.country || row.country.toUpperCase() === storeCountry
+    );
+
+    const distinctRates = [
+      ...new Set(
+        applicable
+          .map((row) => normalizeWcRate(row.rate))
+          .filter((code): code is string => code !== null)
+      ),
+    ];
+
+    if (distinctRates.length === 0) {
+      return {
+        kind: 'unknown',
+        reason: 'not-configured',
+        detail: `tax class "${classSlug}" has no rate for ${storeCountry}`,
+      };
+    }
+    if (distinctRates.length > 1) {
+      return {
+        kind: 'unknown',
+        reason: 'ambiguous',
+        detail: `tax class "${classSlug}" has ${String(distinctRates.length)} different rates for ${storeCountry}`,
+      };
+    }
+
+    return { kind: 'resolved', code: distinctRates[0], countryIso2: storeCountry };
+  }
+
+  private async resolveWcProductId(internalProductId: string): Promise<string> {
+    const externalIds = await this.identifierMapping.getExternalIds(
+      CORE_ENTITY_TYPE.Product,
+      internalProductId
+    );
+    const mapping = externalIds.find((e) => e.connectionId === this.connection.id);
+    if (!mapping) {
+      throw new MasterProductNotFoundError(internalProductId, this.connection.id);
+    }
+    return mapping.externalId;
+  }
+
+  private async readProductTaxFields(
+    wcProductId: string
+  ): Promise<{ taxClass?: string; taxStatus?: string }> {
+    const product = await this.httpClient.get<WooCommerceProduct>(
+      `/wp-json/wc/v3/products/${wcProductId}`,
+      { _fields: 'id,tax_class,tax_status' }
+    );
+    return { taxClass: product.tax_class, taxStatus: product.tax_status };
+  }
+
+  /**
+   * A synthetic variant IS the simple product, so it reads the product's own
+   * fields rather than a variation that does not exist.
+   */
+  private async readVariationTaxFields(
+    wcProductId: string,
+    internalVariantId: string
+  ): Promise<{ taxClass?: string; taxStatus?: string } | 'inherited'> {
+    const externalIds = await this.identifierMapping.getExternalIds(
+      CORE_ENTITY_TYPE.ProductVariant,
+      internalVariantId
+    );
+    const mapping = externalIds.find((e) => e.connectionId === this.connection.id);
+    if (!mapping) return 'inherited';
+    if (isSyntheticVariantExternalId(mapping.externalId)) {
+      return this.readProductTaxFields(wcProductId);
+    }
+
+    const variation = await this.httpClient.get<WooCommerceProductVariation>(
+      `/wp-json/wc/v3/products/${wcProductId}/variations/${mapping.externalId}`,
+      { _fields: 'id,tax_class,tax_status' }
+    );
+    if (variation.tax_class === 'parent' || variation.tax_class === undefined) return 'inherited';
+    return { taxClass: variation.tax_class, taxStatus: variation.tax_status };
+  }
+
+  /**
+   * The store's own selling country, from `woocommerce_default_country`.
+   *
+   * The setting is `PL` or `PL:MZ` (country plus state), so only the part
+   * before the colon is the country. `null` means the store answered and
+   * declares none.
+   *
+   * **A transport failure throws**, per the capability contract: `unknown` is
+   * reserved for "the master answered", and the caller persists an `unknown` as
+   * the *no-rate* state. Swallowing a 500 on `/settings/general` here therefore
+   * used to record a whole catalogue as rate-less off one failed call - blocking
+   * documents and refusing publishes for products whose shop configuration was
+   * perfectly fine. The master sync already swallows a throw per product and
+   * leaves the row untouched, which is the honest outcome.
+   *
+   * **Only a successful read is cached.** Caching the failure would keep the
+   * false answer alive for the adapter's lifetime, and the resolved-zero path
+   * below deliberately tolerates a failure to fetch provenance - so a cached
+   * `null` from that tolerance must not become the rate path's answer.
+   */
+  private async readStoreCountry(): Promise<string | null> {
+    if (this.storeCountry !== undefined) return this.storeCountry;
+    const settings = await this.httpClient.get<WooCommerceGeneralSetting[]>(
+      '/wp-json/wc/v3/settings/general'
+    );
+    const raw = settings?.find((s) => s.id === 'woocommerce_default_country')?.value;
+    const value = Array.isArray(raw) ? raw[0] : raw;
+    this.storeCountry = value ? (value.split(':')[0]?.toUpperCase() ?? null) : null;
+    return this.storeCountry;
+  }
+
+  /**
+   * The same read, for the country carried as **provenance only**.
+   *
+   * A `tax_status: 'none'` product is a resolved zero whatever the store's
+   * country turns out to be, so losing the country must not lose the rate:
+   * here, and only here, a failure degrades to `null` (`ResolvedTaxRate.countryIso2`
+   * is documented as provenance that blocks nothing).
+   */
+  private async readStoreCountryForProvenance(): Promise<string | null> {
+    try {
+      return await this.readStoreCountry();
+    } catch (error) {
+      this.logger.warn(
+        `Could not read the store's selling country for provenance (connection: ${this.connection.id}): ${(error as Error).message}`
+      );
+      return null;
+    }
+  }
+
+  private storeCountry: string | null | undefined;
+}
+
+/**
+ * WooCommerce reports a rate as a percent string with trailing zeros
+ * (`'23.0000'`). The neutral contract is percent-as-string without them
+ * (#2247), because the FA(3) map and the Erli enum are both keyed on the bare
+ * form. Returns `null` for anything unparseable, which the caller counts as
+ * "not a rate" rather than as a zero.
+ */
+function normalizeWcRate(raw: string | undefined): string | null {
+  if (raw === undefined || raw === null || raw.trim() === '') return null;
+  const parsed = Number.parseFloat(raw);
+  if (!Number.isFinite(parsed)) return null;
+  const rounded = Math.round(parsed * 100) / 100;
+  return String(rounded);
 }

@@ -15,6 +15,7 @@ import type {
   ProductPagination,
   PaginatedProductVariants,
 } from '../types/product.types';
+import type { StoredTaxRate } from '../types/tax-rate.types';
 
 /**
  * Product Variant Repository Port
@@ -39,6 +40,17 @@ export interface ProductVariantRepositoryPort {
    * @returns Array of product variant domain entities
    */
   findByProductId(productId: string): Promise<ProductVariant[]>;
+
+  /**
+   * Batch variant lookup for the given product IDs (#2172 review,
+   * SUGGESTION 4) — a single query scoped to the given id set, as opposed to
+   * a `Promise.all` fan-out over {@link findByProductId} once per product.
+   * Empty input returns `[]` without a storage round-trip.
+   *
+   * @param productIds - Internal OpenLinker product IDs
+   * @returns Array of product variant domain entities across every matching product
+   */
+  findByProductIds(productIds: readonly string[]): Promise<ProductVariant[]>;
 
   /**
    * Count variants per product for the given product IDs (#1720).
@@ -135,4 +147,35 @@ export interface ProductVariantRepositoryPort {
     productId: string,
     keepVariantIds: readonly string[]
   ): Promise<string[]>;
+
+  /**
+   * Record what the ProductMaster said about this variant's tax rate (#2054).
+   *
+   * A separate writer from `upsert` / `upsertMany`, for the same reason the
+   * product side is: the ordinary sync upsert carries no rate, so letting it
+   * round-trip these columns would blank a value the tax read just wrote.
+   *
+   * Written only by a master that keys tax per variant. On a product-keyed
+   * master (PrestaShop) these rows stay untouched, so the product's rate
+   * applies - `effectiveTaxRate` treats an absent override as "no opinion",
+   * never as "no rate".
+   */
+  recordTaxRate(variantId: string, rate: StoredTaxRate): Promise<void>;
+
+  /**
+   * Remove any stored override, so the variant resolves through the product
+   * again (#2054 review).
+   *
+   * The counterpart of `recordTaxRate`, and not expressible through it: an
+   * `inherited` read means *this variant has no override*, which is the
+   * genuinely-absent row (`code`, `country` and `readAt` all null) - not the
+   * `{ code: null, readAt: <now> }` shape that says *the shop was asked and has
+   * no rate*. Without this writer an override written once was never removed,
+   * so a variant moved back to `tax_class: 'parent'` kept settling every order
+   * line at its old rate forever.
+   */
+  clearTaxRate(variantId: string): Promise<void>;
+
+  /** Read the stored override for one variant. `null` when the variant is unknown. */
+  findTaxRate(variantId: string): Promise<StoredTaxRate | null>;
 }

@@ -134,6 +134,10 @@ export class FiscalizationController {
         order,
         connectionId: dto.connectionId,
         idempotencyKey: idempotencyKeyFor(dto.connectionId, dto.orderId),
+        // #2260 review: a manual registration of a pre-rollout order must reach
+        // the same verdict the manual invoice path does, so the marker travels
+        // with the command rather than being re-derived (or lost) downstream.
+        taxRateEra: record.taxRateEra,
       });
     } catch (error) {
       throw this.toHttpException(error);

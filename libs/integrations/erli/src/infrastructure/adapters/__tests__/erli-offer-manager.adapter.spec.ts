@@ -204,6 +204,65 @@ describe('ErliOfferManagerAdapter', () => {
     });
   });
 
+  describe('createOffer - the tax rate (#2249, gated by #2260 review)', () => {
+    const withStrict = (value: string | undefined, run: () => Promise<void>) => async () => {
+      const previous = process.env['OL_TAX_RATE_STRICT_ENABLED'];
+      if (value === undefined) delete process.env['OL_TAX_RATE_STRICT_ENABLED'];
+      else process.env['OL_TAX_RATE_STRICT_ENABLED'] = value;
+      try {
+        await run();
+      } finally {
+        if (previous === undefined) delete process.env['OL_TAX_RATE_STRICT_ENABLED'];
+        else process.env['OL_TAX_RATE_STRICT_ENABLED'] = previous;
+      }
+    };
+
+    it(
+      'should publish with taxRate omitted when the switch is off - the default',
+      withStrict(undefined, async () => {
+        // Catalogue coverage is zero on deploy, so a refusal here would fail
+        // every child of every bulk batch on day one. Erli's own
+        // `buyableProblems.missingTaxRate` remains the signal instead.
+        await adapter.createOffer(createCmd());
+
+        const body = httpClient.post.mock.calls[0][1] as { taxRate?: string };
+        expect(body.taxRate).toBeUndefined();
+      }),
+    );
+
+    it(
+      'should refuse a rate-less publish when the switch is on',
+      withStrict('true', async () => {
+        await expect(adapter.createOffer(createCmd())).rejects.toBeInstanceOf(
+          OfferCreateRejectedException,
+        );
+        expect(httpClient.post).not.toHaveBeenCalled();
+      }),
+    );
+
+    it(
+      'should send the shop rate as the Erli enum value when one is known',
+      withStrict(undefined, async () => {
+        await adapter.createOffer(createCmd({ taxRate: '23' }));
+
+        const body = httpClient.post.mock.calls[0][1] as { taxRate?: string };
+        expect(body.taxRate).toBeDefined();
+      }),
+    );
+
+    it(
+      'should refuse a code Erli cannot express even with the switch off',
+      withStrict(undefined, async () => {
+        // Not gated: the shop DID state a rate and Erli's enum cannot carry it.
+        // That is a conflict at any coverage level, not a coverage problem.
+        await expect(adapter.createOffer(createCmd({ taxRate: 'oo' }))).rejects.toBeInstanceOf(
+          OfferCreateRejectedException,
+        );
+        expect(httpClient.post).not.toHaveBeenCalled();
+      }),
+    );
+  });
+
   describe('createOffer', () => {
     it("should submit to the seller-keyed product path and return status 'draft' on 202", async () => {
       const result = await adapter.createOffer(createCmd());
@@ -1014,6 +1073,89 @@ describe('ErliOfferManagerAdapter', () => {
         });
 
         expect(httpClient.patch).not.toHaveBeenCalled();
+      });
+
+      describe('frozen-field report (#2262)', () => {
+        it('should name the frozen fields by their NEUTRAL keys, not Erli wire names', async () => {
+          // `title` -> `name` is the one place the two vocabularies differ, and
+          // a core caller must not have to know Erli's spelling to read this.
+          httpClient.get.mockResolvedValue({
+            status: 200,
+            data: { frozen: { name: true, price: false } },
+          });
+
+          const report = await adapter.updateOfferFields({
+            externalOfferId: VALID_ID,
+            fields: { title: 'T', price: { amount: '5.00', currency: 'PLN' } },
+          });
+
+          expect(report).toEqual({ frozenFields: [{ field: 'title' }] });
+        });
+
+        it('should carry the frozen rate the destination still holds', async () => {
+          httpClient.get.mockResolvedValue({
+            status: 200,
+            data: { frozen: { taxRate: true }, taxRate: 'TAX_8' },
+          });
+
+          const report = await adapter.updateOfferFields({
+            externalOfferId: VALID_ID,
+            fields: { taxRate: '23' },
+          });
+
+          expect(report).toEqual({
+            frozenFields: [{ field: 'taxRate', currentValue: 'TAX_8' }],
+          });
+        });
+
+        it('should omit currentValue when the read did not echo the rate back', async () => {
+          httpClient.get.mockResolvedValue({ status: 200, data: { frozen: { taxRate: true } } });
+
+          const report = await adapter.updateOfferFields({
+            externalOfferId: VALID_ID,
+            fields: { taxRate: '23' },
+          });
+
+          expect(report).toEqual({ frozenFields: [{ field: 'taxRate' }] });
+        });
+
+        it('should still report when every supplied field was frozen and no PATCH went out', async () => {
+          // The all-frozen case is exactly the one a caller most needs to hear
+          // about; returning nothing would read as "declared nothing".
+          httpClient.get.mockResolvedValue({ status: 200, data: { frozen: { taxRate: true } } });
+
+          const report = await adapter.updateOfferFields({
+            externalOfferId: VALID_ID,
+            fields: { taxRate: '23' },
+          });
+
+          expect(httpClient.patch).not.toHaveBeenCalled();
+          expect(report).toEqual({ frozenFields: [{ field: 'taxRate' }] });
+        });
+
+        it('should report an EMPTY frozen set when nothing was frozen', async () => {
+          httpClient.get.mockResolvedValue({ status: 200, data: { frozen: { taxRate: false } } });
+
+          const report = await adapter.updateOfferFields({
+            externalOfferId: VALID_ID,
+            fields: { taxRate: '23' },
+          });
+
+          expect(report).toEqual({ frozenFields: [] });
+        });
+
+        it('should report an empty frozen set on the 404 fail-open branch (unknown, not frozen)', async () => {
+          // A read that carried no frozen info means UNKNOWN. Naming a field
+          // here would assert a freeze the destination never reported.
+          httpClient.get.mockRejectedValue(new ErliApiException('not found', 404));
+
+          const report = await adapter.updateOfferFields({
+            externalOfferId: VALID_ID,
+            fields: { taxRate: '23' },
+          });
+
+          expect(report).toEqual({ frozenFields: [] });
+        });
       });
 
       it('should fail open and PATCH the full body when the GET 404s in the cache-lag window', async () => {

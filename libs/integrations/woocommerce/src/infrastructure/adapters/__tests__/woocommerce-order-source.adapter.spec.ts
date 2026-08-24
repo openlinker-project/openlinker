@@ -460,6 +460,8 @@ describe('WooCommerceOrderSourceAdapter', () => {
       expect(result.totals.tax).toBe(10);
       expect(result.totals.shipping).toBe(5);
       expect(result.totals.total).toBe(130);
+      // `line_items[].price` is net (#2440).
+      expect(result.totals.taxTreatment).toBe('exclusive');
     });
   });
 });
