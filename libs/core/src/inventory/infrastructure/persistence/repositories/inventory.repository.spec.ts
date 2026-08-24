@@ -72,6 +72,7 @@ describe('InventoryRepository', () => {
       save: jest.fn(),
       create: jest.fn(),
       createQueryBuilder: jest.fn(),
+      query: jest.fn(),
     } as unknown as jest.Mocked<Repository<InventoryItemOrmEntity>>;
 
     const module: TestingModule = await Test.createTestingModule({
@@ -86,6 +87,168 @@ describe('InventoryRepository', () => {
 
     repository = module.get<InventoryRepository>(InventoryRepository);
     ormRepository = module.get(getRepositoryToken(InventoryItemOrmEntity));
+  });
+
+  describe('findDuplicatePositions (#2319)', () => {
+    /** Both statements the SUT issues, in call order. */
+    function issuedSql(): string[] {
+      return (ormRepository.query as jest.Mock).mock.calls.map(
+        (call) => (call as [string, unknown[]?])[0]
+      );
+    }
+
+    it('short-circuits on a clean table without issuing the detail query', async () => {
+      (ormRepository.query as jest.Mock).mockResolvedValueOnce([{ groupCount: 0, rowCount: 0 }]);
+
+      const result = await repository.findDuplicatePositions(100);
+
+      expect(result).toEqual({
+        groupCount: 0,
+        rowCount: 0,
+        excessRowCount: 0,
+        groups: [],
+        truncated: false,
+      });
+      // Only the totals statement ran — nothing to detail.
+      expect(ormRepository.query).toHaveBeenCalledTimes(1);
+    });
+
+    it('groups on all FOUR key columns, so cross-source rows are not duplicates', async () => {
+      (ormRepository.query as jest.Mock).mockResolvedValueOnce([{ groupCount: 0, rowCount: 0 }]);
+
+      await repository.findDuplicatePositions(100);
+
+      // ADR-058 decision (2): provenance is part of row identity, so a
+      // three-column grouping would flag legitimate cross-source coexistence as
+      // duplication and permanently block #2325 on a healthy multi-source
+      // install. Both statements must carry the same four-column key.
+      const fourColumnKey =
+        '"productId", "productVariantId", "locationId", "sourceConnectionId"';
+      expect(issuedSql()[0]).toContain(`GROUP BY ${fourColumnKey}`);
+    });
+
+    it('never restricts rows: the totals statement has no WHERE and no isStale predicate', async () => {
+      (ormRepository.query as jest.Mock).mockResolvedValueOnce([{ groupCount: 0, rowCount: 0 }]);
+
+      await repository.findDuplicatePositions(100);
+
+      const totalsSql = issuedSql()[0];
+      // A stale duplicate still occupies the position key and still collides
+      // under the index #2325 creates. A future refactor that filters stale
+      // rows out here would make the gate report "clean" on a table the index
+      // cannot be built over — so the absence of any row filter is pinned.
+      expect(totalsSql).not.toMatch(/\bWHERE\b/i);
+      expect(totalsSql).not.toContain('isStale =');
+    });
+
+    it('binds maxGroups as a parameter rather than interpolating it', async () => {
+      (ormRepository.query as jest.Mock)
+        .mockResolvedValueOnce([{ groupCount: 1, rowCount: 2 }])
+        .mockResolvedValueOnce([]);
+
+      await repository.findDuplicatePositions(37);
+
+      const [detailSql, detailParams] = (ormRepository.query as jest.Mock).mock.calls[1] as [
+        string,
+        unknown[],
+      ];
+      expect(detailSql).toContain('LIMIT $1');
+      expect(detailSql).not.toContain('LIMIT 37');
+      expect(detailParams).toEqual([37]);
+      // The nullable join columns must match NULL-to-NULL or every locationless
+      // / unattributed group silently drops out of the detail.
+      expect(detailSql).toContain('IS NOT DISTINCT FROM');
+      expect(detailSql).not.toContain('isStale =');
+    });
+
+    it('folds contiguous rows into groups and normalises Postgres string numerics', async () => {
+      const newer = new Date('2026-05-02T10:00:00Z');
+      const older = new Date('2026-05-01T10:00:00Z');
+      (ormRepository.query as jest.Mock)
+        .mockResolvedValueOnce([{ groupCount: '1', rowCount: '2' }])
+        .mockResolvedValueOnce([
+          {
+            productId: 'prod-1',
+            productVariantId: null,
+            locationId: null,
+            sourceConnectionId: null,
+            rowCount: '2',
+            liveRowCount: '1',
+            id: 'inv-newer',
+            availableQuantity: '7',
+            reservedQuantity: '0',
+            isStale: false,
+            updatedAt: newer,
+          },
+          {
+            productId: 'prod-1',
+            productVariantId: null,
+            locationId: null,
+            sourceConnectionId: null,
+            rowCount: '2',
+            liveRowCount: '1',
+            id: 'inv-older',
+            availableQuantity: '3',
+            reservedQuantity: '1',
+            isStale: true,
+            // Defensive: the driver hands back Date, but a string must not crash.
+            updatedAt: older.toISOString(),
+          },
+        ]);
+
+      const result = await repository.findDuplicatePositions(100);
+
+      expect(result.groupCount).toBe(1);
+      expect(result.rowCount).toBe(2);
+      expect(result.excessRowCount).toBe(1);
+      expect(result.truncated).toBe(false);
+      expect(result.groups).toHaveLength(1);
+
+      const [group] = result.groups;
+      expect(group.productId).toBe('prod-1');
+      expect(group.productVariantId).toBeNull();
+      expect(group.sourceConnectionId).toBeNull();
+      expect(group.rowCount).toBe(2);
+      // Stale rows are counted in rowCount but not in liveRowCount.
+      expect(group.liveRowCount).toBe(1);
+      expect(group.rows.map((r) => r.id)).toEqual(['inv-newer', 'inv-older']);
+      expect(group.rows[0].availableQuantity).toBe(7);
+      expect(group.rows[1].reservedQuantity).toBe(1);
+      expect(group.rows[1].isStale).toBe(true);
+      expect(group.rows[1].updatedAt).toBeInstanceOf(Date);
+      expect(group.rows[1].updatedAt.toISOString()).toBe(older.toISOString());
+    });
+
+    it('reports truncated with UNCAPPED totals when detail is capped', async () => {
+      // The whole point of the two-statement shape: groupCount is the #2325
+      // gate, so it must survive a cap that only shrinks the detail. Three
+      // groups exist; maxGroups=1 returns one.
+      (ormRepository.query as jest.Mock)
+        .mockResolvedValueOnce([{ groupCount: 3, rowCount: 9 }])
+        .mockResolvedValueOnce([
+          {
+            productId: 'prod-1',
+            productVariantId: 'var-1',
+            locationId: 'loc-1',
+            sourceConnectionId: 'conn-1',
+            rowCount: 4,
+            liveRowCount: 4,
+            id: 'inv-1',
+            availableQuantity: 1,
+            reservedQuantity: 0,
+            isStale: false,
+            updatedAt: new Date('2026-05-01T00:00:00Z'),
+          },
+        ]);
+
+      const result = await repository.findDuplicatePositions(1);
+
+      expect(result.groupCount).toBe(3);
+      expect(result.rowCount).toBe(9);
+      expect(result.excessRowCount).toBe(6);
+      expect(result.groups).toHaveLength(1);
+      expect(result.truncated).toBe(true);
+    });
   });
 
   describe('findStockAggregatesByProductIds (#1720)', () => {

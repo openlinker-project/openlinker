@@ -27,6 +27,7 @@ import type {
   InventoryPagination,
   VariantAvailability,
   ProductStockAggregate,
+  DuplicatePositionReport,
 } from '../../domain/types/inventory.types';
 import type {
   InventoryItemView,
@@ -39,6 +40,18 @@ import type { IInventoryQueryService } from './inventory-query.service.interface
 // mirrors the 200-ID request cap on the variant-availability endpoint
 // (INVENTORY_AVAILABILITY_MAX_VARIANT_IDS).
 const MAX_STOCK_AGGREGATE_PRODUCT_IDS = 200;
+
+/**
+ * Hard cap on duplicate-position group DETAIL per call (#2319).
+ *
+ * Bounds only the `groups` array — `groupCount` / `rowCount` are always computed
+ * over the whole table, because they are the #2325 readiness gate. Exported so
+ * the HTTP DTO's `@Max` and this guard cannot drift.
+ */
+export const MAX_DUPLICATE_POSITION_GROUPS = 500;
+
+/** Default duplicate-position group detail cap when the caller names none. */
+export const DEFAULT_DUPLICATE_POSITION_GROUPS = 100;
 
 @Injectable()
 export class InventoryQueryService implements IInventoryQueryService {
@@ -98,6 +111,27 @@ export class InventoryQueryService implements IInventoryQueryService {
       );
     }
     return this.inventoryRepository.findStockAggregatesByProductIds(productIds);
+  }
+
+  async getDuplicatePositionReport(
+    maxGroups: number = DEFAULT_DUPLICATE_POSITION_GROUPS
+  ): Promise<DuplicatePositionReport> {
+    // Throws rather than clamps, matching MAX_STOCK_AGGREGATE_PRODUCT_IDS above:
+    // a caller that asked for more detail than it can have should learn so
+    // rather than receive a silently different answer. On the HTTP path the
+    // DTO's @Max(MAX_DUPLICATE_POSITION_GROUPS) yields a friendly 400 first;
+    // this guard covers every other caller.
+    if (!Number.isInteger(maxGroups) || maxGroups < 1) {
+      throw new Error(
+        `getDuplicatePositionReport requires a positive integer maxGroups (got ${String(maxGroups)})`
+      );
+    }
+    if (maxGroups > MAX_DUPLICATE_POSITION_GROUPS) {
+      throw new Error(
+        `getDuplicatePositionReport accepts at most ${String(MAX_DUPLICATE_POSITION_GROUPS)} groups per call (got ${String(maxGroups)})`
+      );
+    }
+    return this.inventoryRepository.findDuplicatePositions(maxGroups);
   }
 
   private async buildProductMap(productIds: string[]): Promise<Map<string, Product>> {
