@@ -669,6 +669,22 @@ export class PrestashopWebserviceClient {
   }
 
   /**
+   * Resolve a currency id from its ISO 4217 code, mirroring
+   * {@link getCountryIdByIso}.
+   *
+   * A shop carries only the currencies its operator activated, so a caller
+   * that needs a SPECIFIC denomination has to ask rather than assume: `null`
+   * means "this shop does not carry that currency", which a spec turns into a
+   * precise skip instead of an order silently created in the shop default.
+   */
+  async getCurrencyIdByIso(iso: string): Promise<string | null> {
+    const body = await this.get(`/api/currencies?filter[iso_code]=${encodeURIComponent(iso)}`);
+    const currencies = asArray(pick(body, 'currencies'));
+    if (currencies.length === 0) return null;
+    return asStringOrNull(pick(asRecord(currencies[0]), 'id'));
+  }
+
+  /**
    * Create a minimal customer record via the webservice (order synthesis,
    * #1573 — no marketplace purchase; orders for the invoicing suite are
    * created directly against PrestaShop as a REST order source). Needs live

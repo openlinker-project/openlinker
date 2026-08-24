@@ -13,6 +13,7 @@ import { createTestConnection } from '../../../__tests__/fixtures/connection.fix
 import { PrestashopOrderMapper } from '../../mappers/prestashop-order.mapper';
 import {
   PrestashopApiException,
+  PrestashopCurrencyUnknownException,
   PrestashopResourceNotFoundException,
 } from '@openlinker/integrations-prestashop';
 import type {
@@ -20,18 +21,41 @@ import type {
   PrestashopOrderRow,
 } from '../../mappers/prestashop.mapper.interface';
 import type { IPrestashopWebserviceClient } from '../../http/prestashop-webservice.client.interface';
+import type { PrestashopOrderCurrencyResolver } from '../../provisioners/prestashop-order-currency.resolver';
+
+/**
+ * Stub order-currency resolver (#2277). The adapter's own contract is "ask the
+ * resolver, put the answer on `totals`" — the resolution CHAIN is the
+ * resolver's own contract and is covered in its dedicated spec. Stubbing it
+ * here also keeps the WebService call counts these tests assert on describing
+ * hydration only.
+ */
+function createStubCurrencyResolver(
+  iso = 'PLN'
+): jest.Mocked<Pick<PrestashopOrderCurrencyResolver, 'resolveOrderCurrencyIso'>> {
+  return {
+    resolveOrderCurrencyIso: jest.fn().mockResolvedValue(iso),
+  } as unknown as jest.Mocked<Pick<PrestashopOrderCurrencyResolver, 'resolveOrderCurrencyIso'>>;
+}
 
 describe('PrestashopOrderSourceAdapter', () => {
   let adapter: PrestashopOrderSourceAdapter;
   let mockHttpClient: jest.Mocked<IPrestashopWebserviceClient>;
   let connection: ReturnType<typeof createTestConnection>;
   let orderMapper: PrestashopOrderMapper;
+  let currencyResolver: ReturnType<typeof createStubCurrencyResolver>;
 
   beforeEach(() => {
     mockHttpClient = createMockHttpClient();
     connection = createTestConnection();
     orderMapper = new PrestashopOrderMapper();
-    adapter = new PrestashopOrderSourceAdapter(mockHttpClient, orderMapper, connection);
+    currencyResolver = createStubCurrencyResolver();
+    adapter = new PrestashopOrderSourceAdapter(
+      mockHttpClient,
+      orderMapper,
+      connection,
+      currencyResolver as unknown as PrestashopOrderCurrencyResolver
+    );
   });
 
   describe('listOrderFeed', () => {
@@ -288,6 +312,67 @@ describe('PrestashopOrderSourceAdapter', () => {
       expect(incoming.items[0].productRef).toEqual({ type: 'product', externalId: '5' });
     });
 
+    describe('currency (#2277)', () => {
+      const orderWithCurrency: PrestashopOrder = {
+        id: '42',
+        reference: 'ORDER-042',
+        id_currency: '2',
+        total_paid_tax_incl: '249.00',
+        total_paid_tax_excl: '202.44',
+        total_shipping: '0',
+        date_add: '2024-01-01 10:00:00',
+        date_upd: '2024-01-01 12:00:00',
+      };
+
+      beforeEach(() => {
+        mockHttpClient.getResource = jest.fn().mockResolvedValue(orderWithCurrency);
+        mockHttpClient.listResources = jest.fn().mockResolvedValue([]);
+      });
+
+      it('should denominate the order in the resolved currency rather than a hardcoded EUR', async () => {
+        currencyResolver.resolveOrderCurrencyIso.mockResolvedValueOnce('PLN');
+
+        const incoming = await adapter.getOrder({ externalOrderId: '42' });
+
+        expect(incoming.totals.currency).toBe('PLN');
+        expect(incoming.totals.total).toBe(249.0);
+      });
+
+      it("should hand the resolver the order's own id_currency and reference", async () => {
+        await adapter.getOrder({ externalOrderId: '42' });
+
+        expect(currencyResolver.resolveOrderCurrencyIso).toHaveBeenCalledWith(
+          expect.objectContaining({
+            connectionId: connection.id,
+            idCurrency: '2',
+            orderRef: 'ORDER-042',
+          })
+        );
+      });
+
+      it('should fall back to the external order id when the order carries no reference', async () => {
+        mockHttpClient.getResource = jest
+          .fn()
+          .mockResolvedValue({ ...orderWithCurrency, reference: undefined });
+
+        await adapter.getOrder({ externalOrderId: '42' });
+
+        expect(currencyResolver.resolveOrderCurrencyIso).toHaveBeenCalledWith(
+          expect.objectContaining({ orderRef: '42' })
+        );
+      });
+
+      it('should propagate a refusal instead of ingesting the order under a substituted currency', async () => {
+        currencyResolver.resolveOrderCurrencyIso.mockRejectedValueOnce(
+          new PrestashopCurrencyUnknownException('Currency id 9 unknown in PrestaShop')
+        );
+
+        await expect(adapter.getOrder({ externalOrderId: '42' })).rejects.toThrow(
+          PrestashopCurrencyUnknownException
+        );
+      });
+    });
+
     it('should translate a 404 from the webservice client into PrestashopResourceNotFoundException', async () => {
       mockHttpClient.getResource = jest
         .fn()
@@ -348,7 +433,8 @@ describe('PrestashopOrderSourceAdapter', () => {
       const inpostAdapter = new PrestashopOrderSourceAdapter(
         mockHttpClient,
         orderMapper,
-        inpostConnection
+        inpostConnection,
+        currencyResolver as unknown as PrestashopOrderCurrencyResolver
       );
       keyedGetResource({ address2: 'POZ08A' });
       mockHttpClient.listResources = jest.fn().mockResolvedValueOnce(baseOrderRows);
@@ -366,7 +452,8 @@ describe('PrestashopOrderSourceAdapter', () => {
       const noneAdapter = new PrestashopOrderSourceAdapter(
         mockHttpClient,
         orderMapper,
-        noneConnection
+        noneConnection,
+        currencyResolver as unknown as PrestashopOrderCurrencyResolver
       );
       keyedGetResource({ address2: 'POZ08A' });
       mockHttpClient.listResources = jest.fn().mockResolvedValueOnce(baseOrderRows);
@@ -394,7 +481,8 @@ describe('PrestashopOrderSourceAdapter', () => {
       const inpostAdapter = new PrestashopOrderSourceAdapter(
         mockHttpClient,
         orderMapper,
-        inpostConnection
+        inpostConnection,
+        currencyResolver as unknown as PrestashopOrderCurrencyResolver
       );
       keyedGetResource({ address2: 'Piętro 2' });
       mockHttpClient.listResources = jest.fn().mockResolvedValueOnce(baseOrderRows);
@@ -411,7 +499,8 @@ describe('PrestashopOrderSourceAdapter', () => {
       const inpostAdapter = new PrestashopOrderSourceAdapter(
         mockHttpClient,
         orderMapper,
-        inpostConnection
+        inpostConnection,
+        currencyResolver as unknown as PrestashopOrderCurrencyResolver
       );
       keyedGetResource(new PrestashopApiException('Not Found', 404));
       mockHttpClient.listResources = jest.fn().mockResolvedValueOnce(baseOrderRows);
@@ -428,7 +517,8 @@ describe('PrestashopOrderSourceAdapter', () => {
       const inpostAdapter = new PrestashopOrderSourceAdapter(
         mockHttpClient,
         orderMapper,
-        inpostConnection
+        inpostConnection,
+        currencyResolver as unknown as PrestashopOrderCurrencyResolver
       );
       keyedGetResource({ address2: 'poz08a' });
       mockHttpClient.listResources = jest.fn().mockResolvedValueOnce(baseOrderRows);
@@ -445,7 +535,8 @@ describe('PrestashopOrderSourceAdapter', () => {
       const inpostAdapter = new PrestashopOrderSourceAdapter(
         mockHttpClient,
         orderMapper,
-        inpostConnection
+        inpostConnection,
+        currencyResolver as unknown as PrestashopOrderCurrencyResolver
       );
       keyedGetResource({ address2: 'WAW124' });
       mockHttpClient.listResources = jest.fn().mockResolvedValueOnce(baseOrderRows);
@@ -462,7 +553,8 @@ describe('PrestashopOrderSourceAdapter', () => {
       const inpostAdapter = new PrestashopOrderSourceAdapter(
         mockHttpClient,
         orderMapper,
-        inpostConnection
+        inpostConnection,
+        currencyResolver as unknown as PrestashopOrderCurrencyResolver
       );
       const orderWithoutAddress: PrestashopOrder = { ...baseOrder, id_address_delivery: undefined };
       mockHttpClient.getResource = jest.fn().mockImplementation((resource: string) => {
