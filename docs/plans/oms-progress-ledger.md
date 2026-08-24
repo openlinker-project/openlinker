@@ -67,7 +67,13 @@ Branch: `oms-programme-wave-1` (stacked off Wave-0 tip feb78054d; Wave-0 PR to m
 | #2308 | W1a-8 | walker generalisation + ADR pointers | ☑ merged c2278a549 (commit 3423580e5; 3-injection proof; root barrel resolved by removal; epic ADR table resolved to live issues) |
 
 **WAVE 1a COMPLETE (8/8).** Boundary sweep clean (knob gate 6/7, three-way mirrors green, walker 22/22, FE coexistence verified); ledger was the only divergence.
-### Wave 1b (epic #2326) — OPEN (gates ✓: #2285, #2308). #2313 (`inventory_locations` persistence): ◑ implementing (plan-2313 + ANALYSIS-2313 gate-cleared; migration **1843000000000**)
+### Wave 1b (epic #2326) — OPEN (gates ✓: #2285, #2308)
+| Issue | Slug | Subject | Status |
+|---|---|---|---|
+| #2313 | W1b-1 | inventory_locations table/entity/repo | ☑ merged fbcf24b27 (commit bbe58cf1d; reviewed, approved; migration 1843000000000; port trimmed to 5 methods; synchronize-parity index names) |
+| #2316 | W1b-2 | locations CRUD API | ◐ plan in progress (depends on #2313 shapes, now on branch) |
+| #2314 | W1b-3 | ladder step (i): sourceConnectionId + OL-owned group | ◑ implementing (ANALYSIS-2314 gate-cleared; migration 1844000000000; text RULED; update-set RULED) |
+| #2315 | W1b-11 | deprecate reserve/releaseInventory in place | ◑ implementing (ANALYSIS-2315; 3 files, docs-only; @deprecated (#2315, ADR-061) style) |
 ### Wave 1c (epic #2337) — gated on #2289 fork decided; Wave 1a
 ### Wave 2 (epic #2389) — gated per its epic body; §8 Q1 = YES (decision 2 above)
 
