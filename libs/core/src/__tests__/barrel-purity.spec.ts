@@ -60,100 +60,164 @@ describe('@openlinker/core/<context> barrel purity (#598)', () => {
   });
 
   /**
-   * `sales-documents` (#2100) is the one context whose value is that it depends
-   * on almost NOTHING among its CORE siblings: `invoicing` and `orders` both
-   * value-import it, and `invoicing` would close a CJS module-load cycle the
-   * moment this leaf grew a VALUE edge back into either. Three docblocks call
-   * that load-bearing; before this assertion nothing enforced it, so a future
-   * `import` here would have been caught only by a Nest boot failure in some
-   * unrelated suite.
+   * ## Zero-sibling-edge leaves
    *
-   * **Narrowed by #2170** (see `sales-documents/index.ts`'s own doc comment):
-   * the concern gained a NestJS module + repositories + ORM entities, so it is
-   * no longer framework-free — but it must stay a zero-outbound-edge leaf with
-   * respect to sibling `@openlinker/core/<ctx>` barrels specifically. Those are
-   * two different properties ("no framework dependency" vs. "no sibling-context
-   * dependency"), and only the second is what prevents the CJS cycle. `@nestjs/*`,
-   * `typeorm`, and Node builtins (`node:*`) are therefore unrestricted; only a
+   * Some concerns exist precisely because they depend on almost NOTHING among
+   * their CORE siblings. `sales-documents` (#2100) was the first: `invoicing`
+   * and `orders` both value-import it, and `invoicing` would close a CJS
+   * module-load cycle the moment the leaf grew a VALUE edge back into either.
+   * ADR-053 then adopted that posture deliberately for the OMS vocabulary
+   * leaves, so there are three. Before this assertion nothing enforced the
+   * property, so a future `import` would have been caught only by a Nest boot
+   * failure in some unrelated suite.
+   *
+   * **The property is ZERO SIBLING-CONTEXT EDGES, not framework-freedom** —
+   * two different things, and only the second is what prevents the cycle.
+   * #2170 proved the distinction: `sales-documents` gained a NestJS module,
+   * repositories and ORM entities and remained a valid leaf, because nothing
+   * under it imports a `@openlinker/core/<ctx>` specifier. `@nestjs/*`,
+   * `typeorm` and Node builtins (`node:*`) are therefore unrestricted; only a
    * non-relative specifier starting with `@openlinker/core/` is checked below.
+   * A leaf that later grows a module or a tokens file does not leave this table.
    *
    * Textual, deliberately: a `require()` cannot see whether the module pulled a
    * dependency in, and the whole point is to forbid a VALUE import statement.
    *
-   * #2155 carved out ONE authorized exception: `resolveSalesDocumentRouting`
-   * takes `Order` as a caller-supplied value parameter (ADR-041 decision 2),
-   * typed via `import type { Order } from '@openlinker/core/orders/types'`. A
-   * type-only import ERASES at compile time — there is no `require()` call in
+   * ## Adding a leaf
+   *
+   * One line in `ZERO_SIBLING_EDGE_LEAVES` below — the context directory name
+   * plus its authorized type-only specifiers. Nothing else changes: the walk,
+   * the matcher and the assertions are shared.
+   *
+   * ## Per-leaf carve-outs, and why the allow-set is NOT shared
+   *
+   * A type-only import ERASES at compile time — there is no `require()` call in
    * the emitted JS, so it adds no runtime edge and cannot close the cycle this
-   * spec exists to forbid. Any OTHER `@openlinker/core/*` import — a value
-   * import of anything, or a type-only import from any specifier other than
-   * that one cycle-breaker sub-barrel — still fails this spec.
+   * spec exists to forbid. Two leaves hold such a carve-out today and both name
+   * the same specifier — but they are registered SEPARATELY on purpose. A
+   * single shared constant would silently authorise one leaf's future exception
+   * for every other leaf; each entry is a statement about its own leaf.
+   *
+   * - `sales-documents` (#2155): `resolveSalesDocumentRouting` takes `Order` as
+   *   a caller-supplied value parameter (ADR-041 decision 2), typed via
+   *   `import type { Order } from '@openlinker/core/orders/types'`.
+   * - `order-lifecycle` (#2305, ADR-059): `phaseToOrderStatus` and
+   *   `deriveOrderLifecyclePhase` borrow `OrderStatus` / `OrderRecordStatus` /
+   *   `FulfillmentRollupState` from the same cycle-breaker sub-barrel.
+   *   Restating those unions locally was considered and rejected — two sources
+   *   of truth for a transport vocabulary is the drift the mapping prevents.
+   * - `fulfillment-authority` (#2304, ADR-052/053): **empty allow-set, and that
+   *   is a positive assertion.** It reaches no sibling at all today, and its
+   *   first type-only import must be a deliberate one-line registration here,
+   *   never a free ride on a neighbour's carve-out.
+   *
+   * In every case the authorized specifier is a `…/types` cycle-breaker
+   * sub-barrel — never a main `@openlinker/core/<ctx>` barrel, which re-exports
+   * the context's NestJS module and would reintroduce exactly the cycle risk
+   * this table exists to avoid if such an import were ever (incorrectly) turned
+   * into a value import.
    */
-  it('sales-documents stays a zero-outbound-CORE-CONTEXT-edge leaf (only the one authorized type-only import reaches a sibling context)', () => {
-    const root = join(__dirname, '..', 'sales-documents');
-    const files: string[] = [];
-    const walk = (dir: string): void => {
-      for (const entry of readdirSync(dir, { withFileTypes: true })) {
-        const full = join(dir, entry.name);
-        if (entry.isDirectory()) walk(full);
-        else if (entry.name.endsWith('.ts') && !entry.name.endsWith('.spec.ts')) files.push(full);
-      }
-    };
-    walk(root);
+  const ZERO_SIBLING_EDGE_LEAVES = [
+    { context: 'sales-documents', authorizedTypeOnlySpecifiers: ['@openlinker/core/orders/types'] },
+    { context: 'fulfillment-authority', authorizedTypeOnlySpecifiers: [] },
+    { context: 'order-lifecycle', authorizedTypeOnlySpecifiers: ['@openlinker/core/orders/types'] },
+  ] as const;
 
-    expect(files.length).toBeGreaterThan(0);
-
-    const AUTHORIZED_TYPE_ONLY_SPECIFIER = '@openlinker/core/orders/types';
-
-    for (const file of files) {
-      const source = readFileSync(file, 'utf8');
-      // Doc comments in this repo's style routinely narrate the very import
-      // rule being checked (e.g. "typed via `import type` from the
-      // cycle-breaker … sub-barrel"), in prose that itself contains the bare
-      // words "import" and "from" with no quote/semicolon between them. A
-      // matcher run over the raw source would let such prose masquerade as
-      // (or worse, splice onto) a real import statement, so block AND line
-      // comments are stripped first — over-broad stripping is safe here
-      // (the source is scanned for import shape only, never executed).
-      const withoutComments = source.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/\/\/.*$/gm, '');
-      // Scanned over the WHOLE (comment-stripped) file, not line by line: a
-      // multi-line `import type {\n  X,\n} from '…'` — the prevailing style in
-      // this repo, and exactly what an edit here would produce — puts `import`
-      // and `from` on different lines, so a per-line matcher would let it
-      // through. Captures whether the statement is `import type ...` (group 1)
-      // and its specifier (group 2); `[^'";]*?` cannot cross a quote or
-      // semicolon, so it never accidentally spans into an unrelated later
-      // import.
-      const importStatements = [
-        ...withoutComments.matchAll(/import\s+(type\s+)?[^'";]*?from\s+['"]([^'"]+)['"]/g),
-      ];
-      for (const [, typeOnly, specifier] of importStatements) {
-        // Internal to the concern (index.ts's own `export * from './domain/...'`,
-        // and any relative reach from a nested file back up to `domain/types/`)
-        // — cannot reach another context either way.
-        if (specifier.startsWith('./') || specifier.startsWith('../')) {
-          continue;
+  it.each(ZERO_SIBLING_EDGE_LEAVES)(
+    '$context stays a zero-outbound-CORE-CONTEXT-edge leaf (only its own authorized type-only imports reach a sibling context)',
+    ({ context, authorizedTypeOnlySpecifiers }) => {
+      const root = join(__dirname, '..', context);
+      const files: string[] = [];
+      const walk = (dir: string): void => {
+        for (const entry of readdirSync(dir, { withFileTypes: true })) {
+          const full = join(dir, entry.name);
+          if (entry.isDirectory()) walk(full);
+          else if (entry.name.endsWith('.ts') && !entry.name.endsWith('.spec.ts')) files.push(full);
         }
-        // #2170: the concern is no longer framework-free (NestJS module +
-        // TypeORM repositories), and that is fine — it is NOT what this spec
-        // guards against. Only a sibling `@openlinker/core/<ctx>` edge can
-        // close the CJS cycle `invoicing`/`orders` value-importing this leaf
-        // depends on staying open; `@nestjs/*`, `typeorm`, `node:*`, etc. are
-        // ordinary infrastructure dependencies every other context has too.
-        if (!specifier.startsWith('@openlinker/core/')) {
-          continue;
+      };
+      walk(root);
+
+      // An empty walk must FAIL, not vacuously pass — a renamed or moved
+      // directory would otherwise silently retire the leaf's guarantee.
+      expect(files.length).toBeGreaterThan(0);
+
+      for (const file of files) {
+        const source = readFileSync(file, 'utf8');
+        // Doc comments in this repo's style routinely narrate the very import
+        // rule being checked (e.g. "typed via `import type` from the
+        // cycle-breaker … sub-barrel"), in prose that itself contains the bare
+        // words "import" and "from" with no quote/semicolon between them. A
+        // matcher run over the raw source would let such prose masquerade as
+        // (or worse, splice onto) a real import statement, so block AND line
+        // comments are stripped first — over-broad stripping is safe here
+        // (the source is scanned for import shape only, never executed).
+        const withoutComments = source.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/\/\/.*$/gm, '');
+        // Scanned over the WHOLE (comment-stripped) file, not line by line: a
+        // multi-line `import type {\n  X,\n} from '…'` — the prevailing style in
+        // this repo, and exactly what an edit here would produce — puts `import`
+        // and `from` on different lines, so a per-line matcher would let it
+        // through. Captures whether the statement is `import type ...` (group 1)
+        // and its specifier (group 2); `[^'";]*?` cannot cross a quote or
+        // semicolon, so it never accidentally spans into an unrelated later
+        // import.
+        const importStatements = [
+          ...withoutComments.matchAll(/import\s+(type\s+)?[^'";]*?from\s+['"]([^'"]+)['"]/g),
+        ];
+        for (const [, typeOnly, specifier] of importStatements) {
+          // Internal to the concern (index.ts's own `export * from './domain/...'`,
+          // and any relative reach from a nested file back up to `domain/types/`)
+          // — cannot reach another context either way.
+          if (specifier.startsWith('./') || specifier.startsWith('../')) {
+            continue;
+          }
+          // #2170: a leaf need not be framework-free, and that is NOT what this
+          // spec guards against. Only a sibling `@openlinker/core/<ctx>` edge
+          // can close the CJS cycle a consumer's value-import depends on
+          // staying open; `@nestjs/*`, `typeorm`, `node:*`, etc. are ordinary
+          // infrastructure dependencies every other context has too.
+          if (!specifier.startsWith('@openlinker/core/')) {
+            continue;
+          }
+          // Both assertions below carry the leaf AND the file in the compared
+          // value, so a CI failure is actionable without a rerun.
+          const located = `${context} :: ${file} :: ${specifier}`;
+          // A VALUE import of a sibling context would close a real CJS
+          // require() cycle the moment any consumer value-imports this leaf —
+          // forbidden unconditionally, regardless of specifier or allow-set.
+          expect(typeOnly ? located : `FORBIDDEN VALUE IMPORT — ${located}`).toBe(located);
+          // …and even a type-only import must be one THIS leaf registered.
+          // `toContain` over an empty allow-set fails every specifier, which is
+          // precisely what `fulfillment-authority`'s `[]` asserts.
+          expect(
+            authorizedTypeOnlySpecifiers.map(
+              (authorized) => `${context} :: ${file} :: ${authorized}`
+            )
+          ).toContain(located);
         }
-        // A VALUE import of a sibling context would close a real CJS
-        // require() cycle the moment any consumer value-imports this leaf —
-        // forbidden unconditionally, regardless of specifier.
-        expect(typeOnly).toBeTruthy();
-        // The ONLY authorized cross-context type this concern may borrow, and
-        // ONLY from the cycle-breaker sub-barrel — never the main
-        // `@openlinker/core/orders` barrel, which re-exports `OrdersModule` and
-        // would reintroduce exactly the cycle risk decision 2 exists to avoid
-        // if this import were ever (incorrectly) turned into a value import.
-        expect(specifier).toBe(AUTHORIZED_TYPE_ONLY_SPECIFIER);
       }
+    }
+  );
+
+  /**
+   * The root `.` barrel (`libs/core/src/index.ts`) is an AGGREGATING re-export:
+   * requiring it evaluates `orders`, `listings` and every other listed context
+   * in one module graph. A zero-sibling-edge leaf whose entire value is that it
+   * can be value-imported without closing a cycle gains nothing by joining that
+   * aggregate, and takes on the exact hazard it exists to avoid the day some
+   * consumer reaches for the root path — the reasoning that kept `ListingsModule`
+   * off the main `@openlinker/core/listings` barrel (#337/#359).
+   * `sales-documents` has been absent since #2100; #2308 removed
+   * `order-lifecycle`, which #2305 had added. The root barrel is not an
+   * inventory of contexts either way (several are legitimately absent), so
+   * "completeness" argues for neither side.
+   *
+   * Each leaf keeps its own `@openlinker/core/<ctx>` subpath export — a
+   * declared public path, and the supported way to consume it.
+   */
+  it('no zero-sibling-edge leaf is re-exported from the aggregating root barrel', () => {
+    const rootBarrel = readFileSync(join(__dirname, '..', 'index.ts'), 'utf8');
+    for (const { context } of ZERO_SIBLING_EDGE_LEAVES) {
+      expect([context, rootBarrel.includes(`'./${context}'`)]).toEqual([context, false]);
     }
   });
 });
