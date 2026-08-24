@@ -50,15 +50,19 @@ export interface Fa3MappingContext {
   /**
    * Connection-resolved fallback `P_12` neutral code (see
    * `DEFAULT_FA3_TAX_RATE` in `fa3-tax-rate.mapper.ts`), applied to any line
-   * whose neutral `taxRate` arrives empty — core has no per-line tax rate to
-   * give (ADR-026). Always a concrete value by the time this context exists;
-   * the factory resolves it (connection config or the PL standard default).
+   * whose neutral `taxRate` arrives empty.
+   *
+   * **Absent under strict per-line enforcement** (#2257, gated in the #2245
+   * review): the adapter withholds it so a rate-less line raises rather than
+   * being silently taxed at the configured default. Present otherwise, which is
+   * the pre-epic behaviour and the default while catalogue coverage is filled
+   * in. The mapper stays pure - it reads the field, never the environment.
    *
    * This is adapter-scoped issuance *policy*, not seller identity — it does
    * not belong on `SellerProfile` (which mirrors `Podmiot1` XML fields only)
    * even though both are resolved from the same connection config.
    */
-  defaultTaxRate: string;
+  defaultTaxRate?: string;
   /**
    * Connection-resolved fallback unit of measure (`P_8A`, #1525) applied to any
    * line whose neutral `unit` is absent/empty. `undefined` when the connection
@@ -109,8 +113,9 @@ export function mapToFa3BuilderInput(
 
 /**
  * Map one neutral line to a fully-mapped FA(3) line (applies the P_12 mapper).
- * An empty neutral `taxRate` (core has no per-line rate to give — ADR-026)
- * falls back to the connection's `defaultTaxRate` before resolution; a
+ * An empty neutral `taxRate` falls back to `context.defaultTaxRate` when the
+ * adapter supplied one, and to nothing when it did not (#2257, gated in the
+ * #2245 review - the adapter withholds it under strict enforcement). A
  * non-empty rate is never overridden, so a genuine unmapped/mis-keyed code
  * still surfaces loudly via `resolveP12`'s throw.
  */
@@ -135,7 +140,12 @@ function mapLine(line: InvoiceLine, context: Fa3MappingContext): Fa3Line {
     name: line.name,
     quantity: line.quantity,
     unitPriceGross: line.unitPriceGross,
-    p12: resolveP12(line.taxRate || context.defaultTaxRate),
+    // #2257 — the fallback survives only while the adapter supplies one. Under
+    // strict enforcement it does not, and `resolveP12('')` throws
+    // UnmappedTaxRateException, which is the correct outcome: OpenLinker never
+    // invents a rate for a fiscal document, and core refuses such a command
+    // before this runs.
+    p12: resolveP12(line.taxRate || (context.defaultTaxRate ?? '')),
     ...(unit !== undefined ? { unit } : {}),
   };
 }

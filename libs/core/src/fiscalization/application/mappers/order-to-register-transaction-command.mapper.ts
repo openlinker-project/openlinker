@@ -13,6 +13,7 @@
  * @module libs/core/src/fiscalization/application/mappers
  */
 import type { Order, OrderItem } from '@openlinker/core/orders';
+import { minorUnitExponentFor, splitShippingAcrossRates } from '@openlinker/core/sales-documents';
 
 import type {
   FiscalRecipient,
@@ -28,57 +29,6 @@ import { UnsupportedFiscalPriceTreatmentError } from './errors/unsupported-fisca
  * overrides it via {@link OrderToRegisterTransactionCommandInput.shippingLineName}.
  */
 const SHIPPING_LINE_NAME = 'Shipping';
-
-/**
- * Minor-unit digits per ISO 4217 currency, for every currency whose exponent is
- * NOT 2. Exhaustive as of ISO 4217:2015 amendments - the vast majority of
- * currencies are 2-digit, so listing the exceptions keeps the table small and
- * makes an unknown code fall through to the safe default below.
- *
- * This is a UNIT COUNT, not a rate and not an amount: it says how finely a
- * currency can express money, which is what "one minor unit of tolerance" needs
- * to mean the same thing in JPY as in PLN.
- */
-const CURRENCY_MINOR_UNIT_DIGITS: Readonly<Record<string, number>> = {
-  // Exponent 0 - no minor unit at all.
-  BIF: 0,
-  CLP: 0,
-  DJF: 0,
-  GNF: 0,
-  ISK: 0,
-  JPY: 0,
-  KMF: 0,
-  KRW: 0,
-  PYG: 0,
-  RWF: 0,
-  UGX: 0,
-  UYI: 0,
-  VND: 0,
-  VUV: 0,
-  XAF: 0,
-  XOF: 0,
-  XPF: 0,
-  // Exponent 3.
-  BHD: 3,
-  IQD: 3,
-  JOD: 3,
-  KWD: 3,
-  LYD: 3,
-  OMR: 3,
-  TND: 3,
-  // Exponent 4 - unit-of-account currencies; included for completeness.
-  CLF: 4,
-  UYW: 4,
-};
-
-/**
- * Minor-unit digits assumed for a currency the table doesn't name. Two is both
- * the ISO default and the conservative choice here: an unknown 0-digit currency
- * merely gets a tolerance finer than its own smallest coin (stricter, never
- * laxer), while assuming 0 for an unknown 2-digit currency would reject every
- * ordinary basket carrying a grosz of float dust.
- */
-const DEFAULT_MINOR_UNIT_DIGITS = 2;
 
 /**
  * Tolerance, in the currency's own units, when checking that the composed lines
@@ -102,10 +52,11 @@ const DEFAULT_MINOR_UNIT_DIGITS = 2;
  * amount, it only decides whether two reported amounts agree.
  */
 function totalReconciliationEpsilon(currency: string | undefined): number {
-  const digits =
-    CURRENCY_MINOR_UNIT_DIGITS[(currency ?? '').trim().toUpperCase()] ??
-    DEFAULT_MINOR_UNIT_DIGITS;
-  return 10 ** -digits;
+  // One table for the whole repository (#2260 review). The shipping split needs
+  // the same answer to make its parts sum in the currency the buyer paid in, so
+  // the exponents live in the `sales-documents` leaf both document contexts
+  // already share rather than once per consumer.
+  return 10 ** -minorUnitExponentFor(currency);
 }
 
 /** Inputs to {@link toRegisterTransactionCommand}. */
@@ -120,6 +71,12 @@ export interface OrderToRegisterTransactionCommandInput {
   idempotencyKey: string;
   /** Optional locale-specific override for the shipping line label. */
   shippingLineName?: string;
+  /**
+   * The order's `order_records.taxRateEra` marker (#2260 review), passed
+   * through onto the command so the write-path tax-rate guard can exempt
+   * pre-rollout history. Mirrors the invoice mapper's own input field.
+   */
+  taxRateEra?: string | null;
 }
 
 /**
@@ -138,7 +95,7 @@ export interface OrderToRegisterTransactionCommandInput {
 export function toRegisterTransactionCommand(
   input: OrderToRegisterTransactionCommandInput,
 ): RegisterTransactionCommand {
-  const { order, connectionId, idempotencyKey, shippingLineName } = input;
+  const { order, connectionId, idempotencyKey, shippingLineName, taxRateEra } = input;
 
   // GROSS-only: a net-priced order would register net amounts labelled as gross,
   // and core may not convert (it never computes or defaults a tax rate). Fail
@@ -153,10 +110,9 @@ export function toRegisterTransactionCommand(
 
   const lines = order.items.map((item) => toFiscalLine(item, order.id));
 
-  const shippingLine = toShippingLine(order.totals.shipping, shippingLineName);
-  if (shippingLine) {
-    lines.push(shippingLine);
-  }
+  lines.push(
+    ...toShippingLines(order.totals.shipping, order.items, order.totals.currency, shippingLineName),
+  );
 
   assertLinesSumToTotal(lines, order.totals.total, order.id, order.totals.currency);
 
@@ -178,6 +134,13 @@ export function toRegisterTransactionCommand(
   const recipient = toRecipient(order);
   if (recipient) {
     command.recipient = recipient;
+  }
+
+  // #2260 review: only when the caller actually has a marker. An absent era is
+  // the ordinary case and must stay absent rather than becoming `null` on the
+  // wire, exactly as the invoice mapper treats it.
+  if (taxRateEra !== undefined && taxRateEra !== null) {
+    command.taxRateEra = taxRateEra;
   }
 
   return command;
@@ -235,8 +198,13 @@ function assertLinesSumToTotal(
 
 /**
  * Map an {@link OrderItem} onto a {@link FiscalTransactionLine}. `name` falls
- * back to `sku` then `productId` when the source omitted a label. `taxRate` is
- * left EMPTY - the adapter's regime mapping resolves it; core never names a rate.
+ * back to `sku` then `productId` when the source omitted a label.
+ *
+ * `taxRate` now carries the rate the order line was settled with (#2252,
+ * ADR-063), where it used to be left empty for the adapter's regime mapping to
+ * fill. It is a PASSTHROUGH: core still names no rate of its own, and an empty
+ * value still reaches the service - which refuses the registration rather than
+ * letting the connection's tax letter stand in for one nobody confirmed.
  */
 function toFiscalLine(item: OrderItem, orderId: string): FiscalTransactionLine {
   if (!Number.isFinite(item.quantity) || item.quantity <= 0) {
@@ -249,30 +217,54 @@ function toFiscalLine(item: OrderItem, orderId: string): FiscalTransactionLine {
     name: item.name?.trim() || item.sku || item.productId,
     quantity: item.quantity,
     unitPriceGross: item.price,
-    taxRate: '',
+    taxRate: item.taxRate?.trim() ?? '',
     sku: item.sku ?? null,
   };
 }
 
 /**
- * Compose the shipping line from the order's gross shipping cost, or `null` when
- * the buyer paid nothing for shipping (no phantom line). Non-positive or
- * non-finite shipping yields no line.
+ * Compose the shipping lines from the order's gross shipping cost, or none when
+ * the buyer paid nothing for shipping (no phantom line).
+ *
+ * Shipping inherits the basket's rate, and a mixed-rate basket splits it in
+ * proportion to line gross so the parts sum exactly to what the buyer paid
+ * (#2248) - a fiscal receipt has to state a rate per line just as an invoice
+ * does. When the split is uncomputable, one line with an empty rate is emitted
+ * and the service refuses the whole registration; dropping the shipping instead
+ * would understate the receipt total.
  */
-function toShippingLine(
+function toShippingLines(
   shipping: number,
+  items: readonly OrderItem[],
+  currency: string | null | undefined,
   name?: string,
-): FiscalTransactionLine | null {
+): FiscalTransactionLine[] {
   if (!Number.isFinite(shipping) || shipping <= 0) {
-    return null;
+    return [];
   }
-  return {
-    name: name?.trim() || SHIPPING_LINE_NAME,
+  const label = name?.trim() || SHIPPING_LINE_NAME;
+  const parts = splitShippingAcrossRates(
+    shipping,
+    items.map((item) => ({
+      taxRate: item.taxRate?.trim() ?? null,
+      gross: item.price * item.quantity,
+    })),
+    // The order's own currency decides how many decimals the parts round to, so
+    // they sum exactly in the units the buyer paid in (#2260 review).
+    minorUnitExponentFor(currency),
+  );
+
+  if (parts === null) {
+    return [{ name: label, quantity: 1, unitPriceGross: shipping, taxRate: '', sku: null }];
+  }
+
+  return parts.map((part) => ({
+    name: label,
     quantity: 1,
-    unitPriceGross: shipping,
-    taxRate: '',
+    unitPriceGross: part.amount,
+    taxRate: part.taxRate,
     sku: null,
-  };
+  }));
 }
 
 /**

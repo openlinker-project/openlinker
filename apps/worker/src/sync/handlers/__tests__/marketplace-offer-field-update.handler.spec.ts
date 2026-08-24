@@ -55,10 +55,14 @@ function makeJob(fields: Record<string, unknown>): SyncJob {
   } as unknown as SyncJob;
 }
 
+const PRODUCT_ID = 'ol_product_1';
+
 describe('MarketplaceOfferFieldUpdateHandler', () => {
   let updateOfferFields: jest.Mock;
   let identifierMapping: { getExternalIds: jest.Mock };
   let integrationsService: { getCapabilityAdapter: jest.Mock };
+  let productsService: { getVariant: jest.Mock };
+  let taxRateJournal: { record: jest.Mock; getLatestPerConnection: jest.Mock };
   let handler: MarketplaceOfferFieldUpdateHandler;
 
   /**
@@ -86,9 +90,20 @@ describe('MarketplaceOfferFieldUpdateHandler', () => {
         .mockResolvedValue([{ connectionId: CONN_ID, externalId: 'allegro-offer-9' }]),
     };
     integrationsService = { getCapabilityAdapter: jest.fn() };
+    productsService = {
+      getVariant: jest
+        .fn()
+        .mockResolvedValue({ id: OFFER_ID, productId: PRODUCT_ID, sku: 'SKU-1', attributes: {} }),
+    };
+    taxRateJournal = {
+      record: jest.fn().mockResolvedValue(null),
+      getLatestPerConnection: jest.fn().mockResolvedValue([]),
+    };
     handler = new MarketplaceOfferFieldUpdateHandler(
       identifierMapping as never,
       integrationsService as never,
+      productsService as never,
+      taxRateJournal as never,
     );
   });
 
@@ -180,5 +195,125 @@ describe('MarketplaceOfferFieldUpdateHandler', () => {
     integrationsService.getCapabilityAdapter.mockResolvedValue({ updateOfferQuantity: jest.fn() });
 
     await expect(handler.execute(makeJob({ title: 'x' }))).rejects.toThrow(SyncJobExecutionError);
+  });
+
+  describe('tax-rate journal (#2250, ADR-063 § 4)', () => {
+    beforeEach(() => {
+      wireAdapter({ getDescriptionFormat: () => ALLEGRO_LIKE });
+    });
+
+    it('should record a written-by-us entry when the update carried a rate', async () => {
+      const result = await handler.execute(makeJob({ taxRate: '23' }));
+
+      expect(result).toEqual({ outcome: 'ok' });
+      expect(updateOfferFields).toHaveBeenCalledTimes(1);
+      expect(productsService.getVariant).toHaveBeenCalledWith(OFFER_ID);
+      expect(taxRateJournal.record).toHaveBeenCalledWith({
+        productId: PRODUCT_ID,
+        variantId: OFFER_ID,
+        connectionId: CONN_ID,
+        origin: 'written-by-us',
+        taxRate: '23',
+      });
+    });
+
+    it('should record nothing when the update touched no rate', async () => {
+      await handler.execute(makeJob({ title: 'x' }));
+
+      expect(updateOfferFields).toHaveBeenCalledTimes(1);
+      expect(taxRateJournal.record).not.toHaveBeenCalled();
+      expect(productsService.getVariant).not.toHaveBeenCalled();
+    });
+
+    it('should record nothing when the marketplace write failed', async () => {
+      // The entry claims a write HAPPENED, so a failed write must leave none.
+      updateOfferFields.mockRejectedValue(new Error('422 rate not allowed in category'));
+
+      await expect(handler.execute(makeJob({ taxRate: '5' }))).rejects.toThrow(
+        SyncJobExecutionError,
+      );
+      expect(taxRateJournal.record).not.toHaveBeenCalled();
+    });
+
+    it('should never fail the job when the journal write throws', async () => {
+      taxRateJournal.record.mockRejectedValue(new Error('journal down'));
+
+      await expect(handler.execute(makeJob({ taxRate: '23' }))).resolves.toEqual({
+        outcome: 'ok',
+      });
+    });
+
+    it('should skip the entry when the variant cannot be read', async () => {
+      productsService.getVariant.mockResolvedValue(null);
+
+      await expect(handler.execute(makeJob({ taxRate: '23' }))).resolves.toEqual({
+        outcome: 'ok',
+      });
+      expect(taxRateJournal.record).not.toHaveBeenCalled();
+    });
+
+    describe('a destination that reports the rate as seller-frozen (#2262)', () => {
+      it('should record a channel observation carrying the frozen value, not our write', async () => {
+        updateOfferFields.mockResolvedValue({
+          frozenFields: [{ field: 'taxRate', currentValue: '8' }],
+        });
+
+        await expect(handler.execute(makeJob({ taxRate: '23' }))).resolves.toEqual({
+          outcome: 'ok',
+        });
+        expect(taxRateJournal.record).toHaveBeenCalledWith({
+          productId: PRODUCT_ID,
+          variantId: OFFER_ID,
+          connectionId: CONN_ID,
+          origin: 'channel',
+          taxRate: '8',
+          frozen: true,
+        });
+      });
+
+      it('should record taxRate null when the destination could not name the frozen value', async () => {
+        // Honest about what is known. `frozen: true` alongside it is what keeps
+        // the null from reading as "the channel holds no rate".
+        updateOfferFields.mockResolvedValue({ frozenFields: [{ field: 'taxRate' }] });
+
+        await handler.execute(makeJob({ taxRate: '23' }));
+
+        expect(taxRateJournal.record).toHaveBeenCalledWith(
+          expect.objectContaining({ origin: 'channel', taxRate: null, frozen: true }),
+        );
+      });
+
+      it('should still claim the write when only another field was frozen', async () => {
+        updateOfferFields.mockResolvedValue({ frozenFields: [{ field: 'title' }] });
+
+        await handler.execute(makeJob({ taxRate: '23' }));
+
+        expect(taxRateJournal.record).toHaveBeenCalledWith(
+          expect.objectContaining({ origin: 'written-by-us', taxRate: '23' }),
+        );
+      });
+
+      it('should claim the write when the destination declared nothing', async () => {
+        // Returning nothing means the destination declared nothing, which is
+        // NOT the same as "nothing was frozen" - the pre-#2262 behaviour stands.
+        updateOfferFields.mockResolvedValue(undefined);
+
+        await handler.execute(makeJob({ taxRate: '23' }));
+
+        expect(taxRateJournal.record).toHaveBeenCalledWith(
+          expect.objectContaining({ origin: 'written-by-us', taxRate: '23' }),
+        );
+      });
+
+      it('should claim the write on an explicitly empty frozen set', async () => {
+        updateOfferFields.mockResolvedValue({ frozenFields: [] });
+
+        await handler.execute(makeJob({ taxRate: '23' }));
+
+        expect(taxRateJournal.record).toHaveBeenCalledWith(
+          expect.objectContaining({ origin: 'written-by-us' }),
+        );
+      });
+    });
   });
 });

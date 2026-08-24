@@ -39,6 +39,7 @@ import { PrestashopAddressProvisioner } from '../infrastructure/provisioners/pre
 import { PrestashopCountryResolver } from '../infrastructure/provisioners/prestashop-country-resolver';
 import { PrestashopCurrencyResolver } from '../infrastructure/provisioners/prestashop-currency-resolver';
 import { PrestashopShopCurrencyResolver } from '../infrastructure/provisioners/prestashop-shop-currency.resolver';
+import { PrestashopOrderCurrencyResolver } from '../infrastructure/provisioners/prestashop-order-currency.resolver';
 import { PrestashopTaxRateResolver } from '../infrastructure/provisioners/prestashop-tax-rate.resolver';
 import { PrestashopAttributeResolver } from '../infrastructure/provisioners/prestashop-attribute.resolver';
 import { PrestashopFeatureResolver } from '../infrastructure/provisioners/prestashop-feature.resolver';
@@ -71,6 +72,23 @@ export class PrestashopAdapterFactory implements IPrestashopAdapterFactory {
   // instances the master sync creates. Resolves the fallback currency when the
   // connection config leaves `currency` unset.
   private readonly shopCurrencyResolver = new PrestashopShopCurrencyResolver();
+
+  // Same placement and reasoning as `shopCurrencyResolver`, whose shop-default
+  // read it falls back to: a process-singleton field so the per-(connection,
+  // id_currency) cache of order denominations (#2277) survives across the
+  // adapter instances built per capability resolution.
+  private readonly orderCurrencyResolver = new PrestashopOrderCurrencyResolver(
+    this.shopCurrencyResolver
+  );
+
+  // Process-singleton for the same reason: master sync builds one adapter per
+  // product, so a per-adapter tax-rate cache would never hit (#2054). The
+  // order-create path keeps its own instance, built inside the customer-
+  // provisioning branch - catalogue sync must not depend on that branch being
+  // wired.
+  private readonly productTaxRateResolver = new PrestashopTaxRateResolver(
+    new PrestashopCountryResolver()
+  );
 
   constructor(
     private readonly customerProvisioner?: PrestashopCustomerProvisioner,
@@ -140,7 +158,13 @@ export class PrestashopAdapterFactory implements IPrestashopAdapterFactory {
       connection,
       this.attributeResolver,
       this.featureResolver,
-      this.categoryPathResolver
+      this.categoryPathResolver,
+      // #2054: the product master reads the shop's tax rate through the same
+      // resolver the order-create path uses, so the two cannot disagree about
+      // one shop. Its own instance (and so its own 5-minute cache) rather than
+      // the order branch's, because that one is built only when customer
+      // provisioning is wired and the catalogue sync must not depend on that.
+      this.productTaxRateResolver
     );
 
     const inventoryMaster = new PrestashopInventoryMasterAdapter(
@@ -150,7 +174,12 @@ export class PrestashopAdapterFactory implements IPrestashopAdapterFactory {
       connection
     );
 
-    const orderSource = new PrestashopOrderSourceAdapter(httpClient, orderMapper, connection);
+    const orderSource = new PrestashopOrderSourceAdapter(
+      httpClient,
+      orderMapper,
+      connection,
+      this.orderCurrencyResolver
+    );
 
     // Create orderProcessorManager only if customer provisioning dependencies
     // and the outbound webhook-secret provider (#516) are provided.

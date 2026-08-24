@@ -60,6 +60,10 @@ import {
   invoiceIssueLockKey,
 } from './invoice-issue-lock';
 import { MissingNumberingSeriesException } from '../../domain/exceptions/missing-numbering-series.exception';
+import { taxRatePercentToFraction } from '../../domain/types/tax-rate-notation.types';
+import { findMissingTaxRate } from '../../domain/types/order-tax-rate-gate.types';
+import { isTaxRateEnforced } from '@openlinker/core/sales-documents';
+import { MissingTaxRateException } from '../../domain/exceptions/missing-tax-rate.exception';
 import { CapabilityNotSupportedException } from '@openlinker/core/integrations';
 // Published so an adapter spec can pin its own pre-call refusal message against
 // the very markers this service matches on (#2103 review) — see the constant's doc.
@@ -76,6 +80,7 @@ import type {
   IssueCorrectionCommand,
   IssuedDocumentContent,
   IssuedDocumentLine,
+  IssuedDocumentLineAmounts,
   IssuedDocumentSeller,
   IssuedLineSnapshot,
   IssueInvoiceCommand,
@@ -183,10 +188,12 @@ function round2(value: number): number {
  * (`'23'`, `'8'`, `'0'`) are read as a percentage; non-numeric exemption codes
  * (`zw`/`np`/…) carry no tax (0). The adapter owns the authoritative regime
  * mapping; this is only for the non-authoritative content projection.
+ *
+ * Notation is settled once, in `taxRatePercentToFraction` (#2247) - fractional
+ * input throws there rather than being read as a hundredth of itself here.
  */
 function rateFraction(taxRate: string): number {
-  const parsed = Number.parseFloat(taxRate);
-  return Number.isFinite(parsed) ? parsed / 100 : 0;
+  return taxRatePercentToFraction(taxRate) ?? 0;
 }
 
 /**
@@ -266,6 +273,21 @@ export class InvoiceService implements IInvoiceService {
    * enforce.
    */
   async issueInvoice(cmd: IssueInvoiceCommand): Promise<InvoiceRecord> {
+    // #2248 (ADR-063 § 6): refuse before the lock and before any persisted
+    // state is touched. This is the write-path half of the gate, and it is what
+    // closes the MANUAL routes - `POST /invoices`, the panel button, bulk issue
+    // - which every other block reason deliberately leaves open. A command
+    // whose lines carry no rate can only be issued by a provider guessing one
+    // onto a real fiscal document.
+    //
+    // Checked on the COMMAND rather than on the order, so no caller can bypass
+    // it by composing lines itself, and so the correction path (which composes
+    // its own lines from an already-issued document) is unaffected.
+    //
+    // Off unless the deployment opted in, and never applied to a pre-rollout
+    // order - see the method's own docblock for why both gates are there.
+    this.assertEveryLineHasATaxRate(cmd);
+
     const lockKey = invoiceIssueLockKey(cmd.orderId);
     const token = await this.issueLock.acquire(lockKey, INVOICE_ISSUE_LOCK_TTL_MS);
 
@@ -286,6 +308,33 @@ export class InvoiceService implements IInvoiceService {
             `${releaseError instanceof Error ? releaseError.message : String(releaseError)}`,
         );
       }
+    }
+  }
+
+  /**
+   * Refuse an issuance whose lines do not all name a tax rate (#2248).
+   *
+   * `'0'` passes: a zero rate is an answer, not a gap. A blank one does not -
+   * that is what the mapper emits when nothing established the rate, and the
+   * three shipped providers each substitute a different default for it.
+   *
+   * Gated twice (#2245 review). The refusal applies only when the deployment
+   * has switched strict enforcement on - catalogue coverage is zero on deploy,
+   * so an ungated guard refuses 100% of issuance on day one - and never to a
+   * pre-rollout order, whose lines carry no rate because none was ever
+   * collected and which ADR-063 § Consequences says must issue as it always
+   * did. `isTaxRateEnforced` answers both at once so this site cannot check one
+   * half and forget the other.
+   */
+  private assertEveryLineHasATaxRate(cmd: IssueInvoiceCommand): void {
+    if (!isTaxRateEnforced(cmd.taxRateEra)) {
+      return;
+    }
+    const finding = findMissingTaxRate(
+      cmd.lines.map((line) => ({ productId: line.name, taxRate: line.taxRate })),
+    );
+    if (finding) {
+      throw new MissingTaxRateException(cmd.orderId, finding);
     }
   }
 
@@ -717,8 +766,10 @@ export class InvoiceService implements IInvoiceService {
       throw error;
     }
 
-    const { record: issued, seller, sourceDocument } = issueResult;
-    const documentContent = this.buildContent(cmd, issued, seller ?? null);
+    const { record: issued, seller, sourceDocument, documentLines } = issueResult;
+    // #2251: prefer the document's OWN per-line amounts over core's
+    // recomputation, so the stored figure matches the paper to the grosz.
+    const documentContent = this.buildContent(cmd, issued, seller ?? null, documentLines);
     // #1297: snapshot the exact issue-command inputs (buyer/currency/lines) so a
     // later correction diffs against the lines AS ISSUED, not the order's current
     // state. Verbatim from the command — no recomputation.
@@ -1042,7 +1093,7 @@ export class InvoiceService implements IInvoiceService {
       throw error;
     }
 
-    const { record: issued, seller, sourceDocument } = issueResult;
+    const { record: issued, seller, sourceDocument, documentLines } = issueResult;
 
     // #1297: snapshot the correction's OWN post-correction ("after") lines so a
     // correction-of-correction diffs against them, not the live order. Derived
@@ -1077,6 +1128,10 @@ export class InvoiceService implements IInvoiceService {
             },
             issued,
             seller ?? null,
+            // #2251: a correction is the LATEST EFFECTIVE document, so its own
+            // amounts overwrite the stored ones. Without this the record would
+            // keep the pre-correction figures while the paper says otherwise.
+            documentLines,
           )
         : null;
 
@@ -1189,19 +1244,42 @@ export class InvoiceService implements IInvoiceService {
    * rate and the totals sum across lines. `seller` is `null` when the adapter did
    * not surface one (graceful degradation — see {@link IssuedDocumentContent}).
    *
-   * NON-AUTHORITATIVE: this recomputes net/tax/gross from the neutral `taxRate`
-   * code rather than reading the provider's own figures — a display projection
-   * only, which can diverge from the provider's authoritative amounts under
-   * rounding or regime-specific tax rules. Adapters that can supply their own
-   * authoritative line money should do so via `IssueInvoiceResult` in a future
-   * revision rather than relying on this recomputation.
+   * AUTHORITATIVE WHERE THE ADAPTER REPORTS IT (#2251). `documentLines` carries
+   * the amounts the issued document actually states, matched by 1-based line
+   * number, and those win. Core computes no net and rounds nothing, so a copy
+   * is the only way a stored figure can agree with the paper to the grosz.
+   *
+   * A line with no reported amounts falls back to the pre-#2251 recomputation
+   * from the neutral `taxRate` code, which is a display projection and can
+   * diverge under rounding or regime-specific rules. The fallback is per LINE
+   * rather than per document, so a provider that reports some lines and not
+   * others still contributes what it has.
    */
   private buildContent(
     cmd: Pick<IssueInvoiceCommand, 'lines' | 'buyer' | 'currency'>,
     record: InvoiceRecord,
     seller: IssuedDocumentSeller | null,
+    documentLines?: IssuedDocumentLineAmounts[],
   ): IssuedDocumentContent {
-    const lines = cmd.lines.map((line): IssuedDocumentLine => {
+    const reported = new Map<number, IssuedDocumentLineAmounts>(
+      (documentLines ?? []).map((entry) => [entry.lineNumber, entry]),
+    );
+
+    const lines = cmd.lines.map((line, index): IssuedDocumentLine => {
+      // 1-based, matching the document's own numbering. Shipping lines are part
+      // of it - they are real document lines - so they never shift the mapping.
+      const stated = reported.get(index + 1);
+      if (stated) {
+        return {
+          name: line.name,
+          quantity: line.quantity,
+          unitNet: stated.unitNet,
+          taxRate: line.taxRate,
+          net: stated.net,
+          tax: stated.tax,
+          gross: stated.gross,
+        };
+      }
       const fraction = rateFraction(line.taxRate);
       const gross = round2(line.quantity * line.unitPriceGross);
       const net = round2(gross / (1 + fraction));

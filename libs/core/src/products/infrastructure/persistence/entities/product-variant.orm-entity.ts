@@ -59,6 +59,37 @@ export class ProductVariantOrmEntity {
   @Column({ type: 'timestamptz', nullable: true })
   staleAt!: Date | null;
 
+  /**
+   * Per-variant tax-rate OVERRIDE (#2054, ADR-063). Set only by a master that
+   * keys tax per variant (WooCommerce can; PrestaShop keys on the product, so
+   * these stay null there and the product's rate applies).
+   *
+   * A present override always wins for a line carrying this variant id - it is
+   * the more specific statement of the same fact, not a conflict to arbitrate.
+   * Same null semantics as the product column: `taxRateReadAt` separates
+   * *never checked* from *checked, no rate*.
+   */
+  @Column({ type: 'varchar', length: 16, nullable: true })
+  taxRate!: string | null;
+
+  /** ISO 3166-1 alpha-2 the override was resolved against. Provenance only. */
+  @Column({ type: 'varchar', length: 2, nullable: true })
+  taxRateCountry!: string | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  taxRateReadAt!: Date | null;
+
+  /**
+   * Why the master could not state a rate (#2264), when it could not.
+   *
+   * Meaningful ONLY alongside `taxRateReadAt IS NOT NULL AND taxRate IS NULL`.
+   * Null means no reason was recorded - never `not-configured`, which is a real
+   * answer the shop gave. Untyped varchar on purpose: a new reason must not
+   * need a migration, and an unrecognised value degrades to "no reason given".
+   */
+  @Column({ type: 'varchar', length: 32, nullable: true })
+  taxRateUnknownReason!: string | null;
+
   @CreateDateColumn()
   createdAt!: Date;
 

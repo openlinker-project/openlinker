@@ -15,11 +15,27 @@
  * @module libs/core/src/listings/domain/ports/capabilities
  */
 import type { DescriptionFormat } from '../../types/description-format.types';
-import type { UpdateOfferFieldsCommand } from '../../types/offer-fields-update.types';
+import type {
+  UpdateOfferFieldsCommand,
+  UpdateOfferFieldsReport,
+} from '../../types/offer-fields-update.types';
 import type { OfferManagerPort } from '../offer-manager.port';
 
 export interface OfferFieldUpdater {
-  updateOfferFields(cmd: UpdateOfferFieldsCommand): Promise<void>;
+  /**
+   * Apply the fields in `cmd.fields` to the destination's offer.
+   *
+   * The return type is a union with `void` on purpose (#2262). A destination
+   * that can refuse a field - Erli drops anything the seller froze, #988 /
+   * ADR-025 §4b - reports it in an `UpdateOfferFieldsReport` so a caller can
+   * tell "written" from "silently dropped"; the tax-rate journal (#2250)
+   * depends on that distinction to avoid recording a write that never
+   * happened. An adapter with nothing to declare returns nothing, which every
+   * caller must read as *the destination declared nothing*, never as *nothing
+   * was frozen*. Keeping it a union is also what keeps an out-of-tree plugin
+   * compiled against the pre-#2262 `Promise<void>` signature compatible.
+   */
+  updateOfferFields(cmd: UpdateOfferFieldsCommand): Promise<UpdateOfferFieldsReport | void>;
   /**
    * What this destination accepts in a description (ADR-046). Pure and
    * synchronous: no I/O, no credentials, no network - the adapter declares a

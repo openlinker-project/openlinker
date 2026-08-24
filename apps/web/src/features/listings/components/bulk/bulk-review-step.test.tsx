@@ -123,6 +123,7 @@ function baseProps() {
     config,
     paramsResolving: false,
     platformBlockerChips: [],
+    batchIssues: [],
     canBrowseCategories: true,
     demoReadOnly: false,
     alreadyListedVariantIds: new Set<string>(),
@@ -178,7 +179,71 @@ describe('BulkReviewStep', () => {
     // Single-variant product renders flat; its blocker chip is a fix button.
     // The accessible name carries the human variant label (distinguishing attr),
     // never the raw ol_variant id (#1741 review).
-    expect(screen.getByRole('button', { name: /Fix: no EAN - Rozmiar: v1/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Fix: no barcode - Rozmiar: v1/ })).toBeInTheDocument();
+  });
+
+  it('carries the cause sentence on the chip so one chip can explain itself (#2240)', () => {
+    renderWithProviders(
+      <BulkReviewStep rows={[makeRow('prod_1', [variantRow('v1', ['no-match'])])]} {...baseProps()} />,
+    );
+    // One chip per cause in the table - the sentence rides in the title/accessible
+    // name rather than in a second, always-present "category not set" chip.
+    const chip = screen.getByRole('button', { name: /Fix: no catalog match - Rozmiar: v1/ });
+    expect(chip).toHaveAttribute(
+      'title',
+      expect.stringContaining("isn't in the Test Marketplace catalog"),
+    );
+    expect(screen.queryByText('category not set')).not.toBeInTheDocument();
+  });
+
+  it('LOCKS the submit while a batch-level precondition is unmet (#2240 review)', () => {
+    // Not a soft warning: the precondition is connection-wide and
+    // deterministic, so no subset of this batch can succeed and a banner an
+    // operator can read past would explain the wasted batch instead of
+    // preventing it.
+    renderWithProviders(
+      <BulkReviewStep
+        rows={[makeRow('prod_1', [variantRow('v1'), variantRow('v2')])]}
+        {...baseProps()}
+        batchIssues={[
+          {
+            id: 'allegro:missing-seller-details',
+            title: 'This connection is missing a responsible producer.',
+            detail: 'Allegro requires them on every offer.',
+          },
+        ]}
+      />,
+    );
+
+    for (const button of screen.getAllByRole('button', { name: /Create offers/ })) {
+      expect(button).toBeDisabled();
+    }
+    // And the readiness line must not still claim every variant is ready.
+    expect(screen.queryByText(/All included variants are ready/)).not.toBeInTheDocument();
+    expect(
+      screen.getByText(/This connection is not set up to create offers yet/),
+    ).toBeInTheDocument();
+  });
+
+  it('warns once for the batch when the platform reports an unmet precondition (#2240)', () => {
+    renderWithProviders(
+      <BulkReviewStep
+        rows={[makeRow('prod_1', [variantRow('v1'), variantRow('v2')])]}
+        {...baseProps()}
+        batchIssues={[
+          {
+            id: 'allegro:missing-seller-details',
+            title: 'This connection is missing a responsible producer.',
+            detail: 'Allegro requires them on every offer, so each one will be rejected.',
+          },
+        ]}
+      />,
+    );
+    expect(
+      screen.getByText('This connection is missing a responsible producer.'),
+    ).toBeInTheDocument();
+    // One banner for the batch, not one per variant.
+    expect(screen.getAllByText(/Allegro requires them on every offer/)).toHaveLength(1);
   });
 
   it('opens the shared image lightbox from the product thumbnail (#1741)', () => {

@@ -43,7 +43,7 @@ import type {
   UpsertCustomerCommand,
   UpsertCustomerResult,
 } from '@openlinker/core/invoicing';
-import { InvoiceRecord } from '@openlinker/core/invoicing';
+import { InvoiceRecord, MissingTaxRateException } from '@openlinker/core/invoicing';
 import type { BridgeIssueInvoiceRequest } from '../../bridge/subiekt-bridge.types';
 import type { SubiektBridgeClient } from '../../bridge/subiekt-bridge.client';
 import type {
@@ -172,7 +172,9 @@ export class SubiektInvoicingAdapter
         // Self-sufficient mode: the buyer is carried INLINE (no kontrahentId);
         // the bridge auto-upserts it and bills it in one unit of work.
         buyer: toBridgeBuyer(cmd.buyer),
-        lines: toBridgeLines(cmd.lines),
+        // #2260 review: the era travels with the lines so a pre-rollout order
+        // is exempt here exactly as it is on the other two invoicing routes.
+        lines: toBridgeLines(cmd.lines, cmd.taxRateEra),
         // Connection-level payment + cash-register selection (#1324). Both
         // helpers return `{}` when unset (or when a combination the bridge would
         // 422 is only half-configured), so an unconfigured connection produces a
@@ -364,6 +366,9 @@ export class SubiektInvoicingAdapter
    *   - other recognised Subiekt-owned terminal errors (`SubiektBridgeAuthError`,
    *     `SubiektUnsupportedDocumentTypeError`, `SubiektConfigException`) pass
    *     through unchanged so the retry classifier sees their concrete type.
+   *   - the neutral `MissingTaxRateException` (raised by the line mapper while
+   *     the request body is built) passes through, so the refusal keeps its
+   *     product-naming message and its terminal treatment (#2260 review).
    *   - a genuinely-UNKNOWN throwable is wrapped into a Subiekt-typed
    *     `'indeterminate'` `SubiektBridgeTransportError`. We cannot prove the POST
    *     never reached Subiekt, so this keeps the fiscal-safe "unknown ->
@@ -386,6 +391,14 @@ export class SubiektInvoicingAdapter
       error instanceof SubiektUnsupportedDocumentTypeError ||
       error instanceof SubiektConfigException
     ) {
+      return error;
+    }
+    // #2260 review: the line mapper's tax-rate refusal is raised while the
+    // request body is being built, so it lands here. Wrapped as an
+    // `indeterminate` transport error it lost both the message that names the
+    // product and its terminal classification - the exact opposite of what the
+    // mapper's own docstring promises. Pass it through unchanged.
+    if (error instanceof MissingTaxRateException) {
       return error;
     }
     return new SubiektBridgeTransportError(

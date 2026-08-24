@@ -117,6 +117,7 @@ import {
   type OfferFieldUpdate,
   type OfferFieldUpdater,
   type OfferManagerPort,
+  type FrozenOfferField,
   type OfferReader,
   type OfferStatusReadResult,
   type OfferStatusReader,
@@ -127,8 +128,11 @@ import {
   type TaxonomyBorrower,
   type TaxonomyOwner,
   type UpdateOfferFieldsCommand,
+  type UpdateOfferFieldsReport,
   type UpdateOfferQuantityCommand,
 } from '@openlinker/core/listings';
+import { supportedErliTaxRates, toErliTaxRate } from './erli-tax-rate.mapper';
+import { isTaxRateStrictEnabled } from '@openlinker/core/sales-documents';
 
 import { ERLI_DESCRIPTION_FORMAT } from './erli-description-format';
 import type { CachePort } from '@openlinker/shared';
@@ -175,6 +179,26 @@ const PATCH_KEY_TO_ERLI_FROZEN_NAME: Partial<Record<keyof ErliProductPatchBody, 
   price: 'price',
   name: 'name',
   description: 'description',
+  // #2249: Erli sets `frozen.taxRate` the moment the seller edits the field in
+  // their panel. That is the signal a PERSON chose the value, so OL skips the
+  // write - and `force` stays deliberately unused, because overriding a
+  // deliberate human tax decision is the one write worth getting wrong least.
+  taxRate: 'taxRate',
+};
+
+/**
+ * Erli patch-body key -> the neutral `OfferFieldUpdate` key it came from
+ * (#2262). Needed because the two vocabularies differ on exactly one field
+ * (`title` -> `name`), and the frozen-field report speaks the NEUTRAL name: a
+ * core caller must not have to know Erli's wire spelling to read it.
+ */
+const PATCH_KEY_TO_OFFER_FIELD: Partial<
+  Record<keyof ErliProductPatchBody, keyof OfferFieldUpdate>
+> = {
+  price: 'price',
+  name: 'title',
+  description: 'description',
+  taxRate: 'taxRate',
 };
 
 /**
@@ -238,6 +262,13 @@ export class ErliOfferManagerAdapter
     ResponsibleProducerReader,
     DeliveryPriceListReader
 {
+  /**
+   * Connections already told that their Erli tax rate is seller-frozen (#2249).
+   * A module-level `Set` on the instance rather than a per-call log, so one
+   * deliberate seller decision is reported once instead of on every propagation.
+   */
+  private readonly frozenTaxRateReported = new Set<string>();
+
   private readonly logger = new Logger(ErliOfferManagerAdapter.name);
 
   /**
@@ -438,7 +469,7 @@ export class ErliOfferManagerAdapter
     return { externalOfferId, status: 'draft' };
   }
 
-  async updateOfferFields(cmd: UpdateOfferFieldsCommand): Promise<void> {
+  async updateOfferFields(cmd: UpdateOfferFieldsCommand): Promise<UpdateOfferFieldsReport> {
     const body = this.buildPatchFromFields(cmd.fields);
     // #988 / ADR-025 §4b: never overwrite a field the seller froze in the panel.
     // Read the live product, drop frozen keys per-field; an empty body is a no-op.
@@ -460,14 +491,23 @@ export class ErliOfferManagerAdapter
     // is already in hand from the read above. On the 404 fail-open branch `current`
     // is `{}` so `frozen` is undefined and the helper no-ops.
     await this.writeFrozenStockFlag(cmd.externalOfferId, current.frozen);
-    const filtered = this.dropFrozenFields(body, current.frozen);
+    const { body: filtered, frozenFields } = this.dropFrozenFields(
+      body,
+      current.frozen,
+      current,
+    );
     if (Object.keys(filtered).length === 0) {
       this.logger.debug(
         `Erli field-update is a no-op — all supplied fields are frozen [connectionId=${this.connectionId}]`,
       );
-      return;
+      // #2262: still a report, not silence. An all-frozen update is exactly the
+      // case a caller most needs to hear about - returning nothing here would
+      // read as "the destination declared nothing" and the tax-rate journal
+      // would record a write that never left this method.
+      return { frozenFields };
     }
     await this.httpClient.patch(this.productPath(cmd.externalOfferId), filtered);
+    return { frozenFields };
   }
 
   /**
@@ -668,23 +708,54 @@ export class ErliOfferManagerAdapter
   private dropFrozenFields(
     body: ErliProductPatchBody,
     frozen: Record<string, boolean> | undefined,
-  ): ErliProductPatchBody {
+    current: ErliProductResource,
+  ): { body: ErliProductPatchBody; frozenFields: FrozenOfferField[] } {
     if (!frozen) {
-      return body;
+      // `frozen` absent means the read carried no frozen info (bodyless 2xx or
+      // the 404 fail-open branch), which is UNKNOWN, not "nothing frozen" - so
+      // the report names nothing rather than asserting an empty freeze set.
+      return { body, frozenFields: [] };
     }
+    const frozenFields: FrozenOfferField[] = [];
     // Shallow-copy then delete frozen keys — avoids a per-key index-write cast
     // while preserving each value's own type.
     const result: ErliProductPatchBody = { ...body };
     for (const key of Object.keys(result) as (keyof ErliProductPatchBody)[]) {
       const erliName = PATCH_KEY_TO_ERLI_FROZEN_NAME[key];
       if (erliName !== undefined && frozen[erliName] === true) {
-        this.logger.debug(
-          `Skipping frozen Erli field "${erliName}" on field-update [connectionId=${this.connectionId}]`,
-        );
+        if (key === 'taxRate') {
+          // #2249: a frozen tax rate is INFORMATION, not an error - the seller
+          // set it in their panel deliberately, and that is exactly the signal
+          // that makes a later shop-versus-channel disagreement attributable to
+          // a person. Logged once per connection so a nightly propagation pass
+          // does not turn one deliberate decision into a recurring complaint,
+          // and `force` is never sent.
+          if (!this.frozenTaxRateReported.has(this.connectionId)) {
+            this.frozenTaxRateReported.add(this.connectionId);
+            this.logger.log(
+              `Erli tax rate is seller-frozen on this connection; OpenLinker will not overwrite it ` +
+                `[connectionId=${this.connectionId}]`,
+            );
+          }
+        } else {
+          this.logger.debug(
+            `Skipping frozen Erli field "${erliName}" on field-update [connectionId=${this.connectionId}]`,
+          );
+        }
+        const offerField = PATCH_KEY_TO_OFFER_FIELD[key];
+        if (offerField !== undefined) {
+          // #2262: `currentValue` is only ever the rate, because that is the
+          // only frozen value Erli's read carries and the only one a caller
+          // (the tax-rate journal) has anywhere to put.
+          const currentValue = offerField === 'taxRate' ? current.taxRate : undefined;
+          frozenFields.push(
+            currentValue === undefined ? { field: offerField } : { field: offerField, currentValue },
+          );
+        }
         delete result[key];
       }
     }
-    return result;
+    return { body: result, frozenFields };
   }
 
   async updateOfferQuantity(cmd: UpdateOfferQuantityCommand): Promise<void> {
@@ -845,6 +916,62 @@ export class ErliOfferManagerAdapter
     return erliProductPath(rawId);
   }
 
+  /**
+   * The Erli enum value for the command's neutral rate (#2249), or `undefined`
+   * when there is no rate and strict enforcement is off.
+   *
+   * Refuses rather than omitting, in both failure directions, because an
+   * omitted rate is the worse outcome on this platform: Erli publishes the
+   * product and then marks it not-buyable with `missingTaxRate`, which nobody
+   * sees until an operator wonders why the listing gets no orders.
+   *
+   * The no-rate refusal is gated on `OL_TAX_RATE_STRICT_ENABLED` (#2245
+   * review). Catalogue coverage is zero on deploy, so refusing every rate-less
+   * publish on day one fails every child of every bulk batch, and unlike
+   * issuance there is no badge or counter to read that from. With the switch
+   * off the field is omitted exactly as it was before this epic, and Erli's own
+   * `missingTaxRate` remains the signal. The not-expressible refusal is NOT
+   * gated: there the shop DID name a rate Erli cannot carry, which is a real
+   * conflict at any coverage level.
+   */
+  private resolveErliTaxRate(cmd: CreateOfferCommand): string | undefined {
+    if (!cmd.taxRate) {
+      if (!isTaxRateStrictEnabled()) {
+        this.logger.warn(
+          `Publishing an Erli product with no tax rate because ` +
+            `OL_TAX_RATE_STRICT_ENABLED is off. Erli will mark it not-buyable ` +
+            `("missingTaxRate") until the rate is added in the shop's catalogue and the ` +
+            `product is re-synced.`,
+        );
+        return undefined;
+      }
+      throw new OfferCreateRejectedException(this.adapterKey, 0, [
+        {
+          field: 'taxRate',
+          code: 'TAX_RATE_MISSING',
+          message:
+            `No tax rate is known for this product, and Erli blocks a product without one ` +
+            `("missingTaxRate"). Add the rate in the shop's catalogue and re-sync the product; ` +
+            `OpenLinker does not substitute one.`,
+        },
+      ]);
+    }
+    const erliTaxRate = toErliTaxRate(cmd.taxRate);
+    if (erliTaxRate === null) {
+      throw new OfferCreateRejectedException(this.adapterKey, 0, [
+        {
+          field: 'taxRate',
+          code: 'TAX_RATE_NOT_EXPRESSIBLE',
+          message:
+            `Erli has no tax value for "${cmd.taxRate}". Supported: ` +
+            `${supportedErliTaxRates().join(', ')}. Set one of those on the product in the shop, ` +
+            `or list it on a channel that supports the code.`,
+        },
+      ]);
+    }
+    return erliTaxRate;
+  }
+
   private buildCreateBody(cmd: CreateOfferCommand): ErliProductCreateBody {
     // Erli requires name, images, price, stock, dispatchTime on create. Fail
     // CLOSED locally on every required field (same posture as dispatchTime) so a
@@ -880,6 +1007,16 @@ export class ErliOfferManagerAdapter
     }
     if (cmd.variantBarcode != null) {
       body.ean = cmd.variantBarcode;
+    }
+    // #2249 (ADR-063) — the shop's rate, propagated onto the Erli product.
+    // Refused rather than omitted: Erli's own `buyableProblems.missingTaxRate`
+    // blocks a rate-less product server-side, so omitting it trades an
+    // actionable error here for a silently not-buyable listing an operator has
+    // to go and discover. `oo` has no Erli equivalent and is refused for the
+    // same reason - a nearest-looking token would be a real sale taxed wrongly.
+    const erliTaxRate = this.resolveErliTaxRate(cmd);
+    if (erliTaxRate !== undefined) {
+      body.taxRate = erliTaxRate;
     }
     // Taxonomy (#985 / #1096): prefer the resolved Allegro id, else the master
     // shop's own categories (`source:"shop"`), else omit — Erli's API makes
@@ -991,6 +1128,22 @@ export class ErliOfferManagerAdapter
     }
     if (fields.description !== undefined) {
       body.description = flattenDescription(fields.description);
+    }
+    // #2249: propagate a rate change onto the live product. An unmappable code
+    // is DROPPED rather than throwing, unlike on the create path: a create that
+    // cannot state its tax must not happen at all, while an update that cannot
+    // is a partial update of an offer that already exists and already sells.
+    // Throwing here would take a title or price fix down with it.
+    if (fields.taxRate !== undefined) {
+      const erliTaxRate = toErliTaxRate(fields.taxRate);
+      if (erliTaxRate === null) {
+        this.logger.warn(
+          `Erli has no tax value for "${fields.taxRate}"; leaving the offer's rate unchanged ` +
+            `[connectionId=${this.connectionId}]`,
+        );
+      } else {
+        body.taxRate = erliTaxRate;
+      }
     }
     return body;
   }

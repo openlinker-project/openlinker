@@ -36,6 +36,15 @@ describe('resolveP12', () => {
     expect(() => resolveP12('')).toThrow(UnmappedTaxRateException);
   });
 
+  it.each(['0.23', '0.08', '0.05'])(
+    'should reject the fractional spelling %s rather than reading it as a percentage (#2247)',
+    (fractional) => {
+      // Neutral notation is percent-as-string. A fractional code is not an
+      // alternative spelling of the same rate, so it must never map to a P_12.
+      expect(() => resolveP12(fractional)).toThrow(UnmappedTaxRateException);
+    },
+  );
+
   it.each(['constructor', 'toString', 'valueOf', 'hasOwnProperty', '__proto__'])(
     'should throw UnmappedTaxRateException on the inherited-prototype key %s (#1291)',
     (protoKey) => {

@@ -23,6 +23,13 @@
  * Anything else BLOCKS the registration. Guessing here would transmit a rate the
  * seller never declared onto a fiscal document they are answerable for.
  *
+ * **Arm 3 is unreachable while the #2252 gate stands.** Core refuses a sale
+ * whose lines do not all name a rate before the adapter is called at all, so an
+ * empty `taxRate` no longer arrives here. The arm is kept rather than deleted
+ * because it is the shape the behaviour returns to if that gate is reversed -
+ * and because deleting it would make the reversal a redesign instead of the one
+ * documented branch it is meant to be.
+ *
  * Pure - no I/O, no framework.
  *
  * @module libs/integrations/eparagony/src/domain/policies

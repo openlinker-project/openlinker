@@ -102,6 +102,20 @@ export class UpdateOfferFieldsDto {
   @ValidateNested()
   @Type(() => OfferDescriptionDto)
   description?: OfferDescriptionDto;
+
+  /*
+   * Deliberately NO `taxRate` here (ADR-063).
+   *
+   * `OfferFieldUpdate.taxRate` is a real part of the neutral contract and both
+   * marketplace adapters write it, but the producer must be OpenLinker
+   * propagating the rate the shop catalogue carries - never a value an operator
+   * typed. A rate typed here would be a fourth authority that no master and no
+   * channel can be corrected from: it is journalled nowhere, it cannot be
+   * attributed in a mismatch investigation, and the real remedy for a wrong
+   * rate is fixing the shop record the whole chain reads from. The global
+   * `forbidNonWhitelisted` validation pipe therefore rejects a `taxRate` key on
+   * this route with a 400 rather than patching it onto the live offer.
+   */
 }
 
 export class UpdateOfferFieldsResponseDto {

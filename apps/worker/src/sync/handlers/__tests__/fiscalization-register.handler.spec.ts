@@ -13,6 +13,7 @@ import {
   OrderAlreadyRegisteredException,
   OrderAlreadyHasInvoiceException,
   FiscalRegistrationContendedException,
+  MissingFiscalTaxRateException,
 } from '@openlinker/core/fiscalization';
 import { SyncJobExecutionError } from '@openlinker/core/sync';
 import type { IFiscalRegistrationService } from '@openlinker/core/fiscalization';
@@ -198,6 +199,49 @@ describe('FiscalizationRegisterHandler', () => {
       );
       const result = await handler.execute(makeJob(makePayload()));
       expect(result).toEqual({ outcome: 'business_failure' });
+    });
+
+    it('MissingFiscalTaxRateException is terminal, not retried (#2260 review)', async () => {
+      // A decision about persisted data, unchanged by a retry. In the retryable
+      // catch-all it burned the whole maxAttempts budget with backoff and then
+      // landed `dead`, reading as an incident rather than a catalogue gap.
+      fiscalRegistrations.register.mockRejectedValue(
+        new MissingFiscalTaxRateException('order-1', 1, 2, 'SKU-9'),
+      );
+      const result = await handler.execute(makeJob(makePayload()));
+      expect(result).toEqual({ outcome: 'business_failure' });
+    });
+
+    it('the tax-rate refusal log carries counts and ids only, never the line label', async () => {
+      fiscalRegistrations.register.mockRejectedValue(
+        new MissingFiscalTaxRateException('order-1', 1, 2, 'Jan Kowalski gift set'),
+      );
+      await handler.execute(makeJob(makePayload()));
+      const logged = warnSpy.mock.calls.map((call) => call[0]).join(' | ');
+      expect(logged).toContain('order-1');
+      expect(logged).toContain('1 of 2');
+      expect(logged).not.toContain('Jan Kowalski gift set');
+    });
+  });
+
+  describe("the order's tax-rate era (#2260 review)", () => {
+    it('carries a recognised era onto the command', async () => {
+      await handler.execute(makeJob(makePayload({ taxRateEra: 'pre-rollout' })));
+      expect(fiscalRegistrations.register).toHaveBeenCalledWith(
+        expect.objectContaining({ taxRateEra: 'pre-rollout' }),
+      );
+    });
+
+    it('drops an unrecognised era rather than exempting the order', async () => {
+      await handler.execute(makeJob(makePayload({ taxRateEra: 'legacy' })));
+      const command = fiscalRegistrations.register.mock.calls[0]?.[0];
+      expect(command && 'taxRateEra' in command).toBe(false);
+    });
+
+    it('omits the field for an ordinary order', async () => {
+      await handler.execute(makeJob(makePayload()));
+      const command = fiscalRegistrations.register.mock.calls[0]?.[0];
+      expect(command && 'taxRateEra' in command).toBe(false);
     });
   });
 

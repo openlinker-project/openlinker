@@ -42,6 +42,8 @@ import { DuplicateFiscalRegistrationRecordException } from '../../domain/excepti
 import { FiscalRegistrationNotInDoubtException } from '../../domain/exceptions/fiscal-registration-not-in-doubt.exception';
 import { FiscalRegistrationRecordNotFoundException } from '../../domain/exceptions/fiscal-registration-record-not-found.exception';
 import { MissingIdempotencyKeyException } from '../../domain/exceptions/missing-idempotency-key.exception';
+import { MissingFiscalTaxRateException } from '../../domain/exceptions/missing-tax-rate.exception';
+import { isTaxRateEnforced } from '@openlinker/core/sales-documents';
 import { OrderAlreadyRegisteredException } from '../../domain/exceptions/order-already-registered.exception';
 import { OrderAlreadyHasInvoiceException } from '../../domain/exceptions/order-already-has-invoice.exception';
 import { FiscalRegistrationContendedException } from '../../domain/exceptions/fiscal-registration-contended.exception';
@@ -191,6 +193,27 @@ export class FiscalRegistrationService implements IFiscalRegistrationService {
     // lookup AND the adapter - must see the SAME key, or a provider that echoes
     // OL's key back would be queried later under a value it never received.
     const normalized: RegisterTransactionCommand = { ...cmd, idempotencyKey: key };
+
+    // #2252 (ADR-063 § 6): a line with no tax rate is refused BEFORE the read
+    // gate and before any row is written - the same rule as the invoice, and
+    // for the same reason. A provider filling the gap from the connection's
+    // configured tax letter puts an unconfirmed rate on a real fiscal receipt,
+    // which reaches the buyer and the daily report and cannot be recalled.
+    //
+    // The accepted cost is LATE registration, chosen deliberately: a late
+    // registration can be completed, a wrong one has to be corrected. Placed
+    // ahead of the read gate so a held sale leaves no `pending` row behind to
+    // reconcile.
+    //
+    // THIS CALL IS THE REVERSAL POINT. Nothing else in this context consults
+    // the rate, so removing this one line restores the pre-#2252 behaviour -
+    // and switching `OL_TAX_RATE_STRICT_ENABLED` off does the same without a
+    // deploy (#2245 review), which is what keeps day one from being an outage
+    // while catalogue coverage is still zero.
+    this.assertEveryLineHasATaxRate(normalized);
+    // Placed ahead of the per-order LOCK as well as the read gate (#2157 put the
+    // gate behind a lock): a refusal here is a pure function of the command, so
+    // taking a lock to reject it would only widen the contended window.
 
     const lockKey = invoiceIssueLockKey(normalized.orderId);
     const token = await this.registrationLock.acquire(lockKey, INVOICE_ISSUE_LOCK_TTL_MS);
@@ -484,6 +507,32 @@ export class FiscalRegistrationService implements IFiscalRegistrationService {
   }
 
   /**
+   * Refuse a sale whose lines do not all name a tax rate (#2252).
+   *
+   * `'0'` passes - a zero rate is an answer, and refusing it would hold every
+   * deliberately exempt sale. A blank one does not: that is what core emits
+   * when nothing established the rate, and it is exactly the value each
+   * provider would silently replace with its own default.
+   */
+  private assertEveryLineHasATaxRate(cmd: RegisterTransactionCommand): void {
+    // #2260 review: one helper answers BOTH halves - has the deployment opted
+    // in, and is this order pre-rollout history. Reading the switch alone here
+    // was a silent decline along the era axis: `AutoIssueTriggerService` is
+    // era-aware, so a pre-rollout order passed the gate (which then reported
+    // `none` and cleared any persisted reason), the job enqueued, and this gate
+    // refused it with no badge, no count and no filter hit.
+    if (!isTaxRateEnforced(cmd.taxRateEra)) return;
+    const missing = cmd.lines.filter((line) => line.taxRate.trim() === '');
+    if (missing.length === 0) return;
+    throw new MissingFiscalTaxRateException(
+      cmd.orderId,
+      missing.length,
+      cmd.lines.length,
+      missing[0]?.sku ?? missing[0]?.name ?? null,
+    );
+  }
+
+  /**
    * Resolve the per-connection adapter, claim the in-flight slot atomically,
    * cross the CORE <-> Integration boundary and patch the record with the
    * outcome.
@@ -503,6 +552,7 @@ export class FiscalRegistrationService implements IFiscalRegistrationService {
    * belongs there, but inheriting a known stuck state is not a reason to ship
    * one on a new surface.
    */
+
   private async registerWithAdapter(
     cmd: RegisterTransactionCommand,
     recordId: string,

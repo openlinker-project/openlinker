@@ -15,9 +15,10 @@
  * @module apps/web/src/features/listings/components/bulk
  */
 import { useEffect, useMemo, useState, type ReactElement } from 'react';
-import { Button, CheckboxCell, Input, ProductThumbnail } from '../../../../shared/ui';
+import { Link } from 'react-router-dom';
+import { Alert, Button, CheckboxCell, Input, ProductThumbnail } from '../../../../shared/ui';
 import type { StatusBadgeTone } from '../../../../shared/ui';
-import type { OfferBlockerDescriptor } from '../../../../shared/plugins';
+import type { OfferBatchIssue, OfferBlockerDescriptor } from '../../../../shared/plugins';
 import type { Connection } from '../../../connections';
 import type { BulkPerProductOverride } from '../../api/bulk-listings.types';
 import {
@@ -43,6 +44,7 @@ import {
   gatingBlockers,
   type ChipDescriptor,
 } from './bulk-blockers';
+import { describeBlocker, type BlockerCopyContext } from './bulk-blocker-copy';
 
 interface BulkReviewStepProps {
   rows: BulkWizardRow[];
@@ -50,6 +52,8 @@ interface BulkReviewStepProps {
   config: BulkWizardConfig;
   paramsResolving: boolean;
   platformBlockerChips: readonly OfferBlockerDescriptor[];
+  /** Unmet batch-level platform preconditions (#2240). Empty ⇒ nothing to warn. */
+  batchIssues: readonly OfferBatchIssue[];
   canBrowseCategories: boolean;
   batchDeliveryPriceList?: string;
   /** Demo read-only viewer - gates the editor's field edits + "Save all" (#1704). */
@@ -109,12 +113,32 @@ function variantReadiness(
   return { included: v.included, ready: v.included && gatingBlockers(v.blockers, chips).length === 0 };
 }
 
+/**
+ * Values the blocker sentences interpolate (#2240). Assembled at the call site
+ * rather than inside `describeBlocker` so the copy module stays pure and free of
+ * wizard row types.
+ */
+function blockerCopyContext(
+  row: BulkWizardRow,
+  variant: BulkVariantRow,
+  destinationName: string,
+  config: BulkWizardConfig,
+): BlockerCopyContext {
+  return {
+    ean: variant.ean,
+    destinationName,
+    variantCount: row.variants.length,
+    batchCurrency: config.currency,
+  };
+}
+
 export function BulkReviewStep({
   rows,
   connection,
   config,
   paramsResolving,
   platformBlockerChips,
+  batchIssues,
   canBrowseCategories,
   batchDeliveryPriceList,
   demoReadOnly,
@@ -174,10 +198,16 @@ export function BulkReviewStep({
   const overExpansionCeiling = counts.includedReady > BULK_SUBMIT_LIMIT;
   const overExclusionCap = counts.excluded > BULK_SUBMIT_LIMIT;
 
+  // A batch-level precondition LOCKS the submit rather than warning (#2240
+  // review). It is connection-wide and deterministic - every child job would be
+  // rejected - so a banner the operator can read past does not prevent the
+  // wasted batch, it explains it afterwards. Unlike a per-row blocker there is
+  // nothing to switch off: no subset of this batch can succeed.
   const canApprove =
     counts.includedReady > 0 &&
     counts.includedNeedsAttention === 0 &&
     duplicateEanIds.size === 0 &&
+    batchIssues.length === 0 &&
     !overExpansionCeiling &&
     !overExclusionCap &&
     !paramsResolving;
@@ -337,9 +367,29 @@ export function BulkReviewStep({
         </div>
       </div>
 
+      {/* Batch-level platform preconditions (#2240). One banner for the whole
+          batch, above the readiness line: the fact belongs to the connection,
+          so a chip per row would repeat it N times and still not name the fix. */}
+      {batchIssues.map((issue) => (
+        <Alert
+          key={issue.id}
+          tone="error"
+          title={issue.title}
+          action={
+            <Link className="button button--sm" to={`/connections/${config.connectionId}`}>
+              Open connection settings
+            </Link>
+          }
+        >
+          {issue.detail}
+        </Alert>
+      ))}
+
       <div
         className={
-          counts.includedNeedsAttention === 0 && duplicateEanIds.size === 0
+          counts.includedNeedsAttention === 0 &&
+          duplicateEanIds.size === 0 &&
+          batchIssues.length === 0
             ? 'bulk-review__banner bulk-review__banner--ok'
             : 'bulk-review__banner'
         }
@@ -369,6 +419,14 @@ export function BulkReviewStep({
             </b>{' '}
             The marketplace treats them as one product identity and the submit is rejected
             whole - give each one its own EAN, or switch the duplicates off.
+          </>
+        ) : batchIssues.length > 0 ? (
+          <>
+            <b>
+              This connection is not set up to create offers yet, so nothing can be submitted.
+            </b>{' '}
+            Every variant below would be rejected for the same reason - fix it above, on the
+            connection, and the submit unlocks.
           </>
         ) : counts.includedNeedsAttention === 0 ? (
           <>
@@ -646,6 +704,7 @@ function ProductRow({
               label={distinguishingLabel(row.variants[0], 0)}
               alreadyListed={alreadyListedVariantIds.has(row.variants[0].variantId)}
               destinationName={destinationName}
+              copyContext={blockerCopyContext(row, row.variants[0], destinationName, config)}
               onFix={(focusField) => {
                 onEdit(row.variants[0].variantId, focusField);
               }}
@@ -784,6 +843,7 @@ function VariantRow({
           label={label}
           alreadyListed={alreadyListed}
           destinationName={destinationName}
+          copyContext={blockerCopyContext(row, variant, destinationName, config)}
         />
       </div>
       <div className="bulk-review__c-stock tabular">{stock.value ?? '-'}</div>
@@ -814,6 +874,7 @@ function VariantChips({
   label,
   alreadyListed,
   destinationName,
+  copyContext,
 }: {
   variant: BulkVariantRow;
   chips: Record<string, ChipDescriptor>;
@@ -823,6 +884,8 @@ function VariantChips({
   /** Already published on the destination (#1837) - soft warning, not a blocker. */
   alreadyListed: boolean;
   destinationName: string;
+  /** Values the blocker sentences interpolate (#2240) - barcode, destination, counts. */
+  copyContext: BlockerCopyContext;
 }): ReactElement {
   // The "already on {destination}" chip is a SOFT warning shown alongside the
   // readiness/blocker chips - it never marks the variant not-ready (#1837).
@@ -847,12 +910,17 @@ function VariantChips({
     <>
       {variant.blockers.map((b) => {
         const descriptor = chips[b] ?? FALLBACK_CHIP;
+        // The cause sentence rides on the chip (#2240). One chip per row keeps
+        // the identity column at its documented two lines; the explanation is a
+        // hover/focus away rather than a second constant chip.
+        const cause = describeBlocker(b, copyContext);
         return (
           <Chip
             key={b}
             descriptor={descriptor}
             onFix={descriptor.fixable ? () => onFix(descriptor.field) : undefined}
-            fixLabel={`Fix: ${descriptor.label} - ${label}`}
+            fixLabel={`Fix: ${descriptor.label} - ${label}. ${cause.title}`}
+            title={cause.title}
           />
         );
       })}
@@ -883,10 +951,13 @@ function Chip({
   descriptor,
   onFix,
   fixLabel,
+  title,
 }: {
   descriptor: ChipDescriptor;
   onFix?: (focusField?: OfferBlockerField) => void;
   fixLabel?: string;
+  /** Cause sentence, shown on hover; also folded into the accessible name. */
+  title?: string;
 }): ReactElement {
   const cls = `bulk-chip ${chipToneClass(descriptor.tone)}`;
   if (onFix) {
@@ -895,6 +966,7 @@ function Chip({
         type="button"
         className={cls}
         aria-label={fixLabel ?? descriptor.label}
+        title={title}
         onClick={(e) => {
           e.stopPropagation();
           onFix();
@@ -906,7 +978,7 @@ function Chip({
     );
   }
   return (
-    <span className={cls}>
+    <span className={cls} title={title}>
       <span className="bulk-chip__dot" aria-hidden="true" />
       {descriptor.label}
     </span>

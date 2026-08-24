@@ -65,7 +65,7 @@ never echoed back.
 | Field | Values | Notes |
 |---|---|---|
 | `env` | `"test"` \| `"demo"` \| `"prod"` | `test` → `api-test.ksef.mf.gov.pl/v2`; `demo` → `api-demo.ksef.mf.gov.pl/v2`; `prod` → `api.ksef.mf.gov.pl/v2` |
-| `seller` | Object | Seller identity (`Podmiot1`) stamped on every FA(3): `nip`, `name`, `address { line1, line2?, city, postalCode, countryIso2 }`, optional `defaultTaxRate`. Optional at create time, required before the connection can issue |
+| `seller` | Object | Seller identity (`Podmiot1`) stamped on every FA(3): `nip`, `name`, `address { line1, line2?, city, postalCode, countryIso2 }`. Optional at create time, required before the connection can issue. (`defaultTaxRate` was retired in #2257 — the rate comes from the ProductMaster and no adapter substitutes one; a leftover value is ignored.) |
 | `payment` | Object (optional) | Default payment details emitted as the FA(3) `Platnosc` block: `formaPlatnosci`, `paymentTermDays`, `bankAccount { nrRb, bankName?, swift? }`, `skonto { amount, conditions }`. See [docs/setup-guide.md](./docs/setup-guide.md) |
 
 ## Documentation

@@ -152,6 +152,19 @@ export interface ErliProductCreateBody {
    * rejects one).
    */
   externalVariantGroup?: ErliVariantGroupRef;
+  /**
+   * VAT rate, as Erli's own enum (`TAX_0` / `TAX_5` / `TAX_8` / `TAX_23` /
+   * `NP` / `ZW` / `TAX_7` / `TAX_19`) - #2249, ADR-063.
+   *
+   * Erli treats it as required in practice: `buyableProblems` carries
+   * `missingTaxRate`, so a product published without one is blocked
+   * server-side. OpenLinker therefore refuses to publish rather than omitting
+   * it, which turns a silent not-buyable product into an actionable error.
+   *
+   * Which values a category allows is Erli's own rule and is not predicted
+   * here; Erli rejects a disallowed value itself.
+   */
+  taxRate?: string;
 }
 
 /**
@@ -164,7 +177,7 @@ export interface ErliProductCreateBody {
  */
 export type ErliProductPatchBody = Pick<
   ErliProductCreateBody,
-  'name' | 'price' | 'stock' | 'description'
+  'name' | 'price' | 'stock' | 'description' | 'taxRate'
 >;
 
 /**
@@ -318,6 +331,15 @@ export interface ErliProductResource {
   sku?: string;
   /** Price in INTEGER minor units (grosze). PLN-only — no currency field. */
   price?: number;
+  /**
+   * Erli-side tax value (#2262). Read DEFENSIVELY, like the other read-side
+   * fields here: the create/patch body sets it, and the sandbox swagger does
+   * not promise it back on `GET /products/{externalId}`. Its only consumer is
+   * the frozen-field report - when the seller froze the rate, this is the value
+   * they froze - so an absent field degrades to "the destination could not name
+   * it", never to a claim about the rate.
+   */
+  taxRate?: string;
   stock?: number;
   images?: ErliProductImage[];
   /** Category breadcrumb paths; the first path's leaf is the offer's category. */

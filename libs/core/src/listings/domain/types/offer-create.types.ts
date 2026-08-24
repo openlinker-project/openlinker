@@ -249,6 +249,29 @@ export interface CreateOfferCommand {
    * product carried no features.
    */
   sourceAttributes?: SourceAttribute[];
+  /**
+   * The shop's tax rate for this variant, as the neutral percent-as-string
+   * code (#2249, ADR-063) - `'23'`, `'8'`, `'5'`, `'0'`, `'zw'`, `'np'`, `'oo'`.
+   *
+   * Propagated exactly as price and stock already are, at create and at every
+   * update. **There is no OpenLinker-side rate field to type into**: a rate
+   * entered here would be a fourth source no master or channel could be
+   * corrected from, and the whole chain exists so a fix lands where the
+   * catalogue lives.
+   *
+   * Absent means the shop has no rate for the variant. An adapter MUST NOT
+   * publish with the rate silently omitted in that case - that is how the
+   * rate-less offers this epic exists to fix were produced. It either refuses,
+   * or (where the platform genuinely has no such field) ignores the value.
+   */
+  taxRate?: string;
+  /**
+   * ISO 3166-1 alpha-2 the rate was resolved against - provenance for the
+   * platforms whose tax settings are country-keyed (Allegro's
+   * `OfferTaxSettings.rates[] = {rate, countryCode}`). Never compared with a
+   * buyer's country; OSS is out of scope (ADR-063 § 7).
+   */
+  taxRateCountry?: string;
 }
 
 /**
