@@ -116,6 +116,7 @@ describe('SchedulerService', () => {
         // `'true'` below, which CronJob rejects ("Unknown alias: tru") and which
         // aborts start() for EVERY task - so a new scheduled task
         // must register its cron key here, in order.
+        'OL_INVENTORY_PROVENANCE_BACKFILL_CRON',
         'OL_INVENTORY_SYNC_CRON',
         'OL_MASTER_PRODUCT_DELTA_SYNC_CRON',
         'OL_MASTER_PRODUCT_RECONCILE_CRON',
@@ -265,6 +266,10 @@ describe('SchedulerService', () => {
         // Capability-scoped like the rest — it drains OfferManager /
         // ProductPublisher connections and names no platform (#1979).
         'destination-taxonomy-sync',
+        // Also core-owned and platform-free, and the most so of any task here:
+        // it has neither a platform nor a capability, because its subject is a
+        // predicate over one OL table (#2317).
+        'inventory-provenance-backfill',
         'master-inventory-sync',
         'master-product-delta-sync',
         'master-product-reconcile',
@@ -487,6 +492,7 @@ describe('SchedulerService', () => {
         // `'true'` below, which CronJob rejects ("Unknown alias: tru") and which
         // aborts start() for EVERY task - so a new scheduled task
         // must register its cron key here, in order.
+        'OL_INVENTORY_PROVENANCE_BACKFILL_CRON',
         'OL_INVENTORY_SYNC_CRON',
         'OL_MASTER_PRODUCT_DELTA_SYNC_CRON',
         'OL_MASTER_PRODUCT_RECONCILE_CRON',
@@ -579,6 +585,7 @@ describe('SchedulerService', () => {
         // `'true'` below, which CronJob rejects ("Unknown alias: tru") and which
         // aborts start() for EVERY task - so a new scheduled task
         // must register its cron key here, in order.
+        'OL_INVENTORY_PROVENANCE_BACKFILL_CRON',
         'OL_INVENTORY_SYNC_CRON',
         'OL_MASTER_PRODUCT_DELTA_SYNC_CRON',
         'OL_MASTER_PRODUCT_RECONCILE_CRON',
@@ -668,6 +675,7 @@ describe('SchedulerService', () => {
         // `'true'` below, which CronJob rejects ("Unknown alias: tru") and which
         // aborts start() for EVERY task - so a new scheduled task
         // must register its cron key here, in order.
+        'OL_INVENTORY_PROVENANCE_BACKFILL_CRON',
         'OL_INVENTORY_SYNC_CRON',
         'OL_MASTER_PRODUCT_DELTA_SYNC_CRON',
         'OL_MASTER_PRODUCT_RECONCILE_CRON',
@@ -863,6 +871,101 @@ describe('SchedulerService', () => {
       expect(() =>
         task.generateIdempotencyKey(createConnection('conn-unknown', 'allegro'), '2026-07-27-17-00')
       ).toThrow(/Taxonomy scope not resolved/);
+    });
+  });
+
+  describe('inventory-provenance-backfill task (#2317, ADR-058 step ii)', () => {
+    const defaultConfigGet = (key: string, defaultValue?: unknown): unknown => {
+      // Same alphabetical list + fallthrough contract as the sibling blocks.
+      const cronKeys = [
+        'OL_INVENTORY_PROVENANCE_BACKFILL_CRON',
+        'OL_INVENTORY_SYNC_CRON',
+        'OL_MASTER_PRODUCT_DELTA_SYNC_CRON',
+        'OL_MASTER_PRODUCT_RECONCILE_CRON',
+        'OL_OFFLINE_RESUBMIT_CRON',
+        'OL_ORDER_FX_STAMP_SWEEP_CRON',
+        'OL_PENDING_RECOVERY_CRON',
+        'OL_PICKUP_POINT_REFRESH_CRON',
+        'OL_PRODUCT_SYNC_CRON',
+        'OL_REGULATORY_RECONCILE_CRON',
+        'OL_STALE_OFFER_PAUSE_CRON',
+        'OL_TAXONOMY_SYNC_CRON',
+      ];
+      if (cronKeys.includes(key)) return defaultValue ?? '*/15 * * * *';
+      return 'true';
+    };
+
+    const SYSTEM_ID = '00000000-0000-0000-0000-000000000000';
+
+    const getRegisteredTask = (): SchedulerTaskConfig | undefined =>
+      (service as unknown as { tasks: SchedulerTaskConfig[] }).tasks.find(
+        (t) => t.taskId === 'inventory-provenance-backfill'
+      );
+
+    beforeEach(() => {
+      configService.get.mockImplementation(defaultConfigGet);
+    });
+
+    it('registers the task by DEFAULT', () => {
+      // Default ON: no platform calls, bounded, idempotent, self-latching - and
+      // until it drains, #2325 cannot run at all. Same rationale as
+      // master.product.reconcile.
+      service.start();
+
+      const registeredJobs = schedulerRegistry.addCronJob.mock.calls.map((c) => c[0]);
+      expect(registeredJobs).toContain('inventory-provenance-backfill');
+    });
+
+    it('does not register when OL_INVENTORY_PROVENANCE_BACKFILL_ENABLED is "false"', () => {
+      configService.get.mockImplementation((key: string, defaultValue?: unknown) => {
+        if (key === 'OL_INVENTORY_PROVENANCE_BACKFILL_ENABLED') return 'false';
+        return defaultConfigGet(key, defaultValue);
+      });
+
+      service.start();
+
+      const registeredJobs = schedulerRegistry.addCronJob.mock.calls.map((c) => c[0]);
+      expect(registeredJobs).not.toContain('inventory-provenance-backfill');
+    });
+
+    it('runs ONCE for the deployment, under the system connection id', async () => {
+      service.start();
+      const connections = await getRegisteredTask()!.connectionFilter!();
+
+      // The predicate `sourceConnectionId IS NULL` has no connection axis -
+      // that absence is exactly what the pass repairs - so electing a real
+      // connection would be wrong twice over: the installs with the most NULL
+      // rows are those whose original connection was deleted, and a moving
+      // election would move the completion latch.
+      expect(connections).toHaveLength(1);
+      expect(connections[0].id).toBe(SYSTEM_ID);
+    });
+
+    it('emits a schemaVersion-1 envelope with no connection-derived fields', () => {
+      service.start();
+      const task = getRegisteredTask()!;
+
+      expect(task.generatePayload({ id: SYSTEM_ID } as never)).toEqual({
+        schemaVersion: 1,
+      });
+    });
+
+    it('mints a minute-stamped key carrying no connection id', () => {
+      service.start();
+      const task = getRegisteredTask()!;
+
+      const key = task.generateIdempotencyKey(
+        { id: SYSTEM_ID } as never,
+        '2026-08-24-09-05'
+      );
+      // Deliberately not connection-scoped: there is one pass per deployment,
+      // and a connection segment would falsely imply otherwise.
+      expect(key).toBe('inventory:provenance:backfill:2026-08-24-09-05');
+    });
+
+    it('declares the job type the worker registers a handler for', () => {
+      service.start();
+      expect(getRegisteredTask()!.jobType).toBe('inventory.provenance.backfill');
     });
   });
 });

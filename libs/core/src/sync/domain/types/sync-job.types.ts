@@ -76,6 +76,12 @@ export const JobTypeValues = [
 
   // Internal orchestration (core-owned policies; executed by worker)
   'inventory.propagateToMarketplaces',
+  // Connection-provenance backfill (#2317, ADR-058 ladder step (ii)). Stamps the
+  // `'legacy'` sentinel onto pre-#2314 `inventory_items` rows, one bounded page
+  // per tick, until none remain. Deliberately NOT named `master.*`: it makes zero
+  // platform calls and reads only OL's own table — `inventory.propagateToMarketplaces`
+  // is the naming precedent for a core-owned internal pass.
+  'inventory.provenance.backfill',
 
   // Invoicing (core-owned policy; executed by worker — OL #1120)
   'invoicing.issue',

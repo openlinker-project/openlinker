@@ -9,6 +9,30 @@
 import type { InventoryItem } from '../entities/inventory-item.entity';
 
 /**
+ * The provenance sentinel for a position OpenLinker cannot attribute to any
+ * connection (ADR-058 ladder step (ii), #2317).
+ *
+ * Written by the `inventory.provenance.backfill` sweep onto every row that
+ * predates the `sourceConnectionId` column (#2314), so step (iii) can make the
+ * column `NOT NULL` and put it in the position key without a table full of
+ * NULLs blocking it (#2325).
+ *
+ * It is a VALUE, never a wildcard. A `'legacy'` row names one position whose
+ * owner is unknown — it does not match every connection, and no read may treat
+ * it as such. The moment a real sync claims the position it overwrites the
+ * sentinel with its own connection id, which is the correct direction: the
+ * unknown becomes known and never the reverse.
+ *
+ * A literal rather than a UUID deliberately: the column is `text` with no FK to
+ * `connections`, precisely so a value like this can exist, and a nil-UUID
+ * sentinel would be indistinguishable from a real id at a glance in a support
+ * session. Named here, in the domain types, so the ORM column comment, the
+ * migration that added the column, the sweep and #2325 all point at one
+ * declaration instead of four copies of a string literal.
+ */
+export const LEGACY_SOURCE_CONNECTION_ID = 'legacy';
+
+/**
  * Inventory adjustment
  *
  * Represents an inventory adjustment operation (increase or decrease).

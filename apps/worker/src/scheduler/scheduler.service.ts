@@ -23,8 +23,9 @@ import { Injectable, Inject } from '@nestjs/common';
 import { SchedulerRegistry } from '@nestjs/schedule';
 import { ConfigService } from '@nestjs/config';
 import { CronJob } from 'cron';
-import type { Connection } from '@openlinker/core/identifier-mapping';
-import { ConnectionPort, CONNECTION_PORT_TOKEN } from '@openlinker/core/identifier-mapping';
+// Value import: the #2317 backfill constructs a synthetic single-element
+// connection list for a pass that has no connection axis.
+import { Connection, ConnectionPort, CONNECTION_PORT_TOKEN } from '@openlinker/core/identifier-mapping';
 import type { SyncJobRequest, SchedulerTaskConfig, JobType } from '@openlinker/core/sync';
 import {
   JobEnqueuePort,
@@ -36,6 +37,7 @@ import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/co
 import type { OfferManagerPort, TaxonomyOwner } from '@openlinker/core/listings';
 import { resolveTaxonomyOwner } from '@openlinker/core/listings';
 import { Logger } from '@openlinker/shared/logging';
+import { INVENTORY_PROVENANCE_SCOPE_ID } from '../sync/handlers/inventory-provenance-backfill.handler';
 
 /**
  * Default page size for the regulatory-status reconciliation fan-out payload
@@ -320,6 +322,10 @@ export class SchedulerService implements OnModuleDestroy {
 
       // Registered bespoke rather than as a CORE_CAPABILITY_TASKS row (#1979).
       this.registerDestinationTaxonomyTask();
+
+      // Likewise bespoke, for the opposite reason (#2317): this one has no
+      // capability and no connection at all.
+      this.registerInventoryProvenanceBackfillTask();
 
       // Drain plugin-contributed tasks — populated at `onModuleInit`, complete
       // by the time any post-bootstrap start() runs.
@@ -708,6 +714,75 @@ export class SchedulerService implements OnModuleDestroy {
           ? `taxonomy:owner:${owner}:sync:${timestamp}`
           : `taxonomy:connection:${connection.id}:sync:${timestamp}`;
       },
+    });
+  }
+
+  /**
+   * Register the connection-provenance backfill (#2317, ADR-058 ladder step
+   * (ii)).
+   *
+   * Bespoke rather than a `CORE_CAPABILITY_TASKS` row because it has no
+   * capability to scope by and no connection to run for. Its subject is a
+   * predicate over one OL-owned table — `inventory_items.sourceConnectionId IS
+   * NULL` — which is precisely the absence of a connection axis, so it runs
+   * ONCE for the deployment under the nil-UUID system id via a synthetic
+   * single-element `connectionFilter`.
+   *
+   * The pseudo-connection is a real `Connection` built through its own
+   * constructor rather than a cast: the scheduler reads only `id` (for the job
+   * row and the idempotency key) and `name` (for logs), and the remaining
+   * positional arguments are inert filler that no code path on this task
+   * touches. Constructing it honestly keeps the task type-checked against
+   * `SchedulerTaskConfig` with no `as` anywhere.
+   *
+   * **Default ON.** It makes zero platform calls, is bounded per tick,
+   * idempotent, and self-latches the moment it finishes — and until it does,
+   * #2325 cannot run at all. That is the `master.product.reconcile` rationale:
+   * a pass that unblocks a correctness fix and costs nothing external should
+   * not wait for an operator to discover a flag.
+   */
+  private registerInventoryProvenanceBackfillTask(): void {
+    const enabled = this.configService.get<string>(
+      'OL_INVENTORY_PROVENANCE_BACKFILL_ENABLED',
+      'true'
+    );
+    if (enabled === 'false') {
+      return;
+    }
+
+    const cronExpression = this.configService.get<string>(
+      'OL_INVENTORY_PROVENANCE_BACKFILL_CRON',
+      // Every 5 minutes: the page is a single local UPDATE, so the cadence is
+      // what sets the drain rate (~6k rows/hour at the default page). Once the
+      // drain completes the handler short-circuits on its own latch, so the
+      // steady-state cost of this frequency is one cursor read per tick.
+      '*/5 * * * *'
+    );
+
+    // No connection axis exists for this pass — see the method docblock.
+    const systemConnection = new Connection(
+      INVENTORY_PROVENANCE_SCOPE_ID,
+      'system',
+      'system',
+      'active',
+      {},
+      '',
+      new Date(0),
+      new Date(0),
+      undefined,
+      []
+    );
+
+    this.tasks.push({
+      taskId: 'inventory-provenance-backfill',
+      jobType: 'inventory.provenance.backfill',
+      cronExpression,
+      enabledEnvVar: 'OL_INVENTORY_PROVENANCE_BACKFILL_ENABLED',
+      enabledDefault: true,
+      connectionFilter: () => Promise.resolve([systemConnection]),
+      generatePayload: () => ({ schemaVersion: 1 }),
+      generateIdempotencyKey: (_connection, timestamp) =>
+        `inventory:provenance:backfill:${timestamp}`,
     });
   }
 

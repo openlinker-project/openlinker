@@ -95,6 +95,7 @@ export type { MasterSweepKind as SweepKind } from '@openlinker/core/sync';
 export {
   masterSweepCursorKey as sweepCursorKey,
   masterSweepCompletedAtCursorKey as sweepCompletedAtCursorKey,
+  masterSweepRemainingCountCursorKey as sweepRemainingCountCursorKey,
 } from '@openlinker/core/sync';
 
 /** `master:{kind}:sweep:{connectionId}` — one in-flight run per connection. */

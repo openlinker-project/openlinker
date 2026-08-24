@@ -64,6 +64,7 @@ export const JOB_TYPE_VALUES = [
   'master.inventory.syncByExternalId',
   'master.variants.autoMatch',
   'inventory.propagateToMarketplaces',
+  'inventory.provenance.backfill', // Internal job — not user-triggerable; listed here so an operator can watch the one-time provenance backfill drain (#2317).
   'marketplace.offer.pauseStale', // Internal job — not user-triggerable; listed here for status display only.
   'marketplace.offer.pauseStaleSweep',
 ] as const;

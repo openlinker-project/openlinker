@@ -34,6 +34,7 @@ import { MasterInventorySyncAllHandler } from './master-inventory-sync-all.handl
 import { MasterProductSyncAllHandler } from './master-product-sync-all.handler';
 import { MasterProductSyncDeltaHandler } from './master-product-sync-delta.handler';
 import { MasterProductReconcileHandler } from './master-product-reconcile.handler';
+import { InventoryProvenanceBackfillHandler } from './inventory-provenance-backfill.handler';
 import { PickupPointRefreshHandler } from './pickup-point-refresh.handler';
 import { ShopProductPublishHandler } from './shop-product-publish.handler';
 import { ShopProductStatusSyncHandler } from './shop-product-status-sync.handler';
@@ -50,6 +51,7 @@ export class HandlerRegistrationService implements OnModuleInit {
   constructor(
     private readonly handlerRegistry: SyncJobHandlerRegistry,
     private readonly inventoryPropagateHandler: InventoryPropagateToMarketplacesHandler,
+    private readonly inventoryProvenanceBackfillHandler: InventoryProvenanceBackfillHandler,
     private readonly marketplaceOrdersPollHandler: OrdersPollHandler,
     private readonly marketplaceOrderSyncHandler: MarketplaceOrderSyncHandler,
     private readonly marketplaceOrderFxStampHandler: MarketplaceOrderFxStampHandler,
@@ -238,6 +240,18 @@ export class HandlerRegistrationService implements OnModuleInit {
       'inventory.propagateToMarketplaces',
       this.inventoryPropagateHandler,
       'fan-out'
+    );
+
+    // Register the connection-provenance backfill (#2317, ADR-058 step (ii)).
+    //
+    // `bulk`, not `fan-out`: it enqueues no children at all — it does the work
+    // itself in one bounded local UPDATE — and `fan-out`'s whole subject is a
+    // job whose cost is the wave it emits. It is also nothing a buyer waits on,
+    // so it must never share `realtime`'s slots.
+    this.handlerRegistry.register(
+      'inventory.provenance.backfill',
+      this.inventoryProvenanceBackfillHandler,
+      'bulk'
     );
 
     // Register shop product publish handler (#1042, ADR-024) — operator-wave

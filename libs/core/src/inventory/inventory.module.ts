@@ -18,6 +18,7 @@ import { InventorySyncService } from './application/services/inventory-sync.serv
 import { MasterInventorySyncService } from './application/services/master-inventory-sync.service';
 import { InventoryQueryService } from './application/services/inventory-query.service';
 import { LocationService } from './application/services/location.service';
+import { InventoryProvenanceBackfillService } from './application/services/inventory-provenance-backfill.service';
 import {
   INVENTORY_REPOSITORY_TOKEN,
   INVENTORY_SERVICE_TOKEN,
@@ -26,6 +27,7 @@ import {
   INVENTORY_QUERY_SERVICE_TOKEN,
   LOCATION_REPOSITORY_TOKEN,
   LOCATION_SERVICE_TOKEN,
+  INVENTORY_PROVENANCE_BACKFILL_SERVICE_TOKEN,
 } from './inventory.tokens';
 import { ProductsModule } from '@openlinker/core/products';
 import { IntegrationsModule } from '@openlinker/core/integrations';
@@ -42,6 +44,7 @@ export {
   INVENTORY_QUERY_SERVICE_TOKEN,
   LOCATION_REPOSITORY_TOKEN,
   LOCATION_SERVICE_TOKEN,
+  INVENTORY_PROVENANCE_BACKFILL_SERVICE_TOKEN,
 } from './inventory.tokens';
 
 @Module({
@@ -62,6 +65,7 @@ export {
     InventoryQueryService,
     LocationRepository,
     LocationService,
+    InventoryProvenanceBackfillService,
     // Then provide token bindings using useExisting
     {
       provide: INVENTORY_REPOSITORY_TOKEN,
@@ -91,6 +95,10 @@ export {
       provide: LOCATION_SERVICE_TOKEN,
       useExisting: LocationService,
     },
+    {
+      provide: INVENTORY_PROVENANCE_BACKFILL_SERVICE_TOKEN,
+      useExisting: InventoryProvenanceBackfillService,
+    },
   ],
   exports: [
     INVENTORY_REPOSITORY_TOKEN,
@@ -100,6 +108,7 @@ export {
     INVENTORY_QUERY_SERVICE_TOKEN,
     LOCATION_REPOSITORY_TOKEN,
     LOCATION_SERVICE_TOKEN,
+    INVENTORY_PROVENANCE_BACKFILL_SERVICE_TOKEN,
   ],
 })
 export class InventoryModule {}

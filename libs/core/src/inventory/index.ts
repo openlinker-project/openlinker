@@ -42,6 +42,11 @@ export {
   MAX_DUPLICATE_POSITION_GROUPS,
   DEFAULT_DUPLICATE_POSITION_GROUPS,
 } from './application/services/inventory-query.service';
+export {
+  IInventoryProvenanceBackfillService,
+  InventoryProvenanceBackfillResult,
+} from './application/services/inventory-provenance-backfill.service.interface';
+export { InventoryProvenanceBackfillService } from './application/services/inventory-provenance-backfill.service';
 export { ILocationService } from './application/services/location.service.interface';
 export { LocationService } from './application/services/location.service';
 
@@ -65,6 +70,7 @@ export {
   DuplicatePositionGroup,
   DuplicatePositionReport,
 } from './domain/types/inventory.types';
+export { LEGACY_SOURCE_CONNECTION_ID } from './domain/types/inventory.types';
 export {
   InventoryLocationKindValues,
   InventoryLocationKind,

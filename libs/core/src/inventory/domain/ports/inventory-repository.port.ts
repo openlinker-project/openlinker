@@ -160,4 +160,40 @@ export interface InventoryRepositoryPort {
    * @param maxGroups upper bound on returned group DETAIL (totals are unbounded)
    */
   findDuplicatePositions(maxGroups: number): Promise<DuplicatePositionReport>;
+
+  /**
+   * Stamp the `'legacy'` provenance sentinel onto at most `limit` rows whose
+   * `sourceConnectionId` is still NULL (#2317, ADR-058 ladder step (ii)).
+   *
+   * **The predicate is the cursor.** There is no offset argument and there must
+   * never be one: `sourceConnectionId IS NULL` is self-consuming, so each call
+   * removes its own page from the candidate set. An advancing offset over a
+   * shrinking set steps over rows and leaves them unstamped forever — which
+   * #2325 would then discover as a `SET NOT NULL` that cannot run.
+   *
+   * Writes exactly one column. `updatedAt` must NOT move: `InventorySyncService`
+   * derives the propagation job's dedupe key from it, so bumping it across the
+   * whole table would either replay every propagation or collide keys and drop
+   * them. That requirement is what forces a raw statement here — see the
+   * implementation.
+   *
+   * Concurrency-safe against a live sync by construction: rows already claimed
+   * by another transaction are skipped rather than waited on, and a real
+   * connection id written concurrently simply removes the row from this
+   * predicate. The sentinel can only ever lose to a real id, never overwrite
+   * one.
+   *
+   * @param limit maximum rows to stamp in this call (caller floors and clamps)
+   * @returns how many rows this call actually stamped
+   */
+  backfillLegacyProvenance(limit: number): Promise<number>;
+
+  /**
+   * How many `inventory_items` rows still carry no provenance (#2317).
+   *
+   * The backfill's completion predicate and #2325's readiness gate read the
+   * same number. Uncapped and unfiltered on purpose: a count of a subset could
+   * report done while rows the `NOT NULL` will trip over sit outside it.
+   */
+  countMissingProvenance(): Promise<number>;
 }
