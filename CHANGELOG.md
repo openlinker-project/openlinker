@@ -12,6 +12,55 @@ From `0.2.0` onward this file is generated automatically by
 Commits. The `0.1.0` entry below is the hand-curated baseline of what shipped
 before automated releases began.
 
+## [0.8.0](https://github.com/openlinker-project/openlinker/compare/v0.7.0...v0.8.0) (2026-08-24)
+
+
+### ⚠ BREAKING CHANGES
+
+* **core:** `SYNC_JOBS_EVENT_STREAM` is no longer exported from `@openlinker/core/sync`. The `events.sync.jobs` stream it named is a ghost - nothing reads it, verified as having no remaining in-tree consumers - and the upgrade deletes it. Separately, Redis now runs with `maxmemory` set together with `maxmemory-policy noeviction`, so an existing deployment already holding more data than the new limit will reject every `denyoom` command, including `XADD`, until the previously-unbounded streams are trimmed. `XTRIM` is not a `denyoom` command, so it stays available and is the way out. Run, in order: `DEL events.sync.jobs`; `XTRIM events.inbound.webhooks MAXLEN ~ 50000`; `XTRIM events.inbound.webhooks.dead MAXLEN ~ 10000`; `XTRIM jobs.sync MINID ~ {epoch_ms_14_days_ago}`; `XTRIM events.master.deletion.dead MINID ~ {epoch_ms_30_days_ago}`. Then confirm with `CONFIG GET maxmemory`, `CONFIG GET maxmemory-policy` and `INFO memory`. Full procedure, sizing guidance for `REDIS_MAXMEMORY`, and the rationale for `noeviction`: docs/operations/redis-stream-retention.md (refs #2163, #2223, #2226)
+
+### Features
+
+* adapter-declared description format (DescriptionFormat contract + WYSIWYG editor) ([#2204](https://github.com/openlinker-project/openlinker/issues/2204)) ([8021570](https://github.com/openlinker-project/openlinker/commit/8021570ad53972949d44ec6436a386bd4c264933))
+* **core,currency,orders:** order-time FX rate snapshot + reporting-currency stamping ([#2135](https://github.com/openlinker-project/openlinker/issues/2135)) ([c6c1e4f](https://github.com/openlinker-project/openlinker/commit/c6c1e4f54b51ff2685f452894c40efcd9af24024))
+* **core,worker,api,web:** report the master capability rung + reconcile recency per connection ([#2290](https://github.com/openlinker-project/openlinker/issues/2290)) ([6a335fd](https://github.com/openlinker-project/openlinker/commit/6a335fddd189b83ccb9f175575a1f7f100fb04b5))
+* **core,worker:** concurrency lanes — per-lane caps in the job runner (ADR-050) ([#2294](https://github.com/openlinker-project/openlinker/issues/2294)) ([e913866](https://github.com/openlinker-project/openlinker/commit/e9138663f52f8cd7a1f24776f3868ba83d3f0bd1))
+* **core/products:** master capability ladder — modified-since rung + PrestaShop watermark spike ([#2232](https://github.com/openlinker-project/openlinker/issues/2232)) ([e30c18e](https://github.com/openlinker-project/openlinker/commit/e30c18e7bbfe70197cd8bff05dfa49861e5ebf85))
+* **dx:** make the ADR reversal gates executable in check:invariants ([#2291](https://github.com/openlinker-project/openlinker/issues/2291)) ([a46c1b4](https://github.com/openlinker-project/openlinker/commit/a46c1b48d99c0acb430f5059daf63219eb6da061))
+* **fiscalization:** Polish fiscal e-receipts via a neutral fiscalization capability ([#1902](https://github.com/openlinker-project/openlinker/issues/1902)) ([#2137](https://github.com/openlinker-project/openlinker/issues/2137)) ([04b0ece](https://github.com/openlinker-project/openlinker/commit/04b0ece8fb79667c1728c9f163dc43769c0a15a4))
+* **infakt:** replace free-text baseUrl with Sandbox/Production dropdown ([#2179](https://github.com/openlinker-project/openlinker/issues/2179)) ([e38d63c](https://github.com/openlinker-project/openlinker/commit/e38d63cdcc1ff0f325f37f1b757a2acebf8c5167))
+* **listings,connections:** make the category-resolve in-flight ceiling operator-visible ([#2238](https://github.com/openlinker-project/openlinker/issues/2238)) ([6468944](https://github.com/openlinker-project/openlinker/commit/64689446d34e32db208315226b94f7f7336522cb))
+* **listings,web:** pre-submit offer validation in the bulk wizard ([#2244](https://github.com/openlinker-project/openlinker/issues/2244)) ([6ec95e5](https://github.com/openlinker-project/openlinker/commit/6ec95e5c6fc3ad2987ddc4f9391f4b8c785e7a16))
+* **listings:** recover a failed bulk batch without starting over ([#2237](https://github.com/openlinker-project/openlinker/issues/2237)) ([b32d3ad](https://github.com/openlinker-project/openlinker/commit/b32d3ad452c265a4f75f75af4e60c211c7e6cdcd)), closes [#2234](https://github.com/openlinker-project/openlinker/issues/2234)
+* **listings:** streamed per-variant progress for the bulk publish Resolve step ([#2214](https://github.com/openlinker-project/openlinker/issues/2214)) ([bb1d455](https://github.com/openlinker-project/openlinker/commit/bb1d45593eabf145ce15e7c22ce8ca6b08ad1d23))
+* **sales-documents,invoicing,fiscalization,web:** sales-document routing policy (ADR-041) ([#2154](https://github.com/openlinker-project/openlinker/issues/2154)) ([#2161](https://github.com/openlinker-project/openlinker/issues/2161)) ([e089363](https://github.com/openlinker-project/openlinker/commit/e08936377a15cdeb3eca685d6e6c47973aafb752))
+* **web/listings:** product-tier category, honest blocker copy, seller-details preflight ([#2241](https://github.com/openlinker-project/openlinker/issues/2241)) ([84153a6](https://github.com/openlinker-project/openlinker/commit/84153a68be6572a4b92099faf43074fe194260ac))
+* **web:** add Open Graph / Twitter Card meta tags with demo-prefix support ([#2175](https://github.com/openlinker-project/openlinker/issues/2175)) ([be37bff](https://github.com/openlinker-project/openlinker/commit/be37bff274600901bbd74c1435edd16f115ed9e1))
+* **webhooks,worker,sync:** durable webhook spine + worker roles (ADR-049 D1, ADR-051) ([#2295](https://github.com/openlinker-project/openlinker/issues/2295)) ([25111eb](https://github.com/openlinker-project/openlinker/commit/25111eb9371ee117149d48d5d0e8a5c481123929))
+* **web:** show the destination integration + step-1 config on every bulk wizard step ([#2239](https://github.com/openlinker-project/openlinker/issues/2239)) ([e533bc0](https://github.com/openlinker-project/openlinker/commit/e533bc0f254ee9377d08d0221c61ce983641e54a))
+* **worker,identifier-mapping:** bound and resume the master sweeps ([#2218](https://github.com/openlinker-project/openlinker/issues/2218), [#2219](https://github.com/openlinker-project/openlinker/issues/2219)) ([#2228](https://github.com/openlinker-project/openlinker/issues/2228)) ([9099a73](https://github.com/openlinker-project/openlinker/commit/9099a7339c5e38b2b5f5268116fc32a46caf2e16))
+
+
+### Bug Fixes
+
+* **ci:** make the docs-only path gate actually fire (predicate-quantifier) ([#2297](https://github.com/openlinker-project/openlinker/issues/2297)) ([31270cf](https://github.com/openlinker-project/openlinker/commit/31270cf9611e28ab04ab280815c6524ec38de59c))
+* **core:** bound every Redis stream and declare the memory policy ([#2163](https://github.com/openlinker-project/openlinker/issues/2163)) ([#2226](https://github.com/openlinker-project/openlinker/issues/2226)) ([94ba20e](https://github.com/openlinker-project/openlinker/commit/94ba20e6a4500d6c61ce0f95dc3efd53fff7a318))
+* **core:** reconciliation as the deletion authority — deleted products stop selling ([#2242](https://github.com/openlinker-project/openlinker/issues/2242)) ([d392f1c](https://github.com/openlinker-project/openlinker/commit/d392f1c02573c2ca49ead2da8a2b269473c04299))
+* **core:** recover Redis stream messages stranded between read and ACK + ADR-049 durability spine ([#2223](https://github.com/openlinker-project/openlinker/issues/2223)) ([66bbb89](https://github.com/openlinker-project/openlinker/commit/66bbb895690708991283c2eb7548b6550ca733f5))
+* **dx:** unbreak main — register the sales-document routing knob, retire the superseded one ([#2292](https://github.com/openlinker-project/openlinker/issues/2292)) ([b29359f](https://github.com/openlinker-project/openlinker/commit/b29359fdbeeb741059c9a5cdcfc4738d629dee10))
+* **erli,core,web:** surface why an Erli offer cannot sell instead of showing Draft ([#2236](https://github.com/openlinker-project/openlinker/issues/2236)) ([8fdbedd](https://github.com/openlinker-project/openlinker/commit/8fdbeddcfaee9a21bd1b8ea17c31037340e4ecc4))
+* **erli:** default the offer-status sync scheduler task ON ([#2235](https://github.com/openlinker-project/openlinker/issues/2235)) ([2177a7a](https://github.com/openlinker-project/openlinker/commit/2177a7a32f89769763f1e4ce299eb2f10c61e127)), closes [#2230](https://github.com/openlinker-project/openlinker/issues/2230)
+* **ksef:** surface session-crypto failures on Test connection instead of a generic message ([#2444](https://github.com/openlinker-project/openlinker/issues/2444)) ([9adf2ac](https://github.com/openlinker-project/openlinker/commit/9adf2acc58e725df885c29f1c2e34fd267fb746f)), closes [#2443](https://github.com/openlinker-project/openlinker/issues/2443)
+* **listings,connections:** address review on the resolve-concurrency ceiling ([#2274](https://github.com/openlinker-project/openlinker/issues/2274)) ([a4ea0bc](https://github.com/openlinker-project/openlinker/commit/a4ea0bc243f5bc76bc2d962b5d2384177655ba4c)), closes [#2229](https://github.com/openlinker-project/openlinker/issues/2229)
+* **prestashop:** read the order's real currency instead of hardcoding EUR ([#2439](https://github.com/openlinker-project/openlinker/issues/2439)) ([fb3e070](https://github.com/openlinker-project/openlinker/commit/fb3e07031bc6c2ed3b2270069af579d34249b419))
+* **web/orders:** stop claiming nothing has synced when a filter is simply narrow ([#2149](https://github.com/openlinker-project/openlinker/issues/2149)) ([54e73a2](https://github.com/openlinker-project/openlinker/commit/54e73a2ba52b11157e48cef275f0be652fa5e8de))
+* **web:** add the favicon set the app never had ([#2183](https://github.com/openlinker-project/openlinker/issues/2183)) ([58d832c](https://github.com/openlinker-project/openlinker/commit/58d832cb55c555865b1cb2d77d0b0403afef10a2))
+
+
+### Miscellaneous Chores
+
+* **core:** declare the Redis stream retention upgrade as breaking ([#2163](https://github.com/openlinker-project/openlinker/issues/2163)) ([#2259](https://github.com/openlinker-project/openlinker/issues/2259)) ([3598ff6](https://github.com/openlinker-project/openlinker/commit/3598ff65a92f2e21f3c020bd0035d6a28f1c76e2))
+
 ## [0.7.0](https://github.com/openlinker-project/openlinker/compare/v0.6.0...v0.7.0) (2026-08-18)
 
 
