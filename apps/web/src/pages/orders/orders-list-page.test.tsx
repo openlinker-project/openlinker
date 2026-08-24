@@ -1411,7 +1411,12 @@ describe('OrdersListPage', () => {
         await screen.findByRole('button', { name: /invoicing blocked/i }),
       ).toBeInTheDocument();
       // And the empty state must not claim nothing has ever synced.
-      expect(screen.getByText(/Nothing is blocked from invoicing/i)).toBeInTheDocument();
+      // `findByText` (not `getByText`): the chip is sync-derived from the URL
+      // param alone and can mount before the orders query resolves, so a
+      // synchronous assertion here raced the async empty-state render under
+      // load (flaked when this file ran alongside its siblings, though not in
+      // isolation) — this text depends on `query.data`, so it must be awaited.
+      expect(await screen.findByText(/Nothing is blocked from invoicing/i)).toBeInTheDocument();
       expect(screen.queryByText(/No order records have been synced yet/i)).toBeNull();
     });
 
