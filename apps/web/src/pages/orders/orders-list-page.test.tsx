@@ -1899,3 +1899,131 @@ describe('OrdersListPage — shared Order identity cell (#2091)', () => {
     expect(within(detail).getByText('WooCommerce')).toBeInTheDocument();
   });
 });
+
+describe('OrdersListPage — lifecycle phase (#2310)', () => {
+  afterEach(cleanup);
+
+  const phaseSummary = {
+    total: 3,
+    cancelled: 0,
+    vendorAuthoritative: 0,
+    delivered: 0,
+    inTransit: 0,
+    fulfillmentFailed: 0,
+    held: 0,
+    amending: 0,
+    blocked: 2,
+    ready: 1,
+  };
+
+  it('should render the phase badge BESIDE the health badge, not instead of it', async () => {
+    // AC1 / ADR-059 — health answers "is something wrong", the phase answers
+    // "what stage is it at". Both must be readable on the same row.
+    const blocked: OrderRecord = { ...syncedOrder, lifecyclePhase: 'blocked' };
+    const mockApi = createMockApiClient({
+      orders: { list: vi.fn().mockResolvedValue(paginated([blocked])) },
+    });
+
+    renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+    await screen.findByText('ALG-882414');
+    const row = screen.getByText('ALG-882414').closest('tr') as HTMLElement;
+    expect(within(row).getByText('Synced')).toBeInTheDocument();
+    expect(within(row).getByText('Blocked')).toBeInTheDocument();
+  });
+
+  it('should render nothing for a payload predating the phase field', async () => {
+    const mockApi = createMockApiClient({
+      orders: { list: vi.fn().mockResolvedValue(paginated([syncedOrder])) },
+    });
+
+    renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+    const row = (await screen.findByText('ALG-882414')).closest('tr') as HTMLElement;
+    expect(within(row).getByText('Synced')).toBeInTheDocument();
+    expect(within(row).queryByText('Ready')).toBeNull();
+  });
+
+  it('should hide a zero-count chip and render the ones with orders behind them', async () => {
+    const mockApi = createMockApiClient({
+      orders: {
+        list: vi.fn().mockResolvedValue(paginated([syncedOrder])),
+        lifecycleSummary: vi.fn().mockResolvedValue(phaseSummary),
+      },
+    });
+
+    renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+    expect(await screen.findByRole('button', { name: /Blocked 2/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Ready 1/ })).toBeInTheDocument();
+    // Structurally 0 until Waves 2/4 supply a producer — a dead control, so hidden.
+    expect(screen.queryByRole('button', { name: /On hold/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Change pending/ })).toBeNull();
+  });
+
+  it('should set ?phase= when a chip is clicked and clear it when clicked again', async () => {
+    // AC2 — the round trip, including the deselect that must restore the full list.
+    const list = vi.fn().mockResolvedValue(paginated([syncedOrder]));
+    const mockApi = createMockApiClient({
+      orders: { list, lifecycleSummary: vi.fn().mockResolvedValue(phaseSummary) },
+    });
+    const user = userEvent.setup();
+
+    renderWithProviders(<OrdersListPage />, { apiClient: mockApi });
+
+    const chip = await screen.findByRole('button', { name: /Blocked 2/ });
+    await user.click(chip);
+
+    await vi.waitFor(() => {
+      expect(list.mock.calls[list.mock.calls.length - 1][0]).toMatchObject({ phase: 'blocked' });
+    });
+    expect(captureDemoEvent).toHaveBeenCalledWith('demo_orders_filtered', {
+      filter: 'phase',
+      value: 'blocked',
+    });
+
+    await user.click(await screen.findByRole('button', { name: /Blocked 2/ }));
+
+    await vi.waitFor(() => {
+      const [filters, pagination] = list.mock.calls[list.mock.calls.length - 1];
+      expect(filters.phase).toBeUndefined();
+      // Any filter change resets paging (the documented one-write rule).
+      expect(pagination).toMatchObject({ offset: 0 });
+    });
+  });
+
+  it('should arrive already filtered from a bookmarked ?phase= link and keep the chip mounted at zero', async () => {
+    const list = vi.fn().mockResolvedValue(paginated([]));
+    const mockApi = createMockApiClient({
+      orders: {
+        list,
+        lifecycleSummary: vi.fn().mockResolvedValue({ ...phaseSummary, total: 0, blocked: 0 }),
+      },
+    });
+
+    renderWithProviders(<OrdersListPage />, {
+      apiClient: mockApi,
+      route: '/orders?phase=blocked',
+    });
+
+    // Gating on the count alone would unmount the only control for an applied
+    // filter exactly when its last order moved on (#2100's lesson).
+    const chip = await screen.findByRole('button', { name: /Blocked/ });
+    expect(chip).toHaveAttribute('aria-pressed', 'true');
+    expect(list.mock.calls[0][0]).toMatchObject({ phase: 'blocked' });
+  });
+
+  it('should ignore an unrecognised phase in the URL rather than passing it through', async () => {
+    const list = vi.fn().mockResolvedValue(paginated([syncedOrder]));
+    const mockApi = createMockApiClient({ orders: { list } });
+
+    renderWithProviders(<OrdersListPage />, {
+      apiClient: mockApi,
+      route: '/orders?phase=returned',
+    });
+
+    await screen.findByText('ALG-882414');
+    // A stale bookmark shows the operator their orders, not a server rejection.
+    expect(list.mock.calls[0][0].phase).toBeUndefined();
+  });
+});

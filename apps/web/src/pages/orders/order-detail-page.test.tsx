@@ -548,3 +548,34 @@ describe('OrderDetailPage', () => {
     });
   });
 });
+
+describe('OrderDetailPage — lifecycle phase (#2310)', () => {
+  afterEach(cleanup);
+
+  it('shows the phase badge beside the health badge with its waiting-on line', async () => {
+    const api = createMockApiClient({
+      orders: {
+        getById: vi.fn().mockResolvedValue({ ...sampleOrder, lifecyclePhase: 'blocked' }),
+      },
+    });
+
+    renderDetail(api);
+
+    expect(await screen.findByText('Blocked')).toBeInTheDocument();
+    // The detail page has room for the sentence the row does not.
+    expect(
+      screen.getByText('Waiting on OpenLinker — the order cannot be matched yet.'),
+    ).toBeInTheDocument();
+  });
+
+  it('renders no phase surface at all for a payload predating the field', async () => {
+    const api = createMockApiClient({
+      orders: { getById: vi.fn().mockResolvedValue(sampleOrder) },
+    });
+
+    renderDetail(api);
+
+    await screen.findByText('ol_order_abc123');
+    expect(screen.queryByText(/waiting to be dispatched/i)).toBeNull();
+  });
+});
