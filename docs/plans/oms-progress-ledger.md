@@ -51,7 +51,22 @@ Legend: ☐ not started · ◐ plan in review · ◑ implementing · ◕ diff in
 **WAVE 0 COMPLETE (8/8).** Boundary: /pr-review sweep → findings applied → PR to main → `oms-programme-wave-1` branched off the reviewed tip (owner decision 1, amended).
 | #2289 | Allegro returns-feed spike → 1c fork | ☑ verdict 4A (two-pass); findings on branch + issue comment |
 
-### Wave 1a (epic #2312) — gated on #2284 #2286 #2283 merged (✓ all on branch); #2298 resolved (✓ merged 1373784cd: R2 freshness pass + ADOPTED ADR-054 storage amendment — routing rules are ROWS in the plugin's `oms_routing_rules`, never `Connection.config.routing` jsonb; design artifact re-synced)
+### Wave 1a (epic #2312) — entry criteria ✓ (Wave 0 complete; #2298 merged 1373784cd with ADOPTED ADR-054 storage amendment: routing rules are ROWS in plugin `oms_routing_rules`)
+
+Branch: `oms-programme-wave-1` (stacked off Wave-0 tip feb78054d; Wave-0 PR to main = #2438, awaiting owner merge).
+
+| Issue | Slug | Subject | Status |
+|---|---|---|---|
+| #2304 | W1a-1 | fulfillment-authority vocabulary leaf | ☑ merged d80e91769 (KNOB_THRESHOLD conflict resolved 5→7, both knobs registered) |
+| #2305 | W1a-2 | order-lifecycle vocabulary leaf | ☑ merged 3bc094e71 |
+| #2307 | W1a-3 | deriveOrderLifecyclePhase (pure) | ☑ merged 40f1e6bba |
+| #2309 | W1a-4 | SQL CASE twin + phase surfacing | ☑ merged f0f1d04a0 (commit 442fc350f; reviewed, approved) |
+| #2310 | W1a-5 | lifecycle-phase badge/filter/summary on orders surfaces | ☑ merged 2e4d9bda9 (commit 90640ce14; reviewed, approved) |
+| #2311 | W1a-6 | authority-kind + lifecycle-phase mirror checks | ☑ merged a51efe54d (commit 4640575ee; 7/7 drift proofs) |
+| #2306 | W1a-7 | dispatch-risk surface + cancelled-overdue fix | ☑ merged cfe78a9de |
+| #2308 | W1a-8 | walker generalisation + ADR pointers | ☑ merged c2278a549 (commit 3423580e5; 3-injection proof; root barrel resolved by removal; epic ADR table resolved to live issues) |
+
+**WAVE 1a COMPLETE (8/8).** Boundary sweep clean (knob gate 6/7, three-way mirrors green, walker 22/22, FE coexistence verified); ledger was the only divergence.
 ### Wave 1b (epic #2326) — gated on #2285 merged; W1a-8 (#2308)
 ### Wave 1c (epic #2337) — gated on #2289 fork decided; Wave 1a
 ### Wave 2 (epic #2389) — gated per its epic body; §8 Q1 = YES (decision 2 above)
@@ -60,7 +75,8 @@ Legend: ☐ not started · ◐ plan in review · ◑ implementing · ◕ diff in
 
 ## Wave boundaries completed
 
-(none yet)
+- **Wave 0** (2026-08-23): 8 issues + #2298 on `oms-programme-waves-0-2`; boundary review applied at feb78054d; **PR #2438 to main OPEN, awaiting owner merge**.
+- **Wave 1a** (2026-08-24): 8 issues on `oms-programme-wave-1` (feb78054d..c2278a549, 70 files +6419/−97); boundary sweep clean; wave PR opens next (based on the Wave-0 branch until #2438 merges).
 
 ## Resume instructions
 
