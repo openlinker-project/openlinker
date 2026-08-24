@@ -63,6 +63,16 @@ const harness = createIntegrationTestHarness({
     'identifier_mappings',
     'sync_jobs',
     'inventory_items',
+    // inventory_locations (#2313) — operator-authored locations. Like
+    // category_mappings and fulfillment_routing_rules, its FK lives in the
+    // migration rather than the ORM decorators, so the synchronize-built test
+    // schema has nothing to cascade from `connections`. And even in a
+    // migration-built schema that FK is ON DELETE SET NULL, which CLEARS the
+    // column rather than removing the row — deliberately, since an operator's
+    // warehouse outlives the integration. Either way nothing removes these rows,
+    // so truncate explicitly or a location leaks into the next case and collides
+    // on UQ_inventory_locations_code.
+    'inventory_locations',
     'order_records',
     // offer_status_snapshots (#816) — connection-scoped marketplace publication
     // status. No ORM/migration FK to connections, so nothing cascades; truncate

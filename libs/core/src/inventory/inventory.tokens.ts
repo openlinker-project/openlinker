@@ -15,3 +15,6 @@ export const INVENTORY_SYNC_SERVICE_TOKEN = Symbol('IInventorySyncService');
 export const MASTER_INVENTORY_SYNC_SERVICE_TOKEN = Symbol('IMasterInventorySyncService');
 export const INVENTORY_QUERY_SERVICE_TOKEN = Symbol('IInventoryQueryService');
 
+// Inventory locations (#2313, ADR-058 decision 1)
+export const LOCATION_REPOSITORY_TOKEN = Symbol('LocationRepositoryPort');
+export const LOCATION_SERVICE_TOKEN = Symbol('ILocationService');
