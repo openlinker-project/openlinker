@@ -209,6 +209,53 @@ is not on this rung at all. See
 
 ---
 
+## Fulfillment authorities
+
+Not a ports table. The six rows below are the **independently assignable
+fulfillment authorities** of [ADR-052](./architecture/adrs/052-independently-assignable-fulfillment-authorities.md)
+— "OMS" is not one thing a connection either holds or does not, it is authority
+assigned per *what a party physically controls*. They appear here because this
+is the developer-facing vocabulary reference, and because three of the six are
+gated by a real adapter capability while three are named by configuration alone
+(`config-only`) — a distinction a reader looking up a capability name needs.
+
+`owningContext` names where resolution and enforcement live
+([ADR-053](./architecture/adrs/053-fulfillment-authority-vocabulary-leaf.md));
+the vocabulary leaf itself imports nothing from those contexts, and two of them
+(`fulfillment`, `returns`) do not exist yet.
+
+> **Pinned.** This table is a mirror of `AuthorityKindValues` and
+> `AUTHORITY_KIND_DESCRIPTORS` in
+> `libs/core/src/fulfillment-authority/domain/types/authority-kind.types.ts`,
+> enforced by `scripts/check-authority-kind-mirror.mjs` under
+> `pnpm check:invariants`. The fenced comments below are the parser's boundary —
+> do not remove them. If the table disagrees with the code, the code wins.
+
+<!-- authority-kinds:start -->
+
+| # | Kind | Capability | Config key | Owning context |
+|---|---|---|---|---|
+| A1 | `availability` | `AvailabilityAuthority` | `availabilityAuthority` | `inventory` |
+| A2 | `sourcing` | `config-only` | `sourcingAuthority` | `fulfillment` |
+| A3 | `fulfillment-execution` | `FulfillmentExecutor` | `fulfillmentExecutor` | `fulfillment` |
+| A4 | `order-lifecycle` | `config-only` | `orderLifecycleAuthority` | `orders` |
+| A5 | `returns-disposition` | `ReturnsAuthority` | `returnsAuthority` | `returns` |
+| A6 | `refund-trigger` | `config-only` | `refundTrigger` | `orders` |
+
+<!-- authority-kinds:end -->
+
+**A6 is never assignable away from OL** ([ADR-056](./architecture/adrs/056-refund-and-fiscal-authority-never-leave-ol.md)).
+Its config key is read so an operator's claim is *observable*, never so it can be
+honoured: an OMS requests a refund and OL executes or refuses with a persisted
+reason.
+
+**There is no A7 row.** ADR-052 enumerates six authorities with
+invoicing/fiscalization "already resolved by ADR-041", whose router is shipped
+code. A7 has an owning context already — `sales-documents` — so it carries no
+`AuthorityKind` member. Do not "fix" the count to seven.
+
+---
+
 ## Adding a capability or sub-capability
 
 1. **Port** → `libs/core/src/<ctx>/domain/ports/<name>.port.ts`; export from the context barrel. If it should be registry-resolvable, decide whether it joins the closed `CoreCapabilityValues` set or stays an open-world string (#576).
