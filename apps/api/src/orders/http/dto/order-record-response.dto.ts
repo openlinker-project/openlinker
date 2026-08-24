@@ -14,8 +14,7 @@ import {
   FulfillmentRollupStateValues,
 } from '@openlinker/core/orders';
 import { OrderRecordStatus, SlaState, FulfillmentRollupState } from '@openlinker/core/orders';
-import { OrderLifecyclePhaseValues } from '@openlinker/core/order-lifecycle';
-import { OrderLifecyclePhase } from '@openlinker/core/order-lifecycle';
+import { OrderLifecyclePhaseValues, type OrderLifecyclePhase } from '@openlinker/core/order-lifecycle';
 import {
   SalesDocumentGateBlockReasonValues,
   SalesDocumentUnresolvedReasonValues,

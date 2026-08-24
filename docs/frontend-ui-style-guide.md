@@ -630,6 +630,7 @@ Defaults (FE-002):
 | `DataTable` rows | `36 px` | Dense-but-readable. Hover highlights whole row. |
 | Listings identity row | auto, ~60 px | Documented `DataTable` exception (#2023) — 32 px thumbnail + name/badges line + meta line + optional validator message. See the carve-out below. |
 | Shared identity row (`OrderIdentityCell` / `ConnectionCell`) | auto, ~60 px | Documented `DataTable` exception (#2086) — 24 px thumbnail + identity line + meta line. See the carve-out below. |
+| Orders Status cell | auto, ~72 px | Documented `DataTable` exception (#2310) — health badge + lifecycle-phase badge + optional failure reason, up to three stacked lines. See the carve-out below. |
 | Nav items | `28 px` | 6 px vertical padding, icon + label + optional count. |
 | Toolbar / filter chip | `28 px` | Same height as nav items for alignment. |
 | Button `sm` | `28 px` | Default for toolbar buttons, table actions. |
@@ -650,6 +651,8 @@ Two mechanical consequences worth knowing before copying the pattern:
 **Documented carve-out — the shared identity row (#2086).** The five lists that answer *which order is this* and *which connection did it come from* render those facts through two shared cells — `OrderIdentityCell` (24 px `ProductThumbnail` + order number/id line + item-name/`+N` line) and `ConnectionCell` (adornment + name line + shortened-id/status line). Either one makes the row two-line, so a table adopting them takes its height from content, same as the listings row above and for the same reason: every line is a fact an operator scans for.
 
 This entry exists because the listings carve-out explicitly refuses to cover a second table. It is deliberately **one entry for all five lists** (Shipments #2089, Invoices #2090, Orders #2091, Products #2092, Customers #2093) rather than one per page — the whole point of #2086 is that these rows are the same row.
+
+**Documented carve-out — the orders Status cell (#2310).** The #2086 entry above covers the *identity* column; this one covers a different column on the same table, which is why it is a separate entry rather than a widening of that one. `.orders-cell-stack` in the orders Status cell is a vertical stack, and the ADR-059 lifecycle phase is appended **inside** it, so a row that carries both a phase and a sync-failure reason renders health badge / phase badge / reason — three lines where two was previously the worst case, and the column can now set the row height on its own rather than only the identity cell doing so. Kept as a stack rather than nesting the phase inline beside the health badge (a `ds-row`): the two are orthogonal partitions, and putting them on one line reads as one compound status, which is precisely the reading ADR-059 exists to prevent. The three lines are each a fact an operator triages on, so the row takes its height from content in the usual way. Note this interacts with the vertical-alignment rule below — `.orders-table td` already top-aligns every cell, so no further change is needed for the taller column.
 
 Mechanics that differ from the listings carve-out, and why:
 
@@ -805,7 +808,7 @@ The orders list carries several signals per row. They are organised into **three
 
 | Group | Primary | Subordinate |
 |---|---|---|
-| **Status** | order health | failure reason; **exceptions** (e.g. an open return) |
+| **Status** | order health | **lifecycle phase** (#2310, ADR-059); failure reason; **exceptions** (e.g. an open return) |
 | **Shipment** | fulfillment state | packed, ship-by SLA + countdown, delivery owner, carrier |
 | **Money** | total | payment, invoice clearance, created |
 
@@ -818,6 +821,21 @@ Four rules govern anything added to a row:
    tick, because the row already carries four distinct badge vocabularies and a fifth pill makes
    them compete. Exceptions (returns) are badges, and they belong in the **Status** group where
    failure reasons already live.
+
+   **The ADR-059 lifecycle phase is the standing exception, and it is a badge (#2310).** The rule
+   above is about *crowding*: a signal that adds no new axis should not spend a pill. The phase does
+   add one — it is a deliberate **second orthogonal partition** beside health, not a refinement of
+   it (a held order is usually also `synced`), and it is a **vocabulary of nine values, not a
+   workflow tick**, so a tick cannot express it and a subordinate line would bury the one word that
+   says where the order actually is. Approved as such at the #2310 gate. The count in the sentence
+   above is therefore now five badge vocabularies on the row, and the exception is closed to
+   further growth: a sixth needs its own decision, not this paragraph.
+
+   The mitigation that keeps the pills from competing is **tonal**, and it is load-bearing rather
+   than incidental: the dominant `ready` phase renders **neutral**, as do `cancelled` and every
+   other non-exceptional value, so on an ordinary row exactly one badge carries colour and the
+   phase reads as a label beside it. A phase that ever renders a warning/error tone alongside a
+   non-`healthy` health badge is the shape this rule was written to prevent.
 3. **The list displays; the detail page acts.** Every row affordance is a link (`Generate label`,
    `Issue invoice`), never an in-place mutation. Introducing in-place editing to this table is a new
    interaction pattern and needs its own decision — it is not a styling choice.
@@ -825,7 +843,11 @@ Four rules govern anything added to a row:
    stay exhaustive and mutually exclusive so the KPI cards sum to the total. New signals sit *beside*
    health, never inside it. And no signal may be frontend-only: `deriveOrderHealth` is a deliberate
    twin of SQL in `OrderRecordRepository`, so anything the backend cannot also compute can never
-   become a server-side sort or filter.
+   become a server-side sort or filter. **The lifecycle phase does not bend this rule** — it sits
+   strictly beside health rather than inside it (`OrderHealthValues` is untouched and its buckets
+   still sum to the total), it is backend-derived with its own SQL twin in the same repository, and
+   the two are held identical by `scripts/check-order-lifecycle-phase-mirror.mjs`. It is a
+   server-side filter (`?phase=`) precisely because it satisfies rule 4, not in spite of it.
 
 On narrow viewports the row becomes a card with a labelled fact list (`<dt>`/`<dd>`); a signal that
 is a tick on desktop becomes a labelled fact there, and the Shipment block keeps its chronological

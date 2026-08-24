@@ -16,6 +16,7 @@ import {
   HttpCode,
   HttpStatus,
   NotFoundException,
+  BadRequestException,
   ConflictException,
   InternalServerErrorException,
   Inject,
@@ -135,6 +136,27 @@ export class OrdersController {
       limit = 20,
       offset = 0,
     } = query;
+
+    // #2441 review I-1 — `?cancelled=` (#2306) and `?phase=` (#2309) are two filters over
+    // the SAME fact: the lifecycle `CASE`'s top arm is `cancelledAt IS NOT NULL`, so
+    // `phase=cancelled` IS `cancelled=true`. ANDed, a contradictory pair is structurally
+    // empty for every row in the table — which reads to an operator as "no orders match"
+    // rather than "these two filters cannot both hold", and beside a non-zero summary count
+    // it is exactly the "the number and the rows disagree" failure the wave's
+    // `total = Σ buckets` design exists to prevent. Reject naming the conflict instead.
+    if (cancelled !== undefined && phase !== undefined) {
+      const phaseIsCancelled = phase === 'cancelled';
+      if (phaseIsCancelled !== cancelled) {
+        throw new BadRequestException(
+          phaseIsCancelled
+            ? '?phase=cancelled contradicts ?cancelled=false: the cancelled phase IS the cancelled ' +
+              'set, so this pair can never match a row. Omit ?cancelled, or pass ?cancelled=true.'
+            : `?phase=${phase} contradicts ?cancelled=true: only ?phase=cancelled can match a ` +
+              'cancelled order, so this pair can never match a row. Omit ?cancelled, or pass ' +
+              '?cancelled=false.'
+        );
+      }
+    }
 
     const { items, total } = await this.orderRecordRepository.findMany(
       {

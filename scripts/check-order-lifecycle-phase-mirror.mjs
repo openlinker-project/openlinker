@@ -15,7 +15,7 @@
  * Two rules, deliberately of different strength.
  *
  * RULE A — value + order equality (core vs frontend).
- *   `apps/web/src/features/orders/lib/order-lifecycle-phase.ts` re-declares the
+ *   `apps/web/src/features/orders/lib/order-lifecycle-phase.types.ts` re-declares the
  *   same exported name because the browser bundle does not depend on
  *   `@openlinker/core`. A copy drifts silently in both directions: a phase added
  *   only to core never reaches the browser, and one added only to the FE
@@ -72,7 +72,11 @@ const FRONTEND_FILE = join(
   'features',
   'orders',
   'lib',
-  'order-lifecycle-phase.ts',
+  // #2441 review S10 — the vocabulary moved into the types-only sibling so the
+  // wire-shape module can name the phase without transitively naming a
+  // component module. `order-lifecycle-phase.ts` re-exports it and keeps the
+  // label/tone/copy; the declaration this check compares lives here.
+  'order-lifecycle-phase.types.ts',
 );
 const REPOSITORY_FILE = join(
   'libs',
@@ -97,7 +101,20 @@ const EXPR_CONSTRUCTION = `${PHASE_DECLARATION}.map(`;
 
 const DOCS_REF = 'docs/architecture/adrs/059-order-lifecycle-derived-phase.md';
 
-/** Strip line and block comments so an annotated entry can't be read as a value. */
+/**
+ * Strip line and block comments so an annotated entry can't be read as a value.
+ *
+ * **Documented assumption (#2441 review S8):** this is a textual pass with no
+ * string-literal awareness, so a `//` or `/*` appearing INSIDE a string literal
+ * (a URL in a docstring, an SQL comment inside a predicate) would delete real
+ * source and, in `parseObjectKeys`, shift the mask offsets. Both inputs are
+ * repo-owned declarations — an `as const` array of bare phase names and a
+ * `Record<…, string>` of SQL predicates — and neither contains such a sequence,
+ * which is why the simple pass is adequate. A self-check fixture below pins the
+ * boundary so the limit is a known one rather than a discovered one; if a
+ * predicate ever needs an inline `--`-style comment or a `//`-bearing literal,
+ * this function must become quote-aware first.
+ */
 function stripComments(source) {
   return source.replace(/\/\/[^\n]*/g, '').replace(/\/\*[\s\S]*?\*\//g, '');
 }
@@ -224,7 +241,13 @@ export function parseObjectKeys(content, name) {
 
   const keys = [];
   const segments = [];
-  const keyRe = /(?:^|[\s,])(?:'([a-z_-]+)'|"([a-z_-]+)"|([a-z_-]+))\s*:/gm;
+  // #2441 review S7 — `[A-Za-z0-9_-]`, not `[a-z_-]`. The narrow class silently
+  // SKIPPED a camelCase or digit-bearing key (`vendorAuthoritative:`, `sla2:`),
+  // and the differ would then report it as "MISSING from the SQL twin" — a loud
+  // failure with a misleading message, which is the worst combination: the gate
+  // fires but sends the reader after the wrong file. Collecting the key means
+  // the diff describes the real asymmetry instead.
+  const keyRe = /(?:^|[\s,])(?:'([A-Za-z0-9_-]+)'|"([A-Za-z0-9_-]+)"|([A-Za-z0-9_-]+))\s*:/gm;
   let m;
   const starts = [];
   while ((m = keyRe.exec(body)) !== null) {
@@ -472,6 +495,32 @@ function selfCheck() {
     'a removed SQL arm is reported by the same differ',
     diffPhaseValues(nine, nine.slice(0, 3), `SQL ${PREDICATES_DECLARATION}`).ok,
     false,
+  );
+
+  // --- #2441 review S7: the key regex collects camelCase / digit-bearing keys -
+  // Previously `[a-z_-]+` skipped them, and the differ then reported the key as
+  // MISSING from the twin — a loud failure with a misleading message.
+  expect(
+    'collects a camelCase object key',
+    parseObjectKeys(
+      "const P = {\n  vendorAuthoritative: 'a',\n  ready: 'b',\n};",
+      'P',
+    )?.keys.join(','),
+    'vendorAuthoritative,ready',
+  );
+  expect(
+    'collects a digit-bearing object key',
+    parseObjectKeys("const P = {\n  sla2: 'a',\n};", 'P')?.keys.join(','),
+    'sla2',
+  );
+
+  // --- #2441 review S8: the documented stripComments boundary -----------------
+  // Pinned, not fixed: the pass is textual and has no string-literal awareness.
+  // Today's inputs contain no such sequence; this fixture makes the limit known.
+  expect(
+    'a `//` inside a string literal IS stripped (known, documented limitation)',
+    parsePhaseValues(file(name, "  'cancelled', // note\n  'ready',"), name)?.values.join(','),
+    'cancelled,ready',
   );
 
   // --- rule B (iii): the structural construction assert ----------------------

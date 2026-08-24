@@ -5,7 +5,12 @@
  */
 import type { TestingModule } from '@nestjs/testing';
 import { Test } from '@nestjs/testing';
-import { ConflictException, InternalServerErrorException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  InternalServerErrorException,
+  NotFoundException,
+} from '@nestjs/common';
 import { OrdersController } from './orders.controller';
 import {
   ORDER_RECORD_REPOSITORY_TOKEN,
@@ -321,6 +326,61 @@ describe('OrdersController', () => {
       expect(repository.findMany).toHaveBeenCalledWith(
         expect.objectContaining({ health: 'needs_attention' }),
         { limit: 20, offset: 0 }
+      );
+    });
+
+    // #2441 review I-1 / S-4 — `?cancelled=` and `?phase=` read the same
+    // `cancelledAt IS NOT NULL` fact, so a contradictory pair can never match a row.
+    it('should reject ?phase=cancelled combined with ?cancelled=false with a 400 (#2441)', async () => {
+      repository.findMany.mockResolvedValue({ items: [], total: 0 });
+
+      await expect(
+        controller.listOrders({ phase: 'cancelled', cancelled: false, limit: 20, offset: 0 })
+      ).rejects.toThrow(BadRequestException);
+      expect(repository.findMany).not.toHaveBeenCalled();
+    });
+
+    it('should reject ?cancelled=true combined with a non-cancelled phase with a 400 (#2441)', async () => {
+      repository.findMany.mockResolvedValue({ items: [], total: 0 });
+
+      await expect(
+        controller.listOrders({ phase: 'ready', cancelled: true, limit: 20, offset: 0 })
+      ).rejects.toThrow(BadRequestException);
+      expect(repository.findMany).not.toHaveBeenCalled();
+    });
+
+    it('should pass a compatible ?phase= / ?cancelled= pair straight through (#2441)', async () => {
+      repository.findMany.mockResolvedValue({ items: [], total: 0 });
+
+      await controller.listOrders({ phase: 'ready', cancelled: false, limit: 20, offset: 0 });
+
+      expect(repository.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ lifecyclePhase: 'ready', cancelled: false }),
+        { limit: 20, offset: 0 }
+      );
+    });
+
+    // #2441 review S-4 — `cancelled=true` was never exercised; the `IS NOT NULL`
+    // branch of the repository's ternary was dead in test.
+    it('should pass ?cancelled=true through to the repository on its own (#2441)', async () => {
+      repository.findMany.mockResolvedValue({ items: [], total: 0 });
+
+      await controller.listOrders({ cancelled: true, limit: 20, offset: 0 });
+
+      expect(repository.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ cancelled: true }),
+        { limit: 20, offset: 0 }
+      );
+    });
+
+    it('should apply ?phase= alongside pagination without disturbing it (#2441)', async () => {
+      repository.findMany.mockResolvedValue({ items: [], total: 0 });
+
+      await controller.listOrders({ phase: 'in_transit', limit: 50, offset: 100 });
+
+      expect(repository.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ lifecyclePhase: 'in_transit' }),
+        { limit: 50, offset: 100 }
       );
     });
 

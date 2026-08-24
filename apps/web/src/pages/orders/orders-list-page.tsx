@@ -1357,20 +1357,45 @@ export function OrdersListPage(): ReactElement {
               : ` ${summary.salesDocumentBlocked}`}
           </Chip>
         ) : null}
-        {/* SLA KPI affordance (#1108) — at-a-glance overdue / at-risk counts. */}
-        {slaSummary && (slaSummary.overdue > 0 || slaSummary.atRisk > 0) && (
-          <span className="ds-row" style={{ gap: 'var(--space-2)', alignItems: 'center' }}>
-            <StatusBadge tone="error" withDot compact>
-              {slaSummary.overdue} overdue
-            </StatusBadge>
-            <StatusBadge tone="warning" withDot compact>
-              {slaSummary.atRisk} at risk
-            </StatusBadge>
-            {/* #2306 — the ranked triage surface; this list keeps SLA as one
-                column among many, the risk page makes it the primary axis. */}
-            <Link to="/orders/dispatch-risk">Review dispatch risk</Link>
-          </span>
-        )}
+        {/* SLA KPI affordance (#1108) — at-a-glance overdue / at-risk counts.
+            The BADGES stay conditional (a zero-count badge is a dead signal),
+            but the LINK below is not: see its comment. */}
+        <span className="ds-row" style={{ gap: 'var(--space-2)', alignItems: 'center' }}>
+          {slaSummary && (slaSummary.overdue > 0 || slaSummary.atRisk > 0) ? (
+            <>
+              <StatusBadge tone="error" withDot compact>
+                {slaSummary.overdue} overdue
+              </StatusBadge>
+              <StatusBadge tone="warning" withDot compact>
+                {slaSummary.atRisk} at risk
+              </StatusBadge>
+            </>
+          ) : null}
+          {/* #2306 — the ranked triage surface; this list keeps SLA as one
+              column among many, the risk page makes it the primary axis.
+
+              Rendered UNCONDITIONALLY (#2441 review I3). Gating it on
+              `overdue > 0 || atRisk > 0` made this the sole entry point in the
+              app to a page whose two most useful states are only reachable when
+              nothing is breaching: the `on_track` bucket, and the
+              `noDeadlinesAnywhere` empty state whose copy is a *configuration*
+              answer ("deadlines come from the marketplace dispatch window") —
+              i.e. the diagnostic an install needs, gated behind the condition
+              that proves it does not need it. The page's own empty states do
+              the talking; only the copy varies here.
+
+              `.nav-link` for the ≥44 px coarse-pointer floor (#2441 review I4)
+              — a bare `<a>` gets none of it, and orders is a mobile surface.
+              As a flex item the link is blockified, so `min-height` applies. */}
+          <Link className="nav-link" to="/orders/dispatch-risk">
+            {/* Copy varies with the state, so a clear install is not told to
+                "review risk" it does not have — the counts themselves stay on
+                the badges beside this link rather than being repeated here. */}
+            {slaSummary && (slaSummary.overdue > 0 || slaSummary.atRisk > 0)
+              ? 'Review dispatch risk'
+              : 'Dispatch risk overview'}
+          </Link>
+        </span>
         {query.data && (
           <span
             className="text-muted mono tabular"

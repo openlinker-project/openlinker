@@ -7,14 +7,12 @@
  * It owns exactly two things the backend cannot: the FE copy of the vocabulary,
  * and the operator-facing label / tone / "waiting on" line for each value.
  *
- * **`OrderLifecyclePhaseValues` below is a hand mirror of
- * `OrderLifecyclePhaseValues` in `libs/core/src/order-lifecycle/domain/types/
- * order-lifecycle-phase.types.ts` — same exported name, same nine literals, same
- * precedence order.** The order is contract, not presentation (it is the ordinal
- * the derivation and the SQL `CASE` both read), so this array is declared as one
- * quoted literal per line and nothing else, which is the shape #2311's mirror
- * check parses. Do not wrap it, nest it, rename it or move this file without
- * updating that check in the same commit.
+ * **The vocabulary itself lives in the sibling `order-lifecycle-phase.types.ts`**
+ * (split out by #2441 review S10 so the transport module can name the phase
+ * without transitively naming a component module) and is re-exported below, so
+ * this remains the single import site for consumers that want label and tone
+ * alongside. That file carries the hand-mirror contract with core and the note
+ * about what #2311's parser actually compares.
  *
  * **Copy rule (#2081 / REVIEW P9):** no operator-visible string here may say
  * `authority`, `posture` or `FulfillmentWork`. Those are OL's internal design
@@ -30,39 +28,22 @@
  * @see docs/architecture/adrs/059-order-lifecycle-derived-phase.md
  */
 import type { StatusBadgeTone } from '../../../shared/ui/status-badge';
+import {
+  OrderLifecyclePhaseValues,
+  isOrderLifecyclePhase,
+  type OrderLifecyclePhaseValue,
+} from './order-lifecycle-phase.types';
 
-/**
- * The nine phases, in the backend's precedence order (highest first).
- *
- * Hand-mirrored from core per the FE-001 contract strategy. #2311 enforces the
- * byte-equality of this declaration against core's.
- */
-export const OrderLifecyclePhaseValues = [
-  'cancelled',
-  'vendor_authoritative',
-  'delivered',
-  'in_transit',
-  'fulfillment_failed',
-  'held',
-  'amending',
-  'blocked',
-  'ready',
-] as const;
-
-export type OrderLifecyclePhaseValue = (typeof OrderLifecyclePhaseValues)[number];
-
-/**
- * Coerce an untrusted value — a URL search param, a field on an older payload —
- * to the union. Deliberately no fallback, matching core's `isOrderLifecyclePhase`:
- * there is no phase safe to assume, and defaulting an unknown value to `ready`
- * would report "nothing to do" about an order in an unknown state.
- */
-export function isOrderLifecyclePhase(value: unknown): value is OrderLifecyclePhaseValue {
-  return (
-    typeof value === 'string' &&
-    (OrderLifecyclePhaseValues as readonly string[]).includes(value)
-  );
-}
+// The vocabulary itself now lives in the sibling types-only module (#2441 review
+// S10) so `api/orders.types.ts` can name the phase without transitively naming
+// `shared/ui/status-badge` through this file. Re-exported here so every existing
+// consumer — and every future one that wants label/tone alongside — keeps a
+// single import site.
+export {
+  OrderLifecyclePhaseValues,
+  isOrderLifecyclePhase,
+  type OrderLifecyclePhaseValue,
+};
 
 /**
  * Label + tone per phase. Same shape as `ORDER_SLA_META` / `ORDER_FULFILLMENT_META`
