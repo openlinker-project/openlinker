@@ -103,26 +103,45 @@ export interface InventoryMasterPort {
   /**
    * Reserve inventory for an order
    *
-   * Reserves inventory quantity for a pending order.
-   * For MVP, this may throw NotSupportedException.
+   * @deprecated (#2315, ADR-061). No shipped master exposes a hold primitive, so
+   * both implementations (`WooCommerceInventoryMasterAdapter`,
+   * `PrestashopInventoryMasterAdapter`) throw `NotSupported` and there is no
+   * production caller. Reservations are now OL's own concern: the advisory
+   * reservation ledger owned by the inventory context holds stock against an
+   * order (never a decrement, `expiresAt` mandatory), and ATP is answered by the
+   * `AvailabilityAuthority` capability — see ADR-061 §Decision (1)-(2).
+   *
+   * The legitimate residual need — pushing a hold to a master that *does* model
+   * one — returns as an optional `MasterReservationWriter` sub-capability,
+   * deliberately deferred until an adapter exists that can implement it
+   * (ADR-061 reversal gate). It will NOT come back on this port.
+   *
+   * NOT removed: this is a published contract that out-of-tree plugins compile
+   * against, and the WooCommerce master-shop guide documents the current
+   * behaviour. Removal is deferred to a contract-major cycle
+   * (ANALYSIS-1032 §5 / DESIGN-oms-authority-model §4.2). Implementers should
+   * keep throwing `NotSupported`; new adapters should not implement it.
    *
    * @param productId - Internal OpenLinker product ID
    * @param quantity - Quantity to reserve
    * @param orderId - Internal OpenLinker order ID
-   * @throws NotSupportedException if not supported in MVP
+   * @throws NotSupportedException - always, in every shipped adapter
    */
   reserveInventory(productId: string, quantity: number, orderId: string): Promise<void>;
 
   /**
    * Release reserved inventory
    *
-   * Releases previously reserved inventory (e.g., when order is cancelled).
-   * For MVP, this may throw NotSupportedException.
+   * @deprecated (#2315, ADR-061). The counterpart of the deprecated
+   * `reserveInventory` above — same rationale, same successor (OL's own advisory
+   * reservation ledger; release is expiry- or consume-driven there), same
+   * deferred `MasterReservationWriter`, same "not removed, contract-major cycle"
+   * policy. Implementers should keep throwing `NotSupported`.
    *
    * @param productId - Internal OpenLinker product ID
    * @param quantity - Quantity to release
    * @param orderId - Internal OpenLinker order ID
-   * @throws NotSupportedException if not supported in MVP
+   * @throws NotSupportedException - always, in every shipped adapter
    */
   releaseInventory(productId: string, quantity: number, orderId: string): Promise<void>;
 

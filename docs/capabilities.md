@@ -26,7 +26,7 @@ invoking, and degrade gracefully when an adapter doesn't implement it.
 | Port | Context | Registry capability | What it does | Base method(s) |
 |---|---|---|---|---|
 | `ProductMasterPort` | products | `ProductMaster` | Source of truth for the product catalog — read/write products, variants, and categories. | `getProduct` · `getProducts` · `createProduct` · `updateProduct` · `deleteProduct` · `getProductVariants` · `upsertProductVariant` · `getProductCategories` · `assignCategories` · `searchProducts` · `listExternalIds` |
-| `InventoryMasterPort` | inventory | `InventoryMaster` | Source of truth for stock levels; carries the (largely dormant) reservation surface. | `getInventory` · `listInventory` · `adjustInventory` · `reserveInventory` · `releaseInventory` · `getAvailableQuantity` |
+| `InventoryMasterPort` | inventory | `InventoryMaster` | Source of truth for stock levels; carries a **deprecated** reservation surface (`reserveInventory` / `releaseInventory` — ADR-061, deprecated in place, removal deferred to a contract-major cycle). | `getInventory` · `listInventory` · `adjustInventory` · `reserveInventory` · `releaseInventory` · `getAvailableQuantity` |
 | `OrderSourcePort` | orders | `OrderSource` | Cursor-based, read-only ingestion of orders from any source (marketplace journal or shop watermark). | `listOrderFeed` · `getOrder` |
 | `OrderProcessorManagerPort` | orders | `OrderProcessorManager` | Create orders on a destination shop. | `createOrder` |
 | `OfferManagerPort` | listings | `OfferManager` | Manage marketplace offers/listings; base contract is the inventory-driven quantity update. | `updateOfferQuantity` |

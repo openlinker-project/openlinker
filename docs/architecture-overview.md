@@ -441,11 +441,15 @@ interface InventoryMasterPort {
   
   /**
    * Reserve inventory for an order
+   *
+   * @deprecated (#2315, ADR-061) — see note below
    */
   reserveInventory(productId: string, quantity: number, orderId: string): Promise<void>;
   
   /**
    * Release reserved inventory
+   *
+   * @deprecated (#2315, ADR-061) — see note below
    */
   releaseInventory(productId: string, quantity: number, orderId: string): Promise<void>;
   
@@ -457,6 +461,8 @@ interface InventoryMasterPort {
 ```
 
 **Current Implementations**: `PrestashopInventoryMasterAdapter`, `WooCommerceInventoryMasterAdapter`
+
+**Deprecated surface (ADR-061).** `reserveInventory` / `releaseInventory` are **deprecated in place** (#2315). No shipped master exposes a hold primitive; both adapters throw `NotSupported` and nothing calls them. Reservations are OL's own concern — the advisory reservation ledger (hold, never a decrement, with a mandatory `expiresAt`) plus the `AvailabilityAuthority` capability for ATP. The residual need to push a hold to a master that models one returns later as an optional `MasterReservationWriter` sub-capability, deferred until an adapter exists that can implement it. The methods are **not removed**: the port is a published contract that out-of-tree plugins compile against, so removal waits for a contract-major cycle (ANALYSIS-1032 §5).
 
 **Future Implementations**:
 - `OpenLinkerInventoryMasterAdapter` (OpenLinker's own inventory system)
