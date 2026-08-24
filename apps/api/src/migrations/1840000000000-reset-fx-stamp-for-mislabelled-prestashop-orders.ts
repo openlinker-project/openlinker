@@ -2,9 +2,12 @@
  * Reset the FX reporting stamp on PrestaShop orders that were mislabelled EUR (#2277)
  *
  * Until #2277 the PrestaShop order mapper emitted a literal `currency: 'EUR'`
- * on every ingested order. Most downstream surfaces self-heal on the next
- * successful re-poll, because the order write is a full overwrite — the
- * snapshot, the `currency` column and `order_line_items` all get replaced.
+ * on every ingested order. On this branch the native currency lives in exactly
+ * one place — `orderSnapshot.totals.currency` (there is no `order_records`
+ * currency column; #1985's analytics read model is not merged here, as
+ * `OrderRecordRepository.listDistinctNativeCurrencies` documents in place). That
+ * one place self-heals on the next successful re-poll, because the upsert
+ * replaces `orderSnapshot` wholesale.
  *
  * The ADR-040 reporting stamp does not. `OrderFxStampService` reads the
  * NATIVE currency off the snapshot and multiplies the order total by that
@@ -22,6 +25,23 @@
  * stamp that would only be recomputed from the same wrong snapshot and
  * re-closed. It also leaves a genuinely-EUR PrestaShop order alone, since its
  * stamp was right all along.
+ *
+ * THE STAMP MUST ALSO BE ONE THAT WAS ACTUALLY DERIVED FROM `'EUR'`. The
+ * snapshot test alone is a PROXY for the damage, not the damage itself: it
+ * cannot tell a stamp computed while the snapshot still said EUR from one an
+ * already-fixed deployment computed correctly minutes ago, so on its own it
+ * re-opens correct figures too. Observed live before this arm existed — an order
+ * carrying a PLN→EUR rate and the right converted total matched. Two shapes are
+ * damage, and they are exactly the two ways the stamp service can consume a
+ * native `'EUR'`:
+ *   - a CONVERSION whose `exchange_rates` row reads `fromCurrency = 'EUR'`;
+ *   - the same-currency short-circuit on a EUR-reporting deployment, which
+ *     writes `reportingCurrency = 'EUR'` with NO rate row at all — the case a
+ *     rate-only test would miss entirely, and the worst one, since the order was
+ *     never converted and its total was copied across verbatim.
+ * A correctly-stamped row is excluded by construction: its rate reads
+ * `fromCurrency = <the real currency>`, or its short-circuit reports that
+ * currency rather than EUR.
  *
  * Six columns move together, back to the "never attempted" state of the ADR-040
  * table:
@@ -72,6 +92,7 @@ export class ResetFxStampForMislabelledPrestashopOrders1840000000000
         AND o."reportingCurrency" IS NOT NULL
         AND jsonb_typeof(o."orderSnapshot"#>'{totals,currency}') = 'string'
         AND o."orderSnapshot"#>>'{totals,currency}' <> 'EUR'
+        AND ((o."exchangeRateId" IS NULL AND o."reportingCurrency" = 'EUR') OR EXISTS (SELECT 1 FROM "exchange_rates" er WHERE er."id" = o."exchangeRateId" AND er."fromCurrency" = 'EUR'))
     `);
   }
 
