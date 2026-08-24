@@ -37,6 +37,11 @@ function analytics(overrides: Partial<SalesAndChannelAnalytics['headline']> = {}
       unconvertedCount: 0,
       unconvertedValue: 0,
       unconvertedCurrency: null,
+      netRevenue: 4200,
+      netAverageOrderValue: 105,
+      netMedianOrderValue: 90,
+      netExcludedCount: 0,
+      netExcludedValue: 0,
       trend: [],
       ...overrides,
     },
@@ -155,16 +160,14 @@ describe('AnalyticsKpiStrip', () => {
     expect(screen.getByText('17.50')).toBeInTheDocument();
   });
 
-  it('should render Revenue headline as unavailable and Returns & refunds as planned', async () => {
+  it('renders the real net-sales headline (net-sales tax-rate epic) and keeps Returns & refunds planned', async () => {
     const apiClient = createMockApiClient({
       analytics: { getSales: vi.fn().mockResolvedValue(analytics()) },
     });
 
     renderWithProviders(<AnalyticsKpiStrip filters={FILTERS} connections={[]} />, { apiClient });
 
-    expect(
-      await screen.findByLabelText('Not computable until refunds are captured')
-    ).toBeInTheDocument();
+    expect(await screen.findByText('Net sales')).toBeInTheDocument();
     expect(screen.getByLabelText('No return/refund entity exists yet')).toBeInTheDocument();
   });
 

@@ -210,6 +210,18 @@ export interface OrderRecordRepositoryPort {
   ): Promise<number | null>;
 
   /**
+   * VAT-exclusive counterpart of {@link getMedianOrderValue} (net-sales
+   * tax-rate epic) — same scope, additionally restricted to orders that are
+   * not pre-rollout history (ADR-063 § Consequences) and carry a resolvable
+   * tax-rate fraction on every line. `null` on an empty ordered-set, same
+   * convention as the gross median.
+   */
+  getNetMedianOrderValue(
+    filters: SalesAnalyticsFilters,
+    currentReportingCurrency: string
+  ): Promise<number | null>;
+
+  /**
    * Push a per-order fulfillment rollup (#1108) onto the order record. Called
    * from the shipping context after a shipment-status change (best-effort
    * projection). Idempotent absolute-set; a missing order row is a no-op (never

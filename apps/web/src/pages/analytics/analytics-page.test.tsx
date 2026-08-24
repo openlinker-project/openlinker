@@ -184,6 +184,11 @@ describe('AnalyticsPage', () => {
             unconvertedCount: 0,
             unconvertedValue: 0,
             unconvertedCurrency: null,
+            netRevenue: 4300,
+            netAverageOrderValue: 107.5,
+            netMedianOrderValue: 90,
+            netExcludedCount: 0,
+            netExcludedValue: 0,
             trend: [],
           },
           channels: [],
@@ -195,6 +200,7 @@ describe('AnalyticsPage', () => {
 
     expect(await screen.findByRole('region', { name: 'Key sales figures' })).toBeInTheDocument();
     expect(screen.getByText('Sales by channel')).toBeInTheDocument();
+    expect(screen.getByText('Top products')).toBeInTheDocument();
   });
 
   it('should render each section its own error state, never a blank page, when the sales request fails', async () => {

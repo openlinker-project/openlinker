@@ -84,6 +84,7 @@ describe('OrdersController', () => {
       countStampedByReportingCurrency: jest.fn(),
       getDailyOrderAggregates: jest.fn(),
       getMedianOrderValue: jest.fn(),
+      getNetMedianOrderValue: jest.fn(),
     };
 
     const mockRetryService: jest.Mocked<IOrderDestinationRetryService> = {

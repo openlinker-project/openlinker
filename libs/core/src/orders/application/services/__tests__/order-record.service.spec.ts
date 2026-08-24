@@ -48,6 +48,7 @@ describe('OrderRecordService', () => {
       updateSalesDocumentBlock: jest.fn(),
       getDailyOrderAggregates: jest.fn(),
       getMedianOrderValue: jest.fn(),
+      getNetMedianOrderValue: jest.fn(),
     } as unknown as jest.Mocked<OrderRecordRepositoryPort>;
 
     // Defaults to `deferred`, which is the outcome that owes NO refresh - so
@@ -1165,6 +1166,9 @@ describe('OrderRecordService', () => {
           cancelledCount: 0,
           cancelledValue: 0,
           reportingCurrency: 'EUR',
+          netRevenue: 150,
+          netExcludedCount: 0,
+          netExcludedValue: 0,
         },
       ];
       const unitsByConnection = new Map([['conn-a', { unitsSold: 5, unconvertedUnitsSold: 0 }]]);
@@ -1172,6 +1176,7 @@ describe('OrderRecordService', () => {
 
       repository.getDailyOrderAggregates.mockResolvedValue(dailyRows);
       repository.getMedianOrderValue.mockResolvedValue(90);
+      repository.getNetMedianOrderValue.mockResolvedValue(80);
       lineItemRepository.getUnitsSoldByConnection.mockResolvedValue(unitsByConnection);
       repository.findEarliestOrderDateByConnection.mockResolvedValue(earliestMap);
 
@@ -1179,10 +1184,13 @@ describe('OrderRecordService', () => {
 
       expect(repository.getDailyOrderAggregates).toHaveBeenCalledWith(filters, 'EUR');
       expect(repository.getMedianOrderValue).toHaveBeenCalledWith(filters, 'EUR');
+      expect(repository.getNetMedianOrderValue).toHaveBeenCalledWith(filters, 'EUR');
       expect(lineItemRepository.getUnitsSoldByConnection).toHaveBeenCalledWith(filters, 'EUR');
       expect(repository.findEarliestOrderDateByConnection).toHaveBeenCalledWith(['conn-a']);
       expect(result.headline.revenue).toBe(200);
       expect(result.headline.medianOrderValue).toBe(90);
+      expect(result.headline.netMedianOrderValue).toBe(80);
+      expect(result.headline.netRevenue).toBe(150);
       expect(result.headline.unitsSold).toBe(5);
       expect(result.channels).toHaveLength(1);
       expect(result.channels[0].coverageComplete).toBe(true);
@@ -1191,6 +1199,7 @@ describe('OrderRecordService', () => {
     it('derives the earliest-date lookup scope from the connections present in dailyRows only', async () => {
       repository.getDailyOrderAggregates.mockResolvedValue([]);
       repository.getMedianOrderValue.mockResolvedValue(null);
+      repository.getNetMedianOrderValue.mockResolvedValue(null);
       lineItemRepository.getUnitsSoldByConnection.mockResolvedValue(new Map());
       repository.findEarliestOrderDateByConnection.mockResolvedValue(new Map());
 
@@ -1221,6 +1230,9 @@ describe('OrderRecordService', () => {
           unconvertedOrderCount: 0,
           currency: 'EUR',
           unconvertedCurrency: null,
+          netRevenue: 80,
+          netExcludedRevenue: 20,
+          netExcludedLineCount: 1,
         },
         {
           productId: 'p2',
@@ -1230,6 +1242,9 @@ describe('OrderRecordService', () => {
           unconvertedOrderCount: 0,
           currency: 'EUR',
           unconvertedCurrency: null,
+          netRevenue: 50,
+          netExcludedRevenue: 0,
+          netExcludedLineCount: 0,
         },
       ];
       const breakdown = [
@@ -1241,6 +1256,9 @@ describe('OrderRecordService', () => {
           unconvertedRevenue: 0,
           currency: 'EUR',
           unconvertedCurrency: null,
+          netRevenue: 80,
+          netExcludedRevenue: 20,
+          netExcludedLineCount: 1,
         },
         {
           productId: 'p2',
@@ -1250,6 +1268,9 @@ describe('OrderRecordService', () => {
           unconvertedRevenue: 0,
           currency: 'EUR',
           unconvertedCurrency: null,
+          netRevenue: 50,
+          netExcludedRevenue: 0,
+          netExcludedLineCount: 0,
         },
       ];
       lineItemRepository.getTopProductRanking.mockResolvedValue({ rows: ranking, total: 2 });
@@ -1283,6 +1304,9 @@ describe('OrderRecordService', () => {
             unconvertedOrderCount: 0,
             currency: 'EUR',
             unconvertedCurrency: null,
+            netRevenue: 1,
+            netExcludedRevenue: 0,
+            netExcludedLineCount: 0,
           },
         ],
         total: 500,

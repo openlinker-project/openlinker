@@ -36,6 +36,7 @@ import type {
 import type { SlaState, OrderSlaSummary } from '../../../domain/types/order-sla.types';
 import { SLA_AT_RISK_WINDOW_MS } from '../../../domain/types/order-sla.types';
 import type { FulfillmentRollupState } from '../../../domain/types/order-fulfillment.types';
+import { netSalesRateFractionSql } from '../../../domain/types/net-sales-tax-rate.types';
 import type { SalesDocumentBlock } from '@openlinker/core/sales-documents';
 import {
   SalesDocumentAttentionReasonValues,
@@ -428,6 +429,11 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     const stampedAndNotCancelled = `${notCancelled} AND ${isStamped}`;
     const unconvertedAndNotCancelled = `${notCancelled} AND ${isUnconverted}`;
 
+    // Net-sales (VAT-exclusive) eligibility — see `buildNetSalesOrderFragments`.
+    const { netEligible, netOrderAmount } = this.buildNetSalesOrderFragments();
+    const netAndNotCancelled = `${stampedAndNotCancelled} AND ${netEligible}`;
+    const netExcludedAndNotCancelled = `${stampedAndNotCancelled} AND NOT ${netEligible}`;
+
     // UTC day boundary made explicit (#1987 review, IMPORTANT 2): `placedAt`
     // is `timestamptz`, so a bare `date_trunc('day', ...)` truncates at local
     // midnight per the Postgres session `TimeZone` GUC — on a non-UTC server
@@ -481,6 +487,15 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
         `MAX(rec."reportingCurrency") FILTER (WHERE ${isStamped})`,
         'reporting_currency'
       )
+      .addSelect(
+        `COALESCE(SUM((${netOrderAmount}) * (rec."reportingTotalAmount" / NULLIF(rec."totalAmount", 0))) FILTER (WHERE ${netAndNotCancelled}), 0)`,
+        'net_revenue'
+      )
+      .addSelect(`COUNT(*) FILTER (WHERE ${netExcludedAndNotCancelled})`, 'net_excluded_count')
+      .addSelect(
+        `COALESCE(SUM(rec."totalAmount") FILTER (WHERE ${netExcludedAndNotCancelled}), 0)`,
+        'net_excluded_value'
+      )
       .groupBy(utcDay)
       .addGroupBy('rec.sourceConnectionId');
 
@@ -498,6 +513,9 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       cancelled_count: string;
       cancelled_value: string;
       reporting_currency: string | null;
+      net_revenue: string;
+      net_excluded_count: string;
+      net_excluded_value: string;
     }>();
 
     return rows.map((row) => ({
@@ -511,6 +529,9 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       cancelledCount: Number(row.cancelled_count),
       cancelledValue: Number(row.cancelled_value),
       reportingCurrency: row.reporting_currency,
+      netRevenue: Number(row.net_revenue),
+      netExcludedCount: Number(row.net_excluded_count),
+      netExcludedValue: Number(row.net_excluded_value),
     }));
   }
 
@@ -542,6 +563,63 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
 
     const raw = await qb.getRawOne<{ median: string | null }>();
     return raw?.median != null ? Number(raw.median) : null;
+  }
+
+  /**
+   * VAT-exclusive counterpart of {@link getMedianOrderValue} — same scope,
+   * additionally restricted to net-sales-eligible orders (see
+   * {@link buildNetSalesOrderFragments}). `null` on an empty ordered-set,
+   * same convention as the gross median.
+   */
+  async getNetMedianOrderValue(
+    filters: SalesAnalyticsFilters,
+    currentReportingCurrency: string
+  ): Promise<number | null> {
+    const { netEligible, netOrderAmount } = this.buildNetSalesOrderFragments();
+
+    const qb = this.repository
+      .createQueryBuilder('rec')
+      .select(
+        `PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY (${netOrderAmount}) * (rec."reportingTotalAmount" / NULLIF(rec."totalAmount", 0)))`,
+        'median'
+      )
+      .andWhere('rec."cancelledAt" IS NULL')
+      .andWhere('rec."reportingCurrency" = :currentReportingCurrency', { currentReportingCurrency })
+      .andWhere(netEligible);
+
+    this.applySalesAnalyticsScope(qb, filters);
+
+    const raw = await qb.getRawOne<{ median: string | null }>();
+    return raw?.median != null ? Number(raw.median) : null;
+  }
+
+  /**
+   * Shared SQL fragments for net-sales (VAT-exclusive) order eligibility
+   * (net-sales tax-rate epic) — an order counts toward a net figure only
+   * when it is not pre-rollout history (ADR-063 § Consequences) AND carries
+   * at least one line AND every one of its lines resolves to a known
+   * tax-rate fraction via {@link resolveNetSalesTaxRate}. Expressed as
+   * correlated subqueries rather than a JOIN to `order_line_items`: joining
+   * would multiply the caller's row cardinality (one row per order-line
+   * instead of one per order), corrupting every `COUNT(*)`/`SUM` aggregate
+   * grouped at the order level.
+   */
+  private buildNetSalesOrderFragments(): { netEligible: string; netOrderAmount: string } {
+    const netRateFraction = netSalesRateFractionSql('net_li."taxRate"');
+    const netEligible = `(
+      rec."taxRateEra" IS DISTINCT FROM 'pre-rollout'
+      AND EXISTS (SELECT 1 FROM order_line_items net_li WHERE net_li."orderRecordId" = rec."internalOrderId")
+      AND NOT EXISTS (
+        SELECT 1 FROM order_line_items net_li
+        WHERE net_li."orderRecordId" = rec."internalOrderId" AND (${netRateFraction}) IS NULL
+      )
+    )`;
+    const netOrderAmount = `(
+      SELECT COALESCE(SUM(net_li."unitPrice" * net_li."quantity" * (1 - (${netRateFraction}))), 0)
+      FROM order_line_items net_li
+      WHERE net_li."orderRecordId" = rec."internalOrderId"
+    )`;
+    return { netEligible, netOrderAmount };
   }
 
   /**

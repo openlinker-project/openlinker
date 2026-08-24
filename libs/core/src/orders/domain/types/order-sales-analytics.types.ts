@@ -85,6 +85,25 @@ export interface DailyOrderAggregateRow {
    * bucket is never mislabelled with whichever value happened to sort first.
    */
   reportingCurrency: string | null;
+  /**
+   * VAT-exclusive counterpart of `revenue` (net-sales tax-rate epic).
+   * `SUM` over each order's own lines of `unitPrice * quantity * (1 -
+   * rateFraction)`, converted via the same order-level FX multiplier
+   * `revenue` uses, restricted to orders that are stamped (the same
+   * population `revenue` counts) AND not `taxRateEra = 'pre-rollout'` AND
+   * carry a resolvable {@link resolveNetSalesTaxRate} outcome on EVERY line.
+   * An order failing any of those is excluded here and counted instead in
+   * `netExcludedCount`/`netExcludedValue` — never silently folded into
+   * `netRevenue` at a guessed rate, and never double-counted against
+   * `unconvertedCount` (that axis is currency, this axis is tax-rate
+   * resolvability; the two exclusions are independent and can overlap without
+   * either hiding the other).
+   */
+  netRevenue: number;
+  /** Non-cancelled, stamped orders in range excluded from `netRevenue` — pre-rollout or carrying at least one unresolvable-rate line. */
+  netExcludedCount: number;
+  /** Native-currency `SUM(totalAmount)` for `netExcludedCount` — informational, may mix currencies, mirrors `unconvertedValue`'s convention. */
+  netExcludedValue: number;
 }
 
 /**
@@ -160,6 +179,20 @@ export interface SalesAnalyticsHeadline {
    */
   unconvertedCurrency: string | null;
   trend: DailyTrendPoint[];
+  /** VAT-exclusive counterpart of `revenue` — see {@link DailyOrderAggregateRow.netRevenue}. */
+  netRevenue: number;
+  /**
+   * `null` when `netOrderCount` (the same population `netRevenue` counts,
+   * i.e. `orderCount - netExcludedCount`) is `0` — same "nothing to report"
+   * convention as `averageOrderValue`.
+   */
+  netAverageOrderValue: number | null;
+  /** VAT-exclusive counterpart of `medianOrderValue` — `null` on an empty ordered-set, same convention. */
+  netMedianOrderValue: number | null;
+  /** Same meaning as {@link DailyOrderAggregateRow.netExcludedCount}, rolled up over the range. */
+  netExcludedCount: number;
+  /** Same meaning as {@link DailyOrderAggregateRow.netExcludedValue}, rolled up over the range. */
+  netExcludedValue: number;
 }
 
 /**
@@ -194,6 +227,14 @@ export interface ChannelSalesAnalytics {
    */
   revenueShare: number | null;
   trend: DailyTrendPoint[];
+  /** Same meaning as {@link SalesAnalyticsHeadline.netRevenue}, scoped to this channel. */
+  netRevenue: number;
+  /** Same meaning as {@link SalesAnalyticsHeadline.netAverageOrderValue}, scoped to this channel. */
+  netAverageOrderValue: number | null;
+  /** Same meaning as {@link SalesAnalyticsHeadline.netExcludedCount}, scoped to this channel. */
+  netExcludedCount: number;
+  /** Same meaning as {@link SalesAnalyticsHeadline.netExcludedValue}, scoped to this channel. */
+  netExcludedValue: number;
   /**
    * `false` when this channel's oldest ingested order (per
    * `getEarliestOrderDateByConnection`, #2083) postdates the requested range

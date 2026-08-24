@@ -3,8 +3,8 @@
  *
  * The /analytics route shell (#1986): page scaffold, date-range control,
  * the trust/data-coverage disclosure, the needs-attention section (#1989),
- * and the sales KPI strip / by-channel table (#1990). Section #1991 will
- * mount alongside. Ships zero revenue/order metrics of its own — see
+ * the sales KPI strip / by-channel table (#1990), and the top-products
+ * table (#1991). Ships zero revenue/order metrics of its own — see
  * docs/plans/implementation-plan-analytics-page-shell.md,
  * docs/plans/implementation-plan-analytics-needs-attention.md, and
  * docs/plans/implementation-plan-sales-channel-aggregates.md.
@@ -21,6 +21,7 @@ import {
   AnalyticsTrustHeader,
   ChannelSalesTable,
   computePresetRange,
+  ProductSalesTable,
   useAnalyticsTrustQuery,
   type SalesAnalyticsFilters,
 } from '../../features/analytics';
@@ -121,6 +122,7 @@ export function AnalyticsPage(): ReactElement {
             <>
               <AnalyticsKpiStrip filters={salesFilters} connections={trustQuery.data.connections} />
               <ChannelSalesTable filters={salesFilters} />
+              <ProductSalesTable filters={salesFilters} />
             </>
           )}
         </>

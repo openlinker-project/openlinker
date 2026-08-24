@@ -15,6 +15,9 @@ describe('buildTopProducts', () => {
     unconvertedOrderCount: 0,
     currency: 'EUR',
     unconvertedCurrency: null,
+    netRevenue: 0,
+    netExcludedRevenue: 0,
+    netExcludedLineCount: 0,
     ...overrides,
   });
 
@@ -26,6 +29,9 @@ describe('buildTopProducts', () => {
     unconvertedRevenue: 0,
     currency: 'EUR',
     unconvertedCurrency: null,
+    netRevenue: 0,
+    netExcludedRevenue: 0,
+    netExcludedLineCount: 0,
     ...overrides,
   });
 
@@ -71,6 +77,9 @@ describe('buildTopProducts', () => {
         unconvertedOrderCount: 0,
         currency: 'EUR',
         unconvertedCurrency: null,
+        netRevenue: 0,
+        netExcludedRevenue: 0,
+        netExcludedLineCount: 0,
         channels: [],
       },
     ]);
@@ -93,5 +102,17 @@ describe('buildTopProducts', () => {
     expect(result.items[0].unconvertedRevenue).toBe(250);
     expect(result.items[0].unconvertedOrderCount).toBe(3);
     expect(result.items[0].currency).toBeNull();
+  });
+
+  it('passes through the net-sales figures verbatim (net-sales tax-rate epic)', () => {
+    const ranking = [
+      rankingRow({ productId: 'p1', netRevenue: 80, netExcludedRevenue: 20, netExcludedLineCount: 1 }),
+    ];
+
+    const result = buildTopProducts({ ranking, total: 1, breakdown: [] });
+
+    expect(result.items[0].netRevenue).toBe(80);
+    expect(result.items[0].netExcludedRevenue).toBe(20);
+    expect(result.items[0].netExcludedLineCount).toBe(1);
   });
 });
