@@ -82,4 +82,25 @@ export interface IInventoryService {
     currentVariantIds: readonly (string | null)[],
     scope?: ProvenanceScope
   ): Promise<PruneStaleVariantsResult>;
+
+  /**
+   * Enforce ADR-058 decision (2) after a master sync wrote located positions
+   * (#2322): soft-stale the SAME source's own `locationId IS NULL` rows for the
+   * variants it just located, since a pooled row left behind by a source that
+   * started locating double-counts the same stock.
+   *
+   * `scope` is required — see the port docblock. Emits no event: re-locating is
+   * not a deletion, and firing `master.variant.stale` off this count would
+   * pause live offers (#1689).
+   *
+   * @param productId internal OpenLinker product ID
+   * @param locatedVariantKeys variant keys reported at a non-null location
+   * @param scope the claiming connection's provenance restriction
+   * @returns rows newly marked stale + the distinct non-null variant ids
+   */
+  staleLocationlessPositionsForSource(
+    productId: string,
+    locatedVariantKeys: readonly (string | null)[],
+    scope: ProvenanceScope
+  ): Promise<PruneStaleVariantsResult>;
 }

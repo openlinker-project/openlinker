@@ -77,6 +77,7 @@ describe('InventoryQueryService', () => {
       findAvailabilityByVariantIds: jest.fn(),
       findStockAggregatesByProductIds: jest.fn(),
       markStaleExceptVariants: jest.fn(),
+      markLocationlessStaleForSource: jest.fn(),
       findDuplicatePositions: jest.fn(),
       backfillLegacyProvenance: jest.fn(),
       countMissingProvenance: jest.fn(),

@@ -32,6 +32,21 @@ export interface MasterInventorySyncResult {
    * no `master.*.stale` event was emitted.
    */
   pruneSkipped: boolean;
+  /**
+   * Rows this sync soft-staled because the SAME source started reporting the
+   * variant at a location while a pooled (`locationId IS NULL`) row of its own
+   * was still live — ADR-058 decision (2) enforcement (#2322).
+   *
+   * **Optional**, so the addition is additive in fact and not merely in name:
+   * the worker handler reads none of it, but the handler spec's typed result
+   * factory builds this shape by hand and a required field would be churn a
+   * repair slice has no business creating.
+   *
+   * A non-zero value means available stock DROPPED for those variants with no
+   * propagation enqueued behind it — the destination write-back gap #2324
+   * closes. Emits no `master.*.stale` event: re-locating is not a deletion.
+   */
+  pooledPositionsStaled?: number;
 }
 
 export interface IMasterInventorySyncService {

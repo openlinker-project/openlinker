@@ -82,6 +82,9 @@ describe('MasterInventorySyncService', () => {
       setInventory: jest.fn().mockImplementation((item: InventoryItem) => Promise.resolve(item)),
       getInventory: jest.fn().mockResolvedValue(null),
       pruneStaleVariants: jest.fn().mockResolvedValue({ markedCount: 0, variantIds: [] }),
+      staleLocationlessPositionsForSource: jest
+        .fn()
+        .mockResolvedValue({ markedCount: 0, variantIds: [] }),
     } as unknown as jest.Mocked<IInventoryService>;
 
     productsService = {
@@ -165,6 +168,7 @@ describe('MasterInventorySyncService', () => {
         reservedQuantity: 3,
         masterDeleted: false,
         pruneSkipped: false,
+        pooledPositionsStaled: 0,
       });
     });
 
@@ -208,6 +212,7 @@ describe('MasterInventorySyncService', () => {
         reservedQuantity: 1,
         masterDeleted: false,
         pruneSkipped: false,
+        pooledPositionsStaled: 0,
       });
       // Adapter supplies the per-combination variantIds — no products-service fallback.
       expect(productsService.getVariantsByProductId).not.toHaveBeenCalled();
@@ -407,6 +412,7 @@ describe('MasterInventorySyncService', () => {
         reservedQuantity: 0,
         masterDeleted: true,
         pruneSkipped: false,
+        pooledPositionsStaled: 0,
       });
     });
 
@@ -875,6 +881,7 @@ describe('MasterInventorySyncService', () => {
         reservedQuantity: 0,
         masterDeleted: false,
         pruneSkipped: true,
+        pooledPositionsStaled: 0,
       });
     });
 
@@ -895,6 +902,7 @@ describe('MasterInventorySyncService', () => {
         reservedQuantity: 0,
         masterDeleted: true,
         pruneSkipped: true,
+        pooledPositionsStaled: 0,
       });
     });
   });
@@ -972,6 +980,153 @@ describe('MasterInventorySyncService', () => {
 
       expect(inventoryService.setInventory).toHaveBeenCalledWith(
         expect.objectContaining({ isStale: false, sourceConnectionId: connectionId })
+      );
+    });
+  });
+
+  // ADR-058 decision (2) enforcement (#2322): a source that starts locating a
+  // variant must not leave its own pooled row behind double-counting the stock.
+  describe('pooled-position enforcement (#2322)', () => {
+    const located = (variantId: string, locationId: string): InventoryPortInterface => ({
+      id: `inv-${variantId}-${locationId}`,
+      productId: internalProductId,
+      variantId,
+      locationId,
+      quantity: 5,
+      reserved: 0,
+      available: 5,
+      updatedAt: new Date('2026-05-01T10:00:00Z'),
+    });
+
+    const pooled = (variantId: string | null): InventoryPortInterface => ({
+      id: `inv-${variantId ?? 'base'}-pooled`,
+      productId: internalProductId,
+      variantId: variantId ?? undefined,
+      quantity: 3,
+      reserved: 0,
+      available: 3,
+      updatedAt: new Date('2026-05-01T10:00:00Z'),
+    });
+
+    it('should never reach storage when the master located nothing', async () => {
+      // The overwhelmingly common shape - both in-tree adapters emit no
+      // locationId at all - must cost no round-trip and change nothing.
+      inventoryAdapter.listInventory.mockResolvedValue([pooled('ol_variant_a')]);
+
+      const result = await service.syncFromMasterByExternalId(connectionId, externalId);
+
+      expect(inventoryService.staleLocationlessPositionsForSource).not.toHaveBeenCalled();
+      expect(result.pooledPositionsStaled).toBe(0);
+    });
+
+    it('should stale only the located variants own pooled rows, scoped to this source', async () => {
+      inventoryAdapter.listInventory.mockResolvedValue([
+        located('ol_variant_a', 'loc-1'),
+        pooled('ol_variant_b'),
+      ]);
+      (
+        inventoryService.staleLocationlessPositionsForSource as jest.Mock
+      ).mockResolvedValueOnce({ markedCount: 1, variantIds: ['ol_variant_a'] });
+
+      const result = await service.syncFromMasterByExternalId(connectionId, externalId);
+
+      expect(inventoryService.staleLocationlessPositionsForSource).toHaveBeenCalledTimes(1);
+      expect(inventoryService.staleLocationlessPositionsForSource).toHaveBeenCalledWith(
+        internalProductId,
+        ['ol_variant_a'],
+        { sourceConnectionId: connectionId, includeUnattributedProvenance: true }
+      );
+      expect(result.pooledPositionsStaled).toBe(1);
+    });
+
+    it('should carry a product-level located position as a null variant key', async () => {
+      inventoryAdapter.listInventory.mockResolvedValue([
+        { ...pooled(null), locationId: 'loc-1' },
+      ]);
+
+      await service.syncFromMasterByExternalId(connectionId, externalId);
+
+      expect(inventoryService.staleLocationlessPositionsForSource).toHaveBeenCalledWith(
+        internalProductId,
+        [null],
+        expect.objectContaining({ sourceConnectionId: connectionId })
+      );
+    });
+
+    it('should refuse to claim unattributed rows when a rival master claims the id', async () => {
+      // The repair still runs - the source's OWN stamped rows are unambiguous -
+      // but it may no longer assume an unowned row is its own (#1904).
+      entityClaims.findRivalClaimants.mockResolvedValue(['rival-connection']);
+      inventoryAdapter.listInventory.mockResolvedValue([located('ol_variant_a', 'loc-1')]);
+
+      await service.syncFromMasterByExternalId(connectionId, externalId);
+
+      expect(inventoryService.staleLocationlessPositionsForSource).toHaveBeenCalledWith(
+        internalProductId,
+        ['ol_variant_a'],
+        { sourceConnectionId: connectionId, includeUnattributedProvenance: false }
+      );
+    });
+
+    it('should run after every canonical write and before the staleness prune', async () => {
+      inventoryAdapter.listInventory.mockResolvedValue([located('ol_variant_a', 'loc-1')]);
+      const order: string[] = [];
+      (inventoryService.setInventory as jest.Mock).mockImplementation((item: InventoryItem) => {
+        order.push('set');
+        return Promise.resolve(item);
+      });
+      (
+        inventoryService.staleLocationlessPositionsForSource as jest.Mock
+      ).mockImplementation(() => {
+        order.push('enforce');
+        return Promise.resolve({ markedCount: 0, variantIds: [] });
+      });
+      (inventoryService.pruneStaleVariants as jest.Mock).mockImplementation(() => {
+        order.push('prune');
+        return Promise.resolve({ markedCount: 0, variantIds: [] });
+      });
+
+      await service.syncFromMasterByExternalId(connectionId, externalId);
+
+      expect(order).toEqual(['set', 'enforce', 'prune']);
+    });
+
+    it('should publish no master-deletion event for a re-located variant', async () => {
+      // Re-locating is not a deletion. Emitting here would reach
+      // `marketplace.offer.pauseStale` and zero live offers for stock that is
+      // still there (#1689).
+      inventoryAdapter.listInventory.mockResolvedValue([located('ol_variant_a', 'loc-1')]);
+      (
+        inventoryService.staleLocationlessPositionsForSource as jest.Mock
+      ).mockResolvedValueOnce({ markedCount: 3, variantIds: ['ol_variant_a'] });
+
+      await service.syncFromMasterByExternalId(connectionId, externalId);
+
+      expect(eventPublisher.publish).not.toHaveBeenCalled();
+    });
+
+    it('should warn distinctly when one response reports a variant both pooled and located', async () => {
+      const warn = jest.spyOn(
+        (service as unknown as { logger: { warn: (m: string) => void } }).logger,
+        'warn'
+      );
+      inventoryAdapter.listInventory.mockResolvedValue([
+        pooled('ol_variant_a'),
+        located('ol_variant_a', 'loc-1'),
+      ]);
+
+      await service.syncFromMasterByExternalId(connectionId, externalId);
+
+      expect(
+        warn.mock.calls.some((c) =>
+          String(c[0]).includes('inventory_pooled_and_located_in_one_response')
+        )
+      ).toBe(true);
+      // Located still wins: the enforcement runs after the whole loop.
+      expect(inventoryService.staleLocationlessPositionsForSource).toHaveBeenCalledWith(
+        internalProductId,
+        ['ol_variant_a'],
+        expect.anything()
       );
     });
   });
