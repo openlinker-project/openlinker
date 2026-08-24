@@ -21,6 +21,7 @@ import {
   INVENTORY_DB_MANAGED_COLUMNS,
   INVENTORY_IDENTITY_COLUMNS,
   INVENTORY_MASTER_OWNED_COLUMNS,
+  INVENTORY_OL_OWNED_COLUMNS,
   InventoryRepository,
 } from './inventory.repository';
 
@@ -157,6 +158,7 @@ describe('InventoryRepository', () => {
       reservedQuantity: 0,
       locationId: null,
       isStale: true,
+      sourceConnectionId: 'conn-old',
       updatedAt: new Date('2026-01-01T00:00:00Z'),
     } as InventoryItemOrmEntity;
 
@@ -197,7 +199,8 @@ describe('InventoryRepository', () => {
       3,
       null,
       new Date('2026-06-02T09:00:00Z'),
-      false
+      false,
+      'conn-new'
     );
 
     it('should write exactly the master-owned columns, sourced from the item', async () => {
@@ -213,7 +216,12 @@ describe('InventoryRepository', () => {
       // Both directions: no column may be added, and none dropped.
       expect(Object.keys(payload).sort()).toEqual([...INVENTORY_MASTER_OWNED_COLUMNS].sort());
       // Values must round-trip from the item, not merely be present.
-      expect(payload).toEqual({ availableQuantity: 7, reservedQuantity: 3, isStale: false });
+      expect(payload).toEqual({
+        availableQuantity: 7,
+        reservedQuantity: 3,
+        isStale: false,
+        sourceConnectionId: 'conn-new',
+      });
       expect(qb.where).toHaveBeenCalledWith('id = :id', { id: 'inv-1' });
     });
 
@@ -337,6 +345,129 @@ describe('InventoryRepository', () => {
       await expect(repository.upsert(incoming)).rejects.toThrow(InventoryReturningUnsupportedError);
     });
 
+    // ---- ADR-058 ladder step (i): provenance + the OL-owned group (#2314) ----
+
+    it('should never write an OL-owned column on the existing-row branch', async () => {
+      const qb = buildUpdateBuilderMock();
+      ormRepository.findOne.mockResolvedValue(existingRow);
+      ormRepository.createQueryBuilder.mockReturnValue(
+        qb as unknown as ReturnType<typeof ormRepository.createQueryBuilder>
+      );
+
+      await repository.upsert(incoming);
+
+      const payload = qb.set.mock.calls[0][0];
+      for (const column of INVENTORY_OL_OWNED_COLUMNS) {
+        expect(payload).not.toHaveProperty(column);
+      }
+      // The loop above is vacuous today, and deliberately so: the group is empty
+      // until `olReservedQuantity` lands (ADR-061, Wave 2). Pinning the emptiness
+      // makes this assertion start doing real work on the same commit that fills
+      // the group, rather than passing silently forever.
+      expect(INVENTORY_OL_OWNED_COLUMNS).toEqual([]);
+    });
+
+    it('should keep the four column groups disjoint', () => {
+      const all = [
+        ...INVENTORY_IDENTITY_COLUMNS,
+        ...INVENTORY_MASTER_OWNED_COLUMNS,
+        ...INVENTORY_DB_MANAGED_COLUMNS,
+        ...INVENTORY_OL_OWNED_COLUMNS,
+      ];
+
+      // Classification says "exactly one group"; the sibling spec proves total
+      // coverage, this one proves no column is claimed twice — a column in both
+      // the master-owned and OL-owned sets would type-check and silently make
+      // the master the writer of an OL-owned value.
+      expect(new Set(all).size).toBe(all.length);
+    });
+
+    it('should write the incoming provenance on the existing-row branch and carry it back', async () => {
+      const qb = buildUpdateBuilderMock();
+      ormRepository.findOne.mockResolvedValue(existingRow);
+      ormRepository.createQueryBuilder.mockReturnValue(
+        qb as unknown as ReturnType<typeof ormRepository.createQueryBuilder>
+      );
+
+      const result = await repository.upsert(incoming);
+
+      // The row already carried 'conn-old'. Provenance is in the UPDATE set on
+      // purpose, so the syncing connection stamps its own id — this is what lets
+      // a pre-existing row acquire provenance without waiting for #2317.
+      expect(qb.set.mock.calls[0][0]).toHaveProperty('sourceConnectionId', 'conn-new');
+      expect(result.sourceConnectionId).toBe('conn-new');
+    });
+
+    it('should write provenance on the insert branch and carry it back', async () => {
+      const stampedAt = new Date('2026-06-02T09:30:00Z');
+      ormRepository.findOne.mockResolvedValue(null);
+      ormRepository.save.mockImplementation((v: unknown) =>
+        Promise.resolve({ ...(v as InventoryItemOrmEntity), updatedAt: stampedAt })
+      );
+
+      const insertable = new InventoryItem(
+        '6f1d2b3c-4e5f-4a7b-8c9d-0e1f2a3b4c5d',
+        'ol_product_1',
+        'ol_variant_1',
+        7,
+        3,
+        null,
+        new Date('2026-06-02T09:00:00Z'),
+        false,
+        'conn-new'
+      );
+
+      const result = await repository.upsert(insertable);
+
+      const saved = ormRepository.save.mock.calls[0][0] as InventoryItemOrmEntity;
+      expect(saved.sourceConnectionId).toBe('conn-new');
+      expect(result.sourceConnectionId).toBe('conn-new');
+    });
+
+    it('should write provenance on the regenerated-id insert sub-branch too', async () => {
+      // The non-UUID branch rebuilds the entity through `create({...rest, id})`;
+      // a column dropped by that destructure would be lost silently.
+      const stampedAt = new Date('2026-06-02T09:30:00Z');
+      ormRepository.findOne.mockResolvedValue(null);
+      ormRepository.create.mockImplementation((v: unknown) => v as InventoryItemOrmEntity);
+      ormRepository.save.mockImplementation((v: unknown) =>
+        Promise.resolve({ ...(v as InventoryItemOrmEntity), updatedAt: stampedAt })
+      );
+
+      const result = await repository.upsert(incoming);
+
+      const created = ormRepository.create.mock.calls[0][0] as InventoryItemOrmEntity;
+      expect(created.sourceConnectionId).toBe('conn-new');
+      expect(result.sourceConnectionId).toBe('conn-new');
+    });
+
+    it('should persist a null provenance rather than inventing one', async () => {
+      // A caller with no connection axis is legal until the #2317 backfill;
+      // NULL must reach the row as NULL, not be coerced to a placeholder.
+      const stampedAt = new Date('2026-06-02T09:30:00Z');
+      ormRepository.findOne.mockResolvedValue(null);
+      ormRepository.save.mockImplementation((v: unknown) =>
+        Promise.resolve({ ...(v as InventoryItemOrmEntity), updatedAt: stampedAt })
+      );
+
+      const unattributed = new InventoryItem(
+        '6f1d2b3c-4e5f-4a7b-8c9d-0e1f2a3b4c5d',
+        'ol_product_1',
+        'ol_variant_1',
+        7,
+        3,
+        null,
+        new Date('2026-06-02T09:00:00Z'),
+        false
+      );
+
+      const result = await repository.upsert(unattributed);
+
+      expect((ormRepository.save.mock.calls[0][0] as InventoryItemOrmEntity).sourceConnectionId).
+        toBeNull();
+      expect(result.sourceConnectionId).toBeNull();
+    });
+
     // The guard that actually earns its keep: adding a column to the ORM entity
     // fails here until it is classified, instead of silently joining the write
     // set. Same "must be updated deliberately" shape as route-lazy.test.ts's
@@ -351,6 +482,7 @@ describe('InventoryRepository', () => {
         ...INVENTORY_IDENTITY_COLUMNS,
         ...INVENTORY_MASTER_OWNED_COLUMNS,
         ...INVENTORY_DB_MANAGED_COLUMNS,
+        ...INVENTORY_OL_OWNED_COLUMNS,
       ].sort();
 
       expect(declared).toEqual(classified);

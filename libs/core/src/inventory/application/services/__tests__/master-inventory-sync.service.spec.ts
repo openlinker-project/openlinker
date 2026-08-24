@@ -872,4 +872,81 @@ describe('MasterInventorySyncService', () => {
       });
     });
   });
+
+  describe('connection provenance (ADR-058 ladder step (i), #2314)', () => {
+    it('should stamp the syncing connection onto the item handed to setInventory', async () => {
+      inventoryAdapter.listInventory.mockResolvedValue([
+        {
+          id: 'inv-a',
+          productId: internalProductId,
+          variantId: 'ol_variant_a',
+          quantity: 10,
+          reserved: 1,
+          available: 9,
+          updatedAt: new Date('2026-05-01T10:00:00Z'),
+        },
+      ]);
+
+      await service.syncFromMasterByExternalId(connectionId, externalId);
+
+      // This sync IS the owner of the position it just pulled, so provenance is
+      // the connection it ran for — not something derived downstream.
+      expect(inventoryService.setInventory).toHaveBeenCalledWith(
+        expect.objectContaining({ sourceConnectionId: connectionId })
+      );
+    });
+
+    it('should stamp EVERY item of a multi-variant response, not just the first', async () => {
+      inventoryAdapter.listInventory.mockResolvedValue([
+        {
+          id: 'inv-a',
+          productId: internalProductId,
+          variantId: 'ol_variant_a',
+          quantity: 10,
+          reserved: 1,
+          available: 9,
+          updatedAt: new Date('2026-05-01T10:00:00Z'),
+        },
+        {
+          id: 'inv-b',
+          productId: internalProductId,
+          variantId: 'ol_variant_b',
+          quantity: 5,
+          reserved: 0,
+          available: 5,
+          updatedAt: new Date('2026-05-01T10:00:00Z'),
+        },
+      ]);
+
+      await service.syncFromMasterByExternalId(connectionId, externalId);
+
+      expect(inventoryService.setInventory).toHaveBeenCalledTimes(2);
+      for (const call of inventoryService.setInventory.mock.calls) {
+        expect((call[0]).sourceConnectionId).toBe(connectionId);
+      }
+    });
+
+    it('should keep the row live while stamping provenance', async () => {
+      // `isStale` had to become an explicit argument to reach the new trailing
+      // one. It must still be `false` — a row the master just reported is live,
+      // and a slip here would stale every synced row (#1478).
+      inventoryAdapter.listInventory.mockResolvedValue([
+        {
+          id: 'inv-a',
+          productId: internalProductId,
+          variantId: 'ol_variant_a',
+          quantity: 10,
+          reserved: 1,
+          available: 9,
+          updatedAt: new Date('2026-05-01T10:00:00Z'),
+        },
+      ]);
+
+      await service.syncFromMasterByExternalId(connectionId, externalId);
+
+      expect(inventoryService.setInventory).toHaveBeenCalledWith(
+        expect.objectContaining({ isStale: false, sourceConnectionId: connectionId })
+      );
+    });
+  });
 });
