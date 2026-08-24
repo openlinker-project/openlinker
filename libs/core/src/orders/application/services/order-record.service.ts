@@ -44,6 +44,8 @@ import {
 } from '../../orders.tokens';
 import { deriveOrderAnalyticsScalars, deriveOrderLineItems } from '../../domain/order-analytics-projection';
 import { buildSalesAndChannelAnalytics } from '../../domain/order-sales-aggregation';
+import { buildTopProducts } from '../../domain/top-products-aggregation';
+import type { TopProductFilters, TopProductsResult } from '../../domain/types/top-products.types';
 
 @Injectable()
 export class OrderRecordService implements IOrderRecordService {
@@ -511,6 +513,36 @@ export class OrderRecordService implements IOrderRecordService {
       unitsByConnection,
       earliestOrderDateByConnection,
     });
+  }
+
+  /**
+   * Resolves the CURRENT system reporting currency (#2049/ADR-040 bugfix)
+   * before ranking, so `revenue` sums only orders stamped in that currency —
+   * an order stamped under a PREVIOUS setting is a different currency era
+   * (settings changes are forward-only) and would otherwise get silently
+   * summed in under an arbitrary label. See {@link
+   * OrderLineItemRepositoryPort.getTopProductRanking}.
+   *
+   * The ranking and breakdown reads below are deliberately SEQUENTIAL, not
+   * `Promise.all`-parallelised like {@link getSalesAndChannelAnalytics}'s
+   * three independent reads above — `getProductChannelBreakdown` is scoped
+   * to the current page's `productIds`, which only exist once the ranking
+   * query has returned (#2172 review, SUGGESTION 2).
+   */
+  async getTopProducts(filters: TopProductFilters): Promise<TopProductsResult> {
+    const reportingCurrency = await this.reportingCurrencySettings.resolve();
+    const { rows: ranking, total } = await this.lineItemRepository.getTopProductRanking(
+      filters,
+      reportingCurrency
+    );
+    const productIds = ranking.map((row) => row.productId);
+    const breakdown = await this.lineItemRepository.getProductChannelBreakdown(
+      productIds,
+      filters,
+      reportingCurrency
+    );
+
+    return buildTopProducts({ ranking, total, breakdown });
   }
 
   /**
