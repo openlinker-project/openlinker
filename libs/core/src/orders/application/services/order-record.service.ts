@@ -522,6 +522,12 @@ export class OrderRecordService implements IOrderRecordService {
    * (settings changes are forward-only) and would otherwise get silently
    * summed in under an arbitrary label. See {@link
    * OrderLineItemRepositoryPort.getTopProductRanking}.
+   *
+   * The ranking and breakdown reads below are deliberately SEQUENTIAL, not
+   * `Promise.all`-parallelised like {@link getSalesAndChannelAnalytics}'s
+   * three independent reads above — `getProductChannelBreakdown` is scoped
+   * to the current page's `productIds`, which only exist once the ranking
+   * query has returned (#2172 review, SUGGESTION 2).
    */
   async getTopProducts(filters: TopProductFilters): Promise<TopProductsResult> {
     const reportingCurrency = await this.reportingCurrencySettings.resolve();
