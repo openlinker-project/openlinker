@@ -16,6 +16,7 @@ import type { HttpTransportFactoryPort } from '@openlinker/shared/http';
 import { KsefConnectionTesterAdapter } from '../ksef-connection-tester.adapter';
 import { KsefAuthenticationException } from '../../../domain/exceptions/ksef-authentication.exception';
 import { KsefConfigException } from '../../../domain/exceptions/ksef-config.exception';
+import { KsefSessionCryptoException } from '../../../domain/exceptions/ksef-session-crypto.exception';
 import * as httpClientFactory from '../../http/ksef-http-client.factory';
 
 jest.mock('../../http/ksef-http-client.factory');
@@ -238,6 +239,30 @@ describe('KsefConnectionTesterAdapter', () => {
     expect(result).toMatchObject({
       success: false,
       message: 'KSeF auth handshake used before wiring completed',
+    });
+  });
+
+  it('should surface a session-crypto failure (cert fetch/validation, RSA wrap) instead of the generic fallback', async () => {
+    const authenticate = jest
+      .fn()
+      .mockRejectedValue(
+        new KsefSessionCryptoException('No valid MF public-key certificate for usage KsefTokenEncryption', 'CERT_NOT_FOUND'),
+      );
+    createKsefHttpClientMock.mockReturnValue({
+      httpClient: {} as never,
+      publicKeyCache: {} as never,
+      handshake: { authenticate } as never,
+    });
+
+    const adapter = new KsefConnectionTesterAdapter(http);
+    const result = await adapter.test(
+      connection(),
+      resolver({ 'ref:ksef': { authType: 'ksef-token', secret: 'tok' } }),
+    );
+
+    expect(result).toMatchObject({
+      success: false,
+      message: 'No valid MF public-key certificate for usage KsefTokenEncryption',
     });
   });
 });
