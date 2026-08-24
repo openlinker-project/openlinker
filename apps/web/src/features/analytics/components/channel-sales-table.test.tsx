@@ -94,6 +94,12 @@ describe('ChannelSalesTable', () => {
     // emitted, matching groupChannelTotalsByCurrency's documented rule).
     expect(screen.getAllByText('PLN 2,700.00')).toHaveLength(2);
     expect(screen.getAllByText('62.5%')).toHaveLength(2);
+    // AOV reads netAverageOrderValue (108), never gross averageOrderValue
+    // (120) — pins the bug where Net sales read net while AOV still read
+    // gross, so a net-ineligible channel could show a real, nonzero AOV
+    // next to "Net sales 0.00".
+    expect(screen.getAllByText('PLN 108.00')).toHaveLength(2);
+    expect(screen.queryByText('PLN 120.00')).not.toBeInTheDocument();
   });
 
   it('should render a partial-history channel with a coverage flag', async () => {
