@@ -27,6 +27,7 @@ export { InventoryReturningUnsupportedError } from './domain/exceptions/inventor
 export { InventoryRowVanishedError } from './domain/exceptions/inventory-row-vanished.error';
 export { DuplicateLocationCodeError } from './domain/exceptions/duplicate-location-code.error';
 export { LocationNotFoundException } from './domain/exceptions/location-not-found.exception';
+export { LocationInUseError } from './domain/exceptions/location-in-use.error';
 
 // Application Services
 export { IInventoryService } from './application/services/inventory.service.interface';

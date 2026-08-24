@@ -21,6 +21,7 @@ import { AppModule } from '../../src/app.module';
 import { API_VERSION } from '../../src/app-info/app-info.types';
 import { CapabilityNotSupportedFilter } from '../../src/common/filters/capability-not-supported.filter';
 import { ConnectionExceptionFilter } from '../../src/common/filters/connection-exception.filter';
+import { InventoryLocationExceptionFilter } from '../../src/common/filters/inventory-location-exception.filter';
 
 const harness = createIntegrationTestHarness({
   imports: [AppModule],
@@ -28,7 +29,11 @@ const harness = createIntegrationTestHarness({
   // HTTP status mapping the running app does (domain exceptions → 400/404/409
   // rather than a default 500).
   configureApp: (app) => {
-    app.useGlobalFilters(new CapabilityNotSupportedFilter(), new ConnectionExceptionFilter());
+    app.useGlobalFilters(
+      new CapabilityNotSupportedFilter(),
+      new ConnectionExceptionFilter(),
+      new InventoryLocationExceptionFilter()
+    );
     // Mirror main.ts's URI versioning (#1133) so int-specs exercise the same
     // `/v1` routing prod serves. Only the version-neutral routes (the `/webhooks`
     // ingress and the root `/`) stay reachable without the prefix.

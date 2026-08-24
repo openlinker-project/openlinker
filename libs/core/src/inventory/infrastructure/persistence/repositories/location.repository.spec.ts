@@ -14,6 +14,7 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { QueryFailedError, type Repository } from 'typeorm';
 
 import { DuplicateLocationCodeError } from '../../../domain/exceptions/duplicate-location-code.error';
+import { InventoryItemOrmEntity } from '../entities/inventory-item.orm-entity';
 import { InventoryLocationOrmEntity } from '../entities/inventory-location.orm-entity';
 import { LocationRepository } from './location.repository';
 
@@ -22,6 +23,7 @@ describe('LocationRepository', () => {
   let ormRepository: jest.Mocked<
     Pick<Repository<InventoryLocationOrmEntity>, 'save' | 'findOne' | 'findAndCount' | 'delete'>
   >;
+  let inventoryItemsRepository: jest.Mocked<Pick<Repository<InventoryItemOrmEntity>, 'count'>>;
 
   beforeEach(async () => {
     ormRepository = {
@@ -30,6 +32,7 @@ describe('LocationRepository', () => {
       findAndCount: jest.fn(),
       delete: jest.fn(),
     };
+    inventoryItemsRepository = { count: jest.fn() };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -37,6 +40,10 @@ describe('LocationRepository', () => {
         {
           provide: getRepositoryToken(InventoryLocationOrmEntity),
           useValue: ormRepository,
+        },
+        {
+          provide: getRepositoryToken(InventoryItemOrmEntity),
+          useValue: inventoryItemsRepository,
         },
       ],
     }).compile();
@@ -195,6 +202,17 @@ describe('LocationRepository', () => {
       ormRepository.delete.mockResolvedValue({ affected: 1, raw: [] });
 
       await expect(repository.delete('ol_location_x')).resolves.toBe(true);
+    });
+  });
+
+  describe('countPositionsAtLocation', () => {
+    it('should count the inventory_items rows carrying the location id', async () => {
+      inventoryItemsRepository.count.mockResolvedValue(3);
+
+      await expect(repository.countPositionsAtLocation('ol_location_1')).resolves.toBe(3);
+      expect(inventoryItemsRepository.count).toHaveBeenCalledWith({
+        where: { locationId: 'ol_location_1' },
+      });
     });
   });
 });
