@@ -43,6 +43,12 @@ export {
   OrderLifecycleEventTypeValues,
   OrderWritebackOutcomeValues,
 } from './domain/types/order-lifecycle-event.types';
+
+// Return source reader (#2329 / ADR-060): the returns half of OrderSource.
+// Advertised-without-dispatch — narrow the dispatched OrderSource adapter with
+// the guard; never getCapabilityAdapter('ReturnSourceReader').
+export type { ReturnSourceReader } from './domain/ports/capabilities/return-source-reader.capability';
+export { isReturnSourceReader } from './domain/ports/capabilities/return-source-reader.capability';
 export type {
   FulfillmentStatus,
   FulfillmentStatusSnapshot,
