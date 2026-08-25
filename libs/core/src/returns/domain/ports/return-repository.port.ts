@@ -29,6 +29,7 @@ import type {
   ReturnSourceSweepFilter,
   ReturnSweepCandidate,
 } from '../types/return-sweep.types';
+import type { ReturnReattributionCandidate } from '../types/return-reattribution.types';
 
 export interface ReturnRepositoryPort {
   /**
@@ -115,6 +116,64 @@ export interface ReturnRepositoryPort {
    * hydrating every line for it would be N+1 for data the list does not render.
    */
   listOrphans(limit: number, offset: number): Promise<ReturnRecord[]>;
+
+  /**
+   * How many returns are orphaned right now — the operator's attention number (#2332).
+   *
+   * The same `internalOrderId IS NULL` predicate {@link ReturnRepositoryPort.listOrphans}
+   * uses, over the same `IDX_returns_orphans` partial index, because it is the same
+   * question asked for a count instead of a page. Deliberately NOT connection-scoped:
+   * `listOrphans` is connection-agnostic, and a deployment-wide attention number is what
+   * the bucket is for; a per-connection breakdown is additive later if a surface needs
+   * one.
+   */
+  countOrphans(): Promise<number>;
+
+  /**
+   * One page of orphans worth re-checking against `identifier_mappings` (#2332).
+   *
+   * Filtered to orphans on ONE connection that still carry a source order reference —
+   * see {@link ReturnReattributionCandidate} for why a NULL `externalOrderId` is excluded
+   * rather than scanned forever. Headers projection only; the pass renders nothing.
+   *
+   * Ordered `createdAt DESC, id ASC`. **Note this is the OPPOSITE direction to
+   * {@link ReturnRepositoryPort.findForSourceSweep}, which is oldest-first, and the
+   * difference is deliberate rather than an oversight in one of them**: that sweep asks
+   * "which return has been open longest without a re-read", so oldest-first is fairest;
+   * this one asks "whose order is most likely to have just arrived", and that is the
+   * RECENT orphan — an orphan from six months ago is one whose order was probably never
+   * going to be ingested at all. The `id ASC` tiebreak keeps the scan offset meaning the
+   * same thing between runs either way.
+   */
+  findOrphansForReattribution(
+    sourceConnectionId: string,
+    limit: number,
+    offset: number
+  ): Promise<ReturnReattributionCandidate[]>;
+
+  /**
+   * How many rows match the same candidate filter — the total a scan offset wraps
+   * against. Separate from the page read for the reason
+   * {@link ReturnRepositoryPort.countForSourceSweep} is, and built from the same shared
+   * private query so the page and the total can never diverge.
+   */
+  countOrphansForReattribution(sourceConnectionId: string): Promise<number>;
+
+  /**
+   * Attribute an orphan to an order — a CONDITIONAL update, answering whether it won.
+   *
+   * `WHERE "id" = $1 AND "internalOrderId" IS NULL`, reporting `affected > 0` (the
+   * `ShipmentRepository.claimWaybillRelay` shape, #1947). The `IS NULL` arm does two
+   * jobs. It serialises this pass against a concurrent `upsertFromSource` that may be
+   * filling the same column — the loser learns it lost rather than overwriting. And it
+   * is what keeps attribution **monotonic**: this method can only ever fill the value in,
+   * never change one, so no reconcile can re-point a return at a different order.
+   *
+   * A `false` return is therefore a SUCCESS from the operator's point of view (the
+   * return is attributed, just not by this call) and the pass counts it
+   * `alreadyAttributed`, never `unresolved` and never `failed`.
+   */
+  claimAttribution(id: string, internalOrderId: string): Promise<boolean>;
 
   /**
    * One page of returns worth re-reading at the source (#2330, pass 2).

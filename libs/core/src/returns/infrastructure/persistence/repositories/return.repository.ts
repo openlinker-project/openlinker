@@ -44,6 +44,7 @@ import type {
   ReturnSourceSweepFilter,
   ReturnSweepCandidate,
 } from '../../../domain/types/return-sweep.types';
+import type { ReturnReattributionCandidate } from '../../../domain/types/return-reattribution.types';
 import type {
   ReturnCustodyState,
   ReturnDisposition,
@@ -68,6 +69,7 @@ export class ReturnRepository implements ReturnRepositoryPort {
     header.sourceConnectionId = input.sourceConnectionId;
     header.externalReturnId = input.externalReturnId;
     header.internalOrderId = input.internalOrderId;
+    header.externalOrderId = input.externalOrderId;
     header.origin = input.origin;
     header.rawStatus = input.rawStatus;
     header.rawPayload = input.rawPayload;
@@ -169,14 +171,18 @@ export class ReturnRepository implements ReturnRepositoryPort {
     const rows = (await manager.query(
       `INSERT INTO "returns" (
          "id", "sourceConnectionId", "externalReturnId", "internalOrderId",
-         "origin", "rawStatus", "rawPayload", "openedAt"
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8)
+         "externalOrderId", "origin", "rawStatus", "rawPayload", "openedAt"
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9)
        ON CONFLICT ("sourceConnectionId", "externalReturnId")
          WHERE "externalReturnId" IS NOT NULL
        DO UPDATE SET
          -- Attribution is MONOTONIC: a later write may name the order, a
          -- failed re-resolve must never re-orphan an attributed return.
          "internalOrderId" = COALESCE(EXCLUDED."internalOrderId", "returns"."internalOrderId"),
+         -- The re-attribution key (#2332). COALESCE, not latest-wins: a source that
+         -- stops naming the order has not made the return belong to a different one,
+         -- and blanking it would destroy the only thing the reconcile can resolve from.
+         "externalOrderId" = COALESCE(EXCLUDED."externalOrderId", "returns"."externalOrderId"),
          -- The source's own words, refreshed verbatim (latest-wins): a source
          -- that stops sending a status has genuinely stopped saying it.
          "rawStatus" = EXCLUDED."rawStatus",
@@ -192,6 +198,7 @@ export class ReturnRepository implements ReturnRepositoryPort {
         input.sourceConnectionId,
         input.externalReturnId,
         input.internalOrderId,
+        input.externalOrderId,
         input.origin,
         input.rawStatus,
         input.rawPayload === null ? null : JSON.stringify(input.rawPayload),
@@ -368,6 +375,83 @@ export class ReturnRepository implements ReturnRepositoryPort {
   }
 
   /**
+   * The orphan attention number (#2332) — same predicate and same partial index as
+   * `listOrphans`, asked as a count.
+   */
+  async countOrphans(): Promise<number> {
+    return this.returns.count({ where: { internalOrderId: IsNull() } });
+  }
+
+  /**
+   * One page of re-attribution candidates (#2332).
+   *
+   * `createdAt DESC` — the opposite direction to `findForSourceSweep`, deliberately; see
+   * the port docblock for why "whose order most likely just arrived" is a
+   * newest-first question while "who has waited longest for a re-read" is not.
+   */
+  async findOrphansForReattribution(
+    sourceConnectionId: string,
+    limit: number,
+    offset: number
+  ): Promise<ReturnReattributionCandidate[]> {
+    const rows = await this.buildReattributionQuery(sourceConnectionId)
+      .select(['r.id', 'r.externalOrderId'])
+      .orderBy('r."createdAt"', 'DESC')
+      .addOrderBy('r.id', 'ASC')
+      // `limit`/`offset` rather than `take`/`skip` for the same reason
+      // `findForSourceSweep` uses them: this is a raw projection with no joins, so the
+      // direct SQL clauses are what it means.
+      .limit(limit)
+      .offset(offset)
+      .getRawMany<{ r_id: string; r_externalOrderId: string }>();
+
+    return rows.map((row) => ({ id: row.r_id, externalOrderId: row.r_externalOrderId }));
+  }
+
+  async countOrphansForReattribution(sourceConnectionId: string): Promise<number> {
+    return this.buildReattributionQuery(sourceConnectionId).getCount();
+  }
+
+  /**
+   * The single WHERE the candidate page and its count share — one builder, two callers,
+   * so a filter can never be applied to the page but not the total (which would make the
+   * scan offset wrap against a set it is not paging through).
+   */
+  private buildReattributionQuery(
+    sourceConnectionId: string
+  ): SelectQueryBuilder<ReturnOrmEntity> {
+    return this.returns
+      .createQueryBuilder('r')
+      .where('r."sourceConnectionId" = :connectionId', { connectionId: sourceConnectionId })
+      .andWhere('r."internalOrderId" IS NULL')
+      .andWhere('r."externalOrderId" IS NOT NULL');
+  }
+
+  /**
+   * Fill in an orphan's attribution, if and only if it is still an orphan (#2332).
+   *
+   * Conditional UPDATE, `affected > 0` as the answer — see the port docblock for why the
+   * `IS NULL` arm is both the concurrency seam and the monotonicity guarantee.
+   * `updatedAt` is set explicitly because `@UpdateDateColumn` is TypeORM-managed and a
+   * query-builder update bypasses it.
+   */
+  async claimAttribution(id: string, internalOrderId: string): Promise<boolean> {
+    try {
+      const result = await this.returns
+        .createQueryBuilder()
+        .update(ReturnOrmEntity)
+        .set({ internalOrderId, updatedAt: () => 'now()' })
+        .where('"id" = :id', { id })
+        .andWhere('"internalOrderId" IS NULL')
+        .execute();
+
+      return (result.affected ?? 0) > 0;
+    } catch (error) {
+      throw new ReturnPersistenceError('claimAttribution', error);
+    }
+  }
+
+  /**
    * The pass-2 candidate page (#2330) — headers projection, deterministic order.
    *
    * Built with the query builder rather than `find()` because two of the three
@@ -448,6 +532,7 @@ export class ReturnRepository implements ReturnRepositoryPort {
       header.sourceConnectionId,
       header.externalReturnId,
       header.internalOrderId,
+      header.externalOrderId,
       header.origin as ReturnOrigin,
       header.rawStatus,
       header.rawPayload,

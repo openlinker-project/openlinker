@@ -93,3 +93,31 @@ export interface MarketplaceReturnsStatusSyncPayloadV1 {
    */
   lookbackDays?: number;
 }
+
+/**
+ * Payload for `returns.orphan.reconcile` (#2332 — re-attribution, `bulk` lane).
+ *
+ * Enumerates OL's OWN orphan returns on one connection — those with no
+ * `internalOrderId` but a source order reference to resolve from — and re-checks each
+ * against `identifier_mappings`. **No marketplace call is made**, which is why this pass
+ * can default ON where the two ingestion passes above are opt-in.
+ *
+ * Paced by a rolling numeric scan offset on the connection cursor, the same shape as
+ * `MarketplaceReturnsStatusSyncPayloadV1`. It enqueues nothing: the work is a bounded
+ * page of local lookups and conditional updates, done inline.
+ *
+ * There is deliberately **no age bound** here, unlike the lifecycle sweep. That bound
+ * exists because an unrecognised source status can pin a row in the candidate set
+ * forever; an orphan leaves this pass's candidate set the moment it is attributed, and an
+ * orphan that never resolves is precisely the row an operator needs to keep seeing.
+ */
+export interface ReturnsOrphanReconcilePayloadV1 {
+  schemaVersion: 1;
+  /** Page size: number of orphan returns to re-check per run. */
+  limit?: number;
+  /**
+   * Connection-cursor key holding the rolling numeric scan offset. Omitted → the handler
+   * falls back to `returns.orphanReattribution.scanOffset`.
+   */
+  cursorKey?: string;
+}

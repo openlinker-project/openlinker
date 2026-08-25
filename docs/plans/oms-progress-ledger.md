@@ -88,7 +88,7 @@ Branch: `oms-programme-wave-1` (stacked off Wave-0 tip feb78054d; Wave-0 PR to m
 | #2329 | W1c-3 | ReturnSourceReader contract | ☑ merged 8ecc8b855 (commit 0edf7f52a; reviewed, approved; cursor-type AC deviation stated) |
 | #2330 | W1c-4A | Allegro ReturnSourceReader + returns jobs | ☑ merged (commit 4d9d4e7c0; reviewed, approved; three job types; full test:integration surfaced 3 PRE-EXISTING failures → repair pass dispatched) |
 | #2328 | W1c-2 | ReturnsService idempotent update-or-create | ☑ merged 29b2579f4 (commit fc4718112; reviewed, approved; O1 synthesise-adapter-side ruled; no created-detection) |
-| #2332 | W1c-5 | orphan bucket + trigger block + reconcile | ◐ plan in progress |
+| #2332 | W1c-5 | orphan bucket + trigger block + reconcile | ☑ implemented on `2332-orphan-bucket-return` (migration 1847000000000; adds `returns.externalOrderId` — the issue's "already stored" premise was false; `ReturnBucket` vocabulary + `ReturnNotAttributedError` for #2334) |
 | #2334 | W1c-7 | returns read API | ◐ plan in progress |
 ### Wave 2 (epic #2389) — gated per its epic body; §8 Q1 = YES (decision 2 above)
 

@@ -17,6 +17,7 @@ import { MarketplaceOrderFxStampSweepHandler } from './marketplace-order-fx-stam
 import { MarketplaceReturnsPollHandler } from './marketplace-returns-poll.handler';
 import { MarketplaceReturnSyncHandler } from './marketplace-return-sync.handler';
 import { MarketplaceReturnsStatusSyncHandler } from './marketplace-returns-status-sync.handler';
+import { ReturnsOrphanReconcileHandler } from './returns-orphan-reconcile.handler';
 import { MarketplaceOfferQuantityUpdateHandler } from './marketplace-offer-quantity-update.handler';
 import { MarketplaceOfferFieldUpdateHandler } from './marketplace-offer-field-update.handler';
 import { MarketplaceOfferCreateHandler } from './marketplace-offer-create.handler';
@@ -62,6 +63,7 @@ export class HandlerRegistrationService implements OnModuleInit {
     private readonly marketplaceReturnsPollHandler: MarketplaceReturnsPollHandler,
     private readonly marketplaceReturnSyncHandler: MarketplaceReturnSyncHandler,
     private readonly marketplaceReturnsStatusSyncHandler: MarketplaceReturnsStatusSyncHandler,
+    private readonly returnsOrphanReconcileHandler: ReturnsOrphanReconcileHandler,
     private readonly marketplaceOfferQuantityUpdateHandler: MarketplaceOfferQuantityUpdateHandler,
     private readonly marketplaceOfferFieldUpdateHandler: MarketplaceOfferFieldUpdateHandler,
     private readonly marketplaceOfferCreateHandler: MarketplaceOfferCreateHandler,
@@ -144,6 +146,16 @@ export class HandlerRegistrationService implements OnModuleInit {
     this.handlerRegistry.register(
       'marketplace.returns.statusSync',
       this.marketplaceReturnsStatusSyncHandler,
+      'bulk'
+    );
+    // Orphan re-attribution (#2332). `bulk`, and the cost-of-starvation reasoning is
+    // sharper here than for its siblings: this pass is catch-up work whose lateness costs
+    // nobody a request, and the pass that RESOLVES its orphans is `realtime` order
+    // ingestion — so it must never contend with the very work that gives it something to
+    // do.
+    this.handlerRegistry.register(
+      'returns.orphan.reconcile',
+      this.returnsOrphanReconcileHandler,
       'bulk'
     );
     this.handlerRegistry.register(

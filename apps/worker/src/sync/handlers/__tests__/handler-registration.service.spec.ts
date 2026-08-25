@@ -36,9 +36,12 @@ describe('HandlerRegistrationService (ADR-050 lane partition, #2278)', () => {
     expect(() => registry.assertFullLaneCoverage()).not.toThrow();
   });
 
-  it('should partition the 39 job types 13/14/5/7 per ADR-050 decision 1', () => {
+  it('should partition the 40 job types 13/15/5/7 per ADR-050 decision 1', () => {
     expect(registry.getJobTypesByLane('realtime')).toHaveLength(13);
-    expect(registry.getJobTypesByLane('bulk')).toHaveLength(14);
+    // 15 since #2332 added `returns.orphan.reconcile` — background catch-up work whose
+    // lateness costs nobody a request, and which must not contend with the `realtime`
+    // order ingestion that is what RESOLVES its orphans.
+    expect(registry.getJobTypesByLane('bulk')).toHaveLength(15);
     expect(registry.getJobTypesByLane('fiscal')).toHaveLength(5);
     expect(registry.getJobTypesByLane('fan-out')).toHaveLength(7);
   });

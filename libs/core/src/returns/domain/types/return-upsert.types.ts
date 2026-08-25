@@ -68,6 +68,14 @@ export interface UpsertReturnRecordInput {
    * MONOTONICALLY: a later write may fill it in, never blank it back out.
    */
   internalOrderId: string | null;
+  /**
+   * The source's own order reference (#2332) — the re-attribution key.
+   *
+   * Applied with COALESCE like `openedAt`, NOT latest-wins like `rawStatus`: a source
+   * that stops naming the order has not made the return belong to a different one, and
+   * blanking the value would destroy the only thing a later reconcile can resolve from.
+   */
+  externalOrderId: string | null;
   /** Insert-only — `operator_authored` is never demoted by a later ingestion. */
   origin: ReturnOrigin;
   rawStatus: string | null;

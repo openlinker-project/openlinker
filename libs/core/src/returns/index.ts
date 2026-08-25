@@ -69,3 +69,19 @@ export type {
   ReturnStatusSyncOptions,
   ReturnStatusSyncResult,
 } from './application/services/return-status-sync.service.interface';
+
+// Orphan bucket, downstream-trigger block and re-attribution reconcile (#2332).
+// `ReturnBucket` is the vocabulary #2334's `?bucket=` validates against;
+// `ReturnDownstreamTrigger` + the two errors are what a Wave-2 trigger imports so it can
+// call the guard and catch its refusal.
+export * from './domain/types/return-bucket.types';
+export * from './domain/types/return-trigger.types';
+export type {
+  ReturnReattributionCandidate,
+  ReturnReattributionOptions,
+  ReturnReattributionPage,
+  ReturnReattributionResult,
+} from './domain/types/return-reattribution.types';
+export { ReturnNotAttributedError } from './domain/exceptions/return-not-attributed.error';
+export { ReturnNotFoundError } from './domain/exceptions/return-not-found.error';
+export type { IReturnReattributionService } from './application/services/return-reattribution.service.interface';

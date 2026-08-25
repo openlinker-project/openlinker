@@ -38,6 +38,16 @@ export class ReturnRecord {
     public readonly externalReturnId: string | null,
     /** Nullable by design — orphan returns persist and block downstream triggers. */
     public readonly internalOrderId: string | null,
+    /**
+     * The SOURCE's own order reference, verbatim (#2332) — the re-attribution key.
+     *
+     * Deliberately adjacent to `internalOrderId`: the two are the same fact seen from
+     * either side of the mapping, and reading them together is what makes an orphan row
+     * legible. Note the consequence for constructors — three adjacent `string | null`
+     * parameters means a mis-ordered call type-checks, so the repository round-trip is
+     * specced with three DISTINCT values.
+     */
+    public readonly externalOrderId: string | null,
     public readonly origin: ReturnOrigin,
     /** The source's own status word, verbatim — never interpreted. */
     public readonly rawStatus: string | null,
@@ -50,4 +60,21 @@ export class ReturnRecord {
     public readonly updatedAt: Date,
     public readonly lines: readonly ReturnLine[]
   ) {}
+
+  /**
+   * Is this return unattributed — i.e. does OL not know which order it belongs to?
+   *
+   * **This is THE definition of orphan, and there must not be a second one.** Every
+   * consumer derives from `internalOrderId IS NULL`: the downstream-trigger guard
+   * (`IReturnsService.assertAttributedForTrigger`), the orphan-bucket count and list
+   * (`IDX_returns_orphans`' predicate), the re-attribution candidate query, and #2334's
+   * read DTO. A second rule spelled anywhere else is how the bucket and the block start
+   * disagreeing about the same row.
+   *
+   * Pure and synchronous — a function of one already-loaded field, per ADR-011's bounded
+   * allowance for read-only derivations on an otherwise anemic entity.
+   */
+  isOrphan(): boolean {
+    return this.internalOrderId === null;
+  }
 }
