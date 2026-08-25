@@ -24,7 +24,7 @@ import { ConnectionExceptionFilter } from '../../src/common/filters/connection-e
 import { InventoryLocationExceptionFilter } from '../../src/common/filters/inventory-location-exception.filter';
 import { TaxonomySourceUnavailableFilter } from '../../src/common/filters/taxonomy-source-unavailable.filter';
 import { AvailabilityUnknownFilter } from '../../src/common/filters/availability-unknown.filter';
-import { ReturnDeclineExceptionFilter } from '../../src/common/filters/return-decline-exception.filter';
+import { ReturnsExceptionFilter } from '../../src/common/filters/returns-exception.filter';
 
 const harness = createIntegrationTestHarness({
   imports: [AppModule],
@@ -40,7 +40,7 @@ const harness = createIntegrationTestHarness({
       new TaxonomySourceUnavailableFilter(),
       new InventoryLocationExceptionFilter(),
       new AvailabilityUnknownFilter(),
-      new ReturnDeclineExceptionFilter()
+      new ReturnsExceptionFilter()
     );
     // Mirror main.ts's URI versioning (#1133) so int-specs exercise the same
     // `/v1` routing prod serves. Only the version-neutral routes (the `/webhooks`

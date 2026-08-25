@@ -15,6 +15,12 @@
 import type { ReturnRecord } from '../../domain/entities/return-record.entity';
 import type { IncomingReturn } from '../../domain/types/incoming-return.types';
 import type { ReturnDownstreamTrigger } from '../../domain/types/return-trigger.types';
+import type {
+  ReturnBucketCounts,
+  ReturnDeclineAvailability,
+  ReturnIngestionAvailability,
+  ReturnListFilter,
+} from '../../domain/types/return-query.types';
 
 /**
  * What one ingested observation did.
@@ -97,4 +103,63 @@ export interface IReturnsService {
     returnId: string,
     trigger: ReturnDownstreamTrigger
   ): Promise<ReturnRecord>;
+
+  /**
+   * One page of the operator's returns list (#2334) — headers only.
+   *
+   * The general form of {@link IReturnsService.listOrphanReturns}, which stays
+   * because it is the narrower, unconditionally index-served question and has
+   * its own callers. Passing `bucket: 'orphan'` with no other filter asks the
+   * same thing through this method; neither is dead.
+   */
+  listReturns(
+    filter: ReturnListFilter,
+    limit: number,
+    offset: number
+  ): Promise<ReturnRecord[]>;
+
+  /**
+   * The attribution partition over one filter scope (#2334) — what the
+   * frontend's filter chips render.
+   *
+   * The caller passes the filter **with `bucket` removed**; see
+   * {@link ReturnBucketCounts}. Because the partition is exhaustive, the count
+   * matching a bucket-APPLIED request is already in here (`orphan` or
+   * `attributed`), so a list read never needs a second count query to fill its
+   * pagination total — deriving it is what keeps the total and the chips from
+   * drifting apart.
+   */
+  countReturnsByBucket(filter: ReturnListFilter): Promise<ReturnBucketCounts>;
+
+  /**
+   * Can anything in this deployment ingest returns at all? (#2334, for #2335.)
+   *
+   * Exists so an empty returns list can say something true — see
+   * {@link ReturnIngestionAvailability} for why "you have no returns" and
+   * "nothing is configured to fetch returns" must not render identically, and
+   * for the manifest-first resolution rule.
+   *
+   * **Throws on a discovery failure rather than reporting
+   * `configured: false`.** A registry or credential problem is not evidence
+   * about the operator's configuration, and answering `false` would state a
+   * falsehood on the exact screen that exists to answer this question. The
+   * route surfaces the failure and the frontend renders its error state.
+   */
+  getReturnIngestionAvailability(): Promise<ReturnIngestionAvailability>;
+
+  /**
+   * Whether `POST /returns/:id/decline` can be offered for this return, and why
+   * not when it cannot (#2334, for #2336).
+   *
+   * Answers the two reasons that are properties of the RECORD and the
+   * PLATFORM. The third reason a decline is refused — the return is an orphan —
+   * is deliberately absent: that is `ReturnRecord.isOrphan()`, already on the
+   * response, and a second spelling of it here would be the duplicate
+   * definition the entity's docblock forbids.
+   *
+   * Never throws for an unresolvable adapter; see
+   * {@link ReturnDeclineAvailability} for why an unknown reports `supported:
+   * true` rather than disabling the action on a hiccup.
+   */
+  getDeclineAvailability(record: ReturnRecord): Promise<ReturnDeclineAvailability>;
 }
