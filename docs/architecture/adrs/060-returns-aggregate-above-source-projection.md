@@ -19,10 +19,17 @@ Keep the projection as the **source-observation layer** and add an OL-owned aggr
 a new `returns` context: `ReturnRecord` (nullable `internalOrderId` — orphan returns persist,
 surface in an operator bucket, and **block every downstream trigger**) + `ReturnLine` with
 **quantity counters** (`advised ≥ received ≥ restocked + scrapped`) and **two orthogonal per-line
-machines**: custody (`advised → in_transit → received → inspected → disposed | not_returned`) ×
-money (`not_refundable | pending → triggered → refunded | denied`) — never collapsed, because
+machines**: custody (`advised → in_transit → received → disposed | not_returned`) ×
+money (`not_refundable | pending → triggered → refunded | denied | in_doubt`) — never collapsed, because
 marketplaces routinely refund before goods arrive. Disposition is `restock | scrap` only (a
-disposition whose consequence nobody executes is the Wave-4 failure mode). **Restock writes to the
+disposition whose consequence nobody executes is the Wave-4 failure mode). *(Amended by #2327: the
+custody list above originally carried `inspected`, which the implementing slice collapsed into
+`received` — nothing in the tree writes it and no shipped surface distinguishes an inspected parcel
+from a received one, so it would exist only to be skipped. The reversal gate is a `ReturnReceiver`/3PL
+receiving flow, where the receiving and inspecting parties genuinely differ, named in the returns
+product spec § 3.1. `in_doubt` is stated explicitly on the money axis for the same reason it was
+always implied: OL ships no refund write, so an unobservable execution must be recordable as
+unknown rather than reported as `refunded`.)* **Restock writes to the
 inventory master** via the **existing `InventoryMasterPort.adjustInventory`**, amended to carry an
 idempotency key + reason on its command type (additive; not a new capability — the method already
 exists on the base port, implemented by WooCommerce and refused by PrestaShop) — `inventory_items`

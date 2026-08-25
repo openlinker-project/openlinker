@@ -18,6 +18,7 @@ import { CacheModule } from '@openlinker/shared/cache';
 import { HealthModule } from './health/health.module';
 import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
 import { CustomersModule } from '@openlinker/core/customers';
+import { ReturnsModule } from '@openlinker/core/returns';
 import { ContentModule } from '@openlinker/core/content';
 import { InvoicingModule } from '@openlinker/core/invoicing';
 import { FiscalizationModule } from '@openlinker/core/fiscalization';
@@ -65,6 +66,10 @@ import { RequestPriorityModule } from './http/request-priority.module';
     HealthModule,
     AuthModule,
     IdentifierMappingModule,
+    // #2327: registers the returns ORM entities + repository. No API surface
+    // yet (#2334) — imported so the provider graph is proven at boot rather
+    // than first exercised by whichever wave adds the first consumer.
+    ReturnsModule,
     CustomersModule, // Import CustomersModule for customer identity resolution and projections
     IntegrationsModule,
     WebhooksModule,

@@ -117,6 +117,14 @@ const harness = createIntegrationTestHarness({
     // the invoice_records precedent); truncate explicitly so each refund case
     // starts clean.
     'refund_records',
+    // return_lines / returns (#2327) — the OL-owned return aggregate. The ONE
+    // FK is return_lines -> returns (ON DELETE CASCADE); neither
+    // sourceConnectionId nor internalOrderId carries one (the refund_records
+    // precedent), so nothing cascades in from connections or order_records and
+    // `truncateTables`' CASCADE walk would never reach either table. Listed
+    // child-first for readability — the cascade makes the order immaterial.
+    'return_lines',
+    'returns',
     // destination_categories (#1979) — the taxonomy projection. Marketplace
     // rows are owner-keyed with NO connectionId, so nothing cascades from
     // connections; truncate explicitly or an owner tree leaks between cases.

@@ -89,6 +89,16 @@
       "require": "./dist/orders/types.js",
       "default": "./dist/orders/types.js"
     },
+    "./returns": {
+      "types": "./dist/returns/index.d.ts",
+      "require": "./dist/returns/index.js",
+      "default": "./dist/returns/index.js"
+    },
+    "./returns/orm-entities": {
+      "types": "./dist/returns/orm-entities.d.ts",
+      "require": "./dist/returns/orm-entities.js",
+      "default": "./dist/returns/orm-entities.js"
+    },
     "./products": {
       "types": "./dist/products/index.d.ts",
       "require": "./dist/products/index.js",

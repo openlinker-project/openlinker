@@ -1,0 +1,237 @@
+/**
+ * Return Repository — unit spec (#2327)
+ *
+ * Mocks the two TypeORM repositories and the DataSource; the schema-level
+ * guarantees (the CHECK, both unique indexes, the CASCADE) are asserted against
+ * a real Postgres in `apps/api/test/integration/returns-schema.int-spec.ts`,
+ * because none of them is expressible against a mock.
+ *
+ * @module infrastructure/persistence/repositories
+ */
+import { ReturnRepository } from './return.repository';
+import type { ReturnOrmEntity } from '../entities/return.orm-entity';
+import type { ReturnLineOrmEntity } from '../entities/return-line.orm-entity';
+import type { CreateReturnRecordInput } from '../../../domain/types/return.types';
+
+const buildInput = (
+  overrides: Partial<CreateReturnRecordInput> = {}
+): CreateReturnRecordInput => ({
+  sourceConnectionId: '11111111-1111-1111-1111-111111111111',
+  externalReturnId: 'RET-1',
+  internalOrderId: 'ol_order_abc',
+  origin: 'source_ingested',
+  rawStatus: 'WAITING_FOR_PARCEL',
+  rawPayload: { anything: 'the source sent' },
+  openedAt: new Date('2026-08-01T10:00:00Z'),
+  authorizedAt: null,
+  declinedAt: null,
+  closedAt: null,
+  lines: [
+    {
+      lineIndex: 0,
+      externalLineId: null,
+      resolvedOrderLineId: null,
+      offerId: null,
+      sku: 'SKU-1',
+      name: 'A thing',
+      reason: 'withdrawal',
+      quantityAdvised: 2,
+      note: null,
+    },
+  ],
+  ...overrides,
+});
+
+describe('ReturnRepository', () => {
+  let repository: ReturnRepository;
+  let returns: { findOne: jest.Mock; find: jest.Mock };
+  let lines: { find: jest.Mock };
+  let dataSource: { transaction: jest.Mock };
+  let warn: jest.SpyInstance;
+
+  beforeEach(() => {
+    returns = { findOne: jest.fn(), find: jest.fn() };
+    lines = { find: jest.fn() };
+    // Runs the callback against a manager that echoes back whatever it saved,
+    // stamping the columns Postgres would fill in.
+    dataSource = {
+      transaction: jest.fn(async (callback: (manager: unknown) => Promise<unknown>) =>
+        callback({
+          save: jest.fn((_entity: unknown, value: unknown) => {
+            const now = new Date('2026-08-02T00:00:00Z');
+            const stamp = (row: Record<string, unknown>): Record<string, unknown> => ({
+              ...row,
+              id: row.id ?? 'uuid-generated',
+              createdAt: now,
+              updatedAt: now,
+            });
+            return Array.isArray(value) ? value.map(stamp) : stamp(value as Record<string, unknown>);
+          }),
+        })
+      ),
+    };
+
+    repository = new ReturnRepository(
+      returns as never,
+      lines as never,
+      dataSource as never
+    );
+    warn = jest
+      .spyOn((repository as unknown as { logger: { warn: (m: string) => void } }).logger, 'warn')
+      .mockImplementation(() => undefined);
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  describe('create', () => {
+    it('should mint an ol_return_ prefixed id when creating a return', async () => {
+      const created = await repository.create(buildInput());
+
+      expect(created.id).toMatch(/^ol_return_[0-9a-f]{32}$/);
+    });
+
+    it('should stamp the header id onto every line when creating a return', async () => {
+      const created = await repository.create(
+        buildInput({
+          lines: [
+            { ...buildInput().lines[0], lineIndex: 0 },
+            { ...buildInput().lines[0], lineIndex: 1 },
+          ],
+        })
+      );
+
+      expect(created.lines.map((line) => line.returnId)).toEqual([created.id, created.id]);
+    });
+
+    it('should write the header and its lines in one transaction when creating a return', async () => {
+      await repository.create(buildInput());
+
+      expect(dataSource.transaction).toHaveBeenCalledTimes(1);
+    });
+
+    it('should default the undriven counters and state columns when creating a return', async () => {
+      const created = await repository.create(buildInput());
+      const [line] = created.lines;
+
+      // The DB DEFAULTs are what actually apply; the domain reads them back as
+      // numbers rather than strings, which is the property under test here.
+      expect(line.quantityAdvised).toBe(2);
+      expect(typeof line.quantityAdvised).toBe('number');
+    });
+
+    it('should round-trip a null internalOrderId when creating an orphan return', async () => {
+      const created = await repository.create(buildInput({ internalOrderId: null }));
+
+      expect(created.internalOrderId).toBeNull();
+    });
+
+    it('should preserve rawStatus and rawPayload verbatim when creating a return', async () => {
+      const created = await repository.create(
+        buildInput({ rawStatus: 'SOMETHING_ONLY_THE_SOURCE_KNOWS' })
+      );
+
+      expect([created.rawStatus, created.rawPayload]).toEqual([
+        'SOMETHING_ONLY_THE_SOURCE_KNOWS',
+        { anything: 'the source sent' },
+      ]);
+    });
+  });
+
+  describe('findById', () => {
+    it('should return null when no header exists', async () => {
+      returns.findOne.mockResolvedValue(null);
+
+      await expect(repository.findById('ol_return_missing')).resolves.toBeNull();
+    });
+
+    it('should coerce counters to numbers when reading a line back', async () => {
+      returns.findOne.mockResolvedValue(buildHeaderRow());
+      lines.find.mockResolvedValue([buildLineRow({ quantityReceived: '1' as unknown as number })]);
+
+      const found = await repository.findById('ol_return_x');
+
+      expect(found?.lines[0].quantityReceived).toBe(1);
+    });
+
+    it('should fall back to "other" when the stored reason is outside the union', async () => {
+      returns.findOne.mockResolvedValue(buildHeaderRow());
+      lines.find.mockResolvedValue([buildLineRow({ reason: 'a_reason_from_the_future' })]);
+
+      const found = await repository.findById('ol_return_x');
+
+      expect([found?.lines[0].reason, warn]).toEqual(['other', warn]);
+      expect(warn).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('listOrphans', () => {
+    it('should query only unattributed returns, newest first, when listing orphans', async () => {
+      returns.find.mockResolvedValue([]);
+
+      await repository.listOrphans(25, 50);
+
+      const [options] = returns.find.mock.calls[0] as [Record<string, unknown>];
+      expect([
+        (options.where as Record<string, unknown>).internalOrderId !== undefined,
+        options.order,
+        options.take,
+        options.skip,
+      ]).toEqual([true, { createdAt: 'DESC' }, 25, 50]);
+    });
+
+    it('should return headers without hydrating lines when listing orphans', async () => {
+      returns.find.mockResolvedValue([buildHeaderRow({ internalOrderId: null })]);
+
+      const orphans = await repository.listOrphans(10, 0);
+
+      expect([orphans.length, orphans[0].lines, lines.find]).toEqual([1, [], lines.find]);
+      expect(lines.find).not.toHaveBeenCalled();
+    });
+  });
+});
+
+const buildHeaderRow = (overrides: Partial<ReturnOrmEntity> = {}): ReturnOrmEntity =>
+  ({
+    id: 'ol_return_x',
+    sourceConnectionId: '11111111-1111-1111-1111-111111111111',
+    externalReturnId: 'RET-1',
+    internalOrderId: 'ol_order_abc',
+    origin: 'source_ingested',
+    rawStatus: null,
+    rawPayload: null,
+    openedAt: null,
+    authorizedAt: null,
+    declinedAt: null,
+    closedAt: null,
+    createdAt: new Date('2026-08-02T00:00:00Z'),
+    updatedAt: new Date('2026-08-02T00:00:00Z'),
+    ...overrides,
+  }) as ReturnOrmEntity;
+
+const buildLineRow = (overrides: Partial<ReturnLineOrmEntity> = {}): ReturnLineOrmEntity =>
+  ({
+    id: 'a3f24b09-c4d1-4867-89ab-cdef01234567',
+    returnId: 'ol_return_x',
+    lineIndex: 0,
+    externalLineId: null,
+    resolvedOrderLineId: null,
+    offerId: null,
+    sku: null,
+    name: null,
+    reason: 'withdrawal',
+    quantityAdvised: 1,
+    quantityReceived: 0,
+    quantityRestocked: 0,
+    quantityScrapped: 0,
+    custodyState: 'advised',
+    moneyState: 'not_refundable',
+    disposition: null,
+    receivedAt: null,
+    disposedAt: null,
+    note: null,
+    createdAt: new Date('2026-08-02T00:00:00Z'),
+    updatedAt: new Date('2026-08-02T00:00:00Z'),
+    ...overrides,
+  }) as ReturnLineOrmEntity;
