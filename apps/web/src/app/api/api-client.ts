@@ -59,6 +59,7 @@ import {
   type PosthogSettingsApi,
 } from '../../features/posthog-settings/api/posthog-settings.api';
 import { createProductsApi, type ProductsApi } from '../../features/products/api/products.api';
+import { createReturnsApi, type ReturnsApi } from '../../features/returns';
 import { createShipmentsApi, type ShipmentsApi } from '../../features/shipments/api/shipments.api';
 import {
   createPromptTemplatesApi,
@@ -169,6 +170,7 @@ export interface CoreApiClient {
   request: ApiRequest;
   requestBlob: ApiBlobRequest;
   requestStream: ApiStreamRequest;
+  returns: ReturnsApi;
   salesDocumentRules: SalesDocumentRulesApi;
   shipments: ShipmentsApi;
   syncJobs: SyncJobsApi;
@@ -388,6 +390,7 @@ export function createApiClient({
     requestBlob,
     requestStream,
     salesDocumentRules: createSalesDocumentRulesApi(request),
+    returns: createReturnsApi(request),
     shipments: createShipmentsApi(request, requestBlob),
     syncJobs: createSyncJobsApi(request),
     system: createSystemApi(request),

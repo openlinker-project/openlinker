@@ -562,6 +562,24 @@ export function createMockApiClient(
       clearAcknowledgment: vi.fn().mockResolvedValue(undefined),
       ...overrides.salesDocumentRules,
     } as ApiClient['salesDocumentRules'],
+    // The default is the healthy-but-empty deployment: no returns, and returns
+    // ingestion IS configured — so a test that renders the list without opting
+    // in gets the neutral "no returns yet" branch rather than the
+    // configuration claim, which no test should assert by accident.
+    returns: {
+      list: vi.fn().mockResolvedValue({
+        items: [],
+        total: 0,
+        limit: 20,
+        offset: 0,
+        counts: { total: 0, orphan: 0, attributed: 0 },
+        droppedCount: 0,
+      }),
+      getIngestionAvailability: vi
+        .fn()
+        .mockResolvedValue({ configured: true, connectionIds: [] }),
+      ...overrides.returns,
+    } as ApiClient['returns'],
     shipments: {
       list: vi.fn().mockResolvedValue({
         items: [],

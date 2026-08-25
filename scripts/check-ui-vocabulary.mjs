@@ -129,20 +129,45 @@ const BANNED_TERMS = [
 
 /**
  * The three Wave-2 feature folders § 2.1 scopes the ban to. `automation` is
- * SINGULAR even though its route is `/automations` (settled in #2364); the
- * other two slugs come from #2335 and #2364's sibling #2354 / #2364.
+ * SINGULAR even though its route is `/automations` (settled in #2364).
  *
- * Each names the issue that creates it, so the pending note is a declared gap
- * with a retirement plan rather than noise. Remove an entry's `pending` field
- * when its folder lands — Z3 then guarantees it is really being scanned.
+ * TWO FIELDS, deliberately split in #2335 — they answer different questions and
+ * conflating them cost the list both of its guarantees:
+ *
+ *   `owner`   — which issue creates this folder. ALWAYS required, and asserted
+ *               by `--self-check` for EVERY root, live or not. Folded into the
+ *               `pending` field it became unassertable the moment a folder
+ *               landed, so a future root could be added with no owner at all.
+ *   `pending` — whether the folder is still expected to be absent. A boolean:
+ *               it drives only the pending-notes line. Note that Z2 keys on
+ *               `isDirectory()`, so a root is SCANNED the moment its folder
+ *               exists regardless of this flag; flipping it to `false` does not
+ *               unlock scanning, it stops the run reporting a gap that closed.
+ *
+ * #2335 also corrected a crossed attribution: `features/returns` was declared
+ * pending #2364 and `features/fulfillment-authority` pending #2335 — which is
+ * the issue that built `features/returns`, and never touched the other folder.
  */
 const SCAN_ROOTS = [
   {
     dir: join('apps', 'web', 'src', 'features', 'fulfillment-authority'),
-    pending: 'W1c-8 (#2335)',
+    // NOT #2335 — that issue shipped `features/returns` (below). The real owner
+    // is unconfirmed, and inventing a number here would restate the same false
+    // claim this correction removed. Re-point it when the owning issue lands.
+    owner: 'Wave 2 operator experience (owning issue to be confirmed)',
+    pending: true,
   },
-  { dir: join('apps', 'web', 'src', 'features', 'automation'), pending: 'W2-17 (#2354)' },
-  { dir: join('apps', 'web', 'src', 'features', 'returns'), pending: 'W2-27 (#2364)' },
+  {
+    dir: join('apps', 'web', 'src', 'features', 'automation'),
+    owner: 'W2-17 (#2354)',
+    pending: true,
+  },
+  {
+    // Built by #2335 (the returns list), ahead of #2364's own returns surfaces.
+    dir: join('apps', 'web', 'src', 'features', 'returns'),
+    owner: 'W1c-8 (#2335)',
+    pending: false,
+  },
 ];
 
 /**
@@ -568,14 +593,21 @@ async function main() {
       if (!parentExists) {
         failures.push({
           rule: "a pending scan root's parent directory must exist (a typo here would pass forever)",
-          locations: [`${root.dir}  (declared scan root, pending ${root.pending})`],
+          locations: [`${root.dir}  (declared scan root, owner ${root.owner})`],
           issues: [
             `the parent directory '${SCAN_ROOT_PARENT}' does not exist, so this path can never ` +
               'resolve — fix the declared path, or remove the entry',
           ],
         });
       }
-      pendingNotes.push(`${root.dir} (pending ${root.pending})`);
+      pendingNotes.push(
+        root.pending
+          ? `${root.dir} (pending ${root.owner})`
+          : // Declared live, but its folder is gone. Not a failure — a root may
+            // legitimately be retired ahead of this list — but it must be said,
+            // or the run reports a folder as covered while nothing is scanned.
+            `${root.dir} (declared live for ${root.owner}, but the folder is absent)`,
+      );
       continue;
     }
 
@@ -874,9 +906,17 @@ function selfCheck() {
 
   // --- declared structure ----------------------------------------------------
   expect('the banned list is closed at nine terms', BANNED_TERMS.length, 9);
+  // EVERY root, live or pending. Asserting only the pending ones would go
+  // vacuous as folders land, and would let a future root be added with no owner
+  // recorded anywhere (#2335).
   expect(
-    'every scan root names its owning issue',
-    SCAN_ROOTS.every((r) => typeof r.pending === 'string' && r.pending.length > 0),
+    'every scan root names its owner',
+    SCAN_ROOTS.every((r) => typeof r.owner === 'string' && r.owner.length > 0),
+    true,
+  );
+  expect(
+    'every scan root declares pending as a boolean',
+    SCAN_ROOTS.every((r) => typeof r.pending === 'boolean'),
     true,
   );
   expect(
