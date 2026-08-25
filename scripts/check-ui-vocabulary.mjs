@@ -150,16 +150,18 @@ const BANNED_TERMS = [
  */
 const SCAN_ROOTS = [
   {
+    // NOT #2335 — that issue shipped `features/returns` (below). All three
+    // attributions shipped rotated by one; resolved by title against the epic
+    // #2389 checklist: #2354 is the "Who decides what" settings page, which is
+    // what builds this folder.
     dir: join('apps', 'web', 'src', 'features', 'fulfillment-authority'),
-    // NOT #2335 — that issue shipped `features/returns` (below). The real owner
-    // is unconfirmed, and inventing a number here would restate the same false
-    // claim this correction removed. Re-point it when the owning issue lands.
-    owner: 'Wave 2 operator experience (owning issue to be confirmed)',
+    owner: 'W2-17 (#2354)',
     pending: true,
   },
   {
+    // #2364 is "automations index and trigger list" — this folder's real owner.
     dir: join('apps', 'web', 'src', 'features', 'automation'),
-    owner: 'W2-17 (#2354)',
+    owner: 'W2-27 (#2364)',
     pending: true,
   },
   {
