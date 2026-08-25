@@ -7,7 +7,10 @@
  *
  * @module libs/core/src/returns/application/services
  */
+import { ReturnNotAttributedError } from '../../domain/exceptions/return-not-attributed.error';
+import { ReturnNotFoundError } from '../../domain/exceptions/return-not-found.error';
 import { ReturnObservationMissingExternalIdError } from '../../domain/exceptions/return-observation-missing-external-id.error';
+import { ReturnDownstreamTriggerValues } from '../../domain/types/return-trigger.types';
 import type { IncomingReturn } from '../../domain/types/incoming-return.types';
 import type { UpsertReturnRecordInput } from '../../domain/types/return-upsert.types';
 import { ReturnsService } from './returns.service';
@@ -29,6 +32,7 @@ describe('ReturnsService', () => {
     upsertFromSource: jest.Mock;
     findById: jest.Mock;
     listOrphans: jest.Mock;
+    countOrphans: jest.Mock;
     create: jest.Mock;
     findByExternalId: jest.Mock;
   };
@@ -44,6 +48,7 @@ describe('ReturnsService', () => {
       upsertFromSource: jest.fn().mockResolvedValue({ record: { id: 'ol_return_abc' } }),
       findById: jest.fn().mockResolvedValue(null),
       listOrphans: jest.fn().mockResolvedValue([]),
+      countOrphans: jest.fn().mockResolvedValue(0),
       create: jest.fn(),
       findByExternalId: jest.fn(),
     };
@@ -205,6 +210,62 @@ describe('ReturnsService', () => {
     it('should delegate listOrphanReturns to the repository', async () => {
       await service.listOrphanReturns(25, 50);
       expect(repository.listOrphans).toHaveBeenCalledWith(25, 50);
+    });
+
+    it('should delegate countOrphanReturns to the repository', async () => {
+      repository.countOrphans.mockResolvedValue(12);
+
+      await expect(service.countOrphanReturns()).resolves.toBe(12);
+    });
+  });
+
+  describe('assertAttributedForTrigger', () => {
+    const orphan = { id: 'ol_return_abc', isOrphan: () => true };
+    const attributed = { id: 'ol_return_abc', isOrphan: () => false };
+
+    it.each(ReturnDownstreamTriggerValues)(
+      'should refuse the %s trigger while the return is orphaned',
+      async (trigger) => {
+        repository.findById.mockResolvedValue(orphan);
+
+        await expect(
+          service.assertAttributedForTrigger('ol_return_abc', trigger)
+        ).rejects.toBeInstanceOf(ReturnNotAttributedError);
+      }
+    );
+
+    it('should name the refused trigger on the error so an operator can tell them apart', async () => {
+      repository.findById.mockResolvedValue(orphan);
+
+      await expect(
+        service.assertAttributedForTrigger('ol_return_abc', 'restock')
+      ).rejects.toMatchObject({ returnId: 'ol_return_abc', trigger: 'restock' });
+    });
+
+    it('should return the hydrated record when the return is attributed', async () => {
+      repository.findById.mockResolvedValue(attributed);
+
+      await expect(service.assertAttributedForTrigger('ol_return_abc', 'refund')).resolves.toBe(
+        attributed
+      );
+    });
+
+    it('should re-read the row rather than trusting a caller-held record', async () => {
+      repository.findById.mockResolvedValue(attributed);
+
+      await service.assertAttributedForTrigger('ol_return_abc', 'refund');
+
+      expect(repository.findById).toHaveBeenCalledWith('ol_return_abc');
+    });
+
+    it('should distinguish a missing return from an orphaned one', async () => {
+      repository.findById.mockResolvedValue(null);
+
+      // Collapsing the two would tell an operator to attribute a return that does not
+      // exist.
+      await expect(
+        service.assertAttributedForTrigger('ol_return_missing', 'invoice_correction')
+      ).rejects.toBeInstanceOf(ReturnNotFoundError);
     });
   });
 });

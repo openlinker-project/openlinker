@@ -126,6 +126,7 @@ describe('SchedulerService', () => {
         'OL_PICKUP_POINT_REFRESH_CRON',
         'OL_PRODUCT_SYNC_CRON',
         'OL_REGULATORY_RECONCILE_CRON',
+        'OL_RETURNS_ORPHAN_RECONCILE_CRON',
         'OL_STALE_OFFER_PAUSE_CRON',
         'OL_TAXONOMY_SYNC_CRON',
       ];
@@ -279,6 +280,7 @@ describe('SchedulerService', () => {
         'pending-recovery',
         'pickup-point-refresh',
         'regulatory-status-reconcile',
+        'returns-orphan-reconcile',
         'stale-offer-pause-sweep',
       ]);
     });
@@ -502,6 +504,7 @@ describe('SchedulerService', () => {
         'OL_PICKUP_POINT_REFRESH_CRON',
         'OL_PRODUCT_SYNC_CRON',
         'OL_REGULATORY_RECONCILE_CRON',
+        'OL_RETURNS_ORPHAN_RECONCILE_CRON',
         'OL_STALE_OFFER_PAUSE_CRON',
         'OL_TAXONOMY_SYNC_CRON',
       ];
@@ -595,6 +598,7 @@ describe('SchedulerService', () => {
         'OL_PICKUP_POINT_REFRESH_CRON',
         'OL_PRODUCT_SYNC_CRON',
         'OL_REGULATORY_RECONCILE_CRON',
+        'OL_RETURNS_ORPHAN_RECONCILE_CRON',
         'OL_STALE_OFFER_PAUSE_CRON',
         'OL_TAXONOMY_SYNC_CRON',
       ];
@@ -685,6 +689,7 @@ describe('SchedulerService', () => {
         'OL_PICKUP_POINT_REFRESH_CRON',
         'OL_PRODUCT_SYNC_CRON',
         'OL_REGULATORY_RECONCILE_CRON',
+        'OL_RETURNS_ORPHAN_RECONCILE_CRON',
         'OL_STALE_OFFER_PAUSE_CRON',
         'OL_TAXONOMY_SYNC_CRON',
       ];
@@ -888,6 +893,7 @@ describe('SchedulerService', () => {
         'OL_PICKUP_POINT_REFRESH_CRON',
         'OL_PRODUCT_SYNC_CRON',
         'OL_REGULATORY_RECONCILE_CRON',
+        'OL_RETURNS_ORPHAN_RECONCILE_CRON',
         'OL_STALE_OFFER_PAUSE_CRON',
         'OL_TAXONOMY_SYNC_CRON',
       ];

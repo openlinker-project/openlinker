@@ -21,6 +21,7 @@ const buildInput = (
   sourceConnectionId: '11111111-1111-1111-1111-111111111111',
   externalReturnId: 'RET-1',
   internalOrderId: 'ol_order_abc',
+  externalOrderId: 'SRC-ORDER-1',
   origin: 'source_ingested',
   rawStatus: 'WAITING_FOR_PARCEL',
   rawPayload: { anything: 'the source sent' },
@@ -129,6 +130,32 @@ describe('ReturnRepository', () => {
       expect(created.internalOrderId).toBeNull();
     });
 
+    it('should land each of the three adjacent nullable id fields on its own property', async () => {
+      // `externalReturnId`, `internalOrderId` and `externalOrderId` are three ADJACENT
+      // `string | null` constructor parameters, so a mis-ordered `toDomain` type-checks
+      // and is silently wrong — `tsc` proves only the arity. Three DISTINCT values are
+      // what actually closes that (#2332).
+      const created = await repository.create(
+        buildInput({
+          externalReturnId: 'THE-RETURN-ID',
+          internalOrderId: 'THE-INTERNAL-ORDER-ID',
+          externalOrderId: 'THE-SOURCE-ORDER-ID',
+        })
+      );
+
+      expect([created.externalReturnId, created.internalOrderId, created.externalOrderId]).toEqual([
+        'THE-RETURN-ID',
+        'THE-INTERNAL-ORDER-ID',
+        'THE-SOURCE-ORDER-ID',
+      ]);
+    });
+
+    it('should round-trip a null externalOrderId when the source names no order', async () => {
+      const created = await repository.create(buildInput({ externalOrderId: null }));
+
+      expect(created.externalOrderId).toBeNull();
+    });
+
     it('should preserve rawStatus and rawPayload verbatim when creating a return', async () => {
       const created = await repository.create(
         buildInput({ rawStatus: 'SOMETHING_ONLY_THE_SOURCE_KNOWS' })
@@ -192,6 +219,18 @@ describe('ReturnRepository', () => {
       expect(lines.find).not.toHaveBeenCalled();
     });
   });
+
+  describe('countOrphans', () => {
+    it('should count with the same unattributed predicate the orphan list uses', async () => {
+      const count = jest.fn().mockResolvedValue(7);
+      (returns as unknown as { count: jest.Mock }).count = count;
+
+      await expect(repository.countOrphans()).resolves.toBe(7);
+
+      const [options] = count.mock.calls[0] as [Record<string, unknown>];
+      expect((options.where as Record<string, unknown>).internalOrderId).toBeDefined();
+    });
+  });
 });
 
 const buildHeaderRow = (overrides: Partial<ReturnOrmEntity> = {}): ReturnOrmEntity =>
@@ -200,6 +239,7 @@ const buildHeaderRow = (overrides: Partial<ReturnOrmEntity> = {}): ReturnOrmEnti
     sourceConnectionId: '11111111-1111-1111-1111-111111111111',
     externalReturnId: 'RET-1',
     internalOrderId: 'ol_order_abc',
+    externalOrderId: 'SRC-ORDER-1',
     origin: 'source_ingested',
     rawStatus: null,
     rawPayload: null,
@@ -253,6 +293,7 @@ describe('ReturnRepository.upsertFromSource', () => {
     sourceConnectionId: '11111111-1111-1111-1111-111111111111',
     externalReturnId: 'RET-1',
     internalOrderId: 'ol_order_abc',
+    externalOrderId: 'SRC-ORDER-1',
     origin: 'source_ingested',
     rawStatus: 'WAITING',
     rawPayload: null,
@@ -271,6 +312,7 @@ describe('ReturnRepository.upsertFromSource', () => {
     sourceConnectionId: '11111111-1111-1111-1111-111111111111',
     externalReturnId: 'RET-1',
     internalOrderId: 'ol_order_abc',
+    externalOrderId: 'SRC-ORDER-1',
     origin: 'source_ingested',
     rawStatus: 'WAITING',
     rawPayload: { anything: 'the source sent' },

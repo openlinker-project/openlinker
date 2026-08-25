@@ -75,15 +75,17 @@ export type {
 // command/result live HERE (the returns vocabulary is owned by returns); the
 // capability interface + guard that consume them live beside their read-only
 // sibling in `@openlinker/core/orders`.
+//
+// NOTE the two refusals a decline shares with every other downstream trigger —
+// `ReturnNotFoundError` and `ReturnNotAttributedError` — are NOT exported from
+// here. They are the #2332 orphan-guard vocabulary below, and there is exactly
+// one definition of each in the tree (see the merge note in
+// `return-decline-unsupported.error.ts`).
 export type {
   ReturnDeclineCommand,
   ReturnDeclineResult,
 } from './domain/types/return-decline.types';
-export {
-  ReturnNotFoundError,
-  ReturnNotAttributedError,
-  ReturnDeclineUnsupportedError,
-} from './domain/exceptions/return-decline-refused.error';
+export { ReturnDeclineUnsupportedError } from './domain/exceptions/return-decline-unsupported.error';
 export { ReturnDeclineRejectedBySourceError } from './domain/exceptions/return-decline-rejected-by-source.error';
 export { DeclineReturnOutcomeValues } from './application/services/return-decline.service.interface';
 export type {
@@ -92,3 +94,20 @@ export type {
   DeclineReturnOutcome,
   DeclineReturnResult,
 } from './application/services/return-decline.service.interface';
+
+// Orphan bucket, downstream-trigger block and re-attribution reconcile (#2332).
+// `ReturnBucket` is the vocabulary #2334's `?bucket=` validates against;
+// `ReturnDownstreamTrigger` + the two errors are what a Wave-2 trigger imports so it can
+// call the guard and catch its refusal — including the `return.decline` write above,
+// which asserts attribution through the same seam rather than its own null check.
+export * from './domain/types/return-bucket.types';
+export * from './domain/types/return-trigger.types';
+export type {
+  ReturnReattributionCandidate,
+  ReturnReattributionOptions,
+  ReturnReattributionPage,
+  ReturnReattributionResult,
+} from './domain/types/return-reattribution.types';
+export { ReturnNotAttributedError } from './domain/exceptions/return-not-attributed.error';
+export { ReturnNotFoundError } from './domain/exceptions/return-not-found.error';
+export type { IReturnReattributionService } from './application/services/return-reattribution.service.interface';

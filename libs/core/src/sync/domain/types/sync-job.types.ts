@@ -33,6 +33,11 @@ export const JobTypeValues = [
   'marketplace.returns.poll',
   'marketplace.return.sync',
   'marketplace.returns.statusSync',
+  // Orphan re-attribution reconcile (#2332). Namespaced `returns.*` rather than
+  // `marketplace.*` because, unlike the three above, it contacts NO marketplace: it
+  // re-checks OL's own orphan returns against `identifier_mappings` and writes a local
+  // column. The namespace is the honest signal of that.
+  'returns.orphan.reconcile',
   'marketplace.offers.sync',
   'marketplace.offerQuantity.update',
   'marketplace.offer.updateFields',

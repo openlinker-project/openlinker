@@ -61,6 +61,7 @@ import { IntegrationsModule } from '@openlinker/core/integrations';
 import { OrderChangesModule } from '@openlinker/core/orders';
 import { SyncModule } from '@openlinker/core/sync';
 import { ReturnIngestionService } from './application/services/return-ingestion.service';
+import { ReturnReattributionService } from './application/services/return-reattribution.service';
 import { ReturnStatusSyncService } from './application/services/return-status-sync.service';
 import { ReturnDeclineService } from './application/services/return-decline.service';
 import { ReturnsService } from './application/services/returns.service';
@@ -70,6 +71,7 @@ import { ReturnRepository } from './infrastructure/persistence/repositories/retu
 import {
   RETURN_DECLINE_SERVICE_TOKEN,
   RETURN_INGESTION_SERVICE_TOKEN,
+  RETURN_REATTRIBUTION_SERVICE_TOKEN,
   RETURN_REPOSITORY_TOKEN,
   RETURN_STATUS_SYNC_SERVICE_TOKEN,
   RETURNS_SERVICE_TOKEN,
@@ -105,6 +107,10 @@ import {
     { provide: RETURN_STATUS_SYNC_SERVICE_TOKEN, useExisting: ReturnStatusSyncService },
     ReturnDeclineService,
     { provide: RETURN_DECLINE_SERVICE_TOKEN, useExisting: ReturnDeclineService },
+    // #2332 the orphan re-attribution reconcile. Adds NO module edge: it reaches only
+    // the repository and `IIdentifierMappingService`, both already imported above.
+    ReturnReattributionService,
+    { provide: RETURN_REATTRIBUTION_SERVICE_TOKEN, useExisting: ReturnReattributionService },
   ],
   exports: [
     RETURN_REPOSITORY_TOKEN,
@@ -112,6 +118,7 @@ import {
     RETURN_INGESTION_SERVICE_TOKEN,
     RETURN_STATUS_SYNC_SERVICE_TOKEN,
     RETURN_DECLINE_SERVICE_TOKEN,
+    RETURN_REATTRIBUTION_SERVICE_TOKEN,
   ],
 })
 export class ReturnsModule {}

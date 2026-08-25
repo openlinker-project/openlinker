@@ -10,14 +10,13 @@
  */
 import type { IOrderChangeService, OrderChange } from '@openlinker/core/orders';
 import { ReturnRecord } from '../../../domain/entities/return-record.entity';
-import {
-  ReturnDeclineUnsupportedError,
-  ReturnNotAttributedError,
-  ReturnNotFoundError,
-} from '../../../domain/exceptions/return-decline-refused.error';
+import { ReturnDeclineUnsupportedError } from '../../../domain/exceptions/return-decline-unsupported.error';
+import { ReturnNotAttributedError } from '../../../domain/exceptions/return-not-attributed.error';
+import { ReturnNotFoundError } from '../../../domain/exceptions/return-not-found.error';
 import { ReturnDeclineRejectedBySourceError } from '../../../domain/exceptions/return-decline-rejected-by-source.error';
 import type { ReturnRepositoryPort } from '../../../domain/ports/return-repository.port';
 import { ReturnDeclineService } from '../return-decline.service';
+import { ReturnsService } from '../returns.service';
 
 const RETURN_ID = 'ol_return_1';
 const ORDER_ID = 'ol_order_1';
@@ -36,6 +35,7 @@ function buildReturn(
     CONNECTION_ID,
     overrides.externalReturnId === undefined ? 'ext-return-1' : overrides.externalReturnId,
     overrides.internalOrderId === undefined ? ORDER_ID : overrides.internalOrderId,
+    'ext-order-1',
     'source_ingested',
     'DELIVERED',
     null,
@@ -90,8 +90,19 @@ describe('ReturnDeclineService', () => {
       }),
     };
 
+    // The REAL guard, not a stub. `ReturnDeclineService` asserts attribution
+    // through `IReturnsService.assertAttributedForTrigger('decline')` (#2332), so
+    // wiring the real service is what keeps this spec honest about which class the
+    // refusal actually is — a hand-rolled stub could throw a look-alike forever.
+    // `identifierMapping` is never reached on the guard path.
+    const returns = new ReturnsService(
+      repository as unknown as ReturnRepositoryPort,
+      { getInternalId: jest.fn() } as never
+    );
+
     service = new ReturnDeclineService(
       repository as unknown as ReturnRepositoryPort,
+      returns,
       orderChanges,
       integrations as never
     );

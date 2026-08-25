@@ -35,6 +35,8 @@ import {
 } from '@openlinker/core/identifier-mapping';
 import { IIdentifierMappingService } from '@openlinker/core/identifier-mapping';
 import { Logger } from '@openlinker/shared/logging';
+import { ReturnNotAttributedError } from '../../domain/exceptions/return-not-attributed.error';
+import { ReturnNotFoundError } from '../../domain/exceptions/return-not-found.error';
 import { ReturnObservationMissingExternalIdError } from '../../domain/exceptions/return-observation-missing-external-id.error';
 import { toRefundReasonOrOther } from '../../domain/return-reason.mapper';
 import type { ReturnRecord } from '../../domain/entities/return-record.entity';
@@ -43,6 +45,7 @@ import type {
   IncomingReturn,
   IncomingReturnLine,
 } from '../../domain/types/incoming-return.types';
+import type { ReturnDownstreamTrigger } from '../../domain/types/return-trigger.types';
 import type { UpsertReturnLineInput } from '../../domain/types/return-upsert.types';
 import { RETURN_REPOSITORY_TOKEN } from '../../returns.tokens';
 import type {
@@ -83,6 +86,7 @@ export class ReturnsService implements IReturnsService {
       sourceConnectionId,
       externalReturnId,
       internalOrderId,
+      externalOrderId: observation.externalOrderId,
       origin: 'source_ingested',
       rawStatus: observation.rawStatus,
       rawPayload: this.buildRawPayload(observation),
@@ -99,6 +103,34 @@ export class ReturnsService implements IReturnsService {
 
   async listOrphanReturns(limit: number, offset: number): Promise<ReturnRecord[]> {
     return this.repository.listOrphans(limit, offset);
+  }
+
+  async countOrphanReturns(): Promise<number> {
+    return this.repository.countOrphans();
+  }
+
+  /**
+   * The downstream-trigger block. See the interface docblock for the three properties
+   * that make this a re-read, a return-the-record, and a throw.
+   */
+  async assertAttributedForTrigger(
+    returnId: string,
+    trigger: ReturnDownstreamTrigger
+  ): Promise<ReturnRecord> {
+    const record = await this.repository.findById(returnId);
+
+    if (record === null) {
+      throw new ReturnNotFoundError(returnId);
+    }
+
+    if (record.isOrphan()) {
+      this.logger.warn(
+        `Return ${returnId} is orphaned — refusing the "${trigger}" trigger (no attributed order)`
+      );
+      throw new ReturnNotAttributedError(returnId, trigger);
+    }
+
+    return record;
   }
 
   /**

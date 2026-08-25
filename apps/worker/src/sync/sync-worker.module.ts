@@ -36,6 +36,7 @@ import { MarketplaceOfferStatusSyncHandler } from './handlers/marketplace-offer-
 import { MarketplaceReturnsPollHandler } from './handlers/marketplace-returns-poll.handler';
 import { MarketplaceReturnSyncHandler } from './handlers/marketplace-return-sync.handler';
 import { MarketplaceReturnsStatusSyncHandler } from './handlers/marketplace-returns-status-sync.handler';
+import { ReturnsOrphanReconcileHandler } from './handlers/returns-orphan-reconcile.handler';
 import { MarketplaceOfferRefreshSnapshotHandler } from './handlers/marketplace-offer-refresh-snapshot.handler';
 import { MarketplaceOfferStockRestoreHandler } from './handlers/marketplace-offer-stock-restore.handler';
 import { MarketplaceOfferPauseStaleHandler } from './handlers/marketplace-offer-pause-stale.handler';
@@ -96,6 +97,7 @@ import { HandlerRegistrationService } from './handlers/handler-registration.serv
     MarketplaceReturnsPollHandler,
     MarketplaceReturnSyncHandler,
     MarketplaceReturnsStatusSyncHandler,
+    ReturnsOrphanReconcileHandler,
     MarketplaceOfferRefreshSnapshotHandler,
     MarketplaceOfferStockRestoreHandler,
     MarketplaceOfferPauseStaleHandler,

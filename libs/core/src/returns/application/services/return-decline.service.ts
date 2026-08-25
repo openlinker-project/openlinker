@@ -5,11 +5,14 @@
  *
  * ## The cycle, and why its order is the whole design
  *
- * 1. Load the return; refuse if unknown.
- * 2. Refuse an ORPHAN — **before any adapter is resolved**, so an unattributed
- *    return costs nothing. ADR-060: an orphan blocks every downstream trigger,
- *    and an ADR-044 proposal has a NOT NULL `internalOrderId`, so there is not
- *    even a row this action could record itself as.
+ * 1./2. Load the return and refuse an ORPHAN, in one call to the single
+ *    attribution seam `IReturnsService.assertAttributedForTrigger('decline')`
+ *    (#2332) — **before any adapter is resolved**, so an unattributed return
+ *    costs nothing. ADR-060: an orphan blocks every downstream trigger, and an
+ *    ADR-044 proposal has a NOT NULL `internalOrderId`, so there is not even a
+ *    row this action could record itself as. The guard is deliberately NOT
+ *    re-implemented here: a second orphan rule is how the bucket, the block and
+ *    this write start disagreeing about one row.
  * 3. Short-circuit an already-stamped `declinedAt` — idempotent, no adapter call.
  * 4. Resolve the source adapter and narrow it to a `ReturnDecliner`; refuse with
  *    a DISTINCT reason where the source declares no such write.
@@ -49,14 +52,13 @@ import {
 } from '@openlinker/core/orders';
 import { Logger } from '@openlinker/shared/logging';
 import type { ReturnRecord } from '../../domain/entities/return-record.entity';
-import {
-  ReturnDeclineUnsupportedError,
-  ReturnNotAttributedError,
-  ReturnNotFoundError,
-} from '../../domain/exceptions/return-decline-refused.error';
+import { ReturnDeclineUnsupportedError } from '../../domain/exceptions/return-decline-unsupported.error';
 import { ReturnDeclineRejectedBySourceError } from '../../domain/exceptions/return-decline-rejected-by-source.error';
+import { ReturnNotAttributedError } from '../../domain/exceptions/return-not-attributed.error';
 import { ReturnRepositoryPort } from '../../domain/ports/return-repository.port';
-import { RETURN_REPOSITORY_TOKEN } from '../../returns.tokens';
+import type { ReturnDownstreamTrigger } from '../../domain/types/return-trigger.types';
+import { RETURN_REPOSITORY_TOKEN, RETURNS_SERVICE_TOKEN } from '../../returns.tokens';
+import { IReturnsService } from './returns.service.interface';
 import type {
   DeclineReturnInput,
   DeclineReturnResult,
@@ -66,6 +68,9 @@ import type {
 /** The ADR-044 kind this service proposes. */
 const RETURN_DECLINE_KIND = 'return.decline';
 
+/** The attribution-guard vocabulary this write is refused by (#2332). */
+const RETURN_DECLINE_TRIGGER: ReturnDownstreamTrigger = 'decline';
+
 @Injectable()
 export class ReturnDeclineService implements IReturnDeclineService {
   private readonly logger = new Logger(ReturnDeclineService.name);
@@ -73,6 +78,8 @@ export class ReturnDeclineService implements IReturnDeclineService {
   constructor(
     @Inject(RETURN_REPOSITORY_TOKEN)
     private readonly repository: ReturnRepositoryPort,
+    @Inject(RETURNS_SERVICE_TOKEN)
+    private readonly returns: IReturnsService,
     @Inject(ORDER_CHANGE_SERVICE_TOKEN)
     private readonly orderChanges: IOrderChangeService,
     @Inject(INTEGRATIONS_SERVICE_TOKEN)
@@ -80,17 +87,23 @@ export class ReturnDeclineService implements IReturnDeclineService {
   ) {}
 
   async decline(input: DeclineReturnInput): Promise<DeclineReturnResult> {
-    const record = await this.repository.findById(input.returnId);
-    if (record === null) {
-      throw new ReturnNotFoundError(input.returnId);
-    }
+    // Steps 1 and 2 in ONE call, through the single attribution seam (#2332).
+    // It reads the row, raises `ReturnNotFoundError` for an unknown id and
+    // `ReturnNotAttributedError('decline')` for an orphan, and hands back the
+    // aggregate — so this service never spells its own `internalOrderId === null`
+    // check, and the refusal a Wave-2 trigger catches is the very same class.
+    const record = await this.returns.assertAttributedForTrigger(
+      input.returnId,
+      RETURN_DECLINE_TRIGGER
+    );
 
+    // The guard is what makes this non-null. Re-asserted rather than `!`-ed: if a
+    // future change to the guard ever let an orphan through, this raises the same
+    // refusal instead of writing a NULL into `order_changes.internalOrderId`,
+    // which is NOT NULL. Unreachable today, by construction.
     const internalOrderId = record.internalOrderId;
     if (internalOrderId === null) {
-      this.logger.warn(
-        `Refusing to decline return ${record.id}: it is an orphan (no attributed order)`
-      );
-      throw new ReturnNotAttributedError(record.id);
+      throw new ReturnNotAttributedError(record.id, RETURN_DECLINE_TRIGGER);
     }
 
     if (record.declinedAt !== null) {
