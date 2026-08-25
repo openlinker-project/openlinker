@@ -14,6 +14,9 @@ import { OrdersPollHandler } from './orders-poll.handler';
 import { MarketplaceOrderSyncHandler } from './marketplace-order-sync.handler';
 import { MarketplaceOrderFxStampHandler } from './marketplace-order-fx-stamp.handler';
 import { MarketplaceOrderFxStampSweepHandler } from './marketplace-order-fx-stamp-sweep.handler';
+import { MarketplaceReturnsPollHandler } from './marketplace-returns-poll.handler';
+import { MarketplaceReturnSyncHandler } from './marketplace-return-sync.handler';
+import { MarketplaceReturnsStatusSyncHandler } from './marketplace-returns-status-sync.handler';
 import { MarketplaceOfferQuantityUpdateHandler } from './marketplace-offer-quantity-update.handler';
 import { MarketplaceOfferFieldUpdateHandler } from './marketplace-offer-field-update.handler';
 import { MarketplaceOfferCreateHandler } from './marketplace-offer-create.handler';
@@ -56,6 +59,9 @@ export class HandlerRegistrationService implements OnModuleInit {
     private readonly marketplaceOrderSyncHandler: MarketplaceOrderSyncHandler,
     private readonly marketplaceOrderFxStampHandler: MarketplaceOrderFxStampHandler,
     private readonly marketplaceOrderFxStampSweepHandler: MarketplaceOrderFxStampSweepHandler,
+    private readonly marketplaceReturnsPollHandler: MarketplaceReturnsPollHandler,
+    private readonly marketplaceReturnSyncHandler: MarketplaceReturnSyncHandler,
+    private readonly marketplaceReturnsStatusSyncHandler: MarketplaceReturnsStatusSyncHandler,
     private readonly marketplaceOfferQuantityUpdateHandler: MarketplaceOfferQuantityUpdateHandler,
     private readonly marketplaceOfferFieldUpdateHandler: MarketplaceOfferFieldUpdateHandler,
     private readonly marketplaceOfferCreateHandler: MarketplaceOfferCreateHandler,
@@ -91,9 +97,12 @@ export class HandlerRegistrationService implements OnModuleInit {
   onModuleInit(): void {
     // Every registration declares its ADR-050 concurrency lane (#2278). The
     // lane is chosen by cost-of-starvation, never by I/O shape or bounded
-    // context — the authoritative table is ADR-050 decision 1 (12 realtime /
-    // 12 bulk / 5 fiscal / 6 fan-out; `fiscalization.register` joined
-    // `fiscal` post-ADR, #2156).
+    // context — the authoritative table is ADR-050 decision 1, now 13 realtime /
+    // 14 bulk / 5 fiscal / 7 fan-out: `fiscalization.register` joined `fiscal`
+    // post-ADR (#2156), `inventory.provenance.backfill` joined `bulk` (#2317),
+    // and the three returns types joined realtime/bulk/fan-out (#2330). The
+    // tripwire in `handler-registration.service.spec.ts` is the authority on
+    // these counts — this comment had drifted from it before #2330.
 
     // Register generic marketplace handlers (Option B)
     this.handlerRegistry.register(
@@ -115,6 +124,26 @@ export class HandlerRegistrationService implements OnModuleInit {
     this.handlerRegistry.register(
       'marketplace.order.fxStampSweep',
       this.marketplaceOrderFxStampSweepHandler,
+      'bulk'
+    );
+    // Returns ingestion (#2330). The lanes mirror the order path they were
+    // modelled on, and for the same cost-of-starvation reason: discovery fans
+    // out (`fan-out`), the per-return child is the unit a buyer is waiting on
+    // (`realtime`), and the lifecycle re-read is a paced background sweep whose
+    // lateness costs nobody a request (`bulk`).
+    this.handlerRegistry.register(
+      'marketplace.returns.poll',
+      this.marketplaceReturnsPollHandler,
+      'fan-out'
+    );
+    this.handlerRegistry.register(
+      'marketplace.return.sync',
+      this.marketplaceReturnSyncHandler,
+      'realtime'
+    );
+    this.handlerRegistry.register(
+      'marketplace.returns.statusSync',
+      this.marketplaceReturnsStatusSyncHandler,
       'bulk'
     );
     this.handlerRegistry.register(

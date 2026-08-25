@@ -7,9 +7,12 @@
  * restock. #2328 widened it with exactly one method — {@link
  * ReturnRepositoryPort.upsertFromSource}, the idempotent update-or-create keyed
  * `(sourceConnectionId, externalReturnId)` that `findByExternalId` and the
- * partial unique index were shipped for. The return feed belongs to #2329,
- * decline to #2333, the read API to #2334. Each of those widens this port
- * rather than inventing a second one.
+ * partial unique index were shipped for. #2330 added the two READ halves of the
+ * lifecycle sweep ({@link ReturnRepositoryPort.findForSourceSweep} / {@link
+ * ReturnRepositoryPort.countForSourceSweep}) — reads only; the sweep writes
+ * through `upsertFromSource` like every other ingestion path. Decline belongs
+ * to #2333, the read API to #2334. Each of those widens this port rather than
+ * inventing a second one.
  *
  * **A note for #2333 and everything after it: `orders` must never import
  * `returns` back.** The edge runs one way — `returns -> orders`, and today only
@@ -22,6 +25,10 @@
 import type { ReturnRecord } from '../entities/return-record.entity';
 import type { CreateReturnRecordInput } from '../types/return.types';
 import type { UpsertReturnRecordInput, UpsertReturnResult } from '../types/return-upsert.types';
+import type {
+  ReturnSourceSweepFilter,
+  ReturnSweepCandidate,
+} from '../types/return-sweep.types';
 
 export interface ReturnRepositoryPort {
   /**
@@ -108,4 +115,36 @@ export interface ReturnRepositoryPort {
    * hydrating every line for it would be N+1 for data the list does not render.
    */
   listOrphans(limit: number, offset: number): Promise<ReturnRecord[]>;
+
+  /**
+   * One page of returns worth re-reading at the source (#2330, pass 2).
+   *
+   * Headers-projection only — the sweep re-reads each candidate by its
+   * source-native id and never renders a line, so hydrating lines here would be
+   * an N+1 for data nothing consumes.
+   *
+   * Ordered `openedAt ASC, id ASC` — deterministic, so a rolling scan offset
+   * means the same thing between runs, and oldest-first so the returns that
+   * have been open longest are re-checked first.
+   *
+   * See {@link ReturnSourceSweepFilter} for why each of its three filters is
+   * load-bearing; in particular the age bound is NOT optional.
+   */
+  findForSourceSweep(
+    filter: ReturnSourceSweepFilter,
+    limit: number,
+    offset: number
+  ): Promise<ReturnSweepCandidate[]>;
+
+  /**
+   * How many rows match the same filter — the total a scan offset wraps
+   * against.
+   *
+   * Separate from {@link ReturnRepositoryPort.findForSourceSweep} rather than
+   * returned alongside it because the count is a full scan of the filtered set
+   * while the page is a bounded read; the offer- and shipment-status sweeps
+   * draw the same line. A caller composes the two into a
+   * `ReturnSourceSweepPage`.
+   */
+  countForSourceSweep(filter: ReturnSourceSweepFilter): Promise<number>;
 }

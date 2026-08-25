@@ -13,6 +13,7 @@ import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
 import { ProductsModule } from '@openlinker/core/products';
 import { InventoryModule } from '@openlinker/core/inventory';
 import { OrdersModule } from '@openlinker/core/orders';
+import { ReturnsModule } from '@openlinker/core/returns';
 import { ListingsModule } from '@openlinker/core/listings/services';
 import { ShippingModule } from '@openlinker/core/shipping';
 import { InvoicingModule } from '@openlinker/core/invoicing';
@@ -32,6 +33,9 @@ import { MarketplaceOfferCreateHandler } from './handlers/marketplace-offer-crea
 import { MarketplaceOfferPollCreationStatusHandler } from './handlers/marketplace-offer-poll-creation-status.handler';
 import { MarketplaceOffersSyncHandler } from './handlers/marketplace-offers-sync.handler';
 import { MarketplaceOfferStatusSyncHandler } from './handlers/marketplace-offer-status-sync.handler';
+import { MarketplaceReturnsPollHandler } from './handlers/marketplace-returns-poll.handler';
+import { MarketplaceReturnSyncHandler } from './handlers/marketplace-return-sync.handler';
+import { MarketplaceReturnsStatusSyncHandler } from './handlers/marketplace-returns-status-sync.handler';
 import { MarketplaceOfferRefreshSnapshotHandler } from './handlers/marketplace-offer-refresh-snapshot.handler';
 import { MarketplaceOfferStockRestoreHandler } from './handlers/marketplace-offer-stock-restore.handler';
 import { MarketplaceOfferPauseStaleHandler } from './handlers/marketplace-offer-pause-stale.handler';
@@ -68,6 +72,7 @@ import { HandlerRegistrationService } from './handlers/handler-registration.serv
     InventoryModule, // Import InventoryModule to access INVENTORY_SERVICE_TOKEN
     OrdersModule, // Import OrdersModule to access ORDER_SYNC_SERVICE_TOKEN
     ListingsModule, // Import ListingsModule to access OFFER_MAPPING_SYNC_SERVICE_TOKEN
+    ReturnsModule, // #2330 — exposes RETURN_INGESTION_SERVICE_TOKEN + RETURN_STATUS_SYNC_SERVICE_TOKEN
     ShippingModule, // Import ShippingModule to access SHIPMENT_STATUS_SYNC_SERVICE_TOKEN (#838)
     InvoicingModule, // OL #1120/#1121 — exposes INVOICE_SERVICE_TOKEN + AUTO_ISSUE_TRIGGER_SERVICE_TOKEN (OrderIngestionService) + REGULATORY_STATUS_RECONCILIATION_SERVICE_TOKEN
     FiscalizationModule, // #2156 — exposes FISCAL_REGISTRATION_SERVICE_TOKEN for the fiscalization.register handler
@@ -88,6 +93,9 @@ import { HandlerRegistrationService } from './handlers/handler-registration.serv
     MarketplaceOfferPollCreationStatusHandler,
     MarketplaceOffersSyncHandler,
     MarketplaceOfferStatusSyncHandler,
+    MarketplaceReturnsPollHandler,
+    MarketplaceReturnSyncHandler,
+    MarketplaceReturnsStatusSyncHandler,
     MarketplaceOfferRefreshSnapshotHandler,
     MarketplaceOfferStockRestoreHandler,
     MarketplaceOfferPauseStaleHandler,

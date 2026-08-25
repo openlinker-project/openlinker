@@ -19,7 +19,14 @@ import type {
   OrderWritebackResult,
   DispatchCarrierHint,
   MappingOption,
+  ReturnSourceReader,
 } from '@openlinker/core/orders';
+import type {
+  IncomingReturn,
+  ReturnFeedInput,
+  ReturnFeedItem,
+  ReturnFeedOutput,
+} from '@openlinker/core/returns';
 import type {
   OrderFeedInput,
   OrderFeedOutput,
@@ -53,6 +60,15 @@ import {
 import { AllegroApiException } from '../../domain/exceptions/allegro-api.exception';
 import { AllegroOrderDispatchRejectedException } from '../../domain/exceptions/allegro-order-dispatch-rejected.exception';
 import { deriveAllegroPaymentStatus } from './allegro-payment-status';
+import {
+  ALLEGRO_CUSTOMER_RETURN_MEDIA_TYPE,
+  ALLEGRO_CUSTOMER_RETURN_TERMINAL_STATUSES,
+} from '../../domain/types/allegro-customer-return.types';
+import type {
+  AllegroCustomerReturnsResponse,
+  AllegroCustomerReturnWire,
+} from '../../domain/types/allegro-customer-return.types';
+import { toIncomingReturn, toReturnFeedItem } from './allegro-customer-return.mapper';
 
 type OrderFeedItem = OrderFeedOutput['items'][number];
 
@@ -67,7 +83,7 @@ type OrderFeedItem = OrderFeedOutput['items'][number];
  * does not need the identifier-mapping port itself.
  */
 export class AllegroOrderSourceAdapter
-  implements OrderSourcePort, SourceOptionsReader, OrderStatusWriteback
+  implements OrderSourcePort, SourceOptionsReader, OrderStatusWriteback, ReturnSourceReader
 {
   private readonly logger = new Logger(AllegroOrderSourceAdapter.name);
 
@@ -319,6 +335,142 @@ export class AllegroOrderSourceAdapter
       );
       throw error;
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // ReturnSourceReader (#2330) — customer returns
+  //
+  // Two methods and one declaration, all against Allegro's `[BETA]`
+  // customer-returns resource. The `[BETA]` media type is set PER REQUEST via
+  // the caller-header hook rather than on the shared client: every other Allegro
+  // call in the tree wants `public.v1`, and a client-wide default would silently
+  // retag them all. The client applies headers in the order
+  // defaults -> caller -> structural, so a caller `Accept` wins while
+  // `Authorization` and `X-Trace-Id` stay owned by the token/trace machinery.
+  // ---------------------------------------------------------------------------
+
+  /**
+   * The source statuses that mean "finished", published so core's pass-2 sweep
+   * can exclude them IN THE QUERY instead of re-reading and discarding.
+   *
+   * Core treats this as an opaque set. The same constant backs the
+   * per-observation `isTerminalAtSource` hint (see the mapper), which is what
+   * stops the two answers drifting apart.
+   */
+  readonly terminalRawStatuses: readonly string[] = ALLEGRO_CUSTOMER_RETURN_TERMINAL_STATUSES;
+
+  /**
+   * One cursor-paged page of the customer-returns feed.
+   *
+   * Four properties are load-bearing, and each is a risk from SPIKE-2289 rather
+   * than a style choice.
+   *
+   * **`from` only, NEVER `offset`.** Allegro's `from` is a documented cursor
+   * ("the ID of the last seen customer return"); `offset` is a live 504 risk at
+   * depth and has a field report of out-of-sequence pages (risk 4 / E6) — and
+   * bootstrapping a busy seller is exactly the deep-offset case. This method
+   * never sends `offset` at all.
+   *
+   * **Termination is an empty array, never `count`.** `count`'s semantics are
+   * unstated (risk 8): read as a total it would loop forever, read as a page
+   * size it would stop early and lose returns silently.
+   *
+   * **`from` is never composed with a filter.** Whether the cursor applies
+   * before or after `status` / `createdAt` filtering is documented nowhere
+   * (risk 1), so this method designs around the question rather than guessing:
+   * the bootstrap window below is used ONLY when there is no cursor, and a
+   * cursored request carries `from` and `limit` and nothing else.
+   *
+   * **A null cursor bootstraps a window; it does not mean "since the epoch".**
+   * A bare unbounded first call would page a seller's entire return history
+   * through deep offsets — precisely the 504 case. `createdAt.gte` bounds it,
+   * inside the adapter and behind the opaque cursor, so core never has to learn
+   * that this source bootstraps by date and pages by id.
+   */
+  async listReturnFeed(input: ReturnFeedInput): Promise<ReturnFeedOutput> {
+    const queryParams: Record<string, string | number> = { limit: input.limit };
+
+    if (input.fromCursor) {
+      queryParams.from = input.fromCursor;
+    } else {
+      queryParams['createdAt.gte'] = this.resolveReturnsBootstrapSince();
+      this.logger.log(
+        `No returns cursor for connection ${this.connectionId}: bootstrapping from ${queryParams['createdAt.gte']}`
+      );
+    }
+
+    const response = await this.httpClient.get<AllegroCustomerReturnsResponse>(
+      '/order/customer-returns',
+      {
+        queryParams,
+        headers: { Accept: ALLEGRO_CUSTOMER_RETURN_MEDIA_TYPE },
+      }
+    );
+
+    const wireItems = response.data.customerReturns ?? [];
+    const items: ReturnFeedItem[] = [];
+    let dropped = 0;
+    for (const wire of wireItems) {
+      const item = toReturnFeedItem(wire);
+      if (item === null) {
+        // Dropped here rather than emitted with a blank id: core REFUSES a blank
+        // key (it has no conflict target, so every re-sync would insert another
+        // copy), and the page must still be consumed or one malformed row wedges
+        // the cursor permanently.
+        dropped += 1;
+        continue;
+      }
+      items.push(item);
+    }
+    if (dropped > 0) {
+      this.logger.warn(
+        `Dropped ${dropped} customer-return feed item(s) without an id (connection: ${this.connectionId})`
+      );
+    }
+
+    // The cursor is the last id of THIS page. An empty page yields the cursor we
+    // came in with, so the caller holds rather than blanking it — and a page
+    // whose every row was dropped likewise cannot advance past rows nothing was
+    // able to name.
+    const lastItem = items[items.length - 1];
+    const nextCursor = lastItem ? lastItem.externalReturnId : input.fromCursor;
+
+    this.logger.debug(
+      `Fetched ${items.length} customer return(s) (connection: ${this.connectionId}, nextCursor: ${nextCursor ?? 'none'})`
+    );
+
+    return { items, nextCursor: nextCursor ?? null };
+  }
+
+  /**
+   * Hydrate one customer return by its Allegro-native id.
+   *
+   * This is both the hydration path for a newly discovered return AND — because
+   * `CustomerReturn` carries no `updatedAt` and `/order/events` has no return
+   * event type — the ONLY channel through which OL can ever observe one moving.
+   * Identifier mapping happens downstream in core, never here.
+   */
+  async getReturn(input: { externalReturnId: string }): Promise<IncomingReturn> {
+    const response = await this.httpClient.get<AllegroCustomerReturnWire>(
+      `/order/customer-returns/${input.externalReturnId}`,
+      { headers: { Accept: ALLEGRO_CUSTOMER_RETURN_MEDIA_TYPE } }
+    );
+
+    return toIncomingReturn(response.data);
+  }
+
+  /**
+   * The bootstrap floor for a connection with no cursor yet, as an ISO instant.
+   *
+   * Deliberately a WINDOW and not "everything" — see `listReturnFeed`. A first
+   * run therefore does NOT backfill a seller's full return history; the
+   * operator-facing backfill is a named follow-up rather than something this
+   * method quietly half-does.
+   */
+  private resolveReturnsBootstrapSince(): string {
+    const raw = Number(process.env.OL_ALLEGRO_RETURNS_BOOTSTRAP_DAYS);
+    const days = Number.isFinite(raw) && raw > 0 ? raw : 30;
+    return new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
   }
 
   /**

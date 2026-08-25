@@ -7,9 +7,9 @@
  * and returns carry authority questions (custody, disposition, restock) that
  * are the operator's, not the source's.
  *
- * #2327 shipped the model and its schema; #2328 adds ingestion's idempotent
- * update-or-create and the service that owns it. Still no transitions, no
- * restock and no API. See `ReturnRepositoryPort` for the map of what widens
+ * #2327 shipped the model and its schema; #2328 added ingestion's idempotent
+ * update-or-create and the service that owns it; #2330 adds the two passes that
+ * feed it from a source. Still no transitions, no restock and no API. See `ReturnRepositoryPort` for the map of what widens
  * this barrel and when.
  *
  * A sibling context consumes `IReturnsService` + `RETURNS_SERVICE_TOKEN`, never
@@ -49,3 +49,23 @@ export type {
   IReturnsService,
   UpsertReturnObservationResult,
 } from './application/services/returns.service.interface';
+
+// Ingestion passes (#2330): discovery + fan-out, and the bounded lifecycle
+// re-read that is the only channel through which OL ever observes a return
+// moving. See `ReturnSourceReader`'s docblock for why there must be two.
+export type {
+  ReturnSourceSweepFilter,
+  ReturnSourceSweepPage,
+  ReturnSweepCandidate,
+} from './domain/types/return-sweep.types';
+export type {
+  IReturnIngestionService,
+  ReturnIngestionOptions,
+  ReturnIngestionResult,
+  ReturnSyncResult,
+} from './application/services/return-ingestion.service.interface';
+export type {
+  IReturnStatusSyncService,
+  ReturnStatusSyncOptions,
+  ReturnStatusSyncResult,
+} from './application/services/return-status-sync.service.interface';

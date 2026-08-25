@@ -23,6 +23,16 @@ export const JobTypeValues = [
   // it greps alongside `marketplace.order.sync`, which ingests the same row.
   'marketplace.order.fxStamp',
   'marketplace.order.fxStampSweep',
+  // Returns ingestion (#2330, ADR-060). THREE types, not two: a source that
+  // reports returns carries no change feed for them, so discovery and lifecycle
+  // are separate passes (SPIKE-2289 E7/E8) — the `master.product.syncAll` /
+  // `master.product.reconcile` split applied to returns.
+  //   - `.returns.poll`     — cursor-paged discovery fan-out over the source feed
+  //   - `.return.sync`      — per-return hydrate + idempotent upsert (the child)
+  //   - `.returns.statusSync` — bounded re-read of OL's own non-terminal returns
+  'marketplace.returns.poll',
+  'marketplace.return.sync',
+  'marketplace.returns.statusSync',
   'marketplace.offers.sync',
   'marketplace.offerQuantity.update',
   'marketplace.offer.updateFields',

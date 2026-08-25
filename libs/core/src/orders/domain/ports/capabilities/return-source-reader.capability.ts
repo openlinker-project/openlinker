@@ -37,8 +37,9 @@
  * `isOrderStatusWriteback` precedent) rather than bound to `OrderSourcePort`, so
  * a call site may narrow whatever object it already resolved.
  *
- * No adapter implements this yet; the Allegro implementation, its manifest entry
- * and both ingestion passes land with #2330 in the same wave.
+ * The Allegro implementation, its manifest entry and both ingestion passes
+ * landed with #2330 in the same wave, which also AMENDED this interface with the
+ * optional {@link ReturnSourceReader.terminalRawStatuses} hint — see below.
  *
  * @module libs/core/src/orders/domain/ports/capabilities
  * @see docs/plans/analysis/SPIKE-2289-allegro-returns-feed.md
@@ -63,6 +64,38 @@ export interface ReturnSourceReader {
    * Identifier mapping happens downstream in core, never in the adapter.
    */
   getReturn(input: { externalReturnId: string }): Promise<IncomingReturn>;
+
+  /**
+   * OPTIONAL: the source's own status strings that mean "this return is
+   * finished", so pass 2 can exclude them **in the query** rather than
+   * re-reading every known return and discarding most of the answers.
+   *
+   * Amended onto this interface by #2330 (its same-wave implementer) after the
+   * sweep proved it needed a set-shaped exclusion the per-return
+   * {@link IncomingReturn.isTerminalAtSource} hint cannot supply: that hint is
+   * only knowable AFTER the re-read this list exists to avoid.
+   *
+   * **Core treats it as an OPAQUE set and never interprets a member.** It is
+   * fed straight into a `NOT IN` over the stored `rawStatus` column — no
+   * parsing, no casing rules, no vocabulary of its own. That is what keeps the
+   * source's status language adapter-side, exactly as
+   * `IncomingReturn.rawStatus`'s verbatim contract requires, and it is why this
+   * is a list of the SOURCE's words rather than a neutral enum.
+   *
+   * **It bounds a sweep and nothing else.** Like `isTerminalAtSource`, it must
+   * never drive an OL lifecycle: a terminal source status is not an OL
+   * disposition, and reading it as one would hand a marketplace authority
+   * ADR-060 places with the operator.
+   *
+   * **Optional on purpose, and the guard is unchanged.** {@link
+   * isReturnSourceReader} still keys on the two METHODS only, so an adapter
+   * compiled against the pre-#2330 shape — or one whose source publishes no
+   * stable terminal vocabulary — remains a full `ReturnSourceReader`. An absent
+   * or empty list degrades the sweep to its age-plus-budget bound, which is
+   * correct but re-reads more rows; it is never an error and never a reason to
+   * skip the connection.
+   */
+  readonly terminalRawStatuses?: readonly string[];
 }
 
 export function isReturnSourceReader<T extends object>(

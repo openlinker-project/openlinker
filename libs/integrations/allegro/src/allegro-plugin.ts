@@ -108,6 +108,15 @@ export const allegroAdapterManifest: AdapterMetadata = {
     'EanCategoryMatcherStreaming',
     'OfferCreator',
     'OfferEventReader',
+    // `ReturnSourceReader` (#2330) is the same advertised-without-dispatch
+    // pattern as `CategoryBrowser` above: it is listed HERE purely so host-side
+    // discovery can tell adapters apart, and is resolved ONLY by narrowing the
+    // dispatched `OrderSource` adapter with `isReturnSourceReader`. It is NOT in
+    // the dispatch table, so `getCapabilityAdapter(id, 'ReturnSourceReader')`
+    // would pass this manifest gate and then fail inside `dispatchCapability`.
+    // That is also why both returns scheduler tasks require `OrderSource`, not
+    // this name — the two facts are complementary, not contradictory.
+    'ReturnSourceReader',
   ],
   displayName: 'Allegro Public API v1',
   version: '1.0.0',

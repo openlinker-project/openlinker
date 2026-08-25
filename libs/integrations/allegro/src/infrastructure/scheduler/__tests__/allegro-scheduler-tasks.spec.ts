@@ -2,7 +2,7 @@
  * Allegro Scheduler Tasks — Unit Spec
  *
  * Covers `buildAllegroSchedulerTasks`: enable-gate semantics for each of
- * the three tasks, payload shape, idempotency key, and the
+ * the six tasks, payload shape, idempotency key, and the
  * `masterCatalogConnectionId` lookup on the offers-sync payload.
  *
  * @module libs/integrations/allegro/src/infrastructure/scheduler/__tests__
@@ -35,7 +35,7 @@ const makeConnection = (overrides: Partial<{ config: Record<string, unknown> }> 
 
 describe('buildAllegroSchedulerTasks', () => {
   describe('enable gates', () => {
-    it('should return all four tasks by default (env-vars unset)', () => {
+    it('should return the four default-ON tasks by default (env-vars unset) — the two returns tasks are opt-in (#2330)', () => {
       const tasks = buildAllegroSchedulerTasks(makeConfig());
       expect(tasks.map((t) => t.taskId)).toEqual([
         'allegro-orders-poll',
@@ -288,6 +288,107 @@ describe('buildAllegroSchedulerTasks', () => {
       expect(shipSync?.generateIdempotencyKey(makeConnection(), '2026-05-11-12-34')).toBe(
         'marketplace:conn-allegro-1:shipment:status:sync:2026-05-11-12-34'
       );
+    });
+  });
+
+  describe('returns tasks (#2330)', () => {
+    const enabled = {
+      OL_ALLEGRO_RETURNS_POLL_SCHEDULER_ENABLED: 'true',
+      OL_ALLEGRO_RETURNS_STATUS_SYNC_SCHEDULER_ENABLED: 'true',
+    };
+
+    it('should register NEITHER returns task by default', () => {
+      // Deliberate deviation from every other Allegro task. The endpoint is
+      // `[BETA]`, its cursor guarantees are undocumented, and nobody has
+      // exercised it against real buyer-initiated returns (SPIKE-2289 risks
+      // 1/3/6/7). Shipping it ON would add recurring marketplace load to every
+      // existing connection at deploy on fixture-deep evidence.
+      const taskIds = buildAllegroSchedulerTasks(makeConfig()).map((t) => t.taskId);
+      expect(taskIds).not.toContain('allegro-returns-poll');
+      expect(taskIds).not.toContain('allegro-returns-status-sync');
+    });
+
+    it('should register both once the operator opts in', () => {
+      const taskIds = buildAllegroSchedulerTasks(makeConfig(enabled)).map((t) => t.taskId);
+      expect(taskIds).toContain('allegro-returns-poll');
+      expect(taskIds).toContain('allegro-returns-status-sync');
+    });
+
+    it('should keep the per-tick env gate on both, so a re-disable works without a restart', () => {
+      const tasks = buildAllegroSchedulerTasks(makeConfig(enabled));
+      expect(tasks.find((t) => t.taskId === 'allegro-returns-poll')?.enabledEnvVar).toBe(
+        'OL_ALLEGRO_RETURNS_POLL_SCHEDULER_ENABLED'
+      );
+      expect(tasks.find((t) => t.taskId === 'allegro-returns-status-sync')?.enabledEnvVar).toBe(
+        'OL_ALLEGRO_RETURNS_STATUS_SYNC_SCHEDULER_ENABLED'
+      );
+    });
+
+    it('should gate BOTH on OrderSource — never the advertised-without-dispatch name', () => {
+      // `ReturnSourceReader` is in the manifest for host-side discovery only.
+      // Naming it here would pass the manifest gate and then throw inside
+      // `dispatchCapability`, aborting the whole scheduler listing.
+      const tasks = buildAllegroSchedulerTasks(makeConfig(enabled));
+      for (const taskId of ['allegro-returns-poll', 'allegro-returns-status-sync']) {
+        expect(tasks.find((t) => t.taskId === taskId)?.requiredCapability).toBe('OrderSource');
+      }
+    });
+
+    it('should emit the discovery payload with its own cursor namespace', () => {
+      const poll = buildAllegroSchedulerTasks(makeConfig(enabled)).find(
+        (t) => t.taskId === 'allegro-returns-poll'
+      );
+      expect(poll?.jobType).toBe('marketplace.returns.poll');
+      expect(poll?.cronExpression).toBe('*/15 * * * *');
+      expect(poll?.generatePayload(makeConnection())).toEqual({
+        schemaVersion: 1,
+        cursorKey: 'allegro.customerReturns.lastReturnId',
+        limit: 100,
+      });
+      expect(poll?.generateIdempotencyKey(makeConnection(), '2026-05-11-12-34')).toBe(
+        'marketplace:conn-allegro-1:returns:poll:2026-05-11-12-34'
+      );
+    });
+
+    it('should emit the sweep payload with a DISTINCT cursor namespace and an age bound', () => {
+      const sweep = buildAllegroSchedulerTasks(makeConfig(enabled)).find(
+        (t) => t.taskId === 'allegro-returns-status-sync'
+      );
+      expect(sweep?.jobType).toBe('marketplace.returns.statusSync');
+      expect(sweep?.cronExpression).toBe('0 * * * *');
+      expect(sweep?.generatePayload(makeConnection())).toEqual({
+        schemaVersion: 1,
+        limit: 50,
+        // Distinct from the poll's key: sharing one would let discovery and
+        // lifecycle overwrite each other's position.
+        cursorKey: 'allegro.customerReturns.scanOffset',
+        lookbackDays: 90,
+      });
+      expect(sweep?.generateIdempotencyKey(makeConnection(), '2026-05-11-12-34')).toBe(
+        'marketplace:conn-allegro-1:returns:status:sync:2026-05-11-12-34'
+      );
+    });
+
+    it('should fall back to safe numerics when the env values are junk', () => {
+      const tasks = buildAllegroSchedulerTasks(
+        makeConfig({
+          ...enabled,
+          OL_ALLEGRO_RETURNS_POLL_PAGE_LIMIT: 'not-a-number',
+          OL_ALLEGRO_RETURNS_STATUS_SYNC_PAGE_LIMIT: '-3',
+          OL_ALLEGRO_RETURNS_STATUS_SYNC_LOOKBACK_DAYS: '0',
+        })
+      );
+      const pollPayload = tasks
+        .find((t) => t.taskId === 'allegro-returns-poll')
+        ?.generatePayload(makeConnection()) as { limit: number };
+      const sweepPayload = tasks
+        .find((t) => t.taskId === 'allegro-returns-status-sync')
+        ?.generatePayload(makeConnection()) as { limit: number; lookbackDays: number };
+
+      expect(pollPayload.limit).toBe(100);
+      expect(sweepPayload.limit).toBe(50);
+      // Never 0 — an unbounded sweep is precisely what the age bound prevents.
+      expect(sweepPayload.lookbackDays).toBe(90);
     });
   });
 });
