@@ -65,6 +65,18 @@ export class ReturnsExceptionFilter implements ExceptionFilter {
       statusCode,
       error: exception.name,
       message: exception.message,
+      // The blocked trigger, on the ONE exception that carries it (#2336).
+      //
+      // This docblock has always said a structured rendering must read the
+      // `trigger` FIELD rather than parse the message — the two drift the first
+      // time the wording changes. Until now the field never crossed the HTTP
+      // boundary, so that instruction described a contract no consumer could
+      // honour and left message-parsing as the only option. Additive: no status
+      // changes, nothing is removed, and the other two exceptions have no such
+      // field so the key is simply absent for them.
+      ...(exception instanceof ReturnNotAttributedError
+        ? { trigger: exception.trigger }
+        : {}),
     });
   }
 

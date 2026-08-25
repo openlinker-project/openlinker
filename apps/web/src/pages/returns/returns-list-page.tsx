@@ -283,13 +283,12 @@ export function ReturnsListPage(): ReactElement {
             columns={columns}
             rows={items}
             rowKey={(item) => item.id}
-            // No `rowHref` yet, deliberately. It would resolve to
-            // `/returns/:returnId`, which #2336 registers — and this branch is
-            // mergeable on its own, so until that lands every row would be a
-            // click that goes to a blank page (the router has no catch-all to
-            // explain it). A row that looks clickable and is not is worse than
-            // a row that does not look clickable. #2336 adds the prop with the
-            // route, in one change.
+            // Relative, resolving against the parent `returns` path now that
+            // the list is its index child — the `customers` / `invoices` shape.
+            // #2336 added this together with the `/returns/:returnId` route, in
+            // one change, because a row that looks clickable and lands on a
+            // blank page is worse than one that does not look clickable.
+            rowHref={(item) => item.id}
             cardView={{
               // The card reuses the SAME renderers as the columns above, so the
               // two layouts cannot drift (#2091).

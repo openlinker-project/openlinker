@@ -32,6 +32,52 @@ export { ReturnOrderCell, returnOrderSummary } from './components/return-order-c
 export { ReturnOpenedCell } from './components/return-opened-cell';
 export { ReturnSourceStatus } from './components/return-source-status';
 export { ReturnStatusCell } from './components/return-status-cell';
+
+// ── Return detail (#2336) ────────────────────────────────────────────────────
+export type {
+  DeclineReturnInput,
+  DeclineReturnOutcome,
+  DeclineReturnResult,
+  ReturnCustodyState,
+  ReturnDeclineAvailability,
+  ReturnDeclineUnsupportedReason,
+  ReturnDetail,
+  ReturnDisposition,
+  ReturnLine,
+  ReturnLineReason,
+  ReturnMoneyState,
+} from './api/returns.types';
+export {
+  DECLINE_RETURN_OUTCOME_VALUES,
+  RETURN_CUSTODY_STATE_VALUES,
+  RETURN_DECLINE_UNSUPPORTED_REASON_VALUES,
+  RETURN_DISPOSITION_VALUES,
+  RETURN_LINE_REASON_VALUES,
+  RETURN_MONEY_STATE_VALUES,
+} from './api/returns.types';
+// The error type is public because the PAGE branches on it — telling "this
+// build could not read the record" apart from a network failure is the whole
+// reason it exists. The parse functions themselves stay private, as above.
+export { ReturnDetailUnreadableError } from './api/return-detail.schema';
+export { useReturnQuery } from './hooks/use-return-query';
+export { useDeclineReturnMutation } from './hooks/use-decline-return-mutation';
+export { ReturnDeclineAction } from './components/return-decline-action';
+export { ReturnLineStateChip } from './components/return-line-state-chips';
+export { ReturnLinesTable } from './components/return-lines-table';
+export { ReturnOrphanBanner } from './components/return-orphan-banner';
+export {
+  RETURN_DECLINE_COPY,
+  RETURN_DECLINE_ERROR_COPY,
+  RETURN_DECLINE_OUTCOME_COPY,
+  RETURN_DETAIL_COPY,
+  RETURN_DETAIL_HEADER_COPY,
+  RETURN_LINES_COPY,
+  RETURN_ORPHAN_BANNER_COPY,
+  RETURN_SOURCE_PANEL_COPY,
+  describeLineQuantity,
+  describeUnreadableLines,
+} from './lib/return-detail.copy';
+export { describeDeclineError, readBlockedTrigger } from './lib/decline-error';
 export {
   RETURNS_EMPTY_COPY,
   RETURNS_ERROR_COPY,
