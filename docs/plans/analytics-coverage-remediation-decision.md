@@ -2,7 +2,7 @@
 
 **Date**: 2026-08-25
 **Issue**: #2455 (Phase 1 Task 1.2 of epic #2452)
-**Sibling decisions**: [ADR-064](./architecture/adrs/064-analytics-display-currency-conversion.md) (display-currency conversion), [ADR-063 Amendment (#2456)](./architecture/adrs/063-per-line-tax-rate-resolution-and-provenance.md#amendment-2456-2026-08-25-query-time-opt-in-for-backfilled-pre-rollout-tax-rates-in-net-sales) (tax-rate query-time setting)
+**Sibling decisions**: [ADR-064](../architecture/adrs/064-analytics-display-currency-conversion.md) (display-currency conversion), [ADR-063 Amendment (#2456)](../architecture/adrs/063-per-line-tax-rate-resolution-and-provenance.md#amendment-2456-2026-08-25-query-time-opt-in-for-backfilled-pre-rollout-tax-rates-in-net-sales) (tax-rate query-time setting)
 
 ## Problem
 
@@ -45,7 +45,7 @@ CREATE TABLE analytics_remediation_runs (
 
 ## Decision 3 — the tax-rate fix is a query-time setting, not a tracked run (supersedes an earlier per-order design)
 
-An intermediate design sketch (before this was reconciled against the ADR-063 amendment) described a per-order "confirm" action that would mutate `taxRateEra` — a one-way, per-order data write, explicitly warned against with a "this can't be undone" confirmation dialog. **This design did not survive review** and is superseded by [ADR-063's amendment](./architecture/adrs/063-per-line-tax-rate-resolution-and-provenance.md#amendment-2456-2026-08-25-query-time-opt-in-for-backfilled-pre-rollout-tax-rates-in-net-sales): a single global, off-by-default, instantly-reversible query-time setting that never touches `order_records`. Because it is a settings write rather than a data-repair job, it needs no `analytics_remediation_runs` row, no lifecycle, and no polling — the very next `/analytics` read reflects the change.
+An intermediate design sketch (before this was reconciled against the ADR-063 amendment) described a per-order "confirm" action that would mutate `taxRateEra` — a one-way, per-order data write, explicitly warned against with a "this can't be undone" confirmation dialog. **This design did not survive review** and is superseded by [ADR-063's amendment](../architecture/adrs/063-per-line-tax-rate-resolution-and-provenance.md#amendment-2456-2026-08-25-query-time-opt-in-for-backfilled-pre-rollout-tax-rates-in-net-sales): a single global, off-by-default, instantly-reversible query-time setting that never touches `order_records`. Because it is a settings write rather than a data-repair job, it needs no `analytics_remediation_runs` row, no lifecycle, and no polling — the very next `/analytics` read reflects the change.
 
 The one legitimate *tax-side* action that does trigger real work is category C's "re-run backfill now" (see Phase 5 Task 5.2) — but it is a fire-and-forget trigger of the existing scheduled `TaxRateBackfillService`, not a tracked run either: a backfill attempt is idempotent, so there is nothing to poll and nothing that can be left "stuck in progress."
 
