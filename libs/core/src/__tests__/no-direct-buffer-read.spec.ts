@@ -28,6 +28,10 @@
  * genuinely adding a new Control, add it to `AvailabilityService.resolveBuffer`
  * — that is the point of there being one.
  *
+ * The walk covers `libs/core/src`, BOTH host apps and every integration
+ * package — the helpers are barrel-public, so a walk confined to core would
+ * let exactly the callers outside it evade a rule that claims no exemptions.
+ *
  * The walk is textual (the barrel-purity pattern): a `require()` cannot see
  * whether a module imported a symbol, and forbidding the import STATEMENT is
  * the whole guarantee.
@@ -35,7 +39,7 @@
  * @module libs/core/src/__tests__
  */
 
-import { readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 /** The #1844 helpers. Any import of any of these is what this spec polices. */
@@ -46,7 +50,7 @@ const BUFFER_HELPERS = [
 ] as const;
 
 /**
- * Paths (relative to `libs/core/src`, POSIX separators) allowed to name a
+ * Paths (relative to the REPO ROOT, POSIX separators) allowed to name a
  * helper. Three entries, and each is a role rather than a convenience:
  *   - the identifier-mapping module that DEFINES them;
  *   - `availability.types.ts`, where `computeAtp` applies the buffer as the
@@ -54,12 +58,40 @@ const BUFFER_HELPERS = [
  *   - `availability.service.ts`, the sole resolver and warner.
  */
 const AUTHORIZED_PATHS = [
-  'identifier-mapping/',
-  'inventory/domain/types/availability.types.ts',
-  'inventory/application/services/availability.service.ts',
+  'libs/core/src/identifier-mapping/',
+  'libs/core/src/inventory/domain/types/availability.types.ts',
+  'libs/core/src/inventory/application/services/availability.service.ts',
 ] as const;
 
 const SRC_ROOT = join(__dirname, '..');
+const REPO_ROOT = join(SRC_ROOT, '..', '..', '..');
+
+/**
+ * Every root the rule covers, not just `libs/core/src`.
+ *
+ * The helpers are BARREL-PUBLIC (`@openlinker/core/identifier-mapping`), so a
+ * host app or an integration package can import them exactly as easily as a
+ * core module can — and a walk that stopped at `libs/core/src` let precisely
+ * those callers evade a spec whose own docblock says there are no exemptions.
+ * The cross-context import checker walks the same wider set for the same
+ * reason.
+ */
+const WALK_ROOTS = [
+  join(REPO_ROOT, 'libs', 'core', 'src'),
+  join(REPO_ROOT, 'apps', 'api', 'src'),
+  join(REPO_ROOT, 'apps', 'worker', 'src'),
+  ...collectIntegrationSrcRoots(),
+];
+
+/** `libs/integrations/<plugin>/src` for every plugin present in the tree. */
+function collectIntegrationSrcRoots(): string[] {
+  const base = join(REPO_ROOT, 'libs', 'integrations');
+  if (!existsSync(base)) return [];
+  return readdirSync(base, { withFileTypes: true })
+    .filter((e) => e.isDirectory())
+    .map((e) => join(base, e.name, 'src'))
+    .filter((p) => existsSync(p));
+}
 
 function collectSourceFiles(dir: string, acc: string[]): void {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -92,7 +124,9 @@ function importedSymbols(source: string): string[] {
 
 describe('stock safety buffer helpers have exactly one reader (#2323)', () => {
   const files: string[] = [];
-  collectSourceFiles(SRC_ROOT, files);
+  for (const root of WALK_ROOTS) {
+    if (existsSync(root)) collectSourceFiles(root, files);
+  }
 
   // An empty walk must FAIL rather than vacuously pass — a moved directory
   // would otherwise retire the guarantee in silence.
@@ -104,7 +138,7 @@ describe('stock safety buffer helpers have exactly one reader (#2323)', () => {
     const offenders: string[] = [];
 
     for (const file of files) {
-      const relative = file.slice(SRC_ROOT.length + 1).split(/[\\/]/).join('/');
+      const relative = file.slice(REPO_ROOT.length + 1).split(/[\\/]/).join('/');
       if (AUTHORIZED_PATHS.some((allowed) => relative.startsWith(allowed))) continue;
 
       const symbols = importedSymbols(readFileSync(file, 'utf8'));
@@ -119,9 +153,19 @@ describe('stock safety buffer helpers have exactly one reader (#2323)', () => {
     // Pinned so widening the allow-list is a deliberate edit to a failing
     // assertion, not a quiet append that nobody reviews.
     expect([...AUTHORIZED_PATHS]).toEqual([
-      'identifier-mapping/',
-      'inventory/domain/types/availability.types.ts',
-      'inventory/application/services/availability.service.ts',
+      'libs/core/src/identifier-mapping/',
+      'libs/core/src/inventory/domain/types/availability.types.ts',
+      'libs/core/src/inventory/application/services/availability.service.ts',
     ]);
+  });
+
+  it('walks the host apps and the integration packages too, not core alone', () => {
+    // Pinned because the walk's VALUE is its breadth: the helpers are
+    // barrel-public, so a root silently dropped from `WALK_ROOTS` retires the
+    // guarantee for every caller under it while the suite stays green.
+    const relatives = files.map((f) => f.slice(REPO_ROOT.length + 1).split(/[\\/]/).join('/'));
+    expect(relatives.some((r) => r.startsWith('apps/api/src/'))).toBe(true);
+    expect(relatives.some((r) => r.startsWith('apps/worker/src/'))).toBe(true);
+    expect(relatives.some((r) => r.startsWith('libs/integrations/'))).toBe(true);
   });
 });

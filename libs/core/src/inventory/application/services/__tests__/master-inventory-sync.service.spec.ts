@@ -1074,6 +1074,50 @@ describe('MasterInventorySyncService', () => {
       expect(propagations[0].options?.dedupeKey).not.toContain('loc-1');
     });
 
+    // I4 — the MIXED case: a pull that stales BOTH variant-keyed pooled rows
+    // and the product-level (NULL-variant) one. `variantIds` can only carry
+    // non-null ids, so before `markedProductLevel` the non-empty branch won and
+    // the product-level target was dropped entirely — its stock stayed
+    // published at the last pooled number.
+    it('should enqueue the product-level target too when a mixed staling marked a null-variant row', async () => {
+      inventoryAdapter.listInventory.mockResolvedValue([located('ol_variant_a', 'loc-1')]);
+      (
+        inventoryService.staleLocationlessPositionsForSource as jest.Mock
+      ).mockResolvedValueOnce({
+        markedCount: 2,
+        variantIds: ['ol_variant_a'],
+        markedProductLevel: true,
+      });
+
+      await service.syncFromMasterByExternalId(connectionId, externalId);
+
+      const variantIds = jobQueue.enqueue.mock.calls
+        .map((c) => c[0] as unknown as { type: string; payload: { variantId: string | null } })
+        .filter((c) => c.type === 'inventory.propagateToMarketplaces')
+        .map((c) => c.payload.variantId);
+
+      expect(variantIds).toHaveLength(2);
+      expect(variantIds).toEqual(expect.arrayContaining(['ol_variant_a', null]));
+    });
+
+    // Absent means "not reported", never "no product-level row": a repository
+    // that does not populate the flag must behave exactly as before.
+    it('should not invent a product-level target when the flag is absent', async () => {
+      inventoryAdapter.listInventory.mockResolvedValue([located('ol_variant_a', 'loc-1')]);
+      (
+        inventoryService.staleLocationlessPositionsForSource as jest.Mock
+      ).mockResolvedValueOnce({ markedCount: 1, variantIds: ['ol_variant_a'] });
+
+      await service.syncFromMasterByExternalId(connectionId, externalId);
+
+      const variantIds = jobQueue.enqueue.mock.calls
+        .map((c) => c[0] as unknown as { type: string; payload: { variantId: string | null } })
+        .filter((c) => c.type === 'inventory.propagateToMarketplaces')
+        .map((c) => c.payload.variantId);
+
+      expect(variantIds).toEqual(['ol_variant_a']);
+    });
+
     it('should not enqueue propagation when nothing was staled', async () => {
       inventoryAdapter.listInventory.mockResolvedValue([pooled('ol_variant_b')]);
 

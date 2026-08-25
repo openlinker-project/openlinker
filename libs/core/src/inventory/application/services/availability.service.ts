@@ -42,7 +42,9 @@ import {
 } from '../../domain/types/availability.types';
 import { UnsupportedAvailabilityScopeError } from '../../domain/exceptions/unsupported-availability-scope.error';
 import type {
+  ApplyPublishControlsBatchInput,
   ApplyPublishControlsInput,
+  ControlledQuantity,
   GetPromisableQuantitiesInput,
   IAvailabilityService,
   PublishControlResult,
@@ -69,7 +71,26 @@ export class AvailabilityService implements IAvailabilityService {
 
     // Resolve the scope BEFORE any I/O so an unsupported scope fails the same
     // way whether or not the caller happened to pass an empty list.
-    const buffer = await this.resolveBuffer(scope);
+    //
+    // Wrapped in the SAME catch `applyPublishControls` uses: a channel Control
+    // read that throws here used to escape as a 500, so the batch-wide
+    // 'unknown' this method already implements for a ledger failure was
+    // unreachable for the OTHER of its two dependencies — and the callers'
+    // stock-at-risk arm with it.
+    let buffer: number;
+    try {
+      buffer = await this.resolveBuffer(scope);
+    } catch (error) {
+      // An unsupported scope is a CALLER BUG and must keep throwing (see
+      // `applyPublishControls` and UnsupportedAvailabilityScopeError).
+      if (error instanceof UnsupportedAvailabilityScopeError) throw error;
+      this.logger.error(
+        `availability_controls_read_failed scope=${scope.kind} variants=${variantIds.length} — ` +
+          `reporting provenance 'unknown' for the whole batch; callers must suppress the publish write`,
+        (error as Error).stack
+      );
+      return variantIds.map((id) => unknownPromisableQuantity(id));
+    }
 
     if (variantIds.length === 0) return [];
 
@@ -137,6 +158,36 @@ export class AvailabilityService implements IAvailabilityService {
       quantity: applyStockSafetyBuffer(Math.max(0, quantity), buffer),
       provenance: 'computed',
     };
+  }
+
+  async applyPublishControlsBatch(
+    input: ApplyPublishControlsBatchInput
+  ): Promise<readonly ControlledQuantity[]> {
+    const { quantities, scope } = input;
+
+    let buffer: number;
+    try {
+      buffer = await this.resolveBuffer(scope);
+    } catch (error) {
+      if (error instanceof UnsupportedAvailabilityScopeError) throw error;
+      this.logger.error(
+        `availability_controls_read_failed scope=${scope.kind} quantities=${quantities.length} — ` +
+          `reporting provenance 'unknown' for the whole batch; the caller must suppress its ` +
+          `publish writes rather than publish the unbuffered quantities`,
+        (error as Error).stack
+      );
+      return quantities.map(() => ({ quantity: null, provenance: 'unknown' as const }));
+    }
+
+    // The arithmetic is IDENTICAL to `applyPublishControls`; only the Control
+    // resolution is hoisted. Per-item resolution put one connection read per
+    // ITEM on the hottest write path in the system, where the pre-#2323 code
+    // did one per BATCH — a batch of N offers reading the same connection N
+    // times for a value that cannot change within the batch.
+    return quantities.map((quantity) => ({
+      quantity: applyStockSafetyBuffer(Math.max(0, quantity), buffer),
+      provenance: 'computed' as const,
+    }));
   }
 
   async getAppliedReserve(scope: AvailabilityScope): Promise<number> {

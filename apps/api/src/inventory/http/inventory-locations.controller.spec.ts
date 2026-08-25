@@ -143,21 +143,23 @@ describe('InventoryLocationsController', () => {
   });
 
   describe('remove', () => {
-    it('should delete when no position references the location', async () => {
-      service.countPositionsAtLocation.mockResolvedValue(0);
+    it('should delegate the delete to the service', async () => {
       service.deleteLocation.mockResolvedValue(undefined);
 
       await expect(controller.remove('ol_location_1')).resolves.toBeUndefined();
       expect(service.deleteLocation).toHaveBeenCalledWith('ol_location_1');
     });
 
-    it('should refuse with LocationInUseError and never call delete when positions remain', async () => {
-      service.countPositionsAtLocation.mockResolvedValue(3);
+    // I8 — the in-use guard MOVED into `LocationService.deleteLocation`, so
+    // the controller must not re-implement it: it counts nothing and simply
+    // lets the domain error through to the global filter (409). Asserting the
+    // absence of the count is the point — a guard restored here would protect
+    // the HTTP caller only, which is the shape being retired.
+    it('should not count positions itself and should propagate LocationInUseError', async () => {
+      service.deleteLocation.mockRejectedValue(new LocationInUseError('ol_location_1', 3));
 
       await expect(controller.remove('ol_location_1')).rejects.toBeInstanceOf(LocationInUseError);
-      // Count comes FIRST and the refusal short-circuits — the delete must not
-      // have been attempted, or the 409 would be a lie about what happened.
-      expect(service.deleteLocation).not.toHaveBeenCalled();
+      expect(service.countPositionsAtLocation).not.toHaveBeenCalled();
     });
   });
 

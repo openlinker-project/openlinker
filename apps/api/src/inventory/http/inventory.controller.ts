@@ -67,7 +67,10 @@ export class InventoryController {
     summary: 'Batch lookup of per-variant inventory availability (#792)',
     description:
       'Returns one row per requested productVariantId with availableQuantity summed across all locations. ' +
-      'Zero-filled for variants that have no inventory rows. Capped at 200 IDs per request.',
+      'Zero-filled for variants that have no inventory rows. Capped at 200 IDs per request. ' +
+      'Each row also carries availableToPromise (#2321) — the computed quantity that may be promised, ' +
+      'net of published reservation holds and the destination stock safety buffer. A null ' +
+      'availableToPromise means OpenLinker could not resolve it and is NOT a zero.',
   })
   @ApiResponse({
     status: 200,

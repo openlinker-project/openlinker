@@ -18,6 +18,7 @@ import type { ILocationService } from './location.service.interface';
 import { LocationRepositoryPort } from '../../domain/ports/location-repository.port';
 import type { InventoryLocation } from '../../domain/entities/inventory-location.entity';
 import { LocationNotFoundException } from '../../domain/exceptions/location-not-found.exception';
+import { LocationInUseError } from '../../domain/exceptions/location-in-use.error';
 import { LOCATION_REPOSITORY_TOKEN } from '../../inventory.tokens';
 import type {
   CreateInventoryLocationInput,
@@ -81,6 +82,20 @@ export class LocationService implements ILocationService {
   }
 
   async deleteLocation(id: string): Promise<void> {
+    // The referential refusal lives HERE, not in the interface layer (#2316's
+    // original placement): `inventory_items` carries no foreign key to
+    // `inventory_locations` (ADR-058 decision 3 defers that to step iii), so
+    // nothing in the database refuses the delete. A guard in the controller
+    // protects only the HTTP caller — every other caller of this method would
+    // strand the positions silently.
+    //
+    // Counted FIRST: an unknown id counts 0 and falls through to the 404
+    // below, so the ordering costs nothing and never masks a missing row.
+    const positionCount = await this.repository.countPositionsAtLocation(id);
+    if (positionCount > 0) {
+      throw new LocationInUseError(id, positionCount);
+    }
+
     const deleted = await this.repository.delete(id);
     if (!deleted) {
       throw new LocationNotFoundException(id);

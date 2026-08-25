@@ -35,7 +35,7 @@
  * @module apps/api/test/integration
  */
 import { DataSource } from 'typeorm';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import {
   ADAPTER_FACTORY_RESOLVER_TOKEN,
   ADAPTER_REGISTRY_TOKEN,
@@ -75,6 +75,29 @@ const captured: UpdateOfferQuantityCommand[] = [];
  * invalid shapes the fixture carries (`'5'`, `-3`, `NaN`, `2.7`) travel the
  * same coercion path an operator's typo does.
  */
+/**
+ * A FROZEN copy of the pre-#2323 idempotency-key derivation.
+ *
+ * Deliberately restated here rather than imported: importing the production
+ * helper would make the assertion tautological (it would agree with whatever
+ * the code does today), which is the exact hole this closes. This function
+ * must never be "kept in sync" with the service — if the two disagree, the
+ * PRODUCTION side changed and a published write-back key moved, which is a
+ * destination-visible break, not a test to update.
+ *
+ * The quantity passed in is the POST-buffer one, because that is what feeds
+ * the digest.
+ */
+function goldenPreRewireKey(
+  connectionId: string,
+  offerId: string,
+  postBufferQuantity: number,
+  observedAt: string
+): string {
+  const raw = `inventory:${connectionId}:${offerId}:${postBufferQuantity}:${observedAt}`;
+  return `inv:${createHash('sha256').update(raw).digest('hex').slice(0, 16)}`;
+}
+
 async function seedConnection(
   dataSource: DataSource,
   config: Record<string, unknown>
@@ -186,10 +209,18 @@ describe('Publish-quantity byte-identity parity (#2323)', () => {
         items: [{ offerId: 'offer-1', quantity: 10, observedAt: '2026-08-20T10:00:00.000Z' }],
       });
 
-      // The key is an opaque digest, so it is CAPTURED and compared rather than
-      // re-derived — a spec that recomputed it would pass on any formula.
       expect(captured[0].idempotencyKey).toBe(firstKey);
       expect(firstKey).toMatch(/^inv:[0-9a-f]{16}$/);
+
+      // Stability alone would pass on ANY formula, including a rewritten one —
+      // which is not what "byte-equal to pre-rewire" claims. So the key is also
+      // checked against GOLDEN_PRE_REWIRE_KEY, an independent frozen copy of
+      // the pre-#2323 derivation (see its docblock). The connection id is the
+      // one variable input, so it is threaded in rather than hardcoded; every
+      // other term of the golden string is a literal.
+      expect(firstKey).toBe(
+        goldenPreRewireKey(connectionId, 'offer-1', 7, '2026-08-20T10:00:00.000Z')
+      );
     });
 
     it('changes when the post-buffer quantity changes, because quantity feeds the digest', async () => {

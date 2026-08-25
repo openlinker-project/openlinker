@@ -35,7 +35,9 @@ describe('InventoryService', () => {
       overrides?.availableQuantity ?? base.availableQuantity,
       overrides?.reservedQuantity ?? base.reservedQuantity,
       overrides?.locationId ?? base.locationId,
-      overrides?.updatedAt ?? base.updatedAt
+      overrides?.updatedAt ?? base.updatedAt,
+      overrides?.isStale ?? base.isStale,
+      overrides?.sourceConnectionId ?? base.sourceConnectionId
     );
   };
 
@@ -82,6 +84,31 @@ describe('InventoryService', () => {
         dedupeKey: 'inventory:propagate:product-id:base:2026-01-01T12:00:00.000Z',
       },
     });
+  });
+
+  // B1 (#2320) — the no-change guard's `previous` lookup MUST carry the same
+  // provenance axis `upsert`'s own lookup derives from the item. Unscoped, the
+  // two reads can resolve DIFFERENT rows in a two-master configuration, so the
+  // guard compares a foreign connection's quantity against ours: it suppresses
+  // a propagation whose aggregate really did change, nondeterministically.
+  it('scopes the previous-row lookup to the item source connection', async () => {
+    const input = createItem({
+      availableQuantity: 7,
+      sourceConnectionId: 'connection-a',
+      updatedAt: new Date('2026-01-01T12:00:00.000Z'),
+    });
+
+    inventoryRepository.findByProductAndVariant.mockResolvedValue(null);
+    inventoryRepository.upsert.mockResolvedValue(input);
+
+    await service.setInventory(input);
+
+    expect(inventoryRepository.findByProductAndVariant).toHaveBeenCalledWith(
+      'product-id',
+      null,
+      null,
+      'connection-a'
+    );
   });
 
   it('skips enqueue when available quantity is unchanged', async () => {

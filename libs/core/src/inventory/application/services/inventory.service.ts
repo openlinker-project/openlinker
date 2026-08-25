@@ -37,10 +37,18 @@ export class InventoryService implements IInventoryService {
       `Setting inventory for product: ${item.productId}, variant: ${item.productVariantId ?? 'base'}, location: ${item.locationId ?? 'default'}`
     );
 
+    // The provenance axis is DERIVED from the item, exactly as `upsert`'s own
+    // lookup derives it (#2320). The two reads MUST agree: an unscoped read
+    // here against a scoped upsert can resolve a DIFFERENT row in the
+    // two-master configuration #2320 exists for, so the no-change guard below
+    // would compare a foreign connection's quantity against ours - a
+    // nondeterministic guard that silently suppresses a propagation whose
+    // aggregate really did change (the stale-stock shape #2324 closes).
     const previous = await this.inventoryRepository.findByProductAndVariant(
       item.productId,
       item.productVariantId,
-      item.locationId
+      item.locationId,
+      item.sourceConnectionId
     );
 
     const upserted = await this.inventoryRepository.upsert(item);

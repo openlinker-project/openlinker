@@ -268,6 +268,12 @@ describe('Inventory Locations Integration', () => {
   });
 
   describe('schema', () => {
+    // CAVEAT, deliberately kept rather than removed: the harness builds its
+    // schema with TypeORM `synchronize`, so what this asserts is that the ORM
+    // ENTITY declares both indexes — NOT that migration 1843 creates them. The
+    // two can drift, and only a migration-run harness could catch that. It is
+    // still worth keeping: an index dropped from the entity is a real
+    // regression, and this is the only place that would notice.
     it('should create the unique code index and the owner-connection index', async () => {
       const rows = await harness.getDataSource().query(`
         SELECT indexname FROM pg_indexes WHERE tablename = 'inventory_locations'

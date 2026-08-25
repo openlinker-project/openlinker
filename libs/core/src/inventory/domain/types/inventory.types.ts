@@ -228,6 +228,22 @@ export interface ProductStockAggregate {
 export interface PruneStaleVariantsResult {
   markedCount: number;
   variantIds: string[];
+
+  /**
+   * Whether a PRODUCT-LEVEL (NULL-variant) row was among the marked rows.
+   *
+   * Optional and additive: `variantIds` can only carry non-null ids, so a
+   * product-level row is counted in `markedCount` and then invisible. A caller
+   * that fans propagation out over `variantIds` therefore cannot tell a MIXED
+   * result (variant-keyed rows staled AND the product-level one) apart from a
+   * variant-only one, and drops the product-level target — the stock stays
+   * published at its last pooled value.
+   *
+   * Set by `markLocationlessStaleForSource`, whose RETURNING scan already sees
+   * the NULLs. Absent means "not reported", never "no product-level row", so a
+   * writer that does not populate it keeps its pre-existing behaviour exactly.
+   */
+  markedProductLevel?: boolean;
 }
 
 

@@ -26,6 +26,7 @@ import {
   IsNumber,
   IsOptional,
   IsString,
+  IsUUID,
   Length,
   Max,
   MaxLength,
@@ -55,7 +56,12 @@ export class UpdateLocationDto {
 
   @ApiPropertyOptional({ nullable: true, description: 'Provenance only, never authority.' })
   @IsOptional()
-  @IsString()
+  // @IsUUID, not @IsString: the column is `uuid` and carries a live FK. A
+  // well-formed-but-non-uuid string reaches the driver as a cast error (500)
+  // on what is really malformed input, so the shape is rejected here (400).
+  // A syntactically valid id naming no connection is a different failure and
+  // is translated from 23503 in LocationRepository (422).
+  @IsUUID()
   ownerConnectionId?: string | null;
 
   @ApiPropertyOptional({ nullable: true })
@@ -78,7 +84,9 @@ export class UpdateLocationDto {
   @ApiPropertyOptional({ nullable: true })
   @IsOptional()
   @IsString()
-  @MaxLength(32)
+  // Matches the varchar(16) column exactly; a wider bound here turns an
+  // over-long postcode into a driver error (500) instead of a 400.
+  @MaxLength(16)
   postcode?: string | null;
 
   @ApiPropertyOptional({ nullable: true, minimum: -90, maximum: 90 })

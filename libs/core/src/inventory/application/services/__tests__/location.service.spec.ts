@@ -13,6 +13,7 @@ import { Test } from '@nestjs/testing';
 
 import { InventoryLocation } from '../../../domain/entities/inventory-location.entity';
 import { LocationNotFoundException } from '../../../domain/exceptions/location-not-found.exception';
+import { LocationInUseError } from '../../../domain/exceptions/location-in-use.error';
 import type { LocationRepositoryPort } from '../../../domain/ports/location-repository.port';
 import { LOCATION_REPOSITORY_TOKEN } from '../../../inventory.tokens';
 import { LocationService } from '../location.service';
@@ -139,6 +140,30 @@ describe('LocationService', () => {
 
     it('should resolve when a row was removed', async () => {
       await expect(service.deleteLocation('ol_location_x')).resolves.toBeUndefined();
+    });
+
+    // I8 — the refusal belongs HERE, not in the controller: `inventory_items`
+    // has no FK to `inventory_locations`, so nothing in the database refuses
+    // the delete and a controller-only guard protected the HTTP caller alone.
+    it('should refuse with LocationInUseError while positions still reference it', async () => {
+      repository.countPositionsAtLocation.mockResolvedValue(3);
+
+      await expect(service.deleteLocation('ol_location_x')).rejects.toBeInstanceOf(
+        LocationInUseError
+      );
+      // Refused BEFORE the delete — the positions must not be stranded.
+      expect(repository.delete).not.toHaveBeenCalled();
+    });
+
+    it('should still report 404 for an unknown id rather than a spurious in-use refusal', async () => {
+      // An unknown id counts 0 positions, so the ordering never masks a
+      // missing row.
+      repository.countPositionsAtLocation.mockResolvedValue(0);
+      repository.delete.mockResolvedValue(false);
+
+      await expect(service.deleteLocation('missing')).rejects.toBeInstanceOf(
+        LocationNotFoundException
+      );
     });
   });
 

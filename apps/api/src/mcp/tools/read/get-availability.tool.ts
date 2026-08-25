@@ -53,7 +53,7 @@ export function createGetAvailabilityTool(
     requiredScope: 'mcp:read',
     requiresAdmin: false,
     description:
-      "Read stock levels from OpenLinker's inventory for a set of products (totals) or variants (per-variant). Supply exactly one of productIds or variantIds — ids come from search_catalog / get_product. Stock reflects the last completed inventory sync, not a live marketplace read.",
+      "Read stock levels from OpenLinker's inventory for a set of products (totals) or variants (per-variant). Supply exactly one of productIds or variantIds — ids come from search_catalog / get_product. Stock reflects the last completed inventory sync, not a live marketplace read. A null availableToPromise means OpenLinker could not determine how many units may be promised — it does NOT mean zero, and must never be reported or acted on as zero stock.",
     inputSchema,
     handler: async (args: Record<string, unknown>): Promise<CallToolResult> => {
       // NARROWING, not validation: the SDK already validated `args` against

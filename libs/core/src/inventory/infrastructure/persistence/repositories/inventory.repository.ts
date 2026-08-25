@@ -407,6 +407,13 @@ export class InventoryRepository implements InventoryRepositoryPort {
     // the variant-keep group so the two OR-groups stay independent.
     this.applyProvenanceScope(qb, scope, '"sourceConnectionId"');
 
+    // NOTE (pre-existing, #1478 shape — deliberately unchanged in this pass):
+    // this is a query-builder update, so TypeORM auto-appends the
+    // `@UpdateDateColumn` and `updatedAt` DOES move on every staled row. The
+    // bump is inert here because a staled row is excluded from every
+    // availability read, so no published quantity derives from it. Its raw-SQL
+    // sibling `markLocationlessStaleForSource` avoids the bump because its rows
+    // stay readable. Do not restate the no-bump claim on this method.
     const result = await qb.returning(['productVariantId']).execute();
 
     // RETURNING yields one raw row per flagged inventory row; distinct non-null
@@ -445,49 +452,71 @@ export class InventoryRepository implements InventoryRepositoryPort {
     const nonNullLocated = locatedVariantKeys.filter((v): v is string => v !== null);
     const locatedNull = locatedVariantKeys.includes(null);
 
-    const qb = this.repository
-      .createQueryBuilder()
-      .update(InventoryItemOrmEntity)
-      .set({ isStale: true })
-      .where('productId = :productId', { productId })
-      .andWhere('isStale = false')
-      // The pooled half of the rule: only a row that declines to locate is an
-      // orphan of a located write. A row AT a location is the located write.
-      .andWhere('"locationId" IS NULL')
-      .andWhere(
-        // A row is an orphan iff its variant is one the master just located.
-        // Each branch guards its own NULL so the predicate stays total, and IN
-        // is only applied to guaranteed-non-null values — the same discipline
-        // `markStaleExceptVariants` keeps, in the mirror-image direction.
-        new Brackets((inner) => {
-          if (nonNullLocated.length > 0) {
-            inner.where('productVariantId IN (:...located)', { located: nonNullLocated });
-          }
-          if (locatedNull) {
-            if (nonNullLocated.length > 0) {
-              inner.orWhere('productVariantId IS NULL');
-            } else {
-              inner.where('productVariantId IS NULL');
-            }
-          }
-        })
-      );
+    // RAW SQL, for exactly the reason `backfillLegacyProvenance` is raw (see
+    // its docblock): TypeORM auto-appends the `@UpdateDateColumn` to any
+    // `.update().set()` whose SET clause does not already name it, so a
+    // query-builder update here would move `updatedAt` on every row it staled.
+    // This pass changes no stock — only liveness — while
+    // `InventorySyncService` derives the propagation dedupe key from
+    // `updatedAt` and #2321's `stockUpdatedAt` read reports it as when stock
+    // was last OBSERVED. A raw statement writes precisely the columns it
+    // names, which is what makes the no-bump claim TRUE rather than intended.
+    const params: unknown[] = [productId];
 
-    // Per-source restriction (#2320), bracketed and appended AFTER the variant
-    // group so the two OR-groups stay independent. REQUIRED here: an unscoped
-    // sweep would stale a rival master's pooled row over this master's choice.
-    this.applyProvenanceScope(qb, scope, '"sourceConnectionId"');
+    // A row is an orphan iff its variant is one the master just located. Each
+    // branch guards its own NULL so the predicate stays total, and the array
+    // membership test is only applied to guaranteed-non-null values — the same
+    // discipline `markStaleExceptVariants` keeps, in the mirror direction.
+    const variantClauses: string[] = [];
+    if (nonNullLocated.length > 0) {
+      params.push(nonNullLocated);
+      variantClauses.push(`"productVariantId" = ANY($${params.length}::text[])`);
+    }
+    if (locatedNull) {
+      variantClauses.push('"productVariantId" IS NULL');
+    }
 
-    // No `updatedAt` in the SET: the stock facts did not change, only their
-    // liveness, and moving the timestamp would misreport when stock was last
-    // observed (the #2321 `stockUpdatedAt` read).
-    const result = await qb.returning(['productVariantId']).execute();
+    // Per-source restriction (#2320), kept as its own parenthesised group
+    // beside the variant group so the two OR-groups cannot re-associate.
+    // REQUIRED here: an unscoped sweep would stale a rival master's pooled row
+    // over this master's own choice. The membership rule mirrors
+    // `applyProvenanceScope` exactly — the two must not drift.
+    params.push(scope.sourceConnectionId);
+    const provenanceClauses = [`"sourceConnectionId" = $${params.length}`];
+    if (scope.includeUnattributedProvenance) {
+      // NULL and the 'legacy' sentinel are ONE class ("unattributed").
+      provenanceClauses.push('"sourceConnectionId" IS NULL');
+      params.push(LEGACY_SOURCE_CONNECTION_ID);
+      provenanceClauses.push(`"sourceConnectionId" = $${params.length}`);
+    }
 
-    const raw = result.raw as { productVariantId: string | null }[];
+    const rows = (await this.repository.query(
+      `UPDATE "inventory_items"
+          SET "isStale" = true
+        WHERE "productId" = $1
+          AND "isStale" = false
+          -- The pooled half of the rule: only a row that declines to locate is
+          -- an orphan of a located write. A row AT a location IS the write.
+          AND "locationId" IS NULL
+          AND (${variantClauses.join(' OR ')})
+          AND (${provenanceClauses.join(' OR ')})
+    RETURNING "productVariantId"`,
+      params
+    )) as unknown;
+
+    // A RETURNING update comes back as a plain row array through TypeORM's raw
+    // query; normalised rather than trusted, since the driver's typing is `any`.
+    const raw = (Array.isArray(rows) ? rows : []) as { productVariantId: string | null }[];
     const variantIds = [
       ...new Set(raw.map((r) => r.productVariantId).filter((v): v is string => v !== null)),
     ];
-    return { markedCount: result.affected ?? raw.length, variantIds };
+    // A NULL-variant row is a product-level position: it is COUNTED but has no
+    // id to surface, so without this flag a caller cannot tell a MIXED pull
+    // (variant-keyed rows staled AND the product-level one) apart from a
+    // variant-only pull — and would silently drop the product-level
+    // propagation target.
+    const markedProductLevel = raw.some((r) => r.productVariantId === null);
+    return { markedCount: raw.length, variantIds, markedProductLevel };
   }
 
 
@@ -801,16 +830,31 @@ export class InventoryRepository implements InventoryRepositoryPort {
    * Recognise a rejection from either partial unique index on `inventory_items`
    * (#2320).
    *
-   * Message-regex rather than `code === '23505'`, matching this context's own
-   * `LocationRepository.isUniqueCodeViolation` idiom: naming the indexes keeps
-   * the check specific to the POSITION key, so an unrelated future constraint
-   * on this table cannot be silently reported as a cross-source conflict.
+   * A bare `duplicate key` test is deliberately NOT enough: it matches EVERY
+   * unique violation on the table, primary-key collisions included, and
+   * translates them into a permanent, non-retryable
+   * `InventoryCrossSourcePositionConflictError` describing something that did
+   * not happen. The violation must be identified as the POSITION key's.
+   *
+   * Identified two ways, because the index NAME is not stable across
+   * environments: the migration creates descriptive names, while a
+   * `synchronize`-built schema (the integration harness) mints `IDX_<hash>`
+   * from the unnamed `@Index` decorators on the ORM entity. The reported
+   * COLUMNS are stable in both, and a primary-key collision reports `(id)` —
+   * so the column test is the one that actually discriminates, with the name
+   * test kept for a driver that reports a constraint but no detail.
    */
   private isPositionUniqueViolation(error: unknown): boolean {
-    return (
-      error instanceof QueryFailedError &&
-      /duplicate key|IDX_inventory_items_product_(variant|base)_unique/i.test(error.message)
-    );
+    if (!(error instanceof QueryFailedError)) return false;
+    const driverError = error as unknown as { code?: string; detail?: string };
+    const isUnique =
+      driverError.code === '23505' || /duplicate key/i.test(error.message);
+    if (!isUnique) return false;
+
+    const named = /IDX_inventory_items_product_(variant|base)_unique/i.test(error.message);
+    // `Key ("productId", "productVariantId", "locationId")=(…) already exists.`
+    const positionKeyed = /"?productId"?/i.test(driverError.detail ?? '');
+    return named || positionKeyed;
   }
 
   /**

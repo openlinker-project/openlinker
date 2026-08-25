@@ -22,17 +22,23 @@ import { API_VERSION } from '../../src/app-info/app-info.types';
 import { CapabilityNotSupportedFilter } from '../../src/common/filters/capability-not-supported.filter';
 import { ConnectionExceptionFilter } from '../../src/common/filters/connection-exception.filter';
 import { InventoryLocationExceptionFilter } from '../../src/common/filters/inventory-location-exception.filter';
+import { TaxonomySourceUnavailableFilter } from '../../src/common/filters/taxonomy-source-unavailable.filter';
+import { AvailabilityUnknownFilter } from '../../src/common/filters/availability-unknown.filter';
 
 const harness = createIntegrationTestHarness({
   imports: [AppModule],
   // Mirror `main.ts`'s global exception filters so int-specs see the same
-  // HTTP status mapping the running app does (domain exceptions → 400/404/409
-  // rather than a default 500).
+  // HTTP status mapping the running app does (domain exceptions →
+  // 400/404/409/422/503 rather than a default 500). The list is the FULL set
+  // main.ts registers — a partial mirror makes an int-spec assert a 500 the
+  // running app never returns, which is a passing test about the wrong app.
   configureApp: (app) => {
     app.useGlobalFilters(
       new CapabilityNotSupportedFilter(),
       new ConnectionExceptionFilter(),
-      new InventoryLocationExceptionFilter()
+      new TaxonomySourceUnavailableFilter(),
+      new InventoryLocationExceptionFilter(),
+      new AvailabilityUnknownFilter()
     );
     // Mirror main.ts's URI versioning (#1133) so int-specs exercise the same
     // `/v1` routing prod serves. Only the version-neutral routes (the `/webhooks`

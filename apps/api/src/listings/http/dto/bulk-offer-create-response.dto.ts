@@ -31,6 +31,12 @@ export class BulkOfferCreateResponseDto {
       'Count of expanded jobs dropped because the variant already carries an active offer mapping on the destination connection (#1933). Zero when nothing was skipped.',
   })
   skippedAlreadyListedCount!: number;
+
+  @ApiProperty({
+    description:
+      'Count of expanded jobs dropped because OpenLinker could not resolve the variant availability (#2323) — a TRANSIENT exclusion, worth re-submitting. Zero when nothing was skipped.',
+  })
+  skippedAvailabilityUnknownCount!: number;
 }
 
 export class BulkBatchRecordSummaryDto {
