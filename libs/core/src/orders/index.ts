@@ -206,9 +206,10 @@ export type {
 } from './domain/types/refund-execution.types';
 export { RefundExecutionOutcomeValues } from './domain/types/refund-execution.types';
 
-// Analytics display-currency conversion read model (#2458, ADR-064).
+// Analytics display-currency conversion read model (#2458, ADR-064, pending in PR #2485).
 export {
   DISPLAY_CURRENCY_RATE_BASIS_VALUES,
+  MIXED_NATIVE_CURRENCIES_LABEL,
   isDisplayCurrencyRateBasis,
 } from './domain/types/display-currency.types';
 export type {
@@ -222,7 +223,11 @@ export type {
 } from './domain/types/display-currency.types';
 
 // Services
-export { IOrderSyncService, OrderSyncRequest, OrderSyncResult } from './application/interfaces/order-sync.service.interface';
+export {
+  IOrderSyncService,
+  OrderSyncRequest,
+  OrderSyncResult,
+} from './application/interfaces/order-sync.service.interface';
 export {
   IOrderIngestionService,
   OrderIngestionOptions,
@@ -394,7 +399,3 @@ export { OrderChangesModule } from './order-changes.module';
 export type { IOrderHoldProjectionReconcileService } from './application/interfaces/order-hold-projection-reconcile.service.interface';
 export type { HoldProjectionReconcileResult } from './domain/types/order-hold-projection.types';
 export { OrderHoldsModule } from './order-holds.module';
-
-
-
-

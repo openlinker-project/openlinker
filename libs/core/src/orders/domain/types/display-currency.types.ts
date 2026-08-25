@@ -1,7 +1,7 @@
 /**
  * Display Currency Conversion Types
  *
- * Shapes for the `/analytics` display-currency read model (#2458, ADR-064).
+ * Shapes for the `/analytics` display-currency read model (#2458, ADR-064, pending in PR #2485).
  * Two conversion modes back the operator-facing display-currency picker:
  *
  *  - `current-rate`: groups the RAW native `currency`/`totalAmount` figures
@@ -35,14 +35,39 @@ export function isDisplayCurrencyRateBasis(value: string): value is DisplayCurre
 }
 
 /**
+ * Sentinel `currency` value for a `NativeCurrencyAmount` bucket that sums
+ * orders spanning more than one native currency with no single ISO code to
+ * label them (`SalesAnalyticsHeadline.unconvertedCurrency === null` while
+ * `unconvertedCount > 0`, i.e. real, non-zero money whose currencies the
+ * `#1987` read model didn't keep separately). `groupByCurrency` never sends
+ * this value to a rate provider — a currency-less bucket has no rate to
+ * resolve — and it is unconditionally reported in
+ * `CurrentRateConversionResult.unresolvedNativeCurrencies` rather than being
+ * silently excluded from `convertedTotal` with no trace at all.
+ */
+export const MIXED_NATIVE_CURRENCIES_LABEL = 'mixed-currencies';
+
+/**
  * One native-currency amount to fold into a `current-rate` conversion — one
  * entry per order, or one entry per daily-row native-currency bucket. The
  * aggregation's own day/connection grouping is irrelevant here; only the
- * `(currency, amount)` pair is read.
+ * `(currency, amount, count)` triple is read. `currency` may be
+ * {@link MIXED_NATIVE_CURRENCIES_LABEL} when the caller cannot label a bucket
+ * with one ISO code.
  */
 export interface NativeCurrencyAmount {
   readonly currency: string;
   readonly amount: number;
+  /**
+   * How many orders this amount represents (#2488 review, IMPORTANT 1) — a
+   * caller aggregating several orders into one pre-summed bucket (e.g. the
+   * controller's per-currency revenue bucket) passes the real order count
+   * here, not one entry per order. `groupByCurrency` sums this field rather
+   * than counting array entries, so `NativeCurrencyBreakdown.orderCount`
+   * reflects true order counts regardless of how coarsely the caller batched
+   * its input.
+   */
+  readonly count: number;
 }
 
 /** Input to {@link IDisplayCurrencyConversionService.convertAtCurrentRate}. */
@@ -72,7 +97,10 @@ export interface NativeCurrencyBreakdown {
 /**
  * Output of a `current-rate` conversion. `unresolvedNativeCurrencies` backs
  * the mockup's `unavailable` state — a currency with no resolvable rate is
- * reported here, never thrown and never silently dropped or defaulted.
+ * reported here, never thrown and never silently dropped or defaulted. It may
+ * also contain {@link MIXED_NATIVE_CURRENCIES_LABEL}: real, non-zero money
+ * from a bucket that spans more than one native currency is reported as
+ * unresolved rather than being excluded from `convertedTotal` with no trace.
  */
 export interface CurrentRateConversionResult {
   readonly displayCurrency: string;
