@@ -86,8 +86,10 @@ Branch: `oms-programme-wave-1` (stacked off Wave-0 tip feb78054d; Wave-0 PR to m
 |---|---|---|---|
 | #2327 | W1c-1 | returns context: model + migration 1846 | ☑ merged 902c83ebb (commit bd7b3b26f; reviewed, approved; incl. ADR-060 custody amendment) |
 | #2329 | W1c-3 | ReturnSourceReader contract | ☑ merged 8ecc8b855 (commit 0edf7f52a; reviewed, approved; cursor-type AC deviation stated) |
-| #2330 | W1c-4A | Allegro ReturnSourceReader + returns jobs | ◐ plan in progress (Scope A) |
-| #2328 | W1c-2 | ReturnsService idempotent update-or-create | ◑ implementing (ANALYSIS-2328: xmax rejected, no created-detection, shared reason mapper, O1 synthesise-adapter-side; base 8ecc8b855) |
+| #2330 | W1c-4A | Allegro ReturnSourceReader + returns jobs | ◑ implementing (ANALYSIS-2330: three job types, terminalRawStatuses amendment, enabledDefault false; base 29b2579f4) |
+| #2328 | W1c-2 | ReturnsService idempotent update-or-create | ☑ merged 29b2579f4 (commit fc4718112; reviewed, approved; O1 synthesise-adapter-side ruled; no created-detection) |
+| #2332 | W1c-5 | orphan bucket + trigger block + reconcile | ◐ plan in progress |
+| #2334 | W1c-7 | returns read API | ◐ plan in progress |
 ### Wave 2 (epic #2389) — gated per its epic body; §8 Q1 = YES (decision 2 above)
 
 (Fill per-issue tables for each wave when its frontier opens; until then the epic checklist is the list.)
