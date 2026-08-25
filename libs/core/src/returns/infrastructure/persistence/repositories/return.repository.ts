@@ -24,7 +24,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, IsNull, Repository } from 'typeorm';
-import type { EntityManager } from 'typeorm';
+import type { EntityManager, SelectQueryBuilder } from 'typeorm';
 import { formatInternalId } from '@openlinker/core/identifier-mapping';
 import type { RefundReason } from '@openlinker/core/orders/types';
 import { Logger } from '@openlinker/shared/logging';
@@ -40,6 +40,10 @@ import type {
   UpsertReturnRecordInput,
   UpsertReturnResult,
 } from '../../../domain/types/return-upsert.types';
+import type {
+  ReturnSourceSweepFilter,
+  ReturnSweepCandidate,
+} from '../../../domain/types/return-sweep.types';
 import type {
   ReturnCustodyState,
   ReturnDisposition,
@@ -361,6 +365,81 @@ export class ReturnRepository implements ReturnRepositoryPort {
       skip: offset,
     });
     return headers.map((header) => this.toDomain(header, []));
+  }
+
+  /**
+   * The pass-2 candidate page (#2330) — headers projection, deterministic order.
+   *
+   * Built with the query builder rather than `find()` because two of the three
+   * filters have no `FindOptions` spelling that stays honest: the terminal-status
+   * exclusion is a `NOT IN` over a list that may legally be EMPTY (in which case
+   * the clause must be OMITTED, not rendered as `NOT IN ()`, which is a syntax
+   * error in Postgres and would take the whole sweep down for the adapters that
+   * declare no vocabulary), and the age bound has to fall back from `openedAt`
+   * to `createdAt` for a row whose source sent an unparseable timestamp — those
+   * rows are real returns and must not become permanently invisible to the sweep
+   * because of a formatting fault at the source.
+   *
+   * `externalReturnId IS NOT NULL` is not a nicety: a return with no source key
+   * has nothing to re-read BY, so including it would guarantee a 404 every run.
+   */
+  async findForSourceSweep(
+    filter: ReturnSourceSweepFilter,
+    limit: number,
+    offset: number
+  ): Promise<ReturnSweepCandidate[]> {
+    const rows = await this.buildSweepQuery(filter)
+      .select(['r.id', 'r.externalReturnId', 'r.rawStatus'])
+      .orderBy('COALESCE(r."openedAt", r."createdAt")', 'ASC')
+      .addOrderBy('r.id', 'ASC')
+      // `limit`/`offset`, not `take`/`skip`: the latter are entity-paging
+      // helpers that switch to a subquery form, and this read is a raw
+      // projection with no joins — the direct SQL clauses are what it means.
+      .limit(limit)
+      .offset(offset)
+      .getRawMany<{ r_id: string; r_externalReturnId: string; r_rawStatus: string }>();
+
+    return rows.map((row) => ({
+      id: row.r_id,
+      externalReturnId: row.r_externalReturnId,
+      rawStatus: row.r_rawStatus,
+    }));
+  }
+
+  async countForSourceSweep(filter: ReturnSourceSweepFilter): Promise<number> {
+    return this.buildSweepQuery(filter).getCount();
+  }
+
+  /**
+   * The single WHERE the page read and the count read share.
+   *
+   * One builder, two callers — so a filter can never be applied to the page but
+   * not the total, which would make the scan offset wrap against a set it is not
+   * actually paging through and silently skip or repeat rows forever.
+   */
+  private buildSweepQuery(
+    filter: ReturnSourceSweepFilter
+  ): SelectQueryBuilder<ReturnOrmEntity> {
+    const query = this.returns
+      .createQueryBuilder('r')
+      .where('r."sourceConnectionId" = :connectionId', { connectionId: filter.sourceConnectionId })
+      .andWhere('r."origin" = :origin', { origin: filter.origin })
+      .andWhere('r."externalReturnId" IS NOT NULL')
+      .andWhere('COALESCE(r."openedAt", r."createdAt") >= :openedSince', {
+        openedSince: filter.openedSince,
+      });
+
+    if (filter.terminalRawStatuses.length > 0) {
+      // Opaque set membership — core never interprets a member. Omitted
+      // entirely when empty; `NOT IN ()` is a Postgres syntax error, and an
+      // adapter that declares no terminal vocabulary must degrade to the age
+      // bound rather than take the sweep down.
+      query.andWhere('r."rawStatus" NOT IN (:...terminalRawStatuses)', {
+        terminalRawStatuses: filter.terminalRawStatuses,
+      });
+    }
+
+    return query;
   }
 
   private toDomain(header: ReturnOrmEntity, lines: ReturnLineOrmEntity[]): ReturnRecord {

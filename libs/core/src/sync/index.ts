@@ -100,6 +100,11 @@ export {
   MasterProductSyncDeltaPayloadV1,
   MasterProductReconcilePayloadV1,
 } from './domain/types/master-job-payloads.types';
+export type {
+  MarketplaceReturnsPollPayloadV1,
+  MarketplaceReturnSyncPayloadV1,
+  MarketplaceReturnsStatusSyncPayloadV1,
+} from './domain/types/returns-job-payloads.types';
 export type { InventoryProvenanceBackfillPayloadV1 } from './domain/types/inventory-job-payloads.types';
 export {
   ShopProductPublishPayloadV1,

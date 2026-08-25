@@ -465,3 +465,132 @@ describe('ReturnRepository.upsertFromSource', () => {
     );
   });
 });
+
+/**
+ * Sweep reads (#2330).
+ *
+ * These assert the QUERY, not the rows — the row-level behaviour is proved
+ * against real Postgres in `allegro-returns-status-sync.int-spec.ts`, which is
+ * where it belongs because the empty-`NOT IN` case is a SQL-syntax question. The
+ * property worth pinning here is that the page read and the count read are built
+ * from the SAME clauses: if they ever diverge, the scan offset wraps against a
+ * set it is not paging through and silently skips or repeats rows forever.
+ */
+describe('ReturnRepository sweep reads', () => {
+  const openedSince = new Date('2026-05-01T00:00:00Z');
+
+  function makeQueryBuilder() {
+    const qb: Record<string, jest.Mock> = {};
+    for (const method of [
+      'where',
+      'andWhere',
+      'select',
+      'orderBy',
+      'addOrderBy',
+      'limit',
+      'offset',
+    ]) {
+      qb[method] = jest.fn(() => qb);
+    }
+    qb.getRawMany = jest.fn().mockResolvedValue([]);
+    qb.getCount = jest.fn().mockResolvedValue(7);
+    return qb;
+  }
+
+  function build(terminalRawStatuses: readonly string[]) {
+    const qb = makeQueryBuilder();
+    const returnsRepo = { createQueryBuilder: jest.fn(() => qb) };
+    const repository = new ReturnRepository(returnsRepo as never, {} as never, {} as never);
+    const filter = {
+      sourceConnectionId: 'conn-1',
+      origin: 'source_ingested' as const,
+      terminalRawStatuses,
+      openedSince,
+    };
+    return { qb, repository, filter };
+  }
+
+  function clauses(qb: Record<string, jest.Mock>): string[] {
+    const whereCalls = qb.where.mock.calls as unknown[][];
+    const andWhereCalls = qb.andWhere.mock.calls as unknown[][];
+    return [
+      ...whereCalls.map((c) => c[0] as string),
+      ...andWhereCalls.map((c) => c[0] as string),
+    ];
+  }
+
+  it('should filter by connection, origin, a usable external id and the age bound', async () => {
+    const { qb, repository, filter } = build(['FINISHED']);
+
+    await repository.findForSourceSweep(filter, 10, 0);
+
+    const applied = clauses(qb).join(' | ');
+    expect(applied).toContain('"sourceConnectionId" = :connectionId');
+    expect(applied).toContain('"origin" = :origin');
+    // A return with no source key has nothing to re-read BY — including it
+    // would guarantee a 404 on every single run.
+    expect(applied).toContain('"externalReturnId" IS NOT NULL');
+    expect(applied).toContain('>= :openedSince');
+  });
+
+  it('should apply the terminal exclusion as opaque set membership', async () => {
+    const { qb, repository, filter } = build(['FINISHED', 'REJECTED']);
+
+    await repository.findForSourceSweep(filter, 10, 0);
+
+    expect(clauses(qb).join(' | ')).toContain('"rawStatus" NOT IN (:...terminalRawStatuses)');
+    expect(qb.andWhere).toHaveBeenCalledWith(expect.stringContaining('NOT IN'), {
+      terminalRawStatuses: ['FINISHED', 'REJECTED'],
+    });
+  });
+
+  it('should OMIT the exclusion entirely for an empty vocabulary', async () => {
+    // `NOT IN ()` is a Postgres syntax error, so rendering it would take down
+    // the sweep for every adapter that declares no terminal statuses.
+    const { qb, repository, filter } = build([]);
+
+    await repository.findForSourceSweep(filter, 10, 0);
+
+    expect(clauses(qb).join(' | ')).not.toContain('NOT IN');
+  });
+
+  it('should order deterministically so a scan offset means the same thing twice', async () => {
+    const { qb, repository, filter } = build([]);
+
+    await repository.findForSourceSweep(filter, 10, 0);
+
+    expect(qb.orderBy).toHaveBeenCalledWith(expect.stringContaining('COALESCE'), 'ASC');
+    expect(qb.addOrderBy).toHaveBeenCalledWith('r.id', 'ASC');
+  });
+
+  it('should page with limit/offset, not the entity-paging helpers', async () => {
+    const { qb, repository, filter } = build([]);
+
+    await repository.findForSourceSweep(filter, 25, 50);
+
+    expect(qb.limit).toHaveBeenCalledWith(25);
+    expect(qb.offset).toHaveBeenCalledWith(50);
+  });
+
+  it('should build the count from the SAME clauses as the page', async () => {
+    const page = build(['FINISHED']);
+    await page.repository.findForSourceSweep(page.filter, 10, 0);
+
+    const count = build(['FINISHED']);
+    const total = await count.repository.countForSourceSweep(count.filter);
+
+    expect(total).toBe(7);
+    expect(clauses(count.qb)).toEqual(clauses(page.qb));
+  });
+
+  it('should project the raw rows onto sweep candidates', async () => {
+    const { qb, repository, filter } = build([]);
+    qb.getRawMany.mockResolvedValue([
+      { r_id: 'ol_return_1', r_externalReturnId: 'r-1', r_rawStatus: 'DELIVERED' },
+    ]);
+
+    expect(await repository.findForSourceSweep(filter, 10, 0)).toEqual([
+      { id: 'ol_return_1', externalReturnId: 'r-1', rawStatus: 'DELIVERED' },
+    ]);
+  });
+});

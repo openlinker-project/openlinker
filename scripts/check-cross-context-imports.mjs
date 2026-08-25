@@ -265,6 +265,23 @@ const ALLOW_LIST = new Map([
     'apps/worker/src/sync/handlers/__tests__/marketplace-offer-status-sync.handler.spec.ts',
     new Set(['ConnectionCursorRepositoryPort']),
   ],
+  // #2330 returns pass 2 — the same scan-offset dance as its
+  // `marketplace.offer.statusSync` sibling directly above, and listed for the
+  // same reason: the handler owns a numeric page pointer, not a marketplace
+  // cursor, so `ISyncCursorsService` is the wrong seam for it. Both rewire
+  // together under #722, or neither.
+  [
+    'apps/worker/src/sync/handlers/marketplace-returns-status-sync.handler.ts',
+    new Set(['ConnectionCursorRepositoryPort']),
+  ],
+  [
+    'apps/worker/test/integration/allegro-returns-cursor-safety.int-spec.ts',
+    new Set(['ConnectionCursorRepositoryPort']),
+  ],
+  [
+    'apps/worker/test/integration/allegro-returns-status-sync.int-spec.ts',
+    new Set(['ConnectionCursorRepositoryPort']),
+  ],
   [
     'apps/worker/src/sync/handlers/shop-product-status-sync.handler.ts',
     new Set(['ConnectionCursorRepositoryPort']),

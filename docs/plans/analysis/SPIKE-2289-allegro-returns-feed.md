@@ -156,3 +156,49 @@ OL's own lane accounting (ADR-050), not Allegro's quota.
 **Verify live before implementation** (one ~30-minute spike): risks 1, 3 and 6. If 6 comes back
 negative, 4A still stands but its test strategy becomes fixture-driven against recorded production
 payloads — which should be said in the issue rather than discovered mid-wave.
+
+## Implemented as (#2330)
+
+Shipped substantially as recommended, with the deviations and unresolved risks recorded here rather
+than left to be rediscovered.
+
+**Three job types, not two.** `marketplace.returns.poll` (`fan-out`) fans out
+`marketplace.return.sync` (`realtime`); `marketplace.returns.statusSync` (`bulk`) is pass 2 and
+enqueues nothing. The issue body said two; the spike's own two-pass finding is why it is three.
+
+**Pass-2 bounds landed as three, not one.** The recommended "enumerate non-terminal returns" became
+(1) an adapter-declared terminal vocabulary, (2) a NON-OPTIONAL age bound, (3) the page budget. Bound
+2 is the addition and it is load-bearing: bound 1 is only as good as the adapter's list, so a status
+Allegro adds and OL has not learned would otherwise pin those returns in the candidate set forever.
+Bound 1 required amending `ReturnSourceReader` (#2329) with an optional `terminalRawStatuses` — the
+per-observation `isTerminalAtSource` hint cannot serve, because it is only knowable AFTER the re-read
+it exists to avoid. One constant in `allegro-customer-return.types.ts` feeds both, spec-asserted.
+
+**Risk dispositions.**
+- **Risk 1 (`from` + filter composition)** — designed around, not settled. The adapter NEVER composes
+  `from` with a filter: the `createdAt.gte` bootstrap is used only when there is no cursor. Still
+  unverified live.
+- **Risk 2 (creation vs indexing order)** — NOT addressed. The recommended overlapped `createdAt.gte`
+  repair re-sweep is deferred to a follow-up; a late-indexed old return can still be stepped over.
+- **Risk 3 (no total-order guarantee)** — absorbed by idempotency rather than prevented. A repeated or
+  reordered return converges on one row.
+- **Risk 4 (deep `offset`)** — closed. `offset` is never sent, on either endpoint.
+- **Risk 6 (sandbox coverage)** — **CONCEDED.** Every test is fixture-driven against spec-shaped
+  payloads and marked `needs-production-probe`. This, with risk 7, is why both scheduler tasks ship
+  gated OFF.
+- **Risk 8 (`count` semantics)** — closed. Termination is an empty array; `count` is read as debug
+  information only.
+
+**Corrected against the spec while implementing.** The payload sketch above leaves `items[].price`
+untyped. It is `Price` = `{amount: string, currency: string}` — the amount is a **string**, by
+Allegro's design ("provided in a string format to avoid rounding errors"). The adapter parses it and
+reports an unparseable value as absent rather than `NaN`.
+
+**Not ported: the `isCursorRegression` guard.** `OrderIngestionService` carries one; returns
+deliberately do not. A return cursor is a UUID, so `Number()` yields `NaN` and the comparison falls
+through to a lexicographic test over random hex — refusing roughly half of all legitimate advances at
+random and wedging the cursor the first time it does. Replaced by commit-only-a-changed-non-empty-
+cursor, which `ISyncCursorsService`'s own "monotonicity is the caller's responsibility" contemplates.
+
+**Deferred follow-ups named at PR time:** the risk-2 overlapped repair re-sweep, and an operator-facing
+backfill of a seller's return history older than the 30-day bootstrap window.
