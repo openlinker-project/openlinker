@@ -189,8 +189,8 @@ the offer is the one OL wrote, which is exactly the attribution a mismatch inves
 
 ## Amendment (#2456, 2026-08-25): query-time opt-in for backfilled pre-rollout tax rates in Net Sales
 
-Line 176-181 above predicted a future net-revenue figure would read the `taxRateEra` marker; #2014 built
-exactly that figure (`netSalesOrderNetEligibleSql` / `netSalesLineNetEligibleConditionSql`,
+The Decision's "Pre-rollout orders are marked historical" clause above predicted a future net-revenue
+figure would read the `taxRateEra` marker; #2014 built exactly that figure (`netSalesOrderNetEligibleSql` / `netSalesLineNetEligibleConditionSql`,
 `libs/core/src/orders/domain/types/net-sales-tax-rate.types.ts`), and its literal SQL condition,
 `rec."taxRateEra" IS DISTINCT FROM 'pre-rollout'`, permanently excludes a pre-rollout order from Net
 Sales — even after `TaxRateBackfillService` has independently resolved a real, current-catalogue rate
