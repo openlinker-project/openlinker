@@ -14,6 +14,7 @@
  */
 import type { ReturnRecord } from '../../domain/entities/return-record.entity';
 import type { IncomingReturn } from '../../domain/types/incoming-return.types';
+import type { ReturnDownstreamTrigger } from '../../domain/types/return-trigger.types';
 
 /**
  * What one ingested observation did.
@@ -59,4 +60,41 @@ export interface IReturnsService {
    * newest first. Headers only; the triage list does not render lines.
    */
   listOrphanReturns(limit: number, offset: number): Promise<ReturnRecord[]>;
+
+  /**
+   * How many returns are currently orphaned (#2332) — the operator's attention number,
+   * deployment-wide. Pairs with {@link IReturnsService.listOrphanReturns}, which is the
+   * same question asked for a page.
+   */
+  countOrphanReturns(): Promise<number>;
+
+  /**
+   * **The downstream-trigger block (#2332, ADR-060).** Refuse to let a Wave-2 flow act
+   * on a return OL cannot attribute to an order, and hand back the aggregate when it can.
+   *
+   * Every downstream flow calls this — `restock`, `refund`, `invoice_correction` and the
+   * `decline` write (see `ReturnDownstreamTriggerValues`) — and none writes its own orphan
+   * check. Four call sites each free to spell `internalOrderId === null` are four chances
+   * to forget, and a restock against a phantom order moves real stock.
+   *
+   * Three properties are decisions, not implementation detail:
+   *
+   *  1. **It RE-READS the row.** A caller's in-memory `ReturnRecord` may predate a
+   *     reconcile that has since attributed it, or be an `upsertFromSource` result whose
+   *     OL-owned timestamps are deliberately blanked. The row is the authority — the same
+   *     rule `UpsertReturnObservationResult.attributed` already states.
+   *  2. **It RETURNS the record.** A trigger needs the hydrated aggregate anyway, and
+   *     making the guard the read means a caller cannot act on a different read than the
+   *     one it checked.
+   *  3. **It THROWS.** A boolean is ignorable; the point of the block is that a trigger
+   *     cannot proceed by omission.
+   *
+   * @throws {ReturnNotFoundError} the id resolves to no row — a different operator
+   *   situation from an orphan, and never collapsed into one.
+   * @throws {ReturnNotAttributedError} the return exists and is an orphan.
+   */
+  assertAttributedForTrigger(
+    returnId: string,
+    trigger: ReturnDownstreamTrigger
+  ): Promise<ReturnRecord>;
 }

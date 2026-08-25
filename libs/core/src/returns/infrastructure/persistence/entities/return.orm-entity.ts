@@ -48,6 +48,19 @@ import { Column, CreateDateColumn, Entity, Index, PrimaryColumn, UpdateDateColum
 // scan-direction optimisation, never a correctness one (pg reads either way).
 @Index('IDX_returns_orphans', ['createdAt'], { where: '"internalOrderId" IS NULL' })
 @Index('IDX_returns_connection_created', ['sourceConnectionId', 'createdAt'])
+// The #2332 re-attribution reconcile's exact query: orphans on one connection that
+// still carry a source order reference to resolve BY. Partial for the same reason the
+// orphan bucket's index is — on a healthy install the matching rows are a vanishing
+// fraction of the table, and a row with no `externalOrderId` has nothing to resolve
+// from, so including it would keep it in the candidate set forever.
+//
+// Same index-direction caveat as `IDX_returns_orphans` above: the migration declares
+// `("createdAt" DESC)`, the decorator cannot express column ordering, so the
+// synchronize-built index is ascending. Same name, same predicate, same columns — a
+// scan-direction difference, never a correctness one.
+@Index('IDX_returns_orphan_reattribution', ['sourceConnectionId', 'createdAt'], {
+  where: '"internalOrderId" IS NULL AND "externalOrderId" IS NOT NULL',
+})
 export class ReturnOrmEntity {
   @PrimaryColumn({ type: 'text' })
   id!: string;
@@ -64,6 +77,21 @@ export class ReturnOrmEntity {
    */
   @Column({ type: 'text', nullable: true })
   internalOrderId!: string | null;
+
+  /**
+   * The SOURCE's own order reference, verbatim — never an OL internal id.
+   *
+   * This is the **re-attribution key** (#2332): when a return arrives for an order OL
+   * has not ingested yet, `internalOrderId` is NULL and this column is the only thing a
+   * later reconcile pass can resolve from. Before #2332 the value was read once during
+   * ingestion and discarded, which left the orphan permanently unresolvable — the pass
+   * had nothing to key on.
+   *
+   * Nullable because a source may legitimately report no order at all; such a return
+   * stays orphaned and is resolved by an operator, not by a background pass.
+   */
+  @Column({ type: 'text', nullable: true })
+  externalOrderId!: string | null;
 
   @Column({ type: 'varchar', length: 32 })
   origin!: string;

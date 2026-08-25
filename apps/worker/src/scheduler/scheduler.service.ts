@@ -203,6 +203,28 @@ const CORE_CAPABILITY_TASKS: readonly CoreCapabilityTaskDescriptor[] = [
       `master:${connectionId}:product:reconcile:${timestamp}`,
   },
   {
+    // Orphan return re-attribution (#2332, ADR-060). Re-checks OL's own orphan returns
+    // against `identifier_mappings` so a return that arrived before its order stops
+    // being permanently unattributable — and therefore permanently blocked from every
+    // downstream trigger.
+    //
+    // Gated on `OrderSource` purely to SCOPE which connections can have returns at all;
+    // the pass resolves no adapter and makes no platform call, so the capability is not a
+    // dispatch requirement here.
+    //
+    // Default ON, unlike the two #2330 returns ingestion tasks. They are opt-in because
+    // they call a marketplace; this one's worst case is a bounded local read that
+    // resolves nothing.
+    taskId: 'returns-orphan-reconcile',
+    jobType: 'returns.orphan.reconcile',
+    capability: 'OrderSource',
+    enabledEnvVar: 'OL_RETURNS_ORPHAN_RECONCILE_ENABLED',
+    cronEnvVar: 'OL_RETURNS_ORPHAN_RECONCILE_CRON',
+    defaultCron: '*/30 * * * *',
+    idempotencyKey: (connectionId, timestamp) =>
+      `returns:${connectionId}:orphan:reconcile:${timestamp}`,
+  },
+  {
     taskId: 'pickup-point-refresh',
     jobType: 'shipping.pickupPoint.refreshFrequent',
     capability: 'ShippingProviderManager',

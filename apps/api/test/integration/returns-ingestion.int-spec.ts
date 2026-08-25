@@ -1,5 +1,5 @@
 /**
- * Returns Ingestion Integration Test (#2328, ADR-060)
+ * Returns Ingestion Integration Test (#2328, #2332, ADR-060)
  *
  * Drives `ReturnsService.upsertFromObservation` against real Postgres
  * (Testcontainers). Everything asserted here is a claim about what repeated
@@ -20,12 +20,40 @@
  *    re-resolve never re-orphans it;
  *  - a blank external id is refused with no row written, and a synthetic key
  *    collapses repeated observations onto one row;
- *  - two connections reporting the same external id keep two rows.
+ *  - two connections reporting the same external id keep two rows;
+ *  - the #2332 re-attribution reads and the conditional-UPDATE claim behave
+ *    against real rows. These earn integration coverage specifically because
+ *    their unit spec drives a chainable BUILDER MOCK, which by construction can
+ *    prove neither of the two things that can actually be wrong: the raw-alias
+ *    projection (`getRawMany` -> `row.r_externalOrderId`; an alias mismatch
+ *    silently yields `undefined`, the lookup is handed nothing, and the pass
+ *    hands the lookup an `undefined` external order id — which makes TypeORM
+ *    DROP that `where` condition and match an ARBITRARY mapping, attributing
+ *    the return to the wrong order rather than failing; that is why the
+ *    re-attribution test seeds TWO orphans and TWO orders), and the `IS NULL`
+ *    arm on the claim, which is BOTH the concurrency
+ *    seam and the monotonicity guarantee the whole issue rests on. These are
+ *    driven through `IReturnReattributionService`, not the repository port —
+ *    the pass touches all three new statements on its way through, and a
+ *    sibling reaches an aggregate through its `I*Service`.
  *
  * @module apps/api/test/integration
  */
-import { RETURNS_SERVICE_TOKEN } from '@openlinker/core/returns';
-import type { IReturnsService, IncomingReturn } from '@openlinker/core/returns';
+import {
+  RETURN_REATTRIBUTION_SERVICE_TOKEN,
+  RETURN_REPOSITORY_TOKEN,
+  RETURNS_SERVICE_TOKEN,
+} from '@openlinker/core/returns';
+// `ReturnRepositoryPort` is allow-listed in `scripts/check-cross-context-imports.mjs`.
+// The rule exists so a SIBLING CONTEXT reaches an aggregate through `I*Service`; this is
+// an integration test, and exactly one property here cannot be reached through the
+// service at all — see the docblock on the concurrent-claim case below.
+import type {
+  IReturnReattributionService,
+  IReturnsService,
+  IncomingReturn,
+  ReturnRepositoryPort,
+} from '@openlinker/core/returns';
 import {
   IDENTIFIER_MAPPING_SERVICE_TOKEN,
   type IIdentifierMappingService,
@@ -46,6 +74,18 @@ describe('Returns Ingestion Integration', () => {
 
   const service = (): IReturnsService =>
     harness.getApp().get<IReturnsService>(RETURNS_SERVICE_TOKEN, { strict: false });
+
+  // #2332 drives the pass through its SERVICE seam, not the repository port —
+  // a sibling reaches an aggregate through `I*Service` (architecture-overview
+  // § Cross-context dependencies), and the reconcile exercises all three new
+  // repository statements on its way through anyway.
+  const reattribution = (): IReturnReattributionService =>
+    harness
+      .getApp()
+      .get<IReturnReattributionService>(RETURN_REATTRIBUTION_SERVICE_TOKEN, { strict: false });
+
+  const repository = (): ReturnRepositoryPort =>
+    harness.getApp().get<ReturnRepositoryPort>(RETURN_REPOSITORY_TOKEN, { strict: false });
 
   const identifierMapping = (): IIdentifierMappingService =>
     harness
@@ -301,6 +341,158 @@ describe('Returns Ingestion Integration', () => {
         `SELECT "internalOrderId" FROM "returns"`
       );
       expect(row.internalOrderId).toBe('ol_order_real');
+    });
+  });
+
+  describe('orphan re-attribution (#2332)', () => {
+    it('should re-attribute each orphan to ITS OWN order once the orders are ingested', async () => {
+      const first = await service().upsertFromObservation(
+        connectionA,
+        observation({ externalReturnId: 'RET-1', externalOrderId: 'ORD-9' })
+      );
+      const second = await service().upsertFromObservation(
+        connectionA,
+        observation({ externalReturnId: 'RET-2', externalOrderId: 'ORD-10' })
+      );
+      expect([first.record.internalOrderId, second.record.internalOrderId]).toEqual([null, null]);
+
+      // The fact arrives from the OTHER direction — the orders show up later,
+      // and no re-observation of either return is involved.
+      await identifierMapping().createMapping('Order', 'ORD-9', connectionA, 'ol_order_nine');
+      await identifierMapping().createMapping('Order', 'ORD-10', connectionA, 'ol_order_ten');
+
+      const result = await reattribution().reconcile(connectionA, { limit: 10, offset: 0 });
+
+      expect([result.scanned, result.reattributed, result.unresolved, result.failed]).toEqual([
+        2, 2, 0, 0,
+      ]);
+
+      // TWO orphans and TWO distinct orders, deliberately. With one of each, a
+      // broken candidate projection still passes: an `undefined` external order
+      // id makes `getInternalId`'s `where` clause DROP that condition, so it
+      // matches the single existing mapping and the return is attributed to the
+      // right order by accident. Verified by mutating the projection's raw
+      // alias — the single-mapping version of this test did not catch it, and
+      // the production consequence is a return attributed to an ARBITRARY
+      // order, which is worse than the orphan state it replaced.
+      const rows = await query<{ externalReturnId: string; internalOrderId: string | null }>(
+        `SELECT "externalReturnId", "internalOrderId" FROM "returns" ORDER BY "externalReturnId"`
+      );
+      expect(rows).toEqual([
+        { externalReturnId: 'RET-1', internalOrderId: 'ol_order_nine' },
+        { externalReturnId: 'RET-2', internalOrderId: 'ol_order_ten' },
+      ]);
+    });
+
+    it('should leave an orphan alone while its order is still unknown', async () => {
+      await service().upsertFromObservation(connectionA, observation());
+
+      const result = await reattribution().reconcile(connectionA, { limit: 10, offset: 0 });
+
+      expect([result.scanned, result.unresolved, result.reattributed]).toEqual([1, 1, 0]);
+      const [row] = await query<{ internalOrderId: string | null }>(
+        `SELECT "internalOrderId" FROM "returns"`
+      );
+      expect(row.internalOrderId).toBeNull();
+    });
+
+    it('should refuse a claim on an already-attributed return, leaving its order unchanged', async () => {
+      const orphan = await service().upsertFromObservation(connectionA, observation());
+      await identifierMapping().createMapping('Order', 'ORD-9', connectionA, 'ol_order_real');
+      await reattribution().reconcile(connectionA, { limit: 10, offset: 0 });
+
+      // Reached through the REPOSITORY, deliberately, and this is the one case
+      // in the file that is: the claim's `WHERE "internalOrderId" IS NULL` arm
+      // exists for a CONCURRENT writer, and the pass itself only ever claims
+      // rows its own candidate query already filtered to orphans — so through
+      // the service seam the arm is unreachable and unfalsifiable (verified by
+      // deleting it: every service-level test still passed). What it guarantees
+      // is monotonicity: this statement can fill an attribution in and can
+      // never re-point one at a different order.
+      await expect(
+        repository().claimAttribution(orphan.record.id, 'ol_order_someone_else')
+      ).resolves.toBe(false);
+
+      const [row] = await query<{ internalOrderId: string | null }>(
+        `SELECT "internalOrderId" FROM "returns" WHERE "id" = $1`,
+        [orphan.record.id]
+      );
+      expect(row.internalOrderId).toBe('ol_order_real');
+    });
+
+    it('should be a no-op on a second run, the attributed row having left the candidate set', async () => {
+      await service().upsertFromObservation(connectionA, observation());
+      await identifierMapping().createMapping('Order', 'ORD-9', connectionA, 'ol_order_real');
+      await reattribution().reconcile(connectionA, { limit: 10, offset: 0 });
+
+      const second = await reattribution().reconcile(connectionA, { limit: 10, offset: 0 });
+
+      // Claimed rows drop out of the filtered set — which is what lets the scan
+      // offset wrap over a shrinking set instead of paging forever, and what
+      // makes the `IS NULL` arm on the claim observable from outside.
+      expect([second.scanned, second.total, second.reattributed]).toEqual([0, 0, 0]);
+      const [row] = await query<{ internalOrderId: string | null }>(
+        `SELECT "internalOrderId" FROM "returns"`
+      );
+      expect(row.internalOrderId).toBe('ol_order_real');
+    });
+
+    it('should never consider a return the source attached to no order', async () => {
+      await service().upsertFromObservation(
+        connectionA,
+        observation({ externalOrderId: null })
+      );
+
+      // Nothing to resolve BY, so it must be excluded rather than re-checked on
+      // every tick forever. It stays in the orphan BUCKET for an operator.
+      const result = await reattribution().reconcile(connectionA, { limit: 10, offset: 0 });
+
+      expect([result.scanned, result.total]).toEqual([0, 0]);
+      expect(await service().countOrphanReturns()).toBe(1);
+    });
+
+    it('should scope the pass to one connection', async () => {
+      await service().upsertFromObservation(connectionB, observation());
+      await identifierMapping().createMapping('Order', 'ORD-9', connectionB, 'ol_order_b');
+
+      const onA = await reattribution().reconcile(connectionA, { limit: 10, offset: 0 });
+      const onB = await reattribution().reconcile(connectionB, { limit: 10, offset: 0 });
+
+      expect([onA.total, onB.total, onB.reattributed]).toEqual([0, 1, 1]);
+    });
+
+    it('should persist the source order reference so a later reconcile has a key at all', async () => {
+      // The premise the issue got wrong: before #2332 this value was read once
+      // during ingestion and discarded, leaving an orphan unresolvable forever.
+      await service().upsertFromObservation(connectionA, observation());
+
+      const [row] = await query<{ externalOrderId: string | null }>(
+        `SELECT "externalOrderId" FROM "returns"`
+      );
+      expect(row.externalOrderId).toBe('ORD-9');
+    });
+
+    it('should never blank a stored source order reference on a later observation', async () => {
+      await service().upsertFromObservation(connectionA, observation());
+      await service().upsertFromObservation(connectionA, observation({ externalOrderId: null }));
+
+      // COALESCE, not latest-wins: a source that stops naming the order has not
+      // made the return belong to a different one, and blanking it would
+      // destroy the only key the reconcile can resolve from.
+      const [row] = await query<{ externalOrderId: string | null }>(
+        `SELECT "externalOrderId" FROM "returns"`
+      );
+      expect(row.externalOrderId).toBe('ORD-9');
+    });
+
+    it('should count orphans for the operator bucket', async () => {
+      await service().upsertFromObservation(connectionA, observation());
+      await service().upsertFromObservation(
+        connectionB,
+        observation({ externalReturnId: 'RET-2' })
+      );
+
+      expect(await service().countOrphanReturns()).toBe(2);
     });
   });
 

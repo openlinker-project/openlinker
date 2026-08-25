@@ -274,6 +274,22 @@ const ALLOW_LIST = new Map([
     'apps/worker/src/sync/handlers/marketplace-returns-status-sync.handler.ts',
     new Set(['ConnectionCursorRepositoryPort']),
   ],
+  // #2332 orphan re-attribution — the third handler on the same scan-offset dance,
+  // listed for the identical reason and rewired with the other two under #722.
+  [
+    'apps/worker/src/sync/handlers/returns-orphan-reconcile.handler.ts',
+    new Set(['ConnectionCursorRepositoryPort']),
+  ],
+  // #2332 — ONE int-spec case reaches `ReturnRepositoryPort` directly, because the
+  // property it asserts is unreachable through the service seam by construction: the
+  // claim's `WHERE "internalOrderId" IS NULL` arm guards a CONCURRENT writer, and the
+  // pass only ever claims rows its own candidate query already filtered to orphans.
+  // Deleting the arm left every service-level test green, so without this the
+  // monotonicity guarantee has no falsifiable coverage anywhere.
+  [
+    'apps/api/test/integration/returns-ingestion.int-spec.ts',
+    new Set(['ReturnRepositoryPort']),
+  ],
   [
     'apps/worker/test/integration/allegro-returns-cursor-safety.int-spec.ts',
     new Set(['ConnectionCursorRepositoryPort']),

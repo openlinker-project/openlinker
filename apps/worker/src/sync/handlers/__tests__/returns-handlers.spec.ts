@@ -1,5 +1,5 @@
 /**
- * Returns Handler Tests (#2330)
+ * Returns Handler Tests (#2330, #2332)
  *
  * The three handlers are thin by design, so these tests assert exactly the
  * things a thin delegate can still get wrong: payload coercion, the terminal-vs-
@@ -10,6 +10,7 @@
 import { MarketplaceReturnsPollHandler } from '../marketplace-returns-poll.handler';
 import { MarketplaceReturnSyncHandler } from '../marketplace-return-sync.handler';
 import { MarketplaceReturnsStatusSyncHandler } from '../marketplace-returns-status-sync.handler';
+import { ReturnsOrphanReconcileHandler } from '../returns-orphan-reconcile.handler';
 import { SyncJobExecutionError } from '@openlinker/core/sync';
 import { ReturnObservationMissingExternalIdError } from '@openlinker/core/returns';
 import type { SyncJob } from '@openlinker/core/sync';
@@ -225,5 +226,76 @@ describe('MarketplaceReturnsStatusSyncHandler', () => {
       handler.execute(job('marketplace.returns.statusSync', { schemaVersion: 1, limit: 2 }))
     ).rejects.toBeInstanceOf(SyncJobExecutionError);
     expect(cursors.set).not.toHaveBeenCalled();
+  });
+});
+
+describe('ReturnsOrphanReconcileHandler', () => {
+  let reattribution: { reconcile: jest.Mock };
+  let cursors: { get: jest.Mock; set: jest.Mock };
+  let handler: ReturnsOrphanReconcileHandler;
+
+  beforeEach(() => {
+    reattribution = {
+      reconcile: jest.fn().mockResolvedValue({
+        scanned: 5,
+        reattributed: 2,
+        alreadyAttributed: 1,
+        unresolved: 2,
+        failed: 0,
+        nextOffset: 25,
+        total: 100,
+      }),
+    };
+    cursors = { get: jest.fn().mockResolvedValue('20'), set: jest.fn() };
+    handler = new ReturnsOrphanReconcileHandler(reattribution as never, cursors as never);
+  });
+
+  it('should read the stored scan offset and pass it to the pass', async () => {
+    await handler.execute(job('returns.orphan.reconcile', { schemaVersion: 1, limit: 5 }));
+
+    expect(cursors.get).toHaveBeenCalledWith(connectionId, 'returns.orphanReattribution.scanOffset');
+    expect(reattribution.reconcile).toHaveBeenCalledWith(connectionId, { limit: 5, offset: 20 });
+  });
+
+  it('should default the page size and cursor key when the payload omits them', async () => {
+    cursors.get.mockResolvedValue(null);
+
+    await handler.execute(job('returns.orphan.reconcile', { schemaVersion: 1 }));
+
+    expect(reattribution.reconcile).toHaveBeenCalledWith(connectionId, { limit: 100, offset: 0 });
+  });
+
+  it('should honour an explicit cursor key', async () => {
+    await handler.execute(
+      job('returns.orphan.reconcile', { schemaVersion: 1, cursorKey: 'custom.offset' })
+    );
+
+    expect(cursors.get).toHaveBeenCalledWith(connectionId, 'custom.offset');
+  });
+
+  it('should persist the next offset after a successful run', async () => {
+    await handler.execute(job('returns.orphan.reconcile', { schemaVersion: 1 }));
+
+    expect(cursors.set).toHaveBeenCalledWith(
+      connectionId,
+      'returns.orphanReattribution.scanOffset',
+      '25'
+    );
+  });
+
+  it('should leave the stored offset untouched when the pass throws', async () => {
+    reattribution.reconcile.mockRejectedValue(new Error('ConnectionNotFound'));
+
+    // A failed page must be retried, never silently stepped over.
+    await expect(
+      handler.execute(job('returns.orphan.reconcile', { schemaVersion: 1 }))
+    ).rejects.toBeInstanceOf(SyncJobExecutionError);
+    expect(cursors.set).not.toHaveBeenCalled();
+  });
+
+  it('should reject a job with no payload', async () => {
+    await expect(
+      handler.execute(job('returns.orphan.reconcile', null))
+    ).rejects.toBeInstanceOf(SyncJobExecutionError);
   });
 });

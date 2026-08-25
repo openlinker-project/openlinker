@@ -56,6 +56,11 @@ export interface CreateReturnRecordInput {
   externalReturnId: string | null;
   /** Nullable BY DESIGN — see `ReturnRecord`'s docblock (orphan returns persist). */
   internalOrderId: string | null;
+  /**
+   * The source's own order reference, verbatim (#2332) — the key the re-attribution
+   * reconcile resolves an orphan by. `null` when the source reports no order at all.
+   */
+  externalOrderId: string | null;
   origin: ReturnOrigin;
   /** The source's own status word, verbatim. Never parsed, never mapped. */
   rawStatus: string | null;
