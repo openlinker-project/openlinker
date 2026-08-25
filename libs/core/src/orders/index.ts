@@ -172,6 +172,21 @@ export {
   CreateRefundRecordInput,
 } from './domain/types/refund-record.types';
 
+// Analytics display-currency conversion read model (#2458, ADR-064).
+export {
+  DISPLAY_CURRENCY_RATE_BASIS_VALUES,
+  isDisplayCurrencyRateBasis,
+} from './domain/types/display-currency.types';
+export type {
+  DisplayCurrencyRateBasis,
+  NativeCurrencyAmount,
+  CurrentRateConversionInput,
+  NativeCurrencyBreakdown,
+  CurrentRateConversionResult,
+  OrderDateConversionInput,
+  OrderDateConversionResult,
+} from './domain/types/display-currency.types';
+
 // Services
 export { IOrderSyncService, OrderSyncRequest, OrderSyncResult } from './application/interfaces/order-sync.service.interface';
 export {
@@ -204,6 +219,7 @@ export type {
   TaxRateBackfillPageInput,
   TaxRateBackfillPageResult,
 } from './application/services/tax-rate-backfill.service.interface';
+export type { IDisplayCurrencyConversionService } from './application/interfaces/display-currency-conversion.service.interface';
 export * from './orders.tokens';
 
 // Domain entities
