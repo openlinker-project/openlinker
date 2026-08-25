@@ -504,9 +504,17 @@ export class InventoryRepository implements InventoryRepositoryPort {
       params
     )) as unknown;
 
-    // A RETURNING update comes back as a plain row array through TypeORM's raw
-    // query; normalised rather than trusted, since the driver's typing is `any`.
-    const raw = (Array.isArray(rows) ? rows : []) as { productVariantId: string | null }[];
+    // node-postgres surfaces an UPDATE as `[rows, affectedCount]` through
+    // TypeORM's raw query — RETURNING or not (the same shape
+    // `backfillLegacyProvenance` documents). Reading the outer array AS the row
+    // list is what made `markedCount` a constant 2 and `variantIds` a constant
+    // `[]`, so the caller's propagation fired on every sync and carried nothing.
+    // Normalised rather than trusted: the driver's typing for a raw query is
+    // `any`, and a driver that returns the plain row array must still work.
+    const outer = Array.isArray(rows) ? rows : [];
+    const raw = (Array.isArray(outer[0]) ? outer[0] : outer) as {
+      productVariantId: string | null;
+    }[];
     const variantIds = [
       ...new Set(raw.map((r) => r.productVariantId).filter((v): v is string => v !== null)),
     ];
