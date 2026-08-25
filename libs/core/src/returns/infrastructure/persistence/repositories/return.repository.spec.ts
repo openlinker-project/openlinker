@@ -12,6 +12,8 @@ import { ReturnRepository } from './return.repository';
 import type { ReturnOrmEntity } from '../entities/return.orm-entity';
 import type { ReturnLineOrmEntity } from '../entities/return-line.orm-entity';
 import type { CreateReturnRecordInput } from '../../../domain/types/return.types';
+import type { UpsertReturnRecordInput } from '../../../domain/types/return-upsert.types';
+import { ReturnPersistenceError } from '../../../domain/exceptions/return-persistence.error';
 
 const buildInput = (
   overrides: Partial<CreateReturnRecordInput> = {}
@@ -235,3 +237,231 @@ const buildLineRow = (overrides: Partial<ReturnLineOrmEntity> = {}): ReturnLineO
     updatedAt: new Date('2026-08-02T00:00:00Z'),
     ...overrides,
   }) as ReturnLineOrmEntity;
+
+/**
+ * `upsertFromSource` — the #2328 idempotent update-or-create.
+ *
+ * These assert the STATEMENT, not the database: that both writes share one
+ * transaction, that the conflict target carries the partial index's predicate,
+ * and — the headline AC — that no OL-owned or Wave-2 column appears in either
+ * half. What the statements then do to real rows is asserted against Postgres
+ * in `apps/api/test/integration/returns-ingestion.int-spec.ts`.
+ */
+describe('ReturnRepository.upsertFromSource', () => {
+  const HEADER_ROW = {
+    id: 'ol_return_abc',
+    sourceConnectionId: '11111111-1111-1111-1111-111111111111',
+    externalReturnId: 'RET-1',
+    internalOrderId: 'ol_order_abc',
+    origin: 'source_ingested',
+    rawStatus: 'WAITING',
+    rawPayload: null,
+    openedAt: new Date('2026-08-01T10:00:00Z'),
+    // The row's TRUE OL-owned values — the reset must hide them.
+    authorizedAt: new Date('2026-08-03T00:00:00Z'),
+    declinedAt: new Date('2026-08-04T00:00:00Z'),
+    closedAt: new Date('2026-08-05T00:00:00Z'),
+    createdAt: new Date('2026-08-01T00:00:00Z'),
+    updatedAt: new Date('2026-08-02T00:00:00Z'),
+  };
+
+  const buildUpsertInput = (
+    overrides: Partial<UpsertReturnRecordInput> = {}
+  ): UpsertReturnRecordInput => ({
+    sourceConnectionId: '11111111-1111-1111-1111-111111111111',
+    externalReturnId: 'RET-1',
+    internalOrderId: 'ol_order_abc',
+    origin: 'source_ingested',
+    rawStatus: 'WAITING',
+    rawPayload: { anything: 'the source sent' },
+    openedAt: new Date('2026-08-01T10:00:00Z'),
+    lines: [
+      {
+        lineIndex: 0,
+        externalLineId: 'L-1',
+        offerId: null,
+        sku: 'SKU-1',
+        name: 'A thing',
+        reason: 'withdrawal',
+        quantityAdvised: 2,
+        note: null,
+      },
+    ],
+    ...overrides,
+  });
+
+  let repository: ReturnRepository;
+  let query: jest.Mock;
+  let find: jest.Mock;
+  let transaction: jest.Mock;
+  let warn: jest.SpyInstance;
+
+  const calls = (): unknown[][] => query.mock.calls as unknown[][];
+  const statements = (): string[] => calls().map((call) => String(call[0]));
+  const headerSql = (): string => statements()[0];
+  const lineSql = (): string | undefined => statements()[1];
+
+  beforeEach(() => {
+    query = jest.fn().mockResolvedValue([HEADER_ROW]);
+    find = jest.fn().mockResolvedValue([]);
+    transaction = jest.fn(async (callback: (manager: unknown) => Promise<unknown>) =>
+      callback({ query, find })
+    );
+
+    repository = new ReturnRepository(
+      { findOne: jest.fn(), find: jest.fn() } as never,
+      { find: jest.fn() } as never,
+      { transaction } as never
+    );
+    warn = jest
+      .spyOn((repository as unknown as { logger: { warn: (m: string) => void } }).logger, 'warn')
+      .mockImplementation(() => undefined);
+  });
+
+  afterEach(() => warn.mockRestore());
+
+  it('should write the header and its lines inside ONE transaction', async () => {
+    await repository.upsertFromSource(buildUpsertInput());
+
+    expect(transaction).toHaveBeenCalledTimes(1);
+    expect(query).toHaveBeenCalledTimes(2);
+  });
+
+  it('should carry the partial-index predicate on the header conflict target', async () => {
+    await repository.upsertFromSource(buildUpsertInput());
+
+    // A bare conflict target does not match a PARTIAL unique index — without
+    // the predicate Postgres raises "no unique or exclusion constraint matching
+    // the ON CONFLICT specification" at runtime.
+    expect(headerSql()).toContain('ON CONFLICT ("sourceConnectionId", "externalReturnId")');
+    expect(headerSql()).toContain('WHERE "externalReturnId" IS NOT NULL');
+  });
+
+  it('should key the line statement on (returnId, lineIndex) and never replace-all', async () => {
+    await repository.upsertFromSource(buildUpsertInput());
+
+    expect(lineSql()).toContain('ON CONFLICT ("returnId", "lineIndex")');
+    // A delete-and-replace would destroy Wave-2 custody state.
+    expect(lineSql()).not.toMatch(/DELETE\s+FROM/i);
+  });
+
+  it('should apply internalOrderId and openedAt with COALESCE, so attribution is monotonic', async () => {
+    await repository.upsertFromSource(buildUpsertInput());
+
+    expect(headerSql()).toContain(
+      '"internalOrderId" = COALESCE(EXCLUDED."internalOrderId", "returns"."internalOrderId")'
+    );
+    expect(headerSql()).toContain(
+      '"openedAt" = COALESCE(EXCLUDED."openedAt", "returns"."openedAt")'
+    );
+  });
+
+  it.each(['authorizedAt', 'declinedAt', 'closedAt'])(
+    'should never name the OL-owned timestamp %s anywhere in the header statement',
+    async (column) => {
+      await repository.upsertFromSource(buildUpsertInput());
+
+      expect(headerSql()).not.toContain(`"${column}"`);
+    }
+  );
+
+  it.each([
+    'quantityReceived',
+    'quantityRestocked',
+    'quantityScrapped',
+    'custodyState',
+    'moneyState',
+    'disposition',
+    'receivedAt',
+    'disposedAt',
+    'resolvedOrderLineId',
+  ])('should never name the Wave-2 line column %s anywhere in the line statement', async (column) => {
+    await repository.upsertFromSource(buildUpsertInput());
+
+    expect(lineSql()).not.toContain(`"${column}"`);
+  });
+
+  it('should keep sourceConnectionId, externalReturnId and origin insert-only', async () => {
+    await repository.upsertFromSource(buildUpsertInput());
+
+    const sql = headerSql();
+    const doUpdate = sql.slice(sql.indexOf('DO UPDATE SET'));
+    for (const column of ['sourceConnectionId', 'externalReturnId', 'origin', 'createdAt']) {
+      expect(doUpdate).not.toContain(`"${column}" =`);
+    }
+    // …but each IS on the INSERT half, or a first write could not satisfy the
+    // NOT NULL columns.
+    const insertHalf = sql.slice(0, sql.indexOf('ON CONFLICT'));
+    for (const column of ['sourceConnectionId', 'externalReturnId', 'origin']) {
+      expect(insertHalf).toContain(`"${column}"`);
+    }
+  });
+
+  it('should report the three OL-owned timestamps as null whatever the row holds', async () => {
+    const { record } = await repository.upsertFromSource(buildUpsertInput());
+
+    // `RETURNING *` carried real values (see HEADER_ROW); the documented
+    // contract is that callers re-read via findById for their true value.
+    expect(record.authorizedAt).toBeNull();
+    expect(record.declinedAt).toBeNull();
+    expect(record.closedAt).toBeNull();
+    expect(record.internalOrderId).toBe('ol_order_abc');
+  });
+
+  it('should skip the line statement entirely when the source reports no lines', async () => {
+    await repository.upsertFromSource(buildUpsertInput({ lines: [] }));
+
+    // An empty VALUES list is a syntax error, and no lines is not an error.
+    expect(query).toHaveBeenCalledTimes(1);
+  });
+
+  it('should build one placeholder group per line', async () => {
+    await repository.upsertFromSource(
+      buildUpsertInput({
+        lines: [
+          {
+            lineIndex: 0,
+            externalLineId: null,
+            offerId: null,
+            sku: null,
+            name: null,
+            reason: 'withdrawal',
+            quantityAdvised: 1,
+            note: null,
+          },
+          {
+            lineIndex: 1,
+            externalLineId: null,
+            offerId: null,
+            sku: null,
+            name: null,
+            reason: 'defective',
+            quantityAdvised: 3,
+            note: null,
+          },
+        ],
+      })
+    );
+
+    expect(lineSql()).toContain('($1, $2, $3, $4, $5, $6, $7, $8, $9)');
+    expect(lineSql()).toContain('($10, $11, $12, $13, $14, $15, $16, $17, $18)');
+    expect((calls()[1][1] as unknown[]).length).toBe(18);
+  });
+
+  it('should keep a line the source stopped reporting, and warn about it', async () => {
+    find.mockResolvedValue([buildLineRow({ lineIndex: 0 }), buildLineRow({ lineIndex: 1 })]);
+
+    const { record } = await repository.upsertFromSource(buildUpsertInput());
+
+    expect(record.lines).toHaveLength(2);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('kept, not deleted'));
+  });
+
+  it('should wrap an infrastructure failure in a domain error', async () => {
+    query.mockRejectedValue(new Error('deadlock detected'));
+
+    await expect(repository.upsertFromSource(buildUpsertInput())).rejects.toBeInstanceOf(
+      ReturnPersistenceError
+    );
+  });
+});

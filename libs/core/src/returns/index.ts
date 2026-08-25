@@ -7,9 +7,13 @@
  * and returns carry authority questions (custody, disposition, restock) that
  * are the operator's, not the source's.
  *
- * This slice is the model and its schema only. No service, no ingestion, no
- * transitions, no restock, no API. See `ReturnRepositoryPort` for the map of
- * what widens this barrel and when.
+ * #2327 shipped the model and its schema; #2328 adds ingestion's idempotent
+ * update-or-create and the service that owns it. Still no transitions, no
+ * restock and no API. See `ReturnRepositoryPort` for the map of what widens
+ * this barrel and when.
+ *
+ * A sibling context consumes `IReturnsService` + `RETURNS_SERVICE_TOKEN`, never
+ * `ReturnRepositoryPort` — the cross-context contract is service interfaces.
  *
  * NOT re-exported from the aggregating root barrel (`libs/core/src/index.ts`) —
  * the `sales-documents` posture; the root barrel is not an inventory of
@@ -35,3 +39,13 @@ export type {
   ReturnFeedItem,
   ReturnFeedOutput,
 } from './domain/types/return-feed.types';
+
+// Ingestion (#2328): the idempotent update-or-create and its service seam.
+export * from './domain/types/return-upsert.types';
+export { narrowRefundReason, toRefundReasonOrOther } from './domain/return-reason.mapper';
+export { ReturnObservationMissingExternalIdError } from './domain/exceptions/return-observation-missing-external-id.error';
+export { ReturnPersistenceError } from './domain/exceptions/return-persistence.error';
+export type {
+  IReturnsService,
+  UpsertReturnObservationResult,
+} from './application/services/returns.service.interface';
