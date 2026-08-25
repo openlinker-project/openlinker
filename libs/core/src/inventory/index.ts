@@ -35,6 +35,7 @@ export { InventoryCrossSourcePositionConflictError } from './domain/exceptions/i
 export { DuplicateLocationCodeError } from './domain/exceptions/duplicate-location-code.error';
 export { LocationNotFoundException } from './domain/exceptions/location-not-found.exception';
 export { LocationInUseError } from './domain/exceptions/location-in-use.error';
+export { LocationOwnerConnectionNotFoundError } from './domain/exceptions/location-owner-connection-not-found.error';
 export { UnsupportedAvailabilityScopeError } from './domain/exceptions/unsupported-availability-scope.error';
 
 // Application Services

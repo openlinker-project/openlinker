@@ -22,8 +22,17 @@ describe('InventorySyncService', () => {
 
   /** Seed the seam with the post-Control quantity a given reserve would produce. */
   const withBuffer = (reserve: number): void => {
+    const apply = (quantity: number) => ({
+      quantity: Math.max(0, Math.max(0, quantity) - reserve),
+      provenance: 'computed' as const,
+    });
     availabilityService.applyPublishControls.mockImplementation(({ quantity }) =>
-      Promise.resolve({ quantity: Math.max(0, Math.max(0, quantity) - reserve), provenance: 'computed' })
+      Promise.resolve(apply(quantity))
+    );
+    // The write-back path uses the BATCH form (one connection read per batch,
+    // not per item); both are seeded so the helper stays usable either way.
+    availabilityService.applyPublishControlsBatch.mockImplementation(({ quantities }) =>
+      Promise.resolve(quantities.map(apply))
     );
   };
 
@@ -33,6 +42,9 @@ describe('InventorySyncService', () => {
       quantity: null,
       provenance: 'unknown',
     });
+    availabilityService.applyPublishControlsBatch.mockImplementation(({ quantities }) =>
+      Promise.resolve(quantities.map(() => ({ quantity: null, provenance: 'unknown' as const })))
+    );
   };
 
   beforeEach(() => {
@@ -52,6 +64,7 @@ describe('InventorySyncService', () => {
     availabilityService = {
       getPromisableQuantities: jest.fn(),
       applyPublishControls: jest.fn(),
+      applyPublishControlsBatch: jest.fn(),
       getAppliedReserve: jest.fn().mockResolvedValue(0),
     } as unknown as jest.Mocked<IAvailabilityService>;
     withBuffer(0);
@@ -294,10 +307,14 @@ describe('InventorySyncService', () => {
 
       await service.updateOfferQuantity(connectionId, { offerId: 'o1', quantity: 10 });
 
-      expect(availabilityService.applyPublishControls).toHaveBeenCalledWith({
-        quantity: 10,
+      // The BATCH form: resolving the Controls per ITEM put one connection
+      // read per item on the hottest write path, where the pre-#2323 code did
+      // one per batch.
+      expect(availabilityService.applyPublishControlsBatch).toHaveBeenCalledWith({
+        quantities: [10],
         scope: { kind: 'channel', connectionId },
       });
+      expect(availabilityService.applyPublishControls).not.toHaveBeenCalled();
     });
 
     it('should subtract the per-connection reserve from the written-back quantity', async () => {
@@ -344,6 +361,15 @@ describe('InventorySyncService', () => {
           ],
         })
       );
+      // I6 — ONE Control resolution for the whole batch, not one per item.
+      // The buffer cannot vary within a batch (it is a property of the single
+      // destination connection), so a per-item resolve was N identical reads
+      // on the hottest write path in the system.
+      expect(availabilityService.applyPublishControlsBatch).toHaveBeenCalledTimes(1);
+      expect(availabilityService.applyPublishControlsBatch).toHaveBeenCalledWith({
+        quantities: [10, 1],
+        scope: { kind: 'channel', connectionId },
+      });
     });
   });
 

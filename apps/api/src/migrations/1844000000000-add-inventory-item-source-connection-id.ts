@@ -34,6 +34,22 @@
  * it must survive deletion of the connection it names — the alternatives are
  * blocking the delete or silently erasing who synced the position.
  *
+ * **No supporting index for `WHERE "sourceConnectionId" IS NULL`, deliberately.**
+ * The step-(ii) backfill scans on exactly that predicate, up to 12 times an
+ * hour at the default cadence, and a partial index would turn each page into
+ * an index scan rather than a sequential one. It is still REJECTED, and the
+ * acceptance is the point: building an index on `inventory_items` takes a lock
+ * on the single table every published quantity derives from — the D2-class
+ * hazard the whole bounded-page ladder exists to avoid, incurred to speed up a
+ * pass whose entire design goal is to be invisible. `CONCURRENTLY` sidesteps
+ * the lock but cannot run inside a migration transaction, so it would become an
+ * out-of-band operator step for a temporary benefit. Two things bound the cost
+ * instead: each scan is capped by the page limit rather than by table size, and
+ * the drain rate is the CRON — `OL_INVENTORY_PROVENANCE_BACKFILL_CRON` is the
+ * relief valve on a large table. Once the drain completes the handler
+ * short-circuits on its own latch and the predicate is never scanned again, so
+ * an index built for it would outlive its only reader.
+ *
  * @module apps/api/src/migrations
  */
 import type { MigrationInterface, QueryRunner } from 'typeorm';

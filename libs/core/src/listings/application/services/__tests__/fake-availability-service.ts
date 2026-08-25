@@ -8,18 +8,16 @@
  * published number, and the parity of the rewire is visible rather than
  * papered over by a hand-fed constant.
  *
- * The coercion mirrors `readStockSafetyBuffer` deliberately: a fake that
- * accepted `"5"` where production coerces it to `0` would hide exactly the
- * misconfiguration these specs exist to pin.
+ * The coercion IS `readStockSafetyBuffer` (imported, not re-implemented): a
+ * hand-rolled copy drifts the first time the real coercion changes, and a fake
+ * that accepted `"5"` where production coerces it to `0` would hide exactly the
+ * misconfiguration these specs exist to pin. The no-direct-buffer-read walk
+ * skips `__tests__`, so importing the real helper here is permitted.
  *
  * @module libs/core/src/listings/application/services/__tests__
  */
 
-/** `readStockSafetyBuffer`'s coercion: positive finite integers only. */
-function coerceBuffer(raw: unknown): number {
-  if (typeof raw !== 'number' || !Number.isFinite(raw) || raw <= 0) return 0;
-  return Math.floor(raw);
-}
+import { readStockSafetyBuffer } from '@openlinker/core/identifier-mapping';
 
 /**
  * @param getConnection how the spec resolves the connection under test — the
@@ -30,12 +28,13 @@ export function createFakeAvailabilityService(
   getConnection: (connectionId: string) => Promise<{ config?: Record<string, unknown> | null }>
 ): {
   applyPublishControls: jest.Mock;
+  applyPublishControlsBatch: jest.Mock;
   getPromisableQuantities: jest.Mock;
   getAppliedReserve: jest.Mock;
 } {
   const bufferFor = async (connectionId: string): Promise<number> => {
     const connection = await getConnection(connectionId);
-    return coerceBuffer(connection?.config?.['stockSafetyBuffer']);
+    return readStockSafetyBuffer(connection?.config ?? null);
   };
 
   return {
@@ -57,6 +56,28 @@ export function createFakeAvailabilityService(
             quantity: Math.max(0, Math.max(0, quantity) - buffer),
             provenance: 'computed' as const,
           };
+        }
+      ),
+    // Same arithmetic as the single form, Controls resolved once — mirroring
+    // `AvailabilityService.applyPublishControlsBatch` exactly.
+    applyPublishControlsBatch: jest
+      .fn()
+      .mockImplementation(
+        async ({
+          quantities,
+          scope,
+        }: {
+          quantities: readonly number[];
+          scope: { kind: string; connectionId?: string };
+        }) => {
+          const buffer =
+            scope.kind === 'channel' && scope.connectionId
+              ? await bufferFor(scope.connectionId)
+              : 0;
+          return quantities.map((quantity) => ({
+            quantity: Math.max(0, Math.max(0, quantity) - buffer),
+            provenance: 'computed' as const,
+          }));
         }
       ),
     getPromisableQuantities: jest.fn().mockResolvedValue([]),

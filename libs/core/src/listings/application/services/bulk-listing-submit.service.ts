@@ -344,7 +344,12 @@ export class BulkListingSubmitService implements IBulkListingSubmitService {
     //    `incrementCounters`.
     await this.bulkBatchRepository.updateStatus(batch.id, BULK_BATCH_STATUS.Running);
 
-    return { batchId: batch.id, jobIds, skippedAlreadyListedCount };
+    return {
+      batchId: batch.id,
+      jobIds,
+      skippedAlreadyListedCount,
+      skippedAvailabilityUnknownCount: unknownAvailability.length,
+    };
   }
 
   async getBatch(batchId: string): Promise<BulkBatchSummary | null> {

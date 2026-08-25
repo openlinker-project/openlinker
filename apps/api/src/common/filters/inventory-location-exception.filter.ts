@@ -9,6 +9,12 @@
  *  - `DuplicateLocationCodeError` → 409 Conflict
  *  - `LocationNotFoundException`  → 404 Not Found
  *  - `LocationInUseError`         → 409 Conflict
+ *  - `LocationOwnerConnectionNotFoundError` → 422 Unprocessable Entity
+ *
+ * The 422 is deliberately not a 400: the `ownerConnectionId` SHAPE was already
+ * validated by the DTO's `@IsUUID()`, so a request reaching this error is
+ * well-formed and names a connection that merely does not exist — a statement
+ * about current data, not about the request.
  *
  * Both 409s are state conflicts rather than malformed input, which is why they
  * are not 400: the request is well-formed and would be accepted against a
@@ -30,25 +36,37 @@ import {
   DuplicateLocationCodeError,
   LocationInUseError,
   LocationNotFoundException,
+  LocationOwnerConnectionNotFoundError,
 } from '@openlinker/core/inventory';
 
 type InventoryLocationException =
   | DuplicateLocationCodeError
   | LocationNotFoundException
-  | LocationInUseError;
+  | LocationInUseError
+  | LocationOwnerConnectionNotFoundError;
 
-@Catch(DuplicateLocationCodeError, LocationNotFoundException, LocationInUseError)
+@Catch(
+  DuplicateLocationCodeError,
+  LocationNotFoundException,
+  LocationInUseError,
+  LocationOwnerConnectionNotFoundError
+)
 export class InventoryLocationExceptionFilter implements ExceptionFilter {
   catch(exception: InventoryLocationException, host: ArgumentsHost): void {
     const response = host.switchToHttp().getResponse<Response>();
-    const statusCode =
-      exception instanceof LocationNotFoundException
-        ? HttpStatus.NOT_FOUND
-        : HttpStatus.CONFLICT;
+    const statusCode = this.resolveStatus(exception);
     response.status(statusCode).json({
       statusCode,
       error: exception.name,
       message: exception.message,
     });
+  }
+
+  private resolveStatus(exception: InventoryLocationException): HttpStatus {
+    if (exception instanceof LocationNotFoundException) return HttpStatus.NOT_FOUND;
+    if (exception instanceof LocationOwnerConnectionNotFoundError) {
+      return HttpStatus.UNPROCESSABLE_ENTITY;
+    }
+    return HttpStatus.CONFLICT;
   }
 }

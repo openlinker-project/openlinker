@@ -75,12 +75,12 @@ Branch: `oms-programme-wave-1` (stacked off Wave-0 tip feb78054d; Wave-0 PR to m
 | #2314 | W1b-3 | ladder step (i): sourceConnectionId + OL-owned group | ☑ merged 426f6bdc4 (commit 4f77854ea; reviewed, approved; migration 1844000000000) |
 | #2315 | W1b-11 | deprecate reserve/releaseInventory in place | ☑ merged 4692d815d (commit 9f3ebd5a6; reviewed, approved; 3 files docs-only) |
 | #2317 | W1b-4 | ladder step (ii): 'legacy' sentinel backfill sweep | ☑ merged dd262a818 (commit 483a2e561; reviewed, approved; survived one transient API-403 agent death + resume; union-resolved tokens/module conflicts with #2321) |
-| #2323 | W1b-7 | rewire buffer sites onto the seam | ☑ merged (commit 03fac9c9a; reviewed, approved; D1 applyPublishControls + getAppliedReserve; no-direct-buffer-read gate, NO exemptions; parity int-spec 135 tests) |
+| #2323 | W1b-7 | rewire buffer sites onto the seam | ☑ merged 5439a436c (commit 03fac9c9a; reviewed, approved; D1 applyPublishControls + getAppliedReserve; no-direct-buffer-read gate, NO exemptions; parity int-spec 135 tests) |
 | #2324 | W1b-8 | retire locationId propagation skip (BREAKING) | ☑ merged d4db3e5d2 (commit 5ee283056; reviewed, approved; BREAKING CHANGE footer verified; Q5 staling-propagation tail included) |
 | #2319 | W1b-9 | duplicate-position detection pass | ☑ merged a2b557e4b (commit 671a050df; reviewed, approved; finding: duplicates only reachable via NULL key columns — recorded in ops doc) |
 | #2321 | W1b-6 | IAvailabilityService computed seam | ☑ merged bdcdb6711 (commit 104d37869; reviewed, approved; consumed by nobody until #2323) |
-| #2320 | W1b-5 | provenance-scoped lookup + per-source prune | ◑ implementing (ANALYSIS-2320; imports LEGACY const from #2317; Decision A typed InventoryCrossSourcePositionConflictError naming #2325; #1904 guard unchanged) |
-| #2322 | W1b-10 | enforce locationId-NULL semantics | ☑ merged (commit 1466b6d6a; reviewed, approved; finding: reversal is half-free — per-variant prune granularity leaves abandoned located rows live; propagate-on-stale gap deferred to #2324) |
+| #2320 | W1b-5 | provenance-scoped lookup + per-source prune | ☑ merged a9bd024da (ANALYSIS-2320; imports LEGACY const from #2317; Decision A typed InventoryCrossSourcePositionConflictError naming #2325; #1904 guard unchanged) |
+| #2322 | W1b-10 | enforce locationId-NULL semantics | ☑ merged 776152089 (commit 1466b6d6a; reviewed, approved; finding: reversal is half-free — per-variant prune granularity leaves abandoned located rows live; propagate-on-stale gap deferred to #2324) |
 ### Wave 1c (epic #2337) — gated on #2289 fork decided; Wave 1a
 ### Wave 2 (epic #2389) — gated per its epic body; §8 Q1 = YES (decision 2 above)
 

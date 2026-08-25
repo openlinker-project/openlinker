@@ -148,6 +148,14 @@ and can therefore turn two rows that were already duplicates into two rows that
 are visibly duplicates under the same key. Re-run the gate after any
 remediation until it prints 0.
 
+On a large `inventory_items` table the backfill's `WHERE "sourceConnectionId"
+IS NULL` scan is deliberately **unindexed** — building an index there would
+lock the one table every published quantity derives from, which is exactly the
+hazard the bounded-page design avoids. If the drain is too slow or too costly,
+the supported lever is the cadence: raise `OL_INVENTORY_PROVENANCE_BACKFILL_CRON`
+(or the page limit), do not add an index. Once the drain latches, the predicate
+is never scanned again.
+
 ## Manual remediation
 
 There is no automated repair, and this is deliberate: choosing which row
@@ -177,8 +185,10 @@ For each group:
 4. **Delete the losers by primary key**, taken from the report:
 
    ```sql
-   -- ids come from the report's groups[].rows[].id
-   DELETE FROM "inventory_items" WHERE "id" IN ('ol_inventory_…', 'ol_inventory_…');
+   -- ids come from the report's groups[].rows[].id — bare UUIDs, NOT
+   -- ol_-prefixed internal ids (inventory_items.id is a plain uuid).
+   DELETE FROM "inventory_items"
+    WHERE "id" IN ('{loser id from the report}', '{loser id from the report}');
    ```
 
    Delete by `id` only. A `DELETE` keyed on the position columns cannot express

@@ -135,6 +135,10 @@ trade the old skip made implicitly and permanently.
 | `inventory_propagation_no_observed_positions` | A variant with no live positions published a **known zero**. Correct (a deleted or fully-staled variant must stop selling), but a spike means something staled a lot of stock. |
 | `inventory_pooled_stale_propagation_enqueued` | The #2322 staling repair triggered a propagation. Expected during a source's transition to locating. |
 | `inventory_pooled_stale_propagation_enqueue_failed` | That best-effort enqueue failed. The hourly reconcile sweeps re-derive from persisted state, so this is not stock loss, but repeated occurrences point at the job queue. |
+| `inventory_pooled_position_staled_by_located_write` | The #2322 repair staled a source's own pooled row because that source just located the same variant. Expected exactly once per variant during a source's transition to locating — a token that keeps recurring for the same variant means the source is flapping between pooled and located answers. |
+| `inventory_pooled_and_located_in_one_response` | One master pull reported the SAME variant both pooled and at a location, contradicting itself. The located position wins. Always a defect in the adapter or the platform response, never a normal state. |
+| `inventory_writeback_suppressed_availability_unknown` | The destination's publish Controls could not be resolved, so the whole quantity write-back batch was suppressed and **no marketplace call was made** (#2323). The batch fails and retries. Sustained occurrences mean channel stock is drifting. |
+| `inventory_cross_source_position_conflict` | A second source tried to insert a position at a NON-NULL `locationId` already held by another source (#2320). **Permanent — no retry can clear it**; the fix is the #2325 four-column position key. |
 
 The retired `inventory_write_propagation_skipped_non_default_location` token no
 longer appears anywhere. Any dashboard or alert keyed on it should be removed

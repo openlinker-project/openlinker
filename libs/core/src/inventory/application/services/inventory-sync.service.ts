@@ -57,14 +57,13 @@ export class InventorySyncService implements IInventorySyncService {
     // so the quantity is the caller's and only the Controls come from the seam.
     // Threading the variant id (and with it real available-to-promise) is
     // #2324's declared work; this slice deliberately changes no number.
-    const controls = await Promise.all(
-      cmd.items.map((i) =>
-        this.availabilityService.applyPublishControls({
-          quantity: i.quantity,
-          scope: { kind: 'channel', connectionId },
-        })
-      )
-    );
+    // The BATCH form, deliberately: the per-item form issues one connection
+    // read per ITEM for a value that cannot vary within the batch, where the
+    // pre-#2323 code did one read per batch. Same arithmetic, same numbers.
+    const controls = await this.availabilityService.applyPublishControlsBatch({
+      quantities: cmd.items.map((i) => i.quantity),
+      scope: { kind: 'channel', connectionId },
+    });
 
     // ADR-061: `unknown` means OpenLinker could not resolve the Controls. Write
     // NOTHING — not the unbuffered quantity, which would publish straight

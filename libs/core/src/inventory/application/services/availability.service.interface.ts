@@ -65,6 +65,21 @@ export interface PublishControlResult {
   readonly provenance: AvailabilityProvenance;
 }
 
+/**
+ * Several quantities that share ONE scope, so the Controls are resolved once.
+ *
+ * Additive to {@link ApplyPublishControlsInput} rather than replacing it: the
+ * three single-quantity publish sites hold exactly one number and gain nothing
+ * from a list.
+ */
+export interface ApplyPublishControlsBatchInput {
+  readonly quantities: readonly number[];
+  readonly scope: AvailabilityScope;
+}
+
+/** One entry of {@link IAvailabilityService.applyPublishControlsBatch}'s answer. */
+export type ControlledQuantity = PublishControlResult;
+
 export interface IAvailabilityService {
   /**
    * Available-to-promise for each requested variant, in input order.
@@ -104,6 +119,30 @@ export interface IAvailabilityService {
    *   `work` scopes — a caller bug, not an outage (see the exception).
    */
   applyPublishControls(input: ApplyPublishControlsInput): Promise<PublishControlResult>;
+
+  /**
+   * {@link applyPublishControls} for a batch that shares one scope, in input
+   * order — the Controls are resolved ONCE and the arithmetic mapped.
+   *
+   * This exists because a batch write path calling the single-quantity method
+   * per item issues one connection read per ITEM for a value that cannot vary
+   * within the batch; the pre-#2323 code did one read per batch, and
+   * `InventorySyncService.updateOfferQuantities` is the hottest write path in
+   * the system. It is NOT a caller-side optimisation to be replicated by
+   * reading `getAppliedReserve` and applying the arithmetic yourself — that
+   * method is display-only for exactly that reason.
+   *
+   * A Control resolution that fails degrades the WHOLE batch to
+   * `{ quantity: null, provenance: 'unknown' }` per entry, mirroring
+   * `getPromisableQuantities`'s batch-wide rule: a partial answer would let a
+   * caller publish some unbuffered quantities and suppress others.
+   *
+   * @throws {UnsupportedAvailabilityScopeError} for `location` / `order` /
+   *   `work` scopes — a caller bug, not an outage.
+   */
+  applyPublishControlsBatch(
+    input: ApplyPublishControlsBatchInput
+  ): Promise<readonly ControlledQuantity[]>;
 
   /**
    * The reserve this scope's Controls would hold back, for DISPLAY only.

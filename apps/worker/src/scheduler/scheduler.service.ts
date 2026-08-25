@@ -37,7 +37,6 @@ import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/co
 import type { OfferManagerPort, TaxonomyOwner } from '@openlinker/core/listings';
 import { resolveTaxonomyOwner } from '@openlinker/core/listings';
 import { Logger } from '@openlinker/shared/logging';
-import { INVENTORY_PROVENANCE_SCOPE_ID } from '../sync/handlers/inventory-provenance-backfill.handler';
 
 /**
  * Default page size for the regulatory-status reconciliation fan-out payload
@@ -70,6 +69,22 @@ const STALE_OFFER_PAUSE_DEFAULT_LIMIT = 200;
  */
 const ORDER_FX_STAMP_SWEEP_DEFAULT_LIMIT = 100;
 const ORDER_FX_STAMP_SWEEP_DEFAULT_MAX_AGE_DAYS = 30;
+
+/**
+ * The nil-UUID connection the provenance-backfill pass is enqueued under.
+ *
+ * Declared HERE rather than imported from
+ * `sync/handlers/inventory-provenance-backfill.handler`: this file belongs to
+ * the `scheduler` role and that one to `jobs`, and ADR-051's whole point is
+ * that a role which is off contributes no module at all — an import across the
+ * boundary makes the scheduler pull in a handler module it can never run.
+ *
+ * A local constant is the established convention for exactly this
+ * (`InventoryService.SYSTEM_CONNECTION_ID`): the value is the nil UUID, which
+ * is a well-known literal rather than something derived, so the two cannot
+ * drift into different values without one of them being plainly wrong.
+ */
+const INVENTORY_PROVENANCE_SCOPE_ID = '00000000-0000-0000-0000-000000000000';
 
 /**
  * Static descriptor for a core capability-scoped scheduler task. The four core

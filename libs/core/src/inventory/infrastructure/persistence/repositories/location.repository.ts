@@ -30,6 +30,7 @@ import { InventoryLocationOrmEntity } from '../entities/inventory-location.orm-e
 import type { LocationRepositoryPort } from '../../../domain/ports/location-repository.port';
 import { InventoryLocation } from '../../../domain/entities/inventory-location.entity';
 import { DuplicateLocationCodeError } from '../../../domain/exceptions/duplicate-location-code.error';
+import { LocationOwnerConnectionNotFoundError } from '../../../domain/exceptions/location-owner-connection-not-found.error';
 import type {
   CreateInventoryLocationInput,
   UpdateInventoryLocationInput,
@@ -76,6 +77,9 @@ export class LocationRepository implements LocationRepositoryPort {
       if (this.isUniqueCodeViolation(error)) {
         throw new DuplicateLocationCodeError(input.code);
       }
+      if (this.isOwnerConnectionViolation(error)) {
+        throw new LocationOwnerConnectionNotFoundError(input.ownerConnectionId ?? '');
+      }
       throw error;
     }
   }
@@ -107,8 +111,15 @@ export class LocationRepository implements LocationRepositoryPort {
       entity.longitude = this.toNumericColumn(input.longitude);
     }
 
-    const saved = await this.ormRepository.save(entity);
-    return this.toDomain(saved);
+    try {
+      const saved = await this.ormRepository.save(entity);
+      return this.toDomain(saved);
+    } catch (error) {
+      if (this.isOwnerConnectionViolation(error)) {
+        throw new LocationOwnerConnectionNotFoundError(entity.ownerConnectionId ?? '');
+      }
+      throw error;
+    }
   }
 
   async findById(id: string): Promise<InventoryLocation | null> {
@@ -196,6 +207,25 @@ export class LocationRepository implements LocationRepositoryPort {
     return (
       error instanceof QueryFailedError &&
       /duplicate key|UQ_inventory_locations_code/i.test(error.message)
+    );
+  }
+
+  /**
+   * SQLSTATE 23503 on the `ownerConnectionId` foreign key.
+   *
+   * Matched on the driver's own error CODE rather than message text, and
+   * narrowed to the owning constraint by name so an FK added to this table
+   * later cannot be mistranslated into a statement about connections. Nothing
+   * TypeORM-shaped may escape the port, and an untranslated 23503 is a 500 on
+   * what is really the operator naming a connection that does not exist.
+   */
+  private isOwnerConnectionViolation(error: unknown): boolean {
+    if (!(error instanceof QueryFailedError)) return false;
+    const driverError = error as unknown as { code?: string; constraint?: string };
+    if (driverError.code !== '23503') return false;
+    return (
+      driverError.constraint === undefined ||
+      /ownerConnectionId|owner_connection/i.test(driverError.constraint)
     );
   }
 }

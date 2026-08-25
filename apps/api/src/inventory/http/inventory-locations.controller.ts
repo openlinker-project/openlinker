@@ -49,7 +49,6 @@ import {
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import {
   LOCATION_SERVICE_TOKEN,
-  LocationInUseError,
   type ILocationService,
   type InventoryLocation,
 } from '@openlinker/core/inventory';
@@ -166,13 +165,9 @@ export class InventoryLocationsController {
   @ApiResponse({ status: 404, description: 'No location carries that id' })
   @ApiResponse({ status: 409, description: 'Positions still reference the location' })
   async remove(@Param('id') id: string): Promise<void> {
-    // Count FIRST: an unknown id counts 0 and falls through to the service's
-    // own 404, so the ordering costs nothing and never masks a missing row.
-    const positionCount = await this.locations.countPositionsAtLocation(id);
-    if (positionCount > 0) {
-      throw new LocationInUseError(id, positionCount);
-    }
-
+    // The in-use refusal is the SERVICE's (it raises `LocationInUseError`,
+    // which the global filter maps to 409): a guard here would protect only
+    // the HTTP caller while every other caller deleted unconditionally.
     await this.locations.deleteLocation(id);
   }
 

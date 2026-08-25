@@ -271,13 +271,22 @@ export class MasterInventorySyncService implements IMasterInventorySyncService {
     // next unrelated quantity change - which is precisely the stale-stock shape
     // retiring the located-write skip exists to close.
     //
-    // The key mirrors `InventoryService.buildPropagationDedupeKey` exactly -
-    // variant-keyed and LOCATION-FREE - so a same-tick located `setInventory`
-    // enqueue for the same variant collapses into one job. That collapse is
-    // DESIRABLE, not a hazard: the handler republishes the aggregate either way,
-    // so one job is the correct number of jobs.
+    // The key SHAPE mirrors `InventoryService.buildPropagationDedupeKey` -
+    // variant-keyed and LOCATION-FREE - but this enqueue is DELIBERATELY
+    // INDEPENDENT of the located write's, and no dedupe collapse is claimed:
+    // the two tokens come from different observation clocks (`setInventory`
+    // uses the row's DB-stamped `updatedAt`, this pass a single staling-moment
+    // clock read), so they cannot collide, and a transitioning variant
+    // legitimately produces two jobs. That is correct rather than merely
+    // tolerable - the guarantee is DOWNSTREAM idempotency: the handler re-reads
+    // the variant's whole aggregate and the resulting offer updates are
+    // {quantity}-keyed, so a second job publishes the same number.
     if (pooledStaleResult.markedCount > 0) {
-      await this.enqueueAggregatePropagation(internalProductId, pooledStaleResult.variantIds);
+      await this.enqueueAggregatePropagation(
+        internalProductId,
+        pooledStaleResult.variantIds,
+        pooledStaleResult.markedProductLevel === true
+      );
     }
 
     this.logger.debug(
@@ -307,7 +316,8 @@ export class MasterInventorySyncService implements IMasterInventorySyncService {
    */
   private async enqueueAggregatePropagation(
     internalProductId: string,
-    variantIds: readonly (string | null)[]
+    variantIds: readonly (string | null)[],
+    markedProductLevel = false
   ): Promise<void> {
     // One staling moment for the whole batch, so N variants staled by one pull
     // carry one comparable token rather than N clock reads.
@@ -315,7 +325,17 @@ export class MasterInventorySyncService implements IMasterInventorySyncService {
     // A product-level (NULL-variant) pooled row still changes the product's
     // aggregate, so it propagates too - as the legacy product-level arm, which
     // is what `variantId: null` means to the handler.
-    const targets = variantIds.length > 0 ? variantIds : [null];
+    //
+    // `markedProductLevel` is what makes the MIXED case correct: `variantIds`
+    // carries non-null ids only, so a pull that stales BOTH variant-keyed rows
+    // and the product-level one used to fall into the non-empty branch and drop
+    // the product-level target entirely. The empty-list fallback stays, for the
+    // case where the ONLY staled row was product-level and no flag reached here.
+    const targets: (string | null)[] =
+      variantIds.length > 0 ? [...variantIds] : [null];
+    if (markedProductLevel && !targets.includes(null)) {
+      targets.push(null);
+    }
 
     await Promise.all(
       targets.map(async (variantId) => {

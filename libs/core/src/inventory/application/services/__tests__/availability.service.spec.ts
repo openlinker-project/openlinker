@@ -283,6 +283,41 @@ describe('AvailabilityService', () => {
       expect(result.quantity).toBe(6);
     });
 
+    // I5 — the Control read is the OTHER dependency this method has, and it
+    // used to sit outside the catch: a channel Control failure escaped as a
+    // 500 instead of the batch-wide 'unknown' the method already implements
+    // for a ledger failure, leaving every caller's stock-at-risk arm
+    // unreachable for that half of the failures.
+    it('should report unknown batch-wide (not throw) when the channel control read fails', async () => {
+      connectionPort.get.mockRejectedValue(new Error('connection store unavailable'));
+      withRows([
+        { productVariantId: 'v1', totalAvailable: 10, locationCount: 1, stockUpdatedAt: OBSERVED_AT },
+      ]);
+
+      const service = await build(new EmptyReservationLedgerReader());
+      const results = await service.getPromisableQuantities({
+        variantIds: ['v1', 'v2'],
+        scope: CHANNEL_SCOPE,
+        now: NOW,
+      });
+
+      expect(results).toHaveLength(2);
+      expect(results.every((r) => r.provenance === 'unknown')).toBe(true);
+      expect(results.every((r) => r.quantity === null)).toBe(true);
+    });
+
+    it('should still throw an unsupported scope rather than degrade it to unknown', async () => {
+      const service = await build(new EmptyReservationLedgerReader());
+
+      await expect(
+        service.getPromisableQuantities({
+          variantIds: ['v1'],
+          scope: { kind: 'order', orderId: 'o-1' },
+          now: NOW,
+        })
+      ).rejects.toThrow(UnsupportedAvailabilityScopeError);
+    });
+
     it('should apply no buffer for a global scope and never read a connection', async () => {
       withRows([
         { productVariantId: 'v1', totalAvailable: 10, locationCount: 1, stockUpdatedAt: OBSERVED_AT },
@@ -446,6 +481,71 @@ describe('AvailabilityService', () => {
 
       expect(warnSpy).not.toHaveBeenCalledWith(expect.stringContaining('present but invalid'));
       warnSpy.mockRestore();
+    });
+  });
+
+  // I6 — the batch form exists so a batch write path resolves the Controls
+  // ONCE. The per-item form put one connection read per item on the hottest
+  // write path in the system, where the pre-#2323 code did one per batch.
+  describe('applyPublishControlsBatch (#2323)', () => {
+    it('should resolve the controls exactly once for the whole batch', async () => {
+      withConfig({ stockSafetyBuffer: 3 });
+
+      const service = await build(new EmptyReservationLedgerReader());
+      const results = await service.applyPublishControlsBatch({
+        quantities: [10, 2, 0],
+        scope: CHANNEL_SCOPE,
+      });
+
+      expect(connectionPort.get).toHaveBeenCalledTimes(1);
+      // Identical arithmetic to the single form, in input order.
+      expect(results).toEqual([
+        { quantity: 7, provenance: 'computed' },
+        { quantity: 0, provenance: 'computed' },
+        { quantity: 0, provenance: 'computed' },
+      ]);
+    });
+
+    it('should agree with the single-quantity form entry for entry', async () => {
+      withConfig({ stockSafetyBuffer: 4 });
+
+      const service = await build(new EmptyReservationLedgerReader());
+      const quantities = [12, 4, 3, 0];
+      const batch = await service.applyPublishControlsBatch({ quantities, scope: CHANNEL_SCOPE });
+      const singles = [];
+      for (const quantity of quantities) {
+        singles.push(await service.applyPublishControls({ quantity, scope: CHANNEL_SCOPE }));
+      }
+
+      expect(batch).toEqual(singles);
+    });
+
+    it('should degrade the WHOLE batch to unknown when the control read fails', async () => {
+      connectionPort.get.mockRejectedValue(new Error('connection store unavailable'));
+
+      const service = await build(new EmptyReservationLedgerReader());
+      const results = await service.applyPublishControlsBatch({
+        quantities: [10, 5],
+        scope: CHANNEL_SCOPE,
+      });
+
+      // A PARTIAL answer would let a caller publish some unbuffered
+      // quantities and suppress others.
+      expect(results).toEqual([
+        { quantity: null, provenance: 'unknown' },
+        { quantity: null, provenance: 'unknown' },
+      ]);
+    });
+
+    it('should rethrow an unsupported scope rather than degrade it to unknown', async () => {
+      const service = await build(new EmptyReservationLedgerReader());
+
+      await expect(
+        service.applyPublishControlsBatch({
+          quantities: [1],
+          scope: { kind: 'order', orderId: 'o-1' },
+        })
+      ).rejects.toThrow(UnsupportedAvailabilityScopeError);
     });
   });
 

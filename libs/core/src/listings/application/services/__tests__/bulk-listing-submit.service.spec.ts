@@ -203,6 +203,7 @@ describe('BulkListingSubmitService', () => {
         batchId: 'batch-1',
         jobIds: ['job-v-a', 'job-v-b', 'job-v-c'],
         skippedAlreadyListedCount: 0,
+        skippedAvailabilityUnknownCount: 0,
       });
       expect(bulkBatchRepo.updateStatus).toHaveBeenCalledWith('batch-1', 'running');
     });

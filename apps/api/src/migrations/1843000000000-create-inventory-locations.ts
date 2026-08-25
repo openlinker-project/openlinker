@@ -55,13 +55,16 @@ export class CreateInventoryLocations1843000000000 implements MigrationInterface
     `);
 
     await queryRunner.query(`
-      CREATE UNIQUE INDEX "UQ_inventory_locations_code"
+      CREATE UNIQUE INDEX IF NOT EXISTS "UQ_inventory_locations_code"
       ON "inventory_locations" ("code")
     `);
 
-    // FK join target — not covered by the unique index above.
+    // FK join target — not covered by the unique index above. `IF NOT EXISTS`
+    // on BOTH indexes, matching the table above: a migration that is idempotent
+    // in one statement and not the next fails halfway on a re-run against a
+    // partially-applied schema, which is the case idempotence exists for.
     await queryRunner.query(`
-      CREATE INDEX "IDX_inventory_locations_owner_connection"
+      CREATE INDEX IF NOT EXISTS "IDX_inventory_locations_owner_connection"
       ON "inventory_locations" ("ownerConnectionId")
     `);
   }

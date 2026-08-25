@@ -934,15 +934,15 @@ describe('InventoryRepository', () => {
       ormRepository.createQueryBuilder.mockReturnValue(
         qb as unknown as ReturnType<typeof ormRepository.createQueryBuilder>
       );
-      ormRepository.save.mockRejectedValue(
-        new QueryFailedError(
-          'INSERT',
-          [],
-          new Error(
-            'duplicate key value violates unique constraint "IDX_inventory_items_product_variant_unique"'
-          )
-        )
-      );
+      // A hash-named index, as `synchronize` mints it — the translation must
+      // not depend on the migration's descriptive name.
+      const positionError = new Error(
+        'duplicate key value violates unique constraint "IDX_9c1f2a"'
+      ) as Error & { code?: string; detail?: string };
+      positionError.code = '23505';
+      positionError.detail =
+        'Key ("productId", "productVariantId", "locationId")=(ol_product_1, ol_variant_1, loc-1) already exists.';
+      ormRepository.save.mockRejectedValue(new QueryFailedError('INSERT', [], positionError));
 
       await expect(
         repository.upsert(
@@ -959,6 +959,45 @@ describe('InventoryRepository', () => {
           )
         )
       ).rejects.toBeInstanceOf(InventoryCrossSourcePositionConflictError);
+    });
+
+    // I2 — the translation matches only the two NAMED position indexes. A bare
+    // `duplicate key` alternative matched every unique violation on the table,
+    // primary-key collisions included, and dressed them as a PERMANENT,
+    // non-retryable cross-source conflict that describes something that did
+    // not happen.
+    it('does not translate an unrelated unique violation into a cross-source conflict', async () => {
+      const qb = buildScopedSelectMock(null);
+      ormRepository.createQueryBuilder.mockReturnValue(
+        qb as unknown as ReturnType<typeof ormRepository.createQueryBuilder>
+      );
+      // A PRIMARY-KEY collision: unique, but not the position key. Postgres
+      // reports the offending COLUMNS in `detail`, and here they are `(id)` —
+      // which is what discriminates, since a synchronize-built schema names
+      // the position indexes `IDX_<hash>` rather than descriptively.
+      const pkError = new Error(
+        'duplicate key value violates unique constraint "PK_inventory_items"'
+      ) as Error & { code?: string; detail?: string };
+      pkError.code = '23505';
+      pkError.detail = 'Key (id)=(11111111-1111-4111-8111-111111111111) already exists.';
+      const unrelated = new QueryFailedError('INSERT', [], pkError);
+      ormRepository.save.mockRejectedValue(unrelated);
+
+      await expect(
+        repository.upsert(
+          new InventoryItem(
+            '11111111-1111-4111-8111-111111111111',
+            'ol_product_1',
+            'ol_variant_1',
+            9,
+            0,
+            'loc-1',
+            new Date(),
+            false,
+            'conn-beta'
+          )
+        )
+      ).rejects.toBe(unrelated);
     });
 
     it('adds no provenance predicate to an unscoped prune, and a bracketed one when scoped', async () => {
@@ -1007,26 +1046,34 @@ describe('InventoryRepository', () => {
 
     // ADR-058 decision (2) enforcement (#2322).
     describe('markLocationlessStaleForSource', () => {
-      it('touches storage not at all when nothing was located', async () => {
-        const qb = buildPruneMock();
-        ormRepository.createQueryBuilder.mockReturnValue(
-          qb as unknown as ReturnType<typeof ormRepository.createQueryBuilder>
-        );
+      /**
+       * RAW SQL since the boundary review (#2320 follow-up): a query-builder
+       * update auto-appends the `@UpdateDateColumn`, so the method's stated
+       * "no updatedAt bump" invariant was FALSE while it used one. These specs
+       * therefore assert against `repository.query` — and the first of them
+       * asserts the SET clause names exactly `isStale`, which is the whole
+       * point of the conversion.
+       */
+      const lastQuery = (): [string, unknown[]] => {
+        const calls = (ormRepository.query as jest.Mock).mock.calls;
+        return calls[calls.length - 1] as [string, unknown[]];
+      };
 
+      const normalise = (sql: string): string => sql.replace(/\s+/g, ' ').trim();
+
+      it('touches storage not at all when nothing was located', async () => {
         const result = await repository.markLocationlessStaleForSource('ol_product_1', [], {
           sourceConnectionId: 'conn-alpha',
           includeUnattributedProvenance: true,
         });
 
+        expect(ormRepository.query).not.toHaveBeenCalled();
         expect(ormRepository.createQueryBuilder).not.toHaveBeenCalled();
         expect(result).toEqual({ markedCount: 0, variantIds: [] });
       });
 
-      it('restricts to pooled rows of the located variants and stamps only isStale', async () => {
-        const qb = buildPruneMock();
-        ormRepository.createQueryBuilder.mockReturnValue(
-          qb as unknown as ReturnType<typeof ormRepository.createQueryBuilder>
-        );
+      it('stamps ONLY isStale — never updatedAt — and never uses the query builder', async () => {
+        (ormRepository.query as jest.Mock).mockResolvedValueOnce([]);
 
         await repository.markLocationlessStaleForSource(
           'ol_product_1',
@@ -1034,74 +1081,84 @@ describe('InventoryRepository', () => {
           { sourceConnectionId: 'conn-alpha', includeUnattributedProvenance: true }
         );
 
-        // The stock facts did not change, only their liveness — an `updatedAt`
-        // bump here would misreport when stock was last observed (#2321).
-        expect(qb.set).toHaveBeenCalledWith({ isStale: true });
-        const conditions = (qb.andWhere.mock.calls as unknown[][]).map((c) => c[0]);
-        expect(conditions).toContain('isStale = false');
+        const [sql] = lastQuery();
+        // The SET clause names exactly one column. A query-builder update
+        // would silently add `updatedAt`, which `InventorySyncService` uses to
+        // derive the propagation dedupe key and #2321 reports as when stock
+        // was last OBSERVED — so the bump is not cosmetic.
+        expect(normalise(sql)).toContain('SET "isStale" = true WHERE');
+        expect(sql).not.toContain('updatedAt');
+        expect(ormRepository.createQueryBuilder).not.toHaveBeenCalled();
+      });
+
+      it('restricts to pooled rows of the located variants, scoped to this source', async () => {
+        (ormRepository.query as jest.Mock).mockResolvedValueOnce([]);
+
+        await repository.markLocationlessStaleForSource(
+          'ol_product_1',
+          ['ol_variant_1', 'ol_variant_2'],
+          { sourceConnectionId: 'conn-alpha', includeUnattributedProvenance: true }
+        );
+
+        const [sql, params] = lastQuery();
+        const flat = normalise(sql);
+
+        expect(flat).toContain('"productId" = $1');
+        expect(flat).toContain('"isStale" = false');
         // The pooled half of the rule: a row AT a location IS the located write.
-        expect(conditions).toContain('"locationId" IS NULL');
-        // IN over guaranteed-non-null values only — never an unguarded NOT IN
-        // on a nullable column.
-        expect(renderBrackets(conditions[conditions.length - 2]).sql).toEqual([
-          'productVariantId IN (:...located)',
-        ]);
-        // Provenance group appended last, bracketed, so the two OR-groups stay
-        // independent.
-        expect(renderBrackets(lastBracket(qb)).sql).toEqual([
-          '"sourceConnectionId" = :scopeConnectionId',
-          '"sourceConnectionId" IS NULL',
-          '"sourceConnectionId" = :legacyProvenance',
+        expect(flat).toContain('"locationId" IS NULL');
+        // Array membership over guaranteed-non-null values only.
+        expect(flat).toContain('("productVariantId" = ANY($2::text[]))');
+        // Provenance group is its OWN parenthesised group, so the two ORs
+        // cannot re-associate into a predicate that stales a rival's rows.
+        expect(flat).toContain(
+          '("sourceConnectionId" = $3 OR "sourceConnectionId" IS NULL OR "sourceConnectionId" = $4)'
+        );
+        expect(flat).toContain('RETURNING "productVariantId"');
+        // Nothing interpolated — every value is bound.
+        expect(params).toEqual([
+          'ol_product_1',
+          ['ol_variant_1', 'ol_variant_2'],
+          'conn-alpha',
+          'legacy',
         ]);
       });
 
       it('carries a product-level located position as its own NULL-guarded arm', async () => {
-        const qb = buildPruneMock();
-        ormRepository.createQueryBuilder.mockReturnValue(
-          qb as unknown as ReturnType<typeof ormRepository.createQueryBuilder>
-        );
+        (ormRepository.query as jest.Mock).mockResolvedValueOnce([]);
 
         await repository.markLocationlessStaleForSource('ol_product_1', ['ol_variant_1', null], {
           sourceConnectionId: 'conn-alpha',
           includeUnattributedProvenance: true,
         });
 
-        const conditions = (qb.andWhere.mock.calls as unknown[][]).map((c) => c[0]);
-        expect(renderBrackets(conditions[conditions.length - 2]).sql).toEqual([
-          'productVariantId IN (:...located)',
-          'productVariantId IS NULL',
-        ]);
+        const [sql] = lastQuery();
+        expect(normalise(sql)).toContain(
+          '("productVariantId" = ANY($2::text[]) OR "productVariantId" IS NULL)'
+        );
       });
 
       it('drops the unattributed arm when the scope claims strictly its own rows', async () => {
-        const qb = buildPruneMock();
-        ormRepository.createQueryBuilder.mockReturnValue(
-          qb as unknown as ReturnType<typeof ormRepository.createQueryBuilder>
-        );
+        (ormRepository.query as jest.Mock).mockResolvedValueOnce([]);
 
         await repository.markLocationlessStaleForSource('ol_product_1', ['ol_variant_1'], {
           sourceConnectionId: 'conn-alpha',
           includeUnattributedProvenance: false,
         });
 
-        expect(renderBrackets(lastBracket(qb)).sql).toEqual([
-          '"sourceConnectionId" = :scopeConnectionId',
-        ]);
+        const [sql, params] = lastQuery();
+        const flat = normalise(sql);
+        expect(flat).toContain('("sourceConnectionId" = $3)');
+        expect(flat).not.toContain('"sourceConnectionId" IS NULL');
+        expect(params).toEqual(['ol_product_1', ['ol_variant_1'], 'conn-alpha']);
       });
 
       it('reports the distinct non-null variant ids it flagged', async () => {
-        const qb = buildPruneMock();
-        qb.execute.mockResolvedValue({
-          raw: [
-            { productVariantId: 'ol_variant_1' },
-            { productVariantId: 'ol_variant_1' },
-            { productVariantId: null },
-          ],
-          affected: 3,
-        });
-        ormRepository.createQueryBuilder.mockReturnValue(
-          qb as unknown as ReturnType<typeof ormRepository.createQueryBuilder>
-        );
+        (ormRepository.query as jest.Mock).mockResolvedValueOnce([
+          { productVariantId: 'ol_variant_1' },
+          { productVariantId: 'ol_variant_1' },
+          { productVariantId: null },
+        ]);
 
         const result = await repository.markLocationlessStaleForSource(
           'ol_product_1',
@@ -1109,7 +1166,32 @@ describe('InventoryRepository', () => {
           { sourceConnectionId: 'conn-alpha', includeUnattributedProvenance: true }
         );
 
-        expect(result).toEqual({ markedCount: 3, variantIds: ['ol_variant_1'] });
+        // `markedProductLevel` is what lets the caller keep the product-level
+        // propagation target on a MIXED result: `variantIds` cannot carry the
+        // NULL, so without the flag that target is silently dropped.
+        expect(result).toEqual({
+          markedCount: 3,
+          variantIds: ['ol_variant_1'],
+          markedProductLevel: true,
+        });
+      });
+
+      it('reports markedProductLevel false when only variant-keyed rows were staled', async () => {
+        (ormRepository.query as jest.Mock).mockResolvedValueOnce([
+          { productVariantId: 'ol_variant_1' },
+        ]);
+
+        const result = await repository.markLocationlessStaleForSource(
+          'ol_product_1',
+          ['ol_variant_1'],
+          { sourceConnectionId: 'conn-alpha', includeUnattributedProvenance: true }
+        );
+
+        expect(result).toEqual({
+          markedCount: 1,
+          variantIds: ['ol_variant_1'],
+          markedProductLevel: false,
+        });
       });
     });
 

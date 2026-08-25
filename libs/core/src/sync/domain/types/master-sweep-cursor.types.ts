@@ -65,8 +65,12 @@ export function masterSweepCursorKey(kind: MasterSweepKind, connectionId: string
  * of the most recent COMPLETED cycle (#2258). Deliberately a separate key
  * from the sweep cursor: the cursor is unconditionally cleared to `''` on
  * every run's completion branch, and its composite format rejects a third
- * segment. Written today only by the `product-reconcile` handler; other
- * kinds may adopt it without any contract change.
+ * segment.
+ *
+ * TWO writers today, not one: the `product-reconcile` handler (#2258) and the
+ * `inventory-provenance` backfill handler (#2317), the latter latching on
+ * `remainingNull === 0` rather than on a page boundary. Other kinds may adopt
+ * it without any contract change.
  */
 export function masterSweepCompletedAtCursorKey(
   kind: MasterSweepKind,
