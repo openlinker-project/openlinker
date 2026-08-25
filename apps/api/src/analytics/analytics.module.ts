@@ -23,6 +23,11 @@
  *    `NeedsAttentionService` — it composes them via `TopProductsService` at
  *    this layer rather than adding a new core-to-core dependency edge; see
  *    that service's own header.
+ * 5. **`/analytics/settings`** (`AnalyticsSettingsController`, #2462) — the
+ *    display-currency / rate-basis / backfilled-tax-rate-inclusion singleton
+ *    row (#2461). `GET` composes the row with the system reporting currency
+ *    from `@openlinker/core/currency`, which is why `CurrencyModule` is
+ *    imported here alongside `CoreAnalyticsModule`.
  *
  * The concerns share nothing except the URL prefix. If a future
  * `/analytics` route (#1986 route shell, KPI strip, etc.) needs its own
@@ -38,6 +43,7 @@
  */
 import { Module } from '@nestjs/common';
 import { AnalyticsModule as CoreAnalyticsModule } from '@openlinker/core/analytics';
+import { CurrencyModule } from '@openlinker/core/currency';
 import { ListingsModule } from '@openlinker/core/listings/services';
 import { OrdersModule } from '@openlinker/core/orders';
 import { ProductsModule } from '@openlinker/core/products';
@@ -50,18 +56,27 @@ import { PosthogSettingsController } from './http/posthog-settings.controller';
 import { NeedsAttentionController } from './http/needs-attention.controller';
 import { SalesAnalyticsController } from './http/sales-analytics.controller';
 import { TopProductsController } from './http/top-products.controller';
+import { AnalyticsSettingsController } from './http/analytics-settings.controller';
 import { NeedsAttentionService } from './application/services/needs-attention.service';
 import { NEEDS_ATTENTION_SERVICE_TOKEN } from './application/services/needs-attention.service.interface';
 import { TopProductsService } from './application/services/top-products.service';
 import { TOP_PRODUCTS_SERVICE_TOKEN } from './application/services/top-products.service.interface';
 
 @Module({
-  imports: [CoreAnalyticsModule, ListingsModule, OrdersModule, ProductsModule, ApiIntegrationsModule],
+  imports: [
+    CoreAnalyticsModule,
+    CurrencyModule,
+    ListingsModule,
+    OrdersModule,
+    ProductsModule,
+    ApiIntegrationsModule,
+  ],
   controllers: [
     PosthogSettingsController,
     NeedsAttentionController,
     SalesAnalyticsController,
     TopProductsController,
+    AnalyticsSettingsController,
   ],
   providers: [
     NeedsAttentionService,
