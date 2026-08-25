@@ -124,3 +124,154 @@ export interface ReturnPagination {
   limit?: number;
   offset?: number;
 }
+
+/**
+ * Per-line vocabulary. FE mirrors of the core unions
+ * (`libs/core/src/returns/domain/types/return-line.types.ts`) and of
+ * `RefundReasonValues` (`@openlinker/core/orders/types`), which the returns
+ * context reuses verbatim so returns-by-reason and refunds-by-reason report on
+ * one axis rather than two an analyst has to reconcile.
+ *
+ * **Declared but undriven in Wave 1c.** Nothing writes a custody or money
+ * transition yet, so every line arrives at its default. The detail renders the
+ * chips anyway, saying they are not tracked yet — hiding them would mean Wave 2
+ * has to add a column rather than light one up, and would also hide from the
+ * operator that OpenLinker is not yet following the parcel.
+ */
+export const RETURN_CUSTODY_STATE_VALUES = [
+  'advised',
+  'in_transit',
+  'received',
+  'disposed',
+  'not_returned',
+] as const;
+export type ReturnCustodyState = (typeof RETURN_CUSTODY_STATE_VALUES)[number];
+
+export const RETURN_MONEY_STATE_VALUES = [
+  'not_refundable',
+  'pending',
+  'triggered',
+  'refunded',
+  'denied',
+  'in_doubt',
+] as const;
+export type ReturnMoneyState = (typeof RETURN_MONEY_STATE_VALUES)[number];
+
+export const RETURN_DISPOSITION_VALUES = ['restock', 'scrap'] as const;
+export type ReturnDisposition = (typeof RETURN_DISPOSITION_VALUES)[number];
+
+export const RETURN_LINE_REASON_VALUES = [
+  'withdrawal',
+  'defective',
+  'not_as_described',
+  'wrong_item',
+  'other',
+] as const;
+export type ReturnLineReason = (typeof RETURN_LINE_REASON_VALUES)[number];
+
+/**
+ * One returned line.
+ *
+ * `resolvedOrderLineId` is nullable BY DESIGN and null is a real state: OL has
+ * no order-lines table to point at, so a line it could not match still
+ * describes a real parcel. A consumer renders that explicitly, never as a
+ * blank.
+ *
+ * The three union-typed fields widen to `| string` because a value this build
+ * does not recognise must still render — dropping the whole line over an
+ * unfamiliar chip would hide a parcel. See `parseReturnDetail`.
+ */
+export interface ReturnLine {
+  id: string;
+  lineIndex: number;
+  externalLineId: string | null;
+  resolvedOrderLineId: string | null;
+  offerId: string | null;
+  sku: string | null;
+  name: string | null;
+  reason: ReturnLineReason | string;
+  quantityAdvised: number;
+  quantityReceived: number;
+  quantityRestocked: number;
+  quantityScrapped: number;
+  custodyState: ReturnCustodyState | string;
+  moneyState: ReturnMoneyState | string;
+  disposition: ReturnDisposition | string | null;
+  receivedAt: string | null;
+  disposedAt: string | null;
+  note: string | null;
+}
+
+/**
+ * Why the source cannot be asked to decline — mirror of core's
+ * `ReturnDeclineUnsupportedReasonValues`.
+ *
+ * Deliberately does NOT carry the orphan case: that is `bucket`, and a second
+ * spelling here would be a second definition of orphan.
+ */
+export const RETURN_DECLINE_UNSUPPORTED_REASON_VALUES = [
+  'no-source-return-id',
+  'source-declares-no-decline',
+] as const;
+export type ReturnDeclineUnsupportedReason =
+  (typeof RETURN_DECLINE_UNSUPPORTED_REASON_VALUES)[number];
+
+/**
+ * Whether the decline write may be offered, resolved SERVER-side.
+ *
+ * Never re-derived in the browser: deriving it here fails in the wrong
+ * direction — offering an action the source cannot perform. `supported: true`
+ * is a declaration read from adapter metadata, not a promise; the 400 from the
+ * write remains the authority, so the mutation's error path still handles it.
+ *
+ * `reason` widens to `| string` so a value this build predates is reported as
+ * unrecognised rather than collapsing into "no reason given".
+ */
+export interface ReturnDeclineAvailability {
+  supported: boolean;
+  reason: ReturnDeclineUnsupportedReason | string | null;
+}
+
+/** The hydrated aggregate: the list header, its lines, and the decline fact. */
+export interface ReturnDetail extends ReturnListItem {
+  lines: ReturnLine[];
+  declineAvailability: ReturnDeclineAvailability;
+  /** Lines the server sent that this build could not read. Reported, never hidden. */
+  droppedLineCount: number;
+}
+
+/**
+ * How a decline attempt ended — mirror of core's `DeclineReturnOutcomeValues`.
+ *
+ * `decline-sent` is the one that must never render as "declined": the source
+ * accepted the request and reported no instant, so `declinedAt` stays null
+ * (returns spec §5.6 / US-3 — a 2xx alone never displays as declined by the
+ * source).
+ */
+export const DECLINE_RETURN_OUTCOME_VALUES = [
+  'declined',
+  'decline-sent',
+  'already-declined',
+  'in-flight',
+  'refused',
+] as const;
+export type DeclineReturnOutcome = (typeof DECLINE_RETURN_OUTCOME_VALUES)[number];
+
+export interface DeclineReturnInput {
+  /**
+   * The SOURCE's own rejection code, opaque to OpenLinker. No endpoint
+   * publishes the accepted vocabulary, so this is operator-entered and the
+   * adapter's refusal — which names what it accepts — is the feedback loop.
+   */
+  reasonCode: string;
+  comment?: string;
+}
+
+export interface DeclineReturnResult {
+  outcome: DeclineReturnOutcome | string;
+  changeId: string | null;
+  /** The SOURCE's own instant, or null — never OpenLinker's clock. */
+  declinedAt: string | null;
+  /** Present only for `refused`. The source's own words, rendered verbatim. */
+  refusalReason: string | null;
+}

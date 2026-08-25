@@ -10,4 +10,5 @@ export const returnsQueryKeys = {
   list: (filters?: ReturnFilters, pagination?: ReturnPagination) =>
     ['returns', 'list', filters ?? {}, pagination ?? {}] as const,
   ingestionAvailability: () => ['returns', 'ingestion-availability'] as const,
+  detail: (returnId: string) => ['returns', 'detail', returnId] as const,
 };

@@ -11,9 +11,13 @@
  * @module apps/web/src/features/returns/api
  */
 import { parseReturnIngestionAvailability, parseReturnList } from './returns.schema';
+import { parseDeclineReturnResult, parseReturnDetail } from './return-detail.schema';
 import { RETURNS_MAX_LIMIT } from './returns.types';
 import type {
+  DeclineReturnInput,
+  DeclineReturnResult,
   PaginatedReturns,
+  ReturnDetail,
   ReturnFilters,
   ReturnIngestionAvailability,
   ReturnPagination,
@@ -48,6 +52,27 @@ export interface ReturnsApi {
    * configuration and an unreadable response is not evidence for it.
    */
   getIngestionAvailability: () => Promise<ReturnIngestionAvailability | null>;
+
+  /**
+   * `GET /returns/:returnId` — one return with its lines, ordered by
+   * `lineIndex`, plus the backend-resolved `declineAvailability`.
+   *
+   * Rejects with `ReturnDetailUnreadableError` when the record cannot be read —
+   * see that class for why a detail throws where the list degrades.
+   */
+  get: (returnId: string) => Promise<ReturnDetail>;
+
+  /**
+   * `POST /returns/:returnId/decline` — ask the source to decline the refund.
+   *
+   * An ADR-044 change PROPOSAL, not a mutation OpenLinker completes: the result
+   * reports what the source did, and `outcome: 'decline-sent'` with a null
+   * `declinedAt` means it has not yet said. Safe to call twice — the backend's
+   * proposal row resolves a second call to `in-flight` rather than sending
+   * again — but the UI still guards, so the operator is never left wondering
+   * whether a second request went out.
+   */
+  decline: (returnId: string, input: DeclineReturnInput) => Promise<DeclineReturnResult>;
 }
 
 interface ApiRequest {
@@ -95,6 +120,31 @@ export function createReturnsApi(request: ApiRequest): ReturnsApi {
     async getIngestionAvailability(): Promise<ReturnIngestionAvailability | null> {
       const raw = await request<unknown>('/returns/ingestion-availability');
       return parseReturnIngestionAvailability(raw);
+    },
+
+    async get(returnId): Promise<ReturnDetail> {
+      const raw = await request<unknown>(`/returns/${encodeURIComponent(returnId)}`);
+      return parseReturnDetail(raw, returnId);
+    },
+
+    async decline(returnId, input): Promise<DeclineReturnResult> {
+      const raw = await request<unknown>(
+        `/returns/${encodeURIComponent(returnId)}/decline`,
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            reasonCode: input.reasonCode,
+            // Omitted rather than sent as an empty string: the backend treats
+            // the field as optional and the adapter decides whether a code
+            // requires one, so an empty string would be a comment the operator
+            // did not write.
+            ...(input.comment !== undefined && input.comment !== ''
+              ? { comment: input.comment }
+              : {}),
+          }),
+        },
+      );
+      return parseDeclineReturnResult(raw);
     },
   };
 }
