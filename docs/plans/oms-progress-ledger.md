@@ -81,7 +81,12 @@ Branch: `oms-programme-wave-1` (stacked off Wave-0 tip feb78054d; Wave-0 PR to m
 | #2321 | W1b-6 | IAvailabilityService computed seam | ☑ merged bdcdb6711 (commit 104d37869; reviewed, approved; consumed by nobody until #2323) |
 | #2320 | W1b-5 | provenance-scoped lookup + per-source prune | ☑ merged a9bd024da (ANALYSIS-2320; imports LEGACY const from #2317; Decision A typed InventoryCrossSourcePositionConflictError naming #2325; #1904 guard unchanged) |
 | #2322 | W1b-10 | enforce locationId-NULL semantics | ☑ merged 776152089 (commit 1466b6d6a; reviewed, approved; finding: reversal is half-free — per-variant prune granularity leaves abandoned located rows live; propagate-on-stale gap deferred to #2324) |
-### Wave 1c (epic #2337) — gated on #2289 fork decided; Wave 1a
+### Wave 1c (epic #2337) — OPEN (Scope A recorded on the epic; 9 active children)
+| Issue | Slug | Subject | Status |
+|---|---|---|---|
+| #2327 | W1c-1 | returns context: model + migration 1846 | ☑ merged 902c83ebb (commit bd7b3b26f; reviewed, approved; incl. ADR-060 custody amendment) |
+| #2329 | W1c-3 | ReturnSourceReader contract | ◑ implementing (ANALYSIS-2329; base 902c83ebb) |
+| #2328 | W1c-2 | ReturnsService idempotent update-or-create | ◐ plan in progress (O1 Erli synthetic-id ruling at its gate) |
 ### Wave 2 (epic #2389) — gated per its epic body; §8 Q1 = YES (decision 2 above)
 
 (Fill per-issue tables for each wave when its frontier opens; until then the epic checklist is the list.)
