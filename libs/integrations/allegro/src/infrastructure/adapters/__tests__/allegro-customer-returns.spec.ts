@@ -31,7 +31,9 @@ import {
 import type { AllegroCustomerReturnWire } from '../../../domain/types/allegro-customer-return.types';
 import type { IAllegroHttpClient } from '../../http/allegro-http-client.interface';
 import { Connection } from '@openlinker/core/identifier-mapping';
-import { isReturnSourceReader } from '@openlinker/core/orders';
+import { isReturnDecliner, isReturnSourceReader } from '@openlinker/core/orders';
+import { ReturnDeclineRejectedBySourceError } from '@openlinker/core/returns';
+import { AllegroApiException } from '../../../domain/exceptions/allegro-api.exception';
 
 const connectionId = 'connection-returns';
 
@@ -358,5 +360,261 @@ describe('AllegroOrderSourceAdapter — ReturnSourceReader (#2330)', () => {
         reasonRaw: 'MISTAKE',
       });
     });
+  });
+});
+
+describe('AllegroOrderSourceAdapter — ReturnDecliner (#2333)', () => {
+  let adapter: AllegroOrderSourceAdapter;
+  let httpClient: jest.Mocked<IAllegroHttpClient>;
+
+  beforeEach(() => {
+    httpClient = {
+      get: jest.fn(),
+      post: jest.fn(),
+      put: jest.fn(),
+      patch: jest.fn(),
+    } as unknown as jest.Mocked<IAllegroHttpClient>;
+
+    const connection = new Connection(
+      connectionId,
+      'allegro',
+      'Test Allegro',
+      'active',
+      { environment: 'sandbox' },
+      'credentials-ref',
+      new Date(),
+      new Date(),
+      undefined,
+      ['OrderSource']
+    );
+
+    adapter = new AllegroOrderSourceAdapter(connectionId, httpClient, connection);
+  });
+
+  it('should satisfy the isReturnDecliner guard', () => {
+    expect(isReturnDecliner(adapter)).toBe(true);
+  });
+
+  it('should publish Allegro rejection codes as the opaque decline vocabulary', () => {
+    expect([...(adapter.declineReasonCodes ?? [])]).toEqual([
+      'REFUND_REJECTED',
+      'NEW_ITEM_SENT',
+      'ITEM_FIXED',
+      'MISSING_PART_SENT',
+      'ITEM_MISMATCH',
+      'BUSINESS_PURCHASE',
+      'NO_RETURN_RIGHT',
+    ]);
+  });
+
+  it('should POST the spec-shaped rejection body with the [BETA] media type', async () => {
+    httpClient.post.mockResolvedValue({
+      data: wireReturn({
+        status: 'REJECTED',
+        rejection: {
+          code: 'REFUND_REJECTED',
+          reason: 'Damaged',
+          createdAt: '2026-01-11T09:36:57.663+01:00',
+        },
+      }),
+      status: 200,
+      headers: {},
+    });
+
+    const result = await adapter.declineReturn({
+      externalReturnId: 'r-1',
+      reasonCode: 'REFUND_REJECTED',
+      comment: 'Damaged',
+    });
+
+    expect(httpClient.post).toHaveBeenCalledWith(
+      '/order/customer-returns/r-1/rejection',
+      { rejection: { code: 'REFUND_REJECTED', reason: 'Damaged' } },
+      {
+        headers: {
+          Accept: ALLEGRO_CUSTOMER_RETURN_MEDIA_TYPE,
+          'Content-Type': ALLEGRO_CUSTOMER_RETURN_MEDIA_TYPE,
+        },
+      }
+    );
+    // The success body IS the confirmation — Allegro's own instant, not ours.
+    expect(result.declinedAt).toEqual(new Date('2026-01-11T09:36:57.663+01:00'));
+    expect(result.rawStatus).toBe('REJECTED');
+  });
+
+  it('should omit reason for a code that does not require one', async () => {
+    httpClient.post.mockResolvedValue({
+      data: wireReturn({
+        rejection: { code: 'ITEM_FIXED', createdAt: '2026-01-11T09:36:57.00Z' },
+      }),
+      status: 200,
+      headers: {},
+    });
+
+    await adapter.declineReturn({
+      externalReturnId: 'r-1',
+      reasonCode: 'ITEM_FIXED',
+      comment: null,
+    });
+
+    expect(httpClient.post).toHaveBeenCalledWith(
+      '/order/customer-returns/r-1/rejection',
+      { rejection: { code: 'ITEM_FIXED' } },
+      expect.anything()
+    );
+  });
+
+  it('should refuse an unknown code before spending a round trip', async () => {
+    await expect(
+      adapter.declineReturn({
+        externalReturnId: 'r-1',
+        reasonCode: 'NOPE',
+        comment: null,
+      })
+    ).rejects.toBeInstanceOf(ReturnDeclineRejectedBySourceError);
+    expect(httpClient.post).not.toHaveBeenCalled();
+  });
+
+  it('should refuse REFUND_REJECTED with no reason, as Allegro requires one', async () => {
+    await expect(
+      adapter.declineReturn({
+        externalReturnId: 'r-1',
+        reasonCode: 'REFUND_REJECTED',
+        comment: '   ',
+      })
+    ).rejects.toBeInstanceOf(ReturnDeclineRejectedBySourceError);
+    expect(httpClient.post).not.toHaveBeenCalled();
+  });
+
+  it('should truncate an over-long reason to the source limit rather than abandon the decline', async () => {
+    httpClient.post.mockResolvedValue({
+      data: wireReturn({
+        rejection: { code: 'REFUND_REJECTED', createdAt: '2026-01-11T09:36:57.00Z' },
+      }),
+      status: 200,
+      headers: {},
+    });
+
+    await adapter.declineReturn({
+      externalReturnId: 'r-1',
+      reasonCode: 'REFUND_REJECTED',
+      comment: 'x'.repeat(400),
+    });
+
+    const body = httpClient.post.mock.calls[0][1] as {
+      rejection: { reason: string };
+    };
+    expect(body.rejection.reason).toHaveLength(250);
+  });
+
+  it('should treat a 422 whose re-read shows a rejection as an already-declined success', async () => {
+    httpClient.post.mockRejectedValue(
+      new AllegroApiException('Unprocessable', 422, '{}', '/rejection')
+    );
+    httpClient.get.mockResolvedValue({
+      data: wireReturn({
+        status: 'REJECTED',
+        rejection: { code: 'REFUND_REJECTED', createdAt: '2026-01-11T09:36:57.00Z' },
+      }),
+      status: 200,
+      headers: {},
+    });
+
+    const result = await adapter.declineReturn({
+      externalReturnId: 'r-1',
+      reasonCode: 'REFUND_REJECTED',
+      comment: 'Damaged',
+    });
+
+    expect(result.declinedAt).toEqual(new Date('2026-01-11T09:36:57.00Z'));
+    expect(httpClient.get).toHaveBeenCalledWith('/order/customer-returns/r-1', {
+      headers: { Accept: ALLEGRO_CUSTOMER_RETURN_MEDIA_TYPE },
+    });
+  });
+
+  it('should rethrow a 422 whose re-read shows no rejection', async () => {
+    const failure = new AllegroApiException('Unprocessable', 422, '{}', '/rejection');
+    httpClient.post.mockRejectedValue(failure);
+    httpClient.get.mockResolvedValue({
+      data: wireReturn({ rejection: undefined }),
+      status: 200,
+      headers: {},
+    });
+
+    await expect(
+      adapter.declineReturn({
+        externalReturnId: 'r-1',
+        reasonCode: 'REFUND_REJECTED',
+        comment: 'Damaged',
+      })
+    ).rejects.toBe(failure);
+  });
+
+  it('should map a deterministic 400 onto the neutral refusal, carrying the source own words', async () => {
+    httpClient.post.mockRejectedValue(
+      new AllegroApiException('Bad request', 400, '{}', '/rejection', [
+        { code: 'X', userMessage: 'Return cannot be rejected in this state' },
+      ] as never)
+    );
+
+    await expect(
+      adapter.declineReturn({
+        externalReturnId: 'r-1',
+        reasonCode: 'ITEM_FIXED',
+        comment: null,
+      })
+    ).rejects.toMatchObject({
+      name: 'ReturnDeclineRejectedBySourceError',
+      reason: 'Return cannot be rejected in this state',
+    });
+  });
+
+  it.each([401, 403, 429, 500, 503])(
+    'should rethrow a %s so the proposal stays open (in doubt) rather than reading as refused',
+    async (statusCode) => {
+      const failure = new AllegroApiException('Boom', statusCode, '{}', '/rejection');
+      httpClient.post.mockRejectedValue(failure);
+
+      await expect(
+        adapter.declineReturn({
+          externalReturnId: 'r-1',
+          reasonCode: 'ITEM_FIXED',
+          comment: null,
+        })
+      ).rejects.toBe(failure);
+    }
+  );
+
+  it('should report declinedAt as null when the source reports no instant', async () => {
+    // "decline sent" — core must not stamp, and must not invent a timestamp.
+    httpClient.post.mockResolvedValue({
+      data: wireReturn({ rejection: { code: 'ITEM_FIXED' } }),
+      status: 200,
+      headers: {},
+    });
+
+    const result = await adapter.declineReturn({
+      externalReturnId: 'r-1',
+      reasonCode: 'ITEM_FIXED',
+      comment: null,
+    });
+
+    expect(result.declinedAt).toBeNull();
+  });
+
+  it('should report declinedAt as null when the source reports an unparseable instant', async () => {
+    httpClient.post.mockResolvedValue({
+      data: wireReturn({ rejection: { code: 'ITEM_FIXED', createdAt: 'not-a-date' } }),
+      status: 200,
+      headers: {},
+    });
+
+    const result = await adapter.declineReturn({
+      externalReturnId: 'r-1',
+      reasonCode: 'ITEM_FIXED',
+      comment: null,
+    });
+
+    expect(result.declinedAt).toBeNull();
   });
 });

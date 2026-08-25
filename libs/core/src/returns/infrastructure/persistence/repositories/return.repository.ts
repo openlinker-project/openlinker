@@ -410,6 +410,18 @@ export class ReturnRepository implements ReturnRepositoryPort {
     return this.buildSweepQuery(filter).getCount();
   }
 
+  async claimDeclinedAt(id: string, at: Date): Promise<boolean> {
+    // Conditional write — `IsNull()` in the WHERE is what makes this atomic
+    // under two concurrent triggers, so exactly one UPDATE can affect the row.
+    // There is deliberately no release counterpart: a decline observed at the
+    // source does not become untrue.
+    const result = await this.returns.update(
+      { id, declinedAt: IsNull() },
+      { declinedAt: at }
+    );
+    return (result.affected ?? 0) > 0;
+  }
+
   /**
    * The single WHERE the page read and the count read share.
    *

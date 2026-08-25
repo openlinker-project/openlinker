@@ -124,8 +124,15 @@ export interface AllegroCustomerReturnWire {
   refund?: unknown;
   /** Parcel/waybill detail. Not projected — rides raw. */
   parcels?: unknown[];
-  /** Seller's refusal, if any. Not projected — rides raw. */
-  rejection?: unknown;
+  /**
+   * The seller's refusal, if any.
+   *
+   * Typed since #2333 (it was `unknown`) because `rejection.createdAt` is the
+   * AUTHORITATIVE decline instant — the value core stamps onto
+   * `ReturnRecord.declinedAt`. Not projected into `IncomingReturn`; it rides
+   * `raw` for ingestion and is read directly by the decline write.
+   */
+  rejection?: AllegroCustomerReturnRejectionWire;
 }
 
 /**
@@ -141,3 +148,55 @@ export interface AllegroCustomerReturnsResponse {
   count?: number;
   customerReturns?: AllegroCustomerReturnWire[];
 }
+
+/**
+ * `CustomerReturnRejection` — the seller's refusal as Allegro reports it.
+ *
+ * Verified against `https://developer.allegro.pl/swagger.yaml`
+ * (`CustomerReturnRejection`, `CustomerReturnRefundRejectionRequest`) rather
+ * than transcribed from the spike sketch.
+ *
+ * Every field is optional in the spec, including `createdAt` — so the decline
+ * write must treat a missing instant as "the source has not reported the
+ * decline as a fact" rather than substituting its own clock.
+ */
+export interface AllegroCustomerReturnRejectionWire {
+  code?: string;
+  reason?: string;
+  createdAt?: string;
+}
+
+/**
+ * The seven codes `POST /order/customer-returns/{id}/rejection` accepts.
+ *
+ * Published to core as the adapter's opaque `declineReasonCodes`. Core never
+ * interprets a member — the `terminalRawStatuses` contract.
+ *
+ * The list is a closed OpenAPI `enum` (unlike `items[].reason.type`, which is
+ * prose and open-world), so validating against it before the call is safe and
+ * saves a round trip that Allegro would answer with a 400.
+ */
+export const ALLEGRO_RETURN_REJECTION_CODES = [
+  'REFUND_REJECTED',
+  'NEW_ITEM_SENT',
+  'ITEM_FIXED',
+  'MISSING_PART_SENT',
+  'ITEM_MISMATCH',
+  'BUSINESS_PURCHASE',
+  'NO_RETURN_RIGHT',
+] as const;
+
+export type AllegroReturnRejectionCode =
+  (typeof ALLEGRO_RETURN_REJECTION_CODES)[number];
+
+/**
+ * The one code for which Allegro requires a free-text `reason` (spec:
+ * "required when code is REFUND_REJECTED"), and that field's declared length
+ * cap.
+ *
+ * Both are enforced adapter-side, before the call: the platform states the rule,
+ * so mirroring it here turns a 400 into an immediate, explainable refusal —
+ * and core must never learn either constant.
+ */
+export const ALLEGRO_RETURN_REJECTION_REASON_REQUIRED_FOR = 'REFUND_REJECTED';
+export const ALLEGRO_RETURN_REJECTION_REASON_MAX_LENGTH = 250;

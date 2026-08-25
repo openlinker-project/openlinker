@@ -69,3 +69,26 @@ export type {
   ReturnStatusSyncOptions,
   ReturnStatusSyncResult,
 } from './application/services/return-status-sync.service.interface';
+
+// The one return WRITE (#2333, ADR-060/ADR-044): `return.decline` as an ADR-044
+// proposal against the `order_changes` table this slice lands. The neutral
+// command/result live HERE (the returns vocabulary is owned by returns); the
+// capability interface + guard that consume them live beside their read-only
+// sibling in `@openlinker/core/orders`.
+export type {
+  ReturnDeclineCommand,
+  ReturnDeclineResult,
+} from './domain/types/return-decline.types';
+export {
+  ReturnNotFoundError,
+  ReturnNotAttributedError,
+  ReturnDeclineUnsupportedError,
+} from './domain/exceptions/return-decline-refused.error';
+export { ReturnDeclineRejectedBySourceError } from './domain/exceptions/return-decline-rejected-by-source.error';
+export { DeclineReturnOutcomeValues } from './application/services/return-decline.service.interface';
+export type {
+  IReturnDeclineService,
+  DeclineReturnInput,
+  DeclineReturnOutcome,
+  DeclineReturnResult,
+} from './application/services/return-decline.service.interface';

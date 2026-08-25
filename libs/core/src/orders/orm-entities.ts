@@ -11,3 +11,5 @@
 export { OrderRecordOrmEntity } from './infrastructure/persistence/entities/order-record.orm-entity';
 // Consumer: apps/api/test/integration/orders/refund-record-crud.int-spec.ts (#2036).
 export { RefundRecordOrmEntity } from './infrastructure/persistence/entities/refund-record.orm-entity';
+// Consumer: apps/api/test/integration/order-changes-schema.int-spec.ts (#2333).
+export { OrderChangeOrmEntity } from './infrastructure/persistence/entities/order-change.orm-entity';
