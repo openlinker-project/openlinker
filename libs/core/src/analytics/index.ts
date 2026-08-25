@@ -21,5 +21,17 @@ export type {
 } from './domain/types/posthog-settings.types';
 export { POSTHOG_API_KEY_CREDENTIALS_REF } from './domain/types/posthog-credentials.types';
 export type { IPosthogSettingsService } from './application/services/posthog-settings.service.interface';
+export {
+  AnalyticsDisplaySettings,
+  ANALYTICS_DISPLAY_SETTINGS_SINGLETON_ID,
+} from './domain/entities/analytics-display-settings.entity';
+export type { AnalyticsDisplaySettingsRepositoryPort } from './domain/ports/analytics-display-settings-repository.port';
+export { RateBasisValues } from './domain/types/analytics-display-settings.types';
+export type {
+  RateBasis,
+  AnalyticsDisplaySettingsInput,
+  AnalyticsDisplaySettingsView,
+} from './domain/types/analytics-display-settings.types';
+export type { IAnalyticsDisplaySettingsService } from './application/services/analytics-display-settings.service.interface';
 export { AnalyticsModule } from './analytics.module';
 export * from './analytics.tokens';
