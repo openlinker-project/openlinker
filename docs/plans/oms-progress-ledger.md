@@ -90,7 +90,7 @@ Branch: `oms-programme-wave-1` (stacked off Wave-0 tip feb78054d; Wave-0 PR to m
 | #2328 | W1c-2 | ReturnsService idempotent update-or-create | ☑ merged 29b2579f4 (commit fc4718112; reviewed, approved; O1 synthesise-adapter-side ruled; no created-detection) |
 | #2332 | W1c-5 | orphan bucket + trigger block + reconcile | ◐ plan in progress |
 | #2334 | W1c-7 | returns read API | ◐ plan in progress |
-| #2333 | W1c-6 | `return.decline` + the `order_changes` table (**Wave-2 gate**) | ◐ implemented on `2333-return-decline-order-changes`; migration 1847; awaiting orchestrator review |
+| #2333 | W1c-6 | `return.decline` + the `order_changes` table (**Wave-2 gate**) | ☑ merged (commit bbcdef929; reviewed, approved; migration 1847; index-name + partial-predicate parity verified against the ORM entity; no-OL-clock-fallback on `declinedAt` verified at source; `ReturnDecliner` shipped as its own capability, not a `ReturnSourceReader` method) |
 ### Wave 2 (epic #2389) — gated per its epic body; §8 Q1 = YES (decision 2 above)
 
 (Fill per-issue tables for each wave when its frontier opens; until then the epic checklist is the list.)
