@@ -9,7 +9,7 @@
  *
  * @module apps/api/test/integration/helpers
  */
-import type { OrderRef } from '@openlinker/core/orders';
+import type { OrderRef, OrderSyncResult } from '@openlinker/core/orders';
 
 /**
  * Parse the destination-native PrestaShop numeric `id_order` from an `OrderRef`
@@ -21,4 +21,23 @@ export function destinationOrderIdFromRef(orderRef: Pick<OrderRef, 'orderId'>): 
     throw new Error(`PS-side order id not a positive integer: '${orderRef.orderId}'`);
   }
   return parsed;
+}
+
+/**
+ * Render a human-readable reason for a non-`success` {@link OrderSyncResult}.
+ *
+ * `OrderSyncResult` gained a third, terminal `'skipped_cancelled'` arm in #2284,
+ * so `result.error` is no longer reachable from a bare `status !== 'success'`
+ * narrowing. Int-specs use this in their diagnostic throw so a cancelled-at-source
+ * skip reports itself as such instead of being mislabelled a transport failure.
+ */
+export function describeUnsuccessfulSync(result: OrderSyncResult): string {
+  switch (result.status) {
+    case 'failed':
+      return `failed: ${result.error.message}${result.error.code ? ` (${result.error.code})` : ''}`;
+    case 'skipped_cancelled':
+      return `skipped_cancelled: source cancellation recorded at ${result.cancelledAt.toISOString()}`;
+    case 'success':
+      return 'success';
+  }
 }

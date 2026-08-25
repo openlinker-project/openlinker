@@ -1193,6 +1193,54 @@ describe('InventoryRepository', () => {
           markedProductLevel: false,
         });
       });
+
+      /**
+       * The two specs below pin the shape node-postgres ACTUALLY returns for an
+       * UPDATE through TypeORM's raw query — `[rows, affectedCount]`, the same
+       * tuple `backfillLegacyProvenance` documents. The specs above mock a plain
+       * row array, and that fiction is precisely what hid the defect the #2322
+       * int-spec caught: reading the outer array as the row list made
+       * `markedCount` a constant 2 (the tuple's length) and `variantIds` a
+       * constant `[]`, so `MasterInventorySyncService` enqueued an aggregate
+       * propagation on EVERY sync and carried no variant with it. Both shapes
+       * are kept: the plain-array specs guard the driver-agnostic fallback.
+       */
+      it('reads the row list out of the driver tuple for a staled row', async () => {
+        (ormRepository.query as jest.Mock).mockResolvedValueOnce([
+          [{ productVariantId: 'ol_variant_1' }],
+          1,
+        ]);
+
+        const result = await repository.markLocationlessStaleForSource(
+          'ol_product_1',
+          ['ol_variant_1'],
+          { sourceConnectionId: 'conn-alpha', includeUnattributedProvenance: true }
+        );
+
+        expect(result).toEqual({
+          markedCount: 1,
+          variantIds: ['ol_variant_1'],
+          markedProductLevel: false,
+        });
+      });
+
+      it('reports nothing marked when the driver tuple carries no rows', async () => {
+        (ormRepository.query as jest.Mock).mockResolvedValueOnce([[], 0]);
+
+        const result = await repository.markLocationlessStaleForSource(
+          'ol_product_1',
+          ['ol_variant_1'],
+          { sourceConnectionId: 'conn-alpha', includeUnattributedProvenance: false }
+        );
+
+        // Zero must stay zero: the caller gates its propagation on
+        // `markedCount > 0`, so a non-zero here fires a job for no work.
+        expect(result).toEqual({
+          markedCount: 0,
+          variantIds: [],
+          markedProductLevel: false,
+        });
+      });
     });
 
     it('applies the read filter with strict equality, never the claim rule', async () => {
