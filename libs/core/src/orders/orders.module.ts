@@ -27,6 +27,7 @@ import { RefundRecordRepository } from './infrastructure/persistence/repositorie
 import { RefundRecordOrmEntity } from './infrastructure/persistence/entities/refund-record.orm-entity';
 import { OrderLineItemOrmEntity } from './infrastructure/persistence/entities/order-line-item.orm-entity';
 import { TaxRateBackfillService } from './application/services/tax-rate-backfill.service';
+import { DisplayCurrencyConversionService } from './application/services/display-currency-conversion.service';
 import {
   ORDER_SYNC_SERVICE_TOKEN,
   ORDER_INGESTION_SERVICE_TOKEN,
@@ -44,6 +45,7 @@ import {
   TAX_RATE_BACKFILL_SERVICE_TOKEN,
   FULFILLMENT_DISPATCH_RELAY_SERVICE_TOKEN,
   SALES_DOCUMENT_VIEW_SERVICE_TOKEN,
+  DISPLAY_CURRENCY_CONVERSION_SERVICE_TOKEN,
 } from './orders.tokens';
 import { OrderHoldsModule } from './order-holds.module';
 import { IntegrationsModule } from '@openlinker/core/integrations';
@@ -134,6 +136,7 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     RefundRecordRepository,
     OrderLineItemRepository,
     TaxRateBackfillService,
+    DisplayCurrencyConversionService,
     // Then provide token bindings using useExisting
     {
       provide: ORDER_SYNC_SERVICE_TOKEN,
@@ -203,6 +206,10 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
       provide: SALES_DOCUMENT_VIEW_SERVICE_TOKEN,
       useExisting: SalesDocumentViewService,
     },
+    {
+      provide: DISPLAY_CURRENCY_CONVERSION_SERVICE_TOKEN,
+      useExisting: DisplayCurrencyConversionService,
+    },
   ],
   exports: [
     OrderRecordService, // Export service class for direct injection
@@ -232,6 +239,9 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     // Exported so the API's orders controller can compose the per-order
     // sales-document projection for the list and the detail panel (#2516).
     SALES_DOCUMENT_VIEW_SERVICE_TOKEN,
+    // Exported so the `/analytics` display-currency read surface (a later
+    // phase of #2452) can inject this seam (#2458, ADR-064).
+    DISPLAY_CURRENCY_CONVERSION_SERVICE_TOKEN,
   ],
 })
 export class OrdersModule {}
