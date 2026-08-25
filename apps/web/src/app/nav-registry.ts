@@ -37,6 +37,9 @@ export const BASE_NAV_GROUPS: readonly NavRegistryGroup[] = [
       { to: '/customers', label: 'Customers', countKey: 'customers' },
       { to: '/listings', label: 'Listings', countKey: 'listings' },
       { to: '/shipments', label: 'Shipments' },
+      // No `countKey`: the #2334 returns contract exposes no counts endpoint
+      // the nav could read, and a badge is worse absent than wrong.
+      { to: '/returns', label: 'Returns' },
       { to: '/invoices', label: 'Invoices' },
     ],
   },
