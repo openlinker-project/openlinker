@@ -35,8 +35,11 @@ describe('ReturnsService', () => {
     countOrphans: jest.Mock;
     create: jest.Mock;
     findByExternalId: jest.Mock;
+    listReturns: jest.Mock;
+    countReturnsByBucket: jest.Mock;
   };
   let identifierMapping: { getInternalId: jest.Mock; getOrCreateInternalId: jest.Mock };
+  let integrations: { getAdapter: jest.Mock; listCapabilityAdapters: jest.Mock };
 
   const lastInput = (): UpsertReturnRecordInput => {
     const calls = repository.upsertFromSource.mock.calls as unknown[][];
@@ -51,13 +54,26 @@ describe('ReturnsService', () => {
       countOrphans: jest.fn().mockResolvedValue(0),
       create: jest.fn(),
       findByExternalId: jest.fn(),
+      listReturns: jest.fn().mockResolvedValue([]),
+      countReturnsByBucket: jest
+        .fn()
+        .mockResolvedValue({ total: 0, orphan: 0, attributed: 0 }),
     };
     identifierMapping = {
       getInternalId: jest.fn().mockResolvedValue('ol_order_abc'),
       getOrCreateInternalId: jest.fn(),
     };
 
-    service = new ReturnsService(repository as never, identifierMapping as never);
+    integrations = {
+      getAdapter: jest.fn(),
+      listCapabilityAdapters: jest.fn().mockResolvedValue([]),
+    };
+
+    service = new ReturnsService(
+      repository as never,
+      identifierMapping as never,
+      integrations as never
+    );
   });
 
   describe('upsertFromObservation', () => {
@@ -266,6 +282,139 @@ describe('ReturnsService', () => {
       await expect(
         service.assertAttributedForTrigger('ol_return_missing', 'invoice_correction')
       ).rejects.toBeInstanceOf(ReturnNotFoundError);
+    });
+  });
+
+  describe('listReturns / countReturnsByBucket (#2334)', () => {
+    it('should pass the filter, limit and offset through to the repository unchanged', async () => {
+      const filter = { sourceConnectionId: CONNECTION, bucket: 'orphan' as const };
+
+      await service.listReturns(filter, 25, 50);
+
+      expect(repository.listReturns).toHaveBeenCalledWith(filter, 25, 50);
+    });
+
+    it('should report the bucket counts the repository read in one scan', async () => {
+      repository.countReturnsByBucket.mockResolvedValue({ total: 7, orphan: 2, attributed: 5 });
+
+      // `total === orphan + attributed` is a property of the single
+      // FILTER-aggregate read, not something this service recomputes — asserted
+      // so a future "helpful" recomputation here is caught.
+      await expect(service.countReturnsByBucket({})).resolves.toEqual({
+        total: 7,
+        orphan: 2,
+        attributed: 5,
+      });
+    });
+  });
+
+  describe('getReturnIngestionAvailability (#2334)', () => {
+    const entry = (connectionId: string, supportedCapabilities: string[]) => ({
+      connectionId,
+      connection: { id: connectionId },
+      adapter: undefined,
+      metadata: { supportedCapabilities },
+    });
+
+    it('should report the connections whose adapter DECLARES ReturnSourceReader', async () => {
+      integrations.listCapabilityAdapters.mockResolvedValue([
+        entry('conn-a', ['OrderSource', 'ReturnSourceReader']),
+        entry('conn-b', ['OrderSource']),
+      ]);
+
+      await expect(service.getReturnIngestionAvailability()).resolves.toEqual({
+        configured: true,
+        connectionIds: ['conn-a'],
+      });
+    });
+
+    it('should report not-configured when no adapter declares the sub-capability', async () => {
+      integrations.listCapabilityAdapters.mockResolvedValue([entry('conn-b', ['OrderSource'])]);
+
+      await expect(service.getReturnIngestionAvailability()).resolves.toEqual({
+        configured: false,
+        connectionIds: [],
+      });
+    });
+
+    it('should list lazily and include non-active connections', async () => {
+      integrations.listCapabilityAdapters.mockResolvedValue([]);
+
+      await service.getReturnIngestionAvailability();
+
+      // `lazy` is what keeps this read adapter-free (no credential resolution);
+      // `includeAllStatuses` stops a connection in `needs_reauth` — the one an
+      // operator most needs told about — being silently omitted.
+      expect(integrations.listCapabilityAdapters).toHaveBeenCalledWith({
+        capability: 'OrderSource',
+        lazy: true,
+        includeAllStatuses: true,
+      });
+    });
+
+    it('should THROW rather than report not-configured when discovery fails', async () => {
+      integrations.listCapabilityAdapters.mockRejectedValue(new Error('registry down'));
+
+      // Answering `configured: false` would state a falsehood about the
+      // operator's setup on the very screen that exists to answer the question.
+      await expect(service.getReturnIngestionAvailability()).rejects.toThrow('registry down');
+    });
+  });
+
+  describe('getDeclineAvailability (#2334)', () => {
+    const record = (overrides: Record<string, unknown> = {}): never =>
+      ({
+        id: 'ol_return_abc',
+        sourceConnectionId: CONNECTION,
+        externalReturnId: 'RET-1',
+        ...overrides,
+      }) as never;
+
+    it.each([null, '', '   '])(
+      'should refuse a return whose externalReturnId is %p without asking the registry',
+      async (externalReturnId) => {
+        await expect(
+          service.getDeclineAvailability(record({ externalReturnId }))
+        ).resolves.toEqual({ supported: false, reason: 'no-source-return-id' });
+
+        expect(integrations.getAdapter).not.toHaveBeenCalled();
+      }
+    );
+
+    it('should refuse when the platform declares no ReturnDecliner', async () => {
+      integrations.getAdapter.mockResolvedValue({
+        metadata: { supportedCapabilities: ['OrderSource', 'ReturnSourceReader'] },
+      });
+
+      await expect(service.getDeclineAvailability(record())).resolves.toEqual({
+        supported: false,
+        reason: 'source-declares-no-decline',
+      });
+    });
+
+    it('should allow when the platform declares ReturnDecliner', async () => {
+      integrations.getAdapter.mockResolvedValue({
+        metadata: { supportedCapabilities: ['OrderSource', 'ReturnDecliner'] },
+      });
+
+      await expect(service.getDeclineAvailability(record())).resolves.toEqual({
+        supported: true,
+        reason: null,
+      });
+    });
+
+    it('should report SUPPORTED when the adapter metadata cannot be resolved', async () => {
+      integrations.getAdapter.mockRejectedValue(new Error('connection disabled'));
+
+      // An unknown is not a "no". Reporting `false` would render a permanently
+      // disabled button captioned "this source does not support decline" — a
+      // false claim about the operator's configuration with no path back —
+      // whereas allowing the attempt costs one request that fails with the
+      // specific, actionable reason.
+      await expect(service.getDeclineAvailability(record())).resolves.toEqual({
+        supported: true,
+        reason: null,
+      });
     });
   });
 });

@@ -50,6 +50,7 @@ import { AnalyticsApiModule } from './analytics/analytics.module';
 import { AnalyticsTrustApiModule } from './analytics-trust/analytics-trust.module';
 import { CatalogTrustApiModule } from './catalog-trust/catalog-trust.module';
 import { ReturnActionsApiModule } from './returns/return-actions.module';
+import { ReturnsReadApiModule } from './returns/returns-read.module';
 import { CurrencyApiModule } from './currency/currency.module';
 import { RequestPriorityModule } from './http/request-priority.module';
 
@@ -94,6 +95,7 @@ import { RequestPriorityModule } from './http/request-priority.module';
     AnalyticsTrustApiModule, // GET /analytics/trust — data-trust snapshot for the /analytics page (#1982)
     CatalogTrustApiModule, // GET /connections/:id/catalog-trust — master rung + reconcile recency (#2258)
     ReturnActionsApiModule, // POST /returns/:id/decline — the one return write (#2333)
+    ReturnsReadApiModule, // GET /returns[, /:id, /ingestion-availability] — returns reads (#2334)
     ContentApiModule, // REST surface for product content editor + AI suggest (#339 + #342)
     ShippingApiModule, // Shipment read + command HTTP API (#846); imports core ShippingModule (#763/#835)
     UsersApiModule, // User management: list, approve/reject pending, role + status ops (#1125)

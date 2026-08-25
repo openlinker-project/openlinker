@@ -10,7 +10,7 @@
  * semantically.
  *
  * The three domain refusals are mapped by the global
- * `ReturnDeclineExceptionFilter` (404 / 409 / 400), not caught here — the repo
+ * `ReturnsExceptionFilter` (404 / 409 / 400), not caught here — the repo
  * convention for a domain exception, and what keeps a second caller of the same
  * service from answering 500 for a state this one explains.
  *

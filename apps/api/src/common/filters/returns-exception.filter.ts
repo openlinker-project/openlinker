@@ -1,7 +1,15 @@
 /**
- * Return Decline Exception Filter
+ * Returns Exception Filter
  *
- * Maps the three `return.decline` refusals (#2333) onto distinct HTTP statuses.
+ * Maps the `returns` context's domain refusals onto distinct HTTP statuses.
+ *
+ * Renamed from `ReturnDeclineExceptionFilter` by #2334. Two of the three
+ * exceptions it catches were never decline-specific — `ReturnNotFoundError` and
+ * `ReturnNotAttributedError` are the vocabulary EVERY downstream trigger is
+ * refused by (see `return-decline-unsupported.error.ts`) — and with
+ * `GET /returns/:id` now raising the first, a name saying "decline" would tell
+ * the next reader the mapping is specific to a write it is not specific to.
+ * The mapping itself is unchanged.
  *
  * They are three DISTINCT exception types rather than one with a reason string
  * precisely so a caller can tell them apart, and the issue's acceptance criteria
@@ -11,7 +19,10 @@
  *
  * - `ReturnNotFoundError`         → **404**. No such return.
  * - `ReturnNotAttributedError`    → **409**. The return exists but is an orphan;
- *   the request conflicts with the resource's state, and the state is fixable
+ *   the trigger it blocked is exposed on the error as a readonly `trigger`
+ *   field, so any structured rendering reads that field rather than parsing
+ *   this message — the two would otherwise drift the first time the wording
+ *   changed. The request conflicts with the resource's state, and the state is fixable
  *   (attribute the order). Not 400 — the operator's request was well formed.
  * - `ReturnDeclineUnsupportedError` → **400**. The source cannot be asked at
  *   all, so no amount of retrying or state-fixing helps; the request itself was
@@ -45,7 +56,7 @@ type ReturnDeclineRefusal =
   | ReturnDeclineUnsupportedError;
 
 @Catch(ReturnNotFoundError, ReturnNotAttributedError, ReturnDeclineUnsupportedError)
-export class ReturnDeclineExceptionFilter implements ExceptionFilter {
+export class ReturnsExceptionFilter implements ExceptionFilter {
   catch(exception: ReturnDeclineRefusal, host: ArgumentsHost): void {
     const response = host.switchToHttp().getResponse<Response>();
     const statusCode = this.resolveStatus(exception);

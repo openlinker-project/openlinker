@@ -111,3 +111,10 @@ export type {
 export { ReturnNotAttributedError } from './domain/exceptions/return-not-attributed.error';
 export { ReturnNotFoundError } from './domain/exceptions/return-not-found.error';
 export type { IReturnReattributionService } from './application/services/return-reattribution.service.interface';
+
+// The read API's vocabulary (#2334): the list filter, the bucket partition the
+// frontend's chips render, and the two capability facts a read surface needs —
+// "can anything here ingest returns at all" and "may the decline action be
+// offered for this return". `ReturnDeclineUnsupportedReasonValues` is exported
+// as a value because it is the reason vocabulary a response DTO enumerates.
+export * from './domain/types/return-query.types';

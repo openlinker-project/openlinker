@@ -34,6 +34,11 @@ import {
   IDENTIFIER_MAPPING_SERVICE_TOKEN,
 } from '@openlinker/core/identifier-mapping';
 import { IIdentifierMappingService } from '@openlinker/core/identifier-mapping';
+import {
+  INTEGRATIONS_SERVICE_TOKEN,
+  type AdapterMetadata,
+  type IIntegrationsService,
+} from '@openlinker/core/integrations';
 import { Logger } from '@openlinker/shared/logging';
 import { ReturnNotAttributedError } from '../../domain/exceptions/return-not-attributed.error';
 import { ReturnNotFoundError } from '../../domain/exceptions/return-not-found.error';
@@ -46,12 +51,32 @@ import type {
   IncomingReturnLine,
 } from '../../domain/types/incoming-return.types';
 import type { ReturnDownstreamTrigger } from '../../domain/types/return-trigger.types';
+import type {
+  ReturnBucketCounts,
+  ReturnDeclineAvailability,
+  ReturnIngestionAvailability,
+  ReturnListFilter,
+} from '../../domain/types/return-query.types';
 import type { UpsertReturnLineInput } from '../../domain/types/return-upsert.types';
 import { RETURN_REPOSITORY_TOKEN } from '../../returns.tokens';
 import type {
   IReturnsService,
   UpsertReturnObservationResult,
 } from './returns.service.interface';
+
+/**
+ * The two advertised-without-dispatch sub-capability names this service reads
+ * off an adapter MANIFEST (#2334).
+ *
+ * Deliberately string literals rather than members of `CoreCapabilityValues`:
+ * neither is dispatchable, both are declared in `supportedCapabilities` purely
+ * so the host can discover them, and adding them to the core capability union
+ * would invite a `getCapabilityAdapter(id, 'ReturnDecliner')` call that passes
+ * the manifest gate and then fails inside `dispatchCapability`. They are read
+ * here, never resolved.
+ */
+const RETURN_SOURCE_READER_CAPABILITY = 'ReturnSourceReader';
+const RETURN_DECLINER_CAPABILITY = 'ReturnDecliner';
 
 @Injectable()
 export class ReturnsService implements IReturnsService {
@@ -61,7 +86,13 @@ export class ReturnsService implements IReturnsService {
     @Inject(RETURN_REPOSITORY_TOKEN)
     private readonly repository: ReturnRepositoryPort,
     @Inject(IDENTIFIER_MAPPING_SERVICE_TOKEN)
-    private readonly identifierMapping: IIdentifierMappingService
+    private readonly identifierMapping: IIdentifierMappingService,
+    // #2334's two read-only capability questions. `ReturnsModule` already
+    // imports `IntegrationsModule` for the #2330 ingestion services, so this is
+    // a new CONSTRUCTOR dependency but no new module edge — and it is used only
+    // for metadata reads, never to construct an adapter.
+    @Inject(INTEGRATIONS_SERVICE_TOKEN)
+    private readonly integrationsService: IIntegrationsService
   ) {}
 
   async upsertFromObservation(
@@ -107,6 +138,84 @@ export class ReturnsService implements IReturnsService {
 
   async countOrphanReturns(): Promise<number> {
     return this.repository.countOrphans();
+  }
+
+  async listReturns(
+    filter: ReturnListFilter,
+    limit: number,
+    offset: number
+  ): Promise<ReturnRecord[]> {
+    return this.repository.listReturns(filter, limit, offset);
+  }
+
+  async countReturnsByBucket(filter: ReturnListFilter): Promise<ReturnBucketCounts> {
+    return this.repository.countReturnsByBucket(filter);
+  }
+
+  /**
+   * Manifest-first, adapter-free (#2334). See `ReturnIngestionAvailability`.
+   *
+   * `lazy: true` is what makes this free: the entry's `adapter` becomes a
+   * memoized construction promise that is never awaited here, so no credential
+   * is resolved and no network is touched, while `metadata` — the only field
+   * read — is returned eagerly. `includeAllStatuses: true` for the
+   * `analytics-trust` reason: a connection sitting in `needs_reauth` is
+   * precisely one the operator needs told about, not one to quietly omit from
+   * an "is anything configured?" answer.
+   *
+   * Nothing is caught. A failure here means the integrations registry could not
+   * answer, which is not evidence that the operator has configured nothing.
+   */
+  async getReturnIngestionAvailability(): Promise<ReturnIngestionAvailability> {
+    const entries = await this.integrationsService.listCapabilityAdapters<unknown>({
+      capability: 'OrderSource',
+      lazy: true,
+      includeAllStatuses: true,
+    });
+
+    const connectionIds = entries
+      .filter((entry) =>
+        entry.metadata.supportedCapabilities.includes(RETURN_SOURCE_READER_CAPABILITY)
+      )
+      .map((entry) => entry.connectionId);
+
+    return { configured: connectionIds.length > 0, connectionIds };
+  }
+
+  /**
+   * The two decline refusals that are knowable without asking the source
+   * (#2334). See `ReturnDeclineAvailability` for the unknown-is-not-a-no rule.
+   *
+   * The record check comes first and mirrors `ReturnDeclineService`'s own
+   * `requireExternalReturnId` — same trimmed-empty test, so the disabled button
+   * and the 400 cannot disagree about whether this return has an id to name.
+   */
+  async getDeclineAvailability(record: ReturnRecord): Promise<ReturnDeclineAvailability> {
+    if ((record.externalReturnId?.trim() ?? '') === '') {
+      return { supported: false, reason: 'no-source-return-id' };
+    }
+
+    let metadata: AdapterMetadata;
+    try {
+      const adapter = await this.integrationsService.getAdapter(record.sourceConnectionId);
+      metadata = adapter.metadata;
+    } catch (error) {
+      // Deliberately reported as SUPPORTED. See the type's docblock: a
+      // disabled button captioned "this source does not support decline" is a
+      // false claim about the operator's configuration with no path back,
+      // whereas letting the attempt through costs one request that fails with
+      // the specific reason.
+      this.logger.warn(
+        `Cannot determine decline support for return ${record.id} on connection ${record.sourceConnectionId} — reporting it as available so the attempt can surface the real reason: ${(error as Error).message}`
+      );
+      return { supported: true, reason: null };
+    }
+
+    if (!metadata.supportedCapabilities.includes(RETURN_DECLINER_CAPABILITY)) {
+      return { supported: false, reason: 'source-declares-no-decline' };
+    }
+
+    return { supported: true, reason: null };
   }
 
   /**

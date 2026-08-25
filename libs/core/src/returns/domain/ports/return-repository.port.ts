@@ -30,6 +30,7 @@ import type {
   ReturnSweepCandidate,
 } from '../types/return-sweep.types';
 import type { ReturnReattributionCandidate } from '../types/return-reattribution.types';
+import type { ReturnBucketCounts, ReturnListFilter } from '../types/return-query.types';
 
 export interface ReturnRepositoryPort {
   /**
@@ -225,4 +226,66 @@ export interface ReturnRepositoryPort {
    * own clock here — see `ReturnDeclineResult.declinedAt`.
    */
   claimDeclinedAt(id: string, at: Date): Promise<boolean>;
+
+  /**
+   * One page of the operator's returns list (#2334) — the general read behind
+   * `GET /returns`.
+   *
+   * **Headers only**, for the reason {@link ReturnRepositoryPort.listOrphans}
+   * gives: a list renders no lines, so hydrating them would be an N+1 for data
+   * nothing shows. A caller that needs lines has the id and calls
+   * {@link ReturnRepositoryPort.findById}.
+   *
+   * Ordered `createdAt DESC, id ASC` — newest first because a returns list is a
+   * triage surface, and the `id ASC` tiebreak so a limit/offset page means the
+   * same thing between two requests that straddle a same-millisecond insert.
+   *
+   * This does **not** replace `listOrphans`. That method is the same question
+   * asked with `bucket: 'orphan'` and no other filter, and it stays because it
+   * is the narrower read, has its own consumers, and rides
+   * `IDX_returns_orphans` unconditionally.
+   *
+   * **Index coverage, stated plainly because the enumeration would otherwise
+   * imply more than is true.** With `sourceConnectionId` present this rides
+   * `IDX_returns_connection_created (sourceConnectionId, createdAt)`. With
+   * `bucket: 'orphan'` and nothing else it can ride `IDX_returns_orphans`. But
+   * the **unfiltered call — which is the frontend's default page load — rides
+   * NO index**: it is `ORDER BY "createdAt" DESC` with no predicate, and there
+   * is no index on `createdAt` alone. That is accepted for Wave 1c rather than
+   * papered over: returns arrive at a fraction of order volume, and adding a
+   * `(createdAt DESC)` index is a purely additive follow-up whose migration
+   * this read-only slice deliberately does not carry. If the default list ever
+   * shows up in a slow-query log, that index is the fix — not a redesign here.
+   *
+   * See {@link ReturnListFilter} for the rule that an absent filter field adds
+   * no arm.
+   */
+  listReturns(
+    filter: ReturnListFilter,
+    limit: number,
+    offset: number
+  ): Promise<ReturnRecord[]>;
+
+  /**
+   * The attribution partition over the same filter scope (#2334).
+   *
+   * ONE query, using a `FILTER (WHERE "internalOrderId" IS NULL)` aggregate, so
+   * `total` and `orphan` come from the same scan and cannot disagree under a
+   * concurrent write; `attributed` is the subtraction. Two separate `count`s
+   * would be two scans AND a way for the chip row to stop adding up.
+   *
+   * A count over a filtered set is a full scan of that set by nature — the same
+   * trade {@link ReturnRepositoryPort.countOrphans} and
+   * {@link ReturnRepositoryPort.countForSourceSweep} already make. Stated
+   * rather than silently accepted: on a very large `returns` table this is the
+   * expensive half of the list request, and the connection-scoped call (the
+   * common one) is index-served while the unscoped one is not.
+   *
+   * The caller passes the filter **with `bucket` already removed** — see
+   * {@link ReturnBucketCounts} for why the counts must not be narrowed by the
+   * bucket being displayed. This method does not strip it defensively: a filter
+   * that arrives carrying a bucket is a caller bug, and silently ignoring a
+   * field would make the two reads disagree about what the filter means.
+   */
+  countReturnsByBucket(filter: ReturnListFilter): Promise<ReturnBucketCounts>;
 }

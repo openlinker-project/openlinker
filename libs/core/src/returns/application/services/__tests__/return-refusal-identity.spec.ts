@@ -86,7 +86,10 @@ describe('return refusal identity (#2332 x #2333)', () => {
       claimDeclinedAt: jest.fn(),
     } as unknown as ReturnRepositoryPort;
 
-    const returns = new ReturnsService(repository, { getInternalId: jest.fn() } as never);
+    const returns = new ReturnsService(repository, { getInternalId: jest.fn() } as never, {
+      getAdapter: jest.fn(),
+      listCapabilityAdapters: jest.fn(),
+    } as never);
     const integrations = { getCapabilityAdapter: jest.fn() };
     const decline = new ReturnDeclineService(
       repository,

@@ -46,6 +46,10 @@ import type {
 } from '../../../domain/types/return-sweep.types';
 import type { ReturnReattributionCandidate } from '../../../domain/types/return-reattribution.types';
 import type {
+  ReturnBucketCounts,
+  ReturnListFilter,
+} from '../../../domain/types/return-query.types';
+import type {
   ReturnCustodyState,
   ReturnDisposition,
   ReturnMoneyState,
@@ -380,6 +384,88 @@ export class ReturnRepository implements ReturnRepositoryPort {
    */
   async countOrphans(): Promise<number> {
     return this.returns.count({ where: { internalOrderId: IsNull() } });
+  }
+
+  /**
+   * One page of the general returns list (#2334).
+   *
+   * Headers only; `toDomain(header, [])` for the reason `listOrphans` gives.
+   */
+  async listReturns(
+    filter: ReturnListFilter,
+    limit: number,
+    offset: number
+  ): Promise<ReturnRecord[]> {
+    const headers = await this.buildListQuery(filter)
+      .orderBy('r."createdAt"', 'DESC')
+      .addOrderBy('r.id', 'ASC')
+      .take(limit)
+      .skip(offset)
+      .getMany();
+
+    return headers.map((header) => this.toDomain(header, []));
+  }
+
+  /**
+   * The attribution partition over one filter scope (#2334).
+   *
+   * `COUNT(*)` and a `FILTER (WHERE ...)` aggregate in ONE statement — the two
+   * numbers come from the same scan, so no concurrent write can leave the chip
+   * row failing to add up. `attributed` is subtracted, never counted (see
+   * `ReturnBucketCounts`).
+   *
+   * `getRawOne` returns pg `bigint`s as STRINGS, so both are `Number()`-ed once
+   * here; leaving them stringly-typed would make `total - orphan` a string
+   * concatenation and put a plausible, badly wrong number on the operator's
+   * screen rather than throwing.
+   */
+  async countReturnsByBucket(filter: ReturnListFilter): Promise<ReturnBucketCounts> {
+    const row = await this.buildListQuery(filter)
+      .select('COUNT(*)', 'total')
+      .addSelect('COUNT(*) FILTER (WHERE r."internalOrderId" IS NULL)', 'orphan')
+      .getRawOne<{ total: string; orphan: string }>();
+
+    const total = Number(row?.total ?? 0);
+    const orphan = Number(row?.orphan ?? 0);
+
+    return { total, orphan, attributed: total - orphan };
+  }
+
+  /**
+   * The one predicate builder both #2334 reads share.
+   *
+   * Shared for the reason `buildReattributionQuery` and `buildSweepQuery` are:
+   * a page and its total that build their own `where` clauses are one edit away
+   * from filtering differently, and the symptom would be a count that does not
+   * match the rows underneath it — which reads as a data bug rather than a
+   * query bug.
+   *
+   * An absent filter field adds NO arm (`ReturnListFilter` rule 1).
+   */
+  private buildListQuery(filter: ReturnListFilter): SelectQueryBuilder<ReturnOrmEntity> {
+    const query = this.returns.createQueryBuilder('r');
+
+    if (filter.sourceConnectionId !== undefined) {
+      query.andWhere('r."sourceConnectionId" = :sourceConnectionId', {
+        sourceConnectionId: filter.sourceConnectionId,
+      });
+    }
+
+    if (filter.bucket === 'orphan') {
+      query.andWhere('r."internalOrderId" IS NULL');
+    } else if (filter.bucket === 'attributed') {
+      query.andWhere('r."internalOrderId" IS NOT NULL');
+    }
+
+    if (filter.createdFrom !== undefined) {
+      query.andWhere('r."createdAt" >= :createdFrom', { createdFrom: filter.createdFrom });
+    }
+
+    if (filter.createdTo !== undefined) {
+      query.andWhere('r."createdAt" <= :createdTo', { createdTo: filter.createdTo });
+    }
+
+    return query;
   }
 
   /**

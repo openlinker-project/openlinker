@@ -97,7 +97,10 @@ describe('ReturnDeclineService', () => {
     // `identifierMapping` is never reached on the guard path.
     const returns = new ReturnsService(
       repository as unknown as ReturnRepositoryPort,
-      { getInternalId: jest.fn() } as never
+      { getInternalId: jest.fn() } as never,
+      // #2334's metadata-only integrations seam. Never reached on the guard
+      // path this spec drives.
+      { getAdapter: jest.fn(), listCapabilityAdapters: jest.fn() } as never
     );
 
     service = new ReturnDeclineService(
