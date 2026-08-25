@@ -188,9 +188,8 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     // sales-document projection for the list and the detail panel (#2516).
     SALES_DOCUMENT_VIEW_SERVICE_TOKEN,
     // Exported so the `/analytics` display-currency read surface (a later
-    // phase of #2452) can inject this seam (#2458, ADR-064).
+    // phase of #2452) can inject this seam (#2458, ADR-064, pending in PR #2485).
     DISPLAY_CURRENCY_CONVERSION_SERVICE_TOKEN,
   ],
 })
 export class OrdersModule {}
-

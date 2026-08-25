@@ -31,6 +31,7 @@ import { BadRequestException, Controller, Get, Inject, Query } from '@nestjs/com
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import {
   DISPLAY_CURRENCY_CONVERSION_SERVICE_TOKEN,
+  MIXED_NATIVE_CURRENCIES_LABEL,
   ORDER_RECORD_SERVICE_TOKEN,
   type ChannelSalesAnalytics,
   type DisplayCurrencyRateBasis,
@@ -49,8 +50,10 @@ import {
 interface CurrencyBucketRow {
   readonly currency: string | null;
   readonly revenue: number;
+  readonly orderCount: number;
   readonly unconvertedCurrency: string | null;
   readonly unconvertedValue: number;
+  readonly unconvertedCount: number;
 }
 
 /**
@@ -155,18 +158,39 @@ export class SalesAnalyticsController {
 
   /**
    * The two native-currency buckets a headline/channel row actually tracks:
-   * the reporting-currency-stamped bucket (`currency`/`revenue`) and, when
-   * present, the still-unconverted bucket (`unconvertedCurrency`/
-   * `unconvertedValue`). This is the finest native-currency granularity
-   * available at this read model — not a per-order breakdown.
+   * the reporting-currency-stamped bucket (`currency`/`revenue`/`orderCount`)
+   * and, when present, the still-unconverted bucket (`unconvertedCurrency`/
+   * `unconvertedValue`/`unconvertedCount`). This is the finest native-currency
+   * granularity available at this read model — not a per-order breakdown.
+   * Each bucket's real order count is threaded through via
+   * `NativeCurrencyAmount.count` (#2488 review, IMPORTANT 1) so
+   * `NativeCurrencyBreakdown.orderCount` reports true per-currency order
+   * counts rather than "1 bucket = 1 order".
+   *
+   * When the unconverted set spans more than one native currency
+   * (`unconvertedCurrency === null` with `unconvertedCount > 0` — #2488
+   * review, IMPORTANT 2), that money is still reported, labelled with
+   * {@link MIXED_NATIVE_CURRENCIES_LABEL} rather than silently dropped: this
+   * read model doesn't retain which individual currencies made up that sum,
+   * but it can and must still surface that unresolved money exists.
    */
   private buildNativeCurrencyAmounts(row: CurrencyBucketRow): NativeCurrencyAmount[] {
     const amounts: NativeCurrencyAmount[] = [];
     if (row.currency !== null) {
-      amounts.push({ currency: row.currency, amount: row.revenue });
+      amounts.push({ currency: row.currency, amount: row.revenue, count: row.orderCount });
     }
     if (row.unconvertedCurrency !== null) {
-      amounts.push({ currency: row.unconvertedCurrency, amount: row.unconvertedValue });
+      amounts.push({
+        currency: row.unconvertedCurrency,
+        amount: row.unconvertedValue,
+        count: row.unconvertedCount,
+      });
+    } else if (row.unconvertedCount > 0) {
+      amounts.push({
+        currency: MIXED_NATIVE_CURRENCIES_LABEL,
+        amount: row.unconvertedValue,
+        count: row.unconvertedCount,
+      });
     }
     return amounts;
   }

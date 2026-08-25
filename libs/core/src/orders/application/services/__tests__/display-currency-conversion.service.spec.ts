@@ -1,10 +1,11 @@
 /**
- * Display Currency Conversion Service Spec (#2458, ADR-064)
+ * Display Currency Conversion Service Spec (#2458, ADR-064, pending in PR #2485)
  *
  * @module libs/core/src/orders/application/services/__tests__
  */
 import { RateUnsupportedPairError } from '@openlinker/core/currency';
 import type { ICurrencyRateService } from '@openlinker/core/currency';
+import { MIXED_NATIVE_CURRENCIES_LABEL } from '../../../domain/types/display-currency.types';
 import { DisplayCurrencyConversionService } from '../display-currency-conversion.service';
 
 // A fixed instant well clear of any provider-calendar edge case — the exact
@@ -38,8 +39,8 @@ describe('DisplayCurrencyConversionService', () => {
       const result = await service.convertAtCurrentRate(
         {
           amounts: [
-            { currency: 'PLN', amount: 100 },
-            { currency: 'XXX', amount: 50 },
+            { currency: 'PLN', amount: 100, count: 1 },
+            { currency: 'XXX', amount: 50, count: 1 },
           ],
           displayCurrency: 'EUR',
         },
@@ -62,8 +63,8 @@ describe('DisplayCurrencyConversionService', () => {
       const result = await service.convertAtCurrentRate(
         {
           amounts: [
-            { currency: 'PLN', amount: 100 },
-            { currency: 'PLN', amount: 200 },
+            { currency: 'PLN', amount: 100, count: 1 },
+            { currency: 'PLN', amount: 200, count: 1 },
           ],
           displayCurrency: 'EUR',
         },
@@ -81,7 +82,7 @@ describe('DisplayCurrencyConversionService', () => {
     it('should convert a currency matching the display currency with zero calls', async () => {
       const result = await service.convertAtCurrentRate(
         {
-          amounts: [{ currency: 'EUR', amount: 100 }],
+          amounts: [{ currency: 'EUR', amount: 100, count: 1 }],
           displayCurrency: 'EUR',
         },
         NOW
@@ -90,6 +91,76 @@ describe('DisplayCurrencyConversionService', () => {
       expect(rates.getRateFor).not.toHaveBeenCalled();
       expect(result.convertedTotal).toBe(100);
       expect(result.unresolvedNativeCurrencies).toEqual([]);
+    });
+
+    it("should sum each amount's own count rather than counting array entries (#2488 review, IMPORTANT 1)", async () => {
+      // Mirrors the real controller path: one pre-aggregated bucket per
+      // native currency, carrying the TRUE order count for that bucket —
+      // not one array entry per order.
+      rates.getRateFor.mockResolvedValue({ id: 'rate_1', rate: '0.25' } as never);
+
+      const result = await service.convertAtCurrentRate(
+        {
+          amounts: [{ currency: 'PLN', amount: 14000, count: 140 }],
+          displayCurrency: 'EUR',
+        },
+        NOW
+      );
+
+      expect(result.breakdown).toEqual([
+        { currency: 'PLN', orderCount: 140, nativeTotal: 14000, convertedTotal: 3500 },
+      ]);
+    });
+
+    it('should merge counts across multiple entries for the same currency', async () => {
+      rates.getRateFor.mockResolvedValue({ id: 'rate_1', rate: '0.25' } as never);
+
+      const result = await service.convertAtCurrentRate(
+        {
+          amounts: [
+            { currency: 'PLN', amount: 100, count: 3 },
+            { currency: 'PLN', amount: 200, count: 5 },
+          ],
+          displayCurrency: 'EUR',
+        },
+        NOW
+      );
+
+      expect(result.breakdown).toEqual([
+        { currency: 'PLN', orderCount: 8, nativeTotal: 300, convertedTotal: 75 },
+      ]);
+    });
+
+    it('should report a mixed-currency bucket as unresolved without calling the rate provider (#2488 review, IMPORTANT 2)', async () => {
+      rates.getRateFor.mockResolvedValue({ id: 'rate_1', rate: '0.25' } as never);
+
+      const result = await service.convertAtCurrentRate(
+        {
+          amounts: [
+            { currency: 'PLN', amount: 100, count: 1 },
+            { currency: MIXED_NATIVE_CURRENCIES_LABEL, amount: 75, count: 2 },
+          ],
+          displayCurrency: 'EUR',
+        },
+        NOW
+      );
+
+      expect(result.unresolvedNativeCurrencies).toEqual([MIXED_NATIVE_CURRENCIES_LABEL]);
+      // The mixed bucket's 75 is excluded from convertedTotal (unresolved,
+      // never guessed at) but is NOT silently dropped — it's reported via
+      // unresolvedNativeCurrencies/breakdown above.
+      expect(result.convertedTotal).toBe(25);
+      expect(result.breakdown).toContainEqual({
+        currency: MIXED_NATIVE_CURRENCIES_LABEL,
+        orderCount: 2,
+        nativeTotal: 75,
+        convertedTotal: null,
+      });
+      // Never sent to the rate provider — there is no single currency to
+      // resolve a rate for.
+      expect(rates.getRateFor).not.toHaveBeenCalledWith(
+        expect.objectContaining({ from: MIXED_NATIVE_CURRENCIES_LABEL })
+      );
     });
   });
 
