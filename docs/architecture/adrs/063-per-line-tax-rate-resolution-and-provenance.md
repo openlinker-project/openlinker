@@ -187,6 +187,33 @@ the offer is the one OL wrote, which is exactly the attribution a mismatch inves
   return provider-computed amounts; for KSeF there is nothing external to copy, because OL builds the
   XML and the adapter *is* the calculator.
 
+## Amendment (#2456, 2026-08-25): query-time opt-in for backfilled pre-rollout tax rates in Net Sales
+
+Line 176-181 above predicted a future net-revenue figure would read the `taxRateEra` marker; #2014 built
+exactly that figure (`netSalesOrderNetEligibleSql` / `netSalesLineNetEligibleConditionSql`,
+`libs/core/src/orders/domain/types/net-sales-tax-rate.types.ts`), and its literal SQL condition,
+`rec."taxRateEra" IS DISTINCT FROM 'pre-rollout'`, permanently excludes a pre-rollout order from Net
+Sales — even after `TaxRateBackfillService` has independently resolved a real, current-catalogue rate
+for it. That gap is by design (a backfilled rate is "today's" rate, not the rate confirmed at order
+time, and this ADR's Decision treats that distinction as load-bearing), but it left operators with no
+remediation path short of a raw SQL write against `taxRateEra` — exactly the "defaulted rate presented
+as confirmed" outcome this ADR exists to prevent.
+
+**Decision**: add a single operator setting, `includeGuessedVatRatesInNetSales: boolean` (final
+country-agnostic name TBD at implementation — e.g. `includeBackfilledTaxRatesInNetSales`), default
+**OFF**. When OFF, behaviour is unchanged from today. When ON, `netSalesOrderNetEligibleSql` /
+`netSalesLineNetEligibleConditionSql` additionally admit a `taxRateEra = 'pre-rollout'` row **only when
+a backfilled rate actually resolves for it** — a pre-rollout order with no resolvable rate at all stays
+excluded regardless of the setting. The setting is read once per query, at the SQL-builder call site.
+**It never writes `taxRateEra`, or any other column, on any `order_records` row, in either direction** —
+turning it off instantly and completely reverts the excluded population, because nothing was ever
+overwritten. This is additive to the ADR's Decision, not a reversal: the default-excluded behaviour is
+unchanged, and the marker's meaning ("this order predates per-line tax rates") is untouched — only the
+Net Sales query's tolerance for a *resolvable* pre-rollout row becomes operator-configurable.
+
+The setting's persistence and UI live in the sibling analytics epic (#2452), not here; this amendment
+records only the tax-rate-resolution-side contract the setting must honour.
+
 ## Relationship to ADR-014 and ADR-026
 
 [ADR-014](./014-source-authoritative-order-pricing.md) rejected a per-line tax rate on `OrderItem`.
