@@ -26,3 +26,8 @@ export const ORDER_REFUND_SERVICE_TOKEN = Symbol('IOrderRefundService');
 
 
 
+// ADR-044 change proposals (#2333). `OrderChangesModule` is a LEAF module inside
+// this context — a sibling context imports that, never `OrdersModule`, and
+// reaches the record through `IOrderChangeService`, never the repository port.
+export const ORDER_CHANGE_REPOSITORY_TOKEN = Symbol('OrderChangeRepositoryPort');
+export const ORDER_CHANGE_SERVICE_TOKEN = Symbol('IOrderChangeService');

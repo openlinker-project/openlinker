@@ -23,6 +23,7 @@ import { TaxonomySourceUnavailableFilter } from './common/filters/taxonomy-sourc
 import { InventoryLocationExceptionFilter } from './common/filters/inventory-location-exception.filter';
 import { ConnectionExceptionFilter } from './common/filters/connection-exception.filter';
 import { AvailabilityUnknownFilter } from './common/filters/availability-unknown.filter';
+import { ReturnDeclineExceptionFilter } from './common/filters/return-decline-exception.filter';
 
 async function bootstrap(): Promise<void> {
   // Route shared `Logger` calls through @nestjs/common before any other work,
@@ -90,6 +91,7 @@ async function bootstrap(): Promise<void> {
     new TaxonomySourceUnavailableFilter(),
     new InventoryLocationExceptionFilter(),
     new AvailabilityUnknownFilter(),
+    new ReturnDeclineExceptionFilter(),
   );
 
   // HTTP API URI versioning (#1133 / ADR-029 Axis 3) — every route is served

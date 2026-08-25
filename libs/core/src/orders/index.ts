@@ -49,6 +49,10 @@ export {
 // the guard; never getCapabilityAdapter('ReturnSourceReader').
 export type { ReturnSourceReader } from './domain/ports/capabilities/return-source-reader.capability';
 export { isReturnSourceReader } from './domain/ports/capabilities/return-source-reader.capability';
+// The one return WRITE (#2333, ADR-060/ADR-044) — a capability of its own, NOT a
+// method on the read-only `ReturnSourceReader`. See the capability's docblock.
+export type { ReturnDecliner } from './domain/ports/capabilities/return-decliner.capability';
+export { isReturnDecliner } from './domain/ports/capabilities/return-decliner.capability';
 export type {
   FulfillmentStatus,
   FulfillmentStatusSnapshot,
@@ -218,11 +222,36 @@ export type { OrderSummary } from './domain/order-summary-projection';
 // Ports
 export { OrderRecordRepositoryPort } from './domain/ports/order-record-repository.port';
 
+// ADR-044 change proposals (#2333) — the Wave-2 gate. `OrderChangeRepositoryPort`
+// is deliberately NOT exported: it is intra-context, and a sibling reaches the
+// record through `IOrderChangeService` alone.
+export {
+  OrderChangeKindValues,
+  OrderChangeStatusValues,
+  OPEN_ORDER_CHANGE_STATUSES,
+  isOrderChangeKind,
+  isOrderChangeStatus,
+  isOpenOrderChangeStatus,
+} from './domain/types/order-change.types';
+export type {
+  OrderChangeKind,
+  OrderChangeStatus,
+  CreateOrderChangeInput,
+} from './domain/types/order-change.types';
+export { OrderChange } from './domain/entities/order-change.entity';
+export type {
+  IOrderChangeService,
+  OpenOrderChangeResult,
+} from './application/services/order-change.service.interface';
+
 // ORM entities are exposed on the host-only `@openlinker/core/orders/orm-entities`
 // sub-path (#594). Plugins must not import them from here.
 
 // Module
 export { OrdersModule } from './orders.module';
+// Leaf module carrying `order_changes` only — see its docblock for why a
+// sibling context must import THIS rather than `OrdersModule` (#2333).
+export { OrderChangesModule } from './order-changes.module';
 
 
 

@@ -147,4 +147,23 @@ export interface ReturnRepositoryPort {
    * `ReturnSourceSweepPage`.
    */
   countForSourceSweep(filter: ReturnSourceSweepFilter): Promise<number>;
+
+  /**
+   * Stamp `declinedAt` at most once, from an OBSERVED source confirmation
+   * (#2333).
+   *
+   * Conditional on `"declinedAt" IS NULL` — the `claimWaybillRelay` shape —
+   * which is what makes the decline action's double-call safety a database
+   * property rather than a service convention, and what serializes the two
+   * triggers that can reach it (an operator's action, and a future reconciler
+   * stamping from a feed observation). Reports `affected > 0`.
+   *
+   * **Claim-only; there is no release.** Unlike the waybill relay, a decline is
+   * not re-driven: once the source has told OL the return is declined, that fact
+   * does not become untrue.
+   *
+   * The caller MUST pass the SOURCE's own instant. Core never substitutes its
+   * own clock here — see `ReturnDeclineResult.declinedAt`.
+   */
+  claimDeclinedAt(id: string, at: Date): Promise<boolean>;
 }

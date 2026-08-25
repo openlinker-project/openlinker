@@ -24,6 +24,7 @@ import { ConnectionExceptionFilter } from '../../src/common/filters/connection-e
 import { InventoryLocationExceptionFilter } from '../../src/common/filters/inventory-location-exception.filter';
 import { TaxonomySourceUnavailableFilter } from '../../src/common/filters/taxonomy-source-unavailable.filter';
 import { AvailabilityUnknownFilter } from '../../src/common/filters/availability-unknown.filter';
+import { ReturnDeclineExceptionFilter } from '../../src/common/filters/return-decline-exception.filter';
 
 const harness = createIntegrationTestHarness({
   imports: [AppModule],
@@ -38,7 +39,8 @@ const harness = createIntegrationTestHarness({
       new ConnectionExceptionFilter(),
       new TaxonomySourceUnavailableFilter(),
       new InventoryLocationExceptionFilter(),
-      new AvailabilityUnknownFilter()
+      new AvailabilityUnknownFilter(),
+      new ReturnDeclineExceptionFilter()
     );
     // Mirror main.ts's URI versioning (#1133) so int-specs exercise the same
     // `/v1` routing prod serves. Only the version-neutral routes (the `/webhooks`
@@ -125,6 +127,12 @@ const harness = createIntegrationTestHarness({
     // child-first for readability — the cascade makes the order immaterial.
     'return_lines',
     'returns',
+    // order_changes (#2333) — the ADR-044 change-proposal record. No FK to
+    // order_records (the refund_records precedent of an indexed reference by
+    // value), so nothing cascades in and `truncateTables`' CASCADE walk would
+    // never reach it; truncate explicitly or a proposal from one case still
+    // holds its target's slot in the next.
+    'order_changes',
     // destination_categories (#1979) — the taxonomy projection. Marketplace
     // rows are owner-keyed with NO connectionId, so nothing cascades from
     // connections; truncate explicitly or an owner tree leaks between cases.

@@ -117,6 +117,12 @@ export const allegroAdapterManifest: AdapterMetadata = {
     // That is also why both returns scheduler tasks require `OrderSource`, not
     // this name — the two facts are complementary, not contradictory.
     'ReturnSourceReader',
+    // `ReturnDecliner` (#2333) — the ONE customer-returns WRITE, and a capability
+    // of its own rather than a method on the read-only `ReturnSourceReader`
+    // above (see that capability's docblock). Same advertised-without-dispatch
+    // rule: listed here for host-side discovery, resolved only by narrowing the
+    // dispatched `OrderSource` adapter with `isReturnDecliner`.
+    'ReturnDecliner',
   ],
   displayName: 'Allegro Public API v1',
   version: '1.0.0',

@@ -41,6 +41,12 @@
  * was: `orders`' only reference back to this context is an `import type`, which
  * erases at build time.
  *
+ * #2333 makes the `returns -> orders` edge a real MODULE-GRAPH edge for the first
+ * time, via `OrderChangesModule` — deliberately that leaf and not `OrdersModule`
+ * (see the `imports` comment below). The direction is unchanged: `orders` still
+ * never imports `returns` at the module graph, and its only reference back is an
+ * `import type` that erases at build time.
+ *
  * `returns` is therefore still NOT registered as a zero-sibling-edge leaf in
  * `libs/core/src/__tests__/barrel-purity.spec.ts`: it now has four real outbound
  * edges rather than one, so the property that table asserts is further from
@@ -52,14 +58,17 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
 import { IntegrationsModule } from '@openlinker/core/integrations';
+import { OrderChangesModule } from '@openlinker/core/orders';
 import { SyncModule } from '@openlinker/core/sync';
 import { ReturnIngestionService } from './application/services/return-ingestion.service';
 import { ReturnStatusSyncService } from './application/services/return-status-sync.service';
+import { ReturnDeclineService } from './application/services/return-decline.service';
 import { ReturnsService } from './application/services/returns.service';
 import { ReturnOrmEntity } from './infrastructure/persistence/entities/return.orm-entity';
 import { ReturnLineOrmEntity } from './infrastructure/persistence/entities/return-line.orm-entity';
 import { ReturnRepository } from './infrastructure/persistence/repositories/return.repository';
 import {
+  RETURN_DECLINE_SERVICE_TOKEN,
   RETURN_INGESTION_SERVICE_TOKEN,
   RETURN_REPOSITORY_TOKEN,
   RETURN_STATUS_SYNC_SERVICE_TOKEN,
@@ -77,6 +86,13 @@ import {
     IntegrationsModule,
     // #2330 ingestion: cursor seam, job queue and per-connection lock. Acyclic.
     SyncModule,
+    // #2333 `return.decline`: the ADR-044 proposal record. Note this is
+    // `OrderChangesModule`, a LEAF module inside the orders context — NOT
+    // `OrdersModule`, which imports seven siblings this context has no business
+    // knowing and whose graph would make a future `orders -> returns` edge a
+    // real cycle rather than a documented rule. Acyclic: `OrderChangesModule`
+    // imports nothing but its own `TypeOrmModule.forFeature`.
+    OrderChangesModule,
   ],
   providers: [
     ReturnRepository,
@@ -87,12 +103,15 @@ import {
     { provide: RETURN_INGESTION_SERVICE_TOKEN, useExisting: ReturnIngestionService },
     ReturnStatusSyncService,
     { provide: RETURN_STATUS_SYNC_SERVICE_TOKEN, useExisting: ReturnStatusSyncService },
+    ReturnDeclineService,
+    { provide: RETURN_DECLINE_SERVICE_TOKEN, useExisting: ReturnDeclineService },
   ],
   exports: [
     RETURN_REPOSITORY_TOKEN,
     RETURNS_SERVICE_TOKEN,
     RETURN_INGESTION_SERVICE_TOKEN,
     RETURN_STATUS_SYNC_SERVICE_TOKEN,
+    RETURN_DECLINE_SERVICE_TOKEN,
   ],
 })
 export class ReturnsModule {}
