@@ -24,6 +24,7 @@ import { RefundRecordRepository } from './infrastructure/persistence/repositorie
 import { RefundRecordOrmEntity } from './infrastructure/persistence/entities/refund-record.orm-entity';
 import { OrderLineItemOrmEntity } from './infrastructure/persistence/entities/order-line-item.orm-entity';
 import { TaxRateBackfillService } from './application/services/tax-rate-backfill.service';
+import { DisplayCurrencyConversionService } from './application/services/display-currency-conversion.service';
 import {
   ORDER_SYNC_SERVICE_TOKEN,
   ORDER_INGESTION_SERVICE_TOKEN,
@@ -38,6 +39,7 @@ import {
   ORDER_FX_READ_SERVICE_TOKEN,
   ORDER_LINE_ITEM_REPOSITORY_TOKEN,
   TAX_RATE_BACKFILL_SERVICE_TOKEN,
+  DISPLAY_CURRENCY_CONVERSION_SERVICE_TOKEN,
 } from './orders.tokens';
 import { IntegrationsModule } from '@openlinker/core/integrations';
 import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
@@ -87,6 +89,7 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     RefundRecordRepository,
     OrderLineItemRepository,
     TaxRateBackfillService,
+    DisplayCurrencyConversionService,
     // Then provide token bindings using useExisting
     {
       provide: ORDER_SYNC_SERVICE_TOKEN,
@@ -140,6 +143,10 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
       provide: TAX_RATE_BACKFILL_SERVICE_TOKEN,
       useExisting: TaxRateBackfillService,
     },
+    {
+      provide: DISPLAY_CURRENCY_CONVERSION_SERVICE_TOKEN,
+      useExisting: DisplayCurrencyConversionService,
+    },
   ],
   exports: [
     OrderRecordService, // Export service class for direct injection
@@ -158,6 +165,9 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     // Exported so the worker's `orders.taxRate.backfill` handler can inject
     // the backfill seam (#2440).
     TAX_RATE_BACKFILL_SERVICE_TOKEN,
+    // Exported so the `/analytics` display-currency read surface (a later
+    // phase of #2452) can inject this seam (#2458, ADR-064).
+    DISPLAY_CURRENCY_CONVERSION_SERVICE_TOKEN,
   ],
 })
 export class OrdersModule {}
