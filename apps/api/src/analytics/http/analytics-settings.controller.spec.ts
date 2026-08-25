@@ -6,63 +6,48 @@
  * `@Roles('admin')`, the `displayCurrency` / `displayCurrencySource`
  * projection correctly distinguishes an operator-saved override from the
  * system-default fallback, `PUT` delegates to `updateSettings` with the
- * resolved input and actor id, and — the required regression guard —
- * toggling `includeBackfilledTaxRatesInNetSales` (or any other field) never
- * calls a write method on `OrderRecordRepositoryPort`. That flag only
- * changes how existing `order_records` rows are read/aggregated for Net
- * Sales; it must never mutate a row.
+ * resolved input and actor id, and — the required regression guard — the
+ * controller's own source carries no reference to `order_records` write
+ * surfaces (`OrderRecordRepositoryPort` / `IOrderRecordService` / their DI
+ * tokens). Toggling `includeBackfilledTaxRatesInNetSales` (or any other
+ * field) only changes how existing `order_records` rows are read/aggregated
+ * for Net Sales; it must never mutate a row. The guard is a static
+ * source-inspection check rather than a mock-call assertion — the
+ * controller's constructor takes only `IAnalyticsDisplaySettingsService` and
+ * `IReportingCurrencySettingsService`, so a mocked `OrderRecordRepositoryPort`
+ * would never be reachable from the code under test and the assertion "it
+ * was never called" would be true no matter what the controller did.
  *
  * @module apps/api/src/analytics/http
  */
 import 'reflect-metadata';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import type { Response } from 'express';
 import type {
   IAnalyticsDisplaySettingsService,
   AnalyticsDisplaySettingsView,
 } from '@openlinker/core/analytics';
 import type { IReportingCurrencySettingsService } from '@openlinker/core/currency';
-import type { OrderRecordRepositoryPort } from '@openlinker/core/orders';
 import { ROLES_KEY } from '../../auth/decorators/roles.decorator';
 import type { AuthenticatedUser } from '../../auth/auth.types';
 import { AnalyticsSettingsController } from './analytics-settings.controller';
 import type { UpdateAnalyticsSettingsDto } from './dto/update-analytics-settings.dto';
 
 /**
- * Every mutating method on `OrderRecordRepositoryPort`. Read-only lookups
- * (`findById`, `findMany`, `countByHealth`, `getDailyOrderAggregates`, …)
- * are deliberately excluded — this list is only the surface that could ever
- * write to `order_records`.
+ * Symbols that would only appear in this file if the controller (directly or
+ * via a re-exported barrel type) reached for an `order_records` write
+ * surface. None of them is legitimate here: the controller's only
+ * dependencies are the two settings-service interfaces injected in its
+ * constructor.
  */
-function createOrderRecordWriteMocks(): jest.Mocked<
-  Pick<
-    OrderRecordRepositoryPort,
-    | 'upsert'
-    | 'upsertWithLineItems'
-    | 'updateSyncStatus'
-    | 'updateFulfillmentState'
-    | 'updateItemResolutionFailure'
-    | 'markCancelled'
-    | 'updateSalesDocumentBlock'
-    | 'claimFxIntentIfAbsent'
-    | 'stampFxIfAbsent'
-    | 'markFxTerminal'
-    | 'patchSnapshotTaxRates'
-  >
-> {
-  return {
-    upsert: jest.fn(),
-    upsertWithLineItems: jest.fn(),
-    updateSyncStatus: jest.fn(),
-    updateFulfillmentState: jest.fn(),
-    updateItemResolutionFailure: jest.fn(),
-    markCancelled: jest.fn(),
-    updateSalesDocumentBlock: jest.fn(),
-    claimFxIntentIfAbsent: jest.fn(),
-    stampFxIfAbsent: jest.fn(),
-    markFxTerminal: jest.fn(),
-    patchSnapshotTaxRates: jest.fn(),
-  };
-}
+const FORBIDDEN_ORDER_RECORD_REFERENCES = [
+  'OrderRecordRepositoryPort',
+  'IOrderRecordService',
+  'ORDER_RECORD_REPOSITORY_TOKEN',
+  'ORDER_RECORD_SERVICE_TOKEN',
+  '@openlinker/core/orders',
+] as const;
 
 describe('AnalyticsSettingsController', () => {
   let settings: jest.Mocked<IAnalyticsDisplaySettingsService>;
@@ -164,25 +149,21 @@ describe('AnalyticsSettingsController', () => {
       expect(res.setHeader).toHaveBeenCalledWith('Cache-Control', 'no-store');
     });
 
-    it('never writes to order_records — the flag only changes how existing rows are read/aggregated', async () => {
-      const orderRecordWrites = createOrderRecordWriteMocks();
-      const dto: UpdateAnalyticsSettingsDto = {
-        displayCurrency: null,
-        rateBasis: 'current',
-        includeBackfilledTaxRatesInNetSales: true,
-      };
+    it('never writes to order_records — the controller has no reachable dependency on an order_records write surface', () => {
+      // A mock-call assertion can't express this: the controller's
+      // constructor only takes `IAnalyticsDisplaySettingsService` and
+      // `IReportingCurrencySettingsService`, so an `OrderRecordRepositoryPort`
+      // mock would never be wired into the code under test regardless of
+      // what the controller does. Instead, assert directly against the
+      // controller's own source that it never references an order_records
+      // write surface at all — the only write this handler performs is
+      // `IAnalyticsDisplaySettingsService.updateSettings`, which persists to
+      // the singleton `analytics_display_settings` row.
+      const source = readFileSync(join(__dirname, 'analytics-settings.controller.ts'), 'utf8');
 
-      await controller.update(dto, user, res as unknown as Response);
-
-      for (const mockFn of Object.values(orderRecordWrites)) {
-        expect(mockFn).not.toHaveBeenCalled();
+      for (const forbidden of FORBIDDEN_ORDER_RECORD_REFERENCES) {
+        expect(source).not.toContain(forbidden);
       }
-      // The controller has no dependency on `OrderRecordRepositoryPort` /
-      // `IOrderRecordService` at all — the only write this handler performs
-      // is `IAnalyticsDisplaySettingsService.updateSettings`, which persists
-      // to the singleton `analytics_display_settings` row, never to
-      // `order_records`.
-      expect(settings.updateSettings).toHaveBeenCalledTimes(1);
     });
   });
 });
