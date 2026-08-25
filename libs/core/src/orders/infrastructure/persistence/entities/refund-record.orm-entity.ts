@@ -35,6 +35,9 @@ import {
   unique: true,
   where: '"idempotencyKey" IS NOT NULL',
 })
+// Refunds against one return (#2327). Partial: the overwhelming majority of
+// refunds have no return, and indexing those NULLs would be dead weight.
+@Index('IDX_refund_records_return_id', ['returnId'], { where: '"returnId" IS NOT NULL' })
 export class RefundRecordOrmEntity {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
@@ -65,4 +68,28 @@ export class RefundRecordOrmEntity {
 
   @Column({ type: 'text', nullable: true })
   idempotencyKey: string | null = null;
+
+  /**
+   * The return this refund settles, when there is one (#2327, ADR-060).
+   *
+   * **Linked, not extended.** Refunds exist without returns (a goodwill
+   * gesture, a price correction) and returns exist without refunds (a warranty
+   * swap), so folding return fields onto `RefundRecord` would have widened a
+   * shape whose every live row predates returns entirely — falsifying the
+   * analytics those rows already feed. A nullable pointer adds a fact without
+   * restating any existing one; **no other refund column is touched by #2327**,
+   * and the returns int-spec snapshots this table's column list so a later
+   * "while we're here" edit fails loudly.
+   *
+   * No FK to `returns` — the `internalOrderId` precedent directly above (an
+   * indexed reference by value, no cross-table lock coupling).
+   *
+   * **Persistence-only in this slice.** The domain `RefundRecord` entity, its
+   * create-input and every read projection are deliberately unchanged: nothing
+   * writes or reads this column until Wave 2 wires the return-to-refund link,
+   * and projecting a field no writer populates would put a permanently-null
+   * property on an API response. Wave 2 adds the domain half.
+   */
+  @Column({ type: 'text', nullable: true })
+  returnId: string | null = null;
 }

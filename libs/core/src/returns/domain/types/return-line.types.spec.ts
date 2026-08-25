@@ -1,0 +1,81 @@
+/**
+ * Return Line Types — vocabulary spec (#2327)
+ *
+ * These are literal assertions on purpose. Each union below is an ADJUDICATED
+ * decision recorded in the issue's acceptance criteria, not an incidental list:
+ * a later edit that "completes" custody with `inspected`, or that adds
+ * `refurbish` to disposition, is reversing a decision and should have to say so
+ * by editing this file.
+ *
+ * @module domain/types
+ */
+import {
+  ReturnCustodyStateValues,
+  ReturnDispositionValues,
+  ReturnMoneyStateValues,
+} from './return-line.types';
+import { ReturnOriginValues } from './return.types';
+
+describe('return line vocabularies (#2327)', () => {
+  describe('ReturnCustodyStateValues', () => {
+    it('should have exactly five members when read', () => {
+      expect(ReturnCustodyStateValues).toHaveLength(5);
+    });
+
+    it('should not include "inspected" when read (collapsed into "received")', () => {
+      expect(ReturnCustodyStateValues as readonly string[]).not.toContain('inspected');
+    });
+
+    it('should be the exact adjudicated list when read', () => {
+      expect(ReturnCustodyStateValues).toEqual([
+        'advised',
+        'in_transit',
+        'received',
+        'disposed',
+        'not_returned',
+      ]);
+    });
+  });
+
+  describe('ReturnMoneyStateValues', () => {
+    it('should include "in_doubt" when read (OL ships no refund write to observe)', () => {
+      expect(ReturnMoneyStateValues as readonly string[]).toContain('in_doubt');
+    });
+
+    it('should be the exact adjudicated list when read', () => {
+      expect(ReturnMoneyStateValues).toEqual([
+        'not_refundable',
+        'pending',
+        'triggered',
+        'refunded',
+        'denied',
+        'in_doubt',
+      ]);
+    });
+  });
+
+  describe('ReturnDispositionValues', () => {
+    it('should be exactly restock and scrap when read', () => {
+      expect(ReturnDispositionValues).toEqual(['restock', 'scrap']);
+    });
+  });
+
+  describe('ReturnOriginValues', () => {
+    it('should be exactly the two origins when read', () => {
+      expect(ReturnOriginValues).toEqual(['source_ingested', 'operator_authored']);
+    });
+  });
+
+  /**
+   * The custody and money axes are ORTHOGONAL (ADR-060) — marketplaces
+   * routinely refund before goods arrive. Asserting they share no member is the
+   * cheapest available guard against a future edit collapsing them back into
+   * one "return state" whose values would inevitably start to overlap.
+   */
+  it('should keep the custody and money vocabularies disjoint when compared', () => {
+    const overlap = (ReturnCustodyStateValues as readonly string[]).filter((value) =>
+      (ReturnMoneyStateValues as readonly string[]).includes(value)
+    );
+    expect(overlap).toEqual([]);
+  });
+});

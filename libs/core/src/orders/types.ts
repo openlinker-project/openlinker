@@ -47,6 +47,19 @@
  * `never`-typed default arms — the whole point of which is to fail the build
  * when a value is added here — vacuous.
  *
+ * `RefundReason` / `RefundReasonValues` (#2327, ADR-060) are exported for the
+ * new `returns` context, whose `ReturnLine.reason` reuses the refund vocabulary
+ * VERBATIM so returns-by-reason and refunds-by-reason report on one axis. Both
+ * gate conditions hold: `refund-record.types.ts` is a dependency-free `as
+ * const` leaf, and `returns` would otherwise have to reach the main
+ * `@openlinker/core/orders` barrel — which re-exports `OrdersModule` — to read
+ * back a stored reason. The runtime array is exported because the read
+ * coercion (`ReturnRepository.toRefundReason`, the `RefundRecordRepository`
+ * narrow-or-fallback precedent) iterates it; restating the five values inside
+ * `returns` was rejected for the same reason `order-lifecycle` rejected
+ * restating `OrderStatusValues` — two sources of truth for one reporting axis
+ * is exactly the drift the verbatim reuse exists to prevent.
+ *
  * @module libs/core/src/orders/types
  */
 export {
@@ -62,3 +75,5 @@ export type {
   FulfillmentRollupStateOrNull,
 } from './domain/types/order-fulfillment.types';
 export type { OrderRecordStatus } from './domain/types/order-record.types';
+export { RefundReasonValues } from './domain/types/refund-record.types';
+export type { RefundReason } from './domain/types/refund-record.types';

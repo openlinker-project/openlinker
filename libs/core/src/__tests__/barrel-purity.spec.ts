@@ -43,6 +43,7 @@ const CONTEXT_BARRELS = [
   'order-lifecycle',
   'orders',
   'products',
+  'returns',
   'sales-documents',
   'sync',
   'users',
