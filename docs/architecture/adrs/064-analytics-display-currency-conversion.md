@@ -10,7 +10,7 @@
 
 This proposal sits directly on top of a boundary ADR-040 draws deliberately: *"przeliczanie w momencie odczytu nie może dać wiarygodnej liczby finansowej"* — read-time conversion cannot produce a defensible financial figure, which is why ADR-040 stamps a rate once, at order time, rather than converting on every read. A display-currency picker looks, on first glance, exactly like the pattern ADR-040 forbids, and a reviewer pattern-matching against that ADR should stop here and ask why this is allowed. **The answer this ADR records**: the picker changes only what one viewer sees on one screen. Nothing is written back — `order_records.reportingCurrency` / `reportingTotalAmount` (the actual financial record) never change. ADR-040 governs what OpenLinker *records* as an order's financial figure; this ADR governs an optional, reversible *view* over already-recorded figures. The two do not conflict because they answer different questions.
 
-A related, separate concern — orders whose `reportingCurrency` has gone stale relative to the current `reporting_currency_setting`, or was never stamped — is a data-coverage gap, not a display preference. That is out of scope here; see the sibling coverage-remediation decision (Phase 1 Task 1.2) and [#2096](https://github.com/openlinker-project/openlinker/issues/2096) for restating historical stamps, which remains explicitly unbuilt.
+A related, separate concern — orders whose `reportingCurrency` has gone stale relative to the current `reporting_currency_setting`, or was never stamped — is a data-coverage gap, not a display preference. That is out of scope here; see the sibling coverage-remediation decision (Phase 1 Task 1.2) and #2096 for restating historical stamps, which remains explicitly unbuilt.
 
 ## Decision
 
@@ -24,7 +24,7 @@ Both modes are exposed together in a visible Analytics Settings control (button,
 ## Alternatives considered
 
 - **Per-order asynchronous conversion inside the request** (fetch each order's own historical rate on read). Rejected in an earlier `/tech-review` pass: it reintroduces exactly the per-order I/O this ADR avoids, needs a job/progress UI to stay responsive at scale, and does not actually improve on "order-date" mode's answer to the question an operator is really asking.
-- **Restating the ADR-040 stamp itself on a currency-setting change.** Rejected — that is a data-repair operation on the record of truth, tracked separately as [#2096](https://github.com/openlinker-project/openlinker/issues/2096) and as the currency-mismatch remediation job in Phase 5 of the parent epic. Conflating "what do I see" with "what is recorded" was the root confusion this ADR exists to resolve.
+- **Restating the ADR-040 stamp itself on a currency-setting change.** Rejected — that is a data-repair operation on the record of truth, tracked separately as #2096 and as the currency-mismatch remediation job in Phase 5 of the parent epic. Conflating "what do I see" with "what is recorded" was the root confusion this ADR exists to resolve.
 - **One conversion mode only.** Rejected via `/grill-me`: "current rate" alone can't answer "what's my stable total in EUR today" without re-summing on every view, and "order-date" alone loses the portfolio/wallet framing that motivated the feature. Both are cheap enough that shipping only one saves nothing.
 
 ## Consequences
