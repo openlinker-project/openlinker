@@ -26,3 +26,12 @@ export { ReturnLine } from './domain/entities/return-line.entity';
 export type { ReturnRepositoryPort } from './domain/ports/return-repository.port';
 export { ReturnsModule } from './returns.module';
 export * from './returns.tokens';
+
+// Source projection (#2329): the neutral read-only shapes a `ReturnSourceReader`
+// reports. Non-authoritative — custody/disposition/restock stay with ReturnRecord.
+export type { IncomingReturn, IncomingReturnLine } from './domain/types/incoming-return.types';
+export type {
+  ReturnFeedInput,
+  ReturnFeedItem,
+  ReturnFeedOutput,
+} from './domain/types/return-feed.types';
