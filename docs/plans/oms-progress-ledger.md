@@ -67,7 +67,7 @@ Branch: `oms-programme-wave-1` (stacked off Wave-0 tip feb78054d; Wave-0 PR to m
 | #2308 | W1a-8 | walker generalisation + ADR pointers | ☑ merged c2278a549 (commit 3423580e5; 3-injection proof; root barrel resolved by removal; epic ADR table resolved to live issues) |
 
 **WAVE 1a COMPLETE (8/8).** Boundary sweep clean (knob gate 6/7, three-way mirrors green, walker 22/22, FE coexistence verified); ledger was the only divergence.
-### Wave 1b (epic #2326) — **COMPLETE (11/11)** on `oms-programme-wave-1`; boundary in progress
+### Wave 1b (epic #2326) — **COMPLETE (11/11)** on `oms-programme-wave-1`; boundary DONE (sweep + formal review, all findings applied in b8ebdbf09/c8e0dfa24)
 | Issue | Slug | Subject | Status |
 |---|---|---|---|
 | #2313 | W1b-1 | inventory_locations table/entity/repo | ☑ merged fbcf24b27 (commit bbe58cf1d; reviewed, approved; migration 1843000000000; port trimmed to 5 methods; synchronize-parity index names) |
@@ -89,6 +89,7 @@ Branch: `oms-programme-wave-1` (stacked off Wave-0 tip feb78054d; Wave-0 PR to m
 ## Wave boundaries completed
 
 - **Wave 0** (2026-08-23): 8 issues + #2298 on `oms-programme-waves-0-2`; boundary review applied at feb78054d; **PR #2438 to main OPEN, awaiting owner merge**.
+- **Wave 1b** (2026-08-25): 11 issues complete; boundary = consistency sweep (3 docs fixes) + formal two-reviewer review (3 BLOCKING incl. the unscoped no-change-guard lookup, 17 IMPORTANT) adjudicated apply-all in prreview-1b-adjudication.md, applied as b8ebdbf09, merged c8e0dfa24. PR #2441 retitled to cover Waves 1a+1b with the full Closes list + BREAKING note. Wave 1c OPENED (Scope A recorded on epic #2337): #2327 implementing, #2329 gate-cleared behind it.
 - **Wave 1a** (2026-08-24): 8 issues on `oms-programme-wave-1` (feb78054d..c2278a549, 70 files +6419/−97); boundary sweep clean. Formal `/pr-review` of **PR #2441** ran (0 BLOCKING, 7 IMPORTANT, 16 SUGGESTIONS; adjudication in scratchpad `prreview-2441-adjudication.md`); ALL 23 applied in fix commit `b1adacdc9`, merged `debcb59a7`. #2441 based on `oms-programme-waves-0-2`; retarget to main after #2438 merges, then merge `origin/main` forward.
 - **Migration re-timestamp #2** (2026-08-24 evening): main gained `1841000000006` (#2014 analytics), outranking #2283's amendment migration — renamed `1841→1845` on BOTH lineages (wave-1 `88c92b947`, waves-0-2 `09554111a`). Every unmerged week risks another; merging #2438 then #2441 stops the churn.
 - **Migration re-timestamp** (2026-08-24): main gained `1840000000000-reset-fx-stamp…` after the branches were cut, tying with #2287's packed migration. Renamed `1840→1842` on BOTH lineages (wave-1 via `b1adacdc9`; waves-0-2 via `53cbf6f74`, byte-identical → stacked merge stays clean). Consequence: **1842 is consumed — #2313 uses 1843000000000**, next free 1844.
