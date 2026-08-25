@@ -2,7 +2,7 @@
  * Display Currency Conversion Service
  *
  * The read-only display-currency transform behind the `/analytics`
- * display-currency picker (#2458, ADR-064). Both modes are plain synchronous
+ * display-currency picker (#2458, ADR-064, pending in PR #2485). Both modes are plain synchronous
  * application-layer code — no `SyncJobPort`, no `sync_jobs` row, no polling
  * endpoint — and neither reads nor writes `order_records.reportingCurrency` /
  * `reportingTotalAmount` (the ADR-040 write-once stamp). This is a SECOND,
@@ -34,12 +34,13 @@ import {
   resolveRateDate,
   resolveRateSource,
 } from '@openlinker/core/currency';
-import type {
-  CurrentRateConversionInput,
-  CurrentRateConversionResult,
-  NativeCurrencyBreakdown,
-  OrderDateConversionInput,
-  OrderDateConversionResult,
+import {
+  MIXED_NATIVE_CURRENCIES_LABEL,
+  type CurrentRateConversionInput,
+  type CurrentRateConversionResult,
+  type NativeCurrencyBreakdown,
+  type OrderDateConversionInput,
+  type OrderDateConversionResult,
 } from '../../domain/types/display-currency.types';
 import type { IDisplayCurrencyConversionService } from '../interfaces/display-currency-conversion.service.interface';
 
@@ -58,18 +59,25 @@ interface CurrencyGroup {
   total: number;
 }
 
-/** Group native-currency amounts by currency code, preserving input order for the first-seen currency. */
+/**
+ * Group native-currency amounts by currency code, preserving input order for
+ * the first-seen currency. `count` is SUMMED from each item's own `count`
+ * (#2488 review, IMPORTANT 1) rather than incremented once per array entry —
+ * a caller that pre-aggregates several orders into one bucket (e.g. the
+ * controller's per-currency revenue bucket) reports the real order count via
+ * `item.count`, not the number of buckets it happened to push.
+ */
 function groupByCurrency(
-  amounts: readonly { readonly currency: string; readonly amount: number }[]
+  amounts: readonly { readonly currency: string; readonly amount: number; readonly count: number }[]
 ): Map<string, CurrencyGroup> {
   const grouped = new Map<string, CurrencyGroup>();
   for (const item of amounts) {
     const existing = grouped.get(item.currency);
     if (existing) {
-      existing.count += 1;
+      existing.count += item.count;
       existing.total += item.amount;
     } else {
-      grouped.set(item.currency, { count: 1, total: item.amount });
+      grouped.set(item.currency, { count: item.count, total: item.amount });
     }
   }
   return grouped;
@@ -100,6 +108,22 @@ export class DisplayCurrencyConversionService implements IDisplayCurrencyConvers
     // provider calls, and there is no latency anyone is waiting on that
     // fanning them out would improve.
     for (const [currency, group] of grouped) {
+      // A bucket with no single native currency (#2488 review, IMPORTANT 2)
+      // has no rate to resolve — report it as unresolved unconditionally
+      // rather than spending a provider call that could only ever fail, and
+      // rather than silently excluding this real money from the result with
+      // no trace at all.
+      if (currency === MIXED_NATIVE_CURRENCIES_LABEL) {
+        unresolvedNativeCurrencies.push(currency);
+        breakdown.push({
+          currency,
+          orderCount: group.count,
+          nativeTotal: round2(group.total),
+          convertedTotal: null,
+        });
+        continue;
+      }
+
       if (currency === input.displayCurrency) {
         const nativeTotal = round2(group.total);
         breakdown.push({
@@ -113,7 +137,9 @@ export class DisplayCurrencyConversionService implements IDisplayCurrencyConvers
       }
 
       const rate =
-        rateDate === null ? null : await this.resolveRate(currency, input.displayCurrency, rateDate);
+        rateDate === null
+          ? null
+          : await this.resolveRate(currency, input.displayCurrency, rateDate);
 
       if (rate === null) {
         unresolvedNativeCurrencies.push(currency);
