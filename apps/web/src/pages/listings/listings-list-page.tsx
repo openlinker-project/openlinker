@@ -735,7 +735,6 @@ export function ListingsListPage(): ReactElement {
       </div>
 
       <Tabs
-        className="listings-tabs"
         value={tab}
         onValueChange={(value) => {
           if (isLifecycleTab(value)) setTab(value);
@@ -807,10 +806,14 @@ export function ListingsListPage(): ReactElement {
             DOM node (#2032 review thread 12.1) - Radix always emits
             `aria-controls={contentId}` on every trigger regardless of whether
             a matching panel is mounted, and the APG tabs pattern requires each
-            `tab` to reference its `tabpanel`. Radix sets the native `hidden`
-            attribute on a forceMount'd, non-selected panel itself. */}
+            `tab` to reference its `tabpanel`. Radix does NOT hide a
+            forceMount'd, non-selected panel - `present` stays true regardless
+            of selection, so `hidden` is never set and the panel is an
+            ordinary flex item (`display: none` here removes it from layout
+            and from the tab order, both of which an empty tabIndex=0 stop
+            would otherwise pollute - #2450 review). */}
         {LIFECYCLE_TABS.filter((def) => def.key !== tab).map((def) => (
-          <TabsContent key={def.key} value={def.key} forceMount />
+          <TabsContent key={def.key} value={def.key} forceMount style={{ display: 'none' }} />
         ))}
 
         <TabsContent value={tab}>
