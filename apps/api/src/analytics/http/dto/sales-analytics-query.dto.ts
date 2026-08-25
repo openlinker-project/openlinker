@@ -6,7 +6,7 @@
  * **required** here — a sales query without a range is not a meaningful
  * request.
  *
- * `displayCurrency` / `rateBasis` (#2459, ADR-064) are the display-currency
+ * `displayCurrency` / `rateBasis` (#2459, ADR-064, pending in PR #2485) are the display-currency
  * override axis: both optional, and omitting `displayCurrency` leaves the
  * response byte-identical to the pre-#2459 shape — the controller never even
  * calls `IDisplayCurrencyConversionService` when it's absent. Unlike
@@ -58,9 +58,9 @@ export class SalesAnalyticsQueryDto {
   @ApiPropertyOptional({
     description:
       "Conversion rate basis, only meaningful when displayCurrency is set. 'current-rate' " +
-      "(default) groups each native-currency bucket already read by the aggregation and " +
+      '(default) groups each native-currency bucket already read by the aggregation and ' +
       "converts each group at today's rate. 'order-date' instead takes the already-stamped " +
-      "reporting-currency total and applies a single current rate to the whole figure.",
+      'reporting-currency total and applies a single current rate to the whole figure.',
     enum: DISPLAY_CURRENCY_RATE_BASIS_VALUES,
     default: 'current-rate',
   })

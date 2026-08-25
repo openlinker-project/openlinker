@@ -14,7 +14,7 @@
  * Gross/net tax-treatment normalization remains a separate, not-yet-scoped
  * effort.
  *
- * Display-currency conversion (#2459, ADR-064): `displayCurrencyConversion` is
+ * Display-currency conversion (#2459, ADR-064, pending in PR #2485): `displayCurrencyConversion` is
  * `undefined` unless the request carried `displayCurrency` — that's the
  * regression guard for every pre-#2459 caller. When present, it's populated
  * on the headline and on every channel row, using whichever of the two
@@ -23,8 +23,7 @@
  * @module apps/api/src/analytics/http/dto
  */
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import {
-  DisplayCurrencyRateBasis} from '@openlinker/core/orders';
+import { DisplayCurrencyRateBasis } from '@openlinker/core/orders';
 import type {
   ChannelSalesAnalytics,
   CurrentRateConversionResult,
@@ -52,7 +51,7 @@ export class DisplayCurrencyConversionDto {
     type: Number,
     nullable: true,
     description:
-      "The converted revenue figure, or null when there was nothing to convert " +
+      'The converted revenue figure, or null when there was nothing to convert ' +
       "('order-date' with no stamped order in range yet).",
   })
   convertedRevenue!: number | null;
@@ -61,7 +60,10 @@ export class DisplayCurrencyConversionDto {
     type: [String],
     description:
       'Native currencies that could not be converted (no resolvable rate) and were excluded ' +
-      'from convertedRevenue — never guessed at. Empty when every bucket converted cleanly.',
+      "from convertedRevenue — never guessed at. May also contain the literal 'mixed-currencies' " +
+      'when the still-unconverted bucket itself spans more than one native currency — that money ' +
+      'is real and non-zero but this read model has no single ISO code to label it with, so it is ' +
+      'reported here rather than silently dropped. Empty when every bucket converted cleanly.',
   })
   unresolvedNativeCurrencies!: string[];
 
@@ -138,7 +140,8 @@ export class SalesAnalyticsHeadlineDto {
   unitsSold!: number;
 
   @ApiProperty({
-    description: 'Units sold on unconvertedCount orders — the unitsSold companion to unconvertedValue.',
+    description:
+      'Units sold on unconvertedCount orders — the unitsSold companion to unconvertedValue.',
   })
   unconvertedUnitsSold!: number;
 
@@ -158,7 +161,7 @@ export class SalesAnalyticsHeadlineDto {
 
   @ApiProperty({
     description:
-      "Non-cancelled orders in range with no reporting-currency stamp yet — not reflected in revenue.",
+      'Non-cancelled orders in range with no reporting-currency stamp yet — not reflected in revenue.',
   })
   unconvertedCount!: number;
 
@@ -196,7 +199,8 @@ export class SalesAnalyticsHeadlineDto {
   @ApiProperty({
     type: Number,
     nullable: true,
-    description: 'VAT-exclusive counterpart of medianOrderValue. null when no net-eligible order matches the range.',
+    description:
+      'VAT-exclusive counterpart of medianOrderValue. null when no net-eligible order matches the range.',
   })
   netMedianOrderValue!: number | null;
 
@@ -207,7 +211,8 @@ export class SalesAnalyticsHeadlineDto {
   netExcludedCount!: number;
 
   @ApiProperty({
-    description: 'Native-currency sum for netExcludedCount — informational only, may mix currencies.',
+    description:
+      'Native-currency sum for netExcludedCount — informational only, may mix currencies.',
   })
   netExcludedValue!: number;
 
@@ -257,7 +262,8 @@ export class ChannelSalesAnalyticsDto {
   @ApiProperty({
     type: Number,
     nullable: true,
-    description: 'Same meaning as the headline averageOrderValue field — null when orderCount is 0.',
+    description:
+      'Same meaning as the headline averageOrderValue field — null when orderCount is 0.',
   })
   averageOrderValue!: number | null;
 
@@ -315,7 +321,9 @@ export class ChannelSalesAnalyticsDto {
   })
   coverageComplete!: boolean;
 
-  @ApiProperty({ description: 'Same meaning as the headline netRevenue field, scoped to this channel.' })
+  @ApiProperty({
+    description: 'Same meaning as the headline netRevenue field, scoped to this channel.',
+  })
   netRevenue!: number;
 
   @ApiProperty({
@@ -337,7 +345,8 @@ export class ChannelSalesAnalyticsDto {
 
   @ApiPropertyOptional({
     type: DisplayCurrencyConversionDto,
-    description: 'Same meaning as the headline displayCurrencyConversion field, scoped to this channel.',
+    description:
+      'Same meaning as the headline displayCurrencyConversion field, scoped to this channel.',
   })
   displayCurrencyConversion?: DisplayCurrencyConversionDto;
 
@@ -376,7 +385,9 @@ export class SalesAnalyticsResponseDto {
   static fromDomain(analytics: SalesAndChannelAnalytics): SalesAnalyticsResponseDto {
     const dto = new SalesAnalyticsResponseDto();
     dto.headline = SalesAnalyticsHeadlineDto.fromDomain(analytics.headline);
-    dto.channels = analytics.channels.map((channel) => ChannelSalesAnalyticsDto.fromDomain(channel));
+    dto.channels = analytics.channels.map((channel) =>
+      ChannelSalesAnalyticsDto.fromDomain(channel)
+    );
     return dto;
   }
 }
