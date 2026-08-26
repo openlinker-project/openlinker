@@ -14,6 +14,10 @@ export const ORDER_INGESTION_SERVICE_TOKEN = Symbol('IOrderIngestionService');
 export const ORDER_RECORD_REPOSITORY_TOKEN = Symbol('OrderRecordRepositoryPort');
 export const ORDER_RECORD_SERVICE_TOKEN = Symbol('IOrderRecordService');
 export const ORDER_DESTINATION_RETRY_SERVICE_TOKEN = Symbol('IOrderDestinationRetryService');
+// Re-enqueues the source-side provisioning run a released hold had suppressed (#2341).
+export const ORDER_PROVISIONING_RESUME_SERVICE_TOKEN = Symbol(
+  'IOrderProvisioningResumeService'
+);
 export const ORDER_ITEM_REF_RESOLVER_SERVICE_TOKEN = Symbol('IOrderItemRefResolverService');
 export const ORDER_LIFECYCLE_RELAY_SERVICE_TOKEN = Symbol('IOrderLifecycleRelayService');
 // Per-order reporting-currency stamp (#2125, ADR-040).

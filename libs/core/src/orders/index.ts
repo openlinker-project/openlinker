@@ -191,6 +191,15 @@ export {
   OrderDestinationRetryInput,
   OrderDestinationRetryResult,
 } from './application/interfaces/order-destination-retry.service.interface';
+// Release -> provisioning resume (#2341). Closes the gap #2339 stated: releasing
+// a hold un-blocks the next run but nothing enqueued it, and a cursor-based
+// source journal never re-delivers the original event.
+export type {
+  IOrderProvisioningResumeService,
+  OrderProvisioningResumeResult,
+  ProvisioningResumeSkipReason,
+} from './application/interfaces/order-provisioning-resume.service.interface';
+export { ProvisioningResumeSkipReasonValues } from './application/interfaces/order-provisioning-resume.service.interface';
 export type {
   IOrderLifecycleRelayService,
   OrderLifecycleRelayInput,

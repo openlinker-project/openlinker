@@ -126,23 +126,4 @@ export interface OrderHoldRepositoryPort {
    */
   listOpenPlacedBefore(before: Date, limit: number): Promise<OrderHold[]>;
 
-  /**
-   * A page of open holds, for #2340's reconcile sweep against
-   * `order_records.activeHoldReason`.
-   *
-   * Scan-offset shaped rather than `Date`-keyed because `runBoundedSweep`
-   * persists a numeric cursor and resumes on it. Ordered by `id` — stable,
-   * unique and always present — rather than by `placedAt`, which is
-   * caller-supplied and therefore not guaranteed distinct; an offset page over a
-   * non-unique sort can skip a row between ticks.
-   *
-   * **A stable sort does not make offset paging total here.** The open set
-   * SHRINKS as holds are released, and a release removes a row and shifts every
-   * later row down one, so the next page steps over one. The consequence is a
-   * missed reconcile repair, retried on the following cycle — bounded and
-   * self-healing, which is why it is documented rather than designed around.
-   * #2340 owns the sweep's semantics and should read this before assuming
-   * exactly-once coverage per cycle.
-   */
-  listOpenHolds(limit: number, offset: number): Promise<OrderHold[]>;
 }

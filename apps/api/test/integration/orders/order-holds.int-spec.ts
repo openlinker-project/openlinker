@@ -64,7 +64,6 @@ describe('Order Holds Integration (#2338)', () => {
     findOpenByOrders(internalOrderIds: string[]): Promise<OrderHold[]>;
     listByOrder(internalOrderId: string): Promise<OrderHold[]>;
     listOpenPlacedBefore(before: Date, limit: number): Promise<OrderHold[]>;
-    listOpenHolds(limit: number, offset: number): Promise<OrderHold[]>;
   };
 
   const ORDER_A = 'ol_order_aaa';
@@ -295,18 +294,6 @@ describe('Order Holds Integration (#2338)', () => {
       );
 
       expect(stale.map((h) => h.id)).toEqual([old.id]);
-    });
-
-    it('should page open holds for the reconcile sweep', async () => {
-      await place(ORDER_A);
-      await place(ORDER_B);
-
-      const page = await repository.listOpenHolds(1, 0);
-      const next = await repository.listOpenHolds(1, 1);
-
-      expect(page).toHaveLength(1);
-      expect(next).toHaveLength(1);
-      expect(next[0].id).not.toBe(page[0].id);
     });
   });
 });

@@ -89,8 +89,7 @@ export class CreateOrderHolds1849000000000 implements MigrationInterface {
         ON "order_holds" ("internalOrderId", "placedAt")
     `);
 
-    // Serves both open-row scans: T3's `listOpenPlacedBefore` and the #2340
-    // reconcile sweep's `listOpenHolds` page.
+    // Serves T3's open-row scan (`listOpenPlacedBefore`).
     await queryRunner.query(`
       CREATE INDEX IF NOT EXISTS "IDX_order_holds_open_placed_at"
         ON "order_holds" ("placedAt")

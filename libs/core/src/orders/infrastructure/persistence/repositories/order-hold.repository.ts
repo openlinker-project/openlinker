@@ -175,18 +175,6 @@ export class OrderHoldRepository implements OrderHoldRepositoryPort {
     return entities.map((entity) => this.toDomain(entity));
   }
 
-  async listOpenHolds(limit: number, offset: number): Promise<OrderHold[]> {
-    const entities = await this.repository.find({
-      where: { releasedAt: IsNull() },
-      // Ordered by `id`, not `placedAt`: see the port's docblock for why, and
-      // for what offset paging still cannot promise over a shrinking set.
-      order: { id: 'ASC' },
-      skip: offset,
-      take: limit,
-    });
-    return entities.map((entity) => this.toDomain(entity));
-  }
-
   private isUniqueViolation(error: unknown): boolean {
     return (
       error instanceof QueryFailedError &&

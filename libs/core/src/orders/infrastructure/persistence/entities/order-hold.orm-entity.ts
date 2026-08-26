@@ -44,8 +44,7 @@ import {
   where: `"releasedAt" IS NULL`,
 })
 @Index('IDX_order_holds_order', ['internalOrderId', 'placedAt'])
-// T3's read (`listOpenPlacedBefore`) and the reconcile sweep's page
-// (`listOpenHolds`) both scan open rows only.
+// T3's read (`listOpenPlacedBefore`) scans open rows only.
 @Index('IDX_order_holds_open_placed_at', ['placedAt'], {
   where: `"releasedAt" IS NULL`,
 })

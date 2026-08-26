@@ -52,7 +52,6 @@ describe('OrderHoldService', () => {
       findOpenByOrders: jest.fn(),
       listByOrder: jest.fn(),
       listOpenPlacedBefore: jest.fn(),
-      listOpenHolds: jest.fn(),
     } as unknown as jest.Mocked<OrderHoldRepositoryPort>;
     projection = {
       setActiveHoldReason: jest.fn().mockResolvedValue(true),
