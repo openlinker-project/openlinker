@@ -456,6 +456,152 @@ describe('OrderRecordRepository', () => {
     });
   });
 
+  describe('findCurrencyMismatchOrders (#2464)', () => {
+    const baseFilters = {
+      from: new Date('2026-08-01T00:00:00.000Z'),
+      to: new Date('2026-08-08T00:00:00.000Z'),
+    };
+
+    const createMismatchEntity = (overrides: Partial<OrderRecordOrmEntity>): OrderRecordOrmEntity => {
+      const entity = createOrmEntity();
+      Object.assign(entity, overrides);
+      return entity;
+    };
+
+    it('applies the combined never-stamped-or-stale predicate, non-cancelled, with pagination', async () => {
+      const andWhere = jest.fn().mockReturnThis();
+      const orderBy = jest.fn().mockReturnThis();
+      const take = jest.fn().mockReturnThis();
+      const skip = jest.fn().mockReturnThis();
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        andWhere,
+        orderBy,
+        take,
+        skip,
+        getManyAndCount: jest.fn().mockResolvedValue([[], 0]),
+      });
+
+      await repository.findCurrencyMismatchOrders(baseFilters, 'EUR', { limit: 20, offset: 40 });
+
+      expect(andWhere).toHaveBeenCalledWith('rec."cancelledAt" IS NULL');
+      expect(andWhere).toHaveBeenCalledWith(
+        '(rec."reportingCurrency" IS NULL OR rec."reportingCurrency" != :currentReportingCurrency)',
+        { currentReportingCurrency: 'EUR' }
+      );
+      expect(orderBy).toHaveBeenCalledWith('rec."placedAt"', 'DESC');
+      expect(take).toHaveBeenCalledWith(20);
+      expect(skip).toHaveBeenCalledWith(40);
+    });
+
+    it('scopes to the sourceConnectionId filter when provided (via the shared analytics scope)', async () => {
+      const andWhere = jest.fn().mockReturnThis();
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        andWhere,
+        orderBy: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        skip: jest.fn().mockReturnThis(),
+        getManyAndCount: jest.fn().mockResolvedValue([[], 0]),
+      });
+
+      await repository.findCurrencyMismatchOrders(
+        { ...baseFilters, sourceConnectionId: 'conn-a' },
+        'EUR',
+        { limit: 20, offset: 0 }
+      );
+
+      expect(andWhere).toHaveBeenCalledWith('rec.sourceConnectionId = :salesConnectionId', {
+        salesConnectionId: 'conn-a',
+      });
+    });
+
+    it('maps a never-stamped row (reportingCurrency null) to the row shape', async () => {
+      const entity = createMismatchEntity({
+        internalOrderId: 'order-never-stamped',
+        sourceConnectionId: 'conn-a',
+        currency: 'PLN',
+        reportingCurrency: null,
+        fxStampedAt: null,
+      });
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        skip: jest.fn().mockReturnThis(),
+        getManyAndCount: jest.fn().mockResolvedValue([[entity], 1]),
+      });
+
+      const result = await repository.findCurrencyMismatchOrders(baseFilters, 'EUR', {
+        limit: 20,
+        offset: 0,
+      });
+
+      expect(result.total).toBe(1);
+      expect(result.items).toEqual([
+        {
+          internalOrderId: 'order-never-stamped',
+          sourceConnectionId: 'conn-a',
+          nativeCurrency: 'PLN',
+          stampedCurrency: null,
+          stampedAt: null,
+        },
+      ]);
+    });
+
+    it('maps a stale-stamp row (reportingCurrency set to a prior era) to the row shape', async () => {
+      const stampedAt = new Date('2026-06-01T10:00:00.000Z');
+      const entity = createMismatchEntity({
+        internalOrderId: 'order-stale-stamp',
+        sourceConnectionId: 'conn-a',
+        currency: 'PLN',
+        reportingCurrency: 'EUR',
+        fxStampedAt: stampedAt,
+      });
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        skip: jest.fn().mockReturnThis(),
+        getManyAndCount: jest.fn().mockResolvedValue([[entity], 1]),
+      });
+
+      // The demo-DB shape from the issue: a same-currency stale stamp
+      // (reportingCurrency='EUR', currency='PLN') — the current setting has
+      // since moved on to a different value, e.g. 'PLN'.
+      const result = await repository.findCurrencyMismatchOrders(baseFilters, 'PLN', {
+        limit: 20,
+        offset: 0,
+      });
+
+      expect(result.total).toBe(1);
+      expect(result.items).toEqual([
+        {
+          internalOrderId: 'order-stale-stamp',
+          sourceConnectionId: 'conn-a',
+          nativeCurrency: 'PLN',
+          stampedCurrency: 'EUR',
+          stampedAt,
+        },
+      ]);
+    });
+
+    it('returns an empty page when nothing matches (backs the all-clear mockup state)', async () => {
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        skip: jest.fn().mockReturnThis(),
+        getManyAndCount: jest.fn().mockResolvedValue([[], 0]),
+      });
+
+      const result = await repository.findCurrencyMismatchOrders(baseFilters, 'EUR', {
+        limit: 20,
+        offset: 0,
+      });
+
+      expect(result).toEqual({ items: [], total: 0 });
+    });
+  });
+
   describe('getMedianOrderValue (#1987)', () => {
     const baseFilters = {
       from: new Date('2026-08-01T00:00:00.000Z'),
