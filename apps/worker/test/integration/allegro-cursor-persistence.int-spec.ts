@@ -30,6 +30,9 @@ import { randomUUID } from 'crypto';
 // same 'queued' row and reprocess it concurrently, racing the manual
 // execution and the cursor assertions below. Scheduling `runAfter` far in
 // the future keeps every job in this file out of the runner's claim window.
+// Module-scoped, so `Date.now()` is read once at load and every test in the
+// file shares the same horizon - fine at 24h (no suite runs anywhere near
+// that long), but not a per-test-fresh value.
 const FAR_FUTURE_RUN_AFTER = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
 describe('Allegro Cursor Persistence Integration', () => {
