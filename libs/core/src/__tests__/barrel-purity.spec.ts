@@ -87,7 +87,7 @@ describe('@openlinker/core/<context> barrel purity (#598)', () => {
    * import of anything, or a type-only import from any specifier other than
    * that one cycle-breaker sub-barrel — still fails this spec.
    */
-  it('sales-documents stays a zero-outbound-CORE-CONTEXT-edge leaf (only the one authorized type-only import reaches a sibling context)', () => {
+  it('sales-documents stays a zero-outbound-CORE-CONTEXT-edge leaf (only the authorized type-only imports reach a sibling context)', () => {
     const root = join(__dirname, '..', 'sales-documents');
     const files: string[] = [];
     const walk = (dir: string): void => {
@@ -101,7 +101,19 @@ describe('@openlinker/core/<context> barrel purity (#598)', () => {
 
     expect(files.length).toBeGreaterThan(0);
 
-    const AUTHORIZED_TYPE_ONLY_SPECIFIER = '@openlinker/core/orders/types';
+    /**
+     * #2515 (ADR-065) adds two more, on the identical principle: the neutral
+     * per-order sales-document projection must name the EXISTING invoice and
+     * fiscal status vocabularies rather than declare a third one, and both are
+     * reached type-only through dedicated cycle-breaker sub-barrels that
+     * re-export no runtime value at all. Same erasure, same absent
+     * `require()`, same reason the `orders/types` carve-out is safe.
+     */
+    const AUTHORIZED_TYPE_ONLY_SPECIFIERS = [
+      '@openlinker/core/orders/types',
+      '@openlinker/core/invoicing/types',
+      '@openlinker/core/fiscalization/types',
+    ];
 
     for (const file of files) {
       const source = readFileSync(file, 'utf8');
@@ -147,10 +159,11 @@ describe('@openlinker/core/<context> barrel purity (#598)', () => {
         expect(typeOnly).toBeTruthy();
         // The ONLY authorized cross-context type this concern may borrow, and
         // ONLY from the cycle-breaker sub-barrel — never the main
-        // `@openlinker/core/orders` barrel, which re-exports `OrdersModule` and
-        // would reintroduce exactly the cycle risk decision 2 exists to avoid
-        // if this import were ever (incorrectly) turned into a value import.
-        expect(specifier).toBe(AUTHORIZED_TYPE_ONLY_SPECIFIER);
+        // `@openlinker/core/orders` / `.../invoicing` / `.../fiscalization`
+        // barrels, which re-export their NestJS modules and would reintroduce
+        // exactly the cycle risk these carve-outs exist to avoid if such an
+        // import were ever (incorrectly) turned into a value import.
+        expect(AUTHORIZED_TYPE_ONLY_SPECIFIERS).toContain(specifier);
       }
     }
   });
