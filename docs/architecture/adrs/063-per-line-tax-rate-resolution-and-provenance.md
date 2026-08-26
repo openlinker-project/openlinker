@@ -199,9 +199,11 @@ time, and this ADR's Decision treats that distinction as load-bearing), but it l
 remediation path short of a raw SQL write against `taxRateEra` — exactly the "defaulted rate presented
 as confirmed" outcome this ADR exists to prevent.
 
-**Decision**: add a single operator setting, `includeGuessedVatRatesInNetSales: boolean` (final
-country-agnostic name TBD at implementation — e.g. `includeBackfilledTaxRatesInNetSales`), default
-**OFF**. When OFF, behaviour is unchanged from today. When ON, `netSalesOrderNetEligibleSql` /
+**Decision**: add a single operator setting, `includeBackfilledTaxRatesInNetSales: boolean`, default
+**OFF**. The name is settled here rather than left to the implementing PR: "VAT" is a national tax
+name, and [ADR-026](./026-country-agnostic-invoicing-domain.md)'s country-agnostic rule keeps such
+vocabulary out of `libs/core`, so the setting is named after what it admits (a backfilled rate) rather
+than after one country's tax. When OFF, behaviour is unchanged from today. When ON, `netSalesOrderNetEligibleSql` /
 `netSalesLineNetEligibleConditionSql` additionally admit a `taxRateEra = 'pre-rollout'` row **only when
 a backfilled rate actually resolves for it** — a pre-rollout order with no resolvable rate at all stays
 excluded regardless of the setting. The setting is read once per query, at the SQL-builder call site.
