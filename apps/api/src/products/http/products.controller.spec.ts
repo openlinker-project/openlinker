@@ -52,6 +52,8 @@ function makeVariant(overrides: Partial<ProductVariant> = {}): ProductVariant {
     price: overrides.price,
     createdAt: overrides.createdAt ?? new Date('2026-01-01T00:00:00Z'),
     updatedAt: overrides.updatedAt ?? new Date('2026-01-01T00:00:00Z'),
+    isStale: overrides.isStale,
+    staleAt: overrides.staleAt,
   };
 }
 
@@ -433,6 +435,32 @@ describe('ProductsController', () => {
       expect(result.variants![0].price).toBe(19.99);
     });
 
+    it('should surface isStale/staleAt when the master deleted the variant (#2446)', async () => {
+      const staleAt = new Date('2026-03-01T00:00:00Z');
+      productsService.getProduct.mockResolvedValue(makeProduct());
+      productsService.listVariants.mockResolvedValue({
+        items: [makeVariant({ isStale: true, staleAt })],
+        total: 1,
+      });
+      identifierMapping.getExternalIds.mockResolvedValue([]);
+
+      const result = await controller.getProduct('ol_product_1');
+
+      expect(result.variants![0].isStale).toBe(true);
+      expect(result.variants![0].staleAt).toBe(staleAt.toISOString());
+    });
+
+    it('should default isStale to false and staleAt to null for a live variant', async () => {
+      productsService.getProduct.mockResolvedValue(makeProduct());
+      productsService.listVariants.mockResolvedValue({ items: [makeVariant()], total: 1 });
+      identifierMapping.getExternalIds.mockResolvedValue([]);
+
+      const result = await controller.getProduct('ol_product_1');
+
+      expect(result.variants![0].isStale).toBe(false);
+      expect(result.variants![0].staleAt).toBeNull();
+    });
+
     it('should surface currency when the domain entity carries one', async () => {
       productsService.getProduct.mockResolvedValue(makeProduct({ currency: 'PLN' }));
       productsService.listVariants.mockResolvedValue({ items: [], total: 0 });
@@ -502,8 +530,22 @@ describe('ProductsController', () => {
         sku: 'SKU-RED-42',
         ean: '5901234123457',
         name: 'Red / 42',
+        isStale: false,
+        staleAt: null,
       });
       expect(productsService.getVariant).toHaveBeenCalledWith('ol_variant_42');
+    });
+
+    it('should surface isStale/staleAt when the master deleted the variant (#2446)', async () => {
+      const staleAt = new Date('2026-03-01T00:00:00Z');
+      productsService.getVariant.mockResolvedValue(
+        makeVariant({ id: 'ol_variant_44', isStale: true, staleAt })
+      );
+
+      const result = await controller.getVariantSummary('ol_variant_44');
+
+      expect(result.isStale).toBe(true);
+      expect(result.staleAt).toBe(staleAt.toISOString());
     });
 
     it('should leave name undefined when the variant has no string attributes', async () => {
