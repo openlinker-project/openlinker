@@ -141,6 +141,10 @@ export class SalesDocumentViewService implements ISalesDocumentViewService {
     return views;
   }
 
+  async getForOrder(orderId: string): Promise<SalesDocumentView | null> {
+    return (await this.getForOrders([orderId])).get(orderId) ?? null;
+  }
+
   /**
    * Which document kind an order with NO record is routed to.
    *

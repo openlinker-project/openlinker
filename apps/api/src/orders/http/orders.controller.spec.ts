@@ -10,6 +10,7 @@ import { OrdersController } from './orders.controller';
 import {
   ORDER_RECORD_REPOSITORY_TOKEN,
   ORDER_DESTINATION_RETRY_SERVICE_TOKEN,
+  SALES_DOCUMENT_VIEW_SERVICE_TOKEN,
   OrderRecord,
   OrderRecordNotFoundException,
   OrderDestinationNotFoundException,
@@ -19,7 +20,9 @@ import {
 import type {
   OrderRecordRepositoryPort,
   IOrderDestinationRetryService,
+  ISalesDocumentViewService,
 } from '@openlinker/core/orders';
+import type { SalesDocumentView } from '@openlinker/core/sales-documents';
 import { INVOICE_SERVICE_TOKEN } from '@openlinker/core/invoicing';
 import type { IInvoiceService } from '@openlinker/core/invoicing';
 import { InvoiceRecord } from '@openlinker/core/invoicing';
@@ -39,6 +42,7 @@ describe('OrdersController', () => {
   let invoiceService: jest.Mocked<IInvoiceService>;
   let fulfillmentRouting: jest.Mocked<IFulfillmentRoutingService>;
   let deliveryRider: jest.Mocked<IDeliveryRiderService>;
+  let salesDocumentView: jest.Mocked<ISalesDocumentViewService>;
 
   const mockOrder = new OrderRecord(
     'ol_order_001',
@@ -125,6 +129,11 @@ describe('OrdersController', () => {
         ),
     };
 
+    const mockSalesDocumentView: jest.Mocked<ISalesDocumentViewService> = {
+      getForOrders: jest.fn().mockResolvedValue(new Map()),
+      getForOrder: jest.fn().mockResolvedValue(null),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       controllers: [OrdersController],
       providers: [
@@ -148,6 +157,10 @@ describe('OrdersController', () => {
           provide: DELIVERY_RIDER_SERVICE_TOKEN,
           useValue: mockDeliveryRider,
         },
+        {
+          provide: SALES_DOCUMENT_VIEW_SERVICE_TOKEN,
+          useValue: mockSalesDocumentView,
+        },
       ],
     }).compile();
 
@@ -157,6 +170,7 @@ describe('OrdersController', () => {
     invoiceService = module.get(INVOICE_SERVICE_TOKEN);
     fulfillmentRouting = module.get(FULFILLMENT_ROUTING_SERVICE_TOKEN);
     deliveryRider = module.get(DELIVERY_RIDER_SERVICE_TOKEN);
+    salesDocumentView = module.get(SALES_DOCUMENT_VIEW_SERVICE_TOKEN);
   });
 
   describe('listOrders', () => {
@@ -807,6 +821,190 @@ describe('OrdersController', () => {
       await expect(
         controller.retryDestination(internalOrderId, connectionId)
       ).rejects.toBeInstanceOf(InternalServerErrorException);
+    });
+  });
+
+  describe('sales-document projection (#2517, ADR-065)', () => {
+    function view(overrides: Partial<SalesDocumentView> = {}): SalesDocumentView {
+      return {
+        orderId: 'ol_order_001',
+        documentKind: null,
+        document: null,
+        blockReason: null,
+        unresolvedReason: null,
+        blockDetail: null,
+        otherRecords: [],
+        ...overrides,
+      };
+    }
+
+    const identity = {
+      recordId: 'inv-1',
+      connectionId: 'conn-invoicing',
+      providerType: 'ksef',
+      documentNumber: 'FA/2026/08/0144',
+      createdAt: '2026-08-01T08:00:00.000Z',
+      completedAt: '2026-08-01T09:00:00.000Z',
+      inFlightUntil: null,
+    };
+
+    it('should return an invoice on both axes, including an authority answer', async () => {
+      salesDocumentView.getForOrder.mockResolvedValue(
+        view({
+          documentKind: 'invoice',
+          document: {
+            kind: 'invoice',
+            documentType: 'VAT',
+            status: 'issued',
+            failureMode: null,
+            failureCode: null,
+            failureReason: null,
+            regulatoryStatus: 'rejected',
+            clearanceReference: null,
+            identity,
+          },
+        })
+      );
+
+      const result = await controller.getOrderSalesDocument('ol_order_001');
+
+      expect(result.documentKind).toBe('invoice');
+      expect(result.document).toEqual({
+        kind: 'invoice',
+        documentType: 'VAT',
+        status: 'issued',
+        failureMode: null,
+        failureCode: null,
+        failureReason: null,
+        // Issued AND rejected by the authority - the state a single flattened
+        // enum could not express, and the one a resend acts on.
+        regulatoryStatus: 'rejected',
+        clearanceReference: null,
+        identity,
+      });
+    });
+
+    it('should return a fiscal receipt with no authority axis at all', async () => {
+      salesDocumentView.getForOrder.mockResolvedValue(
+        view({
+          documentKind: 'fiscal-receipt',
+          document: {
+            kind: 'fiscal-receipt',
+            status: 'registered',
+            failureMode: null,
+            failureReason: null,
+            artefactCount: 0,
+            identity: { ...identity, recordId: 'fis-1', documentNumber: 'DOC/1' },
+          },
+        })
+      );
+
+      const result = await controller.getOrderSalesDocument('ol_order_001');
+
+      expect(result.document?.kind).toBe('fiscal-receipt');
+      expect(result.document && 'regulatoryStatus' in result.document).toBe(false);
+      expect(result.document && 'clearanceReference' in result.document).toBe(false);
+    });
+
+    it('should return the persisted reasons verbatim for a held order', async () => {
+      salesDocumentView.getForOrder.mockResolvedValue(
+        view({
+          documentKind: 'invoice',
+          blockReason: 'missing-tax-rate',
+          blockDetail: '2 lines carry no tax rate',
+        })
+      );
+
+      const result = await controller.getOrderSalesDocument('ol_order_001');
+
+      expect(result.blockReason).toBe('missing-tax-rate');
+      expect(result.blockDetail).toBe('2 lines carry no tax rate');
+      expect(result.document).toBeNull();
+      // Routing DID decide; the order is held, not unconfigured.
+      expect(result.documentKind).toBe('invoice');
+    });
+
+    it('should report a null kind plus the routing reason for an unresolved order', async () => {
+      salesDocumentView.getForOrder.mockResolvedValue(
+        view({
+          blockReason: 'unresolved-routing',
+          unresolvedReason: 'ambiguous-connection-no-primary',
+          blockDetail: '2 invoicing connections, none marked primary',
+        })
+      );
+
+      const result = await controller.getOrderSalesDocument('ol_order_001');
+
+      expect(result.documentKind).toBeNull();
+      expect(result.blockReason).toBe('unresolved-routing');
+      expect(result.unresolvedReason).toBe('ambiguous-connection-no-primary');
+    });
+
+    it('should report a duplicate held on a second connection', async () => {
+      salesDocumentView.getForOrder.mockResolvedValue(
+        view({
+          documentKind: 'invoice',
+          otherRecords: [
+            {
+              recordId: 'inv-other',
+              connectionId: 'conn-other',
+              kind: 'invoice',
+              blocksFurtherIssuance: true,
+            },
+          ],
+        })
+      );
+
+      const result = await controller.getOrderSalesDocument('ol_order_001');
+
+      expect(result.otherRecords).toEqual([
+        {
+          recordId: 'inv-other',
+          connectionId: 'conn-other',
+          kind: 'invoice',
+          blocksFurtherIssuance: true,
+        },
+      ]);
+    });
+
+    it('should 404 when no order record exists', async () => {
+      salesDocumentView.getForOrder.mockResolvedValue(null);
+
+      await expect(controller.getOrderSalesDocument('ol_order_missing')).rejects.toThrow(
+        NotFoundException
+      );
+    });
+
+    it('should carry the SAME shape on a list row as the endpoint serves', async () => {
+      const projection = view({ documentKind: 'invoice', blockReason: 'trigger-model-manual' });
+      repository.findMany.mockResolvedValue({ items: [mockOrder], total: 1 });
+      salesDocumentView.getForOrders.mockResolvedValue(new Map([['ol_order_001', projection]]));
+      salesDocumentView.getForOrder.mockResolvedValue(projection);
+
+      const [list, endpoint] = await Promise.all([
+        controller.listOrders({ limit: 20, offset: 0 }),
+        controller.getOrderSalesDocument('ol_order_001'),
+      ]);
+
+      expect(list.items[0].salesDocument).toEqual(endpoint);
+    });
+
+    it('should batch the list projection into one read for the whole page', async () => {
+      repository.findMany.mockResolvedValue({ items: [mockOrder, mockOrder], total: 2 });
+
+      await controller.listOrders({ limit: 20, offset: 0 });
+
+      expect(salesDocumentView.getForOrders).toHaveBeenCalledTimes(1);
+      expect(salesDocumentView.getForOrder).not.toHaveBeenCalled();
+    });
+
+    it('should carry the projection on the detail read too', async () => {
+      repository.findById.mockResolvedValue(mockOrder);
+      salesDocumentView.getForOrder.mockResolvedValue(view({ documentKind: 'fiscal-receipt' }));
+
+      const result = await controller.getOrder('ol_order_001');
+
+      expect(result.salesDocument?.documentKind).toBe('fiscal-receipt');
     });
   });
 });

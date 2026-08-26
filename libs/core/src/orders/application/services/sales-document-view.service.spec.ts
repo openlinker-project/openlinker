@@ -19,7 +19,10 @@ import { SalesDocumentsModule } from '@openlinker/core/sales-documents';
 
 import { OrderRecord } from '../../domain/entities/order-record.entity';
 import { OrdersModule } from '../../orders.module';
-import { ORDER_RECORD_REPOSITORY_TOKEN } from '../../orders.tokens';
+import {
+  ORDER_RECORD_REPOSITORY_TOKEN,
+  SALES_DOCUMENT_VIEW_SERVICE_TOKEN,
+} from '../../orders.tokens';
 import { SalesDocumentViewService } from './sales-document-view.service';
 
 const NOW = new Date('2026-08-01T10:00:00.000Z');
@@ -319,6 +322,26 @@ describe('SalesDocumentViewService', () => {
     expect(rules.resolveRoutingBatch).toHaveBeenCalledTimes(1);
   });
 
+  describe('getForOrder', () => {
+    it('should return the same projection the batch read builds', async () => {
+      orderRecords.findByIds.mockResolvedValue([orderRecord()]);
+      invoices.listInvoicesForOrders.mockResolvedValue([invoiceRecord()]);
+
+      const [single, batched] = await Promise.all([
+        service.getForOrder('ol_order_1'),
+        service.getForOrders(['ol_order_1']),
+      ]);
+
+      expect(single).toEqual(batched.get('ol_order_1'));
+    });
+
+    it('should report null for an order with no record at all', async () => {
+      orderRecords.findByIds.mockResolvedValue([]);
+
+      await expect(service.getForOrder('ol_order_missing')).resolves.toBeNull();
+    });
+  });
+
   it('should collapse duplicate ids before reading', async () => {
     orderRecords.findByIds.mockResolvedValue([orderRecord()]);
 
@@ -342,5 +365,14 @@ describe('OrdersModule wiring for SalesDocumentViewService', () => {
     const imports = Reflect.getMetadata('imports', OrdersModule) as unknown[];
 
     expect(imports).toContain(moduleClass);
+  });
+
+  // The api's own OrdersModule composes the controller off CoreOrdersModule's
+  // exports (#2517), so an unexported token fails at boot there rather than
+  // here - the same shape as the missing-import case above, one module out.
+  it('should export the service token so the api controller can inject it', () => {
+    const exports = Reflect.getMetadata('exports', OrdersModule) as unknown[];
+
+    expect(exports).toContain(SALES_DOCUMENT_VIEW_SERVICE_TOKEN);
   });
 });
