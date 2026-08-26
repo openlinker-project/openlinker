@@ -297,6 +297,7 @@ describe('InvoicingController', () => {
       getInvoiceById: jest.fn().mockResolvedValue(null),
       // #2047: the connection-agnostic read backing GET without a connectionId.
       getLatestInvoiceForOrder: jest.fn().mockResolvedValue(null),
+      getInFlightIssuance: jest.fn().mockResolvedValue(null),
       listInvoiceConnectionIdsForOrder: jest.fn().mockResolvedValue([]),
       listInvoices: jest.fn(),
       applyRegulatoryClearance: jest.fn(),

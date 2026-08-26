@@ -44,6 +44,7 @@ import { FiscalRegistrationRecordNotFoundException } from '../../domain/exceptio
 import { MissingIdempotencyKeyException } from '../../domain/exceptions/missing-idempotency-key.exception';
 import { MissingFiscalTaxRateException } from '../../domain/exceptions/missing-tax-rate.exception';
 import { isTaxRateEnforced } from '@openlinker/core/sales-documents';
+import type { SalesDocumentInFlight } from '@openlinker/core/sales-documents';
 import { OrderAlreadyRegisteredException } from '../../domain/exceptions/order-already-registered.exception';
 import { OrderAlreadyHasInvoiceException } from '../../domain/exceptions/order-already-has-invoice.exception';
 import { FiscalRegistrationContendedException } from '../../domain/exceptions/fiscal-registration-contended.exception';
@@ -322,6 +323,28 @@ export class FiscalRegistrationService implements IFiscalRegistrationService {
 
   async getByOrderId(orderId: string): Promise<FiscalRegistrationRecord[]> {
     return this.repo.findAllByOrderId(orderId);
+  }
+
+  async getInFlightRegistration(orderId: string): Promise<SalesDocumentInFlight | null> {
+    const now = new Date();
+    // Same predicate the write path claims against, so the operator-facing
+    // reading and the one a second attempt would hit cannot drift.
+    const claimed = (await this.repo.findAllByOrderId(orderId)).find((record) =>
+      record.isLeaseLive(now),
+    );
+    if (!claimed) {
+      return null;
+    }
+    return {
+      documentKind: 'fiscal-receipt',
+      connectionId: claimed.connectionId,
+      recordId: claimed.id,
+      // The claim-holding record's last write - a LOWER BOUND on elapsed, never
+      // the attempt's start: nothing persists a claim-start instant, and a write
+      // inside a live lease (the invoicing numbering allocation) moves it
+      // forward. See `SalesDocumentInFlight.since`.
+      since: claimed.updatedAt,
+    };
   }
 
   async getById(id: string): Promise<FiscalRegistrationRecord> {
