@@ -499,17 +499,323 @@ describe('PrestashopInventoryMasterAdapter', () => {
     });
   });
 
-  describe('write operations (not supported)', () => {
-    it('should throw PrestashopNotSupportedException for adjustInventory', async () => {
-      await expect(
-        adapter.adjustInventory({
-          productId: 'product-id',
-          quantity: 10,
-          reason: 'manual_correction',
-        })
-      ).rejects.toThrow(PrestashopNotSupportedException);
+  describe('adjustInventory', () => {
+    const PRODUCT_ID = 'internal-product-123';
+    const PS_PRODUCT_ID = '42';
+
+    /** One simple-product stock row: no combinations, not ASM, single shop. */
+    function simpleStockRow(quantity: string | number = 10): PrestashopStockAvailable {
+      return {
+        id: '101',
+        id_product: PS_PRODUCT_ID,
+        id_product_attribute: '0',
+        quantity,
+        depends_on_stock: '0',
+        id_shop: '1',
+      };
+    }
+
+    function mapProductToPrestashop(): void {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
+      mockIdentifierMapping.getExternalIds = jest.fn().mockResolvedValue([
+        {
+          connectionId: connection.id,
+          externalId: PS_PRODUCT_ID,
+          entityType: 'Product',
+        },
+      ]);
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
+      mockIdentifierMapping.getOrCreateInternalId = jest.fn().mockResolvedValue('internal-inv-1');
+    }
+
+    /**
+     * The adapter issues two reads on the no-variant path: the combination
+     * probe (all rows for the product) and the targeted row read. Both hit the
+     * same `listResources` mock, so the fixture answers both with the same set.
+     */
+    function respondWithRows(rows: PrestashopStockAvailable[]): void {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
+      mockHttpClient.listResources = jest.fn().mockResolvedValue(rows);
+    }
+
+    beforeEach(() => {
+      mapProductToPrestashop();
     });
 
+    it('should raise the quantity by exactly n and PUT the full row with quantity overlaid', async () => {
+      respondWithRows([simpleStockRow(10)]);
+
+      const result = await adapter.adjustInventory({ productId: PRODUCT_ID, quantity: 3 });
+
+      expect(mockHttpClient.updateResource).toHaveBeenCalledWith(
+        'stock_availables',
+        '101',
+        expect.objectContaining({
+          id: '101',
+          id_product: PS_PRODUCT_ID,
+          id_product_attribute: '0',
+          quantity: '13',
+          // Preserved from the read-back row rather than dropped to PS defaults.
+          depends_on_stock: '0',
+          id_shop: '1',
+        })
+      );
+      expect(result.adjustmentOutcome).toEqual({
+        disposition: 'applied',
+        idempotency: 'not_requested',
+        appliedAt: null,
+      });
+    });
+
+    it('should clamp at zero when a decrement exceeds current stock', async () => {
+      respondWithRows([simpleStockRow(3)]);
+
+      await adapter.adjustInventory({ productId: PRODUCT_ID, quantity: -5 });
+
+      expect(mockHttpClient.updateResource).toHaveBeenCalledWith(
+        'stock_availables',
+        '101',
+        expect.objectContaining({ quantity: '0' })
+      );
+    });
+
+    it('should report appliedAt as null because PrestaShop reports no instant', async () => {
+      respondWithRows([simpleStockRow(10)]);
+
+      const result = await adapter.adjustInventory({ productId: PRODUCT_ID, quantity: 1 });
+
+      // stock_availables carries no timestamp column; OL must not invent one.
+      expect(result.adjustmentOutcome?.appliedAt).toBeNull();
+    });
+
+    it('should target the combination row when variantId names one', async () => {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
+      mockIdentifierMapping.getExternalIds = jest
+        .fn()
+        .mockImplementation((entityType: string) =>
+          entityType === 'ProductVariant'
+            ? Promise.resolve([
+                { connectionId: connection.id, externalId: '77', entityType: 'ProductVariant' },
+              ])
+            : Promise.resolve([
+                { connectionId: connection.id, externalId: PS_PRODUCT_ID, entityType: 'Product' },
+              ])
+        );
+      respondWithRows([
+        { ...simpleStockRow(4), id: '202', id_product_attribute: '77' },
+      ]);
+
+      await adapter.adjustInventory({
+        productId: PRODUCT_ID,
+        variantId: 'internal-variant-1',
+        quantity: 2,
+      });
+
+      expect(mockHttpClient.listResources).toHaveBeenCalledWith(
+        'stock_availables',
+        expect.objectContaining({
+          custom: { id_product: PS_PRODUCT_ID, id_product_attribute: '77' },
+        })
+      );
+      expect(mockHttpClient.updateResource).toHaveBeenCalledWith(
+        'stock_availables',
+        '202',
+        expect.objectContaining({ quantity: '6' })
+      );
+    });
+
+    it('should target the product-level row for a synthetic product: variant', async () => {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
+      mockIdentifierMapping.getExternalIds = jest
+        .fn()
+        .mockImplementation((entityType: string) =>
+          entityType === 'ProductVariant'
+            ? Promise.resolve([
+                {
+                  connectionId: connection.id,
+                  externalId: `product:${PS_PRODUCT_ID}`,
+                  entityType: 'ProductVariant',
+                },
+              ])
+            : Promise.resolve([
+                { connectionId: connection.id, externalId: PS_PRODUCT_ID, entityType: 'Product' },
+              ])
+        );
+      respondWithRows([simpleStockRow(10)]);
+
+      await adapter.adjustInventory({
+        productId: PRODUCT_ID,
+        variantId: 'internal-variant-simple',
+        quantity: 1,
+      });
+
+      expect(mockHttpClient.listResources).toHaveBeenCalledWith(
+        'stock_availables',
+        expect.objectContaining({
+          custom: { id_product: PS_PRODUCT_ID, id_product_attribute: '0' },
+        })
+      );
+    });
+
+    describe('refusals', () => {
+      it('should refuse and name shopId when several shops match the row', async () => {
+        respondWithRows([
+          { ...simpleStockRow(10), id: '101', id_shop: '1' },
+          { ...simpleStockRow(4), id: '102', id_shop: '2' },
+        ]);
+
+        await expect(
+          adapter.adjustInventory({ productId: PRODUCT_ID, quantity: 3 })
+        ).rejects.toThrow(/shopId/);
+        expect(mockHttpClient.updateResource).not.toHaveBeenCalled();
+      });
+
+      it('should refuse when advanced stock management owns the quantity', async () => {
+        respondWithRows([{ ...simpleStockRow(10), depends_on_stock: '1' }]);
+
+        await expect(
+          adapter.adjustInventory({ productId: PRODUCT_ID, quantity: 3 })
+        ).rejects.toThrow(PrestashopNotSupportedException);
+        expect(mockHttpClient.updateResource).not.toHaveBeenCalled();
+      });
+
+      it('should refuse when a combination product is adjusted without a variantId', async () => {
+        respondWithRows([
+          simpleStockRow(10),
+          { ...simpleStockRow(4), id: '202', id_product_attribute: '77' },
+        ]);
+
+        await expect(
+          adapter.adjustInventory({ productId: PRODUCT_ID, quantity: 3 })
+        ).rejects.toThrow(PrestashopNotSupportedException);
+        expect(mockHttpClient.updateResource).not.toHaveBeenCalled();
+      });
+
+      it('should refuse rather than treat an unreadable quantity as zero', async () => {
+        respondWithRows([simpleStockRow('not-a-number')]);
+
+        await expect(
+          adapter.adjustInventory({ productId: PRODUCT_ID, quantity: 3 })
+        ).rejects.toThrow(PrestashopNotSupportedException);
+        // A 0 baseline would have written the delta alone over the real stock.
+        expect(mockHttpClient.updateResource).not.toHaveBeenCalled();
+      });
+
+      it('should raise the platform exception for a variant mapping gap, not a master deletion', async () => {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
+        mockIdentifierMapping.getExternalIds = jest
+          .fn()
+          .mockImplementation((entityType: string) =>
+            entityType === 'ProductVariant'
+              ? Promise.resolve([])
+              : Promise.resolve([
+                  { connectionId: connection.id, externalId: PS_PRODUCT_ID, entityType: 'Product' },
+                ])
+          );
+
+        await expect(
+          adapter.adjustInventory({
+            productId: PRODUCT_ID,
+            variantId: 'unmapped-variant',
+            quantity: 3,
+          })
+        ).rejects.toThrow(PrestashopResourceNotFoundException);
+      });
+    });
+
+    describe('idempotency', () => {
+      let cache: { get: jest.Mock; set: jest.Mock; delete: jest.Mock };
+
+      function adapterWithCache(): PrestashopInventoryMasterAdapter {
+        return new PrestashopInventoryMasterAdapter(
+          mockHttpClient,
+          mockIdentifierMapping,
+          inventoryMapper,
+          connection,
+          cache
+        );
+      }
+
+      beforeEach(() => {
+        cache = { get: jest.fn().mockResolvedValue(null), set: jest.fn(), delete: jest.fn() };
+        respondWithRows([simpleStockRow(10)]);
+      });
+
+      it('should report not_requested when no key is supplied', async () => {
+        const result = await adapterWithCache().adjustInventory({
+          productId: PRODUCT_ID,
+          quantity: 1,
+        });
+
+        expect(result.adjustmentOutcome?.idempotency).toBe('not_requested');
+        expect(cache.get).not.toHaveBeenCalled();
+      });
+
+      it('should apply and report unsupported when a key is supplied but no cache is wired', async () => {
+        // `adapter` is the no-cache instance from the outer beforeEach.
+        const result = await adapter.adjustInventory({
+          productId: PRODUCT_ID,
+          quantity: 1,
+          idempotencyKey: 'return:r1:l1:1',
+        });
+
+        expect(result.adjustmentOutcome?.idempotency).toBe('unsupported');
+        expect(result.adjustmentOutcome?.disposition).toBe('applied');
+        expect(mockHttpClient.updateResource).toHaveBeenCalled();
+      });
+
+      it('should record the applied key only after the write succeeds', async () => {
+        await adapterWithCache().adjustInventory({
+          productId: PRODUCT_ID,
+          quantity: 1,
+          idempotencyKey: 'return:r1:l1:1',
+        });
+
+        expect(cache.set).toHaveBeenCalledWith(
+          `ps:inventory-adjust:${connection.id}:return:r1:l1:1`,
+          true,
+          7 * 24 * 60 * 60
+        );
+      });
+
+      it('should NOT record the applied key when the write fails', async () => {
+        mockHttpClient.updateResource = jest.fn().mockRejectedValue(new Error('PS 500'));
+
+        await expect(
+          adapterWithCache().adjustInventory({
+            productId: PRODUCT_ID,
+            quantity: 1,
+            idempotencyKey: 'return:r1:l1:1',
+          })
+        ).rejects.toThrow('PS 500');
+
+        // Recording first would suppress the retry of an adjustment that never landed.
+        expect(cache.set).not.toHaveBeenCalled();
+      });
+
+      it('should not double-apply a repeated key, and return current stock rather than a replay', async () => {
+        cache.get = jest.fn().mockResolvedValue(true);
+        respondWithRows([simpleStockRow(13)]);
+
+        const result = await adapterWithCache().adjustInventory({
+          productId: PRODUCT_ID,
+          quantity: 3,
+          idempotencyKey: 'return:r1:l1:1',
+        });
+
+        expect(mockHttpClient.updateResource).not.toHaveBeenCalled();
+        expect(result.adjustmentOutcome).toEqual({
+          disposition: 'deduplicated',
+          idempotency: 'honoured',
+          appliedAt: null,
+        });
+        // The master's CURRENT figure, not 13 + 3.
+        expect(result.quantity).toBe(13);
+      });
+    });
+  });
+
+  describe('write operations (not supported)', () => {
     it('should throw PrestashopNotSupportedException for reserveInventory', async () => {
       await expect(adapter.reserveInventory('product-id', 5, 'order-id')).rejects.toThrow(
         PrestashopNotSupportedException

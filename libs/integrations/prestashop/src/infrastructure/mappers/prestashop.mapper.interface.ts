@@ -80,6 +80,32 @@ export interface PrestashopStockAvailable {
   id_product_attribute: string | number; // 0 for product stock, >0 for variant stock
   quantity: string | number;
   out_of_stock?: string | number;
+
+  /**
+   * `1` when Advanced Stock Management owns this row's quantity (#2369).
+   *
+   * Declared rather than left to the index signature below because
+   * `adjustInventory` must *narrow* it to decide whether a stock write would be
+   * accepted and then silently recomputed from warehouse stock. Reading it as
+   * `unknown` would force a cast at the one place the value decides whether OL
+   * refuses a restock.
+   *
+   * Optional because a PrestaShop version that omits it must degrade to
+   * "not ASM" rather than refusing every ordinary install.
+   */
+  depends_on_stock?: string | number;
+
+  /**
+   * The shop this row's quantity belongs to (#2369).
+   *
+   * Declared for the same reason as `depends_on_stock`: one
+   * `(id_product, id_product_attribute)` pair has one row PER SHOP, so the
+   * adjust path counts rows to detect an unscoped multi-shop connection whose
+   * write target is ambiguous. `PrestashopQueryBuilder` narrows the read to one
+   * shop when `config.shopId` is set, which is the operator's remediation.
+   */
+  id_shop?: string | number;
+
   [key: string]: unknown;
 }
 
