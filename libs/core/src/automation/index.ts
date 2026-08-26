@@ -15,9 +15,13 @@
  * and — following the `returns` precedent — stays off the aggregating root
  * barrel, reachable at `@openlinker/core/automation`.
  *
- * **This slice lands STORAGE only.** Named siblings own the rest, and each is
- * named where its seam is: #2359 the pure evaluator and the §5.4 legality
- * matrix, #2360 trigger emission (and the `automation_trigger_firings` writer),
+ * **#2359 has since added** the pure `evaluateAutomationRules` domain service,
+ * the declared §5.4 legality matrix (one table, three consumers: the write path
+ * here, the composer's option list and the evaluator's own guard) and the
+ * `AutomationSubjectFacts` projection it matches against.
+ *
+ * **#2358 landed STORAGE only.** Named siblings own the rest, and each is
+ * named where its seam is: #2360 trigger emission (and the `automation_trigger_firings` writer),
  * #2361 the six action executors, #2362 the at-most-one gate for irreversible
  * actions, #2363 the CRUD/evaluate/fired-log API, #2385 the `automation_runs`
  * write path and the per-step outcome shape.
@@ -31,6 +35,10 @@ export * from './domain/types/automation-condition.types';
 export * from './domain/types/automation-action.types';
 export * from './domain/types/automation-definition-hash.types';
 export * from './domain/types/automation-run.types';
+export * from './domain/types/automation-legality.types';
+export * from './domain/types/automation-facts.types';
+
+export * from './domain/domain-services/evaluate-automation-rules';
 
 export * from './domain/entities/automation-rule.entity';
 export * from './domain/entities/automation-run.entity';
@@ -44,6 +52,7 @@ export * from './domain/exceptions/automation-invalid-condition.error';
 export * from './domain/exceptions/automation-invalid-action.error';
 export * from './domain/exceptions/automation-invalid-trigger-config.error';
 export * from './domain/exceptions/automation-step-count.error';
+export * from './domain/exceptions/automation-illegal-pair.error';
 
 export * from './application/types/automation-rule-write.types';
 export type { IAutomationRulesService } from './application/interfaces/automation-rules.service.interface';

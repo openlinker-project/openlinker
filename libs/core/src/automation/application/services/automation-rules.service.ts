@@ -5,8 +5,13 @@
  * `definitionHash`, and the save-time duplicate guard. Injects ONLY this
  * concern's own repository port — no `IIntegrationsService`, no connection
  * lookup, no capability check — mirroring `SalesDocumentRulesService`'s posture
- * (#2170). The legality matrix of spec §5.4, which rejects a trigger→action
- * pair that could never fire, is **#2359's** and is applied above this layer.
+ * (#2170).
+ *
+ * The legality matrix of spec §5.4, which rejects a trigger→action pair that
+ * could never fire, is declared by **#2359** and enforced HERE rather than only
+ * in the #2363 controller — this is the write choke point every caller reaches,
+ * so an illegal pair cannot be persisted by curl either. #2363's own validation
+ * is defence in depth and a nicer error, never the only line.
  *
  * ## The duplicate guard is two layers, and neither is the money guard
  *
@@ -66,6 +71,8 @@ import {
   isAutomationTriggerConfig,
 } from '../../domain/types/automation-trigger-config.types';
 import { computeAutomationDefinitionHash } from '../../domain/types/automation-definition-hash.types';
+import { isLegalAutomationPair } from '../../domain/types/automation-legality.types';
+import { AutomationIllegalPairError } from '../../domain/exceptions/automation-illegal-pair.error';
 import { AutomationInvalidActionError } from '../../domain/exceptions/automation-invalid-action.error';
 import { AutomationInvalidConditionError } from '../../domain/exceptions/automation-invalid-condition.error';
 import { AutomationInvalidTriggerConfigError } from '../../domain/exceptions/automation-invalid-trigger-config.error';
@@ -131,6 +138,7 @@ export class AutomationRulesService implements IAutomationRulesService {
     const triggerConfig = this.assertTriggerConfigWellFormed(input);
     const conditions = this.assertConditionsWellFormed(input.conditions);
     const actions = this.assertActionsWellFormed(input.actions);
+    this.assertPairsLegal(input.trigger, actions);
 
     const definitionHash = computeAutomationDefinitionHash({
       trigger: input.trigger,
@@ -195,6 +203,22 @@ export class AutomationRulesService implements IAutomationRulesService {
       narrowed.push(action);
     });
     return narrowed;
+  }
+
+  /**
+   * Refuse a trigger→action pair the §5.4 matrix forbids (#2359).
+   *
+   * Runs AFTER the shape narrowers, so `step.action` is already a member of the
+   * closed vocabulary and a refusal here can only mean the pair itself. Checked
+   * per step, and one illegal step refuses the whole rule: a rule that would run
+   * its legal steps and skip an impossible one has behaviour nobody declared.
+   */
+  private assertPairsLegal(trigger: AutomationTrigger, actions: readonly AutomationAction[]): void {
+    actions.forEach((step, index) => {
+      if (!isLegalAutomationPair(trigger, step.action)) {
+        throw new AutomationIllegalPairError(trigger, step.action, index);
+      }
+    });
   }
 
   private async assertNoConflict(
