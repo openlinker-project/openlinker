@@ -456,6 +456,394 @@ describe('OrderRecordRepository', () => {
     });
   });
 
+  describe('findCurrencyMismatchOrders (#2464)', () => {
+    const baseFilters = {
+      from: new Date('2026-08-01T00:00:00.000Z'),
+      to: new Date('2026-08-08T00:00:00.000Z'),
+    };
+
+    const createMismatchEntity = (overrides: Partial<OrderRecordOrmEntity>): OrderRecordOrmEntity => {
+      const entity = createOrmEntity();
+      Object.assign(entity, overrides);
+      return entity;
+    };
+
+    it('applies the combined never-stamped-or-stale predicate, non-cancelled, with pagination', async () => {
+      const andWhere = jest.fn().mockReturnThis();
+      const orderBy = jest.fn().mockReturnThis();
+      const take = jest.fn().mockReturnThis();
+      const skip = jest.fn().mockReturnThis();
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        andWhere,
+        orderBy,
+        take,
+        skip,
+        getManyAndCount: jest.fn().mockResolvedValue([[], 0]),
+      });
+
+      await repository.findCurrencyMismatchOrders(baseFilters, 'EUR', { limit: 20, offset: 40 });
+
+      expect(andWhere).toHaveBeenCalledWith('rec."cancelledAt" IS NULL');
+      expect(andWhere).toHaveBeenCalledWith(
+        '(rec."reportingCurrency" IS NULL OR rec."reportingCurrency" != :currentReportingCurrency)',
+        { currentReportingCurrency: 'EUR' }
+      );
+      expect(orderBy).toHaveBeenCalledWith('rec."placedAt"', 'DESC');
+      expect(take).toHaveBeenCalledWith(20);
+      expect(skip).toHaveBeenCalledWith(40);
+    });
+
+    it('scopes to the sourceConnectionId filter when provided (via the shared analytics scope)', async () => {
+      const andWhere = jest.fn().mockReturnThis();
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        andWhere,
+        orderBy: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        skip: jest.fn().mockReturnThis(),
+        getManyAndCount: jest.fn().mockResolvedValue([[], 0]),
+      });
+
+      await repository.findCurrencyMismatchOrders(
+        { ...baseFilters, sourceConnectionId: 'conn-a' },
+        'EUR',
+        { limit: 20, offset: 0 }
+      );
+
+      expect(andWhere).toHaveBeenCalledWith('rec.sourceConnectionId = :salesConnectionId', {
+        salesConnectionId: 'conn-a',
+      });
+    });
+
+    it('maps a never-stamped row (reportingCurrency null) to the row shape', async () => {
+      const entity = createMismatchEntity({
+        internalOrderId: 'order-never-stamped',
+        sourceConnectionId: 'conn-a',
+        currency: 'PLN',
+        reportingCurrency: null,
+        fxStampedAt: null,
+      });
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        skip: jest.fn().mockReturnThis(),
+        getManyAndCount: jest.fn().mockResolvedValue([[entity], 1]),
+      });
+
+      const result = await repository.findCurrencyMismatchOrders(baseFilters, 'EUR', {
+        limit: 20,
+        offset: 0,
+      });
+
+      expect(result.total).toBe(1);
+      expect(result.items).toEqual([
+        {
+          internalOrderId: 'order-never-stamped',
+          sourceConnectionId: 'conn-a',
+          nativeCurrency: 'PLN',
+          stampedCurrency: null,
+          stampedAt: null,
+        },
+      ]);
+    });
+
+    it('maps a stale-stamp row (reportingCurrency set to a prior era) to the row shape', async () => {
+      const stampedAt = new Date('2026-06-01T10:00:00.000Z');
+      const entity = createMismatchEntity({
+        internalOrderId: 'order-stale-stamp',
+        sourceConnectionId: 'conn-a',
+        currency: 'PLN',
+        reportingCurrency: 'EUR',
+        fxStampedAt: stampedAt,
+      });
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        skip: jest.fn().mockReturnThis(),
+        getManyAndCount: jest.fn().mockResolvedValue([[entity], 1]),
+      });
+
+      // The demo-DB shape from the issue: a same-currency stale stamp
+      // (reportingCurrency='EUR', currency='PLN') — the current setting has
+      // since moved on to a different value, e.g. 'PLN'.
+      const result = await repository.findCurrencyMismatchOrders(baseFilters, 'PLN', {
+        limit: 20,
+        offset: 0,
+      });
+
+      expect(result.total).toBe(1);
+      expect(result.items).toEqual([
+        {
+          internalOrderId: 'order-stale-stamp',
+          sourceConnectionId: 'conn-a',
+          nativeCurrency: 'PLN',
+          stampedCurrency: 'EUR',
+          stampedAt,
+        },
+      ]);
+    });
+
+    it('returns an empty page when nothing matches (backs the all-clear mockup state)', async () => {
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        skip: jest.fn().mockReturnThis(),
+        getManyAndCount: jest.fn().mockResolvedValue([[], 0]),
+      });
+
+      const result = await repository.findCurrencyMismatchOrders(baseFilters, 'EUR', {
+        limit: 20,
+        offset: 0,
+      });
+
+      expect(result).toEqual({ items: [], total: 0 });
+    });
+  });
+
+  describe('findNetExcludedOrderCandidates (#2465)', () => {
+    const baseFilters = {
+      from: new Date('2026-08-01T00:00:00.000Z'),
+      to: new Date('2026-08-08T00:00:00.000Z'),
+    };
+
+    const createCandidateEntity = (
+      overrides: Partial<OrderRecordOrmEntity>
+    ): OrderRecordOrmEntity => {
+      const entity = createOrmEntity();
+      Object.assign(entity, overrides);
+      return entity;
+    };
+
+    it('applies the non-cancelled, current-era-stamped, NOT-net-eligible predicate', async () => {
+      const andWhere = jest.fn().mockReturnThis();
+      const orderBy = jest.fn().mockReturnThis();
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        andWhere,
+        orderBy,
+        getMany: jest.fn().mockResolvedValue([]),
+      });
+
+      await repository.findNetExcludedOrderCandidates(baseFilters, 'EUR');
+
+      expect(andWhere).toHaveBeenCalledWith(
+        expect.stringContaining('rec."cancelledAt" IS NULL AND rec."reportingCurrency" = :currentReportingCurrency AND NOT'),
+        { currentReportingCurrency: 'EUR' }
+      );
+      expect(orderBy).toHaveBeenCalledWith('rec."placedAt"', 'DESC');
+    });
+
+    it('is unpaged — no take/skip call on the query builder', async () => {
+      const qb: Record<string, jest.Mock> = {
+        andWhere: jest.fn(),
+        orderBy: jest.fn(),
+        getMany: jest.fn().mockResolvedValue([]),
+      };
+      qb.andWhere.mockReturnValue(qb);
+      qb.orderBy.mockReturnValue(qb);
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue(qb);
+
+      await repository.findNetExcludedOrderCandidates(baseFilters, 'EUR');
+
+      expect(qb.take).toBeUndefined();
+      expect(qb.skip).toBeUndefined();
+    });
+
+    it('maps a pre-rollout candidate to the row shape, including taxRateEra', async () => {
+      const entity = createCandidateEntity({
+        internalOrderId: 'order-pre-rollout',
+        sourceConnectionId: 'conn-a',
+        placedAt: new Date('2026-08-02T00:00:00.000Z'),
+        taxRateEra: 'pre-rollout',
+      });
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        getMany: jest.fn().mockResolvedValue([entity]),
+      });
+
+      const result = await repository.findNetExcludedOrderCandidates(baseFilters, 'EUR');
+
+      expect(result).toEqual([
+        {
+          internalOrderId: 'order-pre-rollout',
+          sourceConnectionId: 'conn-a',
+          placedAt: entity.placedAt,
+          taxRateEra: 'pre-rollout',
+        },
+      ]);
+    });
+
+    it('maps a non-pre-rollout candidate with taxRateEra: null', async () => {
+      const entity = createCandidateEntity({
+        internalOrderId: 'order-post-rollout',
+        sourceConnectionId: 'conn-a',
+        placedAt: new Date('2026-08-03T00:00:00.000Z'),
+        taxRateEra: null,
+      });
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        getMany: jest.fn().mockResolvedValue([entity]),
+      });
+
+      const result = await repository.findNetExcludedOrderCandidates(baseFilters, 'EUR');
+
+      expect(result).toEqual([
+        {
+          internalOrderId: 'order-post-rollout',
+          sourceConnectionId: 'conn-a',
+          placedAt: entity.placedAt,
+          taxRateEra: null,
+        },
+      ]);
+    });
+
+    it('scopes to the sourceConnectionId filter when provided (via the shared analytics scope)', async () => {
+      const andWhere = jest.fn().mockReturnThis();
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        andWhere,
+        orderBy: jest.fn().mockReturnThis(),
+        getMany: jest.fn().mockResolvedValue([]),
+      });
+
+      await repository.findNetExcludedOrderCandidates(
+        { ...baseFilters, sourceConnectionId: 'conn-a' },
+        'EUR'
+      );
+
+      expect(andWhere).toHaveBeenCalledWith('rec.sourceConnectionId = :salesConnectionId', {
+        salesConnectionId: 'conn-a',
+      });
+    });
+  });
+
+  describe('findProductMatchingErrorOrders (#2466)', () => {
+    const createMappingEntity = (
+      overrides: Partial<OrderRecordOrmEntity>
+    ): OrderRecordOrmEntity => {
+      const entity = createOrmEntity();
+      Object.assign(entity, overrides);
+      return entity;
+    };
+
+    it('applies the source_deleted OR awaiting_mapping predicate, newest-first, with pagination', async () => {
+      const andWhere = jest.fn().mockReturnThis();
+      const orderBy = jest.fn().mockReturnThis();
+      const take = jest.fn().mockReturnThis();
+      const skip = jest.fn().mockReturnThis();
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        andWhere,
+        orderBy,
+        take,
+        skip,
+        getManyAndCount: jest.fn().mockResolvedValue([[], 0]),
+      });
+
+      await repository.findProductMatchingErrorOrders({}, { limit: 20, offset: 40 });
+
+      expect(andWhere).toHaveBeenCalledWith(
+        `(rec."recordStatus" = 'source_deleted' OR rec."recordStatus" = 'awaiting_mapping')`
+      );
+      expect(orderBy).toHaveBeenCalledWith('rec."createdAt"', 'DESC');
+      expect(take).toHaveBeenCalledWith(20);
+      expect(skip).toHaveBeenCalledWith(40);
+    });
+
+    it('scopes to sourceConnectionId/customerId/createdFrom/createdTo when provided', async () => {
+      const andWhere = jest.fn().mockReturnThis();
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        andWhere,
+        orderBy: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        skip: jest.fn().mockReturnThis(),
+        getManyAndCount: jest.fn().mockResolvedValue([[], 0]),
+      });
+      const createdFrom = new Date('2026-08-01T00:00:00.000Z');
+      const createdTo = new Date('2026-08-08T00:00:00.000Z');
+
+      await repository.findProductMatchingErrorOrders(
+        { sourceConnectionId: 'conn-a', customerId: 'cust-a', createdFrom, createdTo },
+        { limit: 20, offset: 0 }
+      );
+
+      expect(andWhere).toHaveBeenCalledWith('rec.sourceConnectionId = :sourceConnectionId', {
+        sourceConnectionId: 'conn-a',
+      });
+      expect(andWhere).toHaveBeenCalledWith('rec.customerId = :customerId', {
+        customerId: 'cust-a',
+      });
+      expect(andWhere).toHaveBeenCalledWith('rec.createdAt >= :createdFrom', { createdFrom });
+      expect(andWhere).toHaveBeenCalledWith('rec.createdAt <= :createdTo', { createdTo });
+    });
+
+    it('maps an awaiting_mapping row to the row shape', async () => {
+      const entity = createMappingEntity({
+        internalOrderId: 'order-awaiting-mapping',
+        sourceConnectionId: 'conn-a',
+        recordStatus: 'awaiting_mapping',
+        mappingFailureReason: 'no variant mapping for SKU-123',
+        createdAt: new Date('2026-08-02T10:00:00.000Z'),
+      });
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        skip: jest.fn().mockReturnThis(),
+        getManyAndCount: jest.fn().mockResolvedValue([[entity], 1]),
+      });
+
+      const result = await repository.findProductMatchingErrorOrders({}, { limit: 20, offset: 0 });
+
+      expect(result.total).toBe(1);
+      expect(result.items).toEqual([
+        {
+          internalOrderId: 'order-awaiting-mapping',
+          sourceConnectionId: 'conn-a',
+          recordStatus: 'awaiting_mapping',
+          mappingFailureReason: 'no variant mapping for SKU-123',
+          createdAt: entity.createdAt,
+        },
+      ]);
+    });
+
+    it('maps a source_deleted row to the row shape', async () => {
+      const entity = createMappingEntity({
+        internalOrderId: 'order-source-deleted',
+        sourceConnectionId: 'conn-a',
+        recordStatus: 'source_deleted',
+        mappingFailureReason: 'variant deleted at master',
+        createdAt: new Date('2026-08-03T10:00:00.000Z'),
+      });
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        skip: jest.fn().mockReturnThis(),
+        getManyAndCount: jest.fn().mockResolvedValue([[entity], 1]),
+      });
+
+      const result = await repository.findProductMatchingErrorOrders({}, { limit: 20, offset: 0 });
+
+      expect(result.items[0].recordStatus).toBe('source_deleted');
+    });
+
+    it('returns an empty page when nothing matches (backs the all-clear mockup state)', async () => {
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        skip: jest.fn().mockReturnThis(),
+        getManyAndCount: jest.fn().mockResolvedValue([[], 0]),
+      });
+
+      const result = await repository.findProductMatchingErrorOrders({}, { limit: 20, offset: 0 });
+
+      expect(result).toEqual({ items: [], total: 0 });
+    });
+  });
+
   describe('getMedianOrderValue (#1987)', () => {
     const baseFilters = {
       from: new Date('2026-08-01T00:00:00.000Z'),

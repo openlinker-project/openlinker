@@ -25,6 +25,12 @@ import type { SalesDocumentBlock } from '@openlinker/core/sales-documents';
 import type { OrderFxIntent, OrderFxStamp } from '../types/order-fx.types';
 import type { StampedReportingCurrencyCount } from '../types/order-fx-read.types';
 import type { DailyOrderAggregateRow, SalesAnalyticsFilters } from '../types/order-sales-analytics.types';
+import type {
+  CoverageDetectionPagination,
+  PaginatedCurrencyMismatchOrders,
+  NetExcludedOrderCandidate,
+  PaginatedProductMatchingErrorOrders,
+} from '../types/coverage-detection.types';
 
 export interface OrderRecordRepositoryPort {
   /**
@@ -191,6 +197,70 @@ export interface OrderRecordRepositoryPort {
     filters: SalesAnalyticsFilters,
     currentReportingCurrency: string
   ): Promise<DailyOrderAggregateRow[]>;
+
+  /**
+   * Data Coverage 'currency' category drill-down (#2464) — the paginated
+   * list of orders backing {@link getDailyOrderAggregates}' combined
+   * `unconvertedCount`/`unconvertedValue` figure. Same scope as
+   * {@link getDailyOrderAggregates} (`recordStatus = 'ready'`, resolvable
+   * `placedAt`/`totalAmount`, `[filters.from, filters.to)`, optional
+   * connection narrowing, non-cancelled) and the IDENTICAL currency-mismatch
+   * predicate: `reportingCurrency IS NULL OR reportingCurrency !=
+   * currentReportingCurrency`. That predicate already covers both
+   * populations the mockup's `detail-currency` state needs to show under one
+   * combined count - a never-stamped row (`stampedCurrency: null`) and a
+   * stamped-but-stale row (a prior reporting-currency era, ADR-040 - Decision
+   * 7's restatement case) - so `total` here is exactly
+   * `unconvertedCount` summed over the same filters, which the #2464 tests
+   * assert as a regression guard.
+   */
+  findCurrencyMismatchOrders(
+    filters: SalesAnalyticsFilters,
+    currentReportingCurrency: string,
+    pagination: CoverageDetectionPagination
+  ): Promise<PaginatedCurrencyMismatchOrders>;
+
+  /**
+   * Data Coverage tax A/B/C detector's base population (#2465) — every
+   * order EXCLUDED from `getDailyOrderAggregates`' `net_excluded_count`
+   * figure, i.e. the IDENTICAL predicate mirrored from
+   * `netExcludedAndNotCancelled` there: `recordStatus = 'ready'`, resolvable
+   * `placedAt`/`totalAmount`, `[filters.from, filters.to)`, optional
+   * connection narrowing, non-cancelled, current-era stamped
+   * (`reportingCurrency = currentReportingCurrency`), and `NOT
+   * netSalesOrderNetEligibleSql(...)`. Kept as the SAME predicate on purpose
+   * so `candidates.length` is exactly `netExcludedCount` summed over the
+   * same filters — the #2465 regression guard.
+   *
+   * Unpaged by design: unlike {@link findCurrencyMismatchOrders}, this read
+   * feeds `TaxCoverageDetectionService`'s classification pass, which needs
+   * the FULL candidate set (to compute correct per-category totals) before
+   * any page can be sliced — pushing pagination down to SQL here would
+   * paginate the wrong population (page-of-candidates, not
+   * page-of-one-category). Bounded in practice by the same
+   * `[filters.from, filters.to)` window every sales-analytics read already
+   * requires (10-100 orders/day persona scale, per #1985's ADR-039 note).
+   */
+  findNetExcludedOrderCandidates(
+    filters: SalesAnalyticsFilters,
+    currentReportingCurrency: string
+  ): Promise<NetExcludedOrderCandidate[]>;
+
+  /**
+   * Data Coverage `'product-matching'` category drill-down (#2466) — orders
+   * stuck `recordStatus IN ('awaiting_mapping', 'source_deleted')`, the SAME
+   * predicate `countByHealth`'s `awaiting_mapping` + `source_deleted`
+   * buckets already partition (so `total` here always matches their sum for
+   * the same filters). Deliberately keyed on {@link OrderHealthSummaryFilters}
+   * (`createdAt`-scoped), NOT {@link SalesAnalyticsFilters} (`placedAt`-scoped)
+   * — #1985 populates `placedAt`/`totalAmount` only for `recordStatus =
+   * 'ready'` records, so a product-matching row's `placedAt` is always
+   * `null` and would be silently excluded by a `placedAt` range filter.
+   */
+  findProductMatchingErrorOrders(
+    filters: OrderHealthSummaryFilters,
+    pagination: CoverageDetectionPagination
+  ): Promise<PaginatedProductMatchingErrorOrders>;
 
   /**
    * Headline median order value for the sales & channel analytics read

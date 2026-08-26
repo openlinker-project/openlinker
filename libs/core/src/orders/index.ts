@@ -145,6 +145,29 @@ export {
   DailyTrendPoint,
 } from './domain/types/order-sales-analytics.types';
 
+// Data Coverage detection (epic #2452, mini-epic #2463) — shared vocabulary
+// consumed by the currency-mismatch detector (#2464) and its sibling
+// detectors (#2465/#2466).
+export {
+  CoverageCategoryValues,
+  CoverageResolutionStatusValues,
+  TaxCoverageCategoryValues,
+} from './domain/types/coverage-detection.types';
+export type {
+  CoverageCategory,
+  CoverageResolutionStatus,
+  CoverageDetectionPagination,
+  CurrencyMismatchOrderRow,
+  PaginatedCurrencyMismatchOrders,
+  TaxCoverageCategory,
+  TaxCoverageOrderRow,
+  PaginatedTaxCoverageOrders,
+  NetExcludedOrderCandidate,
+  TaxCoverageClassification,
+  ProductMatchingErrorOrderRow,
+  PaginatedProductMatchingErrorOrders,
+} from './domain/types/coverage-detection.types';
+
 // Top products analytics (#1988) — response shapes for
 // IOrderRecordService.getTopProducts.
 export { TopProductSortByValues } from './domain/types/top-products.types';
@@ -214,6 +237,7 @@ export type {
   TaxRateBackfillPageInput,
   TaxRateBackfillPageResult,
 } from './application/services/tax-rate-backfill.service.interface';
+export type { ITaxCoverageDetectionService } from './application/services/tax-coverage-detection.service.interface';
 export type { IDisplayCurrencyConversionService } from './application/interfaces/display-currency-conversion.service.interface';
 export * from './orders.tokens';
 

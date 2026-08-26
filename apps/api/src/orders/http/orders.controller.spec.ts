@@ -86,6 +86,9 @@ describe('OrdersController', () => {
       getMedianOrderValue: jest.fn(),
       patchSnapshotTaxRates: jest.fn(),
       getNetMedianOrderValue: jest.fn(),
+      findCurrencyMismatchOrders: jest.fn(),
+      findNetExcludedOrderCandidates: jest.fn(),
+      findProductMatchingErrorOrders: jest.fn(),
     };
 
     const mockRetryService: jest.Mocked<IOrderDestinationRetryService> = {
