@@ -17,6 +17,12 @@ export * from './inventory.tokens';
 export { InventoryMasterPort, Inventory } from './domain/ports/inventory-master.port';
 export { InventoryRepositoryPort } from './domain/ports/inventory-repository.port';
 export { LocationRepositoryPort } from './domain/ports/location-repository.port';
+// `ReservationRepositoryPort` (#2343) is deliberately NOT exported here. A
+// `*RepositoryPort` is an intra-context contract — `check-cross-context-imports`
+// denies the shape, and rightly: its consumers (#2344's ReservationService,
+// #2345's ATP subtraction, #2349's reconciler) all live inside `inventory` and
+// import it relatively. Anything outside this context reaches the ledger through
+// an `I*Service`, never through the repository.
 export {
   ReservationLedgerReaderPort,
   SumReservedInput,
@@ -27,6 +33,7 @@ export {
 // Domain Entities
 export { InventoryItem as InventoryItemEntity } from './domain/entities/inventory-item.entity';
 export { InventoryLocation } from './domain/entities/inventory-location.entity';
+export { Reservation } from './domain/entities/reservation.entity';
 
 // Domain exceptions
 export { InventoryReturningUnsupportedError } from './domain/exceptions/inventory-returning-unsupported.error';
@@ -37,6 +44,10 @@ export { LocationNotFoundException } from './domain/exceptions/location-not-foun
 export { LocationInUseError } from './domain/exceptions/location-in-use.error';
 export { LocationOwnerConnectionNotFoundError } from './domain/exceptions/location-owner-connection-not-found.error';
 export { UnsupportedAvailabilityScopeError } from './domain/exceptions/unsupported-availability-scope.error';
+export { InsufficientAvailabilityError } from './domain/exceptions/insufficient-availability.error';
+export { ReservationPositionUnavailableError } from './domain/exceptions/reservation-position-unavailable.error';
+export { ReservationNotHeldError } from './domain/exceptions/reservation-not-held.error';
+export { ReservationLedgerConstraintError } from './domain/exceptions/reservation-ledger-constraint.error';
 
 // Application Services
 export { IInventoryService } from './application/services/inventory.service.interface';
@@ -99,6 +110,18 @@ export {
   toPromisableQuantity,
   unknownPromisableQuantity,
 } from './domain/types/availability.types';
+export {
+  ReservationStatusValues,
+  ReservationStatus,
+  ReservationTerminalStatusValues,
+  ReservationTerminalStatus,
+  ReservationKey,
+  ReservationClaimInput,
+  ReservationClaimOutcome,
+  ReleaseReservationInput,
+  ReservationPositionUnavailableReasonValues,
+  ReservationPositionUnavailableReason,
+} from './domain/types/reservation.types';
 export {
   InventoryLocationKindValues,
   InventoryLocationKind,

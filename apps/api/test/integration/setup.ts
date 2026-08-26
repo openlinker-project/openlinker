@@ -75,6 +75,12 @@ const harness = createIntegrationTestHarness({
     // the rest but listing in dependency order keeps intent clear).
     'identifier_mappings',
     'sync_jobs',
+    // reservations (#2343) — OL's advisory reservation ledger. Listed BEFORE
+    // `inventory_items` in keeping with the child-first note above: it is the
+    // only table here holding a real ORM FK to it (ON DELETE RESTRICT, so a
+    // position carrying live reservations cannot vanish). Listing it also keeps
+    // each case's `olReservedQuantity` starting point honest.
+    'reservations',
     'inventory_items',
     // inventory_locations (#2313) — operator-authored locations. Like
     // category_mappings and fulfillment_routing_rules, its FK lives in the

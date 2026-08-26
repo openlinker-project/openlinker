@@ -11,8 +11,10 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { InventoryItemOrmEntity } from './infrastructure/persistence/entities/inventory-item.orm-entity';
 import { InventoryLocationOrmEntity } from './infrastructure/persistence/entities/inventory-location.orm-entity';
+import { ReservationOrmEntity } from './infrastructure/persistence/entities/reservation.orm-entity';
 import { InventoryRepository } from './infrastructure/persistence/repositories/inventory.repository';
 import { LocationRepository } from './infrastructure/persistence/repositories/location.repository';
+import { ReservationRepository } from './infrastructure/persistence/repositories/reservation.repository';
 import { InventoryService } from './application/services/inventory.service';
 import { InventorySyncService } from './application/services/inventory-sync.service';
 import { MasterInventorySyncService } from './application/services/master-inventory-sync.service';
@@ -24,6 +26,7 @@ import { InventoryProvenanceBackfillService } from './application/services/inven
 import {
   AVAILABILITY_SERVICE_TOKEN,
   RESERVATION_LEDGER_READER_TOKEN,
+  RESERVATION_REPOSITORY_TOKEN,
   INVENTORY_REPOSITORY_TOKEN,
   INVENTORY_SERVICE_TOKEN,
   INVENTORY_SYNC_SERVICE_TOKEN,
@@ -43,6 +46,7 @@ import { EventsModule } from '@openlinker/core/events';
 export {
   AVAILABILITY_SERVICE_TOKEN,
   RESERVATION_LEDGER_READER_TOKEN,
+  RESERVATION_REPOSITORY_TOKEN,
   INVENTORY_REPOSITORY_TOKEN,
   INVENTORY_SERVICE_TOKEN,
   INVENTORY_SYNC_SERVICE_TOKEN,
@@ -55,7 +59,11 @@ export {
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([InventoryItemOrmEntity, InventoryLocationOrmEntity]),
+    TypeOrmModule.forFeature([
+      InventoryItemOrmEntity,
+      InventoryLocationOrmEntity,
+      ReservationOrmEntity,
+    ]),
     ProductsModule, // Required for FK relationship to ProductOrmEntity
     IntegrationsModule, // Required for INTEGRATIONS_SERVICE_TOKEN (marketplace adapter resolution)
     IdentifierMappingModule, // Required for IDENTIFIER_MAPPING_SERVICE_TOKEN and CONNECTION_PORT_TOKEN (per-connection stock safety buffer, #1844/#2321)
@@ -71,6 +79,12 @@ export {
     InventoryQueryService,
     LocationRepository,
     LocationService,
+    // #2343 — the advisory reservation ledger's write half. The
+    // RESERVATION_LEDGER_READER_TOKEN binding below is deliberately NOT swapped
+    // here: ATP subtraction is #2345, and keeping the reader empty is what makes
+    // "an install with zero reservations publishes byte-identically to today"
+    // a separately-testable regression rather than an assumption.
+    ReservationRepository,
     // #2321 — the computed availability seam. `EmptyReservationLedgerReader` is
     // the Wave-1b stand-in: Wave 2 swaps this one binding for a real ledger
     // repository, which is why the ATP formula already carries the term.
@@ -111,6 +125,10 @@ export {
       useExisting: EmptyReservationLedgerReader,
     },
     {
+      provide: RESERVATION_REPOSITORY_TOKEN,
+      useExisting: ReservationRepository,
+    },
+    {
       provide: AVAILABILITY_SERVICE_TOKEN,
       useExisting: AvailabilityService,
     },
@@ -128,6 +146,7 @@ export {
     LOCATION_REPOSITORY_TOKEN,
     LOCATION_SERVICE_TOKEN,
     RESERVATION_LEDGER_READER_TOKEN,
+    RESERVATION_REPOSITORY_TOKEN,
     AVAILABILITY_SERVICE_TOKEN,
     INVENTORY_PROVENANCE_BACKFILL_SERVICE_TOKEN,
   ],

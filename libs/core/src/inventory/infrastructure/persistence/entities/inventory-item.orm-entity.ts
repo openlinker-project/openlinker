@@ -16,6 +16,7 @@
  * @module libs/core/src/inventory/infrastructure/persistence/entities
  */
 import {
+  Check,
   Entity,
   PrimaryColumn,
   Column,
@@ -30,6 +31,16 @@ import { ProductOrmEntity } from '../../../../products/infrastructure/persistenc
 import { ProductVariantOrmEntity } from '../../../../products/infrastructure/persistence/entities/product-variant.orm-entity';
 
 @Entity('inventory_items')
+// ANALYSIS-1032 § 6I's "hard floor". Declared class-level under the SAME NAME as
+// the migration's constraint (the `return_lines` precedent) because the
+// integration harness builds its schema by `synchronize`, so an anonymous
+// @Check would carry a hash name there.
+//
+// There is deliberately NO `CHECK ("olReservedQuantity" <= "availableQuantity")`.
+// A master may legitimately lower availability below an already-committed
+// reservation set; such a constraint would make the *sync* fail rather than
+// surface the shortfall, which is a fact an operator must see (`W2-12`).
+@Check('CHK_inventory_items_ol_reserved_nonneg', '"olReservedQuantity" >= 0')
 // Partial unique index for base inventory (product-level, no variant)
 @Index(['productId', 'locationId'], {
   unique: true,
@@ -63,6 +74,17 @@ export class InventoryItemOrmEntity {
 
   @Column('int', { default: 0 })
   reservedQuantity!: number;
+
+  // OpenLinker's OWN reservation counter (#2343, ADR-061) — denormalised over
+  // the `reservations` ledger, which is authoritative (#2349's reconciler
+  // corrects this column TO the ledger, never the reverse).
+  //
+  // Note the neighbouring trap: `reservedQuantity` above reads like an OL
+  // counter and is NOT — it is a mirror of the master's value, rewritten every
+  // sync. This column is master-invisible, which is why it is classified into
+  // INVENTORY_OL_OWNED_COLUMNS and must never join the master sync's write set.
+  @Column('int', { default: 0 })
+  olReservedQuantity!: number;
 
   @Column({ type: 'varchar', nullable: true })
   locationId!: string | null;

@@ -122,13 +122,18 @@ export const INVENTORY_DB_MANAGED_COLUMNS = ['updatedAt'] as const;
 /**
  * Columns OpenLinker itself owns, which the master sync must NOT write (#2314).
  *
- * **Empty by decomposition, not by oversight.** ADR-058 decision 4 names
- * exactly one such column — `olReservedQuantity`, OL's own reservation counter
- * — and that lands with ADR-061 in Wave 2. The group is declared now so the
- * fourth ownership answer exists before there is a column needing it: the
- * classification spec already forces every new column into exactly one group,
- * and without this group the only available answer for an OL-owned column would
- * be the master-owned set, which is the one place it must never go.
+ * **Filled by #2343.** ADR-058 decision 4 named exactly one such column —
+ * `olReservedQuantity`, OL's own reservation counter — and ADR-061's ledger
+ * landed it. The group was declared empty in Wave 1b so the fourth ownership
+ * answer existed before there was a column needing it: the classification spec
+ * forces every new column into exactly one group, and without this group the
+ * only available answer for an OL-owned column would have been the master-owned
+ * set, which is the one place it must never go.
+ *
+ * The consequence is live rather than notional now: `olReservedQuantity` is
+ * denormalised over the `reservations` ledger and corrected by #2349's
+ * reconciler, so a master sync writing it would silently destroy OL's own
+ * promises on every pull.
  *
  * Note the neighbouring trap this group exists to keep separate:
  * `reservedQuantity` reads like an OL counter and is not — it is a mirror of
@@ -138,7 +143,9 @@ export const INVENTORY_DB_MANAGED_COLUMNS = ['updatedAt'] as const;
  * whose element type is `never` — a spread of that into the classification
  * union would type-check today and silently reject the Wave-2 append.
  */
-export const INVENTORY_OL_OWNED_COLUMNS: readonly (keyof InventoryItemOrmEntity)[] = [];
+export const INVENTORY_OL_OWNED_COLUMNS: readonly (keyof InventoryItemOrmEntity)[] = [
+  'olReservedQuantity',
+];
 
 @Injectable()
 export class InventoryRepository implements InventoryRepositoryPort {
