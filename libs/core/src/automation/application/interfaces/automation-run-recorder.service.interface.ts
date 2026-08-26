@@ -33,6 +33,19 @@ export interface AutomationRunRecord {
   readonly outcome: AutomationRunOutcome;
   readonly steps: readonly AutomationStepResult[];
   readonly firedAt: Date;
+  /**
+   * Only on `outcome === 'blocked'` (#2362): every rule in the collision,
+   * INCLUDING `rule` itself. Persisted verbatim as
+   * `automation_runs.blockedByRuleIds`, whose column already exists (#2358) —
+   * §5.6 requires a blocked row to say which rules collided, and a single
+   * `ruleId` can name only one of them.
+   *
+   * **Widened, never forked.** #2385 persists this record as it stands; a
+   * second record shape is how one firing renders differently in the run log
+   * and the timeline, which §5.6's "one record, four readings" exists to
+   * prevent. Optional so every pre-#2362 caller compiles untouched.
+   */
+  readonly blockedByRuleIds?: readonly string[];
 }
 
 export interface IAutomationRunRecorderService {

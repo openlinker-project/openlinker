@@ -25,6 +25,7 @@ import { AutomationTriggerFiringRepository } from './infrastructure/persistence/
 import { AutomationRulesService } from './application/services/automation-rules.service';
 import { AutomationTriggerEmissionService } from './application/services/automation-trigger-emission.service';
 import { AutomationDispatchService } from './application/services/automation-dispatch.service';
+import { AutomationIrreversibleGateService } from './application/services/automation-irreversible-gate.service';
 import { AutomationDelegateResolverService } from './application/services/automation-delegate-resolver.service';
 import { AutomationActionExecutorRegistry } from './application/services/automation-action-executor.registry';
 import { LoggingAutomationRunRecorder } from './application/services/automation-run-recorder.service';
@@ -58,9 +59,10 @@ import {
       provide: AUTOMATION_TRIGGER_FIRING_REPOSITORY_TOKEN,
       useExisting: AutomationTriggerFiringRepository,
     },
-    // #2361 replaced #2360's inert dispatcher here — one provider binding,
-    // exactly as declaring the seam early promised. #2362's at-most-one gate
-    // composes over this service rather than replacing it again.
+    // The dispatch seam has been swapped twice by provider binding alone, which
+    // is what declaring it early (#2360) bought. #2362's gate is the CURRENT
+    // binding; `AutomationDispatchService` stays a provider because the gate
+    // delegates to it — it is no longer what the token resolves to.
     AutomationDelegateResolverService,
     RelayStatusToSourceExecutorService,
     SendEmailExecutorService,
@@ -69,7 +71,11 @@ import {
     LoggingAutomationRunRecorder,
     { provide: AUTOMATION_RUN_RECORDER_TOKEN, useExisting: LoggingAutomationRunRecorder },
     AutomationDispatchService,
-    { provide: AUTOMATION_DISPATCH_SERVICE_TOKEN, useExisting: AutomationDispatchService },
+    AutomationIrreversibleGateService,
+    {
+      provide: AUTOMATION_DISPATCH_SERVICE_TOKEN,
+      useExisting: AutomationIrreversibleGateService,
+    },
     AutomationTriggerEmissionService,
     {
       provide: AUTOMATION_TRIGGER_EMISSION_SERVICE_TOKEN,

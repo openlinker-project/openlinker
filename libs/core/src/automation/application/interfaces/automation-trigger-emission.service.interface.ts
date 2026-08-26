@@ -46,7 +46,18 @@ export interface AutomationEmissionInput {
 }
 
 export interface AutomationEmissionResult {
-  /** Rules that matched AND (for a sweep trigger) won their firing claim — i.e. what was dispatched. */
+  /**
+   * Rules that matched AND (for a sweep trigger) won their firing claim — i.e.
+   * what was HANDED TO dispatch.
+   *
+   * **Not a claim that they fired** (#2362). The at-most-one gate sits behind
+   * `AUTOMATION_DISPATCH_SERVICE_TOKEN` and may refuse a rule whose irreversible
+   * action collides with a sibling's, and `dispatch()` returns `void` by
+   * contract — deliberately, since threading the verdict back would move the
+   * money decision into this emitter, which the dispatch seam's own docblock
+   * forbids. The `automation_runs` record (#2385) is the authority on what
+   * actually ran; a blocked rule appears both here and as a `blocked` run.
+   */
   readonly firedRuleIds: readonly string[];
   /** Matched but already recorded as fired for this subject; `deadline-sweep` only. */
   readonly alreadyFiredRuleIds: readonly string[];

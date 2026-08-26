@@ -34,9 +34,16 @@ export class LoggingAutomationRunRecorder implements IAutomationRunRecorderServi
       .map((step) => `${step.stepIndex}:${step.action}=${step.status}`)
       .join(' ');
 
+    // Only a `blocked` run carries a collision set (#2362); rendering the
+    // clause unconditionally would print an empty bracket on every ordinary
+    // firing and read as "collided with nothing".
+    const blockedBy = run.blockedByRuleIds?.length
+      ? ` blockedBy=[${run.blockedByRuleIds.join(', ')}]`
+      : '';
+
     this.logger.log(
       `Automation run: rule="${run.rule.name}" (${run.rule.id}) trigger=${run.trigger} ` +
-        `${run.facts.subjectKind}=${run.facts.subjectId} outcome=${run.outcome} [${steps}] ` +
+        `${run.facts.subjectKind}=${run.facts.subjectId} outcome=${run.outcome} [${steps}]${blockedBy} ` +
         `— not persisted (#2385 owns the automation_runs write path), so the run log stays empty.`,
     );
     return Promise.resolve();

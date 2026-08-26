@@ -22,8 +22,7 @@
  *
  * **#2358 landed STORAGE only.** Named siblings own the rest, and each is
  * named where its seam is: #2360 trigger emission (and the `automation_trigger_firings` writer),
- * #2361 the six action executors, #2362 the at-most-one gate for irreversible
- * actions, #2363 the CRUD/evaluate/fired-log API, #2385 the `automation_runs`
+ * #2361 the six action executors, #2363 the CRUD/evaluate/fired-log API, #2385 the `automation_runs`
  * write path and the per-step outcome shape.
  *
  * @module libs/core/src/automation
@@ -35,12 +34,14 @@ export * from './domain/types/automation-condition.types';
 export * from './domain/types/automation-action.types';
 export * from './domain/types/automation-definition-hash.types';
 export * from './domain/types/automation-run.types';
+export * from './domain/types/automation-gate.types';
 export * from './domain/types/automation-step-result.types';
 export * from './domain/types/automation-legality.types';
 export * from './domain/types/automation-evaluation.types';
 export * from './domain/types/automation-facts.types';
 
 export * from './domain/domain-services/evaluate-automation-rules';
+export * from './domain/domain-services/gate-irreversible-automation-actions';
 export * from './domain/domain-services/render-automation-template';
 
 export * from './domain/entities/automation-rule.entity';
@@ -70,6 +71,7 @@ export type {
   IAutomationDelegateResolverService,
   AutomationDelegateRef,
 } from './application/interfaces/automation-delegate-resolver.service.interface';
+export type { IAutomationIrreversibleGateService } from './application/interfaces/automation-irreversible-gate.service.interface';
 export type {
   IAutomationRunRecorderService,
   AutomationRunRecord,
@@ -82,6 +84,7 @@ export type {
 export { AutomationRulesService } from './application/services/automation-rules.service';
 export { AutomationTriggerEmissionService } from './application/services/automation-trigger-emission.service';
 export { AutomationDispatchService } from './application/services/automation-dispatch.service';
+export { AutomationIrreversibleGateService } from './application/services/automation-irreversible-gate.service';
 export { AutomationActionExecutorRegistry } from './application/services/automation-action-executor.registry';
 export { AUTOMATION_UNAVAILABLE_ACTION_REASONS } from './application/services/executors/unavailable-action-executor.service';
 

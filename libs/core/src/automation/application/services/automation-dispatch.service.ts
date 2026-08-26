@@ -2,8 +2,15 @@
  * Automation Dispatch Service (#2361)
  *
  * Runs each matched rule's ordered action steps and reports the outcome. It
- * replaces #2360's `InertAutomationDispatchService` as a single provider-binding
+ * replaced #2360's `InertAutomationDispatchService` as a single provider-binding
  * swap, which is what declaring the seam early bought.
+ *
+ * **Since #2362 this class is NO LONGER what `AUTOMATION_DISPATCH_SERVICE_TOKEN`
+ * resolves to** — `AutomationIrreversibleGateService` is, and it delegates here
+ * with the rules its at-most-one gate did not block. The class stays exported
+ * from the context barrel (it is the gate's delegate, and #2385 will want it),
+ * so a caller value-importing it directly gets the UN-GATED dispatcher with no
+ * compiler complaint. Resolve the token unless you specifically mean that.
  *
  * Four properties are contract.
  *
@@ -28,7 +35,7 @@
  * layer here would be a parallel path that can disagree with the first.
  *
  * **The at-most-one gate for irreversible actions is NOT here** — that is
- * #2362's, composed over this service, and it reads
+ * #2362's `AutomationIrreversibleGateService`, composed over this service, and it reads
  * `AUTOMATION_ACTION_IS_IRREVERSIBLE` rather than restating the split. This
  * service deliberately receives EVERY matched rule (see the interface docblock):
  * collapsing them here would move the money decision into the dispatcher, where
