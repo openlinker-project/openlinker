@@ -49,6 +49,8 @@ describe('OrderRecordService', () => {
       getDailyOrderAggregates: jest.fn(),
       getMedianOrderValue: jest.fn(),
       getNetMedianOrderValue: jest.fn(),
+      findCurrencyMismatchOrders: jest.fn(),
+      findProductMatchingErrorOrders: jest.fn(),
     } as unknown as jest.Mocked<OrderRecordRepositoryPort>;
 
     // Defaults to `deferred`, which is the outcome that owes NO refresh - so
@@ -1350,6 +1352,42 @@ describe('OrderRecordService', () => {
         filters,
         'EUR'
       );
+    });
+  });
+
+  describe('getCurrencyMismatchOrders (#2466)', () => {
+    it('is a thin pass-through to the repository read, forwarding args verbatim', async () => {
+      const salesFilters = {
+        from: new Date('2026-08-01T00:00:00.000Z'),
+        to: new Date('2026-08-08T00:00:00.000Z'),
+      };
+      const pagination = { limit: 10, offset: 0 };
+      repository.findCurrencyMismatchOrders.mockResolvedValue({ items: [], total: 0 });
+
+      const result = await service.getCurrencyMismatchOrders(salesFilters, 'EUR', pagination);
+
+      expect(repository.findCurrencyMismatchOrders).toHaveBeenCalledWith(
+        salesFilters,
+        'EUR',
+        pagination
+      );
+      expect(result).toEqual({ items: [], total: 0 });
+    });
+  });
+
+  describe('getProductMatchingErrorOrders (#2466)', () => {
+    it('is a thin pass-through to the repository read, forwarding args verbatim', async () => {
+      const healthFilters = { sourceConnectionId: 'conn-a' };
+      const pagination = { limit: 10, offset: 0 };
+      repository.findProductMatchingErrorOrders.mockResolvedValue({ items: [], total: 0 });
+
+      const result = await service.getProductMatchingErrorOrders(healthFilters, pagination);
+
+      expect(repository.findProductMatchingErrorOrders).toHaveBeenCalledWith(
+        healthFilters,
+        pagination
+      );
+      expect(result).toEqual({ items: [], total: 0 });
     });
   });
 });
