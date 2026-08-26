@@ -169,6 +169,21 @@ export {
   DailyTrendPoint,
 } from './domain/types/order-sales-analytics.types';
 
+// Data Coverage detection (epic #2452, mini-epic #2463) — shared vocabulary
+// consumed by the currency-mismatch detector (#2464) and its sibling
+// detectors (#2465/#2466).
+export {
+  CoverageCategoryValues,
+  CoverageResolutionStatusValues,
+} from './domain/types/coverage-detection.types';
+export type {
+  CoverageCategory,
+  CoverageResolutionStatus,
+  CoverageDetectionPagination,
+  CurrencyMismatchOrderRow,
+  PaginatedCurrencyMismatchOrders,
+} from './domain/types/coverage-detection.types';
+
 // Top products analytics (#1988) — response shapes for
 // IOrderRecordService.getTopProducts. VariantRankingRow/VariantChannelBreakdownRow/
 // VariantSalesView/VariantSalesResult (#2765) are the per-product variant-sales
