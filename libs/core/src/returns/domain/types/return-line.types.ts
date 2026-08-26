@@ -55,6 +55,14 @@ export type ReturnCustodyState = (typeof ReturnCustodyStateValues)[number];
  * `in_doubt` is the honest one: OL ships no refund WRITE, so a triggered refund
  * whose execution OL cannot observe must be recordable as unknown rather than
  * silently reported as `refunded`. `refunded` is entered only on OBSERVATION.
+ *
+ * **DRIVEN SINCE #2371** by `ReturnRefundService`. Two rules govern it, and both
+ * are stated as code below: which states permit a fresh attempt
+ * ({@link isRefundAttemptable}), and the fact that `in_doubt` is only ever
+ * written where a provider boundary was ACTUALLY crossed — on the no-executor
+ * path (the only one reachable today) the claim settles straight to `triggered`,
+ * because claiming to be unsure about a call that never happened is a false
+ * statement about the operator's money.
  */
 export const ReturnMoneyStateValues = [
   'not_refundable',
@@ -66,6 +74,41 @@ export const ReturnMoneyStateValues = [
 ] as const;
 
 export type ReturnMoneyState = (typeof ReturnMoneyStateValues)[number];
+
+/**
+ * The money states from which a refund may be ATTEMPTED (#2371, ADR-056).
+ *
+ * Exported as the ONE definition — the repository's claim predicate and the
+ * service's refusal both read it, so they cannot disagree about what "already
+ * attempted" means. The complement is what BLOCKS: `triggered`, `refunded` and
+ * `in_doubt` all mean a boundary was crossed or a settlement stands, and a
+ * second attempt against any of them risks refunding the buyer twice.
+ *
+ * **`not_refundable` is in the attemptable set because it is the column's
+ * DEFAULT, not because the name says so.** #2327 landed `moneyState` defaulted
+ * and undriven, so every line in every install carries it; excluding it would
+ * make no return refundable at all. When a later slice sets `pending` at
+ * ingestion, this set narrows to `pending | denied` with no change at either
+ * call site — which is the point of it being one function.
+ *
+ * Only a TERMINAL `denied` re-admits a blocked line: the ADR-042 discipline by
+ * name — the provider is known to have moved nothing, so another attempt is
+ * safe. An `in_doubt` line is never re-admitted automatically; it needs an
+ * OBSERVATION (see `IReturnRefundService.recordRefundObservation`).
+ */
+export const REFUND_ATTEMPTABLE_MONEY_STATES: readonly ReturnMoneyState[] = [
+  'not_refundable',
+  'pending',
+  'denied',
+];
+
+export function isRefundAttemptable(state: ReturnMoneyState): boolean {
+  return REFUND_ATTEMPTABLE_MONEY_STATES.includes(state);
+}
+
+export function blocksRefundAttempt(state: ReturnMoneyState): boolean {
+  return !isRefundAttemptable(state);
+}
 
 /**
  * What the operator did with the goods. `restock | scrap` ONLY.

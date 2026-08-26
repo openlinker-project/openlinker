@@ -179,3 +179,47 @@ export type {
   AttestStockResult,
   RestockBlockedDetail,
 } from './application/services/return-custody.service.interface';
+
+// The money WRITE (#2371, `W2-34`, ADR-056): the refund trigger, the
+// `in_doubt` block, and the observation that is the only path to `refunded`.
+//
+// Two properties a consumer must not undo. The attempted-predicate is persisted
+// BEFORE the provider call and the persist IS the block (a single conditional
+// UPDATE, so a lost lock cannot double-refund); and `in_doubt` is written only
+// where a boundary was ACTUALLY crossed — the no-executor path, the only one
+// reachable today, claims straight to `triggered` because asserting doubt about
+// a call that never happened is a false statement about the operator's money.
+//
+// This service writes no `RefundRecord`: it REPORTS a `ReturnRefundRecordIntent`
+// for the caller to write through `IOrderRefundService` (the #2100
+// report-don't-persist seam), which is what keeps `OrdersModule` out of this
+// context's graph.
+export {
+  REFUND_ATTEMPTABLE_MONEY_STATES,
+  isRefundAttemptable,
+  blocksRefundAttempt,
+} from './domain/types/return-line.types';
+export {
+  classifyRefundOutcome,
+  classifyRefundFailure,
+  refundConfirmedOutOfBand,
+} from './domain/domain-services/refund-outcome.domain-service';
+export type { RefundOutcome } from './domain/domain-services/refund-outcome.domain-service';
+export {
+  ReturnRefundBlockedError,
+  ReturnRefundBlockReasonValues,
+} from './domain/exceptions/return-refund-blocked.error';
+export type { ReturnRefundBlockReason } from './domain/exceptions/return-refund-blocked.error';
+export { ReturnRefundContendedError } from './domain/exceptions/return-refund-contended.error';
+export { ReturnRefundObservationInvalidError } from './domain/exceptions/return-refund-observation-invalid.error';
+export {
+  returnRefundLockKey,
+  RETURN_REFUND_LOCK_TTL_MS,
+} from './application/services/return-refund-lock';
+export type {
+  IReturnRefundService,
+  TriggerRefundInput,
+  TriggerRefundResult,
+  ReturnRefundRecordIntent,
+  RecordRefundObservationInput,
+} from './application/services/return-refund.service.interface';

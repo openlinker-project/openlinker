@@ -54,10 +54,11 @@ import type {
   ReturnBucketCounts,
   ReturnListFilter,
 } from '../../../domain/types/return-query.types';
-import type {
-  ReturnCustodyState,
-  ReturnDisposition,
-  ReturnMoneyState,
+import {
+  REFUND_ATTEMPTABLE_MONEY_STATES,
+  type ReturnCustodyState,
+  type ReturnDisposition,
+  type ReturnMoneyState,
 } from '../../../domain/types/return-line.types';
 import type { ReturnCustodyOutcome } from '../../../domain/domain-services/return-custody-transitions.domain-service';
 import type {
@@ -843,6 +844,99 @@ export class ReturnRepository implements ReturnRepositoryPort {
       order: { seq: 'ASC' },
     });
     return rows.map((row) => this.toLineEventDomain(row));
+  }
+
+  /**
+   * Claim every refundable line of a return for ONE attempt (#2371, ADR-056).
+   *
+   * A single conditional UPDATE — the `claimAttribution` shape — so two
+   * concurrent attempts can never both claim the same line and a double refund
+   * is impossible independently of the surrounding lock. `RETURNING "id"` is
+   * what makes the claim usable: the caller settles exactly the rows it won,
+   * never "the return's lines" re-read afterwards, which a peer could have
+   * changed in between.
+   *
+   * `updatedAt` is set explicitly because a query-builder update bypasses
+   * `@UpdateDateColumn` (the same note `claimAttribution` carries).
+   */
+  async claimRefundAttempt(
+    returnId: string,
+    targetState: Extract<ReturnMoneyState, 'in_doubt' | 'triggered'>,
+    at: Date
+  ): Promise<string[]> {
+    try {
+      const result = await this.lines
+        .createQueryBuilder()
+        .update(ReturnLineOrmEntity)
+        // The caller's instant rather than `now()`: one attempt stamps one time
+        // across every line it claims, so the rows it won are identifiable as a
+        // single act rather than as N writes that happened to be adjacent.
+        .set({ moneyState: targetState, updatedAt: at })
+        .where('"returnId" = :returnId', { returnId })
+        .andWhere('"moneyState" IN (:...attemptable)', {
+          attemptable: [...REFUND_ATTEMPTABLE_MONEY_STATES],
+        })
+        .returning('"id"')
+        .execute();
+
+      const raw: unknown = result.raw;
+      if (!Array.isArray(raw)) {
+        return [];
+      }
+      return raw
+        .map((row) => (row as { id?: unknown }).id)
+        .filter((id): id is string => typeof id === 'string');
+    } catch (error) {
+      throw new ReturnPersistenceError('claimRefundAttempt', error);
+    }
+  }
+
+  /**
+   * Settle the lines an attempt claimed (#2371).
+   *
+   * Scoped BOTH to the claimed ids and to the caller's `fromStates`, which is
+   * required rather than defaulted — see the port, where the two callers' guards
+   * are opposite and a shared default would be silently wrong for one of them.
+   * Returns the number of rows actually moved so a caller can notice a settle
+   * that lost its race, rather than assuming it landed.
+   */
+  async settleRefundState(
+    returnId: string,
+    lineIds: readonly string[],
+    moneyState: ReturnMoneyState,
+    fromStates: readonly ReturnMoneyState[]
+  ): Promise<number> {
+    if (lineIds.length === 0 || fromStates.length === 0) {
+      // An empty `fromStates` would render `IN ()` — a Postgres syntax error —
+      // and means "move nothing" anyway (the #2330 `NOT IN ()` lesson).
+      return 0;
+    }
+    try {
+      const result = await this.lines
+        .createQueryBuilder()
+        .update(ReturnLineOrmEntity)
+        .set({ moneyState, updatedAt: () => 'now()' })
+        .where('"returnId" = :returnId', { returnId })
+        .andWhere('"id" IN (:...lineIds)', { lineIds: [...lineIds] })
+        .andWhere('"moneyState" IN (:...fromStates)', { fromStates: [...fromStates] })
+        .execute();
+
+      return result.affected ?? 0;
+    } catch (error) {
+      throw new ReturnPersistenceError('settleRefundState', error);
+    }
+  }
+
+  /**
+   * The money states on a return's lines, for naming a refusal (#2371). Read
+   * only on the refusal path — see `claimRefundAttempt`.
+   */
+  async listLineMoneyStates(returnId: string): Promise<ReturnMoneyState[]> {
+    const rows = await this.lines.find({
+      where: { returnId },
+      select: { moneyState: true },
+    });
+    return rows.map((row) => row.moneyState as ReturnMoneyState);
   }
 
   /**

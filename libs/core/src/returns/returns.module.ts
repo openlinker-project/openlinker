@@ -66,6 +66,7 @@ import { ReturnReattributionService } from './application/services/return-reattr
 import { ReturnStatusSyncService } from './application/services/return-status-sync.service';
 import { ReturnDeclineService } from './application/services/return-decline.service';
 import { ReturnCustodyService } from './application/services/return-custody.service';
+import { ReturnRefundService } from './application/services/return-refund.service';
 import { ReturnsService } from './application/services/returns.service';
 import { ReturnOrmEntity } from './infrastructure/persistence/entities/return.orm-entity';
 import { ReturnLineOrmEntity } from './infrastructure/persistence/entities/return-line.orm-entity';
@@ -74,6 +75,7 @@ import { ReturnRepository } from './infrastructure/persistence/repositories/retu
 import {
   RETURN_CUSTODY_SERVICE_TOKEN,
   RETURN_DECLINE_SERVICE_TOKEN,
+  RETURN_REFUND_SERVICE_TOKEN,
   RETURN_INGESTION_SERVICE_TOKEN,
   RETURN_REATTRIBUTION_SERVICE_TOKEN,
   RETURN_REPOSITORY_TOKEN,
@@ -124,6 +126,14 @@ import {
     // `IntegrationsModule` and `SyncModule` were already imported.
     ReturnCustodyService,
     { provide: RETURN_CUSTODY_SERVICE_TOKEN, useExisting: ReturnCustodyService },
+    // #2371 the refund trigger. Adds NO module edge: it reaches only the
+    // repository, `IReturnsService`, `IIntegrationsService` and `SyncLockPort`,
+    // all already imported above. It does NOT write the linked `RefundRecord` —
+    // it REPORTS the intent for #2376's controller to write (the #2100
+    // report-don't-persist seam), which is exactly what keeps `OrdersModule` out
+    // of this graph and the `returns -> orders` edge one-way.
+    ReturnRefundService,
+    { provide: RETURN_REFUND_SERVICE_TOKEN, useExisting: ReturnRefundService },
   ],
   exports: [
     RETURN_REPOSITORY_TOKEN,
@@ -133,6 +143,7 @@ import {
     RETURN_DECLINE_SERVICE_TOKEN,
     RETURN_REATTRIBUTION_SERVICE_TOKEN,
     RETURN_CUSTODY_SERVICE_TOKEN,
+    RETURN_REFUND_SERVICE_TOKEN,
   ],
 })
 export class ReturnsModule {}

@@ -30,6 +30,7 @@ import type {
   CreateReturnLineEventInput,
   SettleReturnLineEventInput,
 } from '../types/return-line-event.types';
+import type { ReturnMoneyState } from '../types/return-line.types';
 import type { CreateReturnRecordInput } from '../types/return.types';
 import type { UpsertReturnRecordInput, UpsertReturnResult } from '../types/return-upsert.types';
 import type {
@@ -391,6 +392,68 @@ export interface ReturnRepositoryPort {
    * renders, and the proof-of-work a spec sums against the counters.
    */
   listLineEvents(lineId: string): Promise<ReturnLineEvent[]>;
+
+  /**
+   * Claim the return's refundable lines for ONE refund attempt (#2371, ADR-056).
+   *
+   * **This single statement is the whole guard.** A conditional UPDATE over the
+   * return's lines, restricted to `isRefundAttemptable` states — the
+   * `claimAttribution` / `claimWaybillRelay` shape. Two concurrent attempts
+   * cannot both claim the same line, so a double refund is impossible even if
+   * the surrounding lock expired mid-provider-call; the lock only decides which
+   * caller gets a clean answer (see `return-refund-lock.ts`).
+   *
+   * **Zero claimed ids is the refusal**, and it is deliberately ambiguous
+   * between "no lines", "already attempted" and "in doubt" — the caller runs one
+   * classifying read on that path to name the cause, which keeps the hot path a
+   * single statement.
+   *
+   * @param targetState what to claim INTO, and the caller decides it from
+   *   whether a provider boundary will actually be crossed: `in_doubt` when a
+   *   `RefundExecutor` was resolved (the ADR-056 attempted-predicate), or
+   *   `triggered` when none exists — because `in_doubt` asserts *boundary
+   *   crossed, outcome unobserved*, and claiming it for a call that will never
+   *   happen is a false statement about the operator's money. Restricted at the
+   *   type level to the two states a claim may legally write.
+   */
+  claimRefundAttempt(
+    returnId: string,
+    targetState: Extract<ReturnMoneyState, 'in_doubt' | 'triggered'>,
+    at: Date
+  ): Promise<string[]>;
+
+  /**
+   * Settle the lines an attempt claimed, once the executor has answered (#2371).
+   *
+   * The second half of the attempted-predicate ordering, mirroring
+   * {@link ReturnRepositoryPort.settleLineRestock}.
+   *
+   * **`fromStates` is REQUIRED and the caller states it explicitly**, because
+   * the two callers guard against opposite mistakes and a shared default would
+   * silently be wrong for one of them. The trigger's settle passes
+   * `['in_doubt']` — it may only resolve the attempt it just claimed, never a
+   * line a peer has since OBSERVED. The observation passes
+   * `['triggered', 'in_doubt']` — every state in which an attempt stands and a
+   * source answer is meaningful — and deliberately excludes `refunded` (already
+   * settled; re-stating it would let a stale webhook un-refund a buyer) and the
+   * attemptable states (nothing was attempted, so there is nothing to observe).
+   *
+   * Returns the number of rows actually moved, so a caller can notice a settle
+   * that lost its race rather than assuming it landed.
+   */
+  settleRefundState(
+    returnId: string,
+    lineIds: readonly string[],
+    moneyState: ReturnMoneyState,
+    fromStates: readonly ReturnMoneyState[]
+  ): Promise<number>;
+
+  /**
+   * The money states currently on a return's lines, for naming a refusal
+   * (#2371). Read only on the refusal path — see
+   * {@link ReturnRepositoryPort.claimRefundAttempt}.
+   */
+  listLineMoneyStates(returnId: string): Promise<ReturnMoneyState[]>;
 }
 
 /**
