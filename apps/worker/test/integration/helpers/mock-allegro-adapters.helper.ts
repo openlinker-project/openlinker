@@ -68,7 +68,6 @@ export function createMockAllegroOrderSource(): OrderSourcePort {
   const seedOrder = buildTestOrder('checkout-form-001');
   const orders = new Map<string, IncomingOrder>([[seedOrder.externalOrderId, seedOrder]]);
   let cursor = 'initial-cursor';
-  let callCount = 0;
 
   return {
     listOrderFeed: jest.fn().mockImplementation(async (input): Promise<OrderFeedOutput> => {
@@ -92,9 +91,7 @@ export function createMockAllegroOrderSource(): OrderSourcePort {
         },
       ].slice(0, limit);
 
-      // A monotonic call counter (not just Date.now()) keeps cursors distinct
-      // even when two polls in the same test run inside the same millisecond.
-      cursor = `cursor-${Date.now()}-${++callCount}`;
+      cursor = `cursor-${Date.now()}`;
       return { items, nextCursor: cursor };
     }),
 
