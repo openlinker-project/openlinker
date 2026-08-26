@@ -157,6 +157,7 @@ One pointer per section, identical format every time.
 | [ADR-063](./063-per-line-tax-rate-resolution-and-provenance.md) | Per-line tax-rate resolution, provenance and rounding ownership - master first then channel, three answer states, projection at sync, adapter-owned rounding | Proposed | 2026-08-21 |
 | [ADR-064](./064-analytics-display-currency-conversion.md) | Analytics display-currency conversion is a read-only, aggregate-level transform (no restatement of the ADR-040 stamp) | Proposed | 2026-08-25 |
 | [ADR-065](./065-sales-document-read-surface.md) | One per-order sales-document read, and no third state vocabulary | Proposed | 2026-08-26 |
+| [ADR-066](./066-sales-document-market-discovery.md) | Market discovery, and what OpenLinker may recommend | Proposed | 2026-08-26 |
 
 > *Dates for pre-trail ADRs (001, 004) are approximate to the month — the underlying decisions predate the project's current git history. Other dates are merge-date of the cited PR.*
 
