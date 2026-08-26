@@ -19441,3 +19441,206 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
 .returns-decline > p {
   justify-self: stretch;
 }
+
+/* ------------------------------------------------------------------
+ * Who decides what (#2354)
+ *
+ * A definition-style list rather than a DataTable: the only column cheap
+ * enough to hide at a breakpoint is the WHY line, which § 3.3 calls the whole
+ * point of the table. Rows reflow to a single column at <= 768px instead, so
+ * nothing is ever dropped. Registered in
+ * `docs/frontend-ui-style-guide.md § Density & Row Heights`.
+ * ------------------------------------------------------------------ */
+
+.who-decides {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.who-decides__section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.who-decides__section-head {
+  align-items: flex-start;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  justify-content: space-between;
+}
+
+.who-decides__rows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.who-decides__id-list {
+  margin: var(--space-2) 0 0;
+  padding-left: var(--space-4);
+}
+
+.who-decides__apply {
+  align-self: flex-start;
+  /* Touch floor: the button box is 36px at --sm, so the affordance itself
+     carries the 44px hit area the responsive rules require at 375px. */
+  min-height: 44px;
+}
+
+/* --- one question row --- */
+
+.who-decides-row {
+  align-items: start;
+  background: var(--surface-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  column-gap: var(--space-4);
+  display: grid;
+  grid-template-areas:
+    'question answer badge'
+    'question why badge'
+    'question extras badge';
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) auto;
+  padding: var(--space-3) var(--space-4);
+  row-gap: var(--space-1);
+}
+
+.who-decides-row__question {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  grid-area: question;
+  margin: 0;
+}
+
+.who-decides-row__answer {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  grid-area: answer;
+}
+
+.who-decides-row__why,
+.who-decides-row__locked,
+.who-decides-row__inactive {
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  grid-area: why;
+  margin: 0;
+}
+
+.who-decides-row__locked,
+.who-decides-row__inactive,
+.who-decides-row__candidates {
+  grid-area: extras;
+}
+
+.who-decides-row__candidates {
+  display: flex;
+  flex-wrap: wrap;
+  font-size: var(--font-size-xs);
+  gap: var(--space-2);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.who-decides-row__badge {
+  align-self: start;
+  grid-area: badge;
+}
+
+.who-decides-row__link {
+  color: var(--accent-strong);
+}
+
+/* --- preset cards --- */
+
+.who-decides-presets {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.who-decides-presets__group {
+  display: grid;
+  gap: var(--space-3);
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+
+.who-decides-presets__prospective {
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  margin: 0;
+}
+
+.who-decides-preset {
+  background: var(--surface-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  display: flex;
+  gap: var(--space-3);
+  padding: var(--space-4);
+}
+
+.who-decides-preset--selected {
+  border-color: var(--accent-strong);
+}
+
+.who-decides-preset--unavailable {
+  cursor: not-allowed;
+  opacity: 0.72;
+}
+
+.who-decides-preset__input {
+  /* Touch floor at 375px — the input, not the card, is the affordance. */
+  min-height: 44px;
+  min-width: 44px;
+}
+
+.who-decides-preset__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.who-decides-preset__head {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.who-decides-preset__title {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+}
+
+.who-decides-preset__text,
+.who-decides-preset__best,
+.who-decides-preset__changes,
+.who-decides-preset__reason {
+  font-size: var(--font-size-xs);
+}
+
+.who-decides-preset__best,
+.who-decides-preset__reason {
+  color: var(--text-muted);
+}
+
+@media (max-width: 768px) {
+  .who-decides-row {
+    grid-template-areas:
+      'question'
+      'answer'
+      'why'
+      'extras'
+      'badge';
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: var(--space-2);
+  }
+}

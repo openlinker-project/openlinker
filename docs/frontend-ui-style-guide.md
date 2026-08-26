@@ -640,6 +640,7 @@ Defaults (FE-002):
 | Analytics KPI card (`.status-strip--analytics .kpi-card`, #1990) | auto, ~152 px | Documented carve-out — the six-card sales strip stacks a headline+metric+delta block on top of one-or-more qualifier rows pinned to the card floor by a hairline, provably taller than the ~96 px default. See the carve-out note below. |
 | Status banner | auto, ~64 px | Icon + title + message + actions. |
 | Analytics trust-header row (`.trust-header__row`) | auto, ~52 px | `var(--space-3) var(--space-4)` padding. Per-connection freshness list, denser than a status banner because it repeats per row. Collapses to one column, auto height on mobile. |
+| Who-decides question row (`.who-decides-row`, #2354) | auto, ~76 px | Documented **non-`DataTable`** carve-out — question + answer + why-line + optional extras + badge. See the carve-out below. |
 
 Never introduce a row height that isn't on this list without updating the guide first. Variability across surfaces is the primary way a cockpit feels amateur.
 
@@ -686,6 +687,10 @@ Mechanics that differ from the listings carve-out, and why:
 - **Hosting one of these cells in a card `title` slot** (the mobile branch) puts it inside `<strong>`, so the meta line must not inherit the emphasis — `.orders-cell-sub, .orders-more-count` pin `font-weight: 400` (the `+N` chip inherits the emphasis too).
 
 Known gap: `DataTableSkeleton` still renders `36 px` rows, so a table with these cells grows on load. It predates this epic (listings ships the same mismatch) and is not owned by any of the five sub-issues. Tracked as #2152.
+
+**Documented carve-out — the who-decides question row (#2354).** `/settings/who-decides` renders its seven rows as a CSS-grid definition list (`.who-decides-row`), not a `DataTable`, and that is the carve-out: the only column cheap enough to hide at a breakpoint is the **why-line**, which spec § 3.3 calls "the whole point of the table" — an answer with no reason is a configuration dump. A `hideBelow` on it would delete the feature on mobile, so the row reflows to a single column at ≤ 768 px instead and never drops a fact. The other reasons `DataTable` is the wrong primitive here are secondary but real: seven fixed rows with no sort, no pagination and no row link, carrying per-row content a table cell does not model well (a link out for A7, a locked note for A6, a list of named connections on an ambiguous row).
+
+Height is content-derived like the identity-cell carve-outs above — question line, answer line, why-line, an optional extras line, and a badge — and the density posture is unchanged: every line is a fact an operator scans for. **This entry is for the who-decides row specifically**; another page wanting a non-`DataTable` list needs its own entry rather than a silent reuse.
 
 **Selection-list rows are governed separately.** Multi-select picker rows inside a modal (e.g. the offer-creation product picker, `.offer-product-picker__prow-main` / `.offer-product-picker__vrow`, #1754/#1779) are *not* `DataTable` rows and are intentionally taller than 36 px: the whole-product checkbox carries a ≥ 44 px tap target (touch parity with the full-width variant-row hit area) and each row pairs a thumbnail with two text lines. They inherit the density posture but pick their own height from content + the tap-target floor rather than the table default; don't force them onto the `36 px` row.
 

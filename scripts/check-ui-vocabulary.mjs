@@ -156,7 +156,7 @@ const SCAN_ROOTS = [
     // what builds this folder.
     dir: join('apps', 'web', 'src', 'features', 'fulfillment-authority'),
     owner: 'W2-17 (#2354)',
-    pending: true,
+    pending: false,
   },
   {
     // #2364 is "automations index and trigger list" — this folder's real owner.

@@ -79,17 +79,28 @@ const DOCS_FENCE_END = '<!-- authority-kinds:end -->';
  */
 const PENDING_MIRRORS = [
   {
-    // Re-attributed by #2351 (`W2-14`). That issue is CORE-only and ships no
-    // frontend file at all, so it was never this mirror's owner; the first FE
-    // consumer of the authority vocabulary is #2354's "Who decides what" page.
-    // The declared PATH deliberately stays under `features/orders` for now:
-    // #2354's own folder (`features/fulfillment-authority/lib`) does not exist
-    // yet, and the parent-directory guard below — correctly — refuses a path
-    // that cannot resolve. #2354 re-points both fields in the commit that
-    // creates the file.
-    file: join('apps', 'web', 'src', 'features', 'orders', 'lib', 'authority-kind.ts'),
+    // RE-POINTED by #2354 (`W2-17`), which is what the previous note asked for.
+    // The path stood under `features/orders` only because this folder did not
+    // exist yet and the parent-directory guard below — correctly — refuses a
+    // path that can never resolve; #2354's "Who decides what" page created the
+    // real one, so both fields moved here in that same commit.
+    //
+    // The entry stays in PENDING_MIRRORS because there is no separate "live"
+    // list to graduate into: the loop below already enforces a declared mirror
+    // the moment its file exists (absent + parent dir present => a note;
+    // present => parsed and diffed against core, in order). Deleting the entry
+    // would instead break two `--self-check` assertions.
+    file: join(
+      'apps',
+      'web',
+      'src',
+      'features',
+      'fulfillment-authority',
+      'lib',
+      'authority-kind.ts',
+    ),
     declaration: KIND_DECLARATION,
-    pending: 'W2-17 / #2354 (first frontend consumer; re-point this path there)',
+    pending: 'W2-17 / #2354 (live since the who-decides page; kept declared, see note)',
   },
 ];
 
