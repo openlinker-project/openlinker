@@ -1073,10 +1073,13 @@ describe('FiscalRegistrationService', () => {
       const locating: FiscalizationPort & FiscalRegistrationLocator = {
         registerTransaction: jest.fn(),
         locateByQuery: jest.fn().mockResolvedValue({
-          providerReference: 'p-9',
-          documentReference: 'd-9',
-          signingIdentity: 's-9',
-          registeredAt: NOW,
+          status: 'registered',
+          registration: {
+            providerReference: 'p-9',
+            documentReference: 'd-9',
+            signingIdentity: 's-9',
+            registeredAt: NOW,
+          },
         }),
       };
       integrations.getCapabilityAdapter.mockResolvedValue(locating);
@@ -1105,11 +1108,14 @@ describe('FiscalRegistrationService', () => {
       integrations.getCapabilityAdapter.mockResolvedValue({
         registerTransaction: jest.fn(),
         locateByQuery: jest.fn().mockResolvedValue({
-          providerType: 'provider-a',
-          providerReference: 'p-9',
-          documentReference: null,
-          signingIdentity: null,
-          registeredAt: NOW,
+          status: 'registered',
+          registration: {
+            providerType: 'provider-a',
+            providerReference: 'p-9',
+            documentReference: null,
+            signingIdentity: null,
+            registeredAt: NOW,
+          },
         }),
       });
       repo.findById.mockResolvedValue(record('failed', { failureMode: 'in-doubt' }));
@@ -1159,6 +1165,61 @@ describe('FiscalRegistrationService', () => {
       expect(result.outcome).toBe('not-found');
       expect(repo.updateOutcome).not.toHaveBeenCalled();
       expect(locating.registerTransaction).not.toHaveBeenCalled();
+    });
+
+    it('should report `still-unknown` and touch nothing when the provider HOLDS the sale', async () => {
+      // ADR-042 amendment #2502, decisions 1 and 3: a provider that has accepted
+      // the sale and not registered it yet is neither an absence nor a failure.
+      // The record is left byte-identical and the check can be repeated later.
+      const inDoubt = record('failed', { failureMode: 'in-doubt' });
+      const locating: FiscalizationPort & FiscalRegistrationLocator = {
+        registerTransaction: jest.fn(),
+        locateByQuery: jest.fn().mockResolvedValue({ status: 'held', detail: 'PENDING' }),
+      };
+      integrations.getCapabilityAdapter.mockResolvedValue(locating);
+      repo.findById.mockResolvedValue(inDoubt);
+
+      const result = await service.reconcileInDoubt('rec-1');
+
+      expect(result.outcome).toBe('still-unknown');
+      expect(result.record).toBe(inDoubt);
+      expect(repo.updateOutcome).not.toHaveBeenCalled();
+      expect(locating.registerTransaction).not.toHaveBeenCalled();
+    });
+
+    it('should report `still-unknown` rather than resolving on an answer it cannot interpret', async () => {
+      // A locate status this build does not recognise must never terminalise a
+      // record on a registration it cannot confirm.
+      integrations.getCapabilityAdapter.mockResolvedValue({
+        registerTransaction: jest.fn(),
+        locateByQuery: jest.fn().mockResolvedValue({ status: 'something-new' }),
+      });
+      repo.findById.mockResolvedValue(record('failed', { failureMode: 'in-doubt' }));
+
+      const result = await service.reconcileInDoubt('rec-1');
+
+      expect(result.outcome).toBe('still-unknown');
+      expect(repo.updateOutcome).not.toHaveBeenCalled();
+    });
+
+    it('should still resolve a locator that answers in the pre-#2502 shape', async () => {
+      // An out-of-tree adapter compiled against an older `libs/core` returns a
+      // bare result; reading `.status` off it must not throw on a reconcile.
+      integrations.getCapabilityAdapter.mockResolvedValue({
+        registerTransaction: jest.fn(),
+        locateByQuery: jest.fn().mockResolvedValue({
+          providerReference: 'p-9',
+          documentReference: null,
+          signingIdentity: null,
+          registeredAt: NOW,
+        }),
+      });
+      repo.findById.mockResolvedValue(record('failed', { failureMode: 'in-doubt' }));
+      repo.updateOutcome.mockResolvedValue(record('registered'));
+
+      const result = await service.reconcileInDoubt('rec-1');
+
+      expect(result.outcome).toBe('resolved');
     });
 
     it('should look up by OL`s own business coordinates', async () => {

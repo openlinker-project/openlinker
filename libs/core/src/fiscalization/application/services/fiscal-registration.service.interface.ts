@@ -84,7 +84,11 @@ export interface IFiscalRegistrationService {
    * exists to prevent. A provider that cannot be queried by business
    * coordinates reports `unsupported` and the record is left for the operator.
    * A `not-found` answer likewise leaves the record in doubt - it is evidence,
-   * not authority to re-send.
+   * not authority to re-send. A provider that HOLDS the sale without having
+   * registered it yet reports `still-unknown` (ADR-042 amendment #2502,
+   * decisions 1 and 3): the record is left exactly where it was, which is a
+   * legitimate answer rather than a failure, and the check may be repeated
+   * later.
    *
    * Throws `FiscalRegistrationNotInDoubtException` when the record is in any
    * other state.

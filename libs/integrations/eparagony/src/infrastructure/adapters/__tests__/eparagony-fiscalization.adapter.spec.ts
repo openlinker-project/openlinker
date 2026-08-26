@@ -358,9 +358,12 @@ describe('EparagonyFiscalizationAdapter', () => {
       });
 
       expect(located).toMatchObject({
-        providerReference: deriveDocumentToken(CONNECTION_ID, 'fiscal:conn-1:ol_order_1'),
-        documentReference: '334',
-        signingIdentity: 'TEST0000000001',
+        status: 'registered',
+        registration: {
+          providerReference: deriveDocumentToken(CONNECTION_ID, 'fiscal:conn-1:ol_order_1'),
+          documentReference: '334',
+          signingIdentity: 'TEST0000000001',
+        },
       });
       const [path] = client.get.mock.calls[0] as [string];
       expect(path).toContain(deriveDocumentToken(CONNECTION_ID, 'fiscal:conn-1:ol_order_1'));
@@ -372,19 +375,40 @@ describe('EparagonyFiscalizationAdapter', () => {
         new EparagonyApiError('unknown', 400, { errorCode: 92, statusCode: 400 }),
       ]);
 
-      await expect(
-        makeAdapter(client).locateByQuery({ idempotencyKey: 'k' }),
-      ).resolves.toBeNull();
+      await expect(makeAdapter(client).locateByQuery({ idempotencyKey: 'k' })).resolves.toEqual({
+        status: 'not-found',
+      });
     });
 
-    it('should report no match when the document exists but is not confirmed yet', async () => {
-      // The neutral result cannot say "found, not registered yet", and core
-      // terminalises the record on any non-null answer.
+    it('should report the document as HELD when it exists but is not confirmed yet', async () => {
+      // The third outcome (ADR-042 amendment #2502, decision 1). Before it this
+      // branch answered "no match", and the operator surface reported a sale the
+      // provider was handling normally as one it did not have.
       const client = makeClient([PENDING]);
 
-      await expect(
-        makeAdapter(client).locateByQuery({ idempotencyKey: 'k' }),
-      ).resolves.toBeNull();
+      const located = await makeAdapter(client).locateByQuery({ idempotencyKey: 'k' });
+
+      expect(located).toMatchObject({ status: 'held' });
+    });
+
+    it('should report an unrecognised status as HELD rather than as a registration', async () => {
+      // Core may only terminalise on a status this build understands.
+      const client = makeClient([{ ...PENDING, status: 'SOMETHING_NEW' }]);
+
+      const located = await makeAdapter(client).locateByQuery({ idempotencyKey: 'k' });
+
+      expect(located).toMatchObject({ status: 'held', detail: 'SOMETHING_NEW' });
+    });
+
+    it('should report no match when the provider reports the document in error', async () => {
+      // A failed document is an absence of a registration, not work in progress:
+      // reporting it as held would tell the operator to wait for a receipt that
+      // is never coming.
+      const client = makeClient([{ ...PENDING, status: 'ERROR' }]);
+
+      await expect(makeAdapter(client).locateByQuery({ idempotencyKey: 'k' })).resolves.toEqual({
+        status: 'not-found',
+      });
     });
 
     it('should rethrow a transport failure so it is never read as no match', async () => {
@@ -398,7 +422,9 @@ describe('EparagonyFiscalizationAdapter', () => {
     it('should report no match when no idempotency key is supplied', async () => {
       const client = makeClient([CONFIRMED]);
 
-      await expect(makeAdapter(client).locateByQuery({ orderId: 'ol_order_1' })).resolves.toBeNull();
+      await expect(makeAdapter(client).locateByQuery({ orderId: 'ol_order_1' })).resolves.toEqual({
+        status: 'not-found',
+      });
       expect(client.get).not.toHaveBeenCalled();
     });
   });
