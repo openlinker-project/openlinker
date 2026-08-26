@@ -20,6 +20,7 @@ import {
 } from './fiscal-registration.service';
 import { FiscalRegistrationRecord } from '../../domain/entities/fiscal-registration-record.entity';
 import { DuplicateFiscalRegistrationRecordException } from '../../domain/exceptions/duplicate-fiscal-registration-record.exception';
+import { FiscalReconcileCheckFailedException } from '../../domain/exceptions/fiscal-reconcile-check-failed.exception';
 import { FiscalRegistrationNotInDoubtException } from '../../domain/exceptions/fiscal-registration-not-in-doubt.exception';
 import { FiscalRegistrationRecordNotFoundException } from '../../domain/exceptions/fiscal-registration-record-not-found.exception';
 import { MissingIdempotencyKeyException } from '../../domain/exceptions/missing-idempotency-key.exception';
@@ -1236,6 +1237,37 @@ describe('FiscalRegistrationService', () => {
         idempotencyKey: KEY,
         orderId: ORDER_ID,
       });
+    });
+
+    it('should raise a distinct failure when the provider could not be ASKED', async () => {
+      // #2522: a throw is not an answer. Reporting it as `unsupported` would
+      // state a structural fact about the adapter where the truth is a
+      // transient one about the network, and reporting it as `not-found` would
+      // assert an absence the provider never asserted.
+      const locating: FiscalizationPort & FiscalRegistrationLocator = {
+        registerTransaction: jest.fn(),
+        locateByQuery: jest.fn().mockRejectedValue(new Error('socket hang up')),
+      };
+      integrations.getCapabilityAdapter.mockResolvedValue(locating);
+      repo.findById.mockResolvedValue(record('failed', { failureMode: 'in-doubt' }));
+
+      await expect(service.reconcileInDoubt('rec-1')).rejects.toBeInstanceOf(
+        FiscalReconcileCheckFailedException,
+      );
+      expect(repo.updateOutcome).not.toHaveBeenCalled();
+      expect(locating.registerTransaction).not.toHaveBeenCalled();
+    });
+
+    it('should NOT wrap an adapter-resolution failure as a failed check', async () => {
+      // Resolving the adapter is a connection-CONFIGURATION fault, not a
+      // provider one; it keeps propagating so the global filter classifies it
+      // as itself instead of reading as "the provider could not be reached".
+      const configFault = new Error('Connection conn-1 does not support Fiscalization');
+      integrations.getCapabilityAdapter.mockRejectedValue(configFault);
+      repo.findById.mockResolvedValue(record('failed', { failureMode: 'in-doubt' }));
+
+      await expect(service.reconcileInDoubt('rec-1')).rejects.toBe(configFault);
+      expect(repo.updateOutcome).not.toHaveBeenCalled();
     });
 
     it('should throw not-found for an unknown record id', async () => {

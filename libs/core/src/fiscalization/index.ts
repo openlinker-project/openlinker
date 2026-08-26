@@ -20,6 +20,8 @@ export * from './domain/ports/fiscal-registration-record-repository.port';
 export * from './domain/exceptions/duplicate-fiscal-registration-record.exception';
 export * from './domain/exceptions/fiscal-registration-record-not-found.exception';
 export * from './domain/exceptions/fiscal-registration-not-in-doubt.exception';
+// A failed CHECK is not one of the four reconcile outcomes (#2522).
+export * from './domain/exceptions/fiscal-reconcile-check-failed.exception';
 export * from './domain/exceptions/missing-idempotency-key.exception';
 // A missing per-line rate holds the registration (#2252, ADR-063 § 6).
 export * from './domain/exceptions/missing-tax-rate.exception';

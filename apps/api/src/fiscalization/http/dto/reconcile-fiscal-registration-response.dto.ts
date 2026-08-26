@@ -13,12 +13,19 @@
  * @module apps/api/src/fiscalization/http/dto
  */
 import { ApiProperty } from '@nestjs/swagger';
-import { FiscalReconcileOutcome } from '@openlinker/core/fiscalization';
+// Value import on purpose: `FiscalReconcileOutcomeValues` is what publishes the
+// CLOSED set to the contract, and `FiscalReconcileOutcome` annotates a decorated
+// property, so `emitDecoratorMetadata` needs the binding to survive erasure.
+import {
+  FiscalReconcileOutcome,
+  FiscalReconcileOutcomeValues,
+} from '@openlinker/core/fiscalization';
 
 import { FiscalRegistrationResponseDto } from './fiscal-registration-response.dto';
 
 export class ReconcileFiscalRegistrationResponseDto {
   @ApiProperty({
+    enum: FiscalReconcileOutcomeValues,
     description:
       'resolved = the provider confirmed a registration and the record advanced; ' +
       'not-found = the provider holds no match, so the record stays in doubt for an operator; ' +
