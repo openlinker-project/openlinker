@@ -105,9 +105,9 @@ export interface FiscalArtefact {
  *
  * A registered receipt may carry artefacts and it may carry none. Until this
  * projection existed a surface could not offer "open the receipt document"
- * without inventing what exists, so the summary carries exactly the three facts
- * an affordance needs - the FORM, the adapter's HINT, and a LABEL - and never
- * the payload.
+ * without inventing what exists, so the summary carries exactly the four fields
+ * an affordance needs - the FORM, the adapter's HINT, a LABEL, and the MIME type
+ * qualifying the form where the adapter knows one - and never the payload.
  *
  * Content is excluded on purpose rather than for economy. An artefact payload
  * is a customer-facing document: it can be large, it can carry buyer-identifying
@@ -147,8 +147,12 @@ export interface FiscalArtefactSummary {
  *
  * Pure, and co-located with the type it projects onto (the pure-rule exception
  * in `engineering-standards.md`): a field added to {@link FiscalArtefactSummary}
- * means editing this function in the same commit, which is what keeps a payload
- * from leaking in through a summary assembled by hand somewhere else.
+ * means editing this function in the same commit, so the two cannot drift.
+ *
+ * What keeps a payload out is the summary's FIELD SET, not this function: an
+ * object literal typed as {@link FiscalArtefactSummary} cannot carry `content`,
+ * so a summary assembled by hand elsewhere is bound by the same rule without
+ * having to route through here.
  *
  * `null` in, `null` out - a registration that never produced anything is not the
  * same as one that produced nothing, and collapsing the two would report an
