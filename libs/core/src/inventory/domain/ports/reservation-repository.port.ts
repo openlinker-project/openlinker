@@ -33,6 +33,7 @@
  */
 import type { Reservation } from '../entities/reservation.entity';
 import type {
+  ExtendReservationExpiryInput,
   ReleaseReservationInput,
   ReservationClaimInput,
   ReservationClaimOutcome,
@@ -101,6 +102,45 @@ export interface ReservationRepositoryPort {
    * @throws {ReservationLedgerConstraintError} as above.
    */
   releaseHeld(input: ReleaseReservationInput): Promise<Reservation>;
+
+  /**
+   * Push ONE held reservation's expiry out, leaving everything else alone.
+   *
+   * The extend half of the state-dependent expiry sweep (#2346): a hold whose
+   * order still carries a live OL-executed obligation must never be released,
+   * and a sweep that cannot rule an obligation out extends rather than guesses.
+   *
+   * **`atpEffect` is NOT touched, and must never be.** It is stamped at creation
+   * by the caller holding the routing outcome and is immutable thereafter
+   * (ADR-061 decision 1); rewriting it here would move a published quantity with
+   * no audit trail and no way to attribute the change. Only `expiresAt` moves.
+   *
+   * Guarded on `status = 'held'` like every other transition on this port, so a
+   * row that went terminal between the sweep's page read and this write is not
+   * resurrected into a live hold.
+   *
+   * No counter is touched: an extension changes WHEN the units stop being
+   * claimed, never HOW MANY are claimed.
+   *
+   * @throws {ReservationNotHeldError} no live `held` row for the key.
+   * @throws {ReservationLedgerConstraintError} as above.
+   */
+  extendHeldExpiry(input: ExtendReservationExpiryInput): Promise<Reservation>;
+
+  /**
+   * Held reservations already past `expiresAt`, oldest first, capped at `limit`.
+   *
+   * The expiry sweep's candidate page. **Deliberately NOT an offset-paged read**
+   * (#2346): the predicate is the frontier — a released row leaves the set, and
+   * an EXTENDED row leaves it too because `expiresAt` moves forward — so every
+   * page consumes its own selection and an advancing offset over a shrinking set
+   * would step over holds silently. `inventory-provenance` (#2317) records the
+   * same reasoning for the same shape.
+   *
+   * Ordered by `expiresAt` so the longest-overdue hold is always examined first
+   * and a persistently failing tail cannot starve it.
+   */
+  listHeldExpiredBefore(before: Date, limit: number): Promise<readonly Reservation[]>;
 
   /** The live `held` row for one key, or `null`. Never returns a terminal row. */
   findHeld(key: ReservationKey): Promise<Reservation | null>;

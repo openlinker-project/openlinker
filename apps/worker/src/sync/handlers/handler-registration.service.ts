@@ -40,6 +40,7 @@ import { MasterProductSyncAllHandler } from './master-product-sync-all.handler';
 import { MasterProductSyncDeltaHandler } from './master-product-sync-delta.handler';
 import { MasterProductReconcileHandler } from './master-product-reconcile.handler';
 import { InventoryProvenanceBackfillHandler } from './inventory-provenance-backfill.handler';
+import { ReservationExpiryHandler } from './reservation-expiry.handler';
 import { PickupPointRefreshHandler } from './pickup-point-refresh.handler';
 import { ShopProductPublishHandler } from './shop-product-publish.handler';
 import { ShopProductStatusSyncHandler } from './shop-product-status-sync.handler';
@@ -57,6 +58,7 @@ export class HandlerRegistrationService implements OnModuleInit {
     private readonly handlerRegistry: SyncJobHandlerRegistry,
     private readonly inventoryPropagateHandler: InventoryPropagateToMarketplacesHandler,
     private readonly inventoryProvenanceBackfillHandler: InventoryProvenanceBackfillHandler,
+    private readonly reservationExpiryHandler: ReservationExpiryHandler,
     private readonly marketplaceOrdersPollHandler: OrdersPollHandler,
     private readonly marketplaceOrderSyncHandler: MarketplaceOrderSyncHandler,
     private readonly marketplaceOrderFxStampHandler: MarketplaceOrderFxStampHandler,
@@ -296,6 +298,21 @@ export class HandlerRegistrationService implements OnModuleInit {
     this.handlerRegistry.register(
       'inventory.provenance.backfill',
       this.inventoryProvenanceBackfillHandler,
+      'bulk'
+    );
+
+    // Register the reservation expiry sweep (#2346, REVIEW C1).
+    //
+    // `bulk`, for the same reason the provenance backfill is: it enqueues no
+    // children and does its work in bounded local writes, so `fan-out` — whose
+    // subject is a job whose cost is the wave it emits — would be the wrong
+    // profile. Nothing a buyer waits on, so it must never share `realtime`'s
+    // slots; and a saturated `bulk` lane delaying it is harmless, because a hold
+    // examined a tick later is a hold that stayed held, which is the safe
+    // direction.
+    this.handlerRegistry.register(
+      'inventory.reservations.expire',
+      this.reservationExpiryHandler,
       'bulk'
     );
 

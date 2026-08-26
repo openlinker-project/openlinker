@@ -37,13 +37,19 @@ describe('HandlerRegistrationService (ADR-050 lane partition, #2278)', () => {
     expect(() => registry.assertFullLaneCoverage()).not.toThrow();
   });
 
-  it('should partition the 41 job types 13/16/5/7 per ADR-050 decision 1', () => {
+  it('should partition the 42 job types 13/17/5/7 per ADR-050 decision 1', () => {
     expect(registry.getJobTypesByLane('realtime')).toHaveLength(13);
     // 16 since #2332 added `returns.orphan.reconcile` — background catch-up work whose
     // lateness costs nobody a request, and which must not contend with the `realtime`
     // order ingestion that is what RESOLVES its orphans — and #2440 added
     // `orders.taxRate.backfill`, a paced backfill with the same profile.
-    expect(registry.getJobTypesByLane('bulk')).toHaveLength(16);
+    //
+    // 17 since #2346 added `inventory.reservations.expire`, which shares that
+    // profile exactly: it enqueues no children and writes locally, so `fan-out`
+    // (whose subject is a job whose cost is the wave it emits) is wrong for it,
+    // and a hold examined a tick later is a hold that STAYED held — the safe
+    // direction — so a saturated lane delaying it costs nothing.
+    expect(registry.getJobTypesByLane('bulk')).toHaveLength(17);
     expect(registry.getJobTypesByLane('fiscal')).toHaveLength(5);
     expect(registry.getJobTypesByLane('fan-out')).toHaveLength(7);
   });

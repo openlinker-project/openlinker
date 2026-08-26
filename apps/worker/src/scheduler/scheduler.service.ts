@@ -849,6 +849,27 @@ export class SchedulerService implements OnModuleDestroy {
       generateIdempotencyKey: (_connection, timestamp) =>
         `inventory:provenance:backfill:${timestamp}`,
     });
+
+    // #2346 — the state-dependent reservation expiry sweep. Global scope for the
+    // same reason: reservations key on (order, line, position) and carry no
+    // connection axis.
+    //
+    // Default ON. On a default install every hold is stamped `diagnostic`
+    // (#2344), so neither an extension nor a release moves a published number;
+    // and while `order_holds` (#2339) is absent the pass releases NOTHING at all.
+    // It is registered now so the sweep exists the moment a real obligation
+    // reader is bound, rather than being remembered later.
+    this.tasks.push({
+      taskId: 'reservation-expiry-sweep',
+      jobType: 'inventory.reservations.expire',
+      cronExpression: '15 * * * *',
+      enabledEnvVar: 'OL_RESERVATION_EXPIRY_SWEEP_ENABLED',
+      enabledDefault: true,
+      connectionFilter: () => Promise.resolve([systemConnection]),
+      generatePayload: () => ({ schemaVersion: 1 }),
+      generateIdempotencyKey: (_connection, timestamp) =>
+        `inventory:reservations:expire:${timestamp}`,
+    });
   }
 
   /**

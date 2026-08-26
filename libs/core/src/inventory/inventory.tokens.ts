@@ -24,6 +24,9 @@ export const AVAILABILITY_SERVICE_TOKEN = Symbol('IAvailabilityService');
 export const RESERVATION_LEDGER_READER_TOKEN = Symbol('ReservationLedgerReaderPort');
 // Advisory reservation ledger, write half (#2343, ADR-061)
 export const RESERVATION_REPOSITORY_TOKEN = Symbol('ReservationRepositoryPort');
+// State-dependent expiry sweep (#2346, REVIEW C1)
+export const RESERVATION_EXPIRY_SERVICE_TOKEN = Symbol('IReservationExpiryService');
+export const RESERVATION_OBLIGATION_READERS_TOKEN = Symbol('ObligationReaders');
 // Order-shaped seam over the ledger (#2344, ADR-061)
 export const RESERVATION_SERVICE_TOKEN = Symbol('IReservationService');
 // Connection-provenance backfill (#2317, ADR-058 ladder step (ii))

@@ -60,3 +60,54 @@ export function readReservationTtlMs(env: Readonly<Record<string, string | undef
 export function resolveReservationExpiry(now: Date, ttlMs: number): Date {
   return new Date(now.getTime() + ttlMs);
 }
+
+/**
+ * How long a hold may keep being extended before the sweep says so (#2346).
+ *
+ * The second bound, and it exists because the first one stops working when the
+ * obligation source is missing. Fail-closed means *indeterminate ⇒ extend*, and
+ * with no `order_holds` table (#2339) that is true forever — so without an age
+ * bound the sweep re-extends every hold on every tick in perpetuity, the `held`
+ * set never drains, and the stuck state is completely invisible.
+ *
+ * Past this age the sweep **still extends and still never releases** — releasing
+ * is what oversells, and no amount of elapsed time makes a possibly-promised
+ * unit safe to republish. What changes is that the hold is counted and logged,
+ * so an operator can find it. Bounding by age rather than by an extension
+ * counter is the #2330 returns-sweep precedent, and it needs no column: the
+ * hold's own `createdAt` already carries the answer.
+ *
+ * Thirty days: comfortably past any ordinary fulfilment window, so a hold that
+ * reaches it is stuck rather than slow.
+ */
+export const RESERVATION_OBLIGATION_MAX_AGE_MS_DEFAULT = 30 * 24 * 60 * 60 * 1000;
+
+/** One day. Below this an ordinary in-flight order would be reported stuck. */
+export const RESERVATION_OBLIGATION_MAX_AGE_MS_MIN = 24 * 60 * 60 * 1000;
+
+/** One year. Above this the bound stops bounding anything. */
+export const RESERVATION_OBLIGATION_MAX_AGE_MS_MAX = 365 * 24 * 60 * 60 * 1000;
+
+export const RESERVATION_OBLIGATION_MAX_AGE_ENV_KEY = 'OL_RESERVATION_OBLIGATION_MAX_AGE_MS';
+
+/**
+ * Coerce `OL_RESERVATION_OBLIGATION_MAX_AGE_MS` into a usable bound.
+ *
+ * Same posture as {@link readReservationTtlMs}: a malformed value falls back to
+ * the default rather than throwing, since a typo must not take the sweep
+ * offline, and the clamp keeps any accepted value inside a defensible band.
+ */
+export function readReservationObligationMaxAgeMs(
+  env: Readonly<Record<string, string | undefined>>
+): number {
+  const raw = env[RESERVATION_OBLIGATION_MAX_AGE_ENV_KEY];
+  if (raw === undefined || raw.trim() === '') return RESERVATION_OBLIGATION_MAX_AGE_MS_DEFAULT;
+
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed <= 0) return RESERVATION_OBLIGATION_MAX_AGE_MS_DEFAULT;
+
+  return Math.min(
+    RESERVATION_OBLIGATION_MAX_AGE_MS_MAX,
+    Math.max(RESERVATION_OBLIGATION_MAX_AGE_MS_MIN, Math.trunc(parsed))
+  );
+}

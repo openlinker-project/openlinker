@@ -110,6 +110,17 @@ export interface ReleaseReservationInput extends ReservationKey {
  * Why a position could not accept a claim at all — as opposed to accepting it in
  * principle but lacking the units.
  */
+/**
+ * One extension of a live hold's expiry (#2346).
+ *
+ * Carries the new instant rather than a duration: the sweep resolves the TTL
+ * once per run from `readReservationTtlMs`, so every hold extended in one run
+ * moves to the same instant and two runs cannot disagree about "now".
+ */
+export interface ExtendReservationExpiryInput extends ReservationKey {
+  readonly expiresAt: Date;
+}
+
 export const ReservationPositionUnavailableReasonValues = ['missing', 'stale'] as const;
 
 export type ReservationPositionUnavailableReason =

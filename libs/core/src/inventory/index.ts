@@ -81,6 +81,22 @@ export {
 } from './application/services/availability.service.interface';
 export { AvailabilityService } from './application/services/availability.service';
 export { IReservationService } from './application/services/reservation.service.interface';
+export {
+  IReservationExpiryService,
+  ExpireReservationsInput,
+  ExpireReservationsResult,
+} from './application/services/reservation-expiry.service.interface';
+export { ReservationExpiryService } from './application/services/reservation-expiry.service';
+export {
+  ReservationObligationKindValues,
+  ReservationObligationKind,
+  ObligationVerdictValues,
+  ObligationVerdict,
+  ObligationReader,
+  ObligationReaders,
+  foldObligationVerdicts,
+  resolveObligation,
+} from './domain/types/reservation-obligation.types';
 export { ReservationService } from './application/services/reservation.service';
 
 // Application Types
@@ -137,6 +153,7 @@ export {
   ReservationClaimInput,
   ReservationClaimOutcome,
   ReleaseReservationInput,
+  ExtendReservationExpiryInput,
   ReservationPositionUnavailableReasonValues,
   ReservationPositionUnavailableReason,
 } from './domain/types/reservation.types';
@@ -147,6 +164,11 @@ export {
   RESERVATION_TTL_ENV_KEY,
   readReservationTtlMs,
   resolveReservationExpiry,
+  RESERVATION_OBLIGATION_MAX_AGE_MS_DEFAULT,
+  RESERVATION_OBLIGATION_MAX_AGE_MS_MIN,
+  RESERVATION_OBLIGATION_MAX_AGE_MS_MAX,
+  RESERVATION_OBLIGATION_MAX_AGE_ENV_KEY,
+  readReservationObligationMaxAgeMs,
 } from './domain/types/reservation-expiry.types';
 export {
   InventoryLocationKindValues,

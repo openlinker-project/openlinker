@@ -97,6 +97,9 @@ export const JobTypeValues = [
   // platform calls and reads only OL's own table — `inventory.propagateToMarketplaces`
   // is the naming precedent for a core-owned internal pass.
   'inventory.provenance.backfill',
+  // #2346 — the state-dependent reservation expiry sweep. Reads and writes only
+  // OL's own ledger; no platform call.
+  'inventory.reservations.expire',
 
   // Invoicing (core-owned policy; executed by worker — OL #1120)
   'invoicing.issue',

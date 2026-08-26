@@ -22,11 +22,16 @@ import { InventoryQueryService } from './application/services/inventory-query.se
 import { LocationService } from './application/services/location.service';
 import { AvailabilityService } from './application/services/availability.service';
 import { ReservationService } from './application/services/reservation.service';
+import { ReservationExpiryService } from './application/services/reservation-expiry.service';
+import { UnavailableOrderHoldReader } from './infrastructure/reservations/unavailable-order-hold.reader';
+import type { ObligationReaders } from './domain/types/reservation-obligation.types';
 import { ReservationLedgerReader } from './infrastructure/reservations/reservation-ledger.reader';
 import { InventoryProvenanceBackfillService } from './application/services/inventory-provenance-backfill.service';
 import {
   AVAILABILITY_SERVICE_TOKEN,
+  RESERVATION_EXPIRY_SERVICE_TOKEN,
   RESERVATION_LEDGER_READER_TOKEN,
+  RESERVATION_OBLIGATION_READERS_TOKEN,
   RESERVATION_REPOSITORY_TOKEN,
   RESERVATION_SERVICE_TOKEN,
   INVENTORY_REPOSITORY_TOKEN,
@@ -47,7 +52,9 @@ import { EventsModule } from '@openlinker/core/events';
 // Re-export tokens for convenience
 export {
   AVAILABILITY_SERVICE_TOKEN,
+  RESERVATION_EXPIRY_SERVICE_TOKEN,
   RESERVATION_LEDGER_READER_TOKEN,
+  RESERVATION_OBLIGATION_READERS_TOKEN,
   RESERVATION_REPOSITORY_TOKEN,
   RESERVATION_SERVICE_TOKEN,
   INVENTORY_REPOSITORY_TOKEN,
@@ -85,6 +92,12 @@ export {
     // #2343 — the advisory reservation ledger's write half.
     ReservationRepository,
     ReservationService,
+    // #2346 — the state-dependent expiry sweep. The obligation readers map is
+    // bound as a VALUE rather than a class so its mapped type over
+    // `ReservationObligationKindValues` is checked here: a kind added without a
+    // reader fails to compile at this binding.
+    UnavailableOrderHoldReader,
+    ReservationExpiryService,
     // #2345 — the read half, now real. #2321's `EmptyReservationLedgerReader`
     // was the Wave-1b stand-in that let the ATP formula carry the ledger term
     // before the table existed; it survives only as a test fixture on the
@@ -135,6 +148,21 @@ export {
       useExisting: ReservationService,
     },
     {
+      provide: RESERVATION_OBLIGATION_READERS_TOKEN,
+      // While `UnavailableOrderHoldReader` is bound here the sweep extends every
+      // candidate and releases NOTHING (#2346). #2339 replaces this one entry
+      // with a reader over `order_holds` — which must answer `'absent'` only on
+      // a positively confirmed absence, never as a default.
+      useFactory: (holds: UnavailableOrderHoldReader): ObligationReaders => ({
+        'open-order-hold': (orderRecordId) => holds.read(orderRecordId),
+      }),
+      inject: [UnavailableOrderHoldReader],
+    },
+    {
+      provide: RESERVATION_EXPIRY_SERVICE_TOKEN,
+      useExisting: ReservationExpiryService,
+    },
+    {
       provide: AVAILABILITY_SERVICE_TOKEN,
       useExisting: AvailabilityService,
     },
@@ -154,6 +182,8 @@ export {
     RESERVATION_LEDGER_READER_TOKEN,
     RESERVATION_REPOSITORY_TOKEN,
     RESERVATION_SERVICE_TOKEN,
+    RESERVATION_EXPIRY_SERVICE_TOKEN,
+    RESERVATION_OBLIGATION_READERS_TOKEN,
     AVAILABILITY_SERVICE_TOKEN,
     INVENTORY_PROVENANCE_BACKFILL_SERVICE_TOKEN,
   ],

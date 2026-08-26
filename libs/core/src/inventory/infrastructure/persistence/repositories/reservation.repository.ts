@@ -29,7 +29,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import type { EntityManager} from 'typeorm';
-import { DataSource, QueryFailedError, Repository } from 'typeorm';
+import { DataSource, LessThan, QueryFailedError, Repository } from 'typeorm';
 import { ReservationOrmEntity } from '../entities/reservation.orm-entity';
 import { Reservation } from '../../../domain/entities/reservation.entity';
 import type { ReservationRepositoryPort } from '../../../domain/ports/reservation-repository.port';
@@ -38,6 +38,7 @@ import { ReservationLedgerConstraintError } from '../../../domain/exceptions/res
 import { ReservationNotHeldError } from '../../../domain/exceptions/reservation-not-held.error';
 import { ReservationPositionUnavailableError } from '../../../domain/exceptions/reservation-position-unavailable.error';
 import type {
+  ExtendReservationExpiryInput,
   ReleaseReservationInput,
   ReservationClaimInput,
   ReservationClaimOutcome,
@@ -158,6 +159,56 @@ export class ReservationRepository implements ReservationRepositoryPort {
         return this.toDomain(released);
       }),
     );
+  }
+
+  async extendHeldExpiry(input: ExtendReservationExpiryInput): Promise<Reservation> {
+    return this.translate(() =>
+      this.dataSource.transaction(async (manager) => {
+        // Guarded on `status = 'held'` exactly as `releaseHeld` is: a row that
+        // went terminal between the sweep's page read and this write must not be
+        // resurrected into a live hold.
+        //
+        // `atpEffect` is deliberately absent from the SET list — it is immutable
+        // (ADR-061 decision 1), and rewriting it would move a published quantity
+        // with no audit trail. No counter moves either: an extension changes WHEN
+        // the units stop being claimed, never HOW MANY.
+        const rows = await this.raw<ReservationRow>(
+          manager,
+          `UPDATE "reservations"
+              SET "expiresAt" = $4, "updatedAt" = now()
+            WHERE "orderRecordId" = $1
+              AND "orderLineId" = $2
+              AND "inventoryItemId" = $3
+              AND "status" = 'held'
+        RETURNING *`,
+          [input.orderRecordId, input.orderLineId, input.inventoryItemId, input.expiresAt],
+        );
+
+        const extended = rows[0];
+        if (!extended) {
+          throw new ReservationNotHeldError(
+            input.orderRecordId,
+            input.orderLineId,
+            input.inventoryItemId,
+          );
+        }
+
+        return this.toDomain(extended);
+      }),
+    );
+  }
+
+  async listHeldExpiredBefore(before: Date, limit: number): Promise<readonly Reservation[]> {
+    const entities = await this.translate(() =>
+      this.repository.find({
+        where: { status: 'held', expiresAt: LessThan(before) },
+        // Longest-overdue first, so a persistently failing tail cannot starve
+        // the holds that have been expired the longest.
+        order: { expiresAt: 'ASC' },
+        take: limit,
+      }),
+    );
+    return entities.map((entity) => this.toDomainFromEntity(entity));
   }
 
   async findHeld(key: ReservationKey): Promise<Reservation | null> {
