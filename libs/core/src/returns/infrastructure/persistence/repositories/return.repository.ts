@@ -30,11 +30,16 @@ import type { RefundReason } from '@openlinker/core/orders/types';
 import { Logger } from '@openlinker/shared/logging';
 import { ReturnOrmEntity } from '../entities/return.orm-entity';
 import { ReturnLineOrmEntity } from '../entities/return-line.orm-entity';
+import { ReturnLineEventOrmEntity } from '../entities/return-line-event.orm-entity';
 import { ReturnRecord } from '../../../domain/entities/return-record.entity';
 import { ReturnLine } from '../../../domain/entities/return-line.entity';
+import { ReturnLineEvent } from '../../../domain/entities/return-line-event.entity';
 import { narrowRefundReason } from '../../../domain/return-reason.mapper';
 import { ReturnPersistenceError } from '../../../domain/exceptions/return-persistence.error';
-import type { ReturnRepositoryPort } from '../../../domain/ports/return-repository.port';
+import type {
+  ReturnLineWriteDecision,
+  ReturnRepositoryPort,
+} from '../../../domain/ports/return-repository.port';
 import type { CreateReturnRecordInput, ReturnOrigin } from '../../../domain/types/return.types';
 import type {
   UpsertReturnRecordInput,
@@ -54,6 +59,16 @@ import type {
   ReturnDisposition,
   ReturnMoneyState,
 } from '../../../domain/types/return-line.types';
+import type { ReturnCustodyOutcome } from '../../../domain/domain-services/return-custody-transitions.domain-service';
+import type {
+  CreateReturnLineEventInput,
+  ReturnLineEventKind,
+  ReturnRestockBlockReason,
+  ReturnRestockState,
+  RestockedBy,
+  SettleReturnLineEventInput,
+} from '../../../domain/types/return-line-event.types';
+import { ReturnLineNotFoundError } from '../../../domain/exceptions/return-line-not-found.error';
 
 @Injectable()
 export class ReturnRepository implements ReturnRepositoryPort {
@@ -64,6 +79,8 @@ export class ReturnRepository implements ReturnRepositoryPort {
     private readonly returns: Repository<ReturnOrmEntity>,
     @InjectRepository(ReturnLineOrmEntity)
     private readonly lines: Repository<ReturnLineOrmEntity>,
+    @InjectRepository(ReturnLineEventOrmEntity)
+    private readonly lineEvents: Repository<ReturnLineEventOrmEntity>,
     private readonly dataSource: DataSource
   ) {}
 
@@ -670,6 +687,248 @@ export class ReturnRepository implements ReturnRepositoryPort {
       entity.note,
       entity.createdAt,
       entity.updatedAt
+    );
+  }
+
+
+  // ---------------------------------------------------------------------------
+  // Custody writes and the act ledger (#2370)
+  // ---------------------------------------------------------------------------
+
+  async findLine(
+    lineId: string
+  ): Promise<{ line: ReturnLine; record: ReturnRecord } | null> {
+    const lineEntity = await this.lines.findOne({ where: { id: lineId } });
+    if (lineEntity === null) {
+      return null;
+    }
+    const record = await this.findById(lineEntity.returnId);
+    if (record === null) {
+      return null;
+    }
+    return { line: this.toLineDomain(lineEntity), record };
+  }
+
+  /**
+   * See the port docblock for why the row lock is load-bearing rather than
+   * defensive: the counter transitions are read-then-write, and the DB CHECK
+   * cannot see a lost update.
+   *
+   * `seq` is allocated from `MAX(seq) + 1` INSIDE the same locked transaction,
+   * which is what makes the `return:{returnId}:{lineId}:{seq}` idempotency key
+   * safe to build afterwards — under the lock no peer can mint the same value,
+   * and `UQ_return_line_events_line_seq` is the belt to that braces.
+   */
+  async runLineWrite<T>(
+    lineId: string,
+    write: (locked: { line: ReturnLine; record: ReturnRecord }) =>
+      | ReturnLineWriteDecision<T>
+      | Promise<ReturnLineWriteDecision<T>>
+  ): Promise<{ event: ReturnLineEvent; result: T }> {
+    return this.dataSource.transaction(async (manager) => {
+      const lineEntity = await manager
+        .getRepository(ReturnLineOrmEntity)
+        .createQueryBuilder('line')
+        .setLock('pessimistic_write')
+        .where('line.id = :lineId', { lineId })
+        .getOne();
+
+      if (lineEntity === null) {
+        throw new ReturnLineNotFoundError(lineId);
+      }
+
+      const headerEntity = await manager
+        .getRepository(ReturnOrmEntity)
+        .findOne({ where: { id: lineEntity.returnId } });
+      if (headerEntity === null) {
+        throw new ReturnLineNotFoundError(lineId);
+      }
+
+      const record = this.toDomain(headerEntity, [lineEntity]);
+      const decision = await write({ line: this.toLineDomain(lineEntity), record });
+
+      const saved = await this.appendEvent(manager, decision.event);
+
+      if (decision.outcome !== null) {
+        await this.applyCustodyOutcome(
+          manager,
+          lineId,
+          decision.outcome,
+          decision.disposition
+        );
+      }
+
+      return { event: saved, result: decision.result };
+    });
+  }
+
+  async settleLineRestock(
+    eventId: string,
+    lineId: string,
+    patch: SettleReturnLineEventInput,
+    computeOutcome: (line: ReturnLine) => ReturnCustodyOutcome | null,
+    disposition: ReturnDisposition | null
+  ): Promise<ReturnLineEvent> {
+    return this.dataSource.transaction(async (manager) => {
+      // Lock the line and compute the move from the LOCKED row — see the port
+      // docblock: an outcome carries absolute counters, so computing it from an
+      // earlier unlocked read would clobber a concurrent receipt.
+      const lineEntity = await manager
+        .getRepository(ReturnLineOrmEntity)
+        .createQueryBuilder('line')
+        .setLock('pessimistic_write')
+        .where('line.id = :lineId', { lineId })
+        .getOne();
+
+      if (lineEntity === null) {
+        throw new ReturnLineNotFoundError(lineId);
+      }
+
+      const outcome = computeOutcome(this.toLineDomain(lineEntity));
+
+      await manager.getRepository(ReturnLineEventOrmEntity).update(
+        { id: eventId },
+        {
+          restockState: patch.restockState,
+          restockBlockedReason: patch.restockBlockedReason,
+          restockBlockedDetail: patch.restockBlockedDetail,
+          restockedBy: patch.restockedBy,
+          ...(patch.masterConnectionId !== undefined
+            ? { masterConnectionId: patch.masterConnectionId }
+            : {}),
+        }
+      );
+
+      if (outcome !== null) {
+        await this.applyCustodyOutcome(manager, lineId, outcome, disposition);
+      }
+
+      const settled = await manager
+        .getRepository(ReturnLineEventOrmEntity)
+        .findOne({ where: { id: eventId } });
+      if (settled === null) {
+        throw new ReturnPersistenceError(
+          'settleLineRestock',
+          new Error(`Return line event ${eventId} vanished while settling its restock outcome`)
+        );
+      }
+      return this.toLineEventDomain(settled);
+    });
+  }
+
+  async findOutstandingRestockEvents(lineId: string): Promise<ReturnLineEvent[]> {
+    const rows = await this.lineEvents
+      .createQueryBuilder('event')
+      .where('event."returnLineId" = :lineId', { lineId })
+      .andWhere(`event."restockState" IN ('blocked', 'in_doubt')`)
+      .orderBy('event."seq"', 'ASC')
+      .getMany();
+    return rows.map((row) => this.toLineEventDomain(row));
+  }
+
+  async findOutstandingRestockEventsForReturn(returnId: string): Promise<ReturnLineEvent[]> {
+    const rows = await this.lineEvents
+      .createQueryBuilder('event')
+      .where('event."returnId" = :returnId', { returnId })
+      .andWhere(`event."restockState" IN ('blocked', 'in_doubt')`)
+      .orderBy('event."returnLineId"', 'ASC')
+      .addOrderBy('event."seq"', 'ASC')
+      .getMany();
+    return rows.map((row) => this.toLineEventDomain(row));
+  }
+
+  async listLineEvents(lineId: string): Promise<ReturnLineEvent[]> {
+    const rows = await this.lineEvents.find({
+      where: { returnLineId: lineId },
+      order: { seq: 'ASC' },
+    });
+    return rows.map((row) => this.toLineEventDomain(row));
+  }
+
+  /**
+   * Append one act, allocating its `seq` under the caller's already-locked
+   * transaction. Never call this outside {@link ReturnRepository.runLineWrite}:
+   * the `MAX(seq) + 1` read is only safe because the line row is locked.
+   */
+  private async appendEvent(
+    manager: EntityManager,
+    input: CreateReturnLineEventInput
+  ): Promise<ReturnLineEvent> {
+    const repo = manager.getRepository(ReturnLineEventOrmEntity);
+    const highest = await repo
+      .createQueryBuilder('event')
+      .select('MAX(event."seq")', 'max')
+      .where('event."returnLineId" = :lineId', { lineId: input.returnLineId })
+      .getRawOne<{ max: number | string | null }>();
+
+    const entity = new ReturnLineEventOrmEntity();
+    entity.returnId = input.returnId;
+    entity.returnLineId = input.returnLineId;
+    entity.seq = Number(highest?.max ?? 0) + 1;
+    entity.kind = input.kind;
+    entity.quantity = input.quantity;
+    entity.disposition = input.disposition;
+    entity.restockState = input.restockState;
+    entity.restockBlockedReason = input.restockBlockedReason;
+    entity.restockBlockedDetail = input.restockBlockedDetail;
+    entity.restockedBy = input.restockedBy;
+    entity.masterConnectionId = input.masterConnectionId;
+    entity.note = input.note;
+    entity.actorUserId = input.actorUserId;
+    entity.occurredAt = input.occurredAt;
+    entity.attestedByEventId = input.attestedByEventId;
+
+    const saved = await repo.save(entity);
+    return this.toLineEventDomain(saved);
+  }
+
+  /**
+   * Write the counters, the custody state and its two instants.
+   *
+   * `disposition` on `return_lines` is LAST-APPLIED-WINS and is a display
+   * convenience only: a line can hold several disposition acts with different
+   * dispositions, so the column cannot represent a mixed line and nothing
+   * branches on it. The ledger and the counters are authoritative.
+   */
+  private async applyCustodyOutcome(
+    manager: EntityManager,
+    lineId: string,
+    outcome: ReturnCustodyOutcome,
+    disposition: ReturnDisposition | null
+  ): Promise<void> {
+    await manager.getRepository(ReturnLineOrmEntity).update(
+      { id: lineId },
+      {
+        custodyState: outcome.custodyState,
+        quantityReceived: outcome.quantityReceived,
+        quantityRestocked: outcome.quantityRestocked,
+        quantityScrapped: outcome.quantityScrapped,
+        receivedAt: outcome.receivedAt,
+        disposedAt: outcome.disposedAt,
+        ...(disposition !== null ? { disposition } : {}),
+      }
+    );
+  }
+
+  private toLineEventDomain(entity: ReturnLineEventOrmEntity): ReturnLineEvent {
+    return new ReturnLineEvent(
+      entity.id,
+      entity.returnId,
+      entity.returnLineId,
+      Number(entity.seq),
+      entity.kind as ReturnLineEventKind,
+      Number(entity.quantity),
+      entity.disposition as ReturnDisposition | null,
+      entity.restockState as ReturnRestockState,
+      entity.restockBlockedReason as ReturnRestockBlockReason | null,
+      entity.restockBlockedDetail,
+      entity.restockedBy as RestockedBy | null,
+      entity.masterConnectionId,
+      entity.note,
+      entity.actorUserId,
+      entity.occurredAt,
+      entity.attestedByEventId,
+      entity.createdAt
     );
   }
 

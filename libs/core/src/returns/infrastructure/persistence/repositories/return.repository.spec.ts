@@ -77,6 +77,9 @@ describe('ReturnRepository', () => {
     repository = new ReturnRepository(
       returns as never,
       lines as never,
+      // #2370's act-ledger repository. Unused by these cases, which cover the
+      // header/line writes only.
+      {} as never,
       dataSource as never
     );
     warn = jest
@@ -353,6 +356,8 @@ describe('ReturnRepository.upsertFromSource', () => {
     repository = new ReturnRepository(
       { findOne: jest.fn(), find: jest.fn() } as never,
       { find: jest.fn() } as never,
+      // #2370's act-ledger repository — unused by the upsert cases.
+      {} as never,
       { transaction } as never
     );
     warn = jest
@@ -542,7 +547,13 @@ describe('ReturnRepository sweep reads', () => {
   function build(terminalRawStatuses: readonly string[]) {
     const qb = makeQueryBuilder();
     const returnsRepo = { createQueryBuilder: jest.fn(() => qb) };
-    const repository = new ReturnRepository(returnsRepo as never, {} as never, {} as never);
+    const repository = new ReturnRepository(
+      returnsRepo as never,
+      {} as never,
+      // #2370's act-ledger repository — unused by the sweep-filter cases.
+      {} as never,
+      {} as never
+    );
     const filter = {
       sourceConnectionId: 'conn-1',
       origin: 'source_ingested' as const,

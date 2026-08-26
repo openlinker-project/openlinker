@@ -54,6 +54,52 @@ precedent does not transfer to a two-providers condition). `ReturnsAuthorityPort
 `decideDisposition` only (no `getRefundTriggerOwner` — a method whose every answer but "OL" core
 must ignore under [ADR-056](./056-refund-and-fiscal-authority-never-leave-ol.md)).
 
+### Amendment (#2370) — a line's history is a set of ACTS, beside the counters
+
+The counters stay exactly as decided above, and `CHK_return_lines_quantity_ordering` remains the
+invariant no caller can bypass. #2370 adds an **append-only per-line act ledger**
+(`return_line_events`) alongside them, written in the SAME transaction as the counters it explains.
+
+The reason is that a **counter cannot key an idempotent trigger firing**. #2360 requires a return
+arriving in three parcels to fire `return.received` three times; `quantityReceived` going `1 -> 2 -> 3`
+carries no per-arrival identity and is indistinguishable from a correction (a miscount fixed from 3
+down to 2 and back up). It also gives the idempotency key #2368 already specified something to name —
+`return:{returnId}:{lineId}:{seq}` presupposes a per-line sequence, which a counters-only model does
+not have. And `restock_blocked` is a property of ONE disposition attempt, not of a line: a line may
+hold an applied restock and a refused one, which a single line-level column cannot say.
+
+The ledger is history BESIDE the invariant, never instead of it: the counters remain the CHECK-guarded
+columns and are never recomputed from the acts at read time, which would move the invariant out of the
+constraint's reach and put an aggregate on the hottest path.
+
+Three consequences are decisions rather than implementation detail.
+
+**A blocked restock does not increment `quantityRestocked`.** The ACT is the disposition and is never
+rolled back — the goods really were disposed of — but the COUNTER records book-confirmed restock, and
+a refused book write confirmed nothing. So the units stay in `quantityReceived` until an operator
+attests (returns spec § 5.4), which is also what lets #2381 assert that no surface renders blocked
+units as restocked. The consequence is that `applyReturnCustodyDisposition` is called only AFTER the
+master answers and never on the blocked branch — which is why #2367 needed no amendment.
+
+**The act is written BEFORE the adapter call, and `in_doubt` is a real state.** The ADR-056
+attempted-predicate ordering: a process dying mid-call leaves a record that stock MAY have moved,
+rather than silence. It never auto-retries — OL does not know whether the units landed — and its
+remediation is the same operator attestation a block gets.
+
+**Disposal is serialized per line.** The counter check is a read and the master write crosses a
+provider boundary, so it is read-then-act — the shape ADR-041 §3a serializes with
+`invoiceIssueLockKey`. Two concurrent disposals would otherwise both pass the check and both apply,
+under different `seq` values and therefore different idempotency keys that no adapter can dedupe. The
+same reasoning puts `SELECT … FOR UPDATE` on every counter write: the CHECK is silent on a lost update
+(receiving 2 twice against `advised: 5` and recording 2 is perfectly legal), so the constraint and the
+lock guard different failures.
+
+**Still open, and named rather than approximated**: `not_returned` on a *partially* received line
+remains refused. The shortfall needs a COUNTER (`quantityNotReturned` plus a widened CHECK), which an
+acts ledger does not supply — so returns spec § 5.2's *"Mark remainder not returned"* is
+unimplementable for such a line, and the shortfall stays visible as `quantityAdvised -
+quantityReceived`. The fix is one column, one constraint change and one amendment to #2367's contract.
+
 ## Alternatives considered
 
 - **Projection-only (the Wave-4 answer)**: cannot drive restock, credit notes or return-rate
@@ -79,6 +125,6 @@ re-opens the verbatim-`rawStatus` rule for that source.
 
 ## References
 
-- Related issues: #2036, #2076
+- Related issues: #2036, #2076, #2327, #2367, #2368, #2369, #2370
 - Related ADRs: [ADR-044](./044-order-changeset-proposed-then-confirmed.md), [ADR-041](./041-sales-document-routing-policy.md), [ADR-042](./042-fiscalization-capability.md), [ADR-028](./028-order-cancellation-stock-restore.md)
 - Design doc: [DESIGN-oms-authority-model](../../plans/analysis/DESIGN-oms-authority-model.md) §7

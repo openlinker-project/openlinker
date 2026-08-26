@@ -59,16 +59,20 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
 import { IntegrationsModule } from '@openlinker/core/integrations';
 import { OrderChangesModule } from '@openlinker/core/orders';
+import { ProductsModule } from '@openlinker/core/products';
 import { SyncModule } from '@openlinker/core/sync';
 import { ReturnIngestionService } from './application/services/return-ingestion.service';
 import { ReturnReattributionService } from './application/services/return-reattribution.service';
 import { ReturnStatusSyncService } from './application/services/return-status-sync.service';
 import { ReturnDeclineService } from './application/services/return-decline.service';
+import { ReturnCustodyService } from './application/services/return-custody.service';
 import { ReturnsService } from './application/services/returns.service';
 import { ReturnOrmEntity } from './infrastructure/persistence/entities/return.orm-entity';
 import { ReturnLineOrmEntity } from './infrastructure/persistence/entities/return-line.orm-entity';
+import { ReturnLineEventOrmEntity } from './infrastructure/persistence/entities/return-line-event.orm-entity';
 import { ReturnRepository } from './infrastructure/persistence/repositories/return.repository';
 import {
+  RETURN_CUSTODY_SERVICE_TOKEN,
   RETURN_DECLINE_SERVICE_TOKEN,
   RETURN_INGESTION_SERVICE_TOKEN,
   RETURN_REATTRIBUTION_SERVICE_TOKEN,
@@ -79,7 +83,7 @@ import {
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([ReturnOrmEntity, ReturnLineOrmEntity]),
+    TypeOrmModule.forFeature([ReturnOrmEntity, ReturnLineOrmEntity, ReturnLineEventOrmEntity]),
     // #2328 order attribution: `IIdentifierMappingService.getInternalId`.
     // Acyclic — IdentifierMappingModule does not import ReturnsModule.
     IdentifierMappingModule,
@@ -95,6 +99,11 @@ import {
     // real cycle rather than a documented rule. Acyclic: `OrderChangesModule`
     // imports nothing but its own `TypeOrmModule.forFeature`.
     OrderChangesModule,
+    // #2370 restock: a return line carries no product id (`resolvedOrderLineId`
+    // is a by-value reference INTO the order snapshot's jsonb and nothing
+    // populates it yet), so the sku is resolved to a variant through
+    // `IProductsService`. Acyclic — `ProductsModule` does not import this one.
+    ProductsModule,
   ],
   providers: [
     ReturnRepository,
@@ -111,6 +120,10 @@ import {
     // the repository and `IIdentifierMappingService`, both already imported above.
     ReturnReattributionService,
     { provide: RETURN_REATTRIBUTION_SERVICE_TOKEN, useExisting: ReturnReattributionService },
+    // #2370 the custody writes. Adds ONE module edge (`ProductsModule`, above);
+    // `IntegrationsModule` and `SyncModule` were already imported.
+    ReturnCustodyService,
+    { provide: RETURN_CUSTODY_SERVICE_TOKEN, useExisting: ReturnCustodyService },
   ],
   exports: [
     RETURN_REPOSITORY_TOKEN,
@@ -119,6 +132,7 @@ import {
     RETURN_STATUS_SYNC_SERVICE_TOKEN,
     RETURN_DECLINE_SERVICE_TOKEN,
     RETURN_REATTRIBUTION_SERVICE_TOKEN,
+    RETURN_CUSTODY_SERVICE_TOKEN,
   ],
 })
 export class ReturnsModule {}

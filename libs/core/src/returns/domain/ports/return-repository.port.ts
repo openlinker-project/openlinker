@@ -23,6 +23,13 @@
  * @module domain/ports
  */
 import type { ReturnRecord } from '../entities/return-record.entity';
+import type { ReturnLine } from '../entities/return-line.entity';
+import type { ReturnLineEvent } from '../entities/return-line-event.entity';
+import type { ReturnCustodyOutcome } from '../domain-services/return-custody-transitions.domain-service';
+import type {
+  CreateReturnLineEventInput,
+  SettleReturnLineEventInput,
+} from '../types/return-line-event.types';
 import type { CreateReturnRecordInput } from '../types/return.types';
 import type { UpsertReturnRecordInput, UpsertReturnResult } from '../types/return-upsert.types';
 import type {
@@ -288,4 +295,117 @@ export interface ReturnRepositoryPort {
    * field would make the two reads disagree about what the filter means.
    */
   countReturnsByBucket(filter: ReturnListFilter): Promise<ReturnBucketCounts>;
+
+  /**
+   * One line plus its parent return, WITHOUT a row lock (#2370).
+   *
+   * For reads that write nothing and for the validation pass the dispose path
+   * runs before it crosses the inventory-master boundary. Every write path uses
+   * {@link ReturnRepositoryPort.runLineWrite} instead, which locks.
+   */
+  findLine(lineId: string): Promise<{ line: ReturnLine; record: ReturnRecord } | null>;
+
+  /**
+   * Run a custody write against a line held under `SELECT … FOR UPDATE` (#2370).
+   *
+   * **The lock is the point, and the DB CHECK cannot replace it.** Every custody
+   * transition computes `quantityReceived + n` from a value read beforehand, so
+   * two concurrent receipts of 3 against `advised: 5` both read 0, both compute
+   * 3, and the second write wins — the line records 3, not 6.
+   * `CHK_return_lines_quantity_ordering` is silent, because `3 <= 5` is legal:
+   * the constraint guarantees no IMPOSSIBLE line is persisted, never that no
+   * update is lost. So the read and the write happen inside one transaction with
+   * the row locked, and the callback receives the locked state.
+   *
+   * The callback returns the act to append and, optionally, the custody outcome
+   * to apply — optional because a blocked restock IS a disposition that must be
+   * recorded while its counters must NOT move (spec § 5.4: the units stay in
+   * `quantityReceived`, and the attestation is what later moves them).
+   */
+  runLineWrite<T>(
+    lineId: string,
+    /**
+     * Decides the write from the LOCKED row. May be synchronous — the decision
+     * is a pure transition over state the repository has already read, so
+     * nothing inside it needs to await; the implementation awaits the result
+     * either way, so an async callback stays legal for a future caller that
+     * genuinely needs one.
+     */
+    write: (locked: { line: ReturnLine; record: ReturnRecord }) =>
+      | ReturnLineWriteDecision<T>
+      | Promise<ReturnLineWriteDecision<T>>
+  ): Promise<{ event: ReturnLineEvent; result: T }>;
+
+  /**
+   * Settle an already-persisted act once the master has answered (#2370).
+   *
+   * Split from the append because the act is written BEFORE the adapter call —
+   * the ADR-056 attempted-predicate ordering — so that a process dying mid-call
+   * leaves an `in_doubt` row rather than silence. This is the second half.
+   *
+   * Takes an OPTIONAL custody outcome for the same reason
+   * {@link ReturnRepositoryPort.runLineWrite} does: a success moves the
+   * counters, a block does not, and both settle the same act.
+   */
+  settleLineRestock(
+    eventId: string,
+    lineId: string,
+    patch: SettleReturnLineEventInput,
+    /**
+     * Computes the custody move from the row as it stands under the lock, or
+     * returns `null` to settle the act WITHOUT moving any counter (the blocked
+     * branch, spec § 5.4).
+     *
+     * **A callback rather than a precomputed outcome, and that is the whole
+     * point.** A `ReturnCustodyOutcome` carries ABSOLUTE counter values, so one
+     * computed from an unlocked read before the master call would write a stale
+     * `quantityReceived` back — silently clobbering a `receiveLine` that landed
+     * in the meantime. The per-line distributed lock does not cover that case,
+     * because receiving takes no lock (it crosses no boundary), so the read and
+     * the write have to be inside one locked transaction.
+     */
+    computeOutcome: (line: ReturnLine) => ReturnCustodyOutcome | null,
+    disposition: ReturnLine['disposition']
+  ): Promise<ReturnLineEvent>;
+
+  /**
+   * Every act on a line whose master write is still unresolved — `blocked` or
+   * `in_doubt` (#2370).
+   *
+   * The attestation's input set, and the derivation behind the operator-facing
+   * block flag. Spec § 5.4 requires the badge and its segment to count
+   * UNHANDLED blocks only, so this predicate — not "has ever been blocked" — is
+   * the one both read through. Rides
+   * `IDX_return_line_events_outstanding_restock`.
+   */
+  findOutstandingRestockEvents(lineId: string): Promise<ReturnLineEvent[]>;
+
+  /**
+   * The same question asked of a whole return, for the read surfaces #2376 and
+   * #2381 render. One indexed lookup rather than a fan-out over its lines.
+   */
+  findOutstandingRestockEventsForReturn(returnId: string): Promise<ReturnLineEvent[]>;
+
+  /**
+   * Every act on a line, oldest first — the audit narrative #2376's timeline
+   * renders, and the proof-of-work a spec sums against the counters.
+   */
+  listLineEvents(lineId: string): Promise<ReturnLineEvent[]>;
+}
+
+/**
+ * What a {@link ReturnRepositoryPort.runLineWrite} callback decides: the act to
+ * append, and — optionally — the custody move to apply alongside it.
+ *
+ * `outcome` is nullable because a BLOCKED restock is a disposition that must be
+ * recorded while its counters must NOT move: the goods really were disposed of,
+ * but the inventory master's book did not take them, so the units stay counted
+ * in `quantityReceived` until an operator attests (returns spec § 5.4).
+ */
+export interface ReturnLineWriteDecision<T> {
+  event: CreateReturnLineEventInput;
+  outcome: ReturnCustodyOutcome | null;
+  /** Written onto `return_lines.disposition` when the outcome applies. */
+  disposition: ReturnLine['disposition'];
+  result: T;
 }

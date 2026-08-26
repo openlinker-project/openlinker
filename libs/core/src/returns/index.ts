@@ -27,7 +27,12 @@ export * from './domain/types/return.types';
 export * from './domain/types/return-line.types';
 export { ReturnRecord } from './domain/entities/return-record.entity';
 export { ReturnLine } from './domain/entities/return-line.entity';
-export type { ReturnRepositoryPort } from './domain/ports/return-repository.port';
+export type {
+  ReturnRepositoryPort,
+  // #2370: the shape a `runLineWrite` callback returns. Exported alongside the
+  // port because anyone typing an implementation of it needs the decision type.
+  ReturnLineWriteDecision,
+} from './domain/ports/return-repository.port';
 export { ReturnsModule } from './returns.module';
 export * from './returns.tokens';
 
@@ -142,3 +147,35 @@ export {
   ReturnCustodyRefusalReasonValues,
 } from './domain/exceptions/return-custody-transition.error';
 export type { ReturnCustodyRefusalReason } from './domain/exceptions/return-custody-transition.error';
+
+// Custody WRITES (#2370, `W2-33`): receive, dispose, and the operator
+// attestation that resolves a refused restock — plus the append-only per-line
+// ACT LEDGER those writes record themselves in. The ledger exists because a
+// COUNTER cannot key an idempotent trigger firing: #2360 needs a three-parcel
+// return to fire `return.received` three times, and `1 -> 2 -> 3` carries no
+// per-arrival identity and is indistinguishable from a correction. The counters
+// remain the invariant, still guarded by `CHK_return_lines_quantity_ordering`.
+export * from './domain/types/return-line-event.types';
+export { ReturnLineEvent } from './domain/entities/return-line-event.entity';
+export {
+  classifyRestockSuccess,
+  classifyRestockFailure,
+  blockedBeforeMaster,
+} from './domain/domain-services/restock-outcome.domain-service';
+export type { RestockOutcome } from './domain/domain-services/restock-outcome.domain-service';
+export { ReturnLineNotFoundError } from './domain/exceptions/return-line-not-found.error';
+export { ReturnRestockAttestationInvalidError } from './domain/exceptions/return-restock-attestation-invalid.error';
+export { ReturnCustodyContendedError } from './domain/exceptions/return-custody-contended.error';
+export {
+  returnCustodyLockKey,
+  RETURN_CUSTODY_LOCK_TTL_MS,
+} from './application/services/return-custody-lock';
+export type {
+  IReturnCustodyService,
+  ReceiveLineInput,
+  ReceiveLineResult,
+  DisposeLineInput,
+  DisposeLineResult,
+  AttestStockResult,
+  RestockBlockedDetail,
+} from './application/services/return-custody.service.interface';
