@@ -524,7 +524,14 @@ export interface FiscalRegistrationOutcomePatch {
 export const FiscalReconcileOutcomeValues = [
   /** The provider confirmed a registration; the record advanced to `registered`. */
   'resolved',
-  /** The provider holds no match; the record stays `in-doubt` for an operator. */
+  /**
+   * No registration exists for these coordinates; the record stays `in-doubt`
+   * for an operator.
+   *
+   * NOT "the provider holds nothing" - it may hold a document it reports as
+   * failed, which is an absence of a REGISTRATION rather than of a document.
+   * Evidence either way, never authority to resend.
+   */
   'not-found',
   /** The adapter cannot be queried by business coordinates; operator handling only. */
   'unsupported',

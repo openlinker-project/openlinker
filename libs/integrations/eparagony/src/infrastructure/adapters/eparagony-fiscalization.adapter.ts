@@ -345,7 +345,8 @@ export class EparagonyFiscalizationAdapter
    * Read one document status.
    *
    * `treatUnknownDocumentAsMissing` converts the vendor's "no such token"
-   * rejection into `null` - the locator's "the provider holds no match". The
+   * rejection into `null`, which the locator reports as `not-found` - no
+   * registration exists for these coordinates. The
    * poll never asks for that, because a document that vanished mid-poll is not a
    * clean absence and must stay in doubt.
    */
