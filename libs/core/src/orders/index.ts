@@ -188,6 +188,8 @@ export type {
   PaginatedTaxCoverageOrders,
   NetExcludedOrderCandidate,
   TaxCoverageClassification,
+  ProductMatchingErrorOrderRow,
+  PaginatedProductMatchingErrorOrders,
 } from './domain/types/coverage-detection.types';
 
 // Top products analytics (#1988) — response shapes for

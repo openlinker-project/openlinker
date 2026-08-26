@@ -29,6 +29,13 @@
  *    row (#2461). `GET` composes the row with the system reporting currency
  *    from `@openlinker/core/currency`, which is why `CurrencyModule` is
  *    imported here alongside `CoreAnalyticsModule`.
+ * 6. **`/analytics/coverage`** (`AnalyticsCoverageController`, #2466) — the
+ *    Data Coverage panel aggregate: one row per category (currency, tax
+ *    A/B/C, product-matching), elevating #2464/#2465's detectors plus the
+ *    new product-matching-error detector. Single-context read (`orders`),
+ *    same reasoning as `SalesAnalyticsController` — no new composition
+ *    service. Reuses `CurrencyModule` (already imported above) for its one
+ *    cross-context dependency, `IReportingCurrencySettingsService`.
  *
  * The concerns share nothing except the URL prefix. If a future
  * `/analytics` route (#1986 route shell, KPI strip, etc.) needs its own
@@ -59,6 +66,7 @@ import { NeedsAttentionController } from './http/needs-attention.controller';
 import { SalesAnalyticsController } from './http/sales-analytics.controller';
 import { TopProductsController } from './http/top-products.controller';
 import { AnalyticsSettingsController } from './http/analytics-settings.controller';
+import { AnalyticsCoverageController } from './http/analytics-coverage.controller';
 import { NeedsAttentionService } from './application/services/needs-attention.service';
 import { NEEDS_ATTENTION_SERVICE_TOKEN } from './application/services/needs-attention.service.interface';
 import { TopProductsService } from './application/services/top-products.service';
@@ -80,6 +88,7 @@ import { TOP_PRODUCTS_SERVICE_TOKEN } from './application/services/top-products.
     SalesAnalyticsController,
     TopProductsController,
     AnalyticsSettingsController,
+    AnalyticsCoverageController,
   ],
   providers: [
     NeedsAttentionService,
