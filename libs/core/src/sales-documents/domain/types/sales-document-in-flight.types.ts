@@ -34,16 +34,23 @@ export interface SalesDocumentInFlight {
    */
   recordId: string;
   /**
-   * When the claim was last written - the start of the attempt currently
-   * holding it. Supports an elapsed reading ("running for 38s"), which is a
-   * fact about the past.
+   * The claim-holding record's last write. It supports an elapsed reading
+   * ("running for at least 38s"), which is a fact about the past.
    *
-   * The lease EXPIRY is deliberately NOT carried. It bounds how long the claim
-   * blocks a same-key retry; it says nothing about how long the provider will
-   * take, and a surface handed that value would render a countdown that reads
-   * as a completion estimate. OpenLinker hands the sale over and waits for one
-   * answer - it observes no steps in between and can promise no deadline, so
-   * the type must not be able to express one.
+   * A LOWER BOUND on how long the attempt has been running, NOT its start.
+   * Nothing persists a claim-start timestamp, and a write to the record inside
+   * a live lease moves this value forward: on the invoicing path the numbering
+   * allocation runs after the CAS claim and updates the record row, so
+   * `updatedAt` advances mid-attempt. `elapsed >= now - since` is true on every
+   * path; "the attempt started at `since`" is not, so a surface must not say it.
+   *
+   * The lease EXPIRY is deliberately NOT carried either, for the opposite
+   * reason - it is about the future. It bounds how long the claim blocks a
+   * same-key retry and says nothing about how long the provider will take, so a
+   * surface handed it would render a countdown that reads as a completion
+   * estimate. OpenLinker hands the sale over and waits for one answer; it
+   * observes no steps in between and can promise no deadline, so the type must
+   * not be able to express one.
    */
   since: Date;
 }

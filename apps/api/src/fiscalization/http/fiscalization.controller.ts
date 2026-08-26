@@ -169,7 +169,8 @@ export class FiscalizationController {
       throw new BadRequestException('orderId is required');
     }
     const records = await this.fiscalRegistrations.getByOrderId(orderId.trim());
-    return records.map((record) => this.toDto(record));
+    const now = new Date();
+    return records.map((record) => this.toDto(record, now));
   }
 
   @Roles('admin')
@@ -277,8 +278,14 @@ export class FiscalizationController {
    * about now, and the record's own `isLeaseLive` is the same predicate the
    * write path claims against, so the operator-facing reading and the one a
    * second attempt would hit cannot drift.
+   *
+   * `now` is passed in so every row of one response is evaluated against the
+   * same instant.
    */
-  private toDto(record: FiscalRegistrationRecord): FiscalRegistrationResponseDto {
+  private toDto(
+    record: FiscalRegistrationRecord,
+    now: Date = new Date(),
+  ): FiscalRegistrationResponseDto {
     return {
       id: record.id,
       connectionId: record.connectionId,
@@ -294,7 +301,7 @@ export class FiscalizationController {
       artefacts: record.artefacts,
       failureMode: record.failureMode,
       failureReason: record.failureReason,
-      inFlight: record.isLeaseLive(new Date()),
+      inFlight: record.isLeaseLive(now),
       createdAt: record.createdAt.toISOString(),
       updatedAt: record.updatedAt.toISOString(),
     };

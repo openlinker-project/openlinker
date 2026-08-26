@@ -137,6 +137,11 @@ export interface IInvoiceService {
    *
    * VISIBILITY ONLY. The lease semantics, the exactly-once guarantee and the
    * 409 a concurrent write receives are all unchanged.
+   *
+   * Consumed by the per-order sales-document projection, which reports both
+   * kinds through this one shape. It is deliberately not surfaced on the
+   * invoicing HTTP reads: a second field there would be superseded by that
+   * projection rather than complement it.
    */
   getInFlightIssuance(orderId: string): Promise<SalesDocumentInFlight | null>;
 

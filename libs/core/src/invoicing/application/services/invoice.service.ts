@@ -1185,8 +1185,10 @@ export class InvoiceService implements IInvoiceService {
       documentKind: 'invoice',
       connectionId: claimed.connectionId,
       recordId: claimed.id,
-      // The claim's own last write. Not the lease expiry - see
-      // `SalesDocumentInFlight.since` for why no deadline is carried.
+      // The claim-holding record's last write - a LOWER BOUND on elapsed, never
+      // the attempt's start: nothing persists a claim-start instant, and a write
+      // inside a live lease (the invoicing numbering allocation) moves it
+      // forward. See `SalesDocumentInFlight.since`.
       since: claimed.updatedAt,
     };
   }
