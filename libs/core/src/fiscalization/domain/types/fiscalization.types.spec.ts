@@ -15,7 +15,9 @@ import {
   FiscalRegistrationFailureModeValues,
   FiscalRegistrationStatusValues,
   readFiscalLocateAnswer,
+  summarizeFiscalArtefacts,
 } from './fiscalization.types';
+import type { FiscalArtefact } from './fiscalization.types';
 
 describe('fiscalization.types', () => {
   it('exposes the documented registration lifecycle', () => {
@@ -158,6 +160,73 @@ describe('fiscalization.types', () => {
         status: 'held',
         detail: null,
       });
+    });
+  });
+
+  describe('summarizeFiscalArtefacts (#2523)', () => {
+    const artefact = (overrides: Partial<FiscalArtefact> = {}): FiscalArtefact => ({
+      medium: 'document',
+      disposition: 'print',
+      content: 'JVBERi0xLjQK-base64-payload',
+      contentType: 'application/pdf',
+      label: 'Receipt',
+      ...overrides,
+    });
+
+    it('projects medium, disposition, label and content type, and NEVER the payload', () => {
+      const [summary] = summarizeFiscalArtefacts([artefact()]) ?? [];
+
+      expect(summary).toEqual({
+        medium: 'document',
+        disposition: 'print',
+        label: 'Receipt',
+        contentType: 'application/pdf',
+      });
+      // The point of the projection: an added payload field would have to be
+      // added here deliberately, never inherited by a spread.
+      expect(Object.keys(summary ?? {})).not.toContain('content');
+      expect(JSON.stringify(summary)).not.toContain('base64-payload');
+    });
+
+    it('summarises several artefacts in order, one per artefact', () => {
+      const summaries = summarizeFiscalArtefacts([
+        artefact({ medium: 'link', disposition: 'send', contentType: null, label: null }),
+        artefact({ medium: 'code', disposition: 'display', contentType: 'image/png' }),
+        artefact(),
+      ]);
+
+      expect(summaries).toHaveLength(3);
+      expect(summaries?.map((s) => s.medium)).toEqual(['link', 'code', 'document']);
+      expect(summaries?.[0]?.label).toBeNull();
+      expect(JSON.stringify(summaries)).not.toContain('base64-payload');
+    });
+
+    it('treats an EMPTY list as a successful registration that produced nothing', () => {
+      // ADR-042 decision 2: a pure reporting regime returns identifiers only.
+      // An empty summary is a complete answer, not a missing one.
+      expect(summarizeFiscalArtefacts([])).toEqual([]);
+    });
+
+    it('keeps `null` distinct from empty', () => {
+      // `null` means the registration never got far enough to produce anything.
+      // Collapsing it into `[]` would report an unfinished attempt as a
+      // completed pure-reporting registration.
+      expect(summarizeFiscalArtefacts(null)).toBeNull();
+      expect(summarizeFiscalArtefacts(undefined)).toBeNull();
+    });
+
+    it('carries no field a delivery claim could be derived from', () => {
+      // No shipped adapter reports whether a document reached a buyer, so the
+      // type must not be able to express it - no timestamp, recipient, status or
+      // attempt count.
+      const [summary] = summarizeFiscalArtefacts([artefact({ disposition: 'send' })]) ?? [];
+
+      expect(Object.keys(summary ?? {}).sort()).toEqual([
+        'contentType',
+        'disposition',
+        'label',
+        'medium',
+      ]);
     });
   });
 });
