@@ -36,7 +36,10 @@ import {
   type AmbiguousReservationPosition,
 } from '../../domain/exceptions/ambiguous-reservation-position.error';
 import type { IReservationService } from './reservation.service.interface';
+import { ReservationNotHeldError } from '../../domain/exceptions/reservation-not-held.error';
 import type {
+  ConsumeForOrderInput,
+  ConsumeForOrderResult,
   ReserveForOrderInput,
   ReserveForOrderResult,
   ReserveOrderLineInput,
@@ -229,5 +232,51 @@ export class ReservationService implements IReservationService {
         'refusing to guess which one to reserve against'
     );
     return null;
+  }
+
+  async consumeForOrder(input: ConsumeForOrderInput): Promise<ConsumeForOrderResult> {
+    const held = await this.reservations.listHeldByOrderRecordId(input.orderRecordId);
+    if (held.length === 0) {
+      // Not a warning. An order legitimately holds nothing when reservations are
+      // disabled, when no line resolved to a live position, or when a peer
+      // already consumed it.
+      return { consumed: 0, alreadyTerminal: 0, failed: 0 };
+    }
+
+    let consumed = 0;
+    let alreadyTerminal = 0;
+    let failed = 0;
+
+    for (const reservation of held) {
+      try {
+        // Terminal status as DATA (§ 6I) — release, consume and expire decrement
+        // identically, so this adds no repository method.
+        await this.reservations.releaseHeld({
+          orderRecordId: reservation.orderRecordId,
+          orderLineId: reservation.orderLineId,
+          inventoryItemId: reservation.inventoryItemId,
+          terminalStatus: 'consumed',
+        });
+        consumed += 1;
+      } catch (error) {
+        if (error instanceof ReservationNotHeldError) {
+          // Expected race, not a fault: the row left `held` between the read
+          // above and this write. The guarded UPDATE is what makes that safe —
+          // nothing was double-decremented.
+          alreadyTerminal += 1;
+          continue;
+        }
+        // Per-row, never fatal: one bad row must not abort a call that can still
+        // correctly close the rest of the order.
+        failed += 1;
+        this.logger.error(
+          `reservation_consume_row_failed order=${reservation.orderRecordId} ` +
+            `line=${reservation.orderLineId} position=${reservation.inventoryItemId}`,
+          (error as Error).stack
+        );
+      }
+    }
+
+    return { consumed, alreadyTerminal, failed };
   }
 }

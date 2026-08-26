@@ -159,6 +159,14 @@ export type { IShipmentCancellationService } from './application/interfaces/ship
 // is injected via SHIPMENT_LABEL_SERVICE_TOKEN.
 export type { IShipmentLabelService } from './application/interfaces/shipment-label.service.interface';
 
+// Application — reservation-consume sweep seam (#2347). Interface + I/O types
+// only; the service is injected via SHIPMENT_RESERVATION_CONSUME_SERVICE_TOKEN.
+export type {
+  IShipmentReservationConsumeService,
+  ConsumeShipmentReservationsInput,
+  ConsumeShipmentReservationsResult,
+} from './application/services/shipment-reservation-consume.service.interface';
+
 // Application — pickup-point lookup seam (#766). Interface only; the service is
 // injected via PICKUP_POINT_LOOKUP_SERVICE_TOKEN.
 export type { IPickupPointLookupService } from './application/interfaces/pickup-point-lookup.service.interface';

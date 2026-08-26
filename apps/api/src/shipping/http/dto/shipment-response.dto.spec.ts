@@ -28,6 +28,7 @@ function makeShipment(): Shipment {
     null,
     null,
     null,
+    null,
   );
 }
 

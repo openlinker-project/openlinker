@@ -54,6 +54,7 @@ import { MasterProductSyncDeltaHandler } from './handlers/master-product-sync-de
 import { MasterProductReconcileHandler } from './handlers/master-product-reconcile.handler';
 import { InventoryProvenanceBackfillHandler } from './handlers/inventory-provenance-backfill.handler';
 import { ReservationExpiryHandler } from './handlers/reservation-expiry.handler';
+import { ReservationConsumeHandler } from './handlers/reservation-consume.handler';
 import { PickupPointRefreshHandler } from './handlers/pickup-point-refresh.handler';
 import { ShopProductPublishHandler } from './handlers/shop-product-publish.handler';
 import { ShopProductStatusSyncHandler } from './handlers/shop-product-status-sync.handler';
@@ -117,6 +118,7 @@ import { HandlerRegistrationService } from './handlers/handler-registration.serv
     MasterProductReconcileHandler,
     InventoryProvenanceBackfillHandler,
     ReservationExpiryHandler,
+    ReservationConsumeHandler,
     PickupPointRefreshHandler,
     ShopProductPublishHandler,
     ShopProductStatusSyncHandler,

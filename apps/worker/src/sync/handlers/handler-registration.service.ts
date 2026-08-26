@@ -41,6 +41,7 @@ import { MasterProductSyncDeltaHandler } from './master-product-sync-delta.handl
 import { MasterProductReconcileHandler } from './master-product-reconcile.handler';
 import { InventoryProvenanceBackfillHandler } from './inventory-provenance-backfill.handler';
 import { ReservationExpiryHandler } from './reservation-expiry.handler';
+import { ReservationConsumeHandler } from './reservation-consume.handler';
 import { PickupPointRefreshHandler } from './pickup-point-refresh.handler';
 import { ShopProductPublishHandler } from './shop-product-publish.handler';
 import { ShopProductStatusSyncHandler } from './shop-product-status-sync.handler';
@@ -59,6 +60,7 @@ export class HandlerRegistrationService implements OnModuleInit {
     private readonly inventoryPropagateHandler: InventoryPropagateToMarketplacesHandler,
     private readonly inventoryProvenanceBackfillHandler: InventoryProvenanceBackfillHandler,
     private readonly reservationExpiryHandler: ReservationExpiryHandler,
+    private readonly reservationConsumeHandler: ReservationConsumeHandler,
     private readonly marketplaceOrdersPollHandler: OrdersPollHandler,
     private readonly marketplaceOrderSyncHandler: MarketplaceOrderSyncHandler,
     private readonly marketplaceOrderFxStampHandler: MarketplaceOrderFxStampHandler,
@@ -104,7 +106,7 @@ export class HandlerRegistrationService implements OnModuleInit {
     // Every registration declares its ADR-050 concurrency lane (#2278). The
     // lane is chosen by cost-of-starvation, never by I/O shape or bounded
     // context — the authoritative table is ADR-050 decision 1, now 13 realtime /
-    // 16 bulk / 5 fiscal / 7 fan-out: `fiscalization.register` joined `fiscal`
+    // 18 bulk / 5 fiscal / 7 fan-out: `fiscalization.register` joined `fiscal`
     // post-ADR (#2156), `inventory.provenance.backfill` joined `bulk` (#2317),
     // the three returns types joined realtime/bulk/fan-out (#2330),
     // `returns.orphan.reconcile` joined `bulk` (#2332), and
@@ -313,6 +315,20 @@ export class HandlerRegistrationService implements OnModuleInit {
     this.handlerRegistry.register(
       'inventory.reservations.expire',
       this.reservationExpiryHandler,
+      'bulk'
+    );
+
+    // Register the reservation consume sweep (#2347, REVIEW C8).
+    //
+    // `bulk`, for the same reason as its expiry sibling: it enqueues no children
+    // and does its work in bounded local writes, so `fan-out` — whose subject is
+    // a job whose cost is the wave it emits — would be the wrong profile. And a
+    // saturated `bulk` lane delaying it is harmless in the safe direction: a
+    // shipment consumed a tick later is stock released a tick later, never stock
+    // oversold.
+    this.handlerRegistry.register(
+      'inventory.reservations.consume',
+      this.reservationConsumeHandler,
       'bulk'
     );
 

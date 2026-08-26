@@ -39,6 +39,7 @@ function makeShipment(overrides: Partial<Shipment> = {}): Shipment {
     overrides.deliveryIntent ?? null,
     overrides.providerCode ?? null,
     overrides.waybillRelayedAt ?? null,
+    overrides.reservationConsumedAt ?? null,
   );
 }
 
@@ -58,6 +59,8 @@ describe('ShipmentQueryService', () => {
       update: jest.fn(),
       claimWaybillRelay: jest.fn(),
       releaseWaybillRelay: jest.fn(),
+      listDispatchedAwaitingReservationConsume: jest.fn(),
+      claimReservationConsume: jest.fn(),
     };
     service = new ShipmentQueryService(repository);
   });

@@ -100,6 +100,10 @@ export const JobTypeValues = [
   // #2346 — the state-dependent reservation expiry sweep. Reads and writes only
   // OL's own ledger; no platform call.
   'inventory.reservations.expire',
+  // #2347 — the reservation CONSUME sweep: closes an order's held reservations
+  // once its shipment shipped, claimed at-most-once via
+  // `Shipment.reservationConsumedAt`. Reads and writes only OL's own tables.
+  'inventory.reservations.consume',
 
   // Invoicing (core-owned policy; executed by worker — OL #1120)
   'invoicing.issue',

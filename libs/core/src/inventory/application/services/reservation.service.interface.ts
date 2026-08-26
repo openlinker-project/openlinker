@@ -30,6 +30,8 @@
  * @see docs/architecture/adrs/061-advisory-reservations-and-availability-authority.md
  */
 import type {
+  ConsumeForOrderInput,
+  ConsumeForOrderResult,
   ReserveForOrderInput,
   ReserveForOrderResult,
 } from '../types/reservation-service.types';
@@ -61,4 +63,30 @@ export interface IReservationService {
    *   before any storage access.
    */
   reserveForOrder(input: ReserveForOrderInput): Promise<ReserveForOrderResult>;
+
+  /**
+   * Close every live hold on an order because its goods shipped (#2347) —
+   * `held → consumed`, giving the units back to `olReservedQuantity`.
+   *
+   * **`availableQuantity` is never touched.** The master owns on-hand stock and
+   * reports the decrement itself on its next sync; writing it here would make OL
+   * a second author of a number it does not own, and the two would drift.
+   *
+   * **Idempotent by construction, and that is what the caller relies on.**
+   * `releaseHeld` is guarded on `status = 'held'`, so a repeat call finds no
+   * live rows and decrements nothing — which is precisely why the consume sweep
+   * can afford to run this BEFORE claiming its marker, and therefore why a
+   * process kill mid-pass converges instead of stranding the hold forever.
+   *
+   * Per-row failures are counted, never thrown: one bad row must not abort a
+   * call that can still correctly close the rest of the order (the posture
+   * `ReservationExpiryService` takes over its own page). A `ReservationNotHeldError`
+   * is counted as `alreadyTerminal` rather than `failed` — see
+   * {@link ConsumeForOrderResult}.
+   *
+   * An order with no held rows is a legitimate, common outcome (reservations
+   * disabled, no mapped position, an order that never held) and returns
+   * all-zero rather than warning.
+   */
+  consumeForOrder(input: ConsumeForOrderInput): Promise<ConsumeForOrderResult>;
 }

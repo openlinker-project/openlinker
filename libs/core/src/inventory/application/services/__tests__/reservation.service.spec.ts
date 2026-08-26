@@ -15,6 +15,7 @@ import type { ReservationClaimOutcome } from '../../../domain/types/reservation.
 import { Reservation } from '../../../domain/entities/reservation.entity';
 import { AmbiguousReservationPositionError } from '../../../domain/exceptions/ambiguous-reservation-position.error';
 import { InsufficientAvailabilityError } from '../../../domain/exceptions/insufficient-availability.error';
+import { ReservationNotHeldError } from '../../../domain/exceptions/reservation-not-held.error';
 import { RESERVATION_TTL_MS_DEFAULT } from '../../../domain/types/reservation-expiry.types';
 import type { ReserveOrderLineInput } from '../../types/reservation-service.types';
 
@@ -494,4 +495,86 @@ describe('ReservationService', () => {
       expect(reservations.claimHeld.mock.calls[0][0][0].orderLineId).toBe('line-2');
     });
   });
+
+  describe('consumeForOrder (#2347)', () => {
+    it('should move every held row to consumed, passing the terminal status as data', async () => {
+      // Consume adds NO repository method: `releaseHeld` already takes the
+      // terminal status as data (§ 6I), which is what keeps release, consume and
+      // expire from drifting into three near-identical WHERE clauses.
+      reservations.listHeldByOrderRecordId.mockResolvedValue([
+        reservation({ orderLineId: 'line-1', inventoryItemId: 'inv-1' }),
+        reservation({ orderLineId: 'line-2', inventoryItemId: 'inv-2' }),
+      ]);
+      reservations.releaseHeld.mockResolvedValue(reservation({ status: 'consumed' }));
+
+      const result = await service.consumeForOrder({ orderRecordId: ORDER_ID });
+
+      expect(result).toEqual({ consumed: 2, alreadyTerminal: 0, failed: 0 });
+      expect(reservations.releaseHeld).toHaveBeenCalledTimes(2);
+      expect(reservations.releaseHeld).toHaveBeenCalledWith({
+        orderRecordId: ORDER_ID,
+        orderLineId: 'line-1',
+        inventoryItemId: 'inv-1',
+        terminalStatus: 'consumed',
+      });
+    });
+
+    it('should be a no-op when the order holds nothing', async () => {
+      // The common case on a default install (reservations disabled, no mapped
+      // position, or a peer already consumed) — legitimate, not a warning.
+      reservations.listHeldByOrderRecordId.mockResolvedValue([]);
+
+      const result = await service.consumeForOrder({ orderRecordId: ORDER_ID });
+
+      expect(result).toEqual({ consumed: 0, alreadyTerminal: 0, failed: 0 });
+      expect(reservations.releaseHeld).not.toHaveBeenCalled();
+    });
+
+    it('should count a ReservationNotHeldError as alreadyTerminal, never as failed', async () => {
+      // This is the race the consume-then-claim ordering deliberately permits: a
+      // peer sweep or a cancellation won the row between our read and our write.
+      // Folding it into `failed` would make a healthy install alarm on every
+      // retry — a loud false signal is its own defect, beside the silent one.
+      reservations.listHeldByOrderRecordId.mockResolvedValue([
+        reservation({ orderLineId: 'line-1' }),
+        reservation({ orderLineId: 'line-2' }),
+      ]);
+      reservations.releaseHeld
+        .mockRejectedValueOnce(new ReservationNotHeldError(ORDER_ID, 'line-1', 'inv-1'))
+        .mockResolvedValueOnce(reservation({ status: 'consumed' }));
+
+      const result = await service.consumeForOrder({ orderRecordId: ORDER_ID });
+
+      expect(result).toEqual({ consumed: 1, alreadyTerminal: 1, failed: 0 });
+    });
+
+    it('should count an unexpected error as failed and still close the rest', async () => {
+      // Per-row, never fatal: one bad row must not abort a call that can still
+      // correctly close the remaining lines.
+      reservations.listHeldByOrderRecordId.mockResolvedValue([
+        reservation({ orderLineId: 'line-1' }),
+        reservation({ orderLineId: 'line-2' }),
+      ]);
+      reservations.releaseHeld
+        .mockRejectedValueOnce(new Error('deadlock detected'))
+        .mockResolvedValueOnce(reservation({ status: 'consumed' }));
+
+      const result = await service.consumeForOrder({ orderRecordId: ORDER_ID });
+
+      expect(result).toEqual({ consumed: 1, alreadyTerminal: 0, failed: 1 });
+    });
+
+    it('should never touch availabilityQuantity — it writes only through releaseHeld', async () => {
+      // AC-3. The master owns on-hand stock and reports the decrement itself on
+      // its next sync; a second author would make the two drift.
+      reservations.listHeldByOrderRecordId.mockResolvedValue([reservation()]);
+      reservations.releaseHeld.mockResolvedValue(reservation({ status: 'consumed' }));
+
+      await service.consumeForOrder({ orderRecordId: ORDER_ID });
+
+      expect(inventory.findLivePositionsByProductIds).not.toHaveBeenCalled();
+      expect(reservations.claimHeld).not.toHaveBeenCalled();
+    });
+  });
+
 });

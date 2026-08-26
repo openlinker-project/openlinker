@@ -870,6 +870,31 @@ export class SchedulerService implements OnModuleDestroy {
       generateIdempotencyKey: (_connection, timestamp) =>
         `inventory:reservations:expire:${timestamp}`,
     });
+
+    // #2347 — the reservation CONSUME sweep. Global scope for the same reason as
+    // its expiry sibling: reservations key on (order, line, position) and
+    // shipments on the order, so neither carries a connection axis.
+    //
+    // More frequent than expiry's hourly tick, deliberately: this pass RELEASES
+    // available-to-promise the operator can resell, so lag here is lost sales
+    // rather than a safety risk — the opposite direction from expiry, where
+    // waiting is the safe choice.
+    //
+    // Default ON. On a default install every hold is stamped `diagnostic`
+    // (#2344), so consuming moves no published number; on an existing install
+    // the first cycles are a one-time, self-limiting marker backfill over
+    // historical shipments (see the handler docblock).
+    this.tasks.push({
+      taskId: 'reservation-consume-sweep',
+      jobType: 'inventory.reservations.consume',
+      cronExpression: '*/10 * * * *',
+      enabledEnvVar: 'OL_RESERVATION_CONSUME_SWEEP_ENABLED',
+      enabledDefault: true,
+      connectionFilter: () => Promise.resolve([systemConnection]),
+      generatePayload: () => ({ schemaVersion: 1 }),
+      generateIdempotencyKey: (_connection, timestamp) =>
+        `inventory:reservations:consume:${timestamp}`,
+    });
   }
 
   /**

@@ -82,6 +82,7 @@ function makeShipment(overrides: Partial<Shipment> = {}): Shipment {
     overrides.deliveryIntent ?? null,
     overrides.providerCode ?? null,
     overrides.waybillRelayedAt ?? null,
+    overrides.reservationConsumedAt ?? null,
   );
 }
 

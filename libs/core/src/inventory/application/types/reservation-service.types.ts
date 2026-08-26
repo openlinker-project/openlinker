@@ -94,3 +94,36 @@ export interface ReserveForOrderResult {
   readonly granted: readonly ReservationClaimOutcome[];
   readonly skipped: readonly SkippedReservationLine[];
 }
+
+/**
+ * "This order's goods have shipped — close its held reservations" (#2347).
+ *
+ * Order-scoped rather than line-scoped, and that is a schema fact rather than a
+ * simplification: `shipments` carries `orderId`, carrier, status and tracking,
+ * and **no line composition at all**, so a per-line consume is not merely
+ * unimplemented but unexpressible against today's model. See
+ * `IShipmentReservationConsumeService` for what that costs on a partially
+ * shipped order.
+ */
+export interface ConsumeForOrderInput {
+  readonly orderRecordId: string;
+}
+
+/**
+ * What the consume did, with the two non-consuming exits kept apart.
+ *
+ * `alreadyTerminal` is **not** a failure and must never be folded into
+ * `failed`. It is the ordinary outcome of a race the design permits: a peer
+ * sweep or a cancellation moved the row out of `held` between this call's read
+ * and its write. Counting it as a failure would make a healthy install report an
+ * alarm on every retry — a loud false signal, which is its own defect class
+ * beside the silent decline this programme keeps closing.
+ */
+export interface ConsumeForOrderResult {
+  /** Rows moved `held → consumed` by THIS call. */
+  readonly consumed: number;
+  /** Rows that had already left `held` — expected, benign. */
+  readonly alreadyTerminal: number;
+  /** Rows that failed for any other reason. Genuinely wrong. */
+  readonly failed: number;
+}

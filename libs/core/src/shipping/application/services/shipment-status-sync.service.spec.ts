@@ -49,6 +49,7 @@ function makeShipment(overrides: Partial<Shipment> = {}): Shipment {
     overrides.deliveryIntent ?? null,
     overrides.providerCode ?? null,
     overrides.waybillRelayedAt ?? null,
+    overrides.reservationConsumedAt ?? null,
   );
 }
 
@@ -87,6 +88,8 @@ describe('ShipmentStatusSyncService', () => {
       // concurrent trigger or an already-relayed waybill.
       claimWaybillRelay: jest.fn().mockResolvedValue(true),
       releaseWaybillRelay: jest.fn().mockResolvedValue(undefined),
+      listDispatchedAwaitingReservationConsume: jest.fn(),
+      claimReservationConsume: jest.fn(),
     } as unknown as jest.Mocked<ShipmentRepositoryPort>;
 
     relay = {
