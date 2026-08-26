@@ -37,7 +37,7 @@ export type {
   OrderFilters,
   OrderPagination,
   PaginatedOrders,
-  // #2534 — the reason vocabularies mirrored from `@openlinker/core/sales-documents`
+  // #2534 - the reason vocabularies mirrored from `@openlinker/core/sales-documents`
   // live here because the order payload carries them. `features/sales-documents`
   // owns the operator-facing copy for each value and type-imports these to key it.
   SalesDocumentGateBlockReasonValue,

@@ -39,7 +39,7 @@ export const PAYMENT_BADGE_META: Record<PaymentStatus, { label: string; tone: St
  * report a status (the cell then shows an em dash rather than a misleading pill).
  */
 export function paymentBadge(
-  status: PaymentStatus | undefined
+  status: PaymentStatus | undefined,
 ): { label: string; tone: StatusBadgeTone } | null {
   if (!status) return null;
   return PAYMENT_BADGE_META[status];
@@ -159,7 +159,7 @@ export function invoicingBlockedBadge(
   unresolvedReason?: SalesDocumentUnresolvedReasonValue | null,
   /**
    * The order's invoice projection, when it has one. It suppresses the badge
-   * exactly when it reports a document that plausibly exists - see
+   * exactly when it reports a document that plausibly exists — see
    * `invoiceSupersedesBlock`. A "No primary" pill beside an issued invoice is
    * worse than no pill at all; a pill beside a REJECTED one is the only remaining
    * statement of why auto-issue never ran.
@@ -173,7 +173,7 @@ export function invoicingBlockedBadge(
    * same rule at its own call site, because it already holds the live invoice query
    * rather than a snapshot projection.
    */
-  invoice?: ParsedOrderInvoice | null
+  invoice?: ParsedOrderInvoice | null,
 ): InvoicingBlockedBadge | null {
   if (invoiceSupersedesBlock(invoice)) return null;
 
