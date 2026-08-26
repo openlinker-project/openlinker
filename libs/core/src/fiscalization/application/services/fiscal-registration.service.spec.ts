@@ -1258,6 +1258,46 @@ describe('FiscalRegistrationService', () => {
       expect(locating.registerTransaction).not.toHaveBeenCalled();
     });
 
+    it('should never put a raw provider message in the caller-facing reason', async () => {
+      // An adapter is third-party-shaped and may interpolate a URL, a request
+      // body or buyer data into its message. Truncating such a message bounds
+      // its length, not its content, so only a neutral `reason` the adapter
+      // deliberately stamped is ever repeated back.
+      integrations.getCapabilityAdapter.mockResolvedValue({
+        registerTransaction: jest.fn(),
+        locateByQuery: jest
+          .fn()
+          .mockRejectedValue(new Error('POST /documents?buyer=ada@example.com failed: 500')),
+      });
+      repo.findById.mockResolvedValue(record('failed', { failureMode: 'in-doubt' }));
+
+      const thrown = await service.reconcileInDoubt('rec-1').catch((error: unknown) => error);
+
+      expect(thrown).toBeInstanceOf(FiscalReconcileCheckFailedException);
+      const failure = thrown as FiscalReconcileCheckFailedException;
+      expect(failure.reason).toBe('the provider could not be reached');
+      expect(failure.message).not.toContain('ada@example.com');
+    });
+
+    it('should repeat a neutral reason the adapter deliberately stamped', async () => {
+      // The same rule `deriveFailureReason` follows: a structured neutral field
+      // is the adapter saying something on purpose, so it is safe to surface.
+      const stamped = Object.assign(new Error('internal detail'), {
+        reason: 'The provider is temporarily unavailable.',
+      });
+      integrations.getCapabilityAdapter.mockResolvedValue({
+        registerTransaction: jest.fn(),
+        locateByQuery: jest.fn().mockRejectedValue(stamped),
+      });
+      repo.findById.mockResolvedValue(record('failed', { failureMode: 'in-doubt' }));
+
+      const thrown = await service.reconcileInDoubt('rec-1').catch((error: unknown) => error);
+
+      expect((thrown as FiscalReconcileCheckFailedException).reason).toBe(
+        'The provider is temporarily unavailable.',
+      );
+    });
+
     it('should NOT wrap an adapter-resolution failure as a failed check', async () => {
       // Resolving the adapter is a connection-CONFIGURATION fault, not a
       // provider one; it keeps propagating so the global filter classifies it

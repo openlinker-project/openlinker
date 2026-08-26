@@ -371,9 +371,10 @@ export class FiscalRegistrationService implements IFiscalRegistrationService {
         orderId: record.orderId,
       });
     } catch (error) {
+      // The bounded INTERNAL diagnostic goes here, never to the caller.
       this.logger.warn(
         `Could not ask the provider on connection ${record.connectionId} about record ` +
-          `${recordId}; leaving it in doubt`,
+          `${recordId}; leaving it in doubt: ${this.sanitizeError(error)}`,
       );
       throw new FiscalReconcileCheckFailedException(
         recordId,
@@ -740,21 +741,31 @@ export class FiscalRegistrationService implements IFiscalRegistrationService {
    * stays a small operator diagnostic rather than an unbounded PII sink, and is
    * never returned to an API caller.
    */
-  /**
-   * Bounded, PII-free summary of why the provider could not be asked. Reuses
-   * the same length bound as the operator-facing failure reason - this string
-   * reaches an API caller, unlike the internal `errorMessage` diagnostic.
-   */
-  private describeCheckFailure(error: unknown): string {
-    const message = error instanceof Error ? error.message.trim() : '';
-    return (message.length > 0 ? message : 'the provider could not be reached').slice(
-      0,
-      MAX_FAILURE_REASON_LENGTH,
-    );
-  }
-
   private sanitizeError(error: unknown): string {
     const message = error instanceof Error ? error.message : String(error);
     return message.slice(0, MAX_ERROR_MESSAGE_LENGTH);
+  }
+
+  /**
+   * Operator-facing summary of why the provider could not be asked. This string
+   * REACHES AN API CALLER, so it is built the same way `deriveFailureReason`
+   * builds its terminal-rejection copy: trust only the neutral `reason` an
+   * adapter deliberately stamped on the throwable, and otherwise say a fixed
+   * sentence.
+   *
+   * It must never fall back to `error.message`. An adapter is
+   * third-party-shaped and may interpolate a URL, a request body or
+   * buyer-supplied data into that message - the exact reason `sanitizeError`'s
+   * output is stored and never returned. Truncating such a message bounds its
+   * length, not its content. The bounded internal detail goes to the log
+   * instead, which is where the caller-facing sentence's missing specifics live.
+   */
+  private describeCheckFailure(error: unknown): string {
+    const reason = (error as NeutralFailureCarrier | null)?.reason;
+    const text = typeof reason === 'string' ? reason.trim() : '';
+    return (text.length > 0 ? text : 'the provider could not be reached').slice(
+      0,
+      MAX_FAILURE_REASON_LENGTH,
+    );
   }
 }
