@@ -7,6 +7,8 @@
  *
  * @module libs/core/src/fiscalization/application/services
  */
+import type { SalesDocumentInFlight } from '@openlinker/core/sales-documents';
+
 import type { FiscalRegistrationRecord } from '../../domain/entities/fiscal-registration-record.entity';
 import type {
   FiscalReconcileOutcome,
@@ -79,6 +81,28 @@ export interface IFiscalRegistrationService {
 
   /** Every registration record held by an order, across connections, newest-first. */
   getByOrderId(orderId: string): Promise<FiscalRegistrationRecord[]>;
+
+  /**
+   * Is a registration for this order being attempted RIGHT NOW (#2521, ADR-042
+   * amendment #2502 decision 2)?
+   *
+   * A pure READ over persisted state - it takes no lock, calls no provider and
+   * attempts nothing. Before it, the fact existed only as the 409 a concurrent
+   * write received, which is the correct answer to a write and useless to a
+   * reader: a surface could not tell *someone else is registering this right
+   * now* from an error.
+   *
+   * Answers from the same predicate the write path enforces
+   * (`FiscalRegistrationRecord.isLeaseLive`), so what an operator is shown and
+   * what a second attempt would hit cannot drift. `null` means no live claim -
+   * including the case where a claim EXPIRED, which is deliberately not
+   * reported as in flight: an expired lease means the previous attempt died,
+   * not that one is running.
+   *
+   * VISIBILITY ONLY. The lease semantics, the exactly-once guarantee and the
+   * 409 are all unchanged.
+   */
+  getInFlightRegistration(orderId: string): Promise<SalesDocumentInFlight | null>;
 
   /**
    * Read one record by id. Throws `FiscalRegistrationRecordNotFoundException`

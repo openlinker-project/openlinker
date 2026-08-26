@@ -85,6 +85,7 @@ function registrationRecord(
     status: 'pending' | 'registering' | 'registered' | 'failed';
     failureMode: 'rejected' | 'in-doubt' | null;
     failureReason: string | null;
+    leaseExpiresAt: Date | null;
   }> = {},
 ): FiscalRegistrationRecord {
   return new FiscalRegistrationRecord(
@@ -103,7 +104,7 @@ function registrationRecord(
     overrides.failureMode ?? null,
     overrides.failureReason ?? null,
     'internal diagnostic that must never be exposed',
-    null,
+    overrides.leaseExpiresAt ?? null,
     NOW,
     NOW,
   );
@@ -120,6 +121,7 @@ describe('FiscalizationController', () => {
       getByOrderId: jest.fn(),
       getById: jest.fn(),
       reconcileInDoubt: jest.fn(),
+      getInFlightRegistration: jest.fn().mockResolvedValue(null),
     };
     orders = { getOrderRecord: jest.fn() };
 
@@ -360,6 +362,49 @@ describe('FiscalizationController', () => {
 
       expect(response).toHaveLength(1);
       expect(response[0]?.orderId).toBe(ORDER_ID);
+    });
+  });
+
+  describe('in-flight signal (#2521)', () => {
+    it('should report a live claim as in flight, without attempting anything', async () => {
+      // Readable, so a panel can say "a registration for this order is already
+      // running" instead of learning it from the 409 of an attempt it should
+      // not have made.
+      service.getByOrderId.mockResolvedValue([
+        registrationRecord({
+          status: 'registering',
+          leaseExpiresAt: new Date(Date.now() + 60_000),
+        }),
+      ]);
+
+      const response = await controller.listForOrder(ORDER_ID);
+
+      expect(response[0]?.inFlight).toBe(true);
+      expect(service.register).not.toHaveBeenCalled();
+      expect(service.reconcileInDoubt).not.toHaveBeenCalled();
+    });
+
+    it('should report an EXPIRED claim as not in flight', async () => {
+      // An expired lease means the previous attempt died. Reporting it as
+      // running would tell an operator to wait for work nobody is doing.
+      service.getByOrderId.mockResolvedValue([
+        registrationRecord({
+          status: 'registering',
+          leaseExpiresAt: new Date(Date.now() - 1_000),
+        }),
+      ]);
+
+      const response = await controller.listForOrder(ORDER_ID);
+
+      expect(response[0]?.inFlight).toBe(false);
+    });
+
+    it('should report a settled record as not in flight', async () => {
+      service.getByOrderId.mockResolvedValue([registrationRecord()]);
+
+      const response = await controller.listForOrder(ORDER_ID);
+
+      expect(response[0]?.inFlight).toBe(false);
     });
   });
 

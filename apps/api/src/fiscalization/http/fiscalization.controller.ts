@@ -270,7 +270,14 @@ export class FiscalizationController {
     return error instanceof Error ? error : new Error(String(error));
   }
 
-  /** Explicit allowlist projection; `errorMessage` is deliberately not exposed. */
+  /**
+   * Explicit allowlist projection; `errorMessage` is deliberately not exposed.
+   *
+   * `inFlight` is DERIVED here rather than persisted (#2521): it is a question
+   * about now, and the record's own `isLeaseLive` is the same predicate the
+   * write path claims against, so the operator-facing reading and the one a
+   * second attempt would hit cannot drift.
+   */
   private toDto(record: FiscalRegistrationRecord): FiscalRegistrationResponseDto {
     return {
       id: record.id,
@@ -287,6 +294,7 @@ export class FiscalizationController {
       artefacts: record.artefacts,
       failureMode: record.failureMode,
       failureReason: record.failureReason,
+      inFlight: record.isLeaseLive(new Date()),
       createdAt: record.createdAt.toISOString(),
       updatedAt: record.updatedAt.toISOString(),
     };

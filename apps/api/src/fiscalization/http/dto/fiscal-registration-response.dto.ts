@@ -100,6 +100,15 @@ export class FiscalRegistrationResponseDto {
   @ApiPropertyOptional({ description: 'PII-free operator-facing reason', nullable: true })
   failureReason!: string | null;
 
+  @ApiProperty({
+    description:
+      'True while an attempt holds the in-flight claim on this record - a registration is being ' +
+      'run right now and needs no action. READ-ONLY and derived: asking does not take the claim, ' +
+      'call the provider or attempt anything. A claim that has EXPIRED reads false, because an ' +
+      'expired lease means the previous attempt died rather than that one is running.',
+  })
+  inFlight!: boolean;
+
   @ApiProperty()
   createdAt!: string;
 

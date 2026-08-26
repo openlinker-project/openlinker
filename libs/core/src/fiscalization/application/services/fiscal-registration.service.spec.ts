@@ -1051,6 +1051,73 @@ describe('FiscalRegistrationService', () => {
     });
   });
 
+  describe('getInFlightRegistration (#2521)', () => {
+    it('should report a live claim so a SECOND READER learns it without attempting anything', async () => {
+      // The whole point of the signal: before it, "someone is registering this
+      // right now" was reachable only by attempting a registration and reading
+      // the 409 back.
+      const claimed = record('registering', {
+        leaseExpiresAt: new Date(Date.now() + 60_000),
+      });
+      repo.findAllByOrderId.mockResolvedValue([claimed]);
+
+      const inFlight = await service.getInFlightRegistration(ORDER_ID);
+
+      expect(inFlight).toEqual({
+        documentKind: 'fiscal-receipt',
+        connectionId: CONNECTION_ID,
+        recordId: 'rec-1',
+        since: claimed.updatedAt,
+      });
+      // Read-only: no lock, no provider, no write, no claim.
+      expect(registrationLock.acquire).not.toHaveBeenCalled();
+      expect(integrations.getCapabilityAdapter).not.toHaveBeenCalled();
+      expect(repo.claimForRegistration).not.toHaveBeenCalled();
+      expect(repo.updateOutcome).not.toHaveBeenCalled();
+    });
+
+    it('should report nothing when the claim has EXPIRED', async () => {
+      // An expired lease means the previous attempt died, not that one is
+      // running - telling an operator to wait for it would be a claim about
+      // work nobody is doing.
+      repo.findAllByOrderId.mockResolvedValue([
+        record('registering', { leaseExpiresAt: new Date(Date.now() - 1_000) }),
+      ]);
+
+      await expect(service.getInFlightRegistration(ORDER_ID)).resolves.toBeNull();
+    });
+
+    it('should report nothing for an order with no records, and none for settled ones', async () => {
+      repo.findAllByOrderId.mockResolvedValue([]);
+      await expect(service.getInFlightRegistration(ORDER_ID)).resolves.toBeNull();
+
+      repo.findAllByOrderId.mockResolvedValue([
+        record('registered'),
+        record('failed', { failureMode: 'in-doubt' }),
+        record('pending'),
+      ]);
+      await expect(service.getInFlightRegistration(ORDER_ID)).resolves.toBeNull();
+    });
+
+    it('should point at the claim-holding record when the order carries several', async () => {
+      // A surface renders per record, so the signal has to name which one is
+      // running rather than only that something is.
+      repo.findAllByOrderId.mockResolvedValue([
+        record('failed', { id: 'rec-old', failureMode: 'rejected' }),
+        record('registering', {
+          id: 'rec-live',
+          connectionId: 'conn-2',
+          leaseExpiresAt: new Date(Date.now() + 60_000),
+        }),
+      ]);
+
+      const inFlight = await service.getInFlightRegistration(ORDER_ID);
+
+      expect(inFlight?.recordId).toBe('rec-live');
+      expect(inFlight?.connectionId).toBe('conn-2');
+    });
+  });
+
   describe('reconcileInDoubt', () => {
     it('should refuse a record that is not an in-doubt failure', async () => {
       repo.findById.mockResolvedValue(record('registered'));

@@ -26,6 +26,7 @@ import {
   INTEGRATIONS_SERVICE_TOKEN,
 } from '@openlinker/core/integrations';
 import { type SyncLockPort, SYNC_LOCK_TOKEN } from '@openlinker/core/sync';
+import type { SalesDocumentInFlight } from '@openlinker/core/sales-documents';
 import type { IFiscalRegistrationService } from '@openlinker/core/fiscalization';
 // Type-only NAMED import (never a wildcard — see
 // docs/architecture-overview.md#cross-context-dependencies-in-core) of just
@@ -1168,6 +1169,26 @@ export class InvoiceService implements IInvoiceService {
 
   async getLatestInvoiceForOrder(orderId: string): Promise<InvoiceRecord | null> {
     return this.repo.findLatestByOrderId(orderId);
+  }
+
+  async getInFlightIssuance(orderId: string): Promise<SalesDocumentInFlight | null> {
+    const now = new Date();
+    // Same predicate the write path claims against, so the operator-facing
+    // reading and the one a second attempt would hit cannot drift.
+    const claimed = (await this.repo.findAllByOrderId(orderId)).find((record) =>
+      record.isLeaseLive(now),
+    );
+    if (!claimed) {
+      return null;
+    }
+    return {
+      documentKind: 'invoice',
+      connectionId: claimed.connectionId,
+      recordId: claimed.id,
+      // The claim's own last write. Not the lease expiry - see
+      // `SalesDocumentInFlight.since` for why no deadline is carried.
+      since: claimed.updatedAt,
+    };
   }
 
   async findBlockingInvoiceForOrder(orderId: string): Promise<InvoiceRecord | null> {
