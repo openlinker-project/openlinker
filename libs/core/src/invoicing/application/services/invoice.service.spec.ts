@@ -204,6 +204,7 @@ describe('InvoiceService', () => {
       findLatestByOrderId: jest.fn(),
       findAllByOrderId: jest.fn(),
       findLatestByOrderIds: jest.fn(),
+      findAllByOrderIds: jest.fn(),
       findByProviderInvoiceId: jest.fn(),
       findByIdempotencyKey: jest.fn(),
       updateOutcome: jest.fn(),

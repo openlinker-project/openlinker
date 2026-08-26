@@ -106,6 +106,7 @@ describe('FiscalRegistrationService', () => {
       // at-most-one-originating-registration guard passes. Cases that exercise
       // the guard override it.
       findAllByOrderId: jest.fn().mockResolvedValue([]),
+      findAllByOrderIds: jest.fn().mockResolvedValue([]),
       updateOutcome: jest.fn(),
       claimForRegistration: jest.fn(),
     };

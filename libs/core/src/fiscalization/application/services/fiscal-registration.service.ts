@@ -322,6 +322,10 @@ export class FiscalRegistrationService implements IFiscalRegistrationService {
     return this.repo.findAllByOrderId(orderId);
   }
 
+  async getByOrderIds(orderIds: readonly string[]): Promise<FiscalRegistrationRecord[]> {
+    return this.repo.findAllByOrderIds(orderIds);
+  }
+
   async getById(id: string): Promise<FiscalRegistrationRecord> {
     const record = await this.repo.findById(id);
     if (!record) {
