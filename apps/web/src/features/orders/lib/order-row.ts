@@ -20,6 +20,10 @@ import type {
   SalesDocumentGateBlockReasonValue,
   SalesDocumentUnresolvedReasonValue,
 } from '../api/orders.types';
+// #2534 - the single reason-to-copy map. This row states the persisted reason
+// and never re-derives one, so the label it shows and the sentence the panel
+// shows cannot describe the same order differently.
+import { resolveSalesDocumentReasonCopy } from '../../sales-documents';
 
 /** Label + tone per payment status. Colour never carries meaning alone — the
  *  label always ships alongside (StatusBadge enforces the dot + text). */
@@ -35,7 +39,7 @@ export const PAYMENT_BADGE_META: Record<PaymentStatus, { label: string; tone: St
  * report a status (the cell then shows an em dash rather than a misleading pill).
  */
 export function paymentBadge(
-  status: PaymentStatus | undefined,
+  status: PaymentStatus | undefined
 ): { label: string; tone: StatusBadgeTone } | null {
   if (!status) return null;
   return PAYMENT_BADGE_META[status];
@@ -100,9 +104,9 @@ export interface InvoicingBlockedBadge {
   /** One-line cause for the row's `title` tooltip. */
   hint: string;
   /**
-   * Whether the row should still offer "Issue invoice" alongside the badge.
-   * True only for `trigger-model-manual`, where issuing by hand IS the
-   * configured workflow rather than a workaround.
+   * Whether the row should still offer to issue the document alongside the
+   * badge. Carried by the shared copy entry (#2534) rather than decided here,
+   * so a row and a panel cannot disagree about whether an action exists.
    */
   keepIssueAction: boolean;
 }
@@ -135,9 +139,11 @@ export function invoiceSupersedesBlock(invoice?: ParsedOrderInvoice | null): boo
 /**
  * Collapse a persisted sales-document block into the row badge (#2100).
  *
- * Keys on the ROUTING reason when one travelled alongside the gate's
- * `'unresolved-routing'` bridge value (ADR-041 §107): "routing was unresolved"
- * is not something an operator can act on, "no primary invoicing connection" is.
+ * Reads the shared reason-to-copy map (#2534) so the row, the popover and the
+ * panel state one persisted reason in one vocabulary. It keys on the ROUTING
+ * reason when one travelled alongside the gate's `'unresolved-routing'` bridge
+ * value (ADR-041 §107): "routing was unresolved" is not something an operator
+ * can act on, "two rules matched" is.
  *
  * A deliberate sibling of {@link invoiceBadge} rather than a branch inside it —
  * that function takes a `ParsedOrderInvoice`, and a blocked order has no invoice
@@ -153,7 +159,7 @@ export function invoicingBlockedBadge(
   unresolvedReason?: SalesDocumentUnresolvedReasonValue | null,
   /**
    * The order's invoice projection, when it has one. It suppresses the badge
-   * exactly when it reports a document that plausibly exists — see
+   * exactly when it reports a document that plausibly exists - see
    * `invoiceSupersedesBlock`. A "No primary" pill beside an issued invoice is
    * worse than no pill at all; a pill beside a REJECTED one is the only remaining
    * statement of why auto-issue never ran.
@@ -167,94 +173,20 @@ export function invoicingBlockedBadge(
    * same rule at its own call site, because it already holds the live invoice query
    * rather than a snapshot projection.
    */
-  invoice?: ParsedOrderInvoice | null,
+  invoice?: ParsedOrderInvoice | null
 ): InvoicingBlockedBadge | null {
-  if (!reason || invoiceSupersedesBlock(invoice)) return null;
+  if (invoiceSupersedesBlock(invoice)) return null;
 
-  // `unresolved-routing` is the only reason whose copy depends on a second field
-  // (ADR-041 §107's paired routing reason), so it is resolved before the table.
-  if (reason === 'unresolved-routing' && unresolvedReason === 'ambiguous-connection-no-primary') {
-    return {
-      label: 'No primary',
-      tone: 'error',
-      hint: 'Several connections can invoice and none is set to issue automatically.',
-      keepIssueAction: false,
-    };
-  }
+  const copy = resolveSalesDocumentReasonCopy(reason, unresolvedReason);
+  if (!copy) return null;
 
-  return BADGE_BY_REASON[reason] ?? null;
+  return {
+    label: copy.short,
+    tone: copy.tone,
+    hint: copy.detail,
+    keepIssueAction: copy.keepsAction,
+  };
 }
-
-/**
- * Copy + tone per gate reason.
- *
- * `satisfies Record<SalesDocumentGateBlockReasonValue, …>` is the point: a reason
- * added to ADR-041's union is a COMPILE error here rather than a silently
- * unlabelled row. The mirror script only keeps the two arrays aligned — it cannot
- * see this table, and a reason added to both arrays with no entry here would
- * otherwise render nothing at all, which is the exact failure #2100 exists to fix.
- */
-const BADGE_BY_REASON = {
-  // The generic arm of `unresolved-routing`: any other routing reason belongs to
-  // the #1908 router, which does not exist yet. Honest generic rather than copy
-  // invented for a state no code path can currently produce.
-  'unresolved-routing': {
-    label: 'Not routed',
-    tone: 'error',
-    hint: 'OpenLinker could not decide where to issue this document.',
-    keepIssueAction: false,
-  },
-  // Neutral on purpose: a deliberate operator setting is not a fault. The fact is
-  // still recorded so the row is honest about why nothing happened, and the CTA
-  // stays because issuing by hand IS this connection's configured workflow.
-  'trigger-model-manual': {
-    label: 'Manual only',
-    tone: 'neutral',
-    hint: 'This connection issues invoices by hand.',
-    keepIssueAction: true,
-  },
-  'trigger-model-batched': {
-    label: 'Batched',
-    tone: 'warning',
-    hint: "Batched invoicing isn't available yet, so this order is waiting.",
-    keepIssueAction: false,
-  },
-  // Declared by ADR-041 but never written today (no buyer tax id exists on the
-  // order contract). Copy ships so the badge is right the day it does.
-  'missing-required-tax-id': {
-    label: 'Tax ID missing',
-    tone: 'error',
-    hint: 'This order needs a buyer tax ID before it can be invoiced.',
-    keepIssueAction: false,
-  },
-  // #2248 (ADR-063). The one reason where `keepIssueAction: false` means the
-  // action is genuinely unavailable rather than merely unhelpful: issuing by
-  // hand would make a provider guess a rate onto a real fiscal document, so the
-  // backend refuses the manual paths too. Every other `false` above is a
-  // presentation choice; this one matches a server-side refusal.
-  'missing-tax-rate': {
-    label: 'No tax rate',
-    tone: 'error',
-    // Subject-neutral on purpose (#2260 review): the gate blocks on a rate-less
-    // product line AND on a delivery charge that cannot be attributed to any
-    // rate, and a row carries no line data to tell the two apart. Naming a
-    // product here was false for the second shape; the panel, which does hold
-    // the lines, names the subject.
-    hint: 'Something on this order has no tax rate, so no document can state the tax charged.',
-    keepIssueAction: false,
-  },
-  // Declared but never written today, and it stays that way: a shop-versus-channel
-  // disagreement does not block (#2245 F1). It surfaces on its own field with its
-  // own resolver, because a badge routed through here would never render - the
-  // resolver below suppresses one whenever an invoice exists, and a non-blocking
-  // conflict always has one.
-  'tax-rate-conflict': {
-    label: 'Tax rate conflict',
-    tone: 'error',
-    hint: "The channel's tax rate disagrees with the master catalogue.",
-    keepIssueAction: false,
-  },
-} satisfies Record<SalesDocumentGateBlockReasonValue, InvoicingBlockedBadge>;
 
 /**
  * The rate-conflict badge (#2254, epic F1).

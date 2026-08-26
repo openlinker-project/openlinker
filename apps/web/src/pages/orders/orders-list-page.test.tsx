@@ -11,7 +11,11 @@
 import { cleanup, fireEvent, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
-import { renderWithProviders, createMockApiClient, createAuthenticatedSessionAdapter } from '../../test/test-utils';
+import {
+  renderWithProviders,
+  createMockApiClient,
+  createAuthenticatedSessionAdapter,
+} from '../../test/test-utils';
 import { OrdersListPage } from './orders-list-page';
 import type {
   PaginatedOrders,
@@ -114,7 +118,7 @@ function mockMobileViewport(): { restore: () => void } {
         addListener: () => {},
         removeListener: () => {},
         dispatchEvent: () => false,
-      }) as MediaQueryList,
+      }) as MediaQueryList
   );
   return { restore: () => spy.mockRestore() };
 }
@@ -216,7 +220,7 @@ describe('OrdersListPage', () => {
     expect(await screen.findByText('No orders found')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Manage connections' })).toHaveAttribute(
       'href',
-      '/connections',
+      '/connections'
     );
   });
 
@@ -230,9 +234,7 @@ describe('OrdersListPage', () => {
       route: '/orders?health=needs_attention',
     });
 
-    expect(
-      await screen.findByText('All clear — nothing needs your attention'),
-    ).toBeInTheDocument();
+    expect(await screen.findByText('All clear — nothing needs your attention')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'View all orders' })).toBeInTheDocument();
   });
 
@@ -264,7 +266,7 @@ describe('OrdersListPage', () => {
         // to /connections to debug an ingestion problem that does not exist.
         expect(screen.getByRole('button', { name: 'View all orders' })).toBeInTheDocument();
         expect(screen.queryByRole('link', { name: 'Manage connections' })).toBeNull();
-      },
+      }
     );
 
     it('should clear every filter in one write from the recovery button', async () => {
@@ -373,7 +375,7 @@ describe('OrdersListPage', () => {
 
     await vi.waitFor(() => {
       const values = Array.from(container.querySelectorAll('.metric-card__value')).map(
-        (el) => el.textContent,
+        (el) => el.textContent
       );
       expect(values).toContain('11'); // total
       expect(values).toContain('9'); // awaiting dispatch
@@ -395,7 +397,7 @@ describe('OrdersListPage', () => {
 
     await vi.waitFor(() => {
       const calledWithHealth = list.mock.calls.some(
-        ([filters]) => (filters as { health?: string } | undefined)?.health === 'needs_attention',
+        ([filters]) => (filters as { health?: string } | undefined)?.health === 'needs_attention'
       );
       expect(calledWithHealth).toBe(true);
     });
@@ -557,7 +559,7 @@ describe('OrdersListPage', () => {
       await screen.findByText('ALG-882414');
       const pill = container.querySelector(`.channel-pill[data-channel="${platformType}"]`);
       expect(pill?.textContent).toBe(expectedLabel);
-    },
+    }
   );
 
   it('should fall back to a SHORTENED internalOrderId when the snapshot has no orderNumber (#2091)', async () => {
@@ -593,7 +595,10 @@ describe('OrdersListPage', () => {
       connections: { list: vi.fn().mockResolvedValue([sampleConnection]) },
     });
 
-    renderWithProviders(<OrdersListPage />, { apiClient: mockApi, sessionAdapter: createAuthenticatedSessionAdapter() });
+    renderWithProviders(<OrdersListPage />, {
+      apiClient: mockApi,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
 
     await screen.findByText('ALG-FAIL');
     await user.click(screen.getByRole('button', { name: 'Retry' }));
@@ -643,7 +648,7 @@ describe('OrdersListPage', () => {
     await screen.findByText('ALG-882414');
     expect(list).toHaveBeenCalledWith(
       expect.objectContaining({ sort: 'dispatchBy' }),
-      expect.anything(),
+      expect.anything()
     );
   });
 
@@ -679,7 +684,8 @@ describe('OrdersListPage', () => {
 
     await vi.waitFor(() => {
       const calledWithDue = list.mock.calls.some(
-        ([filters]) => typeof (filters as { dueBefore?: string } | undefined)?.dueBefore === 'string',
+        ([filters]) =>
+          typeof (filters as { dueBefore?: string } | undefined)?.dueBefore === 'string'
       );
       expect(calledWithDue).toBe(true);
     });
@@ -702,7 +708,7 @@ describe('OrdersListPage', () => {
       const called = list.mock.calls.some(
         ([filters]) =>
           (filters as { sourceConnectionId?: string } | undefined)?.sourceConnectionId ===
-          'conn_allegro_1',
+          'conn_allegro_1'
       );
       expect(called).toBe(true);
     });
@@ -809,7 +815,7 @@ describe('OrdersListPage', () => {
       const called = list.mock.calls.some(
         ([filters]) =>
           (filters as { createdFrom?: string } | undefined)?.createdFrom ===
-          '2026-05-01T00:00:00.000Z',
+          '2026-05-01T00:00:00.000Z'
       );
       expect(called).toBe(true);
     });
@@ -845,7 +851,7 @@ describe('OrdersListPage', () => {
     expect(
       screen.getByRole('button', {
         name: 'Copy internal order ID for order 186d7a20-5b82-11f1-979b-098d4666d4ec',
-      }),
+      })
     ).toBeInTheDocument();
   });
 
@@ -910,7 +916,10 @@ describe('OrdersListPage', () => {
         system: { getConfig: vi.fn().mockResolvedValue({ demoMode: true }) },
       });
 
-      renderWithProviders(<OrdersListPage />, { apiClient: mockApi, sessionAdapter: viewerSession });
+      renderWithProviders(<OrdersListPage />, {
+        apiClient: mockApi,
+        sessionAdapter: viewerSession,
+      });
 
       await screen.findByText('ALG-FAIL');
       const retryButton = await screen.findByRole('button', { name: 'Retry' });
@@ -926,7 +935,10 @@ describe('OrdersListPage', () => {
           system: { getConfig: vi.fn().mockResolvedValue({ demoMode: true }) },
         });
 
-        renderWithProviders(<OrdersListPage />, { apiClient: mockApi, sessionAdapter: viewerSession });
+        renderWithProviders(<OrdersListPage />, {
+          apiClient: mockApi,
+          sessionAdapter: viewerSession,
+        });
 
         await screen.findAllByText('ALG-FAIL');
         const retryButton = await screen.findByRole('button', { name: 'Retry' });
@@ -942,7 +954,10 @@ describe('OrdersListPage', () => {
         connections: { list: vi.fn().mockResolvedValue([sampleConnection]) },
       });
 
-      renderWithProviders(<OrdersListPage />, { apiClient: mockApi, sessionAdapter: viewerSession });
+      renderWithProviders(<OrdersListPage />, {
+        apiClient: mockApi,
+        sessionAdapter: viewerSession,
+      });
 
       await screen.findByText('ALG-FAIL');
       expect(screen.queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument();
@@ -1081,7 +1096,7 @@ describe('OrdersListPage', () => {
                 salesDocumentBlockReason: 'unresolved-routing',
                 salesDocumentUnresolvedReason: 'ambiguous-connection-no-primary',
               }),
-            ]),
+            ])
           ),
         },
         connections: { list: vi.fn().mockResolvedValue([sampleConnection, invoicingConnection]) },
@@ -1092,7 +1107,7 @@ describe('OrdersListPage', () => {
       await screen.findByText('ALG-882414');
       const row = container.querySelector('.data-table__row') as HTMLElement;
 
-      expect(within(row).getByText('No primary')).toBeInTheDocument();
+      expect(within(row).getByText('Two setups apply')).toBeInTheDocument();
       // The CTA must be GONE: an order OpenLinker already refused is not an order
       // waiting for a click, and the CTA alone made every cause look identical.
       expect(within(row).queryByRole('link', { name: /issue invoice/i })).not.toBeInTheDocument();
@@ -1127,7 +1142,7 @@ describe('OrdersListPage', () => {
                 salesDocumentUnresolvedReason: 'ambiguous-connection-no-primary',
                 orderSnapshot: { ...syncedOrder.orderSnapshot, invoice: rejectedInvoice },
               }),
-            ]),
+            ])
           ),
         },
         connections: { list: vi.fn().mockResolvedValue([sampleConnection, invoicingConnection]) },
@@ -1139,7 +1154,7 @@ describe('OrdersListPage', () => {
       const row = container.querySelector('.data-table__row') as HTMLElement;
 
       expect(within(row).getByText('Failed')).toBeInTheDocument();
-      expect(within(row).getByText('No primary')).toBeInTheDocument();
+      expect(within(row).getByText('Two setups apply')).toBeInTheDocument();
       // A record exists, so the next step is Retry in the panel, not a fresh issue.
       expect(within(row).queryByRole('link', { name: /issue invoice/i })).not.toBeInTheDocument();
     });
@@ -1154,7 +1169,7 @@ describe('OrdersListPage', () => {
                 salesDocumentUnresolvedReason: 'ambiguous-connection-no-primary',
                 orderSnapshot: { ...syncedOrder.orderSnapshot, invoice: rejectedInvoice },
               }),
-            ]),
+            ])
           ),
         },
         connections: { list: vi.fn().mockResolvedValue([sampleConnection, invoicingConnection]) },
@@ -1170,7 +1185,7 @@ describe('OrdersListPage', () => {
         const card = container.querySelector('.orders-card-summary') as HTMLElement;
 
         expect(within(card).getByText('Failed')).toBeInTheDocument();
-        expect(within(card).getByText('No primary')).toBeInTheDocument();
+        expect(within(card).getByText('Two setups apply')).toBeInTheDocument();
       } finally {
         viewport.restore();
       }
@@ -1194,7 +1209,7 @@ describe('OrdersListPage', () => {
                   },
                 },
               }),
-            ]),
+            ])
           ),
         },
         connections: { list: vi.fn().mockResolvedValue([sampleConnection, invoicingConnection]) },
@@ -1205,9 +1220,9 @@ describe('OrdersListPage', () => {
       await screen.findByText('ALG-882414');
       const row = container.querySelector('.data-table__row') as HTMLElement;
 
-      // "No primary" beside an issued invoice is worse than no pill at all — and
+      // "Two setups apply" beside an issued invoice is worse than no pill at all — and
       // the backend gate refuses to persist a block here in the first place.
-      expect(within(row).queryByText('No primary')).not.toBeInTheDocument();
+      expect(within(row).queryByText('Two setups apply')).not.toBeInTheDocument();
     });
 
     it('should keep the "Issue invoice" CTA alongside a manual-only badge', async () => {
@@ -1216,7 +1231,7 @@ describe('OrdersListPage', () => {
           list: vi
             .fn()
             .mockResolvedValue(
-              paginated([blockedOrder({ salesDocumentBlockReason: 'trigger-model-manual' })]),
+              paginated([blockedOrder({ salesDocumentBlockReason: 'trigger-model-manual' })])
             ),
         },
         connections: { list: vi.fn().mockResolvedValue([sampleConnection, invoicingConnection]) },
@@ -1227,7 +1242,7 @@ describe('OrdersListPage', () => {
       await screen.findByText('ALG-882414');
       const row = container.querySelector('.data-table__row') as HTMLElement;
 
-      expect(within(row).getByText('Manual only')).toBeInTheDocument();
+      expect(within(row).getByText('Issued on request')).toBeInTheDocument();
       // Issuing by hand IS the configured workflow here, so the affordance stays.
       expect(within(row).getByRole('link', { name: /issue invoice/i })).toBeInTheDocument();
     });
@@ -1249,7 +1264,7 @@ describe('OrdersListPage', () => {
                   },
                 },
               }),
-            ]),
+            ])
           ),
         },
         connections: { list: vi.fn().mockResolvedValue([sampleConnection, invoicingConnection]) },
@@ -1260,10 +1275,10 @@ describe('OrdersListPage', () => {
       await screen.findByText('ALG-882414');
       const row = container.querySelector('.data-table__row') as HTMLElement;
 
-      // "No primary" next to an issued invoice is worse than no badge at all, so
+      // "Two setups apply" next to an issued invoice is worse than no badge at all, so
       // the render refuses the contradiction rather than trusting the clear to
       // have landed already.
-      expect(within(row).queryByText('No primary')).not.toBeInTheDocument();
+      expect(within(row).queryByText('Two setups apply')).not.toBeInTheDocument();
       expect(within(row).getByText('Issued')).toBeInTheDocument();
     });
 
@@ -1304,7 +1319,7 @@ describe('OrdersListPage', () => {
                 salesDocumentBlockReason: 'unresolved-routing',
                 salesDocumentUnresolvedReason: 'ambiguous-connection-no-primary',
               }),
-            ]),
+            ])
           ),
         },
         connections: { list: vi.fn().mockResolvedValue([sampleConnection, invoicingConnection]) },
@@ -1314,13 +1329,16 @@ describe('OrdersListPage', () => {
 
       await screen.findByText('ALG-882414');
       const row = container.querySelector('.data-table__row') as HTMLElement;
-      const wrapper = within(row).getByText('No primary').closest('span[title]');
+      const wrapper = within(row).getByText('Two setups apply').closest('span[title]');
 
       // The hint is the ONLY statement of why on this surface, so it must reach the
       // DOM — and `title` alone is unreachable by keyboard and unreliable in screen
       // readers on a role-less span.
-      expect(wrapper).toHaveAttribute('title', expect.stringMatching(/none is set to issue/i));
-      expect(wrapper).toHaveAttribute('aria-label', expect.stringContaining('No primary'));
+      expect(wrapper).toHaveAttribute(
+        'title',
+        expect.stringMatching(/nothing chooses between them/i)
+      );
+      expect(wrapper).toHaveAttribute('aria-label', expect.stringContaining('Two setups apply'));
     });
 
     it('should render the block badge on the mobile card path too', async () => {
@@ -1331,7 +1349,7 @@ describe('OrdersListPage', () => {
             list: vi
               .fn()
               .mockResolvedValue(
-                paginated([blockedOrder({ salesDocumentBlockReason: 'trigger-model-batched' })]),
+                paginated([blockedOrder({ salesDocumentBlockReason: 'trigger-model-batched' })])
               ),
           },
           connections: { list: vi.fn().mockResolvedValue([sampleConnection, invoicingConnection]) },
@@ -1407,9 +1425,7 @@ describe('OrdersListPage', () => {
 
       // Gating the chip on the count alone unmounted the ONLY control for this
       // param exactly when the remediation succeeded, stranding an applied filter.
-      expect(
-        await screen.findByRole('button', { name: /invoicing blocked/i }),
-      ).toBeInTheDocument();
+      expect(await screen.findByRole('button', { name: /invoicing blocked/i })).toBeInTheDocument();
       // And the empty state must not claim nothing has ever synced.
       // `findByText` (not `getByText`): the chip is sync-derived from the URL
       // param alone and can mount before the orders query resolves, so a
@@ -1647,11 +1663,11 @@ describe('OrdersListPage — shared Order identity cell (#2091)', () => {
     // The thumbnail is what this column never had (#1996 frame 04).
     expect(cell.querySelector('.product-thumbnail img')).toHaveAttribute(
       'src',
-      'https://cdn.example.test/filtr.jpg',
+      'https://cdn.example.test/filtr.jpg'
     );
     expect(within(cell).getByRole('link', { name: 'ALG-882414' })).toHaveAttribute(
       'href',
-      '/orders/ol_order_synced',
+      '/orders/ol_order_synced'
     );
     expect(within(cell).getByText('Filtr kubełkowy AquaPro')).toBeInTheDocument();
     expect(container.querySelector('.orders-cell-stack .order-cell')).not.toBeNull();
@@ -1692,7 +1708,7 @@ describe('OrdersListPage — shared Order identity cell (#2091)', () => {
     fireEvent.click(
       within(table).getByRole('button', {
         name: 'Copy internal order ID for order ALG-882414',
-      }),
+      })
     );
 
     expect(writeText).toHaveBeenCalledWith('ol_order_a3f24b09c4d1486789abcdef01234567');
@@ -1790,7 +1806,7 @@ describe('OrdersListPage — shared Order identity cell (#2091)', () => {
       // the pre-#2091 card had its own hand-rolled `EntityLabel`.
       expect(within(cell).getByRole('link', { name: 'ALG-882414' })).toHaveAttribute(
         'href',
-        '/orders/ol_order_synced',
+        '/orders/ol_order_synced'
       );
       fireEvent.click(within(cell).getByRole('button', { name: /^Copy internal order ID/ }));
       expect(writeText).toHaveBeenCalledWith('ol_order_synced');
@@ -1851,7 +1867,7 @@ describe('OrdersListPage — shared Order identity cell (#2091)', () => {
     // Two `erli` pills render on the desktop row — the order cell's fold and the
     // Channel column. Exclude the fold to assert the column's own lookup.
     const columnPill = Array.from(
-      container.querySelectorAll('.channel-pill[data-channel="erli"]'),
+      container.querySelectorAll('.channel-pill[data-channel="erli"]')
     ).find((pill) => pill.closest('.orders-order-channel') === null);
     expect(columnPill?.textContent).toBe('Erli');
     expect(columnPill?.parentElement?.textContent).toContain('→ WooCommerce');
@@ -1866,7 +1882,9 @@ describe('OrdersListPage — shared Order identity cell (#2091)', () => {
 
       await screen.findAllByText('ALG-882414');
       const subtitle = container.querySelector('.orders-card-sub') as HTMLElement;
-      expect(subtitle.querySelector('.channel-pill[data-channel="erli"]')?.textContent).toBe('Erli');
+      expect(subtitle.querySelector('.channel-pill[data-channel="erli"]')?.textContent).toBe(
+        'Erli'
+      );
       expect(within(subtitle).getByText('→ WooCommerce')).toBeInTheDocument();
     } finally {
       viewport.restore();
@@ -1897,7 +1915,7 @@ describe('OrdersListPage — shared Order identity cell (#2091)', () => {
 
     await screen.findByText('ALG-882414');
     await user.click(
-      screen.getByRole('button', { name: /Expand details for order ol_order_crosschannel/ }),
+      screen.getByRole('button', { name: /Expand details for order ol_order_crosschannel/ })
     );
 
     const detail = container.querySelector('.orders-detail') as HTMLElement;
