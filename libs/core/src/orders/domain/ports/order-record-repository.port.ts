@@ -28,6 +28,7 @@ import type { DailyOrderAggregateRow, SalesAnalyticsFilters } from '../types/ord
 import type {
   CoverageDetectionPagination,
   PaginatedCurrencyMismatchOrders,
+  NetExcludedOrderCandidate,
 } from '../types/coverage-detection.types';
 
 export interface OrderRecordRepositoryPort {
@@ -238,6 +239,32 @@ export interface OrderRecordRepositoryPort {
     currentReportingCurrency: string,
     pagination: CoverageDetectionPagination
   ): Promise<PaginatedCurrencyMismatchOrders>;
+
+  /**
+   * Data Coverage tax A/B/C detector's base population (#2465) — every
+   * order EXCLUDED from `getDailyOrderAggregates`' `net_excluded_count`
+   * figure, i.e. the IDENTICAL predicate mirrored from
+   * `netExcludedAndNotCancelled` there: `recordStatus = 'ready'`, resolvable
+   * `placedAt`/`totalAmount`, `[filters.from, filters.to)`, optional
+   * connection narrowing, non-cancelled, current-era stamped
+   * (`reportingCurrency = currentReportingCurrency`), and `NOT
+   * netSalesOrderNetEligibleSql(...)`. Kept as the SAME predicate on purpose
+   * so `candidates.length` is exactly `netExcludedCount` summed over the
+   * same filters — the #2465 regression guard.
+   *
+   * Unpaged by design: unlike {@link findCurrencyMismatchOrders}, this read
+   * feeds `TaxCoverageDetectionService`'s classification pass, which needs
+   * the FULL candidate set (to compute correct per-category totals) before
+   * any page can be sliced — pushing pagination down to SQL here would
+   * paginate the wrong population (page-of-candidates, not
+   * page-of-one-category). Bounded in practice by the same
+   * `[filters.from, filters.to)` window every sales-analytics read already
+   * requires (10-100 orders/day persona scale, per #1985's ADR-039 note).
+   */
+  findNetExcludedOrderCandidates(
+    filters: SalesAnalyticsFilters,
+    currentReportingCurrency: string
+  ): Promise<NetExcludedOrderCandidate[]>;
 
   /**
    * Headline median order value for the sales & channel analytics read

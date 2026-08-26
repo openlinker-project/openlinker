@@ -57,6 +57,7 @@ import type {
 import type {
   CoverageDetectionPagination,
   PaginatedCurrencyMismatchOrders,
+  NetExcludedOrderCandidate,
 } from '../../../domain/types/coverage-detection.types';
 
 @Injectable()
@@ -616,6 +617,38 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       })),
       total,
     };
+  }
+
+  /**
+   * Data Coverage tax A/B/C detector's base population (#2465) — see the
+   * port's JSDoc for the predicate rationale. Mirrors
+   * `getDailyOrderAggregates`'s `netExcludedAndNotCancelled` fragment
+   * EXACTLY (non-cancelled, current-era stamped, `NOT` net-eligible) so
+   * `candidates.length` is always the same figure as `netExcludedCount`
+   * for the identical filters/currency.
+   */
+  async findNetExcludedOrderCandidates(
+    filters: SalesAnalyticsFilters,
+    currentReportingCurrency: string
+  ): Promise<NetExcludedOrderCandidate[]> {
+    const { netEligible } = this.buildNetSalesOrderFragments();
+    const netExcludedAndNotCancelled = `rec."cancelledAt" IS NULL AND rec."reportingCurrency" = :currentReportingCurrency AND NOT ${netEligible}`;
+
+    const qb = this.repository
+      .createQueryBuilder('rec')
+      .andWhere(netExcludedAndNotCancelled, { currentReportingCurrency })
+      .orderBy('rec."placedAt"', 'DESC');
+
+    this.applySalesAnalyticsScope(qb, filters);
+
+    const entities = await qb.getMany();
+
+    return entities.map((entity) => ({
+      internalOrderId: entity.internalOrderId,
+      sourceConnectionId: entity.sourceConnectionId,
+      placedAt: entity.placedAt,
+      taxRateEra: entity.taxRateEra,
+    }));
   }
 
   /**
