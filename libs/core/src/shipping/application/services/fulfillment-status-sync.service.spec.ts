@@ -108,6 +108,8 @@ describe('FulfillmentStatusSyncService', () => {
       getSalesAndChannelAnalytics: jest.fn(),
       getTopProducts: jest.fn(),
       discoverSalesDocumentMarkets: jest.fn(),
+      getCurrencyMismatchOrders: jest.fn(),
+      getProductMatchingErrorOrders: jest.fn(),
     };
 
     routing = {
