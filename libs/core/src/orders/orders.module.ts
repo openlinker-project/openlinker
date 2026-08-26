@@ -25,6 +25,7 @@ import { RefundRecordRepository } from './infrastructure/persistence/repositorie
 import { RefundRecordOrmEntity } from './infrastructure/persistence/entities/refund-record.orm-entity';
 import { OrderLineItemOrmEntity } from './infrastructure/persistence/entities/order-line-item.orm-entity';
 import { TaxRateBackfillService } from './application/services/tax-rate-backfill.service';
+import { TaxCoverageDetectionService } from './application/services/tax-coverage-detection.service';
 import { DisplayCurrencyConversionService } from './application/services/display-currency-conversion.service';
 import {
   ORDER_SYNC_SERVICE_TOKEN,
@@ -41,6 +42,7 @@ import {
   ORDER_LINE_ITEM_REPOSITORY_TOKEN,
   TAX_RATE_BACKFILL_SERVICE_TOKEN,
   SALES_DOCUMENT_VIEW_SERVICE_TOKEN,
+  TAX_COVERAGE_DETECTION_SERVICE_TOKEN,
   DISPLAY_CURRENCY_CONVERSION_SERVICE_TOKEN,
 } from './orders.tokens';
 import { IntegrationsModule } from '@openlinker/core/integrations';
@@ -104,6 +106,7 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     RefundRecordRepository,
     OrderLineItemRepository,
     TaxRateBackfillService,
+    TaxCoverageDetectionService,
     DisplayCurrencyConversionService,
     // Then provide token bindings using useExisting
     {
@@ -163,6 +166,10 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
       useExisting: SalesDocumentViewService,
     },
     {
+      provide: TAX_COVERAGE_DETECTION_SERVICE_TOKEN,
+      useExisting: TaxCoverageDetectionService,
+    },
+    {
       provide: DISPLAY_CURRENCY_CONVERSION_SERVICE_TOKEN,
       useExisting: DisplayCurrencyConversionService,
     },
@@ -187,6 +194,9 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     // Exported so the API's orders controller can compose the per-order
     // sales-document projection for the list and the detail panel (#2516).
     SALES_DOCUMENT_VIEW_SERVICE_TOKEN,
+    // Exported so the `/analytics/coverage` endpoint (#2466) can inject the
+    // tax A/B/C detector seam (#2465).
+    TAX_COVERAGE_DETECTION_SERVICE_TOKEN,
     // Exported so the `/analytics` display-currency read surface (a later
     // phase of #2452) can inject this seam (#2458, ADR-064, pending in PR #2485).
     DISPLAY_CURRENCY_CONVERSION_SERVICE_TOKEN,
