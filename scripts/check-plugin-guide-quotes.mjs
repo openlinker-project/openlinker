@@ -6,7 +6,7 @@
  * stay in sync with the live code:
  *
  *   1. **Verbatim quote** of `CoreCapabilityValues` at
- *      `libs/core/src/integrations/domain/types/adapter.types.ts:23-42`,
+ *      `libs/core/src/integrations/domain/types/adapter.types.ts:23-49`,
  *      reproduced inline in the guide as a fenced TypeScript block.
  *      Drift = the guide quotes stale capability values; readers code
  *      against a list that no longer matches the registry.
@@ -49,8 +49,8 @@ const VERBATIM_QUOTES = [
     label: 'CoreCapabilityValues',
     sourceFile: 'libs/core/src/integrations/domain/types/adapter.types.ts',
     sourceStart: 23, // 1-indexed
-    sourceEnd: 42,
-    guideLinkSubstring: 'adapter.types.ts:23-42',
+    sourceEnd: 49,
+    guideLinkSubstring: 'adapter.types.ts:23-49',
     fenceOpen: '```typescript',
   },
 ];

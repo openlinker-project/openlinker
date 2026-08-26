@@ -39,6 +39,13 @@ export const CoreCapabilityValues = [
   // Deliberately NOT a document type on `Invoicing`: different issuer, device
   // dependency, legal basis and retry semantics.
   'Fiscalization',
+  // Returns disposition authority (ADR-052 / #2351): who decides what happens
+  // to goods a customer sends back. Unlike `ReturnSourceReader` / `ReturnDecliner`
+  // — read off an adapter manifest and never written — this name is written by an
+  // operator into `enabledCapabilities`, which both connection DTOs `@IsIn`-validate
+  // against this array. Keeping it out would make it unwritable, and A5 could then
+  // never resolve to a non-OpenLinker holder.
+  'ReturnsAuthority',
 ] as const;
 
 /**

@@ -79,9 +79,17 @@ const DOCS_FENCE_END = '<!-- authority-kinds:end -->';
  */
 const PENDING_MIRRORS = [
   {
+    // Re-attributed by #2351 (`W2-14`). That issue is CORE-only and ships no
+    // frontend file at all, so it was never this mirror's owner; the first FE
+    // consumer of the authority vocabulary is #2354's "Who decides what" page.
+    // The declared PATH deliberately stays under `features/orders` for now:
+    // #2354's own folder (`features/fulfillment-authority/lib`) does not exist
+    // yet, and the parent-directory guard below — correctly — refuses a path
+    // that cannot resolve. #2354 re-points both fields in the commit that
+    // creates the file.
     file: join('apps', 'web', 'src', 'features', 'orders', 'lib', 'authority-kind.ts'),
     declaration: KIND_DECLARATION,
-    pending: 'W2-14 (first frontend consumer of the authority vocabulary)',
+    pending: 'W2-17 / #2354 (first frontend consumer; re-point this path there)',
   },
 ];
 
