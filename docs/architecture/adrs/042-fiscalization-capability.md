@@ -341,7 +341,7 @@ Designing the operator surfaces for a fiscal receipt (#2513) found four places w
 
 **And one answer, so a surface can stop omitting it: a registered fiscal receipt cannot be corrected or cancelled in OpenLinker.** Fiscal corrections are out of scope for this capability (see § Decision), the correction happens at the register, and the panel states that rather than leaving an operator to guess. An invoice correction is unaffected - that is `CorrectionIssuer`'s job.
 
-**What this amendment does not touch.** Exactly-once registration is the constraint all four decisions are bounded by: none of them may create a second path that crosses the provider boundary, and the artefact projection added alongside them exposes medium and label only, never delivery - no shipped adapter reports whether a document reached a buyer, so nothing may claim it did.
+**What this amendment does not touch.** Exactly-once registration is the constraint all four decisions are bounded by: none of them may create a second path that crosses the provider boundary, and the artefact projection added alongside them carries no content and asserts no delivery - it exposes what an artefact IS (its medium, its label, its content type) and what the adapter INTENDS for it (its disposition hint), never the payload and never the fact of arrival. The distinction is the load-bearing one: a `send` disposition records that the adapter meant the artefact to be sent, and no shipped adapter reports whether a document reached a buyer, so nothing built on this projection may claim it did.
 
 ## References
 
