@@ -54,7 +54,6 @@ const SELLER: SellerProfile = {
   },
 };
 
-const DEFAULT_TAX_RATE = '23';
 
 const SESSION_REF = 'SESSION-REF-001';
 const INVOICE_REF = 'INVOICE-REF-001';
@@ -199,7 +198,6 @@ function adapter(
     fakeCrypto(),
     builder,
     SELLER,
-    DEFAULT_TAX_RATE,
     { payment, now: () => new Date('2026-06-23T10:00:00.000Z') },
   );
 }
@@ -1099,7 +1097,7 @@ describe('KsefInvoicingAdapter', () => {
       seedHappyPath(http);
       const now = new Date('2026-06-23T10:00:00.000Z');
       const crypto = fakeCrypto();
-      const ad = new KsefInvoicingAdapter('conn-1', http, crypto, fakeBuilder, SELLER, DEFAULT_TAX_RATE, {
+      const ad = new KsefInvoicingAdapter('conn-1', http, crypto, fakeBuilder, SELLER, {
         now: () => now,
       });
 

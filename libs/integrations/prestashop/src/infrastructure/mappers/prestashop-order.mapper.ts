@@ -14,10 +14,11 @@
  */
 import type {
   IPrestashopOrderMapper,
+  MappedPrestashopOrder,
   PrestashopOrder,
   PrestashopOrderRow,
 } from './prestashop.mapper.interface';
-import type { Order, OrderItem, OrderTotals } from '@openlinker/core/orders';
+import type { OrderItem, OrderTotals } from '@openlinker/core/orders';
 import type { OrderCreate, OrderStatus } from '@openlinker/core/orders';
 import { PrestashopProvisioningException } from '@openlinker/integrations-prestashop';
 import { PrestashopCurrencyUnknownException } from '../../domain/exceptions/prestashop-currency-unknown.exception';
@@ -47,7 +48,10 @@ const DEFAULT_CARRIER_ID = 1; // First carrier
  */
 export class PrestashopOrderMapper implements IPrestashopOrderMapper {
   private readonly logger = new Logger(PrestashopOrderMapper.name);
-  mapOrder(prestashopOrder: PrestashopOrder, orderRows: PrestashopOrderRow[]): Omit<Order, 'id'> {
+  mapOrder(
+    prestashopOrder: PrestashopOrder,
+    orderRows: PrestashopOrderRow[]
+  ): MappedPrestashopOrder {
     // Strictly 1:1 and order-preserving: `PrestashopOrderSourceAdapter` re-correlates
     // `mapped.items[i]` back to `orderRows[i]` positionally to build each product ref.
     // Filtering or reordering rows here would silently mis-pair every later line.
@@ -70,15 +74,23 @@ export class PrestashopOrderMapper implements IPrestashopOrderMapper {
       };
     });
 
-    // Map totals
-    const totals: OrderTotals = {
+    // Map totals. No `currency` (#2277): the order's denomination lives behind a
+    // `GET /currencies/{id}` read keyed on `id_currency`, and this mapper does no
+    // I/O. `PrestashopOrderCurrencyResolver` supplies it in the adapter. Until
+    // then this line read `currency: 'EUR', // Default, can be configured` -
+    // nothing ever configured it, so every PrestaShop order in the system was
+    // denominated EUR whatever the buyer paid in.
+    const totals: Omit<OrderTotals, 'currency'> = {
       subtotal: this.parseNumber(prestashopOrder.total_paid_tax_excl) || 0,
       tax:
         (this.parseNumber(prestashopOrder.total_paid_tax_incl) || 0) -
         (this.parseNumber(prestashopOrder.total_paid_tax_excl) || 0),
       shipping: this.parseNumber(prestashopOrder.total_shipping) || 0,
       total: this.parseNumber(prestashopOrder.total_paid_tax_incl) || 0,
-      currency: 'EUR', // Default, can be configured
+      // PrestaShop's line prices (`order_details.product_price`, mapped onto
+      // `OrderItem.price` above) are net — `specific_price` and every catalogue
+      // read this adapter does elsewhere already treat them that way (#2440).
+      taxTreatment: 'exclusive',
     };
 
     return {

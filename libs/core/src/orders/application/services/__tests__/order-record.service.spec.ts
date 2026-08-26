@@ -10,13 +10,17 @@ import type { TestingModule } from '@nestjs/testing';
 import { Test } from '@nestjs/testing';
 import { OrderRecordService } from '../order-record.service';
 import type { OrderRecordRepositoryPort } from '../../../domain/ports/order-record-repository.port';
+import type { OrderLineItemRepositoryPort } from '../../../domain/ports/order-line-item-repository.port';
 import type { OrderSyncStatus } from '../../../domain/entities/order-record.entity';
 import { OrderRecord } from '../../../domain/entities/order-record.entity';
 import type { Order } from '../../../domain/types/order.types';
 import type { IncomingOrder } from '../../../domain/types/incoming-order.types';
 import type { IOrderFxStampService } from '../../interfaces/order-fx-stamp.service.interface';
+import type { IReportingCurrencySettingsService } from '@openlinker/core/currency';
+import { REPORTING_CURRENCY_SETTINGS_SERVICE_TOKEN } from '@openlinker/core/currency';
 import {
   ORDER_FX_STAMP_SERVICE_TOKEN,
+  ORDER_LINE_ITEM_REPOSITORY_TOKEN,
   ORDER_RECORD_REPOSITORY_TOKEN,
 } from '../../../orders.tokens';
 
@@ -24,6 +28,8 @@ describe('OrderRecordService', () => {
   let service: OrderRecordService;
   let repository: jest.Mocked<OrderRecordRepositoryPort>;
   let fxStamp: jest.Mocked<IOrderFxStampService>;
+  let lineItemRepository: jest.Mocked<OrderLineItemRepositoryPort>;
+  let reportingCurrencySettings: jest.Mocked<IReportingCurrencySettingsService>;
 
   const originalEnv = process.env.OL_STORE_PII;
   const originalPiiHashSalt = process.env.OL_PII_HASH_SALT;
@@ -33,11 +39,16 @@ describe('OrderRecordService', () => {
     repository = {
       findById: jest.fn(),
       findByIds: jest.fn(),
+      findEarliestOrderDateByConnection: jest.fn(),
       upsert: jest.fn(),
+      upsertWithLineItems: jest.fn(),
       updateSyncStatus: jest.fn(),
       updateItemResolutionFailure: jest.fn(),
       markCancelled: jest.fn(),
       updateSalesDocumentBlock: jest.fn(),
+      getDailyOrderAggregates: jest.fn(),
+      getMedianOrderValue: jest.fn(),
+      getNetMedianOrderValue: jest.fn(),
     } as unknown as jest.Mocked<OrderRecordRepositoryPort>;
 
     // Defaults to `deferred`, which is the outcome that owes NO refresh - so
@@ -52,6 +63,20 @@ describe('OrderRecordService', () => {
       sweep: jest.fn(),
     } as unknown as jest.Mocked<IOrderFxStampService>;
 
+    lineItemRepository = {
+      findByOrderId: jest.fn(),
+      getUnitsSoldByConnection: jest.fn(),
+      getTopProductRanking: jest.fn(),
+      getProductChannelBreakdown: jest.fn(),
+    } as unknown as jest.Mocked<OrderLineItemRepositoryPort>;
+
+    reportingCurrencySettings = {
+      resolve: jest.fn().mockResolvedValue('PLN'),
+      getView: jest.fn(),
+      setReportingCurrency: jest.fn(),
+      listSelectableCurrencies: jest.fn(),
+    } as unknown as jest.Mocked<IReportingCurrencySettingsService>;
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         OrderRecordService,
@@ -62,6 +87,14 @@ describe('OrderRecordService', () => {
         {
           provide: ORDER_FX_STAMP_SERVICE_TOKEN,
           useValue: fxStamp,
+        },
+        {
+          provide: ORDER_LINE_ITEM_REPOSITORY_TOKEN,
+          useValue: lineItemRepository,
+        },
+        {
+          provide: REPORTING_CURRENCY_SETTINGS_SERVICE_TOKEN,
+          useValue: reportingCurrencySettings,
         },
       ],
     }).compile();
@@ -160,7 +193,7 @@ describe('OrderRecordService', () => {
   describe('persistOrder - PII enabled', () => {
     beforeEach(() => {
       process.env.OL_STORE_PII = 'true';
-      service = new OrderRecordService(repository, fxStamp);
+      service = new OrderRecordService(repository, fxStamp, lineItemRepository, reportingCurrencySettings);
     });
 
     it('should persist order with all PII fields when PII storage is enabled', async () => {
@@ -185,13 +218,13 @@ describe('OrderRecordService', () => {
         expect.any(Date)
       );
 
-      repository.upsert.mockResolvedValue(expectedOrderRecord);
+      repository.upsertWithLineItems.mockResolvedValue(expectedOrderRecord);
 
       const result = await service.persistOrder(order, sourceConnectionId, sourceEventId);
 
       expect(result).toBe(expectedOrderRecord);
-      expect(repository.upsert).toHaveBeenCalledTimes(1);
-      const callArg = repository.upsert.mock.calls[0][0];
+      expect(repository.upsertWithLineItems).toHaveBeenCalledTimes(1);
+      const [callArg] = repository.upsertWithLineItems.mock.calls[0];
       expect(callArg.orderSnapshot.shippingAddress).toEqual(order.shippingAddress);
       expect(callArg.orderSnapshot.billingAddress).toEqual(order.billingAddress);
       expect(callArg.recordStatus).toBe('ready');
@@ -202,11 +235,11 @@ describe('OrderRecordService', () => {
       order.items[0].name = 'Widget';
       order.items[0].imageUrl = 'https://cdn.example/widget.jpg';
 
-      repository.upsert.mockResolvedValue({} as OrderRecord);
+      repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
 
       await service.persistOrder(order, 'source-connection-123', 'event-456');
 
-      const callArg = repository.upsert.mock.calls[0][0];
+      const [callArg] = repository.upsertWithLineItems.mock.calls[0];
       const snapshotItems = (callArg.orderSnapshot as { items: Array<Record<string, unknown>> })
         .items;
       expect(snapshotItems[0]).toMatchObject({
@@ -214,6 +247,51 @@ describe('OrderRecordService', () => {
         name: 'Widget',
         imageUrl: 'https://cdn.example/widget.jpg',
       });
+    });
+
+    // #2054/#2254 regression. The snapshot projection is an allowlist and is the
+    // WRITER half of the pair `orderFromReadySnapshot.readItems` reads back, so a
+    // field missing here is lost at persistence time and every MANUAL issuance
+    // path rehydrates a rate-less order. Found end to end against a live shop:
+    // the analytics line-item row carried the rate while the snapshot did not.
+    it('serialises the per-line tax rate, its source and its read time into the snapshot (#2254)', async () => {
+      const order = createMockOrder();
+      order.items[0].taxRate = '5';
+      order.items[0].taxRateCountry = 'PL';
+      order.items[0].taxSource = 'shop';
+      order.items[0].taxRateReadAt = '2026-08-21T13:20:33.602Z';
+      order.items[0].taxRateChannel = '23';
+
+      repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
+
+      await service.persistOrder(order, 'source-connection-123', 'event-456');
+
+      const [callArg] = repository.upsertWithLineItems.mock.calls[0];
+      const snapshotItems = (callArg.orderSnapshot as { items: Array<Record<string, unknown>> })
+        .items;
+      expect(snapshotItems[0]).toMatchObject({
+        taxRate: '5',
+        taxRateCountry: 'PL',
+        taxSource: 'shop',
+        taxRateReadAt: '2026-08-21T13:20:33.602Z',
+        taxRateChannel: '23',
+      });
+    });
+
+    it('keeps every tax key absent when the order line carries no rate (#2254)', async () => {
+      const order = createMockOrder();
+      expect(order.items[0].taxRate).toBeUndefined();
+
+      repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
+
+      await service.persistOrder(order, 'source-connection-123', 'event-456');
+
+      const [callArg] = repository.upsertWithLineItems.mock.calls[0];
+      const snapshotItems = (callArg.orderSnapshot as { items: Array<Record<string, unknown>> })
+        .items;
+      for (const key of ['taxRate', 'taxRateCountry', 'taxSource', 'taxRateReadAt', 'taxRateChannel']) {
+        expect(snapshotItems[0]).not.toHaveProperty(key);
+      }
     });
 
     it('should omit name and imageUrl from the snapshot when the OrderItem does not carry them', async () => {
@@ -224,11 +302,11 @@ describe('OrderRecordService', () => {
       expect(order.items[0].name).toBeUndefined();
       expect(order.items[0].imageUrl).toBeUndefined();
 
-      repository.upsert.mockResolvedValue({} as OrderRecord);
+      repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
 
       await service.persistOrder(order, 'source-connection-123', 'event-456');
 
-      const callArg = repository.upsert.mock.calls[0][0];
+      const [callArg] = repository.upsertWithLineItems.mock.calls[0];
       const snapshotItems = (callArg.orderSnapshot as { items: Array<Record<string, unknown>> })
         .items;
       expect(snapshotItems[0]).not.toHaveProperty('name');
@@ -239,11 +317,11 @@ describe('OrderRecordService', () => {
       const order = createMockOrder();
       order.deliverySmart = true;
 
-      repository.upsert.mockResolvedValue({} as OrderRecord);
+      repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
 
       await service.persistOrder(order, 'source-connection-123', 'event-456');
 
-      const callArg = repository.upsert.mock.calls[0][0];
+      const [callArg] = repository.upsertWithLineItems.mock.calls[0];
       expect(callArg.orderSnapshot['deliverySmart']).toBe(true);
     });
 
@@ -254,11 +332,11 @@ describe('OrderRecordService', () => {
       // so consumers can distinguish "Smart not reported" from "Smart false".
       expect(order.deliverySmart).toBeUndefined();
 
-      repository.upsert.mockResolvedValue({} as OrderRecord);
+      repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
 
       await service.persistOrder(order, 'source-connection-123', 'event-456');
 
-      const callArg = repository.upsert.mock.calls[0][0];
+      const [callArg] = repository.upsertWithLineItems.mock.calls[0];
       expect(callArg.orderSnapshot).not.toHaveProperty('deliverySmart');
     });
 
@@ -266,11 +344,11 @@ describe('OrderRecordService', () => {
       const order = createMockOrder();
       order.placedAt = new Date('2026-05-31T16:00:00.000Z');
 
-      repository.upsert.mockResolvedValue({} as OrderRecord);
+      repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
 
       await service.persistOrder(order, 'source-connection-123', 'event-456');
 
-      const callArg = repository.upsert.mock.calls[0][0];
+      const [callArg] = repository.upsertWithLineItems.mock.calls[0];
       expect(callArg.orderSnapshot['placedAt']).toBe('2026-05-31T16:00:00.000Z');
     });
 
@@ -278,11 +356,11 @@ describe('OrderRecordService', () => {
       const order = createMockOrder();
       expect(order.placedAt).toBeUndefined();
 
-      repository.upsert.mockResolvedValue({} as OrderRecord);
+      repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
 
       await service.persistOrder(order, 'source-connection-123', 'event-456');
 
-      const callArg = repository.upsert.mock.calls[0][0];
+      const [callArg] = repository.upsertWithLineItems.mock.calls[0];
       expect(callArg.orderSnapshot).not.toHaveProperty('placedAt');
     });
 
@@ -290,11 +368,11 @@ describe('OrderRecordService', () => {
       const order = createMockOrder();
       order.customerEmail = 'buyer@example.com';
 
-      repository.upsert.mockResolvedValue({} as OrderRecord);
+      repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
 
       await service.persistOrder(order, 'source-connection-123', 'event-456');
 
-      const callArg = repository.upsert.mock.calls[0][0];
+      const [callArg] = repository.upsertWithLineItems.mock.calls[0];
       expect(callArg.orderSnapshot['customerEmail']).toBe('buyer@example.com');
     });
 
@@ -302,11 +380,11 @@ describe('OrderRecordService', () => {
       const order = createMockOrder();
       expect(order.customerEmail).toBeUndefined();
 
-      repository.upsert.mockResolvedValue({} as OrderRecord);
+      repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
 
       await service.persistOrder(order, 'source-connection-123', 'event-456');
 
-      const callArg = repository.upsert.mock.calls[0][0];
+      const [callArg] = repository.upsertWithLineItems.mock.calls[0];
       expect(callArg.orderSnapshot).not.toHaveProperty('customerEmail');
     });
 
@@ -315,11 +393,11 @@ describe('OrderRecordService', () => {
       order.shipping = { methodId: 'allegro-courier-1', methodName: 'Kurier DPD' };
       order.pickupPoint = { id: 'POZ08A', name: 'Paczkomat POZ08A' };
 
-      repository.upsert.mockResolvedValue({} as OrderRecord);
+      repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
 
       await service.persistOrder(order, 'source-connection-123', 'event-456');
 
-      const callArg = repository.upsert.mock.calls[0][0];
+      const [callArg] = repository.upsertWithLineItems.mock.calls[0];
       expect(callArg.orderSnapshot['shipping']).toEqual({
         methodId: 'allegro-courier-1',
         methodName: 'Kurier DPD',
@@ -335,20 +413,81 @@ describe('OrderRecordService', () => {
       expect(order.shipping).toBeUndefined();
       expect(order.pickupPoint).toBeUndefined();
 
-      repository.upsert.mockResolvedValue({} as OrderRecord);
+      repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
 
       await service.persistOrder(order, 'source-connection-123', 'event-456');
 
-      const callArg = repository.upsert.mock.calls[0][0];
+      const [callArg] = repository.upsertWithLineItems.mock.calls[0];
       expect(callArg.orderSnapshot).not.toHaveProperty('shipping');
       expect(callArg.orderSnapshot).not.toHaveProperty('pickupPoint');
+    });
+
+    describe('order analytics read-model derivation (#1985)', () => {
+      it('derives the 4 scalars from order.totals/placedAt onto the OrderRecord passed to upsertWithLineItems', async () => {
+        const order = createMockOrder();
+        order.placedAt = new Date('2026-05-31T16:00:00.000Z');
+        order.totals.currency = 'PLN';
+        order.totals.taxTreatment = 'inclusive';
+        order.totals.total = 31.38;
+
+        repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
+
+        await service.persistOrder(order, 'source-connection-123', 'event-456');
+
+        const [callArg] = repository.upsertWithLineItems.mock.calls[0];
+        expect(callArg.placedAt).toEqual(new Date('2026-05-31T16:00:00.000Z'));
+        expect(callArg.currency).toBe('PLN');
+        expect(callArg.taxTreatment).toBe('inclusive');
+        expect(callArg.totalAmount).toBe(31.38);
+      });
+
+      it('degrades taxTreatment/placedAt to null when the order does not carry them', async () => {
+        const order = createMockOrder();
+        expect(order.placedAt).toBeUndefined();
+        expect(order.totals.taxTreatment).toBeUndefined();
+
+        repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
+
+        await service.persistOrder(order, 'source-connection-123', 'event-456');
+
+        const [callArg] = repository.upsertWithLineItems.mock.calls[0];
+        expect(callArg.placedAt).toBeNull();
+        expect(callArg.taxTreatment).toBeNull();
+      });
+
+      it('derives one line item per order item and passes them as the 2nd argument', async () => {
+        const order = createMockOrder();
+
+        repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
+
+        await service.persistOrder(order, 'source-connection-123', 'event-456');
+
+        const [, lineItems] = repository.upsertWithLineItems.mock.calls[0];
+        expect(lineItems).toEqual([
+          {
+            lineNumber: 0,
+            productId: 'product-1',
+            variantId: 'variant-1',
+            quantity: 2,
+            unitPrice: 10.99,
+            sourceConnectionId: 'source-connection-123',
+            placedAt: null,
+            // #2250 - the snapshot line carried no rate, so the transcribed row
+            // carries none. No default: a row that disagreed with the snapshot
+            // it copies would be worse than an empty one.
+            taxRate: null,
+            taxSource: null,
+            taxRateReadAt: null,
+          },
+        ]);
+      });
     });
   });
 
   describe('persistOrder - PII disabled', () => {
     beforeEach(() => {
       process.env.OL_STORE_PII = 'false';
-      service = new OrderRecordService(repository, fxStamp);
+      service = new OrderRecordService(repository, fxStamp, lineItemRepository, reportingCurrencySettings);
     });
 
     it('should persist order with sanitized addresses when PII storage is disabled', async () => {
@@ -371,13 +510,13 @@ describe('OrderRecordService', () => {
         expect.any(Date)
       );
 
-      repository.upsert.mockResolvedValue(expectedOrderRecord);
+      repository.upsertWithLineItems.mockResolvedValue(expectedOrderRecord);
 
       const result = await service.persistOrder(order, sourceConnectionId, sourceEventId);
 
       expect(result).toBe(expectedOrderRecord);
-      expect(repository.upsert).toHaveBeenCalledTimes(1);
-      const callArg = repository.upsert.mock.calls[0][0];
+      expect(repository.upsertWithLineItems).toHaveBeenCalledTimes(1);
+      const [callArg] = repository.upsertWithLineItems.mock.calls[0];
       expect(callArg.orderSnapshot.shippingAddress).toEqual({
         address1: '[REDACTED]',
         city: '[REDACTED]',
@@ -414,12 +553,12 @@ describe('OrderRecordService', () => {
         expect.any(Date)
       );
 
-      repository.upsert.mockResolvedValue(expectedOrderRecord);
+      repository.upsertWithLineItems.mockResolvedValue(expectedOrderRecord);
 
       const result = await service.persistOrder(order, sourceConnectionId, sourceEventId);
 
       expect(result).toBe(expectedOrderRecord);
-      const callArg = repository.upsert.mock.calls[0][0];
+      const [callArg] = repository.upsertWithLineItems.mock.calls[0];
       expect(callArg.orderSnapshot.shippingAddress).toBeUndefined();
       expect(callArg.orderSnapshot.billingAddress).toBeUndefined();
     });
@@ -428,11 +567,11 @@ describe('OrderRecordService', () => {
       const order = createMockOrder();
       order.customerEmail = 'buyer@example.com';
 
-      repository.upsert.mockResolvedValue({} as OrderRecord);
+      repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
 
       await service.persistOrder(order, 'source-connection-123', 'event-456');
 
-      const callArg = repository.upsert.mock.calls[0][0];
+      const [callArg] = repository.upsertWithLineItems.mock.calls[0];
       expect(callArg.orderSnapshot).not.toHaveProperty('customerEmail');
     });
   });
@@ -440,32 +579,32 @@ describe('OrderRecordService', () => {
   describe('persistOrder — cancellation recorded via markCancelled (#1984)', () => {
     beforeEach(() => {
       process.env.OL_STORE_PII = 'true';
-      service = new OrderRecordService(repository, fxStamp);
+      service = new OrderRecordService(repository, fxStamp, lineItemRepository, reportingCurrencySettings);
     });
 
-    it('never constructs the OrderRecord passed to upsert() with a non-null cancelledAt, even for a cancelled order', async () => {
+    it('never constructs the OrderRecord passed to upsertWithLineItems() with a non-null cancelledAt, even for a cancelled order', async () => {
       // The domain OrderRecord built here always defaults cancelledAt to null
       // (persistOrder never threads order.status into the constructor) —
       // markCancelled (asserted in the next test) is the sole writer. This
       // guards against a future regression where someone "helpfully" starts
       // passing a derived cancelledAt into the constructor, which would let
-      // upsert()'s full-object save() race markCancelled's atomic COALESCE
-      // update — see the toOrm comment on OrderRecordRepository.
+      // upsertWithLineItems()'s full-object save() race markCancelled's atomic
+      // COALESCE update — see the toOrm comment on OrderRecordRepository.
       const order = createMockOrder();
       order.status = 'cancelled';
-      repository.upsert.mockResolvedValue({} as OrderRecord);
+      repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
       repository.findById.mockResolvedValue({} as OrderRecord);
 
       await service.persistOrder(order, 'source-connection-123', 'event-456');
 
-      const callArg = repository.upsert.mock.calls[0][0];
+      const [callArg] = repository.upsertWithLineItems.mock.calls[0];
       expect(callArg.cancelledAt).toBeNull();
     });
 
-    it('calls markCancelled with (approximately) now for a cancelled order, AFTER upsert', async () => {
+    it('calls markCancelled with (approximately) now for a cancelled order, AFTER upsertWithLineItems', async () => {
       const order = createMockOrder();
       order.status = 'cancelled';
-      repository.upsert.mockResolvedValue({} as OrderRecord);
+      repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
       repository.findById.mockResolvedValue({} as OrderRecord);
 
       const before = new Date();
@@ -477,7 +616,7 @@ describe('OrderRecordService', () => {
       expect(calledId).toBe(order.id);
       expect(calledAt.getTime()).toBeGreaterThanOrEqual(before.getTime());
       expect(calledAt.getTime()).toBeLessThanOrEqual(after.getTime());
-      const upsertOrder = repository.upsert.mock.invocationCallOrder[0];
+      const upsertOrder = repository.upsertWithLineItems.mock.invocationCallOrder[0];
       const markCancelledOrder = repository.markCancelled.mock.invocationCallOrder[0];
       expect(upsertOrder).toBeLessThan(markCancelledOrder);
     });
@@ -486,7 +625,7 @@ describe('OrderRecordService', () => {
       const order = createMockOrder();
       order.status = 'cancelled';
       const refetched = { cancelledAt: new Date() } as unknown as OrderRecord;
-      repository.upsert.mockResolvedValue({ cancelledAt: null } as unknown as OrderRecord);
+      repository.upsertWithLineItems.mockResolvedValue({ cancelledAt: null } as unknown as OrderRecord);
       repository.findById.mockResolvedValue(refetched);
 
       const result = await service.persistOrder(order, 'source-connection-123', 'event-456');
@@ -498,7 +637,7 @@ describe('OrderRecordService', () => {
       const order = createMockOrder();
       order.status = 'pending';
       const saved = {} as OrderRecord;
-      repository.upsert.mockResolvedValue(saved);
+      repository.upsertWithLineItems.mockResolvedValue(saved);
 
       const result = await service.persistOrder(order, 'source-connection-123', 'event-456');
 
@@ -511,20 +650,20 @@ describe('OrderRecordService', () => {
   describe('persistOrder - fulfillment rollup left to updateFulfillmentState (#2101)', () => {
     beforeEach(() => {
       process.env.OL_STORE_PII = 'true';
-      service = new OrderRecordService(repository, fxStamp);
+      service = new OrderRecordService(repository, fxStamp, lineItemRepository, reportingCurrencySettings);
     });
 
-    it('never constructs the OrderRecord passed to upsert() with a fulfillment state', async () => {
+    it('never constructs the OrderRecord passed to upsertWithLineItems() with a fulfillment state', async () => {
       // No order source reports a fulfillment state, so the ingestion path must
       // leave the field at its null default. Passing a derived value here would
       // let the upsert's full-object save() reset the rollup the shipping
       // context committed out-of-band - see the toOrm comment in
       // OrderRecordRepository.
-      repository.upsert.mockResolvedValue({} as OrderRecord);
+      repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
 
       await service.persistOrder(createMockOrder(), 'source-connection-123', 'event-456');
 
-      const callArg = repository.upsert.mock.calls[0][0];
+      const [callArg] = repository.upsertWithLineItems.mock.calls[0];
       expect(callArg.fulfillmentState).toBeNull();
     });
   });
@@ -532,20 +671,20 @@ describe('OrderRecordService', () => {
   describe('persist paths - destination sync state left to updateSyncStatus (#2140)', () => {
     beforeEach(() => {
       process.env.OL_STORE_PII = 'true';
-      service = new OrderRecordService(repository, fxStamp);
+      service = new OrderRecordService(repository, fxStamp, lineItemRepository, reportingCurrencySettings);
     });
 
-    it('never constructs the OrderRecord passed to upsert() with sync state', async () => {
+    it('never constructs the OrderRecord passed to upsertWithLineItems() with sync state', async () => {
       // No order source reports OL's own destination sync state. The empty
       // arrays here are the ingestion path declining to have an opinion; the
       // upsert then omits both columns so a re-ingestion cannot erase what
       // updateSyncStatus committed - see the toOrm comment in
       // OrderRecordRepository.
-      repository.upsert.mockResolvedValue({} as OrderRecord);
+      repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
 
       await service.persistOrder(createMockOrder(), 'source-connection-123', 'event-456');
 
-      const callArg = repository.upsert.mock.calls[0][0];
+      const [callArg] = repository.upsertWithLineItems.mock.calls[0];
       expect(callArg.syncStatus).toEqual([]);
       expect(callArg.syncAttempts).toEqual([]);
     });
@@ -570,7 +709,7 @@ describe('OrderRecordService', () => {
   describe('persistIncomingSnapshot', () => {
     beforeEach(() => {
       process.env.OL_STORE_PII = 'true';
-      service = new OrderRecordService(repository, fxStamp);
+      service = new OrderRecordService(repository, fxStamp, lineItemRepository, reportingCurrencySettings);
     });
 
     it('should persist incoming snapshot with awaiting_mapping status', async () => {
@@ -634,7 +773,7 @@ describe('OrderRecordService', () => {
 
     it('should sanitize addresses in snapshot when PII is disabled', async () => {
       process.env.OL_STORE_PII = 'false';
-      service = new OrderRecordService(repository, fxStamp);
+      service = new OrderRecordService(repository, fxStamp, lineItemRepository, reportingCurrencySettings);
 
       const incoming = createMockIncomingOrder();
       const expectedRecord = new OrderRecord(
@@ -709,7 +848,7 @@ describe('OrderRecordService', () => {
 
     it('should omit customerEmail from the snapshot under hash-only PII mode (#948)', async () => {
       process.env.OL_STORE_PII = 'false';
-      service = new OrderRecordService(repository, fxStamp);
+      service = new OrderRecordService(repository, fxStamp, lineItemRepository, reportingCurrencySettings);
 
       const incoming = createMockIncomingOrder();
       repository.upsert.mockResolvedValue({} as OrderRecord);
@@ -760,7 +899,7 @@ describe('OrderRecordService', () => {
   describe('persistIncomingSnapshot — cancellation recorded via markCancelled (#1984)', () => {
     beforeEach(() => {
       process.env.OL_STORE_PII = 'true';
-      service = new OrderRecordService(repository, fxStamp);
+      service = new OrderRecordService(repository, fxStamp, lineItemRepository, reportingCurrencySettings);
     });
 
     it('never constructs the OrderRecord passed to upsert() with a non-null cancelledAt, even for a cancelled order', async () => {
@@ -928,6 +1067,21 @@ describe('OrderRecordService', () => {
     });
   });
 
+  describe('getEarliestOrderDateByConnection (#2083)', () => {
+    it('delegates to the repository as a pure passthrough', async () => {
+      const map = new Map([['conn-1', new Date('2026-01-01T00:00:00.000Z')]]);
+      repository.findEarliestOrderDateByConnection.mockResolvedValue(map);
+
+      const result = await service.getEarliestOrderDateByConnection(['conn-1', 'conn-2']);
+
+      expect(result).toBe(map);
+      expect(repository.findEarliestOrderDateByConnection).toHaveBeenCalledWith([
+        'conn-1',
+        'conn-2',
+      ]);
+    });
+  });
+
   describe('markItemResolutionFailure (#1689)', () => {
     it('delegates to the repository as a narrow absolute-set — no read-modify-write', async () => {
       const internalOrderId = 'order-123';
@@ -989,6 +1143,213 @@ describe('OrderRecordService', () => {
       for (const call of repository.updateSalesDocumentBlock.mock.calls) {
         expect(call).toEqual(['ol_order_abc', block]);
       }
+    });
+  });
+
+  describe('getSalesAndChannelAnalytics (#1987)', () => {
+    const filters = {
+      from: new Date('2026-08-01T00:00:00.000Z'),
+      to: new Date('2026-08-08T00:00:00.000Z'),
+    };
+
+    it('composes the three raw reads + earliest-date lookup into the response', async () => {
+      reportingCurrencySettings.resolve.mockResolvedValue('EUR');
+      const dailyRows = [
+        {
+          day: new Date('2026-08-01T00:00:00.000Z'),
+          sourceConnectionId: 'conn-a',
+          orderCount: 2,
+          revenue: 200,
+          unconvertedCount: 0,
+          unconvertedValue: 0,
+          unconvertedCurrency: null,
+          cancelledCount: 0,
+          cancelledValue: 0,
+          reportingCurrency: 'EUR',
+          netRevenue: 150,
+          netExcludedCount: 0,
+          netExcludedValue: 0,
+        },
+      ];
+      const unitsByConnection = new Map([['conn-a', { unitsSold: 5, unconvertedUnitsSold: 0 }]]);
+      const earliestMap = new Map([['conn-a', new Date('2026-07-01T00:00:00.000Z')]]);
+
+      repository.getDailyOrderAggregates.mockResolvedValue(dailyRows);
+      repository.getMedianOrderValue.mockResolvedValue(90);
+      repository.getNetMedianOrderValue.mockResolvedValue(80);
+      lineItemRepository.getUnitsSoldByConnection.mockResolvedValue(unitsByConnection);
+      repository.findEarliestOrderDateByConnection.mockResolvedValue(earliestMap);
+
+      const result = await service.getSalesAndChannelAnalytics(filters);
+
+      expect(repository.getDailyOrderAggregates).toHaveBeenCalledWith(filters, 'EUR');
+      expect(repository.getMedianOrderValue).toHaveBeenCalledWith(filters, 'EUR');
+      expect(repository.getNetMedianOrderValue).toHaveBeenCalledWith(filters, 'EUR');
+      expect(lineItemRepository.getUnitsSoldByConnection).toHaveBeenCalledWith(filters, 'EUR');
+      expect(repository.findEarliestOrderDateByConnection).toHaveBeenCalledWith(['conn-a']);
+      expect(result.headline.revenue).toBe(200);
+      expect(result.headline.medianOrderValue).toBe(90);
+      expect(result.headline.netMedianOrderValue).toBe(80);
+      expect(result.headline.netRevenue).toBe(150);
+      expect(result.headline.unitsSold).toBe(5);
+      expect(result.channels).toHaveLength(1);
+      expect(result.channels[0].coverageComplete).toBe(true);
+    });
+
+    it('derives the earliest-date lookup scope from the connections present in dailyRows only', async () => {
+      repository.getDailyOrderAggregates.mockResolvedValue([]);
+      repository.getMedianOrderValue.mockResolvedValue(null);
+      repository.getNetMedianOrderValue.mockResolvedValue(null);
+      lineItemRepository.getUnitsSoldByConnection.mockResolvedValue(new Map());
+      repository.findEarliestOrderDateByConnection.mockResolvedValue(new Map());
+
+      const result = await service.getSalesAndChannelAnalytics(filters);
+
+      expect(repository.findEarliestOrderDateByConnection).toHaveBeenCalledWith([]);
+      expect(result.headline.revenue).toBe(0);
+      expect(result.channels).toEqual([]);
+    });
+  });
+
+  describe('getTopProducts (#1988)', () => {
+    const filters = {
+      from: new Date('2026-08-01T00:00:00.000Z'),
+      to: new Date('2026-08-08T00:00:00.000Z'),
+      sortBy: 'revenue' as const,
+      limit: 20,
+      offset: 0,
+    };
+
+    it('composes the ranking read + a breakdown read scoped to the ranked page only', async () => {
+      const ranking = [
+        {
+          productId: 'p1',
+          units: 10,
+          revenue: 100,
+          unconvertedRevenue: 0,
+          unconvertedOrderCount: 0,
+          currency: 'EUR',
+          unconvertedCurrency: null,
+          netRevenue: 80,
+          netExcludedRevenue: 20,
+          netExcludedLineCount: 1,
+        },
+        {
+          productId: 'p2',
+          units: 5,
+          revenue: 50,
+          unconvertedRevenue: 0,
+          unconvertedOrderCount: 0,
+          currency: 'EUR',
+          unconvertedCurrency: null,
+          netRevenue: 50,
+          netExcludedRevenue: 0,
+          netExcludedLineCount: 0,
+        },
+      ];
+      const breakdown = [
+        {
+          productId: 'p1',
+          sourceConnectionId: 'conn-a',
+          units: 10,
+          revenue: 100,
+          unconvertedRevenue: 0,
+          currency: 'EUR',
+          unconvertedCurrency: null,
+          netRevenue: 80,
+          netExcludedRevenue: 20,
+          netExcludedLineCount: 1,
+        },
+        {
+          productId: 'p2',
+          sourceConnectionId: 'conn-b',
+          units: 5,
+          revenue: 50,
+          unconvertedRevenue: 0,
+          currency: 'EUR',
+          unconvertedCurrency: null,
+          netRevenue: 50,
+          netExcludedRevenue: 0,
+          netExcludedLineCount: 0,
+        },
+      ];
+      lineItemRepository.getTopProductRanking.mockResolvedValue({ rows: ranking, total: 2 });
+      lineItemRepository.getProductChannelBreakdown.mockResolvedValue(breakdown);
+
+      const result = await service.getTopProducts(filters);
+
+      expect(lineItemRepository.getTopProductRanking).toHaveBeenCalledWith(filters, 'PLN');
+      // Breakdown query MUST receive only the ranked page's product ids —
+      // never re-derived from the full scoped set — to keep its cost bounded
+      // by page size (#1988 correctness requirement).
+      expect(lineItemRepository.getProductChannelBreakdown).toHaveBeenCalledWith(
+        ['p1', 'p2'],
+        filters,
+        'PLN'
+      );
+      expect(result.total).toBe(2);
+      expect(result.items).toHaveLength(2);
+      expect(result.items[0].channels).toEqual([breakdown[0]]);
+      expect(result.items[1].channels).toEqual([breakdown[1]]);
+    });
+
+    it('does not call the breakdown read with product ids outside the ranked page', async () => {
+      lineItemRepository.getTopProductRanking.mockResolvedValue({
+        rows: [
+          {
+            productId: 'p1',
+            units: 1,
+            revenue: 1,
+            unconvertedRevenue: 0,
+            unconvertedOrderCount: 0,
+            currency: 'EUR',
+            unconvertedCurrency: null,
+            netRevenue: 1,
+            netExcludedRevenue: 0,
+            netExcludedLineCount: 0,
+          },
+        ],
+        total: 500,
+      });
+      lineItemRepository.getProductChannelBreakdown.mockResolvedValue([]);
+
+      await service.getTopProducts(filters);
+
+      expect(lineItemRepository.getProductChannelBreakdown).toHaveBeenCalledWith(
+        ['p1'],
+        filters,
+        'PLN'
+      );
+    });
+
+    it('returns an empty page and zero total when nothing matches', async () => {
+      lineItemRepository.getTopProductRanking.mockResolvedValue({ rows: [], total: 0 });
+      lineItemRepository.getProductChannelBreakdown.mockResolvedValue([]);
+
+      const result = await service.getTopProducts(filters);
+
+      expect(lineItemRepository.getProductChannelBreakdown).toHaveBeenCalledWith(
+        [],
+        filters,
+        'PLN'
+      );
+      expect(result).toEqual({ items: [], total: 0 });
+    });
+
+    it('resolves the CURRENT reporting currency and never mixes a prior era into revenue (#2049/ADR-040 bugfix)', async () => {
+      reportingCurrencySettings.resolve.mockResolvedValue('EUR');
+      lineItemRepository.getTopProductRanking.mockResolvedValue({ rows: [], total: 0 });
+      lineItemRepository.getProductChannelBreakdown.mockResolvedValue([]);
+
+      await service.getTopProducts(filters);
+
+      expect(reportingCurrencySettings.resolve).toHaveBeenCalled();
+      expect(lineItemRepository.getTopProductRanking).toHaveBeenCalledWith(filters, 'EUR');
+      expect(lineItemRepository.getProductChannelBreakdown).toHaveBeenCalledWith(
+        [],
+        filters,
+        'EUR'
+      );
     });
   });
 });

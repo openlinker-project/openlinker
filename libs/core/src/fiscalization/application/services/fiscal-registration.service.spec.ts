@@ -23,6 +23,7 @@ import { DuplicateFiscalRegistrationRecordException } from '../../domain/excepti
 import { FiscalRegistrationNotInDoubtException } from '../../domain/exceptions/fiscal-registration-not-in-doubt.exception';
 import { FiscalRegistrationRecordNotFoundException } from '../../domain/exceptions/fiscal-registration-record-not-found.exception';
 import { MissingIdempotencyKeyException } from '../../domain/exceptions/missing-idempotency-key.exception';
+import { MissingFiscalTaxRateException } from '../../domain/exceptions/missing-tax-rate.exception';
 import { OrderAlreadyRegisteredException } from '../../domain/exceptions/order-already-registered.exception';
 import { OrderAlreadyHasInvoiceException } from '../../domain/exceptions/order-already-has-invoice.exception';
 import { FiscalRegistrationContendedException } from '../../domain/exceptions/fiscal-registration-contended.exception';
@@ -46,7 +47,11 @@ function command(overrides: Partial<RegisterTransactionCommand> = {}): RegisterT
     orderId: ORDER_ID,
     idempotencyKey: KEY,
     currency: 'PLN',
-    lines: [{ name: 'Widget', quantity: 1, unitPriceGross: 10, taxRate: '', sku: null }],
+    // A rated line is the ordinary case now (#2248): `assertEveryLineHasATaxRate`
+    // refuses a blank code before the provider is reached, so a blank fixture
+    // would make every test in this file exercise the refusal instead of the
+    // behaviour it names. The refusal has its own test below.
+    lines: [{ name: 'Widget', quantity: 1, unitPriceGross: 10, taxRate: '23', sku: null }],
     totalGross: 10,
     ...overrides,
   };
@@ -421,6 +426,166 @@ describe('FiscalRegistrationService', () => {
       await expect(service.register(command())).rejects.toBeInstanceOf(
         OrderAlreadyRegisteredException,
       );
+    });
+  });
+
+  describe('register - the tax-rate gate (#2248)', () => {
+    // The gate only refuses where the deployment opted in (#2245 review), so
+    // every strict expectation below has to say so. The switch-off arm gets its
+    // own block further down - it is the DEFAULT, so leaving it implicit would
+    // let a regression flip the default and still read green here.
+    const previousStrict = process.env['OL_TAX_RATE_STRICT_ENABLED'];
+
+    beforeEach(() => {
+      process.env['OL_TAX_RATE_STRICT_ENABLED'] = 'true';
+    });
+
+    afterEach(() => {
+      if (previousStrict === undefined) delete process.env['OL_TAX_RATE_STRICT_ENABLED'];
+      else process.env['OL_TAX_RATE_STRICT_ENABLED'] = previousStrict;
+    });
+
+    it('refuses a line with no tax rate BEFORE any read, write or provider call', async () => {
+      await expect(
+        service.register(
+          command({
+            lines: [{ name: 'Widget', quantity: 1, unitPriceGross: 10, taxRate: '', sku: null }],
+          }),
+        ),
+      ).rejects.toBeInstanceOf(MissingFiscalTaxRateException);
+
+      // The order of the guard is the point: a refusal must leave no `pending`
+      // row behind for a reconcile pass to find, and must not spend the
+      // provider round-trip. Both the read gate and the intent write come
+      // after it.
+      expect(repo.findByIdempotencyKey).not.toHaveBeenCalled();
+      expect(repo.create).not.toHaveBeenCalled();
+      expect(adapter.registerTransaction).not.toHaveBeenCalled();
+    });
+
+    it("accepts '0' - a zero rate is an answer, not a gap", async () => {
+      repo.findByIdempotencyKey.mockResolvedValue(null);
+      repo.findAllByOrderId.mockResolvedValue([]);
+      repo.create.mockResolvedValue(record('pending'));
+      repo.claimForRegistration.mockResolvedValue(record('registering'));
+      repo.updateOutcome.mockImplementation((_id, patch) =>
+        Promise.resolve(record(patch.status ?? 'registered')),
+      );
+      adapter.registerTransaction.mockResolvedValue({
+        providerType: 'provider-a',
+        providerReference: 'p-1',
+        documentReference: 'd-1',
+        signingIdentity: 's-1',
+        registeredAt: NOW,
+        artefacts: [],
+      });
+
+      await service.register(
+        command({
+          lines: [{ name: 'Book', quantity: 1, unitPriceGross: 10, taxRate: '0', sku: null }],
+        }),
+      );
+
+      expect(adapter.registerTransaction).toHaveBeenCalled();
+    });
+
+    it('accepts a PRE-ROLLOUT order with the switch on (#2260 review)', async () => {
+      // The gate is era-aware because `AutoIssueTriggerService` is: without
+      // this, the gate reported `none` (clearing any persisted reason), the job
+      // enqueued, and this write gate refused it with no badge, no count and no
+      // filter hit - a silent decline along the era axis.
+      repo.findByIdempotencyKey.mockResolvedValue(null);
+      repo.findAllByOrderId.mockResolvedValue([]);
+      repo.create.mockResolvedValue(record('pending'));
+      repo.claimForRegistration.mockResolvedValue(record('registering'));
+      repo.updateOutcome.mockImplementation((_id, patch) =>
+        Promise.resolve(record(patch.status ?? 'registered')),
+      );
+      adapter.registerTransaction.mockResolvedValue({
+        providerType: 'provider-a',
+        providerReference: 'p-1',
+        documentReference: 'd-1',
+        signingIdentity: 's-1',
+        registeredAt: NOW,
+        artefacts: [],
+      });
+
+      await service.register(
+        command({
+          lines: [{ name: 'Widget', quantity: 1, unitPriceGross: 10, taxRate: '', sku: null }],
+          taxRateEra: 'pre-rollout',
+        }),
+      );
+
+      expect(adapter.registerTransaction).toHaveBeenCalled();
+    });
+
+    it('still refuses an order whose era marker is unrecognised (#2260 review)', async () => {
+      await expect(
+        service.register(
+          command({
+            lines: [{ name: 'Widget', quantity: 1, unitPriceGross: 10, taxRate: '', sku: null }],
+            taxRateEra: 'something-else',
+          }),
+        ),
+      ).rejects.toBeInstanceOf(MissingFiscalTaxRateException);
+    });
+
+    it('names the first offending line so the operator knows where to look', async () => {
+      const promise = service.register(
+        command({
+          lines: [
+            { name: 'Rated', quantity: 1, unitPriceGross: 10, taxRate: '23', sku: null },
+            { name: 'Unrated', quantity: 1, unitPriceGross: 10, taxRate: '  ', sku: 'SKU-9' },
+          ],
+          totalGross: 20,
+        }),
+      );
+
+      await expect(promise).rejects.toMatchObject({
+        lineCount: 1,
+        totalLines: 2,
+        firstLineName: 'SKU-9',
+      });
+    });
+  });
+
+  describe('register - the tax-rate gate is off by default (#2245 review)', () => {
+    // Catalogue coverage is zero on deploy, so the refusal ships switched off.
+    // This asserts the DEFAULT with nothing set in the environment: a change
+    // that flipped it would turn every rate-less sale into a refused
+    // registration on the first deploy.
+    it('registers a rate-less sale with no switch set, exactly as before the epic', async () => {
+      const previousStrict = process.env['OL_TAX_RATE_STRICT_ENABLED'];
+      delete process.env['OL_TAX_RATE_STRICT_ENABLED'];
+      try {
+        repo.findByIdempotencyKey.mockResolvedValue(null);
+        repo.findAllByOrderId.mockResolvedValue([]);
+        repo.create.mockResolvedValue(record('pending'));
+        repo.claimForRegistration.mockResolvedValue(record('registering'));
+        repo.updateOutcome.mockImplementation((_id, patch) =>
+          Promise.resolve(record(patch.status ?? 'registered')),
+        );
+        adapter.registerTransaction.mockResolvedValue({
+          providerType: 'provider-a',
+          providerReference: 'p-1',
+          documentReference: 'd-1',
+          signingIdentity: 's-1',
+          registeredAt: NOW,
+          artefacts: [],
+        });
+
+        await service.register(
+          command({
+            lines: [{ name: 'Widget', quantity: 1, unitPriceGross: 10, taxRate: '', sku: null }],
+          }),
+        );
+
+        expect(adapter.registerTransaction).toHaveBeenCalled();
+      } finally {
+        if (previousStrict === undefined) delete process.env['OL_TAX_RATE_STRICT_ENABLED'];
+        else process.env['OL_TAX_RATE_STRICT_ENABLED'] = previousStrict;
+      }
     });
   });
 

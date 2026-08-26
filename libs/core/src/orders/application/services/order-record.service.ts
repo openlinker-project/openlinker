@@ -11,6 +11,7 @@
 import { Injectable, Inject } from '@nestjs/common';
 import type { Order, OrderDispatchWindow } from '../../domain/types/order.types';
 import { OrderRecordRepositoryPort } from '../../domain/ports/order-record-repository.port';
+import { OrderLineItemRepositoryPort } from '../../domain/ports/order-line-item-repository.port';
 import { OrderRecord } from '../../domain/entities/order-record.entity';
 import type { OrderSyncStatus, SyncAttempt } from '../../domain/types/order-sync.types';
 import type { IOrderRecordService } from '../interfaces/order-record.service.interface';
@@ -28,10 +29,26 @@ import type { FulfillmentRollupState } from '../../domain/types/order-fulfillmen
 import type { SalesDocumentBlock } from '@openlinker/core/sales-documents';
 import { redactAddress } from '../../domain/order-address-redaction';
 import type { OrderAmendmentChange } from '../../domain/order-amendment-diff';
+import type {
+  SalesAnalyticsFilters,
+  SalesAndChannelAnalytics,
+} from '../../domain/types/order-sales-analytics.types';
 import { getPiiConfig } from '@openlinker/shared/config';
 import { Logger } from '@openlinker/shared/logging';
+import {
+  REPORTING_CURRENCY_SETTINGS_SERVICE_TOKEN,
+  type IReportingCurrencySettingsService,
+} from '@openlinker/core/currency';
 import { IOrderFxStampService } from '../interfaces/order-fx-stamp.service.interface';
-import { ORDER_FX_STAMP_SERVICE_TOKEN, ORDER_RECORD_REPOSITORY_TOKEN } from '../../orders.tokens';
+import {
+  ORDER_FX_STAMP_SERVICE_TOKEN,
+  ORDER_LINE_ITEM_REPOSITORY_TOKEN,
+  ORDER_RECORD_REPOSITORY_TOKEN,
+} from '../../orders.tokens';
+import { deriveOrderAnalyticsScalars, deriveOrderLineItems } from '../../domain/order-analytics-projection';
+import { buildSalesAndChannelAnalytics } from '../../domain/order-sales-aggregation';
+import { buildTopProducts } from '../../domain/top-products-aggregation';
+import type { TopProductFilters, TopProductsResult } from '../../domain/types/top-products.types';
 
 @Injectable()
 export class OrderRecordService implements IOrderRecordService {
@@ -41,7 +58,11 @@ export class OrderRecordService implements IOrderRecordService {
     @Inject(ORDER_RECORD_REPOSITORY_TOKEN)
     private readonly repository: OrderRecordRepositoryPort,
     @Inject(ORDER_FX_STAMP_SERVICE_TOKEN)
-    private readonly fxStamp: IOrderFxStampService
+    private readonly fxStamp: IOrderFxStampService,
+    @Inject(ORDER_LINE_ITEM_REPOSITORY_TOKEN)
+    private readonly lineItemRepository: OrderLineItemRepositoryPort,
+    @Inject(REPORTING_CURRENCY_SETTINGS_SERVICE_TOKEN)
+    private readonly reportingCurrencySettings: IReportingCurrencySettingsService
   ) {}
 
   /**
@@ -83,6 +104,21 @@ export class OrderRecordService implements IOrderRecordService {
         // the wire shape clean and let consumers tell "missing" from "blank".
         ...(item.name !== undefined && { name: item.name }),
         ...(item.imageUrl !== undefined && { imageUrl: item.imageUrl }),
+        // #2054/#2254 - the per-line tax fields. This projection is an
+        // ALLOWLIST, and it is the WRITER half of the pair `readItems`
+        // (`orderFromReadySnapshot`) reads back. Omitting them here loses the
+        // settled rate at persistence time, so every MANUAL issuance path
+        // (`POST /invoices`, bulk issue, corrections) rehydrates a rate-less
+        // order and the #2248 gate refuses it - pointing the operator at a
+        // product that was already configured correctly. The auto-issue path
+        // composes from the live `Order` and never reads the snapshot, which is
+        // why the two paths disagree unless both allowlists name the same
+        // fields. Caught end to end against a live shop, not by a unit test.
+        ...(item.taxRate !== undefined && { taxRate: item.taxRate }),
+        ...(item.taxRateCountry !== undefined && { taxRateCountry: item.taxRateCountry }),
+        ...(item.taxSource !== undefined && { taxSource: item.taxSource }),
+        ...(item.taxRateReadAt !== undefined && { taxRateReadAt: item.taxRateReadAt }),
+        ...(item.taxRateChannel !== undefined && { taxRateChannel: item.taxRateChannel }),
       })),
       totals: order.totals,
       shippingAddress: piiConfig.storePii
@@ -144,6 +180,11 @@ export class OrderRecordService implements IOrderRecordService {
     // and the upsert excludes the column so a re-ingestion can't reset the
     // value the shipping context wrote out-of-band (#2101). Same for
     // `cancelledAt` (#1984), recorded below via `recordCancellationIfNeeded`.
+
+    // Order analytics read-model scalars (#1985) — denormalized alongside
+    // dispatchByAt above, from the same already-resolved Order. See ADR-039.
+    const analyticsScalars = deriveOrderAnalyticsScalars(order);
+
     const orderRecord = new OrderRecord(
       order.id,
       order.customerId || null,
@@ -155,19 +196,32 @@ export class OrderRecordService implements IOrderRecordService {
       now,
       now,
       [],
-      this.deriveDispatchByAt(order.dispatchTime)
+      this.deriveDispatchByAt(order.dispatchTime),
+      null,
+      null,
+      analyticsScalars.placedAt,
+      analyticsScalars.currency,
+      analyticsScalars.taxTreatment,
+      analyticsScalars.totalAmount
     );
 
-    const saved = await this.repository.upsert(orderRecord);
+    // #1985: persist the order record AND its order_line_items rows in one
+    // transaction — replaces the prior line-item set for this order so a
+    // re-ingested order with a changed item list never leaves stale rows.
+    const lineItems = deriveOrderLineItems(order, sourceConnectionId);
+    const saved = await this.repository.upsertWithLineItems(orderRecord, lineItems);
+    // #2282 (ADR-057): the write path freezes source attribution, so a
+    // divergence between what we asked to persist and what came back means a
+    // cross-source re-ingestion was refused. Warn rather than throw.
     this.warnOnAttributionDivergence(orderRecord, saved);
 
     // Two post-upsert writers, ONE refresh (#2125). Both write columns that
-    // `upsert()` deliberately excludes from its statement, so `saved` cannot
-    // reflect either of them - and running each writer's own re-read in
-    // sequence would leave the record stale again, because the cancellation
-    // re-read happens before the stamp lands. So each writer only REPORTS
-    // whether the returned record is now behind the row, and the refresh runs
-    // at most once, after both.
+    // upsertWithLineItems() deliberately excludes from its statement, so
+    // `saved` cannot reflect either of them - and running each writer's own
+    // re-read in sequence would leave the record stale again, because the
+    // cancellation re-read happens before the stamp lands. So each writer
+    // only REPORTS whether the returned record is now behind the row, and
+    // the refresh runs at most once, after both.
     const cancellationWrote = await this.recordCancellationIfNeeded(
       order.id,
       order.status === 'cancelled',
@@ -468,6 +522,10 @@ export class OrderRecordService implements IOrderRecordService {
     return this.repository.getFailedSyncValueSummary(filters);
   }
 
+  async getEarliestOrderDateByConnection(connectionIds: string[]): Promise<Map<string, Date>> {
+    return this.repository.findEarliestOrderDateByConnection(connectionIds);
+  }
+
   /**
    * Durably record the instant this order was cancelled (#1984). Thin
    * pass-through to the repository's first-write-wins absolute-set — see
@@ -475,6 +533,68 @@ export class OrderRecordService implements IOrderRecordService {
    */
   async markCancelled(internalOrderId: string, cancelledAt: Date): Promise<void> {
     await this.repository.markCancelled(internalOrderId, cancelledAt);
+  }
+
+  async getSalesAndChannelAnalytics(
+    filters: SalesAnalyticsFilters
+  ): Promise<SalesAndChannelAnalytics> {
+    // Resolved once per read, never per row (#1987 review notes) — every
+    // downstream query is scoped against the SAME current-era reporting
+    // currency, so a setting change mid-read can't split one response
+    // across two eras.
+    const currentReportingCurrency = await this.reportingCurrencySettings.resolve();
+
+    const [dailyRows, medianOrderValue, netMedianOrderValue, unitsByConnection] =
+      await Promise.all([
+        this.repository.getDailyOrderAggregates(filters, currentReportingCurrency),
+        this.repository.getMedianOrderValue(filters, currentReportingCurrency),
+        this.repository.getNetMedianOrderValue(filters, currentReportingCurrency),
+        this.lineItemRepository.getUnitsSoldByConnection(filters, currentReportingCurrency),
+      ]);
+
+    const connectionIds = [...new Set(dailyRows.map((row) => row.sourceConnectionId))];
+    const earliestOrderDateByConnection = await this.getEarliestOrderDateByConnection(
+      connectionIds
+    );
+
+    return buildSalesAndChannelAnalytics({
+      filters,
+      dailyRows,
+      medianOrderValue,
+      netMedianOrderValue,
+      unitsByConnection,
+      earliestOrderDateByConnection,
+    });
+  }
+
+  /**
+   * Resolves the CURRENT system reporting currency (#2049/ADR-040 bugfix)
+   * before ranking, so `revenue` sums only orders stamped in that currency —
+   * an order stamped under a PREVIOUS setting is a different currency era
+   * (settings changes are forward-only) and would otherwise get silently
+   * summed in under an arbitrary label. See {@link
+   * OrderLineItemRepositoryPort.getTopProductRanking}.
+   *
+   * The ranking and breakdown reads below are deliberately SEQUENTIAL, not
+   * `Promise.all`-parallelised like {@link getSalesAndChannelAnalytics}'s
+   * three independent reads above — `getProductChannelBreakdown` is scoped
+   * to the current page's `productIds`, which only exist once the ranking
+   * query has returned (#2172 review, SUGGESTION 2).
+   */
+  async getTopProducts(filters: TopProductFilters): Promise<TopProductsResult> {
+    const reportingCurrency = await this.reportingCurrencySettings.resolve();
+    const { rows: ranking, total } = await this.lineItemRepository.getTopProductRanking(
+      filters,
+      reportingCurrency
+    );
+    const productIds = ranking.map((row) => row.productId);
+    const breakdown = await this.lineItemRepository.getProductChannelBreakdown(
+      productIds,
+      filters,
+      reportingCurrency
+    );
+
+    return buildTopProducts({ ranking, total, breakdown });
   }
 
   /**

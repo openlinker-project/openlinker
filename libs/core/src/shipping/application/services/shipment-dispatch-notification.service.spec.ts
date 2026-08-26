@@ -105,6 +105,9 @@ describe('ShipmentDispatchNotificationService', () => {
       markPacked: jest.fn(),
       clearPacked: jest.fn(),
       recordAmendment: jest.fn(),
+      getEarliestOrderDateByConnection: jest.fn(),
+      getSalesAndChannelAnalytics: jest.fn(),
+      getTopProducts: jest.fn(),
     };
 
     integrations = {

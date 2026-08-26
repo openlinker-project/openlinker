@@ -211,10 +211,14 @@ const KNOWN_RUNGS = new Set(['modified-product-lister.capability.ts']);
 
 /**
  * Capability files under RUNG_DIR that are deliberately NOT ladder rungs.
- * Empty today; a future products sub-capability that is not a freshness rung
- * is recorded here so the rung count stays honest.
+ * A products sub-capability that is not a freshness rung is recorded here so
+ * the rung count stays honest.
+ *
+ * `product-tax-rate-reader.capability.ts` (#2054, ADR-063) reports the tax rate
+ * a product carries, not when the master last changed it, so it says nothing
+ * about freshness and must not count toward ADR-048's third-rung gate.
  */
-const NON_RUNGS = new Set([]);
+const NON_RUNGS = new Set(['product-tax-rate-reader.capability.ts']);
 
 /** ADR-048: "a third rung appearing is the signal to revisit the ladder." */
 const RUNG_THRESHOLD = 3;
@@ -430,8 +434,7 @@ function checkLadderRungs() {
     }
   }
   // Symmetric with the NON_KNOBS staleness check in rule 2: an exemption that
-  // outlives its file is a silent one. NON_RUNGS is empty today, so this guard
-  // exists before the first entry rather than after the first rot.
+  // outlives its file is a silent one.
   for (const rung of NON_RUNGS) {
     if (!existsSync(join(dirAbs, rung))) {
       failures.push(

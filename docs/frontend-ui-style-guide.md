@@ -637,7 +637,9 @@ Defaults (FE-002):
 | Button `md` | `32 px` | Default for page-header actions and forms. |
 | Input / Select | `32 px` | Never taller. |
 | KPI card | auto, ~96 px | Label + value + hint. Sparkline floats top-right. |
+| Analytics KPI card (`.status-strip--analytics .kpi-card`, #1990) | auto, ~152 px | Documented carve-out — the six-card sales strip stacks a headline+metric+delta block on top of one-or-more qualifier rows pinned to the card floor by a hairline, provably taller than the ~96 px default. See the carve-out note below. |
 | Status banner | auto, ~64 px | Icon + title + message + actions. |
+| Analytics trust-header row (`.trust-header__row`) | auto, ~52 px | `var(--space-3) var(--space-4)` padding. Per-connection freshness list, denser than a status banner because it repeats per row. Collapses to one column, auto height on mobile. |
 
 Never introduce a row height that isn't on this list without updating the guide first. Variability across surfaces is the primary way a cockpit feels amateur.
 
@@ -647,6 +649,8 @@ Two mechanical consequences worth knowing before copying the pattern:
 
 - The row link must be `rowLinkDisplay="block"` (see the `DataTable` catalog entry). An inline anchor sizes its focus ring from its own line-box metrics, so around a tall composite the ring paints a band across the row's middle instead of enclosing it.
 - Only the unbounded field gets a hard character cap. Capping *every* meta field ellipses a routine 20-char SKU on a wide desktop; `flex: 0 1 auto` + `min-width: 0` already truncates each field under real pressure.
+
+**Documented carve-out — the analytics KPI card (#1990).** The six-card sales KPI strip (Revenue, Orders, Order value, Units, Returns & refunds, Cancellations) carries a richer anatomy than the default KPI card: a headline+metric+delta stack plus one or more qualifier rows, each qualifier separated by a hairline (`.kpi-card__qualifier`, `border-top` + `padding-top: var(--space-3)`) and pinned to the card floor via `margin-top: auto`. That composition doesn't fit in ~96 px, so `.status-strip--analytics .kpi-card` sets `min-height: 9.5rem` (152 px) — every line is a fact (a definition, a value, a comparison basis), nothing decorative padded in to hit a number. The strip also runs a 3-column desktop grid (`.status-strip.status-strip--analytics` at ≥1024px) rather than the general dashboard `.status-strip`'s 4-column, because 6 cards divide evenly into 2 rows of 3 rather than an uneven 4-then-2 — see the parity matrix entry below (2×3 desktop, not the generic KPI strip's 1×4). This carve-out is for the analytics KPI card specifically; a new strip wanting either the taller card or the 3-column grid needs its own entry here.
 
 **Documented carve-out — the shared identity row (#2086).** The five lists that answer *which order is this* and *which connection did it come from* render those facts through two shared cells — `OrderIdentityCell` (24 px `ProductThumbnail` + order number/id line + item-name/`+N` line) and `ConnectionCell` (adornment + name line + shortened-id/status line). Either one makes the row two-line, so a table adopting them takes its height from content, same as the listings row above and for the same reason: every line is a fact an operator scans for.
 
@@ -715,6 +719,7 @@ Parity matrix — what changes across sizes:
 | Tables | **card view** (one card per row, key columns stacked) | full table, scrolled horizontally within its container as needed | full table |
 | Detail pages | single-column stack | 1-col or 60/40 split | 65/35 grid |
 | KPI strip | 1 × 4 vertical | 2 × 2 grid | 1 × 4 horizontal |
+| Analytics KPI strip (6 cards, #1990) | 1 × 6 vertical | 2 columns × 3 rows | 3 columns × 2 rows — see the analytics KPI card carve-out above |
 | `MetricCard` | full width | 2-col grid | 4-col grid |
 | Forms (single-column) | `max-width: 100%` | `max-width: 560 px` | `max-width: 560 px` |
 | Raw payload panel | collapsed by default | as desktop | as desktop |

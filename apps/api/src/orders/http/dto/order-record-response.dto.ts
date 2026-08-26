@@ -113,6 +113,26 @@ export class OrderRecordResponseDto {
   })
   salesDocumentBlockDetail!: string | null;
 
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      'When the CURRENT sales-document hold started (ISO 8601), or null when the order is not ' +
+      'held and never has been (#2248). The reason column is level-triggered and nulled the ' +
+      'moment it clears, so this is the only clock an operator-facing age can run on. Stamped ' +
+      'on the none-to-blocked transition only, so a change of reason inside one episode does ' +
+      'not reset it.',
+  })
+  salesDocumentBlockedAt!: string | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      'When the current hold ended (ISO 8601), cleared whenever a new one starts, so the pair ' +
+      'with salesDocumentBlockedAt always describes one episode. It is what lets the timeline ' +
+      'say the order was held and then released — the reason itself is gone by then.',
+  })
+  salesDocumentBlockReleasedAt!: string | null;
+
   @ApiProperty({ description: 'Order last-update timestamp (ISO 8601)' })
   updatedAt!: string;
 

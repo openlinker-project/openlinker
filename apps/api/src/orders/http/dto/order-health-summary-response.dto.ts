@@ -43,4 +43,22 @@ export class OrderHealthSummaryResponseDto {
       'often "synced"), so this number must never be added to their sum.',
   })
   salesDocumentBlocked!: number;
+
+  @ApiProperty({
+    description:
+      'Orders where the shop and the channel named DIFFERENT tax rates (#2254). Its OWN count, ' +
+      'never part of salesDocumentBlocked: a conflict does not stop the invoice, so an order can ' +
+      'be in conflict and perfectly healthy, and folding it in would print one number twice on ' +
+      'the same screen.',
+  })
+  taxRateConflict!: number;
+
+  @ApiProperty({
+    nullable: true,
+    description:
+      'When the OLDEST still-held order was held (ISO 8601), or null when nothing is held ' +
+      '(#2254). Lets the blocked chip carry an age inside its label rather than adding a third ' +
+      'dotted badge to a row that already has two SLA badges.',
+  })
+  salesDocumentBlockedOldestAt!: string | null;
 }

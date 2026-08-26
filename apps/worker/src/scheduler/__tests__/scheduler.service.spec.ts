@@ -121,7 +121,9 @@ describe('SchedulerService', () => {
         'OL_MASTER_PRODUCT_DELTA_SYNC_CRON',
         'OL_MASTER_PRODUCT_RECONCILE_CRON',
         'OL_OFFLINE_RESUBMIT_CRON',
+        'OL_ORDERS_TAX_RATE_BACKFILL_CRON',
         'OL_ORDER_FX_STAMP_SWEEP_CRON',
+        'OL_ORDERS_TAX_RATE_BACKFILL_CRON',
         'OL_PENDING_RECOVERY_CRON',
         'OL_PICKUP_POINT_REFRESH_CRON',
         'OL_PRODUCT_SYNC_CRON',
@@ -129,6 +131,9 @@ describe('SchedulerService', () => {
         'OL_RETURNS_ORPHAN_RECONCILE_CRON',
         'OL_STALE_OFFER_PAUSE_CRON',
         'OL_TAXONOMY_SYNC_CRON',
+        'OL_ORDERS_TAX_RATE_BACKFILL_CRON',
+        'OL_ORDER_FX_STAMP_SWEEP_CRON',
+        'OL_ORDERS_TAX_RATE_BACKFILL_CRON',
       ];
       if (cronKeys.includes(key)) return defaultValue ?? '*/15 * * * *';
       return 'true';
@@ -277,6 +282,7 @@ describe('SchedulerService', () => {
         'master-product-sync',
         'offline-resubmit',
         'order-fx-stamp-sweep',
+        'orders-tax-rate-backfill',
         'pending-recovery',
         'pickup-point-refresh',
         'regulatory-status-reconcile',
@@ -499,7 +505,9 @@ describe('SchedulerService', () => {
         'OL_MASTER_PRODUCT_DELTA_SYNC_CRON',
         'OL_MASTER_PRODUCT_RECONCILE_CRON',
         'OL_OFFLINE_RESUBMIT_CRON',
+        'OL_ORDERS_TAX_RATE_BACKFILL_CRON',
         'OL_ORDER_FX_STAMP_SWEEP_CRON',
+        'OL_ORDERS_TAX_RATE_BACKFILL_CRON',
         'OL_PENDING_RECOVERY_CRON',
         'OL_PICKUP_POINT_REFRESH_CRON',
         'OL_PRODUCT_SYNC_CRON',
@@ -507,6 +515,9 @@ describe('SchedulerService', () => {
         'OL_RETURNS_ORPHAN_RECONCILE_CRON',
         'OL_STALE_OFFER_PAUSE_CRON',
         'OL_TAXONOMY_SYNC_CRON',
+        'OL_ORDERS_TAX_RATE_BACKFILL_CRON',
+        'OL_ORDER_FX_STAMP_SWEEP_CRON',
+        'OL_ORDERS_TAX_RATE_BACKFILL_CRON',
       ];
       if (cronKeys.includes(key)) return defaultValue ?? '*/15 * * * *';
       return 'true';
@@ -593,7 +604,9 @@ describe('SchedulerService', () => {
         'OL_MASTER_PRODUCT_DELTA_SYNC_CRON',
         'OL_MASTER_PRODUCT_RECONCILE_CRON',
         'OL_OFFLINE_RESUBMIT_CRON',
+        'OL_ORDERS_TAX_RATE_BACKFILL_CRON',
         'OL_ORDER_FX_STAMP_SWEEP_CRON',
+        'OL_ORDERS_TAX_RATE_BACKFILL_CRON',
         'OL_PENDING_RECOVERY_CRON',
         'OL_PICKUP_POINT_REFRESH_CRON',
         'OL_PRODUCT_SYNC_CRON',
@@ -601,6 +614,9 @@ describe('SchedulerService', () => {
         'OL_RETURNS_ORPHAN_RECONCILE_CRON',
         'OL_STALE_OFFER_PAUSE_CRON',
         'OL_TAXONOMY_SYNC_CRON',
+        'OL_ORDERS_TAX_RATE_BACKFILL_CRON',
+        'OL_ORDER_FX_STAMP_SWEEP_CRON',
+        'OL_ORDERS_TAX_RATE_BACKFILL_CRON',
       ];
       if (cronKeys.includes(key)) return defaultValue ?? '*/15 * * * *';
       return 'true';
@@ -684,7 +700,9 @@ describe('SchedulerService', () => {
         'OL_MASTER_PRODUCT_DELTA_SYNC_CRON',
         'OL_MASTER_PRODUCT_RECONCILE_CRON',
         'OL_OFFLINE_RESUBMIT_CRON',
+        'OL_ORDERS_TAX_RATE_BACKFILL_CRON',
         'OL_ORDER_FX_STAMP_SWEEP_CRON',
+        'OL_ORDERS_TAX_RATE_BACKFILL_CRON',
         'OL_PENDING_RECOVERY_CRON',
         'OL_PICKUP_POINT_REFRESH_CRON',
         'OL_PRODUCT_SYNC_CRON',
@@ -692,6 +710,9 @@ describe('SchedulerService', () => {
         'OL_RETURNS_ORPHAN_RECONCILE_CRON',
         'OL_STALE_OFFER_PAUSE_CRON',
         'OL_TAXONOMY_SYNC_CRON',
+        'OL_ORDERS_TAX_RATE_BACKFILL_CRON',
+        'OL_ORDER_FX_STAMP_SWEEP_CRON',
+        'OL_ORDERS_TAX_RATE_BACKFILL_CRON',
       ];
       if (cronKeys.includes(key)) return defaultValue ?? '*/15 * * * *';
       return 'true';
@@ -888,6 +909,7 @@ describe('SchedulerService', () => {
         'OL_MASTER_PRODUCT_DELTA_SYNC_CRON',
         'OL_MASTER_PRODUCT_RECONCILE_CRON',
         'OL_OFFLINE_RESUBMIT_CRON',
+        'OL_ORDERS_TAX_RATE_BACKFILL_CRON',
         'OL_ORDER_FX_STAMP_SWEEP_CRON',
         'OL_PENDING_RECOVERY_CRON',
         'OL_PICKUP_POINT_REFRESH_CRON',

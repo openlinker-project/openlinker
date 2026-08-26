@@ -30,9 +30,9 @@ import type { CredentialsResolverPort } from '@openlinker/core/integrations';
 import type { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 import { KsefInvoicingAdapter } from '../../infrastructure/adapters/ksef-invoicing.adapter';
 import { createKsefHttpClient } from '../../infrastructure/http/ksef-http-client.factory';
+import { DEFAULT_FA3_TAX_RATE } from '../../infrastructure/fa3/domain/fa3-tax-rate.mapper';
 import { KsefSessionCryptoService } from '../../infrastructure/crypto/ksef-session-crypto.service';
 import { Fa3WithValidationBuilder } from '../../infrastructure/fa3/builders/fa3-with-validation.builder';
-import { DEFAULT_FA3_TAX_RATE } from '../../infrastructure/fa3/domain/fa3-tax-rate.mapper';
 import type { Fa3PaymentInput, SellerProfile } from '../../infrastructure/fa3/domain/fa3-xml.types';
 import type { KsefTokenAuthMaterial } from '../../infrastructure/http/auth/ksef-auth-handshake.service';
 import type {
@@ -62,8 +62,8 @@ export class KsefAdapterFactory implements IKsefAdapterFactory {
     const authMaterial = this.resolveAuthMaterial(connection, credentials);
 
     const seller = this.resolveSeller(connection);
-    const defaultTaxRate = this.resolveDefaultTaxRate(connection);
     const payment = this.resolvePayment(connection);
+    const defaultTaxRate = this.resolveDefaultTaxRate(connection);
     const defaultLineUnit = this.resolveDefaultLineUnit(connection);
     const numberingTimeZone = this.resolveNumberingTimeZone(connection);
 
@@ -87,8 +87,7 @@ export class KsefAdapterFactory implements IKsefAdapterFactory {
         sessionCrypto,
         fa3Builder,
         seller,
-        defaultTaxRate,
-        { payment, defaultLineUnit, numberingTimeZone },
+        { payment, defaultTaxRate, defaultLineUnit, numberingTimeZone },
       ),
     };
   }
@@ -144,17 +143,24 @@ export class KsefAdapterFactory implements IKsefAdapterFactory {
     };
   }
 
+
   /**
-   * Resolve the connection-level fallback `P_12` neutral code (adapter-scoped
-   * issuance policy, not seller identity — see `Fa3MappingContext.defaultTaxRate`).
-   * The `.trim() ||` fallback is defensive for configs saved before the
-   * `ksef.publicapi.v2` shape validator started rejecting a whitespace-only
-   * `seller.defaultTaxRate` (#1291) — a post-validation config can never
-   * actually hit the empty branch, but a pre-existing row could.
+   * Resolve the connection-level fallback `P_12` rate (#1290/#1291) from
+   * `config.seller.defaultTaxRate`, falling back to the PL standard rate.
+   *
+   * The adapter passes it to the FA(3) mapper ONLY while
+   * `OL_TAX_RATE_STRICT_ENABLED` is off (#2257, gated in the #2245 review).
+   * Resolving it unconditionally here is deliberate: the switch is a rollout
+   * control, so which value would apply must not depend on when the connection
+   * happened to be constructed, and the decision stays in one place - the
+   * adapter's issue path - rather than being spread across construction too.
    */
   private resolveDefaultTaxRate(connection: Connection): string {
     const config = connection.config as Partial<KsefConnectionConfig> | undefined;
-    return config?.seller?.defaultTaxRate?.trim() || DEFAULT_FA3_TAX_RATE;
+    const configured = config?.seller?.defaultTaxRate;
+    return typeof configured === 'string' && configured.trim().length > 0
+      ? configured.trim()
+      : DEFAULT_FA3_TAX_RATE;
   }
 
   /**

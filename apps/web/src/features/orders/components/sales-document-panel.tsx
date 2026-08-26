@@ -90,6 +90,8 @@ import { usePlatform } from '../../../shared/plugins';
 import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
 import { useWriteAccess } from '../../../shared/auth/use-permission';
 import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
+import { formatAmount } from '../../../shared/format/format-amount';
+import { formatTaxRate } from '../../../shared/format/format-tax-rate';
 import { useDemoMode } from '../../system';
 import { TimeDisplay } from '../../../shared/ui/time-display';
 
@@ -113,8 +115,12 @@ import {
   DOCUMENT_TYPE_LABEL_FALLBACK,
   InvoicePdfLink,
   resolveSalesDocumentBlockCopy,
+  resolveMissingTaxRateScope,
+  splitShippingAcrossRates,
+  minorUnitExponentFor,
   type InvoiceRecord,
   type SalesDocumentBlockCopyKind,
+  type RateLessLine,
 } from '../../invoicing';
 
 import {
@@ -131,6 +137,8 @@ import {
 } from '../../fiscalization';
 
 import type { OrderRecord } from '../api/orders.types';
+import { parseOrderSnapshot } from '../api/order-snapshot.schema';
+import type { ParsedOrderItem, ParsedOrderTotals } from '../api/order-snapshot.schema';
 
 interface SalesDocumentPanelProps {
   order: OrderRecord;
@@ -472,9 +480,45 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
   // concept — ADR-042 decision 9), so it is passed only when the pool is pure
   // invoice; a fiscal-receipt or mixed pool relies solely on the persisted reason.
   const derivedAmbiguity = blockCopyKind === 'invoice' && requiresConnectionPick;
+  // #2254 - the rate-less lines, read from the order's own snapshot. The remedy
+  // depends on WHY a rate is absent, and only the lines say which case this is.
+  // One parse, one source of truth (#2260 review): `totals` is read from the
+  // same validated result as `items`, never re-read off the raw snapshot with a
+  // cast - a cast is strictly more permissive than `orderTotalsSchema`, so the
+  // preview could render off totals this app's own validator rejects.
+  const parsedSnapshot = parseOrderSnapshot(order.orderSnapshot);
+  const snapshotItems = parsedSnapshot.items;
+  const rateLessLines = collectRateLessLines(snapshotItems);
+  const conflictLines = snapshotItems.filter((item) => Boolean(item.taxRateChannel));
   const blockCopy = showEmptyState
-    ? resolveSalesDocumentBlockCopy(order, derivedAmbiguity, t, blockCopyKind)
+    ? resolveSalesDocumentBlockCopy(order, derivedAmbiguity, t, blockCopyKind, rateLessLines)
     : null;
+  // #2254 (epic F2) - the FIRST reason where the manual path must close too.
+  // Every other block reason means "auto-issue did not happen" and issuing by
+  // hand is a legitimate action; this one means "this cannot be issued", and the
+  // backend refuses it with a 422. A live button above a red "will not be
+  // issued" alert would be an invitation to a failure OL already knows about.
+  // It closes the RECEIPT path for the same reason (#2255 / #2252): a device
+  // stamping a tax letter nobody confirmed onto a receipt that reaches the buyer
+  // and the daily report cannot be recalled.
+  const missingRateReason = order.salesDocumentBlockReason === 'missing-tax-rate';
+  // #2254 - what the document's shipping line(s) will say. A mixed-rate basket
+  // splits shipping proportionally, so the operator can see the shape of the
+  // document before it exists; one unknown line rate makes the proportion
+  // uncomputable, so the whole preview collapses to a single waiting row rather
+  // than showing a split OL cannot stand behind.
+  const shippingSplitPreview = renderShippingSplitPreview(snapshotItems, parsedSnapshot.totals, t);
+  // #2260 review - which subject the block is about. Read once, so the copy, the
+  // refusal beside the button and the receipt-side alert cannot disagree.
+  const missingRateScope = missingRateReason ? resolveMissingTaxRateScope(rateLessLines) : null;
+  const issueRefusal =
+    missingRateScope === 'shipping'
+      ? t('invoice.panel.issueRefusedShipping', 'no tax rate for the delivery charge')
+      : missingRateScope === 'lines'
+        ? rateLessLines.length === 1
+          ? t('invoice.panel.issueRefusedOne', 'no tax rate on 1 line')
+          : `${t('invoice.panel.issueRefusedPrefix', 'no tax rate on')} ${String(rateLessLines.length)} ${t('invoice.panel.issueRefusedSuffix', 'lines')}`
+        : null;
 
   return (
     <section className="detail-section sales-document-panel">
@@ -492,6 +536,28 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
           {showFiscalSlot ? <FiscalReceiptStatusBadge status={fiscalDisplayStatus} /> : null}
         </div>
       </header>
+
+      {/* #2254 - the conflict is INFORMATIONAL, never a block. The document
+          exists; the two systems simply disagree about the rate, and the shop's
+          won. `Alert` gives a non-error tone `role="status"`, which is the right
+          politeness level for an advisory nobody has to act on immediately. */}
+      {conflictLines.length > 0 ? (
+        <Alert tone="conflict">
+          <strong>
+            {t(
+              'invoice.panel.conflictTitle',
+              "Issued on the shop's rate. The channel disagrees.",
+            )}
+          </strong>{' '}
+          {conflictLines
+            .map(
+              (line) =>
+                `${line.name ?? line.sku ?? line.id}: shop ${formatTaxRate(String(line.taxRate))}, channel ${formatTaxRate(String(line.taxRateChannel))}`,
+            )
+            .join('; ')}
+          .
+        </Alert>
+      ) : null}
 
       {/* ══════════════════════ FILLED: invoice ══════════════════════ */}
       {showInvoiceSlot ? (
@@ -875,6 +941,41 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
             </Alert>
           ) : null}
 
+          {/* #2254 (epic F6) - the return path. Every remedy in this epic leaves
+              the app, is applied in a system OpenLinker does not read live, and
+              returns the operator to a screen that still says the old thing.
+              Without naming the latency, a correct fix looks like it did nothing
+              and the operator concludes the product is broken.
+
+              It links to the products list rather than opening a sync dialog
+              here: the connection to sync is the SHOP that owns the product,
+              which this panel does not know - it knows document connections. A
+              control that synced the wrong connection would be worse than a link
+              to the one screen that does know. */}
+          {/* `taxRateState` is the param the products list reads (#2260 review);
+              `taxRate` is the ORDERS list's own conflict filter, and pointing
+              here at that one landed on the unfiltered catalogue with no signal
+              the filter had been ignored. Only rendered for a LINE-scoped block:
+              a delivery charge with nowhere to sit is not fixed in the
+              catalogue, so the link would point at the wrong screen. */}
+          {missingRateScope === 'lines' ? (
+            <p className="panel-copy">
+              {t(
+                'invoice.panel.fixAndRecheck',
+                'Rates are read during product sync, so a fix in the shop shows up on the next one.',
+              )}{' '}
+              <Link to="/products?taxRateState=missing">
+                {t('invoice.panel.fixAndRecheckAction', 'Fix and re-check')}
+              </Link>
+            </p>
+          ) : null}
+
+          {/* #2254 - the shipping split preview lives HERE, not on the line-items
+              panel, because shipping has no order line: it is composed when the
+              document is. A single `waiting` row while any line rate is unknown,
+              since one unknown makes the proportion uncomputable. */}
+          {shippingSplitPreview}
+
           {invoiceQuery.isError ? (
             <Alert tone="error">
               {t('invoice.query.error', 'Could not load the invoice status.')}{' '}
@@ -949,11 +1050,23 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
                 <Button
                   tone="primary"
                   onClick={handleIssue}
-                  disabled={issueMutation.isPending || invoiceWrite.demoReadOnly || invoicingConnection === null}
+                  disabled={
+                    issueMutation.isPending ||
+                    invoiceWrite.demoReadOnly ||
+                    invoicingConnection === null ||
+                    issueRefusal !== null
+                  }
                 >
                   {t('invoice.action.issue', 'Issue invoice')}
                 </Button>
               </ReadOnlyLock>
+              {/* The reason sits ON the control, not only in the alert above: a
+                  disabled button with no explanation beside it reads as a bug. */}
+              {issueRefusal ? (
+                <span className="text-muted" style={{ fontSize: '0.82rem' }}>
+                  {issueRefusal}
+                </span>
+              ) : null}
             </div>
           ) : null}
 
@@ -985,8 +1098,48 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
                   </Select>
                 </div>
               ) : null}
+              {/* #2255 / #2252 - the same rule as the invoice, on the receipt
+                  path. The per-connection tax letter is NOT used to fill the
+                  gap: a receipt carrying an unconfirmed rate reaches the buyer
+                  and the daily report and cannot be recalled, so the accepted
+                  cost is late registration. */}
+              {/* Gated on the REASON, not on a line count (#2260 review): the
+                  Register button below is disabled on the reason alone, and a
+                  dead control with nothing beside it reads as a bug. A
+                  shipping-scope block has no rate-less line to name, so it gets
+                  its own true sentence rather than a count it cannot support. */}
+              {missingRateScope !== null ? (
+                <Alert tone="error">
+                  <strong>
+                    {missingRateScope === 'shipping'
+                      ? t(
+                          'fiscalReceipt.blockNoRateShippingTitle',
+                          'Not registered: the delivery charge has no tax rate.',
+                        )
+                      : rateLessLines.length === 1
+                        ? t(
+                            'fiscalReceipt.blockNoRateTitleOne',
+                            'Not registered: 1 line has no tax rate.',
+                          )
+                        : `${t('fiscalReceipt.blockNoRateTitlePrefix', 'Not registered:')} ${String(rateLessLines.length)} ${t('fiscalReceipt.blockNoRateTitleSuffix', 'lines have no tax rate.')}`}
+                  </strong>{' '}
+                  {missingRateScope === 'shipping'
+                    ? t(
+                        'fiscalReceipt.blockNoRateShippingBody',
+                        "Every product line has a rate, but nothing in this order carries an amount the delivery charge could follow. Check the order's lines and delivery charge.",
+                      )
+                    : t(
+                        'fiscalReceipt.blockNoRateBody',
+                        "Add the rate in the shop's catalogue and re-sync the product. The connection's tax letter is not used to fill the gap.",
+                      )}
+                </Alert>
+              ) : null}
               <span className="spacer" />
-              <Button tone="primary" disabled={registerMutation.isPending} onClick={() => handleRegister(defaultFiscalConnectionId)}>
+              <Button
+                tone="primary"
+                disabled={registerMutation.isPending || missingRateReason}
+                onClick={() => handleRegister(defaultFiscalConnectionId)}
+              >
                 {t('fiscalReceipt.action.register', 'Register receipt')}
               </Button>
             </div>
@@ -994,5 +1147,84 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
         </div>
       ) : null}
     </section>
+  );
+}
+
+/**
+ * The lines with no tax rate, shaped for the remedy branches (#2254).
+ *
+ * "In the catalogue" is read off `productId`: a line OpenLinker resolved to an
+ * internal product can be fixed in the shop that owns it, while a line that
+ * resolved to none exists only as a marketplace offer - and fixing that offer
+ * cannot release THIS order, because the marketplace stamped the rate at
+ * purchase. Those are different instructions, so they cannot share a sentence.
+ */
+function collectRateLessLines(items: readonly ParsedOrderItem[]): RateLessLine[] {
+  return items
+    .filter((item) => !item.taxRate)
+    .map((item) => ({
+      name: item.name ?? item.sku ?? item.productId ?? item.id,
+      inCatalogue: Boolean(item.productId),
+    }));
+}
+
+/**
+ * The shipping line(s) the document will carry (#2254).
+ *
+ * Rendered on the sales-document panel rather than beside the order's line
+ * items, because shipping has no order line: it exists only once a document is
+ * being composed. One rate in the basket means one shipping line at that rate;
+ * a mixed basket means several, split in proportion to line gross.
+ *
+ * A single unknown line rate collapses the whole thing to one `waiting` row.
+ * Showing a partial split would state a proportion OpenLinker cannot compute,
+ * and the document is held anyway.
+ */
+function renderShippingSplitPreview(
+  items: readonly ParsedOrderItem[],
+  totals: ParsedOrderTotals | undefined,
+  t: (key: string, fallback: string) => string,
+): ReactElement | null {
+  const shipping = totals?.shipping ?? 0;
+  if (!Number.isFinite(shipping) || shipping <= 0 || items.length === 0) return null;
+
+  const anyUnknown = items.some((item) => !item.taxRate);
+  if (anyUnknown) {
+    return (
+      <p className="panel-copy">
+        {t(
+          'invoice.panel.shippingSplitWaiting',
+          'Shipping is waiting with the document: it is split across the rates in the basket, and one line has no rate yet.',
+        )}
+      </p>
+    );
+  }
+
+  // The arithmetic is the document's own, not a lookalike: `splitShippingAcrossRates`
+  // is the mirror of the core function the document is composed with, so the
+  // parts previewed here add up to the shipping the buyer paid.
+  const parts = splitShippingAcrossRates(
+    shipping,
+    items.map((item) => ({
+      taxRate: item.taxRate ?? null,
+      gross: item.price * item.quantity,
+    })),
+    minorUnitExponentFor(totals?.currency),
+  );
+  // `null` past the unknown-rate check means there was nothing to be
+  // proportional to (every line grosses zero). Claim nothing rather than
+  // preview a split that does not exist.
+  if (parts === null || parts.length <= 1) return null;
+
+  return (
+    <p className="panel-copy">
+      {t('invoice.panel.shippingSplit', 'Shipping is split across the rates in this basket:')}{' '}
+      {parts
+        .map(
+          (part) => `${formatAmount(part.amount, totals?.currency)} at ${formatTaxRate(part.taxRate)}`,
+        )
+        .join(', ')}
+      .
+    </p>
   );
 }

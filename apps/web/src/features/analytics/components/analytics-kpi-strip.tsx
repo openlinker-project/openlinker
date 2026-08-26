@@ -1,0 +1,404 @@
+/**
+ * Sales KPI strip (#1990)
+ *
+ * Six-card strip matching the reference design mockup's anatomy: every card
+ * the mockup specifies ships, and every figure the mockup assumed but
+ * `GET /analytics/sales` (#1987) doesn't return renders as an honest
+ * "not available" placeholder rather than a fabricated number — never
+ * silently dropped.
+ *
+ * Real vs. not-yet-real, per card:
+ *   - Revenue: the spec's "Net Sales" is NOV (net order value, VAT-exclusive)
+ *     minus the value of returns (`docs/specs/metrics-analytics-dashboard.md`
+ *     § Net Sales). The net-sales tax-rate epic made NOV real
+ *     (`headline.netRevenue`) — per the reference design mockup this renders
+ *     as a normal, complete "Net sales" headline (no gap badge on the card
+ *     face); the still-open returns caveat and the tax-rate exclusion count
+ *     (`headline.netExcludedCount` — pre-rollout orders, or an order with an
+ *     unresolvable line-level tax rate) live only in the (i) tooltip's
+ *     definition, never as a second qualifier row. Its GMV qualifier
+ *     (`headline.revenue`, real, FX-stamped, in `headline.currency`) renders
+ *     normally, unchanged.
+ *   - Orders, Units: fully real. `headline.orderCount` only counts
+ *     FX-stamped orders (ADR-040) — `totalOrders` below adds back `headline.
+ *     unconvertedCount` so Orders/Avg. daily/Units per order/Cancellation
+ *     rate count every placed order.
+ *   - Order value (AOV + median): renders `headline.netAverageOrderValue` /
+ *     `netMedianOrderValue` (net-sales tax-rate epic), not the gross
+ *     `averageOrderValue`/`medianOrderValue` — same VAT-exclusive basis as
+ *     the Revenue card's headline figure, so a reader comparing "Revenue"
+ *     against "Order value" isn't silently comparing net against gross.
+ *     Both stay on the FX-stamped subset and disclose that gap explicitly,
+ *     same as before.
+ *   - Returns & refunds: no return/refund entity exists anywhere in the
+ *     orders domain — fully planned.
+ *   - Cancellations: `cancelledCount`/`cancelledValue` are real fields —
+ *     rendered as a normal, real card.
+ *   - Delta ("vs previous period"), on the four cards with a real headline
+ *     number (Orders, Order value, Units, Cancellations): a second
+ *     `GET /analytics/sales` call over the immediately-preceding period of
+ *     the same length (`computePreviousPeriodRange`), refused outright
+ *     (never a lopsided comparison) unless that ENTIRE previous window is
+ *     covered by ingested order history (`isPreviousPeriodCovered`, keyed
+ *     off `GET /analytics/trust`'s per-connection `earliestOrderDate`,
+ *     #2083) — see the per-card `deltaFor*` helpers below. Revenue's
+ *     headline and Returns & refunds are both already `unavailable`/
+ *     `planned`, so a delta there would compare against nothing real.
+ *
+ * Currency (#1987/#2049/ADR-040): there is exactly ONE system-wide reporting
+ * currency, `headline.currency` — `null` only when nothing in range has been
+ * FX-stamped yet, in which case every money figure here falls back to a
+ * bare number rather than a fabricated currency. When `headline.
+ * unconvertedCount > 0`, the Order value card discloses the gap explicitly
+ * instead of implying AOV/median cover every placed order. The Order-value
+ * delta additionally refuses to compare when the two periods' stamped
+ * currencies disagree (or either is `null`) — a percentage between two
+ * different currencies is not a real number.
+ *
+ * @module features/analytics/components
+ */
+import type { ReactElement } from 'react';
+import { Button } from '../../../shared/ui/button';
+import { EmptyValue } from '../../../shared/ui/empty-value';
+import { ErrorState, LoadingState } from '../../../shared/ui/feedback-state';
+import { formatAmount } from '../../../shared/format/format-amount';
+import { useNumberFormat } from '../../../shared/i18n/use-number-format';
+import { useSalesAnalyticsQuery } from '../hooks/use-sales-analytics-query';
+import type { ConnectionIngestionTrust } from '../api/analytics-trust.types';
+import type { SalesAnalyticsFilters } from '../api/sales-analytics.types';
+import { computePreviousPeriodRange, isPreviousPeriodCovered } from '../lib/date-range.lib';
+import { resolveEarliestOrderDate } from '../lib/ingestion-trust.lib';
+import {
+  averageDailyOrders,
+  cancellationRate,
+  type DeltaDirection,
+  deltaGlyphDirection,
+  deltaTone,
+  orderCountTrendValues,
+  percentDelta,
+  pointsDelta,
+  rangeDays,
+  revenueTrendValues,
+  trendTone,
+  unitsPerOrder,
+} from '../lib/sales-analytics-view-model';
+import { AnalyticsKpiCard, type AnalyticsKpiDelta } from './analytics-kpi-card';
+import { GapMark } from './gap-mark';
+
+// The metrics spec defines Net Sales as NOV minus the value of returns
+// (docs/specs/metrics-analytics-dashboard.md § Net Sales) — quoted, not
+// paraphrased, per .claude/rules/analytics-metrics.md. NOV itself is now
+// real (net-sales tax-rate epic); this is the ONE remaining, distinct gap.
+const NET_SALES_RETURNS_GAP =
+  'Net Sales additionally subtracts the value of returns, and no return or refund entity exists anywhere in the repo yet — this figure is NOV (net order value), not yet Net Sales.';
+const RETURN_RATE_GAP =
+  'No return entity exists anywhere in the repo — nothing records a return or a refund.';
+const STAMPED_GAP =
+  'Order value is computed only from orders an FX rate has been stamped onto — recently ingested, not-yet-stamped orders are excluded from this figure until the FX stamp sweep reaches them.';
+const RATIO_FORMAT_OPTIONS: Intl.NumberFormatOptions = {
+  minimumFractionDigits: 1,
+  maximumFractionDigits: 1,
+};
+const PERCENT_FORMAT_OPTIONS: Intl.NumberFormatOptions = {
+  style: 'percent',
+  minimumFractionDigits: 1,
+  maximumFractionDigits: 1,
+};
+// No sign — the arrow glyph carries direction, matching the design mockup
+// ("↑8.7%", never "↑+8.7%"). Formatted from Math.abs(delta).
+const DELTA_FORMAT_OPTIONS: Intl.NumberFormatOptions = {
+  minimumFractionDigits: 1,
+  maximumFractionDigits: 1,
+};
+
+interface AnalyticsKpiStripProps {
+  filters: SalesAnalyticsFilters;
+  /** For `earliestOrderDate` coverage-gating the previous-period delta — already fetched at the page level for the trust header, so this never issues its own `GET /analytics/trust` call. */
+  connections: ConnectionIngestionTrust[];
+}
+
+export function AnalyticsKpiStrip({ connections, filters }: AnalyticsKpiStripProps): ReactElement {
+  const query = useSalesAnalyticsQuery(filters);
+
+  // Computed and the second query issued UNCONDITIONALLY, before any early
+  // return below — a hook call can never follow a conditional return.
+  const earliestOrderDate = resolveEarliestOrderDate(connections, filters.sourceConnectionId);
+  const previousRange = computePreviousPeriodRange(filters.from, filters.to);
+  const previousCovered = isPreviousPeriodCovered(previousRange.from, earliestOrderDate);
+  const previousFilters: SalesAnalyticsFilters = {
+    ...filters,
+    from: previousRange.from,
+    to: previousRange.to,
+  };
+  const previousQuery = useSalesAnalyticsQuery(previousFilters, { enabled: previousCovered });
+
+  const numberFormat = useNumberFormat();
+  const ratioFormat = useNumberFormat(RATIO_FORMAT_OPTIONS);
+  const pctFormat = useNumberFormat(PERCENT_FORMAT_OPTIONS);
+  const deltaFormat = useNumberFormat(DELTA_FORMAT_OPTIONS);
+
+  if (query.isLoading) {
+    return (
+      <LoadingState
+        eyebrow="Loading"
+        title="Loading sales figures"
+        message="Fetching revenue, orders and units for the selected range…"
+      />
+    );
+  }
+
+  if (query.error) {
+    return (
+      <ErrorState
+        title="Unable to load sales figures"
+        message={query.error.message}
+        action={<Button onClick={() => void query.refetch()}>Retry</Button>}
+      />
+    );
+  }
+
+  const headline = query.data?.headline;
+  if (!headline) {
+    return (
+      <ErrorState
+        title="Unable to load sales figures"
+        message="The server returned no data for this range."
+        action={<Button onClick={() => void query.refetch()}>Retry</Button>}
+      />
+    );
+  }
+
+  const revenueTrend = revenueTrendValues(headline.trend);
+  const orderTrend = orderCountTrendValues(headline.trend);
+  // headline.orderCount only counts FX-stamped orders (ADR-040) — every
+  // placed, non-cancelled order also includes the not-yet-stamped ones.
+  const totalOrders = headline.orderCount + headline.unconvertedCount;
+  const avgDaily = averageDailyOrders(totalOrders, filters.from, filters.to);
+  const unitsRatio = unitsPerOrder(headline.unitsSold, totalOrders);
+  const cancelRate = cancellationRate(headline.cancelledCount, totalOrders);
+  const currency = headline.currency ?? undefined;
+  const stampedGapVisible = headline.unconvertedCount > 0;
+  const netExcludedVisible = headline.netExcludedCount > 0;
+  const netExcludedNote = `${headline.netExcludedCount} order(s) predate per-line tax rates or carry a line with an unresolvable rate, and are excluded from NOV.`;
+  const trendDays = rangeDays(filters.from, filters.to);
+  const trendRangeLabel = trendDays === 1 ? 'the selected day' : `the last ${trendDays} days`;
+
+  // Period-over-period deltas — `undefined` previousHeadline (not covered by
+  // history, still loading, or failed to load) means every `buildDelta`
+  // call below returns `null`, which `AnalyticsKpiCard` renders as a
+  // `GapMark` with `deltaGapReason`.
+  const previousHeadline = previousCovered ? previousQuery.data?.headline : undefined;
+  const previousTrendDays = rangeDays(previousRange.from, previousRange.to);
+  const deltaBasisLabel =
+    previousTrendDays === 1 ? 'vs the previous day' : `vs previous ${previousTrendDays} days`;
+  const deltaGapReason = !previousCovered
+    ? earliestOrderDate === null
+      ? 'No order history yet — nothing to compare against.'
+      : `Not enough order history to compare a full previous period — data starts ${earliestOrderDate.slice(0, 10)}.`
+    : previousQuery.error
+      ? 'Unable to load the previous period for comparison.'
+      : undefined;
+
+  // A RATE MOVES IN POINTS, NOT IN PERCENT (design mockup) — "cancellation
+  // rate +10.1%" is ambiguous (ten percent of what?), so a rate delta
+  // (`pp: true`) uses `pointsDelta` and renders "pp"; every count/amount
+  // delta uses the ordinary relative `percentDelta` and renders "%".
+  function buildDelta(
+    current: number,
+    previous: number | undefined,
+    direction: DeltaDirection,
+    opts: { pp?: boolean } = {}
+  ): AnalyticsKpiDelta | null {
+    if (previous === undefined) return null;
+    const deltaValue = opts.pp ? pointsDelta(current, previous) : percentDelta(current, previous);
+    if (deltaValue === null) return null;
+    const direction2 = deltaGlyphDirection(deltaValue);
+    const unit = opts.pp ? 'pp' : '%';
+    const spokenAmount = `${deltaFormat.format(Math.abs(deltaValue))} ${opts.pp ? 'percentage points' : 'percent'}`;
+    return {
+      formatted: `${deltaFormat.format(Math.abs(deltaValue))}${opts.pp ? ' ' : ''}${unit}`,
+      tone: deltaTone(deltaValue, direction),
+      direction: direction2,
+      basisLabel: deltaBasisLabel,
+      spokenText: `${direction2 === 'flat' ? 'unchanged' : `${direction2 === 'up' ? 'up' : 'down'} ${spokenAmount}`} versus the previous period`,
+    };
+  }
+
+  const previousTotalOrders = previousHeadline
+    ? previousHeadline.orderCount + previousHeadline.unconvertedCount
+    : undefined;
+  const ordersDelta = buildDelta(totalOrders, previousTotalOrders, 'higher-is-better');
+  const unitsDelta = buildDelta(headline.unitsSold, previousHeadline?.unitsSold, 'higher-is-better');
+  const previousCancelRate = previousHeadline
+    ? cancellationRate(
+        previousHeadline.cancelledCount,
+        previousHeadline.orderCount + previousHeadline.unconvertedCount
+      )
+    : undefined;
+  const cancelRateDelta = buildDelta(cancelRate, previousCancelRate, 'lower-is-better', { pp: true });
+  // AOV is currency-denominated — a percentage between two different
+  // reporting-currency eras (or a period where nothing is stamped yet)
+  // would not be a real number, so this refuses independently of coverage.
+  const orderValueCurrenciesMatch =
+    headline.currency !== null && headline.currency === previousHeadline?.currency;
+  const orderValueDelta = orderValueCurrenciesMatch
+    ? buildDelta(headline.netAverageOrderValue, previousHeadline?.netAverageOrderValue, 'higher-is-better')
+    : null;
+  const orderValueDeltaGapReason =
+    !orderValueCurrenciesMatch && previousHeadline
+      ? 'The two periods are not stamped in the same reporting currency — a percentage between them would not be a real number.'
+      : deltaGapReason;
+
+  return (
+    <section className="status-strip status-strip--analytics" aria-label="Key sales figures">
+      <AnalyticsKpiCard
+        label="Revenue"
+        infotipLabel="About the Revenue figures"
+        definitions={[
+          {
+            term: 'Net Sales',
+            text: 'The value of product sales after discounts and after customer refunds, excluding VAT. Rendered here as NOV (net order value, before the returns subtraction) — the exact figure is what the metrics spec calls Net Sales once returns are also modeled.',
+            formula: 'Net order value (after discounts, excluding VAT) − Refunded value',
+            caveat: netExcludedVisible ? netExcludedNote : NET_SALES_RETURNS_GAP,
+          },
+          {
+            term: 'GMV (Gross Merchandise Value)',
+            text: 'The value of non-cancelled, FX-stamped product items in orders placed during the selected period, in the reporting currency.',
+            caveat: stampedGapVisible
+              ? `Cancelled orders and cancelled items are excluded. ${headline.unconvertedCount} of ${totalOrders} placed orders have not yet been FX-stamped and are omitted from this figure.`
+              : 'Cancelled orders and cancelled items are excluded. Returned/refunded items remain included.',
+          },
+        ]}
+        metric="Net sales"
+        value={formatAmount(headline.netRevenue, currency)}
+        trend={{
+          values: revenueTrend,
+          tone: trendTone(revenueTrend),
+          ariaLabel: `GMV trend, ${trendRangeLabel}`,
+        }}
+        qualifiers={[
+          {
+            label: stampedGapVisible ? (
+              <>
+                GMV <GapMark title={STAMPED_GAP} />
+              </>
+            ) : (
+              'GMV'
+            ),
+            value: formatAmount(headline.revenue, currency),
+          },
+        ]}
+      />
+
+      <AnalyticsKpiCard
+        label="Orders"
+        infotipLabel="About the Orders figures"
+        definitions={[
+          {
+            term: 'Orders',
+            text: 'Every non-cancelled order placed during the selected period, across every connected channel.',
+          },
+          {
+            term: 'Avg. daily orders',
+            text: 'Orders divided by the number of days in the selected range.',
+          },
+        ]}
+        metric="Placed orders"
+        value={numberFormat.format(totalOrders)}
+        trend={{
+          values: orderTrend,
+          tone: trendTone(orderTrend),
+          ariaLabel: `Order count trend, ${trendRangeLabel}`,
+        }}
+        qualifiers={[{ label: 'Avg. daily', value: ratioFormat.format(avgDaily) }]}
+        delta={ordersDelta}
+        deltaGapReason={deltaGapReason}
+      />
+
+      <AnalyticsKpiCard
+        label="Order value"
+        infotipLabel="About the Order value figures"
+        definitions={[
+          {
+            term: 'Average order value (AOV)',
+            text: 'Net sales divided by the number of FX-stamped, net-eligible orders it was computed from — not by every placed order.',
+            caveat: stampedGapVisible ? STAMPED_GAP : undefined,
+          },
+          {
+            term: 'Median order value',
+            text: 'The middle net-sales value of every FX-stamped, net-eligible order in the range — less skewed by a handful of very large or very small orders than the average.',
+          },
+        ]}
+        metric={
+          stampedGapVisible ? (
+            <>
+              Average <GapMark title={STAMPED_GAP} />
+            </>
+          ) : (
+            'Average'
+          )
+        }
+        value={formatAmount(headline.netAverageOrderValue, currency)}
+        qualifiers={[{ label: 'Median', value: formatAmount(headline.netMedianOrderValue, currency) }]}
+        delta={orderValueDelta}
+        deltaGapReason={orderValueDeltaGapReason}
+      />
+
+      <AnalyticsKpiCard
+        label="Units"
+        infotipLabel="About the Units figures"
+        definitions={[
+          { term: 'Units sold', text: 'Total item quantity across every non-cancelled order line in the selected period.' },
+          { term: 'Units per order', text: 'Units sold divided by placed orders.' },
+        ]}
+        metric="Units sold"
+        value={numberFormat.format(headline.unitsSold)}
+        qualifiers={[{ label: 'Per order', value: ratioFormat.format(unitsRatio) }]}
+        delta={unitsDelta}
+        deltaGapReason={deltaGapReason}
+      />
+
+      <AnalyticsKpiCard
+        label="Cancellations"
+        infotipLabel="About the Cancellations figures"
+        definitions={[
+          {
+            term: 'Cancelled orders',
+            text: 'Orders placed in the selected period that were subsequently cancelled — excluded from every revenue figure on this page.',
+          },
+          {
+            term: 'Cancellation rate',
+            text: 'Cancelled orders divided by all orders placed in the period, including the cancelled ones themselves.',
+          },
+        ]}
+        metric="Cancellation rate"
+        value={pctFormat.format(cancelRate)}
+        qualifiers={[
+          { label: 'Cancelled orders', value: numberFormat.format(headline.cancelledCount) },
+          { label: 'Cancelled value', value: formatAmount(headline.cancelledValue, currency) },
+        ]}
+        delta={cancelRateDelta}
+        deltaGapReason={deltaGapReason}
+      />
+
+      <AnalyticsKpiCard
+        label="Returns & refunds"
+        infotipLabel="About Returns & refunds"
+        definitions={[
+          {
+            term: 'Returns & refunds',
+            text: 'No return or refund entity exists anywhere in the orders domain yet — this card has nothing to report.',
+            caveat: RETURN_RATE_GAP,
+          },
+        ]}
+        planned
+        metric={
+          <>
+            Return rate <GapMark title={RETURN_RATE_GAP} />
+          </>
+        }
+        value={<EmptyValue label="No return/refund entity exists yet" />}
+      />
+    </section>
+  );
+}

@@ -103,6 +103,13 @@ export const JobTypeValues = [
 
   // Fiscalization (core-owned policy; executed by worker — #2156, ADR-041 decision 7)
   'fiscalization.register',
+
+  // Tax-rate backfill sweep for pre-#2245 order_line_items rows (#2440).
+  // Connection-scoped for the same reason `marketplace.order.fxStampSweep` is:
+  // the fact is connection-agnostic, but `SyncJob.connectionId` is
+  // non-nullable, so the per-`OrderSource`-connection fan-out is also the
+  // natural partition of the rate-less frontier.
+  'orders.taxRate.backfill',
 ] as const;
 
 /**

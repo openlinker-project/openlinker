@@ -12,6 +12,8 @@ import type { OrderRecordRepositoryPort } from '../../domain/ports/order-record-
 import { OrderRecord } from '../../domain/entities/order-record.entity';
 import { OrderRecordNotFoundException } from '../../domain/exceptions/order-record-not-found.exception';
 import type { IOrderFxStampService } from '../interfaces/order-fx-stamp.service.interface';
+import type { OrderLineItemRepositoryPort } from '../../domain/ports/order-line-item-repository.port';
+import type { IReportingCurrencySettingsService } from '@openlinker/core/currency';
 
 const ORDER_ID = 'ol_order_packed_001';
 
@@ -27,6 +29,10 @@ function buildRecord(packedAt: Date | null, packedByUserId: string | null): Orde
     new Date('2026-04-01T00:00:00Z'),
     new Date('2026-04-01T00:00:00Z'),
     [],
+    null,
+    null,
+    null,
+    null,
     null,
     null,
     null,
@@ -60,9 +66,17 @@ describe('OrderRecordService — packed fact (#2287)', () => {
       stampOnIngestion: jest.fn(),
     } as unknown as IOrderFxStampService;
 
+    // #1985/#2124 collaborators: this suite exercises only the packed-fact
+    // path, which touches neither, so inert stubs keep the constructor honest
+    // without implying they participate.
+    const lineItemRepository = {} as unknown as OrderLineItemRepositoryPort;
+    const reportingCurrencySettings = {} as unknown as IReportingCurrencySettingsService;
+
     service = new OrderRecordService(
       repository as unknown as OrderRecordRepositoryPort,
-      fxStamp
+      fxStamp,
+      lineItemRepository,
+      reportingCurrencySettings
     );
   });
 

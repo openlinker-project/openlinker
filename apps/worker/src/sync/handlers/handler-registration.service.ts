@@ -18,6 +18,7 @@ import { MarketplaceReturnsPollHandler } from './marketplace-returns-poll.handle
 import { MarketplaceReturnSyncHandler } from './marketplace-return-sync.handler';
 import { MarketplaceReturnsStatusSyncHandler } from './marketplace-returns-status-sync.handler';
 import { ReturnsOrphanReconcileHandler } from './returns-orphan-reconcile.handler';
+import { OrdersTaxRateBackfillHandler } from './orders-tax-rate-backfill.handler';
 import { MarketplaceOfferQuantityUpdateHandler } from './marketplace-offer-quantity-update.handler';
 import { MarketplaceOfferFieldUpdateHandler } from './marketplace-offer-field-update.handler';
 import { MarketplaceOfferCreateHandler } from './marketplace-offer-create.handler';
@@ -64,6 +65,7 @@ export class HandlerRegistrationService implements OnModuleInit {
     private readonly marketplaceReturnSyncHandler: MarketplaceReturnSyncHandler,
     private readonly marketplaceReturnsStatusSyncHandler: MarketplaceReturnsStatusSyncHandler,
     private readonly returnsOrphanReconcileHandler: ReturnsOrphanReconcileHandler,
+    private readonly ordersTaxRateBackfillHandler: OrdersTaxRateBackfillHandler,
     private readonly marketplaceOfferQuantityUpdateHandler: MarketplaceOfferQuantityUpdateHandler,
     private readonly marketplaceOfferFieldUpdateHandler: MarketplaceOfferFieldUpdateHandler,
     private readonly marketplaceOfferCreateHandler: MarketplaceOfferCreateHandler,
@@ -100,9 +102,11 @@ export class HandlerRegistrationService implements OnModuleInit {
     // Every registration declares its ADR-050 concurrency lane (#2278). The
     // lane is chosen by cost-of-starvation, never by I/O shape or bounded
     // context — the authoritative table is ADR-050 decision 1, now 13 realtime /
-    // 14 bulk / 5 fiscal / 7 fan-out: `fiscalization.register` joined `fiscal`
+    // 16 bulk / 5 fiscal / 7 fan-out: `fiscalization.register` joined `fiscal`
     // post-ADR (#2156), `inventory.provenance.backfill` joined `bulk` (#2317),
-    // and the three returns types joined realtime/bulk/fan-out (#2330). The
+    // the three returns types joined realtime/bulk/fan-out (#2330),
+    // `returns.orphan.reconcile` joined `bulk` (#2332), and
+    // `orders.taxRate.backfill` joined `bulk` (#2440). The
     // tripwire in `handler-registration.service.spec.ts` is the authority on
     // these counts — this comment had drifted from it before #2330.
 
@@ -344,6 +348,15 @@ export class HandlerRegistrationService implements OnModuleInit {
       'invoicing.paymentStatus.refreshByExternalId',
       this.paymentStatusRefreshHandler,
       'realtime'
+    );
+
+    // Tax-rate backfill sweep for pre-#2245 order_line_items rows (#2440).
+    // 'bulk' lane: large-batch, resumable, non-realtime — the same class of
+    // work the master product/inventory syncAll sweeps occupy.
+    this.handlerRegistry.register(
+      'orders.taxRate.backfill',
+      this.ordersTaxRateBackfillHandler,
+      'bulk'
     );
 
     // Boot gate (ADR-050 D1 / ADR-051 D6): every JobTypeValues member must be

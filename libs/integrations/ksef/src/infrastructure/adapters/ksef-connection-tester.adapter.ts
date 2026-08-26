@@ -38,6 +38,7 @@ import { createKsefHttpClient } from '../http/ksef-http-client.factory';
 import { KsefApiException } from '../../domain/exceptions/ksef-api.exception';
 import { KsefAuthenticationException } from '../../domain/exceptions/ksef-authentication.exception';
 import { KsefConfigException } from '../../domain/exceptions/ksef-config.exception';
+import { KsefSessionCryptoException } from '../../domain/exceptions/ksef-session-crypto.exception';
 import { KsefEnvironmentValues } from '../../domain/types/ksef-connection.types';
 import type { KsefConnectionConfig, KsefCredentials } from '../../domain/types/ksef-connection.types';
 
@@ -125,7 +126,8 @@ export class KsefConnectionTesterAdapter implements ConnectionTesterPort {
     if (
       error instanceof KsefAuthenticationException ||
       error instanceof KsefApiException ||
-      error instanceof KsefConfigException
+      error instanceof KsefConfigException ||
+      error instanceof KsefSessionCryptoException
     ) {
       const status =
         error instanceof KsefAuthenticationException || error instanceof KsefApiException

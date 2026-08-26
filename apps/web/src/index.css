@@ -1686,6 +1686,10 @@ textarea,
   font-weight: 500;
   line-height: 1;
   cursor: pointer;
+  /* `.chip` is also used on an `<a>`/`<Link>` (e.g. the top-products
+     "Publish" action) — the global `a { text-decoration: underline }` must
+     not leak through a pill styled to look like a button. */
+  text-decoration: none;
   transition:
     background var(--duration-fast) var(--ease-out),
     border-color var(--duration-fast) var(--ease-out),
@@ -1823,6 +1827,12 @@ textarea,
   border-color: var(--status-warning-border);
   background: var(--status-warning-soft);
   box-shadow: inset 3px 0 0 var(--status-warning);
+}
+
+.alert--conflict {
+  border-color: var(--status-conflict-border);
+  background: var(--status-conflict-soft);
+  box-shadow: inset 3px 0 0 var(--status-conflict);
 }
 
 .alert--error {
@@ -2374,6 +2384,18 @@ textarea,
   color: var(--status-review-fg);
 }
 
+/*
+ * The conflict family has no `-fg` member, so text reads from `-strong`.
+ * The ramp base gives roughly 2.5:1 here and fails contrast; the token
+ * checker is one-directional and would not catch a missing `-fg`, it would
+ * simply resolve to nothing.
+ */
+.status-badge--conflict {
+  border-color: var(--status-conflict-border);
+  background: var(--status-conflict-soft);
+  color: var(--status-conflict-strong);
+}
+
 .status-badge--info {
   border-color: var(--status-info-border);
   background: var(--status-info-soft);
@@ -2510,12 +2532,6 @@ html[data-theme='dark'] .conn-dot--generic {
   margin-left: 4px;
   opacity: 0.55;
   font-weight: 600;
-}
-
-.status-badge.delivery-rider-chip--not-connected {
-  border-color: var(--status-conflict-border);
-  background: var(--status-conflict-soft);
-  color: var(--status-conflict-strong);
 }
 
 .delivery-rider-banner {
@@ -4690,6 +4706,213 @@ a.kpi-card:focus-visible {
   color: var(--status-success-strong);
 }
 
+/* ── Analytics KPI card extras (#1990) ───────────────────────────────
+ * The richer anatomy the #1990 design mockup calls for, layered on top of
+ * the base `.kpi-card` chrome above: a headline+metric+delta stack, one or
+ * more qualifier rows pinned to the card floor by a hairline, a dashed
+ * "planned" treatment for a card with no real figure at all, and a
+ * click-to-open (ⓘ) definitions popover on the label row.
+ */
+/* `.status-strip.status-strip--analytics` (not bare `.status-strip--analytics`): the
+ * Phase 6 dashboard-triage `.status-strip` breakpoints below share this rule's
+ * specificity (0,1,0) and sit later in the file, so without the compound
+ * selector their `repeat(4, …)` at ≥1024px silently won, packing 6 KPI cards
+ * as 4-then-2 instead of the mockup's 3-per-row. */
+.status-strip.status-strip--analytics {
+  grid-template-columns: minmax(0, 1fr);
+}
+@media (min-width: 768px) {
+  .status-strip.status-strip--analytics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (min-width: 1024px) {
+  .status-strip.status-strip--analytics {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+.status-strip--analytics .kpi-card {
+  min-height: 9.5rem;
+}
+
+.kpi-card__headline {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.kpi-card__metric {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  line-height: 1.3;
+  color: var(--text-secondary);
+}
+
+.kpi-card__delta {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 3px;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--text-muted);
+}
+
+.kpi-card__delta-glyph {
+  font-size: 0.8125rem;
+  line-height: 1;
+}
+
+.kpi-card__delta-basis {
+  color: var(--text-muted);
+}
+
+/* Period-over-period delta value — same success/error/neutral tone
+   vocabulary as `.sparkline--*` above, since `deltaTone()` reuses
+   `TrendTone` rather than a parallel one. */
+.kpi-card__delta-value--success {
+  color: var(--status-success);
+}
+
+.kpi-card__delta-value--error {
+  color: var(--status-error);
+}
+
+.kpi-card__delta-value--neutral {
+  color: var(--text-muted);
+}
+
+.kpi-card__qualifiers {
+  display: flex;
+  flex-direction: column;
+  margin-top: auto;
+}
+
+.kpi-card__qualifier {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.kpi-card__qualifier + .kpi-card__qualifier {
+  margin-top: var(--space-3);
+}
+
+.kpi-card__qualifier-label {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  min-width: 0;
+}
+
+.kpi-card__qualifier-value {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.status-strip--analytics .kpi-card--planned {
+  border-style: dashed;
+  border-color: var(--border-strong);
+  background: var(--bg-shell);
+}
+.kpi-card--planned .kpi-card__value,
+.kpi-card--planned .kpi-card__qualifier-value {
+  color: var(--text-secondary);
+}
+.kpi-card--planned-half .kpi-card__value {
+  color: var(--text-muted);
+}
+
+.kpi-card__planned-tag {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  padding: 1px var(--space-2);
+  border-radius: var(--radius-sm);
+  border: 1px dashed var(--border-strong);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.gap-mark {
+  color: var(--accent-primary-hover);
+  font-weight: 700;
+  cursor: help;
+  font-family: var(--font-mono);
+}
+
+.section-infotip {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px;
+  margin-left: 2px;
+  background: none;
+  border: 0;
+  cursor: help;
+  font-size: 0.8125rem;
+  line-height: 1;
+  color: var(--text-muted);
+}
+.section-infotip:hover {
+  color: var(--text-secondary);
+}
+.section-infotip:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+  border-radius: var(--radius-xs);
+}
+
+.infotip-popover {
+  max-width: min(22rem, 70vw);
+  font-family: var(--font-sans);
+  font-size: 0.75rem;
+  line-height: 1.5;
+  text-transform: none;
+  letter-spacing: var(--tracking-normal);
+}
+.infotip-def {
+  display: block;
+}
+.infotip-def + .infotip-def {
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border-subtle);
+}
+.infotip-def__term {
+  display: block;
+  margin-bottom: 4px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.infotip-def__formula {
+  display: block;
+  margin-top: 6px;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  color: var(--text-primary);
+  background: var(--bg-shell);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 3px 6px;
+  width: max-content;
+  max-width: 100%;
+}
+.infotip-def__caveat {
+  display: block;
+  margin-top: 6px;
+  color: var(--text-muted);
+}
+
 .sparkline__line {
   stroke: currentColor;
   stroke-width: 1.5;
@@ -4717,6 +4940,17 @@ a.kpi-card:focus-visible {
 
 .sparkline--error {
   color: var(--status-error);
+}
+
+/* ── DataTable footnote (#1990 / #2098 follow-up) ──
+   A plain, low-emphasis line under a DataTable disclosing something the rows
+   above deliberately don't show — e.g. the by-channel table's count of
+   orders excluded because they have no reporting-currency FX stamp yet. No
+   box, no icon — reads as fine print, not a callout. */
+.data-table__footnote {
+  margin: var(--space-2) 0 0;
+  font-size: 0.8125rem;
+  color: var(--text-muted);
 }
 
 /* KeyValueList ------------------------------------------------------ */
@@ -8200,6 +8434,10 @@ a.kpi-card:focus-visible {
 
 .order-activity__dot--warning {
   background: var(--status-warning);
+}
+
+.order-activity__dot--conflict {
+  background: var(--status-conflict);
 }
 
 .order-activity__body {
@@ -12068,6 +12306,15 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
 }
 .bulk-editor__banner--error { border-color: var(--status-error-border); background: var(--status-error-soft); color: var(--status-error-fg); }
 .bulk-editor__banner b { color: var(--text-primary); }
+
+/* Variant blocker chips (#2240) - cause + consequence above the banner, so
+   the panel states what is wrong before it states what to do about it. */
+.bulk-editor__blocker-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
 
 .bulk-editor__img-strip { display: flex; gap: var(--space-2); flex-wrap: wrap; align-items: center; }
 .bulk-editor__img-thumb {
@@ -18541,6 +18788,194 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   }
 }
 
+/* ── Analytics date-range toolbar (#1986) ──
+   Mirrors .orders-toolbar__field / __label (line ~9097) — same inline
+   mono-caps label + native date input shape, wrap allowed on narrow
+   viewports so fields land on their own line instead of overflowing. */
+.analytics-toolbar .toolbar__group {
+  flex-wrap: wrap;
+}
+.analytics-toolbar__field {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.analytics-toolbar__label {
+  font-size: 0.6875rem;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+/* The † gap marker on the "Order date" chip — a real <button> opening a
+   Popover on click, not a Tooltip, so it's reachable on touch devices
+   (Radix Tooltip ignores pointerType === 'touch'). */
+.analytics-gap-mark {
+  color: var(--accent-primary-hover);
+  font-weight: 700;
+  font-family: var(--font-mono);
+  cursor: pointer;
+  border-radius: var(--radius-xs);
+  border: none;
+  background: none;
+  padding: 0;
+}
+
+.analytics-gap-mark:focus-visible {
+  box-shadow: var(--shadow-focus);
+}
+
+/* ── Analytics trust header (#1986) ──
+   Opens on click, never hover-only — Radix Tooltip ignores
+   `pointerType === 'touch'`, which would make a hover-only affordance
+   unreachable on mobile. */
+.analytics-info-popover-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: var(--radius-pill);
+}
+
+.analytics-info-popover-trigger:hover {
+  color: var(--accent-primary);
+}
+
+.analytics-info-popover-trigger:focus-visible {
+  box-shadow: var(--shadow-focus);
+}
+
+.trust-header {
+  display: flex;
+  flex-direction: column;
+}
+
+.trust-header__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: var(--space-2) var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.trust-header__title-group {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.trust-header__row:first-child {
+  border-top: 0;
+}
+
+.trust-header__name {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-weight: 600;
+  font-size: 0.8125rem;
+}
+
+.trust-header__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-pill);
+  flex-shrink: 0;
+  background: var(--text-muted);
+}
+
+.trust-header__dot[data-channel='allegro'] { background: var(--channel-allegro); }
+.trust-header__dot[data-channel='prestashop'] { background: var(--channel-prestashop); }
+.trust-header__dot[data-channel='erli'] { background: var(--channel-erli); }
+.trust-header__dot[data-channel='woocommerce'] { background: var(--channel-woocommerce); }
+.trust-header__dot[data-channel='amazon'] { background: var(--channel-amazon); }
+.trust-header__dot[data-channel='shopify'] { background: var(--channel-shopify); }
+
+.trust-header__facts {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+@media (max-width: 767.98px) {
+  .trust-header__row {
+    grid-template-columns: 1fr;
+    row-gap: var(--space-1);
+  }
+
+  .trust-header__facts {
+    justify-content: flex-start;
+    white-space: normal;
+  }
+}
+
+/* ── Analytics needs-attention section (#1989) ──
+   Either the all-clear line or the open rows, never both
+   (docs/plans/mockups/analytics-ledger-2003.html, frame 02). */
+.attention-list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.attention-list__item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.attention-list__item:first-child {
+  border-top: 0;
+}
+
+.attention-list__item--resolved {
+  color: var(--text-muted);
+}
+
+.attention-list__body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  gap: 2px;
+}
+
+.attention-list__headline {
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.attention-list__sub {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+@media (max-width: 767.98px) {
+  .attention-list__item {
+    flex-wrap: wrap;
+  }
+}
+
 /* ── Rich text editor + view (ADR-046 / #2199) ──────────────────────────────
    Tiptap ships no stylesheet, so every pixel here is ours. The first three
    declarations on `.rich-text__surface .ProseMirror` are the functional half of
@@ -18732,10 +19167,6 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
 .bulk-review__desc > summary {
   cursor: pointer;
   font-family: var(--font-mono);
-  font-size: 0.6875rem;
-  letter-spacing: var(--tracking-caps);
-  text-transform: uppercase;
-  color: var(--text-muted);
 }
 .bulk-review__desc > summary:hover { color: var(--text-secondary); }
 .bulk-review__desc[open] > summary { margin-bottom: var(--space-1); }
@@ -18748,6 +19179,71 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   font-size: 0.8125rem;
   max-height: 12rem;
   overflow-y: auto;
+}
+
+/* ── Top-products "Not listed" cell (#1991) ──────────────────────────
+   Label and Publish action share one slot: "Not listed" reads at rest,
+   and swaps for the Publish action on hover/focus so the column stays
+   calm prose until an operator actually reaches for it. The action is
+   `position: absolute; right: 0` so it never claims layout width — an
+   `opacity: 0` flex sibling would still occupy space and misalign the
+   label from the column's right edge. A light warning-yellow glow marks
+   the action as reachable the instant it appears (not only on its own
+   hover), reusing the warning hue rather than an error one since nothing
+   here is wrong. Touch has no hover, so `@media (hover: none)` keeps
+   both stacked and permanently visible instead of hiding the action
+   behind a gesture that pointer has no way to trigger. */
+.cell-not-listed {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  min-height: 1.75rem;
+  min-width: 5.5rem;
+}
+
+.cell-not-listed__label {
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+  transition: opacity 120ms ease;
+}
+
+.cell-not-listed__chip {
+  position: absolute;
+  right: 0;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease, box-shadow 120ms ease;
+}
+
+.cell-not-listed:hover .cell-not-listed__label,
+.cell-not-listed:focus-within .cell-not-listed__label {
+  opacity: 0;
+}
+
+.cell-not-listed:hover .cell-not-listed__chip,
+.cell-not-listed:focus-within .cell-not-listed__chip {
+  opacity: 1;
+  pointer-events: auto;
+  box-shadow: 0 0 0 3px var(--status-warning-soft), 0 0 10px 1px var(--status-warning-border);
+}
+
+@media (hover: none) {
+  .cell-not-listed {
+    flex-direction: column;
+    align-items: flex-end;
+    gap: var(--space-1);
+    min-height: 0;
+  }
+
+  .cell-not-listed__label { opacity: 1; }
+
+  .cell-not-listed__chip {
+    position: static;
+    opacity: 1;
+    pointer-events: auto;
+    box-shadow: none;
+  }
 }
 
 /* ── Sales-document rule engine (#2170) ── */

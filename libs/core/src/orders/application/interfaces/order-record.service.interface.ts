@@ -21,6 +21,11 @@ import type {
 import type { FulfillmentRollupState } from '../../domain/types/order-fulfillment.types';
 import type { SalesDocumentBlock } from '@openlinker/core/sales-documents';
 import type { OrderAmendmentChange } from '../../domain/order-amendment-diff';
+import type {
+  SalesAnalyticsFilters,
+  SalesAndChannelAnalytics,
+} from '../../domain/types/order-sales-analytics.types';
+import type { TopProductFilters, TopProductsResult } from '../../domain/types/top-products.types';
 
 export interface IOrderRecordService {
   /**
@@ -113,6 +118,21 @@ export interface IOrderRecordService {
    * `OrderRecordRepositoryPort.findByIds`.
    */
   findByIds(internalOrderIds: string[]): Promise<OrderRecord[]>;
+
+  /**
+   * Batch earliest-order-date lookup by source connection (#2083). The
+   * cross-context surface `analytics-trust`'s coverage-window read uses —
+   * repository ports are forbidden across context boundaries per
+   * architecture-overview.md § "Cross-context dependencies in core", so
+   * callers go through this service method instead of
+   * `OrderRecordRepositoryPort.findEarliestOrderDateByConnection` directly.
+   * A connection absent from the returned Map has zero ingested orders.
+   * Deliberately includes every `recordStatus` (including `source_deleted` /
+   * `awaiting_mapping` / `failed` / cancelled) — a coverage/freshness fact
+   * about the connection's oldest ingested order, not a health or revenue
+   * figure, so no administrative-bucket exclusion applies.
+   */
+  getEarliestOrderDateByConnection(connectionIds: string[]): Promise<Map<string, Date>>;
 
   /**
    * Push a per-order fulfillment rollup (#1108) onto the order record. The
@@ -226,4 +246,32 @@ export interface IOrderRecordService {
     observedAt: Date,
     changes: OrderAmendmentChange[]
   ): Promise<void>;
+
+  /**
+   * Headline + per-channel sales analytics for a date range (#1987) — the
+   * `/analytics` KPI-strip / by-channel-table read. The cross-context surface
+   * `apps/api`'s `SalesAnalyticsController` uses — repository ports are
+   * forbidden across context boundaries per architecture-overview.md §
+   * "Cross-context dependencies in core", so callers go through this service
+   * method instead of `OrderRecordRepositoryPort.getDailyOrderAggregates` /
+   * `getMedianOrderValue` or `OrderLineItemRepositoryPort.
+   * getUnitsSoldByConnection` directly. Composes those three reads with the
+   * existing {@link getEarliestOrderDateByConnection} (#2083) for the
+   * per-channel coverage signal. Currency-mixing detection and gross/net
+   * tax-treatment normalization are deliberately out of scope — see
+   * #2049/ADR-040 and a separate tax-normalization effort.
+   */
+  getSalesAndChannelAnalytics(filters: SalesAnalyticsFilters): Promise<SalesAndChannelAnalytics>;
+
+  /**
+   * Products ranked by revenue or units for a date range, each carrying its
+   * own inline per-channel breakdown (#1988) — the read behind
+   * `/analytics/top-products`. Same currency-correctness rule as {@link
+   * getSalesAndChannelAnalytics}: a product's ranked `revenue` sums only
+   * FX-stamped orders; unstamped orders' contribution is surfaced separately
+   * via `unconvertedRevenue`/`unconvertedOrderCount`, never silently summed
+   * in or dropped. Product-level grouping only — variant-level ranking is a
+   * separate, not-yet-scoped read (spec row C3).
+   */
+  getTopProducts(filters: TopProductFilters): Promise<TopProductsResult>;
 }

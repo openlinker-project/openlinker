@@ -10,12 +10,14 @@
  */
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import type { SelectQueryBuilder } from 'typeorm';
+import type { DataSource, EntityManager, SelectQueryBuilder } from 'typeorm';
 import { In, IsNull, LessThan, MoreThanOrEqual, Not, Repository } from 'typeorm';
 import type { OrderSyncStatusJson, SyncAttemptJson } from '../entities/order-record.orm-entity';
 import { OrderRecordOrmEntity } from '../entities/order-record.orm-entity';
+import { OrderLineItemOrmEntity } from '../entities/order-line-item.orm-entity';
 import type { OrderRecordRepositoryPort } from '../../../domain/ports/order-record-repository.port';
 import { OrderRecord } from '../../../domain/entities/order-record.entity';
+import type { OrderLineItemDraft } from '../../../domain/order-analytics-projection';
 import type { OrderSyncStatus, SyncAttempt } from '../../../domain/types/order-sync.types';
 import { SYNC_ATTEMPTS_PER_DESTINATION_CAP } from '../../../domain/types/order-sync.types';
 import { OrderRecordNotFoundException } from '../../../domain/exceptions/order-record-not-found.exception';
@@ -37,15 +39,25 @@ import type { OrderLifecyclePhase } from '@openlinker/core/order-lifecycle';
 import { OrderLifecyclePhaseValues } from '@openlinker/core/order-lifecycle';
 import { SLA_AT_RISK_WINDOW_MS } from '../../../domain/types/order-sla.types';
 import type { FulfillmentRollupState } from '../../../domain/types/order-fulfillment.types';
+import {
+  netSalesLineNetAmountSql,
+  netSalesOrderNetEligibleSql,
+} from '../../../domain/types/net-sales-tax-rate.types';
 import type { SalesDocumentBlock } from '@openlinker/core/sales-documents';
 import {
   SalesDocumentAttentionReasonValues,
   isSalesDocumentGateBlockReason,
   isSalesDocumentUnresolvedReason,
+  isTaxRateEra,
 } from '@openlinker/core/sales-documents';
+import type { PriceTaxTreatment } from '../../../domain/types/order.types';
 import type { OrderFxIntent, OrderFxStamp } from '../../../domain/types/order-fx.types';
 import type { StampedReportingCurrencyCount } from '../../../domain/types/order-fx-read.types';
 import type { OrderAmendmentChange } from '../../../domain/order-amendment-diff';
+import type {
+  DailyOrderAggregateRow,
+  SalesAnalyticsFilters,
+} from '../../../domain/types/order-sales-analytics.types';
 
 @Injectable()
 export class OrderRecordRepository implements OrderRecordRepositoryPort {
@@ -53,6 +65,16 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     @InjectRepository(OrderRecordOrmEntity)
     private readonly repository: Repository<OrderRecordOrmEntity>
   ) {}
+
+  /**
+   * DataSource from the injected repository's connection — the established
+   * workaround for injecting DataSource in core library modules (mirrors
+   * `SyncJobRepository.dataSource`), used so `upsertWithLineItems` can run
+   * both writes in one transaction without a second NestJS-injected repository.
+   */
+  private get dataSource(): DataSource {
+    return this.repository.manager.connection;
+  }
 
   async findById(internalOrderId: string): Promise<OrderRecord | null> {
     const entity = await this.repository.findOne({
@@ -78,6 +100,29 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       where: { internalOrderId: In(internalOrderIds) },
     });
     return entities.map((e) => this.toDomain(e));
+  }
+
+  /**
+   * Batch earliest-order-date lookup by source connection (#2083). One
+   * `GROUP BY` aggregate query, not a per-connection fan-out — mirrors
+   * `findByIds`'s "absent id = no match" convention for connections with
+   * zero rows. Deliberately unfiltered by `recordStatus` — see the port's
+   * JSDoc for why no `NOT_MAPPING_OR_DELETED`-style gate applies here.
+   */
+  async findEarliestOrderDateByConnection(connectionIds: string[]): Promise<Map<string, Date>> {
+    if (connectionIds.length === 0) {
+      return new Map();
+    }
+
+    const rows = await this.repository
+      .createQueryBuilder('rec')
+      .select('rec.sourceConnectionId', 'source_connection_id')
+      .addSelect(`MIN(COALESCE(rec."placedAt", rec."createdAt"))`, 'earliest_at')
+      .where('rec.sourceConnectionId IN (:...connectionIds)', { connectionIds })
+      .groupBy('rec.sourceConnectionId')
+      .getRawMany<{ source_connection_id: string; earliest_at: Date }>();
+
+    return new Map(rows.map((row) => [row.source_connection_id, row.earliest_at]));
   }
 
   async findMany(
@@ -186,6 +231,17 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       this.applyLifecyclePhaseFilter(qb, filters.lifecyclePhase);
     }
 
+    if (filters.taxRateConflict !== undefined) {
+      // #2254 — its own axis, ANDed with the others exactly like
+      // `salesDocumentBlocked`: "issued AND the rates disagree" is the shape
+      // this filter exists to find, and it is invisible in every other view.
+      qb.andWhere(
+        filters.taxRateConflict
+          ? OrderRecordRepository.HAS_TAX_RATE_CONFLICT
+          : `NOT (${OrderRecordRepository.HAS_TAX_RATE_CONFLICT})`,
+      );
+    }
+
     this.applySort(qb, filters.sort, filters.dir);
 
     const [entities, total] = await qb.getManyAndCount();
@@ -240,6 +296,21 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       .addSelect(
         `COUNT(*) FILTER (WHERE ${OrderRecordRepository.IS_SALES_DOCUMENT_BLOCKED})`,
         'sales_document_blocked'
+      )
+      // #2254 — its own count, so it is never inside `sales_document_blocked`.
+      // The two populations overlap freely: an order can be both blocked and in
+      // conflict, and printing one number twice is what the separate field
+      // avoids.
+      .addSelect(
+        `COUNT(*) FILTER (WHERE ${OrderRecordRepository.HAS_TAX_RATE_CONFLICT})`,
+        'tax_rate_conflict'
+      )
+      // #2254 — the oldest still-held order, so the chip label can carry an age
+      // rather than a bare count. MIN over the held population only; NULL when
+      // nothing is held, which the caller renders as no age clause at all.
+      .addSelect(
+        `MIN(rec."salesDocumentBlockedAt") FILTER (WHERE ${OrderRecordRepository.IS_SALES_DOCUMENT_BLOCKED})`,
+        'sales_document_blocked_oldest_at'
       );
 
     OrderRecordRepository.applySummaryScope(qb, filters);
@@ -252,6 +323,8 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       synced: string;
       awaiting_dispatch: string;
       sales_document_blocked: string;
+      tax_rate_conflict: string;
+      sales_document_blocked_oldest_at: Date | null;
     }>();
 
     return {
@@ -262,6 +335,8 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       synced: Number(raw?.synced ?? 0),
       awaitingDispatch: Number(raw?.awaiting_dispatch ?? 0),
       salesDocumentBlocked: Number(raw?.sales_document_blocked ?? 0),
+      taxRateConflict: Number(raw?.tax_rate_conflict ?? 0),
+      salesDocumentBlockedOldestAt: raw?.sales_document_blocked_oldest_at ?? null,
     };
   }
 
@@ -302,6 +377,263 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       mixedCurrency: Number(raw?.currency_count ?? 0) > 1,
       oldestFailedAt: raw?.oldest_failed_at ?? null,
     };
+  }
+
+  /**
+   * Daily, per-connection revenue/order-count aggregates (#1987). One row per
+   * `(day, sourceConnectionId)` with at least one matching order; the
+   * cancelled/non-cancelled split uses `FILTER (WHERE ...)`, mirroring
+   * `getFailedSyncValueSummary`'s `stuckPredicate` idiom.
+   *
+   * Currency correctness (#2049/ADR-040 follow-up): `order_count`/`revenue`
+   * are further restricted to `reportingCurrency IS NOT NULL` — one
+   * comparable currency, `SUM(reportingTotalAmount)` — with the complementary
+   * unstamped slice reported separately as `unconverted_count`/
+   * `unconverted_value` (native `totalAmount`, informational only) rather
+   * than silently mixed in or silently dropped. `cancelled_value` is left on
+   * native `totalAmount`, unchanged — a secondary figure, not revisited here.
+   *
+   * `unconverted_currency` (#1987 scope, not FX-epic scope — `order_records.
+   * currency` is the pre-existing native-currency column from #1985, untouched
+   * by #2049) labels the `unconverted_value` figure with the one native
+   * currency shared by every unconverted, non-cancelled order this
+   * day/connection, or `NULL` when that set already mixes currencies. A day
+   * with zero unconverted orders also reports `NULL` here (no currency to
+   * report), which the aggregation layer must not confuse with "mixed" — see
+   * `resolveUniformUnconvertedCurrency`.
+   */
+  async getDailyOrderAggregates(
+    filters: SalesAnalyticsFilters,
+    currentReportingCurrency: string
+  ): Promise<DailyOrderAggregateRow[]> {
+    const notCancelled = 'rec."cancelledAt" IS NULL';
+    const isCancelled = 'rec."cancelledAt" IS NOT NULL';
+    // Current-era stamp only (#1987 review notes) — `reportingCurrency` never
+    // moves once set (ADR-040), so `IS NOT NULL` alone would sum a prior era's
+    // figures into `revenue` after an operator changes the reporting setting.
+    // A prior-era stamp therefore reads as unconverted, same as never-stamped.
+    const isStamped = 'rec."reportingCurrency" = :currentReportingCurrency';
+    const isUnconverted = `(rec."reportingCurrency" IS NULL OR rec."reportingCurrency" != :currentReportingCurrency)`;
+    const stampedAndNotCancelled = `${notCancelled} AND ${isStamped}`;
+    const unconvertedAndNotCancelled = `${notCancelled} AND ${isUnconverted}`;
+
+    // Net-sales (VAT-exclusive) eligibility — see `buildNetSalesOrderFragments`.
+    const { netEligible, netOrderAmount } = this.buildNetSalesOrderFragments();
+    const netAndNotCancelled = `${stampedAndNotCancelled} AND ${netEligible}`;
+    const netExcludedAndNotCancelled = `${stampedAndNotCancelled} AND NOT ${netEligible}`;
+
+    // UTC day boundary made explicit (#1987 review, IMPORTANT 2): `placedAt`
+    // is `timestamptz`, so a bare `date_trunc('day', ...)` truncates at local
+    // midnight per the Postgres session `TimeZone` GUC — on a non-UTC server
+    // every bucket would land on the wrong calendar day and silently mismatch
+    // `enumerateDayKeys`'s UTC day keys. The trailing `AT TIME ZONE 'UTC'` is
+    // required too: without it the column round-trips as a bare `timestamp`,
+    // which node-postgres parses in the Node process's own local time,
+    // reintroducing the same shift one layer up.
+    const utcDay = `date_trunc('day', rec."placedAt" AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'`;
+
+    const qb = this.repository
+      .createQueryBuilder('rec')
+      .select(utcDay, 'day')
+      .addSelect('rec.sourceConnectionId', 'source_connection_id')
+      .addSelect(`COUNT(*) FILTER (WHERE ${stampedAndNotCancelled})`, 'order_count')
+      .addSelect(
+        `COALESCE(SUM(rec."reportingTotalAmount") FILTER (WHERE ${stampedAndNotCancelled}), 0)`,
+        'revenue'
+      )
+      .addSelect(`COUNT(*) FILTER (WHERE ${unconvertedAndNotCancelled})`, 'unconverted_count')
+      .addSelect(
+        `COALESCE(SUM(rec."totalAmount") FILTER (WHERE ${unconvertedAndNotCancelled}), 0)`,
+        'unconverted_value'
+      )
+      .addSelect(
+        // The DISTINCT count alone ignores NULLs (#1987 review, suggestion
+        // 4): a bucket whose unconverted orders are {NULL, 'PLN'} counts one
+        // distinct value and would label the whole sum 'PLN' even though one
+        // order's native currency is unrecorded. The extra `COUNT(*) FILTER
+        // (... currency IS NULL) = 0` arm makes "partly unknown" a third,
+        // non-`NULL`-mislabelled outcome alongside "nothing to report" and
+        // "mixed".
+        `CASE WHEN COUNT(DISTINCT rec."currency") FILTER (WHERE ${unconvertedAndNotCancelled}) <= 1
+              AND COUNT(*) FILTER (WHERE ${unconvertedAndNotCancelled} AND rec."currency" IS NULL) = 0
+              THEN MAX(rec."currency") FILTER (WHERE ${unconvertedAndNotCancelled})
+              ELSE NULL END`,
+        'unconverted_currency'
+      )
+      .addSelect(`COUNT(*) FILTER (WHERE ${isCancelled})`, 'cancelled_count')
+      .addSelect(
+        `COALESCE(SUM(rec."totalAmount") FILTER (WHERE ${isCancelled}), 0)`,
+        'cancelled_value'
+      )
+      .addSelect(
+        // `isStamped` now filters on `reportingCurrency = :currentReportingCurrency`
+        // (#1987 review notes), so every row it matches already carries the
+        // same value — no cross-row DISTINCT guard is needed here the way
+        // `unconverted_currency` needs one. `NULL` when the bucket has no
+        // current-era stamped order (nothing to label), matching
+        // `unconverted_currency`'s "nothing to report" convention.
+        `MAX(rec."reportingCurrency") FILTER (WHERE ${isStamped})`,
+        'reporting_currency'
+      )
+      .addSelect(
+        `COALESCE(SUM((${netOrderAmount}) * (rec."reportingTotalAmount" / NULLIF(rec."totalAmount", 0))) FILTER (WHERE ${netAndNotCancelled}), 0)`,
+        'net_revenue'
+      )
+      .addSelect(`COUNT(*) FILTER (WHERE ${netExcludedAndNotCancelled})`, 'net_excluded_count')
+      .addSelect(
+        `COALESCE(SUM(rec."totalAmount") FILTER (WHERE ${netExcludedAndNotCancelled}), 0)`,
+        'net_excluded_value'
+      )
+      .groupBy(utcDay)
+      .addGroupBy('rec.sourceConnectionId');
+
+    qb.setParameter('currentReportingCurrency', currentReportingCurrency);
+    this.applySalesAnalyticsScope(qb, filters);
+
+    const rows = await qb.getRawMany<{
+      day: Date;
+      source_connection_id: string;
+      order_count: string;
+      revenue: string;
+      unconverted_count: string;
+      unconverted_value: string;
+      unconverted_currency: string | null;
+      cancelled_count: string;
+      cancelled_value: string;
+      reporting_currency: string | null;
+      net_revenue: string;
+      net_excluded_count: string;
+      net_excluded_value: string;
+    }>();
+
+    return rows.map((row) => ({
+      day: row.day,
+      sourceConnectionId: row.source_connection_id,
+      orderCount: Number(row.order_count),
+      revenue: Number(row.revenue),
+      unconvertedCount: Number(row.unconverted_count),
+      unconvertedValue: Number(row.unconverted_value),
+      unconvertedCurrency: row.unconverted_currency,
+      cancelledCount: Number(row.cancelled_count),
+      cancelledValue: Number(row.cancelled_value),
+      reportingCurrency: row.reporting_currency,
+      netRevenue: Number(row.net_revenue),
+      netExcludedCount: Number(row.net_excluded_count),
+      netExcludedValue: Number(row.net_excluded_value),
+    }));
+  }
+
+  /**
+   * Headline median order value via `PERCENTILE_CONT` (#1987) — always
+   * excludes cancelled orders, unlike {@link getDailyOrderAggregates} (which
+   * reports them in a separate column rather than omitting them). `null`
+   * when no row matches (an empty ordered-set aggregate).
+   *
+   * Currency correctness (#1987 review notes): computed over
+   * `reportingTotalAmount`, restricted to `reportingCurrency =
+   * currentReportingCurrency` — the same current-era stamped subset
+   * {@link getDailyOrderAggregates} uses for `revenue`, so the headline
+   * median stays comparable with the headline revenue/AOV figures rather
+   * than mixing a native-currency or prior-era distribution into the
+   * current one.
+   */
+  async getMedianOrderValue(
+    filters: SalesAnalyticsFilters,
+    currentReportingCurrency: string
+  ): Promise<number | null> {
+    const qb = this.repository
+      .createQueryBuilder('rec')
+      .select(`PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY rec."reportingTotalAmount")`, 'median')
+      .andWhere('rec."cancelledAt" IS NULL')
+      .andWhere('rec."reportingCurrency" = :currentReportingCurrency', { currentReportingCurrency });
+
+    this.applySalesAnalyticsScope(qb, filters);
+
+    const raw = await qb.getRawOne<{ median: string | null }>();
+    return raw?.median != null ? Number(raw.median) : null;
+  }
+
+  /**
+   * VAT-exclusive counterpart of {@link getMedianOrderValue} — same scope,
+   * additionally restricted to net-sales-eligible orders (see
+   * {@link buildNetSalesOrderFragments}). `null` on an empty ordered-set,
+   * same convention as the gross median.
+   */
+  async getNetMedianOrderValue(
+    filters: SalesAnalyticsFilters,
+    currentReportingCurrency: string
+  ): Promise<number | null> {
+    const { netEligible, netOrderAmount } = this.buildNetSalesOrderFragments();
+
+    const qb = this.repository
+      .createQueryBuilder('rec')
+      .select(
+        `PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY (${netOrderAmount}) * (rec."reportingTotalAmount" / NULLIF(rec."totalAmount", 0)))`,
+        'median'
+      )
+      .andWhere('rec."cancelledAt" IS NULL')
+      .andWhere('rec."reportingCurrency" = :currentReportingCurrency', { currentReportingCurrency })
+      .andWhere(netEligible);
+
+    this.applySalesAnalyticsScope(qb, filters);
+
+    const raw = await qb.getRawOne<{ median: string | null }>();
+    return raw?.median != null ? Number(raw.median) : null;
+  }
+
+  /**
+   * Shared SQL fragments for net-sales (VAT-exclusive) order eligibility
+   * (net-sales tax-rate epic) — an order counts toward a net figure only
+   * when it is not pre-rollout history (ADR-063 § Consequences) AND carries
+   * at least one line AND, for gross-priced orders, every line resolves to a
+   * known tax-rate fraction via {@link resolveNetSalesTaxRate}. Net-priced
+   * (`taxTreatment = 'exclusive'`) orders need no resolvable rate — unit
+   * prices are already VAT-exclusive (#2440). Expressed as correlated
+   * subqueries rather than a JOIN to `order_line_items`: joining would
+   * multiply the caller's row cardinality (one row per order-line instead of
+   * one per order), corrupting every `COUNT(*)`/`SUM` aggregate grouped at
+   * the order level.
+   */
+  private buildNetSalesOrderFragments(): { netEligible: string; netOrderAmount: string } {
+    const netEligible = netSalesOrderNetEligibleSql(
+      'rec."internalOrderId"',
+      'net_li',
+      'rec."taxTreatment"'
+    );
+    const lineNetAmount = netSalesLineNetAmountSql(
+      'net_li."unitPrice"',
+      'net_li."quantity"',
+      'net_li."taxRate"',
+      'rec."taxTreatment"'
+    );
+    const netOrderAmount = `(
+      SELECT COALESCE(SUM(${lineNetAmount}), 0)
+      FROM order_line_items net_li
+      WHERE net_li."orderRecordId" = rec."internalOrderId"
+    )`;
+    return { netEligible, netOrderAmount };
+  }
+
+  /**
+   * Shared scope predicate for the #1987 sales-analytics reads: only
+   * `'ready'` records with a resolvable `placedAt`/`totalAmount`, within
+   * `[filters.from, filters.to)`, optionally narrowed to one connection.
+   */
+  private applySalesAnalyticsScope(
+    qb: SelectQueryBuilder<OrderRecordOrmEntity>,
+    filters: SalesAnalyticsFilters
+  ): void {
+    qb.andWhere(`rec."recordStatus" = 'ready'`)
+      .andWhere('rec."placedAt" IS NOT NULL')
+      .andWhere('rec."totalAmount" IS NOT NULL')
+      .andWhere('rec."placedAt" >= :salesFrom', { salesFrom: filters.from })
+      .andWhere('rec."placedAt" < :salesTo', { salesTo: filters.to });
+
+    if (filters.sourceConnectionId) {
+      qb.andWhere('rec.sourceConnectionId = :salesConnectionId', {
+        salesConnectionId: filters.sourceConnectionId,
+      });
+    }
   }
 
   /**
@@ -354,6 +686,20 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    * the IN-list replaced it. Coalescing to the empty string (never a valid reason)
    * keeps both directions two-valued.
    */
+  /**
+   * A line where the shop and the channel named DIFFERENT rates (#2254).
+   *
+   * `taxRateChannel` is written on a line only when the two disagreed, so its
+   * mere presence is the conflict - no comparison is needed here, and none is
+   * possible in SQL against a jsonb array without a lateral join.
+   *
+   * Deliberately NOT part of the block predicate: a conflict does not stop the
+   * invoice, so folding it in would both double-count it inside
+   * `salesDocumentBlocked` and route its badge through a resolver that
+   * suppresses itself whenever an invoice exists (epic F1).
+   */
+  private static readonly HAS_TAX_RATE_CONFLICT = `jsonb_path_exists(rec."orderSnapshot", '$.items[*].taxRateChannel')`;
+
   private static readonly IS_SALES_DOCUMENT_BLOCKED = `COALESCE(rec."salesDocumentBlockReason", '') IN (${SalesDocumentAttentionReasonValues.map(
     (reason) => `'${reason}'`,
   ).join(', ')})`;
@@ -895,11 +1241,33 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     // `IS DISTINCT FROM` is NULL-safe, so this is exact for the clear case too, and
     // it keeps the `@UpdateDateColumn` bump off the overwhelmingly common
     // `null -> null` path without giving up last-write-wins.
+    // The two instants (#2248 / #2245 F4) are derived from the TRANSITION, in the
+    // same statement, because they are facts about when the reason column changed
+    // and only this UPDATE knows both the old and the new value. Computing them
+    // caller-side would need a read first, which is exactly the race the no-op
+    // guard below exists to avoid.
+    //
+    // `blockedAt` is stamped only on none -> blocked, so it survives a change of
+    // reason and keeps measuring how long the order has actually been held. A
+    // reason that changes (manual, then missing-tax-rate) is the same episode from
+    // the operator's point of view; restamping would reset an age they are
+    // watching. `releasedAt` is stamped on blocked -> none and cleared whenever a
+    // block starts, so the pair always describes the CURRENT episode rather than
+    // an arbitrary mix of two.
     await this.repository.query(
       `UPDATE "order_records"
           SET "salesDocumentBlockReason" = $1,
               "salesDocumentUnresolvedReason" = $2,
               "salesDocumentBlockDetail" = $3,
+              "salesDocumentBlockedAt" = CASE
+                WHEN $1 IS NOT NULL AND "salesDocumentBlockReason" IS NULL THEN now()
+                ELSE "salesDocumentBlockedAt"
+              END,
+              "salesDocumentBlockReleasedAt" = CASE
+                WHEN $1 IS NULL AND "salesDocumentBlockReason" IS NOT NULL THEN now()
+                WHEN $1 IS NOT NULL THEN NULL
+                ELSE "salesDocumentBlockReleasedAt"
+              END,
               "updatedAt" = now()
         WHERE "internalOrderId" = $4
           AND ("salesDocumentBlockReason" IS DISTINCT FROM $1
@@ -1160,6 +1528,43 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       .filter((entry) => Number.isFinite(entry.count));
   }
 
+  async patchSnapshotTaxRates(
+    internalOrderId: string,
+    lineNumber: number,
+    patch: { taxRate: string; taxSource: 'backfill'; taxRateReadAt: Date }
+  ): Promise<void> {
+    const lineNumberStr = String(lineNumber);
+    await this.repository.query(
+      `UPDATE "order_records"
+       SET "orderSnapshot" = jsonb_set(
+             jsonb_set(
+               jsonb_set(
+                 "orderSnapshot",
+                 ARRAY['items', $1, 'taxRate'],
+                 to_jsonb($2::text),
+                 true
+               ),
+               ARRAY['items', $1, 'taxSource'],
+               to_jsonb($3::text),
+               true
+             ),
+             ARRAY['items', $1, 'taxRateReadAt'],
+             to_jsonb($4::text),
+             true
+           )
+       WHERE "internalOrderId" = $5
+         AND jsonb_typeof("orderSnapshot"#>ARRAY['items', $1]) = 'object'
+         AND NOT ("orderSnapshot"#>ARRAY['items', $1] ? 'taxRate')`,
+      [
+        lineNumberStr,
+        patch.taxRate,
+        patch.taxSource,
+        patch.taxRateReadAt.toISOString(),
+        internalOrderId,
+      ]
+    );
+  }
+
   /**
    * Per-row order-native currency, guarded so a non-string `totals.currency`
    * reads as NULL instead of leaking a JSON scalar into the result set. Kept as
@@ -1174,12 +1579,22 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    *
    * `syncStatus` / `syncAttempts` (#2140), `fulfillmentState` (#2101),
    * `cancelledAt` (#1984), the three `salesDocument*` columns (#2100), the six
-   * FX snapshot columns (#2124), the two packed columns (#2287) and the two
-   * amendment columns `lastAmendedAt` / `lastAmendmentChanges` (#2283) are
-   * deliberately outside the write set - see the {@link toOrm} comments. A
-   * consequence is that the returned record reports all of them as empty (`[]` / `null`) regardless of what the row
-   * holds, because none of those columns was part of the statement; callers
-   * needing their true value re-read via {@link findById}.
+   * FX snapshot columns (#2124), the two packed columns (#2287), the two
+   * amendment columns `lastAmendedAt` / `lastAmendmentChanges` (#2283) and the
+   * four analytics scalars (#1985 - `placedAt` / `currency` / `taxTreatment` /
+   * `totalAmount`) are deliberately outside the write set - see the
+   * {@link toOrm} comments. A consequence is that the returned record reports
+   * all of them as empty (`[]` / `null`) regardless of what the row holds,
+   * because none of those columns was part of the statement; callers needing
+   * their true value re-read via {@link findById}.
+   *
+   * This is the sole writer reached by `persistIncomingSnapshot`, which never
+   * has a resolved analytics figure to offer (its `OrderRecord` carries the
+   * four scalars at their constructor `null` default) - mapping them here
+   * would NULL out whatever `upsertWithLineItems` below previously wrote on a
+   * re-poll of an already-`ready` order, and leave them permanently NULL if
+   * item resolution then fails, orphaning any `order_line_items` rows that
+   * survive the narrower `markItemResolutionFailure` update.
    *
    * ## Source attribution is immutable at the write path (#2282, ADR-057)
    *
@@ -1303,6 +1718,42 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     entity.lastAmendedAt = null;
     entity.lastAmendmentChanges = null;
     return entity;
+  }
+
+  /**
+   * Upsert the order record AND replace its `order_line_items` rows in one
+   * transaction (#1985). Delete-then-reinsert per order — simpler and
+   * equally correct at this table's size than a diffing upsert, and avoids
+   * ever leaving a stale row from a shrunk item list. Both writes go through
+   * the same transactional `EntityManager`, so a failure on either side rolls
+   * back both (no order_records/order_line_items desync).
+   *
+   * The sole writer of the four analytics scalars (#1985) - stamped onto the
+   * entity here, not in the shared {@link toOrm}, because `upsert()` above
+   * reaches the same conversion from `persistIncomingSnapshot`, which has no
+   * resolved figure to offer yet (see its comment there).
+   */
+  async upsertWithLineItems(
+    orderRecord: OrderRecord,
+    lineItems: OrderLineItemDraft[]
+  ): Promise<OrderRecord> {
+    const entity = this.toOrm(orderRecord);
+    entity.placedAt = orderRecord.placedAt;
+    entity.currency = orderRecord.currency;
+    entity.taxTreatment = orderRecord.taxTreatment;
+    entity.totalAmount = orderRecord.totalAmount;
+    const savedRecord = await this.dataSource.transaction(async (manager: EntityManager) => {
+      const saved = await manager.save(OrderRecordOrmEntity, entity);
+      await manager.delete(OrderLineItemOrmEntity, { orderRecordId: orderRecord.internalOrderId });
+      if (lineItems.length > 0) {
+        await manager.save(
+          OrderLineItemOrmEntity,
+          lineItems.map((item) => this.lineItemToOrm(orderRecord.internalOrderId, item))
+        );
+      }
+      return saved;
+    });
+    return this.toDomain(savedRecord);
   }
 
   /**
@@ -1433,6 +1884,12 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       entity.dispatchByAt,
       (entity.fulfillmentState as FulfillmentRollupState | null) ?? null,
       entity.mappingFailureReason ?? null,
+      entity.placedAt ?? null,
+      entity.currency ?? null,
+      (entity.taxTreatment as PriceTaxTreatment | null) ?? null,
+      // decimal columns arrive as strings from the pg driver — mirrors
+      // ProductRepository's existing `Number(entity.price)` handling.
+      entity.totalAmount !== null ? Number(entity.totalAmount) : null,
       entity.cancelledAt ?? null,
       // Coerced through the guard rather than cast: the column is a plain
       // `varchar`, so a value written by an older/newer release (or by hand)
@@ -1463,7 +1920,14 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       // stores an array; `?? null` covers the never-amended row and a hand-edited
       // value is passed through rather than coerced - the FE renders what it
       // recognises and a change kind from a newer release must not vanish.
-      entity.lastAmendmentChanges ?? null
+      entity.lastAmendmentChanges ?? null,
+      entity.salesDocumentBlockedAt ?? null,
+      entity.salesDocumentBlockReleasedAt ?? null,
+      // Coerced through the guard rather than cast, for the same reason the two
+      // reason columns above are: the column is a plain `varchar`, and a value
+      // this build does not recognise must read as "no era" - i.e. the tax-rate
+      // guard applies - rather than silently exempting the order from it.
+      isTaxRateEra(entity.taxRateEra) ? entity.taxRateEra : null
     );
   }
 
@@ -1523,6 +1987,14 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    *   very upsert is about to overwrite, so mapping them here would have the
    *   detecting re-poll erase its own finding. No source payload carries them
    *   either - they are OpenLinker's observation, not the source's report.
+   * - The four analytics scalars (#1985) - `placedAt` / `currency` /
+   *   `taxTreatment` / `totalAmount` - are mapped by {@link upsertWithLineItems}
+   *   directly, NOT here, because this shared conversion also backs
+   *   `upsert()`, reached by `persistIncomingSnapshot` with no resolved figure
+   *   to offer. Mapping them in this shared method would NULL an
+   *   already-`ready` order's analytics figures on every re-poll, and leave
+   *   them permanently NULL once item resolution starts failing (see
+   *   `upsert()`'s own comment).
    *
    * ## The insert-only column
    *
@@ -1547,6 +2019,8 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     entity.recordStatus = orderRecord.recordStatus;
     entity.mappingFailureReason = orderRecord.mappingFailureReason;
     entity.dispatchByAt = orderRecord.dispatchByAt;
+    // The four analytics scalars (#1985) are deliberately NOT mapped here -
+    // see the class comment above and `upsertWithLineItems`, their sole writer.
     // The six FX snapshot columns (#2124) are deliberately NOT mapped here,
     // for the strongest version of the reason documented above for
     // `fulfillmentState` / `cancelledAt` / `salesDocument*`: this is a
@@ -1558,6 +2032,32 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     // guarded, both single-statement) are their only writers.
     entity.createdAt = orderRecord.createdAt;
     entity.updatedAt = orderRecord.updatedAt;
+    return entity;
+  }
+
+  /**
+   * Convert a derived {@link OrderLineItemDraft} to its ORM entity for
+   * insertion. `id`/`createdAt` are left for TypeORM to generate.
+   */
+  private lineItemToOrm(
+    orderRecordId: string,
+    item: OrderLineItemDraft
+  ): OrderLineItemOrmEntity {
+    const entity = new OrderLineItemOrmEntity();
+    entity.orderRecordId = orderRecordId;
+    entity.lineNumber = item.lineNumber;
+    entity.productId = item.productId;
+    entity.variantId = item.variantId;
+    entity.quantity = item.quantity;
+    entity.unitPrice = item.unitPrice;
+    entity.sourceConnectionId = item.sourceConnectionId;
+    entity.placedAt = item.placedAt;
+    // #2250 — transcribed verbatim from the snapshot line. This writer owns the
+    // whole row (delete-then-reinsert per order), so there is no second writer
+    // for these three to race with.
+    entity.taxRate = item.taxRate;
+    entity.taxSource = item.taxSource;
+    entity.taxRateReadAt = item.taxRateReadAt;
     return entity;
   }
 }

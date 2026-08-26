@@ -22,6 +22,10 @@
  * the feature that owns what an order identity looks like (#1996).
  */
 export { ordersQueryKeys } from './api/orders.query-keys';
+// #2254 — the invoice panel needs the parsed lines to decide WHICH remedy a
+// missing rate calls for; the reason alone cannot say.
+export { parseOrderSnapshot } from './api/order-snapshot.schema';
+export type { ParsedOrderItem } from './api/order-snapshot.schema';
 export type {
   OrderRecord,
   OrderFilters,

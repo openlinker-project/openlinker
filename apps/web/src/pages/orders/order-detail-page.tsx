@@ -481,6 +481,8 @@ export function OrderDetailPage(): ReactElement {
           lastAmendmentChanges={order.lastAmendmentChanges}
           packedAt={order.packedAt}
           packedByUserId={order.packedByUserId}
+          salesDocumentBlockedAt={order.salesDocumentBlockedAt}
+          salesDocumentBlockReleasedAt={order.salesDocumentBlockReleasedAt}
         />
       </section>
 

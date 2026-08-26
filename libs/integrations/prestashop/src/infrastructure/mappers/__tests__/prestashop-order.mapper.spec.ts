@@ -116,7 +116,13 @@ describe('PrestashopOrderMapper', () => {
       expect(result.totals.tax).toBe(16.67); // 99.99 - 83.32
       expect(result.totals.shipping).toBe(5.0);
       expect(result.totals.total).toBe(99.99);
-      expect(result.totals.currency).toBe('EUR');
+      // No `currency` (#2277). The mapper does no I/O, so it cannot resolve the
+      // order's denomination; emitting a literal here is exactly how every
+      // PrestaShop order came to be recorded as EUR. `PrestashopOrderSourceAdapter`
+      // fills the field from `PrestashopOrderCurrencyResolver`.
+      expect(result.totals).not.toHaveProperty('currency');
+      // Line prices (`order_details.product_price`) are net (#2440).
+      expect(result.totals.taxTreatment).toBe('exclusive');
     });
 
     it('should map order status correctly', () => {

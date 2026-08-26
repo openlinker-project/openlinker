@@ -824,4 +824,218 @@ describe('WooCommerceProductMasterAdapter', () => {
       );
     });
   });
+
+  // #2054 review — the master's tax answer. `unknown` is persisted by the sync as
+  // the *no-rate* state, which blocks documents and refuses publishes, so the
+  // line between "the store answered" and "the read established nothing" is the
+  // whole subject here.
+  describe('readProductTaxRate (#2054, ADR-063)', () => {
+    function mappingFor(externalId: string, entityType: string) {
+      return {
+        externalId,
+        connectionId: CONNECTION_ID,
+        platformType: 'woocommerce',
+        entityType,
+      };
+    }
+
+    function respond(
+      httpClient: jest.Mocked<IWooCommerceHttpClient>,
+      routes: {
+        product?: unknown;
+        // Either a settings payload or a zero-arg thunk simulating a throwing
+        // read — `unknown` already covers a function value, so the explicit
+        // union is redundant for TS but documents the intended shape.
+        settings?: unknown;
+        taxes?: unknown;
+        variation?: unknown;
+      },
+    ): void {
+      httpClient.get.mockImplementation((path: string) => {
+        if (path === '/wp-json/wc/v3/settings/general') {
+          const settings = routes.settings;
+          if (typeof settings === 'function') (settings as () => never)();
+          return Promise.resolve(settings);
+        }
+        if (path === '/wp-json/wc/v3/taxes') return Promise.resolve(routes.taxes ?? []);
+        if (path.includes('/variations/')) return Promise.resolve(routes.variation ?? {});
+        return Promise.resolve(routes.product ?? {});
+      });
+    }
+
+    const PL_SETTINGS = [{ id: 'woocommerce_default_country', value: 'PL:MZ' }];
+
+    it('should resolve the single matching rate for the store country', async () => {
+      const httpClient = makeHttpClient();
+      respond(httpClient, {
+        product: { id: 42, tax_class: '', tax_status: 'taxable' },
+        settings: PL_SETTINGS,
+        taxes: [{ id: 1, country: 'PL', rate: '23.0000' }],
+      });
+      const identifierMapping = makeIdentifierMapping();
+      identifierMapping.getExternalIds.mockResolvedValue([mappingFor('42', 'Product')]);
+      const adapter = makeAdapter(httpClient, identifierMapping, makeMapper());
+
+      await expect(adapter.readProductTaxRate({ productId: 'prod-1' })).resolves.toEqual({
+        kind: 'resolved',
+        code: '23',
+        countryIso2: 'PL',
+      });
+    });
+
+    it('should THROW when the store-settings read fails, instead of reporting an answer', async () => {
+      // The defect this replaces: the failure was swallowed into
+      // `unknown/unreadable`, which the sync persisted as `{ code: null, readAt }`
+      // - so one 500 on /settings/general during a sweep recorded a whole
+      // catalogue as rate-less. The capability contract says a transport failure
+      // propagates; the sync then leaves the row untouched.
+      const httpClient = makeHttpClient();
+      respond(httpClient, {
+        product: { id: 42, tax_class: '', tax_status: 'taxable' },
+        settings: () => {
+          throw new WooCommerceHttpResponseException(500, 'Internal Server Error');
+        },
+      });
+      const identifierMapping = makeIdentifierMapping();
+      identifierMapping.getExternalIds.mockResolvedValue([mappingFor('42', 'Product')]);
+      const adapter = makeAdapter(httpClient, identifierMapping, makeMapper());
+
+      await expect(adapter.readProductTaxRate({ productId: 'prod-1' })).rejects.toBeInstanceOf(
+        WooCommerceHttpResponseException,
+      );
+    });
+
+    it('should not cache a failed store-country read, so a later read still answers', async () => {
+      const httpClient = makeHttpClient();
+      let settingsCall = 0;
+      httpClient.get.mockImplementation((path: string) => {
+        if (path === '/wp-json/wc/v3/settings/general') {
+          settingsCall += 1;
+          if (settingsCall === 1) {
+            return Promise.reject(new WooCommerceHttpResponseException(500, 'boom'));
+          }
+          return Promise.resolve(PL_SETTINGS);
+        }
+        if (path === '/wp-json/wc/v3/taxes') {
+          return Promise.resolve([{ id: 1, country: 'PL', rate: '23.0000' }]);
+        }
+        return Promise.resolve({ id: 42, tax_class: '', tax_status: 'taxable' });
+      });
+      const identifierMapping = makeIdentifierMapping();
+      identifierMapping.getExternalIds.mockResolvedValue([mappingFor('42', 'Product')]);
+      const adapter = makeAdapter(httpClient, identifierMapping, makeMapper());
+
+      await expect(adapter.readProductTaxRate({ productId: 'prod-1' })).rejects.toBeInstanceOf(
+        WooCommerceHttpResponseException,
+      );
+      await expect(adapter.readProductTaxRate({ productId: 'prod-1' })).resolves.toEqual({
+        kind: 'resolved',
+        code: '23',
+        countryIso2: 'PL',
+      });
+    });
+
+    it('should report not-configured (a persistable answer) when the store declares no selling country', async () => {
+      const httpClient = makeHttpClient();
+      respond(httpClient, {
+        product: { id: 42, tax_class: '', tax_status: 'taxable' },
+        settings: [{ id: 'woocommerce_default_country', value: '' }],
+      });
+      const identifierMapping = makeIdentifierMapping();
+      identifierMapping.getExternalIds.mockResolvedValue([mappingFor('42', 'Product')]);
+      const adapter = makeAdapter(httpClient, identifierMapping, makeMapper());
+
+      const result = await adapter.readProductTaxRate({ productId: 'prod-1' });
+
+      expect(result).toEqual({
+        kind: 'unknown',
+        reason: 'not-configured',
+        detail: 'the store does not declare a selling country',
+      });
+    });
+
+    it('should keep a resolved zero even when the country read (provenance only) fails', async () => {
+      // `tax_status: 'none'` is the operator saying this product is not taxed,
+      // whatever the store's country turns out to be - and `countryIso2` is
+      // documented as provenance that blocks nothing, so losing it must not lose
+      // the rate.
+      const httpClient = makeHttpClient();
+      respond(httpClient, {
+        product: { id: 42, tax_class: '', tax_status: 'none' },
+        settings: () => {
+          throw new WooCommerceHttpResponseException(500, 'boom');
+        },
+      });
+      const identifierMapping = makeIdentifierMapping();
+      identifierMapping.getExternalIds.mockResolvedValue([mappingFor('42', 'Product')]);
+      const adapter = makeAdapter(httpClient, identifierMapping, makeMapper());
+
+      await expect(adapter.readProductTaxRate({ productId: 'prod-1' })).resolves.toEqual({
+        kind: 'resolved',
+        code: '0',
+        countryIso2: null,
+      });
+    });
+
+    it('should report ambiguous when the class carries several different rates', async () => {
+      const httpClient = makeHttpClient();
+      respond(httpClient, {
+        product: { id: 42, tax_class: '', tax_status: 'taxable' },
+        settings: PL_SETTINGS,
+        taxes: [
+          { id: 1, country: 'PL', rate: '23.0000' },
+          { id: 2, country: 'PL', rate: '8.0000' },
+        ],
+      });
+      const identifierMapping = makeIdentifierMapping();
+      identifierMapping.getExternalIds.mockResolvedValue([mappingFor('42', 'Product')]);
+      const adapter = makeAdapter(httpClient, identifierMapping, makeMapper());
+
+      const result = await adapter.readProductTaxRate({ productId: 'prod-1' });
+
+      expect(result).toEqual(
+        expect.objectContaining({ kind: 'unknown', reason: 'ambiguous' }),
+      );
+    });
+
+    it('should report not-configured when the class has no rate for the store country', async () => {
+      const httpClient = makeHttpClient();
+      respond(httpClient, {
+        product: { id: 42, tax_class: 'reduced-rate', tax_status: 'taxable' },
+        settings: PL_SETTINGS,
+        taxes: [{ id: 1, country: 'DE', rate: '19.0000' }],
+      });
+      const identifierMapping = makeIdentifierMapping();
+      identifierMapping.getExternalIds.mockResolvedValue([mappingFor('42', 'Product')]);
+      const adapter = makeAdapter(httpClient, identifierMapping, makeMapper());
+
+      const result = await adapter.readProductTaxRate({ productId: 'prod-1' });
+
+      expect(result).toEqual(
+        expect.objectContaining({ kind: 'unknown', reason: 'not-configured' }),
+      );
+    });
+
+    it('should report inherited for a variation on the parent tax class', async () => {
+      const httpClient = makeHttpClient();
+      respond(httpClient, {
+        product: { id: 42, tax_class: '', tax_status: 'taxable' },
+        settings: PL_SETTINGS,
+        variation: { id: 77, tax_class: 'parent' },
+      });
+      const identifierMapping = makeIdentifierMapping();
+      identifierMapping.getExternalIds.mockImplementation((entityType: string) =>
+        Promise.resolve([
+          entityType === CORE_ENTITY_TYPE.Product
+            ? mappingFor('42', 'Product')
+            : mappingFor('77', 'ProductVariant'),
+        ]),
+      );
+      const adapter = makeAdapter(httpClient, identifierMapping, makeMapper());
+
+      await expect(
+        adapter.readProductTaxRate({ productId: 'prod-1', variantId: 'var-1' }),
+      ).resolves.toEqual({ kind: 'inherited' });
+    });
+  });
 });

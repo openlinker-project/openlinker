@@ -33,6 +33,26 @@ export type {
   InvoicingConnectionSelection,
 } from './domain/types/invoicing-primary.types';
 export { normalizeShippingLineName } from './domain/types/shipping-line-label.types';
+// A missing per-line tax rate holds the document (#2248, ADR-063 § 6).
+export {
+  describeMissingTaxRate,
+  findMissingTaxRate,
+  findOrderTaxRateGap,
+} from './domain/types/order-tax-rate-gate.types';
+export type {
+  MissingTaxRateFinding,
+  TaxRateGateBasketLine,
+  TaxRateGateLine,
+} from './domain/types/order-tax-rate-gate.types';
+export { MissingTaxRateException } from './domain/exceptions/missing-tax-rate.exception';
+// Canonical percent-as-string tax-rate notation (#2247).
+export {
+  FractionalTaxRateNotationError,
+  isFractionalTaxRateNotation,
+  parseTaxRatePercent,
+  taxRatePercentToFraction,
+  assertPercentTaxRateNotation,
+} from './domain/types/tax-rate-notation.types';
 export * from './domain/entities/buyer-profile.entity';
 export * from './domain/entities/invoice-record.entity';
 export * from './domain/entities/invoice-numbering-series.entity';

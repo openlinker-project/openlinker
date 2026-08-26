@@ -81,18 +81,32 @@ export type SalesDocumentUnresolvedReason = (typeof SalesDocumentUnresolvedReaso
  * and `'trigger-model-batched'` — the three reachable non-issuing exits of
  * `AutoIssueTriggerService.onOrderTransition`.
  *
+ * ALSO WRITTEN (#2248, ADR-063): `'missing-tax-rate'` — a line carries no tax
+ * rate, so no document can state what tax was charged.
+ *
+ * **It is the first reason for which "this cannot be issued" is literally true.**
+ * Every other value means "auto-issue did not happen", and ADR-041 says so
+ * explicitly; a manual issue past those is a legitimate operator action. This
+ * one is not: issuing anyway means a provider substituting a guessed rate onto
+ * a real fiscal document. So it closes the manual paths too — the invoice
+ * panel's issue button, the receipt's register button, and bulk issue — which
+ * no other reason does.
+ *
  * DECLARED BUT NEVER WRITTEN, each blocked on a prerequisite ADR-041 names:
  *   - `'missing-required-tax-id'` — needs a buyer tax id on the order contract;
  *     no such field exists on `Order` today.
- *   - `'tax-rate-conflict'`       — needs #2057. An unknown tax rate is currently
- *     indistinguishable from a resolved zero (a failed read returns the number
- *     `0`, which is also a legitimate exemption), so "a channel-reported rate
- *     diverging from the master's" is not computable and the gate would read
- *     "no conflict" on precisely the unknown-rate orders it exists to catch.
+ *   - `'tax-rate-conflict'`       — and it stays unwritten even after #2245.
+ *     A shop-versus-channel disagreement does NOT block (epic F1): the shop
+ *     wins, the document issues, and the mismatch is surfaced on its own
+ *     projection field with its own resolver. Writing it here would make its
+ *     badge unreachable — `invoicingBlockedBadge` suppresses the badge whenever
+ *     an invoice exists, and a non-blocking conflict always has one — and would
+ *     additionally double-count it inside `salesDocumentBlocked`.
  */
 export const SalesDocumentGateBlockReasonValues = [
   'unresolved-routing',
   'missing-required-tax-id',
+  'missing-tax-rate',
   'tax-rate-conflict',
   'trigger-model-manual',
   'trigger-model-batched',

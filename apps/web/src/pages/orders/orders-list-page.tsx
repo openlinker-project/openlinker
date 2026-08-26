@@ -34,7 +34,7 @@ import { DataTableSkeleton } from '../../shared/ui/data-table-skeleton';
 import { Button } from '../../shared/ui/button';
 import { BulkActionBar } from '../../shared/ui/bulk-action-bar';
 import { CheckboxCell } from '../../shared/ui/checkbox-cell';
-import { Chip } from '../../shared/ui/chip';
+import { Chip, type ChipTone } from '../../shared/ui/chip';
 import { Select } from '../../shared/ui/select';
 import { TimeDisplay } from '../../shared/ui/time-display';
 import { StatusBadge, type StatusBadgeTone } from '../../shared/ui/status-badge';
@@ -272,6 +272,7 @@ const NARROWING_FILTER_URL_PARAM: Record<NarrowingOrderFilterKey, string> = {
   fulfillmentState: 'fulfillmentState',
   salesDocumentBlocked: 'invoicing',
   phase: 'phase',
+  taxRateConflict: 'taxRate',
 };
 
 /**
@@ -280,6 +281,24 @@ const NARROWING_FILTER_URL_PARAM: Record<NarrowingOrderFilterKey, string> = {
  * from one another; an exhaustive `Record` makes a new phase a compile error
  * here rather than a silently missing count.
  */
+/**
+ * `StatusBadgeTone` -> `ChipTone` (#2310). `StatusBadgeTone` carries two values
+ * `Chip` does not model — `review` and, since #2253, `conflict` — so the map is
+ * exhaustive rather than a ternary: a tone added to the badge family becomes a
+ * compile error here instead of silently type-widening the chip. `conflict`
+ * lands on `warning` (attention, but the thing still worked), `review` on
+ * `neutral`, matching how each already reads elsewhere.
+ */
+const CHIP_TONE_FOR_PHASE_TONE: Record<StatusBadgeTone, ChipTone> = {
+  conflict: 'warning',
+  error: 'error',
+  info: 'info',
+  neutral: 'neutral',
+  review: 'neutral',
+  success: 'success',
+  warning: 'warning',
+};
+
 const PHASE_SUMMARY_KEY: Record<
   OrderLifecyclePhaseValue,
   keyof Omit<OrderLifecyclePhaseSummary, 'total'>
@@ -307,6 +326,39 @@ const FILTER_PARAMS: readonly string[] = Object.values(NARROWING_FILTER_URL_PARA
  * all orders" button that cleared filters one at a time would leave all but the last one
  * applied.
  */
+/**
+ * The age clause the blocked chip folds into its own label (#2254).
+ *
+ * An age rather than only a count, because the cost of a held document is
+ * lateness and a bare "42" does not say whether that started this morning or a
+ * fortnight ago. It rides INSIDE the label rather than as a third dotted badge:
+ * this row already carries two SLA badges, and a third would compete with them
+ * for exactly the attention the SLA ones are for.
+ *
+ * Returns an empty string when nothing is held or the instant is unreadable -
+ * an absent age says less than a wrong one.
+ */
+/**
+ * Does any line record a channel rate that disagreed with the shop's (#2254)?
+ *
+ * `taxRateChannel` is written ONLY on disagreement, so its presence is the
+ * conflict - there is nothing to compare here, and nothing to get wrong when
+ * only one of the two systems answered.
+ */
+function hasTaxRateConflict(parsed: ReturnType<typeof parseOrderSnapshot>): boolean {
+  return parsed.items.some((item) => Boolean(item.taxRateChannel));
+}
+
+function blockedAgeSuffix(oldestAt: string | null | undefined): string {
+  if (!oldestAt) return '';
+  const heldSince = new Date(oldestAt).getTime();
+  if (!Number.isFinite(heldSince)) return '';
+  const days = Math.floor((Date.now() - heldSince) / 86_400_000);
+  if (days >= 1) return ` \u00b7 oldest ${String(days)} d`;
+  const hours = Math.floor((Date.now() - heldSince) / 3_600_000);
+  return hours >= 1 ? ` \u00b7 oldest ${String(hours)} h` : '';
+}
+
 function clearAllFilters(setSearchParams: SetURLSearchParams): void {
   setSearchParams((prev) => {
     const p = new URLSearchParams(prev);
@@ -353,6 +405,10 @@ export function OrdersListPage(): ReactElement {
   // and an operator with a stale bookmark should see their orders, not an error.
   const rawPhase = searchParams.get('phase');
   const phase = isOrderLifecyclePhase(rawPhase) ? rawPhase : undefined;
+  // #2254 — a THIRD axis, in its own param for the same reason: the rows it
+  // finds are usually already invoiced, so it composes with the other two
+  // rather than replacing either. Present-only, like its neighbour.
+  const rateConflict = searchParams.get('taxRate') === 'conflict';
   const offset = Number(searchParams.get('offset') ?? '0');
 
   // "Breaching soon / overdue" cutoff — stable per toggle (not recomputed each
@@ -380,6 +436,7 @@ export function OrdersListPage(): ReactElement {
     salesDocumentBlocked: invoicingBlocked ? true : undefined,
     // #2310 — orthogonal to `health`; both compose server-side.
     phase,
+    taxRateConflict: rateConflict ? true : undefined,
   };
   const pagination = { limit: PAGE_SIZE, offset };
 
@@ -1011,6 +1068,7 @@ export function OrdersListPage(): ReactElement {
                 blockReason={order.salesDocumentBlockReason}
                 unresolvedReason={order.salesDocumentUnresolvedReason}
                 hasInvoicingCapability={hasInvoicingCapability}
+                hasTaxRateConflict={hasTaxRateConflict(parsed)}
                 layout="stack"
                 emptyFallback={<span className="text-muted">—</span>}
               />
@@ -1120,6 +1178,24 @@ export function OrdersListPage(): ReactElement {
 
   /** Is the current view narrowed at all? Drives the empty-state copy (#2148). */
   const hasActiveFilters = FILTER_PARAMS.some((key) => searchParams.get(key) !== null);
+
+  /** #2254 — the conflict axis, same present-only shape as its two neighbours. */
+  function toggleRateConflict(): void {
+    captureDemoEvent('demo_orders_filtered', {
+      filter: 'tax_rate_conflict',
+      value: String(!rateConflict),
+    });
+    setSearchParams((prev) => {
+      const p = new URLSearchParams(prev);
+      if (rateConflict) {
+        p.delete('taxRate');
+      } else {
+        p.set('taxRate', 'conflict');
+      }
+      p.delete('offset');
+      return p;
+    });
+  }
 
   /** #2100 — mirrors `toggleBreaching`: an independent, present-only chip filter. */
   function toggleInvoicingBlocked(): void {
@@ -1354,7 +1430,23 @@ export function OrdersListPage(): ReactElement {
             Invoicing blocked
             {summary?.salesDocumentBlocked === undefined
               ? ''
-              : ` ${summary.salesDocumentBlocked}`}
+              : ` ${summary.salesDocumentBlocked}${blockedAgeSuffix(
+                  summary.salesDocumentBlockedOldestAt,
+                )}`}
+          </Chip>
+        ) : null}
+        {/* #2254 — its own count, and it mounts on `filterActive || count` for
+            the same nine-line reason the chip above does: gating on the count
+            alone unmounts the only way to clear the filter the moment
+            remediation succeeds. No tone: `.chip.chip--active` overrides every
+            `.chip--{tone}`, so an inactive `conflict` chip (96% lightness, hue
+            45) would read as pressed next to an active accent chip (96%, hue
+            60). The label and `aria-pressed` carry the state; the row badge
+            carries the semantics. */}
+        {rateConflict || summary?.taxRateConflict ? (
+          <Chip active={rateConflict} onClick={toggleRateConflict}>
+            Rate conflict
+            {summary?.taxRateConflict === undefined ? '' : ` ${summary.taxRateConflict}`}
           </Chip>
         ) : null}
         {/* SLA KPI affordance (#1108) — at-a-glance overdue / at-risk counts.
@@ -1433,7 +1525,7 @@ export function OrdersListPage(): ReactElement {
           return (
             <Chip
               key={value}
-              tone={meta.tone === 'review' ? 'neutral' : meta.tone}
+              tone={CHIP_TONE_FOR_PHASE_TONE[meta.tone]}
               active={active}
               onClick={() => { togglePhase(value); }}
             >
@@ -1465,6 +1557,28 @@ export function OrdersListPage(): ReactElement {
             action={
               <Button onClick={() => { clearAllFilters(setSearchParams); }}>
                 View all orders
+              </Button>
+            }
+          />
+        ) : rateConflict ? (
+          /*
+            #2254 — sits ABOVE both single-filter arms, because two of them can be
+            active at once. With the conflict filter and the invoicing filter both
+            on and no rows, an arm claiming "nothing is blocked from invoicing"
+            would be a statement about a set the other filter narrowed. So this
+            one says "in this view" and offers to clear.
+
+            `liveRegion` stays at the default `polite`, not `off`: like the
+            `hasActiveFilters` arm it sits beside, it is reached by a transition
+            from a loaded table rather than from the operator's own click on a
+            segment that already announced itself.
+          */
+          <EmptyState
+            title="No rate conflicts in this view"
+            message="The other filters are still applied. Clear them to check the whole list."
+            action={
+              <Button onClick={() => { clearAllFilters(setSearchParams); }}>
+                Clear filters
               </Button>
             }
           />
@@ -1707,6 +1821,7 @@ export function OrdersListPage(): ReactElement {
                             blockReason={order.salesDocumentBlockReason}
                             unresolvedReason={order.salesDocumentUnresolvedReason}
                             hasInvoicingCapability={hasInvoicingCapability}
+                            hasTaxRateConflict={hasTaxRateConflict(parsed)}
                             layout="row"
                             emptyFallback="—"
                           />

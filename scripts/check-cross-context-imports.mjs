@@ -318,6 +318,14 @@ const ALLOW_LIST = new Map([
     'apps/worker/src/sync/handlers/__tests__/marketplace-fulfillment-status-sync.handler.spec.ts',
     new Set(['ConnectionCursorRepositoryPort']),
   ],
+  [
+    'apps/worker/src/sync/handlers/orders-tax-rate-backfill.handler.ts',
+    new Set(['ConnectionCursorRepositoryPort']),
+  ],
+  [
+    'apps/worker/src/sync/handlers/__tests__/orders-tax-rate-backfill.handler.spec.ts',
+    new Set(['ConnectionCursorRepositoryPort']),
+  ],
 
   // worker → sync.{SyncJobRepositoryPort + ConnectionCursorRepositoryPort} — rewire via ISyncJobsService + ISyncCursorsService
   [
@@ -480,6 +488,18 @@ const ALLOW_LIST = new Map([
   ],
   [
     'apps/api/test/integration/failed-sync-value-summary.int-spec.ts',
+    new Set(['OrderRecordRepositoryPort']),
+  ],
+  [
+    'apps/api/test/integration/earliest-order-date.int-spec.ts',
+    new Set(['OrderRecordRepositoryPort']),
+  ],
+  [
+    'apps/api/test/integration/order-line-items-write.int-spec.ts',
+    new Set(['OrderRecordRepositoryPort']),
+  ],
+  [
+    'apps/api/test/integration/sales-analytics-aggregates.int-spec.ts',
     new Set(['OrderRecordRepositoryPort']),
   ],
   [

@@ -26,6 +26,17 @@ export interface KsefInvoicingAdapterOptions {
    */
   defaultLineUnit?: string;
   /**
+   * Connection-level fallback `P_12` neutral code applied to any line whose
+   * neutral `taxRate` arrives empty (#1290/#1291), resolved by the factory from
+   * `seller.defaultTaxRate` or the PL standard rate.
+   *
+   * Honoured ONLY while `OL_TAX_RATE_STRICT_ENABLED` is off (#2257, gated in the
+   * #2245 review). With strict enforcement on, the adapter does not pass it and a
+   * rate-less line raises `UnmappedTaxRateException` - core refuses such a
+   * command first, so that is defence in depth.
+   */
+  defaultTaxRate?: string;
+  /**
    * IANA timezone (#7) the numbering date variables + period-reset bucket resolve
    * in. Resolved from the connection config by the factory; `Europe/Warsaw` when
    * absent.

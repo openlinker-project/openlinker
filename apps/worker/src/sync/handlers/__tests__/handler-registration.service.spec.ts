@@ -3,15 +3,16 @@
  *
  * Pins the ADR-050 lane partition (#2278): every `JobTypeValues` member is
  * registered with exactly one lane, the per-lane counts match the ADR's
- * table (13 realtime / 14 bulk / 5 fiscal / 7 fan-out — `fiscalization.register`
- * joined `fiscal` post-ADR, #2156, `inventory.provenance.backfill` joined
- * `bulk` with #2317, and the three returns types joined realtime/bulk/fan-out
- * with #2330), and the consequential assignments the ADR calls
- * out cannot silently churn.
+ * table (13 realtime / 16 bulk / 5 fiscal / 7 fan-out — `fiscalization.register`
+ * joined `fiscal` post-ADR, #2156; `inventory.provenance.backfill` joined
+ * `bulk` with #2317; the three returns types joined realtime/bulk/fan-out with
+ * #2330; `returns.orphan.reconcile` joined `bulk` with #2332; and
+ * `orders.taxRate.backfill` joined `bulk` with #2440), and the consequential
+ * assignments the ADR calls out cannot silently churn.
  *
  * @module apps/worker/src/sync/handlers
  */
-/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-call -- test constructs the service with 36 interchangeable dummy handlers */
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-call -- test constructs the service with 42 interchangeable dummy handlers */
 import type { SyncJobHandler } from '@openlinker/core/sync';
 import { JobTypeValues } from '@openlinker/core/sync';
 import { SyncJobHandlerRegistry } from '../sync-job-handler.registry';
@@ -23,10 +24,10 @@ describe('HandlerRegistrationService (ADR-050 lane partition, #2278)', () => {
   beforeEach(() => {
     registry = new SyncJobHandlerRegistry();
     const dummyHandler = { execute: jest.fn() } as unknown as SyncJobHandler;
-    // The constructor takes the registry followed by 36 handler instances;
+    // The constructor takes the registry followed by 42 handler instances;
     // the partition under test keys on jobType, so interchangeable dummies
     // are sufficient.
-    const handlers = Array.from({ length: 36 }, () => dummyHandler);
+    const handlers = Array.from({ length: 42 }, () => dummyHandler);
     const service = new (HandlerRegistrationService as any)(registry, ...handlers);
     (service as HandlerRegistrationService).onModuleInit();
   });
@@ -36,12 +37,13 @@ describe('HandlerRegistrationService (ADR-050 lane partition, #2278)', () => {
     expect(() => registry.assertFullLaneCoverage()).not.toThrow();
   });
 
-  it('should partition the 40 job types 13/15/5/7 per ADR-050 decision 1', () => {
+  it('should partition the 41 job types 13/16/5/7 per ADR-050 decision 1', () => {
     expect(registry.getJobTypesByLane('realtime')).toHaveLength(13);
-    // 15 since #2332 added `returns.orphan.reconcile` — background catch-up work whose
+    // 16 since #2332 added `returns.orphan.reconcile` — background catch-up work whose
     // lateness costs nobody a request, and which must not contend with the `realtime`
-    // order ingestion that is what RESOLVES its orphans.
-    expect(registry.getJobTypesByLane('bulk')).toHaveLength(15);
+    // order ingestion that is what RESOLVES its orphans — and #2440 added
+    // `orders.taxRate.backfill`, a paced backfill with the same profile.
+    expect(registry.getJobTypesByLane('bulk')).toHaveLength(16);
     expect(registry.getJobTypesByLane('fiscal')).toHaveLength(5);
     expect(registry.getJobTypesByLane('fan-out')).toHaveLength(7);
   });

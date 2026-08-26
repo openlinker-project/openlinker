@@ -164,10 +164,110 @@ describe('PrestashopTaxRateResolver', () => {
     expect(resolution.kind === 'unknown' && resolution.evidence).toContain('socket hang up');
   });
 
-  it('should resolve 0 when the tax-rule group has no usable rules', async () => {
+  // #2245 review — this used to resolve a CONFIRMED 0. Since the same resolver
+  // now also states the rate a fiscal document carries, an inferred zero is a
+  // zero-VAT invoice the shop never claimed.
+  it('should report a configuration unknown (not 0) when the tax-rule group has no rules', async () => {
     httpClient.getResource.mockResolvedValueOnce({ id_tax_rules_group: '2' });
     countryResolver.resolveCountryId.mockResolvedValueOnce(6);
     httpClient.listResources.mockResolvedValueOnce([]);
+
+    const resolution = await resolver.resolveProductTaxRate('100', 'PL', 'conn-1', httpClient);
+
+    expect(resolution).toEqual({
+      kind: 'unknown',
+      reason: 'configuration',
+      evidence: 'tax-rule group 2 has no usable rule',
+    });
+  });
+
+  it('should report a configuration unknown when every rule in the group names no tax', async () => {
+    httpClient.getResource.mockResolvedValueOnce({ id_tax_rules_group: '2' });
+    countryResolver.resolveCountryId.mockResolvedValueOnce(6);
+    httpClient.listResources.mockResolvedValueOnce([
+      { id_country: '6', id_state: '0' },
+      { id_tax: '0', id_country: '0', id_state: '0' },
+    ]);
+
+    const resolution = await resolver.resolveProductTaxRate('100', 'PL', 'conn-1', httpClient);
+
+    expect(resolution.kind === 'unknown' && resolution.reason).toBe('configuration');
+    expect(httpClient.getResource).toHaveBeenCalledTimes(1);
+  });
+
+  // The shape the master read always hits: no delivery country is passed
+  // (ADR-063 § 7), so a group of per-country rules with no catch-all has nothing
+  // to single a rule out. `rules[0]` used to win, so a PL shop could project
+  // DE 19% onto every line.
+  it('should report an ambiguous unknown when several candidate rules and no catch-all exist', async () => {
+    httpClient.getResource.mockResolvedValueOnce({ id_tax_rules_group: '2' });
+    httpClient.listResources.mockResolvedValueOnce([
+      { id_tax: '8', id_country: '1', id_state: '0' }, // DE 19
+      { id_tax: '7', id_country: '6', id_state: '0' }, // PL 23
+    ]);
+
+    const resolution = await resolver.resolveProductTaxRate('100', undefined, 'conn-1', httpClient);
+
+    expect(resolution.kind === 'unknown' && resolution.reason).toBe('ambiguous');
+    expect(resolution.kind === 'unknown' && resolution.evidence).toContain('candidate rates');
+    // Nothing was read from `taxes` - no rate was invented.
+    expect(httpClient.getResource).toHaveBeenCalledTimes(1);
+  });
+
+  it('should resolve the catch-all rule rather than reporting ambiguous when one exists', async () => {
+    httpClient.getResource
+      .mockResolvedValueOnce({ id_tax_rules_group: '2' })
+      .mockResolvedValueOnce({ rate: '23.000' }); // taxes/9 — the catch-all
+    httpClient.listResources.mockResolvedValueOnce([
+      { id_tax: '8', id_country: '1', id_state: '0' },
+      { id_tax: '9', id_country: '0', id_state: '0' },
+    ]);
+
+    const resolution = await resolver.resolveProductTaxRate('100', undefined, 'conn-1', httpClient);
+
+    expect(resolution.kind === 'resolved' && resolution.rate).toBeCloseTo(0.23, 5);
+    expect(httpClient.getResource).toHaveBeenCalledWith('taxes', '9');
+  });
+
+  it('should resolve when several candidate rules all name the SAME tax', async () => {
+    // Rows agreeing is not ambiguous - the answer is the same whichever the shop
+    // picks, which is the rule the WooCommerce sibling already follows.
+    httpClient.getResource
+      .mockResolvedValueOnce({ id_tax_rules_group: '2' })
+      .mockResolvedValueOnce({ rate: '23.000' });
+    httpClient.listResources.mockResolvedValueOnce([
+      { id_tax: '7', id_country: '1', id_state: '0' },
+      { id_tax: '7', id_country: '6', id_state: '0' },
+    ]);
+
+    const resolution = await resolver.resolveProductTaxRate('100', undefined, 'conn-1', httpClient);
+
+    expect(resolution.kind === 'resolved' && resolution.rate).toBeCloseTo(0.23, 5);
+    expect(httpClient.getResource).toHaveBeenCalledWith('taxes', '7');
+  });
+
+  it('should report an ambiguous unknown for a multi-state country group with no country-level row', async () => {
+    // The US shape. Picking the first state's rate was an arbitrary answer.
+    httpClient.getResource.mockResolvedValueOnce({ id_tax_rules_group: '2' });
+    countryResolver.resolveCountryId.mockResolvedValueOnce(21);
+    httpClient.listResources.mockResolvedValueOnce([
+      { id_tax: '11', id_country: '21', id_state: '12' },
+      { id_tax: '12', id_country: '21', id_state: '13' },
+    ]);
+
+    const resolution = await resolver.resolveProductTaxRate('100', 'US', 'conn-1', httpClient);
+
+    expect(resolution.kind === 'unknown' && resolution.reason).toBe('ambiguous');
+  });
+
+  it('should still resolve an explicit zero-rate tax group', async () => {
+    // ADR-063: `0` is an answer, not a gap. A group whose tax record really says
+    // 0% must keep resolving, or every legitimately zero-rated product blocks.
+    httpClient.getResource
+      .mockResolvedValueOnce({ id_tax_rules_group: '4' })
+      .mockResolvedValueOnce({ rate: '0.000' });
+    countryResolver.resolveCountryId.mockResolvedValueOnce(6);
+    httpClient.listResources.mockResolvedValueOnce([{ id_tax: '3', id_country: '6', id_state: '0' }]);
 
     const resolution = await resolver.resolveProductTaxRate('100', 'PL', 'conn-1', httpClient);
 

@@ -172,6 +172,77 @@ export class OrderRecordOrmEntity {
   salesDocumentBlockDetail!: string | null;
 
   /**
+   * When the CURRENT hold started (#2248 / #2245 F4).
+   *
+   * The reason column is level-triggered and nulled the moment it clears, so
+   * without an instant there is no clock for the operator-facing age and no
+   * "held since" to render. Stamped on the `none -> blocked` transition only,
+   * so a change of reason inside one episode does not reset an age somebody is
+   * watching, and written exclusively by `updateSalesDocumentBlock` - never by
+   * the ingestion upsert.
+   */
+  @Column({ type: 'timestamptz', nullable: true })
+  salesDocumentBlockedAt!: Date | null;
+
+  /**
+   * When the current hold ENDED. Stamped on `blocked -> none` and cleared
+   * whenever a new block starts, so the pair always describes one episode.
+   *
+   * It is what makes the "the rate arrived, the invoice issued" timeline entry
+   * possible: the reason itself is gone by then, so nothing else records that
+   * the order was ever held.
+   */
+  @Column({ type: 'timestamptz', nullable: true })
+  salesDocumentBlockReleasedAt!: Date | null;
+
+  /**
+   * Marks an order that arrived BEFORE per-line tax rates existed (#2256).
+   *
+   * `'pre-rollout'` on every row the enabling migration found; `null` on
+   * everything ingested afterwards. It is a DATA marker for analytics, not an
+   * operator-facing state - such an order issues exactly as it does today, and
+   * the frontend deliberately renders nothing for it.
+   *
+   * Its only job is to keep a net-revenue figure honest: a pre-rollout order's
+   * tax was whatever the provider defaulted to, so presenting it as a confirmed
+   * rate would be a claim the data does not support. Excluded rather than
+   * back-computed, because there is nothing to compute from.
+   *
+   * Recorded per RECORD rather than per line, deliberately. The lines live in a
+   * jsonb snapshot, so a per-line marker would mean rewriting every snapshot in
+   * the table for a value that is uniform across an order and that no surface
+   * renders per line.
+   */
+  @Column({ type: 'varchar', length: 16, nullable: true })
+  taxRateEra!: string | null;
+
+  /**
+   * Order analytics read-model scalars (#1985), denormalized from `orderSnapshot`
+   * at `persistOrder` time — see ADR-039 for the persistence-strategy decision.
+   * `placedAt`/`currency` are indexed (the two access patterns the analytics
+   * aggregates need: date-range + channel filtering); `taxTreatment`/`totalAmount`
+   * are not, since neither is filtered on directly today.
+   */
+  @Column({ type: 'timestamptz', nullable: true })
+  @Index()
+  placedAt!: Date | null;
+
+  @Column({ type: 'varchar', length: 3, nullable: true })
+  @Index()
+  currency!: string | null;
+
+  /** `null` = "not asserted by the source" (#1985 [G]) — never defaulted by a consumer. */
+  @Column({ type: 'varchar', nullable: true })
+  taxTreatment!: string | null;
+
+  // decimal (not numeric) to match the house convention on money columns
+  // (products.price, product_variants.price) — pg returns this as a string
+  // at the driver level; the repository's toDomain explicitly Number()s it,
+  // mirroring ProductRepository's existing price-column handling.
+  @Column({ type: 'decimal', precision: 12, scale: 2, nullable: true })
+  totalAmount!: number | null;
+
+  /**
    * Per-order reporting-currency snapshot (#2124, ADR-040) — six columns
    * written ONLY by the two narrow, conditional UPDATEs on the repository
    * (`claimFxIntentIfAbsent`, `stampFxIfAbsent`). The ingestion upsert

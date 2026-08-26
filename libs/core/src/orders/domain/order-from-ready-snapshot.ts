@@ -23,6 +23,7 @@ import type { OrderRecord } from './entities/order-record.entity';
 import type { Address, Order, OrderItem, OrderTotals } from './types/order.types';
 import { OrderSnapshotUnavailableError } from './exceptions/order-snapshot-unavailable.error';
 import { REDACTED_PLACEHOLDER } from './order-address-redaction';
+import { isTaxRateSource } from '@openlinker/core/products';
 
 /**
  * The placeholder `redactAddress` writes for a PII-redacted field. Imported
@@ -186,6 +187,20 @@ function readItems(value: unknown): OrderItem[] {
     if (typeof item.sku === 'string') orderItem.sku = item.sku;
     if (typeof item.name === 'string') orderItem.name = item.name;
     if (typeof item.imageUrl === 'string') orderItem.imageUrl = item.imageUrl;
+    // #2054/#2254 — the per-line tax fields. This function is an ALLOWLIST, so
+    // a field omitted here is silently dropped, and every MANUAL issuance path
+    // (`POST /invoices`, bulk issue, corrections) rehydrates through it. Leaving
+    // the rate out made a correctly rated order read as rate-less and refused by
+    // the #2248 gate, while the auto-issue path - which composes from the live
+    // `Order` and never touches this function - was fine. Caught by a curl pass,
+    // not by a unit test, precisely because the two paths diverge here.
+    if (typeof item.taxRate === 'string') orderItem.taxRate = item.taxRate;
+    if (typeof item.taxRateCountry === 'string') orderItem.taxRateCountry = item.taxRateCountry;
+    if (isTaxRateSource(item.taxSource)) {
+      orderItem.taxSource = item.taxSource;
+    }
+    if (typeof item.taxRateReadAt === 'string') orderItem.taxRateReadAt = item.taxRateReadAt;
+    if (typeof item.taxRateChannel === 'string') orderItem.taxRateChannel = item.taxRateChannel;
     return orderItem;
   });
 }

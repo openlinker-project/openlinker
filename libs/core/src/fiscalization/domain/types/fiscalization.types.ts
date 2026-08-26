@@ -159,6 +159,22 @@ export interface RegisterTransactionCommand {
   /** When the sale completed at the source; absent when the source did not report it. */
   occurredAt?: Date;
   recipient?: FiscalRecipient | null;
+  /**
+   * The order's tax-rate era (#2260 review) - `'pre-rollout'` for an order that
+   * arrived before per-line rates existed, absent/`null` for everything after.
+   *
+   * Read ONLY by the write-path tax-rate guard, which exempts a pre-rollout
+   * order so it registers exactly as it did before the epic (ADR-063
+   * § Consequences). It is never sent to a provider and never reaches a
+   * receipt.
+   *
+   * It exists for the same reason `IssueInvoiceCommand.taxRateEra` does, and
+   * the two must agree: `AutoIssueTriggerService` is era-aware, so without the
+   * marker on this command the gate passed a pre-rollout order, reported `none`
+   * (clearing any persisted reason) and the era-blind write gate then refused
+   * the job - a silent decline along the era axis.
+   */
+  taxRateEra?: string | null;
 }
 
 /**

@@ -72,7 +72,9 @@ describe('OrdersController', () => {
     const mockRepository: jest.Mocked<OrderRecordRepositoryPort> = {
       findById: jest.fn(),
       findByIds: jest.fn(),
+      findEarliestOrderDateByConnection: jest.fn(),
       upsert: jest.fn(),
+      upsertWithLineItems: jest.fn(),
       updateSyncStatus: jest.fn(),
       findMany: jest.fn(),
       countByHealth: jest.fn(),
@@ -92,6 +94,10 @@ describe('OrdersController', () => {
       markPacked: jest.fn(),
       clearPacked: jest.fn(),
       recordAmendment: jest.fn(),
+      getDailyOrderAggregates: jest.fn(),
+      getMedianOrderValue: jest.fn(),
+      patchSnapshotTaxRates: jest.fn(),
+      getNetMedianOrderValue: jest.fn(),
     };
 
     const mockOrderRecordService = {
@@ -440,6 +446,10 @@ describe('OrdersController', () => {
         null,
         null,
         null,
+        null,
+        null,
+        null,
+        null,
         new Date('2026-08-05T09:30:00Z')
       );
       repository.findMany.mockResolvedValue({ items: [cancelledOrder, mockOrder], total: 2 });
@@ -590,7 +600,7 @@ describe('OrdersController', () => {
         needsAttention: 1,
         synced: 1,
         awaitingDispatch: 9,
-        salesDocumentBlocked: 0,
+        salesDocumentBlocked: 0, taxRateConflict: 0, salesDocumentBlockedOldestAt: null,
       });
 
       const result = await controller.statusSummary({});
@@ -608,7 +618,7 @@ describe('OrdersController', () => {
         needsAttention: 0,
         synced: 0,
         awaitingDispatch: 0,
-        salesDocumentBlocked: 0,
+        salesDocumentBlocked: 0, taxRateConflict: 0, salesDocumentBlockedOldestAt: null,
       });
 
       await controller.statusSummary({
@@ -894,6 +904,10 @@ describe('OrdersController', () => {
       new Date('2026-04-01T00:00:00Z'),
       new Date('2026-04-01T12:00:00Z'),
       [],
+      null,
+      null,
+      null,
+      null,
       null,
       null,
       null,

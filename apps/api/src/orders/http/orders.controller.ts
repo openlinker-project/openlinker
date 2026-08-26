@@ -133,6 +133,7 @@ export class OrdersController {
       salesDocumentBlocked,
       cancelled,
       phase,
+      taxRateConflict,
       limit = 20,
       offset = 0,
     } = query;
@@ -178,6 +179,7 @@ export class OrdersController {
         // full axis, since `OrderRecordFilters` already carries several
         // orthogonal ones.
         lifecyclePhase: phase,
+        taxRateConflict,
       },
       { limit, offset }
     );
@@ -236,12 +238,17 @@ export class OrdersController {
     @Query() query: OrderHealthSummaryQueryDto
   ): Promise<OrderHealthSummaryResponseDto> {
     const { sourceConnectionId, customerId, createdFrom, createdTo } = query;
-    return this.orderRecordRepository.countByHealth({
+    const summary = await this.orderRecordRepository.countByHealth({
       sourceConnectionId,
       customerId,
       createdFrom: createdFrom ? new Date(createdFrom) : undefined,
       createdTo: createdTo ? new Date(createdTo) : undefined,
     });
+    // The wire carries an ISO string; the domain summary carries a Date (#2254).
+    return {
+      ...summary,
+      salesDocumentBlockedOldestAt: summary.salesDocumentBlockedOldestAt?.toISOString() ?? null,
+    };
   }
 
   @Get('sla-summary')
@@ -452,6 +459,8 @@ export class OrdersController {
       salesDocumentBlockReason: order.salesDocumentBlockReason,
       salesDocumentUnresolvedReason: order.salesDocumentUnresolvedReason,
       salesDocumentBlockDetail: order.salesDocumentBlockDetail,
+      salesDocumentBlockedAt: order.salesDocumentBlockedAt?.toISOString() ?? null,
+      salesDocumentBlockReleasedAt: order.salesDocumentBlockReleasedAt?.toISOString() ?? null,
       createdAt: order.createdAt instanceof Date ? order.createdAt.toISOString() : order.createdAt,
       updatedAt: order.updatedAt instanceof Date ? order.updatedAt.toISOString() : order.updatedAt,
       dispatchByAt: order.dispatchByAt ? order.dispatchByAt.toISOString() : null,

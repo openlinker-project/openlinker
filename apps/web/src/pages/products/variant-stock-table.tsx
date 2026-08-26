@@ -19,8 +19,9 @@ import { useListingsQuery } from '../../features/listings/hooks/use-listings-que
 import { useListingMarketplaceOfferQuery } from '../../features/listings/hooks/use-listing-marketplace-offer-query';
 import { useCategoryPathQuery } from '../../features/listings/hooks/use-category-path-query';
 import type { OfferMapping } from '../../features/listings/api/listings.types';
-import type { ProductVariant } from '../../features/products/api/products.types';
+import type { ProductVariant, TaxRateUnknownReason } from '../../features/products/api/products.types';
 import type { InventoryItem } from '../../features/inventory/api/inventory.types';
+import { formatTaxRate } from '../../shared/format/format-tax-rate';
 import { TimeDisplay } from '../../shared/ui/time-display';
 import { StatusBadge, type StatusBadgeTone } from '../../shared/ui/status-badge';
 import { useMediaQuery } from '../../shared/ui/use-media-query';
@@ -37,6 +38,19 @@ interface VariantStockTableProps {
   stockByVariant: Map<string, InventoryItem>;
   /** Product currency, used to format the master variant price. */
   currency: string | null;
+  /**
+   * The PRODUCT's tax rate (#2255). A variant with no override of its own
+   * inherits it, and rendering that as an absence would send the operator to
+   * fix the wrong record.
+   */
+  productTaxRate?: string | null;
+  /**
+   * Why the product's rate is missing (#2264), when it is. Threaded through
+   * only as far as the "product has none either" fallback needs it - a
+   * variant's own override never carries this reason on this cell, because a
+   * variant that named its own rate is not in the no-rate branch at all.
+   */
+  productTaxRateUnknownReason?: TaxRateUnknownReason | null;
   /** Active OfferCreator connections — the coverage pill set is derived from these. */
   connections: readonly Connection[];
   /** Whether the "+ Create offer" CTA renders (write access, incl. demo). */
@@ -78,6 +92,7 @@ export function VariantStockTable(props: VariantStockTableProps): ReactElement {
           <tr>
             <th aria-hidden="true"></th>
             <th>Variant</th>
+            <th>Tax rate</th>
             <th>Stock</th>
             <th>Listings</th>
             <th className="data-table__cell--right">Price</th>
@@ -88,6 +103,8 @@ export function VariantStockTable(props: VariantStockTableProps): ReactElement {
             <VariantStockRow
               key={variant.id}
               variant={variant}
+              productTaxRate={props.productTaxRate ?? null}
+              productTaxRateUnknownReason={props.productTaxRateUnknownReason ?? null}
               stock={props.stockByVariant.get(variant.id)}
               currency={props.currency}
               connections={props.connections}
@@ -568,6 +585,8 @@ function ListingDetailCard({
 
 function VariantStockRow({
   variant,
+  productTaxRate,
+  productTaxRateUnknownReason,
   stock,
   currency,
   connections,
@@ -576,6 +595,8 @@ function VariantStockRow({
   onListingsCount,
 }: {
   variant: ProductVariant;
+  productTaxRate: string | null;
+  productTaxRateUnknownReason?: TaxRateUnknownReason | null;
   stock: InventoryItem | undefined;
   currency: string | null;
   connections: readonly Connection[];
@@ -612,6 +633,13 @@ function VariantStockRow({
             <span className="variant-stock-table__sku mono-text">{variantHeadline(variant)}</span>
             {meta ? <span className="variant-stock-table__meta">{meta}</span> : null}
           </div>
+        </td>
+        <td>
+          <VariantTaxRateCell
+            variant={variant}
+            productTaxRate={productTaxRate}
+            productTaxRateUnknownReason={productTaxRateUnknownReason}
+          />
         </td>
         <td>
           <span className="variant-stock-table__stock">
@@ -752,4 +780,71 @@ function VariantStockCard({
       ) : null}
     </div>
   );
+}
+
+/**
+ * One variant's tax rate (#2255).
+ *
+ * **Inherited is not the same as absent**, and drawing it as absent sends the
+ * operator to fix the wrong record. A variant with no override of its own takes
+ * the product's rate, so it renders that rate with an `inherited from the
+ * product` caption. Only a variant whose PRODUCT has no rate either shows the
+ * badge - and then the fix is on the product, not the variant.
+ *
+ * A present override wins outright, matching `effectiveTaxRate` on the backend:
+ * it is the more specific statement of the same fact, not a conflict.
+ */
+function VariantTaxRateCell({
+  variant,
+  productTaxRate,
+  productTaxRateUnknownReason,
+}: {
+  variant: ProductVariant;
+  productTaxRate: string | null;
+  productTaxRateUnknownReason?: TaxRateUnknownReason | null;
+}): ReactElement {
+  if (variant.taxRate) {
+    return (
+      <span className="variant-stock-table__name">
+        <span className="mono-text">{formatTaxRate(variant.taxRate)}</span>
+        <span className="variant-stock-table__meta">variant override</span>
+      </span>
+    );
+  }
+  if (productTaxRate) {
+    return (
+      <span className="variant-stock-table__name">
+        <span className="mono-text">{formatTaxRate(productTaxRate)}</span>
+        <span className="variant-stock-table__meta">inherited from the product</span>
+      </span>
+    );
+  }
+  return (
+    <span className="variant-stock-table__name">
+      <StatusBadge tone="error" withDot compact>
+        No tax rate
+      </StatusBadge>
+      <span className="variant-stock-table__meta">
+        {taxRateUnknownReasonCaption(productTaxRateUnknownReason)}
+      </span>
+    </span>
+  );
+}
+
+/**
+ * Distinguish WHY the product has no rate (#2264) - a plain "product has none
+ * either" collapsed a shop with no tax configuration and one with several
+ * candidate rates and no unambiguous pick into one caption, and the two need
+ * different fixes: add a rate versus resolve which of several is right.
+ */
+function taxRateUnknownReasonCaption(reason: TaxRateUnknownReason | null | undefined): string {
+  switch (reason) {
+    case 'ambiguous':
+      return 'product has several candidate rates - resolve which one is right in the shop';
+    case 'unreadable':
+      return 'product has none either';
+    case 'not-configured':
+    default:
+      return 'product has none either';
+  }
 }

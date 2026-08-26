@@ -30,7 +30,8 @@
  */
 import { Logger } from '@openlinker/shared/logging';
 import type { IPrestashopWebserviceClient } from '../http/prestashop-webservice.client.interface';
-import type { PrestashopConfiguration, PrestashopCurrency } from './prestashop-provisioner.types';
+import { readPrestashopCurrencyById } from './prestashop-currency-read';
+import type { PrestashopConfiguration } from './prestashop-provisioner.types';
 
 /** The PrestaShop configuration key holding the shop's default currency id. */
 const DEFAULT_CURRENCY_CONFIG_KEY = 'PS_CURRENCY_DEFAULT';
@@ -130,7 +131,7 @@ export class PrestashopShopCurrencyResolver {
         return null;
       }
 
-      const currency = await client.getResource<PrestashopCurrency>('currencies', currencyId);
+      const currency = await readPrestashopCurrencyById(client, currencyId);
       const iso = currency?.iso_code?.trim().toUpperCase();
       if (!iso) {
         this.logger.warn(

@@ -13,11 +13,12 @@ import { PaymentStatusValues } from '../types/payment-status.types';
 import type { PaymentStatus } from '../types/payment-status.types';
 import type { CodToCollect } from '../types/cod-to-collect.types';
 import type { FulfillmentRollupState } from '../types/order-fulfillment.types';
-import type { OrderDispatchWindow } from '../types/order.types';
+import type { OrderDispatchWindow, PriceTaxTreatment } from '../types/order.types';
 import type { OrderAmendmentChange } from '../order-amendment-diff';
 import type {
   SalesDocumentGateBlockReason,
   SalesDocumentUnresolvedReason,
+  TaxRateEra,
 } from '@openlinker/core/sales-documents';
 
 export type { OrderSyncStatus, SyncAttempt } from '../types/order-sync.types';
@@ -80,6 +81,37 @@ export class OrderRecord {
      * `null` for a `'ready'` record, or a historical row predating the column.
      */
     public readonly mappingFailureReason: string | null = null,
+    /**
+     * Order analytics read-model scalars (#1985) — denormalized from
+     * `order.placedAt` / `order.totals` at persist time, mirroring the
+     * `dispatchByAt`/`fulfillmentState` precedent so downstream aggregates
+     * (#1987/#1988) can filter/bucket without parsing `orderSnapshot`.
+     *
+     * `placedAt`: the buyer's true order time (#926); `null` when the source
+     * didn't expose one. No universal fallback here — `findEarliestOrderDateByConnection`
+     * (#2083) falls back to `createdAt` for its own coverage-window purpose via an
+     * explicit `COALESCE`, but the FX rate-date resolver (`OrderFxStampService`,
+     * ADR-040) reads this field with no fallback: `createdAt` is OpenLinker's
+     * ingestion instant, not the sale date, and substituting it would stamp a
+     * rate against a day the buyer never transacted on. Each consumer decides.
+     */
+    public readonly placedAt: Date | null = null,
+    /**
+     * ISO 4217 currency code from `order.totals.currency`. `null` only for a
+     * historical row predating this column (backfilled otherwise).
+     */
+    public readonly currency: string | null = null,
+    /**
+     * Whether `order.totals` is gross or net (#1985 [G]). `null` means the
+     * source did not assert it — this must never be defaulted by a consumer;
+     * an unasserted-tax-treatment order is not comparable to one that is.
+     */
+    public readonly taxTreatment: PriceTaxTreatment | null = null,
+    /**
+     * `order.totals.total`, denormalized so revenue aggregates read a plain
+     * indexed column instead of casting a JSONB path on every query.
+     */
+    public readonly totalAmount: number | null = null,
     /**
      * Instant the source reported this order cancelled (#1984). `null` = never
      * cancelled (or a historical row the backfill migration could not derive a
@@ -201,7 +233,45 @@ export class OrderRecord {
      * into a second store with none of the `OL_STORE_PII` discipline the snapshot
      * itself has.
      */
-    public readonly lastAmendmentChanges: OrderAmendmentChange[] | null = null
+    public readonly lastAmendmentChanges: OrderAmendmentChange[] | null = null,
+    /**
+     * When the current sales-document hold started (#2248 / #2245 F4), or
+     * `null` when the order has never been held.
+     *
+     * Appended at the END of the parameter list rather than beside the three
+     * `salesDocument*` fields above: this is a positional constructor, and
+     * inserting mid-list would silently shift every argument after it at each
+     * of its call sites.
+     *
+     * Written only by `updateSalesDocumentBlock`, like the reason columns it
+     * belongs with, and stamped on the `none -> blocked` transition alone so it
+     * measures the whole episode rather than the latest reason within it.
+     */
+    public readonly salesDocumentBlockedAt: Date | null = null,
+    /**
+     * When the current hold ended, cleared whenever a new one starts. The pair
+     * with `salesDocumentBlockedAt` always describes one episode, which is what
+     * lets a timeline say the order was held and then released - the reason
+     * itself is gone by then.
+     */
+    public readonly salesDocumentBlockReleasedAt: Date | null = null,
+    /**
+     * `'pre-rollout'` for an order that arrived before per-line tax rates
+     * existed (#2256); `null` for everything after. Never an operator-facing
+     * state - no surface renders it.
+     *
+     * READ (#2245 review) by the invoicing gate and the write-path guard, which
+     * exempt a pre-rollout order so it issues exactly as it did before the epic
+     * (ADR-063 § Consequences). Without that read the marker was write-only and
+     * the promise was unimplemented: every already-ingested uninvoiced order
+     * would have become permanently un-issuable the moment strict enforcement
+     * was switched on.
+     *
+     * Excluded from any net-revenue figure rather than presented as a confirmed
+     * rate: its tax was whatever the provider defaulted to, and there is
+     * nothing to back-compute from.
+     */
+    public readonly taxRateEra: TaxRateEra | null = null
   ) {}
 
   /**
@@ -343,26 +413,5 @@ export class OrderRecord {
     return typeof total === 'number' && Number.isFinite(total) && typeof currency === 'string'
       ? { amount: total, currency }
       : undefined;
-  }
-
-  /**
-   * Typed, fail-safe read of the buyer-placed-on-marketplace instant (#2125)
-   * from the snapshot (`orderSnapshot.placedAt`, persisted as an ISO string).
-   * Pure derivation of an already-loaded field (ADR-011).
-   *
-   * `undefined` for an absent OR unparseable value - the same no-fallback
-   * semantics `orderFromReadySnapshot`'s `asOptionalDate` applies, so the two
-   * rehydration paths cannot disagree about whether `placedAt` exists. There is
-   * deliberately no fallback to `createdAt`: that is OpenLinker's ingestion
-   * instant, not the sale date, and substituting it would stamp a rate against
-   * a day the buyer never transacted on.
-   */
-  get placedAt(): Date | undefined {
-    const value = this.orderSnapshot.placedAt;
-    if (typeof value !== 'string' && !(value instanceof Date)) {
-      return undefined;
-    }
-    const parsed = value instanceof Date ? value : new Date(value);
-    return Number.isNaN(parsed.getTime()) ? undefined : parsed;
   }
 }

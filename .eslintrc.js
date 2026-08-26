@@ -211,6 +211,15 @@ module.exports = {
                   '**/allegro/components/**',
                   '**/allegro/lib/**',
                   '**/allegro/types/**',
+                  // Added on the #2191 tech-review pass — `features/analytics`
+                  // gained a public barrel (top-products view-model helpers,
+                  // types) that the ChannelCell/ProductSalesTable slice
+                  // consumes cross-feature.
+                  '**/analytics/api/**',
+                  '**/analytics/hooks/**',
+                  '**/analytics/components/**',
+                  '**/analytics/lib/**',
+                  '**/analytics/types/**',
                   // Added in #1938 review, when `features/demo` reached into
                   // `../../auth/hooks/`. Enumerated in full like every other
                   // slug; note that `pages/auth/*` and `app/api/api-client.ts`
@@ -434,6 +443,13 @@ module.exports = {
                   '**/allegro/components/**',
                   '**/allegro/lib/**',
                   '**/allegro/types/**',
+                  // Added on the #2191 tech-review pass, mirroring the
+                  // features/ group above — new slug goes into BOTH groups.
+                  '**/analytics/api/**',
+                  '**/analytics/hooks/**',
+                  '**/analytics/components/**',
+                  '**/analytics/lib/**',
+                  '**/analytics/types/**',
                   // #1938 review — `features/auth` gained a barrel; a new slug
                   // goes into BOTH pattern groups per
                   // docs/frontend-architecture.md § Feature Public Surface,

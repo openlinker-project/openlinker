@@ -8,6 +8,7 @@
  * @module libs/core/src/orders/domain/ports
  */
 import type { OrderRecord } from '../entities/order-record.entity';
+import type { OrderLineItemDraft } from '../order-analytics-projection';
 import type {
   OrderRecordFilters,
   OrderRecordPagination,
@@ -25,6 +26,7 @@ import type { SalesDocumentBlock } from '@openlinker/core/sales-documents';
 import type { OrderFxIntent, OrderFxStamp } from '../types/order-fx.types';
 import type { StampedReportingCurrencyCount } from '../types/order-fx-read.types';
 import type { OrderAmendmentChange } from '../order-amendment-diff';
+import type { DailyOrderAggregateRow, SalesAnalyticsFilters } from '../types/order-sales-analytics.types';
 
 export interface OrderRecordRepositoryPort {
   /**
@@ -44,6 +46,28 @@ export interface OrderRecordRepositoryPort {
    * input, without issuing a query.
    */
   findByIds(internalOrderIds: string[]): Promise<OrderRecord[]>;
+
+  /**
+   * Batch earliest-order-date lookup by source connection (#2083).
+   *
+   * `MIN(COALESCE(placedAt, createdAt))` per `sourceConnectionId`, in one
+   * `GROUP BY` query — the real batch analytics-trust's coverage-window
+   * read needs, as opposed to one query per connection. A connection with
+   * zero matching rows is simply absent from the returned Map (mirrors
+   * {@link findByIds}); callers treat a missing key as "no orders yet",
+   * distinct from a present key whose value is merely old.
+   *
+   * Deliberately unfiltered by `recordStatus`: every row this connection has
+   * ever ingested — including `source_deleted` / `awaiting_mapping` /
+   * `failed` rows — reflects a real order that was placed, so it counts
+   * toward "how far back this connection's data goes". This is a
+   * coverage/freshness fact, not a revenue or health figure — unlike
+   * {@link getFailedSyncValueSummary}'s `NOT_MAPPING_OR_DELETED` gate, which
+   * exists to keep administrative buckets out of a *value* sum, no such gate
+   * applies here. Mirrors the already-documented decision to also include
+   * cancelled orders.
+   */
+  findEarliestOrderDateByConnection(connectionIds: string[]): Promise<Map<string, Date>>;
 
   /**
    * Upsert order record (create or update)
@@ -73,6 +97,19 @@ export interface OrderRecordRepositoryPort {
    * true, possibly pre-existing attribution rather than what was requested.
    */
   upsert(orderRecord: OrderRecord): Promise<OrderRecord>;
+
+  /**
+   * Upsert the order record AND its `order_line_items` rows in one
+   * transaction (#1985) — the `'ready'`-path write. `lineItems` replaces the
+   * order's entire prior line-item set (delete-then-reinsert), so re-ingesting
+   * an order with a changed item list never leaves stale rows behind. Both
+   * writes commit or roll back together; a failure on either side leaves
+   * `order_records` and `order_line_items` consistent with each other.
+   */
+  upsertWithLineItems(
+    orderRecord: OrderRecord,
+    lineItems: OrderLineItemDraft[]
+  ): Promise<OrderRecord>;
 
   /**
    * Update sync status for a destination connection.
@@ -146,6 +183,75 @@ export interface OrderRecordRepositoryPort {
    * the summed order value (and its oldest failure) rather than just a count.
    */
   getFailedSyncValueSummary(filters: OrderHealthSummaryFilters): Promise<FailedSyncValueSummary>;
+
+  /**
+   * Daily, per-connection revenue/order-count aggregates for the sales &
+   * channel analytics read (#1987). Scope: `recordStatus = 'ready' AND
+   * placedAt IS NOT NULL AND totalAmount IS NOT NULL AND placedAt` within
+   * `[filters.from, filters.to)`, optionally narrowed to one connection.
+   * Cancelled orders (`cancelledAt IS NOT NULL`) are split into their own
+   * `cancelledCount`/`cancelledValue` columns rather than being excluded from
+   * the result entirely — the aggregation layer sums them separately so a
+   * cancelled order is reported, not silently dropped. One row per
+   * `(day, sourceConnectionId)` pair that has at least one matching order;
+   * a day/connection with none is simply absent, mirroring the "absent key =
+   * no data" convention used by {@link getFailedSyncValueSummary} and
+   * `findEarliestOrderDateByConnection`.
+   *
+   * Currency correctness (#2049/ADR-040 follow-up, and #1987 review notes —
+   * porting #2172's `getTopProductRanking` fix so both `/analytics` reads
+   * agree on which orders are comparable): `orderCount`/`revenue` are
+   * restricted to `reportingCurrency = currentReportingCurrency` — the
+   * deployment's CURRENT setting, never a bare `IS NOT NULL` — and computed
+   * from `reportingTotalAmount`. `reportingCurrency` is pinned at first stamp
+   * and never moves (ADR-040), so `IS NOT NULL` alone would sum two
+   * currencies into one `revenue` after an operator changes the reporting
+   * setting (#2096 restatement). A prior-era stamp is therefore folded into
+   * the unconverted bucket alongside never-stamped rows — both report via
+   * `unconvertedCount`/`unconvertedValue` (native `totalAmount`,
+   * informational, may mix currencies) rather than being silently summed
+   * into `revenue` or silently dropped. `cancelledValue` stays on native
+   * `totalAmount`, unchanged.
+   *
+   * `unconvertedCurrency` (#1987 scope, not an FX-epic deliverable —
+   * `order_records.currency` predates #2049) labels `unconvertedValue` with
+   * the one native currency shared by every unconverted, non-cancelled order
+   * this day/connection, or `null` when that set mixes currencies, contains
+   * a row with no recorded native currency, or is empty — nothing to label.
+   */
+  getDailyOrderAggregates(
+    filters: SalesAnalyticsFilters,
+    currentReportingCurrency: string
+  ): Promise<DailyOrderAggregateRow[]>;
+
+  /**
+   * Headline median order value for the sales & channel analytics read
+   * (#1987), via `PERCENTILE_CONT(0.5)`. Same scope as
+   * {@link getDailyOrderAggregates} but additionally excludes cancelled
+   * orders (`cancelledAt IS NULL`) — median is a headline-only figure, never
+   * computed per channel. Returns `null` when no row matches (an empty
+   * ordered-set aggregate), which the aggregation layer coalesces to `0`.
+   *
+   * Currency correctness: computed over `reportingTotalAmount`, restricted
+   * to `reportingCurrency = currentReportingCurrency` — the same current-era
+   * stamped subset {@link getDailyOrderAggregates} uses for `revenue`.
+   */
+  getMedianOrderValue(
+    filters: SalesAnalyticsFilters,
+    currentReportingCurrency: string
+  ): Promise<number | null>;
+
+  /**
+   * VAT-exclusive counterpart of {@link getMedianOrderValue} (net-sales
+   * tax-rate epic) — same scope, additionally restricted to orders that are
+   * not pre-rollout history (ADR-063 § Consequences) and carry a resolvable
+   * tax-rate fraction on every line. `null` on an empty ordered-set, same
+   * convention as the gross median.
+   */
+  getNetMedianOrderValue(
+    filters: SalesAnalyticsFilters,
+    currentReportingCurrency: string
+  ): Promise<number | null>;
 
   /**
    * Push a per-order fulfillment rollup (#1108) onto the order record. Called
@@ -388,4 +494,33 @@ export interface OrderRecordRepositoryPort {
    * the result rather than reported under a `null` key.
    */
   countStampedByReportingCurrency(): Promise<StampedReportingCurrencyCount[]>;
+
+  /**
+   * Additively patch one line's tax provenance onto `orderSnapshot.items[lineNumber]`
+   * (#2440) — the tax-rate backfill's snapshot-side write, kept alongside
+   * {@link OrderLineItemRepositoryPort.backfillTaxRate} so the analytics
+   * read-model row and the order-detail page's own source (the snapshot)
+   * never disagree about a backfilled rate.
+   *
+   * ADDITIVE-ONLY BY CONSTRUCTION, not merely by caller discipline: the
+   * three keys are written together as one guarded group (mirrors
+   * `stampFxIfAbsent`'s "the group can never half-apply" precedent), gated
+   * on the ABSENCE of `taxRate` alone — `taxSource` is only ever written
+   * paired with `taxRate` by ingestion (`resolveLineTaxRate`), so a real
+   * line never carries one without the other, and a stale `taxRateReadAt`
+   * (the "shop was asked, found nothing, as of an earlier instant" case) is
+   * correctly superseded by the newer backfill read rather than preserved.
+   * A line whose `taxRate` key is already present is untouched entirely. No
+   * other snapshot key is ever read or written. A missing `lineNumber`
+   * (order has fewer items than expected, or no snapshot at all) is a
+   * silent no-op — the same best-effort posture
+   * {@link findUnstampedFxOrderIds}'s consumers already carry, since this
+   * is provenance for internal reporting, not a write anything downstream
+   * depends on succeeding.
+   */
+  patchSnapshotTaxRates(
+    internalOrderId: string,
+    lineNumber: number,
+    patch: { taxRate: string; taxSource: 'backfill'; taxRateReadAt: Date }
+  ): Promise<void>;
 }

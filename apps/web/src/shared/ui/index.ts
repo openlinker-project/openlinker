@@ -19,6 +19,7 @@
  */
 
 // ── Feedback / status ──────────────────────────────────────────────
+export { AbsentValue } from './absent-value';
 export { Alert } from './alert';
 export type { AlertTone } from './alert';
 export { StatusBadge } from './status-badge';
@@ -54,7 +55,7 @@ export type { CommandPaletteProps, PaletteItem, PaletteGroup } from './command-p
 export { Dialog } from './dialog';
 export { ConfirmDialog } from './confirm-dialog';
 export { DropdownMenu } from './dropdown-menu';
-export { Popover } from './popover';
+export { Popover, PopoverTrigger, PopoverContent } from './popover';
 export { Tooltip } from './tooltip';
 
 // ── Data surfaces ──────────────────────────────────────────────────

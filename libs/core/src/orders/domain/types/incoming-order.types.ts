@@ -161,6 +161,26 @@ export interface IncomingOrderItem {
    * for future enrichment.
    */
   imageUrl?: string;
+
+  /**
+   * The tax rate the CHANNEL reported for this line, as a neutral
+   * percent-as-string code (#2054, ADR-063).
+   *
+   * This is the fallback rung, not the answer: the shop is asked first, and
+   * the channel is consulted only when the shop does not know (ADR-063 § 1).
+   * A fix applied in the shop then serves every channel, whereas a rate only
+   * the marketplace knows is stamped at purchase and cannot be corrected
+   * afterwards.
+   *
+   * Absent means the source did not report one - which is every source until
+   * the channel-read child lands. Allegro's `lineItems[].tax` is nullable and
+   * OL published offers carry no rate at all; Erli's `items[].taxRate` is a
+   * required enum and always does.
+   */
+  taxRate?: string;
+
+  /** ISO 3166-1 alpha-2 the channel resolved its rate against. Provenance only. */
+  taxRateCountry?: string;
 }
 
 /**

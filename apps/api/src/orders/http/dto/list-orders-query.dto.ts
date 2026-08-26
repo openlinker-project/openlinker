@@ -197,6 +197,19 @@ export class ListOrdersQueryDto {
   @IsEnum(OrderLifecyclePhaseValues)
   phase?: OrderLifecyclePhase;
 
+  @ApiPropertyOptional({
+    type: Boolean,
+    description:
+      'Tax-rate conflict filter (#2254): true keeps only orders where the shop and the channel ' +
+      'named DIFFERENT rates, false keeps only the rest, omitted does not filter. A SEPARATE ' +
+      'axis from salesDocumentBlocked, and it has to be — a conflict does not stop the invoice, ' +
+      'so the rows it finds are usually already invoiced and are invisible in every other view.',
+  })
+  @IsOptional()
+  @Transform(({ value }): unknown => (value === 'true' ? true : value === 'false' ? false : value))
+  @IsBoolean()
+  taxRateConflict?: boolean;
+
   @ApiPropertyOptional({ default: 0, minimum: 0, description: 'Number of items to skip' })
   @IsOptional()
   @Type(() => Number)

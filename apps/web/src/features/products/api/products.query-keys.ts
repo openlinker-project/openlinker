@@ -12,6 +12,7 @@ export const productsQueryKeys = {
       filters?.search ?? '',
       filters?.stock ?? 'any',
       filters?.unlistedOn?.join(',') ?? '',
+      filters?.taxRateState ?? '',
       filters?.connectionId ?? 'all',
       sort?.field ?? 'default',
       sort?.dir ?? 'default',

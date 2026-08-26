@@ -116,6 +116,16 @@ export interface ConnectionIngestionTrust {
    * window" claim.
    */
   connectionCreatedAt: Date;
+  /**
+   * `MIN(COALESCE(placedAt, createdAt))` over this connection's
+   * `order_records` (#2083) — the real per-channel coverage-window fact
+   * `connectionCreatedAt` was never able to support (a connection can
+   * legitimately ingest orders placed before it was created). `null` when
+   * the connection has zero ingested orders — distinct from a non-null
+   * value that merely predates the #1985 `placedAt` backfill (which
+   * resolves to its `createdAt`-derived fallback instead).
+   */
+  earliestOrderDate: Date | null;
   /** Expected interval (ms) between poll ticks, derived from the connection's *enabled* registered poll cadence. Null when no matching, enabled scheduler task is registered. */
   expectedIntervalMs: number | null;
   /**

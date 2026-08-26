@@ -18,7 +18,7 @@
  * persisted on the returned `FiscalRegistrationRecord` and the record is
  * returned, so a resolved call is ALWAYS `{ outcome: 'ok' }` here — the job
  * ran to completion, and the record itself (not the job outcome) carries
- * whether the sale was actually registered. `register` DOES still throw four
+ * whether the sale was actually registered. `register` DOES still throw five
  * refusals that never cross the provider boundary at all:
  *  - `MissingIdempotencyKeyException` — a malformed payload; should be
  *    unreachable past this handler's own validation, but treated the same way
@@ -26,6 +26,9 @@
  *  - `OrderAlreadyRegisteredException` / `OrderAlreadyHasInvoiceException` —
  *    persisted-state FACTS a retry cannot change (#2157's same-kind and
  *    cross-kind guards): terminal `business_failure`.
+ *  - `MissingFiscalTaxRateException` — ADR-063's refusal of a sale whose lines
+ *    do not all name a tax rate. A fact about persisted data, unchanged by a
+ *    retry: terminal `business_failure`.
  *  - `FiscalRegistrationContendedException` — a timing accident a retry
  *    resolves once the peer has persisted its row: retryable, wrapped in
  *    `SyncJobExecutionError`.
@@ -54,8 +57,10 @@ import {
   OrderAlreadyRegisteredException,
   OrderAlreadyHasInvoiceException,
   FiscalRegistrationContendedException,
+  MissingFiscalTaxRateException,
 } from '@openlinker/core/fiscalization';
 import type { RegisterTransactionCommand } from '@openlinker/core/fiscalization';
+import { isTaxRateEra } from '@openlinker/core/sales-documents';
 import { Logger } from '@openlinker/shared/logging';
 
 type SyncJob = SyncJobEntity;
@@ -102,6 +107,25 @@ export class FiscalizationRegisterHandler implements SyncJobHandler {
         this.logger.warn(
           `fiscalization.register skipped: error=${error.name} orderId=${payload.orderId} ` +
             `connectionId=${payload.connectionId}`,
+        );
+        return { outcome: 'business_failure' };
+      }
+      // #2260 review: ADR-063's tax-rate refusal, terminal for the same reason
+      // the guards above are - a decision about persisted data (a line with no
+      // rate), not a transport fault, so it throws identically on every
+      // attempt. Left in the retryable catch-all it burned the whole
+      // `maxAttempts` budget with backoff and then landed as a `dead` sync job,
+      // which reads as an infrastructure incident rather than the catalogue gap
+      // it is. Follows `InvoicingIssueHandler`'s treatment of the invoicing
+      // twin exactly (ADR-007).
+      if (error instanceof MissingFiscalTaxRateException) {
+        this.logger.warn(
+          // Counts only: `firstLineName` is the shop-authored line LABEL, free
+          // text this handler's PII rule forbids logging.
+          `fiscalization.register refused: orderId=${payload.orderId} has ` +
+            `${String(error.lineCount)} of ${String(error.totalLines)} line(s) with no tax ` +
+            `rate; connectionId=${payload.connectionId}. Add the rate in the shop's catalogue ` +
+            `and re-sync the product.`,
         );
         return { outcome: 'business_failure' };
       }
@@ -214,6 +238,13 @@ export class FiscalizationRegisterHandler implements SyncJobHandler {
     }
     if (payload.recipient !== undefined) {
       command.recipient = payload.recipient;
+    }
+    // #2260 review: the era marker exempts pre-rollout history from the
+    // write-path tax-rate guard. Coerced through the union's guard rather than
+    // cast - an unrecognised value from an older/newer release must read as "no
+    // era" (i.e. the guard applies) instead of silently exempting the order.
+    if (isTaxRateEra(payload.taxRateEra)) {
+      command.taxRateEra = payload.taxRateEra;
     }
 
     return command;

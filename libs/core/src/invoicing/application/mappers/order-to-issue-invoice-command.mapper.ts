@@ -22,6 +22,7 @@ import type {
 import { InvalidBuyerProfileError } from './errors/invalid-buyer-profile.error';
 import { InvalidInvoiceLineError } from './errors/invalid-invoice-line.error';
 import { UnsupportedPriceTreatmentError } from './errors/unsupported-price-treatment.error';
+import { minorUnitExponentFor, splitShippingAcrossRates } from '@openlinker/core/sales-documents';
 
 /**
  * Default carrier-neutral label for the shipping invoice line (#1517). Core is
@@ -61,6 +62,13 @@ export interface OrderToIssueInvoiceCommandInput {
    * of national wording per ADR-026). Wiring it is tracked as a follow-up (#1562).
    */
   shippingLineName?: string;
+  /**
+   * The order's `order_records.taxRateEra` marker (#2245 review), passed
+   * straight through onto the command so the write-path tax-rate guard can
+   * exempt pre-rollout history. Caller-supplied: the `Order` carries no era,
+   * and every issuance caller already reads the record.
+   */
+  taxRateEra?: string | null;
 }
 
 /**
@@ -74,8 +82,16 @@ export interface OrderToIssueInvoiceCommandInput {
 export function toIssueInvoiceCommand(
   input: OrderToIssueInvoiceCommandInput,
 ): IssueInvoiceCommand {
-  const { order, connectionId, buyerTaxId, documentType, idempotencyKey, shippingLineName, source } =
-    input;
+  const {
+    order,
+    connectionId,
+    buyerTaxId,
+    documentType,
+    idempotencyKey,
+    shippingLineName,
+    source,
+    taxRateEra,
+  } = input;
 
   // GROSS-only MVP: an `exclusive` (net) order would mislabel net as gross.
   // Fail loud rather than corrupt totals. Absent treatment = documented gross
@@ -93,10 +109,9 @@ export function toIssueInvoiceCommand(
   // order total, #1517). Emit it as a normal gross line so the provider adapter
   // resolves its tax rate the same way it does for product lines; core never
   // names a tax rate. Skipped when shipping is 0 (no phantom line).
-  const shippingLine = toShippingLine(order.totals.shipping, shippingLineName);
-  if (shippingLine) {
-    lines.push(shippingLine);
-  }
+  lines.push(
+    ...toShippingLines(order.totals.shipping, order.items, order.totals.currency, shippingLineName)
+  );
 
   const command: IssueInvoiceCommand = {
     connectionId,
@@ -124,6 +139,11 @@ export function toIssueInvoiceCommand(
   // stays undefined so routing falls back past the source axis.
   if (source !== undefined && source.trim().length > 0) {
     command.source = source;
+  }
+  // #2245 review: pass-through only. The write-path guard reads it; nothing
+  // else does, and it never reaches a provider or a document.
+  if (taxRateEra !== undefined && taxRateEra !== null) {
+    command.taxRateEra = taxRateEra;
   }
 
   return command;
@@ -206,9 +226,14 @@ function toBuyerAddress(address: Address): BuyerAddress {
 /**
  * Map an {@link OrderItem} onto an {@link InvoiceLine}. `unitPriceGross` is the
  * line price (gross — see treatment guard above). `name` falls back to
- * `sku` then `productId` when the source omitted a label. `taxRate` is left
- * empty here — the provider adapter resolves the regime rate; core never names
- * a tax rate on the order contract.
+ * `sku` then `productId` when the source omitted a label.
+ *
+ * `taxRate` now carries the rate the order line was settled with (#2248,
+ * ADR-063) instead of the empty string it used to emit. It stays a passthrough:
+ * the code was resolved once at ingestion, and this mapper neither derives one
+ * nor substitutes a default. An empty value still reaches the adapter unchanged
+ * — the gate is what refuses such an order, not this function, because a mapper
+ * that threw would turn an operator-fixable data gap into a failed job.
  *
  * Throws {@link InvalidInvoiceLineError} (PII-clean, cites only `orderId`) when
  * the quantity is not a positive finite number - a malformed order snapshot
@@ -225,27 +250,60 @@ function toInvoiceLine(item: OrderItem, orderId: string): InvoiceLine {
     name: item.name?.trim() || item.sku || item.productId,
     quantity: item.quantity,
     unitPriceGross: item.price,
-    taxRate: '',
+    taxRate: item.taxRate?.trim() ?? '',
   };
 }
 
 /**
- * Compose the shipping {@link InvoiceLine} from the order's gross shipping cost,
- * or `null` when there is nothing to bill (#1517). A single unit priced at the
- * gross shipping amount; `taxRate` is left empty (provider adapter resolves the
- * regime rate, mirroring {@link toInvoiceLine}). Non-positive or non-finite
- * shipping (0, negative, NaN) yields no line — no phantom shipping line. `name`
- * defaults to the neutral {@link SHIPPING_LINE_NAME} when the caller supplies no
- * (locale-specific) override.
+ * Compose the shipping {@link InvoiceLine}s from the order's gross shipping
+ * cost (#1517, extended by #2248).
+ *
+ * Shipping inherits the basket's tax treatment, so a single-rate basket yields
+ * ONE line at that rate — the ordinary case, unchanged in shape from before.
+ * A mixed-rate basket yields N lines whose amounts sum exactly to the shipping
+ * the buyer paid, split in proportion to what was bought at each rate.
+ *
+ * Non-positive or non-finite shipping (0, negative, NaN) yields no line — no
+ * phantom shipping line. `name` defaults to the neutral
+ * {@link SHIPPING_LINE_NAME} when the caller supplies no (locale-specific)
+ * override; a split line carries the same name, since the rate is what
+ * distinguishes the parts and inventing "Shipping (23%)" would put regime
+ * vocabulary in core.
+ *
+ * When the split is uncomputable — some line has no rate — a single line with
+ * an EMPTY rate is returned rather than nothing. Dropping the shipping would
+ * understate the document total; the gate refuses the order before it reaches
+ * a provider.
  */
-function toShippingLine(shipping: number, name?: string): InvoiceLine | null {
+function toShippingLines(
+  shipping: number,
+  items: readonly OrderItem[],
+  currency: string | null | undefined,
+  name?: string
+): InvoiceLine[] {
   if (!Number.isFinite(shipping) || shipping <= 0) {
-    return null;
+    return [];
   }
-  return {
-    name: name?.trim() || SHIPPING_LINE_NAME,
+  const label = name?.trim() || SHIPPING_LINE_NAME;
+  const parts = splitShippingAcrossRates(
+    shipping,
+    items.map((item) => ({
+      taxRate: item.taxRate?.trim() ?? null,
+      gross: item.price * item.quantity,
+    })),
+    // The order's own currency decides how many decimals the parts round to, so
+    // they sum exactly in the units the buyer paid in (#2260 review).
+    minorUnitExponentFor(currency)
+  );
+
+  if (parts === null) {
+    return [{ name: label, quantity: 1, unitPriceGross: shipping, taxRate: '' }];
+  }
+
+  return parts.map((part) => ({
+    name: label,
     quantity: 1,
-    unitPriceGross: shipping,
-    taxRate: '',
-  };
+    unitPriceGross: part.amount,
+    taxRate: part.taxRate,
+  }));
 }
