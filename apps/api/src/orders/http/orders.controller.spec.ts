@@ -119,6 +119,7 @@ describe('OrdersController', () => {
       getNetMedianOrderValue: jest.fn(),
       findDispatchDeadlineCandidates: jest.fn(),
       findCurrencyMismatchOrders: jest.fn(),
+      findNetExcludedOrderCandidates: jest.fn(),
     };
 
     const mockOrderRecordService = {
