@@ -21,10 +21,16 @@ import { AutomationRuleOrmEntity } from './infrastructure/persistence/entities/a
 import { AutomationRunOrmEntity } from './infrastructure/persistence/entities/automation-run.orm-entity';
 import { AutomationTriggerFiringOrmEntity } from './infrastructure/persistence/entities/automation-trigger-firing.orm-entity';
 import { AutomationRuleRepository } from './infrastructure/persistence/repositories/automation-rule.repository';
+import { AutomationTriggerFiringRepository } from './infrastructure/persistence/repositories/automation-trigger-firing.repository';
 import { AutomationRulesService } from './application/services/automation-rules.service';
+import { AutomationTriggerEmissionService } from './application/services/automation-trigger-emission.service';
+import { InertAutomationDispatchService } from './application/services/automation-dispatch.service';
 import {
+  AUTOMATION_DISPATCH_SERVICE_TOKEN,
   AUTOMATION_RULES_SERVICE_TOKEN,
   AUTOMATION_RULE_REPOSITORY_TOKEN,
+  AUTOMATION_TRIGGER_EMISSION_SERVICE_TOKEN,
+  AUTOMATION_TRIGGER_FIRING_REPOSITORY_TOKEN,
 } from './automation.tokens';
 
 @Module({
@@ -40,7 +46,27 @@ import {
     { provide: AUTOMATION_RULE_REPOSITORY_TOKEN, useExisting: AutomationRuleRepository },
     AutomationRulesService,
     { provide: AUTOMATION_RULES_SERVICE_TOKEN, useExisting: AutomationRulesService },
+    AutomationTriggerFiringRepository,
+    {
+      provide: AUTOMATION_TRIGGER_FIRING_REPOSITORY_TOKEN,
+      useExisting: AutomationTriggerFiringRepository,
+    },
+    // The inert dispatcher (#2360). #2361/#2362 replace THIS binding and
+    // nothing else — that is the point of declaring the seam now.
+    InertAutomationDispatchService,
+    { provide: AUTOMATION_DISPATCH_SERVICE_TOKEN, useExisting: InertAutomationDispatchService },
+    AutomationTriggerEmissionService,
+    {
+      provide: AUTOMATION_TRIGGER_EMISSION_SERVICE_TOKEN,
+      useExisting: AutomationTriggerEmissionService,
+    },
   ],
-  exports: [AUTOMATION_RULE_REPOSITORY_TOKEN, AUTOMATION_RULES_SERVICE_TOKEN],
+  exports: [
+    AUTOMATION_RULE_REPOSITORY_TOKEN,
+    AUTOMATION_RULES_SERVICE_TOKEN,
+    AUTOMATION_TRIGGER_FIRING_REPOSITORY_TOKEN,
+    AUTOMATION_DISPATCH_SERVICE_TOKEN,
+    AUTOMATION_TRIGGER_EMISSION_SERVICE_TOKEN,
+  ],
 })
 export class AutomationModule {}

@@ -46,6 +46,7 @@ export * from './domain/entities/automation-run.entity';
 export * from './domain/entities/automation-trigger-firing.entity';
 
 export * from './domain/ports/automation-rule-repository.port';
+export * from './domain/ports/automation-trigger-firing-repository.port';
 
 export * from './domain/exceptions/automation-rule-conflict.error';
 export * from './domain/exceptions/automation-rule-not-found.error';
@@ -58,7 +59,18 @@ export * from './domain/exceptions/automation-illegal-condition-field.error';
 
 export * from './application/types/automation-rule-write.types';
 export type { IAutomationRulesService } from './application/interfaces/automation-rules.service.interface';
+export type {
+  IAutomationDispatchService,
+  AutomationDispatchInput,
+} from './application/interfaces/automation-dispatch.service.interface';
+export type {
+  IAutomationTriggerEmissionService,
+  AutomationEmissionInput,
+  AutomationEmissionResult,
+} from './application/interfaces/automation-trigger-emission.service.interface';
 export { AutomationRulesService } from './application/services/automation-rules.service';
+export { AutomationTriggerEmissionService } from './application/services/automation-trigger-emission.service';
+export { InertAutomationDispatchService } from './application/services/automation-dispatch.service';
 
 export { AutomationModule } from './automation.module';
 export * from './automation.tokens';

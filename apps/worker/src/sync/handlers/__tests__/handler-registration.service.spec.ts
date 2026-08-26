@@ -24,10 +24,10 @@ describe('HandlerRegistrationService (ADR-050 lane partition, #2278)', () => {
   beforeEach(() => {
     registry = new SyncJobHandlerRegistry();
     const dummyHandler = { execute: jest.fn() } as unknown as SyncJobHandler;
-    // The constructor takes the registry followed by 42 handler instances;
+    // The constructor takes the registry followed by 43 handler instances;
     // the partition under test keys on jobType, so interchangeable dummies
     // are sufficient.
-    const handlers = Array.from({ length: 42 }, () => dummyHandler);
+    const handlers = Array.from({ length: 43 }, () => dummyHandler);
     const service = new (HandlerRegistrationService as any)(registry, ...handlers);
     (service as HandlerRegistrationService).onModuleInit();
   });
@@ -37,13 +37,16 @@ describe('HandlerRegistrationService (ADR-050 lane partition, #2278)', () => {
     expect(() => registry.assertFullLaneCoverage()).not.toThrow();
   });
 
-  it('should partition the 41 job types 13/16/5/7 per ADR-050 decision 1', () => {
+  it('should partition the 42 job types 13/17/5/7 per ADR-050 decision 1', () => {
     expect(registry.getJobTypesByLane('realtime')).toHaveLength(13);
     // 16 since #2332 added `returns.orphan.reconcile` — background catch-up work whose
     // lateness costs nobody a request, and which must not contend with the `realtime`
     // order ingestion that is what RESOLVES its orphans — and #2440 added
     // `orders.taxRate.backfill`, a paced backfill with the same profile.
-    expect(registry.getJobTypesByLane('bulk')).toHaveLength(16);
+    // 17 since #2360 added `automation.trigger.deadlineSweep`: a page of
+    // automation evaluations is background work whose delay costs nobody a
+    // request, and which must never crowd out `realtime` order ingestion.
+    expect(registry.getJobTypesByLane('bulk')).toHaveLength(17);
     expect(registry.getJobTypesByLane('fiscal')).toHaveLength(5);
     expect(registry.getJobTypesByLane('fan-out')).toHaveLength(7);
   });

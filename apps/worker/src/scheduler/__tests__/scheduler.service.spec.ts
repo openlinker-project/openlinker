@@ -116,7 +116,9 @@ describe('SchedulerService', () => {
         // `'true'` below, which CronJob rejects ("Unknown alias: tru") and which
         // aborts start() for EVERY task - so a new scheduled task
         // must register its cron key here, in order.
+        'OL_AUTOMATION_DEADLINE_SWEEP_CRON',
         'OL_INVENTORY_PROVENANCE_BACKFILL_CRON',
+        'OL_AUTOMATION_DEADLINE_SWEEP_CRON',
         'OL_INVENTORY_SYNC_CRON',
         'OL_MASTER_PRODUCT_DELTA_SYNC_CRON',
         'OL_MASTER_PRODUCT_RECONCILE_CRON',
@@ -269,6 +271,9 @@ describe('SchedulerService', () => {
 
       const registeredJobs = schedulerRegistry.addCronJob.mock.calls.map((c) => c[0]);
       expect(registeredJobs.sort()).toEqual([
+        // Capability-scoped to OrderSource and platform-free: automation v1's
+        // only time-based firing mode (#2360).
+        'automation-deadline-sweep',
         // Capability-scoped like the rest — it drains OfferManager /
         // ProductPublisher connections and names no platform (#1979).
         'destination-taxonomy-sync',
@@ -500,7 +505,9 @@ describe('SchedulerService', () => {
         // `'true'` below, which CronJob rejects ("Unknown alias: tru") and which
         // aborts start() for EVERY task - so a new scheduled task
         // must register its cron key here, in order.
+        'OL_AUTOMATION_DEADLINE_SWEEP_CRON',
         'OL_INVENTORY_PROVENANCE_BACKFILL_CRON',
+        'OL_AUTOMATION_DEADLINE_SWEEP_CRON',
         'OL_INVENTORY_SYNC_CRON',
         'OL_MASTER_PRODUCT_DELTA_SYNC_CRON',
         'OL_MASTER_PRODUCT_RECONCILE_CRON',
@@ -599,7 +606,9 @@ describe('SchedulerService', () => {
         // `'true'` below, which CronJob rejects ("Unknown alias: tru") and which
         // aborts start() for EVERY task - so a new scheduled task
         // must register its cron key here, in order.
+        'OL_AUTOMATION_DEADLINE_SWEEP_CRON',
         'OL_INVENTORY_PROVENANCE_BACKFILL_CRON',
+        'OL_AUTOMATION_DEADLINE_SWEEP_CRON',
         'OL_INVENTORY_SYNC_CRON',
         'OL_MASTER_PRODUCT_DELTA_SYNC_CRON',
         'OL_MASTER_PRODUCT_RECONCILE_CRON',
@@ -695,7 +704,9 @@ describe('SchedulerService', () => {
         // `'true'` below, which CronJob rejects ("Unknown alias: tru") and which
         // aborts start() for EVERY task - so a new scheduled task
         // must register its cron key here, in order.
+        'OL_AUTOMATION_DEADLINE_SWEEP_CRON',
         'OL_INVENTORY_PROVENANCE_BACKFILL_CRON',
+        'OL_AUTOMATION_DEADLINE_SWEEP_CRON',
         'OL_INVENTORY_SYNC_CRON',
         'OL_MASTER_PRODUCT_DELTA_SYNC_CRON',
         'OL_MASTER_PRODUCT_RECONCILE_CRON',
@@ -904,7 +915,9 @@ describe('SchedulerService', () => {
     const defaultConfigGet = (key: string, defaultValue?: unknown): unknown => {
       // Same alphabetical list + fallthrough contract as the sibling blocks.
       const cronKeys = [
+        'OL_AUTOMATION_DEADLINE_SWEEP_CRON',
         'OL_INVENTORY_PROVENANCE_BACKFILL_CRON',
+        'OL_AUTOMATION_DEADLINE_SWEEP_CRON',
         'OL_INVENTORY_SYNC_CRON',
         'OL_MASTER_PRODUCT_DELTA_SYNC_CRON',
         'OL_MASTER_PRODUCT_RECONCILE_CRON',

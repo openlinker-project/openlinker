@@ -10,3 +10,10 @@
 
 export const AUTOMATION_RULE_REPOSITORY_TOKEN = Symbol('AutomationRuleRepositoryPort');
 export const AUTOMATION_RULES_SERVICE_TOKEN = Symbol('IAutomationRulesService');
+export const AUTOMATION_TRIGGER_FIRING_REPOSITORY_TOKEN = Symbol(
+  'AutomationTriggerFiringRepositoryPort',
+);
+export const AUTOMATION_DISPATCH_SERVICE_TOKEN = Symbol('IAutomationDispatchService');
+export const AUTOMATION_TRIGGER_EMISSION_SERVICE_TOKEN = Symbol(
+  'IAutomationTriggerEmissionService',
+);

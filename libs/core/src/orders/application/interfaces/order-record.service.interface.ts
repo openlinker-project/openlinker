@@ -274,4 +274,18 @@ export interface IOrderRecordService {
    * separate, not-yet-scoped read (spec row C3).
    */
   getTopProducts(filters: TopProductFilters): Promise<TopProductsResult>;
+
+  /**
+   * One page of T4 `order.dispatch_deadline_near` candidates (#2360) — orders on
+   * this connection that still need dispatching and whose deadline falls inside
+   * `[now, windowEnd]`.
+   *
+   * The automation context never reads orders itself; the worker handler
+   * composes this read with the emission seam, which is what keeps
+   * `automation` free of any sibling-context import (#2100's direction).
+   */
+  findDispatchDeadlineCandidates(
+    connectionId: string,
+    input: { windowEnd: Date; now: Date; limit: number; offset: number }
+  ): Promise<OrderRecord[]>;
 }

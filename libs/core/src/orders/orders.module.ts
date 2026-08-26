@@ -45,6 +45,7 @@ import { SyncModule } from '@openlinker/core/sync';
 import { ProductsModule } from '@openlinker/core/products';
 import { MappingsModule } from '@openlinker/core/mappings';
 import { CustomersModule } from '@openlinker/core/customers';
+import { AutomationModule } from '@openlinker/core/automation';
 import { InvoicingModule } from '@openlinker/core/invoicing';
 import { CurrencyModule } from '@openlinker/core/currency';
 
@@ -65,6 +66,12 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     // an orders runtime value (PAYMENT_STATUS) via a dependency-free leaf import,
     // never the orders barrel — so no module-graph cycle.
     InvoicingModule,
+    // One-way edge (#2360): OrderRecordService injects
+    // AUTOMATION_TRIGGER_EMISSION_SERVICE_TOKEN to fire T5 `order.packed`.
+    // AutomationModule does NOT import OrdersModule back — the T4 sweep composes
+    // its own order read at the worker handler instead, so `automation` imports no
+    // sibling context and there is no module cycle to survive (#2100's direction).
+    AutomationModule,
     // One-way edge to a LEAF context (#2125): OrderFxStampService injects
     // CURRENCY_RATE_SERVICE_TOKEN + REPORTING_CURRENCY_SETTINGS_SERVICE_TOKEN.
     // `currency` imports no sibling core context, so no cycle is possible.

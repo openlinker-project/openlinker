@@ -52,6 +52,7 @@ describe('RefundsController', () => {
       recordAmendment: jest.fn(),
       getSalesAndChannelAnalytics: jest.fn(),
       getTopProducts: jest.fn(),
+      findDispatchDeadlineCandidates: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({

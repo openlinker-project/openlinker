@@ -273,4 +273,40 @@ describe('Automation Schema Integration', () => {
       ]);
     });
   });
+
+  describe('at-most-once firing claim (#2360)', () => {
+    // AC-6's shape: a sweep run three times over one standing candidate must
+    // produce exactly ONE firing. Proven on T4 here since T3 needs `order_holds`
+    // (#2339, deferred). The claim is a conditional INSERT, so "already fired"
+    // is the DB's answer, not a read the caller could race.
+    //
+    // This mirrors the SQL `AutomationTriggerFiringRepository.claim` emits —
+    // TypeORM's `orIgnore()` produces the bare `ON CONFLICT DO NOTHING`, and
+    // `ON CONFLICT ON CONSTRAINT` would fail outright because #2358 declares the
+    // uniqueness as a unique INDEX, not a table constraint.
+    it('should record exactly one firing across three sweep passes', async () => {
+      const claim = async (): Promise<boolean> => {
+        const rows = await query(
+          `INSERT INTO "automation_trigger_firings"
+             ("ruleId", "subjectKind", "subjectId", "firedAt")
+           VALUES ($1, 'order', $2, now())
+           ON CONFLICT DO NOTHING
+           RETURNING "id"`,
+          [RULE_A, ORDER_A],
+        );
+        return rows.length > 0;
+      };
+
+      expect(await claim()).toBe(true);
+      expect(await claim()).toBe(false);
+      expect(await claim()).toBe(false);
+
+      const rows = await query<{ count: string }>(
+        `SELECT COUNT(*)::text AS count FROM "automation_trigger_firings"
+          WHERE "ruleId" = $1 AND "subjectId" = $2`,
+        [RULE_A, ORDER_A],
+      );
+      expect(rows[0].count).toBe('1');
+    });
+  });
 });

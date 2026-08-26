@@ -27,6 +27,8 @@ import type {
 } from '../../domain/types/order-record.types';
 import type { FulfillmentRollupState } from '../../domain/types/order-fulfillment.types';
 import type { SalesDocumentBlock } from '@openlinker/core/sales-documents';
+import { IAutomationTriggerEmissionService } from '@openlinker/core/automation';
+import { AUTOMATION_TRIGGER_EMISSION_SERVICE_TOKEN } from '@openlinker/core/automation';
 import { redactAddress } from '../../domain/order-address-redaction';
 import type { OrderAmendmentChange } from '../../domain/order-amendment-diff';
 import type {
@@ -50,6 +52,22 @@ import { buildSalesAndChannelAnalytics } from '../../domain/order-sales-aggregat
 import { buildTopProducts } from '../../domain/top-products-aggregation';
 import type { TopProductFilters, TopProductsResult } from '../../domain/types/top-products.types';
 
+/**
+ * Read the buyer's country out of the untyped order snapshot for automation facts (#2360).
+ *
+ * `OrderRecord.orderSnapshot` is a `Record<string, unknown>`, so this narrows
+ * defensively and returns `undefined` — meaning UNKNOWN, never a guess — on any
+ * shape it does not recognise. #2359's evaluator treats an absent fact as
+ * `unknown` and reports it in the trace, so a snapshot that cannot answer
+ * produces an explanation rather than a silent non-match.
+ */
+function readSnapshotCountry(snapshot: Record<string, unknown>): string | undefined {
+  const shipping = snapshot.shippingAddress;
+  if (typeof shipping !== 'object' || shipping === null) return undefined;
+  const country = (shipping as Record<string, unknown>).countryIso2;
+  return typeof country === 'string' && country.length > 0 ? country : undefined;
+}
+
 @Injectable()
 export class OrderRecordService implements IOrderRecordService {
   private readonly logger = new Logger(OrderRecordService.name);
@@ -62,7 +80,9 @@ export class OrderRecordService implements IOrderRecordService {
     @Inject(ORDER_LINE_ITEM_REPOSITORY_TOKEN)
     private readonly lineItemRepository: OrderLineItemRepositoryPort,
     @Inject(REPORTING_CURRENCY_SETTINGS_SERVICE_TOKEN)
-    private readonly reportingCurrencySettings: IReportingCurrencySettingsService
+    private readonly reportingCurrencySettings: IReportingCurrencySettingsService,
+    @Inject(AUTOMATION_TRIGGER_EMISSION_SERVICE_TOKEN)
+    private readonly automationEmission: IAutomationTriggerEmissionService
   ) {}
 
   /**
@@ -626,12 +646,64 @@ export class OrderRecordService implements IOrderRecordService {
    * rather than on this call's discarded one.
    */
   async markPacked(internalOrderId: string, packedByUserId: string): Promise<OrderRecord> {
-    await this.repository.markPacked(internalOrderId, new Date(), packedByUserId);
+    const packedAt = new Date();
+    // The guard's boolean IS the T5 edge (#2360). The repository's WHERE carries
+    // `packedAt: IsNull()`, so `true` means THIS call performed the null -> value
+    // transition — which is exactly spec §5.2's rule that re-writing `packedAt`
+    // (a timestamp correction, a re-pack) must not re-fire. Capturing it costs
+    // nothing and needs no new state; discarding it, as this method used to,
+    // threw the transition signal away at the one layer that can emit.
+    const isFirstPack = await this.repository.markPacked(internalOrderId, packedAt, packedByUserId);
     const record = await this.repository.findById(internalOrderId);
     if (!record) {
       throw new OrderRecordNotFoundException(internalOrderId);
     }
+    if (isFirstPack) {
+      await this.emitPackedTrigger(record, packedAt);
+    }
     return record;
+  }
+
+  /**
+   * Fire T5 `order.packed`, best-effort (#2360).
+   *
+   * **Never able to fail the pack.** The operator physically packed a box; an
+   * automation that cannot run is not a reason to refuse to record that, and a
+   * throw here would roll the caller back into retrying a write that already
+   * succeeded. The failure is logged and swallowed — the accepted cost is that a
+   * crash between the committed write and this call loses the firing silently,
+   * which is the safe direction (the alternative buys a second label).
+   */
+  async findDispatchDeadlineCandidates(
+    connectionId: string,
+    input: { windowEnd: Date; now: Date; limit: number; offset: number }
+  ): Promise<OrderRecord[]> {
+    return this.repository.findDispatchDeadlineCandidates(connectionId, input);
+  }
+
+  private async emitPackedTrigger(record: OrderRecord, packedAt: Date): Promise<void> {
+    try {
+      await this.automationEmission.emit({
+        trigger: 'order.packed',
+        facts: {
+          subjectKind: 'order',
+          subjectId: record.internalOrderId,
+          // The transition instant, not `record.placedAt`: the fact this trigger
+          // is about is "an operator marked it packed", which happened now.
+          occurredAt: packedAt,
+          sourceConnectionId: record.sourceConnectionId,
+          country: readSnapshotCountry(record.orderSnapshot),
+          totalGross: record.totalAmount ?? undefined,
+          currency: record.currency ?? undefined,
+        },
+        now: packedAt,
+      });
+    } catch (error) {
+      this.logger.warn(
+        `Automation emission failed for order.packed on ${record.internalOrderId}: ` +
+          `${(error as Error).message}`
+      );
+    }
   }
 
   /**

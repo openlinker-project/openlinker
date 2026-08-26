@@ -42,6 +42,7 @@ import { MasterProductReconcileHandler } from './master-product-reconcile.handle
 import { InventoryProvenanceBackfillHandler } from './inventory-provenance-backfill.handler';
 import { PickupPointRefreshHandler } from './pickup-point-refresh.handler';
 import { ShopProductPublishHandler } from './shop-product-publish.handler';
+import { AutomationTriggerDeadlineSweepHandler } from './automation-trigger-deadline-sweep.handler';
 import { ShopProductStatusSyncHandler } from './shop-product-status-sync.handler';
 import { DestinationTaxonomySyncHandler } from './destination-taxonomy-sync.handler';
 import { InvoicingIssueHandler } from './invoicing-issue.handler';
@@ -88,6 +89,7 @@ export class HandlerRegistrationService implements OnModuleInit {
     private readonly masterProductReconcileHandler: MasterProductReconcileHandler,
     private readonly pickupPointRefreshHandler: PickupPointRefreshHandler,
     private readonly shopProductPublishHandler: ShopProductPublishHandler,
+    private readonly automationTriggerDeadlineSweepHandler: AutomationTriggerDeadlineSweepHandler,
     private readonly shopProductStatusSyncHandler: ShopProductStatusSyncHandler,
     private readonly destinationTaxonomySyncHandler: DestinationTaxonomySyncHandler,
     private readonly invoicingIssueHandler: InvoicingIssueHandler,
@@ -302,6 +304,13 @@ export class HandlerRegistrationService implements OnModuleInit {
     // Register shop product publish handler (#1042, ADR-024) — operator-wave
     // child, same `bulk` reasoning as marketplace.offer.create.
     this.handlerRegistry.register('shop.product.publish', this.shopProductPublishHandler, 'bulk');
+    // `bulk`: a page of automation evaluations is background work whose delay
+    // costs nothing a buyer can see, and it must never crowd out `realtime`.
+    this.handlerRegistry.register(
+      'automation.trigger.deadlineSweep',
+      this.automationTriggerDeadlineSweepHandler,
+      'bulk',
+    );
     // Register shop product status-sync handler (#1845)
     this.handlerRegistry.register(
       'shop.product.statusSync',

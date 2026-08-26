@@ -17,6 +17,8 @@ import type { Order } from '../../../domain/types/order.types';
 import type { IncomingOrder } from '../../../domain/types/incoming-order.types';
 import type { IOrderFxStampService } from '../../interfaces/order-fx-stamp.service.interface';
 import type { IReportingCurrencySettingsService } from '@openlinker/core/currency';
+import type { IAutomationTriggerEmissionService } from '@openlinker/core/automation';
+import { AUTOMATION_TRIGGER_EMISSION_SERVICE_TOKEN } from '@openlinker/core/automation';
 import { REPORTING_CURRENCY_SETTINGS_SERVICE_TOKEN } from '@openlinker/core/currency';
 import {
   ORDER_FX_STAMP_SERVICE_TOKEN,
@@ -26,6 +28,15 @@ import {
 
 describe('OrderRecordService', () => {
   let service: OrderRecordService;
+  // T5 emission is exercised in `order-record-packed.service.spec.ts`; here it is
+  // an inert stub so the constructor stays honest without implying participation.
+  const automationEmission = {
+    emit: jest.fn().mockResolvedValue({
+      firedRuleIds: [],
+      alreadyFiredRuleIds: [],
+      evaluatedRuleCount: 0,
+    }),
+  } as unknown as IAutomationTriggerEmissionService;
   let repository: jest.Mocked<OrderRecordRepositoryPort>;
   let fxStamp: jest.Mocked<IOrderFxStampService>;
   let lineItemRepository: jest.Mocked<OrderLineItemRepositoryPort>;
@@ -91,6 +102,10 @@ describe('OrderRecordService', () => {
         {
           provide: ORDER_LINE_ITEM_REPOSITORY_TOKEN,
           useValue: lineItemRepository,
+        },
+        {
+          provide: AUTOMATION_TRIGGER_EMISSION_SERVICE_TOKEN,
+          useValue: automationEmission,
         },
         {
           provide: REPORTING_CURRENCY_SETTINGS_SERVICE_TOKEN,
@@ -193,7 +208,7 @@ describe('OrderRecordService', () => {
   describe('persistOrder - PII enabled', () => {
     beforeEach(() => {
       process.env.OL_STORE_PII = 'true';
-      service = new OrderRecordService(repository, fxStamp, lineItemRepository, reportingCurrencySettings);
+      service = new OrderRecordService(repository, fxStamp, lineItemRepository, reportingCurrencySettings, automationEmission);
     });
 
     it('should persist order with all PII fields when PII storage is enabled', async () => {
@@ -487,7 +502,7 @@ describe('OrderRecordService', () => {
   describe('persistOrder - PII disabled', () => {
     beforeEach(() => {
       process.env.OL_STORE_PII = 'false';
-      service = new OrderRecordService(repository, fxStamp, lineItemRepository, reportingCurrencySettings);
+      service = new OrderRecordService(repository, fxStamp, lineItemRepository, reportingCurrencySettings, automationEmission);
     });
 
     it('should persist order with sanitized addresses when PII storage is disabled', async () => {
@@ -579,7 +594,7 @@ describe('OrderRecordService', () => {
   describe('persistOrder — cancellation recorded via markCancelled (#1984)', () => {
     beforeEach(() => {
       process.env.OL_STORE_PII = 'true';
-      service = new OrderRecordService(repository, fxStamp, lineItemRepository, reportingCurrencySettings);
+      service = new OrderRecordService(repository, fxStamp, lineItemRepository, reportingCurrencySettings, automationEmission);
     });
 
     it('never constructs the OrderRecord passed to upsertWithLineItems() with a non-null cancelledAt, even for a cancelled order', async () => {
@@ -650,7 +665,7 @@ describe('OrderRecordService', () => {
   describe('persistOrder - fulfillment rollup left to updateFulfillmentState (#2101)', () => {
     beforeEach(() => {
       process.env.OL_STORE_PII = 'true';
-      service = new OrderRecordService(repository, fxStamp, lineItemRepository, reportingCurrencySettings);
+      service = new OrderRecordService(repository, fxStamp, lineItemRepository, reportingCurrencySettings, automationEmission);
     });
 
     it('never constructs the OrderRecord passed to upsertWithLineItems() with a fulfillment state', async () => {
@@ -671,7 +686,7 @@ describe('OrderRecordService', () => {
   describe('persist paths - destination sync state left to updateSyncStatus (#2140)', () => {
     beforeEach(() => {
       process.env.OL_STORE_PII = 'true';
-      service = new OrderRecordService(repository, fxStamp, lineItemRepository, reportingCurrencySettings);
+      service = new OrderRecordService(repository, fxStamp, lineItemRepository, reportingCurrencySettings, automationEmission);
     });
 
     it('never constructs the OrderRecord passed to upsertWithLineItems() with sync state', async () => {
@@ -709,7 +724,7 @@ describe('OrderRecordService', () => {
   describe('persistIncomingSnapshot', () => {
     beforeEach(() => {
       process.env.OL_STORE_PII = 'true';
-      service = new OrderRecordService(repository, fxStamp, lineItemRepository, reportingCurrencySettings);
+      service = new OrderRecordService(repository, fxStamp, lineItemRepository, reportingCurrencySettings, automationEmission);
     });
 
     it('should persist incoming snapshot with awaiting_mapping status', async () => {
@@ -773,7 +788,7 @@ describe('OrderRecordService', () => {
 
     it('should sanitize addresses in snapshot when PII is disabled', async () => {
       process.env.OL_STORE_PII = 'false';
-      service = new OrderRecordService(repository, fxStamp, lineItemRepository, reportingCurrencySettings);
+      service = new OrderRecordService(repository, fxStamp, lineItemRepository, reportingCurrencySettings, automationEmission);
 
       const incoming = createMockIncomingOrder();
       const expectedRecord = new OrderRecord(
@@ -848,7 +863,7 @@ describe('OrderRecordService', () => {
 
     it('should omit customerEmail from the snapshot under hash-only PII mode (#948)', async () => {
       process.env.OL_STORE_PII = 'false';
-      service = new OrderRecordService(repository, fxStamp, lineItemRepository, reportingCurrencySettings);
+      service = new OrderRecordService(repository, fxStamp, lineItemRepository, reportingCurrencySettings, automationEmission);
 
       const incoming = createMockIncomingOrder();
       repository.upsert.mockResolvedValue({} as OrderRecord);
@@ -899,7 +914,7 @@ describe('OrderRecordService', () => {
   describe('persistIncomingSnapshot — cancellation recorded via markCancelled (#1984)', () => {
     beforeEach(() => {
       process.env.OL_STORE_PII = 'true';
-      service = new OrderRecordService(repository, fxStamp, lineItemRepository, reportingCurrencySettings);
+      service = new OrderRecordService(repository, fxStamp, lineItemRepository, reportingCurrencySettings, automationEmission);
     });
 
     it('never constructs the OrderRecord passed to upsert() with a non-null cancelledAt, even for a cancelled order', async () => {

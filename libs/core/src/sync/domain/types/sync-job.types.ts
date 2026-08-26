@@ -38,6 +38,9 @@ export const JobTypeValues = [
   // re-checks OL's own orphan returns against `identifier_mappings` and writes a local
   // column. The namespace is the honest signal of that.
   'returns.orphan.reconcile',
+  // Automation v1 (#2360). The only time-based trigger mode; `edge` triggers
+  // emit at their write site and need no job.
+  'automation.trigger.deadlineSweep',
   'marketplace.offers.sync',
   'marketplace.offerQuantity.update',
   'marketplace.offer.updateFields',
