@@ -198,8 +198,8 @@ describe('Automation Schema Integration', () => {
         'firedAt',
         'id',
         'ruleId',
-        'subjectKind',
         'subjectId',
+        'subjectKind',
       ]);
     });
   });
