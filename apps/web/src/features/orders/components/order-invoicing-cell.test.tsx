@@ -45,7 +45,7 @@ function renderCell(props: Partial<Parameters<typeof OrderInvoicingCell>[0]> = {
         emptyFallback={<span>{'—'}</span>}
         {...props}
       />
-    </MemoryRouter>
+    </MemoryRouter>,
   );
 }
 
@@ -151,7 +151,7 @@ describe('OrderInvoicingCell (#2100)', () => {
         unresolvedReason: 'ambiguous-connection-no-primary',
       });
       expect(
-        screen.getByLabelText(/Two setups apply: More than one setup could issue/i)
+        screen.getByLabelText(/Two setups apply: More than one setup could issue/i),
       ).toBeInTheDocument();
     });
   });

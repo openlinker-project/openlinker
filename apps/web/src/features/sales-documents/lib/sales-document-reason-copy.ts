@@ -170,9 +170,11 @@ export const SALES_DOCUMENT_GATE_REASON_COPY = {
     keepsAction: false,
   },
   /**
-   * Neutral, and never counted in an attention aggregate - see
-   * {@link SALES_DOCUMENT_ATTENTION_REASONS}. Manual is the default trigger
-   * model, so a deliberate operator setting must not read as a fault.
+   * Neutral on purpose, and the one reason an attention count must exclude:
+   * manual is the default trigger model, so on a manual install every
+   * uninvoiced order carries it and counting them puts a large red number on a
+   * healthy install (ADR-041 §54). The count itself is the backend's
+   * (`SalesDocumentAttentionReasonValues`), so no second partition is kept here.
    */
   'trigger-model-manual': {
     short: 'Issued on request',
@@ -194,21 +196,6 @@ export const SALES_DOCUMENT_GATE_REASON_COPY = {
     keepsAction: true,
   },
 } satisfies Record<SalesDocumentGateBlockReasonValue, SalesDocumentGateReasonCopy>;
-
-/**
- * The gate reasons an attention aggregate may count (ADR-041 §54).
- *
- * `'trigger-model-manual'` is excluded and that exclusion is the point: manual
- * is `parseTriggerModel`'s default, so on a manual install every uninvoiced
- * order carries it and counting them puts a large red number on a healthy
- * install. The per-order badge still renders it, neutrally.
- */
-export const SALES_DOCUMENT_ATTENTION_REASONS: ReadonlySet<SalesDocumentGateBlockReasonValue> =
-  new Set(
-    (Object.keys(SALES_DOCUMENT_GATE_REASON_COPY) as SalesDocumentGateBlockReasonValue[]).filter(
-      (reason) => reason !== 'trigger-model-manual'
-    )
-  );
 
 /** What a surface renders for one persisted block. */
 export interface ResolvedSalesDocumentReasonCopy extends SalesDocumentGateReasonCopy {

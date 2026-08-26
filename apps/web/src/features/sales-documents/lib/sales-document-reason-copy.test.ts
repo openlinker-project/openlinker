@@ -4,7 +4,6 @@ import {
   SalesDocumentUnresolvedReasonValues,
 } from '../../orders';
 import {
-  SALES_DOCUMENT_ATTENTION_REASONS,
   SALES_DOCUMENT_GATE_REASON_COPY,
   SALES_DOCUMENT_UNRESOLVED_REASON_COPY,
   resolveSalesDocumentReasonCopy,
@@ -37,14 +36,6 @@ describe('sales-document reason copy', () => {
       expect(short.length).toBeLessThanOrEqual(28);
       expect(short.endsWith('.')).toBe(false);
     }
-  });
-
-  it('should exclude trigger-model-manual from the attention set', () => {
-    expect(SALES_DOCUMENT_ATTENTION_REASONS.has('trigger-model-manual')).toBe(false);
-    expect(SALES_DOCUMENT_ATTENTION_REASONS.has('unresolved-routing')).toBe(true);
-    expect(SALES_DOCUMENT_ATTENTION_REASONS.size).toBe(
-      SalesDocumentGateBlockReasonValues.length - 1
-    );
   });
 
   it('should render trigger-model-manual in a neutral tone that keeps its action', () => {

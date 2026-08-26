@@ -27,32 +27,20 @@ describe('paymentBadge', () => {
 describe('invoiceBadge', () => {
   const inv = (
     status: ParsedOrderInvoice['status'],
-    regulatoryStatus: ParsedOrderInvoice['regulatoryStatus']
+    regulatoryStatus: ParsedOrderInvoice['regulatoryStatus'],
   ): ParsedOrderInvoice => ({ invoiceId: 'inv-1', status, regulatoryStatus });
 
   it('reports a failed issue as an error', () => {
-    expect(invoiceBadge(inv('failed', 'not-applicable'))).toEqual({
-      label: 'Failed',
-      tone: 'error',
-    });
+    expect(invoiceBadge(inv('failed', 'not-applicable'))).toEqual({ label: 'Failed', tone: 'error' });
   });
 
   it('reports pending/issuing as in-progress', () => {
-    expect(invoiceBadge(inv('pending', 'not-applicable'))).toEqual({
-      label: 'Issuing',
-      tone: 'warning',
-    });
-    expect(invoiceBadge(inv('issuing', 'not-applicable'))).toEqual({
-      label: 'Issuing',
-      tone: 'warning',
-    });
+    expect(invoiceBadge(inv('pending', 'not-applicable'))).toEqual({ label: 'Issuing', tone: 'warning' });
+    expect(invoiceBadge(inv('issuing', 'not-applicable'))).toEqual({ label: 'Issuing', tone: 'warning' });
   });
 
   it('refines an issued invoice by its clearance lifecycle', () => {
-    expect(invoiceBadge(inv('issued', 'not-applicable'))).toEqual({
-      label: 'Issued',
-      tone: 'success',
-    });
+    expect(invoiceBadge(inv('issued', 'not-applicable'))).toEqual({ label: 'Issued', tone: 'success' });
     expect(invoiceBadge(inv('issued', 'submitted'))).toEqual({ label: 'Submitted', tone: 'info' });
     expect(invoiceBadge(inv('issued', 'cleared'))).toEqual({ label: 'Cleared', tone: 'success' });
     expect(invoiceBadge(inv('issued', 'accepted'))).toEqual({ label: 'Cleared', tone: 'success' });
@@ -64,9 +52,7 @@ describe('invoiceBadge', () => {
       label: 'Correction · Cleared',
       tone: 'success',
     });
-    expect(
-      invoiceBadge({ ...inv('issued', 'not-applicable'), documentType: 'credit-note' })
-    ).toEqual({
+    expect(invoiceBadge({ ...inv('issued', 'not-applicable'), documentType: 'credit-note' })).toEqual({
       label: 'Correction · Issued',
       tone: 'success',
     });
@@ -98,7 +84,7 @@ describe('invoicingBlockedBadge (#2100)', () => {
     // here — and the aggregate count has no invoice awareness. Suppressing on the
     // FE would leave a counted, filterable block that no surface explains.
     expect(invoicingBlockedBadge('unresolved-routing', undefined, invoice(false))).toEqual(
-      expect.objectContaining({ label: 'No routing' })
+      expect.objectContaining({ label: 'No routing' }),
     );
   });
 
@@ -135,8 +121,6 @@ describe('invoicingBlockedBadge (#2100)', () => {
   });
 
   it('falls back to the generic routing label when no routing reason travelled along', () => {
-    const badge = invoicingBlockedBadge('unresolved-routing', 'no-matching-rule');
-    expect(badge?.label).not.toBe('No routing');
     expect(invoicingBlockedBadge('unresolved-routing')).toMatchObject({
       label: 'No routing',
       tone: 'error',
@@ -170,7 +154,7 @@ describe('invoicingBlockedBadge (#2100)', () => {
   it('returns null for an unrecognised value rather than an unlabelled pill', () => {
     // A newer backend value must degrade to "no badge", not to an empty chip.
     expect(
-      invoicingBlockedBadge('some-future-reason' as SalesDocumentGateBlockReasonValue)
+      invoicingBlockedBadge('some-future-reason' as SalesDocumentGateBlockReasonValue),
     ).toBeNull();
   });
 

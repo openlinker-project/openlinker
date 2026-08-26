@@ -31,7 +31,6 @@ export type { SalesDocumentConflictKind } from './lib/detect-sales-document-conf
 export {
   SALES_DOCUMENT_GATE_REASON_COPY,
   SALES_DOCUMENT_UNRESOLVED_REASON_COPY,
-  SALES_DOCUMENT_ATTENTION_REASONS,
   resolveSalesDocumentReasonCopy,
 } from './lib/sales-document-reason-copy';
 export type {
