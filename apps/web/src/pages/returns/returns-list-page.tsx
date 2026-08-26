@@ -33,6 +33,7 @@ import { useSearchParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
 import { DataTableSkeleton } from '../../shared/ui/data-table-skeleton';
+import { KeyValueList } from '../../shared/ui/key-value-list';
 import { EmptyState, ErrorState } from '../../shared/ui/feedback-state';
 import { Button } from '../../shared/ui/button';
 import { Chip } from '../../shared/ui/chip';
@@ -143,6 +144,18 @@ export function ReturnsListPage(): ReactElement {
   const total = query.data?.total ?? 0;
   const items = query.data?.items ?? [];
   const droppedCount = query.data?.droppedCount ?? 0;
+  // Distinct from `droppedCount`, and it has to be: an unreadable envelope
+  // yields no rows AND no drops, so every emptiness test below would read it as
+  // the server confirming there are none.
+  const envelopeUnreadable = query.data?.envelopeUnreadable ?? false;
+  // The limit the server APPLIED, not the one this page asked for. They agree
+  // today (20 is under the 100 cap), so reading the request would be true by
+  // coincidence; reading the response makes the reported range and the paging
+  // step structurally true. A zero — the api client's own fallback when neither
+  // the response nor the request carried one — would freeze paging, so the page
+  // size stands in for it.
+  const appliedLimit =
+    query.data !== undefined && query.data.limit > 0 ? query.data.limit : RETURNS_PAGE_SIZE;
 
   function selectBucket(choice: BucketChoice): void {
     setSearchParams((prev) =>
@@ -170,18 +183,28 @@ export function ReturnsListPage(): ReactElement {
   const returnsConfigured = availabilityQuery.data?.configured ?? true;
 
   const isEmpty = !query.isLoading && query.error === null && items.length === 0;
+  // The whole response was unreadable. Ahead of every empty branch, including
+  // the per-row one: without it the page falls through to "No returns recorded
+  // yet." on a deployment that may hold thousands, and the null `counts` blanks
+  // the chips too, so no other signal survives.
+  const isEnvelopeUnreadable = isEmpty && envelopeUnreadable;
   // A page where EVERY row failed to parse is not an empty page. Falling
   // through to the branches below would blank the table and tell the operator
   // they have no returns — the exact false claim the per-row parse exists to
   // avoid, arriving by a different route. Reported before anything else can
   // interpret the emptiness.
-  const isUnreadable = isEmpty && droppedCount > 0;
+  const isUnreadable = isEmpty && !isEnvelopeUnreadable && droppedCount > 0;
   // `offset > 0 && total > 0` is the past-the-end shape: rows exist, this page
   // is simply beyond them. `total === 0` with an offset is an empty set that
   // happens to carry a stale param, and belongs in the branches below.
-  const isPastEnd = isEmpty && !isUnreadable && offset > 0 && total > 0;
+  const isPastEnd = isEmpty && !isEnvelopeUnreadable && !isUnreadable && offset > 0 && total > 0;
   const awaitingAvailability =
-    isEmpty && !isUnreadable && !isPastEnd && !isFiltered && !availabilitySettled;
+    isEmpty &&
+    !isEnvelopeUnreadable &&
+    !isUnreadable &&
+    !isPastEnd &&
+    !isFiltered &&
+    !availabilitySettled;
 
   return (
     <PageLayout
@@ -236,6 +259,14 @@ export function ReturnsListPage(): ReactElement {
         <ErrorState
           title={RETURNS_ERROR_COPY.title}
           message={query.error.message}
+          action={
+            <Button onClick={() => { void query.refetch(); }}>{RETURNS_ERROR_COPY.retry}</Button>
+          }
+        />
+      ) : isEnvelopeUnreadable ? (
+        <ErrorState
+          title={RETURNS_ERROR_COPY.unreadableTitle}
+          message={RETURNS_ERROR_COPY.unreadableEnvelopeMessage}
           action={
             <Button onClick={() => { void query.refetch(); }}>{RETURNS_ERROR_COPY.retry}</Button>
           }
@@ -295,33 +326,44 @@ export function ReturnsListPage(): ReactElement {
               title: (item) => returnIdentitySummary(item),
               subtitle: (item) => returnOrderSummary(item),
               meta: (item) => <ReturnStatusCell item={item} />,
+              // `KeyValueList`, not a hand-rolled `<dl>`: the peer lists
+              // (`listings`, `orders`) render their card detail through the same
+              // primitive, and a bare `<dl>` under a class no stylesheet defines
+              // renders its terms and values unseparated.
               detail: (item) => (
-                <dl className="card-detail">
-                  <dt>{RETURNS_ROW_COPY.sourceLabel}</dt>
-                  <dd>
-                    <ConnectionEntityLabel
-                      connectionId={item.sourceConnectionId}
-                      name={connectionNameById.get(item.sourceConnectionId) ?? null}
-                      linkToDetail={false}
-                      showCopy={false}
-                    />
-                  </dd>
-                  <dt>{RETURNS_ROW_COPY.openedLabel}</dt>
-                  <dd>
-                    <ReturnOpenedCell item={item} />
-                  </dd>
-                  <dt>{RETURNS_ROW_COPY.sourceStatusLabel}</dt>
-                  <dd>
-                    <ReturnSourceStatus rawStatus={item.rawStatus} />
-                  </dd>
-                </dl>
+                <KeyValueList
+                  items={[
+                    {
+                      id: 'source',
+                      label: RETURNS_ROW_COPY.sourceLabel,
+                      value: (
+                        <ConnectionEntityLabel
+                          connectionId={item.sourceConnectionId}
+                          name={connectionNameById.get(item.sourceConnectionId) ?? null}
+                          linkToDetail={false}
+                          showCopy={false}
+                        />
+                      ),
+                    },
+                    {
+                      id: 'opened',
+                      label: RETURNS_ROW_COPY.openedLabel,
+                      value: <ReturnOpenedCell item={item} />,
+                    },
+                    {
+                      id: 'sourceStatus',
+                      label: RETURNS_ROW_COPY.sourceStatusLabel,
+                      value: <ReturnSourceStatus rawStatus={item.rawStatus} />,
+                    },
+                  ]}
+                />
               ),
             }}
           />
 
           <div className="pagination">
             <span className="text-muted">
-              {describeRange(offset + 1, Math.min(offset + RETURNS_PAGE_SIZE, total), total)}
+              {describeRange(offset + 1, Math.min(offset + appliedLimit, total), total)}
               {/* Adjacent to the range on purpose: the range counts what the
                   server says exists and the rows count what could be shown, so
                   the gap between them has to be readable in one glance. */}
@@ -330,13 +372,13 @@ export function ReturnsListPage(): ReactElement {
             <div className="pagination__actions">
               <Button
                 disabled={offset <= 0}
-                onClick={() => { goToOffset(Math.max(0, offset - RETURNS_PAGE_SIZE)); }}
+                onClick={() => { goToOffset(Math.max(0, offset - appliedLimit)); }}
               >
                 {RETURNS_PAGINATION_COPY.previous}
               </Button>
               <Button
-                disabled={offset + RETURNS_PAGE_SIZE >= total}
-                onClick={() => { goToOffset(offset + RETURNS_PAGE_SIZE); }}
+                disabled={offset + appliedLimit >= total}
+                onClick={() => { goToOffset(offset + appliedLimit); }}
               >
                 {RETURNS_PAGINATION_COPY.next}
               </Button>

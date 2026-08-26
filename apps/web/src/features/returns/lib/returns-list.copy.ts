@@ -88,6 +88,14 @@ export const RETURNS_ERROR_COPY = {
    * point them at a network problem they do not have.
    */
   unreadableTitle: 'Returns could not be read',
+  /**
+   * The envelope itself, not its rows. It yields zero rows and zero drops, so
+   * the page has nothing to count — which is exactly why the message must not
+   * quantify anything. It states that nothing could be read and, explicitly,
+   * that this is not evidence there is nothing to read.
+   */
+  unreadableEnvelopeMessage:
+    'The response came back in a shape this version of OpenLinker could not read, so no returns are shown. This does not mean there are none recorded.',
   retry: 'Retry',
 } as const;
 

@@ -22,6 +22,7 @@
  */
 import { useMemo, type ReactElement } from 'react';
 import { DataTable, type DataTableColumn } from '../../../shared/ui/data-table';
+import { KeyValueList } from '../../../shared/ui/key-value-list';
 import { RETURN_LINES_COPY, describeLineQuantity } from '../lib/return-detail.copy';
 import { ReturnLineStateChip } from './return-line-state-chips';
 import type { ReturnLine } from '../api/returns.types';
@@ -108,29 +109,35 @@ export function ReturnLinesTable({ lines }: ReturnLinesTableProps): ReactElement
         // desktop row cannot say different things (#2091).
         title: (line) => line.name ?? RETURN_LINES_COPY.unnamedItem,
         subtitle: (line) => describeLineQuantity(line.quantityAdvised, line.quantityReceived),
+        // `KeyValueList`, the same primitive the peer card details use — a
+        // bare `<dl>` under a class no stylesheet defines renders its terms and
+        // values unseparated.
         detail: (line) => (
-          <dl className="card-detail">
-            <dt>{RETURN_LINES_COPY.reasonLabel}</dt>
-            <dd>{line.reason}</dd>
-            <dt>{RETURN_LINES_COPY.custodyLabel}</dt>
-            <dd>
-              <ReturnLineStateChip axis="custody" value={line.custodyState} />
-            </dd>
-            <dt>{RETURN_LINES_COPY.moneyLabel}</dt>
-            <dd>
-              <ReturnLineStateChip axis="money" value={line.moneyState} />
-            </dd>
-            <dt>{RETURN_LINES_COPY.orderLineLabel}</dt>
-            <dd>
-              <OrderLineCell line={line} />
-            </dd>
-            {line.note !== null ? (
-              <>
-                <dt>{RETURN_LINES_COPY.noteLabel}</dt>
-                <dd>{line.note}</dd>
-              </>
-            ) : null}
-          </dl>
+          <KeyValueList
+            items={[
+              { id: 'reason', label: RETURN_LINES_COPY.reasonLabel, value: line.reason },
+              {
+                id: 'custody',
+                label: RETURN_LINES_COPY.custodyLabel,
+                value: <ReturnLineStateChip axis="custody" value={line.custodyState} />,
+              },
+              {
+                id: 'money',
+                label: RETURN_LINES_COPY.moneyLabel,
+                value: <ReturnLineStateChip axis="money" value={line.moneyState} />,
+              },
+              {
+                id: 'orderLine',
+                label: RETURN_LINES_COPY.orderLineLabel,
+                value: <OrderLineCell line={line} />,
+              },
+              // Dropped rather than rendered empty: an absent note is not a
+              // fact about the line worth a row of its own.
+              ...(line.note !== null
+                ? [{ id: 'note', label: RETURN_LINES_COPY.noteLabel, value: line.note }]
+                : []),
+            ]}
+          />
         ),
       }}
     />

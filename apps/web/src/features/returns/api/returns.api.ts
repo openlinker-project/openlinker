@@ -34,6 +34,12 @@ import type {
 export interface ReturnListResult extends Omit<PaginatedReturns, 'counts'> {
   counts: PaginatedReturns['counts'] | null;
   droppedCount: number;
+  /**
+   * The whole response was unreadable, as opposed to some of its rows. Carried
+   * separately because it yields zero items and zero drops, so a caller testing
+   * only `droppedCount` would render it as a confirmed-empty list.
+   */
+  envelopeUnreadable: boolean;
 }
 
 export interface ReturnsApi {
@@ -114,6 +120,7 @@ export function createReturnsApi(request: ApiRequest): ReturnsApi {
         offset: parsed.offset ?? pagination?.offset ?? 0,
         counts: parsed.counts,
         droppedCount: parsed.droppedCount,
+        envelopeUnreadable: parsed.envelopeUnreadable,
       };
     },
 

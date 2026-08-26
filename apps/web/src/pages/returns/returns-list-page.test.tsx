@@ -47,6 +47,8 @@ interface ListResultOverrides {
   total?: number;
   counts?: { total: number; orphan: number; attributed: number };
   droppedCount?: number;
+  envelopeUnreadable?: boolean;
+  limit?: number;
 }
 
 function listResult(overrides: ListResultOverrides = {}): ReturnListResult {
@@ -54,10 +56,11 @@ function listResult(overrides: ListResultOverrides = {}): ReturnListResult {
   return {
     items,
     total: overrides.total ?? items.length,
-    limit: 20,
+    limit: overrides.limit ?? 20,
     offset: 0,
     counts: overrides.counts ?? { total: items.length, orphan: 0, attributed: items.length },
     droppedCount: overrides.droppedCount ?? 0,
+    envelopeUnreadable: overrides.envelopeUnreadable ?? false,
   };
 }
 
@@ -160,6 +163,21 @@ describe('ReturnsListPage', () => {
       expect(await screen.findByText('Showing 1–20 of 47')).toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'Next' })).toBeEnabled();
       expect(screen.getByRole('button', { name: 'Previous' })).toBeDisabled();
+    });
+
+    it('should report the range the server APPLIED, not the page size it asked for', async () => {
+      // They agree on a default deployment, so reading the request would be
+      // true by coincidence. Reading the response makes it structurally true.
+      setup({
+        list: listResult({
+          items: [makeReturn()],
+          total: 47,
+          limit: 5,
+          counts: { total: 47, orphan: 3, attributed: 44 },
+        }),
+      });
+
+      expect(await screen.findByText('Showing 1–5 of 47')).toBeInTheDocument();
     });
   });
 
@@ -318,6 +336,24 @@ describe('ReturnsListPage', () => {
       ).toBeInTheDocument();
       expect(screen.queryByText('No returns recorded yet')).not.toBeInTheDocument();
       expect(screen.queryByText('Nothing on this page')).not.toBeInTheDocument();
+    });
+
+    it('should say so when the WHOLE envelope was unreadable, never "no returns"', async () => {
+      // The envelope failure yields no rows AND no drops, so every emptiness
+      // test reads it as the server confirming there are none — the parse layer
+      // reports it separately precisely because a row counter cannot see it.
+      // `counts: null` also blanks the chips, so this branch is the only signal
+      // left.
+      setup({
+        list: listResult({ items: [], total: 0, droppedCount: 0, envelopeUnreadable: true }),
+      });
+
+      expect(await screen.findByText('Returns could not be read')).toBeInTheDocument();
+      expect(
+        screen.getByText(/came back in a shape this version of OpenLinker could not read/),
+      ).toBeInTheDocument();
+      expect(screen.queryByText('No returns recorded yet')).not.toBeInTheDocument();
+      expect(screen.queryByText('Returns ingestion is not set up')).not.toBeInTheDocument();
     });
 
     it('should prefer the unreadable state over the past-the-end state', async () => {

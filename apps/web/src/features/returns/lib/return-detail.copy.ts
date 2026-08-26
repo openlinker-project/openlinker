@@ -25,6 +25,7 @@ export const RETURN_DETAIL_COPY = {
   titleFallback: 'Return',
   backToList: 'Returns',
   loading: 'Loading return…',
+  loadingMessage: 'Fetching this return and its lines.',
   notFoundTitle: 'Return not found',
   notFoundMessage: 'This return does not exist, or it has been removed.',
   errorTitle: 'Unable to load return',

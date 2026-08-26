@@ -80,6 +80,7 @@ interface SetupOptions {
   detail?: ReturnDetail;
   getError?: unknown;
   declineFn?: Mock;
+  getFn?: Mock;
   authenticated?: boolean;
 }
 
@@ -90,9 +91,10 @@ interface SetupResult extends RenderResult {
 
 function setup(options: SetupOptions = {}): SetupResult {
   const getFn =
-    options.getError !== undefined
+    options.getFn ??
+    (options.getError !== undefined
       ? vi.fn().mockRejectedValue(options.getError)
-      : vi.fn().mockResolvedValue(options.detail ?? makeDetail());
+      : vi.fn().mockResolvedValue(options.detail ?? makeDetail()));
   const declineFn = options.declineFn ?? vi.fn();
 
   const apiClient = createMockApiClient({
@@ -192,6 +194,16 @@ describe('ReturnDetailPage', () => {
       setup({ getError: new ReturnDetailUnreadableError(RETURN_ID) });
 
       expect(await screen.findByText('Return could not be read')).toBeInTheDocument();
+    });
+
+    it('should render the shared loading primitive, not a blank div, while fetching', async () => {
+      // `panel-skeleton` had no CSS rule anywhere, so the loading state was an
+      // empty unstyled div: a blank page for a sighted operator, with only
+      // `aria-busy` for assistive tech.
+      setup({ getFn: vi.fn().mockReturnValue(new Promise(() => undefined)) });
+
+      expect(await screen.findByText('Loading return…')).toBeInTheDocument();
+      expect(screen.getByText('Fetching this return and its lines.')).toBeInTheDocument();
     });
 
     it('should render the error state with a retry for any other failure', async () => {

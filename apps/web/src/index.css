@@ -19384,3 +19384,60 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
 .ack-row input[type='checkbox'] {
   margin-top: 3px;
 }
+
+/* Returns (#2335 / #2336) — feature-scoped rules, following the
+   `.orders-detail` / `.shipment-detail-grid` precedent: the class names the
+   returns components already carry, defined once here rather than left to the
+   browser's defaults.
+
+   The stacked cells matter more than they look. Each is a `<span>` whose
+   children were authored to stack; without an explicit column direction JSX
+   strips the newline between siblings and the item name runs straight into its
+   SKU ("Blue ShirtSKU-1"), and the identity cell butts its badge against the
+   id. Tokens only — no raw colour or spacing values. */
+
+.returns-identity-cell,
+.returns-order-cell,
+.returns-line-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+/* The one horizontal member of the family: a chip and the sentence that says
+   OpenLinker is not following the axis yet read as one statement, so they sit
+   on a line together and wrap as a unit. */
+.returns-line-state {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* The three detail sections space their OWN contents, never themselves. The
+   page's `.page-section` parent is already a grid with a gap, so an outer
+   `margin-top` here would double-space the sections and put this page on a
+   different rhythm from every other detail page. */
+.returns-detail__lines,
+.returns-detail__source,
+.returns-decline {
+  display: grid;
+  gap: var(--space-3);
+}
+
+/* The action section is the one that must NOT stretch its children: a grid item
+   defaults to filling its track, which would run the decline button the full
+   width of the page. The two sections above stretch on purpose — their table
+   and definition list want the width. */
+.returns-decline {
+  justify-items: start;
+}
+
+/* …but the outcome alert and the explanation still want the width; only the
+   button is meant to be intrinsic. */
+.returns-decline > .alert,
+.returns-decline > p {
+  justify-self: stretch;
+}

@@ -33,7 +33,7 @@ import type { ReactElement } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { Button } from '../../shared/ui/button';
-import { EmptyState, ErrorState } from '../../shared/ui/feedback-state';
+import { EmptyState, ErrorState, LoadingState } from '../../shared/ui/feedback-state';
 import { KeyValueList, type KeyValueItem } from '../../shared/ui/key-value-list';
 import { StatusBadge } from '../../shared/ui/status-badge';
 import { TimeDisplay } from '../../shared/ui/time-display';
@@ -187,7 +187,11 @@ export function ReturnDetailPage(): ReactElement {
         title={RETURN_DETAIL_COPY.titleFallback}
         backTo={{ to: '/returns', label: RETURN_DETAIL_COPY.backToList }}
       >
-        <div aria-busy="true" aria-label={RETURN_DETAIL_COPY.loading} className="panel-skeleton" />
+        <LoadingState
+          liveRegion="off"
+          title={RETURN_DETAIL_COPY.loading}
+          message={RETURN_DETAIL_COPY.loadingMessage}
+        />
       </PageLayout>
     );
   }
@@ -231,15 +235,22 @@ export function ReturnDetailPage(): ReactElement {
   }
 
   if (detail === null) {
-    // Not normally reachable — `data` is null only before the first settle,
-    // which the loading branch above already owns.
+    // Reached when the query never ran: `useReturnQuery` is disabled on an empty
+    // id, and a disabled query settles as not-loading, not-errored, no data.
+    // Unreachable through the router today, but the honest reading of an empty
+    // id is "no such return" — a permanently `aria-busy` skeleton would claim
+    // the page is still loading something that was never requested.
     return (
       <PageLayout
         eyebrow={RETURN_DETAIL_COPY.eyebrow}
-        title={RETURN_DETAIL_COPY.titleFallback}
+        title={RETURN_DETAIL_COPY.notFoundTitle}
         backTo={{ to: '/returns', label: RETURN_DETAIL_COPY.backToList }}
       >
-        <div aria-busy="true" aria-label={RETURN_DETAIL_COPY.loading} className="panel-skeleton" />
+        <EmptyState
+          liveRegion="off"
+          title={RETURN_DETAIL_COPY.notFoundTitle}
+          message={RETURN_DETAIL_COPY.notFoundMessage}
+        />
       </PageLayout>
     );
   }

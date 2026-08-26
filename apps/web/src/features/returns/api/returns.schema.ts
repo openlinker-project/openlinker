@@ -62,6 +62,17 @@ export interface ParsedReturnList {
   /** Rows the server sent that this build could not read. Reported, never hidden. */
   droppedCount: number;
   /**
+   * The ENVELOPE itself could not be read — not a row, the whole response.
+   *
+   * A distinct fact from `droppedCount`, and the reason it is a separate field:
+   * an unreadable envelope yields zero items AND zero drops, which every
+   * emptiness test in the caller reads as "the server said there are none".
+   * That is the same false claim the per-row drop count exists to prevent,
+   * arriving by the one route a row counter cannot see. The parse layer knows
+   * it; it reports it rather than letting the caller infer it.
+   */
+  envelopeUnreadable: boolean;
+  /**
    * Bucket-APPLIED count — what pagination reads. Falls back to the number of
    * rows actually parsed when the server's own field is unreadable, so a
    * broken envelope degrades to "one page" rather than to an infinite Next.
@@ -119,7 +130,15 @@ export function parseReturnList(raw: unknown): ParsedReturnList {
     .safeParse(raw);
 
   if (!envelope.success) {
-    return { items: [], droppedCount: 0, total: 0, counts: null, limit: null, offset: null };
+    return {
+      items: [],
+      droppedCount: 0,
+      envelopeUnreadable: true,
+      total: 0,
+      counts: null,
+      limit: null,
+      offset: null,
+    };
   }
 
   const rawItems = envelope.data.items ?? [];
@@ -153,6 +172,7 @@ export function parseReturnList(raw: unknown): ParsedReturnList {
   return {
     items,
     droppedCount,
+    envelopeUnreadable: false,
     total: envelope.data.total ?? items.length,
     counts: envelope.data.counts ?? null,
     limit: envelope.data.limit ?? null,

@@ -109,6 +109,17 @@ describe('parseReturnList', () => {
     expect(result.items).toEqual([]);
     expect(result.total).toBe(0);
     expect(result.counts).toBeNull();
+    // Reported distinctly: it yields no rows and no drops, so a caller testing
+    // `droppedCount` alone would render it as a confirmed-empty list.
+    expect(result.envelopeUnreadable).toBe(true);
+    expect(result.droppedCount).toBe(0);
+  });
+
+  it('should not report an envelope failure when only a row failed', () => {
+    const result = parseReturnList(rawEnvelope([rawItem(), { id: 'broken' }]));
+
+    expect(result.envelopeUnreadable).toBe(false);
+    expect(result.droppedCount).toBe(1);
   });
 
   it('should report null counts — never a synthesised partition — when counts are unreadable', () => {
