@@ -35,16 +35,19 @@ export * from './domain/types/automation-condition.types';
 export * from './domain/types/automation-action.types';
 export * from './domain/types/automation-definition-hash.types';
 export * from './domain/types/automation-run.types';
+export * from './domain/types/automation-step-result.types';
 export * from './domain/types/automation-legality.types';
 export * from './domain/types/automation-evaluation.types';
 export * from './domain/types/automation-facts.types';
 
 export * from './domain/domain-services/evaluate-automation-rules';
+export * from './domain/domain-services/render-automation-template';
 
 export * from './domain/entities/automation-rule.entity';
 export * from './domain/entities/automation-run.entity';
 export * from './domain/entities/automation-trigger-firing.entity';
 
+export * from './domain/ports/automation-action-executor.port';
 export * from './domain/ports/automation-rule-repository.port';
 export * from './domain/ports/automation-trigger-firing-repository.port';
 
@@ -64,13 +67,23 @@ export type {
   AutomationDispatchInput,
 } from './application/interfaces/automation-dispatch.service.interface';
 export type {
+  IAutomationDelegateResolverService,
+  AutomationDelegateRef,
+} from './application/interfaces/automation-delegate-resolver.service.interface';
+export type {
+  IAutomationRunRecorderService,
+  AutomationRunRecord,
+} from './application/interfaces/automation-run-recorder.service.interface';
+export type {
   IAutomationTriggerEmissionService,
   AutomationEmissionInput,
   AutomationEmissionResult,
 } from './application/interfaces/automation-trigger-emission.service.interface';
 export { AutomationRulesService } from './application/services/automation-rules.service';
 export { AutomationTriggerEmissionService } from './application/services/automation-trigger-emission.service';
-export { InertAutomationDispatchService } from './application/services/automation-dispatch.service';
+export { AutomationDispatchService } from './application/services/automation-dispatch.service';
+export { AutomationActionExecutorRegistry } from './application/services/automation-action-executor.registry';
+export { AUTOMATION_UNAVAILABLE_ACTION_REASONS } from './application/services/executors/unavailable-action-executor.service';
 
 export { AutomationModule } from './automation.module';
 export * from './automation.tokens';

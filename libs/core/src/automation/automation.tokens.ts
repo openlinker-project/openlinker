@@ -17,3 +17,5 @@ export const AUTOMATION_DISPATCH_SERVICE_TOKEN = Symbol('IAutomationDispatchServ
 export const AUTOMATION_TRIGGER_EMISSION_SERVICE_TOKEN = Symbol(
   'IAutomationTriggerEmissionService',
 );
+
+export const AUTOMATION_RUN_RECORDER_TOKEN = Symbol('IAutomationRunRecorderService');

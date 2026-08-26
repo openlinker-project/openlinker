@@ -292,6 +292,24 @@ export class OrderRecord {
   }
 
   /**
+   * Typed, fail-safe read of the buyer's email (#2361) from the snapshot. Pure
+   * derivation of an already-loaded field (ADR-011), mirroring {@link paymentStatus}
+   * — it centralises the `orderSnapshot.customerEmail` key + narrowing in the
+   * owning context so a cross-context consumer (the automation send-email
+   * executor) binds to a typed contract rather than the snapshot's JSON layout.
+   *
+   * Returns `undefined` under `OL_STORE_PII=false` (the field is never written),
+   * and for a source that supplies no buyer email. Callers must treat that as
+   * "OpenLinker does not have an address to send to" and say so, never as an
+   * empty string — a silently-skipped email is indistinguishable from one that
+   * was never configured.
+   */
+  get buyerEmail(): string | undefined {
+    const value = this.orderSnapshot.customerEmail;
+    return typeof value === 'string' && value.length > 0 ? value : undefined;
+  }
+
+  /**
    * Typed, fail-safe read of the marketplace-sourced COD collect amount (#1435)
    * from the snapshot. Pure derivation of an already-loaded field (ADR-011): no
    * I/O, no mutation. Mirrors the {@link paymentStatus} getter — centralises the
