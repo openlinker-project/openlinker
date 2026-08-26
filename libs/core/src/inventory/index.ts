@@ -14,7 +14,11 @@ export { InventoryModule } from './inventory.module';
 export * from './inventory.tokens';
 
 // Ports
-export { InventoryMasterPort, Inventory } from './domain/ports/inventory-master.port';
+export {
+  InventoryMasterPort,
+  Inventory,
+  InventoryAdjustmentResult,
+} from './domain/ports/inventory-master.port';
 export { InventoryRepositoryPort } from './domain/ports/inventory-repository.port';
 export { LocationRepositoryPort } from './domain/ports/location-repository.port';
 export {
@@ -77,6 +81,13 @@ export {
 // Types
 export {
   InventoryAdjustment,
+  InventoryAdjustmentReasonValues,
+  InventoryAdjustmentReason,
+  InventoryAdjustmentDispositionValues,
+  InventoryAdjustmentDisposition,
+  InventoryIdempotencySupportValues,
+  InventoryIdempotencySupport,
+  InventoryAdjustmentOutcome,
   InventoryFilters,
   InventoryPagination,
   PaginatedInventoryItems,

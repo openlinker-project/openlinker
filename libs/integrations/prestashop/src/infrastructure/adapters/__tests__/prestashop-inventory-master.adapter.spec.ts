@@ -505,7 +505,7 @@ describe('PrestashopInventoryMasterAdapter', () => {
         adapter.adjustInventory({
           productId: 'product-id',
           quantity: 10,
-          reason: 'test',
+          reason: 'manual_correction',
         })
       ).rejects.toThrow(PrestashopNotSupportedException);
     });

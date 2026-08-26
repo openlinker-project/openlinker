@@ -12,7 +12,10 @@
  *
  * @module libs/core/src/inventory/domain/ports
  */
-import type { InventoryAdjustment } from '../types/inventory.types';
+import type {
+  InventoryAdjustment,
+  InventoryAdjustmentOutcome,
+} from '../types/inventory.types';
 
 /**
  * Inventory domain entity (minimal interface for port)
@@ -27,6 +30,31 @@ export interface Inventory {
   reserved: number;
   available: number;
   updatedAt?: Date;
+}
+
+/**
+ * What {@link InventoryMasterPort.adjustInventory} returns (#2368).
+ *
+ * The post-adjustment inventory, plus an OPTIONAL report on what the master did
+ * with the adjustment. Every added member is optional, which is what makes this
+ * a source-compatible widening: an existing implementer declaring
+ * `Promise<Inventory>` still satisfies the amended signature, and an existing
+ * caller reading only `Inventory` fields is untouched.
+ *
+ * Declared here rather than in `inventory.types.ts` because it extends
+ * {@link Inventory}, which this file owns; the outcome vocabulary it carries
+ * lives in the types file with every other inventory type.
+ */
+export interface InventoryAdjustmentResult extends Inventory {
+  /**
+   * The adapter's report on the adjustment.
+   *
+   * **Absent means "not reported"**, i.e. an adapter that predates #2368 — a
+   * caller MUST treat that exactly as `idempotency: 'unsupported'`. Reading an
+   * absent outcome as a honoured dedupe would let a retry silently skip a
+   * restock that never happened.
+   */
+  adjustmentOutcome?: InventoryAdjustmentOutcome;
 }
 
 /**
@@ -91,14 +119,37 @@ export interface InventoryMasterPort {
   /**
    * Adjust inventory (increase or decrease)
    *
-   * Adjusts the inventory quantity for a product or variant.
-   * For MVP, this may throw NotSupportedException.
+   * Adjusts the inventory quantity for a product or variant. An implementation
+   * that cannot write stock throws its own platform `NotSupported` error, which
+   * a caller surfaces as a loud refusal — never as a silent success, because a
+   * restock that quietly no-ops is worse than one that never ran.
+   *
+   * ## Idempotency (#2368)
+   *
+   * `adjustment.idempotencyKey` is OPTIONAL and so is honouring it. An
+   * implementer that recognises a repeated key MUST apply nothing and report
+   * `disposition: 'deduplicated'` with `idempotency: 'honoured'`; one that
+   * cannot dedupe MUST report `idempotency: 'unsupported'` rather than leave the
+   * caller to assume the key did something. Reporting nothing at all
+   * (`adjustmentOutcome` absent) is legal — it is what every pre-#2368 adapter
+   * does — and a caller reads it as `'unsupported'`.
+   *
+   * Honouring a key is best-effort within whatever window the implementer
+   * declares; the caller-side guarantee this exists to serve is that a RETRY of
+   * the same logical adjustment does not double-apply.
+   *
+   * ## Reason (#2368)
+   *
+   * `adjustment.reason` is a closed, marketplace-neutral vocabulary. An
+   * implementer carries it to the master where the master has somewhere to put
+   * it, and logs it where it does not. It is never invented and never mapped to
+   * a value the platform did not ask for.
    *
    * @param adjustment - Inventory adjustment details
-   * @returns Updated inventory with internal IDs
-   * @throws NotSupportedException if not supported in MVP
+   * @returns Updated inventory with internal IDs, plus an optional outcome report
+   * @throws NotSupportedException if the platform exposes no stock write
    */
-  adjustInventory(adjustment: InventoryAdjustment): Promise<Inventory>;
+  adjustInventory(adjustment: InventoryAdjustment): Promise<InventoryAdjustmentResult>;
 
   /**
    * Reserve inventory for an order
