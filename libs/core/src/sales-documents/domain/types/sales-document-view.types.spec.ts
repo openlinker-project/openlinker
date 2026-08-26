@@ -87,9 +87,15 @@ describe('SalesDocumentView', () => {
         identity: { ...identity, recordId: 'fis-1', providerType: 'eparagony' },
       };
 
-      // @ts-expect-error a receipt cannot carry an authority answer (ADR-042):
-      // the field does not exist on the type, so no surface can render one.
-      expect(receipt.regulatoryStatus).toBeUndefined();
+      // The compiler does the work here: a receipt cannot carry an authority
+      // answer (ADR-042), so the field does not exist on the type and no
+      // surface can render one. If the field is ever added, `@ts-expect-error`
+      // reports an UNUSED suppression and this suite fails to compile - a
+      // runtime assertion on the same line could only ever pass.
+      // @ts-expect-error `regulatoryStatus` is not a property of a receipt view.
+      const noAuthorityAxis: unknown = receipt.regulatoryStatus;
+      void noAuthorityAxis;
+
       // An empty artefact list on a registered row is a SUCCESS, not a failure.
       expect(receipt.artefactCount).toBe(0);
       expect(receipt.status).toBe('registered');

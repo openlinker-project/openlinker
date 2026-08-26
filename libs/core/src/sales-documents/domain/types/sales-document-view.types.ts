@@ -114,8 +114,10 @@ export interface SalesDocumentInvoiceView {
   /**
    * Neutral document type the provider issued. Open-world for the same reason
    * `DocumentTypeValues` is (ADR-026): a regime may carry a document neither
-   * core nor this projection has seen, and the union shape keeps the
-   * well-known values in editor autocomplete rather than only in prose.
+   * core nor this projection has seen. The union names `DocumentType`
+   * explicitly to point a reader at the owning vocabulary; it does NOT preserve
+   * literal autocomplete, since `DocumentType | string` collapses to `string`
+   * structurally. It matches the shape `SalesDocumentKind` already uses.
    */
   // eslint-disable-next-line @typescript-eslint/no-redundant-type-constituents -- open-world by ADR-026; `string` is not redundant in intent, only in structural assignability (same shape as `SalesDocumentKind`).
   readonly documentType: DocumentType | string;
@@ -187,9 +189,19 @@ export type SalesDocumentRecordView = SalesDocumentInvoiceView | SalesDocumentRe
  * left the sale free. The two are told apart by {@link blocksFurtherIssuance},
  * which mirrors the write-path guard rather than restating it - a surface must
  * never recompute that predicate from `status`.
+ *
+ * There are TWO write-path guards behind that flag, deliberately scoped
+ * differently: `InvoiceRecord.blocksIssuanceElsewhere` asks about OTHER
+ * connections, while `FiscalRegistrationRecord.blocksFurtherRegistration`
+ * explicitly does not scope itself that way (a second key on the SAME
+ * connection is the interleaving that defeats its exactly-once index). They
+ * coincide for a record held on another connection, which is the only kind
+ * this type describes - so the value is right, and a caller must not read it
+ * as the whole of either guard.
  */
 export interface SalesDocumentOtherRecord {
   readonly connectionId: string;
+  /** Open-world, for the same reason {@link SalesDocumentView.documentKind} is. */
   readonly kind: SalesDocumentKind;
   /** True when this record is why another connection may not issue. */
   readonly blocksFurtherIssuance: boolean;
@@ -203,6 +215,14 @@ export interface SalesDocumentView {
   /**
    * The kind this order's document is on: the existing record's kind when
    * there is one, otherwise the kind routing resolves for the order.
+   *
+   * OPEN-WORLD (`SalesDocumentKind`, ADR-041 decision 10), unlike
+   * {@link SalesDocumentRecordView}, which is closed on the two kinds this
+   * projection knows how to describe. The asymmetry is deliberate: routing may
+   * legitimately resolve a kind core has never seen, and this field reports
+   * that answer rather than flattening it. A `switch` over
+   * `document.kind` is exhaustive and compiler-checked; a `switch` over THIS
+   * field is not, and needs a default arm.
    *
    * `null` means routing has NOT decided - the surface says so and points at
    * the settings. It never falls back to asking which document to issue, and
