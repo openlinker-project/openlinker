@@ -142,6 +142,19 @@ export interface IInvoiceService {
   getLatestInvoicesForOrders(orderIds: string[]): Promise<InvoiceRecord[]>;
 
   /**
+   * EVERY `InvoiceRecord` held by any of the given orders, across ALL
+   * connections, newest-first within each order (#2516). Projection read -
+   * NEVER queries the provider/adapter. One query for a whole page of orders.
+   *
+   * The batch counterpart of {@link listInvoiceConnectionIdsForOrder} rather
+   * than of {@link getLatestInvoicesForOrders}: the per-order sales-document
+   * projection (ADR-065) reports a second record on another connection instead
+   * of hiding it behind the newest row, so it needs the record set, not the
+   * winner. Orders with no record are absent; returns `[]` for an empty input.
+   */
+  listInvoicesForOrders(orderIds: string[]): Promise<InvoiceRecord[]>;
+
+  /**
    * Read-only AC-6 list (#1119) of OL's OWN `InvoiceRecord` projection, filtered
    * + paginated. The cross-context list seam the HTTP layer calls — apps/** reach
    * the invoice projection through this service interface, NEVER the repository

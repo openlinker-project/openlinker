@@ -98,6 +98,7 @@ describe('OrdersController', () => {
       findBlockingInvoiceForOrder: jest.fn().mockResolvedValue(null),
       listInvoiceConnectionIdsForOrder: jest.fn().mockResolvedValue([]),
       getLatestInvoicesForOrders: jest.fn().mockResolvedValue([]),
+      listInvoicesForOrders: jest.fn().mockResolvedValue([]),
       issueInvoice: jest.fn(),
       getInvoice: jest.fn(),
       issueCorrection: jest.fn(),
