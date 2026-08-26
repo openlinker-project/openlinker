@@ -255,6 +255,97 @@ export interface FiscalLocateResult {
   artefacts?: FiscalArtefact[];
 }
 
+/**
+ * What a {@link FiscalLocateCriteria} lookup answered (ADR-042 amendment #2502,
+ * decision 1).
+ *
+ * THREE outcomes, because two are not enough. Before this union a locator could
+ * only say "here is the registration" or "no match", so a provider that had
+ * ACCEPTED the sale and not yet registered it had to be reported as an absence -
+ * and the operator surface, having nothing else to say, reported it as one
+ * during what was in fact normal processing.
+ *
+ *   - `registered` - the provider confirms a completed registration and hands
+ *     back the neutral identity set. The ONLY outcome core may terminalise a
+ *     record on.
+ *   - `held`       - the provider holds the sale and has not registered it. It
+ *     is NOT evidence of absence and NOT a failure. The record stays exactly as
+ *     it was, and asking again later is the whole point.
+ *   - `not-found`  - the provider holds no registration for these coordinates.
+ *     Evidence, never authority to resend (decision 7): a resend of a
+ *     registration that already landed is the double registration the contract
+ *     exists to prevent.
+ */
+export const FiscalLocateStatusValues = ['registered', 'held', 'not-found'] as const;
+export type FiscalLocateStatus = (typeof FiscalLocateStatusValues)[number];
+
+export type FiscalLocateAnswer =
+  | { status: 'registered'; registration: FiscalLocateResult }
+  | {
+      status: 'held';
+      /**
+       * Adapter-supplied, PII-free note about WHAT the provider is holding
+       * (typically its own non-terminal status string). Carried for the log and
+       * for an operator surface; core never branches on it.
+       */
+      detail?: string | null;
+    }
+  | { status: 'not-found' };
+
+/**
+ * Coerce whatever a locator returned into a {@link FiscalLocateAnswer}.
+ *
+ * Pure, and deliberately co-located with the union it normalises (the
+ * pure-rule exception in `engineering-standards.md`): adding a member to the
+ * union means editing this function in the same commit.
+ *
+ * It exists because a plugin is third-party-shaped. An out-of-tree adapter
+ * compiled against a `libs/core` that predates this union still returns the old
+ * `FiscalLocateResult | null` shape, and reading `.status` off it would throw on
+ * an operator's reconcile click. The mapping is fail-safe in the fiscal
+ * direction:
+ *
+ *   - `null` / `undefined`             -> `not-found` (the legacy "no match").
+ *   - a legacy result object           -> `registered` (the legacy non-null
+ *     answer meant exactly that, and reading it as anything else would stop
+ *     resolving real registrations).
+ *   - a `status` this build does not
+ *     recognise                        -> `held`, never `registered`. An answer
+ *     core cannot interpret must not terminalise a record on a registration it
+ *     cannot confirm.
+ */
+export function readFiscalLocateAnswer(raw: unknown): FiscalLocateAnswer {
+  if (raw === null || raw === undefined) {
+    return { status: 'not-found' };
+  }
+  if (typeof raw !== 'object') {
+    return { status: 'held' };
+  }
+
+  const candidate = raw as { status?: unknown; registration?: unknown; detail?: unknown };
+  const status = typeof candidate.status === 'string' ? candidate.status : null;
+
+  if (status === null) {
+    // Legacy `FiscalLocateResult`: a non-null answer always meant `registered`.
+    return { status: 'registered', registration: raw as FiscalLocateResult };
+  }
+  if (status === 'not-found') {
+    return { status: 'not-found' };
+  }
+  if (status === 'registered') {
+    const registration = candidate.registration;
+    if (registration !== null && typeof registration === 'object') {
+      return { status: 'registered', registration: registration as FiscalLocateResult };
+    }
+    // A `registered` answer carrying no identity set is not one core can write.
+    return { status: 'held', detail: null };
+  }
+  return {
+    status: 'held',
+    detail: typeof candidate.detail === 'string' ? candidate.detail : null,
+  };
+}
+
 /** Insert shape for a new registration record. */
 export interface CreateFiscalRegistrationRecordInput {
   connectionId: string;
@@ -292,5 +383,12 @@ export const FiscalReconcileOutcomeValues = [
   'not-found',
   /** The adapter cannot be queried by business coordinates; operator handling only. */
   'unsupported',
+  /**
+   * The provider HOLDS the sale but has not registered it yet (ADR-042
+   * amendment #2502, decisions 1 and 3). A legitimate answer, not a failure:
+   * the record is left exactly where it was and the same check can be repeated
+   * later. Distinct from `not-found`, which asserts the provider holds nothing.
+   */
+  'still-unknown',
 ] as const;
 export type FiscalReconcileOutcome = (typeof FiscalReconcileOutcomeValues)[number];

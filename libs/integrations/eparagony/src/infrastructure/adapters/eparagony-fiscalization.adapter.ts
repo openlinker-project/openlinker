@@ -36,8 +36,8 @@
 import type { LoggerPort } from '@openlinker/shared/logging';
 import type {
   FiscalizationPort,
+  FiscalLocateAnswer,
   FiscalLocateCriteria,
-  FiscalLocateResult,
   FiscalRegistrationLocator,
   RegisterTransactionCommand,
   RegisterTransactionResult,
@@ -60,7 +60,6 @@ import {
 import type { EparagonyConnectionConfig } from '../../domain/types/eparagony-config.types';
 import type { IEparagonyHttpClient } from '../http/eparagony-http-client.interface';
 import {
-  isConfirmed,
   readDocumentStatus,
   toCreateReceiptRequest,
   toLocateResult,
@@ -143,7 +142,7 @@ export class EparagonyFiscalizationAdapter
     return toRegisterTransactionResult(status, documentToken);
   }
 
-  async locateByQuery(criteria: FiscalLocateCriteria): Promise<FiscalLocateResult | null> {
+  async locateByQuery(criteria: FiscalLocateCriteria): Promise<FiscalLocateAnswer> {
     const key = criteria.idempotencyKey?.trim() ?? '';
     if (key.length === 0) {
       // The vendor's ONLY document lookup is by its path token, and our token is
@@ -153,7 +152,7 @@ export class EparagonyFiscalizationAdapter
         `eparagony.pl cannot locate a registration without an idempotency key ` +
           `[connectionId=${this.connectionId}]`,
       );
-      return null;
+      return { status: 'not-found' };
     }
 
     const documentToken = deriveDocumentToken(this.connectionId, key);
@@ -161,26 +160,35 @@ export class EparagonyFiscalizationAdapter
 
     if (status === null) {
       // The provider holds no document under our token.
-      return null;
+      return { status: 'not-found' };
     }
 
-    if (!isConfirmed(status)) {
-      // The provider HAS the document but has not confirmed a fiscal
-      // registration for it. `FiscalLocateResult` cannot express "found, not
-      // registered yet" - core reads any non-null answer as proof of a completed
-      // registration and would terminalise the record on it. Reporting `null`
-      // leaves the record in doubt for an operator, which is the fiscal-safe
-      // reading of the two available answers. See the known-gaps note in the
-      // package README.
+    const reported = readDocumentStatus(status);
+
+    if (reported === EPARAGONY_STATUS_ERROR) {
+      // The vendor holds a document and reports that it FAILED, so there is no
+      // registration and there will not be one under this token. That is an
+      // absence of a registration, not work in progress - reporting it as
+      // `held` would tell the operator to wait for something that will never
+      // arrive.
       this.logger.warn(
-        `eparagony.pl holds document ${documentToken} at status ` +
-          `"${readDocumentStatus(status) ?? 'unknown'}"; reporting no confirmed registration so the ` +
-          `record stays in doubt [connectionId=${this.connectionId}]`,
+        `eparagony.pl reports document ${documentToken} in error; no registration exists ` +
+          `[connectionId=${this.connectionId}]`,
       );
-      return null;
+      return { status: 'not-found' };
     }
 
-    return toLocateResult(status, documentToken);
+    if (reported !== EPARAGONY_STATUS_CONFIRMED) {
+      // The provider HAS the document and has not registered it yet - the third
+      // outcome added by ADR-042 amendment #2502 (decision 1). Before it, this
+      // branch had to answer `null`, and the operator surface reported a sale
+      // being handled normally as one the provider did not have. An unrecognised
+      // status lands here too, which is the fiscal-safe reading: core must not
+      // terminalise a record on a status this build cannot interpret.
+      return { status: 'held', detail: reported ?? 'unknown' };
+    }
+
+    return { status: 'registered', registration: toLocateResult(status, documentToken) };
   }
 
   // -------------------------------------------------------------------------

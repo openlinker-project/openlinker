@@ -10,9 +10,11 @@
 import {
   FiscalArtefactDispositionValues,
   FiscalArtefactMediumValues,
+  FiscalLocateStatusValues,
   FiscalReconcileOutcomeValues,
   FiscalRegistrationFailureModeValues,
   FiscalRegistrationStatusValues,
+  readFiscalLocateAnswer,
 } from './fiscalization.types';
 
 describe('fiscalization.types', () => {
@@ -58,6 +60,72 @@ describe('fiscalization.types', () => {
       'resolved',
       'not-found',
       'unsupported',
+      'still-unknown',
     ]);
+  });
+
+  it('lets a locator say the provider HOLDS the sale without having registered it', () => {
+    // Two outcomes forced a provider mid-processing to be reported as an
+    // absence, which the operator surface then stated as one.
+    expect([...FiscalLocateStatusValues]).toEqual(['registered', 'held', 'not-found']);
+  });
+
+  describe('readFiscalLocateAnswer', () => {
+    it('reads an absent answer as `not-found`', () => {
+      expect(readFiscalLocateAnswer(null)).toEqual({ status: 'not-found' });
+      expect(readFiscalLocateAnswer(undefined)).toEqual({ status: 'not-found' });
+    });
+
+    it('reads the pre-#2502 result shape as `registered`', () => {
+      // An out-of-tree adapter compiled against an older `libs/core` still
+      // answers this way, and its non-null answer always meant `registered`.
+      const legacy = {
+        providerReference: 'p-1',
+        documentReference: 'd-1',
+        signingIdentity: null,
+        registeredAt: null,
+      };
+
+      expect(readFiscalLocateAnswer(legacy)).toEqual({
+        status: 'registered',
+        registration: legacy,
+      });
+    });
+
+    it('passes a well-formed answer through unchanged', () => {
+      const registration = {
+        providerReference: 'p-1',
+        documentReference: null,
+        signingIdentity: null,
+        registeredAt: null,
+      };
+
+      expect(readFiscalLocateAnswer({ status: 'registered', registration })).toEqual({
+        status: 'registered',
+        registration,
+      });
+      expect(readFiscalLocateAnswer({ status: 'held', detail: 'PENDING' })).toEqual({
+        status: 'held',
+        detail: 'PENDING',
+      });
+      expect(readFiscalLocateAnswer({ status: 'not-found' })).toEqual({ status: 'not-found' });
+    });
+
+    it('reads a status this build does not recognise as `held`, never as a registration', () => {
+      // Fail-safe in the fiscal direction: core must not terminalise a record on
+      // an answer it cannot interpret.
+      expect(readFiscalLocateAnswer({ status: 'whatever-comes-next' })).toEqual({
+        status: 'held',
+        detail: null,
+      });
+      expect(readFiscalLocateAnswer('nonsense')).toEqual({ status: 'held' });
+    });
+
+    it('refuses to read a `registered` answer that carries no identity set', () => {
+      expect(readFiscalLocateAnswer({ status: 'registered' })).toEqual({
+        status: 'held',
+        detail: null,
+      });
+    });
   });
 });

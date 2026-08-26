@@ -53,6 +53,7 @@ import type {
   FiscalRegistrationOutcomePatch,
   RegisterTransactionCommand,
 } from '../../domain/types/fiscalization.types';
+import { readFiscalLocateAnswer } from '../../domain/types/fiscalization.types';
 
 /**
  * Capability key the connection must declare. Registered in the CLOSED
@@ -352,12 +353,32 @@ export class FiscalRegistrationService implements IFiscalRegistrationService {
       return { outcome: 'unsupported', record };
     }
 
-    const located = await adapter.locateByQuery({
-      idempotencyKey: record.idempotencyKey,
-      orderId: record.orderId,
-    });
+    // Normalised rather than trusted: an out-of-tree adapter compiled against a
+    // pre-#2502 `libs/core` still answers with the old
+    // `FiscalLocateResult | null` shape, and reading `.status` off that would
+    // throw on an operator's reconcile click.
+    const answer = readFiscalLocateAnswer(
+      await adapter.locateByQuery({
+        idempotencyKey: record.idempotencyKey,
+        orderId: record.orderId,
+      }),
+    );
 
-    if (located === null) {
+    if (answer.status === 'held') {
+      // The provider HAS the sale and has not registered it (ADR-042 amendment
+      // #2502, decisions 1 and 3). Not an absence and not a failure: the record
+      // is left byte-identical - no patch, no lease change, no status move - and
+      // the same check can be repeated later. Terminalising here would claim a
+      // registration that has not happened.
+      this.logger.log(
+        `Provider on connection ${record.connectionId} holds the sale for record ` +
+          `${recordId} but has not registered it yet` +
+          `${answer.detail ? ` (${answer.detail})` : ''}; leaving the record untouched`,
+      );
+      return { outcome: 'still-unknown', record };
+    }
+
+    if (answer.status === 'not-found') {
       // Evidence, not authority. The provider reporting no match does NOT
       // license a resend from here: the record stays in doubt and an operator
       // decides. Re-attempting is only ever reached through `register` under the
@@ -369,6 +390,7 @@ export class FiscalRegistrationService implements IFiscalRegistrationService {
       return { outcome: 'not-found', record };
     }
 
+    const located = answer.registration;
     const locatedProviderType = located.providerType?.trim() ?? '';
     const patch: FiscalRegistrationOutcomePatch = {
       status: 'registered',
