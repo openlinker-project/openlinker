@@ -4,12 +4,13 @@
  * Builds the neutral per-order `SalesDocumentView` for a whole page of orders
  * in a fixed number of queries.
  *
- * Four reads run in parallel - the order records, every invoice record for
- * those orders, every fiscal-registration record for those orders, and the
- * install's sales-document candidate connections - followed by ONE batched
- * routing resolve for the orders that have no document yet. Seven queries for
- * a page of 1 and seven for a page of 200, which is the property the orders
- * list needs (`getEarliestOrderDateByConnection`, #2083, is the precedent).
+ * Three reads run in parallel - the order records, every invoice record for
+ * those orders, every fiscal-registration record for those orders - followed,
+ * only for the orders that have no document yet, by the install's
+ * sales-document candidate connections plus ONE batched routing resolve. Seven
+ * queries for a page of 1 and seven for a page of 200, which is the property
+ * the orders list needs (`getEarliestOrderDateByConnection`, #2083, is the
+ * precedent); a page whose orders all already have a document pays three.
  *
  * Three rules from ADR-065 are enforced here rather than left to callers:
  *
@@ -103,17 +104,18 @@ export class SalesDocumentViewService implements ISalesDocumentViewService {
       return new Map();
     }
 
-    const [records, invoiceRecords, fiscalRecords, candidates] = await Promise.all([
+    const [records, invoiceRecords, fiscalRecords] = await Promise.all([
       this.orderRecords.findByIds(uniqueIds),
       this.invoices.listInvoicesForOrders(uniqueIds),
       this.fiscalRegistrations.getByOrderIds(uniqueIds),
-      this.loadRoutingCandidates(),
     ]);
 
     const rankedByOrderId = groupRankedRecords(invoiceRecords, fiscalRecords);
+    // Routing is only asked about orders that have no document, so a page where
+    // every order already has one issues neither the candidate read nor the
+    // rule-engine reads.
     const prospectiveKinds = await this.resolveProspectiveKinds(
       records.filter((record) => !rankedByOrderId.has(record.internalOrderId)),
-      candidates,
     );
 
     const views = new Map<string, SalesDocumentView>();
@@ -156,7 +158,6 @@ export class SalesDocumentViewService implements ISalesDocumentViewService {
    */
   private async resolveProspectiveKinds(
     recordsWithoutDocument: readonly OrderRecord[],
-    candidates: readonly SalesDocumentRoutingCandidate[],
   ): Promise<Map<string, SalesDocumentKind | null>> {
     const kinds = new Map<string, SalesDocumentKind | null>();
     if (recordsWithoutDocument.length === 0) {
@@ -174,9 +175,10 @@ export class SalesDocumentViewService implements ISalesDocumentViewService {
       }
     }
 
-    const ruleDecisions = await this.salesDocumentRules.resolveRoutingBatch(
-      withFacts.map((entry) => entry.facts),
-    );
+    const [candidates, ruleDecisions] = await Promise.all([
+      this.loadRoutingCandidates(),
+      this.salesDocumentRules.resolveRoutingBatch(withFacts.map((entry) => entry.facts)),
+    ]);
 
     withFacts.forEach((entry, index) => {
       kinds.set(
@@ -186,11 +188,13 @@ export class SalesDocumentViewService implements ISalesDocumentViewService {
         ),
       );
     });
-    const withoutFactsKind = toDocumentKind(
-      chooseSalesDocumentDecision({ ruleDecision: null, candidates }),
-    );
-    for (const orderId of withoutFacts) {
-      kinds.set(orderId, withoutFactsKind);
+    if (withoutFacts.length > 0) {
+      const withoutFactsKind = toDocumentKind(
+        chooseSalesDocumentDecision({ ruleDecision: null, candidates }),
+      );
+      for (const orderId of withoutFacts) {
+        kinds.set(orderId, withoutFactsKind);
+      }
     }
     return kinds;
   }

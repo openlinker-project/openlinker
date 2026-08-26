@@ -12,7 +12,13 @@ import { FISCAL_REGISTRATION_SERVICE_TOKEN } from '@openlinker/core/fiscalizatio
 import { FiscalRegistrationRecord } from '@openlinker/core/fiscalization';
 import { SALES_DOCUMENT_RULES_SERVICE_TOKEN } from '@openlinker/core/sales-documents';
 
+import { FiscalizationModule } from '@openlinker/core/fiscalization';
+import { InvoicingModule } from '@openlinker/core/invoicing';
+import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
+import { SalesDocumentsModule } from '@openlinker/core/sales-documents';
+
 import { OrderRecord } from '../../domain/entities/order-record.entity';
+import { OrdersModule } from '../../orders.module';
 import { ORDER_RECORD_REPOSITORY_TOKEN } from '../../orders.tokens';
 import { SalesDocumentViewService } from './sales-document-view.service';
 
@@ -138,6 +144,16 @@ describe('SalesDocumentViewService', () => {
     expect(orderRecords.findByIds).not.toHaveBeenCalled();
     expect(invoices.listInvoicesForOrders).not.toHaveBeenCalled();
     expect(fiscalRegistrations.getByOrderIds).not.toHaveBeenCalled();
+  });
+
+  it('should not read the routing candidates when every order already has a document', async () => {
+    orderRecords.findByIds.mockResolvedValue([orderRecord()]);
+    invoices.listInvoicesForOrders.mockResolvedValue([invoiceRecord()]);
+
+    await service.getForOrders(['ol_order_1']);
+
+    expect(connections.list).not.toHaveBeenCalled();
+    expect(rules.resolveRoutingBatch).not.toHaveBeenCalled();
   });
 
   it('should project an invoice on both of its axes', async () => {
@@ -309,5 +325,22 @@ describe('SalesDocumentViewService', () => {
     await service.getForOrders(['ol_order_1', 'ol_order_1']);
 
     expect(orderRecords.findByIds).toHaveBeenCalledWith(['ol_order_1']);
+  });
+});
+
+describe('OrdersModule wiring for SalesDocumentViewService', () => {
+  // The suite above supplies every token by hand, so it cannot observe a
+  // missing module import - and `tsc` sees only a Symbol. Without this, a
+  // cross-context injection whose exporting module is not imported fails at
+  // BOOT, in every process that wires OrdersModule.
+  it.each([
+    ['IdentifierMappingModule', IdentifierMappingModule],
+    ['InvoicingModule', InvoicingModule],
+    ['FiscalizationModule', FiscalizationModule],
+    ['SalesDocumentsModule', SalesDocumentsModule],
+  ])('should import %s, which exports a token the service injects', (_name, moduleClass) => {
+    const imports = Reflect.getMetadata('imports', OrdersModule) as unknown[];
+
+    expect(imports).toContain(moduleClass);
   });
 });

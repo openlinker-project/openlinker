@@ -55,6 +55,10 @@ import { CurrencyModule } from '@openlinker/core/currency';
 // edge adds no DI cycle - the same direction OrdersModule already takes into
 // InvoicingModule above.
 import { FiscalizationModule } from '@openlinker/core/fiscalization';
+// #2516: the projection resolves the prospective document kind through
+// `ISalesDocumentRulesService`. `sales-documents` is a sink with zero outbound
+// edges to sibling core contexts, so importing it cannot close a cycle.
+import { SalesDocumentsModule } from '@openlinker/core/sales-documents';
 
 // Re-export tokens for convenience
 export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
@@ -80,6 +84,7 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     // registry `@openlinker/integrations-fx` writes into is the one read here.
     CurrencyModule,
     FiscalizationModule,
+    SalesDocumentsModule,
   ],
   providers: [
     // Provide classes directly first
