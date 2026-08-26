@@ -25,6 +25,10 @@ import type { SalesDocumentBlock } from '@openlinker/core/sales-documents';
 import type { OrderFxIntent, OrderFxStamp } from '../types/order-fx.types';
 import type { StampedReportingCurrencyCount } from '../types/order-fx-read.types';
 import type { DailyOrderAggregateRow, SalesAnalyticsFilters } from '../types/order-sales-analytics.types';
+import type {
+  CoverageDetectionPagination,
+  PaginatedCurrencyMismatchOrders,
+} from '../types/coverage-detection.types';
 
 export interface OrderRecordRepositoryPort {
   /**
@@ -212,6 +216,28 @@ export interface OrderRecordRepositoryPort {
     filters: SalesAnalyticsFilters,
     currentReportingCurrency: string
   ): Promise<DailyOrderAggregateRow[]>;
+
+  /**
+   * Data Coverage 'currency' category drill-down (#2464) — the paginated
+   * list of orders backing {@link getDailyOrderAggregates}' combined
+   * `unconvertedCount`/`unconvertedValue` figure. Same scope as
+   * {@link getDailyOrderAggregates} (`recordStatus = 'ready'`, resolvable
+   * `placedAt`/`totalAmount`, `[filters.from, filters.to)`, optional
+   * connection narrowing, non-cancelled) and the IDENTICAL currency-mismatch
+   * predicate: `reportingCurrency IS NULL OR reportingCurrency !=
+   * currentReportingCurrency`. That predicate already covers both
+   * populations the mockup's `detail-currency` state needs to show under one
+   * combined count - a never-stamped row (`stampedCurrency: null`) and a
+   * stamped-but-stale row (a prior reporting-currency era, ADR-040 - Decision
+   * 7's restatement case) - so `total` here is exactly
+   * `unconvertedCount` summed over the same filters, which the #2464 tests
+   * assert as a regression guard.
+   */
+  findCurrencyMismatchOrders(
+    filters: SalesAnalyticsFilters,
+    currentReportingCurrency: string,
+    pagination: CoverageDetectionPagination
+  ): Promise<PaginatedCurrencyMismatchOrders>;
 
   /**
    * Headline median order value for the sales & channel analytics read
