@@ -62,6 +62,11 @@ describe('OMS attention columns (integration)', () => {
   let repository: OmsAttentionWriter<AttentionOrderRecord> & {
     upsert(record: never): Promise<unknown>;
     countOrdersWithOmsAttention(): Promise<number>;
+    findMany(
+      filters: Record<string, unknown>,
+      pagination: { limit: number; offset: number }
+    ): Promise<{ items: Array<{ internalOrderId: string }>; total: number }>;
+    countByHealth(filters: Record<string, unknown>): Promise<{ omsAttention: number }>;
   };
 
   beforeAll(async () => {
@@ -397,6 +402,73 @@ describe('OMS attention columns (integration)', () => {
       await expect(repository.countOrdersWithOmsAttention()).resolves.toBe(0);
       const record = await repository.findById(seeded.internalOrderId);
       expect(record?.omsAttention).toEqual([]);
+    });
+  });
+
+  describe('the ?attention= list axis and its summary count (#2353)', () => {
+    async function seedBlockedAndHealthy(): Promise<{ blocked: string; healthy: string }> {
+      const blocked = await createTestOrderRecord(harness.getDataSource());
+      const healthy = await createTestOrderRecord(harness.getDataSource());
+      await repository.updateOmsAttention(blocked.internalOrderId, 'reservations', {
+        kind: 'blocked',
+        reason: 'reservation-shortfall',
+      });
+      return { blocked: blocked.internalOrderId, healthy: healthy.internalOrderId };
+    }
+
+    it('keeps only orders carrying a counted state when true', async () => {
+      const { blocked } = await seedBlockedAndHealthy();
+
+      const page = await repository.findMany({ omsAttention: true }, { limit: 20, offset: 0 });
+
+      expect(page.items.map((item) => item.internalOrderId)).toEqual([blocked]);
+    });
+
+    it('keeps the rest when false, including rows whose column is NULL', async () => {
+      // The negative arm must be TOTAL over a NULL column. `jsonb_path_exists`
+      // yields NULL on a NULL input, so the predicate coalesces to an empty
+      // array BEFORE the test - without that the healthy majority would vanish
+      // from `attention=false`, the trap `IS_SALES_DOCUMENT_BLOCKED` needs its
+      // own COALESCE for.
+      const { healthy } = await seedBlockedAndHealthy();
+
+      const page = await repository.findMany({ omsAttention: false }, { limit: 20, offset: 0 });
+
+      expect(page.items.map((item) => item.internalOrderId)).toEqual([healthy]);
+    });
+
+    it('returns both orders when the axis is omitted', async () => {
+      await seedBlockedAndHealthy();
+
+      const page = await repository.findMany({}, { limit: 20, offset: 0 });
+
+      expect(page.total).toBe(2);
+    });
+
+    it('counts the same population in the health summary as the filter returns', async () => {
+      await seedBlockedAndHealthy();
+
+      const summary = await repository.countByHealth({});
+
+      expect(summary.omsAttention).toBe(1);
+    });
+
+    it('does not match on a reason this build does not recognise', async () => {
+      const seeded = await createTestOrderRecord(harness.getDataSource());
+      await harness
+        .getDataSource()
+        .query(`UPDATE "order_records" SET "omsAttention" = $1 WHERE "internalOrderId" = $2`, [
+          JSON.stringify([
+            { producer: 'automations', reason: 'automation-failed', since: '2026-08-26T00:00:00Z' },
+          ]),
+          seeded.internalOrderId,
+        ]);
+
+      const page = await repository.findMany({ omsAttention: true }, { limit: 20, offset: 0 });
+      const summary = await repository.countByHealth({});
+
+      expect(page.items).toEqual([]);
+      expect(summary.omsAttention).toBe(0);
     });
   });
 });

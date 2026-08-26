@@ -392,6 +392,39 @@ describe('OrdersController', () => {
       );
     });
 
+    it('should map ?attention= onto the omsAttention repository axis (#2353)', async () => {
+      repository.findMany.mockResolvedValue({ items: [], total: 0 });
+
+      await controller.listOrders({ attention: true, limit: 20, offset: 0 });
+
+      expect(repository.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ omsAttention: true }),
+        { limit: 20, offset: 0 }
+      );
+    });
+
+    it('should forward attention=false as a predicate rather than dropping it (#2353)', async () => {
+      repository.findMany.mockResolvedValue({ items: [], total: 0 });
+
+      await controller.listOrders({ attention: false, limit: 20, offset: 0 });
+
+      expect(repository.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ omsAttention: false }),
+        { limit: 20, offset: 0 }
+      );
+    });
+
+    it('should not filter on the OMS axis when ?attention= is omitted (#2353)', async () => {
+      repository.findMany.mockResolvedValue({ items: [], total: 0 });
+
+      await controller.listOrders({ limit: 20, offset: 0 });
+
+      expect(repository.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ omsAttention: undefined }),
+        { limit: 20, offset: 0 }
+      );
+    });
+
     it('should pass the dispatch-SLA sort and dueBefore filter through to the repository (#927)', async () => {
       repository.findMany.mockResolvedValue({ items: [], total: 0 });
 
@@ -602,7 +635,7 @@ describe('OrdersController', () => {
         needsAttention: 1,
         synced: 1,
         awaitingDispatch: 9,
-        salesDocumentBlocked: 0, taxRateConflict: 0, salesDocumentBlockedOldestAt: null,
+        salesDocumentBlocked: 0, taxRateConflict: 0, omsAttention: 0, salesDocumentBlockedOldestAt: null,
       });
 
       const result = await controller.statusSummary({});
@@ -620,7 +653,7 @@ describe('OrdersController', () => {
         needsAttention: 0,
         synced: 0,
         awaitingDispatch: 0,
-        salesDocumentBlocked: 0, taxRateConflict: 0, salesDocumentBlockedOldestAt: null,
+        salesDocumentBlocked: 0, taxRateConflict: 0, omsAttention: 0, salesDocumentBlockedOldestAt: null,
       });
 
       await controller.statusSummary({

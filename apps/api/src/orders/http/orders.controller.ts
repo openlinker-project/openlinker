@@ -134,6 +134,7 @@ export class OrdersController {
       cancelled,
       phase,
       taxRateConflict,
+      attention,
       limit = 20,
       offset = 0,
     } = query;
@@ -180,6 +181,11 @@ export class OrdersController {
         // orthogonal ones.
         lifecyclePhase: phase,
         taxRateConflict,
+        // #2353 - the query param is `attention` (the operator-facing word the
+        // FE chip uses); the repository filter names the full axis, the same
+        // `phase` -> `lifecyclePhase` split, which exists precisely because
+        // `OrderRecordFilters` already carries several orthogonal ones.
+        omsAttention: attention,
       },
       { limit, offset }
     );

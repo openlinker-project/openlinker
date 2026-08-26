@@ -332,10 +332,14 @@ export interface OrderRecordRepositoryPort {
    * at the call site, which is what `AUTHORITY_ATTENTION_REASON_DESCRIPTORS`'
    * `counted` flag exists to prevent.
    *
-   * Deliberately its own statement rather than a `COUNT(*) FILTER` folded into
-   * the orders summary aggregate beside `salesDocumentBlocked`: nothing writes
-   * the column yet, so there is no shared render to fold it into. Folding is
-   * for the issue that wires the surface.
+   * **Retained ALONGSIDE the summary fold (#2353), not superseded by it.** The
+   * orders summary now carries an `omsAttention` count so the `/orders` chip is
+   * scoped by the same filters as the rows beneath it. This read answers a
+   * different question: the who-decides page's `Needs attention (N)` is
+   * install-wide and has no filter scope to pass, so deriving it from the
+   * summary would make its number depend on a scope no operator chose. Both
+   * read the same `HAS_OMS_ATTENTION` predicate, so there is one definition and
+   * the two can never disagree.
    */
   countOrdersWithOmsAttention(): Promise<number>;
 

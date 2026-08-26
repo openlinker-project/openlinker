@@ -291,6 +291,19 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       );
     }
 
+    if (filters.omsAttention !== undefined) {
+      // #2353 - the OMS inert-state axis, ANDed with `health` exactly like
+      // `salesDocumentBlocked` and `taxRateConflict`. It is NOT the
+      // `needs_attention` health bucket: that bucket partitions the set and
+      // means a sync failure, this means OpenLinker stopped deciding something,
+      // and an order is routinely one, the other, or both.
+      qb.andWhere(
+        filters.omsAttention
+          ? OrderRecordRepository.HAS_OMS_ATTENTION
+          : `NOT (${OrderRecordRepository.HAS_OMS_ATTENTION})`,
+      );
+    }
+
     this.applySort(qb, filters.sort, filters.dir);
 
     const [entities, total] = await qb.getManyAndCount();
@@ -357,6 +370,15 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       // #2254 — the oldest still-held order, so the chip label can carry an age
       // rather than a bare count. MIN over the held population only; NULL when
       // nothing is held, which the caller renders as no age clause at all.
+      // #2353 - the OMS inert-state count, folded here so the chip's number is
+      // scoped by the same filters as the rows beneath it. `countOrdersWithOmsAttention`
+      // is retained beside it and is NOT redundant: it answers the unscoped
+      // question the who-decides page asks, which has no filter scope to pass.
+      // Both read HAS_OMS_ATTENTION, so there is one predicate and no drift.
+      .addSelect(
+        `COUNT(*) FILTER (WHERE ${OrderRecordRepository.HAS_OMS_ATTENTION})`,
+        'oms_attention'
+      )
       .addSelect(
         `MIN(rec."salesDocumentBlockedAt") FILTER (WHERE ${OrderRecordRepository.IS_SALES_DOCUMENT_BLOCKED})`,
         'sales_document_blocked_oldest_at'
@@ -373,6 +395,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       awaiting_dispatch: string;
       sales_document_blocked: string;
       tax_rate_conflict: string;
+      oms_attention: string;
       sales_document_blocked_oldest_at: Date | null;
     }>();
 
@@ -385,6 +408,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       awaitingDispatch: Number(raw?.awaiting_dispatch ?? 0),
       salesDocumentBlocked: Number(raw?.sales_document_blocked ?? 0),
       taxRateConflict: Number(raw?.tax_rate_conflict ?? 0),
+      omsAttention: Number(raw?.oms_attention ?? 0),
       salesDocumentBlockedOldestAt: raw?.sales_document_blocked_oldest_at ?? null,
     };
   }
