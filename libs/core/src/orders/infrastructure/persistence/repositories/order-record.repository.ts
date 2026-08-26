@@ -81,6 +81,7 @@ import type {
   CoverageDetectionPagination,
   PaginatedCurrencyMismatchOrders,
   NetExcludedOrderCandidate,
+  PaginatedProductMatchingErrorOrders,
 } from '../../../domain/types/coverage-detection.types';
 
 /**
@@ -722,6 +723,56 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       placedAt: entity.placedAt,
       taxRateEra: entity.taxRateEra,
     }));
+  }
+
+  /**
+   * Data Coverage `'product-matching'` category drill-down (#2466) — see
+   * the port's JSDoc. Same `source_deleted` / `awaiting_mapping` predicate
+   * {@link countByHealth} sums, filtered via {@link OrderHealthSummaryFilters}
+   * (`createdAt`-scoped, matching every other health-bucket read in this
+   * class) rather than the `placedAt`-scoped `SalesAnalyticsFilters`, since
+   * a matched row never carries a resolved `placedAt` (#1985).
+   */
+  async findProductMatchingErrorOrders(
+    filters: OrderHealthSummaryFilters,
+    pagination: CoverageDetectionPagination
+  ): Promise<PaginatedProductMatchingErrorOrders> {
+    const isProductMatchingError = `(${OrderRecordRepository.IS_SOURCE_DELETED} OR ${OrderRecordRepository.IS_MAPPING})`;
+
+    const qb = this.repository
+      .createQueryBuilder('rec')
+      .andWhere(isProductMatchingError)
+      .orderBy('rec."createdAt"', 'DESC')
+      .take(pagination.limit)
+      .skip(pagination.offset);
+
+    if (filters.sourceConnectionId) {
+      qb.andWhere('rec.sourceConnectionId = :sourceConnectionId', {
+        sourceConnectionId: filters.sourceConnectionId,
+      });
+    }
+    if (filters.customerId) {
+      qb.andWhere('rec.customerId = :customerId', { customerId: filters.customerId });
+    }
+    if (filters.createdFrom) {
+      qb.andWhere('rec.createdAt >= :createdFrom', { createdFrom: filters.createdFrom });
+    }
+    if (filters.createdTo) {
+      qb.andWhere('rec.createdAt <= :createdTo', { createdTo: filters.createdTo });
+    }
+
+    const [entities, total] = await qb.getManyAndCount();
+
+    return {
+      items: entities.map((entity) => ({
+        internalOrderId: entity.internalOrderId,
+        sourceConnectionId: entity.sourceConnectionId,
+        recordStatus: entity.recordStatus as 'awaiting_mapping' | 'source_deleted',
+        mappingFailureReason: entity.mappingFailureReason,
+        createdAt: entity.createdAt,
+      })),
+      total,
+    };
   }
 
   /**

@@ -410,4 +410,71 @@ describe('Sales analytics daily aggregates (integration, #1987)', () => {
       expect(secondPage.items[0].nativeCurrency).toBe('PLN');
     });
   });
+
+  describe('findProductMatchingErrorOrders (#2466)', () => {
+    it(
+      'reports the SAME total as countByHealth.sourceDeleted + awaitingMapping, mapping both ' +
+        'statuses to the row shape (regression guard)',
+      async () => {
+        await seedStampedOrder({
+          recordStatus: 'awaiting_mapping',
+          mappingFailureReason: 'no variant mapping for SKU-123',
+          placedAt: null,
+          totalAmount: null,
+          reportingCurrency: null,
+        });
+        await seedStampedOrder({
+          recordStatus: 'source_deleted',
+          mappingFailureReason: 'variant deleted at master',
+          placedAt: null,
+          totalAmount: null,
+          reportingCurrency: null,
+        });
+        // A healthy, ready order — must NOT appear in the product-matching page.
+        await seedStampedOrder({
+          recordStatus: 'ready',
+          placedAt: new Date('2026-08-02T00:00:00.000Z'),
+          totalAmount: 20,
+          reportingCurrency: 'EUR',
+          reportingTotalAmount: 20,
+        });
+
+        const [health, page] = await Promise.all([
+          repository.countByHealth({}),
+          repository.findProductMatchingErrorOrders({}, { limit: 20, offset: 0 }),
+        ]);
+
+        const expectedCount = health.sourceDeleted + health.awaitingMapping;
+        expect(expectedCount).toBe(2);
+        expect(page.total).toBe(expectedCount);
+
+        const reasons = page.items.map((item) => item.mappingFailureReason).sort();
+        expect(reasons).toEqual(['no variant mapping for SKU-123', 'variant deleted at master']);
+        const statuses = page.items.map((item) => item.recordStatus).sort();
+        expect(statuses).toEqual(['awaiting_mapping', 'source_deleted']);
+      }
+    );
+
+    it('scopes by createdFrom/createdTo, and reports an empty page when nothing matches', async () => {
+      const filters = {
+        createdFrom: new Date(Date.now() + 60_000),
+        createdTo: new Date(Date.now() + 120_000),
+      };
+
+      await seedStampedOrder({
+        recordStatus: 'awaiting_mapping',
+        mappingFailureReason: 'no variant mapping',
+        placedAt: null,
+        totalAmount: null,
+        reportingCurrency: null,
+      });
+
+      const page = await repository.findProductMatchingErrorOrders(filters, {
+        limit: 20,
+        offset: 0,
+      });
+
+      expect(page).toEqual({ items: [], total: 0 });
+    });
+  });
 });
