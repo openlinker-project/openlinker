@@ -12,6 +12,7 @@
  */
 import type { Repository } from 'typeorm';
 import { ReservationLedgerReader } from './reservation-ledger.reader';
+import { InventoryItemOrmEntity } from '../persistence/entities/inventory-item.orm-entity';
 import type { ReservationOrmEntity } from '../persistence/entities/reservation.orm-entity';
 import type { AvailabilityScope } from '../../domain/types/availability.types';
 import { UnsupportedAvailabilityScopeError } from '../../domain/exceptions/unsupported-availability-scope.error';
@@ -147,8 +148,10 @@ describe('ReservationLedgerReader', () => {
       });
 
       expect(captured.groupBy).toEqual([['inv."productVariantId"']]);
+      // The join target is the ORM ENTITY, not the raw table name — that is what
+      // makes a table rename a compile break rather than a runtime failure.
       expect(captured.innerJoin).toEqual([
-        ['inventory_items', 'inv', 'inv."id" = r."inventoryItemId"'],
+        [InventoryItemOrmEntity, 'inv', 'inv."id" = r."inventoryItemId"'],
       ]);
     });
 

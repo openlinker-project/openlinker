@@ -30,6 +30,14 @@
  * variant-keyed sums across every live position, all locations and all sources
  * (ADR-058 decision 2 — a cross-source sum is legitimate coexisting mirrors).
  *
+ * That commensurability is also why a hold against a PRODUCT-LEVEL position
+ * (`productVariantId IS NULL`, which #2344 can legitimately resolve a line to)
+ * is absent from this sum: the `IN (:...variantIds)` arm excludes NULL, exactly
+ * as `findAvailabilityByVariantIds` does. Both terms drop the same row, so the
+ * omission is symmetric and cannot oversell — but the two predicates have to
+ * keep agreeing. Narrowing one without the other subtracts a hold from a total
+ * that never contained its stock, or the reverse.
+ *
  * @module libs/core/src/inventory/infrastructure/reservations
  * @implements {ReservationLedgerReaderPort}
  * @see docs/architecture/adrs/061-advisory-reservations-and-availability-authority.md
@@ -37,6 +45,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { InventoryItemOrmEntity } from '../persistence/entities/inventory-item.orm-entity';
 import { ReservationOrmEntity } from '../persistence/entities/reservation.orm-entity';
 import type {
   ReservationLedgerReaderPort,
@@ -76,9 +85,10 @@ export class ReservationLedgerReader implements ReservationLedgerReaderPort {
     const rows = await this.repository
       .createQueryBuilder('r')
       // Same-context join (both tables belong to `inventory`), so ADR-036's
-      // cross-context escape hatch does not apply and the ORM entity is used
-      // rather than a raw table string — a rename stays a compile break.
-      .innerJoin('inventory_items', 'inv', 'inv."id" = r."inventoryItemId"')
+      // cross-context escape hatch does not apply and the join target is the ORM
+      // ENTITY rather than a raw `'inventory_items'` string — a table rename is
+      // then a compile break here instead of a runtime `relation does not exist`.
+      .innerJoin(InventoryItemOrmEntity, 'inv', 'inv."id" = r."inventoryItemId"')
       .select('inv."productVariantId"', 'productVariantId')
       .addSelect('SUM(r."quantity")', 'reserved')
       .where('r."status" = :status', { status: HELD })
