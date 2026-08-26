@@ -40,6 +40,7 @@ import type {
   PruneStaleVariantsResult,
   ProvenanceScope,
   DuplicatePositionReport,
+  InventoryPositionCandidate,
   DuplicatePositionGroup,
 } from '../../../domain/types/inventory.types';
 
@@ -340,6 +341,50 @@ export class InventoryRepository implements InventoryRepositoryPort {
       locationCount: Number(row.locationCount),
       stockUpdatedAt:
         row.stockUpdatedAt instanceof Date ? row.stockUpdatedAt : new Date(row.stockUpdatedAt),
+    }));
+  }
+
+  async findLivePositionsByProductIds(
+    productIds: readonly string[],
+    productVariantIds: readonly string[]
+  ): Promise<readonly InventoryPositionCandidate[]> {
+    if (productIds.length === 0) return [];
+
+    const query = this.repository
+      .createQueryBuilder('inv')
+      .select('inv.id', 'inventoryItemId')
+      .addSelect('inv.productId', 'productId')
+      .addSelect('inv.productVariantId', 'productVariantId')
+      .addSelect('inv.locationId', 'locationId')
+      .where('inv.productId IN (:...productIds)', { productIds: [...productIds] })
+      // A stale position must never accept a new promise (§ 6I's claim
+      // predicate), mirroring findAvailabilityByVariantIds.
+      .andWhere('inv.isStale = false');
+
+    // Narrow to the variants actually asked about, plus product-level rows — a
+    // line with no variant resolves against exactly those. Without this a
+    // many-variant product returns every one of its positions for a single line.
+    if (productVariantIds.length > 0) {
+      query.andWhere(
+        '(inv.productVariantId IN (:...productVariantIds) OR inv.productVariantId IS NULL)',
+        { productVariantIds: [...productVariantIds] }
+      );
+    } else {
+      query.andWhere('inv.productVariantId IS NULL');
+    }
+
+    const rows = await query.getRawMany<{
+      inventoryItemId: string;
+      productId: string;
+      productVariantId: string | null;
+      locationId: string | null;
+    }>();
+
+    return rows.map((row) => ({
+      inventoryItemId: row.inventoryItemId,
+      productId: row.productId,
+      productVariantId: row.productVariantId ?? null,
+      locationId: row.locationId ?? null,
     }));
   }
 

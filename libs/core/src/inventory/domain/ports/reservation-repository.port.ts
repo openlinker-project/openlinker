@@ -112,4 +112,25 @@ export interface ReservationRepositoryPort {
    * sweep (#2349) both have to discover the keys before they can release them.
    */
   listHeldByOrderRecordId(orderRecordId: string): Promise<readonly Reservation[]>;
+
+  /**
+   * EVERY row for one order, whatever its status — the terminal ones included.
+   *
+   * Exists for one caller and one question (#2344's `ReservationService`): *is
+   * this line still reservable at all?* The idempotency index is partial
+   * (`WHERE status = 'held'`), so a `released` / `consumed` / `expired` row is
+   * invisible to `ON CONFLICT` and does **not** block a fresh insert. Ingestion
+   * re-runs on every re-poll of an order, so without this read a shipped order
+   * would mint a brand-new hold on each poll and re-increment the position
+   * counter for stock that has already left the building.
+   *
+   * **This is not the read-then-act the port's header forbids.** That rule is
+   * about a QUANTITY — the value the guard must decide on atomically. This read
+   * asks a lifecycle question over MONOTONE state: `releaseHeld` guards on
+   * `status = 'held'` and nothing returns a terminal row to `held`, so the only
+   * race is a concurrent release landing between the read and the claim, whose
+   * outcome is identical to the two operations simply happening in the other
+   * order. Do not use it to size a claim.
+   */
+  listByOrderRecordId(orderRecordId: string): Promise<readonly Reservation[]>;
 }

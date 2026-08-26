@@ -44,6 +44,9 @@ import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
 import { SyncModule } from '@openlinker/core/sync';
 import { ProductsModule } from '@openlinker/core/products';
 import { MappingsModule } from '@openlinker/core/mappings';
+// #2344: OL's own advisory reservation ledger, recorded at ingestion.
+// One-way edge — `InventoryModule` imports none of `orders`.
+import { InventoryModule } from '@openlinker/core/inventory';
 import { CustomersModule } from '@openlinker/core/customers';
 import { InvoicingModule } from '@openlinker/core/invoicing';
 import { CurrencyModule } from '@openlinker/core/currency';
@@ -58,7 +61,8 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     IdentifierMappingModule, // Required for IDENTIFIER_MAPPING_SERVICE_TOKEN
     SyncModule, // Required for cursor repository, job queue, and locks
     ProductsModule, // Required for PRODUCT_VARIANT_REPOSITORY_TOKEN
-    MappingsModule, // Required for MAPPING_CONFIG_SERVICE_TOKEN
+    MappingsModule, // Required for MAPPING_CONFIG_SERVICE_TOKEN and FULFILLMENT_ROUTING_SERVICE_TOKEN
+    InventoryModule, // Required for RESERVATION_SERVICE_TOKEN (#2344)
     CustomersModule, // Required for CUSTOMER_IDENTITY_RESOLVER_SERVICE_TOKEN
     // One-way edge (F3): OrderIngestionService injects AUTO_ISSUE_TRIGGER_SERVICE_TOKEN.
     // InvoicingModule does NOT import OrdersModule — its trigger service consumes

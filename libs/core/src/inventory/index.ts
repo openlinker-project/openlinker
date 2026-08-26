@@ -48,6 +48,10 @@ export { InsufficientAvailabilityError } from './domain/exceptions/insufficient-
 export { ReservationPositionUnavailableError } from './domain/exceptions/reservation-position-unavailable.error';
 export { ReservationNotHeldError } from './domain/exceptions/reservation-not-held.error';
 export { ReservationLedgerConstraintError } from './domain/exceptions/reservation-ledger-constraint.error';
+export {
+  AmbiguousReservationPositionError,
+  AmbiguousReservationPosition,
+} from './domain/exceptions/ambiguous-reservation-position.error';
 
 // Application Services
 export { IInventoryService } from './application/services/inventory.service.interface';
@@ -77,8 +81,18 @@ export {
 } from './application/services/availability.service.interface';
 export { AvailabilityService } from './application/services/availability.service';
 export { EmptyReservationLedgerReader } from './infrastructure/reservations/empty-reservation-ledger.reader';
+export { IReservationService } from './application/services/reservation.service.interface';
+export { ReservationService } from './application/services/reservation.service';
 
 // Application Types
+export {
+  ReserveOrderLineInput,
+  ReserveForOrderInput,
+  ReserveForOrderResult,
+  SkippedReservationLine,
+  SkippedReservationReason,
+  SkippedReservationReasonValues,
+} from './application/types/reservation-service.types';
 export {
   InventoryItemView,
   InventoryViewProduct,
@@ -99,6 +113,7 @@ export {
   DuplicatePositionRow,
   DuplicatePositionGroup,
   DuplicatePositionReport,
+  InventoryPositionCandidate,
 } from './domain/types/inventory.types';
 export { LEGACY_SOURCE_CONNECTION_ID } from './domain/types/inventory.types';
 export {
@@ -122,6 +137,14 @@ export {
   ReservationPositionUnavailableReasonValues,
   ReservationPositionUnavailableReason,
 } from './domain/types/reservation.types';
+export {
+  RESERVATION_TTL_MS_DEFAULT,
+  RESERVATION_TTL_MS_MIN,
+  RESERVATION_TTL_MS_MAX,
+  RESERVATION_TTL_ENV_KEY,
+  readReservationTtlMs,
+  resolveReservationExpiry,
+} from './domain/types/reservation-expiry.types';
 export {
   InventoryLocationKindValues,
   InventoryLocationKind,

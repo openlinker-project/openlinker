@@ -38,6 +38,8 @@ import { InventoryItemOrmEntity } from '@openlinker/core/inventory/orm-entities'
 import {
   InsufficientAvailabilityError,
   RESERVATION_REPOSITORY_TOKEN,
+  RESERVATION_SERVICE_TOKEN,
+  type IReservationService,
   ReservationNotHeldError,
   ReservationPositionUnavailableError,
   type ReleaseReservationInput,
@@ -428,6 +430,122 @@ describe('Reservation ledger (#2343)', () => {
           position.inventoryItemId,
         ]),
       ).rejects.toThrow();
+    });
+  });
+  /**
+   * The service layer's own guarantees (#2344), on real Postgres.
+   *
+   * These are the two properties a mocked repository cannot prove, because both
+   * are about what the PARTIAL unique index (`WHERE status = 'held'`) does:
+   * a repeat claim conflicts and recovers, and a TERMINAL row does not conflict
+   * at all — which is exactly why the service must gate on it.
+   */
+  describe('the reservation service (#2344)', () => {
+    let service: IReservationService;
+
+    beforeAll(() => {
+      service = harness.getApp().get<IReservationService>(RESERVATION_SERVICE_TOKEN);
+    });
+
+    it('should leave the order re-reservable after a crash between insert and commit', async () => {
+      // Simulates the ingestion crash amendment 2 exists for: the claim's
+      // transaction rolled back, so nothing persisted, and the retry must
+      // succeed rather than wedge behind a false "insufficient stock".
+      const position = await seedPosition(dataSource, 10);
+      const orderRecordId = 'ol_order_crash_1';
+
+      await dataSource.transaction(async (manager) => {
+        await manager.query(
+          `INSERT INTO "reservations"
+             ("orderRecordId","orderLineId","inventoryItemId","quantity","status","expiresAt","atpEffect")
+           VALUES ($1,$2,$3,$4,'held',$5,'published')`,
+          [orderRecordId, 'line-1', position.inventoryItemId, 3, EXPIRES_AT],
+        );
+        throw new Error('simulated crash before commit');
+      }).catch(() => undefined);
+
+      const result = await service.reserveForOrder({
+        orderRecordId,
+        atpEffect: 'published',
+        lines: [
+          {
+            orderLineId: 'line-1',
+            productId: position.productId,
+            productVariantId: position.variantId,
+            quantity: 3,
+          },
+        ],
+      });
+
+      expect(result.granted).toHaveLength(1);
+      expect(result.granted[0].deltaApplied).toBe(3);
+      expect(await readCounter(dataSource, position.inventoryItemId)).toBe(3);
+    });
+
+    it('should create no second row when the same order is reserved twice', async () => {
+      const position = await seedPosition(dataSource, 10);
+      const orderRecordId = 'ol_order_replay_1';
+      const input = {
+        orderRecordId,
+        atpEffect: 'published' as const,
+        lines: [
+          {
+            orderLineId: 'line-1',
+            productId: position.productId,
+            productVariantId: position.variantId,
+            quantity: 2,
+          },
+        ],
+      };
+
+      const first = await service.reserveForOrder(input);
+      const second = await service.reserveForOrder(input);
+
+      expect(first.granted[0].deltaApplied).toBe(2);
+      expect(second.granted[0].deltaApplied).toBe(0);
+      expect(await readCounter(dataSource, position.inventoryItemId)).toBe(2);
+
+      const rows = (await dataSource.query(
+        `SELECT COUNT(*)::int AS count FROM "reservations" WHERE "orderRecordId" = $1`,
+        [orderRecordId],
+      )) as { count: number }[];
+      expect(rows[0].count).toBe(1);
+    });
+
+    it('should not resurrect a released reservation on a later re-ingestion', async () => {
+      // The idempotency index is partial on `status = 'held'`, so a released row
+      // does NOT block a fresh insert. Ingestion re-runs on every re-poll, so
+      // without the terminal-state gate this would mint a second hold and
+      // double-count the counter.
+      const position = await seedPosition(dataSource, 10);
+      const orderRecordId = 'ol_order_resurrect_1';
+      const input = {
+        orderRecordId,
+        atpEffect: 'published' as const,
+        lines: [
+          {
+            orderLineId: 'line-1',
+            productId: position.productId,
+            productVariantId: position.variantId,
+            quantity: 4,
+          },
+        ],
+      };
+
+      await service.reserveForOrder(input);
+      await reservations.releaseHeld({
+        orderRecordId,
+        orderLineId: 'line-1',
+        inventoryItemId: position.inventoryItemId,
+        terminalStatus: 'released',
+      });
+      expect(await readCounter(dataSource, position.inventoryItemId)).toBe(0);
+
+      const replay = await service.reserveForOrder(input);
+
+      expect(replay.granted).toEqual([]);
+      expect(replay.skipped).toEqual([{ orderLineId: 'line-1', reason: 'already-closed' }]);
+      expect(await readCounter(dataSource, position.inventoryItemId)).toBe(0);
     });
   });
 });

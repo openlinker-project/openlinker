@@ -184,6 +184,16 @@ export class ReservationRepository implements ReservationRepositoryPort {
     return entities.map((entity) => this.toDomainFromEntity(entity));
   }
 
+  async listByOrderRecordId(orderRecordId: string): Promise<readonly Reservation[]> {
+    const entities = await this.translate(() =>
+      this.repository.find({
+        where: { orderRecordId },
+        order: { inventoryItemId: 'ASC' },
+      }),
+    );
+    return entities.map((entity) => this.toDomainFromEntity(entity));
+  }
+
   /**
    * One line of a claim, inside the caller's transaction.
    *

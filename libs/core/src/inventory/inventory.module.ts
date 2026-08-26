@@ -21,12 +21,14 @@ import { MasterInventorySyncService } from './application/services/master-invent
 import { InventoryQueryService } from './application/services/inventory-query.service';
 import { LocationService } from './application/services/location.service';
 import { AvailabilityService } from './application/services/availability.service';
+import { ReservationService } from './application/services/reservation.service';
 import { EmptyReservationLedgerReader } from './infrastructure/reservations/empty-reservation-ledger.reader';
 import { InventoryProvenanceBackfillService } from './application/services/inventory-provenance-backfill.service';
 import {
   AVAILABILITY_SERVICE_TOKEN,
   RESERVATION_LEDGER_READER_TOKEN,
   RESERVATION_REPOSITORY_TOKEN,
+  RESERVATION_SERVICE_TOKEN,
   INVENTORY_REPOSITORY_TOKEN,
   INVENTORY_SERVICE_TOKEN,
   INVENTORY_SYNC_SERVICE_TOKEN,
@@ -47,6 +49,7 @@ export {
   AVAILABILITY_SERVICE_TOKEN,
   RESERVATION_LEDGER_READER_TOKEN,
   RESERVATION_REPOSITORY_TOKEN,
+  RESERVATION_SERVICE_TOKEN,
   INVENTORY_REPOSITORY_TOKEN,
   INVENTORY_SERVICE_TOKEN,
   INVENTORY_SYNC_SERVICE_TOKEN,
@@ -85,6 +88,7 @@ export {
     // "an install with zero reservations publishes byte-identically to today"
     // a separately-testable regression rather than an assumption.
     ReservationRepository,
+    ReservationService,
     // #2321 — the computed availability seam. `EmptyReservationLedgerReader` is
     // the Wave-1b stand-in: Wave 2 swaps this one binding for a real ledger
     // repository, which is why the ATP formula already carries the term.
@@ -129,6 +133,10 @@ export {
       useExisting: ReservationRepository,
     },
     {
+      provide: RESERVATION_SERVICE_TOKEN,
+      useExisting: ReservationService,
+    },
+    {
       provide: AVAILABILITY_SERVICE_TOKEN,
       useExisting: AvailabilityService,
     },
@@ -147,6 +155,7 @@ export {
     LOCATION_SERVICE_TOKEN,
     RESERVATION_LEDGER_READER_TOKEN,
     RESERVATION_REPOSITORY_TOKEN,
+    RESERVATION_SERVICE_TOKEN,
     AVAILABILITY_SERVICE_TOKEN,
     INVENTORY_PROVENANCE_BACKFILL_SERVICE_TOKEN,
   ],
