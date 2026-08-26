@@ -22,7 +22,7 @@ import { InventoryQueryService } from './application/services/inventory-query.se
 import { LocationService } from './application/services/location.service';
 import { AvailabilityService } from './application/services/availability.service';
 import { ReservationService } from './application/services/reservation.service';
-import { EmptyReservationLedgerReader } from './infrastructure/reservations/empty-reservation-ledger.reader';
+import { ReservationLedgerReader } from './infrastructure/reservations/reservation-ledger.reader';
 import { InventoryProvenanceBackfillService } from './application/services/inventory-provenance-backfill.service';
 import {
   AVAILABILITY_SERVICE_TOKEN,
@@ -82,17 +82,15 @@ export {
     InventoryQueryService,
     LocationRepository,
     LocationService,
-    // #2343 — the advisory reservation ledger's write half. The
-    // RESERVATION_LEDGER_READER_TOKEN binding below is deliberately NOT swapped
-    // here: ATP subtraction is #2345, and keeping the reader empty is what makes
-    // "an install with zero reservations publishes byte-identically to today"
-    // a separately-testable regression rather than an assumption.
+    // #2343 — the advisory reservation ledger's write half.
     ReservationRepository,
     ReservationService,
-    // #2321 — the computed availability seam. `EmptyReservationLedgerReader` is
-    // the Wave-1b stand-in: Wave 2 swaps this one binding for a real ledger
-    // repository, which is why the ATP formula already carries the term.
-    EmptyReservationLedgerReader,
+    // #2345 — the read half, now real. #2321's `EmptyReservationLedgerReader`
+    // was the Wave-1b stand-in that let the ATP formula carry the ledger term
+    // before the table existed; it survives only as a test fixture on the
+    // `@openlinker/core/inventory/testing` sub-barrel and must never be bound
+    // here again — binding it would silently switch ATP subtraction off.
+    ReservationLedgerReader,
     AvailabilityService,
     InventoryProvenanceBackfillService,
     // Then provide token bindings using useExisting
@@ -126,7 +124,7 @@ export {
     },
     {
       provide: RESERVATION_LEDGER_READER_TOKEN,
-      useExisting: EmptyReservationLedgerReader,
+      useExisting: ReservationLedgerReader,
     },
     {
       provide: RESERVATION_REPOSITORY_TOKEN,

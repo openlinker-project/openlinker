@@ -80,7 +80,6 @@ export {
   PublishControlResult,
 } from './application/services/availability.service.interface';
 export { AvailabilityService } from './application/services/availability.service';
-export { EmptyReservationLedgerReader } from './infrastructure/reservations/empty-reservation-ledger.reader';
 export { IReservationService } from './application/services/reservation.service.interface';
 export { ReservationService } from './application/services/reservation.service';
 
@@ -121,7 +120,11 @@ export {
   AvailabilityProvenance,
   AvailabilityProvenanceValues,
   PromisableQuantity,
+  AtpAnswer,
+  AtpAnsweredBy,
+  ScopedAtpResult,
   computeAtp,
+  applyScopedLedgerSubtraction,
   toPromisableQuantity,
   unknownPromisableQuantity,
 } from './domain/types/availability.types';
