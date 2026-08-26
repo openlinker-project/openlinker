@@ -4,11 +4,12 @@
  * The per-line vocabulary of the `returns` context (#2327, ADR-060): the two
  * ORTHOGONAL per-line machines and the disposition a disposed line records.
  *
- * **Declared now, undriven until Wave 2.** Every column backed by these unions
- * lands with a DEFAULT and nothing in this slice transitions it — there is no
- * state machine, no transition guard and no derived stage here. Declaring the
- * vocabulary early is what lets #2329's ingestion and the Wave-2 receive/dispose
- * flows adopt one spelling instead of inventing two.
+ * **Declared in #2327, undriven until Wave 2.** Every column backed by these
+ * unions landed with a DEFAULT and nothing in that slice transitioned it.
+ * Custody is now driven by #2367's transition rules (see
+ * `domain/domain-services/return-custody-transitions.domain-service.ts`);
+ * `ReturnMoneyState` and `ReturnDisposition` remain undriven here — money is
+ * #2371 and the disposition is written by #2370's dispose path.
  *
  * **Custody and money are never collapsed** (ADR-060). Marketplaces routinely
  * refund before the goods arrive, so a single "return state" would have to lie
@@ -29,6 +30,14 @@ import type { RefundReason } from '@openlinker/core/orders/types';
  * named in the returns product spec § 3.1 — a `ReturnReceiver`/3PL receiving
  * flow, where the receiving party and the inspecting party genuinely differ,
  * re-admits it. Until then, adding it back is a decision, not a fix.
+ *
+ * **DRIVEN SINCE #2367**, and the gate now has teeth. The transitions live in
+ * `return-custody-transitions.domain-service.ts` and every switch over this
+ * union is closed with `assertNever`, so re-admitting `inspected` makes each
+ * consumer a compile error rather than a silent fallthrough — which is what
+ * spec § 3.1's *\"before any downstream consumer branches on custody, never
+ * after\"* asks for. The gate itself is unchanged: a `ReturnReceiver` that can
+ * report an inspection OUTCOME, not merely a receipt.
  */
 export const ReturnCustodyStateValues = [
   'advised',

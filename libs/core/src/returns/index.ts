@@ -119,3 +119,26 @@ export type { IReturnReattributionService } from './application/services/return-
 // offered for this return". `ReturnDeclineUnsupportedReasonValues` is exported
 // as a value because it is the reason vocabulary a response DTO enumerates.
 export * from './domain/types/return-query.types';
+
+// Custody transitions (#2367, `W2-30`): the rules that MOVE
+// `ReturnLine.custodyState`, which Wave 1c declared and left undriven. Pure
+// functions, no service — see the domain-service's header for why, and for the
+// clock rule that keeps `in_transit` a source-reported fact. #2370 (`W2-33`)
+// is the consumer: it persists the returned outcome inside its own transaction
+// rather than assigning the column itself.
+export {
+  advanceReturnCustodyToInTransit,
+  applyReturnCustodyReceipt,
+  applyReturnCustodyDisposition,
+  markReturnCustodyNotReturned,
+  isReturnCustodyFinished,
+} from './domain/domain-services/return-custody-transitions.domain-service';
+export type {
+  ReturnCustodyLineFacts,
+  ReturnCustodyOutcome,
+} from './domain/domain-services/return-custody-transitions.domain-service';
+export {
+  ReturnCustodyTransitionError,
+  ReturnCustodyRefusalReasonValues,
+} from './domain/exceptions/return-custody-transition.error';
+export type { ReturnCustodyRefusalReason } from './domain/exceptions/return-custody-transition.error';
