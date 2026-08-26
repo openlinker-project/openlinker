@@ -34,3 +34,9 @@ export const TAX_RATE_BACKFILL_SERVICE_TOKEN = Symbol('ITaxRateBackfillService')
 // reaches the record through `IOrderChangeService`, never the repository port.
 export const ORDER_CHANGE_REPOSITORY_TOKEN = Symbol('OrderChangeRepositoryPort');
 export const ORDER_CHANGE_SERVICE_TOKEN = Symbol('IOrderChangeService');
+
+// Order holds (#2338, DESIGN §6.3 / REVIEW §3 H9). `OrderHoldsModule` is a LEAF
+// module inside this context — #2339's service imports THAT, never
+// `OrdersModule`, and a sibling context reaches holds through
+// `IOrderHoldService` rather than the repository port.
+export const ORDER_HOLD_REPOSITORY_TOKEN = Symbol('OrderHoldRepositoryPort');

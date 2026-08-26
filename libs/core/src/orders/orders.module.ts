@@ -39,6 +39,7 @@ import {
   ORDER_LINE_ITEM_REPOSITORY_TOKEN,
   TAX_RATE_BACKFILL_SERVICE_TOKEN,
 } from './orders.tokens';
+import { OrderHoldsModule } from './order-holds.module';
 import { IntegrationsModule } from '@openlinker/core/integrations';
 import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
 import { SyncModule } from '@openlinker/core/sync';
@@ -71,6 +72,12 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     // The module is deliberately static (never `forRoot`) so the provider
     // registry `@openlinker/integrations-fx` writes into is the one read here.
     CurrencyModule,
+    // Order holds (#2338). A LEAF module in this same context, imported rather
+    // than inlined so #2339's `OrderHoldService` — and anything else needing
+    // only the hold seam — can take it WITHOUT the eight-context graph above.
+    // The edge is directional: importing the leaf here does not give the leaf
+    // any of these dependencies.
+    OrderHoldsModule,
   ],
   providers: [
     // Provide classes directly first
@@ -158,6 +165,12 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     // Exported so the worker's `orders.taxRate.backfill` handler can inject
     // the backfill seam (#2440).
     TAX_RATE_BACKFILL_SERVICE_TOKEN,
+    // Re-exported so a consumer of `OrdersModule` reaches the hold repository
+    // without also importing `OrderHoldsModule` (#2338). It is the MODULE that
+    // is re-exported, not the token: Nest refuses to export a provider it does
+    // not own, and re-exporting an imported module is the supported way to pass
+    // its exports through.
+    OrderHoldsModule,
   ],
 })
 export class OrdersModule {}
