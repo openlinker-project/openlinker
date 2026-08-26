@@ -171,6 +171,12 @@ export class EparagonyFiscalizationAdapter
       // absence of a registration, not work in progress - reporting it as
       // `held` would tell the operator to wait for something that will never
       // arrive.
+      //
+      // `not-found` is safe even though a document demonstrably EXISTS, because
+      // the outcome is about the REGISTRATION and licenses nothing: core never
+      // resends on it, the record stays in doubt for an operator, and
+      // `blocksFurtherRegistration` still refuses a second originating
+      // registration of the sale.
       this.logger.warn(
         `eparagony.pl reports document ${documentToken} in error; no registration exists ` +
           `[connectionId=${this.connectionId}]`,

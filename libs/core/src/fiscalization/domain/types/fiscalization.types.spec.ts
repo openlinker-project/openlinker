@@ -118,7 +118,39 @@ describe('fiscalization.types', () => {
         status: 'held',
         detail: null,
       });
-      expect(readFiscalLocateAnswer('nonsense')).toEqual({ status: 'held' });
+      expect(readFiscalLocateAnswer('nonsense')).toEqual({ status: 'held', detail: null });
+    });
+
+    it('reads an untagged object that is not a locate result as `held`', () => {
+      // `registered` is terminal, so an answer carrying none of the identity
+      // keys the result declares must not be read as one - it would strand the
+      // record on a registration nothing confirmed.
+      expect(readFiscalLocateAnswer({})).toEqual({ status: 'held', detail: null });
+      expect(readFiscalLocateAnswer([])).toEqual({ status: 'held', detail: null });
+      expect(readFiscalLocateAnswer({ somethingElse: 1 })).toEqual({
+        status: 'held',
+        detail: null,
+      });
+      expect(readFiscalLocateAnswer({ status: 'registered', registration: {} })).toEqual({
+        status: 'held',
+        detail: null,
+      });
+    });
+
+    it('accepts a locate result whose identity fields are all null', () => {
+      // Presence is tested, never truthiness: a regime that assigns few
+      // identifiers reports them as null, and that is a normal confirmation.
+      const registration = {
+        providerReference: null,
+        documentReference: null,
+        signingIdentity: null,
+        registeredAt: null,
+      };
+
+      expect(readFiscalLocateAnswer(registration)).toEqual({
+        status: 'registered',
+        registration,
+      });
     });
 
     it('refuses to read a `registered` answer that carries no identity set', () => {

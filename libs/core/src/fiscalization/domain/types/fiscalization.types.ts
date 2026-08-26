@@ -308,33 +308,43 @@ export type FiscalLocateAnswer =
  *   - `null` / `undefined`             -> `not-found` (the legacy "no match").
  *   - a legacy result object           -> `registered` (the legacy non-null
  *     answer meant exactly that, and reading it as anything else would stop
- *     resolving real registrations).
- *   - a `status` this build does not
+ *     resolving real registrations). Recognised by the identity keys
+ *     {@link FiscalLocateResult} declares non-optional, NOT by the mere absence
+ *     of a `status`: an untagged object carrying none of them - `{}`, `[]`, a
+ *     shape from a defective adapter - is not a locate result, and reading one
+ *     as `registered` would terminalise a record on a registration nothing
+ *     confirmed.
+ *   - anything else, including a
+ *     `status` this build does not
  *     recognise                        -> `held`, never `registered`. An answer
  *     core cannot interpret must not terminalise a record on a registration it
  *     cannot confirm.
+ *
+ * Every `held` answer carries an explicit `detail` so a consumer never has to
+ * tell `undefined` from `null`.
  */
 export function readFiscalLocateAnswer(raw: unknown): FiscalLocateAnswer {
   if (raw === null || raw === undefined) {
     return { status: 'not-found' };
   }
   if (typeof raw !== 'object') {
-    return { status: 'held' };
+    return { status: 'held', detail: null };
   }
 
   const candidate = raw as { status?: unknown; registration?: unknown; detail?: unknown };
   const status = typeof candidate.status === 'string' ? candidate.status : null;
 
   if (status === null) {
-    // Legacy `FiscalLocateResult`: a non-null answer always meant `registered`.
-    return { status: 'registered', registration: raw as FiscalLocateResult };
+    return isFiscalLocateResultShape(raw)
+      ? { status: 'registered', registration: raw as FiscalLocateResult }
+      : { status: 'held', detail: null };
   }
   if (status === 'not-found') {
     return { status: 'not-found' };
   }
   if (status === 'registered') {
     const registration = candidate.registration;
-    if (registration !== null && typeof registration === 'object') {
+    if (isFiscalLocateResultShape(registration)) {
       return { status: 'registered', registration: registration as FiscalLocateResult };
     }
     // A `registered` answer carrying no identity set is not one core can write.
@@ -344,6 +354,31 @@ export function readFiscalLocateAnswer(raw: unknown): FiscalLocateAnswer {
     status: 'held',
     detail: typeof candidate.detail === 'string' ? candidate.detail : null,
   };
+}
+
+/**
+ * Does this value look like a {@link FiscalLocateResult}?
+ *
+ * Keyed on the four fields the interface declares NON-OPTIONAL, so a real
+ * result - legacy or tagged - always passes, while an untagged object that
+ * declares none of them fails. Presence is what is tested, never the value: a
+ * result reporting `null` for every identity field is a legitimate answer from
+ * a regime that assigns few of them (see {@link FiscalLocateResult}), so
+ * testing truthiness would reject exactly that case.
+ *
+ * An array is excluded outright: no locate result is one, and letting one
+ * through would put an array where core expects an identity set.
+ */
+function isFiscalLocateResultShape(value: unknown): boolean {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    return false;
+  }
+  return (
+    'providerReference' in value ||
+    'documentReference' in value ||
+    'signingIdentity' in value ||
+    'registeredAt' in value
+  );
 }
 
 /** Insert shape for a new registration record. */
