@@ -54,6 +54,10 @@ import type {
   DailyOrderAggregateRow,
   SalesAnalyticsFilters,
 } from '../../../domain/types/order-sales-analytics.types';
+import type {
+  CoverageDetectionPagination,
+  PaginatedCurrencyMismatchOrders,
+} from '../../../domain/types/coverage-detection.types';
 
 @Injectable()
 export class OrderRecordRepository implements OrderRecordRepositoryPort {
@@ -562,6 +566,56 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       netExcludedCount: Number(row.net_excluded_count),
       netExcludedValue: Number(row.net_excluded_value),
     }));
+  }
+
+  /**
+   * Data Coverage 'currency' category drill-down (#2464). Paged list of
+   * orders whose reporting-currency stamp does not (yet) match the current
+   * setting, covering BOTH populations under one combined predicate - a
+   * never-stamped row (`reportingCurrency IS NULL`) and a stamped-but-stale
+   * row from a prior reporting-currency era (ADR-040) - so the returned
+   * `total` is exactly the same figure {@link getDailyOrderAggregates}
+   * reports as `unconvertedCount`, summed over the same filters (asserted
+   * as a regression guard by the #2464 tests).
+   *
+   * Deliberately the SAME scope predicate as `unconvertedAndNotCancelled`
+   * in {@link getDailyOrderAggregates} (`recordStatus = 'ready'`, resolvable
+   * `placedAt`/`totalAmount`, in-range, optional connection, non-cancelled)
+   * so the two reads can never silently diverge on what counts as
+   * "unconverted". Ordered newest-first so an operator drilling in sees the
+   * most recent mismatches first, mirroring `findUnstampedFxOrderIds`'s
+   * "most likely to matter" ordering convention.
+   */
+  async findCurrencyMismatchOrders(
+    filters: SalesAnalyticsFilters,
+    currentReportingCurrency: string,
+    pagination: CoverageDetectionPagination
+  ): Promise<PaginatedCurrencyMismatchOrders> {
+    const qb = this.repository
+      .createQueryBuilder('rec')
+      .andWhere('rec."cancelledAt" IS NULL')
+      .andWhere(
+        '(rec."reportingCurrency" IS NULL OR rec."reportingCurrency" != :currentReportingCurrency)',
+        { currentReportingCurrency }
+      )
+      .orderBy('rec."placedAt"', 'DESC')
+      .take(pagination.limit)
+      .skip(pagination.offset);
+
+    this.applySalesAnalyticsScope(qb, filters);
+
+    const [entities, total] = await qb.getManyAndCount();
+
+    return {
+      items: entities.map((entity) => ({
+        internalOrderId: entity.internalOrderId,
+        sourceConnectionId: entity.sourceConnectionId,
+        nativeCurrency: entity.currency,
+        stampedCurrency: entity.reportingCurrency,
+        stampedAt: entity.fxStampedAt,
+      })),
+      total,
+    };
   }
 
   /**
