@@ -281,6 +281,20 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       );
     }
 
+    if (filters.activeHoldReason) {
+      // #2342 — the hold REASON axis, ANDed with the others. It reads the same
+      // #2340 projection column the lifecycle `CASE`'s `held` arm tests, which
+      // is what keeps `?phase=held` and `?hold=<reason>` consistent with each
+      // other: the second is a strict subset of the first, by construction.
+      //
+      // A bound parameter, never interpolated: the value reaches here from a
+      // request DTO, unlike the phase literals the `CASE` composes, which are
+      // compile-time constants off a frozen vocabulary.
+      qb.andWhere('rec."activeHoldReason" = :activeHoldReason', {
+        activeHoldReason: filters.activeHoldReason,
+      });
+    }
+
     this.applySort(qb, filters.sort, filters.dir);
 
     const [entities, total] = await qb.getManyAndCount();

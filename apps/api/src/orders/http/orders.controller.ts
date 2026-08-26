@@ -162,6 +162,7 @@ export class OrdersController {
       cancelled,
       phase,
       taxRateConflict,
+      hold,
       limit = 20,
       offset = 0,
     } = query;
@@ -208,6 +209,10 @@ export class OrdersController {
         // orthogonal ones.
         lifecyclePhase: phase,
         taxRateConflict,
+        // #2342 — the query param is the short `hold`; the repository filter
+        // names the column it reads, matching the `phase` -> `lifecyclePhase`
+        // precedent two lines up.
+        activeHoldReason: hold,
       },
       { limit, offset }
     );
