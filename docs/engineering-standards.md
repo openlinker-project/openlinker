@@ -1297,7 +1297,7 @@ function processData(data: unknown): void {
 - `@openlinker/shared/*` - Shared utilities
 - `@openlinker/api/*` - API application modules
 
-**The runtime constraint** (#591, #594): `libs/core/package.json` `exports` exposes only the top-level context barrels (`@openlinker/core/<ctx>`) plus two explicit sub-barrels — `@openlinker/core/listings/services` (Nest wiring, #337/#359) and `@openlinker/core/<ctx>/orm-entities` (host-only ORM-entity access, #594). Deep paths like `@openlinker/core/<ctx>/domain/...`, `.../application/...`, `.../infrastructure/...` are **not exported** — they fail at Node runtime with `ERR_PACKAGE_PATH_NOT_EXPORTED`. ESLint guards this in `libs/integrations/**` and `apps/{api,worker}/**`; the `orm-entities` sub-barrels carry an additional ban in `libs/integrations/**` and core port files so plugins never see TypeORM types.
+**The runtime constraint** (#591, #594): `libs/core/package.json` `exports` exposes only the top-level context barrels (`@openlinker/core/<ctx>`) plus the explicitly exported sub-barrels — `@openlinker/core/listings/services` (Nest wiring, #337/#359) and `@openlinker/core/<ctx>/orm-entities` (host-only ORM-entity access, #594). Deep paths like `@openlinker/core/<ctx>/domain/...`, `.../application/...`, `.../infrastructure/...` are **not exported** — they fail at Node runtime with `ERR_PACKAGE_PATH_NOT_EXPORTED`. ESLint guards this in `libs/integrations/**` and `apps/{api,worker}/**`; the `orm-entities` sub-barrels carry an additional ban in `libs/integrations/**` and core port files so plugins never see TypeORM types.
 
 **Rules**:
 

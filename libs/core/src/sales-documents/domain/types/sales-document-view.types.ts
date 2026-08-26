@@ -200,6 +200,13 @@ export type SalesDocumentRecordView = SalesDocumentInvoiceView | SalesDocumentRe
  * as the whole of either guard.
  */
 export interface SalesDocumentOtherRecord {
+  /**
+   * The duplicate record's own id. Present so a surface can LINK to the
+   * record it is warning about: a panel that reports a second document and
+   * then offers no way to open it leaves an operator with a fact and no
+   * remedy, on exactly the state that most needs one.
+   */
+  readonly recordId: string;
   readonly connectionId: string;
   /** Open-world, for the same reason {@link SalesDocumentView.documentKind} is. */
   readonly kind: SalesDocumentKind;

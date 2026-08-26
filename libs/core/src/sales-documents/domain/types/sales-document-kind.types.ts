@@ -53,10 +53,12 @@ export type CoreSalesDocumentKind = (typeof CoreSalesDocumentKindValues)[number]
  *
  * ADR-041 decision 10 pins this exact shape (`CoreSalesDocumentKind | string`)
  * verbatim, rather than the bare-`string`-with-documented-literals shape used
- * elsewhere for the same open-world pattern (e.g. `InfaktWebhookEventName`) —
- * keeping the literals IN the union (not just documented alongside it) is
- * what still gives editors 'invoice' / 'fiscal-receipt' autocomplete while
- * remaining assignable from any string.
+ * elsewhere for the same open-world pattern (e.g. `InfaktWebhookEventName`).
+ * Naming `CoreSalesDocumentKind` in the union points a reader at the owning
+ * vocabulary; it does NOT preserve literal autocomplete, since
+ * `CoreSalesDocumentKind | string` collapses to `string` structurally. The
+ * shape that would preserve completions is `(string & Record<never, never>)`,
+ * which ADR-041 decision 10 does not ask for.
  */
 // eslint-disable-next-line @typescript-eslint/no-redundant-type-constituents -- ADR-041 decision 10 requires this exact union shape (see doc comment above); `string` is not redundant in intent even though it is in structural assignability.
 export type SalesDocumentKind = CoreSalesDocumentKind | string;

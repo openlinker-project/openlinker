@@ -184,12 +184,19 @@ describe('SalesDocumentView', () => {
         unresolvedReason: null,
         blockDetail: null,
         otherRecords: [
-          { connectionId: 'conn-2', kind: 'invoice', blocksFurtherIssuance: false },
+          {
+            recordId: 'inv-2',
+            connectionId: 'conn-2',
+            kind: 'invoice',
+            blocksFurtherIssuance: false,
+          },
         ],
       };
 
       expect(view.otherRecords).toHaveLength(1);
       expect(view.otherRecords[0].blocksFurtherIssuance).toBe(false);
+      // The duplicate is linkable, not merely reported.
+      expect(view.otherRecords[0].recordId).toBe('inv-2');
     });
   });
 });
