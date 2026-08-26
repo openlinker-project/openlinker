@@ -40,3 +40,8 @@ export const ORDER_CHANGE_SERVICE_TOKEN = Symbol('IOrderChangeService');
 // `OrdersModule`, and a sibling context reaches holds through
 // `IOrderHoldService` rather than the repository port.
 export const ORDER_HOLD_REPOSITORY_TOKEN = Symbol('OrderHoldRepositoryPort');
+
+// The cross-context seam for holds (#2339). Exported by `OrderHoldsModule` and
+// re-exported through `OrdersModule`, so shipping's dispatch gate can inject it
+// without deep-importing anything.
+export const ORDER_HOLD_SERVICE_TOKEN = Symbol('IOrderHoldService');

@@ -18,7 +18,9 @@ import { OrderCreateContendedException } from '../../../domain/exceptions/order-
 import type { SyncLockPort } from '@openlinker/core/sync';
 import type { IIdentifierMappingService } from '@openlinker/core/identifier-mapping';
 import type { IOrderRecordService } from '../../interfaces/order-record.service.interface';
+import type { IOrderHoldService } from '../../interfaces/order-hold.service.interface';
 import type { OrderRecord } from '../../../domain/entities/order-record.entity';
+import type { OrderHold } from '../../../domain/entities/order-hold.entity';
 import {
   DuplicateIdentifierMappingError,
   MappingAlreadyExistsError,
@@ -31,6 +33,7 @@ describe('OrderSyncService', () => {
   let syncLock: jest.Mocked<SyncLockPort>;
   let identifierMapping: jest.Mocked<IIdentifierMappingService>;
   let orderRecordService: jest.Mocked<IOrderRecordService>;
+  let orderHoldService: jest.Mocked<IOrderHoldService>;
 
   const makeAdapter = (orderRef: OrderRef = { orderId: 'dest_order' }) =>
     ({
@@ -126,12 +129,20 @@ describe('OrderSyncService', () => {
       getOrderRecord: jest.fn().mockResolvedValue(null),
     } as unknown as jest.Mocked<IOrderRecordService>;
 
+    orderHoldService = {
+      getOpenHold: jest.fn().mockResolvedValue(null),
+      place: jest.fn(),
+      release: jest.fn(),
+      listHolds: jest.fn(),
+    } as unknown as jest.Mocked<IOrderHoldService>;
+
     service = new OrderSyncService(
       integrationsService,
       mappingConfigService,
       syncLock,
       identifierMapping,
-      orderRecordService
+      orderRecordService,
+      orderHoldService
     );
   });
 
@@ -583,6 +594,84 @@ describe('OrderSyncService', () => {
         status: 'success',
         orderRef: { orderId: 'PS-555' },
       });
+    });
+  });
+
+  // #2339 — the hold gate (story L4: "a held order never reaches the
+  // destination shop").
+  describe('held orders', () => {
+    const openHold = {
+      id: 'hold-1',
+      internalOrderId: 'order-123',
+      reason: 'stock-shortfall',
+    } as unknown as OrderHold;
+
+    it('should withhold provisioning from every destination when the order is on hold', async () => {
+      const adapterA = makeAdapter();
+      const adapterB = makeAdapter();
+      registerDestinations([
+        { connectionId: 'dest-a', adapter: adapterA },
+        { connectionId: 'dest-b', adapter: adapterB },
+      ]);
+      orderHoldService.getOpenHold.mockResolvedValue(openHold);
+
+      const results = await service.syncOrder({
+        order: createOrder(),
+        sourceConnectionId: 'source-1',
+      });
+
+      expect(results).toEqual([
+        {
+          destinationConnectionId: 'dest-a',
+          status: 'skipped_held',
+          holdId: 'hold-1',
+          holdReason: 'stock-shortfall',
+        },
+        {
+          destinationConnectionId: 'dest-b',
+          status: 'skipped_held',
+          holdId: 'hold-1',
+          holdReason: 'stock-shortfall',
+        },
+      ]);
+      expect(adapterA.createOrder).not.toHaveBeenCalled();
+      expect(adapterB.createOrder).not.toHaveBeenCalled();
+      expect(syncLock.acquire).not.toHaveBeenCalled();
+      expect(identifierMapping.createMapping).not.toHaveBeenCalled();
+    });
+
+    it('should provision on the next run once the hold is released, with no manual step', async () => {
+      const adapter = makeAdapter({ orderId: 'dest_order_1' });
+      registerDestinations([{ connectionId: 'dest-a', adapter }]);
+      orderHoldService.getOpenHold.mockResolvedValueOnce(openHold);
+
+      const held = await service.syncOrder({
+        order: createOrder(),
+        sourceConnectionId: 'source-1',
+      });
+      expect(held[0]).toMatchObject({ status: 'skipped_held' });
+
+      // Released: the very next run sees no open hold and proceeds. Nothing was
+      // persisted as terminal, so there is nothing to un-do first.
+      orderHoldService.getOpenHold.mockResolvedValue(null);
+      const afterRelease = await service.syncOrder({
+        order: createOrder(),
+        sourceConnectionId: 'source-1',
+      });
+
+      expect(afterRelease[0]).toMatchObject({ status: 'success' });
+      expect(adapter.createOrder).toHaveBeenCalledTimes(1);
+    });
+
+    it('should propagate a hold-read failure rather than provisioning a possibly-held order', async () => {
+      const adapter = makeAdapter();
+      registerDestinations([{ connectionId: 'dest-a', adapter }]);
+      orderHoldService.getOpenHold.mockRejectedValue(new Error('db down'));
+
+      await expect(
+        service.syncOrder({ order: createOrder(), sourceConnectionId: 'source-1' })
+      ).rejects.toThrow('db down');
+      expect(adapter.createOrder).not.toHaveBeenCalled();
     });
   });
 

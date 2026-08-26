@@ -279,6 +279,16 @@ export { OrderAlreadyOnHoldError } from './domain/exceptions/order-already-on-ho
 export { HoldAlreadyReleasedError } from './domain/exceptions/hold-already-released.error';
 export { OrderHoldNotFoundError } from './domain/exceptions/order-hold-not-found.error';
 export { OrderHoldVocabularyError } from './domain/exceptions/order-hold-vocabulary.error';
+export { HoldReleaseNoteRequiredError } from './domain/exceptions/hold-release-note-required.error';
+export { HoldReleaseNotPermittedError } from './domain/exceptions/hold-release-not-permitted.error';
+// The hold seam a sibling context uses (#2339) — service interface + its request
+// shapes. The repository port stays unexported, one line above.
+export type {
+  IOrderHoldService,
+  OrderHoldTransition,
+  PlaceHoldRequest,
+  ReleaseHoldRequest,
+} from './application/interfaces/order-hold.service.interface';
 export type {
   IOrderChangeService,
   OpenOrderChangeResult,

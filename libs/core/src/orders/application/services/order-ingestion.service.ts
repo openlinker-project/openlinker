@@ -488,6 +488,33 @@ export class OrderIngestionService implements IOrderIngestionService {
               externalOrderNumber: result.orderRef.orderNumber,
             }
           );
+        } else if (result.status === 'skipped_held') {
+          // #2339 — the order is on hold, so provisioning was withheld.
+          //
+          // The row is written as `pending`, which is the literal truth: this
+          // destination is still owed an order, and the hold is why it has not
+          // been created yet. Every alternative states something false.
+          // `skipped_cancelled` claims the order is over. `failed` claims
+          // something broke and puts the row in the operator-retry affordance
+          // for a condition retrying cannot change. Inventing a persisted
+          // `skipped_held` makes the row terminal and defeats the guarantee that
+          // releasing un-blocks the next run. And writing NOTHING is the worst
+          // of the four on a FIRST ingestion, because `syncStatus` starts empty
+          // — the order would render "No destinations" on `/orders`, denying
+          // that the destinations exist at all.
+          //
+          // The reason rides in `error` (no new column — the #2284 precedent),
+          // so the timeline narrates the withholding even before #2340's
+          // projection column and #2342's badge land.
+          return this.orderRecordService.updateSyncStatus(
+            order.id,
+            result.destinationConnectionId,
+            {
+              destinationConnectionId: result.destinationConnectionId,
+              status: 'pending',
+              error: `Withheld: order is on hold (${result.holdReason})`,
+            }
+          );
         } else if (result.status === 'skipped_cancelled') {
           // #2284 — terminal, and NOT a failure: the source cancelled before the
           // destination create ran, so provisioning was withheld. `error` carries
