@@ -26,14 +26,18 @@ describe('sales-document reason copy', () => {
     }
   });
 
-  it('should keep every short label short enough for a table cell', () => {
+  // The bound is the widest label the mockup uses, where a reason label sits in
+  // the document popover rather than in a status pill. The style guide's tighter
+  // ~17-character pill budget applies to the transitional `/orders` badge that
+  // still renders these, which the redesigned document cell replaces.
+  it('should keep every short label to a label, not a sentence', () => {
     const shorts = [
       ...Object.values(SALES_DOCUMENT_GATE_REASON_COPY),
       ...Object.values(SALES_DOCUMENT_UNRESOLVED_REASON_COPY),
     ].map((copy) => copy.short);
 
     for (const short of shorts) {
-      expect(short.length).toBeLessThanOrEqual(28);
+      expect(short.length).toBeLessThanOrEqual(26);
       expect(short.endsWith('.')).toBe(false);
     }
   });
