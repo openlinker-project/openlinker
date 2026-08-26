@@ -13,7 +13,7 @@
  * back the §5.6(a) dry run, which is the gate an operator passes before arming
  * a rule that spends money. If it needs a database it is not this function.
  *
- * ## Three properties that are contract, not implementation detail
+ * ## Four properties that are contract, not implementation detail
  *
  * **1. Every condition is evaluated; nothing short-circuits.** Unlike #2170,
  * which stops at the first false condition because it only needs a verdict,
@@ -21,6 +21,14 @@
  * that trace IS the dry run's rendering. An operator debugging *"why didn't
  * this fire?"* needs the row for condition three even when condition one
  * already failed, or they fix one thing, re-test, and discover the next.
+ *
+ * The trace is built for every rule SCOPED to the fired trigger, including one
+ * already ruled out by something else — it is switched off, its window closed,
+ * the retroactivity floor blocked it. Those conditions are still about this
+ * rule and this event. The only rules that get an empty trace are the ones
+ * about a DIFFERENT event (`trigger-mismatch` / `unknown-trigger`,
+ * `AUTOMATION_OUT_OF_SCOPE_REASONS`), whose conditions were never asked and for
+ * which a trace would answer a question nobody put.
  *
  * **2. No non-firing exit is silent.** Every rule in `rules` comes back with an
  * evaluation, and a non-matching one carries a closed
@@ -49,6 +57,13 @@
  *   rule can read back with no threshold. Non-firing (`trigger-config-invalid`),
  *   which is the safe direction and preserves #2358's own choice.
  *
+ * **4. The retroactivity floor is a FIRING rule, and can be waived only
+ * explicitly.** `enforceRetroactivityFloor` defaults to `true`, so an omission
+ * can never widen what fires; the §5.6(a) dry run is its only intended caller,
+ * and a waiver is REPORTED on each evaluation rather than merely applied — a
+ * preview that silently differs from what would really fire is the shape of a
+ * bad surprise.
+ *
  * ## What this function is NOT
  *
  * It does not resolve #2362's at-most-one gate for irreversible actions. Spec
@@ -64,26 +79,14 @@ import type { AutomationRule } from '../entities/automation-rule.entity';
 import type { AutomationCondition } from '../types/automation-condition.types';
 import type { AutomationConditionField } from '../types/automation-condition.types';
 import type { AutomationSubjectFacts } from '../types/automation-facts.types';
+import type {
+  AutomationConditionOutcome,
+  AutomationNonFiringReason,
+} from '../types/automation-evaluation.types';
 import { isLegalAutomationPair } from '../types/automation-legality.types';
 import { isAutomationTriggerConfig } from '../types/automation-trigger-config.types';
 import type { AutomationTrigger } from '../types/automation-trigger.types';
 import { isAutomationTrigger } from '../types/automation-trigger.types';
-
-/**
- * How one condition resolved.
- *
- * `unknown` and `currency-mismatch` are both distinct from `false` on purpose:
- * *"the order is DE, your rule says PL"* is a rule the operator may want to
- * keep, whereas *"we never learned the country"* and *"your threshold is in PLN
- * and the order is in EUR"* are things they can fix.
- */
-export const AutomationConditionOutcomeValues = [
-  'true',
-  'false',
-  'unknown',
-  'currency-mismatch',
-] as const;
-export type AutomationConditionOutcome = (typeof AutomationConditionOutcomeValues)[number];
 
 /** One row of the dry run's per-condition table. */
 export interface AutomationConditionTrace {
@@ -92,63 +95,36 @@ export interface AutomationConditionTrace {
   readonly outcome: AutomationConditionOutcome;
 }
 
-/**
- * Why a rule did not fire. Closed, and every member is reachable.
- *
- * Ordered as the evaluator tests them, which is also roughly cheapest-first:
- * a rule ruled out by its trigger is never asked about its conditions.
- */
-export const AutomationNonFiringReasonValues = [
-  /** The rule is scoped to a different trigger than the one that fired. */
-  'trigger-mismatch',
-  /** The rule's persisted trigger is not a member of the v1 vocabulary (#2358's read-path cast). */
-  'unknown-trigger',
-  /** The rule is not armed. */
-  'rule-inactive',
-  /** `effectiveFrom` is in the future. */
-  'not-yet-effective',
-  /** `effectiveTo` has passed. */
-  'no-longer-effective',
-  /** The fact occurred before the rule was saved (spec §5.2: rules are never retroactive). */
-  'fact-precedes-rule',
-  /** The caller did not assert when the fact occurred, so the retroactivity floor cannot be cleared. */
-  'fact-time-unknown',
-  /** A persisted pair the §5.4 matrix forbids — the rule could never meaningfully fire. */
-  'illegal-trigger-action-pair',
-  /** Every step was dropped by the read-path narrower; there is nothing to run. */
-  'no-actions',
-  /** `triggerConfig` does not narrow against this trigger (a T3/T4 rule with no threshold). */
-  'trigger-config-invalid',
-  /** A condition evaluated false. */
-  'condition-not-met',
-  /** A condition referenced a fact the caller did not assert. */
-  'condition-fact-unknown',
-  /** An amount condition's currency differs from the order's. Never converted (spec §5.5). */
-  'condition-currency-mismatch',
-] as const;
-export type AutomationNonFiringReason = (typeof AutomationNonFiringReasonValues)[number];
-
-/** Coerce an untrusted value to the reason union. No default. */
-export function isAutomationNonFiringReason(value: unknown): value is AutomationNonFiringReason {
-  return (
-    typeof value === 'string' &&
-    (AutomationNonFiringReasonValues as readonly string[]).includes(value)
-  );
-}
-
 /** One rule's verdict. Returned for EVERY input rule, matched or not. */
 export interface AutomationRuleEvaluation {
   readonly ruleId: string;
   readonly ruleName: string;
   readonly matches: boolean;
   /**
-   * Every condition, in the rule's own order, always — including for a rule
-   * ruled out before its conditions were relevant, where it is empty rather
-   * than absent. The dry run renders this table either way.
+   * Every condition, in the rule's own order — built whenever the rule is
+   * SCOPED to the trigger that fired, even when something else already ruled it
+   * out (it is inactive, its window closed, the retroactivity floor blocked it).
+   * Those conditions are about this rule and this event, and the §5.6(a) dry run
+   * renders them either way; withholding them would leave the operator's own
+   * test showing nothing.
+   *
+   * Empty ONLY for `trigger-mismatch` / `unknown-trigger`
+   * (`AUTOMATION_OUT_OF_SCOPE_REASONS`), where the rule is about a different
+   * event and a trace would answer a question nobody put.
    */
   readonly conditionTraces: readonly AutomationConditionTrace[];
   /** `null` if and only if `matches` is `true`. */
   readonly nonFiringReason: AutomationNonFiringReason | null;
+  /**
+   * `true` when the retroactivity floor WOULD have blocked this rule and was
+   * waived because the caller passed `enforceRetroactivityFloor: false`.
+   *
+   * A preview that silently differs from what would really fire is the shape of
+   * a bad surprise, so the waiver is reported rather than merely applied: the
+   * dry run can render *"this matches, but it would not have fired for this
+   * order — the order predates the rule"*, which is the true sentence.
+   */
+  readonly retroactivityFloorWaived: boolean;
 }
 
 export interface AutomationEvaluationInput {
@@ -159,6 +135,20 @@ export interface AutomationEvaluationInput {
   readonly rules: readonly AutomationRule[];
   /** Evaluation instant — never read from the system clock inside this function. */
   readonly now: Date;
+  /**
+   * Whether spec §5.2's retroactivity floor applies. **Defaults to `true`**, so
+   * an omission can never widen what fires.
+   *
+   * The floor is a FIRING rule, not an evaluation rule: it asks *"did this fact
+   * happen after the operator saved the rule?"*, which is the wrong question for
+   * a preview run against an order from the last 30 days. **Its only intended
+   * caller is the §5.6(a) dry run** (#2363) — passing `false` on any committing
+   * path is a defect, not a configuration choice, because it is what stops a
+   * brand-new rule buying labels for the 40 orders already on hold.
+   *
+   * Waiving it does not hide it: see `AutomationRuleEvaluation.retroactivityFloorWaived`.
+   */
+  readonly enforceRetroactivityFloor?: boolean;
 }
 
 export interface AutomationEvaluationResult {
@@ -239,46 +229,81 @@ function reasonForOutcome(outcome: AutomationConditionOutcome): AutomationNonFir
 }
 
 /**
- * Everything that rules a rule out BEFORE its conditions are relevant.
+ * The two facts that mean the rule is about a DIFFERENT event, so its
+ * conditions were never asked and no trace should be built for it.
  *
- * Kept separate so the condition trace is only built for rules whose conditions
- * mean something — a rule scoped to another trigger reports `trigger-mismatch`
- * with an empty trace, which is honest: its conditions were never asked.
+ * Split from the rest of applicability deliberately: everything else
+ * (`rule-inactive`, the effective window, the retroactivity floor, an invalid
+ * config, an empty or illegal action list) rules the rule out while its
+ * conditions remain perfectly meaningful — and the dry run needs to show them.
  */
-function checkRuleApplicability(
+function checkRuleScope(
   rule: AutomationRule,
-  input: AutomationEvaluationInput,
+  firedTrigger: AutomationTrigger,
 ): AutomationNonFiringReason | null {
   // The repository casts an unrecognised persisted trigger through (#2358), so
   // this is reachable and must not throw or fall through to a firing path.
   if (!isAutomationTrigger(rule.trigger)) return 'unknown-trigger';
-  if (rule.trigger !== input.trigger) return 'trigger-mismatch';
-  if (!rule.isActive) return 'rule-inactive';
+  if (rule.trigger !== firedTrigger) return 'trigger-mismatch';
+  return null;
+}
 
-  const now = input.now.getTime();
-  if (rule.effectiveFrom.getTime() > now) return 'not-yet-effective';
-  if (rule.effectiveTo !== null && rule.effectiveTo.getTime() < now) return 'no-longer-effective';
-
+/** Whether the retroactivity floor blocks this rule, ignoring whether it is enforced. */
+function retroactivityFloorBlocks(
+  rule: AutomationRule,
+  facts: AutomationSubjectFacts,
+): AutomationNonFiringReason | null {
   // Spec §5.2: an automation only acts on things that happen after it is saved.
   // An UNKNOWN occurrence time does not waive the floor — it means the floor
   // cannot be shown to be cleared, and the wrong guess here buys 40 labels.
-  const occurredAt = input.facts.occurredAt;
-  if (occurredAt === undefined) return 'fact-time-unknown';
-  if (occurredAt.getTime() < rule.createdAt.getTime()) return 'fact-precedes-rule';
+  if (facts.occurredAt === undefined) return 'fact-time-unknown';
+  if (facts.occurredAt.getTime() < rule.createdAt.getTime()) return 'fact-precedes-rule';
+  return null;
+}
 
-  if (!isAutomationTriggerConfig(rule.trigger, rule.triggerConfig)) return 'trigger-config-invalid';
+/**
+ * Everything that rules an IN-SCOPE rule out independently of its conditions.
+ *
+ * Returns the headline reason and whether the retroactivity floor was waived —
+ * the two travel together because waiving the floor is the only way a reason
+ * this function found can be suppressed.
+ */
+function checkRuleEligibility(
+  rule: AutomationRule,
+  input: AutomationEvaluationInput,
+): { reason: AutomationNonFiringReason | null; retroactivityFloorWaived: boolean } {
+  if (!rule.isActive) return { reason: 'rule-inactive', retroactivityFloorWaived: false };
 
+  const now = input.now.getTime();
+  if (rule.effectiveFrom.getTime() > now) {
+    return { reason: 'not-yet-effective', retroactivityFloorWaived: false };
+  }
+  if (rule.effectiveTo !== null && rule.effectiveTo.getTime() < now) {
+    return { reason: 'no-longer-effective', retroactivityFloorWaived: false };
+  }
+
+  // Defaults to enforced: an omitted flag must never widen what fires.
+  const enforceFloor = input.enforceRetroactivityFloor ?? true;
+  const floorReason = retroactivityFloorBlocks(rule, input.facts);
+  if (floorReason !== null && enforceFloor) {
+    return { reason: floorReason, retroactivityFloorWaived: false };
+  }
+  const retroactivityFloorWaived = floorReason !== null;
+
+  if (!isAutomationTriggerConfig(rule.trigger, rule.triggerConfig)) {
+    return { reason: 'trigger-config-invalid', retroactivityFloorWaived };
+  }
   // An empty list is what a rule whose every step was dropped by the read-path
   // narrower looks like (#2358); the write path would have refused it.
-  if (rule.actions.length === 0) return 'no-actions';
+  if (rule.actions.length === 0) return { reason: 'no-actions', retroactivityFloorWaived };
   // The §5.4 matrix is enforced on the write path too, so this catches a row
   // that predates the table or was written around it. Every step must be legal:
   // a rule that would run one legal step and skip an impossible one is a rule
   // whose behaviour nobody declared.
   if (rule.actions.some((step) => !isLegalAutomationPair(rule.trigger, step.action))) {
-    return 'illegal-trigger-action-pair';
+    return { reason: 'illegal-trigger-action-pair', retroactivityFloorWaived };
   }
-  return null;
+  return { reason: null, retroactivityFloorWaived };
 }
 
 /**
@@ -291,19 +316,27 @@ export function evaluateAutomationRules(
   const evaluations: AutomationRuleEvaluation[] = [];
 
   for (const rule of input.rules) {
-    const applicability = checkRuleApplicability(rule, input);
-    if (applicability !== null) {
+    const outOfScope = checkRuleScope(rule, input.trigger);
+    if (outOfScope !== null) {
       evaluations.push({
         ruleId: rule.id,
         ruleName: rule.name,
         matches: false,
         conditionTraces: [],
-        nonFiringReason: applicability,
+        nonFiringReason: outOfScope,
+        retroactivityFloorWaived: false,
       });
       continue;
     }
 
-    // Deliberately NOT short-circuited — the dry run renders every row.
+    const { reason: eligibilityReason, retroactivityFloorWaived } = checkRuleEligibility(
+      rule,
+      input,
+    );
+
+    // Built for every in-scope rule, and deliberately NOT short-circuited: the
+    // dry run renders every row, and it renders them even for a rule something
+    // else already ruled out.
     const conditionTraces: AutomationConditionTrace[] = rule.conditions.map((condition) => ({
       field: condition.field,
       condition,
@@ -313,15 +346,20 @@ export function evaluateAutomationRules(
     // AND-only (spec §5.5), so the first non-`true` outcome in the operator's
     // own condition order is the reason. Order-stable rather than
     // severity-ranked: the operator reads the trace top to bottom and the
-    // headline reason should name the first row they will look at.
+    // headline reason should name the first row they will look at. An
+    // eligibility reason outranks it — a rule that is switched off did not fail
+    // a condition.
     const firstProblem = conditionTraces.find((trace) => trace.outcome !== 'true');
+    const nonFiringReason =
+      eligibilityReason ?? (firstProblem === undefined ? null : reasonForOutcome(firstProblem.outcome));
 
     evaluations.push({
       ruleId: rule.id,
       ruleName: rule.name,
-      matches: firstProblem === undefined,
+      matches: nonFiringReason === null,
       conditionTraces,
-      nonFiringReason: firstProblem === undefined ? null : reasonForOutcome(firstProblem.outcome),
+      nonFiringReason,
+      retroactivityFloorWaived,
     });
   }
 

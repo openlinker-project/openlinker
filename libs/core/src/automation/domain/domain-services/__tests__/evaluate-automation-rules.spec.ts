@@ -228,6 +228,89 @@ describe('evaluateAutomationRules', () => {
     });
   });
 
+  describe('the trace is built for every IN-SCOPE rule (review finding 1)', () => {
+    const CONDITIONS: readonly AutomationCondition[] = [
+      { field: 'orderCountry', op: 'eq', value: 'PL' },
+      { field: 'sourceConnection', op: 'eq', value: 'nope' },
+    ];
+
+    it.each([
+      ['rule-inactive', rule({ isActive: false, conditions: CONDITIONS })],
+      [
+        'not-yet-effective',
+        rule({ effectiveFrom: new Date('2026-12-01T00:00:00.000Z'), conditions: CONDITIONS }),
+      ],
+      ['no-actions', rule({ actions: [], conditions: CONDITIONS })],
+    ])('should still trace conditions for a %s rule', (reason, candidate) => {
+      const evaluation = evaluateOne(candidate);
+      expect(evaluation.nonFiringReason).toBe(reason);
+      // The dry run renders this table; withholding it shows the operator nothing.
+      expect(evaluation.conditionTraces.map((t) => t.outcome)).toEqual(['true', 'false']);
+    });
+
+    it('should leave the trace EMPTY only for an out-of-scope rule', () => {
+      for (const candidate of [
+        rule({ trigger: 'return.received', conditions: CONDITIONS }),
+        rule({ trigger: 'order.teleported', conditions: CONDITIONS }),
+      ]) {
+        expect(evaluateOne(candidate).conditionTraces).toEqual([]);
+      }
+    });
+  });
+
+  describe('the retroactivity floor is a firing rule, waivable only explicitly', () => {
+    const PAST: AutomationSubjectFacts = {
+      ...FACTS,
+      occurredAt: new Date('2026-08-20T00:00:00.000Z'),
+    };
+
+    it('should default to ENFORCED when the flag is omitted', () => {
+      expect(evaluateOne(rule(), PAST).nonFiringReason).toBe('fact-precedes-rule');
+    });
+
+    it('should match, and REPORT the waiver, when the dry run waives it', () => {
+      const result = evaluateAutomationRules({
+        trigger: 'order.packed',
+        facts: PAST,
+        rules: [rule()],
+        now: NOW,
+        enforceRetroactivityFloor: false,
+      });
+      expect(result.evaluations[0].matches).toBe(true);
+      expect(result.evaluations[0].retroactivityFloorWaived).toBe(true);
+    });
+
+    it('should waive an unknown fact time too, and still report it', () => {
+      const { subjectKind, subjectId } = FACTS;
+      const result = evaluateAutomationRules({
+        trigger: 'order.packed',
+        facts: { subjectKind, subjectId },
+        rules: [rule()],
+        now: NOW,
+        enforceRetroactivityFloor: false,
+      });
+      expect(result.evaluations[0].matches).toBe(true);
+      expect(result.evaluations[0].retroactivityFloorWaived).toBe(true);
+    });
+
+    it('should not claim a waiver when the floor was never in the way', () => {
+      const evaluation = evaluateOne(rule());
+      expect(evaluation.matches).toBe(true);
+      expect(evaluation.retroactivityFloorWaived).toBe(false);
+    });
+
+    it('should NOT let a waiver rescue a rule blocked for another reason', () => {
+      const result = evaluateAutomationRules({
+        trigger: 'order.packed',
+        facts: PAST,
+        rules: [rule({ isActive: false })],
+        now: NOW,
+        enforceRetroactivityFloor: false,
+      });
+      expect(result.evaluations[0].nonFiringReason).toBe('rule-inactive');
+    });
+  });
+
   it('should let SEVERAL rules match — the at-most-one gate is #2362, not here', () => {
     const result = evaluateAutomationRules({
       trigger: 'order.packed',
@@ -259,6 +342,12 @@ describe('evaluateAutomationRules', () => {
     expect(JSON.stringify({ facts, rules })).toEqual(snapshot);
   });
 
+  // Two known soft spots, recorded so a future reader does not rediscover them:
+  // this reads the SOURCE, so it is meaningful only while the suite runs from
+  // `src` (true under this package's ts-jest config, vacuous against `dist`);
+  // and the ban list is substring-based, so an identifier merely containing a
+  // banned word would false-positive. Both are acceptable for a heuristic whose
+  // job is to catch a dependency being added, not to prove purity formally.
   it('should be pure — no clock, no I/O, no framework (AC 1)', () => {
     const source = readFileSync(join(__dirname, '..', 'evaluate-automation-rules.ts'), 'utf8');
     // Comments are stripped so prose mentioning `new Date()` cannot fail this.

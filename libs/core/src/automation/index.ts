@@ -36,6 +36,7 @@ export * from './domain/types/automation-action.types';
 export * from './domain/types/automation-definition-hash.types';
 export * from './domain/types/automation-run.types';
 export * from './domain/types/automation-legality.types';
+export * from './domain/types/automation-evaluation.types';
 export * from './domain/types/automation-facts.types';
 
 export * from './domain/domain-services/evaluate-automation-rules';
@@ -53,6 +54,7 @@ export * from './domain/exceptions/automation-invalid-action.error';
 export * from './domain/exceptions/automation-invalid-trigger-config.error';
 export * from './domain/exceptions/automation-step-count.error';
 export * from './domain/exceptions/automation-illegal-pair.error';
+export * from './domain/exceptions/automation-illegal-condition-field.error';
 
 export * from './application/types/automation-rule-write.types';
 export type { IAutomationRulesService } from './application/interfaces/automation-rules.service.interface';

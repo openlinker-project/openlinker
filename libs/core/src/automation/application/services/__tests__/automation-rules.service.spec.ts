@@ -28,6 +28,8 @@ import { AutomationInvalidTriggerConfigError } from '../../../domain/exceptions/
 import { AutomationRuleConflictError } from '../../../domain/exceptions/automation-rule-conflict.error';
 import { AutomationRuleNotFoundError } from '../../../domain/exceptions/automation-rule-not-found.error';
 import { AutomationStepCountError } from '../../../domain/exceptions/automation-step-count.error';
+import { AutomationIllegalPairError } from '../../../domain/exceptions/automation-illegal-pair.error';
+import { AutomationIllegalConditionFieldError } from '../../../domain/exceptions/automation-illegal-condition-field.error';
 
 const LABEL_STEP = {
   action: 'dispatch-shipment',
@@ -208,6 +210,52 @@ describe('AutomationRulesService', () => {
       await expect(
         service.createRule(
           input({ conditions: [{ field: 'orderCountry', op: 'eq', value: 'DE' }] }),
+        ),
+      ).resolves.toBeDefined();
+    });
+  });
+
+  describe('the §5.4 legality matrix is enforced on the write path (#2359)', () => {
+    // The matrix is declared once and consumed by three call sites; enforcing it
+    // HERE is what stops an illegal pair being persisted by curl, which would
+    // otherwise save, arm and never fire.
+    it('should refuse an action the trigger may not carry', async () => {
+      await expect(
+        service.createRule(input({ trigger: 'return.received', actions: [LABEL_STEP] })),
+      ).rejects.toBeInstanceOf(AutomationIllegalPairError);
+    });
+
+    it('should name the offending pair, which is what the API renders', async () => {
+      await expect(
+        service.createRule(input({ trigger: 'return.received', actions: [LABEL_STEP] })),
+      ).rejects.toThrow(/dispatch-shipment.*return\.received/);
+    });
+
+    it('should admit the pair that justifies the wave (T5 packed -> A2 label)', async () => {
+      await expect(
+        service.createRule(input({ trigger: 'order.packed', actions: [LABEL_STEP] })),
+      ).resolves.toBeDefined();
+    });
+
+    it('should refuse a holdReason condition on a trigger that has no hold', async () => {
+      await expect(
+        service.createRule(
+          input({
+            trigger: 'order.packed',
+            conditions: [{ field: 'holdReason', op: 'eq', value: 'payment-review' }],
+          }),
+        ),
+      ).rejects.toBeInstanceOf(AutomationIllegalConditionFieldError);
+    });
+
+    it('should admit a holdReason condition on T1/T2/T3', async () => {
+      await expect(
+        service.createRule(
+          input({
+            trigger: 'order.hold.placed',
+            actions: [{ action: 'send-email', recipient: { kind: 'buyer' }, subject: 's', body: 'b' }],
+            conditions: [{ field: 'holdReason', op: 'eq', value: 'payment-review' }],
+          }),
         ),
       ).resolves.toBeDefined();
     });

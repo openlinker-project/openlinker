@@ -71,7 +71,11 @@ import {
   isAutomationTriggerConfig,
 } from '../../domain/types/automation-trigger-config.types';
 import { computeAutomationDefinitionHash } from '../../domain/types/automation-definition-hash.types';
-import { isLegalAutomationPair } from '../../domain/types/automation-legality.types';
+import {
+  isLegalAutomationConditionField,
+  isLegalAutomationPair,
+} from '../../domain/types/automation-legality.types';
+import { AutomationIllegalConditionFieldError } from '../../domain/exceptions/automation-illegal-condition-field.error';
 import { AutomationIllegalPairError } from '../../domain/exceptions/automation-illegal-pair.error';
 import { AutomationInvalidActionError } from '../../domain/exceptions/automation-invalid-action.error';
 import { AutomationInvalidConditionError } from '../../domain/exceptions/automation-invalid-condition.error';
@@ -139,6 +143,7 @@ export class AutomationRulesService implements IAutomationRulesService {
     const conditions = this.assertConditionsWellFormed(input.conditions);
     const actions = this.assertActionsWellFormed(input.actions);
     this.assertPairsLegal(input.trigger, actions);
+    this.assertConditionFieldsLegal(input.trigger, conditions);
 
     const definitionHash = computeAutomationDefinitionHash({
       trigger: input.trigger,
@@ -217,6 +222,29 @@ export class AutomationRulesService implements IAutomationRulesService {
     actions.forEach((step, index) => {
       if (!isLegalAutomationPair(trigger, step.action)) {
         throw new AutomationIllegalPairError(trigger, step.action, index);
+      }
+    });
+  }
+
+  /**
+   * Refuse a condition field the trigger may not be scoped by (#2359, spec §5.5
+   * divergence 2 — `holdReason` is offered only for T1/T2/T3).
+   *
+   * The evaluator deliberately does NOT guard this: a `holdReason` condition on
+   * an `order.packed` rule already resolves through the ordinary path, reading
+   * `unknown` with the offending condition visible in its trace, which is an
+   * explanation rather than a bare rejection. But that is only an acceptable
+   * runtime posture because such a rule cannot be AUTHORED — without this
+   * check it persists happily via curl and then never fires, which is exactly
+   * the "saves, arms, never fires" defect the legality tables exist to prevent.
+   */
+  private assertConditionFieldsLegal(
+    trigger: AutomationTrigger,
+    conditions: readonly AutomationCondition[],
+  ): void {
+    conditions.forEach((condition, index) => {
+      if (!isLegalAutomationConditionField(trigger, condition.field)) {
+        throw new AutomationIllegalConditionFieldError(trigger, condition.field, index);
       }
     });
   }
