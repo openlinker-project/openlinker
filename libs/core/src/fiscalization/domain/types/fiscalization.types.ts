@@ -101,6 +101,78 @@ export interface FiscalArtefact {
 }
 
 /**
+ * What a registration PRODUCED, without what it produced (#2523).
+ *
+ * A registered receipt may carry artefacts and it may carry none. Until this
+ * projection existed a surface could not offer "open the receipt document"
+ * without inventing what exists, so the summary carries exactly the four fields
+ * an affordance needs - the FORM, the adapter's HINT, a LABEL, and the MIME type
+ * qualifying the form where the adapter knows one - and never the payload.
+ *
+ * Content is excluded on purpose rather than for economy. An artefact payload
+ * is a customer-facing document: it can be large, it can carry buyer-identifying
+ * detail, and a per-order projection is read to decide what to OFFER, not to
+ * deliver. A caller that genuinely needs the bytes reads the registration record
+ * itself; the summary exists so a surface can decide there is something to
+ * offer at all.
+ *
+ * **Nothing here says anything was DELIVERED, and no reading of it can.**
+ * `disposition` is what the adapter suggests a caller might do - not what
+ * happened, not what will happen, and not a record of an attempt. No shipped
+ * adapter reports whether a document reached a buyer, so a surface must never
+ * derive "sent to the customer" from a `send` disposition, and this type carries
+ * no timestamp, recipient, status or attempt count it could derive one from.
+ *
+ * An EMPTY list is a SUCCESSFUL registration (ADR-042 decision 2) - a pure
+ * reporting regime returns identifiers only - and is distinct from `null`, which
+ * means the registration never got far enough to produce anything.
+ */
+export interface FiscalArtefactSummary {
+  medium: FiscalArtefactMedium;
+  /** The adapter's suggestion. NEVER evidence that it happened. */
+  disposition: FiscalArtefactDisposition;
+  /** Short adapter-supplied label a surface can show; `null` when it supplied none. */
+  label: string | null;
+  /**
+   * MIME type when the adapter knows one (typically only for `document`).
+   * Carried because an affordance differs by file type - "open the PDF" is a
+   * different offer from "download the file" - and it describes the payload
+   * without being any of it.
+   */
+  contentType: string | null;
+}
+
+/**
+ * Project artefacts onto their summaries, dropping every payload.
+ *
+ * Pure, and co-located with the type it projects onto (the pure-rule exception
+ * in `engineering-standards.md`): a field added to {@link FiscalArtefactSummary}
+ * means editing this function in the same commit, so the two cannot drift.
+ *
+ * What keeps a payload out is the summary's FIELD SET, not this function: an
+ * object literal typed as {@link FiscalArtefactSummary} cannot carry `content`,
+ * so a summary assembled by hand elsewhere is bound by the same rule without
+ * having to route through here.
+ *
+ * `null` in, `null` out - a registration that never produced anything is not the
+ * same as one that produced nothing, and collapsing the two would report an
+ * unfinished attempt as a completed pure-reporting registration.
+ */
+export function summarizeFiscalArtefacts(
+  artefacts: FiscalArtefact[] | null | undefined,
+): FiscalArtefactSummary[] | null {
+  if (artefacts === null || artefacts === undefined) {
+    return null;
+  }
+  return artefacts.map((artefact) => ({
+    medium: artefact.medium,
+    disposition: artefact.disposition,
+    label: artefact.label,
+    contentType: artefact.contentType,
+  }));
+}
+
+/**
  * One line of the sale being registered. Amounts are the buyer-paid GROSS
  * figures the source reported; a fiscal registration transmits amounts it must
  * not recompute.
