@@ -10,6 +10,7 @@
 import {
   FiscalArtefactDispositionValues,
   FiscalArtefactMediumValues,
+  FISCAL_LOCATE_DETAIL_UNREADABLE,
   FiscalLocateStatusValues,
   FiscalReconcileOutcomeValues,
   FiscalRegistrationFailureModeValues,
@@ -118,22 +119,45 @@ describe('fiscalization.types', () => {
       // an answer it cannot interpret.
       expect(readFiscalLocateAnswer({ status: 'whatever-comes-next' })).toEqual({
         status: 'held',
-        detail: null,
+        detail: FISCAL_LOCATE_DETAIL_UNREADABLE,
       });
-      expect(readFiscalLocateAnswer('nonsense')).toEqual({ status: 'held', detail: null });
+      expect(readFiscalLocateAnswer('nonsense')).toEqual({
+        status: 'held',
+        detail: FISCAL_LOCATE_DETAIL_UNREADABLE,
+      });
     });
 
     it('reads an untagged object that is not a locate result as `held`', () => {
       // `registered` is terminal, so an answer carrying none of the identity
       // keys the result declares must not be read as one - it would strand the
       // record on a registration nothing confirmed.
-      expect(readFiscalLocateAnswer({})).toEqual({ status: 'held', detail: null });
-      expect(readFiscalLocateAnswer([])).toEqual({ status: 'held', detail: null });
-      expect(readFiscalLocateAnswer({ somethingElse: 1 })).toEqual({
-        status: 'held',
-        detail: null,
-      });
-      expect(readFiscalLocateAnswer({ status: 'registered', registration: {} })).toEqual({
+      const unreadable = { status: 'held', detail: FISCAL_LOCATE_DETAIL_UNREADABLE };
+
+      expect(readFiscalLocateAnswer({})).toEqual(unreadable);
+      expect(readFiscalLocateAnswer([])).toEqual(unreadable);
+      expect(readFiscalLocateAnswer({ somethingElse: 1 })).toEqual(unreadable);
+      expect(readFiscalLocateAnswer({ status: 'registered', registration: {} })).toEqual(
+        unreadable,
+      );
+    });
+
+    it('marks an unread answer so it is never mistaken for the provider holding the sale', () => {
+      // Both land on `held`, which is the safe direction, but only one of them
+      // is a statement about the provider. A surface rendering the adapter's
+      // sentence for the other would assert something no adapter supplied.
+      const reported = readFiscalLocateAnswer({ status: 'held', detail: 'PENDING' });
+      const unread = readFiscalLocateAnswer({ status: 'a-status-from-the-future' });
+
+      expect(reported).toEqual({ status: 'held', detail: 'PENDING' });
+      expect(unread).toEqual({ status: 'held', detail: FISCAL_LOCATE_DETAIL_UNREADABLE });
+      expect(unread).not.toEqual(reported);
+    });
+
+    it('passes an adapter`s silent `held` through as silence, not as unread', () => {
+      // An adapter that asserts `held` and declines to say more is still
+      // asserting it. Stamping the unread marker there would overwrite the
+      // adapter's claim with a fact about this build.
+      expect(readFiscalLocateAnswer({ status: 'held' })).toEqual({
         status: 'held',
         detail: null,
       });
@@ -158,7 +182,7 @@ describe('fiscalization.types', () => {
     it('refuses to read a `registered` answer that carries no identity set', () => {
       expect(readFiscalLocateAnswer({ status: 'registered' })).toEqual({
         status: 'held',
-        detail: null,
+        detail: FISCAL_LOCATE_DETAIL_UNREADABLE,
       });
     });
   });

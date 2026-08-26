@@ -128,7 +128,11 @@ export class FiscalRegistrationResponseDto {
       'True while an attempt holds the in-flight claim on this record - a registration is being ' +
       'run right now and needs no action. READ-ONLY and derived: asking does not take the claim, ' +
       'call the provider or attempt anything. A claim that has EXPIRED reads false, because an ' +
-      'expired lease means the previous attempt died rather than that one is running.',
+      'expired lease means the previous attempt died rather than that one is running. ' +
+      'INTERIM: this reports fiscal receipts only, and an invoice has no counterpart field here ' +
+      'on purpose. Both kinds report through one neutral shape on the per-order sales-document ' +
+      'projection, which supersedes this field - build a surface covering both kinds on that, ' +
+      'not on this.',
   })
   inFlight!: boolean;
 

@@ -119,7 +119,9 @@ found it unenforced on GET requests, so a connection without it still works.
   reconcile outcome and which leaves the record exactly where it was. Only `CONFIRMED`
   answers `registered`; a vendor-reported `ERROR` answers `not-found`, because a failed
   document is an absence of a registration rather than work still in progress (ADR-042
-  amendment #2502, decision 1).
+  amendment #2502, decision 1). Read `not-found` as "no registration exists for these
+  coordinates", never as "the provider holds nothing" - on the `ERROR` path it holds a
+  document and reports it failed.
 - **Known gap: no webhook ingress.** The vendor delivers a confirmed status by webhook
   (`X-Signature` = `hash_hmac('sha256', rawBody, webhookSecret)`), which does not fit
   this repo's existing `WebhookEventTranslator` seams cleanly in v1 — the synchronous

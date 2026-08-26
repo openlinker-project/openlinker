@@ -101,6 +101,14 @@ export interface IFiscalRegistrationService {
    *
    * VISIBILITY ONLY. The lease semantics, the exactly-once guarantee and the
    * 409 are all unchanged.
+   *
+   * Consumed by the per-order sales-document projection, which reports both
+   * document kinds through this one neutral shape. The fiscal-registration HTTP
+   * read deliberately does NOT call it: that endpoint already holds the order's
+   * records and derives its per-record `inFlight` from the same `isLeaseLive`
+   * predicate, so routing through here would repeat the read to answer a
+   * question it can already answer. The seam exists for the caller that has an
+   * order id and no records - which is the projection, not the list endpoint.
    */
   getInFlightRegistration(orderId: string): Promise<SalesDocumentInFlight | null>;
 
@@ -120,11 +128,12 @@ export interface IFiscalRegistrationService {
    * exists to prevent. A provider that cannot be queried by business
    * coordinates reports `unsupported` and the record is left for the operator.
    * A `not-found` answer likewise leaves the record in doubt - it is evidence,
-   * not authority to re-send. A provider that HOLDS the sale without having
-   * registered it yet reports `still-unknown` (ADR-042 amendment #2502,
+   * not authority to re-send. A check that neither confirms a registration nor
+   * establishes an absence reports `still-unknown` (ADR-042 amendment #2502,
    * decisions 1 and 3): the record is left exactly where it was, which is a
    * legitimate answer rather than a failure, and the check may be repeated
-   * later.
+   * later. It does NOT assert that the provider is holding the sale - that is
+   * the usual cause, but the same outcome covers an answer core could not read.
    *
    * Throws `FiscalRegistrationNotInDoubtException` when the record is in any
    * other state, and `FiscalReconcileCheckFailedException` when the provider

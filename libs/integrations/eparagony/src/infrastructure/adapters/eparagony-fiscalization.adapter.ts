@@ -176,10 +176,12 @@ export class EparagonyFiscalizationAdapter
       // the outcome is about the REGISTRATION and licenses nothing: core never
       // resends on it, the record stays in doubt for an operator, and
       // `blocksFurtherRegistration` still refuses a second originating
-      // registration of the sale.
+      // registration of the sale. Read it as "no registration exists for these
+      // coordinates", never as "the provider holds nothing" - here it holds a
+      // document and reports it failed.
       this.logger.warn(
-        `eparagony.pl reports document ${documentToken} in error; no registration exists ` +
-          `[connectionId=${this.connectionId}]`,
+        `eparagony.pl holds document ${documentToken} and reports it in error; no registration ` +
+          `exists for these coordinates [connectionId=${this.connectionId}]`,
       );
       return { status: 'not-found' };
     }

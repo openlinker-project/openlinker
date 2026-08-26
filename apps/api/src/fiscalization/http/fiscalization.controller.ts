@@ -281,6 +281,12 @@ export class FiscalizationController {
    *
    * `now` is passed in so every row of one response is evaluated against the
    * same instant.
+   *
+   * Derived here rather than routed through `IFiscalRegistrationService`'s
+   * `getInFlightRegistration`: this endpoint already holds the order's records,
+   * so the seam would repeat the read to answer a question already answerable.
+   * Both go through `isLeaseLive`, so the two cannot disagree. The seam exists
+   * for the caller that has an order id and no records.
    */
   private toDto(
     record: FiscalRegistrationRecord,

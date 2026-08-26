@@ -413,15 +413,21 @@ export class FiscalRegistrationService implements IFiscalRegistrationService {
     const answer = readFiscalLocateAnswer(raw);
 
     if (answer.status === 'held') {
-      // The provider HAS the sale and has not registered it (ADR-042 amendment
-      // #2502, decisions 1 and 3). Not an absence and not a failure: the record
-      // is left byte-identical - no patch, no lease change, no status move - and
-      // the same check can be repeated later. Terminalising here would claim a
-      // registration that has not happened.
+      // The check did not confirm a registration and did not establish an
+      // absence either (ADR-042 amendment #2502, decisions 1 and 3). Not a
+      // failure: the record is left byte-identical - no patch, no lease change,
+      // no status move - and the check can be repeated later. Terminalising here
+      // would claim a registration that has not happened.
+      //
+      // The line says what was OBSERVED and no more. The usual cause is a
+      // provider holding the sale, but the same branch covers an answer core
+      // could not read, where nothing about the provider is known - so the
+      // adapter's own note is quoted rather than paraphrased into a claim on its
+      // behalf.
       this.logger.log(
-        `Provider on connection ${record.connectionId} holds the sale for record ` +
-          `${recordId} but has not registered it yet` +
-          `${answer.detail ? ` (${answer.detail})` : ''}; leaving the record untouched`,
+        `Provider on connection ${record.connectionId} did not confirm a registration for ` +
+          `record ${recordId} (${answer.detail ?? 'no detail reported'}); leaving the record ` +
+          `exactly as it was`,
       );
       return { outcome: 'still-unknown', record };
     }

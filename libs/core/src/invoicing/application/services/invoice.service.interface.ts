@@ -141,7 +141,10 @@ export interface IInvoiceService {
    * Consumed by the per-order sales-document projection, which reports both
    * kinds through this one shape. It is deliberately not surfaced on the
    * invoicing HTTP reads: a second field there would be superseded by that
-   * projection rather than complement it.
+   * projection rather than complement it. Until the projection lands this method
+   * has no production caller, which is why its spec asserts the negative
+   * properties - no lock, no adapter, no write - rather than only its return
+   * shape.
    */
   getInFlightIssuance(orderId: string): Promise<SalesDocumentInFlight | null>;
 

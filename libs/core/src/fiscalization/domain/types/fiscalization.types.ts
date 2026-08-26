@@ -304,8 +304,12 @@ export interface FiscalLocateCriteria {
 
 /**
  * A registration the provider confirms it holds. Mirrors the persisted identity
- * set so reconciliation writes it with no translation. `null` from the locator
- * means the provider holds NO match.
+ * set so reconciliation writes it with no translation.
+ *
+ * It is the payload of the `registered` arm of {@link FiscalLocateAnswer}, which
+ * is what a locator returns. `null` no longer carries meaning at this boundary:
+ * it survives only as the pre-#2502 shape {@link readFiscalLocateAnswer}
+ * coerces, where it did mean "the provider holds no match".
  */
 export interface FiscalLocateResult {
   /**
@@ -340,15 +344,32 @@ export interface FiscalLocateResult {
  *   - `registered` - the provider confirms a completed registration and hands
  *     back the neutral identity set. The ONLY outcome core may terminalise a
  *     record on.
- *   - `held`       - the provider holds the sale and has not registered it. It
- *     is NOT evidence of absence and NOT a failure. The record stays exactly as
- *     it was, and asking again later is the whole point.
+ *   - `held`       - the check did NOT confirm a registration and did NOT
+ *     establish an absence either. It is not a failure, and the record stays
+ *     exactly as it was; asking again later is the whole point. Two different
+ *     situations land here and `detail` is what tells them apart: an adapter
+ *     reporting that its provider has the sale and has not registered it yet
+ *     stamps what it observed, while an answer core could not read carries
+ *     {@link FISCAL_LOCATE_DETAIL_UNREADABLE}. A surface must not state the
+ *     first when the second is what happened - OpenLinker has no evidence the
+ *     provider holds anything when no adapter said so.
  *   - `not-found`  - the provider holds no registration for these coordinates.
  *     Evidence, never authority to resend (decision 7): a resend of a
  *     registration that already landed is the double registration the contract
  *     exists to prevent.
  */
 export const FiscalLocateStatusValues = ['registered', 'held', 'not-found'] as const;
+
+/**
+ * `detail` stamped when core could not read a locator's answer (#2583 review).
+ *
+ * It exists so the evidence-free fallback stays distinguishable from an adapter
+ * that genuinely reported its provider holding the sale. Both are `held`,
+ * because failing toward `held` is the fiscally safe direction, but only one of
+ * them is a statement about the provider - and a surface that renders the
+ * adapter's sentence for this case would assert something no adapter supplied.
+ */
+export const FISCAL_LOCATE_DETAIL_UNREADABLE = 'unreadable-answer';
 export type FiscalLocateStatus = (typeof FiscalLocateStatusValues)[number];
 
 export type FiscalLocateAnswer =
@@ -356,9 +377,12 @@ export type FiscalLocateAnswer =
   | {
       status: 'held';
       /**
-       * Adapter-supplied, PII-free note about WHAT the provider is holding
-       * (typically its own non-terminal status string). Carried for the log and
-       * for an operator surface; core never branches on it.
+       * PII-free note about WHY the check did not confirm. Normally the
+       * adapter's own non-terminal status string, describing what its provider
+       * is holding; {@link FISCAL_LOCATE_DETAIL_UNREADABLE} when core could not
+       * read the answer at all, which is a fact about this build rather than
+       * about the provider. Carried for the log and for an operator surface;
+       * core never branches on it.
        */
       detail?: string | null;
     }
@@ -400,7 +424,7 @@ export function readFiscalLocateAnswer(raw: unknown): FiscalLocateAnswer {
     return { status: 'not-found' };
   }
   if (typeof raw !== 'object') {
-    return { status: 'held', detail: null };
+    return unreadable();
   }
 
   const candidate = raw as { status?: unknown; registration?: unknown; detail?: unknown };
@@ -409,7 +433,7 @@ export function readFiscalLocateAnswer(raw: unknown): FiscalLocateAnswer {
   if (status === null) {
     return isFiscalLocateResultShape(raw)
       ? { status: 'registered', registration: raw as FiscalLocateResult }
-      : { status: 'held', detail: null };
+      : unreadable();
   }
   if (status === 'not-found') {
     return { status: 'not-found' };
@@ -420,12 +444,26 @@ export function readFiscalLocateAnswer(raw: unknown): FiscalLocateAnswer {
       return { status: 'registered', registration: registration as FiscalLocateResult };
     }
     // A `registered` answer carrying no identity set is not one core can write.
-    return { status: 'held', detail: null };
+    return unreadable();
   }
-  return {
-    status: 'held',
-    detail: typeof candidate.detail === 'string' ? candidate.detail : null,
-  };
+  if (status === 'held') {
+    // The adapter ASSERTED that its provider has the sale, so whatever it
+    // observed is real evidence and is passed through - including its absence,
+    // which is the adapter declining to say more rather than core guessing.
+    return {
+      status: 'held',
+      detail: typeof candidate.detail === 'string' ? candidate.detail : null,
+    };
+  }
+  // A status this build does not recognise. Safe direction, but nothing about
+  // the provider is known, so it is marked as unread rather than dressed up as
+  // one.
+  return unreadable();
+}
+
+/** The evidence-free `held`: safe, and honest about carrying no evidence. */
+function unreadable(): FiscalLocateAnswer {
+  return { status: 'held', detail: FISCAL_LOCATE_DETAIL_UNREADABLE };
 }
 
 /**
@@ -491,10 +529,16 @@ export const FiscalReconcileOutcomeValues = [
   /** The adapter cannot be queried by business coordinates; operator handling only. */
   'unsupported',
   /**
-   * The provider HOLDS the sale but has not registered it yet (ADR-042
-   * amendment #2502, decisions 1 and 3). A legitimate answer, not a failure:
-   * the record is left exactly where it was and the same check can be repeated
-   * later. Distinct from `not-found`, which asserts the provider holds nothing.
+   * The check did not confirm a registration and did not establish an absence
+   * either (ADR-042 amendment #2502, decisions 1 and 3). A legitimate answer,
+   * not a failure: the record is left exactly where it was and the same check
+   * can be repeated later. Distinct from `not-found`, which asserts the
+   * provider holds no registration.
+   *
+   * It deliberately does NOT assert that the provider is holding the sale. That
+   * is the usual cause and an adapter reporting it stamps what it observed, but
+   * the same outcome covers an answer core could not read, where nothing about
+   * the provider is known. See {@link FiscalLocateAnswer}'s `held` arm.
    */
   'still-unknown',
 ] as const;

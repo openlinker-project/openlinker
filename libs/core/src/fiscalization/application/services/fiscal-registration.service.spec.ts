@@ -11,6 +11,7 @@
  */
 import type { IIntegrationsService } from '@openlinker/core/integrations';
 import type { SyncLockPort } from '@openlinker/core/sync';
+import { Logger } from '@openlinker/shared/logging';
 import type { IInvoiceService } from '@openlinker/core/invoicing';
 
 import {
@@ -20,6 +21,7 @@ import {
 } from './fiscal-registration.service';
 import { FiscalRegistrationRecord } from '../../domain/entities/fiscal-registration-record.entity';
 import { DuplicateFiscalRegistrationRecordException } from '../../domain/exceptions/duplicate-fiscal-registration-record.exception';
+import { FISCAL_LOCATE_DETAIL_UNREADABLE } from '../../domain/types/fiscalization.types';
 import { FiscalReconcileCheckFailedException } from '../../domain/exceptions/fiscal-reconcile-check-failed.exception';
 import { FiscalRegistrationNotInDoubtException } from '../../domain/exceptions/fiscal-registration-not-in-doubt.exception';
 import { FiscalRegistrationRecordNotFoundException } from '../../domain/exceptions/fiscal-registration-record-not-found.exception';
@@ -1268,6 +1270,27 @@ describe('FiscalRegistrationService', () => {
 
       expect(result.outcome).toBe('still-unknown');
       expect(repo.updateOutcome).not.toHaveBeenCalled();
+    });
+
+    it('should not claim the provider holds the sale when it could not read the answer', async () => {
+      // Both an adapter-reported hold and an unreadable answer are
+      // `still-unknown`, which is the safe direction. Only the first is a
+      // statement about the provider, so the log must not make the second one.
+      const logged: string[] = [];
+      jest
+        .spyOn(Logger.prototype, 'log')
+        .mockImplementation((message: unknown) => logged.push(String(message)));
+      integrations.getCapabilityAdapter.mockResolvedValue({
+        registerTransaction: jest.fn(),
+        locateByQuery: jest.fn().mockResolvedValue({ status: 'a-status-from-the-future' }),
+      });
+      repo.findById.mockResolvedValue(record('failed', { failureMode: 'in-doubt' }));
+
+      await service.reconcileInDoubt('rec-1');
+
+      expect(logged.join('\n')).toContain(FISCAL_LOCATE_DETAIL_UNREADABLE);
+      expect(logged.join('\n')).not.toMatch(/holds the sale/i);
+      expect(logged.join('\n')).not.toMatch(/has not registered it yet/i);
     });
 
     it('should still resolve a locator that answers in the pre-#2502 shape', async () => {
