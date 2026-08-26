@@ -81,7 +81,7 @@ Branch: `oms-programme-wave-1` (stacked off Wave-0 tip feb78054d; Wave-0 PR to m
 | #2321 | W1b-6 | IAvailabilityService computed seam | ☑ merged bdcdb6711 (commit 104d37869; reviewed, approved; consumed by nobody until #2323) |
 | #2320 | W1b-5 | provenance-scoped lookup + per-source prune | ☑ merged a9bd024da (ANALYSIS-2320; imports LEGACY const from #2317; Decision A typed InventoryCrossSourcePositionConflictError naming #2325; #1904 guard unchanged) |
 | #2322 | W1b-10 | enforce locationId-NULL semantics | ☑ merged 776152089 (commit 1466b6d6a; reviewed, approved; finding: reversal is half-free — per-variant prune granularity leaves abandoned located rows live; propagate-on-stale gap deferred to #2324) |
-### Wave 1c (epic #2337) — OPEN (Scope A recorded on the epic; 9 active children)
+### Wave 1c (epic #2337) — **COMPLETE (9/9)**; boundary DONE (merge-forward + 3-reviewer /pr-review, all 13 findings applied)
 | Issue | Slug | Subject | Status |
 |---|---|---|---|
 | #2327 | W1c-1 | returns context: model + migration 1846 | ☑ merged 902c83ebb (commit bd7b3b26f; reviewed, approved; incl. ADR-060 custody amendment) |
@@ -94,7 +94,36 @@ Branch: `oms-programme-wave-1` (stacked off Wave-0 tip feb78054d; Wave-0 PR to m
 | #2334 | W1c-7 | returns read API | ☑ merged 1601efe4b (commit 0c3c6953f; reviewed, approved; `total` bucket-applied vs `counts` bucket-less; `declineAvailability` backend-resolved because FE derivation fails in the wrong direction; `ReturnDeclineExceptionFilter`→`ReturnsExceptionFilter`, 404/409/400 mapping unchanged and predating this slice) |
 | #2335 | W1c-8 | returns list with the orphan bucket | ☑ merged ac57d1d9d (commit 4361af847; reviewed, approved; 5 empty-state branches incl. past-the-end + all-rows-unreadable; vocabulary gate now scans `features/returns`, 6 files; declared deviation — chips are All/Orphan/Matched, no `declined` chip, since the API offers no such filter and it would misreport beyond page 1) |
 | #2333 | W1c-6 | `return.decline` + the `order_changes` table (**Wave-2 gate**) | ☑ merged (commit bbcdef929; reviewed, approved; migration 1847; index-name + partial-predicate parity verified against the ORM entity; no-OL-clock-fallback on `declinedAt` verified at source; `ReturnDecliner` shipped as its own capability, not a `ReturnSourceReader` method) |
-### Wave 2 (epic #2389) — gated per its epic body; §8 Q1 = YES (decision 2 above)
+| #2336 | W1c-9 | FE return detail + verbatim source status + decline | ☑ merged c2260eb4b (commit 1e1199b91; reviewed, approved; `declinedAt` ALONE drives the Declined badge so a 2xx cannot claim a decline; an unreadable `declineAvailability.reason` says OL could not establish, never "the channel does not"; landed the filter's `trigger` on the 409, which its own docblock had instructed consumers to read while the field never crossed the HTTP boundary) |
+
+### Wave 1c boundary (2026-08-26)
+
+1. **Integration debt settled** — the #2330 "repair pass dispatched" never landed (no commit existed). Re-run and classified: 2 wave-introduced failures fixed, 1 pre-existing on `origin/main` left alone and filed. One was a **production defect**, not a test defect: `markLocationlessStaleForSource` (#2322) read node-postgres UPDATE results as the row list rather than the `[rows, affectedCount]` tuple, making `markedCount` a constant 2, `variantIds` a constant `[]` — so `MasterInventorySyncService` enqueued an aggregate propagation on EVERY inventory sync carrying no variant, and never the correct one. Merged 1adb9ca35.
+2. **Merge-forward** of `origin/main` (0.8.0, chiefly #2014) — 30 files conflicted, resolved by intent. No migration re-timestamp needed (main's tail 1841000000006 < our 1842–1848). Merged fb729d9a5.
+3. **Two defects that exist ONLY in the combination of the branch and main** — each side correct alone, compiles clean, no pre-existing test catches either:
+   - main's `upsertWithLineItems` used full-object `save()` (the shape #2282 abandoned) and so **bypassed the source-attribution freeze**. Fixed 7024571a9 with one shared `buildFrozenAttributionUpsert` parameterised across both write paths, plus a test proven to fail before and pass after.
+   - `fromRawRow`'s hand-enumerated reset list was outflanked by six new columns from main (a record could assert `salesDocumentBlockedAt` with a nulled `salesDocumentBlockReason`). Fixed **structurally** — the reset set is now derived from the statement's write set — which caught a seventh column nobody had named (`taxRateEra`).
+   Both were the same mechanism: a hand-enumerated guarantee meeting a branch that added members. Both are now derived rather than enumerated.
+4. **`/pr-review`** — three Opus reviewers over the unreviewed slice `2a7a49052..7024571a9` (1a/1b were already reviewed at b8ebdbf09). **13 findings: 1 BLOCKING, 6 IMPORTANT, 6 SUGGESTION — all applied, none declined** (96f970404 web, 23e63c366 backend). The blocking one: an unreadable response *envelope* fell through to "No returns recorded yet." — the page defended against rows it could not read but not an envelope it could not read. Also renamed `order_changes.confirmedAt` → `terminalisedAt` (decline and expire both wrote it, so `WHERE confirmedAt IS NOT NULL` silently included refusals and timeouts) — migration 1847 edited in place, no data exists.
+5. **Gates**: build, lint, `check:invariants`, type-check, full unit suite, `apps/web` (385 files / 4060 tests) all green. Integration verified in targeted batches — **14 suites / 110 tests** across the whole blast radius (migration rename schema-parity, #2282's own attribution spec, the `fromRawRow`/`upsert` consumers, returns read+ingestion). The full 119-suite run was killed twice before starting a single test; the remaining ~105 suites are green as of 1adb9ca35 and untouched since. CI runs the full suite on the PR.
+6. **PR #2441 retargeted from the stack to `main`** and expanded to cover Waves 0–1c (39 `Closes`). The stack had stopped working: this branch has main merged in while `oms-programme-waves-0-2` does not, so a stacked diff rendered main's #2014 as if it were ours. **PR #2438 is superseded** (this branch contains all of Wave 0 — `feb78054d` is an ancestor and both lineages carry byte-identical 1842/1845 files) and can be closed.
+7. **Filed against main, not fixed here**: #2496 (`earliest-order-date` is timezone-dependent — passes under `TZ=UTC`, fails for any contributor not running UTC, invisible in CI) and #2497 (`carrier-mapping S-3`, `HTTP 0` on the OL-module `importorder`, reproduced on a clean `origin/main`).
+
+### Wave 2 (epic #2389) — OPEN. Gate satisfied: Wave 1c landed with its fork decided; #2333 (`order_changes`) merged; §8 Q1 = YES.
+
+Branch: `oms-programme-wave-2`, cut from the Wave-1c tip. Deliberately NOT stacked on `oms-programme-wave-1` — #2441 is open against `main` awaiting merge, and stacking 49 more issues onto its head branch would grow a PR already in review.
+
+Already merged early (dependency-free, per the epic's own scheduling): **#2375** (spike) and **#2384** (vocabulary gate) — both rode the Wave-1c PR.
+
+Five bodies, run concurrently (different surfaces), serial within each body, each agent in its OWN worktree:
+- **A · Order holds** — #2338 → #2339 → #2340 → #2341 → #2342
+- **B · Reservation ledger** — #2343 → #2344 → #2345 → #2346/#2347/#2348 → #2349 → #2350
+- **C · Authority surface + presets** — #2351 → #2352 → #2353 → #2354/#2355/#2356; #2357 DX mirror
+- **D · Automation v1** — #2358 → #2359 → #2360/#2361 → #2362 → #2363 → #2364/#2365/#2366; ops half #2385 → #2386, #2387
+- **E · Returns custody, disposition, money** — #2367, #2368 → #2369, #2370, #2371, #2372, #2373, #2374, #2376, #2377, #2379 (scoped by the #2375 spike), FE #2378/#2380/#2381/#2382/#2383
+- **#2388** (responsive audit) LAST, once all four new surfaces exist.
+
+Migration tail: **1848**. Next free: **1849**.
 
 (Fill per-issue tables for each wave when its frontier opens; until then the epic checklist is the list.)
 
