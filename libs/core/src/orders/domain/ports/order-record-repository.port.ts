@@ -29,6 +29,7 @@ import type {
   CoverageDetectionPagination,
   PaginatedCurrencyMismatchOrders,
   NetExcludedOrderCandidate,
+  PaginatedProductMatchingErrorOrders,
 } from '../types/coverage-detection.types';
 
 export interface OrderRecordRepositoryPort {
@@ -244,6 +245,22 @@ export interface OrderRecordRepositoryPort {
     filters: SalesAnalyticsFilters,
     currentReportingCurrency: string
   ): Promise<NetExcludedOrderCandidate[]>;
+
+  /**
+   * Data Coverage `'product-matching'` category drill-down (#2466) — orders
+   * stuck `recordStatus IN ('awaiting_mapping', 'source_deleted')`, the SAME
+   * predicate `countByHealth`'s `awaiting_mapping` + `source_deleted`
+   * buckets already partition (so `total` here always matches their sum for
+   * the same filters). Deliberately keyed on {@link OrderHealthSummaryFilters}
+   * (`createdAt`-scoped), NOT {@link SalesAnalyticsFilters} (`placedAt`-scoped)
+   * — #1985 populates `placedAt`/`totalAmount` only for `recordStatus =
+   * 'ready'` records, so a product-matching row's `placedAt` is always
+   * `null` and would be silently excluded by a `placedAt` range filter.
+   */
+  findProductMatchingErrorOrders(
+    filters: OrderHealthSummaryFilters,
+    pagination: CoverageDetectionPagination
+  ): Promise<PaginatedProductMatchingErrorOrders>;
 
   /**
    * Headline median order value for the sales & channel analytics read

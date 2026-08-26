@@ -51,4 +51,17 @@ export interface ITaxCoverageDetectionService {
     filters: SalesAnalyticsFilters,
     currentReportingCurrency: string
   ): Promise<Record<TaxCoverageCategory, number>>;
+
+  /**
+   * All three categories' drill-down pages in ONE {@link classify} pass
+   * (#2466) — `AnalyticsCoverageController` needs `tax-a`/`tax-b`/`tax-c`
+   * together for a single `GET /analytics/coverage` request, and calling
+   * {@link getCategoryPage} three times would re-run the live-catalogue
+   * classification pass three times over the SAME candidate population.
+   */
+  getAllCategoryPages(
+    filters: SalesAnalyticsFilters,
+    currentReportingCurrency: string,
+    pagination: CoverageDetectionPagination
+  ): Promise<Record<TaxCoverageCategory, PaginatedTaxCoverageOrders>>;
 }

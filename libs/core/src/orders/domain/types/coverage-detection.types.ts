@@ -9,6 +9,13 @@
  * additive on purpose: nothing here is currency-specific except the types
  * explicitly named for it.
  *
+ * The product-matching detector (#2466) is the one genuinely new category —
+ * no existing aggregate tracked it before this. It reuses the
+ * `OrderRecordStatus` / `mappingFailureReason` vocabulary `OrderRecord`
+ * already carries for the #1689 stale-variant treatment (`awaiting_mapping`
+ * is self-healing, `source_deleted` is permanent) rather than inventing a
+ * parallel signal.
+ *
  * `CoverageCategory` / `CoverageResolutionStatus` follow the Phase 1 Task 1.2
  * decision doc (`docs/plans/analytics-coverage-remediation-decision.md`,
  * still unmerged as of this task — PR #2487): lifecycle (open/in-progress/
@@ -23,12 +30,17 @@
  */
 
 /**
- * Data Coverage category values. `'currency'` was populated by #2464;
- * `'tax-a'`/`'tax-b'`/`'tax-c'` are added here by this task (#2465) — the
- * product-matching category (#2466) is added by that sibling task rather
- * than guessed at in advance.
+ * Data Coverage category values. `'currency'` was populated by #2464,
+ * `'tax-a'`/`'tax-b'`/`'tax-c'` by #2465, and `'product-matching'` (an order
+ * stuck `recordStatus IN ('awaiting_mapping', 'source_deleted')`) by #2466.
  */
-export const CoverageCategoryValues = ['currency', 'tax-a', 'tax-b', 'tax-c'] as const;
+export const CoverageCategoryValues = [
+  'currency',
+  'tax-a',
+  'tax-b',
+  'tax-c',
+  'product-matching',
+] as const;
 
 /**
  * Data Coverage category type — one row per category in the
@@ -183,4 +195,42 @@ export interface TaxCoverageClassification {
   'tax-a': TaxCoverageOrderRow[];
   'tax-b': TaxCoverageOrderRow[];
   'tax-c': TaxCoverageOrderRow[];
+}
+
+/**
+ * One order in the `'product-matching'` category's drill-down list (mockup
+ * state `detail-mapping`, #2466) — an order stuck `recordStatus =
+ * 'awaiting_mapping' | 'source_deleted'` because at least one item
+ * reference failed resolution against the internal catalogue.
+ * `mappingFailureReason` is the SAME column both statuses populate
+ * (`OrderRecordService.updateItemResolutionFailure`, the #1689
+ * stale-variant treatment) — reused here rather than re-deriving a parallel
+ * signal, per this task's own scoping note.
+ *
+ * Deliberately as minimal as {@link CurrencyMismatchOrderRow} /
+ * {@link TaxCoverageOrderRow} — no thumbnail/order-number field, since
+ * `OrderRecord` denormalizes no such column. `placedAt` is omitted (unlike
+ * its siblings): #1985 populates `placedAt`/`totalAmount` only for
+ * `recordStatus = 'ready'` records, so a product-matching row's `placedAt`
+ * is always `null` — `createdAt` (always populated) is the only resolvable
+ * ordering/scoping timestamp for this category.
+ */
+export interface ProductMatchingErrorOrderRow {
+  internalOrderId: string;
+  sourceConnectionId: string;
+  /** Always `'awaiting_mapping'` or `'source_deleted'` — the two `OrderRecordStatus` values this detector's predicate matches. */
+  recordStatus: 'awaiting_mapping' | 'source_deleted';
+  /** `order_records.mappingFailureReason` — set alongside both matched statuses (#1689). */
+  mappingFailureReason: string | null;
+  /** `order_records.createdAt` — always populated, unlike `placedAt` for this category (see class doc comment). */
+  createdAt: Date;
+}
+
+/**
+ * Paginated result for {@link ProductMatchingErrorOrderRow}, mirroring
+ * {@link PaginatedCurrencyMismatchOrders}'s `{ items, total }` shape.
+ */
+export interface PaginatedProductMatchingErrorOrders {
+  items: ProductMatchingErrorOrderRow[];
+  total: number;
 }
