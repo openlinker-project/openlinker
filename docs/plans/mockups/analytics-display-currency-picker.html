@@ -1,0 +1,1085 @@
+<title>Analytics Settings</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+
+/* ══════════════════ Tokens — verbatim from apps/web/src/index.css ══════════════════ */
+:root {
+  --font-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
+
+  --bg-canvas: oklch(99% 0.003 80);
+  --bg-shell: oklch(97.5% 0.004 80);
+  --bg-surface: #ffffff;
+  --bg-surface-elevated: oklch(99% 0.003 80);
+  --bg-surface-muted: oklch(96% 0.005 80);
+  --bg-surface-hover: oklch(93% 0.006 80);
+  --bg-strong: oklch(93% 0.006 80);
+
+  --border-subtle: oklch(93.5% 0.006 80);
+  --border-default: oklch(88% 0.008 80);
+  --border-strong: oklch(78% 0.010 80);
+  --border-focus: oklch(68% 0.18 50);
+
+  --text-primary: oklch(20% 0.012 80);
+  --text-secondary: oklch(38% 0.010 80);
+  --text-muted: oklch(52% 0.008 80);
+  --text-disabled: oklch(70% 0.005 80);
+  --text-on-primary: oklch(18% 0.012 50);
+  --text-inverse: oklch(96% 0.005 80);
+
+  --accent-primary: oklch(68% 0.18 50);
+  --accent-primary-hover: oklch(62% 0.19 50);
+  --accent-primary-active: oklch(56% 0.20 50);
+  --accent-primary-soft: oklch(96% 0.04 60);
+  --accent-primary-soft-strong: oklch(40% 0.16 50);
+  --accent-primary-border: oklch(85% 0.10 55);
+  --accent-focus: oklch(68% 0.18 50);
+  --accent-ring: oklch(68% 0.18 50 / 0.30);
+
+  --status-success: oklch(54% 0.14 150); --status-success-soft: oklch(96% 0.04 150);
+  --status-success-border: oklch(85% 0.08 150); --status-success-strong: oklch(36% 0.12 150);
+  --status-warning: oklch(72% 0.16 85); --status-warning-soft: oklch(96% 0.05 85);
+  --status-warning-border: oklch(85% 0.10 85); --status-warning-strong: oklch(42% 0.12 80);
+  --status-error: oklch(58% 0.20 25); --status-error-soft: oklch(96% 0.04 25);
+  --status-error-border: oklch(85% 0.10 25); --status-error-strong: oklch(42% 0.16 25);
+  --status-info: oklch(56% 0.14 245); --status-info-soft: oklch(96% 0.03 245);
+  --status-info-border: oklch(85% 0.08 245); --status-info-strong: oklch(40% 0.12 245);
+
+  --channel-allegro: oklch(70% 0.18 35);
+  --channel-erli: oklch(66% 0.17 320);
+
+  --shadow-xs: 0 1px 2px rgb(15 18 26 / 0.04);
+  --shadow-sm: 0 1px 2px rgb(15 18 26 / 0.04), 0 1px 3px rgb(15 18 26 / 0.06);
+  --shadow-md: 0 2px 4px rgb(15 18 26 / 0.04), 0 6px 16px rgb(15 18 26 / 0.08);
+  --shadow-lg: 0 6px 12px rgb(15 18 26 / 0.06), 0 16px 32px rgb(15 18 26 / 0.10);
+  --shadow-overlay: 0 24px 48px rgb(15 18 26 / 0.16), 0 8px 16px rgb(15 18 26 / 0.08);
+  --overlay-scrim: rgb(15 18 26 / 0.55);
+  --shadow-focus: 0 0 0 3px var(--accent-ring);
+
+  --space-1: 0.25rem; --space-2: 0.5rem; --space-3: 0.75rem; --space-4: 1rem;
+  --space-5: 1.5rem; --space-6: 2rem; --space-7: 3rem;
+
+  --radius-xs: 4px; --radius-sm: 6px; --radius-md: 8px; --radius-lg: 10px; --radius-xl: 14px; --radius-pill: 9999px;
+
+  --duration-fast: 120ms; --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --tracking-tight: -0.012em; --tracking-caps: 0.08em;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --bg-canvas: oklch(14% 0.005 270); --bg-shell: oklch(16% 0.006 270);
+    --bg-surface: oklch(19% 0.007 270); --bg-surface-elevated: oklch(22% 0.008 270);
+    --bg-surface-muted: oklch(24% 0.009 270); --bg-surface-hover: oklch(28% 0.010 270);
+    --bg-strong: oklch(28% 0.010 270);
+    --border-subtle: oklch(24% 0.010 270); --border-default: oklch(30% 0.012 270);
+    --border-strong: oklch(42% 0.014 270); --border-focus: oklch(72% 0.18 50);
+    --text-primary: oklch(96% 0.006 270); --text-secondary: oklch(78% 0.010 270);
+    --text-muted: oklch(60% 0.012 270); --text-disabled: oklch(42% 0.012 270);
+    --text-on-primary: oklch(16% 0.012 50); --text-inverse: oklch(20% 0.012 80);
+    --accent-primary: oklch(72% 0.18 50); --accent-primary-hover: oklch(78% 0.18 50);
+    --accent-primary-active: oklch(84% 0.16 50); --accent-primary-soft: oklch(28% 0.08 50);
+    --accent-primary-soft-strong: oklch(86% 0.14 60); --accent-primary-border: oklch(40% 0.14 55);
+    --accent-focus: oklch(72% 0.18 50); --accent-ring: oklch(72% 0.18 50 / 0.40);
+    --status-success: oklch(68% 0.16 150); --status-success-soft: oklch(26% 0.06 150);
+    --status-success-border: oklch(36% 0.10 150); --status-success-strong: oklch(86% 0.14 150);
+    --status-warning: oklch(78% 0.16 85); --status-warning-soft: oklch(28% 0.07 85);
+    --status-warning-border: oklch(38% 0.10 85); --status-warning-strong: oklch(88% 0.14 85);
+    --status-error: oklch(70% 0.18 25); --status-error-soft: oklch(28% 0.10 25);
+    --status-error-border: oklch(40% 0.14 25); --status-error-strong: oklch(86% 0.14 25);
+    --status-info: oklch(72% 0.14 245); --status-info-soft: oklch(26% 0.06 245);
+    --status-info-border: oklch(36% 0.10 245); --status-info-strong: oklch(86% 0.12 245);
+    --shadow-xs: 0 1px 2px rgb(0 0 0 / 0.40);
+    --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.40), 0 1px 3px rgb(0 0 0 / 0.32);
+    --shadow-md: 0 2px 4px rgb(0 0 0 / 0.40), 0 6px 16px rgb(0 0 0 / 0.36);
+    --shadow-lg: 0 6px 12px rgb(0 0 0 / 0.42), 0 16px 32px rgb(0 0 0 / 0.40);
+    --shadow-overlay: 0 24px 48px rgb(0 0 0 / 0.60), 0 8px 16px rgb(0 0 0 / 0.40);
+    --overlay-scrim: rgb(0 0 0 / 0.72);
+  }
+}
+:root[data-theme='dark'] {
+  --bg-canvas: oklch(14% 0.005 270); --bg-shell: oklch(16% 0.006 270);
+  --bg-surface: oklch(19% 0.007 270); --bg-surface-elevated: oklch(22% 0.008 270);
+  --bg-surface-muted: oklch(24% 0.009 270); --bg-surface-hover: oklch(28% 0.010 270);
+  --bg-strong: oklch(28% 0.010 270);
+  --border-subtle: oklch(24% 0.010 270); --border-default: oklch(30% 0.012 270);
+  --border-strong: oklch(42% 0.014 270); --border-focus: oklch(72% 0.18 50);
+  --text-primary: oklch(96% 0.006 270); --text-secondary: oklch(78% 0.010 270);
+  --text-muted: oklch(60% 0.012 270); --text-disabled: oklch(42% 0.012 270);
+  --text-on-primary: oklch(16% 0.012 50); --text-inverse: oklch(20% 0.012 80);
+  --accent-primary: oklch(72% 0.18 50); --accent-primary-hover: oklch(78% 0.18 50);
+  --accent-primary-active: oklch(84% 0.16 50); --accent-primary-soft: oklch(28% 0.08 50);
+  --accent-primary-soft-strong: oklch(86% 0.14 60); --accent-primary-border: oklch(40% 0.14 55);
+  --accent-focus: oklch(72% 0.18 50); --accent-ring: oklch(72% 0.18 50 / 0.40);
+  --status-success: oklch(68% 0.16 150); --status-success-soft: oklch(26% 0.06 150);
+  --status-success-border: oklch(36% 0.10 150); --status-success-strong: oklch(86% 0.14 150);
+  --status-warning: oklch(78% 0.16 85); --status-warning-soft: oklch(28% 0.07 85);
+  --status-warning-border: oklch(38% 0.10 85); --status-warning-strong: oklch(88% 0.14 85);
+  --status-error: oklch(70% 0.18 25); --status-error-soft: oklch(28% 0.10 25);
+  --status-error-border: oklch(40% 0.14 25); --status-error-strong: oklch(86% 0.14 25);
+  --status-info: oklch(72% 0.14 245); --status-info-soft: oklch(26% 0.06 245);
+  --status-info-border: oklch(36% 0.10 245); --status-info-strong: oklch(86% 0.12 245);
+  --shadow-xs: 0 1px 2px rgb(0 0 0 / 0.40);
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.40), 0 1px 3px rgb(0 0 0 / 0.32);
+  --shadow-md: 0 2px 4px rgb(0 0 0 / 0.40), 0 6px 16px rgb(0 0 0 / 0.36);
+  --shadow-lg: 0 6px 12px rgb(0 0 0 / 0.42), 0 16px 32px rgb(0 0 0 / 0.40);
+  --shadow-overlay: 0 24px 48px rgb(0 0 0 / 0.60), 0 8px 16px rgb(0 0 0 / 0.40);
+  --overlay-scrim: rgb(0 0 0 / 0.72);
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--bg-canvas);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+.mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+/* ── Prototype rail ── */
+.proto-rail {
+  position: sticky; top: 0; z-index: 200;
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2);
+  padding: var(--space-3) var(--space-5);
+  background: color-mix(in oklab, var(--bg-shell) 94%, transparent);
+  backdrop-filter: blur(6px);
+  border-bottom: 1px dashed var(--border-strong);
+}
+.proto-rail__label {
+  font-family: var(--font-mono); font-size: 0.6875rem; font-weight: 600;
+  letter-spacing: var(--tracking-caps); text-transform: uppercase;
+  color: var(--text-muted); margin-right: var(--space-1);
+}
+.proto-rail__tag {
+  font-family: var(--font-mono); font-size: 0.625rem; font-weight: 700;
+  letter-spacing: var(--tracking-caps); text-transform: uppercase;
+  color: var(--accent-primary-hover); border: 1px solid var(--accent-primary-border);
+  background: var(--accent-primary-soft); border-radius: var(--radius-sm);
+  padding: 2px 6px;
+}
+.state-btn {
+  font-family: var(--font-sans); font-size: 0.75rem; font-weight: 500;
+  padding: 5px 10px; border-radius: var(--radius-pill);
+  border: 1px solid var(--border-default); background: var(--bg-surface);
+  color: var(--text-secondary); cursor: pointer; white-space: nowrap;
+  transition: background var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
+}
+.state-btn:hover { background: var(--bg-surface-hover); color: var(--text-primary); }
+.state-btn:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+.state-btn[aria-pressed="true"] {
+  background: var(--accent-primary); border-color: var(--accent-primary);
+  color: var(--text-on-primary); font-weight: 600;
+}
+.proto-rail__note { flex-basis: 100%; font-size: 0.75rem; color: var(--text-muted); margin-top: 2px; }
+.proto-rail__note b { color: var(--text-secondary); font-weight: 600; }
+
+/* ── Page shell ── */
+.shell { max-width: 76rem; margin: 0 auto; padding: var(--space-6) var(--space-5) var(--space-7); display: grid; gap: var(--space-5); }
+.eyebrow { margin: 0; font-size: 0.76rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent-primary-hover); }
+.page-title { margin: 0.3rem 0 0; font-size: 1.75rem; font-weight: 700; letter-spacing: var(--tracking-tight); text-wrap: balance; }
+.page-description { margin: 0.4rem 0 0; color: var(--text-secondary); font-size: 0.9rem; max-width: 62ch; }
+.page-header-row { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-4); flex-wrap: wrap; }
+
+/* ── Toolbar ── */
+.toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); justify-content: space-between;
+  padding: var(--space-3) var(--space-4); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: var(--bg-shell); }
+.toolbar__group { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
+.segmented { display: inline-flex; border: 1px solid var(--border-default); border-radius: var(--radius-md); overflow: hidden; background: var(--bg-surface); }
+.segmented button { font-family: var(--font-sans); font-size: 0.8125rem; padding: 6px 12px; border: none; background: transparent; color: var(--text-secondary); cursor: pointer; border-right: 1px solid var(--border-default); }
+.segmented button:last-child { border-right: none; }
+.segmented button.active { background: var(--accent-primary-soft); color: var(--accent-primary-soft-strong); font-weight: 600; }
+.segmented--full { width: 100%; }
+.segmented--full button { flex: 1; }
+.control { height: 2rem; border: 1px solid var(--border-default); border-radius: var(--radius-md); padding: 0 var(--space-3); background: var(--bg-surface); color: var(--text-primary); font-family: inherit; font-size: 0.8125rem; box-shadow: var(--shadow-xs); }
+.chip { display: inline-flex; align-items: center; gap: 0.25rem; height: 1.375rem; padding: 0 0.5rem; border: 1px solid var(--border-subtle); border-radius: var(--radius-pill); background: var(--bg-surface-muted); color: var(--text-secondary); font-size: 0.75rem; font-weight: 500; }
+.gap-mark { color: var(--accent-primary-hover); font-weight: 700; cursor: help; font-family: var(--font-mono); background: none; border: none; padding: 0; font-size: 0.75rem; }
+
+.button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 1.75rem; padding: 0 var(--space-3);
+  border-radius: var(--radius-md); border: 1px solid var(--accent-primary-border); background: var(--accent-primary);
+  color: var(--text-on-primary); font-family: inherit; font-size: 0.8125rem; font-weight: 500; cursor: pointer; white-space: nowrap; }
+.button:hover { background: var(--accent-primary-hover); }
+.button--secondary { background: var(--bg-surface); border-color: var(--border-default); color: var(--text-primary); }
+.button--secondary:hover { background: var(--bg-surface-hover); }
+.button--sm { height: 1.75rem; font-size: 0.75rem; padding: 0 var(--space-2); }
+.button--pill { border-radius: var(--radius-pill); padding: 0 var(--space-4); font-weight: 600; box-shadow: var(--shadow-sm); }
+.button:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+
+.settings-trigger { display: inline-flex; align-items: center; gap: 6px; height: 2rem; padding: 0 var(--space-3);
+  border: 1px solid var(--border-default); border-radius: var(--radius-md); background: var(--bg-surface);
+  color: var(--text-primary); font-family: inherit; font-size: 0.8125rem; font-weight: 500; cursor: pointer; box-shadow: var(--shadow-xs); }
+.settings-trigger:hover { background: var(--bg-surface-hover); border-color: var(--border-strong); }
+.settings-trigger__icon { font-size: 0.95rem; }
+
+/* ── Analytics Settings dialog ── */
+.dialog__overlay { position: fixed; inset: 0; background: var(--overlay-scrim); backdrop-filter: blur(10px); z-index: 100; display: none; }
+.dialog__content { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: min(30rem, 92vw);
+  max-height: min(90vh, 640px); overflow-y: auto; background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xl); box-shadow: var(--shadow-overlay); padding: var(--space-5) var(--space-6); z-index: 101; }
+body[data-state="settings-open"] .dialog__overlay--settings,
+body[data-state="settings-open"] .dialog__content--settings { display: block; }
+.dialog__title { margin: 0 0 var(--space-1); font-size: 1.0625rem; font-weight: 600; letter-spacing: var(--tracking-tight); }
+.dialog__description { margin: 0 0 var(--space-5); font-size: 0.8125rem; color: var(--text-secondary); line-height: 1.5; }
+.dialog__footer { display: flex; justify-content: flex-end; gap: var(--space-2); margin: var(--space-5) calc(var(--space-6) * -1) calc(var(--space-5) * -1);
+  padding: var(--space-4) var(--space-6); background: var(--bg-shell); border-top: 1px solid var(--border-subtle); border-radius: 0 0 var(--radius-xl) var(--radius-xl); }
+.settings-field { display: grid; gap: var(--space-2); margin-bottom: var(--space-5); }
+.settings-field:last-of-type { margin-bottom: 0; }
+.settings-field__label { font-family: var(--font-mono); font-size: 0.6875rem; letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--text-muted); font-weight: 600; }
+.rate-basis-option { display: flex; flex-direction: column; gap: 2px; padding: var(--space-3); border: 1px solid var(--border-default); border-radius: var(--radius-md); cursor: pointer; }
+.rate-basis-option + .rate-basis-option { margin-top: var(--space-2); }
+.rate-basis-option input { margin: 0; }
+.rate-basis-option__row { display: flex; align-items: center; gap: var(--space-2); }
+.rate-basis-option__title { font-size: 0.8125rem; font-weight: 600; }
+.rate-basis-option__desc { font-size: 0.75rem; color: var(--text-muted); padding-left: 1.4rem; }
+.rate-basis-option:has(input:checked) { border-color: var(--accent-primary); background: var(--accent-primary-soft); }
+.rate-basis-option:has(input:checked) .rate-basis-option__title { color: var(--accent-primary-soft-strong); }
+
+.settings-field__caveat { font-size: 0.72rem; color: var(--status-warning-strong); background: var(--status-warning-soft); border: 1px solid var(--status-warning-border); border-radius: var(--radius-sm); padding: 6px 8px; margin: 0; }
+.settings-section { border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: var(--space-4); margin-bottom: var(--space-4); }
+.settings-section:last-of-type { margin-bottom: 0; }
+.settings-section__title { margin: 0 0 var(--space-3); font-size: 0.8125rem; font-weight: 700; letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--text-secondary); }
+.settings-toggle { display: flex; align-items: flex-start; gap: var(--space-2); cursor: pointer; }
+.settings-toggle input { margin-top: 3px; flex: none; width: 0.875rem; height: 0.875rem; accent-color: var(--accent-primary); cursor: pointer; }
+.settings-toggle__title { display: block; font-size: 0.8125rem; font-weight: 500; }
+.settings-toggle__desc { display: block; font-size: 0.72rem; color: var(--text-muted); margin-top: 1px; }
+.settings-status { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); margin-top: var(--space-3); padding-top: var(--space-3); border-top: 1px solid var(--border-subtle); }
+.settings-status__text { font-size: 0.78rem; color: var(--text-secondary); }
+.settings-status--ok .settings-status__text { color: var(--status-success-strong); }
+.settings-status--ok .settings-status__text::before { content: "\2713  "; }
+.settings-subitem { display: flex; align-items: center; gap: var(--space-2); padding: 7px 0; border-top: 1px solid var(--border-subtle); }
+.settings-subitem:first-of-type { border-top: 0; }
+.settings-subitem__body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.settings-subitem__title { font-size: 0.78rem; font-weight: 500; }
+.settings-subitem__sub { font-size: 0.7rem; color: var(--text-muted); }
+
+/* ── Currency field ── */
+.currency-field { position: relative; }
+.currency-trigger { display: inline-flex; align-items: center; gap: var(--space-2); height: 2rem; padding: 0 var(--space-2) 0 var(--space-3);
+  border: 1px solid var(--border-default); border-radius: var(--radius-md); background: var(--bg-surface); color: var(--text-primary);
+  font-family: inherit; font-size: 0.8125rem; cursor: pointer; box-shadow: var(--shadow-xs); width: 100%; }
+.currency-trigger__code { font-family: var(--font-mono); font-weight: 600; }
+.currency-trigger__caret { font-size: 0.65rem; color: var(--text-muted); margin-left: auto; }
+
+/* ── Conversion note ── */
+.convert-note { display: none; align-items: flex-start; gap: var(--space-3); padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--status-info-border); background: var(--status-info-soft); border-radius: var(--radius-md); }
+.convert-note__icon { flex: none; width: 1.1rem; height: 1.1rem; margin-top: 1px; color: var(--status-info-strong); }
+.convert-note__body { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+.convert-note__headline { font-size: 0.8125rem; color: var(--status-info-strong); font-weight: 500; }
+.convert-note__detail { font-family: var(--font-mono); font-size: 0.75rem; color: var(--text-secondary); }
+.text-btn { font-family: var(--font-sans); font-size: 0.75rem; font-weight: 600; color: var(--accent-primary-hover); background: none; border: none; padding: 4px 6px; cursor: pointer; border-radius: var(--radius-sm); }
+.text-btn:hover { background: var(--bg-surface-hover); text-decoration: underline; }
+body[data-state="converted"] .convert-note--converted,
+body[data-state="converting"] .convert-note--converting,
+body[data-state="unavailable"] .convert-note--unavailable { display: flex; }
+.convert-note--converting { border-color: var(--border-strong); background: var(--bg-surface-muted); }
+.convert-note--converting .convert-note__icon { color: var(--text-muted); }
+.convert-note--converting .convert-note__headline { color: var(--text-secondary); }
+.convert-note--unavailable { border-color: var(--status-warning-border); background: var(--status-warning-soft); }
+.convert-note--unavailable .convert-note__icon { color: var(--status-warning-strong); }
+.convert-note--unavailable .convert-note__headline { color: var(--status-warning-strong); }
+.spin { display: inline-block; animation: spin 900ms linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spin { animation: none; } }
+
+/* ── KPI strip ── */
+.kpi-strip { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-4); }
+@media (max-width: 900px) { .kpi-strip { grid-template-columns: 1fr; } }
+.kpi-card { display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-5); background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); box-shadow: var(--shadow-xs); min-height: 9.5rem; position: relative; overflow: hidden; }
+.kpi-card::before { content: ""; position: absolute; inset: 0 0 auto; height: 2px; background: var(--accent-primary); opacity: 0; }
+.kpi-card--focus::before { opacity: 1; }
+.kpi-card__label { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
+.kpi-card__label-text { display: inline-flex; align-items: center; gap: 4px; font-family: var(--font-mono); font-size: 0.6875rem; font-weight: 500; color: var(--text-muted); letter-spacing: var(--tracking-caps); text-transform: uppercase; }
+.kpi-card__spark { width: 60px; height: 20px; color: var(--accent-primary-hover); opacity: 0.85; }
+.kpi-card__headline { display: grid; gap: var(--space-2); }
+.kpi-card__value { font-size: 1.9rem; line-height: 1; font-weight: 600; letter-spacing: var(--tracking-tight); display: flex; align-items: baseline; gap: var(--space-2); color: var(--text-primary); min-height: 1.9rem; position: relative; }
+.kpi-card__metric { font-family: var(--font-mono); font-size: 0.75rem; color: var(--text-secondary); }
+.kpi-card__qualifiers { display: flex; flex-direction: column; margin-top: auto; }
+.kpi-card__qualifier { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-3); padding-top: var(--space-3); border-top: 1px solid var(--border-subtle); }
+.kpi-card__qualifier-label { font-family: var(--font-mono); font-size: 0.75rem; color: var(--text-muted); }
+.kpi-card__qualifier-value { font-size: 0.9375rem; font-weight: 600; color: var(--text-primary); position: relative; }
+
+.value-native, .value-eur { display: none; }
+body:not([data-state="converted"]) .value-native,
+body[data-state="converting"] .value-native { display: inline; }
+body[data-state="converted"] .value-eur { display: inline; }
+body[data-state="converting"] .kpi-card__value .value-native,
+body[data-state="converting"] .kpi-card__qualifier-value .value-native { visibility: hidden; }
+.skeleton { position: absolute; inset: 0; display: none; align-items: center; }
+body[data-state="converting"] .skeleton { display: flex; }
+.skeleton__bar { height: 0.9em; width: 5.5em; border-radius: var(--radius-xs); background: linear-gradient(90deg, var(--bg-surface-muted) 25%, var(--bg-surface-hover) 50%, var(--bg-surface-muted) 75%); background-size: 200% 100%; animation: shimmer 1.3s linear infinite; }
+@keyframes shimmer { to { background-position: -200% 0; } }
+@media (prefers-reduced-motion: reduce) { .skeleton__bar { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .cov-currency { transition: none; } }
+
+/* ── Data coverage panel (mirrors AnalyticsNeedsAttention) ── */
+.panel { border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); background: var(--bg-surface); box-shadow: var(--shadow-xs); }
+.panel--dense { padding: var(--space-4) 0 var(--space-1); }
+.panel__header { display: flex; align-items: baseline; justify-content: space-between; padding: 0 var(--space-4); margin-bottom: var(--space-3); gap: var(--space-3); flex-wrap: wrap; }
+.section-title { margin: 0; font-size: 1.0625rem; font-weight: 600; letter-spacing: var(--tracking-tight); }
+.section-title__hint { font-size: 0.75rem; font-weight: 400; color: var(--text-muted); margin-left: var(--space-2); }
+.text-muted { color: var(--text-muted); }
+
+.status-badge { display: inline-flex; align-items: center; gap: 5px; height: 1.25rem; padding: 0 var(--space-2); border-radius: var(--radius-sm);
+  font-family: var(--font-mono); font-size: 0.625rem; font-weight: 700; letter-spacing: var(--tracking-caps); text-transform: uppercase; white-space: nowrap; flex: none; }
+.status-badge__dot { width: 6px; height: 6px; border-radius: 50%; flex: none; }
+.status-badge--warning { background: var(--status-warning-soft); color: var(--status-warning-strong); border: 1px solid var(--status-warning-border); }
+.status-badge--warning .status-badge__dot { background: var(--status-warning); }
+.status-badge--info { background: var(--status-info-soft); color: var(--status-info-strong); border: 1px solid var(--status-info-border); }
+.status-badge--info .status-badge__dot { background: var(--status-info); }
+.status-badge--neutral { background: var(--bg-surface-muted); color: var(--text-muted); border: 1px solid var(--border-subtle); }
+.status-badge--neutral .status-badge__dot { background: var(--text-disabled); }
+.status-badge--success { background: var(--status-success-soft); color: var(--status-success-strong); border: 1px solid var(--status-success-border); }
+.status-badge--success .status-badge__dot { background: var(--status-success); }
+.status-badge--error { background: var(--status-error-soft); color: var(--status-error-strong); border: 1px solid var(--status-error-border); }
+.status-badge--error .status-badge__dot { background: var(--status-error); }
+
+.attention-list { display: flex; flex-direction: column; margin: 0; padding: 0; list-style: none; }
+.attention-list__item { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3) var(--space-4); border-top: 1px solid var(--border-subtle); }
+.attention-list__item:first-child { border-top: 0; }
+.attention-list__item--resolved { color: var(--text-muted); }
+.attention-list__item--permanent { opacity: 0.75; }
+.attention-list__body { display: flex; flex-direction: column; flex: 1; min-width: 0; gap: 2px; }
+.attention-list__headline { font-size: 0.8125rem; font-weight: 600; }
+.attention-list__sub { font-size: 0.75rem; color: var(--text-muted); }
+.attention-list__action { flex: none; }
+.attention-list__nofix { flex: none; font-size: 0.6875rem; color: var(--text-disabled); font-style: italic; }
+@media (max-width: 767.98px) { .attention-list__item { flex-wrap: wrap; } }
+
+/* Resolved row: show "Fixed — closing…" for a beat (this dwell IS the DB
+   commit — status flips to 'resolved' in analytics_remediation_runs right
+   here), then collapse. Delay on the transition, not display:none, is what
+   makes the closing itself visible instead of an instant teleport. */
+.cov-currency { max-height: 6rem; opacity: 1; overflow: hidden;
+  transition: opacity 500ms ease-out 1300ms, max-height 500ms ease-out 1500ms, padding 500ms ease-out 1500ms; }
+body[data-state="currency-fixed"] .cov-currency { opacity: 0; max-height: 0; padding-top: 0 !important; padding-bottom: 0 !important; pointer-events: none; }
+
+/* status derived from CoverageResolutionStatus — badge/pill swap, one row, no
+   separate list items per status */
+.cov-currency__badge--open, .cov-currency__action { display: inline-flex; }
+.cov-currency__badge--progress, .cov-currency__badge--failed, .cov-currency__retry { display: none; }
+body[data-state="currency-in-progress"] .cov-currency__badge--open,
+body[data-state="currency-in-progress"] .cov-currency__action,
+body[data-state="currency-failed"] .cov-currency__badge--open,
+body[data-state="currency-failed"] .cov-currency__action,
+body[data-state="currency-fixed"] .cov-currency__badge--open,
+body[data-state="currency-fixed"] .cov-currency__action { display: none; }
+body[data-state="currency-in-progress"] .cov-currency__badge--progress { display: inline-flex; }
+body[data-state="currency-in-progress"] .cov-currency__progress-pill { display: inline-flex !important; }
+body[data-state="currency-failed"] .cov-currency__badge--failed { display: inline-flex; }
+body[data-state="currency-failed"] .cov-currency__retry { display: inline-flex !important; }
+body[data-state="currency-fixed"] .cov-currency__badge--resolved { display: inline-flex; }
+.cov-currency__progress-pill { display: none; align-items: center; gap: 6px; }
+body[data-state="currency-in-progress"] .cov-currency__sub--open,
+body[data-state="currency-failed"] .cov-currency__sub--open,
+body[data-state="currency-fixed"] .cov-currency__sub--open { display: none !important; }
+body[data-state="currency-in-progress"] .cov-currency__progress-sub { display: inline !important; }
+body[data-state="currency-failed"] .cov-currency__failed-sub { display: inline !important; }
+body[data-state="currency-fixed"] .cov-currency__resolved-sub { display: inline !important; }
+
+/* Inline Alert (docs/frontend-ui-style-guide.md: "Alert — tonal variants
+   matching status tokens, left-rule accent") — lives INSIDE Data coverage,
+   stays until dismissed with its own close control. Not a permanent list
+   row either: dismissing it (or a future page load once the count is zero)
+   removes it the same way the resolved row itself disappears. */
+.coverage-alert { display: none; align-items: flex-start; gap: var(--space-3);
+  padding: var(--space-3) var(--space-4); margin: 0 var(--space-4) var(--space-3);
+  background: var(--status-success-soft); border: 1px solid var(--status-success-border);
+  border-left: 3px solid var(--status-success); border-radius: var(--radius-md); }
+.coverage-alert__icon { flex: none; color: var(--status-success-strong); font-weight: 700; }
+.coverage-alert__body { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+.coverage-alert__title { font-size: 0.8125rem; font-weight: 600; color: var(--status-success-strong); }
+.coverage-alert__sub { font-size: 0.75rem; color: var(--text-secondary); }
+.coverage-alert__close { flex: none; background: none; border: none; cursor: pointer; color: var(--status-success-strong);
+  font-size: 1rem; line-height: 1; padding: 2px; border-radius: var(--radius-xs); }
+.coverage-alert__close:hover { background: color-mix(in oklab, var(--status-success) 15%, transparent); }
+body[data-state="currency-fixed"] .coverage-alert--currency { display: flex; }
+
+/* All-clear state for the whole panel — mirrors AnalyticsNeedsAttention's
+   "either the all-clear line or the open items, never both" rule. */
+.attention-list__item--clear { display: none; }
+body[data-state="all-clear"] .attention-list > li:not(.attention-list__item--clear) { display: none; }
+body[data-state="all-clear"] .attention-list__item--clear { display: flex; }
+
+/* ── Confirm dialog (tax rate) ── */
+body[data-state="tax-confirm"] .dialog__overlay--taxconfirm,
+body[data-state="tax-confirm"] .dialog__content--taxconfirm { display: block; }
+.confirm-callout { display: flex; gap: var(--space-2); padding: var(--space-3); border-radius: var(--radius-md); background: var(--status-warning-soft); border: 1px solid var(--status-warning-border); color: var(--status-warning-strong); font-size: 0.78rem; line-height: 1.5; margin-bottom: var(--space-4); }
+
+/* ── Detail list modals (which orders/products a coverage row is about) ── */
+.dialog__content--wide { width: min(42rem, 94vw); }
+body[data-state="detail-currency"] .dialog__overlay--detailcurrency, body[data-state="detail-currency"] .dialog__content--detailcurrency,
+body[data-state="detail-tax"] .dialog__overlay--detailtax, body[data-state="detail-tax"] .dialog__content--detailtax,
+body[data-state="detail-novat"] .dialog__overlay--detailnovat, body[data-state="detail-novat"] .dialog__content--detailnovat,
+body[data-state="detail-postrollout"] .dialog__overlay--detailpostrollout, body[data-state="detail-postrollout"] .dialog__content--detailpostrollout,
+body[data-state="detail-mapping"] .dialog__overlay--detailmapping, body[data-state="detail-mapping"] .dialog__content--detailmapping { display: block; }
+.detail-table-wrap { max-height: 21rem; overflow-y: auto; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); }
+
+/* Row list — mirrors ProductThumbnail + OrderIdentityCell real primitives */
+.detail-row-list { list-style: none; margin: 0; padding: 0; }
+.detail-row { display: flex; align-items: center; gap: var(--space-3); padding: 8px 10px; border-bottom: 1px solid var(--border-subtle); }
+.detail-row:last-child { border-bottom: none; }
+.detail-row__thumb { flex: none; width: 32px; height: 32px; border-radius: 6px; background: var(--bg-surface-muted); display: flex; align-items: center; justify-content: center; font-family: var(--font-mono); font-weight: 700; font-size: 0.875rem; color: var(--text-muted); overflow: hidden; }
+.detail-row__thumb img { width: 100%; height: 100%; object-fit: cover; }
+.detail-row__thumb--warn { background: var(--status-warning-soft); color: var(--status-warning-strong); }
+.detail-row__body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.detail-row__title { font-size: 0.8125rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.detail-row__meta { font-size: 0.72rem; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.detail-row__meta .mono { color: inherit; }
+.detail-row__trail { flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+.detail-row__value { font-size: 0.8125rem; font-weight: 600; }
+.detail-row__tag { font-family: var(--font-mono); font-size: 0.625rem; font-weight: 600; letter-spacing: var(--tracking-caps); text-transform: uppercase; padding: 1px 6px; border-radius: var(--radius-sm); background: var(--status-warning-soft); color: var(--status-warning-strong); border: 1px solid var(--status-warning-border); white-space: nowrap; }
+.detail-row__tag--neutral { background: var(--bg-surface-muted); color: var(--text-muted); border-color: var(--border-subtle); }
+
+/* ── Real pagination — verbatim shape from apps/web/src/pages/orders, /products, /cursors ── */
+.pagination { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem; padding: var(--space-3) var(--space-1) 0; }
+.pagination__actions { display: flex; gap: 0.5rem; }
+.row-trigger { display: flex; align-items: center; gap: var(--space-3); width: 100%; padding: var(--space-3) var(--space-4); border: none; background: none; text-align: left; cursor: pointer; font: inherit; color: inherit; }
+.row-trigger:hover { background: var(--bg-surface-hover); }
+.row-trigger:focus-visible { outline: none; box-shadow: inset var(--shadow-focus); }
+.row-trigger__chevron { flex: none; color: var(--text-muted); font-size: 0.7rem; }
+
+/* ── Channel + top-products tables ── */
+.table-wrap { overflow-x: auto; }
+table.channels { width: 100%; border-collapse: collapse; margin-top: var(--space-3); }
+table.channels th { text-align: right; font-family: var(--font-mono); font-size: 0.6875rem; letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--text-muted); font-weight: 600; padding: 8px var(--space-4); border-bottom: 1px solid var(--border-subtle); white-space: nowrap; }
+table.channels th:first-child, table.channels td:first-child { text-align: left; }
+table.channels td { padding: 10px var(--space-4); border-bottom: 1px solid var(--border-subtle); text-align: right; font-size: 0.8125rem; white-space: nowrap; }
+.channel-name { display: flex; align-items: center; gap: 8px; font-weight: 500; }
+.dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+.dot--allegro { background: var(--channel-allegro); }
+.dot--erli { background: var(--channel-erli); }
+tr.total td { font-weight: 700; border-bottom: none; border-top: 2px solid var(--border-default); background: var(--bg-shell); }
+.table-caveat { padding: var(--space-3) var(--space-4) var(--space-4); font-size: 0.75rem; color: var(--text-muted); }
+.excl-note { display: block; font-size: 0.6875rem; font-weight: 400; color: var(--text-muted); margin-top: 1px; }
+
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+</style>
+
+<div class="proto-rail" role="toolbar" aria-label="Mockup state switcher">
+  <span class="proto-rail__tag">Prototype</span>
+  <span class="proto-rail__label">State:</span>
+  <button class="state-btn" data-goto="native" aria-pressed="true">Default</button>
+  <button class="state-btn" data-goto="all-clear">All clear (empty state)</button>
+  <button class="state-btn" data-goto="settings-open">Settings open</button>
+  <button class="state-btn" data-goto="converting">Converting</button>
+  <button class="state-btn" data-goto="converted">Converted</button>
+  <button class="state-btn" data-goto="unavailable">Rate unavailable</button>
+  <button class="state-btn" data-goto="detail-currency">List: currency</button>
+  <button class="state-btn" data-goto="currency-in-progress">Recalculating&hellip; (in progress)</button>
+  <button class="state-btn" data-goto="currency-fixed">After "Recalculate now"</button>
+  <button class="state-btn" data-goto="currency-failed">Recalculation failed</button>
+  <button class="state-btn" data-goto="detail-tax">List: unconfirmed tax rate</button>
+  <button class="state-btn" data-goto="tax-confirm">Tax rate confirmation</button>
+  <button class="state-btn" data-goto="detail-novat">List: no tax rate (B)</button>
+  <button class="state-btn" data-goto="detail-postrollout">List: rate unresolved (C)</button>
+  <button class="state-btn" data-goto="detail-mapping">List: matching error</button>
+  <span class="proto-rail__note">The "Data coverage" section below shows 5 real categories of silent exclusions — each with its own accurate label and its own action (or lack of one). A 6th one the audit found (WooCommerce orders with no order date) turned out to be stale, already fixed upstream — removed from here.</span>
+</div>
+
+<div class="shell">
+  <div class="page-header-row">
+    <div>
+      <p class="eyebrow">Operations</p>
+      <h1 class="page-title">Analytics</h1>
+      <p class="page-description">Sales across connected channels, with clear data coverage.</p>
+    </div>
+    <button class="settings-trigger" type="button" onclick="document.body.dataset.state='settings-open'">
+      <span class="settings-trigger__icon">&#9881;</span> Analytics settings
+    </button>
+  </div>
+
+  <div class="toolbar">
+    <div class="toolbar__group">
+      <div class="segmented" aria-label="Date range">
+        <button type="button">7d</button>
+        <button type="button" class="active">30d</button>
+        <button type="button">90d</button>
+        <button type="button">Custom</button>
+      </div>
+      <span class="chip">Order date <button class="gap-mark" type="button" aria-label="Order date caveat" title="This range doesn’t filter results yet — coming soon">&#8224;</button></span>
+    </div>
+    <div class="toolbar__group">
+      <span class="chip" style="background:var(--accent-primary-soft);border-color:var(--accent-primary-border);color:var(--accent-primary-soft-strong);font-weight:600;">
+        Current rate &middot; PLN
+      </span>
+    </div>
+  </div>
+
+  <div class="convert-note convert-note--converting">
+    <span class="convert-note__icon spin">&#8635;</span>
+    <div class="convert-note__body"><span class="convert-note__headline">Getting today’s PLN &rarr; EUR rate&hellip;</span></div>
+  </div>
+  <div class="convert-note convert-note--converted">
+    <span class="convert-note__icon">&#8646;</span>
+    <div class="convert-note__body">
+      <span class="convert-note__headline">Current rate: 1 PLN &asymp; 0.2321 EUR (ECB, today Aug 25, 2026) — preview only, nothing saved.</span>
+      <span class="convert-note__detail">Summed by each order’s own currency: 29 orders in PLN, 2 in EUR.</span>
+    </div>
+    <button class="text-btn" type="button" data-goto="native">Switch back to PLN</button>
+  </div>
+  <div class="convert-note convert-note--unavailable">
+    <span class="convert-note__icon">&#9888;</span>
+    <div class="convert-note__body">
+      <span class="convert-note__headline">Couldn’t get today’s EUR rate.</span>
+      <span class="convert-note__detail" style="color:var(--text-muted)">Showing PLN — the reporting currency — instead.</span>
+    </div>
+    <button class="text-btn" type="button" data-goto="converting">Try again</button>
+  </div>
+
+  <div class="kpi-strip">
+    <div class="kpi-card kpi-card--focus">
+      <div class="kpi-card__label">
+        <span class="kpi-card__label-text">Revenue</span>
+        <svg class="kpi-card__spark" viewBox="0 0 60 20" fill="none"><polyline points="0,15 10,13 20,14 30,9 40,10 50,4 60,6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+      <div class="kpi-card__headline">
+        <div class="kpi-card__value">
+          <span class="value-native mono">PLN&nbsp;572.50</span>
+          <span class="value-eur mono">EUR&nbsp;132.86</span>
+          <span class="skeleton"><span class="skeleton__bar"></span></span>
+        </div>
+        <div class="kpi-card__metric">Net sales &middot; today’s valuation</div>
+      </div>
+      <div class="kpi-card__qualifiers">
+        <div class="kpi-card__qualifier">
+          <span class="kpi-card__qualifier-label">GMV</span>
+          <span class="kpi-card__qualifier-value"><span class="value-native mono">PLN&nbsp;704.18</span><span class="value-eur mono">EUR&nbsp;163.42</span><span class="skeleton"><span class="skeleton__bar" style="width:4.5em"></span></span></span>
+        </div>
+      </div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-card__label"><span class="kpi-card__label-text">Orders</span></div>
+      <div class="kpi-card__headline">
+        <div class="kpi-card__value"><span class="mono">31</span></div>
+        <div class="kpi-card__metric">Placed orders</div>
+      </div>
+      <div class="kpi-card__qualifiers">
+        <div class="kpi-card__qualifier"><span class="kpi-card__qualifier-label">Avg. daily</span><span class="kpi-card__qualifier-value mono">1.0</span></div>
+      </div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-card__label"><span class="kpi-card__label-text">Order value</span></div>
+      <div class="kpi-card__headline">
+        <div class="kpi-card__value"><span class="value-native mono">PLN&nbsp;44.04</span><span class="value-eur mono">EUR&nbsp;10.22</span><span class="skeleton"><span class="skeleton__bar" style="width:4em"></span></span></div>
+        <div class="kpi-card__metric">Average</div>
+      </div>
+      <div class="kpi-card__qualifiers">
+        <div class="kpi-card__qualifier"><span class="kpi-card__qualifier-label">Median</span><span class="kpi-card__qualifier-value"><span class="value-native mono">PLN&nbsp;45.85</span><span class="value-eur mono">EUR&nbsp;10.64</span><span class="skeleton"><span class="skeleton__bar" style="width:4em"></span></span></span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════ Data coverage panel — widoczne tu ORAZ w Analytics settings (ta sama prawda, dwa miejsca) ═══════ -->
+  <article class="panel panel--dense">
+    <div class="panel__header">
+      <h3 class="section-title">Data coverage</h3>
+      <button class="button button--pill button--secondary button--sm" type="button" onclick="document.body.dataset.state='settings-open'">&#9881; Set policy &rarr;</button>
+    </div>
+
+    <div class="coverage-alert coverage-alert--currency" role="status">
+      <span class="coverage-alert__icon">&#10003;</span>
+      <span class="coverage-alert__body">
+        <span class="coverage-alert__title">23 orders recalculated to PLN</span>
+        <span class="coverage-alert__sub">The real NBP rate from each order&rsquo;s own date, saved for good. Logged in Jobs &amp; Logs with who ran it and when.</span>
+      </span>
+      <button class="coverage-alert__close" type="button" aria-label="Dismiss" onclick="document.body.dataset.state='native'">&times;</button>
+    </div>
+
+    <ul class="attention-list">
+
+      <li class="attention-list__item attention-list__item--clear">
+        <span class="status-badge status-badge--success"><span class="status-badge__dot"></span>Clear</span>
+        <div class="attention-list__body">
+          <span class="attention-list__headline">Nothing to do</span>
+          <span class="attention-list__sub">5 checks &middot; currency, tax rates, product matching</span>
+        </div>
+      </li>
+
+      <li class="attention-list__item cov-currency" style="padding:0">
+        <button class="row-trigger" type="button" onclick="document.body.dataset.state='detail-currency'">
+          <span class="status-badge status-badge--warning cov-currency__badge--open"><span class="status-badge__dot"></span>Action</span>
+          <span class="status-badge status-badge--info cov-currency__badge--progress"><span class="status-badge__dot spin" style="border-radius:0"></span>In progress</span>
+          <span class="status-badge status-badge--error cov-currency__badge--failed"><span class="status-badge__dot"></span>Failed</span>
+          <span class="status-badge status-badge--success cov-currency__badge--resolved" style="display:none"><span class="status-badge__dot"></span>Fixed</span>
+          <span class="attention-list__body">
+            <span class="attention-list__headline">23 orders counted in an outdated currency</span>
+            <span class="attention-list__sub cov-currency__sub--open">Reporting currency changed 3 days ago (EUR &rarr; PLN) — these orders are still tagged with the old one.</span>
+            <span class="attention-list__sub cov-currency__progress-sub" style="display:none">Recalculating in the background — this can take a minute. Safe to navigate away.</span>
+            <span class="attention-list__sub cov-currency__failed-sub" style="display:none">No exchange-rate provider is configured for PLN &rarr; EUR on this date &mdash; that’s the stored failure detail, also visible in Jobs &amp; Logs.</span>
+            <span class="attention-list__sub cov-currency__resolved-sub" style="display:none">Recalculated to PLN and saved &mdash; closing&hellip;</span>
+          </span>
+          <span class="row-trigger__chevron button button--pill button--sm cov-currency__action" style="pointer-events:none">Recalculate now &rsaquo;</span>
+          <span class="row-trigger__chevron button button--pill button--sm cov-currency__progress-pill" style="pointer-events:none"><span class="spin">&#8635;</span> Recalculating&hellip;</span>
+          <span class="row-trigger__chevron button button--pill button--secondary button--sm cov-currency__retry" style="pointer-events:none;display:none">Try again &rsaquo;</span>
+        </button>
+      </li>
+      <li class="attention-list__item" style="padding:0">
+        <button class="row-trigger" type="button" onclick="document.body.dataset.state='detail-tax'">
+          <span class="status-badge status-badge--warning"><span class="status-badge__dot"></span>Action</span>
+          <span class="attention-list__body">
+            <span class="attention-list__headline">18 orders have an unconfirmed tax rate</span>
+            <span class="attention-list__sub">The rate came from today’s product catalog, not the order date — that’s why they’re excluded from Net Sales.</span>
+          </span>
+          <span class="row-trigger__chevron button button--pill button--secondary button--sm" style="pointer-events:none">Include anyway &rsaquo;</span>
+        </button>
+      </li>
+
+      <li class="attention-list__item" style="padding:0">
+        <button class="row-trigger" type="button" onclick="document.body.dataset.state='detail-novat'">
+          <span class="status-badge status-badge--info"><span class="status-badge__dot"></span>Info</span>
+          <span class="attention-list__body">
+            <span class="attention-list__headline">7 orders have no tax rate at all</span>
+            <span class="attention-list__sub">The product has no tax rate set in PrestaShop — fix it at the source, not here.</span>
+          </span>
+          <span class="row-trigger__chevron text-btn" style="pointer-events:none">View products &rarr;</span>
+        </button>
+      </li>
+
+      <li class="attention-list__item" style="padding:0">
+        <button class="row-trigger" type="button" onclick="document.body.dataset.state='detail-postrollout'">
+          <span class="status-badge status-badge--neutral"><span class="status-badge__dot"></span>Info</span>
+          <span class="attention-list__body">
+            <span class="attention-list__headline">2 orders — rate not yet resolved (newer product)</span>
+            <span class="attention-list__sub">Product was added after per-line tax rates went live — the catalog hasn’t answered yet.</span>
+          </span>
+          <span class="row-trigger__chevron text-btn" style="pointer-events:none">View orders &rarr;</span>
+        </button>
+      </li>
+
+      <li class="attention-list__item" style="padding:0">
+        <button class="row-trigger" type="button" onclick="document.body.dataset.state='detail-mapping'">
+          <span class="status-badge status-badge--info"><span class="status-badge__dot"></span>Info</span>
+          <span class="attention-list__body">
+            <span class="attention-list__headline">4 orders with a product-matching error</span>
+            <span class="attention-list__sub">The product was removed at the source, or matching failed.</span>
+          </span>
+          <span class="row-trigger__chevron text-btn" style="pointer-events:none">View orders &rarr;</span>
+        </button>
+      </li>
+
+      <li class="attention-list__item attention-list__item--permanent">
+        <span class="status-badge status-badge--neutral"><span class="status-badge__dot"></span>Info</span>
+        <div class="attention-list__body">
+          <span class="attention-list__headline">3 orders fully discounted</span>
+          <span class="attention-list__sub">Counted as zero — not an error, just a free order.</span>
+        </div>
+        <span class="attention-list__nofix">no action needed</span>
+      </li>
+
+    </ul>
+  </article>
+
+  <div class="panel">
+    <p style="padding:var(--space-4) var(--space-4) 0;margin:0;font-size:0.9375rem;font-weight:600;">Channel</p>
+    <div class="table-wrap">
+      <table class="channels">
+        <thead><tr><th>Channel</th><th>Net sales</th><th>Orders</th><th>AOV</th><th>Share</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><span class="channel-name"><span class="dot dot--allegro"></span>Allegro Demo</span></td>
+            <td><span class="value-native mono">PLN&nbsp;459.72</span><span class="value-eur mono">EUR&nbsp;106.68</span><span class="skeleton" style="position:static;justify-content:flex-end"><span class="skeleton__bar" style="width:4.5em"></span></span></td>
+            <td class="mono">12</td>
+            <td><span class="value-native mono">PLN&nbsp;38.31</span><span class="value-eur mono">EUR&nbsp;8.89</span><span class="skeleton" style="position:static;justify-content:flex-end"><span class="skeleton__bar" style="width:3.5em"></span></span></td>
+            <td class="mono">80.3%</td>
+          </tr>
+          <tr>
+            <td><span class="channel-name"><span class="dot dot--erli"></span>Erli Demo</span></td>
+            <td><span class="value-native mono">PLN&nbsp;112.78</span><span class="value-eur mono">EUR&nbsp;26.18</span><span class="skeleton" style="position:static;justify-content:flex-end"><span class="skeleton__bar" style="width:4.5em"></span></span></td>
+            <td class="mono">1</td>
+            <td><span class="value-native mono">PLN&nbsp;112.78</span><span class="value-eur mono">EUR&nbsp;26.18</span><span class="skeleton" style="position:static;justify-content:flex-end"><span class="skeleton__bar" style="width:3.5em"></span></span></td>
+            <td class="mono">19.7%</td>
+          </tr>
+          <tr class="total">
+            <td>Total</td>
+            <td><span class="value-native mono">PLN&nbsp;572.50</span><span class="value-eur mono">EUR&nbsp;132.86</span><span class="skeleton" style="position:static;justify-content:flex-end"><span class="skeleton__bar" style="width:4.5em"></span></span></td>
+            <td class="mono">13</td>
+            <td><span class="value-native mono">PLN&nbsp;44.04</span><span class="value-eur mono">EUR&nbsp;10.22</span><span class="skeleton" style="position:static;justify-content:flex-end"><span class="skeleton__bar" style="width:3.5em"></span></span></td>
+            <td class="mono">100.0%</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="table-caveat">18 orders have an unconfirmed tax rate and 7 have none at all — see Data coverage above.</p>
+  </div>
+
+  <div class="panel">
+    <p style="padding:var(--space-4) var(--space-4) 0;margin:0;font-size:0.9375rem;font-weight:600;">Top products <span class="text-muted" style="font-weight:400;font-size:0.75rem;">— now shows exclusions per product</span></p>
+    <div class="table-wrap">
+      <table class="channels">
+        <thead><tr><th>Product</th><th>Net sales</th><th>Units</th></tr></thead>
+        <tbody>
+          <tr>
+            <td style="text-align:left">Aura Scented Soy Candle 200g</td>
+            <td><span class="mono">PLN&nbsp;218.40</span><span class="excl-note">+ 1 awaiting currency conversion</span></td>
+            <td class="mono">19</td>
+          </tr>
+          <tr>
+            <td style="text-align:left">Comfort Hoodie</td>
+            <td><span class="mono">PLN&nbsp;196.00</span><span class="excl-note">+ 1 awaiting currency conversion</span></td>
+            <td class="mono">20</td>
+          </tr>
+          <tr>
+            <td style="text-align:left">Basic Cotton Tee</td>
+            <td><span class="mono">PLN&nbsp;89.10</span><span class="excl-note">+ 1 excluded (unconfirmed tax rate)</span></td>
+            <td class="mono">9</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════ Analytics Settings dialog ═══════ -->
+<div class="dialog__overlay dialog__overlay--settings" onclick="document.body.dataset.state='native'"></div>
+<div class="dialog__content dialog__content--settings" role="dialog" aria-modal="true" aria-label="Analytics settings">
+  <h2 class="dialog__title">Analytics settings</h2>
+  <p class="dialog__description">Display currency and rate basis (below) only change what you see on this screen — nothing is saved. Actions further down can write data permanently — each one says so plainly.</p>
+
+  <div class="settings-field">
+    <span class="settings-field__label">Show amounts in</span>
+    <select class="control control--select" style="width:auto;min-width:12rem">
+      <option value="PLN">PLN &middot; reporting currency</option>
+      <option value="EUR">EUR</option>
+      <option value="USD">USD</option>
+      <option value="GBP">GBP</option>
+    </select>
+    <span class="text-muted" style="font-size:0.7rem">Saved in the link (URL), same as the date range — a shared link shows the recipient the same currency and mode.</span>
+  </div>
+
+  <div class="settings-field">
+    <span class="settings-field__label">Rate basis</span>
+    <label class="rate-basis-option">
+      <div class="rate-basis-option__row">
+        <input type="radio" name="rate-basis" checked>
+        <span class="rate-basis-option__title">Current rate</span>
+      </div>
+      <span class="rate-basis-option__desc">What it’s worth TODAY — sums each order’s real amount and converts it at today’s rate. Like a currency wallet.</span>
+    </label>
+    <label class="rate-basis-option">
+      <div class="rate-basis-option__row">
+        <input type="radio" name="rate-basis">
+        <span class="rate-basis-option__title">Rate on order date</span>
+      </div>
+      <span class="rate-basis-option__desc">A stable, accounting-grade figure — doesn’t change day to day. Depends on whether this order’s rate has already been updated (see Data coverage).</span>
+    </label>
+  </div>
+
+  <div class="settings-section">
+    <p class="settings-section__title">Currency &mdash; recalculation</p>
+    <p class="settings-field__caveat" style="margin-bottom:var(--space-3)">This section writes data permanently: "Recalculate now" saves the real NBP rate from the order’s date to the database — this isn’t a preview.</p>
+    <label class="settings-toggle">
+      <input type="checkbox" id="auto-currency-toggle" onchange="document.getElementById('currency-pending-row').style.display = this.checked ? 'none' : 'flex'; document.getElementById('currency-ok-row').style.display = this.checked ? 'flex' : 'none';">
+      <span><span class="settings-toggle__title">Automatically recalculate outstanding orders when the reporting currency changes</span><span class="settings-toggle__desc">When you change the currency in Settings, old orders get the correct rate on their own — nothing to click.</span></span>
+    </label>
+    <div class="settings-status" id="currency-pending-row">
+      <span class="settings-status__text">23 orders are waiting to be recalculated</span>
+      <button class="button button--sm" type="button" onclick="document.body.dataset.state='detail-currency'">Recalculate now</button>
+    </div>
+    <div class="settings-status settings-status--ok" id="currency-ok-row" style="display:none">
+      <span class="settings-status__text">Everything’s up to date</span>
+    </div>
+  </div>
+
+  <div class="settings-section">
+    <p class="settings-section__title">Tax rates</p>
+    <label class="settings-toggle">
+      <input type="checkbox" id="auto-vat-toggle" onchange="document.getElementById('vat-a-label').textContent = this.checked ? 'will be included automatically' : 'waiting for confirmation';">
+      <span><span class="settings-toggle__title">Use the rate found in the product catalog</span><span class="settings-toggle__desc">Don’t ask every time — trust a tax rate found retroactively in the catalog and include such orders in Net Sales automatically.</span></span>
+    </label>
+    <div class="settings-status" style="display:block">
+      <button class="settings-subitem" type="button" style="width:100%;background:none;border:none;text-align:left;cursor:pointer;font:inherit;color:inherit" onclick="document.body.dataset.state='detail-tax'">
+        <span class="status-badge status-badge--warning"><span class="status-badge__dot"></span>A</span>
+        <span class="settings-subitem__body"><span class="settings-subitem__title">18 orders — rate found</span><span class="settings-subitem__sub" id="vat-a-label">waiting for confirmation</span></span>
+        <span class="text-muted mono">&rarr;</span>
+      </button>
+      <button class="settings-subitem" type="button" style="width:100%;background:none;border:none;text-align:left;cursor:pointer;font:inherit;color:inherit" onclick="document.body.dataset.state='detail-novat'">
+        <span class="status-badge status-badge--info"><span class="status-badge__dot"></span>B</span>
+        <span class="settings-subitem__body"><span class="settings-subitem__title">7 orders — no rate at the source</span><span class="settings-subitem__sub">needs fixing in PrestaShop</span></span>
+        <span class="text-muted mono">&rarr;</span>
+      </button>
+      <button class="settings-subitem" type="button" style="width:100%;background:none;border:none;text-align:left;cursor:pointer;font:inherit;color:inherit" onclick="document.body.dataset.state='detail-postrollout'">
+        <span class="status-badge status-badge--neutral"><span class="status-badge__dot"></span>C</span>
+        <span class="settings-subitem__body"><span class="settings-subitem__title">2 orders — product added after launch, rate still unresolved</span><span class="settings-subitem__sub">try syncing the catalog manually</span></span>
+        <span class="text-muted mono">&rarr;</span>
+      </button>
+    </div>
+  </div>
+
+  <div class="dialog__footer">
+    <button class="button button--secondary" type="button" onclick="document.body.dataset.state='native'">Cancel</button>
+    <button class="button" type="button" onclick="document.body.dataset.state='converting'">Apply</button>
+  </div>
+</div>
+
+<!-- ═══════ Confirm dialog — tax rate override ═══════ -->
+<div class="dialog__overlay dialog__overlay--taxconfirm" onclick="document.body.dataset.state='native'"></div>
+<div class="dialog__content dialog__content--taxconfirm" role="alertdialog" aria-modal="true" aria-label="Confirm including tax-rate-guessed orders">
+  <h2 class="dialog__title">Turn on including orders with a guessed tax rate?</h2>
+  <div class="confirm-callout">
+    &#9888;&nbsp; These tax rates (23%, 8%, 5% — depending on the product) come from TODAY’S catalog, not the order date. If any of them changed since, Net Sales for those orders will be less accurate.
+  </div>
+  <p class="dialog__description" style="margin-bottom:0">Affects 18 orders, 6 products. This is a setting in Analytics Settings — you can turn it off any time; nothing is permanently changed in the database.</p>
+  <div class="dialog__footer">
+    <button class="button button--secondary" type="button" onclick="document.body.dataset.state='native'">Cancel</button>
+    <button class="button" type="button" onclick="document.getElementById('auto-vat-toggle').checked = true; document.getElementById('vat-a-label').textContent = 'will be included automatically'; document.body.dataset.state='native';" style="background:var(--status-warning);border-color:var(--status-warning-border);color:var(--text-on-primary)">Turn on</button>
+  </div>
+</div>
+
+<!-- ═══════ Detail: waluta ═══════ -->
+<div class="dialog__overlay dialog__overlay--detailcurrency" onclick="document.body.dataset.state='native'"></div>
+<div class="dialog__content dialog__content--wide dialog__content--detailcurrency" role="dialog" aria-modal="true" aria-label="Orders in an outdated currency">
+  <h2 class="dialog__title">23 orders counted in an outdated currency</h2>
+  <p class="dialog__description">Reporting currency changed on Aug 22, 2026 (EUR &rarr; PLN). These orders are still tagged EUR.</p>
+  <div class="detail-table-wrap">
+    <ul class="detail-row-list">
+      <li class="detail-row">
+        <span class="detail-row__thumb">B</span>
+        <span class="detail-row__body">
+          <span class="detail-row__title">Comfort Hoodie <span class="text-muted">+1 other</span></span>
+          <span class="detail-row__meta">Order <span class="mono">#de35c6da&hellip;</span> &middot; Aug 18, 2026</span>
+        </span>
+        <span class="detail-row__trail"><span class="detail-row__value mono">PLN 59.49</span><span class="detail-row__tag">EUR &middot; old</span></span>
+      </li>
+      <li class="detail-row">
+        <span class="detail-row__thumb">K</span>
+        <span class="detail-row__body">
+          <span class="detail-row__title">Basic Cotton Tee</span>
+          <span class="detail-row__meta">Order <span class="mono">#df474d16&hellip;</span> &middot; Aug 11, 2026</span>
+        </span>
+        <span class="detail-row__trail"><span class="detail-row__value mono">PLN 45.39</span><span class="detail-row__tag">EUR &middot; old</span></span>
+      </li>
+      <li class="detail-row">
+        <span class="detail-row__thumb">A</span>
+        <span class="detail-row__body">
+          <span class="detail-row__title">Aura Scented Soy Candle 200g <span class="text-muted">+2 others</span></span>
+          <span class="detail-row__meta">Order <span class="mono">#2819bd04&hellip;</span> &middot; Jul 30, 2026</span>
+        </span>
+        <span class="detail-row__trail"><span class="detail-row__value mono">PLN 45.85</span><span class="detail-row__tag">EUR &middot; old</span></span>
+      </li>
+      <li class="detail-row">
+        <span class="detail-row__thumb">M</span>
+        <span class="detail-row__body">
+          <span class="detail-row__title">GlideTech M200 Wireless Mouse</span>
+          <span class="detail-row__meta">Order <span class="mono">#4b0617d0&hellip;</span> &middot; Aug 19, 2026</span>
+        </span>
+        <span class="detail-row__trail"><span class="detail-row__value mono">PLN 139.00</span><span class="detail-row__tag">EUR &middot; old</span></span>
+      </li>
+    </ul>
+  </div>
+  <div class="pagination" data-total="23" data-page-size="4">
+    <span class="text-muted mono pagination__info">Showing 1&ndash;4 of 23</span>
+    <div class="pagination__actions">
+      <button class="button button--secondary button--sm" type="button" data-dir="prev" disabled>Previous</button>
+      <button class="button button--secondary button--sm" type="button" data-dir="next">Next</button>
+    </div>
+  </div>
+  <div class="dialog__footer">
+    <button class="button button--secondary" type="button" onclick="document.body.dataset.state='native'">Close</button>
+    <button class="button" type="button" data-goto="currency-in-progress">Recalculate all 23 now</button>
+  </div>
+</div>
+
+<!-- ═══════ Detail: unconfirmed tax rate ═══════ -->
+<div class="dialog__overlay dialog__overlay--detailtax" onclick="document.body.dataset.state='native'"></div>
+<div class="dialog__content dialog__content--wide dialog__content--detailtax" role="dialog" aria-modal="true" aria-label="Orders with an unconfirmed tax rate">
+  <h2 class="dialog__title">18 orders have an unconfirmed tax rate</h2>
+  <p class="dialog__description">The rate came from today’s product catalog — not confirmed for the order date.</p>
+  <div class="detail-table-wrap">
+    <ul class="detail-row-list">
+      <li class="detail-row">
+        <span class="detail-row__thumb">B</span>
+        <span class="detail-row__body">
+          <span class="detail-row__title">Comfort Hoodie</span>
+          <span class="detail-row__meta">Order <span class="mono">#7a77aaa2&hellip;</span></span>
+        </span>
+        <span class="detail-row__trail"><span class="detail-row__tag detail-row__tag--neutral">23% (guessed)</span></span>
+      </li>
+      <li class="detail-row">
+        <span class="detail-row__thumb">P</span>
+        <span class="detail-row__body">
+          <span class="detail-row__title">Beginner’s Gardening Guide</span>
+          <span class="detail-row__meta">Order <span class="mono">#319dc8c3&hellip;</span></span>
+        </span>
+        <span class="detail-row__trail"><span class="detail-row__tag detail-row__tag--neutral">5% (guessed)</span></span>
+      </li>
+      <li class="detail-row">
+        <span class="detail-row__thumb">K</span>
+        <span class="detail-row__body">
+          <span class="detail-row__title">Morning Ceramic Mug 350ml</span>
+          <span class="detail-row__meta">Order <span class="mono">#52b0db78&hellip;</span></span>
+        </span>
+        <span class="detail-row__trail"><span class="detail-row__tag detail-row__tag--neutral">8% (guessed)</span></span>
+      </li>
+    </ul>
+  </div>
+  <div class="pagination" data-total="18" data-page-size="3">
+    <span class="text-muted mono pagination__info">Showing 1&ndash;3 of 18</span>
+    <div class="pagination__actions">
+      <button class="button button--secondary button--sm" type="button" data-dir="prev" disabled>Previous</button>
+      <button class="button button--secondary button--sm" type="button" data-dir="next">Next</button>
+    </div>
+  </div>
+  <div class="dialog__footer">
+    <button class="button button--secondary" type="button" onclick="document.body.dataset.state='native'">Close</button>
+    <button class="button button--secondary" type="button" onclick="document.body.dataset.state='tax-confirm'">Turn on this setting &rsaquo;</button>
+  </div>
+</div>
+
+<!-- ═══════ Detail: no tax rate ═══════ -->
+<div class="dialog__overlay dialog__overlay--detailnovat" onclick="document.body.dataset.state='native'"></div>
+<div class="dialog__content dialog__content--wide dialog__content--detailnovat" role="dialog" aria-modal="true" aria-label="Orders with no tax rate">
+  <h2 class="dialog__title">7 orders have no tax rate at all</h2>
+  <p class="dialog__description">The product has no tax rate set in PrestaShop. This needs fixing at the source — OpenLinker can’t guess it here.</p>
+  <div class="detail-table-wrap">
+    <ul class="detail-row-list">
+      <li class="detail-row">
+        <span class="detail-row__thumb detail-row__thumb--warn">M</span>
+        <span class="detail-row__body">
+          <span class="detail-row__title">GlideTech M200 Wireless Mouse</span>
+          <span class="detail-row__meta">Order <span class="mono">#67cbba5b&hellip;</span></span>
+        </span>
+        <span class="detail-row__trail"><a class="text-btn" href="#" style="padding:0">Open in PrestaShop &rarr;</a></span>
+      </li>
+      <li class="detail-row">
+        <span class="detail-row__thumb detail-row__thumb--warn">M</span>
+        <span class="detail-row__body">
+          <span class="detail-row__title">GlideTech M200 Wireless Mouse</span>
+          <span class="detail-row__meta">Order <span class="mono">#2b2ea2cf&hellip;</span></span>
+        </span>
+        <span class="detail-row__trail"><a class="text-btn" href="#" style="padding:0">Open in PrestaShop &rarr;</a></span>
+      </li>
+    </ul>
+  </div>
+  <div class="pagination" data-total="7" data-page-size="2">
+    <span class="text-muted mono pagination__info">Showing 1&ndash;2 of 7</span>
+    <div class="pagination__actions">
+      <button class="button button--secondary button--sm" type="button" data-dir="prev" disabled>Previous</button>
+      <button class="button button--secondary button--sm" type="button" data-dir="next">Next</button>
+    </div>
+  </div>
+  <div class="dialog__footer">
+    <button class="button button--secondary" type="button" onclick="document.body.dataset.state='native'">Close</button>
+  </div>
+</div>
+
+<!-- ═══════ Detail: stawka nieustalona po rollout (C) ═══════ -->
+<div class="dialog__overlay dialog__overlay--detailpostrollout" onclick="document.body.dataset.state='native'"></div>
+<div class="dialog__content dialog__content--wide dialog__content--detailpostrollout" role="dialog" aria-modal="true" aria-label="Orders with an unresolved rate">
+  <h2 class="dialog__title">2 orders — rate still unresolved</h2>
+  <p class="dialog__description">These products were added AFTER per-product tax rates went live — this isn’t an old, historical issue, just a current catalog-read problem.</p>
+  <div class="detail-table-wrap">
+    <ul class="detail-row-list">
+      <li class="detail-row">
+        <span class="detail-row__thumb detail-row__thumb--warn">?</span>
+        <span class="detail-row__body">
+          <span class="detail-row__title">Slim Guard Phone Case</span>
+          <span class="detail-row__meta">Order <span class="mono">#a1f30c9e&hellip;</span> &middot; Aug 23, 2026</span>
+        </span>
+        <span class="detail-row__trail"><a class="text-btn" href="#" style="padding:0">Sync the catalog &rarr;</a></span>
+      </li>
+      <li class="detail-row">
+        <span class="detail-row__thumb detail-row__thumb--warn">?</span>
+        <span class="detail-row__body">
+          <span class="detail-row__title">FastCharge 10000mAh Power Bank</span>
+          <span class="detail-row__meta">Order <span class="mono">#9c02be14&hellip;</span> &middot; Aug 24, 2026</span>
+        </span>
+        <span class="detail-row__trail"><a class="text-btn" href="#" style="padding:0">Sync the catalog &rarr;</a></span>
+      </li>
+    </ul>
+  </div>
+  <div class="dialog__footer">
+    <button class="button button--secondary" type="button" onclick="document.body.dataset.state='native'">Close</button>
+  </div>
+</div>
+
+<!-- ═══════ Detail: matching error ═══════ -->
+<div class="dialog__overlay dialog__overlay--detailmapping" onclick="document.body.dataset.state='native'"></div>
+<div class="dialog__content dialog__content--wide dialog__content--detailmapping" role="dialog" aria-modal="true" aria-label="Orders with a matching error">
+  <h2 class="dialog__title">4 orders with a product-matching error</h2>
+  <p class="dialog__description">The product was removed at the source, or matching failed — open the order to match it manually.</p>
+  <div class="detail-table-wrap">
+    <ul class="detail-row-list">
+      <li class="detail-row">
+        <span class="detail-row__thumb detail-row__thumb--warn">?</span>
+        <span class="detail-row__body">
+          <span class="detail-row__title">Product unavailable <span class="text-muted">(removed at the source)</span></span>
+          <span class="detail-row__meta">Order <span class="mono">#829cc2a8&hellip;</span></span>
+        </span>
+        <span class="detail-row__trail"><span class="detail-row__tag detail-row__tag--neutral">Removed at the source</span><a class="text-btn" href="#" style="padding:0">View order &rarr;</a></span>
+      </li>
+      <li class="detail-row">
+        <span class="detail-row__thumb detail-row__thumb--warn">?</span>
+        <span class="detail-row__body">
+          <span class="detail-row__title">Product unknown <span class="text-muted">(matching in progress)</span></span>
+          <span class="detail-row__meta">Order <span class="mono">#55e00492&hellip;</span></span>
+        </span>
+        <span class="detail-row__trail"><span class="detail-row__tag detail-row__tag--neutral">Matching in progress</span><a class="text-btn" href="#" style="padding:0">View order &rarr;</a></span>
+      </li>
+    </ul>
+  </div>
+  <div class="pagination" data-total="4" data-page-size="2">
+    <span class="text-muted mono pagination__info">Showing 1&ndash;2 of 4</span>
+    <div class="pagination__actions">
+      <button class="button button--secondary button--sm" type="button" data-dir="prev" disabled>Previous</button>
+      <button class="button button--secondary button--sm" type="button" data-dir="next">Next</button>
+    </div>
+  </div>
+  <div class="dialog__footer">
+    <button class="button button--secondary" type="button" onclick="document.body.dataset.state='native'">Close</button>
+  </div>
+</div>
+
+<script>
+  document.querySelectorAll('[data-goto]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var name = btn.getAttribute('data-goto');
+      document.body.setAttribute('data-state', name);
+      document.querySelectorAll('.state-btn').forEach(function (b) {
+        b.setAttribute('aria-pressed', String(b.getAttribute('data-goto') === name));
+      });
+    });
+  });
+  document.querySelectorAll('.dialog__content').forEach(function (el) {
+    el.addEventListener('click', function (e) { e.stopPropagation(); });
+  });
+
+  document.querySelectorAll('.pagination[data-total]').forEach(function (pager) {
+    var total = parseInt(pager.dataset.total, 10);
+    var size = parseInt(pager.dataset.pageSize, 10);
+    var pages = Math.max(1, Math.ceil(total / size));
+    var page = 1;
+    var info = pager.querySelector('.pagination__info');
+    var prev = pager.querySelector('[data-dir="prev"]');
+    var next = pager.querySelector('[data-dir="next"]');
+    function render() {
+      var from = (page - 1) * size + 1;
+      var to = Math.min(page * size, total);
+      info.textContent = 'Showing ' + from + '–' + to + ' of ' + total;
+      prev.disabled = page <= 1;
+      next.disabled = page >= pages;
+    }
+    prev.addEventListener('click', function () { if (page > 1) { page -= 1; render(); } });
+    next.addEventListener('click', function () { if (page < pages) { page += 1; render(); } });
+    render();
+  });
+
+  document.querySelectorAll('[data-goto="currency-in-progress"]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      setTimeout(function () {
+        if (document.body.dataset.state === 'currency-in-progress') {
+          document.body.dataset.state = 'currency-fixed';
+        }
+      }, 1800);
+    });
+  });
+
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && document.body.dataset.state !== 'native') {
+      document.body.dataset.state = 'native';
+    }
+  });
+</script>
