@@ -54,6 +54,15 @@ import type {
   ReturnDisposition,
   ReturnMoneyState,
 } from '../../../domain/types/return-line.types';
+import {
+  buildAuthorityAttentionPayload,
+  buildAuthorityAttentionUpsertSql,
+  readAuthorityAttentionEntries,
+} from '@openlinker/core/fulfillment-authority';
+import type {
+  AuthorityAttentionOutcome,
+  AuthorityAttentionProducer,
+} from '@openlinker/core/fulfillment-authority';
 
 @Injectable()
 export class ReturnRepository implements ReturnRepositoryPort {
@@ -538,6 +547,40 @@ export class ReturnRepository implements ReturnRepositoryPort {
   }
 
   /**
+   * Set — or clear — ONE producer's OMS inert state on this return (#2352).
+   *
+   * The same statement `OrderRecordRepository.updateOmsAttention` runs, from the
+   * one shared builder — see `buildAuthorityAttentionUpsertSql` for why each of
+   * its clauses is load-bearing. Unlike {@link claimAttribution} this is
+   * last-write-wins rather than first-write-wins: a claim records an irreversible
+   * fact once, whereas a state report is re-decided and the newest answer is the
+   * truthful one.
+   */
+  async updateOmsAttention(
+    id: string,
+    producer: AuthorityAttentionProducer,
+    outcome: AuthorityAttentionOutcome
+  ): Promise<void> {
+    if (outcome.kind === 'indeterminate') {
+      return;
+    }
+
+    try {
+      await this.returns.query(
+        buildAuthorityAttentionUpsertSql({ table: 'returns', idColumn: 'id', alias: 'r' }),
+        [
+          id,
+          producer,
+          buildAuthorityAttentionPayload(producer, outcome.kind === 'blocked' ? outcome : null),
+          new Date().toISOString(),
+        ]
+      );
+    } catch (error) {
+      throw new ReturnPersistenceError('updateOmsAttention', error);
+    }
+  }
+
+  /**
    * The pass-2 candidate page (#2330) — headers projection, deterministic order.
    *
    * Built with the query builder rather than `find()` because two of the three
@@ -640,7 +683,11 @@ export class ReturnRepository implements ReturnRepositoryPort {
       header.closedAt,
       header.createdAt,
       header.updatedAt,
-      lines.map((line) => this.toLineDomain(line))
+      lines.map((line) => this.toLineDomain(line)),
+      // Coerced at the mapping boundary, so an entry written by a newer release
+      // and then rolled back is ABSENT from the domain record rather than
+      // present-and-unrenderable (spec §4.4 S2-5).
+      readAuthorityAttentionEntries(header.omsAttention)
     );
   }
 

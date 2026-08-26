@@ -31,6 +31,10 @@ import type {
 } from '../types/return-sweep.types';
 import type { ReturnReattributionCandidate } from '../types/return-reattribution.types';
 import type { ReturnBucketCounts, ReturnListFilter } from '../types/return-query.types';
+import type {
+  AuthorityAttentionOutcome,
+  AuthorityAttentionProducer,
+} from '@openlinker/core/fulfillment-authority';
 
 export interface ReturnRepositoryPort {
   /**
@@ -175,6 +179,30 @@ export interface ReturnRepositoryPort {
    * `alreadyAttributed`, never `unresolved` and never `failed`.
    */
   claimAttribution(id: string, internalOrderId: string): Promise<boolean>;
+
+  /**
+   * Set — or clear — ONE producer's OMS inert state on this return (#2352).
+   *
+   * Level-triggered PER PRODUCER: `{ kind: 'none' }` means *"I have nothing to
+   * report"* and removes only this producer's entry, never the row's, because
+   * several unrelated producers share the column and each one's clear is honest
+   * only about its own question. `{ kind: 'indeterminate' }` leaves the stored
+   * entry alone — clearing on a transient failure erases a true reason and
+   * replaces it with silence (#2100).
+   *
+   * `since` is preserved across a change of reason within one episode, so the
+   * operator-facing age does not reset when a reason is refined.
+   *
+   * Never used for the ORPHAN state: that is derived from `internalOrderId IS
+   * NULL` (`ReturnRecord.isOrphan()`) and must have exactly one definition.
+   *
+   * No-op (no throw) when the return row does not exist.
+   */
+  updateOmsAttention(
+    id: string,
+    producer: AuthorityAttentionProducer,
+    outcome: AuthorityAttentionOutcome
+  ): Promise<void>;
 
   /**
    * One page of returns worth re-reading at the source (#2330, pass 2).

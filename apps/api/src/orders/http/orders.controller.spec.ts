@@ -85,6 +85,8 @@ describe('OrdersController', () => {
       updateItemResolutionFailure: jest.fn(),
       markCancelled: jest.fn(),
       updateSalesDocumentBlock: jest.fn(),
+      updateOmsAttention: jest.fn(),
+      countOrdersWithOmsAttention: jest.fn(),
       claimFxIntentIfAbsent: jest.fn(),
       stampFxIfAbsent: jest.fn(),
       markFxTerminal: jest.fn(),

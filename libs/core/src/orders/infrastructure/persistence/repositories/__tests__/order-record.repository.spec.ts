@@ -16,6 +16,7 @@ import { OrderRecordRepository } from '../order-record.repository';
 import type { OrderSyncStatusJson } from '../../entities/order-record.orm-entity';
 import { OrderRecordOrmEntity } from '../../entities/order-record.orm-entity';
 import { OrderRecord } from '../../../../domain/entities/order-record.entity';
+import { AuthorityAttentionCountedReasonValues } from '@openlinker/core/fulfillment-authority';
 import type { OrderSyncStatus, SyncAttempt } from '../../../../domain/types/order-sync.types';
 import { OrderRecordNotFoundException } from '../../../../domain/exceptions/order-record-not-found.exception';
 
@@ -223,6 +224,158 @@ describe('OrderRecordRepository', () => {
   function expectColumnAbsentFromUpsert(column: string): void {
     expect(upsertSql()).not.toContain(`"${column}"`);
   }
+  describe('updateOmsAttention (#2352)', () => {
+    function attentionSql(): string {
+      const calls = (ormRepository.query as jest.Mock).mock.calls as unknown[][];
+      return calls[0][0] as string;
+    }
+
+    function attentionParams(): unknown[] {
+      const calls = (ormRepository.query as jest.Mock).mock.calls as unknown[][];
+      return calls[0][1] as unknown[];
+    }
+
+    it('should not touch the database at all when the producer is indeterminate', async () => {
+      // Clearing on a transient failure would erase a true reason and replace it
+      // with silence, which is worse than a stale one (#2100).
+      await repository.updateOmsAttention('order-123', 'reservations', {
+        kind: 'indeterminate',
+      });
+
+      expect(ormRepository.query as jest.Mock).not.toHaveBeenCalled();
+    });
+
+    it('should send the reason and its optional fields when the producer reports blocked', async () => {
+      (ormRepository.query as jest.Mock).mockResolvedValue([]);
+
+      await repository.updateOmsAttention('order-123', 'routing', {
+        kind: 'blocked',
+        reason: 'line-unfulfillable',
+        detail: '2 line(s)',
+        subjectRef: 'line-7',
+      });
+
+      const [, producer, proposed] = attentionParams();
+      expect(producer).toBe('routing');
+      expect(JSON.parse(proposed as string)).toEqual({
+        producer: 'routing',
+        reason: 'line-unfulfillable',
+        detail: '2 line(s)',
+        subjectRef: 'line-7',
+      });
+    });
+
+    it('should omit an absent detail rather than sending an explicit null', async () => {
+      (ormRepository.query as jest.Mock).mockResolvedValue([]);
+
+      await repository.updateOmsAttention('order-123', 'routing', {
+        kind: 'blocked',
+        reason: 'line-unfulfillable',
+      });
+
+      expect(JSON.parse(attentionParams()[2] as string)).toEqual({
+        producer: 'routing',
+        reason: 'line-unfulfillable',
+      });
+    });
+
+    it('should send a null payload when the producer reports none', async () => {
+      (ormRepository.query as jest.Mock).mockResolvedValue([]);
+
+      await repository.updateOmsAttention('order-123', 'reservations', { kind: 'none' });
+
+      expect(attentionParams()[2]).toBeNull();
+    });
+
+    it('should scope both the removal and the replacement to the calling producer only', async () => {
+      // The property that makes three producers safe on one column: everything
+      // that is not mine survives, and only mine is rebuilt.
+      (ormRepository.query as jest.Mock).mockResolvedValue([]);
+
+      await repository.updateOmsAttention('order-123', 'reservations', { kind: 'none' });
+
+      const sql = attentionSql();
+      expect(sql).toContain(`e->>'producer' IS DISTINCT FROM $2`);
+      expect(sql).toContain(`e->>'producer' = $2`);
+    });
+
+    it('should carry an existing since forward rather than restamping it', async () => {
+      // An operator watching "how long has this been stuck" must not see the
+      // clock reset because a reason was refined inside one episode.
+      (ormRepository.query as jest.Mock).mockResolvedValue([]);
+
+      await repository.updateOmsAttention('order-123', 'reservations', {
+        kind: 'blocked',
+        reason: 'reservation-shortfall',
+      });
+
+      expect(attentionSql()).toContain(`COALESCE(parts.mine->>'since', $4::text)`);
+    });
+
+    it('should guard the write so an unchanged state touches no row', async () => {
+      (ormRepository.query as jest.Mock).mockResolvedValue([]);
+
+      await repository.updateOmsAttention('order-123', 'reservations', { kind: 'none' });
+
+      expect(attentionSql()).toContain(
+        `rec."omsAttention" IS DISTINCT FROM NULLIF(next.value, '[]'::jsonb)`
+      );
+    });
+
+    it('should normalise an emptied column back to NULL so nothing-reported has one spelling', async () => {
+      (ormRepository.query as jest.Mock).mockResolvedValue([]);
+
+      await repository.updateOmsAttention('order-123', 'reservations', { kind: 'none' });
+
+      expect(attentionSql()).toContain(`SET "omsAttention" = NULLIF(next.value, '[]'::jsonb)`);
+    });
+  });
+
+  describe('countOrdersWithOmsAttention (#2352)', () => {
+    function countSql(): string {
+      const calls = (ormRepository.query as jest.Mock).mock.calls as unknown[][];
+      return String(calls[0][0]);
+    }
+
+    it('should count only the reasons this build recognises as counted', async () => {
+      (ormRepository.query as jest.Mock).mockResolvedValue([{ count: 3 }]);
+
+      await expect(repository.countOrdersWithOmsAttention()).resolves.toBe(3);
+
+      const sql = countSql();
+      for (const reason of AuthorityAttentionCountedReasonValues) {
+        expect(sql).toContain(`@ == "${reason}"`);
+      }
+    });
+
+    it('should never match a reason value this build does not know', async () => {
+      // A value written by a newer release and rolled back must not become a red
+      // number with no badge anywhere to explain it (spec §4.4 S2-5).
+      (ormRepository.query as jest.Mock).mockResolvedValue([{ count: 0 }]);
+
+      await repository.countOrdersWithOmsAttention();
+
+      expect(countSql()).not.toContain('automation-failed');
+    });
+
+    it('should coalesce a NULL column before testing it, so the negation stays total', async () => {
+      // The `IS_SALES_DOCUMENT_BLOCKED` trap: `jsonb_path_exists(NULL, ...)` is
+      // NULL, so `NOT (...)` is NULL and WHERE drops the row - an "everything is
+      // fine" filter would return zero orders on a healthy install.
+      (ormRepository.query as jest.Mock).mockResolvedValue([{ count: 0 }]);
+
+      await repository.countOrdersWithOmsAttention();
+
+      expect(countSql()).toContain(`COALESCE(rec."omsAttention", '[]'::jsonb)`);
+    });
+
+    it('should report zero when the driver hands back no rows', async () => {
+      (ormRepository.query as jest.Mock).mockResolvedValue([]);
+
+      await expect(repository.countOrdersWithOmsAttention()).resolves.toBe(0);
+    });
+  });
+
   describe('findEarliestOrderDateByConnection (#2083)', () => {
     it('should return an empty Map without querying when given an empty array', async () => {
       const result = await repository.findEarliestOrderDateByConnection([]);
@@ -859,6 +1012,25 @@ describe('OrderRecordRepository', () => {
       expect(result.recordStatus).toBe('ready');
     });
 
+    it('should report omsAttention empty even though RETURNING carries it (#2352)', async () => {
+      // The sharpest case of the exclusion: the column is an ARRAY shared by
+      // three producers whose writer edits ONE entry, so round-tripping it here
+      // would drop every producer's entry on every ingestion and re-add none.
+      const savedEntity = createOrmEntity();
+      savedEntity.omsAttention = [
+        {
+          producer: 'reservations',
+          reason: 'reservation-shortfall',
+          since: '2026-08-26T00:00:00.000Z',
+        },
+      ];
+      mockUpsertReturning(savedEntity);
+
+      const result = await repository.upsert(createDomainEntity());
+
+      expect(result.omsAttention).toEqual([]);
+    });
+
     it('should NOT include syncStatus or syncAttempts in the upsert statement (#2140)', async () => {
       // The ingestion path never carries destination sync state, so writing
       // these columns wiped the per-destination rows and the whole attempt
@@ -1445,6 +1617,14 @@ describe('OrderRecordRepository', () => {
     });
 
     describe('toOrm', () => {
+      it('should NOT include omsAttention in the upsert statement (#2352)', async () => {
+        mockUpsertReturning(createOrmEntity());
+
+        await repository.upsert(createDomainEntity());
+
+        expectColumnAbsentFromUpsert('omsAttention');
+      });
+
       it('should NOT include any of the six FX columns in the upsert statement', async () => {
         // upsert() is an update-or-create on the ingestion path, so naming
         // these columns would let a re-poll of an already-stamped order write

@@ -29,6 +29,7 @@
  * @module libs/core/src/returns/infrastructure/persistence/entities
  */
 import { Column, CreateDateColumn, Entity, Index, PrimaryColumn, UpdateDateColumn } from 'typeorm';
+import type { AuthorityAttentionEntry } from '@openlinker/core/fulfillment-authority';
 
 @Entity('returns')
 // #2328's idempotent update-or-create key (DESIGN § 7.3, :784-785). PARTIAL
@@ -127,6 +128,27 @@ export class ReturnOrmEntity {
 
   @Column({ type: 'timestamptz', nullable: true })
   closedAt!: Date | null;
+
+  /**
+   * The OMS inert states reported against this return (#2352) — an array of
+   * `AuthorityAttentionEntry`, or NULL when nothing is reported.
+   *
+   * An array keyed by PRODUCER, not a scalar reason, for the reason
+   * `order_records.omsAttention` is: a producer clearing its own answer must not
+   * be a statement about another producer's question. Sole writer
+   * `ReturnRepository.updateOmsAttention`; never round-tripped through
+   * `upsertFromSource`, which re-writes the row from a source payload that knows
+   * nothing about OL-owned state.
+   *
+   * It never carries the ORPHAN state — that is derived from `internalOrderId
+   * IS NULL` (`ReturnRecord.isOrphan()`, #2332) and must have exactly one
+   * definition.
+   *
+   * No index: nothing writes it yet, and a partial index over a hardcoded reason
+   * list is the shape that went stale on `IDX_order_records_salesDocumentBlockReason`.
+   */
+  @Column({ type: 'jsonb', nullable: true })
+  omsAttention!: AuthorityAttentionEntry[] | null;
 
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt!: Date;

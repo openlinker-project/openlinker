@@ -61,5 +61,7 @@ export * from './domain/types/authority-selection.types';
 export * from './domain/types/authority-config.types';
 export * from './domain/types/authority-question.types';
 export * from './domain/types/authority-resolution.types';
+export * from './domain/types/authority-attention-reason.types';
+export * from './domain/types/authority-attention-sql.types';
 export * from './domain/types/fulfillment-authority-outcome.types';
 export * from './domain/types/fulfillment-cancellation-reason.types';

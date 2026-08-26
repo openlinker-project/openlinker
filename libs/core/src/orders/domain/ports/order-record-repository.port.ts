@@ -23,6 +23,10 @@ import type { OrderSlaSummary } from '../types/order-sla.types';
 import type { FulfillmentRollupState } from '../types/order-fulfillment.types';
 import type { SyncAttempt } from '../types/order-sync.types';
 import type { SalesDocumentBlock } from '@openlinker/core/sales-documents';
+import type {
+  AuthorityAttentionOutcome,
+  AuthorityAttentionProducer,
+} from '@openlinker/core/fulfillment-authority';
 import type { OrderFxIntent, OrderFxStamp } from '../types/order-fx.types';
 import type { StampedReportingCurrencyCount } from '../types/order-fx-read.types';
 import type { OrderAmendmentChange } from '../order-amendment-diff';
@@ -311,6 +315,62 @@ export interface OrderRecordRepositoryPort {
   updateSalesDocumentBlock(
     internalOrderId: string,
     block: SalesDocumentBlock | null
+  ): Promise<void>;
+
+  /**
+   * How many orders carry at least one COUNTED OMS inert state (#2352)?
+   *
+   * One row per affected ORDER, not per entry — the surface renders one row per
+   * order, and an order carrying two states is one thing for the operator to
+   * look at, not two. A reason this build does not recognise is never counted
+   * (spec §4.4 S2-5).
+   *
+   * **The order half only.** The return-scoped states (RB-L, OR-P) are counted
+   * on the returns side, and OR-P in particular is DERIVED
+   * (`ReturnRecord.isOrphan()`), so it cannot be reached by this predicate at
+   * all. A surface summing the two adds them; it must not invent a third filter
+   * at the call site, which is what `AUTHORITY_ATTENTION_REASON_DESCRIPTORS`'
+   * `counted` flag exists to prevent.
+   *
+   * Deliberately its own statement rather than a `COUNT(*) FILTER` folded into
+   * the orders summary aggregate beside `salesDocumentBlocked`: nothing writes
+   * the column yet, so there is no shared render to fold it into. Folding is
+   * for the issue that wires the surface.
+   */
+  countOrdersWithOmsAttention(): Promise<number>;
+
+  /**
+   * Set — or clear — ONE producer's OMS inert state for this order (#2352,
+   * Wave-2 product spec §4.2).
+   *
+   * **Level-triggered PER PRODUCER, which is the whole contract.** The eventual
+   * callers are three unrelated subsystems (the reservation ledger, routing, the
+   * execution handshake) and an order can genuinely carry two states at once, so
+   * `{ kind: 'none' }` means *"I, this producer, have nothing to report"* and
+   * removes only this producer's entry — never the row's. A single scalar column
+   * would make each producer's clear a statement about the others' questions
+   * too, and the `Needs attention (N)` count would then depend on which
+   * subsystem ran last.
+   *
+   * `{ kind: 'indeterminate' }` LEAVES the stored entry alone: clearing on a
+   * transient failure erases a true reason and replaces it with silence, which
+   * is worse than a stale one (#2100).
+   *
+   * `since` is stamped when this producer's entry first appears and PRESERVED
+   * across a change of reason within the same episode, so an operator watching
+   * "how long has this been stuck" does not see the clock reset because the
+   * reason was refined (#2248's `blockedAt` rule, applied per entry).
+   *
+   * Narrow absolute-set on the `omsAttention` column only, so it cannot clobber
+   * a concurrent write to any other column on the row. The read it rebuilds from
+   * is taken `FOR UPDATE`, so a peer producer committing concurrently cannot be
+   * dropped. No-op (no throw) when the order row doesn't exist, mirroring
+   * {@link updateFulfillmentState}'s residual-race tolerance.
+   */
+  updateOmsAttention(
+    internalOrderId: string,
+    producer: AuthorityAttentionProducer,
+    outcome: AuthorityAttentionOutcome
   ): Promise<void>;
 
   /**

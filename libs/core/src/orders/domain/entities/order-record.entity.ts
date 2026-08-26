@@ -15,6 +15,7 @@ import type { CodToCollect } from '../types/cod-to-collect.types';
 import type { FulfillmentRollupState } from '../types/order-fulfillment.types';
 import type { OrderDispatchWindow, PriceTaxTreatment } from '../types/order.types';
 import type { OrderAmendmentChange } from '../order-amendment-diff';
+import type { AuthorityAttentionEntry } from '@openlinker/core/fulfillment-authority';
 import type {
   SalesDocumentGateBlockReason,
   SalesDocumentUnresolvedReason,
@@ -271,7 +272,30 @@ export class OrderRecord {
      * rate: its tax was whatever the provider defaulted to, and there is
      * nothing to back-compute from.
      */
-    public readonly taxRateEra: TaxRateEra | null = null
+    public readonly taxRateEra: TaxRateEra | null = null,
+    /**
+     * The OMS inert states currently reported against this order (#2352), one
+     * entry per reporting producer. Empty when nothing is reported.
+     *
+     * Read-only projection of the `omsAttention` jsonb, already coerced through
+     * `readAuthorityAttentionEntries` — so an entry written by a newer release
+     * and then rolled back is absent here rather than present-and-unrenderable,
+     * which is spec §4.4 S2-5 ("an unrecognised state degrades safely") held at
+     * the mapping boundary instead of at every consumer.
+     *
+     * Unlike `ReturnRecord`, this entity exposes NO `attentionReasons()`
+     * accessor joining a derived half, because an order has no derived half —
+     * every order-scoped state (A3-X, UF-L, RS-S) is a work-object fact that
+     * must be stored. Adding one for symmetry would create an accessor whose
+     * body can only ever be `this.omsAttention.map(...)`, and a consumer would
+     * reasonably read its existence as evidence that some order state IS
+     * derived.
+     *
+     * Appended LAST for the same reason every field above it was: this is a
+     * positional constructor, so a field inserted in the middle would silently
+     * shift every caller's argument by one.
+     */
+    public readonly omsAttention: readonly AuthorityAttentionEntry[] = []
   ) {}
 
   /**
