@@ -21,6 +21,8 @@ Add an operator-facing display-currency preference to `/analytics` with two mode
 
 Both modes are exposed together in a visible Analytics Settings control (button, not a buried tooltip), URL-encoded like the existing date-range filter (`?displayCurrency=&rateBasis=`).
 
+Because the preference lives in the URL it is shareable, so it can arrive naming a currency this deployment cannot serve - a link shared between two installs, or a currency that stopped being resolvable since the link was made. That is a distinct case from the runtime "unavailable" state below (which is about one native currency inside an otherwise valid view), and it is handled at the boundary rather than downstream: a `displayCurrency` that is not a valid ISO-4217 code, or that no registered rate provider quotes, is **rejected and ignored** - the dashboard renders in the stamped reporting currency exactly as if the parameter had been omitted, and the picker states that the requested currency is unavailable here rather than silently falling back with no explanation. A shared link never renders a total the recipient's deployment cannot stand behind.
+
 ## Alternatives considered
 
 - **Per-order conversion inside the request** (fetch each order's historical rate on read). Rejected: reintroduces the per-order I/O this ADR avoids, needs a job/progress UI at scale, and doesn't improve on "order-date" mode's answer.
