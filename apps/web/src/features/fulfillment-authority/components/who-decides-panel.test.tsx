@@ -5,12 +5,16 @@
  *
  * @module apps/web/src/features/fulfillment-authority/components
  */
-import { screen, waitFor, type RenderResult } from '@testing-library/react';
+import { screen, waitFor, within, type RenderResult } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { WhoDecidesPanel } from './who-decides-panel';
 import { ApiError } from '../../../shared/api/api-error';
-import type { AuthorityStatus } from '../api/who-decides.types';
+import type {
+  AuthorityAnswerRow,
+  AuthorityPresetPreview,
+  AuthorityStatus,
+} from '../api/who-decides.types';
 import type { ApiClient } from '../../../app/api/api-client';
 import { PermissionValues, type Permission, type SessionUser } from '../../../shared/auth/session.types';
 import {
@@ -93,9 +97,39 @@ function zeroConfigStatus(): AuthorityStatus {
   };
 }
 
+/**
+ * A preview envelope in the shape the SERVER sends.
+ *
+ * Built from the real DTO (`presetId` / `changes[{question,before,after}]` /
+ * `resultingAmbiguities` / `blocked`), never invented alongside the code that
+ * reads it — a fixture that agrees only with itself proves nothing.
+ */
+function preview(overrides: Partial<AuthorityPresetPreview> = {}): AuthorityPresetPreview {
+  return {
+    presetId: 'openlinker-decides',
+    changes: [],
+    resultingAmbiguities: [],
+    blocked: false,
+    ...overrides,
+  };
+}
+
+function answerRow(overrides: Partial<AuthorityAnswerRow> = {}): AuthorityAnswerRow {
+  return {
+    question: 'availability',
+    state: 'default',
+    source: 'default',
+    answer: { kind: 'openlinker' },
+    why: { kind: 'default', code: 'a1-computed-from-master-minus-buffer' },
+    inactiveClaimantConnectionIds: [],
+    ...overrides,
+  };
+}
+
 interface RenderPanelOptions {
   status?: AuthorityStatus | null;
   applyPreset?: ApiClient['fulfillmentAuthority']['applyPreset'];
+  previewPreset?: ApiClient['fulfillmentAuthority']['previewPreset'];
   /** Omit for a full-permission admin; pass `[]` for a read-only session. */
   permissions?: Permission[];
 }
@@ -118,6 +152,7 @@ function renderPanel(options: RenderPanelOptions = {}): RenderResult {
         .fn()
         .mockResolvedValue('status' in options ? options.status : zeroConfigStatus()),
       applyPreset: options.applyPreset ?? vi.fn().mockResolvedValue(zeroConfigStatus()),
+      previewPreset: options.previewPreset ?? vi.fn().mockResolvedValue(preview()),
     },
   };
 
@@ -134,6 +169,20 @@ function renderPanel(options: RenderPanelOptions = {}): RenderResult {
     apiClient: createMockApiClient(overrides),
     sessionAdapter: createAuthenticatedSessionAdapter(user),
   });
+}
+
+/**
+ * Confirm the dialog, once it is allowed to be confirmed.
+ *
+ * Save is disabled until the preview resolves — a confirm dialog must not let a
+ * change out while it cannot yet say what the change does — so a bare click
+ * would silently no-op and the test would assert against an apply that never
+ * happened.
+ */
+async function confirmSave(user: ReturnType<typeof userEvent.setup>): Promise<void> {
+  const save = await screen.findByRole('button', { name: 'Save' });
+  await waitFor(() => expect(save).toBeEnabled());
+  await user.click(save);
 }
 
 describe('WhoDecidesPanel', () => {
@@ -226,7 +275,7 @@ describe('WhoDecidesPanel', () => {
     await screen.findByText('How much stock can we promise?');
     await user.click(screen.getByRole('radio', { name: /Let OpenLinker decide/ }));
     await user.click(screen.getByRole('button', { name: 'Save this arrangement' }));
-    await user.click(await screen.findByRole('button', { name: 'Save' }));
+    await confirmSave(user);
 
     expect(await screen.findByText('Only part of this was saved')).toBeInTheDocument();
     expect(screen.queryByText('Saved')).not.toBeInTheDocument();
@@ -270,7 +319,7 @@ describe('WhoDecidesPanel', () => {
     await screen.findByText('How much stock can we promise?');
     await user.click(screen.getByRole('radio', { name: /Leave things as they are/ }));
     await user.click(screen.getByRole('button', { name: 'Save this arrangement' }));
-    await user.click(await screen.findByRole('button', { name: 'Save' }));
+    await confirmSave(user);
 
     expect(await screen.findByText('Nothing was changed')).toBeInTheDocument();
     // Both candidates are named and linked, so the operator can act on them.
@@ -286,7 +335,7 @@ describe('WhoDecidesPanel', () => {
     await screen.findByText('How much stock can we promise?');
     await user.click(screen.getByRole('radio', { name: /Leave things as they are/ }));
     await user.click(screen.getByRole('button', { name: 'Save this arrangement' }));
-    await user.click(await screen.findByRole('button', { name: 'Save' }));
+    await confirmSave(user);
 
     expect(await screen.findByText('OpenLinker did not accept that choice')).toBeInTheDocument();
   });
@@ -347,5 +396,182 @@ describe('WhoDecidesPanel', () => {
     expect(row.querySelector('.who-decides-row__why')?.textContent).toContain(
       "Two of your systems both say they're in charge of your stock",
     );
+  });
+  it('should generate the confirm dialog from the preview diff rather than from static copy', async () => {
+    const previewPreset = vi.fn().mockResolvedValue(
+      preview({
+        changes: [
+          {
+            question: 'availability',
+            before: answerRow({
+              state: 'resolved',
+              source: 'operator-config',
+              answer: { kind: 'holders', parties: [{ connectionId: 'c1', scopeKind: 'global' }] },
+              why: { kind: 'default', code: 'a1-claimed-by-connection' },
+            }),
+            after: answerRow(),
+          },
+        ],
+      }),
+    );
+    renderPanel({ previewPreset });
+
+    const user = userEvent.setup();
+    await screen.findByText('How much stock can we promise?');
+    await user.click(screen.getByRole('radio', { name: /Let OpenLinker decide/ }));
+    await user.click(screen.getByRole('button', { name: 'Save this arrangement' }));
+
+    // Exactly the changed row, named by the same question copy the table uses.
+    const lines = await waitFor(() => {
+      const found = document.querySelectorAll('.who-decides-confirm__line');
+      expect(found).toHaveLength(1);
+      return found;
+    });
+    expect(lines[0].getAttribute('data-question')).toBe('availability');
+    expect(lines[0].textContent).toContain('How much stock can we promise?');
+    expect(lines[0].textContent).toContain('OpenLinker will decide this from now on.');
+
+    // The claim is switched off, not deleted — the operator can switch back.
+    expect(
+      screen.getByText(/keep their settings, so you can put them back in charge later/),
+    ).toBeInTheDocument();
+
+    // The prospective-only line is present whatever the dialog is showing.
+    // Scoped to the dialog: § 3.2 also renders it persistently below the cards,
+    // so an unscoped query matches twice and proves neither copy.
+    expect(
+      within(screen.getByRole('dialog')).getByText(/only affects what happens from now on/),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled();
+  });
+
+  it('should say nothing changes and still allow saving when the diff is empty', async () => {
+    renderPanel({ previewPreset: vi.fn().mockResolvedValue(preview()) });
+
+    const user = userEvent.setup();
+    await screen.findByText('How much stock can we promise?');
+    await user.click(screen.getByRole('radio', { name: /Leave things as they are/ }));
+    await user.click(screen.getByRole('button', { name: 'Save this arrangement' }));
+
+    expect(
+      await screen.findByText('Nothing changes when you save this — your setup already works this way.'),
+    ).toBeInTheDocument();
+    expect(document.querySelectorAll('.who-decides-confirm__line')).toHaveLength(0);
+    // An empty diff is a legitimate save, unlike a refusal.
+    expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled();
+    expect(
+      within(screen.getByRole('dialog')).getByText(/only affects what happens from now on/),
+    ).toBeInTheDocument();
+  });
+
+  it('should block the save and name the conflicting connections when the result would be ambiguous', async () => {
+    // The refusal is over the RESULT, not the delta — so the option that
+    // changes nothing is refused too, and must not read as "nothing changes".
+    const applyPreset = vi.fn();
+    const previewPreset = vi.fn().mockResolvedValue(
+      preview({
+        presetId: 'leave-as-they-are',
+        changes: [],
+        blocked: true,
+        resultingAmbiguities: [
+          {
+            reason: 'availability-unknown',
+            badge: 'stopped',
+            surfaces: ['product'],
+            origin: 'authority-resolution',
+            question: 'availability',
+            connectionIds: ['c1', 'c2'],
+          },
+        ],
+      }),
+    );
+    renderPanel({ applyPreset, previewPreset });
+
+    const user = userEvent.setup();
+    await screen.findByText('How much stock can we promise?');
+    await user.click(screen.getByRole('radio', { name: /Leave things as they are/ }));
+    await user.click(screen.getByRole('button', { name: 'Save this arrangement' }));
+
+    expect(await screen.findByText('This cannot be saved yet')).toBeInTheDocument();
+    // What would stop working — the same § 4.2 body the ambiguous row renders.
+    expect(
+      screen.getByText(/Two of your systems both say they're in charge of your stock/),
+    ).toBeInTheDocument();
+    // Both conflicting connections are named and linked, so the operator can act.
+    // Pins the list element, not just the anchors: rendered as a bare inline
+    // span the two links run together with no separator, which no DOM query
+    // would notice.
+    const links = document.querySelectorAll('.who-decides-confirm__block-links a');
+    expect(links).toHaveLength(2);
+
+    // The refusal reads differently from an empty diff, and blocks the save.
+    expect(screen.queryByText(/Nothing changes when you save this/)).not.toBeInTheDocument();
+    const save = screen.getByRole('button', { name: 'Save' });
+    expect(save).toBeDisabled();
+    await user.click(save);
+    expect(applyPreset).not.toHaveBeenCalled();
+  });
+
+  it('should render an unresolvable connection as its own id so two of them stay tellable apart', async () => {
+    const previewPreset = vi.fn().mockResolvedValue(
+      preview({
+        blocked: true,
+        resultingAmbiguities: [
+          {
+            reason: 'availability-unknown',
+            badge: 'stopped',
+            surfaces: ['product'],
+            origin: 'authority-resolution',
+            question: 'availability',
+            connectionIds: ['conn-aaa', 'conn-bbb'],
+          },
+        ],
+      }),
+    );
+    renderPanel({ previewPreset });
+
+    const user = userEvent.setup();
+    await screen.findByText('How much stock can we promise?');
+    await user.click(screen.getByRole('radio', { name: /Let OpenLinker decide/ }));
+    await user.click(screen.getByRole('button', { name: 'Save this arrangement' }));
+
+    await screen.findByText('This cannot be saved yet');
+    // The id is what the backend said; a placeholder would render both as one word.
+    expect(screen.getByRole('link', { name: 'conn-aaa' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'conn-bbb' })).toBeInTheDocument();
+  });
+
+  it('should refuse the save rather than claim nothing changes when the preview cannot be read', async () => {
+    const applyPreset = vi.fn();
+    renderPanel({ applyPreset, previewPreset: vi.fn().mockResolvedValue(null) });
+
+    const user = userEvent.setup();
+    await screen.findByText('How much stock can we promise?');
+    await user.click(screen.getByRole('radio', { name: /Let OpenLinker decide/ }));
+    await user.click(screen.getByRole('button', { name: 'Save this arrangement' }));
+
+    expect(
+      await screen.findByText(/could not work out what this would change/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Nothing changes when you save this/)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
+    expect(applyPreset).not.toHaveBeenCalled();
+  });
+
+  it('should not write anything when the operator opens the dialog and cancels', async () => {
+    // The dry run is a READ. Opening the dialog must never reach the apply.
+    const applyPreset = vi.fn();
+    const previewPreset = vi.fn().mockResolvedValue(preview());
+    renderPanel({ applyPreset, previewPreset });
+
+    const user = userEvent.setup();
+    await screen.findByText('How much stock can we promise?');
+    await user.click(screen.getByRole('radio', { name: /Let OpenLinker decide/ }));
+    await user.click(screen.getByRole('button', { name: 'Save this arrangement' }));
+    await screen.findByRole('button', { name: 'Save' });
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+
+    expect(previewPreset).toHaveBeenCalledWith('openlinker-decides');
+    expect(applyPreset).not.toHaveBeenCalled();
   });
 });

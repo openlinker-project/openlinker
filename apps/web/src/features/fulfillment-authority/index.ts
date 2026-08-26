@@ -6,8 +6,8 @@
  * import only from here — never from `lib/`.
  *
  * #2357 shipped the copy + mirror half; #2354 added the "Who decides what"
- * page, its transport and its row view model. #2355 adds the preset-preview
- * confirm dialog and its own exports.
+ * page, its transport and its row view model; #2355 added the generated
+ * preset-change confirmation and its preview transport.
  */
 export type {
   AuthorityAttentionBadge,
@@ -36,15 +36,20 @@ export {
 export { WhoDecidesPanel } from './components/who-decides-panel';
 export { WhoDecidesTile } from './components/who-decides-tile';
 export { WhoDecidesPresetCards } from './components/who-decides-preset-cards';
+export {
+  WhoDecidesPresetConfirm,
+  isPresetConfirmBlocked,
+} from './components/who-decides-preset-confirm';
 export { WhoDecidesQuestionRow } from './components/who-decides-question-row';
 
 export { useWhoDecidesStatusQuery } from './hooks/use-who-decides-status-query';
 export { useApplyPresetMutation } from './hooks/use-apply-preset-mutation';
+export { usePresetPreviewQuery } from './hooks/use-preset-preview-query';
 
 export { createFulfillmentAuthorityApi } from './api/who-decides.api';
 export type { FulfillmentAuthorityApi } from './api/who-decides.api';
 export { whoDecidesQueryKeys } from './api/who-decides.query-keys';
-export { parseAuthorityStatus } from './api/who-decides.schema';
+export { parseAuthorityPresetPreview, parseAuthorityStatus } from './api/who-decides.schema';
 
 export type {
   AuthorityAnswer,
@@ -53,7 +58,9 @@ export type {
   AuthorityAttentionItem,
   AuthorityPreset,
   AuthorityPresetApplyReport,
+  AuthorityPresetChange,
   AuthorityPresetId,
+  AuthorityPresetPreview,
   AuthorityQuestion,
   AuthorityRowBadge,
   AuthoritySource,
@@ -73,6 +80,9 @@ export {
 export type { AuthorityKind } from './lib/authority-kind';
 export { AuthorityKindValues, isAuthorityKind } from './lib/authority-kind';
 
+export { buildPresetDiff } from './lib/preset-diff';
+export type { PresetDiffLine, PresetDiffView } from './lib/preset-diff';
+
 export {
   resolveAnswer,
   resolveCandidateConnectionIds,
@@ -85,6 +95,8 @@ export type { AnswerRendering } from './lib/who-decides-view';
 export {
   PRESET_ACTION_COPY,
   PRESET_CARD_COPY,
+  PRESET_CHANGE_MEANING_COPY,
+  PRESET_CONFIRM_COPY,
   PRESET_CARD_ORDER,
   QUESTION_LABEL_COPY,
   QUESTION_ORDER,

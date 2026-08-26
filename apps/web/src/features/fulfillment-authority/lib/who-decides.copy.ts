@@ -197,6 +197,62 @@ export const PRESET_ACTION_COPY = {
   failedMessage: 'Nothing was changed. Try again in a moment.',
 } as const;
 
+/**
+ * What a decision's NEW answer means, once it is the answer.
+ *
+ * One sentence per answer shape — never per arrangement. A sentence exists
+ * because an ANSWER exists, so a new arrangement cannot ship a dialog that
+ * describes it wrongly, and the confirm dialog is generated from the server's
+ * diff rather than restating a card.
+ *
+ * These say what happens FROM NOW ON, because that is what saving does; the
+ * always-present line below says what it does not do to work already running.
+ */
+export const PRESET_CHANGE_MEANING_COPY = {
+  openlinker: 'OpenLinker will decide this from now on.',
+  holders: 'The systems named above will decide this from now on.',
+  manual: 'Nothing will decide this automatically — you will handle it yourself.',
+  defaultToday: 'This goes back to landing wherever it lands today.',
+  nobodyToRoute: 'You sell from one place, so there will be nothing to choose between.',
+  /**
+   * Reachable only in a diff the save is refused for, but written honestly
+   * rather than left to a fallback: a sentence this build cannot produce is how
+   * an operator ends up reading a confident description of a broken state.
+   */
+  cannotTell: 'Two of your systems would both be in charge, so OpenLinker would decide neither.',
+  configuredElsewhere: 'This stays set up on the Sales documents page.',
+} as const;
+
+/** The confirm dialog — everything it can say before an arrangement is saved. */
+export const PRESET_CONFIRM_COPY = {
+  changesHeading: 'What changes',
+  /**
+   * Read instead of the arrow glyph, which is `aria-hidden`. Without it the
+   * line reads as two answers with no stated relationship between them.
+   */
+  becomes: 'becomes',
+  /**
+   * The no-op answer, and it must read differently from a refusal. Here the
+   * save is allowed and simply does nothing; a refusal is the block below.
+   */
+  noChanges: 'Nothing changes when you save this — your setup already works this way.',
+  /**
+   * Only rendered when the diff shows a claim being switched off. The
+   * connection keeps its assignment, so this is a fact about the change rather
+   * than reassurance added to soften it.
+   */
+  assignmentPreserved:
+    'Your systems keep their settings, so you can put them back in charge later by switching them on again.',
+  loading: 'Working out what this would change…',
+  unreadable:
+    'We could not work out what this would change, so it cannot be saved yet. Try again in a moment.',
+  retryLabel: 'Try again',
+  /** The blocked-save state. Nothing is written, and the operator is told which systems clash. */
+  blockedTitle: 'This cannot be saved yet',
+  blockedIntro:
+    'This would leave two systems deciding the same thing, so OpenLinker would decide neither. Open the connections named below and leave one of them in charge.',
+} as const;
+
 /** One label per question, in `AuthorityQuestionValues` order (spec § 3.3). */
 export const QUESTION_LABEL_COPY = {
   availability: 'How much stock can we promise?',

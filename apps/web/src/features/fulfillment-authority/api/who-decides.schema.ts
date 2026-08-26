@@ -37,6 +37,9 @@ import {
   AuthorityQuestionValues,
   AuthoritySourceValues,
   AuthorityStateValues,
+  type AuthorityAnswerRow,
+  type AuthorityAttentionItem,
+  type AuthorityPresetPreview,
   type AuthorityStatus,
 } from './who-decides.types';
 
@@ -121,38 +124,54 @@ const statusSchema = z.object({
   applied: appliedSchema.nullish(),
 });
 
+/**
+ * One wire row to one view row.
+ *
+ * Extracted so the preset preview maps its `before` / `after` through the very
+ * same function the table's rows go through — two mappers would let the dialog
+ * and the table describe one answer differently.
+ *
+ * Note the rename is of the FIELD, not the discriminant: core calls the party
+ * list `holders` and the view model calls it `parties` (because `holder` is a
+ * banned operator-facing term), while `kind` stays `'holders'` in both.
+ */
+function toRow(row: z.infer<typeof rowSchema>): AuthorityAnswerRow {
+  return {
+    question: row.question,
+    state: row.state,
+    source: row.source,
+    answer:
+      row.answer.kind === 'holders'
+        ? {
+            kind: 'holders' as const,
+            parties: row.answer.holders.map((party) => ({
+              connectionId: party.connectionId,
+              scopeKind: party.scope?.kind ?? 'global',
+            })),
+          }
+        : row.answer,
+    why: row.why,
+    inactiveClaimantConnectionIds: row.inactiveClaimantConnectionIds ?? [],
+  };
+}
+
+function toAttentionItem(
+  item: z.infer<typeof attentionItemSchema>,
+): AuthorityAttentionItem {
+  return {
+    ...item,
+    surfaces: item.surfaces ?? [],
+    question: item.question ?? null,
+    connectionIds: item.connectionIds ?? [],
+  };
+}
+
 function toStatus(parsed: z.infer<typeof statusSchema>): AuthorityStatus {
   return {
-    rows: parsed.rows.map((row) => ({
-      question: row.question,
-      state: row.state,
-      source: row.source,
-      answer:
-        row.answer.kind === 'holders'
-          ? {
-              kind: 'holders' as const,
-              parties: row.answer.holders.map((party) => ({
-                connectionId: party.connectionId,
-                scopeKind: party.scope?.kind ?? 'global',
-              })),
-            }
-          : row.answer,
-      why: row.why,
-      inactiveClaimantConnectionIds: row.inactiveClaimantConnectionIds ?? [],
-    })),
+    rows: parsed.rows.map(toRow),
     attention: {
-      counted: parsed.attention.counted.map((item) => ({
-        ...item,
-        surfaces: item.surfaces ?? [],
-        question: item.question ?? null,
-        connectionIds: item.connectionIds ?? [],
-      })),
-      routine: parsed.attention.routine.map((item) => ({
-        ...item,
-        surfaces: item.surfaces ?? [],
-        question: item.question ?? null,
-        connectionIds: item.connectionIds ?? [],
-      })),
+      counted: parsed.attention.counted.map(toAttentionItem),
+      routine: parsed.attention.routine.map(toAttentionItem),
       affectedOrderCount: parsed.attention.affectedOrderCount,
     },
     presets: parsed.presets.map((preset) => ({
@@ -169,6 +188,15 @@ function toStatus(parsed: z.infer<typeof statusSchema>): AuthorityStatus {
   };
 }
 
+const previewSchema = z.object({
+  presetId: z.enum(AuthorityPresetIdValues),
+  changes: z.array(
+    z.object({ question: z.enum(AuthorityQuestionValues), before: rowSchema, after: rowSchema }),
+  ),
+  resultingAmbiguities: z.array(attentionItemSchema),
+  blocked: z.boolean(),
+});
+
 /**
  * Parse a status (or apply) response.
  *
@@ -179,4 +207,30 @@ function toStatus(parsed: z.infer<typeof statusSchema>): AuthorityStatus {
 export function parseAuthorityStatus(payload: unknown): AuthorityStatus | null {
   const parsed = statusSchema.safeParse(payload);
   return parsed.success ? toStatus(parsed.data) : null;
+}
+
+/**
+ * Parse a preset-preview response.
+ *
+ * Whole-envelope, like the status parse and for the same reason: a half-read
+ * diff would let the dialog make a PARTIAL claim about what saving does, which
+ * is worse than declining to claim anything. `null` therefore means "this build
+ * cannot read the answer", and the dialog says so and refuses the save rather
+ * than letting an unexplained write go out.
+ */
+export function parseAuthorityPresetPreview(payload: unknown): AuthorityPresetPreview | null {
+  const parsed = previewSchema.safeParse(payload);
+  if (!parsed.success) {
+    return null;
+  }
+  return {
+    presetId: parsed.data.presetId,
+    changes: parsed.data.changes.map((change) => ({
+      question: change.question,
+      before: toRow(change.before),
+      after: toRow(change.after),
+    })),
+    resultingAmbiguities: parsed.data.resultingAmbiguities.map(toAttentionItem),
+    blocked: parsed.data.blocked,
+  };
 }

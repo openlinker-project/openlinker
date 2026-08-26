@@ -19644,3 +19644,95 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
     row-gap: var(--space-2);
   }
 }
+
+/* Who-decides — the generated preset-change confirmation (#2355).
+   Lives in the ConfirmDialog's `body` slot, a sibling of the description's
+   <p>, so flow content here is valid nesting rather than a paragraph the
+   parser closes early. */
+.who-decides-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.who-decides-confirm__preset {
+  margin: 0 0 var(--space-3);
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.who-decides-confirm__heading {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+}
+
+.who-decides-confirm__lines,
+.who-decides-confirm__blocks {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.who-decides-confirm__line {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.who-decides-confirm__question {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+/* Wraps rather than truncating: at 375 px the two answers stack under the
+   arrow instead of ellipsing, because which answer replaces which is the
+   whole content of the line. */
+.who-decides-confirm__move {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+  color: var(--text-secondary);
+}
+
+.who-decides-confirm__from {
+  color: var(--text-muted);
+  text-decoration: line-through;
+}
+
+.who-decides-confirm__arrow {
+  color: var(--text-muted);
+}
+
+.who-decides-confirm__to {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.who-decides-confirm__meaning,
+.who-decides-confirm__note {
+  margin: 0;
+  color: var(--text-secondary);
+}
+
+.who-decides-confirm__block-body {
+  display: block;
+}
+
+/* A real list rather than the panel's `who-decides__id-list` indent — see the
+   comment at the call site. Wraps at 375 px instead of overflowing the dialog. */
+.who-decides-confirm__block-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-3);
+  margin: var(--space-2) 0 0;
+  padding: 0;
+  list-style: none;
+}

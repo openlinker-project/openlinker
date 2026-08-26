@@ -230,6 +230,40 @@ export interface AuthorityStatus {
   readonly applied: AuthorityPresetApplyReport | null;
 }
 
+/**
+ * One row whose answer a preset would change.
+ *
+ * `before` / `after` are full rows, so the confirm dialog renders them through
+ * the same `resolveAnswer` the table uses instead of growing a second answer
+ * renderer.
+ */
+export interface AuthorityPresetChange {
+  readonly question: AuthorityQuestion;
+  readonly before: AuthorityAnswerRow;
+  readonly after: AuthorityAnswerRow;
+}
+
+/**
+ * What a preset would do — computed by the server, never in the browser.
+ *
+ * A client-side diff would have to reimplement resolution and would drift from
+ * it; the endpoint exists so the dialog's sentences are generated from the
+ * server's own answer.
+ */
+export interface AuthorityPresetPreview {
+  readonly presetId: AuthorityPresetId;
+  /** Exactly the rows that change. **Empty is a legitimate answer** — it means nothing changes. */
+  readonly changes: readonly AuthorityPresetChange[];
+  /**
+   * The ambiguities the RESULT would carry. Computed from the resulting
+   * resolution, not the delta — so an install that is ALREADY contradictory is
+   * reported even by the option that changes nothing.
+   */
+  readonly resultingAmbiguities: readonly AuthorityAttentionItem[];
+  /** `resultingAmbiguities.length > 0`, shipped so no consumer re-derives it. */
+  readonly blocked: boolean;
+}
+
 /** Narrow an untrusted string to a question. */
 export function isAuthorityQuestion(value: unknown): value is AuthorityQuestion {
   return typeof value === 'string' && (AuthorityQuestionValues as readonly string[]).includes(value);

@@ -4,7 +4,7 @@
  * @module apps/web/src/features/fulfillment-authority/api
  */
 import { describe, expect, it } from 'vitest';
-import { parseAuthorityStatus } from './who-decides.schema';
+import { parseAuthorityPresetPreview, parseAuthorityStatus } from './who-decides.schema';
 
 /** A minimal but complete zero-config payload: all seven rows, no config. */
 function zeroConfigPayload(): unknown {
@@ -146,5 +146,100 @@ describe('parseAuthorityStatus', () => {
     const rows = payload.rows as Record<string, unknown>[];
     rows[0].state = 'a-state-from-a-newer-release';
     expect(parseAuthorityStatus(payload)).toBeNull();
+  });
+});
+
+describe('parseAuthorityPresetPreview', () => {
+  function wireRow(): unknown {
+    return {
+      question: 'availability',
+      state: 'resolved',
+      source: 'operator-config',
+      answer: { kind: 'holders', holders: [{ connectionId: 'c1', scope: { kind: 'global' } }] },
+      why: { kind: 'default', code: 'a1-claimed-by-connection' },
+      inactiveClaimantConnectionIds: [],
+    };
+  }
+
+  it('should map both sides of a change through the same row mapper when the payload is readable', () => {
+    const parsed = parseAuthorityPresetPreview({
+      presetId: 'openlinker-decides',
+      changes: [
+        {
+          question: 'availability',
+          before: wireRow(),
+          after: {
+            question: 'availability',
+            state: 'default',
+            source: 'default',
+            answer: { kind: 'openlinker' },
+            why: { kind: 'default', code: 'a1-computed-from-master-minus-buffer' },
+            inactiveClaimantConnectionIds: [],
+          },
+        },
+      ],
+      resultingAmbiguities: [],
+      blocked: false,
+    });
+
+    expect(parsed).not.toBeNull();
+    expect(parsed?.changes).toHaveLength(1);
+    // The wire calls the list `holders`; the view model calls it `parties`,
+    // while the discriminant stays `holders` on both sides.
+    expect(parsed?.changes[0].before.answer).toEqual({
+      kind: 'holders',
+      parties: [{ connectionId: 'c1', scopeKind: 'global' }],
+    });
+    expect(parsed?.blocked).toBe(false);
+  });
+
+  it('should carry the ambiguity connection ids when the result would be blocked', () => {
+    const parsed = parseAuthorityPresetPreview({
+      presetId: 'leave-as-they-are',
+      changes: [],
+      resultingAmbiguities: [
+        {
+          reason: 'availability-unknown',
+          badge: 'stopped',
+          surfaces: ['product'],
+          origin: 'authority-resolution',
+          question: 'availability',
+          connectionIds: ['c1', 'c2'],
+        },
+      ],
+      blocked: true,
+    });
+
+    expect(parsed?.blocked).toBe(true);
+    expect(parsed?.resultingAmbiguities[0].connectionIds).toEqual(['c1', 'c2']);
+  });
+
+  it('should tolerate a null optional field rather than dropping the envelope', () => {
+    const parsed = parseAuthorityPresetPreview({
+      presetId: 'openlinker-decides',
+      changes: [],
+      resultingAmbiguities: [
+        {
+          reason: 'availability-unknown',
+          badge: 'stopped',
+          surfaces: null,
+          origin: 'authority-resolution',
+          question: null,
+          connectionIds: null,
+        },
+      ],
+      blocked: true,
+    });
+
+    expect(parsed?.resultingAmbiguities[0]).toMatchObject({
+      surfaces: [],
+      question: null,
+      connectionIds: [],
+    });
+  });
+
+  it('should return null when the envelope cannot be read', () => {
+    expect(parseAuthorityPresetPreview({ presetId: 'not-a-preset', changes: [] })).toBeNull();
+    expect(parseAuthorityPresetPreview(null)).toBeNull();
   });
 });

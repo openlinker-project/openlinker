@@ -4,8 +4,10 @@
  * Typed client for the "Who decides what" surface (#2353): the status read and
  * the preset apply.
  *
- * `POST /fulfillment-authority/presets/preview` is deliberately absent — #2355
- * owns the generated-diff confirm dialog and adds the call with it.
+ * `previewPreset` is a READ despite being a POST: it commits nothing (the
+ * service mutates an in-memory copy of the configs, re-resolves and diffs), and
+ * it is authorised for a read-only role so the confirm dialog can explain a
+ * change to somebody who then cannot make it.
  *
  * Both calls run their response through the feature's Zod parse rather than
  * casting it, so a contract break surfaces as a reported unreadable response
@@ -13,8 +15,12 @@
  *
  * @module apps/web/src/features/fulfillment-authority/api
  */
-import { parseAuthorityStatus } from './who-decides.schema';
-import type { AuthorityPresetId, AuthorityStatus } from './who-decides.types';
+import { parseAuthorityPresetPreview, parseAuthorityStatus } from './who-decides.schema';
+import type {
+  AuthorityPresetId,
+  AuthorityPresetPreview,
+  AuthorityStatus,
+} from './who-decides.types';
 
 interface ApiRequest {
   <T>(path: string, init?: RequestInit): Promise<T>;
@@ -35,6 +41,16 @@ export interface FulfillmentAuthorityApi {
   getStatus: () => Promise<AuthorityStatus | null>;
 
   /**
+   * `POST /fulfillment-authority/presets/preview` — what a preset would change.
+   *
+   * A dry run: it writes nothing, and is authorised for the same read-only role
+   * as the status read. Resolves to `null` when the response cannot be read,
+   * which the dialog reports and refuses to save on — never silently as
+   * "nothing changes".
+   */
+  previewPreset: (presetId: AuthorityPresetId) => Promise<AuthorityPresetPreview | null>;
+
+  /**
    * `PUT /fulfillment-authority/presets` — admin only.
    *
    * Returns the resulting status plus `applied`. A non-empty
@@ -49,6 +65,14 @@ export function createFulfillmentAuthorityApi(request: ApiRequest): FulfillmentA
   return {
     async getStatus(): Promise<AuthorityStatus | null> {
       return parseAuthorityStatus(await request<unknown>('/fulfillment-authority/status'));
+    },
+    async previewPreset(presetId): Promise<AuthorityPresetPreview | null> {
+      return parseAuthorityPresetPreview(
+        await request<unknown>('/fulfillment-authority/presets/preview', {
+          method: 'POST',
+          body: JSON.stringify({ presetId }),
+        }),
+      );
     },
     async applyPreset(presetId): Promise<AuthorityStatus | null> {
       return parseAuthorityStatus(

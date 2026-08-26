@@ -20,6 +20,15 @@
  * URL param would make a half-made decision look linkable and restorable.
  * Server state is the query; this is the only local piece.
  *
+ * ## The confirm dialog is generated, and it can refuse
+ *
+ * Its body comes from the server's own diff (#2355), so a new arrangement or a
+ * new decision row cannot ship a dialog that says something untrue. It also
+ * carries the refusal: when the RESULT would leave two systems deciding the
+ * same thing the save is blocked before it is attempted, rather than reported
+ * afterwards. `isPresetConfirmBlocked` answers that once and both the button
+ * and the body read it, so they cannot disagree.
+ *
  * ## Three outcomes, not one
  *
  * A save can succeed, be REFUSED (422 — the result would leave two systems
@@ -43,6 +52,7 @@ import { ApiError } from '../../../shared/api/api-error';
 import { useConnectionsQuery } from '../../connections';
 import { useDemoMode } from '../../system';
 import { useApplyPresetMutation } from '../hooks/use-apply-preset-mutation';
+import { usePresetPreviewQuery } from '../hooks/use-preset-preview-query';
 import { useWhoDecidesStatusQuery } from '../hooks/use-who-decides-status-query';
 import type { AuthorityPresetId } from '../api/who-decides.types';
 import {
@@ -51,6 +61,10 @@ import {
   QUESTION_ORDER,
   WHO_DECIDES_PAGE_COPY,
 } from '../lib/who-decides.copy';
+import {
+  WhoDecidesPresetConfirm,
+  isPresetConfirmBlocked,
+} from './who-decides-preset-confirm';
 import { WhoDecidesPresetCards } from './who-decides-preset-cards';
 import { WhoDecidesQuestionRow } from './who-decides-question-row';
 
@@ -119,6 +133,9 @@ export function WhoDecidesPanel(): ReactElement {
   const [selected, setSelected] = useState<AuthorityPresetId | null>(null);
   const [confirming, setConfirming] = useState(false);
   const [outcome, setOutcome] = useState<ApplyOutcome>({ kind: 'none' });
+  // The dry run. A read, and gated on the dialog being open — merely selecting
+  // an arrangement is not the operator asking what it would do.
+  const previewQuery = usePresetPreviewQuery(selected, confirming);
 
   // A failed connections read costs NAMES, not correctness: every row still
   // renders its answer, its why-line and its badge, and an unresolved id falls
@@ -297,11 +314,6 @@ export function WhoDecidesPanel(): ReactElement {
         </div>
       </section>
 
-      {/*
-        #2355 replaces this with a dialog generated from the preview diff. Only
-        the spec-verbatim P7 sentence is carried here, so that change deletes no
-        copy it then has to re-author.
-      */}
       <ConfirmDialog
         open={confirming && selected !== null}
         onOpenChange={setConfirming}
@@ -309,10 +321,29 @@ export function WhoDecidesPanel(): ReactElement {
         confirmLabel={PRESET_ACTION_COPY.confirmLabel}
         cancelLabel={PRESET_ACTION_COPY.cancelLabel}
         isConfirming={applyPreset.isPending}
-        description={
+        confirmDisabled={isPresetConfirmBlocked(
+          previewQuery.data,
+          previewQuery.isLoading,
+          previewQuery.isError,
+        )}
+        /*
+          The description is a `<p>`, so it carries only the always-present P7
+          sentence — which is exactly the sentence that should be the dialog's
+          accessible description. Everything with structure goes in `body`.
+        */
+        description={WHO_DECIDES_PAGE_COPY.prospectiveOnly}
+        body={
           <>
-            {selected ? <p>{PRESET_CARD_COPY[selected].title}</p> : null}
-            <p>{WHO_DECIDES_PAGE_COPY.prospectiveOnly}</p>
+            {selected ? (
+              <p className="who-decides-confirm__preset">{PRESET_CARD_COPY[selected].title}</p>
+            ) : null}
+            <WhoDecidesPresetConfirm
+              preview={previewQuery.data}
+              isLoading={previewQuery.isLoading}
+              isError={previewQuery.isError}
+              connectionNames={connectionNames}
+              onRetry={() => void previewQuery.refetch()}
+            />
           </>
         }
         onConfirm={() => {
