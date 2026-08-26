@@ -13,7 +13,19 @@ import type {
   RegisterTransactionCommand,
 } from '../../domain/types/fiscalization.types';
 
-/** Result of one reconciliation attempt against an in-doubt record. */
+/**
+ * Result of one reconciliation attempt against an in-doubt record.
+ *
+ * `outcome` is drawn from the CLOSED {@link FiscalReconcileOutcome} vocabulary,
+ * so a surface offering "check with the provider" can state every answer it may
+ * get back rather than promising a resolution the check cannot always deliver
+ * (ADR-042 amendment #2502, decision 3). Exactly one of the four values is
+ * returned; a failed CHECK is not among them and throws
+ * `FiscalReconcileCheckFailedException` instead.
+ *
+ * Only `resolved` writes to the record. The other three leave it exactly as it
+ * was, and none of them licenses a resend.
+ */
 export interface FiscalReconcileResult {
   outcome: FiscalReconcileOutcome;
   record: FiscalRegistrationRecord;
@@ -91,7 +103,10 @@ export interface IFiscalRegistrationService {
    * later.
    *
    * Throws `FiscalRegistrationNotInDoubtException` when the record is in any
-   * other state.
+   * other state, and `FiscalReconcileCheckFailedException` when the provider
+   * could not be ASKED - a transport failure is not an answer, and reporting it
+   * as `unsupported` would state a structural fact about the adapter where the
+   * truth is a transient one about the network. Neither throw writes anything.
    */
   reconcileInDoubt(recordId: string): Promise<FiscalReconcileResult>;
 }

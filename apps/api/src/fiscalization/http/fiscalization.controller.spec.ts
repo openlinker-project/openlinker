@@ -14,6 +14,7 @@
  */
 import { Test } from '@nestjs/testing';
 import {
+  BadGatewayException,
   BadRequestException,
   ConflictException,
   NotFoundException,
@@ -21,6 +22,8 @@ import {
 } from '@nestjs/common';
 import {
   FISCAL_REGISTRATION_SERVICE_TOKEN,
+  FiscalReconcileCheckFailedException,
+  FiscalReconcileOutcomeValues,
   FiscalRegistrationNotInDoubtException,
   FiscalRegistrationRecord,
   FiscalRegistrationRecordNotFoundException,
@@ -383,6 +386,56 @@ describe('FiscalizationController', () => {
 
       expect(response.outcome).toBe('unsupported');
       expect(response.record.failureMode).toBe('in-doubt');
+    });
+
+    it.each(FiscalReconcileOutcomeValues)(
+      'should surface the `%s` outcome verbatim',
+      async (outcome) => {
+        // A panel offering "check with the provider" must be able to render
+        // every answer the check can return, so each one has to reach it
+        // unchanged rather than being collapsed into a boolean.
+        service.reconcileInDoubt.mockResolvedValue({
+          outcome,
+          record:
+            outcome === 'resolved'
+              ? registrationRecord()
+              : registrationRecord({ status: 'failed', failureMode: 'in-doubt' }),
+        });
+
+        const response = await controller.reconcile('11111111-1111-1111-1111-111111111111');
+
+        expect(response.outcome).toBe(outcome);
+      },
+    );
+
+    it('should leave the record untouched on every non-resolving outcome', async () => {
+      // `not-found`, `unsupported` and `still-unknown` all mean the record stays
+      // in doubt - none of them may look like progress to a caller.
+      for (const outcome of ['not-found', 'unsupported', 'still-unknown'] as const) {
+        service.reconcileInDoubt.mockResolvedValue({
+          outcome,
+          record: registrationRecord({ status: 'failed', failureMode: 'in-doubt' }),
+        });
+
+        const response = await controller.reconcile('11111111-1111-1111-1111-111111111111');
+
+        expect(response.outcome).toBe(outcome);
+        expect(response.record.status).toBe('failed');
+        expect(response.record.failureMode).toBe('in-doubt');
+      }
+    });
+
+    it('should 502 when the provider could not be asked, never report it as an outcome', async () => {
+      // A failed CHECK is upstream and retryable. Reporting it as `unsupported`
+      // would assert a structural fact about the adapter and tell an operator to
+      // stop retrying something transient.
+      service.reconcileInDoubt.mockRejectedValue(
+        new FiscalReconcileCheckFailedException('rec-1', 'conn-1', 'socket hang up'),
+      );
+
+      await expect(
+        controller.reconcile('11111111-1111-1111-1111-111111111111'),
+      ).rejects.toBeInstanceOf(BadGatewayException);
     });
 
     it('should 409 when the record is not an in-doubt failure', async () => {

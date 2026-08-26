@@ -47,6 +47,7 @@ import { isTaxRateEnforced } from '@openlinker/core/sales-documents';
 import { OrderAlreadyRegisteredException } from '../../domain/exceptions/order-already-registered.exception';
 import { OrderAlreadyHasInvoiceException } from '../../domain/exceptions/order-already-has-invoice.exception';
 import { FiscalRegistrationContendedException } from '../../domain/exceptions/fiscal-registration-contended.exception';
+import { FiscalReconcileCheckFailedException } from '../../domain/exceptions/fiscal-reconcile-check-failed.exception';
 import { FISCAL_REGISTRATION_RECORD_REPOSITORY_TOKEN } from '../../fiscalization.tokens';
 import type {
   FiscalRegistrationFailureMode,
@@ -353,16 +354,40 @@ export class FiscalRegistrationService implements IFiscalRegistrationService {
       return { outcome: 'unsupported', record };
     }
 
+    // A THROW is not an answer (#2522). The locator contract already forbids
+    // reading one as "no match"; wrapping it here keeps it out of the four
+    // outcomes entirely, so a network failure can never be reported as
+    // `unsupported` - which is a structural fact about the adapter and would
+    // tell an operator to stop retrying something that is merely transient.
+    // Nothing is written on this path: the record stays exactly as it was.
+    //
+    // Scoped to the LOOKUP alone. Adapter RESOLUTION failures above are a
+    // connection-configuration fault and keep propagating unwrapped, so the
+    // global filter classifies them as themselves.
+    let raw: unknown;
+    try {
+      raw = await adapter.locateByQuery({
+        idempotencyKey: record.idempotencyKey,
+        orderId: record.orderId,
+      });
+    } catch (error) {
+      // The bounded INTERNAL diagnostic goes here, never to the caller.
+      this.logger.warn(
+        `Could not ask the provider on connection ${record.connectionId} about record ` +
+          `${recordId}; leaving it in doubt: ${this.sanitizeError(error)}`,
+      );
+      throw new FiscalReconcileCheckFailedException(
+        recordId,
+        record.connectionId,
+        this.describeCheckFailure(error),
+      );
+    }
+
     // Normalised rather than trusted: an out-of-tree adapter compiled against a
     // pre-#2502 `libs/core` still answers with the old
     // `FiscalLocateResult | null` shape, and reading `.status` off that would
     // throw on an operator's reconcile click.
-    const answer = readFiscalLocateAnswer(
-      await adapter.locateByQuery({
-        idempotencyKey: record.idempotencyKey,
-        orderId: record.orderId,
-      }),
-    );
+    const answer = readFiscalLocateAnswer(raw);
 
     if (answer.status === 'held') {
       // The provider HAS the sale and has not registered it (ADR-042 amendment
@@ -719,5 +744,28 @@ export class FiscalRegistrationService implements IFiscalRegistrationService {
   private sanitizeError(error: unknown): string {
     const message = error instanceof Error ? error.message : String(error);
     return message.slice(0, MAX_ERROR_MESSAGE_LENGTH);
+  }
+
+  /**
+   * Operator-facing summary of why the provider could not be asked. This string
+   * REACHES AN API CALLER, so it is built the same way `deriveFailureReason`
+   * builds its terminal-rejection copy: trust only the neutral `reason` an
+   * adapter deliberately stamped on the throwable, and otherwise say a fixed
+   * sentence.
+   *
+   * It must never fall back to `error.message`. An adapter is
+   * third-party-shaped and may interpolate a URL, a request body or
+   * buyer-supplied data into that message - the exact reason `sanitizeError`'s
+   * output is stored and never returned. Truncating such a message bounds its
+   * length, not its content. The bounded internal detail goes to the log
+   * instead, which is where the caller-facing sentence's missing specifics live.
+   */
+  private describeCheckFailure(error: unknown): string {
+    const reason = (error as NeutralFailureCarrier | null)?.reason;
+    const text = typeof reason === 'string' ? reason.trim() : '';
+    return (text.length > 0 ? text : 'the provider could not be reached').slice(
+      0,
+      MAX_FAILURE_REASON_LENGTH,
+    );
   }
 }
