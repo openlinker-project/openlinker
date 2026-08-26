@@ -30,8 +30,18 @@
  * @see docs/engineering-standards.md#import-aliases
  * @see libs/core/src/__tests__/barrel-purity.spec.ts
  */
-import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs';
+import {
+  readFileSync,
+  readdirSync,
+  existsSync,
+  statSync,
+  mkdtempSync,
+  mkdirSync,
+  writeFileSync,
+  rmSync,
+} from 'node:fs';
 import { join, sep } from 'node:path';
+import { tmpdir } from 'node:os';
 
 const CORE_SRC = 'libs/core/src';
 const ALLOWED_RE_EXPORT_PREFIX = './domain/types/';
@@ -83,13 +93,13 @@ function stripComments(source) {
  * would carry the identical package-exports subpath and otherwise evade this
  * guard entirely.
  */
-function findTypesSubBarrels() {
-  if (!existsSync(CORE_SRC)) return [];
+function findTypesSubBarrels(root = CORE_SRC) {
+  if (!existsSync(root)) return [];
   const candidates = [];
-  for (const entry of readdirSync(CORE_SRC, { withFileTypes: true })) {
+  for (const entry of readdirSync(root, { withFileTypes: true })) {
     if (!entry.isDirectory()) continue;
-    candidates.push(join(CORE_SRC, entry.name, 'types.ts'));
-    candidates.push(join(CORE_SRC, entry.name, 'types', 'index.ts'));
+    candidates.push(join(root, entry.name, 'types.ts'));
+    candidates.push(join(root, entry.name, 'types', 'index.ts'));
   }
   return candidates.filter((file) => existsSync(file) && statSync(file).isFile());
 }
@@ -201,11 +211,42 @@ function run() {
 
     // DISCOVERY: the directory form carries the same package-exports subpath,
     // so a walker that finds only the flat file leaves it ungoverned.
-    const discovered = findTypesSubBarrels().map((file) => file.split(sep).join('/'));
-    checked += 1;
-    if (!discovered.every((file) => file.endsWith('/types.ts') || file.endsWith('/types/index.ts'))) {
-      console.error(`  discovery returned an unexpected shape: ${discovered.join(', ')}`);
-      failed += 1;
+    //
+    // Run against a TEMPORARY FIXTURE, not the real tree: no `types/index.ts`
+    // exists in the repo today, so an assertion over the real tree would
+    // iterate flat files only and could never fail - a self-check that cannot
+    // fail is worse than none, because it reports coverage it does not have.
+    const fixtureRoot = mkdtempSync(join(tmpdir(), 'ol-types-sub-barrel-'));
+    try {
+      mkdirSync(join(fixtureRoot, 'flat'), { recursive: true });
+      writeFileSync(
+        join(fixtureRoot, 'flat', 'types.ts'),
+        "export type { A } from './domain/types/a.types';\n",
+      );
+      mkdirSync(join(fixtureRoot, 'nested', 'types'), { recursive: true });
+      writeFileSync(
+        join(fixtureRoot, 'nested', 'types', 'index.ts'),
+        "export type { B } from './domain/types/b.types';\n",
+      );
+      // A neighbouring index that is NOT a types sub-barrel must be ignored.
+      mkdirSync(join(fixtureRoot, 'unrelated'), { recursive: true });
+      writeFileSync(join(fixtureRoot, 'unrelated', 'index.ts'), 'export const x = 1;\n');
+
+      const discovered = findTypesSubBarrels(fixtureRoot)
+        .map((file) => file.split(sep).join('/'))
+        .sort();
+      checked += 1;
+      const foundFlat = discovered.some((file) => file.endsWith('/flat/types.ts'));
+      const foundNested = discovered.some((file) => file.endsWith('/nested/types/index.ts'));
+      const foundUnrelated = discovered.some((file) => file.endsWith('/unrelated/index.ts'));
+      if (!foundFlat || !foundNested || foundUnrelated || discovered.length !== 2) {
+        console.error(
+          `  discovery case: expected exactly the flat and nested sub-barrels, got [${discovered.join(', ')}]`,
+        );
+        failed += 1;
+      }
+    } finally {
+      rmSync(fixtureRoot, { recursive: true, force: true });
     }
 
     if (failed > 0) {
