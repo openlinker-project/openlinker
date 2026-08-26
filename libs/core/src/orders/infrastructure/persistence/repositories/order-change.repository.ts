@@ -26,6 +26,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, IsNull, QueryFailedError, Repository } from 'typeorm';
 import { OrderChange } from '../../../domain/entities/order-change.entity';
+import { OrderChangeVocabularyError } from '../../../domain/exceptions/order-change-vocabulary.error';
 import type {
   InsertOrderChangeResult,
   OrderChangeRepositoryPort,
@@ -88,7 +89,7 @@ export class OrderChangeRepository implements OrderChangeRepositoryPort {
     entity.requestedBy = input.requestedBy;
     entity.requestedAt = input.requestedAt;
     entity.confirmedBy = null;
-    entity.confirmedAt = null;
+    entity.terminalisedAt = null;
     entity.declinedReason = null;
     entity.appliedAt = null;
 
@@ -123,7 +124,7 @@ export class OrderChangeRepository implements OrderChangeRepositoryPort {
   ): Promise<boolean> {
     const result = await this.repository.update(
       { id, status: 'requested' },
-      { status: 'confirmed', confirmedAt: at, confirmedBy }
+      { status: 'confirmed', terminalisedAt: at, confirmedBy }
     );
     return (result.affected ?? 0) > 0;
   }
@@ -131,7 +132,7 @@ export class OrderChangeRepository implements OrderChangeRepositoryPort {
   async decline(id: string, at: Date, reason: string): Promise<boolean> {
     const result = await this.repository.update(
       { id, status: 'requested' },
-      { status: 'declined', confirmedAt: at, declinedReason: reason }
+      { status: 'declined', terminalisedAt: at, declinedReason: reason }
     );
     return (result.affected ?? 0) > 0;
   }
@@ -139,7 +140,7 @@ export class OrderChangeRepository implements OrderChangeRepositoryPort {
   async expire(id: string, at: Date): Promise<boolean> {
     const result = await this.repository.update(
       { id, status: In([...OPEN_ORDER_CHANGE_STATUSES]) },
-      { status: 'expired', confirmedAt: at }
+      { status: 'expired', terminalisedAt: at }
     );
     return (result.affected ?? 0) > 0;
   }
@@ -169,14 +170,10 @@ export class OrderChangeRepository implements OrderChangeRepositoryPort {
    */
   private toDomain(entity: OrderChangeOrmEntity): OrderChange {
     if (!isOrderChangeKind(entity.kind)) {
-      throw new Error(
-        `order_changes row ${entity.id} carries an unrecognised kind "${entity.kind}"`
-      );
+      throw new OrderChangeVocabularyError(entity.id, 'kind', entity.kind);
     }
     if (!isOrderChangeStatus(entity.status)) {
-      throw new Error(
-        `order_changes row ${entity.id} carries an unrecognised status "${entity.status}"`
-      );
+      throw new OrderChangeVocabularyError(entity.id, 'status', entity.status);
     }
 
     const kind: OrderChangeKind = entity.kind;
@@ -192,7 +189,7 @@ export class OrderChangeRepository implements OrderChangeRepositoryPort {
       entity.requestedBy,
       entity.requestedAt,
       entity.confirmedBy,
-      entity.confirmedAt,
+      entity.terminalisedAt,
       entity.declinedReason,
       entity.appliedAt,
       entity.createdAt,

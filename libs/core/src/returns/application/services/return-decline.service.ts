@@ -54,8 +54,10 @@ import { Logger } from '@openlinker/shared/logging';
 import type { ReturnRecord } from '../../domain/entities/return-record.entity';
 import { ReturnDeclineUnsupportedError } from '../../domain/exceptions/return-decline-unsupported.error';
 import { ReturnDeclineRejectedBySourceError } from '../../domain/exceptions/return-decline-rejected-by-source.error';
+import { ReturnDeclineInvalidRequestError } from '../../domain/exceptions/return-decline-invalid-request.error';
 import { ReturnNotAttributedError } from '../../domain/exceptions/return-not-attributed.error';
 import { ReturnRepositoryPort } from '../../domain/ports/return-repository.port';
+import type { ReturnDeclineResult } from '../../domain/types/return-decline.types';
 import type { ReturnDownstreamTrigger } from '../../domain/types/return-trigger.types';
 import { RETURN_REPOSITORY_TOKEN, RETURNS_SERVICE_TOKEN } from '../../returns.tokens';
 import { IReturnsService } from './returns.service.interface';
@@ -151,7 +153,7 @@ export class ReturnDeclineService implements IReturnDeclineService {
       };
     }
 
-    let result;
+    let result: ReturnDeclineResult;
     try {
       result = await decliner.declineReturn({
         externalReturnId,
@@ -159,6 +161,19 @@ export class ReturnDeclineService implements IReturnDeclineService {
         comment: input.comment,
       });
     } catch (error) {
+      if (error instanceof ReturnDeclineInvalidRequestError) {
+        // OL's own pre-flight refused the request, so nothing was asked and
+        // nobody refused. Recording it via `decline` would attribute an
+        // operator-supplied field's fault to the source (`declinedReason` means
+        // the AUTHORITY's words). The proposal is ABANDONED — expired, not
+        // declined — so the corrected retry is not blocked behind the TTL.
+        await this.orderChanges.abandon(change.id);
+        this.logger.warn(
+          `Decline of return ${record.id} failed OL's own validation (change ${change.id}, abandoned): ${error.message}`
+        );
+        throw error;
+      }
+
       if (error instanceof ReturnDeclineRejectedBySourceError) {
         // A deterministic refusal becomes a queryable outcome rather than a
         // swallowed error — ADR-044's headline benefit.

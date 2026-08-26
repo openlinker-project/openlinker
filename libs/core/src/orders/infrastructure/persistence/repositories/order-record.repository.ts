@@ -11,7 +11,15 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import type { DataSource, EntityManager, SelectQueryBuilder } from 'typeorm';
-import { In, IsNull, LessThan, MoreThanOrEqual, Not, Repository } from 'typeorm';
+import {
+  getMetadataArgsStorage,
+  In,
+  IsNull,
+  LessThan,
+  MoreThanOrEqual,
+  Not,
+  Repository,
+} from 'typeorm';
 import type { OrderSyncStatusJson, SyncAttemptJson } from '../entities/order-record.orm-entity';
 import { OrderRecordOrmEntity } from '../entities/order-record.orm-entity';
 import { OrderLineItemOrmEntity } from '../entities/order-line-item.orm-entity';
@@ -58,6 +66,37 @@ import type {
   DailyOrderAggregateRow,
   SalesAnalyticsFilters,
 } from '../../../domain/types/order-sales-analytics.types';
+
+/**
+ * Empty defaults for the columns whose "unwritten" value is not `null`, keyed
+ * by ORM property name. Consumed by `fromRawRow`'s derived reset; every other
+ * column resets to `null`. Factories, not shared literals, so no two returned
+ * entities can alias one array.
+ */
+const EMPTY_COLUMN_DEFAULTS: Record<string, (() => unknown) | undefined> = {
+  syncStatus: () => [],
+  syncAttempts: () => [],
+};
+
+/**
+ * Every mapped column of `order_records`, by ORM property name.
+ *
+ * Read from TypeORM's decorator metadata storage rather than from the injected
+ * `Repository`'s `metadata`, so the derivation holds under a unit test's mocked
+ * repository — a reset guarantee that only works when a DataSource happens to
+ * be initialised is not a guarantee. The result is memoised: the decorators run
+ * once at module load and the answer cannot change afterwards.
+ */
+let orderRecordColumnPropertiesCache: readonly string[] | null = null;
+
+function orderRecordColumnProperties(): readonly string[] {
+  if (orderRecordColumnPropertiesCache === null) {
+    orderRecordColumnPropertiesCache = getMetadataArgsStorage()
+      .filterColumns(OrderRecordOrmEntity)
+      .map((column) => column.propertyName);
+  }
+  return orderRecordColumnPropertiesCache;
+}
 
 @Injectable()
 export class OrderRecordRepository implements OrderRecordRepositoryPort {
@@ -1625,12 +1664,17 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     // `cancelledAt` (#1984), the three `salesDocument*` columns (#2100) and the
     // six FX snapshot columns `reportingCurrency` / `reportingTotalAmount` /
     // `exchangeRateId` / `fxRule` / `fxStampedAt` / `fxIntendedCurrency`
-    // (#2124), `packedAt` / `packedByUserId` (#2287), and `lastAmendedAt` /
-    // `lastAmendmentChanges` (#2283). Do not add one of
-    // them to either half of this statement - each has a narrow, atomic
-    // out-of-band writer that owns it.
+    // (#2124), `packedAt` / `packedByUserId` (#2287), `lastAmendedAt` /
+    // `lastAmendmentChanges` (#2283), `salesDocumentBlockedAt` /
+    // `salesDocumentBlockReleasedAt`, `taxRateEra`, and the four #1985
+    // analytics scalars (`placedAt` / `currency` / `taxTreatment` /
+    // `totalAmount`, which only `upsertWithLineItems` writes). Do not add one
+    // of them to either half of this statement - each has a narrow, atomic
+    // out-of-band writer that owns it. This list is illustrative only:
+    // `fromRawRow` DERIVES the reset from the statement's write set, so it
+    // does not need maintaining when a column is added.
     const entity = this.toOrm(orderRecord);
-    const { sql, params } = this.buildFrozenAttributionUpsert(entity, false);
+    const { sql, params, writeSet } = this.buildFrozenAttributionUpsert(entity, false);
 
     const rows = (await this.repository.query(sql, params)) as unknown;
 
@@ -1639,7 +1683,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       throw new OrderRecordNotFoundException(orderRecord.internalOrderId);
     }
 
-    return this.toDomain(this.fromRawRow(rows[0] as Record<string, unknown>));
+    return this.toDomain(this.fromRawRow(rows[0] as Record<string, unknown>, writeSet));
   }
 
   /**
@@ -1668,76 +1712,68 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
   private buildFrozenAttributionUpsert(
     entity: OrderRecordOrmEntity,
     includeAnalyticsColumns: boolean
-  ): { sql: string; params: unknown[] } {
-    const insertColumns = [
-      '"internalOrderId"',
-      '"customerId"',
-      '"sourceConnectionId"',
-      '"sourceEventId"',
-      '"orderSnapshot"',
-      '"recordStatus"',
-      '"mappingFailureReason"',
-      '"dispatchByAt"',
-      '"createdAt"',
-      '"updatedAt"',
-    ];
-    const insertValues = [
-      '$1',
-      '$2',
-      '$3',
-      '$4',
-      '$5::jsonb',
-      '$6',
-      '$7',
-      '$8',
-      '$9',
-      '$10',
-    ];
-    const updateAssignments = [
-      '"customerId" = EXCLUDED."customerId"',
-      // Source attribution (#2282): "sourceConnectionId" is absent from this
-      // SET list on purpose. "sourceEventId" advances only when the write
-      // comes from the row's own source.
-      `"sourceEventId" = CASE
+  ): { sql: string; params: unknown[]; writeSet: ReadonlySet<string> } {
+    const insertColumns: string[] = [];
+    const insertValues: string[] = [];
+    const updateAssignments: string[] = [];
+    const params: unknown[] = [];
+    const writeSet = new Set<string>();
+
+    /**
+     * The one place a column joins the statement. Column name, value and
+     * placeholder are pushed together, so the three arrays cannot fall out of
+     * alignment — the previous hand-maintained parallel form needed three
+     * coordinated edits per column, and an off-by-one there wrote a column
+     * with the WRONG value rather than erroring.
+     *
+     * `cast` carries the `::jsonb` the snapshot column needs; `update` is the
+     * SET-half expression, `null` for a column that is INSERT-ONLY.
+     */
+    const add = (
+      column: string,
+      value: unknown,
+      options: { cast?: string; update?: string | null } = {}
+    ): void => {
+      params.push(value);
+      insertColumns.push(`"${column}"`);
+      insertValues.push(`$${params.length}${options.cast ?? ''}`);
+      writeSet.add(column);
+      const update =
+        options.update === undefined ? `"${column}" = EXCLUDED."${column}"` : options.update;
+      if (update !== null) {
+        updateAssignments.push(update);
+      }
+    };
+
+    // "internalOrderId" is the conflict target; updating it is meaningless.
+    add('internalOrderId', entity.internalOrderId, { update: null });
+    add('customerId', entity.customerId);
+    // Source attribution (#2282): "sourceConnectionId" is INSERT-ONLY.
+    add('sourceConnectionId', entity.sourceConnectionId, { update: null });
+    // "sourceEventId" advances only when the write comes from the row's own
+    // source; a cross-source write leaves it as committed.
+    add('sourceEventId', entity.sourceEventId, {
+      update: `"sourceEventId" = CASE
            WHEN "order_records"."sourceConnectionId" = EXCLUDED."sourceConnectionId"
              THEN EXCLUDED."sourceEventId"
            ELSE "order_records"."sourceEventId"
          END`,
-      '"orderSnapshot" = EXCLUDED."orderSnapshot"',
-      '"recordStatus" = EXCLUDED."recordStatus"',
-      '"mappingFailureReason" = EXCLUDED."mappingFailureReason"',
-      '"dispatchByAt" = EXCLUDED."dispatchByAt"',
-      // "createdAt" is deliberately NOT updated: it records the first write.
-      '"updatedAt" = EXCLUDED."updatedAt"',
-    ];
-    const params: unknown[] = [
-      entity.internalOrderId,
-      entity.customerId,
-      entity.sourceConnectionId,
-      entity.sourceEventId,
-      // Serialized explicitly rather than relying on the driver's object
-      // handling, so the jsonb column receives a document in every case.
-      JSON.stringify(entity.orderSnapshot ?? {}),
-      entity.recordStatus,
-      entity.mappingFailureReason,
-      entity.dispatchByAt,
-      entity.createdAt,
-      entity.updatedAt,
-    ];
+    });
+    // Serialized explicitly rather than relying on the driver's object
+    // handling, so the jsonb column receives a document in every case.
+    add('orderSnapshot', JSON.stringify(entity.orderSnapshot ?? {}), { cast: '::jsonb' });
+    add('recordStatus', entity.recordStatus);
+    add('mappingFailureReason', entity.mappingFailureReason);
+    add('dispatchByAt', entity.dispatchByAt);
+    // "createdAt" is deliberately NOT updated: it records the first write.
+    add('createdAt', entity.createdAt, { update: null });
+    add('updatedAt', entity.updatedAt);
 
     if (includeAnalyticsColumns) {
-      const analytics: Array<[string, unknown]> = [
-        ['"placedAt"', entity.placedAt ?? null],
-        ['"currency"', entity.currency ?? null],
-        ['"taxTreatment"', entity.taxTreatment ?? null],
-        ['"totalAmount"', entity.totalAmount ?? null],
-      ];
-      for (const [column, value] of analytics) {
-        params.push(value);
-        insertColumns.push(column);
-        insertValues.push(`$${params.length}`);
-        updateAssignments.push(`${column} = EXCLUDED.${column}`);
-      }
+      add('placedAt', entity.placedAt ?? null);
+      add('currency', entity.currency ?? null);
+      add('taxTreatment', entity.taxTreatment ?? null);
+      add('totalAmount', entity.totalAmount ?? null);
     }
 
     const sql = `INSERT INTO "order_records" (
@@ -1747,7 +1783,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
          ${updateAssignments.join(',\n         ')}
        RETURNING *`;
 
-    return { sql, params };
+    return { sql, params, writeSet };
   }
 
   /**
@@ -1760,35 +1796,41 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    * promises callers that those columns read empty and must be re-read via
    * {@link findById}. Passing the true values through would silently change
    * what both `OrderRecordService` call sites return.
+   *
+   * The reset set is DERIVED, not enumerated: every mapped column of
+   * `order_records` that the statement did not write is reset. A hand-kept
+   * list is what let six columns brought forward from main
+   * (`salesDocumentBlockedAt` / `salesDocumentBlockReleasedAt`, plus
+   * `placedAt` / `currency` / `taxTreatment` / `totalAmount` on the
+   * analytics-free `upsert` path) escape the guarantee the docblock states —
+   * the same drift argument {@link buildFrozenAttributionUpsert} makes about
+   * forked statements, one layer up. Deriving it means a column added to the
+   * ORM entity is covered on the day it is added.
+   *
+   * Two standing assumptions, both asserted by the repository's unit spec: the
+ * statement quotes PROPERTY names, so this match is sound only while no column
+ * renames its database name; and the write set is the statement's own, so the
+ * two can never disagree about which columns were written.
+ *
+ * The empty default is `null` for every column except the two `jsonb`
+   * array columns whose DB default is `'[]'` (mapped in
+   * {@link EMPTY_COLUMN_DEFAULTS}); a future NOT NULL column with a scalar
+   * DB default would surface loudly at the domain mapping rather than
+   * silently reporting a true out-of-band value.
    */
-  private fromRawRow(row: Record<string, unknown>): OrderRecordOrmEntity {
+  private fromRawRow(
+    row: Record<string, unknown>,
+    writeSet: ReadonlySet<string>
+  ): OrderRecordOrmEntity {
     const entity = Object.assign(new OrderRecordOrmEntity(), row);
-    entity.syncStatus = [];
-    entity.syncAttempts = [];
-    entity.fulfillmentState = null;
-    entity.cancelledAt = null;
-    entity.salesDocumentBlockReason = null;
-    entity.salesDocumentUnresolvedReason = null;
-    entity.salesDocumentBlockDetail = null;
-    entity.reportingCurrency = null;
-    entity.reportingTotalAmount = null;
-    entity.exchangeRateId = null;
-    entity.fxRule = null;
-    entity.fxStampedAt = null;
-    entity.fxIntendedCurrency = null;
-    // #2287: reset like every other out-of-band column. `RETURNING *` DOES
-    // carry the row's true packed fact, but surfacing it here would make
-    // `upsert`'s return value inconsistent with its documented contract - and
-    // inconsistently so, since the pre-#2282 `save()` path could not have
-    // reported it. The row itself is untouched; callers needing the live value
-    // re-read via `findById`.
-    entity.packedAt = null;
-    entity.packedByUserId = null;
-    // #2283: same reset, same reason. `recordAmendment` owns both columns; the
-    // upsert never writes them, so reporting the row's true values here would
-    // break `upsert`'s documented all-out-of-band-columns-read-empty contract.
-    entity.lastAmendedAt = null;
-    entity.lastAmendmentChanges = null;
+
+    for (const property of orderRecordColumnProperties()) {
+      if (writeSet.has(property)) {
+        continue;
+      }
+      entity[property] = EMPTY_COLUMN_DEFAULTS[property]?.() ?? null;
+    }
+
     return entity;
   }
 
@@ -1822,7 +1864,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     entity.currency = orderRecord.currency;
     entity.taxTreatment = orderRecord.taxTreatment;
     entity.totalAmount = orderRecord.totalAmount;
-    const { sql, params } = this.buildFrozenAttributionUpsert(entity, true);
+    const { sql, params, writeSet } = this.buildFrozenAttributionUpsert(entity, true);
     const savedRecord = await this.dataSource.transaction(async (manager: EntityManager) => {
       // Same statement as `upsert`, one parameter apart (#2282): a full-object
       // `save()` here UPDATEd `sourceConnectionId` and re-attributed the order.
@@ -1831,7 +1873,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
         // Unreachable: `ON CONFLICT ... DO UPDATE` always produces a row.
         throw new OrderRecordNotFoundException(orderRecord.internalOrderId);
       }
-      const saved = this.fromRawRow(rows[0] as Record<string, unknown>);
+      const saved = this.fromRawRow(rows[0] as Record<string, unknown>, writeSet);
       await manager.delete(OrderLineItemOrmEntity, { orderRecordId: orderRecord.internalOrderId });
       if (lineItems.length > 0) {
         await manager.save(

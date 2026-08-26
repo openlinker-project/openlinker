@@ -14,6 +14,7 @@ import { ReturnDeclineUnsupportedError } from '../../../domain/exceptions/return
 import { ReturnNotAttributedError } from '../../../domain/exceptions/return-not-attributed.error';
 import { ReturnNotFoundError } from '../../../domain/exceptions/return-not-found.error';
 import { ReturnDeclineRejectedBySourceError } from '../../../domain/exceptions/return-decline-rejected-by-source.error';
+import { ReturnDeclineInvalidRequestError } from '../../../domain/exceptions/return-decline-invalid-request.error';
 import type { ReturnRepositoryPort } from '../../../domain/ports/return-repository.port';
 import { ReturnDeclineService } from '../return-decline.service';
 import { ReturnsService } from '../returns.service';
@@ -78,6 +79,7 @@ describe('ReturnDeclineService', () => {
         .mockResolvedValue({ change: buildChange(), opened: true, expiredStale: false }),
       confirm: jest.fn().mockResolvedValue(true),
       decline: jest.fn().mockResolvedValue(true),
+      abandon: jest.fn().mockResolvedValue(true),
       claimApplied: jest.fn().mockResolvedValue(true),
       findLatestByTarget: jest.fn().mockResolvedValue(null),
     };
@@ -256,6 +258,26 @@ describe('ReturnDeclineService', () => {
     expect(result.outcome).toBe('refused');
     expect(result.refusalReason).toBe('Return already settled');
     expect(orderChanges.decline).toHaveBeenCalledWith('change-1', 'Return already settled');
+    expect(repository.claimDeclinedAt).not.toHaveBeenCalled();
+  });
+
+  it('should abandon the proposal and rethrow when OL own pre-flight refuses the request', async () => {
+    // A LOCAL validation fault is not the authority's refusal: nothing was
+    // sent, so `declinedReason` — the authority's words — must stay untouched
+    // and the proposal is expired rather than declined, freeing the slot for
+    // the corrected retry (Wave-1c review, finding 7).
+    repository.findById.mockResolvedValue(buildReturn());
+    declineReturn.mockRejectedValue(
+      new ReturnDeclineInvalidRequestError('ext-return-1', 'reasonCode', 'not a known code')
+    );
+
+    await expect(service.decline(input)).rejects.toBeInstanceOf(
+      ReturnDeclineInvalidRequestError
+    );
+
+    expect(orderChanges.abandon).toHaveBeenCalledWith('change-1');
+    expect(orderChanges.decline).not.toHaveBeenCalled();
+    expect(orderChanges.confirm).not.toHaveBeenCalled();
     expect(repository.claimDeclinedAt).not.toHaveBeenCalled();
   });
 

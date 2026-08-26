@@ -11,6 +11,7 @@
  */
 import type { ArgumentsHost } from '@nestjs/common';
 import {
+  ReturnDeclineInvalidRequestError,
   ReturnDeclineUnsupportedError,
   ReturnNotAttributedError,
   ReturnNotFoundError,
@@ -89,6 +90,25 @@ describe('ReturnsExceptionFilter', () => {
     // Only the one exception that HAS a trigger reports one — the key is absent
     // rather than null, so a consumer cannot read a blocked trigger that does
     // not exist.
+    expect('trigger' in body).toBe(false);
+  });
+
+  it('should answer 400 when OL own pre-flight refuses the decline request', () => {
+    // Distinct from the by-source refusal: nothing was sent, so this is the
+    // operator's field to correct (Wave-1c review, finding 7).
+    const { host, captured } = createHost();
+
+    filter.catch(
+      new ReturnDeclineInvalidRequestError('ext-return-1', 'reasonCode', 'not a known code'),
+      host,
+    );
+
+    expect(captured.status).toHaveBeenCalledWith(400);
+    const body = captured.body ?? {};
+    expect(body).toMatchObject({
+      statusCode: 400,
+      error: 'ReturnDeclineInvalidRequestError',
+    });
     expect('trigger' in body).toBe(false);
   });
 });

@@ -32,7 +32,7 @@ import type { AllegroCustomerReturnWire } from '../../../domain/types/allegro-cu
 import type { IAllegroHttpClient } from '../../http/allegro-http-client.interface';
 import { Connection } from '@openlinker/core/identifier-mapping';
 import { isReturnDecliner, isReturnSourceReader } from '@openlinker/core/orders';
-import { ReturnDeclineRejectedBySourceError } from '@openlinker/core/returns';
+import { ReturnDeclineInvalidRequestError } from '@openlinker/core/returns';
 import { AllegroApiException } from '../../../domain/exceptions/allegro-api.exception';
 
 const connectionId = 'connection-returns';
@@ -471,7 +471,8 @@ describe('AllegroOrderSourceAdapter — ReturnDecliner (#2333)', () => {
         reasonCode: 'NOPE',
         comment: null,
       })
-    ).rejects.toBeInstanceOf(ReturnDeclineRejectedBySourceError);
+      // A LOCAL validation fault, never the source's refusal — nothing was sent.
+    ).rejects.toBeInstanceOf(ReturnDeclineInvalidRequestError);
     expect(httpClient.post).not.toHaveBeenCalled();
   });
 
@@ -482,7 +483,7 @@ describe('AllegroOrderSourceAdapter — ReturnDecliner (#2333)', () => {
         reasonCode: 'REFUND_REJECTED',
         comment: '   ',
       })
-    ).rejects.toBeInstanceOf(ReturnDeclineRejectedBySourceError);
+    ).rejects.toBeInstanceOf(ReturnDeclineInvalidRequestError);
     expect(httpClient.post).not.toHaveBeenCalled();
   });
 

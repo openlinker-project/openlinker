@@ -30,7 +30,10 @@ import type {
   ReturnFeedItem,
   ReturnFeedOutput,
 } from '@openlinker/core/returns';
-import { ReturnDeclineRejectedBySourceError } from '@openlinker/core/returns';
+import {
+  ReturnDeclineInvalidRequestError,
+  ReturnDeclineRejectedBySourceError,
+} from '@openlinker/core/returns';
 import type {
   OrderFeedInput,
   OrderFeedOutput,
@@ -565,12 +568,17 @@ export class AllegroOrderSourceAdapter
    * it locally turns a 400 into an immediate, explainable refusal. The neutral
    * error type is what keeps `AllegroApiException` — and the code list itself —
    * out of core.
+   *
+   * It is `ReturnDeclineInvalidRequestError`, NOT the by-source refusal: no
+   * request has been made at this point, so recording OL's own message as
+   * Allegro's would attribute a local validation fault to the marketplace.
    */
   private requireRejectionCode(command: ReturnDeclineCommand): string {
     const code = command.reasonCode?.trim() ?? '';
     if (!(ALLEGRO_RETURN_REJECTION_CODES as readonly string[]).includes(code)) {
-      throw new ReturnDeclineRejectedBySourceError(
+      throw new ReturnDeclineInvalidRequestError(
         command.externalReturnId,
+        'reasonCode',
         `"${command.reasonCode}" is not an Allegro rejection code (expected one of: ${ALLEGRO_RETURN_REJECTION_CODES.join(', ')})`
       );
     }
@@ -593,8 +601,10 @@ export class AllegroOrderSourceAdapter
 
     if (comment.length === 0) {
       if (code === ALLEGRO_RETURN_REJECTION_REASON_REQUIRED_FOR) {
-        throw new ReturnDeclineRejectedBySourceError(
+        // Local, pre-request — see `requireRejectionCode`.
+        throw new ReturnDeclineInvalidRequestError(
           command.externalReturnId,
+          'comment',
           `Allegro requires a reason when the rejection code is ${ALLEGRO_RETURN_REJECTION_REASON_REQUIRED_FOR}`
         );
       }

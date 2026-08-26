@@ -89,6 +89,12 @@ export class OrderChangeService implements IOrderChangeService {
     return this.repository.decline(id, new Date(), reason);
   }
 
+  async abandon(id: string): Promise<boolean> {
+    // `expire`, not `decline`: nobody was asked, so there is no authority
+    // refusal to record. See the interface docblock.
+    return this.repository.expire(id, new Date());
+  }
+
   async claimApplied(id: string): Promise<boolean> {
     return this.repository.claimApplied(id, new Date());
   }

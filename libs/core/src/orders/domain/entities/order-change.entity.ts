@@ -54,7 +54,11 @@ export class OrderChange {
     public readonly requestedBy: string | null,
     public readonly requestedAt: Date,
     public readonly confirmedBy: string | null,
-    public readonly confirmedAt: Date | null,
+    /**
+     * When the proposal reached a terminal status — confirmed, declined OR
+     * expired. Never read it as agreement; `status` names that.
+     */
+    public readonly terminalisedAt: Date | null,
     /** Why the AUTHORITY refused OL's request. Never why OL asked. */
     public readonly declinedReason: string | null,
     public readonly appliedAt: Date | null,

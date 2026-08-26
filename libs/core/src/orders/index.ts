@@ -225,6 +225,7 @@ export { OrderCreateContendedException } from './domain/exceptions/order-create-
 export { OrderSnapshotUnavailableError } from './domain/exceptions/order-snapshot-unavailable.error';
 export { DuplicateRefundRecordException } from './domain/exceptions/duplicate-refund-record.exception';
 export { RefundCurrencyMismatchException } from './domain/exceptions/refund-currency-mismatch.exception';
+export { OrderChangeVocabularyError } from './domain/exceptions/order-change-vocabulary.error';
 
 // Typed-Order accessor for cross-context command composition (#1119).
 export { orderFromReadySnapshot } from './domain/order-from-ready-snapshot';

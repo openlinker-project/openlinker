@@ -73,13 +73,13 @@ describe('Order Changes Schema Integration', () => {
 
     const rows = await query<{
       status: string;
-      confirmedAt: Date | null;
+      terminalisedAt: Date | null;
       appliedAt: Date | null;
       declinedReason: string | null;
-    }>(`SELECT "status", "confirmedAt", "appliedAt", "declinedReason" FROM "order_changes" WHERE "id" = $1`, [id]);
+    }>(`SELECT "status", "terminalisedAt", "appliedAt", "declinedReason" FROM "order_changes" WHERE "id" = $1`, [id]);
 
     expect(rows[0].status).toBe('requested');
-    expect(rows[0].confirmedAt).toBeNull();
+    expect(rows[0].terminalisedAt).toBeNull();
     expect(rows[0].appliedAt).toBeNull();
     expect(rows[0].declinedReason).toBeNull();
   });
@@ -151,7 +151,6 @@ describe('Order Changes Schema Integration', () => {
 
     expect(rows.map((row) => row.column_name)).toEqual([
       'appliedAt',
-      'confirmedAt',
       'confirmedBy',
       'createdAt',
       'declinedReason',
@@ -163,6 +162,7 @@ describe('Order Changes Schema Integration', () => {
       'requestedBy',
       'status',
       'targetRef',
+      'terminalisedAt',
       'updatedAt',
     ]);
   });

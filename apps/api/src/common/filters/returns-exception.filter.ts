@@ -29,6 +29,11 @@
  *   inapplicable. `detail` distinguishes "this platform has no such write" from
  *   "the connection could not be resolved", which are different things for an
  *   operator to act on.
+ * - `ReturnDeclineInvalidRequestError` → **400**. OL's OWN pre-flight refused
+ *   the request (a `reasonCode` outside the source's vocabulary, a
+ *   conditionally-mandatory field left blank). Deliberately NOT the by-source
+ *   refusal: nothing was sent, so nothing was refused by anyone but OL, and
+ *   `field` names what the operator must correct.
  *
  * A global filter rather than a controller-local catch, matching every other
  * domain exception in the tree (`CapabilityNotSupportedFilter` and siblings) —
@@ -45,6 +50,7 @@ import type { ArgumentsHost, ExceptionFilter } from '@nestjs/common';
 import { Catch, HttpStatus } from '@nestjs/common';
 import type { Response } from 'express';
 import {
+  ReturnDeclineInvalidRequestError,
   ReturnDeclineUnsupportedError,
   ReturnNotAttributedError,
   ReturnNotFoundError,
@@ -53,9 +59,15 @@ import {
 type ReturnDeclineRefusal =
   | ReturnNotFoundError
   | ReturnNotAttributedError
-  | ReturnDeclineUnsupportedError;
+  | ReturnDeclineUnsupportedError
+  | ReturnDeclineInvalidRequestError;
 
-@Catch(ReturnNotFoundError, ReturnNotAttributedError, ReturnDeclineUnsupportedError)
+@Catch(
+  ReturnNotFoundError,
+  ReturnNotAttributedError,
+  ReturnDeclineUnsupportedError,
+  ReturnDeclineInvalidRequestError
+)
 export class ReturnsExceptionFilter implements ExceptionFilter {
   catch(exception: ReturnDeclineRefusal, host: ArgumentsHost): void {
     const response = host.switchToHttp().getResponse<Response>();

@@ -341,7 +341,7 @@ describe('OrderRecord line-item transactional write (integration, #1985)', () =>
       expect(found?.totalAmount).toBe(77);
     });
 
-    it('advances sourceEventId when the second write arrives from the row own source', async () => {
+    it("advances sourceEventId when the second write arrives from the row's own source", async () => {
       const internalOrderId = `ol_order_attr_${Date.now()}_2`;
 
       const first = makeOrderRecord(internalOrderId, { sourceEventId: 'evt-1' });

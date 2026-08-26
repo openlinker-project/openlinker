@@ -181,4 +181,16 @@ describe('OrderChangeService', () => {
 
     expect(repository.decline).toHaveBeenCalledWith('change-1', expect.any(Date), 'nope');
   });
+
+  it('should abandon a never-sent proposal via expire, never decline', async () => {
+    // `abandon` terminalises a proposal nobody was asked about, so it must not
+    // reach `decline` — `declinedReason` means the AUTHORITY refused, and a
+    // local pre-flight fault is not that (Wave-1c review, finding 7).
+    repository.expire.mockResolvedValue(true);
+
+    await expect(service.abandon('change-1')).resolves.toBe(true);
+
+    expect(repository.expire).toHaveBeenCalledWith('change-1', expect.any(Date));
+    expect(repository.decline).not.toHaveBeenCalled();
+  });
 });

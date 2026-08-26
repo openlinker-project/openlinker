@@ -122,9 +122,9 @@ export interface OrderChangeRepositoryPort {
    * `requested → declined` with the AUTHORITY's reason. Conditional.
    *
    * Note both this and {@link OrderChangeRepositoryPort.expire} stamp
-   * `confirmedAt` — it records when the proposal was ANSWERED, not that the
+   * `terminalisedAt` — it records when the proposal was ANSWERED, not that the
    * answer was yes. A consumer must therefore read `status`, never
-   * `confirmedAt IS NOT NULL`, to mean "the authority agreed": the latter also
+   * `terminalisedAt IS NOT NULL`, to mean "the authority agreed": the latter also
    * matches a refusal and a timeout.
    */
   decline(id: string, at: Date, reason: string): Promise<boolean>;

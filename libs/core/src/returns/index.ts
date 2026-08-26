@@ -87,6 +87,7 @@ export type {
 } from './domain/types/return-decline.types';
 export { ReturnDeclineUnsupportedError } from './domain/exceptions/return-decline-unsupported.error';
 export { ReturnDeclineRejectedBySourceError } from './domain/exceptions/return-decline-rejected-by-source.error';
+export { ReturnDeclineInvalidRequestError } from './domain/exceptions/return-decline-invalid-request.error';
 export { DeclineReturnOutcomeValues } from './application/services/return-decline.service.interface';
 export type {
   IReturnDeclineService,

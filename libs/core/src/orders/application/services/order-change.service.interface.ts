@@ -64,6 +64,21 @@ export interface IOrderChangeService {
   decline(id: string, reason: string): Promise<boolean>;
 
   /**
+   * Terminalise a proposal that was NEVER PUT to the authority — the request
+   * failed OL's own pre-flight validation, so nobody was asked and nobody
+   * refused.
+   *
+   * It resolves to `expired` rather than `declined` because `declinedReason`
+   * means "the authority refused" and nothing else; recording a bad
+   * operator-supplied field there would put words in the source's mouth and
+   * make the column's one meaning two — the same argument that keeps a TTL
+   * timeout out of it. Releasing the target's slot immediately is the point:
+   * without it a typo would hold the slot for a full TTL and block the
+   * corrected retry.
+   */
+  abandon(id: string): Promise<boolean>;
+
+  /**
    * Claim the right to APPLY a confirmed change.
    *
    * One-way and without a release path, so it guards application only — never

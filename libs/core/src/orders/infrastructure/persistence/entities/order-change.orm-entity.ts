@@ -76,8 +76,15 @@ export class OrderChangeOrmEntity {
   @Column({ type: 'text', nullable: true })
   confirmedBy!: string | null;
 
+  /**
+   * When the proposal reached a TERMINAL status — confirmed, declined or
+   * expired alike. Deliberately not `confirmedAt`: all three writers stamp it,
+   * so a name saying "confirmed" would make `WHERE "confirmedAt" IS NOT NULL`
+   * — the query a later author reaches for — silently include refusals and
+   * timeouts. Agreement is read off `status`, never off this column.
+   */
   @Column({ type: 'timestamptz', nullable: true })
-  confirmedAt!: Date | null;
+  terminalisedAt!: Date | null;
 
   /** Why the AUTHORITY refused OL's request. Never why OL asked, never a timeout. */
   @Column({ type: 'text', nullable: true })

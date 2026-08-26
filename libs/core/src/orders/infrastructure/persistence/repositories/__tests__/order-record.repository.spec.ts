@@ -10,6 +10,7 @@ import type { TestingModule } from '@nestjs/testing';
 import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import type { Repository, UpdateResult } from 'typeorm';
+import { getMetadataArgsStorage } from 'typeorm';
 import { IsNull, LessThan, MoreThanOrEqual } from 'typeorm';
 import { OrderRecordRepository } from '../order-record.repository';
 import type { OrderSyncStatusJson } from '../../entities/order-record.orm-entity';
@@ -545,6 +546,123 @@ describe('OrderRecordRepository', () => {
       expect(andWhere).toHaveBeenCalledWith('rec."reportingCurrency" = :currentReportingCurrency', {
         currentReportingCurrency: 'EUR',
       });
+    });
+  });
+
+  /**
+   * The reset guarantee, asserted STRUCTURALLY (Wave-1c review, finding 1).
+   *
+   * `fromRawRow` derives its reset set from the statement's write set, so this
+   * test needs no maintenance when a column is added — it enumerates the ORM
+   * entity's own columns and requires every one the statement did not write to
+   * come back empty. A hand-kept reset list is exactly what let six columns
+   * merged forward from main escape the guarantee the docblock states, twice.
+   *
+   * The `RETURNING *` row is stuffed with a non-empty sentinel for EVERY
+   * column, so a column that escapes the reset is caught by its value, not by
+   * an incidental `undefined`.
+   */
+  describe('upsert / fromRawRow: the derived out-of-band reset (#2282)', () => {
+    /** Columns the analytics-free `upsert` statement writes, per `toOrm`. */
+    const UPSERT_WRITE_SET = [
+      'internalOrderId',
+      'customerId',
+      'sourceConnectionId',
+      'sourceEventId',
+      'orderSnapshot',
+      'recordStatus',
+      'mappingFailureReason',
+      'dispatchByAt',
+      'createdAt',
+      'updatedAt',
+    ];
+
+    /** Non-null empty defaults, mirroring the repository's own map. */
+    const EMPTY_DEFAULTS: Record<string, unknown> = {
+      syncStatus: [],
+      syncAttempts: [],
+    };
+
+    function allColumnProperties(): string[] {
+      return getMetadataArgsStorage()
+        .filterColumns(OrderRecordOrmEntity)
+        .map((column) => column.propertyName);
+    }
+
+    it('resets EVERY column the upsert statement did not write', () => {
+      const columns = allColumnProperties();
+      // Sanity: the entity really is discoverable this way, and has grown well
+      // past the write set — otherwise the loop below could pass vacuously.
+      expect(columns.length).toBeGreaterThan(UPSERT_WRITE_SET.length);
+
+      // The REAL statement builder's write set, and the REAL projection — not a
+      // re-implementation of either, or the test would pass a repository that
+      // had stopped resetting anything.
+      const built = (
+        repository as unknown as {
+          buildFrozenAttributionUpsert: (
+            entity: OrderRecordOrmEntity,
+            includeAnalyticsColumns: boolean
+          ) => { writeSet: ReadonlySet<string> };
+        }
+      ).buildFrozenAttributionUpsert(createOrmEntity(), false);
+      expect([...built.writeSet].sort()).toEqual([...UPSERT_WRITE_SET].sort());
+
+      // `RETURNING *` carrying a non-empty sentinel for every out-of-band
+      // column, so an escapee is caught by its VALUE, not by an incidental
+      // `undefined`.
+      const row: Record<string, unknown> = { ...createOrmEntity() };
+      for (const column of columns) {
+        if (!built.writeSet.has(column)) {
+          row[column] = 'LEAKED';
+        }
+      }
+
+      const projected = (
+        repository as unknown as {
+          fromRawRow: (
+            row: Record<string, unknown>,
+            writeSet: ReadonlySet<string>
+          ) => OrderRecordOrmEntity;
+        }
+      ).fromRawRow(row, built.writeSet) as unknown as Record<string, unknown>;
+
+      for (const column of columns) {
+        if (built.writeSet.has(column)) {
+          continue;
+        }
+        expect({ column, value: projected[column] }).toEqual({
+          column,
+          value: EMPTY_DEFAULTS[column] ?? null,
+        });
+      }
+    });
+
+    it('assumes no column renames its database name, and says so', () => {
+      // The statement quotes the PROPERTY name and `fromRawRow` matches the
+      // write set on it, so the two agree only while property === column. A
+      // `@Column({ name: 'foo_bar' })` would emit invalid SQL and silently
+      // drop the column from the write set; fail here rather than there.
+      const renamed = getMetadataArgsStorage()
+        .filterColumns(OrderRecordOrmEntity)
+        .filter((column) => typeof column.options.name === 'string')
+        .map((column) => column.propertyName);
+
+      expect(renamed).toEqual([]);
+    });
+
+    it('names every column it resets in the statement OR resets it, never neither', async () => {
+      const columns = allColumnProperties();
+      mockUpsertReturning(createOrmEntity());
+      await repository.upsert(createDomainEntity());
+      const sql = upsertSql();
+
+      for (const column of columns) {
+        const named = sql.includes(`"${column}"`);
+        const inWriteSet = UPSERT_WRITE_SET.includes(column);
+        // The write set the test asserts against must stay the statement's own.
+        expect(named).toBe(inWriteSet);
+      }
     });
   });
 

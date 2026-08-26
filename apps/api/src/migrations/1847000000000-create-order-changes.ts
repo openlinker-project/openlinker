@@ -62,7 +62,7 @@ export class CreateOrderChanges1847000000000 implements MigrationInterface {
         "requestedBy" text,
         "requestedAt" TIMESTAMP WITH TIME ZONE NOT NULL,
         "confirmedBy" text,
-        "confirmedAt" TIMESTAMP WITH TIME ZONE,
+        "terminalisedAt" TIMESTAMP WITH TIME ZONE,
         "declinedReason" text,
         "appliedAt" TIMESTAMP WITH TIME ZONE,
         "createdAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
