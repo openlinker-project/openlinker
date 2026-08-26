@@ -175,6 +175,7 @@ export {
 export {
   CoverageCategoryValues,
   CoverageResolutionStatusValues,
+  TaxCoverageCategoryValues,
 } from './domain/types/coverage-detection.types';
 export type {
   CoverageCategory,
@@ -182,6 +183,11 @@ export type {
   CoverageDetectionPagination,
   CurrencyMismatchOrderRow,
   PaginatedCurrencyMismatchOrders,
+  TaxCoverageCategory,
+  TaxCoverageOrderRow,
+  PaginatedTaxCoverageOrders,
+  NetExcludedOrderCandidate,
+  TaxCoverageClassification,
 } from './domain/types/coverage-detection.types';
 
 // Top products analytics (#1988) — response shapes for
@@ -295,6 +301,7 @@ export type {
   TaxRateBackfillPageInput,
   TaxRateBackfillPageResult,
 } from './application/services/tax-rate-backfill.service.interface';
+export type { ITaxCoverageDetectionService } from './application/services/tax-coverage-detection.service.interface';
 export type { IDisplayCurrencyConversionService } from './application/interfaces/display-currency-conversion.service.interface';
 export * from './orders.tokens';
 

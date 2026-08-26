@@ -3,10 +3,11 @@
  *
  * Shared vocabulary for the `/analytics` Data Coverage panel's detectors
  * (epic #2452, mini-epic #2463) — the currency-mismatch detector (#2464,
- * this task) is the first consumer, and the tax A/B/C detector (#2465) plus
- * the product-matching detector + aggregate `GET /analytics/coverage`
- * endpoint (#2466) extend this same file. Kept additive on purpose: nothing
- * here is currency-specific except the types explicitly named for it.
+ * this task) is the first consumer, and the tax A/B/C detector (#2465, this
+ * extension) plus the product-matching detector + aggregate
+ * `GET /analytics/coverage` endpoint (#2466) extend this same file. Kept
+ * additive on purpose: nothing here is currency-specific except the types
+ * explicitly named for it.
  *
  * `CoverageCategory` / `CoverageResolutionStatus` follow the Phase 1 Task 1.2
  * decision doc (`docs/plans/analytics-coverage-remediation-decision.md`,
@@ -22,12 +23,12 @@
  */
 
 /**
- * Data Coverage category values. Only `'currency'` is populated by this
- * task (#2464) — the tax A/B/C categories (#2465) and the product-matching
- * category (#2466) are added here by those sibling tasks rather than
- * guessed at in advance.
+ * Data Coverage category values. `'currency'` was populated by #2464;
+ * `'tax-a'`/`'tax-b'`/`'tax-c'` are added here by this task (#2465) — the
+ * product-matching category (#2466) is added by that sibling task rather
+ * than guessed at in advance.
  */
-export const CoverageCategoryValues = ['currency'] as const;
+export const CoverageCategoryValues = ['currency', 'tax-a', 'tax-b', 'tax-c'] as const;
 
 /**
  * Data Coverage category type — one row per category in the
@@ -94,4 +95,92 @@ export interface CurrencyMismatchOrderRow {
 export interface PaginatedCurrencyMismatchOrders {
   items: CurrencyMismatchOrderRow[];
   total: number;
+}
+
+/**
+ * Tax A/B/C sub-category values (#2465) — the three operator-actionable
+ * partitions of the `netExcludedCount` population, each with a distinct
+ * remediation path (see `TaxCoverageDetectionService`'s doc comment for the
+ * classification rule):
+ *
+ * - `'tax-a'` — unconfirmed-but-resolvable: `taxRateEra = 'pre-rollout'` and
+ *   every one of the order's unresolved lines DOES resolve a rate from the
+ *   current catalogue (already backfilled, or resolvable right now). Would
+ *   become net-eligible if Phase 5's `includeGuessedVatRatesInNetSales`
+ *   setting were ON. Mockup `detail-tax`.
+ * - `'tax-b'` — no tax rate at all: either (i) the order is excluded for a
+ *   reason OTHER than the pre-rollout era (a post-rollout order with a
+ *   genuinely unresolved line, or no line items), or (ii) it IS pre-rollout
+ *   but the catalogue has been asked about at least one unresolved line's
+ *   product/variant and confirmed it carries none. No remediation action
+ *   exists for this category. Mockup `detail-novat`.
+ * - `'tax-c'` — pre-rollout, not yet resolvable: `taxRateEra = 'pre-rollout'`,
+ *   at least one unresolved line's product/variant has never been asked
+ *   about a tax rate at all (`taxRateState === 'not-checked'`), and none of
+ *   the order's unresolved lines were confirmed rate-less. A future catalogue
+ *   sync (or the backfill sweep, once it reaches this connection's frontier)
+ *   may still resolve it. Mockup `detail-postrollout`.
+ */
+export const TaxCoverageCategoryValues = ['tax-a', 'tax-b', 'tax-c'] as const;
+
+/**
+ * Tax coverage sub-category type — a narrowing of {@link CoverageCategory}
+ * scoped to the three tax-only values.
+ */
+export type TaxCoverageCategory = (typeof TaxCoverageCategoryValues)[number];
+
+/**
+ * One order in a tax coverage sub-category's drill-down list. Deliberately
+ * as minimal as {@link CurrencyMismatchOrderRow} — no thumbnail/order-number
+ * field, since `OrderRecord` denormalizes no such column.
+ */
+export interface TaxCoverageOrderRow {
+  internalOrderId: string;
+  sourceConnectionId: string;
+  /** `order_records.placedAt` — `null` for a historical row with no resolvable placement date. */
+  placedAt: Date | null;
+}
+
+/**
+ * Paginated result for {@link TaxCoverageOrderRow}, mirroring
+ * {@link PaginatedCurrencyMismatchOrders}'s `{ items, total }` shape.
+ */
+export interface PaginatedTaxCoverageOrders {
+  items: TaxCoverageOrderRow[];
+  total: number;
+}
+
+/**
+ * A `netExcludedCount` candidate order awaiting A/B/C classification — the
+ * minimal shape `OrderRecordRepositoryPort.findNetExcludedOrderCandidates`
+ * returns per row, before `TaxCoverageDetectionService` resolves each one's
+ * category (a per-line, live-catalogue check that cannot be pushed into
+ * SQL, so it happens in the application layer instead).
+ */
+export interface NetExcludedOrderCandidate {
+  internalOrderId: string;
+  sourceConnectionId: string;
+  placedAt: Date | null;
+  /**
+   * Raw `order_records.taxRateEra` value. Kept as `string | null` here
+   * (mirroring the ORM entity's own column type) rather than the narrower
+   * `TaxRateEra` from `@openlinker/core/sales-documents` — that type lives in
+   * a sibling context and `orders` already imports it only where the value
+   * is a live column). Classification treats anything other than the
+   * literal `'pre-rollout'` string as "not pre-rollout".
+   */
+  taxRateEra: string | null;
+}
+
+/**
+ * Every {@link NetExcludedOrderCandidate} classified into its A/B/C bucket
+ * (#2465). The three arrays are a complete partition of the input — every
+ * candidate lands in exactly one — which is the regression guard the #2465
+ * tests assert (`categoryA.length + categoryB.length + categoryC.length ===
+ * candidates.length`, and by construction, `=== netExcludedCount`).
+ */
+export interface TaxCoverageClassification {
+  'tax-a': TaxCoverageOrderRow[];
+  'tax-b': TaxCoverageOrderRow[];
+  'tax-c': TaxCoverageOrderRow[];
 }

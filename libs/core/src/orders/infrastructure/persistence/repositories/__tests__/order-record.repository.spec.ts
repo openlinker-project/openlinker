@@ -841,6 +841,123 @@ describe('OrderRecordRepository', () => {
     });
   });
 
+  describe('findNetExcludedOrderCandidates (#2465)', () => {
+    const baseFilters = {
+      from: new Date('2026-08-01T00:00:00.000Z'),
+      to: new Date('2026-08-08T00:00:00.000Z'),
+    };
+
+    const createCandidateEntity = (
+      overrides: Partial<OrderRecordOrmEntity>
+    ): OrderRecordOrmEntity => {
+      const entity = createOrmEntity();
+      Object.assign(entity, overrides);
+      return entity;
+    };
+
+    it('applies the non-cancelled, current-era-stamped, NOT-net-eligible predicate', async () => {
+      const andWhere = jest.fn().mockReturnThis();
+      const orderBy = jest.fn().mockReturnThis();
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        andWhere,
+        orderBy,
+        getMany: jest.fn().mockResolvedValue([]),
+      });
+
+      await repository.findNetExcludedOrderCandidates(baseFilters, 'EUR');
+
+      expect(andWhere).toHaveBeenCalledWith(
+        expect.stringContaining('rec."cancelledAt" IS NULL AND rec."reportingCurrency" = :currentReportingCurrency AND NOT'),
+        { currentReportingCurrency: 'EUR' }
+      );
+      expect(orderBy).toHaveBeenCalledWith('rec."placedAt"', 'DESC');
+    });
+
+    it('is unpaged — no take/skip call on the query builder', async () => {
+      const qb: Record<string, jest.Mock> = {
+        andWhere: jest.fn(),
+        orderBy: jest.fn(),
+        getMany: jest.fn().mockResolvedValue([]),
+      };
+      qb.andWhere.mockReturnValue(qb);
+      qb.orderBy.mockReturnValue(qb);
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue(qb);
+
+      await repository.findNetExcludedOrderCandidates(baseFilters, 'EUR');
+
+      expect(qb.take).toBeUndefined();
+      expect(qb.skip).toBeUndefined();
+    });
+
+    it('maps a pre-rollout candidate to the row shape, including taxRateEra', async () => {
+      const entity = createCandidateEntity({
+        internalOrderId: 'order-pre-rollout',
+        sourceConnectionId: 'conn-a',
+        placedAt: new Date('2026-08-02T00:00:00.000Z'),
+        taxRateEra: 'pre-rollout',
+      });
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        getMany: jest.fn().mockResolvedValue([entity]),
+      });
+
+      const result = await repository.findNetExcludedOrderCandidates(baseFilters, 'EUR');
+
+      expect(result).toEqual([
+        {
+          internalOrderId: 'order-pre-rollout',
+          sourceConnectionId: 'conn-a',
+          placedAt: entity.placedAt,
+          taxRateEra: 'pre-rollout',
+        },
+      ]);
+    });
+
+    it('maps a non-pre-rollout candidate with taxRateEra: null', async () => {
+      const entity = createCandidateEntity({
+        internalOrderId: 'order-post-rollout',
+        sourceConnectionId: 'conn-a',
+        placedAt: new Date('2026-08-03T00:00:00.000Z'),
+        taxRateEra: null,
+      });
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        getMany: jest.fn().mockResolvedValue([entity]),
+      });
+
+      const result = await repository.findNetExcludedOrderCandidates(baseFilters, 'EUR');
+
+      expect(result).toEqual([
+        {
+          internalOrderId: 'order-post-rollout',
+          sourceConnectionId: 'conn-a',
+          placedAt: entity.placedAt,
+          taxRateEra: null,
+        },
+      ]);
+    });
+
+    it('scopes to the sourceConnectionId filter when provided (via the shared analytics scope)', async () => {
+      const andWhere = jest.fn().mockReturnThis();
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        andWhere,
+        orderBy: jest.fn().mockReturnThis(),
+        getMany: jest.fn().mockResolvedValue([]),
+      });
+
+      await repository.findNetExcludedOrderCandidates(
+        { ...baseFilters, sourceConnectionId: 'conn-a' },
+        'EUR'
+      );
+
+      expect(andWhere).toHaveBeenCalledWith('rec.sourceConnectionId = :salesConnectionId', {
+        salesConnectionId: 'conn-a',
+      });
+    });
+  });
+
   describe('getMedianOrderValue (#1987)', () => {
     const baseFilters = {
       from: new Date('2026-08-01T00:00:00.000Z'),
