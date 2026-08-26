@@ -33,10 +33,7 @@ import type {
 import type { ReturnMoneyState } from '../types/return-line.types';
 import type { CreateReturnRecordInput } from '../types/return.types';
 import type { UpsertReturnRecordInput, UpsertReturnResult } from '../types/return-upsert.types';
-import type {
-  ReturnSourceSweepFilter,
-  ReturnSweepCandidate,
-} from '../types/return-sweep.types';
+import type { ReturnSourceSweepFilter, ReturnSweepCandidate } from '../types/return-sweep.types';
 import type { ReturnReattributionCandidate } from '../types/return-reattribution.types';
 import type { ReturnBucketCounts, ReturnListFilter } from '../types/return-query.types';
 
@@ -182,7 +179,35 @@ export interface ReturnRepositoryPort {
    * return is attributed, just not by this call) and the pass counts it
    * `alreadyAttributed`, never `unresolved` and never `failed`.
    */
-  claimAttribution(id: string, internalOrderId: string): Promise<boolean>;
+  claimAttribution(
+    id: string,
+    internalOrderId: string,
+    /**
+     * OPTIONAL operator provenance (#2372). Supplied by
+     * `IReturnsService.matchOrphanToOrder`, omitted by the #2332 background
+     * reconcile — which is exactly the distinction the two columns exist to make.
+     * Optional so the reconcile's existing two-argument call is source-compatible
+     * (the `listExternalIdsByConnection` page-argument precedent, #2219); with it
+     * absent the emitted statement is byte-identical to the pre-#2372 one.
+     */
+    match?: ReturnAttributionMatch
+  ): Promise<boolean>;
+
+  /**
+   * Stamp `authorizedAt` at most once (#2372).
+   *
+   * Conditional on `"authorizedAt" IS NULL` — the `claimDeclinedAt` /
+   * `claimWaybillRelay` shape — and **this single statement is the whole
+   * at-most-once guarantee**, not the ADR-044 proposal slot and not a lock, in the
+   * same way `claimRefundAttempt` is for money. Reports `affected > 0`.
+   *
+   * Claim-only, no release: an authorization does not become untrue.
+   *
+   * The caller passes OL's OWN clock here, and that is correct — an operator
+   * authorizing a return OL itself authored is an act performed inside
+   * OpenLinker, unlike `claimDeclinedAt`, which must carry the SOURCE's instant.
+   */
+  claimAuthorizedAt(id: string, at: Date): Promise<boolean>;
 
   /**
    * One page of returns worth re-reading at the source (#2330, pass 2).
@@ -268,11 +293,7 @@ export interface ReturnRepositoryPort {
    * See {@link ReturnListFilter} for the rule that an absent filter field adds
    * no arm.
    */
-  listReturns(
-    filter: ReturnListFilter,
-    limit: number,
-    offset: number
-  ): Promise<ReturnRecord[]>;
+  listReturns(filter: ReturnListFilter, limit: number, offset: number): Promise<ReturnRecord[]>;
 
   /**
    * The attribution partition over the same filter scope (#2334).
@@ -332,9 +353,10 @@ export interface ReturnRepositoryPort {
      * either way, so an async callback stays legal for a future caller that
      * genuinely needs one.
      */
-    write: (locked: { line: ReturnLine; record: ReturnRecord }) =>
-      | ReturnLineWriteDecision<T>
-      | Promise<ReturnLineWriteDecision<T>>
+    write: (locked: {
+      line: ReturnLine;
+      record: ReturnRecord;
+    }) => ReturnLineWriteDecision<T> | Promise<ReturnLineWriteDecision<T>>
   ): Promise<{ event: ReturnLineEvent; result: T }>;
 
   /**
@@ -465,6 +487,18 @@ export interface ReturnRepositoryPort {
  * but the inventory master's book did not take them, so the units stay counted
  * in `quantityReceived` until an operator attests (returns spec § 5.4).
  */
+/**
+ * Who matched an orphan return to an order, and when (#2372).
+ *
+ * `actorUserId` is nullable so a future non-interactive writer stays expressible —
+ * the `CreateReturnLineEventInput.actorUserId` / `CreateOrderChangeInput.requestedBy`
+ * precedent.
+ */
+export interface ReturnAttributionMatch {
+  at: Date;
+  actorUserId: string | null;
+}
+
 export interface ReturnLineWriteDecision<T> {
   event: CreateReturnLineEventInput;
   outcome: ReturnCustodyOutcome | null;

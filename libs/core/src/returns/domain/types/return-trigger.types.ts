@@ -24,6 +24,13 @@
  * paragraph below exists to forbid, and the one that produced two rival
  * `ReturnNotAttributedError` classes when #2332 and #2333 were built in parallel.
  *
+ * `authorize` (#2372) joins on the same grounds as `decline`, and for the same
+ * structural reason: it is an ADR-044 proposal against `order_changes`, whose
+ * `internalOrderId` is NOT NULL, so an orphan authorize has no row it could record
+ * itself as. It is a member so that `ReturnAuthorizeService` asserts attribution
+ * through the ONE seam rather than spelling its own null check — see the paragraph
+ * below, which is the whole reason this union is not a taxonomy of flows.
+ *
  * **The rule this vocabulary exists to carry**: a new downstream flow adds a value here
  * and calls `IReturnsService.assertAttributedForTrigger`. It does **not** write its own
  * orphan check. Four call sites each free to spell `internalOrderId === null` are four
@@ -45,6 +52,7 @@ export const ReturnDownstreamTriggerValues = [
   'refund',
   'invoice_correction',
   'decline',
+  'authorize',
 ] as const;
 
 export type ReturnDownstreamTrigger = (typeof ReturnDownstreamTriggerValues)[number];

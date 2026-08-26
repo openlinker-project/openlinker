@@ -40,16 +40,15 @@ import {
   type IIntegrationsService,
 } from '@openlinker/core/integrations';
 import { Logger } from '@openlinker/shared/logging';
+import { ReturnMatchRefusedError } from '../../domain/exceptions/return-match-refused.error';
 import { ReturnNotAttributedError } from '../../domain/exceptions/return-not-attributed.error';
+import { ReturnRecordRefusedError } from '../../domain/exceptions/return-record-refused.error';
 import { ReturnNotFoundError } from '../../domain/exceptions/return-not-found.error';
 import { ReturnObservationMissingExternalIdError } from '../../domain/exceptions/return-observation-missing-external-id.error';
 import { toRefundReasonOrOther } from '../../domain/return-reason.mapper';
 import type { ReturnRecord } from '../../domain/entities/return-record.entity';
 import { ReturnRepositoryPort } from '../../domain/ports/return-repository.port';
-import type {
-  IncomingReturn,
-  IncomingReturnLine,
-} from '../../domain/types/incoming-return.types';
+import type { IncomingReturn, IncomingReturnLine } from '../../domain/types/incoming-return.types';
 import type { ReturnDownstreamTrigger } from '../../domain/types/return-trigger.types';
 import type {
   ReturnBucketCounts,
@@ -61,6 +60,8 @@ import type { UpsertReturnLineInput } from '../../domain/types/return-upsert.typ
 import { RETURN_REPOSITORY_TOKEN } from '../../returns.tokens';
 import type {
   IReturnsService,
+  MatchOrphanToOrderInput,
+  RecordReturnInput,
   UpsertReturnObservationResult,
 } from './returns.service.interface';
 
@@ -238,6 +239,131 @@ export class ReturnsService implements IReturnsService {
       );
       throw new ReturnNotAttributedError(returnId, trigger);
     }
+
+    return record;
+  }
+
+  async matchOrphanToOrder(input: MatchOrphanToOrderInput): Promise<ReturnRecord> {
+    const record = await this.repository.findById(input.returnId);
+    if (record === null) {
+      throw new ReturnNotFoundError(input.returnId);
+    }
+
+    if (!record.isOrphan()) {
+      throw new ReturnMatchRefusedError(record.id, 'already-attributed');
+    }
+
+    // Existence through the mapping table, not through `orders` — see the interface
+    // docblock. Unscoped by connection on purpose: an order ingested under a
+    // DIFFERENT connection is one of the orphan causes this action exists for.
+    const mappings = await this.identifierMapping.getExternalIds(
+      CORE_ENTITY_TYPE.Order,
+      input.internalOrderId
+    );
+    if (mappings.length === 0) {
+      this.logger.warn(
+        `Refusing to match return ${record.id} to ${input.internalOrderId}: ` +
+          `OpenLinker holds no identifier mapping for that order`
+      );
+      throw new ReturnMatchRefusedError(record.id, 'unknown-order');
+    }
+
+    const claimed = await this.repository.claimAttribution(record.id, input.internalOrderId, {
+      at: new Date(),
+      actorUserId: input.actorUserId,
+    });
+    if (!claimed) {
+      // A concurrent writer (the #2332 reconcile, or a peer operator) filled the
+      // column between the read above and this write. From the operator's point of
+      // view that is the same fact as the guard's: the return is attributed.
+      this.logger.debug(
+        `Return ${record.id} was attributed by a concurrent writer before this match`
+      );
+      throw new ReturnMatchRefusedError(record.id, 'already-attributed');
+    }
+
+    this.logger.log(
+      `Return ${record.id} matched to order ${input.internalOrderId} by ` +
+        `${input.actorUserId ?? 'system'}`
+    );
+
+    // Re-read rather than patching the in-memory record: the row is the authority,
+    // the same rule `assertAttributedForTrigger` follows.
+    const attributed = await this.repository.findById(record.id);
+    if (attributed === null) {
+      throw new ReturnNotFoundError(record.id);
+    }
+    return attributed;
+  }
+
+  async recordReturn(input: RecordReturnInput): Promise<ReturnRecord> {
+    if (input.lines.length === 0) {
+      throw new ReturnRecordRefusedError('no-lines');
+    }
+
+    const hasInvalidQuantity = input.lines.some(
+      (line) => !Number.isInteger(line.quantityAdvised) || line.quantityAdvised <= 0
+    );
+    if (hasInvalidQuantity) {
+      throw new ReturnRecordRefusedError('invalid-quantity');
+    }
+
+    const mappings = await this.identifierMapping.getExternalIds(
+      CORE_ENTITY_TYPE.Order,
+      input.internalOrderId
+    );
+    if (mappings.length === 0) {
+      throw new ReturnRecordRefusedError('unknown-order');
+    }
+
+    // The mapping on the NAMED connection is what supplies `externalOrderId`, so
+    // the value is a fact OL already holds rather than an operator-typed string —
+    // which is also what keeps the row legible to the #2332 reconcile.
+    const onConnection = mappings.find(
+      (mapping) => mapping.connectionId === input.sourceConnectionId
+    );
+    if (onConnection === undefined) {
+      this.logger.warn(
+        `Refusing to record a return for order ${input.internalOrderId} on connection ` +
+          `${input.sourceConnectionId}: OpenLinker holds no mapping for that order there`
+      );
+      throw new ReturnRecordRefusedError('order-not-on-connection');
+    }
+
+    const record = await this.repository.create({
+      sourceConnectionId: input.sourceConnectionId,
+      // NEVER synthesised. An operator-authored return has no source and must not
+      // pretend to have one; the partial unique index exists so this is NULL.
+      externalReturnId: null,
+      internalOrderId: input.internalOrderId,
+      externalOrderId: onConnection.externalId,
+      origin: 'operator_authored',
+      rawStatus: null,
+      rawPayload: null,
+      // OL's own clock: the operator opened this here, with OL as the sensor.
+      openedAt: new Date(),
+      // Left NULL deliberately — authorizing is a SECOND act (`return.authorize`).
+      authorizedAt: null,
+      declinedAt: null,
+      closedAt: null,
+      lines: input.lines.map((line, index) => ({
+        lineIndex: index,
+        externalLineId: null,
+        resolvedOrderLineId: null,
+        offerId: null,
+        sku: line.sku,
+        name: line.name,
+        reason: line.reason,
+        quantityAdvised: line.quantityAdvised,
+        note: line.note,
+      })),
+    });
+
+    this.logger.log(
+      `Recorded operator-authored return ${record.id} for order ${input.internalOrderId} ` +
+        `on connection ${input.sourceConnectionId} (${input.lines.length} line(s), by ` +
+        `${input.actorUserId ?? 'system'})`
+    );
 
     return record;
   }

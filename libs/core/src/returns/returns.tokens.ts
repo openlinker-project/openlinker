@@ -1,5 +1,5 @@
 /**
- * Returns — DI Tokens (#2327, widened by #2330, #2332, #2333, #2370 and #2371)
+ * Returns — DI Tokens (#2327, widened by #2330, #2332, #2333, #2370, #2371 and #2372)
  *
  * @module libs/core/src/returns
  */
@@ -14,3 +14,5 @@ export const RETURN_REATTRIBUTION_SERVICE_TOKEN = Symbol('IReturnReattributionSe
 export const RETURN_CUSTODY_SERVICE_TOKEN = Symbol('IReturnCustodyService');
 // The money WRITE (#2371) — the refund trigger and its observation.
 export const RETURN_REFUND_SERVICE_TOKEN = Symbol('IReturnRefundService');
+// The authorize WRITE (#2372) — restricted to operator-authored returns.
+export const RETURN_AUTHORIZE_SERVICE_TOKEN = Symbol('IReturnAuthorizeService');

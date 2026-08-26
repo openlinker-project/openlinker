@@ -38,11 +38,15 @@
  * vocabulary would cost a migration per kind and would turn an out-of-tree kind
  * into a hard write failure instead of a coercion miss.
  *
- * `return.authorize` is deliberately ABSENT: ADR-060 reserves it for
- * operator-authored returns, which do not exist until Wave 2 (#2372). Shipping
- * the value now would be a vocabulary member with no writer.
+ * `return.authorize` arrived with #2372, and its RESTRICTION is the point: ADR-060
+ * reserves it for `origin: 'operator_authored'` returns, because OL must not pretend
+ * to decide what a marketplace already decided. Unlike `return.decline` it crosses
+ * NO adapter boundary — for a return OL itself authored there is no source to ask,
+ * so OL is the authority and the row here is the audit record of the operator's act
+ * rather than a request awaiting an answer. That is also why it reuses this table
+ * instead of growing a second proposal mechanism.
  */
-export const OrderChangeKindValues = ['return.decline'] as const;
+export const OrderChangeKindValues = ['return.decline', 'return.authorize'] as const;
 
 export type OrderChangeKind = (typeof OrderChangeKindValues)[number];
 
@@ -83,24 +87,17 @@ export type OrderChangeStatus = (typeof OrderChangeStatusValues)[number];
  * Exported so no consumer — SQL predicate, service branch or test — ever
  * hand-lists them and drifts from the index's `WHERE` clause.
  */
-export const OPEN_ORDER_CHANGE_STATUSES: readonly OrderChangeStatus[] = [
-  'pending',
-  'requested',
-];
+export const OPEN_ORDER_CHANGE_STATUSES: readonly OrderChangeStatus[] = ['pending', 'requested'];
 
 /** Pure coercion. No default — an unrecognised kind must never become another. */
 export function isOrderChangeKind(value: unknown): value is OrderChangeKind {
-  return (
-    typeof value === 'string' &&
-    (OrderChangeKindValues as readonly string[]).includes(value)
-  );
+  return typeof value === 'string' && (OrderChangeKindValues as readonly string[]).includes(value);
 }
 
 /** Pure coercion. No default — see {@link isOrderChangeKind}. */
 export function isOrderChangeStatus(value: unknown): value is OrderChangeStatus {
   return (
-    typeof value === 'string' &&
-    (OrderChangeStatusValues as readonly string[]).includes(value)
+    typeof value === 'string' && (OrderChangeStatusValues as readonly string[]).includes(value)
   );
 }
 

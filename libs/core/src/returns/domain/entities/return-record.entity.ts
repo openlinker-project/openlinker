@@ -58,7 +58,23 @@ export class ReturnRecord {
     public readonly closedAt: Date | null,
     public readonly createdAt: Date,
     public readonly updatedAt: Date,
-    public readonly lines: readonly ReturnLine[]
+    public readonly lines: readonly ReturnLine[],
+    /**
+     * When an OPERATOR matched this orphan to an order, and who (#2372).
+     *
+     * NULL for a return attributed at ingestion and for one the #2332 reconcile
+     * resolved — see the ORM column's docblock for why the distinction is worth a
+     * column at all.
+     *
+     * **Appended after `lines`, and defaulted, deliberately.** This constructor is
+     * positional with six call sites, and the docblock above warns that adjacent
+     * `string | null` parameters make a mis-ordered call type-check. Appending after
+     * the one non-nullable trailing parameter means a missing argument cannot bind to
+     * the wrong slot; inserting these beside the four timestamps would be exactly that
+     * silent mis-binding. Extend this constructor the same way.
+     */
+    public readonly matchedAt: Date | null = null,
+    public readonly matchedByUserId: string | null = null
   ) {}
 
   /**

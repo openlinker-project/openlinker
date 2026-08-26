@@ -64,6 +64,7 @@ import { SyncModule } from '@openlinker/core/sync';
 import { ReturnIngestionService } from './application/services/return-ingestion.service';
 import { ReturnReattributionService } from './application/services/return-reattribution.service';
 import { ReturnStatusSyncService } from './application/services/return-status-sync.service';
+import { ReturnAuthorizeService } from './application/services/return-authorize.service';
 import { ReturnDeclineService } from './application/services/return-decline.service';
 import { ReturnCustodyService } from './application/services/return-custody.service';
 import { ReturnRefundService } from './application/services/return-refund.service';
@@ -73,6 +74,7 @@ import { ReturnLineOrmEntity } from './infrastructure/persistence/entities/retur
 import { ReturnLineEventOrmEntity } from './infrastructure/persistence/entities/return-line-event.orm-entity';
 import { ReturnRepository } from './infrastructure/persistence/repositories/return.repository';
 import {
+  RETURN_AUTHORIZE_SERVICE_TOKEN,
   RETURN_CUSTODY_SERVICE_TOKEN,
   RETURN_DECLINE_SERVICE_TOKEN,
   RETURN_REFUND_SERVICE_TOKEN,
@@ -134,6 +136,12 @@ import {
     // of this graph and the `returns -> orders` edge one-way.
     ReturnRefundService,
     { provide: RETURN_REFUND_SERVICE_TOKEN, useExisting: ReturnRefundService },
+    // #2372 the authorize WRITE. Adds NO module edge: it reaches only the
+    // repository, `IReturnsService` and `IOrderChangeService`, all already imported
+    // above — and it resolves no adapter at all, because an operator-authored
+    // return has no source to ask.
+    ReturnAuthorizeService,
+    { provide: RETURN_AUTHORIZE_SERVICE_TOKEN, useExisting: ReturnAuthorizeService },
   ],
   exports: [
     RETURN_REPOSITORY_TOKEN,
@@ -144,6 +152,7 @@ import {
     RETURN_REATTRIBUTION_SERVICE_TOKEN,
     RETURN_CUSTODY_SERVICE_TOKEN,
     RETURN_REFUND_SERVICE_TOKEN,
+    RETURN_AUTHORIZE_SERVICE_TOKEN,
   ],
 })
 export class ReturnsModule {}

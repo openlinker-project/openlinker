@@ -223,3 +223,43 @@ export type {
   ReturnRefundRecordIntent,
   RecordRefundObservationInput,
 } from './application/services/return-refund.service.interface';
+
+// The authorize WRITE, the orphan MATCH and the operator-authored CREATE
+// (#2372, `W2-35`, ADR-060/ADR-044).
+//
+// Three rules a consumer must not undo. `return.authorize` is restricted to
+// `origin: 'operator_authored'` — OL must never pretend to decide what a
+// marketplace already decided, which is why the refusal is a named error rather
+// than a no-op. Attribution is MONOTONIC and there is no unmatch, so a match is an
+// irreversible operator act. And an operator-authored return writes
+// `externalReturnId: null` — core never synthesises a source key, because the row
+// would then claim a source it has not got (a source ADAPTER minting a
+// deterministic key for its own platform is a different, established thing).
+export {
+  ReturnAuthorizeRefusedError,
+  ReturnAuthorizeRefusalReasonValues,
+} from './domain/exceptions/return-authorize-refused.error';
+export type { ReturnAuthorizeRefusalReason } from './domain/exceptions/return-authorize-refused.error';
+export {
+  ReturnMatchRefusedError,
+  ReturnMatchRefusalReasonValues,
+} from './domain/exceptions/return-match-refused.error';
+export type { ReturnMatchRefusalReason } from './domain/exceptions/return-match-refused.error';
+export {
+  ReturnRecordRefusedError,
+  ReturnRecordRefusalReasonValues,
+} from './domain/exceptions/return-record-refused.error';
+export type { ReturnRecordRefusalReason } from './domain/exceptions/return-record-refused.error';
+export { AuthorizeReturnOutcomeValues } from './application/services/return-authorize.service.interface';
+export type {
+  IReturnAuthorizeService,
+  AuthorizeReturnInput,
+  AuthorizeReturnOutcome,
+  AuthorizeReturnResult,
+} from './application/services/return-authorize.service.interface';
+export type {
+  MatchOrphanToOrderInput,
+  RecordReturnInput,
+  RecordReturnLineInput,
+} from './application/services/returns.service.interface';
+export type { ReturnAttributionMatch } from './domain/ports/return-repository.port';

@@ -252,7 +252,9 @@ describe('Returns Ingestion Integration', () => {
       expect(rows).toHaveLength(1);
       // A churned line id would re-key a parcel physically in transit.
       expect(rows[0].id).toBe(before.id);
-      expect(new Date(rows[0].createdAt).toISOString()).toBe(new Date(before.createdAt).toISOString());
+      expect(new Date(rows[0].createdAt).toISOString()).toBe(
+        new Date(before.createdAt).toISOString()
+      );
       expect(rows[0].quantityAdvised).toBe(5);
       expect(rows[0].reason).toBe('defective');
       expect(rows[0].sku).toBe('SKU-1-REV');
@@ -438,10 +440,7 @@ describe('Returns Ingestion Integration', () => {
     });
 
     it('should never consider a return the source attached to no order', async () => {
-      await service().upsertFromObservation(
-        connectionA,
-        observation({ externalOrderId: null })
-      );
+      await service().upsertFromObservation(connectionA, observation({ externalOrderId: null }));
 
       // Nothing to resolve BY, so it must be excluded rather than re-checked on
       // every tick forever. It stays in the orphan BUCKET for an operator.
@@ -516,6 +515,136 @@ describe('Returns Ingestion Integration', () => {
       await service().upsertFromObservation(connectionA, synthetic);
 
       expect(await countReturns()).toBe(1);
+    });
+  });
+
+  /**
+   * #2372 — the three claims that are DATABASE behaviour and therefore
+   * unreachable from the mocked unit specs.
+   *
+   * The integration harness builds its schema by `synchronize`, so these prove
+   * the ORM entity's shape end to end; migration `1860000000000` is what makes
+   * the same columns exist on a real deployment, and `migration:show` guards
+   * that half.
+   */
+  describe('operator writes (#2372)', () => {
+    it('should stamp authorizedAt at most once, whatever the caller does', async () => {
+      const created = await service().upsertFromObservation(connectionA, observation());
+      const first = new Date('2026-08-26T09:00:00.000Z');
+      const second = new Date('2026-08-26T10:00:00.000Z');
+
+      // This single conditional UPDATE — not the ADR-044 proposal slot and not a
+      // lock — is the whole at-most-once guarantee `ReturnAuthorizeService` relies
+      // on when it declines to abort on a reused proposal.
+      await expect(repository().claimAuthorizedAt(created.record.id, first)).resolves.toBe(true);
+      await expect(repository().claimAuthorizedAt(created.record.id, second)).resolves.toBe(false);
+
+      const [row] = await query<{ authorizedAt: Date | null }>(
+        `SELECT "authorizedAt" FROM "returns" WHERE "id" = $1`,
+        [created.record.id]
+      );
+      expect(row.authorizedAt).toEqual(first);
+    });
+
+    it('should persist operator match provenance, and leave it NULL for a reconcile claim', async () => {
+      const byOperator = await service().upsertFromObservation(connectionA, observation());
+      const byReconcile = await service().upsertFromObservation(
+        connectionA,
+        observation({ externalReturnId: 'RET-2' })
+      );
+      const matchedAt = new Date('2026-08-26T11:00:00.000Z');
+
+      await expect(
+        repository().claimAttribution(byOperator.record.id, 'ol_order_matched', {
+          at: matchedAt,
+          actorUserId: 'user-42',
+        })
+      ).resolves.toBe(true);
+      // The #2332 reconcile's two-argument call — byte-identical statement, and
+      // the provenance columns must stay NULL so "an operator did this" remains a
+      // distinguishable fact rather than an inference.
+      await expect(
+        repository().claimAttribution(byReconcile.record.id, 'ol_order_reconciled')
+      ).resolves.toBe(true);
+
+      const rows = await query<{
+        id: string;
+        internalOrderId: string | null;
+        matchedAt: Date | null;
+        matchedByUserId: string | null;
+      }>(
+        `SELECT "id", "internalOrderId", "matchedAt", "matchedByUserId" FROM "returns" WHERE "id" = ANY($1)`,
+        [[byOperator.record.id, byReconcile.record.id]]
+      );
+
+      const operatorRow = rows.find((r) => r.id === byOperator.record.id);
+      expect(operatorRow?.internalOrderId).toBe('ol_order_matched');
+      expect(operatorRow?.matchedAt).toEqual(matchedAt);
+      expect(operatorRow?.matchedByUserId).toBe('user-42');
+
+      const reconcileRow = rows.find((r) => r.id === byReconcile.record.id);
+      expect(reconcileRow?.internalOrderId).toBe('ol_order_reconciled');
+      expect(reconcileRow?.matchedAt).toBeNull();
+      expect(reconcileRow?.matchedByUserId).toBeNull();
+    });
+
+    it('should hydrate the match provenance back onto the aggregate', async () => {
+      const created = await service().upsertFromObservation(connectionA, observation());
+      const matchedAt = new Date('2026-08-26T12:00:00.000Z');
+      await repository().claimAttribution(created.record.id, 'ol_order_matched', {
+        at: matchedAt,
+        actorUserId: 'user-7',
+      });
+
+      // The columns are useless if they never reach the domain entity — #2376
+      // renders them, and `ReturnRecord`'s constructor is positional.
+      const hydrated = await repository().findById(created.record.id);
+      expect(hydrated?.matchedAt).toEqual(matchedAt);
+      expect(hydrated?.matchedByUserId).toBe('user-7');
+    });
+
+    it('should admit MANY operator-authored returns, since a NULL key is distinct under the partial index', async () => {
+      const line = {
+        lineIndex: 0,
+        externalLineId: null,
+        resolvedOrderLineId: null,
+        offerId: null,
+        sku: 'SKU-1',
+        name: 'A thing',
+        reason: 'other' as const,
+        quantityAdvised: 1,
+        note: null,
+      };
+      const input = {
+        sourceConnectionId: connectionA,
+        // Never synthesised — the row must not claim a source it has not got.
+        externalReturnId: null,
+        internalOrderId: 'ol_order_known',
+        externalOrderId: 'ORD-9',
+        origin: 'operator_authored' as const,
+        rawStatus: null,
+        rawPayload: null,
+        openedAt: new Date('2026-08-26T13:00:00.000Z'),
+        authorizedAt: null,
+        declinedAt: null,
+        closedAt: null,
+        lines: [line],
+      };
+
+      const first = await repository().create(input);
+      // `UQ_returns_source_external` is PARTIAL, so two NULL keys do not collide.
+      // Recording twice therefore yields two returns — accepted (see
+      // `IReturnsService.recordReturn`), and asserted here so it is a known
+      // property rather than a surprise.
+      const second = await repository().create(input);
+
+      expect(second.id).not.toBe(first.id);
+      expect(first.externalReturnId).toBeNull();
+      expect(first.origin).toBe('operator_authored');
+      // Recording and authorizing are two acts.
+      expect(first.authorizedAt).toBeNull();
+      expect(first.lines[0].custodyState).toBe('advised');
+      expect(first.lines[0].quantityReceived).toBe(0);
     });
   });
 });

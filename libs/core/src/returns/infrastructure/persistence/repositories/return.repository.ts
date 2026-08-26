@@ -37,6 +37,7 @@ import { ReturnLineEvent } from '../../../domain/entities/return-line-event.enti
 import { narrowRefundReason } from '../../../domain/return-reason.mapper';
 import { ReturnPersistenceError } from '../../../domain/exceptions/return-persistence.error';
 import type {
+  ReturnAttributionMatch,
   ReturnLineWriteDecision,
   ReturnRepositoryPort,
 } from '../../../domain/ports/return-repository.port';
@@ -119,9 +120,7 @@ export class ReturnRepository implements ReturnRepositoryPort {
     const { savedHeader, savedLines } = await this.dataSource.transaction(async (manager) => {
       const persistedHeader = await manager.save(ReturnOrmEntity, header);
       const persistedLines =
-        lineEntities.length === 0
-          ? []
-          : await manager.save(ReturnLineOrmEntity, lineEntities);
+        lineEntities.length === 0 ? [] : await manager.save(ReturnLineOrmEntity, lineEntities);
       return { savedHeader: persistedHeader, savedLines: persistedLines };
     });
 
@@ -521,9 +520,7 @@ export class ReturnRepository implements ReturnRepositoryPort {
    * so a filter can never be applied to the page but not the total (which would make the
    * scan offset wrap against a set it is not paging through).
    */
-  private buildReattributionQuery(
-    sourceConnectionId: string
-  ): SelectQueryBuilder<ReturnOrmEntity> {
+  private buildReattributionQuery(sourceConnectionId: string): SelectQueryBuilder<ReturnOrmEntity> {
     return this.returns
       .createQueryBuilder('r')
       .where('r."sourceConnectionId" = :connectionId', { connectionId: sourceConnectionId })
@@ -539,12 +536,28 @@ export class ReturnRepository implements ReturnRepositoryPort {
    * `updatedAt` is set explicitly because `@UpdateDateColumn` is TypeORM-managed and a
    * query-builder update bypasses it.
    */
-  async claimAttribution(id: string, internalOrderId: string): Promise<boolean> {
+  async claimAttribution(
+    id: string,
+    internalOrderId: string,
+    match?: ReturnAttributionMatch
+  ): Promise<boolean> {
     try {
+      // With `match` absent the statement is byte-identical to its pre-#2372 form —
+      // same predicate, same SET list — which is what keeps the #2332 reconcile's
+      // two-argument call an untouched path rather than a re-tested one.
       const result = await this.returns
         .createQueryBuilder()
         .update(ReturnOrmEntity)
-        .set({ internalOrderId, updatedAt: () => 'now()' })
+        .set(
+          match === undefined
+            ? { internalOrderId, updatedAt: () => 'now()' }
+            : {
+                internalOrderId,
+                matchedAt: match.at,
+                matchedByUserId: match.actorUserId,
+                updatedAt: () => 'now()',
+              }
+        )
         .where('"id" = :id', { id })
         .andWhere('"internalOrderId" IS NULL')
         .execute();
@@ -553,6 +566,14 @@ export class ReturnRepository implements ReturnRepositoryPort {
     } catch (error) {
       throw new ReturnPersistenceError('claimAttribution', error);
     }
+  }
+
+  async claimAuthorizedAt(id: string, at: Date): Promise<boolean> {
+    // The `claimDeclinedAt` shape, and the same reasoning: `IsNull()` in the WHERE
+    // is the at-most-once guarantee, not the ADR-044 proposal slot and not a lock.
+    // Claim-only, no release — an authorization does not become untrue.
+    const result = await this.returns.update({ id, authorizedAt: IsNull() }, { authorizedAt: at });
+    return (result.affected ?? 0) > 0;
   }
 
   /**
@@ -603,10 +624,7 @@ export class ReturnRepository implements ReturnRepositoryPort {
     // under two concurrent triggers, so exactly one UPDATE can affect the row.
     // There is deliberately no release counterpart: a decline observed at the
     // source does not become untrue.
-    const result = await this.returns.update(
-      { id, declinedAt: IsNull() },
-      { declinedAt: at }
-    );
+    const result = await this.returns.update({ id, declinedAt: IsNull() }, { declinedAt: at });
     return (result.affected ?? 0) > 0;
   }
 
@@ -617,9 +635,7 @@ export class ReturnRepository implements ReturnRepositoryPort {
    * not the total, which would make the scan offset wrap against a set it is not
    * actually paging through and silently skip or repeat rows forever.
    */
-  private buildSweepQuery(
-    filter: ReturnSourceSweepFilter
-  ): SelectQueryBuilder<ReturnOrmEntity> {
+  private buildSweepQuery(filter: ReturnSourceSweepFilter): SelectQueryBuilder<ReturnOrmEntity> {
     const query = this.returns
       .createQueryBuilder('r')
       .where('r."sourceConnectionId" = :connectionId', { connectionId: filter.sourceConnectionId })
@@ -658,7 +674,9 @@ export class ReturnRepository implements ReturnRepositoryPort {
       header.closedAt,
       header.createdAt,
       header.updatedAt,
-      lines.map((line) => this.toLineDomain(line))
+      lines.map((line) => this.toLineDomain(line)),
+      header.matchedAt,
+      header.matchedByUserId
     );
   }
 
@@ -691,14 +709,11 @@ export class ReturnRepository implements ReturnRepositoryPort {
     );
   }
 
-
   // ---------------------------------------------------------------------------
   // Custody writes and the act ledger (#2370)
   // ---------------------------------------------------------------------------
 
-  async findLine(
-    lineId: string
-  ): Promise<{ line: ReturnLine; record: ReturnRecord } | null> {
+  async findLine(lineId: string): Promise<{ line: ReturnLine; record: ReturnRecord } | null> {
     const lineEntity = await this.lines.findOne({ where: { id: lineId } });
     if (lineEntity === null) {
       return null;
@@ -722,9 +737,10 @@ export class ReturnRepository implements ReturnRepositoryPort {
    */
   async runLineWrite<T>(
     lineId: string,
-    write: (locked: { line: ReturnLine; record: ReturnRecord }) =>
-      | ReturnLineWriteDecision<T>
-      | Promise<ReturnLineWriteDecision<T>>
+    write: (locked: {
+      line: ReturnLine;
+      record: ReturnRecord;
+    }) => ReturnLineWriteDecision<T> | Promise<ReturnLineWriteDecision<T>>
   ): Promise<{ event: ReturnLineEvent; result: T }> {
     return this.dataSource.transaction(async (manager) => {
       const lineEntity = await manager
@@ -751,12 +767,7 @@ export class ReturnRepository implements ReturnRepositoryPort {
       const saved = await this.appendEvent(manager, decision.event);
 
       if (decision.outcome !== null) {
-        await this.applyCustodyOutcome(
-          manager,
-          lineId,
-          decision.outcome,
-          decision.disposition
-        );
+        await this.applyCustodyOutcome(manager, lineId, decision.outcome, decision.disposition);
       }
 
       return { event: saved, result: decision.result };
