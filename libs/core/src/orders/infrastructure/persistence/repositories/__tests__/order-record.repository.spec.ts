@@ -719,6 +719,131 @@ describe('OrderRecordRepository', () => {
     });
   });
 
+  describe('findProductMatchingErrorOrders (#2466)', () => {
+    const createMappingEntity = (
+      overrides: Partial<OrderRecordOrmEntity>
+    ): OrderRecordOrmEntity => {
+      const entity = createOrmEntity();
+      Object.assign(entity, overrides);
+      return entity;
+    };
+
+    it('applies the source_deleted OR awaiting_mapping predicate, newest-first, with pagination', async () => {
+      const andWhere = jest.fn().mockReturnThis();
+      const orderBy = jest.fn().mockReturnThis();
+      const take = jest.fn().mockReturnThis();
+      const skip = jest.fn().mockReturnThis();
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        andWhere,
+        orderBy,
+        take,
+        skip,
+        getManyAndCount: jest.fn().mockResolvedValue([[], 0]),
+      });
+
+      await repository.findProductMatchingErrorOrders({}, { limit: 20, offset: 40 });
+
+      expect(andWhere).toHaveBeenCalledWith(
+        `(rec."recordStatus" = 'source_deleted' OR rec."recordStatus" = 'awaiting_mapping')`
+      );
+      expect(orderBy).toHaveBeenCalledWith('rec."createdAt"', 'DESC');
+      expect(take).toHaveBeenCalledWith(20);
+      expect(skip).toHaveBeenCalledWith(40);
+    });
+
+    it('scopes to sourceConnectionId/customerId/createdFrom/createdTo when provided', async () => {
+      const andWhere = jest.fn().mockReturnThis();
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        andWhere,
+        orderBy: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        skip: jest.fn().mockReturnThis(),
+        getManyAndCount: jest.fn().mockResolvedValue([[], 0]),
+      });
+      const createdFrom = new Date('2026-08-01T00:00:00.000Z');
+      const createdTo = new Date('2026-08-08T00:00:00.000Z');
+
+      await repository.findProductMatchingErrorOrders(
+        { sourceConnectionId: 'conn-a', customerId: 'cust-a', createdFrom, createdTo },
+        { limit: 20, offset: 0 }
+      );
+
+      expect(andWhere).toHaveBeenCalledWith('rec.sourceConnectionId = :sourceConnectionId', {
+        sourceConnectionId: 'conn-a',
+      });
+      expect(andWhere).toHaveBeenCalledWith('rec.customerId = :customerId', {
+        customerId: 'cust-a',
+      });
+      expect(andWhere).toHaveBeenCalledWith('rec.createdAt >= :createdFrom', { createdFrom });
+      expect(andWhere).toHaveBeenCalledWith('rec.createdAt <= :createdTo', { createdTo });
+    });
+
+    it('maps an awaiting_mapping row to the row shape', async () => {
+      const entity = createMappingEntity({
+        internalOrderId: 'order-awaiting-mapping',
+        sourceConnectionId: 'conn-a',
+        recordStatus: 'awaiting_mapping',
+        mappingFailureReason: 'no variant mapping for SKU-123',
+        createdAt: new Date('2026-08-02T10:00:00.000Z'),
+      });
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        skip: jest.fn().mockReturnThis(),
+        getManyAndCount: jest.fn().mockResolvedValue([[entity], 1]),
+      });
+
+      const result = await repository.findProductMatchingErrorOrders({}, { limit: 20, offset: 0 });
+
+      expect(result.total).toBe(1);
+      expect(result.items).toEqual([
+        {
+          internalOrderId: 'order-awaiting-mapping',
+          sourceConnectionId: 'conn-a',
+          recordStatus: 'awaiting_mapping',
+          mappingFailureReason: 'no variant mapping for SKU-123',
+          createdAt: entity.createdAt,
+        },
+      ]);
+    });
+
+    it('maps a source_deleted row to the row shape', async () => {
+      const entity = createMappingEntity({
+        internalOrderId: 'order-source-deleted',
+        sourceConnectionId: 'conn-a',
+        recordStatus: 'source_deleted',
+        mappingFailureReason: 'variant deleted at master',
+        createdAt: new Date('2026-08-03T10:00:00.000Z'),
+      });
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        skip: jest.fn().mockReturnThis(),
+        getManyAndCount: jest.fn().mockResolvedValue([[entity], 1]),
+      });
+
+      const result = await repository.findProductMatchingErrorOrders({}, { limit: 20, offset: 0 });
+
+      expect(result.items[0].recordStatus).toBe('source_deleted');
+    });
+
+    it('returns an empty page when nothing matches (backs the all-clear mockup state)', async () => {
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        skip: jest.fn().mockReturnThis(),
+        getManyAndCount: jest.fn().mockResolvedValue([[], 0]),
+      });
+
+      const result = await repository.findProductMatchingErrorOrders({}, { limit: 20, offset: 0 });
+
+      expect(result).toEqual({ items: [], total: 0 });
+    });
+  });
+
   describe('getMedianOrderValue (#1987)', () => {
     const baseFilters = {
       from: new Date('2026-08-01T00:00:00.000Z'),

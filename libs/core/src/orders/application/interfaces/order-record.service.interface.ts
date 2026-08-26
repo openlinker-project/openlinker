@@ -28,6 +28,11 @@ import type {
   SalesAndChannelAnalytics,
 } from '../../domain/types/order-sales-analytics.types';
 import type { TopProductFilters, TopProductsResult } from '../../domain/types/top-products.types';
+import type {
+  CoverageDetectionPagination,
+  PaginatedCurrencyMismatchOrders,
+  PaginatedProductMatchingErrorOrders,
+} from '../../domain/types/coverage-detection.types';
 
 export interface IOrderRecordService {
   /**
@@ -252,4 +257,34 @@ export interface IOrderRecordService {
    * separate, not-yet-scoped read (spec row C3).
    */
   getTopProducts(filters: TopProductFilters): Promise<TopProductsResult>;
+
+  /**
+   * Data Coverage `'currency'` category drill-down (#2464/#2466) — the
+   * cross-context surface `AnalyticsCoverageController`'s
+   * `GET /analytics/coverage` uses. Repository ports are forbidden across
+   * context boundaries (`docs/architecture-overview.md § Cross-context
+   * dependencies in core`), so this thin pass-through to {@link
+   * OrderRecordRepositoryPort.findCurrencyMismatchOrders} is the seam.
+   * `currentReportingCurrency` is an explicit caller-supplied param rather
+   * than resolved internally (unlike {@link getSalesAndChannelAnalytics}),
+   * because the same request also threads it into
+   * `ITaxCoverageDetectionService`'s call — resolving it twice per request
+   * risks the two reads straddling a setting change mid-request.
+   */
+  getCurrencyMismatchOrders(
+    filters: SalesAnalyticsFilters,
+    currentReportingCurrency: string,
+    pagination: CoverageDetectionPagination
+  ): Promise<PaginatedCurrencyMismatchOrders>;
+
+  /**
+   * Data Coverage `'product-matching'` category drill-down (#2466) — thin
+   * pass-through to {@link
+   * OrderRecordRepositoryPort.findProductMatchingErrorOrders}, for the same
+   * cross-context-boundary reason as {@link getCurrencyMismatchOrders}.
+   */
+  getProductMatchingErrorOrders(
+    filters: OrderHealthSummaryFilters,
+    pagination: CoverageDetectionPagination
+  ): Promise<PaginatedProductMatchingErrorOrders>;
 }

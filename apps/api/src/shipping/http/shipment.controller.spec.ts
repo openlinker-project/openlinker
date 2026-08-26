@@ -135,6 +135,8 @@ describe('ShipmentController', () => {
       getSalesAndChannelAnalytics: jest.fn(),
       getTopProducts: jest.fn(),
       discoverSalesDocumentMarkets: jest.fn(),
+      getCurrencyMismatchOrders: jest.fn(),
+      getProductMatchingErrorOrders: jest.fn(),
     };
     controller = new ShipmentController(
       query,

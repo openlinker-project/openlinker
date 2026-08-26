@@ -54,6 +54,11 @@ import { deriveOrderAnalyticsScalars, deriveOrderLineItems } from '../../domain/
 import { buildSalesAndChannelAnalytics } from '../../domain/order-sales-aggregation';
 import { buildTopProducts } from '../../domain/top-products-aggregation';
 import type { TopProductFilters, TopProductsResult } from '../../domain/types/top-products.types';
+import type {
+  CoverageDetectionPagination,
+  PaginatedCurrencyMismatchOrders,
+  PaginatedProductMatchingErrorOrders,
+} from '../../domain/types/coverage-detection.types';
 
 /** One day in milliseconds, for the market-discovery window arithmetic (#2518). */
 const MILLISECONDS_PER_DAY = 24 * 60 * 60 * 1000;
@@ -625,6 +630,35 @@ export class OrderRecordService implements IOrderRecordService {
     );
 
     return buildTopProducts({ ranking, total, breakdown });
+  }
+
+  /**
+   * Data Coverage `'currency'` category drill-down (#2464/#2466) — thin
+   * pass-through to {@link OrderRecordRepositoryPort.findCurrencyMismatchOrders},
+   * the cross-context seam `AnalyticsCoverageController` uses.
+   */
+  async getCurrencyMismatchOrders(
+    filters: SalesAnalyticsFilters,
+    currentReportingCurrency: string,
+    pagination: CoverageDetectionPagination
+  ): Promise<PaginatedCurrencyMismatchOrders> {
+    return this.repository.findCurrencyMismatchOrders(
+      filters,
+      currentReportingCurrency,
+      pagination
+    );
+  }
+
+  /**
+   * Data Coverage `'product-matching'` category drill-down (#2466) — thin
+   * pass-through to {@link
+   * OrderRecordRepositoryPort.findProductMatchingErrorOrders}.
+   */
+  async getProductMatchingErrorOrders(
+    filters: OrderHealthSummaryFilters,
+    pagination: CoverageDetectionPagination
+  ): Promise<PaginatedProductMatchingErrorOrders> {
+    return this.repository.findProductMatchingErrorOrders(filters, pagination);
   }
 
   /**

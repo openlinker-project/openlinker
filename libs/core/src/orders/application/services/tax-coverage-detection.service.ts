@@ -133,6 +133,23 @@ export class TaxCoverageDetectionService implements ITaxCoverageDetectionService
     return counts as Record<TaxCoverageCategory, number>;
   }
 
+  async getAllCategoryPages(
+    filters: SalesAnalyticsFilters,
+    currentReportingCurrency: string,
+    pagination: CoverageDetectionPagination
+  ): Promise<Record<TaxCoverageCategory, PaginatedTaxCoverageOrders>> {
+    const classification = await this.classify(filters, currentReportingCurrency);
+    const pages: Partial<Record<TaxCoverageCategory, PaginatedTaxCoverageOrders>> = {};
+    for (const category of TaxCoverageCategoryValues) {
+      const rows = classification[category];
+      pages[category] = {
+        items: rows.slice(pagination.offset, pagination.offset + pagination.limit),
+        total: rows.length,
+      };
+    }
+    return pages as Record<TaxCoverageCategory, PaginatedTaxCoverageOrders>;
+  }
+
   private toRow(candidate: NetExcludedOrderCandidate): TaxCoverageOrderRow {
     return {
       internalOrderId: candidate.internalOrderId,
