@@ -13,6 +13,7 @@ import { HoldReleaseNoteRequiredError } from '../../../domain/exceptions/hold-re
 import { OrderHoldNotFoundError } from '../../../domain/exceptions/order-hold-not-found.error';
 import type { OrderHoldRepositoryPort } from '../../../domain/ports/order-hold-repository.port';
 import { OrderHoldService } from '../order-hold.service';
+import type { OrderHoldProjectionRepositoryPort } from '../../../domain/ports/order-hold-projection-repository.port';
 import {
   OmsLifecycleFactTypeValues,
   type HoldReason,
@@ -39,6 +40,7 @@ function hold(overrides: Partial<OrderHold> = {}): OrderHold {
 
 describe('OrderHoldService', () => {
   let repository: jest.Mocked<OrderHoldRepositoryPort>;
+  let projection: jest.Mocked<OrderHoldProjectionRepositoryPort>;
   let service: OrderHoldService;
 
   beforeEach(() => {
@@ -52,7 +54,11 @@ describe('OrderHoldService', () => {
       listOpenPlacedBefore: jest.fn(),
       listOpenHolds: jest.fn(),
     } as unknown as jest.Mocked<OrderHoldRepositoryPort>;
-    service = new OrderHoldService(repository);
+    projection = {
+      setActiveHoldReason: jest.fn().mockResolvedValue(true),
+      findDivergentProjections: jest.fn().mockResolvedValue([]),
+    } as unknown as jest.Mocked<OrderHoldProjectionRepositoryPort>;
+    service = new OrderHoldService(repository, projection);
   });
 
   describe('place', () => {
@@ -252,6 +258,56 @@ describe('OrderHoldService', () => {
 
       await expect(service.getOpenHold('ol_order_1')).resolves.toBe(open);
       expect(repository.findOpenByOrder).toHaveBeenCalledWith('ol_order_1');
+    });
+  });
+
+  describe('the activeHoldReason projection (#2340)', () => {
+    it('should write the reason unconditionally when a hold is placed', async () => {
+      repository.placeIfNoneOpen.mockResolvedValue(hold());
+
+      await service.place({
+        internalOrderId: 'ol_order_1',
+        reason: 'stock-shortfall',
+        placedBy: { kind: 'service', service: 'inventory-automation' },
+      });
+
+      // No `ifCurrentlyIs`: this path IS the authority and must not be
+      // conditional on what a stale reconcile left behind.
+      expect(projection.setActiveHoldReason).toHaveBeenCalledWith(
+        'ol_order_1',
+        'stock-shortfall'
+      );
+    });
+
+    it('should write null rather than skipping when a hold is released', async () => {
+      const open = hold();
+      repository.findById.mockResolvedValue(open);
+      repository.releaseHeld.mockResolvedValue(
+        hold({ releasedAt: new Date('2026-01-02T00:00:00.000Z') })
+      );
+
+      await service.release({
+        holdId: open.id,
+        releasedBy: { kind: 'service', service: 'inventory-automation' },
+      });
+
+      // Level-triggered: storing null is what CLEARS the stale reason.
+      expect(projection.setActiveHoldReason).toHaveBeenCalledWith('ol_order_1', null);
+    });
+
+    it('should still place the hold when the projection write throws', async () => {
+      repository.placeIfNoneOpen.mockResolvedValue(hold());
+      projection.setActiveHoldReason.mockRejectedValue(new Error('db down'));
+
+      // The hold is the authority and has already committed; a throw here would
+      // leave the operator with neither a hold nor a projection.
+      await expect(
+        service.place({
+          internalOrderId: 'ol_order_1',
+          reason: 'stock-shortfall',
+          placedBy: { kind: 'service', service: 'inventory-automation' },
+        })
+      ).resolves.toMatchObject({ fact: { type: 'held' } });
     });
   });
 });

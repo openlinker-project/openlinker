@@ -44,7 +44,7 @@ import type {
 } from '../../../domain/types/order-record.types';
 import type { SlaState, OrderSlaSummary } from '../../../domain/types/order-sla.types';
 import type { OrderLifecyclePhase } from '@openlinker/core/order-lifecycle';
-import { OrderLifecyclePhaseValues } from '@openlinker/core/order-lifecycle';
+import { isHoldReason, OrderLifecyclePhaseValues } from '@openlinker/core/order-lifecycle';
 import { SLA_AT_RISK_WINDOW_MS } from '../../../domain/types/order-sla.types';
 import type { FulfillmentRollupState } from '../../../domain/types/order-fulfillment.types';
 import {
@@ -1056,9 +1056,16 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     delivered: `${OrderRecordRepository.LIFECYCLE_FULFILLMENT} = 'delivered'`,
     in_transit: `${OrderRecordRepository.LIFECYCLE_FULFILLMENT} = 'dispatched'`,
     fulfillment_failed: `${OrderRecordRepository.LIFECYCLE_FULFILLMENT} = 'failed'`,
-    // 6. A hold is a DECISION; no persisted source until Wave 2 (`order_holds`
-    //    plus its denormalised column).
-    held: 'FALSE',
+    // 6. A hold is a DECISION. Reads the #2340 projection, never `order_holds`
+    //    directly: this `CASE` backs the phase-summary buckets and `?phase=`,
+    //    and a correlated join per bucket over an already non-sargable
+    //    expression is not a cost the list can carry. The column is a cache and
+    //    `orders.holds.reconcile` repairs it; the hold GATES still read the
+    //    table. Note this arm is deliberately WIDER than the TS ladder's, which
+    //    coerces via `isHoldReason` - an unrecognised persisted value derives
+    //    `ready` there and `held` here. Unreachable while `OrderHoldService` is
+    //    the only writer, and the reconcile clears such a value.
+    held: `rec."activeHoldReason" IS NOT NULL`,
     // 7. An OL-authored intention in flight; no persisted source until Wave 2
     //    widens `order_changes.kind`.
     amending: 'FALSE',
@@ -2057,7 +2064,10 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       // reason columns above are: the column is a plain `varchar`, and a value
       // this build does not recognise must read as "no era" - i.e. the tax-rate
       // guard applies - rather than silently exempting the order from it.
-      isTaxRateEra(entity.taxRateEra) ? entity.taxRateEra : null
+      isTaxRateEra(entity.taxRateEra) ? entity.taxRateEra : null,
+      // #2340 - coerced, never defaulted: an unrecognised persisted reason must
+      // read as "not a hold reason" rather than becoming `operator`.
+      isHoldReason(entity.activeHoldReason) ? entity.activeHoldReason : null
     );
   }
 
@@ -2111,6 +2121,14 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    *   re-poll, and the operator would have no way to tell the un-pack from a
    *   colleague's deliberate one.
    *
+   * - `activeHoldReason` (#2340) - sole writer
+   *   `OrderHoldProjectionRepository.setActiveHoldReason`, reached from
+   *   `OrderHoldService.place`/`.release` and the `orders.holds.reconcile`
+   *   repair. Same shared reason, with the `salesDocument*` sharpening: an
+   *   ingestion carries no hold knowledge at all, so round-tripping it would
+   *   null a peer's reason on every re-poll and leave the order reading `ready`
+   *   while a hold is open. **It is excluded from `upsert()`'s raw column tuple
+   *   too** - the `toOrm` exclusion alone is only half the job there.
    * - `lastAmendedAt` / `lastAmendmentChanges` (#2283) - sole writer
    *   {@link recordAmendment}. The sharpest case of the shared reason: the write
    *   is triggered BY an ingestion, from a diff taken against the snapshot this

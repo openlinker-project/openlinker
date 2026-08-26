@@ -491,7 +491,11 @@ export class OrdersController {
       lifecyclePhase: deriveOrderLifecyclePhase({
         cancelledAt: order.cancelledAt ?? null,
         fulfillmentState: order.fulfillmentState,
-        activeHoldReason: null, // Wave 2 — `order_holds` + its denormalised column
+        // #2340 — the denormalised projection of the open `order_holds` row.
+        // Read here rather than through `IOrderHoldService` because `toDto` runs
+        // per row on the paged list; the SQL twin's `held` arm reads the same
+        // column, which is what keeps this badge and `?phase=held` in agreement.
+        activeHoldReason: order.activeHoldReason,
         hasOpenAmendment: false, // Wave 2 — widened `order_changes.kind`
         recordStatus: order.recordStatus,
         authority: DEFAULT_LIFECYCLE_AUTHORITY, // Wave 4 binds this per order at ingestion

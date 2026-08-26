@@ -11,23 +11,35 @@
  * layer down.
  *
  * **Provided by `OrderHoldsModule`, not `OrdersModule`.** The leaf split exists
- * so the hold seam needs one repository and not the eight-context graph
- * `OrdersModule` pulls in; putting the service anywhere else would spend that
- * split for nothing.
+ * so the hold seam needs a narrow set of repositories and not the eight-context
+ * graph `OrdersModule` pulls in; putting the service anywhere else would spend
+ * that split for nothing.
+ *
+ * **#2340 ended the module's "one repository" posture, deliberately.** A second
+ * repository is injected here for `order_records.activeHoldReason` — the
+ * denormalised projection of the open hold. Stated rather than left to be
+ * discovered: writing the projection is part of PLACING a hold, not a separate
+ * workflow, so it hangs off the same two methods; and it is still two local
+ * tables in one context, not a sibling-context edge, so the reason the split
+ * exists is intact.
  *
  * @module libs/core/src/orders/application/services
  * @implements {IOrderHoldService}
  */
 import { Inject, Injectable } from '@nestjs/common';
-import type { OmsLifecycleFact } from '@openlinker/core/order-lifecycle';
+import type { HoldReason, OmsLifecycleFact } from '@openlinker/core/order-lifecycle';
 import { Logger } from '@openlinker/shared/logging';
 import type { OrderHold } from '../../domain/entities/order-hold.entity';
 import { HoldReleaseNotPermittedError } from '../../domain/exceptions/hold-release-not-permitted.error';
 import { HoldReleaseNoteRequiredError } from '../../domain/exceptions/hold-release-note-required.error';
 import { HoldAlreadyReleasedError } from '../../domain/exceptions/hold-already-released.error';
 import { OrderHoldNotFoundError } from '../../domain/exceptions/order-hold-not-found.error';
+import { OrderHoldProjectionRepositoryPort } from '../../domain/ports/order-hold-projection-repository.port';
 import { OrderHoldRepositoryPort } from '../../domain/ports/order-hold-repository.port';
-import { ORDER_HOLD_REPOSITORY_TOKEN } from '../../orders.tokens';
+import {
+  ORDER_HOLD_PROJECTION_REPOSITORY_TOKEN,
+  ORDER_HOLD_REPOSITORY_TOKEN,
+} from '../../orders.tokens';
 import type {
   IOrderHoldService,
   OrderHoldTransition,
@@ -50,7 +62,9 @@ export class OrderHoldService implements IOrderHoldService {
 
   constructor(
     @Inject(ORDER_HOLD_REPOSITORY_TOKEN)
-    private readonly holds: OrderHoldRepositoryPort
+    private readonly holds: OrderHoldRepositoryPort,
+    @Inject(ORDER_HOLD_PROJECTION_REPOSITORY_TOKEN)
+    private readonly projection: OrderHoldProjectionRepositoryPort
   ) {}
 
   async place(request: PlaceHoldRequest): Promise<OrderHoldTransition> {
@@ -61,6 +75,8 @@ export class OrderHoldService implements IOrderHoldService {
       placedBy: request.placedBy,
       placedAt: new Date(),
     });
+
+    await this.projectActiveHoldReason(hold.internalOrderId, hold.reason);
 
     return this.emit(hold, {
       type: 'held',
@@ -105,6 +121,10 @@ export class OrderHoldService implements IOrderHoldService {
       releasedByUserId:
         request.releasedBy.kind === 'user' ? request.releasedBy.userId : null,
     });
+
+    // `null`, not "skip": the projection is level-triggered, so storing null is
+    // what CLEARS the stale reason (#2100's rule).
+    await this.projectActiveHoldReason(hold.internalOrderId, null);
 
     return this.emit(hold, {
       type: 'released',
@@ -157,6 +177,37 @@ export class OrderHoldService implements IOrderHoldService {
 
     if (placedByService !== null && note === null) {
       throw new HoldReleaseNoteRequiredError(hold.id, placedByService);
+    }
+  }
+
+  /**
+   * Write the denormalised `order_records.activeHoldReason` cache (#2340).
+   *
+   * **Best-effort, and it never throws.** The hold itself is the authority and
+   * has already committed; failing `place()` here would leave the operator with
+   * neither a hold nor a projection, which is strictly worse than a badge that
+   * is stale until the next `orders.holds.reconcile` tick. That reconcile is
+   * precisely why this may be best-effort rather than belt-and-braces.
+   *
+   * The log token is stable and greppable on purpose: it is the ONLY signal
+   * anyone gets that a phase badge is stale for up to one cron interval, which
+   * is what makes "hourly is enough" an accepted cost rather than an invisible
+   * one. It is alertable — keep it.
+   *
+   * No `ifCurrentlyIs`: this path IS the authority and must not be conditional
+   * on whatever a stale reconcile left behind.
+   */
+  private async projectActiveHoldReason(
+    internalOrderId: string,
+    reason: HoldReason | null
+  ): Promise<void> {
+    try {
+      await this.projection.setActiveHoldReason(internalOrderId, reason);
+    } catch (error) {
+      this.logger.warn(
+        `order_hold_projection_write_failed for order ${internalOrderId}: ` +
+          `${error instanceof Error ? error.message : String(error)}`
+      );
     }
   }
 

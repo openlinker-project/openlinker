@@ -45,3 +45,13 @@ export const ORDER_HOLD_REPOSITORY_TOKEN = Symbol('OrderHoldRepositoryPort');
 // re-exported through `OrdersModule`, so shipping's dispatch gate can inject it
 // without deep-importing anything.
 export const ORDER_HOLD_SERVICE_TOKEN = Symbol('IOrderHoldService');
+
+/** #2340 — the `order_records.activeHoldReason` cache's only write statement. */
+export const ORDER_HOLD_PROJECTION_REPOSITORY_TOKEN = Symbol(
+  'OrderHoldProjectionRepositoryPort'
+);
+
+/** #2340 — the bounded `orders.holds.reconcile` repair pass. */
+export const ORDER_HOLD_PROJECTION_RECONCILE_SERVICE_TOKEN = Symbol(
+  'IOrderHoldProjectionReconcileService'
+);

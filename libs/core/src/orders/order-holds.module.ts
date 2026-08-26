@@ -34,15 +34,20 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { OrderHoldOrmEntity } from './infrastructure/persistence/entities/order-hold.orm-entity';
+import { OrderRecordOrmEntity } from './infrastructure/persistence/entities/order-record.orm-entity';
 import { OrderHoldRepository } from './infrastructure/persistence/repositories/order-hold.repository';
+import { OrderHoldProjectionRepository } from './infrastructure/persistence/repositories/order-hold-projection.repository';
 import { OrderHoldService } from './application/services/order-hold.service';
+import { OrderHoldProjectionReconcileService } from './application/services/order-hold-projection-reconcile.service';
 import {
+  ORDER_HOLD_PROJECTION_RECONCILE_SERVICE_TOKEN,
+  ORDER_HOLD_PROJECTION_REPOSITORY_TOKEN,
   ORDER_HOLD_REPOSITORY_TOKEN,
   ORDER_HOLD_SERVICE_TOKEN,
 } from './orders.tokens';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([OrderHoldOrmEntity])],
+  imports: [TypeOrmModule.forFeature([OrderHoldOrmEntity, OrderRecordOrmEntity])],
   providers: [
     OrderHoldRepository,
     { provide: ORDER_HOLD_REPOSITORY_TOKEN, useExisting: OrderHoldRepository },
@@ -50,7 +55,24 @@ import {
     // narrow seam this split exists for is what the service actually takes.
     OrderHoldService,
     { provide: ORDER_HOLD_SERVICE_TOKEN, useExisting: OrderHoldService },
+    // #2340 — the projection cache. A SECOND repository over a second table in
+    // the same context; see `OrderHoldService`'s docblock for why that is a
+    // deliberate end to the module's "one repository" posture rather than drift.
+    OrderHoldProjectionRepository,
+    {
+      provide: ORDER_HOLD_PROJECTION_REPOSITORY_TOKEN,
+      useExisting: OrderHoldProjectionRepository,
+    },
+    OrderHoldProjectionReconcileService,
+    {
+      provide: ORDER_HOLD_PROJECTION_RECONCILE_SERVICE_TOKEN,
+      useExisting: OrderHoldProjectionReconcileService,
+    },
   ],
-  exports: [ORDER_HOLD_REPOSITORY_TOKEN, ORDER_HOLD_SERVICE_TOKEN],
+  exports: [
+    ORDER_HOLD_REPOSITORY_TOKEN,
+    ORDER_HOLD_SERVICE_TOKEN,
+    ORDER_HOLD_PROJECTION_RECONCILE_SERVICE_TOKEN,
+  ],
 })
 export class OrderHoldsModule {}

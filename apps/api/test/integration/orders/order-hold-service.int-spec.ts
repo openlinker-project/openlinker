@@ -8,9 +8,15 @@
  *
  * That last point is what the epic's **L4 exit criterion** rests on: both gates
  * consult `IOrderHoldService.getOpenHold`, and this asserts that the method
- * answers from `order_holds` itself against a real database — deliberately one
- * where #2340's `order_records.activeHoldReason` does not yet exist, so the
- * answer cannot have come from a projection.
+ * answers from `order_holds` itself.
+ *
+ * **The premise of that assertion changed with #2340 and the assertion did
+ * not.** It was originally written against a database where
+ * `order_records.activeHoldReason` did not exist, so a projection read was
+ * impossible by construction; the column now exists, and the guarantee is
+ * therefore a design property rather than a structural impossibility — no hold
+ * gate may read the cache. `order-hold-projection.int-spec.ts` covers the
+ * projection's own behaviour; this file stays the L4 read assertion.
  *
  * **What it does NOT assert** is either gate calling it; that wiring is covered
  * by the two service unit specs (`order-sync.service.spec.ts`,

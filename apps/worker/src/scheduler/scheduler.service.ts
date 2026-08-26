@@ -391,6 +391,7 @@ export class SchedulerService implements OnModuleDestroy {
       // Likewise bespoke, for the opposite reason (#2317): this one has no
       // capability and no connection at all.
       this.registerInventoryProvenanceBackfillTask();
+      this.registerOrderHoldReconcileTask();
 
       // Drain plugin-contributed tasks — populated at `onModuleInit`, complete
       // by the time any post-bootstrap start() runs.
@@ -848,6 +849,67 @@ export class SchedulerService implements OnModuleDestroy {
       generatePayload: () => ({ schemaVersion: 1 }),
       generateIdempotencyKey: (_connection, timestamp) =>
         `inventory:provenance:backfill:${timestamp}`,
+    });
+  }
+
+  /**
+   * Register the order-hold projection reconcile (#2340, DESIGN §6.3).
+   *
+   * Bespoke rather than a `CORE_CAPABILITY_TASKS` row for the same reason the
+   * provenance backfill above is: it has no capability to scope by and no
+   * connection to run for. Its subject is a disagreement between two OL-owned
+   * tables — `order_holds` and the `order_records.activeHoldReason` cache — and
+   * neither write path involves a platform at all, so it runs ONCE for the
+   * deployment under the nil-UUID system id via a synthetic single-element
+   * `connectionFilter`.
+   *
+   * **Default ON.** It makes zero platform calls, is bounded per tick, is
+   * idempotent, and repairs a cache whose authority write is deliberately
+   * best-effort — the `master.product.reconcile` rationale: a pass that closes a
+   * correctness gap and costs nothing external should not wait for an operator
+   * to discover a flag.
+   *
+   * **Hourly, and unlike the provenance backfill it never latches off** —
+   * divergence can reappear at any time, so there is no completion stamp. The
+   * steady-state cost of a tick is one indexed query returning zero rows.
+   *
+   * The drift window this cadence buys shows a stale phase badge, never a wrong
+   * gate: both #2339 hold gates read `order_holds` directly.
+   */
+  private registerOrderHoldReconcileTask(): void {
+    const enabled = this.configService.get<string>('OL_ORDER_HOLD_RECONCILE_ENABLED', 'true');
+    if (enabled === 'false') {
+      return;
+    }
+
+    const cronExpression = this.configService.get<string>(
+      'OL_ORDER_HOLD_RECONCILE_CRON',
+      '0 * * * *'
+    );
+
+    // No connection axis exists for this pass — see the method docblock.
+    const systemConnection = new Connection(
+      INVENTORY_PROVENANCE_SCOPE_ID,
+      'system',
+      'system',
+      'active',
+      {},
+      '',
+      new Date(0),
+      new Date(0),
+      undefined,
+      []
+    );
+
+    this.tasks.push({
+      taskId: 'order-hold-reconcile',
+      jobType: 'orders.holds.reconcile',
+      cronExpression,
+      enabledEnvVar: 'OL_ORDER_HOLD_RECONCILE_ENABLED',
+      enabledDefault: true,
+      connectionFilter: () => Promise.resolve([systemConnection]),
+      generatePayload: () => ({ schemaVersion: 1 }),
+      generateIdempotencyKey: (_connection, timestamp) => `orders:holds:reconcile:${timestamp}`,
     });
   }
 

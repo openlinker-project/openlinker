@@ -305,6 +305,12 @@ export { OrderChangesModule } from './order-changes.module';
 // Leaf module carrying `order_holds` only (#2338). `OrdersModule` imports it,
 // but #2339's `OrderHoldService` takes THIS rather than `OrdersModule` — see
 // its docblock for why the narrow seam matters.
+// #2340 — the `order_records.activeHoldReason` reconcile seam. The worker
+// handler reaches the pass through this interface; the projection REPOSITORY
+// port stays intra-context (a cache's write statement is nobody else's
+// business, and no hold gate may read the column at all).
+export type { IOrderHoldProjectionReconcileService } from './application/interfaces/order-hold-projection-reconcile.service.interface';
+export type { HoldProjectionReconcileResult } from './domain/types/order-hold-projection.types';
 export { OrderHoldsModule } from './order-holds.module';
 
 

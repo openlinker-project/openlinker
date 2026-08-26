@@ -97,6 +97,11 @@ export const JobTypeValues = [
   // platform calls and reads only OL's own table — `inventory.propagateToMarketplaces`
   // is the naming precedent for a core-owned internal pass.
   'inventory.provenance.backfill',
+  // Repairs the `order_records.activeHoldReason` cache against `order_holds`
+  // (#2340). Deliberately NOT named `marketplace.*`: it makes zero platform
+  // calls and reads only OL's own tables - `inventory.provenance.backfill` is
+  // the naming precedent for a core-owned internal pass.
+  'orders.holds.reconcile',
 
   // Invoicing (core-owned policy; executed by worker — OL #1120)
   'invoicing.issue',
