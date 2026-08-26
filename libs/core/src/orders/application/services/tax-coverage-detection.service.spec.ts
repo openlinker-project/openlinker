@@ -232,4 +232,53 @@ describe('TaxCoverageDetectionService (#2465)', () => {
       expect(counts).toEqual({ 'tax-a': 0, 'tax-b': 1, 'tax-c': 0 });
     });
   });
+
+  describe('getAllCategoryPages (#2466)', () => {
+    it('returns all three categories from ONE classification pass', async () => {
+      const candidates = [
+        candidate({ internalOrderId: 'order-1', taxRateEra: null }),
+        candidate({ internalOrderId: 'order-2', taxRateEra: 'pre-rollout' }),
+      ];
+      recordRepository.findNetExcludedOrderCandidates.mockResolvedValue(candidates);
+      lineItemRepository.findByOrderId.mockResolvedValue([
+        makeLine({ orderRecordId: 'order-2', taxRate: '23' }),
+      ]);
+
+      const pages = await service.getAllCategoryPages(baseFilters, 'EUR', {
+        limit: 10,
+        offset: 0,
+      });
+
+      expect(recordRepository.findNetExcludedOrderCandidates).toHaveBeenCalledTimes(1);
+      expect(pages['tax-a']).toEqual({
+        items: [
+          { internalOrderId: 'order-2', sourceConnectionId: 'conn-1', placedAt: expect.any(Date) },
+        ],
+        total: 1,
+      });
+      expect(pages['tax-b']).toEqual({
+        items: [
+          { internalOrderId: 'order-1', sourceConnectionId: 'conn-1', placedAt: expect.any(Date) },
+        ],
+        total: 1,
+      });
+      expect(pages['tax-c']).toEqual({ items: [], total: 0 });
+    });
+
+    it('slices each category page in-memory by the requested pagination', async () => {
+      const candidates = Array.from({ length: 5 }, (_, i) =>
+        candidate({ internalOrderId: `order-${i}`, taxRateEra: null })
+      );
+      recordRepository.findNetExcludedOrderCandidates.mockResolvedValue(candidates);
+
+      const pages = await service.getAllCategoryPages(baseFilters, 'EUR', {
+        limit: 2,
+        offset: 2,
+      });
+
+      expect(pages['tax-b'].total).toBe(5);
+      expect(pages['tax-b'].items).toHaveLength(2);
+      expect(pages['tax-b'].items[0].internalOrderId).toBe('order-2');
+    });
+  });
 });
