@@ -51,11 +51,24 @@ const ALLOWED_RE_EXPORT_PREFIX = './domain/types/';
  * that one leaf. This list is the producer-side half, and it is an ALLOW list
  * so that adding a value export is a deliberate act with a written reason
  * rather than an accident.
+ *
+ * Keyed by `(file, symbol)`, NOT by file, following the same reasoning
+ * `check-cross-context-imports.mjs` gives for its own per-symbol gate: a
+ * file-level entry silences the rule for that file forever, so an allowed
+ * seam could grow a second, unrelated value export in silence. The path rule
+ * still bounds where such an export may point, but bounding the path is
+ * exactly what the value rule exists to go beyond.
  */
 const VALUE_EXPORT_ALLOWED = new Map([
   [
     'libs/core/src/orders/types.ts',
-    'PAYMENT_STATUS / PaymentStatusValues (#2155) - InvoicingModule value-imports them, which is the cycle this seam was created to break.',
+    new Map([
+      [
+        'PAYMENT_STATUS',
+        '#2155 - InvoicingModule value-imports it, which is the cycle this seam was created to break.',
+      ],
+      ['PaymentStatusValues', '#2155 - the runtime array beside PAYMENT_STATUS, same consumer.'],
+    ]),
   ],
 ]);
 
@@ -82,21 +95,37 @@ function findTypesSubBarrels() {
 }
 
 /**
- * True when the file carries a re-export that is NOT type-only. Both the
- * statement form (`export type { A } from ...`) and the per-specifier form
- * (`export { type A } from ...`) count as type-only; a bare `export * from`
- * is a value re-export, since a star cannot be narrowed to types.
+ * The symbols a file re-exports as RUNTIME VALUES, or an empty array when it
+ * re-exports types only. Both the statement form (`export type { A } from
+ * ...`) and the per-specifier form (`export { type A } from ...`) count as
+ * type-only; a bare `export * from` is a value re-export, since a star cannot
+ * be narrowed to types, and is reported under the symbol `*`.
  */
-function hasValueReExport(source) {
+function valueReExportsOf(source) {
   const withoutComments = stripComments(source);
   const reExports = [...withoutComments.matchAll(/export\s+([\s\S]*?)from\s+['"][^'"]+['"]/g)];
-  return reExports.some(([, clause]) => {
+  const symbols = [];
+  for (const [, clause] of reExports) {
     const head = clause.trim();
-    if (head.startsWith('type')) return false;
-    if (head.startsWith('*')) return true;
-    const names = head.replace(/^\{|\}$/g, '').split(',').map((n) => n.trim()).filter(Boolean);
-    return names.some((name) => !name.startsWith('type '));
-  });
+    if (head.startsWith('type')) continue;
+    if (head.startsWith('*')) {
+      symbols.push('*');
+      continue;
+    }
+    const names = head
+      .replace(/^\{|\}$/g, '')
+      .split(',')
+      .map((n) => n.trim())
+      .filter(Boolean);
+    for (const name of names) {
+      if (name.startsWith('type ')) continue;
+      // `A as B` re-exports A under the name B; the allow list names what the
+      // CONSUMER sees, so record the exported name.
+      const parts = name.split(/\s+as\s+/);
+      symbols.push((parts[1] ?? parts[0]).trim());
+    }
+  }
+  return symbols;
 }
 
 function specifiersOf(source) {
@@ -108,7 +137,13 @@ function run() {
   const selfCheck = process.argv.includes('--self-check');
 
   if (selfCheck) {
-    const cases = [
+    let failed = 0;
+    let checked = 0;
+
+    // The PATH rule: where a re-export may point. Note that case 2 is `ok`
+    // here and still rejected by a real run - this set exercises the path
+    // rule alone, and the value rule below is what refuses it.
+    const pathCases = [
       { source: "export type { A } from './domain/types/a.types';", ok: true },
       { source: "export { A } from './domain/types/a.types';", ok: true },
       { source: "export type { A } from './domain/ports/a.port';", ok: false },
@@ -116,26 +151,68 @@ function run() {
       { source: "export type { A } from '@openlinker/core/orders';", ok: false },
       {
         // Prose naming a forbidden path must not be read as a re-export.
-        source: "/** never from './domain/ports/x.port' */\nexport type { A } from './domain/types/a.types';",
+        source:
+          "/** never from './domain/ports/x.port' */\nexport type { A } from './domain/types/a.types';",
         ok: true,
       },
     ];
-    let failed = 0;
-    for (const [i, testCase] of cases.entries()) {
+    for (const [i, testCase] of pathCases.entries()) {
       const bad = specifiersOf(testCase.source).filter(
         (s) => !s.startsWith(ALLOWED_RE_EXPORT_PREFIX),
       );
       const ok = bad.length === 0;
+      checked += 1;
       if (ok !== testCase.ok) {
-        console.error(`  case ${i} expected ok=${testCase.ok}, got ok=${ok}`);
+        console.error(`  path case ${i} expected ok=${testCase.ok}, got ok=${ok}`);
         failed += 1;
       }
     }
+
+    // The VALUE rule: which symbols cross as runtime values. A missing case
+    // here is what would let an erased edge quietly become a real one.
+    const valueCases = [
+      { source: "export type { A } from './domain/types/a.types';", symbols: [] },
+      { source: "export type { A, B } from './domain/types/a.types';", symbols: [] },
+      { source: "export { type A, type B } from './domain/types/a.types';", symbols: [] },
+      { source: "export { A } from './domain/types/a.types';", symbols: ['A'] },
+      { source: "export { type A, B } from './domain/types/a.types';", symbols: ['B'] },
+      { source: "export * from './domain/types/a.types';", symbols: ['*'] },
+      { source: "export { A as B } from './domain/types/a.types';", symbols: ['B'] },
+      {
+        source: "export {\n  A,\n  type B,\n} from './domain/types/a.types';",
+        symbols: ['A'],
+      },
+      {
+        // A comment mentioning a value export is not one.
+        source: "// export { A } from './domain/types/a.types'\nexport type { B } from './domain/types/b.types';",
+        symbols: [],
+      },
+    ];
+    for (const [i, testCase] of valueCases.entries()) {
+      const actual = valueReExportsOf(testCase.source);
+      checked += 1;
+      if (JSON.stringify(actual) !== JSON.stringify(testCase.symbols)) {
+        console.error(
+          `  value case ${i} expected [${testCase.symbols}], got [${actual}]`,
+        );
+        failed += 1;
+      }
+    }
+
+    // DISCOVERY: the directory form carries the same package-exports subpath,
+    // so a walker that finds only the flat file leaves it ungoverned.
+    const discovered = findTypesSubBarrels().map((file) => file.split(sep).join('/'));
+    checked += 1;
+    if (!discovered.every((file) => file.endsWith('/types.ts') || file.endsWith('/types/index.ts'))) {
+      console.error(`  discovery returned an unexpected shape: ${discovered.join(', ')}`);
+      failed += 1;
+    }
+
     if (failed > 0) {
       console.error(`✗ check-types-sub-barrels --self-check: ${failed} case(s) failed.`);
       process.exit(1);
     }
-    console.log(`✓ check-types-sub-barrels --self-check: ${cases.length} case(s) passed.`);
+    console.log(`✓ check-types-sub-barrels --self-check: ${checked} case(s) passed.`);
     return;
   }
 
@@ -152,8 +229,11 @@ function run() {
       }
     }
     const normalized = file.split(sep).join('/');
-    if (!VALUE_EXPORT_ALLOWED.has(normalized) && hasValueReExport(source)) {
-      valueExports.push(normalized);
+    const allowedSymbols = VALUE_EXPORT_ALLOWED.get(normalized) ?? new Map();
+    for (const symbol of valueReExportsOf(source)) {
+      if (!allowedSymbols.has(symbol)) {
+        valueExports.push({ file: normalized, symbol });
+      }
     }
   }
 
@@ -177,17 +257,21 @@ function run() {
       '  A value import emits a require() and turns the erased edge these seams exist for back',
     );
     console.error(
-      '  into a real one. Either export the symbol as a type, or add the file to',
+      '  into a real one. Either export the symbol as a type, or add the (file, symbol) pair',
     );
-    console.error('  VALUE_EXPORT_ALLOWED in this script with the reason.');
-    for (const file of valueExports) {
-      console.error(`  ${file}`);
+    console.error('  to VALUE_EXPORT_ALLOWED in this script with the reason.');
+    for (const violation of valueExports) {
+      console.error(`  ${violation.file}: re-exports the value '${violation.symbol}'`);
     }
     process.exit(1);
   }
 
+  const approvedSymbolCount = [...VALUE_EXPORT_ALLOWED.values()].reduce(
+    (total, symbols) => total + symbols.size,
+    0,
+  );
   console.log(
-    `✓ check-types-sub-barrels: ${files.length} <ctx>/types sub-barrel(s) checked. All re-export vocabulary only, and only ${VALUE_EXPORT_ALLOWED.size} carries an approved value export.`,
+    `✓ check-types-sub-barrels: ${files.length} <ctx>/types sub-barrel(s) checked. All re-export vocabulary only, with ${approvedSymbolCount} approved value export(s) across ${VALUE_EXPORT_ALLOWED.size} file(s).`,
   );
 }
 
