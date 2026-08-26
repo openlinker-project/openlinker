@@ -17,20 +17,24 @@ export type CoverageResolutionStatus = (typeof CoverageResolutionStatusValues)[n
 export function deriveCoverageDisplay(
   status: CoverageResolutionStatus,
   category: string,
-): { tone: 'success' | 'warning' | 'critical'; label: string } {
+): { tone: 'success' | 'warning' | 'error'; label: string } {
   // pure mapping — no I/O, colocated per the pure-rule exception in
   // docs/engineering-standards.md, e.g. *.types.ts alongside the union it derives from
 }
 ```
 
-An earlier design pass proposed folding outcome and lifecycle into one compound value — in the requester's own words, *"moze status po prostu? i to bedzie status success-closed czy cos konczocay wszystkei statusy, bedzie tez succes-unclosed, warning itp itd"* (a single status like `success-closed` / `success-unclosed` that names both the outcome and whether the row has been dismissed). That was rejected: a compound string forces every new tone/lifecycle combination to mint a new literal, and the two axes change for different reasons (a run's lifecycle is a fact about the job; its tone is a rendering choice). The codebase already has this exact split precedent in `deriveOrderHealth` and `ConnectionIngestionStatus` — one closed lifecycle union, one pure function deriving display tone from it. `CoverageResolutionStatus` follows the same shape.
+An earlier design pass proposed folding outcome and lifecycle into one compound value: a single status like `success-closed` / `success-unclosed` that names both the outcome and whether the row has been dismissed. That was rejected: a compound string forces every new tone/lifecycle combination to mint a new literal, and the two axes change for different reasons (a run's lifecycle is a fact about the job; its tone is a rendering choice). The codebase already has this exact split precedent in `deriveOrderHealth` and `ConnectionIngestionStatus` — one closed lifecycle union, one pure function deriving display tone from it. `CoverageResolutionStatus` follows the same shape.
+
+> Original request (PL): *"moze status po prostu? i to bedzie status success-closed czy cos konczocay wszystkei statusy, bedzie tez succes-unclosed, warning itp itd"*
 
 ## Decision 2 — `analytics_remediation_runs` tracks the currency category only
 
 ```sql
 CREATE TABLE analytics_remediation_runs (
   id             text PRIMARY KEY,          -- ol_remrun_{uuid}
-  category       text NOT NULL,             -- open string, not a closed enum — see below
+  category       text NOT NULL,             -- open string, not a closed enum, so a future
+                                            -- async category needs no migration; currency is
+                                            -- the only writer in this epic (see note below)
   status         text NOT NULL,             -- CoverageResolutionStatus
   detail         text NULL,                 -- populated on 'failed'; mirrors sync_jobs.lastError / salesDocumentBlockDetail
   affected_count integer NOT NULL,
@@ -61,7 +65,9 @@ The one legitimate *tax-side* action that does trigger real work is category C's
 | `settings-open` / `tax-confirm` | not modeled by this table at all — pure settings state | tax (A) |
 | `detail-tax` / `detail-novat` / `detail-postrollout` | not modeled by this table — derived live from the existing `netExcludedCount` population each read | tax (A/B/C) |
 
-A `resolved` row's disappearance is driven by the real `UPDATE analytics_remediation_runs SET status = 'resolved'` completing on the worker side, never a client-only timer — the UI's brief "Fixed — closing…" sub-state is cosmetic delay on top of a real state transition, not a substitute for one. The resulting success confirmation renders as a dismissible, green, **inline** notice inside the Data Coverage section (the `.coverage-alert` pattern) — an earlier toast-based sketch was rejected in the requester's own words: *"zamiast toasta mial pozostawac notifcation w sekcji data coverage tylko miec opcje zamkniecia... i mial sie robic na zielono"* (instead of a toast, it should stay as a notification in the Data Coverage section with just a close option, and render green).
+A `resolved` row's disappearance is driven by the real `UPDATE analytics_remediation_runs SET status = 'resolved'` completing on the worker side, never a client-only timer — the UI's brief "Fixed — closing…" sub-state is cosmetic delay on top of a real state transition, not a substitute for one. The resulting success confirmation renders as a dismissible, green, **inline** notice inside the Data Coverage section (the `.coverage-alert` pattern). An earlier toast-based sketch was rejected: the confirmation should stay put as a notification inside the Data Coverage section, carry nothing but a close affordance, and render green.
+
+> Original request (PL): *"zamiast toasta mial pozostawac notifcation w sekcji data coverage tylko miec opcje zamkniecia... i mial sie robic na zielono"*
 
 ## Consequences
 
