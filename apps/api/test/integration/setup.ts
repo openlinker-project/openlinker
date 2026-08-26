@@ -139,6 +139,18 @@ const harness = createIntegrationTestHarness({
     // never reach it; truncate explicitly or a proposal from one case still
     // holds its target's slot in the next.
     'order_changes',
+    // automation_* (#2358) — the OMS automation v1 storage. NOTHING here
+    // carries an FK: not runs/firings -> automation_rules (a deleted rule must
+    // neither destroy its history nor be blocked by it), and not subjectId ->
+    // order_records (the order_changes precedent of an indexed reference by
+    // value). `truncateTables`' CASCADE walk therefore reaches none of the
+    // three; truncate explicitly, or a firing recorded by one case still
+    // suppresses that (rule, subject) pair for the next — which is exactly the
+    // at-most-once behaviour the table exists to provide, and exactly the
+    // wrong behaviour between test cases.
+    'automation_runs',
+    'automation_trigger_firings',
+    'automation_rules',
     // destination_categories (#1979) — the taxonomy projection. Marketplace
     // rows are owner-keyed with NO connectionId, so nothing cascades from
     // connections; truncate explicitly or an owner tree leaks between cases.
