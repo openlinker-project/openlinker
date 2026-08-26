@@ -36,6 +36,14 @@
  *    service. Reuses `CurrencyModule` (already imported above) for its one
  *    cross-context dependency, `IReportingCurrencySettingsService`.
  *
+ * 7. **`/analytics/coverage/currency/*`** (`AnalyticsRemediationController`,
+ *    #2468) — the one genuinely-async Data Coverage remediation: open an
+ *    `analytics_remediation_runs` row, enqueue the driver job, poll the run,
+ *    and page the affected orders. Kept as a sibling of the read-only
+ *    `AnalyticsCoverageController` because it writes and needs `admin`; see
+ *    its own header. Composes `CoreAnalyticsModule` (the ledger),
+ *    `OrdersModule` (the detector count), `CurrencyModule` and `SyncModule`.
+ *
  * The concerns share nothing except the URL prefix. If a future
  * `/analytics` route (#1986 route shell, KPI strip, etc.) needs its own
  * module, that is the point to split this into a dedicated module (e.g.
@@ -53,6 +61,7 @@ import { AnalyticsModule as CoreAnalyticsModule } from '@openlinker/core/analyti
 import { CurrencyModule } from '@openlinker/core/currency';
 import { ListingsModule } from '@openlinker/core/listings/services';
 import { OrdersModule } from '@openlinker/core/orders';
+import { SyncModule } from '@openlinker/core/sync';
 import { ProductsModule } from '@openlinker/core/products';
 // The apps/api-layer IntegrationsModule (not the core one, which ListingsModule
 // already imports for its own internal providers without re-exporting
@@ -65,6 +74,7 @@ import { SalesAnalyticsController } from './http/sales-analytics.controller';
 import { TopProductsController } from './http/top-products.controller';
 import { AnalyticsSettingsController } from './http/analytics-settings.controller';
 import { AnalyticsCoverageController } from './http/analytics-coverage.controller';
+import { AnalyticsRemediationController } from './http/analytics-remediation.controller';
 import { NeedsAttentionService } from './application/services/needs-attention.service';
 import { NEEDS_ATTENTION_SERVICE_TOKEN } from './application/services/needs-attention.service.interface';
 import { TopProductsService } from './application/services/top-products.service';
@@ -78,6 +88,8 @@ import { TOP_PRODUCTS_SERVICE_TOKEN } from './application/services/top-products.
     OrdersModule,
     ProductsModule,
     ApiIntegrationsModule,
+    // #2468 — JOB_ENQUEUE_TOKEN for the currency-remediation driver enqueue.
+    SyncModule,
   ],
   controllers: [
     PosthogSettingsController,
@@ -86,6 +98,7 @@ import { TOP_PRODUCTS_SERVICE_TOKEN } from './application/services/top-products.
     TopProductsController,
     AnalyticsSettingsController,
     AnalyticsCoverageController,
+    AnalyticsRemediationController,
   ],
   providers: [
     NeedsAttentionService,
