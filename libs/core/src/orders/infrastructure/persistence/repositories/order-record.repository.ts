@@ -1630,45 +1630,9 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     // them to either half of this statement - each has a narrow, atomic
     // out-of-band writer that owns it.
     const entity = this.toOrm(orderRecord);
+    const { sql, params } = this.buildFrozenAttributionUpsert(entity, false);
 
-    const rows = (await this.repository.query(
-      `INSERT INTO "order_records" (
-         "internalOrderId", "customerId", "sourceConnectionId", "sourceEventId",
-         "orderSnapshot", "recordStatus", "mappingFailureReason", "dispatchByAt",
-         "createdAt", "updatedAt"
-       ) VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, $8, $9, $10)
-       ON CONFLICT ("internalOrderId") DO UPDATE SET
-         "customerId" = EXCLUDED."customerId",
-         -- Source attribution (#2282): "sourceConnectionId" is absent from this
-         -- SET list on purpose. "sourceEventId" advances only when the write
-         -- comes from the row's own source.
-         "sourceEventId" = CASE
-           WHEN "order_records"."sourceConnectionId" = EXCLUDED."sourceConnectionId"
-             THEN EXCLUDED."sourceEventId"
-           ELSE "order_records"."sourceEventId"
-         END,
-         "orderSnapshot" = EXCLUDED."orderSnapshot",
-         "recordStatus" = EXCLUDED."recordStatus",
-         "mappingFailureReason" = EXCLUDED."mappingFailureReason",
-         "dispatchByAt" = EXCLUDED."dispatchByAt",
-         -- "createdAt" is deliberately NOT updated: it records the first write.
-         "updatedAt" = EXCLUDED."updatedAt"
-       RETURNING *`,
-      [
-        entity.internalOrderId,
-        entity.customerId,
-        entity.sourceConnectionId,
-        entity.sourceEventId,
-        // Serialized explicitly rather than relying on the driver's object
-        // handling, so the jsonb column receives a document in every case.
-        JSON.stringify(entity.orderSnapshot ?? {}),
-        entity.recordStatus,
-        entity.mappingFailureReason,
-        entity.dispatchByAt,
-        entity.createdAt,
-        entity.updatedAt,
-      ]
-    )) as unknown;
+    const rows = (await this.repository.query(sql, params)) as unknown;
 
     if (!Array.isArray(rows) || rows.length === 0) {
       // Unreachable: `ON CONFLICT ... DO UPDATE` always produces a row.
@@ -1676,6 +1640,114 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     }
 
     return this.toDomain(this.fromRawRow(rows[0] as Record<string, unknown>));
+  }
+
+  /**
+   * The single frozen-attribution upsert statement, shared by BOTH writers of
+   * `order_records` — {@link upsert} and {@link upsertWithLineItems}.
+   *
+   * There is one statement rather than two agreeing copies on purpose. The
+   * defect this closes existed precisely because a second write path (#2014's
+   * `upsertWithLineItems`, a full-object `save()`) appeared beside a guarantee
+   * (#2282 / ADR-057) that only covered the first, and re-attributed an order
+   * on re-ingestion from another connection. Duplicating the `CASE` would
+   * recreate that drift one edit later, so where the two paths' write sets
+   * differ the statement is PARAMETERISED, never forked.
+   *
+   * The invariants, identical on both paths:
+   * - `sourceConnectionId` is INSERT-ONLY (absent from the `DO UPDATE` set).
+   * - `sourceEventId` follows *same-source advances, cross-source frozen*.
+   * - `createdAt` is never updated: it records the first write.
+   *
+   * `includeAnalyticsColumns` adds the four #1985 scalars that only
+   * `upsertWithLineItems` resolves (`persistIncomingSnapshot`, which reaches
+   * `upsert`, has no figure to offer yet and must not null them out). They are
+   * appended after the shared tuple so the shared placeholders — including the
+   * `$5::jsonb` cast — keep their positions.
+   */
+  private buildFrozenAttributionUpsert(
+    entity: OrderRecordOrmEntity,
+    includeAnalyticsColumns: boolean
+  ): { sql: string; params: unknown[] } {
+    const insertColumns = [
+      '"internalOrderId"',
+      '"customerId"',
+      '"sourceConnectionId"',
+      '"sourceEventId"',
+      '"orderSnapshot"',
+      '"recordStatus"',
+      '"mappingFailureReason"',
+      '"dispatchByAt"',
+      '"createdAt"',
+      '"updatedAt"',
+    ];
+    const insertValues = [
+      '$1',
+      '$2',
+      '$3',
+      '$4',
+      '$5::jsonb',
+      '$6',
+      '$7',
+      '$8',
+      '$9',
+      '$10',
+    ];
+    const updateAssignments = [
+      '"customerId" = EXCLUDED."customerId"',
+      // Source attribution (#2282): "sourceConnectionId" is absent from this
+      // SET list on purpose. "sourceEventId" advances only when the write
+      // comes from the row's own source.
+      `"sourceEventId" = CASE
+           WHEN "order_records"."sourceConnectionId" = EXCLUDED."sourceConnectionId"
+             THEN EXCLUDED."sourceEventId"
+           ELSE "order_records"."sourceEventId"
+         END`,
+      '"orderSnapshot" = EXCLUDED."orderSnapshot"',
+      '"recordStatus" = EXCLUDED."recordStatus"',
+      '"mappingFailureReason" = EXCLUDED."mappingFailureReason"',
+      '"dispatchByAt" = EXCLUDED."dispatchByAt"',
+      // "createdAt" is deliberately NOT updated: it records the first write.
+      '"updatedAt" = EXCLUDED."updatedAt"',
+    ];
+    const params: unknown[] = [
+      entity.internalOrderId,
+      entity.customerId,
+      entity.sourceConnectionId,
+      entity.sourceEventId,
+      // Serialized explicitly rather than relying on the driver's object
+      // handling, so the jsonb column receives a document in every case.
+      JSON.stringify(entity.orderSnapshot ?? {}),
+      entity.recordStatus,
+      entity.mappingFailureReason,
+      entity.dispatchByAt,
+      entity.createdAt,
+      entity.updatedAt,
+    ];
+
+    if (includeAnalyticsColumns) {
+      const analytics: Array<[string, unknown]> = [
+        ['"placedAt"', entity.placedAt ?? null],
+        ['"currency"', entity.currency ?? null],
+        ['"taxTreatment"', entity.taxTreatment ?? null],
+        ['"totalAmount"', entity.totalAmount ?? null],
+      ];
+      for (const [column, value] of analytics) {
+        params.push(value);
+        insertColumns.push(column);
+        insertValues.push(`$${params.length}`);
+        updateAssignments.push(`${column} = EXCLUDED.${column}`);
+      }
+    }
+
+    const sql = `INSERT INTO "order_records" (
+         ${insertColumns.join(', ')}
+       ) VALUES (${insertValues.join(', ')})
+       ON CONFLICT ("internalOrderId") DO UPDATE SET
+         ${updateAssignments.join(',\n         ')}
+       RETURNING *`;
+
+    return { sql, params };
   }
 
   /**
@@ -1732,6 +1804,14 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    * entity here, not in the shared {@link toOrm}, because `upsert()` above
    * reaches the same conversion from `persistIncomingSnapshot`, which has no
    * resolved figure to offer yet (see its comment there).
+   *
+   * The order-record half is {@link buildFrozenAttributionUpsert}, the SAME
+   * statement `upsert` runs, with the four scalars parameterised on. It used to
+   * be a full-object `manager.save()` - the exact shape #2282 abandoned - which
+   * UPDATEd `sourceConnectionId` and so let a re-ingestion from a second
+   * connection silently rewrite an order's origin, bypassing a freeze the other
+   * write path enforced. It runs on the transactional `EntityManager`, so the
+   * upsert and the line-item replacement still commit or roll back together.
    */
   async upsertWithLineItems(
     orderRecord: OrderRecord,
@@ -1742,8 +1822,16 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     entity.currency = orderRecord.currency;
     entity.taxTreatment = orderRecord.taxTreatment;
     entity.totalAmount = orderRecord.totalAmount;
+    const { sql, params } = this.buildFrozenAttributionUpsert(entity, true);
     const savedRecord = await this.dataSource.transaction(async (manager: EntityManager) => {
-      const saved = await manager.save(OrderRecordOrmEntity, entity);
+      // Same statement as `upsert`, one parameter apart (#2282): a full-object
+      // `save()` here UPDATEd `sourceConnectionId` and re-attributed the order.
+      const rows = (await manager.query(sql, params)) as unknown;
+      if (!Array.isArray(rows) || rows.length === 0) {
+        // Unreachable: `ON CONFLICT ... DO UPDATE` always produces a row.
+        throw new OrderRecordNotFoundException(orderRecord.internalOrderId);
+      }
+      const saved = this.fromRawRow(rows[0] as Record<string, unknown>);
       await manager.delete(OrderLineItemOrmEntity, { orderRecordId: orderRecord.internalOrderId });
       if (lineItems.length > 0) {
         await manager.save(

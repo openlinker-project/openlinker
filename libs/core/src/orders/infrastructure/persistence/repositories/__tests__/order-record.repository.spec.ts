@@ -21,7 +21,11 @@ import { OrderRecordNotFoundException } from '../../../../domain/exceptions/orde
 describe('OrderRecordRepository', () => {
   let repository: OrderRecordRepository;
   let ormRepository: jest.Mocked<Repository<OrderRecordOrmEntity>>;
-  let transactionalManager: { save: jest.Mock<Promise<unknown>, unknown[]>; delete: jest.Mock };
+  let transactionalManager: {
+    save: jest.Mock<Promise<unknown>, unknown[]>;
+    delete: jest.Mock;
+    query: jest.Mock<Promise<unknown>, unknown[]>;
+  };
 
   beforeEach(async () => {
     const qb = {
@@ -35,6 +39,9 @@ describe('OrderRecordRepository', () => {
     transactionalManager = {
       save: jest.fn(),
       delete: jest.fn(),
+      // #2282: the order-record half of `upsertWithLineItems` is the shared
+      // frozen-attribution raw statement, not `save()`.
+      query: jest.fn(),
     };
 
     const mockOrmRepository = {
@@ -828,7 +835,8 @@ describe('OrderRecordRepository', () => {
     it('saves the order record and inserts the derived line items in one transaction', async () => {
       const domainEntity = createDomainEntity();
       const savedEntity = createOrmEntity();
-      transactionalManager.save.mockResolvedValue(savedEntity);
+      transactionalManager.query.mockResolvedValue([savedEntity]);
+      transactionalManager.save.mockResolvedValue([]);
       transactionalManager.delete.mockResolvedValue(undefined);
 
       const result = await repository.upsertWithLineItems(domainEntity, [
@@ -849,9 +857,11 @@ describe('OrderRecordRepository', () => {
       ]);
 
       expect(result.internalOrderId).toBe('order-123');
-      // save() is called twice inside the transaction: once for the order
-      // record, once for the line-item batch — both on the SAME manager.
-      expect(transactionalManager.save).toHaveBeenCalledTimes(2);
+      // The order record goes through the shared frozen-attribution statement
+      // (#2282) and the line-item batch through save() — both on the SAME
+      // manager, so they still commit or roll back together.
+      expect(transactionalManager.query).toHaveBeenCalledTimes(1);
+      expect(transactionalManager.save).toHaveBeenCalledTimes(1);
       expect(transactionalManager.delete).toHaveBeenCalledWith(expect.anything(), {
         orderRecordId: 'order-123',
       });
@@ -860,7 +870,7 @@ describe('OrderRecordRepository', () => {
     it('deletes the prior line-item set even when the new set is empty (order re-ingested with no items)', async () => {
       const domainEntity = createDomainEntity();
       const savedEntity = createOrmEntity();
-      transactionalManager.save.mockResolvedValue(savedEntity);
+      transactionalManager.query.mockResolvedValue([savedEntity]);
       transactionalManager.delete.mockResolvedValue(undefined);
 
       await repository.upsertWithLineItems(domainEntity, []);
@@ -868,13 +878,14 @@ describe('OrderRecordRepository', () => {
       expect(transactionalManager.delete).toHaveBeenCalledWith(expect.anything(), {
         orderRecordId: 'order-123',
       });
-      // Only the order-record save runs — no line-item save call for an empty set.
-      expect(transactionalManager.save).toHaveBeenCalledTimes(1);
+      // Only the order-record statement runs — no line-item save for an empty set.
+      expect(transactionalManager.query).toHaveBeenCalledTimes(1);
+      expect(transactionalManager.save).not.toHaveBeenCalled();
     });
 
     it('propagates a failure from either write so the caller sees the transaction as failed', async () => {
       const domainEntity = createDomainEntity();
-      transactionalManager.save.mockRejectedValue(new Error('db error'));
+      transactionalManager.query.mockRejectedValue(new Error('db error'));
 
       await expect(repository.upsertWithLineItems(domainEntity, [])).rejects.toThrow('db error');
     });
@@ -902,16 +913,42 @@ describe('OrderRecordRepository', () => {
         'inclusive',
         199.99
       );
-      transactionalManager.save.mockResolvedValue(createOrmEntity());
+      transactionalManager.query.mockResolvedValue([createOrmEntity()]);
       transactionalManager.delete.mockResolvedValue(undefined);
 
       await repository.upsertWithLineItems(domainEntity, []);
 
-      const callArg = transactionalManager.save.mock.calls[0][1] as OrderRecordOrmEntity;
-      expect(callArg.placedAt).toEqual(new Date('2025-01-01T09:00:00Z'));
-      expect(callArg.currency).toBe('PLN');
-      expect(callArg.taxTreatment).toBe('inclusive');
-      expect(callArg.totalAmount).toBe(199.99);
+      const [sql, params] = transactionalManager.query.mock.calls[0] as [string, unknown[]];
+      expect(sql).toContain('"placedAt"');
+      expect(sql).toContain('"currency"');
+      expect(sql).toContain('"taxTreatment"');
+      expect(sql).toContain('"totalAmount"');
+      expect(params).toEqual(
+        expect.arrayContaining([new Date('2025-01-01T09:00:00Z'), 'PLN', 'inclusive', 199.99])
+      );
+    });
+
+    // #2282 / ADR-057: the freeze must hold on THIS write path too. The
+    // integration spec proves the behaviour against real Postgres; this
+    // asserts the emitted statement's shape so a future edit that reverts to a
+    // full-object `save()` fails here as well as there.
+    it('emits the shared frozen-attribution statement: sourceConnectionId insert-only, sourceEventId conditional', async () => {
+      const domainEntity = createDomainEntity();
+      transactionalManager.query.mockResolvedValue([createOrmEntity()]);
+      transactionalManager.delete.mockResolvedValue(undefined);
+
+      await repository.upsertWithLineItems(domainEntity, []);
+
+      const [sql] = transactionalManager.query.mock.calls[0] as [string];
+      const updateSet = sql.slice(sql.indexOf('DO UPDATE SET'));
+      // No assignment line for either column (the `"sourceConnectionId" = ...`
+      // substring DOES appear inside the CASE comparison below, so match on a
+      // line-initial assignment rather than on the bare substring).
+      expect(updateSet).not.toMatch(/^\s*"sourceConnectionId" =/m);
+      expect(updateSet).not.toMatch(/^\s*"createdAt" =/m);
+      expect(updateSet).toContain(
+        '"order_records"."sourceConnectionId" = EXCLUDED."sourceConnectionId"'
+      );
     });
   });
 
