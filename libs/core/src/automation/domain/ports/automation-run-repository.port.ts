@@ -46,6 +46,14 @@ export interface NewAutomationRun {
   readonly steps: readonly unknown[];
   readonly blockedByRuleIds: readonly string[] | null;
   readonly firedAt: Date;
+  /**
+   * The failed run this one retries (#2387), or `null` for an ordinary firing.
+   *
+   * It is what lets the derived AF-X state clear on a successful retry WITHOUT
+   * clearing on a later unrelated firing of the same rule — the distinction the
+   * spec draws and that latest-run-wins cannot express.
+   */
+  readonly retryOfRunId?: string | null;
 }
 
 /**
@@ -70,6 +78,16 @@ export interface AutomationRunFilters {
   readonly from?: Date;
   /** Inclusive upper bound on `firedAt`. */
   readonly to?: Date;
+  /**
+   * Narrow to firings that need an operator's attention (#2387) — `failed`, not
+   * dismissed, and not superseded by a successful retry.
+   *
+   * A narrowing filter like every other here: absent means "do not narrow", and
+   * `false` is treated as absent rather than as "only the routine ones", because
+   * no surface asks that question and a second meaning for `false` would be a
+   * second vocabulary.
+   */
+  readonly attentionOnly?: boolean;
 }
 
 export interface AutomationRunRepositoryPort {
@@ -98,6 +116,40 @@ export interface AutomationRunRepositoryPort {
 
   /** Recent runs across every rule, newest first — the activity list. */
   findRecent(filters: AutomationRunFilters, limit: number, offset: number): Promise<AutomationRun[]>;
+
+  /**
+   * How many firings currently need attention (#2387).
+   *
+   * Shares its predicate with the `attentionOnly` filter through one private
+   * expression in the implementation. **They must never each grow their own
+   * `NOT EXISTS`**: a count whose rows do not match it is the divergence class
+   * that produces "4 need attention" above an empty table.
+   */
+  countAttention(): Promise<number>;
+
+  /**
+   * Of these run ids, which have been superseded by a retry that did NOT fail.
+   *
+   * ONE batched read for a whole page — never per row. This is the second half
+   * of the AF-X predicate that a single row cannot answer about itself: a
+   * derived state is only self-clearing if the derivation can see the thing that
+   * clears it, and the retry lives in a different row.
+   */
+  findSupersededRunIds(runIds: readonly string[]): Promise<Set<string>>;
+
+  /**
+   * Record that an operator handled a failed firing themselves (#2387).
+   *
+   * A conditional UPDATE (`WHERE id = ? AND "dismissedAt" IS NULL`, the
+   * `claimWaybillRelay` shape), so two operators cannot fight over the
+   * attribution and the first one is the one recorded.
+   *
+   * **The return is deliberately indistinguishable** between a fresh claim and
+   * an already-dismissed row: both return the row, and neither is a failure an
+   * operator can act on. Do not grow a `wasAlreadyDismissed` flag to branch UI
+   * on — there is no second sentence to say. `null` means no such run exists.
+   */
+  dismiss(id: string, userId: string, now: Date): Promise<AutomationRun | null>;
 
   /**
    * This rule's most recent runs, newest first, capped at `limit`.

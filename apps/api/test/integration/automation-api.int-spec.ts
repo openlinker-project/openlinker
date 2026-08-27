@@ -503,11 +503,14 @@ describe('Automation API Integration', () => {
         .expect(200);
 
       expect(runs.body.runs).toEqual([]);
-      // The honest half: an empty log means "not built yet" (#2385), not
-      // "nothing fired" — and an operator resolving that ambiguity themselves
-      // concludes their rule is broken.
-      expect(runs.body.recordingAvailable).toBe(false);
-      expect(runs.body.note).toContain('not recorded in this build yet');
+      // #2385 bound the persisting recorder, so the honest answer flipped: an
+      // empty log now really does mean "nothing fired" rather than "not built
+      // yet", and the `note` that said otherwise is gone. This assertion was
+      // written against the pre-#2385 `LoggingAutomationRunRecorder` and could
+      // not be corrected then — Docker was wedged host-level for the whole of
+      // #2385 and #2386, so no integration run observed the flip.
+      expect(runs.body.recordingAvailable).toBe(true);
+      expect(runs.body.note).toBeUndefined();
       expect(runs.body.limit).toBe(50);
 
       await http

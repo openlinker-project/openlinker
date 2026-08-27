@@ -66,6 +66,9 @@ describe('PersistingAutomationRunRecorder', () => {
       findRecentByRuleId: jest.fn(),
       findRecentBySubject: jest.fn(),
       findById: jest.fn(),
+    countAttention: jest.fn(),
+    findSupersededRunIds: jest.fn(),
+    dismiss: jest.fn(),
       findRecent: jest.fn(),
     };
     recorder = new PersistingAutomationRunRecorder(repository);

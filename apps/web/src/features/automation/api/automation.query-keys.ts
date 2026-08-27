@@ -14,6 +14,7 @@ export const automationQueryKeys = {
   runs: (ruleId: string) => ['automations', 'runs', ruleId] as const,
   runFeed: (filters: unknown, pagination: unknown) =>
     ['automations', 'runs', 'feed', filters ?? {}, pagination ?? {}] as const,
+  attentionCount: () => ['automations', 'runs', 'attention-count'] as const,
   runsBySubject: (subjectKind: string, subjectId: string) =>
     ['automations', 'runs', 'subject', subjectKind, subjectId] as const,
 };

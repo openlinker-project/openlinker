@@ -19,13 +19,7 @@
  */
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import {
-  Between,
-  LessThanOrEqual,
-  MoreThanOrEqual,
-  Repository,
-  type FindOptionsWhere,
-} from 'typeorm';
+import { IsNull, Repository, type SelectQueryBuilder } from 'typeorm';
 import { Logger } from '@openlinker/shared/logging';
 
 import type {
@@ -44,6 +38,16 @@ import {
   isAutomationRunSubjectKind,
 } from '../../../domain/types/automation-run.types';
 import { AutomationRunOrmEntity } from '../entities/automation-run.orm-entity';
+
+/**
+ * What makes a retry SUPERSEDE the failure it retries: it did not fail.
+ *
+ * One string, two readers (`applyAttentionPredicate`'s correlated `NOT EXISTS`
+ * and `findSupersededRunIds`' batched read), because those two answer the same
+ * question at different grains and must never answer it differently. `%alias%`
+ * is substituted by the caller.
+ */
+const RETRY_SUCCEEDED_CONDITION = `%alias%."outcome" <> 'failed'`;
 
 @Injectable()
 export class AutomationRunRepository implements AutomationRunRepositoryPort {
@@ -77,6 +81,7 @@ export class AutomationRunRepository implements AutomationRunRepositoryPort {
       steps: [...run.steps],
       blockedByRuleIds: run.blockedByRuleIds === null ? null : [...run.blockedByRuleIds],
       firedAt: run.firedAt,
+      retryOfRunId: run.retryOfRunId ?? null,
     });
     const saved = await this.ormRepository.save(entity);
     return this.toDomain(saved);
@@ -105,26 +110,28 @@ export class AutomationRunRepository implements AutomationRunRepositoryPort {
     limit: number,
     offset: number,
   ): Promise<AutomationRun[]> {
-    const where: FindOptionsWhere<AutomationRunOrmEntity> = {};
-    if (filters.ruleId !== undefined) where.ruleId = filters.ruleId;
-    if (filters.trigger !== undefined) where.trigger = filters.trigger;
-    if (filters.outcome !== undefined) where.outcome = filters.outcome;
-    if (filters.subjectKind !== undefined) where.subjectKind = filters.subjectKind;
-    if (filters.subjectId !== undefined) where.subjectId = filters.subjectId;
+    const qb = this.ormRepository.createQueryBuilder('run');
 
-    // Both bounds are inclusive. Only one supplied is still a valid window —
-    // `Between` would need both, so the one-sided cases use their own operator
-    // rather than inventing a bound the operator did not ask for.
-    if (filters.from !== undefined && filters.to !== undefined) {
-      where.firedAt = Between(filters.from, filters.to);
-    } else if (filters.from !== undefined) {
-      where.firedAt = MoreThanOrEqual(filters.from);
-    } else if (filters.to !== undefined) {
-      where.firedAt = LessThanOrEqual(filters.to);
+    if (filters.ruleId !== undefined) qb.andWhere('run."ruleId" = :ruleId', { ruleId: filters.ruleId });
+    if (filters.trigger !== undefined) qb.andWhere('run."trigger" = :trigger', { trigger: filters.trigger });
+    if (filters.outcome !== undefined) qb.andWhere('run."outcome" = :outcome', { outcome: filters.outcome });
+    if (filters.subjectKind !== undefined) {
+      qb.andWhere('run."subjectKind" = :subjectKind', { subjectKind: filters.subjectKind });
+    }
+    if (filters.subjectId !== undefined) {
+      qb.andWhere('run."subjectId" = :subjectId', { subjectId: filters.subjectId });
     }
 
-    const entities = await this.ormRepository.find({
-      where,
+    // Both bounds are inclusive, and one alone is still a valid window — the
+    // absent side is simply not constrained rather than given a bound the
+    // operator never asked for.
+    if (filters.from !== undefined) qb.andWhere('run."firedAt" >= :from', { from: filters.from });
+    if (filters.to !== undefined) qb.andWhere('run."firedAt" <= :to', { to: filters.to });
+
+    // `attentionOnly: false` is treated as absent — see the port.
+    if (filters.attentionOnly === true) this.applyAttentionPredicate(qb, 'run');
+
+    const entities = await qb
       // `IDX_automation_runs_fired_at`. A second sort key on `id` is deliberately
       // omitted: two runs sharing a `firedAt` to the microsecond would need the
       // same rule to fire twice in one tick, which the dispatcher's sequential
@@ -133,11 +140,63 @@ export class AutomationRunRepository implements AutomationRunRepositoryPort {
       // TRIPWIRE: that reasoning is what makes offset paging stable here. If
       // dispatch is ever parallelised, `skip`/`take` over a non-unique ORDER BY
       // can repeat or drop a row across pages — add `id` as a tie-breaker then.
-      order: { firedAt: 'DESC' },
-      take: limit,
-      skip: offset,
-    });
+      .orderBy('run."firedAt"', 'DESC')
+      .take(limit)
+      .skip(offset)
+      .getMany();
     return entities.map((entity) => this.toDomain(entity));
+  }
+
+  async countAttention(): Promise<number> {
+    const qb = this.ormRepository.createQueryBuilder('run');
+    this.applyAttentionPredicate(qb, 'run');
+    return qb.getCount();
+  }
+
+  async findSupersededRunIds(runIds: readonly string[]): Promise<Set<string>> {
+    if (runIds.length === 0) return new Set();
+    const rows = await this.ormRepository
+      .createQueryBuilder('retry')
+      .select('retry."retryOfRunId"', 'retryOfRunId')
+      .where('retry."retryOfRunId" IN (:...runIds)', { runIds: [...runIds] })
+      .andWhere(RETRY_SUCCEEDED_CONDITION.replace(/%alias%/g, 'retry'))
+      .groupBy('retry."retryOfRunId"')
+      .getRawMany<{ retryOfRunId: string }>();
+    return new Set(rows.map((row) => row.retryOfRunId));
+  }
+
+  async dismiss(id: string, userId: string, now: Date): Promise<AutomationRun | null> {
+    // Conditional UPDATE, the `claimWaybillRelay` shape: the first dismisser is
+    // the one recorded, and a concurrent second one changes nothing rather than
+    // overwriting the attribution.
+    await this.ormRepository.update(
+      { id, dismissedAt: IsNull() },
+      { dismissedAt: now, dismissedByUserId: userId },
+    );
+    // Re-read unconditionally. The caller cannot tell a fresh claim from an
+    // already-dismissed row, deliberately — see the port.
+    return this.findById(id);
+  }
+
+  /**
+   * The ONE expression of "this firing still needs attention".
+   *
+   * Shared by `findRecent`'s `attentionOnly` filter and by `countAttention`, so
+   * a count can never disagree with the rows it claims to count. The
+   * single-row half of the same rule is `isAutomationRunAttentionWorthy`; this
+   * is its SQL twin, and the two must move together.
+   */
+  private applyAttentionPredicate(
+    qb: SelectQueryBuilder<AutomationRunOrmEntity>,
+    alias: string,
+  ): void {
+    qb.andWhere(`${alias}."outcome" = :attentionOutcome`, { attentionOutcome: 'failed' })
+      .andWhere(`${alias}."dismissedAt" IS NULL`)
+      .andWhere(
+        `NOT EXISTS (SELECT 1 FROM "automation_runs" retry ` +
+          `WHERE retry."retryOfRunId" = ${alias}."id" ` +
+          `AND ${RETRY_SUCCEEDED_CONDITION.replace(/%alias%/g, 'retry')})`,
+      );
   }
 
   async findRecentByRuleId(ruleId: string, limit: number): Promise<AutomationRun[]> {
@@ -179,6 +238,9 @@ export class AutomationRunRepository implements AutomationRunRepositoryPort {
       Array.isArray(entity.blockedByRuleIds) ? entity.blockedByRuleIds : null,
       entity.firedAt,
       entity.createdAt,
+      entity.dismissedAt,
+      entity.dismissedByUserId,
+      entity.retryOfRunId,
     );
   }
 }

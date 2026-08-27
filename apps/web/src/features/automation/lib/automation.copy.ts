@@ -17,10 +17,12 @@
  * @module apps/web/src/features/automation/lib
  */
 import type {
+  AutomationActionKind,
   AutomationConditionOutcome,
   AutomationNonFiringReason,
   AutomationRunOutcome,
   AutomationStepStatus,
+  RetryRefusalReason,
 } from '../api/automation.types';
 
 export const AUTOMATIONS_PAGE_COPY = {
@@ -504,3 +506,79 @@ export const AUTOMATION_ACTIVITY_COPY = {
   /** Appended to a `skipped` step, so the badge names what did not happen. */
   skippedSuffix: 'did not run',
 } as const;
+
+/**
+ * AF-X titles — the failing action's OWN verb (#2387).
+ *
+ * `as const satisfies Record<AutomationActionKind, …>`, so a seventh action
+ * added backend-side and mirrored into the union fails the build here rather
+ * than rendering a generic sentence. Read through a raw-code fallback
+ * (`automationFailureTitle`) so an action from a newer backend still says
+ * something true.
+ *
+ * **"An automation failed" is not an option.** It tells the operator nothing
+ * about what to do next, and the six fixes are entirely different: an unbought
+ * label, an unissued invoice and an unsent email are three separate errands.
+ */
+export const AUTOMATION_FAILURE_TITLE = {
+  'issue-sales-document': (ref: string) => `Couldn't issue the invoice for order ${ref}`,
+  'dispatch-shipment': (ref: string) => `Couldn't buy the label for order ${ref}`,
+  'relay-status-to-source': (ref: string) => `Couldn't tell the marketplace about order ${ref}`,
+  'send-email': (ref: string) => `Couldn't send the email for order ${ref}`,
+  'place-hold': (ref: string) => `Couldn't put order ${ref} on hold`,
+  'release-hold': (ref: string) => `Couldn't lift the hold on order ${ref}`,
+} as const satisfies Record<AutomationActionKind, (ref: string) => string>;
+
+/** The AF-X surfaces' own strings (#2387). */
+export const AUTOMATION_FAILURE_COPY = {
+  /** Fallback title for an action code this build does not recognise. */
+  unknownActionTitle: (action: string, ref: string) =>
+    `An automation step (${action}) could not finish for order ${ref}`,
+  badge: 'Stopped',
+  /** Rendered when the run is failed but carries no failed step we can read. */
+  reasonUnknown: 'No reason was recorded for this failure.',
+  /** Prefix for a quoted reason — `{who} said:` reads as attribution, not narration. */
+  said: (who: string) => `${who} said:`,
+  stoppedAfter: 'Nothing else in that automation ran.',
+  skippedOne: (step: string) => `Skipped: ${step}.`,
+  skippedMany: (count: number) => `${count} later steps did not run.`,
+  retry: 'Try again',
+  retrying: 'Running again…',
+  retryFailed: 'Could not run it again',
+  dismiss: 'I handled this myself',
+  dismissing: 'Recording…',
+  dismissFailed: 'Could not record that',
+  /**
+   * Shown once dismissed. Says a PERSON dealt with it — never that the run
+   * succeeded, which would be OpenLinker claiming credit for work someone did
+   * outside it. The run stays failed and both timeline entries stay put.
+   */
+  dismissed: 'Handled by an operator',
+  actionsHeader: 'Actions',
+  attentionFilter: 'Needs attention',
+  clearAttentionFilter: 'Show all runs',
+  emptyAttentionTitle: 'Nothing needs your attention',
+  emptyAttentionMessage:
+    'No automation has stopped part-way through. Failures show up here until someone runs them again or marks them handled.',
+  /** Rendered on a retry's own row so a chain reads as one story, not two firings. */
+  isRetryOf: 'Ran again after an earlier failure',
+} as const;
+
+/**
+ * Why `Try again` is not offered — one sentence per reason (#2387).
+ *
+ * `as const satisfies Record<RetryRefusalReason, string>` for the same
+ * compile-time totality every other copy map here has, read through
+ * `retryRefusalCopy` with a raw-code fallback.
+ *
+ * **`rule-deleted` must not read as a failure.** A rule an operator deliberately
+ * deleted is not a broken retry; it is a retry with no definition left to run,
+ * and the run row stays exactly as it is because the record of what fired is
+ * still true and outlives its rule.
+ */
+export const RETRY_REFUSAL_COPY = {
+  'not-failed': 'This run did not fail, so there is nothing to run again.',
+  'rule-deleted':
+    'This automation has been deleted, so there is no longer anything to run. The record of what it did stays here.',
+  'subject-unsupported': 'Running again is not possible for a return.',
+} as const satisfies Record<RetryRefusalReason, string>;

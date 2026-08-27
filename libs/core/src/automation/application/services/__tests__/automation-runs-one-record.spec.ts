@@ -13,6 +13,7 @@
  *
  * @module libs/core/src/automation/application/services/__tests__
  */
+import type { AutomationRuleRepositoryPort } from '../../../domain/ports/automation-rule-repository.port';
 import { AutomationRunsReadService } from '../automation-runs-read.service';
 import { AutomationRun } from '../../../domain/entities/automation-run.entity';
 import type { AutomationRunRepositoryPort } from '../../../domain/ports/automation-run-repository.port';
@@ -38,6 +39,7 @@ function theRow(outcome: AutomationRunOutcome): AutomationRun {
 
 describe('one record, four readings', () => {
   let repository: jest.Mocked<AutomationRunRepositoryPort>;
+  let ruleRepository: jest.Mocked<AutomationRuleRepositoryPort>;
   let recorder: jest.Mocked<IAutomationRunRecorderService>;
   let service: AutomationRunsReadService;
   let row: AutomationRun;
@@ -52,12 +54,20 @@ describe('one record, four readings', () => {
       findRecentBySubject: jest.fn().mockImplementation(() => Promise.resolve([row])),
       findRecent: jest.fn().mockImplementation(() => Promise.resolve([row])),
       findById: jest.fn().mockImplementation(() => Promise.resolve(row)),
+      countAttention: jest.fn().mockImplementation(() => Promise.resolve(0)),
+      findSupersededRunIds: jest.fn().mockImplementation(() => Promise.resolve(new Set<string>())),
+      dismiss: jest.fn().mockImplementation(() => Promise.resolve(row)),
     };
+    ruleRepository = {
+      findExistingIds: jest
+        .fn()
+        .mockImplementation(() => Promise.resolve(new Set<string>([row.ruleId]))),
+    } as unknown as jest.Mocked<AutomationRuleRepositoryPort>;
     recorder = {
       record: jest.fn(),
       persistsRuns: true,
     } as unknown as jest.Mocked<IAutomationRunRecorderService>;
-    service = new AutomationRunsReadService(repository, recorder);
+    service = new AutomationRunsReadService(repository, recorder, ruleRepository);
   });
 
   async function readAllFour(): Promise<(AutomationRunOutcome | undefined)[]> {

@@ -33,11 +33,20 @@ export const AUTOMATION_ACTIVITY_FILTER_PARAMS = [
   'from',
   'to',
   'orderId',
+  // Included so "Clear filters" clears it too — an attention filter left
+  // standing after a clear is how an empty table reads as "nothing happened".
+  'attentionOnly',
 ] as const;
 
 export const AUTOMATION_ACTIVITY_OFFSET_PARAM = 'offset';
 
 export interface AutomationActivityFilters {
+  /**
+   * Narrow to firings that need attention (#2387). Absent means "do not narrow";
+   * there is deliberately no `false` meaning "only the routine ones", because no
+   * surface asks that and a second meaning would be a second vocabulary.
+   */
+  attentionOnly?: boolean;
   ruleId?: string;
   trigger?: AutomationTrigger;
   outcome?: AutomationRunOutcome;
@@ -84,6 +93,10 @@ export function readAutomationActivityFilters(
     from: readIsoDateParam(params.get('from')),
     to: readIsoDateParam(params.get('to')),
     orderId: orderId === null || orderId.length === 0 ? undefined : orderId,
+    // Only the literal `true` narrows (#2387), matching the API. Anything else
+    // — including `false` — reads as absent, because there is no "only the
+    // routine ones" question and a second meaning would be a second vocabulary.
+    attentionOnly: params.get('attentionOnly') === 'true' ? true : undefined,
   };
 }
 

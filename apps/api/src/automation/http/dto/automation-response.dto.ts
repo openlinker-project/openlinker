@@ -29,7 +29,9 @@ import {
   type AutomationActionAvailability,
   type AutomationCondition,
   type AutomationRule,
-  type AutomationRun,
+  RetryRefusalReasonValues,
+  type AutomationRunView,
+  type RetryRefusalReason,
   type AutomationRunLogPage,
   type AutomationRunOutcome,
   type AutomationRunSubjectKind,
@@ -154,7 +156,51 @@ export class AutomationRunResponseDto {
   blockedByRuleIds!: readonly string[] | null;
   @ApiProperty() firedAt!: string;
 
-  static fromDomain(run: AutomationRun): AutomationRunResponseDto {
+  @ApiProperty({
+    description:
+      'AF-X (#2387): this firing failed, nobody dismissed it, and no retry of it has since ' +
+      'succeeded. DERIVED server-side from `automation_runs` — never a persisted reason column ' +
+      'on the order — so the client renders it and never re-derives it.',
+  })
+  needsAttention!: boolean;
+
+  @ApiProperty({
+    description:
+      'Whether `Try again` is offered for this firing. The endpoint enforces the same rule ' +
+      'independently: this half is a RENDERING fact so a refused action can be shown disabled ' +
+      'with its reason, rather than as an enabled button that 400s.',
+  })
+  retryable!: boolean;
+
+  @ApiPropertyOptional({
+    enum: RetryRefusalReasonValues,
+    description: 'Why `Try again` is not offered. Present exactly when `retryable` is false.',
+  })
+  retryRefusalReason?: RetryRefusalReason;
+
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    description:
+      'When an operator said "I handled this myself". The run stays `failed`: dismissal records ' +
+      'that a HUMAN dealt with it, never that the operation succeeded.',
+  })
+  dismissedAt!: string | null;
+
+  @ApiProperty({ nullable: true, type: String, description: 'Who dismissed it.' })
+  dismissedByUserId!: string | null;
+
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    description:
+      'The failed run this one retries (#2387), or null for an ordinary firing. It is what lets ' +
+      'the derived attention state clear on a successful retry without clearing on a later, ' +
+      'unrelated firing of the same rule.',
+  })
+  retryOfRunId!: string | null;
+
+  static fromDomain(run: AutomationRunView): AutomationRunResponseDto {
     const dto = new AutomationRunResponseDto();
     dto.id = run.id;
     dto.ruleId = run.ruleId;
@@ -166,6 +212,12 @@ export class AutomationRunResponseDto {
     dto.steps = run.steps;
     dto.blockedByRuleIds = run.blockedByRuleIds;
     dto.firedAt = run.firedAt.toISOString();
+    dto.needsAttention = run.needsAttention;
+    dto.retryable = run.retry.retryable;
+    if (!run.retry.retryable) dto.retryRefusalReason = run.retry.reason;
+    dto.dismissedAt = run.dismissedAt === null ? null : run.dismissedAt.toISOString();
+    dto.dismissedByUserId = run.dismissedByUserId;
+    dto.retryOfRunId = run.retryOfRunId;
     return dto;
   }
 }
@@ -197,4 +249,20 @@ export class AutomationRunLogResponseDto {
     }
     return dto;
   }
+}
+
+/**
+ * How many firings need an operator's attention (#2387).
+ *
+ * An object rather than a bare number so the shape can gain a breakdown later
+ * without a breaking change — the same reason `AutomationTriggerSummaryDto`
+ * exists rather than a map.
+ */
+export class AutomationAttentionCountDto {
+  @ApiProperty({
+    description:
+      'Failed firings that are not dismissed and not superseded by a successful retry. Zero is ' +
+      'the healthy answer on every install.',
+  })
+  count!: number;
 }

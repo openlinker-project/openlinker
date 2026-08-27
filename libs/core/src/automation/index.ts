@@ -71,6 +71,7 @@ export type {
 export type {
   IAutomationRunsReadService,
   AutomationRunLogPage,
+  AutomationRunView,
 } from './application/interfaces/automation-runs-read.service.interface';
 export { AUTOMATION_RUN_LOG_PAGE_SIZE } from './application/interfaces/automation-runs-read.service.interface';
 export type {

@@ -21,10 +21,13 @@
  *
  * @module apps/web/src/features/automation/api
  */
+import { z } from 'zod';
+
 import {
   parseAutomationDryRun,
   parseAutomationRule,
   parseAutomationRules,
+  parseAutomationRun,
   parseAutomationRunLog,
   parseAutomationSummary,
   parseAutomationVocabulary,
@@ -37,6 +40,7 @@ import type {
   AutomationEvaluateInput,
   AutomationRule,
   AutomationRuleWriteInput,
+  AutomationRun,
   AutomationRunLog,
   AutomationTrigger,
   AutomationVocabulary,
@@ -98,6 +102,23 @@ export interface AutomationsApi {
     filters: AutomationActivityFilters,
     pagination?: { limit?: number; offset?: number },
   ) => Promise<AutomationRunLog | null>;
+  /** `GET /automations/attention-count` — how many firings need attention (#2387). */
+  getAttentionCount: () => Promise<number>;
+  /**
+   * `POST /automations/runs/:runId/retry` — re-run that firing's rule. Admin only.
+   *
+   * Resolves to the ORIGINAL run, re-projected, so the caller sees the attention
+   * state clear without a second read. Rejects with the API error when the run is
+   * not retryable — the caller should not have offered the action, since
+   * `AutomationRun.retryable` says so.
+   */
+  retryRun: (runId: string) => Promise<AutomationRun>;
+  /**
+   * `POST /automations/runs/:runId/dismiss` — record that a person handled it.
+   *
+   * Clears the attention state ONLY. The run stays failed.
+   */
+  dismissRun: (runId: string) => Promise<AutomationRun>;
   /** `PUT /automations/:id` — a full replace. Admin only. */
   replace: (ruleId: string, input: AutomationRuleWriteInput) => Promise<AutomationRule>;
   /**
@@ -168,6 +189,7 @@ export function createAutomationsApi(request: ApiRequest): AutomationsApi {
       if (filters.from) params.set('from', filters.from);
       if (filters.to) params.set('to', filters.to);
       if (filters.orderId) params.set('orderId', filters.orderId);
+      if (filters.attentionOnly) params.set('attentionOnly', 'true');
       if (pagination?.limit !== undefined) params.set('limit', String(pagination.limit));
       if (pagination?.offset !== undefined) params.set('offset', String(pagination.offset));
       const query = params.toString();
@@ -176,6 +198,33 @@ export function createAutomationsApi(request: ApiRequest): AutomationsApi {
       );
     },
 
+    async getAttentionCount(): Promise<number> {
+      const raw = await request<unknown>('/automations/attention-count');
+      const parsed = z.object({ count: z.number() }).safeParse(raw);
+      // A shape we cannot read reports ZERO rather than throwing: an attention
+      // count is a decoration on pages whose real content is elsewhere, and
+      // failing the page over it would be worse than under-reporting a badge the
+      // list itself still shows.
+      return parsed.success ? parsed.data.count : 0;
+    },
+    async retryRun(runId): Promise<AutomationRun> {
+      const run = parseAutomationRun(
+        await request<unknown>(`/automations/runs/${encodeURIComponent(runId)}/retry`, {
+          method: 'POST',
+        }),
+      );
+      if (run === null) throw new Error('The automation run could not be read after running again.');
+      return run;
+    },
+    async dismissRun(runId): Promise<AutomationRun> {
+      const run = parseAutomationRun(
+        await request<unknown>(`/automations/runs/${encodeURIComponent(runId)}/dismiss`, {
+          method: 'POST',
+        }),
+      );
+      if (run === null) throw new Error('The automation run could not be read after being marked handled.');
+      return run;
+    },
     async replace(ruleId, input): Promise<AutomationRule> {
       const raw = await request<unknown>(`/automations/${encodeURIComponent(ruleId)}`, {
         method: 'PUT',

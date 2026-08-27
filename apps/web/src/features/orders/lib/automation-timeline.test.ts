@@ -21,12 +21,18 @@ function run(overrides: Partial<AutomationRun> = {}): AutomationRun {
     subjectId: 'ol_order_1',
     outcome: 'done',
     steps: [
-      { stepIndex: 0, action: 'dispatch-shipment', status: 'done', detail: 'DPD, tracking 0003405', syncJobId: null, unavailableReason: null },
-      { stepIndex: 1, action: 'relay-status-to-source', status: 'done', detail: null, syncJobId: null, unavailableReason: null },
+      { stepIndex: 0, action: 'dispatch-shipment', status: 'done', detail: 'DPD, tracking 0003405', syncJobId: null, unavailableReason: null, report: null },
+      { stepIndex: 1, action: 'relay-status-to-source', status: 'done', detail: null, syncJobId: null, unavailableReason: null, report: null },
     ],
     unreadableStepCount: 0,
     blockedByRuleIds: null,
     firedAt: '2026-08-20T10:00:00.000Z',
+    needsAttention: false,
+    retryable: false,
+    retryRefusalReason: null,
+    dismissedAt: null,
+    dismissedByUserId: null,
+    retryOfRunId: null,
     ...overrides,
   };
 }
@@ -60,7 +66,7 @@ describe('buildAutomationTimelineEvents', () => {
       run({
         outcome: 'failed',
         steps: [
-          { stepIndex: 0, action: 'dispatch-shipment', status: 'failed', detail: FAILURE, syncJobId: null, unavailableReason: null },
+          { stepIndex: 0, action: 'dispatch-shipment', status: 'failed', detail: FAILURE, syncJobId: null, unavailableReason: null, report: null },
         ],
       }),
     ]);
@@ -76,8 +82,8 @@ describe('buildAutomationTimelineEvents', () => {
       run({
         outcome: 'failed',
         steps: [
-          { stepIndex: 0, action: 'dispatch-shipment', status: 'failed', detail: FAILURE, syncJobId: null, unavailableReason: null },
-          { stepIndex: 1, action: 'relay-status-to-source', status: 'skipped', detail: null, syncJobId: null, unavailableReason: null },
+          { stepIndex: 0, action: 'dispatch-shipment', status: 'failed', detail: FAILURE, syncJobId: null, unavailableReason: null, report: null },
+          { stepIndex: 1, action: 'relay-status-to-source', status: 'skipped', detail: null, syncJobId: null, unavailableReason: null, report: null },
         ],
       }),
     ]);
@@ -97,7 +103,7 @@ describe('buildAutomationTimelineEvents', () => {
     const events = buildAutomationTimelineEvents([
       run({
         steps: [
-          { stepIndex: 0, action: 'place-hold', status: 'failed', detail: null, syncJobId: null, unavailableReason: 'Order holds are not built yet.' },
+          { stepIndex: 0, action: 'place-hold', status: 'failed', detail: null, syncJobId: null, unavailableReason: 'Order holds are not built yet.', report: null },
         ],
       }),
     ]);
@@ -107,7 +113,7 @@ describe('buildAutomationTimelineEvents', () => {
   it('should drop a step this build cannot read rather than crash the timeline', () => {
     // `steps` is `readonly unknown[]` on the column — the one open shape here.
     const events = buildAutomationTimelineEvents([
-      run({ steps: ['nonsense', { stepIndex: 0, action: 'send-email', status: 'done', detail: null, syncJobId: null, unavailableReason: null }] as never }),
+      run({ steps: ['nonsense', { stepIndex: 0, action: 'send-email', status: 'done', detail: null, syncJobId: null, unavailableReason: null, report: null }] as never }),
     ]);
     expect(events).toHaveLength(1);
     expect(events[0].title).toBe('Sent an email');
@@ -131,7 +137,7 @@ describe('buildAutomationTimelineEvents', () => {
       run({
         outcome: 'blocked',
         steps: [
-          { stepIndex: 0, action: 'dispatch-shipment', status: 'skipped', detail: null, syncJobId: null, unavailableReason: null },
+          { stepIndex: 0, action: 'dispatch-shipment', status: 'skipped', detail: null, syncJobId: null, unavailableReason: null, report: null },
         ],
       }),
     ]);

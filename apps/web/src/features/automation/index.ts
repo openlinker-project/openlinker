@@ -161,3 +161,20 @@ export {
   AUTOMATION_RUN_OUTCOME_COPY,
   AUTOMATION_STEP_STATUS_COPY,
 } from './lib/automation.copy';
+
+// ── AF-X: "an automation couldn't finish" (#2387) ────────────────────────────
+export {
+  automationFailureTitle,
+  buildAutomationFailureView,
+  retryRefusalCopy,
+  stepReasonText,
+} from './lib/automation-failure';
+export type { AutomationFailureView } from './lib/automation-failure';
+export {
+  AUTOMATION_FAILURE_COPY,
+  AUTOMATION_FAILURE_TITLE,
+  RETRY_REFUSAL_COPY,
+} from './lib/automation.copy';
+export { useRetryAutomationRunMutation } from './hooks/use-retry-automation-run-mutation';
+export { useDismissAutomationRunMutation } from './hooks/use-dismiss-automation-run-mutation';
+export type { RetryRefusalReason, AutomationStepReport } from './api/automation.types';

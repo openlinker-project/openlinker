@@ -17,6 +17,7 @@ import {
 
 import type { AuthenticatedUser } from '../../../auth/auth.types';
 import type { IAutomationDryRunService } from '../../application/automation-dry-run.tokens';
+import type { IAutomationRetryService } from '../../application/automation-retry.service.interface';
 import { AutomationsController } from '../automations.controller';
 import type { WriteAutomationRuleDto } from '../dto/automation-rule.dto';
 
@@ -73,6 +74,7 @@ describe('AutomationsController', () => {
   let runs: jest.Mocked<IAutomationRunsReadService>;
   let dryRun: jest.Mocked<IAutomationDryRunService>;
   let controller: AutomationsController;
+  let retryService: jest.Mocked<IAutomationRetryService>;
 
   beforeEach(() => {
     rules = {
@@ -97,9 +99,12 @@ describe('AutomationsController', () => {
         .fn()
         .mockResolvedValue({ runs: [], limit: 50, hasMore: false, recordingAvailable: true }),
       getRunById: jest.fn().mockResolvedValue(null),
+      countAttention: jest.fn().mockResolvedValue(0),
+      dismiss: jest.fn().mockResolvedValue(null),
     };
     dryRun = { evaluate: jest.fn() } as unknown as jest.Mocked<IAutomationDryRunService>;
-    controller = new AutomationsController(rules, runs, dryRun);
+    retryService = { retry: jest.fn() } as unknown as jest.Mocked<IAutomationRetryService>;
+    controller = new AutomationsController(rules, runs, dryRun, retryService);
   });
 
   describe('listRules', () => {
@@ -248,6 +253,7 @@ describe('AutomationsController — run reads (#2385)', () => {
   let runs: jest.Mocked<IAutomationRunsReadService>;
   let dryRun: jest.Mocked<IAutomationDryRunService>;
   let controller: AutomationsController;
+  let retryService: jest.Mocked<IAutomationRetryService>;
 
   beforeEach(() => {
     rules = {} as unknown as jest.Mocked<IAutomationRulesService>;
@@ -261,9 +267,12 @@ describe('AutomationsController — run reads (#2385)', () => {
         .fn()
         .mockResolvedValue({ runs: [], limit: 50, hasMore: false, recordingAvailable: true }),
       getRunById: jest.fn().mockResolvedValue(null),
+      countAttention: jest.fn().mockResolvedValue(0),
+      dismiss: jest.fn().mockResolvedValue(null),
     };
     dryRun = { evaluate: jest.fn() } as unknown as jest.Mocked<IAutomationDryRunService>;
-    controller = new AutomationsController(rules, runs, dryRun);
+    retryService = { retry: jest.fn() } as unknown as jest.Mocked<IAutomationRetryService>;
+    controller = new AutomationsController(rules, runs, dryRun, retryService);
   });
 
   /** Positional call with every filter defaulted, so a test names only what it varies. */

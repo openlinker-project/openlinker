@@ -58,12 +58,48 @@ export function isAutomationStepStatus(value: unknown): value is AutomationStepS
  * `stepIndex` is the position in that array, so a reader can name the failing
  * step without re-deriving it from the array length.
  */
+/** Who said it, and what they said — verbatim. See `AutomationStepResult.report`. */
+export interface AutomationStepReport {
+  /** The reporter's operator-facing name. `ATTRIBUTION_OPENLINKER` when it is us. */
+  readonly attributedTo: string;
+  /** The reporter's own words, unmodified. Never wrapped in an OpenLinker sentence. */
+  readonly message: string;
+}
+
+/** The attribution used when the statement is OpenLinker's own, not a third party's. */
+export const ATTRIBUTION_OPENLINKER = 'OpenLinker';
+
 export interface AutomationStepResult {
   readonly stepIndex: number;
   readonly action: AutomationActionKind;
   readonly status: AutomationStepStatus;
   /** Operator-facing detail: what the step produced, or why it did not. */
   readonly detail?: string;
+  /**
+   * What the underlying operation actually said, and who said it (#2387).
+   *
+   * **Additive rather than a replacement for `detail`**, and the deviation is
+   * deliberate: `detail` is consumed by `buildAutomationTimelineEvents`, by the
+   * run-log panel and by the activity table, and it carries operator-facing
+   * sentences for `done` / `nothing-to-do` steps that have no external reporter
+   * at all. Replacing it would break three shipped renderings to describe two.
+   *
+   * Set only where something REPORTED. `attributedTo` names the reporter, and
+   * `message` is its words **verbatim** — never re-worded, never prefixed. The
+   * whole point is that a surface can render *Allegro said: "…"* rather than an
+   * OpenLinker paraphrase of a marketplace's refusal.
+   *
+   * **OpenLinker is a legitimate attribution.** Three cases exist and only the
+   * first has an external source: (i) the operation answered; (ii) an
+   * OpenLinker-side refusal ("no email sender is configured in this process") —
+   * that IS OpenLinker's own statement, not a re-wording of anyone else's;
+   * (iii) an unexpected throw, carrying the exception text. Attributing (ii) and
+   * (iii) to a marketplace would put words in its mouth.
+   *
+   * `steps` is `jsonb` and this member is optional, so no migration and no
+   * reader change.
+   */
+  readonly report?: AutomationStepReport;
   /** Set where the delegated operation enqueued a job — §5.6's third run-row link. */
   readonly syncJobId?: string;
   /**

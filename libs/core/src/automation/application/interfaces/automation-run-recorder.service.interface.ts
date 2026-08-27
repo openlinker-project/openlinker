@@ -46,6 +46,8 @@ export interface AutomationRunRecord {
    * prevent. Optional so every pre-#2362 caller compiles untouched.
    */
   readonly blockedByRuleIds?: readonly string[];
+  /** The failed run this firing retries (#2387), when it is a retry. */
+  readonly retryOfRunId?: string;
 }
 
 export interface IAutomationRunRecorderService {

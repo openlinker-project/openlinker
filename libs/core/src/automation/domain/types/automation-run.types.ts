@@ -63,3 +63,125 @@ export function isAutomationRunOutcome(value: unknown): value is AutomationRunOu
     typeof value === 'string' && (AutomationRunOutcomeValues as readonly string[]).includes(value)
   );
 }
+
+/**
+ * ## AF-X — "an automation couldn't finish" (#2387)
+ *
+ * A failed firing is attention-worthy (spec §4.2's AF-X row, §4.3's
+ * classification). It is **DERIVED from `automation_runs`, never persisted as a
+ * reason column on the subject order**, and that is a rule rather than a local
+ * choice — the same one body C landed for A1-U / A2-A / A5-A (`origin: 'derived'`,
+ * recomputed per read, no column). A derived state cannot be stale, cannot be
+ * reset by a peer writer, and needs nothing to remember to null a field.
+ *
+ * #2387's issue text asked for the opposite — a ninth level-triggered reason
+ * column beside the eight `fulfillment-authority` states — while ALSO requiring
+ * one row per failed firing and that a later unrelated success never clear it.
+ * Those three are jointly unsatisfiable: level-triggered is *defined* by
+ * re-deciding and storing the answer including `null`, which is exactly the
+ * clearing behaviour the third requirement forbids, and one column holds one
+ * value per order rather than one per firing. The durable record already exists,
+ * so AF-X reads it. Persisting it again would be the second of the three
+ * independent writes the issue's own S2-6 criterion forbids one line later.
+ *
+ * ### A derived state is only self-clearing if the derivation can SEE what clears it
+ *
+ * The first draft of this rule was a pure function of ONE row
+ * (`outcome === 'failed' && dismissedAt === null`) on the claim that a successful
+ * retry cleared it by writing a new run. It does not:
+ * `AutomationDispatchService.record` INSERTs and never touches the original, so
+ * the original keeps `failed` / `dismissedAt: null` and stays attention-worthy
+ * forever. The clearing fact therefore had to become DATA — `retryOfRunId` on the
+ * retry's own row.
+ *
+ * **Latest-run-wins at the `(subjectId, ruleId)` grain was rejected**, and that
+ * is the load-bearing half: it would clear on a later *unrelated* firing of the
+ * same rule, which the spec forbids in as many words. The only thing separating
+ * "a retry of this firing" from "another firing of this rule" is the link.
+ *
+ * The predicate is therefore not per-row, and the second read lives in
+ * `AutomationRunRepositoryPort` — expressed ONCE and shared by the
+ * `attentionOnly` filter and `countAttention`, never re-written per caller (the
+ * divergence that class of duplication produces is why this note exists).
+ */
+
+/** The single-row half of the AF-X rule; the link is resolved by the caller. */
+export interface AutomationRunAttentionInput {
+  readonly outcome: AutomationRunOutcome;
+  readonly dismissedAt: Date | null;
+  /**
+   * Whether a run carrying `retryOfRunId = <this run>` ended in anything other
+   * than `failed`. Resolved by the repository, because it is a second read.
+   */
+  readonly supersededBySuccessfulRetry: boolean;
+}
+
+/**
+ * Does this firing need an operator's attention?
+ *
+ * Only `failed` qualifies. `nothing-to-do` is the rule finding the work already
+ * done, and `blocked` is a configuration collision that #2362 already reports —
+ * neither is a failure, and counting them would put a red number on a healthy
+ * install (#2100's `trigger-model-manual` lesson).
+ */
+export function isAutomationRunAttentionWorthy(run: AutomationRunAttentionInput): boolean {
+  return (
+    run.outcome === 'failed' && run.dismissedAt === null && !run.supersededBySuccessfulRetry
+  );
+}
+
+/**
+ * Why `Try again` is not offered for a firing.
+ *
+ * Closed, because each value renders a DIFFERENT operator sentence and a raw
+ * string here would be a second copy of the vocabulary in the frontend.
+ */
+export const RetryRefusalReasonValues = [
+  /** `done` / `nothing-to-do` / `blocked` — there is no failure to re-run. */
+  'not-failed',
+  /**
+   * The rule this firing ran no longer exists. **Not a failure**: a rule the
+   * operator deliberately deleted is a retry with no definition left to run.
+   * The run row is untouched — the record of what fired stays true and outlives
+   * its rule (#2358's no-FK + frozen `ruleName` design exists for this).
+   */
+  'rule-deleted',
+  /**
+   * `subjectKind: 'return'`. `buildOrderAutomationFacts` is order-shaped, so
+   * there is nothing to re-dispatch against. Named as the cause rather than as
+   * "unsupported", which reads as a gap someone files a bug against.
+   */
+  'subject-unsupported',
+] as const;
+export type RetryRefusalReason = (typeof RetryRefusalReasonValues)[number];
+
+/** Whether a firing can be re-run, and why not when it cannot. */
+export type RetryEligibility =
+  | { readonly retryable: true }
+  | { readonly retryable: false; readonly reason: RetryRefusalReason };
+
+export interface RetryEligibilityInput {
+  readonly outcome: AutomationRunOutcome;
+  readonly subjectKind: AutomationRunSubjectKind;
+  /** Whether the rule named by `ruleId` still exists. Resolved by the caller. */
+  readonly ruleExists: boolean;
+}
+
+/**
+ * The ONE rule behind both halves of the refusal contract (#2387).
+ *
+ * A refused retry is a DISABLED CONTROL WITH A REASON, never a 400 nobody sees —
+ * an action rendered enabled that the backend will refuse is the same defect as
+ * a filter the backend cannot serve: the operator learns the truth by wasting a
+ * click. So the run projection carries the verdict, the button reads it, **and
+ * the endpoint enforces it independently** — the projection is a rendering fact,
+ * the endpoint is the guard. If only the endpoint knows, the UI lies; if only
+ * the UI knows, a direct call bypasses it. Both call this function, so they
+ * cannot drift.
+ */
+export function resolveRetryEligibility(input: RetryEligibilityInput): RetryEligibility {
+  if (input.outcome !== 'failed') return { retryable: false, reason: 'not-failed' };
+  if (input.subjectKind !== 'order') return { retryable: false, reason: 'subject-unsupported' };
+  if (!input.ruleExists) return { retryable: false, reason: 'rule-deleted' };
+  return { retryable: true };
+}

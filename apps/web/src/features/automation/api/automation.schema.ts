@@ -183,6 +183,9 @@ const stepSchema = z.object({
   detail: z.string().nullish(),
   syncJobId: z.string().nullish(),
   unavailableReason: z.string().nullish(),
+  report: z
+    .object({ attributedTo: z.string(), message: z.string() })
+    .nullish(),
 });
 
 function parseSteps(raw: unknown): { steps: AutomationStepResult[]; unreadable: number } {
@@ -200,6 +203,7 @@ function parseSteps(raw: unknown): { steps: AutomationStepResult[]; unreadable: 
     steps.push({
       ...parsed.data,
       detail: parsed.data.detail ?? null,
+      report: parsed.data.report ?? null,
       syncJobId: parsed.data.syncJobId ?? null,
       unavailableReason: parsed.data.unavailableReason ?? null,
     });
@@ -218,6 +222,22 @@ const runSchema = z.object({
   steps: z.unknown().nullish(),
   blockedByRuleIds: z.array(z.string()).nullish(),
   firedAt: z.string(),
+  // REQUIRED, unlike its nullable neighbours (#2387). Both halves ship in one
+  // deploy, so `.nullish()` protects against no real skew and costs the one
+  // thing that matters: the client would have to choose between under-reporting
+  // a genuinely failed run and re-deriving the rule here, which is the second
+  // copy the server-side projection exists to prevent.
+  //
+  // The cost, stated because the next person weighing a required field on this
+  // schema must see it: `parseAutomationRunLog` drops a failing row SILENTLY
+  // (there is no dropped-row counter — `unreadableStepCount` covers steps only),
+  // so a backend that ever omits this makes rows vanish rather than render wrong.
+  needsAttention: z.boolean(),
+  retryable: z.boolean(),
+  retryRefusalReason: z.string().nullish(),
+  dismissedAt: z.string().nullish(),
+  dismissedByUserId: z.string().nullish(),
+  retryOfRunId: z.string().nullish(),
 });
 
 const runLogSchema = z.object({
@@ -236,6 +256,29 @@ const runLogSchema = z.object({
  * inventing it for an unreadable response would state a fact about the build
  * that the response never supplied. Callers render "we could not read it".
  */
+/**
+ * One run, or `null` when it cannot be read (#2387).
+ *
+ * Shares `runSchema` with the log parser — the mutations return the same shape
+ * the listings do, so parsing it twice differently is how a retried run could
+ * render one way in a toast and another in the table it refreshes.
+ */
+export function parseAutomationRun(raw: unknown): AutomationRun | null {
+  const parsed = runSchema.safeParse(raw);
+  if (!parsed.success) return null;
+  const { steps, unreadable } = parseSteps(parsed.data.steps);
+  return {
+    ...parsed.data,
+    steps,
+    unreadableStepCount: unreadable,
+    blockedByRuleIds: parsed.data.blockedByRuleIds ?? null,
+    retryRefusalReason: parsed.data.retryRefusalReason ?? null,
+    dismissedAt: parsed.data.dismissedAt ?? null,
+    dismissedByUserId: parsed.data.dismissedByUserId ?? null,
+    retryOfRunId: parsed.data.retryOfRunId ?? null,
+  };
+}
+
 export function parseAutomationRunLog(raw: unknown): AutomationRunLog | null {
   const envelope = runLogSchema.safeParse(raw);
   if (!envelope.success) return null;
@@ -250,6 +293,10 @@ export function parseAutomationRunLog(raw: unknown): AutomationRunLog | null {
         steps,
         unreadableStepCount: unreadable,
         blockedByRuleIds: parsed.data.blockedByRuleIds ?? null,
+        retryRefusalReason: parsed.data.retryRefusalReason ?? null,
+        dismissedAt: parsed.data.dismissedAt ?? null,
+        dismissedByUserId: parsed.data.dismissedByUserId ?? null,
+        retryOfRunId: parsed.data.retryOfRunId ?? null,
       });
     }
   }

@@ -47,6 +47,16 @@ export interface AutomationRuleRepositoryPort {
   findByTrigger(trigger: AutomationTrigger): Promise<AutomationRule[]>;
 
   /**
+   * Which of these rule ids still exist (#2387).
+   *
+   * ONE batched read for a whole page of runs — never `findById` per row. A run
+   * outlives its rule by design (`ruleId` carries no FK, and `ruleName` is
+   * frozen), so "can this firing be retried" needs this fact and a history
+   * listing must not pay N queries for it.
+   */
+  findExistingIds(ids: readonly string[]): Promise<Set<string>>;
+
+  /**
    * Active rules on this trigger whose effective window contains `on`.
    * The evaluator's read (#2359/#2360).
    */

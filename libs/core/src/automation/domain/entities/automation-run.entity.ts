@@ -10,6 +10,12 @@
  *
  * Anemic and immutable per ADR-011.
  *
+ * **This constructor now takes 14 positional parameters, which is at the edge of
+ * readable. The NEXT member added here should convert it to an options object,
+ * as its own change.** #2387 appended rather than converting because there were
+ * two call sites and three sibling PRs were open on this table; that trade stops
+ * paying at fifteen.
+ *
  * ## Two column decisions that are contract
  *
  * **`ruleName` is FROZEN at write time, and there is no FK to `automation_rules`.**
@@ -64,5 +70,20 @@ export class AutomationRun {
     public readonly blockedByRuleIds: readonly string[] | null,
     public readonly firedAt: Date,
     public readonly createdAt: Date,
+    /**
+     * When an operator said "I handled this myself" (#2387). The row stays
+     * `failed` — dismissal records that a HUMAN dealt with it, never that the
+     * operation succeeded. OpenLinker must not claim it did something a person
+     * did outside it.
+     */
+    public readonly dismissedAt: Date | null = null,
+    /** Who dismissed it. Attribution only — see the ORM entity for the no-FK note. */
+    public readonly dismissedByUserId: string | null = null,
+    /**
+     * The failed run this one is a retry OF (#2387). `null` for an ordinary
+     * firing — which is what keeps a later UNRELATED firing of the same rule
+     * from clearing an unrelated failure's attention state.
+     */
+    public readonly retryOfRunId: string | null = null,
   ) {}
 }

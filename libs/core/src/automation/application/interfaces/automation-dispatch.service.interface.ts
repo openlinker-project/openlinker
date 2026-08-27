@@ -33,6 +33,16 @@ export interface AutomationDispatchInput {
   readonly matchedRules: readonly AutomationRule[];
   /** The emitting caller's instant. Never read from a clock below this line. */
   readonly now: Date;
+  /**
+   * When this dispatch is a RETRY, the failed run it retries (#2387).
+   *
+   * Threaded to the recorder so the new run row carries the link. It has to
+   * travel with the dispatch rather than being stamped afterwards: `dispatch`
+   * returns `void`, so the caller never learns the new run's id, and the link
+   * is what lets the derived AF-X state clear on a successful retry WITHOUT
+   * clearing on a later unrelated firing of the same rule.
+   */
+  readonly retryOfRunId?: string;
 }
 
 export interface IAutomationDispatchService {

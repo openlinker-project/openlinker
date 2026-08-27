@@ -34,6 +34,7 @@ import type {
   AutomationActionExecutionInput,
   AutomationActionExecutorPort,
 } from '../../../domain/ports/automation-action-executor.port';
+import { ATTRIBUTION_OPENLINKER } from '../../../domain/types/automation-step-result.types';
 import type { AutomationStepResult } from '../../../domain/types/automation-step-result.types';
 import { AutomationDelegateResolverService } from '../automation-delegate-resolver.service';
 
@@ -41,6 +42,13 @@ import { AutomationDelegateResolverService } from '../automation-delegate-resolv
 // type import erases at build time, so it adds no runtime edge, while binding to
 // the real contract makes an upstream signature change a compile error here
 // rather than a runtime failure inside a job.
+
+/**
+ * Who a send failure is attributed to (#2387) — the mailer, whose words the
+ * `report.message` carries verbatim. Not a marketplace: nothing marketplace-side
+ * is involved in sending an email.
+ */
+export const AUTOMATION_MAILER_REPORTER = 'The email sender';
 
 @Injectable()
 export class SendEmailExecutorService implements AutomationActionExecutorPort {
@@ -51,7 +59,12 @@ export class SendEmailExecutorService implements AutomationActionExecutorPort {
   async execute(input: AutomationActionExecutionInput): Promise<AutomationStepResult> {
     const step = { stepIndex: input.stepIndex, action: 'send-email' } as const;
     if (input.action.action !== 'send-email') {
-      return { ...step, status: 'failed', detail: 'Step is not a send-email action.' };
+      return {
+        ...step,
+        status: 'failed',
+        detail: 'Step is not a send-email action.',
+        report: { attributedTo: ATTRIBUTION_OPENLINKER, message: 'Step is not a send-email action.' },
+      };
     }
     const { recipient, subject, body } = input.action;
 
@@ -76,6 +89,11 @@ export class SendEmailExecutorService implements AutomationActionExecutorPort {
         ...step,
         status: 'failed',
         detail: declared ?? 'No email sender is configured in this process, so no email was sent.',
+        // OpenLinker's own refusal, not a re-wording of anyone else's (#2387).
+        report: {
+          attributedTo: ATTRIBUTION_OPENLINKER,
+          message: declared ?? 'No email sender is configured in this process, so no email was sent.',
+        },
         unavailableReason: declared ?? undefined,
       };
     }
@@ -123,7 +141,13 @@ export class SendEmailExecutorService implements AutomationActionExecutorPort {
       this.logger.warn(
         `Automation "${input.rule.name}" (${input.rule.id}) could not send its email to ${to}: ${message}`,
       );
-      return { ...step, status: 'failed', detail: `Sending the email failed: ${message}` };
+      return {
+        ...step,
+        status: 'failed',
+        detail: `Sending the email failed: ${message}`,
+        // The mailer's own words, verbatim (#2387).
+        report: { attributedTo: AUTOMATION_MAILER_REPORTER, message },
+      };
     }
   }
 

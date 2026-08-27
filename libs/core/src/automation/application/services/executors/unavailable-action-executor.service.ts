@@ -47,6 +47,7 @@ import {
   AUTOMATION_ACTION_AVAILABILITY,
   unavailableReasonForAction,
 } from '../../../domain/types/automation-action-availability.types';
+import { ATTRIBUTION_OPENLINKER } from '../../../domain/types/automation-step-result.types';
 import type { AutomationStepResult } from '../../../domain/types/automation-step-result.types';
 
 /**
@@ -92,6 +93,9 @@ export class UnavailableActionExecutorService implements AutomationActionExecuto
       action,
       status: 'failed',
       detail: reason,
+      // OpenLinker's own statement about its own build (#2387) — no external
+      // operation was reached, so there is nobody else to attribute it to.
+      report: { attributedTo: ATTRIBUTION_OPENLINKER, message: reason },
       unavailableReason: reason,
     });
   }

@@ -23,17 +23,31 @@ function run(overrides: Partial<AutomationRun> = {}): AutomationRun {
     subjectId: 'ol_order_1',
     outcome: 'done',
     steps: [
-      { stepIndex: 0, action: 'relay-status-to-source', status: 'done', detail: null, syncJobId: null, unavailableReason: null },
+      { stepIndex: 0, action: 'relay-status-to-source', status: 'done', detail: null, syncJobId: null, unavailableReason: null, report: null },
     ],
     unreadableStepCount: 0,
     blockedByRuleIds: null,
     firedAt: '2026-08-20T10:00:00.000Z',
+    needsAttention: false,
+    retryable: false,
+    retryRefusalReason: null,
+    dismissedAt: null,
+    dismissedByUserId: null,
+    retryOfRunId: null,
     ...overrides,
   };
 }
 
 function render(runs: AutomationRun[]): void {
-  renderWithProviders(<AutomationActivityTable runs={runs} emptyState={<p>Empty</p>} />);
+  renderWithProviders(
+    <AutomationActivityTable
+      runs={runs}
+      emptyState={<p>Empty</p>}
+      canWrite
+      readOnlyLocked={false}
+      readOnlyMessage="Read only"
+    />,
+  );
 }
 
 describe('AutomationActivityTable', () => {
@@ -64,7 +78,7 @@ describe('AutomationActivityTable', () => {
     render([
       run({
         steps: [
-          { stepIndex: 0, action: 'dispatch-shipment', status: 'done', detail: null, syncJobId: 'job-9', unavailableReason: null },
+          { stepIndex: 0, action: 'dispatch-shipment', status: 'done', detail: null, syncJobId: 'job-9', unavailableReason: null, report: null },
         ],
       }),
     ]);
@@ -76,8 +90,8 @@ describe('AutomationActivityTable', () => {
       run({
         outcome: 'failed',
         steps: [
-          { stepIndex: 0, action: 'dispatch-shipment', status: 'failed', detail: FAILURE, syncJobId: null, unavailableReason: null },
-          { stepIndex: 1, action: 'relay-status-to-source', status: 'skipped', detail: null, syncJobId: null, unavailableReason: null },
+          { stepIndex: 0, action: 'dispatch-shipment', status: 'failed', detail: FAILURE, syncJobId: null, unavailableReason: null, report: null },
+          { stepIndex: 1, action: 'relay-status-to-source', status: 'skipped', detail: null, syncJobId: null, unavailableReason: null, report: null },
         ],
       }),
     ]);
@@ -123,7 +137,7 @@ describe('AutomationActivityTable', () => {
       run({
         outcome: 'failed',
         steps: [
-          { stepIndex: 0, action: 'dispatch-shipment', status: 'failed', detail: FAILURE, syncJobId: null, unavailableReason: null },
+          { stepIndex: 0, action: 'dispatch-shipment', status: 'failed', detail: FAILURE, syncJobId: null, unavailableReason: null, report: null },
         ],
       }),
     ]);
@@ -137,8 +151,8 @@ describe('AutomationActivityTable', () => {
       run({
         outcome: 'failed',
         steps: [
-          { stepIndex: 0, action: 'dispatch-shipment', status: 'failed', detail: FAILURE, syncJobId: null, unavailableReason: null },
-          { stepIndex: 1, action: 'relay-status-to-source', status: 'skipped', detail: null, syncJobId: null, unavailableReason: null },
+          { stepIndex: 0, action: 'dispatch-shipment', status: 'failed', detail: FAILURE, syncJobId: null, unavailableReason: null, report: null },
+          { stepIndex: 1, action: 'relay-status-to-source', status: 'skipped', detail: null, syncJobId: null, unavailableReason: null, report: null },
         ],
       }),
     ]);
@@ -154,8 +168,8 @@ describe('AutomationActivityTable', () => {
     render([
       run({
         steps: [
-          { stepIndex: 0, action: 'dispatch-shipment', status: 'done', detail: null, syncJobId: null, unavailableReason: null },
-          { stepIndex: 1, action: 'relay-status-to-source', status: 'done', detail: null, syncJobId: null, unavailableReason: null },
+          { stepIndex: 0, action: 'dispatch-shipment', status: 'done', detail: null, syncJobId: null, unavailableReason: null, report: null },
+          { stepIndex: 1, action: 'relay-status-to-source', status: 'done', detail: null, syncJobId: null, unavailableReason: null, report: null },
         ],
       }),
     ]);

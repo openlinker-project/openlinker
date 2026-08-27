@@ -25,14 +25,30 @@
  * @see docs/specs/product-spec-oms-wave2-operator-experience.md §5.6
  */
 import type { AutomationRun } from '../../domain/entities/automation-run.entity';
+import type { RetryEligibility } from '../../domain/types/automation-run.types';
 import type { AutomationRunSubjectKind } from '../../domain/types/automation-run.types';
 import type { AutomationRunFilters } from '../../domain/ports/automation-run-repository.port';
 
 /** §5.6's fired-log page size. A cap, not a promise that fewer means fewer exist. */
 export const AUTOMATION_RUN_LOG_PAGE_SIZE = 50;
 
+/**
+ * A run plus the two facts a single row cannot answer about itself (#2387).
+ *
+ * Both are DERIVED server-side and projected, so the frontend holds no copy of
+ * either rule. `needsAttention` needs to know whether a *different* row retried
+ * this one; `retry` needs to know whether the rule still exists. Deriving them
+ * in the browser would mean shipping both rules twice and letting them drift.
+ */
+export interface AutomationRunView extends AutomationRun {
+  /** AF-X: this firing failed, nobody dismissed it, no retry has since succeeded. */
+  readonly needsAttention: boolean;
+  /** Whether `Try again` is offered, and the operator-facing reason when it is not. */
+  readonly retry: RetryEligibility;
+}
+
 export interface AutomationRunLogPage {
-  readonly runs: readonly AutomationRun[];
+  readonly runs: readonly AutomationRunView[];
   /** The cap that was applied, so a consumer can tell a short page from a full one. */
   readonly limit: number;
   /** `true` when the page is full and older runs may exist. */
@@ -78,6 +94,23 @@ export interface IAutomationRunsReadService {
     offset?: number,
   ): Promise<AutomationRunLogPage>;
 
-  /** One run by id, or `null` (#2385). */
-  getRunById(id: string): Promise<AutomationRun | null>;
+  /** One run by id, or `null` (#2385). Projected like every listing (#2387). */
+  getRunById(id: string): Promise<AutomationRunView | null>;
+
+  /**
+   * How many firings need an operator's attention right now (#2387).
+   *
+   * Shares one SQL predicate with the `attentionOnly` filter, so the count can
+   * never disagree with the rows it claims to count.
+   */
+  countAttention(): Promise<number>;
+
+  /**
+   * Record that an operator handled a failed firing themselves (#2387).
+   *
+   * The run stays `failed` — this says a HUMAN dealt with it, never that the
+   * operation succeeded. `null` when no such run exists; re-dismissing is a
+   * no-op that returns the row unchanged.
+   */
+  dismiss(id: string, userId: string, now: Date): Promise<AutomationRunView | null>;
 }

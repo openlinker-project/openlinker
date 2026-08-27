@@ -44,6 +44,8 @@
  * @module apps/web/src/features/orders/lib
  */
 import {
+  automationFailureTitle,
+  stepReasonText,
   AUTOMATION_ACTION_LABELS,
   AUTOMATION_TRIGGER_COPY,
   type AutomationRun,
@@ -60,6 +62,10 @@ export interface AutomationTimelineEvent {
   description?: string;
   footer: string;
   tone: 'default' | 'error';
+  /** This firing re-ran an earlier failure (#2387). */
+  isRetry?: boolean;
+  /** An operator recorded that they handled this failure themselves (#2387). */
+  handledByOperator?: boolean;
   /** The run's overall outcome, on exactly one event per run (`stepIndex === 0`). */
   runOutcome?: string;
   /** The rule this step belongs to. */
@@ -159,7 +165,13 @@ export function buildAutomationTimelineEvents(
       events.push({
         id: `${run.id}:${step.stepIndex}`,
         timestamp: run.firedAt,
-        title: actionTitle(step.action),
+        // A FAILED step takes the action's own verb — "Couldn't buy the label
+        // for order X" (#2387) — rather than the neutral past tense a
+        // succeeded step gets. "An automation failed" tells an operator nothing
+        // about what to do next, and the six fixes are six different errands.
+        title: failed
+          ? automationFailureTitle(step.action, run.subjectId)
+          : actionTitle(step.action),
         // The RUN-level outcome, on one event per run — a run-level fact
         // repeated per step would state N times something true once.
         //
@@ -169,10 +181,13 @@ export function buildAutomationTimelineEvents(
         // is insertion order, and any future re-sort would move the label.
         runOutcome: step.stepIndex === 0 ? run.outcome : undefined,
         by,
-        // The backend's own sentence, verbatim and attributed — never
-        // paraphrased into operator-friendlier wording that loses the reason.
+        // The operation's OWN words, attributed, where something reported
+        // (#2387) — `stepReasonText` prefers `report` over `detail`, because
+        // `detail` is OpenLinker's sentence ABOUT the failure and `report` is
+        // the failure's own. Never paraphrased into operator-friendlier
+        // wording that loses the reason.
         description:
-          step.detail ??
+          stepReasonText(step) ??
           step.unavailableReason ??
           (step.status === 'nothing-to-do'
             ? AUTOMATION_TIMELINE_COPY.nothingToDoSuffix
@@ -181,6 +196,13 @@ export function buildAutomationTimelineEvents(
         tone: failed ? 'error' : 'default',
         ruleId: run.ruleId,
         trigger: run.trigger,
+        // A retry chain reads as one story. Without this the operator sees two
+        // unrelated firings and has to correlate them by timestamp (#2387).
+        isRetry: run.retryOfRunId !== null,
+        // Dismissal says a PERSON dealt with it — never that this run
+        // succeeded. Both entries stay in the timeline permanently; only the
+        // attention state clears.
+        handledByOperator: run.dismissedAt !== null,
       });
     }
   }

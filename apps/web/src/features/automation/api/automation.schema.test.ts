@@ -125,6 +125,8 @@ describe('parseAutomationRunLog typing', () => {
           outcome: 'succeeded',
           blockedByRuleIds: null,
           firedAt: '2026-08-02T00:00:00.000Z',
+          needsAttention: false,
+          retryable: false,
         },
       ],
       limit: 50,
@@ -134,6 +136,64 @@ describe('parseAutomationRunLog typing', () => {
 
     expect(parsed?.runs[0].ruleName).toBe('Tell the marketplace');
     expect(parsed?.runs[0].blockedByRuleIds).toBeNull();
+  });
+
+  it('should DROP a run missing needsAttention, silently — the cost of parsing it as required', () => {
+    // Recorded as a test because it is the accepted cost of #2387's decision to
+    // parse `needsAttention` as required rather than `.nullish()`. Both halves
+    // ship in one deploy so this is unreachable in practice, but there is no
+    // dropped-row counter (`unreadableStepCount` covers steps only), so a
+    // backend that ever omits the field makes rows VANISH rather than render
+    // wrong. The alternative was worse: the client would have to under-report a
+    // genuinely failed run, or re-derive the rule — a second copy of it.
+    const parsed = parseAutomationRunLog({
+      runs: [
+        {
+          id: 'run-1',
+          ruleId: 'rule-1',
+          ruleName: 'Tell the marketplace',
+          trigger: 'order.packed',
+          subjectKind: 'order',
+          subjectId: 'ol_order_1',
+          outcome: 'failed',
+          blockedByRuleIds: null,
+          firedAt: '2026-08-02T00:00:00.000Z',
+        },
+      ],
+      limit: 50,
+      hasMore: false,
+      recordingAvailable: true,
+    });
+
+    expect(parsed?.runs).toHaveLength(0);
+  });
+
+  it('should keep a run whose optional AF-X fields are absent', () => {
+    const parsed = parseAutomationRunLog({
+      runs: [
+        {
+          id: 'run-1',
+          ruleId: 'rule-1',
+          ruleName: 'Tell the marketplace',
+          trigger: 'order.packed',
+          subjectKind: 'order',
+          subjectId: 'ol_order_1',
+          outcome: 'failed',
+          blockedByRuleIds: null,
+          firedAt: '2026-08-02T00:00:00.000Z',
+          needsAttention: true,
+          retryable: true,
+        },
+      ],
+      limit: 50,
+      hasMore: false,
+      recordingAvailable: true,
+    });
+
+    // The genuinely nullable ones normalise to null (#939), never to undefined.
+    expect(parsed?.runs[0].dismissedAt).toBeNull();
+    expect(parsed?.runs[0].retryOfRunId).toBeNull();
+    expect(parsed?.runs[0].retryRefusalReason).toBeNull();
   });
 
   it('should drop a malformed run rather than failing the whole log', () => {

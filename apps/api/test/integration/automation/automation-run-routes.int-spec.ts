@@ -11,7 +11,7 @@
  * ## What it covers, and why a unit test cannot
  *
  * `AutomationsController` declares `@Get('runs')` BEFORE `@Get(':id')`. Nest
- * matches in declaration order, so reversing them makes `/automations/runs`
+ * matches in declaration order, so reversing them makes `/v1/automations/runs`
  * resolve as a rule lookup with `id === 'runs'` — a 404 on a working endpoint.
  * The controller spec calls the handler methods directly and never goes through
  * the router, so it would stay green through exactly that break.
@@ -30,7 +30,7 @@ describe('Automation run reads (routing)', () => {
     harness = await getTestHarness();
     // Once per file — `loginAsAdmin` plain-INSERTs a fixed admin user, so a
     // second call violates the users unique constraint.
-    ({ token } = await loginAsAdmin(harness.getHttp()));
+    token = await loginAsAdmin(harness.getHttp(), harness.getDataSource());
   });
 
   afterEach(async () => {
@@ -44,7 +44,7 @@ describe('Automation run reads (routing)', () => {
   it('should resolve /automations/runs as the feed, not as a rule id', async () => {
     const response = await harness
       .getHttp()
-      .get('/automations/runs')
+      .get('/v1/automations/runs')
       .set('Authorization', `Bearer ${token}`)
       .expect(200);
 
@@ -57,7 +57,7 @@ describe('Automation run reads (routing)', () => {
     // The single switch that retires the "not recorded in this build" banner.
     const response = await harness
       .getHttp()
-      .get('/automations/runs')
+      .get('/v1/automations/runs')
       .set('Authorization', `Bearer ${token}`)
       .expect(200);
 
@@ -67,7 +67,7 @@ describe('Automation run reads (routing)', () => {
   it('should refuse a subject filter that names no recognised kind', async () => {
     await harness
       .getHttp()
-      .get('/automations/runs?subjectId=ol_order_1')
+      .get('/v1/automations/runs?subjectId=ol_order_1')
       .set('Authorization', `Bearer ${token}`)
       .expect(400);
   });
@@ -76,7 +76,7 @@ describe('Automation run reads (routing)', () => {
     // The dynamic route must keep working beside the static one.
     await harness
       .getHttp()
-      .get('/automations/00000000-0000-0000-0000-000000000000')
+      .get('/v1/automations/00000000-0000-0000-0000-000000000000')
       .set('Authorization', `Bearer ${token}`)
       .expect(404);
   });

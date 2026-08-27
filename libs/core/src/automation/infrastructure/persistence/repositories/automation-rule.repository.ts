@@ -69,6 +69,16 @@ export class AutomationRuleRepository implements AutomationRuleRepositoryPort {
     return entity ? this.toDomain(entity) : null;
   }
 
+  async findExistingIds(ids: readonly string[]): Promise<Set<string>> {
+    if (ids.length === 0) return new Set();
+    const rows = await this.ormRepository
+      .createQueryBuilder('rule')
+      .select('rule."id"', 'id')
+      .where('rule."id" IN (:...ids)', { ids: [...ids] })
+      .getRawMany<{ id: string }>();
+    return new Set(rows.map((row) => row.id));
+  }
+
   async findByTrigger(trigger: AutomationTrigger): Promise<AutomationRule[]> {
     const entities = await this.ormRepository.find({
       where: { trigger },

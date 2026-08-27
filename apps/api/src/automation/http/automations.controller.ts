@@ -89,10 +89,13 @@ import {
   AUTOMATION_DRY_RUN_SERVICE_TOKEN,
   type IAutomationDryRunService,
 } from '../application/automation-dry-run.tokens';
+import { AUTOMATION_RETRY_SERVICE_TOKEN } from '../application/automation-retry.tokens';
+import { IAutomationRetryService } from '../application/automation-retry.service.interface';
 import type { AutomationRuleDefinitionDto } from './dto/automation-rule.dto';
 import { WriteAutomationRuleDto } from './dto/automation-rule.dto';
 import { EvaluateAutomationDto } from './dto/evaluate-automation.dto';
 import {
+  AutomationAttentionCountDto,
   AutomationRuleResponseDto,
   AutomationRunLogResponseDto,
   AutomationRunResponseDto,
@@ -139,7 +142,9 @@ export class AutomationsController {
     @Inject(AUTOMATION_RUNS_READ_SERVICE_TOKEN)
     private readonly runs: IAutomationRunsReadService,
     @Inject(AUTOMATION_DRY_RUN_SERVICE_TOKEN)
-    private readonly dryRun: IAutomationDryRunService
+    private readonly dryRun: IAutomationDryRunService,
+    @Inject(AUTOMATION_RETRY_SERVICE_TOKEN)
+    private readonly retryService: IAutomationRetryService
   ) {}
 
   @Get('vocabulary')
@@ -179,6 +184,22 @@ export class AutomationsController {
     });
   }
 
+  @Get('attention-count')
+  @Roles('admin', 'operator')
+  @ApiOperation({
+    summary: 'How many firings need an operator\'s attention (#2387)',
+    description:
+      'DERIVED from `automation_runs`, sharing one SQL predicate with the `attentionOnly` filter — ' +
+      'so this number and the rows behind it can never disagree. Zero is the healthy answer: only ' +
+      'a FAILED firing counts, never a rule that ran and found nothing to do.',
+  })
+  @ApiResponse({ status: 200, type: AutomationAttentionCountDto })
+  async getAttentionCount(): Promise<AutomationAttentionCountDto> {
+    const dto = new AutomationAttentionCountDto();
+    dto.count = await this.runs.countAttention();
+    return dto;
+  }
+
   @Get()
   @Roles('admin', 'operator')
   @ApiOperation({ summary: 'List the rules on one trigger, active and inactive' })
@@ -213,6 +234,15 @@ export class AutomationsController {
   @ApiQuery({ name: 'outcome', required: false, enum: AutomationRunOutcomeValues })
   @ApiQuery({ name: 'from', required: false, type: String, description: 'ISO instant, inclusive.' })
   @ApiQuery({ name: 'to', required: false, type: String, description: 'ISO instant, inclusive.' })
+  @ApiQuery({
+    name: 'attentionOnly',
+    required: false,
+    type: Boolean,
+    description:
+      'Narrow to firings that need attention (#2387) — failed, not dismissed, not superseded by a ' +
+      'successful retry. Shares one SQL predicate with the attention count, so the count can never ' +
+      'disagree with these rows.',
+  })
   @ApiQuery({ name: 'limit', required: false, type: Number })
   @ApiQuery({ name: 'offset', required: false, type: Number })
   @ApiResponse({ status: 200, type: AutomationRunLogResponseDto })
@@ -226,6 +256,7 @@ export class AutomationsController {
     @Query('outcome') outcome?: string,
     @Query('from') from?: string,
     @Query('to') to?: string,
+    @Query('attentionOnly') attentionOnly?: string,
     @Query('limit') limit?: string,
     @Query('offset') offset?: string,
   ): Promise<AutomationRunLogResponseDto> {
@@ -269,11 +300,68 @@ export class AutomationsController {
         ? {}
         : { from: parseIsoDate(from, 'lower') as Date }),
       ...(parseIsoDate(to, 'upper') === null ? {} : { to: parseIsoDate(to, 'upper') as Date }),
+      // Only the literal string `true` narrows. Anything else — including
+      // `false`, `0` and a typo — is treated as absent, per the narrowing-filter
+      // rule: an unrecognised value must WIDEN the result, never empty it.
+      ...(attentionOnly === 'true' ? { attentionOnly: true } : {}),
     };
 
     return AutomationRunLogResponseDto.fromDomain(
       await this.runs.listRecent(filters, parsedLimit, parsedOffset),
     );
+  }
+
+  @Post('runs/:runId/retry')
+  // 200, not Nest's default 201: neither route creates a resource the CLIENT
+  // addresses. Both return an updated view of an EXISTING run — the retry's new
+  // row is an internal consequence, and it carries no Location of its own.
+  @HttpCode(HttpStatus.OK)
+  @Roles('admin')
+  @ApiOperation({
+    summary: 'Re-run the rule of a failed firing against that firing\'s own order',
+    description:
+      'Runs the WHOLE rule again, in order, and writes a NEW run row linked back by ' +
+      '`retryOfRunId` — which is what clears the AF-X attention state without a later, unrelated ' +
+      'firing of the same rule clearing it. Conditions are NOT re-evaluated (the rule already ' +
+      'matched; re-evaluating would re-apply the retroactivity floor and refuse every retry of an ' +
+      'older firing). Refusals mirror `retryable` / `retryRefusalReason` on the run, so a client ' +
+      'shows a disabled action with its reason rather than discovering the 400. ' +
+      'NOTE: this dispatches INLINE, so the request blocks for the rule\'s steps.',
+  })
+  @ApiParam({ name: 'runId', type: String })
+  @ApiResponse({ status: 200, type: AutomationRunResponseDto, description: 'The ORIGINAL run, re-projected.' })
+  @ApiResponse({ status: 400, description: 'Not retryable — body carries `reason`.' })
+  @ApiResponse({ status: 404, description: 'Run, or its order, not found' })
+  async retryRun(@Param('runId') runId: string): Promise<AutomationRunResponseDto> {
+    return AutomationRunResponseDto.fromDomain(await this.retryService.retry({ runId }));
+  }
+
+  @Post('runs/:runId/dismiss')
+  // 200, not Nest's default 201: neither route creates a resource the CLIENT
+  // addresses. Both return an updated view of an EXISTING run — the retry's new
+  // row is an internal consequence, and it carries no Location of its own.
+  @HttpCode(HttpStatus.OK)
+  @Roles('admin')
+  @ApiOperation({
+    summary: 'Record that an operator handled a failed firing themselves',
+    description:
+      'Clears the AF-X attention state ONLY. The run stays `failed` and its timeline entries stay ' +
+      'exactly as they are: this records that a HUMAN dealt with it, never that the operation ' +
+      'succeeded — OpenLinker must not claim it did something a person did outside it. ' +
+      'Re-dismissing is a no-op that returns the row unchanged.',
+  })
+  @ApiParam({ name: 'runId', type: String })
+  @ApiResponse({ status: 200, type: AutomationRunResponseDto })
+  @ApiResponse({ status: 404, description: 'Run not found' })
+  async dismissRun(
+    @Param('runId') runId: string,
+    @CurrentUser() user: AuthenticatedUser
+  ): Promise<AutomationRunResponseDto> {
+    const run = await this.runs.dismiss(runId, user.id, new Date());
+    if (run === null) {
+      throw new NotFoundException(`Automation run "${runId}" not found.`);
+    }
+    return AutomationRunResponseDto.fromDomain(run);
   }
 
   @Get('runs/:runId')

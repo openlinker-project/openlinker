@@ -51,6 +51,7 @@ import { Logger } from '@openlinker/shared/logging';
 import { AUTOMATION_RUN_RECORDER_TOKEN } from '../../automation.tokens';
 import type { AutomationRule } from '../../domain/entities/automation-rule.entity';
 import type { AutomationRunOutcome } from '../../domain/types/automation-run.types';
+import { ATTRIBUTION_OPENLINKER } from '../../domain/types/automation-step-result.types';
 import type { AutomationStepResult } from '../../domain/types/automation-step-result.types';
 import type {
   AutomationDispatchInput,
@@ -124,6 +125,14 @@ export class AutomationDispatchService implements IAutomationDispatchService {
         action: action.action,
         status: 'failed',
         detail: `This version of OpenLinker does not know the action "${action.action}".`,
+        // #2387: the dispatcher's OWN failure arms must carry attribution too.
+        // A test scoped to the executors would otherwise go green while these
+        // two arms still render an un-attributed OpenLinker sentence — the AC
+        // satisfied by a test that cannot observe the defect.
+        report: {
+          attributedTo: ATTRIBUTION_OPENLINKER,
+          message: `This version of OpenLinker does not know the action "${action.action}".`,
+        },
       };
     }
 
@@ -149,6 +158,10 @@ export class AutomationDispatchService implements IAutomationDispatchService {
         action: action.action,
         status: 'failed',
         detail: `The step failed unexpectedly: ${message}`,
+        // The thrown message verbatim. Attributed to OpenLinker rather than to
+        // a marketplace: an executor throwing is a defect on our side, and the
+        // exception text is ours to own (#2387).
+        report: { attributedTo: ATTRIBUTION_OPENLINKER, message },
       };
     }
   }
@@ -171,6 +184,7 @@ export class AutomationDispatchService implements IAutomationDispatchService {
         outcome,
         steps,
         firedAt: input.now,
+        retryOfRunId: input.retryOfRunId,
       });
     } catch (error) {
       // Recording is a report on effects that have already happened; letting it

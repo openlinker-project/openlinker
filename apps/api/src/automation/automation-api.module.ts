@@ -22,6 +22,8 @@ import { AutomationModule } from '@openlinker/core/automation';
 import { OrdersModule } from '@openlinker/core/orders';
 
 import { AutomationDryRunService } from './application/automation-dry-run.service';
+import { AutomationRetryService } from './application/automation-retry.service';
+import { AUTOMATION_RETRY_SERVICE_TOKEN } from './application/automation-retry.tokens';
 import { AUTOMATION_DRY_RUN_SERVICE_TOKEN } from './application/automation-dry-run.tokens';
 import { AutomationsController } from './http/automations.controller';
 
@@ -31,6 +33,8 @@ import { AutomationsController } from './http/automations.controller';
   providers: [
     AutomationDryRunService,
     { provide: AUTOMATION_DRY_RUN_SERVICE_TOKEN, useExisting: AutomationDryRunService },
+    AutomationRetryService,
+    { provide: AUTOMATION_RETRY_SERVICE_TOKEN, useExisting: AutomationRetryService },
   ],
 })
 export class AutomationApiModule {}

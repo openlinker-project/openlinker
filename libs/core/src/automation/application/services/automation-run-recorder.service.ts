@@ -109,6 +109,7 @@ export class PersistingAutomationRunRecorder implements IAutomationRunRecorderSe
       // read path re-narrows and #2366 parses.
       steps: run.steps,
       blockedByRuleIds: run.blockedByRuleIds === undefined ? null : [...run.blockedByRuleIds],
+      retryOfRunId: run.retryOfRunId ?? null,
       firedAt: run.firedAt,
     });
   }

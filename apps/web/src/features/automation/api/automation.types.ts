@@ -183,15 +183,44 @@ export type AutomationStepStatus = (typeof AUTOMATION_STEP_STATUS_VALUES)[number
  * verbatim. `unavailableReason` is distinct from a failure on purpose: "not
  * built yet" and "it failed" lead to entirely different investigations.
  */
+export interface AutomationStepReport {
+  /** Who said it. `OpenLinker` when the statement is ours, not a third party's. */
+  attributedTo: string;
+  /** Their words, VERBATIM — never re-worded on the way to the screen. */
+  message: string;
+}
+
 export interface AutomationStepResult {
   stepIndex: number;
   action: string;
   status: AutomationStepStatus;
   detail: string | null;
+  /**
+   * What the underlying operation actually said, and who said it (#2387).
+   *
+   * Rendered in preference to `detail` where present, because `detail` is
+   * OpenLinker's sentence ABOUT the failure and this is the failure's own
+   * words — an operator quoting a marketplace's refusal in a support ticket
+   * needs the second, not a paraphrase of it.
+   */
+  report: AutomationStepReport | null;
   /** Where the step dispatched a job — the job detail is where technical failure detail lives. */
   syncJobId: string | null;
   unavailableReason: string | null;
 }
+
+/**
+ * Why `Try again` is not offered (#2387).
+ *
+ * Mirrors the backend union. `rule-deleted` is deliberately NOT a failure: a rule
+ * the operator deleted is a retry with no definition left to run.
+ */
+export const RETRY_REFUSAL_REASON_VALUES = [
+  'not-failed',
+  'rule-deleted',
+  'subject-unsupported',
+] as const;
+export type RetryRefusalReason = (typeof RETRY_REFUSAL_REASON_VALUES)[number];
 
 export interface AutomationRun {
   id: string;
@@ -211,6 +240,24 @@ export interface AutomationRun {
   unreadableStepCount: number;
   blockedByRuleIds: string[] | null;
   firedAt: string;
+  /**
+   * AF-X (#2387): this firing needs an operator's attention.
+   *
+   * **Derived by the SERVER and rendered here, never re-derived.** The rule needs
+   * to know whether a different row retried this one, which no single row can
+   * answer about itself — and a second copy of it in the browser is exactly the
+   * drift the projection exists to prevent.
+   */
+  needsAttention: boolean;
+  /** Whether `Try again` is offered. The endpoint enforces the same rule independently. */
+  retryable: boolean;
+  /** Why not, when `retryable` is false. An unrecognised code renders as raw text. */
+  retryRefusalReason: string | null;
+  /** When an operator said they handled it themselves. The run stays failed. */
+  dismissedAt: string | null;
+  dismissedByUserId: string | null;
+  /** The failed run this one retries, or null for an ordinary firing. */
+  retryOfRunId: string | null;
 }
 
 // ── Dry run (#2366, spec §5.6a) ──────────────────────────────────────────────

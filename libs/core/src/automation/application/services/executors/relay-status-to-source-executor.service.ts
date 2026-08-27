@@ -28,6 +28,7 @@ import type {
   AutomationActionExecutionInput,
   AutomationActionExecutorPort,
 } from '../../../domain/ports/automation-action-executor.port';
+import { ATTRIBUTION_OPENLINKER } from '../../../domain/types/automation-step-result.types';
 import type { AutomationStepResult } from '../../../domain/types/automation-step-result.types';
 import { AutomationDelegateResolverService } from '../automation-delegate-resolver.service';
 
@@ -46,6 +47,17 @@ import { AutomationDelegateResolverService } from '../automation-delegate-resolv
  * it excludes nothing and the relay reaches the source plus all destinations.
  */
 export const AUTOMATION_RELAY_ORIGIN = 'openlinker:automation';
+
+/**
+ * Who a relay failure is attributed to (#2387).
+ *
+ * Deliberately the relay, not a marketplace name. The relay fans out across
+ * every participant and the error it raises may or may not be a channel's own
+ * words; naming a specific marketplace here would attribute a sentence to a
+ * party that might not have said it. A per-target attribution needs the target
+ * breakdown, which only the `nothing-to-do` branch has.
+ */
+export const AUTOMATION_RELAY_REPORTER = 'The marketplace relay';
 
 // The relay contract is imported TYPE-ONLY. A type import erases at build time,
 // so it adds no runtime edge and cannot close the CJS barrel cycle the lazy
@@ -86,6 +98,13 @@ export class RelayStatusToSourceExecutorService implements AutomationActionExecu
         status: 'failed',
         detail:
           'The marketplace relay is not available in this process, so nothing was told to the marketplace.',
+        // OpenLinker's OWN statement — no third party refused anything, so
+        // attributing this to a marketplace would put words in its mouth.
+        report: {
+          attributedTo: ATTRIBUTION_OPENLINKER,
+          message:
+            'The marketplace relay is not available in this process, so nothing was told to the marketplace.',
+        },
       };
     }
 
@@ -126,7 +145,15 @@ export class RelayStatusToSourceExecutorService implements AutomationActionExecu
         `Automation "${input.rule.name}" (${input.rule.id}) relay failed for order ` +
           `${input.facts.subjectId}: ${message}`,
       );
-      return { ...step, status: 'failed', detail: `Telling the marketplace failed: ${message}` };
+      return {
+        ...step,
+        status: 'failed',
+        detail: `Telling the marketplace failed: ${message}`,
+        // The relay's own words, verbatim — `detail` keeps the OpenLinker
+        // sentence for surfaces that want one, and `report` is what a surface
+        // renders when it must quote rather than paraphrase (#2387).
+        report: { attributedTo: AUTOMATION_RELAY_REPORTER, message },
+      };
     }
   }
 }

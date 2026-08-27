@@ -25,8 +25,12 @@
 import { useEffect, useMemo, useState, type ReactElement } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
+import { useWriteAccess } from '../../shared/auth/use-permission';
+import { useDemoMode } from '../../features/system/hooks/use-demo-mode';
+import { NAV_DEMO_RESTRICTED_MESSAGE } from '../../shared/config/demo-mode';
 import { Button } from '../../shared/ui/button';
 import { Chip } from '../../shared/ui/chip';
+import { AUTOMATION_FAILURE_COPY } from '../../features/automation';
 import { Select } from '../../shared/ui/select';
 import { FormField } from '../../shared/ui/form-field';
 import { Input } from '../../shared/ui/input';
@@ -52,6 +56,11 @@ import {
 const PAGE_SIZE = 50;
 
 export function AutomationActivityPage(): ReactElement {
+  const demoMode = useDemoMode();
+  // The documented primitive — never an inline `role === 'admin'` compare. The
+  // two run actions are writes, so they mirror the controller's admin-only
+  // routes; the log itself stays readable by an operator.
+  const write = useWriteAccess('automations:write', demoMode);
   const [searchParams, setSearchParams] = useSearchParams();
   const filters = useMemo(
     () => readAutomationActivityFilters(searchParams),
@@ -152,6 +161,24 @@ export function AutomationActivityPage(): ReactElement {
         nothing on screen saying why, which is the same silent-false-claim shape
         the four empty states exist to prevent, one level up.
       */}
+      {/*
+        The attention toggle (#2387). A chip rather than a Select: it is a
+        two-state narrowing, and it must stay visible while active for the same
+        reason the rule chip does — a filtered-empty table with nothing on screen
+        saying why reads as "nothing has failed", which is a false claim about
+        the operator's own data.
+      */}
+      <div className="automation-activity__active-rule">
+        <Chip
+          active={filters.attentionOnly === true}
+          tone="info"
+          onClick={() => patch('attentionOnly', filters.attentionOnly === true ? '' : 'true')}
+        >
+          {filters.attentionOnly === true
+            ? AUTOMATION_FAILURE_COPY.clearAttentionFilter
+            : AUTOMATION_FAILURE_COPY.attentionFilter}
+        </Chip>
+      </div>
       {filters.ruleId === undefined ? null : (
         <div className="automation-activity__active-rule">
           <Chip active tone="info" onClick={() => patch('ruleId', '')}>
@@ -252,7 +279,10 @@ export function AutomationActivityPage(): ReactElement {
         />
       ) : (
         <>
-          <AutomationActivityTable runs={runs} emptyState={emptyState} />
+          <AutomationActivityTable
+          canWrite={write.canWrite}
+          readOnlyLocked={write.demoReadOnly}
+          readOnlyMessage={NAV_DEMO_RESTRICTED_MESSAGE} runs={runs} emptyState={emptyState} />
 
           {/* Next/prev only: the envelope carries `hasMore`, deliberately no `total`. */}
           <div className="automation-activity__pager">

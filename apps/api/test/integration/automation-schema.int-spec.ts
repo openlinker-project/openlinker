@@ -261,9 +261,16 @@ describe('Automation Schema Integration', () => {
       expect(rows.map((row) => row.column_name)).toEqual([
         'blockedByRuleIds',
         'createdAt',
+        // #2387's AF-X columns. `dismissedAt`/`dismissedByUserId` record that a
+        // HUMAN handled a failure; `retryOfRunId` links a retry to the firing
+        // it retries, which is what lets the derived attention state clear
+        // without a later unrelated firing clearing it.
+        'dismissedAt',
+        'dismissedByUserId',
         'firedAt',
         'id',
         'outcome',
+        'retryOfRunId',
         'ruleId',
         'ruleName',
         'steps',
