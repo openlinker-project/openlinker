@@ -57,6 +57,7 @@ class OpenLinkerCartShippingModuleFrontController extends ModuleFrontController
         // 2. Load helpers (PS does not autoload module classes).
         require_once $this->module->getLocalPath() . 'classes/HmacRequestVerifier.php';
         require_once $this->module->getLocalPath() . 'classes/CartShippingRepository.php';
+        require_once $this->module->getLocalPath() . 'classes/ReplayGuard.php';
 
         // 3. HMAC verify against the raw body — must read php://input before
         //    any decode pass so the signed bytes match exactly.
@@ -70,6 +71,15 @@ class OpenLinkerCartShippingModuleFrontController extends ModuleFrontController
         } catch (Exception $e) {
             // Reason string from the verifier is part of the documented contract.
             $this->jsonError(401, $e->getMessage());
+            return;
+        }
+
+        // 3b. A captured request must not be usable twice. Claimed after
+        //     verification so an unsigned caller cannot fill the table (#2619).
+        //     Scoped to this endpoint, so the same key on importorder is a
+        //     separate row.
+        if (!ReplayGuard::claim('cartshipping', $signatureHeader)) {
+            $this->jsonError(409, 'replayed-request');
             return;
         }
 

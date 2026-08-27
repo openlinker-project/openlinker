@@ -347,6 +347,12 @@ vendor/bin/phpunit
 
 ### PHP version
 
+Classes are found through a Composer classmap that is generated on install, not
+committed. If the suite reports `Class ... not found`, the classmap predates the
+classes: run `composer dump-autoload` and run it again. The module runtime does
+not use Composer at all - it loads its classes with explicit `require_once`
+calls - so this only ever affects the test run.
+
 The module **runtime** targets PHP `>=7.4` (PrestaShop 1.7 baseline). The **dev/test** toolchain (PHPUnit 10) requires PHP `>=8.1`. CI uses 8.1 to run tests; production deploys are unaffected. Contributors on PHP 7.4 can edit module classes but cannot run `composer install` for the dev dependencies — install PHP 8.1+ locally to run the unit suite.
 
 ### Scope and non-goals

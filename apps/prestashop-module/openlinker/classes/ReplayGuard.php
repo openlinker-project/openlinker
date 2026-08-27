@@ -13,9 +13,11 @@
  * A genuine retry from the OpenLinker backend re-signs with a fresh timestamp,
  * so it gets a fresh key and is never mistaken for a replay.
  *
- * Uniqueness is claimed with one INSERT whose duplicate arm changes nothing, so
- * two concurrent copies of the same request cannot both pass. A select followed
- * by an insert would let them.
+ * Uniqueness is claimed with one INSERT IGNORE, so two concurrent copies of the
+ * same request cannot both pass. A select followed by an insert would let them.
+ * INSERT IGNORE is used rather than ON DUPLICATE KEY UPDATE because the latter
+ * reports one affected row on a duplicate when the client connects with
+ * CLIENT_FOUND_ROWS, and the guard would then accept every replay silently.
  *
  * @module prestashop-module/classes
  * @see {@link HmacRequestVerifier} for the signature this keys on
@@ -25,6 +27,17 @@ class ReplayGuard
 {
     /** Table holding one row per accepted request, pruned by age. */
     const TABLE = 'openlinker_request_nonce';
+
+    /**
+     * Configuration key stamped when the guard could not answer.
+     *
+     * Read by the module configuration page. Without it the only trace of a
+     * shop running with no replay protection is a log line nobody opens.
+     */
+    const DEGRADED_CONFIG_KEY = 'OPENLINKER_REPLAY_GUARD_DEGRADED_AT';
+
+    /** One prune per this many accepted requests, to keep the money path short. */
+    const PRUNE_EVERY = 20;
 
     /**
      * How long a key is remembered.
@@ -62,23 +75,26 @@ class ReplayGuard
         $db = Db::getInstance();
         $key = self::keyFor($scope, $signatureHeader);
 
-        // The duplicate arm rewrites the row with its own value, so MySQL
-        // reports zero affected rows and that is what identifies the replay.
-        $sql = 'INSERT INTO `' . _DB_PREFIX_ . self::TABLE . '` (`nonce`, `created_at`)'
-            . " VALUES ('" . pSQL($key) . "', NOW())"
-            . ' ON DUPLICATE KEY UPDATE `nonce` = `nonce`';
+        // A duplicate is ignored and reports zero affected rows whatever the
+        // client's CLIENT_FOUND_ROWS setting, so the guard does not depend on a
+        // connection flag nothing here controls.
+        $sql = 'INSERT IGNORE INTO `' . _DB_PREFIX_ . self::TABLE . '` (`nonce`, `created_at`)'
+            . " VALUES ('" . pSQL($key) . "', NOW())";
 
-        if ($db->execute($sql) === false) {
+        try {
+            $written = $db->execute($sql);
+        } catch (Throwable $e) {
+            // With _PS_DEBUG_SQL_ on, Db::execute throws instead of returning
+            // false. Without this catch the guard would fail closed on exactly
+            // the shops most likely to be debugging.
+            $written = false;
+        }
+
+        if ($written === false) {
             // The guard cannot answer, and refusing a real order because a
             // housekeeping table is unreachable would be worse than the replay
-            // window it protects. Recorded so the failure is not silent.
-            PrestaShopLogger::addLog(
-                'OpenLinker: replay guard could not record a request: ' . $db->getMsgError(),
-                2,
-                null,
-                'Module',
-                null
-            );
+            // window it protects.
+            self::recordDegraded($db);
 
             return true;
         }
@@ -87,19 +103,73 @@ class ReplayGuard
             return false;
         }
 
-        self::prune();
+        self::clearDegraded();
+
+        if (mt_rand(1, self::PRUNE_EVERY) === 1) {
+            self::prune();
+        }
 
         return true;
     }
 
     /**
-     * Delete keys older than the retention window.
+     * Record that the guard is not protecting this shop.
      *
-     * Runs on the accepted path only, which is the path that added a row.
+     * Both a log line and a configuration stamp: the log is for whoever reads
+     * logs, the stamp is what the configuration page can show to everyone else.
+     *
+     * @param Db $db
+     * @return void
+     */
+    private static function recordDegraded($db)
+    {
+        PrestaShopLogger::addLog(
+            'OpenLinker: replay guard could not record a request: ' . $db->getMsgError(),
+            2,
+            null,
+            'Module',
+            null
+        );
+
+        try {
+            Configuration::updateGlobalValue(self::DEGRADED_CONFIG_KEY, date('Y-m-d H:i:s'));
+        } catch (Throwable $e) {
+            // The request itself must survive a failed bookkeeping write.
+        }
+    }
+
+    /**
+     * Forget an earlier degraded state once the guard works again.
+     *
+     * Only written when something is there to clear, so a healthy shop pays no
+     * extra write per order.
      *
      * @return void
      */
-    private static function prune()
+    private static function clearDegraded()
+    {
+        try {
+            if ((string) Configuration::get(self::DEGRADED_CONFIG_KEY) !== '') {
+                Configuration::updateGlobalValue(self::DEGRADED_CONFIG_KEY, '');
+            }
+        } catch (Throwable $e) {
+            // Same reason as above.
+        }
+    }
+
+    /**
+     * Delete keys older than the retention window.
+     *
+     * Runs on a fraction of accepted requests. Order import is the money path,
+     * so a ranged DELETE on every single one buys nothing: retention is an
+     * age bound, not a row count.
+     *
+     * Public so the retention rule can be exercised without depending on the
+     * sampling above firing.
+     *
+     * @return void
+     */
+    public static function prune()
     {
         Db::getInstance()->execute(
             'DELETE FROM `' . _DB_PREFIX_ . self::TABLE . '`'

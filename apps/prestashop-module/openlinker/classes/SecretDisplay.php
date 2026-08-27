@@ -34,6 +34,8 @@ class SecretDisplay
     {
         $secret = (string) $secret;
 
+        // Never reveal more than a third of a credential, so a short secret
+        // gets no hint at all rather than most of itself.
         if (strlen($secret) < self::HINT_CHARS * 3) {
             return $secret === '' ? '' : '(set)';
         }

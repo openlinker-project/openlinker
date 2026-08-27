@@ -238,11 +238,24 @@
                     {else}
                         <span class="text-danger">{l s='Never' mod='openlinker'}</span>
                         <span class="help-block text-danger">
-                            {l s='Delivery has never run on this shop, so nothing is reaching OpenLinker. Set up the cron described in the module README.' mod='openlinker'}
+                            {l s='Delivery has never run on this shop, so nothing is reaching OpenLinker. Set up the cron described in the module README. If you are upgrading, note that a cron URL carrying &token=... is refused now - use the cron file shipped with the module instead.' mod='openlinker'}
                         </span>
                     {/if}
                 </td>
             </tr>
+            {if $replay_guard_degraded_at}
+            <tr>
+                <td><strong>{l s='Replay Protection' mod='openlinker'}</strong></td>
+                <td>
+                    <span class="text-danger">{l s='Not working' mod='openlinker'}</span>
+                    <span class="help-block text-danger">
+                        {l s='Signed requests are not being checked for replays, since' mod='openlinker'}
+                        {$replay_guard_degraded_at|escape:'html':'UTF-8'}.
+                        {l s='This happens when the module files were copied over an older version instead of upgraded, so the table the check needs was never created. Reset the module from the module list to create it.' mod='openlinker'}
+                    </span>
+                </td>
+            </tr>
+            {/if}
             <tr>
                 <td><strong>{l s='Pending Events' mod='openlinker'}</strong></td>
                 <td>{$statistics.pending|intval}</td>
