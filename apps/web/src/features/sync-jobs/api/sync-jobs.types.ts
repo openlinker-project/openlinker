@@ -64,7 +64,8 @@ export const JOB_TYPE_VALUES = [
   'master.product.syncBatch', // Internal job - not user-triggerable; listed here so an operator can filter the batched catalogue pass (#2593).
   'master.inventory.syncAll',
   'master.inventory.syncByExternalId',
-  'master.inventory.syncFromSweep', // Internal job — sweep-triggered per-product inventory child (#2594).
+  'master.inventory.syncFromSweep', // Internal job — sweep-triggered per-product inventory child (#2594). Still the per-product fallback for a failed batch member after #2648.
+  'master.inventory.syncBatch', // Internal job - not user-triggerable; listed here so an operator can filter the batched stock pass (#2648).
   'master.variants.autoMatch',
   'inventory.propagateToMarketplaces',
   'marketplace.offer.pauseStale', // Internal job — not user-triggerable; listed here for status display only.

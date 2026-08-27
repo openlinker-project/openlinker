@@ -69,6 +69,14 @@ export const JobTypeValues = [
   // Sweep-triggered twin of `master.inventory.syncByExternalId`, for the same
   // reason as the product pair above (#2594).
   'master.inventory.syncFromSweep',
+  // Batched stock read (#2648, ADR-048). The inventory twin of
+  // `master.product.syncBatch`: one job, one page of products, one adapter
+  // instance - so a master declaring `BulkInventoryReader` reads the page's
+  // stock in a handful of requests instead of a handful per product. Same work
+  // per product as `master.inventory.syncByExternalId`, which remains the
+  // fallback for a failed page member. Registered in `bulk`, not `realtime`:
+  // it is a sweep child, and ADR-050 picks the lane by cost of starvation.
+  'master.inventory.syncBatch',
   'master.inventory.syncAll',
 
   'master.variants.autoMatch',

@@ -43,6 +43,7 @@ import { MarketplaceFulfillmentStatusSyncHandler } from './handlers/marketplace-
 import { MasterProductSyncHandler } from './handlers/master-product-sync.handler';
 import { MasterProductSyncBatchHandler } from './handlers/master-product-sync-batch.handler';
 import { MasterInventorySyncHandler } from './handlers/master-inventory-sync.handler';
+import { MasterInventorySyncBatchHandler } from './handlers/master-inventory-sync-batch.handler';
 import { AutoMatchVariantsHandler } from './handlers/auto-match-variants.handler';
 import { MasterInventorySyncAllHandler } from './handlers/master-inventory-sync-all.handler';
 import { MasterProductSyncAllHandler } from './handlers/master-product-sync-all.handler';
@@ -100,6 +101,7 @@ import { HandlerRegistrationService } from './handlers/handler-registration.serv
     MasterProductSyncHandler,
     MasterProductSyncBatchHandler,
     MasterInventorySyncHandler,
+    MasterInventorySyncBatchHandler,
     AutoMatchVariantsHandler,
     MasterInventorySyncAllHandler,
     MasterProductSyncAllHandler,

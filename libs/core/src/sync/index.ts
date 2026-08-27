@@ -116,6 +116,7 @@ export {
 export {
   MasterProductSyncByExternalIdPayloadV1,
   MasterInventorySyncByExternalIdPayloadV1,
+  MasterInventorySyncBatchPayloadV1,
   MasterInventorySyncAllPayloadV1,
   MasterProductSyncAllPayloadV1,
   MasterProductSyncBatchPayloadV1,

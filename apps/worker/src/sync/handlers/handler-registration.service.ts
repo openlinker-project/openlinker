@@ -31,6 +31,7 @@ import { MarketplaceFulfillmentStatusSyncHandler } from './marketplace-fulfillme
 import { MasterProductSyncHandler } from './master-product-sync.handler';
 import { MasterProductSyncBatchHandler } from './master-product-sync-batch.handler';
 import { MasterInventorySyncHandler } from './master-inventory-sync.handler';
+import { MasterInventorySyncBatchHandler } from './master-inventory-sync-batch.handler';
 import { AutoMatchVariantsHandler } from './auto-match-variants.handler';
 import { MasterInventorySyncAllHandler } from './master-inventory-sync-all.handler';
 import { MasterProductSyncAllHandler } from './master-product-sync-all.handler';
@@ -73,6 +74,7 @@ export class HandlerRegistrationService implements OnModuleInit {
     private readonly masterProductSyncHandler: MasterProductSyncHandler,
     private readonly masterProductSyncBatchHandler: MasterProductSyncBatchHandler,
     private readonly masterInventorySyncHandler: MasterInventorySyncHandler,
+    private readonly masterInventorySyncBatchHandler: MasterInventorySyncBatchHandler,
     private readonly autoMatchVariantsHandler: AutoMatchVariantsHandler,
     private readonly masterInventorySyncAllHandler: MasterInventorySyncAllHandler,
     private readonly masterProductSyncAllHandler: MasterProductSyncAllHandler,
@@ -243,6 +245,14 @@ export class HandlerRegistrationService implements OnModuleInit {
     this.handlerRegistry.register(
       'master.product.syncBatch',
       this.masterProductSyncBatchHandler,
+      'bulk'
+    );
+
+    // Batched stock read (#2648). Same lane and same reason as the batched
+    // catalogue read above: a sweep child, arriving a budget wide.
+    this.handlerRegistry.register(
+      'master.inventory.syncBatch',
+      this.masterInventorySyncBatchHandler,
       'bulk'
     );
 

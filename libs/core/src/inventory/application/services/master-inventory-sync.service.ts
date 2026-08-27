@@ -36,8 +36,11 @@ import type {
 } from '../../domain/ports/inventory-master.port';
 import { InventoryItem as InventoryItemDomainEntity } from '../../domain/entities/inventory-item.entity';
 import type { PruneStaleVariantsResult } from '../../domain/types/inventory.types';
+import { isBulkInventoryReader } from '../../domain/ports/capabilities/bulk-inventory-reader.capability';
 import type {
   IMasterInventorySyncService,
+  MasterInventoryBatchSyncFailure,
+  MasterInventoryBatchSyncResult,
   MasterInventorySyncResult,
 } from './master-inventory-sync.service.interface';
 import { Logger } from '@openlinker/shared/logging';
@@ -71,17 +74,109 @@ export class MasterInventorySyncService implements IMasterInventorySyncService {
     connectionId: string,
     externalId: string
   ): Promise<MasterInventorySyncResult> {
-    const internalProductId = await this.identifierMapping.getOrCreateInternalId(
-      CORE_ENTITY_TYPE.Product,
-      externalId,
-      connectionId
-    );
-
     const inventoryAdapter =
       await this.integrationsService.getCapabilityAdapter<InventoryMasterPort>(
         connectionId,
         'InventoryMaster'
       );
+    return this.syncOneFromMaster(connectionId, externalId, inventoryAdapter);
+  }
+
+  /**
+   * Sync a page of products' inventory through one adapter instance (#2648).
+   *
+   * The adapter is resolved ONCE and passed into every iteration, which is the
+   * whole mechanism: `getCapabilityAdapter` constructs a fresh adapter per
+   * call, so a per-product resolution throws away whatever that adapter cached.
+   * With one instance, a master declaring `BulkInventoryReader` can read the
+   * page's stock up front and the loop below - unchanged, guards included -
+   * reads from that.
+   *
+   * The prefetch is best-effort in both directions: a master declaring nothing
+   * is skipped, and one whose prefetch throws is logged and then treated as if
+   * it declared nothing. Neither can change the outcome of a single product,
+   * only the number of requests spent on it.
+   *
+   * The rung takes INTERNAL product ids, so the mappings are resolved before
+   * the warm-up rather than inside it. That resolution is exactly what the
+   * per-product body would have done anyway (`getOrCreateInternalId` is
+   * idempotent), so nothing is spent twice.
+   */
+  async syncFromMasterByExternalIds(
+    connectionId: string,
+    externalIds: readonly string[]
+  ): Promise<MasterInventoryBatchSyncResult> {
+    const inventoryAdapter =
+      await this.integrationsService.getCapabilityAdapter<InventoryMasterPort>(
+        connectionId,
+        'InventoryMaster'
+      );
+
+    let prefetched = false;
+    if (isBulkInventoryReader(inventoryAdapter) && externalIds.length > 0) {
+      try {
+        const internalProductIds = await this.resolveInternalProductIds(connectionId, externalIds);
+        await inventoryAdapter.prefetchInventory(internalProductIds);
+        prefetched = true;
+      } catch (error) {
+        this.logger.warn(
+          `master_inventory_bulk_prefetch_failed connection=${connectionId} products=${String(externalIds.length)} - falling back to per-product reads: ${(error as Error).message}`
+        );
+      }
+    }
+
+    const results: MasterInventorySyncResult[] = [];
+    const failures: MasterInventoryBatchSyncFailure[] = [];
+    for (const externalId of externalIds) {
+      // Per product, so one failure costs one product rather than the page. The
+      // caller re-enqueues what failed as an ordinary per-product job.
+      try {
+        results.push(await this.syncOneFromMaster(connectionId, externalId, inventoryAdapter));
+      } catch (error) {
+        failures.push({
+          externalId,
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
+    return { results, failures, prefetched };
+  }
+
+  /**
+   * Internal product ids for a page, in the order the page named them.
+   *
+   * An id that cannot be resolved is dropped rather than throwing: the warm-up
+   * is best-effort by contract, and the per-product body resolves the same
+   * mapping again and reports whatever it finds.
+   */
+  private async resolveInternalProductIds(
+    connectionId: string,
+    externalIds: readonly string[]
+  ): Promise<string[]> {
+    const internalProductIds: string[] = [];
+    for (const externalId of externalIds) {
+      internalProductIds.push(
+        await this.identifierMapping.getOrCreateInternalId(
+          CORE_ENTITY_TYPE.Product,
+          externalId,
+          connectionId
+        )
+      );
+    }
+    return internalProductIds;
+  }
+
+  private async syncOneFromMaster(
+    connectionId: string,
+    externalId: string,
+    inventoryAdapter: InventoryMasterPort
+  ): Promise<MasterInventorySyncResult> {
+    const internalProductId = await this.identifierMapping.getOrCreateInternalId(
+      CORE_ENTITY_TYPE.Product,
+      externalId,
+      connectionId
+    );
 
     // One Inventory per variant — per-combination rows for multi-variant
     // products, the synthetic variant for simple products (#823). The sync
