@@ -178,8 +178,8 @@ describe('PrestashopProductMasterAdapter bulk read (#2593)', () => {
       'combinations',
       call?.[1] as Parameters<typeof PrestashopQueryBuilder.buildQueryWithPagination>[1],
       undefined,
-      call?.[2] as number | undefined,
-      call?.[3] as number | undefined
+      call?.[2],
+      call?.[3]
     );
 
     // A comma is a RANGE: `[3,41]` would answer for products 3 to 41 and for
