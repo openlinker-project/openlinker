@@ -11,7 +11,7 @@ import type { TestingModule } from '@nestjs/testing';
 import { Test } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { SyncJobRunner } from '../sync-job.runner';
-import type { SyncJobRepositoryPort } from '@openlinker/core/sync';
+import type { SyncJobRepositoryPort, RetryDeferral } from '@openlinker/core/sync';
 import {
   SYNC_JOB_REPOSITORY_TOKEN,
   RETRY_CLASSIFIER_REGISTRY_TOKEN,
@@ -300,7 +300,11 @@ describe('SyncJobRunner', () => {
 
       await (runner as any).processJob(job);
 
-      expect(jobRepository.markSucceeded).toHaveBeenCalledWith(job.id, 'business_failure', undefined);
+      expect(jobRepository.markSucceeded).toHaveBeenCalledWith(
+        job.id,
+        'business_failure',
+        undefined
+      );
       expect(jobRepository.markFailed).not.toHaveBeenCalled();
       expect(jobRepository.markDead).not.toHaveBeenCalled();
     });
@@ -640,7 +644,76 @@ describe('SyncJobRunner', () => {
       await (runner as any).handleJobFailure(job, error);
 
       expect(jobRepository.requeueWithoutPenalty).not.toHaveBeenCalled();
-      expect(jobRepository.markFailed).toHaveBeenCalledWith(job.id, error.message, expect.any(Date));
+      expect(jobRepository.markFailed).toHaveBeenCalledWith(
+        job.id,
+        error.message,
+        expect.any(Date)
+      );
+    });
+  });
+
+  describe('destination-declared retry deferral (#2613)', () => {
+    const createMockJob = (attempts: number, maxAttempts: number = 10): SyncJob =>
+      new SyncJob(
+        randomUUID(),
+        'master.product.syncByExternalId',
+        randomUUID(),
+        { externalId: '1' },
+        'running',
+        `test-key-${randomUUID()}`,
+        attempts,
+        maxAttempts,
+        new Date(),
+        new Date(),
+        'worker-123',
+        null,
+        new Date(),
+        new Date()
+      );
+
+    /** Stands in for any platform classifier that reports a deferral. */
+    const registerDeferringClassifier = (deferral: RetryDeferral | null): void => {
+      const registry = moduleRef.get<RetryClassifierRegistryService>(
+        RETRY_CLASSIFIER_REGISTRY_TOKEN
+      );
+      registry.register('test.deferring.v1', {
+        isNonRetryable: () => false,
+        getRetryDeferral: () => deferral,
+      });
+    };
+
+    it('requeues without penalty on a reported deferral, even on the last attempt', async () => {
+      registerDeferringClassifier({ delaySeconds: 300, reason: 'shop unavailable (503)' });
+      const job = createMockJob(9, 10); // would markDead under the ordinary path
+      const error = new Error('PrestaShop API server error (503): /orders');
+
+      await (runner as any).handleJobFailure(job, error);
+
+      expect(jobRepository.requeueWithoutPenalty).toHaveBeenCalledWith(
+        job.id,
+        `shop unavailable (503): ${error.message}`,
+        expect.any(Date)
+      );
+      expect(jobRepository.markFailed).not.toHaveBeenCalled();
+      expect(jobRepository.markDead).not.toHaveBeenCalled();
+
+      const nextRunAt = jobRepository.requeueWithoutPenalty.mock.calls[0][2];
+      expect(nextRunAt.getTime()).toBeGreaterThan(Date.now() + 290_000);
+    });
+
+    it('falls through to the ordinary backoff ladder when no classifier defers', async () => {
+      registerDeferringClassifier(null);
+      const job = createMockJob(2, 10);
+      const error = new Error('some other transient failure');
+
+      await (runner as any).handleJobFailure(job, error);
+
+      expect(jobRepository.requeueWithoutPenalty).not.toHaveBeenCalled();
+      expect(jobRepository.markFailed).toHaveBeenCalledWith(
+        job.id,
+        error.message,
+        expect.any(Date)
+      );
     });
   });
 
@@ -718,7 +791,12 @@ describe('SyncJobRunner', () => {
 
     it('does NOT flag the connection on a non-auth non-retryable error (deterministic 422)', async () => {
       const job = createMockJob();
-      const cause = new AllegroApiException('Validation failed', 422, 'body', 'https://api.allegro.pl/x');
+      const cause = new AllegroApiException(
+        'Validation failed',
+        422,
+        'body',
+        'https://api.allegro.pl/x'
+      );
       const error = new SyncJobExecutionError(
         'Marketplace offer create failed: Validation failed',
         job.id,
@@ -907,7 +985,9 @@ describe('SyncJobRunner', () => {
         new Date()
       );
 
-      jobRepository.findAndLockDueJobsForLane.mockResolvedValueOnce([job1]).mockResolvedValueOnce([]);
+      jobRepository.findAndLockDueJobsForLane
+        .mockResolvedValueOnce([job1])
+        .mockResolvedValueOnce([]);
 
       mockHandler.execute.mockResolvedValueOnce({ outcome: 'ok' });
       handlerRegistry.getHandler.mockReturnValue(mockHandler);
@@ -982,7 +1062,9 @@ describe('SyncJobRunner', () => {
 
     it('should handle errors gracefully and continue polling', async () => {
       const error = new Error('Database error');
-      jobRepository.findAndLockDueJobsForLane.mockRejectedValueOnce(error).mockResolvedValueOnce([]);
+      jobRepository.findAndLockDueJobsForLane
+        .mockRejectedValueOnce(error)
+        .mockResolvedValueOnce([]);
 
       (runner as any).isRunning = true;
       const abortController = new AbortController();
@@ -1030,9 +1112,7 @@ describe('SyncJobRunner', () => {
       ]);
 
       // Should have retried after error
-      expect(
-        jobRepository.findAndLockDueJobsForLane.mock.calls.length
-      ).toBeGreaterThanOrEqual(2);
+      expect(jobRepository.findAndLockDueJobsForLane.mock.calls.length).toBeGreaterThanOrEqual(2);
     }, 10000);
 
     it('should stop when abort signal is received', async () => {
