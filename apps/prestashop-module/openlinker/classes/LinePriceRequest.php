@@ -60,7 +60,7 @@ class LinePriceRequest
             if (!self::isNonNegativeInteger($idAttribute)) {
                 return null;
             }
-            if (!is_numeric($price) || (float) $price < 0) {
+            if (!self::isDecimalAmount($price)) {
                 return null;
             }
 
@@ -74,6 +74,67 @@ class LinePriceRequest
         }
 
         return $rows;
+    }
+
+    /**
+     * Check that every cart line has exactly one supplied price, and that no
+     * supplied price names a line the cart does not have.
+     *
+     * An omitted line is the worst outcome on this path: it is ordered at the
+     * catalogue price with no error at all, which is the failure ADR-014 exists
+     * to prevent. Pure, so it is testable without a cart object.
+     *
+     * @param array<int, array{id_product: int, id_product_attribute: int, price: string}> $rows
+     * @param array<int, array<string, mixed>> $cartProducts Rows from Cart::getProducts().
+     * @return bool
+     */
+    public static function coversCart(array $rows, array $cartProducts)
+    {
+        $supplied = [];
+        foreach ($rows as $row) {
+            $key = $row['id_product'] . ':' . $row['id_product_attribute'];
+            if (isset($supplied[$key])) {
+                return false;
+            }
+            $supplied[$key] = true;
+        }
+
+        foreach ($cartProducts as $product) {
+            $idProduct = isset($product['id_product']) ? (int) $product['id_product'] : 0;
+            $idAttribute = isset($product['id_product_attribute'])
+                ? (int) $product['id_product_attribute']
+                : 0;
+            $key = $idProduct . ':' . $idAttribute;
+
+            if (!isset($supplied[$key])) {
+                return false;
+            }
+            unset($supplied[$key]);
+        }
+
+        // Anything left over names a line that is not in the cart, so the
+        // backend and the shop disagree about what is being sold.
+        return $supplied === [];
+    }
+
+    /**
+     * Check a price is a plain decimal amount.
+     *
+     * is_numeric would accept '1e5', which reaches a decimal(20,6) column as
+     * 100000, and leading whitespace. The column keeps six decimals, so more
+     * than six would be silently rounded by MySQL rather than by the backend
+     * that owns the rounding mode.
+     *
+     * @param mixed $value
+     * @return bool
+     */
+    private static function isDecimalAmount($value)
+    {
+        if (is_int($value) || is_float($value)) {
+            return $value >= 0;
+        }
+
+        return is_string($value) && preg_match('/^\d+(\.\d{1,6})?$/', $value) === 1;
     }
 
     /**

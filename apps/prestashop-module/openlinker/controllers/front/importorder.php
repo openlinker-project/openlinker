@@ -45,7 +45,7 @@
  *   200 {ok: true, id_order: <int>, reference: <string>, already_existed: <bool>,
  *        features: ['line_prices']}
  *   400 {ok: false, error: 'invalid-body' | 'invalid-fields' | 'invalid-line-prices'
- *        | 'cart-not-found' | 'cart-empty'}
+ *        | 'line-prices-do-not-match-cart' | 'cart-not-found' | 'cart-empty'}
  *   401 {ok: false, error: <HmacRequestVerifier reason>}
  *   405 {ok: false, error: 'method-not-allowed'}
  *   409 {ok: false, error: 'replayed-request'}
@@ -53,9 +53,10 @@
  *   502 {ok: false, error: 'validate-order-failed' | 'validate-order-aborted'
  *        | 'line-price-pin-failed', detail: <string>}
  *
- * `features` on the success envelope is how the backend learns this build
- * accepts `line_prices`. An older module answers without it, so the backend
- * keeps pinning over the Webservice until it has seen the field.
+ * `features` is how the backend learns this build accepts `line_prices`, and it
+ * is on every envelope, failures included, so the backend can learn it without
+ * an order having to be created. An older module answers without it, so the
+ * backend keeps pinning over the Webservice until it has seen the field.
  *
  * Idempotent: if an order already exists for `id_cart`, the existing order is
  * returned (`already_existed: true`) rather than validated a second time — so a
@@ -90,6 +91,14 @@ class OpenLinkerImportOrderModuleFrontController extends ModuleFrontController
 
     /** @var int Cart the pinned rows belong to. Guards the cleanup delete. */
     private $pinnedCartId = 0;
+
+    /**
+     * `from` stamped on every pinned row.
+     *
+     * Far enough in the past to always apply, and distinctive enough to
+     * identify the rows this module wrote.
+     */
+    const PIN_FROM = '2000-01-01 00:00:01';
 
     public function postProcess()
     {
@@ -159,8 +168,17 @@ class OpenLinkerImportOrderModuleFrontController extends ModuleFrontController
             $this->jsonError(400, 'cart-not-found');
             return;
         }
-        if (!count($cart->getProducts())) {
+        $cartProducts = $cart->getProducts();
+        if (!count($cartProducts)) {
             $this->jsonError(400, 'cart-empty');
+            return;
+        }
+
+        // A price set that does not match the cart line for line is refused. An
+        // omitted line would otherwise be ordered at the catalogue price and
+        // nothing anywhere would say so (#2597).
+        if ($linePrices !== [] && !LinePriceRequest::coversCart($linePrices, $cartProducts)) {
+            $this->jsonError(400, 'line-prices-do-not-match-cart');
             return;
         }
 
@@ -225,6 +243,11 @@ class OpenLinkerImportOrderModuleFrontController extends ModuleFrontController
         OpenLinker::$suppressImportMail =
             (string) Configuration::get(OpenLinker::IMPORT_SEND_MAIL_CONFIG_KEY) !== '1';
 
+        // Registered before the first pin write, so a fatal inside the pin loop
+        // - the one stretch of this request doing repeated writes - is covered
+        // too. The guard returns early once a response was emitted.
+        register_shutdown_function([$this, 'guardAgainstSilentExit'], $idCart);
+
         // Pin the buyer-paid line prices, if the backend sent them (#2597).
         // Done here rather than over the Webservice so eight lines cost no
         // extra requests at all. Failing loudly is the point: an unpinned line
@@ -245,7 +268,6 @@ class OpenLinkerImportOrderModuleFrontController extends ModuleFrontController
         // register a guard that turns a silent exit into an explicit 502.
         ob_start();
         $this->bufferOpen = true;
-        register_shutdown_function([$this, 'guardAgainstSilentExit'], $idCart);
 
         try {
             $payment->validateOrder(
@@ -331,7 +353,10 @@ class OpenLinkerImportOrderModuleFrontController extends ModuleFrontController
             $specificPrice->reduction = 0;
             $specificPrice->reduction_tax = 0;
             $specificPrice->reduction_type = 'amount';
-            $specificPrice->from = '0000-00-00 00:00:00';
+            // A fixed past date rather than the zero date: it works under
+            // NO_ZERO_DATE, and it marks the row as ours, so a row leaked by a
+            // killed process can be swept later without guessing.
+            $specificPrice->from = self::PIN_FROM;
             $specificPrice->to = $expiry;
 
             try {
@@ -443,8 +468,9 @@ class OpenLinkerImportOrderModuleFrontController extends ModuleFrontController
 
         $strayLength = $this->bufferOpen ? (int) ob_get_length() : 0;
         $this->discardStrayOutput();
-        // The request died inside PrestaShop, so no other path will run. Pins
-        // left behind would price a later cart of the same customer.
+        // The request died inside PrestaShop, so no other path will run. A pin
+        // left behind prices nothing - it is scoped to this one cart - but it
+        // stays in specific_price for good, so it is removed here.
         $this->cleanupPinnedPrices();
 
         if (headers_sent()) {
@@ -500,7 +526,9 @@ class OpenLinkerImportOrderModuleFrontController extends ModuleFrontController
         $this->responded = true;
         http_response_code($status);
         header('Content-Type: application/json');
-        $body = ['ok' => false, 'error' => $reason];
+        // Advertised on failures too, so the backend can learn what this build
+        // accepts without an order having to be created first (#2597).
+        $body = ['ok' => false, 'error' => $reason, 'features' => ['line_prices']];
         if ($detail !== null) {
             $body['detail'] = $detail;
         }

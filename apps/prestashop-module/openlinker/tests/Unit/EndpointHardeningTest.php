@@ -99,6 +99,33 @@ class EndpointHardeningTest extends TestCase
         );
     }
 
+    public function testTheShutdownGuardIsRegisteredBeforeTheFirstPinWrite(): void
+    {
+        // A fatal inside the pin loop is the one fatal that leaks a
+        // specific_price row, so the guard has to be registered above it.
+        $source = self::sourceOf('importorder');
+
+        $registerAt = strpos($source, 'register_shutdown_function');
+        $pinAt = strpos($source, '$this->pinLinePrices(');
+
+        self::assertIsInt($registerAt);
+        self::assertIsInt($pinAt);
+        self::assertLessThan($pinAt, $registerAt);
+    }
+
+    public function testFailureEnvelopesAdvertiseTheModuleFeatures(): void
+    {
+        // The backend learns what this build accepts from `features`. Carrying
+        // it on failures too means a downgraded shop is corrected without an
+        // order having to be created first.
+        $source = self::sourceOf('importorder');
+
+        self::assertMatchesRegularExpression(
+            "/'ok' => false.*'features' => \['line_prices'\]/s",
+            $source
+        );
+    }
+
     public function testTheConfigurationFormRendersNoStoredCredential(): void
     {
         $template = (string) file_get_contents(

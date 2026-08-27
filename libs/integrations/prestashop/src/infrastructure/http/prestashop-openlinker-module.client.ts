@@ -143,8 +143,13 @@ export class PrestashopOpenLinkerModuleClient implements IPrestashopOpenLinkerMo
         `idCart=${input.idCart} idOrderState=${input.idOrderState} amountPaid=${input.amountPaid}`
     );
 
+    const sentLinePrices = Boolean(input.linePrices && input.linePrices.length > 0);
     const response = await this.signedPost(IMPORTORDER_PATH, body, input.idCart);
     const envelope = await this.readEnvelope(response);
+    // Learned from failures too, because the module advertises `features` on
+    // every envelope. A downgraded shop is then corrected by the next request of
+    // any kind, not only by the next created order.
+    this.rememberFeatures(envelope);
     const failure = this.failureReason(response, envelope);
     if (failure !== null) {
       this.logger.warn(
@@ -160,8 +165,21 @@ export class PrestashopOpenLinkerModuleClient implements IPrestashopOpenLinkerMo
     }
 
     const parsed = this.parseImportOrderResult(envelope);
-    if (parsed) {
-      observedFeatures.set(this.connectionId, new Set(parsed.features));
+    if (parsed && sentLinePrices && !parsed.features.includes(LINE_PRICES_FEATURE)) {
+      // The shop took the order but did not apply the pins, so it was priced
+      // from the catalogue. Reached when a shop is downgraded, or an older
+      // `modules/` directory is restored, between two orders.
+      //
+      // Logged rather than thrown: the order exists, a retry answers
+      // `already_existed` without repricing anything, so a thrown error would
+      // fail one attempt and then resolve into silence. Repricing is manual.
+      this.logger.error(
+        `OpenLinker module: order imported WITHOUT the line prices it was sent ` +
+          `connection=${this.connectionId} idCart=${input.idCart} ` +
+          `idOrder=${parsed.idOrder} reference=${parsed.reference}. ` +
+          `The shop's module no longer accepts line_prices, so the order was ` +
+          `created at catalogue prices and has to be repriced by hand.`
+      );
     }
     if (!parsed) {
       throw new PrestashopOlModuleException(
@@ -172,6 +190,25 @@ export class PrestashopOpenLinkerModuleClient implements IPrestashopOpenLinkerMo
       );
     }
     return parsed;
+  }
+
+  /**
+   * Record what the shop's module says it supports.
+   *
+   * An envelope with no `features` array is an older module, so the record is
+   * cleared rather than left standing - being trusted forever is how a
+   * downgraded shop would keep receiving a field it ignores.
+   */
+  private rememberFeatures(envelope: Record<string, unknown> | null): void {
+    if (envelope === null) {
+      return;
+    }
+
+    const features = Array.isArray(envelope.features)
+      ? envelope.features.filter((entry): entry is string => typeof entry === 'string')
+      : [];
+
+    observedFeatures.set(this.connectionId, new Set(features));
   }
 
   /**
