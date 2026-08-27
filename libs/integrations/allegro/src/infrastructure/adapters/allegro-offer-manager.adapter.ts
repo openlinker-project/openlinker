@@ -630,10 +630,17 @@ export class AllegroOfferManagerAdapter
    * (still far below Allegro's ~60/min single-offer throttle for anything
    * larger than a handful of distinct values).
    *
-   * Never throws: a whole-group failure (submit or poll) is reported as a
-   * per-item failure for every offer in that group, so one bad group cannot
-   * sink offers in a sibling group, and the caller never falls back to the
-   * N-request single-item path unnecessarily.
+   * Returns as soon as Allegro acknowledges submission, exactly like the
+   * single-item `updateOfferQuantity` (#2621) — it does not poll for a
+   * terminal status. A `QUEUED`/`ACCEPTED` group resolves every one of its
+   * items as dispatched; `reconcilePendingQuantityAcks` resolves the
+   * persisted queued/accepted rows to succeeded/failed later, on its own
+   * schedule.
+   *
+   * Never throws: a whole-group failure (submit, or a synchronous platform
+   * rejection) is reported as a per-item failure for every offer in that
+   * group, so one bad group cannot sink offers in a sibling group, and the
+   * caller never falls back to the N-request single-item path unnecessarily.
    */
   async updateOfferQuantitiesBatch(
     cmd: UpdateOfferQuantitiesBatchCommand
@@ -705,15 +712,16 @@ export class AllegroOfferManagerAdapter
       );
 
       this.logger.debug(
-        `Allegro batch offer quantity command submitted: commandId=${commandId}, offers=${items.length} (connection: ${this.connectionId})`
+        `Allegro batch offer quantity command submitted: commandId=${commandId}, offers=${items.length}, status=${response.data.status} (connection: ${this.connectionId})`
       );
 
       await this.persistBatchCommandRows(commandId, response.data.status, items);
 
       if (response.data.status === 'REJECTED') {
-        // Allegro answered synchronously — there is nothing to poll for and
-        // no task will ever appear, so reporting this via the poll-timeout
-        // branch below would discard the platform's own rejection reason.
+        // Allegro answered synchronously — this is the platform's own
+        // definitive, immediately-known answer, so it fails right away
+        // rather than waiting for a reconcile pass that will never resolve
+        // it (no task for a rejected command ever appears).
         const message = this.formatAllegroTaskErrors(response.data.errors) ?? 'rejected';
         for (const item of items) {
           failed.push({ offerId: item.offerId, errorCode: 'rejected', message });
@@ -722,28 +730,12 @@ export class AllegroOfferManagerAdapter
         return;
       }
 
-      const result = await this.pollQuantityCommandStatus(commandId);
-      const tasksByOfferId = new Map((result?.tasks ?? []).map((task) => [task.offerId, task]));
-
+      // QUEUED/ACCEPTED — dispatched, not yet terminal (#2621). Every item in
+      // the group resolves as accepted-for-processing here, exactly like the
+      // single-item path; `reconcilePendingQuantityAcks` resolves the
+      // already-persisted queued/accepted rows to succeeded/failed later.
       for (const item of items) {
-        const task = tasksByOfferId.get(item.offerId);
-        if (task?.status === 'SUCCESS') {
-          succeeded.push(item.offerId);
-          await this.persistBatchOfferStatus(commandId, item.offerId, 'succeeded');
-          continue;
-        }
-        if (task) {
-          const errorCode = task.errors?.[0]?.code ?? 'unknown';
-          const message = this.formatAllegroTaskErrors(task.errors) ?? task.message;
-          failed.push({ offerId: item.offerId, errorCode, message });
-          await this.persistBatchOfferStatus(commandId, item.offerId, 'failed', message ?? null);
-          continue;
-        }
-        failed.push({
-          offerId: item.offerId,
-          errorCode: 'poll-timeout',
-          message: `Allegro quantity command ${commandId} did not report a terminal status for this offer`,
-        });
+        succeeded.push(item.offerId);
       }
     } catch (error) {
       this.logger.error(
@@ -2565,13 +2557,20 @@ export class AllegroOfferManagerAdapter
   /**
    * Poll Allegro for quantity change command completion status.
    *
-   * Uses exponential backoff: 2s initial, 2x multiplier, 30s max, 5 attempts.
-   * Returns the final status response, or the last response if still pending after timeout.
+   * Uses exponential backoff: 2s initial, 2x multiplier, 30s max, 5 attempts
+   * by default. `overrides` lets a caller that already paces its own retries
+   * (the reconcile sweep, driven by its own scheduled cadence) ask for a
+   * single, immediate check instead of layering a second backoff loop on
+   * top of the sweep's own — see `reconcileOneQuantityCommand`.
    */
   private async pollQuantityCommandStatus(
-    commandId: string
+    commandId: string,
+    overrides?: Partial<QuantityPollConfig>
   ): Promise<AllegroQuantityChangeCommandStatusResponse | null> {
-    const { maxAttempts, initialDelayMs, maxDelayMs, backoffMultiplier } = this.quantityPollConfig;
+    const { maxAttempts, initialDelayMs, maxDelayMs, backoffMultiplier } = {
+      ...this.quantityPollConfig,
+      ...overrides,
+    };
 
     let delayMs = initialDelayMs;
 
@@ -2658,57 +2657,81 @@ export class AllegroOfferManagerAdapter
   }
 
   /**
-   * Re-polls one outstanding command via the same bounded-backoff
-   * `pollQuantityCommandStatus` the (now-removed) synchronous path used, and
-   * persists a terminal outcome when reached. A `null` result (still not
-   * terminal after the full backoff) reports `'pending'` and touches nothing
-   * — the row is retried by the NEXT scheduled reconcile pass, so a command
-   * Allegro is simply slow to process is never marked failed on a fluke.
+   * Checks one outstanding command's CURRENT status with a single, immediate
+   * request — deliberately not the multi-attempt backoff
+   * `pollQuantityCommandStatus` otherwise uses (`maxAttempts: 1,
+   * initialDelayMs: 0`). This runs inside a periodic reconcile sweep whose
+   * own cadence already supplies the wait; layering the write-path's
+   * "wait-a-bit-right-after-submit" backoff on top would reintroduce, inside
+   * the sweep, the exact per-write blocking cost #2621 removed from
+   * `updateOfferQuantity`. A `null` (or still-non-terminal) result reports
+   * `'pending'` and touches nothing — retried by the NEXT scheduled pass, so
+   * a command Allegro is simply slow to process is never marked failed on a
+   * fluke.
+   *
+   * `result.tasks` covers every offer named in the (possibly batched, #2622)
+   * Allegro command sharing `command.commandId` — this row's own
+   * `command.offerId` is looked up within it and persisted via
+   * `updateOfferStatus(commandId, offerId, …)`, never the commandId-only
+   * `updateStatus`, which would resolve an arbitrary row sharing that
+   * commandId rather than the one this call is actually about.
    */
   private async reconcileOneQuantityCommand(
     command: AllegroQuantityCommand
   ): Promise<'succeeded' | 'failed' | 'pending'> {
-    const result = await this.pollQuantityCommandStatus(command.commandId);
+    const result = await this.pollQuantityCommandStatus(command.commandId, {
+      maxAttempts: 1,
+      initialDelayMs: 0,
+    });
 
     if (!result) {
       return 'pending';
     }
 
-    const tasks = result.tasks ?? [];
-    const failedTasks = tasks.filter((t) => t.status === 'FAIL');
+    const task = result.tasks?.find((t) => t.offerId === command.offerId);
 
-    if (failedTasks.length > 0) {
-      const errorMessages = failedTasks
-        .map((t) => {
-          const errDetails = this.formatAllegroTaskErrors(t.errors) ?? t.message ?? 'unknown';
-          return `offer ${t.offerId}: ${errDetails}`;
-        })
-        .join(', ');
+    if (task?.status === 'FAIL') {
+      const errorMessage = this.formatAllegroTaskErrors(task.errors) ?? task.message ?? 'unknown';
 
       try {
-        await this.commandRepository?.updateStatus(command.commandId, 'failed', errorMessages);
+        await this.commandRepository?.updateOfferStatus(
+          command.commandId,
+          command.offerId,
+          'failed',
+          errorMessage
+        );
       } catch (persistError) {
         this.logger.warn(
-          `Failed to persist command failure status (commandId: ${command.commandId}): ${(persistError as Error).message}`
+          `Failed to persist command failure status (commandId: ${command.commandId}, offerId: ${command.offerId}): ${(persistError as Error).message}`
         );
       }
 
       this.logger.warn(
-        `Allegro quantity command ${command.commandId} failed for offer ${command.offerId} (connection: ${this.connectionId}): ${errorMessages}`
+        `Allegro quantity command ${command.commandId} failed for offer ${command.offerId} (connection: ${this.connectionId}): ${errorMessage}`
       );
       return 'failed';
     }
 
+    if (task?.status !== 'SUCCESS') {
+      // Not yet terminal for THIS offer (or the group's terminal response
+      // never named it) — retried by the next scheduled reconcile pass.
+      return 'pending';
+    }
+
     try {
-      await this.commandRepository?.updateStatus(command.commandId, 'succeeded');
+      await this.commandRepository?.updateOfferStatus(
+        command.commandId,
+        command.offerId,
+        'succeeded'
+      );
     } catch (persistError) {
       this.logger.warn(
-        `Failed to persist command success status (commandId: ${command.commandId}): ${(persistError as Error).message}`
+        `Failed to persist command success status (commandId: ${command.commandId}, offerId: ${command.offerId}): ${(persistError as Error).message}`
       );
     }
 
     this.logger.debug(
-      `Allegro quantity command ${command.commandId} confirmed SUCCESS during reconcile (connection: ${this.connectionId})`
+      `Allegro quantity command ${command.commandId} confirmed SUCCESS during reconcile (connection: ${this.connectionId}, offerId: ${command.offerId})`
     );
     return 'succeeded';
   }
