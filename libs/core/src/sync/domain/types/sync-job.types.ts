@@ -362,9 +362,11 @@ export interface SyncJob extends SyncJobRequest {
   lastError?: string | null;
 
   /**
-   * Wall-clock milliseconds the most recently COMPLETED execution attempt
-   * took (#2611). One attempt, never a total across retries, and never the
-   * time the job spent queued or in retry backoff.
+   * Wall-clock milliseconds of the most recently COMPLETED attempt (#2611),
+   * measured around the handler call, so it INCLUDES any time that attempt
+   * spent waiting for a per-connection rate-limit slot - that wait is a real
+   * cost of the job. One attempt, never a total across retries, and never the
+   * time the job spent queued before it was claimed or in retry backoff.
    *
    * Written in the same UPDATE as the terminal status transition that ended
    * that attempt, so it always describes the same attempt as `status`,
@@ -375,6 +377,24 @@ export interface SyncJob extends SyncJobRequest {
    * aggregate that does understates every real duration.
    */
   lastAttemptDurationMs?: number | null;
+
+  /**
+   * Total milliseconds this job has been parked by penalty-free DEFERRALS
+   * (#2613/#2617) - a destination throttling us, a destination that is
+   * unavailable, or a write refused because a peer held the lock.
+   *
+   * A deferral does not consume a retry attempt, so without a running total
+   * nothing could ever end the cycle: a destination answering 503 forever
+   * would recycle the job for ever while the row read `queued`. This column
+   * is that bound. Once the total would exceed the runner's budget the job
+   * falls back to the ordinary retry ladder, so it can still reach `dead`.
+   *
+   * Accumulates the wait GRANTED, not wall clock, and is never reset - a job
+   * lives through one execution lifetime, so a reset could only re-open the
+   * cycle it exists to close. `null`/absent means the job has never been
+   * deferred.
+   */
+  deferredTotalMs?: number | null;
 
   /**
    * Business outcome of the job (only set on the succeeded path).
@@ -403,4 +423,17 @@ export interface SyncJob extends SyncJobRequest {
    * Last update timestamp
    */
   updatedAt: Date | string;
+}
+
+/**
+ * Extra columns a penalty-free requeue may write in the same UPDATE
+ * (#2613/#2611).
+ *
+ * `lastAttemptDurationMs` is a tri-state on purpose: omitted leaves whatever
+ * was recorded, a number records the attempt that just ran, and an explicit
+ * `null` clears a stale number left by an earlier attempt.
+ */
+export interface PenaltyFreeRequeuePatch {
+  readonly lastAttemptDurationMs?: number | null;
+  readonly deferredTotalMs?: number;
 }

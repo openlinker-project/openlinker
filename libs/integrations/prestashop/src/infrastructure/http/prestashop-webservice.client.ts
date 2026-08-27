@@ -516,6 +516,19 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
           }
         }
 
+        // Honour the shop's own Retry-After for the in-client retry too, not
+        // only for the exception this eventually throws (#2613 review): the
+        // header is already parsed, and waiting less than the shop asked for
+        // just earns another 429. Clamped to the configured max delay so a
+        // hostile header cannot park a request indefinitely, and the local
+        // backoff is used whenever it is longer.
+        if (error instanceof PrestashopApiException && error.retryAfterSeconds !== undefined) {
+          delay = Math.max(
+            delay,
+            Math.min(error.retryAfterSeconds * 1000, this.retryConfig.maxDelayMs)
+          );
+        }
+
         // Retry on server errors (5xx) or network errors
         if (attempt < this.retryConfig.maxRetries) {
           this.logger.error(lastError.message);

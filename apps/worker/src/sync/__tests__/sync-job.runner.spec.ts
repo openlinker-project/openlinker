@@ -23,7 +23,7 @@ import { SyncJobHandlerRegistry } from '../handlers/sync-job-handler.registry';
 import { getCurrentPriority, RateLimitTimeoutError } from '@openlinker/shared/rate-limit';
 import type { SyncJobHandler } from '@openlinker/core/sync';
 import { SyncJobEntity as SyncJob } from '@openlinker/core/sync';
-import { SyncJobExecutionError } from '@openlinker/core/sync';
+import { ContendedWriteError, SyncJobExecutionError } from '@openlinker/core/sync';
 import type { ConnectionPort } from '@openlinker/core/identifier-mapping';
 import { CONNECTION_PORT_TOKEN } from '@openlinker/core/identifier-mapping';
 // The runner's *production* code is now platform-neutral (#581 / #819) — it
@@ -361,7 +361,8 @@ describe('SyncJobRunner', () => {
       expect(handlerRegistry.getHandler).toHaveBeenCalledWith(job.jobType);
       expect(jobRepository.markDead).toHaveBeenCalledWith(
         job.id,
-        `No handler registered for job type: ${job.jobType}`
+        `No handler registered for job type: ${job.jobType}`,
+        null
       );
       expect(mockHandler.execute).not.toHaveBeenCalled();
       expect(jobRepository.markSucceeded).not.toHaveBeenCalled();
@@ -641,7 +642,8 @@ describe('SyncJobRunner', () => {
       expect(jobRepository.requeueWithoutPenalty).toHaveBeenCalledWith(
         job.id,
         error.message,
-        expect.any(Date)
+        expect.any(Date),
+        { lastAttemptDurationMs: null }
       );
       expect(jobRepository.markFailed).not.toHaveBeenCalled();
       expect(jobRepository.markDead).not.toHaveBeenCalled();
@@ -666,7 +668,8 @@ describe('SyncJobRunner', () => {
       expect(jobRepository.requeueWithoutPenalty).toHaveBeenCalledWith(
         job.id,
         wrapped.message,
-        expect.any(Date)
+        expect.any(Date),
+        { lastAttemptDurationMs: null }
       );
       expect(jobRepository.markFailed).not.toHaveBeenCalled();
       expect(jobRepository.markDead).not.toHaveBeenCalled();
@@ -718,6 +721,29 @@ describe('SyncJobRunner', () => {
       });
     };
 
+    /** A job that has already been granted `deferredMs` of deferral. */
+    const createDeferredJob = (deferredMs: number): SyncJob =>
+      new SyncJob(
+        randomUUID(),
+        'master.product.syncByExternalId',
+        randomUUID(),
+        { externalId: '1' },
+        'running',
+        `test-key-${randomUUID()}`,
+        2,
+        10,
+        new Date(),
+        new Date(),
+        'worker-123',
+        null,
+        new Date(),
+        new Date(),
+        null,
+        null,
+        null,
+        deferredMs
+      );
+
     it('requeues without penalty on a reported deferral, even on the last attempt', async () => {
       registerDeferringClassifier({ delaySeconds: 300, reason: 'shop unavailable (503)' });
       const job = createMockJob(9, 10); // would markDead under the ordinary path
@@ -727,8 +753,9 @@ describe('SyncJobRunner', () => {
 
       expect(jobRepository.requeueWithoutPenalty).toHaveBeenCalledWith(
         job.id,
-        `shop unavailable (503): ${error.message}`,
-        expect.any(Date)
+        expect.stringContaining(`shop unavailable (503) (deferred 300s of`),
+        expect.any(Date),
+        { lastAttemptDurationMs: ATTEMPT_MS, deferredTotalMs: 300_000 }
       );
       expect(jobRepository.markFailed).not.toHaveBeenCalled();
       expect(jobRepository.markDead).not.toHaveBeenCalled();
@@ -737,9 +764,9 @@ describe('SyncJobRunner', () => {
       expect(nextRunAt.getTime()).toBeGreaterThan(Date.now() + 290_000);
     });
 
-    // #2611 x #2613: the destination turned the attempt away, so the deferral
-    // path must leave `lastAttemptDurationMs` untouched rather than write a 0.
-    it('reports no attempt duration on the deferral path', async () => {
+    // #2611 x #2613 review: a 429 or 503 means the handler DID run before the
+    // destination turned it away, so the attempt's real duration is recorded.
+    it('records the attempt duration on the deferral path', async () => {
       registerDeferringClassifier({ delaySeconds: 300, reason: 'shop throttled us (429)' });
       const job = createMockJob(2, 10);
 
@@ -749,7 +776,114 @@ describe('SyncJobRunner', () => {
         ATTEMPT_MS
       );
 
-      expect(jobRepository.requeueWithoutPenalty.mock.calls[0]).toHaveLength(3);
+      const patch = jobRepository.requeueWithoutPenalty.mock.calls[0][3];
+      expect(patch?.lastAttemptDurationMs).toBe(ATTEMPT_MS);
+      expect(jobRepository.markFailed).not.toHaveBeenCalled();
+      expect(jobRepository.markDead).not.toHaveBeenCalled();
+    });
+
+    // The bound, arm one: budget not yet spent, so the job keeps deferring and
+    // the running total accumulates.
+    it('accumulates the deferral budget while it lasts', async () => {
+      registerDeferringClassifier({ delaySeconds: 300, reason: 'shop unavailable (503)' });
+      const job = createDeferredJob(600_000);
+
+      await (runner as any).handleJobFailure(job, new Error('503'), ATTEMPT_MS);
+
+      const patch = jobRepository.requeueWithoutPenalty.mock.calls[0][3];
+      expect(patch?.deferredTotalMs).toBe(900_000);
+      expect(jobRepository.markFailed).not.toHaveBeenCalled();
+    });
+
+    // The bound, arm two: budget spent, so the job rejoins the ordinary ladder
+    // and can eventually reach `dead` instead of deferring for ever.
+    it('falls back to the ordinary retry ladder once the deferral budget is spent', async () => {
+      registerDeferringClassifier({ delaySeconds: 300, reason: 'shop unavailable (503)' });
+      const job = createDeferredJob(24 * 60 * 60 * 1000);
+      const error = new Error('PrestaShop API server error (503): /orders');
+
+      await (runner as any).handleJobFailure(job, error, ATTEMPT_MS);
+
+      expect(jobRepository.requeueWithoutPenalty).not.toHaveBeenCalled();
+      expect(jobRepository.markFailed).toHaveBeenCalledWith(
+        job.id,
+        error.message,
+        expect.any(Date),
+        ATTEMPT_MS
+      );
+    });
+
+    it('marks a job dead on an exhausted budget once attempts also run out', async () => {
+      registerDeferringClassifier({ delaySeconds: 300, reason: 'shop unavailable (503)' });
+      const job = new SyncJob(
+        randomUUID(),
+        'master.product.syncByExternalId',
+        randomUUID(),
+        { externalId: '1' },
+        'running',
+        `test-key-${randomUUID()}`,
+        9,
+        10,
+        new Date(),
+        new Date(),
+        'worker-123',
+        null,
+        new Date(),
+        new Date(),
+        null,
+        null,
+        null,
+        24 * 60 * 60 * 1000
+      );
+
+      await (runner as any).handleJobFailure(job, new Error('503'), ATTEMPT_MS);
+
+      expect(jobRepository.markDead).toHaveBeenCalledWith(job.id, '503', ATTEMPT_MS);
+    });
+
+    // Precedence (#2613 review): both registry methods OR across classifiers,
+    // so a cause one plugin calls deterministic must die rather than defer.
+    it('lets a non-retryable classification beat a deferral', async () => {
+      const registry = moduleRef.get<RetryClassifierRegistryService>(
+        RETRY_CLASSIFIER_REGISTRY_TOKEN
+      );
+      registry.register('test.deferring.v1', {
+        isNonRetryable: () => false,
+        getRetryDeferral: () => ({ delaySeconds: 300, reason: 'shop unavailable (503)' }),
+      });
+      registry.register('test.terminal.v1', {
+        isNonRetryable: () => true,
+      });
+      const job = createMockJob(0, 10);
+      const error = new Error('deterministic 422 from another plugin');
+
+      await (runner as any).handleJobFailure(job, error, ATTEMPT_MS);
+
+      expect(jobRepository.requeueWithoutPenalty).not.toHaveBeenCalled();
+      expect(jobRepository.markDead).toHaveBeenCalledWith(job.id, error.message, ATTEMPT_MS);
+    });
+
+    // #2617 review: contention is the write-order guard working, not the job
+    // failing, so it defers penalty-free - under the same bound.
+    it('defers a contended write penalty-free', async () => {
+      const job = createMockJob(9, 10);
+      const contended = new ContendedWriteError('Another write is in flight', 'offer-1');
+      const wrapped = new SyncJobExecutionError(
+        'Offer quantity update failed for offer offer-1: write_contended',
+        job.id,
+        job.jobType,
+        job.connectionId,
+        contended
+      );
+
+      await (runner as any).handleJobFailure(job, wrapped, ATTEMPT_MS);
+
+      expect(jobRepository.requeueWithoutPenalty).toHaveBeenCalledWith(
+        job.id,
+        expect.stringContaining('Write contended by a peer'),
+        expect.any(Date),
+        { lastAttemptDurationMs: ATTEMPT_MS, deferredTotalMs: 15_000 }
+      );
       expect(jobRepository.markFailed).not.toHaveBeenCalled();
       expect(jobRepository.markDead).not.toHaveBeenCalled();
     });
@@ -1321,7 +1455,8 @@ describe('SyncJobRunner', () => {
       expect(jobRepository.requeueWithoutPenalty).toHaveBeenCalledWith(
         job.id,
         expect.any(String),
-        expect.any(Date)
+        expect.any(Date),
+        { lastAttemptDurationMs: null }
       );
       expect(laneInFlight('realtime').has('conn-rl')).toBe(false);
     });

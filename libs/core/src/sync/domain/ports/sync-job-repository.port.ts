@@ -20,6 +20,7 @@ import type {
   SyncJobGroupFilters,
   SyncJobGroupsResult,
   BulkRetryResult,
+  PenaltyFreeRequeuePatch,
 } from '../types/sync-job.types';
 
 /**
@@ -158,9 +159,12 @@ export interface SyncJobRepositoryPort {
    * @param error - Final error message
    * @param lastAttemptDurationMs - Duration of the attempt that died, in
    *   milliseconds (#2611). Omitted by callers that kill a job which never
-   *   executed (e.g. an unroutable intake message), leaving the column NULL.
+   *   executed and never could (e.g. an unroutable intake message), leaving the
+   *   column as it was. Pass an explicit `null` to CLEAR a number an earlier
+   *   attempt of the SAME job recorded, so the column cannot describe a
+   *   different attempt than this status does (#2611 review).
    */
-  markDead(id: string, error: string, lastAttemptDurationMs?: number): Promise<void>;
+  markDead(id: string, error: string, lastAttemptDurationMs?: number | null): Promise<void>;
 
   /**
    * Requeue a job WITHOUT counting it against `maxAttempts` (#1810 review
@@ -177,8 +181,19 @@ export interface SyncJobRepositoryPort {
    * @param id - Job ID
    * @param error - Informational message (not counted as a failure reason for retry-budget purposes)
    * @param nextRunAt - Next pickup timestamp
+   * @param patch - Optional columns to write in the same UPDATE (#2613/#2611).
+   *   `lastAttemptDurationMs: null` CLEARS a previous attempt's number, which a
+   *   caller must pass whenever the requeue it is recording did not execute -
+   *   leaving the old value beside a new state would describe a different
+   *   attempt than the row's own `lastError`. `deferredTotalMs` carries the
+   *   running deferral budget, so the bound survives a worker restart.
    */
-  requeueWithoutPenalty(id: string, error: string, nextRunAt: Date): Promise<void>;
+  requeueWithoutPenalty(
+    id: string,
+    error: string,
+    nextRunAt: Date,
+    patch?: PenaltyFreeRequeuePatch
+  ): Promise<void>;
 
   /**
    * Find jobs matching filters with offset pagination.

@@ -10,6 +10,14 @@
  * the tiebreak: a write carries the observation it was derived from, and an
  * observation no newer than the last one already written is refused.
  *
+ * PRECONDITION: the observation token comes from ONE clock. Today it is
+ * `inventory_items.updatedAt`, which #2071 made database-stamped and read back
+ * via RETURNING, so cross-process skew does not exist and the only ambiguity is
+ * two writes inside the same millisecond, which the rule lets through. If the
+ * stamp is ever replaced by a worker-side `new Date()`, a process running ahead
+ * would refuse a genuinely later write and leave the channel stale - worse than
+ * the last-write-wins this guard replaced. Keep the stamp in the database.
+ *
  * @module libs/core/src/inventory/domain/types
  */
 
@@ -38,6 +46,13 @@ export function offerQuantityWriteLockKey(connectionId: string, offerId: string)
  *
  * Stored per connection in the ordinary connection-cursor store, so the mark is
  * durable across restarts and shared by every worker replica with no new table.
+ *
+ * `offerId` also carries a `ShopProduct` external id on the shop write-back
+ * branch, which is safe because the cursor namespace is per connection and a
+ * connection carries only one mapping kind, so the two id spaces cannot meet.
+ *
+ * Rows are never deleted: one small row per mapped target per connection, kept
+ * even after the mapping is gone. An accepted leak, bounded by target count.
  */
 export function offerQuantityObservationCursorKey(offerId: string): string {
   return `inventory.offerQuantity.observedAt:offer:${offerId}`;

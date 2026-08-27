@@ -36,6 +36,7 @@ import type {
   SyncJobGroupsResult,
   SyncJobGroupFilters,
   BulkRetryResult,
+  PenaltyFreeRequeuePatch,
 } from '../../../domain/types/sync-job.types';
 import {
   JobOutcomeValues,
@@ -92,6 +93,7 @@ export class SyncJobRepository implements SyncJobRepositoryPort {
       entity.outcome = null;
       entity.outcomeReason = null;
       entity.lastAttemptDurationMs = null;
+      entity.deferredTotalMs = null;
 
       const saved = await this.repository.save(entity);
       return this.toDomain(saved);
@@ -252,7 +254,7 @@ export class SyncJobRepository implements SyncJobRepositoryPort {
     });
   }
 
-  async markDead(id: string, error: string, lastAttemptDurationMs?: number): Promise<void> {
+  async markDead(id: string, error: string, lastAttemptDurationMs?: number | null): Promise<void> {
     await this.repository.update(id, {
       status: 'dead',
       lockedAt: null,
@@ -263,17 +265,24 @@ export class SyncJobRepository implements SyncJobRepositoryPort {
   }
 
   /**
-   * Build the duration half of a terminal-status patch (#2611).
+   * Build the duration half of a status patch (#2611).
    *
-   * An absent or non-finite measurement yields an EMPTY patch, leaving any
-   * previously recorded duration in place rather than overwriting it with a
-   * zero an operator could not tell apart from a genuinely instant run. A
-   * negative value is likewise dropped - a clock that moved backwards is not
-   * evidence of a fast job.
+   * Tri-state on purpose. `undefined` (not supplied) yields an EMPTY patch and
+   * leaves whatever was recorded, because a caller that did not measure has
+   * nothing to say. An explicit `null` CLEARS the column, which a caller passes
+   * when it knows no attempt ran - otherwise a previous attempt's number would
+   * sit beside a new status and describe a different attempt than `lastError`.
+   * A number is recorded, including a real `0`: that is a genuinely instant run
+   * and an operator can tell it apart from "unmeasured" only because the column
+   * is otherwise NULL. A non-finite or negative value is dropped - a clock that
+   * moved backwards is not evidence of a fast job.
    */
   private durationPatch(
-    lastAttemptDurationMs?: number
+    lastAttemptDurationMs?: number | null
   ): Partial<Pick<SyncJobOrmEntity, 'lastAttemptDurationMs'>> {
+    if (lastAttemptDurationMs === null) {
+      return { lastAttemptDurationMs: null };
+    }
     if (
       lastAttemptDurationMs === undefined ||
       !Number.isFinite(lastAttemptDurationMs) ||
@@ -284,7 +293,12 @@ export class SyncJobRepository implements SyncJobRepositoryPort {
     return { lastAttemptDurationMs: Math.round(lastAttemptDurationMs) };
   }
 
-  async requeueWithoutPenalty(id: string, error: string, nextRunAt: Date): Promise<void> {
+  async requeueWithoutPenalty(
+    id: string,
+    error: string,
+    nextRunAt: Date,
+    patch?: PenaltyFreeRequeuePatch
+  ): Promise<void> {
     // Deliberately omits `attempts` — this is the one difference from
     // markFailed (#1810 review follow-up on #1957). A rate-limit-timeout
     // requeue must not consume retry budget.
@@ -294,6 +308,12 @@ export class SyncJobRepository implements SyncJobRepositoryPort {
       lockedAt: null,
       lockedBy: null,
       lastError: error.length > 1000 ? error.substring(0, 1000) : error, // Truncate if too long
+      // Written in the same UPDATE as the requeue so the deferral budget can
+      // never drift from the state it bounds (#2613).
+      ...(patch?.deferredTotalMs === undefined
+        ? {}
+        : { deferredTotalMs: Math.round(patch.deferredTotalMs) }),
+      ...this.durationPatch(patch?.lastAttemptDurationMs),
     });
   }
 
@@ -634,7 +654,8 @@ export class SyncJobRepository implements SyncJobRepositoryPort {
       entity.updatedAt,
       entity.outcome ?? null,
       entity.outcomeReason ?? null,
-      entity.lastAttemptDurationMs ?? null
+      entity.lastAttemptDurationMs ?? null,
+      entity.deferredTotalMs ?? null
     );
   }
 

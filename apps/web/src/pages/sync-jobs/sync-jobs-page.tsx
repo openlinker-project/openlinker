@@ -61,7 +61,23 @@ const COLUMNS: DataTableColumn<SyncJob>[] = [
     id: 'attempts',
     header: 'Attempts',
     align: 'right',
-    cell: (job) => `${job.attempts} / ${job.maxAttempts}`,
+    cell: (job) => {
+      const deferred = formatDurationMs(job.deferredTotalMs);
+      return (
+        <>
+          {job.attempts} / {job.maxAttempts}
+          {deferred !== null ? (
+            // A deferred job consumes no attempt, so its counter stands still
+            // while it waits. Without this an operator reads a row parked on a
+            // throttling shop as simply stuck (#2613).
+            <span className="text-muted" title={`Deferred for ${deferred} so far`}>
+              {' '}
+              · deferred
+            </span>
+          ) : null}
+        </>
+      );
+    },
     accessor: (job) => job.attempts,
     sortable: true,
     hideBelow: 768,
@@ -70,8 +86,10 @@ const COLUMNS: DataTableColumn<SyncJob>[] = [
     id: 'lastAttemptDurationMs',
     header: 'Duration',
     align: 'right',
-    // Sorts on -1 for an unmeasured row so "no duration recorded" groups
-    // together instead of masquerading as the fastest job in the table.
+    // Unmeasured rows sort as -1, so they group together and land first on an
+    // ascending sort - ahead of a genuine 0 ms row. Stated rather than dressed
+    // up: the cell renders an em-dash, so the group is identifiable, and this
+    // page sorts only the visible page anyway.
     cell: (job) => {
       const formatted = formatDurationMs(job.lastAttemptDurationMs);
       return formatted ?? <span className="text-muted">—</span>;
