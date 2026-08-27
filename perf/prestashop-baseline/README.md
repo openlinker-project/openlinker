@@ -58,3 +58,20 @@ Results land in `./results/<label>.{summary.txt,access.log,enqueue.json}`.
   PHP, so `curl -u` returns "Authentication key is empty".
 * **The seeded products are left in place on purpose.** Run
   `cleanup-products.sh` when the measurement campaign is over.
+
+## What this campaign changed on the demo stack
+
+Restore these when the stack is handed back to ordinary use:
+
+| Change | Why | How to undo |
+|---|---|---|
+| `ol-perf-worker` container replaced `ol-demo-fresh-worker` | it carries `OL_WORKER_ROLE=jobs`, so no cron tick could enqueue into a measured window | `docker stop ol-perf-worker && docker rm ol-perf-worker && docker start ol-demo-fresh-worker` |
+| Patched `dist` copied into that container | to measure the fix without rebuilding the image | discarded with the container |
+| PrestaShop connection `config.baseUrl` | was `http://localhost:8080`, unreachable from the worker | original value in `results/ORIGINAL_baseUrl.txt` |
+| `config.openlinkerCallbackBaseUrl` set to `http://api:3000` | webhook install refuses without it | remove the key if unwanted |
+| `openlinker` module files copied into the shop | the `ps_module` row existed with no files on disk | leave — the row was already there |
+| `specific_prices` webservice permissions granted | the order path 401'd without them | leave — the order path needs them |
+| ~15 000 stale `queued`/`dead` `sync_jobs` purged | they would have drained into every measured window | nothing to undo; the count is recorded in `results-A` |
+| 10 000 `PERFBASE-` products seeded | the store had 6, far too few to measure per-SKU cost | `./cleanup-products.sh` |
+| One synthetic 8-line order | an attempt at A4 that no supported path can dispatch | `DELETE FROM order_records WHERE "sourceEventId" LIKE 'a4-8line-%'` |
+
