@@ -90,3 +90,12 @@ Restore these when the stack is handed back to ordinary use:
 | PrestaShop order #11 | created by the measured dispatch | leave — it is the evidence |
 | Customer mapping for PrestaShop customer 13 cleared once | a failed first attempt had mapped it to a different internal customer and the conflict guard correctly refused to overwrite | nothing to undo |
 
+
+### Additional changes from the raised-throughput A2
+
+| Change | Why | State |
+|---|---|---|
+| `config.rateLimit` added to the PrestaShop connection | to test whether the declared limit was the ceiling (it was not) | **already removed** |
+| Worker with `OL_LANE_REALTIME_CAP=12` / `_SCOPE_CAP=12` | the real ceiling; default is 2 | **already removed** with the container |
+| WooCommerce order 21 and PrestaShop order #12 | the second, like-for-like eight-line measurement | leave — they are the evidence |
+
