@@ -32,6 +32,7 @@ function makeSyncJob(overrides: Partial<SyncJob> = {}): SyncJob {
     lockedAt: null,
     lockedBy: null,
     lastAttemptDurationMs: null,
+    deferredTotalMs: null,
     createdAt: '2026-04-11T00:00:00.000Z',
     updatedAt: '2026-04-11T00:00:00.000Z',
     ...overrides,

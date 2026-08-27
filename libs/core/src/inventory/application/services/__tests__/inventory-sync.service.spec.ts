@@ -376,7 +376,15 @@ describe('InventorySyncService', () => {
       );
     });
 
-    it('should take the per-item path for an observed batch', async () => {
+    // #2617 review: guarding an observed batch must not cost N-1 extra
+    // marketplace calls. Each item is locked and compared first, then the
+    // survivors go out in ONE batch call.
+    it('should keep the single batch call for an observed batch', async () => {
+      (marketplace.updateOfferQuantitiesBatch as unknown as jest.Mock).mockResolvedValueOnce({
+        succeeded: ['o1', 'o2'],
+        failed: [],
+      });
+
       await service.updateOfferQuantities(connectionId, {
         items: [
           { offerId: 'o1', quantity: 1, observedAt: newer },
@@ -384,8 +392,50 @@ describe('InventorySyncService', () => {
         ],
       });
 
-      expect(marketplace.updateOfferQuantitiesBatch).not.toHaveBeenCalled();
-      expect(marketplace.updateOfferQuantity).toHaveBeenCalledTimes(2);
+      expect(marketplace.updateOfferQuantitiesBatch).toHaveBeenCalledTimes(1);
+      expect(marketplace.updateOfferQuantity).not.toHaveBeenCalled();
+      expect(syncCursors.advanceCursor).toHaveBeenCalledTimes(2);
+      expect(syncLock.release).toHaveBeenCalledTimes(2);
+    });
+
+    it('should drop a superseded item from the batch and keep the rest', async () => {
+      (syncCursors.getCursor as unknown as jest.Mock).mockImplementation(
+        (_conn: string, key: string) => Promise.resolve(key.includes('o1') ? newer : null)
+      );
+      (marketplace.updateOfferQuantitiesBatch as unknown as jest.Mock).mockResolvedValueOnce({
+        succeeded: ['o2'],
+        failed: [],
+      });
+
+      const result = await service.updateOfferQuantities(connectionId, {
+        items: [
+          { offerId: 'o1', quantity: 1, observedAt: older },
+          { offerId: 'o2', quantity: 2, observedAt: newer },
+        ],
+      });
+
+      expect(marketplace.updateOfferQuantitiesBatch).toHaveBeenCalledWith(
+        expect.objectContaining({ items: [expect.objectContaining({ offerId: 'o2' })] })
+      );
+      expect(result.succeeded).toEqual(expect.arrayContaining(['o1', 'o2']));
+      // Only the item the adapter actually wrote may claim the channel.
+      expect(syncCursors.advanceCursor).toHaveBeenCalledTimes(1);
+    });
+
+    it('should not advance the mark for an item the batch reported as failed', async () => {
+      (marketplace.updateOfferQuantitiesBatch as unknown as jest.Mock).mockResolvedValueOnce({
+        succeeded: ['o1'],
+        failed: [{ offerId: 'o2', errorCode: 'unknown', message: 'rejected' }],
+      });
+
+      await service.updateOfferQuantities(connectionId, {
+        items: [
+          { offerId: 'o1', quantity: 1, observedAt: newer },
+          { offerId: 'o2', quantity: 2, observedAt: newer },
+        ],
+      });
+
+      expect(syncCursors.advanceCursor).toHaveBeenCalledTimes(1);
     });
   });
 });

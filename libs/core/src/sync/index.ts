@@ -55,6 +55,7 @@ export type {
   SyncJobGroupsResult,
   SyncJobGroupFilters,
   BulkRetryResult,
+  PenaltyFreeRequeuePatch,
 } from './domain/types/sync-job.types';
 export {
   JobTypeValues,
@@ -141,6 +142,7 @@ export type { OrdersTaxRateBackfillPayloadV1 } from './domain/types/orders-job-p
 export { SyncJobExecutionError } from './domain/exceptions/sync-job-execution.error';
 export { InvalidSyncJobStateError } from './domain/exceptions/invalid-sync-job-state.error';
 export { SyncJobNotFoundError } from './domain/exceptions/sync-job-not-found.error';
+export { ContendedWriteError } from './domain/exceptions/contended-write.error';
 
 // Infrastructure exports (for testing/mocking)
 export { RedisStreamsJobEnqueueService } from './infrastructure/adapters/redis-streams-job-enqueue.service';

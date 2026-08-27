@@ -93,6 +93,7 @@ export interface SyncJob {
    * for a row predating the column. Never render or aggregate it as zero.
    */
   lastAttemptDurationMs: number | null;
+  deferredTotalMs: number | null;
   createdAt: string;
   updatedAt: string;
 }

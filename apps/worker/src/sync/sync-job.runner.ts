@@ -18,11 +18,17 @@
 import type { OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { Injectable, Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import type { SyncJobEntity, SyncJobHandlerResult, SyncJobLane } from '@openlinker/core/sync';
+import type {
+  RetryDeferral,
+  SyncJobEntity,
+  SyncJobHandlerResult,
+  SyncJobLane,
+} from '@openlinker/core/sync';
 import {
   SyncJobRepositoryPort,
   SYNC_JOB_REPOSITORY_TOKEN,
   SyncJobExecutionError,
+  ContendedWriteError,
   RetryClassifierRegistryService,
   RETRY_CLASSIFIER_REGISTRY_TOKEN,
   AuthFailureClassifierRegistryService,
@@ -48,6 +54,26 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
   private readonly RETRY_BASE_DELAY_SECONDS = 30; // 30 seconds
   private readonly RETRY_MAX_DELAY_SECONDS = 6 * 60 * 60; // 6 hours
   private readonly RETRY_MULTIPLIER = 2; // Exponential multiplier
+
+  /**
+   * Bound on the penalty-free deferral path (#2613/#2617 review).
+   *
+   * A deferral consumes no retry attempt, so without a bound a destination
+   * answering 503 for ever would recycle its jobs for ever - queued, holding
+   * lane scope slots, never dead. The bound is a CUMULATIVE budget of granted
+   * wait rather than a deferral count, because the grants differ by an order of
+   * magnitude (60 s for a throttle, 300 s for an unavailable shop), so a count
+   * would mean a different amount of patience per reason. Once the budget is
+   * spent the job rejoins the ordinary retry ladder and can reach `dead`.
+   *
+   * 24 h by default: longer than any maintenance window an operator schedules,
+   * short enough that a permanently broken destination surfaces within a day.
+   */
+  private readonly MAX_DEFERRED_TOTAL_SECONDS_DEFAULT = 24 * 60 * 60;
+  private maxDeferredTotalSeconds = this.MAX_DEFERRED_TOTAL_SECONDS_DEFAULT;
+
+  /** Fixed short deferral for a write refused because a peer held the lock (#2617). */
+  private readonly CONTENDED_WRITE_DEFERRAL_SECONDS = 15;
 
   private abortController: AbortController | null = null;
   private isRunning = false;
@@ -111,6 +137,7 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
     }
 
     this.laneCaps = this.resolveLaneCaps();
+    this.maxDeferredTotalSeconds = this.resolveMaxDeferredTotalSeconds();
     this.logger.log(`Starting sync job runner with worker ID: ${this.WORKER_ID}`);
     this.startRunner();
     // Stuck-job recovery moved to StuckJobRecoveryService (`maintenance` role,
@@ -432,9 +459,10 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
         // No handler registered - mark as dead
         const errorMessage = `No handler registered for job type: ${job.jobType}`;
         this.logger.error(`Job ${job.id}: ${errorMessage}`);
-        // No duration reported: nothing executed, so the column stays NULL
-        // rather than claiming a zero-millisecond run.
-        await this.jobRepository.markDead(job.id, errorMessage);
+        // Nothing executed, so the duration is CLEARED rather than omitted
+        // (#2611 review): an earlier attempt may have recorded one, and leaving
+        // it beside this status would describe a different attempt.
+        await this.jobRepository.markDead(job.id, errorMessage, null);
         return;
       }
 
@@ -511,9 +539,12 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
     // RateLimitTimeoutError before it reaches the runner.
     if (this.isRateLimitTimeout(error)) {
       const nextRunAt = new Date(Date.now() + this.RATE_LIMIT_TIMEOUT_REQUEUE_DELAY_SECONDS * 1000);
-      // No duration reported: the job spent that time waiting for a
-      // rate-limit slot, never executing, and no attempt was consumed either.
-      await this.jobRepository.requeueWithoutPenalty(job.id, errorMessage, nextRunAt);
+      // The duration is cleared, not omitted: the job spent that time waiting
+      // for a rate-limit slot rather than executing, and an earlier attempt's
+      // number must not be left describing this state (#2611 review).
+      await this.jobRepository.requeueWithoutPenalty(job.id, errorMessage, nextRunAt, {
+        lastAttemptDurationMs: null,
+      });
       this.logger.warn(
         `Job ${job.id} (${job.jobType}) timed out waiting for a rate-limit slot — requeued in ` +
           `${this.RATE_LIMIT_TIMEOUT_REQUEUE_DELAY_SECONDS}s without counting against maxAttempts ` +
@@ -522,30 +553,46 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
-    // Destination-declared deferral (#2613): the shop told us it cannot serve
-    // us right now - it is throttling us (429) or unavailable (503). That is
-    // not the job's own failure, so it takes the same penalty-free requeue as
-    // the limiter timeout above rather than burning an attempt. Checked here,
-    // before the attempts/non-retryable logic, for the same reason.
-    const deferral = this.retryClassifierRegistry.resolveRetryDeferral(
-      error instanceof SyncJobExecutionError && error.cause ? error.cause : error
-    );
+    // Deferral (#2613/#2617): either the destination told us it cannot serve
+    // us right now - throttling (429) or unavailable (503) - or a peer held the
+    // write lock for the same target. Neither is this job's own failure, so it
+    // takes the penalty-free requeue rather than burning an attempt.
+    //
+    // Ordered AFTER the non-retryable test on purpose: both registry methods OR
+    // across every registered classifier, so a cause one plugin calls
+    // deterministic and another reports as deferrable must die rather than defer
+    // for ever. Safety wins the tie.
+    const deferral = this.isNonRetryableError(error) ? null : this.resolveDeferral(error);
     if (deferral !== null) {
-      const nextRunAt = new Date(Date.now() + deferral.delaySeconds * 1000);
-      // No duration reported, for the same reason as the requeue above (#2611):
-      // the destination turned the attempt away, so nothing executed and the
-      // column must stay NULL rather than claim a zero-millisecond run.
-      await this.jobRepository.requeueWithoutPenalty(
-        job.id,
-        `${deferral.reason}: ${errorMessage}`,
-        nextRunAt
-      );
+      const deferredSoFarMs = job.deferredTotalMs ?? 0;
+      const deferredTotalMs = deferredSoFarMs + deferral.delaySeconds * 1000;
+      if (deferredTotalMs <= this.maxDeferredTotalSeconds * 1000) {
+        const nextRunAt = new Date(Date.now() + deferral.delaySeconds * 1000);
+        // The duration IS written here, unlike the limiter timeout above: a 429
+        // or 503 means the handler ran and spent real time before the
+        // destination turned it away (#2611/#2613 review).
+        await this.jobRepository.requeueWithoutPenalty(
+          job.id,
+          `${deferral.reason} (deferred ${Math.round(deferredTotalMs / 1000)}s of ` +
+            `${this.maxDeferredTotalSeconds}s budget): ${errorMessage}`,
+          nextRunAt,
+          { lastAttemptDurationMs: attemptDurationMs, deferredTotalMs }
+        );
+        this.logger.warn(
+          `Job ${job.id} (${job.jobType}) deferred (${deferral.reason}) - requeued in ` +
+            `${deferral.delaySeconds}s without counting against maxAttempts ` +
+            `(attempt stays ${job.attempts}/${job.maxAttempts}, deferred ` +
+            `${Math.round(deferredTotalMs / 1000)}s of ${this.maxDeferredTotalSeconds}s budget)`
+        );
+        return;
+      }
+      // Budget spent. Fall through to the ordinary ladder so this job can still
+      // reach `dead` - a destination that has been unable to serve us for a
+      // whole day is no longer a transient condition.
       this.logger.warn(
-        `Job ${job.id} (${job.jobType}) deferred by the destination (${deferral.reason}) - ` +
-          `requeued in ${deferral.delaySeconds}s without counting against maxAttempts ` +
-          `(attempt stays ${job.attempts}/${job.maxAttempts})`
+        `Job ${job.id} (${job.jobType}) exhausted its ${this.maxDeferredTotalSeconds}s deferral ` +
+          `budget (${deferral.reason}) - falling back to the ordinary retry ladder`
       );
-      return;
     }
 
     const nextAttempt = job.attempts + 1;
@@ -564,7 +611,7 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
       // non-retryable but must NOT flag the connection. Transient
       // `network-failure` during refresh is surfaced as a retryable exception
       // and never reaches this branch.
-      const cause = error instanceof SyncJobExecutionError && error.cause ? error.cause : error;
+      const cause = this.unwrapCause(error);
       if (this.authFailureClassifierRegistry.isCredentialRejected(cause)) {
         await this.flagConnectionNeedsReauth(job.connectionId);
       }
@@ -592,6 +639,55 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
     this.logger.debug(
       `Job ${job.id} (${job.jobType}) scheduled for retry in ${backoffSeconds}s (attempt ${nextAttempt + 1}/${job.maxAttempts})`
     );
+  }
+
+  /**
+   * Resolve a deferral for this failure, or `null` for an ordinary failure.
+   *
+   * Two sources, one path. A core `ContendedWriteError` means a peer already
+   * holds the serialisation lock for the same target, so nothing was written
+   * and nothing failed (#2617) - it is recognised in core because no platform
+   * classifier could. Everything else is asked of the platform classifiers.
+   */
+  private resolveDeferral(error: unknown): RetryDeferral | null {
+    const cause = this.unwrapCause(error);
+    if (cause instanceof ContendedWriteError) {
+      return {
+        delaySeconds: this.CONTENDED_WRITE_DEFERRAL_SECONDS,
+        reason: 'Write contended by a peer',
+      };
+    }
+    return this.retryClassifierRegistry.resolveRetryDeferral(cause);
+  }
+
+  /**
+   * Unwrap one layer of `SyncJobExecutionError` so every classification path
+   * sees the original platform or core exception. Shared so a future caller
+   * cannot get the condition subtly different (#2613 review).
+   */
+  private unwrapCause(error: unknown): unknown {
+    return error instanceof SyncJobExecutionError && error.cause ? error.cause : error;
+  }
+
+  /**
+   * Resolve the cumulative deferral budget from env, ignoring a non-numeric or
+   * non-positive value rather than honouring it - a zero budget would defeat
+   * the deferral path entirely (the #2229 clamp posture).
+   */
+  private resolveMaxDeferredTotalSeconds(): number {
+    const raw = this.configService.get<string>('OL_JOB_MAX_DEFERRED_WAIT_SECONDS');
+    if (raw === undefined || raw === null || raw === '') {
+      return this.MAX_DEFERRED_TOTAL_SECONDS_DEFAULT;
+    }
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed) || parsed < 1) {
+      this.logger.warn(
+        `Ignoring invalid OL_JOB_MAX_DEFERRED_WAIT_SECONDS=${raw} - using default ` +
+          `${this.MAX_DEFERRED_TOTAL_SECONDS_DEFAULT}`
+      );
+      return this.MAX_DEFERRED_TOTAL_SECONDS_DEFAULT;
+    }
+    return Math.round(parsed);
   }
 
   /**
@@ -624,7 +720,7 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
    * @returns True if error is non-retryable
    */
   private isNonRetryableError(error: unknown): boolean {
-    const cause = error instanceof SyncJobExecutionError && error.cause ? error.cause : error;
+    const cause = this.unwrapCause(error);
 
     if (cause instanceof OfferCreationInvariantException) {
       return true;
@@ -641,7 +737,7 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
    * does, since a handler may re-throw the original error wrapped.
    */
   private isRateLimitTimeout(error: unknown): boolean {
-    const cause = error instanceof SyncJobExecutionError && error.cause ? error.cause : error;
+    const cause = this.unwrapCause(error);
     return cause instanceof RateLimitTimeoutError;
   }
 

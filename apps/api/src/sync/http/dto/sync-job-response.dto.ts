@@ -82,11 +82,24 @@ export class SyncJobResponseDto {
     nullable: true,
     type: Number,
     description:
-      'Wall-clock milliseconds the most recently COMPLETED execution attempt took (#2611) - not a total ' +
-      'across retries, and not the time the job spent queued. Written atomically with the status transition ' +
+      'Wall-clock milliseconds of the most recently COMPLETED attempt (#2611), measured around the handler ' +
+      'call, so it INCLUDES any time that attempt spent waiting for a per-connection rate-limit slot. Not a ' +
+      'total across retries, and not the time the job spent queued before it was claimed. Written atomically with the status transition ' +
       'that ended the attempt, so it always describes the same attempt as `status`, `outcome` and `lastError`. ' +
       '`null` when no attempt has completed yet, when the job was killed without executing, or for rows ' +
       'predating the column. Consumers must exclude `null` from averages rather than reading it as zero.',
   })
   lastAttemptDurationMs!: number | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    type: Number,
+    description:
+      'Total milliseconds this job has been parked by penalty-free deferrals (#2613/#2617) - a destination ' +
+      'throttling us, a destination that is unavailable, or a write refused because a peer held the lock. ' +
+      'A deferral consumes no retry attempt, so this running total is what eventually ends the cycle: past ' +
+      'the worker budget the job rejoins the ordinary retry ladder and can reach `dead`. A non-null value ' +
+      'means a job sitting at `queued` is waiting on the destination, not stuck. `null` means never deferred.',
+  })
+  deferredTotalMs!: number | null;
 }

@@ -598,6 +598,38 @@ describe('SyncJobRepository', () => {
       expect(ormRepository.findOne).not.toHaveBeenCalled();
     });
 
+    it('should write the deferral budget and the attempt duration when supplied (#2613)', async () => {
+      const jobId = randomUUID();
+      const nextRunAt = new Date();
+
+      ormRepository.update.mockResolvedValue({ affected: 1, generatedMaps: [], raw: [] });
+
+      await repository.requeueWithoutPenalty(jobId, 'deferred', nextRunAt, {
+        lastAttemptDurationMs: 1234,
+        deferredTotalMs: 300_000,
+      });
+
+      expect(ormRepository.update).toHaveBeenCalledWith(
+        jobId,
+        expect.objectContaining({ lastAttemptDurationMs: 1234, deferredTotalMs: 300_000 })
+      );
+    });
+
+    it('should clear a stale attempt duration on an explicit null (#2611 review)', async () => {
+      const jobId = randomUUID();
+
+      ormRepository.update.mockResolvedValue({ affected: 1, generatedMaps: [], raw: [] });
+
+      await repository.requeueWithoutPenalty(jobId, 'waited for a slot', new Date(), {
+        lastAttemptDurationMs: null,
+      });
+
+      expect(ormRepository.update).toHaveBeenCalledWith(
+        jobId,
+        expect.objectContaining({ lastAttemptDurationMs: null })
+      );
+    });
+
     it('should truncate error message if longer than 1000 characters', async () => {
       const jobId = randomUUID();
       const longErrorMessage = 'x'.repeat(2000);
@@ -806,6 +838,19 @@ describe('SyncJobRepository', () => {
       for (const call of ormRepository.update.mock.calls) {
         expect(call[1]).not.toHaveProperty('lastAttemptDurationMs');
       }
+    });
+
+    // #2611 review: an earlier attempt may have recorded a number, so a caller
+    // that knows nothing ran clears the column rather than omitting it.
+    it('should clear the column on an explicit null', async () => {
+      const jobId = randomUUID();
+
+      await repository.markDead(jobId, 'no handler registered', null);
+
+      expect(ormRepository.update).toHaveBeenCalledWith(
+        jobId,
+        expect.objectContaining({ lastAttemptDurationMs: null })
+      );
     });
 
     it('should drop a negative or non-finite measurement rather than persisting it as a duration', async () => {

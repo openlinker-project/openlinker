@@ -73,6 +73,16 @@ function buildSyncJobItems(job: SyncJob): KeyValueItem[] {
     // than a row that implies the attempt took no time.
     items.push({ id: 'lastAttemptDuration', label: 'Last attempt duration', value: duration });
   }
+  const deferred = formatDurationMs(job.deferredTotalMs);
+  if (deferred !== null) {
+    // A deferral consumes no attempt, so the attempts counter cannot show it.
+    // Say so, or a job waiting on a throttling destination reads as stuck.
+    items.push({
+      id: 'deferredTotal',
+      label: 'Deferred so far',
+      value: `${deferred} (waiting on the destination, no attempt consumed)`,
+    });
+  }
   if (job.lockedAt) {
     items.push({ id: 'lockedAt', label: 'Locked at', value: <TimeDisplay iso={job.lockedAt} /> });
   }

@@ -121,6 +121,29 @@ describe('RetryClassifierRegistryService', () => {
       expect(registry.resolveRetryDeferral(new Error('boom'))).toBeNull();
     });
 
+    it('should clamp a delay above the cap so a buggy plugin cannot park a job for decades', () => {
+      const registry = new RetryClassifierRegistryService();
+      registry.register('defers-forever', {
+        isNonRetryable: () => false,
+        getRetryDeferral: () => ({ delaySeconds: 1_000_000_000, reason: 'oops' }),
+      });
+
+      expect(registry.resolveRetryDeferral(new Error('boom'))).toEqual({
+        delaySeconds: 3600,
+        reason: 'oops',
+      });
+    });
+
+    it('should ignore a non-finite delay', () => {
+      const registry = new RetryClassifierRegistryService();
+      registry.register('defers-nan', {
+        isNonRetryable: () => false,
+        getRetryDeferral: () => ({ delaySeconds: Number.NaN, reason: 'nan' }),
+      });
+
+      expect(registry.resolveRetryDeferral(new Error('boom'))).toBeNull();
+    });
+
     it('should return null when nothing defers', () => {
       const registry = new RetryClassifierRegistryService();
       registry.register('no-opinion', { isNonRetryable: () => false });

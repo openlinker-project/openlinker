@@ -15,7 +15,7 @@ import type {
   SyncJob as SyncJobEntity,
   MarketplaceOfferQuantityUpdatePayloadV1,
 } from '@openlinker/core/sync';
-import { SyncJobExecutionError } from '@openlinker/core/sync';
+import { ContendedWriteError, SyncJobExecutionError } from '@openlinker/core/sync';
 import { IInventorySyncService, INVENTORY_SYNC_SERVICE_TOKEN } from '@openlinker/core/inventory';
 import { Logger } from '@openlinker/shared/logging';
 
@@ -47,11 +47,22 @@ export class MarketplaceOfferQuantityUpdateHandler implements SyncJobHandler {
 
       if (result.failed.length > 0) {
         const failure = result.failed[0];
+        const message = `Offer quantity update failed for offer ${failure.offerId}: ${failure.errorCode}${failure.message ? ` (${failure.message})` : ''}`;
+        // Contention is the write-order guard doing its job, not this job
+        // failing: a peer holds the lock, so nothing was written and nothing
+        // was rejected. Reported as a ContendedWriteError so the runner defers
+        // it penalty-free instead of spending an attempt, which under raised
+        // propagation concurrency could otherwise dead-letter the very stock
+        // write the guard protects (#2617 review). Only when EVERY failure is
+        // contention - a real rejection alongside it is a real failure and
+        // must walk the ordinary ladder.
+        const allContended = result.failed.every((f) => f.errorCode === 'write_contended');
         throw new SyncJobExecutionError(
-          `Offer quantity update failed for offer ${failure.offerId}: ${failure.errorCode}${failure.message ? ` (${failure.message})` : ''}`,
+          message,
           job.id,
           job.jobType,
-          job.connectionId
+          job.connectionId,
+          allContended ? new ContendedWriteError(message, failure.offerId) : undefined
         );
       }
 

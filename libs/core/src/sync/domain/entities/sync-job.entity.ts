@@ -31,6 +31,12 @@ export class SyncJob {
      * attempt (#2611). `null`/undefined when no attempt has completed yet, or
      * for a row predating the column - never read as zero.
      */
-    public readonly lastAttemptDurationMs?: number | null
+    public readonly lastAttemptDurationMs?: number | null,
+    /**
+     * Total milliseconds of penalty-free deferral granted so far (#2613/#2617).
+     * The bound that stops a deferred job living for ever. `null`/undefined
+     * when the job has never been deferred.
+     */
+    public readonly deferredTotalMs?: number | null
   ) {}
 }
