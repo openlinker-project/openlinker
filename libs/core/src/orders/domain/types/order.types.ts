@@ -351,7 +351,8 @@ export interface Address {
    * they are not interchangeable: absent = the source asserted nothing, `null`
    * = the source asserted the buyer has none, a string = the id verbatim.
    *
-   * Carried unvalidated and un-normalised - no national format is applied here
+   * Carried unvalidated, and normalised only by trimming surrounding
+   * whitespace - no national format is applied here
    * (ADR-026 keeps country specifics in the provider adapter). Read it through
    * `readBuyerTaxId` rather than reaching for the field, so billing-first
    * precedence lives in one place.

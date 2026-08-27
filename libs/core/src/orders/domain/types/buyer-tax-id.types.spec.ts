@@ -75,8 +75,9 @@ describe('encodeBuyerTaxIdColumn / decodeBuyerTaxIdColumn', () => {
     expect(encodeBuyerTaxIdColumn(null)).toBe('');
   });
 
-  it('should encode a whitespace-only value as asserted-none', () => {
-    expect(encodeBuyerTaxIdColumn('   ')).toBe('');
+  it('should encode a whitespace-only value as not-asserted, agreeing with the source coercer', () => {
+    expect(encodeBuyerTaxIdColumn('   ')).toBeNull();
+    expect(encodeBuyerTaxIdColumn(readSourceBuyerTaxId('   '))).toBeNull();
   });
 
   it('should trim surrounding whitespace without otherwise normalising the identifier', () => {
@@ -93,10 +94,19 @@ describe('readSourceBuyerTaxId', () => {
     expect(readSourceBuyerTaxId(undefined)).toBeUndefined();
   });
 
-  it('should read an explicit null or a blank as asserted-none', () => {
-    expect(readSourceBuyerTaxId(null)).toBeNull();
-    expect(readSourceBuyerTaxId('')).toBeNull();
-    expect(readSourceBuyerTaxId('  ')).toBeNull();
+  it('should read an explicit null or a blank as unknown, never as asserted-none', () => {
+    // A blank optional tax field is the shop never asking, not the buyer
+    // answering. Reading it as asserted-none would make a
+    // `buyerHasTaxId === false` routing rule fire on nearly every B2C order.
+    expect(readSourceBuyerTaxId(null)).toBeUndefined();
+    expect(readSourceBuyerTaxId('')).toBeUndefined();
+    expect(readSourceBuyerTaxId('  ')).toBeUndefined();
+  });
+
+  it('should keep asserted-none unreachable through the coercer', () => {
+    for (const raw of [undefined, null, '', '   ']) {
+      expect(readSourceBuyerTaxId(raw)).not.toBeNull();
+    }
   });
 
   it('should carry a value verbatim apart from trimming', () => {

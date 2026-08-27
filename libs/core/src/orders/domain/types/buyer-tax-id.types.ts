@@ -46,11 +46,23 @@ export function readBuyerTaxId(order: {
   billingAddress?: Address;
   shippingAddress?: Address;
 }): BuyerTaxId {
-  const billing = order.billingAddress?.taxId;
+  // Each address goes through the same coercer an adapter uses, so a stray
+  // blank in a stored snapshot cannot read as "has a tax id" here while the
+  // adapter path calls the same value unknown.
+  const billing = normaliseAddressTaxId(order.billingAddress?.taxId);
   if (billing !== undefined) {
     return billing;
   }
-  return order.shippingAddress?.taxId;
+  return normaliseAddressTaxId(order.shippingAddress?.taxId);
+}
+
+/**
+ * An address's own tax field in the three states. `null` is preserved as the
+ * positive asserted-none an adapter set deliberately; everything else routes
+ * through {@link readSourceBuyerTaxId}.
+ */
+function normaliseAddressTaxId(value: string | null | undefined): BuyerTaxId {
+  return value === null ? null : readSourceBuyerTaxId(value);
 }
 
 /**
@@ -71,9 +83,11 @@ export function buyerHasTaxId(value: BuyerTaxId): boolean | undefined {
  * id. One column rather than a value plus a flag, because a second column
  * would let the two drift into a combination that means nothing.
  *
- * A whitespace-only value encodes as asserted-none: a shop that stores a blank
- * tax field has told us the buyer has none, and trimming is not normalisation
- * of the identifier itself.
+ * A whitespace-only string is not a tax id and is not an assertion either, so
+ * it encodes as `NULL` (not asserted) - the same answer
+ * {@link readSourceBuyerTaxId} gives a blank source field. The two functions
+ * have to agree: an order that reached the snapshot with a stray blank must
+ * not read "has a tax id" from one path and "has none" from the other.
  *
  * Read the column back through {@link decodeBuyerTaxIdColumn}, never with a
  * bare `IS NOT NULL` - that reports true for the asserted-none row.
@@ -86,7 +100,7 @@ export function encodeBuyerTaxIdColumn(value: BuyerTaxId): string | null {
     return '';
   }
   const trimmed = value.trim();
-  return trimmed.length === 0 ? '' : trimmed;
+  return trimmed.length === 0 ? null : trimmed;
 }
 
 /** Decode {@link encodeBuyerTaxIdColumn}. `undefined` for a NULL column. */
@@ -100,17 +114,28 @@ export function decodeBuyerTaxIdColumn(column: string | null | undefined): Buyer
 /**
  * Coerce a raw source value into the three states.
  *
- * Adapters call this so every source agrees on what a blank field means. A
- * source that did not return the field at all yields `undefined`; a returned
- * blank yields `null`.
+ * Adapters call this so every source agrees on what an empty field means, and
+ * the answer is `undefined` - unknown, not "asserted none".
+ *
+ * A blank buyer tax field is the DEFAULT state of an optional column, not a
+ * statement about the buyer. PrestaShop's `ps_address.vat_number` is optional
+ * and empty on essentially every consumer order, so reading a blank as
+ * "asserted to have no tax id" would turn "the shop never asked" into a
+ * positive fact, and a routing rule testing `buyerHasTaxId === false` would
+ * then fire on almost every B2C order. Which fiscal document an order gets is
+ * a legal event for the seller, so this side of the ambiguity fails to
+ * unknown. A missing key, a JSON `null` and a blank string are all the same
+ * absence and all yield `undefined`.
+ *
+ * The middle state (`null`, asserted-none) is therefore NOT reachable through
+ * this coercer. It is reserved for an adapter whose source positively says the
+ * buyer has no tax id - a consumer/business flag, or an explicit declaration -
+ * which such an adapter sets by writing `taxId: null` itself.
  */
 export function readSourceBuyerTaxId(raw: string | null | undefined): BuyerTaxId {
-  if (raw === undefined) {
+  if (raw === undefined || raw === null) {
     return undefined;
   }
-  if (raw === null) {
-    return null;
-  }
   const trimmed = raw.trim();
-  return trimmed.length === 0 ? null : trimmed;
+  return trimmed.length === 0 ? undefined : trimmed;
 }

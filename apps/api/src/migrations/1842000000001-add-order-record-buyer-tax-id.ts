@@ -13,7 +13,8 @@
  *
  * - `NULL` - the source asserted nothing. Unknown.
  * - `''` - the source asserted the buyer has none.
- * - anything else - the tax id, verbatim.
+ * - anything else - the tax id, trimmed of surrounding whitespace and never
+ *   otherwise normalised.
  *
  * A bare `buyerTaxId IS NOT NULL` therefore reports true for the middle state.
  * Read the column through `decodeBuyerTaxIdColumn` (`@openlinker/core/orders`).

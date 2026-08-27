@@ -31,7 +31,13 @@
  * @module libs/core/src/invoicing/application/mappers
  * @see docs/architecture/adrs/041-sales-document-routing-policy.md
  */
-import { buyerHasTaxId, readBuyerTaxId, type Order } from '@openlinker/core/orders';
+// Value imports come from the `@openlinker/core/orders/types` cycle-breaker
+// sub-barrel, never the main barrel: that one re-exports `OrdersModule`, whose
+// own module file value-imports `@openlinker/core/invoicing`, so a value import
+// here would close an `invoicing -> orders -> invoicing` CJS load cycle. `Order`
+// is type-only and erases, so it may come from either.
+import type { Order } from '@openlinker/core/orders';
+import { buyerHasTaxId, readBuyerTaxId } from '@openlinker/core/orders/types';
 import type { SalesDocumentOrderFacts } from '@openlinker/core/sales-documents';
 
 /**
