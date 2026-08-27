@@ -37,9 +37,10 @@ export class ConnectionSyncStatusController {
   @ApiOperation({
     summary: "Get a connection's sync queue status",
     description:
-      'Reports queued, running and dead job counts for one connection, the measured arrival and ' +
-      'drain rates, and a backlog alert whose threshold is derived from that connection\'s own ' +
-      'drain rate rather than a fixed number. Makes no call to the shop.',
+      'Reports due, deferred, running and dead job counts for one connection, the measured ' +
+      'arrival and drain rates, when it last succeeded, and a backlog alert whose threshold is ' +
+      "derived from that connection's own drain rate rather than a fixed number. Makes no call " +
+      'to the shop.',
   })
   @ApiResponse({ status: 200, type: ConnectionSyncStatusResponseDto })
   async getSyncStatus(
@@ -56,8 +57,12 @@ export class ConnectionSyncStatusController {
     dto.status = status.status;
     dto.alerting = status.alerting;
     dto.queuedCount = status.queuedCount;
+    dto.deferredCount = status.deferredCount;
     dto.runningCount = status.runningCount;
     dto.deadCount = status.deadCount;
+    dto.deadInWindow = status.deadInWindow;
+    dto.lastSucceededAt =
+      status.lastSucceededAt === null ? null : status.lastSucceededAt.toISOString();
     dto.arrivalRatePerHour = status.arrivalRatePerHour;
     dto.drainRatePerHour = status.drainRatePerHour;
     dto.alertThresholdJobs = status.alertThresholdJobs;
@@ -69,6 +74,7 @@ export class ConnectionSyncStatusController {
       status.lastCursorAdvanceAt === null ? null : status.lastCursorAdvanceAt.toISOString();
     dto.observationWindowMs = status.observationWindowMs;
     dto.alertHorizonMs = status.alertHorizonMs;
+    dto.historyWindowMs = status.historyWindowMs;
     return dto;
   }
 }

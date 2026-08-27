@@ -36,9 +36,6 @@ export class SyncCursorsService implements ISyncCursorsService {
   }
 
   async getMostRecentCursorUpdate(connectionId: string): Promise<Date | null> {
-    // findMany orders by updatedAt DESC, so one row is enough - the read cost
-    // does not grow with how many cursor keys the connection carries.
-    const page = await this.cursorRepository.findMany({ connectionId }, { limit: 1, offset: 0 });
-    return page.items[0]?.updatedAt ?? null;
+    return this.cursorRepository.findMostRecentUpdate(connectionId);
   }
 }

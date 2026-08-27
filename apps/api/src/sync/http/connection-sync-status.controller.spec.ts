@@ -15,8 +15,11 @@ function status(overrides: Partial<ConnectionSyncStatus> = {}): ConnectionSyncSt
     status: 'idle',
     alerting: false,
     queuedCount: 0,
+    deferredCount: 0,
     runningCount: 0,
     deadCount: 0,
+    deadInWindow: 0,
+    lastSucceededAt: null,
     arrivalRatePerHour: 0,
     drainRatePerHour: 0,
     alertThresholdJobs: 0,
@@ -27,6 +30,7 @@ function status(overrides: Partial<ConnectionSyncStatus> = {}): ConnectionSyncSt
     lastCursorAdvanceAt: null,
     observationWindowMs: HOUR,
     alertHorizonMs: 24 * HOUR,
+    historyWindowMs: 7 * 24 * HOUR,
     ...overrides,
   };
 }
@@ -69,6 +73,24 @@ describe('ConnectionSyncStatusController', () => {
     expect(dto.estimatedClearanceMs).toBeNull();
     expect(dto.averageAttemptDurationMs).toBe(4200);
     expect(dto.attemptDurationSampleSize).toBe(40);
+  });
+
+  it('should project the due, deferred and last-success fields', async () => {
+    service.getConnectionSyncStatus.mockResolvedValue(
+      status({
+        queuedCount: 4,
+        deferredCount: 11,
+        deadInWindow: 2,
+        lastSucceededAt: new Date('2026-08-27T09:00:00.000Z'),
+      })
+    );
+
+    const dto = await controller.getSyncStatus('conn-1');
+
+    expect(dto.queuedCount).toBe(4);
+    expect(dto.deferredCount).toBe(11);
+    expect(dto.deadInWindow).toBe(2);
+    expect(dto.lastSucceededAt).toBe('2026-08-27T09:00:00.000Z');
   });
 
   it('should serialize an absent cursor as null rather than a zero date', async () => {

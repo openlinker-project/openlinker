@@ -140,6 +140,15 @@ export class ConnectionCursorRepository implements ConnectionCursorRepositoryPor
     };
   }
 
+  async findMostRecentUpdate(connectionId: string): Promise<Date | null> {
+    const entity = await this.repository.findOne({
+      where: { connectionId },
+      order: { updatedAt: 'DESC' },
+      select: { updatedAt: true },
+    });
+    return entity?.updatedAt ?? null;
+  }
+
   async findOne(connectionId: string, cursorKey: string): Promise<ConnectionCursor | null> {
     try {
       const entity = await this.repository.findOne({

@@ -19,34 +19,60 @@ export class ConnectionSyncStatusResponseDto {
   @ApiProperty({
     enum: ConnectionBacklogStatusValues,
     description:
-      "Backlog status. 'idle' nothing queued; 'draining' queued and converging (a fresh sweep " +
-      "normally reads this); 'growing' not converging but under the derived threshold; " +
-      "'backlogged' the alert; 'unknown' the counts could not be read.",
+      "Backlog status. 'idle' nothing due; 'draining' work due and converging; 'growing' not " +
+      'converging but under the derived threshold, which is what a fresh sweep reads; ' +
+      "'failing' nothing succeeded in the window and at least one job died; 'backlogged' the " +
+      "alert; 'unknown' the counts could not be read.",
   })
   status!: ConnectionBacklogStatus;
 
   @ApiProperty({
     description:
-      "True only for 'backlogged'. Requires all three of: the queue is not converging, it holds " +
-      'more work than this connection drains in the alert horizon, and its oldest queued job has ' +
-      'already waited longer than that horizon.',
+      "True only for 'backlogged'. Requires all four of: the queue is not converging, it holds " +
+      'more work than this connection drains in the alert horizon and more than an absolute ' +
+      'floor, its oldest due job has already waited longer than that horizon, and something ' +
+      'did succeed in the window.',
   })
   alerting!: boolean;
 
-  @ApiProperty({ description: 'Jobs currently queued for this connection' })
+  @ApiProperty({
+    description:
+      'Jobs queued for this connection whose next run time has arrived. A job waiting on its ' +
+      'own retry backoff is reported separately, as deferredCount.',
+  })
   queuedCount!: number;
+
+  @ApiProperty({ description: 'Jobs queued with a future run time - waiting on retry backoff' })
+  deferredCount!: number;
 
   @ApiProperty({ description: 'Jobs currently running for this connection' })
   runningCount!: number;
 
-  @ApiProperty({ description: 'Jobs in dead status - they exhausted their retries' })
+  @ApiProperty({
+    description:
+      'Jobs that died inside the history window - they exhausted their retries. Windowed, so it ' +
+      'clears with age rather than counting every death the connection ever had.',
+  })
   deadCount!: number;
+
+  @ApiProperty({ description: 'Jobs that died inside the observation window' })
+  deadInWindow!: number;
+
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    description:
+      'ISO timestamp of this connection\'s last successful job inside the history window, with ' +
+      'business failures excluded. Null when it has none.',
+  })
+  lastSucceededAt!: string | null;
 
   @ApiProperty({ description: 'Jobs arriving per hour, measured over the observation window' })
   arrivalRatePerHour!: number;
 
   @ApiProperty({
-    description: 'Jobs reaching a terminal state per hour, measured over the observation window',
+    description:
+      'Jobs SUCCEEDING per hour, measured over the observation window. Deaths are not drain.',
   })
   drainRatePerHour!: number;
 
@@ -69,7 +95,7 @@ export class ConnectionSyncStatusResponseDto {
   @ApiProperty({
     nullable: true,
     type: Number,
-    description: 'How long the oldest queued job has waited, in ms. Null when nothing is queued.',
+    description: 'How long the oldest due job has waited, in ms. Null when nothing is due.',
   })
   oldestQueuedWaitMs!: number | null;
 
@@ -101,4 +127,7 @@ export class ConnectionSyncStatusResponseDto {
 
   @ApiProperty({ description: 'Alert horizon used for the threshold and the wait test, in ms' })
   alertHorizonMs!: number;
+
+  @ApiProperty({ description: 'How far back the historical figures look, in ms' })
+  historyWindowMs!: number;
 }

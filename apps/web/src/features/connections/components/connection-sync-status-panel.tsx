@@ -10,6 +10,10 @@ import { StatusBadge, type StatusBadgeTone } from '../../../shared/ui/status-bad
 /**
  * Sync status panel (#2615), on the connection detail page's health tab.
  *
+ * "Waiting" means due work only. A task backing off after a failure is queued
+ * but nothing is holding it up, so counting it as queue depth would report a
+ * failing job as a stalled worker.
+ *
  * Two facts are up front: the status badge and one sentence about the queue.
  * Everything else - the measured rates, the derived threshold, the mean
  * attempt time, cursor recency - sits behind a disclosure, because an operator
@@ -34,6 +38,7 @@ const STATUS_LABEL: Record<ConnectionBacklogStatus, string> = {
   idle: 'Nothing waiting',
   draining: 'Catching up',
   growing: 'Falling behind',
+  failing: 'Tasks failing',
   backlogged: 'Backlog',
   unknown: 'Unknown',
 };
@@ -42,6 +47,7 @@ const STATUS_TONE: Record<ConnectionBacklogStatus, StatusBadgeTone> = {
   idle: 'success',
   draining: 'success',
   growing: 'warning',
+  failing: 'warning',
   backlogged: 'error',
   unknown: 'warning',
 };
@@ -72,6 +78,9 @@ function formatWait(ms: number): string {
 function headline(status: ConnectionSyncStatus): string {
   if (status.status === 'unknown') {
     return 'The queue could not be read just now. Try again in a moment.';
+  }
+  if (status.status === 'failing') {
+    return 'Nothing has finished successfully in the last hour and tasks are failing. The queue may look empty because work is dying rather than getting done.';
   }
   if (status.queuedCount === 0) {
     return 'No work is waiting for this connection.';
@@ -151,7 +160,15 @@ export function ConnectionSyncStatusPanel({
           {data.deadCount > 0 ? (
             <p className="connection-sync-status__note">
               {formatCount(data.deadCount)} {data.deadCount === 1 ? 'task has' : 'tasks have'} given
-              up after repeated failures. They will not run again on their own.
+              up after repeated failures in the last week. They will not run again on their own.
+            </p>
+          ) : null}
+
+          {data.runningCount > 0 && data.drainRatePerHour === 0 ? (
+            <p className="connection-sync-status__note">
+              {formatCount(data.runningCount)} {data.runningCount === 1 ? 'task has' : 'tasks have'}{' '}
+              been picked up but nothing has finished in the last hour. That usually means the
+              background worker stopped part-way through.
             </p>
           ) : null}
 
@@ -163,6 +180,18 @@ export function ConnectionSyncStatusPanel({
                 <dd>{formatCount(data.runningCount)}</dd>
               </div>
               <div>
+                <dt>Waiting to retry</dt>
+                <dd>{formatCount(data.deferredCount)}</dd>
+              </div>
+              <div>
+                <dt>Last success</dt>
+                <dd>
+                  {data.lastSucceededAt === null
+                    ? 'None in the last week'
+                    : formatDateTime(data.lastSucceededAt)}
+                </dd>
+              </div>
+              <div>
                 <dt>New work</dt>
                 <dd>{formatRate(data.arrivalRatePerHour)}</dd>
               </div>
@@ -172,7 +201,11 @@ export function ConnectionSyncStatusPanel({
               </div>
               <div>
                 <dt>Alert above</dt>
-                <dd>{formatCount(data.alertThresholdJobs)} waiting</dd>
+                <dd>
+                  {data.drainRatePerHour === 0
+                    ? 'Not measured yet - nothing finished in the last hour'
+                    : `${formatCount(data.alertThresholdJobs)} waiting`}
+                </dd>
               </div>
               <div>
                 <dt>Typical task time</dt>
@@ -194,9 +227,11 @@ export function ConnectionSyncStatusPanel({
               </div>
             </dl>
             <p className="connection-sync-status__note">
-              New and finished work are measured over the last hour. The alert level is what this
-              connection normally finishes in a day, so it moves with the shop rather than being a
-              fixed number, and it only alerts once the oldest waiting task is more than a day old.
+              New and finished work are measured over the last hour. Waiting counts only tasks
+              whose next attempt is due; a task backing off after a failure is counted under
+              "Waiting to retry" instead. The alert level is what this connection normally
+              finishes in a day, so it moves with the shop rather than being a fixed number, and it
+              only alerts once the oldest waiting task is more than a day old.
             </p>
           </details>
         </>

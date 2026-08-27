@@ -73,9 +73,10 @@ export {
   ConnectionBacklogStatusValues,
   BACKLOG_OBSERVATION_WINDOW_MS,
   BACKLOG_ALERT_HORIZON_MS,
+  BACKLOG_HISTORY_WINDOW_MS,
+  BACKLOG_MIN_ALERT_JOBS,
 } from './domain/types/connection-sync-status.types';
 export {
-  averageAttemptDuration,
   classifyConnectionBacklog,
   deriveAlertThresholdJobs,
   deriveBacklogSignal,

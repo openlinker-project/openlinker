@@ -298,10 +298,23 @@ export interface CatalogTrust {
 }
 
 /**
- * Sync status (#2615) - the per-connection sync queue view. Mirrors the
- * backend `ConnectionBacklogStatusValues` union (`@openlinker/core/sync`).
+ * Sync status (#2615) - the per-connection sync queue view.
+ *
+ * The status list mirrors the backend `ConnectionBacklogStatusValues`
+ * (`@openlinker/core/sync`). `scripts/check-connection-backlog-status-mirror.mjs`
+ * fails the build when the two drift, because the browser bundle cannot
+ * import `@openlinker/core` (#591) so the copy cannot be avoided.
  */
-export type ConnectionBacklogStatus = 'idle' | 'draining' | 'growing' | 'backlogged' | 'unknown';
+export const CONNECTION_BACKLOG_STATUS_VALUES = [
+  'idle',
+  'draining',
+  'growing',
+  'failing',
+  'backlogged',
+  'unknown',
+] as const;
+
+export type ConnectionBacklogStatus = (typeof CONNECTION_BACKLOG_STATUS_VALUES)[number];
 
 export interface ConnectionSyncStatus {
   connectionId: string;
@@ -309,9 +322,15 @@ export interface ConnectionSyncStatus {
   status: ConnectionBacklogStatus;
   /** True only for 'backlogged'. The backend owns the rule; never re-derive it here. */
   alerting: boolean;
+  /** Queued AND due. A job waiting on retry backoff is in deferredCount instead. */
   queuedCount: number;
+  deferredCount: number;
   runningCount: number;
+  /** Deaths inside the history window, not all time. */
   deadCount: number;
+  deadInWindow: number;
+  /** Last successful job, business failures excluded. Null when there is none. */
+  lastSucceededAt: string | null;
   arrivalRatePerHour: number;
   drainRatePerHour: number;
   /** Derived from this connection's own drain rate, never a fixed number. */
@@ -326,6 +345,7 @@ export interface ConnectionSyncStatus {
   lastCursorAdvanceAt: string | null;
   observationWindowMs: number;
   alertHorizonMs: number;
+  historyWindowMs: number;
 }
 
 export interface ConnectionDiagnostics {

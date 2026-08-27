@@ -1,14 +1,13 @@
 /**
  * Connection Backlog Domain Service Unit Tests
  *
- * Covers the derived threshold, the three-condition alert rule (including the
- * fresh-sweep false alarm it exists to prevent), and the NULL exclusion in the
- * attempt-duration mean.
+ * Covers the derived threshold and the four-condition alert rule, in both
+ * directions: the false alarms it exists to prevent (a fresh sweep, one job in
+ * retry backoff, steady state) and the genuine backlog it must still catch.
  *
  * @module libs/core/src/sync/domain/domain-services
  */
 import {
-  averageAttemptDuration,
   classifyConnectionBacklog,
   deriveAlertThresholdJobs,
   deriveBacklogSignal,
@@ -57,18 +56,6 @@ describe('connection backlog domain service', () => {
     });
   });
 
-  describe('averageAttemptDuration', () => {
-    it('should divide by the non-null sample size, not the job count', () => {
-      // Three jobs finished, only two recorded a duration. Dividing the same
-      // total by three would understate the real mean.
-      expect(averageAttemptDuration(600, 2)).toBe(300);
-    });
-
-    it('should report null when no row carried a duration, never zero', () => {
-      expect(averageAttemptDuration(0, 0)).toBeNull();
-    });
-  });
-
   describe('classifyConnectionBacklog', () => {
     const base = {
       queuedCount: 5000,
@@ -77,6 +64,8 @@ describe('connection backlog domain service', () => {
       alertThresholdJobs: 1320,
       oldestQueuedWaitMs: 3 * DAY,
       alertHorizonMs: DAY,
+      succeededInWindow: 55,
+      deadInWindow: 0,
     };
 
     it('should report idle when nothing is queued', () => {
@@ -107,34 +96,105 @@ describe('connection backlog domain service', () => {
         classifyConnectionBacklog({
           ...base,
           queuedCount: 40,
-          arrivalRatePerHour: 60,
+          arrivalRatePerHour: 80,
           drainRatePerHour: 60,
           alertThresholdJobs: 1440,
         })
       ).toBe('growing');
     });
 
-    it('should alert when nothing drains at all and the queue has waited past the horizon', () => {
-      // A zero drain rate is evidence, not missing data.
+    it('should not alert on one long-waiting job while nothing was measured as draining', () => {
+      // The false alarm this rule exists to prevent. A failing job is requeued
+      // with its original createdAt, so on a quiet connection it looks like a
+      // day-old queue. A measured drain rate of 0 makes the derived threshold
+      // 0, which without the absolute floor turned "over the threshold" into
+      // "not empty".
       expect(
         classifyConnectionBacklog({
           ...base,
-          queuedCount: 12,
+          queuedCount: 1,
           arrivalRatePerHour: 0,
           drainRatePerHour: 0,
           alertThresholdJobs: 0,
+          succeededInWindow: 0,
+          deadInWindow: 0,
+        })
+      ).toBe('growing');
+    });
+
+    it('should not alert on a deep queue while nothing succeeded in the window', () => {
+      // No rate was measured, so no rate-derived claim can be made. 'failing'
+      // or 'growing' is the honest reading, never the red banner.
+      expect(
+        classifyConnectionBacklog({
+          ...base,
+          queuedCount: 5000,
+          arrivalRatePerHour: 0,
+          drainRatePerHour: 0,
+          alertThresholdJobs: 0,
+          succeededInWindow: 0,
+          deadInWindow: 0,
+        })
+      ).toBe('growing');
+    });
+
+    it('should still alert on a genuine backlog once a drain rate has been measured', () => {
+      expect(
+        classifyConnectionBacklog({
+          ...base,
+          queuedCount: 15066,
+          arrivalRatePerHour: 200,
+          drainRatePerHour: 55,
+          alertThresholdJobs: 55 * 24,
+          succeededInWindow: 55,
         })
       ).toBe('backlogged');
+    });
+
+    it('should treat a steady-state tie as converging rather than falling behind', () => {
+      expect(
+        classifyConnectionBacklog({ ...base, arrivalRatePerHour: 100, drainRatePerHour: 100 })
+      ).toBe('draining');
+    });
+
+    it('should not call a stalled queue converging just because nothing arrived either', () => {
+      expect(
+        classifyConnectionBacklog({
+          ...base,
+          queuedCount: 3,
+          arrivalRatePerHour: 0,
+          drainRatePerHour: 0,
+          alertThresholdJobs: 0,
+          succeededInWindow: 0,
+        })
+      ).toBe('growing');
+    });
+
+    it('should report failing when nothing succeeded and jobs died, even with an empty queue', () => {
+      // Deaths are not drain. Counting them as drain let a connection whose
+      // every job fails fast read green with an empty queue.
+      expect(
+        classifyConnectionBacklog({
+          ...base,
+          queuedCount: 0,
+          drainRatePerHour: 0,
+          succeededInWindow: 0,
+          deadInWindow: 6,
+        })
+      ).toBe('failing');
     });
   });
 
   describe('deriveBacklogSignal', () => {
     const stats: ConnectionBacklogStats = {
       queuedCount: 15066,
+      deferredCount: 3,
       runningCount: 2,
       deadCount: 4,
       arrivedInWindow: 200,
-      completedInWindow: 55,
+      succeededInWindow: 55,
+      deadInWindow: 0,
+      lastSucceededAt: new Date('2026-08-27T09:30:00.000Z'),
       averageAttemptDurationMs: 4200,
       attemptDurationSampleSize: 55,
       oldestQueuedAt: new Date('2026-08-24T10:00:00.000Z'),
