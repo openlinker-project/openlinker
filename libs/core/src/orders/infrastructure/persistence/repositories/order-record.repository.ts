@@ -11,7 +11,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import type { DataSource, EntityManager, SelectQueryBuilder } from 'typeorm';
-import { In, IsNull, LessThan, MoreThanOrEqual, Repository } from 'typeorm';
+import { In, IsNull, LessThan, MoreThanOrEqual, Not, Repository } from 'typeorm';
 import type { OrderSyncStatusJson, SyncAttemptJson } from '../entities/order-record.orm-entity';
 import { OrderRecordOrmEntity } from '../entities/order-record.orm-entity';
 import { OrderLineItemOrmEntity } from '../entities/order-line-item.orm-entity';
@@ -41,6 +41,10 @@ import {
   netSalesOrderNetEligibleSql,
 } from '../../../domain/types/net-sales-tax-rate.types';
 import type { SalesDocumentBlock } from '@openlinker/core/sales-documents';
+import type {
+  FxRestatementOrderRef,
+  FxRestatementRemainingSummary,
+} from '../../../domain/types/order-fx-restatement.types';
 import {
   SalesDocumentAttentionReasonValues,
   isSalesDocumentGateBlockReason,
@@ -618,6 +622,112 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       })),
       total,
     };
+  }
+
+  /**
+   * Currency-restatement enumeration page (#2468) — see the port's JSDoc for
+   * why this is keyset-ordered on `internalOrderId` rather than reusing
+   * {@link findCurrencyMismatchOrders}' `placedAt DESC`.
+   *
+   * `select`-narrowed to the two columns the caller actually uses — the id it
+   * repairs and the connection its child job must carry — so a page of
+   * `orderSnapshot` JSONB is never hydrated for nothing (same reasoning as
+   * {@link findUnstampedFxOrderIds}).
+   */
+  async findCurrencyMismatchOrderRefsAfter(
+    filters: SalesAnalyticsFilters,
+    currentReportingCurrency: string,
+    page: { afterOrderId: string | null; limit: number }
+  ): Promise<FxRestatementOrderRef[]> {
+    const qb = this.repository
+      .createQueryBuilder('rec')
+      .select('rec."internalOrderId"', 'internal_order_id')
+      .addSelect('rec."sourceConnectionId"', 'source_connection_id')
+      .andWhere('rec."cancelledAt" IS NULL')
+      .andWhere(
+        '(rec."reportingCurrency" IS NULL OR rec."reportingCurrency" != :currentReportingCurrency)',
+        { currentReportingCurrency }
+      )
+      .orderBy('rec."internalOrderId"', 'ASC')
+      .limit(page.limit);
+
+    if (page.afterOrderId !== null) {
+      qb.andWhere('rec."internalOrderId" > :afterOrderId', { afterOrderId: page.afterOrderId });
+    }
+
+    this.applySalesAnalyticsScope(qb, filters);
+
+    const rows = await qb.getRawMany<{
+      internal_order_id: string;
+      source_connection_id: string;
+    }>();
+    return rows.map((row) => ({
+      internalOrderId: row.internal_order_id,
+      sourceConnectionId: row.source_connection_id,
+    }));
+  }
+
+  /**
+   * Clear one order's ADR-040 FX stamp so the pipeline can re-answer it
+   * (#2468). See the port's JSDoc for the full column-by-column rationale and
+   * for why this is the ONE writer allowed to move a stamp.
+   *
+   * The six columns are set in a single guarded statement — the same
+   * "the group can never half-apply" shape {@link stampFxIfAbsent} uses — so
+   * a partial clear that would violate `ck_order_records_fx_group` is not
+   * expressible. `reportingCurrency: IsNull()` in the WHERE is what makes it
+   * idempotent: a second delivery of the same driver job finds nothing to
+   * clear and reports `false` rather than re-clearing a row the stamp
+   * pipeline may already have re-answered.
+   */
+  async clearFxStampForRestatement(internalOrderId: string): Promise<boolean> {
+    const result = await this.repository.update(
+      { internalOrderId, reportingCurrency: Not(IsNull()) },
+      {
+        reportingCurrency: null,
+        reportingTotalAmount: null,
+        exchangeRateId: null,
+        fxStampedAt: null,
+        fxIntendedCurrency: null,
+        fxRule: null,
+      }
+    );
+    return (result.affected ?? 0) > 0;
+  }
+
+  /**
+   * Remaining mismatched population in scope, split by terminal marker
+   * (#2468) — see the port's JSDoc for why the marker is the only evidence
+   * available and what a run's failure detail may therefore claim.
+   *
+   * `COUNT(*)::int` for the same reason
+   * {@link countStampedByReportingCurrency} needs it: node-postgres returns
+   * `bigint` as a string, which would leak into the ledger row's `detail` as
+   * concatenated text.
+   */
+  async countRemainingCurrencyMismatch(
+    filters: SalesAnalyticsFilters,
+    currentReportingCurrency: string
+  ): Promise<FxRestatementRemainingSummary> {
+    const qb = this.repository
+      .createQueryBuilder('rec')
+      .select('COUNT(*)::int', 'total')
+      .addSelect(
+        `COUNT(*) FILTER (WHERE rec."fxStampedAt" IS NOT NULL AND rec."reportingCurrency" IS NULL)::int`,
+        'terminal_marked'
+      )
+      .andWhere('rec."cancelledAt" IS NULL')
+      .andWhere(
+        '(rec."reportingCurrency" IS NULL OR rec."reportingCurrency" != :currentReportingCurrency)',
+        { currentReportingCurrency }
+      );
+
+    this.applySalesAnalyticsScope(qb, filters);
+
+    const raw = await qb.getRawOne<{ total: number | string; terminal_marked: number | string }>();
+    const total = Number(raw?.total ?? 0);
+    const terminalMarked = Number(raw?.terminal_marked ?? 0);
+    return { total, terminalMarked, pending: total - terminalMarked };
   }
 
   /**

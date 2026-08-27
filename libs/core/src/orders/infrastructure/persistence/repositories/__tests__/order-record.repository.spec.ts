@@ -602,6 +602,152 @@ describe('OrderRecordRepository', () => {
     });
   });
 
+  describe('currency restatement reads/writes (#2468)', () => {
+    const baseFilters = {
+      from: new Date('2026-08-01T00:00:00.000Z'),
+      to: new Date('2026-08-08T00:00:00.000Z'),
+    };
+
+    it('enumerates by keyset ASC on internalOrderId, never by offset', async () => {
+      // A cleared stamp still satisfies the mismatch predicate
+      // (`reportingCurrency IS NULL`), so an offset walk would re-read the same
+      // page forever. A strictly-increasing key can only move forward.
+      const andWhere = jest.fn().mockReturnThis();
+      const orderBy = jest.fn().mockReturnThis();
+      const limit = jest.fn().mockReturnThis();
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        select: jest.fn().mockReturnThis(),
+        addSelect: jest.fn().mockReturnThis(),
+        andWhere,
+        orderBy,
+        limit,
+        getRawMany: jest.fn().mockResolvedValue([]),
+      });
+
+      await repository.findCurrencyMismatchOrderRefsAfter(baseFilters, 'EUR', {
+        afterOrderId: 'ol_order_m',
+        limit: 200,
+      });
+
+      expect(orderBy).toHaveBeenCalledWith('rec."internalOrderId"', 'ASC');
+      expect(limit).toHaveBeenCalledWith(200);
+      expect(andWhere).toHaveBeenCalledWith('rec."internalOrderId" > :afterOrderId', {
+        afterOrderId: 'ol_order_m',
+      });
+      expect(andWhere).toHaveBeenCalledWith(
+        '(rec."reportingCurrency" IS NULL OR rec."reportingCurrency" != :currentReportingCurrency)',
+        { currentReportingCurrency: 'EUR' }
+      );
+    });
+
+    it('omits the keyset bound entirely on the first page', async () => {
+      const andWhere = jest.fn().mockReturnThis();
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        select: jest.fn().mockReturnThis(),
+        addSelect: jest.fn().mockReturnThis(),
+        andWhere,
+        orderBy: jest.fn().mockReturnThis(),
+        limit: jest.fn().mockReturnThis(),
+        getRawMany: jest.fn().mockResolvedValue([]),
+      });
+
+      await repository.findCurrencyMismatchOrderRefsAfter(baseFilters, 'EUR', {
+        afterOrderId: null,
+        limit: 50,
+      });
+
+      expect(andWhere).not.toHaveBeenCalledWith(
+        'rec."internalOrderId" > :afterOrderId',
+        expect.anything()
+      );
+    });
+
+    it('returns the id together with the connection the child job must carry', async () => {
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        select: jest.fn().mockReturnThis(),
+        addSelect: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        limit: jest.fn().mockReturnThis(),
+        getRawMany: jest
+          .fn()
+          .mockResolvedValue([{ internal_order_id: 'ol_order_a', source_connection_id: 'conn-a' }]),
+      });
+
+      await expect(
+        repository.findCurrencyMismatchOrderRefsAfter(baseFilters, 'EUR', {
+          afterOrderId: null,
+          limit: 50,
+        })
+      ).resolves.toEqual([{ internalOrderId: 'ol_order_a', sourceConnectionId: 'conn-a' }]);
+    });
+
+    it('clears exactly the six FX columns, guarded on the row still carrying a stamp', async () => {
+      // Every one of the six matters — see the port's JSDoc. `fxIntendedCurrency`
+      // is the subtle one: leaving it behind makes `resolveIntent` re-pin the
+      // stale currency and re-stamp it, so the bug looks fixed and is not.
+      (ormRepository.update as jest.Mock).mockResolvedValue({ affected: 1 });
+
+      await expect(repository.clearFxStampForRestatement('ol_order_a')).resolves.toBe(true);
+
+      const [where, patch] = (ormRepository.update as jest.Mock).mock.calls[0] as [
+        Record<string, unknown>,
+        Record<string, unknown>,
+      ];
+      expect(where).toMatchObject({ internalOrderId: 'ol_order_a' });
+      expect(where.reportingCurrency).toBeDefined();
+      expect(patch).toEqual({
+        reportingCurrency: null,
+        reportingTotalAmount: null,
+        exchangeRateId: null,
+        fxStampedAt: null,
+        fxIntendedCurrency: null,
+        fxRule: null,
+      });
+    });
+
+    it('reports false when the row was never stamped, so the clear is idempotent', async () => {
+      (ormRepository.update as jest.Mock).mockResolvedValue({ affected: 0 });
+
+      await expect(repository.clearFxStampForRestatement('ol_order_a')).resolves.toBe(false);
+    });
+
+    it('partitions the remaining population by the terminal marker', async () => {
+      const addSelect = jest.fn().mockReturnThis();
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        select: jest.fn().mockReturnThis(),
+        addSelect,
+        andWhere: jest.fn().mockReturnThis(),
+        getRawOne: jest.fn().mockResolvedValue({ total: 5, terminal_marked: 3 }),
+      });
+
+      await expect(
+        repository.countRemainingCurrencyMismatch(baseFilters, 'EUR')
+      ).resolves.toEqual({ total: 5, terminalMarked: 3, pending: 2 });
+
+      // `fxStampedAt IS NOT NULL AND reportingCurrency IS NULL` is the ONLY
+      // durable evidence of a terminal FX answer — the reason itself is never
+      // persisted.
+      expect(addSelect).toHaveBeenCalledWith(
+        expect.stringContaining('rec."fxStampedAt" IS NOT NULL AND rec."reportingCurrency" IS NULL'),
+        'terminal_marked'
+      );
+    });
+
+    it('coerces bigint-as-string counts so the failure detail cannot concatenate text', async () => {
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        select: jest.fn().mockReturnThis(),
+        addSelect: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        getRawOne: jest.fn().mockResolvedValue({ total: '4', terminal_marked: '1' }),
+      });
+
+      await expect(
+        repository.countRemainingCurrencyMismatch(baseFilters, 'EUR')
+      ).resolves.toEqual({ total: 4, terminalMarked: 1, pending: 3 });
+    });
+  });
+
   describe('findNetExcludedOrderCandidates (#2465)', () => {
     const baseFilters = {
       from: new Date('2026-08-01T00:00:00.000Z'),

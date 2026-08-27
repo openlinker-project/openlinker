@@ -15,6 +15,7 @@ import { MarketplaceOrderSyncHandler } from './marketplace-order-sync.handler';
 import { MarketplaceOrderFxStampHandler } from './marketplace-order-fx-stamp.handler';
 import { MarketplaceOrderFxStampSweepHandler } from './marketplace-order-fx-stamp-sweep.handler';
 import { OrdersTaxRateBackfillHandler } from './orders-tax-rate-backfill.handler';
+import { AnalyticsCurrencyRecalculateHandler } from './analytics-currency-recalculate.handler';
 import { MarketplaceOfferQuantityUpdateHandler } from './marketplace-offer-quantity-update.handler';
 import { MarketplaceOfferQuantityReconcileHandler } from './marketplace-offer-quantity-reconcile.handler';
 import { MarketplaceOfferFieldUpdateHandler } from './marketplace-offer-field-update.handler';
@@ -59,6 +60,7 @@ export class HandlerRegistrationService implements OnModuleInit {
     private readonly marketplaceOrderFxStampHandler: MarketplaceOrderFxStampHandler,
     private readonly marketplaceOrderFxStampSweepHandler: MarketplaceOrderFxStampSweepHandler,
     private readonly ordersTaxRateBackfillHandler: OrdersTaxRateBackfillHandler,
+    private readonly analyticsCurrencyRecalculateHandler: AnalyticsCurrencyRecalculateHandler,
     private readonly marketplaceOfferQuantityUpdateHandler: MarketplaceOfferQuantityUpdateHandler,
     private readonly marketplaceOfferQuantityReconcileHandler: MarketplaceOfferQuantityReconcileHandler,
     private readonly marketplaceOfferFieldUpdateHandler: MarketplaceOfferFieldUpdateHandler,
@@ -366,6 +368,16 @@ export class HandlerRegistrationService implements OnModuleInit {
     this.handlerRegistry.register(
       'orders.taxRate.backfill',
       this.ordersTaxRateBackfillHandler,
+      'bulk'
+    );
+
+    // Data Coverage currency-restatement driver (#2468). 'bulk' lane: an
+    // operator-triggered batch repair that must never delay a queued
+    // 'realtime' order sync or a 'fiscal' document — the same reasoning that
+    // puts the offer-publish waves and the master sweeps there (ADR-050).
+    this.handlerRegistry.register(
+      'analytics.currency.recalculate',
+      this.analyticsCurrencyRecalculateHandler,
       'bulk'
     );
 

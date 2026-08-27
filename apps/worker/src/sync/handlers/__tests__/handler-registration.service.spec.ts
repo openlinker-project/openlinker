@@ -3,14 +3,14 @@
  *
  * Pins the ADR-050 lane partition (#2278): every `JobTypeValues` member is
  * registered with exactly one lane, the per-lane counts match the ADR's
- * table (12 realtime / 18 bulk / 5 fiscal / 6 fan-out — `fiscalization.register`
+ * table (12 realtime / 19 bulk / 5 fiscal / 6 fan-out — `fiscalization.register`
  * joined `fiscal` post-ADR, #2156; `orders.taxRate.backfill` joined `bulk`,
  * #2440; the two sweep-triggered master children joined `bulk`, #2594;
  * `master.product.syncBatch` joined `bulk` as another catalogue-sweep child,
  * #2593; `master.inventory.syncBatch` joined `bulk` the same way, #2648;
  * #2609 changed no assignment at all; `marketplace.offerQuantity.reconcile`
- * joined `bulk`, #2621), and the consequential assignments the ADR calls out
- * cannot silently churn.
+ * joined `bulk`, #2621; `analytics.currency.recalculate` joined `bulk`, #2468),
+ * and the consequential assignments the ADR calls out cannot silently churn.
  *
  * @module apps/worker/src/sync/handlers
  */
@@ -41,14 +41,15 @@ describe('HandlerRegistrationService (ADR-050 lane partition, #2278)', () => {
     expect(() => registry.assertFullLaneCoverage()).not.toThrow();
   });
 
-  it('should partition the 41 job types 12/18/5/6 per ADR-050 decision 1', () => {
-    // 18 bulk: #2648's `master.inventory.syncBatch` and #2593's
+  it('should partition the 42 job types 12/19/5/6 per ADR-050 decision 1', () => {
+    // 19 bulk: #2648's `master.inventory.syncBatch` and #2593's
     // `master.product.syncBatch` sit beside the two sweep-triggered master
-    // children #2594 moved out of `realtime`, and #2621's
+    // children #2594 moved out of `realtime`, #2621's
     // `marketplace.offerQuantity.reconcile` joins the same lane as a
-    // scan-style pass over adapter-internal pending state.
+    // scan-style pass over adapter-internal pending state, and #2468 added
+    // the Data Coverage currency-restatement driver.
     expect(registry.getJobTypesByLane('realtime')).toHaveLength(12);
-    expect(registry.getJobTypesByLane('bulk')).toHaveLength(18);
+    expect(registry.getJobTypesByLane('bulk')).toHaveLength(19);
     expect(registry.getJobTypesByLane('fiscal')).toHaveLength(5);
     expect(registry.getJobTypesByLane('fan-out')).toHaveLength(6);
   });
@@ -85,6 +86,9 @@ describe('HandlerRegistrationService (ADR-050 lane partition, #2278)', () => {
     // replaces, so it carries the same starvation cost and the same lane (#2593).
     expect(registry.getLane('master.product.syncBatch')).toBe('bulk');
     expect(registry.getLane('master.product.syncByExternalId')).toBe('realtime');
+    // An operator-triggered batch repair must never delay a queued realtime
+    // order sync or a fiscal document (#2468).
+    expect(registry.getLane('analytics.currency.recalculate')).toBe('bulk');
     // Post-ADR registration joins fiscal (#2156).
     expect(registry.getLane('fiscalization.register')).toBe('fiscal');
     // The buyer-facing path stays realtime.
