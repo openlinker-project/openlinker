@@ -24,6 +24,7 @@ import type { SyncJobRepositoryPort } from '../../../domain/ports/sync-job-repos
 import { SyncJob } from '../../../domain/entities/sync-job.entity';
 import { InvalidSyncJobStateError } from '../../../domain/exceptions/invalid-sync-job-state.error';
 import { SyncJobNotFoundError } from '../../../domain/exceptions/sync-job-not-found.error';
+import type { ConnectionBacklogStats } from '../../../domain/types/connection-sync-status.types';
 import type {
   JobOutcome,
   JobOutcomeReason,
@@ -565,6 +566,84 @@ export class SyncJobRepository implements SyncJobRepositoryPort {
       requeuedJobIds,
       count: requeuedJobIds.length,
       skipped: candidateIds.length - requeuedJobIds.length,
+    };
+  }
+
+  async getConnectionBacklogStats(
+    connectionId: string,
+    windowStart: Date
+  ): Promise<ConnectionBacklogStats> {
+    // One round trip. Every figure is an aggregate over this connection's rows
+    // only, so the response size does not grow with the number of jobs - a
+    // 15 000-job backlog returns the same single row a 3-job one does. The
+    // scan is assisted by the existing (connectionId, createdAt) index.
+    //
+    // The duration average uses FILTER on IS NOT NULL, and the sample size is
+    // COUNT of the same non-null set (#2611): the column is null on every row
+    // predating its migration, and counting those as zero would understate
+    // every real duration. AVG already ignores nulls; the explicit FILTER on
+    // the count is what lets a caller see how thin the sample is.
+    const sql = `
+      SELECT
+        COUNT(*) FILTER (WHERE status = 'queued')::int AS queued_count,
+        COUNT(*) FILTER (WHERE status = 'running')::int AS running_count,
+        COUNT(*) FILTER (WHERE status = 'dead')::int AS dead_count,
+        COUNT(*) FILTER (WHERE "createdAt" >= $2)::int AS arrived_in_window,
+        COUNT(*) FILTER (
+          WHERE status IN ('succeeded', 'dead') AND "updatedAt" >= $2
+        )::int AS completed_in_window,
+        AVG("lastAttemptDurationMs") FILTER (
+          WHERE status IN ('succeeded', 'dead')
+            AND "updatedAt" >= $2
+            AND "lastAttemptDurationMs" IS NOT NULL
+        ) AS avg_attempt_duration_ms,
+        COUNT(*) FILTER (
+          WHERE status IN ('succeeded', 'dead')
+            AND "updatedAt" >= $2
+            AND "lastAttemptDurationMs" IS NOT NULL
+        )::int AS attempt_duration_sample_size,
+        MIN("createdAt") FILTER (WHERE status = 'queued') AS oldest_queued_at
+      FROM sync_jobs
+      WHERE "connectionId" = $1
+    `;
+
+    interface StatsRow {
+      queued_count: number;
+      running_count: number;
+      dead_count: number;
+      arrived_in_window: number;
+      completed_in_window: number;
+      // Postgres AVG over an integer column returns numeric, serialized as a string.
+      avg_attempt_duration_ms: string | null;
+      attempt_duration_sample_size: number;
+      oldest_queued_at: Date | null;
+    }
+
+    const rows = await this.dataSource.query<StatsRow[]>(sql, [connectionId, windowStart]);
+    const row = rows[0];
+    if (!row) {
+      return {
+        queuedCount: 0,
+        runningCount: 0,
+        deadCount: 0,
+        arrivedInWindow: 0,
+        completedInWindow: 0,
+        averageAttemptDurationMs: null,
+        attemptDurationSampleSize: 0,
+        oldestQueuedAt: null,
+      };
+    }
+
+    return {
+      queuedCount: row.queued_count,
+      runningCount: row.running_count,
+      deadCount: row.dead_count,
+      arrivedInWindow: row.arrived_in_window,
+      completedInWindow: row.completed_in_window,
+      averageAttemptDurationMs:
+        row.avg_attempt_duration_ms === null ? null : Number(row.avg_attempt_duration_ms),
+      attemptDurationSampleSize: row.attempt_duration_sample_size,
+      oldestQueuedAt: row.oldest_queued_at,
     };
   }
 

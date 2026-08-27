@@ -898,6 +898,73 @@ describe('SyncJobRepository', () => {
       expect(() => (repository as any).toDomain(ormEntity)).toThrow('Invalid sync job status');
     });
   });
+
+  describe('getConnectionBacklogStats', () => {
+    const connectionId = randomUUID();
+    const windowStart = new Date('2026-08-27T09:00:00.000Z');
+
+    it('should exclude rows with no recorded attempt duration from both the mean and its sample size', async () => {
+      dataSource.query = jest.fn().mockResolvedValue([
+        {
+          queued_count: 15066,
+          running_count: 2,
+          dead_count: 4,
+          arrived_in_window: 200,
+          completed_in_window: 55,
+          avg_attempt_duration_ms: '4200.5',
+          attempt_duration_sample_size: 40,
+          oldest_queued_at: new Date('2026-08-24T10:00:00.000Z'),
+        },
+      ]);
+
+      const result = await repository.getConnectionBacklogStats(connectionId, windowStart);
+
+      // 55 jobs completed, only 40 carried a duration - the sample size is the
+      // non-null count, never the completed count.
+      expect(result.attemptDurationSampleSize).toBe(40);
+      expect(result.averageAttemptDurationMs).toBe(4200.5);
+
+      const [sql] = (dataSource.query as jest.Mock).mock.calls[0] as [string, unknown[]];
+      expect(sql).toContain('AVG("lastAttemptDurationMs") FILTER (');
+      expect(sql).toContain('"lastAttemptDurationMs" IS NOT NULL');
+      // No SUM anywhere: the column describes one attempt, so a total time
+      // spent syncing must not be derivable from this read.
+      expect(sql).not.toContain('SUM("lastAttemptDurationMs")');
+    });
+
+    it('should report a null mean rather than zero when no row carried a duration', async () => {
+      dataSource.query = jest.fn().mockResolvedValue([
+        {
+          queued_count: 0,
+          running_count: 0,
+          dead_count: 0,
+          arrived_in_window: 0,
+          completed_in_window: 3,
+          avg_attempt_duration_ms: null,
+          attempt_duration_sample_size: 0,
+          oldest_queued_at: null,
+        },
+      ]);
+
+      const result = await repository.getConnectionBacklogStats(connectionId, windowStart);
+
+      expect(result.averageAttemptDurationMs).toBeNull();
+      expect(result.attemptDurationSampleSize).toBe(0);
+    });
+
+    it('should read every figure in one round trip scoped to the connection', async () => {
+      dataSource.query = jest.fn().mockResolvedValue([]);
+
+      const result = await repository.getConnectionBacklogStats(connectionId, windowStart);
+
+      expect(dataSource.query).toHaveBeenCalledTimes(1);
+      const [, params] = (dataSource.query as jest.Mock).mock.calls[0] as [string, unknown[]];
+      expect(params).toEqual([connectionId, windowStart]);
+      expect(result.queuedCount).toBe(0);
+      expect(result.oldestQueuedAt).toBeNull();
+    });
+  });
+
 });
 
 /**

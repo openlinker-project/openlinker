@@ -30,4 +30,13 @@ export interface ISyncCursorsService {
    * themselves before calling this method.
    */
   advanceCursor(connectionId: string, cursorKey: string, value: string): Promise<void>;
+
+  /**
+   * When any of this connection's cursors last advanced, or null when it
+   * holds none (#2615).
+   *
+   * A connection with no cursor is not a fault: a webhook-fed connection
+   * legitimately never keeps one, so a consumer must not read null as stale.
+   */
+  getMostRecentCursorUpdate(connectionId: string): Promise<Date | null>;
 }
