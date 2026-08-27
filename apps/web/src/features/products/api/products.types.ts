@@ -43,6 +43,13 @@ export interface ProductVariant {
   createdAt: string;
   updatedAt: string;
   externalIds?: ExternalIdMapping[];
+  /**
+   * Whether this variant was deleted at the master (#1599) — absent from the
+   * master catalog, or the product itself 404s. Its offers are auto-paused.
+   */
+  isStale: boolean;
+  /** Timestamp of the most recent stale-marking; null while the variant is live. */
+  staleAt: string | null;
 }
 
 export interface Product {
@@ -95,6 +102,12 @@ export interface Product {
   stockUpdatedAt?: string | null;
   variantCount?: number;
   listingsCoverage?: ProductListingsCoverage[];
+  /**
+   * Number of the product's variants deleted at the master (#1599, list only).
+   * Compare against `variantCount` to tell "some deleted" apart from "all
+   * deleted" (#2447).
+   */
+  staleVariantCount?: number;
 }
 
 /** Per-connection listed-variant count for the cockpit Listings column (#1720). */
@@ -123,6 +136,8 @@ export interface ProductFilters {
    * apart is what stops day one reading as a catalogue-wide failure.
    */
   taxRateState?: 'missing' | 'not-checked' | 'known';
+  /** Hide products where every variant is deleted at the master (#1599/#2447). */
+  hideFullyStale?: boolean;
 }
 
 /**
@@ -183,4 +198,8 @@ export interface ProductVariantSummary {
   ean: string | null;
   /** Display label assembled from variant attributes (e.g. "Red / 42"). */
   name?: string;
+  /** Whether this variant was deleted at the master (#1599). */
+  isStale: boolean;
+  /** Timestamp of the most recent stale-marking; null while the variant is live. */
+  staleAt: string | null;
 }
