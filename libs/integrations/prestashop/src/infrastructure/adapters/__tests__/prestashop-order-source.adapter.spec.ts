@@ -70,9 +70,8 @@ function serveOrderStates(client: jest.Mocked<IPrestashopWebserviceClient>): voi
  * Assertions on how many pages the adapter fetched count only the rest.
  */
 function listCallsExcludingStates(client: jest.Mocked<IPrestashopWebserviceClient>): unknown[][] {
-  return (client.listResources as unknown as jest.Mock).mock.calls.filter(
-    (call) => call[0] !== 'order_states'
-  );
+  const calls = (client.listResources as unknown as jest.Mock<unknown, unknown[]>).mock.calls;
+  return calls.filter((call) => call[0] !== 'order_states');
 }
 
 describe('PrestashopOrderSourceAdapter', () => {

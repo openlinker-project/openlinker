@@ -190,9 +190,8 @@ export function createOrderProcessorManagerHarness(): OrderProcessorHarness {
       // A spec that scripts its own states wins; otherwise the default install
       // stands in, so a spec scripting an unrelated resource does not starve
       // the state read.
-      return Array.isArray(answer) && answer.length > 0
-        ? answer
-        : [...DEFAULT_INSTALL_ORDER_STATES];
+      const scripted: unknown[] = Array.isArray(answer) ? (answer as unknown[]) : [];
+      return scripted.length > 0 ? scripted : [...DEFAULT_INSTALL_ORDER_STATES];
     }) as unknown as jest.Mock;
 
   let listResources = serveOrderStates(
