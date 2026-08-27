@@ -40,6 +40,15 @@ export interface PrestashopQueryFilters {
   custom?: Record<string, string | number | (string | number)[]>;
 
   /**
+   * Result ordering.
+   *
+   * Absent means "whatever order MySQL happens to return", which is not a
+   * stable basis for offset paging: a row written mid-cycle can shift the
+   * offsets and make a resumable sweep step over a product it never read.
+   */
+  sort?: PrestashopSort;
+
+  /**
    * Field selection override.
    *
    * Defaults to `'full'`. Set to `'[id]'` (or another PrestaShop display clause)
@@ -47,6 +56,27 @@ export interface PrestashopQueryFilters {
    * initial catalog discovery fan-out.
    */
   display?: string;
+}
+
+/**
+ * Sortable columns, as a closed union rather than a runtime allow-list.
+ *
+ * A caller naming a column the resource does not have gets a PrestaShop 400,
+ * so the check has to exist; making it a type puts it at compile time, where a
+ * sweep cannot ship a typo. `date_upd` is here because the incremental and
+ * resumable catalogue passes order on it.
+ */
+export const PrestashopSortFieldValues = [
+  'id',
+  'date_upd',
+  'date_add',
+  'reference',
+] as const;
+export type PrestashopSortField = (typeof PrestashopSortFieldValues)[number];
+
+export interface PrestashopSort {
+  field: PrestashopSortField;
+  direction: 'ASC' | 'DESC';
 }
 
 /**
@@ -95,10 +125,19 @@ export class PrestashopQueryBuilder {
       params.push('date=1');
     }
 
-    // ID filters
+    // ID filters.
+    //
+    // Pipe-joined, never comma-joined: PrestaShop reads `[1,9]` as the RANGE
+    // 1 to 9 and `[1|9]` as the OR list of exactly those two. A comma here
+    // returned every id between the lowest and highest requested one, which on
+    // a page of ids sampled from a large catalogue is most of the catalogue.
     if (filters?.ids && filters.ids.length > 0) {
-      const idsParam = filters.ids.map(String).join(',');
+      const idsParam = filters.ids.map(String).join('|');
       params.push(`filter[id]=[${idsParam}]`);
+    }
+
+    if (filters?.sort) {
+      params.push(`sort=[${filters.sort.field}_${filters.sort.direction}]`);
     }
 
     // Date range filters

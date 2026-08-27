@@ -60,6 +60,7 @@ export const JOB_TYPE_VALUES = [
   'master.product.syncDelta', // Internal job — not user-triggerable; listed here so an operator can filter the incremental pass (#2220).
   'master.product.reconcile', // Internal job — not user-triggerable; listed here so an operator can filter the deletion-reconciliation pass (#2222).
   'master.product.syncByExternalId',
+  'master.product.syncBatch', // Internal job - not user-triggerable; listed here so an operator can filter the batched catalogue pass (#2593).
   'master.inventory.syncAll',
   'master.inventory.syncByExternalId',
   'master.variants.autoMatch',

@@ -58,7 +58,21 @@ describe('PrestashopQueryBuilder', () => {
         ids: [1, 2, 3],
       };
       const query = PrestashopQueryBuilder.buildQuery('products', filters);
-      expect(query).toContain('filter[id]=[1,2,3]');
+      // Pipe, not comma: PrestaShop reads `[1,3]` as the RANGE 1 to 3 and
+      // `[1|3]` as the OR list of exactly those ids (#2593).
+      expect(query).toContain('filter[id]=[1|2|3]');
+    });
+
+    it('should emit an ordering when one is asked for', () => {
+      const query = PrestashopQueryBuilder.buildQuery('products', {
+        sort: { field: 'date_upd', direction: 'DESC' },
+      });
+      expect(query).toContain('sort=[date_upd_DESC]');
+    });
+
+    it('should emit no ordering by default', () => {
+      const query = PrestashopQueryBuilder.buildQuery('products', {});
+      expect(query).not.toContain('sort=');
     });
 
     it('should handle status filters', () => {

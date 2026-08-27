@@ -38,6 +38,12 @@ export const JobTypeValues = [
   'marketplace.shipment.syncByExternalId',
   'marketplace.fulfillment.statusSync',
   'master.product.syncByExternalId',
+  // Batched catalogue read (#2593, ADR-048). One job, one page of products, one
+  // adapter instance - so a master declaring the bulk-read rung hydrates the
+  // page in a handful of requests instead of a handful per product. Same work
+  // per product as `master.product.syncByExternalId`, which remains the
+  // fallback for a failed page member and the deletion-reconcile child.
+  'master.product.syncBatch',
   'master.product.syncAll',
   // Incremental catalog pass (#2220, ADR-048). Opt-in; complements rather than
   // replaces `syncAll`, which remains the reconciliation/bootstrap path.

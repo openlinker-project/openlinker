@@ -3,7 +3,10 @@
  *
  * Handles jobs of type 'master.product.syncAll'. Enumerates external product IDs
  * from the source platform via ProductMasterPort.listExternalIds and fans out
- * per-product 'master.product.syncByExternalId' sub-jobs. This is the catalog
+ * 'master.product.syncBatch' sub-jobs, each covering a page of products (#2593 -
+ * it used to fan out one 'master.product.syncByExternalId' per product, which
+ * built a fresh adapter instance per product and so could never share a bulk
+ * read). This is the catalog
  * discovery path — the mechanism by which OpenLinker learns about products that
  * exist on a freshly connected source platform but have no identifier mapping yet.
  *
@@ -55,8 +58,11 @@ import {
 import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 import type { ProductMasterPort } from '@openlinker/core/products';
 import { Logger } from '@openlinker/shared/logging';
-import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
 import {
+  BATCHED_SWEEP_BUDGET_DEFAULT,
+  BATCHED_SWEEP_BUDGET_MAX,
+  SWEEP_BATCH_SIZE_DEFAULT,
+  SWEEP_BATCH_SIZE_MAX,
   formatSweepCursor,
   parseSweepCursor,
   readPagedIds,
@@ -96,7 +102,11 @@ export class MasterProductSyncAllHandler implements SyncJobHandler {
   ) {}
 
   async execute(job: SyncJob): Promise<SyncJobHandlerResult> {
-    const budget = resolveSweepBudget(this.getPayload(job).pageLimit);
+    const budget = resolveSweepBudget(
+      this.getPayload(job).pageLimit ?? this.getConfiguredBudget(),
+      { default: BATCHED_SWEEP_BUDGET_DEFAULT, max: BATCHED_SWEEP_BUDGET_MAX }
+    );
+    const batchSize = this.getBatchSize();
     const lockKey = sweepLockKey('product', job.connectionId);
     const lockTtlMs = resolveSweepLockTtlMs(
       this.configService.get<string>('OL_MASTER_SWEEP_LOCK_TTL_MS')
@@ -130,7 +140,8 @@ export class MasterProductSyncAllHandler implements SyncJobHandler {
             pageBudget,
             this.getPageSize()
           ),
-        enqueue: (externalId, cycleId) => this.enqueueChild(job, externalId, cycleId),
+        groupSize: batchSize,
+        enqueue: (externalIds, cycleId) => this.enqueueChild(job, externalIds, cycleId),
         newCycleId: () => randomUUID(),
       });
 
@@ -178,21 +189,34 @@ export class MasterProductSyncAllHandler implements SyncJobHandler {
     }
   }
 
-  private async enqueueChild(job: SyncJob, externalId: string, cycleId: string): Promise<unknown> {
+  /**
+   * Enqueue one child covering a whole batch of products (#2593).
+   *
+   * The child is `master.product.syncBatch`, not one
+   * `master.product.syncByExternalId` per id: a per-product child builds its own
+   * adapter instance, so it cannot benefit from a bulk read no matter how cheap
+   * the read is. The per-product job survives as the fallback for a failed batch
+   * member and as the deletion-reconcile child.
+   */
+  private async enqueueChild(
+    job: SyncJob,
+    externalIds: readonly string[],
+    cycleId: string
+  ): Promise<unknown> {
     const jobRequest: SyncJobRequest = {
-      jobType: 'master.product.syncByExternalId',
+      jobType: 'master.product.syncBatch',
       connectionId: job.connectionId,
       payload: {
         schemaVersion: 1,
-        externalId,
-        objectType: CORE_ENTITY_TYPE.Product,
+        externalIds: [...externalIds],
       },
-      // Keyed on the CYCLE, not on `job.id`. A resuming tick is a different job,
-      // so a job-scoped key would re-enqueue the same child under a fresh key on
-      // every overlapping page (#2039's `reconcileId` lesson: a job id is not a
-      // run identity). Cycle-scoping also makes a crash between enqueue and
-      // cursor write safe — the retry produces identical keys.
-      idempotencyKey: `master:${job.connectionId}:product:sync:${externalId}:${cycleId}`,
+      // Keyed on the CYCLE and on the batch's FIRST id. A resuming tick is a
+      // different job, so a job-scoped key would re-enqueue the same child under
+      // a fresh key on every overlapping page (#2039's `reconcileId` lesson: a
+      // job id is not a run identity). Cycle-scoping also makes a crash between
+      // enqueue and cursor write safe - the retry produces identical keys, since
+      // the same offset yields the same batch boundaries.
+      idempotencyKey: `master:${job.connectionId}:product:syncBatch:${externalIds[0]}:${cycleId}`,
     };
     return this.jobEnqueue.enqueueJob(jobRequest);
   }
@@ -211,6 +235,30 @@ export class MasterProductSyncAllHandler implements SyncJobHandler {
       pageLimit:
         payload && typeof payload.pageLimit === 'number' ? payload.pageLimit : undefined,
     };
+  }
+
+  /**
+   * Items per run, overridable without a payload edit.
+   *
+   * An explicit payload `pageLimit` still wins - the scheduler descriptor is the
+   * narrower statement.
+   */
+  private getConfiguredBudget(): number | undefined {
+    const raw = this.configService.get<string>('OL_PRODUCT_SYNC_PAGE_LIMIT');
+    if (raw === undefined) return undefined;
+    const parsed = Number(raw);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+  }
+
+  /** Products per batch child, clamped to PrestaShop's own collection page. */
+  private getBatchSize(): number {
+    const raw = this.configService.get<string>(
+      'OL_PRODUCT_SYNC_BATCH_SIZE',
+      String(SWEEP_BATCH_SIZE_DEFAULT)
+    );
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed) || parsed <= 0) return SWEEP_BATCH_SIZE_DEFAULT;
+    return Math.min(Math.floor(parsed), SWEEP_BATCH_SIZE_MAX);
   }
 
   private getPageSize(): number {

@@ -123,7 +123,8 @@ export class MasterProductReconcileHandler implements SyncJobHandler {
             offset,
             pageBudget
           ),
-        enqueue: (externalId, cycleId) => this.enqueueChild(job, externalId, cycleId),
+        // One id per child: this sweep keeps the per-item fan-out.
+        enqueue: (externalIds, cycleId) => this.enqueueChild(job, externalIds[0], cycleId),
         newCycleId: () => randomUUID(),
       });
 

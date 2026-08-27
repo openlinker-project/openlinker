@@ -29,6 +29,7 @@ import { MarketplaceShipmentStatusSyncHandler } from './marketplace-shipment-sta
 import { MarketplaceShipmentSyncByExternalIdHandler } from './marketplace-shipment-sync-by-external-id.handler';
 import { MarketplaceFulfillmentStatusSyncHandler } from './marketplace-fulfillment-status-sync.handler';
 import { MasterProductSyncHandler } from './master-product-sync.handler';
+import { MasterProductSyncBatchHandler } from './master-product-sync-batch.handler';
 import { MasterInventorySyncHandler } from './master-inventory-sync.handler';
 import { AutoMatchVariantsHandler } from './auto-match-variants.handler';
 import { MasterInventorySyncAllHandler } from './master-inventory-sync-all.handler';
@@ -70,6 +71,7 @@ export class HandlerRegistrationService implements OnModuleInit {
     private readonly marketplaceShipmentSyncByExternalIdHandler: MarketplaceShipmentSyncByExternalIdHandler,
     private readonly marketplaceFulfillmentStatusSyncHandler: MarketplaceFulfillmentStatusSyncHandler,
     private readonly masterProductSyncHandler: MasterProductSyncHandler,
+    private readonly masterProductSyncBatchHandler: MasterProductSyncBatchHandler,
     private readonly masterInventorySyncHandler: MasterInventorySyncHandler,
     private readonly autoMatchVariantsHandler: AutoMatchVariantsHandler,
     private readonly masterInventorySyncAllHandler: MasterInventorySyncAllHandler,
@@ -209,6 +211,15 @@ export class HandlerRegistrationService implements OnModuleInit {
       'master.inventory.syncAll',
       this.masterInventorySyncAllHandler,
       'fan-out'
+    );
+
+    // Batched catalogue read (#2593). `realtime`, matching the per-product job it
+    // replaces on the sweep path: the work is identical, so a different lane
+    // would change which starvation cost ADR-050 assigned it.
+    this.handlerRegistry.register(
+      'master.product.syncBatch',
+      this.masterProductSyncBatchHandler,
+      'realtime'
     );
 
     // Register master product sync all handler (catalog discovery / periodic full sync)

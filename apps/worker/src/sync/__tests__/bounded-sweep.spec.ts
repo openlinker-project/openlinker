@@ -106,7 +106,7 @@ describe('runBoundedSweep', () => {
     expect(result.cycleId).toBe(CYCLE);
     expect(result.enqueued).toBe(3);
     expect(result.nextCursor).toEqual({ cycleId: CYCLE, offset: 3 });
-    expect(enqueue).toHaveBeenCalledWith('a', CYCLE);
+    expect(enqueue).toHaveBeenCalledWith(['a'], CYCLE);
   });
 
   it('should resume from the stored offset and keep the same cycle id', async () => {
@@ -190,6 +190,44 @@ describe('runBoundedSweep', () => {
 
     expect(result.completed).toBe(false);
     expect(result.nextCursor).toEqual({ cycleId: CYCLE, offset: 0 });
+  });
+
+  it('should cut a page into groups of groupSize and report groups as enqueued (#2593)', async () => {
+    const enqueue = jest.fn().mockResolvedValue(undefined);
+
+    const result = await runBoundedSweep({
+      cursor: null,
+      budget: 10,
+      readPage: () => Promise.resolve({ items: ['a', 'b', 'c', 'd', 'e'], consumed: 5, exhausted: true }),
+      groupSize: 2,
+      enqueue,
+      newCycleId: () => CYCLE,
+    });
+
+    expect(enqueue.mock.calls.map((call) => call[0])).toEqual([['a', 'b'], ['c', 'd'], ['e']]);
+    // `enqueued` counts children, i.e. groups.
+    expect(result.enqueued).toBe(3);
+    expect(result.completed).toBe(true);
+  });
+
+  it('should hold the cursor when one group of several fails (#2593)', async () => {
+    const enqueue = jest
+      .fn()
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new Error('down'));
+
+    const result = await runBoundedSweep({
+      cursor: { cycleId: CYCLE, offset: 40 },
+      budget: 10,
+      readPage: () => Promise.resolve({ items: ['a', 'b', 'c', 'd'], consumed: 4, exhausted: false }),
+      groupSize: 2,
+      enqueue,
+      newCycleId: () => 'unused',
+    });
+
+    expect(result.failed).toBe(1);
+    expect(result.nextCursor).toEqual({ cycleId: CYCLE, offset: 40 });
+    expect(result.completed).toBe(false);
   });
 
   it('should re-enqueue under the same cycle id after a crash between enqueue and cursor write', async () => {

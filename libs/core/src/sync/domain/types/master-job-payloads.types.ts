@@ -12,6 +12,19 @@ export interface MasterProductSyncByExternalIdPayloadV1 {
   objectType: 'Product';
 }
 
+/**
+ * One page of products to sync through a single adapter instance (#2593).
+ *
+ * The ids are the MASTER's own external ids, exactly as the sweep enumerated
+ * them, so nothing has to be resolved before the batch runs. The list is the
+ * work: a handler reading an empty one must refuse rather than report a healthy
+ * sync of nothing.
+ */
+export interface MasterProductSyncBatchPayloadV1 {
+  schemaVersion: 1;
+  externalIds: string[];
+}
+
 export interface MasterInventorySyncByExternalIdPayloadV1 {
   schemaVersion: 1;
   externalId: string;
