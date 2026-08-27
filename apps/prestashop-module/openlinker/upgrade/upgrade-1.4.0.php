@@ -26,7 +26,7 @@ function upgrade_module_1_4_0($module)
     $table = _DB_PREFIX_ . 'openlinker_webhook_outbox';
     $db = Db::getInstance();
 
-    $indexes = $db->executeS('SHOW INDEX FROM `' . bqSQL($table) . '` WHERE Key_name = "status_updated"');
+    $indexes = $db->executeS('SHOW INDEX FROM `' . bqSQL($table) . '` WHERE Key_name = \'status_updated\'');
     if (empty($indexes)) {
         // Without this, the hourly "is there anything to prune" probe is a full
         // table scan on exactly the tables that are already too big.

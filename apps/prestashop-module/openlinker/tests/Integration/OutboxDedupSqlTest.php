@@ -185,6 +185,27 @@ final class OutboxDedupSqlTest extends TestCase
         $this->assertNotEmpty(PrestaShopLogger::$logs);
     }
 
+    public function testDeliveryLegStillReachesATerminalStateWithoutTheDedupKeyColumn(): void
+    {
+        // Without this, markDelivered fails with error 1054, the row stays
+        // processing, and it is requeued as stale and redelivered forever - and
+        // retention only prunes terminal rows, so the table grows unbounded.
+        self::$pdo->exec('ALTER TABLE `' . self::TABLE . '` DROP INDEX `dedup_key`');
+        self::$pdo->exec('ALTER TABLE `' . self::TABLE . '` DROP COLUMN `dedup_key`');
+
+        $repository = new OutboxRepository();
+        $delivered = $repository->enqueueEvent($this->eventData('23'));
+        $failed = $repository->enqueueEvent($this->eventData('24'));
+
+        $repository->claimBatchDueForDelivery(10, 'run-1');
+
+        $this->assertTrue($repository->markDelivered($delivered));
+        $this->assertSame('delivered', $this->statusOf($delivered));
+
+        $this->assertTrue($repository->markFailed($failed, 'endpoint gone'));
+        $this->assertSame('failed', $this->statusOf($failed));
+    }
+
     // Helpers
 
     private function enqueueProductSaved(

@@ -435,9 +435,12 @@ class OutboxRepository
     {
         // The key is normally already NULL, released at claim time. Kept here as
         // a backstop for any row that reaches delivered without being claimed.
+        // Guarded: on an install where the upgrade never added the column, an
+        // unguarded write here fails with error 1054, the row never reaches a
+        // terminal state, and it is requeued as stale and redelivered forever.
         $sql = 'UPDATE `' . $this->tableName . '`
                 SET `status` = "delivered",
-                    `dedup_key` = NULL,
+                    ' . ($this->hasDedupKeyColumn() ? '`dedup_key` = NULL,' : '') . '
                     `processing_owner` = NULL,
                     `processing_started_at` = NULL,
                     `delivered_at` = NOW(),
@@ -511,10 +514,12 @@ class OutboxRepository
         $truncatedError = mb_substr($errorMessage, 0, 1000, 'UTF-8');
 
         // A failed row is terminal, so it must not keep holding the
-        // coalescing key hostage against future changes (#2603).
+        // coalescing key hostage against future changes (#2603). Guarded for the
+        // same reason as markDelivered: a missing column must not block the row
+        // from reaching a terminal state.
         $sql = 'UPDATE `' . $this->tableName . '`
                 SET `status` = "failed",
-                    `dedup_key` = NULL,
+                    ' . ($this->hasDedupKeyColumn() ? '`dedup_key` = NULL,' : '') . '
                     `processing_owner` = NULL,
                     `processing_started_at` = NULL,
                     `last_error` = "' . pSQL($truncatedError) . '",
