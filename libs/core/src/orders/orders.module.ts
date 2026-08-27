@@ -14,6 +14,7 @@ import { OrderItemRefResolverService } from './application/services/order-item-r
 import { OrderRecordService } from './application/services/order-record.service';
 import { SalesDocumentViewService } from './application/services/sales-document-view.service';
 import { OrderFxStampService } from './application/services/order-fx-stamp.service';
+import { OrderFxRestatementService } from './application/services/order-fx-restatement.service';
 import { OrderFxReadService } from './application/services/order-fx-read.service';
 import { OrderDestinationRetryService } from './application/services/order-destination-retry.service';
 import { OrderProvisioningResumeService } from './application/services/order-provisioning-resume.service';
@@ -34,6 +35,7 @@ import {
   ORDER_INGESTION_SERVICE_TOKEN,
   ORDER_RECORD_REPOSITORY_TOKEN,
   ORDER_RECORD_SERVICE_TOKEN,
+  ORDER_FX_RESTATEMENT_SERVICE_TOKEN,
   ORDER_FX_STAMP_SERVICE_TOKEN,
   ORDER_DESTINATION_RETRY_SERVICE_TOKEN,
   ORDER_PROVISIONING_RESUME_SERVICE_TOKEN,
@@ -128,6 +130,7 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     OrderRecordService,
     SalesDocumentViewService,
     OrderFxStampService,
+    OrderFxRestatementService,
     OrderDestinationRetryService,
     OrderProvisioningResumeService,
     OrderLifecycleRelayService,
@@ -160,6 +163,10 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     {
       provide: ORDER_FX_STAMP_SERVICE_TOKEN,
       useExisting: OrderFxStampService,
+    },
+    {
+      provide: ORDER_FX_RESTATEMENT_SERVICE_TOKEN,
+      useExisting: OrderFxRestatementService,
     },
     {
       provide: ORDER_DESTINATION_RETRY_SERVICE_TOKEN,
@@ -228,6 +235,7 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     // Exported so the worker's `marketplace.order.fxStamp` + `.fxStampSweep`
     // handlers can inject the stamp seam (#2125).
     ORDER_FX_STAMP_SERVICE_TOKEN,
+    ORDER_FX_RESTATEMENT_SERVICE_TOKEN,
     ORDER_DESTINATION_RETRY_SERVICE_TOKEN,
     ORDER_PROVISIONING_RESUME_SERVICE_TOKEN,
     ORDER_LIFECYCLE_RELAY_SERVICE_TOKEN,
