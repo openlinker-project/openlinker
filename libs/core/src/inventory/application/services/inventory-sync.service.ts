@@ -219,7 +219,11 @@ export class InventorySyncService implements IInventorySyncService {
       const succeededIds = new Set(batchResult.succeeded);
       for (const entry of guarded) {
         if (succeededIds.has(entry.offerId)) {
-          await this.syncCursors.advanceCursor(connectionId, entry.cursorKey, entry.observedAt);
+          await this.syncCursors.advanceCursorIfNewer(
+            connectionId,
+            entry.cursorKey,
+            entry.observedAt
+          );
         }
       }
 
@@ -239,13 +243,16 @@ export class InventorySyncService implements IInventorySyncService {
    *
    * Order matters twice, so both are handled here. The lock makes read-compare-
    * write atomic and keeps a single marketplace call in flight per offer; the
-   * mark decides which of two writes is allowed through. `advanceCursor` is a
-   * plain set rather than a compare-and-set, so the lock is what makes the mark
-   * itself monotonic - it is load-bearing for the mark, not only for ordering
-   * the marketplace calls. The mark advances only
-   * AFTER a successful write, so a refusal always means a strictly newer
-   * quantity is already live on the channel - a failed newer write cannot lock
-   * an older one out.
+   * mark decides which of two writes is allowed through.
+   *
+   * The mark is advanced with `advanceCursorIfNewer`, a compare-and-set, so
+   * monotonicity does not depend on the lock surviving the marketplace call. A
+   * call that outran the 30 s TTL used to be able to set the mark BACK to its
+   * own older observation after a peer had already written a newer quantity,
+   * which then admitted a stale write behind it - the exact defect this guard
+   * exists to prevent. The mark still advances only AFTER a successful write,
+   * so a refusal always means a strictly newer quantity is already live on the
+   * channel.
    */
   private async writeOne(
     connectionId: string,
@@ -292,7 +299,20 @@ export class InventorySyncService implements IInventorySyncService {
       }
 
       await marketplace.updateOfferQuantity(item);
-      await this.syncCursors.advanceCursor(connectionId, cursorKey, observedAt);
+      const advanced = await this.syncCursors.advanceCursorIfNewer(
+        connectionId,
+        cursorKey,
+        observedAt
+      );
+      if (!advanced) {
+        // A peer wrote a newer quantity while this call was in flight, so the
+        // lock had expired. The write itself is done; the mark must stay where
+        // the newer observation put it.
+        this.logger.warn(
+          `offer_quantity_mark_not_moved connection=${connectionId} offer=${item.offerId} ` +
+            `observed=${observedAt}: a newer observation is already marked`
+        );
+      }
       result.succeeded.push(item.offerId);
     } finally {
       await this.syncLock.release(lockKey, token);

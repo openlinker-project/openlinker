@@ -201,7 +201,11 @@ Propagation is **event-paced**: one job per changed stock row, thousands per swe
 **Consequence for the out-of-order quantity-write guard (#2617).** More propagation in flight means
 more often two writes for one offer, so the guard fires more. It still holds: it takes a per-(connection,
 offer) lock, compares the quoted observation against the mark, and advances the mark only after a
-successful write, so a refusal always means a strictly newer quantity is already live. The **ceiling**
+successful write, so a refusal always means a strictly newer quantity is already live. That advance is
+a **compare-and-set** (`ISyncCursorsService.advanceCursorIfNewer`, one `ON CONFLICT ... WHERE` statement),
+so monotonicity does not depend on the 30 s write lock surviving the marketplace call: a call that
+outran its TTL could otherwise set the mark BACK to its own older observation after a peer had written
+a newer quantity, and admit a stale write behind it - the very defect the guard exists to prevent. The **ceiling**
 on concurrent writes to one offer is unchanged, because `realtime`'s per-scope cap was not raised -
 what changes is frequency. What that frequency exposes is the guard's known cost: a contended write is
 reported as a failure, so it consumes a retry attempt and could eventually dead-letter under sustained

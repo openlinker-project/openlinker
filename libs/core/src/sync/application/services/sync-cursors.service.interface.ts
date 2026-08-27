@@ -32,6 +32,20 @@ export interface ISyncCursorsService {
   advanceCursor(connectionId: string, cursorKey: string, value: string): Promise<void>;
 
   /**
+   * Advance the cursor only when `value` sorts strictly after the stored one.
+   *
+   * The monotonic counterpart to `advanceCursor`, for a cursor read as a
+   * freshness MARK: one statement decides, so a caller that lost its lock
+   * cannot move the mark backwards and admit a stale write behind it.
+   *
+   * PRECONDITION: values sort chronologically as text - ISO-8601 UTC
+   * timestamps. The comparison is textual and never throws.
+   *
+   * @returns true when the mark moved, false when it was already at or ahead
+   */
+  advanceCursorIfNewer(connectionId: string, cursorKey: string, value: string): Promise<boolean>;
+
+  /**
    * When any of this connection's cursors last advanced, or null when it
    * holds none (#2615).
    *
