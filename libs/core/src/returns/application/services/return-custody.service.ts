@@ -48,6 +48,7 @@ import { Logger } from '@openlinker/shared/logging';
 import {
   applyReturnCustodyDisposition,
   applyReturnCustodyReceipt,
+  markReturnCustodyNotReturned,
 } from '../../domain/domain-services/return-custody-transitions.domain-service';
 import {
   blockedBeforeMaster,
@@ -74,9 +75,12 @@ import type {
   DisposeLineInput,
   DisposeLineResult,
   IReturnCustodyService,
+  MarkNotReturnedInput,
+  MarkNotReturnedResult,
   ReceiveLineInput,
   ReceiveLineResult,
   RestockBlockedDetail,
+  ReturnRestockTarget,
 } from './return-custody.service.interface';
 
 @Injectable()
@@ -111,6 +115,49 @@ export class ReturnCustodyService implements IReturnCustodyService {
           quantity: input.quantity,
           disposition: null,
           // A receipt never had a book write to make.
+          restockState: 'not_applicable' as const,
+          restockBlockedReason: null,
+          restockBlockedDetail: null,
+          restockedBy: null,
+          masterConnectionId: null,
+          note: input.note ?? null,
+          actorUserId: input.actorUserId ?? null,
+          occurredAt: at,
+          attestedByEventId: null,
+        },
+        outcome,
+        disposition: null,
+        result: null,
+      };
+    });
+
+    return { line: await this.requireLine(lineId), event };
+  }
+
+  async markLineNotReturned(
+    lineId: string,
+    input: MarkNotReturnedInput
+  ): Promise<MarkNotReturnedResult> {
+    const at = new Date();
+
+    const { event } = await this.repository.runLineWrite(lineId, ({ line }) => {
+      // Computed from the LOCKED row: a receipt landing between an unlocked
+      // read and this write is exactly the case the rule refuses, and reading
+      // it here is what makes that refusal reliable rather than advisory.
+      const outcome = markReturnCustodyNotReturned(line);
+
+      return {
+        event: {
+          returnId: line.returnId,
+          returnLineId: line.id,
+          kind: 'not_returned' as const,
+          // The shortfall — and with nothing received (the rule's own
+          // precondition) that is the whole advised quantity. The rule refuses
+          // a zero-advised line, which is what keeps this above the
+          // `CHK_return_line_events_quantity_positive` floor.
+          quantity: line.quantityAdvised - line.quantityReceived,
+          disposition: null,
+          // Writing a line off changes no stock: there is no book write to make.
           restockState: 'not_applicable' as const,
           restockBlockedReason: null,
           restockBlockedDetail: null,
@@ -238,6 +285,84 @@ export class ReturnCustodyService implements IReturnCustodyService {
     );
 
     return { line: await this.requireLine(lineId), events };
+  }
+
+  /**
+   * Where a restock would land — resolved WITHOUT constructing an adapter.
+   *
+   * This is a read on the return-detail page, and it needs only a name, a
+   * count and a failure classification; it never calls a method on the master.
+   * `listCapabilityAdapters` constructs eagerly by default, and constructing a
+   * capability adapter RESOLVES ITS CREDENTIALS (#2229), so reusing the write
+   * path's `resolveInventoryMaster` here would build every InventoryMaster
+   * connection on every page load of a page that was previously
+   * adapter-free. It lists `lazy` instead.
+   *
+   * **Reported still equals enforced**, because the part that must not drift
+   * is the SELECTION RULE, not the listing mode: both callers classify through
+   * the one `classifyInventoryMasterCandidates` below, so "which connection"
+   * and "when is it ambiguous" have exactly one definition.
+   */
+  async getRestockTarget(): Promise<ReturnRestockTarget> {
+    let candidates: Array<{ connectionId: string; connection: Connection }>;
+
+    try {
+      candidates = await this.integrations.listCapabilityAdapters<InventoryMasterPort>({
+        capability: 'InventoryMaster',
+        lazy: true,
+      });
+    } catch (error) {
+      this.logger.error(
+        `Could not resolve an InventoryMaster connection for the restock-target read: ${
+          (error as Error).message
+        }`
+      );
+      return { status: 'adapter-unresolved' };
+    }
+
+    const classified = ReturnCustodyService.classifyInventoryMasterCandidates(candidates);
+
+    if (classified.kind === 'none') {
+      return { status: 'no-inventory-master' };
+    }
+
+    if (classified.kind === 'ambiguous') {
+      // The same refusal `writeMasterStock` makes, made early enough for the
+      // operator to read it before they dispose rather than after.
+      return {
+        status: 'ambiguous-inventory-master',
+        candidateCount: classified.candidateCount,
+      };
+    }
+
+    return {
+      status: 'resolved',
+      connectionId: classified.chosen.connectionId,
+      connectionName: classified.chosen.connection.name,
+    };
+  }
+
+  /**
+   * The one selection rule: none / exactly one / ambiguous, and WHICH one.
+   *
+   * Shared by the write path and the operator-facing disclosure so the name an
+   * operator is shown and the book a restock writes to cannot disagree. It is
+   * generic over the entry shape precisely so a lazy listing (no adapter
+   * constructed) and an eager one can both use it.
+   */
+  private static classifyInventoryMasterCandidates<
+    T extends { connectionId: string; connection: Connection },
+  >(
+    candidates: readonly T[]
+  ):
+    | { kind: 'none' }
+    | { kind: 'one'; chosen: T }
+    | { kind: 'ambiguous'; chosen: T; candidateCount: number } {
+    if (candidates.length === 0) return { kind: 'none' };
+    if (candidates.length > 1) {
+      return { kind: 'ambiguous', chosen: candidates[0], candidateCount: candidates.length };
+    }
+    return { kind: 'one', chosen: candidates[0] };
   }
 
   async listOutstandingRestockBlocks(returnId: string): Promise<RestockBlockedDetail[]> {
@@ -588,25 +713,20 @@ export class ReturnCustodyService implements IReturnCustodyService {
         capability: 'InventoryMaster',
       });
 
-      if (entries.length === 0) {
+      // The SAME classifier the operator-facing disclosure uses, so the
+      // connection named on the page is the connection written to here.
+      const classified = ReturnCustodyService.classifyInventoryMasterCandidates(entries);
+
+      if (classified.kind === 'none') {
         return { unavailable: 'no-inventory-master' };
-      }
-      if (entries.length > 1) {
-        return {
-          connectionId: entries[0].connectionId,
-          connection: entries[0].connection,
-          adapter: entries[0].adapter,
-          ambiguous: true,
-          candidateCount: entries.length,
-        };
       }
 
       return {
-        connectionId: entries[0].connectionId,
-        connection: entries[0].connection,
-        adapter: entries[0].adapter,
-        ambiguous: false,
-        candidateCount: 1,
+        connectionId: classified.chosen.connectionId,
+        connection: classified.chosen.connection,
+        adapter: classified.chosen.adapter,
+        ambiguous: classified.kind === 'ambiguous',
+        candidateCount: classified.kind === 'ambiguous' ? classified.candidateCount : 1,
       };
     } catch (error) {
       this.logger.error(

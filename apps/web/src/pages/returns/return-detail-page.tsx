@@ -48,8 +48,8 @@ import {
   RETURN_DETAIL_HEADER_COPY,
   RETURN_LINES_COPY,
   RETURN_SOURCE_PANEL_COPY,
+  ReturnCustodyPanel,
   ReturnDeclineAction,
-  ReturnLinesTable,
   ReturnRailsNote,
   ReturnOrphanBanner,
   ReturnSourceStatus,
@@ -280,7 +280,14 @@ export function ReturnDetailPage(): ReactElement {
         {/* Once, above the table: the two rails move independently, and that is
             the single most misread thing about the model. */}
         <ReturnRailsNote />
-        <ReturnLinesTable lines={detail.lines} />
+        {/* The table plus its inline receive/dispose flows (#2380). The panel
+            owns the write posture, so a read-only session gets the same table
+            with no expander rather than an expander onto disabled controls. */}
+        <ReturnCustodyPanel
+          detail={detail}
+          sourceName={connection?.name ?? null}
+          writeAccess={writeAccess}
+        />
         {detail.droppedLineCount > 0 ? (
           <p className="text-muted">{describeUnreadableLines(detail.droppedLineCount)}</p>
         ) : null}

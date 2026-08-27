@@ -81,6 +81,8 @@ import {
   AttestReturnLineStockResponseDto,
   DisposeReturnLineDto,
   DisposeReturnLineResponseDto,
+  MarkReturnLineNotReturnedDto,
+  MarkReturnLineNotReturnedResponseDto,
   ReceiveReturnLineDto,
   ReceiveReturnLineResponseDto
 } from '../dto/return-custody.dto';
@@ -255,6 +257,45 @@ export class ReturnWritesController {
 
     const result: ReceiveLineResult = await this.custody.receiveLine(lineId, {
       quantity: dto.quantity,
+      note: dto.note ?? null,
+      actorUserId: user.id,
+    });
+
+    return { line: this.toCountersDto(result.line), eventId: result.event.id };
+  }
+
+  @Post(':returnId/lines/:lineId/mark-not-returned')
+  @Roles('admin', 'operator')
+  @ApiOperation({
+    summary: 'Record that this line\'s parcel is not coming',
+    description:
+      '**Always an operator act, never a timeout and never a sweep** (spec § 5.2) — a parcel that ' +
+      'has not arrived is not the same fact as a parcel that is not coming, and only a human is in ' +
+      'a position to assert the second. Despite the spec\'s *"Mark remainder not returned"* ' +
+      'phrasing this is NOT a shortfall write: the model refuses a partially received line, ' +
+      'because custody is single-valued and there is no `quantityNotReturned` counter for a ' +
+      'shortfall to move into. Where units did arrive the shortfall stays visible as ' +
+      '`quantityAdvised - quantityReceived`. Crosses no boundary and moves no stock, so — like ' +
+      'the receipt — it is deliberately not gated on attribution.',
+  })
+  @ApiResponse({ status: 201, type: MarkReturnLineNotReturnedResponseDto })
+  @ApiResponse({ status: 404, description: 'Return line not found' })
+  @ApiResponse({
+    status: 409,
+    description:
+      'The line refuses. `reason` carries the actionable code — `partially-received` when units ' +
+      'have already arrived, `nothing-advised` when the source advised none, or ' +
+      '`illegal-transition` from a terminal state.',
+  })
+  async markLineNotReturned(
+    @Param('returnId') returnId: string,
+    @Param('lineId') lineId: string,
+    @Body() dto: MarkReturnLineNotReturnedDto,
+    @CurrentUser() user: AuthenticatedUser
+  ): Promise<MarkReturnLineNotReturnedResponseDto> {
+    await this.assertLineBelongsToReturn(returnId, lineId);
+
+    const result = await this.custody.markLineNotReturned(lineId, {
       note: dto.note ?? null,
       actorUserId: user.id,
     });

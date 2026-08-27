@@ -66,6 +66,44 @@ export interface DisposeLineResult {
   restockBlocked: RestockBlockedDetail | null;
 }
 
+/**
+ * Where a restock on this deployment WOULD land, asked before anything is
+ * disposed of (spec § 5.3: *"Stock will be added in {connection name}"*).
+ *
+ * The three non-resolved arms deliberately reuse the SAME vocabulary
+ * `blockedBeforeMaster` writes into `restockBlockedReason`, because they are the
+ * same three conditions — a disclosure that named its states differently from
+ * the block it predicts would be a second, drifting answer to one question.
+ *
+ * `ambiguous-inventory-master` is a **blocked** restock, not a pick: the write
+ * path refuses to guess which book to write to, so a UI that rendered the first
+ * candidate's name here would promise a write that is going to be refused.
+ */
+export const ReturnRestockTargetStatusValues = [
+  'resolved',
+  'ambiguous-inventory-master',
+  'no-inventory-master',
+  'adapter-unresolved',
+] as const;
+
+export type ReturnRestockTargetStatus = (typeof ReturnRestockTargetStatusValues)[number];
+
+export type ReturnRestockTarget =
+  | { status: 'resolved'; connectionId: string; connectionName: string }
+  | { status: 'ambiguous-inventory-master'; candidateCount: number }
+  | { status: 'no-inventory-master' }
+  | { status: 'adapter-unresolved' };
+
+export interface MarkNotReturnedInput {
+  note?: string | null;
+  actorUserId?: string | null;
+}
+
+export interface MarkNotReturnedResult {
+  line: ReturnLine;
+  event: ReturnLineEvent;
+}
+
 export interface AttestStockResult {
   line: ReturnLine;
   /** One attestation act per act it resolved. */
@@ -106,6 +144,34 @@ export interface IReturnCustodyService {
   disposeLine(lineId: string, input: DisposeLineInput): Promise<DisposeLineResult>;
 
   /**
+   * Record that the parcel is not coming (spec § 5.2).
+   *
+   * **Always an operator act, never a timeout and never a sweep.** A parcel
+   * that has not arrived is not the same fact as a parcel that is not coming,
+   * and only a human is in a position to assert the second.
+   *
+   * **Not "mark the REMAINDER not returned", despite the spec's phrasing.** The
+   * shipped model refuses a partially received line (#2367): custody is
+   * single-valued per line, a line holding received units still needs a
+   * disposition for them, and there is no `quantityNotReturned` counter for a
+   * shortfall to move into. Where units did arrive the shortfall stays visible
+   * as `quantityAdvised - quantityReceived`, which is what the spec was reaching
+   * for; the operator-facing control is gated on `quantityReceived === 0` so
+   * this refusal is never something they discover by clicking.
+   *
+   * Crosses no boundary and moves no stock, so — like {@link receiveLine} — it
+   * is not gated on attribution.
+   *
+   * @throws {ReturnLineNotFoundError}
+   * @throws {ReturnCustodyTransitionError} `partially-received` /
+   *   `nothing-advised` / `illegal-transition` — branch on `error.reason`.
+   */
+  markLineNotReturned(
+    lineId: string,
+    input: MarkNotReturnedInput
+  ): Promise<MarkNotReturnedResult>;
+
+  /**
    * The operator attestation (spec § 5.4): *"Mark stock handled manually"*.
    *
    * Addressed by LINE, matching #2376's route and the spec's per-line action.
@@ -123,6 +189,24 @@ export interface IReturnCustodyService {
     lineId: string,
     input: { actorUserId?: string | null; note?: string | null }
   ): Promise<AttestStockResult>;
+
+  /**
+   * Where a restock would land, resolved BEFORE any disposition (#2380).
+   *
+   * Exists so spec § 5.3's *"Stock will be added in {connection name}"* can be
+   * shown while the operator is choosing, rather than only afterwards on a
+   * `restockBlocked` response — which is to say, only once it already failed.
+   *
+   * **Reported === written-to, structurally.** It answers from the very same
+   * private resolver the dispose path uses, so the name shown and the book
+   * written cannot disagree. That is the whole reason this is a service method
+   * rather than a client-side read of `enabledCapabilities`: the resolver's
+   * candidate ordering is not reproducible in a browser, so a client-side pick
+   * could confidently name a connection the write never touched.
+   *
+   * Never throws: every failure is one of the three non-resolved arms.
+   */
+  getRestockTarget(): Promise<ReturnRestockTarget>;
 
   /**
    * Every unresolved restock block on a return — the derivation behind the

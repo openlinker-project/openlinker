@@ -19506,3 +19506,112 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
 .returns-decline > p {
   justify-self: stretch;
 }
+
+/* --------------------------------------------------------------------------
+   Return custody flows (#2380) — the inline per-line receive and dispose forms.
+
+   DECLARED DEPARTURE from the style guide's tablet treatment, per returns spec
+   § 5.2: these editors carry no "open on desktop" hint and stay fully
+   interactive at 768 px, because the tablet IS the primary device for receiving
+   work. The desktop an operator would be redirected to is in another room.
+
+   The ≥44 px touch floor here is EXPLICIT and unconditional rather than
+   inherited from the global `@media (hover: none) and (pointer: coarse)` rule
+   near the top of this file. That rule keys on POINTER TYPE, while both the
+   acceptance criterion and § 5.2 frame the guarantee in terms of WIDTH — so a
+   768 px desktop window, and any component test, would get no floor at all from
+   it. Do not "simplify" these declarations away into that media query: it would
+   turn the ≥44 px guarantee into a claim nothing proves.
+   -------------------------------------------------------------------------- */
+
+.return-custody-panel__bulk {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: var(--space-3);
+}
+
+.return-custody-detail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.return-custody-detail__switch {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.return-custody-form__fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+
+.return-custody-form__disposition {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.return-custody-form__help {
+  margin: 0;
+  font-size: 0.8125rem;
+}
+
+.return-custody-form__destination {
+  margin: 0;
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+/* Not an error tone: "no master resolves" is a configuration state the operator
+   can act on, and colouring it red beside a form they can still submit as a
+   scrap would misreport which part is wrong. */
+.return-custody-form__destination--unavailable {
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+.return-custody-form__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.returns-line-hint {
+  margin: 0;
+  font-size: 0.8125rem;
+}
+
+/* The width-keyed touch floor. Applies at every width, so it holds on the
+   768 px tablet the work is done on and is assertable in a component test. */
+.return-custody-form input,
+.return-custody-form textarea,
+.return-custody-form button,
+.return-custody-detail__switch button,
+.return-custody-panel__bulk button {
+  min-height: 44px;
+}
+
+.return-custody-form button,
+.return-custody-detail__switch button,
+.return-custody-panel__bulk button {
+  min-width: 44px;
+}
+
+.return-custody-form .segmented-control__option {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+/* Rendered but refusing selection — the option stays visible with its reason
+   beside it, because a missing option reads as a missing feature. */
+.segmented-control__option--disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

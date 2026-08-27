@@ -119,6 +119,95 @@ describe('Returns Write API Integration', () => {
       .expect(404);
   });
 
+  describe('mark-not-returned (#2380)', () => {
+    it('should write off a line nothing has arrived on', async () => {
+      const { returnId, lineId } = await seedAttributedReturn('RET-NR-1');
+
+      const response = await http()
+        .post(`/v1/returns/${returnId}/lines/${lineId}/mark-not-returned`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ note: 'buyer kept it' })
+        .expect(201);
+
+      expect(response.body.line.custodyState).toBe('not_returned');
+      // Nothing arrived and nothing was disposed of — the write-off moves no
+      // counter, it only settles the line.
+      expect(response.body.line.quantityReceived).toBe(0);
+      expect(response.body.eventId).toEqual(expect.any(String));
+
+      // The act carries the shortfall, which is the whole advised quantity —
+      // and must be positive, or `CHK_return_line_events_quantity_positive`
+      // would have refused it as a raw driver error.
+      const acts = (await harness
+        .getDataSource()
+        .query('SELECT "kind", "quantity" FROM "return_line_events" WHERE "returnLineId" = $1', [
+          lineId,
+        ])) as { kind: string; quantity: number }[];
+      expect(acts).toEqual([{ kind: 'not_returned', quantity: 3 }]);
+    });
+
+    it('should refuse a partially received line with an actionable 409 code', async () => {
+      const { returnId, lineId } = await seedAttributedReturn('RET-NR-2');
+      const base = `/v1/returns/${returnId}/lines/${lineId}`;
+
+      await http()
+        .post(`${base}/receive`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ quantity: 1 })
+        .expect(201);
+
+      const refused = await http()
+        .post(`${base}/mark-not-returned`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({})
+        .expect(409);
+
+      // A CODE, not a message: the frontend branches on this, and matching on
+      // prose would break the first time the sentence is reworded.
+      expect(refused.body.reason).toBe('partially-received');
+    });
+
+    it('should refuse a second write-off of the same line', async () => {
+      const { returnId, lineId } = await seedAttributedReturn('RET-NR-3');
+      const base = `/v1/returns/${returnId}/lines/${lineId}`;
+
+      await http()
+        .post(`${base}/mark-not-returned`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({})
+        .expect(201);
+
+      const refused = await http()
+        .post(`${base}/mark-not-returned`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({})
+        .expect(409);
+
+      expect(refused.body.reason).toBe('illegal-transition');
+    });
+  });
+
+  describe('restockTarget on the detail read (#2380)', () => {
+    it('should report that no connection owns the stock, rather than omitting the field', async () => {
+      const { returnId } = await seedAttributedReturn('RET-RT-1');
+
+      const response = await http()
+        .get(`/v1/returns/${returnId}`)
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+
+      // No InventoryMaster connection exists in this harness. The field is
+      // present and says so — the UI needs a state, not an absence, or it
+      // renders nothing where the destination sentence belongs.
+      expect(response.body.restockTarget).toEqual({
+        status: 'no-inventory-master',
+        connectionId: null,
+        connectionName: null,
+        candidateCount: null,
+      });
+    });
+  });
+
   it('should walk receive -> dispose -> blocked -> attest', async () => {
     const { returnId, lineId } = await seedAttributedReturn('RET-WRITE-1');
     const base = `/v1/returns/${returnId}/lines/${lineId}`;

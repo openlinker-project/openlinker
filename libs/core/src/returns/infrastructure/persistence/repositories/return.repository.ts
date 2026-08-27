@@ -73,13 +73,14 @@ import {
   type ReturnMoneyState,
 } from '../../../domain/types/return-line.types';
 import type { ReturnCustodyOutcome } from '../../../domain/domain-services/return-custody-transitions.domain-service';
-import type {
-  CreateReturnLineEventInput,
-  ReturnLineEventKind,
-  ReturnRestockBlockReason,
-  ReturnRestockState,
-  RestockedBy,
-  SettleReturnLineEventInput,
+import {
+  ReturnLineEventKindValues,
+  type CreateReturnLineEventInput,
+  type ReturnLineEventKind,
+  type ReturnRestockBlockReason,
+  type ReturnRestockState,
+  type RestockedBy,
+  type SettleReturnLineEventInput,
 } from '../../../domain/types/return-line-event.types';
 import { ReturnLineNotFoundError } from '../../../domain/exceptions/return-line-not-found.error';
 
@@ -1399,7 +1400,7 @@ export class ReturnRepository implements ReturnRepositoryPort {
       entity.returnId,
       entity.returnLineId,
       Number(entity.seq),
-      entity.kind as ReturnLineEventKind,
+      this.toLineEventKind(entity.kind),
       Number(entity.quantity),
       entity.disposition as ReturnDisposition | null,
       entity.restockState as ReturnRestockState,
@@ -1425,6 +1426,37 @@ export class ReturnRepository implements ReturnRepositoryPort {
    * by a caller that bypassed the DTO validator, degrades to `'other'` with a
    * warning rather than handing out a value outside the union.
    */
+  /**
+   * Fail-safe read of the stored `kind` column — a WARNING, not a coercion.
+   *
+   * Deliberately unlike {@link ReturnRepository.toRefundReason} one method
+   * below, which degrades an unrecognised value to `'other'`. That works only
+   * because `RefundReason` HAS an honest default; `ReturnLineEventKind` has
+   * none, and `ReturnLineEvent.kind` is non-nullable, so there is no value this
+   * method could substitute without either fabricating an act that did not
+   * happen or widening the entity type. It therefore passes the stored string
+   * through verbatim — which is not a lie, it IS what the row says — and
+   * converts the previous silence into a signal.
+   *
+   * **The residue, stated so the trigger is legible rather than a judgement
+   * call.** Pass-through means an unrecognised value reaches consumers TYPED as
+   * a member of a union it is not a member of. That is tolerable only while
+   * nothing branches on `kind` — today four producers, this one read, and zero
+   * branches anywhere in the tree. The first `switch`, exhaustive `Record` or
+   * conditional keyed on `kind` makes this cast load-bearing, and at that point
+   * widening `ReturnLineEvent.kind` to admit an unrecognised value stops being
+   * optional. Follow-up, not this issue.
+   */
+  private toLineEventKind(rawKind: string): ReturnLineEventKind {
+    if (!(ReturnLineEventKindValues as readonly string[]).includes(rawKind)) {
+      this.logger.warn(
+        `Unrecognised return line event kind "${rawKind}" — this build does not know it; ` +
+          'passing it through unchanged'
+      );
+    }
+    return rawKind as ReturnLineEventKind;
+  }
+
   private toRefundReason(rawReason: string): RefundReason {
     const narrowed = narrowRefundReason(rawReason);
     if (narrowed !== null) {

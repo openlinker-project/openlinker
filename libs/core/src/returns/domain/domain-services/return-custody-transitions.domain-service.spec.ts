@@ -275,21 +275,67 @@ describe('return custody transitions', () => {
       }
     );
 
+    // Through the REAL path — a receipt moves the line to `received`, so this
+    // is the state a partially delivered parcel is actually in. The previous
+    // version of this test used an `in_transit` line with received units, which
+    // the receipt transition never produces, and so passed against a reason the
+    // rule could not emit for any reachable line (#2380).
     it('should refuse a partially received line rather than invent a shortfall counter', () => {
+      const partial = applyReturnCustodyReceipt(line({ quantityAdvised: 5 }), {
+        quantity: 2,
+        at: AT,
+      });
+
       expect(
         refusalReason(() =>
-          markReturnCustodyNotReturned(line({ custodyState: 'in_transit', quantityReceived: 2 }))
+          markReturnCustodyNotReturned(
+            line({
+              custodyState: partial.custodyState,
+              quantityReceived: partial.quantityReceived,
+            })
+          )
         )
       ).toBe('partially-received');
     });
 
-    it.each(['received', 'disposed', 'not_returned'] as const)(
-      'should refuse a terminal or receiving line in %s',
+    it.each(['disposed', 'not_returned'] as const)(
+      'should refuse a finished line in %s as an illegal transition',
       (custodyState) => {
         expect(refusalReason(() => markReturnCustodyNotReturned(line({ custodyState })))).toBe(
           'illegal-transition'
         );
       }
     );
+
+    // A `received` line with nothing received cannot arise from the receipt
+    // transition, but the arm has to answer something — and "already finished"
+    // is the honest answer for a state no forward move exists from.
+    it('should refuse a received line with no units as an illegal transition', () => {
+      expect(
+        refusalReason(() => markReturnCustodyNotReturned(line({ custodyState: 'received' })))
+      ).toBe('illegal-transition');
+    });
+
+    // The act this move mints carries the shortfall as its quantity, and
+    // `CHK_return_line_events_quantity_positive` refuses a zero. Naming the
+    // refusal here is what keeps it a 409 with a code rather than a raw driver
+    // error surfacing as a 500.
+    it('should refuse a line the source advised no units of, with its own reason', () => {
+      expect(refusalReason(() => markReturnCustodyNotReturned(line({ quantityAdvised: 0 })))).toBe(
+        'nothing-advised'
+      );
+    });
+
+    it('should report the shortfall as the whole advised quantity, since nothing arrived', () => {
+      const facts = line({ quantityAdvised: 4 });
+      const outcome = markReturnCustodyNotReturned(facts);
+
+      // What the act's quantity is computed from at the call site. Asserted
+      // here because a receipt landing first is the ONLY way these differ, and
+      // that case is refused above — so this equality is the rule's guarantee,
+      // not an incidental fact about the fixture.
+      expect(facts.quantityAdvised - outcome.quantityReceived).toBe(4);
+      expect(outcome.quantityReceived).toBe(0);
+    });
   });
 });

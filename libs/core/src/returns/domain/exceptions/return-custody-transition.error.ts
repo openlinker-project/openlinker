@@ -33,6 +33,18 @@ export const ReturnCustodyRefusalReasonValues = [
    * has no counter to move into, and inventing one is a model change.
    */
   'partially-received',
+  /**
+   * `not_returned` was asked of a line the source advised ZERO units of.
+   *
+   * Named rather than left to the database because the act this transition
+   * mints carries the shortfall as its quantity, and
+   * `CHK_return_line_events_quantity_positive` would refuse a zero — surfacing
+   * a raw driver error as a 500 for a state the domain is perfectly able to
+   * name. Every other refusal on this path already carries a closed reason the
+   * #2376 filter maps to a 409, and a consistent refusal vocabulary is cheaper
+   * than establishing whether a zero-advised line is reachable at all.
+   */
+  'nothing-advised',
 ] as const;
 
 export type ReturnCustodyRefusalReason = (typeof ReturnCustodyRefusalReasonValues)[number];

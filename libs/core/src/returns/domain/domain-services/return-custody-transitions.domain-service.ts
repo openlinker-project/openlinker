@@ -306,10 +306,46 @@ export function applyReturnCustodyDisposition(
  * `observedAt` is on the in-transit transition) — just API noise a consumer has
  * to invent a value for.
  *
- * @throws {ReturnCustodyTransitionError} `partially-received`, or
- *   `illegal-transition` from a terminal state.
+ * **Refused on a line advising zero units**, with its own `nothing-advised`
+ * reason. The act this move mints carries the shortfall as its quantity, and
+ * with nothing received the shortfall IS `quantityAdvised` — so a zero would
+ * be refused downstream by `CHK_return_line_events_quantity_positive` as a raw
+ * driver error, i.e. a 500 for a state the domain can name. Naming it here puts
+ * it in the same closed union every other refusal on this path uses, which is
+ * what lets the #2376 filter answer 409 with a code the frontend can branch on.
+ *
+ * @throws {ReturnCustodyTransitionError} `partially-received`,
+ *   `nothing-advised`, or `illegal-transition` from a terminal state.
  */
 export function markReturnCustodyNotReturned(line: ReturnCustodyLineFacts): ReturnCustodyOutcome {
+  // A FINISHED line first. Nothing more specific can be said about it, and
+  // saying something more specific would be wrong.
+  if (line.custodyState === 'disposed' || line.custodyState === 'not_returned') {
+    throw new ReturnCustodyTransitionError(
+      line.custodyState,
+      'not_returned',
+      'illegal-transition',
+      'this line is already finished'
+    );
+  }
+
+  // BEFORE the remaining state check, and the order is load-bearing (#2380).
+  // A receipt moves the line to `received`, so a state check placed first
+  // shadows this branch completely: `partially-received` was unreachable
+  // through any real path, and an operator whose parcel was half-delivered was
+  // told the line was "already finished" — which is false, and points them at
+  // the wrong remedy. The unit test that covered this constructed an
+  // `in_transit` line with received units, a state the receipt transition never
+  // produces, so it passed against a reason nothing could emit.
+  if (line.quantityReceived > 0) {
+    throw new ReturnCustodyTransitionError(
+      line.custodyState,
+      'not_returned',
+      'partially-received',
+      `${line.quantityReceived} of ${line.quantityAdvised} units already arrived; dispose of them and leave the shortfall visible`
+    );
+  }
+
   if (line.custodyState !== 'advised' && line.custodyState !== 'in_transit') {
     throw new ReturnCustodyTransitionError(
       line.custodyState,
@@ -319,12 +355,12 @@ export function markReturnCustodyNotReturned(line: ReturnCustodyLineFacts): Retu
     );
   }
 
-  if (line.quantityReceived > 0) {
+  if (line.quantityAdvised <= 0) {
     throw new ReturnCustodyTransitionError(
       line.custodyState,
       'not_returned',
-      'partially-received',
-      `${line.quantityReceived} of ${line.quantityAdvised} units already arrived; dispose of them and leave the shortfall visible`
+      'nothing-advised',
+      'the source advised no units on this line, so there is no shortfall to write off'
     );
   }
 

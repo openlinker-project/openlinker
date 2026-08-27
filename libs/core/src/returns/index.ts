@@ -170,6 +170,7 @@ export {
   returnCustodyLockKey,
   RETURN_CUSTODY_LOCK_TTL_MS,
 } from './application/services/return-custody-lock';
+export { ReturnRestockTargetStatusValues } from './application/services/return-custody.service.interface';
 export type {
   IReturnCustodyService,
   ReceiveLineInput,
@@ -178,6 +179,10 @@ export type {
   DisposeLineResult,
   AttestStockResult,
   RestockBlockedDetail,
+  MarkNotReturnedInput,
+  MarkNotReturnedResult,
+  ReturnRestockTarget,
+  ReturnRestockTargetStatus,
 } from './application/services/return-custody.service.interface';
 
 // The money WRITE (#2371, `W2-34`, ADR-056): the refund trigger, the

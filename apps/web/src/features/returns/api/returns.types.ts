@@ -305,11 +305,105 @@ export interface ReturnDeclineAvailability {
 }
 
 /** The hydrated aggregate: the list header, its lines, and the decline fact. */
+/**
+ * Where a restock WOULD land, mirror of core's `ReturnRestockTargetStatus`.
+ *
+ * The three non-resolved values are the same vocabulary a blocked restock
+ * records, deliberately. `ambiguous-inventory-master` means the restock will be
+ * BLOCKED, not routed to a first candidate — so it must never be rendered as a
+ * destination.
+ */
+export const RETURN_RESTOCK_TARGET_STATUS_VALUES = [
+  'resolved',
+  'ambiguous-inventory-master',
+  'no-inventory-master',
+  'adapter-unresolved',
+] as const;
+export type ReturnRestockTargetStatus = (typeof RETURN_RESTOCK_TARGET_STATUS_VALUES)[number];
+
+export interface ReturnRestockTarget {
+  status: ReturnRestockTargetStatus;
+  /** Set only when `status` is `resolved`. `null` is "not reported", never a name. */
+  connectionId: string | null;
+  connectionName: string | null;
+  /** Set only on `ambiguous-inventory-master`. */
+  candidateCount: number | null;
+}
+
 export interface ReturnDetail extends ReturnListItem {
   lines: ReturnLine[];
   declineAvailability: ReturnDeclineAvailability;
+  /**
+   * Where a restock would land (#2380). Never derived client-side: the
+   * resolver's candidate ordering is not reproducible here, so a local pick
+   * could name a connection the write never touches.
+   */
+  restockTarget: ReturnRestockTarget;
   /** Lines the server sent that this build could not read. Reported, never hidden. */
   droppedLineCount: number;
+}
+
+/** The counters and states a custody write reports back for the line it moved. */
+export interface ReturnLineCounters {
+  id: string;
+  quantityAdvised: number;
+  quantityReceived: number;
+  quantityRestocked: number;
+  quantityScrapped: number;
+  custodyState: string;
+  moneyState: string;
+  disposition: string | null;
+  receivedAt: string | null;
+  disposedAt: string | null;
+}
+
+export interface ReceiveReturnLineInput {
+  quantity: number;
+  note?: string;
+}
+
+export interface DisposeReturnLineInput {
+  quantity: number;
+  disposition: ReturnDisposition;
+  note?: string;
+}
+
+export interface MarkReturnLineNotReturnedInput {
+  note?: string;
+}
+
+/**
+ * What the master write did, when it did not land.
+ *
+ * **Never an error** — the disposition succeeded and is recorded; it is the
+ * stock write that did not. Present only on a refused or unobserved restock,
+ * `null` on every scrap and every applied one.
+ */
+export interface ReturnRestockBlocked {
+  eventId: string;
+  quantity: number;
+  sku: string | null;
+  reason: string;
+  detail: string | null;
+  connectionId: string | null;
+  connectionName: string | null;
+  state: string;
+}
+
+export interface ReceiveReturnLineResult {
+  line: ReturnLineCounters;
+  eventId: string;
+}
+
+export interface DisposeReturnLineResult {
+  line: ReturnLineCounters;
+  eventId: string;
+  restockBlocked: ReturnRestockBlocked | null;
+}
+
+export interface MarkReturnLineNotReturnedResult {
+  line: ReturnLineCounters;
+  eventId: string;
 }
 
 /**

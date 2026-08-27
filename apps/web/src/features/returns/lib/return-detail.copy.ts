@@ -81,12 +81,17 @@ export const RETURN_LINES_COPY = {
   empty: 'The channel reported no lines for this return.',
   itemLabel: 'Item',
   reasonLabel: 'Reason',
-  quantityLabel: 'Quantity',
+  quantityLabel: 'Advised',
+  receivedLabel: 'Received',
+  restockedLabel: 'Restocked',
+  scrappedLabel: 'Scrapped',
   custodyLabel: 'Goods',
   moneyLabel: 'Refund',
   orderLineLabel: 'Order line',
   noteLabel: 'Note',
   unnamedItem: 'Unnamed item',
+  expandLine: 'Record what happened to',
+  collapseLine: 'Close',
   /**
    * `resolvedOrderLineId === null` is a real state, not missing data: OpenLinker
    * has no order-lines table to point at, so it says so instead of rendering a

@@ -81,6 +81,12 @@ function makeDetail(overrides: Partial<ReturnDetail> = {}): ReturnDetail {
     lines: [makeLine()],
     droppedLineCount: 0,
     declineAvailability: { supported: true, reason: null },
+    restockTarget: {
+      status: 'resolved',
+      connectionId: 'conn_master',
+      connectionName: 'Warehouse PrestaShop',
+      candidateCount: null,
+    },
     ...overrides,
   };
 }
@@ -90,12 +96,14 @@ interface SetupOptions {
   getError?: unknown;
   declineFn?: Mock;
   getFn?: Mock;
+  receiveLine?: Mock;
   authenticated?: boolean;
 }
 
 interface SetupResult extends RenderResult {
   getFn: Mock;
   declineFn: Mock;
+  receiveLine: Mock;
 }
 
 function setup(options: SetupOptions = {}): SetupResult {
@@ -106,8 +114,10 @@ function setup(options: SetupOptions = {}): SetupResult {
       : vi.fn().mockResolvedValue(options.detail ?? makeDetail()));
   const declineFn = options.declineFn ?? vi.fn();
 
+  const receiveLine = options.receiveLine ?? vi.fn().mockResolvedValue({ line: {}, eventId: 'e1' });
+
   const apiClient = createMockApiClient({
-    returns: { get: getFn, decline: declineFn },
+    returns: { get: getFn, decline: declineFn, receiveLine },
     connections: { list: vi.fn().mockResolvedValue([makeConnection()]) },
   });
 
@@ -124,7 +134,7 @@ function setup(options: SetupOptions = {}): SetupResult {
     },
   );
 
-  return { ...result, getFn, declineFn };
+  return { ...result, getFn, declineFn, receiveLine };
 }
 
 describe('ReturnDetailPage', () => {
@@ -368,6 +378,66 @@ describe('ReturnDetailPage', () => {
       // unauthorized session), distinct from the record's own state.
       expect(await screen.findByText(/Allegro Main: COMMISSION_REFUND_CLAIMED/)).toBeInTheDocument();
       expect(screen.queryByRole('button', { name: 'Decline return' })).not.toBeInTheDocument();
+    });
+  });
+
+  describe('the receive flow (#2380)', () => {
+    it('should NOT record anything until the bulk pre-fill is explicitly confirmed', async () => {
+      const user = userEvent.setup();
+      const { receiveLine } = setup();
+
+      await user.click(await screen.findByRole('button', { name: 'Receive all as advised' }));
+
+      // The dialog is open and nothing has been recorded yet. This is the whole
+      // point of the confirm: it records real arrivals on every outstanding
+      // line, and that is not undoable from this screen.
+      expect(
+        await screen.findByText('Record every line as fully arrived?'),
+      ).toBeInTheDocument();
+      expect(receiveLine).not.toHaveBeenCalled();
+
+      await user.click(screen.getByRole('button', { name: 'Record all arrivals' }));
+
+      await waitFor(() => expect(receiveLine).toHaveBeenCalledTimes(1));
+      // The full outstanding quantity, which is what "as advised" means.
+      expect(receiveLine).toHaveBeenCalledWith(
+        RETURN_ID,
+        'ol_line_1',
+        expect.objectContaining({ quantity: 2 }),
+      );
+    });
+
+    it('should record nothing when the confirm is dismissed', async () => {
+      const user = userEvent.setup();
+      const { receiveLine } = setup();
+
+      await user.click(await screen.findByRole('button', { name: 'Receive all as advised' }));
+      await user.click(await screen.findByRole('button', { name: 'Go back' }));
+
+      expect(receiveLine).not.toHaveBeenCalled();
+    });
+
+    it('should offer no bulk action when every line has already arrived', async () => {
+      setup({
+        detail: makeDetail({
+          lines: [makeLine({ quantityReceived: 2, custodyState: 'received' })],
+        }),
+      });
+
+      expect(await screen.findByText("What came back")).toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: 'Receive all as advised' }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('should offer no inline custody flow to a session without write access', async () => {
+      setup({ authenticated: false });
+
+      expect(await screen.findByText("What came back")).toBeInTheDocument();
+      // No expander onto controls the session cannot use.
+      expect(
+        screen.queryByRole('button', { name: 'Receive all as advised' }),
+      ).not.toBeInTheDocument();
     });
   });
 });

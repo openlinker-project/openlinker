@@ -27,6 +27,7 @@ export type { ReturnListResult, ReturnsApi } from './api/returns.api';
 export { returnsQueryKeys } from './api/returns.query-keys';
 export { useReturnsQuery } from './hooks/use-returns-query';
 export { useReturnIngestionAvailabilityQuery } from './hooks/use-return-ingestion-availability-query';
+export { ReturnCustodyPanel } from './components/return-custody-panel';
 export { ReturnIdentityCell, returnIdentitySummary } from './components/return-identity-cell';
 export { ReturnOrderCell, returnOrderSummary } from './components/return-order-cell';
 export { ReturnOpenedCell } from './components/return-opened-cell';

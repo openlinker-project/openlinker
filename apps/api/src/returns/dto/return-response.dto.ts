@@ -30,12 +30,14 @@ import {
   ReturnDispositionValues,
   ReturnMoneyStateValues,
   ReturnOriginValues,
+  ReturnRestockTargetStatusValues,
   type ReturnBucket,
   type ReturnCustodyState,
   type ReturnDeclineUnsupportedReason,
   type ReturnDisposition,
   type ReturnMoneyState,
   type ReturnOrigin,
+  type ReturnRestockTargetStatus,
 } from '@openlinker/core/returns';
 import type { ReturnSegment, ReturnStage } from '@openlinker/core/returns';
 import { RefundReasonValues, type RefundReason } from '@openlinker/core/orders/types';
@@ -254,6 +256,43 @@ export class ReturnDeclineAvailabilityDto {
   reason!: ReturnDeclineUnsupportedReason | null;
 }
 
+/**
+ * Where a restock on this deployment WOULD land, resolved before anything is
+ * disposed of (spec § 5.3: *"Stock will be added in {connection name}"*).
+ *
+ * Answered by the SAME resolver the dispose write uses, so the name shown and
+ * the book written cannot disagree. It is on the read for that reason: the
+ * resolver's candidate ordering is not reproducible in a browser, so a
+ * client-side pick over `enabledCapabilities` could confidently name a
+ * connection the write never touches — and a UI asserting a fact the backend
+ * never stated costs the operator a manual reconciliation.
+ *
+ * `ambiguous-inventory-master` means the restock will be BLOCKED, not routed to
+ * a first candidate: OpenLinker refuses to guess which book to write to.
+ */
+export class ReturnRestockTargetDto {
+  @ApiProperty({
+    enum: ReturnRestockTargetStatusValues,
+    description:
+      'The three non-resolved values are the same vocabulary a blocked restock records in ' +
+      '`restockBlockedReason`, deliberately — a disclosure naming its states differently from the ' +
+      'block it predicts would be a second, drifting answer to one question.',
+  })
+  status!: ReturnRestockTargetStatus;
+
+  @ApiProperty({ nullable: true, description: 'Set only when `status` is `resolved`.' })
+  connectionId!: string | null;
+
+  @ApiProperty({ nullable: true, description: 'Set only when `status` is `resolved`.' })
+  connectionName!: string | null;
+
+  @ApiProperty({
+    nullable: true,
+    description: 'How many connections claim the capability. Set only on `ambiguous-inventory-master`.',
+  })
+  candidateCount!: number | null;
+}
+
 /** The hydrated aggregate: the header above, plus its lines and the decline fact. */
 export class ReturnResponseDto extends ReturnListItemResponseDto {
   @ApiProperty({ type: [ReturnLineResponseDto], description: 'Ordered by lineIndex.' })
@@ -261,6 +300,9 @@ export class ReturnResponseDto extends ReturnListItemResponseDto {
 
   @ApiProperty({ type: ReturnDeclineAvailabilityDto })
   declineAvailability!: ReturnDeclineAvailabilityDto;
+
+  @ApiProperty({ type: ReturnRestockTargetDto })
+  restockTarget!: ReturnRestockTargetDto;
 }
 
 export class ReturnBucketCountsDto {

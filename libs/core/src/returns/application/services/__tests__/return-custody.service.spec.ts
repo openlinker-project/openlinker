@@ -603,6 +603,110 @@ describe('ReturnCustodyService', () => {
     });
   });
 
+  describe('markLineNotReturned', () => {
+    it('should record the write-off as an act carrying the whole advised quantity', async () => {
+      await service.markLineNotReturned(LINE_ID, { actorUserId: 'user-1', note: 'buyer kept it' });
+
+      expect(lastWrite?.event).toMatchObject({
+        kind: 'not_returned',
+        quantity: 5,
+        // Writing a line off changes no stock, so there was never a book write
+        // to make — never `blocked`, which would raise a false alarm.
+        restockState: 'not_applicable',
+        disposition: null,
+        actorUserId: 'user-1',
+        note: 'buyer kept it',
+      });
+      expect(lastWrite?.outcome).toMatchObject({ custodyState: 'not_returned' });
+    });
+
+    it('should compute the act from the LOCKED row, not from an earlier read', async () => {
+      // A receipt landing between an unlocked read and this write is exactly
+      // what the rule refuses; the refusal is only reliable if the decision
+      // reads the locked state.
+      repository.runLineWrite.mockImplementation(
+        async (_lineId: string, write: (locked: unknown) => unknown) => {
+          const locked = makeLine({ quantityReceived: 2, custodyState: 'received' });
+          // Awaited rather than returned, mirroring the real repository: the
+          // callback may be async by contract, and the decision is resolved
+          // inside the transaction.
+          return await write({ line: locked, record: makeRecord() });
+        }
+      );
+
+      await expect(service.markLineNotReturned(LINE_ID, {})).rejects.toBeInstanceOf(
+        ReturnCustodyTransitionError
+      );
+    });
+
+    it('should refuse a line the source advised no units of', async () => {
+      lineState = makeLine({ quantityAdvised: 0 });
+
+      await expect(service.markLineNotReturned(LINE_ID, {})).rejects.toMatchObject({
+        reason: 'nothing-advised',
+      });
+    });
+
+    it('should never cross the inventory-master boundary', async () => {
+      await service.markLineNotReturned(LINE_ID, {});
+
+      expect(adjustInventory).not.toHaveBeenCalled();
+      expect(integrations.listCapabilityAdapters).not.toHaveBeenCalled();
+    });
+
+    it('should not gate on attribution — an orphan parcel still fails to arrive', async () => {
+      await service.markLineNotReturned(LINE_ID, {});
+
+      expect(returns.assertAttributedForTrigger).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('getRestockTarget', () => {
+    it('should name the connection the dispose write would actually reach', async () => {
+      await expect(service.getRestockTarget()).resolves.toEqual({
+        status: 'resolved',
+        connectionId: 'conn-master',
+        connectionName: 'Main shop',
+      });
+    });
+
+    it('should NOT construct an adapter — a page read must not resolve credentials', async () => {
+      await service.getRestockTarget();
+
+      // Building a capability adapter resolves its credentials (#2229), and
+      // this read never calls a method on the master. Listing eagerly would
+      // build every InventoryMaster connection on every detail page load.
+      expect(integrations.listCapabilityAdapters).toHaveBeenCalledWith(
+        expect.objectContaining({ capability: 'InventoryMaster', lazy: true })
+      );
+    });
+
+    it('should report ambiguity rather than the first candidate, matching the write', async () => {
+      integrations.listCapabilityAdapters.mockResolvedValue([
+        { connectionId: 'a', connection: { id: 'a', name: 'One' }, adapter: {}, metadata: {} },
+        { connectionId: 'b', connection: { id: 'b', name: 'Two' }, adapter: {}, metadata: {} },
+      ]);
+
+      const target = await service.getRestockTarget();
+
+      // Naming "One" here would promise a write `writeMasterStock` is going to
+      // refuse — the disclosure has to predict the block, not paper over it.
+      expect(target).toEqual({ status: 'ambiguous-inventory-master', candidateCount: 2 });
+    });
+
+    it('should distinguish no master at all from one that would not build', async () => {
+      integrations.listCapabilityAdapters.mockResolvedValue([]);
+      await expect(service.getRestockTarget()).resolves.toEqual({
+        status: 'no-inventory-master',
+      });
+
+      integrations.listCapabilityAdapters.mockRejectedValue(new Error('credentials'));
+      await expect(service.getRestockTarget()).resolves.toEqual({
+        status: 'adapter-unresolved',
+      });
+    });
+  });
+
   describe('no marketplace write originates here', () => {
     it('should only ever resolve the InventoryMaster capability', async () => {
       lineState = makeLine({ quantityReceived: 3, custodyState: 'received' });

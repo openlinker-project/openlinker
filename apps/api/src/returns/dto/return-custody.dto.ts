@@ -72,6 +72,14 @@ export class DisposeReturnLineDto {
   note?: string;
 }
 
+export class MarkReturnLineNotReturnedDto {
+  @ApiPropertyOptional({ description: 'Operator note.', maxLength: NOTE_MAX_LENGTH })
+  @IsOptional()
+  @IsString()
+  @MaxLength(NOTE_MAX_LENGTH)
+  note?: string;
+}
+
 export class AttestReturnLineStockDto {
   @ApiPropertyOptional({ description: 'Operator note.', maxLength: NOTE_MAX_LENGTH })
   @IsOptional()
@@ -142,6 +150,14 @@ export class RestockBlockedResponseDto {
     description: '`blocked` (refused) or `in_doubt` (crossed the boundary, outcome unobserved).',
   })
   state!: ReturnRestockState;
+}
+
+export class MarkReturnLineNotReturnedResponseDto {
+  @ApiProperty({ type: ReturnLineCountersDto })
+  line!: ReturnLineCountersDto;
+
+  @ApiProperty({ description: 'The act recorded for this write-off.' })
+  eventId!: string;
 }
 
 export class ReceiveReturnLineResponseDto {

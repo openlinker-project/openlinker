@@ -28,19 +28,23 @@
 import { Controller, Get, Inject, Param, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import {
+  RETURN_CUSTODY_SERVICE_TOKEN,
   RETURNS_SERVICE_TOKEN,
   ReturnNotFoundError,
+  type IReturnCustodyService,
   type IReturnsService,
   type ReturnBucketCounts,
   type ReturnLine,
   type ReturnListFilter,
   type ReturnRecord,
+  type ReturnRestockTarget,
 } from '@openlinker/core/returns';
 import { ListReturnsQueryDto } from '../dto/list-returns-query.dto';
 import type {
   ReturnLineResponseDto,
   ReturnCountersDto,
   ReturnListItemResponseDto,
+  ReturnRestockTargetDto,
 } from '../dto/return-response.dto';
 import {
   PaginatedReturnsResponseDto,
@@ -58,7 +62,9 @@ const DEFAULT_PAGE_OFFSET = 0;
 export class ReturnsController {
   constructor(
     @Inject(RETURNS_SERVICE_TOKEN)
-    private readonly returnsService: IReturnsService
+    private readonly returnsService: IReturnsService,
+    @Inject(RETURN_CUSTODY_SERVICE_TOKEN)
+    private readonly custody: IReturnCustodyService
   ) {}
 
   @Get()
@@ -194,11 +200,31 @@ export class ReturnsController {
     }
 
     const declineAvailability = await this.returnsService.getDeclineAvailability(record);
+    const restockTarget = await this.custody.getRestockTarget();
 
     return {
       ...this.toListItemDto(record),
       lines: record.lines.map((line) => this.toLineDto(line)),
       declineAvailability,
+      restockTarget: ReturnsController.toRestockTargetDto(restockTarget),
+    };
+  }
+
+  /**
+   * Flatten the domain union onto the wire.
+   *
+   * Every arm-specific field is independently nullable and `null` means *not
+   * reported for this status*, never a value — the same rule the commercial
+   * snapshot (#2024) holds to. A client branches on `status`, never on the
+   * presence of a name.
+   */
+  private static toRestockTargetDto(target: ReturnRestockTarget): ReturnRestockTargetDto {
+    return {
+      status: target.status,
+      connectionId: target.status === 'resolved' ? target.connectionId : null,
+      connectionName: target.status === 'resolved' ? target.connectionName : null,
+      candidateCount:
+        target.status === 'ambiguous-inventory-master' ? target.candidateCount : null,
     };
   }
 

@@ -72,6 +72,7 @@ const buildRecord = (overrides: Record<string, unknown> = {}): ReturnRecord => {
 
 describe('ReturnsController', () => {
   let controller: ReturnsController;
+  let custody: { getRestockTarget: jest.Mock };
   let returnsService: {
     listReturns: jest.Mock;
     countReturnsByBucket: jest.Mock;
@@ -120,7 +121,17 @@ describe('ReturnsController', () => {
       getDeclineAvailability: jest.fn().mockResolvedValue({ supported: true, reason: null }),
     };
 
-    controller = new ReturnsController(returnsService as never);
+    custody = {
+      // The read's default posture: one master resolves, and the detail can
+      // name it. Arms are overridden per-test.
+      getRestockTarget: jest.fn().mockResolvedValue({
+        status: 'resolved',
+        connectionId: 'conn-1',
+        connectionName: 'Warehouse PrestaShop',
+      }),
+    };
+
+    controller = new ReturnsController(returnsService as never, custody as never);
   });
 
   const query = (overrides: Partial<ListReturnsQueryDto> = {}): ListReturnsQueryDto =>

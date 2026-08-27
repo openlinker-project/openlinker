@@ -443,3 +443,41 @@ The shape is the reason this is here rather than in a style guide: **the defect 
 **Applies to**: every `createQueryBuilder(...).take()/.skip()` call in the tree; especially any shared `buildListQuery`-style helper where a filter arm can conditionally add a join that the paged read then inherits.
 
 **Source**: #2377 (found by `returns-stage-projection.int-spec.ts` + `returns-read-api.int-spec.ts`; `libs/core/src/returns/infrastructure/persistence/repositories/return.repository.ts`).
+
+## A guard ordered behind a broader one is dead — and a unit test can keep it looking alive by constructing a state the real path never produces
+
+**Context**: `markReturnCustodyNotReturned` (#2367) carried two refusals: `illegal-transition` for a line not in `advised`/`in_transit`, and the more specific `partially-received` for a line that had already received units. The state check ran first. But receiving units is exactly what moves a line to `received` — so by the time `quantityReceived > 0`, the state check has already thrown, and `partially-received` was unreachable through every real path.
+
+**Problem**: the reason was not merely dead, it was replaced by a **wrong** one. An operator whose parcel arrived half-empty was told the line was *"already finished"* — false, and it points at the wrong remedy (the line is mid-flight and its shortfall is exactly what they were trying to record). The closed reason union, the exception filter's 409 mapping and the frontend copy map all carried an arm nothing could ever emit.
+
+The unit test covering it passed, and that is the part worth remembering: it constructed `line({ custodyState: 'in_transit', quantityReceived: 2 })` directly — a combination the receipt transition **cannot** produce, since a receipt sets both fields together. Hand-built fixtures let a test assert against a state the state machine forbids, so the test proved the branch worked *if reached* while saying nothing about whether anything reaches it. It was an integration test driving the real `POST /receive` then `POST /mark-not-returned` that produced `illegal-transition` where the code claimed `partially-received`.
+
+**Rule**: when a function has several refusal branches, check the **order** against the transitions that actually produce each state — a specific guard placed behind a broader one that subsumes it is dead code that type-checks and tests green. In a domain-rule test, build the "before" state by running the transition that produces it (`applyReturnCustodyReceipt(...)`) rather than by hand-constructing the fields; a fixture that assigns `custodyState` and its counters independently can describe a state the machine never enters. Where a closed reason union exists, treat each member as a claim that something can emit it, and pin the reachable ones through the real path.
+
+**Applies to**: `libs/core/src/returns/domain/domain-services/return-custody-transitions.domain-service.ts`; any pure rule engine with an ordered guard chain over a closed reason/refusal union — `checkRequiredToSell`, `checkParameterRestrictions`, `resolveSalesDocumentRouting` and the custody/lifecycle transitions all have this shape.
+
+**Source**: #2380 (found by `returns-write-api.int-spec.ts`, "should refuse a partially received line with an actionable 409 code").
+
+## A tsconfig with `"files": []` and only project references type-checks NOTHING — `tsc -p` on it exits 0 having compiled zero files
+
+**Context**: while gating #2380's frontend work, `npx tsc -p apps/web/tsconfig.json --noEmit` reported `EXIT=0` on code that did not compile — it passed `messages` to a `FormErrorSummary` whose prop is `errors`, which the component test then caught at runtime with `Cannot read properties of undefined (reading 'length')`.
+
+**Problem**: `apps/web/tsconfig.json` is a **solution-style** config — `"files": []` plus `"references"` to `tsconfig.app.json` and `tsconfig.node.json`. `tsc -p` on such a file has no inputs, so it succeeds instantly and reports success about nothing. Pointing at the referenced config directly is no better: `tsconfig.app.json` is written to be built through the reference graph, and invoking it standalone produced ~40 pre-existing errors across unrelated features (`downlevelIteration`, `AbortSignal.any`), i.e. a false RED to match the false GREEN. Compounding it, `tsc -b` **is** correct but incremental — a first run passed against stale `.tsbuildinfo` and only `tsc -b --force` surfaced the real errors.
+
+**Rule**: never invent a type-check invocation — run the command the package itself declares (`pnpm --filter <pkg> type-check`, here `tsc -b`). Before trusting any green type-check on a package you have just edited, confirm it actually compiled your files: a zero-input config and a clean build are indistinguishable from the exit code alone. When a build is incremental, pass `--force` for a gate you intend to rely on.
+
+**Applies to**: `apps/web/tsconfig.json` (and any other solution-style config in the tree); every ad-hoc `npx tsc -p <path>` used as a pre-commit gate.
+
+**Source**: #2380.
+
+## `pgrep -f <pattern>` from a shell whose own command line contains that pattern matches ITSELF — a watcher keyed that way reports on the watcher, never on the work
+
+**Context**: waiting for a long `pnpm test` gate to finish, I backgrounded `until ! pgrep -f "pnpm test" >/dev/null; do sleep 10; done`. The loop never exited. A second, identical watcher started later did not exit either.
+
+**Problem**: `pgrep -f` matches against the **full command line**, and the watcher's own command line contains the literal string `pnpm test` — as does every other watcher spawned the same way. So each loop matched itself and its sibling, the condition stayed true after the real `pnpm test` had long since exited, and `pgrep -f "pnpm test"` from any *other* shell then reported `RUNNING` about two sleep loops and nothing else. The failure has **no symptom other than a wrong answer delivered confidently**: no error, no hang in the thing being watched, just a monitor that says "still going" forever and a monitor-of-the-monitor that agrees. It also produced a second-order mistake — a detached PID doing real work was read as "nothing in flight", because the only evidence being consulted was the poisoned `pgrep`.
+
+**Rule**: never key a wait loop on a pattern that appears in the loop's own command line. Wait on the **PID** (`while kill -0 "$PID" 2>/dev/null; do sleep 15; done`), or on a **marker the watcher cannot produce** — a sentinel line the watched command appends on exit, or its exit-code file. If a pattern really is the only handle available, exclude self and siblings (`pgrep -f "pattern" | grep -v $$`), and treat a non-empty result as evidence only after confirming what those PIDs actually are (`pgrep -fl`). More generally: **a check that can satisfy itself proves nothing** — the same shape as a mock easier to satisfy than the thing it replaces, or a `tsconfig` with no inputs exiting 0.
+
+**Applies to**: any backgrounded `until`/`while` poll used to serialise against a long build, test or migration run; `pgrep`/`pkill -f` used anywhere near a process whose name is a substring of the polling command.
+
+**Source**: #2380 (two stale watchers kept each other alive across several turns while the real gate ran undetected).

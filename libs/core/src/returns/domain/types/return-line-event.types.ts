@@ -42,8 +42,23 @@ import type { ReturnDisposition } from './return-line.types';
  * and it says the attestation is *"permanent in the timeline and on the line;
  * only the attention clears"*. Folding it into the blocked act would erase the
  * first of those two entries.
+ *
+ * `not_returned` (#2380) is likewise an act rather than a bare state flip: the
+ * operator asserting *"this parcel is not coming"* is a decision by a named
+ * human at a known time, and the timeline is where that belongs. It carries the
+ * shortfall as its quantity.
+ *
+ * **Nothing in the tree branches on this union, and nothing checks it.** There
+ * is no `assertNever` switch, no exhaustive `Record`, and the persistence read
+ * reaches it through a cast — so adding a member here breaks no build and warns
+ * no author. Find the consumers by grep, deliberately; the compiler will not.
  */
-export const ReturnLineEventKindValues = ['receive', 'dispose', 'stock_attestation'] as const;
+export const ReturnLineEventKindValues = [
+  'receive',
+  'dispose',
+  'stock_attestation',
+  'not_returned',
+] as const;
 
 export type ReturnLineEventKind = (typeof ReturnLineEventKindValues)[number];
 

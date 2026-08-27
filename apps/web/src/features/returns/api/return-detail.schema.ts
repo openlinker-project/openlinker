@@ -34,9 +34,12 @@ import { z } from 'zod/v4';
 import {
   RETURN_BUCKET_VALUES,
   RETURN_ORIGIN_VALUES,
+  RETURN_RESTOCK_TARGET_STATUS_VALUES,
   type ReturnDeclineAvailability,
   type ReturnDetail,
   type ReturnLine,
+  type ReturnRestockTarget,
+  type ReturnRestockTargetStatus,
   type DeclineReturnResult,
 } from './returns.types';
 
@@ -77,6 +80,13 @@ const returnLineSchema = z.object({
   note: z.string().nullish(),
 });
 
+const restockTargetSchema = z.object({
+  status: z.string(),
+  connectionId: z.string().nullish(),
+  connectionName: z.string().nullish(),
+  candidateCount: z.number().nullish(),
+});
+
 const declineAvailabilitySchema = z.object({
   supported: z.boolean(),
   reason: z.string().nullish(),
@@ -111,6 +121,7 @@ const returnDetailSchema = z.object({
   updatedAt: z.string(),
   lines: z.array(z.unknown()).nullish(),
   declineAvailability: declineAvailabilitySchema.nullish(),
+  restockTarget: restockTargetSchema.nullish(),
 });
 
 const declineResultSchema = z.object({
@@ -123,6 +134,36 @@ const declineResultSchema = z.object({
 /** Collapse `undefined` and `null` — both mean "not reported" — onto `null`. */
 function orNull<T>(value: T | null | undefined): T | null {
   return value === undefined || value === null ? null : value;
+}
+
+/**
+ * The fallback when the server sent no readable `restockTarget`.
+ *
+ * `adapter-unresolved` rather than `no-inventory-master`, deliberately: an
+ * unreadable response is not evidence that the operator has configured no
+ * master, and telling them they have not sends them to fix something that is
+ * not broken. This value says only "OpenLinker cannot tell you right now",
+ * which is exactly what is true.
+ */
+const UNREADABLE_RESTOCK_TARGET: ReturnRestockTarget = {
+  status: 'adapter-unresolved',
+  connectionId: null,
+  connectionName: null,
+  candidateCount: null,
+};
+
+/**
+ * Narrow the wire status, degrading an unknown value rather than trusting it.
+ *
+ * A status this build does not know must NOT reach the copy map, which would
+ * render nothing where a destination sentence belongs. Degrading to
+ * `adapter-unresolved` states the honest thing — this build cannot say where
+ * stock would land — instead of a blank.
+ */
+function toRestockTargetStatus(raw: string): ReturnRestockTargetStatus {
+  return (RETURN_RESTOCK_TARGET_STATUS_VALUES as readonly string[]).includes(raw)
+    ? (raw as ReturnRestockTargetStatus)
+    : 'adapter-unresolved';
 }
 
 /**
@@ -185,6 +226,7 @@ export function parseReturnDetail(raw: unknown, returnId: string): ReturnDetail 
   }
 
   const availability = parsed.data.declineAvailability;
+  const target = parsed.data.restockTarget;
 
   return {
     id: parsed.data.id,
@@ -223,6 +265,15 @@ export function parseReturnDetail(raw: unknown, returnId: string): ReturnDetail 
       availability === undefined || availability === null
         ? UNREADABLE_DECLINE_AVAILABILITY
         : { supported: availability.supported, reason: orNull(availability.reason) },
+    restockTarget:
+      target === undefined || target === null
+        ? UNREADABLE_RESTOCK_TARGET
+        : {
+            status: toRestockTargetStatus(target.status),
+            connectionId: orNull(target.connectionId),
+            connectionName: orNull(target.connectionName),
+            candidateCount: orNull(target.candidateCount),
+          },
   };
 }
 
