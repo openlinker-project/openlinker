@@ -132,6 +132,46 @@ describe('PrestashopAdapterFactory', () => {
       expect(resolveSpy).not.toHaveBeenCalled();
       resolveSpy.mockRestore();
     });
+
+    // Pins the request count, not just the wiring: the shop-currency pair used
+    // to be re-read on every child job because the plugin built a fresh factory
+    // per capability resolution, discarding this resolver's cache (#2592). One
+    // factory serving two resolutions must read the pair once.
+    it('should read the shop-currency pair only once across two adapter builds (#2592)', async () => {
+      const urls: string[] = [];
+      const countingFetch = jest.fn((input: unknown) => {
+        const url = String(input);
+        urls.push(url);
+        const body = url.includes('/api/configurations')
+          ? JSON.stringify({ configurations: [{ id: '1', value: '2' }] })
+          : JSON.stringify({ currency: { id: '2', iso_code: 'PLN' } });
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          headers: new Headers({ 'content-type': 'application/json' }),
+          text: () => Promise.resolve(body),
+        });
+      }) as unknown as typeof fetch;
+
+      const connection = createTestConnection();
+      mockCredentialsResolver.get.mockResolvedValue({ webserviceApiKey: 'test-key' });
+
+      await factory.createAdapters(
+        connection,
+        mockIdentifierMapping,
+        mockCredentialsResolver,
+        countingFetch
+      );
+      await factory.createAdapters(
+        connection,
+        mockIdentifierMapping,
+        mockCredentialsResolver,
+        countingFetch
+      );
+
+      expect(urls.filter((u) => u.includes('/api/configurations'))).toHaveLength(1);
+      expect(urls.filter((u) => u.includes('/api/currencies'))).toHaveLength(1);
+    });
   });
 
   describe('validateAndParseConfig', () => {

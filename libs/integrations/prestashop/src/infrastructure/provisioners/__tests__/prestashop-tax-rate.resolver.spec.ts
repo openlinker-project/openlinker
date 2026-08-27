@@ -442,4 +442,39 @@ describe('PrestashopTaxRateResolver', () => {
 
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('using catch-all tax rule'));
   });
+  describe('preloaded product (#2592)', () => {
+    it('should skip the products read when the caller hands over the product it already fetched', async () => {
+      httpClient.getResource.mockResolvedValueOnce({ rate: '23.000' });
+      httpClient.listResources.mockResolvedValueOnce([
+        { id_tax: '7', id_country: '0', id_state: '0' },
+      ]);
+
+      const resolution = await resolver.resolveProductTaxRate(
+        '25',
+        undefined,
+        'conn-1',
+        httpClient,
+        { id_tax_rules_group: '2' }
+      );
+
+      expect(resolution).toEqual({ kind: 'resolved', rate: 0.23 });
+      expect(
+        httpClient.getResource.mock.calls.filter((call) => call[0] === 'products')
+      ).toHaveLength(0);
+    });
+
+    it('should fetch the product itself when the caller hands over nothing (unchanged path)', async () => {
+      httpClient.getResource
+        .mockResolvedValueOnce({ id_tax_rules_group: '2' })
+        .mockResolvedValueOnce({ rate: '23.000' });
+      httpClient.listResources.mockResolvedValueOnce([
+        { id_tax: '7', id_country: '0', id_state: '0' },
+      ]);
+
+      const resolution = await resolver.resolveProductTaxRate('25', undefined, 'conn-1', httpClient);
+
+      expect(resolution).toEqual({ kind: 'resolved', rate: 0.23 });
+      expect(httpClient.getResource).toHaveBeenCalledWith('products', '25');
+    });
+  });
 });

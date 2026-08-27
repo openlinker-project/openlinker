@@ -52,6 +52,25 @@ import type {
 export class PrestashopProductMasterAdapter implements ProductMasterPort, ProductTaxRateReader {
   private readonly logger = new Logger(PrestashopProductMasterAdapter.name);
 
+  /**
+   * One `GET /api/products/{id}` per product per adapter instance (#2592).
+   *
+   * The catalogue sweep read the same product resource three times per SKU:
+   * `getProduct` and `getProductVariants` each fetched it, and
+   * `readProductTaxRate` made the tax resolver fetch it a third time through
+   * its own code path. Measured at exactly 3.00 fetches for 100 of 100
+   * products, twice.
+   *
+   * An adapter instance lives for one capability resolution, i.e. one child
+   * job, which is the right scope: within a job those reads want the same
+   * snapshot, and the next job builds a new adapter and re-reads. A
+   * longer-lived cache would serve a stale product to a later sync.
+   *
+   * Keyed by the PrestaShop id, since one instance can be asked about several
+   * products through `getProducts`.
+   */
+  private readonly productResourceCache = new Map<string, Promise<PrestashopProduct>>();
+
   constructor(
     private readonly httpClient: IPrestashopWebserviceClient,
     private readonly identifierMapping: IdentifierMappingPort,
@@ -76,6 +95,30 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort, Produc
     // which is the honest answer for a shop whose resolver was never wired.
     private readonly taxRateResolver?: PrestashopTaxRateResolver
   ) {}
+
+  /**
+   * `GET /api/products/{id}`, served from {@link productResourceCache} when
+   * this instance has already asked for it.
+   *
+   * The PROMISE is cached rather than its value, so two concurrent callers
+   * within one job share a single request instead of racing to issue two.
+   * A rejection is evicted, so a transient failure does not pin an error for
+   * the rest of the job.
+   */
+  private async fetchProductResource(externalId: string): Promise<PrestashopProduct> {
+    const cached = this.productResourceCache.get(externalId);
+    if (cached !== undefined) {
+      return cached;
+    }
+    const pending = this.httpClient
+      .getResource<PrestashopProduct>('products', externalId)
+      .catch((error: unknown) => {
+        this.productResourceCache.delete(externalId);
+        throw error;
+      });
+    this.productResourceCache.set(externalId, pending);
+    return pending;
+  }
 
   /**
    * PrestaShop keys tax on the **product**, through
@@ -128,11 +171,19 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort, Produc
       throw new MasterProductNotFoundError(input.productId, this.connection.id);
     }
 
+    // Hand the resolver the product this instance has already fetched (#2592):
+    // all it reads is `id_tax_rules_group`, and re-fetching cost one extra
+    // `GET /api/products/{id}` per SKU on every catalogue sweep. A failure here
+    // is not fatal to the rate read - the resolver falls back to fetching it
+    // itself, which is exactly the pre-#2592 path.
+    const preloaded = await this.fetchProductResource(externalId).catch(() => undefined);
+
     const resolution = await this.taxRateResolver.resolveProductTaxRate(
       externalId,
       undefined,
       this.connection.id,
-      this.httpClient
+      this.httpClient,
+      preloaded
     );
 
     if (resolution.kind === 'resolved') {
@@ -184,10 +235,7 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort, Produc
       }
 
       // Fetch from PrestaShop
-      const prestashopProduct = await this.httpClient.getResource<PrestashopProduct>(
-        'products',
-        prestashopId.externalId
-      );
+      const prestashopProduct = await this.fetchProductResource(prestashopId.externalId);
 
       // Map to OpenLinker schema
       const langIdValue: number = this.resolveLangId();
@@ -392,10 +440,7 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort, Produc
     }
 
     // Fetch product for barcode fallback / synthetic variant
-    const prestashopProduct = await this.httpClient.getResource<PrestashopProduct>(
-      'products',
-      prestashopProductId.externalId
-    );
+    const prestashopProduct = await this.fetchProductResource(prestashopProductId.externalId);
 
     // Fetch combinations from PrestaShop
     const combinations = await this.httpClient.listResources<PrestashopCombination>(
@@ -696,10 +741,7 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort, Produc
       throw error;
     }
 
-    const prestashopProduct = await this.httpClient.getResource<PrestashopProduct>(
-      'products',
-      prestashopId.externalId
-    );
+    const prestashopProduct = await this.fetchProductResource(prestashopId.externalId);
 
     const path = await this.resolveCategoryBreadcrumb(prestashopProduct, this.resolveLangId());
 
