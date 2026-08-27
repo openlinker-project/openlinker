@@ -39,7 +39,7 @@
  *
  * @module apps/web/src/features/automation/components
  */
-import { useEffect, useMemo, type ReactElement } from 'react';
+import { useEffect, useMemo, useState, type ReactElement } from 'react';
 import { useFieldArray, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Alert } from '../../../shared/ui/alert';
@@ -61,6 +61,14 @@ import {
   type AutomationComposerValues,
 } from '../lib/automation-composer.schema';
 import { useCreateAutomationMutation } from '../hooks/use-create-automation-mutation';
+import { useEvaluateAutomationMutation } from '../hooks/use-evaluate-automation-mutation';
+import {
+  draftNeedsDryRun,
+  fingerprintDraft,
+  resolveDryRunGate,
+} from '../lib/dry-run-verdict';
+import { AutomationDryRunPanel } from './automation-dry-run-panel';
+import { AUTOMATION_DRY_RUN_COPY } from '../lib/automation.copy';
 import { AutomationConditionRow } from './automation-condition-row';
 import { AutomationActionRow } from './automation-action-row';
 import {
@@ -170,6 +178,25 @@ export function AutomationComposerDialog({
   const actions = watch('actions');
   const isActive = watch('isActive');
   const moneyAcknowledged = watch('moneyAcknowledged');
+  const triggerConfigValue = watch('triggerConfigValue');
+
+  const evaluate = useEvaluateAutomationMutation();
+  // The draft the dry run was evidence FOR. Session-scoped and short-lived: it
+  // is cleared with the form, because evidence about a discarded draft is
+  // evidence about nothing.
+  const [testedFingerprint, setTestedFingerprint] = useState<string | null>(null);
+
+  const currentFingerprint = fingerprintDraft({
+    trigger,
+    triggerConfigValue,
+    conditions,
+    actions,
+  });
+  // Keyed on `irreversible` ALONE — never `isActive && irreversible`. See
+  // `draftNeedsDryRun` for why gating on arming is bypassable in two clicks.
+  const needsDryRun = draftNeedsDryRun(actions, vocabulary.actions);
+  const gate = resolveDryRunGate({ needsDryRun, testedFingerprint, currentFingerprint });
+  const resetEvaluate = evaluate.reset;
 
   const carriers = selectCarrierConnections(connectionsQuery.data ?? []);
   const allConnections = connectionsQuery.data ?? [];
@@ -190,7 +217,9 @@ export function AutomationComposerDialog({
       effectiveTo: '',
     });
     resetMutation();
-  }, [open, prefillSuggested, trigger, legalActions, reset, resetMutation]);
+    resetEvaluate();
+    setTestedFingerprint(null);
+  }, [open, prefillSuggested, trigger, legalActions, reset, resetMutation, resetEvaluate]);
 
   const refusal = createRule.error ? describeAutomationWriteError(createRule.error) : null;
 
@@ -405,6 +434,75 @@ export function AutomationComposerDialog({
             </label>
           ) : null}
 
+          {/*
+            The §5.6a arming gate. Rendered whenever the draft carries an
+            irreversible step, regardless of whether it is being armed — the
+            evidence is needed to CREATE the definition, so no later path can
+            arm it untested.
+          */}
+          {needsDryRun ? (
+            <>
+              <AutomationDryRunPanel
+                isRunning={evaluate.isPending}
+                result={evaluate.data ?? null}
+                error={evaluate.error}
+                // The gate already knows the result no longer describes the
+                // current draft; without telling the panel, a green verdict for
+                // a rule that no longer exists stays on screen under the
+                // "test it again" banner.
+                isStale={gate === 'stale'}
+                onRun={(orderId) => {
+                  const values = form.getValues();
+                  const fingerprint = fingerprintDraft({
+                    trigger,
+                    triggerConfigValue: values.triggerConfigValue,
+                    conditions: values.conditions,
+                    actions: values.actions,
+                  });
+                  void evaluate
+                    .mutateAsync({
+                      orderId,
+                      // Always the DRAFT arm: a draft has no id, and sending
+                      // both `ruleId` and `rule` is a 400.
+                      rule: {
+                        name: values.name.trim().length > 0 ? values.name.trim() : 'Untitled',
+                        trigger,
+                        triggerConfig:
+                          configKey === null
+                            ? {}
+                            : { [configKey]: Number(values.triggerConfigValue) || 0 },
+                        conditions: values.conditions.map(toConditionInput),
+                        actions: values.actions.map(toActionInput),
+                        isActive: values.isActive,
+                        effectiveFrom: values.effectiveFrom,
+                        effectiveTo:
+                          values.effectiveTo.trim().length > 0 ? values.effectiveTo : null,
+                      },
+                    })
+                    // The fingerprint is stamped only on a SUCCESSFUL run: a
+                    // refused evaluation is not evidence of anything.
+                    .then(() => setTestedFingerprint(fingerprint))
+                    .catch(() => {
+                      setTestedFingerprint(null);
+                    });
+                }}
+              />
+              {gate === 'required' ? (
+                <Alert tone="warning">{AUTOMATION_DRY_RUN_COPY.gateLocked}</Alert>
+              ) : null}
+              {/*
+                "Not tested" and "tested, then changed" are different operator
+                situations; one sentence for both reads as the gate being broken.
+              */}
+              {gate === 'stale' ? (
+                <Alert tone="warning">{AUTOMATION_DRY_RUN_COPY.gateStale}</Alert>
+              ) : null}
+              {gate === 'satisfied' ? (
+                <p className="muted-text">{AUTOMATION_DRY_RUN_COPY.gatePassed}</p>
+              ) : null}
+            </>
+          ) : null}
+
           {/* Spec §5.5, verbatim — once, for the rule. */}
           <p className="muted-text">{AUTOMATION_COMPOSER_COPY.nonRetroactivity}</p>
 
@@ -414,7 +512,12 @@ export function AutomationComposerDialog({
             </Button>
             <Button
               type="submit"
-              disabled={createRule.isPending || (needsMoneyAck && !moneyAcknowledged)}
+              disabled={
+                createRule.isPending ||
+                (needsMoneyAck && !moneyAcknowledged) ||
+                gate === 'required' ||
+                gate === 'stale'
+              }
             >
               {createRule.isPending
                 ? AUTOMATION_COMPOSER_COPY.saving

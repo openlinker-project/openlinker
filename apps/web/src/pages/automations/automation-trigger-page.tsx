@@ -36,7 +36,6 @@ import {
   describeTrigger,
   isAutomationTrigger,
   useAutomationRulesQuery,
-  useAutomationRunsQuery,
   useAutomationVocabularyQuery,
   useSetAutomationActiveMutation,
   type AutomationRule,
@@ -60,8 +59,6 @@ export function AutomationTriggerPage(): ReactElement {
     isKnownTrigger ? trigger : 'order.packed',
     isKnownTrigger,
   );
-  const firstRuleId = rulesQuery.data?.items[0]?.id;
-  const runsQuery = useAutomationRunsQuery(firstRuleId ?? '', Boolean(firstRuleId));
   const setActive = useSetAutomationActiveMutation();
   const vocabularyQuery = useAutomationVocabularyQuery();
 
@@ -146,9 +143,6 @@ export function AutomationTriggerPage(): ReactElement {
             canWrite={write.canWrite}
             readOnlyLocked={write.demoReadOnly}
             readOnlyMessage={NAV_DEMO_RESTRICTED_MESSAGE}
-            // Only a SETTLED `recordingAvailable: false` justifies the notice;
-            // a null (unreadable) log or a still-loading one asserts nothing.
-            firingsUnrecorded={runsQuery.data?.recordingAvailable === false}
             onSetActive={handleSetActive}
             pendingRuleId={setActive.isPending ? (setActive.variables?.rule.id ?? null) : null}
             writeError={setActive.error?.message ?? null}

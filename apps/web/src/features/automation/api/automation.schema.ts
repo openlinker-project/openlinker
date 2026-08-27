@@ -19,8 +19,13 @@
 import { z } from 'zod/v4';
 import {
   AUTOMATION_ACTION_AVAILABILITY_VALUES,
+  AUTOMATION_CONDITION_OUTCOME_VALUES,
   AUTOMATION_FIRING_MODE_VALUES,
+  AUTOMATION_NON_FIRING_REASON_VALUES,
+  AUTOMATION_STEP_STATUS_VALUES,
   AUTOMATION_TRIGGER_VALUES,
+  type AutomationDryRunResult,
+  type AutomationStepResult,
   type AutomationRule,
   type AutomationRun,
   type AutomationRunLog,
@@ -164,6 +169,44 @@ export function parseAutomationRules(raw: unknown): ParsedAutomationRules {
   return { items, droppedCount };
 }
 
+/**
+ * One step of a firing.
+ *
+ * `steps` is `readonly unknown[]` server-side (#2385 may widen it), so this is
+ * the one open shape in the automation frontend — parsed per step, dropped and
+ * counted rather than failing the log.
+ */
+const stepSchema = z.object({
+  stepIndex: z.number(),
+  action: z.string(),
+  status: z.enum(AUTOMATION_STEP_STATUS_VALUES),
+  detail: z.string().nullish(),
+  syncJobId: z.string().nullish(),
+  unavailableReason: z.string().nullish(),
+});
+
+function parseSteps(raw: unknown): { steps: AutomationStepResult[]; unreadable: number } {
+  const list = z.array(z.unknown()).safeParse(raw);
+  if (!list.success) return { steps: [], unreadable: 0 };
+
+  const steps: AutomationStepResult[] = [];
+  let unreadable = 0;
+  for (const entry of list.data) {
+    const parsed = stepSchema.safeParse(entry);
+    if (!parsed.success) {
+      unreadable += 1;
+      continue;
+    }
+    steps.push({
+      ...parsed.data,
+      detail: parsed.data.detail ?? null,
+      syncJobId: parsed.data.syncJobId ?? null,
+      unavailableReason: parsed.data.unavailableReason ?? null,
+    });
+  }
+  return { steps, unreadable };
+}
+
 const runSchema = z.object({
   id: z.string(),
   ruleId: z.string(),
@@ -172,6 +215,7 @@ const runSchema = z.object({
   subjectKind: z.string(),
   subjectId: z.string(),
   outcome: z.string(),
+  steps: z.unknown().nullish(),
   blockedByRuleIds: z.array(z.string()).nullish(),
   firedAt: z.string(),
 });
@@ -200,7 +244,13 @@ export function parseAutomationRunLog(raw: unknown): AutomationRunLog | null {
   for (const entry of envelope.data.runs ?? []) {
     const parsed = runSchema.safeParse(entry);
     if (parsed.success) {
-      runs.push({ ...parsed.data, blockedByRuleIds: parsed.data.blockedByRuleIds ?? null });
+      const { steps, unreadable } = parseSteps(parsed.data.steps);
+      runs.push({
+        ...parsed.data,
+        steps,
+        unreadableStepCount: unreadable,
+        blockedByRuleIds: parsed.data.blockedByRuleIds ?? null,
+      });
     }
   }
   return {
@@ -209,5 +259,93 @@ export function parseAutomationRunLog(raw: unknown): AutomationRunLog | null {
     hasMore: envelope.data.hasMore ?? false,
     recordingAvailable: envelope.data.recordingAvailable,
     note: envelope.data.note ?? null,
+  };
+}
+
+
+// ── Dry run (#2366) ──────────────────────────────────────────────────────────
+
+const factsSchema = z.object({
+  subjectKind: z.string(),
+  subjectId: z.string(),
+  occurredAt: z.string().nullish(),
+  sourceConnectionId: z.string().nullish(),
+  country: z.string().nullish(),
+  totalGross: z.number().nullish(),
+  currency: z.string().nullish(),
+});
+
+const traceSchema = z.object({
+  field: z.string(),
+  condition: z.record(z.string(), z.unknown()).nullish(),
+  outcome: z.enum(AUTOMATION_CONDITION_OUTCOME_VALUES),
+});
+
+const verdictSchema = z.object({
+  ruleId: z.string(),
+  ruleName: z.string(),
+  isSubject: z.boolean(),
+  isActive: z.boolean(),
+  matches: z.boolean(),
+  wouldFire: z.boolean(),
+  nonFiringReason: z.enum(AUTOMATION_NON_FIRING_REASON_VALUES).nullish(),
+  conditionTraces: z.array(traceSchema).nullish(),
+  retroactivityFloorWaived: z.boolean(),
+  blockedBy: z
+    .object({
+      collidingRuleIds: z.array(z.string()),
+      actions: z.array(z.string()),
+    })
+    .nullish(),
+  stepAvailability: z.array(availabilityEntrySchema).nullish(),
+});
+
+const dryRunSchema = z.object({
+  trigger: z.string(),
+  facts: factsSchema,
+  evaluatedAt: z.string(),
+  verdicts: z.array(verdictSchema),
+});
+
+/**
+ * The dry-run result, parsed ALL-OR-NOTHING.
+ *
+ * Deliberately unlike the row-level degradation elsewhere in this file. This is
+ * the evidence an operator arms a money-spending rule on, and a partially-read
+ * verdict list would silently drop the very sibling whose collision the endpoint
+ * returns every rule in order to reveal. Throwing routes the panel to its error
+ * branch, which says we could not read it — the honest answer.
+ */
+export function parseAutomationDryRun(raw: unknown): AutomationDryRunResult {
+  const parsed = dryRunSchema.parse(raw);
+  return {
+    trigger: parsed.trigger,
+    evaluatedAt: parsed.evaluatedAt,
+    facts: {
+      ...parsed.facts,
+      occurredAt: parsed.facts.occurredAt ?? null,
+      sourceConnectionId: parsed.facts.sourceConnectionId ?? null,
+      country: parsed.facts.country ?? null,
+      totalGross: parsed.facts.totalGross ?? null,
+      currency: parsed.facts.currency ?? null,
+    },
+    verdicts: parsed.verdicts.map((verdict) => ({
+      ...verdict,
+      nonFiringReason: verdict.nonFiringReason ?? null,
+      conditionTraces: (verdict.conditionTraces ?? []).map((trace) => ({
+        ...trace,
+        condition: trace.condition ?? {},
+      })),
+      blockedBy: verdict.blockedBy
+        ? {
+            collidingRuleIds: verdict.blockedBy.collidingRuleIds,
+            actions: verdict.blockedBy.actions,
+          }
+        : null,
+      stepAvailability: (verdict.stepAvailability ?? []).map((entry) => ({
+        ...entry,
+        reason: entry.reason ?? null,
+      })),
+    })),
   };
 }

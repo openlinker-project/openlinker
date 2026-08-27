@@ -9,7 +9,7 @@
 import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import { renderWithProviders } from '../../../test/test-utils';
+import { createMockApiClient, renderWithProviders } from '../../../test/test-utils';
 import { AutomationRulesList } from './automation-rules-list';
 import type { AutomationRule } from '../api/automation.types';
 
@@ -59,7 +59,6 @@ function renderList(overrides: Partial<Parameters<typeof AutomationRulesList>[0]
       canWrite
       readOnlyLocked={false}
       readOnlyMessage="Read only"
-      firingsUnrecorded={false}
       onSetActive={onSetActive}
       pendingRuleId={null}
       writeError={null}
@@ -125,28 +124,75 @@ describe('AutomationRulesList', () => {
     ).toBeInTheDocument();
   });
 
-  it('should say it cannot tell whether a rule matched while firings are unrecorded', () => {
-    renderList({ firingsUnrecorded: true });
+  it('should not fetch any run log until a row is expanded', async () => {
+    // The query is per rule, so mounting one per row would issue N requests on
+    // page load — for a log that is empty in this build anyway.
+    const user = userEvent.setup();
+    const listRuns = vi.fn().mockResolvedValue({
+      runs: [],
+      limit: 50,
+      hasMore: false,
+      recordingAvailable: false,
+      note: 'Automation runs are not recorded in this build yet.',
+    });
+    const apiClient = createMockApiClient({ automations: { listRuns } });
 
-    // Never "this rule has never matched" — an empty log with recording off is
-    // not evidence of anything.
-    expect(
-      screen.getByText(
-        'OpenLinker cannot yet tell you whether this rule has ever matched an order.',
-      ),
-    ).toBeInTheDocument();
+    renderWithProviders(
+      <AutomationRulesList
+        rules={[baseRule, blockedRule]}
+        canWrite
+        readOnlyLocked={false}
+        readOnlyMessage="Read only"
+        onSetActive={vi.fn()}
+        pendingRuleId={null}
+        writeError={null}
+      />,
+      { apiClient },
+    );
+
+    expect(listRuns).not.toHaveBeenCalled();
+
+    await user.click(screen.getAllByRole('button', { name: 'Show history' })[0]);
+
+    expect(listRuns).toHaveBeenCalledTimes(1);
+    expect(listRuns).toHaveBeenCalledWith(baseRule.id);
   });
 
-  it('should state the unrecorded-firings fact once for the whole list, not once per rule', () => {
-    renderList({ rules: [baseRule, blockedRule], firingsUnrecorded: true });
+  it('should render the not-recorded note rather than an empty history', async () => {
+    // While recording is off, an empty list says NOTHING about whether the rule
+    // fired — so the backend's own note leads and no empty-state is shown.
+    const user = userEvent.setup();
+    const apiClient = createMockApiClient({
+      automations: {
+        listRuns: vi.fn().mockResolvedValue({
+          runs: [],
+          limit: 50,
+          hasMore: false,
+          recordingAvailable: false,
+          note: 'Automation runs are not recorded in this build yet.',
+        }),
+      },
+    });
 
-    // Whether firings are recorded is a property of the BUILD, so repeating it
-    // on every row would state N times something true once.
+    renderWithProviders(
+      <AutomationRulesList
+        rules={[baseRule]}
+        canWrite
+        readOnlyLocked={false}
+        readOnlyMessage="Read only"
+        onSetActive={vi.fn()}
+        pendingRuleId={null}
+        writeError={null}
+      />,
+      { apiClient },
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Show history' }));
+
     expect(
-      screen.getAllByText(
-        'OpenLinker cannot yet tell you whether this rule has ever matched an order.',
-      ),
-    ).toHaveLength(1);
+      await screen.findByText('Automation runs are not recorded in this build yet.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('This rule has not run yet.')).toBeNull();
   });
 
   it('should surface a failed write instead of silently reverting', () => {

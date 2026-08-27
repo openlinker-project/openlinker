@@ -16,6 +16,11 @@
  *
  * @module apps/web/src/features/automation/lib
  */
+import type {
+  AutomationConditionOutcome,
+  AutomationNonFiringReason,
+  AutomationStepStatus,
+} from '../api/automation.types';
 
 export const AUTOMATIONS_PAGE_COPY = {
   eyebrow: 'Operations',
@@ -288,6 +293,130 @@ export const AUTOMATION_ACTION_LABELS: Record<string, string> = {
   'send-email': 'Send an email',
   'place-hold': 'Put the order on hold',
   'release-hold': 'Lift the hold',
+};
+
+/**
+ * Why a rule did not fire (#2366).
+ *
+ * `as const satisfies Record<AutomationNonFiringReason, string>` — compile-time
+ * TOTAL, so a fifteenth reason added backend-side and mirrored into the union
+ * fails the build here rather than rendering as `undefined`. Read through a
+ * `Record<string, string>` lookup with a RAW-CODE fallback so a reason from a
+ * newer backend still renders something true (its code) instead of nothing;
+ * that is the `describeTrigger` precedent.
+ *
+ * In the copy module rather than beside the panel, so it stays inside
+ * `check-ui-vocabulary` — an object literal in a `.tsx` sits outside the gate
+ * entirely, the hole #2365 closed.
+ */
+export const AUTOMATION_NON_FIRING_REASON_COPY = {
+  'trigger-mismatch': 'This rule watches for a different event.',
+  'unknown-trigger': 'This rule watches for an event this version does not recognise.',
+  'rule-inactive': 'The rule is switched off.',
+  'not-yet-effective': 'The rule does not start applying until later.',
+  'no-longer-effective': 'The rule stopped applying before this order.',
+  'fact-precedes-rule': 'This happened before the rule was saved, and rules are never retroactive.',
+  'fact-time-unknown': 'OpenLinker does not know when this happened, so it cannot tell whether the rule already existed.',
+  'illegal-trigger-action-pair': 'This rule pairs an event with a step that event can never run.',
+  'no-actions': 'The rule has no steps left that this version can run.',
+  'trigger-config-invalid': 'The rule is missing the setting its event needs.',
+  'condition-not-met': 'A condition was not true for this order.',
+  'condition-fact-unknown': 'A condition asked about something OpenLinker does not know for this order.',
+  'condition-currency-mismatch': 'The amount is in a different currency from this order, and nothing is converted.',
+} as const satisfies Record<AutomationNonFiringReason, string>;
+
+/** Per-condition verdicts. `unknown` and `currency-mismatch` are not `false`. */
+export const AUTOMATION_CONDITION_OUTCOME_COPY = {
+  true: 'Matched',
+  false: 'Not matched',
+  unknown: 'Not known for this order',
+  'currency-mismatch': 'Different currency',
+} as const satisfies Record<AutomationConditionOutcome, string>;
+
+/** How one step of a firing ended. */
+export const AUTOMATION_STEP_STATUS_COPY = {
+  done: 'Done',
+  'nothing-to-do': 'Nothing to do',
+  failed: 'Failed',
+  skipped: 'Skipped',
+} as const satisfies Record<AutomationStepStatus, string>;
+
+export const AUTOMATION_DRY_RUN_COPY = {
+  title: 'Test on a recent order',
+  intro:
+    'Pick an order from the last 30 days and see what this rule would have done. Nothing is sent, bought or changed.',
+  orderLabel: 'Order',
+  orderPlaceholder: 'Select an order…',
+  run: 'Run the test',
+  running: 'Testing…',
+  noOrders: 'No orders in the last 30 days, so there is nothing to test against yet.',
+  ordersFailed: 'Unable to load recent orders.',
+  failedTitle: 'The test did not run',
+  /**
+   * Said where the branch is written: a draft is re-validated exactly as a save
+   * would be, so an incomplete rule answers with the save's own refusals. An
+   * empty verdict list here would claim the rule matches nothing, when the truth
+   * is that it was never evaluated.
+   */
+  failedHint: 'Nothing was evaluated, so this says nothing about whether the rule would match.',
+  wouldFire: 'This rule would have run',
+  wouldNotFire: 'This rule would not have run',
+  /**
+   * `wouldFire` AND the waiver together. The dry run waives the retroactivity
+   * floor that the real path enforces, so "would have run" is FALSE for an
+   * order older than the rule — the headline has to say so, not leave it to a
+   * note underneath.
+   */
+  wouldMatchNotFire: 'This rule matches, but would not have run',
+  matchedButBlocked:
+    'It matched this order, but another rule already does something that cannot be done twice.',
+  blockedByPrefix: 'Held back by',
+  blockedActionsPrefix: 'because both would',
+  retroactivityWaived:
+    'It matches, but this order is older than the rule — so it would not actually have run. Only things that happen after you save it are acted on.',
+  conditionsTitle: 'Conditions',
+  noConditions: 'This rule has no conditions, so it applies to every one of these events.',
+  stepsTitle: 'Steps it would run',
+  factsTitle: 'What OpenLinker knew about this order',
+  factSourceLabel: 'Came from',
+  factCountryLabel: 'Delivery country',
+  factTotalLabel: 'Order total',
+  factWhenLabel: 'Happened',
+  staleResult:
+    'You changed the rule after this test, so the result below describes the previous version.',
+  factUnknown: 'Not known',
+  otherRulesTitle: 'Other rules on this event',
+  noOtherRules: 'No other rules watch this event.',
+  gateLocked: 'Test this rule before saving it — it can spend money, and OpenLinker cannot undo that.',
+  gateStale:
+    'You changed the rule after testing it. Test it again so what you save is what you checked.',
+  gatePassed: 'Tested.',
+} as const;
+
+export const AUTOMATION_RUN_LOG_COPY = {
+  title: 'What this rule has done',
+  show: 'Show history',
+  hide: 'Hide history',
+  loading: 'Loading history…',
+  failed: 'Unable to load this rule’s history.',
+  empty: 'This rule has not run yet.',
+  outcomeLabel: 'Result',
+  whenLabel: 'When',
+  orderLabel: 'Order',
+  stepsLabel: 'Steps',
+  jobLink: 'Job',
+  blockedByPrefix: 'Held back by',
+  unreadableSteps: (count: number) =>
+    count === 1
+      ? '1 step could not be read and is not shown.'
+      : `${count} steps could not be read and are not shown.`,
+} as const;
+
+export const AUTOMATION_RUN_OUTCOME_COPY: Record<string, string> = {
+  done: 'Done',
+  failed: 'Failed',
+  'nothing-to-do': 'Nothing to do',
+  blocked: 'Held back',
 };
 
 export const AUTOMATION_ACTIVITY_COPY = {

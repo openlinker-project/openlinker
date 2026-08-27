@@ -5,16 +5,16 @@
  * actions, `return.received` allows one — so a test that passes only because
  * every action is legal everywhere cannot pass here.
  */
-import { screen, within } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import { renderWithProviders, sampleConnection } from '../../../test/test-utils';
+import { createMockApiClient, renderWithProviders, sampleConnection } from '../../../test/test-utils';
 import {
   AutomationComposerDialog,
   seedActions,
   selectCarrierConnections,
 } from './automation-composer-dialog';
-import { AUTOMATION_COMPOSER_COPY } from '../lib/automation.copy';
+import { AUTOMATION_COMPOSER_COPY, AUTOMATION_DRY_RUN_COPY } from '../lib/automation.copy';
 import type { AutomationVocabulary } from '../api/automation.types';
 import type { Connection } from '../../connections';
 
@@ -275,6 +275,174 @@ describe('AutomationComposerDialog — typing', () => {
     await user.click(screen.getByRole('button', { name: '{order.reference}' }));
 
     expect(body).toHaveValue('Order {order.reference}');
+  });
+});
+
+describe('AutomationComposerDialog — the §5.6a arming gate', () => {
+  const dryRunResult = {
+    trigger: 'order.packed',
+    evaluatedAt: '2026-08-20T10:00:00.000Z',
+    facts: {
+      subjectKind: 'order',
+      subjectId: 'ol_order_1',
+      occurredAt: '2026-08-19T10:00:00.000Z',
+      sourceConnectionId: 'conn-1',
+      country: 'PL',
+      totalGross: 100,
+      currency: 'PLN',
+    },
+    verdicts: [
+      {
+        ruleId: 'draft',
+        ruleName: 'Draft',
+        isSubject: true,
+        isActive: false,
+        matches: true,
+        wouldFire: true,
+        nonFiringReason: null,
+        conditionTraces: [],
+        retroactivityFloorWaived: false,
+        blockedBy: null,
+        stepAvailability: [],
+      },
+    ],
+  };
+
+  /** The picker's options render only once the orders query settles. */
+  async function pickOrderAndRun(user: ReturnType<typeof userEvent.setup>): Promise<void> {
+    const select = await screen.findByLabelText(AUTOMATION_DRY_RUN_COPY.orderLabel);
+    await waitFor(() => expect(within(select).getAllByRole('option')).toHaveLength(2));
+    await user.selectOptions(select, 'ol_order_1');
+    await user.click(screen.getByRole('button', { name: AUTOMATION_DRY_RUN_COPY.run }));
+  }
+
+  function renderWithOrders(evaluateMock = vi.fn().mockResolvedValue(dryRunResult)): {
+    evaluateMock: ReturnType<typeof vi.fn>;
+  } {
+    const apiClient = createMockApiClient({
+      automations: { evaluate: evaluateMock },
+      orders: {
+        list: vi.fn().mockResolvedValue({
+          items: [
+            {
+              internalOrderId: 'ol_order_1',
+              customerId: null,
+              sourceConnectionId: 'conn-1',
+              sourceEventId: null,
+              orderSnapshot: {},
+              syncStatus: [],
+              syncAttempts: [],
+              recordStatus: 'ready',
+              createdAt: '2026-08-19T10:00:00.000Z',
+              updatedAt: '2026-08-19T10:00:00.000Z',
+            },
+          ],
+          total: 1,
+          limit: 50,
+          offset: 0,
+        }),
+      },
+    });
+
+    renderWithProviders(
+      <AutomationComposerDialog
+        open
+        onOpenChange={vi.fn()}
+        trigger="order.packed"
+        vocabulary={VOCABULARY}
+        prefillSuggested
+      />,
+      { apiClient },
+    );
+    return { evaluateMock };
+  }
+
+  it('should disable Save for a money-spending rule until it has been tested', async () => {
+    renderWithOrders();
+
+    // The suggested prefill seeds `dispatch-shipment`, which is irreversible.
+    expect(await screen.findByRole('button', { name: 'Save automation' })).toBeDisabled();
+    expect(
+      screen.getByText(
+        'Test this rule before saving it — it can spend money, and OpenLinker cannot undo that.',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('should enable Save once the dry run has been executed for that draft', async () => {
+    const user = userEvent.setup();
+    renderWithOrders();
+
+    await pickOrderAndRun(user);
+
+    expect(await screen.findByText('Tested.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Save automation' })).toBeEnabled();
+  });
+
+  it('should re-lock Save when the draft changes after the test', async () => {
+    const user = userEvent.setup();
+    renderWithOrders();
+
+    await pickOrderAndRun(user);
+    await screen.findByText('Tested.');
+
+    // Change what the rule DOES. The evidence no longer covers it.
+    await user.click(screen.getByRole('button', { name: AUTOMATION_COMPOSER_COPY.addCondition }));
+
+    expect(
+      await screen.findByText(
+        'You changed the rule after testing it. Test it again so what you save is what you checked.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Save automation' })).toBeDisabled();
+  });
+
+  it('should not gate a rule whose steps are all reversible', async () => {
+    const apiClient = createMockApiClient();
+    renderWithProviders(
+      <AutomationComposerDialog
+        open
+        onOpenChange={vi.fn()}
+        trigger="return.received"
+        vocabulary={VOCABULARY}
+      />,
+      { apiClient },
+    );
+
+    // `send-email` is `partial`, not irreversible — no evidence required.
+    expect(await screen.findByRole('button', { name: 'Save automation' })).toBeEnabled();
+    expect(screen.queryByText(AUTOMATION_DRY_RUN_COPY.title)).toBeNull();
+  });
+
+  it('should send the DRAFT arm, never a ruleId, and dispatch nothing', async () => {
+    const user = userEvent.setup();
+    const evaluateMock = vi.fn().mockResolvedValue(dryRunResult);
+    renderWithOrders(evaluateMock);
+
+    await pickOrderAndRun(user);
+
+    await screen.findByText('Tested.');
+    const [body] = evaluateMock.mock.calls[0] as [{ orderId: string; ruleId?: string; rule?: unknown }];
+    expect(body.orderId).toBe('ol_order_1');
+    // Exactly one of `ruleId` / `rule`; a draft has no id and sending both 400s.
+    expect(body.ruleId).toBeUndefined();
+    expect(body.rule).toBeDefined();
+  });
+
+  it('should keep Save locked when the dry run was refused', async () => {
+    const user = userEvent.setup();
+    renderWithOrders(vi.fn().mockRejectedValue(new Error('Step 1 is malformed.')));
+
+    await pickOrderAndRun(user);
+
+    // A refused evaluation is not evidence of anything.
+    expect(await screen.findByText('The test did not run')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Nothing was evaluated, so this says nothing about whether the rule would match.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Save automation' })).toBeDisabled();
   });
 });
 

@@ -19633,3 +19633,77 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
     margin-left: 0;
   }
 }
+
+/* ── Automation dry run + fired log (#2366) ──────────────────────────────── */
+
+.automation-dry-run {
+  border-top: 1px solid var(--border-subtle);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-top: var(--space-3);
+}
+
+.automation-dry-run__controls {
+  align-items: flex-end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.automation-dry-run__controls .form-field {
+  flex: 1 1 14rem;
+  min-width: 0;
+}
+
+.automation-dry-run__result,
+.automation-dry-run__verdict {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.automation-dry-run__traces,
+.automation-dry-run__steps,
+.automation-dry-run__siblings,
+.automation-run-log,
+.automation-run-log__steps {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.automation-dry-run__traces > li,
+.automation-dry-run__steps > li,
+.automation-dry-run__siblings > li,
+.automation-run-log__steps > li {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.automation-run-log__run {
+  border-top: 1px solid var(--border-subtle);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding-top: var(--space-2);
+}
+
+.automation-run-log__head {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+@media (max-width: 767px) {
+  .automation-dry-run__controls .button {
+    min-height: 44px;
+    width: 100%;
+  }
+}

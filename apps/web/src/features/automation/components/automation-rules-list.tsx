@@ -14,11 +14,12 @@
  * nothing — the write path accepts all six actions deliberately, so the
  * response is the only place that truth surfaces.
  *
- * **It does not claim a rule has never matched.** The only honest observable
- * for that is the dry run's per-condition trace, which is #2366's. Where the
- * fired log reports that firings are not recorded at all, the row says
- * OpenLinker cannot yet tell — which is true — instead of inferring "never"
- * from an empty list.
+ * **It does not claim a rule has never matched.** Each row can open its own
+ * fired log (#2366), which reads `recordingAvailable` first: while that is
+ * false an empty list means the run write path has not landed, not that the
+ * rule never fired. The log is fetched LAZILY, on expand — the query is
+ * per-rule, so mounting one per row would issue N requests on page load for a
+ * log that is empty in this build.
  *
  * **It does not arm a money-spending rule on one click.** Turning such a rule
  * ON is a standing grant of authority to act unattended, and the backend
@@ -34,7 +35,9 @@ import { ConfirmDialog } from '../../../shared/ui/confirm-dialog';
 import { EmptyState } from '../../../shared/ui/feedback-state';
 import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
 import { StatusBadge } from '../../../shared/ui/status-badge';
-import { AUTOMATION_RULES_COPY } from '../lib/automation.copy';
+import { AUTOMATION_RULES_COPY, AUTOMATION_RUN_LOG_COPY } from '../lib/automation.copy';
+import { useAutomationRunsQuery } from '../hooks/use-automation-runs-query';
+import { AutomationRunLogPanel } from './automation-run-log';
 import { AutomationRuleAvailabilityNotice } from './automation-rule-availability-notice';
 import type { AutomationRule } from '../api/automation.types';
 
@@ -45,11 +48,27 @@ export interface AutomationRulesListProps {
   /** Render disabled-with-a-tooltip rather than hidden (demo read-only viewers). */
   readOnlyLocked: boolean;
   readOnlyMessage: string;
-  /** True while the run log says firings are not recorded in this build. */
-  firingsUnrecorded: boolean;
   onSetActive: (rule: AutomationRule, isActive: boolean, moneyAcknowledged?: boolean) => void;
   pendingRuleId: string | null;
   writeError: string | null;
+}
+
+/**
+ * One rule's log, mounted only while its row is expanded.
+ *
+ * A child component rather than a hook call in the parent loop, because the
+ * query is per-rule and hooks cannot be called conditionally — mounting the
+ * child IS the laziness.
+ */
+function AutomationRuleRunLog({ ruleId }: { ruleId: string }): ReactElement {
+  const runsQuery = useAutomationRunsQuery(ruleId);
+  return (
+    <AutomationRunLogPanel
+      log={runsQuery.data ?? null}
+      isLoading={runsQuery.isLoading}
+      error={runsQuery.error}
+    />
+  );
 }
 
 export function AutomationRulesList({
@@ -57,12 +76,14 @@ export function AutomationRulesList({
   canWrite,
   readOnlyLocked,
   readOnlyMessage,
-  firingsUnrecorded,
   onSetActive,
   pendingRuleId,
   writeError,
 }: AutomationRulesListProps): ReactElement {
   const [armingRule, setArmingRule] = useState<AutomationRule | null>(null);
+  // One row open at a time: two open logs is two live queries for a read nobody
+  // is comparing side by side.
+  const [expandedRuleId, setExpandedRuleId] = useState<string | null>(null);
 
   if (rules.length === 0) {
     return (
@@ -91,14 +112,6 @@ export function AutomationRulesList({
         </Alert>
       )}
       {canWrite ? null : <Alert tone="info">{AUTOMATION_RULES_COPY.readOnly}</Alert>}
-      {/*
-        ONE banner, not one line per rule. Whether firings are recorded is a
-        property of the BUILD, not of any rule — repeating it per row would
-        state N times something true once (the #2231 rule).
-      */}
-      {firingsUnrecorded ? (
-        <Alert tone="info">{AUTOMATION_RULES_COPY.neverMatchedUnknown}</Alert>
-      ) : null}
 
       <ul className="automation-rules__list">
         {rules.map((rule) => (
@@ -138,6 +151,19 @@ export function AutomationRulesList({
             <AutomationRuleAvailabilityNotice actionAvailability={rule.actionAvailability} />
 
             {rule.isActive ? <p className="muted-text">{AUTOMATION_RULES_COPY.turnOffHint}</p> : null}
+
+            <Button
+              type="button"
+              tone="ghost"
+              className="button--sm"
+              aria-expanded={expandedRuleId === rule.id}
+              onClick={() => setExpandedRuleId((prev) => (prev === rule.id ? null : rule.id))}
+            >
+              {expandedRuleId === rule.id
+                ? AUTOMATION_RUN_LOG_COPY.hide
+                : AUTOMATION_RUN_LOG_COPY.show}
+            </Button>
+            {expandedRuleId === rule.id ? <AutomationRuleRunLog ruleId={rule.id} /> : null}
           </li>
         ))}
       </ul>

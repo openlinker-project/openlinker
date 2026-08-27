@@ -138,6 +138,7 @@ export function createMockApiClient(
       listByTrigger: vi.fn().mockResolvedValue({ items: [], droppedCount: 0 }),
       get: vi.fn(),
       create: vi.fn(),
+      evaluate: vi.fn(),
       listRuns: vi.fn().mockResolvedValue(null),
       replace: vi.fn(),
       remove: vi.fn().mockResolvedValue(undefined),

@@ -17,7 +17,17 @@ export type {
   AutomationActionKind,
   AutomationActionVocabulary,
   AutomationAmountOp,
+  AutomationBlockedBy,
   AutomationConditionField,
+  AutomationConditionOutcome,
+  AutomationConditionTrace,
+  AutomationDryRunResult,
+  AutomationEvaluateInput,
+  AutomationNonFiringReason,
+  AutomationStepResult,
+  AutomationStepStatus,
+  AutomationSubjectFacts,
+  AutomationVerdict,
   AutomationFiringMode,
   AutomationRule,
   AutomationRuleWriteInput,
@@ -34,7 +44,10 @@ export {
   AUTOMATION_AMOUNT_OP_VALUES,
   AUTOMATION_CARRIER_CAPABILITY,
   AUTOMATION_CONDITION_FIELD_VALUES,
+  AUTOMATION_CONDITION_OUTCOME_VALUES,
   AUTOMATION_MERGE_FIELDS,
+  AUTOMATION_NON_FIRING_REASON_VALUES,
+  AUTOMATION_STEP_STATUS_VALUES,
   AUTOMATION_FIRING_MODE_VALUES,
   AUTOMATION_TRIGGER_VALUES,
   isAutomationTrigger,
@@ -56,6 +69,7 @@ export type { SetAutomationActiveInput } from './hooks/use-set-automation-active
 // once, beside the arm/disarm mutation it must stay consistent with.
 export { useDeleteAutomationMutation } from './hooks/use-delete-automation-mutation';
 export { useCreateAutomationMutation } from './hooks/use-create-automation-mutation';
+export { useEvaluateAutomationMutation } from './hooks/use-evaluate-automation-mutation';
 
 export { AutomationActionAvailabilityPanel } from './components/automation-action-availability-panel';
 export { AutomationRuleAvailabilityNotice } from './components/automation-rule-availability-notice';
@@ -71,12 +85,27 @@ export type { AutomationComposerDialogProps } from './components/automation-comp
 export { AutomationConditionRow } from './components/automation-condition-row';
 export { AutomationActionRow } from './components/automation-action-row';
 export { AutomationMergeFields } from './components/automation-merge-fields';
+export { AutomationDryRunPanel } from './components/automation-dry-run-panel';
+export { AutomationRunLogPanel } from './components/automation-run-log';
 export type { AutomationTriggerRow } from './components/automation-trigger-index';
 
 export { describeAvailability, readRuleAvailability } from './lib/action-availability';
 export type { AvailabilityDescription, RuleAvailabilityVerdict } from './lib/action-availability';
 export { describeTrigger } from './lib/automation-trigger-labels';
 export { describeAutomationWriteError } from './lib/automation-write-error';
+export {
+  conditionOutcomeTone,
+  describeConditionOutcome,
+  describeNonFiringReason,
+  draftNeedsDryRun,
+  fingerprintDraft,
+  resolveDryRunGate,
+  siblingVerdicts,
+  subjectVerdict,
+  verdictHeadline,
+} from './lib/dry-run-verdict';
+export type { DryRunGateState, VerdictHeadline } from './lib/dry-run-verdict';
+export { describeStepStatus, stepStatusTone } from './lib/step-status';
 export type {
   AutomationErrorTarget,
   AutomationWriteRefusal,
@@ -104,4 +133,10 @@ export {
   AUTOMATION_SUGGESTION_COPY,
   AUTOMATION_TRIGGER_COPY,
   AUTOMATION_COMPOSER_COPY,
+  AUTOMATION_CONDITION_OUTCOME_COPY,
+  AUTOMATION_DRY_RUN_COPY,
+  AUTOMATION_NON_FIRING_REASON_COPY,
+  AUTOMATION_RUN_LOG_COPY,
+  AUTOMATION_RUN_OUTCOME_COPY,
+  AUTOMATION_STEP_STATUS_COPY,
 } from './lib/automation.copy';

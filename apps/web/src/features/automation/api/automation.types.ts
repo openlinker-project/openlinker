@@ -159,6 +159,40 @@ export interface AutomationRunLog {
   note: string | null;
 }
 
+/**
+ * How one step ended (#2366).
+ *
+ * `skipped` exists on the STEP and not on the run outcome: it states one step's
+ * relationship to its siblings — an earlier one failed, so this never ran. A run
+ * as a whole is never "skipped". Recording it is what makes a skipped step
+ * renderable at all; a silently missing step is indistinguishable from one that
+ * was never configured.
+ */
+export const AUTOMATION_STEP_STATUS_VALUES = [
+  'done',
+  'nothing-to-do',
+  'failed',
+  'skipped',
+] as const;
+export type AutomationStepStatus = (typeof AUTOMATION_STEP_STATUS_VALUES)[number];
+
+/**
+ * One executed (or skipped) step of a firing.
+ *
+ * `detail` and `unavailableReason` are the BACKEND's sentences and are rendered
+ * verbatim. `unavailableReason` is distinct from a failure on purpose: "not
+ * built yet" and "it failed" lead to entirely different investigations.
+ */
+export interface AutomationStepResult {
+  stepIndex: number;
+  action: string;
+  status: AutomationStepStatus;
+  detail: string | null;
+  /** Where the step dispatched a job — the job detail is where technical failure detail lives. */
+  syncJobId: string | null;
+  unavailableReason: string | null;
+}
+
 export interface AutomationRun {
   id: string;
   ruleId: string;
@@ -167,8 +201,112 @@ export interface AutomationRun {
   subjectKind: string;
   subjectId: string;
   outcome: string;
+  /**
+   * Per-step outcomes, in order. Typed `readonly unknown[]` server-side (#2385
+   * may widen it), so the parse drops an unreadable step and counts it rather
+   * than failing the whole log.
+   */
+  steps: AutomationStepResult[];
+  /** Steps the server sent that this build could not read. Reported, never hidden. */
+  unreadableStepCount: number;
   blockedByRuleIds: string[] | null;
   firedAt: string;
+}
+
+// ── Dry run (#2366, spec §5.6a) ──────────────────────────────────────────────
+
+/** Per-condition verdict. `unknown` and `currency-mismatch` are NOT `false`. */
+export const AUTOMATION_CONDITION_OUTCOME_VALUES = [
+  'true',
+  'false',
+  'unknown',
+  'currency-mismatch',
+] as const;
+export type AutomationConditionOutcome = (typeof AUTOMATION_CONDITION_OUTCOME_VALUES)[number];
+
+/** The closed reasons a rule did not fire. Codes, not prose — the copy module labels them. */
+export const AUTOMATION_NON_FIRING_REASON_VALUES = [
+  'trigger-mismatch',
+  'unknown-trigger',
+  'rule-inactive',
+  'not-yet-effective',
+  'no-longer-effective',
+  'fact-precedes-rule',
+  'fact-time-unknown',
+  'illegal-trigger-action-pair',
+  'no-actions',
+  'trigger-config-invalid',
+  'condition-not-met',
+  'condition-fact-unknown',
+  'condition-currency-mismatch',
+] as const;
+export type AutomationNonFiringReason = (typeof AUTOMATION_NON_FIRING_REASON_VALUES)[number];
+
+/**
+ * The five facts the evaluator used — a PROJECTION, never the order snapshot,
+ * which carries buyer PII under `OL_STORE_PII`.
+ *
+ * `occurredAt: null` means UNKNOWN, never "no".
+ */
+export interface AutomationSubjectFacts {
+  subjectKind: string;
+  subjectId: string;
+  occurredAt: string | null;
+  sourceConnectionId: string | null;
+  country: string | null;
+  totalGross: number | null;
+  currency: string | null;
+}
+
+export interface AutomationConditionTrace {
+  field: string;
+  /** The condition as stored. Rendered from its own fields; never paraphrased. */
+  condition: Record<string, unknown>;
+  outcome: AutomationConditionOutcome;
+}
+
+/** Names the collision AND which irreversible actions collided. */
+export interface AutomationBlockedBy {
+  collidingRuleIds: string[];
+  actions: string[];
+}
+
+export interface AutomationVerdict {
+  ruleId: string;
+  ruleName: string;
+  /** The rule the caller asked about. */
+  isSubject: boolean;
+  isActive: boolean;
+  /** The evaluator matched it. NOT the sentence to arm on. */
+  matches: boolean;
+  /** `matches` AND the at-most-one gate let it through. THIS is the sentence to arm on. */
+  wouldFire: boolean;
+  nonFiringReason: AutomationNonFiringReason | null;
+  conditionTraces: AutomationConditionTrace[];
+  /** Matches, but the order predates the rule — it would NOT have fired for real. */
+  retroactivityFloorWaived: boolean;
+  blockedBy: AutomationBlockedBy | null;
+  stepAvailability: AutomationActionAvailabilityEntry[];
+}
+
+export interface AutomationDryRunResult {
+  trigger: string;
+  facts: AutomationSubjectFacts;
+  evaluatedAt: string;
+  /** Every rule scoped to the trigger, plus the subject — so a collision is visible. */
+  verdicts: AutomationVerdict[];
+}
+
+/**
+ * Exactly one of `ruleId` / `rule`, enforced server-side.
+ *
+ * The composer always takes the `rule` (draft) arm — a draft has no id, and
+ * sending both is a 400.
+ */
+export interface AutomationEvaluateInput {
+  orderId: string;
+  ruleId?: string;
+  rule?: Omit<AutomationRuleWriteInput, 'moneyAcknowledged'>;
 }
 
 /** The four v1 condition fields (spec §5.5 divergence 2). */

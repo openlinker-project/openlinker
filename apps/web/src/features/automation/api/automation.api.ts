@@ -22,6 +22,7 @@
  * @module apps/web/src/features/automation/api
  */
 import {
+  parseAutomationDryRun,
   parseAutomationRule,
   parseAutomationRules,
   parseAutomationRunLog,
@@ -31,6 +32,8 @@ import {
   type ParsedAutomationSummary,
 } from './automation.schema';
 import type {
+  AutomationDryRunResult,
+  AutomationEvaluateInput,
   AutomationRule,
   AutomationRuleWriteInput,
   AutomationRunLog,
@@ -70,6 +73,20 @@ export interface AutomationsApi {
   create: (input: AutomationRuleWriteInput) => Promise<AutomationRule>;
   /** `PUT /automations/:id` — a full replace. Admin only. */
   replace: (ruleId: string, input: AutomationRuleWriteInput) => Promise<AutomationRule>;
+  /**
+   * `POST /automations/evaluate` — would this rule have fired for that order?
+   *
+   * **Commits nothing and dispatches nothing.** Accepts a saved `ruleId` or an
+   * unsaved `rule` draft — exactly one, never both. The draft arm is the point:
+   * §5.6(a) exists so a money rule can be tested BEFORE it is armed.
+   *
+   * Returns a verdict for EVERY rule scoped to the trigger, so a two-money-rules
+   * collision is visible before it costs a second label.
+   *
+   * A draft re-validates exactly as a save does, so an incomplete draft answers
+   * with the save's own 400s.
+   */
+  evaluate: (input: AutomationEvaluateInput) => Promise<AutomationDryRunResult>;
   /** `DELETE /automations/:id`. Admin only. */
   remove: (ruleId: string) => Promise<void>;
 }
@@ -117,6 +134,14 @@ export function createAutomationsApi(request: ApiRequest): AutomationsApi {
         body: JSON.stringify(input),
       });
       return parseAutomationRule(raw);
+    },
+
+    async evaluate(input): Promise<AutomationDryRunResult> {
+      const raw = await request<unknown>('/automations/evaluate', {
+        method: 'POST',
+        body: JSON.stringify(input),
+      });
+      return parseAutomationDryRun(raw);
     },
 
     async remove(ruleId): Promise<void> {
