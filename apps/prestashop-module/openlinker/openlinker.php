@@ -60,7 +60,6 @@ class OpenLinker extends CarrierModule
     const DEFAULT_BATCH_SIZE = 50;
     const DEFAULT_MAX_RETRY_ATTEMPTS = 25;
     const DEFAULT_RETRY_BACKOFF_MULTIPLIER = 2.0;
-    const DEFAULT_DEDUPLICATION_WINDOW_MINUTES = 1;
 
     // Dynamic shipping carrier — display name shown in PS admin carrier list.
     const DYNAMIC_CARRIER_NAME = 'OpenLinker Dynamic';
@@ -93,7 +92,7 @@ class OpenLinker extends CarrierModule
     {
         $this->name = 'openlinker';
         $this->tab = 'administration';
-        $this->version = '1.2.0';
+        $this->version = '1.3.0';
         $this->author = 'OpenLinker Team';
         $this->need_instance = 0;
         $this->ps_versions_compliancy = [
@@ -250,7 +249,6 @@ class OpenLinker extends CarrierModule
             'batch_size' => Configuration::get('BATCH_SIZE') ?: self::DEFAULT_BATCH_SIZE,
             'max_retry_attempts' => Configuration::get('MAX_RETRY_ATTEMPTS') ?: self::DEFAULT_MAX_RETRY_ATTEMPTS,
             'retry_backoff_multiplier' => Configuration::get('RETRY_BACKOFF_MULTIPLIER') ?: self::DEFAULT_RETRY_BACKOFF_MULTIPLIER,
-            'deduplication_window_minutes' => Configuration::get('DEDUPLICATION_WINDOW_MINUTES') ?: self::DEFAULT_DEDUPLICATION_WINDOW_MINUTES,
             'statistics' => $this->getStatistics(),
         ]);
 
@@ -332,14 +330,6 @@ class OpenLinker extends CarrierModule
                 Configuration::updateValue('RETRY_BACKOFF_MULTIPLIER', $backoffMultiplier);
             }
 
-            // Deduplication window (in minutes)
-            $deduplicationWindow = (int)Tools::getValue('DEDUPLICATION_WINDOW_MINUTES');
-            if ($deduplicationWindow < 1 || $deduplicationWindow > 60) {
-                $errors[] = $this->l('Deduplication window must be between 1 and 60 minutes');
-            } else {
-                Configuration::updateValue('DEDUPLICATION_WINDOW_MINUTES', $deduplicationWindow);
-            }
-
         // Return messages
         if (!empty($errors)) {
             return $this->displayError(implode('<br />', $errors));
@@ -381,6 +371,7 @@ class OpenLinker extends CarrierModule
             $repository = new OutboxRepository();
             $testEventId = $repository->enqueueEvent([
                 'eventId' => 'test-' . uniqid(),
+                'dedupKey' => null,
                 'connectionId' => $connectionId,
                 'eventType' => 'test.ping',
                 'objectType' => 'test',
@@ -717,6 +708,7 @@ class OpenLinker extends CarrierModule
         $sql = 'CREATE TABLE IF NOT EXISTS `' . _DB_PREFIX_ . 'openlinker_webhook_outbox` (
             `id` INT(11) UNSIGNED NOT NULL AUTO_INCREMENT,
             `event_id` VARCHAR(255) NOT NULL,
+            `dedup_key` VARCHAR(255) NULL,
             `schema_version` INT(11) NOT NULL DEFAULT 1,
             `provider` VARCHAR(50) NOT NULL DEFAULT "prestashop",
             `connection_id` VARCHAR(255) NOT NULL,
@@ -736,6 +728,7 @@ class OpenLinker extends CarrierModule
             `delivered_at` DATETIME NULL,
             PRIMARY KEY (`id`),
             UNIQUE KEY `event_id` (`event_id`),
+            UNIQUE KEY `dedup_key` (`dedup_key`),
             KEY `status_next_attempt_created` (`status`, `next_attempt_at`, `created_at`),
             KEY `processing_owner_started` (`processing_owner`, `processing_started_at`)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;';
@@ -1172,7 +1165,6 @@ class OpenLinker extends CarrierModule
         Configuration::updateValue('BATCH_SIZE', self::DEFAULT_BATCH_SIZE);
         Configuration::updateValue('MAX_RETRY_ATTEMPTS', self::DEFAULT_MAX_RETRY_ATTEMPTS);
         Configuration::updateValue('RETRY_BACKOFF_MULTIPLIER', self::DEFAULT_RETRY_BACKOFF_MULTIPLIER);
-        Configuration::updateValue('DEDUPLICATION_WINDOW_MINUTES', self::DEFAULT_DEDUPLICATION_WINDOW_MINUTES);
         // Default: suppress buyer mail on OL-imported orders (#905).
         Configuration::updateValue(self::IMPORT_SEND_MAIL_CONFIG_KEY, 0);
     }
@@ -1194,6 +1186,8 @@ class OpenLinker extends CarrierModule
         Configuration::deleteByName('BATCH_SIZE');
         Configuration::deleteByName('MAX_RETRY_ATTEMPTS');
         Configuration::deleteByName('RETRY_BACKOFF_MULTIPLIER');
+        // Retired in 1.3.0; still deleted so an install that predates the
+        // upgrade does not leave the row behind.
         Configuration::deleteByName('DEDUPLICATION_WINDOW_MINUTES');
         Configuration::deleteByName(self::IMPORT_SEND_MAIL_CONFIG_KEY);
     }

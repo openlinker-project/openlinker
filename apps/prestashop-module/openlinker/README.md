@@ -88,12 +88,12 @@ After installation, the OpenLinker module is accessible in two ways:
 
 PrestaShop's hooks (especially `actionProductSave`) can fire **multiple times** during a single operation (e.g., 6 times when saving a product). This is expected PrestaShop behavior.
 
-The module implements **automatic deduplication**:
-- Event IDs are generated deterministically based on product ID + event type + time window (1 minute)
-- Database unique constraint on `event_id` prevents duplicates
-- `INSERT IGNORE` handles duplicate attempts gracefully
+The module implements **automatic deduplication**, keyed on queue state rather than on a clock:
+- Every outbox row carries a `dedup_key` derived from connection + event type + object type + object ID. No timestamp goes into it.
+- A unique index on `dedup_key` makes `INSERT IGNORE` drop a repeat fire while the first row is still waiting to be sent.
+- The key is set to `NULL` the moment the row leaves the queue (delivered, or failed for good), and a `NULL` never collides in MySQL.
 
-**Result**: Only 1 event is created per product save, even if the hook fires 6+ times.
+**Result**: only 1 event is created per product save, even if the hook fires 6+ times - and a *later* change to the same product always gets its own row, whatever the cron cadence. There is no deduplication-window setting to tune; the earlier one could silently drop real changes when the cron ran faster than the window (#2603).
 
 ## Cron Setup
 
@@ -154,9 +154,9 @@ Triggered when product stock quantity changes.
 
 ### Multiple Events for Single Action
 
-This is normal PrestaShop behavior. The module automatically deduplicates events within the same time window (1 minute). If you see duplicates:
-- Verify `event_id` column has unique constraint
-- Check events are created in different time windows (this is correct behavior)
+This is normal PrestaShop behavior. The module coalesces repeat fires while the event is still queued. If you see duplicates:
+- Verify the `dedup_key` column exists and has a unique index
+- Check whether the rows describe genuinely different changes - once an event has been delivered, the next change is a new event and a new row (this is correct behavior)
 
 ## Architecture
 
@@ -299,7 +299,7 @@ The PHPUnit harness covers **pure-function classes only** — those with no Pres
 | Class | Tests |
 |---|---|
 | `HmacRequestVerifier` | Happy path + all documented failure modes (missing headers, bad format, replay, tampered body/timestamp) |
-| `EventIdGenerator` | Determinism, window grouping, UUID-like output format, per-entity uniqueness |
+| `EventIdGenerator` | Per-call event-id uniqueness, dedup-key determinism per subject, UUID-like output format |
 
 **Out of scope (explicit non-goals)**:
 - `OutboxRepository`, `CartShippingRepository`, `WebhookSender`, install/uninstall hooks, and controllers all depend on PS globals — they are **not** tested here and require a real PrestaShop (see issue #506).

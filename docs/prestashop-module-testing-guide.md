@@ -899,20 +899,21 @@ After trying these solutions, refresh the module manager page and try installing
 
 **Solution**: The module implements **automatic deduplication** to prevent duplicate events:
 
-1. **Deterministic Event IDs**: Event IDs are generated based on product ID + event type + time window (same minute)
-2. **Database-Level Deduplication**: Uses `INSERT IGNORE` with unique constraint on `event_id`
-3. **Result**: Only 1 event is created even if the hook fires 6+ times
+1. **Deterministic dedup key**: each row carries a `dedup_key` derived from connection + event type + object type + object ID, with no timestamp in it
+2. **Database-Level Deduplication**: uses `INSERT IGNORE` with a unique index on `dedup_key`, and the key is set to `NULL` once the row is delivered or fails for good
+3. **Result**: only 1 event is created even if the hook fires 6+ times, while a later change to the same product still gets its own row (#2603)
 
 **Verification**: Check that deduplication is working:
 
 ```sql
--- Should return 0 rows (no duplicates)
-SELECT event_id, COUNT(*) as count
+-- Should return 0 rows (no two queued rows for the same subject)
+SELECT dedup_key, COUNT(*) as count
 FROM ps_openlinker_webhook_outbox
-GROUP BY event_id
+WHERE dedup_key IS NOT NULL
+GROUP BY dedup_key
 HAVING count > 1;
 
--- Should see only 1 event per product save (within same minute)
+-- Should see only 1 event per product save
 SELECT id, event_type, external_id, created_at
 FROM ps_openlinker_webhook_outbox
 WHERE external_id = '23' AND event_type = 'product.saved'
@@ -920,8 +921,8 @@ ORDER BY created_at DESC;
 ```
 
 **If you still see duplicates**:
-1. Check `event_id` column has unique constraint: `SHOW CREATE TABLE ps_openlinker_webhook_outbox;`
-2. Verify `EventIdGenerator::generateEventId()` uses deterministic logic (not random UUIDs)
+1. Check the `dedup_key` column has a unique index: `SHOW CREATE TABLE ps_openlinker_webhook_outbox;`
+2. Verify `EventIdGenerator::generateDedupKey()` is deterministic over the subject
 3. Verify `OutboxRepository::enqueueEvent()` uses `INSERT IGNORE`
 
 **Note**: Events created in different minutes are correctly treated as separate events (this is expected behavior).
