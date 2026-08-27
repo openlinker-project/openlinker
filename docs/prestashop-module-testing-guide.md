@@ -1073,6 +1073,40 @@ pinned without a database in `tests/Unit/OutboxRetentionTest.php`, which asserts
 that a retention `DELETE` can only ever name `delivered` or `failed` and never
 mentions `pending` or `processing`.
 
+### Retry backoff: reset on recovery and jitter
+
+The retry delay is the longer of two exponential curves, then jittered down.
+
+- The row's own curve, `60 s * 2^attempts`, capped at 6 hours. A row that keeps
+  failing on its own account backs off hard.
+- The endpoint's curve, driven by a counter of consecutive failing delivery runs
+  (`OPENLINKER_OUTBOX_FAILURE_STREAK`), capped at 15 minutes. This is what stops
+  a dead endpoint being retried from scratch by every new row: each hook fire
+  during an outage enqueues a row at `attempts = 0`, so without it retry
+  pressure grew with the number of changes the shop made.
+- Jitter is uniform over `[delay / 2, delay]`. Fifty rows that failed in the
+  same second no longer retry in the same second, and the delay is never near
+  zero, so a still-dead endpoint is not hammered.
+
+The first successful delivery clears the streak and sets `next_attempt_at` back
+to `NULL` for every waiting row, so a backlog queued during an outage drains as
+soon as the endpoint answers instead of waiting out delays computed while it was
+down. "Test connection" goes through the same path, so a successful probe also
+releases the backlog. A row's own `attempts` is never reset - it is the bound
+that lets a genuinely undeliverable row reach `failed` rather than retrying
+forever.
+
+To see it by hand: point the base URL at a dead host, click "Run Delivery Now"
+a few times, and watch `next_attempt_at` move out while
+`OPENLINKER_OUTBOX_FAILURE_STREAK` climbs by one per run. Point it back at a
+live OpenLinker, run once, and every pending row's `next_attempt_at` is `NULL`
+again.
+
+The bounds are pinned without a database in
+`tests/Unit/OutboxRetryBackoffTest.php` (the randomness is a parameter, so
+nothing is flaky), and the state around them in
+`tests/Integration/OutboxBackoffSqlTest.php` against real MySQL 8.
+
 ### Upgrading an install whose outbox is already in the millions
 
 The 1.4.0 upgrade adds the `(status, updated_at)` index the deletes read. It
