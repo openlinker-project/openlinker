@@ -206,12 +206,12 @@ export async function readMappingPage(
  * cost inside a batch is the database work plus a memo read. Five batches of 100
  * is what fits the same drain-rate rule the 100 was derived from - budget x
  * per-child-duration inside the tick - given that at most
- * `OL_LANE_REALTIME_SCOPE_CAP` of them run at once per connection.
+ * `OL_LANE_BULK_SCOPE_CAP` of them run at once per connection (#2594).
  *
- * It is NOT raised further, and that is the honest part: past this point the
- * limit stops being the read and becomes the lane's per-scope cap (#2594).
- * Raising the budget alone changes nothing except queue depth, which is the
- * mistake the epic's own measurement warns about.
+ * It is NOT raised further. Five children is below that per-scope cap, so the
+ * budget is the binding constraint here and the lane is not: raising it buys
+ * real throughput up to the cap and only queue depth past it. Measure before
+ * moving it, which is what the epic's own measurement warns about.
  */
 export const BATCHED_SWEEP_BUDGET_DEFAULT = 500;
 export const BATCHED_SWEEP_BUDGET_MAX = 2000;
