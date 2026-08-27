@@ -26,6 +26,8 @@ import { useMutation, useQueryClient, type UseMutationResult } from '@tanstack/r
 import { returnsQueryKeys } from '../api/returns.query-keys';
 import type {
   AttestReturnLineStockInput,
+  ConfirmReturnRefundInput,
+  ConfirmReturnRefundResult,
   AttestReturnLineStockResult,
   DisposeReturnLineInput,
   DisposeReturnLineResult,
@@ -116,6 +118,28 @@ export function useMarkReturnLineNotReturnedMutation(
   >({
     mutationFn: ({ lineId, input }) =>
       apiClient.returns.markLineNotReturned(returnId, lineId, input),
+    onSettled: invalidate,
+  });
+}
+
+/**
+ * Record that the operator refunded the buyer (#2382, spec § 5.7).
+ *
+ * Return-scoped rather than line-scoped, unlike its neighbours — a refund is one
+ * act against the return, and the service claims whichever lines it covers.
+ *
+ * It shares the invalidation contract exactly, which is why it lives here: the
+ * money rail moves, and so do the #2378 segment counts (`money_pending` empties
+ * as the claim settles).
+ */
+export function useConfirmReturnRefundMutation(
+  returnId: string,
+): UseMutationResult<ConfirmReturnRefundResult, Error, ConfirmReturnRefundInput> {
+  const apiClient = useApiClient();
+  const invalidate = useCustodyInvalidation(returnId);
+
+  return useMutation<ConfirmReturnRefundResult, Error, ConfirmReturnRefundInput>({
+    mutationFn: (input) => apiClient.returns.confirmRefund(returnId, input),
     onSettled: invalidate,
   });
 }

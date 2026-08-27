@@ -84,6 +84,8 @@ function makeDetail(overrides: Partial<ReturnDetail> = {}): ReturnDetail {
     restockBlocked: null,
     restockBlocks: [],
     restockAttestations: [],
+    refunds: [],
+    orderCurrency: 'PLN',
     restockTarget: {
       status: 'resolved',
       connectionId: 'conn_master',
@@ -101,6 +103,7 @@ interface SetupOptions {
   getFn?: Mock;
   receiveLine?: Mock;
   disposeLine?: Mock;
+  getCorrectionProposal?: Mock;
   authenticated?: boolean;
 }
 
@@ -125,7 +128,15 @@ function setup(options: SetupOptions = {}): SetupResult {
     vi.fn().mockResolvedValue({ line: {}, eventId: 'e2', restockBlocked: null });
 
   const apiClient = createMockApiClient({
-    returns: { get: getFn, decline: declineFn, receiveLine, disposeLine },
+    returns: {
+      get: getFn,
+      decline: declineFn,
+      receiveLine,
+      disposeLine,
+      getCorrectionProposal:
+        options.getCorrectionProposal ??
+        vi.fn().mockResolvedValue({ outcome: 'no-invoice', proposal: null }),
+    },
     connections: { list: vi.fn().mockResolvedValue([makeConnection()]) },
   });
 
@@ -386,6 +397,64 @@ describe('ReturnDetailPage', () => {
       // unauthorized session), distinct from the record's own state.
       expect(await screen.findByText(/Allegro Main: COMMISSION_REFUND_CLAIMED/)).toBeInTheDocument();
       expect(screen.queryByRole('button', { name: 'Decline return' })).not.toBeInTheDocument();
+    });
+  });
+
+  describe('money and proposal panels (#2382)', () => {
+    it('should render a recorded refund, attributed so it never implies OL moved money', async () => {
+      setup({
+        detail: makeDetail({
+          refunds: [
+            {
+              id: 'ref-1',
+              amount: '25.00',
+              currency: 'PLN',
+              reason: 'withdrawal',
+              note: null,
+              recordedAt: '2026-08-20T10:00:00.000Z',
+              executedBy: 'operator_out_of_band',
+            },
+          ],
+        }),
+      });
+
+      expect(await screen.findByText('25.00 PLN')).toBeInTheDocument();
+      // The honesty device: OpenLinker ships no refund write.
+      expect(
+        screen.getByText(/OpenLinker did not move the money/),
+      ).toBeInTheDocument();
+    });
+
+    it('should offer no refund control on an orphan, and say why', async () => {
+      setup({ detail: makeDetail({ bucket: 'orphan', internalOrderId: null }) });
+
+      expect(
+        await screen.findByText(/not matched to an order, so a refund cannot be recorded/),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: 'Confirm refund' }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('should MOUNT the proposal panel — a tested component nobody can reach is dead code', async () => {
+      setup({
+        getCorrectionProposal: vi
+          .fn()
+          .mockResolvedValue({ outcome: 'no-invoice', proposal: null }),
+      });
+
+      expect(await screen.findByText(/No invoice has been issued/)).toBeInTheDocument();
+    });
+
+    it('should NOT ask for a proposal on an orphan — the route answers 409', async () => {
+      const getCorrectionProposal = vi.fn();
+      setup({
+        detail: makeDetail({ bucket: 'orphan', internalOrderId: null }),
+        getCorrectionProposal,
+      });
+
+      expect(await screen.findByText('What came back')).toBeInTheDocument();
+      expect(getCorrectionProposal).not.toHaveBeenCalled();
     });
   });
 

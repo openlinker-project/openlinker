@@ -12,8 +12,10 @@
  */
 import { parseReturnIngestionAvailability, parseReturnList } from './returns.schema';
 import { parseDeclineReturnResult, parseReturnDetail } from './return-detail.schema';
+import { parseCorrectionProposal } from './return-proposal.schema';
 import {
   parseAttestReturnLineStockResult,
+  parseConfirmReturnRefundResult,
   parseDisposeReturnLineResult,
   parseMarkNotReturnedResult,
   parseReceiveReturnLineResult,
@@ -21,7 +23,10 @@ import {
 import { RETURNS_MAX_LIMIT } from './returns.types';
 import type {
   AttestReturnLineStockInput,
+  ReturnCorrectionProposalResult,
   AttestReturnLineStockResult,
+  ConfirmReturnRefundInput,
+  ConfirmReturnRefundResult,
   DeclineReturnInput,
   DeclineReturnResult,
   DisposeReturnLineInput,
@@ -157,6 +162,28 @@ export interface ReturnsApi {
     lineId: string,
     input: AttestReturnLineStockInput
   ) => Promise<AttestReturnLineStockResult>;
+
+  /**
+   * `POST /returns/:returnId/refund` — record that the operator refunded the
+   * buyer (spec § 5.7).
+   *
+   * It writes `triggered`, never `refunded`: only an OBSERVATION from the source
+   * writes `refunded`, and a button that set it would be OpenLinker asserting a
+   * money movement it did not witness.
+   */
+  confirmRefund: (
+    returnId: string,
+    input: ConfirmReturnRefundInput
+  ) => Promise<ConfirmReturnRefundResult>;
+
+  /**
+   * `GET /returns/:returnId/correction-proposal` — PREVIEW only.
+   *
+   * A read, deliberately: it computes what a credit note WOULD correct and
+   * persists nothing. Issuing is a separate act on the invoice, and this surface
+   * never performs it.
+   */
+  getCorrectionProposal: (returnId: string) => Promise<ReturnCorrectionProposalResult>;
 }
 
 interface ApiRequest {
@@ -288,6 +315,26 @@ export function createReturnsApi(request: ApiRequest): ReturnsApi {
         body: JSON.stringify({ ...noteBody(input.note) }),
       });
       return parseAttestReturnLineStockResult(raw);
+    },
+
+    async confirmRefund(returnId, input): Promise<ConfirmReturnRefundResult> {
+      const raw = await request<unknown>(`/returns/${encodeURIComponent(returnId)}/refund`, {
+        method: 'POST',
+        body: JSON.stringify({
+          amount: input.amount,
+          currency: input.currency,
+          reason: input.reason,
+          ...noteBody(input.note),
+        }),
+      });
+      return parseConfirmReturnRefundResult(raw);
+    },
+
+    async getCorrectionProposal(returnId): Promise<ReturnCorrectionProposalResult> {
+      const raw = await request<unknown>(
+        `/returns/${encodeURIComponent(returnId)}/correction-proposal`
+      );
+      return parseCorrectionProposal(raw);
     },
   };
 }

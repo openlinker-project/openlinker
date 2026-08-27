@@ -32,6 +32,7 @@ describe('RefundsController', () => {
     const mockRefundService: jest.Mocked<IOrderRefundService> = {
       recordRefund: jest.fn(),
       getRefundsForOrder: jest.fn(),
+      getRefundsForReturn: jest.fn(),
       getRefundSummariesForOrders: jest.fn(),
     };
     const mockOrderRecordService: jest.Mocked<IOrderRecordService> = {

@@ -101,6 +101,16 @@ const restockAttestationSchema = z.object({
   note: z.string().nullish(),
 });
 
+const refundSchema = z.object({
+  id: z.string(),
+  amount: z.string(),
+  currency: z.string(),
+  reason: z.string(),
+  note: z.string().nullish(),
+  recordedAt: z.string(),
+  executedBy: z.string(),
+});
+
 const restockTargetSchema = z.object({
   status: z.string(),
   connectionId: z.string().nullish(),
@@ -147,6 +157,8 @@ const returnDetailSchema = z.object({
   // does not discard the rest — the list schema's own rule.
   restockBlocks: z.array(z.unknown()).nullish(),
   restockAttestations: z.array(z.unknown()).nullish(),
+  refunds: z.array(z.unknown()).nullish(),
+  orderCurrency: z.string().nullish(),
 });
 
 const declineResultSchema = z.object({
@@ -317,6 +329,16 @@ export function parseReturnDetail(raw: unknown, returnId: string): ReturnDetail 
     // The DETAIL read reports the blocks themselves, so the row-level summary
     // flag is `null` here — "not reported by this read", never `false`.
     restockBlocked: null,
+    refunds: parseList(parsed.data.refunds, refundSchema).map((refund) => ({
+      id: refund.id,
+      amount: refund.amount,
+      currency: refund.currency,
+      reason: refund.reason,
+      note: orNull(refund.note),
+      recordedAt: refund.recordedAt,
+      executedBy: refund.executedBy,
+    })),
+    orderCurrency: orNull(parsed.data.orderCurrency),
     restockBlocks: parseList(parsed.data.restockBlocks, restockBlockSchema).map((block) => ({
       eventId: block.eventId,
       returnLineId: block.returnLineId,

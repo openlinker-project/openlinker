@@ -19671,3 +19671,84 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   font-size: 0.8125rem;
   font-weight: 600;
 }
+
+/* Refund confirmation (#2382) — the first RefundRecord surface. */
+.refund-confirmation-form__fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+
+.refund-confirmation-form__preamble {
+  margin: 0 0 var(--space-3);
+  font-size: 0.8125rem;
+}
+
+/* Context beside the amount, never a value in it — see the form's docblock. */
+.refund-confirmation-form__context {
+  margin: 0;
+  font-size: 0.8125rem;
+}
+
+.refund-confirmation-form__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.returns-money-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* Credit-note proposal review (#2382, spec 5.8). */
+.returns-proposal-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.returns-proposal-panel__lines {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.returns-proposal-line {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.returns-proposal-line__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* Every candidate, none preselected — the operator picks. */
+.returns-proposal-line__candidates {
+  margin: 0;
+  padding-left: var(--space-4);
+  font-size: 0.8125rem;
+}
+
+.returns-proposal-panel__footer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  font-size: 0.8125rem;
+}
+
+.returns-proposal-panel__footer p {
+  margin: 0;
+}

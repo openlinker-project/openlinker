@@ -12,11 +12,18 @@
  * @module apps/api/src/returns
  */
 import { Module } from '@nestjs/common';
+import { OrdersModule } from '@openlinker/core/orders';
 import { ReturnsModule } from '@openlinker/core/returns';
 import { ReturnsController } from './http/returns.controller';
 
 @Module({
-  imports: [ReturnsModule],
+  // #2382 — a NEW MODULE EDGE, named as one rather than described as "a
+  // projection", because a reader auditing module boundaries greps for edges.
+  // The detail read now carries the return's linked refunds and the order's
+  // currency, both owned by `orders`. Acyclic and interface-layer: `OrdersModule`
+  // does not import `ReturnsModule`, and the sibling write module has imported it
+  // since #2376 with the same argument in its own docblock.
+  imports: [ReturnsModule, OrdersModule],
   controllers: [ReturnsController],
 })
 export class ReturnsReadApiModule {}

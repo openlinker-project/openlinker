@@ -69,6 +69,14 @@ export class RefundRecordRepository implements RefundRecordRepositoryPort {
     return entities.map((entity) => this.toDomain(entity));
   }
 
+  async findByReturnId(returnId: string): Promise<RefundRecord[]> {
+    const entities = await this.repository.find({
+      where: { returnId },
+      order: { recordedAt: 'DESC' },
+    });
+    return entities.map((entity) => this.toDomain(entity));
+  }
+
   async summarizeByOrderIds(internalOrderIds: string[]): Promise<Map<string, RefundSummary>> {
     if (internalOrderIds.length === 0) {
       return new Map();

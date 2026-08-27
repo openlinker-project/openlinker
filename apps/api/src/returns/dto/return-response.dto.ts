@@ -365,6 +365,30 @@ export class ReturnRestockAttestationDto {
   @ApiProperty({ nullable: true }) note!: string | null;
 }
 
+/**
+ * A refund recorded against this return (#2382).
+ *
+ * `executedBy` is projected and rendered, not dropped: `'operator_out_of_band'`
+ * is the honesty device that lets the panel say OpenLinker did not move the
+ * money. `idempotencyKey` is deliberately NOT projected — it is a write-path
+ * concern and means nothing to an operator.
+ */
+export class ReturnRefundDto {
+  @ApiProperty() id!: string;
+  @ApiProperty({ description: 'Decimal string, never a float.' }) amount!: string;
+  @ApiProperty({ description: 'ISO 4217.' }) currency!: string;
+  @ApiProperty({ enum: RefundReasonValues }) reason!: RefundReason;
+  @ApiProperty({ nullable: true }) note!: string | null;
+  @ApiProperty({ description: 'ISO-8601.' }) recordedAt!: string;
+
+  @ApiProperty({
+    description:
+      "Who moved the money. `operator_out_of_band` means OpenLinker did not — it recorded what the " +
+      'operator says they did, and the panel must say so rather than implying a transfer.',
+  })
+  executedBy!: string;
+}
+
 /** The hydrated aggregate: the header above, plus its lines and the decline fact. */
 export class ReturnResponseDto extends ReturnListItemResponseDto {
   @ApiProperty({ type: [ReturnLineResponseDto], description: 'Ordered by lineIndex.' })
@@ -387,6 +411,24 @@ export class ReturnResponseDto extends ReturnListItemResponseDto {
     description: 'Attestations already recorded. Disjoint from `restockBlocks`.',
   })
   restockAttestations!: ReturnRestockAttestationDto[];
+
+  @ApiProperty({
+    type: [ReturnRefundDto],
+    description:
+      'Refunds linked to THIS return, newest first. Read by return id, never by order id: an orphan ' +
+      'return has no order to filter by, and an order carrying two returns would cross-attribute.',
+  })
+  refunds!: ReturnRefundDto[];
+
+  @ApiProperty({
+    nullable: true,
+    description:
+      "The ORDER's currency, so the refund form can lock its currency input to a real value. It is " +
+      'carried because that lock is the only protection against a wrong currency reaching ' +
+      '`RefundRecord` — there is no refund-side mismatch guard anywhere. `null` on an orphan return, ' +
+      'which has no order.',
+  })
+  orderCurrency!: string | null;
 }
 
 export class ReturnBucketCountsDto {

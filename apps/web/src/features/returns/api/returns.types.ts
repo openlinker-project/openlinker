@@ -374,6 +374,65 @@ export interface ReturnRestockAttestation {
   note: string | null;
 }
 
+/** A refund recorded against this return. */
+export interface ReturnRefund {
+  id: string;
+  /** A decimal STRING — money never round-trips through a float. */
+  amount: string;
+  currency: string;
+  reason: string;
+  note: string | null;
+  recordedAt: string;
+  /**
+   * Who moved the money. `operator_out_of_band` means OpenLinker did not, and
+   * the panel must say so rather than implying a transfer.
+   */
+  executedBy: string;
+}
+
+/** One invoice line a returned line might have come from (#2382). */
+export interface ReturnCorrectionCandidate {
+  /** A 1-based ARRAY POSITION into the issued-line snapshot, not an id. */
+  originalLineNumber: number;
+  name: string;
+  quantity: number;
+  unitPriceGross: number;
+  taxRate: string;
+}
+
+export interface ReturnCorrectionProposalLine {
+  returnLineId: string;
+  lineIndex: number;
+  name: string | null;
+  sku: string | null;
+  quantityDisposed: number;
+  status: string;
+  /** Every candidate, on an ambiguous line. None is preselected. */
+  candidates: ReturnCorrectionCandidate[];
+  selectedOriginalLineNumber: number | null;
+  newQuantity: number | null;
+  noMatchReason: string | null;
+  noMatchExplanation: string | null;
+  /** Evidence that the choice changes the amount — never a tie-break. */
+  candidatesPriceOrRateDiffer: boolean;
+}
+
+export interface ReturnCorrectionProposal {
+  returnId: string;
+  internalOrderId: string;
+  invoiceRecordId: string;
+  invoiceConnectionId: string;
+  invoiceDocumentNumber: string | null;
+  currency: string;
+  lines: ReturnCorrectionProposalLine[];
+}
+
+export interface ReturnCorrectionProposalResult {
+  /** `proposed`, or a named reason there is nothing to correct. */
+  outcome: string;
+  proposal: ReturnCorrectionProposal | null;
+}
+
 export interface ReturnDetail extends ReturnListItem {
   lines: ReturnLine[];
   declineAvailability: ReturnDeclineAvailability;
@@ -396,6 +455,21 @@ export interface ReturnDetail extends ReturnListItem {
    * of the blocked set, so a line appears in at most one at a time.
    */
   restockAttestations: ReturnRestockAttestation[];
+  /**
+   * Refunds linked to THIS return, newest first (#2382).
+   *
+   * Read by return id, never by order id: an orphan return has no order to
+   * filter by, and an order carrying two returns would cross-attribute.
+   */
+  refunds: ReturnRefund[];
+  /**
+   * The ORDER's currency, so the refund form can lock its input to a real value.
+   *
+   * `null` on an orphan. The form then REFUSES rather than accepting a typed
+   * currency — nothing downstream catches a wrong one, so the lock is the whole
+   * protection.
+   */
+  orderCurrency: string | null;
   /** Lines the server sent that this build could not read. Reported, never hidden. */
   droppedLineCount: number;
 }
@@ -423,6 +497,29 @@ export interface DisposeReturnLineInput {
   quantity: number;
   disposition: ReturnDisposition;
   note?: string;
+}
+
+export interface ConfirmReturnRefundInput {
+  amount: string;
+  currency: string;
+  reason: string;
+  note?: string;
+}
+
+export interface ConfirmReturnRefundResult {
+  moneyState: string;
+  claimedLineIds: string[];
+  moneyMoved: boolean;
+  /**
+   * Whether the linked `RefundRecord` was written.
+   *
+   * **`false` on a 2xx is a real outcome, not a failure** (#2376): the money
+   * state settled durably and reporting an error would send the operator into a
+   * retry that answers 409. The panel renders the distinction rather than a
+   * plain success.
+   */
+  refundRecordWritten: boolean;
+  refundRecordId: string | null;
 }
 
 export interface AttestReturnLineStockInput {

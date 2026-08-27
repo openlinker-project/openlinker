@@ -77,6 +77,8 @@ describe('ReturnsController', () => {
     listOutstandingRestockBlocks: jest.Mock;
     listRestockAttestations: jest.Mock;
   };
+  let refunds: { getRefundsForReturn: jest.Mock };
+  let orderRecords: { getOrderRecord: jest.Mock };
   let returnsService: {
     listReturns: jest.Mock;
     countReturnsByBucket: jest.Mock;
@@ -139,7 +141,17 @@ describe('ReturnsController', () => {
       listRestockAttestations: jest.fn().mockResolvedValue([]),
     };
 
-    controller = new ReturnsController(returnsService as never, custody as never);
+    refunds = { getRefundsForReturn: jest.fn().mockResolvedValue([]) };
+    orderRecords = {
+      getOrderRecord: jest.fn().mockResolvedValue({ currency: 'PLN' }),
+    };
+
+    controller = new ReturnsController(
+      returnsService as never,
+      custody as never,
+      refunds as never,
+      orderRecords as never
+    );
   });
 
   const query = (overrides: Partial<ListReturnsQueryDto> = {}): ListReturnsQueryDto =>
@@ -266,6 +278,62 @@ describe('ReturnsController', () => {
   });
 
   describe('GET /returns/:returnId', () => {
+    /**
+     * The exact-key allowlist the detail ENVELOPE has never had (#2382).
+     *
+     * The sibling assertions cover the list ROW and the LINE; nothing covered
+     * the envelope, and three fields landed on it unguarded across three
+     * consecutive issues — `restockTarget` (#2380), `restockBlocks` and
+     * `restockAttestations` (#2381). Nobody noticed, which is the evidence it
+     * would keep happening. This read is where money- and buyer-adjacent data
+     * lands, and #2382 puts refund amounts on it.
+     *
+     * **Written from what the response ACTUALLY returned**, discovered by
+     * asserting a wrong value and reading the diff — never derived from
+     * `ReturnResponseDto`. An allowlist generated from the type it polices
+     * cannot catch a field arriving that nobody decided to expose.
+     *
+     * The most load-bearing entry is the one that is ABSENT: `rawPayload` is on
+     * the record and is documented as PII-bearing, and it must never reach this
+     * response. A future spread that pulls it in fails here.
+     */
+    it('should project the detail envelope to the exact allowlist, with no rawPayload', async () => {
+      returnsService.getReturn.mockResolvedValue(buildRecord());
+      returnsService.getDeclineAvailability.mockResolvedValue({
+        supported: true,
+        reason: null,
+      });
+
+      const result = await controller.getReturn('ol_return_1');
+
+      expect(Object.keys(result).sort()).toEqual([
+        'authorizedAt',
+        'bucket',
+        'closedAt',
+        'counters',
+        'createdAt',
+        'declineAvailability',
+        'declinedAt',
+        'externalOrderId',
+        'externalReturnId',
+        'id',
+        'internalOrderId',
+        'lines',
+        'openedAt',
+        'orderCurrency',
+        'origin',
+        'rawStatus',
+        'refunds',
+        'restockAttestations',
+        'restockBlocked',
+        'restockBlocks',
+        'restockTarget',
+        'sourceConnectionId',
+        'updatedAt',
+      ]);
+      expect(result).not.toHaveProperty('rawPayload');
+    });
+
     it('should throw the DOMAIN not-found error, not a Nest exception', async () => {
       returnsService.getReturn.mockResolvedValue(null);
 

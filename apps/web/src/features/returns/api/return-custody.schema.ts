@@ -20,6 +20,7 @@
 import { z } from 'zod/v4';
 import type {
   AttestReturnLineStockResult,
+  ConfirmReturnRefundResult,
   DisposeReturnLineResult,
   MarkReturnLineNotReturnedResult,
   ReceiveReturnLineResult,
@@ -115,6 +116,28 @@ export function parseAttestReturnLineStockResult(raw: unknown): AttestReturnLine
     throw new ReturnCustodyResultUnreadableError();
   }
   return { line: toCounters(parsed.data.line), eventIds: parsed.data.eventIds };
+}
+
+const confirmRefundSchema = z.object({
+  moneyState: z.string(),
+  claimedLineIds: z.array(z.string()),
+  moneyMoved: z.boolean(),
+  refundRecordWritten: z.boolean(),
+  refundRecordId: z.string().nullish(),
+});
+
+export function parseConfirmReturnRefundResult(raw: unknown): ConfirmReturnRefundResult {
+  const parsed = confirmRefundSchema.safeParse(raw);
+  if (!parsed.success) {
+    throw new ReturnCustodyResultUnreadableError();
+  }
+  return {
+    moneyState: parsed.data.moneyState,
+    claimedLineIds: parsed.data.claimedLineIds,
+    moneyMoved: parsed.data.moneyMoved,
+    refundRecordWritten: parsed.data.refundRecordWritten,
+    refundRecordId: orNull(parsed.data.refundRecordId),
+  };
 }
 
 export function parseDisposeReturnLineResult(raw: unknown): DisposeReturnLineResult {

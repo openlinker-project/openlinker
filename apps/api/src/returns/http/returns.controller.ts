@@ -28,6 +28,12 @@
 import { Controller, Get, Inject, Param, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import {
+  ORDER_RECORD_SERVICE_TOKEN,
+  ORDER_REFUND_SERVICE_TOKEN,
+  type IOrderRecordService,
+  type IOrderRefundService,
+} from '@openlinker/core/orders';
+import {
   RETURN_CUSTODY_SERVICE_TOKEN,
   RETURNS_SERVICE_TOKEN,
   ReturnNotFoundError,
@@ -47,6 +53,7 @@ import type {
   ReturnRestockTargetDto,
   ReturnRestockBlockDto,
   ReturnRestockAttestationDto,
+  ReturnRefundDto,
 } from '../dto/return-response.dto';
 import {
   PaginatedReturnsResponseDto,
@@ -66,7 +73,11 @@ export class ReturnsController {
     @Inject(RETURNS_SERVICE_TOKEN)
     private readonly returnsService: IReturnsService,
     @Inject(RETURN_CUSTODY_SERVICE_TOKEN)
-    private readonly custody: IReturnCustodyService
+    private readonly custody: IReturnCustodyService,
+    @Inject(ORDER_REFUND_SERVICE_TOKEN)
+    private readonly refunds: IOrderRefundService,
+    @Inject(ORDER_RECORD_SERVICE_TOKEN)
+    private readonly orderRecords: IOrderRecordService
   ) {}
 
   @Get()
@@ -205,11 +216,23 @@ export class ReturnsController {
     // The three custody reads the detail renders. Fanned out together: they are
     // independent, and serialising them would add two round trips to a page load
     // for no ordering guarantee.
-    const [restockTarget, restockBlocks, restockAttestations] = await Promise.all([
+    const [restockTarget, restockBlocks, restockAttestations, refunds] = await Promise.all([
       this.custody.getRestockTarget(),
       this.custody.listOutstandingRestockBlocks(returnId),
       this.custody.listRestockAttestations(returnId),
+      // BY RETURN, never by order: an orphan has no order id to filter by, and
+      // an order carrying two returns would cross-attribute each panel with the
+      // other's refunds.
+      this.refunds.getRefundsForReturn(returnId),
     ]);
+
+    // The order's currency, so the form can lock its input to a real value.
+    // `null` on an orphan, which has no order — and the panel must then refuse
+    // rather than accept a typed currency, because nothing downstream checks it.
+    const orderRecord =
+      record.internalOrderId === null
+        ? null
+        : await this.orderRecords.getOrderRecord(record.internalOrderId);
 
     return {
       ...this.toListItemDto(record),
@@ -231,6 +254,18 @@ export class ReturnsController {
           state: block.state,
         })
       ),
+      refunds: refunds.map(
+        (refund): ReturnRefundDto => ({
+          id: refund.id,
+          amount: refund.amount,
+          currency: refund.currency,
+          reason: refund.reason,
+          note: refund.note,
+          recordedAt: refund.recordedAt.toISOString(),
+          executedBy: refund.executedBy,
+        })
+      ),
+      orderCurrency: orderRecord?.currency ?? null,
       restockAttestations: restockAttestations.map(
         (attestation): ReturnRestockAttestationDto => ({
           eventId: attestation.eventId,
