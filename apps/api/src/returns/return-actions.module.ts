@@ -1,13 +1,19 @@
 /**
  * Return Actions API Module
  *
- * REST surface for the one return write (#2333). A sibling of
- * `CatalogTrustApiModule` — the same thin composition over a core context that
- * owns its own persistence.
+ * Every return WRITE. A sibling of `CatalogTrustApiModule` — the same thin
+ * composition over a core context that owns its own persistence.
+ *
+ * It carried exactly one route when it was written (`decline`, #2333); #2376
+ * added `ReturnWritesController` beside it with nine more — record, authorize,
+ * match-order, the three per-line custody acts, mark-stock-handled, refund and
+ * the correction proposal. Two controllers rather than one because they were
+ * built a wave apart and their route sets are independently reviewable; one
+ * module because they share this module's imports and auth posture exactly.
  *
  * Named for the ACTIONS half deliberately: the returns read API (#2334) ships
- * concurrently and will bring its own module into this directory. Keeping the
- * two files and class names distinct makes that a textual merge.
+ * concurrently and brings its own module into this directory. Keeping the two
+ * files and class names distinct makes that a textual merge.
  *
  * @module apps/api/src/returns
  */
