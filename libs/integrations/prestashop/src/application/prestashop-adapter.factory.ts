@@ -38,6 +38,7 @@ import type { PrestashopCustomerProvisioner } from '../infrastructure/provisione
 import { PrestashopAddressProvisioner } from '../infrastructure/provisioners/prestashop-address-provisioner';
 import { PrestashopCountryResolver } from '../infrastructure/provisioners/prestashop-country-resolver';
 import { PrestashopCurrencyResolver } from '../infrastructure/provisioners/prestashop-currency-resolver';
+import { PrestashopPackResolver } from '../infrastructure/provisioners/prestashop-pack.resolver';
 import { PrestashopShopCurrencyResolver } from '../infrastructure/provisioners/prestashop-shop-currency.resolver';
 import { PrestashopOrderCurrencyResolver } from '../infrastructure/provisioners/prestashop-order-currency.resolver';
 import { PrestashopTaxRateResolver } from '../infrastructure/provisioners/prestashop-tax-rate.resolver';
@@ -72,6 +73,12 @@ export class PrestashopAdapterFactory implements IPrestashopAdapterFactory {
   // instances the master sync creates. Resolves the fallback currency when the
   // connection config leaves `currency` unset.
   private readonly shopCurrencyResolver = new PrestashopShopCurrencyResolver();
+
+  // Same placement and reasoning: master inventory sync builds one adapter per
+  // product, so the set of pack ids has to be cached above the adapter or the
+  // adapter is back to reading `products/{id}` for every simple product just to
+  // learn it is not a pack (#2598).
+  private readonly packResolver = new PrestashopPackResolver();
 
   // Process-singleton for the same reason: master sync builds one adapter per
   // product, so a per-adapter tax-rate cache would never hit (#2054). The
@@ -178,7 +185,8 @@ export class PrestashopAdapterFactory implements IPrestashopAdapterFactory {
       httpClient,
       identifierMapping,
       inventoryMapper,
-      connection
+      connection,
+      this.packResolver
     );
 
     const orderSource = new PrestashopOrderSourceAdapter(
@@ -309,6 +317,9 @@ export class PrestashopAdapterFactory implements IPrestashopAdapterFactory {
     this.shopCurrencyResolver.clearCache(connectionId);
     this.orderCurrencyResolver.clearCache(connectionId);
     this.productTaxRateResolver.clearCache(connectionId);
+    // Pack ids are shop-scoped product ids, so the previous shop's set would
+    // classify unrelated products of the new shop as packs.
+    this.packResolver.clearCache(connectionId);
   }
 
   /**

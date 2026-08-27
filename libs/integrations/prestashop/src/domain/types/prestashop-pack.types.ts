@@ -26,6 +26,17 @@
 export const PACK_STOCK_TYPE_SHOP_DEFAULT = 3;
 
 /**
+ * `0` defers to the shop default too, verified against PrestaShop 9.0.2
+ * `classes/Pack.php`: `Pack::getQuantity` tests
+ * `if (empty($packStockType) || $packStockType == self::STOCK_TYPE_DEFAULT)`,
+ * and PHP's `empty(0)` is true. So a pack stored as `0` never means "pack only"
+ * on its own - the shop setting decides, exactly as for the `3` sentinel.
+ */
+export function packStockTypeDefersToShop(rawStockType: number): boolean {
+  return rawStockType === PACK_STOCK_TYPE_SHOP_DEFAULT || rawStockType === 0;
+}
+
+/**
  * How the pack's sellable quantity is decided.
  *
  * - `pack-only`   (PS `0`): the pack's own stock row is authoritative.
@@ -108,8 +119,13 @@ export function readPackDefinition(product: unknown): PrestashopPackDefinition |
       // aggregate row, not a combination.
       combinationId: combinationId === null || combinationId === '0' ? null : combinationId,
       // PrestaShop requires at least one unit per pack. An absent or
-      // non-positive value is unusable rather than meaningful, and dividing by
-      // it would either throw or invent an availability, so it is read as one.
+      // non-positive value is unusable rather than meaningful, and PrestaShop
+      // itself has no answer for it: `Pack::getQuantity` divides by
+      // `pack_quantity`, so on PHP 8 a stored `0` raises DivisionByZeroError and
+      // the shop cannot report a quantity at all. Reading it as one unit errs
+      // toward MORE availability than a strict reading would; the alternative,
+      // zero, would zero every offer of a pack over one bad bundle row, and no
+      // shop-side figure exists to prefer.
       quantity: declaredQuantity !== null && declaredQuantity > 0 ? Math.floor(declaredQuantity) : 1,
     });
   }
@@ -125,12 +141,15 @@ export function readPackDefinition(product: unknown): PrestashopPackDefinition |
  * falls back to `both`, which is the minimum of the two readings and so can
  * never report more than either. Guessing `pack-only` there would reinstate
  * exactly the overselling this rule exists to stop.
+ *
+ * Note that `0` on the product is not `pack-only` either - see
+ * `packStockTypeDefersToShop`.
  */
 export function resolvePackStockMode(
   rawStockType: number,
   shopDefault: number | null
 ): PackStockMode {
-  const effective = rawStockType === PACK_STOCK_TYPE_SHOP_DEFAULT ? shopDefault : rawStockType;
+  const effective = packStockTypeDefersToShop(rawStockType) ? shopDefault : rawStockType;
 
   switch (effective) {
     case 0:
