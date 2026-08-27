@@ -30,6 +30,33 @@ class OutboxRepository
     const RETRY_BASE_DELAY_SECONDS = 60; // 1 minute
     const RETRY_MAX_DELAY_SECONDS = 21600; // 6 hours
 
+    // Endpoint-level backoff (#2614).
+    //
+    // A row's own `attempts` is the wrong unit for an outage. Every hook fire
+    // during one enqueues a fresh row at attempts = 0, so a permanently dead
+    // endpoint was retried from scratch per row and retry pressure grew with
+    // the number of changes the shop made. The failure streak below is kept per
+    // endpoint, not per row, so pressure stays flat however many rows queue up,
+    // and one success clears it for every row at once.
+    const ENDPOINT_FAILURE_STREAK_CONFIG_KEY = 'OPENLINKER_OUTBOX_FAILURE_STREAK';
+
+    // Deliberately far below RETRY_MAX_DELAY_SECONDS. The endpoint delay is
+    // also the probe interval, so capping it at six hours would mean an outage
+    // that ended could go unnoticed for six hours. Fifteen minutes bounds both
+    // the wasted requests and the time to notice recovery.
+    const ENDPOINT_MAX_DELAY_SECONDS = 900; // 15 minutes
+
+    // Nothing above this exponent can change the answer once the endpoint delay
+    // is capped, and it keeps the stored counter small.
+    const ENDPOINT_FAILURE_STREAK_MAX = 16;
+
+    // Jitter (#2614). Uniform over [0.5 * delay, delay], so fifty rows that
+    // failed in the same second do not retry in the same second. The lower
+    // bound is half the computed delay and never smaller: full jitter would
+    // occasionally pick a near-zero delay and hammer an endpoint that is still
+    // down, which is the pressure this is meant to remove.
+    const RETRY_JITTER_MIN_FRACTION = 0.5;
+
     // Statistics window
     const STATISTICS_DELIVERED_WINDOW_HOURS = 24;
 
@@ -73,6 +100,11 @@ class OutboxRepository
 
     // Null until probed once, then the cached answer for this request.
     private $hasDedupKeyColumn = null;
+
+    // The failure streak counts failing runs, not failing rows. One cron pass
+    // that fails on fifty rows is one failure, or a single outage would jump
+    // straight to the cap and stay there.
+    private $endpointFailureRecordedThisRun = false;
 
     public function __construct()
     {
@@ -448,7 +480,13 @@ class OutboxRepository
                     `updated_at` = NOW()
                 WHERE `id` = ' . (int)$outboxId;
 
-        return Db::getInstance()->execute($sql);
+        $updated = Db::getInstance()->execute($sql);
+
+        if ($updated) {
+            $this->recordEndpointRecovery();
+        }
+
+        return $updated;
     }
 
     /**
@@ -475,9 +513,20 @@ class OutboxRepository
             return $this->markFailed($outboxId, $errorMessage);
         }
 
-        // Calculate exponential backoff
-        $delay = $baseDelay * pow($backoffMultiplier, $attemptNumber);
-        $delay = min($delay, $maxDelay); // Cap at max delay
+        // The delay is driven by whichever is worse: this row's own history, or
+        // the endpoint's. See computeRetryDelaySeconds.
+        $delay = self::computeRetryDelaySeconds(
+            $attemptNumber,
+            $this->readEndpointFailureStreak(),
+            $baseDelay,
+            $backoffMultiplier,
+            $maxDelay,
+            self::randomJitterFraction()
+        );
+
+        // Recorded before the row is written, so the next row scheduled in this
+        // same pass already sees the streak this pass established.
+        $this->recordEndpointFailure();
 
         // Calculate next attempt time
         $nextAttemptAt = date('Y-m-d H:i:s', time() + $delay);
@@ -526,7 +575,158 @@ class OutboxRepository
                     `updated_at` = NOW()
                 WHERE `id` = ' . (int)$outboxId;
 
-        return Db::getInstance()->execute($sql);
+        $updated = Db::getInstance()->execute($sql);
+
+        if ($updated) {
+            $this->recordEndpointFailure();
+        }
+
+        return $updated;
+    }
+
+    /**
+     * Retry delay for one row, in seconds (#2614)
+     *
+     * Pure, so the bounds are assertable without a database and without real
+     * randomness.
+     *
+     * Two exponential curves are compared and the longer delay wins. The row's
+     * own curve is uncapped up to RETRY_MAX_DELAY_SECONDS, because a row that
+     * has failed twenty times on its own is very likely bad payload and should
+     * back off hard. The endpoint's curve is capped at
+     * ENDPOINT_MAX_DELAY_SECONDS, because it also has to serve as the probe
+     * that notices the endpoint came back.
+     *
+     * The result is then jittered down by up to half, never up: the caps stay
+     * caps.
+     *
+     * @param int $attemptNumber Attempts already made by this row
+     * @param int $failureStreak Consecutive failing delivery runs for the endpoint
+     * @param int $baseDelay Base delay in seconds
+     * @param float $multiplier Backoff multiplier
+     * @param int $maxDelay Ceiling for the per-row curve, in seconds
+     * @param float $jitterFraction Randomness in [0, 1]; 1 means no reduction
+     * @return int Delay in seconds, at least 1
+     */
+    public static function computeRetryDelaySeconds(
+        $attemptNumber,
+        $failureStreak,
+        $baseDelay,
+        $multiplier,
+        $maxDelay,
+        $jitterFraction
+    ) {
+        $baseDelay = max(1, (int)$baseDelay);
+        $multiplier = (float)$multiplier;
+        if ($multiplier < 1.0) {
+            $multiplier = 1.0;
+        }
+        $maxDelay = max($baseDelay, (int)$maxDelay);
+
+        $rowDelay = min($baseDelay * pow($multiplier, max(0, (int)$attemptNumber)), $maxDelay);
+
+        $streak = max(0, min((int)$failureStreak, self::ENDPOINT_FAILURE_STREAK_MAX));
+        $endpointDelay = min(
+            $baseDelay * pow($multiplier, $streak),
+            min(self::ENDPOINT_MAX_DELAY_SECONDS, $maxDelay)
+        );
+
+        $delay = max($rowDelay, $endpointDelay);
+
+        $jitterFraction = (float)$jitterFraction;
+        if ($jitterFraction < 0.0) {
+            $jitterFraction = 0.0;
+        }
+        if ($jitterFraction > 1.0) {
+            $jitterFraction = 1.0;
+        }
+
+        $floor = $delay * self::RETRY_JITTER_MIN_FRACTION;
+
+        return max(1, (int)round($floor + (($delay - $floor) * $jitterFraction)));
+    }
+
+    /**
+     * Next value of the endpoint failure streak (#2614)
+     *
+     * @param int $current Current streak
+     * @return int
+     */
+    public static function nextEndpointFailureStreak($current)
+    {
+        return min(max(0, (int)$current) + 1, self::ENDPOINT_FAILURE_STREAK_MAX);
+    }
+
+    /**
+     * Uniform random fraction in [0, 1]
+     *
+     * @return float
+     */
+    private static function randomJitterFraction()
+    {
+        return mt_rand(0, 1000000) / 1000000;
+    }
+
+    /**
+     * Read the endpoint failure streak
+     *
+     * @return int
+     */
+    private function readEndpointFailureStreak()
+    {
+        return max(0, (int)Configuration::get(self::ENDPOINT_FAILURE_STREAK_CONFIG_KEY));
+    }
+
+    /**
+     * Record that a delivery to the endpoint failed (#2614)
+     *
+     * At most once per PHP process, so one cron pass counts once however many
+     * rows it failed on.
+     *
+     * @return void
+     */
+    private function recordEndpointFailure()
+    {
+        if ($this->endpointFailureRecordedThisRun) {
+            return;
+        }
+
+        $this->endpointFailureRecordedThisRun = true;
+
+        Configuration::updateValue(
+            self::ENDPOINT_FAILURE_STREAK_CONFIG_KEY,
+            self::nextEndpointFailureStreak($this->readEndpointFailureStreak())
+        );
+    }
+
+    /**
+     * Record that the endpoint accepted a delivery (#2614)
+     *
+     * Clears the streak and pulls every waiting row forward. Without the second
+     * half, rows queued during a long outage would keep sitting on delays
+     * computed while the endpoint was down, so an operator pressing the button
+     * was the only way back - the defect this closes.
+     *
+     * Releasing the whole backlog at once cannot flood the endpoint: the cron
+     * claims at most BATCH_SIZE rows per pass, so the release changes when rows
+     * are eligible, never how many are sent at a time.
+     *
+     * A row's own `attempts` is deliberately NOT reset. It is the only bound
+     * that lets a genuinely undeliverable row reach `failed` instead of being
+     * retried forever, and it is per-row history rather than endpoint state.
+     *
+     * @return void
+     */
+    private function recordEndpointRecovery()
+    {
+        $this->endpointFailureRecordedThisRun = false;
+
+        if ($this->readEndpointFailureStreak() === 0) {
+            return;
+        }
+
+        Configuration::updateValue(self::ENDPOINT_FAILURE_STREAK_CONFIG_KEY, 0);
+        $this->resetNextAttemptForPendingEvents();
     }
 
     /**

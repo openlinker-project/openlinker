@@ -1303,6 +1303,7 @@ class OpenLinker extends CarrierModule
         Configuration::deleteByName('RETRY_BACKOFF_MULTIPLIER');
         Configuration::deleteByName('OPENLINKER_OUTBOX_RETENTION_DAYS');
         Configuration::deleteByName('OPENLINKER_OUTBOX_RETENTION_LAST_RUN');
+        Configuration::deleteByName('OPENLINKER_OUTBOX_FAILURE_STREAK');
         // Retired in 1.3.0; still deleted so an install that predates the
         // upgrade does not leave the row behind.
         Configuration::deleteByName('DEDUPLICATION_WINDOW_MINUTES');
