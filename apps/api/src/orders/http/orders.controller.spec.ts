@@ -94,6 +94,9 @@ describe('OrdersController', () => {
       findCurrencyMismatchOrders: jest.fn(),
       findNetExcludedOrderCandidates: jest.fn(),
       findProductMatchingErrorOrders: jest.fn(),
+      findCurrencyMismatchOrderRefsAfter: jest.fn(),
+      clearFxStampForRestatement: jest.fn(),
+      countRemainingCurrencyMismatch: jest.fn(),
     };
 
     const mockRetryService: jest.Mocked<IOrderDestinationRetryService> = {

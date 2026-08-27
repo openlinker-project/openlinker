@@ -13,3 +13,8 @@ export const ANALYTICS_DISPLAY_SETTINGS_REPOSITORY_TOKEN = Symbol(
   'AnalyticsDisplaySettingsRepositoryPort'
 );
 export const ANALYTICS_DISPLAY_SETTINGS_SERVICE_TOKEN = Symbol('IAnalyticsDisplaySettingsService');
+
+export const ANALYTICS_REMEDIATION_RUN_REPOSITORY_TOKEN = Symbol(
+  'AnalyticsRemediationRunRepositoryPort'
+);
+export const ANALYTICS_REMEDIATION_RUN_SERVICE_TOKEN = Symbol('IAnalyticsRemediationRunService');

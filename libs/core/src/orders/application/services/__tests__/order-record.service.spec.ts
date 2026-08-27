@@ -52,6 +52,9 @@ describe('OrderRecordService', () => {
       getNetMedianOrderValue: jest.fn(),
       findCurrencyMismatchOrders: jest.fn(),
       findProductMatchingErrorOrders: jest.fn(),
+      findCurrencyMismatchOrderRefsAfter: jest.fn(),
+      clearFxStampForRestatement: jest.fn(),
+      countRemainingCurrencyMismatch: jest.fn(),
     } as unknown as jest.Mocked<OrderRecordRepositoryPort>;
 
     // Defaults to `deferred`, which is the outcome that owes NO refresh - so
