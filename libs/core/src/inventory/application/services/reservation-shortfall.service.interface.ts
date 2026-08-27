@@ -66,4 +66,19 @@ export interface IReservationShortfallService {
    * wrong NOW", so this read is deliberately open-only.
    */
   listOpenForOrder(orderRecordId: string): Promise<readonly ReservationShortfallEpisode[]>;
+
+  /**
+   * Still-open episodes for MANY orders, grouped by order id.
+   *
+   * The `/orders` list page's read (#2350). Batched on purpose — one query
+   * across the page, never one per row, which is the N+1 the invoice
+   * projection's own batch read (#1713) exists to avoid on this same endpoint.
+   *
+   * An order with no open episode is simply ABSENT from the map. A caller must
+   * read that as "nothing reported", never as a positive "this order is fine":
+   * the same read can fail, and a failure must not be rendered as reassurance.
+   */
+  listOpenForOrders(
+    orderRecordIds: readonly string[]
+  ): Promise<ReadonlyMap<string, readonly ReservationShortfallEpisode[]>>;
 }

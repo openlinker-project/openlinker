@@ -228,6 +228,20 @@ export class ReservationShortfallRepository implements ReservationShortfallRepos
     return (Array.isArray(outer[0]) ? outer[0] : outer) as T[];
   }
 
+  async listOpenByOrderRecordIds(
+    orderRecordIds: readonly string[]
+  ): Promise<readonly ReservationShortfallEpisode[]> {
+    if (orderRecordIds.length === 0) {
+      return [];
+    }
+
+    const rows = await this.episodes.find({
+      where: { orderRecordId: In([...orderRecordIds]), closedAt: IsNull() },
+      order: { orderRecordId: 'ASC', openedAt: 'ASC' },
+    });
+    return rows.map((row) => this.toDomain(row));
+  }
+
   private toDomain(row: ReservationShortfallEpisodeOrmEntity): ReservationShortfallEpisode {
     return new ReservationShortfallEpisode(
       row.id,

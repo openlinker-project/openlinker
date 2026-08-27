@@ -19441,3 +19441,17 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
 .returns-decline > p {
   justify-self: stretch;
 }
+
+/* -------------------------------------------------------------------------
+ * Stock-at-risk callout (#2350)
+ *
+ * The order-detail list of short items inside the shared `Alert`. Tokens only —
+ * no literal colours or spacings, per the style guide's token rule.
+ * ---------------------------------------------------------------------- */
+.stock-at-risk-callout__items {
+  margin: var(--space-2) 0 0;
+  padding-left: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}

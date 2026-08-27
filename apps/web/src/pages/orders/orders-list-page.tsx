@@ -65,6 +65,7 @@ import { deriveOrderHealth, slaBadge, fulfillmentBadge } from '../../features/or
 import { paymentBadge } from '../../features/orders/lib/order-row';
 import { OrderIdentityCell } from '../../features/orders';
 import { OrderInvoicingCell } from '../../features/orders/components/order-invoicing-cell';
+import { StockAtRiskBadge } from '../../features/orders/components/stock-at-risk-badge';
 import { OrderPackedTick } from '../../features/orders/components/order-packed-tick';
 import { deriveDeliveryOutcome, hasLiveOlCarrierRoute } from '../../features/orders/lib/delivery-outcome';
 import { DeliveryOutcomeChip } from '../../features/orders/components/delivery-chip';
@@ -884,6 +885,14 @@ export function OrdersListPage(): ReactElement {
                   says "is something wrong", the phase says "what stage is it
                   at" (ADR-059). */}
               <OrderPhaseBadge phase={order.lifecyclePhase} compact />
+              {/* #2350 — an exception, so a badge, and it belongs in the STATUS
+                  group beside failure reasons (style guide § order-row signal
+                  placement). BESIDE health for the same reason the phase is:
+                  `OrderHealthValues` is a partition whose values sum to the KPI
+                  cards, so a shortfall value there would double-count or hide a
+                  sync failure behind a stock one. Shared verbatim with the
+                  mobile card. */}
+              <StockAtRiskBadge shortfalls={order.reservationShortfalls} />
               {h.reason ? (
                 <span className="orders-status-reason" title={h.reason}>
                   {h.reason}
@@ -1807,6 +1816,19 @@ export function OrdersListPage(): ReactElement {
                           ) : (
                             '—'
                           )}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>Stock</dt>
+                        <dd>
+                          {/* SAME component as the desktop status cell. An
+                              absent value renders an em dash, never a "fine"
+                              claim — see `stock-at-risk-copy.ts`. */}
+                          <StockAtRiskBadge
+                            shortfalls={order.reservationShortfalls}
+                            layout="row"
+                            emptyFallback="—"
+                          />
                         </dd>
                       </div>
                       <div>

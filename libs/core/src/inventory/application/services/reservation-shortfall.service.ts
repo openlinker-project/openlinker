@@ -79,6 +79,26 @@ export class ReservationShortfallService implements IReservationShortfallService
     return this.shortfalls.listOpenByOrderRecordId(orderRecordId);
   }
 
+  async listOpenForOrders(
+    orderRecordIds: readonly string[]
+  ): Promise<ReadonlyMap<string, readonly ReservationShortfallEpisode[]>> {
+    const grouped = new Map<string, ReservationShortfallEpisode[]>();
+    if (orderRecordIds.length === 0) {
+      return grouped;
+    }
+
+    const episodes = await this.shortfalls.listOpenByOrderRecordIds(orderRecordIds);
+    for (const episode of episodes) {
+      const bucket = grouped.get(episode.orderRecordId);
+      if (bucket === undefined) {
+        grouped.set(episode.orderRecordId, [episode]);
+      } else {
+        bucket.push(episode);
+      }
+    }
+    return grouped;
+  }
+
   /**
    * The detection half: positions short right now, attributed to orders.
    *

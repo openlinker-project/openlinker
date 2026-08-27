@@ -212,6 +212,20 @@ export class OrdersController {
     // have no `deliveryResolution` / `deliveryRider` on their DTO.
     const deliveryByOrderId = await this.resolveDeliveryForOrders(items);
 
+    // Batch the shortfall projection for the whole page (#2350), the same shape
+    // and for the same reason as the invoice batch above: one read across the
+    // page's order ids, never a per-row `listOpenForOrder`. #2349 put the field
+    // on the DETAIL read only precisely to avoid an N+1 here — this adds the
+    // batched list read beside that decision rather than moving the field.
+    //
+    // Best-effort, matching the detail read: a failed projection must not take
+    // the whole order list down. An order absent from the map carries no
+    // `reservationShortfalls`, which the FE reads as "nothing reported" and
+    // never as a positive "this order is fine".
+    const shortfallByOrderId = await this.loadReservationShortfallsForPage(
+      items.map((order) => order.internalOrderId)
+    );
+
     return {
       items: items.map((order) => {
         const dto = this.toDto(order);
@@ -223,6 +237,10 @@ export class OrdersController {
         if (delivery) {
           dto.deliveryResolution = delivery.resolution;
           dto.deliveryRider = delivery.rider;
+        }
+        const shortfalls = shortfallByOrderId.get(order.internalOrderId);
+        if (shortfalls && shortfalls.length > 0) {
+          dto.reservationShortfalls = shortfalls;
         }
         return dto;
       }),
@@ -457,6 +475,39 @@ export class OrdersController {
         throw new NotFoundException(error.message);
       }
       throw error;
+    }
+  }
+
+  /**
+   * The list page's batched shortfall projection.
+   *
+   * Returns an EMPTY map on failure, never throws: one supplementary panel must
+   * not take a page of orders down with it. That is why the FE must never
+   * render an absent entry as "no shortfalls" — absence and failure look the
+   * same here by design, so only the presence of an episode is a claim.
+   */
+  private async loadReservationShortfallsForPage(
+    internalOrderIds: string[]
+  ): Promise<Map<string, OrderReservationShortfallDto[]>> {
+    if (internalOrderIds.length === 0) {
+      return new Map();
+    }
+    try {
+      const grouped = await this.reservationShortfalls.listOpenForOrders(internalOrderIds);
+      return new Map(
+        [...grouped.entries()].map(([orderId, episodes]) => [
+          orderId,
+          episodes.map((episode) => this.toReservationShortfallDto(episode)),
+        ])
+      );
+    } catch (error) {
+      this.logger.error(
+        `Failed to project reservation shortfalls for a page of ${String(
+          internalOrderIds.length
+        )} order(s)`,
+        (error as Error).stack
+      );
+      return new Map();
     }
   }
 

@@ -93,4 +93,17 @@ export interface ReservationShortfallRepositoryPort {
   listOpenByOrderRecordId(
     orderRecordId: string
   ): Promise<readonly ReservationShortfallEpisode[]>;
+
+  /**
+   * Every still-open episode across MANY orders, for the `/orders` list page.
+   *
+   * Batched deliberately: one read across the page's order ids, never one per
+   * row — the N+1 the `getLatestInvoicesForOrders` (#1713) invoice projection
+   * already established the shape for, on this same list endpoint.
+   *
+   * An empty input returns an empty array without querying.
+   */
+  listOpenByOrderRecordIds(
+    orderRecordIds: readonly string[]
+  ): Promise<readonly ReservationShortfallEpisode[]>;
 }

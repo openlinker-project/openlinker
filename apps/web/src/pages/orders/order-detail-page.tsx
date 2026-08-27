@@ -14,6 +14,7 @@ import { useCallback, useEffect, useRef, type ReactElement } from 'react';
 import { Link, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { Alert } from '../../shared/ui/alert';
+import { StockAtRiskCallout } from '../../features/orders/components/stock-at-risk-callout';
 import { LoadingState, ErrorState } from '../../shared/ui/feedback-state';
 import { Button } from '../../shared/ui/button';
 import { KeyValueList, type KeyValueItem } from '../../shared/ui/key-value-list';
@@ -359,6 +360,14 @@ export function OrderDetailPage(): ReactElement {
           </ul>
         </Alert>
       ) : null}
+
+      {/* #2350 — the shortfall callout, in the same full-width Alert slot as the
+          failed-destinations callout. `warning`, not `error`: the order is at
+          risk, not broken. Renders nothing when there is nothing to report and
+          NEVER a "no shortfalls" reassurance — the loader catches to `[]` on
+          failure, so absence and failure are indistinguishable and only the
+          presence of an episode is a claim. */}
+      <StockAtRiskCallout shortfalls={order.reservationShortfalls} />
 
       {snapshot.items.length > 0 || snapshot.totals ? (
         <section className="detail-section">

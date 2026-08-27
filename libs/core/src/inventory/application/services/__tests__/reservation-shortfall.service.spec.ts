@@ -89,6 +89,7 @@ describe('ReservationShortfallService', () => {
       listOpenEpisodes: jest.fn().mockResolvedValue([]),
       closeEpisode: jest.fn().mockResolvedValue(true),
       listOpenByOrderRecordId: jest.fn().mockResolvedValue([]),
+      listOpenByOrderRecordIds: jest.fn().mockResolvedValue([]),
     };
     products = {
       getVariantsByProductIds: jest
@@ -313,11 +314,44 @@ describe('ReservationShortfallService', () => {
         'closeEpisode',
         'listHeldForPositions',
         'listOpenByOrderRecordId',
+        'listOpenByOrderRecordIds',
         'listOpenEpisodes',
         'listShortPositionIds',
         'listShortfallPositions',
         'openEpisode',
       ]);
+    });
+  });
+
+  describe('listOpenForOrders', () => {
+    it('should group episodes by order for the list page', async () => {
+      repository.listOpenByOrderRecordIds.mockResolvedValue([
+        episode({ id: 'ep-1', orderRecordId: 'ol_order_a' }),
+        episode({ id: 'ep-2', orderRecordId: 'ol_order_a' }),
+        episode({ id: 'ep-3', orderRecordId: 'ol_order_b' }),
+      ]);
+
+      const grouped = await service.listOpenForOrders(['ol_order_a', 'ol_order_b']);
+
+      expect(grouped.get('ol_order_a')).toHaveLength(2);
+      expect(grouped.get('ol_order_b')).toHaveLength(1);
+    });
+
+    it('should not query for an empty page', async () => {
+      const grouped = await service.listOpenForOrders([]);
+
+      expect(grouped.size).toBe(0);
+      expect(repository.listOpenByOrderRecordIds).not.toHaveBeenCalled();
+    });
+
+    it('should omit an order with no open episode rather than mapping it to an empty array', async () => {
+      // Absence must stay absence: the consumer reads a missing entry as
+      // "nothing reported", never as a positive "this order is fine".
+      repository.listOpenByOrderRecordIds.mockResolvedValue([]);
+
+      const grouped = await service.listOpenForOrders(['ol_order_a']);
+
+      expect(grouped.has('ol_order_a')).toBe(false);
     });
   });
 
