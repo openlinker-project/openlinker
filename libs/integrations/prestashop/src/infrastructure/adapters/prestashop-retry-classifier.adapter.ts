@@ -27,6 +27,10 @@
  *     its whole page budget without reaching the end. The collection does not
  *     shrink because a job retried, so every attempt reads the same pages and
  *     refuses identically; the operator needs the message, not the backoff.
+ *   - `PrestashopPackFilterIgnoredException` (#2598) - the pack component stock
+ *     read answered a shape its OR filter cannot produce. The shop parses the
+ *     same filter the same way on every attempt, so retrying only delays the
+ *     report.
  *
  * Neither of the first two reaches this classifier on the shipped ORDER-CREATE
  * path today, so the "attempts" above describe what retrying would cost, not what
@@ -87,6 +91,7 @@ import { PrestashopTaxRateUnknownException } from '../../domain/exceptions/prest
 import { PrestashopCurrencyUnknownException } from '../../domain/exceptions/prestashop-currency-unknown.exception';
 import { PrestashopInvalidFilterException } from '../../domain/exceptions/prestashop-invalid-filter.exception';
 import { PrestashopTruncatedReadException } from '../../domain/exceptions/prestashop-truncated-read.exception';
+import { PrestashopPackFilterIgnoredException } from '../../domain/exceptions/prestashop-pack-filter-ignored.exception';
 
 /**
  * Floor on any deferral, matching the runner's first backoff step - so routing
@@ -107,7 +112,8 @@ export class PrestashopRetryClassifierAdapter implements RetryClassifierPort {
       cause instanceof PrestashopTaxRateUnknownException ||
       cause instanceof PrestashopCurrencyUnknownException ||
       cause instanceof PrestashopInvalidFilterException ||
-      cause instanceof PrestashopTruncatedReadException
+      cause instanceof PrestashopTruncatedReadException ||
+      cause instanceof PrestashopPackFilterIgnoredException
     );
   }
 

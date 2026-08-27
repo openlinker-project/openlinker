@@ -111,10 +111,17 @@ describe('readPackDefinition', () => {
 });
 
 describe('resolvePackStockMode', () => {
-  it('should map the three real PrestaShop values', () => {
-    expect(resolvePackStockMode(0, 1)).toBe('pack-only');
+  it('should map the two self-describing PrestaShop values', () => {
     expect(resolvePackStockMode(1, 0)).toBe('components');
     expect(resolvePackStockMode(2, 0)).toBe('both');
+  });
+
+  it('should defer a stored 0 to the shop default, as PrestaShop does', () => {
+    // `Pack::getQuantity` tests `empty($packStockType)`, and PHP's `empty(0)` is
+    // true, so a stored 0 is not a mode of its own.
+    expect(resolvePackStockMode(0, 0)).toBe('pack-only');
+    expect(resolvePackStockMode(0, 1)).toBe('components');
+    expect(resolvePackStockMode(0, 2)).toBe('both');
   });
 
   it('should substitute the shop default for the 3 sentinel', () => {
