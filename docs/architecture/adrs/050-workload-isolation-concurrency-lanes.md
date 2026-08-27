@@ -205,6 +205,31 @@ reported as a failure, so it consumes a retry attempt and could eventually dead-
 contention. That is a defect in the retry classification, not in the ordering rule, and it is why this
 change and that fix belong in the same release.
 
+## Amendment (#2594 / #2609 review) - the pool sizes with the caps
+
+Both raises left the database connection pool where it was. `libs/shared/src/database/database.module.ts`
+set no `extra.max`, so pg's default of **10** applied while concurrent handler capacity in one process
+went from 9 to **26** (4 + 12 + 2 + 8). That is a real ceiling and it fails quietly: pg's
+`connectionTimeoutMillis` also defaults to 0, so an over-subscribed pool queues without erroring and
+the symptom is "the raised caps did nothing". A handler holding a transaction connection while
+awaiting a second pooled query - the order read model's `upsertWithLineItems`, the webhook gate - can
+also deadlock the pool once every connection is held that way.
+
+The pool is therefore **derived from the lane caps, not picked**: at least one connection per
+concurrent handler slot, plus headroom for that nesting and for the runner's own claim and heartbeat
+queries. `OL_DB_POOL_MAX` defaults to **40** against the caps' 26, and `OL_DB_POOL_CONNECTION_TIMEOUT_MS`
+defaults to 10 s so exhaustion surfaces as a job failure on the retry ladder rather than a stall. The
+rule for a future raise is written beside the caps in `apps/worker/.env.example`: keep the pool at or
+above the sum of the four TOTAL caps, plus headroom.
+
+Two limits. The pool, like the caps, bounds **one process** - N worker replicas and the api each hold
+their own, so the deployment total is this value times the process count and must stay under the
+server's `max_connections`. And a fourth limit belongs beside the three in the #2594 amendment: some
+`bulk` work reaches a public API that the per-connection rate limiter does not cover.
+`marketplace.order.fxStampSweep`'s NBP/ECB reads have no connection to key a bucket on (see § Currency),
+so lane concurrency was the only thing bounding them. Low risk today - one job per tick, its per-order
+children stayed in `realtime` - but it is the constraint a future raise has to argue against.
+
 ## Alternatives considered
 
 - **Strict priority ordering** (realtime first): starves `bulk` under sustained realtime load — the
