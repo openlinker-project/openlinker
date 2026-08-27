@@ -91,7 +91,8 @@ PrestaShop's hooks (especially `actionProductSave`) can fire **multiple times** 
 The module implements **automatic deduplication**, keyed on queue state rather than on a clock:
 - Every outbox row carries a `dedup_key` derived from connection + event type + object type + object ID. No timestamp goes into it.
 - A unique index on `dedup_key` makes `INSERT IGNORE` drop a repeat fire while the first row is still waiting to be sent.
-- The key is set to `NULL` the moment the row leaves the queue (delivered, or failed for good), and a `NULL` never collides in MySQL.
+- The key is set to `NULL` the moment the row leaves the queue - when the cron claims it for delivery, when it is delivered, and when it fails for good. A `NULL` never collides in MySQL.
+- The key covers the event's subject, not its payload. Two `order.status_changed` fires while a row is queued deliver only the first `newStatusId`. That is correct: the webhook is a trigger and the sync job re-reads current shop state.
 
 **Result**: only 1 event is created per product save, even if the hook fires 6+ times - and a *later* change to the same product always gets its own row, whatever the cron cadence. There is no deduplication-window setting to tune; the earlier one could silently drop real changes when the cron ran faster than the window (#2603).
 
@@ -299,11 +300,26 @@ The PHPUnit harness covers **pure-function classes only** — those with no Pres
 | Class | Tests |
 |---|---|
 | `HmacRequestVerifier` | Happy path + all documented failure modes (missing headers, bad format, replay, tampered body/timestamp) |
-| `EventIdGenerator` | Per-call event-id uniqueness, dedup-key determinism per subject, UUID-like output format |
+| `EventIdGenerator` | Per-call event-id uniqueness, dedup-key determinism per subject, discrimination on connection / object type / event type / external id, UUID-like output format |
 
 **Out of scope (explicit non-goals)**:
-- `OutboxRepository`, `CartShippingRepository`, `WebhookSender`, install/uninstall hooks, and controllers all depend on PS globals — they are **not** tested here and require a real PrestaShop (see issue #506).
+- `CartShippingRepository`, `WebhookSender`, install/uninstall hooks, and controllers all depend on PS globals — they are **not** tested here and require a real PrestaShop (see issue #506).
 - No PHPStan / Psalm / phpcs — static analysis is a separate concern.
+
+### Optional MySQL suite
+
+`tests/Integration/OutboxDedupSqlTest.php` covers `OutboxRepository`'s coalescing against a real server, because the rule is a unique index over a nullable column and no unit test can reach it. It stubs the small PrestaShop surface the repository calls (`Db`, `pSQL`, `Configuration`, `PrestaShopLogger`) and points it at a throwaway MySQL. It is **not** part of `vendor/bin/phpunit`, so the default run stays dependency-free:
+
+```bash
+docker run -d --rm --name ol-outbox-mysql -e MYSQL_ROOT_PASSWORD=root \
+  -e MYSQL_DATABASE=outbox -p 3399:3306 mysql:8.0
+
+OPENLINKER_TEST_MYSQL_DSN='mysql:host=127.0.0.1;port=3399;dbname=outbox' \
+OPENLINKER_TEST_MYSQL_USER=root OPENLINKER_TEST_MYSQL_PASSWORD=root \
+  vendor/bin/phpunit --testsuite Integration
+```
+
+Without the DSN the suite skips. This is not the full real-PrestaShop harness (#506) - it exercises SQL semantics only.
 
 ### Adding new pure-function tests
 

@@ -235,40 +235,40 @@ PrestaShop's `actionProductSave` hook (and other hooks) can fire **multiple time
 
 ### How Deduplication Works
 
-The PrestaShop webhook module implements **automatic deduplication** to prevent duplicate events:
+The PrestaShop webhook module coalesces repeat hook fires. Coalescing is keyed on queue state, not on a clock (#2603):
 
-1. **Deterministic Event IDs**: Event IDs are generated deterministically based on:
-   - Provider + Connection ID + Event Type + Object Type + External ID + **Time Window** (rounded to nearest minute)
-   
-2. **Database-Level Deduplication**: Uses `INSERT IGNORE` with a unique constraint on `event_id`:
-   - If the same event ID is inserted multiple times, only the first insert succeeds
-   - Subsequent inserts are silently ignored (no error, no duplicate)
+1. **Subject-derived dedup key**: every outbox row carries a `dedup_key` over Provider + Connection ID + Event Type + Object Type + External ID. No timestamp goes into it.
 
-3. **Time Window**: Events within the same minute for the same object generate the same event ID, preventing duplicates from rapid hook fires.
+2. **Database-level coalescing**: `INSERT IGNORE` plus a unique constraint on `dedup_key` drops a repeat fire while the first row is still queued.
 
-**Result**: Even if a hook fires 6 times in one second, only **1 event** is created and sent to OpenLinker.
+3. **The key is released when the row leaves the queue**: the repository sets `dedup_key` to `NULL` when a row is claimed for delivery, when it is delivered, and when it fails for good. MySQL treats `NULL` as distinct in a unique index, so history never blocks a new event.
 
-**Note**: Time windows use PrestaShop server timezone. Events created in different minutes are correctly treated as separate events (this is expected behavior for legitimate separate save operations).
+**Result**: even if a hook fires 6 times in one second, only **1 event** is created and sent to OpenLinker. A *later* change to the same object always gets its own row, whatever the cron cadence.
+
+**Event IDs are unique per row and must stay that way.** OpenLinker keys its own durable replay protection on `(provider, connection_id, event_id)`, so reusing an id across two rows would make the second real delivery look like a replay and be discarded. The id is generated once at enqueue time and stored on the row, which is what makes a *retry* of the same delivery recognisable as a replay.
+
+**The key covers the subject, not the payload.** Two `order.status_changed` fires while a row is queued deliver only the first `newStatusId`. That is correct under "the webhook is a trigger, the pull is authoritative" - the sync job re-reads current shop state.
 
 ### Verification
 
 To verify deduplication is working:
 
 ```sql
--- Check for duplicate events (should return 0 rows)
-SELECT event_id, COUNT(*) as count
+-- At most one queued row per subject (should return 0 rows)
+SELECT dedup_key, COUNT(*) as count
 FROM ps_openlinker_webhook_outbox
-GROUP BY event_id
+WHERE dedup_key IS NOT NULL
+GROUP BY dedup_key
 HAVING count > 1;
 
--- Check events for a specific product (should see only 1 per minute)
-SELECT id, event_type, external_id, created_at
+-- Check events for a specific product (one row per save operation)
+SELECT id, event_type, external_id, status, dedup_key, created_at
 FROM ps_openlinker_webhook_outbox
 WHERE external_id = '23' AND event_type = 'product.saved'
 ORDER BY created_at DESC;
 ```
 
-**Expected**: One event per product save operation, even if the hook fired multiple times.
+**Expected**: one event per product save operation, even if the hook fired multiple times. Rows that have already been delivered or have failed for good show `dedup_key = NULL`.
 
 ## Troubleshooting
 
@@ -301,14 +301,15 @@ ORDER BY created_at DESC;
 
 ### Duplicate Events in Database
 
-**Possible causes**:
-- Event ID generation changed (should be deterministic)
-- Time window logic issue
-- Database unique constraint missing
+Two rows for the same object are normal when the change really happened twice. Investigate only if a single save produced several rows.
 
-**Solution**: 
-1. Verify `event_id` column has unique constraint: `SHOW CREATE TABLE ps_openlinker_webhook_outbox;`
-2. Check event IDs are deterministic (same inputs = same ID)
+**Possible causes**:
+- The `dedup_key` column or its unique index is missing (the 1.3.0 upgrade did not run)
+- `INSERT IGNORE` is no longer used in `OutboxRepository::enqueueEvent()`
+
+**Solution**:
+1. Verify the schema: `SHOW CREATE TABLE ps_openlinker_webhook_outbox;` - both `event_id` and `dedup_key` must carry a unique key
+2. Do **not** make event IDs deterministic. They are unique per row on purpose; a reused id is discarded by OpenLinker as a replay
 3. Verify `INSERT IGNORE` is being used in `OutboxRepository::enqueueEvent()`
 
 ## Best Practices
@@ -317,7 +318,7 @@ ORDER BY created_at DESC;
 
 2. **Monitor Webhook Delivery**: Set up alerts for signature verification failures and duplicate events.
 
-3. **Idempotent Event IDs**: Use deterministic event IDs (e.g., `prestashop-product-{id}`) to enable proper deduplication.
+3. **Unique Event IDs, Idempotent Handling**: give every delivery its own event ID and keep it stable across retries of that delivery. OpenLinker dedups on `(provider, connection_id, event_id)`, so a deterministic id shared by two real changes silently discards the second. Coalesce repeat fires at the source instead, on a key you release once the event is sent.
 
 4. **Minimal Payloads**: Keep webhook payloads minimal. Full data is fetched via adapter APIs during sync jobs.
 

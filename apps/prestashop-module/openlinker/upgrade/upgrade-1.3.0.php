@@ -27,14 +27,14 @@ function upgrade_module_1_3_0($module)
     $table = _DB_PREFIX_ . 'openlinker_webhook_outbox';
     $db = Db::getInstance();
 
-    $columns = $db->executeS('SHOW COLUMNS FROM `' . bqSQL($table) . '` LIKE "dedup_key"');
+    $columns = $db->executeS('SHOW COLUMNS FROM `' . bqSQL($table) . '` LIKE \'dedup_key\'');
     if (empty($columns)) {
         if (!$db->execute('ALTER TABLE `' . bqSQL($table) . '` ADD `dedup_key` VARCHAR(255) NULL AFTER `event_id`')) {
             return false;
         }
     }
 
-    $indexes = $db->executeS('SHOW INDEX FROM `' . bqSQL($table) . '` WHERE Key_name = "dedup_key"');
+    $indexes = $db->executeS('SHOW INDEX FROM `' . bqSQL($table) . '` WHERE Key_name = \'dedup_key\'');
     if (empty($indexes)) {
         // Existing rows keep dedup_key NULL. MySQL treats NULLs as distinct in a
         // unique index, so history never blocks a new event and no backfill is
