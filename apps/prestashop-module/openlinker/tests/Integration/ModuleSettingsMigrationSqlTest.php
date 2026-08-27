@@ -41,6 +41,7 @@ final class ModuleSettingsMigrationSqlTest extends TestCase
     {
         Configuration::set([]);
         Configuration::$globalValues = [];
+        PrestaShopLogger::$logs = [];
         self::$pdo->exec('DROP TABLE IF EXISTS `' . self::TABLE . '`');
         self::$pdo->exec(
             'CREATE TABLE `' . self::TABLE . '` ('
@@ -101,6 +102,82 @@ final class ModuleSettingsMigrationSqlTest extends TestCase
 
         self::assertArrayNotHasKey('OPENLINKER_CRON_TOKEN', Configuration::$globalValues);
         self::assertCount(1, $this->remainingRows('OPENLINKER_CRON_TOKEN'));
+    }
+
+    /**
+     * The destructive case the corrected predicate exists for.
+     *
+     * PrestaShop core treats `id_shop = 0` as global. The old predicate read
+     * such a row as shop-scoped, so `updateGlobalValue` wrote into that same
+     * row and the following DELETE removed it - the signing secret ended up in
+     * no row at all, with nothing left to recover it from.
+     */
+    public function testLeavesAGlobalRowStoredAsShopZeroAlone(): void
+    {
+        $this->insert('OPENLINKER_WEBHOOK_SECRET', 'legacy-global-secret', 0, 0);
+
+        ModuleSettings::migrateToGlobal();
+
+        $rows = $this->remainingRows('OPENLINKER_WEBHOOK_SECRET');
+        self::assertCount(1, $rows, 'the legacy global row was deleted');
+        self::assertSame('legacy-global-secret', $rows[0]['value']);
+    }
+
+    public function testPromotesPerShopRowsWithoutDestroyingAShopZeroGlobalRow(): void
+    {
+        $this->insert('OPENLINKER_CRON_TOKEN', 'legacy-global', 0, 0);
+        $this->insert('OPENLINKER_CRON_TOKEN', 'per-shop', 2);
+
+        ModuleSettings::migrateToGlobal();
+
+        self::assertSame('per-shop', Configuration::$globalValues['OPENLINKER_CRON_TOKEN']);
+        $rows = $this->remainingRows('OPENLINKER_CRON_TOKEN');
+        self::assertCount(1, $rows);
+        self::assertSame('legacy-global', $rows[0]['value']);
+    }
+
+    /**
+     * A second run must be a no-op, so an operator can re-run the upgrade after
+     * the fix without risking the value the first run settled.
+     */
+    public function testIsANoOpOnASecondRun(): void
+    {
+        $this->insert('OPENLINKER_WEBHOOK_SECRET', 'shared-secret', 1);
+
+        ModuleSettings::migrateToGlobal();
+        Configuration::$globalValues = [];
+        ModuleSettings::migrateToGlobal();
+
+        self::assertSame([], Configuration::$globalValues, 'the second run wrote something');
+        self::assertSame([], $this->remainingRows('OPENLINKER_WEBHOOK_SECRET'));
+    }
+
+    public function testLogsWhenShopsHeldDifferentValues(): void
+    {
+        $this->insert('OPENLINKER_WEBHOOK_SECRET', 'secret-a', 1);
+        $this->insert('OPENLINKER_WEBHOOK_SECRET', 'secret-b', 2);
+
+        ModuleSettings::migrateToGlobal();
+
+        self::assertCount(1, PrestaShopLogger::$logs);
+        self::assertStringContainsString(
+            'OPENLINKER_WEBHOOK_SECRET',
+            PrestaShopLogger::$logs[0]['message']
+        );
+        // The values themselves must never reach the log - one of these keys is
+        // a signing secret.
+        self::assertStringNotContainsString('secret-a', PrestaShopLogger::$logs[0]['message']);
+        self::assertStringNotContainsString('secret-b', PrestaShopLogger::$logs[0]['message']);
+    }
+
+    public function testDoesNotLogWhenEveryShopAgreed(): void
+    {
+        $this->insert('OPENLINKER_CONNECTION_ID', 'conn-1', 1);
+        $this->insert('OPENLINKER_CONNECTION_ID', 'conn-1', 2);
+
+        ModuleSettings::migrateToGlobal();
+
+        self::assertSame([], PrestaShopLogger::$logs);
     }
 
     public function testDoesNotTouchSettingsOwnedByPrestaShop(): void
