@@ -26,6 +26,16 @@ OUT="${OUT:-./results}"
 API_WAIT_SECS="${API_WAIT_SECS:-180}"    # how long to wait for the api to answer
 INFLIGHT_WAIT_SECS="${INFLIGHT_WAIT_SECS:-300}"  # how long to wait for real load
 INFLIGHT_MIN="${INFLIGHT_MIN:-10}"       # in-flight children that count as load
+# One batched sweep run covers 500 products in five children and clears in well
+# under one phase, which would leave most of phase B idle and pull the ratio
+# towards 1.0 for a reason that has nothing to do with the shop. Raising the
+# budget makes the sweep span the phase. Empty = the shipped default.
+SWEEP_PAGE_LIMIT="${SWEEP_PAGE_LIMIT:-}"
+if [ -n "$SWEEP_PAGE_LIMIT" ]; then
+  SWEEP_PAYLOAD="{\"pageLimit\":$SWEEP_PAGE_LIMIT}"
+else
+  SWEEP_PAYLOAD="{}"
+fi
 mkdir -p "$OUT"
 
 # The worker is stopped below. Restore it on ANY exit, including a failure in
@@ -90,14 +100,14 @@ TOKEN=$(token)
 [ -n "$TOKEN" ] || { echo "FATAL: login failed" >&2; exit 1; }
 curl -s -X POST "$API/v1/sync/jobs" -H "authorization: Bearer $TOKEN" \
   -H 'content-type: application/json' \
-  -d "{\"jobType\":\"master.product.syncAll\",\"connectionId\":\"$CONN\",\"payload\":{},\"idempotencyKey\":\"a2:$(date +%s)\"}" \
+  -d "{\"jobType\":\"master.product.syncAll\",\"connectionId\":\"$CONN\",\"payload\":$SWEEP_PAYLOAD,\"idempotencyKey\":\"a2:$(date +%s)\"}" \
   -o /dev/null -w 'enqueue_http=%{http_code}\n'
 # Wait until the fan-out is actually in flight, so phase B measures load. On a
 # store with fewer syncable products than INFLIGHT_MIN this threshold is never
 # reached, so the wait is bounded and says so rather than hanging forever.
 deadline=$(( $(date +%s) + INFLIGHT_WAIT_SECS ))
 while :; do
-  inflight=$(pg "SELECT COUNT(*) FROM sync_jobs WHERE \"connectionId\"='$CONN' AND \"jobType\"='master.product.syncByExternalId' AND status IN ('queued','running');")
+  inflight=$(pg "SELECT COUNT(*) FROM sync_jobs WHERE \"connectionId\"='$CONN' AND \"jobType\" IN ('master.product.syncBatch','master.product.syncFromSweep','master.product.syncByExternalId') AND status IN ('queued','running');")
   [ "$inflight" -gt "$INFLIGHT_MIN" ] && break
   if [ "$(date +%s)" -ge "$deadline" ]; then
     echo "FATAL: only $inflight in-flight children after ${INFLIGHT_WAIT_SECS}s," >&2

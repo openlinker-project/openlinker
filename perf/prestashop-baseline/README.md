@@ -33,6 +33,7 @@ Two things must be filtered out of any window:
 | `run-a4.sh <internalOrderId> <label>` | A4: what one order dispatch costs. Counts the OL module's own front controllers too, which do not live under `/api/` and are invisible to the catalogue analyser. |
 | `make-8line-order.sh` | Builds the eight-line order A4 needs, on the one `OrderSource` on this stack that can create a multi-line order programmatically. |
 | `storefront-probe.sh <seconds> <label>` | Samples storefront response time and prints median / p95 / max. The load generator A2 drives. |
+| `run-a4-ingest.sh <srcConn> <externalOrderId> [label]` | A4 driven by INGESTING the order instead of retrying a failed destination entry. `run-a4.sh`'s retry endpoint answers 404 unless that entry is already `failed`, whereas a freshly ingested order auto-dispatches - and that first dispatch is the event worth counting. Verifies a NEW shop order id, so a re-attach cannot be recorded as a create. |
 | `analyze-log.py` | Turns an access-log window into per-resource counts, the per-product re-fetch distribution, and a requests-per-minute profile. |
 | `slice-window.py` | Cuts an access log down to one window on the shop's own Apache timestamps, for re-analysing a saved log after the fact. |
 
@@ -52,6 +53,8 @@ Every script reads its stack from the environment and falls back to the
 | `PS_DB` | `prestashop` | database name inside `MYSQL_CONTAINER` |
 | `WORKER_CONTAINER` | `ol-demo-fresh-worker` | the container A2 stops and starts. **The default does not reproduce the campaign.** The campaign ran a separate `ol-perf-worker` carrying `OL_WORKER_ROLE=jobs` so no cron tick could enqueue into a measured window; the default is the stock all-roles worker, whose ticks are exactly the contamination the Traps section warns about. Point this at a jobs-only worker before quoting a number. |
 | `TEMPLATE_ID` | `22` | the PrestaShop product `seed-products.sh` clones. **The most machine-specific value here after `CONNECTION_ID`.** On a stack where product 22 is not multi-variant the seed silently inserts fewer combinations than intended, and per-SKU figures then measure a different shape of product. |
+| `SEED_OFFSET` | `0` | Ordinal the generated series starts AFTER. A second generation must not reuse the first's ordinals: `reference` and `ean13` are both derived from it, so seeding 90 000 more at offset 0 mints 10 000 duplicate references and 10 000 duplicate barcodes - and a duplicate barcode is exactly what offer linking refuses to resolve. Set it to the count already seeded. |
+| `SWEEP_PAGE_LIMIT` | unset | A2 only. Raises the sweep's page budget so the sweep spans phase B. At the shipped default a tick covers 500 products in ~46 s and leaves most of a phase idle, pulling the ratio toward 1.0 for a reason that has nothing to do with the shop. |
 | `FORCE_SEED` | unset | `seed-products.sh` refuses to run when `PERFBASE-` products already exist, because a second generation under the same prefix stops the prefix identifying one seeded set. Set to `1` only if a second generation really is wanted. |
 | `SRC_ORDER` | an order id from one machine | `make-8line-order.sh` copies this order's customer and snapshot. **Set this**; the default exists on no other stack. |
 | `PHASE_SECS` | `180` | length of each of A2's three phases, in seconds |
@@ -72,6 +75,8 @@ Every script reads its stack from the environment and falls back to the
 | `results-2026-08-27.md` | The first pass: a cold, partly contaminated window. Superseded by stage A, kept because it is where the three hypotheses were first answered. |
 | `results-A-2026-08-27.md` | **Baseline.** Pre-fix code, six scenarios, median of runs 2 and 3. |
 | `results-B-2026-08-27.md` | **After the adapter fix**, same catalogue, same instrument, same repeat counts, plus the control run that isolates code from environment and the raised-throughput re-measurement. |
+| `results-C-2026-08-27.md` | **After epic #2590** (#2625), same catalogue and instrument. Also the first store-impact figure taken with the status-code-checking probe, which corrects the sub-1.0 p95 ratios in A and B. |
+| `results-D-2026-08-28.md` | **At 100 000 products** (#2644). A different question from C: whether the epic's bounds still hold an order of magnitude above the catalogue they were sized against. |
 
 Every figure names its method and its repeat count where it is stated. A figure
 that was not measured is labelled either *derived* (arithmetic on a measured
