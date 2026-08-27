@@ -78,8 +78,12 @@ for i in $(seq 1 "$RUNS"); do
   ELAPSED=$(( $(date +%s) - START - 25 ))
   JOBS_AFTER=$(pg "SELECT COUNT(*) FROM sync_jobs WHERE \"connectionId\"='$CONN';")
   ATT_AFTER=$(pg "SELECT COALESCE(SUM(attempts),0) FROM sync_jobs WHERE \"connectionId\"='$CONN';")
-  CHILDREN=$(pg "SELECT COUNT(*) FROM sync_jobs WHERE \"connectionId\"='$CONN' AND \"jobType\"='master.inventory.syncByExternalId' AND \"createdAt\" >= now() - interval '90 minutes';")
-  OTHER=$(pg "SELECT COALESCE(string_agg(t || ':' || c::text, ' '),'none') FROM (SELECT \"jobType\" t, COUNT(*) c FROM sync_jobs WHERE \"connectionId\"='$CONN' AND \"jobType\" NOT IN ('master.inventory.syncAll','master.inventory.syncByExternalId') AND \"createdAt\" >= now() - interval '90 minutes' GROUP BY 1) s;")
+  # #2594 renamed the sweep-triggered child to `master.inventory.syncFromSweep`
+  # (same handler, `bulk` lane instead of `realtime`). Both names are counted so
+  # the harness reads the same on either side of that change.
+  COVERED=$(pg "SELECT COUNT(*) FROM sync_jobs WHERE \"connectionId\"='$CONN' AND \"jobType\" IN ('master.inventory.syncFromSweep','master.inventory.syncByExternalId') AND \"createdAt\" >= to_timestamp($MARK);")
+  CHILDREN=$(pg "SELECT COALESCE(string_agg(t || ':' || c::text, ' '),'none') FROM (SELECT \"jobType\" t, COUNT(*) c FROM sync_jobs WHERE \"connectionId\"='$CONN' AND \"jobType\" IN ('master.inventory.syncFromSweep','master.inventory.syncByExternalId') AND \"createdAt\" >= to_timestamp($MARK) GROUP BY 1) s;")
+  OTHER=$(pg "SELECT COALESCE(string_agg(t || ':' || c::text, ' '),'none') FROM (SELECT \"jobType\" t, COUNT(*) c FROM sync_jobs WHERE \"connectionId\"='$CONN' AND \"jobType\" NOT IN ('master.inventory.syncAll','master.inventory.syncByExternalId','master.inventory.syncFromSweep') AND \"createdAt\" >= to_timestamp($MARK) GROUP BY 1) s;")
 
   docker logs --since "$MARK" "$PS_CONTAINER" > "$OUT/$LABEL.access.log" 2>&1
 
@@ -88,7 +92,8 @@ for i in $(seq 1 "$RUNS"); do
     echo "elapsed_seconds=$ELAPSED"
     echo "jobs_created=$((JOBS_AFTER - JOBS_BEFORE))"
     echo "attempts_delta=$((ATT_AFTER - ATT_BEFORE))"
-    echo "stock_children=$CHILDREN"
+    echo "products_covered=$COVERED"
+    echo "child_jobs=$CHILDREN"
     echo "contaminating_jobs=$OTHER"
     echo
     python3 "$(dirname "$0")/analyze-log.py" < "$OUT/$LABEL.access.log"
