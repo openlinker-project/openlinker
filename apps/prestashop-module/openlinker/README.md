@@ -150,6 +150,12 @@ With headers:
 ### `product.saved`
 Triggered when a product is created or updated.
 
+### `product.deleted`
+Triggered when a product is deleted. Shares the product-events toggle with
+`product.saved`. OpenLinker treats it as a trigger to re-read the product: the
+shop answering "no such product" is what pauses the listings, so a rolled-back
+delete costs one redundant re-sync and nothing more.
+
 ### `order.created`
 Triggered when a new order is validated/created.
 
