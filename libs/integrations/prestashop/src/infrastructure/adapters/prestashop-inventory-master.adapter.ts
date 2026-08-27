@@ -35,7 +35,7 @@ import {
   resolvePackStockMode,
   type PrestashopPackComponent,
 } from '../../domain/types/prestashop-pack.types';
-import { readAllPrestashopPages } from '../http/prestashop-paged-read';
+import { readAllPrestashopResourcePages } from '../http/prestashop-paged-read';
 import { PrestashopPackFilterIgnoredException } from '../../domain/exceptions/prestashop-pack-filter-ignored.exception';
 import type { PrestashopPackResolver } from '../provisioners/prestashop-pack.resolver';
 import { Logger } from '@openlinker/shared/logging';
@@ -284,16 +284,11 @@ export class PrestashopInventoryMasterAdapter implements InventoryMasterPort {
     // Paged: the OR filter spans every component and every combination of each,
     // so one page is easily short. A component whose row was cut read as absent,
     // the pack published 0, and a live listing stopped selling (#2598, #2608).
-    const rows = await readAllPrestashopPages<PrestashopStockAvailable>(
-      (limit, offset) =>
-        this.httpClient.listResources<PrestashopStockAvailable>(
-          'stock_availables',
-          { custom: { id_product: componentProductIds.join('|') } },
-          limit,
-          offset
-        ),
+    const rows = await readAllPrestashopResourcePages<PrestashopStockAvailable>(
+      this.httpClient,
+      'stock_availables',
+      { custom: { id_product: componentProductIds.join('|') } },
       {
-        resource: 'stock_availables',
         connectionId: this.connection.id,
         detail: `${componentProductIds.length} pack components`,
       }
@@ -461,16 +456,11 @@ export class PrestashopInventoryMasterAdapter implements InventoryMasterPort {
     try {
       // Paged: a product carries one stock row per combination, so a product with
       // more than a page of variants reported stock for only some of them (#2608).
-      return await readAllPrestashopPages<PrestashopStockAvailable>(
-        (limit, offset) =>
-          this.httpClient.listResources<PrestashopStockAvailable>(
-            'stock_availables',
-            filters,
-            limit,
-            offset
-          ),
+      return await readAllPrestashopResourcePages<PrestashopStockAvailable>(
+        this.httpClient,
+        'stock_availables',
+        filters,
         {
-          resource: 'stock_availables',
           connectionId: this.connection.id,
           detail: `product ${productId}`,
         }

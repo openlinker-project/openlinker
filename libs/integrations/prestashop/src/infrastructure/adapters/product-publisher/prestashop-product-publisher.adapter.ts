@@ -33,7 +33,7 @@ import {
 
 import { PRESTASHOP_DESCRIPTION_FORMAT } from './prestashop-description-format';
 import { PrestashopApiException } from '@openlinker/integrations-prestashop';
-import { findAcrossPrestashopPages } from '../../http/prestashop-paged-read';
+import { findAcrossPrestashopResourcePages } from '../../http/prestashop-paged-read';
 
 import type { IPrestashopWebserviceClient } from '../../http/prestashop-webservice.client.interface';
 import type {
@@ -304,7 +304,12 @@ export class PrestashopProductPublisherAdapter
         }
       );
 
-      const row = rows[0];
+      // Re-checked locally as well as filtered, because the PATCH below sets
+      // `id_product`: writing an arbitrary row would not merely store a wrong
+      // quantity, it would reassign another product's stock row to this
+      // product. The filter reaching the shop is the fix for #2616; this makes
+      // a dropped filter a no-op instead of damage.
+      const row = rows.find((candidate) => String(candidate.id_product) === productId);
       if (!row) {
         this.logger.warn(
           `No stock_available row found for product ${productId} on connection ${this.connection.id} — stock not updated.`
@@ -502,11 +507,12 @@ export class PrestashopProductPublisherAdapter
     expected: string,
     readField: (row: T) => string | PrestashopLangField
   ): Promise<T | null> {
-    return findAcrossPrestashopPages<T>(
-      (limit, offset) => this.client.listResources<T>(resource, { custom }, limit, offset),
+    return findAcrossPrestashopResourcePages<T>(
+      this.client,
+      resource,
+      { custom },
       (row) => this.extractLangText(readField(row), languageId) === expected,
       {
-        resource,
         connectionId: this.connection.id,
         detail: `searching for "${expected}"`,
       }

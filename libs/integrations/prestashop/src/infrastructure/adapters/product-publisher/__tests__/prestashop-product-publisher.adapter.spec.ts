@@ -260,6 +260,27 @@ describe('PrestashopProductPublisherAdapter', () => {
       );
     });
 
+    it('should not write a stock row belonging to another product (#2608 review)', async () => {
+      // The #2616 shape: the filter did not reach the shop, so the answer is
+      // the first row of an unfiltered page. The PATCH sets id_product, so
+      // writing it would reassign another product's stock row.
+      client.createResource.mockResolvedValue({ id: '42', active: '1' });
+      client.listResources.mockImplementation((resource) =>
+        resource === 'products'
+          ? Promise.resolve([])
+          : Promise.resolve([{ id: '3', id_product: '99', quantity: '5' }]),
+      );
+
+      const result = await adapter.publishProduct(baseCommand({ stock: 10 }));
+
+      expect(result).toEqual({ externalProductId: '42', status: 'published' });
+      expect(client.updateResource).not.toHaveBeenCalledWith(
+        'stock_availables',
+        expect.anything(),
+        expect.anything(),
+      );
+    });
+
     it('should resolve successfully and not call updateResource when no stock_available row exists', async () => {
       client.createResource.mockResolvedValue({ id: '55', active: '1' });
       client.listResources.mockResolvedValue([]);
@@ -451,7 +472,7 @@ describe('PrestashopProductPublisherAdapter', () => {
       // locally, so an unevenly filtered name column cannot mint a duplicate (#2616).
       expect(client.listResources).toHaveBeenCalledWith(
         'categories',
-        { custom: { id_parent: '2' } },
+        { custom: { id_parent: '2' }, sort: ['id_ASC'] },
         100,
         0,
       );
@@ -478,7 +499,7 @@ describe('PrestashopProductPublisherAdapter', () => {
       expect(client.listResources).toHaveBeenNthCalledWith(
         2,
         'categories',
-        { custom: { id_parent: '2' } },
+        { custom: { id_parent: '2' }, sort: ['id_ASC'] },
         100,
         100,
       );
@@ -753,7 +774,12 @@ describe('PrestashopProductPublisherAdapter', () => {
       );
       // No multilang name filter is sent - features are enumerated and matched
       // locally, so the shop's filter behaviour cannot cause a duplicate (#2616).
-      expect(client.listResources).toHaveBeenCalledWith('product_features', { custom: {} }, 100, 0);
+      expect(client.listResources).toHaveBeenCalledWith(
+        'product_features',
+        { custom: {}, sort: ['id_ASC'] },
+        100,
+        0
+      );
     });
 
     it('should reuse an existing feature by name match', async () => {
@@ -783,7 +809,7 @@ describe('PrestashopProductPublisherAdapter', () => {
       // id_feature is a plain column, so it reaches the shop as a bare key (#2616).
       expect(client.listResources).toHaveBeenCalledWith(
         'product_feature_values',
-        { custom: { id_feature: '10' } },
+        { custom: { id_feature: '10' }, sort: ['id_ASC'] },
         100,
         0,
       );

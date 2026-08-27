@@ -814,7 +814,7 @@ describe('PrestashopOrderSourceAdapter', () => {
 
       expect(mockHttpClient.listResources).toHaveBeenCalledWith(
         'order_details',
-        { custom: { id_order: '42' } },
+        { custom: { id_order: '42' }, sort: ['id_ASC'] },
         100,
         0
       );

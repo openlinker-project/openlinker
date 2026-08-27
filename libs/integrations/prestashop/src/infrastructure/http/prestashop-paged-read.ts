@@ -22,15 +22,27 @@
  * only on the shops that were being truncated, plus one empty read when a
  * collection happens to be an exact multiple of the page size.
  *
- * Ordering. `PrestashopQueryFilters` exposes no sort, and PrestaShop answers an
- * unsorted collection read in primary-key order, so the pages tile the
- * collection as long as nothing inserts into it mid-scan. A concurrent insert
- * can still shift a row across a page boundary; that hole is far smaller than
- * the one being closed, which fired on every read of a collection over one page.
+ * Ordering. Offset paging over a result set with no ORDER BY has no tiling
+ * guarantee at all - two pages can overlap or leave a hole, which is the same
+ * class of wrong answer this file exists to remove, and the reason #2605 sorted
+ * the order feed. So a read through the resource helpers below is sorted by
+ * `id_ASC` unless the caller asked for its own order. A concurrent insert can
+ * still shift a row across a page boundary; that residual hole is inherent to
+ * offset paging and far smaller than the one being closed.
+ *
+ * Page size. Taken from the connection's own `pageSize` when the client
+ * exposes it, so an operator who raised it to 1 000 pays one request where the
+ * fixed 100 cost ten, and one who lowered it because their shop cannot serve
+ * big bodies is honoured. The budgets below are therefore expressed in ROWS,
+ * not pages, so a ceiling keeps meaning the same thing whatever the page size.
  *
  * @module libs/integrations/prestashop/src/infrastructure/http
  */
 import { PrestashopTruncatedReadException } from '../../domain/exceptions/prestashop-truncated-read.exception';
+import type {
+  IPrestashopWebserviceClient,
+  PrestashopQueryFilters,
+} from './prestashop-webservice.client.interface';
 
 /**
  * PrestaShop's own default collection page size.
@@ -38,21 +50,21 @@ import { PrestashopTruncatedReadException } from '../../domain/exceptions/presta
 export const PRESTASHOP_PAGE_SIZE = 100;
 
 /**
- * Page budget for a read narrowed by a filter - one order's lines, one product's
+ * Row budget for a read narrowed by a filter - one order's lines, one product's
  * combinations, one customer's addresses, one tax group's rules. 5 000 rows is
  * far past any real shop's value for those, so filling it means the filter did
  * not narrow what the caller thought it did, and the loud failure is the point.
  */
-export const PRESTASHOP_NARROWED_MAX_PAGES = 50;
+export const PRESTASHOP_NARROWED_MAX_ROWS = 5000;
 
 /**
- * Page budget for a read that deliberately enumerates a whole shop-wide
+ * Row budget for a read that deliberately enumerates a whole shop-wide
  * collection - categories, feature values, attribute values. These legitimately
  * run to tens of thousands of rows on a large catalogue, so the narrowed budget
  * would refuse a read that is simply big. 50 000 rows is the point past which we
  * would rather an operator hear about it than keep spending requests.
  */
-export const PRESTASHOP_UNNARROWED_MAX_PAGES = 500;
+export const PRESTASHOP_UNNARROWED_MAX_ROWS = 50000;
 
 /**
  * Reads one page. `limit` and `offset` map straight onto
@@ -65,8 +77,8 @@ export interface PrestashopPagedReadContext {
   resource: string;
   /** Connection being read, for the failure message. */
   connectionId: string;
-  /** Defaults to {@link PRESTASHOP_NARROWED_MAX_PAGES}. */
-  maxPages?: number;
+  /** Row ceiling. Defaults to {@link PRESTASHOP_NARROWED_MAX_ROWS}. */
+  maxRows?: number;
   /** Defaults to {@link PRESTASHOP_PAGE_SIZE}. */
   pageSize?: number;
   /** Extra context for the failure message, e.g. the filter that was applied. */
@@ -83,8 +95,8 @@ export async function readAllPrestashopPages<T>(
   read: PrestashopPageReader<T>,
   ctx: PrestashopPagedReadContext
 ): Promise<T[]> {
-  const pageSize = ctx.pageSize ?? PRESTASHOP_PAGE_SIZE;
-  const maxPages = ctx.maxPages ?? PRESTASHOP_NARROWED_MAX_PAGES;
+  const pageSize = resolvePageSize(ctx.pageSize);
+  const maxPages = resolveMaxPages(ctx.maxRows, pageSize);
   const all: T[] = [];
 
   for (let page = 0; page < maxPages; page += 1) {
@@ -121,8 +133,8 @@ export async function findAcrossPrestashopPages<T>(
   matches: (row: T) => boolean,
   ctx: PrestashopPagedReadContext
 ): Promise<T | null> {
-  const pageSize = ctx.pageSize ?? PRESTASHOP_PAGE_SIZE;
-  const maxPages = ctx.maxPages ?? PRESTASHOP_NARROWED_MAX_PAGES;
+  const pageSize = resolvePageSize(ctx.pageSize);
+  const maxPages = resolveMaxPages(ctx.maxRows, pageSize);
 
   for (let page = 0; page < maxPages; page += 1) {
     const rows = await read(pageSize, page * pageSize);
@@ -144,4 +156,92 @@ export async function findAcrossPrestashopPages<T>(
     ctx.connectionId,
     ctx.detail
   );
+}
+
+/**
+ * A page size is only useful if it is a positive whole number, and a client
+ * that does not report one keeps PrestaShop's own default.
+ */
+function resolvePageSize(pageSize: number | undefined): number {
+  if (pageSize === undefined || !Number.isFinite(pageSize) || pageSize < 1) {
+    return PRESTASHOP_PAGE_SIZE;
+  }
+
+  return Math.floor(pageSize);
+}
+
+/**
+ * The budget is a row count, so the page count it allows moves with the page
+ * size. At least one page, or a read could refuse before issuing a request.
+ */
+function resolveMaxPages(maxRows: number | undefined, pageSize: number): number {
+  const rows = maxRows === undefined || maxRows < 1 ? PRESTASHOP_NARROWED_MAX_ROWS : maxRows;
+
+  return Math.max(1, Math.ceil(rows / pageSize));
+}
+
+/**
+ * The connection's configured page size, when the client reports one.
+ *
+ * Optional on the client interface so an out-of-tree or test double compiled
+ * against an older shape keeps working on PrestaShop's own default rather than
+ * failing.
+ */
+export function prestashopPageSizeOf(client: IPrestashopWebserviceClient): number {
+  return resolvePageSize(client.getPageSize?.());
+}
+
+/**
+ * Sorted, page-sized, budgeted read of one whole collection.
+ *
+ * Preferred over calling {@link readAllPrestashopPages} with a hand-built
+ * reader: the sort and the page size are decided here, so no call site can
+ * forget either.
+ *
+ * @throws PrestashopTruncatedReadException when the row budget runs out first
+ */
+export async function readAllPrestashopResourcePages<T>(
+  client: IPrestashopWebserviceClient,
+  resource: string,
+  filters: PrestashopQueryFilters | undefined,
+  ctx: Omit<PrestashopPagedReadContext, 'resource' | 'pageSize'>
+): Promise<T[]> {
+  return readAllPrestashopPages<T>(
+    (limit, offset) => client.listResources<T>(resource, withStableOrder(filters), limit, offset),
+    { ...ctx, resource, pageSize: prestashopPageSizeOf(client) }
+  );
+}
+
+/**
+ * Sorted, page-sized, budgeted scan for the first matching row.
+ *
+ * @throws PrestashopTruncatedReadException when the row budget runs out first
+ */
+export async function findAcrossPrestashopResourcePages<T>(
+  client: IPrestashopWebserviceClient,
+  resource: string,
+  filters: PrestashopQueryFilters | undefined,
+  matches: (row: T) => boolean,
+  ctx: Omit<PrestashopPagedReadContext, 'resource' | 'pageSize'>
+): Promise<T | null> {
+  return findAcrossPrestashopPages<T>(
+    (limit, offset) => client.listResources<T>(resource, withStableOrder(filters), limit, offset),
+    matches,
+    { ...ctx, resource, pageSize: prestashopPageSizeOf(client) }
+  );
+}
+
+/**
+ * A caller that asked for its own order keeps it - it presumably needs those
+ * rows in that order. Everything else gets primary key order, without which the
+ * pages have no guarantee of tiling the collection.
+ */
+function withStableOrder(
+  filters: PrestashopQueryFilters | undefined
+): PrestashopQueryFilters | undefined {
+  if (filters?.sort !== undefined && filters.sort.length > 0) {
+    return filters;
+  }
+
+  return { ...(filters ?? {}), sort: ['id_ASC'] };
 }

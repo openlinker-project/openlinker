@@ -23,7 +23,7 @@ import type { CustomerProjectionRepositoryPort, AddressType } from '@openlinker/
 import { DestinationAddressMapping } from '@openlinker/core/customers';
 import type { Address, OrderPickupPoint } from '@openlinker/core/orders';
 import type { PrestashopAddress, PrestashopAddressCreate } from './prestashop-provisioner.types';
-import { readAllPrestashopPages } from '../http/prestashop-paged-read';
+import { readAllPrestashopResourcePages } from '../http/prestashop-paged-read';
 
 /**
  * Lock TTL in seconds (30 seconds is sufficient for PrestaShop API calls)
@@ -263,16 +263,11 @@ export class PrestashopAddressProvisioner {
       // Note: PrestashopWebserviceClient must generate filter[id_customer]=[value]&display=[id,address1,city,postcode] format
       // Paged: the hard 100 here meant a customer past that count silently lost
       // the match and got a duplicate address created every order (#2608).
-      const addresses = await readAllPrestashopPages<PrestashopAddress>(
-        (limit, offset) =>
-          webserviceClient.listResources<PrestashopAddress>(
-            'addresses',
-            { custom: { id_customer: prestashopCustomerId } },
-            limit,
-            offset
-          ),
+      const addresses = await readAllPrestashopResourcePages<PrestashopAddress>(
+        webserviceClient,
+        'addresses',
+        { custom: { id_customer: prestashopCustomerId } },
         {
-          resource: 'addresses',
           connectionId: destinationConnectionId,
           detail: `id_customer=${String(prestashopCustomerId)}`,
         }

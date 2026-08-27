@@ -42,7 +42,7 @@ import {
   PrestashopResourceNotFoundException,
 } from '@openlinker/integrations-prestashop';
 import { PrestashopTruncatedReadException } from '../../domain/exceptions/prestashop-truncated-read.exception';
-import { readAllPrestashopPages } from '../http/prestashop-paged-read';
+import { readAllPrestashopResourcePages } from '../http/prestashop-paged-read';
 import type { PrestashopOrderFeedCursor } from '../../domain/types/prestashop-order-feed-cursor.types';
 import {
   formatOrderFeedCursor,
@@ -580,16 +580,11 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort {
       // still applies.
       // Paged: a wholesale order runs past one page, and one page of lines is
       // indistinguishable from all of them (#2608).
-      return await readAllPrestashopPages<PrestashopOrderRow>(
-        (limit, offset) =>
-          this.httpClient.listResources<PrestashopOrderRow>(
-            'order_details',
-            { custom: { id_order: orderId } },
-            limit,
-            offset
-          ),
+      return await readAllPrestashopResourcePages<PrestashopOrderRow>(
+        this.httpClient,
+        'order_details',
+        { custom: { id_order: orderId } },
         {
-          resource: 'order_details',
           connectionId: this.connection.id,
           detail: `id_order=${String(orderId)}`,
         }

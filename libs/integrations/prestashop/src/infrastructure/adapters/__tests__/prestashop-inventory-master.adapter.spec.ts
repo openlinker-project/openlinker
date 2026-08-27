@@ -6,6 +6,7 @@
  *
  * @module libs/integrations/prestashop/src/infrastructure/adapters/__tests__
  */
+import { PrestashopTruncatedReadException } from '../../../domain/exceptions/prestashop-truncated-read.exception';
 import { PrestashopInventoryMasterAdapter } from '../prestashop-inventory-master.adapter';
 import { createMockHttpClient } from '../../../__tests__/mocks/mock-http-client.factory';
 import { createMockIdentifierMapping } from '../../../__tests__/mocks/mock-identifier-mapping.factory';
@@ -882,8 +883,10 @@ describe('PrestashopInventoryMasterAdapter', () => {
       }) as unknown as jest.Mocked<IPrestashopWebserviceClient>['listResources'];
 
       // A partial set would classify a real pack as ordinary and keep selling
-      // off its stale own row, so the resolver answers "unknown" instead.
-      await expect(packResolver.resolvePackIds(connection.id, mockHttpClient)).resolves.toBeNull();
+      // off its stale own row, so the read fails instead of answering.
+      await expect(packResolver.resolvePackIds(connection.id, mockHttpClient)).rejects.toBeInstanceOf(
+        PrestashopTruncatedReadException
+      );
     });
 
     it('degrades to the pack own stock row when the product probe fails', async () => {

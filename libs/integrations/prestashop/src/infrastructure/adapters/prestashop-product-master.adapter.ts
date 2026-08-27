@@ -40,8 +40,8 @@ import type { PrestashopCategoryPathResolver } from '../provisioners/prestashop-
 import type { OptionValueResolver } from '../../domain/types/prestashop-product-option.types';
 import type { PrestashopTaxRateResolver } from '../provisioners/prestashop-tax-rate.resolver';
 import {
-  PRESTASHOP_UNNARROWED_MAX_PAGES,
-  readAllPrestashopPages,
+  PRESTASHOP_UNNARROWED_MAX_ROWS,
+  readAllPrestashopResourcePages,
 } from '../http/prestashop-paged-read';
 import type {
   BulkProductReader,
@@ -424,21 +424,16 @@ export class PrestashopProductMasterAdapter
    * catalogue, and the ones this is cheapest for.
    */
   private async prefetchCombinations(externalIds: readonly string[]): Promise<void> {
-    const combinations = await readAllPrestashopPages<PrestashopCombination>(
-      (limit, offset) =>
-        this.httpClient.listResources<PrestashopCombination>(
-          'combinations',
-          { custom: { id_product: externalIds.map(String) } },
-          limit,
-          offset
-        ),
+    const combinations = await readAllPrestashopResourcePages<PrestashopCombination>(
+      this.httpClient,
+      'combinations',
+      { custom: { id_product: externalIds.map(String) } },
       {
-        resource: 'combinations',
         connectionId: this.connection.id,
         detail: `id_product in ${String(externalIds.length)} product(s)`,
         // A page of products can legitimately carry more combinations than a
         // single product ever would, so the narrowed budget is too tight here.
-        maxPages: PRESTASHOP_UNNARROWED_MAX_PAGES,
+        maxRows: PRESTASHOP_UNNARROWED_MAX_ROWS,
       }
     );
 
@@ -574,20 +569,15 @@ export class PrestashopProductMasterAdapter
     // first page, and the missing variants read as not existing (#2608).
     const combinations =
       this.combinationsCache.get(prestashopProductId.externalId) ??
-      (await readAllPrestashopPages<PrestashopCombination>(
-      (limit, offset) =>
-        this.httpClient.listResources<PrestashopCombination>(
-          'combinations',
-          { custom: { id_product: prestashopProductId.externalId } },
-          limit,
-          offset
-        ),
-      {
-        resource: 'combinations',
-        connectionId: this.connection.id,
-        detail: `id_product=${prestashopProductId.externalId}`,
-      }
-    ));
+      (await readAllPrestashopResourcePages<PrestashopCombination>(
+        this.httpClient,
+        'combinations',
+        { custom: { id_product: prestashopProductId.externalId } },
+        {
+          connectionId: this.connection.id,
+          detail: `id_product=${prestashopProductId.externalId}`,
+        }
+      ));
 
     if (combinations.length === 0) {
       const syntheticExternalId = `product:${prestashopProductId.externalId}`;
@@ -903,18 +893,13 @@ export class PrestashopProductMasterAdapter
     // Shop-wide enumeration, so it gets the wide page budget: a large catalogue
     // legitimately runs to tens of thousands of category rows, and a category
     // missing from this list is unmappable with no error anywhere (#2608).
-    const raw = await readAllPrestashopPages<Record<string, unknown>>(
-      (limit, offset) =>
-        this.httpClient.listResources<Record<string, unknown>>(
-          'categories',
-          undefined,
-          limit,
-          offset
-        ),
+    const raw = await readAllPrestashopResourcePages<Record<string, unknown>>(
+      this.httpClient,
+      'categories',
+      undefined,
       {
-        resource: 'categories',
         connectionId: this.connection.id,
-        maxPages: PRESTASHOP_UNNARROWED_MAX_PAGES,
+        maxRows: PRESTASHOP_UNNARROWED_MAX_ROWS,
       }
     );
 

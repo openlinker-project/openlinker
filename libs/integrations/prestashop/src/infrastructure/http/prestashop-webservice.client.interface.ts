@@ -105,6 +105,15 @@ export interface IPrestashopWebserviceClient {
   ): Promise<T[]>;
 
   /**
+   * The connection's configured collection page size.
+   *
+   * Optional so a test double or an out-of-tree client compiled against the
+   * older shape still satisfies this interface; a caller that needs the value
+   * reads it through `prestashopPageSizeOf`.
+   */
+  getPageSize?(): number;
+
+  /**
    * Create a new resource
    *
    * @param resource - Resource name (e.g., 'products', 'orders')

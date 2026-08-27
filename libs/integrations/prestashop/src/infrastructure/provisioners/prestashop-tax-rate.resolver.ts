@@ -41,7 +41,7 @@ import type {
   PrestashopTaxRateUnknown,
 } from './prestashop-tax-rate.types';
 import { TAX_RATE_EVIDENCE_DETAIL_MAX } from './prestashop-tax-rate.types';
-import { readAllPrestashopPages } from '../http/prestashop-paged-read';
+import { readAllPrestashopResourcePages } from '../http/prestashop-paged-read';
 
 /**
  * The only field this resolver reads off a product. Exported so a caller that
@@ -256,16 +256,11 @@ export class PrestashopTaxRateResolver {
       // past one page on a shop that sells widely. A cut page hides the buyer's
       // own country's rule, and `selectRule` then reports no usable rule at all
       // for a shop that has one (#2608).
-      rules = await readAllPrestashopPages<PrestashopTaxRuleRow>(
-        (limit, offset) =>
-          webserviceClient.listResources<PrestashopTaxRuleRow>(
-            'tax_rules',
-            { custom: { id_tax_rules_group: groupId } },
-            limit,
-            offset
-          ),
+      rules = await readAllPrestashopResourcePages<PrestashopTaxRuleRow>(
+        webserviceClient,
+        'tax_rules',
+        { custom: { id_tax_rules_group: groupId } },
         {
-          resource: 'tax_rules',
           connectionId,
           detail: `id_tax_rules_group=${String(groupId)}`,
         }

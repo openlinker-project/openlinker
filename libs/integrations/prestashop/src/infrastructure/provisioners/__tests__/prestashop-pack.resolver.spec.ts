@@ -6,6 +6,7 @@
  * and a set that could not be read whole is reported as unknown rather than as
  * a partial set.
  */
+import { PrestashopTruncatedReadException } from '../../../domain/exceptions/prestashop-truncated-read.exception';
 import { PrestashopPackResolver } from '../prestashop-pack.resolver';
 import type { IPrestashopWebserviceClient } from '../../http/prestashop-webservice.client.interface';
 
@@ -62,12 +63,16 @@ describe('PrestashopPackResolver', () => {
     expect(listResources).toHaveBeenCalledTimes(3);
   });
 
-  it('should report unknown rather than a partial set when the read is truncated', async () => {
+  it('should fail loudly rather than report unknown when the read is truncated', async () => {
     const fullPage = Array.from({ length: 100 }, (_, index) => ({ id: String(index + 1) }));
     // Never a short page, so the paged read exhausts its budget and refuses.
     makeClient(Array.from({ length: 600 }, () => fullPage));
 
-    await expect(resolver.resolvePackIds('conn-1', client)).resolves.toBeNull();
+    // Reporting unknown here would classify a missing pack as an ordinary
+    // product and publish its stale own-row stock - the #2598 defect.
+    await expect(resolver.resolvePackIds('conn-1', client)).rejects.toBeInstanceOf(
+      PrestashopTruncatedReadException
+    );
   });
 
   it('should report unknown when the enumeration fails', async () => {
