@@ -96,7 +96,8 @@ export interface ReserveForOrderResult {
 }
 
 /**
- * "This order's goods have shipped — close its held reservations" (#2347).
+ * "This order is done with its holds — close them" (#2347 shipped, #2348
+ * cancelled).
  *
  * Order-scoped rather than line-scoped, and that is a schema fact rather than a
  * simplification: `shipments` carries `orderId`, carrier, status and tracking,
@@ -104,13 +105,26 @@ export interface ReserveForOrderResult {
  * unimplemented but unexpressible against today's model. See
  * `IShipmentReservationConsumeService` for what that costs on a partially
  * shipped order.
+ *
+ * `terminalStatus` is the WHOLE difference between the two callers, which is why
+ * there is one method rather than a `consume`/`release` pair. The ledger cannot
+ * tell them apart — both are a guarded `held -> terminal` UPDATE that gives the
+ * units back to `olReservedQuantity` — and § 6I already made terminal status
+ * data at the repository (`releaseHeld({ terminalStatus })`). A twin here would
+ * give "which status" a second home and invite a copy of the per-row failure
+ * handling below.
  */
-export interface ConsumeForOrderInput {
+export interface CloseForOrderInput {
   readonly orderRecordId: string;
+  /**
+   * `'consumed'` — the goods shipped (#2347).
+   * `'released'` — the order was cancelled and gives its promise back (#2348).
+   */
+  readonly terminalStatus: 'consumed' | 'released';
 }
 
 /**
- * What the consume did, with the two non-consuming exits kept apart.
+ * What the close did, with the two non-closing exits kept apart.
  *
  * `alreadyTerminal` is **not** a failure and must never be folded into
  * `failed`. It is the ordinary outcome of a race the design permits: a peer
@@ -118,10 +132,15 @@ export interface ConsumeForOrderInput {
  * and its write. Counting it as a failure would make a healthy install report an
  * alarm on every retry — a loud false signal, which is its own defect class
  * beside the silent decline this programme keeps closing.
+ *
+ * This value doubles as the ORDERING WITNESS on the cancellation path (#2348):
+ * it is obtainable only by having called {@link IReservationService.closeForOrder},
+ * so a private restore step that takes it as a parameter cannot be reached
+ * before the release has returned — a compile-time property, not a convention.
  */
-export interface ConsumeForOrderResult {
-  /** Rows moved `held → consumed` by THIS call. */
-  readonly consumed: number;
+export interface CloseForOrderResult {
+  /** Rows moved `held → terminalStatus` by THIS call. */
+  readonly closed: number;
   /** Rows that had already left `held` — expected, benign. */
   readonly alreadyTerminal: number;
   /** Rows that failed for any other reason. Genuinely wrong. */

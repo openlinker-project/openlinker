@@ -112,6 +112,7 @@ describe('ShipmentController', () => {
       list: jest.fn(),
       getById: jest.fn(),
       getActiveByOrderId: jest.fn(),
+      hasConsumedReservations: jest.fn(),
     };
     dispatch = { dispatch: jest.fn() };
     bulkDispatch = { dispatchBulk: jest.fn(), generateProtocol: jest.fn() };

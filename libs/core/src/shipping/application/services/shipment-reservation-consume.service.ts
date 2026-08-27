@@ -67,10 +67,11 @@ export class ShipmentReservationConsumeService implements IShipmentReservationCo
         // decrement exactly-once, so running it before the claim costs nothing
         // and buys crash-safety: a kill before the claim below leaves this
         // shipment a candidate, and the next tick's repeat decrements nothing.
-        const result = await this.reservations.consumeForOrder({
+        const result = await this.reservations.closeForOrder({
           orderRecordId: shipment.orderId,
+          terminalStatus: 'consumed',
         });
-        reservationsConsumed += result.consumed;
+        reservationsConsumed += result.closed;
         alreadyTerminal += result.alreadyTerminal;
 
         if (result.failed > 0) {

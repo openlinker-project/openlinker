@@ -61,9 +61,9 @@ describe('ShipmentReservationConsumeService', () => {
 
     reservations = {
       reserveForOrder: jest.fn(),
-      consumeForOrder: jest
+      closeForOrder: jest
         .fn()
-        .mockResolvedValue({ consumed: 2, alreadyTerminal: 0, failed: 0 }),
+        .mockResolvedValue({ closed: 2, alreadyTerminal: 0, failed: 0 }),
     } as unknown as jest.Mocked<IReservationService>;
 
     service = new ShipmentReservationConsumeService(shipments, reservations);
@@ -76,9 +76,9 @@ describe('ShipmentReservationConsumeService', () => {
     // reservations held forever — with no catch able to compensate, because a
     // kill runs no code.
     const calls: string[] = [];
-    reservations.consumeForOrder.mockImplementation(() => {
+    reservations.closeForOrder.mockImplementation(() => {
       calls.push('consume');
-      return Promise.resolve({ consumed: 1, alreadyTerminal: 0, failed: 0 });
+      return Promise.resolve({ closed: 1, alreadyTerminal: 0, failed: 0 });
     });
     shipments.claimReservationConsume.mockImplementation(() => {
       calls.push('claim');
@@ -100,7 +100,13 @@ describe('ShipmentReservationConsumeService', () => {
 
     const result = await service.consumeDueShipments({ limit: 10, now: NOW });
 
-    expect(reservations.consumeForOrder).toHaveBeenCalledWith({ orderRecordId: 'ol_order_1' });
+    expect(reservations.closeForOrder).toHaveBeenCalledWith({
+      orderRecordId: 'ol_order_1',
+      // The terminal status is data (§ 6I), so this pass must NAME the one it
+      // means. A shipment consume that passed 'released' would decrement the
+      // same counter while recording the wrong reason for it forever.
+      terminalStatus: 'consumed',
+    });
     expect(shipments.claimReservationConsume).toHaveBeenCalledWith('ol_shipment_1', NOW);
     expect(result).toEqual({
       examined: 1,
@@ -119,8 +125,8 @@ describe('ShipmentReservationConsumeService', () => {
     shipments.listDispatchedAwaitingReservationConsume.mockResolvedValue([
       shipment('ol_shipment_1', 'ol_order_1'),
     ]);
-    reservations.consumeForOrder.mockResolvedValue({
-      consumed: 1,
+    reservations.closeForOrder.mockResolvedValue({
+      closed: 1,
       alreadyTerminal: 0,
       failed: 1,
     });
@@ -136,7 +142,7 @@ describe('ShipmentReservationConsumeService', () => {
     shipments.listDispatchedAwaitingReservationConsume.mockResolvedValue([
       shipment('ol_shipment_1', 'ol_order_1'),
     ]);
-    reservations.consumeForOrder.mockRejectedValue(new Error('ledger unavailable'));
+    reservations.closeForOrder.mockRejectedValue(new Error('ledger unavailable'));
 
     const result = await service.consumeDueShipments({ limit: 10, now: NOW });
 
@@ -164,9 +170,9 @@ describe('ShipmentReservationConsumeService', () => {
       shipment('ol_shipment_1', 'ol_order_1'),
       shipment('ol_shipment_2', 'ol_order_2'),
     ]);
-    reservations.consumeForOrder
+    reservations.closeForOrder
       .mockRejectedValueOnce(new Error('boom'))
-      .mockResolvedValueOnce({ consumed: 3, alreadyTerminal: 1, failed: 0 });
+      .mockResolvedValueOnce({ closed: 3, alreadyTerminal: 1, failed: 0 });
 
     const result = await service.consumeDueShipments({ limit: 10, now: NOW });
 
@@ -186,7 +192,7 @@ describe('ShipmentReservationConsumeService', () => {
     const result = await service.consumeDueShipments({ limit: 10, now: NOW });
 
     expect(result.examined).toBe(0);
-    expect(reservations.consumeForOrder).not.toHaveBeenCalled();
+    expect(reservations.closeForOrder).not.toHaveBeenCalled();
     expect(shipments.claimReservationConsume).not.toHaveBeenCalled();
   });
 

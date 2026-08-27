@@ -38,8 +38,8 @@ import {
 import type { IReservationService } from './reservation.service.interface';
 import { ReservationNotHeldError } from '../../domain/exceptions/reservation-not-held.error';
 import type {
-  ConsumeForOrderInput,
-  ConsumeForOrderResult,
+  CloseForOrderInput,
+  CloseForOrderResult,
   ReserveForOrderInput,
   ReserveForOrderResult,
   ReserveOrderLineInput,
@@ -234,16 +234,16 @@ export class ReservationService implements IReservationService {
     return null;
   }
 
-  async consumeForOrder(input: ConsumeForOrderInput): Promise<ConsumeForOrderResult> {
+  async closeForOrder(input: CloseForOrderInput): Promise<CloseForOrderResult> {
     const held = await this.reservations.listHeldByOrderRecordId(input.orderRecordId);
     if (held.length === 0) {
       // Not a warning. An order legitimately holds nothing when reservations are
       // disabled, when no line resolved to a live position, or when a peer
       // already consumed it.
-      return { consumed: 0, alreadyTerminal: 0, failed: 0 };
+      return { closed: 0, alreadyTerminal: 0, failed: 0 };
     }
 
-    let consumed = 0;
+    let closed = 0;
     let alreadyTerminal = 0;
     let failed = 0;
 
@@ -255,9 +255,9 @@ export class ReservationService implements IReservationService {
           orderRecordId: reservation.orderRecordId,
           orderLineId: reservation.orderLineId,
           inventoryItemId: reservation.inventoryItemId,
-          terminalStatus: 'consumed',
+          terminalStatus: input.terminalStatus,
         });
-        consumed += 1;
+        closed += 1;
       } catch (error) {
         if (error instanceof ReservationNotHeldError) {
           // Expected race, not a fault: the row left `held` between the read
@@ -270,13 +270,14 @@ export class ReservationService implements IReservationService {
         // correctly close the rest of the order.
         failed += 1;
         this.logger.error(
-          `reservation_consume_row_failed order=${reservation.orderRecordId} ` +
+          `reservation_close_row_failed status=${input.terminalStatus} ` +
+            `order=${reservation.orderRecordId} ` +
             `line=${reservation.orderLineId} position=${reservation.inventoryItemId}`,
           (error as Error).stack
         );
       }
     }
 
-    return { consumed, alreadyTerminal, failed };
+    return { closed, alreadyTerminal, failed };
   }
 }

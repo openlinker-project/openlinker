@@ -104,6 +104,8 @@ export {
   ReserveOrderLineInput,
   ReserveForOrderInput,
   ReserveForOrderResult,
+  CloseForOrderInput,
+  CloseForOrderResult,
   SkippedReservationLine,
   SkippedReservationReason,
   SkippedReservationReasonValues,

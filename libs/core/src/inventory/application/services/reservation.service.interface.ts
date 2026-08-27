@@ -19,19 +19,19 @@
  * 4. **The check IS the reserve.** Never read availability and then call this —
  *    an unlocked read-then-act is the defect shape ANALYSIS-1032 § 6I replaces.
  *
- * Release, consume and expire land on this same interface with their own issues:
- * #2346 (state-dependent expiry sweep), #2347 (consume as a
- * `Shipment.reservationConsumedAt` claim), #2348 (the ADR-028 cancellation
- * restore). The repository already exposes `releaseHeld` and
- * `listHeldByOrderRecordId` for them.
+ * Closing a hold is ONE method, {@link IReservationService.closeForOrder}, with
+ * the terminal status as data — `'consumed'` for #2347's
+ * `Shipment.reservationConsumedAt` claim, `'released'` for #2348's cancellation
+ * path. Expiry (#2346) is a sweep of its own because it is position-scoped and
+ * state-dependent, not order-scoped.
  *
  * @module libs/core/src/inventory/application/services
  * @see {@link ReservationService} for the implementation
  * @see docs/architecture/adrs/061-advisory-reservations-and-availability-authority.md
  */
 import type {
-  ConsumeForOrderInput,
-  ConsumeForOrderResult,
+  CloseForOrderInput,
+  CloseForOrderResult,
   ReserveForOrderInput,
   ReserveForOrderResult,
 } from '../types/reservation-service.types';
@@ -65,8 +65,12 @@ export interface IReservationService {
   reserveForOrder(input: ReserveForOrderInput): Promise<ReserveForOrderResult>;
 
   /**
-   * Close every live hold on an order because its goods shipped (#2347) —
-   * `held → consumed`, giving the units back to `olReservedQuantity`.
+   * Close every live hold on an order — `held → terminalStatus`, giving the
+   * units back to `olReservedQuantity`.
+   *
+   * Two callers, one method (see {@link CloseForOrderInput.terminalStatus}):
+   * the shipment consume sweep (#2347) passes `'consumed'`, the cancellation
+   * sequence (#2348) passes `'released'`.
    *
    * **`availableQuantity` is never touched.** The master owns on-hand stock and
    * reports the decrement itself on its next sync; writing it here would make OL
@@ -76,17 +80,22 @@ export interface IReservationService {
    * `releaseHeld` is guarded on `status = 'held'`, so a repeat call finds no
    * live rows and decrements nothing — which is precisely why the consume sweep
    * can afford to run this BEFORE claiming its marker, and therefore why a
-   * process kill mid-pass converges instead of stranding the hold forever.
+   * process kill mid-pass converges instead of stranding the hold forever. The
+   * cancellation path leans on the same property: it has no marker at all, so a
+   * repeat after a kill re-closes nothing and simply proceeds.
    *
    * Per-row failures are counted, never thrown: one bad row must not abort a
    * call that can still correctly close the rest of the order (the posture
    * `ReservationExpiryService` takes over its own page). A `ReservationNotHeldError`
    * is counted as `alreadyTerminal` rather than `failed` — see
-   * {@link ConsumeForOrderResult}.
+   * {@link CloseForOrderResult}. What a non-zero `failed` MEANS is the caller's
+   * to decide: the shipment sweep withholds its marker, and the cancellation
+   * sequence refuses to publish a restore and fails its job, because in both
+   * cases live holds still stand.
    *
    * An order with no held rows is a legitimate, common outcome (reservations
    * disabled, no mapped position, an order that never held) and returns
    * all-zero rather than warning.
    */
-  consumeForOrder(input: ConsumeForOrderInput): Promise<ConsumeForOrderResult>;
+  closeForOrder(input: CloseForOrderInput): Promise<CloseForOrderResult>;
 }

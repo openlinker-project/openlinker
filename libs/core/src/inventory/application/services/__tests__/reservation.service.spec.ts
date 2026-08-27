@@ -496,7 +496,7 @@ describe('ReservationService', () => {
     });
   });
 
-  describe('consumeForOrder (#2347)', () => {
+  describe('closeForOrder (#2347 consume / #2348 release)', () => {
     it('should move every held row to consumed, passing the terminal status as data', async () => {
       // Consume adds NO repository method: `releaseHeld` already takes the
       // terminal status as data (§ 6I), which is what keeps release, consume and
@@ -507,9 +507,9 @@ describe('ReservationService', () => {
       ]);
       reservations.releaseHeld.mockResolvedValue(reservation({ status: 'consumed' }));
 
-      const result = await service.consumeForOrder({ orderRecordId: ORDER_ID });
+      const result = await service.closeForOrder({ orderRecordId: ORDER_ID, terminalStatus: 'consumed' });
 
-      expect(result).toEqual({ consumed: 2, alreadyTerminal: 0, failed: 0 });
+      expect(result).toEqual({ closed: 2, alreadyTerminal: 0, failed: 0 });
       expect(reservations.releaseHeld).toHaveBeenCalledTimes(2);
       expect(reservations.releaseHeld).toHaveBeenCalledWith({
         orderRecordId: ORDER_ID,
@@ -524,9 +524,9 @@ describe('ReservationService', () => {
       // position, or a peer already consumed) — legitimate, not a warning.
       reservations.listHeldByOrderRecordId.mockResolvedValue([]);
 
-      const result = await service.consumeForOrder({ orderRecordId: ORDER_ID });
+      const result = await service.closeForOrder({ orderRecordId: ORDER_ID, terminalStatus: 'consumed' });
 
-      expect(result).toEqual({ consumed: 0, alreadyTerminal: 0, failed: 0 });
+      expect(result).toEqual({ closed: 0, alreadyTerminal: 0, failed: 0 });
       expect(reservations.releaseHeld).not.toHaveBeenCalled();
     });
 
@@ -543,9 +543,9 @@ describe('ReservationService', () => {
         .mockRejectedValueOnce(new ReservationNotHeldError(ORDER_ID, 'line-1', 'inv-1'))
         .mockResolvedValueOnce(reservation({ status: 'consumed' }));
 
-      const result = await service.consumeForOrder({ orderRecordId: ORDER_ID });
+      const result = await service.closeForOrder({ orderRecordId: ORDER_ID, terminalStatus: 'consumed' });
 
-      expect(result).toEqual({ consumed: 1, alreadyTerminal: 1, failed: 0 });
+      expect(result).toEqual({ closed: 1, alreadyTerminal: 1, failed: 0 });
     });
 
     it('should count an unexpected error as failed and still close the rest', async () => {
@@ -559,9 +559,32 @@ describe('ReservationService', () => {
         .mockRejectedValueOnce(new Error('deadlock detected'))
         .mockResolvedValueOnce(reservation({ status: 'consumed' }));
 
-      const result = await service.consumeForOrder({ orderRecordId: ORDER_ID });
+      const result = await service.closeForOrder({ orderRecordId: ORDER_ID, terminalStatus: 'consumed' });
 
-      expect(result).toEqual({ consumed: 1, alreadyTerminal: 0, failed: 1 });
+      expect(result).toEqual({ closed: 1, alreadyTerminal: 0, failed: 1 });
+    });
+
+    it('should pass a released terminal status straight through (#2348)', async () => {
+      // The whole difference between the two callers. The ledger cannot tell a
+      // consume from a release — both are the same guarded `held -> terminal`
+      // UPDATE — so a twin method would only give "which status" a second home.
+      reservations.listHeldByOrderRecordId.mockResolvedValue([
+        reservation({ orderLineId: 'line-1', inventoryItemId: 'inv-1' }),
+      ]);
+      reservations.releaseHeld.mockResolvedValue(reservation({ status: 'released' }));
+
+      const result = await service.closeForOrder({
+        orderRecordId: ORDER_ID,
+        terminalStatus: 'released',
+      });
+
+      expect(result).toEqual({ closed: 1, alreadyTerminal: 0, failed: 0 });
+      expect(reservations.releaseHeld).toHaveBeenCalledWith({
+        orderRecordId: ORDER_ID,
+        orderLineId: 'line-1',
+        inventoryItemId: 'inv-1',
+        terminalStatus: 'released',
+      });
     });
 
     it('should never touch availabilityQuantity — it writes only through releaseHeld', async () => {
@@ -570,7 +593,7 @@ describe('ReservationService', () => {
       reservations.listHeldByOrderRecordId.mockResolvedValue([reservation()]);
       reservations.releaseHeld.mockResolvedValue(reservation({ status: 'consumed' }));
 
-      await service.consumeForOrder({ orderRecordId: ORDER_ID });
+      await service.closeForOrder({ orderRecordId: ORDER_ID, terminalStatus: 'consumed' });
 
       expect(inventory.findLivePositionsByProductIds).not.toHaveBeenCalled();
       expect(reservations.claimHeld).not.toHaveBeenCalled();

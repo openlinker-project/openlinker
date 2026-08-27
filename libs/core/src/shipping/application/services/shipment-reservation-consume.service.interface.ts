@@ -27,7 +27,7 @@
  *   a candidate; the next tick re-runs the consume (a no-op against terminal
  *   rows) and claims.
  * - **Double consume stays structurally impossible.** Two concurrent passes both
- *   call `consumeForOrder`; the row-level guarded UPDATE lets exactly one win
+ *   call `closeForOrder`; the row-level guarded UPDATE lets exactly one win
  *   and the loser is counted as `alreadyTerminal`.
  *
  * The redundant-work cost of consuming before claiming is negligible: the
