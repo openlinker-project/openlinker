@@ -178,6 +178,14 @@ export interface IProductsService {
   getVariantCountsByProductIds(productIds: readonly string[]): Promise<Map<string, number>>;
 
   /**
+   * Count STALE variants (#1599) per product for the given product IDs
+   * (#2447 - list-page "deleted at source" badge). Returns a
+   * Map<productId, staleCount>; products with zero stale variants are
+   * omitted. Empty input returns an empty Map without a DB round-trip.
+   */
+  getStaleVariantCountsByProductIds(productIds: readonly string[]): Promise<Map<string, number>>;
+
+  /**
    * List product variants with optional filters and pagination
    */
   listVariants(

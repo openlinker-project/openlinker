@@ -7,8 +7,18 @@
  *
  * @module apps/api/src/products/http/dto
  */
-import { IsIn, IsInt, IsOptional, IsString, IsUUID, Max, MaxLength, Min } from 'class-validator';
-import { Type } from 'class-transformer';
+import {
+  IsBoolean,
+  IsIn,
+  IsInt,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Max,
+  MaxLength,
+  Min,
+} from 'class-validator';
+import { Type, Transform } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import {
   ProductListSortDirectionValues,
@@ -82,6 +92,19 @@ export class ListProductsQueryDto {
   @IsOptional()
   @IsUUID()
   connectionId?: string;
+
+  @ApiPropertyOptional({
+    type: Boolean,
+    description:
+      'Hide products where every variant is deleted at the master (#1599/#2447). A product ' +
+      'with at least one live variant, or with no variants at all, is always kept.',
+  })
+  @IsOptional()
+  // Query params arrive as strings — mirror list-orders-query.dto.ts's boolean coercion so a
+  // stray value 400s instead of silently returning the unfiltered list.
+  @Transform(({ value }): unknown => (value === 'true' ? true : value === 'false' ? false : value))
+  @IsBoolean()
+  hideFullyStale?: boolean;
 
   @ApiPropertyOptional({ default: 20, minimum: 1, maximum: 100, description: 'Page size' })
   @IsOptional()

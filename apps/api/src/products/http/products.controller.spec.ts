@@ -72,6 +72,7 @@ function createMockProductsService(): jest.Mocked<IProductsService> {
     listProducts: jest.fn(),
     listVariants: jest.fn(),
     getVariantCountsByProductIds: jest.fn(),
+    getStaleVariantCountsByProductIds: jest.fn(),
     markVariantsStaleExcept: jest.fn(),
   recordProductTaxRate: jest.fn(),
   recordVariantTaxRate: jest.fn(),
@@ -184,6 +185,7 @@ describe('ProductsController', () => {
     offerMappings.countListedVariantsByProducts.mockResolvedValue([]);
     shopProductMappings.countListedVariantsByProducts.mockResolvedValue([]);
     productsService.getVariantCountsByProductIds.mockResolvedValue(new Map());
+    productsService.getStaleVariantCountsByProductIds.mockResolvedValue(new Map());
     identifierMapping.getExternalIds.mockResolvedValue([]);
   });
 
@@ -328,6 +330,9 @@ describe('ProductsController', () => {
       productsService.getVariantCountsByProductIds.mockResolvedValue(
         new Map([['ol_product_1', 3]])
       );
+      productsService.getStaleVariantCountsByProductIds.mockResolvedValue(
+        new Map([['ol_product_1', 1]])
+      );
       identifierMapping.getExternalIds.mockResolvedValue([
         {
           externalId: '42',
@@ -345,6 +350,9 @@ describe('ProductsController', () => {
         'ol_product_1',
       ]);
       expect(productsService.getVariantCountsByProductIds).toHaveBeenCalledWith(['ol_product_1']);
+      expect(productsService.getStaleVariantCountsByProductIds).toHaveBeenCalledWith([
+        'ol_product_1',
+      ]);
       expect(identifierMapping.getExternalIds).toHaveBeenCalledWith('Product', 'ol_product_1');
 
       const item = result.items[0];
@@ -352,6 +360,7 @@ describe('ProductsController', () => {
       expect(item.totalReserved).toBe(3);
       expect(item.stockUpdatedAt).toBe('2026-05-01T12:00:00.000Z');
       expect(item.variantCount).toBe(3);
+      expect(item.staleVariantCount).toBe(1);
       // Offer (marketplace) and ShopProduct (shop) coverage rows merge into
       // the same per-product list (#1838 follow-up fix).
       expect(item.listingsCoverage).toEqual([
@@ -373,8 +382,21 @@ describe('ProductsController', () => {
       expect(item.totalReserved).toBe(0);
       expect(item.stockUpdatedAt).toBeNull();
       expect(item.variantCount).toBe(0);
+      expect(item.staleVariantCount).toBe(0);
       expect(item.listingsCoverage).toEqual([]);
       expect(item.externalIds).toEqual([]);
+    });
+
+    it('should pass hideFullyStale through to the service (#2447)', async () => {
+      productsService.listProducts.mockResolvedValue({ items: [], total: 0 });
+
+      await controller.listProducts({ hideFullyStale: true, limit: 20, offset: 0 });
+
+      expect(productsService.listProducts).toHaveBeenCalledWith(
+        expect.objectContaining({ hideFullyStale: true }),
+        { limit: 20, offset: 0 },
+        undefined
+      );
     });
 
     it('should skip enrichment reads entirely for an empty page (#1720)', async () => {
@@ -387,6 +409,7 @@ describe('ProductsController', () => {
       expect(offerMappings.countListedVariantsByProducts).not.toHaveBeenCalled();
       expect(shopProductMappings.countListedVariantsByProducts).not.toHaveBeenCalled();
       expect(productsService.getVariantCountsByProductIds).not.toHaveBeenCalled();
+      expect(productsService.getStaleVariantCountsByProductIds).not.toHaveBeenCalled();
       expect(identifierMapping.getExternalIds).not.toHaveBeenCalled();
     });
   });
