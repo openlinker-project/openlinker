@@ -46,13 +46,30 @@
   Selection does not survive a page change. Products and Listings are not
   touched. The demo-mode write-access defect is shown, not fixed.
 
+  Round 2 (Marta's review)
+  ───────────────────────
+  4. The count is measured against the PAGE, not the eligible subset. It read
+     "17 of 17 orders on this page" while 20 rows sat on screen; the gap is now
+     explained in the hint slot instead of hidden in the denominator.
+  5. The eligibility COLUMN is gone. A row that does not qualify says so by
+     being unselectable, and the reason waits in the action's review. The bar
+     counts them in the operator's words — "4 don't qualify" — never in ours
+     ("cannot join a batch": a batch is our concept, not theirs).
+  6. The bar sits ABOVE the table. Worth pricing: `DataTable` exposes only a
+     `footer` slot (shared/ui/data-table.tsx:123) and all three consumers —
+     products, orders, invoices — hang the bar off it. Moving it up is a NEW
+     slot in the primitive, not a JSX reshuffle. It also stops being sticky:
+     above the table it would fight the sticky `thead` and the 52px topbar.
+  7. Both lists are shown at once, with their real columns, because one
+     pattern over two different tables is only provable side by side.
+
   Design system fidelity
   ──────────────────────
   No new colour, radius, shadow or spacing value is introduced anywhere in
   this file. Section 1 is a verbatim transcription of `:root` and
   `html[data-theme='dark']` from apps/web/src/index.css. Sections 2 and 4
   transcribe existing primitives, each carrying the line it came from.
-  Exactly TWO new CSS rules are invented, and they live alone in section 5.
+  Exactly THREE new CSS rules are invented, and they live alone in section 5.
 -->
 <style>
   /* ═══════════════════════════════════════════════════════════════════════
@@ -538,6 +555,14 @@ html[data-theme='dark'] {
      #739, reused verbatim rather than reinvented per list. */
   .data-table tbody tr.is-selected td { background: var(--accent-primary-soft); }
 
+  /* index.css:9227 / :9269 / :9270 / :10180 — the two-level cell stack the
+     orders list owns. Both lists need it now: an order stacks shipment over
+     ship-by, an invoice stacks the document number over buyer and channel. */
+  .orders-cell-stack { display: flex; flex-direction: column; gap: 2px; align-items: flex-start; }
+  .orders-cell-sub { font-size: 0.75rem; font-weight: 400; color: var(--text-muted); }
+  .orders-cell-stack--end { align-items: flex-end; text-align: right; min-width: 8rem; }
+  .orders-money-total { font-weight: 640; }
+
   /* index.css:1802 — Alert. The left rule is an inset shadow, not a border. */
   .alert {
     display: flex;
@@ -762,17 +787,27 @@ html[data-theme='dark'] {
   .diff { color: var(--status-error-fg); font-weight: 600; }
   .same { color: var(--status-success-fg); font-weight: 600; }
 
-  /* Live-frame control strip — labelled as scaffold so nobody ships it. */
-  .playbar {
+  /* Two live views stacked. Each carries its route, its one-line thesis, and
+     its own scaffold controls — labelled as scaffold so nobody ships them. */
+  .live-view { margin-bottom: var(--space-6); }
+  .live-view__head {
     display: flex;
     align-items: center;
-    gap: var(--space-2);
+    gap: var(--space-3);
     flex-wrap: wrap;
     margin-bottom: var(--space-3);
-    padding: var(--space-2) var(--space-3);
-    border: 1px dashed var(--border-default);
-    border-radius: var(--radius-md);
-    background: var(--bg-surface-muted);
+    padding-bottom: var(--space-2);
+    border-bottom: 1px solid var(--border-subtle);
+  }
+  .live-view__route {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+  .live-view__desc {
+    font-size: 0.8125rem;
+    color: var(--text-secondary);
+    margin-right: auto;
   }
   .playbar__label {
     font-family: var(--font-mono);
@@ -933,7 +968,7 @@ html[data-theme='dark'] {
   }
 
   /* ═══════════════════════════════════════════════════════════════════════
-     5. THE NEW RULES (#2636) — exactly two. Everything above already
+     5. THE NEW RULES (#2636) — exactly three. Everything above already
         shipped; everything the proposal adds is here, so the cost of the
         change is one screenful of CSS.
      ═══════════════════════════════════════════════════════════════════════ */
@@ -961,6 +996,20 @@ html[data-theme='dark'] {
     color: var(--text-secondary);
   }
   .bulk-dispatch__batches b { color: var(--text-primary); }
+
+  /* (3) The bar moves ABOVE the table, and stops floating. Sticky-bottom made
+     sense for a footer that had to stay reachable while the operator scrolled
+     a long list; above the table it would fight `.data-table thead th`
+     (`sticky; top: 0`) and the 52px shell topbar for the same strip of screen.
+     Static it is — which also retires the JS-positioned
+     `.data-table__footer-rail` for these two lists, and drops the elevation:
+     the bar sits IN the page now, so it no longer casts a popover shadow. */
+  .bulk-action-bar--above {
+    position: static;
+    margin: 0 0 var(--space-3);
+    box-shadow: var(--shadow-xs);
+    border-color: var(--border-default);
+  }
 
   @media (prefers-reduced-motion: reduce) {
     * { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
@@ -1005,6 +1054,7 @@ html[data-theme='dark'] {
           <tr><td>Select all on the page</td><td class="same">yes, tri-state</td><td class="diff">absent — <code>header: ''</code></td></tr>
           <tr><td>Eligibility on the checkbox</td><td class="same">yes + tooltip “Already shipped”</td><td class="diff">none — every row selectable</td></tr>
           <tr><td>Where the bar lives</td><td>DataTable <code>footer</code>, l. 1494</td><td class="diff">separate block under pagination, l. 654</td></tr>
+          <tr><td>Slot above the table</td><td class="diff">none — <code>footer</code> is the only slot (data-table.tsx:123)</td><td class="diff">none</td></tr>
           <tr><td>Confirm step</td><td>none — dialog is compose + submit</td><td class="diff">ConfirmDialog per action, no record list</td></tr>
           <tr><td>Batch cap</td><td>25 per source, enforced while selecting</td><td class="diff">100 per request, not enforced in the UI → 400</td></tr>
           <tr><td>Result per record</td><td class="same">full table in the dialog</td><td class="diff">count only, though the API returns reasons</td></tr>
@@ -1023,27 +1073,42 @@ html[data-theme='dark'] {
     </div>
   </section>
 
-  <!-- ═══════════ FRAME 02 — live ═══════════ -->
+  <!-- ═══════════ FRAME 02 — live, both lists ═══════════ -->
   <section class="viewport-frame" id="frame-live">
     <div class="viewport-frame__label">
       <span class="eyebrow-mono">02 · Live</span>
-      <b>The pattern, running</b>
-      <span class="caption">every pinned frame below renders from this same code</span>
+      <b>One pattern over two different tables</b>
+      <span class="caption">real columns from orders-list-page.tsx and invoices-list-page.tsx</span>
     </div>
-    <div class="playbar">
-      <span class="playbar__label">mockup scaffold</span>
-      <button class="toggle-btn" type="button" id="ds-orders" aria-pressed="true">Orders</button>
-      <button class="toggle-btn" type="button" id="ds-invoices" aria-pressed="false">Invoices</button>
-      <button class="toggle-btn" type="button" id="btn-readonly" aria-pressed="false">Read-only</button>
-      <button class="toggle-btn" type="button" id="btn-nextpage">Next page</button>
-      <button class="toggle-btn" type="button" id="btn-reset">Reset</button>
+
+    <div class="live-view">
+      <div class="live-view__head">
+        <span class="live-view__route mono">/orders</span>
+        <span class="live-view__desc">One action. Eligibility is a property of the order.</span>
+        <span class="playbar__label">mockup scaffold</span>
+        <button class="toggle-btn" type="button" id="ro-orders" aria-pressed="false">Read-only</button>
+        <button class="toggle-btn" type="button" id="reset-orders">Reset</button>
+      </div>
+      <div id="live-orders"></div>
     </div>
-    <div id="live"></div>
+
+    <div class="live-view">
+      <div class="live-view__head">
+        <span class="live-view__route mono">/invoices</span>
+        <span class="live-view__desc">Two actions over one selection, with different eligibility each.</span>
+        <span class="playbar__label">mockup scaffold</span>
+        <button class="toggle-btn" type="button" id="ro-invoices" aria-pressed="false">Read-only</button>
+        <button class="toggle-btn" type="button" id="reset-invoices">Reset</button>
+      </div>
+      <div id="live-invoices"></div>
+    </div>
+
     <div class="gap-legend">
       <span>
-        Zaznacz kilka wierszy, otwórz akcję, uruchom. Licznik podaje pokrycie strony,
-        dialog dzieli zaznaczenie na <b>wykonalne</b> i <b>wymagające uwagi</b>, wynik
-        odpowiada per rekord. „Next page” czyści zaznaczenie — zgodnie z zakresem issue.
+        Dwa widoki jeden pod drugim, bo dopiero obok siebie widać, że to jeden wzorzec
+        nad dwiema różnymi tabelami. Kolumny i dane są z realnych list. Zaznacz kilka
+        wierszy w każdym: na fakturach <b>jedno zaznaczenie daje dwie różne liczby wykonań</b>
+        („Retry 5", „Issue 11"), bo kwalifikowalność należy do akcji, nie do wiersza.
       </span>
     </div>
   </section>
@@ -1052,8 +1117,8 @@ html[data-theme='dark'] {
   <section class="viewport-frame" id="frame-selection">
     <div class="viewport-frame__label">
       <span class="eyebrow-mono">03 · Selection</span>
-      <b>The count carries its denominator</b>
-      <span class="caption">shared/ui/bulk-action-bar.tsx · new rule: .bulk-action-bar__total</span>
+      <b>The count is measured against the page</b>
+      <span class="caption">shared/ui/bulk-action-bar.tsx · new rules: __total, --above</span>
       <span class="dep">Ships now</span>
     </div>
     <div class="stack" id="f-selection"></div>
@@ -1070,17 +1135,21 @@ html[data-theme='dark'] {
   <section class="viewport-frame" id="frame-ineligible">
     <div class="viewport-frame__label">
       <span class="eyebrow-mono">04 · Not eligible</span>
-      <b>A row states its own reason</b>
-      <span class="caption">features/orders/lib/dispatch-input.ts:173-192 · reasons reused verbatim</span>
+      <b>The status column already says why</b>
+      <span class="caption">no eligibility column · every blocker is readable from a column that exists</span>
       <span class="dep">Ships now</span>
     </div>
     <div class="stack" id="f-ineligible"></div>
     <div class="gap-legend">
       <span>
-        Powód żyje w wierszu, nie w podpowiedzi na hover — hover nie istnieje na tablecie
-        i nie da się go przeskanować wzrokiem po liście. Checkbox zostaje wyłączony,
-        badge nazywa przyczynę, a link prowadzi do jedynego miejsca, gdzie da się to
-        naprawić. Reguł nie definiujemy od nowa: to te same siedem powodów co dziś.
+        Usunięcie kolumny jest bezpieczne tylko pod jednym warunkiem i to <b>warunek na
+        dane, nie na render</b>: każdy blokujący stan musi być czytelny z kolumny, która już
+        jest na tabeli. Tu jest: <code>Dispatched</code> (dwa wiersze), <code>Awaiting
+        mapping</code>, <code>COD</code>. Reguła działa też w drugą stronę — status, który
+        w realnych regułach blokuje wysyłkę, <b>nie może stać na wierszu z aktywnym
+        checkboxem</b>, bo UI przeczyłoby produktowi. Dlatego wiersze zaznaczalne noszą
+        wyłącznie <code>Synced · Not shipped · Paid</code>. Pełny powód i tak czeka
+        w dialogu; natywny <code>title</code> zostaje, bo tyle robi dziś <code>/orders</code>.
       </span>
     </div>
   </section>
@@ -1089,7 +1158,7 @@ html[data-theme='dark'] {
   <section class="viewport-frame" id="frame-limit">
     <div class="viewport-frame__label">
       <span class="eyebrow-mono">05 · Batch cap</span>
-      <b>Capacity is information, not a wall</b>
+      <b>Capacity is stated, never enforced by silence</b>
       <span class="caption">bulk-generate-labels.dto.ts:27 (25/source) · retry-invoices-request.dto.ts:22 (100/request)</span>
       <span class="dep dep--blocked">Unreachable today</span>
     </div>
@@ -1262,6 +1331,8 @@ html[data-theme='dark'] {
     if (e.target.closest('a[data-noop]')) e.preventDefault();
   });
 
+  var PAGE_SIZE = 20; /* orders-list-page.tsx:88, invoices-list-page.tsx:74 */
+
   /* ── Reasons, verbatim from the app ────────────────────────────────────
      Orders: features/orders/lib/dispatch-input.ts:173-192.
      Invoices: the strings apps/api/src/invoicing/http/invoicing.controller.ts
@@ -1283,12 +1354,6 @@ html[data-theme='dark'] {
     'no-document':    ['No document yet', 'Nothing has been issued for this order, so there is nothing to retry.']
   };
 
-  /* ── Fixtures ──────────────────────────────────────────────────────────
-     20 rows per page, because PAGE_SIZE is 20 on both lists. */
-  var SRC = ['Allegro', 'Erli', 'PrestaShop'];
-  var BUYERS = ['M. Kowalska', 'T. Nowak', 'A. Zielińska', 'P. Wiśniewski', 'K. Lewandowska',
-                'J. Dąbrowski', 'E. Kamińska', 'R. Szymański', 'B. Woźniak', 'S. Kozłowski'];
-
   /* Deterministic id filler. Math.imul, because a plain 32-bit multiply loses
      its low bits past 2^53 and every id degenerates to zeroes. */
   function hex(seed, len) {
@@ -1301,44 +1366,96 @@ html[data-theme='dark'] {
     return out;
   }
 
+  var BUYERS = ['M. Kowalska', 'T. Nowak', 'A. Zielińska', 'P. Wiśniewski', 'K. Lewandowska',
+                'J. Dąbrowski', 'E. Kamińska', 'R. Szymański', 'B. Woźniak', 'S. Kozłowski'];
+  var CHANNELS = ['Allegro', 'Erli', 'PrestaShop', 'WooCommerce'];
+
+  function money(n) { return n.toFixed(2).replace('.', ',') + ' PLN'; }
+  function day(n) { return (n < 10 ? '0' + n : n) + ' Aug'; }
+
+  /* ── /orders fixtures ──────────────────────────────────────────────────
+     Columns mirror orders-list-page.tsx:691-974 — Order, Customer, Channel,
+     Status, Shipment / Ship-by, Total / Payment / Created. */
+  /* Every blocked row must be explainable from a column that is already on the
+     table — otherwise removing the eligibility column just hides the reason.
+     That is a constraint on the DATA, not on the renderer, and it runs the
+     other way too: a status that blocks dispatch in the real rules cannot
+     appear on a selectable row here. `Awaiting mapping` is `not-ready` and
+     `Awaiting` payment is `payment-blocked` (dispatch-input.ts:215), so a row
+     carrying either and still offering a checkbox would contradict the
+     product. Two rows read `Dispatched`, which is the reason an operator
+     recognises without being told. */
   var ORDER_ROWS = (function () {
-    var ineligible = { 2: 'cod', 7: 'needs-paczkomat', 13: 'already-shipped' };
+    var blocked = { 3: 'already-shipped', 6: 'not-ready', 11: 'already-shipped', 14: 'cod' };
     var rows = [];
-    for (var i = 0; i < 20; i++) {
+    for (var i = 0; i < PAGE_SIZE; i++) {
+      var b = blocked[i] || null;
       rows.push({
         id: 'ol_order_' + hex(i + 7, 8),
-        src: SRC[i % 3 === 0 ? 1 : (i % 7 === 0 ? 2 : 0)],
-        buyer: BUYERS[i % BUYERS.length],
-        state: i % 4 === 0 ? 'Paid' : 'Ready to ship',
-        reason: ineligible[i] || null
+        customer: BUYERS[i % BUYERS.length],
+        channel: CHANNELS[i % 3 === 0 ? 1 : (i % 7 === 0 ? 2 : 0)],
+        status: b === 'not-ready' ? ['Awaiting mapping', 'warning'] : ['Synced', 'success'],
+        shipment: b === 'already-shipped' ? ['Dispatched', 'success'] : ['Not shipped', ''],
+        shipBy: b === 'already-shipped' ? null : day(26 + (i % 4)),
+        total: money(120 + i * 47.5),
+        payment: b === 'cod' ? ['COD', 'warning'] : ['Paid', 'success'],
+        created: day(20 + (i % 6)),
+        reason: b
       });
     }
     return rows;
   })();
 
+  /* ── /invoices fixtures ────────────────────────────────────────────────
+     Columns mirror invoices-list-page.tsx:344-421 — Order, Document type,
+     Status, Regulatory, Clearance ref., Connection, Issued. Regulatory and
+     document-type values come from features/invoicing/api/invoicing.types.ts
+     (RegulatoryStatusValues, DocumentTypeValues). */
   var INVOICE_ROWS = (function () {
     var plan = ['failed:rejected', 'none', 'issued', 'failed:rejected', 'pending', 'none',
                 'failed:in-doubt', 'issued', 'none', 'failed:rejected', 'issuing', 'none',
                 'issued', 'failed:rejected', 'none', 'issued', 'failed:in-doubt', 'none',
                 'pending', 'failed:rejected'];
+    var CONN = ['inFakt', 'KSeF', 'Subiekt nexo'];
     return plan.map(function (p, i) {
       var parts = p.split(':');
+      var status = parts[0], mode = parts[1] || null;
+      var conn = CONN[i % 3];
+      var regulatory =
+        status === 'issued' ? (i % 4 === 0 ? ['cleared', 'success'] : ['accepted', 'success']) :
+        status === 'failed' && mode === 'rejected' ? ['rejected', 'error'] :
+        status === 'failed' ? ['submitted', 'info'] :
+        status === 'pending' || status === 'issuing' ? ['pending-submission', 'warning'] :
+        ['not-applicable', ''];
       return {
         id: 'ol_order_' + hex(i + 41, 8),
-        docId: parts[0] === 'issued' ? 'FV/2026/08/' + (140 + i) : null,
-        src: SRC[i % 3 === 0 ? 1 : (i % 5 === 0 ? 2 : 0)],
-        buyer: BUYERS[(i + 3) % BUYERS.length],
-        status: parts[0],
-        failureMode: parts[1] || null
+        docNo: status === 'issued' ? 'FV/2026/08/' + (140 + i) : null,
+        docType: status === 'none' ? null : (i % 7 === 3 ? 'credit-note' : 'invoice'),
+        channel: CHANNELS[i % 3 === 0 ? 1 : (i % 5 === 0 ? 2 : 0)],
+        customer: BUYERS[(i + 3) % BUYERS.length],
+        status: status,
+        failureMode: mode,
+        regulatory: regulatory,
+        clearanceRef: regulatory[0] === 'not-applicable' ? null : '2026' + hex(i + 11, 6).toUpperCase(),
+        connection: conn,
+        issuedAt: status === 'issued' ? day(14 + (i % 8)) : null
       };
     });
   })();
 
-  /* ── Datasets: what a list is, and what its actions may touch ──────────
-     Eligibility is a per-ACTION question, not a per-row one. Invoices prove
-     it: the same row is retryable for one action and untouchable for the
-     other, which is exactly why the invoices list cannot answer it with a
-     single disabled checkbox the way Orders does. */
+  /* ── Eligibility ───────────────────────────────────────────────────────
+     Two levels, deliberately separate. A LIST answers "is there any bulk
+     action this row could join" — that is all a row can say for itself. WHICH
+     action refuses it is a property of the action, so it is stated in that
+     action's review. Conflating them made an `issued` invoice read
+     "not retry-eligible" to an operator reaching for Issue. */
+  function orderRowBlock(row) { return row.reason ? ORDER_REASON[row.reason] : null; }
+  function invoiceRowBlock(row) {
+    if (row.status === 'issued') return INVOICE_REASON['already-issued'];
+    if (row.status === 'pending' || row.status === 'issuing') return INVOICE_REASON['in-progress'];
+    if (row.status === 'failed' && row.failureMode === 'in-doubt') return INVOICE_REASON['in-doubt'];
+    return null;
+  }
   function orderEligibility(row) {
     return row.reason ? { ok: false, reason: ORDER_REASON[row.reason] } : { ok: true };
   }
@@ -1349,11 +1466,11 @@ html[data-theme='dark'] {
     if (row.status === 'none') return { ok: false, reason: INVOICE_REASON['no-document'] };
     return { ok: false, reason: INVOICE_REASON['in-progress'] };
   }
-  /* InvoiceRecord.blocksIssuanceElsewhere (invoice-record.entity.ts:166) is
-     the authority: pending / issuing / issued block, and so does a FAILED
-     record whose failureMode is anything but `rejected`. Only a terminal
-     rejection means the provider certainly created nothing, so `in doubt`
-     blocks BOTH actions — the one row the two actions agree on. */
+  /* InvoiceRecord.blocksIssuanceElsewhere (invoice-record.entity.ts:166) is the
+     authority: pending / issuing / issued block, and so does a FAILED record
+     whose failureMode is anything but `rejected`. Only a terminal rejection
+     means the provider certainly created nothing, so `in doubt` blocks BOTH
+     actions — the one row the two actions agree on. */
   function issueEligibility(row) {
     if (row.status === 'issued') return { ok: false, reason: INVOICE_REASON['already-issued'] };
     if (row.status === 'pending' || row.status === 'issuing') return { ok: false, reason: INVOICE_REASON['in-progress'] };
@@ -1361,50 +1478,61 @@ html[data-theme='dark'] {
     return { ok: true };
   }
 
-  /* A LIST column and a DIALOG answer different questions, and conflating them
-     is what makes a two-action list unreadable. A row can only speak for
-     itself: "is there any bulk action I could join, and if not, why". Which
-     action is refusing it is a property of the action, so it is stated in that
-     action's review — never guessed at in a shared column, where an `issued`
-     invoice would read "not retry-eligible" while the operator was reaching
-     for Issue. */
-  function orderRowBlock(row) {
-    return row.reason ? ORDER_REASON[row.reason] : null;
+  function badge(tone, text, compact) {
+    return '<span class="status-badge' + (tone ? ' status-badge--' + tone : '') +
+           (compact ? ' status-badge--compact' : '') + '"><span class="status-badge__dot"></span>' + text + '</span>';
   }
-  function invoiceRowBlock(row) {
-    if (row.status === 'issued') return INVOICE_REASON['already-issued'];
-    if (row.status === 'pending' || row.status === 'issuing') return INVOICE_REASON['in-progress'];
-    if (row.status === 'failed' && row.failureMode === 'in-doubt') return INVOICE_REASON['in-doubt'];
-    return null;
+  /* index.css:9227 — the two-level cell stack the orders list already owns.
+     Reused rather than reinvented; `--end` is its right-aligned variant. */
+  function stack(a, b, end) {
+    return '<span class="orders-cell-stack' + (end ? ' orders-cell-stack--end' : '') + '">' + a +
+      (b ? '<span class="orders-cell-sub">' + b + '</span>' : '') + '</span>';
   }
 
   var DATASETS = {
     orders: {
-      noun: 'order', rows: ORDER_ROWS, total: 34, hint: 'Max 25 per source', rowBlock: orderRowBlock,
-      columns: ['Order', 'Channel', 'Buyer', 'Fulfilment'],
+      key: 'orders', route: '/orders', noun: 'order', rows: ORDER_ROWS, total: 634,
+      cap: 'Max 25 per source',
+      rowBlock: orderRowBlock,
+      columns: [
+        { label: 'Order' }, { label: 'Customer' }, { label: 'Channel' }, { label: 'Status' },
+        { label: 'Shipment · Ship-by' }, { label: 'Total · Payment · Created', right: true }
+      ],
       cell: function (r) {
         return '<td><span class="mono bulk-dispatch__ordid">' + r.id + '</span></td>' +
-               '<td><span class="bulk-dispatch__src">' + r.src + '</span></td>' +
-               '<td>' + r.buyer + '</td>' +
-               '<td><span class="status-badge status-badge--compact ' +
-                 (r.state === 'Paid' ? 'status-badge--info' : 'status-badge--success') +
-                 '"><span class="status-badge__dot"></span>' + r.state + '</span></td>';
+               '<td>' + r.customer + '</td>' +
+               '<td><span class="bulk-dispatch__src">' + r.channel + '</span></td>' +
+               '<td>' + badge(r.status[1], r.status[0], true) + '</td>' +
+               '<td>' + stack(badge(r.shipment[1], r.shipment[0], true),
+                              r.shipBy ? '<span class="mono">ship by ' + r.shipBy + '</span>' : '') + '</td>' +
+               '<td class="data-table__cell--right">' +
+                 stack('<span class="mono orders-money-total">' + r.total + '</span>',
+                       badge(r.payment[1], r.payment[0], true) +
+                       ' <span class="mono">' + r.created + '</span>', true) + '</td>';
       },
       actions: [{ id: 'dispatch', verb: 'Dispatch', tone: '', config: true, eligible: orderEligibility,
                   desc: 'Generate labels for the selected orders — dispatched in per-source batches.' }]
     },
     invoices: {
-      noun: 'invoice', rows: INVOICE_ROWS, total: 41, hint: 'Max 100 per batch', rowBlock: invoiceRowBlock,
-      columns: ['Order', 'Channel', 'Buyer', 'Document'],
+      key: 'invoices', route: '/invoices', noun: 'invoice', rows: INVOICE_ROWS, total: 411,
+      cap: 'Max 100 per batch',
+      rowBlock: invoiceRowBlock,
+      columns: [
+        { label: 'Order' }, { label: 'Document type' }, { label: 'Status' }, { label: 'Regulatory' },
+        { label: 'Clearance ref.' }, { label: 'Connection' }, { label: 'Issued' }
+      ],
       cell: function (r) {
         var tone = { issued: 'success', failed: 'error', pending: 'warning', issuing: 'info', none: '' }[r.status];
         var text = { issued: 'Issued', failed: 'Failed', pending: 'Pending', issuing: 'Issuing', none: 'No document' }[r.status];
         if (r.status === 'failed') text = 'Failed · ' + r.failureMode;
-        return '<td><span class="mono bulk-dispatch__ordid">' + (r.docId || r.id) + '</span></td>' +
-               '<td><span class="bulk-dispatch__src">' + r.src + '</span></td>' +
-               '<td>' + r.buyer + '</td>' +
-               '<td><span class="status-badge status-badge--compact' + (tone ? ' status-badge--' + tone : '') +
-                 '"><span class="status-badge__dot"></span>' + text + '</span></td>';
+        return '<td>' + stack('<span class="mono bulk-dispatch__ordid">' + (r.docNo || r.id) + '</span>',
+                              r.customer + ' · ' + r.channel) + '</td>' +
+               '<td>' + (r.docType ? '<span class="mono">' + r.docType + '</span>' : '<span class="text-muted">—</span>') + '</td>' +
+               '<td>' + badge(tone, text, true) + '</td>' +
+               '<td>' + badge(r.regulatory[1], r.regulatory[0], true) + '</td>' +
+               '<td>' + (r.clearanceRef ? '<span class="mono">' + r.clearanceRef + '</span>' : '<span class="text-muted">—</span>') + '</td>' +
+               '<td>' + r.connection + '</td>' +
+               '<td>' + (r.issuedAt ? '<span class="mono">' + r.issuedAt + '</span>' : '<span class="text-muted">—</span>') + '</td>';
       },
       actions: [
         { id: 'retry', verb: 'Retry', tone: '', config: false, eligible: retryEligibility,
@@ -1415,54 +1543,61 @@ html[data-theme='dark'] {
     }
   };
 
-  /* ── Render helpers ────────────────────────────────────────────────────
-     One renderer per surface. Every pinned frame calls these, so a frame
-     cannot drift from the live one above it. */
-  function badge(tone, text, compact) {
-    return '<span class="status-badge' + (tone ? ' status-badge--' + tone : '') +
-           (compact ? ' status-badge--compact' : '') + '"><span class="status-badge__dot"></span>' + text + '</span>';
-  }
-
+  /* ── The bar ───────────────────────────────────────────────────────────
+     The denominator is the PAGE, not the eligible subset: `17 of 20` is what
+     the operator can count on screen. The gap is explained in the hint slot
+     rather than hidden by shrinking the denominator to 17, which read as a
+     full selection while three rows sat unselected. The batch cap does not
+     appear here — at 20 rows a page it can never be reached, so in the bar it
+     would be an alarm about nothing. */
   function bar(o) {
     var actions = (o.actions || []).map(function (a) {
       var btn = '<button type="button" class="button button--sm' + (a.tone ? ' button--' + a.tone : '') + '"' +
-                (a.disabled ? ' disabled' : '') + (a.id ? ' data-act="' + a.id + '"' : '') + '>' + a.label + '</button>';
-      return o.readOnly ? '<span class="read-only-lock" title="Read-only in demo mode.">' +
-        btn.replace('<button type="button"', '<button type="button" disabled') + '</span>' : btn;
+                (a.disabled || o.readOnly ? ' disabled' : '') + (a.id ? ' data-act="' + a.id + '"' : '') + '>' + a.label + '</button>';
+      return o.readOnly ? '<span class="read-only-lock" title="Read-only in demo mode.">' + btn + '</span>' : btn;
     }).join('');
-    var clear = '<button type="button" class="button button--sm button--ghost" data-act="clear">Clear</button>';
-    return '<div class="bulk-action-bar' + (o.count ? '' : ' bulk-action-bar--hidden') + '" role="region"' +
+    var clear = '<button type="button" class="button button--sm button--ghost" data-act="clear"' +
+                (o.count ? '' : ' disabled') + '>Clear</button>';
+    /* Two facts, and they answer different questions: how many of the rows in
+       front of you are out of reach, and how large one batch may be. */
+    var parts = [];
+    if (o.blocked) parts.push(o.blocked + " don't qualify");
+    if (o.cap) parts.push(o.cap);
+    var hint = o.readOnly ? 'Read-only in demo mode — counting still works.' : parts.join(' · ');
+    return '<div class="bulk-action-bar bulk-action-bar--above' + (o.count ? '' : ' bulk-action-bar--hidden') +
+      '" role="region"' +
       (o.count ? ' aria-label="' + o.count + ' ' + o.noun + 's selected"' : ' aria-hidden="true"') + '>' +
       '<div class="bulk-action-bar__count">' +
         '<strong class="bulk-action-bar__num tabular" aria-live="polite">' + o.count + '</strong>' +
-        '<span class="bulk-action-bar__total">of ' + o.available + ' ' + o.noun + 's on this page</span>' +
+        '<span class="bulk-action-bar__total">of ' + o.pageSize + ' ' + o.noun + 's on this page</span>' +
         '<span class="bulk-action-bar__label">selected</span>' +
       '</div>' +
-      (o.hint ? '<div class="bulk-action-bar__hint">' + o.hint + '</div>' : '') +
+      (hint ? '<div class="bulk-action-bar__hint">' + hint + '</div>' : '') +
       '<div class="bulk-action-bar__actions">' + clear + actions + '</div>' +
     '</div>';
   }
 
+  /* No eligibility column. A row that does not qualify says so by being
+     unselectable — the reason is carried by the action's review, where the
+     operator is already deciding. The native `title` is the affordance
+     /orders ships today (`title="Already shipped"`). */
   function table(ds, opts) {
     var rows = ds.rows.slice(0, opts.limit || ds.rows.length);
     var head = '<tr><th class="col-select"><input type="checkbox" data-role="head"' +
       (opts.readOnly ? ' disabled' : '') + ' aria-label="Select all eligible ' + ds.noun + 's on this page"' +
       (opts.headState === 'all' ? ' checked' : '') + '></th>' +
-      ds.columns.map(function (c) { return '<th>' + c + '</th>'; }).join('') +
-      '<th>Bulk eligibility</th></tr>';
+      ds.columns.map(function (c) {
+        return '<th' + (c.right ? ' class="data-table__cell--right"' : '') + '>' + c.label + '</th>';
+      }).join('') + '</tr>';
 
     var body = rows.map(function (r) {
       var block = ds.rowBlock(r);
-      var el = block ? { ok: false, reason: block } : { ok: true };
       var sel = !!(opts.selected && opts.selected[r.id]);
       return '<tr' + (sel ? ' class="is-selected"' : '') + '>' +
         '<td class="col-select"><input type="checkbox" data-id="' + r.id + '"' +
-          (el.ok ? '' : ' disabled') + (opts.readOnly ? ' disabled' : '') + (sel ? ' checked' : '') +
-          ' aria-label="Select ' + r.id + '"' +
-          (el.ok ? '' : ' title="' + el.reason[1] + '"') + '></td>' +
-        ds.cell(r) +
-        '<td>' + (el.ok ? '<span class="text-muted">—</span>' : badge('warning', el.reason[0], true)) + '</td>' +
-      '</tr>';
+          (block ? ' disabled title="' + block[1] + '"' : '') + (opts.readOnly ? ' disabled' : '') +
+          (sel ? ' checked' : '') + ' aria-label="Select ' + r.id + '"></td>' +
+        ds.cell(r) + '</tr>';
     }).join('');
 
     return '<div class="data-table__container"><table class="data-table"><thead>' + head +
@@ -1470,7 +1605,7 @@ html[data-theme='dark'] {
   }
 
   function pagination(ds, page) {
-    var from = (page - 1) * 20 + 1, to = Math.min(page * 20, ds.total);
+    var from = (page - 1) * PAGE_SIZE + 1, to = Math.min(page * PAGE_SIZE, ds.total);
     return '<div class="pagination"><span class="text-muted tabular">Showing ' + from + '–' + to +
       ' of ' + ds.total + '</span><div class="pagination__actions">' +
       '<button type="button" class="button button--sm button--secondary"' + (page === 1 ? ' disabled' : '') +
@@ -1480,27 +1615,20 @@ html[data-theme='dark'] {
   }
 
   function reviewRow(r, ds, el) {
-    if (el.ok) {
-      return '<div class="bulk-dispatch__row"><div class="bulk-dispatch__row-id">' +
-        '<span class="bulk-dispatch__src">' + r.src + '</span>' +
-        '<span class="bulk-dispatch__ordid">' + (r.docId || r.id) + '</span>' +
-        '<span class="bulk-dispatch__buyer">' + r.buyer + '</span></div>' +
-        badge('success', 'Ready', true) + '</div>';
-    }
-    return '<div class="bulk-dispatch__row bulk-dispatch__row--ineligible"><div class="bulk-dispatch__row-id">' +
-      '<span class="bulk-dispatch__src">' + r.src + '</span>' +
-      '<span class="bulk-dispatch__ordid">' + (r.docId || r.id) + '</span>' +
-      '<span class="bulk-dispatch__buyer">' + r.buyer + '</span></div>' +
+    var ident = '<div class="bulk-dispatch__row-id">' +
+      '<span class="bulk-dispatch__src">' + r.channel + '</span>' +
+      '<span class="bulk-dispatch__ordid">' + (r.docNo || r.id) + '</span>' +
+      '<span class="bulk-dispatch__buyer">' + r.customer + '</span></div>';
+    if (el.ok) return '<div class="bulk-dispatch__row">' + ident + badge('success', 'Ready', true) + '</div>';
+    return '<div class="bulk-dispatch__row bulk-dispatch__row--ineligible">' + ident +
       badge('warning', el.reason[0], true) +
       '<span class="bulk-dispatch__row-hint">' + el.reason[1] +
       ' <a class="bulk-dispatch__link" href="#" data-noop>open this ' + ds.noun + ' ›</a></span></div>';
   }
 
-  function batchLine(picked, cap, capNoun) {
-    if (picked.length <= cap) return '';
-    return '<p class="bulk-dispatch__batches"><b>' + picked.length + ' selected</b> · ' + cap +
-      ' will run now · ' + (picked.length - cap) + ' left for a second batch — ' + capNoun + '</p>';
-  }
+  var PAST = { dispatch: 'dispatched', retry: 'retried', issue: 'issued' };
+  /* Spelled out, because no suffix rule survives dispatch / retry / issue. */
+  var GERUND = { dispatch: 'Dispatching', retry: 'Retrying', issue: 'Issuing' };
 
   function dialog(cfg) {
     var ds = cfg.ds, act = cfg.action, picked = cfg.picked;
@@ -1541,8 +1669,8 @@ html[data-theme='dark'] {
             var t = { ok: 'success', skipped: 'warning', failed: 'error' }[x.kind];
             var label = { ok: cfg.pastTense, skipped: 'Skipped', failed: 'Failed' }[x.kind];
             return '<div class="bulk-dispatch__result-row"><div class="bulk-dispatch__row-id">' +
-              '<span class="bulk-dispatch__src">' + x.row.src + '</span>' +
-              '<span class="bulk-dispatch__ordid">' + (x.row.docId || x.row.id) + '</span></div>' +
+              '<span class="bulk-dispatch__src">' + x.row.channel + '</span>' +
+              '<span class="bulk-dispatch__ordid">' + (x.row.docNo || x.row.id) + '</span></div>' +
               badge(t, label, true) +
               (x.reason ? '<span class="bulk-dispatch__result-detail">' + x.reason + '</span>' : '') + '</div>';
           }).join('') + '</div>';
@@ -1566,7 +1694,7 @@ html[data-theme='dark'] {
         '<input class="bulk-dispatch__num mono" value="1200" aria-label="Weight in grams"></div>' +
         '<button class="button button--sm button--secondary" type="button" style="margin-left:auto">Apply to all</button>' +
         '</div>' : '') +
-      (cfg.batchNote || batchLine(split.ready, cap || 1e9, cfg.capNoun || '')) +
+      (cfg.batchNote || '') +
       '<p class="bulk-dispatch__summary"><strong>' + split.ready.length + ' ready</strong>' +
         (split.attention.length ? ' · ' + split.attention.length +
           (split.attention.length === 1 ? ' needs' : ' need') +
@@ -1588,10 +1716,6 @@ html[data-theme='dark'] {
       '</div></div>';
   }
 
-  var PAST = { dispatch: 'dispatched', retry: 'retried', issue: 'issued' };
-  /* Spelled out, because no suffix rule survives dispatch / retry / issue. */
-  var GERUND = { dispatch: 'Dispatching', retry: 'Retrying', issue: 'Issuing' };
-
   function resultsFor(picked, act) {
     var out = [];
     picked.forEach(function (r, i) {
@@ -1603,58 +1727,51 @@ html[data-theme='dark'] {
     return out;
   }
 
-  /* ── Live frame ────────────────────────────────────────────────────── */
-  var live = { key: 'orders', selected: {}, page: 1, readOnly: false, open: null, phase: null, done: 0, results: null };
+  /* ── Two live views, one per list ──────────────────────────────────────
+     Stacked rather than toggled, so the two tables can be compared column by
+     column — which is the point of a shared pattern over two different
+     domains. Each view owns its own selection. */
+  var VIEWS = {};
+  Object.keys(DATASETS).forEach(function (k) {
+    VIEWS[k] = { selected: {}, page: 1, readOnly: false, open: null, phase: null, done: 0, results: null };
+  });
 
-  function eligibleFor(ds, actionId) {
-    var act = ds.actions.filter(function (a) { return a.id === actionId; })[0] || ds.actions[0];
-    return act;
+  function pickedRows(ds, st) {
+    return ds.rows.filter(function (r) { return st.selected[r.id]; });
   }
-
-  function pickedRows(ds) {
-    return ds.rows.filter(function (r) { return live.selected[r.id]; });
-  }
-
-  function actionCounts(ds) {
-    var picked = pickedRows(ds);
+  function actionCounts(ds, st) {
+    var picked = pickedRows(ds, st);
     return ds.actions.map(function (a) {
       var n = picked.filter(function (r) { return a.eligible(r).ok; }).length;
       return { id: a.id, label: a.verb + ' ' + n, tone: a.id === 'issue' ? 'secondary' : '', disabled: n === 0 };
     });
   }
 
-  function renderLive() {
-    var ds = DATASETS[live.key];
-    var primary = ds.actions[0];
-    var available = ds.rows.filter(function (r) { return !ds.rowBlock(r); }).length;
-    var count = Object.keys(live.selected).length;
+  function renderView(key) {
+    var ds = DATASETS[key], st = VIEWS[key];
+    var blocked = ds.rows.filter(function (r) { return !!ds.rowBlock(r); }).length;
+    var available = ds.rows.length - blocked;
+    var count = Object.keys(st.selected).length;
 
-    /* A button counts what IT can do, not what is selected. With two actions
-       over one selection the two numbers differ — Retry 5 / Issue 8 out of the
-       same 13 — and a shared count would misstate both. */
-    var acts = actionCounts(ds);
+    var html =
+      bar({ count: count, pageSize: ds.rows.length, blocked: blocked, noun: ds.noun, cap: ds.cap,
+            actions: actionCounts(ds, st), readOnly: st.readOnly }) +
+      table(ds, { selected: st.selected, readOnly: st.readOnly,
+                  headState: count && count === available ? 'all' : 'none' }) +
+      pagination(ds, st.page);
 
-    var html = table(ds, {
-      selected: live.selected,
-      readOnly: live.readOnly,
-      headState: count && count === available ? 'all' : 'none'
-    }) +
-    bar({ count: count, available: available, noun: ds.noun, hint: ds.hint, actions: acts, readOnly: live.readOnly }) +
-    pagination(ds, live.page);
-
-    if (live.open) {
-      var act = eligibleFor(ds, live.open);
+    if (st.open) {
+      var act = ds.actions.filter(function (a) { return a.id === st.open; })[0];
+      var ready = pickedRows(ds, st).filter(function (r) { return act.eligible(r).ok; });
       html += '<div style="margin-top:16px">' + dialog({
-        ds: ds, action: act, picked: pickedRows(ds), phase: live.phase,
-        pastTense: PAST[act.id], done: live.done, results: live.results,
-        current: (pickedRows(ds).filter(function (r) { return act.eligible(r).ok; })[live.done] || {}).id,
-        cap: 0
+        ds: ds, action: act, picked: pickedRows(ds, st), phase: st.phase,
+        pastTense: PAST[act.id], done: st.done, results: st.results,
+        current: (ready[st.done] || {}).id, cap: 0
       }) + '</div>';
     }
 
-    var host = document.getElementById('live');
+    var host = document.getElementById('live-' + key);
     host.innerHTML = html;
-
     var head = host.querySelector('input[data-role="head"]');
     if (head) head.indeterminate = count > 0 && count < available;
   }
@@ -1662,22 +1779,21 @@ html[data-theme='dark'] {
   /* A row toggle repaints the bar and that row only. Re-rendering the whole
      table would throw away the checkbox that was just activated, so a
      keyboard user would lose focus on every space press. */
-  function refreshSelection() {
-    var ds = DATASETS[live.key];
-    var host = document.getElementById('live');
-    var available = ds.rows.filter(function (r) { return !ds.rowBlock(r); }).length;
-    var count = Object.keys(live.selected).length;
+  function refreshSelection(key) {
+    var ds = DATASETS[key], st = VIEWS[key];
+    var host = document.getElementById('live-' + key);
+    var blocked = ds.rows.filter(function (r) { return !!ds.rowBlock(r); }).length;
+    var available = ds.rows.length - blocked;
+    var count = Object.keys(st.selected).length;
 
     host.querySelectorAll('input[data-id]').forEach(function (b) {
-      b.closest('tr').classList.toggle('is-selected', !!live.selected[b.dataset.id]);
+      b.closest('tr').classList.toggle('is-selected', !!st.selected[b.dataset.id]);
     });
-
-    var acts = actionCounts(ds);
     var oldBar = host.querySelector('.bulk-action-bar');
     if (oldBar) {
       var tmp = document.createElement('div');
-      tmp.innerHTML = bar({ count: count, available: available, noun: ds.noun, hint: ds.hint,
-                            actions: acts, readOnly: live.readOnly });
+      tmp.innerHTML = bar({ count: count, pageSize: ds.rows.length, blocked: blocked, noun: ds.noun,
+                            cap: ds.cap, actions: actionCounts(ds, st), readOnly: st.readOnly });
       oldBar.replaceWith(tmp.firstElementChild);
     }
     var head = host.querySelector('input[data-role="head"]');
@@ -1685,104 +1801,96 @@ html[data-theme='dark'] {
       head.checked = count > 0 && count === available;
       head.indeterminate = count > 0 && count < available;
     }
-    if (live.open) renderLive();
+    if (st.open) renderView(key);
   }
 
-  document.getElementById('live').addEventListener('change', function (e) {
-    var el = e.target;
-    if (el.dataset.id) {
-      if (el.checked) live.selected[el.dataset.id] = true; else delete live.selected[el.dataset.id];
-      refreshSelection();
-    } else if (el.dataset.role === 'head') {
-      var ds = DATASETS[live.key];
-      live.selected = {};
-      if (el.checked) {
-        ds.rows.forEach(function (r) { if (!ds.rowBlock(r)) live.selected[r.id] = true; });
+  Object.keys(DATASETS).forEach(function (key) {
+    var ds = DATASETS[key], st = VIEWS[key];
+    var host = document.getElementById('live-' + key);
+
+    host.addEventListener('change', function (e) {
+      var el = e.target;
+      if (el.dataset.id) {
+        if (el.checked) st.selected[el.dataset.id] = true; else delete st.selected[el.dataset.id];
+        refreshSelection(key);
+      } else if (el.dataset.role === 'head') {
+        st.selected = {};
+        if (el.checked) ds.rows.forEach(function (r) { if (!ds.rowBlock(r)) st.selected[r.id] = true; });
+        renderView(key);
       }
-      renderLive();
-    }
-  });
+    });
 
-  document.getElementById('live').addEventListener('click', function (e) {
-    var btn = e.target.closest('[data-act]');
-    if (!btn) return;
-    var act = btn.dataset.act;
-    var ds = DATASETS[live.key];
-    if (act === 'clear') { live.selected = {}; live.open = null; renderLive(); }
-    else if (act === 'cancel' || act === 'close') { live.open = null; live.phase = null; live.results = null; renderLive(); }
-    else if (act === 'next' || act === 'prev') {
-      live.page = act === 'next' ? live.page + 1 : Math.max(1, live.page - 1);
-      live.selected = {}; live.open = null; renderLive();
-    }
-    else if (act === 'run') {
-      var action = eligibleFor(ds, live.open);
-      var ready = pickedRows(ds).filter(function (r) { return action.eligible(r).ok; });
-      live.phase = 'progress'; live.done = 0; renderLive();
-      var tick = setInterval(function () {
-        live.done++;
-        if (live.done >= ready.length) {
-          clearInterval(tick);
-          live.phase = 'result';
-          live.results = resultsFor(pickedRows(ds), action);
-        }
-        renderLive();
-      }, 140);
-    }
-    else { live.open = act; live.phase = 'compose'; renderLive(); }
-  });
+    host.addEventListener('click', function (e) {
+      var btn = e.target.closest('[data-act]');
+      if (!btn) return;
+      var act = btn.dataset.act;
+      if (act === 'clear') { st.selected = {}; st.open = null; renderView(key); }
+      else if (act === 'cancel' || act === 'close') { st.open = null; st.phase = null; st.results = null; renderView(key); }
+      else if (act === 'next' || act === 'prev') {
+        st.page = act === 'next' ? st.page + 1 : Math.max(1, st.page - 1);
+        st.selected = {}; st.open = null; renderView(key);
+      } else if (act === 'run') {
+        var action = ds.actions.filter(function (a) { return a.id === st.open; })[0];
+        var ready = pickedRows(ds, st).filter(function (r) { return action.eligible(r).ok; });
+        st.phase = 'progress'; st.done = 0; renderView(key);
+        var tick = setInterval(function () {
+          st.done++;
+          if (st.done >= ready.length) {
+            clearInterval(tick);
+            st.phase = 'result';
+            st.results = resultsFor(pickedRows(ds, st), action);
+          }
+          renderView(key);
+        }, 140);
+      } else { st.open = act; st.phase = 'compose'; renderView(key); }
+    });
 
-  document.getElementById('ds-orders').addEventListener('click', function () { switchDs('orders'); });
-  document.getElementById('ds-invoices').addEventListener('click', function () { switchDs('invoices'); });
-  function switchDs(key) {
-    live.key = key; live.selected = {}; live.open = null; live.phase = null; live.page = 1;
-    document.getElementById('ds-orders').setAttribute('aria-pressed', String(key === 'orders'));
-    document.getElementById('ds-invoices').setAttribute('aria-pressed', String(key === 'invoices'));
-    renderLive();
-  }
-  document.getElementById('btn-readonly').addEventListener('click', function () {
-    live.readOnly = !live.readOnly;
-    this.setAttribute('aria-pressed', String(live.readOnly));
-    renderLive();
-  });
-  document.getElementById('btn-nextpage').addEventListener('click', function () {
-    live.page++; live.selected = {}; live.open = null; renderLive();
-  });
-  document.getElementById('btn-reset').addEventListener('click', function () {
-    live = { key: live.key, selected: {}, page: 1, readOnly: false, open: null, phase: null, done: 0, results: null };
-    document.getElementById('btn-readonly').setAttribute('aria-pressed', 'false');
-    renderLive();
-  });
+    document.getElementById('ro-' + key).addEventListener('click', function () {
+      st.readOnly = !st.readOnly;
+      this.setAttribute('aria-pressed', String(st.readOnly));
+      renderView(key);
+    });
+    document.getElementById('reset-' + key).addEventListener('click', function () {
+      VIEWS[key] = { selected: {}, page: 1, readOnly: false, open: null, phase: null, done: 0, results: null };
+      st = VIEWS[key];
+      document.getElementById('ro-' + key).setAttribute('aria-pressed', 'false');
+      renderView(key);
+    });
 
-  renderLive();
+    renderView(key);
+  });
 
   /* ── Pinned frames ─────────────────────────────────────────────────── */
   var O = DATASETS.orders, I = DATASETS.invoices;
   var oAct = O.actions[0], retry = I.actions[0], issue = I.actions[1];
-  var oAvail = O.rows.filter(function (r) { return oAct.eligible(r).ok; }).length;
+  var oBlocked = O.rows.filter(function (r) { return !!O.rowBlock(r); }).length;
+  var oAvail = O.rows.length - oBlocked;
 
   function card(label, html) {
     return '<div><div class="card-label">' + label + '</div>' + html + '</div>';
   }
+  function pinBar(count, extra) {
+    var o = { count: count, pageSize: PAGE_SIZE, blocked: oBlocked, noun: 'order', cap: O.cap,
+              actions: [{ label: 'Dispatch ' + count, disabled: count === 0 }] };
+    Object.keys(extra || {}).forEach(function (k) { o[k] = extra[k]; });
+    return bar(o);
+  }
 
   // 03 — selection
   document.getElementById('f-selection').innerHTML =
-    card('Nothing selected — the bar is invisible but still in the DOM',
-      bar({ count: 0, available: oAvail, noun: 'order', hint: O.hint, actions: [{ label: 'Dispatch 0', disabled: true }] })) +
-    card('Some of the page selected',
-      bar({ count: 11, available: oAvail, noun: 'order', hint: O.hint, actions: [{ label: 'Dispatch 11' }] })) +
-    card('Every eligible row on the page selected — 17, not 20',
-      bar({ count: oAvail, available: oAvail, noun: 'order', hint: O.hint, actions: [{ label: 'Dispatch ' + oAvail }] }));
+    card('Nothing selected — the bar is invisible but still in the DOM', pinBar(0)) +
+    card('Some of the page selected', pinBar(11)) +
+    card('Every eligible row selected — 17, and the denominator still reads 20', pinBar(oAvail));
 
   // 04 — not eligible
   document.getElementById('f-ineligible').innerHTML =
-    card('Three rows cannot join the batch, and each says why',
+    card('Three rows are simply unselectable — no badge, no extra column',
       table(O, { selected: {}, limit: 8, headState: 'none' }));
 
-  // 05 — limit
+  // 05 — batch cap
   document.getElementById('f-limit').innerHTML =
-    card('Today: the cap is capacity the bar reports, and 20 rows can never reach it',
-      bar({ count: 17, available: oAvail, noun: 'order', hint: 'Max 25 per source', actions: [{ label: 'Dispatch 17' }] })) +
-    card('If a page ever exceeds the cap: the review states the split before it runs',
+    card('The bar states the cap next to the page count — informative, never a blocker', pinBar(oAvail)) +
+    card('If a page ever exceeded the cap, the review would state the split before running',
       '<div class="dialog"><h3 class="dialog__title">Dispatch 34 orders</h3>' +
       '<p class="dialog__desc">Generate labels for the selected orders — dispatched in per-source batches.</p>' +
       '<p class="bulk-dispatch__batches"><b>34 selected</b> · 25 will run now · 9 left for a second batch — the cap is per source connection</p>' +
@@ -1805,7 +1913,7 @@ html[data-theme='dark'] {
 
   // 08 — nothing eligible
   document.getElementById('f-none').innerHTML = dialog({
-    ds: O, action: oAct, picked: [O.rows[2], O.rows[7], O.rows[13]], phase: 'compose', pastTense: 'dispatched', cap: 0
+    ds: O, action: oAct, picked: [O.rows[3], O.rows[6], O.rows[14]], phase: 'compose', pastTense: 'dispatched', cap: 0
   });
 
   // 09 — in progress
@@ -1832,19 +1940,18 @@ html[data-theme='dark'] {
 
   // 11 — read-only
   document.getElementById('f-readonly').innerHTML =
-    bar({ count: 11, available: oAvail, noun: 'order', hint: 'Counting is fine — this workspace cannot write.',
-          actions: [{ label: 'Dispatch 11' }], readOnly: true }) +
+    pinBar(11, { readOnly: true }) +
     '<div style="margin-top:16px"><div class="card-label">What hovering the locked button reveals</div>' +
     '<span class="tooltip__content">Read-only in demo mode.</span></div>';
 
   // 12 — page change
   document.getElementById('f-page').innerHTML =
-    card('Before — 11 of this page selected',
-      bar({ count: 11, available: oAvail, noun: 'order', hint: O.hint, actions: [{ label: 'Dispatch 11' }] })) +
+    card('Before — 11 of this page selected', pinBar(11)) +
     card('After Next — the bar is empty and the list says what happened',
-      '<div class="alert alert--info"><div class="alert__body"><strong class="alert__title">Selection cleared</strong>' +
+      '<div class="alert alert--info" style="margin-bottom:12px"><div class="alert__body">' +
+      '<strong class="alert__title">Selection cleared</strong>' +
       'A bulk action runs on one page at a time, so moving to page 2 cleared the 11 orders you had selected.</div></div>' +
-      bar({ count: 0, available: oAvail, noun: 'order', hint: O.hint, actions: [{ label: 'Dispatch 0', disabled: true }] }));
+      pinBar(0));
 })();
 </script>
 </body>
