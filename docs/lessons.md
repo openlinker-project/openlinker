@@ -481,3 +481,19 @@ The unit test covering it passed, and that is the part worth remembering: it con
 **Applies to**: any backgrounded `until`/`while` poll used to serialise against a long build, test or migration run; `pgrep`/`pkill -f` used anywhere near a process whose name is a substring of the polling command.
 
 **Source**: #2380 (two stale watchers kept each other alive across several turns while the real gate ran undetected).
+
+## `getMany()` materialises entities and silently DROPS raw `addSelect` columns — a raw column needs `getRawMany` or its own aggregate query
+
+**Context**: planning a `restockBlocked` boolean for the returns list row (#2381), the obvious step was to `addSelect` the existing `RESTOCK_BLOCKED_EXISTS` SQL onto `ReturnRepository.listReturns`' paged query. That query ends in `.getMany()`.
+
+**Problem**: `getMany()` returns hydrated **entities**, built only from columns TypeORM knows as entity metadata. A raw expression added with `addSelect('<sql>', 'alias')` has no metadata, so it is computed by Postgres, returned on the wire, and then **thrown away** during hydration — no error, no warning, no log. The field is simply `undefined` forever.
+
+What makes it worth an entry is the shape of the resulting failure. It type-checks (the DTO field exists and is typed). It passes a unit test with a stubbed repository (the stub returns whatever the test author wrote). It reaches production as **a badge that never renders — for the one state whose entire purpose is to be impossible to miss**, on a surface whose whole job is to stop an operator believing stock came back when it did not. A silent no-op is the worst available outcome for a warning surface, and this is a silent no-op that every cheap gate reports as green.
+
+**Rule**: `getMany()` / `getOne()` return entities; **any raw or computed column needs `getRawMany()` / `getRawAndEntities()`**, or belongs in a separate aggregate query whose results are merged by id in application code. Before adding an `addSelect` of an expression, read how the query terminates. Prefer the separate-aggregate form when one already exists (in `ReturnRepository`, `aggregateCounters` is that query): it keeps the paged query free of joins, which also avoids the distinct-pagination trap in the entry above, and it correlates on the GROUP BY key so no `COUNT(*)` is fanned out — a `LEFT JOIN` to the child table would silently multiply every other counter instead. Pin the value with an int-spec against real Postgres; a mocked-repository unit spec cannot observe hydration at all.
+
+**Corollary — sharing a predicate across two scopes.** If the constant you want to reuse correlates on a different alias than the query you are adding it to (`r.id` vs `l."returnId"`), do **not** copy the SQL. Make it a function of the correlating expression and call it from both sites: two copies that agree today are two rules, which is the same defect `orphans` cost a round in #2378.
+
+**Applies to**: every `createQueryBuilder(...).addSelect('<raw sql>', 'alias')` in the tree; especially list reads that end in `.getMany()` and feed a DTO field a UI branches on.
+
+**Source**: #2381 (found by the `/pre-implement` readiness gate before any code was written; `libs/core/src/returns/infrastructure/persistence/repositories/return.repository.ts`).
