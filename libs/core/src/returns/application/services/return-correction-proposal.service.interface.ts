@@ -56,4 +56,23 @@ export interface IReturnCorrectionProposalService {
   buildProposal(
     input: BuildReturnCorrectionProposalInput
   ): Promise<ReturnCorrectionProposalResult>;
+
+  /**
+   * The same computation, with **no persistence** — the read half of #2376's
+   * `GET /returns/:id/correction-proposal`.
+   *
+   * A GET bound to {@link buildProposal} would write on every page load, and
+   * because that method replaces a diverged open row it would churn `changeId`
+   * and abandon ADR-044 slots purely because someone opened the panel. So the
+   * read is a separate method rather than a flag: both delegate to one private
+   * `compute`, which makes "the preview and the recorded proposal agree" a
+   * structural fact rather than a promise, and makes "the GET cannot write" true
+   * by construction rather than by discipline.
+   *
+   * Answers `changeId: null` and `opened: false` always. Raises the same
+   * `ReturnNotAttributedError` an orphan gets everywhere else — a read that
+   * silently returned nothing for an unattributed return would hide exactly the
+   * state the operator has to fix.
+   */
+  previewProposal(returnId: string): Promise<ReturnCorrectionProposalResult>;
 }

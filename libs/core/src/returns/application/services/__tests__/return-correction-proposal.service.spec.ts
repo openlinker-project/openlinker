@@ -383,4 +383,50 @@ describe('ReturnCorrectionProposalService', () => {
       expect(payload).not.toHaveProperty('picks');
     });
   });
+
+  describe('previewProposal — the read half (#2376)', () => {
+    it('should compute the identical proposal without persisting anything', async () => {
+      repository.findById.mockResolvedValue(buildReturn([buildLine()]));
+
+      const preview = await service.previewProposal(RETURN_ID);
+
+      expect(preview.outcome).toBe('proposed');
+      expect(preview.proposal?.lines[0].status).toBe('matched');
+      // The whole point: a GET must not write.
+      expect(orderChanges.openOrReuse).not.toHaveBeenCalled();
+      expect(orderChanges.abandon).not.toHaveBeenCalled();
+      expect(preview.changeId).toBeNull();
+      expect(preview.opened).toBe(false);
+    });
+
+    it('should agree with buildProposal about what the proposal IS', async () => {
+      repository.findById.mockResolvedValue(buildReturn([buildLine()]));
+
+      const preview = await service.previewProposal(RETURN_ID);
+      const built = await service.buildProposal(input);
+
+      // Structurally guaranteed by the shared private `compute`; asserted so a
+      // future divergence is a failing test rather than a support ticket.
+      expect(preview.proposal).toEqual(built.proposal);
+      expect(preview.outcome).toBe(built.outcome);
+    });
+
+    it('should refuse an orphan exactly as the write does', async () => {
+      repository.findById.mockResolvedValue(buildReturn([buildLine()], null));
+
+      await expect(service.previewProposal(RETURN_ID)).rejects.toBeInstanceOf(
+        ReturnNotAttributedError
+      );
+    });
+
+    it('should report a non-proposing outcome without persisting', async () => {
+      repository.findById.mockResolvedValue(buildReturn([buildLine({ name: 'Unknown' })]));
+
+      const preview = await service.previewProposal(RETURN_ID);
+
+      expect(preview.outcome).toBe('nothing-correctable');
+      expect(preview.proposal?.lines[0].noMatchReason).toBe('no-line-by-name');
+      expect(orderChanges.openOrReuse).not.toHaveBeenCalled();
+    });
+  });
 });

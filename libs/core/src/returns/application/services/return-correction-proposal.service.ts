@@ -105,8 +105,55 @@ export class ReturnCorrectionProposalService implements IReturnCorrectionProposa
   async buildProposal(
     input: BuildReturnCorrectionProposalInput
   ): Promise<ReturnCorrectionProposalResult> {
+    const computed = await this.compute(input.returnId);
+    // `compute` has already applied every non-proposing exit, including the
+    // `nothing-correctable` downgrade — so `'proposed'` here means exactly
+    // "there is something for an operator to confirm", which is the only state
+    // that earns an ADR-044 slot.
+    if (computed.outcome !== 'proposed' || computed.proposal === null) {
+      return computed;
+    }
+
+    const { proposal } = computed;
+    const { changeId, opened } = await this.recordProposal(
+      proposal.internalOrderId,
+      proposal.returnId,
+      proposal.invoiceRecordId,
+      proposal,
+      input.actorUserId
+    );
+
+    this.logger.log(
+      `Proposed a correction of invoice ${proposal.invoiceRecordId} for return ` +
+        `${proposal.returnId}: ` +
+        `${proposal.lines.filter((line) => line.status === 'matched').length} matched, ` +
+        `${proposal.lines.filter((line) => line.status === 'ambiguous').length} ambiguous, ` +
+        `${proposal.lines.filter((line) => line.status === 'no-match').length} excluded ` +
+        `(change ${changeId}). Nothing has been issued.`
+    );
+
+    return { outcome: 'proposed', proposal, changeId, opened };
+  }
+
+  async previewProposal(returnId: string): Promise<ReturnCorrectionProposalResult> {
+    // Identical computation, ZERO persistence — see the interface docblock for
+    // why a GET must not reach `recordProposal`.
+    return this.compute(returnId);
+  }
+
+  /**
+   * The shared computation. Both entry points go through it so the read and the
+   * write can never disagree about what the proposal IS — the only property that
+   * matters about having two of them.
+   *
+   * It owns every outcome INCLUDING the `nothing-correctable` downgrade, and
+   * always answers `changeId: null` / `opened: false` — persistence is
+   * `buildProposal`'s alone. That split is what makes `previewProposal` a
+   * mechanically guaranteed read rather than a promised one.
+   */
+  private async compute(returnId: string): Promise<ReturnCorrectionProposalResult> {
     const record = await this.returns.assertAttributedForTrigger(
-      input.returnId,
+      returnId,
       RETURN_INVOICE_CORRECTION_TRIGGER
     );
 
@@ -183,23 +230,7 @@ export class ReturnCorrectionProposalService implements IReturnCorrectionProposa
       return { outcome: 'nothing-correctable', proposal, changeId: null, opened: false };
     }
 
-    const { changeId, opened } = await this.recordProposal(
-      internalOrderId,
-      record.id,
-      invoice.id,
-      proposal,
-      input.actorUserId
-    );
-
-    this.logger.log(
-      `Proposed a correction of invoice ${invoice.id} for return ${record.id}: ` +
-        `${lines.filter((line) => line.status === 'matched').length} matched, ` +
-        `${lines.filter((line) => line.status === 'ambiguous').length} ambiguous, ` +
-        `${lines.filter((line) => line.status === 'no-match').length} excluded ` +
-        `(change ${changeId}). Nothing has been issued.`
-    );
-
-    return { outcome: 'proposed', proposal, changeId, opened };
+    return { outcome: 'proposed', proposal, changeId: null, opened: false };
   }
 
   /**
