@@ -185,6 +185,25 @@ Restore these when the stack is handed back to ordinary use:
 | Customer mapping for PrestaShop customer 13 cleared once | a failed first attempt had mapped it to a different internal customer and the conflict guard correctly refused to overwrite | nothing to undo |
 
 
+### Additional changes from the #2625 / #2644 verification run (2026-08-27/28)
+
+| Change | Why | How to undo |
+|---|---|---|
+| Three migrations applied to the demo Postgres | the epic adds `lastAttemptDurationMs`, `buyerTaxId`, `deferredTotalMs` | all additive `ADD COLUMN IF NOT EXISTS`; leave them |
+| Built `dist` copied into `ol-demo-fresh-api` and a new `ol-perf-worker` | to run the epic branch without rebuilding images | `docker rm -f ol-perf-worker`, then `docker start ol-demo-fresh-worker`; restart the api to restore its image code |
+| `product_options` + `product_option_values` granted GET on the webservice key | they were the only two of five referenced resources on the sweep path with no grant, and their absence cost 2 requests per SKU forever | leave - the reads are legitimate and the adapter needs them |
+| openlinker shop module upgraded 1.2.0 -> 1.8.0 | the epic's `line_prices` order path only exists from 1.7.0/1.8.0 | leave - it is the version the branch ships |
+| `ol-wc-tls` nginx TLS proxy + WooCommerce connection enabled against it | OL's WooCommerce client sends Basic auth only, which WooCommerce refuses over cleartext | `/tmp/2590-a4-teardown.sh`, or `docker rm -f ol-wc-tls` and restore the connection from `results/ORIGINAL_wc_connection_2590.txt` |
+| WooCommerce orders 22 and 23; PrestaShop orders 13 and 14 | the A4 evidence | leave - they are the evidence |
+| Catalogue seeded 10 000 -> 100 000 `PERFBASE-` products | #2644 | `./cleanup-products.sh` |
+| Worker log level lowered in the perf container's compiled `main.js` | `apps/worker/src/main.ts:28` hardcodes `debug`+`verbose` with full response bodies | discarded with the container; no source change was made |
+
+**Note on the module upgrade.** `Module::initUpgradeModule` + `runUpgradeModule()` reported
+`available_upgrade => 0` and silently left the DB version at 1.2.0 while the disk said
+1.8.0, because `installed_version` came back NULL in a CLI context. The chain was run
+explicitly instead. Whether the back-office upgrade path behaves the same was NOT tested,
+so this is a CLI-context observation rather than a module defect.
+
 ### Additional changes from the raised-throughput A2
 
 | Change | Why | State |
