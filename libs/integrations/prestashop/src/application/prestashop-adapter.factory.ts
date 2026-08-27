@@ -90,6 +90,11 @@ export class PrestashopAdapterFactory implements IPrestashopAdapterFactory {
     this.shopCurrencyResolver
   );
 
+  // Last shop identity seen per connection id, so a repointed connection can be
+  // detected. See `dropCachesOnShopIdentityChange` for why this is the
+  // invalidation trigger.
+  private readonly shopIdentityByConnection = new Map<string, string>();
+
   constructor(
     private readonly customerProvisioner?: PrestashopCustomerProvisioner,
     private readonly addressProvisioner?: PrestashopAddressProvisioner,
@@ -119,6 +124,8 @@ export class PrestashopAdapterFactory implements IPrestashopAdapterFactory {
 
     // Validate and parse configuration
     const config = this.validateAndParseConfig(connection.config);
+
+    this.dropCachesOnShopIdentityChange(connection.id, config);
 
     // Resolve credentials
     const credentials = await credentialsResolver.get<PrestashopCredentials>(
@@ -251,6 +258,57 @@ export class PrestashopAdapterFactory implements IPrestashopAdapterFactory {
       orderProcessorManager,
       productPublisher,
     };
+  }
+
+  /**
+   * Drop this connection's resolver caches when the shop behind it changed.
+   *
+   * Every cache on this factory is keyed by connection id and, since #2592,
+   * lives for the process. The connection id does not change when an operator
+   * repoints the connection at a different shop, or moves it to another store
+   * of a multi-store install, so without this the previous shop's default
+   * currency, feature and option names, category paths and tax rates would keep
+   * being served under the same key until the TTL expired - a day for most of
+   * them.
+   *
+   * The trigger is the shop identity carried in the connection config, because
+   * that is the only signal a plugin can see for itself. There is no host seam
+   * that notifies a plugin when `ConnectionService.update` runs: the eight
+   * registries a plugin self-registers against cover connection testing,
+   * webhook provisioning, config and credentials shape validation, retry and
+   * auth-failure classification, scheduler tasks and email normalisation, and
+   * none of them is a change feed. Adding one would be a core contract change
+   * for a plugin-local caching concern. Every adapter build already passes
+   * through `createAdapters`, so checking here costs one map lookup and closes
+   * the reconfiguration window to the next job.
+   *
+   * What it does not close: an operator changing the shop's own default
+   * currency in the PrestaShop back office leaves this config untouched, so
+   * that stays a TTL question. `PrestashopShopCurrencyResolver` holds the
+   * shortest TTL of the shop-level caches for exactly that reason.
+   */
+  private dropCachesOnShopIdentityChange(
+    connectionId: string,
+    config: PrestashopConnectionConfig
+  ): void {
+    const identity = `${config.baseUrl}|${config.shopId ?? ''}|${config.langId ?? ''}`;
+    const previous = this.shopIdentityByConnection.get(connectionId);
+    this.shopIdentityByConnection.set(connectionId, identity);
+
+    if (previous === undefined || previous === identity) {
+      return;
+    }
+
+    this.logger.log(
+      `PrestaShop connection ${connectionId} now points at a different shop; ` +
+        `dropping its cached shop-level facts`
+    );
+    this.attributeResolver.clearCache(connectionId);
+    this.featureResolver.clearCache(connectionId);
+    this.categoryPathResolver.clearCache(connectionId);
+    this.shopCurrencyResolver.clearCache(connectionId);
+    this.orderCurrencyResolver.clearCache(connectionId);
+    this.productTaxRateResolver.clearCache(connectionId);
   }
 
   /**

@@ -19,6 +19,7 @@ describe('PrestashopTaxRateResolver', () => {
     httpClient = createMockHttpClient();
     countryResolver = {
       resolveCountryId: jest.fn(),
+      clearCache: jest.fn(),
     } as unknown as jest.Mocked<PrestashopCountryResolver>;
     resolver = new PrestashopTaxRateResolver(countryResolver);
     // Several #2052 paths are deliberately non-blocking, so the warn is the
@@ -475,6 +476,55 @@ describe('PrestashopTaxRateResolver', () => {
 
       expect(resolution).toEqual({ kind: 'resolved', rate: 0.23 });
       expect(httpClient.getResource).toHaveBeenCalledWith('products', '25');
+    });
+  });
+  // The resolver is a process-singleton since #2592, so two connections share
+  // one instance. Its cache key leads with the connection id; these tests are
+  // what make that auditable rather than argued, matching the sibling
+  // resolvers' own cross-connection specs.
+  describe('cross-connection isolation (#2592)', () => {
+    const taxedProduct = { id_tax_rules_group: '2' };
+    const catchAllRule = [{ id_tax: '7', id_country: '0', id_state: '0' }];
+
+    it('should resolve independently for two connections asking about the same product id', async () => {
+      httpClient.getResource
+        .mockResolvedValueOnce(taxedProduct)
+        .mockResolvedValueOnce({ rate: '23.000' })
+        .mockResolvedValueOnce(taxedProduct)
+        .mockResolvedValueOnce({ rate: '8.000' });
+      httpClient.listResources
+        .mockResolvedValueOnce(catchAllRule)
+        .mockResolvedValueOnce(catchAllRule);
+
+      const first = await resolver.resolveProductTaxRate('25', undefined, 'conn-1', httpClient);
+      const second = await resolver.resolveProductTaxRate('25', undefined, 'conn-2', httpClient);
+
+      expect(first).toEqual({ kind: 'resolved', rate: 0.23 });
+      expect(second).toEqual({ kind: 'resolved', rate: 0.08 });
+    });
+
+    it('should clear one connection and leave the other cached', async () => {
+      httpClient.getResource
+        .mockResolvedValueOnce(taxedProduct)
+        .mockResolvedValueOnce({ rate: '23.000' })
+        .mockResolvedValueOnce(taxedProduct)
+        .mockResolvedValueOnce({ rate: '23.000' })
+        .mockResolvedValueOnce(taxedProduct)
+        .mockResolvedValueOnce({ rate: '8.000' });
+      httpClient.listResources.mockResolvedValue(catchAllRule);
+
+      await resolver.resolveProductTaxRate('25', undefined, 'conn-1', httpClient);
+      await resolver.resolveProductTaxRate('25', undefined, 'conn-2', httpClient);
+
+      resolver.clearCache('conn-1');
+
+      // conn-1 misses and re-reads; conn-2 still answers from its own entry.
+      const reread = await resolver.resolveProductTaxRate('25', undefined, 'conn-1', httpClient);
+      const cached = await resolver.resolveProductTaxRate('25', undefined, 'conn-2', httpClient);
+
+      expect(reread).toEqual({ kind: 'resolved', rate: 0.08 });
+      expect(cached).toEqual({ kind: 'resolved', rate: 0.23 });
+      expect(countryResolver.clearCache).toHaveBeenCalledWith('conn-1');
     });
   });
 });

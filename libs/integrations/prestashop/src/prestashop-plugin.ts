@@ -114,10 +114,15 @@ export function createPrestashopPlugin(deps: CreatePrestashopPluginDeps): Adapte
   // connection is a parameter of `createAdapters`, not a field.
   //
   // Every one of those caches is now process-lifetime, so each entry has to be
-  // safe to serve to a later job. Each already is: they hold shop-level facts
-  // behind a TTL (24h for a currency row, 5 min for a tax rate) and are keyed
-  // by connection, so the key space is bounded by the shop's catalogue rather
-  // than growing with uptime.
+  // safe to serve to a later job, and the TTLs on them are real for the first
+  // time. Two things follow, both handled where the caches live rather than
+  // here. The factory drops a connection's caches when the shop identity in its
+  // config changes, so repointing a connection at another shop does not keep
+  // serving the old shop's answers under the same key - see
+  // `PrestashopAdapterFactory.dropCachesOnShopIdentityChange`. And the tax-rate
+  // cache, the one whose key space grows with SKU count, sweeps expired entries
+  // under a cap, because a sweep never reads an entry again and so never evicts
+  // one.
   const factory = new PrestashopAdapterFactory(
     deps.customerProvisioner,
     deps.addressProvisioner,
