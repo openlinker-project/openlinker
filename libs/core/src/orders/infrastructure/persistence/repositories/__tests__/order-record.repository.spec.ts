@@ -1333,6 +1333,31 @@ describe('OrderRecordRepository', () => {
       expect(predicate).toBeDefined();
       expect(predicate).not.toContain('IN ()');
     });
+
+    it('should never emit an empty jsonpath filter for the omsAttention predicate (#2352)', async () => {
+      // HAS_OMS_ATTENTION is built from AuthorityAttentionCountedReasonValues at
+      // class-definition time. An empty array interpolates to `$[*].reason ? ()`,
+      // which Postgres rejects at PARSE time — taking down the orders list, the
+      // summary aggregate and `countOrdersWithOmsAttention` together. The sibling
+      // guard above exists for exactly this class of defect one predicate over.
+      const andWhere = jest.fn().mockReturnThis();
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        orderBy: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        skip: jest.fn().mockReturnThis(),
+        andWhere,
+        getManyAndCount: jest.fn().mockResolvedValue([[], 0]),
+      });
+
+      await repository.findMany({ omsAttention: true }, { limit: 20, offset: 0 });
+
+      const predicate = andWhere.mock.calls
+        .map((c: unknown[]) => c[0] as string)
+        .find((c) => c.includes('omsAttention'));
+      expect(predicate).toBeDefined();
+      expect(predicate).not.toContain('? ()');
+      expect(predicate).toContain('@ ==');
+    });
   });
 
   describe('updateSyncStatus', () => {

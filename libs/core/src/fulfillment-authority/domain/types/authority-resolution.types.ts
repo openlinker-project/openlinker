@@ -21,6 +21,18 @@
  * than assumed because it is cheap now and unrecoverable once three call sites
  * exist.
  *
+ * **One carve-out, and its boundary is the whole of it: a REFUSAL over the
+ * resolved result is permitted; a DECISION derived from it is not.** #2353's
+ * `applyPreset` re-runs `resolveAuthorities` over the configs it is about to
+ * write and returns 422 if any row comes back `ambiguous`, writing nothing. That
+ * is the sole instance, and it is admissible because it decides nothing — it
+ * declines, leaving the operator to choose, which is exactly ADR-052's rule that
+ * ambiguity is inert and reported rather than resolved arbitrarily. A consumer
+ * that read a `holders` answer and *acted* on it would be the forbidden thing,
+ * however narrow the action. Deleting the #2353 guard on the strength of the
+ * paragraph above would let an install carrying two claimants persist an
+ * ambiguous preset silently; widening it into a decision would breach ADR-053.
+ *
  * ## Pure, total, and structural
  *
  * No I/O, not async, constructs no adapter, never throws, never mutates its
@@ -323,6 +335,18 @@ function resolveOneAuthority(
   claimants: readonly AuthorityClaimantInput[]
 ): { answer: AuthorityAnswer; source: AuthoritySource; why: AuthorityWhy } {
   const candidates: AuthorityHolderCandidate[] = [];
+  // Deduped on `(connection, scope)`. `parseAuthorityConfig` reads `scopes` off
+  // untrusted jsonb and filters by shape, never by uniqueness, so one connection
+  // may legitimately arrive carrying the SAME scope twice. Pushed twice it
+  // becomes two candidates with one `connectionId`, `selectAuthorityHolder`
+  // reports `multiple-claimants-same-scope` against `['c1','c1']`, and the row
+  // tells an operator that two systems are fighting while naming one. Worse, the
+  // #2353 apply guard is over the RESULT, so EVERY preset is then refused —
+  // including `leave-as-they-are` and `openlinker-decides`, neither of which can
+  // remove a duplicate array element — leaving the install locked out of the
+  // page's only write path with hand-edited jsonb as the sole remedy.
+  // A duplicated scope entry from one connection is ONE claim, not two claimants.
+  const seenCandidates = new Set<string>();
   for (const claimant of claimants) {
     if (!claimant.isActive || !declaresCapability(claimant, kind)) {
       continue;
@@ -332,6 +356,11 @@ function resolveOneAuthority(
       continue;
     }
     for (const scope of claimedScopes(claim)) {
+      const key = `${claimant.connectionId}@${authorityScopeKey(scope)}`;
+      if (seenCandidates.has(key)) {
+        continue;
+      }
+      seenCandidates.add(key);
       candidates.push({ connectionId: claimant.connectionId, scope, isPrimary: claim.isPrimary });
     }
   }

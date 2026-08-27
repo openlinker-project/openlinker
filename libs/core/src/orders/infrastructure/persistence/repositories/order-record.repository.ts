@@ -799,7 +799,17 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    * `COALESCE(…, '')` for — `jsonb_path_exists(NULL, …)` yields NULL, so the
    * column is coalesced to an empty array before the test rather than after.
    */
-  private static readonly HAS_OMS_ATTENTION = `jsonb_path_exists(
+  private static readonly HAS_OMS_ATTENTION =
+    AuthorityAttentionCountedReasonValues.length === 0
+      ? // An empty counted set means nothing is attention-worthy, so the honest
+        // predicate is `false`. Unreachable today (all eight members are
+        // `counted: true`), but interpolating an empty array yields the
+        // jsonpath `$[*].reason ? ()`, which Postgres rejects at PARSE time —
+        // taking down the orders list, the summary aggregate and
+        // `countOrdersWithOmsAttention` together. `IS_SALES_DOCUMENT_BLOCKED`
+        // already carries the `IN ()` guard for the same class of defect.
+        'false'
+      : `jsonb_path_exists(
     COALESCE(rec."omsAttention", '[]'::jsonb),
     '$[*].reason ? (${AuthorityAttentionCountedReasonValues.map(
       (reason) => `@ == "${reason}"`,

@@ -417,4 +417,73 @@ describe('resolveAuthorities', () => {
       }
     });
   });
+  describe('one connection repeating a scope is ONE claim, not two claimants', () => {
+    // `parseAuthorityConfig` reads `scopes` off untrusted jsonb and filters by
+    // shape, never by uniqueness, so a duplicated entry is representable. Left
+    // undeduped it produced `multiple-claimants-same-scope` with
+    // `candidateConnectionIds: ['conn-a','conn-a']` — a row telling the operator
+    // two systems are fighting while naming one, and (because the #2353 apply
+    // guard is over the RESULT) an install refused by EVERY preset, including
+    // the two that cannot remove a duplicate array element.
+    it.each([
+      ['an implicit global scope repeated', [{ kind: 'global' }, { kind: 'global' }]],
+      [
+        'two structurally equal channel scopes',
+        [
+          { kind: 'channel', connectionId: 'chan-x' },
+          { kind: 'channel', connectionId: 'chan-x' },
+        ],
+      ],
+    ])('should resolve holders, not cannot-tell, for %s', (_label, scopes) => {
+      const row = rowFor(
+        resolveAuthorities({
+          claimants: [
+            claimant({
+              connectionId: 'conn-a',
+              supportedCapabilities: ['AvailabilityAuthority'],
+              config: { availabilityAuthority: { enabled: true, scopes } },
+            }),
+          ],
+        }),
+        'availability'
+      );
+
+      expect(row.answer.kind).toBe('holders');
+      expect(row.state).toBe('resolved');
+      if (row.answer.kind === 'holders') {
+        expect(row.answer.holders).toHaveLength(1);
+        expect(row.answer.holders[0]?.connectionId).toBe('conn-a');
+      }
+    });
+
+    it('should still report a genuine two-connection conflict as cannot-tell', () => {
+      const row = rowFor(
+        resolveAuthorities({
+          claimants: [
+            claimant({
+              connectionId: 'conn-a',
+              supportedCapabilities: ['AvailabilityAuthority'],
+              config: {
+                availabilityAuthority: {
+                  enabled: true,
+                  scopes: [{ kind: 'global' }, { kind: 'global' }],
+                },
+              },
+            }),
+            claimant({
+              connectionId: 'conn-b',
+              supportedCapabilities: ['AvailabilityAuthority'],
+              config: { availabilityAuthority: true },
+            }),
+          ],
+        }),
+        'availability'
+      );
+
+      expect(row.answer.kind).toBe('cannot-tell');
+      if (row.answer.kind === 'cannot-tell') {
+        expect([...row.answer.candidateConnectionIds].sort()).toEqual(['conn-a', 'conn-b']);
+      }
+    });
+  });
 });

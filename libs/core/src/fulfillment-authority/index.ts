@@ -45,11 +45,17 @@
  * config-vs-handshake axis); what it does not have is a resolution that belongs
  * here, because `sales-documents` already owns it. The count is six on purpose.
  *
- * ## Nothing consumes this yet
+ * ## What consumes this
  *
- * Wave 1a ships vocabulary only: every reason member is declared and never
- * written, and both pure functions have no production caller. The vocabulary
- * ships first so the contexts that adopt it adopt one spelling.
+ * Wave 1a (#2304) shipped vocabulary only — every reason member declared and
+ * never written, both pure functions without a production caller — so that the
+ * contexts adopting it would adopt one spelling. That is no longer the state.
+ * #2351 gave the leaf its first computed answer (`resolveAuthorities`, the seven
+ * rows of the who-decides table) and #2352 its first persisted consumers: both
+ * `orders` and `returns` value-import from here, so the edges now point INWARD.
+ * That is the direction the leaf property tolerates — what it forbids is an
+ * edge OUT, and the allow-set in `barrel-purity.spec.ts` for this directory is
+ * still empty.
  *
  * @module libs/core/src/fulfillment-authority
  * @see docs/architecture/adrs/052-independently-assignable-fulfillment-authorities.md
