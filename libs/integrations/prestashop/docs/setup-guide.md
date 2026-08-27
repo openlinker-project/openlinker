@@ -226,17 +226,82 @@ Once "Configure webhooks" (§6) has run, the module's **Base URL**,
 **Connection ID**, and **Webhook Secret** are pushed automatically — you
 don't need to enter them by hand. One thing still needs a manual step:
 
-- **Cron Token**: generated automatically on install. Open the module's
-  config page (**Improve → OpenLinker** in the left sidebar, or **Modules →
-  Module Manager → OpenLinker → Configure**) and copy it, then wire up a
-  system cron job on the PrestaShop server to drive webhook delivery:
-
-  ```bash
-  # Every 1–5 minutes
-  */2 * * * * curl -s "https://your-shop.com/index.php?fc=module&module=openlinker&controller=cron&token=YOUR_CRON_TOKEN" > /dev/null 2>&1
-  ```
+- **Cron**: something on your server has to trigger delivery on a schedule.
+  Nothing is sent to OpenLinker until it does. Pick the option below that
+  matches your hosting.
 
 <!-- SCREENSHOT: OL module admin config page showing the cron token field -->
+
+### Setting up the cron
+
+The module ships a ready-made file at
+`modules/openlinker/cron/openlinker-cron.php`. Run that file on a schedule and
+you are done. It needs no arguments, no URL and no token, and it finds your shop
+on its own.
+
+**If your host lets you write a cron command** (a normal VPS, or cPanel/DirectAdmin
+with a command field):
+
+```bash
+# Every 2 minutes
+*/2 * * * * /usr/bin/php /path/to/your/shop/modules/openlinker/cron/openlinker-cron.php > /dev/null 2>&1
+```
+
+**If your host only lets you place a file** (home.pl and AZ.pl work this way):
+the schedule comes from the file's name, and you cannot pass it anything. Copy
+`openlinker-cron.php` into the directory your host uses for cron files and rename
+it to the name that means the interval you want, for example `cron-5min.php`.
+That is all. If the copy ends up outside your shop's directory tree, set the
+`OPENLINKER_PS_ROOT` environment variable to the folder that contains
+`config/config.inc.php`.
+
+**If you cannot run a PHP file at all**, call the endpoint over HTTP instead. The
+token goes in a header, never in the address — an address is written to server
+logs and browser history:
+
+```bash
+*/2 * * * * curl -s -X POST -H "X-OpenLinker-Cron-Token: YOUR_CRON_TOKEN" \
+  "https://your-shop.com/index.php?fc=module&module=openlinker&controller=cron" > /dev/null 2>&1
+```
+
+Copy the token from the module's config page (**Improve → OpenLinker** in the
+left sidebar, or **Modules → Module Manager → OpenLinker → Configure**). If you
+still have an older cron that puts `&token=...` in the address, it will be
+refused with a message telling you this.
+
+### If your host only offers hourly cron
+
+Some hosting tiers, OVH's shared plans among them, will not run a cron more often
+than once an hour. The module works, but everything gets slower in a way you
+should plan around:
+
+- A price or stock change in PrestaShop can take up to an hour to reach your
+  marketplaces. If an item sells fast, expect overselling. Give it a stock
+  safety buffer on the connection settings page.
+- A failed delivery is retried on the next pass, so a retry is an hour away
+  rather than a minute away.
+- Orders are not affected. They arrive by webhook or by OpenLinker's own polling,
+  neither of which uses this cron.
+
+If an hour is too slow, you have two ways out. Move the shop to a plan that
+allows minute-level cron, or have something outside your hosting call the HTTP
+endpoint above every few minutes — any uptime-monitoring or scheduled-request
+service can do it, as long as it can send a POST with a header.
+
+### Do not use PrestaShop's built-in cron service
+
+PrestaShop's own `cron.prestashop.com` scheduling service was switched off in
+December 2025. It is worse than unavailable: after the shutdown it still answers
+requests with a success code and does nothing at all. A shop relying on it looks
+perfectly healthy while nothing is delivered. If your shop is set up that way,
+replace it with one of the options above.
+
+### Checking that it works
+
+The module's config page shows **Delivery Last Ran**. If it says *Never*, or the
+timestamp is red, delivery is not happening and events are piling up in the
+outbox. That row is the one place that tells you the difference between "nothing
+to send" and "nothing is sending".
 
 Everything else on that page (event-type toggles, batch size, retry
 attempts, backoff multiplier) has sane defaults — leave them unless you have

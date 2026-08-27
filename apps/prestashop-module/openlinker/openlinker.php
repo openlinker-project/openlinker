@@ -230,6 +230,8 @@ class OpenLinker extends CarrierModule
         // Constants below and the statistics read both come from this class.
         self::requireOutboxRepository();
         require_once dirname(__FILE__) . '/classes/SecretDisplay.php';
+        require_once dirname(__FILE__) . '/classes/CronHealth.php';
+        require_once dirname(__FILE__) . '/classes/DeliveryRunner.php';
 
         // Handle form submission
         if (Tools::isSubmit('submit' . $this->name)) {
@@ -273,6 +275,15 @@ class OpenLinker extends CarrierModule
             'outbox_retention_days_min' => OutboxRepository::RETENTION_DELIVERED_DAYS_MIN,
             'outbox_retention_days_max' => OutboxRepository::RETENTION_DELIVERED_DAYS_MAX,
             'statistics' => $this->getStatistics(),
+            // Whether delivery is actually running at all (#2618). Without
+            // this a dead cron is indistinguishable from an empty queue.
+            'delivery_last_run' => Configuration::get(DeliveryRunner::LAST_RUN_CONFIG_KEY),
+            'delivery_last_run_source' => Configuration::get(
+                DeliveryRunner::LAST_RUN_SOURCE_CONFIG_KEY
+            ),
+            'delivery_health' => CronHealth::assess(
+                Configuration::get(DeliveryRunner::LAST_RUN_CONFIG_KEY)
+            ),
         ]);
 
         return $output . $this->display(__FILE__, 'views/templates/admin/configure.tpl');

@@ -99,14 +99,39 @@ The module implements **automatic deduplication**, keyed on queue state rather t
 
 ## Cron Setup
 
-Set up a system cron to trigger webhook delivery:
+Nothing is delivered to OpenLinker until something triggers a delivery pass on a
+schedule. The module ships a file that does the whole job with no arguments and
+no token: `cron/openlinker-cron.php`.
 
 ```bash
-# Every 2 minutes
-*/2 * * * * curl -s -X POST -H "X-OpenLinker-Cron-Token: YOUR_CRON_TOKEN" "https://your-shop.com/index.php?fc=module&module=openlinker&controller=cron" > /dev/null 2>&1
+# Every 2 minutes, on a host that lets you write a cron command
+*/2 * * * * /usr/bin/php /path/to/shop/modules/openlinker/cron/openlinker-cron.php > /dev/null 2>&1
 ```
 
-**Recommended frequency**: Every 1-5 minutes
+On a host where the schedule is the file's name and no arguments can be passed
+(home.pl, AZ.pl), copy that file into the host's cron directory and rename it to
+whatever name means the interval you want, for example `cron-5min.php`. Set
+`OPENLINKER_PS_ROOT` if the copy lives outside the shop's directory tree.
+
+Where a PHP file cannot be scheduled, POST to the endpoint instead and send the
+token in a header. The token is never read from the address, because an address
+ends up in server logs and browser history:
+
+```bash
+*/2 * * * * curl -s -X POST -H "X-OpenLinker-Cron-Token: YOUR_CRON_TOKEN" \
+  "https://your-shop.com/index.php?fc=module&module=openlinker&controller=cron" > /dev/null 2>&1
+```
+
+**Recommended frequency**: every 1-5 minutes. Once an hour is the least some
+hosting tiers allow; it works, but stock and price changes then take up to an
+hour to reach a marketplace, and every retry waits a full hour too.
+
+**Do not use `cron.prestashop.com`.** The service was switched off in December
+2025 and now answers with a success code while doing nothing, so a shop relying
+on it looks healthy and delivers nothing.
+
+The config page's **Delivery Last Ran** row is how you check any of this is
+actually happening.
 
 ## Webhook Endpoint
 

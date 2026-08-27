@@ -224,6 +224,26 @@
     <div class="form-wrapper">
         <table class="table">
             <tr>
+                <td><strong>{l s='Delivery Last Ran' mod='openlinker'}</strong></td>
+                <td>
+                    {if $delivery_health.ran}
+                        {if $delivery_health.stale}<span class="text-danger">{/if}
+                        {$delivery_last_run|escape:'html':'UTF-8'}
+                        {if $delivery_last_run_source}({$delivery_last_run_source|escape:'html':'UTF-8'}){/if}
+                        {if $delivery_health.stale}</span>
+                            <span class="help-block text-danger">
+                                {l s='No delivery pass has run for over two hours. Events are waiting. Check that the cron is set up and firing.' mod='openlinker'}
+                            </span>
+                        {/if}
+                    {else}
+                        <span class="text-danger">{l s='Never' mod='openlinker'}</span>
+                        <span class="help-block text-danger">
+                            {l s='Delivery has never run on this shop, so nothing is reaching OpenLinker. Set up the cron described in the module README.' mod='openlinker'}
+                        </span>
+                    {/if}
+                </td>
+            </tr>
+            <tr>
                 <td><strong>{l s='Pending Events' mod='openlinker'}</strong></td>
                 <td>{$statistics.pending|intval}</td>
             </tr>
