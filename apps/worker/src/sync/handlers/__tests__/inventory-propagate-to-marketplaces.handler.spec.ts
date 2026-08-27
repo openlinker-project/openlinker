@@ -324,6 +324,70 @@ describe('InventoryPropagateToMarketplacesHandler', () => {
       );
     });
 
+    it('should carry the inventory write stamp as the write-order token (#2617)', async () => {
+      const job = createJob({
+        productId: 'product-id',
+        inventoryUpdatedAt: '2026-01-01T12:00:00.000Z',
+      });
+      const inventory = new InventoryItemEntity(
+        'inventory-id',
+        'product-id',
+        null,
+        100,
+        0,
+        null,
+        new Date()
+      );
+
+      inventoryService.getInventory.mockResolvedValue(inventory);
+      identifierMapping.getExternalIds.mockResolvedValue([
+        {
+          entityType: 'Offer',
+          platformType: 'allegro',
+          connectionId: 'connection-id',
+          externalId: 'offer-id',
+        },
+      ]);
+      jobEnqueue.enqueueJob.mockResolvedValue({ jobId: 'enqueued-job-id', isExisting: false });
+
+      await handler.execute(job);
+
+      expect(jobEnqueue.enqueueJob).toHaveBeenCalledWith(
+        expect.objectContaining({
+          payload: expect.objectContaining({ observedAt: '2026-01-01T12:00:00.000Z' }),
+        })
+      );
+    });
+
+    it('should omit the write-order token when the propagation carries no stamp', async () => {
+      const job = createJob({ productId: 'product-id' });
+      const inventory = new InventoryItemEntity(
+        'inventory-id',
+        'product-id',
+        null,
+        100,
+        0,
+        null,
+        new Date()
+      );
+
+      inventoryService.getInventory.mockResolvedValue(inventory);
+      identifierMapping.getExternalIds.mockResolvedValue([
+        {
+          entityType: 'Offer',
+          platformType: 'allegro',
+          connectionId: 'connection-id',
+          externalId: 'offer-id',
+        },
+      ]);
+      jobEnqueue.enqueueJob.mockResolvedValue({ jobId: 'enqueued-job-id', isExisting: false });
+
+      await handler.execute(job);
+
+      const enqueued = jobEnqueue.enqueueJob.mock.calls[0][0];
+      expect(enqueued.payload).not.toHaveProperty('observedAt');
+    });
+
     it('should keep backward compatibility when inventoryUpdatedAt is missing', async () => {
       const job = createJob({ productId: 'product-id' });
       const inventory = new InventoryItemEntity(

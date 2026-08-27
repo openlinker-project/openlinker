@@ -42,6 +42,7 @@ export class MarketplaceOfferQuantityUpdateHandler implements SyncJobHandler {
         offerId: payload.offerId,
         quantity: payload.quantity,
         idempotencyKey: payload.idempotencyKey,
+        observedAt: payload.observedAt,
       });
 
       if (result.failed.length > 0) {
@@ -105,6 +106,9 @@ export class MarketplaceOfferQuantityUpdateHandler implements SyncJobHandler {
       offerId: payload.offerId,
       quantity: payload.quantity,
       idempotencyKey: payload.idempotencyKey,
+      // Ordering token for the write-order guard (#2617). A legacy job queued
+      // across the deploy carries none and writes unguarded, as before.
+      observedAt: typeof payload.observedAt === 'string' ? payload.observedAt : undefined,
     };
   }
 }

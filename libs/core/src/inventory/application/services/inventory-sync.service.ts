@@ -11,6 +11,8 @@ import { createHash } from 'crypto';
 import type { OfferManagerPort } from '@openlinker/core/listings';
 import { isOfferQuantityBatchUpdater } from '@openlinker/core/listings';
 import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
+import { ISyncCursorsService, SyncLockPort } from '@openlinker/core/sync';
+import { SYNC_CURSORS_SERVICE_TOKEN, SYNC_LOCK_TOKEN } from '@openlinker/core/sync';
 import {
   CONNECTION_PORT_TOKEN,
   ConnectionPort,
@@ -23,6 +25,12 @@ import type {
   UpdateOfferQuantitiesBatchCommand,
   UpdateOfferQuantitiesBatchResult,
 } from '@openlinker/core/listings';
+import {
+  OFFER_QUANTITY_WRITE_LOCK_TTL_MS,
+  isWritableQuantityObservation,
+  offerQuantityObservationCursorKey,
+  offerQuantityWriteLockKey,
+} from '../../domain/types/offer-quantity-write-order.types';
 import type { IInventorySyncService } from './inventory-sync.service.interface';
 import { Logger } from '@openlinker/shared/logging';
 
@@ -34,7 +42,11 @@ export class InventorySyncService implements IInventorySyncService {
     @Inject(INTEGRATIONS_SERVICE_TOKEN)
     private readonly integrationsService: IIntegrationsService,
     @Inject(CONNECTION_PORT_TOKEN)
-    private readonly connectionPort: ConnectionPort
+    private readonly connectionPort: ConnectionPort,
+    @Inject(SYNC_LOCK_TOKEN)
+    private readonly syncLock: SyncLockPort,
+    @Inject(SYNC_CURSORS_SERVICE_TOKEN)
+    private readonly syncCursors: ISyncCursorsService
   ) {}
 
   async updateOfferQuantity(
@@ -83,8 +95,13 @@ export class InventorySyncService implements IInventorySyncService {
       }),
     };
 
+    // The write-order guard (#2617) serialises and compares per offer, which the
+    // adapter batch API has no seam for, so an observed batch takes the per-item
+    // path. Correctness beats one round trip here: a lost stock update oversells.
+    const hasObservation = normalized.items.some((i) => typeof i.observedAt === 'string');
+
     // Prefer adapter batch API when available and we have more than one item.
-    if (isOfferQuantityBatchUpdater(marketplace) && normalized.items.length > 1) {
+    if (!hasObservation && isOfferQuantityBatchUpdater(marketplace) && normalized.items.length > 1) {
       try {
         return await marketplace.updateOfferQuantitiesBatch(normalized);
       } catch (error) {
@@ -99,8 +116,7 @@ export class InventorySyncService implements IInventorySyncService {
 
     for (const item of normalized.items) {
       try {
-        await marketplace.updateOfferQuantity(item);
-        result.succeeded.push(item.offerId);
+        await this.writeOne(connectionId, marketplace, item, result);
       } catch (error) {
         result.failed.push({
           offerId: item.offerId,
@@ -111,6 +127,66 @@ export class InventorySyncService implements IInventorySyncService {
     }
 
     return result;
+  }
+
+  /**
+   * Write one offer's quantity, ordered per offer when the caller quoted an
+   * observation (#2617).
+   *
+   * Order matters twice, so both are handled here. The lock makes read-compare-
+   * write atomic and keeps a single marketplace call in flight per offer; the
+   * mark decides which of two writes is allowed through. The mark advances only
+   * AFTER a successful write, so a refusal always means a strictly newer
+   * quantity is already live on the channel - a failed newer write cannot lock
+   * an older one out.
+   */
+  private async writeOne(
+    connectionId: string,
+    marketplace: OfferManagerPort,
+    item: UpdateOfferQuantityCommand,
+    result: UpdateOfferQuantitiesBatchResult
+  ): Promise<void> {
+    const observedAt = item.observedAt;
+    if (typeof observedAt !== 'string') {
+      await marketplace.updateOfferQuantity(item);
+      result.succeeded.push(item.offerId);
+      return;
+    }
+
+    const lockKey = offerQuantityWriteLockKey(connectionId, item.offerId);
+    const token = await this.syncLock.acquire(lockKey, OFFER_QUANTITY_WRITE_LOCK_TTL_MS);
+    if (token === null) {
+      // A peer holds the offer. Report it so the job retries with backoff and
+      // re-evaluates against the mark the peer is about to write; swallowing it
+      // would drop this quantity silently.
+      result.failed.push({
+        offerId: item.offerId,
+        errorCode: 'write_contended',
+        message: `Another quantity write for offer ${item.offerId} is in flight`,
+      });
+      return;
+    }
+
+    const cursorKey = offerQuantityObservationCursorKey(item.offerId);
+    try {
+      const lastWritten = await this.syncCursors.getCursor(connectionId, cursorKey);
+      if (!isWritableQuantityObservation(observedAt, lastWritten)) {
+        this.logger.debug(
+          `offer_quantity_write_superseded connection=${connectionId} offer=${item.offerId} ` +
+            `observed=${observedAt} lastWritten=${lastWritten ?? 'none'}`
+        );
+        // Nothing to do rather than a failure: the channel already carries a
+        // newer quantity, so this job's work is done.
+        result.succeeded.push(item.offerId);
+        return;
+      }
+
+      await marketplace.updateOfferQuantity(item);
+      await this.syncCursors.advanceCursor(connectionId, cursorKey, observedAt);
+      result.succeeded.push(item.offerId);
+    } finally {
+      await this.syncLock.release(lockKey, token);
+    }
   }
 
   private buildIdempotencyKey(connectionId: string, offerId: string, quantity: number): string {
