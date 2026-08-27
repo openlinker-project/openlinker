@@ -162,18 +162,6 @@
                     <p class="help-block">{l s='At least 1.0 (default: 2.0)' mod='openlinker'}</p>
                 </div>
             </div>
-
-            <div class="form-group">
-                <label class="control-label col-lg-3">
-                    <span class="label-tooltip" data-toggle="tooltip" title="{l s='Time window (in minutes) for event deduplication. Events with the same properties within this window will generate the same event ID, preventing duplicates.' mod='openlinker'}">
-                        {l s='Deduplication Window (minutes)' mod='openlinker'}
-                    </span>
-                </label>
-                <div class="col-lg-9">
-                    <input type="number" name="DEDUPLICATION_WINDOW_MINUTES" value="{$deduplication_window_minutes|escape:'html':'UTF-8'}" class="form-control" min="1" max="60" />
-                    <p class="help-block">{l s='Between 1 and 60 minutes (default: 1). Prevents duplicate events when hooks fire multiple times rapidly.' mod='openlinker'}</p>
-                </div>
-            </div>
         </div>
 
         <div class="panel-footer">

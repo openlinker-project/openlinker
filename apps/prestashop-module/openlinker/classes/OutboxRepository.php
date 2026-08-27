@@ -64,15 +64,28 @@ class OutboxRepository
     {
         // Generate eventId if not provided
         if (empty($eventData['eventId'])) {
-            $windowMinutes = (int) Configuration::get('DEDUPLICATION_WINDOW_MINUTES') ?: 1;
             $eventData['eventId'] = EventIdGenerator::generateEventId(
                 'prestashop',
                 $eventData['connectionId'],
                 $eventData['eventType'],
                 $eventData['objectType'],
                 $eventData['externalId'],
-                $eventData['occurredAt'] ?? date('Y-m-d H:i:s'),
-                $windowMinutes
+                $eventData['occurredAt'] ?? date('Y-m-d H:i:s')
+            );
+        }
+
+        // A caller may pass dedupKey => null to opt out of coalescing entirely
+        // (the admin "Test connection" probe does, so a stuck row from an
+        // earlier failed probe can never swallow the next one).
+        if (array_key_exists('dedupKey', $eventData)) {
+            $dedupKey = $eventData['dedupKey'];
+        } else {
+            $dedupKey = EventIdGenerator::generateDedupKey(
+                'prestashop',
+                $eventData['connectionId'],
+                $eventData['eventType'],
+                $eventData['objectType'],
+                $eventData['externalId']
             );
         }
 
@@ -80,12 +93,13 @@ class OutboxRepository
         $now = date('Y-m-d H:i:s');
         $occurredAt = $eventData['occurredAt'] ?? $now;
 
-        // Use INSERT IGNORE to handle duplicate event IDs gracefully
-        // If the same event is enqueued multiple times within the same time window
-        // (e.g., hook fires multiple times rapidly), only the first one will be inserted.
-        // This works in conjunction with deterministic event IDs from EventIdGenerator.
+        // INSERT IGNORE collides on `dedup_key`, which is only ever set while a
+        // row is queued. A burst of identical hook fires therefore collapses
+        // onto one row, while a change made after the previous row was
+        // delivered gets a row of its own (#2603).
         $sql = 'INSERT IGNORE INTO `' . $this->tableName . '` (
             `event_id`,
+            `dedup_key`,
             `schema_version`,
             `provider`,
             `connection_id`,
@@ -100,6 +114,7 @@ class OutboxRepository
             `updated_at`
         ) VALUES (
             "' . pSQL($eventData['eventId']) . '",
+            ' . ($dedupKey === null ? 'NULL' : '"' . pSQL($dedupKey) . '"') . ',
             1,
             "prestashop",
             "' . pSQL($eventData['connectionId']) . '",
@@ -120,12 +135,12 @@ class OutboxRepository
 
         // Get the inserted ID, or the existing ID if duplicate was ignored
         $insertId = (int)Db::getInstance()->Insert_ID();
-        
-        // If INSERT IGNORE skipped a duplicate (insertId = 0), fetch the existing record ID
-        // This ensures we return a valid ID even when a duplicate was prevented
-        if ($insertId === 0) {
+
+        // If INSERT IGNORE coalesced onto a queued row (insertId = 0), return
+        // that row's ID so the caller still gets a valid handle.
+        if ($insertId === 0 && $dedupKey !== null) {
             $existingSql = 'SELECT `id` FROM `' . $this->tableName . '`
-                           WHERE `event_id` = "' . pSQL($eventData['eventId']) . '"
+                           WHERE `dedup_key` = "' . pSQL($dedupKey) . '"
                            LIMIT 1';
             $existingRow = Db::getInstance()->getRow($existingSql);
             if ($existingRow && isset($existingRow['id'])) {
@@ -318,8 +333,11 @@ class OutboxRepository
      */
     public function markDelivered($outboxId)
     {
+        // Releasing `dedup_key` is what lets the next change to the same
+        // subject enqueue a row of its own (#2603).
         $sql = 'UPDATE `' . $this->tableName . '`
                 SET `status` = "delivered",
+                    `dedup_key` = NULL,
                     `processing_owner` = NULL,
                     `processing_started_at` = NULL,
                     `delivered_at` = NOW(),
@@ -392,8 +410,11 @@ class OutboxRepository
         // Truncate error message
         $truncatedError = mb_substr($errorMessage, 0, 1000, 'UTF-8');
 
+        // A failed row is terminal, so it must not keep holding the
+        // coalescing key hostage against future changes (#2603).
         $sql = 'UPDATE `' . $this->tableName . '`
                 SET `status` = "failed",
+                    `dedup_key` = NULL,
                     `processing_owner` = NULL,
                     `processing_started_at` = NULL,
                     `last_error` = "' . pSQL($truncatedError) . '",
