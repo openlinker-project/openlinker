@@ -34,8 +34,13 @@ pg "DELETE FROM sync_jobs WHERE \"connectionId\"='$CONN' AND status IN ('queued'
 # Seed the cursor. The value is composite (#2218): {cycleId}:{offset}.
 CYCLE="offsetprobe-$(date +%s)"
 pg "DELETE FROM connection_cursors WHERE \"connectionId\"='$CONN' AND \"cursorKey\"='$CURSOR';" >/dev/null
-pg "INSERT INTO connection_cursors (\"connectionId\", \"cursorKey\", \"cursorValue\", \"updatedAt\") VALUES ('$CONN','$CURSOR','$CYCLE:$OFFSET', now());" >/dev/null
-echo "cursor seeded: $CYCLE:$OFFSET"
+# The column is `value`, not `cursorValue`. NOT silenced: a failed seed here would
+# make the probe measure offset 0 while claiming to measure a late page, which is
+# worse than no measurement at all. The read-back is the proof, not the write.
+pg "INSERT INTO connection_cursors (\"connectionId\", \"cursorKey\", value, \"createdAt\", \"updatedAt\") VALUES ('$CONN','$CURSOR','$CYCLE:$OFFSET', now(), now());"
+SEEDED=$(pg "SELECT value FROM connection_cursors WHERE \"connectionId\"='$CONN' AND \"cursorKey\"='$CURSOR';")
+[ "$SEEDED" = "$CYCLE:$OFFSET" ] || { echo "FATAL: cursor seed failed (read back '"'"'$SEEDED'"'"')" >&2; exit 1; }
+echo "cursor seeded and verified: $SEEDED"
 
 JOBS_BEFORE=$(pg "SELECT COUNT(*) FROM sync_jobs WHERE \"connectionId\"='$CONN';")
 ATT_BEFORE=$(pg "SELECT COALESCE(SUM(attempts),0) FROM sync_jobs WHERE \"connectionId\"='$CONN';")
@@ -55,7 +60,7 @@ done
 ELAPSED=$(( $(date +%s) - START - 25 ))
 ATT_AFTER=$(pg "SELECT COALESCE(SUM(attempts),0) FROM sync_jobs WHERE \"connectionId\"='$CONN';")
 COVERED=$(pg "SELECT COALESCE(SUM(CASE WHEN \"jobType\"='master.product.syncBatch' THEN jsonb_array_length(\"payloadJson\"->'externalIds') ELSE 1 END),0) FROM sync_jobs WHERE \"connectionId\"='$CONN' AND \"jobType\" IN ('master.product.syncBatch','master.product.syncFromSweep') AND \"createdAt\" >= to_timestamp($MARK);")
-CURSOR_AFTER=$(pg "SELECT COALESCE(\"cursorValue\",'(cleared)') FROM connection_cursors WHERE \"connectionId\"='$CONN' AND \"cursorKey\"='$CURSOR';")
+CURSOR_AFTER=$(pg "SELECT COALESCE(value,'(cleared)') FROM connection_cursors WHERE \"connectionId\"='$CONN' AND \"cursorKey\"='$CURSOR';")
 
 docker logs --since "$MARK" "$PS_CONTAINER" > "$OUT/$LABEL.access.log" 2>&1
 {
