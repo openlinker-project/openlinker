@@ -28,6 +28,7 @@ describe('ShipmentRepository', () => {
     id: 'ol_shipment_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
     orderId: 'ol_order_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
     connectionId: '00000000-0000-0000-0000-000000000001',
+    direction: 'outbound',
     shippingMethod: 'paczkomat',
     deliveryIntent: 'pickup_point',
     status: 'draft',
@@ -56,6 +57,7 @@ describe('ShipmentRepository', () => {
     const mockOrmRepo = {
       findOne: jest.fn(),
       find: jest.fn(),
+      findAndCount: jest.fn(),
       save: jest.fn(),
       update: jest.fn(),
     } as unknown as jest.Mocked<Repository<ShipmentOrmEntity>>;
@@ -167,7 +169,7 @@ describe('ShipmentRepository', () => {
     it('should return an empty array when the order has no shipments', async () => {
       ormRepository.find.mockResolvedValue([]);
 
-      const result = await repository.findByOrderId('ol_order_none');
+      const result = await repository.findByOrderId('ol_order_none', 'outbound');
 
       expect(result).toEqual([]);
     });
@@ -175,11 +177,11 @@ describe('ShipmentRepository', () => {
     it('should return a single shipment when there is only one', async () => {
       ormRepository.find.mockResolvedValue([buildOrm()]);
 
-      const result = await repository.findByOrderId('ol_order_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb');
+      const result = await repository.findByOrderId('ol_order_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 'outbound');
 
       expect(result).toHaveLength(1);
       expect(ormRepository.find).toHaveBeenCalledWith({
-        where: { orderId: 'ol_order_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' },
+        where: { orderId: 'ol_order_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', direction: 'outbound' },
         order: { createdAt: 'ASC' },
       });
     });
@@ -203,7 +205,7 @@ describe('ShipmentRepository', () => {
       });
       ormRepository.find.mockResolvedValue([cancelled, reissued]);
 
-      const result = await repository.findByOrderId('ol_order_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb');
+      const result = await repository.findByOrderId('ol_order_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 'outbound');
 
       expect(result).toHaveLength(2);
       expect(result[0]?.status).toBe('cancelled');
@@ -213,11 +215,57 @@ describe('ShipmentRepository', () => {
     });
   });
 
+  describe('direction (#2373)', () => {
+    it('should default an unstated direction to outbound on create', async () => {
+      ormRepository.save.mockImplementation((e) => Promise.resolve(e as ShipmentOrmEntity));
+
+      const result = await repository.create({
+        orderId: 'ol_order_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+        connectionId: '00000000-0000-0000-0000-000000000001',
+        shippingMethod: 'kurier',
+      });
+
+      // The ONE application-side default — the DB column carries none, so this
+      // is what keeps every pre-#2373 caller byte-for-byte unchanged.
+      expect(result.direction).toBe('outbound');
+    });
+
+    it('should persist an explicitly requested return direction', async () => {
+      ormRepository.save.mockImplementation((e) => Promise.resolve(e as ShipmentOrmEntity));
+
+      const result = await repository.create({
+        orderId: 'ol_order_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+        connectionId: '00000000-0000-0000-0000-000000000001',
+        direction: 'return',
+        shippingMethod: 'kurier',
+      });
+
+      expect(result.direction).toBe('return');
+    });
+
+    it('should apply the direction filter on findMany, and omit it when unset', async () => {
+      ormRepository.findAndCount.mockResolvedValue([[buildOrm()], 1]);
+
+      await repository.findMany({ direction: 'return' }, { limit: 10, offset: 0 });
+      expect(ormRepository.findAndCount.mock.calls[0][0]?.where).toMatchObject({
+        direction: 'return',
+      });
+
+      await repository.findMany({}, { limit: 10, offset: 0 });
+      // Deliberately absent rather than defaulted: the operator-facing
+      // `/shipments` list must show both cohorts unless asked otherwise.
+      expect(ormRepository.findAndCount.mock.calls[1][0]?.where).not.toHaveProperty('direction');
+    });
+  });
+
   describe('findActiveByOrderId', () => {
     it('should query with the terminal-status filter and most-recent ordering, then return the row', async () => {
       ormRepository.findOne.mockResolvedValue(buildOrm({ status: 'generated' }));
 
-      const result = await repository.findActiveByOrderId('ol_order_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb');
+      const result = await repository.findActiveByOrderId(
+        'ol_order_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+        'outbound',
+      );
 
       expect(result?.status).toBe('generated');
       // Pin the full query shape — both the WHERE clause (orderId + status
@@ -227,6 +275,7 @@ describe('ShipmentRepository', () => {
       expect(ormRepository.findOne).toHaveBeenCalledWith({
         where: {
           orderId: 'ol_order_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+          direction: 'outbound',
           status: Not(In([...TerminalShipmentStatusValues])),
         },
         order: { createdAt: 'DESC' },
@@ -236,7 +285,7 @@ describe('ShipmentRepository', () => {
     it('should return null when the query returns no rows (no shipments, or every shipment terminal)', async () => {
       ormRepository.findOne.mockResolvedValue(null);
 
-      const result = await repository.findActiveByOrderId('ol_order_none');
+      const result = await repository.findActiveByOrderId('ol_order_none', 'outbound');
 
       expect(result).toBeNull();
     });
@@ -269,6 +318,7 @@ describe('ShipmentRepository', () => {
       const result = await repository.findBranchOneByOrderAndConnection(
         'ol_order_b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1',
         '00000000-0000-0000-0000-000000000001',
+        'outbound',
       );
 
       expect(result?.providerShipmentId).toBeNull();
@@ -276,6 +326,10 @@ describe('ShipmentRepository', () => {
       expect(args.where).toMatchObject({
         orderId: 'ol_order_b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1',
         connectionId: '00000000-0000-0000-0000-000000000001',
+        // #2373: `direction` is part of the widened partial-unique index KEY,
+        // so the lookup must carry it or it would match a sibling row the
+        // index deliberately permits.
+        direction: 'outbound',
       });
       // providerShipmentId is filtered via TypeORM's IsNull() — verify the
       // type-of marker rather than asserting the raw shape.
@@ -289,6 +343,7 @@ describe('ShipmentRepository', () => {
       const result = await repository.findBranchOneByOrderAndConnection(
         'ol_order_none',
         '00000000-0000-0000-0000-000000000001',
+        'outbound',
       );
 
       expect(result).toBeNull();
@@ -441,6 +496,7 @@ describe('ShipmentRepository', () => {
         errorMessage: fullyPopulated.errorMessage,
         providerCode: fullyPopulated.providerCode,
         waybillRelayedAt: fullyPopulated.waybillRelayedAt,
+        direction: fullyPopulated.direction,
         createdAt: fullyPopulated.createdAt,
         updatedAt: fullyPopulated.updatedAt,
       });

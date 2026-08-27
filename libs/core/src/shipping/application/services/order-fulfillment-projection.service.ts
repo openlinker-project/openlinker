@@ -39,7 +39,10 @@ export class OrderFulfillmentProjectionService implements IOrderFulfillmentProje
 
   async recompute(orderId: string): Promise<void> {
     try {
-      const shipments = await this.shipments.findByOrderId(orderId);
+      // Outbound only (#2373): this projection is a statement about
+      // fulfilling the buyer's order, so a return label is a different cohort
+      // and must not contribute to its rollup.
+      const shipments = await this.shipments.findByOrderId(orderId, 'outbound');
       const rollup = deriveFulfillmentRollup(shipments.map((s) => s.status));
       await this.orderRecords.updateFulfillmentState(orderId, rollup);
     } catch (error) {

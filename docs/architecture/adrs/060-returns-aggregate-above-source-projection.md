@@ -123,8 +123,29 @@ Wave 1.
 introduces `ReverseFulfillmentWork`; a source exposing a genuinely machine-shaped return status
 re-opens the verbatim-`rawStatus` rule for that source.
 
+## Amendment (#2373) — `shipments.direction` is actioned, and the discriminator went in the index KEY
+
+The R1 note above says the `UQ_shipments_branch_one_per_order_conn` partial index "must gain
+`direction` in its predicate". #2373 implements it, with two corrections worth recording at the
+source.
+
+**It is a KEY column, not an arm of the WHERE clause.** Adding `direction = 'outbound'` to the
+predicate would preserve the outbound guard and remove the return guard *entirely* — the index
+would simply stop covering return rows, admitting any number of branch-1 return rows per
+`(orderId, connectionId)`. The shipped form is
+`UNIQUE (orderId, connectionId, direction) WHERE "providerShipmentId" IS NULL`, which admits
+exactly the one pair this ADR needs and still refuses a duplicate in either direction.
+
+**The value is `'return'`, not `'inbound'`.** The union is `'outbound' | 'return'`, matching the
+context's own noun everywhere else in this ADR.
+
+The column carries no database default (the migration's is dropped in the same `up()`), three
+repository read predicates take a required `direction` argument and the paginated list takes an
+optional filter — see `docs/architecture-overview.md` § 23 for why that asymmetry is deliberate.
+Nothing writes `'return'` yet; buying a return label remains a later slice.
+
 ## References
 
-- Related issues: #2036, #2076, #2327, #2367, #2368, #2369, #2370
+- Related issues: #2036, #2076, #2327, #2367, #2368, #2369, #2370, #2373
 - Related ADRs: [ADR-044](./044-order-changeset-proposed-then-confirmed.md), [ADR-041](./041-sales-document-routing-policy.md), [ADR-042](./042-fiscalization-capability.md), [ADR-028](./028-order-cancellation-stock-restore.md)
 - Design doc: [DESIGN-oms-authority-model](../../plans/analysis/DESIGN-oms-authority-model.md) §7

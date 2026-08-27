@@ -25,6 +25,7 @@ import {
   Index,
 } from 'typeorm';
 
+import { ShipmentDirection } from '../../../domain/types/shipment-direction.types';
 import { ShipmentStatus } from '../../../domain/types/shipment-status.types';
 import { ShippingMethod } from '../../../domain/types/shipping-method.types';
 import type { DeliveryIntent } from '../../../domain/types/delivery-intent.types';
@@ -39,13 +40,21 @@ import type { DeliveryIntent } from '../../../domain/types/delivery-intent.types
   where: '"providerShipmentId" IS NOT NULL',
 })
 // Branch-1 (#834) dedup guard. At most one branch-1 Shipment per
-// `(orderId, connectionId)` — `providerShipmentId IS NULL` selects the
-// branch-1 set; branches 2/3 carry a non-null provider id and are
+// `(orderId, connectionId, direction)` — `providerShipmentId IS NULL` selects
+// the branch-1 set; branches 2/3 carry a non-null provider id and are
 // disambiguated by the sibling `UQ_shipments_providerShipmentId` above.
 // The `FulfillmentStatusSyncService` find-then-create gate is not
 // atomic; this index is the DB-side backstop against concurrent ticks
 // racing on the same order.
-@Index('UQ_shipments_branch_one_per_order_conn', ['orderId', 'connectionId'], {
+//
+// `direction` is a KEY column, deliberately not an arm of the WHERE clause
+// (#2373, ADR-060). Written as `direction = 'outbound'` in the predicate, the
+// index would keep guarding outbound rows and stop guarding return rows
+// entirely — any number of branch-1 return rows per `(order, connection)`. As
+// a key column it admits exactly the one pair ADR-060 needs (an outbound and a
+// return label for the same order) while still refusing a second row in either
+// direction. Neither too narrow nor too wide; do not move it into the WHERE.
+@Index('UQ_shipments_branch_one_per_order_conn', ['orderId', 'connectionId', 'direction'], {
   unique: true,
   where: '"providerShipmentId" IS NULL',
 })
@@ -58,6 +67,14 @@ export class ShipmentOrmEntity {
 
   @Column({ type: 'uuid' })
   connectionId!: string;
+
+  // Which way the goods travel (#2373). NO column default, deliberately: the
+  // migration adds one only to backfill history and drops it in the same
+  // statement, so an insert that fails to state its direction fails loudly
+  // rather than silently acquiring `'outbound'`. `synchronize` mirrors this
+  // declaration, so the two schema sources agree.
+  @Column({ type: 'text' })
+  direction!: ShipmentDirection;
 
   @Column({ type: 'text' })
   shippingMethod!: ShippingMethod;

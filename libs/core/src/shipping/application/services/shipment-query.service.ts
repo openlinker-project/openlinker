@@ -42,6 +42,7 @@ export class ShipmentQueryService implements IShipmentQueryService {
   }
 
   async getActiveByOrderId(orderId: string): Promise<Shipment | null> {
-    return this.shipments.findActiveByOrderId(orderId);
+    // Outbound only (#2373) — this backs the order-detail "Shipment" panel.
+    return this.shipments.findActiveByOrderId(orderId, 'outbound');
   }
 }

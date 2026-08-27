@@ -24,6 +24,7 @@
  * @module libs/core/src/shipping/domain/entities
  */
 
+import type { ShipmentDirection } from '../types/shipment-direction.types';
 import type { ShipmentStatus } from '../types/shipment-status.types';
 import type { ShippingMethod } from '../types/shipping-method.types';
 import type { DeliveryIntent } from '../types/delivery-intent.types';
@@ -100,5 +101,15 @@ export class Shipment {
     // the first row of that model, not a competing half-measure.
     // Appended last for the same anti-collision rationale as the fields above.
     public readonly waybillRelayedAt: Date | null,
+    // Which way the goods travel (#2373, ADR-060). `'outbound'` is the seller
+    // shipping to a buyer — every row that existed before this field. A return
+    // label shares the table because it IS a shipment (same carrier, same
+    // waybill, same tracking poll), so the discriminator is what keeps the
+    // branch-1 duplicate guard and every read predicate honest.
+    //
+    // Appended last for the same anti-collision rationale as the fields above
+    // — do not splice it into the middle. Required (no default) so every
+    // construction site is forced to state its cohort.
+    public readonly direction: ShipmentDirection,
   ) {}
 }

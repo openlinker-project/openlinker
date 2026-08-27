@@ -39,6 +39,7 @@ function makeShipment(overrides: Partial<Shipment> = {}): Shipment {
     overrides.deliveryIntent ?? null,
     overrides.providerCode ?? null,
     overrides.waybillRelayedAt ?? null,
+    overrides.direction ?? 'outbound',
   );
 }
 
@@ -98,7 +99,9 @@ describe('ShipmentQueryService', () => {
       repository.findActiveByOrderId.mockResolvedValue(shipment);
 
       await expect(service.getActiveByOrderId('ol_order_1')).resolves.toBe(shipment);
-      expect(repository.findActiveByOrderId).toHaveBeenCalledWith('ol_order_1');
+      // The cohort is stated explicitly (#2373) — the panel shows the order's
+      // outbound shipment, never a return label.
+      expect(repository.findActiveByOrderId).toHaveBeenCalledWith('ol_order_1', 'outbound');
     });
   });
 });

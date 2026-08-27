@@ -135,7 +135,7 @@ export class ShipmentDispatchService implements IShipmentDispatchService {
       // key - so the caller can get back a shipment dispatched on a DIFFERENT
       // carrier connection than the one it asked for. Intended: at this grain
       // the answer is "this order is already shipping", not "your carrier is".
-      const active = await this.shipments.findActiveByOrderId(input.orderId);
+      const active = await this.shipments.findActiveByOrderId(input.orderId, 'outbound');
       if (active?.providerShipmentId) {
         this.logger.log(
           `Dispatch for order ${input.orderId} is contended; returning the shipment ` +
@@ -315,7 +315,7 @@ export class ShipmentDispatchService implements IShipmentDispatchService {
     // This find→create is still not atomic on its own, but `dispatch()` now
     // holds a per-order lock around the whole path (#1917), so the concurrent
     // window it used to leave open is closed by construction.
-    const active = await this.shipments.findActiveByOrderId(input.orderId);
+    const active = await this.shipments.findActiveByOrderId(input.orderId, 'outbound');
     if (active) {
       return active;
     }
@@ -361,9 +361,13 @@ export class ShipmentDispatchService implements IShipmentDispatchService {
     // reuse that row instead — the active guard already returned for any
     // still-in-flight attempt, so anything found here is terminal and safe to
     // recycle for this fresh attempt.
+    // Outbound only (#2373). Return-label dispatch is a separate cohort and a
+    // separate row under the widened branch-1 index; it must never reset or
+    // reuse an outbound attempt's row.
     const priorBranchOne = await this.shipments.findBranchOneByOrderAndConnection(
       input.orderId,
       processorConnectionId,
+      'outbound',
     );
 
     // How this attempt's label-shaping parameters compare with the ones the
