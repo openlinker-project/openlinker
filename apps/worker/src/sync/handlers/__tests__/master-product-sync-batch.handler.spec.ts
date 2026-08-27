@@ -88,7 +88,9 @@ describe('MasterProductSyncBatchHandler', () => {
     expect(result).toEqual({ outcome: 'ok' });
     expect(jobEnqueue.enqueueJob).toHaveBeenCalledTimes(1);
     const request = jobEnqueue.enqueueJob.mock.calls[0][0];
-    expect(request.jobType).toBe('master.product.syncByExternalId');
+    // The sweep type, so a page-wide failure cannot fill the realtime lane
+    // with catalogue work (#2594).
+    expect(request.jobType).toBe('master.product.syncFromSweep');
     expect(request.payload).toEqual({
       schemaVersion: 1,
       externalId: '2',

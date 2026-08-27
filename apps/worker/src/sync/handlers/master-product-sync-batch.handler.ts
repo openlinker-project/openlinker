@@ -18,7 +18,7 @@
  *
  * - **A failed product does not fail the page.** The service reports failures
  *   instead of throwing, and this handler re-enqueues each failed id as an
- *   ordinary `master.product.syncByExternalId` job. That keeps the per-product
+ *   per-product `master.product.syncFromSweep` job. That keeps the per-product
  *   retry ladder and dead row the fan-out always had; failing the batch would
  *   let one poisonous product take its ninety-nine page-mates down with it, and
  *   would re-run the successes ten times on the way.
@@ -29,11 +29,11 @@
  *   decision 2) - a deleted product simply stops appearing. The deletion
  *   authority is `master.product.reconcile`, which still fans out per product
  *   and still carries the label.
- * - **The job is `realtime`, matching its per-product predecessor.** The work is
- *   identical, so moving it to another lane would change which starvation cost
- *   ADR-050 assigned it. It therefore sits under the same
- *   `OL_LANE_REALTIME_SCOPE_CAP` - see #2594, which is what actually bounds
- *   catalogue throughput.
+ * - **The job is `bulk`, not `realtime` (#2594).** A sweep child arrives a whole
+ *   budget wide, so its cost of starvation is the one ADR-050 assigns to bulk
+ *   work: it must never take a per-scope slot in front of a buyer's order. It
+ *   sits under `OL_LANE_BULK_SCOPE_CAP`, and so does the per-product child this
+ *   handler falls back to on a failure.
  *
  * @module apps/worker/src/sync/handlers
  */
@@ -163,7 +163,13 @@ export class MasterProductSyncBatchHandler implements SyncJobHandler {
   }
 
   /**
-   * Hand each failed id back to the per-product job.
+   * Hand each failed id back to the per-product sweep job.
+   *
+   * `master.product.syncFromSweep`, never `master.product.syncByExternalId`: a
+   * page-wide failure would otherwise put up to a page of catalogue children
+   * into `realtime`, where the per-scope cap is small and the queue is shared
+   * with order sync (#2594). The retry ladder and the dead row are identical;
+   * only the lane differs.
    *
    * Keyed on the id and the attempt-free namespace `batchRetry`, so the same
    * failure in a later cycle is a fresh key: the batch job's own idempotency key
@@ -185,7 +191,7 @@ export class MasterProductSyncBatchHandler implements SyncJobHandler {
           `(job ${job.id}, connection: ${job.connectionId}): ${failure.message}`
       );
       const request: SyncJobRequest = {
-        jobType: 'master.product.syncByExternalId',
+        jobType: 'master.product.syncFromSweep',
         connectionId: job.connectionId,
         payload: {
           schemaVersion: 1,

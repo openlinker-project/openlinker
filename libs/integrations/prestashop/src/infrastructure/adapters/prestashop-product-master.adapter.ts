@@ -422,6 +422,12 @@ export class PrestashopProductMasterAdapter
    * absent key means "not prefetched" and would send `getProductVariants`
    * back to the shop for the simple products - the majority on an SMB
    * catalogue, and the ones this is cheapest for.
+   *
+   * The empty array is seeded only for ids the products read itself returned.
+   * An empty array is a positive claim that the product has no variants, and
+   * acting on a wrong one stales every real variant and zeroes its offers
+   * (#1689). An absent key is the honest answer for an id the shop did not
+   * confirm, and costs one per-product read.
    */
   private async prefetchCombinations(externalIds: readonly string[]): Promise<void> {
     const combinations = await readAllPrestashopResourcePages<PrestashopCombination>(
@@ -438,7 +444,10 @@ export class PrestashopProductMasterAdapter
     );
 
     for (const externalId of externalIds) {
-      this.combinationsCache.set(String(externalId), []);
+      const key = String(externalId);
+      if (this.productResourceCache.has(key)) {
+        this.combinationsCache.set(key, []);
+      }
     }
     for (const combination of combinations) {
       const productId = String(combination.id_product ?? '');

@@ -63,6 +63,16 @@ describe('InventorySyncService', () => {
         marks.set(`${cid}|${key}`, value);
         return Promise.resolve();
       }),
+      // Same compare-and-set the repository does, so a test can observe a
+      // refused backwards move rather than only the call.
+      advanceCursorIfNewer: jest.fn((cid: string, key: string, value: string) => {
+        const current = marks.get(`${cid}|${key}`) ?? null;
+        if (current !== null && current >= value) {
+          return Promise.resolve(false);
+        }
+        marks.set(`${cid}|${key}`, value);
+        return Promise.resolve(true);
+      }),
     } as unknown as jest.Mocked<ISyncCursorsService>;
 
     const heldLocks = new Set<string>();
@@ -319,6 +329,26 @@ describe('InventorySyncService', () => {
       expect(written).toEqual([9, 2]);
     });
 
+    it('should not move the mark backwards when a slow write outlives its lock', async () => {
+      // The write lock expired mid-call: while this older write was in flight a
+      // peer wrote the newer quantity and marked it. The slow winner must not
+      // set the mark back to its own observation, or the next stale write is
+      // admitted behind it (#2609 review).
+      (marketplace.updateOfferQuantity as unknown as jest.Mock).mockImplementationOnce(() => {
+        marks.set(`${connectionId}|inventory.offerQuantity.observedAt:offer:o1`, newer);
+        return Promise.resolve();
+      });
+
+      await write(9, older);
+
+      expect(marks.get(`${connectionId}|inventory.offerQuantity.observedAt:offer:o1`)).toBe(newer);
+
+      // And the mark still refuses the next older write.
+      const result = await write(7, older);
+      expect(result).toEqual({ succeeded: ['o1'], failed: [] });
+      expect(marketplace.updateOfferQuantity).toHaveBeenCalledTimes(1);
+    });
+
     it('should report a superseded write as done, so the job does not retry forever', async () => {
       await write(2, newer);
       const result = await write(9, older);
@@ -394,7 +424,7 @@ describe('InventorySyncService', () => {
 
       expect(marketplace.updateOfferQuantitiesBatch).toHaveBeenCalledTimes(1);
       expect(marketplace.updateOfferQuantity).not.toHaveBeenCalled();
-      expect(syncCursors.advanceCursor).toHaveBeenCalledTimes(2);
+      expect(syncCursors.advanceCursorIfNewer).toHaveBeenCalledTimes(2);
       expect(syncLock.release).toHaveBeenCalledTimes(2);
     });
 
@@ -419,7 +449,7 @@ describe('InventorySyncService', () => {
       );
       expect(result.succeeded).toEqual(expect.arrayContaining(['o1', 'o2']));
       // Only the item the adapter actually wrote may claim the channel.
-      expect(syncCursors.advanceCursor).toHaveBeenCalledTimes(1);
+      expect(syncCursors.advanceCursorIfNewer).toHaveBeenCalledTimes(1);
     });
 
     it('should not advance the mark for an item the batch reported as failed', async () => {
@@ -435,7 +465,7 @@ describe('InventorySyncService', () => {
         ],
       });
 
-      expect(syncCursors.advanceCursor).toHaveBeenCalledTimes(1);
+      expect(syncCursors.advanceCursorIfNewer).toHaveBeenCalledTimes(1);
     });
   });
 });

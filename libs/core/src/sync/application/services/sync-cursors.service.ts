@@ -35,6 +35,14 @@ export class SyncCursorsService implements ISyncCursorsService {
     await this.cursorRepository.set(connectionId, cursorKey, value);
   }
 
+  async advanceCursorIfNewer(
+    connectionId: string,
+    cursorKey: string,
+    value: string
+  ): Promise<boolean> {
+    return this.cursorRepository.advanceIfGreater(connectionId, cursorKey, value);
+  }
+
   async getMostRecentCursorUpdate(connectionId: string): Promise<Date | null> {
     return this.cursorRepository.findMostRecentUpdate(connectionId);
   }

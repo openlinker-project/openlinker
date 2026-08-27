@@ -13,6 +13,7 @@ import { createMockHttpClient } from '../../../__tests__/mocks/mock-http-client.
 import { createMockIdentifierMapping } from '../../../__tests__/mocks/mock-identifier-mapping.factory';
 import { createTestConnection } from '../../../__tests__/fixtures/connection.fixture';
 import { PrestashopProductMapper } from '../../mappers/prestashop-product.mapper';
+import { PrestashopQueryBuilder } from '../../http/prestashop-query.builder';
 import { isBulkProductReader } from '@openlinker/core/products';
 import type {
   PrestashopProduct,
@@ -157,6 +158,58 @@ describe('PrestashopProductMasterAdapter bulk read (#2593)', () => {
     );
     // Limit is the id count, so the WebService page size cannot cut the tail.
     expect(call?.[2]).toBe(2);
+  });
+
+  /**
+   * The mock returns whatever it is told regardless of the filter, so a
+   * count-and-shape assertion cannot see a wrong query. This one runs the
+   * captured filters through the real builder and reads the string PrestaShop
+   * would receive.
+   */
+  it('should emit a pipe-separated combinations filter, never a comma range', async () => {
+    stubBulkReads([]);
+
+    await adapter.prefetchProducts(['3', '9', '41']);
+
+    const call = httpClient.listResources.mock.calls.find(
+      ([resource]) => resource === 'combinations'
+    );
+    const query = PrestashopQueryBuilder.buildQueryWithPagination(
+      'combinations',
+      call?.[1] as Parameters<typeof PrestashopQueryBuilder.buildQueryWithPagination>[1],
+      undefined,
+      call?.[2],
+      call?.[3]
+    );
+
+    // A comma is a RANGE: `[3,41]` would answer for products 3 to 41 and for
+    // nothing else, so the ids outside the span would be cached as having no
+    // variants and staled.
+    expect(query).toContain('filter[id_product]=[3|9|41]');
+    expect(query).not.toContain('filter[id_product]=[3,9,41]');
+  });
+
+  it('should leave the combinations cache absent for an id the shop did not return', async () => {
+    httpClient.listResources = jest
+      .fn()
+      .mockImplementation((resource: string) =>
+        Promise.resolve(resource === 'products' ? [productRow(3)] : [])
+      );
+    httpClient.getResource = jest
+      .fn()
+      .mockImplementation((_resource: string, id: string) => Promise.resolve(productRow(Number(id))));
+
+    await adapter.prefetchProducts(['3', '9']);
+
+    // Product 9 was never confirmed, so "no variants" is not a claim this
+    // prefetch may make: the per-product read decides.
+    await adapter.getProductVariants('int-9');
+    expect(httpClient.listResources).toHaveBeenCalledWith(
+      'combinations',
+      { custom: { id_product: '9' } },
+      expect.anything(),
+      expect.anything()
+    );
   });
 
   it('should fall back to per-product reads when the bulk read fails', async () => {

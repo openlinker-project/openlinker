@@ -182,8 +182,11 @@ Sweep-triggered propagation is therefore not tolerable-slow background work, so 
 separate and the job type stays single. The lane tally is unchanged at 12 / 15 / 5 / 6.
 
 **`fan-out` defaults to `total: 8, perScope: 4`, from `1 / 1`.** A cap of 1 fitted the lane's other
-members, which are **cron-paced** - one tick per connection, each additionally serialised by its own
-per-(kind, connection) `SyncLockPort` lock, so raising the cap cannot multiply catalogue fan-out.
+members, which are **cron-paced** - one tick per connection, each additionally serialised one level
+down, so raising the cap cannot multiply catalogue fan-out. Precisely: the four catalogue enumerators
+take a per-(kind, connection) `SyncLockPort` lock in the handler, while `marketplace.orders.poll` has
+no handler lock and is instead serialised inside `OrderIngestionService`, which takes its own
+per-connection lock and reports `skippedDueToLock` as a success.
 Propagation is **event-paced**: one job per changed stock row, thousands per sweep. Three notes:
 
 - The raise is not backed by a per-destination measurement the way `bulk`'s is, and decision 6 still
@@ -198,12 +201,70 @@ Propagation is **event-paced**: one job per changed stock row, thousands per swe
 **Consequence for the out-of-order quantity-write guard (#2617).** More propagation in flight means
 more often two writes for one offer, so the guard fires more. It still holds: it takes a per-(connection,
 offer) lock, compares the quoted observation against the mark, and advances the mark only after a
-successful write, so a refusal always means a strictly newer quantity is already live. The **ceiling**
+successful write, so a refusal always means a strictly newer quantity is already live. That advance is
+a **compare-and-set** (`ISyncCursorsService.advanceCursorIfNewer`, one `ON CONFLICT ... WHERE` statement),
+so monotonicity does not depend on the 30 s write lock surviving the marketplace call: a call that
+outran its TTL could otherwise set the mark BACK to its own older observation after a peer had written
+a newer quantity, and admit a stale write behind it - the very defect the guard exists to prevent. The **ceiling**
 on concurrent writes to one offer is unchanged, because `realtime`'s per-scope cap was not raised -
 what changes is frequency. What that frequency exposes is the guard's known cost: a contended write is
 reported as a failure, so it consumes a retry attempt and could eventually dead-letter under sustained
 contention. That is a defect in the retry classification, not in the ordering rule, and it is why this
 change and that fix belong in the same release.
+
+## Amendment (#2594 review) - the rolling scan sweeps needed the lock the caps used to give them
+
+Raising `bulk`'s per-scope cap from 1 to 8 removed an implicit serialisation. At 1, two ticks of one
+connection's rolling scan sweep could never overlap. Eight `bulk` sweeps were relying on that without
+owning a lock: the offer status sync, the offer-mapping sync, the shop product status sync, the
+shipment and fulfillment status syncs, the fx stamp sweep, the tax-rate backfill and
+`marketplace.offer.pauseStaleSweep`. Only `destination.taxonomy.sync` and the four catalogue
+enumerators held one.
+
+**Six of them are locked, and the split is by whether the sweep keeps a cursor.** A sweep that reads a
+scan cursor, does a page, then writes the cursor back is a read-modify-write: two overlapping runs
+race it, one advances past the page the other is still reading, and a whole cycle of rows is skipped
+with no error anywhere. The offer status sync, offer-mapping sync, shop product status sync, shipment
+status sync, fulfillment status sync and tax-rate backfill all have that shape and now take a
+per-(kind, connection) lock through one shared helper (`apps/worker/src/sync/scan-sweep-lock.ts`),
+in the shape the catalogue enumerators already prove: contention is not a failure, the run reports
+`ok` without touching the cursor, and the TTL bounds a lost release
+(`OL_SCAN_SWEEP_LOCK_TTL_MS`). One helper rather than six copies, because a per-handler copy is six
+places for the release to be forgotten.
+
+**Two are deliberately left unlocked.** `marketplace.order.fxStampSweep` and
+`marketplace.offer.pauseStaleSweep` keep no cursor. Each re-derives its work from a predicate on every
+run - the unstamped-order predicate, and `product_variants.isStale` - and each write is conditional or
+idempotent: the FX stamp is a narrow `WHERE reportingCurrency IS NULL` update, and the pause re-asserts
+quantity 0. Two overlapping runs therefore duplicate reads and converge on the same state; they cannot
+skip work, because there is no position to advance past. Locking them would buy nothing and would add
+a second thing to reason about on the one path (#1689's pause) whose whole point is that it re-asserts
+what an event may have lost.
+
+## Amendment (#2594 / #2609 review) - the pool sizes with the caps
+
+Both raises left the database connection pool where it was. `libs/shared/src/database/database.module.ts`
+set no `extra.max`, so pg's default of **10** applied while concurrent handler capacity in one process
+went from 9 to **26** (4 + 12 + 2 + 8). That is a real ceiling and it fails quietly: pg's
+`connectionTimeoutMillis` also defaults to 0, so an over-subscribed pool queues without erroring and
+the symptom is "the raised caps did nothing". A handler holding a transaction connection while
+awaiting a second pooled query - the order read model's `upsertWithLineItems`, the webhook gate - can
+also deadlock the pool once every connection is held that way.
+
+The pool is therefore **derived from the lane caps, not picked**: at least one connection per
+concurrent handler slot, plus headroom for that nesting and for the runner's own claim and heartbeat
+queries. `OL_DB_POOL_MAX` defaults to **40** against the caps' 26, and `OL_DB_POOL_CONNECTION_TIMEOUT_MS`
+defaults to 10 s so exhaustion surfaces as a job failure on the retry ladder rather than a stall. The
+rule for a future raise is written beside the caps in `apps/worker/.env.example`: keep the pool at or
+above the sum of the four TOTAL caps, plus headroom.
+
+Two limits. The pool, like the caps, bounds **one process** - N worker replicas and the api each hold
+their own, so the deployment total is this value times the process count and must stay under the
+server's `max_connections`. And a fourth limit belongs beside the three in the #2594 amendment: some
+`bulk` work reaches a public API that the per-connection rate limiter does not cover.
+`marketplace.order.fxStampSweep`'s NBP/ECB reads have no connection to key a bucket on (see § Currency),
+so lane concurrency was the only thing bounding them. Low risk today - one job per tick, its per-order
+children stayed in `realtime` - but it is the constraint a future raise has to argue against.
 
 ## Alternatives considered
 

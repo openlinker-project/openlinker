@@ -121,7 +121,18 @@ describe('PrestashopQueryBuilder', () => {
         status: ['pending', 'processing'],
       };
       const query = PrestashopQueryBuilder.buildQuery('orders', filters);
-      expect(query).toContain('filter[current_state]=[pending,processing]');
+      expect(query).toContain('filter[current_state]=[pending|processing]');
+    });
+
+    it('should pipe-join a custom filter list so PrestaShop reads it as an OR list', () => {
+      const query = PrestashopQueryBuilder.buildQuery('combinations', {
+        custom: { id_product: ['3', '9', '41'] },
+      });
+
+      // A comma is a RANGE in PrestaShop, so `[3,41]` would return every product
+      // between 3 and 41 and nothing for the ids outside that span (#2593).
+      expect(query).toContain('filter[id_product]=[3|9|41]');
+      expect(query).not.toContain('filter[id_product]=[3,9,41]');
     });
 
     it('should handle custom filters', () => {

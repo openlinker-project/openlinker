@@ -192,20 +192,30 @@ export class PrestashopQueryBuilder {
     }
 
     // Status filters
+    // Pipe-joined for the same reason `filter[id]` is: a list of states is an OR
+    // list, and a comma would ask PrestaShop for every state id between the
+    // lowest and the highest one named.
     if (filters?.status) {
       const statusArray = Array.isArray(filters.status) ? filters.status : [filters.status];
-      const statusParam = statusArray.map(String).join(',');
+      const statusParam = statusArray.map(String).join('|');
       params.push(`filter[current_state]=[${statusParam}]`);
     }
 
     // Custom filters
     // PrestaShop filter syntax: filter[field]=[value]
     // Values must be URL-encoded to handle special characters (e.g., +, @, = in email addresses)
+    //
+    // An array value is an OR list, so it is pipe-joined, never comma-joined:
+    // PrestaShop reads `[1,9]` as the RANGE 1 to 9 and `[1|9]` as exactly those
+    // two values. A comma here asked the shop for every row between the lowest
+    // and the highest value in the list and returned nothing for the rest, which
+    // a caller reading "no rows for this id" cannot tell apart from a real
+    // absence.
     if (filters?.custom) {
       for (const [key, value] of Object.entries(filters.custom)) {
         this.assertFilterKey(key);
         if (Array.isArray(value)) {
-          const arrayParam = value.map((v) => encodeURIComponent(String(v))).join(',');
+          const arrayParam = value.map((v) => encodeURIComponent(String(v))).join('|');
           params.push(`filter[${key}]=[${arrayParam}]`);
         } else {
           const encodedValue = encodeURIComponent(String(value));
