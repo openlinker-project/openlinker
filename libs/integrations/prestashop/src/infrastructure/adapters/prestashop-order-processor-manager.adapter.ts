@@ -24,10 +24,7 @@ import type {
   OrderLifecycleEvent,
   OrderWritebackResult,
 } from '@openlinker/core/orders';
-import type {
-  FulfillmentStatusReader,
-  FulfillmentStatusSnapshot,
-} from '@openlinker/core/orders';
+import type { FulfillmentStatusReader, FulfillmentStatusSnapshot } from '@openlinker/core/orders';
 import {
   extractTrackingFromCarriers,
   extractTrackingFromOrder,
@@ -530,7 +527,7 @@ export class PrestashopOrderProcessorManagerAdapter
           const imported = await this.openlinkerModuleClient.importOrder({
             idCart: Number.parseInt(String(externalCartId), 10),
             idOrderState: stateId,
-            amountPaid: order.totals.total,
+            amountPaid: this.resolveAmountPaid(order),
             // Matches the payment provenance the WS path recorded — the module
             // delegates to ps_checkpayment::validateOrder.
             paymentMethod: 'Check payment',
@@ -544,7 +541,9 @@ export class PrestashopOrderProcessorManagerAdapter
           );
         } catch (createError) {
           const msg = createError instanceof Error ? createError.message : String(createError);
-          this.logger.error(`Failed to create order via OL module importOrder: ${formatBodyForLog(msg)}`);
+          this.logger.error(
+            `Failed to create order via OL module importOrder: ${formatBodyForLog(msg)}`
+          );
           throw createError;
         }
       }
@@ -1023,10 +1022,7 @@ export class PrestashopOrderProcessorManagerAdapter
   }): Promise<FulfillmentStatusSnapshot> {
     const { externalOrderId } = input;
     try {
-      const order = await this.httpClient.getResource<PrestashopOrder>(
-        'orders',
-        externalOrderId,
-      );
+      const order = await this.httpClient.getResource<PrestashopOrder>('orders', externalOrderId);
       const stateId = order.current_state !== undefined ? String(order.current_state) : null;
       const state = stateId !== null ? await this.lookupOrderState(stateId) : null;
       // Lazy carriers fetch: most PS configurations populate `shipping_number`
@@ -1036,10 +1032,11 @@ export class PrestashopOrderProcessorManagerAdapter
       // scale without changing observable behaviour.
       const trackingFromOrder = extractTrackingFromOrder(order);
       const trackingNumber =
-        trackingFromOrder ?? extractTrackingFromCarriers(
+        trackingFromOrder ??
+        extractTrackingFromCarriers(
           await this.httpClient.listResources<PrestashopOrderCarrier>('order_carriers', {
             custom: { id_order: externalOrderId },
-          }),
+          })
         );
       return mapToFulfillmentStatusSnapshot(order, state, trackingNumber);
     } catch (error) {
@@ -1050,7 +1047,7 @@ export class PrestashopOrderProcessorManagerAdapter
         // order through the dispatch-notify failure path (#871) if any
         // branch-2/3 sibling exists.
         this.logger.warn(
-          `PrestaShop order ${externalOrderId} not found during fulfillment-status read (connection: ${this.connection.id})`,
+          `PrestaShop order ${externalOrderId} not found during fulfillment-status read (connection: ${this.connection.id})`
         );
         return { status: null, trackingNumber: null, deliveredAt: null };
       }
@@ -1315,6 +1312,40 @@ export class PrestashopOrderProcessorManagerAdapter
         `id_order_state=${derived} (connection=${this.connection.id})`
     );
     return derived;
+  }
+
+  /**
+   * What the buyer has ALREADY paid, which is not the same as what the order is
+   * worth (#2600).
+   *
+   * PrestaShop records two figures. `total_paid` is the order's value, rebuilt
+   * from the cart (pinned lines plus sidecar shipping). `total_paid_real` is
+   * what has actually reached the seller, and it is this value - sent with
+   * `$dont_touch_amount = true`, so PrestaShop stores it verbatim without
+   * re-rounding (ADR-016). The source is authoritative for both: `totals.total`
+   * is the buyer-paid order value (ADR-014), and `paymentStatus` is the
+   * source's own statement of whether that money has arrived.
+   *
+   * For cash on delivery nothing has arrived, so the correct figure is 0 and
+   * the full value stays outstanding for the courier to collect. Sending the
+   * total instead marks the order settled and the shop's books show income it
+   * never received. The same holds for an order still awaiting payment.
+   *
+   * The distinction comes only from the neutral `paymentStatus`, never from a
+   * payment-module name: those are free text that differs per shop and per
+   * language. A source that reports nothing keeps the previous behaviour rather
+   * than defaulting every order to unpaid.
+   */
+  private resolveAmountPaid(order: OrderCreate): number {
+    if (order.paymentStatus === 'cod' || order.paymentStatus === 'awaiting') {
+      this.logger.log(
+        `Importing PrestaShop order as not-yet-paid: paymentStatus='${order.paymentStatus}' ` +
+          `orderNumber=${order.orderNumber ?? 'N/A'} amountPaid=0 ` +
+          `outstanding=${order.totals.total} (connection: ${this.connection.id})`
+      );
+      return 0;
+    }
+    return order.totals.total;
   }
 
   // ─────────────────────────────────────────────────────────────────────────

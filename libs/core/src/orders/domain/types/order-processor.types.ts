@@ -16,6 +16,7 @@ import type {
   OrderPickupPoint,
 } from '../types/order.types';
 import type { OrderStatus } from './order.types';
+import type { PaymentStatus } from './payment-status.types';
 
 /**
  * Source reference for an order being created on a destination platform.
@@ -91,6 +92,23 @@ export interface OrderCreate {
    * (e.g. carrier mappings keyed by the source `methodId`).
    */
   source?: OrderSourceRef;
+
+  /**
+   * Source-reported payment status (#928), carried through so a destination can
+   * tell what the buyer has actually paid from what the order is worth (#2600).
+   *
+   * A cash-on-delivery order is worth its full total and nothing has reached
+   * the seller, so a destination that records both figures must record zero
+   * received. It is deliberately the source's own explicit statement, never
+   * inferred from a payment-method name: those are free text, they differ per
+   * shop and per language, and getting it wrong writes a false figure into the
+   * merchant's books.
+   *
+   * Absent means the source did not report it, which is not the same as
+   * `'paid'` - a destination that cannot tell keeps its prior behaviour rather
+   * than guessing zero and leaving every order looking unpaid.
+   */
+  paymentStatus?: PaymentStatus;
 
   /**
    * Optional metadata for the order
