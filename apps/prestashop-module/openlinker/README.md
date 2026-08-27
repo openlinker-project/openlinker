@@ -103,7 +103,7 @@ Set up a system cron to trigger webhook delivery:
 
 ```bash
 # Every 2 minutes
-*/2 * * * * curl -s "https://your-shop.com/index.php?fc=module&module=openlinker&controller=cron&token=YOUR_CRON_TOKEN" > /dev/null 2>&1
+*/2 * * * * curl -s -X POST -H "X-OpenLinker-Cron-Token: YOUR_CRON_TOKEN" "https://your-shop.com/index.php?fc=module&module=openlinker&controller=cron" > /dev/null 2>&1
 ```
 
 **Recommended frequency**: Every 1-5 minutes

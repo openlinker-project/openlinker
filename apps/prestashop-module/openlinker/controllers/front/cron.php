@@ -2,8 +2,11 @@
 /**
  * Cron Front Controller
  *
- * Handles cron-triggered webhook delivery. Secured with token parameter.
- * URL: .../index.php?fc=module&module=openlinker&controller=cron&token=...
+ * Handles cron-triggered webhook delivery.
+ *
+ * URL:    POST .../index.php?fc=module&module=openlinker&controller=cron
+ * Auth:   the cron token, in the X-OpenLinker-Cron-Token header or a `token`
+ *         POST field. Never in the query string (#2619).
  *
  * This controller processes webhook events from the outbox table:
  * 1. Requeues stale processing rows (recovery from crashes)
@@ -33,22 +36,42 @@ class OpenLinkerCronModuleFrontController extends ModuleFrontController
     {
         parent::initContent();
 
-        // Security: Validate token
-        $token = Tools::getValue('token');
-        $expectedToken = Configuration::get('OPENLINKER_CRON_TOKEN');
+        $classesDir = dirname(__FILE__) . '/../../classes/';
+        require_once($classesDir . 'CronTokenVerifier.php');
 
-        if (empty($token) || $token !== $expectedToken) {
-            http_response_code(403);
+        // Only POST is meaningful: delivery changes state, and refusing the
+        // wrong method costs nothing.
+        if (!isset($_SERVER['REQUEST_METHOD']) || $_SERVER['REQUEST_METHOD'] !== 'POST') {
+            http_response_code(405);
             header('Content-Type: application/json');
             echo json_encode([
-                'error' => 'Forbidden',
-                'message' => 'Invalid or missing token'
+                'error' => 'Method Not Allowed',
+                'message' => 'Send the delivery request as POST.'
             ]);
             exit;
         }
 
-        // Ensure classes are loaded
-        $classesDir = dirname(__FILE__) . '/../../classes/';
+        $token = CronTokenVerifier::presentedToken($_SERVER, $_POST);
+        $expectedToken = (string) Configuration::get('OPENLINKER_CRON_TOKEN');
+
+        if (!CronTokenVerifier::matches($token, $expectedToken)) {
+            http_response_code(403);
+            header('Content-Type: application/json');
+            echo json_encode([
+                'error' => 'Forbidden',
+                // A token in the URL is the old install instruction, so the
+                // operator gets told what changed instead of just a 403.
+                'message' => CronTokenVerifier::hasQueryStringToken($_GET)
+                    ? 'The cron token is no longer read from the URL, because a URL is'
+                        . ' written to server logs and browser history. Use the cron file'
+                        . ' shipped with the module, or send the token in the'
+                        . ' X-OpenLinker-Cron-Token header.'
+                    : 'Invalid or missing token'
+            ]);
+            exit;
+        }
+
+        // Ensure the remaining classes are loaded
         
         if (!class_exists('EventIdGenerator')) {
             require_once($classesDir . 'EventIdGenerator.php');

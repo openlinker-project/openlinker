@@ -34,7 +34,7 @@
  * @see {@link HmacRequestVerifier} for inbound HMAC verification
  *
  * @author OpenLinker Team
- * @version 1.5.0
+ * @version 1.6.0
  */
 
 if (!defined('_PS_VERSION_')) {
@@ -96,7 +96,7 @@ class OpenLinker extends CarrierModule
     {
         $this->name = 'openlinker';
         $this->tab = 'administration';
-        $this->version = '1.5.0';
+        $this->version = '1.6.0';
         $this->author = 'OpenLinker Team';
         $this->need_instance = 0;
         $this->ps_versions_compliancy = [
@@ -148,6 +148,11 @@ class OpenLinker extends CarrierModule
 
         // Create cart-shipping sidecar table (dynamic-carrier capability)
         if (!$this->createCartShippingTable()) {
+            return false;
+        }
+
+        // Create the replay-guard table (#2619)
+        if (!$this->createRequestNonceTable()) {
             return false;
         }
 
@@ -224,6 +229,7 @@ class OpenLinker extends CarrierModule
 
         // Constants below and the statistics read both come from this class.
         self::requireOutboxRepository();
+        require_once dirname(__FILE__) . '/classes/SecretDisplay.php';
 
         // Handle form submission
         if (Tools::isSubmit('submit' . $this->name)) {
@@ -248,8 +254,15 @@ class OpenLinker extends CarrierModule
             'form_action' => $this->context->link->getAdminLink('AdminModules', true) . '&configure=' . $this->name . '&tab_module=' . $this->tab . '&module_name=' . $this->name,
             'base_url' => Configuration::get('OPENLINKER_BASE_URL'),
             'connection_id' => Configuration::get('OPENLINKER_CONNECTION_ID'),
-            'webhook_secret' => Configuration::get('OPENLINKER_WEBHOOK_SECRET'),
-            'cron_token' => Configuration::get('OPENLINKER_CRON_TOKEN'),
+            // Never the values themselves: an input value is page source, and
+            // that is how the secret reached browser caches and password
+            // managers (#2619).
+            'webhook_secret_hint' => SecretDisplay::hint(
+                Configuration::get('OPENLINKER_WEBHOOK_SECRET')
+            ),
+            'webhook_secret_set_at' => Configuration::get('OPENLINKER_WEBHOOK_SECRET_SET_AT'),
+            'cron_token_hint' => SecretDisplay::hint(Configuration::get('OPENLINKER_CRON_TOKEN')),
+            'cron_token_set_at' => Configuration::get('OPENLINKER_CRON_TOKEN_SET_AT'),
             'enable_product_events' => Configuration::get('ENABLE_PRODUCT_EVENTS'),
             'enable_stock_events' => Configuration::get('ENABLE_STOCK_EVENTS'),
             'enable_order_events' => Configuration::get('ENABLE_ORDER_EVENTS'),
@@ -294,22 +307,35 @@ class OpenLinker extends CarrierModule
             Configuration::updateGlobalValue('OPENLINKER_CONNECTION_ID', $connectionId);
         }
 
-        // Validate and save webhook secret
-        $webhookSecret = Tools::getValue('OPENLINKER_WEBHOOK_SECRET');
-        if (empty($webhookSecret)) {
+        // Save the webhook secret. The field renders empty, so blank means
+        // "unchanged" and only a shop that has never had one is an error.
+        $storedSecret = (string) Configuration::get('OPENLINKER_WEBHOOK_SECRET');
+        $newSecret = SecretDisplay::resolveSubmitted(
+            Tools::getValue('OPENLINKER_WEBHOOK_SECRET'),
+            $storedSecret
+        );
+        if ($newSecret !== null) {
+            Configuration::updateGlobalValue('OPENLINKER_WEBHOOK_SECRET', $newSecret);
+            Configuration::updateGlobalValue(
+                'OPENLINKER_WEBHOOK_SECRET_SET_AT',
+                date('Y-m-d H:i:s')
+            );
+        } elseif ($storedSecret === '') {
             $errors[] = $this->l('Webhook secret is required');
-        } else {
-            Configuration::updateGlobalValue('OPENLINKER_WEBHOOK_SECRET', $webhookSecret);
         }
 
         // Save cron token (regenerate if requested)
         if (Tools::getValue('regenerate_cron_token')) {
-            $cronToken = $this->generateRandomToken();
-            Configuration::updateGlobalValue('OPENLINKER_CRON_TOKEN', $cronToken);
+            Configuration::updateGlobalValue('OPENLINKER_CRON_TOKEN', $this->generateRandomToken());
+            Configuration::updateGlobalValue('OPENLINKER_CRON_TOKEN_SET_AT', date('Y-m-d H:i:s'));
         } else {
-            $cronToken = Tools::getValue('OPENLINKER_CRON_TOKEN');
-            if (!empty($cronToken)) {
-                Configuration::updateGlobalValue('OPENLINKER_CRON_TOKEN', $cronToken);
+            $newCronToken = SecretDisplay::resolveSubmitted(
+                Tools::getValue('OPENLINKER_CRON_TOKEN'),
+                Configuration::get('OPENLINKER_CRON_TOKEN')
+            );
+            if ($newCronToken !== null) {
+                Configuration::updateGlobalValue('OPENLINKER_CRON_TOKEN', $newCronToken);
+                Configuration::updateGlobalValue('OPENLINKER_CRON_TOKEN_SET_AT', date('Y-m-d H:i:s'));
             }
         }
 
@@ -885,6 +911,29 @@ class OpenLinker extends CarrierModule
     }
 
     /**
+     * Create the replay-guard table
+     *
+     * One row per accepted signed request, keyed by a hash of its signature and
+     * pruned by age (#2619). Kept in its own table so a replay check never
+     * contends with outbox delivery.
+     *
+     * @return bool
+     */
+    public function createRequestNonceTable()
+    {
+        require_once dirname(__FILE__) . '/classes/ReplayGuard.php';
+
+        $sql = 'CREATE TABLE IF NOT EXISTS `' . _DB_PREFIX_ . ReplayGuard::TABLE . '` (
+            `nonce` CHAR(64) NOT NULL,
+            `created_at` DATETIME NOT NULL,
+            PRIMARY KEY (`nonce`),
+            KEY `created_at` (`created_at`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;';
+
+        return Db::getInstance()->execute($sql);
+    }
+
+    /**
      * Drop cart-shipping sidecar table (optional, for uninstall)
      *
      * @return bool
@@ -1273,6 +1322,7 @@ class OpenLinker extends CarrierModule
         Configuration::updateGlobalValue('OPENLINKER_CONNECTION_ID', '');
         Configuration::updateGlobalValue('OPENLINKER_WEBHOOK_SECRET', '');
         Configuration::updateGlobalValue('OPENLINKER_CRON_TOKEN', $this->generateRandomToken());
+        Configuration::updateGlobalValue('OPENLINKER_CRON_TOKEN_SET_AT', date('Y-m-d H:i:s'));
         Configuration::updateGlobalValue('ENABLE_PRODUCT_EVENTS', 1);
         Configuration::updateGlobalValue('ENABLE_STOCK_EVENTS', 1);
         Configuration::updateGlobalValue('ENABLE_ORDER_EVENTS', 1);
@@ -1294,7 +1344,9 @@ class OpenLinker extends CarrierModule
         Configuration::deleteByName('OPENLINKER_BASE_URL');
         Configuration::deleteByName('OPENLINKER_CONNECTION_ID');
         Configuration::deleteByName('OPENLINKER_WEBHOOK_SECRET');
+        Configuration::deleteByName('OPENLINKER_WEBHOOK_SECRET_SET_AT');
         Configuration::deleteByName('OPENLINKER_CRON_TOKEN');
+        Configuration::deleteByName('OPENLINKER_CRON_TOKEN_SET_AT');
         Configuration::deleteByName('ENABLE_PRODUCT_EVENTS');
         Configuration::deleteByName('ENABLE_STOCK_EVENTS');
         Configuration::deleteByName('ENABLE_ORDER_EVENTS');

@@ -47,8 +47,15 @@
                     </span>
                 </label>
                 <div class="col-lg-9">
-                    <input type="password" name="OPENLINKER_WEBHOOK_SECRET" value="{$webhook_secret|escape:'html':'UTF-8'}" class="form-control" required />
-                    <p class="help-block">{l s='Never share this secret. Must match OpenLinker environment variable.' mod='openlinker'}</p>
+                    <input type="password" name="OPENLINKER_WEBHOOK_SECRET" value="" autocomplete="new-password" class="form-control" {if !$webhook_secret_hint}required{/if} />
+                    <p class="help-block">
+                        {if $webhook_secret_hint}
+                            {l s='A secret is saved' mod='openlinker'} ({$webhook_secret_hint|escape:'html':'UTF-8'}{if $webhook_secret_set_at}, {l s='set on' mod='openlinker'} {$webhook_secret_set_at|escape:'html':'UTF-8'}{/if}).
+                            {l s='Leave the field empty to keep it. Type a new secret to replace it.' mod='openlinker'}
+                        {else}
+                            {l s='No secret is saved yet. It must match the one OpenLinker uses for this shop.' mod='openlinker'}
+                        {/if}
+                    </p>
                 </div>
             </div>
 
@@ -60,14 +67,20 @@
                 </label>
                 <div class="col-lg-9">
                     <div class="input-group">
-                        <input type="text" name="OPENLINKER_CRON_TOKEN" value="{$cron_token|escape:'html':'UTF-8'}" class="form-control" />
+                        <input type="password" name="OPENLINKER_CRON_TOKEN" value="" autocomplete="new-password" class="form-control" />
                         <span class="input-group-btn">
                             <button type="submit" name="regenerate_cron_token" value="1" class="btn btn-default">
                                 {l s='Regenerate' mod='openlinker'}
                             </button>
                         </span>
                     </div>
-                    <p class="help-block">{l s='Use this token in your cron URL to secure the endpoint' mod='openlinker'}</p>
+                    <p class="help-block">
+                        {if $cron_token_hint}
+                            {l s='A token is saved' mod='openlinker'} ({$cron_token_hint|escape:'html':'UTF-8'}{if $cron_token_set_at}, {l s='set on' mod='openlinker'} {$cron_token_set_at|escape:'html':'UTF-8'}{/if}).
+                            {l s='Leave the field empty to keep it.' mod='openlinker'}
+                        {/if}
+                        {l s='The token is never read from the cron URL. Use the cron file shipped with the module, or send the token in the X-OpenLinker-Cron-Token header.' mod='openlinker'}
+                    </p>
                 </div>
             </div>
         </div>

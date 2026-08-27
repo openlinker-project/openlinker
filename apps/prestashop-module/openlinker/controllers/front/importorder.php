@@ -48,6 +48,7 @@
  *        | 'cart-not-found' | 'cart-empty'}
  *   401 {ok: false, error: <HmacRequestVerifier reason>}
  *   405 {ok: false, error: 'method-not-allowed'}
+ *   409 {ok: false, error: 'replayed-request'}
  *   422 {ok: false, error: 'payment-module-unavailable' | 'payment-module-inactive'}
  *   502 {ok: false, error: 'validate-order-failed' | 'validate-order-aborted'
  *        | 'line-price-pin-failed', detail: <string>}
@@ -100,6 +101,7 @@ class OpenLinkerImportOrderModuleFrontController extends ModuleFrontController
         require_once $this->module->getLocalPath() . 'classes/HmacRequestVerifier.php';
         require_once $this->module->getLocalPath() . 'classes/PaymentModuleGate.php';
         require_once $this->module->getLocalPath() . 'classes/LinePriceRequest.php';
+        require_once $this->module->getLocalPath() . 'classes/ReplayGuard.php';
 
         $rawBody         = (string) @file_get_contents('php://input');
         $timestampHeader = $this->headerValue('HTTP_X_OPENLINKER_TIMESTAMP');
@@ -110,6 +112,14 @@ class OpenLinkerImportOrderModuleFrontController extends ModuleFrontController
             HmacRequestVerifier::verify($rawBody, $timestampHeader, $signatureHeader, $secret);
         } catch (Exception $e) {
             $this->jsonError(401, $e->getMessage());
+            return;
+        }
+
+        // This is the money path, so a captured request must not be usable
+        // twice. Claimed after verification so an unsigned caller cannot fill
+        // the table (#2619).
+        if (!ReplayGuard::claim('importorder', $signatureHeader)) {
+            $this->jsonError(409, 'replayed-request');
             return;
         }
 
