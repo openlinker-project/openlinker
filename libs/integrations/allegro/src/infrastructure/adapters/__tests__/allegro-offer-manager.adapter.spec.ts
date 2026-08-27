@@ -10,6 +10,7 @@ import { AllegroOfferManagerAdapter } from '../allegro-offer-manager.adapter';
 import type { IAllegroHttpClient } from '../../http/allegro-http-client.interface';
 import type { IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 import type { AllegroQuantityCommandRepositoryPort } from '../../../domain/ports/allegro-quantity-command-repository.port';
+import { AllegroQuantityCommand } from '../../../domain/entities/allegro-quantity-command.entity';
 import { Connection } from '@openlinker/core/identifier-mapping';
 import type {
   AllegroOfferQuantityChangeCommandResponse,
@@ -27,6 +28,7 @@ import {
   isCategoryPathReader,
   isEanCategoryMatcher,
   isEanCategoryMatcherStreaming,
+  isPendingQuantityAckReconciler,
   isOfferSmartClassificationReader,
   isOfferStatusReader,
   isSafetyAttachmentUploader,
@@ -186,20 +188,6 @@ describe('AllegroOfferManagerAdapter', () => {
   });
 
   describe('updateOfferQuantity', () => {
-    beforeEach(() => {
-      // Mock polling response for command status (SUCCESS by default)
-      httpClient.get.mockResolvedValue({
-        data: {
-          id: 'command-123',
-          taskCount: 1,
-          completedTaskCount: 1,
-          tasks: [{ offerId: 'offer-1', status: 'SUCCESS' }],
-        },
-        status: 200,
-        headers: {},
-      });
-    });
-
     it('should submit offer quantity change command successfully', async () => {
       const mockCommandResponse: AllegroOfferQuantityChangeCommandResponse = {
         id: 'command-123',
@@ -235,7 +223,7 @@ describe('AllegroOfferManagerAdapter', () => {
       );
     });
 
-    it('should map QUEUED status correctly', async () => {
+    it('should resolve once Allegro acknowledges QUEUED, without polling for a terminal status (#2621)', async () => {
       const mockCommandResponse: AllegroOfferQuantityChangeCommandResponse = {
         id: 'command-123',
         status: 'QUEUED',
@@ -252,9 +240,32 @@ describe('AllegroOfferManagerAdapter', () => {
         quantity: 10,
         idempotencyKey: 'idempotency-key-123',
       });
+
+      expect(httpClient.get).not.toHaveBeenCalled();
     });
 
-    it('should map REJECTED status correctly', async () => {
+    it('should resolve once Allegro acknowledges ACCEPTED, without polling for a terminal status (#2621)', async () => {
+      const mockCommandResponse: AllegroOfferQuantityChangeCommandResponse = {
+        id: 'command-123',
+        status: 'ACCEPTED',
+      };
+
+      httpClient.put.mockResolvedValueOnce({
+        data: mockCommandResponse,
+        status: 200,
+        headers: {},
+      });
+
+      await adapter.updateOfferQuantity({
+        offerId: 'offer-1',
+        quantity: 10,
+        idempotencyKey: 'idempotency-key-123',
+      });
+
+      expect(httpClient.get).not.toHaveBeenCalled();
+    });
+
+    it('should throw immediately when Allegro synchronously REJECTS the command, without polling (#2621)', async () => {
       const mockCommandResponse: AllegroOfferQuantityChangeCommandResponse = {
         id: 'command-123',
         status: 'REJECTED',
@@ -272,11 +283,15 @@ describe('AllegroOfferManagerAdapter', () => {
         headers: {},
       });
 
-      await adapter.updateOfferQuantity({
-        offerId: 'offer-1',
-        quantity: -1,
-        idempotencyKey: 'idempotency-key-123',
-      });
+      await expect(
+        adapter.updateOfferQuantity({
+          offerId: 'offer-1',
+          quantity: -1,
+          idempotencyKey: 'idempotency-key-123',
+        })
+      ).rejects.toThrow('INVALID_QUANTITY: Quantity must be positive');
+
+      expect(httpClient.get).not.toHaveBeenCalled();
     });
 
     it('should generate deterministic commandId from idempotency key', async () => {
@@ -323,87 +338,25 @@ describe('AllegroOfferManagerAdapter', () => {
       ).rejects.toThrow('Network error');
     });
 
-    it('should throw when polling returns FAIL status', async () => {
-      const mockCommandResponse: AllegroOfferQuantityChangeCommandResponse = {
-        id: 'command-fail',
-        status: 'ACCEPTED',
-      };
-
+    it('should resolve without waiting on any timer (#2621 — does not hold the job)', async () => {
       httpClient.put.mockResolvedValueOnce({
-        data: mockCommandResponse,
+        data: { id: 'command-fast', status: 'ACCEPTED' } as AllegroOfferQuantityChangeCommandResponse,
         status: 200,
         headers: {},
       });
 
-      httpClient.get.mockResolvedValue({
-        data: {
-          id: 'command-fail',
-          taskCount: 1,
-          tasks: [
-            {
-              offerId: 'offer-1',
-              status: 'FAIL',
-              errors: [{ code: 'INVALID', message: 'bad quantity' }],
-            },
-          ],
-        },
-        status: 200,
-        headers: {},
-      });
-
-      await expect(
-        adapter.updateOfferQuantity({
-          offerId: 'offer-1',
-          quantity: 10,
-          idempotencyKey: 'fail-key',
-        })
-      ).rejects.toThrow('Allegro quantity command command-fail failed');
-    });
-
-    it('should not throw when polling times out (still pending)', async () => {
-      jest.useFakeTimers();
-
-      const mockCommandResponse: AllegroOfferQuantityChangeCommandResponse = {
-        id: 'command-pending',
-        status: 'ACCEPTED',
-      };
-
-      httpClient.put.mockResolvedValueOnce({
-        data: mockCommandResponse,
-        status: 200,
-        headers: {},
-      });
-
-      // Return pending status on every poll attempt
-      httpClient.get.mockResolvedValue({
-        data: {
-          id: 'command-pending',
-          taskCount: 1,
-          tasks: [{ offerId: 'offer-1', status: 'NEW' }],
-        },
-        status: 200,
-        headers: {},
-      });
-
-      // Start the update (will be pending due to polling sleeps)
-      const promise = adapter.updateOfferQuantity({
+      // Real timers throughout — if this were still blocking on the old
+      // 2s-initial/30s-max/5-attempt backoff, this test would time out.
+      await adapter.updateOfferQuantity({
         offerId: 'offer-1',
         quantity: 10,
-        idempotencyKey: 'pending-key',
+        idempotencyKey: 'fast-key',
       });
 
-      // Advance timers through all polling attempts
-      for (let i = 0; i < 5; i++) {
-        await jest.advanceTimersByTimeAsync(60000);
-      }
-
-      // Should not throw — timeout is treated as non-fatal
-      await expect(promise).resolves.toBeUndefined();
-
-      jest.useRealTimers();
+      expect(httpClient.get).not.toHaveBeenCalled();
     });
 
-    it('should persist succeeded status via command repository', async () => {
+    it('should persist the initial queued/accepted status via command repository, never a terminal one', async () => {
       const commandRepository: jest.Mocked<AllegroQuantityCommandRepositoryPort> = {
         findByCommandId: jest.fn(),
         find: jest.fn(),
@@ -434,7 +387,136 @@ describe('AllegroOfferManagerAdapter', () => {
         idempotencyKey: 'repo-key',
       });
 
+      expect(commandRepository.create).toHaveBeenCalledWith(
+        expect.objectContaining({ commandId: 'cmd-1', status: 'accepted' })
+      );
+      // Reconciling to a terminal status is reconcilePendingQuantityAcks's job now.
+      expect(commandRepository.updateStatus).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('reconcilePendingQuantityAcks', () => {
+    const fastAdapter = (commandRepository: jest.Mocked<AllegroQuantityCommandRepositoryPort>) =>
+      new AllegroOfferManagerAdapter(
+        connectionId,
+        httpClient,
+        uploadHttpClient,
+        identifierMapping,
+        connection,
+        commandRepository,
+        { initialDelayMs: 1, maxDelayMs: 1, maxAttempts: 2, backoffMultiplier: 1 }
+      );
+
+    const makeRepository = (): jest.Mocked<AllegroQuantityCommandRepositoryPort> => ({
+      findByCommandId: jest.fn(),
+      find: jest.fn(),
+      create: jest.fn(),
+      updateStatus: jest.fn(),
+    });
+
+    const pendingCommand = (overrides: Partial<AllegroQuantityCommand> = {}) =>
+      new AllegroQuantityCommand(
+        'id-1',
+        overrides.commandId ?? 'cmd-1',
+        connectionId,
+        overrides.offerId ?? 'offer-1',
+        overrides.quantity ?? 10,
+        overrides.status ?? 'queued',
+        null,
+        new Date(),
+        new Date()
+      );
+
+    it('should be recognised by the PendingQuantityAckReconciler guard', () => {
+      expect(isPendingQuantityAckReconciler(adapter)).toBe(true);
+    });
+
+    it('should no-op when no command repository is configured', async () => {
+      const result = await adapter.reconcilePendingQuantityAcks(100);
+      expect(result).toEqual({ reconciled: 0, stillPending: 0 });
+    });
+
+    it('should resolve a queued command to succeeded once Allegro reports SUCCESS', async () => {
+      const commandRepository = makeRepository();
+      commandRepository.find.mockImplementation(({ status }) =>
+        Promise.resolve(status === 'queued' ? [pendingCommand()] : [])
+      );
+      httpClient.get.mockResolvedValueOnce({
+        data: {
+          id: 'cmd-1',
+          taskCount: 1,
+          completedTaskCount: 1,
+          tasks: [{ offerId: 'offer-1', status: 'SUCCESS' }],
+        },
+        status: 200,
+        headers: {},
+      });
+
+      const result = await fastAdapter(commandRepository).reconcilePendingQuantityAcks(100);
+
       expect(commandRepository.updateStatus).toHaveBeenCalledWith('cmd-1', 'succeeded');
+      expect(result).toEqual({ reconciled: 1, stillPending: 0 });
+    });
+
+    it('should resolve a pending command to failed once Allegro reports FAIL (the pending-then-failed path)', async () => {
+      const commandRepository = makeRepository();
+      commandRepository.find.mockImplementation(({ status }) =>
+        Promise.resolve(status === 'accepted' ? [pendingCommand({ status: 'accepted' })] : [])
+      );
+      httpClient.get.mockResolvedValueOnce({
+        data: {
+          id: 'cmd-1',
+          taskCount: 1,
+          tasks: [
+            {
+              offerId: 'offer-1',
+              status: 'FAIL',
+              errors: [{ code: 'INVALID', message: 'bad quantity' }],
+            },
+          ],
+        },
+        status: 200,
+        headers: {},
+      });
+
+      const result = await fastAdapter(commandRepository).reconcilePendingQuantityAcks(100);
+
+      expect(commandRepository.updateStatus).toHaveBeenCalledWith(
+        'cmd-1',
+        'failed',
+        expect.stringContaining('INVALID')
+      );
+      expect(result).toEqual({ reconciled: 1, stillPending: 0 });
+    });
+
+    it('should leave a still-non-terminal command untouched for the next pass', async () => {
+      const commandRepository = makeRepository();
+      commandRepository.find.mockImplementation(({ status }) =>
+        Promise.resolve(status === 'queued' ? [pendingCommand()] : [])
+      );
+      // Never reaches a terminal status within the (fast, 2-attempt) backoff.
+      httpClient.get.mockResolvedValue({
+        data: { id: 'cmd-1', taskCount: 1, tasks: [{ offerId: 'offer-1', status: 'NEW' }] },
+        status: 200,
+        headers: {},
+      });
+
+      const result = await fastAdapter(commandRepository).reconcilePendingQuantityAcks(100);
+
+      expect(commandRepository.updateStatus).not.toHaveBeenCalled();
+      expect(result).toEqual({ reconciled: 0, stillPending: 1 });
+    });
+
+    it('should never throw for a whole-command reconcile failure', async () => {
+      const commandRepository = makeRepository();
+      commandRepository.find.mockImplementation(({ status }) =>
+        Promise.resolve(status === 'queued' ? [pendingCommand()] : [])
+      );
+      httpClient.get.mockRejectedValue(new Error('network blip'));
+
+      await expect(
+        fastAdapter(commandRepository).reconcilePendingQuantityAcks(100)
+      ).resolves.toEqual({ reconciled: 0, stillPending: 1 });
     });
   });
 

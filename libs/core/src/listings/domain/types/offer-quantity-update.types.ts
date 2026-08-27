@@ -47,3 +47,16 @@ export interface UpdateOfferQuantitiesBatchResult {
   succeeded: string[]; // offerIds
   failed: UpdateOfferQuantitiesBatchFailure[];
 }
+
+/**
+ * Result of one reconcile pass over an adapter's own outstanding
+ * asynchronously-acknowledged quantity writes (#2621). Deliberately coarse —
+ * the pending-write bookkeeping (which commands, which offers) is adapter-
+ * internal, so core only needs aggregate counts to log/report a job result.
+ */
+export interface PendingQuantityAckReconcileResult {
+  /** Resolved to a terminal outcome (succeeded or failed) during this pass. */
+  reconciled: number;
+  /** Still outstanding — left for the next reconcile pass. */
+  stillPending: number;
+}
