@@ -599,3 +599,38 @@ have produced. **Write the assertion against what the seed path writes, not
 against what the design says it should.** And when a test's actual output is
 richer than expected, establish whether the surplus is a defect or a fact before
 editing either side — here it was the feature working.
+
+### A barrel import and a module edge are different facts — "the edge already exists" must name which
+
+**#2383.** A plan justified a new cross-context read with *"`orders` is an edge
+`returns` **already has** — this is a new method on it, not a new edge."* That
+was **true of the TypeScript barrel** (`libs/core/src/returns/**` really does
+import `@openlinker/core/orders`) and **false of the NestJS module graph**, which
+is the level dependency injection actually runs on: `ReturnsModule` deliberately
+excludes `OrdersModule` and says so in three separate docblocks (*"NOT
+`OrdersModule`, which imports seven siblings this context has no business
+pulling in"*), reaching `orders` only through the leaf `OrderChangesModule` and a
+report-don't-persist seam.
+
+Injecting the service into `ReturnsService` would therefore have added exactly
+the edge that module was designed to avoid — and the claim would have survived
+review, because a reviewer checking "does returns import orders?" gets `yes`.
+
+**The claim survives review precisely because it is true in one sense.** That is
+the tell: a dependency assertion that does not name its LEVEL is not yet a fact.
+There are at least three, and they disagree routinely:
+
+1. **Barrel/type import** — `import type { X } from '@openlinker/core/orders'`.
+   Costs nothing at runtime, so a context can carry dozens.
+2. **NestJS module edge** — `imports: [OrdersModule]`. Pulls that module's whole
+   transitive provider graph into this one, which is what the exclusion above is
+   protecting against.
+3. **Constructor DI on an injected token** — needs (2) to be satisfied
+   *somewhere*, which is why "the interface layer already holds it" can be a
+   complete answer while "the context already imports it" is not.
+
+**Check the module file, not the import list.** And when the answer is that the
+edge exists one layer up, that is usually the better place for the code: here it
+moved the refund read to a controller whose module already imported
+`OrdersModule`, which produced **strictly less coupling than the plan
+described** — the rare direction for a mid-implementation correction.
