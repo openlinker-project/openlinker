@@ -693,7 +693,7 @@ class OutboxRepository
 
         $this->endpointFailureRecordedThisRun = true;
 
-        Configuration::updateValue(
+        Configuration::updateGlobalValue(
             self::ENDPOINT_FAILURE_STREAK_CONFIG_KEY,
             self::nextEndpointFailureStreak($this->readEndpointFailureStreak())
         );
@@ -725,7 +725,7 @@ class OutboxRepository
             return;
         }
 
-        Configuration::updateValue(self::ENDPOINT_FAILURE_STREAK_CONFIG_KEY, 0);
+        Configuration::updateGlobalValue(self::ENDPOINT_FAILURE_STREAK_CONFIG_KEY, 0);
         $this->resetNextAttemptForPendingEvents();
     }
 
@@ -776,7 +776,7 @@ class OutboxRepository
         // Stamped before the deletes, not after. A pass that dies half way
         // then waits for the next interval instead of being retried on every
         // cron tick, which on a broken table would be a hot loop.
-        Configuration::updateValue(self::RETENTION_LAST_RUN_CONFIG_KEY, $now);
+        Configuration::updateGlobalValue(self::RETENTION_LAST_RUN_CONFIG_KEY, $now);
 
         $fullBudget = self::retentionBudgetPerPass();
         $budget = $fullBudget;
@@ -800,7 +800,7 @@ class OutboxRepository
             // Rewind past the gate so the next tick picks up where this one
             // stopped. Written after the deletes succeeded, so a pass that
             // throws leaves the pre-delete stamp standing.
-            Configuration::updateValue(
+            Configuration::updateGlobalValue(
                 self::RETENTION_LAST_RUN_CONFIG_KEY,
                 $now - self::RETENTION_MIN_INTERVAL_SECONDS
             );

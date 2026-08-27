@@ -139,6 +139,22 @@ class Configuration
 
         return true;
     }
+
+    /** @var array<string, string> Values written at global scope. */
+    public static $globalValues = [];
+
+    public static function updateGlobalValue($key, $value)
+    {
+        self::$globalValues[$key] = $value;
+        self::$values[$key] = $value;
+
+        return true;
+    }
+
+    public static function loadConfiguration()
+    {
+        return true;
+    }
 }
 
 class PrestaShopLogger

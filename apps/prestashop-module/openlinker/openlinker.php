@@ -34,7 +34,7 @@
  * @see {@link HmacRequestVerifier} for inbound HMAC verification
  *
  * @author OpenLinker Team
- * @version 1.4.0
+ * @version 1.5.0
  */
 
 if (!defined('_PS_VERSION_')) {
@@ -96,7 +96,7 @@ class OpenLinker extends CarrierModule
     {
         $this->name = 'openlinker';
         $this->tab = 'administration';
-        $this->version = '1.4.0';
+        $this->version = '1.5.0';
         $this->author = 'OpenLinker Team';
         $this->need_instance = 0;
         $this->ps_versions_compliancy = [
@@ -281,7 +281,7 @@ class OpenLinker extends CarrierModule
         } elseif (!filter_var($baseUrl, FILTER_VALIDATE_URL)) {
             $errors[] = $this->l('Base URL must be a valid URL');
         } else {
-            Configuration::updateValue('OPENLINKER_BASE_URL', $baseUrl);
+            Configuration::updateGlobalValue('OPENLINKER_BASE_URL', $baseUrl);
         }
 
         // Validate and save connection ID (UUID format)
@@ -291,7 +291,7 @@ class OpenLinker extends CarrierModule
         } elseif (!preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', $connectionId)) {
             $errors[] = $this->l('Connection ID must be a valid UUID');
         } else {
-            Configuration::updateValue('OPENLINKER_CONNECTION_ID', $connectionId);
+            Configuration::updateGlobalValue('OPENLINKER_CONNECTION_ID', $connectionId);
         }
 
         // Validate and save webhook secret
@@ -299,45 +299,45 @@ class OpenLinker extends CarrierModule
         if (empty($webhookSecret)) {
             $errors[] = $this->l('Webhook secret is required');
         } else {
-            Configuration::updateValue('OPENLINKER_WEBHOOK_SECRET', $webhookSecret);
+            Configuration::updateGlobalValue('OPENLINKER_WEBHOOK_SECRET', $webhookSecret);
         }
 
         // Save cron token (regenerate if requested)
         if (Tools::getValue('regenerate_cron_token')) {
             $cronToken = $this->generateRandomToken();
-            Configuration::updateValue('OPENLINKER_CRON_TOKEN', $cronToken);
+            Configuration::updateGlobalValue('OPENLINKER_CRON_TOKEN', $cronToken);
         } else {
             $cronToken = Tools::getValue('OPENLINKER_CRON_TOKEN');
             if (!empty($cronToken)) {
-                Configuration::updateValue('OPENLINKER_CRON_TOKEN', $cronToken);
+                Configuration::updateGlobalValue('OPENLINKER_CRON_TOKEN', $cronToken);
             }
         }
 
         // Save event type toggles
-        Configuration::updateValue('ENABLE_PRODUCT_EVENTS', (int)Tools::getValue('ENABLE_PRODUCT_EVENTS'));
-        Configuration::updateValue('ENABLE_STOCK_EVENTS', (int)Tools::getValue('ENABLE_STOCK_EVENTS'));
-        Configuration::updateValue('ENABLE_ORDER_EVENTS', (int)Tools::getValue('ENABLE_ORDER_EVENTS'));
+        Configuration::updateGlobalValue('ENABLE_PRODUCT_EVENTS', (int)Tools::getValue('ENABLE_PRODUCT_EVENTS'));
+        Configuration::updateGlobalValue('ENABLE_STOCK_EVENTS', (int)Tools::getValue('ENABLE_STOCK_EVENTS'));
+        Configuration::updateGlobalValue('ENABLE_ORDER_EVENTS', (int)Tools::getValue('ENABLE_ORDER_EVENTS'));
 
         // Validate and save advanced settings
         $batchSize = (int)Tools::getValue('BATCH_SIZE');
         if ($batchSize < 1 || $batchSize > 200) {
             $errors[] = $this->l('Batch size must be between 1 and 200');
         } else {
-            Configuration::updateValue('BATCH_SIZE', $batchSize);
+            Configuration::updateGlobalValue('BATCH_SIZE', $batchSize);
         }
 
         $maxRetryAttempts = (int)Tools::getValue('MAX_RETRY_ATTEMPTS');
         if ($maxRetryAttempts < 1 || $maxRetryAttempts > 100) {
             $errors[] = $this->l('Max retry attempts must be between 1 and 100');
         } else {
-            Configuration::updateValue('MAX_RETRY_ATTEMPTS', $maxRetryAttempts);
+            Configuration::updateGlobalValue('MAX_RETRY_ATTEMPTS', $maxRetryAttempts);
         }
 
         $backoffMultiplier = (float)Tools::getValue('RETRY_BACKOFF_MULTIPLIER');
         if ($backoffMultiplier < 1.0) {
             $errors[] = $this->l('Retry backoff multiplier must be at least 1.0');
         } else {
-            Configuration::updateValue('RETRY_BACKOFF_MULTIPLIER', $backoffMultiplier);
+            Configuration::updateGlobalValue('RETRY_BACKOFF_MULTIPLIER', $backoffMultiplier);
         }
 
         self::requireOutboxRepository();
@@ -355,7 +355,7 @@ class OpenLinker extends CarrierModule
                 $retentionMax
             );
         } else {
-            Configuration::updateValue('OPENLINKER_OUTBOX_RETENTION_DAYS', $retentionDays);
+            Configuration::updateGlobalValue('OPENLINKER_OUTBOX_RETENTION_DAYS', $retentionDays);
         }
 
         // Return messages
@@ -989,7 +989,7 @@ class OpenLinker extends CarrierModule
             return false;
         }
 
-        Configuration::updateValue(
+        Configuration::updateGlobalValue(
             self::DYNAMIC_CARRIER_CONFIG_KEY,
             (int) $carrier->id
         );
@@ -1069,7 +1069,7 @@ class OpenLinker extends CarrierModule
         // existing installs (validateOrder import path, #905).
         $this->registerHook('actionEmailSendBefore');
         if (Configuration::get(self::IMPORT_SEND_MAIL_CONFIG_KEY) === false) {
-            Configuration::updateValue(self::IMPORT_SEND_MAIL_CONFIG_KEY, 0);
+            Configuration::updateGlobalValue(self::IMPORT_SEND_MAIL_CONFIG_KEY, 0);
         }
 
         $carrierId = (int) Configuration::get(self::DYNAMIC_CARRIER_CONFIG_KEY);
@@ -1238,7 +1238,7 @@ class OpenLinker extends CarrierModule
         $idNew = (int) $params['carrier']->id;
 
         if ($idOld === (int) Configuration::get(self::DYNAMIC_CARRIER_CONFIG_KEY)) {
-            Configuration::updateValue(self::DYNAMIC_CARRIER_CONFIG_KEY, $idNew);
+            Configuration::updateGlobalValue(self::DYNAMIC_CARRIER_CONFIG_KEY, $idNew);
         }
     }
 
@@ -1269,19 +1269,19 @@ class OpenLinker extends CarrierModule
      */
     private function setDefaultConfiguration()
     {
-        Configuration::updateValue('OPENLINKER_BASE_URL', '');
-        Configuration::updateValue('OPENLINKER_CONNECTION_ID', '');
-        Configuration::updateValue('OPENLINKER_WEBHOOK_SECRET', '');
-        Configuration::updateValue('OPENLINKER_CRON_TOKEN', $this->generateRandomToken());
-        Configuration::updateValue('ENABLE_PRODUCT_EVENTS', 1);
-        Configuration::updateValue('ENABLE_STOCK_EVENTS', 1);
-        Configuration::updateValue('ENABLE_ORDER_EVENTS', 1);
-        Configuration::updateValue('BATCH_SIZE', self::DEFAULT_BATCH_SIZE);
-        Configuration::updateValue('MAX_RETRY_ATTEMPTS', self::DEFAULT_MAX_RETRY_ATTEMPTS);
-        Configuration::updateValue('RETRY_BACKOFF_MULTIPLIER', self::DEFAULT_RETRY_BACKOFF_MULTIPLIER);
-        Configuration::updateValue('OPENLINKER_OUTBOX_RETENTION_DAYS', self::DEFAULT_OUTBOX_RETENTION_DAYS);
+        Configuration::updateGlobalValue('OPENLINKER_BASE_URL', '');
+        Configuration::updateGlobalValue('OPENLINKER_CONNECTION_ID', '');
+        Configuration::updateGlobalValue('OPENLINKER_WEBHOOK_SECRET', '');
+        Configuration::updateGlobalValue('OPENLINKER_CRON_TOKEN', $this->generateRandomToken());
+        Configuration::updateGlobalValue('ENABLE_PRODUCT_EVENTS', 1);
+        Configuration::updateGlobalValue('ENABLE_STOCK_EVENTS', 1);
+        Configuration::updateGlobalValue('ENABLE_ORDER_EVENTS', 1);
+        Configuration::updateGlobalValue('BATCH_SIZE', self::DEFAULT_BATCH_SIZE);
+        Configuration::updateGlobalValue('MAX_RETRY_ATTEMPTS', self::DEFAULT_MAX_RETRY_ATTEMPTS);
+        Configuration::updateGlobalValue('RETRY_BACKOFF_MULTIPLIER', self::DEFAULT_RETRY_BACKOFF_MULTIPLIER);
+        Configuration::updateGlobalValue('OPENLINKER_OUTBOX_RETENTION_DAYS', self::DEFAULT_OUTBOX_RETENTION_DAYS);
         // Default: suppress buyer mail on OL-imported orders (#905).
-        Configuration::updateValue(self::IMPORT_SEND_MAIL_CONFIG_KEY, 0);
+        Configuration::updateGlobalValue(self::IMPORT_SEND_MAIL_CONFIG_KEY, 0);
     }
 
     /**
