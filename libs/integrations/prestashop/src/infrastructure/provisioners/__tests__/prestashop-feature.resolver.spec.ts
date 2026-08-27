@@ -61,13 +61,13 @@ describe('PrestashopFeatureResolver', () => {
 
     expect(client.listResources).toHaveBeenCalledWith(
       'product_features',
-      { display: '[id,name]' },
+      { display: '[id,name]', sort: ['id_ASC'] },
       100,
       0
     );
     expect(client.listResources).toHaveBeenCalledWith(
       'product_feature_values',
-      { display: '[id,value]' },
+      { display: '[id,value]', sort: ['id_ASC'] },
       100,
       0
     );

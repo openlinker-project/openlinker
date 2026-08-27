@@ -465,7 +465,10 @@ class OpenLinker extends CarrierModule
                 $repository->markDelivered($event->id);
                 return $this->displayConfirmation($this->l('Test connection successful! Event delivered to OpenLinker.'));
             } else {
-                $repository->scheduleRetry($event->id, 0, 'Test connection failed');
+                // A diagnostic probe, so its failure must not raise the
+                // endpoint delay floor for real events an operator is waiting
+                // on while they fix the config.
+                $repository->scheduleRetry($event->id, 0, 'Test connection failed', false);
                 return $this->displayError($this->l('Test connection failed. Check logs for details.'));
             }
         } catch (Exception $e) {

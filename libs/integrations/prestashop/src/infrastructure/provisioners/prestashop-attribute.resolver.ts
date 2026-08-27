@@ -20,8 +20,8 @@
  */
 import { Logger } from '@openlinker/shared/logging';
 import {
-  PRESTASHOP_UNNARROWED_MAX_PAGES,
-  readAllPrestashopPages,
+  PRESTASHOP_UNNARROWED_MAX_ROWS,
+  readAllPrestashopResourcePages,
 } from '../http/prestashop-paged-read';
 import type { IPrestashopWebserviceClient } from '../http/prestashop-webservice.client.interface';
 import type {
@@ -79,33 +79,17 @@ export class PrestashopAttributeResolver {
     // so they get the wide page budget. An option value missing from this map
     // silently loses a variant's attribute name (#2608).
     const [options, values] = await Promise.all([
-      readAllPrestashopPages<PrestashopProductOption>(
-        (limit, offset) =>
-          client.listResources<PrestashopProductOption>(
-            'product_options',
-            { display: '[id,name]' },
-            limit,
-            offset
-          ),
-        {
-          resource: 'product_options',
-          connectionId,
-          maxPages: PRESTASHOP_UNNARROWED_MAX_PAGES,
-        }
+      readAllPrestashopResourcePages<PrestashopProductOption>(
+        client,
+        'product_options',
+        { display: '[id,name]' },
+        { connectionId, maxRows: PRESTASHOP_UNNARROWED_MAX_ROWS }
       ),
-      readAllPrestashopPages<PrestashopProductOptionValue>(
-        (limit, offset) =>
-          client.listResources<PrestashopProductOptionValue>(
-            'product_option_values',
-            { display: '[id,name,id_attribute_group]' },
-            limit,
-            offset
-          ),
-        {
-          resource: 'product_option_values',
-          connectionId,
-          maxPages: PRESTASHOP_UNNARROWED_MAX_PAGES,
-        }
+      readAllPrestashopResourcePages<PrestashopProductOptionValue>(
+        client,
+        'product_option_values',
+        { display: '[id,name,id_attribute_group]' },
+        { connectionId, maxRows: PRESTASHOP_UNNARROWED_MAX_ROWS }
       ),
     ]);
 

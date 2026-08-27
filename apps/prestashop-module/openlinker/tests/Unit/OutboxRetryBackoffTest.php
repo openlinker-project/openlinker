@@ -139,6 +139,55 @@ class OutboxRetryBackoffTest extends TestCase
         $this->assertSame($max, OutboxRepository::nextEndpointFailureStreak($max + 100));
     }
 
+    // The endpoint-blocked threshold (#2614 review, B1)
+
+    public function testTheThresholdIsWhereTheRowCurveOutgrowsTheEndpointCeiling(): void
+    {
+        $threshold = OutboxRepository::endpointBlockedMaxAttempts(self::BASE, 2.0);
+
+        // A row at the threshold is still waiting no longer than the endpoint
+        // ceiling, so recovery may release it.
+        $this->assertLessThanOrEqual(
+            OutboxRepository::ENDPOINT_MAX_DELAY_SECONDS,
+            self::BASE * pow(2.0, $threshold - 1)
+        );
+
+        // One attempt further, the wait is the row's own and must survive.
+        $this->assertGreaterThan(
+            OutboxRepository::ENDPOINT_MAX_DELAY_SECONDS,
+            self::BASE * pow(2.0, $threshold)
+        );
+    }
+
+    public function testAPoisonRowCannotBurnItsAttemptBudgetInAsManyCronPasses(): void
+    {
+        // The B1 scenario: a mixed pass keeps recovering, so every release the
+        // threshold allows happens immediately. What must remain is the row's
+        // own ladder above the threshold, which has to cost far more than the
+        // 25 cron minutes the unconditional release cost.
+        $maxAttempts = 25;
+        $released = OutboxRepository::endpointBlockedMaxAttempts(self::BASE, 2.0);
+
+        $survivingLadderSeconds = 0;
+        for ($attempts = $released + 1; $attempts < $maxAttempts; $attempts++) {
+            // Worst case for the row: every draw jitters the wait down as far
+            // as it can go.
+            $survivingLadderSeconds += $this->delay($attempts - 1, 0, 0.0);
+        }
+
+        $this->assertGreaterThan(24 * 3600, $survivingLadderSeconds);
+    }
+
+    public function testAFlatCurveStillYieldsAUsableThreshold(): void
+    {
+        // A shop that set the multiplier to 1 has no growing row curve, so no
+        // row can be told apart this way and the answer must still be defined.
+        $this->assertSame(
+            OutboxRepository::ENDPOINT_FAILURE_STREAK_MAX,
+            OutboxRepository::endpointBlockedMaxAttempts(self::BASE, 1.0)
+        );
+    }
+
     public function testAGarbageStreakIsTreatedAsNone(): void
     {
         $this->assertSame(1, OutboxRepository::nextEndpointFailureStreak(-5));

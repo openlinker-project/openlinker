@@ -60,13 +60,13 @@ describe('PrestashopAttributeResolver', () => {
 
     expect(client.listResources).toHaveBeenCalledWith(
       'product_options',
-      { display: '[id,name]' },
+      { display: '[id,name]', sort: ['id_ASC'] },
       100,
       0
     );
     expect(client.listResources).toHaveBeenCalledWith(
       'product_option_values',
-      { display: '[id,name,id_attribute_group]' },
+      { display: '[id,name,id_attribute_group]', sort: ['id_ASC'] },
       100,
       0
     );

@@ -176,6 +176,13 @@ export class PrestashopWebserviceClient implements IPrestashopWebserviceClient {
     return parsed as T;
   }
 
+  /**
+   * The page size collection reads use when the caller passes no explicit limit.
+   */
+  getPageSize(): number {
+    return this.config.pageSize ?? 100;
+  }
+
   async listResources<T = unknown>(
     resource: string,
     filters?: PrestashopQueryFilters,

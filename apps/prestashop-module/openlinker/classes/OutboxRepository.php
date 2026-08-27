@@ -340,6 +340,36 @@ class OutboxRepository
     }
 
     /**
+     * Release rows that were waiting on the endpoint, not on themselves (#2614)
+     *
+     * Recovery has to release the backlog an outage built up, and must not
+     * touch a row that is waiting because it keeps failing on its own. Those
+     * two look identical in the table - both are pending with a future
+     * next_attempt_at - so the row's own attempt count is the discriminator.
+     * Below maxAttempts the wait in effect can only have come from the endpoint
+     * curve, because the row's own curve has not yet grown past the endpoint
+     * ceiling. Above it, the wait is the row's own history and pulling it
+     * forward would let a poison row burn its whole attempt budget in as many
+     * cron passes, ending as `failed` - a dropped event, which is the opposite
+     * of what this backoff exists to do.
+     *
+     * @param int $maxAttempts Highest attempt count still considered endpoint-blocked
+     * @return int Number of rows released
+     */
+    public function releaseEndpointBlockedPendingEvents($maxAttempts)
+    {
+        $sql = 'UPDATE `' . $this->tableName . '`
+                SET `next_attempt_at` = NULL,
+                    `updated_at` = NOW()
+                WHERE `status` = "pending"
+                AND `next_attempt_at` IS NOT NULL
+                AND `attempts` <= ' . (int)$maxAttempts;
+
+        Db::getInstance()->execute($sql);
+        return (int)Db::getInstance()->Affected_Rows();
+    }
+
+    /**
      * Requeue events by runId
      *
      * Requeues events that were claimed by a specific runId but not completed.
@@ -498,9 +528,11 @@ class OutboxRepository
      * @param int $outboxId Outbox record ID
      * @param int $attemptNumber Current attempt number (before increment)
      * @param string $errorMessage Error message
+     * @param bool $countTowardsEndpointStreak False for a diagnostic probe, whose
+     *             outcome says nothing about the delivery endpoint's steady state
      * @return bool Success
      */
-    public function scheduleRetry($outboxId, $attemptNumber, $errorMessage)
+    public function scheduleRetry($outboxId, $attemptNumber, $errorMessage, $countTowardsEndpointStreak = true)
     {
         // Get retry configuration
         $maxAttempts = (int)Configuration::get('MAX_RETRY_ATTEMPTS') ?: 25;
@@ -526,7 +558,9 @@ class OutboxRepository
 
         // Recorded before the row is written, so the next row scheduled in this
         // same pass already sees the streak this pass established.
-        $this->recordEndpointFailure();
+        if ($countTowardsEndpointStreak) {
+            $this->recordEndpointFailure();
+        }
 
         // Calculate next attempt time
         $nextAttemptAt = date('Y-m-d H:i:s', time() + $delay);
@@ -575,13 +609,11 @@ class OutboxRepository
                     `updated_at` = NOW()
                 WHERE `id` = ' . (int)$outboxId;
 
-        $updated = Db::getInstance()->execute($sql);
-
-        if ($updated) {
-            $this->recordEndpointFailure();
-        }
-
-        return $updated;
+        // Deliberately does NOT touch the endpoint failure streak. A row that
+        // exhausted its own attempts is per-row history; treating it as
+        // evidence about the endpoint would raise the delay floor for every
+        // healthy row on a shop whose endpoint is fine.
+        return Db::getInstance()->execute($sql);
     }
 
     /**
@@ -647,6 +679,45 @@ class OutboxRepository
     }
 
     /**
+     * Highest attempt count whose wait can still be blamed on the endpoint (#2614)
+     *
+     * A row that has failed `a` times is waiting `baseDelay * multiplier^(a-1)`
+     * on its own curve. While that is no longer than the endpoint ceiling, the
+     * wait actually in effect is the endpoint's, so recovery may release it and
+     * the row loses at most that much of its own backoff. Past the ceiling the
+     * wait is the row's own, and releasing it would destroy the ladder.
+     *
+     * Derived rather than hardcoded, so a shop that changed the multiplier
+     * still gets a threshold that means the same thing.
+     *
+     * @param int $baseDelay Base delay in seconds
+     * @param float $multiplier Backoff multiplier
+     * @return int
+     */
+    public static function endpointBlockedMaxAttempts($baseDelay, $multiplier)
+    {
+        $baseDelay = max(1, (int)$baseDelay);
+        $multiplier = (float)$multiplier;
+        if ($multiplier <= 1.0) {
+            // A flat curve never outgrows the ceiling, so every row's wait is
+            // the endpoint's and releasing any of them costs at most one base
+            // delay. Unless the base delay alone is already past the ceiling,
+            // in which case no row's wait can be attributed to the endpoint.
+            return $baseDelay <= self::ENDPOINT_MAX_DELAY_SECONDS
+                ? self::ENDPOINT_FAILURE_STREAK_MAX
+                : 0;
+        }
+
+        $attempts = 0;
+        while ($attempts < self::ENDPOINT_FAILURE_STREAK_MAX
+            && $baseDelay * pow($multiplier, $attempts) <= self::ENDPOINT_MAX_DELAY_SECONDS) {
+            $attempts++;
+        }
+
+        return $attempts;
+    }
+
+    /**
      * Next value of the endpoint failure streak (#2614)
      *
      * @param int $current Current streak
@@ -702,18 +773,29 @@ class OutboxRepository
     /**
      * Record that the endpoint accepted a delivery (#2614)
      *
-     * Clears the streak and pulls every waiting row forward. Without the second
-     * half, rows queued during a long outage would keep sitting on delays
-     * computed while the endpoint was down, so an operator pressing the button
-     * was the only way back - the defect this closes.
+     * Clears the streak and pulls the outage backlog forward. Without the
+     * second half, rows queued during a long outage would keep sitting on
+     * delays computed while the endpoint was down, so an operator pressing the
+     * button was the only way back - the defect this closes.
      *
-     * Releasing the whole backlog at once cannot flood the endpoint: the cron
+     * Only rows still under the endpoint-blocked attempt threshold are
+     * released. See releaseEndpointBlockedPendingEvents for why a row past it
+     * must keep its own wait.
+     *
+     * Releasing that backlog at once cannot flood the endpoint: the cron
      * claims at most BATCH_SIZE rows per pass, so the release changes when rows
      * are eligible, never how many are sent at a time.
      *
      * A row's own `attempts` is deliberately NOT reset. It is the only bound
      * that lets a genuinely undeliverable row reach `failed` instead of being
      * retried forever, and it is per-row history rather than endpoint state.
+     *
+     * The streak itself is a read-modify-write on shared Configuration, so two
+     * concurrent cron passes can undercount it by one, or a failing pass can
+     * write back a value a concurrent recovery just cleared. Both are bounded
+     * to one cycle and both self-heal on the next success, and the effect is
+     * only ever on a delay, never on whether a row is delivered - so it is
+     * left as it is rather than paid for with a schema change.
      *
      * @return void
      */
@@ -726,7 +808,12 @@ class OutboxRepository
         }
 
         Configuration::updateGlobalValue(self::ENDPOINT_FAILURE_STREAK_CONFIG_KEY, 0);
-        $this->resetNextAttemptForPendingEvents();
+        $this->releaseEndpointBlockedPendingEvents(
+            self::endpointBlockedMaxAttempts(
+                self::RETRY_BASE_DELAY_SECONDS,
+                (float)Configuration::get('RETRY_BACKOFF_MULTIPLIER') ?: 2.0
+            )
+        );
     }
 
     /**

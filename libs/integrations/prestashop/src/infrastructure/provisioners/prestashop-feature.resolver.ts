@@ -22,8 +22,8 @@
  */
 import { Logger } from '@openlinker/shared/logging';
 import {
-  PRESTASHOP_UNNARROWED_MAX_PAGES,
-  readAllPrestashopPages,
+  PRESTASHOP_UNNARROWED_MAX_ROWS,
+  readAllPrestashopResourcePages,
 } from '../http/prestashop-paged-read';
 import type { IPrestashopWebserviceClient } from '../http/prestashop-webservice.client.interface';
 import type {
@@ -88,33 +88,17 @@ export class PrestashopFeatureResolver {
     // dropped from the product silently, which is why one page is not enough on a
     // catalogue with more than a hundred of them (#2608).
     const [features, values] = await Promise.all([
-      readAllPrestashopPages<PrestashopProductFeature>(
-        (limit, offset) =>
-          client.listResources<PrestashopProductFeature>(
-            'product_features',
-            { display: '[id,name]' },
-            limit,
-            offset
-          ),
-        {
-          resource: 'product_features',
-          connectionId,
-          maxPages: PRESTASHOP_UNNARROWED_MAX_PAGES,
-        }
+      readAllPrestashopResourcePages<PrestashopProductFeature>(
+        client,
+        'product_features',
+        { display: '[id,name]' },
+        { connectionId, maxRows: PRESTASHOP_UNNARROWED_MAX_ROWS }
       ),
-      readAllPrestashopPages<PrestashopProductFeatureValue>(
-        (limit, offset) =>
-          client.listResources<PrestashopProductFeatureValue>(
-            'product_feature_values',
-            { display: '[id,value]' },
-            limit,
-            offset
-          ),
-        {
-          resource: 'product_feature_values',
-          connectionId,
-          maxPages: PRESTASHOP_UNNARROWED_MAX_PAGES,
-        }
+      readAllPrestashopResourcePages<PrestashopProductFeatureValue>(
+        client,
+        'product_feature_values',
+        { display: '[id,value]' },
+        { connectionId, maxRows: PRESTASHOP_UNNARROWED_MAX_ROWS }
       ),
     ]);
 
