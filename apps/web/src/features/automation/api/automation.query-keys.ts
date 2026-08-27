@@ -12,4 +12,6 @@ export const automationQueryKeys = {
   list: (trigger: AutomationTrigger) => ['automations', 'list', trigger] as const,
   detail: (ruleId: string) => ['automations', 'detail', ruleId] as const,
   runs: (ruleId: string) => ['automations', 'runs', ruleId] as const,
+  runsBySubject: (subjectKind: string, subjectId: string) =>
+    ['automations', 'runs', 'subject', subjectKind, subjectId] as const,
 };

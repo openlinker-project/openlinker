@@ -7,7 +7,7 @@
  *
  * @module apps/api/src/automation/http/__tests__
  */
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import {
   AutomationRule,
   AutomationRuleNotFoundError,
@@ -90,6 +90,13 @@ describe('AutomationsController', () => {
         .fn()
         .mockResolvedValue({ runs: [], limit: 50, hasMore: false, recordingAvailable: false }),
       isRecordingPersisted: jest.fn().mockReturnValue(false),
+      listRecentBySubject: jest
+        .fn()
+        .mockResolvedValue({ runs: [], limit: 50, hasMore: false, recordingAvailable: true }),
+      listRecent: jest
+        .fn()
+        .mockResolvedValue({ runs: [], limit: 50, hasMore: false, recordingAvailable: true }),
+      getRunById: jest.fn().mockResolvedValue(null),
     };
     dryRun = { evaluate: jest.fn() } as unknown as jest.Mocked<IAutomationDryRunService>;
     controller = new AutomationsController(rules, runs, dryRun);
@@ -163,11 +170,11 @@ describe('AutomationsController', () => {
     it('should 404 for an unknown rule rather than returning an empty log', async () => {
       // "This rule never fired" and "there is no such rule" are different answers.
       rules.getRule.mockResolvedValue(null);
-      await expect(controller.listRuns('nope')).rejects.toThrow(AutomationRuleNotFoundError);
+      await expect(controller.listRunsForRule('nope')).rejects.toThrow(AutomationRuleNotFoundError);
     });
 
     it('should say the log is not recorded yet when it is not', async () => {
-      const page = await controller.listRuns('rule-1');
+      const page = await controller.listRunsForRule('rule-1');
       expect(page.recordingAvailable).toBe(false);
       expect(page.note).toContain('not recorded in this build yet');
     });
@@ -179,7 +186,7 @@ describe('AutomationsController', () => {
         hasMore: false,
         recordingAvailable: true,
       });
-      const page = await controller.listRuns('rule-1');
+      const page = await controller.listRunsForRule('rule-1');
       expect(page.note).toBeUndefined();
     });
   });
@@ -226,5 +233,71 @@ describe('AutomationsController', () => {
       expect(response.actionAvailability[0].availability).toBe('unavailable');
       expect(response.hasIrreversibleAction).toBe(true);
     });
+  });
+});
+
+/**
+ * The #2385 run-read routes.
+ *
+ * `/automations/runs` is ONE read serving both the activity list and an order's
+ * timeline, which is what makes "one record, four readings" visibly true rather
+ * than merely asserted.
+ */
+describe('AutomationsController — run reads (#2385)', () => {
+  let rules: jest.Mocked<IAutomationRulesService>;
+  let runs: jest.Mocked<IAutomationRunsReadService>;
+  let dryRun: jest.Mocked<IAutomationDryRunService>;
+  let controller: AutomationsController;
+
+  beforeEach(() => {
+    rules = {} as unknown as jest.Mocked<IAutomationRulesService>;
+    runs = {
+      listRecentByRule: jest.fn(),
+      isRecordingPersisted: jest.fn().mockReturnValue(true),
+      listRecentBySubject: jest
+        .fn()
+        .mockResolvedValue({ runs: [], limit: 50, hasMore: false, recordingAvailable: true }),
+      listRecent: jest
+        .fn()
+        .mockResolvedValue({ runs: [], limit: 50, hasMore: false, recordingAvailable: true }),
+      getRunById: jest.fn().mockResolvedValue(null),
+    };
+    dryRun = { evaluate: jest.fn() } as unknown as jest.Mocked<IAutomationDryRunService>;
+    controller = new AutomationsController(rules, runs, dryRun);
+  });
+
+  it('should list every recent firing when no subject is given', async () => {
+    await controller.listRunFeed(undefined, undefined, undefined, undefined);
+    expect(runs.listRecent).toHaveBeenCalled();
+    expect(runs.listRecentBySubject).not.toHaveBeenCalled();
+  });
+
+  it('should scope to one subject when both parts are given', async () => {
+    await controller.listRunFeed('order', 'ol_order_1', undefined, undefined);
+    expect(runs.listRecentBySubject).toHaveBeenCalledWith('order', 'ol_order_1', undefined);
+    expect(runs.listRecent).not.toHaveBeenCalled();
+  });
+
+  it('should refuse a subjectId without a recognised subjectKind', async () => {
+    // Silently ignoring the filter would answer a scoped question with every
+    // firing in the system — a far worse answer than a 400.
+    await expect(
+      controller.listRunFeed(undefined, 'ol_order_1', undefined, undefined),
+    ).rejects.toThrow(BadRequestException);
+    await expect(
+      controller.listRunFeed('spaceship', 'ol_order_1', undefined, undefined),
+    ).rejects.toThrow(BadRequestException);
+    expect(runs.listRecent).not.toHaveBeenCalled();
+  });
+
+  it('should carry recordingAvailable on the activity listing too', async () => {
+    // An empty activity list means "the write path is not built" and "nothing
+    // fired" identically without it.
+    const page = await controller.listRunFeed(undefined, undefined, undefined, undefined);
+    expect(page.recordingAvailable).toBe(true);
+  });
+
+  it('should answer 404 for a run that does not exist', async () => {
+    await expect(controller.getRun('missing')).rejects.toThrow(NotFoundException);
   });
 });

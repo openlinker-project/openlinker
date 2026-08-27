@@ -22,10 +22,16 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Logger } from '@openlinker/shared/logging';
 
-import type { AutomationRunRepositoryPort } from '../../../domain/ports/automation-run-repository.port';
+import type {
+  AutomationRunRepositoryPort,
+  NewAutomationRun,
+} from '../../../domain/ports/automation-run-repository.port';
 import { AutomationRun } from '../../../domain/entities/automation-run.entity';
 import type { AutomationTrigger } from '../../../domain/types/automation-trigger.types';
-import type { AutomationRunOutcome } from '../../../domain/types/automation-run.types';
+import type {
+  AutomationRunOutcome,
+  AutomationRunSubjectKind,
+} from '../../../domain/types/automation-run.types';
 import {
   isAutomationRunOutcome,
   isAutomationRunSubjectKind,
@@ -40,6 +46,69 @@ export class AutomationRunRepository implements AutomationRunRepositoryPort {
     @InjectRepository(AutomationRunOrmEntity)
     private readonly ormRepository: Repository<AutomationRunOrmEntity>,
   ) {}
+
+  /**
+   * Persist one firing.
+   *
+   * `steps` goes into the existing jsonb column VERBATIM — the same
+   * `AutomationStepResult` shape the read path re-narrows and the frontend
+   * already parses (#2366). Widened, never forked: a second step shape is how
+   * one firing renders differently in the run log and the timeline.
+   *
+   * `id` and `createdAt` are left to the database (`@PrimaryGeneratedColumn` and
+   * the column default) and read back off the saved row, rather than minted
+   * here where the clock would be the application's rather than the row's.
+   */
+  async save(run: NewAutomationRun): Promise<AutomationRun> {
+    const entity = this.ormRepository.create({
+      ruleId: run.ruleId,
+      ruleName: run.ruleName,
+      trigger: run.trigger,
+      subjectKind: run.subjectKind,
+      subjectId: run.subjectId,
+      outcome: run.outcome,
+      steps: [...run.steps],
+      blockedByRuleIds: run.blockedByRuleIds === null ? null : [...run.blockedByRuleIds],
+      firedAt: run.firedAt,
+    });
+    const saved = await this.ormRepository.save(entity);
+    return this.toDomain(saved);
+  }
+
+  async findRecentBySubject(
+    subjectKind: AutomationRunSubjectKind,
+    subjectId: string,
+    limit: number,
+  ): Promise<AutomationRun[]> {
+    const entities = await this.ormRepository.find({
+      where: { subjectKind, subjectId },
+      order: { firedAt: 'DESC' },
+      take: limit,
+    });
+    return entities.map((entity) => this.toDomain(entity));
+  }
+
+  async findById(id: string): Promise<AutomationRun | null> {
+    const entity = await this.ormRepository.findOne({ where: { id } });
+    return entity === null ? null : this.toDomain(entity);
+  }
+
+  async findRecent(limit: number, offset: number): Promise<AutomationRun[]> {
+    const entities = await this.ormRepository.find({
+      // `IDX_automation_runs_fired_at`. A second sort key on `id` is deliberately
+      // omitted: two runs sharing a `firedAt` to the microsecond would need the
+      // same rule to fire twice in one tick, which the dispatcher's sequential
+      // loop cannot produce.
+      //
+      // TRIPWIRE: that reasoning is what makes offset paging stable here. If
+      // dispatch is ever parallelised, `skip`/`take` over a non-unique ORDER BY
+      // can repeat or drop a row across pages — add `id` as a tie-breaker then.
+      order: { firedAt: 'DESC' },
+      take: limit,
+      skip: offset,
+    });
+    return entities.map((entity) => this.toDomain(entity));
+  }
 
   async findRecentByRuleId(ruleId: string, limit: number): Promise<AutomationRun[]> {
     const entities = await this.ormRepository.find({

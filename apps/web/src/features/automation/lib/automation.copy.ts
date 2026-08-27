@@ -19,6 +19,7 @@
 import type {
   AutomationConditionOutcome,
   AutomationNonFiringReason,
+  AutomationRunOutcome,
   AutomationStepStatus,
 } from '../api/automation.types';
 
@@ -412,12 +413,24 @@ export const AUTOMATION_RUN_LOG_COPY = {
       : `${count} steps could not be read and are not shown.`,
 } as const;
 
-export const AUTOMATION_RUN_OUTCOME_COPY: Record<string, string> = {
+/**
+ * How a whole firing ended.
+ *
+ * `as const satisfies` like its three neighbours above, so a fifth outcome
+ * mirrored into the union fails the build here rather than rendering as a raw
+ * code beside four labelled ones. Read through a `Record<string, string>` with a
+ * raw-code fallback, so a value from a newer backend still renders something true.
+ *
+ * `blocked` is DECLARED but has no producer in this build — the #2362 gate
+ * refuses colliding rules before dispatch and reports nothing back, so nothing
+ * writes that outcome. Dead rather than false; see the #2385 plan, D8.
+ */
+export const AUTOMATION_RUN_OUTCOME_COPY = {
   done: 'Done',
   failed: 'Failed',
   'nothing-to-do': 'Nothing to do',
   blocked: 'Held back',
-};
+} as const satisfies Record<AutomationRunOutcome, string>;
 
 export const AUTOMATION_ACTIVITY_COPY = {
   eyebrow: 'Automations',

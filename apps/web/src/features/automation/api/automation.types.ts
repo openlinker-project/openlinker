@@ -215,6 +215,21 @@ export interface AutomationRun {
 
 // ── Dry run (#2366, spec §5.6a) ──────────────────────────────────────────────
 
+/**
+ * How a whole firing ended.
+ *
+ * `blocked` is declared and rendered but has NO producer in this build — the
+ * at-most-one gate refuses colliding rules before dispatch and reports nothing
+ * back, so nothing writes it. Dead rather than false.
+ */
+export const AUTOMATION_RUN_OUTCOME_VALUES = [
+  'done',
+  'failed',
+  'nothing-to-do',
+  'blocked',
+] as const;
+export type AutomationRunOutcome = (typeof AUTOMATION_RUN_OUTCOME_VALUES)[number];
+
 /** Per-condition verdict. `unknown` and `currency-mismatch` are NOT `false`. */
 export const AUTOMATION_CONDITION_OUTCOME_VALUES = [
   'true',

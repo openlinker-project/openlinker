@@ -83,7 +83,7 @@ export function AutomationRunLogPanel({
         <li key={run.id} className="automation-run-log__run">
           <div className="automation-run-log__head">
             <StatusBadge tone={outcomeTone(run.outcome)} withDot compact>
-              {AUTOMATION_RUN_OUTCOME_COPY[run.outcome] ?? run.outcome}
+              {(AUTOMATION_RUN_OUTCOME_COPY as Record<string, string>)[run.outcome] ?? run.outcome}
             </StatusBadge>
             <span className="mono-text">{run.firedAt}</span>
             <span className="mono-text">{run.subjectId}</span>

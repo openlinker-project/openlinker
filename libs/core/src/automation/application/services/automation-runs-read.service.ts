@@ -32,6 +32,8 @@ import {
   AUTOMATION_RUN_REPOSITORY_TOKEN,
 } from '../../automation.tokens';
 import { AutomationRunRepositoryPort } from '../../domain/ports/automation-run-repository.port';
+import type { AutomationRun } from '../../domain/entities/automation-run.entity';
+import type { AutomationRunSubjectKind } from '../../domain/types/automation-run.types';
 import { IAutomationRunRecorderService } from '../interfaces/automation-run-recorder.service.interface';
 import type {
   AutomationRunLogPage,
@@ -71,7 +73,48 @@ export class AutomationRunsReadService implements IAutomationRunsReadService {
     };
   }
 
+  async listRecentBySubject(
+    subjectKind: AutomationRunSubjectKind,
+    subjectId: string,
+    limit: number = AUTOMATION_RUN_LOG_PAGE_SIZE,
+  ): Promise<AutomationRunLogPage> {
+    const capped = Math.min(Math.max(1, limit), AUTOMATION_RUN_LOG_PAGE_SIZE);
+    const runs = await this.runRepository.findRecentBySubject(subjectKind, subjectId, capped);
+    return this.toPage(runs, capped);
+  }
+
+  async listRecent(
+    limit: number = AUTOMATION_RUN_LOG_PAGE_SIZE,
+    offset = 0,
+  ): Promise<AutomationRunLogPage> {
+    const capped = Math.min(Math.max(1, limit), AUTOMATION_RUN_LOG_PAGE_SIZE);
+    const runs = await this.runRepository.findRecent(capped, Math.max(0, offset));
+    return this.toPage(runs, capped);
+  }
+
+  getRunById(id: string): Promise<AutomationRun | null> {
+    return this.runRepository.findById(id);
+  }
+
   isRecordingPersisted(): boolean {
     return this.recorder.persistsRuns;
+  }
+
+  /**
+   * One envelope shape for every listing.
+   *
+   * `recordingAvailable` rides on ALL of them, not just the per-rule log: an
+   * empty activity list means "the write path is not built" and "nothing fired"
+   * identically, and an operator resolving that ambiguity concludes their rules
+   * are broken. Same reasoning #2363 gave for the per-rule log, applied to the
+   * two listings #2385 adds rather than restated per call site.
+   */
+  private toPage(runs: AutomationRun[], capped: number): AutomationRunLogPage {
+    return {
+      runs,
+      limit: capped,
+      hasMore: runs.length === capped,
+      recordingAvailable: this.isRecordingPersisted(),
+    };
   }
 }

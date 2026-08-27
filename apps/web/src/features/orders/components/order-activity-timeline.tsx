@@ -23,6 +23,8 @@ import {
   type OrderAmendmentChange,
 } from '../api/orders.types';
 import type { StatusBadgeTone } from '../../../shared/ui/status-badge';
+import type { AutomationRun } from '../../automation';
+import { buildAutomationTimelineEvents } from '../lib/automation-timeline';
 import type { ParsedOrderInvoice } from '../api/order-snapshot.schema';
 import { invoicingBlockedBadge } from '../lib/order-row';
 
@@ -103,6 +105,12 @@ interface OrderActivityTimelineProps {
    * it was ever held.
    */
   salesDocumentBlockReleasedAt?: string | null;
+  /**
+   * Automation firings against this order (#2385) — the fourth of §5.6's "four
+   * readings" of one `automation_runs` row, never a second write. Optional so
+   * every existing caller compiles untouched and renders no automation events.
+   */
+  automationRuns?: readonly AutomationRun[];
 }
 
 const STATUS_PAST_TENSE: Record<OrderSyncStatusValue, string> = {
@@ -186,6 +194,7 @@ function buildEvents(
   packedByUserId?: string | null,
   salesDocumentBlockedAt?: string | null,
   salesDocumentBlockReleasedAt?: string | null,
+  automationRuns?: readonly AutomationRun[],
 ): TimelineEvent[] {
   const events: TimelineEvent[] = [];
 
@@ -377,6 +386,26 @@ function buildEvents(
     });
   }
 
+  // #2385 — one event per automation STEP, plus the "Skipped:" event. A
+  // rendering of `automation_runs`, never a second write: see
+  // `lib/automation-timeline.ts`. Firings only, so an order no rule acted on
+  // contributes nothing.
+  for (const event of buildAutomationTimelineEvents(automationRuns ?? [])) {
+    events.push({
+      id: event.id,
+      timestamp: event.timestamp,
+      title: event.title,
+      by: event.by,
+      description: event.description,
+      tone: event.tone,
+      // The rule name in `by` is text; the LINK is what makes turning the rule
+      // off reachable from the order without knowing which rule to suspect (S3-8).
+      footer: (
+        <Link to={`/automations/${encodeURIComponent(event.trigger)}`}>{event.footer}</Link>
+      ),
+    });
+  }
+
   return events;
 }
 
@@ -404,6 +433,7 @@ export function OrderActivityTimeline({
   packedByUserId,
   salesDocumentBlockedAt,
   salesDocumentBlockReleasedAt,
+  automationRuns,
 }: OrderActivityTimelineProps): ReactElement {
   const events = useMemo(
     () =>
@@ -423,6 +453,7 @@ export function OrderActivityTimeline({
         packedByUserId,
         salesDocumentBlockedAt,
         salesDocumentBlockReleasedAt,
+        automationRuns,
       ),
     [
       createdAt,
@@ -440,6 +471,7 @@ export function OrderActivityTimeline({
       packedByUserId,
       salesDocumentBlockedAt,
       salesDocumentBlockReleasedAt,
+      automationRuns,
     ],
   );
 

@@ -35,6 +35,7 @@ import {
 } from '../../features/shipments';
 import { OrderCustomerCard } from '../../features/orders/components/order-customer-card';
 import { OrderActivityTimeline } from '../../features/orders/components/order-activity-timeline';
+import { useSubjectAutomationRunsQuery } from '../../features/automation';
 import { OrderPackedControl } from '../../features/orders/components/order-packed-control';
 import { OrderShipmentPanel } from '../../features/orders/components/order-shipment-panel';
 import { SalesDocumentPanel } from '../../features/orders/components/sales-document-panel';
@@ -71,6 +72,10 @@ export function OrderDetailPage(): ReactElement {
   const query = useOrderQuery(internalOrderId);
   const connectionsQuery = useConnectionsQuery();
   const shipmentsQuery = useOrderShipmentsQuery(internalOrderId);
+  // The order timeline's automation half (#2385). Its own read rather than a
+  // field on `GET /orders/:id`: every order-detail load would otherwise pay for
+  // it, and `OrderRecord` is already a large projection.
+  const automationRunsQuery = useSubjectAutomationRunsQuery('order', internalOrderId);
   const retry = useRetryOrderDestinationMutation();
   const { showToast } = useToast();
   const location = useLocation();
@@ -483,6 +488,7 @@ export function OrderDetailPage(): ReactElement {
           packedByUserId={order.packedByUserId}
           salesDocumentBlockedAt={order.salesDocumentBlockedAt}
           salesDocumentBlockReleasedAt={order.salesDocumentBlockReleasedAt}
+          automationRuns={automationRunsQuery.data?.runs ?? []}
         />
       </section>
 

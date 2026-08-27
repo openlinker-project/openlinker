@@ -71,6 +71,21 @@ export interface AutomationsApi {
    * composer reads instead of parsing the message.
    */
   create: (input: AutomationRuleWriteInput) => Promise<AutomationRule>;
+  /**
+   * `GET /automations/runs` — recent firings, newest first.
+   *
+   * ONE read serves both the activity list and an order's timeline: pass a
+   * subject to scope it. That is what makes "one record, four readings" visibly
+   * true rather than merely asserted — two endpoints over the same rows could
+   * disagree about them.
+   *
+   * Resolves to `null` when the envelope cannot be read, never a synthesised
+   * `recordingAvailable: false`.
+   */
+  listRunsBySubject: (
+    subjectKind: string,
+    subjectId: string,
+  ) => Promise<AutomationRunLog | null>;
   /** `PUT /automations/:id` — a full replace. Admin only. */
   replace: (ruleId: string, input: AutomationRuleWriteInput) => Promise<AutomationRule>;
   /**
@@ -126,6 +141,11 @@ export function createAutomationsApi(request: ApiRequest): AutomationsApi {
         body: JSON.stringify(input),
       });
       return parseAutomationRule(raw);
+    },
+
+    async listRunsBySubject(subjectKind, subjectId): Promise<AutomationRunLog | null> {
+      const query = new URLSearchParams({ subjectKind, subjectId });
+      return parseAutomationRunLog(await request<unknown>(`/automations/runs?${query.toString()}`));
     },
 
     async replace(ruleId, input): Promise<AutomationRule> {

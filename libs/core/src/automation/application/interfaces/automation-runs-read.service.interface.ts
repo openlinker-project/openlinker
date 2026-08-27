@@ -25,6 +25,7 @@
  * @see docs/specs/product-spec-oms-wave2-operator-experience.md §5.6
  */
 import type { AutomationRun } from '../../domain/entities/automation-run.entity';
+import type { AutomationRunSubjectKind } from '../../domain/types/automation-run.types';
 
 /** §5.6's fired-log page size. A cap, not a promise that fewer means fewer exist. */
 export const AUTOMATION_RUN_LOG_PAGE_SIZE = 50;
@@ -48,4 +49,23 @@ export interface IAutomationRunsReadService {
 
   /** Whether the bound recorder persists a firing, or only logs it. */
   isRecordingPersisted(): boolean;
+
+  /**
+   * Recent runs against one subject — the order timeline's source (#2385).
+   *
+   * Same rows the per-rule log and the activity list read, filtered. That is the
+   * point: "one record, four readings" is visibly true when the surfaces are one
+   * read with a filter rather than two contracts over the same table.
+   */
+  listRecentBySubject(
+    subjectKind: AutomationRunSubjectKind,
+    subjectId: string,
+    limit?: number,
+  ): Promise<AutomationRunLogPage>;
+
+  /** Recent runs across every rule, newest first — the activity list (#2385). */
+  listRecent(limit?: number, offset?: number): Promise<AutomationRunLogPage>;
+
+  /** One run by id, or `null` (#2385). */
+  getRunById(id: string): Promise<AutomationRun | null>;
 }

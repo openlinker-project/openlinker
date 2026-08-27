@@ -54,6 +54,7 @@ import {
   HttpCode,
   HttpStatus,
   Inject,
+  NotFoundException,
   Param,
   Post,
   Put,
@@ -64,8 +65,10 @@ import {
   AUTOMATION_RULES_SERVICE_TOKEN,
   AUTOMATION_RUNS_READ_SERVICE_TOKEN,
   AutomationRuleNotFoundError,
+  AutomationRunSubjectKindValues,
   AutomationTriggerValues,
   isAutomationActionKind,
+  isAutomationRunSubjectKind,
   isAutomationTrigger,
   isIrreversibleAction,
   isLegalAutomationPair,
@@ -89,6 +92,7 @@ import { EvaluateAutomationDto } from './dto/evaluate-automation.dto';
 import {
   AutomationRuleResponseDto,
   AutomationRunLogResponseDto,
+  AutomationRunResponseDto,
   AutomationTriggerSummaryDto,
 } from './dto/automation-response.dto';
 import { AutomationDryRunResponseDto } from './dto/automation-dry-run-response.dto';
@@ -155,6 +159,70 @@ export class AutomationsController {
     return rules.map((rule) => AutomationRuleResponseDto.fromDomain(rule));
   }
 
+  // DECLARED BEFORE `@Get(':id')` — Nest matches in declaration order, so a
+  // dynamic `:id` above this would swallow `/automations/runs` entirely. Nothing
+  // in the unit suite can catch a reordering: the spec calls these handlers
+  // directly and never goes through the router.
+  @Get('runs')
+  @Roles('admin', 'operator')
+  @ApiOperation({
+    summary: 'Recent automation firings, newest first — optionally scoped to one subject',
+    description:
+      'ONE read serves both the activity list and an order\'s timeline: pass `subjectKind` + ' +
+      '`subjectId` to scope it. That is deliberate — the timeline, the activity list, the per-rule ' +
+      'log and the attention state are four READINGS of one `automation_runs` row, and two ' +
+      'endpoints over the same rows could disagree about them. Check `recordingAvailable`: while ' +
+      'it is false an empty list says nothing about whether anything fired.',
+  })
+  @ApiQuery({ name: 'subjectKind', required: false, enum: AutomationRunSubjectKindValues })
+  @ApiQuery({ name: 'subjectId', required: false, type: String })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
+  @ApiQuery({ name: 'offset', required: false, type: Number })
+  @ApiResponse({ status: 200, type: AutomationRunLogResponseDto })
+  @ApiResponse({ status: 400, description: 'Unrecognised subjectKind, or subjectId without it' })
+  async listRunFeed(
+    @Query('subjectKind') subjectKind?: string,
+    @Query('subjectId') subjectId?: string,
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
+  ): Promise<AutomationRunLogResponseDto> {
+    const parsedLimit = limit === undefined ? undefined : Number(limit);
+    const parsedOffset = offset === undefined ? undefined : Number(offset);
+
+    if (subjectId !== undefined && subjectId.length > 0) {
+      // Both or neither. A `subjectId` without its kind cannot be resolved to a
+      // row — the index is `(subjectKind, subjectId, firedAt)` — and silently
+      // ignoring the filter would answer a scoped question with every firing in
+      // the system.
+      if (!isAutomationRunSubjectKind(subjectKind)) {
+        throw new BadRequestException(
+          `Filtering by subject needs a recognised "subjectKind". Expected one of: ` +
+            `${AutomationRunSubjectKindValues.join(', ')}.`,
+        );
+      }
+      return AutomationRunLogResponseDto.fromDomain(
+        await this.runs.listRecentBySubject(subjectKind, subjectId, parsedLimit),
+      );
+    }
+    return AutomationRunLogResponseDto.fromDomain(
+      await this.runs.listRecent(parsedLimit, parsedOffset),
+    );
+  }
+
+  @Get('runs/:runId')
+  @Roles('admin', 'operator')
+  @ApiOperation({ summary: 'One firing' })
+  @ApiParam({ name: 'runId', type: String })
+  @ApiResponse({ status: 200, type: AutomationRunResponseDto })
+  @ApiResponse({ status: 404, description: 'Run not found' })
+  async getRun(@Param('runId') runId: string): Promise<AutomationRunResponseDto> {
+    const run = await this.runs.getRunById(runId);
+    if (run === null) {
+      throw new NotFoundException(`Automation run "${runId}" not found.`);
+    }
+    return AutomationRunResponseDto.fromDomain(run);
+  }
+
   @Get(':id')
   @Roles('admin', 'operator')
   @ApiOperation({ summary: 'Read one rule' })
@@ -182,7 +250,7 @@ export class AutomationsController {
   @ApiParam({ name: 'id', type: String })
   @ApiResponse({ status: 200, type: AutomationRunLogResponseDto })
   @ApiResponse({ status: 404, description: 'Rule not found' })
-  async listRuns(@Param('id') id: string): Promise<AutomationRunLogResponseDto> {
+  async listRunsForRule(@Param('id') id: string): Promise<AutomationRunLogResponseDto> {
     // The rule is read first so an unknown id is a 404 rather than an empty log —
     // "this rule never fired" and "there is no such rule" are different answers.
     const rule = await this.rules.getRule(id);

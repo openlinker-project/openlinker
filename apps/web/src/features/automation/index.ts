@@ -24,6 +24,7 @@ export type {
   AutomationDryRunResult,
   AutomationEvaluateInput,
   AutomationNonFiringReason,
+  AutomationRunOutcome,
   AutomationStepResult,
   AutomationStepStatus,
   AutomationSubjectFacts,
@@ -47,6 +48,7 @@ export {
   AUTOMATION_CONDITION_OUTCOME_VALUES,
   AUTOMATION_MERGE_FIELDS,
   AUTOMATION_NON_FIRING_REASON_VALUES,
+  AUTOMATION_RUN_OUTCOME_VALUES,
   AUTOMATION_STEP_STATUS_VALUES,
   AUTOMATION_FIRING_MODE_VALUES,
   AUTOMATION_TRIGGER_VALUES,
@@ -70,6 +72,7 @@ export type { SetAutomationActiveInput } from './hooks/use-set-automation-active
 export { useDeleteAutomationMutation } from './hooks/use-delete-automation-mutation';
 export { useCreateAutomationMutation } from './hooks/use-create-automation-mutation';
 export { useEvaluateAutomationMutation } from './hooks/use-evaluate-automation-mutation';
+export { useSubjectAutomationRunsQuery } from './hooks/use-subject-automation-runs-query';
 
 export { AutomationActionAvailabilityPanel } from './components/automation-action-availability-panel';
 export { AutomationRuleAvailabilityNotice } from './components/automation-rule-availability-notice';
@@ -132,7 +135,9 @@ export {
   AUTOMATION_RULES_COPY,
   AUTOMATION_SUGGESTION_COPY,
   AUTOMATION_TRIGGER_COPY,
+  AUTOMATION_ACTION_LABELS,
   AUTOMATION_COMPOSER_COPY,
+  AUTOMATION_CONDITION_FIELD_LABELS,
   AUTOMATION_CONDITION_OUTCOME_COPY,
   AUTOMATION_DRY_RUN_COPY,
   AUTOMATION_NON_FIRING_REASON_COPY,
