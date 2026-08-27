@@ -96,7 +96,7 @@ export class PrestashopPackResolver {
   private async readCached<T>(
     cache: Map<string, CacheEntry<T | null>>,
     connectionId: string,
-    fetch: () => Promise<T | null>
+    load: () => Promise<T | null>
   ): Promise<T | null> {
     const cached = cache.get(connectionId);
     if (cached !== undefined) {
@@ -106,7 +106,7 @@ export class PrestashopPackResolver {
       cache.delete(connectionId);
     }
 
-    const value = await fetch();
+    const value = await load();
     cache.set(connectionId, {
       value,
       // The TTL keys on the answer being unresolved at all, so no negative entry
