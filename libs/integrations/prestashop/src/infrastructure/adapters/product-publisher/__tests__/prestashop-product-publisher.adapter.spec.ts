@@ -16,6 +16,7 @@ import {
 import type { Connection } from '@openlinker/core/identifier-mapping';
 import { PrestashopApiException, PrestashopAuthenticationException } from '@openlinker/integrations-prestashop';
 
+import { PrestashopProvisioningException } from '../../../../domain/exceptions/prestashop-provisioning.exception';
 import type { IPrestashopWebserviceClient } from '../../../http/prestashop-webservice.client.interface';
 import { PrestashopProductPublisherAdapter } from '../prestashop-product-publisher.adapter';
 
@@ -446,7 +447,60 @@ describe('PrestashopProductPublisherAdapter', () => {
       });
 
       expect(client.createResource).not.toHaveBeenCalled();
+      // The level is narrowed by id_parent only - the multilang name is matched
+      // locally, so an unevenly filtered name column cannot mint a duplicate (#2616).
+      expect(client.listResources).toHaveBeenCalledWith(
+        'categories',
+        { custom: { id_parent: '2' } },
+        100,
+        0,
+      );
       expect(result).toEqual({ destinationCategoryId: '5' });
+    });
+
+    it('should keep scanning past a full page instead of creating a duplicate (#2616)', async () => {
+      // One page is not proof the level is exhausted. Stopping at the first page
+      // would report the category absent and create a second copy of it.
+      const filler = Array.from({ length: 100 }, (_, i) => ({
+        id: String(i + 100),
+        name: `Other ${i}`,
+        id_parent: '2',
+      }));
+      client.listResources
+        .mockResolvedValueOnce(filler)
+        .mockResolvedValueOnce([{ id: '7', name: 'Gadgets', id_parent: '2' }]);
+
+      const result = await adapter.provisionCategory({
+        connectionId: CONNECTION_ID,
+        path: [{ sourceCategoryId: 'src-1', name: 'Gadgets' }],
+      });
+
+      expect(client.listResources).toHaveBeenNthCalledWith(
+        2,
+        'categories',
+        { custom: { id_parent: '2' } },
+        100,
+        100,
+      );
+      expect(client.createResource).not.toHaveBeenCalled();
+      expect(result).toEqual({ destinationCategoryId: '7' });
+    });
+
+    it('should refuse rather than create a duplicate when the level never ends (#2616)', async () => {
+      const filler = Array.from({ length: 100 }, (_, i) => ({
+        id: String(i + 100),
+        name: `Other ${i}`,
+        id_parent: '2',
+      }));
+      client.listResources.mockResolvedValue(filler);
+
+      await expect(
+        adapter.provisionCategory({
+          connectionId: CONNECTION_ID,
+          path: [{ sourceCategoryId: 'src-1', name: 'Gadgets' }],
+        }),
+      ).rejects.toBeInstanceOf(PrestashopProvisioningException);
+      expect(client.createResource).not.toHaveBeenCalled();
     });
 
     it('should create a missing root category and return its id', async () => {
@@ -697,6 +751,9 @@ describe('PrestashopProductPublisherAdapter', () => {
         'product_features',
         expect.objectContaining({ name: expect.anything() }),
       );
+      // No multilang name filter is sent - features are enumerated and matched
+      // locally, so the shop's filter behaviour cannot cause a duplicate (#2616).
+      expect(client.listResources).toHaveBeenCalledWith('product_features', { custom: {} }, 100, 0);
     });
 
     it('should reuse an existing feature by name match', async () => {
@@ -722,6 +779,13 @@ describe('PrestashopProductPublisherAdapter', () => {
       expect(client.createResource).toHaveBeenCalledWith(
         'product_feature_values',
         expect.objectContaining({ id_feature: '10' }),
+      );
+      // id_feature is a plain column, so it reaches the shop as a bare key (#2616).
+      expect(client.listResources).toHaveBeenCalledWith(
+        'product_feature_values',
+        { custom: { id_feature: '10' } },
+        100,
+        0,
       );
     });
 
