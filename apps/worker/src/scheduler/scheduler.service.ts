@@ -884,6 +884,18 @@ export class SchedulerService implements OnModuleDestroy {
     // (#2344), so consuming moves no published number; on an existing install
     // the first cycles are a one-time, self-limiting marker backfill over
     // historical shipments (see the handler docblock).
+    this.tasks.push({
+      taskId: 'reservation-consume-sweep',
+      jobType: 'inventory.reservations.consume',
+      cronExpression: '*/10 * * * *',
+      enabledEnvVar: 'OL_RESERVATION_CONSUME_SWEEP_ENABLED',
+      enabledDefault: true,
+      connectionFilter: () => Promise.resolve([systemConnection]),
+      generatePayload: () => ({ schemaVersion: 1 }),
+      generateIdempotencyKey: (_connection, timestamp) =>
+        `inventory:reservations:consume:${timestamp}`,
+    });
+
     // #2349 — the reservation SHORTFALL reconciler. Global scope for the same
     // reason as its two siblings: reservations key on (order, line, position)
     // and carry no connection axis.
@@ -907,18 +919,6 @@ export class SchedulerService implements OnModuleDestroy {
       generatePayload: () => ({ schemaVersion: 1 }),
       generateIdempotencyKey: (_connection, timestamp) =>
         `inventory:reservations:shortfall:${timestamp}`,
-    });
-
-    this.tasks.push({
-      taskId: 'reservation-consume-sweep',
-      jobType: 'inventory.reservations.consume',
-      cronExpression: '*/10 * * * *',
-      enabledEnvVar: 'OL_RESERVATION_CONSUME_SWEEP_ENABLED',
-      enabledDefault: true,
-      connectionFilter: () => Promise.resolve([systemConnection]),
-      generatePayload: () => ({ schemaVersion: 1 }),
-      generateIdempotencyKey: (_connection, timestamp) =>
-        `inventory:reservations:consume:${timestamp}`,
     });
   }
 

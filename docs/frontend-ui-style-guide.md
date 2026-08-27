@@ -630,7 +630,7 @@ Defaults (FE-002):
 | `DataTable` rows | `36 px` | Dense-but-readable. Hover highlights whole row. |
 | Listings identity row | auto, ~60 px | Documented `DataTable` exception (#2023) — 32 px thumbnail + name/badges line + meta line + optional validator message. See the carve-out below. |
 | Shared identity row (`OrderIdentityCell` / `ConnectionCell`) | auto, ~60 px | Documented `DataTable` exception (#2086) — 24 px thumbnail + identity line + meta line. See the carve-out below. |
-| Orders Status cell | auto, ~72 px | Documented `DataTable` exception (#2310) — health badge + lifecycle-phase badge + optional failure reason, up to three stacked lines. See the carve-out below. |
+| Orders Status cell | auto, ~96 px | Documented `DataTable` exception (#2310, extended #2350) — health badge + lifecycle-phase badge + optional stock-at-risk badge + optional failure reason, up to four stacked lines. See the carve-out below. |
 | Nav items | `28 px` | 6 px vertical padding, icon + label + optional count. |
 | Toolbar / filter chip | `28 px` | Same height as nav items for alignment. |
 | Button `sm` | `28 px` | Default for toolbar buttons, table actions. |
@@ -657,6 +657,8 @@ Two mechanical consequences worth knowing before copying the pattern:
 This entry exists because the listings carve-out explicitly refuses to cover a second table. It is deliberately **one entry for all five lists** (Shipments #2089, Invoices #2090, Orders #2091, Products #2092, Customers #2093) rather than one per page — the whole point of #2086 is that these rows are the same row.
 
 **Documented carve-out — the orders Status cell (#2310).** The #2086 entry above covers the *identity* column; this one covers a different column on the same table, which is why it is a separate entry rather than a widening of that one. `.orders-cell-stack` in the orders Status cell is a vertical stack, and the ADR-059 lifecycle phase is appended **inside** it, so a row that carries both a phase and a sync-failure reason renders health badge / phase badge / reason — three lines where two was previously the worst case, and the column can now set the row height on its own rather than only the identity cell doing so. Kept as a stack rather than nesting the phase inline beside the health badge (a `ds-row`): the two are orthogonal partitions, and putting them on one line reads as one compound status, which is precisely the reading ADR-059 exists to prevent. The three lines are each a fact an operator triages on, so the row takes its height from content in the usual way. Note this interacts with the vertical-alignment rule below — `.orders-table td` already top-aligns every cell, so no further change is needed for the taller column.
+
+**Extended by #2350 — a fourth line.** The reservation-shortfall badge (§ Order-row signal placement, the sixth badge vocabulary) is appended to the same `.orders-cell-stack`, so the worst case is now health / phase / stock-at-risk / reason: four stacked lines, ~96 px. Recorded here rather than left to be discovered because this section's standing instruction is to update the guide before the row height moves. It needs **no CSS change** — the stack and the `.orders-table td` top-alignment already handle it, and the badge is `compact`. The worst case stays rare by construction: a shortfall badge only appears on an order the master has actually gone short on, and the phase renders neutral on an ordinary row, so a four-line Status cell means four genuine facts rather than decoration.
 
 Mechanics that differ from the listings carve-out, and why:
 
@@ -835,6 +837,26 @@ Four rules govern anything added to a row:
    says where the order actually is. Approved as such at the #2310 gate. The count in the sentence
    above is therefore now five badge vocabularies on the row, and the exception is closed to
    further growth: a sixth needs its own decision, not this paragraph.
+
+   **The sixth vocabulary is the reservation shortfall, and it is a badge in the Status group
+   (#2350).** This is the "own decision" the sentence above demands, taken at the #2628 gate rather
+   than assumed by the paragraph. Three things settle it. It is an **exception**, not a workflow
+   position, so the tick form cannot carry it. It is an exception about *this order's own line* —
+   "we promised more of this sku than the master now has, and this order is the one at risk" —
+   which is exactly what the Status group means, so it goes there beside the failure reasons. And
+   it sits **beside order health, never inside it**: `OrderHealthValues` is a partition whose values
+   must sum to the KPI cards, so adding a shortfall value would either double-count or hide a sync
+   failure behind a stock one — the same reason #2100 declined a sixth `OrderHealth` bucket and
+   shipped a non-partitioning field instead.
+
+   Two placements were rejected. The **Money group** is about amounts, and a shortfall is about
+   units the buyer may not receive; putting it there would make a currency column mean two things.
+   A **new column** would cost every row permanent width for a state the overwhelming majority of
+   rows never have — the same objection that keeps returns in the Status group.
+
+   Tonally it is `warning`, never `error`: the order is at risk, not broken, and reserving red for
+   real failures is what keeps a red row meaning outstanding work. The count is now **six**, and
+   the exception remains closed: a seventh needs its own decision, not this paragraph.
 
    The mitigation that keeps the pills from competing is **tonal**, and it is load-bearing rather
    than incidental: the dominant `ready` phase renders **neutral**, as do `cancelled` and every

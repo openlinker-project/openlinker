@@ -274,6 +274,38 @@ describe('Reservation shortfall episodes (#2349)', () => {
     expect(episodes).toHaveLength(1);
   });
 
+  it('should refresh the quantities on re-detection while keeping the episode id (#2628 review)', async () => {
+    // UNVERIFIED at the time of writing — the Docker daemon is wedged host-side,
+    // so this case has never executed. It is committed rather than omitted so
+    // the claim is testable the moment the daemon is healthy.
+    const position = await seedPosition(dataSource, 1);
+    await insertHold(dataSource, {
+      orderRecordId: ORDER_A,
+      inventoryItemId: position.inventoryItemId,
+      quantity: 5,
+    });
+    await setOlReserved(dataSource, position.inventoryItemId, 5);
+    await shortfalls.detectShortfalls(RUN);
+
+    const [opened] = await readEpisodes(dataSource, position.inventoryItemId);
+    expect(Number(opened.shortQuantity)).toBe(4);
+
+    // The master partially recovers: the shortfall shrinks but does not clear.
+    await setAvailable(dataSource, position.inventoryItemId, 3);
+    await shortfalls.detectShortfalls(RUN);
+
+    const episodes = await readEpisodes(dataSource, position.inventoryItemId);
+    expect(episodes).toHaveLength(1);
+    // The ID is what an edge-triggered automation keys on, so it must NOT move
+    // just because the numbers did.
+    expect(episodes[0].id).toBe(opened.id);
+    // ...and the numbers MUST move, or the row asserts a figure nothing
+    // recomputes.
+    expect(Number(episodes[0].shortQuantity)).toBe(2);
+    expect(Number(episodes[0].positionShortfall)).toBe(2);
+    expect(episodes[0].closedAt).toBeNull();
+  });
+
   it('should close the episode by an explicit write when the master recovers, and keep it readable', async () => {
     const position = await seedPosition(dataSource, 1);
     await insertHold(dataSource, {

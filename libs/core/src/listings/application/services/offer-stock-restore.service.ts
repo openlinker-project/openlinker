@@ -14,11 +14,14 @@
  *      restorer (Allegro restores its own stock), so a release placed behind
  *      that short-circuit would leak a hold on every Allegro cancellation.
  *   2. `publishRestoredAtp()` takes the release's own `CloseForOrderResult` as
- *      its first parameter. That value is obtainable only by having called the
- *      release, so reordering the two fails to COMPILE — it is not a comment
- *      and not merely a test.
- *   3. A spec pins the call order on a shared recorder, so a refactor that
- *      preserved the types but inverted the effects still fails.
+ *      its first parameter, so the ordering is expressed in the SIGNATURE
+ *      rather than in a comment. Note the honest limit of that (#2628 review):
+ *      it is a structural type, so an object literal of the same shape
+ *      type-checks — this makes the dependency obvious and hard to reorder by
+ *      accident, but it does NOT make reordering a compile error.
+ *   3. **The shared-recorder spec is what actually pins the order.** It asserts
+ *      the two effects in sequence, so a refactor that preserved the types but
+ *      inverted the effects — exactly what (2) cannot catch — still fails.
  *
  * Why it matters: the ATP read filters `status = 'held'`, so releasing is what
  * makes the units reappear. Restoring first publishes a quantity still net of

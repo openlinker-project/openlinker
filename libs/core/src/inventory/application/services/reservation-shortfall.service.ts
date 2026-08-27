@@ -243,23 +243,44 @@ export class ReservationShortfallService implements IReservationShortfallService
     // would defeat the close budget: the page stays capped while the query
     // grows without limit.
     const positionIds = [...new Set(episodes.map((episode) => episode.inventoryItemId))];
-    const shortPositionIds = await this.shortfalls.listShortPositionIds(positionIds);
-
-    const held = await this.shortfalls.listHeldForPositions(
-      positionIds
+    const shortPositions = await this.shortfalls.listShortfallPositionsByIds(positionIds);
+    const shortByPosition = new Map(
+      shortPositions.map((position) => [position.inventoryItemId, position])
     );
+
+    const held = await this.shortfalls.listHeldForPositions(positionIds);
     const holdKeys = new Set(
       held.map((reservation) => this.holdKey(reservation.orderRecordId, reservation.inventoryItemId))
     );
+
+    // Re-run the SAME youngest-first attribution the detection half uses, so a
+    // partial recovery is visible here. Without it an episode whose share the
+    // shortfall no longer lands on is neither re-attributed nor closed, and the
+    // operator surface keeps asserting a risk reconciliation no longer supports
+    // (#2628 review).
+    const heldByPosition = this.groupByPosition(held);
+    const attributedOrders = new Map<string, Set<string>>();
+    for (const position of shortPositions) {
+      const attributions = this.attribute(
+        position.olReservedQuantity - position.availableQuantity,
+        heldByPosition.get(position.inventoryItemId) ?? []
+      );
+      attributedOrders.set(
+        position.inventoryItemId,
+        new Set(attributions.map((attribution) => attribution.orderRecordId))
+      );
+    }
 
     let episodesClosed = 0;
     let failed = 0;
 
     for (const episode of episodes) {
-      const stillShort = shortPositionIds.has(episode.inventoryItemId);
+      const stillShort = shortByPosition.has(episode.inventoryItemId);
       const stillHeld = holdKeys.has(
         this.holdKey(episode.orderRecordId, episode.inventoryItemId)
       );
+      const stillAttributed =
+        attributedOrders.get(episode.inventoryItemId)?.has(episode.orderRecordId) ?? false;
 
       // Order matters. A cancelled order's reservation is `released`, so it
       // leaves the `held` set the instant the cancellation lands — while the
@@ -267,7 +288,18 @@ export class ReservationShortfallService implements IReservationShortfallService
       // first is what makes cancellation a real second close trigger rather
       // than something that only takes effect once the master happens to
       // recover.
-      const reason = !stillHeld ? 'reservation-closed' : !stillShort ? 'recovered' : null;
+      //
+      // The third arm is the partial recovery: still short and still held, but
+      // youngest-first attribution now lands none of the shortfall on THIS
+      // order. Closing beats leaving the row standing, because a stale row
+      // asserts a risk nothing recomputes.
+      const reason = !stillHeld
+        ? 'reservation-closed'
+        : !stillShort
+          ? 'recovered'
+          : !stillAttributed
+            ? 'no-longer-attributed'
+            : null;
       if (reason === null) {
         continue;
       }

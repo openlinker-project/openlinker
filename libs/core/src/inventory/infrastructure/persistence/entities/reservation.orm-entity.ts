@@ -52,7 +52,7 @@ import {
 @Entity('reservations')
 // The idempotency key. See the class docblock for why it is partial and why it
 // carries `orderRecordId`.
-@Index(['orderRecordId', 'orderLineId', 'inventoryItemId'], {
+@Index('UQ_reservations_active_line', ['orderRecordId', 'orderLineId', 'inventoryItemId'], {
   unique: true,
   where: `"status" = 'held'`,
 })
@@ -62,14 +62,14 @@ import {
 // `inventory_items` on `inventoryItemId` to reach `productVariantId` /
 // `sourceConnectionId`. Both predicate columns lead; the join column trails.
 // The same index serves #2349's reconciler (`SUM … GROUP BY inventoryItemId`).
-@Index(['status', 'atpEffect', 'inventoryItemId'])
+@Index('IDX_reservations_atp_sum', ['status', 'atpEffect', 'inventoryItemId'])
 // #2349's expiry-sweep CANDIDATE scan. Only half of that sweep's predicate:
 // expiry is state-dependent (ADR-061 decision 1 / REVIEW C1 — the sweep
 // *extends* rather than releases when the order carries an open hold), so it
 // reads orders after this index narrows the candidates.
-@Index(['status', 'expiresAt'])
+@Index('IDX_reservations_status_expires_at', ['status', 'expiresAt'])
 // Order-scoped reads (#2346/#2347), backing `listHeldByOrderRecordId`.
-@Index(['orderRecordId'])
+@Index('IDX_reservations_order_record', ['orderRecordId'])
 @Check('CHK_reservations_quantity_positive', '"quantity" > 0')
 export class ReservationOrmEntity {
   @PrimaryGeneratedColumn('uuid')

@@ -28,6 +28,19 @@ export const ReservationShortfallCloseReasonValues = [
    * cancellation (`released`), dispatch (`consumed`), or expiry (`expired`).
    */
   'reservation-closed',
+  /**
+   * The position is still short and this order still holds there, but the
+   * youngest-first attribution no longer lands ANY of the shortfall on it
+   * (#2628 review).
+   *
+   * A partial recovery is the ordinary cause: shortfall 2 across orders A and
+   * B, the master recovers 1, and attribution now names only A. Without this
+   * reason B's episode is neither re-attributed nor closed, and the badge keeps
+   * asserting a risk that reconciliation no longer supports — asserting RISK
+   * from a stale row, the mirror of the "never assert HEALTH from absence" rule
+   * the surface is otherwise careful about.
+   */
+  'no-longer-attributed',
 ] as const;
 
 export type ReservationShortfallCloseReason =

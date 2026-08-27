@@ -83,15 +83,19 @@ export class ReservationShortfallRepository implements ReservationShortfallRepos
     }));
   }
 
-  async listShortPositionIds(
+  async listShortfallPositionsByIds(
     inventoryItemIds: readonly string[]
-  ): Promise<ReadonlySet<string>> {
+  ): Promise<readonly ShortfallPositionRow[]> {
     if (inventoryItemIds.length === 0) {
-      return new Set<string>();
+      return [];
     }
 
-    const rows = await this.raw<{ id: string }>(
-      `SELECT "id"
+    const rows = await this.raw<PositionRow>(
+      `SELECT "id"                  AS "inventoryItemId",
+              "productId",
+              "productVariantId",
+              "availableQuantity",
+              "olReservedQuantity"
          FROM "inventory_items"
         WHERE "id" = ANY($1)
           AND "olReservedQuantity" > "availableQuantity"
@@ -99,7 +103,13 @@ export class ReservationShortfallRepository implements ReservationShortfallRepos
       [[...inventoryItemIds]]
     );
 
-    return new Set(rows.map((row) => row.id));
+    return rows.map((row) => ({
+      inventoryItemId: row.inventoryItemId,
+      productId: row.productId,
+      productVariantId: row.productVariantId,
+      availableQuantity: Number(row.availableQuantity),
+      olReservedQuantity: Number(row.olReservedQuantity),
+    }));
   }
 
   async listHeldForPositions(
@@ -134,8 +144,12 @@ export class ReservationShortfallRepository implements ReservationShortfallRepos
          VALUES ($1, $2, $3, $4, $5, $6, $7)
          ON CONFLICT ("orderRecordId", "inventoryItemId")
            WHERE "closedAt" IS NULL
-           DO NOTHING
-         RETURNING *`,
+           DO UPDATE SET
+             "shortQuantity" = EXCLUDED."shortQuantity",
+             "positionShortfall" = EXCLUDED."positionShortfall",
+             "sku" = EXCLUDED."sku",
+             "productVariantId" = EXCLUDED."productVariantId"
+         RETURNING *, (xmax = 0) AS "wasInserted"`,
         [
           input.orderRecordId,
           input.inventoryItemId,
@@ -147,14 +161,25 @@ export class ReservationShortfallRepository implements ReservationShortfallRepos
         ]
       );
 
-      // No row means an episode is already open for this key. That is the
-      // whole point of the partial index, and it is a success, not an error.
-      return rows.length === 0 ? null : this.toDomain(rows[0]);
+      // `xmax = 0` is true only for a freshly INSERTed row: Postgres stamps the
+      // updating transaction id on a row it replaced, so this is the standard
+      // way to tell an insert from an upsert's update arm.
+      //
+      // A conflict now REFRESHES the quantities instead of doing nothing
+      // (#2628 review). The episode ID is deliberately untouched by that
+      // update, so an edge-triggered automation keyed on it still sees one
+      // occurrence for one standing condition; only the numbers move, and they
+      // must, or a partial recovery leaves the row asserting a figure nothing
+      // recomputes.
+      if (rows.length === 0) return null;
+      const row = rows[0] as ReservationShortfallEpisodeOrmEntity & { wasInserted?: boolean };
+      return row.wasInserted === true ? this.toDomain(row) : null;
     } catch (error) {
       if (error instanceof QueryFailedError) {
+        // A constraint NAME, not a sentence: every other call site on this
+        // error passes one, and the message is composed from it.
         throw new ReservationLedgerConstraintError(
-          `Failed to open a shortfall episode for order ${input.orderRecordId} ` +
-            `on position ${input.inventoryItemId}`,
+          'reservation_shortfall_episodes.open',
           error
         );
       }
@@ -192,7 +217,7 @@ export class ReservationShortfallRepository implements ReservationShortfallRepos
     } catch (error) {
       if (error instanceof QueryFailedError) {
         throw new ReservationLedgerConstraintError(
-          `Failed to close shortfall episode ${id}`,
+          'reservation_shortfall_episodes.close',
           error
         );
       }

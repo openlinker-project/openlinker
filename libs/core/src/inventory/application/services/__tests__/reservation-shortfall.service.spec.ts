@@ -83,7 +83,7 @@ describe('ReservationShortfallService', () => {
   beforeEach(async () => {
     repository = {
       listShortfallPositions: jest.fn().mockResolvedValue([]),
-      listShortPositionIds: jest.fn().mockResolvedValue(new Set<string>()),
+      listShortfallPositionsByIds: jest.fn().mockResolvedValue([]),
       listHeldForPositions: jest.fn().mockResolvedValue([]),
       openEpisode: jest.fn().mockResolvedValue(null),
       listOpenEpisodes: jest.fn().mockResolvedValue([]),
@@ -218,7 +218,7 @@ describe('ReservationShortfallService', () => {
   describe('closing', () => {
     it('should close by recovery when the position is no longer short', async () => {
       repository.listOpenEpisodes.mockResolvedValue([episode({ orderRecordId: 'ol_order_a' })]);
-      repository.listShortPositionIds.mockResolvedValue(new Set<string>());
+      repository.listShortfallPositionsByIds.mockResolvedValue([]);
       repository.listHeldForPositions.mockResolvedValue([held('ol_order_a', 3, NEWER)]);
 
       const result = await service.detectShortfalls(RUN);
@@ -230,12 +230,14 @@ describe('ReservationShortfallService', () => {
     it('should close by cancellation when the order no longer holds the position, even while it is still short', async () => {
       repository.listOpenEpisodes.mockResolvedValue([episode({ orderRecordId: 'ol_order_a' })]);
       // Still short — for a DIFFERENT order.
-      repository.listShortPositionIds.mockResolvedValue(new Set([POSITION_ID]));
+      repository.listShortfallPositionsByIds.mockResolvedValue([position()]);
       repository.listHeldForPositions.mockResolvedValue([held('ol_order_other', 3, NEWER)]);
 
       const result = await service.detectShortfalls(RUN);
 
       expect(result.episodesClosed).toBe(1);
+      // `reservation-closed` wins over `no-longer-attributed`: the order having
+      // NO hold here is the more specific and more actionable fact.
       expect(repository.closeEpisode).toHaveBeenCalledWith(
         'episode-1',
         'reservation-closed',
@@ -245,13 +247,56 @@ describe('ReservationShortfallService', () => {
 
     it('should leave a standing episode untouched', async () => {
       repository.listOpenEpisodes.mockResolvedValue([episode({ orderRecordId: 'ol_order_a' })]);
-      repository.listShortPositionIds.mockResolvedValue(new Set([POSITION_ID]));
+      repository.listShortfallPositionsByIds.mockResolvedValue([position()]);
       repository.listHeldForPositions.mockResolvedValue([held('ol_order_a', 3, NEWER)]);
 
       const result = await service.detectShortfalls(RUN);
 
       expect(result.episodesClosed).toBe(0);
       expect(repository.closeEpisode).not.toHaveBeenCalled();
+    });
+
+    it('should close as no-longer-attributed after a partial recovery', async () => {
+      // Shortfall was 2 across A and B; the master recovered 1, so youngest-first
+      // attribution now names only the younger order. B stays held and the
+      // position stays short, so neither existing arm fires — without the third
+      // reason B's badge would keep asserting a risk nothing recomputes.
+      repository.listOpenEpisodes.mockResolvedValue([
+        episode({ id: 'ep-older', orderRecordId: 'ol_order_older' }),
+      ]);
+      repository.listShortfallPositionsByIds.mockResolvedValue([
+        position({ availableQuantity: 2, olReservedQuantity: 3 }),
+      ]);
+      repository.listHeldForPositions.mockResolvedValue([
+        held('ol_order_younger', 2, NEWER, 'res-younger'),
+        held('ol_order_older', 2, OLDER, 'res-older'),
+      ]);
+
+      const result = await service.detectShortfalls(RUN);
+
+      expect(result.episodesClosed).toBe(1);
+      expect(repository.closeEpisode).toHaveBeenCalledWith(
+        'ep-older',
+        'no-longer-attributed',
+        NOW
+      );
+    });
+
+    it('should keep an episode the shortfall still lands on', async () => {
+      repository.listOpenEpisodes.mockResolvedValue([
+        episode({ id: 'ep-younger', orderRecordId: 'ol_order_younger' }),
+      ]);
+      repository.listShortfallPositionsByIds.mockResolvedValue([
+        position({ availableQuantity: 2, olReservedQuantity: 3 }),
+      ]);
+      repository.listHeldForPositions.mockResolvedValue([
+        held('ol_order_younger', 2, NEWER, 'res-younger'),
+        held('ol_order_older', 2, OLDER, 'res-older'),
+      ]);
+
+      const result = await service.detectShortfalls(RUN);
+
+      expect(result.episodesClosed).toBe(0);
     });
 
     it('should scope the still-short lookup to the page rather than reading the whole set', async () => {
@@ -261,7 +306,7 @@ describe('ReservationShortfallService', () => {
 
       // A budget the close half could blow past by reading every short
       // position would make the page cap meaningless.
-      expect(repository.listShortPositionIds).toHaveBeenCalledWith([POSITION_ID]);
+      expect(repository.listShortfallPositionsByIds).toHaveBeenCalledWith([POSITION_ID]);
     });
   });
 
@@ -269,7 +314,7 @@ describe('ReservationShortfallService', () => {
     it('should advance both offsets by rows read on a full page', async () => {
       repository.listShortfallPositions.mockResolvedValue([position()]);
       repository.listOpenEpisodes.mockResolvedValue([episode()]);
-      repository.listShortPositionIds.mockResolvedValue(new Set([POSITION_ID]));
+      repository.listShortfallPositionsByIds.mockResolvedValue([position()]);
       repository.listHeldForPositions.mockResolvedValue([held('ol_order_new', 3, NEWER)]);
 
       const result = await service.detectShortfalls({
@@ -287,7 +332,7 @@ describe('ReservationShortfallService', () => {
     it('should wrap both offsets to zero on a short page so a cycle restarts', async () => {
       repository.listShortfallPositions.mockResolvedValue([position()]);
       repository.listOpenEpisodes.mockResolvedValue([episode()]);
-      repository.listShortPositionIds.mockResolvedValue(new Set([POSITION_ID]));
+      repository.listShortfallPositionsByIds.mockResolvedValue([position()]);
       repository.listHeldForPositions.mockResolvedValue([held('ol_order_new', 3, NEWER)]);
 
       const result = await service.detectShortfalls({
@@ -316,8 +361,8 @@ describe('ReservationShortfallService', () => {
         'listOpenByOrderRecordId',
         'listOpenByOrderRecordIds',
         'listOpenEpisodes',
-        'listShortPositionIds',
         'listShortfallPositions',
+        'listShortfallPositionsByIds',
         'openEpisode',
       ]);
     });

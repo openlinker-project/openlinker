@@ -108,11 +108,12 @@ export class HandlerRegistrationService implements OnModuleInit {
     // Every registration declares its ADR-050 concurrency lane (#2278). The
     // lane is chosen by cost-of-starvation, never by I/O shape or bounded
     // context — the authoritative table is ADR-050 decision 1, now 13 realtime /
-    // 18 bulk / 5 fiscal / 7 fan-out: `fiscalization.register` joined `fiscal`
+    // 19 bulk / 5 fiscal / 7 fan-out: `fiscalization.register` joined `fiscal`
     // post-ADR (#2156), `inventory.provenance.backfill` joined `bulk` (#2317),
     // the three returns types joined realtime/bulk/fan-out (#2330),
     // `returns.orphan.reconcile` joined `bulk` (#2332), and
-    // `orders.taxRate.backfill` joined `bulk` (#2440). The
+    // `orders.taxRate.backfill` joined `bulk` (#2440), and
+    // `inventory.reservations.shortfall` joined `bulk` (#2349). The
     // tripwire in `handler-registration.service.spec.ts` is the authority on
     // these counts — this comment had drifted from it before #2330.
 

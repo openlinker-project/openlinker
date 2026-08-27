@@ -19,6 +19,39 @@
  * 4. **The check IS the reserve.** Never read availability and then call this —
  *    an unlocked read-then-act is the defect shape ANALYSIS-1032 § 6I replaces.
  *
+ * ## KNOWN LIMITATION — a multi-position install records NOTHING (#2628 review)
+ *
+ * Position resolution groups live candidates by `(productId, productVariantId)`
+ * and **refuses to guess** when a line resolves to more than one. On any install
+ * where a variant carries two live positions, EVERY line raises
+ * `AmbiguousReservationPositionError`, the retry drops the ambiguous lines, and
+ * `reserveForOrder` returns having written nothing. The consequences cascade
+ * silently: an empty ledger, an ATP subtraction (#2345) that is permanently a
+ * no-op, and a shortfall reconciler (#2349) that can never open an episode.
+ * The only signal is one `error` log per order.
+ *
+ * Two shapes produce it, and **neither is exotic**:
+ *  - two `InventoryMaster` connections claiming the same variant;
+ *  - two locations (#2313) under ONE source holding the same variant.
+ *
+ * **This is an asymmetry with the availability path, not a bug in it.** ADR-058
+ * decision 2 treats multiple positions per variant as normal, and #2321's ATP
+ * numerator sums across them as routine — so the read path answers a question
+ * the write path refuses. That is deliberate for now: summing is well-defined,
+ * whereas *promising* requires choosing WHICH position the promise lands on,
+ * and a wrong choice is an oversell against a real shelf.
+ *
+ * **Carrying `sourceConnectionId` through the candidate grain does not fix it.**
+ * It re-partitions one ambiguous group into two unambiguous ones and leaves the
+ * actual question — which source fulfils this line — unanswered; and it does
+ * nothing at all for the single-source multi-location shape. The fix is a
+ * documented SELECTION POLICY (source and/or location precedence), which is an
+ * OMS routing decision rather than a grouping tweak, and is not in this wave.
+ *
+ * Until then a caller must assume: **single live position per variant, or no
+ * reservations at all.** A caller that needs certainty should pass an explicit
+ * `inventoryItemId`, which bypasses resolution entirely.
+ *
  * Closing a hold is ONE method, {@link IReservationService.closeForOrder}, with
  * the terminal status as data — `'consumed'` for #2347's
  * `Shipment.reservationConsumedAt` claim, `'released'` for #2348's cancellation

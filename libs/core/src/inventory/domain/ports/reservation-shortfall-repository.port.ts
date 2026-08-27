@@ -37,17 +37,21 @@ export interface ReservationShortfallRepositoryPort {
   listShortfallPositions(limit: number, offset: number): Promise<readonly ShortfallPositionRow[]>;
 
   /**
-   * Which of the given positions are STILL short.
+   * Which of the given positions are STILL short, and by how much.
    *
    * The close sweep's read. Deliberately id-scoped rather than "list every
    * short position": the close page is budgeted, and an unbounded read of the
    * whole shortfall set here would defeat that budget entirely — on an install
    * with a wide shortfall it would be the single most expensive query in the
    * pass, growing without limit while the page it serves stays capped.
+   *
+   * Returns the ROWS rather than a set of ids because the close pass must
+   * re-run attribution to detect an episode the shortfall no longer lands on
+   * (#2628 review), and that needs the current quantities, not just membership.
    */
-  listShortPositionIds(
+  listShortfallPositionsByIds(
     inventoryItemIds: readonly string[]
-  ): Promise<ReadonlySet<string>>;
+  ): Promise<readonly ShortfallPositionRow[]>;
 
   /**
    * Every `held` reservation on the given positions, youngest first.
@@ -62,11 +66,16 @@ export interface ReservationShortfallRepositoryPort {
   /**
    * Open an episode, or report that one is already open.
    *
-   * `INSERT ... ON CONFLICT DO NOTHING` against the partial unique index.
-   * **Returns `null` when an episode for this `(orderRecordId,
-   * inventoryItemId)` is already open** — the statement still executes on every
-   * run, so a row count is the only honest measure of "wrote nothing", and this
-   * return value is where a caller reads it.
+   * `INSERT ... ON CONFLICT DO UPDATE` against the partial unique index.
+   *
+   * **Returns the episode only when one was newly OPENED; `null` when one was
+   * already open.** The conflict arm refreshes `shortQuantity` /
+   * `positionShortfall` / `sku` / `productVariantId` rather than doing nothing
+   * (#2628 review) — a frozen quantity leaves the row asserting a figure
+   * nothing recomputes after a partial recovery. The episode **id is never
+   * touched** by that refresh, so it remains the stable occurrence id an
+   * edge-triggered automation keys on: one occurrence per standing condition,
+   * with only the numbers moving.
    */
   openEpisode(input: OpenShortfallEpisodeInput): Promise<ReservationShortfallEpisode | null>;
 
