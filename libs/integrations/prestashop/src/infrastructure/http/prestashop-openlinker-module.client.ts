@@ -53,6 +53,20 @@ const CARTSHIPPING_PATH = '/index.php?fc=module&module=openlinker&controller=car
 /** Order-import endpoint (validateOrder path, ADR-016 / #905). Same wire-contract shape as cartshipping. */
 const IMPORTORDER_PATH = '/index.php?fc=module&module=openlinker&controller=importorder';
 
+/** Feature name the module advertises when it accepts pinned line prices (#2597). */
+const LINE_PRICES_FEATURE = 'line_prices';
+
+/**
+ * Per-connection record of what the shop's module last said it supports.
+ *
+ * Module-scoped because a client instance lives for one capability resolution,
+ * so anything held on `this` would be forgotten between orders and every order
+ * would pay the per-line Webservice cost. Keyed by connection id, and rewritten
+ * from every successful response, so a repointed or downgraded shop corrects
+ * itself rather than being trusted forever.
+ */
+const observedFeatures = new Map<string, Set<string>>();
+
 export class PrestashopOpenLinkerModuleClient implements IPrestashopOpenLinkerModuleClient {
   private readonly logger = new Logger(PrestashopOpenLinkerModuleClient.name);
 
@@ -102,6 +116,10 @@ export class PrestashopOpenLinkerModuleClient implements IPrestashopOpenLinkerMo
     throw new PrestashopOlModuleException(this.connectionId, input.idCart, response.status, failure);
   }
 
+  supportsLinePrices(): boolean {
+    return observedFeatures.get(this.connectionId)?.has(LINE_PRICES_FEATURE) === true;
+  }
+
   async importOrder(input: ImportOrderInput): Promise<ImportOrderResult> {
     const body = JSON.stringify({
       id_cart: input.idCart,
@@ -109,6 +127,15 @@ export class PrestashopOpenLinkerModuleClient implements IPrestashopOpenLinkerMo
       amount_paid: input.amountPaid,
       payment_method: input.paymentMethod,
       order_reference: input.orderReference,
+      ...(input.linePrices && input.linePrices.length > 0
+        ? {
+            line_prices: input.linePrices.map((line) => ({
+              id_product: line.idProduct,
+              id_product_attribute: line.idProductAttribute,
+              price: line.price,
+            })),
+          }
+        : {}),
     });
 
     this.logger.debug(
@@ -133,6 +160,9 @@ export class PrestashopOpenLinkerModuleClient implements IPrestashopOpenLinkerMo
     }
 
     const parsed = this.parseImportOrderResult(envelope);
+    if (parsed) {
+      observedFeatures.set(this.connectionId, new Set(parsed.features));
+    }
     if (!parsed) {
       throw new PrestashopOlModuleException(
         this.connectionId,
@@ -251,10 +281,15 @@ export class PrestashopOpenLinkerModuleClient implements IPrestashopOpenLinkerMo
       return null;
     }
 
+    const features = Array.isArray(envelope.features)
+      ? envelope.features.filter((entry): entry is string => typeof entry === 'string')
+      : [];
+
     return {
       idOrder,
       reference: envelope.reference,
       alreadyExisted: envelope.already_existed === true,
+      features,
     };
   }
 }

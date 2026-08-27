@@ -31,15 +31,30 @@
  *
  * Body (JSON):
  *   { id_cart: int, id_order_state: int, amount_paid: number,
- *     payment_method?: string, order_reference?: string }
+ *     payment_method?: string, order_reference?: string,
+ *     line_prices?: [{ id_product: int, id_product_attribute?: int, price: string }] }
+ *
+ * `line_prices` carries the buyer-paid tax-EXCLUSIVE unit price of every line
+ * (#2597). When present the module pins them as cart-scoped `specific_prices`
+ * itself and deletes them again in the same request, which replaces two
+ * Webservice calls per line - sixteen of twenty-seven on an eight-line order.
+ * The prices are already converted and rounded by the backend, which owns the
+ * tax-rate resolution; the module never computes one.
  *
  * Responses:
- *   200 {ok: true, id_order: <int>, reference: <string>, already_existed: <bool>}
- *   400 {ok: false, error: 'invalid-body' | 'invalid-fields' | 'cart-not-found' | 'cart-empty'}
+ *   200 {ok: true, id_order: <int>, reference: <string>, already_existed: <bool>,
+ *        features: ['line_prices']}
+ *   400 {ok: false, error: 'invalid-body' | 'invalid-fields' | 'invalid-line-prices'
+ *        | 'cart-not-found' | 'cart-empty'}
  *   401 {ok: false, error: <HmacRequestVerifier reason>}
  *   405 {ok: false, error: 'method-not-allowed'}
  *   422 {ok: false, error: 'payment-module-unavailable' | 'payment-module-inactive'}
- *   502 {ok: false, error: 'validate-order-failed' | 'validate-order-aborted', detail: <string>}
+ *   502 {ok: false, error: 'validate-order-failed' | 'validate-order-aborted'
+ *        | 'line-price-pin-failed', detail: <string>}
+ *
+ * `features` on the success envelope is how the backend learns this build
+ * accepts `line_prices`. An older module answers without it, so the backend
+ * keeps pinning over the Webservice until it has seen the field.
  *
  * Idempotent: if an order already exists for `id_cart`, the existing order is
  * returned (`already_existed: true`) rather than validated a second time — so a
@@ -69,6 +84,12 @@ class OpenLinkerImportOrderModuleFrontController extends ModuleFrontController
     /** @var bool True while the validateOrder output buffer is open. */
     private $bufferOpen = false;
 
+    /** @var int[] `specific_price` ids this request created, for its own cleanup. */
+    private $pinnedPriceIds = [];
+
+    /** @var int Cart the pinned rows belong to. Guards the cleanup delete. */
+    private $pinnedCartId = 0;
+
     public function postProcess()
     {
         if (!isset($_SERVER['REQUEST_METHOD']) || $_SERVER['REQUEST_METHOD'] !== 'POST') {
@@ -78,6 +99,7 @@ class OpenLinkerImportOrderModuleFrontController extends ModuleFrontController
 
         require_once $this->module->getLocalPath() . 'classes/HmacRequestVerifier.php';
         require_once $this->module->getLocalPath() . 'classes/PaymentModuleGate.php';
+        require_once $this->module->getLocalPath() . 'classes/LinePriceRequest.php';
 
         $rawBody         = (string) @file_get_contents('php://input');
         $timestampHeader = $this->headerValue('HTTP_X_OPENLINKER_TIMESTAMP');
@@ -111,6 +133,15 @@ class OpenLinkerImportOrderModuleFrontController extends ModuleFrontController
         if ($idCart <= 0 || $idOrderState <= 0 || !is_numeric($amountPaid)) {
             $this->jsonError(400, 'invalid-fields');
             return;
+        }
+
+        $linePrices = [];
+        if (array_key_exists('line_prices', $data) && $data['line_prices'] !== null) {
+            $linePrices = LinePriceRequest::normalize($data['line_prices']);
+            if ($linePrices === null) {
+                $this->jsonError(400, 'invalid-line-prices');
+                return;
+            }
         }
 
         $cart = new Cart($idCart);
@@ -184,6 +215,20 @@ class OpenLinkerImportOrderModuleFrontController extends ModuleFrontController
         OpenLinker::$suppressImportMail =
             (string) Configuration::get(OpenLinker::IMPORT_SEND_MAIL_CONFIG_KEY) !== '1';
 
+        // Pin the buyer-paid line prices, if the backend sent them (#2597).
+        // Done here rather than over the Webservice so eight lines cost no
+        // extra requests at all. Failing loudly is the point: an unpinned line
+        // would be ordered at the catalogue price (ADR-014).
+        if ($linePrices !== []) {
+            $pinError = $this->pinLinePrices($cart, $linePrices);
+            if ($pinError !== null) {
+                $this->cleanupPinnedPrices();
+                OpenLinker::$suppressImportMail = false;
+                $this->jsonError(502, 'line-price-pin-failed', $pinError);
+                return;
+            }
+        }
+
         // validateOrder and the code it calls can end the request with die(),
         // which PHP sends as HTML with status 200 - a failure the caller reads
         // as a success (#2601). Buffer the output so no such body escapes, and
@@ -208,6 +253,7 @@ class OpenLinkerImportOrderModuleFrontController extends ModuleFrontController
             );
         } catch (Throwable $e) {
             $this->discardStrayOutput();
+            $this->cleanupPinnedPrices();
             OpenLinker::$suppressImportMail = false;
             PrestaShopLogger::addLog(
                 'OpenLinker: validateOrder failed for id_cart=' . $idCart . ': ' . $e->getMessage(),
@@ -217,6 +263,9 @@ class OpenLinkerImportOrderModuleFrontController extends ModuleFrontController
             return;
         }
         $this->discardStrayOutput();
+        // The prices are materialised into order_detail now, so the pins have
+        // served their purpose.
+        $this->cleanupPinnedPrices();
         OpenLinker::$suppressImportMail = false;
 
         $idOrder = (int) Order::getIdByCartId($idCart);
@@ -232,6 +281,99 @@ class OpenLinkerImportOrderModuleFrontController extends ModuleFrontController
             'reference' => $order->reference,
             'already_existed' => false,
         ]);
+    }
+
+    /**
+     * Create one cart-scoped `specific_price` row per supplied line.
+     *
+     * Written through the SpecificPrice object model rather than raw SQL so
+     * PrestaShop flushes its own price cache - the cart totals validateOrder
+     * computes below are read through that cache.
+     *
+     * The rows are scoped to this cart and this customer, so they cannot price
+     * anything else even in the window before they are deleted.
+     *
+     * @param Cart  $cart
+     * @param array $linePrices Normalised rows from LinePriceRequest.
+     * @return string|null null on success, else the reason for a 502.
+     */
+    private function pinLinePrices(Cart $cart, array $linePrices)
+    {
+        $this->pinnedCartId = (int) $cart->id;
+
+        // Backstop expiry, in case the process dies before any cleanup path
+        // runs. The row prices only this cart, which by then has its order.
+        $expiry = date('Y-m-d H:i:s', time() + 86400);
+
+        foreach ($linePrices as $line) {
+            $specificPrice = new SpecificPrice();
+            $specificPrice->id_product = $line['id_product'];
+            $specificPrice->id_product_attribute = $line['id_product_attribute'];
+            $specificPrice->id_shop = 0;
+            $specificPrice->id_shop_group = 0;
+            $specificPrice->id_cart = (int) $cart->id;
+            $specificPrice->id_currency = (int) $cart->id_currency;
+            $specificPrice->id_country = 0;
+            $specificPrice->id_group = 0;
+            $specificPrice->id_customer = (int) $cart->id_customer;
+            $specificPrice->from_quantity = 1;
+            $specificPrice->price = $line['price'];
+            $specificPrice->reduction = 0;
+            $specificPrice->reduction_tax = 0;
+            $specificPrice->reduction_type = 'amount';
+            $specificPrice->from = '0000-00-00 00:00:00';
+            $specificPrice->to = $expiry;
+
+            try {
+                if (!$specificPrice->add()) {
+                    return 'could not pin the price of product ' . $line['id_product'];
+                }
+            } catch (Exception $e) {
+                return 'could not pin the price of product ' . $line['id_product']
+                    . ': ' . $e->getMessage();
+            }
+
+            $this->pinnedPriceIds[] = (int) $specificPrice->id;
+        }
+
+        return null;
+    }
+
+    /**
+     * Delete the `specific_price` rows this request created.
+     *
+     * Only the ids collected above are touched, and each is re-checked against
+     * the cart it was created for. Deleting by `id_cart` alone would be wrong:
+     * several PrestaShop modules write cart-scoped promotions and some use
+     * `id_cart = 0`, so a cart-wide delete could remove a row we never made.
+     *
+     * Best-effort. A row left behind expires within a day and is scoped to a
+     * cart that now has an order, so it can price nothing.
+     *
+     * @return void
+     */
+    private function cleanupPinnedPrices()
+    {
+        $ids = $this->pinnedPriceIds;
+        $this->pinnedPriceIds = [];
+
+        foreach ($ids as $id) {
+            try {
+                $specificPrice = new SpecificPrice($id);
+                if (
+                    Validate::isLoadedObject($specificPrice)
+                    && (int) $specificPrice->id_cart === $this->pinnedCartId
+                ) {
+                    $specificPrice->delete();
+                }
+            } catch (Exception $e) {
+                PrestaShopLogger::addLog(
+                    'OpenLinker: could not delete pinned specific_price ' . $id
+                        . ' (it expires on its own): ' . $e->getMessage(),
+                    2, null, 'Cart', $this->pinnedCartId
+                );
+            }
+        }
     }
 
     /**
@@ -291,6 +433,9 @@ class OpenLinkerImportOrderModuleFrontController extends ModuleFrontController
 
         $strayLength = $this->bufferOpen ? (int) ob_get_length() : 0;
         $this->discardStrayOutput();
+        // The request died inside PrestaShop, so no other path will run. Pins
+        // left behind would price a later cart of the same customer.
+        $this->cleanupPinnedPrices();
 
         if (headers_sent()) {
             return;
@@ -319,6 +464,10 @@ class OpenLinkerImportOrderModuleFrontController extends ModuleFrontController
      */
     private function jsonOk(array $body)
     {
+        // Capability advertisement, not decoration. The backend cannot ask an
+        // older module what it accepts, so a build that understands
+        // `line_prices` says so on every success (#2597).
+        $body['features'] = ['line_prices'];
         $this->responded = true;
         http_response_code(200);
         header('Content-Type: application/json');

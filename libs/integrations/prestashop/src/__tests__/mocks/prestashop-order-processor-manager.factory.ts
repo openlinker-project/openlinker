@@ -162,9 +162,16 @@ export function createOrderProcessorManagerHarness(): OrderProcessorHarness {
 
   const mockOpenLinkerModuleClient = {
     writeCartShipping: jest.fn().mockResolvedValue(undefined),
-    importOrder: jest
-      .fn()
-      .mockResolvedValue({ idOrder: 999, reference: 'TEST-ORDER-001', alreadyExisted: false }),
+    importOrder: jest.fn().mockResolvedValue({
+      idOrder: 999,
+      reference: 'TEST-ORDER-001',
+      alreadyExisted: false,
+      features: [],
+    }),
+    // Defaults to the pre-#2597 shop: the adapter pins line prices over the
+    // Webservice, which is what the #895 assertions in these suites measure.
+    // A test covering the module-side pin overrides this.
+    supportsLinePrices: jest.fn().mockReturnValue(false),
   } as unknown as jest.Mocked<IPrestashopOpenLinkerModuleClient>;
 
   // Default OL Dynamic carrier discovery: every createOrder call invokes

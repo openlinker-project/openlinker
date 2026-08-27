@@ -260,7 +260,12 @@ describe('PrestashopOpenLinkerModuleClient', () => {
       const result = await client.importOrder(input);
 
       // Assert
-      expect(result).toEqual({ idOrder: 77, reference: 'ABCDEFGHI', alreadyExisted: false });
+      expect(result).toEqual({
+        idOrder: 77,
+        reference: 'ABCDEFGHI',
+        alreadyExisted: false,
+        features: [],
+      });
     });
 
     it('should reject an HTML body sent with status 200 (#2601)', async () => {
@@ -291,6 +296,114 @@ describe('PrestashopOpenLinkerModuleClient', () => {
         status: 422,
         reason: 'payment-module-inactive',
       });
+    });
+
+    it('should not claim line-price support before a module has advertised it (#2597)', () => {
+      // A build that predates the feature answers without `features`, so the
+      // adapter must keep pinning over the Webservice.
+      expect(client.supportsLinePrices()).toBe(false);
+    });
+
+    it('should learn line-price support from the module response (#2597)', async () => {
+      // Arrange - own connection id, because support is remembered per shop.
+      const scoped = new PrestashopOpenLinkerModuleClient(
+        'conn-supports-line-prices',
+        baseUrl,
+        secretProvider
+      );
+      (global.fetch as jest.Mock).mockResolvedValue({
+        status: 200,
+        text: jest.fn().mockResolvedValue(
+          JSON.stringify({
+            ok: true,
+            id_order: 77,
+            reference: 'ABCDEFGHI',
+            already_existed: false,
+            features: ['line_prices'],
+          })
+        ),
+      });
+
+      // Act
+      const result = await scoped.importOrder(input);
+
+      // Assert
+      expect(result.features).toEqual(['line_prices']);
+      expect(scoped.supportsLinePrices()).toBe(true);
+    });
+
+    it('should forget line-price support when the module stops advertising it', async () => {
+      // Arrange - a downgrade must not leave the adapter sending a field the
+      // shop now ignores, which would price the order from the catalogue.
+      const scoped = new PrestashopOpenLinkerModuleClient(
+        'conn-downgraded',
+        baseUrl,
+        secretProvider
+      );
+      const envelope = (features?: string[]): Record<string, unknown> => ({
+        ok: true,
+        id_order: 77,
+        reference: 'ABCDEFGHI',
+        already_existed: false,
+        ...(features ? { features } : {}),
+      });
+      (global.fetch as jest.Mock)
+        .mockResolvedValueOnce({
+          status: 200,
+          text: jest.fn().mockResolvedValue(JSON.stringify(envelope(['line_prices']))),
+        })
+        .mockResolvedValueOnce({
+          status: 200,
+          text: jest.fn().mockResolvedValue(JSON.stringify(envelope())),
+        });
+
+      // Act
+      await scoped.importOrder(input);
+      const supportedBefore = scoped.supportsLinePrices();
+      await scoped.importOrder(input);
+
+      // Assert
+      expect(supportedBefore).toBe(true);
+      expect(scoped.supportsLinePrices()).toBe(false);
+    });
+
+    it('should send the line prices in the request body when supplied (#2597)', async () => {
+      // Arrange
+      (global.fetch as jest.Mock).mockResolvedValue({
+        status: 200,
+        text: jest.fn().mockResolvedValue(
+          JSON.stringify({ ok: true, id_order: 77, reference: 'ABC', already_existed: false })
+        ),
+      });
+
+      // Act
+      await client.importOrder({
+        ...input,
+        linePrices: [{ idProduct: 3, idProductAttribute: 9, price: '12.345678' }],
+      });
+
+      // Assert
+      const [, init] = (global.fetch as jest.Mock).mock.calls[0] as [string, RequestInit];
+      expect(JSON.parse(String(init.body))).toMatchObject({
+        line_prices: [{ id_product: 3, id_product_attribute: 9, price: '12.345678' }],
+      });
+    });
+
+    it('should omit the line-prices field entirely when there is nothing to pin', async () => {
+      // Arrange - an older module must see a byte-identical body to before.
+      (global.fetch as jest.Mock).mockResolvedValue({
+        status: 200,
+        text: jest.fn().mockResolvedValue(
+          JSON.stringify({ ok: true, id_order: 77, reference: 'ABC', already_existed: false })
+        ),
+      });
+
+      // Act
+      await client.importOrder({ ...input, linePrices: [] });
+
+      // Assert
+      const [, init] = (global.fetch as jest.Mock).mock.calls[0] as [string, RequestInit];
+      expect(JSON.parse(String(init.body))).not.toHaveProperty('line_prices');
     });
 
     it('should reject a 200 envelope missing the order fields', async () => {
