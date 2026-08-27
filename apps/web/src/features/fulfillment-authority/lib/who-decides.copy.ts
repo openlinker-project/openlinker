@@ -195,6 +195,20 @@ export const PRESET_ACTION_COPY = {
     'Nothing was changed. This build and your server disagree about which arrangements exist — updating OpenLinker should clear it.',
   failedTitle: 'We could not save this',
   failedMessage: 'Nothing was changed. Try again in a moment.',
+  /**
+   * The save reached the server and the server answered — but this build could
+   * not read the answer, so it does not know how much of it was applied.
+   *
+   * Distinct from every outcome above, and it must NOT collapse into `saved`:
+   * `parseAuthorityStatus` returns `null` on any whole-envelope parse failure,
+   * and the schema is strict over unions this programme widens wave by wave. On
+   * a rolling deploy an apply that wrote 3 of 5 connections and honestly
+   * reported the other two would be read as an empty failure list and announced
+   * as `Saved`.
+   */
+  unreadableTitle: 'We could not read the result',
+  unreadableMessage:
+    'Your arrangement may have been saved in part or in full — OpenLinker could not read the answer to tell you which. Reload this page to see where things stand, then choose the same arrangement again if anything is missing.',
 } as const;
 
 /**

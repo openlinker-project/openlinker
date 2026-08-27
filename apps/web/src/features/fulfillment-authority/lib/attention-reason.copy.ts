@@ -190,6 +190,16 @@ export const ATTENTION_SECTION_COPY = {
    */
   statesLabel: 'Decisions not being made',
   ordersLabel: 'Orders affected',
+  /**
+   * Reconciles the heading count with what is on screen.
+   *
+   * A state this build cannot name is KEPT and NOT COUNTED (§4.4 S2-5), so an
+   * install whose only item is unrecognised renders `Needs attention (0)` above
+   * a visible card — a heading that reads as "nothing here" over something that
+   * plainly is. The discrepancy is stated instead of left to be noticed.
+   */
+  unknownNote:
+    'Some of the items below were recorded by a newer version of OpenLinker, so they are shown but not counted above.',
 } as const;
 
 const PLACEHOLDER_PATTERN = /\{(channel|ref|n|sku)\}/g;

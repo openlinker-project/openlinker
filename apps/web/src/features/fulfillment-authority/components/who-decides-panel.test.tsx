@@ -281,6 +281,69 @@ describe('WhoDecidesPanel', () => {
     expect(screen.queryByText('Saved')).not.toBeInTheDocument();
   });
 
+  it('should render both the candidate list and the inactive-claim line on one row', async () => {
+    // The two sets are DISJOINT and independently non-empty: inactive claimants
+    // are filtered on `!isActive`, ambiguity is computed over ACTIVE claimants
+    // only. Three connections claiming `availability` — two active and fighting,
+    // one disabled — populates both, which is exactly the pair that shared one
+    // CSS grid area and therefore rendered stacked on top of each other. Every
+    // other fixture in this file sets `inactiveClaimantConnectionIds: []`, which
+    // is why nothing caught it.
+    const status = zeroConfigStatus();
+    const rows = status.rows.map((row) =>
+      row.question === 'availability'
+        ? {
+            ...row,
+            state: 'ambiguous' as const,
+            source: 'operator-config' as const,
+            answer: {
+              kind: 'cannot-tell' as const,
+              reason: 'multiple-claimants-same-scope' as const,
+              candidateConnectionIds: ['conn-a', 'conn-b'],
+            },
+            why: {
+              kind: 'ambiguous' as const,
+              reason: 'multiple-claimants-same-scope' as const,
+            },
+            inactiveClaimantConnectionIds: ['conn-disabled'],
+          }
+        : row
+    );
+    renderPanel({ status: { ...status, rows } });
+
+    await screen.findByText('How much stock can we promise?');
+
+    const inactiveLine = screen.getByText('A switched-off connection still claims this.');
+    expect(inactiveLine).toBeInTheDocument();
+
+    const rowElement = inactiveLine.closest('.who-decides-row');
+    expect(rowElement).not.toBeNull();
+    // Both parts live on the SAME row, so they cannot be allowed to occupy one
+    // grid area — `who-decides-styles.test.ts` asserts the areas differ.
+    expect(rowElement?.querySelector('.who-decides-row__candidates')).not.toBeNull();
+    expect(rowElement?.querySelector('.who-decides-row__inactive')).not.toBeNull();
+  });
+
+  it('should not claim success when the apply response cannot be read', async () => {
+    // `parseAuthorityStatus` returns `null` on ANY whole-envelope parse failure,
+    // and the schema is strict over unions this programme widens wave by wave.
+    // Read as `result?.applied?.failedConnectionIds ?? []`, a rolling-deploy
+    // apply that wrote 3 of 5 connections and honestly reported the other two
+    // was announced as `Saved`.
+    const applyPreset = vi.fn().mockResolvedValue(null);
+    renderPanel({ applyPreset });
+
+    const user = userEvent.setup();
+    await screen.findByText('How much stock can we promise?');
+    await user.click(screen.getByRole('radio', { name: /Let OpenLinker decide/ }));
+    await user.click(screen.getByRole('button', { name: 'Save this arrangement' }));
+    await confirmSave(user);
+
+    expect(await screen.findByText('We could not read the result')).toBeInTheDocument();
+    expect(screen.queryByText('Saved')).not.toBeInTheDocument();
+    expect(screen.queryByText('Only part of this was saved')).not.toBeInTheDocument();
+  });
+
   it('should report a 422 refusal as nothing changed and name the conflicting connections', async () => {
     // The REAL envelope the service throws: `{ message, presetId, ambiguities }`,
     // with the ids one level down on each item's `connectionIds`

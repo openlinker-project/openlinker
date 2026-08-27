@@ -76,7 +76,17 @@ type ApplyOutcome =
   | { kind: 'partial'; connectionIds: readonly string[] }
   | { kind: 'ambiguous'; connectionIds: readonly string[] }
   | { kind: 'rejected' }
-  | { kind: 'failed' };
+  | { kind: 'failed' }
+  /**
+   * The request succeeded and its body could not be read.
+   *
+   * Never `saved`: `parseAuthorityStatus` yields `null` on any whole-envelope
+   * parse failure, so `result?.applied?.failedConnectionIds ?? []` would report
+   * an empty failure list for a partially-applied write and announce success
+   * for it. The preview path already gets this right and says so in its own
+   * docblock; this is the same rule on the write.
+   */
+  | { kind: 'unreadable' };
 
 /**
  * The connections whose competing claims caused a 422.
@@ -189,7 +199,11 @@ export function WhoDecidesPanel(): ReactElement {
   const runApply = (presetId: AuthorityPresetId): void => {
     applyPreset.mutate(presetId, {
       onSuccess: (result) => {
-        const failed = result?.applied?.failedConnectionIds ?? [];
+        if (result === null) {
+          setOutcome({ kind: 'unreadable' });
+          return;
+        }
+        const failed = result.applied?.failedConnectionIds ?? [];
         setOutcome(
           failed.length > 0 ? { kind: 'partial', connectionIds: failed } : { kind: 'saved' },
         );
@@ -263,6 +277,11 @@ export function WhoDecidesPanel(): ReactElement {
         {outcome.kind === 'failed' ? (
           <Alert tone="error" title={PRESET_ACTION_COPY.failedTitle}>
             {PRESET_ACTION_COPY.failedMessage}
+          </Alert>
+        ) : null}
+        {outcome.kind === 'unreadable' ? (
+          <Alert tone="warning" title={PRESET_ACTION_COPY.unreadableTitle}>
+            {PRESET_ACTION_COPY.unreadableMessage}
           </Alert>
         ) : null}
 

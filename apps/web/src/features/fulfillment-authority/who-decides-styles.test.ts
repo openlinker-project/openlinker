@@ -68,4 +68,65 @@ describe('who-decides stylesheet coverage', () => {
     const undefinedClasses = [...used].filter((name) => !css.includes(`.${name}`));
     expect(undefinedClasses).toEqual([]);
   });
+
+  /**
+   * Every custom property a `who-decides-*` rule READS must be DECLARED.
+   *
+   * `check-design-tokens.mjs` runs catalog -> CSS only, so a reference to a
+   * property that was never declared is invisible to it. `var(--x)` with no
+   * declaration and no fallback is invalid at computed-value time, which makes
+   * the whole shorthand `unset` — `background: var(--surface-1)` shipped seven
+   * transparent rows and three transparent cards, and `--accent-strong` gave the
+   * selected preset card a `currentColor` border. Neither throws, neither shows
+   * up in a class-name check, and both look like a broken page.
+   */
+  it('references only declared custom properties from who-decides rules', () => {
+    const css = readFileSync(join(WEB_SRC, 'index.css'), 'utf8');
+
+    const declared = new Set<string>();
+    for (const match of css.matchAll(/--([a-zA-Z0-9-]+)\s*:/g)) declared.add(match[1]);
+
+    // Rule bodies whose selector list mentions a who-decides class.
+    const referenced = new Set<string>();
+    for (const block of css.matchAll(/([^{}]*who-decides[^{}]*)\{([^}]*)\}/g)) {
+      for (const use of block[2].matchAll(/var\(\s*--([a-zA-Z0-9-]+)\s*(\)|,)/g)) {
+        // A `var(--x, fallback)` reference is safe by construction.
+        if (use[2] === ',') continue;
+        referenced.add(use[1]);
+      }
+    }
+
+    expect(referenced.size).toBeGreaterThan(0);
+    expect([...referenced].filter((name) => !declared.has(name))).toEqual([]);
+  });
+
+  /**
+   * `__inactive` and `__candidates` must occupy DIFFERENT grid areas.
+   *
+   * CSS Grid STACKS items assigned to one area rather than flowing them, and the
+   * two are independently non-empty on the same row — inactive claimants are
+   * filtered on `!isActive`, ambiguity is computed over ACTIVE claimants only —
+   * so sharing `extras` printed the disabled-connection sentence THROUGH the
+   * candidate link list, at every breakpoint.
+   */
+  it('does not assign two who-decides row parts to one grid area', () => {
+    const css = readFileSync(join(WEB_SRC, 'index.css'), 'utf8');
+
+    const areaOf = (className: string): string[] => {
+      const areas: string[] = [];
+      for (const block of css.matchAll(/([^{}]*)\{([^}]*)\}/g)) {
+        if (!block[1].split(',').some((sel) => sel.trim().startsWith(`.${className}`))) continue;
+        for (const area of block[2].matchAll(/grid-area:\s*([a-zA-Z0-9_-]+)\s*;/g)) {
+          areas.push(area[1]);
+        }
+      }
+      return areas;
+    };
+
+    const inactive = areaOf('who-decides-row__inactive');
+    const candidates = areaOf('who-decides-row__candidates');
+    expect(inactive.length).toBeGreaterThan(0);
+    expect(candidates.length).toBeGreaterThan(0);
+    expect(inactive.filter((area) => candidates.includes(area))).toEqual([]);
+  });
 });

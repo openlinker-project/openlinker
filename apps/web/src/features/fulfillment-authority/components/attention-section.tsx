@@ -106,6 +106,15 @@ export function AttentionSection({ attention, nameFor }: AttentionSectionProps):
         </p>
       ) : null}
 
+      {/*
+        Rendered independently of `total`, which is the whole point: the case
+        that reads worst is exactly `total === 0` with an unrecognised card
+        below it — `Needs attention (0)` over something visibly there.
+      */}
+      {views.some((view) => !view.known) ? (
+        <p className="who-decides-attention__counts">{ATTENTION_SECTION_COPY.unknownNote}</p>
+      ) : null}
+
       {items.length === 0 ? (
         /* Zero-state is one reassuring line, never an illustration (§4). */
         <p className="who-decides-attention__empty">{ATTENTION_SECTION_COPY.empty}</p>
@@ -115,7 +124,12 @@ export function AttentionSection({ attention, nameFor }: AttentionSectionProps):
             const item = items[index];
             return (
               <li
-                key={view.known ? view.reason : `unknown-${String(index)}`}
+                // Keyed on `(reason, question)`. The reason alone is unique only
+                // by today's accident that at most one counted item is derived
+                // per question; a persisted producer contributing two items with
+                // one reason would make React silently drop one, from the
+                // section that exists to surface it.
+                key={`${item.reason}:${item.question ?? String(index)}`}
                 className="who-decides-attention__item"
               >
                 <div className="who-decides-attention__head">

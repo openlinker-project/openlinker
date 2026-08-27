@@ -19494,22 +19494,30 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
 
 .who-decides-row {
   align-items: start;
-  background: var(--surface-1);
+  background: var(--bg-surface);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
   column-gap: var(--space-4);
   display: grid;
+  /* `inactive` is its OWN area, not a second tenant of `extras`. CSS Grid
+     STACKS items assigned to the same area rather than flowing them, and the
+     two are independently non-empty: inactive claimants are filtered on
+     `!isActive` while ambiguity is computed only over ACTIVE claimants, so a
+     row with three claimants (two active and fighting, one disabled) printed
+     the "a disabled connection also claims this" sentence THROUGH the
+     candidate link list. */
   grid-template-areas:
     'question answer badge'
     'question why badge'
-    'question extras badge';
+    'question extras badge'
+    'question inactive badge';
   grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) auto;
   padding: var(--space-3) var(--space-4);
   row-gap: var(--space-1);
 }
 
 .who-decides-row__question {
-  font-size: var(--font-size-sm);
+  font-size: 0.875rem;
   font-weight: 600;
   grid-area: question;
   margin: 0;
@@ -19527,21 +19535,24 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
 .who-decides-row__locked,
 .who-decides-row__inactive {
   color: var(--text-muted);
-  font-size: var(--font-size-xs);
+  font-size: 0.75rem;
   grid-area: why;
   margin: 0;
 }
 
 .who-decides-row__locked,
-.who-decides-row__inactive,
 .who-decides-row__candidates {
   grid-area: extras;
+}
+
+.who-decides-row__inactive {
+  grid-area: inactive;
 }
 
 .who-decides-row__candidates {
   display: flex;
   flex-wrap: wrap;
-  font-size: var(--font-size-xs);
+  font-size: 0.75rem;
   gap: var(--space-2);
   list-style: none;
   margin: 0;
@@ -19554,7 +19565,7 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
 }
 
 .who-decides-row__link {
-  color: var(--accent-strong);
+  color: var(--accent-primary);
 }
 
 /* --- preset cards --- */
@@ -19573,12 +19584,12 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
 
 .who-decides-presets__prospective {
   color: var(--text-muted);
-  font-size: var(--font-size-xs);
+  font-size: 0.75rem;
   margin: 0;
 }
 
 .who-decides-preset {
-  background: var(--surface-1);
+  background: var(--bg-surface);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
   cursor: pointer;
@@ -19588,7 +19599,7 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
 }
 
 .who-decides-preset--selected {
-  border-color: var(--accent-strong);
+  border-color: var(--accent-primary);
 }
 
 .who-decides-preset--unavailable {
@@ -19616,7 +19627,7 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
 }
 
 .who-decides-preset__title {
-  font-size: var(--font-size-sm);
+  font-size: 0.875rem;
   font-weight: 600;
 }
 
@@ -19624,7 +19635,7 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
 .who-decides-preset__best,
 .who-decides-preset__changes,
 .who-decides-preset__reason {
-  font-size: var(--font-size-xs);
+  font-size: 0.75rem;
 }
 
 .who-decides-preset__best,
@@ -19639,6 +19650,7 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
       'answer'
       'why'
       'extras'
+      'inactive'
       'badge';
     grid-template-columns: minmax(0, 1fr);
     row-gap: var(--space-2);

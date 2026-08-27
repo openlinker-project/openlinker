@@ -73,9 +73,14 @@ export function OmsAttentionBadges({
         const tone = view.known ? view.tone : 'neutral';
         return (
           <span
-            // The array carries at most one entry per producer, so the index is
-            // stable within a row; there is no id to key on.
-            key={view.known ? view.reason : `unknown-${String(index)}`}
+            // Keyed on `(producer, reason)`. The reason ALONE is unique only by
+            // today's accident that at most one counted item is derived per
+            // question; the wire type promises nothing, so the first persisted
+            // producer contributing a second entry with the same reason would
+            // make React silently drop one — from the surface whose whole job
+            // is surfacing it. The producer is the array's own key, and the
+            // index is the last resort for an entry carrying neither.
+            key={`${String(entry.producer ?? '')}:${String(entry.reason ?? '')}:${String(index)}`}
             className="who-decides-attention-badge"
             title={view.title}
           >
