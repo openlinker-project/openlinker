@@ -41,6 +41,7 @@ import { MarketplaceShipmentStatusSyncHandler } from './handlers/marketplace-shi
 import { MarketplaceShipmentSyncByExternalIdHandler } from './handlers/marketplace-shipment-sync-by-external-id.handler';
 import { MarketplaceFulfillmentStatusSyncHandler } from './handlers/marketplace-fulfillment-status-sync.handler';
 import { MasterProductSyncHandler } from './handlers/master-product-sync.handler';
+import { MasterProductSyncBatchHandler } from './handlers/master-product-sync-batch.handler';
 import { MasterInventorySyncHandler } from './handlers/master-inventory-sync.handler';
 import { AutoMatchVariantsHandler } from './handlers/auto-match-variants.handler';
 import { MasterInventorySyncAllHandler } from './handlers/master-inventory-sync-all.handler';
@@ -97,6 +98,7 @@ import { HandlerRegistrationService } from './handlers/handler-registration.serv
     MarketplaceShipmentSyncByExternalIdHandler,
     MarketplaceFulfillmentStatusSyncHandler,
     MasterProductSyncHandler,
+    MasterProductSyncBatchHandler,
     MasterInventorySyncHandler,
     AutoMatchVariantsHandler,
     MasterInventorySyncAllHandler,

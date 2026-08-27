@@ -3,10 +3,11 @@
  *
  * Pins the ADR-050 lane partition (#2278): every `JobTypeValues` member is
  * registered with exactly one lane, the per-lane counts match the ADR's
- * table (12 realtime / 15 bulk / 5 fiscal / 6 fan-out — `fiscalization.register`
+ * table (12 realtime / 16 bulk / 5 fiscal / 6 fan-out — `fiscalization.register`
  * joined `fiscal` post-ADR, #2156; `orders.taxRate.backfill` joined `bulk`,
- * #2440; the two sweep-triggered master children joined `bulk`, #2594; #2609
- * changed no assignment at all), and
+ * #2440; the two sweep-triggered master children joined `bulk`, #2594;
+ * `master.product.syncBatch` joined `bulk` as another catalogue-sweep child,
+ * #2593; #2609 changed no assignment at all), and
  * the consequential assignments the ADR calls out cannot silently churn.
  *
  * @module apps/worker/src/sync/handlers
@@ -38,9 +39,12 @@ describe('HandlerRegistrationService (ADR-050 lane partition, #2278)', () => {
     expect(() => registry.assertFullLaneCoverage()).not.toThrow();
   });
 
-  it('should partition the 38 job types 12/15/5/6 per ADR-050 decision 1', () => {
+  it('should partition the 39 job types 12/16/5/6 per ADR-050 decision 1', () => {
+    // 16 bulk since #2593 added `master.product.syncBatch` - a catalogue-sweep
+    // child, so it lands beside the two sweep-triggered master children #2594
+    // moved out of `realtime`.
     expect(registry.getJobTypesByLane('realtime')).toHaveLength(12);
-    expect(registry.getJobTypesByLane('bulk')).toHaveLength(15);
+    expect(registry.getJobTypesByLane('bulk')).toHaveLength(16);
     expect(registry.getJobTypesByLane('fiscal')).toHaveLength(5);
     expect(registry.getJobTypesByLane('fan-out')).toHaveLength(6);
   });
@@ -73,6 +77,10 @@ describe('HandlerRegistrationService (ADR-050 lane partition, #2278)', () => {
     expect(registry.getLane('shop.product.publish')).toBe('bulk');
     // Invoicing sweeps are fiscal by cost-of-starvation, not by paged shape.
     expect(registry.getLane('invoicing.pendingRecovery.sweep')).toBe('fiscal');
+    // The batched catalogue child does the same work as the per-product job it
+    // replaces, so it carries the same starvation cost and the same lane (#2593).
+    expect(registry.getLane('master.product.syncBatch')).toBe('bulk');
+    expect(registry.getLane('master.product.syncByExternalId')).toBe('realtime');
     // Post-ADR registration joins fiscal (#2156).
     expect(registry.getLane('fiscalization.register')).toBe('fiscal');
     // The buyer-facing path stays realtime.

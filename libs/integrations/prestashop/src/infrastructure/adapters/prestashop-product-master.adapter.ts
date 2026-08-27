@@ -27,6 +27,7 @@ import type {
   PrestashopCombination,
 } from '../mappers/prestashop.mapper.interface';
 import type { PrestashopConnectionConfig } from '@openlinker/integrations-prestashop';
+import type { PrestashopSort } from '../http/prestashop-query.builder';
 import {
   PrestashopApiException,
   PrestashopNotSupportedException,
@@ -43,6 +44,7 @@ import {
   readAllPrestashopPages,
 } from '../http/prestashop-paged-read';
 import type {
+  BulkProductReader,
   ProductTaxRateReader,
   ReadProductTaxRateInput,
   TaxRateResolution,
@@ -53,7 +55,9 @@ import type {
  *
  * Read-only adapter for PrestaShop product catalog operations.
  */
-export class PrestashopProductMasterAdapter implements ProductMasterPort, ProductTaxRateReader {
+export class PrestashopProductMasterAdapter
+  implements ProductMasterPort, ProductTaxRateReader, BulkProductReader
+{
   private readonly logger = new Logger(PrestashopProductMasterAdapter.name);
 
   /**
@@ -74,6 +78,20 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort, Produc
    * products through `getProducts`.
    */
   private readonly productResourceCache = new Map<string, Promise<PrestashopProduct>>();
+
+  /**
+   * Combinations per PrestaShop product id, when {@link prefetchProducts} read
+   * them in bulk (#2593).
+   *
+   * Separate from {@link productResourceCache} because it is populated only by
+   * the bulk path: `getProductVariants` on its own has one product to ask about
+   * and gains nothing from a memo. An ABSENT key means "not prefetched" and
+   * falls through to the per-product read, so a product the bulk read did not
+   * cover behaves exactly as before - which is why an empty array must be
+   * stored for a product that genuinely has no combinations, rather than left
+   * out.
+   */
+  private readonly combinationsCache = new Map<string, PrestashopCombination[]>();
 
   constructor(
     private readonly httpClient: IPrestashopWebserviceClient,
@@ -359,6 +377,98 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort, Produc
     }
   }
 
+  /**
+   * Hydrate a page of products in a handful of requests instead of a handful
+   * per product (#2593, `BulkProductReader`).
+   *
+   * Two bulk reads, both already implemented and both cheap because PrestaShop
+   * answers `display=full` for a whole page: the products themselves through
+   * the existing `getProducts` - which also batch-creates every identifier
+   * mapping the page needs in one round trip - and the combinations of all of
+   * them in one filtered collection read.
+   *
+   * Best-effort by contract. A failure logs and returns, leaving the caches
+   * empty, so the per-product loop behind it reads exactly what it read before
+   * this method existed. That is the only reason it is safe to put the whole
+   * page's read behind one call: the fast path may vanish without the sync
+   * losing a guarantee.
+   */
+  async prefetchProducts(externalIds: readonly string[]): Promise<void> {
+    if (externalIds.length === 0) {
+      return;
+    }
+
+    try {
+      // The mapped result is discarded - the value is in the two caches it
+      // seeds and the identifier mappings it creates. `limit` is the id count
+      // because the WebService page size would otherwise cut the answer at 100
+      // and leave the tail unwarmed, which reads as a slower sweep rather than
+      // as an error.
+      await this.getProducts({ externalIds: [...externalIds], limit: externalIds.length });
+      await this.prefetchCombinations(externalIds);
+    } catch (error) {
+      this.logger.warn(
+        `PrestaShop bulk product prefetch failed for ${String(externalIds.length)} product(s) ` +
+          `(connection: ${this.connection.id}); falling back to per-product reads: ` +
+          `${(error as Error).message}`
+      );
+    }
+  }
+
+  /**
+   * One filtered `combinations` read for the whole page.
+   *
+   * A product with no combinations gets an explicit empty array, because an
+   * absent key means "not prefetched" and would send `getProductVariants`
+   * back to the shop for the simple products - the majority on an SMB
+   * catalogue, and the ones this is cheapest for.
+   */
+  private async prefetchCombinations(externalIds: readonly string[]): Promise<void> {
+    const combinations = await readAllPrestashopPages<PrestashopCombination>(
+      (limit, offset) =>
+        this.httpClient.listResources<PrestashopCombination>(
+          'combinations',
+          { custom: { id_product: externalIds.map(String) } },
+          limit,
+          offset
+        ),
+      {
+        resource: 'combinations',
+        connectionId: this.connection.id,
+        detail: `id_product in ${String(externalIds.length)} product(s)`,
+        // A page of products can legitimately carry more combinations than a
+        // single product ever would, so the narrowed budget is too tight here.
+        maxPages: PRESTASHOP_UNNARROWED_MAX_PAGES,
+      }
+    );
+
+    for (const externalId of externalIds) {
+      this.combinationsCache.set(String(externalId), []);
+    }
+    for (const combination of combinations) {
+      const productId = String(combination.id_product ?? '');
+      const bucket = this.combinationsCache.get(productId);
+      if (bucket !== undefined) {
+        bucket.push(combination);
+      }
+    }
+  }
+
+  /**
+   * Store each hydrated row against the id its per-product read would use.
+   *
+   * The promise, not the value, so the shape matches what
+   * `fetchProductResource` stores and reads.
+   */
+  private seedProductResourceCache(products: readonly PrestashopProduct[]): void {
+    for (const product of products) {
+      const externalId = String(product.id ?? '');
+      if (externalId.length > 0) {
+        this.productResourceCache.set(externalId, Promise.resolve(product));
+      }
+    }
+  }
+
   async getProducts(filters?: ProductFilters): Promise<Product[]> {
     this.logger.debug(`Getting products with filters (connection: ${this.connection.id})`);
 
@@ -376,6 +486,13 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort, Produc
     if (prestashopProducts.length === 0) {
       return [];
     }
+
+    // Every row here is a fully hydrated product resource, i.e. exactly what
+    // `fetchProductResource` would go and fetch one at a time. Seeding the memo
+    // is what turns this read into a saving rather than an addition (#2593):
+    // without it the sweep paid for the bulk read AND then re-read every product
+    // through the per-product path.
+    this.seedProductResourceCache(prestashopProducts);
 
     // Batch identifier mapping
     const mappingRequests = prestashopProducts.map((p) => ({
@@ -451,10 +568,13 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort, Produc
     // Fetch product for barcode fallback / synthetic variant
     const prestashopProduct = await this.fetchProductResource(prestashopProductId.externalId);
 
-    // Fetch combinations from PrestaShop
+    // Fetch combinations from PrestaShop, unless the bulk prefetch already read
+    // them for this page (#2593).
     // Paged: a product with more than a page of combinations reported only the
     // first page, and the missing variants read as not existing (#2608).
-    const combinations = await readAllPrestashopPages<PrestashopCombination>(
+    const combinations =
+      this.combinationsCache.get(prestashopProductId.externalId) ??
+      (await readAllPrestashopPages<PrestashopCombination>(
       (limit, offset) =>
         this.httpClient.listResources<PrestashopCombination>(
           'combinations',
@@ -467,7 +587,7 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort, Produc
         connectionId: this.connection.id,
         detail: `id_product=${prestashopProductId.externalId}`,
       }
-    );
+    ));
 
     if (combinations.length === 0) {
       const syntheticExternalId = `product:${prestashopProductId.externalId}`;
@@ -850,16 +970,26 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort, Produc
    */
   private buildPrestashopFilters(filters?: ProductFilters): {
     ids?: (string | number)[];
+    sort?: PrestashopSort;
     custom?: Record<string, string | number | (string | number)[]>;
   } {
     if (!filters) {
-      return {};
+      return { sort: { field: 'id', direction: 'ASC' } };
     }
 
     const prestashopFilters: {
       ids?: (string | number)[];
+      sort?: PrestashopSort;
       custom?: Record<string, string | number | (string | number)[]>;
     } = {};
+
+    if (filters.externalIds && filters.externalIds.length > 0) {
+      prestashopFilters.ids = [...filters.externalIds];
+    }
+
+    // Primary-key order, so a caller paging this read tiles the catalogue
+    // instead of trusting whatever order MySQL returns.
+    prestashopFilters.sort = { field: 'id', direction: 'ASC' };
 
     // Status filter
     if (filters.status) {

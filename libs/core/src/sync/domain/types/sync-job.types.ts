@@ -44,8 +44,19 @@ export const JobTypeValues = [
   // per job type at handler registration: a webhook child is a single unit
   // someone waits on (`realtime`), while a sweep child arrives a budget wide
   // and an operator tolerates it being slow (`bulk`). Same payload, same
-  // handler.
+  // handler. Since #2593 the FULL product sweep enqueues page-sized
+  // `master.product.syncBatch` children instead, but this type is still the
+  // child of the delta pass and of the deletion-reconcile pass, and it is the
+  // per-product fallback for a failed batch member.
   'master.product.syncFromSweep',
+  // Batched catalogue read (#2593, ADR-048). One job, one page of products, one
+  // adapter instance - so a master declaring the bulk-read rung hydrates the
+  // page in a handful of requests instead of a handful per product. Same work
+  // per product as `master.product.syncByExternalId`, which remains the
+  // fallback for a failed page member and the deletion-reconcile child.
+  // Registered in `bulk`, not `realtime`: it is a catalogue-sweep child, and
+  // ADR-050 picks the lane by cost of starvation.
+  'master.product.syncBatch',
   'master.product.syncAll',
   // Incremental catalog pass (#2220, ADR-048). Opt-in; complements rather than
   // replaces `syncAll`, which remains the reconciliation/bootstrap path.

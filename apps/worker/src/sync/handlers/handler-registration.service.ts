@@ -29,6 +29,7 @@ import { MarketplaceShipmentStatusSyncHandler } from './marketplace-shipment-sta
 import { MarketplaceShipmentSyncByExternalIdHandler } from './marketplace-shipment-sync-by-external-id.handler';
 import { MarketplaceFulfillmentStatusSyncHandler } from './marketplace-fulfillment-status-sync.handler';
 import { MasterProductSyncHandler } from './master-product-sync.handler';
+import { MasterProductSyncBatchHandler } from './master-product-sync-batch.handler';
 import { MasterInventorySyncHandler } from './master-inventory-sync.handler';
 import { AutoMatchVariantsHandler } from './auto-match-variants.handler';
 import { MasterInventorySyncAllHandler } from './master-inventory-sync-all.handler';
@@ -70,6 +71,7 @@ export class HandlerRegistrationService implements OnModuleInit {
     private readonly marketplaceShipmentSyncByExternalIdHandler: MarketplaceShipmentSyncByExternalIdHandler,
     private readonly marketplaceFulfillmentStatusSyncHandler: MarketplaceFulfillmentStatusSyncHandler,
     private readonly masterProductSyncHandler: MasterProductSyncHandler,
+    private readonly masterProductSyncBatchHandler: MasterProductSyncBatchHandler,
     private readonly masterInventorySyncHandler: MasterInventorySyncHandler,
     private readonly autoMatchVariantsHandler: AutoMatchVariantsHandler,
     private readonly masterInventorySyncAllHandler: MasterInventorySyncAllHandler,
@@ -92,9 +94,10 @@ export class HandlerRegistrationService implements OnModuleInit {
     // Every registration declares its ADR-050 concurrency lane (#2278). The
     // lane is chosen by cost-of-starvation, never by I/O shape or bounded
     // context — the authoritative table is ADR-050 decision 1, as amended by
-    // #2440 (`orders.taxRate.backfill` -> `bulk`) and #2594 (the two
-    // sweep-triggered master children -> `bulk`): 12 realtime / 15 bulk /
-    // 5 fiscal / 6 fan-out. `fiscalization.register` joined `fiscal`
+    // #2440 (`orders.taxRate.backfill` -> `bulk`), #2594 (the two
+    // sweep-triggered master children -> `bulk`) and #2593
+    // (`master.product.syncBatch` -> `bulk`, a catalogue-sweep child like
+    // them): 12 realtime / 16 bulk / 5 fiscal / 6 fan-out. `fiscalization.register` joined `fiscal`
     // post-ADR, #2156. #2609 left the tally alone: it raised the `fan-out`
     // lane's caps instead of moving a job out of it.
 
@@ -230,6 +233,17 @@ export class HandlerRegistrationService implements OnModuleInit {
       'master.inventory.syncAll',
       this.masterInventorySyncAllHandler,
       'fan-out'
+    );
+
+    // Batched catalogue read (#2593). `bulk`, for the same reason the
+    // sweep-triggered per-product children above are: it is a catalogue-sweep
+    // child, arriving a budget wide, and ADR-050 picks the lane by cost of
+    // starvation, not by the work the body does. It must not be able to fill
+    // the realtime lane's per-scope slots ahead of a buyer's order.
+    this.handlerRegistry.register(
+      'master.product.syncBatch',
+      this.masterProductSyncBatchHandler,
+      'bulk'
     );
 
     // Register master product sync all handler (catalog discovery / periodic full sync)

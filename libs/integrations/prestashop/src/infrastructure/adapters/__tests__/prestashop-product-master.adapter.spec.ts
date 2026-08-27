@@ -285,7 +285,7 @@ describe('PrestashopProductMasterAdapter', () => {
       // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access -- test mock: narrowing dynamic spy / fixture / response shape
       expect(mockHttpClient.listResources).toHaveBeenCalledWith(
         'products',
-        {},
+        { sort: { field: 'id', direction: 'ASC' } },
         undefined,
         undefined
       );

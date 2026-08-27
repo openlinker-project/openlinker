@@ -46,6 +46,8 @@ export { IProductsService } from './application/services/products.service.interf
 export { ProductsService } from './application/services/products.service';
 export {
   IMasterProductSyncService,
+  MasterProductBatchSyncFailure,
+  MasterProductBatchSyncResult,
   MasterProductSyncResult,
   MasterTaxRateChange,
   PruneSkippedReason,
@@ -88,6 +90,8 @@ export type {
   ListExternalIdsModifiedSinceInput,
 } from './domain/ports/capabilities/modified-product-lister.capability';
 export { isModifiedProductLister } from './domain/ports/capabilities/modified-product-lister.capability';
+export type { BulkProductReader } from './domain/ports/capabilities/bulk-product-reader.capability';
+export { isBulkProductReader } from './domain/ports/capabilities/bulk-product-reader.capability';
 
 // Neutral per-line tax rate (#2054, ADR-063). The vocabulary a ProductMaster
 // answers a tax question in, plus the shape OpenLinker stores that answer as.

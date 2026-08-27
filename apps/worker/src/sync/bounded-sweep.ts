@@ -196,10 +196,45 @@ export async function readMappingPage(
   };
 }
 
+/**
+ * Items one BATCHED run may enqueue, and the ceiling on an override (#2593).
+ *
+ * Re-derived, not scaled arbitrarily. The 100 above bounds a fan-out whose unit
+ * is one child job doing a full per-product platform sync - four requests and a
+ * fresh adapter instance each. On the batched path the unit is a PAGE: one
+ * adapter instance hydrates 100 products in three requests, so the per-product
+ * cost inside a batch is the database work plus a memo read. Five batches of 100
+ * is what fits the same drain-rate rule the 100 was derived from - budget x
+ * per-child-duration inside the tick - given that at most
+ * `OL_LANE_REALTIME_SCOPE_CAP` of them run at once per connection.
+ *
+ * It is NOT raised further, and that is the honest part: past this point the
+ * limit stops being the read and becomes the lane's per-scope cap (#2594).
+ * Raising the budget alone changes nothing except queue depth, which is the
+ * mistake the epic's own measurement warns about.
+ */
+export const BATCHED_SWEEP_BUDGET_DEFAULT = 500;
+export const BATCHED_SWEEP_BUDGET_MAX = 2000;
+
+/**
+ * Products one batch child covers.
+ *
+ * 100 is PrestaShop's own collection page size, so a batch is one page of the
+ * shop's paging rather than a number of our own - a larger value buys no fewer
+ * requests and makes one failure cost more work.
+ */
+export const SWEEP_BATCH_SIZE_DEFAULT = 100;
+export const SWEEP_BATCH_SIZE_MAX = 100;
+
 /** Floors then clamps a payload-supplied budget. */
-export function resolveSweepBudget(pageLimit: number | undefined): number {
-  const requested = typeof pageLimit === 'number' ? pageLimit : SWEEP_BUDGET_DEFAULT;
-  return Math.min(Math.max(1, Math.floor(requested)), SWEEP_BUDGET_MAX);
+export function resolveSweepBudget(
+  pageLimit: number | undefined,
+  bounds?: { default: number; max: number }
+): number {
+  const fallback = bounds?.default ?? SWEEP_BUDGET_DEFAULT;
+  const ceiling = bounds?.max ?? SWEEP_BUDGET_MAX;
+  const requested = typeof pageLimit === 'number' ? pageLimit : fallback;
+  return Math.min(Math.max(1, Math.floor(requested)), ceiling);
 }
 
 /**
@@ -269,7 +304,8 @@ export async function runBoundedSweep(input: BoundedSweepInput): Promise<Bounded
     };
   }
 
-  const outcomes = await enqueueInChunks(page.items, cycleId, input.enqueue);
+  const groups = groupItems(page.items, input.groupSize ?? 1);
+  const outcomes = await enqueueInChunks(groups, cycleId, input.enqueue);
   const enqueued = outcomes.filter((ok) => ok).length;
   const failed = outcomes.length - enqueued;
 
@@ -306,15 +342,30 @@ export async function runBoundedSweep(input: BoundedSweepInput): Promise<Bounded
   };
 }
 
+/**
+ * Cuts a page into the units one child covers.
+ *
+ * A `groupSize` of 1 yields one single-element group per item, so the per-item
+ * fan-out is the same code path rather than a branch beside it.
+ */
+function groupItems(items: readonly string[], groupSize: number): readonly string[][] {
+  const size = Math.max(1, Math.floor(groupSize));
+  const groups: string[][] = [];
+  for (let start = 0; start < items.length; start += size) {
+    groups.push(items.slice(start, start + size));
+  }
+  return groups;
+}
+
 async function enqueueInChunks(
-  items: readonly string[],
+  groups: readonly (readonly string[])[],
   cycleId: string,
   enqueue: BoundedSweepInput['enqueue']
 ): Promise<boolean[]> {
   const outcomes: boolean[] = [];
-  for (let start = 0; start < items.length; start += ENQUEUE_CHUNK_SIZE) {
-    const chunk = items.slice(start, start + ENQUEUE_CHUNK_SIZE);
-    const settled = await Promise.allSettled(chunk.map((id) => enqueue(id, cycleId)));
+  for (let start = 0; start < groups.length; start += ENQUEUE_CHUNK_SIZE) {
+    const chunk = groups.slice(start, start + ENQUEUE_CHUNK_SIZE);
+    const settled = await Promise.allSettled(chunk.map((group) => enqueue(group, cycleId)));
     outcomes.push(...settled.map((result) => result.status === 'fulfilled'));
   }
   return outcomes;
