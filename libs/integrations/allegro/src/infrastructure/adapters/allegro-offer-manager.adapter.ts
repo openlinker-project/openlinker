@@ -686,6 +686,8 @@ export class AllegroOfferManagerAdapter
         `Allegro batch offer quantity command submitted: commandId=${response.data.id}, offers=${items.length} (connection: ${this.connectionId})`
       );
 
+      await this.persistBatchCommandRows(response.data.id, response.data.status, items);
+
       const result = await this.pollQuantityCommandStatus(response.data.id);
       const tasksByOfferId = new Map((result?.tasks ?? []).map((task) => [task.offerId, task]));
 
@@ -693,6 +695,7 @@ export class AllegroOfferManagerAdapter
         const task = tasksByOfferId.get(item.offerId);
         if (task?.status === 'SUCCESS') {
           succeeded.push(item.offerId);
+          await this.persistBatchOfferStatus(commandId, item.offerId, 'succeeded');
           continue;
         }
         if (task) {
@@ -700,6 +703,7 @@ export class AllegroOfferManagerAdapter
           const message =
             task.errors?.map((e) => `${e.code}: ${e.message}`).join('; ') ?? task.message;
           failed.push({ offerId: item.offerId, errorCode, message });
+          await this.persistBatchOfferStatus(commandId, item.offerId, 'failed', message ?? null);
           continue;
         }
         failed.push({
@@ -720,6 +724,67 @@ export class AllegroOfferManagerAdapter
           message: (error as Error).message,
         });
       }
+    }
+  }
+
+  /**
+   * Best-effort per-offer command-record creation for a batch group (#2622
+   * review). `updateOfferQuantity`'s single-item path persists one row per
+   * command via `commandRepository.create`; a batch command covers several
+   * offers under one Allegro commandId, so this persists one row PER OFFER
+   * against that same commandId — the widened (commandId, offerId) unique
+   * index (see the migration) is what makes that possible. Never throws:
+   * losing observability must never sink a batch that Allegro itself accepted.
+   */
+  private async persistBatchCommandRows(
+    commandId: string,
+    allegroStatus: 'QUEUED' | 'ACCEPTED' | 'REJECTED',
+    items: UpdateOfferQuantityCommand[]
+  ): Promise<void> {
+    if (!this.commandRepository) {
+      return;
+    }
+    const status = this.mapAllegroCommandStatus(allegroStatus);
+    await Promise.all(
+      items.map(async (item) => {
+        try {
+          const command = AllegroQuantityCommand.create(
+            commandId,
+            this.connectionId,
+            item.offerId,
+            item.quantity,
+            status
+          );
+          await this.commandRepository?.create(command);
+        } catch (persistError) {
+          this.logger.warn(
+            `Failed to persist batch offer quantity command row (commandId: ${commandId}, offerId: ${item.offerId}): ${(persistError as Error).message}`
+          );
+        }
+      })
+    );
+  }
+
+  /**
+   * Best-effort per-offer status update for a batch group (#2622 review).
+   * Mirrors `pollAndUpdateCommandStatus`'s persistence, but disambiguated by
+   * (commandId, offerId) since one batch commandId can back several rows.
+   */
+  private async persistBatchOfferStatus(
+    commandId: string,
+    offerId: string,
+    status: 'succeeded' | 'failed',
+    error?: string | null
+  ): Promise<void> {
+    if (!this.commandRepository) {
+      return;
+    }
+    try {
+      await this.commandRepository.updateOfferStatus(commandId, offerId, status, error);
+    } catch (persistError) {
+      this.logger.warn(
+        `Failed to persist batch offer quantity command status (commandId: ${commandId}, offerId: ${offerId}): ${(persistError as Error).message}`
+      );
     }
   }
 
