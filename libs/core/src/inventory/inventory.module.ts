@@ -12,9 +12,11 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { InventoryItemOrmEntity } from './infrastructure/persistence/entities/inventory-item.orm-entity';
 import { InventoryLocationOrmEntity } from './infrastructure/persistence/entities/inventory-location.orm-entity';
 import { ReservationOrmEntity } from './infrastructure/persistence/entities/reservation.orm-entity';
+import { ReservationShortfallEpisodeOrmEntity } from './infrastructure/persistence/entities/reservation-shortfall-episode.orm-entity';
 import { InventoryRepository } from './infrastructure/persistence/repositories/inventory.repository';
 import { LocationRepository } from './infrastructure/persistence/repositories/location.repository';
 import { ReservationRepository } from './infrastructure/persistence/repositories/reservation.repository';
+import { ReservationShortfallRepository } from './infrastructure/persistence/repositories/reservation-shortfall.repository';
 import { InventoryService } from './application/services/inventory.service';
 import { InventorySyncService } from './application/services/inventory-sync.service';
 import { MasterInventorySyncService } from './application/services/master-inventory-sync.service';
@@ -23,6 +25,7 @@ import { LocationService } from './application/services/location.service';
 import { AvailabilityService } from './application/services/availability.service';
 import { ReservationService } from './application/services/reservation.service';
 import { ReservationExpiryService } from './application/services/reservation-expiry.service';
+import { ReservationShortfallService } from './application/services/reservation-shortfall.service';
 import { UnavailableOrderHoldReader } from './infrastructure/reservations/unavailable-order-hold.reader';
 import type { ObligationReaders } from './domain/types/reservation-obligation.types';
 import { ReservationLedgerReader } from './infrastructure/reservations/reservation-ledger.reader';
@@ -34,6 +37,8 @@ import {
   RESERVATION_OBLIGATION_READERS_TOKEN,
   RESERVATION_REPOSITORY_TOKEN,
   RESERVATION_SERVICE_TOKEN,
+  RESERVATION_SHORTFALL_REPOSITORY_TOKEN,
+  RESERVATION_SHORTFALL_SERVICE_TOKEN,
   INVENTORY_REPOSITORY_TOKEN,
   INVENTORY_SERVICE_TOKEN,
   INVENTORY_SYNC_SERVICE_TOKEN,
@@ -73,6 +78,7 @@ export {
       InventoryItemOrmEntity,
       InventoryLocationOrmEntity,
       ReservationOrmEntity,
+      ReservationShortfallEpisodeOrmEntity,
     ]),
     ProductsModule, // Required for FK relationship to ProductOrmEntity
     IntegrationsModule, // Required for INTEGRATIONS_SERVICE_TOKEN (marketplace adapter resolution)
@@ -91,6 +97,8 @@ export {
     LocationService,
     // #2343 — the advisory reservation ledger's write half.
     ReservationRepository,
+    ReservationShortfallRepository,
+    ReservationShortfallService,
     ReservationService,
     // #2346 — the state-dependent expiry sweep. The obligation readers map is
     // bound as a VALUE rather than a class so its mapped type over
@@ -163,6 +171,14 @@ export {
       useExisting: ReservationExpiryService,
     },
     {
+      provide: RESERVATION_SHORTFALL_REPOSITORY_TOKEN,
+      useExisting: ReservationShortfallRepository,
+    },
+    {
+      provide: RESERVATION_SHORTFALL_SERVICE_TOKEN,
+      useExisting: ReservationShortfallService,
+    },
+    {
       provide: AVAILABILITY_SERVICE_TOKEN,
       useExisting: AvailabilityService,
     },
@@ -184,6 +200,8 @@ export {
     RESERVATION_SERVICE_TOKEN,
     RESERVATION_EXPIRY_SERVICE_TOKEN,
     RESERVATION_OBLIGATION_READERS_TOKEN,
+    RESERVATION_SHORTFALL_REPOSITORY_TOKEN,
+    RESERVATION_SHORTFALL_SERVICE_TOKEN,
     AVAILABILITY_SERVICE_TOKEN,
     INVENTORY_PROVENANCE_BACKFILL_SERVICE_TOKEN,
   ],

@@ -104,6 +104,10 @@ export const JobTypeValues = [
   // once its shipment shipped, claimed at-most-once via
   // `Shipment.reservationConsumedAt`. Reads and writes only OL's own tables.
   'inventory.reservations.consume',
+  // #2349 — the reservation SHORTFALL reconciler: names the orders a master's
+  // stock drop puts at risk, as persisted episodes. Reads OL's own tables and
+  // repairs nothing; no platform call.
+  'inventory.reservations.shortfall',
 
   // Invoicing (core-owned policy; executed by worker — OL #1120)
   'invoicing.issue',

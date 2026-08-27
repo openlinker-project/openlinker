@@ -41,6 +41,7 @@ import { MasterProductSyncDeltaHandler } from './master-product-sync-delta.handl
 import { MasterProductReconcileHandler } from './master-product-reconcile.handler';
 import { InventoryProvenanceBackfillHandler } from './inventory-provenance-backfill.handler';
 import { ReservationExpiryHandler } from './reservation-expiry.handler';
+import { ReservationShortfallHandler } from './reservation-shortfall.handler';
 import { ReservationConsumeHandler } from './reservation-consume.handler';
 import { PickupPointRefreshHandler } from './pickup-point-refresh.handler';
 import { ShopProductPublishHandler } from './shop-product-publish.handler';
@@ -60,6 +61,7 @@ export class HandlerRegistrationService implements OnModuleInit {
     private readonly inventoryPropagateHandler: InventoryPropagateToMarketplacesHandler,
     private readonly inventoryProvenanceBackfillHandler: InventoryProvenanceBackfillHandler,
     private readonly reservationExpiryHandler: ReservationExpiryHandler,
+    private readonly reservationShortfallHandler: ReservationShortfallHandler,
     private readonly reservationConsumeHandler: ReservationConsumeHandler,
     private readonly marketplaceOrdersPollHandler: OrdersPollHandler,
     private readonly marketplaceOrderSyncHandler: MarketplaceOrderSyncHandler,
@@ -315,6 +317,21 @@ export class HandlerRegistrationService implements OnModuleInit {
     this.handlerRegistry.register(
       'inventory.reservations.expire',
       this.reservationExpiryHandler,
+      'bulk'
+    );
+
+    // Register the reservation SHORTFALL reconciler (#2349).
+    //
+    // `bulk`, for the same reason as its two reservation siblings: it enqueues
+    // no children and does its work in bounded local writes, so `fan-out` —
+    // whose subject is a job whose cost is the wave it emits — would be the
+    // wrong profile. And a saturated `bulk` lane delaying it is harmless in the
+    // safe direction: this pass REPAIRS nothing and PUBLISHES nothing, so a
+    // tick's delay costs only the latency of naming a shortfall an operator
+    // cannot act on any faster anyway.
+    this.handlerRegistry.register(
+      'inventory.reservations.shortfall',
+      this.reservationShortfallHandler,
       'bulk'
     );
 

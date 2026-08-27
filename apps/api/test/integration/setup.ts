@@ -81,6 +81,10 @@ const harness = createIntegrationTestHarness({
     // position carrying live reservations cannot vanish). Listing it also keeps
     // each case's `olReservedQuantity` starting point honest.
     'reservations',
+  // #2349 — shortfall episodes carry NO foreign key (an episode is evidence
+  // about a position and must outlive it), so they are invisible to the
+  // CASCADE closure walk and must be listed explicitly.
+  'reservation_shortfall_episodes',
     'inventory_items',
     // inventory_locations (#2313) — operator-authored locations. Like
     // category_mappings and fulfillment_routing_rules, its FK lives in the

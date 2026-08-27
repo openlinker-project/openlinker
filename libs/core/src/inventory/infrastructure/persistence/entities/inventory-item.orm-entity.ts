@@ -51,6 +51,13 @@ import { ProductVariantOrmEntity } from '../../../../products/infrastructure/per
   unique: true,
   where: '"productVariantId" IS NOT NULL',
 })
+// #2349's shortfall scan. `olReservedQuantity > availableQuantity` is a
+// CROSS-COLUMN comparison, so no index serves it directly and a naive
+// reconciler would sequentially scan this table — the one every published
+// quantity derives from — on every tick. Narrowing to positions carrying any
+// hold at all bounds that cost by the size of the LEDGER rather than of the
+// catalogue, which on a real install is a small fraction.
+@Index('IDX_inventory_items_ol_reserved', ['id'], { where: '"olReservedQuantity" > 0' })
 export class InventoryItemOrmEntity {
   @PrimaryColumn({ type: 'text' })
   id!: string;

@@ -34,6 +34,7 @@ export {
 export { InventoryItem as InventoryItemEntity } from './domain/entities/inventory-item.entity';
 export { InventoryLocation } from './domain/entities/inventory-location.entity';
 export { Reservation } from './domain/entities/reservation.entity';
+export { ReservationShortfallEpisode } from './domain/entities/reservation-shortfall-episode.entity';
 
 // Domain exceptions
 export { InventoryReturningUnsupportedError } from './domain/exceptions/inventory-returning-unsupported.error';
@@ -98,6 +99,11 @@ export {
   resolveObligation,
 } from './domain/types/reservation-obligation.types';
 export { ReservationService } from './application/services/reservation.service';
+export {
+  IReservationShortfallService,
+  DetectShortfallsInput,
+} from './application/services/reservation-shortfall.service.interface';
+export { ReservationShortfallService } from './application/services/reservation-shortfall.service';
 
 // Application Types
 export {
@@ -159,6 +165,14 @@ export {
   ReservationPositionUnavailableReasonValues,
   ReservationPositionUnavailableReason,
 } from './domain/types/reservation.types';
+export {
+  ReservationShortfallCloseReasonValues,
+  ReservationShortfallCloseReason,
+  ShortfallPositionRow,
+  ShortfallAttribution,
+  OpenShortfallEpisodeInput,
+  DetectShortfallsResult,
+} from './domain/types/reservation-shortfall.types';
 export {
   RESERVATION_TTL_MS_DEFAULT,
   RESERVATION_TTL_MS_MIN,

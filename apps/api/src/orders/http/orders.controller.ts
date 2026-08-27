@@ -48,7 +48,13 @@ import {
   INVOICE_SERVICE_TOKEN,
   IInvoiceService,
 } from '@openlinker/core/invoicing';
+import { Logger } from '@openlinker/shared/logging';
 import type { InvoiceRecord } from '@openlinker/core/invoicing';
+import {
+  RESERVATION_SHORTFALL_SERVICE_TOKEN,
+  type IReservationShortfallService,
+  type ReservationShortfallEpisode,
+} from '@openlinker/core/inventory';
 import {
   FULFILLMENT_ROUTING_SERVICE_TOKEN,
   IFulfillmentRoutingService,
@@ -76,6 +82,7 @@ import type { SyncAttemptResponseDto } from './dto/sync-attempt-response.dto';
 import { PaginatedOrdersResponseDto } from './dto/paginated-orders-response.dto';
 import { RetryOrderDestinationResponseDto } from './dto/retry-order-destination-response.dto';
 import type { OrderInvoiceProjectionDto } from './dto/order-invoice-projection.dto';
+import type { OrderReservationShortfallDto } from './dto/order-reservation-shortfall.dto';
 import type { OrderDeliveryResolutionDto } from './dto/order-delivery-resolution.dto';
 import type { OrderDeliveryRiderDto } from './dto/order-delivery-rider.dto';
 
@@ -83,7 +90,11 @@ import type { OrderDeliveryRiderDto } from './dto/order-delivery-rider.dto';
 @ApiTags('orders')
 @Controller('orders')
 export class OrdersController {
+  private readonly logger = new Logger(OrdersController.name);
+
   constructor(
+    @Inject(RESERVATION_SHORTFALL_SERVICE_TOKEN)
+    private readonly reservationShortfalls: IReservationShortfallService,
     @Inject(ORDER_RECORD_REPOSITORY_TOKEN)
     private readonly orderRecordRepository: OrderRecordRepositoryPort,
     // #2287: the packed writes go through the SERVICE, not the repository port
@@ -342,6 +353,11 @@ export class OrdersController {
         await this.deliveryRider.resolve(this.toRiderInput(order, resolution))
       );
     }
+    // Still-open reservation shortfalls (#2349). DETAIL read only — putting it
+    // on the shared `toDto` would cost one lookup per row on every page of
+    // `/orders`. Best-effort: a shortfall projection failing must not take the
+    // whole order detail down with it, and the episodes are re-readable.
+    dto.reservationShortfalls = await this.loadReservationShortfalls(order.internalOrderId);
     return dto;
   }
 
@@ -442,6 +458,35 @@ export class OrdersController {
       }
       throw error;
     }
+  }
+
+  private async loadReservationShortfalls(
+    internalOrderId: string
+  ): Promise<OrderReservationShortfallDto[]> {
+    try {
+      const episodes = await this.reservationShortfalls.listOpenForOrder(internalOrderId);
+      return episodes.map((episode) => this.toReservationShortfallDto(episode));
+    } catch (error) {
+      this.logger.error(
+        `Failed to project reservation shortfalls for order ${internalOrderId}`,
+        (error as Error).stack
+      );
+      return [];
+    }
+  }
+
+  private toReservationShortfallDto(
+    episode: ReservationShortfallEpisode
+  ): OrderReservationShortfallDto {
+    return {
+      episodeId: episode.id,
+      inventoryItemId: episode.inventoryItemId,
+      productVariantId: episode.productVariantId,
+      sku: episode.sku,
+      shortQuantity: episode.shortQuantity,
+      positionShortfall: episode.positionShortfall,
+      openedAt: episode.openedAt.toISOString(),
+    };
   }
 
   private toDto(order: OrderRecord): OrderRecordResponseDto {

@@ -291,6 +291,8 @@ describe('SchedulerService', () => {
         // no platform either.
         'reservation-consume-sweep',
       'reservation-expiry-sweep',
+        // #2349 — same global scope and same reason.
+        'reservation-shortfall-sweep',
         'returns-orphan-reconcile',
         'stale-offer-pause-sweep',
       ]);

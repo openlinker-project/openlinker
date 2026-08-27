@@ -884,6 +884,31 @@ export class SchedulerService implements OnModuleDestroy {
     // (#2344), so consuming moves no published number; on an existing install
     // the first cycles are a one-time, self-limiting marker backfill over
     // historical shipments (see the handler docblock).
+    // #2349 — the reservation SHORTFALL reconciler. Global scope for the same
+    // reason as its two siblings: reservations key on (order, line, position)
+    // and carry no connection axis.
+    //
+    // Default ON, and safe to be: it makes no platform call, writes only its
+    // own episodes table, and REPAIRS nothing — no counter is clamped, no
+    // reservation is touched, no quantity is published. The worst a
+    // misconfiguration can do is record a fact nobody reads.
+    //
+    // Every 20 minutes rather than expiry's hourly tick: this pass is how an
+    // operator learns an order is at risk, and the remediation is off-system
+    // (buy stock, cancel, contact the buyer), so latency here is the operator's
+    // reaction time.
+    this.tasks.push({
+      taskId: 'reservation-shortfall-sweep',
+      jobType: 'inventory.reservations.shortfall',
+      cronExpression: '*/20 * * * *',
+      enabledEnvVar: 'OL_RESERVATION_SHORTFALL_SWEEP_ENABLED',
+      enabledDefault: true,
+      connectionFilter: () => Promise.resolve([systemConnection]),
+      generatePayload: () => ({ schemaVersion: 1 }),
+      generateIdempotencyKey: (_connection, timestamp) =>
+        `inventory:reservations:shortfall:${timestamp}`,
+    });
+
     this.tasks.push({
       taskId: 'reservation-consume-sweep',
       jobType: 'inventory.reservations.consume',

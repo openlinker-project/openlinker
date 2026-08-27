@@ -27,6 +27,7 @@ import { OrderAmendmentChangeDto } from './order-amendment-change.dto';
 import { OrderSyncStatusResponseDto } from './order-sync-status-response.dto';
 import { SyncAttemptResponseDto } from './sync-attempt-response.dto';
 import type { OrderInvoiceProjectionDto } from './order-invoice-projection.dto';
+import { OrderReservationShortfallDto } from './order-reservation-shortfall.dto';
 import { OrderDeliveryResolutionDto } from './order-delivery-resolution.dto';
 import { OrderDeliveryRiderDto } from './order-delivery-rider.dto';
 
@@ -132,6 +133,17 @@ export class OrderRecordResponseDto {
       'say the order was held and then released — the reason itself is gone by then.',
   })
   salesDocumentBlockReleasedAt!: string | null;
+
+  @ApiPropertyOptional({
+    type: [OrderReservationShortfallDto],
+    description:
+      'Still-open reservation shortfall episodes for this order (#2349) — the ' +
+      'master dropped below what OpenLinker already promised, and this order ' +
+      'is one the shortfall lands on. Nothing was silently reduced. Present ' +
+      'only on the DETAIL read; the list read does not carry it, so a page of ' +
+      'orders costs no per-row lookup.',
+  })
+  reservationShortfalls?: OrderReservationShortfallDto[];
 
   @ApiProperty({ description: 'Order last-update timestamp (ISO 8601)' })
   updatedAt!: string;

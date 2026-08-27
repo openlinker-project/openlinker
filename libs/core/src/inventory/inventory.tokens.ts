@@ -27,6 +27,11 @@ export const RESERVATION_REPOSITORY_TOKEN = Symbol('ReservationRepositoryPort');
 // State-dependent expiry sweep (#2346, REVIEW C1)
 export const RESERVATION_EXPIRY_SERVICE_TOKEN = Symbol('IReservationExpiryService');
 export const RESERVATION_OBLIGATION_READERS_TOKEN = Symbol('ObligationReaders');
+// Reservation shortfall episodes (#2349, design § 4.2 story I6)
+export const RESERVATION_SHORTFALL_REPOSITORY_TOKEN = Symbol(
+  'ReservationShortfallRepositoryPort'
+);
+export const RESERVATION_SHORTFALL_SERVICE_TOKEN = Symbol('IReservationShortfallService');
 // Order-shaped seam over the ledger (#2344, ADR-061)
 export const RESERVATION_SERVICE_TOKEN = Symbol('IReservationService');
 // Connection-provenance backfill (#2317, ADR-058 ladder step (ii))
