@@ -320,3 +320,18 @@ export type {
   ReturnStageCounters,
   ReturnStageFacts,
 } from './domain/types/return-stage.types';
+
+// The operator-facing SEGMENTS of the returns list (#2378, `W2-41`, spec § 4.1).
+//
+// Segments OVERLAP; stages PARTITION. `ReturnSegmentCounts.total` is NOT the sum
+// of `bySegment` and no assertion says it is — the type's own docblock carries
+// that warning, because the sibling stage shape asserts exactly the opposite.
+export {
+  ReturnSegmentValues,
+  ATTENTION_WORTHY_RETURN_SEGMENTS,
+  isReturnSegment,
+} from './domain/types/return-segment.types';
+export type {
+  ReturnSegment,
+  ReturnSegmentCounts,
+} from './domain/types/return-segment.types';

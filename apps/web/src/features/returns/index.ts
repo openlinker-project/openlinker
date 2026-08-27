@@ -110,3 +110,18 @@ export {
   setReturnFilterParam,
   setReturnOffsetParam,
 } from './lib/returns-filters';
+
+// The worklist strip and the two rails (#2378, `W2-41`).
+//
+// Segments OVERLAP — their counts do not sum to `All returns`, and the strip has
+// SEVEN cards because `All open` is a filter, not the cleared state.
+export { ReturnSegmentStrip } from './components/return-segment-strip';
+export { ReturnRailsNote } from './components/return-line-state-chips';
+export {
+  RETURN_SEGMENT_VALUES,
+  RETURN_SEGMENT_LABELS,
+  RETURN_SEGMENT_TONES,
+  ATTENTION_WORTHY_RETURN_SEGMENTS,
+  isReturnSegment,
+} from './lib/return-segments';
+export type { ReturnSegment, ReturnSegmentCounts } from './lib/return-segments';

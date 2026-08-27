@@ -10,6 +10,7 @@
  * @module apps/web/src/features/returns/api
  */
 import type { ReturnStage } from '../lib/return-stage.types';
+import type { ReturnSegment, ReturnSegmentCounts } from '../lib/return-segments';
 
 /**
  * The attribution partition. FE mirror of the backend `ReturnBucketValues`
@@ -133,6 +134,7 @@ export interface PaginatedReturns {
   offset: number;
   counts: ReturnBucketCounts;
   stageCounts: ReturnStageCounts | null;
+  segmentCounts: ReturnSegmentCounts | null;
 }
 
 /**
@@ -151,6 +153,43 @@ export interface ReturnFilters {
   bucket?: ReturnBucket;
   createdFrom?: string;
   createdTo?: string;
+  /** #2378 — the worklist strip. One dimension; never translated into `bucket`. */
+  segment?: ReturnSegment;
+  stage?: ReturnStage;
+  money?: ReturnMoneyState;
+  reason?: ReturnLineReason;
+  /** The SOURCE's own opened instant — never OpenLinker's ingestion clock. */
+  openedFrom?: string;
+  openedTo?: string;
+}
+
+/** Coercion for an UNTRUSTED money-state param. */
+export function isReturnMoneyState(
+  value: string | null | undefined
+): value is ReturnMoneyState {
+  return (
+    value !== null &&
+    value !== undefined &&
+    (RETURN_MONEY_STATE_VALUES as readonly string[]).includes(value)
+  );
+}
+
+/**
+ * Coercion for an UNTRUSTED reason param.
+ *
+ * Reuses `RETURN_LINE_REASON_VALUES` — the vocabulary already mirrored for the
+ * line chips — rather than declaring a second copy. Returns-by-reason and
+ * refunds-by-reason report on ONE axis by construction, and two FE copies of it
+ * would be exactly the drift that promise exists to prevent.
+ */
+export function isReturnLineReason(
+  value: string | null | undefined
+): value is ReturnLineReason {
+  return (
+    value !== null &&
+    value !== undefined &&
+    (RETURN_LINE_REASON_VALUES as readonly string[]).includes(value)
+  );
 }
 
 export interface ReturnPagination {

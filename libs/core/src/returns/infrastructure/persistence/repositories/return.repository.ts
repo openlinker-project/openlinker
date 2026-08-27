@@ -56,6 +56,11 @@ import type {
   ReturnListFilter,
   ReturnStageCounts,
 } from '../../../domain/types/return-query.types';
+import { ReturnSegmentValues } from '../../../domain/types/return-segment.types';
+import type {
+  ReturnSegment,
+  ReturnSegmentCounts,
+} from '../../../domain/types/return-segment.types';
 import { ReturnStageValues } from '../../../domain/types/return-stage.types';
 import type {
   ReturnStage,
@@ -112,9 +117,40 @@ export class ReturnRepository implements ReturnRepositoryPort {
            COALESCE(SUM(l."quantityAdvised") FILTER (WHERE l."custodyState" = 'not_returned'), 0) AS "notReturnedQuantityAdvised",
            COALESCE(SUM(l."quantityReceived"), 0) AS "quantityReceived",
            COALESCE(SUM(l."quantityRestocked"), 0) AS "quantityRestocked",
-           COALESCE(SUM(l."quantityScrapped"), 0) AS "quantityScrapped"
+           COALESCE(SUM(l."quantityScrapped"), 0) AS "quantityScrapped",
+           -- #2378 segment inputs. Kept in the SAME subquery as the #2377
+           -- counters so the strip, the filter and the stage all read one scan.
+           COUNT(*) FILTER (WHERE l."custodyState" IN ('advised', 'in_transit')) AS "awaitingArrivalLineCount",
+           COUNT(*) FILTER (WHERE l."moneyState" IN ('pending', 'in_doubt')) AS "moneyPendingLineCount"
       FROM return_lines l
      GROUP BY l."returnId"
+  )`;
+
+  /**
+   * The orphan rule, in SQL, ONCE.
+   *
+   * `ReturnRecord.isOrphan()` is the single definition (#2332's docblock forbids
+   * a second one — the bucket count, the trigger guard and the reconcile
+   * candidate query all derive from it). SQL cannot call it, so this constant is
+   * how the same rule reaches the bucket count, the bucket filter arm and the
+   * `orphans` segment without three hand-written copies that happen to agree.
+   */
+  private static readonly ORPHAN_PREDICATE = `r."internalOrderId" IS NULL`;
+
+  /**
+   * Whether the return holds a restock the master refused and nobody attested.
+   *
+   * The predicate is `findOutstandingRestockEventsForReturn`'s, and that method
+   * is the authority on what "outstanding" means — attestation does not stamp
+   * the blocked act, it FLIPS its `restockState` to `handled_manually` (see
+   * `ReturnCustodyService.markStockHandledManually`), so state membership is the
+   * whole test. An `attestedByEventId IS NULL` clause would be backwards: it
+   * would keep every settled block and drop the attestation.
+   */
+  private static readonly RESTOCK_BLOCKED_EXISTS = `EXISTS (
+    SELECT 1 FROM return_line_events ev
+     WHERE ev."returnId" = r.id
+       AND ev."restockState" IN ('blocked', 'in_doubt')
   )`;
 
   /** Units still expected — see `expectedQuantity`. LEFT JOIN, so COALESCE. */
@@ -155,6 +191,32 @@ export class ReturnRepository implements ReturnRepositoryPort {
     disposed: `${ReturnRepository.SQL_RECEIVED} > 0 AND ${ReturnRepository.SQL_RECEIVED} >= ${ReturnRepository.SQL_EXPECTED}`,
     // 6. The declared fallback arm, matching the TS function's final `return`.
     awaiting_parcel: 'TRUE',
+  };
+
+  /**
+   * The six segment predicates (#2378, spec § 4.1).
+   *
+   * **Independent booleans, NOT a `CASE` ladder** — unlike `RETURN_STAGE_PREDICATES`,
+   * which is a partition. Segments overlap: one return can satisfy several at
+   * once, and `all_open` deliberately overlaps almost everything. There is
+   * therefore no precedence here and no `ELSE` arm; each is counted on its own.
+   */
+  private static readonly SEGMENT_PREDICATES: Record<ReturnSegment, string> = {
+    // Custody has not finished arriving: nothing/partly here, or units still expected.
+    needs_receiving: `(COALESCE(sc."awaitingArrivalLineCount", 0) > 0 OR ${ReturnRepository.SQL_RECEIVED} < ${ReturnRepository.SQL_EXPECTED})`,
+    // Received units neither restocked nor scrapped.
+    needs_disposition: `${ReturnRepository.SQL_UNDISPOSED} > 0`,
+    // A master write refused and nobody has attested.
+    restock_blocked: ReturnRepository.RESTOCK_BLOCKED_EXISTS,
+    // Money `pending` OR `in_doubt` on any line — two states, which is why this
+    // is a segment and not a value of the single-valued `money` filter.
+    money_pending: `COALESCE(sc."moneyPendingLineCount", 0) > 0`,
+    // The SAME rule `ReturnRecord.isOrphan()` states, reached through one constant.
+    orphans: ReturnRepository.ORPHAN_PREDICATE,
+    // Still needing something on EITHER rail. The one segment whose predicate
+    // spans both, which is why the money aggregate lives in the counters
+    // subquery rather than in a join of its own.
+    all_open: `(COALESCE(sc."awaitingArrivalLineCount", 0) > 0 OR ${ReturnRepository.SQL_UNDISPOSED} > 0 OR ${ReturnRepository.SQL_RECEIVED} < ${ReturnRepository.SQL_EXPECTED} OR COALESCE(sc."moneyPendingLineCount", 0) > 0)`,
   };
 
   private static readonly RETURN_STAGE_EXPR = `CASE ${ReturnStageValues.map(
@@ -598,7 +660,7 @@ export class ReturnRepository implements ReturnRepositoryPort {
   async countReturnsByBucket(filter: ReturnListFilter): Promise<ReturnBucketCounts> {
     const row = await this.buildListQuery(filter)
       .select('COUNT(*)', 'total')
-      .addSelect('COUNT(*) FILTER (WHERE r."internalOrderId" IS NULL)', 'orphan')
+      .addSelect(`COUNT(*) FILTER (WHERE ${ReturnRepository.ORPHAN_PREDICATE})`, 'orphan')
       .getRawOne<{ total: string; orphan: string }>();
 
     const total = Number(row?.total ?? 0);
@@ -625,9 +687,10 @@ export class ReturnRepository implements ReturnRepositoryPort {
     // `buildListQuery` adds no second join under the same alias.
     const scoped: ReturnListFilter = { ...filter };
     delete scoped.stage;
-    const query = this.buildListQuery(scoped)
-      .leftJoin(ReturnRepository.COUNTERS_SUBQUERY, 'sc', 'sc."returnId" = r.id')
-      .select('COUNT(*)', 'total');
+    const query = ReturnRepository.joinCountersOnce(this.buildListQuery(scoped)).select(
+      'COUNT(*)',
+      'total'
+    );
 
     for (const stage of ReturnStageValues) {
       query.addSelect(
@@ -645,6 +708,45 @@ export class ReturnRepository implements ReturnRepositoryPort {
     ) as Record<ReturnStage, number>;
 
     return { total: Number(row?.total ?? 0), byStage };
+  }
+
+  /**
+   * How many returns sit in each operator-facing segment (#2378, spec § 4.1).
+   *
+   * **`total` is NOT the sum of `bySegment`** — segments overlap by design (see
+   * `ReturnSegmentValues`). It is the row count of the segment-less scope, which
+   * is what the strip's `All returns` card renders. No sum assertion exists here
+   * or anywhere else, deliberately.
+   *
+   * **Strips `segment` from the filter itself**, exactly as `countReturnsByStage`
+   * strips `stage`: the count for the dimension you are NOT looking at must stay
+   * truthful, or every card reports the count of the segment already selected.
+   * That defence already survived a caller forgetting it once.
+   */
+  async countReturnsBySegment(filter: ReturnListFilter): Promise<ReturnSegmentCounts> {
+    const scoped: ReturnListFilter = { ...filter };
+    delete scoped.segment;
+
+    const query = ReturnRepository.joinCountersOnce(this.buildListQuery(scoped)).select(
+      'COUNT(*)',
+      'total'
+    );
+
+    for (const segment of ReturnSegmentValues) {
+      query.addSelect(
+        `COUNT(*) FILTER (WHERE ${ReturnRepository.SEGMENT_PREDICATES[segment]})`,
+        segment
+      );
+    }
+
+    const row = await query.getRawOne<Record<string, string>>();
+
+    // pg reports COUNT as a STRING; a stringly-typed count silently concatenates.
+    const bySegment = Object.fromEntries(
+      ReturnSegmentValues.map((segment) => [segment, Number(row?.[segment] ?? 0)])
+    ) as Record<ReturnSegment, number>;
+
+    return { total: Number(row?.total ?? 0), bySegment };
   }
 
   /**
@@ -668,9 +770,9 @@ export class ReturnRepository implements ReturnRepositoryPort {
     }
 
     if (filter.bucket === 'orphan') {
-      query.andWhere('r."internalOrderId" IS NULL');
+      query.andWhere(ReturnRepository.ORPHAN_PREDICATE);
     } else if (filter.bucket === 'attributed') {
-      query.andWhere('r."internalOrderId" IS NOT NULL');
+      query.andWhere(`NOT (${ReturnRepository.ORPHAN_PREDICATE})`);
     }
 
     if (filter.createdFrom !== undefined) {
@@ -681,17 +783,79 @@ export class ReturnRepository implements ReturnRepositoryPort {
       query.andWhere('r."createdAt" <= :createdTo', { createdTo: filter.createdTo });
     }
 
+    // `money` and `reason` read `return_lines` DIRECTLY rather than the counters
+    // subquery, unlike every other arm added in #2378: neither is expressible as
+    // an aggregate ("ANY line has this state" is existence, not a sum), and
+    // EXISTS short-circuits on the first matching line.
+    if (filter.money !== undefined) {
+      query.andWhere(
+        `EXISTS (SELECT 1 FROM return_lines ml WHERE ml."returnId" = r.id AND ml."moneyState" = :money)`,
+        { money: filter.money }
+      );
+    }
+
+    if (filter.reason !== undefined) {
+      query.andWhere(
+        `EXISTS (SELECT 1 FROM return_lines rl WHERE rl."returnId" = r.id AND rl."reason" = :reason)`,
+        { reason: filter.reason }
+      );
+    }
+
+    // `openedAt`, NOT `createdAt`. The source's own instant, never OL's ingestion
+    // clock — see `ReturnListFilter.openedFrom`.
+    if (filter.openedFrom !== undefined) {
+      query.andWhere('r."openedAt" >= :openedFrom', { openedFrom: filter.openedFrom });
+    }
+
+    if (filter.openedTo !== undefined) {
+      query.andWhere('r."openedAt" <= :openedTo', { openedTo: filter.openedTo });
+    }
+
+    // `segment` and `stage` both read the counters subquery, and so do both count
+    // readers — which call `buildListQuery` FIRST and then need `sc` themselves.
+    // Every one of those paths goes through `joinCountersOnce`, because a second
+    // `sc` alias is a TypeORM duplicate-alias error on ordinary requests: clicking
+    // a card and then narrowing by stage, or counting segments while a stage
+    // filter is active. Joined only when something needs it, so the plain list
+    // read pays nothing.
+    if (filter.segment !== undefined || filter.stage !== undefined) {
+      ReturnRepository.joinCountersOnce(query);
+    }
+
+    if (filter.segment !== undefined) {
+      // The SAME predicate `countReturnsBySegment` counts on, so a filtered page
+      // can never disagree with its own card.
+      query.andWhere(ReturnRepository.SEGMENT_PREDICATES[filter.segment]);
+    }
+
     if (filter.stage !== undefined) {
-      // Joined only when the filter needs it, so the ordinary list read pays
-      // nothing for a dimension it is not using. Tests the SAME expression
-      // `countReturnsByStage` buckets on — one expression, never per-arm
-      // predicates that can drift from their own counts.
-      query
-        .leftJoin(ReturnRepository.COUNTERS_SUBQUERY, 'sc', 'sc."returnId" = r.id')
-        .andWhere(`${ReturnRepository.RETURN_STAGE_EXPR} = :stage`, { stage: filter.stage });
+      // The SAME expression `countReturnsByStage` buckets on — one expression,
+      // never per-arm predicates that can drift from their own counts.
+      query.andWhere(`${ReturnRepository.RETURN_STAGE_EXPR} = :stage`, { stage: filter.stage });
     }
 
     return query;
+  }
+
+  /**
+   * Join the counters subquery, at most once per query builder.
+   *
+   * Idempotent by inspection rather than by convention: four independent paths
+   * can each need `sc` on the same builder (the `segment` arm, the `stage` arm,
+   * `countReturnsByStage`, `countReturnsBySegment`), and TypeORM throws on a
+   * duplicate alias. Making the join self-checking means no caller has to know
+   * what the others did.
+   */
+  private static joinCountersOnce(
+    query: SelectQueryBuilder<ReturnOrmEntity>
+  ): SelectQueryBuilder<ReturnOrmEntity> {
+    const alreadyJoined = query.expressionMap.joinAttributes.some(
+      (join) => join.alias.name === 'sc'
+    );
+    if (alreadyJoined) {
+      return query;
+    }
+    return query.leftJoin(ReturnRepository.COUNTERS_SUBQUERY, 'sc', 'sc."returnId" = r.id');
   }
 
   /**

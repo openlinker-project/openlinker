@@ -23,6 +23,7 @@ import type {
   ReturnListFilter,
   ReturnStageCounts,
 } from '../../domain/types/return-query.types';
+import type { ReturnSegmentCounts } from '../../domain/types/return-segment.types';
 
 /**
  * What one ingested observation did.
@@ -186,6 +187,16 @@ export interface IReturnsService {
    * every chip report the count of the stage already selected.
    */
   countReturnsByStage(filter: ReturnListFilter): Promise<ReturnStageCounts>;
+
+  /**
+   * How many returns sit in each operator-facing segment (#2378, spec § 4.1) —
+   * the returns list's worklist strip.
+   *
+   * Segments overlap by design, so `total` is NOT their sum. Strips `segment`
+   * itself so a caller cannot make every card report the count of the segment
+   * already selected.
+   */
+  countReturnsBySegment(filter: ReturnListFilter): Promise<ReturnSegmentCounts>;
 
   /**
    * Can anything in this deployment ingest returns at all? (#2334, for #2335.)

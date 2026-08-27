@@ -51,7 +51,9 @@ import {
   ReturnOpenedCell,
   ReturnOrderCell,
   ReturnSourceStatus,
+  ReturnSegmentStrip,
   ReturnStageCell,
+  type ReturnSegment,
   clearReturnFilters,
   describeRange,
   describeUnreadableRows,
@@ -168,6 +170,19 @@ export function ReturnsListPage(): ReactElement {
     );
   }
 
+  /**
+   * Select a segment, or clear it (`null` — the `All returns` card).
+   *
+   * Writes ONLY `segment`. It must never touch `bucket`: the bucket chips are a
+   * separate, independently-usable surface, and two surfaces fighting over one
+   * param is how they start disagreeing about what is filtered.
+   */
+  function selectSegment(segment: ReturnSegment | null): void {
+    setSearchParams((prev) =>
+      setReturnFilterParam(new URLSearchParams(prev), 'segment', segment ?? ''),
+    );
+  }
+
   function selectSource(value: string): void {
     setSearchParams((prev) =>
       setReturnFilterParam(new URLSearchParams(prev), 'sourceConnectionId', value),
@@ -217,6 +232,12 @@ export function ReturnsListPage(): ReactElement {
       title={RETURNS_PAGE_COPY.title}
       description={RETURNS_PAGE_COPY.description}
     >
+      <ReturnSegmentStrip
+        counts={query.data?.segmentCounts ?? null}
+        selected={filters.segment ?? null}
+        onSelect={selectSegment}
+      />
+
       <div className="toolbar">
         <div className="toolbar__group" role="group" aria-label={RETURNS_FILTER_COPY.bucketGroupLabel}>
           <Chip active={bucketChoice === 'all'} onClick={() => { selectBucket('all'); }}>

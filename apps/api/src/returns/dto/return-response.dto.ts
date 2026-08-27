@@ -37,7 +37,7 @@ import {
   type ReturnMoneyState,
   type ReturnOrigin,
 } from '@openlinker/core/returns';
-import type { ReturnStage } from '@openlinker/core/returns';
+import type { ReturnSegment, ReturnStage } from '@openlinker/core/returns';
 import { RefundReasonValues, type RefundReason } from '@openlinker/core/orders/types';
 
 export class ReturnLineResponseDto {
@@ -277,6 +277,30 @@ export class ReturnBucketCountsDto {
   attributed!: number;
 }
 
+/**
+ * How many returns sit in each operator-facing segment (#2378, spec § 4.1).
+ *
+ * **`total` is NOT the sum of `bySegment`.** Segments OVERLAP by design — a
+ * return can be `needs_disposition` and `money_pending` and `orphans` at once,
+ * and `all_open` deliberately overlaps almost everything. `total` is the row
+ * count of the segment-less scope, which is what the strip's `All returns` card
+ * renders. The sibling `ReturnStageCountsDto` below IS a partition and does sum;
+ * do not copy its assertion here.
+ *
+ * Scoped with `segment` REMOVED from the caller's filters (every other dimension
+ * applied), or every card would report the count of the segment already selected.
+ */
+export class ReturnSegmentCountsDto {
+  @ApiProperty({ description: 'Rows in the segment-less scope. NOT the sum of `bySegment`.' })
+  total!: number;
+
+  @ApiProperty({
+    description: 'One count per segment. Segments overlap, so these do not sum to `total`.',
+    additionalProperties: { type: 'number' },
+  })
+  bySegment!: Record<ReturnSegment, number>;
+}
+
 export class ReturnStageCountsDto {
   @ApiProperty({ description: 'Rows in the stage-less scope. Equal to the sum of `byStage`.' })
   total!: number;
@@ -303,6 +327,13 @@ export class PaginatedReturnsResponseDto {
 
   @ApiProperty()
   offset!: number;
+
+  @ApiProperty({
+    type: ReturnSegmentCountsDto,
+    description:
+      "The worklist-strip partition — scoped with `segment` REMOVED from this request's filters. Segments overlap; these do not sum to `total`.",
+  })
+  segmentCounts!: ReturnSegmentCountsDto;
 
   @ApiProperty({
     type: ReturnStageCountsDto,

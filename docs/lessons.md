@@ -429,3 +429,17 @@ decision 3 (#2165, epic #2162)
 **Rule**: a `const` string holding a raw SQL boolean expression that will ever be concatenated into a larger expression via `${...}` must be wrapped in its own parens **at the point it's defined**, not only at call sites that happen to need it today — a sibling call site added later, or an existing one edited, inherits the same trap silently. Prefer pinning the exact value with a real int-spec against Postgres; a unit spec with a mocked repository cannot observe operator precedence.
 **Applies to**: `libs/core/src/orders/infrastructure/persistence/repositories/order-line-item.repository.ts` (`unconvertedOrZeroTotal`); any raw-SQL-builder helper anywhere that stores a boolean sub-expression as a string constant for reuse across `FILTER (WHERE ...)`/`CASE WHEN ...` clauses.
 **Source**: #2172/#2191 (`top-products-ranking.int-spec.ts`, "labels a channel's own unconvertedCurrency...").
+
+## TypeORM `ORDER BY` must use property paths, not raw quoted SQL — `take`/`skip` plus any join resolves every term back to column metadata
+
+**Context**: `ReturnRepository.listReturns` had ordered by the raw string `'r."createdAt"'` since #2334 and worked in production for three slices. #2377 added a `stage` filter that `leftJoin`s a counters subquery, and every paged returns read began throwing `TypeError: Cannot read properties of undefined (reading 'databaseName')`.
+
+**Problem**: `.take()`/`.skip()` with **no** join emits a plain `LIMIT`/`OFFSET` and never inspects the `ORDER BY` terms, so a raw quoted string passes through untouched. Add *any* join and TypeORM switches to its **distinct-pagination** path — a two-query plan that first selects the distinct primary keys, which requires promoting every `ORDER BY` term into that inner select, which requires resolving each term back to its `ColumnMetadata`. `'r."createdAt"'` is a string TypeORM cannot map to a property, so the lookup returns `undefined` and the `.databaseName` read throws.
+
+The shape is the reason this is here rather than in a style guide: **the defect was latent and armed by a change somewhere else.** Nothing about the failing line changed — the ordering had been written that way for months, and the commit that broke it added a `leftJoin` fifty lines away for an unrelated feature. The stack trace points into TypeORM internals and names neither the join nor the `ORDER BY`, so the trigger is not guessable from the failure.
+
+**Rule**: write `ORDER BY` terms as **property paths** — `orderBy('r.createdAt', 'DESC')`, never `orderBy('r."createdAt"', 'DESC')`. The property form works on both pagination paths; the raw-string form works only until someone adds a join. When reviewing a change that adds a join to a query builder, check whether that builder also calls `take`/`skip`, and if so read its `ORDER BY` terms — the join is the trigger, but the ordering is the defect. An int-spec catches this and a unit spec with a mocked builder cannot, because the failure lives in TypeORM's SQL generation.
+
+**Applies to**: every `createQueryBuilder(...).take()/.skip()` call in the tree; especially any shared `buildListQuery`-style helper where a filter arm can conditionally add a join that the paged read then inherits.
+
+**Source**: #2377 (found by `returns-stage-projection.int-spec.ts` + `returns-read-api.int-spec.ts`; `libs/core/src/returns/infrastructure/persistence/repositories/return.repository.ts`).

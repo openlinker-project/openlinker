@@ -119,6 +119,7 @@ export function createReturnsApi(request: ApiRequest): ReturnsApi {
         limit: parsed.limit ?? pagination?.limit ?? 0,
         offset: parsed.offset ?? pagination?.offset ?? 0,
         stageCounts: parsed.stageCounts,
+        segmentCounts: parsed.segmentCounts,
         counts: parsed.counts,
         droppedCount: parsed.droppedCount,
         envelopeUnreadable: parsed.envelopeUnreadable,

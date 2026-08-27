@@ -19396,6 +19396,62 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
    SKU ("Blue ShirtSKU-1"), and the identity cell butts its badge against the
    id. Tokens only — no raw colour or spacing values. */
 
+/* The worklist strip (#2378). Mirrors the orders segment row: a button wrapping
+   a MetricCard, with the active card outlined. Tokens only. */
+.returns-segments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.returns-segment {
+  flex: 1 1 12rem;
+  min-width: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+
+.returns-segment--active {
+  outline: 2px solid var(--accent-focus);
+  outline-offset: 2px;
+  border-radius: var(--radius-md);
+}
+
+/* The two rails (#2378). Horizontal: a label, its chip and any note read as one
+   statement, and wrap as a unit. */
+.returns-rail {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.returns-rail__label {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.returns-rail__note {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.returns-rail__note--warning {
+  color: var(--status-warning-fg);
+}
+
+.returns-rails__note {
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+  margin: 0 0 var(--space-3);
+}
+
 .returns-stage-cell,
 .returns-identity-cell,
 .returns-order-cell,
@@ -19411,8 +19467,8 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
    badge above it: the stage is the glanceable signal and the counters are the
    evidence for it, so they must not compete. Tokens only. */
 .returns-stage-cell__counters {
-  font-size: var(--font-size-xs);
-  color: var(--color-text-muted);
+  font-size: 0.75rem;
+  color: var(--text-muted);
 }
 
 /* The one horizontal member of the family: a chip and the sentence that says

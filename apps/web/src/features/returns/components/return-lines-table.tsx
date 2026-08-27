@@ -28,6 +28,8 @@ import { ReturnLineStateChip } from './return-line-state-chips';
 import type { ReturnLine } from '../api/returns.types';
 
 interface ReturnLinesTableProps {
+  /** The source's display name, for the money rail's `refunded` attribution. */
+  sourceName?: string | null;
   lines: ReturnLine[];
 }
 
@@ -53,7 +55,7 @@ function OrderLineCell({ line }: { line: ReturnLine }): ReactElement {
   return <span className="mono-text">{line.resolvedOrderLineId}</span>;
 }
 
-export function ReturnLinesTable({ lines }: ReturnLinesTableProps): ReactElement {
+export function ReturnLinesTable({ lines, sourceName = null }: ReturnLinesTableProps): ReactElement {
   const columns = useMemo<DataTableColumn<ReturnLine>[]>(
     () => [
       {
@@ -85,7 +87,7 @@ export function ReturnLinesTable({ lines }: ReturnLinesTableProps): ReactElement
       {
         id: 'money',
         header: RETURN_LINES_COPY.moneyLabel,
-        cell: (line) => <ReturnLineStateChip axis="money" value={line.moneyState} />,
+        cell: (line) => <ReturnLineStateChip axis="money" value={line.moneyState} sourceName={sourceName} />,
         hideBelow: 1024,
       },
       {
@@ -124,7 +126,7 @@ export function ReturnLinesTable({ lines }: ReturnLinesTableProps): ReactElement
               {
                 id: 'money',
                 label: RETURN_LINES_COPY.moneyLabel,
-                value: <ReturnLineStateChip axis="money" value={line.moneyState} />,
+                value: <ReturnLineStateChip axis="money" value={line.moneyState} sourceName={sourceName} />,
               },
               {
                 id: 'orderLine',

@@ -50,6 +50,7 @@ import {
   RETURN_SOURCE_PANEL_COPY,
   ReturnDeclineAction,
   ReturnLinesTable,
+  ReturnRailsNote,
   ReturnOrphanBanner,
   ReturnSourceStatus,
   ReturnDetailUnreadableError,
@@ -276,6 +277,9 @@ export function ReturnDetailPage(): ReactElement {
 
       <section className="returns-detail__lines">
         <h2 className="section-title">{RETURN_LINES_COPY.sectionTitle}</h2>
+        {/* Once, above the table: the two rails move independently, and that is
+            the single most misread thing about the model. */}
+        <ReturnRailsNote />
         <ReturnLinesTable lines={detail.lines} />
         {detail.droppedLineCount > 0 ? (
           <p className="text-muted">{describeUnreadableLines(detail.droppedLineCount)}</p>

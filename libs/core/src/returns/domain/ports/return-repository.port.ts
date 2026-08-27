@@ -40,6 +40,7 @@ import type {
   ReturnListFilter,
   ReturnStageCounts,
 } from '../types/return-query.types';
+import type { ReturnSegmentCounts } from '../types/return-segment.types';
 
 export interface ReturnRepositoryPort {
   /**
@@ -332,6 +333,16 @@ export interface ReturnRepositoryPort {
    * the stage already selected.
    */
   countReturnsByStage(filter: ReturnListFilter): Promise<ReturnStageCounts>;
+
+  /**
+   * How many returns sit in each operator-facing segment (#2378), over one
+   * filter scope.
+   *
+   * Segments OVERLAP — `total` is not their sum, and no assertion says it is.
+   * Strips `segment` from the filter itself, for the reason
+   * {@link countReturnsByStage} strips `stage`.
+   */
+  countReturnsBySegment(filter: ReturnListFilter): Promise<ReturnSegmentCounts>;
 
   /**
    * One line plus its parent return, WITHOUT a row lock (#2370).

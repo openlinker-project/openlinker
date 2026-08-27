@@ -69,6 +69,7 @@ function listResult(overrides: ListResultOverrides = {}): ReturnListResult {
     offset: 0,
     counts: overrides.counts ?? { total: items.length, orphan: 0, attributed: items.length },
     stageCounts: null,
+    segmentCounts: null,
     droppedCount: overrides.droppedCount ?? 0,
     envelopeUnreadable: overrides.envelopeUnreadable ?? false,
   };

@@ -85,6 +85,12 @@ export class ReturnsController {
       sourceConnectionId: query.sourceConnectionId,
       createdFrom: query.createdFrom === undefined ? undefined : new Date(query.createdFrom),
       createdTo: query.createdTo === undefined ? undefined : new Date(query.createdTo),
+      // #2378 value filters. `openedAt` is the SOURCE's instant — deliberately
+      // not `createdAt`, which is OL's ingestion clock.
+      money: query.money,
+      reason: query.reason,
+      openedFrom: query.openedFrom === undefined ? undefined : new Date(query.openedFrom),
+      openedTo: query.openedTo === undefined ? undefined : new Date(query.openedTo),
     };
 
     // Two count sets, two scopes, and getting this backwards is the single
@@ -97,14 +103,34 @@ export class ReturnsController {
     //
     // `countReturnsByStage` additionally strips `stage` itself, so the rule
     // survives a caller that forgets it.
-    const [records, counts, stageCounts] = await Promise.all([
+    //   bucket counts  -> `bucket` removed, every other filter applied
+    //   stage counts   -> `stage` removed, every other filter applied
+    //   segment counts -> `segment` removed, every other filter applied
+    //
+    // Written generically because this comment has been incomplete twice already.
+    // Each count reader additionally strips its own dimension, so the rule
+    // survives a caller that forgets it.
+    const [records, counts, stageCounts, segmentCounts] = await Promise.all([
       this.returnsService.listReturns(
-        { ...scope, bucket: query.bucket, stage: query.stage },
+        { ...scope, bucket: query.bucket, stage: query.stage, segment: query.segment },
         limit,
         offset
       ),
-      this.returnsService.countReturnsByBucket({ ...scope, stage: query.stage }),
-      this.returnsService.countReturnsByStage({ ...scope, bucket: query.bucket }),
+      this.returnsService.countReturnsByBucket({
+        ...scope,
+        stage: query.stage,
+        segment: query.segment,
+      }),
+      this.returnsService.countReturnsByStage({
+        ...scope,
+        bucket: query.bucket,
+        segment: query.segment,
+      }),
+      this.returnsService.countReturnsBySegment({
+        ...scope,
+        bucket: query.bucket,
+        stage: query.stage,
+      }),
     ]);
 
     return {
@@ -123,6 +149,7 @@ export class ReturnsController {
       offset,
       counts,
       stageCounts,
+      segmentCounts,
     };
   }
 

@@ -29,6 +29,11 @@ import {
   type ReturnStageCounts,
 } from './returns.types';
 import { RETURN_STAGE_VALUES, type ReturnStage } from '../lib/return-stage.types';
+import {
+  RETURN_SEGMENT_VALUES,
+  type ReturnSegment,
+  type ReturnSegmentCounts,
+} from '../lib/return-segments';
 
 /**
  * The counter rollup the derived stage reads (#2377).
@@ -51,6 +56,11 @@ const returnCountersSchema = z.object({
 const returnStageCountsSchema = z.object({
   total: z.number(),
   byStage: z.record(z.string(), z.number()),
+});
+
+const returnSegmentCountsSchema = z.object({
+  total: z.number(),
+  bySegment: z.record(z.string(), z.number()),
 });
 
 /**
@@ -119,6 +129,8 @@ export interface ParsedReturnList {
   counts: ReturnBucketCounts | null;
   /** The derived-stage partition, scoped with `stage` removed. */
   stageCounts: ReturnStageCounts | null;
+  /** The worklist-strip counts, scoped with `segment` removed. Segments OVERLAP. */
+  segmentCounts: ReturnSegmentCounts | null;
   /**
    * The paging the server ACTUALLY applied, which is not always what was asked
    * for — the controller fills its own defaults when a param is absent. Null
@@ -167,6 +179,25 @@ function normalizeStageCounts(
   return { total: raw.total, byStage };
 }
 
+/**
+ * Narrow the server's segment-count map to the vocabulary THIS build knows.
+ *
+ * Same degrade-don't-blank rule as {@link normalizeStageCounts}: a segment this
+ * bundle has never heard of is dropped rather than rendered as an unlabelled
+ * card; one it knows and the server omitted reads 0.
+ */
+function normalizeSegmentCounts(
+  raw: { total: number; bySegment: Record<string, number> } | null | undefined
+): ReturnSegmentCounts | null {
+  if (raw === null || raw === undefined) return null;
+
+  const bySegment = Object.fromEntries(
+    RETURN_SEGMENT_VALUES.map((segment) => [segment, raw.bySegment[segment] ?? 0])
+  ) as Record<ReturnSegment, number>;
+
+  return { total: raw.total, bySegment };
+}
+
 export function parseReturnList(raw: unknown): ParsedReturnList {
   const envelope = z
     .object({
@@ -176,6 +207,7 @@ export function parseReturnList(raw: unknown): ParsedReturnList {
       offset: z.number().nullish(),
       counts: returnBucketCountsSchema.nullish(),
       stageCounts: returnStageCountsSchema.nullish(),
+      segmentCounts: returnSegmentCountsSchema.nullish(),
     })
     .safeParse(raw);
 
@@ -187,6 +219,7 @@ export function parseReturnList(raw: unknown): ParsedReturnList {
       total: 0,
       counts: null,
       stageCounts: null,
+      segmentCounts: null,
       limit: null,
       offset: null,
     };
@@ -236,6 +269,7 @@ export function parseReturnList(raw: unknown): ParsedReturnList {
     total: envelope.data.total ?? items.length,
     counts: envelope.data.counts ?? null,
     stageCounts: normalizeStageCounts(envelope.data.stageCounts),
+    segmentCounts: normalizeSegmentCounts(envelope.data.segmentCounts),
     limit: envelope.data.limit ?? null,
     offset: envelope.data.offset ?? null,
   };

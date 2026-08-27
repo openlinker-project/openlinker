@@ -76,6 +76,7 @@ describe('ReturnsController', () => {
     listReturns: jest.Mock;
     countReturnsByBucket: jest.Mock;
     countReturnsByStage: jest.Mock;
+    countReturnsBySegment: jest.Mock;
     getReturn: jest.Mock;
     getReturnIngestionAvailability: jest.Mock;
     getDeclineAvailability: jest.Mock;
@@ -97,6 +98,19 @@ describe('ReturnsController', () => {
           received_awaiting_disposition: 0,
           disposed: 0,
           awaiting_parcel: 10,
+        },
+      }),
+      // #2378 — the worklist strip. Segments OVERLAP, so these deliberately do
+      // not sum to `total`.
+      countReturnsBySegment: jest.fn().mockResolvedValue({
+        total: 10,
+        bySegment: {
+          needs_receiving: 4,
+          needs_disposition: 3,
+          restock_blocked: 1,
+          money_pending: 5,
+          orphans: 3,
+          all_open: 8,
         },
       }),
       getReturn: jest.fn().mockResolvedValue(null),
