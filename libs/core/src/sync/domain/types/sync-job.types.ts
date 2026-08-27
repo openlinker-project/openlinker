@@ -89,6 +89,13 @@ export const JobTypeValues = [
   // non-nullable, so the per-`OrderSource`-connection fan-out is also the
   // natural partition of the rate-less frontier.
   'orders.taxRate.backfill',
+
+  // Data Coverage currency-restatement driver (#2468, epic #2452 Phase 5).
+  // Carries the run's scope + cursor in its payload; the connection it is
+  // filed under is the scope's own connection when the operator narrowed to
+  // one, and otherwise diagnostic only — `SyncJob.connectionId` is
+  // non-nullable, pending #1943.
+  'analytics.currency.recalculate',
 ] as const;
 
 /**

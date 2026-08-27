@@ -31,6 +31,10 @@ import type {
   NetExcludedOrderCandidate,
   PaginatedProductMatchingErrorOrders,
 } from '../types/coverage-detection.types';
+import type {
+  FxRestatementOrderRef,
+  FxRestatementRemainingSummary,
+} from '../types/order-fx-restatement.types';
 
 export interface OrderRecordRepositoryPort {
   /**
@@ -505,4 +509,77 @@ export interface OrderRecordRepositoryPort {
     lineNumber: number,
     patch: { taxRate: string; taxSource: 'backfill'; taxRateReadAt: Date }
   ): Promise<void>;
+
+  /**
+   * Currency-restatement enumeration page (#2468) — the ids of mismatched
+   * orders in `filters`' scope, walked by KEYSET on `internalOrderId`.
+   *
+   * Same scope + same mismatch predicate as
+   * {@link findCurrencyMismatchOrders}, so the population an operator
+   * authorised a repair over is exactly the population that gets repaired.
+   * The ordering, however, is deliberately DIFFERENT: that read orders
+   * `placedAt DESC` for a human drill-down list, while this one orders
+   * `internalOrderId ASC` and takes an exclusive lower bound, because the
+   * caller MUTATES the rows it reads. Clearing a stamp leaves
+   * `reportingCurrency IS NULL`, which still satisfies the mismatch
+   * predicate — so an offset walk would re-read the same page forever and
+   * the enumeration would never terminate. A strictly-increasing key can
+   * only move forward.
+   */
+  findCurrencyMismatchOrderRefsAfter(
+    filters: SalesAnalyticsFilters,
+    currentReportingCurrency: string,
+    page: { afterOrderId: string | null; limit: number }
+  ): Promise<FxRestatementOrderRef[]>;
+
+  /**
+   * Clear one order's ADR-040 FX stamp so the stamp pipeline can re-answer it
+   * (#2468). Returns `true` when a row was actually cleared.
+   *
+   * THE ONLY WRITER THAT MOVES A STAMP, and the exception ADR-040's
+   * immutability rule carries — reachable solely from
+   * `OrderFxRestatementService` inside an `analytics_remediation_runs` row.
+   * See that service for why the exception is acceptable.
+   *
+   * SIX COLUMNS MOVE TOGETHER, exactly as in the
+   * `1840000000000-reset-fx-stamp-for-mislabelled-prestashop-orders`
+   * migration, and every one of them is load-bearing:
+   *   - `reportingCurrency`     — the sweep predicate and all three write guards
+   *   - `reportingTotalAmount`  — required with the above by `ck_order_records_fx_group`
+   *   - `exchangeRateId`        — same CHECK arm; legitimately NULL on the
+   *                               same-currency path, so it must be cleared too
+   *   - `fxStampedAt`           — otherwise the row waits out the 7-day
+   *                               terminal-retry cooldown before re-admission
+   *   - `fxIntendedCurrency`    — THE SUBTLE ONE. `resolveIntent` re-pins the
+   *                               persisted intent and never consults the
+   *                               settings service, so leaving it behind
+   *                               re-stamps the SAME stale currency: the bug
+   *                               looks fixed and is not
+   *   - `fxRule`                — written as a pair with the intent by
+   *                               `claimFxIntentIfAbsent`
+   *
+   * Guarded on `reportingCurrency IS NOT NULL` so it is idempotent under a
+   * re-delivered driver job and can never touch a row that was never stamped
+   * (a never-stamped order is in the mismatch population too, and needs only
+   * the enqueue).
+   */
+  clearFxStampForRestatement(internalOrderId: string): Promise<boolean>;
+
+  /**
+   * The mismatched population still remaining in `filters`' scope,
+   * partitioned by whether the FX pipeline already reached a terminal answer
+   * (#2468) — what a restatement run's completion poll reads to decide
+   * `resolved` vs `failed`, and what a `failed` run's `detail` is built from.
+   *
+   * The partition is `fxStampedAt IS NOT NULL` over rows that still carry no
+   * figure. That marker is the ONLY durable evidence of a terminal FX answer:
+   * the reason itself (`FX_STAMP_TERMINAL_REASONS`) is logged by
+   * `marketplace.order.fxStamp` and never persisted, so a run's failure
+   * detail reports these counts and names that job rather than asserting a
+   * specific reason it cannot prove.
+   */
+  countRemainingCurrencyMismatch(
+    filters: SalesAnalyticsFilters,
+    currentReportingCurrency: string
+  ): Promise<FxRestatementRemainingSummary>;
 }

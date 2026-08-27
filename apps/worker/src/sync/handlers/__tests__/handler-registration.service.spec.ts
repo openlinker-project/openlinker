@@ -35,9 +35,10 @@ describe('HandlerRegistrationService (ADR-050 lane partition, #2278)', () => {
     expect(() => registry.assertFullLaneCoverage()).not.toThrow();
   });
 
-  it('should partition the 36 job types 12/13/5/6 per ADR-050 decision 1', () => {
+  it('should partition the 37 job types 12/14/5/6 per ADR-050 decision 1', () => {
     expect(registry.getJobTypesByLane('realtime')).toHaveLength(12);
-    expect(registry.getJobTypesByLane('bulk')).toHaveLength(13);
+    // 14 since #2468 added the Data Coverage currency-restatement driver.
+    expect(registry.getJobTypesByLane('bulk')).toHaveLength(14);
     expect(registry.getJobTypesByLane('fiscal')).toHaveLength(5);
     expect(registry.getJobTypesByLane('fan-out')).toHaveLength(6);
   });
@@ -48,6 +49,9 @@ describe('HandlerRegistrationService (ADR-050 lane partition, #2278)', () => {
     expect(registry.getLane('shop.product.publish')).toBe('bulk');
     // Invoicing sweeps are fiscal by cost-of-starvation, not by paged shape.
     expect(registry.getLane('invoicing.pendingRecovery.sweep')).toBe('fiscal');
+    // An operator-triggered batch repair must never delay a queued realtime
+    // order sync or a fiscal document (#2468).
+    expect(registry.getLane('analytics.currency.recalculate')).toBe('bulk');
     // Post-ADR registration joins fiscal (#2156).
     expect(registry.getLane('fiscalization.register')).toBe('fiscal');
     // The buyer-facing path stays realtime.

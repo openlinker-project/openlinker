@@ -117,6 +117,12 @@ export type { PendingRecoverySweepPayloadV1 } from './domain/types/invoicing-job
 export type { PaymentStatusRefreshByExternalIdPayloadV1 } from './domain/types/invoicing-job-payloads.types';
 export type { FiscalizationRegisterPayloadV1 } from './domain/types/fiscalization-job-payloads.types';
 export type { OrdersTaxRateBackfillPayloadV1 } from './domain/types/orders-job-payloads.types';
+export {
+  ANALYTICS_CURRENCY_RECALCULATE_MAX_POLLS,
+  ANALYTICS_CURRENCY_RECALCULATE_POLL_DELAY_SECONDS,
+  buildAnalyticsCurrencyRecalculateIdempotencyKey,
+} from './domain/types/analytics-job-payloads.types';
+export type { AnalyticsCurrencyRecalculatePayloadV1 } from './domain/types/analytics-job-payloads.types';
 
 // Exceptions
 export { SyncJobExecutionError } from './domain/exceptions/sync-job-execution.error';
