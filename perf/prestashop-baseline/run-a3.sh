@@ -31,7 +31,7 @@ token() {
 }
 
 for i in $(seq 1 "$RUNS"); do
-  LABEL="a3-run$i"
+  LABEL="${LABEL_PREFIX:-}a3-run$i"
   echo "=================== $LABEL ==================="
   date +%T
 

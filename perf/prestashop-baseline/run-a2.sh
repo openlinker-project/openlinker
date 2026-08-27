@@ -11,6 +11,10 @@
 # because concurrency is the very thing under test.
 set -euo pipefail
 
+# The worker container to pause for the idle phases. The campaign ran a
+# scheduler-free `OL_WORKER_ROLE=jobs` container so no cron tick could enqueue
+# into a measured window; override this to point at it.
+
 SECS="${PHASE_SECS:-180}"
 API="${API:-http://localhost:3000}"
 CONN="${CONNECTION_ID:-44bb1f3f-17ae-4038-ab48-413ce54a71c7}"
@@ -26,11 +30,11 @@ token() {
 }
 
 echo "== phase A1: idle (worker stopped) =="
-docker stop ol-perf-worker >/dev/null
-./storefront-probe.sh "$SECS" A2-idle1 | tee "$OUT/a2-idle1.txt"
+docker stop "${WORKER_CONTAINER:-ol-demo-fresh-worker}" >/dev/null
+./storefront-probe.sh "$SECS" ${LABEL_PREFIX:-}A2-idle1 | tee "$OUT/${LABEL_PREFIX:-}a2-idle1.txt"
 
 echo "== phase B: sweep running =="
-docker start ol-perf-worker >/dev/null
+docker start "${WORKER_CONTAINER:-ol-demo-fresh-worker}" >/dev/null
 # Give the worker time to boot before enqueueing, then wait for real load.
 until curl -s -o /dev/null -m 3 "$API/v1/health"; do sleep 3; done
 sleep 20
@@ -43,24 +47,25 @@ curl -s -X POST "$API/v1/sync/jobs" -H "authorization: Bearer $TOKEN" \
   -o /dev/null -w 'enqueue_http=%{http_code}\n'
 # Wait until the fan-out is actually in flight, so phase B measures load.
 until [ "$(pg "SELECT COUNT(*) FROM sync_jobs WHERE \"connectionId\"='$CONN' AND \"jobType\"='master.product.syncByExternalId' AND status IN ('queued','running');")" -gt 10 ]; do sleep 5; done
-./storefront-probe.sh "$SECS" A2-load | tee "$OUT/a2-load.txt"
+./storefront-probe.sh "$SECS" ${LABEL_PREFIX:-}A2-load | tee "$OUT/${LABEL_PREFIX:-}a2-load.txt"
 
 echo "== phase A2: idle again (worker stopped) =="
-docker stop ol-perf-worker >/dev/null
-./storefront-probe.sh "$SECS" A2-idle2 | tee "$OUT/a2-idle2.txt"
-docker start ol-perf-worker >/dev/null
+docker stop "${WORKER_CONTAINER:-ol-demo-fresh-worker}" >/dev/null
+./storefront-probe.sh "$SECS" ${LABEL_PREFIX:-}A2-idle2 | tee "$OUT/${LABEL_PREFIX:-}a2-idle2.txt"
+docker start "${WORKER_CONTAINER:-ol-demo-fresh-worker}" >/dev/null
 
 echo "== ratio =="
-python3 - "$OUT" <<'PY'
+python3 - "$OUT" "${LABEL_PREFIX:-}" <<'PY'
 import sys, re, statistics, pathlib
 out = pathlib.Path(sys.argv[1])
+prefix = sys.argv[2] if len(sys.argv) > 2 else ''
 def p95(label):
     vals = sorted(float(x) for x in open(f'/tmp/probe.{label}') if x.strip())
     return vals[min(len(vals)-1, int(round(0.95*len(vals)))-1)]
-a = (p95('A2-idle1') + p95('A2-idle2')) / 2
-b = p95('A2-load')
+a = (p95(f'{prefix}A2-idle1') + p95(f'{prefix}A2-idle2')) / 2
+b = p95(f'{prefix}A2-load')
 line = (f'p95_idle_mean={a:.4f}s p95_under_sweep={b:.4f}s '
         f'RATIO_B_over_A={b/a:.3f}')
 print(line)
-(out / 'a2-ratio.txt').write_text(line + '\n')
+(out / f'{prefix}a2-ratio.txt').write_text(line + '\n')
 PY

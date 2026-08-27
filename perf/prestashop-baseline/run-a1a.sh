@@ -31,7 +31,7 @@ token() {
 }
 
 for i in $(seq 1 "$RUNS"); do
-  LABEL="a1a-run$i"
+  LABEL="${LABEL_PREFIX:-}a1a-run$i"
   echo "=================== $LABEL ==================="
   date +%T
 
@@ -42,7 +42,7 @@ for i in $(seq 1 "$RUNS"); do
   JOBS_BEFORE=$(pg "SELECT COUNT(*) FROM sync_jobs WHERE \"connectionId\"='$CONN';")
   ATT_BEFORE=$(pg "SELECT COALESCE(SUM(attempts),0) FROM sync_jobs WHERE \"connectionId\"='$CONN';")
 
-  MARK=$(date -u +%Y-%m-%dT%H:%M:%S)
+  MARK=$(date +%s)   # epoch: a bare timestamp is read as the DAEMON local time, not UTC
   START=$(date +%s)
   TOKEN=$(token)
   curl -s -X POST "$API/v1/sync/jobs" -H "authorization: Bearer $TOKEN" \
