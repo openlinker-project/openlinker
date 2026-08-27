@@ -75,3 +75,18 @@ Restore these when the stack is handed back to ordinary use:
 | 10 000 `PERFBASE-` products seeded | the store had 6, far too few to measure per-SKU cost | `./cleanup-products.sh` |
 | One synthetic 8-line order | an attempt at A4 that no supported path can dispatch | `DELETE FROM order_records WHERE "sourceEventId" LIKE 'a4-8line-%'` |
 
+
+### Additional changes from the A4 (eight-line order) measurement
+
+| Change | Why | How to undo |
+|---|---|---|
+| WooCommerce containers started | WooCommerce is the only `OrderSource` on this stack that a multi-line order can be created in programmatically | `docker stop ol-demo-fresh-woocommerce ol-demo-fresh-woocommerce-mysql` |
+| WooCommerce connection temporarily enabled and repointed at a TLS proxy | OL's WooCommerce client sends Basic auth only, and WooCommerce refuses Basic over cleartext | **already restored** to `disabled` and its original `siteUrl` |
+| `ol-wc-tls` nginx TLS proxy container | to give the shop an https origin on the internal network | **already removed** |
+| A worker with `NODE_TLS_REJECT_UNAUTHORIZED=0` | to accept the proxy's self-signed certificate | **already removed**; the stock worker is back |
+| 8 WooCommerce products `A4LINE-1..8` (ids 12–19) | the order's lines | `wp wc product delete <id> --force` per id |
+| WooCommerce order 20 | the eight-line order itself | leave — it is the evidence |
+| 8 `identifier_mappings` rows mapping WC ids 12–19 onto `PERFBASE-` internal products | so the order's lines resolved to products that already had PrestaShop mappings | `DELETE FROM identifier_mappings WHERE "connectionId" = '<wc-connection>' AND "entityType" = 'Product' AND "externalId" ~ '^1[2-9]$';` |
+| PrestaShop order #11 | created by the measured dispatch | leave — it is the evidence |
+| Customer mapping for PrestaShop customer 13 cleared once | a failed first attempt had mapped it to a different internal customer and the conflict guard correctly refused to overwrite | nothing to undo |
+
