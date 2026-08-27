@@ -29,7 +29,7 @@ already delivers them, end to end, and has since before this epic.
 | Durable outbox row | `openlinker_webhook_outbox`, DDL at `openlinker.php:717` |
 | Claimed and delivered by cron | `controllers/front/cron.php:79` via `OutboxRepository::claimBatchDueForDelivery` |
 | Decoded on the OpenLinker side | `prestashop-webhook-event-translator.adapter.ts:38` - `stock` maps to domain `inventory` |
-| Routed to a job | `inbound-routing-policy.service.ts:164` - `master.inventory.syncByExternalId`, gated on `InventoryMaster` |
+| Routed to a job | `inbound-routing-policy.service.ts:164`-`:167` - `master.inventory.syncByExternalId`, requiring `InventoryMaster`; the gate itself is enforced at `:92`-`:99` |
 | Stock read back per product | `prestashop-inventory-master.adapter.ts:95` (`listInventory`) |
 
 Stock events are on by default: install sets `ENABLE_STOCK_EVENTS` to 1
@@ -82,17 +82,39 @@ The epic warns that registering the generic `actionObject*` hook closes a feedba
 across every product. The loop does not close today, and the reason is worth writing down
 because it is the thing a future change could break.
 
-Two independent gates stop it:
+Two independent facts stop it, and only the first is a capability gate an operator could
+flip.
 
-1. The inbound routing gate requires `InventoryMaster` on the connection
-   (`inbound-routing-policy.service.ts:167`). A publish-only PrestaShop destination has no
+1. **The inbound routing gate requires `InventoryMaster` on the connection.** The required
+   capability is declared per domain at `inbound-routing-policy.service.ts:164`-`:167` and
+   the gate is enforced at `:92`-`:99`. A publish-only PrestaShop destination has no
    `InventoryMaster`, so its stock events are dropped as ungated.
-2. The propagation fan-out excludes any connection carrying `InventoryMaster` from being a
-   write-back target (`inventory-propagate-to-marketplaces.handler.ts:183`, described in
-   the code as "the authoritative runtime authority guard").
+2. **A PrestaShop connection cannot be a stock write-back target at all.** The shop-product
+   branch of the propagation fan-out narrows its targets to
+   `listCapabilityAdapters({ capability: 'OfferManager' })`
+   (`inventory-propagate-to-marketplaces.handler.ts:177`-`:180`), and the PrestaShop
+   manifest never declares `OfferManager`. It declares ProductMaster, InventoryMaster,
+   OrderSource, OrderProcessorManager, ProductPublisher and CategoryProvisioner
+   (`libs/integrations/prestashop/src/prestashop-plugin.ts:68`-`:75`).
 
-Together those mean no single connection can be both the writer and the reader. Break
-either one and the loop closes across the whole catalogue.
+That handler does also drop any connection carrying `InventoryMaster` from the target set
+(`:183`, described in the code as "the inventory-master exclusion is the authoritative
+runtime authority guard - the master connection must never be a write-back target"). The
+exclusion is real, but two things about it have to be stated precisely, or the epic
+inherits a wrong picture.
+
+- **It is not what protects PrestaShop today.** The absent `OfferManager` capability is.
+  The exclusion only becomes the load-bearing barrier if PrestaShop ever declares
+  `OfferManager`.
+- **It covers only the shop-product branch.** The Offer branch is deliberately check-free
+  and the code comment at `:128`-`:134` says so, and the downstream
+  `InventorySyncService.updateOfferQuantity` resolves `OfferManager`
+  (`inventory-sync.service.ts:55`-`:57`) without re-testing `InventoryMaster`. So one
+  write-back path applies no exclusion at all.
+
+Together those mean no single connection can today be both the writer and the reader of
+its own stock. What would actually close the loop is set out in "For the epic to note"
+below, and it is not simply enabling a capability.
 
 The amplification is worse than one event per write. With both hooks registered, one
 Webservice PUT on a combination row produces: one
@@ -106,21 +128,29 @@ which is only true while the window survives - and #2603 removes it.
 The epic's measurements bound this. Requests per SKU went from 7.96 to 3.97. A 100-product
 tick went from 977 s to 471 s. With `OL_LANE_REALTIME_SCOPE_CAP` raised, throughput reached
 ~277 req/min at a p95 store-impact ratio of 0.995, which puts the full catalogue at ~2.4 h
-instead of 26.5 h. #2593 measured the bulk product read at 3 requests, 0.38 s and 1.33 MB
-for 100 fully-hydrated products, and adds a paged `stock_availables` read in the same
+instead of 26.5 h. The epic measured the bulk product read at 3 requests, 0.38 s and 1.33 MB
+for 100 fully-hydrated products (the number is in #2590's own body; #2593 quotes it).
+#2593 wires that read into the sweep and adds a paged `stock_availables` read in the same
 change.
 
 Take the epic's own test shape: 10 000 products with 3 variants each. That is 30 000
-combination rows plus 10 000 aggregate rows, 40 000 rows of stock. A paged
-`stock_availables` read at 1 000 rows per page is about 40 requests for a complete
-whole-catalogue stock snapshot. Today the same information costs one read per product,
-so about 10 000 requests.
+combination rows plus 10 000 aggregate rows, 40 000 rows of stock. Today that information
+costs one read per product, so about 10 000 requests.
 
-A change log would replace those ~40 requests with about 1 per poll. So the saving the
-change log buys, measured against the state of the code *after* #2593 lands, is roughly
-39 requests per stock cycle. At a five-minute cadence that is ~470 requests per hour
-against a shop that was measured at 0.989x idle under a far heavier load. That is the whole
-prize.
+The paged cost depends on the page size, and the page size is ours to choose. PrestaShop's
+Webservice publishes no hard row cap; our client defaults to 100 rows per page and takes an
+override from `connection.config.pageSize`
+(`prestashop-webservice.client.ts:103`-`:117`). #2593 does not fix a page size either. So
+the honest figure is a range: 40 000 rows is about 400 requests at the shipped default of
+100 rows per page, and about 40 requests at an operator-raised 1 000. Both are one to two
+orders of magnitude below today's 10 000.
+
+A change log would replace that page walk with about 1 request per poll. So the saving the
+change log buys, measured against the state of the code *after* #2593 lands, is roughly 399
+requests per stock cycle at the default page size and roughly 39 at a page size of 1 000.
+At a five-minute cadence that is about 4 800 requests per hour at the default and about 470
+at 1 000, against a shop that was measured at 0.989x idle under a far heavier load. That is
+the whole prize.
 
 It is also the wrong comparison, because the outbox already means the sweep is not how a
 stock change reaches us. The sweep is the backstop. A change log would make the backstop
@@ -176,6 +206,18 @@ If we built it anyway:
   - but the shop-side capture still depends on the same PHP the outbox depends on, so the
   hosting risk does not go away, it just moves.
 
+**Magnitude.** No hour or day estimate can be sourced from evidence in hand, and this spike
+ran no estimation exercise, so the size is given relatively and that limit is deliberate
+rather than an omission. Relative to its siblings, this is the largest item in the epic.
+Every other stock defect listed in the recommendation below is a change inside one file:
+#2603 is one dedup key, #2604 is a prune plus a cap, #2614 is a backoff function, #2624 is
+one flush. The change log is at minimum a new hook registration plus an origin marker in the
+PHP module, a second table with its own DDL and pruning, a new authenticated read endpoint on
+the shop, and an OpenLinker-side poll job with a persisted cursor. That spans four packages,
+and the origin marker on its own is the item the original module design already flagged as
+its riskiest. It also deletes no existing work: the reconciliation pass and the outbox both
+stay.
+
 ## Recommendation
 
 **Do not build a stock change log.** The incremental stock path it was meant to create
@@ -221,8 +263,8 @@ I am recommending against, so the useful statement is what would change the answ
 - **The measured stock cycle after #2593 exceeds the freshness a seller needs.** If the
   paged stock read plus the raised lane cap still leaves a whole-catalogue stock cycle above
   roughly 15 minutes on the 10 000 x 3 shape, the backstop is too slow to cover a dropped
-  event and the log earns its cost. If it lands in single-digit minutes, as the 40-request
-  estimate suggests, it does not.
+  event and the log earns its cost. If it lands in single-digit minutes, as the paged-read
+  estimate in Finding 4 suggests at either page size, it does not.
 - **A third party starts writing stock over the Webservice.** Today only we do. If a shop
   runs another integration writing `stock_availables`, the capture gap in Finding 2 becomes
   a real correctness hole and the generic hook stops being optional.
@@ -235,12 +277,21 @@ I am recommending against, so the useful statement is what would change the answ
 Two things surfaced that are not covered by an existing sibling issue. Neither is filed and
 neither is in this spike's scope:
 
-1. **The loop containment is undocumented and load-bearing.** The two gates in Finding 3
-   are the only thing keeping a stock feedback loop closed across the whole catalogue, they
-   live in two different files in two different packages, and neither one says it is half of
-   a pair. The `InventoryMaster` exclusion in the propagation handler has a comment; the
-   routing gate does not. A future change that gives a publish-only PrestaShop connection
-   `InventoryMaster` for an unrelated reason closes the loop with no test failing.
+1. **The loop containment is undocumented and load-bearing, and the change that would
+   break it is not the obvious one.** The two facts in Finding 3 are the only thing keeping
+   a stock feedback loop closed across the whole catalogue. They live in four files across
+   three packages and none of them says it is part of a pair. The `InventoryMaster`
+   exclusion in the propagation handler carries a comment; the routing gate does not.
+   Note what the triggering change is *not*. Granting a publish-only PrestaShop connection
+   `InventoryMaster` passes the routing gate, but it is exactly the condition the
+   propagation exclusion filters on, so on its own it does not close the loop. What would
+   close it is either of these. (a) PrestaShop declaring `OfferManager`, because that is
+   what puts a PrestaShop connection into the write-back target set at all; with the
+   exclusion in place a connection carrying both is still filtered, so this one alone is
+   not enough either. (b) A write-back path that does not apply the `InventoryMaster`
+   exclusion. The Offer branch already is one. So if (a) ever lands and the connection also
+   carries Offer mappings, nothing stops the loop. Neither change is covered by a test
+   today.
 2. **A Webservice stock write on a simple product produces no event, on a multi-variant
    product produces one by accident.** That asymmetry is undocumented and is the narrower
    fix recommended above.
