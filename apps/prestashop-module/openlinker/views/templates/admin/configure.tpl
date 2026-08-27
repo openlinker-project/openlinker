@@ -170,8 +170,8 @@
                     </span>
                 </label>
                 <div class="col-lg-9">
-                    <input type="number" name="OPENLINKER_OUTBOX_RETENTION_DAYS" value="{$outbox_retention_days|escape:'html':'UTF-8'}" class="form-control" min="1" max="365" />
-                    <p class="help-block">{l s='Between 1 and 365 (default: 7). Failed events are kept longer as evidence. Events still queued or being retried are never deleted.' mod='openlinker'}</p>
+                    <input type="number" name="OPENLINKER_OUTBOX_RETENTION_DAYS" value="{$outbox_retention_days|escape:'html':'UTF-8'}" class="form-control" min="{$outbox_retention_days_min|intval}" max="{$outbox_retention_days_max|intval}" />
+                    <p class="help-block">{l s='Between' mod='openlinker'} {$outbox_retention_days_min|intval} {l s='and' mod='openlinker'} {$outbox_retention_days_max|intval} (default: 7). {l s='Failed events are kept longer as evidence. Events still queued or being retried are never deleted.' mod='openlinker'}</p>
                 </div>
             </div>
         </div>
@@ -241,7 +241,7 @@
             <tr>
                 <td><strong>{l s='Total Rows in Outbox' mod='openlinker'}</strong></td>
                 <td>
-                    {if $statistics.over_cap}<span class="text-danger">{/if}{$statistics.total|intval}{if $statistics.over_cap}</span>{/if}
+                    {if $statistics.over_cap}<span class="text-danger">{/if}{$statistics.total|intval}{if $statistics.total_capped}+{/if}{if $statistics.over_cap}</span>{/if}
                     <span class="help-block">
                         {l s='Cap' mod='openlinker'}: {$statistics.max_rows|intval}.
                         {l s='Delivered events are kept' mod='openlinker'} {$statistics.retention_delivered_days|intval} {l s='days, failed events' mod='openlinker'} {$statistics.retention_failed_days|intval} {l s='days.' mod='openlinker'}

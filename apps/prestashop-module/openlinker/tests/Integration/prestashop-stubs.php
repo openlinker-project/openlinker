@@ -132,6 +132,13 @@ class Configuration
     {
         return self::$values[$key] ?? false;
     }
+
+    public static function updateValue($key, $value)
+    {
+        self::$values[$key] = $value;
+
+        return true;
+    }
 }
 
 class PrestaShopLogger
