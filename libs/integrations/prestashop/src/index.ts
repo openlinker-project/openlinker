@@ -56,6 +56,7 @@ export { PrestashopTaxRateUnknownException } from './domain/exceptions/prestasho
 // Exported for the same reason as the tax-rate class: the retry classifier keys
 // on it, and a shop-configuration gap must not be retried.
 export { PrestashopCurrencyUnknownException } from './domain/exceptions/prestashop-currency-unknown.exception';
+export { PrestashopOrderStateUnresolvedException } from './domain/exceptions/prestashop-order-state-unresolved.exception';
 
 // Retry classification (#581 / #2052) — registered by the plugin descriptor;
 // exported so specs can exercise the real classifier instead of a mock.

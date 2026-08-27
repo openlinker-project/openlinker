@@ -8,6 +8,7 @@
  * @module libs/integrations/prestashop/src/infrastructure/adapters/__tests__
  */
 import { PrestashopOrderSourceAdapter } from '../prestashop-order-source.adapter';
+import { DEFAULT_INSTALL_ORDER_STATES } from '../../../__tests__/fixtures/prestashop-order-states.fixture';
 import { createMockHttpClient } from '../../../__tests__/mocks/mock-http-client.factory';
 import { createTestConnection } from '../../../__tests__/fixtures/connection.fixture';
 import { PrestashopOrderMapper } from '../../mappers/prestashop-order.mapper';
@@ -39,6 +40,41 @@ function createStubCurrencyResolver(
   } as unknown as jest.Mocked<Pick<PrestashopOrderCurrencyResolver, 'resolveOrderCurrencyIso'>>;
 }
 
+/**
+ * The adapter reads the shop's own `order_states` before it reads any order
+ * page (#2607), so the state read is answered by the harness rather than by
+ * whatever a test scripts for `orders`. Without this, every
+ * `mockResolvedValueOnce(orders)` in this file would have its queue consumed by
+ * the state read.
+ */
+function serveOrderStates(client: jest.Mocked<IPrestashopWebserviceClient>): void {
+  let listResources = client.listResources;
+  const wrap = (inner: jest.Mock): jest.Mock =>
+    jest.fn((resource: string, ...rest: unknown[]) =>
+      resource === 'order_states'
+        ? Promise.resolve([...DEFAULT_INSTALL_ORDER_STATES])
+        : (inner as (...args: unknown[]) => unknown)(resource, ...rest)
+    ) as unknown as jest.Mock;
+  listResources = wrap(listResources as unknown as jest.Mock) as typeof listResources;
+  Object.defineProperty(client, 'listResources', {
+    configurable: true,
+    get: () => listResources,
+    set: (next: jest.Mock) => {
+      listResources = wrap(next) as typeof listResources;
+    },
+  });
+}
+
+/**
+ * The `order_states` read is bookkeeping, not the read a test is about (#2607).
+ * Assertions on how many pages the adapter fetched count only the rest.
+ */
+function listCallsExcludingStates(client: jest.Mocked<IPrestashopWebserviceClient>): unknown[][] {
+  return (client.listResources as unknown as jest.Mock).mock.calls.filter(
+    (call) => call[0] !== 'order_states'
+  );
+}
+
 describe('PrestashopOrderSourceAdapter', () => {
   let adapter: PrestashopOrderSourceAdapter;
   let mockHttpClient: jest.Mocked<IPrestashopWebserviceClient>;
@@ -48,6 +84,7 @@ describe('PrestashopOrderSourceAdapter', () => {
 
   beforeEach(() => {
     mockHttpClient = createMockHttpClient();
+    serveOrderStates(mockHttpClient);
     connection = createTestConnection();
     orderMapper = new PrestashopOrderMapper();
     currencyResolver = createStubCurrencyResolver();
@@ -193,7 +230,7 @@ describe('PrestashopOrderSourceAdapter', () => {
           limit: 2,
         });
 
-        expect(mockHttpClient.listResources).toHaveBeenCalledTimes(2);
+        expect(listCallsExcludingStates(mockHttpClient)).toHaveLength(2);
         expect(mockHttpClient.listResources).toHaveBeenLastCalledWith(
           'orders',
           expect.anything(),
@@ -257,7 +294,7 @@ describe('PrestashopOrderSourceAdapter', () => {
             limit: 10,
           });
           return {
-            call: (mockHttpClient.listResources as jest.Mock).mock.calls[0],
+            call: listCallsExcludingStates(mockHttpClient)[0],
             cursor: result.nextCursor,
           };
         };
@@ -760,7 +797,7 @@ describe('PrestashopOrderSourceAdapter', () => {
       const order = await adapter.getOrder({ externalOrderId: '42' });
 
       expect(order.items).toHaveLength(TOTAL_LINES);
-      expect(mockHttpClient.listResources).toHaveBeenCalledTimes(3);
+      expect(listCallsExcludingStates(mockHttpClient)).toHaveLength(3);
     });
 
     it('should refuse the order rather than mirror it with lines missing when the page budget runs out (#2608)', async () => {
@@ -846,7 +883,13 @@ describe('PrestashopOrderSourceAdapter', () => {
       mockHttpClient.getResource = jest.fn().mockImplementation((resource: string, id: string) => {
         if (resource === 'orders') return Promise.resolve(orderWithAddresses);
         if (resource === 'addresses') {
-          return Promise.resolve({ id, address1: 'ul. Testowa 1', city: 'Poznań', postcode: '60-001', id_country: '14' });
+          return Promise.resolve({
+            id,
+            address1: 'ul. Testowa 1',
+            city: 'Poznań',
+            postcode: '60-001',
+            id_country: '14',
+          });
         }
         if (resource === 'countries') return Promise.reject(new Error('boom'));
         return Promise.resolve({});
@@ -881,12 +924,22 @@ describe('PrestashopOrderSourceAdapter', () => {
     });
 
     it('should fall back to billing address for shipping when delivery hydration fails', async () => {
-      const order: PrestashopOrder = { ...orderWithAddresses, id_address_invoice: '11', id_address_delivery: '22' };
+      const order: PrestashopOrder = {
+        ...orderWithAddresses,
+        id_address_invoice: '11',
+        id_address_delivery: '22',
+      };
       mockHttpClient.getResource = jest.fn().mockImplementation((resource: string, id: string) => {
         if (resource === 'orders') return Promise.resolve(order);
         if (resource === 'addresses') {
           if (id === '22') return Promise.reject(new Error('delivery 404'));
-          return Promise.resolve({ id, address1: 'Bill St 1', city: 'Warsaw', postcode: '00-001', id_country: '14' });
+          return Promise.resolve({
+            id,
+            address1: 'Bill St 1',
+            city: 'Warsaw',
+            postcode: '00-001',
+            id_country: '14',
+          });
         }
         if (resource === 'countries') return Promise.resolve({ id, iso_code: 'PL' });
         return Promise.resolve({});

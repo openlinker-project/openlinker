@@ -19,7 +19,7 @@ import type {
   PrestashopOrderRow,
 } from './prestashop.mapper.interface';
 import type { OrderItem, OrderTotals } from '@openlinker/core/orders';
-import type { OrderCreate, OrderStatus } from '@openlinker/core/orders';
+import type { OrderCreate } from '@openlinker/core/orders';
 import { PrestashopProvisioningException } from '@openlinker/integrations-prestashop';
 import { PrestashopCurrencyUnknownException } from '../../domain/exceptions/prestashop-currency-unknown.exception';
 import { PrestashopParseException } from '../../domain/exceptions/prestashop-parse.exception';
@@ -95,7 +95,6 @@ export class PrestashopOrderMapper implements IPrestashopOrderMapper {
 
     return {
       orderNumber: this.getStringField(prestashopOrder.reference),
-      status: this.mapOrderStatus(prestashopOrder.current_state),
       customerId: prestashopOrder.id_customer ? String(prestashopOrder.id_customer) : undefined,
       items,
       totals,
@@ -104,32 +103,6 @@ export class PrestashopOrderMapper implements IPrestashopOrderMapper {
       createdAt: this.parseDate(prestashopOrder.date_add) || new Date(),
       updatedAt: this.parseDate(prestashopOrder.date_upd) || new Date(),
     };
-  }
-
-  /**
-   * Map PrestaShop order status to OpenLinker status
-   *
-   * PrestaShop uses numeric status IDs. For MVP, we'll map common statuses.
-   * Full implementation would fetch status names from PrestaShop.
-   */
-  private mapOrderStatus(status?: string | number): string {
-    if (!status) {
-      return 'pending';
-    }
-
-    const statusNum = typeof status === 'number' ? status : parseInt(String(status), 10);
-
-    // Common PrestaShop order status mappings
-    // These are typical defaults, but vary by installation
-    if (statusNum === 1) return 'pending';
-    if (statusNum === 2) return 'processing';
-    if (statusNum === 3) return 'processing';
-    if (statusNum === 4) return 'shipped';
-    if (statusNum === 5) return 'delivered';
-    if (statusNum === 6) return 'cancelled';
-    if (statusNum === 7) return 'refunded';
-
-    return 'pending'; // Default fallback
   }
 
   /**
@@ -309,42 +282,5 @@ export class PrestashopOrderMapper implements IPrestashopOrderMapper {
     }
 
     return prestashopCart;
-  }
-
-  /**
-   * Map OpenLinker `OrderStatus` to a PrestaShop order-state id.
-   *
-   * **Assumes a default PrestaShop install** (state ids 1/2/4/5/6/7). Merchants
-   * who customize the order-state catalogue (rename/reorder/add states) would
-   * need a per-connection override — the resolution-chain follow-up tracked in
-   * #862. This is the fallback tier of that chain.
-   *
-   * The switch is **compile-time exhaustive over `OrderStatus`**: adding a new
-   * status to the union without mapping it here is a type error (the `never`
-   * guard), not a silent default-to-pending — which on the `updateFulfillment`
-   * projection path (with `sendmail`) would otherwise mis-transition + mis-email.
-   */
-  mapStatusToPrestashopStateId(status: OrderStatus): number {
-    // Default-install PrestaShop order-state ids.
-    switch (status) {
-      case 'pending':
-        return 1; // Awaiting check payment
-      case 'processing':
-        return 2; // Payment accepted
-      case 'shipped':
-        return 4; // Shipped
-      case 'delivered':
-        return 5; // Delivered
-      case 'cancelled':
-        return 6; // Canceled
-      case 'refunded':
-        return 7; // Refunded
-      default: {
-        const _exhaustive: never = status;
-        throw new Error(
-          `Unmapped OrderStatus → PrestaShop state id: ${String(_exhaustive)} (update the mapper / #862)`
-        );
-      }
-    }
   }
 }

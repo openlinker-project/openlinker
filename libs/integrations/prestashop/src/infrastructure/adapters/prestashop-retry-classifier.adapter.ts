@@ -89,6 +89,7 @@ import type { RetryClassifierPort, RetryDeferral } from '@openlinker/core/sync';
 import { PrestashopApiException } from '../../domain/exceptions/prestashop-api.exception';
 import { PrestashopTaxRateUnknownException } from '../../domain/exceptions/prestashop-tax-rate-unknown.exception';
 import { PrestashopCurrencyUnknownException } from '../../domain/exceptions/prestashop-currency-unknown.exception';
+import { PrestashopOrderStateUnresolvedException } from '../../domain/exceptions/prestashop-order-state-unresolved.exception';
 import { PrestashopInvalidFilterException } from '../../domain/exceptions/prestashop-invalid-filter.exception';
 import { PrestashopTruncatedReadException } from '../../domain/exceptions/prestashop-truncated-read.exception';
 import { PrestashopPackFilterIgnoredException } from '../../domain/exceptions/prestashop-pack-filter-ignored.exception';
@@ -111,6 +112,9 @@ export class PrestashopRetryClassifierAdapter implements RetryClassifierPort {
     return (
       cause instanceof PrestashopTaxRateUnknownException ||
       cause instanceof PrestashopCurrencyUnknownException ||
+      // No state on the shop means the requested status (#2607). Retrying
+      // cannot add one; only an operator can.
+      cause instanceof PrestashopOrderStateUnresolvedException ||
       cause instanceof PrestashopInvalidFilterException ||
       cause instanceof PrestashopTruncatedReadException ||
       cause instanceof PrestashopPackFilterIgnoredException

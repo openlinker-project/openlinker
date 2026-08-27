@@ -66,6 +66,8 @@ import { toPrestashopProductAttributeId } from '../mappers/prestashop-variant-id
 import type { CustomerProjectionRepositoryPort } from '@openlinker/core/customers';
 import type { PrestashopConnectionConfig } from '../../domain/types/prestashop-config.types';
 import { PrestashopOlCarrierMissingException } from '../../domain/exceptions/prestashop-ol-module.exception';
+import { PrestashopOrderStateUnresolvedException } from '../../domain/exceptions/prestashop-order-state-unresolved.exception';
+import { PrestashopOrderStateCatalog } from '../provisioners/prestashop-order-state.catalog';
 import { hashEmail } from '@openlinker/shared/config';
 
 /**
@@ -103,24 +105,24 @@ export class PrestashopOrderProcessorManagerAdapter
   private readonly logger = new Logger(PrestashopOrderProcessorManagerAdapter.name);
 
   /**
-   * Per-instance lazy cache of `GET /api/order_states` rows keyed by id —
-   * used by `getFulfillmentStatus` to look up the order's current state
-   * row by `current_state` (#834). One PS WS list call per adapter
-   * instance.
+   * Per-instance cache of the shop's own `order_states` rows (#2607), used in
+   * both directions: reading what an order's `current_state` means (#834) and
+   * choosing which state to write for a neutral status. No default-install id
+   * is assumed in either direction.
    *
    * Lifetime contract (verified against
    * `libs/core/src/integrations/application/services/integrations.service.ts`):
    * `IntegrationsService.getCapabilityAdapter` constructs a fresh adapter
-   * via the factory resolver on every call — no instance cache. The
+   * via the factory resolver on every call - no instance cache. The
    * branch-1 sync service (#834) resolves this adapter once per page and
    * reuses it for every record in the page, so this cache amortises one
    * `order_states` WS call across the whole page and is discarded when
    * the sync invocation returns. If a future refactor of
    * `getCapabilityAdapter` introduces adapter-instance caching across
-   * ticks, revisit this cache — operator-added PS states would persist
+   * ticks, revisit this cache - operator-added PS states would persist
    * stale here.
    */
-  private orderStatesById: Map<string, PrestashopOrderState> | null = null;
+  private readonly orderStates: PrestashopOrderStateCatalog;
 
   constructor(
     private readonly httpClient: IPrestashopWebserviceClient,
@@ -137,7 +139,9 @@ export class PrestashopOrderProcessorManagerAdapter
     // prices can be pinned net via `specific_prices` (#895 / ADR-014).
     private readonly taxRateResolver: PrestashopTaxRateResolver,
     private readonly mappingConfigService?: IMappingConfigService
-  ) {}
+  ) {
+    this.orderStates = new PrestashopOrderStateCatalog(httpClient, connection.id);
+  }
 
   async createOrder(order: OrderCreate): Promise<OrderRef> {
     this.logger.log(
@@ -937,12 +941,14 @@ export class PrestashopOrderProcessorManagerAdapter
         event.externalOrderId
       );
       const currentStateId = Number(order.current_state);
-      const [shippedStateId, deliveredStateId, cancelledStateId] = await Promise.all([
-        this.resolveStateId('shipped'),
-        this.resolveStateId('delivered'),
-        this.resolveStateId('cancelled'),
-      ]);
-      if (currentStateId === shippedStateId || currentStateId === deliveredStateId) {
+      // Compared by what the shop's current state MEANS, not against one id
+      // (#2607). A shop may well carry several states that ship - "Handed to
+      // courier" beside "Shipped" - and an id equality check would refuse the
+      // cancel on only one of them and happily cancel a parcel already gone.
+      const states = await this.orderStates.load();
+      const currentStatus = states.statusOf(order.current_state);
+      const cancelledStateId = await this.resolveStateId('cancelled');
+      if (currentStatus === 'shipped' || currentStatus === 'delivered') {
         this.logger.warn(
           `PrestaShop order ${event.externalOrderId} already in state ${currentStateId} ` +
             `(shipped/delivered) — refusing cancel writeback (connection: ${this.connection.id})`
@@ -1053,25 +1059,13 @@ export class PrestashopOrderProcessorManagerAdapter
   }
 
   /**
-   * Look up an `order_state` row by id, lazy-loading the full map on first
-   * call. Returns `null` for unknown ids (orphaned `current_state` — treat
-   * as "not yet acted" per the mapper's `state === null` branch).
+   * Look up an `order_state` row by id. Returns `null` for unknown ids
+   * (orphaned `current_state` - treat as "not yet acted" per the mapper's
+   * `state === null` branch).
    */
   private async lookupOrderState(stateId: string): Promise<PrestashopOrderState | null> {
-    if (this.orderStatesById === null) {
-      const rows = await this.httpClient.listResources<PrestashopOrderState>(
-        'order_states',
-        { custom: { deleted: '0' } },
-        1000,
-        0,
-      );
-      const map = new Map<string, PrestashopOrderState>();
-      for (const row of rows) {
-        map.set(String(row.id), row);
-      }
-      this.orderStatesById = map;
-    }
-    return this.orderStatesById.get(stateId) ?? null;
+    const states = await this.orderStates.load();
+    return states.find(stateId);
   }
 
   /**
@@ -1277,8 +1271,9 @@ export class PrestashopOrderProcessorManagerAdapter
    * Resolution chain (mirrors `resolveExternalCarrierId`):
    *   1. `MappingConfigService.resolveOrderStateMapping(this.connection.id, status)`
    *      — operator override for THIS destination connection.
-   *   2. `orderMapper.mapStatusToPrestashopStateId(status)` — the hardcoded
-   *      default-install map (#858 tier); vanilla shops need no config.
+   *   2. the shop's own order-state catalogue, matched on what each state
+   *      MEANS (#2607) - so a vanilla shop needs no config and a shop with
+   *      custom states is no longer written a default-install id.
    *
    * Destination-scoped: the override belongs to this PrestaShop connection's
    * customised state catalogue (`this.connection.id`), NOT the source — unlike
@@ -1307,7 +1302,19 @@ export class PrestashopOrderProcessorManagerAdapter
         );
       }
     }
-    return this.orderMapper.mapStatusToPrestashopStateId(status);
+    const states = await this.orderStates.load();
+    const derived = states.stateIdFor(status);
+    if (derived === null) {
+      // Refusing beats writing a guessed id. A state write moves a real order
+      // and can send the buyer an email, so the wrong state is worse than a
+      // failed job the operator can see and fix (#2607).
+      throw new PrestashopOrderStateUnresolvedException(status, this.connection.id);
+    }
+    this.logger.debug(
+      `Derived order state from the shop's catalogue: status='${status}' -> ` +
+        `id_order_state=${derived} (connection=${this.connection.id})`
+    );
+    return derived;
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -1344,17 +1351,30 @@ export class PrestashopOrderProcessorManagerAdapter
     });
   }
 
+  /**
+   * Every order state the shop has, each carrying the neutral status OpenLinker
+   * derives for it (#2607).
+   *
+   * `derivedValue` is what makes this list actionable rather than decorative.
+   * A state with none is a state OpenLinker cannot read, so an order sitting in
+   * it reads `pending` and a status write will never target it - which is
+   * precisely the row an operator needs to map by hand. Reading through the
+   * catalogue also guarantees the list agrees with what the write path does,
+   * instead of describing it from a second copy of the rules.
+   */
   async listOrderStatuses(): Promise<MappingOption[]> {
-    const rows = await this.httpClient.listResources<PrestashopOrderState>(
-      'order_states',
-      { custom: { deleted: '0' } },
-      1000,
-      0
-    );
-    return rows.map((row) => ({
-      value: String(row.id),
-      label: this.flattenLanguageField(row.name),
-    }));
+    const states = await this.orderStates.load();
+    return states.all().map((row) => {
+      const option: MappingOption = {
+        value: String(row.id),
+        label: this.flattenLanguageField(row.name),
+      };
+      const derived = states.statusOf(row.id);
+      if (derived !== null) {
+        option.derivedValue = derived;
+      }
+      return option;
+    });
   }
 
   // PS Webservice keys are not granted access to `/api/modules` by default

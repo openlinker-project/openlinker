@@ -33,7 +33,8 @@ import type {
   PrestashopOrder,
   PrestashopOrderRow,
 } from '../mappers/prestashop.mapper.interface';
-import { PRESTASHOP_DEFAULT_CANCELLED_STATE_ID } from '../mappers/prestashop-order-state.types';
+import { PrestashopOrderStateCatalog } from '../provisioners/prestashop-order-state.catalog';
+import type { PrestashopOrderStateSnapshot } from '../provisioners/prestashop-order-state.catalog';
 import type { PrestashopOrderCurrencyResolver } from '../provisioners/prestashop-order-currency.resolver';
 import {
   PrestashopApiException,
@@ -65,6 +66,13 @@ import { Logger } from '@openlinker/shared/logging';
 export class PrestashopOrderSourceAdapter implements OrderSourcePort {
   private readonly logger = new Logger(PrestashopOrderSourceAdapter.name);
 
+  /**
+   * The shop's own order-state catalogue (#2607). Built here rather than
+   * injected so the adapter's construction sites stay unchanged; it needs
+   * nothing this adapter does not already hold.
+   */
+  private readonly orderStates: PrestashopOrderStateCatalog;
+
   constructor(
     private readonly httpClient: IPrestashopWebserviceClient,
     private readonly orderMapper: IPrestashopOrderMapper,
@@ -75,7 +83,9 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort {
      * synchronous by contract.
      */
     private readonly orderCurrencyResolver: PrestashopOrderCurrencyResolver
-  ) {}
+  ) {
+    this.orderStates = new PrestashopOrderStateCatalog(httpClient, connection.id);
+  }
 
   /**
    * Pages read in one poll before giving up on draining a single second.
@@ -102,6 +112,12 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort {
       );
     }
 
+    // Read before the first page, because every row's event type depends on
+    // what its state MEANS. A failure here fails the poll rather than letting
+    // a cancellation read as an ordinary update, which would resurrect the
+    // order downstream (see `resolveFeedEventType`).
+    const orderStates = await this.orderStates.load();
+
     const pageSize = input.limit > 0 ? input.limit : 1;
     const items: OrderFeedItem[] = [];
     let cursor: PrestashopOrderFeedCursor | null = fromCursor;
@@ -115,9 +131,7 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort {
           // the bound is moved back one second to keep the cursor's own second in
           // range. Everything already consumed in it is dropped by the keyset
           // below, so nothing is emitted twice within a poll.
-          ...(fromCursor
-            ? { updatedAfter: shiftWallClockSeconds(fromCursor.updatedAt, -1) }
-            : {}),
+          ...(fromCursor ? { updatedAfter: shiftWallClockSeconds(fromCursor.updatedAt, -1) } : {}),
           // Paging is only sound when the pages are ordered by the cursor's own
           // key. `id` breaks ties inside a second so the keyset has something to
           // resume from (#2605).
@@ -130,7 +144,7 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort {
       rowsRead += rows.length;
 
       for (const row of rows) {
-        const item = this.toFeedItem(row);
+        const item = this.toFeedItem(row, orderStates);
         if (item === null) {
           continue;
         }
@@ -159,7 +173,10 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort {
       }
     }
 
-    if (items.length === 0 && rowsRead >= pageSize * PrestashopOrderSourceAdapter.MAX_FEED_PAGES_PER_POLL) {
+    if (
+      items.length === 0 &&
+      rowsRead >= pageSize * PrestashopOrderSourceAdapter.MAX_FEED_PAGES_PER_POLL
+    ) {
       this.logger.warn(
         `PrestaShop order feed made no progress after ${rowsRead} row(s) on connection ` +
           `${this.connection.id}: more orders share one \`date_upd\` second than this poll can ` +
@@ -194,7 +211,8 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort {
    * really updated earlier.
    */
   private toFeedItem(
-    order: PrestashopOrder
+    order: PrestashopOrder,
+    orderStates: PrestashopOrderStateSnapshot
   ): { feedItem: OrderFeedItem; updatedAt: string; orderId: number } | null {
     const externalOrderId = String(order.id);
     const orderId = Number.parseInt(externalOrderId, 10);
@@ -209,7 +227,7 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort {
     }
 
     const createdAt = normalizeWallClock(order.date_add) ?? occurredAt;
-    const eventType = this.resolveFeedEventType(order, createdAt, occurredAt);
+    const eventType = this.resolveFeedEventType(order, createdAt, occurredAt, orderStates);
 
     return {
       updatedAt: occurredAt,
@@ -236,18 +254,20 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort {
    * still-cancelled order therefore re-emits `cancelled` (an idempotent no-op
    * at the lifecycle relay) on every re-read — never `updated`.
    *
-   * Keys on the default-install "Canceled" state id; renumbered installs are a
-   * documented v1 limitation (see `prestashop-order-state.types.ts`).
+   * Cancellation is read from the shop's own state catalogue (#2607). This used
+   * to key on the default-install id 6, so a shop that renumbered or added its
+   * own states never emitted `cancelled` at all - and the order kept selling.
+   * An unknown `current_state` is not a cancellation: it is a state this shop
+   * does not have, and inferring cancellation from an id we cannot read would
+   * cancel live orders.
    */
   private resolveFeedEventType(
     order: PrestashopOrder,
     createdAt: string,
-    occurredAt: string
+    occurredAt: string,
+    orderStates: PrestashopOrderStateSnapshot
   ): OrderFeedEventType {
-    if (
-      order.current_state !== undefined &&
-      Number(order.current_state) === PRESTASHOP_DEFAULT_CANCELLED_STATE_ID
-    ) {
+    if (orderStates.statusOf(order.current_state) === 'cancelled') {
       return 'cancelled';
     }
     return createdAt === occurredAt ? 'created' : 'updated';
@@ -282,6 +302,14 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort {
 
     const orderRows = await this.fetchOrderRows(externalOrderId);
     const mapped = this.orderMapper.mapOrder(prestashopOrder, orderRows);
+
+    // The mapper cannot answer this (#2607): what `current_state` means is a row
+    // on the shop's own state table. An id this shop does not have reads
+    // `pending`, which is what an order OpenLinker knows nothing about is - the
+    // difference from the removed 1-7 table is that a custom shipped, paid or
+    // cancelled state is no longer swept into it.
+    const orderStates = await this.orderStates.load();
+    const status = orderStates.statusOf(prestashopOrder.current_state) ?? 'pending';
     const config = this.connection.config as unknown as PrestashopConnectionConfig;
 
     // Resolved BEFORE the hydration reads below, and awaited rather than raced
@@ -316,9 +344,7 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort {
       ));
     const shippingAddress =
       (mapped.shippingAddress as IncomingOrderAddress | undefined) ??
-      (await this.hydrateAddress(
-        prestashopOrder.id_address_delivery
-      )) ??
+      (await this.hydrateAddress(prestashopOrder.id_address_delivery)) ??
       billingAddress;
 
     const items: IncomingOrderItem[] = mapped.items.map((item, index) => {
@@ -360,7 +386,7 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort {
     return {
       externalOrderId,
       orderNumber: mapped.orderNumber,
-      status: mapped.status,
+      status,
       customerExternalId:
         prestashopOrder.id_customer !== undefined ? String(prestashopOrder.id_customer) : undefined,
       customerEmail: await customerEmailPromise,
