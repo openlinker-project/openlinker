@@ -13,6 +13,8 @@ import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
 import { ProductsModule } from '@openlinker/core/products';
 import { InventoryModule } from '@openlinker/core/inventory';
 import { OrdersModule } from '@openlinker/core/orders';
+import { AnalyticsModule as CoreAnalyticsModule } from '@openlinker/core/analytics';
+import { CurrencyModule } from '@openlinker/core/currency';
 import { ListingsModule } from '@openlinker/core/listings/services';
 import { ShippingModule } from '@openlinker/core/shipping';
 import { InvoicingModule } from '@openlinker/core/invoicing';
@@ -57,6 +59,7 @@ import { RegulatoryStatusReconcileHandler } from './handlers/regulatory-status-r
 import { OfflineResubmitHandler } from './handlers/offline-resubmit.handler';
 import { PendingRecoveryHandler } from './handlers/pending-recovery.handler';
 import { PaymentStatusRefreshHandler } from './handlers/payment-status-refresh.handler';
+import { AnalyticsCurrencyRecalculateHandler } from './handlers/analytics-currency-recalculate.handler';
 import { HandlerRegistrationService } from './handlers/handler-registration.service';
 
 @Module({
@@ -72,6 +75,8 @@ import { HandlerRegistrationService } from './handlers/handler-registration.serv
     InvoicingModule, // OL #1120/#1121 — exposes INVOICE_SERVICE_TOKEN + AUTO_ISSUE_TRIGGER_SERVICE_TOKEN (OrderIngestionService) + REGULATORY_STATUS_RECONCILIATION_SERVICE_TOKEN
     FiscalizationModule, // #2156 — exposes FISCAL_REGISTRATION_SERVICE_TOKEN for the fiscalization.register handler
     WorkerContentModule, // Worker-side ContentModule for #737 — exposes CONTENT_SUGGESTION_SERVICE_TOKEN
+    CoreAnalyticsModule, // #2468 — exposes ANALYTICS_REMEDIATION_RUN_SERVICE_TOKEN for the analytics.currency.recalculate handler
+    CurrencyModule, // #2468 — exposes REPORTING_CURRENCY_SETTINGS_SERVICE_TOKEN; OrdersModule imports it but does not re-export the token
   ],
   providers: [
     JobIntakeConsumer,
@@ -83,6 +88,7 @@ import { HandlerRegistrationService } from './handlers/handler-registration.serv
     MarketplaceOrderFxStampHandler,
     MarketplaceOrderFxStampSweepHandler,
     OrdersTaxRateBackfillHandler,
+    AnalyticsCurrencyRecalculateHandler,
     MarketplaceOfferQuantityUpdateHandler,
     MarketplaceOfferFieldUpdateHandler,
     MarketplaceOfferCreateHandler,

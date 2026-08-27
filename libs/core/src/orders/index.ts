@@ -217,6 +217,14 @@ export {
 export { IOrderRecordService } from './application/interfaces/order-record.service.interface';
 export { OrderRecordService } from './application/services/order-record.service';
 export type { IOrderFxStampService } from './application/interfaces/order-fx-stamp.service.interface';
+export type { IOrderFxRestatementService } from './application/interfaces/order-fx-restatement.service.interface';
+export { buildFxRestatementIdempotencyKey } from './domain/types/order-fx-restatement.types';
+export type {
+  FxRestatementOrderRef,
+  FxRestatementPageInput,
+  FxRestatementPageResult,
+  FxRestatementRemainingSummary,
+} from './domain/types/order-fx-restatement.types';
 // FX aggregate reads for the reporting-currency settings surface (#2126).
 export type { IOrderFxReadService } from './application/interfaces/order-fx-read.service.interface';
 export {
