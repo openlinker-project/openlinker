@@ -5,7 +5,15 @@
  * `SchedulerTaskRegistryService` (#584). Five tasks today:
  *
  *   - `allegro-orders-poll` — incremental `/order/events` ingest, default
- *     every 5 minutes. Cursor key `allegro.orders.lastEventId`.
+ *     every minute (#2620 — shortened from 5 minutes). A tick costs exactly
+ *     one `GET /order/events` request per connection regardless of how many
+ *     events it returns (hydration of each event happens later, in the
+ *     per-item `marketplace.order.sync` job), so going from every 5 minutes
+ *     to every minute costs at most 4 extra requests/minute/connection —
+ *     negligible against Allegro's 9000 requests/minute-per-client-id budget
+ *     (ADR-038). Allegro has no order webhook, so this cadence is the only
+ *     lever on sale-to-ingested-order latency. Cursor key
+ *     `allegro.orders.lastEventId`.
  *   - `allegro-offers-sync` — incremental offer-events ingest (or full
  *     listing, depending on `OL_ALLEGRO_OFFERS_SYNC_FEED_TYPE`), default
  *     every 30 minutes. Cursor key `allegro.offers.lastEventId`.
@@ -63,9 +71,11 @@ export function buildAllegroSchedulerTasks(configService: ConfigService): Schedu
   const tasks: SchedulerTaskConfig[] = [];
 
   if (isEnabled(configService, 'OL_ALLEGRO_POLL_SCHEDULER_ENABLED')) {
+    // Default shortened from every 5 minutes to every minute (#2620) — see
+    // the module doc-comment above for the request-budget justification.
     const cronExpression = configService.get<string>(
       'OL_ALLEGRO_POLL_INTERVAL_CRON',
-      '*/5 * * * *'
+      '*/1 * * * *'
     );
 
     tasks.push({
