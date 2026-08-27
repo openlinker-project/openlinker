@@ -8,6 +8,7 @@ import { DataTableSkeleton } from '../../shared/ui/data-table-skeleton';
 import { Button } from '../../shared/ui/button';
 import { Select } from '../../shared/ui/select';
 import { TimeDisplay } from '../../shared/ui/time-display';
+import { formatDurationMs } from '../../shared/format/format-duration-ms';
 import { SyncJobStatusBadge } from '../../features/sync-jobs/components/SyncJobStatusBadge';
 import { useSyncJobsQuery } from '../../features/sync-jobs/hooks/use-sync-jobs-query';
 import { useConnectionsQuery } from '../../features/connections/hooks/use-connections-query';
@@ -62,6 +63,20 @@ const COLUMNS: DataTableColumn<SyncJob>[] = [
     align: 'right',
     cell: (job) => `${job.attempts} / ${job.maxAttempts}`,
     accessor: (job) => job.attempts,
+    sortable: true,
+    hideBelow: 768,
+  },
+  {
+    id: 'lastAttemptDurationMs',
+    header: 'Duration',
+    align: 'right',
+    // Sorts on -1 for an unmeasured row so "no duration recorded" groups
+    // together instead of masquerading as the fastest job in the table.
+    cell: (job) => {
+      const formatted = formatDurationMs(job.lastAttemptDurationMs);
+      return formatted ?? <span className="text-muted">—</span>;
+    },
+    accessor: (job) => job.lastAttemptDurationMs ?? -1,
     sortable: true,
     hideBelow: 768,
   },

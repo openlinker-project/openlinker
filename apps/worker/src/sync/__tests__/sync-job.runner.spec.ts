@@ -41,6 +41,13 @@ import {
 import { OfferCreationInvariantException } from '@openlinker/core/listings';
 import { randomUUID } from 'crypto';
 
+/**
+ * Stand-in for the attempt duration `processJob` measures and hands to
+ * `handleJobFailure` (#2611). Specs that drive the failure path directly must
+ * supply one, or they would assert a signature the runner does not use.
+ */
+const ATTEMPT_MS = 1500;
+
 describe('SyncJobRunner', () => {
   let runner: SyncJobRunner;
   let jobRepository: jest.Mocked<SyncJobRepositoryPort>;
@@ -208,7 +215,12 @@ describe('SyncJobRunner', () => {
 
       expect(handlerRegistry.getHandler).toHaveBeenCalledWith(job.jobType);
       expect(mockHandler.execute).toHaveBeenCalledWith(job);
-      expect(jobRepository.markSucceeded).toHaveBeenCalledWith(job.id, 'ok', undefined);
+      expect(jobRepository.markSucceeded).toHaveBeenCalledWith(
+        job.id,
+        'ok',
+        undefined,
+        expect.any(Number)
+      );
       expect(jobRepository.markFailed).not.toHaveBeenCalled();
       expect(jobRepository.markDead).not.toHaveBeenCalled();
     });
@@ -241,7 +253,12 @@ describe('SyncJobRunner', () => {
       // further heartbeats fire after the job is no longer running.
       resolveHandler({ outcome: 'ok' });
       await processPromise;
-      expect(jobRepository.markSucceeded).toHaveBeenCalledWith(job.id, 'ok', undefined);
+      expect(jobRepository.markSucceeded).toHaveBeenCalledWith(
+        job.id,
+        'ok',
+        undefined,
+        expect.any(Number)
+      );
 
       jobRepository.heartbeat.mockClear();
       jest.advanceTimersByTime((runner as any).JOB_HEARTBEAT_INTERVAL_MS * 2);
@@ -273,7 +290,12 @@ describe('SyncJobRunner', () => {
       resolveHandler({ outcome: 'ok' });
       await processPromise;
 
-      expect(jobRepository.markSucceeded).toHaveBeenCalledWith(job.id, 'ok', undefined);
+      expect(jobRepository.markSucceeded).toHaveBeenCalledWith(
+        job.id,
+        'ok',
+        undefined,
+        expect.any(Number)
+      );
       jest.useRealTimers();
     });
 
@@ -300,7 +322,12 @@ describe('SyncJobRunner', () => {
 
       await (runner as any).processJob(job);
 
-      expect(jobRepository.markSucceeded).toHaveBeenCalledWith(job.id, 'business_failure', undefined);
+      expect(jobRepository.markSucceeded).toHaveBeenCalledWith(
+        job.id,
+        'business_failure',
+        undefined,
+        expect.any(Number)
+      );
       expect(jobRepository.markFailed).not.toHaveBeenCalled();
       expect(jobRepository.markDead).not.toHaveBeenCalled();
     });
@@ -319,7 +346,8 @@ describe('SyncJobRunner', () => {
       expect(jobRepository.markSucceeded).toHaveBeenCalledWith(
         job.id,
         'business_failure',
-        'master_deleted'
+        'master_deleted',
+        expect.any(Number)
       );
     });
 
@@ -397,9 +425,9 @@ describe('SyncJobRunner', () => {
       const error = new Error('Test error');
       jobRepository.markDead.mockResolvedValueOnce(undefined);
 
-      await (runner as any).handleJobFailure(job, error);
+      await (runner as any).handleJobFailure(job, error, ATTEMPT_MS);
 
-      expect(jobRepository.markDead).toHaveBeenCalledWith(job.id, 'Test error');
+      expect(jobRepository.markDead).toHaveBeenCalledWith(job.id, 'Test error', ATTEMPT_MS);
       expect(jobRepository.markFailed).not.toHaveBeenCalled();
     });
 
@@ -408,9 +436,14 @@ describe('SyncJobRunner', () => {
       const error = new Error('Test error');
       jobRepository.markFailed.mockResolvedValueOnce(undefined);
 
-      await (runner as any).handleJobFailure(job, error);
+      await (runner as any).handleJobFailure(job, error, ATTEMPT_MS);
 
-      expect(jobRepository.markFailed).toHaveBeenCalledWith(job.id, 'Test error', expect.any(Date));
+      expect(jobRepository.markFailed).toHaveBeenCalledWith(
+        job.id,
+        'Test error',
+        expect.any(Date),
+        ATTEMPT_MS
+      );
       expect(jobRepository.markDead).not.toHaveBeenCalled();
 
       // Verify nextRunAt is in the future (exponential backoff)
@@ -429,12 +462,13 @@ describe('SyncJobRunner', () => {
       );
       jobRepository.markFailed.mockResolvedValueOnce(undefined);
 
-      await (runner as any).handleJobFailure(job, error);
+      await (runner as any).handleJobFailure(job, error, ATTEMPT_MS);
 
       expect(jobRepository.markFailed).toHaveBeenCalledWith(
         job.id,
         'Product sync failed',
-        expect.any(Date)
+        expect.any(Date),
+        ATTEMPT_MS
       );
     });
 
@@ -443,12 +477,13 @@ describe('SyncJobRunner', () => {
       const error = new Error('Network timeout');
       jobRepository.markFailed.mockResolvedValueOnce(undefined);
 
-      await (runner as any).handleJobFailure(job, error);
+      await (runner as any).handleJobFailure(job, error, ATTEMPT_MS);
 
       expect(jobRepository.markFailed).toHaveBeenCalledWith(
         job.id,
         'Network timeout',
-        expect.any(Date)
+        expect.any(Date),
+        ATTEMPT_MS
       );
     });
 
@@ -457,12 +492,13 @@ describe('SyncJobRunner', () => {
       const error = 'String error';
       jobRepository.markFailed.mockResolvedValueOnce(undefined);
 
-      await (runner as any).handleJobFailure(job, error);
+      await (runner as any).handleJobFailure(job, error, ATTEMPT_MS);
 
       expect(jobRepository.markFailed).toHaveBeenCalledWith(
         job.id,
         'String error',
-        expect.any(Date)
+        expect.any(Date),
+        ATTEMPT_MS
       );
     });
 
@@ -471,9 +507,9 @@ describe('SyncJobRunner', () => {
       const error = new OfferCreationInvariantException('rec_test_1', 'pending');
       jobRepository.markDead.mockResolvedValueOnce(undefined);
 
-      await (runner as any).handleJobFailure(job, error);
+      await (runner as any).handleJobFailure(job, error, ATTEMPT_MS);
 
-      expect(jobRepository.markDead).toHaveBeenCalledWith(job.id, error.message);
+      expect(jobRepository.markDead).toHaveBeenCalledWith(job.id, error.message, ATTEMPT_MS);
       expect(jobRepository.markFailed).not.toHaveBeenCalled();
     });
 
@@ -490,9 +526,9 @@ describe('SyncJobRunner', () => {
       );
       jobRepository.markDead.mockResolvedValueOnce(undefined);
 
-      await (runner as any).handleJobFailure(job, error);
+      await (runner as any).handleJobFailure(job, error, ATTEMPT_MS);
 
-      expect(jobRepository.markDead).toHaveBeenCalledWith(job.id, error.message);
+      expect(jobRepository.markDead).toHaveBeenCalledWith(job.id, error.message, ATTEMPT_MS);
       expect(jobRepository.markFailed).not.toHaveBeenCalled();
     });
 
@@ -509,12 +545,13 @@ describe('SyncJobRunner', () => {
       );
       jobRepository.markFailed.mockResolvedValueOnce(undefined);
 
-      await (runner as any).handleJobFailure(job, error);
+      await (runner as any).handleJobFailure(job, error, ATTEMPT_MS);
 
       expect(jobRepository.markFailed).toHaveBeenCalledWith(
         job.id,
         error.message,
-        expect.any(Date)
+        expect.any(Date),
+        ATTEMPT_MS
       );
       expect(jobRepository.markDead).not.toHaveBeenCalled();
     });
@@ -539,12 +576,13 @@ describe('SyncJobRunner', () => {
       );
       jobRepository.markFailed.mockResolvedValueOnce(undefined);
 
-      await (runner as any).handleJobFailure(job, error);
+      await (runner as any).handleJobFailure(job, error, ATTEMPT_MS);
 
       expect(jobRepository.markFailed).toHaveBeenCalledWith(
         job.id,
         error.message,
-        expect.any(Date)
+        expect.any(Date),
+        ATTEMPT_MS
       );
       expect(jobRepository.markDead).not.toHaveBeenCalled();
     });
@@ -562,12 +600,13 @@ describe('SyncJobRunner', () => {
       );
       jobRepository.markFailed.mockResolvedValueOnce(undefined);
 
-      await (runner as any).handleJobFailure(job, error);
+      await (runner as any).handleJobFailure(job, error, ATTEMPT_MS);
 
       expect(jobRepository.markFailed).toHaveBeenCalledWith(
         job.id,
         error.message,
-        expect.any(Date)
+        expect.any(Date),
+        ATTEMPT_MS
       );
       expect(jobRepository.markDead).not.toHaveBeenCalled();
     });
@@ -597,7 +636,7 @@ describe('SyncJobRunner', () => {
       const job = createMockJob(9, 10); // would markDead under the ordinary path (next attempt = 10 >= max)
       const error = new RateLimitTimeoutError(120_000);
 
-      await (runner as any).handleJobFailure(job, error);
+      await (runner as any).handleJobFailure(job, error, ATTEMPT_MS);
 
       expect(jobRepository.requeueWithoutPenalty).toHaveBeenCalledWith(
         job.id,
@@ -622,7 +661,7 @@ describe('SyncJobRunner', () => {
         rateLimitError
       );
 
-      await (runner as any).handleJobFailure(job, wrapped);
+      await (runner as any).handleJobFailure(job, wrapped, ATTEMPT_MS);
 
       expect(jobRepository.requeueWithoutPenalty).toHaveBeenCalledWith(
         job.id,
@@ -637,10 +676,15 @@ describe('SyncJobRunner', () => {
       const job = createMockJob(2, 10);
       const error = new Error('some other transient failure');
 
-      await (runner as any).handleJobFailure(job, error);
+      await (runner as any).handleJobFailure(job, error, ATTEMPT_MS);
 
       expect(jobRepository.requeueWithoutPenalty).not.toHaveBeenCalled();
-      expect(jobRepository.markFailed).toHaveBeenCalledWith(job.id, error.message, expect.any(Date));
+      expect(jobRepository.markFailed).toHaveBeenCalledWith(
+        job.id,
+        error.message,
+        expect.any(Date),
+        ATTEMPT_MS
+      );
     });
   });
 
@@ -684,13 +728,13 @@ describe('SyncJobRunner', () => {
       } as never);
       jobRepository.markDead.mockResolvedValueOnce(undefined);
 
-      await (runner as any).handleJobFailure(job, error);
+      await (runner as any).handleJobFailure(job, error, ATTEMPT_MS);
 
       expect(connectionPort.update).toHaveBeenCalledWith(job.connectionId, {
         status: 'needs_reauth',
       });
       // The job is still marked dead — flagging is in addition to, not instead of.
-      expect(jobRepository.markDead).toHaveBeenCalledWith(job.id, error.message);
+      expect(jobRepository.markDead).toHaveBeenCalledWith(job.id, error.message, ATTEMPT_MS);
       expect(jobRepository.markFailed).not.toHaveBeenCalled();
     });
 
@@ -709,7 +753,7 @@ describe('SyncJobRunner', () => {
       );
       jobRepository.markFailed.mockResolvedValueOnce(undefined);
 
-      await (runner as any).handleJobFailure(job, error);
+      await (runner as any).handleJobFailure(job, error, ATTEMPT_MS);
 
       expect(connectionPort.update).not.toHaveBeenCalled();
       expect(jobRepository.markFailed).toHaveBeenCalled();
@@ -728,11 +772,11 @@ describe('SyncJobRunner', () => {
       );
       jobRepository.markDead.mockResolvedValueOnce(undefined);
 
-      await (runner as any).handleJobFailure(job, error);
+      await (runner as any).handleJobFailure(job, error, ATTEMPT_MS);
 
       // Marked dead (non-retryable) but NOT flagged — a 422 is a data problem,
       // not a credential rejection.
-      expect(jobRepository.markDead).toHaveBeenCalledWith(job.id, error.message);
+      expect(jobRepository.markDead).toHaveBeenCalledWith(job.id, error.message, ATTEMPT_MS);
       expect(connectionPort.update).not.toHaveBeenCalled();
     });
 
@@ -753,7 +797,7 @@ describe('SyncJobRunner', () => {
       } as never);
       jobRepository.markDead.mockResolvedValueOnce(undefined);
 
-      await (runner as any).handleJobFailure(job, error);
+      await (runner as any).handleJobFailure(job, error, ATTEMPT_MS);
 
       expect(connectionPort.update).not.toHaveBeenCalled();
       expect(jobRepository.markDead).toHaveBeenCalled();
@@ -772,10 +816,10 @@ describe('SyncJobRunner', () => {
       connectionPort.get.mockRejectedValueOnce(new Error('DB down'));
       jobRepository.markDead.mockResolvedValueOnce(undefined);
 
-      await expect((runner as any).handleJobFailure(job, error)).resolves.toBeUndefined();
+      await expect((runner as any).handleJobFailure(job, error, ATTEMPT_MS)).resolves.toBeUndefined();
 
       // Job is still marked dead despite the flagging failure.
-      expect(jobRepository.markDead).toHaveBeenCalledWith(job.id, error.message);
+      expect(jobRepository.markDead).toHaveBeenCalledWith(job.id, error.message, ATTEMPT_MS);
     });
   });
 

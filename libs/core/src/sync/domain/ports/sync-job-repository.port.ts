@@ -112,28 +112,55 @@ export interface SyncJobRepositoryPort {
    * validation failed on `marketplace.offer.create`). It is written
    * atomically with the status flip — see issue #400 (Plan B for #391).
    *
+   * `lastAttemptDurationMs` is written in the same UPDATE for the same
+   * reason (#2611): the number must describe the very attempt whose outcome
+   * is being recorded, so it cannot be a second write that could land
+   * separately or not at all.
+   *
    * @param id - Job ID
    * @param outcome - Business outcome of the run (`'ok' | 'business_failure'`)
    * @param outcomeReason - Optional stable code further classifying `outcome` (#1689)
+   * @param lastAttemptDurationMs - Duration of the attempt just completed, in
+   *   milliseconds (#2611). Omit when the caller did not measure an attempt -
+   *   the column is then left untouched rather than set to zero.
    */
-  markSucceeded(id: string, outcome: JobOutcome, outcomeReason?: JobOutcomeReason): Promise<void>;
+  markSucceeded(
+    id: string,
+    outcome: JobOutcome,
+    outcomeReason?: JobOutcomeReason,
+    lastAttemptDurationMs?: number
+  ): Promise<void>;
 
   /**
    * Mark job as failed and schedule retry
    *
+   * A retry wave overwrites `lastAttemptDurationMs` rather than accumulating
+   * into it, so the column means the same thing on a first-attempt row and on
+   * a five-attempt one (#2611). Total time across attempts is deliberately not
+   * persisted: it would mix execution with hours of backoff.
+   *
    * @param id - Job ID
    * @param error - Error message
    * @param nextRunAt - Next retry timestamp
+   * @param lastAttemptDurationMs - Duration of the failed attempt, in milliseconds (#2611)
    */
-  markFailed(id: string, error: string, nextRunAt: Date): Promise<void>;
+  markFailed(
+    id: string,
+    error: string,
+    nextRunAt: Date,
+    lastAttemptDurationMs?: number
+  ): Promise<void>;
 
   /**
    * Mark job as dead (max attempts reached)
    *
    * @param id - Job ID
    * @param error - Final error message
+   * @param lastAttemptDurationMs - Duration of the attempt that died, in
+   *   milliseconds (#2611). Omitted by callers that kill a job which never
+   *   executed (e.g. an unroutable intake message), leaving the column NULL.
    */
-  markDead(id: string, error: string): Promise<void>;
+  markDead(id: string, error: string, lastAttemptDurationMs?: number): Promise<void>;
 
   /**
    * Requeue a job WITHOUT counting it against `maxAttempts` (#1810 review

@@ -77,4 +77,16 @@ export class SyncJobResponseDto {
 
   @ApiPropertyOptional({ nullable: true, description: 'Worker instance ID that locked the job' })
   lockedBy!: string | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    type: Number,
+    description:
+      'Wall-clock milliseconds the most recently COMPLETED execution attempt took (#2611) - not a total ' +
+      'across retries, and not the time the job spent queued. Written atomically with the status transition ' +
+      'that ended the attempt, so it always describes the same attempt as `status`, `outcome` and `lastError`. ' +
+      '`null` when no attempt has completed yet, when the job was killed without executing, or for rows ' +
+      'predating the column. Consumers must exclude `null` from averages rather than reading it as zero.',
+  })
+  lastAttemptDurationMs!: number | null;
 }
