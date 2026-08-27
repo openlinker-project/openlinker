@@ -1038,7 +1038,7 @@ The cron response carries the same report:
 
 ```bash
 curl -s "http://localhost:8080/index.php?fc=module&module=openlinker&controller=cron&token=YOUR_TOKEN" | jq .retention
-# {"ran":true,"deleted_delivered":1,"deleted_failed":0,"deleted_over_cap":0,"rows":42,"backlog_over_cap":false}
+# {"ran":true,"deleted_delivered":1,"deleted_failed":0,"deleted_over_cap":0,"rows":42,"rows_capped":false,"backlog_over_cap":false,"drain_pending":false}
 ```
 
 `"ran": false` on a second call within the hour is the interval gate, not a
@@ -1046,11 +1046,46 @@ failure. `"backlog_over_cap": true` means the table is over its 100000-row cap
 with no finished rows left to prune, so the excess is undelivered events -
 check webhook delivery rather than expecting retention to clear it.
 
-The `DELETE` statements were verified against MySQL 8: queued, retryable and
-leased rows survive every pass; a pass stops at its 10000-row budget and the
-next one resumes; the cap trims the oldest finished rows and reports a
-queued-only excess instead of deleting it; and the 1.4.0 upgrade adds its index
-idempotently on an existing table.
+`"drain_pending": true` means the pass spent its whole 10000-row budget, so the
+hourly gate is rewound and the next cron tick continues instead of waiting. On a
+per-minute cron that is up to 600000 rows an hour, which is what lets a legacy
+table of millions clear in minutes of ticks rather than weeks. `"rows_capped":
+true` means the row count stopped at its probe bound, so the figure is a floor
+and an operator-facing count reads as `110001+`.
+
+The `DELETE` statements are covered by
+`apps/prestashop-module/openlinker/tests/Integration/OutboxRetentionSqlTest.php`
+against real MySQL 8:
+
+```bash
+docker run -d --rm --name ol-outbox-mysql -e MYSQL_ROOT_PASSWORD=root \
+  -e MYSQL_DATABASE=outbox -p 3399:3306 mysql:8.0
+cd apps/prestashop-module/openlinker
+OPENLINKER_TEST_MYSQL_DSN='mysql:host=127.0.0.1;port=3399;dbname=outbox' \
+OPENLINKER_TEST_MYSQL_USER=root OPENLINKER_TEST_MYSQL_PASSWORD=root \
+  vendor/bin/phpunit --testsuite Integration
+```
+
+Queued, retryable and leased rows survive every pass; a failed row outlives a
+delivered row of the same age; the oldest finished rows go first; and a pass
+stops at its budget so the next one resumes. The statement builder itself is
+pinned without a database in `tests/Unit/OutboxRetentionTest.php`, which asserts
+that a retention `DELETE` can only ever name `delivered` or `failed` and never
+mentions `pending` or `processing`.
+
+### Upgrading an install whose outbox is already in the millions
+
+The 1.4.0 upgrade adds the `(status, updated_at)` index the deletes read. It
+runs `ALGORITHM=INPLACE, LOCK=NONE` so the shop keeps writing to the outbox
+while the index builds, lifts the PHP time limit, and takes a named MySQL lock
+so a re-run of the upgrade reports and returns instead of queueing a second
+`ALTER` behind the first. On a very large table, add the index by hand before
+upgrading and the guard will skip it:
+
+```sql
+ALTER TABLE ps_openlinker_webhook_outbox
+ADD KEY status_updated (status, updated_at), ALGORITHM=INPLACE, LOCK=NONE;
+```
 
 ## Quick Test Script
 

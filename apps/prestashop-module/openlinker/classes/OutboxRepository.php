@@ -533,15 +533,27 @@ class OutboxRepository
      * Run one retention pass (#2604)
      *
      * Deletes terminal rows - and only terminal rows - so the outbox cannot
-     * grow without bound. Rate-limited to one pass per
-     * RETENTION_MIN_INTERVAL_SECONDS, and bounded to
+     * grow without bound. Bounded to
      * RETENTION_DELETE_BATCH_SIZE * RETENTION_MAX_BATCHES_PER_PASS rows, so a
      * table that is already huge drains over several passes instead of locking
      * the shop out in one statement.
      *
+     * Normally rate-limited to one pass per RETENTION_MIN_INTERVAL_SECONDS.
+     * A pass that spends its whole budget rewinds that stamp, so the next cron
+     * tick continues immediately instead of waiting the hour. Without that a
+     * legacy table of millions of rows would need weeks, and a busy shop would
+     * outrun retention forever. The rewind cannot become a hot loop: it happens
+     * only when the pass really deleted a full budget, which means there was
+     * that much history to delete.
+     *
+     * Two cron invocations can both pass the interval gate and both stamp. The
+     * result is duplicated work, never a wrong answer: every statement here is
+     * a bounded DELETE whose predicate the other run re-evaluates.
+     *
      * @param bool $force Skip the interval gate (operator-triggered pass)
      * @return array Report: ran, deleted_delivered, deleted_failed,
-     *               deleted_over_cap, rows, backlog_over_cap
+     *               deleted_over_cap, rows, rows_capped, backlog_over_cap,
+     *               drain_pending
      */
     public function runRetention($force = false)
     {
@@ -555,7 +567,9 @@ class OutboxRepository
                 'deleted_failed' => 0,
                 'deleted_over_cap' => 0,
                 'rows' => null,
+                'rows_capped' => false,
                 'backlog_over_cap' => false,
+                'drain_pending' => false,
             ];
         }
 
@@ -564,19 +578,33 @@ class OutboxRepository
         // cron tick, which on a broken table would be a hot loop.
         Configuration::updateValue(self::RETENTION_LAST_RUN_CONFIG_KEY, $now);
 
-        $budget = self::RETENTION_DELETE_BATCH_SIZE * self::RETENTION_MAX_BATCHES_PER_PASS;
+        $fullBudget = self::retentionBudgetPerPass();
+        $budget = $fullBudget;
 
         $deliveredDays = self::resolveRetentionDeliveredDays(
             Configuration::get(self::RETENTION_DAYS_CONFIG_KEY)
         );
 
-        $delivered = $this->deleteTerminalRowsOlderThan('delivered', $deliveredDays, $budget);
+        $delivered = $this->deleteTerminalRows('delivered', $deliveredDays, $budget);
         $budget -= $delivered['deleted'];
 
-        $failed = $this->deleteTerminalRowsOlderThan('failed', self::RETENTION_FAILED_DAYS, $budget);
+        $failed = $this->deleteTerminalRows('failed', self::RETENTION_FAILED_DAYS, $budget);
         $budget -= $failed['deleted'];
 
         $cap = $this->enforceRowCap($budget);
+
+        $totalDeleted = $delivered['deleted'] + $failed['deleted'] + $cap['deleted'];
+        $drainPending = $totalDeleted >= $fullBudget;
+
+        if ($drainPending) {
+            // Rewind past the gate so the next tick picks up where this one
+            // stopped. Written after the deletes succeeded, so a pass that
+            // throws leaves the pre-delete stamp standing.
+            Configuration::updateValue(
+                self::RETENTION_LAST_RUN_CONFIG_KEY,
+                $now - self::RETENTION_MIN_INTERVAL_SECONDS
+            );
+        }
 
         return [
             'ran' => true,
@@ -584,10 +612,21 @@ class OutboxRepository
             'deleted_failed' => $failed['deleted'],
             'deleted_over_cap' => $cap['deleted'],
             'rows' => $cap['rows'],
+            'rows_capped' => $cap['rows_capped'],
             'backlog_over_cap' => $cap['backlog_over_cap'],
+            'drain_pending' => $drainPending,
         ];
     }
 
+    /**
+     * Rows one retention pass may delete
+     *
+     * @return int
+     */
+    public static function retentionBudgetPerPass()
+    {
+        return self::RETENTION_DELETE_BATCH_SIZE * self::RETENTION_MAX_BATCHES_PER_PASS;
+    }
     /**
      * Should a retention pass run now?
      *
@@ -645,40 +684,68 @@ class OutboxRepository
     }
 
     /**
-     * Delete rows in one terminal status older than a horizon
+     * Build one bounded terminal-row DELETE
      *
-     * The status is matched explicitly, so no call can widen the delete onto a
-     * queued or leased row. `updated_at` is the age column for both terminal
-     * statuses: a failed row has no `delivered_at`, and using one column lets a
-     * single (status, updated_at) index serve both.
+     * Extracted and public so the one property that matters can be pinned by a
+     * test: a retention DELETE can only ever name a terminal status. `pending`
+     * is queued work and `processing` is leased by a live cron run, so either
+     * being reachable here would lose an event - the exact failure the outbox
+     * exists to prevent. The status is matched positively against a two-value
+     * whitelist rather than by excluding the live statuses, which is also what
+     * makes retention commute with the stale-lease requeue.
      *
+     * @param string $tableName Fully prefixed table name
      * @param string $status Either 'delivered' or 'failed'
-     * @param int $days Retention horizon in days
-     * @param int $budget Maximum rows this call may delete
-     * @return array deleted (int), exhausted (bool - ran out of eligible rows)
+     * @param int|null $days Age horizon in days, or null for no age predicate
+     * @param int $limit Row limit for this statement
+     * @return string
+     * @throws Exception When the status is not terminal
      */
-    private function deleteTerminalRowsOlderThan($status, $days, $budget)
+    public static function buildTerminalDeleteSql($tableName, $status, $days, $limit)
     {
         if ($status !== 'delivered' && $status !== 'failed') {
             throw new Exception('Refusing to prune non-terminal status: ' . $status);
         }
 
+        $ageClause = '';
+        if ($days !== null) {
+            $ageClause = ' AND `updated_at` < DATE_SUB(NOW(), INTERVAL ' . (int)$days . ' DAY)';
+        }
+
+        // Ordered by `updated_at` first: it prunes the oldest first and it is
+        // the order the (status, updated_at) index already provides, so the
+        // statement needs no sort on a large table. `id` breaks ties, because
+        // `updated_at` is not unique and an unordered LIMIT is flagged unsafe
+        // by statement-based binlog replication.
+        return 'DELETE FROM `' . bqSQL($tableName) . '`
+                WHERE `status` = "' . pSQL($status) . '"' . $ageClause . '
+                ORDER BY `updated_at` ASC, `id` ASC
+                LIMIT ' . (int)$limit;
+    }
+
+    /**
+     * Delete rows in one terminal status, in bounded batches
+     *
+     * `updated_at` is the age column for both terminal statuses: a failed row
+     * has no `delivered_at`, and using one column lets a single
+     * (status, updated_at) index serve both.
+     *
+     * @param string $status Either 'delivered' or 'failed'
+     * @param int|null $days Age horizon, or null to ignore age
+     * @param int $budget Maximum rows this call may delete
+     * @return array deleted (int), exhausted (bool - ran out of eligible rows)
+     */
+    private function deleteTerminalRows($status, $days, $budget)
+    {
         $deleted = 0;
         $exhausted = false;
 
         while ($budget > 0) {
             $limit = min(self::RETENTION_DELETE_BATCH_SIZE, $budget);
 
-            // Ordered by `updated_at`, not by `id`: it prunes the oldest first
-            // and it is the order the (status, updated_at) index already
-            // provides, so the statement needs no sort on a large table.
-            $sql = 'DELETE FROM `' . $this->tableName . '`
-                    WHERE `status` = "' . pSQL($status) . '"
-                    AND `updated_at` < DATE_SUB(NOW(), INTERVAL ' . (int)$days . ' DAY)
-                    ORDER BY `updated_at` ASC
-                    LIMIT ' . (int)$limit;
-
-            Db::getInstance()->execute($sql);
+            Db::getInstance()->execute(
+                self::buildTerminalDeleteSql($this->tableName, $status, $days, $limit)
+            );
             $affected = (int)Db::getInstance()->Affected_Rows();
 
             $deleted += $affected;
@@ -704,64 +771,130 @@ class OutboxRepository
      * terminal row is gone, the excess is a genuine undelivered backlog: the
      * pass reports it so the caller can log it, and leaves it alone.
      *
+     * Delivered rows go first and failed rows only once no delivered row is
+     * left. A failed row is the only record of what broke, so it has to outlive
+     * the success history under cap pressure too - a single delete over both
+     * statuses ordered by age would prune an old failure before a newer
+     * success.
+     *
      * @param int $budget Maximum rows this call may delete
-     * @return array deleted (int), rows (int, after deletion), backlog_over_cap (bool)
+     * @return array deleted (int), rows (int, after deletion), rows_capped
+     *               (bool - the count stopped at its probe bound),
+     *               backlog_over_cap (bool)
      */
     private function enforceRowCap($budget)
     {
-        $rows = $this->countRows();
+        $count = $this->countRowsUpToCapProbe();
+        $rows = $count['rows'];
 
         if ($rows <= self::RETENTION_MAX_ROWS) {
-            return ['deleted' => 0, 'rows' => $rows, 'backlog_over_cap' => false];
+            return [
+                'deleted' => 0,
+                'rows' => $rows,
+                'rows_capped' => $count['capped'],
+                'backlog_over_cap' => false,
+            ];
         }
 
         $excess = $rows - self::RETENTION_MAX_ROWS;
         $allowed = min($excess, max(0, (int)$budget));
 
         $deleted = 0;
-        $exhausted = false;
+        $budgetLimited = false;
 
-        while ($allowed > 0) {
-            $limit = min(self::RETENTION_DELETE_BATCH_SIZE, $allowed);
+        foreach (['delivered', 'failed'] as $status) {
+            if ($allowed <= 0) {
+                $budgetLimited = true;
+                break;
+            }
 
-            $sql = 'DELETE FROM `' . $this->tableName . '`
-                    WHERE `status` IN ("delivered", "failed")
-                    ORDER BY `id` ASC
-                    LIMIT ' . (int)$limit;
+            $pass = $this->deleteTerminalRows($status, null, $allowed);
+            $deleted += $pass['deleted'];
+            $allowed -= $pass['deleted'];
 
-            Db::getInstance()->execute($sql);
-            $affected = (int)Db::getInstance()->Affected_Rows();
-
-            $deleted += $affected;
-            $allowed -= $affected;
-
-            if ($affected < $limit) {
-                $exhausted = true;
+            if (!$pass['exhausted']) {
+                $budgetLimited = true;
                 break;
             }
         }
 
+        $exhausted = !$budgetLimited;
+
         $rowsAfter = $rows - $deleted;
+        $stillOver = $rowsAfter > self::RETENTION_MAX_ROWS;
+
+        // Only a table that has run out of terminal rows and is still over the
+        // cap is a real backlog. A budget-limited pass is just partway through
+        // and the next tick continues. When the age deletes consumed the whole
+        // budget nothing above ran at all, so ask the table directly rather
+        // than reporting "no backlog" on no evidence.
+        if ($stillOver && $budget <= 0) {
+            $exhausted = !$this->hasTerminalRows();
+        }
 
         return [
             'deleted' => $deleted,
             'rows' => $rowsAfter,
-            // Only a table that has run out of terminal rows and is still over
-            // the cap is a real backlog. A budget-limited pass is just partway
-            // through and the next pass continues.
-            'backlog_over_cap' => ($rowsAfter > self::RETENTION_MAX_ROWS && $exhausted),
+            'rows_capped' => $count['capped'],
+            'backlog_over_cap' => ($stillOver && $exhausted),
         ];
     }
 
     /**
-     * Count all rows in the outbox
+     * Is any terminal row left?
      *
+     * A one-row existence probe, not a count: the caller only needs to tell
+     * "still prunable history" from "genuine undelivered backlog".
+     *
+     * @return bool
+     */
+    private function hasTerminalRows()
+    {
+        $row = Db::getInstance()->getRow(
+            'SELECT `id` FROM `' . $this->tableName . '`
+             WHERE `status` IN ("delivered", "failed")
+             LIMIT 1'
+        );
+
+        return is_array($row) && isset($row['id']);
+    }
+
+    /**
+     * Count rows, stopping once the answer cannot change a retention decision
+     *
+     * An exact COUNT(*) on InnoDB is a full index scan, and this runs on every
+     * pass and every admin page load - on exactly the multi-million-row tables
+     * this change exists for. Nothing here needs the exact number past the cap
+     * plus one pass's budget, so the scan stops there and the caller is told
+     * the figure is a floor.
+     *
+     * @return array rows (int), capped (bool)
+     */
+    private function countRowsUpToCapProbe()
+    {
+        $bound = self::RETENTION_MAX_ROWS + self::retentionBudgetPerPass() + 1;
+        $rows = $this->countRowsUpTo($bound);
+
+        return ['rows' => $rows, 'capped' => $rows >= $bound];
+    }
+    /**
+     * Count rows, up to a bound
+     *
+     * An exact COUNT(*) on InnoDB is a full index scan, and retention asks for
+     * a count on every pass while the admin page asks on every load - on
+     * exactly the multi-million-row tables this change exists for. The derived
+     * table with a LIMIT lets InnoDB stop scanning at the bound, so the cost
+     * does not grow with the table. A caller past the bound is told the figure
+     * is a floor rather than being handed a wrong exact number.
+     *
+     * @param int $limit Stop counting here
      * @return int
      */
-    public function countRows()
+    public function countRowsUpTo($limit)
     {
         $result = Db::getInstance()->getRow(
-            'SELECT COUNT(*) as count FROM `' . $this->tableName . '`'
+            'SELECT COUNT(*) as count FROM
+             (SELECT 1 FROM `' . $this->tableName . '` LIMIT ' . (int)$limit . ') probe'
         );
 
         return (int)(is_array($result) && isset($result['count']) ? $result['count'] : 0);
@@ -816,7 +949,9 @@ class OutboxRepository
 
             // Retention state, so the cap and the horizon are visible rather
             // than being facts only the cron knows (#2604).
-            $stats['total'] = $this->countRows();
+            $totalBound = self::RETENTION_MAX_ROWS + self::retentionBudgetPerPass() + 1;
+            $stats['total'] = $this->countRowsUpTo($totalBound);
+            $stats['total_capped'] = $stats['total'] >= $totalBound;
             $stats['max_rows'] = self::RETENTION_MAX_ROWS;
             $stats['over_cap'] = $stats['total'] > self::RETENTION_MAX_ROWS;
             $stats['retention_delivered_days'] = self::resolveRetentionDeliveredDays(
@@ -843,6 +978,7 @@ class OutboxRepository
                     'last_delivery' => null,
                     'last_error' => 'Error retrieving statistics: ' . $e->getMessage(),
                     'total' => 0,
+                    'total_capped' => false,
                     'max_rows' => self::RETENTION_MAX_ROWS,
                     'over_cap' => false,
                     'retention_delivered_days' => self::DEFAULT_RETENTION_DELIVERED_DAYS,
@@ -871,6 +1007,7 @@ class OutboxRepository
             'last_delivery' => null,
             'last_error' => null,
             'total' => 0,
+            'total_capped' => false,
             'max_rows' => self::RETENTION_MAX_ROWS,
             'over_cap' => false,
             'retention_delivered_days' => self::DEFAULT_RETENTION_DELIVERED_DAYS,

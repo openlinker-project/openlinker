@@ -222,6 +222,9 @@ class OpenLinker extends CarrierModule
     {
         $output = '';
 
+        // Constants below and the statistics read both come from this class.
+        self::requireOutboxRepository();
+
         // Handle form submission
         if (Tools::isSubmit('submit' . $this->name)) {
             $output .= $this->processConfigurationForm();
@@ -254,6 +257,8 @@ class OpenLinker extends CarrierModule
             'max_retry_attempts' => Configuration::get('MAX_RETRY_ATTEMPTS') ?: self::DEFAULT_MAX_RETRY_ATTEMPTS,
             'retry_backoff_multiplier' => Configuration::get('RETRY_BACKOFF_MULTIPLIER') ?: self::DEFAULT_RETRY_BACKOFF_MULTIPLIER,
             'outbox_retention_days' => Configuration::get('OPENLINKER_OUTBOX_RETENTION_DAYS') ?: self::DEFAULT_OUTBOX_RETENTION_DAYS,
+            'outbox_retention_days_min' => OutboxRepository::RETENTION_DELIVERED_DAYS_MIN,
+            'outbox_retention_days_max' => OutboxRepository::RETENTION_DELIVERED_DAYS_MAX,
             'statistics' => $this->getStatistics(),
         ]);
 
@@ -335,12 +340,23 @@ class OpenLinker extends CarrierModule
             Configuration::updateValue('RETRY_BACKOFF_MULTIPLIER', $backoffMultiplier);
         }
 
-            $retentionDays = (int)Tools::getValue('OPENLINKER_OUTBOX_RETENTION_DAYS');
-            if ($retentionDays < 1 || $retentionDays > 365) {
-                $errors[] = $this->l('Outbox retention must be between 1 and 365 days');
-            } else {
-                Configuration::updateValue('OPENLINKER_OUTBOX_RETENTION_DAYS', $retentionDays);
-            }
+        self::requireOutboxRepository();
+
+        // Bounds come from the repository, which is also what coerces a bad
+        // stored value on read. Repeating the numbers here would let the form
+        // accept what retention then silently clamps.
+        $retentionMin = OutboxRepository::RETENTION_DELIVERED_DAYS_MIN;
+        $retentionMax = OutboxRepository::RETENTION_DELIVERED_DAYS_MAX;
+        $retentionDays = (int)Tools::getValue('OPENLINKER_OUTBOX_RETENTION_DAYS');
+        if ($retentionDays < $retentionMin || $retentionDays > $retentionMax) {
+            $errors[] = sprintf(
+                $this->l('Outbox retention must be between %d and %d days'),
+                $retentionMin,
+                $retentionMax
+            );
+        } else {
+            Configuration::updateValue('OPENLINKER_OUTBOX_RETENTION_DAYS', $retentionDays);
+        }
 
         // Return messages
         if (!empty($errors)) {
@@ -730,6 +746,37 @@ class OpenLinker extends CarrierModule
      * @param OutboxRepository $repository
      * @return string Human-readable fragment, empty when nothing was removed
      */
+    /**
+     * Load OutboxRepository if it is not loaded yet
+     *
+     * The module loads classes explicitly, and the configuration page reads
+     * OutboxRepository constants before any code path has constructed one.
+     *
+     * @return void
+     */
+    private static function requireOutboxRepository()
+    {
+        if (!class_exists('OutboxRepository')) {
+            require_once(dirname(__FILE__) . '/classes/OutboxRepository.php');
+        }
+    }
+
+    /**
+     * Render an outbox row count for an operator
+     *
+     * The count stops scanning at a bound, so past that bound it is a floor and
+     * has to read as one rather than as an exact figure.
+     *
+     * @param array $report Retention report
+     * @return string
+     */
+    private static function formatOutboxRowCount(array $report)
+    {
+        $rows = (int)$report['rows'];
+
+        return empty($report['rows_capped']) ? (string)$rows : ($rows . '+');
+    }
+
     private function runOutboxRetentionNow($repository)
     {
         try {
@@ -741,8 +788,8 @@ class OpenLinker extends CarrierModule
 
             if (!empty($report['backlog_over_cap'])) {
                 return sprintf(
-                    'outbox is over its row cap (%d rows) with no prunable history left - the excess is undelivered events',
-                    (int)$report['rows']
+                    'outbox is over its row cap (%s rows) with no prunable history left - the excess is undelivered events',
+                    self::formatOutboxRowCount($report)
                 );
             }
 

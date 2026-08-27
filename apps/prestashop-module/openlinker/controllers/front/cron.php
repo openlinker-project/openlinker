@@ -199,8 +199,10 @@ class OpenLinkerCronModuleFrontController extends ModuleFrontController
                 // Every terminal row is gone and the table is still over the
                 // cap, so the excess is undelivered work. Retention will not
                 // touch it - an operator has to.
+                $rows = (int)$report['rows'];
                 PrestaShopLogger::addLog(
-                    'OpenLinker: outbox is over its row cap (' . (int)$report['rows']
+                    'OpenLinker: outbox is over its row cap ('
+                    . (empty($report['rows_capped']) ? (string)$rows : $rows . '+')
                     . ' rows) with no prunable history left. The excess is undelivered'
                     . ' events - check webhook delivery.',
                     3,
