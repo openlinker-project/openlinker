@@ -39,6 +39,7 @@ import {
   isPresentButInvalidStockSafetyBuffer,
   readPricingRule,
   readStockSafetyBuffer,
+  readStockZeroThreshold,
 } from '@openlinker/core/identifier-mapping';
 import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 import type {
@@ -167,7 +168,11 @@ export class ProductPublishBuilderService implements IProductPublishBuilderServi
       // #1844 — hold back the destination's per-connection stock safety buffer so
       // a fast-moving item keeps a cushion and can't oversell between syncs.
       // Default reserve 0 => master stock passes through unchanged.
-      stock: applyStockSafetyBuffer(input.stock, this.resolveStockReserve(input.connectionId, connection.config)),
+      stock: applyStockSafetyBuffer(
+        input.stock,
+        this.resolveStockReserve(input.connectionId, connection.config),
+        readStockZeroThreshold(connection.config)
+      ),
       status: input.status,
       // Thread the variant SKU so shop products publish with a reference the
       // shop can key on (reconciliation, inventory-by-SKU). Omitted when the
