@@ -21,7 +21,11 @@
  * @see classes/DeliveryRunner.php for the pass itself
  */
 
-$isCli = PHP_SAPI === 'cli' || PHP_SAPI === 'phpdbg';
+// PHP_SAPI alone is not enough. Some shared hosts execute .php through a
+// suexec wrapper around the CLI binary, and there a genuine HTTP request also
+// reports 'cli' - which would run an unauthenticated delivery pass for whoever
+// fetched this URL. A real command-line run has no REQUEST_METHOD.
+$isCli = (PHP_SAPI === 'cli' || PHP_SAPI === 'phpdbg') && !isset($_SERVER['REQUEST_METHOD']);
 
 $shopRoot = openlinker_find_shop_root(__DIR__);
 if ($shopRoot === null) {
@@ -53,23 +57,28 @@ if (!$isCli) {
 
 try {
     $stats = DeliveryRunner::run($isCli ? 'cron file' : 'cron file over http');
-} catch (Exception $e) {
+} catch (Throwable $e) {
+    // Throwable, not Exception: a TypeError raised inside the delivery loop is
+    // an Error, and it would otherwise surface as a raw PHP fatal instead of
+    // the message below.
     openlinker_fail($isCli, 'Delivery failed: ' . $e->getMessage());
 }
 
-// A cron that prints nothing on success is a cron whose mail nobody reads.
-$summary = sprintf(
-    "OpenLinker delivery: %d processed, %d delivered, %d failed, %d requeued.\n",
-    (int) $stats['processed'],
-    (int) $stats['delivered'],
-    (int) $stats['failed'],
-    (int) $stats['requeued']
-);
-
-if (!$isCli) {
+// A cron that prints nothing on success is a cron whose mail nobody reads. Over
+// HTTP the counters are withheld: the same numbers are on the configuration
+// page, and this response goes to whoever holds the cron token.
+if ($isCli) {
+    echo sprintf(
+        "OpenLinker delivery: %d processed, %d delivered, %d failed, %d requeued.\n",
+        (int) $stats['processed'],
+        (int) $stats['delivered'],
+        (int) $stats['failed'],
+        (int) $stats['requeued']
+    );
+} else {
     header('Content-Type: text/plain');
+    echo "OpenLinker delivery pass completed.\n";
 }
-echo $summary;
 exit(0);
 
 /**

@@ -235,6 +235,11 @@
                                 {l s='No delivery pass has run for over two hours. Events are waiting. Check that the cron is set up and firing.' mod='openlinker'}
                             </span>
                         {/if}
+                    {elseif $delivery_health.unreadable}
+                        <span class="text-danger">{l s='Unknown' mod='openlinker'}</span>
+                        <span class="help-block text-danger">
+                            {l s='Delivery has run, but the recorded time cannot be read. Run delivery once with the button above to record a fresh time.' mod='openlinker'}
+                        </span>
                     {else}
                         <span class="text-danger">{l s='Never' mod='openlinker'}</span>
                         <span class="help-block text-danger">

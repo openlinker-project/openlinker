@@ -65,4 +65,31 @@ class CronHealthTest extends TestCase
         self::assertSame(0, $state['age_seconds']);
         self::assertFalse($state['stale']);
     }
+
+    public function testAnUnreadableStoredTimeIsNotReportedAsNeverRan(): void
+    {
+        // Delivery did run here; the record got corrupted. Saying "never" would
+        // be a false statement about the shop.
+        $health = CronHealth::assess('not a timestamp');
+
+        self::assertFalse($health['ran']);
+        self::assertTrue($health['unreadable']);
+        self::assertTrue($health['stale']);
+    }
+
+    public function testAnEmptyValueIsReportedAsNeverRanAndNotAsUnreadable(): void
+    {
+        $health = CronHealth::assess('');
+
+        self::assertFalse($health['ran']);
+        self::assertFalse($health['unreadable']);
+    }
+
+    public function testAGoodTimeIsNotReportedAsUnreadable(): void
+    {
+        $health = CronHealth::assess(date('Y-m-d H:i:s'));
+
+        self::assertTrue($health['ran']);
+        self::assertFalse($health['unreadable']);
+    }
 }

@@ -78,12 +78,16 @@ class DeliveryRunner
                 'requeued' => $requeued,
                 'retention' => $retention,
             ];
-        } catch (Exception $e) {
+        } catch (Throwable $e) {
+            // Throwable, not Exception: a TypeError in the delivery loop is an
+            // Error, and it would otherwise skip the requeue below and strand
+            // every row this pass claimed in `processing`.
+            //
             // Release whatever this pass claimed, or those rows sit in
             // `processing` until the stale sweep reaches them.
             try {
                 $repository->requeueEventsByRunId($runId, 'Cron delivery failed: ' . $e->getMessage());
-            } catch (Exception $cleanupError) {
+            } catch (Throwable $cleanupError) {
                 PrestaShopLogger::addLog(
                     'OpenLinker: Failed to cleanup events after cron error: '
                         . $cleanupError->getMessage(),
@@ -119,7 +123,7 @@ class DeliveryRunner
             $repository->scheduleRetry($event->id, $event->attempts, 'Webhook sender returned false');
 
             return false;
-        } catch (Exception $e) {
+        } catch (Throwable $e) {
             $errorMessage = WebhookSender::getErrorMessage($e);
             $maxAttempts = (int) Configuration::get('MAX_RETRY_ATTEMPTS') ?: 25;
 
@@ -147,7 +151,7 @@ class DeliveryRunner
         try {
             Configuration::updateGlobalValue(self::LAST_RUN_CONFIG_KEY, date('Y-m-d H:i:s'));
             Configuration::updateGlobalValue(self::LAST_RUN_SOURCE_CONFIG_KEY, (string) $source);
-        } catch (Exception $e) {
+        } catch (Throwable $e) {
             PrestaShopLogger::addLog(
                 'OpenLinker: could not record the delivery run time: ' . $e->getMessage(),
                 2,
