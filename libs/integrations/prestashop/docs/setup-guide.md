@@ -315,27 +315,31 @@ problem, and neither is the connection's rate limit. Measured on a store with
 - **Raising the connection's `rateLimit` barely helps.** Going from the default
   60 requests/min to 300 moved actual traffic from 50 to 63 requests/min. Almost
   all of the headroom went unused.
-- **The real ceiling is one of OpenLinker's own concurrency caps.** As of
-  today, per-product sync jobs run in the `realtime` lane, so
-  `OL_LANE_REALTIME_SCOPE_CAP` - default `2` - decides how many of them run at
-  once for one connection. Raising the `bulk` or `fan-out` caps instead, the
-  obvious guess, changes nothing. Which lane these jobs belong to is under
-  review, so check the lane your version actually uses rather than assuming it
-  stays `realtime`. With the right cap raised, the same store reached about 277
-  requests/min, taking a full sweep from roughly 26.5 hours down to roughly 2.4
-  hours.
+- **The real ceiling is one of OpenLinker's own concurrency caps: the `bulk`
+  one.** Catalogue sweeps enqueue one job per product, and those jobs run in
+  the `bulk` lane. `OL_LANE_BULK_SCOPE_CAP` decides how many of them run at
+  once for one connection. It now defaults to `8`, and the lane's overall cap
+  `OL_LANE_BULK_CAP` to `12`, which is where the 277 requests/min above comes
+  from - a full sweep of that store drops from roughly 26.5 hours to roughly
+  2.4 hours.
+- **If you are on an older version, the knob was a different one.** Before this
+  change these jobs ran in the `realtime` lane, and the throttle was
+  `OL_LANE_REALTIME_SCOPE_CAP`, default `2`. Check the lane your version uses
+  before changing anything. On current versions raising
+  `OL_LANE_REALTIME_SCOPE_CAP` does nothing for catalogue speed.
 - **Each cap bounds one worker process, not the whole deployment.** Run three
-  worker replicas and you already get six per-product jobs at once for this
-  connection, not two. That is the opposite of how the connection's own rate
+  worker replicas and you already get 24 per-product jobs at once for this
+  connection, not eight. That is the opposite of how the connection's own rate
   limit behaves, which is split across replicas.
 
-**Raise that cap deliberately, not by default.** It applies to every job in
-that lane on every connection, not just this one, and it was chosen so that
-urgent work never waits behind bulk work. If you raise it to speed up a one-off
-catalogue import, put it back afterwards. Every cap is listed with its
-trade-offs in the worker's `.env.example` file, which ships with the OpenLinker
-source at `apps/worker/.env.example`. If you run the published image and have
-no checkout, read the same file in the OpenLinker repository on GitHub.
+**The `bulk` caps are shared, so change them deliberately.** They apply to
+every `bulk` job on every connection - offer and product publish batches,
+status-sync sweeps, backfills - not just this connection's catalogue. The
+defaults were measured against a PrestaShop shop, so if yours is slower, or
+your worker host is small, lower `OL_LANE_BULK_SCOPE_CAP`. Every cap is listed
+with its trade-offs in the worker's `.env.example` file, which ships with the
+OpenLinker source at `apps/worker/.env.example`. If you run the published image
+and have no checkout, read the same file in the OpenLinker repository on GitHub.
 
 Two things to fix first, because they are free:
 
@@ -435,7 +439,7 @@ and **Stock** resources (§1).
 | Carrier picked is unexpected / wrong shipping charge on some orders | No explicit shipping-method mapping and no fallback carrier set, and the OL module isn't installed | Install the OL Dynamic Carrier module (§5), or set an explicit fallback carrier (§2) |
 | Order created without expected customer-group discounts/restrictions | `guestCustomerGroupId` unset, so OpenLinker uses PrestaShop group `2` | Set `guestCustomerGroupId` in the connection's **Config JSON** to your shop's actual guest group - see [Advanced connection settings](#advanced-connection-settings) |
 | Products sync in but show no currency | `currency` unset on the connection **and** the shop reports no default currency. OpenLinker also retries that failed lookup every 60 seconds, which is two wasted requests each time | Set `currency` on the connection (see [Advanced connection settings](#advanced-connection-settings)), which skips the lookup entirely. Failing that, set the default currency in PrestaShop under **Shop Parameters → General** |
-| A full catalogue sweep takes many hours | One of OpenLinker's own concurrency caps, not the shop. On current versions that is `OL_LANE_REALTIME_SCOPE_CAP`, default `2`, so only two per-product jobs run at once per connection per worker process | Read [Throughput](#throughput-what-actually-limits-sync-speed) first, and check which lane your version puts these jobs in. Raising the connection's rate limit on its own will not help |
+| A full catalogue sweep takes many hours | One of OpenLinker's own concurrency caps, not the shop. Per-product sweep jobs run in the `bulk` lane, so `OL_LANE_BULK_SCOPE_CAP` (default `8`) is how many run at once per connection per worker process. On versions before that change the knob was `OL_LANE_REALTIME_SCOPE_CAP`, default `2` | Read [Throughput](#throughput-what-actually-limits-sync-speed) first, and check which lane your version puts these jobs in. Raising the connection's rate limit on its own will not help |
 | Module install fails with "This functionality has been disabled" | PrestaShop is still in demo mode, or a leftover `/install` folder exists | Disable demo mode and remove the `/install` directory, then retry |
 | Multi-shop install: "Configure webhooks" pushes config to the wrong shop scope | PrestaShop ≥8.2 multi-store may reject the plain config-write body OL sends; explicit shop-scope targeting isn't implemented yet | Known limitation for multi-store installs — configure the three module settings (Base URL, Connection ID, Webhook Secret) manually on the affected shop via the module's own admin page instead |
 | Orders not appearing in OL | `OL_PRESTASHOP_POLL_SCHEDULER_ENABLED=false` and webhooks aren't configured | Set the scheduler flag to `true`, or complete §6 |

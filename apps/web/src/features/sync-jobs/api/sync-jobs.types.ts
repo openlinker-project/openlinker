@@ -60,8 +60,10 @@ export const JOB_TYPE_VALUES = [
   'master.product.syncDelta', // Internal job — not user-triggerable; listed here so an operator can filter the incremental pass (#2220).
   'master.product.reconcile', // Internal job — not user-triggerable; listed here so an operator can filter the deletion-reconciliation pass (#2222).
   'master.product.syncByExternalId',
+  'master.product.syncFromSweep', // Internal job — the sweep-triggered per-product child, listed so an operator can tell catalogue work apart from webhook work (#2594).
   'master.inventory.syncAll',
   'master.inventory.syncByExternalId',
+  'master.inventory.syncFromSweep', // Internal job — sweep-triggered per-product inventory child (#2594).
   'master.variants.autoMatch',
   'inventory.propagateToMarketplaces',
   'marketplace.offer.pauseStale', // Internal job — not user-triggerable; listed here for status display only.

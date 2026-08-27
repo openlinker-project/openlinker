@@ -3,7 +3,7 @@
  *
  * Handles jobs of type 'master.product.syncAll'. Enumerates external product IDs
  * from the source platform via ProductMasterPort.listExternalIds and fans out
- * per-product 'master.product.syncByExternalId' sub-jobs. This is the catalog
+ * per-product 'master.product.syncFromSweep' sub-jobs. This is the catalog
  * discovery path — the mechanism by which OpenLinker learns about products that
  * exist on a freshly connected source platform but have no identifier mapping yet.
  *
@@ -180,7 +180,10 @@ export class MasterProductSyncAllHandler implements SyncJobHandler {
 
   private async enqueueChild(job: SyncJob, externalId: string, cycleId: string): Promise<unknown> {
     const jobRequest: SyncJobRequest = {
-      jobType: 'master.product.syncByExternalId',
+      // Sweep-triggered child: same handler and payload as the
+      // webhook-driven `master.product.syncByExternalId`, distinct type so
+      // ADR-050 can lane it by its own cost of starvation (#2594).
+      jobType: 'master.product.syncFromSweep',
       connectionId: job.connectionId,
       payload: {
         schemaVersion: 1,

@@ -3,7 +3,7 @@
  *
  * Handles jobs of type 'master.inventory.syncAll'. Enumerates known product
  * external IDs for a connection and enqueues per-product
- * 'master.inventory.syncByExternalId' sub-jobs.
+ * 'master.inventory.syncFromSweep' sub-jobs.
  *
  * BOUNDED AND RESUMABLE since #2219 (ADR-048 decisions 4-6) — same shape as the
  * product sweep (`runBoundedSweep`), with one difference that matters: this sweep
@@ -157,7 +157,10 @@ export class MasterInventorySyncAllHandler implements SyncJobHandler {
 
   private async enqueueChild(job: SyncJob, externalId: string, cycleId: string): Promise<unknown> {
     const jobRequest: SyncJobRequest = {
-      jobType: 'master.inventory.syncByExternalId',
+      // Sweep-triggered child: same handler and payload as the
+      // webhook-driven `master.inventory.syncByExternalId`, distinct type so
+      // ADR-050 can lane it by its own cost of starvation (#2594).
+      jobType: 'master.inventory.syncFromSweep',
       connectionId: job.connectionId,
       payload: {
         schemaVersion: 1,

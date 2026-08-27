@@ -37,14 +37,18 @@ its I/O shape or its bounded context.** Four lanes:
   `marketplace.offer.pollCreationStatus`, `marketplace.offer.refreshSnapshot`,
   `marketplace.offer.stockRestore`, `marketplace.offer.pauseStale`,
   `marketplace.shipment.syncByExternalId`, `master.product.syncByExternalId`,
-  `master.inventory.syncByExternalId`, `invoicing.paymentStatus.refreshByExternalId` (12).
+  `master.inventory.syncByExternalId`, `invoicing.paymentStatus.refreshByExternalId` (12). The two
+  `master.*.syncByExternalId` entries are the **webhook-triggered** children only — see the #2594
+  amendment below.
 - **`bulk`** — paged/cursored sweeps *plus the operator-wave children*: `marketplace.offers.sync`,
   `marketplace.offer.statusSync`, `marketplace.offer.pauseStaleSweep`,
   `marketplace.order.fxStampSweep`, `marketplace.shipment.statusSync`,
   `marketplace.fulfillment.statusSync`, `master.variants.autoMatch`,
   `shipping.pickupPoint.refreshFrequent`, `shop.product.statusSync`, `destination.taxonomy.sync`,
+  `orders.taxRate.backfill` (#2440), the two sweep-triggered master children
+  `master.product.syncFromSweep` / `master.inventory.syncFromSweep` (#2594),
   and — the rule's most consequential application — `marketplace.offer.create` and
-  `shop.product.publish` (12). The last two are single-unit work, but they arrive in
+  `shop.product.publish` (15). The last two are single-unit work, but they arrive in
   operator-triggered waves up to 1000 wide; starving one costs a slower batch an operator tolerates,
   while letting the wave monopolise slots is exactly the measured 35–80-minute failure above.
 - **`fiscal`** — deadline-bearing, at-most-once: `invoicing.issue`,
@@ -100,6 +104,60 @@ any number in a Wave 3 implementation is treated as more than a default, per-lan
 oldest-queued age, and pulls/min must be observable (#1134). *Reversal gate (prose-only):* not
 applicable — this is a precondition, recorded so cap-tuning PRs cite measurements, not taste.
 
+## Amendment (#2594) — the sweep child's lane, and the first measured cap
+
+Two things this ADR got wrong in practice, both found by measuring a real PrestaShop catalogue.
+
+**1. A job's lane depends on its trigger, not only on its type.** `master.product.syncByExternalId`
+was placed in `realtime` because a webhook-driven single-product sync is work someone waits on. It
+is also the child the catalogue sweeps enqueue, a budget (100) wide per tick. Decision 1's own rule
+already covers that case — it is exactly why `marketplace.offer.create` sits in `bulk` — but the
+mapping missed it, because one job type served two triggers with two costs of starvation. The
+consequences were both directions of wrong at once: a catalogue cycle filled the realtime lane's
+per-scope slots ahead of a buyer's order, *and* the catalogue was throttled to
+`OL_LANE_REALTIME_SCOPE_CAP` (default 2), a cap sized for waited-on work.
+
+The fix keeps the lane declared per job type at registration, and splits the type instead:
+`master.product.syncFromSweep` and `master.inventory.syncFromSweep` are the sweep-triggered children,
+registered in `bulk` against the SAME handler instances as their `…syncByExternalId` twins. A fifth
+lane was rejected: decision 1 makes that a reversal gate, and nothing about the axis is wrong here.
+Both types stay registered, so a child already queued under the old type at deploy time still runs,
+and the boot-time full-union coverage assertion still holds. A visible side benefit: an operator can
+now tell catalogue work from webhook work on the Jobs surface, which was previously impossible.
+
+**2. `bulk`'s cap values are no longer illustrative.** Decision 6 asks that cap-tuning cite
+measurements. An interleaved A/B run against a live PrestaShop shop, with the catalogue sweep running
+against it:
+
+| Run | req/min | p95 idle | p95 under load | ratio |
+|---|---|---|---|---|
+| Default lanes | ~50 | 0.0386 s | 0.0382 s | 0.989 |
+| Default lanes, after the adapter fix | ~50 | 0.0378 s | 0.0380 s | 1.005 |
+| Raised per-scope cap (~12 concurrent children) | **~277** | 0.0405 s | 0.0403 s | **0.995** |
+
+At 5.5x the tempo the shop did not move. Applied to the catalogue: 39 700 requests goes from ~26.5 h
+to ~2.4 h. Raising the connection's own rate limit from 60 to 300/min, by contrast, moved traffic
+from 50 to 63 req/min — the limiter was never the ceiling.
+
+`bulk` therefore defaults to `total: 12, perScope: 8`, from `2 / 1`. `perScope` sits below the
+measured ceiling on purpose: decision 4 deliberately ships no round-robin fairness between scopes, so
+at `perScope === total` one connection's catalogue cycle could hold the whole lane while a second
+connection's sweep made no progress at all.
+
+Three limits on that number, all load-bearing:
+
+- **It covers the PrestaShop catalogue read path only.** No other destination was measured. An
+  operator on a slower shop or constrained hosting lowers `OL_LANE_BULK_SCOPE_CAP`.
+- **It affects every other `bulk` job type**, not just the sweep children — the offer-create and
+  shop-publish waves, the status-sync sweeps, the fx-stamp and tax-rate backfills all drain faster
+  now. That is intended (those waves are the 35–80-minute failure this ADR was written about), but it
+  is a global change and is stated as one.
+- **It bounds one worker PROCESS.** Slot accounting is in-process, so N replicas multiply every
+  effective cap by N. Size per replica.
+
+`realtime`, `fiscal` and `fan-out` keep their untuned defaults. Nothing about the buyer-facing path
+changed: the point of moving the sweep child out is that `realtime` did not need raising.
+
 ## Alternatives considered
 
 - **Strict priority ordering** (realtime first): starves `bulk` under sustained realtime load — the
@@ -140,7 +198,7 @@ applicable — this is a precondition, recorded so cap-tuning PRs cite measureme
 
 ## References
 
-- Related issues: #2167, #2162, #1134, #2169
+- Related issues: #2167, #2162, #1134, #2169, #2594
 - Related ADRs: [ADR-005](./005-postgres-authoritative-job-dedup.md),
   [ADR-007](./007-syncjob-status-vs-outcome-split.md),
   [ADR-049](./049-durability-spine-and-domain-event-contract.md),

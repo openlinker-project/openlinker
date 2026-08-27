@@ -110,7 +110,7 @@ describe('MasterProductSyncAllHandler', () => {
     );
     expect(jobEnqueue.enqueueJob).toHaveBeenCalledTimes(3);
     const first = jobEnqueue.enqueueJob.mock.calls[0][0];
-    expect(first.jobType).toBe('master.product.syncByExternalId');
+    expect(first.jobType).toBe('master.product.syncFromSweep');
     expect(first.connectionId).toBe('conn-1');
     expect(first.payload).toEqual({ schemaVersion: 1, externalId: '1', objectType: 'Product' });
   });

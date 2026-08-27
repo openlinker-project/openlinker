@@ -142,7 +142,7 @@ describe('MasterProductReconcileHandler', () => {
           (call) => (call[0] as { jobType: string }).jobType
         )
       );
-      expect(jobTypes).toEqual(new Set(['master.product.syncByExternalId']));
+      expect(jobTypes).toEqual(new Set(['master.product.syncFromSweep']));
     });
 
     it('should stale nothing when the connection has no mappings', async () => {
