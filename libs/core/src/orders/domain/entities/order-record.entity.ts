@@ -224,7 +224,17 @@ export class OrderRecord {
      * rate: its tax was whatever the provider defaulted to, and there is
      * nothing to back-compute from.
      */
-    public readonly taxRateEra: TaxRateEra | null = null
+    public readonly taxRateEra: TaxRateEra | null = null,
+    /**
+     * Buyer tax identifier as the source reported it (#2599), in the column's
+     * three-state encoding: `null` = the source asserted nothing, `''` = the
+     * source asserted the buyer has none, otherwise the id.
+     *
+     * Appended at the end of this positional constructor, like every field
+     * before it - inserting mid-list would shift every argument after it at
+     * each call site.
+     */
+    public readonly buyerTaxId: string | null = null
   ) {}
 
   /**

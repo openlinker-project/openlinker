@@ -20,6 +20,7 @@ import type {
   IncomingOrderAddress,
   OrderPickupPoint,
 } from '@openlinker/core/orders';
+import { readSourceBuyerTaxId } from '@openlinker/core/orders';
 import type { PrestashopConnectionConfig } from '../../domain/types/prestashop-config.types';
 import type {
   PrestashopAddress,
@@ -343,22 +344,33 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort {
 
   /**
    * Fetch a PrestaShop address resource by id and map it to the neutral
-   * IncomingOrderAddress (incl. the B2B `company` field). Returns undefined
-   * when the id is absent or the fetch fails.
+   * IncomingOrderAddress (incl. the B2B `company` field and the buyer tax id).
+   * Returns undefined when the id is absent or the fetch fails.
+   *
+   * `vat_number` is PrestaShop's own buyer tax field on `ps_address` (#2599).
+   * It is carried verbatim - no national format is applied, because the
+   * invoicing domain is country-agnostic and the provider adapter owns the
+   * regime. The three states matter: the resource not carrying the key at all
+   * means the shop asserted nothing (an older PrestaShop, or a webservice role
+   * without the field), while a returned blank means the buyer supplied none.
+   * `readSourceBuyerTaxId` is what keeps every source agreeing on that.
+   *
+   * A failed fetch yields no address at all, which reads downstream as
+   * unknown - correct, since a transport error says nothing about the buyer.
    */
   private async hydrateAddress(
     addressId: string | number | undefined
   ): Promise<IncomingOrderAddress | undefined> {
     if (!addressId) return undefined;
     try {
-      const a = await this.httpClient.getResource<PrestashopAddress & { company?: string }>(
-        'addresses',
-        String(addressId)
-      );
+      const a = await this.httpClient.getResource<
+        PrestashopAddress & { company?: string; vat_number?: string | null }
+      >('addresses', String(addressId));
       return {
         firstName: a.firstname,
         lastName: a.lastname,
         company: a.company,
+        taxId: readSourceBuyerTaxId(a.vat_number),
         address1: a.address1 ?? '',
         address2: a.address2,
         city: a.city ?? '',

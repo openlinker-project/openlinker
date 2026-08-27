@@ -31,3 +31,5 @@ export {
 } from './domain/types/payment-status.types';
 export type { PaymentStatus } from './domain/types/payment-status.types';
 export type { Order } from './domain/types/order.types';
+export type { BuyerTaxId } from './domain/types/buyer-tax-id.types';
+export { readBuyerTaxId, buyerHasTaxId } from './domain/types/buyer-tax-id.types';

@@ -211,6 +211,17 @@ export interface IncomingOrderTotals {
 }
 
 export interface IncomingOrderAddress {
+  /**
+   * Buyer tax identifier as the source reported it (#2599). Three states, and
+   * they are not interchangeable: absent = the source asserted nothing, `null`
+   * = the source asserted the buyer has none, a string = the id verbatim.
+   *
+   * Carried unvalidated and un-normalised - no national format is applied here
+   * (ADR-026 keeps country specifics in the provider adapter). Read it through
+   * `readBuyerTaxId` rather than reaching for the field, so billing-first
+   * precedence lives in one place.
+   */
+  taxId?: string | null;
   firstName?: string;
   lastName?: string;
   company?: string;
