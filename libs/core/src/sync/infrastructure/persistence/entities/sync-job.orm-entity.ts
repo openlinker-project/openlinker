@@ -80,6 +80,22 @@ export class SyncJobOrmEntity {
   @Column({ type: 'text', nullable: true })
   lastError!: string | null;
 
+  /**
+   * Wall-clock milliseconds the most recently COMPLETED execution attempt took
+   * (#2611). Written in the same UPDATE as the status transition that ended
+   * that attempt, so it always describes the same attempt the row's
+   * status/outcome/lastError describe.
+   *
+   * Not derivable from the other columns: the heartbeat rewrites `lockedAt`
+   * every few minutes while a job runs, and `updatedAt - createdAt` includes
+   * queue wait and retry backoff.
+   *
+   * `null` for a job that has never completed an attempt, and for every row
+   * predating this column. Never treat `null` as zero.
+   */
+  @Column({ type: 'integer', nullable: true })
+  lastAttemptDurationMs!: number | null;
+
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt!: Date;
 

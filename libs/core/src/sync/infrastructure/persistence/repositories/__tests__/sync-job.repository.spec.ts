@@ -749,6 +749,101 @@ describe('SyncJobRepository', () => {
     });
   });
 
+  describe('lastAttemptDurationMs (#2611)', () => {
+    beforeEach(() => {
+      ormRepository.update.mockResolvedValue({ affected: 1, generatedMaps: [], raw: [] });
+    });
+
+    it('should write the duration in the same update as the succeeded status flip when a measurement is supplied', async () => {
+      const jobId = randomUUID();
+
+      await repository.markSucceeded(jobId, 'ok', undefined, 1234);
+
+      expect(ormRepository.update).toHaveBeenCalledTimes(1);
+      expect(ormRepository.update).toHaveBeenCalledWith(jobId, {
+        status: 'succeeded',
+        outcome: 'ok',
+        outcomeReason: null,
+        lockedAt: null,
+        lockedBy: null,
+        lastError: null,
+        lastAttemptDurationMs: 1234,
+      });
+    });
+
+    it('should write the duration in the same update as the dead status flip when a job dies', async () => {
+      const jobId = randomUUID();
+
+      await repository.markDead(jobId, 'boom', 9876);
+
+      expect(ormRepository.update).toHaveBeenCalledTimes(1);
+      expect(ormRepository.update).toHaveBeenCalledWith(
+        jobId,
+        expect.objectContaining({ status: 'dead', lastAttemptDurationMs: 9876 })
+      );
+    });
+
+    it('should overwrite the duration on each retry so it always describes the latest attempt', async () => {
+      const jobId = randomUUID();
+      ormRepository.findOne.mockResolvedValue(
+        createMockOrmEntity({ id: jobId, attempts: 3, status: 'running', lastAttemptDurationMs: 50 })
+      );
+
+      await repository.markFailed(jobId, 'boom', new Date(), 700);
+
+      expect(ormRepository.update).toHaveBeenCalledWith(
+        jobId,
+        expect.objectContaining({ attempts: 4, lastAttemptDurationMs: 700 })
+      );
+    });
+
+    it('should leave the column untouched when no measurement is supplied', async () => {
+      const jobId = randomUUID();
+
+      await repository.markSucceeded(jobId, 'ok');
+      await repository.markDead(jobId, 'never ran');
+
+      for (const call of ormRepository.update.mock.calls) {
+        expect(call[1]).not.toHaveProperty('lastAttemptDurationMs');
+      }
+    });
+
+    it('should drop a negative or non-finite measurement rather than persisting it as a duration', async () => {
+      const jobId = randomUUID();
+
+      await repository.markSucceeded(jobId, 'ok', undefined, -1);
+      await repository.markSucceeded(jobId, 'ok', undefined, Number.NaN);
+
+      for (const call of ormRepository.update.mock.calls) {
+        expect(call[1]).not.toHaveProperty('lastAttemptDurationMs');
+      }
+    });
+
+    it('should persist a zero measurement, which is a real answer and not an absence', async () => {
+      const jobId = randomUUID();
+
+      await repository.markSucceeded(jobId, 'ok', undefined, 0);
+
+      expect(ormRepository.update).toHaveBeenCalledWith(
+        jobId,
+        expect.objectContaining({ lastAttemptDurationMs: 0 })
+      );
+    });
+
+    it('should map a null column to null on the domain entity, never to zero', () => {
+      const withDuration = createMockOrmEntity({ lastAttemptDurationMs: 4200 });
+      const withoutDuration = createMockOrmEntity({ lastAttemptDurationMs: null });
+
+      // toDomain is private; exercised through the public findById path.
+      const toDomain = (
+        repository as unknown as { toDomain: (e: SyncJobOrmEntity) => SyncJob }
+      ).toDomain.bind(repository);
+
+      expect(toDomain(withDuration).lastAttemptDurationMs).toBe(4200);
+      expect(toDomain(withoutDuration).lastAttemptDurationMs).toBeNull();
+    });
+  });
+
   describe('toDomain', () => {
     it('should convert ORM entity to domain entity', () => {
       const ormEntity = createMockOrmEntity({
@@ -823,6 +918,7 @@ function createMockOrmEntity(overrides?: Partial<SyncJobOrmEntity>): SyncJobOrmE
     lockedAt: null,
     lockedBy: null,
     lastError: null,
+    lastAttemptDurationMs: null,
     createdAt: now,
     updatedAt: now,
     ...overrides,

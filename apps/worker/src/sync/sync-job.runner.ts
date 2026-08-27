@@ -406,6 +406,11 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
       `Processing job ${job.id} (${job.jobType}) for connection ${job.connectionId} (attempt ${job.attempts + 1}/${job.maxAttempts})`
     );
 
+    // Start of THIS attempt (#2611). `lockedAt` cannot serve as the start
+    // time - the heartbeat below rewrites it every few minutes - so the
+    // runner is the only place that can measure an attempt honestly.
+    const attemptStartedAt = Date.now();
+
     try {
       // Get handler for job type
       const handler = this.handlerRegistry.getHandler(job.jobType);
@@ -414,6 +419,8 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
         // No handler registered - mark as dead
         const errorMessage = `No handler registered for job type: ${job.jobType}`;
         this.logger.error(`Job ${job.id}: ${errorMessage}`);
+        // No duration reported: nothing executed, so the column stays NULL
+        // rather than claiming a zero-millisecond run.
         await this.jobRepository.markDead(job.id, errorMessage);
         return;
       }
@@ -451,13 +458,18 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
       }
 
       // Success - mark as succeeded with the handler's reported outcome
-      await this.jobRepository.markSucceeded(job.id, result.outcome, result.outcomeReason);
+      await this.jobRepository.markSucceeded(
+        job.id,
+        result.outcome,
+        result.outcomeReason,
+        Date.now() - attemptStartedAt
+      );
       this.logger.log(
         `Job ${job.id} (${job.jobType}) succeeded with outcome=${result.outcome} after ${job.attempts + 1} attempt(s)`
       );
     } catch (error) {
       // Handle execution error
-      await this.handleJobFailure(job, error);
+      await this.handleJobFailure(job, error, Date.now() - attemptStartedAt);
     }
   }
 
@@ -470,7 +482,11 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
    * Authentication errors (401) are marked as dead immediately since they require
    * manual intervention (token refresh) and won't resolve with retries.
    */
-  private async handleJobFailure(job: SyncJobEntity, error: unknown): Promise<void> {
+  private async handleJobFailure(
+    job: SyncJobEntity,
+    error: unknown,
+    attemptDurationMs: number
+  ): Promise<void> {
     const errorMessage = this.extractErrorMessage(error);
 
     // Rate-limit-queue timeout (#1810 review follow-up on #1957): congestion
@@ -484,6 +500,8 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
       const nextRunAt = new Date(
         Date.now() + this.RATE_LIMIT_TIMEOUT_REQUEUE_DELAY_SECONDS * 1000
       );
+      // No duration reported: the job spent that time waiting for a
+      // rate-limit slot, never executing, and no attempt was consumed either.
       await this.jobRepository.requeueWithoutPenalty(job.id, errorMessage, nextRunAt);
       this.logger.warn(
         `Job ${job.id} (${job.jobType}) timed out waiting for a rate-limit slot — requeued in ` +
@@ -513,7 +531,7 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
       if (this.authFailureClassifierRegistry.isCredentialRejected(cause)) {
         await this.flagConnectionNeedsReauth(job.connectionId);
       }
-      await this.jobRepository.markDead(job.id, errorMessage);
+      await this.jobRepository.markDead(job.id, errorMessage, attemptDurationMs);
       this.logger.warn(`Job ${job.id} (${job.jobType}) marked as dead due to non-retryable error`);
       return;
     }
@@ -521,7 +539,7 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
     // Check if max attempts reached
     if (nextAttempt >= job.maxAttempts) {
       // Max attempts reached - mark as dead
-      await this.jobRepository.markDead(job.id, errorMessage);
+      await this.jobRepository.markDead(job.id, errorMessage, attemptDurationMs);
       this.logger.warn(
         `Job ${job.id} (${job.jobType}) marked as dead after ${nextAttempt} attempt(s)`
       );
@@ -533,7 +551,7 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
     const nextRunAt = new Date(Date.now() + backoffSeconds * 1000);
 
     // Mark as failed and schedule retry
-    await this.jobRepository.markFailed(job.id, errorMessage, nextRunAt);
+    await this.jobRepository.markFailed(job.id, errorMessage, nextRunAt, attemptDurationMs);
     this.logger.debug(
       `Job ${job.id} (${job.jobType}) scheduled for retry in ${backoffSeconds}s (attempt ${nextAttempt + 1}/${job.maxAttempts})`
     );

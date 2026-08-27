@@ -362,6 +362,21 @@ export interface SyncJob extends SyncJobRequest {
   lastError?: string | null;
 
   /**
+   * Wall-clock milliseconds the most recently COMPLETED execution attempt
+   * took (#2611). One attempt, never a total across retries, and never the
+   * time the job spent queued or in retry backoff.
+   *
+   * Written in the same UPDATE as the terminal status transition that ended
+   * that attempt, so it always describes the same attempt as `status`,
+   * `outcome` and `lastError`.
+   *
+   * `null` when no attempt has completed, when the job was killed without
+   * executing, or for a row predating the column. Never read it as zero - an
+   * aggregate that does understates every real duration.
+   */
+  lastAttemptDurationMs?: number | null;
+
+  /**
    * Business outcome of the job (only set on the succeeded path).
    *
    * - `'ok'`: business operation succeeded.

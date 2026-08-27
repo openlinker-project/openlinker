@@ -84,6 +84,13 @@ export interface SyncJob {
   idempotencyKey: string | null;
   lockedAt: string | null;
   lockedBy: string | null;
+  /**
+   * Milliseconds the most recently completed execution attempt took (#2611) -
+   * one attempt, not a total across retries, and not queue wait. `null` when
+   * no attempt has completed, when the job was killed without executing, or
+   * for a row predating the column. Never render or aggregate it as zero.
+   */
+  lastAttemptDurationMs: number | null;
   createdAt: string;
   updatedAt: string;
 }

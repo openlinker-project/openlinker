@@ -91,6 +91,7 @@ export class SyncJobRepository implements SyncJobRepositoryPort {
       entity.lastError = null;
       entity.outcome = null;
       entity.outcomeReason = null;
+      entity.lastAttemptDurationMs = null;
 
       const saved = await this.repository.save(entity);
       return this.toDomain(saved);
@@ -214,7 +215,8 @@ export class SyncJobRepository implements SyncJobRepositoryPort {
   async markSucceeded(
     id: string,
     outcome: JobOutcome,
-    outcomeReason?: JobOutcomeReason
+    outcomeReason?: JobOutcomeReason,
+    lastAttemptDurationMs?: number
   ): Promise<void> {
     await this.repository.update(id, {
       status: 'succeeded',
@@ -223,10 +225,16 @@ export class SyncJobRepository implements SyncJobRepositoryPort {
       lockedAt: null,
       lockedBy: null,
       lastError: null,
+      ...this.durationPatch(lastAttemptDurationMs),
     });
   }
 
-  async markFailed(id: string, error: string, nextRunAt: Date): Promise<void> {
+  async markFailed(
+    id: string,
+    error: string,
+    nextRunAt: Date,
+    lastAttemptDurationMs?: number
+  ): Promise<void> {
     const job = await this.repository.findOne({ where: { id } });
     if (!job) {
       throw new Error(`Job not found: ${id}`);
@@ -240,16 +248,40 @@ export class SyncJobRepository implements SyncJobRepositoryPort {
       lockedAt: null,
       lockedBy: null,
       lastError: error.length > 1000 ? error.substring(0, 1000) : error, // Truncate if too long
+      ...this.durationPatch(lastAttemptDurationMs),
     });
   }
 
-  async markDead(id: string, error: string): Promise<void> {
+  async markDead(id: string, error: string, lastAttemptDurationMs?: number): Promise<void> {
     await this.repository.update(id, {
       status: 'dead',
       lockedAt: null,
       lockedBy: null,
       lastError: error.length > 1000 ? error.substring(0, 1000) : error, // Truncate if too long
+      ...this.durationPatch(lastAttemptDurationMs),
     });
+  }
+
+  /**
+   * Build the duration half of a terminal-status patch (#2611).
+   *
+   * An absent or non-finite measurement yields an EMPTY patch, leaving any
+   * previously recorded duration in place rather than overwriting it with a
+   * zero an operator could not tell apart from a genuinely instant run. A
+   * negative value is likewise dropped - a clock that moved backwards is not
+   * evidence of a fast job.
+   */
+  private durationPatch(
+    lastAttemptDurationMs?: number
+  ): Partial<Pick<SyncJobOrmEntity, 'lastAttemptDurationMs'>> {
+    if (
+      lastAttemptDurationMs === undefined ||
+      !Number.isFinite(lastAttemptDurationMs) ||
+      lastAttemptDurationMs < 0
+    ) {
+      return {};
+    }
+    return { lastAttemptDurationMs: Math.round(lastAttemptDurationMs) };
   }
 
   async requeueWithoutPenalty(id: string, error: string, nextRunAt: Date): Promise<void> {
@@ -601,7 +633,8 @@ export class SyncJobRepository implements SyncJobRepositoryPort {
       entity.createdAt,
       entity.updatedAt,
       entity.outcome ?? null,
-      entity.outcomeReason ?? null
+      entity.outcomeReason ?? null,
+      entity.lastAttemptDurationMs ?? null
     );
   }
 
