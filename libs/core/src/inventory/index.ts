@@ -52,6 +52,14 @@ export {
   PruneStaleVariantsResult,
 } from './domain/types/inventory.types';
 
+// Offer quantity write-order guard (#2617)
+export {
+  OFFER_QUANTITY_WRITE_LOCK_TTL_MS,
+  isWritableQuantityObservation,
+  offerQuantityObservationCursorKey,
+  offerQuantityWriteLockKey,
+} from './domain/types/offer-quantity-write-order.types';
+
 // ORM entities are exposed on the host-only `@openlinker/core/inventory/orm-entities`
 // sub-path (#594). Plugins must not import them from here.
 
