@@ -685,5 +685,72 @@ describe('OrderSyncService', () => {
 
       expect(results[0]).toMatchObject({ status: 'success' });
     });
+
+    it('should not fail order sync when resolving InventoryMaster connections itself throws', async () => {
+      registerDestinationsAndInventoryMaster('dest-a', 'master-conn');
+      integrationsService.listCapabilityAdapters.mockImplementation((filters) => {
+        if (filters.capability === 'InventoryMaster') {
+          return Promise.reject(new Error('registry unavailable'));
+        }
+        return Promise.resolve([
+          {
+            connectionId: 'dest-a',
+            connection: {} as never,
+            adapter: makeAdapter(),
+            metadata: {} as never,
+          },
+        ]);
+      });
+
+      const results = await service.syncOrder({ order: createOrder(), sourceConnectionId: 'source-1' });
+
+      expect(results[0]).toMatchObject({ status: 'success' });
+      expect(jobQueue.enqueue).not.toHaveBeenCalled();
+    });
+
+    it('should enqueue nothing when every destination create fails', async () => {
+      integrationsService.listCapabilityAdapters.mockImplementation((filters) => {
+        if (filters.capability === 'InventoryMaster') {
+          return Promise.resolve([
+            {
+              connectionId: 'master-conn',
+              connection: {} as never,
+              adapter: {} as never,
+              metadata: {} as never,
+            },
+          ]);
+        }
+        const failingAdapter: jest.Mocked<OrderProcessorManagerPort> = {
+          createOrder: jest.fn().mockRejectedValue(new Error('destination unreachable')),
+        };
+        return Promise.resolve([
+          {
+            connectionId: 'dest-a',
+            connection: {} as never,
+            adapter: failingAdapter,
+            metadata: {} as never,
+          },
+        ]);
+      });
+      identifierMapping.getExternalIds.mockImplementation((entityType) =>
+        Promise.resolve(
+          entityType === 'Product'
+            ? [
+                {
+                  externalId: 'PS-PRODUCT-789',
+                  connectionId: 'master-conn',
+                  platformType: 'prestashop',
+                  entityType: 'Product',
+                },
+              ]
+            : []
+        )
+      );
+
+      const results = await service.syncOrder({ order: createOrder(), sourceConnectionId: 'source-1' });
+
+      expect(results[0]).toMatchObject({ status: 'failed' });
+      expect(jobQueue.enqueue).not.toHaveBeenCalled();
+    });
   });
 });

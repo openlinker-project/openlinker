@@ -148,12 +148,21 @@ export class OrderSyncService implements IOrderSyncService {
     // backstop — this just avoids waiting for it. Never allowed to fail the
     // sync itself: the destination create above is the correctness-critical
     // half, this is a latency optimization on top of it.
-    try {
-      await this.enqueuePostSaleInventoryRefresh(order);
-    } catch (error) {
-      this.logger.warn(
-        `Failed to enqueue post-sale master inventory refresh for order ${order.id}: ${error instanceof Error ? error.message : String(error)}`
-      );
+    //
+    // Only fires when at least one destination actually created the order:
+    // if every destination failed, nothing downstream decremented the
+    // master's stock, so a refresh here would just spend outbound API quota
+    // against the master for no observable change — worst timed during a
+    // destination outage, when many orders fail at once.
+    const anyDestinationSucceeded = settled.some((outcome) => outcome.status === 'fulfilled');
+    if (anyDestinationSucceeded) {
+      try {
+        await this.enqueuePostSaleInventoryRefresh(order);
+      } catch (error) {
+        this.logger.warn(
+          `Failed to enqueue post-sale master inventory refresh for order ${order.id}: ${error instanceof Error ? error.message : String(error)}`
+        );
+      }
     }
 
     return settled.map((outcome, index): OrderSyncResult => {
@@ -401,7 +410,7 @@ export class OrderSyncService implements IOrderSyncService {
               payload: {
                 schemaVersion: 1,
                 externalId: mapping.externalId,
-                objectType: 'Inventory',
+                objectType: CORE_ENTITY_TYPE.Inventory,
               },
               options: {
                 // Order-scoped, not write-event-scoped like `setInventory`'s
