@@ -641,6 +641,42 @@ describe('AllegroOfferManagerAdapter', () => {
       ]);
     });
 
+    it('should report the platform rejection reason for a synchronously REJECTED command, without polling', async () => {
+      const batchAdapter = fastAdapter();
+
+      httpClient.put.mockResolvedValueOnce({
+        data: {
+          id: 'cmd-rejected',
+          status: 'REJECTED',
+          errors: [{ code: 'INVALID_MODIFICATION', message: 'Value must be non-negative' }],
+        } as AllegroOfferQuantityChangeCommandResponse,
+        status: 200,
+        headers: {},
+      });
+
+      const result = await batchAdapter.updateOfferQuantitiesBatch({
+        items: [
+          { offerId: 'offer-1', quantity: 10, idempotencyKey: 'key-1' },
+          { offerId: 'offer-2', quantity: 10, idempotencyKey: 'key-2' },
+        ],
+      });
+
+      expect(httpClient.get).not.toHaveBeenCalled();
+      expect(result.succeeded).toEqual([]);
+      expect(result.failed.sort((a, b) => a.offerId.localeCompare(b.offerId))).toEqual([
+        {
+          offerId: 'offer-1',
+          errorCode: 'rejected',
+          message: 'INVALID_MODIFICATION: Value must be non-negative',
+        },
+        {
+          offerId: 'offer-2',
+          errorCode: 'rejected',
+          message: 'INVALID_MODIFICATION: Value must be non-negative',
+        },
+      ]);
+    });
+
     it('should report poll-timeout for an offer the terminal response omits, without affecting siblings', async () => {
       const batchAdapter = fastAdapter();
 
@@ -766,11 +802,14 @@ describe('AllegroOfferManagerAdapter', () => {
       );
       expect(createdCommandIds.size).toBe(1);
 
-      // Per-offer status disambiguated by (commandId, offerId).
+      // Per-offer status disambiguated by (commandId, offerId). The succeeded
+      // call forwards `error` positionally even when absent (undefined), so
+      // the assertion must match that shape rather than a truncated 3-arg call.
       expect(commandRepository.updateOfferStatus).toHaveBeenCalledWith(
         expect.any(String),
         'offer-1',
-        'succeeded'
+        'succeeded',
+        undefined
       );
       expect(commandRepository.updateOfferStatus).toHaveBeenCalledWith(
         expect.any(String),

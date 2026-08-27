@@ -688,6 +688,19 @@ export class AllegroOfferManagerAdapter
 
       await this.persistBatchCommandRows(response.data.id, response.data.status, items);
 
+      if (response.data.status === 'REJECTED') {
+        // Allegro answered synchronously — there is nothing to poll for and
+        // no task will ever appear, so reporting this via the poll-timeout
+        // branch below would discard the platform's own rejection reason.
+        const message =
+          response.data.errors?.map((e) => `${e.code}: ${e.message}`).join('; ') ?? 'rejected';
+        for (const item of items) {
+          failed.push({ offerId: item.offerId, errorCode: 'rejected', message });
+          await this.persistBatchOfferStatus(commandId, item.offerId, 'failed', message);
+        }
+        return;
+      }
+
       const result = await this.pollQuantityCommandStatus(response.data.id);
       const tasksByOfferId = new Map((result?.tasks ?? []).map((task) => [task.offerId, task]));
 
