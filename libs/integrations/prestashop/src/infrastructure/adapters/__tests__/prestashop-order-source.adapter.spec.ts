@@ -90,14 +90,15 @@ describe('PrestashopOrderSourceAdapter', () => {
         eventType: 'updated',
         occurredAt: '2024-01-02 11:00:00',
       });
-      expect(result.nextCursor).toBe('2024-01-02 11:00:00');
+      expect(result.nextCursor).toBe('2024-01-02 11:00:00|2');
     });
 
     it('should return input cursor unchanged when the feed is empty', async () => {
       mockHttpClient.listResources = jest.fn().mockResolvedValueOnce([]);
       const result = await adapter.listOrderFeed({ fromCursor: '2024-01-01 00:00:00', limit: 10 });
       expect(result.items).toHaveLength(0);
-      expect(result.nextCursor).toBe('2024-01-01 00:00:00');
+      // Normalised to the one wire format, and never behind the input position.
+      expect(result.nextCursor).toBe('2024-01-01 00:00:00|0');
     });
 
     it('should filter items by requested eventTypes', async () => {
@@ -133,7 +134,140 @@ describe('PrestashopOrderSourceAdapter', () => {
       });
 
       expect(result.items).toHaveLength(0);
-      expect(result.nextCursor).toBe('2024-01-02 12:00:00');
+      expect(result.nextCursor).toBe('2024-01-02 12:00:00|2');
+    });
+
+    describe('keyset cursor over (date_upd, id) (#2605)', () => {
+      it('should sort by date_upd then id and bound date_upd by the shop own wall clock', async () => {
+        mockHttpClient.listResources = jest.fn().mockResolvedValueOnce([]);
+
+        await adapter.listOrderFeed({ fromCursor: '2024-01-01 10:00:00|4', limit: 50 });
+
+        expect(mockHttpClient.listResources).toHaveBeenCalledWith(
+          'orders',
+          {
+            // One second back, so the cursor own second stays in range - the
+            // WebService has no `>=`.
+            updatedAfter: '2024-01-01 09:59:59',
+            sort: ['date_upd_ASC', 'id_ASC'],
+          },
+          50,
+          0
+        );
+      });
+
+      it('should not skip an order sharing the cursor second with a higher id', async () => {
+        // The three orders were all updated in the same second; the previous poll
+        // stopped at id 1, so 2 and 3 must still arrive.
+        const orders: PrestashopOrder[] = [
+          { id: '1', date_add: '2024-05-01 08:00:00', date_upd: '2024-05-01 08:00:00' },
+          { id: '2', date_add: '2024-05-01 08:00:00', date_upd: '2024-05-01 08:00:00' },
+          { id: '3', date_add: '2024-05-01 08:00:00', date_upd: '2024-05-01 08:00:00' },
+        ];
+        mockHttpClient.listResources = jest.fn().mockResolvedValueOnce(orders);
+
+        const result = await adapter.listOrderFeed({
+          fromCursor: '2024-05-01 08:00:00|1',
+          limit: 10,
+        });
+
+        expect(result.items.map((i) => i.externalOrderId)).toEqual(['2', '3']);
+        expect(result.nextCursor).toBe('2024-05-01 08:00:00|3');
+      });
+
+      it('should read the next offset when a full page was already consumed', async () => {
+        const consumed: PrestashopOrder[] = [
+          { id: '1', date_add: '2024-05-01 08:00:00', date_upd: '2024-05-01 08:00:00' },
+          { id: '2', date_add: '2024-05-01 08:00:00', date_upd: '2024-05-01 08:00:00' },
+        ];
+        const fresh: PrestashopOrder[] = [
+          { id: '3', date_add: '2024-05-01 08:00:00', date_upd: '2024-05-01 08:00:00' },
+        ];
+        mockHttpClient.listResources = jest
+          .fn()
+          .mockResolvedValueOnce(consumed)
+          .mockResolvedValueOnce(fresh);
+
+        const result = await adapter.listOrderFeed({
+          fromCursor: '2024-05-01 08:00:00|2',
+          limit: 2,
+        });
+
+        expect(mockHttpClient.listResources).toHaveBeenCalledTimes(2);
+        expect(mockHttpClient.listResources).toHaveBeenLastCalledWith(
+          'orders',
+          expect.anything(),
+          2,
+          2
+        );
+        expect(result.items.map((i) => i.externalOrderId)).toEqual(['3']);
+        expect(result.nextCursor).toBe('2024-05-01 08:00:00|3');
+      });
+
+      it('should never emit a cursor behind the input position', async () => {
+        // A shop that ignores the sort hands back an older row last; the read
+        // position must not follow it backwards.
+        const orders: PrestashopOrder[] = [
+          { id: '9', date_add: '2024-05-02 08:00:00', date_upd: '2024-05-02 08:00:00' },
+          { id: '1', date_add: '2024-05-01 08:00:00', date_upd: '2024-05-01 08:00:00' },
+        ];
+        mockHttpClient.listResources = jest.fn().mockResolvedValueOnce(orders);
+
+        const result = await adapter.listOrderFeed({ fromCursor: null, limit: 10 });
+
+        expect(result.nextCursor).toBe('2024-05-02 08:00:00|9');
+      });
+
+      it('should restart from the beginning on an unreadable cursor instead of from now', async () => {
+        mockHttpClient.listResources = jest.fn().mockResolvedValueOnce([]);
+
+        await adapter.listOrderFeed({ fromCursor: 'garbage', limit: 10 });
+
+        expect(mockHttpClient.listResources).toHaveBeenCalledWith(
+          'orders',
+          { sort: ['date_upd_ASC', 'id_ASC'] },
+          10,
+          0
+        );
+      });
+
+      it('should skip a row with no usable date_upd rather than stamping the worker clock', async () => {
+        const orders: PrestashopOrder[] = [
+          { id: '4', date_add: '2024-05-03 08:00:00' },
+          { id: '5', date_add: '2024-05-03 08:00:00', date_upd: '2024-05-03 08:00:01' },
+        ];
+        mockHttpClient.listResources = jest.fn().mockResolvedValueOnce(orders);
+
+        const result = await adapter.listOrderFeed({ fromCursor: null, limit: 10 });
+
+        expect(result.items.map((i) => i.externalOrderId)).toEqual(['5']);
+        expect(result.nextCursor).toBe('2024-05-03 08:00:01|5');
+      });
+
+      it('should return the same page whatever the container timezone is', async () => {
+        const orders: PrestashopOrder[] = [
+          { id: '6', date_add: '2024-05-04 08:00:00', date_upd: '2024-05-04 08:00:00' },
+        ];
+        const original = process.env.TZ;
+        const runIn = async (tz: string): Promise<unknown> => {
+          process.env.TZ = tz;
+          mockHttpClient.listResources = jest.fn().mockResolvedValueOnce(orders);
+          const result = await adapter.listOrderFeed({
+            fromCursor: '2024-05-04 07:00:00|0',
+            limit: 10,
+          });
+          return {
+            call: (mockHttpClient.listResources as jest.Mock).mock.calls[0],
+            cursor: result.nextCursor,
+          };
+        };
+
+        try {
+          expect(await runIn('UTC')).toEqual(await runIn('Pacific/Kiritimati'));
+        } finally {
+          process.env.TZ = original;
+        }
+      });
     });
 
     describe('cancellation detection (#1161)', () => {
@@ -268,7 +402,7 @@ describe('PrestashopOrderSourceAdapter', () => {
 
         expect(result.items).toHaveLength(0);
         // Cursor still advances past the filtered-out cancelled order.
-        expect(result.nextCursor).toBe('2024-03-11 09:00:00');
+        expect(result.nextCursor).toBe('2024-03-11 09:00:00|12');
       });
     });
   });

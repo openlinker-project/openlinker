@@ -47,6 +47,18 @@ const ISO_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}
  */
 const NAIVE_WALL_CLOCK = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/;
 
+/**
+ * A naive wall clock followed by a numeric tiebreaker, `<wall clock>|<digits>`.
+ *
+ * A source whose timestamps are only second-precise cannot use the timestamp
+ * alone as a read position: rows sharing a second are indistinguishable, so a
+ * page that stops inside one loses the rest of it. Such a source carries a
+ * keyset - the timestamp plus the last row key consumed at it. Ordered on the
+ * timestamp first, then numerically on the tiebreaker, which is exactly the
+ * order the reader resumes in.
+ */
+const WALL_CLOCK_KEYSET = /^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\|([0-9]+)$/;
+
 function order(isBehind: boolean): OrderCursorOrder {
   return isBehind ? 'regressed' : 'not-regressed';
 }
@@ -89,6 +101,17 @@ export function compareOrderCursors(previous: string, next: string): OrderCursor
 
   if (NAIVE_WALL_CLOCK.test(prev) && NAIVE_WALL_CLOCK.test(nxt)) {
     return order(nxt < prev);
+  }
+
+  const prevKeyset = WALL_CLOCK_KEYSET.exec(prev);
+  const nextKeyset = WALL_CLOCK_KEYSET.exec(nxt);
+  if (prevKeyset !== null && nextKeyset !== null) {
+    if (prevKeyset[1] !== nextKeyset[1]) {
+      return order(nextKeyset[1] < prevKeyset[1]);
+    }
+    // BigInt for the same reason the decimal counter uses it: a long key loses
+    // precision as a float and two distinct cursors would compare equal.
+    return order(BigInt(nextKeyset[2]) < BigInt(prevKeyset[2]));
   }
 
   return 'unrecognised';

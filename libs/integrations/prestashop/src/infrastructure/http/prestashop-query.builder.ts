@@ -27,7 +27,20 @@ export interface PrestashopQueryFilters {
    */
   dateFrom?: Date;
   dateTo?: Date;
-  updatedSince?: Date;
+
+  /**
+   * `date_upd` lower bound, exclusive, as the shop's own wall clock
+   * (`YYYY-MM-DD HH:MM:SS`) and emitted verbatim.
+   *
+   * A string, not a `Date` (#2605). PrestaShop's `date_upd` is a zone-less
+   * `DATETIME` written by the shop, so formatting a `Date` here read the
+   * worker's clock and compared it against the shop's - the same naive string
+   * only by accident, and a different one the moment the container's timezone
+   * changed. Offset the wrong way and the filter excludes real orders while the
+   * cursor stays put. The caller therefore hands over the shop's own reading and
+   * nothing here interprets it.
+   */
+  updatedAfter?: string;
 
   /**
    * Status filters
@@ -38,6 +51,18 @@ export interface PrestashopQueryFilters {
    * Custom filters (key-value pairs)
    */
   custom?: Record<string, string | number | (string | number)[]>;
+
+  /**
+   * Result ordering, one entry per column, e.g. `['date_upd_ASC', 'id_ASC']`.
+   *
+   * PrestaShop answers an unsorted collection read in primary-key order. For a
+   * read whose cursor is a value other than the primary key - the order feed's
+   * `date_upd` watermark - that is not the same order, so a row with a higher id
+   * and an older timestamp ends a page and is then never revisited (#2605). A
+   * paged read whose cursor is not the sort key is unsound, so the sort is
+   * stated rather than inherited.
+   */
+  sort?: string[];
 
   /**
    * Field selection override.
@@ -54,6 +79,14 @@ export interface PrestashopQueryFilters {
  * a key may take is a bare column name.
  */
 const FILTER_FIELD_PATTERN = /^[A-Za-z0-9_]+$/;
+
+/**
+ * A sort entry is one bare column name plus PrestaShop's own direction suffix.
+ * Same reasoning as the filter key: the builder owns the envelope, so a caller
+ * that smuggles syntax through the value gets a refusal, not a query PrestaShop
+ * quietly ignores.
+ */
+const SORT_ENTRY_PATTERN = /^[A-Za-z0-9_]+_(ASC|DESC)$/;
 
 /**
  * PrestaShop Query Builder
@@ -90,7 +123,7 @@ export class PrestashopQueryBuilder {
     }
 
     // Date filtering: PrestaShop requires date=1 to enable date filters
-    const hasDateFilters = filters?.dateFrom || filters?.dateTo || filters?.updatedSince;
+    const hasDateFilters = filters?.dateFrom || filters?.dateTo || filters?.updatedAfter;
     if (hasDateFilters) {
       params.push('date=1');
     }
@@ -113,9 +146,16 @@ export class PrestashopQueryBuilder {
     }
 
     // Updated since filter
-    if (filters?.updatedSince) {
-      const dateStr = this.formatDate(filters.updatedSince);
-      params.push(`filter[date_upd]=>[${dateStr}]`);
+    if (filters?.updatedAfter) {
+      params.push(`filter[date_upd]=>[${filters.updatedAfter}]`);
+    }
+
+    // Result ordering
+    if (filters?.sort && filters.sort.length > 0) {
+      for (const entry of filters.sort) {
+        this.assertSortEntry(entry);
+      }
+      params.push(`sort=[${filters.sort.join(',')}]`);
     }
 
     // Status filters
@@ -202,6 +242,20 @@ export class PrestashopQueryBuilder {
     }
 
     throw new PrestashopInvalidFilterException(key);
+  }
+
+  /**
+   * Reject a sort entry the WebService cannot express.
+   *
+   * @param entry - Sort entry, e.g. `date_upd_ASC`
+   * @throws PrestashopInvalidFilterException when the entry is not `<column>_ASC|DESC`
+   */
+  private static assertSortEntry(entry: string): void {
+    if (SORT_ENTRY_PATTERN.test(entry)) {
+      return;
+    }
+
+    throw new PrestashopInvalidFilterException(entry);
   }
 
   /**

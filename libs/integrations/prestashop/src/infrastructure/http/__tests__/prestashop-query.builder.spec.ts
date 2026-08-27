@@ -35,13 +35,45 @@ describe('PrestashopQueryBuilder', () => {
       expect(query).toContain('filter[date_add]');
     });
 
-    it('should add date=1 when updatedSince is provided', () => {
+    it('should add date=1 when updatedAfter is provided', () => {
       const filters = {
-        updatedSince: new Date('2024-01-01'),
+        updatedAfter: '2024-01-01 00:00:00',
       };
       const query = PrestashopQueryBuilder.buildQuery('orders', filters);
       expect(query).toContain('date=1');
       expect(query).toContain('filter[date_upd]');
+    });
+
+    it('should emit updatedAfter verbatim so the worker clock is never an input (#2605)', () => {
+      const original = process.env.TZ;
+      const buildIn = (tz: string): string => {
+        process.env.TZ = tz;
+        return PrestashopQueryBuilder.buildQuery('orders', {
+          updatedAfter: '2024-01-15 10:30:00',
+        });
+      };
+      try {
+        expect(buildIn('UTC')).toContain('filter[date_upd]=>[2024-01-15 10:30:00]');
+        expect(buildIn('Pacific/Kiritimati')).toContain('filter[date_upd]=>[2024-01-15 10:30:00]');
+      } finally {
+        process.env.TZ = original;
+      }
+    });
+
+    it('should emit a sort clause in the order given', () => {
+      const query = PrestashopQueryBuilder.buildQuery('orders', {
+        sort: ['date_upd_ASC', 'id_ASC'],
+      });
+      expect(query).toContain('sort=[date_upd_ASC,id_ASC]');
+    });
+
+    it('should reject a sort entry that is not a bare column plus direction', () => {
+      expect(() =>
+        PrestashopQueryBuilder.buildQuery('orders', { sort: ['date_upd'] })
+      ).toThrow(PrestashopInvalidFilterException);
+      expect(() =>
+        PrestashopQueryBuilder.buildQuery('orders', { sort: ['date_upd_ASC,id_DESC'] })
+      ).toThrow(PrestashopInvalidFilterException);
     });
 
     it('should format dates correctly for PrestaShop', () => {
