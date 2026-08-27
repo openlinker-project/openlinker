@@ -34,7 +34,7 @@
  * @see {@link HmacRequestVerifier} for inbound HMAC verification
  *
  * @author OpenLinker Team
- * @version 1.7.0
+ * @version 1.9.0
  */
 
 if (!defined('_PS_VERSION_')) {
@@ -96,7 +96,7 @@ class OpenLinker extends CarrierModule
     {
         $this->name = 'openlinker';
         $this->tab = 'administration';
-        $this->version = '1.8.0';
+        $this->version = '1.9.0';
         $this->author = 'OpenLinker Team';
         $this->need_instance = 0;
         $this->ps_versions_compliancy = [
@@ -124,6 +124,7 @@ class OpenLinker extends CarrierModule
         // in sync with the live row.
         $hooks = [
             'actionProductSave',
+            'actionProductDelete',
             'actionValidateOrderAfter',
             'actionOrderHistoryAddAfter',
             'actionUpdateQuantity',
@@ -182,6 +183,7 @@ class OpenLinker extends CarrierModule
         // Remove hooks
         $hooks = [
             'actionProductSave',
+            'actionProductDelete',
             'actionValidateOrderAfter',
             'actionOrderHistoryAddAfter',
             'actionUpdateQuantity',
@@ -1591,6 +1593,100 @@ class OpenLinker extends CarrierModule
             // Catch PHP 7+ fatal errors
             PrestaShopLogger::addLog(
                 'OpenLinker:Fatal error in product hook: ' . $e->getMessage() . ' | Trace: ' . $e->getTraceAsString(),
+                3,
+                null,
+                'Product',
+                $productId
+            );
+        }
+    }
+
+    /**
+     * Hook: Product deleted
+     *
+     * Captures product deletion. PrestaShop fires actionProductDelete from
+     * Product::delete() once the product is really gone - the hook is skipped
+     * while the product still has entries in another shop, so a multistore
+     * delete from one shop does not report a deletion the catalogue has not
+     * made yet.
+     *
+     * Without this hook a deletion reached OpenLinker only through the hourly
+     * deletion-audit pass, which walks the whole catalogue a page at a time, so
+     * on a large shop the deleted product kept selling on every marketplace for
+     * as long as the audit took to reach it (#2647). The audit pass is
+     * unchanged and stays the backstop for a lost delivery.
+     *
+     * The event carries the PrestaShop product id only. OpenLinker re-reads the
+     * product and treats the resulting not-found as the authoritative deletion
+     * signal, so the event is a trigger rather than a source of truth: if the
+     * delete was rolled back, the same re-read simply re-syncs a live product.
+     *
+     * Non-blocking: only enqueues to outbox, no HTTP calls.
+     *
+     * @param array $params Hook parameters
+     * @return void
+     */
+    public function hookActionProductDelete(array $params)
+    {
+        // Shares the product-events switch with actionProductSave - both report
+        // the same subject, and an operator turning product events off does not
+        // mean "keep sending me half of them".
+        if (!Configuration::get('ENABLE_PRODUCT_EVENTS')) {
+            return;
+        }
+
+        // Extract product ID
+        $productId = null;
+        if (isset($params['id_product'])) {
+            $productId = (int)$params['id_product'];
+        } elseif (isset($params['product']) && is_object($params['product'])) {
+            $productId = (int)$params['product']->id;
+        }
+
+        if (!$productId) {
+            return;
+        }
+
+        // Get connection ID (required for enqueueing)
+        $connectionId = Configuration::get('OPENLINKER_CONNECTION_ID');
+        if (empty($connectionId)) {
+            return; // Module not configured yet
+        }
+
+        // Enqueue event (non-blocking, fast write to outbox)
+        try {
+            // Ensure classes are loaded
+            $classesDir = dirname(__FILE__) . '/classes/';
+
+            if (!class_exists('EventIdGenerator')) {
+                require_once($classesDir . 'EventIdGenerator.php');
+            }
+            if (!class_exists('OutboxRepository')) {
+                require_once($classesDir . 'OutboxRepository.php');
+            }
+
+            $repository = new OutboxRepository();
+            $repository->enqueueEvent([
+                'connectionId' => $connectionId,
+                'eventType' => 'product.deleted',
+                'objectType' => 'product',
+                'externalId' => (string)$productId,
+                'occurredAt' => date('Y-m-d H:i:s'),
+                'payloadJson' => null, // The id is the whole event
+            ]);
+        } catch (Exception $e) {
+            // Log error but don't break the hook (non-fatal)
+            PrestaShopLogger::addLog(
+                'OpenLinker:Failed to enqueue product.deleted event: ' . $e->getMessage() . ' | Trace: ' . $e->getTraceAsString(),
+                3, // Error level
+                null,
+                'Product',
+                $productId
+            );
+        } catch (Throwable $e) {
+            // Catch PHP 7+ fatal errors
+            PrestaShopLogger::addLog(
+                'OpenLinker:Fatal error in product delete hook: ' . $e->getMessage() . ' | Trace: ' . $e->getTraceAsString(),
                 3,
                 null,
                 'Product',
