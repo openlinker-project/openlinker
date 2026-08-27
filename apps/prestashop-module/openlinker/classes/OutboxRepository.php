@@ -34,6 +34,9 @@ class OutboxRepository
 
     private $tableName;
 
+    // Null until probed once, then the cached answer for this request.
+    private $hasDedupKeyColumn = null;
+
     public function __construct()
     {
         $this->tableName = _DB_PREFIX_ . 'openlinker_webhook_outbox';
@@ -78,7 +81,9 @@ class OutboxRepository
         // (the admin "Test connection" probe does, so a stuck row from an
         // earlier failed probe can never swallow the next one).
         if (array_key_exists('dedupKey', $eventData)) {
-            $dedupKey = $eventData['dedupKey'];
+            // Normalise any falsy value to NULL. An empty string is not
+            // NULL-distinct, so one such row would block every other subject.
+            $dedupKey = empty($eventData['dedupKey']) ? null : $eventData['dedupKey'];
         } else {
             $dedupKey = EventIdGenerator::generateDedupKey(
                 'prestashop',
@@ -87,6 +92,14 @@ class OutboxRepository
                 $eventData['objectType'],
                 $eventData['externalId']
             );
+        }
+
+        // If the 1.3.0 upgrade never ran, the column does not exist and every
+        // insert would throw, so the shop would stop emitting events with only a
+        // log line to show for it. Degrade to no coalescing instead: a duplicate
+        // costs one redundant pull, a silent stop costs the operator their sync.
+        if (!$this->hasDedupKeyColumn()) {
+            $dedupKey = null;
         }
 
         // Set defaults
@@ -99,7 +112,7 @@ class OutboxRepository
         // delivered gets a row of its own (#2603).
         $sql = 'INSERT IGNORE INTO `' . $this->tableName . '` (
             `event_id`,
-            `dedup_key`,
+            ' . ($this->hasDedupKeyColumn() ? '`dedup_key`,' : '') . '
             `schema_version`,
             `provider`,
             `connection_id`,
@@ -114,7 +127,7 @@ class OutboxRepository
             `updated_at`
         ) VALUES (
             "' . pSQL($eventData['eventId']) . '",
-            ' . ($dedupKey === null ? 'NULL' : '"' . pSQL($dedupKey) . '"') . ',
+            ' . ($this->hasDedupKeyColumn() ? ($dedupKey === null ? 'NULL,' : '"' . pSQL($dedupKey) . '",') : '') . '
             1,
             "prestashop",
             "' . pSQL($eventData['connectionId']) . '",
@@ -129,26 +142,66 @@ class OutboxRepository
             "' . $now . '"
         )';
 
-        if (!Db::getInstance()->execute($sql)) {
-            throw new Exception('Failed to enqueue event: ' . Db::getInstance()->getMsgError());
-        }
+        // Two attempts, because both outcomes of an ignored insert are
+        // recoverable and returning 0 is not: the caller cannot tell it from a
+        // failed insert. Either the key is still held by a queued row, in which
+        // case that row's id is the right handle, or the holder released it in
+        // between, in which case this event has no row anywhere and the insert
+        // has to be retried or a real change is lost.
+        $insertId = 0;
+        for ($attempt = 0; $attempt < 2; $attempt++) {
+            if (!Db::getInstance()->execute($sql)) {
+                throw new Exception('Failed to enqueue event: ' . Db::getInstance()->getMsgError());
+            }
 
-        // Get the inserted ID, or the existing ID if duplicate was ignored
-        $insertId = (int)Db::getInstance()->Insert_ID();
+            $insertId = (int)Db::getInstance()->Insert_ID();
+            if ($insertId !== 0 || $dedupKey === null) {
+                return $insertId;
+            }
 
-        // If INSERT IGNORE coalesced onto a queued row (insertId = 0), return
-        // that row's ID so the caller still gets a valid handle.
-        if ($insertId === 0 && $dedupKey !== null) {
             $existingSql = 'SELECT `id` FROM `' . $this->tableName . '`
                            WHERE `dedup_key` = "' . pSQL($dedupKey) . '"
                            LIMIT 1';
             $existingRow = Db::getInstance()->getRow($existingSql);
             if ($existingRow && isset($existingRow['id'])) {
-                $insertId = (int)$existingRow['id'];
+                return (int)$existingRow['id'];
             }
         }
 
         return $insertId;
+    }
+
+    /**
+     * Is the coalescing column present?
+     *
+     * Cached per request. A module dropped in without the 1.3.0 upgrade running
+     * has the table but not the column.
+     *
+     * @return bool
+     */
+    private function hasDedupKeyColumn()
+    {
+        if ($this->hasDedupKeyColumn !== null) {
+            return $this->hasDedupKeyColumn;
+        }
+
+        $columns = Db::getInstance()->executeS(
+            'SHOW COLUMNS FROM `' . bqSQL($this->tableName) . '` LIKE \'dedup_key\''
+        );
+        $this->hasDedupKeyColumn = !empty($columns);
+
+        if (!$this->hasDedupKeyColumn && class_exists('PrestaShopLogger')) {
+            PrestaShopLogger::addLog(
+                'OpenLinker: outbox `dedup_key` column missing - run the module upgrade.'
+                    . ' Events are still emitted, but repeat hook fires are no longer coalesced.',
+                2,
+                null,
+                'Module',
+                null
+            );
+        }
+
+        return $this->hasDedupKeyColumn;
     }
 
     /**
@@ -291,8 +344,18 @@ class OutboxRepository
         }
 
         // Step 1: Atomically claim rows with this runId
+        //
+        // The key is released here, not at markDelivered: the HTTP POST happens
+        // between the two, so a change arriving in that gap would otherwise
+        // collide with a row that has already been sent and be dropped with no
+        // log and no row (#2603). Releasing at claim time means such a change
+        // gets a row of its own. The cost is a possible duplicate row when a
+        // delivery fails and the row is requeued, which is harmless: each row
+        // carries its own event id, so OpenLinker enqueues a second job and the
+        // pull is idempotent.
         $sql = 'UPDATE `' . $this->tableName . '`
                 SET `status` = "processing",
+                    ' . ($this->hasDedupKeyColumn() ? '`dedup_key` = NULL,' : '') . '
                     `processing_owner` = "' . pSQL($runId) . '",
                     `processing_started_at` = NOW(),
                     `updated_at` = NOW()
@@ -333,8 +396,8 @@ class OutboxRepository
      */
     public function markDelivered($outboxId)
     {
-        // Releasing `dedup_key` is what lets the next change to the same
-        // subject enqueue a row of its own (#2603).
+        // The key is normally already NULL, released at claim time. Kept here as
+        // a backstop for any row that reaches delivered without being claimed.
         $sql = 'UPDATE `' . $this->tableName . '`
                 SET `status` = "delivered",
                     `dedup_key` = NULL,

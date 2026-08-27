@@ -309,26 +309,26 @@ class OpenLinker extends CarrierModule
         Configuration::updateValue('ENABLE_ORDER_EVENTS', (int)Tools::getValue('ENABLE_ORDER_EVENTS'));
 
         // Validate and save advanced settings
-            $batchSize = (int)Tools::getValue('BATCH_SIZE');
-            if ($batchSize < 1 || $batchSize > 200) {
-                $errors[] = $this->l('Batch size must be between 1 and 200');
-            } else {
-                Configuration::updateValue('BATCH_SIZE', $batchSize);
-            }
+        $batchSize = (int)Tools::getValue('BATCH_SIZE');
+        if ($batchSize < 1 || $batchSize > 200) {
+            $errors[] = $this->l('Batch size must be between 1 and 200');
+        } else {
+            Configuration::updateValue('BATCH_SIZE', $batchSize);
+        }
 
-            $maxRetryAttempts = (int)Tools::getValue('MAX_RETRY_ATTEMPTS');
-            if ($maxRetryAttempts < 1 || $maxRetryAttempts > 100) {
-                $errors[] = $this->l('Max retry attempts must be between 1 and 100');
-            } else {
-                Configuration::updateValue('MAX_RETRY_ATTEMPTS', $maxRetryAttempts);
-            }
+        $maxRetryAttempts = (int)Tools::getValue('MAX_RETRY_ATTEMPTS');
+        if ($maxRetryAttempts < 1 || $maxRetryAttempts > 100) {
+            $errors[] = $this->l('Max retry attempts must be between 1 and 100');
+        } else {
+            Configuration::updateValue('MAX_RETRY_ATTEMPTS', $maxRetryAttempts);
+        }
 
-            $backoffMultiplier = (float)Tools::getValue('RETRY_BACKOFF_MULTIPLIER');
-            if ($backoffMultiplier < 1.0) {
-                $errors[] = $this->l('Retry backoff multiplier must be at least 1.0');
-            } else {
-                Configuration::updateValue('RETRY_BACKOFF_MULTIPLIER', $backoffMultiplier);
-            }
+        $backoffMultiplier = (float)Tools::getValue('RETRY_BACKOFF_MULTIPLIER');
+        if ($backoffMultiplier < 1.0) {
+            $errors[] = $this->l('Retry backoff multiplier must be at least 1.0');
+        } else {
+            Configuration::updateValue('RETRY_BACKOFF_MULTIPLIER', $backoffMultiplier);
+        }
 
         // Return messages
         if (!empty($errors)) {

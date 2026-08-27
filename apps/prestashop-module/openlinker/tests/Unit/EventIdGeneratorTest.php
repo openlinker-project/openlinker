@@ -35,13 +35,15 @@ class EventIdGeneratorTest extends TestCase
 
     private function generateDedupKey(
         string $externalId = self::EXTERNAL_ID,
-        string $eventType = self::EVENT_TYPE
+        string $eventType = self::EVENT_TYPE,
+        string $connectionId = self::CONNECTION_ID,
+        string $objectType = self::OBJECT_TYPE
     ): string {
         return EventIdGenerator::generateDedupKey(
             self::PROVIDER,
-            self::CONNECTION_ID,
+            $connectionId,
             $eventType,
-            self::OBJECT_TYPE,
+            $objectType,
             $externalId
         );
     }
@@ -84,6 +86,24 @@ class EventIdGeneratorTest extends TestCase
         $this->assertNotSame(
             $this->generateDedupKey(self::EXTERNAL_ID, 'product.saved'),
             $this->generateDedupKey(self::EXTERNAL_ID, 'stock.updated')
+        );
+    }
+
+    public function testDistinctConnectionsProduceDistinctDedupKeys(): void
+    {
+        // Two shops mapped to the same product id must not coalesce onto one row.
+        $this->assertNotSame(
+            $this->generateDedupKey(self::EXTERNAL_ID, self::EVENT_TYPE, 'conn-a'),
+            $this->generateDedupKey(self::EXTERNAL_ID, self::EVENT_TYPE, 'conn-b')
+        );
+    }
+
+    public function testDistinctObjectTypesProduceDistinctDedupKeys(): void
+    {
+        // A product change and a stock change can share a product id.
+        $this->assertNotSame(
+            $this->generateDedupKey(self::EXTERNAL_ID, self::EVENT_TYPE, self::CONNECTION_ID, 'product'),
+            $this->generateDedupKey(self::EXTERNAL_ID, self::EVENT_TYPE, self::CONNECTION_ID, 'stock')
         );
     }
 
