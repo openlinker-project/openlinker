@@ -16,7 +16,7 @@ import {
 import type { Connection } from '@openlinker/core/identifier-mapping';
 import { PrestashopApiException, PrestashopAuthenticationException } from '@openlinker/integrations-prestashop';
 
-import { PrestashopProvisioningException } from '../../../../domain/exceptions/prestashop-provisioning.exception';
+import { PrestashopTruncatedReadException } from '../../../../domain/exceptions/prestashop-truncated-read.exception';
 import type { IPrestashopWebserviceClient } from '../../../http/prestashop-webservice.client.interface';
 import { PrestashopProductPublisherAdapter } from '../prestashop-product-publisher.adapter';
 
@@ -499,7 +499,7 @@ describe('PrestashopProductPublisherAdapter', () => {
           connectionId: CONNECTION_ID,
           path: [{ sourceCategoryId: 'src-1', name: 'Gadgets' }],
         }),
-      ).rejects.toBeInstanceOf(PrestashopProvisioningException);
+      ).rejects.toBeInstanceOf(PrestashopTruncatedReadException);
       expect(client.createResource).not.toHaveBeenCalled();
     });
 

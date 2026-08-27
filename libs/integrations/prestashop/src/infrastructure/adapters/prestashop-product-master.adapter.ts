@@ -38,6 +38,10 @@ import type { PrestashopFeatureResolver } from '../provisioners/prestashop-featu
 import type { PrestashopCategoryPathResolver } from '../provisioners/prestashop-category-path.resolver';
 import type { OptionValueResolver } from '../../domain/types/prestashop-product-option.types';
 import type { PrestashopTaxRateResolver } from '../provisioners/prestashop-tax-rate.resolver';
+import {
+  PRESTASHOP_UNNARROWED_MAX_PAGES,
+  readAllPrestashopPages,
+} from '../http/prestashop-paged-read';
 import type {
   ProductTaxRateReader,
   ReadProductTaxRateInput,
@@ -448,12 +452,20 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort, Produc
     const prestashopProduct = await this.fetchProductResource(prestashopProductId.externalId);
 
     // Fetch combinations from PrestaShop
-    const combinations = await this.httpClient.listResources<PrestashopCombination>(
-      'combinations',
+    // Paged: a product with more than a page of combinations reported only the
+    // first page, and the missing variants read as not existing (#2608).
+    const combinations = await readAllPrestashopPages<PrestashopCombination>(
+      (limit, offset) =>
+        this.httpClient.listResources<PrestashopCombination>(
+          'combinations',
+          { custom: { id_product: prestashopProductId.externalId } },
+          limit,
+          offset
+        ),
       {
-        custom: {
-          id_product: prestashopProductId.externalId,
-        },
+        resource: 'combinations',
+        connectionId: this.connection.id,
+        detail: `id_product=${prestashopProductId.externalId}`,
       }
     );
 
@@ -768,7 +780,23 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort, Produc
   async getCategories(): Promise<Category[]> {
     this.logger.debug(`Fetching all categories (connection: ${this.connection.id})`);
 
-    const raw = await this.httpClient.listResources<Record<string, unknown>>('categories');
+    // Shop-wide enumeration, so it gets the wide page budget: a large catalogue
+    // legitimately runs to tens of thousands of category rows, and a category
+    // missing from this list is unmappable with no error anywhere (#2608).
+    const raw = await readAllPrestashopPages<Record<string, unknown>>(
+      (limit, offset) =>
+        this.httpClient.listResources<Record<string, unknown>>(
+          'categories',
+          undefined,
+          limit,
+          offset
+        ),
+      {
+        resource: 'categories',
+        connectionId: this.connection.id,
+        maxPages: PRESTASHOP_UNNARROWED_MAX_PAGES,
+      }
+    );
 
     const langId = this.getLangId();
 

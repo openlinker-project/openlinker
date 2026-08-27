@@ -23,6 +23,10 @@
  *     WebService cannot express. Every key in the package is a source literal,
  *     so the malformed key is a programming error that re-sends unchanged: the
  *     retry ladder can only delay the report by its full backoff.
+ *   - `PrestashopTruncatedReadException` (#2608) - a paged collection read filled
+ *     its whole page budget without reaching the end. The collection does not
+ *     shrink because a job retried, so every attempt reads the same pages and
+ *     refuses identically; the operator needs the message, not the backoff.
  *
  * Neither of the first two reaches this classifier on the shipped ORDER-CREATE
  * path today, so the "attempts" above describe what retrying would cost, not what
@@ -58,13 +62,15 @@ import type { RetryClassifierPort } from '@openlinker/core/sync';
 import { PrestashopTaxRateUnknownException } from '../../domain/exceptions/prestashop-tax-rate-unknown.exception';
 import { PrestashopCurrencyUnknownException } from '../../domain/exceptions/prestashop-currency-unknown.exception';
 import { PrestashopInvalidFilterException } from '../../domain/exceptions/prestashop-invalid-filter.exception';
+import { PrestashopTruncatedReadException } from '../../domain/exceptions/prestashop-truncated-read.exception';
 
 export class PrestashopRetryClassifierAdapter implements RetryClassifierPort {
   isNonRetryable(cause: unknown): boolean {
     return (
       cause instanceof PrestashopTaxRateUnknownException ||
       cause instanceof PrestashopCurrencyUnknownException ||
-      cause instanceof PrestashopInvalidFilterException
+      cause instanceof PrestashopInvalidFilterException ||
+      cause instanceof PrestashopTruncatedReadException
     );
   }
 }

@@ -39,6 +39,8 @@ import {
   PrestashopApiException,
   PrestashopResourceNotFoundException,
 } from '@openlinker/integrations-prestashop';
+import { PrestashopTruncatedReadException } from '../../domain/exceptions/prestashop-truncated-read.exception';
+import { readAllPrestashopPages } from '../http/prestashop-paged-read';
 import { Logger } from '@openlinker/shared/logging';
 
 /**
@@ -411,10 +413,28 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort {
       // `order_details`; the row field shape (product_id/quantity/price/
       // reference) is unchanged, so the existing PrestashopOrderRow mapping
       // still applies.
-      return await this.httpClient.listResources<PrestashopOrderRow>('order_details', {
-        custom: { id_order: orderId },
-      });
+      // Paged: a wholesale order runs past one page, and one page of lines is
+      // indistinguishable from all of them (#2608).
+      return await readAllPrestashopPages<PrestashopOrderRow>(
+        (limit, offset) =>
+          this.httpClient.listResources<PrestashopOrderRow>(
+            'order_details',
+            { custom: { id_order: orderId } },
+            limit,
+            offset
+          ),
+        {
+          resource: 'order_details',
+          connectionId: this.connection.id,
+          detail: `id_order=${String(orderId)}`,
+        }
+      );
     } catch (error) {
+      // A truncated read must not degrade into the empty-lines answer below: an
+      // order with no lines mirrors as an order with nothing bought.
+      if (error instanceof PrestashopTruncatedReadException) {
+        throw error;
+      }
       this.logger.warn(
         `Failed to fetch order rows for order ${orderId}: ${(error as Error).message}`
       );

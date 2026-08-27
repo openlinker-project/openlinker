@@ -85,7 +85,9 @@ describe('PrestashopInventoryMasterAdapter', () => {
             id_product: externalProductId,
             id_product_attribute: 0,
           }),
-        })
+        }),
+        100,
+        0
       );
       expect(result.productId).toBe(productId);
       expect(result.quantity).toBe(50);
@@ -130,7 +132,9 @@ describe('PrestashopInventoryMasterAdapter', () => {
         expect.objectContaining({
           // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
           custom: expect.objectContaining({ id_product: '42' }),
-        })
+        }),
+        100,
+        0
       );
       expect(result.quantity).toBe(75);
     });
@@ -194,7 +198,9 @@ describe('PrestashopInventoryMasterAdapter', () => {
         expect.objectContaining({
           // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
           custom: expect.objectContaining({ id_product_attribute: combinationExternalId }),
-        })
+        }),
+        100,
+        0
       );
       expect(result.quantity).toBe(30);
     });
@@ -349,7 +355,9 @@ describe('PrestashopInventoryMasterAdapter', () => {
       // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access -- test mock: narrowing dynamic spy / fixture / response shape
       expect(mockHttpClient.listResources).toHaveBeenCalledWith(
         'stock_availables',
-        expect.objectContaining({ custom: { id_product: '38' } })
+        expect.objectContaining({ custom: { id_product: '38' } }),
+        100,
+        0
       );
       // Combination ids resolve under entityType='ProductVariant'.
       // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access -- test mock: narrowing dynamic spy / fixture / response shape
@@ -575,7 +583,9 @@ describe('PrestashopInventoryMasterAdapter', () => {
       expect(listResources).toHaveBeenCalledWith(
         'configurations',
         // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
-        expect.objectContaining({ custom: { name: 'PS_PACK_STOCK_TYPE' } })
+        expect.objectContaining({ custom: { name: 'PS_PACK_STOCK_TYPE' } }),
+        1,
+        0
       );
       // The sentinel resolved to "decrement components", so the derived 3 wins.
       expect(result[0].quantity).toBe(3);
