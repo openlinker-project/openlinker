@@ -42,28 +42,33 @@ import type {
   AutomationActionExecutionInput,
   AutomationActionExecutorPort,
 } from '../../../domain/ports/automation-action-executor.port';
-import type { AutomationActionKind } from '../../../domain/types/automation-action.types';
+import { AutomationActionValues } from '../../../domain/types/automation-action.types';
+import {
+  AUTOMATION_ACTION_AVAILABILITY,
+  unavailableReasonForAction,
+} from '../../../domain/types/automation-action-availability.types';
 import type { AutomationStepResult } from '../../../domain/types/automation-step-result.types';
 
 /**
- * Why each unavailable action cannot run, in operator-facing words that name
- * the blocking work. One entry per registered-but-unavailable action.
+ * Why each unavailable action cannot run, in operator-facing words that name the
+ * blocking work.
+ *
+ * **Derived from `AUTOMATION_ACTION_AVAILABILITY` (#2363), not restated.** The
+ * same strings are reported by `/automations/vocabulary`, so what an operator is
+ * told at AUTHORING time and what they are told at FIRING time are the same
+ * sentence by construction — the #2229 "reported === enforced" rule. Two copies
+ * is how a composer that says "not built yet" ends up beside an executor that
+ * says something else about the same action, and the operator cannot tell which
+ * one is lying.
+ *
+ * Kept as a named export because it is this file's published surface; only its
+ * source moved.
  */
-export const AUTOMATION_UNAVAILABLE_ACTION_REASONS = {
-  'issue-sales-document':
-    'Issuing a sales document from an automation needs an order-shaped read that OpenLinker does not ' +
-    'ship yet: the auto-issue entry point takes a full order, and only order ingestion holds one. ' +
-    'Issue the document from the order page until that read lands.',
-  'dispatch-shipment':
-    'Buying a shipping label from an automation needs a recipient and parcel that cannot be derived ' +
-    'from a stored order, and package presets do not exist yet. Buy the label from the order page.',
-  'place-hold':
-    'Order holds are not built yet (#2339), so an automation cannot place one. Hold the order from the order page.',
-  'release-hold':
-    'Order holds are not built yet (#2339), so an automation cannot lift one. Lift the hold from the order page.',
-} as const satisfies Partial<Record<AutomationActionKind, string>>;
-
-export type AutomationUnavailableAction = keyof typeof AUTOMATION_UNAVAILABLE_ACTION_REASONS;
+export const AUTOMATION_UNAVAILABLE_ACTION_REASONS = Object.fromEntries(
+  AutomationActionValues.filter(
+    (action) => AUTOMATION_ACTION_AVAILABILITY[action].availability === 'unavailable',
+  ).map((action) => [action, AUTOMATION_ACTION_AVAILABILITY[action].reason]),
+) as Readonly<Record<string, string>>;
 
 @Injectable()
 export class UnavailableActionExecutorService implements AutomationActionExecutorPort {
@@ -71,10 +76,11 @@ export class UnavailableActionExecutorService implements AutomationActionExecuto
 
   execute(input: AutomationActionExecutionInput): Promise<AutomationStepResult> {
     const action = input.action.action;
+    // An action with no DECLARED reason is one this build does not recognise at
+    // all (a rule saved by a newer build). Reporting a guessed reason would be a
+    // claim about work nobody scheduled, so the fallback says only what is known.
     const reason =
-      action in AUTOMATION_UNAVAILABLE_ACTION_REASONS
-        ? AUTOMATION_UNAVAILABLE_ACTION_REASONS[action as AutomationUnavailableAction]
-        : `Action "${action}" has no executor in this build.`;
+      unavailableReasonForAction(action) ?? `Action "${action}" has no executor in this build.`;
 
     this.logger.warn(
       `Automation "${input.rule.name}" (${input.rule.id}) step ${input.stepIndex} ` +

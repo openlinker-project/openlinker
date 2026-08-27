@@ -48,25 +48,10 @@ import {
   ORDER_RECORD_REPOSITORY_TOKEN,
 } from '../../orders.tokens';
 import { deriveOrderAnalyticsScalars, deriveOrderLineItems } from '../../domain/order-analytics-projection';
+import { buildOrderAutomationFacts } from '../../domain/order-automation-facts-projection';
 import { buildSalesAndChannelAnalytics } from '../../domain/order-sales-aggregation';
 import { buildTopProducts } from '../../domain/top-products-aggregation';
 import type { TopProductFilters, TopProductsResult } from '../../domain/types/top-products.types';
-
-/**
- * Read the buyer's country out of the untyped order snapshot for automation facts (#2360).
- *
- * `OrderRecord.orderSnapshot` is a `Record<string, unknown>`, so this narrows
- * defensively and returns `undefined` — meaning UNKNOWN, never a guess — on any
- * shape it does not recognise. #2359's evaluator treats an absent fact as
- * `unknown` and reports it in the trace, so a snapshot that cannot answer
- * produces an explanation rather than a silent non-match.
- */
-function readSnapshotCountry(snapshot: Record<string, unknown>): string | undefined {
-  const shipping = snapshot.shippingAddress;
-  if (typeof shipping !== 'object' || shipping === null) return undefined;
-  const country = (shipping as Record<string, unknown>).countryIso2;
-  return typeof country === 'string' && country.length > 0 ? country : undefined;
-}
 
 @Injectable()
 export class OrderRecordService implements IOrderRecordService {
@@ -685,17 +670,12 @@ export class OrderRecordService implements IOrderRecordService {
     try {
       await this.automationEmission.emit({
         trigger: 'order.packed',
-        facts: {
-          subjectKind: 'order',
-          subjectId: record.internalOrderId,
+        facts: buildOrderAutomationFacts(
+          record,
           // The transition instant, not `record.placedAt`: the fact this trigger
           // is about is "an operator marked it packed", which happened now.
-          occurredAt: packedAt,
-          sourceConnectionId: record.sourceConnectionId,
-          country: readSnapshotCountry(record.orderSnapshot),
-          totalGross: record.totalAmount ?? undefined,
-          currency: record.currency ?? undefined,
-        },
+          packedAt
+        ),
         now: packedAt,
       });
     } catch (error) {

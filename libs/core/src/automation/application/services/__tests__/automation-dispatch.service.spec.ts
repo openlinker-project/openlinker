@@ -69,6 +69,9 @@ function capturingRecorder(): {
       failure = error;
     },
     recorder: {
+      // #2363: the contract declares whether firings are persisted. This double
+      // only observes, so it answers `false` like the shipped recorder does.
+      persistsRuns: false,
       record: (run: AutomationRunRecord): Promise<void> => {
         if (failure) return Promise.reject(failure);
         runs.push(run);

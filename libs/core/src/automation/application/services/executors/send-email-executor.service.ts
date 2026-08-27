@@ -29,6 +29,7 @@ import type { IOrderRecordService } from '@openlinker/core/orders';
 import type { MailerPort } from '@openlinker/core/users';
 
 import { renderAutomationTemplate } from '../../../domain/domain-services/render-automation-template';
+import { availabilityForAction } from '../../../domain/types/automation-action-availability.types';
 import type {
   AutomationActionExecutionInput,
   AutomationActionExecutorPort,
@@ -59,11 +60,23 @@ export class SendEmailExecutorService implements AutomationActionExecutorPort {
       tokenName: 'MAILER_TOKEN',
     });
     if (!mailer) {
+      // The DECLARED reason (#2363), not a second wording of it: `/automations/
+      // vocabulary` reports A4 as `partial` with this exact sentence, so what the
+      // composer warned about and what the run log says are the same statement.
+      const declared = availabilityForAction('send-email').reason;
+      // Logged as well as returned. The declared string is a standing fact about
+      // the build; this line is the timestamped observation that it just bit, on
+      // this rule, in this process — which is what an operator correlates against
+      // when they ask why one trigger sends and another does not.
+      this.logger.warn(
+        `Automation "${input.rule.name}" (${input.rule.id}) step ${input.stepIndex} ` +
+          `could not send: no MailerPort is bound in this process.`,
+      );
       return {
         ...step,
         status: 'failed',
-        detail:
-          'No email sender is configured in this process, so no email was sent. Automation emails currently require the API process.',
+        detail: declared ?? 'No email sender is configured in this process, so no email was sent.',
+        unavailableReason: declared ?? undefined,
       };
     }
 

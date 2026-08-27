@@ -3,6 +3,7 @@
  */
 import { AutomationRule } from '../../../../domain/entities/automation-rule.entity';
 import type { AutomationAction } from '../../../../domain/types/automation-action.types';
+import { availabilityForAction } from '../../../../domain/types/automation-action-availability.types';
 import { AutomationActionValues } from '../../../../domain/types/automation-action.types';
 import type { AutomationSubjectFacts } from '../../../../domain/types/automation-facts.types';
 import { AutomationActionExecutorRegistry } from '../../automation-action-executor.registry';
@@ -173,10 +174,21 @@ describe('SendEmailExecutorService', () => {
   it('should fail naming the missing binding when no mailer is wired into this process', async () => {
     // The worker has no MAILER_TOKEN today; the operator must be able to tell
     // that apart from a bounced email.
+    //
+    // Asserted against the DECLARED reason rather than a literal (#2363): the
+    // same sentence is what `/automations/vocabulary` reports for A4's `partial`
+    // availability, so a composer that warned about this and a run log that
+    // explains it cannot drift. Pinning a copy here would be a second source and
+    // would fail the moment the operator-facing wording improved.
+    const declared = availabilityForAction('send-email');
     const executor = new SendEmailExecutorService(stubResolver({}));
     const result = await executor.execute(input(EMAIL_TO_ADDRESS));
     expect(result.status).toBe('failed');
-    expect(result.detail).toContain('email sender');
+    expect(declared.availability).toBe('partial');
+    expect(result.detail).toBe(declared.reason);
+    // Named as "not built here" rather than "it broke" — the distinction the
+    // step's `unavailableReason` field exists for.
+    expect(result.unavailableReason).toBe(declared.reason);
   });
 
   it('should send to the buyer address from the order snapshot', async () => {

@@ -43,7 +43,10 @@
  */
 import { Inject, Injectable } from '@nestjs/common';
 
-import type { IAutomationRulesService } from '../interfaces/automation-rules.service.interface';
+import type {
+  AutomationMoneyAckInput,
+  IAutomationRulesService,
+} from '../interfaces/automation-rules.service.interface';
 import { AUTOMATION_RULE_REPOSITORY_TOKEN } from '../../automation.tokens';
 import {
   AutomationRuleRepositoryPort} from '../../domain/ports/automation-rule-repository.port';
@@ -100,13 +103,57 @@ export class AutomationRulesService implements IAutomationRulesService {
     private readonly ruleRepository: AutomationRuleRepositoryPort,
   ) {}
 
-  async createRule(input: AutomationRuleInput): Promise<AutomationRule> {
+  async createRule(
+    input: AutomationRuleInput,
+    moneyAck: AutomationMoneyAckInput | null = null,
+  ): Promise<AutomationRule> {
     const persistInput = this.validateAndHash(input);
     await this.assertNoConflict(persistInput, null);
-    return this.ruleRepository.create(persistInput);
+    const created = await this.ruleRepository.create(persistInput);
+    if (moneyAck === null) return created;
+    // Stamped after the row exists, for the same reason the update path stamps
+    // last: a crash leaves an un-acknowledged rule, never an acknowledgement
+    // attached to a definition that was never saved.
+    return this.ruleRepository.setMoneyAck(created.id, moneyAck.byUserId, new Date());
   }
 
-  async updateRule(id: string, input: AutomationRuleInput): Promise<AutomationRule> {
+  /**
+   * Re-validate, re-hash and persist — and resolve the §5.7 S3-2 money
+   * acknowledgement (#2363).
+   *
+   * ## The ack is cleared if and only if the `definitionHash` changes
+   *
+   * The ack is evidence about WHAT THE RULE DOES, and the definition already has
+   * a canonical identity: the SHA-256 over `(trigger, triggerConfig, conditions,
+   * actions)` #2358 computes for the duplicate guard. So a rename, an arm/disarm
+   * or a moved effective window keeps it; changing the trigger, a threshold, a
+   * condition or any action clears it.
+   *
+   * Both alternatives are worse in a way that matters. *Clear on every edit*
+   * makes an operator click through a money warning to fix a typo in a name,
+   * which is how a warning stops being read — and the ack's entire value is that
+   * somebody actually considered it. *Never clear* lets an ack given for "email
+   * me when an order is packed" carry forward silently to "buy a DPD label when
+   * an order is packed": consent on record for an act nobody consented to. The
+   * hash is the only line between the two that is neither ceremony nor a lie, it
+   * needs no new state, and it cannot drift because the same value already
+   * decides rule identity everywhere else in this context.
+   *
+   * ## Ordering, and the failure direction it buys
+   *
+   * The clear runs BEFORE the definition update; a new stamp runs after it
+   * succeeds. A crash between them therefore leaves the OLD definition with NO
+   * ack — never a new definition carrying an old ack. Nothing in the dispatcher
+   * reads the ack (it is an authoring-time record, not a firing gate), so that
+   * costs one re-acknowledgement and can never cause a wrong firing. Two writes
+   * rather than one transaction is the deliberate trade: the safe direction is
+   * available by ordering alone.
+   */
+  async updateRule(
+    id: string,
+    input: AutomationRuleInput,
+    moneyAck: AutomationMoneyAckInput | null = null,
+  ): Promise<AutomationRule> {
     const existing = await this.ruleRepository.findById(id);
     if (existing === null) throw new AutomationRuleNotFoundError(id);
 
@@ -114,7 +161,35 @@ export class AutomationRulesService implements IAutomationRulesService {
     // Exclude the row being updated, so re-saving a rule unchanged is not a
     // conflict with itself.
     await this.assertNoConflict(persistInput, id);
-    return this.ruleRepository.update(id, persistInput);
+
+    const definitionChanged = persistInput.definitionHash !== existing.definitionHash;
+    if (definitionChanged && existing.moneyAckByUserId !== null) {
+      await this.ruleRepository.setMoneyAck(id, null, null);
+    }
+
+    const updated = await this.ruleRepository.update(id, persistInput);
+    if (moneyAck === null) return updated;
+    return this.ruleRepository.setMoneyAck(id, moneyAck.byUserId, new Date());
+  }
+
+  countRulesByTrigger(): Promise<Map<AutomationTrigger, number>> {
+    return this.ruleRepository.countRulesByTrigger();
+  }
+
+  /**
+   * The narrow-and-hash step with **no repository call of any kind** — see the
+   * interface docblock. Extracted from `validateAndHash` rather than duplicating
+   * it, so the dry run cannot come to disagree with the write path about what is
+   * legal.
+   */
+  validateRule(input: AutomationRuleInput): AutomationRulePersistInput {
+    return this.validateAndHash(input);
+  }
+
+  async setMoneyAck(id: string, byUserId: string | null): Promise<AutomationRule> {
+    const existing = await this.ruleRepository.findById(id);
+    if (existing === null) throw new AutomationRuleNotFoundError(id);
+    return this.ruleRepository.setMoneyAck(id, byUserId, byUserId === null ? null : new Date());
   }
 
   async getRule(id: string): Promise<AutomationRule | null> {

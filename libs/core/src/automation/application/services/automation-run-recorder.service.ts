@@ -29,6 +29,13 @@ import type {
 export class LoggingAutomationRunRecorder implements IAutomationRunRecorderService {
   private readonly logger = new Logger(LoggingAutomationRunRecorder.name);
 
+  /**
+   * `false` — this implementation logs and returns. `/automations/:id/runs`
+   * reports it so an empty fired log reads as "not built yet" rather than
+   * "nothing fired". #2385 flips it by replacing the class.
+   */
+  readonly persistsRuns = false;
+
   record(run: AutomationRunRecord): Promise<void> {
     const steps = run.steps
       .map((step) => `${step.stepIndex}:${step.action}=${step.status}`)

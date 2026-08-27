@@ -25,6 +25,7 @@ import { InventoryLocationExceptionFilter } from '../../src/common/filters/inven
 import { TaxonomySourceUnavailableFilter } from '../../src/common/filters/taxonomy-source-unavailable.filter';
 import { AvailabilityUnknownFilter } from '../../src/common/filters/availability-unknown.filter';
 import { ReturnsExceptionFilter } from '../../src/common/filters/returns-exception.filter';
+import { AutomationExceptionFilter } from '../../src/common/filters/automation-exception.filter';
 
 const harness = createIntegrationTestHarness({
   imports: [AppModule],
@@ -40,7 +41,8 @@ const harness = createIntegrationTestHarness({
       new TaxonomySourceUnavailableFilter(),
       new InventoryLocationExceptionFilter(),
       new AvailabilityUnknownFilter(),
-      new ReturnsExceptionFilter()
+      new ReturnsExceptionFilter(),
+      new AutomationExceptionFilter()
     );
     // Mirror main.ts's URI versioning (#1133) so int-specs exercise the same
     // `/v1` routing prod serves. Only the version-neutral routes (the `/webhooks`

@@ -147,6 +147,21 @@ export class AutomationRuleRepository implements AutomationRuleRepositoryPort {
     await this.ormRepository.delete({ id });
   }
 
+  async setMoneyAck(
+    id: string,
+    byUserId: string | null,
+    at: Date | null,
+  ): Promise<AutomationRule> {
+    // A targeted UPDATE rather than a load-merge-save: nothing else on the row is
+    // being written, and a merge would re-serialise the jsonb columns — which
+    // read back through the DROPPING narrowers, so a rule carrying one malformed
+    // persisted condition would silently lose it on an unrelated acknowledgement.
+    await this.ormRepository.update({ id }, { moneyAckByUserId: byUserId, moneyAckAt: at });
+    const updated = await this.ormRepository.findOne({ where: { id } });
+    if (updated === null) throw new AutomationRuleNotFoundError(id);
+    return this.toDomain(updated);
+  }
+
   private async saveTranslatingConflict(
     entity: AutomationRuleOrmEntity,
     input: AutomationRulePersistInput,

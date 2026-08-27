@@ -37,6 +37,7 @@ export * from './domain/types/automation-run.types';
 export * from './domain/types/automation-gate.types';
 export * from './domain/types/automation-step-result.types';
 export * from './domain/types/automation-legality.types';
+export * from './domain/types/automation-action-availability.types';
 export * from './domain/types/automation-evaluation.types';
 export * from './domain/types/automation-facts.types';
 
@@ -50,6 +51,7 @@ export * from './domain/entities/automation-trigger-firing.entity';
 
 export * from './domain/ports/automation-action-executor.port';
 export * from './domain/ports/automation-rule-repository.port';
+export * from './domain/ports/automation-run-repository.port';
 export * from './domain/ports/automation-trigger-firing-repository.port';
 
 export * from './domain/exceptions/automation-rule-conflict.error';
@@ -62,7 +64,15 @@ export * from './domain/exceptions/automation-illegal-pair.error';
 export * from './domain/exceptions/automation-illegal-condition-field.error';
 
 export * from './application/types/automation-rule-write.types';
-export type { IAutomationRulesService } from './application/interfaces/automation-rules.service.interface';
+export type {
+  IAutomationRulesService,
+  AutomationMoneyAckInput,
+} from './application/interfaces/automation-rules.service.interface';
+export type {
+  IAutomationRunsReadService,
+  AutomationRunLogPage,
+} from './application/interfaces/automation-runs-read.service.interface';
+export { AUTOMATION_RUN_LOG_PAGE_SIZE } from './application/interfaces/automation-runs-read.service.interface';
 export type {
   IAutomationDispatchService,
   AutomationDispatchInput,
@@ -82,6 +92,7 @@ export type {
   AutomationEmissionResult,
 } from './application/interfaces/automation-trigger-emission.service.interface';
 export { AutomationRulesService } from './application/services/automation-rules.service';
+export { AutomationRunsReadService } from './application/services/automation-runs-read.service';
 export { AutomationTriggerEmissionService } from './application/services/automation-trigger-emission.service';
 export { AutomationDispatchService } from './application/services/automation-dispatch.service';
 export { AutomationIrreversibleGateService } from './application/services/automation-irreversible-gate.service';

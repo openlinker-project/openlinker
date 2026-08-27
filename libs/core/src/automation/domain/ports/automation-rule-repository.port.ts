@@ -68,4 +68,17 @@ export interface AutomationRuleRepositoryPort {
   update(id: string, input: AutomationRulePersistInput): Promise<AutomationRule>;
 
   delete(id: string): Promise<void>;
+
+  /**
+   * Stamp or clear the §5.7 S3-2 money acknowledgement (#2363).
+   *
+   * A dedicated write rather than two more fields on `AutomationRulePersistInput`:
+   * the ack is evidence about a past operator act, and the persist input is what
+   * the `definitionHash` is computed over — putting the ack inside it would make
+   * the acknowledgement part of the identity it is evidence ABOUT, so every
+   * acknowledgement would change the hash and clear itself.
+   *
+   * @throws {AutomationRuleNotFoundError}
+   */
+  setMoneyAck(id: string, byUserId: string | null, at: Date | null): Promise<AutomationRule>;
 }

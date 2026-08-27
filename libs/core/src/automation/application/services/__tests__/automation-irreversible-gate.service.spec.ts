@@ -65,7 +65,7 @@ describe('AutomationIrreversibleGateService', () => {
     // it decorates, and the token is already taken by the gate itself. Hence
     // the cast: only `dispatch` is exercised, so a structural stub is enough.
     dispatcher = { dispatch: jest.fn().mockResolvedValue(undefined) };
-    recorder = { record: jest.fn().mockResolvedValue(undefined) };
+    recorder = { persistsRuns: false, record: jest.fn().mockResolvedValue(undefined) };
     service = new AutomationIrreversibleGateService(
       dispatcher as unknown as AutomationDispatchService,
       recorder,

@@ -21,8 +21,10 @@ import { AutomationRuleOrmEntity } from './infrastructure/persistence/entities/a
 import { AutomationRunOrmEntity } from './infrastructure/persistence/entities/automation-run.orm-entity';
 import { AutomationTriggerFiringOrmEntity } from './infrastructure/persistence/entities/automation-trigger-firing.orm-entity';
 import { AutomationRuleRepository } from './infrastructure/persistence/repositories/automation-rule.repository';
+import { AutomationRunRepository } from './infrastructure/persistence/repositories/automation-run.repository';
 import { AutomationTriggerFiringRepository } from './infrastructure/persistence/repositories/automation-trigger-firing.repository';
 import { AutomationRulesService } from './application/services/automation-rules.service';
+import { AutomationRunsReadService } from './application/services/automation-runs-read.service';
 import { AutomationTriggerEmissionService } from './application/services/automation-trigger-emission.service';
 import { AutomationDispatchService } from './application/services/automation-dispatch.service';
 import { AutomationIrreversibleGateService } from './application/services/automation-irreversible-gate.service';
@@ -35,8 +37,10 @@ import { UnavailableActionExecutorService } from './application/services/executo
 import {
   AUTOMATION_DISPATCH_SERVICE_TOKEN,
   AUTOMATION_RULES_SERVICE_TOKEN,
+  AUTOMATION_RUNS_READ_SERVICE_TOKEN,
   AUTOMATION_RUN_RECORDER_TOKEN,
   AUTOMATION_RULE_REPOSITORY_TOKEN,
+  AUTOMATION_RUN_REPOSITORY_TOKEN,
   AUTOMATION_TRIGGER_EMISSION_SERVICE_TOKEN,
   AUTOMATION_TRIGGER_FIRING_REPOSITORY_TOKEN,
 } from './automation.tokens';
@@ -52,6 +56,8 @@ import {
   providers: [
     AutomationRuleRepository,
     { provide: AUTOMATION_RULE_REPOSITORY_TOKEN, useExisting: AutomationRuleRepository },
+    AutomationRunRepository,
+    { provide: AUTOMATION_RUN_REPOSITORY_TOKEN, useExisting: AutomationRunRepository },
     AutomationRulesService,
     { provide: AUTOMATION_RULES_SERVICE_TOKEN, useExisting: AutomationRulesService },
     AutomationTriggerFiringRepository,
@@ -81,6 +87,11 @@ import {
       provide: AUTOMATION_TRIGGER_EMISSION_SERVICE_TOKEN,
       useExisting: AutomationTriggerEmissionService,
     },
+    // Declared AFTER the recorder it reads: `AutomationRunsReadService` answers
+    // "are firings persisted in this build" from the bound recorder, which is
+    // the only component that knows (#2363).
+    AutomationRunsReadService,
+    { provide: AUTOMATION_RUNS_READ_SERVICE_TOKEN, useExisting: AutomationRunsReadService },
   ],
   exports: [
     AUTOMATION_RULE_REPOSITORY_TOKEN,
@@ -88,6 +99,7 @@ import {
     AUTOMATION_TRIGGER_FIRING_REPOSITORY_TOKEN,
     AUTOMATION_DISPATCH_SERVICE_TOKEN,
     AUTOMATION_RUN_RECORDER_TOKEN,
+    AUTOMATION_RUNS_READ_SERVICE_TOKEN,
     AUTOMATION_TRIGGER_EMISSION_SERVICE_TOKEN,
     AutomationActionExecutorRegistry,
   ],

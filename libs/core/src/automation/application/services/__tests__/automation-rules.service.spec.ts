@@ -58,6 +58,8 @@ interface RuleOverrides {
   effectiveTo?: Date | null;
   isActive?: boolean;
   definitionHash?: string;
+  moneyAckByUserId?: string | null;
+  moneyAckAt?: Date | null;
 }
 
 /**
@@ -77,8 +79,8 @@ function rule(overrides: RuleOverrides = {}): AutomationRule {
     overrides.isActive ?? true,
     overrides.effectiveFrom ?? new Date('2026-09-01'),
     overrides.effectiveTo ?? null,
-    null,
-    null,
+    overrides.moneyAckByUserId ?? null,
+    overrides.moneyAckAt ?? null,
     new Date('2026-08-01'),
     new Date('2026-08-01'),
   );
@@ -109,6 +111,9 @@ describe('AutomationRulesService', () => {
         Promise.resolve(rule({ definitionHash: persist.definitionHash })),
       ),
       delete: jest.fn(),
+      setMoneyAck: jest.fn((id: string, byUserId: string | null, at: Date | null) =>
+        Promise.resolve(rule({ id, moneyAckByUserId: byUserId, moneyAckAt: at })),
+      ),
     } as unknown as jest.Mocked<AutomationRuleRepositoryPort>;
 
     const module: TestingModule = await Test.createTestingModule({
@@ -301,6 +306,112 @@ describe('AutomationRulesService', () => {
       repository.findById.mockResolvedValue(rule({ id: 'rule-1' }));
       await service.deleteRule('rule-1');
       expect(repository.delete).toHaveBeenCalledWith('rule-1');
+    });
+  });
+
+  describe('validateRule (#2363 — the dry run\'s draft path)', () => {
+    it('should apply the same refusals a save applies', () => {
+      // A preview and a save must not disagree about what is legal, or the
+      // operator passes the gate and then cannot save what they tested.
+      expect(() => service.validateRule(input({ trigger: 'return.received' }))).toThrow(
+        AutomationIllegalPairError,
+      );
+      expect(() => service.validateRule(input({ actions: [] }))).toThrow(AutomationStepCountError);
+      expect(() => service.validateRule(input({ conditions: [{ field: 'nope' }] }))).toThrow(
+        AutomationInvalidConditionError,
+      );
+    });
+
+    it('should compute the same hash a save would, without touching the repository', () => {
+      // Non-mutation, structurally: no repository method is reachable from this
+      // call. The int-spec pins the same property end to end by counting rows.
+      const validated = service.validateRule(input());
+      expect(validated.definitionHash).toMatch(/^[0-9a-f]{64}$/);
+      expect(repository.create).not.toHaveBeenCalled();
+      expect(repository.update).not.toHaveBeenCalled();
+      expect(repository.setMoneyAck).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('the money acknowledgement (#2363, spec §5.7 S3-2)', () => {
+    it('should stamp the ack on create when the caller supplies one', async () => {
+      await service.createRule(input({ isActive: true }), { byUserId: 'user-7' });
+      expect(repository.setMoneyAck).toHaveBeenCalledWith('rule-1', 'user-7', expect.any(Date));
+    });
+
+    it('should not stamp anything when no ack is supplied', async () => {
+      await service.createRule(input({ isActive: true }));
+      expect(repository.setMoneyAck).not.toHaveBeenCalled();
+    });
+
+    it('should CLEAR an existing ack when the definition changes', async () => {
+      // The ack is evidence about what the rule DOES. An ack given for "email me"
+      // must not carry forward to "buy a label".
+      repository.findById.mockResolvedValue(
+        rule({ definitionHash: 'a-different-hash', moneyAckByUserId: 'user-7' }),
+      );
+      await service.updateRule('rule-1', input());
+      expect(repository.setMoneyAck).toHaveBeenCalledWith('rule-1', null, null);
+    });
+
+    it('should clear BEFORE the definition is written, so a crash never leaves a stale ack', async () => {
+      const order: string[] = [];
+      repository.findById.mockResolvedValue(
+        rule({ definitionHash: 'a-different-hash', moneyAckByUserId: 'user-7' }),
+      );
+      repository.setMoneyAck.mockImplementation((id: string) => {
+        order.push('ack');
+        return Promise.resolve(rule({ id }));
+      });
+      repository.update.mockImplementation(() => {
+        order.push('update');
+        return Promise.resolve(rule());
+      });
+
+      await service.updateRule('rule-1', input());
+
+      // Clear first: a failure between the two leaves the OLD definition with NO
+      // ack, never a new definition carrying an old one.
+      expect(order).toEqual(['ack', 'update']);
+    });
+
+    it('should PRESERVE the ack when only the name changes', async () => {
+      // A rename must not make an operator click through a money warning again —
+      // that is how a warning stops being read.
+      const validated = service.validateRule(input());
+      repository.findById.mockResolvedValue(
+        rule({ definitionHash: validated.definitionHash, moneyAckByUserId: 'user-7' }),
+      );
+      await service.updateRule('rule-1', input({ name: 'Renamed, same behaviour' }));
+      expect(repository.setMoneyAck).not.toHaveBeenCalled();
+    });
+
+    it('should preserve the ack when only the effective window moves', async () => {
+      const validated = service.validateRule(input());
+      repository.findById.mockResolvedValue(
+        rule({ definitionHash: validated.definitionHash, moneyAckByUserId: 'user-7' }),
+      );
+      await service.updateRule('rule-1', input({ effectiveTo: new Date('2027-01-01') }));
+      expect(repository.setMoneyAck).not.toHaveBeenCalled();
+    });
+
+    it('should not clear when there was no ack to clear', async () => {
+      repository.findById.mockResolvedValue(rule({ definitionHash: 'a-different-hash' }));
+      await service.updateRule('rule-1', input());
+      expect(repository.setMoneyAck).not.toHaveBeenCalled();
+    });
+
+    it('should refuse setMoneyAck for a rule that does not exist', async () => {
+      repository.findById.mockResolvedValue(null);
+      await expect(service.setMoneyAck('nope', 'user-7')).rejects.toThrow(
+        AutomationRuleNotFoundError,
+      );
+    });
+
+    it('should pass a null instant when clearing through setMoneyAck', async () => {
+      repository.findById.mockResolvedValue(rule({ moneyAckByUserId: 'user-7' }));
+      await service.setMoneyAck('rule-1', null);
+      expect(repository.setMoneyAck).toHaveBeenCalledWith('rule-1', null, null);
     });
   });
 });

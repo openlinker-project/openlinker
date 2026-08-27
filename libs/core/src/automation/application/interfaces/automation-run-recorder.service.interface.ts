@@ -50,4 +50,22 @@ export interface AutomationRunRecord {
 
 export interface IAutomationRunRecorderService {
   record(run: AutomationRunRecord): Promise<void>;
+
+  /**
+   * Whether this recorder PERSISTS a firing, or only observes it (#2363).
+   *
+   * A declaration field on a write-only seam looks like a layering mistake until
+   * you ask who else could answer it. Nothing else can: `automation_runs` exists
+   * either way, so an empty table means "nothing fired" and "the write path is
+   * not built yet" identically — and an operator resolving that ambiguity
+   * concludes their rule is broken. The recorder is the one component that knows
+   * which of the two is true, so the declaration lives here and
+   * `IAutomationRunsReadService` reads it.
+   *
+   * **Required, never optional-with-default.** An optional field defaulting to
+   * `false` would make #2385's real recorder report "the run log is not real"
+   * unless it remembered to opt in — the wrong failure direction. A compile
+   * error pointing at the new implementation is the right prompt.
+   */
+  readonly persistsRuns: boolean;
 }

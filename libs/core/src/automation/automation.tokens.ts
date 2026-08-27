@@ -19,3 +19,6 @@ export const AUTOMATION_TRIGGER_EMISSION_SERVICE_TOKEN = Symbol(
 );
 
 export const AUTOMATION_RUN_RECORDER_TOKEN = Symbol('IAutomationRunRecorderService');
+
+export const AUTOMATION_RUN_REPOSITORY_TOKEN = Symbol('AutomationRunRepositoryPort');
+export const AUTOMATION_RUNS_READ_SERVICE_TOKEN = Symbol('IAutomationRunsReadService');

@@ -52,6 +52,7 @@ import { AnalyticsTrustApiModule } from './analytics-trust/analytics-trust.modul
 import { CatalogTrustApiModule } from './catalog-trust/catalog-trust.module';
 import { ReturnActionsApiModule } from './returns/return-actions.module';
 import { ReturnsReadApiModule } from './returns/returns-read.module';
+import { AutomationApiModule } from './automation/automation-api.module';
 import { CurrencyApiModule } from './currency/currency.module';
 import { RequestPriorityModule } from './http/request-priority.module';
 
@@ -102,6 +103,10 @@ import { RequestPriorityModule } from './http/request-priority.module';
     CatalogTrustApiModule, // GET /connections/:id/catalog-trust — master rung + reconcile recency (#2258)
     ReturnActionsApiModule, // POST /returns/:id/decline — the one return write (#2333)
     ReturnsReadApiModule, // GET /returns[, /:id, /ingestion-availability] — returns reads (#2334)
+    // /automations — rule CRUD, the closed vocabulary, the §5.6a dry run and the
+    // per-rule fired log (#2363). Imports OrdersModule as well as AutomationModule:
+    // the dry run composes both, and only an app-level module may.
+    AutomationApiModule,
     ContentApiModule, // REST surface for product content editor + AI suggest (#339 + #342)
     ShippingApiModule, // Shipment read + command HTTP API (#846); imports core ShippingModule (#763/#835)
     UsersApiModule, // User management: list, approve/reject pending, role + status ops (#1125)
