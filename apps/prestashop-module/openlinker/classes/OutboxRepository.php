@@ -11,6 +11,7 @@
  * - Atomic claiming with concurrency safety
  * - Retry policy with exponential backoff
  * - Stale row recovery
+ * - Retention (pruning terminal rows so the table cannot grow without bound)
  * - Clean API for hooks and cron
  *
  * This is NOT business logic and NOT HTTP logic - only DB state, retries, locking.
@@ -31,6 +32,42 @@ class OutboxRepository
 
     // Statistics window
     const STATISTICS_DELIVERED_WINDOW_HOURS = 24;
+
+    // Retention (#2604). Only terminal rows are ever eligible for deletion:
+    // `delivered` and `failed`. A `pending` row is queued or waiting on a
+    // backoff, and a `processing` row is leased by a live cron run - deleting
+    // either would lose an event, which is the failure mode this whole outbox
+    // exists to prevent.
+
+    // Successful history is operational noise once OpenLinker has the event.
+    // Operator-configurable because the useful horizon depends on how long the
+    // shop wants to be able to answer "did that change get sent".
+    const DEFAULT_RETENTION_DELIVERED_DAYS = 7;
+    const RETENTION_DELIVERED_DAYS_MIN = 1;
+    const RETENTION_DELIVERED_DAYS_MAX = 365;
+    const RETENTION_DAYS_CONFIG_KEY = 'OPENLINKER_OUTBOX_RETENTION_DAYS';
+
+    // A failed row is evidence, so it outlives a delivered one and is not on
+    // the operator's dial. Deliberately independent of the delivered horizon:
+    // #2603 removed a setting whose whole defect was two numbers having to be
+    // set in the right relation to each other.
+    const RETENTION_FAILED_DAYS = 30;
+
+    // Hard ceiling on the whole table. Reached only when the age horizons are
+    // not keeping up (a burst, or a shop with far more churn than the horizon
+    // assumes). See enforceRowCap() for what happens at the ceiling.
+    const RETENTION_MAX_ROWS = 100000;
+
+    // A live shop cannot afford one unbounded DELETE holding row locks across
+    // the whole table, so every pass deletes in bounded statements and stops.
+    // Whatever is left is deleted by the next pass.
+    const RETENTION_DELETE_BATCH_SIZE = 1000;
+    const RETENTION_MAX_BATCHES_PER_PASS = 10;
+
+    // The cron runs as often as once a minute; scanning for prunable rows that
+    // often buys nothing.
+    const RETENTION_MIN_INTERVAL_SECONDS = 3600;
+    const RETENTION_LAST_RUN_CONFIG_KEY = 'OPENLINKER_OUTBOX_RETENTION_LAST_RUN';
 
     private $tableName;
 
@@ -488,6 +525,244 @@ class OutboxRepository
     }
 
     /**
+     * Run one retention pass (#2604)
+     *
+     * Deletes terminal rows - and only terminal rows - so the outbox cannot
+     * grow without bound. Rate-limited to one pass per
+     * RETENTION_MIN_INTERVAL_SECONDS, and bounded to
+     * RETENTION_DELETE_BATCH_SIZE * RETENTION_MAX_BATCHES_PER_PASS rows, so a
+     * table that is already huge drains over several passes instead of locking
+     * the shop out in one statement.
+     *
+     * @param bool $force Skip the interval gate (operator-triggered pass)
+     * @return array Report: ran, deleted_delivered, deleted_failed,
+     *               deleted_over_cap, rows, backlog_over_cap
+     */
+    public function runRetention($force = false)
+    {
+        $now = time();
+        $lastRunAt = (int)Configuration::get(self::RETENTION_LAST_RUN_CONFIG_KEY);
+
+        if (!self::shouldRunRetention($lastRunAt, $now, $force)) {
+            return [
+                'ran' => false,
+                'deleted_delivered' => 0,
+                'deleted_failed' => 0,
+                'deleted_over_cap' => 0,
+                'rows' => null,
+                'backlog_over_cap' => false,
+            ];
+        }
+
+        // Stamped before the deletes, not after. A pass that dies half way
+        // then waits for the next interval instead of being retried on every
+        // cron tick, which on a broken table would be a hot loop.
+        Configuration::updateValue(self::RETENTION_LAST_RUN_CONFIG_KEY, $now);
+
+        $budget = self::RETENTION_DELETE_BATCH_SIZE * self::RETENTION_MAX_BATCHES_PER_PASS;
+
+        $deliveredDays = self::resolveRetentionDeliveredDays(
+            Configuration::get(self::RETENTION_DAYS_CONFIG_KEY)
+        );
+
+        $delivered = $this->deleteTerminalRowsOlderThan('delivered', $deliveredDays, $budget);
+        $budget -= $delivered['deleted'];
+
+        $failed = $this->deleteTerminalRowsOlderThan('failed', self::RETENTION_FAILED_DAYS, $budget);
+        $budget -= $failed['deleted'];
+
+        $cap = $this->enforceRowCap($budget);
+
+        return [
+            'ran' => true,
+            'deleted_delivered' => $delivered['deleted'],
+            'deleted_failed' => $failed['deleted'],
+            'deleted_over_cap' => $cap['deleted'],
+            'rows' => $cap['rows'],
+            'backlog_over_cap' => $cap['backlog_over_cap'],
+        ];
+    }
+
+    /**
+     * Should a retention pass run now?
+     *
+     * Pure so the interval rule can be tested without a database.
+     *
+     * @param int $lastRunAt Unix timestamp of the previous pass, 0 if never
+     * @param int $now Unix timestamp of now
+     * @param bool $force
+     * @return bool
+     */
+    public static function shouldRunRetention($lastRunAt, $now, $force = false)
+    {
+        if ($force) {
+            return true;
+        }
+
+        $lastRunAt = (int)$lastRunAt;
+        $now = (int)$now;
+
+        if ($lastRunAt <= 0) {
+            return true;
+        }
+
+        // A clock that jumped backwards must not park retention in the future.
+        if ($lastRunAt > $now) {
+            return true;
+        }
+
+        return ($now - $lastRunAt) >= self::RETENTION_MIN_INTERVAL_SECONDS;
+    }
+
+    /**
+     * Resolve the delivered-row retention horizon from operator configuration
+     *
+     * Pure. An unset, non-numeric, zero or negative value falls back to the
+     * default rather than to "delete immediately" - retention must never be
+     * able to eat today's history because a setting went missing.
+     *
+     * @param mixed $raw Raw Configuration value
+     * @return int Days
+     */
+    public static function resolveRetentionDeliveredDays($raw)
+    {
+        $days = (int)$raw;
+
+        if ($days < self::RETENTION_DELIVERED_DAYS_MIN) {
+            return self::DEFAULT_RETENTION_DELIVERED_DAYS;
+        }
+
+        if ($days > self::RETENTION_DELIVERED_DAYS_MAX) {
+            return self::RETENTION_DELIVERED_DAYS_MAX;
+        }
+
+        return $days;
+    }
+
+    /**
+     * Delete rows in one terminal status older than a horizon
+     *
+     * The status is matched explicitly, so no call can widen the delete onto a
+     * queued or leased row. `updated_at` is the age column for both terminal
+     * statuses: a failed row has no `delivered_at`, and using one column lets a
+     * single (status, updated_at) index serve both.
+     *
+     * @param string $status Either 'delivered' or 'failed'
+     * @param int $days Retention horizon in days
+     * @param int $budget Maximum rows this call may delete
+     * @return array deleted (int), exhausted (bool - ran out of eligible rows)
+     */
+    private function deleteTerminalRowsOlderThan($status, $days, $budget)
+    {
+        if ($status !== 'delivered' && $status !== 'failed') {
+            throw new Exception('Refusing to prune non-terminal status: ' . $status);
+        }
+
+        $deleted = 0;
+        $exhausted = false;
+
+        while ($budget > 0) {
+            $limit = min(self::RETENTION_DELETE_BATCH_SIZE, $budget);
+
+            // Ordered by `updated_at`, not by `id`: it prunes the oldest first
+            // and it is the order the (status, updated_at) index already
+            // provides, so the statement needs no sort on a large table.
+            $sql = 'DELETE FROM `' . $this->tableName . '`
+                    WHERE `status` = "' . pSQL($status) . '"
+                    AND `updated_at` < DATE_SUB(NOW(), INTERVAL ' . (int)$days . ' DAY)
+                    ORDER BY `updated_at` ASC
+                    LIMIT ' . (int)$limit;
+
+            Db::getInstance()->execute($sql);
+            $affected = (int)Db::getInstance()->Affected_Rows();
+
+            $deleted += $affected;
+            $budget -= $affected;
+
+            if ($affected < $limit) {
+                $exhausted = true;
+                break;
+            }
+        }
+
+        return ['deleted' => $deleted, 'exhausted' => $exhausted];
+    }
+
+    /**
+     * Enforce the hard row cap
+     *
+     * Behaviour at the cap is deliberately not "refuse new events": dropping a
+     * hook fire is silent data loss, the exact defect class #2603 closed. It is
+     * also not "delete the oldest rows whatever their state": a queued or
+     * leased row is work, not history. So the cap deletes the oldest terminal
+     * rows and nothing else. If the table is still over the cap once every
+     * terminal row is gone, the excess is a genuine undelivered backlog: the
+     * pass reports it so the caller can log it, and leaves it alone.
+     *
+     * @param int $budget Maximum rows this call may delete
+     * @return array deleted (int), rows (int, after deletion), backlog_over_cap (bool)
+     */
+    private function enforceRowCap($budget)
+    {
+        $rows = $this->countRows();
+
+        if ($rows <= self::RETENTION_MAX_ROWS) {
+            return ['deleted' => 0, 'rows' => $rows, 'backlog_over_cap' => false];
+        }
+
+        $excess = $rows - self::RETENTION_MAX_ROWS;
+        $allowed = min($excess, max(0, (int)$budget));
+
+        $deleted = 0;
+        $exhausted = false;
+
+        while ($allowed > 0) {
+            $limit = min(self::RETENTION_DELETE_BATCH_SIZE, $allowed);
+
+            $sql = 'DELETE FROM `' . $this->tableName . '`
+                    WHERE `status` IN ("delivered", "failed")
+                    ORDER BY `id` ASC
+                    LIMIT ' . (int)$limit;
+
+            Db::getInstance()->execute($sql);
+            $affected = (int)Db::getInstance()->Affected_Rows();
+
+            $deleted += $affected;
+            $allowed -= $affected;
+
+            if ($affected < $limit) {
+                $exhausted = true;
+                break;
+            }
+        }
+
+        $rowsAfter = $rows - $deleted;
+
+        return [
+            'deleted' => $deleted,
+            'rows' => $rowsAfter,
+            // Only a table that has run out of terminal rows and is still over
+            // the cap is a real backlog. A budget-limited pass is just partway
+            // through and the next pass continues.
+            'backlog_over_cap' => ($rowsAfter > self::RETENTION_MAX_ROWS && $exhausted),
+        ];
+    }
+
+    /**
+     * Count all rows in the outbox
+     *
+     * @return int
+     */
+    public function countRows()
+    {
+        $result = Db::getInstance()->getRow(
+            'SELECT COUNT(*) as count FROM `' . $this->tableName . '`'
+        );
+
+        return (int)(is_array($result) && isset($result['count']) ? $result['count'] : 0);
+    }
+
+    /**
      * Get statistics for diagnostics
      *
      * @return array Statistics
@@ -533,6 +808,16 @@ class OutboxRepository
                     LIMIT 1';
             $result = $db->getRow($sql);
             $stats['last_error'] = (is_array($result) && isset($result['last_error'])) ? $result['last_error'] : null;
+
+            // Retention state, so the cap and the horizon are visible rather
+            // than being facts only the cron knows (#2604).
+            $stats['total'] = $this->countRows();
+            $stats['max_rows'] = self::RETENTION_MAX_ROWS;
+            $stats['over_cap'] = $stats['total'] > self::RETENTION_MAX_ROWS;
+            $stats['retention_delivered_days'] = self::resolveRetentionDeliveredDays(
+                Configuration::get(self::RETENTION_DAYS_CONFIG_KEY)
+            );
+            $stats['retention_failed_days'] = self::RETENTION_FAILED_DAYS;
         } catch (Exception $e) {
             // Log error but return partial stats
             PrestaShopLogger::addLog(
@@ -552,10 +837,39 @@ class OutboxRepository
                     'delivered_24h' => 0,
                     'last_delivery' => null,
                     'last_error' => 'Error retrieving statistics: ' . $e->getMessage(),
+                    'total' => 0,
+                    'max_rows' => self::RETENTION_MAX_ROWS,
+                    'over_cap' => false,
+                    'retention_delivered_days' => self::DEFAULT_RETENTION_DELIVERED_DAYS,
+                    'retention_failed_days' => self::RETENTION_FAILED_DAYS,
                 ];
             }
         }
 
-        return $stats;
+        // A query that failed part way through must not leave the admin
+        // template reading a key that was never set.
+        return array_merge(self::defaultStatistics(), $stats);
+    }
+
+    /**
+     * Statistics defaults
+     *
+     * @return array
+     */
+    private static function defaultStatistics()
+    {
+        return [
+            'pending' => 0,
+            'processing' => 0,
+            'failed' => 0,
+            'delivered_24h' => 0,
+            'last_delivery' => null,
+            'last_error' => null,
+            'total' => 0,
+            'max_rows' => self::RETENTION_MAX_ROWS,
+            'over_cap' => false,
+            'retention_delivered_days' => self::DEFAULT_RETENTION_DELIVERED_DAYS,
+            'retention_failed_days' => self::RETENTION_FAILED_DAYS,
+        ];
     }
 }

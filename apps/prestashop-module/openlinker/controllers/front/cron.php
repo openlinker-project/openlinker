@@ -10,6 +10,7 @@
  * 2. Claims a batch of pending events (atomic locking)
  * 3. Sends events via HTTP POST with retry/backoff
  * 4. Updates event status (delivered/failed)
+ * 5. Runs outbox retention (deletes terminal rows past their horizon)
  *
  * Designed to be called by external cron (e.g., every minute) or PrestaShop's
  * internal cron system.
@@ -79,13 +80,17 @@ class OpenLinkerCronModuleFrontController extends ModuleFrontController
             $events = $repository->claimBatchDueForDelivery($batchSize, $runId);
 
             if (empty($events)) {
-                // No events to process
+                // An idle queue is exactly when retention should run, so it
+                // happens before the early return, not after the loop only.
+                $retention = self::runRetention($repository);
+
                 header('Content-Type: application/json');
                 echo json_encode([
                     'processed' => 0,
                     'delivered' => 0,
                     'failed' => 0,
                     'requeued' => $requeued,
+                    'retention' => $retention,
                 ]);
                 exit;
             }
@@ -137,13 +142,18 @@ class OpenLinkerCronModuleFrontController extends ModuleFrontController
                 }
             }
 
-            // Step 6: Return statistics
+            // Step 6: Retention. Runs after delivery so a pass can never
+            // delay an event, and self-rate-limits internally.
+            $retention = self::runRetention($repository);
+
+            // Step 7: Return statistics
             header('Content-Type: application/json');
             echo json_encode([
                 'processed' => count($events),
                 'delivered' => $delivered,
                 'failed' => $failed,
                 'requeued' => $requeued,
+                'retention' => $retention,
             ]);
         } catch (Exception $e) {
             // If outer exception, requeue any events that were claimed but not processed
@@ -168,6 +178,49 @@ class OpenLinkerCronModuleFrontController extends ModuleFrontController
                 'error' => 'Internal Server Error',
                 'message' => 'Cron delivery failed: ' . WebhookSender::getErrorMessage($e)
             ]);
+        }
+    }
+
+    /**
+     * Run one outbox retention pass (#2604)
+     *
+     * Never fatal: retention is housekeeping, and a shop whose outbox cannot
+     * be pruned must still deliver its events.
+     *
+     * @param OutboxRepository $repository
+     * @return array Retention report for the cron response
+     */
+    private static function runRetention($repository)
+    {
+        try {
+            $report = $repository->runRetention();
+
+            if (!empty($report['backlog_over_cap'])) {
+                // Every terminal row is gone and the table is still over the
+                // cap, so the excess is undelivered work. Retention will not
+                // touch it - an operator has to.
+                PrestaShopLogger::addLog(
+                    'OpenLinker: outbox is over its row cap (' . (int)$report['rows']
+                    . ' rows) with no prunable history left. The excess is undelivered'
+                    . ' events - check webhook delivery.',
+                    3,
+                    null,
+                    'Module',
+                    null
+                );
+            }
+
+            return $report;
+        } catch (Throwable $e) {
+            PrestaShopLogger::addLog(
+                'OpenLinker: outbox retention failed: ' . $e->getMessage(),
+                2,
+                null,
+                'Module',
+                null
+            );
+
+            return ['ran' => false, 'error' => $e->getMessage()];
         }
     }
 }

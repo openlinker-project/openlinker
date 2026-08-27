@@ -83,6 +83,7 @@ After installation, the OpenLinker module is accessible in two ways:
 - **Batch Size**: Number of events to process per cron run (default: 50)
 - **Max Retry Attempts**: Maximum delivery attempts before marking as failed (default: 25)
 - **Retry Backoff Multiplier**: Exponential backoff multiplier (default: 2.0)
+- **Keep Delivered Events (days)**: retention horizon for delivered rows (default: 7, range 1-365). See Outbox Retention below.
 
 ## Event Deduplication
 
@@ -169,12 +170,39 @@ The module uses an **outbox pattern** to ensure reliable webhook delivery:
 2. **Cron** periodically claims batches from outbox and delivers via HTTP
 3. **Retry logic** handles failures with exponential backoff
 4. **Stale row recovery** prevents stuck events if cron crashes
+5. **Retention** deletes finished rows so the table cannot grow without bound
 
 This ensures:
 - Hooks never block (checkout/admin operations remain fast)
 - Events survive OpenLinker downtime (retry later)
 - No duplicate deliveries (atomic claiming by runId)
 - No lost events (durable outbox table)
+- No unbounded table (retention prunes finished rows)
+
+### Outbox Retention
+
+Only **finished** rows are ever deleted:
+
+| Status | Meaning | Deleted? |
+|---|---|---|
+| `pending` | queued, or waiting on a retry backoff | never |
+| `processing` | leased by a cron run in flight | never |
+| `delivered` | OpenLinker has the event | after the configured horizon (default 7 days) |
+| `failed` | gave up after the maximum attempts | after 30 days, so the evidence outlives the success history |
+
+A pass runs from the cron controller, at most once an hour, after delivery so
+it can never delay an event. It deletes in batches of 1000 and stops after
+10000 rows; whatever is left is picked up by the next pass, so an outbox that is
+already enormous drains gradually instead of locking the table in one statement.
+"Run delivery now" in the module configuration forces a pass immediately.
+
+There is also a hard cap of 100000 rows. Over the cap, the oldest delivered and
+failed rows are deleted even if they are inside their horizon. **The cap never
+deletes queued or in-flight rows and never refuses a new event** - dropping a
+hook fire would be silent data loss. So if the table is still over the cap once
+every finished row is gone, the excess is genuinely undelivered work: the
+statistics panel says so, the cron logs an error, and webhook delivery needs
+fixing.
 
 ### State Machine
 
@@ -182,6 +210,9 @@ Events flow through these states:
 - `pending` → `processing` → `delivered` (success)
 - `pending` → `processing` → `pending` (retry with backoff)
 - `pending` → `processing` → `failed` (max attempts reached)
+
+`delivered` and `failed` are terminal. Retention deletes them once they are past
+their horizon; nothing else in the table is ever deleted.
 
 ### Concurrency Safety
 

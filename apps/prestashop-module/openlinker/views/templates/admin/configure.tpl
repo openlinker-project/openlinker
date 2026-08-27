@@ -162,6 +162,18 @@
                     <p class="help-block">{l s='At least 1.0 (default: 2.0)' mod='openlinker'}</p>
                 </div>
             </div>
+
+            <div class="form-group">
+                <label class="control-label col-lg-3">
+                    <span class="label-tooltip" data-toggle="tooltip" title="{l s='How long delivered events are kept before being deleted' mod='openlinker'}">
+                        {l s='Keep Delivered Events (days)' mod='openlinker'}
+                    </span>
+                </label>
+                <div class="col-lg-9">
+                    <input type="number" name="OPENLINKER_OUTBOX_RETENTION_DAYS" value="{$outbox_retention_days|escape:'html':'UTF-8'}" class="form-control" min="1" max="365" />
+                    <p class="help-block">{l s='Between 1 and 365 (default: 7). Failed events are kept longer as evidence. Events still queued or being retried are never deleted.' mod='openlinker'}</p>
+                </div>
+            </div>
         </div>
 
         <div class="panel-footer">
@@ -226,6 +238,19 @@
                 <td><span class="text-danger">{$statistics.last_error|escape:'html':'UTF-8'}</span></td>
             </tr>
             {/if}
+            <tr>
+                <td><strong>{l s='Total Rows in Outbox' mod='openlinker'}</strong></td>
+                <td>
+                    {if $statistics.over_cap}<span class="text-danger">{/if}{$statistics.total|intval}{if $statistics.over_cap}</span>{/if}
+                    <span class="help-block">
+                        {l s='Cap' mod='openlinker'}: {$statistics.max_rows|intval}.
+                        {l s='Delivered events are kept' mod='openlinker'} {$statistics.retention_delivered_days|intval} {l s='days, failed events' mod='openlinker'} {$statistics.retention_failed_days|intval} {l s='days.' mod='openlinker'}
+                        {if $statistics.over_cap}
+                            <strong class="text-danger">{l s='Over the cap. Pruning removes delivered and failed events only, so the excess is undelivered work - check webhook delivery.' mod='openlinker'}</strong>
+                        {/if}
+                    </span>
+                </td>
+            </tr>
         </table>
     </div>
 </div>
