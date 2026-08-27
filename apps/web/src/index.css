@@ -19736,3 +19736,78 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   padding: 0;
   list-style: none;
 }
+
+/* --- Needs attention (#2356) -------------------------------------------- */
+
+.who-decides-attention__counts {
+  margin: 0 0 var(--space-3);
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* One reassuring line, never an illustration (spec § 4). */
+.who-decides-attention__empty {
+  margin: 0;
+  padding: var(--space-4);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface-muted);
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+}
+
+.who-decides-attention__list {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.who-decides-attention__item {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface);
+}
+
+.who-decides-attention__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.who-decides-attention__title {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.who-decides-attention__body,
+.who-decides-attention__action {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+}
+
+.who-decides-attention__action {
+  color: var(--text-primary);
+}
+
+/* The raw value the backend sent, kept so an operator can quote it (#2231). */
+.who-decides-attention__raw {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+/* The row badge wrapper — carries the full sentence as its `title`. */
+.who-decides-attention-badge {
+  display: inline-flex;
+  align-items: center;
+}
+

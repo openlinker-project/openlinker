@@ -161,6 +161,14 @@ export const ATTENTION_BADGE_COPY = {
  * one state down. Such a row renders neutrally and is never counted.
  */
 export const ATTENTION_UNKNOWN_COPY = {
+  /**
+   * The short row label, the counterpart to `ATTENTION_BADGE_COPY`'s four codes.
+   *
+   * It exists because a row badge needs SOME label and none of the four codes is
+   * true of a state this build cannot name — rendering `Stopped` would be a
+   * positive claim about a value we did not understand.
+   */
+  badgeLabel: 'Unrecognised',
   title: 'OpenLinker stopped for a reason this version does not recognise',
   body: 'This was recorded by a newer version of OpenLinker. It is kept, and it is not counted here.',
   action: 'Update OpenLinker to see what this is.',
@@ -172,6 +180,16 @@ export const ATTENTION_SECTION_COPY = {
   description: 'Things OpenLinker stopped doing, and what each one is waiting on.',
   /** Zero-state is one reassuring line, never an illustration (§4). */
   empty: 'Nothing is stuck. OpenLinker is deciding everything it was asked to.',
+  /**
+   * The two halves of the heading count, named rather than summed silently.
+   *
+   * `AuthorityAttention.counted` counts STATES (one per ambiguous authority,
+   * install-wide) and `affectedOrderCount` counts ORDERS; the API's own type says
+   * adding them is the caller's job because they measure different things. A bare
+   * total would be a number an operator cannot act on.
+   */
+  statesLabel: 'Decisions not being made',
+  ordersLabel: 'Orders affected',
 } as const;
 
 const PLACEHOLDER_PATTERN = /\{(channel|ref|n|sku)\}/g;

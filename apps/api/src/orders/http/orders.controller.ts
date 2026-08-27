@@ -467,6 +467,17 @@ export class OrdersController {
       salesDocumentBlockDetail: order.salesDocumentBlockDetail,
       salesDocumentBlockedAt: order.salesDocumentBlockedAt?.toISOString() ?? null,
       salesDocumentBlockReleasedAt: order.salesDocumentBlockReleasedAt?.toISOString() ?? null,
+      // #2356 - on the SHARED toDto, like `packedAt` above: the badge renders on
+      // the list AND the detail page, and the entity's own getter has already
+      // coerced the jsonb through core's guard, so an unrecognised value is
+      // absent here rather than unrenderable downstream.
+      omsAttention: order.omsAttention.map((entry) => ({
+        producer: entry.producer,
+        reason: entry.reason,
+        detail: entry.detail ?? null,
+        subjectRef: entry.subjectRef ?? null,
+        since: entry.since,
+      })),
       createdAt: order.createdAt instanceof Date ? order.createdAt.toISOString() : order.createdAt,
       updatedAt: order.updatedAt instanceof Date ? order.updatedAt.toISOString() : order.updatedAt,
       dispatchByAt: order.dispatchByAt ? order.dispatchByAt.toISOString() : null,

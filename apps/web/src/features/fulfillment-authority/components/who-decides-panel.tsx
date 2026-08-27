@@ -61,6 +61,7 @@ import {
   QUESTION_ORDER,
   WHO_DECIDES_PAGE_COPY,
 } from '../lib/who-decides.copy';
+import { AttentionSection } from './attention-section';
 import {
   WhoDecidesPresetConfirm,
   isPresetConfirmBlocked,
@@ -313,6 +314,14 @@ export function WhoDecidesPanel(): ReactElement {
           })}
         </div>
       </section>
+
+      {/*
+        Below the questions, deliberately: the table answers "who decides what",
+        and this answers "what is consequently not happening". Reading the second
+        before the first would ask the operator to act on a consequence whose
+        cause is further down the page.
+      */}
+      <AttentionSection attention={status.attention} nameFor={nameFor} />
 
       <ConfirmDialog
         open={confirming && selected !== null}

@@ -33,6 +33,8 @@ export {
   listAttentionReasonCopy,
 } from './lib/attention-reason.copy';
 
+export { AttentionSection } from './components/attention-section';
+export { OmsAttentionBadges } from './components/oms-attention-badges';
 export { WhoDecidesPanel } from './components/who-decides-panel';
 export { WhoDecidesTile } from './components/who-decides-tile';
 export { WhoDecidesPresetCards } from './components/who-decides-preset-cards';
@@ -42,6 +44,8 @@ export {
 } from './components/who-decides-preset-confirm';
 export { WhoDecidesQuestionRow } from './components/who-decides-question-row';
 
+export { useOmsAttentionQuery } from './hooks/use-oms-attention-query';
+export type { OmsAttentionProjection } from './hooks/use-oms-attention-query';
 export { useWhoDecidesStatusQuery } from './hooks/use-who-decides-status-query';
 export { useApplyPresetMutation } from './hooks/use-apply-preset-mutation';
 export { usePresetPreviewQuery } from './hooks/use-preset-preview-query';
@@ -79,6 +83,14 @@ export {
 
 export type { AuthorityKind } from './lib/authority-kind';
 export { AuthorityKindValues, isAuthorityKind } from './lib/authority-kind';
+
+export { countAttentionEntries, toAttentionEntryView } from './lib/attention-entry';
+export type {
+  AttentionEntryInput,
+  AttentionEntryView,
+  KnownAttentionEntryView,
+  UnknownAttentionEntryView,
+} from './lib/attention-entry';
 
 export { buildPresetDiff } from './lib/preset-diff';
 export type { PresetDiffLine, PresetDiffView } from './lib/preset-diff';

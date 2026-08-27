@@ -316,6 +316,36 @@ export interface OrderRecord {
   salesDocumentBlockedAt?: string | null;
   /** When the current hold ended (ISO 8601), cleared when a new one starts. */
   salesDocumentBlockReleasedAt?: string | null;
+  /**
+   * Inert states this order carries (#2352/#2356) — what OpenLinker STOPPED
+   * deciding about it.
+   *
+   * NOT the `needs_attention` health bucket: that is a member of a partition and
+   * means a sync failure, while this is an orthogonal axis. An order is
+   * routinely one, the other, or both, which is why the row renders them as two
+   * independent badges rather than choosing between them.
+   *
+   * Optional for graceful degradation on a pre-#2356 payload; empty on every
+   * install until a producer writes the column (#2352 shipped it undriven).
+   * `reason` stays a plain string: the column is jsonb and a value written by a
+   * newer release must round-trip rather than break the read — the frontend
+   * narrows it and renders an unrecognised one neutrally and uncounted.
+   */
+  omsAttention?: OrderOmsAttentionEntry[] | null;
+}
+
+/** One inert state as an order row carries it (#2352). */
+export interface OrderOmsAttentionEntry {
+  /** Which subsystem wrote it. An order can carry one entry per producer. */
+  producer: string;
+  /** The § 4.2 code, narrowed client-side; an unknown value renders neutrally. */
+  reason: string;
+  /** PII-free elaboration, rendered verbatim or not at all. */
+  detail?: string | null;
+  /** The sub-object it is really about — an order line — when the row is not. */
+  subjectRef?: string | null;
+  /** When THIS producer's entry first appeared (ISO 8601). */
+  since?: string | null;
 }
 
 // Result ordering for the orders list (#927, extended #944). Mirrors
@@ -384,6 +414,14 @@ export interface OrderHealthSummary {
    * carries two SLA badges.
    */
   salesDocumentBlockedOldestAt?: string | null;
+  /**
+   * Orders carrying at least one COUNTED OMS inert state (#2353). A third
+   * orthogonal axis: never inside `salesDocumentBlocked` or `taxRateConflict`,
+   * and never part of the health partition, so it must not be added to their
+   * sum. A reason this build does not recognise is never counted.
+   * Optional for graceful degradation against an older API.
+   */
+  omsAttention?: number;
 }
 
 export interface OrderFilters {
@@ -428,6 +466,16 @@ export interface OrderFilters {
    * invisible in every other view.
    */
   taxRateConflict?: boolean;
+  /**
+   * OMS inert-state filter (#2353), `?attention=`. A THIRD orthogonal axis
+   * beside `health` and `salesDocumentBlocked`, ANDed with both server-side.
+   *
+   * Deliberately NOT `health=needs_attention` — two params one word apart
+   * meaning different things is the trap the backend named when it kept the
+   * repository filter as the full `omsAttention` axis while the query param
+   * stayed the operator-facing `attention`.
+   */
+  attention?: boolean;
 }
 
 /**
