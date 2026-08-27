@@ -42,7 +42,7 @@ describe('PrestashopOpenLinkerModuleClient', () => {
       // Arrange
       (global.fetch as jest.Mock).mockResolvedValue({
         status: 200,
-        json: jest.fn().mockResolvedValue({ ok: true, id_cart: idCart }),
+        text: jest.fn().mockResolvedValue(JSON.stringify({ ok: true, id_cart: idCart })),
       });
 
       // Act
@@ -72,7 +72,7 @@ describe('PrestashopOpenLinkerModuleClient', () => {
       // Arrange
       (global.fetch as jest.Mock).mockResolvedValue({
         status: 200,
-        json: jest.fn().mockResolvedValue({ ok: true, id_cart: idCart }),
+        text: jest.fn().mockResolvedValue(JSON.stringify({ ok: true, id_cart: idCart })),
       });
 
       // Act
@@ -99,7 +99,7 @@ describe('PrestashopOpenLinkerModuleClient', () => {
       // Arrange
       (global.fetch as jest.Mock).mockResolvedValue({
         status: 200,
-        json: jest.fn().mockResolvedValue({ ok: true, id_cart: idCart }),
+        text: jest.fn().mockResolvedValue(JSON.stringify({ ok: true, id_cart: idCart })),
       });
 
       // Act
@@ -115,7 +115,7 @@ describe('PrestashopOpenLinkerModuleClient', () => {
       // Arrange
       (global.fetch as jest.Mock).mockResolvedValue({
         status: 401,
-        json: jest.fn().mockResolvedValue({ ok: false, error: 'invalid-signature' }),
+        text: jest.fn().mockResolvedValue(JSON.stringify({ ok: false, error: 'invalid-signature' })),
       });
 
       // Act & Assert
@@ -134,7 +134,7 @@ describe('PrestashopOpenLinkerModuleClient', () => {
       // Arrange
       (global.fetch as jest.Mock).mockResolvedValue({
         status: 500,
-        json: jest.fn().mockResolvedValue({ ok: false, error: 'persist-failed' }),
+        text: jest.fn().mockResolvedValue(JSON.stringify({ ok: false, error: 'persist-failed' })),
       });
 
       // Act & Assert
@@ -147,7 +147,7 @@ describe('PrestashopOpenLinkerModuleClient', () => {
       // Arrange
       (global.fetch as jest.Mock).mockResolvedValue({
         status: 200,
-        json: jest.fn().mockResolvedValue({ ok: true, id_cart: idCart }),
+        text: jest.fn().mockResolvedValue(JSON.stringify({ ok: true, id_cart: idCart })),
       });
 
       // Act & Assert — should not throw
@@ -171,6 +171,50 @@ describe('PrestashopOpenLinkerModuleClient', () => {
       });
     });
 
+    it('should reject an HTML body sent with status 200 (#2601)', async () => {
+      // Arrange - a PrestaShop front controller that dies early answers the
+      // shop error page with status 200, which used to read as a written row.
+      (global.fetch as jest.Mock).mockResolvedValue({
+        status: 200,
+        text: jest.fn().mockResolvedValue('<!DOCTYPE html><html><body>Error</body></html>'),
+      });
+
+      // Act & Assert
+      await expect(
+        client.writeCartShipping({ idCart, amountTaxExcl: 1, amountTaxIncl: 1 })
+      ).rejects.toMatchObject({
+        name: 'PrestashopOlModuleException',
+        status: 200,
+        reason: 'non-json-module-response',
+      });
+    });
+
+    it('should reject a JSON 200 whose envelope reports a failure', async () => {
+      // Arrange
+      (global.fetch as jest.Mock).mockResolvedValue({
+        status: 200,
+        text: jest.fn().mockResolvedValue(JSON.stringify({ ok: false, error: 'persist-failed' })),
+      });
+
+      // Act & Assert
+      await expect(
+        client.writeCartShipping({ idCart, amountTaxExcl: 1, amountTaxIncl: 1 })
+      ).rejects.toMatchObject({ status: 200, reason: 'persist-failed' });
+    });
+
+    it('should report the status when a non-2xx carries no readable envelope', async () => {
+      // Arrange
+      (global.fetch as jest.Mock).mockResolvedValue({
+        status: 503,
+        text: jest.fn().mockResolvedValue('<html>maintenance</html>'),
+      });
+
+      // Act & Assert
+      await expect(
+        client.writeCartShipping({ idCart, amountTaxExcl: 1, amountTaxIncl: 1 })
+      ).rejects.toMatchObject({ status: 503, reason: 'http-503' });
+    });
+
     it('should normalize trailing slash on baseUrl', async () => {
       // Arrange
       const slashClient = new PrestashopOpenLinkerModuleClient(
@@ -180,7 +224,7 @@ describe('PrestashopOpenLinkerModuleClient', () => {
       );
       (global.fetch as jest.Mock).mockResolvedValue({
         status: 200,
-        json: jest.fn().mockResolvedValue({ ok: true, id_cart: idCart }),
+        text: jest.fn().mockResolvedValue(JSON.stringify({ ok: true, id_cart: idCart })),
       });
 
       // Act
@@ -191,6 +235,188 @@ describe('PrestashopOpenLinkerModuleClient', () => {
       expect(url).toBe(
         'https://shop.example.com/index.php?fc=module&module=openlinker&controller=cartshipping'
       );
+    });
+  });
+
+  describe('importOrder', () => {
+    const input = {
+      idCart,
+      idOrderState: 2,
+      amountPaid: 199.99,
+      paymentMethod: 'Check payment',
+      orderReference: 'OLREF01',
+    };
+
+    it('should return the created order on a well-formed envelope', async () => {
+      // Arrange
+      (global.fetch as jest.Mock).mockResolvedValue({
+        status: 200,
+        text: jest.fn().mockResolvedValue(
+          JSON.stringify({ ok: true, id_order: 77, reference: 'ABCDEFGHI', already_existed: false })
+        ),
+      });
+
+      // Act
+      const result = await client.importOrder(input);
+
+      // Assert
+      expect(result).toEqual({
+        idOrder: 77,
+        reference: 'ABCDEFGHI',
+        alreadyExisted: false,
+        features: [],
+      });
+    });
+
+    it('should reject an HTML body sent with status 200 (#2601)', async () => {
+      // Arrange - an inactive payment module made validateOrder die() with HTML.
+      (global.fetch as jest.Mock).mockResolvedValue({
+        status: 200,
+        text: jest.fn().mockResolvedValue('<html><body>This payment method is not available</body></html>'),
+      });
+
+      // Act & Assert
+      await expect(client.importOrder(input)).rejects.toMatchObject({
+        status: 200,
+        reason: 'non-json-module-response',
+      });
+    });
+
+    it('should surface the module error reason from a 422 envelope', async () => {
+      // Arrange
+      (global.fetch as jest.Mock).mockResolvedValue({
+        status: 422,
+        text: jest
+          .fn()
+          .mockResolvedValue(JSON.stringify({ ok: false, error: 'payment-module-inactive' })),
+      });
+
+      // Act & Assert
+      await expect(client.importOrder(input)).rejects.toMatchObject({
+        status: 422,
+        reason: 'payment-module-inactive',
+      });
+    });
+
+    it('should not claim line-price support before a module has advertised it (#2597)', () => {
+      // A build that predates the feature answers without `features`, so the
+      // adapter must keep pinning over the Webservice.
+      expect(client.supportsLinePrices()).toBe(false);
+    });
+
+    it('should learn line-price support from the module response (#2597)', async () => {
+      // Arrange - own connection id, because support is remembered per shop.
+      const scoped = new PrestashopOpenLinkerModuleClient(
+        'conn-supports-line-prices',
+        baseUrl,
+        secretProvider
+      );
+      (global.fetch as jest.Mock).mockResolvedValue({
+        status: 200,
+        text: jest.fn().mockResolvedValue(
+          JSON.stringify({
+            ok: true,
+            id_order: 77,
+            reference: 'ABCDEFGHI',
+            already_existed: false,
+            features: ['line_prices'],
+          })
+        ),
+      });
+
+      // Act
+      const result = await scoped.importOrder(input);
+
+      // Assert
+      expect(result.features).toEqual(['line_prices']);
+      expect(scoped.supportsLinePrices()).toBe(true);
+    });
+
+    it('should forget line-price support when the module stops advertising it', async () => {
+      // Arrange - a downgrade must not leave the adapter sending a field the
+      // shop now ignores, which would price the order from the catalogue.
+      const scoped = new PrestashopOpenLinkerModuleClient(
+        'conn-downgraded',
+        baseUrl,
+        secretProvider
+      );
+      const envelope = (features?: string[]): Record<string, unknown> => ({
+        ok: true,
+        id_order: 77,
+        reference: 'ABCDEFGHI',
+        already_existed: false,
+        ...(features ? { features } : {}),
+      });
+      (global.fetch as jest.Mock)
+        .mockResolvedValueOnce({
+          status: 200,
+          text: jest.fn().mockResolvedValue(JSON.stringify(envelope(['line_prices']))),
+        })
+        .mockResolvedValueOnce({
+          status: 200,
+          text: jest.fn().mockResolvedValue(JSON.stringify(envelope())),
+        });
+
+      // Act
+      await scoped.importOrder(input);
+      const supportedBefore = scoped.supportsLinePrices();
+      await scoped.importOrder(input);
+
+      // Assert
+      expect(supportedBefore).toBe(true);
+      expect(scoped.supportsLinePrices()).toBe(false);
+    });
+
+    it('should send the line prices in the request body when supplied (#2597)', async () => {
+      // Arrange
+      (global.fetch as jest.Mock).mockResolvedValue({
+        status: 200,
+        text: jest.fn().mockResolvedValue(
+          JSON.stringify({ ok: true, id_order: 77, reference: 'ABC', already_existed: false })
+        ),
+      });
+
+      // Act
+      await client.importOrder({
+        ...input,
+        linePrices: [{ idProduct: 3, idProductAttribute: 9, price: '12.345678' }],
+      });
+
+      // Assert
+      const [, init] = (global.fetch as jest.Mock).mock.calls[0] as [string, RequestInit];
+      expect(JSON.parse(String(init.body))).toMatchObject({
+        line_prices: [{ id_product: 3, id_product_attribute: 9, price: '12.345678' }],
+      });
+    });
+
+    it('should omit the line-prices field entirely when there is nothing to pin', async () => {
+      // Arrange - an older module must see a byte-identical body to before.
+      (global.fetch as jest.Mock).mockResolvedValue({
+        status: 200,
+        text: jest.fn().mockResolvedValue(
+          JSON.stringify({ ok: true, id_order: 77, reference: 'ABC', already_existed: false })
+        ),
+      });
+
+      // Act
+      await client.importOrder({ ...input, linePrices: [] });
+
+      // Assert
+      const [, init] = (global.fetch as jest.Mock).mock.calls[0] as [string, RequestInit];
+      expect(JSON.parse(String(init.body))).not.toHaveProperty('line_prices');
+    });
+
+    it('should reject a 200 envelope missing the order fields', async () => {
+      // Arrange
+      (global.fetch as jest.Mock).mockResolvedValue({
+        status: 200,
+        text: jest.fn().mockResolvedValue(JSON.stringify({ ok: true })),
+      });
+
+      // Act & Assert
+      await expect(client.importOrder(input)).rejects.toMatchObject({
+        reason: 'malformed-import-order-response',
+      });
     });
   });
 });

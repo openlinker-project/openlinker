@@ -49,6 +49,18 @@ export interface WriteCartShippingInput {
  * (the controller derives `delivery_option` from them) and its sidecar row +
  * `specific_prices` already written.
  */
+export interface ImportOrderLinePrice {
+  /** PrestaShop `id_product` of the line. */
+  idProduct: number;
+  /** PrestaShop `id_product_attribute`, or 0 for a simple product. */
+  idProductAttribute: number;
+  /**
+   * Buyer-paid tax-EXCLUSIVE unit price, already converted and rounded here.
+   * Sent as a string so the sixth decimal survives JSON and the PHP side.
+   */
+  price: string;
+}
+
 export interface ImportOrderInput {
   /** PrestaShop cart id the order is created from. */
   idCart: number;
@@ -65,6 +77,14 @@ export interface ImportOrderInput {
   paymentMethod: string;
   /** OL order reference, used as the PS order `reference` + retry dedup key. */
   orderReference: string;
+  /**
+   * Buyer-paid line prices for the module to pin itself (#2597), replacing two
+   * Webservice calls per line. Send only when
+   * {@link IPrestashopOpenLinkerModuleClient.supportsLinePrices} is true - an
+   * older module ignores the field and would create the order at the catalogue
+   * price.
+   */
+  linePrices?: ImportOrderLinePrice[];
 }
 
 /**
@@ -77,6 +97,8 @@ export interface ImportOrderResult {
   reference: string;
   /** True when an order already existed for the cart (idempotent re-entry). */
   alreadyExisted: boolean;
+  /** Feature names the module advertised on this response. */
+  features: string[];
 }
 
 /**
@@ -105,4 +127,16 @@ export interface IPrestashopOpenLinkerModuleClient {
    * @throws PrestashopOlModuleException on non-2xx response.
    */
   importOrder(input: ImportOrderInput): Promise<ImportOrderResult>;
+
+  /**
+   * Whether this shop's module has been observed to accept `linePrices`.
+   *
+   * There is no capability endpoint to ask, and adding one would cost a request
+   * per order to save two per line. Instead the module advertises the feature
+   * on every successful `importOrder`, and this answers from what the last one
+   * said. It is therefore false until the first order on a fresh process, which
+   * pays the old per-line cost once and then never again. A module that stops
+   * advertising - a downgrade - flips it back on its next response.
+   */
+  supportsLinePrices(): boolean;
 }

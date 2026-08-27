@@ -53,6 +53,20 @@ const CARTSHIPPING_PATH = '/index.php?fc=module&module=openlinker&controller=car
 /** Order-import endpoint (validateOrder path, ADR-016 / #905). Same wire-contract shape as cartshipping. */
 const IMPORTORDER_PATH = '/index.php?fc=module&module=openlinker&controller=importorder';
 
+/** Feature name the module advertises when it accepts pinned line prices (#2597). */
+const LINE_PRICES_FEATURE = 'line_prices';
+
+/**
+ * Per-connection record of what the shop's module last said it supports.
+ *
+ * Module-scoped because a client instance lives for one capability resolution,
+ * so anything held on `this` would be forgotten between orders and every order
+ * would pay the per-line Webservice cost. Keyed by connection id, and rewritten
+ * from every successful response, so a repointed or downgraded shop corrects
+ * itself rather than being trusted forever.
+ */
+const observedFeatures = new Map<string, Set<string>>();
+
 export class PrestashopOpenLinkerModuleClient implements IPrestashopOpenLinkerModuleClient {
   private readonly logger = new Logger(PrestashopOpenLinkerModuleClient.name);
 
@@ -89,16 +103,21 @@ export class PrestashopOpenLinkerModuleClient implements IPrestashopOpenLinkerMo
     );
 
     const response = await this.signedPost(CARTSHIPPING_PATH, body, input.idCart);
-    if (response.status >= 200 && response.status < 300) {
+    const envelope = await this.readEnvelope(response);
+    const failure = this.failureReason(response, envelope);
+    if (failure === null) {
       return;
     }
 
-    const reason = await this.extractReason(response);
     this.logger.warn(
       `OpenLinker module: cartshipping write failed connection=${this.connectionId} ` +
-        `idCart=${input.idCart} status=${response.status} reason=${reason ?? 'unknown'}`
+        `idCart=${input.idCart} status=${response.status} reason=${failure}`
     );
-    throw new PrestashopOlModuleException(this.connectionId, input.idCart, response.status, reason);
+    throw new PrestashopOlModuleException(this.connectionId, input.idCart, response.status, failure);
+  }
+
+  supportsLinePrices(): boolean {
+    return observedFeatures.get(this.connectionId)?.has(LINE_PRICES_FEATURE) === true;
   }
 
   async importOrder(input: ImportOrderInput): Promise<ImportOrderResult> {
@@ -108,6 +127,15 @@ export class PrestashopOpenLinkerModuleClient implements IPrestashopOpenLinkerMo
       amount_paid: input.amountPaid,
       payment_method: input.paymentMethod,
       order_reference: input.orderReference,
+      ...(input.linePrices && input.linePrices.length > 0
+        ? {
+            line_prices: input.linePrices.map((line) => ({
+              id_product: line.idProduct,
+              id_product_attribute: line.idProductAttribute,
+              price: line.price,
+            })),
+          }
+        : {}),
     });
 
     this.logger.debug(
@@ -116,21 +144,25 @@ export class PrestashopOpenLinkerModuleClient implements IPrestashopOpenLinkerMo
     );
 
     const response = await this.signedPost(IMPORTORDER_PATH, body, input.idCart);
-    if (response.status < 200 || response.status >= 300) {
-      const reason = await this.extractReason(response);
+    const envelope = await this.readEnvelope(response);
+    const failure = this.failureReason(response, envelope);
+    if (failure !== null) {
       this.logger.warn(
         `OpenLinker module: importorder failed connection=${this.connectionId} ` +
-          `idCart=${input.idCart} status=${response.status} reason=${reason ?? 'unknown'}`
+          `idCart=${input.idCart} status=${response.status} reason=${failure}`
       );
       throw new PrestashopOlModuleException(
         this.connectionId,
         input.idCart,
         response.status,
-        reason
+        failure
       );
     }
 
-    const parsed = await this.parseImportOrderResult(response);
+    const parsed = this.parseImportOrderResult(envelope);
+    if (parsed) {
+      observedFeatures.set(this.connectionId, new Set(parsed.features));
+    }
     if (!parsed) {
       throw new PrestashopOlModuleException(
         this.connectionId,
@@ -177,28 +209,27 @@ export class PrestashopOpenLinkerModuleClient implements IPrestashopOpenLinkerMo
   }
 
   /**
-   * Parse the `importorder` success body `{ id_order, reference, already_existed }`.
-   * Returns null on any shape mismatch so the caller can fail loud.
+   * Read the module's JSON envelope from a response body.
+   *
+   * The body is read as text and parsed here rather than through
+   * `response.json()` so that a shop page - HTML with status 200, which is what
+   * a PrestaShop front controller answers when it dies early - is a parse
+   * failure we can name, not a silent success (#2601).
+   *
+   * @returns the decoded object, or null when the body is not one
    */
-  private async parseImportOrderResult(response: Response): Promise<ImportOrderResult | null> {
+  private async readEnvelope(response: Response): Promise<Record<string, unknown> | null> {
+    let text: string;
     try {
-      const data: unknown = await response.json();
-      if (
-        typeof data === 'object' &&
-        data !== null &&
-        'id_order' in data &&
-        'reference' in data
-      ) {
-        const obj = data as { id_order: unknown; reference: unknown; already_existed?: unknown };
-        const idOrder = Number(obj.id_order);
-        if (!Number.isFinite(idOrder) || idOrder <= 0 || typeof obj.reference !== 'string') {
-          return null;
-        }
-        return {
-          idOrder,
-          reference: obj.reference,
-          alreadyExisted: obj.already_existed === true,
-        };
+      text = await response.text();
+    } catch {
+      return null;
+    }
+
+    try {
+      const data: unknown = JSON.parse(text);
+      if (typeof data === 'object' && data !== null && !Array.isArray(data)) {
+        return data as Record<string, unknown>;
       }
       return null;
     } catch {
@@ -207,24 +238,58 @@ export class PrestashopOpenLinkerModuleClient implements IPrestashopOpenLinkerMo
   }
 
   /**
-   * Best-effort extraction of the `error` reason string from the module's
-   * JSON error body. Falls back to undefined on any parse failure — the
-   * status code alone is enough information for the caller.
+   * Why this response is a failure, or null when it is a success.
+   *
+   * Success needs all three: a 2xx status, a parsable envelope, and
+   * `ok: true` in it. Status alone is not enough - the module answers 200 for
+   * both a written sidecar row and a shop error page.
    */
-  private async extractReason(response: Response): Promise<string | undefined> {
-    try {
-      const data: unknown = await response.json();
-      if (
-        typeof data === 'object' &&
-        data !== null &&
-        'error' in data &&
-        typeof (data as { error: unknown }).error === 'string'
-      ) {
-        return (data as { error: string }).error;
-      }
-      return undefined;
-    } catch {
-      return undefined;
+  private failureReason(
+    response: Response,
+    envelope: Record<string, unknown> | null
+  ): string | null {
+    if (response.status < 200 || response.status >= 300) {
+      const reason = envelope !== null ? envelope.error : undefined;
+      return typeof reason === 'string' ? reason : `http-${response.status}`;
     }
+
+    if (envelope === null) {
+      return 'non-json-module-response';
+    }
+
+    if (envelope.ok !== true) {
+      const reason = envelope.error;
+      return typeof reason === 'string' ? reason : 'module-reported-failure';
+    }
+
+    return null;
+  }
+
+  /**
+   * Project the `importorder` success envelope onto the result shape.
+   * Returns null on any shape mismatch so the caller can fail loud.
+   */
+  private parseImportOrderResult(
+    envelope: Record<string, unknown> | null
+  ): ImportOrderResult | null {
+    if (envelope === null) {
+      return null;
+    }
+
+    const idOrder = Number(envelope.id_order);
+    if (!Number.isFinite(idOrder) || idOrder <= 0 || typeof envelope.reference !== 'string') {
+      return null;
+    }
+
+    const features = Array.isArray(envelope.features)
+      ? envelope.features.filter((entry): entry is string => typeof entry === 'string')
+      : [];
+
+    return {
+      idOrder,
+      reference: envelope.reference,
+      alreadyExisted: envelope.already_existed === true,
+      features,
+    };
   }
 }

@@ -37,7 +37,10 @@ import type { IdentifierMappingPort, Connection } from '@openlinker/core/identif
 import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
 import type { IMappingConfigService } from '@openlinker/core/mappings';
 import type { IPrestashopWebserviceClient } from '../http/prestashop-webservice.client.interface';
-import type { IPrestashopOpenLinkerModuleClient } from '../http/prestashop-openlinker-module.client.interface';
+import type {
+  IPrestashopOpenLinkerModuleClient,
+  ImportOrderLinePrice,
+} from '../http/prestashop-openlinker-module.client.interface';
 import type {
   IPrestashopOrderMapper,
   PrestashopOrder,
@@ -442,23 +445,33 @@ export class PrestashopOrderProcessorManagerAdapter
         );
       }
 
-      // Step 6.6: Pin line prices to the buyer-paid (source-authoritative)
-      // amount via cart-scoped `specific_prices` BEFORE POST /orders (#895 /
-      // ADR-014). PS prices the order's `order_detail` from the cart; without
+      // Step 6.6: Resolve every line's buyer-paid (source-authoritative) net
+      // unit price, to be pinned as cart-scoped `specific_prices` before the
+      // order is created (#895 / ADR-014). PS prices the order's
+      // `order_detail` from the cart; without
       // this it would use the catalog price and land the order in
       // `Payment error`. Per the createOrder invariant, a line we cannot pin
       // MUST fail (throw) rather than silently mis-price — `pinLinePrices`
       // records created ids into `pinnedPriceIds` as it goes, so the outer
       // catch cleans up any partial pins before the error propagates.
-      await this.pinLinePrices(
-        order,
-        externalCartId,
-        externalCustomerId,
-        externalCurrencyId,
-        externalProductIds,
-        externalVariantIds,
-        pinnedPriceIds
-      );
+      const linePins = await this.resolveLinePins(order, externalProductIds, externalVariantIds);
+
+      // A module that advertises `line_prices` pins the whole set inside the
+      // order-import request below, which is two fewer Webservice calls per
+      // line - sixteen of twenty-seven on an eight-line order (#2597). The
+      // capability is learned from a previous import response, so the first
+      // order after a restart still takes this path.
+      const moduleWritesLinePins =
+        linePins.length > 0 && this.openlinkerModuleClient.supportsLinePrices();
+      if (linePins.length > 0 && !moduleWritesLinePins) {
+        await this.postLinePins(
+          linePins,
+          externalCartId,
+          externalCustomerId,
+          externalCurrencyId,
+          pinnedPriceIds
+        );
+      }
 
       // Step 7+8: Create the order through PrestaShop's canonical flow —
       // PaymentModule::validateOrder via the OL module's `importorder` endpoint
@@ -531,6 +544,7 @@ export class PrestashopOrderProcessorManagerAdapter
             // delegates to ps_checkpayment::validateOrder.
             paymentMethod: 'Check payment',
             orderReference: order.orderNumber ?? '',
+            ...(moduleWritesLinePins ? { linePrices: linePins } : {}),
           });
           externalOrderId = String(imported.idOrder);
           resolvedReference = imported.reference;
@@ -615,23 +629,25 @@ export class PrestashopOrderProcessorManagerAdapter
    * largest-remainder allocation so the pinned lines sum exactly to the
    * authoritative total under rounding.
    *
-   * Records created `specific_prices` ids into `createdIds` (for caller-side
-   * cleanup). Per the createOrder invariant (ADR-014), a line that cannot be
-   * pinned throws — a silently-unpinned line would be priced from the catalog
-   * and land the order in `Payment error`, which is the bug this fixes.
+   * This resolves the net unit price of every line and returns it. Who writes
+   * it depends on the shop's module: a build that advertises `line_prices`
+   * takes the whole set inside the order-import request it already receives
+   * (#2597), and only an older one needs the two Webservice calls per line that
+   * {@link postLinePins} makes. Per the createOrder invariant (ADR-014), a line
+   * whose price cannot be resolved throws either way — a silently-unpinned line
+   * would be priced from the catalog and land the order in `Payment error`,
+   * which is the bug this fixes.
    */
-  private async pinLinePrices(
+  private async resolveLinePins(
     order: OrderCreate,
-    externalCartId: string | number,
-    externalCustomerId: string | number,
-    externalCurrencyId: number | undefined,
     externalProductIds: Map<string, string | number>,
-    externalVariantIds: Map<string, string | number>,
-    createdIds: Array<string | number>
-  ): Promise<void> {
+    externalVariantIds: Map<string, string | number>
+  ): Promise<ImportOrderLinePrice[]> {
     if (order.items.length === 0) {
-      return;
+      return [];
     }
+
+    const pins: ImportOrderLinePrice[] = [];
 
     // `exclusive` → already net; everything else (`inclusive`/unset) → gross,
     // convert to net. Marketplace orders are gross, so unset defaults to gross.
@@ -639,7 +655,6 @@ export class PrestashopOrderProcessorManagerAdapter
     // tracked as the deferred `tax?`/treatment hardening in ADR-014.
     const convertGrossToNet = order.totals.taxTreatment !== 'exclusive';
     const deliveryCountryIso = order.shippingAddress?.country;
-    const toExpiry = this.formatPsDateTime(new Date(Date.now() + ONE_DAY_MS));
 
     // Apportion the gross product subtotal across lines (minor units) so the
     // pinned lines sum exactly to the authoritative total. NOTE: the pinned
@@ -695,12 +710,47 @@ export class PrestashopOrderProcessorManagerAdapter
       }
       const netUnit = grossUnit / (1 + rate);
 
+      pins.push({
+        idProduct: Number(externalProductId),
+        idProductAttribute: Number(externalVariantId),
+        // Six decimals, the same precision the Webservice path pinned with, so
+        // the module and the fallback price a line identically.
+        price: netUnit.toFixed(6),
+      });
+      this.logger.debug(
+        `Resolved line price: product=${externalProductId} variant=${externalVariantId} ` +
+          `grossUnit=${grossUnit.toFixed(4)} rate=${rate} netUnit=${netUnit.toFixed(6)}`
+      );
+    }
+
+    return pins;
+  }
+
+  /**
+   * Write the resolved pins as cart-scoped `specific_prices` over the
+   * Webservice — the fallback for a shop whose module predates #2597, and two
+   * requests per line.
+   *
+   * Records created ids into `createdIds` so the caller can delete them.
+   */
+  private async postLinePins(
+    pins: ImportOrderLinePrice[],
+    externalCartId: string | number,
+    externalCustomerId: string | number,
+    externalCurrencyId: number | undefined,
+    createdIds: Array<string | number>
+  ): Promise<void> {
+    const toExpiry = this.formatPsDateTime(new Date(Date.now() + ONE_DAY_MS));
+
+    for (const pin of pins) {
       try {
         const createdPrice = await this.httpClient.createResource<{ id: string | number }>(
           'specific_prices',
           {
-            id_product: externalProductId,
-            id_product_attribute: externalVariantId,
+            // Stringified because that is the shape this resource has always
+            // been sent, and the Webservice XML is untyped either way.
+            id_product: String(pin.idProduct),
+            id_product_attribute: pin.idProductAttribute,
             id_shop: 0,
             id_shop_group: 0,
             id_cart: externalCartId,
@@ -709,7 +759,7 @@ export class PrestashopOrderProcessorManagerAdapter
             id_group: 0,
             id_customer: externalCustomerId,
             from_quantity: 1,
-            price: netUnit.toFixed(6),
+            price: pin.price,
             reduction: '0',
             reduction_type: 'amount',
             reduction_tax: '0',
@@ -720,10 +770,6 @@ export class PrestashopOrderProcessorManagerAdapter
         if (createdPrice?.id !== undefined) {
           createdIds.push(createdPrice.id);
         }
-        this.logger.debug(
-          `Pinned line price: product=${externalProductId} variant=${externalVariantId} ` +
-            `grossUnit=${grossUnit.toFixed(4)} rate=${rate} netUnit=${netUnit.toFixed(6)}`
-        );
       } catch (error) {
         // Fail loudly (createOrder invariant, ADR-014): do NOT let the order be
         // created at the catalog price. Throw so the idempotency-guarded retry
@@ -737,7 +783,7 @@ export class PrestashopOrderProcessorManagerAdapter
               ? error.message
               : String(error);
         throw new PrestashopApiException(
-          `Failed to pin source-authoritative price for product ${externalProductId}: ${detail}`,
+          `Failed to pin source-authoritative price for product ${pin.idProduct}: ${detail}`,
           undefined,
           undefined
         );
