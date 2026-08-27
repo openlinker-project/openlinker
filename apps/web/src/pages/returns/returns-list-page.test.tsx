@@ -38,6 +38,15 @@ function makeReturn(overrides: Partial<ReturnListItem> = {}): ReturnListItem {
     closedAt: null,
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
+    counters: {
+      lineCount: 1,
+      notReturnedLineCount: 0,
+      quantityAdvised: 5,
+      notReturnedQuantityAdvised: 0,
+      quantityReceived: 0,
+      quantityRestocked: 0,
+      quantityScrapped: 0,
+    },
     ...overrides,
   };
 }
@@ -59,6 +68,7 @@ function listResult(overrides: ListResultOverrides = {}): ReturnListResult {
     limit: overrides.limit ?? 20,
     offset: 0,
     counts: overrides.counts ?? { total: items.length, orphan: 0, attributed: items.length },
+    stageCounts: null,
     droppedCount: overrides.droppedCount ?? 0,
     envelopeUnreadable: overrides.envelopeUnreadable ?? false,
   };
@@ -295,6 +305,9 @@ describe('ReturnsListPage', () => {
       expect(await screen.findByText('Not reported')).toBeInTheDocument();
     });
 
+    // #2377 replaced the declined-only status cell with the derived stage.
+    // `declined` survives as stage #1, so the behaviour these pinned is still
+    // pinned — they assert the same facts through the cell that renders now.
     it('should mark a declined return', async () => {
       setup({
         list: listResult({ items: [makeReturn({ declinedAt: '2026-02-01T00:00:00.000Z' })] }),
@@ -308,6 +321,31 @@ describe('ReturnsListPage', () => {
 
       await screen.findByText('RET-1');
       expect(screen.queryByText('Declined')).not.toBeInTheDocument();
+    });
+
+    it('should render the derived stage and its counter line', async () => {
+      setup({
+        list: listResult({
+          items: [
+            makeReturn({
+              counters: {
+                lineCount: 1,
+                notReturnedLineCount: 0,
+                quantityAdvised: 5,
+                notReturnedQuantityAdvised: 0,
+                quantityReceived: 3,
+                quantityRestocked: 0,
+                quantityScrapped: 0,
+              },
+            }),
+          ],
+        }),
+      });
+
+      expect(await screen.findByText('Partially received')).toBeInTheDocument();
+      // The counters sit adjacent to the label and read from the SAME aggregate,
+      // so the two can never disagree (spec § 4.2).
+      expect(screen.getByText('3 of 5 received')).toBeInTheDocument();
     });
 
     it('should mark an operator-authored return', async () => {

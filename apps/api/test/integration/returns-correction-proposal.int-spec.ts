@@ -134,8 +134,9 @@ describe('Return Correction Proposal Integration', () => {
     withSnapshot: boolean
   ): Promise<InvoiceRecordOrmEntity> => {
     const repo = harness.getDataSource().getRepository(InvoiceRecordOrmEntity);
-    return repo.save(
-      repo.create({
+    // One entity, explicitly — `create()` is overloaded and an inferred object
+    // literal resolves the array form, whose `save()` returns an array.
+    const entity: InvoiceRecordOrmEntity = repo.create({
         connectionId,
         orderId,
         providerType: 'test-provider',
@@ -149,15 +150,15 @@ describe('Return Correction Proposal Integration', () => {
                 name: 'Buyer',
                 taxId: null,
                 address: { countryIso2: 'PL' },
-                type: 'individual',
+                type: 'private',
                 email: null,
               },
               currency: 'PLN',
               lines: [{ name: 'Widget', quantity: 3, unitPriceGross: 100, taxRate: '23' }],
             }
           : null,
-      })
-    );
+    });
+    return repo.save(entity);
   };
 
   it('should resolve the proposal service off the real api graph', () => {

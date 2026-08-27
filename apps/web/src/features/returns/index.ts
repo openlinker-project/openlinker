@@ -31,7 +31,17 @@ export { ReturnIdentityCell, returnIdentitySummary } from './components/return-i
 export { ReturnOrderCell, returnOrderSummary } from './components/return-order-cell';
 export { ReturnOpenedCell } from './components/return-opened-cell';
 export { ReturnSourceStatus } from './components/return-source-status';
-export { ReturnStatusCell } from './components/return-status-cell';
+// #2377 replaced `ReturnStatusCell` (which could render only `Declined`, for
+// want of counters) with the derived stage. `declined` survives as stage #1.
+export { ReturnStageCell } from './components/return-stage-cell';
+export {
+  RETURN_STAGE_LABELS,
+  RETURN_STAGE_TONES,
+  deriveReturnStage,
+  returnCounterLine,
+} from './lib/return-row';
+export { RETURN_STAGE_VALUES, isReturnStage } from './lib/return-stage.types';
+export type { ReturnStage } from './lib/return-stage.types';
 
 // ── Return detail (#2336) ────────────────────────────────────────────────────
 export type {

@@ -9,6 +9,7 @@
  *
  * @module apps/web/src/features/returns/api
  */
+import type { ReturnStage } from '../lib/return-stage.types';
 
 /**
  * The attribution partition. FE mirror of the backend `ReturnBucketValues`
@@ -58,6 +59,24 @@ export const RETURNS_MAX_LIMIT = 100;
  * `lines: []` here would be a promise the query never fills and a consumer
  * would render it as "this return has no lines".
  */
+/**
+ * The per-return counter rollup the derived stage is computed from (#2377).
+ *
+ * Mirrors `ReturnCountersDto`. Always present on a parsed row — a server that
+ * omits it yields zeroes rather than dropping the return, because losing a row
+ * over a missing projection is worse than showing it as `Awaiting parcel`.
+ */
+export interface ReturnCounters {
+  lineCount: number;
+  notReturnedLineCount: number;
+  quantityAdvised: number;
+  /** Advised units on lines written off as never arriving. Subtracted to give "still expected". */
+  notReturnedQuantityAdvised: number;
+  quantityReceived: number;
+  quantityRestocked: number;
+  quantityScrapped: number;
+}
+
 export interface ReturnListItem {
   id: string;
   sourceConnectionId: string;
@@ -76,6 +95,19 @@ export interface ReturnListItem {
   closedAt: string | null;
   createdAt: string;
   updatedAt: string;
+  /** The rollup `deriveReturnStage` reads. See {@link ReturnCounters}. */
+  counters: ReturnCounters;
+}
+
+/**
+ * How many returns sit in each derived stage (#2377), scoped with `stage`
+ * REMOVED from the caller's filters — the same rule {@link ReturnBucketCounts}
+ * states for `bucket`, so the chip for the stage you are not looking at stays
+ * truthful.
+ */
+export interface ReturnStageCounts {
+  total: number;
+  byStage: Record<ReturnStage, number>;
 }
 
 /**
@@ -100,6 +132,7 @@ export interface PaginatedReturns {
   limit: number;
   offset: number;
   counts: ReturnBucketCounts;
+  stageCounts: ReturnStageCounts | null;
 }
 
 /**

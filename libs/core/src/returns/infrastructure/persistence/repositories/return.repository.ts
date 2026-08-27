@@ -54,7 +54,13 @@ import type { ReturnReattributionCandidate } from '../../../domain/types/return-
 import type {
   ReturnBucketCounts,
   ReturnListFilter,
+  ReturnStageCounts,
 } from '../../../domain/types/return-query.types';
+import { ReturnStageValues } from '../../../domain/types/return-stage.types';
+import type {
+  ReturnStage,
+  ReturnStageCounters,
+} from '../../../domain/types/return-stage.types';
 import {
   REFUND_ATTEMPTABLE_MONEY_STATES,
   type ReturnCustodyState,
@@ -74,6 +80,87 @@ import { ReturnLineNotFoundError } from '../../../domain/exceptions/return-line-
 
 @Injectable()
 export class ReturnRepository implements ReturnRepositoryPort {
+  /**
+   * The counters a return with no lines carries on a read that DID load them.
+   *
+   * Distinct from `ReturnRecord.counters === null`, which means the read loaded
+   * none at all. Zeroes here are a fact about the return; `null` is a fact about
+   * the query.
+   */
+  private static readonly EMPTY_COUNTERS: ReturnStageCounters = {
+    lineCount: 0,
+    notReturnedLineCount: 0,
+    quantityAdvised: 0,
+    notReturnedQuantityAdvised: 0,
+    quantityReceived: 0,
+    quantityRestocked: 0,
+    quantityScrapped: 0,
+  };
+
+  /**
+   * The per-return counter rollup, as a joinable subquery (#2377).
+   *
+   * The same six numbers `aggregateCounters` reads for the page, expressed in
+   * SQL so the stage filter and the stage counts can test them without loading
+   * a single line row.
+   */
+  private static readonly COUNTERS_SUBQUERY = `(
+    SELECT l."returnId" AS "returnId",
+           COUNT(*) AS "lineCount",
+           COUNT(*) FILTER (WHERE l."custodyState" = 'not_returned') AS "notReturnedLineCount",
+           COALESCE(SUM(l."quantityAdvised"), 0) AS "quantityAdvised",
+           COALESCE(SUM(l."quantityAdvised") FILTER (WHERE l."custodyState" = 'not_returned'), 0) AS "notReturnedQuantityAdvised",
+           COALESCE(SUM(l."quantityReceived"), 0) AS "quantityReceived",
+           COALESCE(SUM(l."quantityRestocked"), 0) AS "quantityRestocked",
+           COALESCE(SUM(l."quantityScrapped"), 0) AS "quantityScrapped"
+      FROM return_lines l
+     GROUP BY l."returnId"
+  )`;
+
+  /** Units still expected — see `expectedQuantity`. LEFT JOIN, so COALESCE. */
+  private static readonly SQL_EXPECTED =
+    `(COALESCE(sc."quantityAdvised", 0) - COALESCE(sc."notReturnedQuantityAdvised", 0))`;
+
+  private static readonly SQL_RECEIVED = `COALESCE(sc."quantityReceived", 0)`;
+
+  private static readonly SQL_UNDISPOSED =
+    `(COALESCE(sc."quantityReceived", 0) - (COALESCE(sc."quantityRestocked", 0) + COALESCE(sc."quantityScrapped", 0)))`;
+
+  /**
+   * The SQL twin of `deriveReturnStage` (#2377), arm for arm.
+   *
+   * Mirrors `LIFECYCLE_PHASE_PREDICATES` (#2311): a `Record` of fragments the
+   * `CASE` is BUILT from by iterating the vocabulary, never a hand-written
+   * ladder restating the precedence a second time.
+   *
+   * `scripts/check-return-stage-mirror.mjs` pins this STRUCTURALLY — same keys,
+   * same order, still consumed by a `ReturnStageValues.map(`. It deliberately
+   * does NOT claim each fragment is semantically its TS arm: the two are
+   * different languages over different shapes, and a script asserting
+   * equivalence would be claiming something it cannot check. The shared
+   * `RETURN_STAGE_FIXTURES` table is what proves meaning.
+   */
+  private static readonly RETURN_STAGE_PREDICATES: Record<ReturnStage, string> = {
+    // 1. The SOURCE said it refused the return; that outranks every custody fact.
+    declined: `r."declinedAt" IS NOT NULL`,
+    // 2. Every line written off as never arriving. Needs the line COUNTS — no
+    //    combination of quantity sums can express "every line".
+    not_returned: `COALESCE(sc."lineCount", 0) > 0 AND COALESCE(sc."notReturnedLineCount", 0) = COALESCE(sc."lineCount", 0)`,
+    // 3. Outranks `disposed` deliberately: units may still turn up, so calling a
+    //    partly-arrived return "Disposed" would say it is closed when it is not.
+    partially_received: `${ReturnRepository.SQL_RECEIVED} > 0 AND ${ReturnRepository.SQL_RECEIVED} < ${ReturnRepository.SQL_EXPECTED}`,
+    // 4. Everything expected arrived; some of it is still undisposed.
+    received_awaiting_disposition: `${ReturnRepository.SQL_RECEIVED} >= ${ReturnRepository.SQL_EXPECTED} AND ${ReturnRepository.SQL_UNDISPOSED} > 0`,
+    // 5. Everything expected arrived and all of it was disposed of.
+    disposed: `${ReturnRepository.SQL_RECEIVED} > 0 AND ${ReturnRepository.SQL_RECEIVED} >= ${ReturnRepository.SQL_EXPECTED}`,
+    // 6. The declared fallback arm, matching the TS function's final `return`.
+    awaiting_parcel: 'TRUE',
+  };
+
+  private static readonly RETURN_STAGE_EXPR = `CASE ${ReturnStageValues.map(
+    (stage) => `WHEN ${ReturnRepository.RETURN_STAGE_PREDICATES[stage]} THEN '${stage}'`
+  ).join(' ')} ELSE 'awaiting_parcel' END`;
+
   private readonly logger = new Logger(ReturnRepository.name);
 
   constructor(
@@ -414,13 +501,85 @@ export class ReturnRepository implements ReturnRepositoryPort {
     offset: number
   ): Promise<ReturnRecord[]> {
     const headers = await this.buildListQuery(filter)
-      .orderBy('r."createdAt"', 'DESC')
+      // PROPERTY paths, not raw quoted SQL. `take`/`skip` plus ANY join sends
+      // TypeORM down its distinct-pagination path, which resolves each ORDER BY
+      // term back to column metadata — a raw `r."createdAt"` string has none, and
+      // the read throws `Cannot read properties of undefined (reading
+      // 'databaseName')`. Unjoined this never fired, so the #2377 stage filter is
+      // what made the ordering style load-bearing.
+      .orderBy('r.createdAt', 'DESC')
       .addOrderBy('r.id', 'ASC')
       .take(limit)
       .skip(offset)
       .getMany();
 
-    return headers.map((header) => this.toDomain(header, []));
+    // #2377: the derived stage needs a per-return counter rollup, and the header
+    // read deliberately loads no lines. One aggregate query over the page's ids
+    // rather than a per-row lookup — and rather than hydrating every line of
+    // every row to compute six integers.
+    const counters = await this.aggregateCounters(headers.map((header) => header.id));
+
+    return headers.map((header) =>
+      this.toDomain(header, [], counters.get(header.id) ?? ReturnRepository.EMPTY_COUNTERS)
+    );
+  }
+
+  /**
+   * The six numbers the derived stage reads, per return (#2377).
+   *
+   * ONE aggregate query over the whole page's ids — not a per-row lookup, and
+   * not an N+1. Said plainly because a query inside a list read is exactly what
+   * a reader scanning for N+1s stops on.
+   *
+   * `notReturnedQuantityAdvised` is the one that is easy to leave out and the one
+   * the stage cannot be correct without: `advised` in the stage arms means STILL
+   * EXPECTED, not originally announced — see `expectedQuantity`.
+   *
+   * A return whose lines all vanished still gets a row from the caller's
+   * `EMPTY_COUNTERS` fallback rather than `null`: on THIS read the counters were
+   * loaded, and the honest answer for a return with no lines is zeroes.
+   */
+  private async aggregateCounters(
+    returnIds: string[]
+  ): Promise<Map<string, ReturnStageCounters>> {
+    if (returnIds.length === 0) {
+      return new Map();
+    }
+
+    const rows = await this.lines
+      .createQueryBuilder('l')
+      .select('l."returnId"', 'returnId')
+      .addSelect('COUNT(*)', 'lineCount')
+      .addSelect(`COUNT(*) FILTER (WHERE l."custodyState" = 'not_returned')`, 'notReturnedLineCount')
+      .addSelect('COALESCE(SUM(l."quantityAdvised"), 0)', 'quantityAdvised')
+      .addSelect(
+        `COALESCE(SUM(l."quantityAdvised") FILTER (WHERE l."custodyState" = 'not_returned'), 0)`,
+        'notReturnedQuantityAdvised'
+      )
+      .addSelect('COALESCE(SUM(l."quantityReceived"), 0)', 'quantityReceived')
+      .addSelect('COALESCE(SUM(l."quantityRestocked"), 0)', 'quantityRestocked')
+      .addSelect('COALESCE(SUM(l."quantityScrapped"), 0)', 'quantityScrapped')
+      .where('l."returnId" IN (:...returnIds)', { returnIds })
+      .groupBy('l."returnId"')
+      .getRawMany<Record<string, string>>();
+
+    // pg returns COUNT/SUM as STRINGS; leaving them stringly-typed would make
+    // every comparison in `deriveReturnStage` a lexicographic one — '10' < '9'
+    // — which throws nothing and puts a plausible, wrong stage on the screen.
+    return new Map(
+      rows.map((row) => [
+        row.returnId,
+        {
+          lineCount: Number(row.lineCount),
+          notReturnedLineCount: Number(row.notReturnedLineCount),
+          quantityAdvised: Number(row.quantityAdvised),
+          notReturnedQuantityAdvised: Number(row.notReturnedQuantityAdvised),
+          quantityReceived: Number(row.quantityReceived),
+          quantityRestocked: Number(row.quantityRestocked),
+          quantityScrapped: Number(row.quantityScrapped),
+        },
+      ])
+    );
   }
 
   /**
@@ -446,6 +605,46 @@ export class ReturnRepository implements ReturnRepositoryPort {
     const orphan = Number(row?.orphan ?? 0);
 
     return { total, orphan, attributed: total - orphan };
+  }
+
+  /**
+   * How many returns sit in each derived stage, over one filter scope (#2377).
+   *
+   * Every bucket tests the SAME `RETURN_STAGE_EXPR` the filter arm tests, so no
+   * per-stage count can drift from the rows the filter would return — the
+   * property `countByLifecyclePhase` has for the same reason.
+   *
+   * **The caller strips `stage` from the filter before calling this.** See
+   * `ReturnStageCounts`: the count for the dimension you are not looking at must
+   * stay truthful, or every chip shows the count of the stage already selected.
+   */
+  async countReturnsByStage(filter: ReturnListFilter): Promise<ReturnStageCounts> {
+    // The scoping rule, enforced HERE rather than trusted to every caller: a
+    // count computed with `stage` still applied makes every chip report the
+    // count of the stage already selected. Stripping it here also guarantees
+    // `buildListQuery` adds no second join under the same alias.
+    const scoped: ReturnListFilter = { ...filter };
+    delete scoped.stage;
+    const query = this.buildListQuery(scoped)
+      .leftJoin(ReturnRepository.COUNTERS_SUBQUERY, 'sc', 'sc."returnId" = r.id')
+      .select('COUNT(*)', 'total');
+
+    for (const stage of ReturnStageValues) {
+      query.addSelect(
+        `COUNT(*) FILTER (WHERE ${ReturnRepository.RETURN_STAGE_EXPR} = '${stage}')`,
+        stage
+      );
+    }
+
+    const row = await query.getRawOne<Record<string, string>>();
+
+    // Same `Number()` discipline `countReturnsByBucket` documents: pg reports
+    // these as strings, and a stringly-typed count silently concatenates.
+    const byStage = Object.fromEntries(
+      ReturnStageValues.map((stage) => [stage, Number(row?.[stage] ?? 0)])
+    ) as Record<ReturnStage, number>;
+
+    return { total: Number(row?.total ?? 0), byStage };
   }
 
   /**
@@ -480,6 +679,16 @@ export class ReturnRepository implements ReturnRepositoryPort {
 
     if (filter.createdTo !== undefined) {
       query.andWhere('r."createdAt" <= :createdTo', { createdTo: filter.createdTo });
+    }
+
+    if (filter.stage !== undefined) {
+      // Joined only when the filter needs it, so the ordinary list read pays
+      // nothing for a dimension it is not using. Tests the SAME expression
+      // `countReturnsByStage` buckets on — one expression, never per-arm
+      // predicates that can drift from their own counts.
+      query
+        .leftJoin(ReturnRepository.COUNTERS_SUBQUERY, 'sc', 'sc."returnId" = r.id')
+        .andWhere(`${ReturnRepository.RETURN_STAGE_EXPR} = :stage`, { stage: filter.stage });
     }
 
     return query;
@@ -658,7 +867,11 @@ export class ReturnRepository implements ReturnRepositoryPort {
     return query;
   }
 
-  private toDomain(header: ReturnOrmEntity, lines: ReturnLineOrmEntity[]): ReturnRecord {
+  private toDomain(
+    header: ReturnOrmEntity,
+    lines: ReturnLineOrmEntity[],
+    counters: ReturnStageCounters | null = null
+  ): ReturnRecord {
     return new ReturnRecord(
       header.id,
       header.sourceConnectionId,
@@ -676,7 +889,8 @@ export class ReturnRepository implements ReturnRepositoryPort {
       header.updatedAt,
       lines.map((line) => this.toLineDomain(line)),
       header.matchedAt,
-      header.matchedByUserId
+      header.matchedByUserId,
+      counters
     );
   }
 

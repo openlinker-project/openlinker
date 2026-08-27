@@ -127,7 +127,7 @@ export const RETURNS_ROW_COPY = {
   sourceLabel: 'Source',
   orderLabel: 'Order',
   returnLabel: 'Return',
-  statusLabel: 'Status',
+  stageLabel: 'Stage',
   sourceStatusLabel: 'Source status',
   noExternalId: 'No channel reference',
 } as const;

@@ -55,6 +55,7 @@ import type {
   ReturnDeclineAvailability,
   ReturnIngestionAvailability,
   ReturnListFilter,
+  ReturnStageCounts,
 } from '../../domain/types/return-query.types';
 import type { UpsertReturnLineInput } from '../../domain/types/return-upsert.types';
 import { RETURN_REPOSITORY_TOKEN } from '../../returns.tokens';
@@ -151,6 +152,10 @@ export class ReturnsService implements IReturnsService {
 
   async countReturnsByBucket(filter: ReturnListFilter): Promise<ReturnBucketCounts> {
     return this.repository.countReturnsByBucket(filter);
+  }
+
+  async countReturnsByStage(filter: ReturnListFilter): Promise<ReturnStageCounts> {
+    return this.repository.countReturnsByStage(filter);
   }
 
   /**

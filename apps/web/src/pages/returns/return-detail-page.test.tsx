@@ -56,6 +56,15 @@ function makeLine(overrides: Partial<ReturnLine> = {}): ReturnLine {
 function makeDetail(overrides: Partial<ReturnDetail> = {}): ReturnDetail {
   return {
     id: RETURN_ID,
+    counters: {
+      lineCount: 1,
+      notReturnedLineCount: 0,
+      quantityAdvised: 5,
+      notReturnedQuantityAdvised: 0,
+      quantityReceived: 0,
+      quantityRestocked: 0,
+      quantityScrapped: 0,
+    },
     sourceConnectionId: 'conn_1',
     externalReturnId: 'RET-1',
     internalOrderId: 'ol_order_bbbbbbbb2222',

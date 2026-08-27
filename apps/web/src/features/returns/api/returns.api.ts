@@ -118,6 +118,7 @@ export function createReturnsApi(request: ApiRequest): ReturnsApi {
         // used 20. The request is only the fallback.
         limit: parsed.limit ?? pagination?.limit ?? 0,
         offset: parsed.offset ?? pagination?.offset ?? 0,
+        stageCounts: parsed.stageCounts,
         counts: parsed.counts,
         droppedCount: parsed.droppedCount,
         envelopeUnreadable: parsed.envelopeUnreadable,

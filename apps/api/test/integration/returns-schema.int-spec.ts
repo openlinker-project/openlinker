@@ -272,6 +272,28 @@ describe('Returns Schema Integration', () => {
      * change in one assertion — and fails loudly on a "while we're here" edit
      * to a table whose live rows already feed analytics.
      */
+    /**
+     * #2377's third acceptance criterion, as a test.
+     *
+     * The derived operator stage is a PRESENTATION PROJECTION: it is computed
+     * from counters and timestamps in two places (a SQL `CASE` and a browser
+     * function) and stored in neither. Persisting it would be a model change
+     * needing its own ADR, and the cheapest way for one to arrive by the back
+     * door is a "while we're here" column on a migration that is really about
+     * something else. This fails the moment one appears.
+     */
+    it('should persist NO stage column on returns or return_lines', async () => {
+      const columns = await query<{ table_name: string; column_name: string }>(
+        `SELECT table_name, column_name
+           FROM information_schema.columns
+          WHERE table_name IN ('returns', 'return_lines')
+            AND column_name ILIKE '%stage%'
+          ORDER BY table_name, column_name`
+      );
+
+      expect(columns).toEqual([]);
+    });
+
     it('should leave every pre-existing refund column untouched when the returns migration runs', async () => {
       const columns = await query<{
         column_name: string;
@@ -288,6 +310,10 @@ describe('Returns Schema Integration', () => {
         { column_name: 'amount', data_type: 'numeric', is_nullable: 'NO' },
         { column_name: 'createdAt', data_type: 'timestamp with time zone', is_nullable: 'NO' },
         { column_name: 'currency', data_type: 'character varying', is_nullable: 'NO' },
+        // #2371 — who moved the money. NOT NULL with a DEFAULT, which is the
+        // whole backfill story: every pre-existing row reads
+        // `operator_out_of_band`, the only value any shipped path can produce.
+        { column_name: 'executedBy', data_type: 'character varying', is_nullable: 'NO' },
         { column_name: 'id', data_type: 'uuid', is_nullable: 'NO' },
         { column_name: 'idempotencyKey', data_type: 'text', is_nullable: 'YES' },
         { column_name: 'internalOrderId', data_type: 'text', is_nullable: 'NO' },

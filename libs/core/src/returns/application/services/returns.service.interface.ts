@@ -21,6 +21,7 @@ import type {
   ReturnDeclineAvailability,
   ReturnIngestionAvailability,
   ReturnListFilter,
+  ReturnStageCounts,
 } from '../../domain/types/return-query.types';
 
 /**
@@ -173,6 +174,18 @@ export interface IReturnsService {
    * drifting apart.
    */
   countReturnsByBucket(filter: ReturnListFilter): Promise<ReturnBucketCounts>;
+
+  /**
+   * How many returns sit in each derived operator stage (#2377, spec § 3.2).
+   *
+   * The stage is a PRESENTATION PROJECTION, never a persisted column — this
+   * counts a `CASE` over the counters, and the identical rule runs in the
+   * browser via `deriveReturnStage`.
+   *
+   * Strips `stage` from the filter itself, so a caller cannot accidentally make
+   * every chip report the count of the stage already selected.
+   */
+  countReturnsByStage(filter: ReturnListFilter): Promise<ReturnStageCounts>;
 
   /**
    * Can anything in this deployment ingest returns at all? (#2334, for #2335.)

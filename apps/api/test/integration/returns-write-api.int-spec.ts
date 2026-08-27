@@ -51,7 +51,9 @@ describe('Returns Write API Integration', () => {
   let connectionId: string;
   let token: string;
 
-  const http = (): request.SuperTest<request.Test> => request(harness.getApp().getHttpServer());
+  // Same shape the passing suites in this folder use — no cast: `request(...)`
+  // returns `TestAgent<Test>` in this supertest version, not `SuperTest<Test>`.
+  const http = (): ReturnType<typeof request> => harness.getHttp();
 
   const returns = (): IReturnsService =>
     harness.getApp().get<IReturnsService>(RETURNS_SERVICE_TOKEN, { strict: false });
@@ -111,7 +113,7 @@ describe('Returns Write API Integration', () => {
     // custody write keys on `lineId` alone, so nothing but this check stops the
     // URL naming the wrong parent.
     await http()
-      .post(`/returns/${second.id}/lines/${first.lineId}/receive`)
+      .post(`/v1/returns/${second.id}/lines/${first.lineId}/receive`)
       .set('Authorization', `Bearer ${token}`)
       .send({ quantity: 1 })
       .expect(404);
@@ -119,7 +121,7 @@ describe('Returns Write API Integration', () => {
 
   it('should walk receive -> dispose -> blocked -> attest', async () => {
     const { returnId, lineId } = await seedAttributedReturn('RET-WRITE-1');
-    const base = `/returns/${returnId}/lines/${lineId}`;
+    const base = `/v1/returns/${returnId}/lines/${lineId}`;
 
     const received = await http()
       .post(`${base}/receive`)
@@ -161,7 +163,7 @@ describe('Returns Write API Integration', () => {
     const { returnId, lineId } = await seedAttributedReturn('RET-WRITE-2');
 
     const response = await http()
-      .post(`/returns/${returnId}/lines/${lineId}/receive`)
+      .post(`/v1/returns/${returnId}/lines/${lineId}/receive`)
       .set('Authorization', `Bearer ${token}`)
       // Advised is 3.
       .send({ quantity: 4 })
@@ -178,7 +180,7 @@ describe('Returns Write API Integration', () => {
     // exactly why `non-positive-quantity` is a genuine state conflict wherever
     // it IS reached.
     await http()
-      .post(`/returns/${returnId}/lines/${lineId}/receive`)
+      .post(`/v1/returns/${returnId}/lines/${lineId}/receive`)
       .set('Authorization', `Bearer ${token}`)
       .send({ quantity: 0 })
       .expect(400);
@@ -187,16 +189,16 @@ describe('Returns Write API Integration', () => {
   it('should refuse every write without a token', async () => {
     const { returnId, lineId } = await seedAttributedReturn('RET-WRITE-4');
 
-    await http().post(`/returns/${returnId}/lines/${lineId}/receive`).send({ quantity: 1 }).expect(401);
-    await http().post(`/returns/${returnId}/authorize`).send({}).expect(401);
-    await http().post(`/returns/${returnId}/correction-proposal`).send({}).expect(401);
+    await http().post(`/v1/returns/${returnId}/lines/${lineId}/receive`).send({ quantity: 1 }).expect(401);
+    await http().post(`/v1/returns/${returnId}/authorize`).send({}).expect(401);
+    await http().post(`/v1/returns/${returnId}/correction-proposal`).send({}).expect(401);
   });
 
   it('should preview a correction proposal without recording one', async () => {
     const { returnId } = await seedAttributedReturn('RET-WRITE-5');
 
     const response = await http()
-      .get(`/returns/${returnId}/correction-proposal`)
+      .get(`/v1/returns/${returnId}/correction-proposal`)
       .set('Authorization', `Bearer ${token}`)
       .expect(200);
 
@@ -218,7 +220,7 @@ describe('Returns Write API Integration', () => {
     const { returnId } = await seedAttributedReturn('RET-WRITE-6');
 
     const response = await http()
-      .post(`/returns/${returnId}/authorize`)
+      .post(`/v1/returns/${returnId}/authorize`)
       .set('Authorization', `Bearer ${token}`)
       .send({})
       .expect(409);

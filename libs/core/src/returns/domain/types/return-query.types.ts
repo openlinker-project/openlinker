@@ -32,6 +32,7 @@
  * @see docs/architecture/adrs/060-returns-aggregate-above-source-projection.md
  */
 import type { ReturnBucket } from './return-bucket.types';
+import type { ReturnStage } from './return-stage.types';
 
 /**
  * What a returns list read is narrowed by. Every field is optional; see rule 1.
@@ -50,6 +51,31 @@ export interface ReturnListFilter {
   createdFrom?: Date;
   /** Inclusive upper bound on `createdAt`. */
   createdTo?: Date;
+  /**
+   * One derived operator stage (#2377, spec § 4.3). Absent = every stage.
+   *
+   * Matched against `RETURN_STAGE_EXPR` — the SAME single expression the stage
+   * counts bucket on, so no per-arm predicate can drift from its own count.
+   */
+  stage?: ReturnStage;
+}
+
+/**
+ * How many returns sit in each derived stage, over one filter scope (#2377).
+ *
+ * Read from ONE scan alongside the total, so the six numbers and the total
+ * cannot disagree because of a concurrent write.
+ *
+ * **Scoping rule, and it is the easy thing to get wrong**: these are computed
+ * with `stage` REMOVED from the caller's filter (and every other dimension
+ * applied), for the reason `ReturnBucketCounts` states about `bucket` — the
+ * count for the dimension you are NOT looking at must stay truthful. Applied
+ * with `stage` still in the filter, every chip would show the count of the
+ * stage already selected.
+ */
+export interface ReturnStageCounts {
+  total: number;
+  byStage: Record<ReturnStage, number>;
 }
 
 /**

@@ -75,6 +75,7 @@ describe('ReturnsController', () => {
   let returnsService: {
     listReturns: jest.Mock;
     countReturnsByBucket: jest.Mock;
+    countReturnsByStage: jest.Mock;
     getReturn: jest.Mock;
     getReturnIngestionAvailability: jest.Mock;
     getDeclineAvailability: jest.Mock;
@@ -86,6 +87,18 @@ describe('ReturnsController', () => {
       countReturnsByBucket: jest
         .fn()
         .mockResolvedValue({ total: 10, orphan: 3, attributed: 7 }),
+      // #2377 — the derived-stage partition, scoped with `stage` REMOVED.
+      countReturnsByStage: jest.fn().mockResolvedValue({
+        total: 10,
+        byStage: {
+          declined: 0,
+          not_returned: 0,
+          partially_received: 0,
+          received_awaiting_disposition: 0,
+          disposed: 0,
+          awaiting_parcel: 10,
+        },
+      }),
       getReturn: jest.fn().mockResolvedValue(null),
       getReturnIngestionAvailability: jest
         .fn()
@@ -169,6 +182,11 @@ describe('ReturnsController', () => {
           'authorizedAt',
           'bucket',
           'closedAt',
+          // #2377 — the counter rollup the browser derives the stage from.
+          // Deliberate: it is the ONE field this projection gained, and adding
+          // it here is what makes the allowlist a decision rather than a rubber
+          // stamp. Carries no PII and no lines.
+          'counters',
           'createdAt',
           'declinedAt',
           'externalOrderId',

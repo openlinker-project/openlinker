@@ -9,7 +9,12 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import { IsDateString, IsIn, IsInt, IsOptional, IsUUID, Max, Min } from 'class-validator';
-import { ReturnBucketValues, type ReturnBucket } from '@openlinker/core/returns';
+import {
+  ReturnBucketValues,
+  ReturnStageValues,
+  type ReturnBucket,
+  type ReturnStage,
+} from '@openlinker/core/returns';
 
 export class ListReturnsQueryDto {
   @ApiPropertyOptional({ description: 'Filter by source connection ID (UUID)' })
@@ -34,6 +39,23 @@ export class ListReturnsQueryDto {
   @IsOptional()
   @IsIn(ReturnBucketValues)
   bucket?: ReturnBucket;
+
+  /**
+   * One derived operator stage (#2377, spec § 4.3).
+   *
+   * Validated against the union's own runtime array for the reason `bucket`
+   * gives. The stage is a PRESENTATION PROJECTION and not a column, so this
+   * filters on the same `CASE` over the counters that the stage counts bucket
+   * on — one expression, so a filtered page can never disagree with its own chip.
+   */
+  @ApiPropertyOptional({
+    enum: ReturnStageValues,
+    description:
+      'One derived operator stage, computed from counters and timestamps — never a persisted column. Omitted returns every stage.',
+  })
+  @IsOptional()
+  @IsIn(ReturnStageValues)
+  stage?: ReturnStage;
 
   @ApiPropertyOptional({ description: 'Returns created on or after this instant (ISO 8601)' })
   @IsOptional()

@@ -82,8 +82,20 @@ const declineAvailabilitySchema = z.object({
   reason: z.string().nullish(),
 });
 
+/** #2377 — the counter rollup, mirroring the list schema's own defaulted shape. */
+const returnCountersSchema = z.object({
+  lineCount: z.number().nullish(),
+  notReturnedLineCount: z.number().nullish(),
+  quantityAdvised: z.number().nullish(),
+  notReturnedQuantityAdvised: z.number().nullish(),
+  quantityReceived: z.number().nullish(),
+  quantityRestocked: z.number().nullish(),
+  quantityScrapped: z.number().nullish(),
+});
+
 const returnDetailSchema = z.object({
   id: z.string(),
+  counters: returnCountersSchema.nullish(),
   sourceConnectionId: z.string(),
   externalReturnId: z.string().nullish(),
   internalOrderId: z.string().nullish(),
@@ -176,6 +188,20 @@ export function parseReturnDetail(raw: unknown, returnId: string): ReturnDetail 
 
   return {
     id: parsed.data.id,
+    // #2377 — the detail response spreads the same list-item projection, so the
+    // counters are present. Defaulted rather than required for the same reason
+    // the list schema defaults them: a response predating #2377 is still a
+    // readable return, and losing it over a missing projection is worse than
+    // deriving `Awaiting parcel`.
+    counters: {
+      lineCount: parsed.data.counters?.lineCount ?? 0,
+      notReturnedLineCount: parsed.data.counters?.notReturnedLineCount ?? 0,
+      quantityAdvised: parsed.data.counters?.quantityAdvised ?? 0,
+      notReturnedQuantityAdvised: parsed.data.counters?.notReturnedQuantityAdvised ?? 0,
+      quantityReceived: parsed.data.counters?.quantityReceived ?? 0,
+      quantityRestocked: parsed.data.counters?.quantityRestocked ?? 0,
+      quantityScrapped: parsed.data.counters?.quantityScrapped ?? 0,
+    },
     sourceConnectionId: parsed.data.sourceConnectionId,
     externalReturnId: orNull(parsed.data.externalReturnId),
     internalOrderId: orNull(parsed.data.internalOrderId),

@@ -28,6 +28,7 @@
  * @module domain/entities
  */
 import type { ReturnOrigin } from '../types/return.types';
+import type { ReturnStageCounters } from '../types/return-stage.types';
 import type { ReturnLine } from './return-line.entity';
 
 export class ReturnRecord {
@@ -74,7 +75,25 @@ export class ReturnRecord {
      * silent mis-binding. Extend this constructor the same way.
      */
     public readonly matchedAt: Date | null = null,
-    public readonly matchedByUserId: string | null = null
+    public readonly matchedByUserId: string | null = null,
+    /**
+     * Per-return counter rollup, for the derived stage (#2377, spec § 3.2).
+     *
+     * **`null` means "this read did not load counters", never "all zero".** The
+     * LIST projection carries no lines (loading every line of every row to
+     * compute six integers is not what a header-shaped read is for), so it
+     * aggregates them in SQL and populates this. The DETAIL read carries real
+     * `lines` and derives its stage from those, so it leaves this `null`.
+     *
+     * A zeroed default would claim "nothing advised, nothing received" for a
+     * fully-disposed return and render `Awaiting parcel` over it.
+     *
+     * *Alternative considered and rejected*: a `ReturnListRow { record, counters }`
+     * projection. Cleaner in the abstract, but it forces
+     * `IReturnsService.listReturns` to change its return type and the controller
+     * to zip two collections.
+     */
+    public readonly counters: ReturnStageCounters | null = null
   ) {}
 
   /**

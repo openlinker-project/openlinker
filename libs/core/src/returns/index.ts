@@ -299,3 +299,24 @@ export type {
   BuildReturnCorrectionProposalInput,
   IReturnCorrectionProposalService,
 } from './application/services/return-correction-proposal.service.interface';
+
+// The derived operator STAGE (#2377, `W2-40`, returns spec § 3.2).
+//
+// A presentation projection, never a persisted column — if a future wave wants
+// to persist it, that is a model change needing its own ADR. The array order IS
+// the ordinal: the SQL `CASE` is built by iterating `ReturnStageValues`, so a
+// reorder changes behaviour and `scripts/check-return-stage-mirror.mjs` treats
+// one as a hard failure. The shared fixture table lives on the
+// `@openlinker/core/returns/testing` subpath, NOT here — it is test data.
+export {
+  ReturnStageValues,
+  deriveReturnStage,
+  expectedQuantity,
+  isReturnStage,
+  undisposedQuantity,
+} from './domain/types/return-stage.types';
+export type {
+  ReturnStage,
+  ReturnStageCounters,
+  ReturnStageFacts,
+} from './domain/types/return-stage.types';

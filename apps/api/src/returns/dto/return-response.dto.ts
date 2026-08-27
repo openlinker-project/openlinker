@@ -37,6 +37,7 @@ import {
   type ReturnMoneyState,
   type ReturnOrigin,
 } from '@openlinker/core/returns';
+import type { ReturnStage } from '@openlinker/core/returns';
 import { RefundReasonValues, type RefundReason } from '@openlinker/core/orders/types';
 
 export class ReturnLineResponseDto {
@@ -115,6 +116,50 @@ export class ReturnLineResponseDto {
 }
 
 /**
+ * The per-return counter rollup the derived stage reads (#2377).
+ *
+ * Aggregated in SQL over the return's lines — the list projection carries no
+ * lines, and hydrating every line of every row to compute six integers is not
+ * what a header-shaped read is for.
+ *
+ * The frontend derives the stage from these with `deriveReturnStage`, the SAME
+ * rule the backend's `RETURN_STAGE_PREDICATES` runs in SQL for the counts and
+ * the filter. Two implementations of one rule, pinned by
+ * `scripts/check-return-stage-mirror.mjs`.
+ */
+export class ReturnCountersDto {
+  @ApiProperty({ description: "The return's line count." })
+  lineCount!: number;
+
+  @ApiProperty({
+    description:
+      'Lines written off as never arriving. `not_returned` is "every line", which no combination of quantity sums can express — hence the two line counts.',
+  })
+  notReturnedLineCount!: number;
+
+  @ApiProperty({ description: 'Units the source announced, across every line.' })
+  quantityAdvised!: number;
+
+  @ApiProperty({
+    description:
+      'Advised units sitting on lines written off as never arriving. Subtracted from `quantityAdvised` to give the units STILL EXPECTED — without which a return with one line disposed and one written off reads as "partially received" forever.',
+  })
+  notReturnedQuantityAdvised!: number;
+
+  @ApiProperty() quantityReceived!: number;
+  @ApiProperty() quantityRestocked!: number;
+  @ApiProperty() quantityScrapped!: number;
+}
+
+/**
+ * How many returns sit in each derived operator stage (#2377).
+ *
+ * **Scoped with `stage` REMOVED from the caller's filters** (every other
+ * dimension applied), for the reason `ReturnBucketCountsDto` gives about
+ * `bucket`: the count for the dimension you are not looking at must stay
+ * truthful, or every chip reports the count of the stage already selected.
+ */
+/**
  * The return header, as a list row.
  *
  * Carries no `lines`, because the list read hydrates none — a DTO promising an
@@ -133,6 +178,13 @@ export class ReturnListItemResponseDto {
 
   @ApiProperty({ nullable: true, description: "The source's own return id, when it mints one." })
   externalReturnId!: string | null;
+
+  @ApiProperty({
+    type: ReturnCountersDto,
+    description:
+      'The counter rollup the derived operator stage is computed from. Always present on THIS read — a return with no lines reports zeroes, which is a fact about the return rather than about the query.',
+  })
+  counters!: ReturnCountersDto;
 
   @ApiProperty({
     nullable: true,
@@ -225,6 +277,17 @@ export class ReturnBucketCountsDto {
   attributed!: number;
 }
 
+export class ReturnStageCountsDto {
+  @ApiProperty({ description: 'Rows in the stage-less scope. Equal to the sum of `byStage`.' })
+  total!: number;
+
+  @ApiProperty({
+    description: 'One count per derived stage. The six are exhaustive, so they sum to `total`.',
+    additionalProperties: { type: 'number' },
+  })
+  byStage!: Record<ReturnStage, number>;
+}
+
 export class PaginatedReturnsResponseDto {
   @ApiProperty({ type: [ReturnListItemResponseDto] })
   items!: ReturnListItemResponseDto[];
@@ -240,6 +303,13 @@ export class PaginatedReturnsResponseDto {
 
   @ApiProperty()
   offset!: number;
+
+  @ApiProperty({
+    type: ReturnStageCountsDto,
+    description:
+      'The derived-stage partition, scoped with `stage` REMOVED from this request\'s filters so the chip for the stage you are not looking at stays truthful.',
+  })
+  stageCounts!: ReturnStageCountsDto;
 
   @ApiProperty({
     type: ReturnBucketCountsDto,

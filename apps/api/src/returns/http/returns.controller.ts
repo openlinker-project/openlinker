@@ -39,6 +39,7 @@ import {
 import { ListReturnsQueryDto } from '../dto/list-returns-query.dto';
 import type {
   ReturnLineResponseDto,
+  ReturnCountersDto,
   ReturnListItemResponseDto,
 } from '../dto/return-response.dto';
 import {
@@ -86,9 +87,24 @@ export class ReturnsController {
       createdTo: query.createdTo === undefined ? undefined : new Date(query.createdTo),
     };
 
-    const [records, counts] = await Promise.all([
-      this.returnsService.listReturns({ ...scope, bucket: query.bucket }, limit, offset),
-      this.returnsService.countReturnsByBucket(scope),
+    // Two count sets, two scopes, and getting this backwards is the single
+    // easiest defect in the slice — it is invisible until an operator clicks a
+    // chip. The rule (`ReturnBucketCounts` / `ReturnStageCounts`): the count for
+    // the dimension you are NOT looking at stays truthful.
+    //
+    //   bucket counts -> `bucket` removed, `stage` APPLIED
+    //   stage  counts -> `stage` removed, `bucket` APPLIED
+    //
+    // `countReturnsByStage` additionally strips `stage` itself, so the rule
+    // survives a caller that forgets it.
+    const [records, counts, stageCounts] = await Promise.all([
+      this.returnsService.listReturns(
+        { ...scope, bucket: query.bucket, stage: query.stage },
+        limit,
+        offset
+      ),
+      this.returnsService.countReturnsByBucket({ ...scope, stage: query.stage }),
+      this.returnsService.countReturnsByStage({ ...scope, bucket: query.bucket }),
     ]);
 
     return {
@@ -98,10 +114,15 @@ export class ReturnsController {
       // what stops the pagination total and the chips drifting apart, which is
       // the same drift the single-scan aggregate exists to prevent one layer
       // down.
+      // `counts` is already computed WITH `stage` applied, so this resolves the
+      // total for (scope + stage + bucket) unchanged. Deliberately NOT a second
+      // arm reading `stageCounts`: those have `stage` REMOVED, so picking from
+      // them would report the stage-less total on a stage-filtered page.
       total: this.resolveScopedTotal(counts, query.bucket),
       limit,
       offset,
       counts,
+      stageCounts,
     };
   }
 
@@ -192,7 +213,52 @@ export class ReturnsController {
       closedAt: this.toIso(record.closedAt),
       createdAt: record.createdAt.toISOString(),
       updatedAt: record.updatedAt.toISOString(),
+      counters: this.toCountersDto(record),
     };
+  }
+
+  /**
+   * The counter rollup, from whichever source this read actually has (#2377).
+   *
+   * `ReturnRecord.counters` is `null` on the DETAIL read — that read carries
+   * real `lines`, so it folds them here rather than being handed an aggregate it
+   * did not need. The LIST read carries the SQL aggregate and no lines. Both
+   * paths must produce the same six numbers, because both feed the same
+   * `deriveReturnStage` in the browser and a stage that changed when an operator
+   * opened a row would be worse than no stage at all.
+   *
+   * `null` is never read as zeroes: the fallback folds lines, and a return with
+   * neither is genuinely zero.
+   */
+  private toCountersDto(record: ReturnRecord): ReturnCountersDto {
+    if (record.counters !== null) {
+      return record.counters;
+    }
+
+    return record.lines.reduce<ReturnCountersDto>(
+      (acc, line) => {
+        const writtenOff = line.custodyState === 'not_returned';
+        return {
+          lineCount: acc.lineCount + 1,
+          notReturnedLineCount: acc.notReturnedLineCount + (writtenOff ? 1 : 0),
+          quantityAdvised: acc.quantityAdvised + line.quantityAdvised,
+          notReturnedQuantityAdvised:
+            acc.notReturnedQuantityAdvised + (writtenOff ? line.quantityAdvised : 0),
+          quantityReceived: acc.quantityReceived + line.quantityReceived,
+          quantityRestocked: acc.quantityRestocked + line.quantityRestocked,
+          quantityScrapped: acc.quantityScrapped + line.quantityScrapped,
+        };
+      },
+      {
+        lineCount: 0,
+        notReturnedLineCount: 0,
+        quantityAdvised: 0,
+        notReturnedQuantityAdvised: 0,
+        quantityReceived: 0,
+        quantityRestocked: 0,
+        quantityScrapped: 0,
+      }
+    );
   }
 
   private toLineDto(line: ReturnLine): ReturnLineResponseDto {

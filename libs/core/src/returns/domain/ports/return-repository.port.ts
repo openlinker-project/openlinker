@@ -35,7 +35,11 @@ import type { CreateReturnRecordInput } from '../types/return.types';
 import type { UpsertReturnRecordInput, UpsertReturnResult } from '../types/return-upsert.types';
 import type { ReturnSourceSweepFilter, ReturnSweepCandidate } from '../types/return-sweep.types';
 import type { ReturnReattributionCandidate } from '../types/return-reattribution.types';
-import type { ReturnBucketCounts, ReturnListFilter } from '../types/return-query.types';
+import type {
+  ReturnBucketCounts,
+  ReturnListFilter,
+  ReturnStageCounts,
+} from '../types/return-query.types';
 
 export interface ReturnRepositoryPort {
   /**
@@ -317,6 +321,17 @@ export interface ReturnRepositoryPort {
    * field would make the two reads disagree about what the filter means.
    */
   countReturnsByBucket(filter: ReturnListFilter): Promise<ReturnBucketCounts>;
+
+  /**
+   * How many returns sit in each derived operator stage (#2377), over one
+   * filter scope.
+   *
+   * The implementation strips `stage` from the filter itself — the count for the
+   * dimension you are NOT looking at must stay truthful, and enforcing that here
+   * rather than at each caller is what stops every chip reporting the count of
+   * the stage already selected.
+   */
+  countReturnsByStage(filter: ReturnListFilter): Promise<ReturnStageCounts>;
 
   /**
    * One line plus its parent return, WITHOUT a row lock (#2370).

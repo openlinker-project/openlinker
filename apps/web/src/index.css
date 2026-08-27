@@ -19396,6 +19396,7 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
    SKU ("Blue ShirtSKU-1"), and the identity cell butts its badge against the
    id. Tokens only — no raw colour or spacing values. */
 
+.returns-stage-cell,
 .returns-identity-cell,
 .returns-order-cell,
 .returns-line-item {
@@ -19404,6 +19405,14 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   align-items: flex-start;
   gap: var(--space-1);
   min-width: 0;
+}
+
+/* The counter line under the derived stage (#2377). Muted and smaller than the
+   badge above it: the stage is the glanceable signal and the counters are the
+   evidence for it, so they must not compete. Tokens only. */
+.returns-stage-cell__counters {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
 }
 
 /* The one horizontal member of the family: a chip and the sentence that says
