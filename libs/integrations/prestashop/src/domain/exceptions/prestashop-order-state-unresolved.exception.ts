@@ -21,7 +21,8 @@ export class PrestashopOrderStateUnresolvedException extends Error {
     super(
       `No PrestaShop order state on connection ${connectionId} means "${olStatus}". ` +
         `Add a matching order state in the shop, or map "${olStatus}" to a state id ` +
-        `in the connection's order-status mappings.`
+        `in the connection's order-status mappings. A state added in the shop is picked up ` +
+        `when the process next reads the catalogue, so mapping the status takes effect sooner.`
     );
     this.name = 'PrestashopOrderStateUnresolvedException';
     Error.captureStackTrace(this, this.constructor);

@@ -174,6 +174,72 @@ describe('PrestashopOrderStateCatalog', () => {
     });
   });
 
+  describe('a single-language shop (#2607 review)', () => {
+    // The realistic case. A multi-language row usually carries English too,
+    // which hides a missing translation; a Polish-only shop does not.
+    const POLISH_ONLY_INSTALL = [
+      { id: '1', name: 'Oczekiwanie na płatność', deleted: '0', paid: '0' },
+      { id: '2', name: 'Płatność zaakceptowana', deleted: '0', paid: '1' },
+      { id: '4', name: 'Wysłane', deleted: '0', paid: '1', shipped: '1' },
+      { id: '6', name: 'Anulowano', deleted: '0', paid: '0' },
+      { id: '7', name: 'Zwrócono', deleted: '0', paid: '0' },
+    ];
+
+    it('reads a Polish-only shop both ways', async () => {
+      const { client } = clientReturning(POLISH_ONLY_INSTALL);
+      const states = await new PrestashopOrderStateCatalog(client, 'conn-1').load();
+
+      expect(states.statusOf('6')).toBe('cancelled');
+      expect(states.statusOf('7')).toBe('refunded');
+      expect(states.stateIdFor('cancelled')).toBe(6);
+      expect(states.stateIdFor('refunded')).toBe(7);
+    });
+
+    it('reads a German-only shop without reading its completed state as cancelled', async () => {
+      const { client } = clientReturning([
+        { id: '5', name: 'Abgeschlossen', deleted: '0', paid: '1' },
+        { id: '6', name: 'Storniert', deleted: '0', paid: '0' },
+        { id: '7', name: 'Rückerstattet', deleted: '0', paid: '0' },
+      ]);
+      const states = await new PrestashopOrderStateCatalog(client, 'conn-1').load();
+
+      expect(states.statusOf('5')).toBe('processing');
+      expect(states.statusOf('6')).toBe('cancelled');
+      expect(states.statusOf('7')).toBe('refunded');
+    });
+
+    it('names the states nothing could be read from', async () => {
+      const { client } = clientReturning(POLISH_ONLY_INSTALL);
+      const catalog = new PrestashopOrderStateCatalog(client, 'conn-1');
+      const warn = jest
+        .spyOn((catalog as unknown as { logger: { warn: jest.Mock } }).logger, 'warn')
+        .mockImplementation(() => undefined);
+
+      const states = await catalog.load();
+
+      // Only the awaiting state, where `pending` is the right answer - but it
+      // is said out loud, because on a shop this vocabulary does not cover the
+      // same list would hold the refund state.
+      expect(states.statesWithoutEvidence().map((state) => state.id)).toEqual(['1']);
+      expect(String(warn.mock.calls[0]?.[0])).toContain('Oczekiwanie na płatność');
+    });
+
+    it('says nothing when every state could be read', async () => {
+      const { client } = clientReturning([
+        { id: '6', name: 'Anulowano', deleted: '0', paid: '0' },
+        { id: '7', name: 'Zwrócono', deleted: '0', paid: '0' },
+      ]);
+      const catalog = new PrestashopOrderStateCatalog(client, 'conn-1');
+      const warn = jest
+        .spyOn((catalog as unknown as { logger: { warn: jest.Mock } }).logger, 'warn')
+        .mockImplementation(() => undefined);
+
+      await catalog.load();
+
+      expect(warn).not.toHaveBeenCalled();
+    });
+  });
+
   describe('caching', () => {
     it('should read the shop once across repeated loads', async () => {
       const { client, listResources } = clientReturning(DEFAULT_INSTALL);

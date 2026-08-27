@@ -2731,6 +2731,7 @@ a.delivery-rider-banner__button:focus-visible {
  * primary content. Native `<option>` elements append the same string as
  * plain text via `optionPlainText` (style there is browser-default).
  */
+.mapping-option__derived-suffix,
 .mapping-option__dynamic-suffix {
   color: var(--text-muted);
   font-size: 0.75rem;

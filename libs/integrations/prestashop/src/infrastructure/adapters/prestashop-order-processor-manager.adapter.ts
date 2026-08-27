@@ -592,6 +592,9 @@ export class PrestashopOrderProcessorManagerAdapter
         // characters and push the product identity out of every truncated
         // surface that renders it (#2052 — see `taxRateUnknownError`).
         error instanceof PrestashopTaxRateUnknownException ||
+        // Same reason as in `updateFulfillment`: the classifier keys on the
+        // class, so wrapping it would cost the refusal its terminal handling.
+        error instanceof PrestashopOrderStateUnresolvedException ||
         // Same contract for the currency refusal (#2139). What it buys today is
         // the operator-facing message: wrapping prepends 35 characters and
         // pushes the currency identity out of the truncated surfaces. It also
@@ -939,7 +942,11 @@ export class PrestashopOrderProcessorManagerAdapter
     } catch (error) {
       if (
         error instanceof PrestashopResourceNotFoundException ||
-        error instanceof PrestashopApiException
+        error instanceof PrestashopApiException ||
+        // The shop has no state for the requested status (#2607). Wrapping it
+        // made the retry classifier see a generic API failure and spend the
+        // whole retry ladder on a refusal only an operator can clear.
+        error instanceof PrestashopOrderStateUnresolvedException
       ) {
         throw error;
       }
