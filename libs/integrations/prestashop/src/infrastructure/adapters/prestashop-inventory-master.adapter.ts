@@ -27,6 +27,14 @@ import {
   PrestashopNotSupportedException,
   PrestashopResourceNotFoundException,
 } from '@openlinker/integrations-prestashop';
+import {
+  PACK_STOCK_TYPE_SHOP_DEFAULT,
+  derivePackAvailability,
+  packComponentStockKey,
+  readPackDefinition,
+  resolvePackStockMode,
+  type PrestashopPackComponent,
+} from '../../domain/types/prestashop-pack.types';
 import { Logger } from '@openlinker/shared/logging';
 
 /**
@@ -36,6 +44,14 @@ import { Logger } from '@openlinker/shared/logging';
  */
 export class PrestashopInventoryMasterAdapter implements InventoryMasterPort {
   private readonly logger = new Logger(PrestashopInventoryMasterAdapter.name);
+
+  /**
+   * Shop-wide `PS_PACK_STOCK_TYPE`, memoized per adapter instance: it is one
+   * shop setting, so re-reading it for every pack in a sweep would spend a
+   * request on an answer that cannot have changed mid-run. `undefined` means
+   * "not read yet"; `null` means "read and unusable".
+   */
+  private shopPackStockType: number | null | undefined;
 
   constructor(
     private readonly httpClient: IPrestashopWebserviceClient,
@@ -105,16 +121,12 @@ export class PrestashopInventoryMasterAdapter implements InventoryMasterPort {
       custom: { id_product: psProductId },
     });
 
-    if (stockRecords.length === 0) {
-      await this.throwForAbsentStockRecords(productId, psProductId);
-    }
-
     const combinationRows = stockRecords.filter(
       (record) => Number(record.id_product_attribute) !== 0
     );
 
     // Multi-variant: one variant-keyed Inventory per combination. The
-    // id_product_attribute=0 aggregate is ignored — the per-combination rows
+    // id_product_attribute=0 aggregate is ignored - the per-combination rows
     // carry the real per-variant stock.
     if (combinationRows.length > 0) {
       const inventories: Inventory[] = [];
@@ -126,9 +138,182 @@ export class PrestashopInventoryMasterAdapter implements InventoryMasterPort {
       return inventories;
     }
 
+    // Only a product with no combinations can be a pack - PrestaShop refuses
+    // combinations on one - so the multi-variant path above never pays for the
+    // product read this branch needs. That read costs one request per simple
+    // product, accepted because the alternative is publishing a quantity
+    // PrestaShop itself does not believe: a pack's own stock row is never
+    // decremented when a component sells, and no hook fires, so nothing else in
+    // this flow can ever notice.
+    const ownRow = stockRecords.length > 0 ? stockRecords[0] : null;
+    const product =
+      ownRow === null
+        ? await this.fetchProductOrClassifyDeletion(productId, psProductId)
+        : await this.tryFetchProduct(productId, psProductId);
+
+    const packQuantity = await this.resolvePackQuantity(productId, psProductId, product, ownRow);
+
+    if (packQuantity !== null) {
+      const packRow: PrestashopStockAvailable = {
+        ...(ownRow ?? {
+          // A pack whose availability comes from its components legitimately has
+          // no stock row of its own. The id is deterministic so the Inventory
+          // identifier mapping stays stable across runs.
+          id: `pack:${psProductId}`,
+          id_product: psProductId,
+          id_product_attribute: 0,
+        }),
+        quantity: packQuantity,
+      };
+      return [await this.toVariantInventory(packRow, productId, `product:${psProductId}`)];
+    }
+
+    if (ownRow === null) {
+      throw this.zeroStockRowsError(productId, psProductId);
+    }
+
     // Simple product: the single aggregate row maps to the deterministic
     // synthetic variant (mirrors the product adapter's `product:<id>` scheme).
-    return [await this.toVariantInventory(stockRecords[0], productId, `product:${psProductId}`)];
+    return [await this.toVariantInventory(ownRow, productId, `product:${psProductId}`)];
+  }
+
+  /**
+   * Pack quantity for this product, or `null` when the pack rule has nothing to
+   * say and the product's own stock row stands.
+   *
+   * `null` covers three distinct cases on purpose - the product is not a pack,
+   * the shop decrements the pack itself (`pack_stock_type = 0`, so its own row
+   * IS authoritative), or the pack declares no components. Only the first is the
+   * common case; the other two are logged.
+   *
+   * An ordinary product returns on the first check, before any component read.
+   * That is the point of the early return: a pack rule able to lower a non-pack's
+   * quantity would override the master, which is authoritative including zero.
+   */
+  private async resolvePackQuantity(
+    productId: string,
+    psProductId: string,
+    product: unknown,
+    ownRow: PrestashopStockAvailable | null
+  ): Promise<number | null> {
+    const pack = readPackDefinition(product);
+    if (pack === null) {
+      return null;
+    }
+
+    // The shop-wide setting is read only for a pack that actually points at it,
+    // so a pack declaring its own mode costs no request for it.
+    const shopDefault =
+      pack.rawStockType === PACK_STOCK_TYPE_SHOP_DEFAULT
+        ? await this.resolveShopPackStockType()
+        : null;
+    const mode = resolvePackStockMode(pack.rawStockType, shopDefault);
+    if (mode === 'pack-only') {
+      this.logger.debug(
+        `master_inventory_pack_own_stock product=${productId} psProductId=${psProductId} - shop decrements the pack itself; own stock row is authoritative`
+      );
+      return null;
+    }
+
+    const derived = derivePackAvailability(
+      pack.components,
+      await this.readComponentAvailability(pack.components)
+    );
+
+    if (derived === null) {
+      this.logger.warn(
+        `master_inventory_pack_without_components product=${productId} psProductId=${psProductId} - pack declares no components; falling back to its own stock row`
+      );
+      return null;
+    }
+
+    if (mode === 'both' && ownRow !== null) {
+      return Math.min(this.readQuantity(ownRow.quantity), derived);
+    }
+
+    return derived;
+  }
+
+  /**
+   * Available quantity per component, in ONE stock_availables read for the whole
+   * bundle (PrestaShop's `[a|b|c]` OR filter). A request per component would make
+   * one pack cost as much as the sweep it belongs to.
+   *
+   * Read failures are deliberately not swallowed: a component quantity we could
+   * not read is not a quantity, so failing the job and retrying is honest where
+   * reporting the pack's untouched own row would not be.
+   */
+  private async readComponentAvailability(
+    components: readonly PrestashopPackComponent[]
+  ): Promise<Map<string, number>> {
+    const componentProductIds = [...new Set(components.map((component) => component.productId))];
+
+    const rows = await this.httpClient.listResources<PrestashopStockAvailable>('stock_availables', {
+      custom: { id_product: componentProductIds.join('|') },
+    });
+
+    const availability = new Map<string, number>();
+    for (const row of rows) {
+      const attributeId = Number(row.id_product_attribute);
+      const combinationId =
+        Number.isFinite(attributeId) && attributeId !== 0 ? String(row.id_product_attribute) : null;
+      availability.set(
+        packComponentStockKey(String(row.id_product), combinationId),
+        this.readQuantity(row.quantity)
+      );
+    }
+    return availability;
+  }
+
+  /**
+   * Shop-wide `PS_PACK_STOCK_TYPE`, or `null` when it cannot be resolved.
+   *
+   * Read through `configurations` because `pack_stock_type = 3` on the product is
+   * a pointer to this value rather than a mode of its own - see
+   * `resolvePackStockMode` for what an unresolved default falls back to.
+   */
+  private async resolveShopPackStockType(): Promise<number | null> {
+    if (this.shopPackStockType !== undefined) {
+      return this.shopPackStockType;
+    }
+
+    try {
+      const rows = await this.httpClient.listResources<{ value?: string | number }>(
+        'configurations',
+        { custom: { name: 'PS_PACK_STOCK_TYPE' } }
+      );
+      const raw = rows.length > 0 ? rows[0].value : undefined;
+      const parsed = typeof raw === 'number' ? raw : Number.parseInt(String(raw ?? ''), 10);
+      this.shopPackStockType = Number.isFinite(parsed) ? parsed : null;
+    } catch (error) {
+      this.logger.warn(
+        `master_inventory_pack_shop_default_unreadable connection=${this.connection.id} - PS_PACK_STOCK_TYPE could not be read: ${(error as Error).message}`
+      );
+      this.shopPackStockType = null;
+    }
+
+    return this.shopPackStockType;
+  }
+
+  /**
+   * Product read that must not break a working inventory read: pack awareness
+   * sits on top of the stock rows, so a failed probe degrades to the pre-pack
+   * behaviour instead of failing the whole sweep.
+   */
+  private async tryFetchProduct(productId: string, psProductId: string): Promise<unknown> {
+    try {
+      return await this.httpClient.getResource('products', psProductId);
+    } catch (error) {
+      this.logger.warn(
+        `master_inventory_pack_probe_failed product=${productId} psProductId=${psProductId} connection=${this.connection.id} - a pack would be reported from its own stock row: ${(error as Error).message}`
+      );
+      return null;
+    }
+  }
+
+  private readQuantity(value: unknown): number {
+    const parsed = typeof value === 'number' ? value : Number.parseFloat(String(value));
+    return Number.isFinite(parsed) ? parsed : 0;
   }
 
   /**
@@ -213,22 +398,46 @@ export class PrestashopInventoryMasterAdapter implements InventoryMasterPort {
    * Always throws.
    */
   private async throwForAbsentStockRecords(productId: string, psProductId: string): Promise<never> {
+    await this.fetchProductOrClassifyDeletion(productId, psProductId);
+    throw this.zeroStockRowsError(productId, psProductId);
+  }
+
+  /**
+   * Read the product resource, translating a platform not-found into the neutral
+   * `MasterProductNotFoundError` - the one signal that really means "deleted at
+   * the master". Any other failure propagates untouched so the job stays
+   * retryable.
+   */
+  private async fetchProductOrClassifyDeletion(
+    productId: string,
+    psProductId: string
+  ): Promise<unknown> {
     try {
-      await this.httpClient.getResource('products', psProductId);
+      return await this.httpClient.getResource('products', psProductId);
     } catch (error) {
       if (error instanceof PrestashopResourceNotFoundException) {
         this.logger.warn(
-          `master_inventory_master_deleted product=${productId} psProductId=${psProductId} connection=${this.connection.id} — product absent at the master`
+          `master_inventory_master_deleted product=${productId} psProductId=${psProductId} connection=${this.connection.id} - product absent at the master`
         );
         throw new MasterProductNotFoundError(productId, this.connection.id, error);
       }
       throw error;
     }
+  }
 
+  /**
+   * The product resolves but has no stock rows and no pack rule to answer for
+   * it: a data gap, not a deletion, so the platform exception keeps the job
+   * retryable and the rows unstaled.
+   */
+  private zeroStockRowsError(
+    productId: string,
+    psProductId: string
+  ): PrestashopResourceNotFoundException {
     this.logger.warn(
-      `master_inventory_zero_stock_rows product=${productId} psProductId=${psProductId} connection=${this.connection.id} — product still resolves at the master; NOT classified as a deletion`
+      `master_inventory_zero_stock_rows product=${productId} psProductId=${psProductId} connection=${this.connection.id} - product still resolves at the master; NOT classified as a deletion`
     );
-    throw new PrestashopResourceNotFoundException(
+    return new PrestashopResourceNotFoundException(
       `Inventory not found for product: ${productId}`,
       CORE_ENTITY_TYPE.Inventory,
       productId,

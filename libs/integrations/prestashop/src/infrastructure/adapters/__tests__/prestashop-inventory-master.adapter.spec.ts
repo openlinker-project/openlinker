@@ -464,6 +464,235 @@ describe('PrestashopInventoryMasterAdapter', () => {
     });
   });
 
+
+  describe('listInventory - packs (#2598)', () => {
+    const productId = 'internal-product-pack';
+
+    /**
+     * PrestaShop answers the pack's own stock read and the components' stock
+     * read through the same resource, so the mock dispatches on the filter the
+     * adapter sent.
+     */
+    function stockRouter(
+      ownRows: PrestashopStockAvailable[],
+      componentRows: PrestashopStockAvailable[],
+      shopDefault?: string
+    ): jest.Mock {
+      return jest.fn((resource: string, filters: { custom?: Record<string, unknown> }) => {
+        if (resource === 'configurations') {
+          return Promise.resolve(shopDefault === undefined ? [] : [{ value: shopDefault }]);
+        }
+        const idProduct = String(filters?.custom?.id_product ?? '');
+        return Promise.resolve(idProduct === '42' ? ownRows : componentRows);
+      });
+    }
+
+    /** The router's recorded calls, typed so a spec can read the filter back. */
+    function stockCalls(
+      mock: jest.Mock
+    ): Array<[string, { custom?: Record<string, unknown> } | undefined]> {
+      return mock.mock.calls as Array<[string, { custom?: Record<string, unknown> } | undefined]>;
+    }
+
+    function packProduct(packStockType: string): Record<string, unknown> {
+      return {
+        id: '42',
+        cache_is_pack: '1',
+        pack_stock_type: packStockType,
+        associations: {
+          product_bundle: [
+            { id: '11', id_product_attribute: '0', quantity: '2' },
+            { id: '12', id_product_attribute: '0', quantity: '1' },
+          ],
+        },
+      };
+    }
+
+    const ownRow: PrestashopStockAvailable = {
+      id: '101',
+      id_product: '42',
+      id_product_attribute: '0',
+      quantity: '99',
+      out_of_stock: '0',
+    };
+
+    const componentRows: PrestashopStockAvailable[] = [
+      { id: '201', id_product: '11', id_product_attribute: '0', quantity: '7' },
+      { id: '202', id_product: '12', id_product_attribute: '0', quantity: '5' },
+    ];
+
+    beforeEach(() => {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
+      mockIdentifierMapping.getExternalIds = jest.fn().mockResolvedValue([
+        { connectionId: connection.id, externalId: '42', entityType: 'Product' },
+      ]);
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
+      mockIdentifierMapping.getOrCreateInternalId = jest
+        .fn()
+        .mockImplementation((entityType: string, externalId: string) =>
+          Promise.resolve(`${entityType}:${externalId}`)
+        );
+    });
+
+    it('reports the minimum implied by the components, not the pack own stock row', async () => {
+      mockHttpClient.listResources = stockRouter([ownRow], componentRows);
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
+      mockHttpClient.getResource = jest.fn().mockResolvedValue(packProduct('1'));
+
+      const result = await adapter.listInventory(productId);
+
+      // 7 units of a component consumed 2 at a time allow 3 packs; the other
+      // component allows 5. The pack own row claims 99 and is ignored.
+      expect(result).toHaveLength(1);
+      expect(result[0].quantity).toBe(3);
+      expect(result[0].available).toBe(3);
+      expect(result[0].variantId).toBe('ProductVariant:product:42');
+    });
+
+    it('reads component stock for the whole bundle in one request', async () => {
+      const listResources = stockRouter([ownRow], componentRows);
+      mockHttpClient.listResources = listResources;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
+      mockHttpClient.getResource = jest.fn().mockResolvedValue(packProduct('1'));
+
+      await adapter.listInventory(productId);
+
+      const componentCalls = stockCalls(listResources).filter(
+        (call) => String(call[1]?.custom?.id_product) === '11|12'
+      );
+      expect(componentCalls).toHaveLength(1);
+      expect(listResources).toHaveBeenCalledTimes(2);
+    });
+
+    it('resolves pack_stock_type = 3 to the shop default before deriving', async () => {
+      const listResources = stockRouter([ownRow], componentRows, '1');
+      mockHttpClient.listResources = listResources;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
+      mockHttpClient.getResource = jest.fn().mockResolvedValue(packProduct('3'));
+
+      const result = await adapter.listInventory(productId);
+
+      expect(listResources).toHaveBeenCalledWith(
+        'configurations',
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
+        expect.objectContaining({ custom: { name: 'PS_PACK_STOCK_TYPE' } })
+      );
+      // The sentinel resolved to "decrement components", so the derived 3 wins.
+      expect(result[0].quantity).toBe(3);
+    });
+
+    it('reads the shop default once per adapter instance', async () => {
+      const listResources = stockRouter([ownRow], componentRows, '1');
+      mockHttpClient.listResources = listResources;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
+      mockHttpClient.getResource = jest.fn().mockResolvedValue(packProduct('3'));
+
+      await adapter.listInventory(productId);
+      await adapter.listInventory(productId);
+
+      const configCalls = stockCalls(listResources).filter((call) => call[0] === 'configurations');
+      expect(configCalls).toHaveLength(1);
+    });
+
+    it('takes the lower of own row and components when the shop decrements both', async () => {
+      mockHttpClient.listResources = stockRouter(
+        [{ ...ownRow, quantity: '2' }],
+        componentRows,
+        undefined
+      );
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
+      mockHttpClient.getResource = jest.fn().mockResolvedValue(packProduct('2'));
+
+      const result = await adapter.listInventory(productId);
+
+      // Components allow 3, the pack own row says 2.
+      expect(result[0].quantity).toBe(2);
+    });
+
+    it('keeps the pack own stock row when the shop decrements the pack itself', async () => {
+      const listResources = stockRouter([ownRow], componentRows);
+      mockHttpClient.listResources = listResources;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
+      mockHttpClient.getResource = jest.fn().mockResolvedValue(packProduct('0'));
+
+      const result = await adapter.listInventory(productId);
+
+      expect(result[0].quantity).toBe(99);
+      // No component read: mode 0 makes the own row authoritative.
+      expect(listResources).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not mistake a pack with no stock rows of its own for a deleted product', async () => {
+      mockHttpClient.listResources = stockRouter([], componentRows);
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
+      mockHttpClient.getResource = jest.fn().mockResolvedValue(packProduct('1'));
+
+      const result = await adapter.listInventory(productId);
+
+      expect(result).toHaveLength(1);
+      expect(result[0].quantity).toBe(3);
+      // The Inventory identifier is deterministic when there is no row to key on.
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access -- test mock: narrowing dynamic spy / fixture / response shape
+      expect(mockIdentifierMapping.getOrCreateInternalId).toHaveBeenCalledWith(
+        'Inventory',
+        'pack:42',
+        connection.id,
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
+        expect.objectContaining({ parentInternalId: productId })
+      );
+    });
+
+    it('falls back to the pack own stock row when the pack declares no components', async () => {
+      mockHttpClient.listResources = stockRouter([ownRow], []);
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
+      mockHttpClient.getResource = jest
+        .fn()
+        .mockResolvedValue({ id: '42', cache_is_pack: '1', pack_stock_type: '1' });
+
+      const result = await adapter.listInventory(productId);
+
+      expect(result[0].quantity).toBe(99);
+    });
+
+    it('still reports zero when the components say zero', async () => {
+      mockHttpClient.listResources = stockRouter([ownRow], [
+        { id: '201', id_product: '11', id_product_attribute: '0', quantity: '0' },
+        { id: '202', id_product: '12', id_product_attribute: '0', quantity: '5' },
+      ]);
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
+      mockHttpClient.getResource = jest.fn().mockResolvedValue(packProduct('1'));
+
+      const result = await adapter.listInventory(productId);
+
+      expect(result[0].quantity).toBe(0);
+    });
+
+    it('leaves an ordinary product reporting exactly what the master says', async () => {
+      const listResources = stockRouter([{ ...ownRow, quantity: '0' }], componentRows);
+      mockHttpClient.listResources = listResources;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
+      mockHttpClient.getResource = jest
+        .fn()
+        .mockResolvedValue({ id: '42', cache_is_pack: '0', pack_stock_type: '3' });
+
+      const result = await adapter.listInventory(productId);
+
+      // Master is authoritative including zero: no component data may lift it.
+      expect(result[0].quantity).toBe(0);
+      expect(listResources).toHaveBeenCalledTimes(1);
+    });
+
+    it('degrades to the pack own stock row when the product probe fails', async () => {
+      mockHttpClient.listResources = stockRouter([ownRow], componentRows);
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
+      mockHttpClient.getResource = jest.fn().mockRejectedValue(new Error('boom'));
+
+      const result = await adapter.listInventory(productId);
+
+      expect(result[0].quantity).toBe(99);
+    });
+  });
+
   describe('getAvailableQuantity', () => {
     it('should return available quantity from inventory', async () => {
       const productId = 'internal-product-123';
