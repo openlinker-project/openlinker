@@ -1285,6 +1285,41 @@ describe('SyncJobRunner', () => {
       );
     });
 
+    it('should run two masters stock propagation concurrently in fan-out (#2609)', async () => {
+      // The reported bug: one synthetic scope plus a per-scope cap of 1 meant
+      // every stock write in the install queued behind every other one.
+      const propagateJob = (connectionId: string): SyncJob =>
+        new SyncJob(
+          randomUUID(),
+          'inventory.propagateToMarketplaces',
+          connectionId,
+          { productId: 'ol_product_a' },
+          'running',
+          `test-key-${randomUUID()}`,
+          0,
+          10,
+          new Date(),
+          new Date(),
+          'worker-test',
+          null,
+          new Date(),
+          new Date()
+        );
+
+      jobRepository.findAndLockDueJobsForLane.mockResolvedValueOnce([
+        propagateJob('conn-master-a'),
+        propagateJob('conn-master-b'),
+      ]);
+      mockHandler.execute.mockReturnValue(new Promise(() => {})); // never settles
+      handlerRegistry.getHandler.mockReturnValue(mockHandler);
+
+      const started = await (runner as any).claimAndStartForLane('fan-out');
+
+      expect(started).toBe(2);
+      expect(laneInFlight('fan-out').get('conn-master-a')).toBe(1);
+      expect(laneInFlight('fan-out').get('conn-master-b')).toBe(1);
+    });
+
     it('should release intra-batch surplus beyond the per-scope cap without penalty', async () => {
       // bulk per-scope cap is 8 by default (#2594); park 7 so exactly one slot
       // is free, then let one claim return two same-scope jobs.
@@ -1332,7 +1367,7 @@ describe('SyncJobRunner', () => {
       laneInFlight('realtime').set('a', 4);
       laneInFlight('bulk').set('a', 12);
       laneInFlight('fiscal').set('a', 2);
-      laneInFlight('fan-out').set('a', 1);
+      laneInFlight('fan-out').set('a', 8);
 
       const sleepSpy = jest.spyOn(runner as any, 'sleep').mockImplementation(() => {
         (runner as any).isRunning = false; // exit after the first sleep
@@ -1347,7 +1382,7 @@ describe('SyncJobRunner', () => {
       expect(sleepSpy).toHaveBeenCalled();
     });
 
-    describe('cap defaults and overrides (#2594)', () => {
+    describe('cap defaults and overrides (#2594, #2609)', () => {
       const resolve = (
         env: Record<string, string>
       ): Record<string, { total: number; perScope: number }> => {
@@ -1364,7 +1399,26 @@ describe('SyncJobRunner', () => {
         // Buyer-facing and deadline-bearing lanes are deliberately unchanged.
         expect(caps.realtime).toEqual({ total: 4, perScope: 2 });
         expect(caps.fiscal).toEqual({ total: 2, perScope: 1 });
-        expect(caps['fan-out']).toEqual({ total: 1, perScope: 1 });
+      });
+
+      it('should default fan-out above one slot so stock propagation is not serialised (#2609)', () => {
+        // A cap of 1 meant one stock write at a time for the whole install.
+        const caps = resolve({});
+
+        expect(caps['fan-out']).toEqual({ total: 8, perScope: 4 });
+        // No round-robin fairness between scopes, so one scope must not be
+        // able to hold the whole lane (ADR-050 decision 4).
+        expect(caps['fan-out'].perScope).toBeLessThan(caps['fan-out'].total);
+      });
+
+      it('should let an operator pin fan-out back to the pre-#2609 single slot', () => {
+        expect(resolve({ OL_LANE_FANOUT_CAP: '1', OL_LANE_FANOUT_SCOPE_CAP: '1' })['fan-out']).toEqual(
+          { total: 1, perScope: 1 }
+        );
+      });
+
+      it('should ignore a zero fan-out cap rather than stalling the lane', () => {
+        expect(resolve({ OL_LANE_FANOUT_SCOPE_CAP: '0' })['fan-out'].perScope).toBe(4);
       });
 
       it('should let an operator lower the bulk per-scope cap for a slower shop', () => {

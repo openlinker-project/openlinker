@@ -157,7 +157,7 @@ describe('MasterInventorySyncService', () => {
           locationId: 'loc-1',
           updatedAt: adapterInventory.updatedAt,
         })
-      );
+      , connectionId);
       expect(result).toEqual({
         internalProductId,
         itemsWritten: 1,
@@ -196,11 +196,11 @@ describe('MasterInventorySyncService', () => {
       expect(inventoryService.setInventory).toHaveBeenNthCalledWith(
         1,
         expect.objectContaining({ productVariantId: 'ol_variant_a', availableQuantity: 9 })
-      );
+      , connectionId);
       expect(inventoryService.setInventory).toHaveBeenNthCalledWith(
         2,
         expect.objectContaining({ productVariantId: 'ol_variant_b', availableQuantity: 5 })
-      );
+      , connectionId);
       expect(result).toEqual({
         internalProductId,
         itemsWritten: 2,
@@ -233,7 +233,7 @@ describe('MasterInventorySyncService', () => {
           availableQuantity: 15,
           reservedQuantity: 5,
         })
-      );
+      , connectionId);
       expect(result.availableQuantity).toBe(15);
       expect(result.reservedQuantity).toBe(5);
     });
@@ -271,7 +271,7 @@ describe('MasterInventorySyncService', () => {
       );
       expect(inventoryService.setInventory).toHaveBeenCalledWith(
         expect.objectContaining({ id: 'preserved-inv-id' })
-      );
+      , connectionId);
     });
 
     it('should mint a fresh inventory item ID when no existing record matches', async () => {
@@ -299,7 +299,7 @@ describe('MasterInventorySyncService', () => {
           productVariantId: null,
           locationId: null,
         })
-      );
+      , connectionId);
     });
 
     it('should default updatedAt to the current Date when the adapter omits it', async () => {
@@ -319,7 +319,7 @@ describe('MasterInventorySyncService', () => {
 
       expect(inventoryService.setInventory).toHaveBeenCalledWith(
         expect.objectContaining({ updatedAt: expect.any(Date) })
-      );
+      , connectionId);
     });
 
     it('should propagate identifierMapping.getOrCreateInternalId failures and skip downstream calls', async () => {
@@ -771,7 +771,7 @@ describe('MasterInventorySyncService', () => {
       );
       expect(inventoryService.setInventory).toHaveBeenCalledWith(
         expect.objectContaining({ productVariantId: 'ol_variant_a' })
-      );
+      , connectionId);
     });
 
     it('keeps inventory product-level (null) when the product has multiple variants', async () => {
@@ -785,7 +785,7 @@ describe('MasterInventorySyncService', () => {
 
       expect(inventoryService.setInventory).toHaveBeenCalledWith(
         expect.objectContaining({ productVariantId: null })
-      );
+      , connectionId);
     });
 
     it('uses an adapter-supplied variantId verbatim without resolving variants', async () => {
@@ -798,7 +798,7 @@ describe('MasterInventorySyncService', () => {
       expect(productsService.getVariantsByProductId).not.toHaveBeenCalled();
       expect(inventoryService.setInventory).toHaveBeenCalledWith(
         expect.objectContaining({ productVariantId: 'ol_variant_adapter' })
-      );
+      , connectionId);
     });
   });
 
