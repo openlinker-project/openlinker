@@ -38,8 +38,8 @@
  *   400 {ok: false, error: 'invalid-body' | 'invalid-fields' | 'cart-not-found' | 'cart-empty'}
  *   401 {ok: false, error: <HmacRequestVerifier reason>}
  *   405 {ok: false, error: 'method-not-allowed'}
- *   422 {ok: false, error: 'payment-module-unavailable'}
- *   502 {ok: false, error: 'validate-order-failed', detail: <string>}
+ *   422 {ok: false, error: 'payment-module-unavailable' | 'payment-module-inactive'}
+ *   502 {ok: false, error: 'validate-order-failed' | 'validate-order-aborted', detail: <string>}
  *
  * Idempotent: if an order already exists for `id_cart`, the existing order is
  * returned (`already_existed: true`) rather than validated a second time — so a
@@ -63,6 +63,12 @@ class OpenLinkerImportOrderModuleFrontController extends ModuleFrontController
     /** @var string Payment module OL delegates validateOrder to. */
     const PAYMENT_MODULE = 'ps_checkpayment';
 
+    /** @var bool True once a JSON response has been emitted. */
+    private $responded = false;
+
+    /** @var bool True while the validateOrder output buffer is open. */
+    private $bufferOpen = false;
+
     public function postProcess()
     {
         if (!isset($_SERVER['REQUEST_METHOD']) || $_SERVER['REQUEST_METHOD'] !== 'POST') {
@@ -71,6 +77,7 @@ class OpenLinkerImportOrderModuleFrontController extends ModuleFrontController
         }
 
         require_once $this->module->getLocalPath() . 'classes/HmacRequestVerifier.php';
+        require_once $this->module->getLocalPath() . 'classes/PaymentModuleGate.php';
 
         $rawBody         = (string) @file_get_contents('php://input');
         $timestampHeader = $this->headerValue('HTTP_X_OPENLINKER_TIMESTAMP');
@@ -159,12 +166,14 @@ class OpenLinkerImportOrderModuleFrontController extends ModuleFrontController
         $this->context->language = new Language((int) $cart->id_lang);
 
         $payment = Module::getInstanceByName(self::PAYMENT_MODULE);
-        if (!$payment || !($payment instanceof PaymentModule)) {
+        $paymentProblem = PaymentModuleGate::reasonUnusable($payment);
+        if ($paymentProblem !== null) {
             PrestaShopLogger::addLog(
-                'OpenLinker: payment module "' . self::PAYMENT_MODULE . '" unavailable for order import (id_cart=' . $idCart . ')',
+                'OpenLinker: payment module "' . self::PAYMENT_MODULE . '" not usable for order import ('
+                    . $paymentProblem . ', id_cart=' . $idCart . ')',
                 3, null, 'Cart', $idCart
             );
-            $this->jsonError(422, 'payment-module-unavailable');
+            $this->jsonError(422, $paymentProblem);
             return;
         }
 
@@ -174,6 +183,15 @@ class OpenLinkerImportOrderModuleFrontController extends ModuleFrontController
         // consumed by OpenLinker::hookActionEmailSendBefore for this request.
         OpenLinker::$suppressImportMail =
             (string) Configuration::get(OpenLinker::IMPORT_SEND_MAIL_CONFIG_KEY) !== '1';
+
+        // validateOrder and the code it calls can end the request with die(),
+        // which PHP sends as HTML with status 200 - a failure the caller reads
+        // as a success (#2601). Buffer the output so no such body escapes, and
+        // register a guard that turns a silent exit into an explicit 502.
+        ob_start();
+        $this->bufferOpen = true;
+        register_shutdown_function([$this, 'guardAgainstSilentExit'], $idCart);
+
         try {
             $payment->validateOrder(
                 $idCart,
@@ -189,6 +207,7 @@ class OpenLinkerImportOrderModuleFrontController extends ModuleFrontController
                 $orderReference
             );
         } catch (Throwable $e) {
+            $this->discardStrayOutput();
             OpenLinker::$suppressImportMail = false;
             PrestaShopLogger::addLog(
                 'OpenLinker: validateOrder failed for id_cart=' . $idCart . ': ' . $e->getMessage(),
@@ -197,6 +216,7 @@ class OpenLinkerImportOrderModuleFrontController extends ModuleFrontController
             $this->jsonError(502, 'validate-order-failed', $e->getMessage());
             return;
         }
+        $this->discardStrayOutput();
         OpenLinker::$suppressImportMail = false;
 
         $idOrder = (int) Order::getIdByCartId($idCart);
@@ -237,6 +257,61 @@ class OpenLinkerImportOrderModuleFrontController extends ModuleFrontController
     }
 
     /**
+     * Drop anything PrestaShop printed while the order was being created.
+     *
+     * The JSON response is written after this, so a stray notice or a die()
+     * body must not be left in front of it.
+     *
+     * @return void
+     */
+    private function discardStrayOutput()
+    {
+        if ($this->bufferOpen) {
+            $this->bufferOpen = false;
+            ob_end_clean();
+        }
+    }
+
+    /**
+     * Shutdown guard for the validateOrder call.
+     *
+     * Runs on every request end once registered. If no JSON response was
+     * emitted the request died inside PrestaShop, so replace whatever was
+     * buffered with an explicit 502 - a failure must never leave here as an
+     * HTML 200 (#2601). Public because PHP calls it as a shutdown callback.
+     *
+     * @param int $idCart
+     * @return void
+     */
+    public function guardAgainstSilentExit($idCart)
+    {
+        if ($this->responded) {
+            return;
+        }
+
+        $strayLength = $this->bufferOpen ? (int) ob_get_length() : 0;
+        $this->discardStrayOutput();
+
+        if (headers_sent()) {
+            return;
+        }
+
+        PrestaShopLogger::addLog(
+            'OpenLinker: order import ended without a response for id_cart=' . $idCart
+                . ' (' . $strayLength . ' bytes of unexpected output discarded)',
+            3, null, 'Cart', $idCart
+        );
+
+        http_response_code(502);
+        header('Content-Type: application/json');
+        echo json_encode([
+            'ok' => false,
+            'error' => 'validate-order-aborted',
+            'detail' => 'the shop ended the request without a response',
+        ]);
+    }
+
+    /**
      * Emit a 200 JSON response and terminate.
      *
      * @param array $body
@@ -244,6 +319,7 @@ class OpenLinkerImportOrderModuleFrontController extends ModuleFrontController
      */
     private function jsonOk(array $body)
     {
+        $this->responded = true;
         http_response_code(200);
         header('Content-Type: application/json');
         echo json_encode($body);
@@ -262,6 +338,7 @@ class OpenLinkerImportOrderModuleFrontController extends ModuleFrontController
      */
     private function jsonError($status, $reason, $detail = null)
     {
+        $this->responded = true;
         http_response_code($status);
         header('Content-Type: application/json');
         $body = ['ok' => false, 'error' => $reason];
