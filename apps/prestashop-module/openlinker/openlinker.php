@@ -34,7 +34,7 @@
  * @see {@link HmacRequestVerifier} for inbound HMAC verification
  *
  * @author OpenLinker Team
- * @version 1.2.0
+ * @version 1.4.0
  */
 
 if (!defined('_PS_VERSION_')) {
