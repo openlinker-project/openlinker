@@ -367,6 +367,81 @@ describe('PrestashopOpenLinkerModuleClient', () => {
       expect(scoped.supportsLinePrices()).toBe(false);
     });
 
+    it('should learn line-price support from a failure envelope too (#2597)', async () => {
+      // Arrange - the module advertises `features` on every envelope, so a
+      // downgrade is caught by the next request of any kind rather than only by
+      // the next created order.
+      const scoped = new PrestashopOpenLinkerModuleClient(
+        'conn-learns-from-failure',
+        baseUrl,
+        secretProvider
+      );
+      (global.fetch as jest.Mock).mockResolvedValue({
+        status: 400,
+        text: jest.fn().mockResolvedValue(
+          JSON.stringify({ ok: false, error: 'cart-empty', features: ['line_prices'] })
+        ),
+      });
+
+      // Act
+      await expect(scoped.importOrder(input)).rejects.toThrow(PrestashopOlModuleException);
+
+      // Assert
+      expect(scoped.supportsLinePrices()).toBe(true);
+    });
+
+    it('should log an error when an order is imported without the prices it was sent (#2597)', async () => {
+      // Arrange - a downgrade between two orders: the shop accepts the order and
+      // ignores the field, so the order is priced from the catalogue.
+      const scoped = new PrestashopOpenLinkerModuleClient(
+        'conn-silently-mispriced',
+        baseUrl,
+        secretProvider
+      );
+      const logError = jest
+        .spyOn((scoped as unknown as { logger: { error: (m: string) => void } }).logger, 'error')
+        .mockImplementation(() => undefined);
+      (global.fetch as jest.Mock).mockResolvedValue({
+        status: 200,
+        text: jest.fn().mockResolvedValue(
+          JSON.stringify({ ok: true, id_order: 91, reference: 'MISPRICED', already_existed: false })
+        ),
+      });
+
+      // Act
+      await scoped.importOrder({
+        ...input,
+        linePrices: [{ idProduct: 5, idProductAttribute: 0, price: '24.382114' }],
+      });
+
+      // Assert
+      expect(logError).toHaveBeenCalledWith(expect.stringContaining('WITHOUT the line prices'));
+      expect(logError).toHaveBeenCalledWith(expect.stringContaining('reference=MISPRICED'));
+    });
+
+    it('should not log a mispricing error when no line prices were sent (#2597)', async () => {
+      const scoped = new PrestashopOpenLinkerModuleClient(
+        'conn-no-line-prices',
+        baseUrl,
+        secretProvider
+      );
+      const logError = jest
+        .spyOn((scoped as unknown as { logger: { error: (m: string) => void } }).logger, 'error')
+        .mockImplementation(() => undefined);
+      (global.fetch as jest.Mock).mockResolvedValue({
+        status: 200,
+        text: jest.fn().mockResolvedValue(
+          JSON.stringify({ ok: true, id_order: 92, reference: 'PLAIN', already_existed: false })
+        ),
+      });
+
+      // Act
+      await scoped.importOrder(input);
+
+      // Assert
+      expect(logError).not.toHaveBeenCalled();
+    });
+
     it('should send the line prices in the request body when supplied (#2597)', async () => {
       // Arrange
       (global.fetch as jest.Mock).mockResolvedValue({

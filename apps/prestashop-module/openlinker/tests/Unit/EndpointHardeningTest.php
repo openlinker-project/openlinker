@@ -34,8 +34,10 @@ class EndpointHardeningTest extends TestCase
 
         // Tools::getValue falls back to $_GET, so it must not be how a token
         // or a secret is read.
+        // Loose on purpose: a default argument, a differently quoted name or
+        // $_REQUEST would all read the same value back out of the URL.
         self::assertDoesNotMatchRegularExpression(
-            "/Tools::getValue\('token'\)|\\\$_GET\['token'\]/",
+            "/Tools::getValue\(\s*['\"]token|\\\$_GET\s*\[|\\\$_REQUEST\s*\[/",
             $source
         );
     }
@@ -52,6 +54,76 @@ class EndpointHardeningTest extends TestCase
         self::assertIsInt($verifyAt);
         self::assertIsInt($claimAt);
         self::assertGreaterThan($verifyAt, $claimAt);
+    }
+
+    public function testTheCartShippingPathClaimsAReplayKey(): void
+    {
+        // cartshipping is signed and state-changing too, so it is guarded on
+        // the same terms as order import.
+        $source = self::sourceOf('cartshipping');
+
+        $verifyAt = strpos($source, 'HmacRequestVerifier::verify');
+        $claimAt = strpos($source, "ReplayGuard::claim('cartshipping'");
+
+        self::assertIsInt($verifyAt);
+        self::assertIsInt($claimAt);
+        self::assertGreaterThan($verifyAt, $claimAt);
+    }
+
+    public function testTheCronPathExplainsTheUrlTokenChangeBeforeCheckingTheMethod(): void
+    {
+        // An old GET cron carrying &token=... must read why it stopped working,
+        // not a bare 405.
+        $source = self::sourceOf('cron');
+
+        $explainAt = strpos($source, 'hasQueryStringToken');
+        $methodAt = strpos($source, "REQUEST_METHOD'] !== 'POST'");
+
+        self::assertIsInt($explainAt);
+        self::assertIsInt($methodAt);
+        self::assertLessThan($methodAt, $explainAt);
+    }
+
+    public function testTheReplayClaimDoesNotDependOnAMysqlClientFlag(): void
+    {
+        // ON DUPLICATE KEY UPDATE reports one affected row on a duplicate under
+        // CLIENT_FOUND_ROWS, which would accept every replay.
+        $source = (string) file_get_contents(__DIR__ . '/../../classes/ReplayGuard.php');
+
+        self::assertStringContainsString('INSERT IGNORE INTO', $source);
+        // Matched inside a quoted SQL fragment only, so the docblock is free to
+        // name the statement it deliberately does not use.
+        self::assertDoesNotMatchRegularExpression(
+            "/['\"][^'\"]*ON DUPLICATE KEY UPDATE/",
+            $source
+        );
+    }
+
+    public function testTheShutdownGuardIsRegisteredBeforeTheFirstPinWrite(): void
+    {
+        // A fatal inside the pin loop is the one fatal that leaks a
+        // specific_price row, so the guard has to be registered above it.
+        $source = self::sourceOf('importorder');
+
+        $registerAt = strpos($source, 'register_shutdown_function');
+        $pinAt = strpos($source, '$this->pinLinePrices(');
+
+        self::assertIsInt($registerAt);
+        self::assertIsInt($pinAt);
+        self::assertLessThan($pinAt, $registerAt);
+    }
+
+    public function testFailureEnvelopesAdvertiseTheModuleFeatures(): void
+    {
+        // The backend learns what this build accepts from `features`. Carrying
+        // it on failures too means a downgraded shop is corrected without an
+        // order having to be created first.
+        $source = self::sourceOf('importorder');
+
+        self::assertMatchesRegularExpression(
+            "/'ok' => false.*'features' => \['line_prices'\]/s",
+            $source
+        );
     }
 
     public function testTheConfigurationFormRendersNoStoredCredential(): void

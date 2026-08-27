@@ -34,7 +34,7 @@
  * @see {@link HmacRequestVerifier} for inbound HMAC verification
  *
  * @author OpenLinker Team
- * @version 1.6.0
+ * @version 1.7.0
  */
 
 if (!defined('_PS_VERSION_')) {
@@ -96,7 +96,7 @@ class OpenLinker extends CarrierModule
     {
         $this->name = 'openlinker';
         $this->tab = 'administration';
-        $this->version = '1.6.0';
+        $this->version = '1.7.0';
         $this->author = 'OpenLinker Team';
         $this->need_instance = 0;
         $this->ps_versions_compliancy = [
@@ -232,6 +232,7 @@ class OpenLinker extends CarrierModule
         require_once dirname(__FILE__) . '/classes/SecretDisplay.php';
         require_once dirname(__FILE__) . '/classes/CronHealth.php';
         require_once dirname(__FILE__) . '/classes/DeliveryRunner.php';
+        require_once dirname(__FILE__) . '/classes/ReplayGuard.php';
 
         // Handle form submission
         if (Tools::isSubmit('submit' . $this->name)) {
@@ -284,6 +285,9 @@ class OpenLinker extends CarrierModule
             'delivery_health' => CronHealth::assess(
                 Configuration::get(DeliveryRunner::LAST_RUN_CONFIG_KEY)
             ),
+            // A shop whose replay guard cannot answer looks completely healthy
+            // otherwise, so the panel has to say so (#2619).
+            'replay_guard_degraded_at' => Configuration::get(ReplayGuard::DEGRADED_CONFIG_KEY),
         ]);
 
         return $output . $this->display(__FILE__, 'views/templates/admin/configure.tpl');

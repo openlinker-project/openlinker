@@ -106,6 +106,60 @@ final class ReplayGuardSqlTest extends TestCase
         self::assertSame(ReplayGuard::keyFor('importorder', $signature), $stored);
     }
 
+    public function testAReplayIsRejectedWhenTheClientCountsFoundRows(): void
+    {
+        // CLIENT_FOUND_ROWS makes a no-change UPDATE report one affected row.
+        // The guard reads zero affected rows as the replay, so under that flag
+        // an ON DUPLICATE KEY UPDATE claim would accept every replay silently.
+        // This connects with the flag on and asserts the answer is unchanged.
+        $found = new PDO(
+            (string) getenv('OPENLINKER_TEST_MYSQL_DSN'),
+            getenv('OPENLINKER_TEST_MYSQL_USER') ?: 'root',
+            getenv('OPENLINKER_TEST_MYSQL_PASSWORD') ?: 'root',
+            [
+                PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+                PDO::MYSQL_ATTR_FOUND_ROWS => true,
+            ]
+        );
+
+        try {
+            Db::boot($found);
+
+            $signature = 'sha256=' . str_repeat('7', 64);
+
+            self::assertTrue(ReplayGuard::claim('importorder', $signature));
+            self::assertFalse(ReplayGuard::claim('importorder', $signature));
+            self::assertSame(1, $this->countRows());
+        } finally {
+            Db::boot(self::$pdo);
+        }
+    }
+
+    public function testAFailedClaimIsVisibleToTheOperator(): void
+    {
+        // A log line is not a signal anybody sees, so the guard also stamps a
+        // configuration key the module configuration page renders.
+        Configuration::$globalValues = [];
+        self::$pdo->exec('DROP TABLE `' . self::TABLE . '`');
+
+        ReplayGuard::claim('importorder', 'sha256=' . str_repeat('2', 64));
+
+        self::assertArrayHasKey(
+            ReplayGuard::DEGRADED_CONFIG_KEY,
+            Configuration::$globalValues
+        );
+        self::assertNotSame('', (string) Configuration::$globalValues[ReplayGuard::DEGRADED_CONFIG_KEY]);
+    }
+
+    public function testAWorkingClaimClearsAnEarlierDegradedStamp(): void
+    {
+        Configuration::updateGlobalValue(ReplayGuard::DEGRADED_CONFIG_KEY, '2026-01-01 00:00:00');
+
+        ReplayGuard::claim('importorder', 'sha256=' . str_repeat('3', 64));
+
+        self::assertSame('', (string) Configuration::$globalValues[ReplayGuard::DEGRADED_CONFIG_KEY]);
+    }
+
     public function testKeysPastTheRetentionWindowArePruned(): void
     {
         self::$pdo->exec(
@@ -114,6 +168,9 @@ final class ReplayGuardSqlTest extends TestCase
         );
 
         ReplayGuard::claim('importorder', 'sha256=' . str_repeat('9', 64));
+        // Called directly: claim() prunes on a sample of requests, so waiting
+        // for it to fire would make this test flaky rather than stricter.
+        ReplayGuard::prune();
 
         // Only the fresh key survives.
         self::assertSame(1, $this->countRows());

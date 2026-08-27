@@ -27,7 +27,7 @@ class CronHealth
      *
      * @param string|null $lastRunAt 'Y-m-d H:i:s' as recorded by DeliveryRunner.
      * @param int|null    $nowTs     Unix timestamp, for tests.
-     * @return array{ran: bool, age_seconds: int|null, stale: bool}
+     * @return array{ran: bool, age_seconds: int|null, stale: bool, unreadable: bool}
      */
     public static function assess($lastRunAt, $nowTs = null)
     {
@@ -37,12 +37,25 @@ class CronHealth
         if ($lastRunAt === '') {
             // Never having run is the state this exists to reveal, so it counts
             // as stale rather than as unknown.
-            return ['ran' => false, 'age_seconds' => null, 'stale' => true];
+            return [
+                'ran' => false,
+                'age_seconds' => null,
+                'stale' => true,
+                'unreadable' => false,
+            ];
         }
 
         $timestamp = strtotime($lastRunAt);
         if ($timestamp === false) {
-            return ['ran' => false, 'age_seconds' => null, 'stale' => true];
+            // Reported apart from never-ran, because a stored value that cannot
+            // be read means delivery did run and the record got corrupted.
+            // Saying "never" there would be a false statement about the shop.
+            return [
+                'ran' => false,
+                'age_seconds' => null,
+                'stale' => true,
+                'unreadable' => true,
+            ];
         }
 
         // A clock that moved backwards reads as fresh, not as a negative age.
@@ -52,6 +65,7 @@ class CronHealth
             'ran' => true,
             'age_seconds' => $age,
             'stale' => $age > self::STALE_AFTER_SECONDS,
+            'unreadable' => false,
         ];
     }
 }

@@ -101,4 +101,94 @@ class LinePriceRequestTest extends TestCase
 
         self::assertCount(LinePriceRequest::MAX_LINES, (array) LinePriceRequest::normalize($payload));
     }
+
+    public function testAScientificNotationPriceIsRejected(): void
+    {
+        // is_numeric accepts '1e5', which reaches a decimal(20,6) column as
+        // 100000 - a four-figure error on a one-figure price.
+        self::assertNull(LinePriceRequest::normalize([
+            ['id_product' => 5, 'price' => '1e5'],
+        ]));
+    }
+
+    public function testAPriceWithLeadingWhitespaceIsRejected(): void
+    {
+        self::assertNull(LinePriceRequest::normalize([
+            ['id_product' => 5, 'price' => ' 1.00'],
+        ]));
+    }
+
+    public function testAPriceWithMoreThanSixDecimalsIsRejected(): void
+    {
+        // The column keeps six. Any more would be rounded by MySQL rather than
+        // by the backend that owns the rounding mode.
+        self::assertNull(LinePriceRequest::normalize([
+            ['id_product' => 5, 'price' => '1.1234567'],
+        ]));
+    }
+
+    public function testASixDecimalPriceIsAccepted(): void
+    {
+        $rows = LinePriceRequest::normalize([['id_product' => 5, 'price' => '24.382114']]);
+
+        self::assertIsArray($rows);
+        self::assertSame('24.382114', $rows[0]['price']);
+    }
+
+    public function testASetCoveringEveryCartLineIsAccepted(): void
+    {
+        $rows = [
+            ['id_product' => 5, 'id_product_attribute' => 0, 'price' => '1.00'],
+            ['id_product' => 6, 'id_product_attribute' => 3, 'price' => '2.00'],
+        ];
+        $cart = [
+            ['id_product' => 6, 'id_product_attribute' => 3],
+            ['id_product' => 5, 'id_product_attribute' => 0],
+        ];
+
+        self::assertTrue(LinePriceRequest::coversCart($rows, $cart));
+    }
+
+    public function testAnOmittedCartLineIsRejected(): void
+    {
+        // The omitted line would be ordered at the catalogue price with no
+        // error anywhere, which is the failure this check exists to catch.
+        $rows = [['id_product' => 5, 'id_product_attribute' => 0, 'price' => '1.00']];
+        $cart = [
+            ['id_product' => 5, 'id_product_attribute' => 0],
+            ['id_product' => 6, 'id_product_attribute' => 0],
+        ];
+
+        self::assertFalse(LinePriceRequest::coversCart($rows, $cart));
+    }
+
+    public function testAPriceForAProductNotInTheCartIsRejected(): void
+    {
+        $rows = [
+            ['id_product' => 5, 'id_product_attribute' => 0, 'price' => '1.00'],
+            ['id_product' => 9, 'id_product_attribute' => 0, 'price' => '1.00'],
+        ];
+        $cart = [['id_product' => 5, 'id_product_attribute' => 0]];
+
+        self::assertFalse(LinePriceRequest::coversCart($rows, $cart));
+    }
+
+    public function testTheSameLinePricedTwiceIsRejected(): void
+    {
+        $rows = [
+            ['id_product' => 5, 'id_product_attribute' => 0, 'price' => '1.00'],
+            ['id_product' => 5, 'id_product_attribute' => 0, 'price' => '2.00'],
+        ];
+        $cart = [['id_product' => 5, 'id_product_attribute' => 0]];
+
+        self::assertFalse(LinePriceRequest::coversCart($rows, $cart));
+    }
+
+    public function testADifferentCombinationOfTheSameProductIsItsOwnLine(): void
+    {
+        $rows = [['id_product' => 5, 'id_product_attribute' => 1, 'price' => '1.00']];
+        $cart = [['id_product' => 5, 'id_product_attribute' => 2]];
+
+        self::assertFalse(LinePriceRequest::coversCart($rows, $cart));
+    }
 }

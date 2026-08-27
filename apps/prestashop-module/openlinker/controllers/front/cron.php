@@ -43,6 +43,22 @@ class OpenLinkerCronModuleFrontController extends ModuleFrontController
         $classesDir = dirname(__FILE__) . '/../../classes/';
         require_once($classesDir . 'CronTokenVerifier.php');
 
+        // A token in the URL is the pre-1.6.0 install instruction, and it is
+        // refused now. Answered before the method check so the operator whose
+        // old GET cron just stopped working reads why, instead of a bare 405.
+        if (CronTokenVerifier::hasQueryStringToken($_GET)) {
+            http_response_code(403);
+            header('Content-Type: application/json');
+            echo json_encode([
+                'error' => 'Forbidden',
+                'message' => 'The cron token is no longer read from the URL, because a URL is'
+                    . ' written to server logs and browser history. Use the cron file'
+                    . ' shipped with the module, or POST the token in the'
+                    . ' X-OpenLinker-Cron-Token header.'
+            ]);
+            exit;
+        }
+
         // Only POST is meaningful: delivery changes state, and refusing the
         // wrong method costs nothing.
         if (!isset($_SERVER['REQUEST_METHOD']) || $_SERVER['REQUEST_METHOD'] !== 'POST') {
@@ -63,14 +79,9 @@ class OpenLinkerCronModuleFrontController extends ModuleFrontController
             header('Content-Type: application/json');
             echo json_encode([
                 'error' => 'Forbidden',
-                // A token in the URL is the old install instruction, so the
-                // operator gets told what changed instead of just a 403.
-                'message' => CronTokenVerifier::hasQueryStringToken($_GET)
-                    ? 'The cron token is no longer read from the URL, because a URL is'
-                        . ' written to server logs and browser history. Use the cron file'
-                        . ' shipped with the module, or send the token in the'
-                        . ' X-OpenLinker-Cron-Token header.'
-                    : 'Invalid or missing token'
+                // Identical for a wrong token and a missing one, so the
+                // endpoint is not an oracle for which tokens exist.
+                'message' => 'Invalid or missing token'
             ]);
             exit;
         }
