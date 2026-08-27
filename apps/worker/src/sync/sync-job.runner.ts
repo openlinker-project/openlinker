@@ -497,15 +497,39 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
     // isNonRetryableError() does, since a handler may wrap the original
     // RateLimitTimeoutError before it reaches the runner.
     if (this.isRateLimitTimeout(error)) {
-      const nextRunAt = new Date(
-        Date.now() + this.RATE_LIMIT_TIMEOUT_REQUEUE_DELAY_SECONDS * 1000
-      );
+      const nextRunAt = new Date(Date.now() + this.RATE_LIMIT_TIMEOUT_REQUEUE_DELAY_SECONDS * 1000);
       // No duration reported: the job spent that time waiting for a
       // rate-limit slot, never executing, and no attempt was consumed either.
       await this.jobRepository.requeueWithoutPenalty(job.id, errorMessage, nextRunAt);
       this.logger.warn(
         `Job ${job.id} (${job.jobType}) timed out waiting for a rate-limit slot — requeued in ` +
           `${this.RATE_LIMIT_TIMEOUT_REQUEUE_DELAY_SECONDS}s without counting against maxAttempts ` +
+          `(attempt stays ${job.attempts}/${job.maxAttempts})`
+      );
+      return;
+    }
+
+    // Destination-declared deferral (#2613): the shop told us it cannot serve
+    // us right now - it is throttling us (429) or unavailable (503). That is
+    // not the job's own failure, so it takes the same penalty-free requeue as
+    // the limiter timeout above rather than burning an attempt. Checked here,
+    // before the attempts/non-retryable logic, for the same reason.
+    const deferral = this.retryClassifierRegistry.resolveRetryDeferral(
+      error instanceof SyncJobExecutionError && error.cause ? error.cause : error
+    );
+    if (deferral !== null) {
+      const nextRunAt = new Date(Date.now() + deferral.delaySeconds * 1000);
+      // No duration reported, for the same reason as the requeue above (#2611):
+      // the destination turned the attempt away, so nothing executed and the
+      // column must stay NULL rather than claim a zero-millisecond run.
+      await this.jobRepository.requeueWithoutPenalty(
+        job.id,
+        `${deferral.reason}: ${errorMessage}`,
+        nextRunAt
+      );
+      this.logger.warn(
+        `Job ${job.id} (${job.jobType}) deferred by the destination (${deferral.reason}) - ` +
+          `requeued in ${deferral.delaySeconds}s without counting against maxAttempts ` +
           `(attempt stays ${job.attempts}/${job.maxAttempts})`
       );
       return;

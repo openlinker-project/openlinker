@@ -95,4 +95,37 @@ describe('RetryClassifierRegistryService', () => {
       expect(fooMatcher).toHaveBeenCalledWith(cause);
     });
   });
+
+  describe('resolveRetryDeferral (#2613)', () => {
+    it('should return the first non-null deferral and skip classifiers that do not implement it', () => {
+      const registry = new RetryClassifierRegistryService();
+      registry.register('no-opinion', { isNonRetryable: () => false });
+      registry.register('defers', {
+        isNonRetryable: () => false,
+        getRetryDeferral: () => ({ delaySeconds: 300, reason: 'shop unavailable (503)' }),
+      });
+
+      expect(registry.resolveRetryDeferral(new Error('boom'))).toEqual({
+        delaySeconds: 300,
+        reason: 'shop unavailable (503)',
+      });
+    });
+
+    it('should ignore a non-positive delay so a deferral cannot become a hot requeue loop', () => {
+      const registry = new RetryClassifierRegistryService();
+      registry.register('defers-zero', {
+        isNonRetryable: () => false,
+        getRetryDeferral: () => ({ delaySeconds: 0, reason: 'zero' }),
+      });
+
+      expect(registry.resolveRetryDeferral(new Error('boom'))).toBeNull();
+    });
+
+    it('should return null when nothing defers', () => {
+      const registry = new RetryClassifierRegistryService();
+      registry.register('no-opinion', { isNonRetryable: () => false });
+
+      expect(registry.resolveRetryDeferral(new Error('boom'))).toBeNull();
+    });
+  });
 });

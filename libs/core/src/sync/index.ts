@@ -12,7 +12,7 @@ export { JobEnqueuePort } from './domain/ports/job-enqueue.port';
 export { SyncJobRepositoryPort } from './domain/ports/sync-job-repository.port';
 export { SyncJobHandler } from './domain/ports/sync-job-handler.port';
 export { ConnectionCursorRepositoryPort } from './domain/ports/connection-cursor-repository.port';
-export { RetryClassifierPort } from './domain/ports/retry-classifier.port';
+export { RetryClassifierPort, RetryDeferral } from './domain/ports/retry-classifier.port';
 export { AuthFailureClassifierPort } from './domain/ports/auth-failure-classifier.port';
 export {
   SyncJobQueuePort,

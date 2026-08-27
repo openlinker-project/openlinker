@@ -46,6 +46,29 @@
  *     `needs_reauth`; classifying it here as well would pre-empt that path.
  *   - Anything not recognized — default-retryable.
  *
+ * Deferred rather than retried (#2613) - `getRetryDeferral` reports a
+ * penalty-free requeue, so the attempt counter does not move and a long
+ * outage cannot walk a job to `dead`:
+ *   - `429` - the shop is throttling US. The client has already spent its own
+ *     internal retries on it, so a further attempt penalty would double-count
+ *     the same fact. `Retry-After` wins when the shop sent one, floored so a
+ *     deferral can never come back sooner than the runner's own first backoff
+ *     would have. PrestaShop core sends no such header; a fronting proxy does.
+ *   - `503` - the shop is unavailable for reasons that have nothing to do with
+ *     our rate. A maintenance window used to burn every attempt of every job
+ *     touching that shop, so a twenty-minute upgrade moved live work to `dead`
+ *     while nothing was broken. It waits instead, on a longer delay than a
+ *     throttle since maintenance is measured in minutes, not seconds.
+ *
+ * Both stay RETRYABLE - `isNonRetryable` still answers `false` for them, so
+ * nothing here can terminalise a transient failure. The two codes are told
+ * apart in the job record by the deferral reason the runner prefixes onto the
+ * persisted error, which is what makes a maintenance window readable as such.
+ * The accepted cost is that a shop returning 503 forever never reaches `dead`;
+ * that is the same property the pre-existing `RateLimitTimeoutError` requeue
+ * has, and the alternative - a budget - kills exactly the jobs an operator
+ * wants waiting for the shop to come back.
+ *
  * Kept deliberately narrow: the registry ORs every registered classifier's
  * answer, so a broad `instanceof PrestashopApiException` rule here would make
  * transient PrestaShop failures terminal across every PrestaShop job type, not
@@ -54,10 +77,24 @@
  * @module libs/integrations/prestashop/src/infrastructure/adapters
  * @implements {RetryClassifierPort}
  */
-import type { RetryClassifierPort } from '@openlinker/core/sync';
+import type { RetryClassifierPort, RetryDeferral } from '@openlinker/core/sync';
+import { PrestashopApiException } from '../../domain/exceptions/prestashop-api.exception';
 import { PrestashopTaxRateUnknownException } from '../../domain/exceptions/prestashop-tax-rate-unknown.exception';
 import { PrestashopCurrencyUnknownException } from '../../domain/exceptions/prestashop-currency-unknown.exception';
 import { PrestashopInvalidFilterException } from '../../domain/exceptions/prestashop-invalid-filter.exception';
+
+/**
+ * Floor on any deferral, matching the runner's first backoff step - so routing
+ * a code through the penalty-free path can never make it retry FASTER than it
+ * did before this classification existed.
+ */
+const MIN_DEFERRAL_SECONDS = 30;
+
+/** Used when the shop throttled us but named no wait of its own. */
+const THROTTLE_DEFAULT_DEFERRAL_SECONDS = 60;
+
+/** A maintenance window is measured in minutes, so a 503 waits longer than a throttle. */
+const UNAVAILABLE_DEFERRAL_SECONDS = 300;
 
 export class PrestashopRetryClassifierAdapter implements RetryClassifierPort {
   isNonRetryable(cause: unknown): boolean {
@@ -66,5 +103,33 @@ export class PrestashopRetryClassifierAdapter implements RetryClassifierPort {
       cause instanceof PrestashopCurrencyUnknownException ||
       cause instanceof PrestashopInvalidFilterException
     );
+  }
+
+  getRetryDeferral(cause: unknown): RetryDeferral | null {
+    if (!(cause instanceof PrestashopApiException)) {
+      return null;
+    }
+
+    if (cause.statusCode === 429) {
+      return {
+        delaySeconds: Math.max(
+          cause.retryAfterSeconds ?? THROTTLE_DEFAULT_DEFERRAL_SECONDS,
+          MIN_DEFERRAL_SECONDS
+        ),
+        reason: 'shop rate-limited the request (429)',
+      };
+    }
+
+    if (cause.statusCode === 503) {
+      return {
+        delaySeconds: Math.max(
+          cause.retryAfterSeconds ?? UNAVAILABLE_DEFERRAL_SECONDS,
+          MIN_DEFERRAL_SECONDS
+        ),
+        reason: 'shop unavailable (503)',
+      };
+    }
+
+    return null;
   }
 }

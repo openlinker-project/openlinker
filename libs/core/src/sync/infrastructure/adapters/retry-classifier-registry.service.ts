@@ -22,7 +22,7 @@
  * @see {@link RetryClassifierPort} for the port interface.
  */
 import { Injectable } from '@nestjs/common';
-import type { RetryClassifierPort } from '../../domain/ports/retry-classifier.port';
+import type { RetryClassifierPort, RetryDeferral } from '../../domain/ports/retry-classifier.port';
 
 @Injectable()
 export class RetryClassifierRegistryService {
@@ -53,5 +53,22 @@ export class RetryClassifierRegistryService {
       }
     }
     return false;
+  }
+
+  /**
+   * Resolve a retry deferral across registered classifiers (#2613). First
+   * non-null answer wins - classifiers own disjoint exception hierarchies, so
+   * at most one can recognise the cause. Classifiers that do not implement
+   * the optional method are skipped, and a non-positive delay is ignored so a
+   * miscomputed zero cannot turn a deferral into a hot requeue loop.
+   */
+  resolveRetryDeferral(cause: unknown): RetryDeferral | null {
+    for (const classifier of this.classifiers.values()) {
+      const deferral = classifier.getRetryDeferral?.(cause) ?? null;
+      if (deferral !== null && deferral.delaySeconds > 0) {
+        return deferral;
+      }
+    }
+    return null;
   }
 }
