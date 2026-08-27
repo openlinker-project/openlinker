@@ -24,8 +24,25 @@ token() {
   | python3 -c 'import sys,json;d=json.load(sys.stdin);print(d.get("access_token") or d.get("accessToken") or "")'
 }
 
+# Purging is destructive: it deletes real pending work if CONNECTION_ID points
+# at a live connection. Print what is about to go and require an explicit
+# opt-in (PURGE_QUEUE=1).
+purge_queue() {
+  local n
+  n=$(pg "SELECT COUNT(*) FROM sync_jobs WHERE \"connectionId\"='$CONN' AND status IN ('queued','running','dead');")
+  echo "queue purge: $n queued/running/dead sync_jobs rows for connection $CONN"
+  if [ "${PURGE_QUEUE:-0}" != "1" ]; then
+    echo "FATAL: refusing to delete them. A measured window needs a clean queue," >&2
+    echo "       so re-run with PURGE_QUEUE=1 once you are sure this connection" >&2
+    echo "       carries no real pending work." >&2
+    exit 1
+  fi
+  pg "DELETE FROM sync_jobs WHERE \"connectionId\"='$CONN' AND status IN ('queued','running','dead');" >/dev/null
+  echo "queue purge: deleted $n rows"
+}
+
 # A clean window: nothing else of this connection's may run alongside.
-pg "DELETE FROM sync_jobs WHERE \"connectionId\"='$CONN' AND status IN ('queued','running','dead');" >/dev/null
+purge_queue
 
 MARK=$(date +%s)   # epoch: a bare timestamp is read as the DAEMON local time, not UTC
 START=$(date +%s)
@@ -34,9 +51,38 @@ curl -s -X POST "$API/v1/orders/$ORDER/destinations/$CONN/retry" \
   -H "authorization: Bearer $TOKEN" -H 'content-type: application/json' -d '{}' \
   -o "$OUT/$LABEL.retry.json" -w "retry_http=%{http_code}\n"
 
-# Wait for the order to leave 'pending' — the record, not the job, is the signal.
-until pg "SELECT left(\"syncStatus\"::text,20) FROM order_records WHERE \"internalOrderId\"='$ORDER';" | grep -qv pending; do sleep 4; done
-until [ "$(pg "SELECT COUNT(*) FROM sync_jobs WHERE \"connectionId\"='$CONN' AND status IN ('queued','running');")" = "0" ]; do sleep 4; done
+# Wait for the order to leave 'pending' - the record, not the job, is the signal.
+#
+# The status starts as the literal '[]' that make-8line-order.sh writes, and a
+# wrong order id returns no row at all. Both used to be misread: a plain
+# `grep -qv pending` succeeded on '[]' and exited the wait immediately, and on
+# an empty result it returned 1 and the loop span forever. So test the value
+# explicitly and bound the wait.
+WAIT_SECS="${WAIT_SECS:-900}"
+deadline=$(( $(date +%s) + WAIT_SECS ))
+while :; do
+  status=$(pg "SELECT left(\"syncStatus\"::text,200) FROM order_records WHERE \"internalOrderId\"='$ORDER';")
+  if [ -z "$status" ]; then
+    echo "FATAL: no order_records row for internalOrderId=$ORDER" >&2; exit 1
+  fi
+  # Not started yet ('[]') or still pending: keep waiting.
+  case "$status" in
+    '[]'|'') : ;;
+    *pending*) : ;;
+    *) break ;;
+  esac
+  if [ "$(date +%s)" -ge "$deadline" ]; then
+    echo "FATAL: order $ORDER still not dispatched after ${WAIT_SECS}s (syncStatus=$status)" >&2
+    exit 1
+  fi
+  sleep 4
+done
+while [ "$(pg "SELECT COUNT(*) FROM sync_jobs WHERE \"connectionId\"='$CONN' AND status IN ('queued','running');")" != "0" ]; do
+  if [ "$(date +%s)" -ge "$deadline" ]; then
+    echo "FATAL: connection queue did not drain within ${WAIT_SECS}s" >&2; exit 1
+  fi
+  sleep 4
+done
 ELAPSED=$(( $(date +%s) - START ))
 
 docker logs --since "$MARK" "$PS_CONTAINER" > "$OUT/$LABEL.access.log" 2>&1

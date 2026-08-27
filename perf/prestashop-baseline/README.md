@@ -44,12 +44,25 @@ Every script reads its stack from the environment and falls back to the
 | Variable | Default | Note |
 |---|---|---|
 | `CONNECTION_ID` | the campaign's PrestaShop connection uuid | **Set this.** The default is a uuid from one machine; left alone on any other stack the scripts measure a connection that does not exist. |
+| `PURGE_QUEUE` | unset | **Set to `1` to allow a run.** `run-a1a.sh`, `run-a2.sh`, `run-a3.sh` and `run-a4.sh` delete every `queued`/`running`/`dead` `sync_jobs` row for the connection, because a measured window needs a clean queue. They print the row count and refuse without this opt-in. |
 | `API` | `http://localhost:3000` | OpenLinker api |
 | `PS_CONTAINER` | `ol-demo-fresh-prestashop` | the shop, whose log is the instrument |
 | `PG_CONTAINER` | `ol-demo-fresh-postgres` | OpenLinker's database |
-| `WORKER_CONTAINER` | `ol-demo-fresh-worker` | the container A2 stops and starts |
+| `MYSQL_CONTAINER` | `ol-demo-fresh-mysql` | the shop's database, written directly by `seed-products.sh` / `cleanup-products.sh` |
+| `PS_DB` | `prestashop` | database name inside `MYSQL_CONTAINER` |
+| `WORKER_CONTAINER` | `ol-demo-fresh-worker` | the container A2 stops and starts. **The default does not reproduce the campaign.** The campaign ran a separate `ol-perf-worker` carrying `OL_WORKER_ROLE=jobs` so no cron tick could enqueue into a measured window; the default is the stock all-roles worker, whose ticks are exactly the contamination the Traps section warns about. Point this at a jobs-only worker before quoting a number. |
+| `TEMPLATE_ID` | `22` | the PrestaShop product `seed-products.sh` clones. **The most machine-specific value here after `CONNECTION_ID`.** On a stack where product 22 is not multi-variant the seed silently inserts fewer combinations than intended, and per-SKU figures then measure a different shape of product. |
+| `FORCE_SEED` | unset | `seed-products.sh` refuses to run when `PERFBASE-` products already exist, because a second generation under the same prefix stops the prefix identifying one seeded set. Set to `1` only if a second generation really is wanted. |
+| `SRC_ORDER` | an order id from one machine | `make-8line-order.sh` copies this order's customer and snapshot. **Set this**; the default exists on no other stack. |
+| `PHASE_SECS` | `180` | length of each of A2's three phases, in seconds |
+| `INFLIGHT_MIN` | `10` | in-flight children A2 waits for before it calls phase B loaded. A store with fewer syncable products than this can never reach the threshold, so A2 now fails with a message instead of waiting forever. |
+| `INFLIGHT_WAIT_SECS` / `API_WAIT_SECS` | `300` / `180` | bounds on A2's two waits |
+| `WAIT_SECS` | `900` | bound on `run-a4.sh`'s wait for the order to dispatch and the queue to drain |
+| `IDLE_TICKS` / `POLL_SECS` | `6` / `5` | `run-scenario.sh` calls the queue drained after `IDLE_TICKS` consecutive quiet polls, `POLL_SECS` apart. Also the granularity of every `elapsed_seconds` figure. |
+| `RUNS` (first positional arg) | `3` | repeats in `run-a1a.sh` / `run-a3.sh`; run 1 is the cold run and is discarded |
+| `LABEL_PREFIX` | empty | prepended to every output label, to keep two campaigns' results apart |
 | `URL` | `http://localhost:8080/` | storefront page the probe fetches |
-| `OL_ADMIN_USER` / `OL_ADMIN_PASSWORD` | `admin` / `admin` | demo-stack defaults; there are no credentials in these files |
+| `OL_ADMIN_USER` / `OL_ADMIN_PASSWORD` | `admin` / `admin` | only the demo stack's well-known defaults; no real credential is committed here |
 | `OUT` | `./results` | where output lands (git-ignored) |
 
 ## Reports
@@ -73,6 +86,9 @@ anything but a count.
 ./seed-products.sh 10000
 ./run-scenario.sh master.product.syncAll   run1
 ./run-scenario.sh master.inventory.syncAll run1-inv
+
+# The scenario runners purge the connection's queue, so they need the opt-in:
+CONNECTION_ID=<uuid> WORKER_CONTAINER=<jobs-only worker> PURGE_QUEUE=1 ./run-a1a.sh 3
 ```
 
 Results land in `./results/<label>.{summary.txt,access.log,enqueue.json}`.
@@ -96,6 +112,23 @@ Results land in `./results/<label>.{summary.txt,access.log,enqueue.json}`.
   PHP, so `curl -u` returns "Authentication key is empty".
 * **The seeded products are left in place on purpose.** Run
   `cleanup-products.sh` when the measurement campaign is over.
+* **Purging the queue is destructive, and it is the method.** Every scenario
+  runner deletes the connection's `queued`/`running`/`dead` `sync_jobs` rows,
+  because a stale backlog drains into the measured window. On a live connection
+  that is real pending work. The runners print the count and refuse without
+  `PURGE_QUEUE=1`; read the count before you set it.
+* **`elapsed_seconds` is not accurate to the second.** The drain loop sleeps
+  before its first check, so every elapsed figure carries at least one
+  `POLL_SECS` of systematic upward bias plus `POLL_SECS` of granularity - 5 s
+  each at the defaults. The reports quote elapsed to the second (977 s, 590 s,
+  471 s) because that is what the script printed; read them as +/- ~5 s, and
+  never compare two elapsed figures taken at different `POLL_SECS`.
+* **A storefront sample only counts if the shop answered 2xx.** `storefront-probe.sh`
+  records the status code alongside the timing, drops non-2xx from the
+  percentiles, and exits non-zero if any window recorded one. Without that a
+  shop returning fast errors under sync load reads as "unaffected", which would
+  invert the A2 conclusion. The measurements already in `results-A` /
+  `results-B` were taken before this check existed - see the note in each.
 * **Retries pollute a request count.** A retried child job re-issues every
   request it had already made, so a window with a retry in it over-counts.
   Every runner prints `attempts_delta`; anything above one attempt per job

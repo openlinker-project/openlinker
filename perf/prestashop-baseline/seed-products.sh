@@ -47,6 +47,19 @@ for v in PROD_COLS SHOP_COLS LANG_COLS CATP_COLS PA_COLS PAS_COLS PAC_COLS STOCK
   [ -n "${!v}" ] || { echo "FATAL: could not read column list for $v" >&2; exit 1; }
 done
 
+# A second invocation would mint a SECOND set of PERFBASE-00001... references,
+# so the prefix would stop identifying one seeded generation and cleanup counts
+# would stop meaning anything. Refuse unless the caller says otherwise.
+EXISTING=$(printf "SELECT COUNT(*) FROM ps_product WHERE reference LIKE '%s%%';\n" "$PREFIX" | mysql_run | tail -1)
+if [ -n "$EXISTING" ] && [ "$EXISTING" != "0" ]; then
+  echo "FATAL: $EXISTING products already carry the ${PREFIX} prefix." >&2
+  echo "       Seeding again would create a duplicate generation under the same" >&2
+  echo "       prefix. Run ./cleanup-products.sh first, or set FORCE_SEED=1 if a" >&2
+  echo "       second generation really is what you want." >&2
+  [ "${FORCE_SEED:-0}" = "1" ] || exit 1
+  echo "       FORCE_SEED=1 set, continuing anyway." >&2
+fi
+
 echo "Seeding $COUNT products from template id=$TEMPLATE_ID (prefix ${PREFIX})..."
 date +%T
 
