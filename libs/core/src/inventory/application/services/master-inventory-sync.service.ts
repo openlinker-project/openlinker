@@ -105,7 +105,7 @@ export class MasterInventorySyncService implements IMasterInventorySyncService {
     const currentVariantIds: (string | null)[] = [];
     for (const inventory of inventories) {
       const inventoryItem = await this.toDomainInventoryItem(inventory, internalProductId);
-      await this.inventoryService.setInventory(inventoryItem);
+      await this.inventoryService.setInventory(inventoryItem, connectionId);
       currentVariantIds.push(inventoryItem.productVariantId);
       availableQuantity += inventoryItem.availableQuantity;
       reservedQuantity += inventoryItem.reservedQuantity;

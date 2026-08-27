@@ -176,9 +176,17 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
         total: read('OL_LANE_FISCAL_CAP', 2),
         perScope: read('OL_LANE_FISCAL_SCOPE_CAP', 1),
       },
+      // Raised from 1/1 in #2609. A cap of 1 was sized for the lane's
+      // cron-paced members, one tick at a time. `inventory.propagateToMarketplaces`
+      // is event-paced instead - one job per changed stock row - so a cap of 1
+      // serialised every stock write in the installation, and the cron members
+      // were serialised across connections too. The work here is database reads
+      // plus child enqueues, so the cap bounds queue fan-out rather than
+      // outbound HTTP. perScope stays below total because ADR-050 decision 4
+      // ships no round-robin fairness between scopes.
       'fan-out': {
-        total: read('OL_LANE_FANOUT_CAP', 1),
-        perScope: read('OL_LANE_FANOUT_SCOPE_CAP', 1),
+        total: read('OL_LANE_FANOUT_CAP', 8),
+        perScope: read('OL_LANE_FANOUT_SCOPE_CAP', 4),
       },
     };
   }

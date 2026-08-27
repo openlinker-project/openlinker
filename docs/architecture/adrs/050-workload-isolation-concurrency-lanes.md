@@ -158,6 +158,53 @@ Three limits on that number, all load-bearing:
 `realtime`, `fiscal` and `fan-out` keep their untuned defaults. Nothing about the buyer-facing path
 changed: the point of moving the sweep child out is that `realtime` did not need raising.
 
+## Amendment (#2609) — the scope was the bug, not the lane
+
+`inventory.propagateToMarketplaces` was serialised across the whole installation. Measured on the
+demo stack, the queue grew about **145 jobs/h faster than it drained**, and the 15 066 backlogged
+rows found there were days of ordinary operation rather than an incident.
+
+**Decision 3's scope was never populated for this job.** Every enqueue used a synthetic
+`00000000-0000-0000-0000-000000000000` connection id, so all propagation in the install shared one
+scope, and the `fan-out` per-scope cap of 1 then made each stock write wait for the previous one -
+however many connections the operator had. The job now carries **the master connection the stock was
+read from**: `IInventoryService.setInventory` takes an optional `sourceConnectionId`, and
+`MasterInventorySyncService` passes the connection it is syncing. Per-scope accounting now isolates
+one master's burst from another's, which is what decision 3 says it is for.
+
+**The lane is confirmed, not changed, and #2594's precedent does not apply here.** Propagation reads
+stock and enqueues one `realtime` quantity write per mapped destination; it makes no marketplace call
+itself, so `fan-out` is right. #2594 split a job type because one type served two triggers with two
+different costs of starvation. Propagation has two triggers as well - a stock webhook and the
+inventory sweep - but **one cost**: both discover real stock drift, and on a master with no stock
+webhook the sweep is the *only* thing that discovers it (see § Inventory, `master.inventory.syncAll`).
+Sweep-triggered propagation is therefore not tolerable-slow background work, so there is nothing to
+separate and the job type stays single. The lane tally is unchanged at 12 / 15 / 5 / 6.
+
+**`fan-out` defaults to `total: 8, perScope: 4`, from `1 / 1`.** A cap of 1 fitted the lane's other
+members, which are **cron-paced** - one tick per connection, each additionally serialised by its own
+per-(kind, connection) `SyncLockPort` lock, so raising the cap cannot multiply catalogue fan-out.
+Propagation is **event-paced**: one job per changed stock row, thousands per sweep. Three notes:
+
+- The raise is not backed by a per-destination measurement the way `bulk`'s is, and decision 6 still
+  applies. It does not need one in the same sense: a `fan-out` job's work is database reads plus
+  child enqueues, so the cap bounds queue fan-out rather than a shop's request budget. The outbound
+  pacing stays where it already was, on `marketplace.offerQuantity.update` in `realtime`.
+- It also lets two connections poll orders or enumerate a catalogue concurrently. The old cap
+  prevented that across the whole install, which was a second, quieter instance of the same defect.
+- `perScope` sits below `total` for decision 4's reason: with no round-robin fairness, one scope must
+  not be able to hold the lane.
+
+**Consequence for the out-of-order quantity-write guard (#2617).** More propagation in flight means
+more often two writes for one offer, so the guard fires more. It still holds: it takes a per-(connection,
+offer) lock, compares the quoted observation against the mark, and advances the mark only after a
+successful write, so a refusal always means a strictly newer quantity is already live. The **ceiling**
+on concurrent writes to one offer is unchanged, because `realtime`'s per-scope cap was not raised -
+what changes is frequency. What that frequency exposes is the guard's known cost: a contended write is
+reported as a failure, so it consumes a retry attempt and could eventually dead-letter under sustained
+contention. That is a defect in the retry classification, not in the ordering rule, and it is why this
+change and that fix belong in the same release.
+
 ## Alternatives considered
 
 - **Strict priority ordering** (realtime first): starves `bulk` under sustained realtime load — the
@@ -198,7 +245,7 @@ changed: the point of moving the sweep child out is that `realtime` did not need
 
 ## References
 
-- Related issues: #2167, #2162, #1134, #2169, #2594
+- Related issues: #2167, #2162, #1134, #2169, #2594, #2609, #2617
 - Related ADRs: [ADR-005](./005-postgres-authoritative-job-dedup.md),
   [ADR-007](./007-syncjob-status-vs-outcome-split.md),
   [ADR-049](./049-durability-spine-and-domain-event-contract.md),

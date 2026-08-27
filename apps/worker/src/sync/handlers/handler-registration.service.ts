@@ -95,7 +95,8 @@ export class HandlerRegistrationService implements OnModuleInit {
     // #2440 (`orders.taxRate.backfill` -> `bulk`) and #2594 (the two
     // sweep-triggered master children -> `bulk`): 12 realtime / 15 bulk /
     // 5 fiscal / 6 fan-out. `fiscalization.register` joined `fiscal`
-    // post-ADR, #2156.
+    // post-ADR, #2156. #2609 left the tally alone: it raised the `fan-out`
+    // lane's caps instead of moving a job out of it.
 
     // Register generic marketplace handlers (Option B)
     this.handlerRegistry.register(
@@ -255,7 +256,16 @@ export class HandlerRegistrationService implements OnModuleInit {
       'bulk'
     );
 
-    // Register inventory propagate to marketplaces handler
+    // Register inventory propagate to marketplaces handler.
+    //
+    // Stays `fan-out`, and #2609 confirmed rather than moved it. The job makes
+    // no marketplace call of its own; it reads stock and enqueues one realtime
+    // quantity write per mapped destination. Its cost of starvation is the same
+    // whichever trigger produced it - a webhook and the inventory sweep both
+    // discover real stock drift, and on a master with no stock webhook the
+    // sweep is the only thing that discovers it at all - so #2594's
+    // split-by-trigger has nothing to separate here. The serialisation #2609
+    // fixed was the scope and the lane cap, not the lane.
     this.handlerRegistry.register(
       'inventory.propagateToMarketplaces',
       this.inventoryPropagateHandler,

@@ -5,7 +5,8 @@
  * registered with exactly one lane, the per-lane counts match the ADR's
  * table (12 realtime / 15 bulk / 5 fiscal / 6 fan-out — `fiscalization.register`
  * joined `fiscal` post-ADR, #2156; `orders.taxRate.backfill` joined `bulk`,
- * #2440; the two sweep-triggered master children joined `bulk`, #2594), and
+ * #2440; the two sweep-triggered master children joined `bulk`, #2594; #2609
+ * changed no assignment at all), and
  * the consequential assignments the ADR calls out cannot silently churn.
  *
  * @module apps/worker/src/sync/handlers
@@ -79,5 +80,8 @@ describe('HandlerRegistrationService (ADR-050 lane partition, #2278)', () => {
     expect(registry.getLane('marketplace.offerQuantity.update')).toBe('realtime');
     // Enumerators are fan-out.
     expect(registry.getLane('marketplace.orders.poll')).toBe('fan-out');
+    // #2609 fixed the propagation scope and the lane cap, not the lane: the
+    // job enqueues realtime children and never calls a marketplace itself.
+    expect(registry.getLane('inventory.propagateToMarketplaces')).toBe('fan-out');
   });
 });
