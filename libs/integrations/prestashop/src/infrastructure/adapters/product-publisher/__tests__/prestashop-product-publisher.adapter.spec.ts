@@ -142,7 +142,7 @@ describe('PrestashopProductPublisherAdapter', () => {
 
       expect(client.createResource).not.toHaveBeenCalled();
       expect(client.listResources).toHaveBeenCalledWith('products', {
-        custom: { 'filter[reference]': 'ol_variant_aaaa' },
+        custom: { reference: 'ol_variant_aaaa' },
       });
       expect(client.updateResource).toHaveBeenNthCalledWith(
         1,
@@ -250,7 +250,7 @@ describe('PrestashopProductPublisherAdapter', () => {
 
       expect(client.listResources).toHaveBeenCalledWith(
         'stock_availables',
-        expect.objectContaining({ custom: { 'filter[id_product]': '42' } }),
+        expect.objectContaining({ custom: { id_product: '42' } }),
       );
       expect(client.updateResource).toHaveBeenCalledWith(
         'stock_availables',

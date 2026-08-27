@@ -7,6 +7,7 @@
  * @module libs/integrations/prestashop/src/infrastructure/http/__tests__
  */
 import { PrestashopQueryBuilder } from '../prestashop-query.builder';
+import { PrestashopInvalidFilterException } from '../../../domain/exceptions/prestashop-invalid-filter.exception';
 import type { PrestashopConnectionConfig } from '@openlinker/integrations-prestashop';
 
 describe('PrestashopQueryBuilder', () => {
@@ -86,6 +87,44 @@ describe('PrestashopQueryBuilder', () => {
       const query = PrestashopQueryBuilder.buildQuery('products', filters);
       expect(query).toContain('filter[active]=[1]');
       expect(query).toContain('filter[category_id]=[5]');
+    });
+
+    it('should build a single filter envelope when the custom key is a bare field name', () => {
+      const query = PrestashopQueryBuilder.buildQuery('products', {
+        custom: { reference: 'ol_variant_aaaa' },
+      });
+
+      expect(query).toContain('filter[reference]=[ol_variant_aaaa]');
+      expect(query).not.toContain('filter[filter[');
+    });
+
+    it('should throw when a custom filter key is already wrapped in filter[...]', () => {
+      expect(() =>
+        PrestashopQueryBuilder.buildQuery('products', {
+          custom: { 'filter[reference]': 'ol_variant_aaaa' },
+        })
+      ).toThrow(PrestashopInvalidFilterException);
+    });
+
+    it('should name the offending key and the envelope hint when the filter is wrapped', () => {
+      try {
+        PrestashopQueryBuilder.buildQuery('products', {
+          custom: { 'filter[reference]': 'ol_variant_aaaa' },
+        });
+        fail('expected a PrestashopInvalidFilterException');
+      } catch (error) {
+        const invalid = error as PrestashopInvalidFilterException;
+        expect(invalid.filterKey).toBe('filter[reference]');
+        expect(invalid.message).toContain('filter[...] envelope');
+      }
+    });
+
+    it('should throw when a custom filter key is not a bare field name', () => {
+      expect(() =>
+        PrestashopQueryBuilder.buildQuery('products', {
+          custom: { 'reference&display': 'x' },
+        })
+      ).toThrow(PrestashopInvalidFilterException);
     });
   });
 
