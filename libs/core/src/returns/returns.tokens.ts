@@ -1,5 +1,5 @@
 /**
- * Returns — DI Tokens (#2327, widened by #2330, #2332, #2333, #2370, #2371 and #2372)
+ * Returns — DI Tokens (#2327, widened by #2330, #2332, #2333, #2370, #2371, #2372 and #2374)
  *
  * @module libs/core/src/returns
  */
@@ -16,3 +16,10 @@ export const RETURN_CUSTODY_SERVICE_TOKEN = Symbol('IReturnCustodyService');
 export const RETURN_REFUND_SERVICE_TOKEN = Symbol('IReturnRefundService');
 // The authorize WRITE (#2372) — restricted to operator-authored returns.
 export const RETURN_AUTHORIZE_SERVICE_TOKEN = Symbol('IReturnAuthorizeService');
+// The credit-note correction PROPOSAL (#2374). A proposal is data: this service
+// issues nothing and confers no authority to issue. Note the name deliberately
+// says "proposal" — `no-second-proposal-mechanism.spec.ts` bans a proposal
+// *store* token, which this is not (it persists through IOrderChangeService).
+export const RETURN_CORRECTION_PROPOSAL_SERVICE_TOKEN = Symbol(
+  'IReturnCorrectionProposalService'
+);

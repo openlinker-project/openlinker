@@ -45,8 +45,27 @@
  * so OL is the authority and the row here is the audit record of the operator's act
  * rather than a request awaiting an answer. That is also why it reuses this table
  * instead of growing a second proposal mechanism.
+ *
+ * `return.invoice_correction` arrived with #2374, and it is the first kind whose
+ * `targetRef` is NOT a bare entity id — which is a constraint the shared index
+ * imposes, not a stylistic choice. `UQ_order_changes_open_target` is
+ * `(internalOrderId, targetRef)` and **does not include `kind`**, so every kind
+ * sharing an order competes for one slot per `targetRef`. The bare `ReturnRecord.id`
+ * namespace is already taken by the two kinds above; and keying on the invoice
+ * record id instead would collide across RETURNS, because an order legitimately
+ * produces several (partial returns arriving in waves) each proposing against the
+ * same document — the second build would find the first return's open row and
+ * terminalise a proposal an operator was mid-review on. The key is therefore
+ * `correction:{returnId}:{invoiceRecordId}`: unique per (return, document), and
+ * namespaced so it cannot intrude on a sibling kind's. **A kind added after this
+ * one faces the identical question** — check the namespace before picking a
+ * `targetRef`, because the index will not.
  */
-export const OrderChangeKindValues = ['return.decline', 'return.authorize'] as const;
+export const OrderChangeKindValues = [
+  'return.decline',
+  'return.authorize',
+  'return.invoice_correction',
+] as const;
 
 export type OrderChangeKind = (typeof OrderChangeKindValues)[number];
 

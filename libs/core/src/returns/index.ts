@@ -263,3 +263,39 @@ export type {
   RecordReturnLineInput,
 } from './application/services/returns.service.interface';
 export type { ReturnAttributionMatch } from './domain/ports/return-repository.port';
+
+// The credit-note correction PROPOSAL (#2374, `W2-38`, ADR-060/ADR-044).
+//
+// A proposal is DATA. Nothing behind this surface issues a correction, contacts
+// a provider, or confers authority to issue one — auto-issue stays gated on
+// `InvoiceLine` gaining a stable reference, which it has not got. The positional
+// ambiguity is SHOWN (`ambiguous` lists every candidate and selects none) rather
+// than resolved, because a correction transmitted to a tax authority cannot be
+// withdrawn.
+export {
+  ReturnCorrectionLineStatusValues,
+  ReturnCorrectionNoMatchReasonValues,
+  ReturnCorrectionProposalOutcomeValues,
+} from './domain/types/return-correction-proposal.types';
+export type {
+  ReturnCorrectionCandidate,
+  ReturnCorrectionLineStatus,
+  ReturnCorrectionNoMatchReason,
+  ReturnCorrectionProposal,
+  ReturnCorrectionProposalLine,
+  ReturnCorrectionProposalOutcome,
+  ReturnCorrectionProposalResult,
+} from './domain/types/return-correction-proposal.types';
+export {
+  classifyReturnCorrectionLines,
+  describeCorrectionNoMatchReason,
+  normalizeCorrectionLineName,
+} from './domain/domain-services/return-correction-matching.domain-service';
+export type {
+  CorrectionReturnLineInput,
+  CorrectionSnapshotLine,
+} from './domain/domain-services/return-correction-matching.domain-service';
+export type {
+  BuildReturnCorrectionProposalInput,
+  IReturnCorrectionProposalService,
+} from './application/services/return-correction-proposal.service.interface';

@@ -119,6 +119,23 @@ export interface IInvoiceService {
   getLatestInvoiceForOrder(orderId: string): Promise<InvoiceRecord | null>;
 
   /**
+   * The most recently created **`issued`** `InvoiceRecord` for an order — the
+   * document that actually exists and can therefore be corrected (#2374).
+   * Projection read — NEVER queries the provider/adapter. `null` when the order
+   * holds no issued document.
+   *
+   * Distinct from {@link getLatestInvoiceForOrder}, which is status-agnostic: a
+   * newer `failed` or `pending` row would mask the issued one, and a correction
+   * proposed against a row the provider never issued corrects nothing.
+   *
+   * Because a successful correction is itself an `InvoiceRecord`, the answer is
+   * automatically the prior correction's own post-correction snapshot rather
+   * than the original's — #1297's correction-of-a-correction rule, satisfied by
+   * construction rather than by a special case.
+   */
+  getLatestIssuedInvoiceForOrder(orderId: string): Promise<InvoiceRecord | null>;
+
+  /**
    * Distinct invoicing connection ids that hold ANY `InvoiceRecord` for this
    * order, in newest-record-first order (#2047). Projection read — NEVER queries
    * the provider/adapter. Returns `[]` for an order with no records.

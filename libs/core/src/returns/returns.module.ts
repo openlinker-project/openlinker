@@ -48,9 +48,16 @@
  * `import type` that erases at build time.
  *
  * `returns` is therefore still NOT registered as a zero-sibling-edge leaf in
- * `libs/core/src/__tests__/barrel-purity.spec.ts`: it now has four real outbound
+ * `libs/core/src/__tests__/barrel-purity.spec.ts`: it now has five real outbound
  * edges rather than one, so the property that table asserts is further from
  * true, not closer.
+ *
+ * #2374 adds the fifth, `returns -> invoicing` (`InvoiceServiceToken` for the
+ * credit-note correction proposal's read of the issued-line snapshot). Acyclic
+ * like the rest: `InvoicingModule` imports IntegrationsModule /
+ * IdentifierMappingModule / SyncModule / SalesDocumentsModule, and none of them
+ * reaches this context. The edge is READ-ONLY — nothing on that path issues a
+ * document, which `__tests__/proposal-never-issues.spec.ts` asserts by grep.
  *
  * @module libs/core/src/returns
  */
@@ -58,6 +65,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
 import { IntegrationsModule } from '@openlinker/core/integrations';
+import { InvoicingModule } from '@openlinker/core/invoicing';
 import { OrderChangesModule } from '@openlinker/core/orders';
 import { ProductsModule } from '@openlinker/core/products';
 import { SyncModule } from '@openlinker/core/sync';
@@ -65,6 +73,7 @@ import { ReturnIngestionService } from './application/services/return-ingestion.
 import { ReturnReattributionService } from './application/services/return-reattribution.service';
 import { ReturnStatusSyncService } from './application/services/return-status-sync.service';
 import { ReturnAuthorizeService } from './application/services/return-authorize.service';
+import { ReturnCorrectionProposalService } from './application/services/return-correction-proposal.service';
 import { ReturnDeclineService } from './application/services/return-decline.service';
 import { ReturnCustodyService } from './application/services/return-custody.service';
 import { ReturnRefundService } from './application/services/return-refund.service';
@@ -75,6 +84,7 @@ import { ReturnLineEventOrmEntity } from './infrastructure/persistence/entities/
 import { ReturnRepository } from './infrastructure/persistence/repositories/return.repository';
 import {
   RETURN_AUTHORIZE_SERVICE_TOKEN,
+  RETURN_CORRECTION_PROPOSAL_SERVICE_TOKEN,
   RETURN_CUSTODY_SERVICE_TOKEN,
   RETURN_DECLINE_SERVICE_TOKEN,
   RETURN_REFUND_SERVICE_TOKEN,
@@ -108,6 +118,13 @@ import {
     // populates it yet), so the sku is resolved to a variant through
     // `IProductsService`. Acyclic — `ProductsModule` does not import this one.
     ProductsModule,
+    // #2374 the credit-note correction proposal: reads the invoice projection
+    // (`IInvoiceService.getLatestIssuedInvoiceForOrder` + its #1297 line
+    // snapshot). The FIFTH outbound edge, and acyclic — `InvoicingModule`
+    // imports only IntegrationsModule / IdentifierMappingModule / SyncModule /
+    // SalesDocumentsModule, none of which reaches this one. Read-only: nothing
+    // on this path issues a document.
+    InvoicingModule,
   ],
   providers: [
     ReturnRepository,
@@ -142,6 +159,15 @@ import {
     // return has no source to ask.
     ReturnAuthorizeService,
     { provide: RETURN_AUTHORIZE_SERVICE_TOKEN, useExisting: ReturnAuthorizeService },
+    // #2374 the credit-note correction PROPOSAL. Adds ONE module edge
+    // (`InvoicingModule`, above). It issues nothing: it reads the invoice
+    // projection, classifies, and records through `IOrderChangeService` — no
+    // adapter is resolved and `issueCorrection` is never referenced.
+    ReturnCorrectionProposalService,
+    {
+      provide: RETURN_CORRECTION_PROPOSAL_SERVICE_TOKEN,
+      useExisting: ReturnCorrectionProposalService,
+    },
   ],
   exports: [
     RETURN_REPOSITORY_TOKEN,
@@ -153,6 +179,7 @@ import {
     RETURN_CUSTODY_SERVICE_TOKEN,
     RETURN_REFUND_SERVICE_TOKEN,
     RETURN_AUTHORIZE_SERVICE_TOKEN,
+    RETURN_CORRECTION_PROPOSAL_SERVICE_TOKEN,
   ],
 })
 export class ReturnsModule {}
