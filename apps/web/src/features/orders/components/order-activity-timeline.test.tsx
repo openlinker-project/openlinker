@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   OrderActivityTimeline,
   mergeTimelineEvents,
+  type DatedTimelineEvent,
   type TimelineEvent,
 } from './order-activity-timeline';
 import { createMockApiClient, renderWithProviders } from '../../../test/test-utils';
@@ -377,7 +378,7 @@ describe('mergeTimelineEvents (#2383)', () => {
   });
 
   it('places an injected event by timestamp rather than appending it', () => {
-    const extra: TimelineEvent[] = [
+    const extra: DatedTimelineEvent[] = [
       { id: 'r1', timestamp: '2026-08-20T12:00:00.000Z', title: 'Return received', tone: 'default' },
     ];
 
@@ -390,7 +391,7 @@ describe('mergeTimelineEvents (#2383)', () => {
   });
 
   it('keeps the undated authored entry in its authored position', () => {
-    const extra: TimelineEvent[] = [
+    const extra: DatedTimelineEvent[] = [
       { id: 'early', timestamp: '2026-08-20T09:00:00.000Z', title: 'Return opened', tone: 'default' },
     ];
 
@@ -404,7 +405,7 @@ describe('mergeTimelineEvents (#2383)', () => {
   });
 
   it('never reorders authored events relative to each other', () => {
-    const extra: TimelineEvent[] = [
+    const extra: DatedTimelineEvent[] = [
       { id: 'x', timestamp: '2026-08-20T23:00:00.000Z', title: 'Late', tone: 'default' },
       { id: 'y', timestamp: '2026-08-20T11:00:00.000Z', title: 'Mid', tone: 'default' },
     ];
@@ -419,7 +420,7 @@ describe('mergeTimelineEvents (#2383)', () => {
   });
 
   it('keeps the authored entry first on a tie — it described the order first', () => {
-    const extra: TimelineEvent[] = [
+    const extra: DatedTimelineEvent[] = [
       { id: 'tie', timestamp: '2026-08-20T14:00:00.000Z', title: 'Return received', tone: 'default' },
     ];
 

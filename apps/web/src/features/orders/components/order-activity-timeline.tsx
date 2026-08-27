@@ -50,6 +50,18 @@ export interface TimelineEvent {
   footer?: ReactElement;
 }
 
+/**
+ * A {@link TimelineEvent} that is guaranteed to carry an instant.
+ *
+ * Injected events are narrowed to this rather than the code accommodating a
+ * null: **an event with no timestamp has no defensible position in a
+ * chronological merge**, so the type forbids it instead of the merge inventing
+ * a place for it. An UNDATED AUTHORED entry is a different thing entirely and
+ * stays legal — it holds an authored position that was never derived from a
+ * timestamp, which is exactly why it is not a comparison key.
+ */
+export type DatedTimelineEvent = TimelineEvent & { timestamp: string };
+
 interface OrderActivityTimelineProps {
   createdAt: string;
   recordStatus: string;
@@ -120,7 +132,7 @@ interface OrderActivityTimelineProps {
    * (see {@link mergeTimelineEvents}). Optional, and absent or empty leaves the
    * rendered order identical to before the prop existed.
    */
-  extraEvents?: TimelineEvent[];
+  extraEvents?: DatedTimelineEvent[];
 }
 
 const STATUS_PAST_TENSE: Record<OrderSyncStatusValue, string> = {
@@ -420,13 +432,11 @@ function buildEvents(
  */
 export function mergeTimelineEvents(
   authored: TimelineEvent[],
-  extra: TimelineEvent[],
+  extra: DatedTimelineEvent[],
 ): TimelineEvent[] {
   if (extra.length === 0) return authored;
 
-  const pending = [...extra].sort(
-    (a, b) => Date.parse(a.timestamp ?? '') - Date.parse(b.timestamp ?? ''),
-  );
+  const pending = [...extra].sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp));
 
   const merged: TimelineEvent[] = [];
   let next = 0;
@@ -434,9 +444,7 @@ export function mergeTimelineEvents(
   for (const event of authored) {
     if (event.timestamp !== null) {
       const at = Date.parse(event.timestamp);
-      while (next < pending.length) {
-        const candidate = pending[next].timestamp;
-        if (candidate === null || !(Date.parse(candidate) < at)) break;
+      while (next < pending.length && Date.parse(pending[next].timestamp) < at) {
         merged.push(pending[next]);
         next += 1;
       }

@@ -15,7 +15,7 @@
  *
  * @module apps/web/src/features/returns/lib
  */
-import type { TimelineEvent } from '../../orders';
+import type { DatedTimelineEvent, TimelineEvent } from '../../orders';
 import type { ReturnTimelineEntry } from '../api/returns.types';
 import { RETURN_TIMELINE_COPY as COPY } from './return-timeline.copy';
 
@@ -28,9 +28,30 @@ import { RETURN_TIMELINE_COPY as COPY } from './return-timeline.copy';
  * SOURCE claim or nothing; a refund reports WHAT moved the money (ADR-056),
  * never who.
  */
+/**
+ * WHAT moved the money, per `RefundRecord.executedBy` (ADR-056).
+ *
+ * A TOTAL MAP over the values this build knows, never a default arm. The wire
+ * type is `string | null` — an open string — so a ternary would send every
+ * future member to whichever branch it fell through to. When a
+ * `MasterRefundExecutor` writes a third value, an `executedBy`-shaped ternary
+ * would render *"an operator"* against a refund a machine made: OpenLinker
+ * attributing a human act that never happened, silently and on every such row.
+ *
+ * An unknown value therefore yields NO eyebrow, matching `resolveTitle`'s
+ * `unknownKind` arm below — the title and the attribution must fail the same
+ * way, and the dangerous asymmetry is a safe title beside a confident wrong
+ * actor.
+ */
+const REFUND_EXECUTED_BY_COPY: Record<string, string> = {
+  refund_executor: COPY.byOpenLinker,
+  operator_out_of_band: COPY.byOperator,
+};
+
 function resolveBy(entry: ReturnTimelineEntry, sessionUserId: string | null): string | undefined {
   if (entry.source === 'refund') {
-    return entry.refundExecutedBy === 'refund_executor' ? COPY.byOpenLinker : COPY.byOperator;
+    if (entry.refundExecutedBy === null) return undefined;
+    return REFUND_EXECUTED_BY_COPY[entry.refundExecutedBy];
   }
 
   if (entry.source === 'record_status') {
@@ -105,7 +126,7 @@ function resolveDescription(entry: ReturnTimelineEntry): string | undefined {
 export function mapReturnEventsToTimeline(
   entries: ReturnTimelineEntry[],
   sessionUserId: string | null
-): TimelineEvent[] {
+): DatedTimelineEvent[] {
   return entries.map((entry) => ({
     id: `return:${entry.id}`,
     timestamp: entry.occurredAt,

@@ -22,6 +22,7 @@
  * @module apps/web/src/features/returns/lib
  */
 import type { MetricCardTone } from '../../../shared/ui/metric-card';
+import { RETURN_RESTOCK_BLOCKED_COPY } from './restock-blocked.copy';
 
 export const RETURN_SEGMENT_VALUES = [
   'needs_receiving',
@@ -51,7 +52,12 @@ export function isReturnSegment(value: string | null | undefined): value is Retu
 export const RETURN_SEGMENT_LABELS = {
   needs_receiving: 'Needs receiving',
   needs_disposition: 'Needs disposition',
-  restock_blocked: 'Restock blocked',
+  // The one segment whose label is NOT authored here (#2645 review). It is the
+  // same sentence the row badge and the per-line notice render, so it lives in
+  // `restock-blocked.copy.ts` with them — a second literal is exactly the drift
+  // that module exists to prevent, and its own docblock already claims this
+  // segment as a consumer.
+  restock_blocked: RETURN_RESTOCK_BLOCKED_COPY.badge,
   money_pending: 'Money pending',
   orphans: 'Orphans',
   all_open: 'All open',

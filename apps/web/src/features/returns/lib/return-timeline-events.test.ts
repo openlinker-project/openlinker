@@ -130,6 +130,37 @@ describe('mapReturnEventsToTimeline', () => {
       expect(event.by).toBe(COPY.byOperator);
     });
 
+    it('renders NO eyebrow for an executedBy this build does not know', () => {
+      // The column is NOT NULL with two members today, so this is unreachable —
+      // and that is the point: `refundExecutedBy` is an open string on the wire,
+      // so a ternary would send a future `master_refund_executor` to "an
+      // operator", attributing to a human a refund a machine made. The title
+      // fails safe via `unknownKind`; the attribution must fail the same way.
+      const [event] = mapReturnEventsToTimeline(
+        [
+          entry({
+            source: 'refund',
+            kind: 'refund_confirmed',
+            refundExecutedBy: 'master_refund_executor',
+          }),
+        ],
+        SESSION_USER
+      );
+
+      expect(event.by).toBeUndefined();
+      // The row still renders — an unknown actor is not a reason to drop a fact.
+      expect(event.title).toBe(COPY.refund_confirmed);
+    });
+
+    it('renders no eyebrow when executedBy is absent entirely', () => {
+      const [event] = mapReturnEventsToTimeline(
+        [entry({ source: 'refund', kind: 'refund_confirmed', refundExecutedBy: null })],
+        SESSION_USER
+      );
+
+      expect(event.by).toBeUndefined();
+    });
+
     it('reports what moved the money, never who — a refund has no actor column', () => {
       const [recorded] = mapReturnEventsToTimeline(
         [
