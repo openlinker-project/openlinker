@@ -27,6 +27,14 @@ export interface PrestashopProduct {
   active?: string | number;
   /** Default leaf category id, used as the start of the F3 breadcrumb walk (#1096). */
   id_category_default?: string | number;
+  /**
+   * Tax rules group the product belongs to. Optional because PrestaShop omits
+   * it for a "No tax" product, which the tax-rate resolver reads as a
+   * deliberate 0 rather than a gap - declared here so the already-fetched
+   * product can be handed to that resolver instead of it fetching the same
+   * resource again (#2489).
+   */
+  id_tax_rules_group?: string | number;
   associations?: {
     // PrestaShop serializes associations in one of two shapes depending on the
     // response format (see PrestashopProductMapper.unwrapAssociationEntries):

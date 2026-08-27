@@ -95,7 +95,21 @@ export class PrestashopTaxRateResolver {
     externalProductId: string | number,
     deliveryCountryIso: string | undefined,
     connectionId: string,
-    webserviceClient: IPrestashopWebserviceClient
+    webserviceClient: IPrestashopWebserviceClient,
+    /**
+     * The product resource, when the caller has already fetched it (#2489).
+     *
+     * All this resolver reads off the product is `id_tax_rules_group`, and the
+     * catalogue sweep has just fetched the very same resource one call earlier.
+     * Without this the shop served `products/{id}` a second time for every SKU
+     * on every sweep - measured at 1.00 extra request per SKU after the
+     * per-instance memo had already collapsed the master sync's own two reads
+     * into one.
+     *
+     * Omitting it keeps the previous behaviour exactly: the resolver fetches
+     * the product itself.
+     */
+    preloadedProduct?: PrestashopProductTaxRow
   ): Promise<PrestashopTaxRateResolution> {
     const countryId = await this.resolveCountryIdSafe(
       deliveryCountryIso,
@@ -109,7 +123,12 @@ export class PrestashopTaxRateResolver {
       return { kind: 'resolved', rate: cached.rate };
     }
 
-    const resolution = await this.computeRate(externalProductId, countryId, webserviceClient);
+    const resolution = await this.computeRate(
+      externalProductId,
+      countryId,
+      webserviceClient,
+      preloadedProduct
+    );
     // Only a resolved rate enters the cache. An unknown is a condition an
     // operator fixes in the shop's admin and then retries — a cached unknown
     // would answer the retry from memory for up to the TTL and read as "the
@@ -123,16 +142,19 @@ export class PrestashopTaxRateResolver {
   private async computeRate(
     externalProductId: string | number,
     countryId: number | undefined,
-    webserviceClient: IPrestashopWebserviceClient
+    webserviceClient: IPrestashopWebserviceClient,
+    preloadedProduct?: PrestashopProductTaxRow
   ): Promise<PrestashopTaxRateResolution> {
-    let product: PrestashopProductTaxRow | undefined;
-    try {
-      product = await webserviceClient.getResource<PrestashopProductTaxRow>(
-        'products',
-        externalProductId
-      );
-    } catch (error) {
-      return this.transportUnknown(`products/${externalProductId}`, error, externalProductId);
+    let product: PrestashopProductTaxRow | undefined = preloadedProduct;
+    if (product === undefined) {
+      try {
+        product = await webserviceClient.getResource<PrestashopProductTaxRow>(
+          'products',
+          externalProductId
+        );
+      } catch (error) {
+        return this.transportUnknown(`products/${externalProductId}`, error, externalProductId);
+      }
     }
 
     const rawGroup = product?.id_tax_rules_group;

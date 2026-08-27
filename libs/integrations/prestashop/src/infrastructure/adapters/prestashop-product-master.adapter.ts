@@ -170,11 +170,19 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort, Produc
       throw new MasterProductNotFoundError(input.productId, this.connection.id);
     }
 
+    // Hand the resolver the product this instance has already fetched (#2489):
+    // all it reads is `id_tax_rules_group`, and re-fetching cost one extra
+    // `GET /api/products/{id}` per SKU on every catalogue sweep. A failure here
+    // is not fatal to the rate read - the resolver falls back to fetching it
+    // itself, which is exactly the pre-#2489 path.
+    const preloaded = await this.fetchProductResource(externalId).catch(() => undefined);
+
     const resolution = await this.taxRateResolver.resolveProductTaxRate(
       externalId,
       undefined,
       this.connection.id,
-      this.httpClient
+      this.httpClient,
+      preloaded
     );
 
     if (resolution.kind === 'resolved') {
