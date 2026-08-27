@@ -189,6 +189,79 @@ describe('PrestashopOpenLinkerModuleClient', () => {
       });
     });
 
+    it.each([
+      ['a UTF-8 BOM', '\uFEFF'],
+      ['a PHP notice', 'Notice: Undefined index: foo in /var/www/x.php on line 9\n'],
+      ['a PHP warning and blank lines', '\nWarning: something\n\n'],
+    ])(
+      'should accept a valid envelope preceded by %s (#2601 review, finding 1)',
+      async (_label, prefix: string) => {
+        // The write had in fact happened on such a response, so rejecting it
+        // aborted an order create that used to succeed - a regression the
+        // strict parse introduced rather than a fault it found.
+        (global.fetch as jest.Mock).mockResolvedValue({
+          status: 200,
+          text: jest
+            .fn()
+            .mockResolvedValue(`${prefix}${JSON.stringify({ ok: true, id_cart: idCart })}`),
+        });
+
+        await expect(
+          client.writeCartShipping({ idCart, amountTaxExcl: 1, amountTaxIncl: 1 })
+        ).resolves.toBeUndefined();
+      }
+    );
+
+    it.each([
+      ['an empty body', ''],
+      ['a JSON array', '[{"ok":true}]'],
+      ['an HTML page carrying CSS braces', '<html><style>b{color:red}</style>oops</html>'],
+    ])('should still reject %s at status 200', async (_label, body: string) => {
+      (global.fetch as jest.Mock).mockResolvedValue({
+        status: 200,
+        text: jest.fn().mockResolvedValue(body),
+      });
+
+      await expect(
+        client.writeCartShipping({ idCart, amountTaxExcl: 1, amountTaxIncl: 1 })
+      ).rejects.toMatchObject({ reason: 'non-json-module-response' });
+    });
+
+    it('should reject when the body itself cannot be read', async () => {
+      (global.fetch as jest.Mock).mockResolvedValue({
+        status: 200,
+        text: jest.fn().mockRejectedValue(new Error('stream closed')),
+      });
+
+      await expect(
+        client.writeCartShipping({ idCart, amountTaxExcl: 1, amountTaxIncl: 1 })
+      ).rejects.toMatchObject({ reason: 'non-json-module-response' });
+    });
+
+    it('should log a bounded snippet of the rejected body (#2601 review, finding 2)', async () => {
+      // #2497 is about this class of fault being silent. The head of the body
+      // is what names the cause, and a PS error page is a whole document, so
+      // the log line has to be capped rather than carry it.
+      const warn = jest.spyOn(
+        (client as unknown as { logger: { warn: (message: string) => void } }).logger,
+        'warn'
+      );
+      const page = `<!DOCTYPE html><html><body>Fatal error: allowed memory exhausted ${'x'.repeat(5000)}</body></html>`;
+      (global.fetch as jest.Mock).mockResolvedValue({
+        status: 200,
+        text: jest.fn().mockResolvedValue(page),
+      });
+
+      await expect(
+        client.writeCartShipping({ idCart, amountTaxExcl: 1, amountTaxIncl: 1 })
+      ).rejects.toThrow(PrestashopOlModuleException);
+
+      const logged = warn.mock.calls[0]?.[0] ?? '';
+      expect(logged).toContain('Fatal error: allowed memory exhausted');
+      expect(logged.length).toBeLessThan(1000);
+      expect(logged).toContain('truncated');
+    });
+
     it('should reject a JSON 200 whose envelope reports a failure', async () => {
       // Arrange
       (global.fetch as jest.Mock).mockResolvedValue({

@@ -8,6 +8,7 @@ import { PrestashopTaxRateUnknownException } from '../../../domain/exceptions/pr
 import { PrestashopCurrencyUnknownException } from '../../../domain/exceptions/prestashop-currency-unknown.exception';
 import { PrestashopInvalidFilterException } from '../../../domain/exceptions/prestashop-invalid-filter.exception';
 import { PrestashopApiException } from '../../../domain/exceptions/prestashop-api.exception';
+import { PrestashopOlModuleException } from '../../../domain/exceptions/prestashop-ol-module.exception';
 import { PrestashopAuthenticationException } from '../../../domain/exceptions/prestashop-authentication.exception';
 
 describe('PrestashopRetryClassifierAdapter', () => {
@@ -107,6 +108,49 @@ describe('PrestashopRetryClassifierAdapter', () => {
         false
       );
       expect(classifier.isNonRetryable(new PrestashopApiException('unavailable', 503))).toBe(false);
+    });
+
+    it.each([
+      'payment-module-inactive',
+      'payment-module-unavailable',
+      'invalid-fields',
+      'line-prices-do-not-match-cart',
+      'non-json-module-response',
+      'invalid-signature',
+    ])(
+      'should refuse to retry a module refusal of %s (#2601 review, finding 3)',
+      (reason: string) => {
+        expect(
+          classifier.isNonRetryable(new PrestashopOlModuleException('conn-1', 42, 422, reason))
+        ).toBe(true);
+      }
+    );
+
+    it.each([
+      ['persist-failed', 500],
+      ['validate-order-failed', 502],
+      ['line-price-pin-failed', 502],
+      ['network: fetch failed', 0],
+    ])(
+      'should keep a module failure of %s retryable, because the shop can answer differently',
+      (reason: string, status: number) => {
+        expect(
+          classifier.isNonRetryable(new PrestashopOlModuleException('conn-1', 42, status, reason))
+        ).toBe(false);
+      }
+    );
+
+    it('should keep a module refusal this build does not recognise retryable', () => {
+      // A newer module inventing a reason gets the pre-existing behaviour
+      // rather than being made terminal by omission.
+      expect(
+        classifier.isNonRetryable(
+          new PrestashopOlModuleException('conn-1', 42, 400, 'some-future-reason')
+        )
+      ).toBe(false);
+      expect(classifier.isNonRetryable(new PrestashopOlModuleException('conn-1', 42, 400))).toBe(
+        false
+      );
     });
 
     it('should not defer any other failure', () => {

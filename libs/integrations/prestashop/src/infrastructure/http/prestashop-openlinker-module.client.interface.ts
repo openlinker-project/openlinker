@@ -111,7 +111,9 @@ export interface IPrestashopOpenLinkerModuleClient {
    * (idCart, amounts) tuple is a no-op modulo `updated_at`.
    *
    * @param input — cart id + tax-incl/tax-excl amounts + optional source
-   * @throws PrestashopOlModuleException on non-2xx response. NOT best-effort —
+   * @throws PrestashopOlModuleException when the shop did not answer the
+   *         module's success envelope - a non-2xx status, a body that is not
+   *         the envelope, or `ok` other than true (#2601). NOT best-effort:
    *         order creation must abort so we don't ship at zero.
    */
   writeCartShipping(input: WriteCartShippingInput): Promise<void>;
@@ -124,7 +126,9 @@ export interface IPrestashopOpenLinkerModuleClient {
    *
    * @param input — cart id + target state + authoritative paid total + payment label + reference
    * @returns the created (or pre-existing) order id + reference
-   * @throws PrestashopOlModuleException on non-2xx response.
+   * @throws PrestashopOlModuleException when the shop did not answer the
+   *         module's success envelope - a non-2xx status, a body that is not
+   *         the envelope, or `ok` other than true (#2601).
    */
   importOrder(input: ImportOrderInput): Promise<ImportOrderResult>;
 

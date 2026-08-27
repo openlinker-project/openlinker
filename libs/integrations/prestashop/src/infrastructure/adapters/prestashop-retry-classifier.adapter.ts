@@ -31,6 +31,11 @@
  *     read answered a shape its OR filter cannot produce. The shop parses the
  *     same filter the same way on every attempt, so retrying only delays the
  *     report.
+ *   - `PrestashopOlModuleException` (#2601 review), but only for the reasons in
+ *     `NON_RETRYABLE_MODULE_REASONS`. This is the one entry where the class is
+ *     NOT the retry decision, because the same class also carries a failed shop
+ *     DB write and a dropped connection, both of which do fix themselves. See
+ *     that constant for the split.
  *
  * Neither of the first two reaches this classifier on the shipped ORDER-CREATE
  * path today, so the "attempts" above describe what retrying would cost, not what
@@ -93,6 +98,48 @@ import { PrestashopOrderStateUnresolvedException } from '../../domain/exceptions
 import { PrestashopInvalidFilterException } from '../../domain/exceptions/prestashop-invalid-filter.exception';
 import { PrestashopTruncatedReadException } from '../../domain/exceptions/prestashop-truncated-read.exception';
 import { PrestashopPackFilterIgnoredException } from '../../domain/exceptions/prestashop-pack-filter-ignored.exception';
+import { PrestashopOlModuleException } from '../../domain/exceptions/prestashop-ol-module.exception';
+
+/**
+ * Module refusals that mean exactly the same thing on every attempt (#2601
+ * review).
+ *
+ * `PrestashopOlModuleException` is one class covering two very different
+ * things, so the class alone cannot be the retry decision the way it is for
+ * every other entry here: the same class carries `persist-failed` (a failed DB
+ * write on the shop, which does fix itself) and a `network:` reason from a
+ * dropped connection. Only the reasons that describe a configuration or
+ * contract fact are listed, so a transient shop failure keeps its retries.
+ *
+ * A reason this build does not recognise stays retryable, which is the safe
+ * direction: a newer module inventing a reason gets the pre-existing behaviour
+ * rather than being made terminal by omission.
+ */
+const NON_RETRYABLE_MODULE_REASONS: ReadonlySet<string> = new Set([
+  // The shop's payment module is missing or switched off. Only an operator can
+  // change that, and the module answers this before `validateOrder`, so nothing
+  // was created.
+  'payment-module-unavailable',
+  'payment-module-inactive',
+  // The wire contract drifted, or the cart changed under a pinned line set.
+  // The identical body is re-sent on every attempt.
+  'invalid-body',
+  'invalid-fields',
+  'invalid-line-prices',
+  'line-prices-do-not-match-cart',
+  'invalid-order-state',
+  'cart-missing-carrier-or-address',
+  'cart-empty',
+  // The secret does not match, or the module is not configured. Retrying
+  // re-signs with the same key.
+  'invalid-signature',
+  'misconfigured',
+  // Our own reading of the response, not the shop's: the body was not the
+  // module's envelope at all, which on this path means the endpoint is not the
+  // module (not installed, not the expected version, a maintenance page).
+  'non-json-module-response',
+  'malformed-import-order-response',
+]);
 
 /**
  * Floor on any deferral, matching the runner's first backoff step - so routing
@@ -117,8 +164,23 @@ export class PrestashopRetryClassifierAdapter implements RetryClassifierPort {
       cause instanceof PrestashopOrderStateUnresolvedException ||
       cause instanceof PrestashopInvalidFilterException ||
       cause instanceof PrestashopTruncatedReadException ||
-      cause instanceof PrestashopPackFilterIgnoredException
+      cause instanceof PrestashopPackFilterIgnoredException ||
+      this.isTerminalModuleRefusal(cause)
     );
+  }
+
+  /**
+   * Whether a module call was refused for a reason no retry can change.
+   *
+   * Without this the whole class was default-retryable, so a shop with its
+   * payment module switched off spent the full ladder with backoff before an
+   * operator saw the one message that names the fix.
+   */
+  private isTerminalModuleRefusal(cause: unknown): boolean {
+    if (!(cause instanceof PrestashopOlModuleException)) {
+      return false;
+    }
+    return cause.reason !== undefined && NON_RETRYABLE_MODULE_REASONS.has(cause.reason);
   }
 
   getRetryDeferral(cause: unknown): RetryDeferral | null {

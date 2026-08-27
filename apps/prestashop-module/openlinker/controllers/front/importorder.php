@@ -246,7 +246,14 @@ class OpenLinkerImportOrderModuleFrontController extends ModuleFrontController
         // Registered before the first pin write, so a fatal inside the pin loop
         // - the one stretch of this request doing repeated writes - is covered
         // too. The guard returns early once a response was emitted.
+        //
+        // The buffer opens at the same point rather than later, because a fatal
+        // between the two used to print unbuffered: the guard then reported
+        // "0 bytes discarded" and, if PHP had already flushed, `headers_sent()`
+        // made it give up silently and leave an HTML 200 (#2601 review).
         register_shutdown_function([$this, 'guardAgainstSilentExit'], $idCart);
+        ob_start();
+        $this->bufferOpen = true;
 
         // Pin the buyer-paid line prices, if the backend sent them (#2597).
         // Done here rather than over the Webservice so eight lines cost no
@@ -264,11 +271,9 @@ class OpenLinkerImportOrderModuleFrontController extends ModuleFrontController
 
         // validateOrder and the code it calls can end the request with die(),
         // which PHP sends as HTML with status 200 - a failure the caller reads
-        // as a success (#2601). Buffer the output so no such body escapes, and
-        // register a guard that turns a silent exit into an explicit 502.
-        ob_start();
-        $this->bufferOpen = true;
-
+        // as a success (#2601). The buffer opened above is what stops such a
+        // body escaping, and the shutdown guard turns a silent exit into an
+        // explicit 502.
         try {
             $payment->validateOrder(
                 $idCart,
@@ -504,6 +509,10 @@ class OpenLinkerImportOrderModuleFrontController extends ModuleFrontController
         // older module what it accepts, so a build that understands
         // `line_prices` says so on every success (#2597).
         $body['features'] = ['line_prices'];
+        // Discarded before anything is echoed: whatever the buffer holds is by
+        // definition output we did not mean to send, and flushing it would put
+        // that in front of the envelope.
+        $this->discardStrayOutput();
         $this->responded = true;
         http_response_code(200);
         header('Content-Type: application/json');
@@ -523,6 +532,7 @@ class OpenLinkerImportOrderModuleFrontController extends ModuleFrontController
      */
     private function jsonError($status, $reason, $detail = null)
     {
+        $this->discardStrayOutput();
         $this->responded = true;
         http_response_code($status);
         header('Content-Type: application/json');
