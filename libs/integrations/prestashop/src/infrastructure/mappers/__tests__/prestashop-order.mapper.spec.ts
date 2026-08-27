@@ -39,7 +39,6 @@ describe('PrestashopOrderMapper', () => {
       const result = mapper.mapOrder(prestashopOrder, orderRows);
 
       expect(result.orderNumber).toBe('ORDER-001');
-      expect(result.status).toBe('processing');
       expect(result.customerId).toBe('10');
       expect(result.items).toEqual([]);
       expect(result.totals.total).toBe(99.99);
@@ -125,48 +124,6 @@ describe('PrestashopOrderMapper', () => {
       expect(result.totals.taxTreatment).toBe('exclusive');
     });
 
-    it('should map order status correctly', () => {
-      const statusTests = [
-        { state: '1', expected: 'pending' },
-        { state: '2', expected: 'processing' },
-        { state: '3', expected: 'processing' },
-        { state: '4', expected: 'shipped' },
-        { state: '5', expected: 'delivered' },
-        { state: '6', expected: 'cancelled' },
-        { state: '7', expected: 'refunded' },
-        { state: '99', expected: 'pending' }, // Unknown status defaults to pending
-      ];
-
-      statusTests.forEach(({ state, expected }) => {
-        const prestashopOrder: PrestashopOrder = {
-          id: '42',
-          reference: 'ORDER-001',
-          current_state: state,
-          total_paid: '99.99',
-          date_add: '2024-01-01 10:00:00',
-          date_upd: '2024-01-01 10:00:00',
-        };
-
-        const result = mapper.mapOrder(prestashopOrder, []);
-
-        expect(result.status).toBe(expected);
-      });
-    });
-
-    it('should handle missing status', () => {
-      const prestashopOrder: PrestashopOrder = {
-        id: '42',
-        reference: 'ORDER-001',
-        total_paid: '99.99',
-        date_add: '2024-01-01 10:00:00',
-        date_upd: '2024-01-01 10:00:00',
-      };
-
-      const result = mapper.mapOrder(prestashopOrder, []);
-
-      expect(result.status).toBe('pending');
-    });
-
     it('should parse dates correctly', () => {
       const prestashopOrder: PrestashopOrder = {
         id: '42',
@@ -212,22 +169,6 @@ describe('PrestashopOrderMapper', () => {
       const result = mapper.mapOrder(prestashopOrder, []);
 
       expect(result.customerId).toBeUndefined();
-    });
-
-    it('should handle numeric status', () => {
-      const prestashopOrder: PrestashopOrder = {
-        id: '42',
-        reference: 'ORDER-001',
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment -- test mock: explicit any narrows the dynamic spy / fixture shape
-        current_state: 2 as any, // Numeric instead of string
-        total_paid: '99.99',
-        date_add: '2024-01-01 10:00:00',
-        date_upd: '2024-01-01 10:00:00',
-      };
-
-      const result = mapper.mapOrder(prestashopOrder, []);
-
-      expect(result.status).toBe('processing');
     });
 
     it('should handle order items without variant', () => {

@@ -153,7 +153,7 @@ describe('PrestashopProductMasterAdapter bulk read (#2593)', () => {
 
     const call = httpClient.listResources.mock.calls.find(([resource]) => resource === 'products');
     expect(call?.[1]).toEqual(
-      expect.objectContaining({ ids: ['3', '9'], sort: { field: 'id', direction: 'ASC' } })
+      expect.objectContaining({ ids: ['3', '9'], sort: ['id_ASC'] })
     );
     // Limit is the id count, so the WebService page size cannot cut the tail.
     expect(call?.[2]).toBe(2);

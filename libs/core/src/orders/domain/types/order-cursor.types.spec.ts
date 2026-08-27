@@ -88,6 +88,33 @@ describe('compareOrderCursors', () => {
       );
     });
 
+    it('should order a wall clock with a numeric tiebreaker (#2605)', () => {
+      expect(compareOrderCursors('2026-01-15 09:30:00|4', '2026-01-15 09:30:00|5')).toBe(
+        'not-regressed'
+      );
+      expect(compareOrderCursors('2026-01-15 09:30:00|5', '2026-01-15 09:30:00|4')).toBe(
+        'regressed'
+      );
+      expect(compareOrderCursors('2026-01-15 09:30:00|9', '2026-01-15 09:30:01|1')).toBe(
+        'not-regressed'
+      );
+      expect(compareOrderCursors('2026-01-15 09:30:01|1', '2026-01-15 09:30:00|9')).toBe(
+        'regressed'
+      );
+    });
+
+    it('should compare a long tiebreaker without float precision loss', () => {
+      expect(
+        compareOrderCursors('2026-01-15 09:30:00|9007199254740993', '2026-01-15 09:30:00|9007199254740992')
+      ).toBe('regressed');
+    });
+
+    it('should refuse a keyset paired with a bare wall clock rather than coercing it', () => {
+      expect(compareOrderCursors('2026-01-15 09:30:00', '2026-01-15 09:30:00|1')).toBe(
+        'unrecognised'
+      );
+    });
+
     it('should not report a regression for a blank cursor on either side', () => {
       expect(compareOrderCursors('', '100')).toBe('unrecognised');
       expect(compareOrderCursors('200', '   ')).toBe('unrecognised');

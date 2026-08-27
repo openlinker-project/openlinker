@@ -970,16 +970,16 @@ export class PrestashopProductMasterAdapter
    */
   private buildPrestashopFilters(filters?: ProductFilters): {
     ids?: (string | number)[];
-    sort?: PrestashopSort;
+    sort?: PrestashopSort[];
     custom?: Record<string, string | number | (string | number)[]>;
   } {
     if (!filters) {
-      return { sort: { field: 'id', direction: 'ASC' } };
+      return { sort: ['id_ASC'] };
     }
 
     const prestashopFilters: {
       ids?: (string | number)[];
-      sort?: PrestashopSort;
+      sort?: PrestashopSort[];
       custom?: Record<string, string | number | (string | number)[]>;
     } = {};
 
@@ -989,7 +989,7 @@ export class PrestashopProductMasterAdapter
 
     // Primary-key order, so a caller paging this read tiles the catalogue
     // instead of trusting whatever order MySQL returns.
-    prestashopFilters.sort = { field: 'id', direction: 'ASC' };
+    prestashopFilters.sort = ['id_ASC'];
 
     // Status filter
     if (filters.status) {

@@ -17,6 +17,7 @@
  * @module libs/integrations/prestashop/src/__tests__/mocks
  */
 import { PrestashopOrderProcessorManagerAdapter } from '../../infrastructure/adapters/prestashop-order-processor-manager.adapter';
+import { DEFAULT_INSTALL_ORDER_STATES } from '../fixtures/prestashop-order-states.fixture';
 import { createMockHttpClient } from './mock-http-client.factory';
 import { createMockIdentifierMapping } from './mock-identifier-mapping.factory';
 import { createTestConnection } from '../fixtures/connection.fixture';
@@ -45,7 +46,7 @@ export const OL_DYNAMIC_CARRIER_ID = 99;
  * the `importOrder` (validateOrder) call (ADR-016 / #905). Asserted explicitly
  * on the happy path against the `idOrderState` field of the importOrder input.
  */
-export const IMPORT_ORDER_STATE_ID = 2;
+export const IMPORT_ORDER_STATE_ID = 1;
 
 const METADATA_INTERNAL_ORDER_ID = 'ol_order_allegro_abc123';
 
@@ -131,7 +132,6 @@ export function createOrderProcessorManagerHarness(): OrderProcessorHarness {
         },
       },
     }),
-    mapStatusToPrestashopStateId: jest.fn().mockReturnValue(IMPORT_ORDER_STATE_ID),
   } as unknown as jest.Mocked<IPrestashopOrderMapper>;
 
   const mockCurrencyResolver = {
@@ -181,14 +181,43 @@ export function createOrderProcessorManagerHarness(): OrderProcessorHarness {
   // re-mock this path (none in createOrder do; the listCarriers /
   // listOrderStatuses / listPaymentMethods describes don't go through
   // createOrder, so they're unaffected).
-  mockHttpClient.listResources = jest
-    .fn()
-    .mockImplementation((resource: string, params?: { custom?: Record<string, unknown> }) => {
-      if (resource === 'carriers' && params?.custom?.external_module_name === 'openlinker') {
-        return Promise.resolve([{ id: OL_DYNAMIC_CARRIER_ID, active: '1', deleted: '0' }]);
+  // `order_states` is answered by the harness itself, not by whatever a test
+  // assigns (#2607). Every status the adapter writes is now derived from the
+  // shop's own state catalogue, so a spec that replaces `listResources` to
+  // script one resource would otherwise starve an unrelated read - and a
+  // `mockResolvedValueOnce` chain would have its queue consumed by it. The
+  // assigned mock still records and answers every other resource, so existing
+  // sequencing and `toHaveBeenCalledWith` assertions are unaffected.
+  const serveOrderStates = (inner: jest.Mock): jest.Mock =>
+    jest.fn(async (resource: string, ...rest: unknown[]) => {
+      const answer = await (inner as (...args: unknown[]) => unknown)(resource, ...rest);
+      if (resource !== 'order_states') {
+        return answer;
       }
-      return Promise.resolve([]);
-    });
+      // A spec that scripts its own states wins; otherwise the default install
+      // stands in, so a spec scripting an unrelated resource does not starve
+      // the state read.
+      const scripted: unknown[] = Array.isArray(answer) ? (answer as unknown[]) : [];
+      return scripted.length > 0 ? scripted : [...DEFAULT_INSTALL_ORDER_STATES];
+    }) as unknown as jest.Mock;
+
+  let listResources = serveOrderStates(
+    jest
+      .fn()
+      .mockImplementation((resource: string, params?: { custom?: Record<string, unknown> }) => {
+        if (resource === 'carriers' && params?.custom?.external_module_name === 'openlinker') {
+          return Promise.resolve([{ id: OL_DYNAMIC_CARRIER_ID, active: '1', deleted: '0' }]);
+        }
+        return Promise.resolve([]);
+      })
+  );
+  Object.defineProperty(mockHttpClient, 'listResources', {
+    configurable: true,
+    get: () => listResources,
+    set: (next: jest.Mock) => {
+      listResources = serveOrderStates(next);
+    },
+  });
 
   const adapter = new PrestashopOrderProcessorManagerAdapter(
     mockHttpClient,

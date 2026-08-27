@@ -34,7 +34,8 @@ import type {
   PrestashopOrder,
   PrestashopOrderRow,
 } from '../mappers/prestashop.mapper.interface';
-import { PRESTASHOP_DEFAULT_CANCELLED_STATE_ID } from '../mappers/prestashop-order-state.types';
+import { PrestashopOrderStateCatalog } from '../provisioners/prestashop-order-state.catalog';
+import type { PrestashopOrderStateSnapshot } from '../provisioners/prestashop-order-state.catalog';
 import type { PrestashopOrderCurrencyResolver } from '../provisioners/prestashop-order-currency.resolver';
 import {
   PrestashopApiException,
@@ -42,6 +43,15 @@ import {
 } from '@openlinker/integrations-prestashop';
 import { PrestashopTruncatedReadException } from '../../domain/exceptions/prestashop-truncated-read.exception';
 import { readAllPrestashopPages } from '../http/prestashop-paged-read';
+import type { PrestashopOrderFeedCursor } from '../../domain/types/prestashop-order-feed-cursor.types';
+import {
+  formatOrderFeedCursor,
+  isAheadOf,
+  isAlreadyConsumed,
+  normalizeWallClock,
+  parseOrderFeedCursor,
+  shiftWallClockSeconds,
+} from '../../domain/types/prestashop-order-feed-cursor.types';
 import { Logger } from '@openlinker/shared/logging';
 
 /**
@@ -49,11 +59,20 @@ import { Logger } from '@openlinker/shared/logging';
  *
  * Read-only adapter for fetching PrestaShop orders.
  *
- * Cursor format: ISO timestamp of the last `date_upd` observed on the previous
- * page. `null` input means "start from the beginning" (no watermark filter).
+ * Cursor format: a keyset over `(date_upd, id_order)`, serialized as
+ * `YYYY-MM-DD HH:MM:SS|<id>` - see `prestashop-order-feed-cursor.types.ts` for
+ * why the id is part of the read position and why the timestamp is never
+ * interpreted. `null` input means "start from the beginning".
  */
 export class PrestashopOrderSourceAdapter implements OrderSourcePort {
   private readonly logger = new Logger(PrestashopOrderSourceAdapter.name);
+
+  /**
+   * The shop's own order-state catalogue (#2607). Built here rather than
+   * injected so the adapter's construction sites stay unchanged; it needs
+   * nothing this adapter does not already hold.
+   */
+  private readonly orderStates: PrestashopOrderStateCatalog;
 
   constructor(
     private readonly httpClient: IPrestashopWebserviceClient,
@@ -65,63 +84,162 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort {
      * synchronous by contract.
      */
     private readonly orderCurrencyResolver: PrestashopOrderCurrencyResolver
-  ) {}
+  ) {
+    this.orderStates = new PrestashopOrderStateCatalog(httpClient, connection.id);
+  }
+
+  /**
+   * Pages read in one poll before giving up on draining a single second.
+   *
+   * A poll normally reads one page. More than one is needed only when the whole
+   * page was already consumed - which happens when more orders than the page
+   * holds share one `date_upd` second. Bounded so a pathological shop costs a
+   * fixed number of requests per poll rather than an unbounded scan.
+   */
+  private static readonly MAX_FEED_PAGES_PER_POLL = 20;
 
   async listOrderFeed(input: OrderFeedInput): Promise<OrderFeedOutput> {
     this.logger.debug(
       `Listing PrestaShop order feed (connection: ${this.connection.id}, fromCursor: ${input.fromCursor ?? 'none'}, limit: ${input.limit})`
     );
 
-    const filters: { updatedSince?: Date } = {};
-    if (input.fromCursor) {
-      const parsed = new Date(input.fromCursor);
-      if (!Number.isNaN(parsed.getTime())) {
-        filters.updatedSince = parsed;
+    const fromCursor = parseOrderFeedCursor(input.fromCursor);
+    if (input.fromCursor && fromCursor === null) {
+      // Reading from the beginning is the only safe answer to a cursor we cannot
+      // parse. Starting from now would skip every order in between, silently.
+      this.logger.warn(
+        `Unreadable order-feed cursor "${input.fromCursor}" on connection ${this.connection.id}; ` +
+          `restarting the feed from the beginning.`
+      );
+    }
+
+    // Read before the first page, because every row's event type depends on
+    // what its state MEANS. A failure here fails the poll rather than letting
+    // a cancellation read as an ordinary update, which would resurrect the
+    // order downstream (see `resolveFeedEventType`).
+    const orderStates = await this.orderStates.load();
+
+    const pageSize = input.limit > 0 ? input.limit : 1;
+    const items: OrderFeedItem[] = [];
+    let cursor: PrestashopOrderFeedCursor | null = fromCursor;
+    let rowsRead = 0;
+
+    for (let page = 0; page < PrestashopOrderSourceAdapter.MAX_FEED_PAGES_PER_POLL; page += 1) {
+      const rows = await this.httpClient.listResources<PrestashopOrder>(
+        'orders',
+        {
+          // Exclusive `>` is the only lower-bound operator the WebService has, so
+          // the bound is moved back one second to keep the cursor's own second in
+          // range. Everything already consumed in it is dropped by the keyset
+          // below, so nothing is emitted twice within a poll.
+          ...(fromCursor ? { updatedAfter: shiftWallClockSeconds(fromCursor.updatedAt, -1) } : {}),
+          // Paging is only sound when the pages are ordered by the cursor's own
+          // key. `id` breaks ties inside a second so the keyset has something to
+          // resume from (#2605).
+          sort: ['date_upd_ASC', 'id_ASC'],
+        },
+        pageSize,
+        page * pageSize
+      );
+
+      rowsRead += rows.length;
+
+      for (const row of rows) {
+        const item = this.toFeedItem(row, orderStates);
+        if (item === null) {
+          continue;
+        }
+        if (fromCursor && isAlreadyConsumed(fromCursor, item.updatedAt, item.orderId)) {
+          continue;
+        }
+        items.push(item.feedItem);
+        const observed: PrestashopOrderFeedCursor = {
+          updatedAt: item.updatedAt,
+          lastOrderId: item.orderId,
+        };
+        // Rows arrive sorted, but the read position is still advanced by
+        // comparison rather than by assignment: a shop that ignores the sort
+        // must not be able to drag the watermark backwards.
+        if (cursor === null || isAheadOf(observed, cursor)) {
+          cursor = observed;
+        }
+      }
+
+      // A short page ends the collection. A full page whose rows all turned out
+      // to be already consumed means the poll has not made progress yet, so the
+      // next offset is read within this same poll - otherwise a second holding
+      // more orders than one page would return an empty feed for ever.
+      if (rows.length < pageSize || items.length > 0) {
+        break;
       }
     }
 
-    const prestashopOrders = await this.httpClient.listResources<PrestashopOrder>(
-      'orders',
-      filters,
-      input.limit,
-      0
-    );
-
-    if (prestashopOrders.length === 0) {
-      return { items: [], nextCursor: input.fromCursor ?? null };
+    if (
+      items.length === 0 &&
+      rowsRead >= pageSize * PrestashopOrderSourceAdapter.MAX_FEED_PAGES_PER_POLL
+    ) {
+      this.logger.warn(
+        `PrestaShop order feed made no progress after ${rowsRead} row(s) on connection ` +
+          `${this.connection.id}: more orders share one \`date_upd\` second than this poll can ` +
+          `drain. Raise the poll limit; the read position is unchanged, so nothing is lost.`
+      );
     }
 
-    const items: OrderFeedItem[] = prestashopOrders.map((o) => {
-      const externalOrderId = String(o.id);
-      const occurredAt = typeof o.date_upd === 'string' ? o.date_upd : new Date().toISOString();
-      const createdAt = typeof o.date_add === 'string' ? o.date_add : occurredAt;
-      const eventType = this.resolveFeedEventType(o, createdAt, occurredAt);
-      return {
+    // The cursor is emitted even when every row was filtered out by
+    // `eventTypes`, so a page of non-matching events cannot be re-read for ever.
+    // It is never emitted BEHIND the input, so an empty page leaves the read
+    // position exactly where it was rather than rewinding it.
+    const nextCursor = cursor === null ? null : formatOrderFeedCursor(cursor);
+
+    const filtered = input.eventTypes
+      ? items.filter((i) => input.eventTypes!.includes(i.eventType))
+      : items;
+
+    this.logger.debug(
+      `PrestaShop order feed read ${rowsRead} row(s), emitted ${filtered.length} item(s), ` +
+        `nextCursor=${nextCursor ?? 'none'} (connection: ${this.connection.id})`
+    );
+
+    return { items: filtered, nextCursor: nextCursor ?? input.fromCursor ?? null };
+  }
+
+  /**
+   * Project one order row onto a feed item plus its keyset coordinates.
+   *
+   * Returns `null` for a row that carries no usable `date_upd`. There is no
+   * substitute for it: the worker's own clock would place the order at a
+   * position the shop never wrote, moving the watermark past orders that were
+   * really updated earlier.
+   */
+  private toFeedItem(
+    order: PrestashopOrder,
+    orderStates: PrestashopOrderStateSnapshot
+  ): { feedItem: OrderFeedItem; updatedAt: string; orderId: number } | null {
+    const externalOrderId = String(order.id);
+    const orderId = Number.parseInt(externalOrderId, 10);
+    const occurredAt = normalizeWallClock(order.date_upd);
+
+    if (occurredAt === null || !Number.isFinite(orderId)) {
+      this.logger.warn(
+        `Skipping PrestaShop order ${externalOrderId} with unusable id/date_upd ` +
+          `(connection: ${this.connection.id}); it will be re-read on the next poll.`
+      );
+      return null;
+    }
+
+    const createdAt = normalizeWallClock(order.date_add) ?? occurredAt;
+    const eventType = this.resolveFeedEventType(order, createdAt, occurredAt, orderStates);
+
+    return {
+      updatedAt: occurredAt,
+      orderId,
+      feedItem: {
         externalOrderId,
         eventType,
         occurredAt,
         // PrestaShop has no event journal; a composite key gives us dedupe-safe ingestion.
         eventKey: `${externalOrderId}:${occurredAt}:${eventType}`,
-      };
-    });
-
-    // Advance the cursor to the max `date_upd` observed on this page. Cursor is
-    // based on ALL orders returned by PrestaShop, not just those matching
-    // `eventTypes` — otherwise filtering everything out on a page would freeze
-    // the cursor at `input.fromCursor` and the next poll would re-fetch the
-    // same orders forever.
-    const nextCursor = items.reduce<string | null>((acc, item) => {
-      return !acc || item.occurredAt > acc ? item.occurredAt : acc;
-    }, null);
-
-    // Filter `items` by requested eventTypes only after cursor is computed.
-    const filtered = input.eventTypes
-      ? items.filter((i) => input.eventTypes!.includes(i.eventType))
-      : items;
-
-    return {
-      items: filtered,
-      nextCursor: nextCursor ?? input.fromCursor ?? null,
+      },
     };
   }
 
@@ -137,18 +255,20 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort {
    * still-cancelled order therefore re-emits `cancelled` (an idempotent no-op
    * at the lifecycle relay) on every re-read — never `updated`.
    *
-   * Keys on the default-install "Canceled" state id; renumbered installs are a
-   * documented v1 limitation (see `prestashop-order-state.types.ts`).
+   * Cancellation is read from the shop's own state catalogue (#2607). This used
+   * to key on the default-install id 6, so a shop that renumbered or added its
+   * own states never emitted `cancelled` at all - and the order kept selling.
+   * An unknown `current_state` is not a cancellation: it is a state this shop
+   * does not have, and inferring cancellation from an id we cannot read would
+   * cancel live orders.
    */
   private resolveFeedEventType(
     order: PrestashopOrder,
     createdAt: string,
-    occurredAt: string
+    occurredAt: string,
+    orderStates: PrestashopOrderStateSnapshot
   ): OrderFeedEventType {
-    if (
-      order.current_state !== undefined &&
-      Number(order.current_state) === PRESTASHOP_DEFAULT_CANCELLED_STATE_ID
-    ) {
+    if (orderStates.statusOf(order.current_state) === 'cancelled') {
       return 'cancelled';
     }
     return createdAt === occurredAt ? 'created' : 'updated';
@@ -183,6 +303,14 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort {
 
     const orderRows = await this.fetchOrderRows(externalOrderId);
     const mapped = this.orderMapper.mapOrder(prestashopOrder, orderRows);
+
+    // The mapper cannot answer this (#2607): what `current_state` means is a row
+    // on the shop's own state table. An id this shop does not have reads
+    // `pending`, which is what an order OpenLinker knows nothing about is - the
+    // difference from the removed 1-7 table is that a custom shipped, paid or
+    // cancelled state is no longer swept into it.
+    const orderStates = await this.orderStates.load();
+    const status = orderStates.statusOf(prestashopOrder.current_state) ?? 'pending';
     const config = this.connection.config as unknown as PrestashopConnectionConfig;
 
     // Resolved BEFORE the hydration reads below, and awaited rather than raced
@@ -217,9 +345,7 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort {
       ));
     const shippingAddress =
       (mapped.shippingAddress as IncomingOrderAddress | undefined) ??
-      (await this.hydrateAddress(
-        prestashopOrder.id_address_delivery
-      )) ??
+      (await this.hydrateAddress(prestashopOrder.id_address_delivery)) ??
       billingAddress;
 
     const items: IncomingOrderItem[] = mapped.items.map((item, index) => {
@@ -261,7 +387,7 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort {
     return {
       externalOrderId,
       orderNumber: mapped.orderNumber,
-      status: mapped.status,
+      status,
       customerExternalId:
         prestashopOrder.id_customer !== undefined ? String(prestashopOrder.id_customer) : undefined,
       customerEmail: await customerEmailPromise,

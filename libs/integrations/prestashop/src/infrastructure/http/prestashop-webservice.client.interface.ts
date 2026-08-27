@@ -7,6 +7,7 @@
  *
  * @module libs/integrations/prestashop/src/infrastructure/http
  */
+import type { PrestashopSort } from './prestashop-query.builder';
 import type { FetchLike } from '@openlinker/shared/http';
 
 /**
@@ -41,7 +42,10 @@ export interface PrestashopQueryFilters {
   ids?: (string | number)[];
   dateFrom?: Date;
   dateTo?: Date;
-  updatedSince?: Date;
+  /** `date_upd` lower bound, exclusive, as the shop's own `YYYY-MM-DD HH:MM:SS`. */
+  updatedAfter?: string;
+  /** Result ordering, e.g. `['date_upd_ASC', 'id_ASC']`. */
+  sort?: PrestashopSort[];
   status?: string | string[];
   custom?: Record<string, string | number | (string | number)[]>;
   /**

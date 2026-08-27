@@ -68,8 +68,10 @@ export interface PrestashopOrderState {
   delivered?: string | number;
   /** `'1'` ⇔ the state means "handed off to carrier" (#834). */
   shipped?: string | number;
-  /** `'1'` ⇔ the state means "payment captured" — informational; not used
-   * by the v1 fulfillment-status mapper (#834). */
+  /**
+   * `'1'` ⇔ the state means "payment captured". Read since #2607: a state that
+   * is paid and not yet shipped is `processing`, which is how a custom
+   * "Paid, picking" state stops reading as an order nobody has touched.
+   */
   paid?: string | number;
 }
-
