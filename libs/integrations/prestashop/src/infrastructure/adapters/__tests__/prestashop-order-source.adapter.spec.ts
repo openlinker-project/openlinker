@@ -211,18 +211,16 @@ describe('PrestashopOrderSourceAdapter', () => {
         expect(result.nextCursor).toBe('2024-05-01 08:00:00|3');
       });
 
-      it('should read the next offset when a full page was already consumed', async () => {
-        const consumed: PrestashopOrder[] = [
-          { id: '1', date_add: '2024-05-01 08:00:00', date_upd: '2024-05-01 08:00:00' },
-          { id: '2', date_add: '2024-05-01 08:00:00', date_upd: '2024-05-01 08:00:00' },
-        ];
-        const fresh: PrestashopOrder[] = [
-          { id: '3', date_add: '2024-05-01 08:00:00', date_upd: '2024-05-01 08:00:00' },
-        ];
+      it('should widen the window when a full read was already consumed', async () => {
+        const row = (id: string): PrestashopOrder => ({
+          id,
+          date_add: '2024-05-01 08:00:00',
+          date_upd: '2024-05-01 08:00:00',
+        });
         mockHttpClient.listResources = jest
           .fn()
-          .mockResolvedValueOnce(consumed)
-          .mockResolvedValueOnce(fresh);
+          .mockResolvedValueOnce([row('1'), row('2')])
+          .mockResolvedValueOnce([row('1'), row('2'), row('3')]);
 
         const result = await adapter.listOrderFeed({
           fromCursor: '2024-05-01 08:00:00|2',
@@ -230,14 +228,42 @@ describe('PrestashopOrderSourceAdapter', () => {
         });
 
         expect(listCallsExcludingStates(mockHttpClient)).toHaveLength(2);
+        // The window grows from the start of the result set; the offset stays 0
+        // so a row shifting during the drain cannot slip past a page boundary.
         expect(mockHttpClient.listResources).toHaveBeenLastCalledWith(
           'orders',
           expect.anything(),
-          2,
-          2
+          4,
+          0
         );
         expect(result.items.map((i) => i.externalOrderId)).toEqual(['3']);
         expect(result.nextCursor).toBe('2024-05-01 08:00:00|3');
+      });
+
+      it('should not drop a row when a concurrent update shifts the result set mid-drain', async () => {
+        // Under offset paging this lost order 4 for good: order 1 is bumped out
+        // of the window while the drain is in progress, every later row shifts
+        // down one position, and the second page started past order 4 - which
+        // then sorted behind the advanced cursor and was never read again.
+        const row = (id: string): PrestashopOrder => ({
+          id,
+          date_add: '2024-05-01 08:00:00',
+          date_upd: '2024-05-01 08:00:00',
+        });
+        mockHttpClient.listResources = jest
+          .fn()
+          .mockResolvedValueOnce([row('1'), row('2'), row('3')])
+          // Order 1 was updated between the two reads, so it is no longer in
+          // this second: the set the shop answers with is one row shorter.
+          .mockResolvedValueOnce([row('2'), row('3'), row('4'), row('5')]);
+
+        const result = await adapter.listOrderFeed({
+          fromCursor: '2024-05-01 08:00:00|3',
+          limit: 3,
+        });
+
+        expect(result.items.map((i) => i.externalOrderId)).toEqual(['4', '5']);
+        expect(result.nextCursor).toBe('2024-05-01 08:00:00|5');
       });
 
       it('should never emit a cursor behind the input position', async () => {
@@ -265,6 +291,31 @@ describe('PrestashopOrderSourceAdapter', () => {
           10,
           0
         );
+      });
+
+      it('should answer an empty feed in the keyset format, never the caller string', async () => {
+        // One wire format on every path. A legacy bare timestamp answered in
+        // its own shape gives core a mixed pair to compare, and its
+        // monotonicity guard then reads the transition as unrecognised and
+        // stops checking it (#2605 review).
+        mockHttpClient.listResources = jest.fn().mockResolvedValue([]);
+
+        const result = await adapter.listOrderFeed({
+          fromCursor: '2024-05-01 08:00:00',
+          limit: 10,
+        });
+
+        expect(result.items).toEqual([]);
+        expect(result.nextCursor).toBe('2024-05-01 08:00:00|0');
+      });
+
+      it('should answer no cursor at all when the caller cursor was unreadable', async () => {
+        // Echoing it back would keep an unreadable value in place for ever.
+        mockHttpClient.listResources = jest.fn().mockResolvedValue([]);
+
+        const result = await adapter.listOrderFeed({ fromCursor: 'garbage', limit: 10 });
+
+        expect(result.nextCursor).toBeNull();
       });
 
       it('should skip a row with no usable date_upd rather than stamping the worker clock', async () => {
