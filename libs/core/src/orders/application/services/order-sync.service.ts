@@ -368,6 +368,9 @@ export class OrderSyncService implements IOrderSyncService {
    * the destination that just created the order, or the SKU has no master
    * connection configured) simply enqueues nothing for that product — this is
    * a latency optimization on top of the sweep, not a new correctness path.
+   *
+   * Only called from `syncOrder` when `anyDestinationSucceeded` — see that
+   * gate's comment for why a fully-failed dispatch enqueues nothing here.
    */
   private async enqueuePostSaleInventoryRefresh(order: Order): Promise<void> {
     const inventoryMasters = await this.integrationsService.listCapabilityAdapters<unknown>({
@@ -382,7 +385,9 @@ export class OrderSyncService implements IOrderSyncService {
     const masterConnectionIds = new Set(inventoryMasters.map((m) => m.connectionId));
     const uniqueProductIds = Array.from(new Set(order.items.map((item) => item.productId)));
 
-    await Promise.all(
+    // allSettled, not all: one product's getExternalIds rejecting must never
+    // suppress the enqueues that other products' lookups already resolved.
+    await Promise.allSettled(
       uniqueProductIds.map((productId) =>
         this.enqueueInventoryRefreshForProduct(order.id, productId, masterConnectionIds)
       )
