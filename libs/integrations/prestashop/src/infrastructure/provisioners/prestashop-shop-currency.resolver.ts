@@ -36,10 +36,20 @@ import type { PrestashopConfiguration } from './prestashop-provisioner.types';
 const DEFAULT_CURRENCY_CONFIG_KEY = 'PS_CURRENCY_DEFAULT';
 
 /**
- * Cache TTL (24h). The shop default currency changes rarely, but the cache
- * expires so a back-office change eventually surfaces without a restart.
+ * Cache TTL (1h). The shop default currency changes rarely, but the cache
+ * expires so a back-office change surfaces without a restart.
+ *
+ * It was 24h while the resolver was rebuilt per adapter resolution, so the TTL
+ * never actually applied - the cache was thrown away long before an entry could
+ * age. Since #2592 the resolver lives for the process, and 24h would mean an
+ * operator switching the shop's default currency waited a day for OL to notice,
+ * with every product stamped in the old denomination in the meantime. A
+ * back-office currency change leaves the connection config untouched, so the
+ * factory's shop-identity check cannot see it and the TTL is the only signal.
+ * One hour costs 2 requests per connection per hour, which is inside the noise
+ * of any sweep, and is the shortest of the shop-level caches for that reason.
  */
-const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+const CACHE_TTL_MS = 60 * 60 * 1000;
 
 /**
  * Short TTL (60s) for ANY unresolved (`null`) answer — a transient read failure

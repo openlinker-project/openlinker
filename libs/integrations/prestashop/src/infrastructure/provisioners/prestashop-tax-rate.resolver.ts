@@ -62,6 +62,19 @@ interface PrestashopTaxRow {
 
 const CACHE_TTL_MS = 5 * 60_000;
 
+/**
+ * Cap on live cache entries, enforced by a sweep on insert.
+ *
+ * This is the only cache on the PrestaShop resolvers whose key space grows with
+ * SKU count, and since #2592 the resolver lives for the process. Nothing reads
+ * an entry again after a sweep moves on, so an expired entry is never evicted
+ * by the read path: a 100k-SKU catalogue sweep would leave 100k dead entries
+ * behind for the rest of the process's life. The cap is generous enough that a
+ * normal sweep never touches it and small enough that the worst case stays a
+ * few megabytes.
+ */
+const MAX_CACHE_ENTRIES = 20_000;
+
 interface CacheEntry {
   rate: number;
   timestamp: number;
@@ -138,9 +151,44 @@ export class PrestashopTaxRateResolver {
     // would answer the retry from memory for up to the TTL and read as "the
     // fix did not work".
     if (resolution.kind === 'resolved') {
+      this.sweepIfAtCapacity();
       this.cache.set(cacheKey, { rate: resolution.rate, timestamp: Date.now() });
     }
     return resolution;
+  }
+
+  /** Clear the cache for one connection, or all connections when omitted. */
+  clearCache(connectionId?: string): void {
+    if (connectionId === undefined) {
+      this.cache.clear();
+      this.countryResolver.clearCache();
+      return;
+    }
+    for (const key of [...this.cache.keys()]) {
+      if (key.startsWith(`${connectionId}:`)) {
+        this.cache.delete(key);
+      }
+    }
+    // The country resolver is private to this resolver, so nothing else can
+    // reach it to invalidate the country-id rows behind these rates.
+    this.countryResolver.clearCache(connectionId);
+  }
+
+  private sweepIfAtCapacity(): void {
+    if (this.cache.size < MAX_CACHE_ENTRIES) {
+      return;
+    }
+    const now = Date.now();
+    for (const [key, entry] of [...this.cache.entries()]) {
+      if (now - entry.timestamp >= CACHE_TTL_MS) {
+        this.cache.delete(key);
+      }
+    }
+    // Everything still live and still at the cap means a burst wider than the
+    // cap inside one TTL. Dropping the lot costs re-reads, never a wrong rate.
+    if (this.cache.size >= MAX_CACHE_ENTRIES) {
+      this.cache.clear();
+    }
   }
 
   private async computeRate(

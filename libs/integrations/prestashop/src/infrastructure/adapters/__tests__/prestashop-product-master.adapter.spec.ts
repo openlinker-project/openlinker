@@ -1154,5 +1154,24 @@ describe('PrestashopProductMasterAdapter', () => {
 
       expect(productFetchCount()).toBe(2);
     });
+
+    it('caches nothing when the read throws synchronously, so the next caller retries', async () => {
+      seedMapping();
+      let firstCall = true;
+      mockHttpClient.getResource = jest.fn().mockImplementation(() => {
+        if (firstCall) {
+          firstCall = false;
+          // A throw before any promise exists, e.g. a client that rejects the
+          // request shape. It never reaches the cache write.
+          throw new PrestashopApiException('boom', 400);
+        }
+        return Promise.resolve(samplePrestashopProduct);
+      });
+
+      await expect(adapter.getProduct(internalId)).rejects.toBeInstanceOf(PrestashopApiException);
+      await expect(adapter.getProduct(internalId)).resolves.toMatchObject({ id: internalId });
+
+      expect(productFetchCount()).toBe(2);
+    });
   });
 });

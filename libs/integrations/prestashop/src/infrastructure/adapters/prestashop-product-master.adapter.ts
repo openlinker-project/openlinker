@@ -103,7 +103,8 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort, Produc
    * The PROMISE is cached rather than its value, so two concurrent callers
    * within one job share a single request instead of racing to issue two.
    * A rejection is evicted, so a transient failure does not pin an error for
-   * the rest of the job.
+   * the rest of the job. A synchronous throw out of `getResource` never reaches
+   * the `set` below, so nothing poisoned enters the cache on that path either.
    */
   private async fetchProductResource(externalId: string): Promise<PrestashopProduct> {
     const cached = this.productResourceCache.get(externalId);
@@ -175,7 +176,11 @@ export class PrestashopProductMasterAdapter implements ProductMasterPort, Produc
     // all it reads is `id_tax_rules_group`, and re-fetching cost one extra
     // `GET /api/products/{id}` per SKU on every catalogue sweep. A failure here
     // is not fatal to the rate read - the resolver falls back to fetching it
-    // itself, which is exactly the pre-#2592 path.
+    // itself, which is exactly the pre-#2592 path. That fallback is not free:
+    // the shop is asked for the same product twice, once here and once in the
+    // resolver. Paying it keeps the resolver's own `transportUnknown` evidence,
+    // which is what the re-raise below reports, so a swallowed failure here
+    // never turns into a silent "no rate" on the catalogue row.
     const preloaded = await this.fetchProductResource(externalId).catch(() => undefined);
 
     const resolution = await this.taxRateResolver.resolveProductTaxRate(

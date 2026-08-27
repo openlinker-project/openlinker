@@ -172,6 +172,45 @@ describe('PrestashopAdapterFactory', () => {
       expect(urls.filter((u) => u.includes('/api/configurations'))).toHaveLength(1);
       expect(urls.filter((u) => u.includes('/api/currencies'))).toHaveLength(1);
     });
+
+    // The caches are keyed by connection id and live for the process, and the id
+    // does not change when an operator repoints the connection at another shop.
+    // Without the shop-identity check the second build would answer from the
+    // first shop's cache and read nothing.
+    it('should re-read shop-level facts when the connection is repointed at another shop (#2592)', async () => {
+      const urls: string[] = [];
+      const countingFetch = jest.fn((input: unknown) => {
+        const url = String(input);
+        urls.push(url);
+        const body = url.includes('/api/configurations')
+          ? JSON.stringify({ configurations: [{ id: '1', value: '2' }] })
+          : JSON.stringify({ currency: { id: '2', iso_code: 'PLN' } });
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          headers: new Headers({ 'content-type': 'application/json' }),
+          text: () => Promise.resolve(body),
+        });
+      }) as unknown as typeof fetch;
+
+      mockCredentialsResolver.get.mockResolvedValue({ webserviceApiKey: 'test-key' });
+
+      await factory.createAdapters(
+        createTestConnection(),
+        mockIdentifierMapping,
+        mockCredentialsResolver,
+        countingFetch
+      );
+      await factory.createAdapters(
+        createTestConnection({ baseUrl: 'https://other-shop.example.com' }),
+        mockIdentifierMapping,
+        mockCredentialsResolver,
+        countingFetch
+      );
+
+      expect(urls.filter((u) => u.includes('/api/configurations'))).toHaveLength(2);
+      expect(urls.filter((u) => u.includes('/api/currencies'))).toHaveLength(2);
+    });
   });
 
   describe('validateAndParseConfig', () => {
