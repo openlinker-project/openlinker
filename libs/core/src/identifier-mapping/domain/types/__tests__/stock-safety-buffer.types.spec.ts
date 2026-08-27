@@ -7,6 +7,7 @@ import {
   applyStockSafetyBuffer,
   isPresentButInvalidStockSafetyBuffer,
   readStockSafetyBuffer,
+  readStockZeroThreshold,
 } from '../stock-safety-buffer.types';
 
 describe('stock-safety-buffer', () => {
@@ -80,6 +81,36 @@ describe('stock-safety-buffer', () => {
     it('should floor the result at 0 when the reserve exceeds master stock', () => {
       expect(applyStockSafetyBuffer(2, 5)).toBe(0);
       expect(applyStockSafetyBuffer(0, 5)).toBe(0);
+    });
+  });
+  describe('readStockZeroThreshold (#2610)', () => {
+    it('should default to 0 when the key is absent, null or invalid', () => {
+      expect(readStockZeroThreshold(null)).toBe(0);
+      expect(readStockZeroThreshold({})).toBe(0);
+      expect(readStockZeroThreshold({ stockZeroThreshold: '3' })).toBe(0);
+      expect(readStockZeroThreshold({ stockZeroThreshold: -3 })).toBe(0);
+      expect(readStockZeroThreshold({ stockZeroThreshold: 0 })).toBe(0);
+    });
+
+    it('should floor a fractional threshold', () => {
+      expect(readStockZeroThreshold({ stockZeroThreshold: 3.7 })).toBe(3);
+    });
+  });
+
+  describe('applyStockSafetyBuffer zero threshold (#2610)', () => {
+    it('should leave the quantity unchanged when the threshold is 0 (off)', () => {
+      expect(applyStockSafetyBuffer(3, 0, 0)).toBe(3);
+      expect(applyStockSafetyBuffer(3, 0)).toBe(3);
+    });
+
+    it('should publish 0 when the buffered quantity is below the threshold', () => {
+      expect(applyStockSafetyBuffer(3, 0, 4)).toBe(0);
+      expect(applyStockSafetyBuffer(10, 8, 4)).toBe(0);
+    });
+
+    it('should publish the buffered quantity at or above the threshold', () => {
+      expect(applyStockSafetyBuffer(4, 0, 4)).toBe(4);
+      expect(applyStockSafetyBuffer(10, 2, 4)).toBe(8);
     });
   });
 });

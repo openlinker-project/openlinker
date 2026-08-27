@@ -61,7 +61,9 @@ describe('OfferStockRestoreService', () => {
 
     integrationsService = {
       getCapabilityAdapter: jest.fn().mockResolvedValue(restorer),
-      getAdapter: jest.fn(),
+      // #2610 — the restore reads the connection's stock publish policy.
+      // Default: no reserve, no threshold (pass-through).
+      getAdapter: jest.fn().mockResolvedValue({ connection: { config: {} } }),
       listCapabilityAdapters: jest.fn(),
     } as unknown as jest.Mocked<IIntegrationsService>;
 
@@ -206,5 +208,40 @@ describe('OfferStockRestoreService', () => {
 
     expect(inventoryQuery.getAvailabilityByVariantIds).not.toHaveBeenCalled();
     expect(restorer.restoreStockOnCancellation).not.toHaveBeenCalled();
+  });
+  it('should hold back the connection stock safety buffer when restoring (#2610)', async () => {
+    integrationsService.getAdapter.mockResolvedValue({
+      connection: { config: { stockSafetyBuffer: 2 } },
+    } as never);
+    orderRecordService.getOrderRecord.mockResolvedValue(orderRecord([{ variantId: VARIANT_A }]));
+    offerMappings.findMappingPage.mockResolvedValue({
+      items: [mapping(VARIANT_A, OFFER_A)],
+      total: 1,
+    });
+    inventoryQuery.getAvailabilityByVariantIds.mockResolvedValue(availability([[VARIANT_A, 5]]));
+
+    await service.restoreStockForCancelledOrder(CONNECTION_ID, ORDER_ID);
+
+    expect(restorer.restoreStockOnCancellation).toHaveBeenCalledWith([
+      { externalOfferId: OFFER_A, quantity: 3 },
+    ]);
+  });
+
+  it('should publish 0 when the restored quantity is below the zero threshold (#2610)', async () => {
+    integrationsService.getAdapter.mockResolvedValue({
+      connection: { config: { stockZeroThreshold: 4 } },
+    } as never);
+    orderRecordService.getOrderRecord.mockResolvedValue(orderRecord([{ variantId: VARIANT_A }]));
+    offerMappings.findMappingPage.mockResolvedValue({
+      items: [mapping(VARIANT_A, OFFER_A)],
+      total: 1,
+    });
+    inventoryQuery.getAvailabilityByVariantIds.mockResolvedValue(availability([[VARIANT_A, 3]]));
+
+    await service.restoreStockForCancelledOrder(CONNECTION_ID, ORDER_ID);
+
+    expect(restorer.restoreStockOnCancellation).toHaveBeenCalledWith([
+      { externalOfferId: OFFER_A, quantity: 0 },
+    ]);
   });
 });

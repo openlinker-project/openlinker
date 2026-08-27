@@ -19,6 +19,7 @@ import {
   applyStockSafetyBuffer,
   isPresentButInvalidStockSafetyBuffer,
   readStockSafetyBuffer,
+  readStockZeroThreshold,
 } from '@openlinker/core/identifier-mapping';
 import type {
   UpdateOfferQuantityCommand,
@@ -81,11 +82,12 @@ export class InventorySyncService implements IInventorySyncService {
       );
     }
     const reserve = readStockSafetyBuffer(connection.config);
+    const zeroThreshold = readStockZeroThreshold(connection.config);
 
     const normalized: UpdateOfferQuantitiesBatchCommand = {
       idempotencyKey: cmd.idempotencyKey,
       items: cmd.items.map((i) => {
-        const quantity = applyStockSafetyBuffer(i.quantity, reserve);
+        const quantity = applyStockSafetyBuffer(i.quantity, reserve, zeroThreshold);
         return {
           ...i,
           quantity,

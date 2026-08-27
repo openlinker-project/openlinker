@@ -68,11 +68,54 @@ export function isPresentButInvalidStockSafetyBuffer(
 }
 
 /**
- * Apply a stock safety buffer to a master stock level.
+ * Config key holding the per-connection zero threshold on `Connection.config`.
+ */
+export const STOCK_ZERO_THRESHOLD_CONFIG_KEY = 'stockZeroThreshold';
+
+/**
+ * Read the per-connection zero threshold from a connection config.
+ *
+ * The second remedy the #1844 design named, for slow-moving stock: below this
+ * many units the destination is told `0` rather than the real, low number, so a
+ * dwindling line stops selling instead of racing the next sync. `0` (the
+ * default) means the threshold is off.
+ *
+ * Coerces exactly like `readStockSafetyBuffer`: a missing, non-numeric,
+ * negative, or non-finite value yields `0`, and a fractional value is floored.
+ */
+export function readStockZeroThreshold(config: ConnectionConfig | null | undefined): number {
+  if (!config) {
+    return 0;
+  }
+  const raw = config[STOCK_ZERO_THRESHOLD_CONFIG_KEY];
+  if (typeof raw !== 'number' || !Number.isFinite(raw) || raw <= 0) {
+    return 0;
+  }
+  return Math.floor(raw);
+}
+
+/**
+ * Apply a stock safety buffer, and then the zero threshold, to a master stock
+ * level.
  *
  * Returns `max(0, masterStock - reserve)` so the published quantity never goes
- * negative. A `reserve` of `0` (the default) returns `masterStock` unchanged.
+ * negative. A `reserve` of `0` (the default) leaves `masterStock` unchanged.
+ *
+ * `zeroThreshold` is applied AFTER the reserve, to the quantity that would
+ * actually be published: a quantity strictly below the threshold publishes as
+ * `0`. Ordering matters and this ordering is the operator-legible one - the
+ * threshold is a statement about the number the destination sees, not about the
+ * master's own count. `0` (the default) disables the threshold, so an existing
+ * connection is byte-identical to the pre-threshold behaviour.
  */
-export function applyStockSafetyBuffer(masterStock: number, reserve: number): number {
-  return Math.max(0, masterStock - reserve);
+export function applyStockSafetyBuffer(
+  masterStock: number,
+  reserve: number,
+  zeroThreshold = 0
+): number {
+  const published = Math.max(0, masterStock - reserve);
+  if (zeroThreshold > 0 && published < zeroThreshold) {
+    return 0;
+  }
+  return published;
 }
