@@ -182,8 +182,11 @@ Sweep-triggered propagation is therefore not tolerable-slow background work, so 
 separate and the job type stays single. The lane tally is unchanged at 12 / 15 / 5 / 6.
 
 **`fan-out` defaults to `total: 8, perScope: 4`, from `1 / 1`.** A cap of 1 fitted the lane's other
-members, which are **cron-paced** - one tick per connection, each additionally serialised by its own
-per-(kind, connection) `SyncLockPort` lock, so raising the cap cannot multiply catalogue fan-out.
+members, which are **cron-paced** - one tick per connection, each additionally serialised one level
+down, so raising the cap cannot multiply catalogue fan-out. Precisely: the four catalogue enumerators
+take a per-(kind, connection) `SyncLockPort` lock in the handler, while `marketplace.orders.poll` has
+no handler lock and is instead serialised inside `OrderIngestionService`, which takes its own
+per-connection lock and reports `skippedDueToLock` as a success.
 Propagation is **event-paced**: one job per changed stock row, thousands per sweep. Three notes:
 
 - The raise is not backed by a per-destination measurement the way `bulk`'s is, and decision 6 still
@@ -204,6 +207,35 @@ what changes is frequency. What that frequency exposes is the guard's known cost
 reported as a failure, so it consumes a retry attempt and could eventually dead-letter under sustained
 contention. That is a defect in the retry classification, not in the ordering rule, and it is why this
 change and that fix belong in the same release.
+
+## Amendment (#2594 review) - the rolling scan sweeps needed the lock the caps used to give them
+
+Raising `bulk`'s per-scope cap from 1 to 8 removed an implicit serialisation. At 1, two ticks of one
+connection's rolling scan sweep could never overlap. Eight `bulk` sweeps were relying on that without
+owning a lock: the offer status sync, the offer-mapping sync, the shop product status sync, the
+shipment and fulfillment status syncs, the fx stamp sweep, the tax-rate backfill and
+`marketplace.offer.pauseStaleSweep`. Only `destination.taxonomy.sync` and the four catalogue
+enumerators held one.
+
+**Six of them are locked, and the split is by whether the sweep keeps a cursor.** A sweep that reads a
+scan cursor, does a page, then writes the cursor back is a read-modify-write: two overlapping runs
+race it, one advances past the page the other is still reading, and a whole cycle of rows is skipped
+with no error anywhere. The offer status sync, offer-mapping sync, shop product status sync, shipment
+status sync, fulfillment status sync and tax-rate backfill all have that shape and now take a
+per-(kind, connection) lock through one shared helper (`apps/worker/src/sync/scan-sweep-lock.ts`),
+in the shape the catalogue enumerators already prove: contention is not a failure, the run reports
+`ok` without touching the cursor, and the TTL bounds a lost release
+(`OL_SCAN_SWEEP_LOCK_TTL_MS`). One helper rather than six copies, because a per-handler copy is six
+places for the release to be forgotten.
+
+**Two are deliberately left unlocked.** `marketplace.order.fxStampSweep` and
+`marketplace.offer.pauseStaleSweep` keep no cursor. Each re-derives its work from a predicate on every
+run - the unstamped-order predicate, and `product_variants.isStale` - and each write is conditional or
+idempotent: the FX stamp is a narrow `WHERE reportingCurrency IS NULL` update, and the pause re-asserts
+quantity 0. Two overlapping runs therefore duplicate reads and converge on the same state; they cannot
+skip work, because there is no position to advance past. Locking them would buy nothing and would add
+a second thing to reason about on the one path (#1689's pause) whose whole point is that it re-asserts
+what an event may have lost.
 
 ## Amendment (#2594 / #2609 review) - the pool sizes with the caps
 
