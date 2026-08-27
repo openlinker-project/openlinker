@@ -1,0 +1,1851 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>#2636 — Bulk actions pattern · UI Mockups</title>
+<!--
+  ═══════════════════════════════════════════════════════════════════════════════
+  #2636 — ONE BULK-ACTION PATTERN FOR /orders AND /invoices
+  ═══════════════════════════════════════════════════════════════════════════════
+
+  What this file is for
+  ─────────────────────
+  Both lists already ship checkboxes and bulk actions. They share the
+  `BulkActionBar` and `CheckboxCell` primitives and diverge in almost
+  everything else. This file proposes ONE pattern and pins every state the
+  issue enumerates, so the divergence can be closed as a single decision
+  rather than twelve small ones.
+
+  What the code review changed about the issue's framing
+  ─────────────────────────────────────────────────────
+  1. The pattern is NOT invented here. `BulkDispatchDialog`
+     (features/orders/components/bulk-dispatch-dialog.tsx) is already ~80% of
+     it: "Dispatch 8 of 11 orders", a ready/attention split, ineligible rows
+     carrying their own reason and an escape hatch, and a per-record result
+     phase. This file derives the pattern from Orders and stretches it over
+     Invoices — it does not design a third thing.
+
+  2. Per-record reasons for Invoices are NOT a new feature. The backend
+     already returns them (`RetryInvoiceResult.reason`,
+     `BulkIssueInvoiceResult.reason` in
+     apps/api/src/invoicing/http/invoicing.controller.ts). The frontend
+     receives them and throws them away, reporting a count instead.
+
+  3. "Bulk action limit reached" is structurally UNREACHABLE today. PAGE_SIZE
+     is 20 on both lists (orders-list-page.tsx:88, invoices-list-page.tsx:74)
+     and the caps are 25 per source connection and 100 per request. Once
+     selection is page-scoped — which this issue mandates — 20 rows can never
+     breach either cap. Frame 05 states this rather than staging a state the
+     product cannot enter.
+
+  Scope boundaries (from the issue, honoured here)
+  ───────────────────────────────────────────────
+  No backend. The 25 and 100 caps are not changed. Nothing becomes
+  asynchronous. Eligibility rules are reused verbatim, never redefined.
+  Selection does not survive a page change. Products and Listings are not
+  touched. The demo-mode write-access defect is shown, not fixed.
+
+  Design system fidelity
+  ──────────────────────
+  No new colour, radius, shadow or spacing value is introduced anywhere in
+  this file. Section 1 is a verbatim transcription of `:root` and
+  `html[data-theme='dark']` from apps/web/src/index.css. Sections 2 and 4
+  transcribe existing primitives, each carrying the line it came from.
+  Exactly TWO new CSS rules are invented, and they live alone in section 5.
+-->
+<style>
+  /* ═══════════════════════════════════════════════════════════════════════
+     1. TOKENS — verbatim from apps/web/src/index.css:185-386 and :395-505.
+        Copied, not re-derived. `pnpm lint` drift-checks the source block
+        against shared/theme/tokens.ts, so this is the canonical palette.
+     ═══════════════════════════════════════════════════════════════════════ */
+:root {
+  /* ── Typography ───────────────────────────────────────────────────── */
+  --font-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+    'Segoe UI', sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    'Liberation Mono', monospace;
+
+  /* ── Surfaces ──────────────────────────────────────────────────────
+   * Warm-neutral OKLCH ramp (#775). Canvas is the page background;
+   * surface is the elevated card; shell sits between for sidebars and
+   * sticky bars. `bg-strong` is a deeper neutral for inset hovers and
+   * pressed states. `bg-surface-muted` / `bg-surface-hover` are kept
+   * as aliases for the FE-002 vocabulary that the rest of the CSS
+   * already uses.
+   */
+  --bg-canvas: oklch(99% 0.003 80);
+  --bg-shell: oklch(97.5% 0.004 80);
+  --bg-surface: #ffffff;
+  --bg-surface-elevated: oklch(99% 0.003 80);
+  --bg-muted: oklch(96% 0.005 80);
+  --bg-surface-muted: oklch(96% 0.005 80);
+  --bg-surface-hover: oklch(93% 0.006 80);
+  --bg-strong: oklch(93% 0.006 80);
+
+  /* ── Borders ──────────────────────────────────────────────────────── */
+  --border-subtle: oklch(93.5% 0.006 80);
+  --border-default: oklch(88% 0.008 80);
+  --border-strong: oklch(78% 0.010 80);
+  --border-focus: oklch(68% 0.18 50);
+
+  /* ── Text ─────────────────────────────────────────────────────────── */
+  --text-primary: oklch(20% 0.012 80);
+  --text-secondary: oklch(38% 0.010 80);
+  --text-muted: oklch(52% 0.008 80);
+  --text-disabled: oklch(70% 0.005 80);
+  --text-on-primary: oklch(18% 0.012 50); /* text on accent button */
+  --text-inverse: oklch(96% 0.005 80);
+  --text-link: oklch(50% 0.14 250);
+
+  /* ── Accent ───────────────────────────────────────────────────────
+   * Signal-orange brand accent (#775). Reverses the monochrome stance
+   * of #371 — the prior monochrome accent flattened the cockpit. The
+   * accent is used sparingly: primary buttons, active-tab underline,
+   * KPI top-rule, pulsing live dot, focus rings. Status hues remain
+   * reserved for status meaning.
+   *
+   * `--accent-primary` is the brand colour; `--text-on-primary` above
+   * is the legible text colour to pair with it on primary buttons.
+   */
+  --accent-primary: oklch(68% 0.18 50);
+  --accent-primary-hover: oklch(62% 0.19 50);
+  --accent-primary-active: oklch(56% 0.20 50);
+  --accent-primary-soft: oklch(96% 0.04 60);
+  --accent-primary-soft-strong: oklch(40% 0.16 50);
+  --accent-primary-border: oklch(85% 0.10 55);
+  --accent-focus: oklch(68% 0.18 50);
+  --accent-ring: oklch(68% 0.18 50 / 0.30);
+
+  /* ── Status: success ──────────────────────────────────────────────── */
+  --status-success: oklch(54% 0.14 150);
+  --status-success-soft: oklch(96% 0.04 150);
+  --status-success-border: oklch(85% 0.08 150);
+  --status-success-fg: oklch(36% 0.12 150);
+  --status-success-strong: oklch(36% 0.12 150);
+
+  /* ── Status: warning ──────────────────────────────────────────────── */
+  --status-warning: oklch(72% 0.16 85);
+  --status-warning-soft: oklch(96% 0.05 85);
+  --status-warning-border: oklch(85% 0.10 85);
+  --status-warning-fg: oklch(42% 0.12 80);
+  --status-warning-strong: oklch(42% 0.12 80);
+
+  /* ── Status: error ────────────────────────────────────────────────── */
+  --status-error: oklch(58% 0.20 25);
+  --status-error-soft: oklch(96% 0.04 25);
+  --status-error-border: oklch(85% 0.10 25);
+  --status-error-fg: oklch(42% 0.16 25);
+  --status-error-strong: oklch(42% 0.16 25);
+
+  /* ── Status: info ─────────────────────────────────────────────────── */
+  --status-info: oklch(56% 0.14 245);
+  --status-info-soft: oklch(96% 0.03 245);
+  --status-info-border: oklch(85% 0.08 245);
+  --status-info-fg: oklch(40% 0.12 245);
+  --status-info-strong: oklch(40% 0.12 245);
+
+  /* ── Viz: categorical series (#1739) ──────────────────────────────────
+   * Small categorical palette for proportion visuals (routing-split bar).
+   * NOT status hues — a series colour distinguishes entities (carriers,
+   * connections), never encodes health. `--viz-cat-muted` is the neutral
+   * "default / unassigned" bucket. */
+  --viz-cat-1: oklch(75% 0.13 85);
+  --viz-cat-2: oklch(60% 0.15 20);
+  --viz-cat-3: oklch(58% 0.12 245);
+  --viz-cat-4: oklch(60% 0.13 150);
+  --viz-cat-muted: oklch(82% 0.008 80);
+
+  /* ── Channel brand hues (#1752) ──────────────────────────────────────
+   * Per-marketplace dot/pill identity colours, previously copy-pasted as raw
+   * oklch literals across the orders, coverage, channel-pill, product-detail,
+   * and variant-drawer rulesets. Brand identity, NOT status — a channel hue
+   * distinguishes the platform, never encodes health. Single definition
+   * (identical in light/dark), mirroring the viz categorical set. */
+  --channel-allegro: oklch(70% 0.18 35);
+  --channel-prestashop: oklch(60% 0.18 250);
+  --channel-erli: oklch(66% 0.17 320);
+  --channel-woocommerce: oklch(64% 0.16 150);
+  --channel-amazon: oklch(72% 0.16 75);
+  --channel-shopify: oklch(64% 0.16 150);
+
+  /* ── Status: review / manual ──────────────────────────────────────── */
+  --status-review: oklch(58% 0.16 290);
+  --status-review-soft: oklch(96% 0.04 290);
+  --status-review-border: oklch(85% 0.08 290);
+  --status-review-fg: oklch(42% 0.14 290);
+  --status-review-strong: oklch(42% 0.14 290);
+
+  /* ── Status: conflict ─────────────────────────────────────────────── */
+  --status-conflict: oklch(64% 0.16 45);
+  --status-conflict-soft: oklch(96% 0.05 45);
+  --status-conflict-border: oklch(85% 0.10 45);
+  --status-conflict-strong: oklch(40% 0.14 45);
+
+  /* ── Status: disabled ─────────────────────────────────────────────── */
+  --status-disabled: oklch(55% 0.008 80);
+  --status-disabled-soft: oklch(95% 0.005 80);
+  --status-disabled-border: oklch(85% 0.008 80);
+  --status-disabled-fg: oklch(38% 0.010 80);
+  --status-disabled-strong: oklch(38% 0.010 80);
+
+  /* ── Elevation ────────────────────────────────────────────────────── */
+  --shadow-soft: 0 1px 2px rgb(15 18 26 / 0.04), 0 6px 16px rgb(15 18 26 / 0.06);
+  --shadow-soft-hover: 0 2px 4px rgb(15 18 26 / 0.04), 0 12px 28px rgb(15 18 26 / 0.10);
+  --shadow-overlay: 0 24px 48px rgb(15 18 26 / 0.16), 0 8px 16px rgb(15 18 26 / 0.08);
+  --overlay-scrim: rgb(15 18 26 / 0.55);
+
+  --shadow-xs: 0 1px 2px rgb(15 18 26 / 0.04);
+  --shadow-sm: 0 1px 2px rgb(15 18 26 / 0.04), 0 1px 3px rgb(15 18 26 / 0.06);
+  --shadow-md: 0 2px 4px rgb(15 18 26 / 0.04), 0 6px 16px rgb(15 18 26 / 0.08);
+  --shadow-lg: 0 6px 12px rgb(15 18 26 / 0.06), 0 16px 32px rgb(15 18 26 / 0.10);
+  --shadow-focus: 0 0 0 3px var(--accent-ring);
+  --shadow-inset-top: inset 0 1px 0 rgb(255 255 255 / 0.6);
+
+  /* Primary button hover — accent-driven (#775). Kept as a named token
+     because existing CSS references it. The cascade through
+     `--accent-primary-hover` would also work, but the explicit token
+     makes the contract auditable in `tokens.ts`. */
+  --button-primary-bg-hover: oklch(62% 0.19 50);
+
+  /* ── Spacing scale (strict 4px grid) ─────────────────────────────── */
+  /* ── Layout heights (#2227) ────────────────────────────────────────
+   * The two pinned strips at the top of the shell, named once instead of
+   * repeated as a literal `52px` in `.shell-topbar` and `.demo-banner`. Height,
+   * not padding, so the value stays true: the banner carries a matching
+   * `min-height`.
+   */
+  --shell-topbar-height: 52px;
+  --demo-banner-height: 48px;
+
+  --space-1: 0.25rem; /* 4px */
+  --space-2: 0.5rem; /* 8px */
+  --space-3: 0.75rem; /* 12px */
+  --space-4: 1rem; /* 16px */
+  --space-5: 1.5rem; /* 24px */
+  --space-6: 2rem; /* 32px */
+  --space-7: 3rem; /* 48px */
+  --space-8: 4rem; /* 64px */
+
+  /* ── Radius scale ─────────────────────────────────────────────────── */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+  --radius-xl: 14px;
+  --radius-pill: 9999px;
+
+  /* ── Motion ───────────────────────────────────────────────────────── */
+  --duration-fast: 120ms;
+  --duration-normal: 180ms;
+  --duration-slow: 280ms;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+
+  /* ── Tracking (letter-spacing) ────────────────────────────────────── */
+  --tracking-tight: -0.012em;
+  --tracking-normal: 0;
+  --tracking-wide: 0.02em;
+  --tracking-caps: 0.08em;
+
+  color-scheme: light;
+  font-family: var(--font-sans);
+  line-height: 1.5;
+  font-weight: 400;
+  color: var(--text-primary);
+  background: var(--bg-canvas);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: 'cv11', 'ss01';
+}
+
+  /* Dark theme. Only colour tokens are remapped — spacing, radii, shadows
+     and the type scale are shared across both themes. */
+html[data-theme='dark'] {
+  color-scheme: dark;
+
+  /* Primary button hover — accent-driven (#775). */
+  --button-primary-bg-hover: oklch(78% 0.18 50);
+
+  /* Surfaces — cool graphite ramp (#775). Hue 270 carries a faint
+     cool cast that keeps the dark palette from looking dead-neutral.
+     Elevation step sizes match the previous graphite ramp so existing
+     components carry over. */
+  --bg-canvas: oklch(14% 0.005 270);
+  --bg-shell: oklch(16% 0.006 270);
+  --bg-surface: oklch(19% 0.007 270);
+  --bg-surface-elevated: oklch(22% 0.008 270);
+  --bg-muted: oklch(24% 0.009 270);
+  --bg-surface-muted: oklch(24% 0.009 270);
+  --bg-surface-hover: oklch(28% 0.010 270);
+  --bg-strong: oklch(28% 0.010 270);
+
+  /* Borders */
+  --border-subtle: oklch(24% 0.010 270);
+  --border-default: oklch(30% 0.012 270);
+  --border-strong: oklch(42% 0.014 270);
+  --border-focus: oklch(72% 0.18 50);
+
+  /* Text */
+  --text-primary: oklch(96% 0.006 270);
+  --text-secondary: oklch(78% 0.010 270);
+  --text-muted: oklch(60% 0.012 270);
+  --text-disabled: oklch(42% 0.012 270);
+  --text-on-primary: oklch(16% 0.012 50); /* text on accent button — same black bias as light */
+  --text-inverse: oklch(20% 0.012 80);
+  --text-link: oklch(76% 0.14 245);
+
+  /* Accent — see :root for the rationale (#775). */
+  --accent-primary: oklch(72% 0.18 50);
+  --accent-primary-hover: oklch(78% 0.18 50);
+  --accent-primary-active: oklch(84% 0.16 50);
+  --accent-primary-soft: oklch(28% 0.08 50);
+  --accent-primary-soft-strong: oklch(86% 0.14 60);
+  --accent-primary-border: oklch(40% 0.14 55);
+  --accent-focus: oklch(72% 0.18 50);
+  --accent-ring: oklch(72% 0.18 50 / 0.40);
+
+  /* Status — success */
+  --status-success: oklch(68% 0.16 150);
+  --status-success-soft: oklch(26% 0.06 150);
+  --status-success-border: oklch(36% 0.10 150);
+  --status-success-fg: oklch(86% 0.14 150);
+  --status-success-strong: oklch(86% 0.14 150);
+
+  /* Status — warning */
+  --status-warning: oklch(78% 0.16 85);
+  --status-warning-soft: oklch(28% 0.07 85);
+  --status-warning-border: oklch(38% 0.10 85);
+  --status-warning-fg: oklch(88% 0.14 85);
+  --status-warning-strong: oklch(88% 0.14 85);
+
+  /* Status — error */
+  --status-error: oklch(70% 0.18 25);
+  --status-error-soft: oklch(28% 0.10 25);
+  --status-error-border: oklch(40% 0.14 25);
+  --status-error-fg: oklch(86% 0.14 25);
+  --status-error-strong: oklch(86% 0.14 25);
+
+  /* Status — info */
+  --status-info: oklch(72% 0.14 245);
+  --status-info-soft: oklch(26% 0.06 245);
+  --status-info-border: oklch(36% 0.10 245);
+  --status-info-fg: oklch(86% 0.12 245);
+  --status-info-strong: oklch(86% 0.12 245);
+
+  /* Viz — categorical series (#1739) */
+  --viz-cat-1: oklch(70% 0.12 85);
+  --viz-cat-2: oklch(62% 0.14 20);
+  --viz-cat-3: oklch(62% 0.11 245);
+  --viz-cat-4: oklch(62% 0.12 150);
+  --viz-cat-muted: oklch(42% 0.008 80);
+
+  /* Status — review */
+  --status-review: oklch(74% 0.14 290);
+  --status-review-soft: oklch(28% 0.06 290);
+  --status-review-border: oklch(38% 0.10 290);
+  --status-review-fg: oklch(88% 0.12 290);
+  --status-review-strong: oklch(88% 0.12 290);
+
+  /* Status — conflict */
+  --status-conflict: oklch(72% 0.16 45);
+  --status-conflict-soft: oklch(28% 0.08 45);
+  --status-conflict-border: oklch(40% 0.12 45);
+  --status-conflict-strong: oklch(88% 0.14 45);
+
+  /* Status — disabled */
+  --status-disabled: oklch(65% 0.010 270);
+  --status-disabled-soft: oklch(24% 0.010 270);
+  --status-disabled-border: oklch(34% 0.012 270);
+  --status-disabled-fg: oklch(82% 0.010 270);
+  --status-disabled-strong: oklch(82% 0.010 270);
+
+  /* Elevation */
+  --shadow-soft: 0 1px 2px rgb(0 0 0 / 0.40), 0 8px 24px rgb(0 0 0 / 0.40);
+  --shadow-soft-hover: 0 2px 4px rgb(0 0 0 / 0.42), 0 12px 32px rgb(0 0 0 / 0.42);
+  --shadow-overlay: 0 24px 48px rgb(0 0 0 / 0.60), 0 8px 16px rgb(0 0 0 / 0.40);
+  --shadow-xs: 0 1px 2px rgb(0 0 0 / 0.40);
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.40), 0 1px 3px rgb(0 0 0 / 0.32);
+  --shadow-md: 0 2px 4px rgb(0 0 0 / 0.40), 0 6px 16px rgb(0 0 0 / 0.36);
+  --shadow-lg: 0 6px 12px rgb(0 0 0 / 0.42), 0 16px 32px rgb(0 0 0 / 0.40);
+  --shadow-focus: 0 0 0 3px var(--accent-ring);
+  --shadow-inset-top: inset 0 1px 0 rgb(255 255 255 / 0.04);
+  --overlay-scrim: rgb(0 0 0 / 0.72);
+}
+
+  /* ═══════════════════════════════════════════════════════════════════════
+     2. PRIMITIVES — transcribed from apps/web/src/index.css, each rule
+        carrying the line it came from. Nothing here is a design decision;
+        it is the app's own CSS, narrowed to what these frames render.
+     ═══════════════════════════════════════════════════════════════════════ */
+
+  *, *::before, *::after { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--bg-canvas);
+    color: var(--text-primary);
+    font-family: var(--font-sans);
+    font-size: 0.875rem;
+    line-height: 1.5;
+  }
+
+  .mono { font-family: var(--font-mono); }
+  .tabular { font-variant-numeric: tabular-nums; }
+  .text-muted { color: var(--text-muted); }
+
+  /* index.css:542 — .button, default tone is primary (signal orange). */
+  .button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2);
+    border: 1px solid var(--accent-primary-border);
+    border-radius: var(--radius-md);
+    padding: 0 var(--space-4);
+    height: 2rem;
+    background: var(--accent-primary);
+    color: var(--text-on-primary);
+    font-family: inherit;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    cursor: pointer;
+    white-space: nowrap;
+    box-shadow: var(--shadow-xs), var(--shadow-inset-top);
+    transition: background var(--duration-fast) var(--ease-out),
+                border-color var(--duration-fast) var(--ease-out),
+                box-shadow var(--duration-fast) var(--ease-out);
+  }
+  .button:hover { background: var(--button-primary-bg-hover); border-color: var(--button-primary-bg-hover); }
+  .button:active { background: var(--accent-primary-active); border-color: var(--accent-primary-active); }
+  .button:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+  .button:disabled { cursor: not-allowed; opacity: 0.55; box-shadow: none; }
+
+  /* index.css:599 / :629 / :616 — the three non-primary tones. */
+  .button--secondary {
+    border-color: var(--border-default);
+    background: var(--bg-surface);
+    color: var(--text-primary);
+  }
+  .button--secondary:hover { background: var(--bg-surface-muted); border-color: var(--border-strong); color: var(--text-primary); }
+  .button--ghost {
+    border-color: transparent;
+    background: transparent;
+    color: var(--text-secondary);
+    box-shadow: none;
+  }
+  .button--ghost:hover { background: var(--bg-surface-muted); border-color: transparent; color: var(--text-primary); }
+  .button--danger {
+    border-color: color-mix(in oklab, var(--status-error) 80%, black);
+    background: var(--status-error);
+    color: #ffffff;
+  }
+  .button--danger:hover { background: color-mix(in oklab, var(--status-error) 90%, black); border-color: color-mix(in oklab, var(--status-error) 70%, black); }
+
+  /* index.css:657 — sm is the toolbar / table-action size. */
+  .button--sm { height: 1.75rem; padding: 0 var(--space-3); font-size: 0.75rem; }
+
+  /* index.css:503 note — non-text inputs are excluded from the 32px control
+     rule, so a checkbox keeps its native 14px box and is tinted, not rebuilt. */
+  input[type='checkbox'] {
+    width: 0.875rem;
+    height: 0.875rem;
+    accent-color: var(--accent-primary);
+    margin: 0;
+    cursor: pointer;
+  }
+  input[type='checkbox']:disabled { cursor: not-allowed; opacity: 0.55; }
+  input[type='checkbox']:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+
+  /* index.css:2331 — StatusBadge. Mono + caps + leading dot, so the tone is
+     never the only signal. Default reads the disabled/neutral tone. */
+  .status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: 2px var(--space-2);
+    border: 1px solid var(--status-disabled-border);
+    border-radius: var(--radius-sm);
+    background: var(--status-disabled-soft);
+    color: var(--status-disabled-fg);
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    font-weight: 500;
+    line-height: 1.5;
+    letter-spacing: var(--tracking-wide);
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+  .status-badge--compact { padding: 1px var(--space-2); font-size: 0.625rem; }
+  .status-badge__dot {
+    width: 0.375rem;
+    height: 0.375rem;
+    border-radius: 999px;
+    background: currentColor;
+    flex-shrink: 0;
+    opacity: 0.75;
+  }
+  .status-badge--success { border-color: var(--status-success-border); background: var(--status-success-soft); color: var(--status-success-fg); }
+  .status-badge--warning { border-color: var(--status-warning-border); background: var(--status-warning-soft); color: var(--status-warning-fg); }
+  .status-badge--error   { border-color: var(--status-error-border);   background: var(--status-error-soft);   color: var(--status-error-fg); }
+  .status-badge--info    { border-color: var(--status-info-border);    background: var(--status-info-soft);    color: var(--status-info-fg); }
+  .status-badge--review  { border-color: var(--status-review-border);  background: var(--status-review-soft);  color: var(--status-review-fg); }
+
+  /* index.css:2747 / :2754 / :2848 / :2859 / :2933 — DataTable. Dense 36px
+     rows, sticky mono-caps header, hover on the whole row, no zebra. */
+  .data-table__container {
+    overflow-x: auto;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-lg);
+    background: var(--bg-surface);
+    box-shadow: var(--shadow-xs);
+  }
+  .data-table {
+    width: auto;
+    min-width: 100%;
+    border-collapse: collapse;
+    font-size: 0.8125rem;
+  }
+  .data-table th, .data-table td {
+    padding: var(--space-3) var(--space-4);
+    border-top: 1px solid var(--border-subtle);
+    text-align: left;
+    vertical-align: middle;
+    font-size: 0.8125rem;
+    line-height: 1.4;
+  }
+  .data-table thead th {
+    border-top: 0;
+    border-bottom: 1px solid var(--border-subtle);
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    font-weight: 500;
+    letter-spacing: var(--tracking-caps);
+    text-transform: uppercase;
+    background: var(--bg-shell);
+    user-select: none;
+  }
+  .data-table tbody tr:hover { background: color-mix(in oklab, var(--bg-shell) 60%, transparent); }
+  .data-table__cell--right { text-align: right; font-variant-numeric: tabular-nums; }
+  .data-table td.col-select, .data-table th.col-select { width: 2.5rem; padding-right: 0; }
+
+  /* index.css:10586 — the selected-row highlight products-list introduced in
+     #739, reused verbatim rather than reinvented per list. */
+  .data-table tbody tr.is-selected td { background: var(--accent-primary-soft); }
+
+  /* index.css:1802 — Alert. The left rule is an inset shadow, not a border. */
+  .alert {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-lg);
+    padding: 0.875rem 1rem 0.875rem 1.125rem;
+    background: var(--bg-surface);
+    box-shadow: inset 3px 0 0 var(--border-default);
+  }
+  .alert--warning { border-color: var(--status-warning-border); background: var(--status-warning-soft); box-shadow: inset 3px 0 0 var(--status-warning); }
+  .alert--success { border-color: var(--status-success-border); background: var(--status-success-soft); box-shadow: inset 3px 0 0 var(--status-success); }
+  .alert--error   { border-color: var(--status-error-border);   background: var(--status-error-soft);   box-shadow: inset 3px 0 0 var(--status-error); }
+  .alert--info    { border-color: var(--status-info-border);    background: var(--status-info-soft);    box-shadow: inset 3px 0 0 var(--status-info); }
+  .alert__title { display: block; font-weight: 600; }
+  .alert__body { font-size: 0.8125rem; }
+
+  /* index.css:5100 area — Dialog surface. The style guide names --radius-xl
+     as canonical for dialogs; the shipped literal is still 0.75rem, so the
+     intended token is used here. Rendered inline in these frames rather than
+     as an overlay, so a reader can see every phase at once. */
+  .dialog {
+    width: min(100%, 42rem);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-xl);
+    padding: var(--space-5);
+    background: var(--bg-surface);
+    box-shadow: var(--shadow-soft);
+  }
+  .dialog__title { margin: 0; font-size: 1.0625rem; font-weight: 600; letter-spacing: var(--tracking-tight); }
+  .dialog__desc { margin: var(--space-1) 0 var(--space-4); font-size: 0.8125rem; color: var(--text-secondary); }
+  .dialog__actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--space-2);
+    margin-top: var(--space-4);
+  }
+
+  /* index.css — Tooltip content. Solid inverted chip in both themes. */
+  .tooltip__content {
+    display: inline-block;
+    max-width: 280px;
+    padding: 4px var(--space-2);
+    font-size: 0.75rem;
+    color: var(--text-inverse);
+    background: var(--text-primary);
+    border-radius: var(--radius-sm);
+    box-shadow: var(--shadow-md);
+  }
+
+  /* index.css:2145 — Pagination. Plain count + Prev/Next, no page numbers. */
+  .pagination {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    margin-top: var(--space-3);
+    font-size: 0.8125rem;
+  }
+  .pagination__actions { display: flex; gap: 0.5rem; }
+
+  /* index.css:3928 — ReadOnlyLock. The wrapper becomes the click target
+     because a natively-disabled control emits no pointer events. */
+  .read-only-lock { display: inline-flex; }
+  .read-only-lock > :disabled { pointer-events: none; }
+
+  /* ═══════════════════════════════════════════════════════════════════════
+     3. MOCKUP SCAFFOLD — not part of the app.
+     ═══════════════════════════════════════════════════════════════════════ */
+
+  .controls {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    display: flex;
+    gap: var(--space-2);
+    align-items: center;
+    justify-content: flex-end;
+    padding: var(--space-3) var(--space-5);
+    background: color-mix(in oklab, var(--bg-shell) 88%, transparent);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--border-subtle);
+  }
+  .controls__label {
+    margin-right: auto;
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    letter-spacing: var(--tracking-caps);
+    text-transform: uppercase;
+    color: var(--text-muted);
+    font-weight: 600;
+  }
+  .toggle-btn {
+    border: 1px solid var(--border-default);
+    background: var(--bg-surface);
+    color: var(--text-secondary);
+    border-radius: var(--radius-md);
+    padding: 5px 10px;
+    font-size: 0.75rem;
+    font-family: var(--font-sans);
+    cursor: pointer;
+  }
+  .toggle-btn:hover { background: var(--bg-surface-muted); color: var(--text-primary); }
+  .toggle-btn:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+  .toggle-btn[aria-pressed='true'] {
+    background: var(--accent-primary-soft);
+    border-color: var(--accent-primary-border);
+    color: var(--accent-primary-soft-strong);
+    font-weight: 600;
+  }
+
+  .sheet {
+    max-width: 78rem;
+    margin: 0 auto;
+    padding: var(--space-6) var(--space-5) var(--space-8);
+  }
+  .sheet__title { margin: 0; font-size: 1.75rem; font-weight: 600; letter-spacing: var(--tracking-tight); }
+  .sheet__sub { margin: var(--space-2) 0 var(--space-3); max-width: 62ch; color: var(--text-secondary); }
+  .sheet__note {
+    margin: 0 0 var(--space-7);
+    padding: var(--space-3) var(--space-4);
+    border-left: 2px solid var(--accent-primary);
+    background: var(--bg-surface-muted);
+    font-size: 0.8125rem;
+    color: var(--text-secondary);
+    max-width: 72ch;
+  }
+
+  .viewport-frame { margin: 0 0 var(--space-7); }
+  .viewport-frame__label {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-3);
+    flex-wrap: wrap;
+    margin: 0 0 var(--space-3);
+    padding-bottom: var(--space-2);
+    border-bottom: 1px dashed var(--border-default);
+  }
+  .viewport-frame__label .eyebrow-mono {
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    font-weight: 600;
+    letter-spacing: var(--tracking-caps);
+    text-transform: uppercase;
+    color: var(--accent-primary-hover);
+  }
+  .viewport-frame__label b { font-size: 1.0625rem; font-weight: 600; letter-spacing: var(--tracking-tight); }
+  .viewport-frame__label .caption {
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    color: var(--text-muted);
+  }
+  .viewport-frame__label .dep {
+    margin-left: auto;
+    font-family: var(--font-mono);
+    font-size: 0.625rem;
+    letter-spacing: var(--tracking-caps);
+    text-transform: uppercase;
+    color: var(--status-success-fg);
+    border: 1px solid var(--status-success-border);
+    background: var(--status-success-soft);
+    border-radius: var(--radius-sm);
+    padding: 1px var(--space-2);
+  }
+  .viewport-frame__label .dep--blocked {
+    color: var(--status-warning-fg);
+    border-color: var(--status-warning-border);
+    background: var(--status-warning-soft);
+  }
+
+  .gap-legend {
+    margin-top: var(--space-3);
+    padding-left: var(--space-3);
+    border-left: 2px solid var(--border-default);
+    font-size: 0.8125rem;
+    color: var(--text-secondary);
+    max-width: 78ch;
+  }
+  .gap-legend b { color: var(--text-primary); }
+  .gap-legend code {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    background: var(--bg-surface-muted);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-xs);
+    padding: 0 3px;
+  }
+
+  /* Two lists side by side (frame 01) and stacked state cards elsewhere. */
+  .split { display: grid; gap: var(--space-4); grid-template-columns: 1fr; }
+  @media (min-width: 60rem) { .split { grid-template-columns: 1fr 1fr; } }
+  .stack { display: grid; gap: var(--space-4); }
+  .card-label {
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    font-weight: 600;
+    letter-spacing: var(--tracking-caps);
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-bottom: var(--space-2);
+  }
+  .diverge-table { width: 100%; border-collapse: collapse; font-size: 0.8125rem; }
+  .diverge-table th, .diverge-table td {
+    padding: var(--space-2) var(--space-3);
+    border-top: 1px solid var(--border-subtle);
+    text-align: left;
+    vertical-align: top;
+  }
+  .diverge-table thead th {
+    border-top: 0;
+    border-bottom: 1px solid var(--border-subtle);
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    font-weight: 500;
+    letter-spacing: var(--tracking-caps);
+    text-transform: uppercase;
+    color: var(--text-muted);
+  }
+  .diverge-table td:first-child { color: var(--text-secondary); width: 26%; }
+  .diff { color: var(--status-error-fg); font-weight: 600; }
+  .same { color: var(--status-success-fg); font-weight: 600; }
+
+  /* Live-frame control strip — labelled as scaffold so nobody ships it. */
+  .playbar {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    flex-wrap: wrap;
+    margin-bottom: var(--space-3);
+    padding: var(--space-2) var(--space-3);
+    border: 1px dashed var(--border-default);
+    border-radius: var(--radius-md);
+    background: var(--bg-surface-muted);
+  }
+  .playbar__label {
+    font-family: var(--font-mono);
+    font-size: 0.625rem;
+    letter-spacing: var(--tracking-caps);
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-right: var(--space-2);
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════════
+     4. THE BULK PATTERN — existing rules.
+        index.css:10506 (.bulk-action-bar, #739) and :10590 (.bulk-dispatch,
+        #1109). Both are transcribed, because the proposal is to generalise
+        them rather than replace them.
+     ═══════════════════════════════════════════════════════════════════════ */
+
+  .bulk-action-bar {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+    margin-top: var(--space-4);
+    padding: var(--space-3) var(--space-4);
+    background: var(--bg-surface);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg);
+    transition: opacity var(--duration-fast) var(--ease-out),
+                transform var(--duration-fast) var(--ease-out);
+  }
+  /* Hidden, never unmounted — the aria-live count lives inside, so removing
+     the node would stop screen readers announcing selection changes. */
+  .bulk-action-bar--hidden { opacity: 0; pointer-events: none; transform: translateY(4px); }
+  .bulk-action-bar__count { display: flex; align-items: baseline; gap: var(--space-2); }
+  .bulk-action-bar__num { font-size: 16px; font-weight: 600; color: var(--text-primary); }
+  .bulk-action-bar__label {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: var(--tracking-caps);
+    text-transform: uppercase;
+    color: var(--text-muted);
+  }
+  .bulk-action-bar__hint { font-size: 12px; color: var(--text-muted); }
+  .bulk-action-bar__actions { margin-left: auto; display: flex; align-items: center; gap: var(--space-2); }
+  @media (max-width: 639.98px) {
+    .bulk-action-bar { flex-wrap: wrap; }
+    .bulk-action-bar__hint { flex-basis: 100%; order: 3; }
+    .bulk-action-bar__actions { margin-left: auto; }
+  }
+
+  .bulk-dispatch__summary { font-size: 0.8125rem; color: var(--text-secondary); margin: 0 0 var(--space-2); }
+  .bulk-dispatch__note { font-size: 0.8125rem; color: var(--text-muted); margin: var(--space-3) 0 0; }
+  .bulk-dispatch__rows, .bulk-dispatch__results {
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+  }
+  .bulk-dispatch__row {
+    display: grid;
+    grid-template-columns: minmax(140px, 1fr) auto;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-4);
+    border-bottom: 1px solid var(--border-subtle);
+  }
+  /* index.css:10769 — a result row is a FLEX row, not the review row's grid:
+     the outcome and its reason read left to right beside the record. */
+  .bulk-dispatch__result-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-4);
+    border-bottom: 1px solid var(--border-subtle);
+  }
+  /* index.css:10781 — untoned on purpose: the badge beside it carries the
+     outcome, so the reason does not repeat it in colour. */
+  .bulk-dispatch__result-detail { font-size: 0.8125rem; }
+  .bulk-dispatch__row:last-child, .bulk-dispatch__result-row:last-child { border-bottom: 0; }
+  .bulk-dispatch__row--ineligible { background: var(--bg-canvas); }
+  .bulk-dispatch__row-id { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .bulk-dispatch__src {
+    font-family: var(--font-mono);
+    font-size: 0.625rem;
+    letter-spacing: var(--tracking-caps);
+    text-transform: uppercase;
+    color: var(--text-secondary);
+    background: var(--bg-muted);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-xs);
+    padding: 0 var(--space-1);
+    align-self: flex-start;
+  }
+  .bulk-dispatch__ordid {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .bulk-dispatch__buyer { font-size: 0.75rem; color: var(--text-muted); }
+  .bulk-dispatch__row-hint { grid-column: 1 / -1; font-size: 0.75rem; color: var(--status-warning-fg); }
+  .bulk-dispatch__row-error { grid-column: 1 / -1; font-size: 0.75rem; color: var(--status-error-fg); }
+  .bulk-dispatch__link { color: var(--text-link); }
+  .bulk-dispatch__profile {
+    display: flex;
+    align-items: flex-end;
+    gap: var(--space-3);
+    flex-wrap: wrap;
+    margin-bottom: var(--space-4);
+    padding: var(--space-3);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    background: var(--bg-surface-muted);
+  }
+  .bulk-dispatch__field-label {
+    display: block;
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+    margin-bottom: var(--space-1);
+  }
+  .bulk-dispatch__dims { display: flex; align-items: center; gap: var(--space-1); }
+  input.bulk-dispatch__num {
+    width: 4.5rem;
+    height: 2rem;
+    padding: 0 var(--space-2);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-md);
+    background: var(--bg-surface);
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+    font-variant-numeric: tabular-nums;
+  }
+  .bulk-dispatch__times { color: var(--text-muted); }
+
+  /* index.css:10900 area — the determinate progress bar the bulk wizard owns.
+     Borrowed for the in-progress phase; no new track style is invented. */
+  .bulk-wizard__progress-bar {
+    width: 100%;
+    height: 6px;
+    border-radius: 999px;
+    background: var(--bg-strong);
+    overflow: hidden;
+  }
+  .bulk-wizard__progress-fill { height: 100%; background: var(--accent-primary); }
+  .bulk-wizard__progress-count {
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: var(--tracking-caps);
+    text-transform: uppercase;
+    color: var(--text-muted);
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════════
+     5. THE NEW RULES (#2636) — exactly two. Everything above already
+        shipped; everything the proposal adds is here, so the cost of the
+        change is one screenful of CSS.
+     ═══════════════════════════════════════════════════════════════════════ */
+
+  /* (1) The count gains its denominator. `11` stays the loud number and the
+     page context reads as quiet metadata beside it, so the bar answers "of
+     how many, and on what" without becoming a sentence in bold. */
+  .bulk-action-bar__total {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: var(--tracking-caps);
+    text-transform: uppercase;
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* (2) How a batch splits, stated before it runs. One line, mono, because
+     the operator reads it as a number and not as prose. */
+  .bulk-dispatch__batches {
+    margin: 0 0 var(--space-3);
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-secondary);
+  }
+  .bulk-dispatch__batches b { color: var(--text-primary); }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
+  }
+</style>
+</head>
+<body>
+
+<div class="controls">
+  <span class="controls__label">#2636 · Bulk actions pattern</span>
+  <button class="toggle-btn" id="theme-toggle" type="button">Toggle theme</button>
+</div>
+
+<main class="sheet">
+  <h1 class="sheet__title">One bulk-action pattern for Orders and Invoices</h1>
+  <p class="sheet__sub">
+    A selection tells the operator how much of the page it covers. An action states
+    how many records it will really touch, which ones it cannot, and why. A result
+    answers per record.
+  </p>
+  <p class="sheet__note">
+    Zakres wg #2636: bez backendu, bez zmiany limitów 25/100, bez asynchroniczności,
+    bez zmiany reguł kwalifikowalności, bez zaznaczenia przetrwającego zmianę strony.
+    Makieta odwzorowuje te rzeczy wiernie — nie zmienia ich. Wzorzec jest wyprowadzony
+    z istniejącego <code>BulkDispatchDialog</code>, nie wymyślony od zera.
+  </p>
+
+  <!-- ═══════════ FRAME 01 — divergence ═══════════ -->
+  <section class="viewport-frame" id="frame-divergence">
+    <div class="viewport-frame__label">
+      <span class="eyebrow-mono">01 · Divergence</span>
+      <b>Two patterns wearing the same bar</b>
+      <span class="caption">orders-list-page.tsx · invoices-list-page.tsx</span>
+    </div>
+    <div class="data-table__container">
+      <table class="diverge-table">
+        <thead>
+          <tr><th>Aspect</th><th>/orders</th><th>/invoices</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Row checkbox</td><td class="same">CheckboxCell (shared, tri-state)</td><td class="diff">raw &lt;input&gt;, l. 343–353</td></tr>
+          <tr><td>Select all on the page</td><td class="same">yes, tri-state</td><td class="diff">absent — <code>header: ''</code></td></tr>
+          <tr><td>Eligibility on the checkbox</td><td class="same">yes + tooltip “Already shipped”</td><td class="diff">none — every row selectable</td></tr>
+          <tr><td>Where the bar lives</td><td>DataTable <code>footer</code>, l. 1494</td><td class="diff">separate block under pagination, l. 654</td></tr>
+          <tr><td>Confirm step</td><td>none — dialog is compose + submit</td><td class="diff">ConfirmDialog per action, no record list</td></tr>
+          <tr><td>Batch cap</td><td>25 per source, enforced while selecting</td><td class="diff">100 per request, not enforced in the UI → 400</td></tr>
+          <tr><td>Result per record</td><td class="same">full table in the dialog</td><td class="diff">count only, though the API returns reasons</td></tr>
+          <tr><td>Selection vs pagination</td><td>page-scoped, consistently</td><td class="diff">count crosses pages; Issue silently drops them (l. 308–309)</td></tr>
+          <tr><td>Read-only / demo gating</td><td class="diff">none on the bulk button</td><td class="diff">none</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="gap-legend">
+      <span>
+        Zielone = już spójne (wspólne prymitywy). Czerwone = rozjazd. Dziewięć wierszy,
+        z czego <b>issue opisuje trzy</b>. Dwa najdroższe to brak select-all na fakturach
+        i wyrzucany <code>results[]</code> — backend zwraca powód per rekord
+        (<code>invoicing.controller.ts</code>), FE go nie renderuje.
+      </span>
+    </div>
+  </section>
+
+  <!-- ═══════════ FRAME 02 — live ═══════════ -->
+  <section class="viewport-frame" id="frame-live">
+    <div class="viewport-frame__label">
+      <span class="eyebrow-mono">02 · Live</span>
+      <b>The pattern, running</b>
+      <span class="caption">every pinned frame below renders from this same code</span>
+    </div>
+    <div class="playbar">
+      <span class="playbar__label">mockup scaffold</span>
+      <button class="toggle-btn" type="button" id="ds-orders" aria-pressed="true">Orders</button>
+      <button class="toggle-btn" type="button" id="ds-invoices" aria-pressed="false">Invoices</button>
+      <button class="toggle-btn" type="button" id="btn-readonly" aria-pressed="false">Read-only</button>
+      <button class="toggle-btn" type="button" id="btn-nextpage">Next page</button>
+      <button class="toggle-btn" type="button" id="btn-reset">Reset</button>
+    </div>
+    <div id="live"></div>
+    <div class="gap-legend">
+      <span>
+        Zaznacz kilka wierszy, otwórz akcję, uruchom. Licznik podaje pokrycie strony,
+        dialog dzieli zaznaczenie na <b>wykonalne</b> i <b>wymagające uwagi</b>, wynik
+        odpowiada per rekord. „Next page” czyści zaznaczenie — zgodnie z zakresem issue.
+      </span>
+    </div>
+  </section>
+
+  <!-- ═══════════ FRAME 03 — selection ═══════════ -->
+  <section class="viewport-frame" id="frame-selection">
+    <div class="viewport-frame__label">
+      <span class="eyebrow-mono">03 · Selection</span>
+      <b>The count carries its denominator</b>
+      <span class="caption">shared/ui/bulk-action-bar.tsx · new rule: .bulk-action-bar__total</span>
+      <span class="dep">Ships now</span>
+    </div>
+    <div class="stack" id="f-selection"></div>
+    <div class="gap-legend">
+      <span>
+        „All available” to nie „all rows”. Na stronie 20 wierszy, 17 kwalifikuje się —
+        <b>pełne zaznaczenie to 17</b>, i pasek musi to powiedzieć, inaczej operator
+        czyta brakujące 3 jako własny błąd. Select-all zaznacza wyłącznie kwalifikujące się.
+      </span>
+    </div>
+  </section>
+
+  <!-- ═══════════ FRAME 04 — not eligible ═══════════ -->
+  <section class="viewport-frame" id="frame-ineligible">
+    <div class="viewport-frame__label">
+      <span class="eyebrow-mono">04 · Not eligible</span>
+      <b>A row states its own reason</b>
+      <span class="caption">features/orders/lib/dispatch-input.ts:173-192 · reasons reused verbatim</span>
+      <span class="dep">Ships now</span>
+    </div>
+    <div class="stack" id="f-ineligible"></div>
+    <div class="gap-legend">
+      <span>
+        Powód żyje w wierszu, nie w podpowiedzi na hover — hover nie istnieje na tablecie
+        i nie da się go przeskanować wzrokiem po liście. Checkbox zostaje wyłączony,
+        badge nazywa przyczynę, a link prowadzi do jedynego miejsca, gdzie da się to
+        naprawić. Reguł nie definiujemy od nowa: to te same siedem powodów co dziś.
+      </span>
+    </div>
+  </section>
+
+  <!-- ═══════════ FRAME 05 — limit ═══════════ -->
+  <section class="viewport-frame" id="frame-limit">
+    <div class="viewport-frame__label">
+      <span class="eyebrow-mono">05 · Batch cap</span>
+      <b>Capacity is information, not a wall</b>
+      <span class="caption">bulk-generate-labels.dto.ts:27 (25/source) · retry-invoices-request.dto.ts:22 (100/request)</span>
+      <span class="dep dep--blocked">Unreachable today</span>
+    </div>
+    <div class="stack" id="f-limit"></div>
+    <div class="gap-legend">
+      <span>
+        <b>Ten stan jest dziś nieosiągalny.</b> <code>PAGE_SIZE = 20</code> na obu listach
+        (<code>orders-list-page.tsx:88</code>, <code>invoices-list-page.tsx:74</code>),
+        a limity to 25 i 100 — zaznaczenie page-scoped nigdy ich nie przekroczy.
+        Dlatego pojemność jest komunikatem w pasku, a blokujący wariant to zabezpieczenie
+        na wypadek większej strony albo przyszłego „select all N matching”.
+      </span>
+    </div>
+  </section>
+
+  <!-- ═══════════ FRAME 06 — review, orders ═══════════ -->
+  <section class="viewport-frame" id="frame-review-orders">
+    <div class="viewport-frame__label">
+      <span class="eyebrow-mono">06 · Review · Orders</span>
+      <b>The action states what it will really do</b>
+      <span class="caption">features/orders/components/bulk-dispatch-dialog.tsx — already ~80% of this</span>
+      <span class="dep">Ships now</span>
+    </div>
+    <div id="f-review-orders"></div>
+    <div class="gap-legend">
+      <span>
+        Nagłówek podaje liczbę wykonań, nie liczbę zaznaczeń. Wiersze niekwalifikowalne
+        <b>zostają w widoku</b> — usunięcie ich zamieniłoby „3 pominięte” w cichy ubytek.
+        Konfiguracja przesyłki i submit dzielą jeden dialog, bo osobny confirm pytałby
+        o coś, co operator właśnie wypełnił.
+      </span>
+    </div>
+  </section>
+
+  <!-- ═══════════ FRAME 07 — review, invoices ═══════════ -->
+  <section class="viewport-frame" id="frame-review-invoices">
+    <div class="viewport-frame__label">
+      <span class="eyebrow-mono">07 · Review · Invoices</span>
+      <b>The same dialog, with nothing to fill in</b>
+      <span class="caption">replaces the two ConfirmDialogs at invoices-list-page.tsx:687-716</span>
+      <span class="dep">Ships now</span>
+    </div>
+    <div class="stack" id="f-review-invoices"></div>
+    <div class="gap-legend">
+      <span>
+        Retry i Issue nie mają konfiguracji, więc dialog jest krótszy — ale to ten sam
+        dialog. Powody pochodzą z backendu (<code>Not retry-eligible (status=…)</code>),
+        nie z FE. <b>Retry pokazuje różnicę, której dziś nie widać:</b> faktura
+        <code>in doubt</code> jest celowo nie-retry'owalna, bo provider może już mieć dokument.
+      </span>
+    </div>
+  </section>
+
+  <!-- ═══════════ FRAME 08 — nothing eligible ═══════════ -->
+  <section class="viewport-frame" id="frame-none">
+    <div class="viewport-frame__label">
+      <span class="eyebrow-mono">08 · Nothing eligible</span>
+      <b>An empty batch says so before it runs</b>
+      <span class="caption">Alert tone=&quot;warning&quot; · submit disabled</span>
+      <span class="dep">Ships now</span>
+    </div>
+    <div id="f-none"></div>
+    <div class="gap-legend">
+      <span>
+        Bez tego stanu operator klika i dostaje partię, w której nic się nie stało.
+        Przycisk zostaje widoczny i wyłączony, bo zniknięcie akcji czyta się jak awaria UI.
+      </span>
+    </div>
+  </section>
+
+  <!-- ═══════════ FRAME 09 — in progress ═══════════ -->
+  <section class="viewport-frame" id="frame-progress">
+    <div class="viewport-frame__label">
+      <span class="eyebrow-mono">09 · In progress</span>
+      <b>A synchronous batch, honestly paced</b>
+      <span class="caption">ADR-019: N sequential outbound calls in one request</span>
+      <span class="dep">Ships now</span>
+    </div>
+    <div id="f-progress"></div>
+    <div class="gap-legend">
+      <span>
+        Partia jest synchroniczna (ADR-019), więc pasek jest determinowany i mówi,
+        na którym rekordzie stoi. Zamknięcie dialogu jest zablokowane — request i tak
+        biegnie, a zniknięty dialog zabrałby jedyne miejsce, gdzie pojawi się wynik.
+      </span>
+    </div>
+  </section>
+
+  <!-- ═══════════ FRAME 10 — results ═══════════ -->
+  <section class="viewport-frame" id="frame-results">
+    <div class="viewport-frame__label">
+      <span class="eyebrow-mono">10 · Results</span>
+      <b>Three outcomes, one surface</b>
+      <span class="caption">reuses .bulk-dispatch__results · consumes the API's results[]</span>
+      <span class="dep">Ships now</span>
+    </div>
+    <div class="stack" id="f-results"></div>
+    <div class="gap-legend">
+      <span>
+        Pełny sukces zwija się do podsumowania — nie ma czego czytać wiersz po wierszu.
+        Sukces częściowy i pełna porażka rozwijają się do rekordów, bo <b>tam jest praca</b>.
+        Każdy pominięty i nieudany rekord nosi powód z backendu; <code>failed</code>
+        dodatkowo id korelacyjne do zgłoszenia.
+      </span>
+    </div>
+  </section>
+
+  <!-- ═══════════ FRAME 11 — read-only ═══════════ -->
+  <section class="viewport-frame" id="frame-readonly">
+    <div class="viewport-frame__label">
+      <span class="eyebrow-mono">11 · Read-only</span>
+      <b>The bar admits it cannot write</b>
+      <span class="caption">shared/ui/read-only-lock.tsx · shared/config/demo-mode.ts</span>
+      <span class="dep dep--blocked">Missing in both lists today</span>
+    </div>
+    <div id="f-readonly"></div>
+    <div class="gap-legend">
+      <span>
+        Dziś oba widoki pokazują <b>aktywne</b> przyciski masowych akcji w demo-mode —
+        klik kończy się 4xx. Wzorzec obudowuje je w istniejący <code>ReadOnlyLock</code>:
+        zaznaczanie zostaje (operator nadal chce policzyć), zapis nie. Naprawę samego
+        demo-mode issue wyklucza z zakresu; ta prezentacja jest jego opisem.
+      </span>
+    </div>
+  </section>
+
+  <!-- ═══════════ FRAME 12 — page change ═══════════ -->
+  <section class="viewport-frame" id="frame-page">
+    <div class="viewport-frame__label">
+      <span class="eyebrow-mono">12 · Page change</span>
+      <b>Selection ends where the page ends</b>
+      <span class="caption">issue #2636 — cross-page selection is out of scope</span>
+      <span class="dep">Ships now</span>
+    </div>
+    <div class="stack" id="f-page"></div>
+    <div class="gap-legend">
+      <span>
+        Zaznaczenie jest czyszczone i <b>fakt jest wypowiedziany</b>, nie domyślny.
+        Zamyka to najgorszy obecny stan: na fakturach licznik liczy wszystkie strony,
+        ale „Issue invoices” po cichu wysyła tylko bieżącą (dług z l. 308–309) —
+        czyli UI podaje liczbę, której akcja nie dotrzyma.
+      </span>
+    </div>
+  </section>
+
+</main>
+
+<script>
+(function () {
+  'use strict';
+
+  /* ── Theme ──────────────────────────────────────────────────────────────
+     Defer to a theme the HOST already stamped. When this page is published
+     as an Artifact the viewer owns `data-theme` on the root element; only a
+     bare document resolves its own. */
+  var root = document.documentElement;
+  if (!root.getAttribute('data-theme')) {
+    root.setAttribute(
+      'data-theme',
+      window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+    );
+  }
+  document.getElementById('theme-toggle').addEventListener('click', function () {
+    root.setAttribute('data-theme', root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
+  });
+
+  /* The per-record escape hatches stand where a real route would. They keep
+     link semantics and affordance, and do not move the sheet. */
+  document.addEventListener('click', function (e) {
+    if (e.target.closest('a[data-noop]')) e.preventDefault();
+  });
+
+  /* ── Reasons, verbatim from the app ────────────────────────────────────
+     Orders: features/orders/lib/dispatch-input.ts:173-192.
+     Invoices: the strings apps/api/src/invoicing/http/invoicing.controller.ts
+     already returns per record and the frontend currently discards. */
+  var ORDER_REASON = {
+    'missing-recipient': ['Missing recipient', 'Recipient data is incomplete — fix at source, then dispatch individually.'],
+    'needs-paczkomat':   ['Needs paczkomat',   'Buyer locker not resolved — dispatch individually.'],
+    'cod':               ['COD — enter amount', 'Cash-on-delivery amount needed — dispatch individually.'],
+    'payment-blocked':   ['Payment not cleared', 'Payment is not cleared — resolve payment, then dispatch.'],
+    'already-shipped':   ['Already shipped',   'A shipment already exists for this order.'],
+    'not-ready':         ['Awaiting mapping',  'Order is still awaiting mapping.'],
+    'source-deleted':    ['Source deleted',    'Item was deleted at the source — cannot be dispatched.']
+  };
+  var INVOICE_REASON = {
+    'already-issued': ['Already issued', 'A document already exists for this order.'],
+    'in-progress':    ['In progress',    'Issuing is already under way — wait for it to settle.'],
+    'not-retryable':  ['Not retry-eligible', 'Not retry-eligible (status=issued, failureMode=none).'],
+    'in-doubt':       ['In doubt',       'The provider may already hold the document — resolve it before retrying.'],
+    'no-document':    ['No document yet', 'Nothing has been issued for this order, so there is nothing to retry.']
+  };
+
+  /* ── Fixtures ──────────────────────────────────────────────────────────
+     20 rows per page, because PAGE_SIZE is 20 on both lists. */
+  var SRC = ['Allegro', 'Erli', 'PrestaShop'];
+  var BUYERS = ['M. Kowalska', 'T. Nowak', 'A. Zielińska', 'P. Wiśniewski', 'K. Lewandowska',
+                'J. Dąbrowski', 'E. Kamińska', 'R. Szymański', 'B. Woźniak', 'S. Kozłowski'];
+
+  /* Deterministic id filler. Math.imul, because a plain 32-bit multiply loses
+     its low bits past 2^53 and every id degenerates to zeroes. */
+  function hex(seed, len) {
+    var x = (seed * 747796405 + 2891336453) | 0, out = '';
+    for (var i = 0; i < len; i++) {
+      x = Math.imul(x ^ (x >>> 15), 1 | x);
+      x = (x + Math.imul(x ^ (x >>> 7), 61 | x)) ^ x;
+      out += '0123456789abcdef'[((x ^ (x >>> 14)) >>> 0) % 16];
+    }
+    return out;
+  }
+
+  var ORDER_ROWS = (function () {
+    var ineligible = { 2: 'cod', 7: 'needs-paczkomat', 13: 'already-shipped' };
+    var rows = [];
+    for (var i = 0; i < 20; i++) {
+      rows.push({
+        id: 'ol_order_' + hex(i + 7, 8),
+        src: SRC[i % 3 === 0 ? 1 : (i % 7 === 0 ? 2 : 0)],
+        buyer: BUYERS[i % BUYERS.length],
+        state: i % 4 === 0 ? 'Paid' : 'Ready to ship',
+        reason: ineligible[i] || null
+      });
+    }
+    return rows;
+  })();
+
+  var INVOICE_ROWS = (function () {
+    var plan = ['failed:rejected', 'none', 'issued', 'failed:rejected', 'pending', 'none',
+                'failed:in-doubt', 'issued', 'none', 'failed:rejected', 'issuing', 'none',
+                'issued', 'failed:rejected', 'none', 'issued', 'failed:in-doubt', 'none',
+                'pending', 'failed:rejected'];
+    return plan.map(function (p, i) {
+      var parts = p.split(':');
+      return {
+        id: 'ol_order_' + hex(i + 41, 8),
+        docId: parts[0] === 'issued' ? 'FV/2026/08/' + (140 + i) : null,
+        src: SRC[i % 3 === 0 ? 1 : (i % 5 === 0 ? 2 : 0)],
+        buyer: BUYERS[(i + 3) % BUYERS.length],
+        status: parts[0],
+        failureMode: parts[1] || null
+      };
+    });
+  })();
+
+  /* ── Datasets: what a list is, and what its actions may touch ──────────
+     Eligibility is a per-ACTION question, not a per-row one. Invoices prove
+     it: the same row is retryable for one action and untouchable for the
+     other, which is exactly why the invoices list cannot answer it with a
+     single disabled checkbox the way Orders does. */
+  function orderEligibility(row) {
+    return row.reason ? { ok: false, reason: ORDER_REASON[row.reason] } : { ok: true };
+  }
+  function retryEligibility(row) {
+    if (row.status === 'failed' && row.failureMode === 'rejected') return { ok: true };
+    if (row.status === 'failed' && row.failureMode === 'in-doubt') return { ok: false, reason: INVOICE_REASON['in-doubt'] };
+    if (row.status === 'issued') return { ok: false, reason: INVOICE_REASON['not-retryable'] };
+    if (row.status === 'none') return { ok: false, reason: INVOICE_REASON['no-document'] };
+    return { ok: false, reason: INVOICE_REASON['in-progress'] };
+  }
+  /* InvoiceRecord.blocksIssuanceElsewhere (invoice-record.entity.ts:166) is
+     the authority: pending / issuing / issued block, and so does a FAILED
+     record whose failureMode is anything but `rejected`. Only a terminal
+     rejection means the provider certainly created nothing, so `in doubt`
+     blocks BOTH actions — the one row the two actions agree on. */
+  function issueEligibility(row) {
+    if (row.status === 'issued') return { ok: false, reason: INVOICE_REASON['already-issued'] };
+    if (row.status === 'pending' || row.status === 'issuing') return { ok: false, reason: INVOICE_REASON['in-progress'] };
+    if (row.status === 'failed' && row.failureMode === 'in-doubt') return { ok: false, reason: INVOICE_REASON['in-doubt'] };
+    return { ok: true };
+  }
+
+  /* A LIST column and a DIALOG answer different questions, and conflating them
+     is what makes a two-action list unreadable. A row can only speak for
+     itself: "is there any bulk action I could join, and if not, why". Which
+     action is refusing it is a property of the action, so it is stated in that
+     action's review — never guessed at in a shared column, where an `issued`
+     invoice would read "not retry-eligible" while the operator was reaching
+     for Issue. */
+  function orderRowBlock(row) {
+    return row.reason ? ORDER_REASON[row.reason] : null;
+  }
+  function invoiceRowBlock(row) {
+    if (row.status === 'issued') return INVOICE_REASON['already-issued'];
+    if (row.status === 'pending' || row.status === 'issuing') return INVOICE_REASON['in-progress'];
+    if (row.status === 'failed' && row.failureMode === 'in-doubt') return INVOICE_REASON['in-doubt'];
+    return null;
+  }
+
+  var DATASETS = {
+    orders: {
+      noun: 'order', rows: ORDER_ROWS, total: 34, hint: 'Max 25 per source', rowBlock: orderRowBlock,
+      columns: ['Order', 'Channel', 'Buyer', 'Fulfilment'],
+      cell: function (r) {
+        return '<td><span class="mono bulk-dispatch__ordid">' + r.id + '</span></td>' +
+               '<td><span class="bulk-dispatch__src">' + r.src + '</span></td>' +
+               '<td>' + r.buyer + '</td>' +
+               '<td><span class="status-badge status-badge--compact ' +
+                 (r.state === 'Paid' ? 'status-badge--info' : 'status-badge--success') +
+                 '"><span class="status-badge__dot"></span>' + r.state + '</span></td>';
+      },
+      actions: [{ id: 'dispatch', verb: 'Dispatch', tone: '', config: true, eligible: orderEligibility,
+                  desc: 'Generate labels for the selected orders — dispatched in per-source batches.' }]
+    },
+    invoices: {
+      noun: 'invoice', rows: INVOICE_ROWS, total: 41, hint: 'Max 100 per batch', rowBlock: invoiceRowBlock,
+      columns: ['Order', 'Channel', 'Buyer', 'Document'],
+      cell: function (r) {
+        var tone = { issued: 'success', failed: 'error', pending: 'warning', issuing: 'info', none: '' }[r.status];
+        var text = { issued: 'Issued', failed: 'Failed', pending: 'Pending', issuing: 'Issuing', none: 'No document' }[r.status];
+        if (r.status === 'failed') text = 'Failed · ' + r.failureMode;
+        return '<td><span class="mono bulk-dispatch__ordid">' + (r.docId || r.id) + '</span></td>' +
+               '<td><span class="bulk-dispatch__src">' + r.src + '</span></td>' +
+               '<td>' + r.buyer + '</td>' +
+               '<td><span class="status-badge status-badge--compact' + (tone ? ' status-badge--' + tone : '') +
+                 '"><span class="status-badge__dot"></span>' + text + '</span></td>';
+      },
+      actions: [
+        { id: 'retry', verb: 'Retry', tone: '', config: false, eligible: retryEligibility,
+          desc: 'Re-send documents the provider rejected. A rejection is the only failure it is safe to repeat.' },
+        { id: 'issue', verb: 'Issue', tone: 'secondary', config: false, eligible: issueEligibility,
+          desc: 'Issue a document for orders that do not have one yet.' }
+      ]
+    }
+  };
+
+  /* ── Render helpers ────────────────────────────────────────────────────
+     One renderer per surface. Every pinned frame calls these, so a frame
+     cannot drift from the live one above it. */
+  function badge(tone, text, compact) {
+    return '<span class="status-badge' + (tone ? ' status-badge--' + tone : '') +
+           (compact ? ' status-badge--compact' : '') + '"><span class="status-badge__dot"></span>' + text + '</span>';
+  }
+
+  function bar(o) {
+    var actions = (o.actions || []).map(function (a) {
+      var btn = '<button type="button" class="button button--sm' + (a.tone ? ' button--' + a.tone : '') + '"' +
+                (a.disabled ? ' disabled' : '') + (a.id ? ' data-act="' + a.id + '"' : '') + '>' + a.label + '</button>';
+      return o.readOnly ? '<span class="read-only-lock" title="Read-only in demo mode.">' +
+        btn.replace('<button type="button"', '<button type="button" disabled') + '</span>' : btn;
+    }).join('');
+    var clear = '<button type="button" class="button button--sm button--ghost" data-act="clear">Clear</button>';
+    return '<div class="bulk-action-bar' + (o.count ? '' : ' bulk-action-bar--hidden') + '" role="region"' +
+      (o.count ? ' aria-label="' + o.count + ' ' + o.noun + 's selected"' : ' aria-hidden="true"') + '>' +
+      '<div class="bulk-action-bar__count">' +
+        '<strong class="bulk-action-bar__num tabular" aria-live="polite">' + o.count + '</strong>' +
+        '<span class="bulk-action-bar__total">of ' + o.available + ' ' + o.noun + 's on this page</span>' +
+        '<span class="bulk-action-bar__label">selected</span>' +
+      '</div>' +
+      (o.hint ? '<div class="bulk-action-bar__hint">' + o.hint + '</div>' : '') +
+      '<div class="bulk-action-bar__actions">' + clear + actions + '</div>' +
+    '</div>';
+  }
+
+  function table(ds, opts) {
+    var rows = ds.rows.slice(0, opts.limit || ds.rows.length);
+    var head = '<tr><th class="col-select"><input type="checkbox" data-role="head"' +
+      (opts.readOnly ? ' disabled' : '') + ' aria-label="Select all eligible ' + ds.noun + 's on this page"' +
+      (opts.headState === 'all' ? ' checked' : '') + '></th>' +
+      ds.columns.map(function (c) { return '<th>' + c + '</th>'; }).join('') +
+      '<th>Bulk eligibility</th></tr>';
+
+    var body = rows.map(function (r) {
+      var block = ds.rowBlock(r);
+      var el = block ? { ok: false, reason: block } : { ok: true };
+      var sel = !!(opts.selected && opts.selected[r.id]);
+      return '<tr' + (sel ? ' class="is-selected"' : '') + '>' +
+        '<td class="col-select"><input type="checkbox" data-id="' + r.id + '"' +
+          (el.ok ? '' : ' disabled') + (opts.readOnly ? ' disabled' : '') + (sel ? ' checked' : '') +
+          ' aria-label="Select ' + r.id + '"' +
+          (el.ok ? '' : ' title="' + el.reason[1] + '"') + '></td>' +
+        ds.cell(r) +
+        '<td>' + (el.ok ? '<span class="text-muted">—</span>' : badge('warning', el.reason[0], true)) + '</td>' +
+      '</tr>';
+    }).join('');
+
+    return '<div class="data-table__container"><table class="data-table"><thead>' + head +
+      '</thead><tbody>' + body + '</tbody></table></div>';
+  }
+
+  function pagination(ds, page) {
+    var from = (page - 1) * 20 + 1, to = Math.min(page * 20, ds.total);
+    return '<div class="pagination"><span class="text-muted tabular">Showing ' + from + '–' + to +
+      ' of ' + ds.total + '</span><div class="pagination__actions">' +
+      '<button type="button" class="button button--sm button--secondary"' + (page === 1 ? ' disabled' : '') +
+      ' data-act="prev">Previous</button>' +
+      '<button type="button" class="button button--sm button--secondary" data-act="next">Next</button>' +
+      '</div></div>';
+  }
+
+  function reviewRow(r, ds, el) {
+    if (el.ok) {
+      return '<div class="bulk-dispatch__row"><div class="bulk-dispatch__row-id">' +
+        '<span class="bulk-dispatch__src">' + r.src + '</span>' +
+        '<span class="bulk-dispatch__ordid">' + (r.docId || r.id) + '</span>' +
+        '<span class="bulk-dispatch__buyer">' + r.buyer + '</span></div>' +
+        badge('success', 'Ready', true) + '</div>';
+    }
+    return '<div class="bulk-dispatch__row bulk-dispatch__row--ineligible"><div class="bulk-dispatch__row-id">' +
+      '<span class="bulk-dispatch__src">' + r.src + '</span>' +
+      '<span class="bulk-dispatch__ordid">' + (r.docId || r.id) + '</span>' +
+      '<span class="bulk-dispatch__buyer">' + r.buyer + '</span></div>' +
+      badge('warning', el.reason[0], true) +
+      '<span class="bulk-dispatch__row-hint">' + el.reason[1] +
+      ' <a class="bulk-dispatch__link" href="#" data-noop>open this ' + ds.noun + ' ›</a></span></div>';
+  }
+
+  function batchLine(picked, cap, capNoun) {
+    if (picked.length <= cap) return '';
+    return '<p class="bulk-dispatch__batches"><b>' + picked.length + ' selected</b> · ' + cap +
+      ' will run now · ' + (picked.length - cap) + ' left for a second batch — ' + capNoun + '</p>';
+  }
+
+  function dialog(cfg) {
+    var ds = cfg.ds, act = cfg.action, picked = cfg.picked;
+    var split = { ready: [], attention: [] };
+    picked.forEach(function (r) {
+      var el = act.eligible(r);
+      (el.ok ? split.ready : split.attention).push({ row: r, el: el });
+    });
+
+    var head = '<h3 class="dialog__title">' + act.verb + ' ' +
+      (split.attention.length ? split.ready.length + ' of ' + picked.length : picked.length) + ' ' +
+      ds.noun + (picked.length === 1 ? '' : 's') + '</h3>' +
+      '<p class="dialog__desc">' + act.desc + '</p>';
+
+    if (cfg.phase === 'progress') {
+      var pct = Math.round((cfg.done / Math.max(split.ready.length, 1)) * 100);
+      return '<div class="dialog">' + head +
+        '<p class="bulk-dispatch__summary"><strong>' + GERUND[act.id] + '…</strong> ' +
+          'the batch runs in one request — leaving now would not stop it.</p>' +
+        '<div class="bulk-wizard__progress-bar"><div class="bulk-wizard__progress-fill" style="width:' + pct + '%"></div></div>' +
+        '<p class="bulk-wizard__progress-count" style="margin-top:8px">' + cfg.done + ' / ' + split.ready.length +
+          ' · ' + (cfg.current || '') + '</p>' +
+        '<div class="dialog__actions"><button class="button button--sm button--secondary" disabled>Cancel</button>' +
+        '<button class="button button--sm" disabled>' + GERUND[act.id] + '…</button></div></div>';
+    }
+
+    if (cfg.phase === 'result') {
+      var res = cfg.results;
+      var counts = { ok: 0, skipped: 0, failed: 0 };
+      res.forEach(function (x) { counts[x.kind]++; });
+      var allOk = counts.skipped === 0 && counts.failed === 0;
+      var summary = counts.ok + ' ' + cfg.pastTense + ' · ' + counts.skipped + ' skipped · ' + counts.failed + ' failed';
+      var tone = allOk ? 'success' : (counts.ok === 0 ? 'error' : 'warning');
+      var body = allOk
+        ? '<div class="alert alert--success"><div class="alert__body"><strong class="alert__title">Batch complete</strong>' +
+          'All ' + counts.ok + ' ' + ds.noun + 's were ' + cfg.pastTense + '. Nothing needs a second look.</div></div>'
+        : '<div class="bulk-dispatch__results">' + res.map(function (x) {
+            var t = { ok: 'success', skipped: 'warning', failed: 'error' }[x.kind];
+            var label = { ok: cfg.pastTense, skipped: 'Skipped', failed: 'Failed' }[x.kind];
+            return '<div class="bulk-dispatch__result-row"><div class="bulk-dispatch__row-id">' +
+              '<span class="bulk-dispatch__src">' + x.row.src + '</span>' +
+              '<span class="bulk-dispatch__ordid">' + (x.row.docId || x.row.id) + '</span></div>' +
+              badge(t, label, true) +
+              (x.reason ? '<span class="bulk-dispatch__result-detail">' + x.reason + '</span>' : '') + '</div>';
+          }).join('') + '</div>';
+      return '<div class="dialog">' + head.replace(/<p class="dialog__desc">[\s\S]*?<\/p>/, '') +
+        '<p class="bulk-dispatch__summary">' + badge(tone, summary, true) + '</p>' + body +
+        '<div class="dialog__actions"><button class="button button--sm" data-act="close">Close</button></div></div>';
+    }
+
+    var cap = cfg.cap || 0;
+    var willRun = cap ? Math.min(split.ready.length, cap) : split.ready.length;
+    return '<div class="dialog">' + head +
+      (act.config && split.ready.length ? '<div class="bulk-dispatch__profile">' +
+        '<div><span class="bulk-dispatch__field-label">Dimensions (mm)</span><div class="bulk-dispatch__dims">' +
+        '<input class="bulk-dispatch__num mono" value="300" aria-label="Length in millimetres">' +
+        '<span class="bulk-dispatch__times">×</span>' +
+        '<input class="bulk-dispatch__num mono" value="200" aria-label="Width in millimetres">' +
+        '<span class="bulk-dispatch__times">×</span>' +
+        '<input class="bulk-dispatch__num mono" value="150" aria-label="Height in millimetres">' +
+        '</div></div>' +
+        '<div><span class="bulk-dispatch__field-label">Weight (g)</span>' +
+        '<input class="bulk-dispatch__num mono" value="1200" aria-label="Weight in grams"></div>' +
+        '<button class="button button--sm button--secondary" type="button" style="margin-left:auto">Apply to all</button>' +
+        '</div>' : '') +
+      (cfg.batchNote || batchLine(split.ready, cap || 1e9, cfg.capNoun || '')) +
+      '<p class="bulk-dispatch__summary"><strong>' + split.ready.length + ' ready</strong>' +
+        (split.attention.length ? ' · ' + split.attention.length +
+          (split.attention.length === 1 ? ' needs' : ' need') +
+          ' attention — fix at source or run individually' : '') + '</p>' +
+      '<div class="bulk-dispatch__rows">' +
+        split.ready.map(function (x) { return reviewRow(x.row, ds, x.el); }).join('') +
+        split.attention.map(function (x) { return reviewRow(x.row, ds, x.el); }).join('') +
+      '</div>' +
+      (split.ready.length && split.attention.length
+        ? '<p class="bulk-dispatch__note">Only the ' + willRun + ' ready ' + ds.noun + 's will be ' + cfg.pastTense + '.</p>' : '') +
+      (split.ready.length === 0
+        ? '<div class="alert alert--warning" style="margin-top:12px"><div class="alert__body">' +
+          '<strong class="alert__title">Nothing to run</strong>None of the selected ' + ds.noun +
+          's can be ' + cfg.pastTense + ' in a batch. Open each one to handle it individually.</div></div>' : '') +
+      '<div class="dialog__actions">' +
+        '<button class="button button--sm button--secondary" type="button" data-act="cancel">Cancel</button>' +
+        '<button class="button button--sm" type="button" data-act="run"' + (split.ready.length ? '' : ' disabled') + '>' +
+          act.verb + ' ' + willRun + ' ' + ds.noun + (willRun === 1 ? '' : 's') + '</button>' +
+      '</div></div>';
+  }
+
+  var PAST = { dispatch: 'dispatched', retry: 'retried', issue: 'issued' };
+  /* Spelled out, because no suffix rule survives dispatch / retry / issue. */
+  var GERUND = { dispatch: 'Dispatching', retry: 'Retrying', issue: 'Issuing' };
+
+  function resultsFor(picked, act) {
+    var out = [];
+    picked.forEach(function (r, i) {
+      var el = act.eligible(r);
+      if (!el.ok) { out.push({ row: r, kind: 'skipped', reason: el.reason[1] }); return; }
+      if (i === 2) { out.push({ row: r, kind: 'failed', reason: 'Provider rejected the request (ref ' + hex(i + 3, 4) + ')' }); return; }
+      out.push({ row: r, kind: 'ok', reason: null });
+    });
+    return out;
+  }
+
+  /* ── Live frame ────────────────────────────────────────────────────── */
+  var live = { key: 'orders', selected: {}, page: 1, readOnly: false, open: null, phase: null, done: 0, results: null };
+
+  function eligibleFor(ds, actionId) {
+    var act = ds.actions.filter(function (a) { return a.id === actionId; })[0] || ds.actions[0];
+    return act;
+  }
+
+  function pickedRows(ds) {
+    return ds.rows.filter(function (r) { return live.selected[r.id]; });
+  }
+
+  function actionCounts(ds) {
+    var picked = pickedRows(ds);
+    return ds.actions.map(function (a) {
+      var n = picked.filter(function (r) { return a.eligible(r).ok; }).length;
+      return { id: a.id, label: a.verb + ' ' + n, tone: a.id === 'issue' ? 'secondary' : '', disabled: n === 0 };
+    });
+  }
+
+  function renderLive() {
+    var ds = DATASETS[live.key];
+    var primary = ds.actions[0];
+    var available = ds.rows.filter(function (r) { return !ds.rowBlock(r); }).length;
+    var count = Object.keys(live.selected).length;
+
+    /* A button counts what IT can do, not what is selected. With two actions
+       over one selection the two numbers differ — Retry 5 / Issue 8 out of the
+       same 13 — and a shared count would misstate both. */
+    var acts = actionCounts(ds);
+
+    var html = table(ds, {
+      selected: live.selected,
+      readOnly: live.readOnly,
+      headState: count && count === available ? 'all' : 'none'
+    }) +
+    bar({ count: count, available: available, noun: ds.noun, hint: ds.hint, actions: acts, readOnly: live.readOnly }) +
+    pagination(ds, live.page);
+
+    if (live.open) {
+      var act = eligibleFor(ds, live.open);
+      html += '<div style="margin-top:16px">' + dialog({
+        ds: ds, action: act, picked: pickedRows(ds), phase: live.phase,
+        pastTense: PAST[act.id], done: live.done, results: live.results,
+        current: (pickedRows(ds).filter(function (r) { return act.eligible(r).ok; })[live.done] || {}).id,
+        cap: 0
+      }) + '</div>';
+    }
+
+    var host = document.getElementById('live');
+    host.innerHTML = html;
+
+    var head = host.querySelector('input[data-role="head"]');
+    if (head) head.indeterminate = count > 0 && count < available;
+  }
+
+  /* A row toggle repaints the bar and that row only. Re-rendering the whole
+     table would throw away the checkbox that was just activated, so a
+     keyboard user would lose focus on every space press. */
+  function refreshSelection() {
+    var ds = DATASETS[live.key];
+    var host = document.getElementById('live');
+    var available = ds.rows.filter(function (r) { return !ds.rowBlock(r); }).length;
+    var count = Object.keys(live.selected).length;
+
+    host.querySelectorAll('input[data-id]').forEach(function (b) {
+      b.closest('tr').classList.toggle('is-selected', !!live.selected[b.dataset.id]);
+    });
+
+    var acts = actionCounts(ds);
+    var oldBar = host.querySelector('.bulk-action-bar');
+    if (oldBar) {
+      var tmp = document.createElement('div');
+      tmp.innerHTML = bar({ count: count, available: available, noun: ds.noun, hint: ds.hint,
+                            actions: acts, readOnly: live.readOnly });
+      oldBar.replaceWith(tmp.firstElementChild);
+    }
+    var head = host.querySelector('input[data-role="head"]');
+    if (head) {
+      head.checked = count > 0 && count === available;
+      head.indeterminate = count > 0 && count < available;
+    }
+    if (live.open) renderLive();
+  }
+
+  document.getElementById('live').addEventListener('change', function (e) {
+    var el = e.target;
+    if (el.dataset.id) {
+      if (el.checked) live.selected[el.dataset.id] = true; else delete live.selected[el.dataset.id];
+      refreshSelection();
+    } else if (el.dataset.role === 'head') {
+      var ds = DATASETS[live.key];
+      live.selected = {};
+      if (el.checked) {
+        ds.rows.forEach(function (r) { if (!ds.rowBlock(r)) live.selected[r.id] = true; });
+      }
+      renderLive();
+    }
+  });
+
+  document.getElementById('live').addEventListener('click', function (e) {
+    var btn = e.target.closest('[data-act]');
+    if (!btn) return;
+    var act = btn.dataset.act;
+    var ds = DATASETS[live.key];
+    if (act === 'clear') { live.selected = {}; live.open = null; renderLive(); }
+    else if (act === 'cancel' || act === 'close') { live.open = null; live.phase = null; live.results = null; renderLive(); }
+    else if (act === 'next' || act === 'prev') {
+      live.page = act === 'next' ? live.page + 1 : Math.max(1, live.page - 1);
+      live.selected = {}; live.open = null; renderLive();
+    }
+    else if (act === 'run') {
+      var action = eligibleFor(ds, live.open);
+      var ready = pickedRows(ds).filter(function (r) { return action.eligible(r).ok; });
+      live.phase = 'progress'; live.done = 0; renderLive();
+      var tick = setInterval(function () {
+        live.done++;
+        if (live.done >= ready.length) {
+          clearInterval(tick);
+          live.phase = 'result';
+          live.results = resultsFor(pickedRows(ds), action);
+        }
+        renderLive();
+      }, 140);
+    }
+    else { live.open = act; live.phase = 'compose'; renderLive(); }
+  });
+
+  document.getElementById('ds-orders').addEventListener('click', function () { switchDs('orders'); });
+  document.getElementById('ds-invoices').addEventListener('click', function () { switchDs('invoices'); });
+  function switchDs(key) {
+    live.key = key; live.selected = {}; live.open = null; live.phase = null; live.page = 1;
+    document.getElementById('ds-orders').setAttribute('aria-pressed', String(key === 'orders'));
+    document.getElementById('ds-invoices').setAttribute('aria-pressed', String(key === 'invoices'));
+    renderLive();
+  }
+  document.getElementById('btn-readonly').addEventListener('click', function () {
+    live.readOnly = !live.readOnly;
+    this.setAttribute('aria-pressed', String(live.readOnly));
+    renderLive();
+  });
+  document.getElementById('btn-nextpage').addEventListener('click', function () {
+    live.page++; live.selected = {}; live.open = null; renderLive();
+  });
+  document.getElementById('btn-reset').addEventListener('click', function () {
+    live = { key: live.key, selected: {}, page: 1, readOnly: false, open: null, phase: null, done: 0, results: null };
+    document.getElementById('btn-readonly').setAttribute('aria-pressed', 'false');
+    renderLive();
+  });
+
+  renderLive();
+
+  /* ── Pinned frames ─────────────────────────────────────────────────── */
+  var O = DATASETS.orders, I = DATASETS.invoices;
+  var oAct = O.actions[0], retry = I.actions[0], issue = I.actions[1];
+  var oAvail = O.rows.filter(function (r) { return oAct.eligible(r).ok; }).length;
+
+  function card(label, html) {
+    return '<div><div class="card-label">' + label + '</div>' + html + '</div>';
+  }
+
+  // 03 — selection
+  document.getElementById('f-selection').innerHTML =
+    card('Nothing selected — the bar is invisible but still in the DOM',
+      bar({ count: 0, available: oAvail, noun: 'order', hint: O.hint, actions: [{ label: 'Dispatch 0', disabled: true }] })) +
+    card('Some of the page selected',
+      bar({ count: 11, available: oAvail, noun: 'order', hint: O.hint, actions: [{ label: 'Dispatch 11' }] })) +
+    card('Every eligible row on the page selected — 17, not 20',
+      bar({ count: oAvail, available: oAvail, noun: 'order', hint: O.hint, actions: [{ label: 'Dispatch ' + oAvail }] }));
+
+  // 04 — not eligible
+  document.getElementById('f-ineligible').innerHTML =
+    card('Three rows cannot join the batch, and each says why',
+      table(O, { selected: {}, limit: 8, headState: 'none' }));
+
+  // 05 — limit
+  document.getElementById('f-limit').innerHTML =
+    card('Today: the cap is capacity the bar reports, and 20 rows can never reach it',
+      bar({ count: 17, available: oAvail, noun: 'order', hint: 'Max 25 per source', actions: [{ label: 'Dispatch 17' }] })) +
+    card('If a page ever exceeds the cap: the review states the split before it runs',
+      '<div class="dialog"><h3 class="dialog__title">Dispatch 34 orders</h3>' +
+      '<p class="dialog__desc">Generate labels for the selected orders — dispatched in per-source batches.</p>' +
+      '<p class="bulk-dispatch__batches"><b>34 selected</b> · 25 will run now · 9 left for a second batch — the cap is per source connection</p>' +
+      '<p class="bulk-dispatch__summary"><strong>34 ready</strong></p>' +
+      '<p class="bulk-dispatch__note">Allegro 25 · Erli 9 — run the second batch when this one settles.</p>' +
+      '<div class="dialog__actions"><button class="button button--sm button--secondary">Cancel</button>' +
+      '<button class="button button--sm">Dispatch 25 orders</button></div></div>');
+
+  // 06 — review, orders
+  document.getElementById('f-review-orders').innerHTML = dialog({
+    ds: O, action: oAct, picked: O.rows.slice(0, 8), phase: 'compose', pastTense: 'dispatched', cap: 0
+  });
+
+  // 07 — review, invoices
+  document.getElementById('f-review-invoices').innerHTML =
+    card('Issue — the same surface, no configuration',
+      dialog({ ds: I, action: issue, picked: I.rows.slice(0, 7), phase: 'compose', pastTense: 'issued', cap: 0 })) +
+    card('Retry — one row is deliberately untouchable',
+      dialog({ ds: I, action: retry, picked: [I.rows[0], I.rows[3], I.rows[6], I.rows[9]], phase: 'compose', pastTense: 'retried', cap: 0 }));
+
+  // 08 — nothing eligible
+  document.getElementById('f-none').innerHTML = dialog({
+    ds: O, action: oAct, picked: [O.rows[2], O.rows[7], O.rows[13]], phase: 'compose', pastTense: 'dispatched', cap: 0
+  });
+
+  // 09 — in progress
+  document.getElementById('f-progress').innerHTML = dialog({
+    ds: O, action: oAct, picked: O.rows.slice(0, 8), phase: 'progress', pastTense: 'dispatched', done: 3,
+    current: O.rows[3].id, cap: 0
+  });
+
+  // 10 — results
+  var okPick = O.rows.slice(0, 5).filter(function (r) { return oAct.eligible(r).ok; });
+  document.getElementById('f-results').innerHTML =
+    card('Everything succeeded — nothing to read row by row',
+      dialog({ ds: O, action: oAct, picked: okPick, phase: 'result', pastTense: 'dispatched',
+               results: okPick.map(function (r) { return { row: r, kind: 'ok' }; }) })) +
+    card('Partial success — the rows that need work, and why',
+      dialog({ ds: I, action: issue, picked: I.rows.slice(0, 7), phase: 'result', pastTense: 'issued',
+               results: resultsFor(I.rows.slice(0, 7), issue) })) +
+    card('Nothing got through',
+      dialog({ ds: I, action: retry, picked: [I.rows[2], I.rows[6], I.rows[7]], phase: 'result', pastTense: 'retried',
+               results: [I.rows[2], I.rows[6], I.rows[7]].map(function (r) {
+                 var el = retry.eligible(r);
+                 return { row: r, kind: 'skipped', reason: el.ok ? '' : el.reason[1] };
+               }) }));
+
+  // 11 — read-only
+  document.getElementById('f-readonly').innerHTML =
+    bar({ count: 11, available: oAvail, noun: 'order', hint: 'Counting is fine — this workspace cannot write.',
+          actions: [{ label: 'Dispatch 11' }], readOnly: true }) +
+    '<div style="margin-top:16px"><div class="card-label">What hovering the locked button reveals</div>' +
+    '<span class="tooltip__content">Read-only in demo mode.</span></div>';
+
+  // 12 — page change
+  document.getElementById('f-page').innerHTML =
+    card('Before — 11 of this page selected',
+      bar({ count: 11, available: oAvail, noun: 'order', hint: O.hint, actions: [{ label: 'Dispatch 11' }] })) +
+    card('After Next — the bar is empty and the list says what happened',
+      '<div class="alert alert--info"><div class="alert__body"><strong class="alert__title">Selection cleared</strong>' +
+      'A bulk action runs on one page at a time, so moving to page 2 cleared the 11 orders you had selected.</div></div>' +
+      bar({ count: 0, available: oAvail, noun: 'order', hint: O.hint, actions: [{ label: 'Dispatch 0', disabled: true }] }));
+})();
+</script>
+</body>
+</html>
