@@ -36,8 +36,9 @@ TOKEN=$(token)
 ATTEMPTS_BEFORE=$(pg "SELECT COALESCE(SUM(attempts),0) FROM sync_jobs WHERE \"connectionId\"='$CONNECTION_ID';")
 JOBS_BEFORE=$(pg "SELECT COUNT(*) FROM sync_jobs WHERE \"connectionId\"='$CONNECTION_ID';")
 
-START_TS=$(date +%s)   # epoch: a bare timestamp is read as the DAEMON local time, not UTC
-START_EPOCH=$(date +%s)
+# One value, two former names. Epoch, because a bare timestamp is read as the
+# DAEMON local time, not UTC.
+START_TS=$(date +%s)
 
 curl -s -X POST "$API/v1/sync/jobs" \
   -H "authorization: Bearer $TOKEN" -H 'content-type: application/json' \
@@ -54,7 +55,7 @@ while [ "$quiet" -lt "$IDLE_TICKS" ]; do
 done
 
 END_EPOCH=$(date +%s)
-ELAPSED=$((END_EPOCH - START_EPOCH - IDLE_TICKS*POLL_SECS))
+ELAPSED=$((END_EPOCH - START_TS - IDLE_TICKS*POLL_SECS))
 
 ATTEMPTS_AFTER=$(pg "SELECT COALESCE(SUM(attempts),0) FROM sync_jobs WHERE \"connectionId\"='$CONNECTION_ID';")
 JOBS_AFTER=$(pg "SELECT COUNT(*) FROM sync_jobs WHERE \"connectionId\"='$CONNECTION_ID';")
@@ -63,9 +64,9 @@ docker logs --since "$START_TS" "$PS_CONTAINER" > "$OUT/$LABEL.access.log" 2>&1
 
 {
   echo "scenario=$JOB_TYPE label=$LABEL"
-  echo "elapsed_seconds=$ELAPSED"
+  echo "elapsed_seconds=$ELAPSED   # +/- one POLL_SECS: the drain loop sleeps before its first check"
   echo "jobs_created=$((JOBS_AFTER - JOBS_BEFORE))"
   echo "attempts_delta=$((ATTEMPTS_AFTER - ATTEMPTS_BEFORE))"
   echo
-  python3 ./analyze-log.py < "$OUT/$LABEL.access.log"
+  python3 "$(dirname "$0")/analyze-log.py" < "$OUT/$LABEL.access.log"
 } | tee "$OUT/$LABEL.summary.txt"

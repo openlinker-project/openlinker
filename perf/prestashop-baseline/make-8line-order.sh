@@ -14,6 +14,10 @@ set -euo pipefail
 
 PG="${PG_CONTAINER:-ol-demo-fresh-postgres}"
 SRC_ORDER="${SRC_ORDER:-ol_order_a147a1f2af16402f86115640a11f4c73}"
+# The PrestaShop connection whose variant mappings the lines are picked from.
+# Same default, and same caveat, as every other script here: it is a uuid from
+# one machine and must be set on any other stack.
+CONN="${CONNECTION_ID:-44bb1f3f-17ae-4038-ab48-413ce54a71c7}"
 NEW_ID="ol_order_$(openssl rand -hex 16)"
 
 docker exec -i "$PG" sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tA' <<SQL
@@ -23,7 +27,7 @@ WITH picked AS (
   FROM product_variants v
   JOIN identifier_mappings m ON m."internalId" = v.id
     AND m."entityType" = 'ProductVariant'
-    AND m."connectionId" = '44bb1f3f-17ae-4038-ab48-413ce54a71c7'
+    AND m."connectionId" = '$CONN'
   JOIN products p ON p.id = v."productId"
   WHERE p.sku LIKE 'PERFBASE-%' AND v."isStale" = false
   ORDER BY v.id LIMIT 8

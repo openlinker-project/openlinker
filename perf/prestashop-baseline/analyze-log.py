@@ -14,9 +14,19 @@ LINE = re.compile(r'^(\S+) \S+ \S+ \[([^\]]+)\] "(\w+) ([^" ]+)[^"]*" (\d{3})')
 RES = re.compile(r'^/api/([a-z_]+)(?:/(\d+))?')
 
 rows = []
+total_lines = 0
+unparsed = 0
 for raw in sys.stdin:
-    m = LINE.match(raw.strip())
+    raw = raw.strip()
+    if not raw:
+        continue
+    total_lines += 1
+    m = LINE.match(raw)
     if not m:
+        # A truncated capture or a changed log format lands here. Counted and
+        # printed, because "no /api/ requests" and "the format moved under us"
+        # must not look the same.
+        unparsed += 1
         continue
     ip, ts, verb, path, status = m.groups()
     if ip.startswith('127.0.0.1'):
@@ -24,6 +34,12 @@ for raw in sys.stdin:
     if not path.startswith('/api/'):
         continue
     rows.append((ts, verb, path, status))
+
+print(f'log_lines={total_lines} unparsed_lines={unparsed}')
+if unparsed:
+    pct_unparsed = 100 * unparsed / total_lines if total_lines else 0
+    print(f'WARNING: {unparsed} of {total_lines} lines ({pct_unparsed:.1f}%) did '
+          'not match the combined-log pattern; the counts below are incomplete')
 
 if not rows:
     print('no /api/ requests in window')

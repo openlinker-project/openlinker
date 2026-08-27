@@ -30,13 +30,30 @@ token() {
   | python3 -c 'import sys,json;d=json.load(sys.stdin);print(d.get("access_token") or d.get("accessToken") or "")'
 }
 
+# Purging is destructive: it deletes real pending work if CONNECTION_ID points
+# at a live connection. Print what is about to go and require an explicit
+# opt-in (PURGE_QUEUE=1).
+purge_queue() {
+  local n
+  n=$(pg "SELECT COUNT(*) FROM sync_jobs WHERE \"connectionId\"='$CONN' AND status IN ('queued','running','dead');")
+  echo "queue purge: $n queued/running/dead sync_jobs rows for connection $CONN"
+  if [ "${PURGE_QUEUE:-0}" != "1" ]; then
+    echo "FATAL: refusing to delete them. A measured window needs a clean queue," >&2
+    echo "       so re-run with PURGE_QUEUE=1 once you are sure this connection" >&2
+    echo "       carries no real pending work." >&2
+    exit 1
+  fi
+  pg "DELETE FROM sync_jobs WHERE \"connectionId\"='$CONN' AND status IN ('queued','running','dead');" >/dev/null
+  echo "queue purge: deleted $n rows"
+}
+
 for i in $(seq 1 "$RUNS"); do
   LABEL="${LABEL_PREFIX:-}a1a-run$i"
   echo "=================== $LABEL ==================="
   date +%T
 
   # Clean slate: no leftover children, and a cycle that starts at offset 0.
-  pg "DELETE FROM sync_jobs WHERE \"connectionId\"='$CONN' AND status IN ('queued','running','dead');" >/dev/null
+  purge_queue
   pg "DELETE FROM connection_cursors WHERE \"connectionId\"='$CONN' AND \"cursorKey\"='$CURSOR';" >/dev/null
 
   JOBS_BEFORE=$(pg "SELECT COUNT(*) FROM sync_jobs WHERE \"connectionId\"='$CONN';")
@@ -74,7 +91,7 @@ for i in $(seq 1 "$RUNS"); do
     echo "product_children=$CHILDREN"
     echo "contaminating_jobs=$OTHER"
     echo
-    python3 ./analyze-log.py < "$OUT/$LABEL.access.log"
+    python3 "$(dirname "$0")/analyze-log.py" < "$OUT/$LABEL.access.log"
   } | tee "$OUT/$LABEL.summary.txt"
   date +%T
 done
