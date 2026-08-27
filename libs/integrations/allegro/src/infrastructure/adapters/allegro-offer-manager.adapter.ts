@@ -46,6 +46,10 @@ import type {
   OfferFeedOutput,
   UpdateOfferQuantityCommand,
   UpdateOfferFieldsCommand,
+  OfferQuantityBatchUpdater,
+  UpdateOfferQuantitiesBatchCommand,
+  UpdateOfferQuantitiesBatchResult,
+  UpdateOfferQuantitiesBatchFailure,
   CreateOfferCommand,
   OfferCondition,
   OfferParameter,
@@ -288,6 +292,7 @@ export interface QuantityPollConfig {
 export class AllegroOfferManagerAdapter
   implements
     OfferManagerPort,
+    OfferQuantityBatchUpdater,
     OfferLister,
     OfferEventReader,
     OfferFieldUpdater,
@@ -589,6 +594,132 @@ export class AllegroOfferManagerAdapter
         error
       );
       throw error;
+    }
+  }
+
+  /**
+   * Batched counterpart of `updateOfferQuantity` (#2622). Allegro's
+   * quantity-change-commands endpoint applies ONE `modification` value to
+   * every offer named in `offerCriteria` — there is no per-offer distinct
+   * quantity in a single command — so items are grouped by their target
+   * quantity and one command is issued per group, rather than one per item.
+   * A batch that happens to share the same quantity across all offers costs
+   * exactly one request; a batch with N distinct quantities costs N requests
+   * (still far below Allegro's ~60/min single-offer throttle for anything
+   * larger than a handful of distinct values).
+   *
+   * Never throws: a whole-group failure (submit or poll) is reported as a
+   * per-item failure for every offer in that group, so one bad group cannot
+   * sink offers in a sibling group, and the caller never falls back to the
+   * N-request single-item path unnecessarily.
+   */
+  async updateOfferQuantitiesBatch(
+    cmd: UpdateOfferQuantitiesBatchCommand
+  ): Promise<UpdateOfferQuantitiesBatchResult> {
+    const succeeded: string[] = [];
+    const failed: UpdateOfferQuantitiesBatchFailure[] = [];
+
+    const groups = new Map<number, UpdateOfferQuantityCommand[]>();
+    for (const item of cmd.items) {
+      if (!item.idempotencyKey) {
+        failed.push({
+          offerId: item.offerId,
+          errorCode: 'missing-idempotency-key',
+          message: 'idempotencyKey is required for Allegro offer quantity updates',
+        });
+        continue;
+      }
+      const group = groups.get(item.quantity);
+      if (group) {
+        group.push(item);
+      } else {
+        groups.set(item.quantity, [item]);
+      }
+    }
+
+    await Promise.all(
+      Array.from(groups.values()).map((items) => this.submitQuantityGroup(items, succeeded, failed))
+    );
+
+    return { succeeded, failed };
+  }
+
+  /**
+   * Submits one quantity-change command covering every item in `items` (all
+   * sharing the same target quantity) and maps Allegro's per-offer task
+   * outcomes onto `succeeded`/`failed`. The commandId is derived from the
+   * sorted set of item idempotency keys, so a retried batch with the same
+   * membership dedupes against the same Allegro command.
+   */
+  private async submitQuantityGroup(
+    items: UpdateOfferQuantityCommand[],
+    succeeded: string[],
+    failed: UpdateOfferQuantitiesBatchFailure[]
+  ): Promise<void> {
+    const quantity = items[0].quantity;
+    const groupKey = items
+      .map((item) => item.idempotencyKey)
+      .sort()
+      .join(',');
+    const commandId = this.generateCommandIdFromIdempotencyKey(groupKey);
+
+    try {
+      const commandBody: Record<string, unknown> = {
+        modification: {
+          changeType: 'FIXED',
+          value: quantity,
+        },
+        offerCriteria: [
+          {
+            offers: items.map((item) => ({ id: item.offerId })),
+            type: 'CONTAINS_OFFERS',
+          },
+        ],
+      };
+
+      const response = await this.httpClient.put<AllegroOfferQuantityChangeCommandResponse>(
+        `/sale/offer-quantity-change-commands/${commandId}`,
+        commandBody
+      );
+
+      this.logger.debug(
+        `Allegro batch offer quantity command submitted: commandId=${response.data.id}, offers=${items.length} (connection: ${this.connectionId})`
+      );
+
+      const result = await this.pollQuantityCommandStatus(response.data.id);
+      const tasksByOfferId = new Map((result?.tasks ?? []).map((task) => [task.offerId, task]));
+
+      for (const item of items) {
+        const task = tasksByOfferId.get(item.offerId);
+        if (task?.status === 'SUCCESS') {
+          succeeded.push(item.offerId);
+          continue;
+        }
+        if (task) {
+          const errorCode = task.errors?.[0]?.code ?? 'unknown';
+          const message =
+            task.errors?.map((e) => `${e.code}: ${e.message}`).join('; ') ?? task.message;
+          failed.push({ offerId: item.offerId, errorCode, message });
+          continue;
+        }
+        failed.push({
+          offerId: item.offerId,
+          errorCode: 'poll-timeout',
+          message: `Allegro quantity command ${commandId} did not report a terminal status for this offer`,
+        });
+      }
+    } catch (error) {
+      this.logger.error(
+        `Failed to submit Allegro batch offer quantity command (offers=${items.length}, connection: ${this.connectionId}): ${(error as Error).message}`,
+        error
+      );
+      for (const item of items) {
+        failed.push({
+          offerId: item.offerId,
+          errorCode: 'transport-error',
+          message: (error as Error).message,
+        });
+      }
     }
   }
 

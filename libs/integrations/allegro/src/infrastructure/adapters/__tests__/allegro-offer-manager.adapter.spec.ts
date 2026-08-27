@@ -27,6 +27,7 @@ import {
   isCategoryPathReader,
   isEanCategoryMatcher,
   isEanCategoryMatcherStreaming,
+  isOfferQuantityBatchUpdater,
   isOfferSmartClassificationReader,
   isOfferStatusReader,
   isSafetyAttachmentUploader,
@@ -435,6 +436,208 @@ describe('AllegroOfferManagerAdapter', () => {
       });
 
       expect(commandRepository.updateStatus).toHaveBeenCalledWith('cmd-1', 'succeeded');
+    });
+  });
+
+  describe('updateOfferQuantitiesBatch', () => {
+    // Fast, deterministic polling so these tests don't pay the production
+    // 2s/30s backoff in real wall-clock time.
+    const fastAdapter = () =>
+      new AllegroOfferManagerAdapter(
+        connectionId,
+        httpClient,
+        uploadHttpClient,
+        identifierMapping,
+        connection,
+        undefined,
+        { initialDelayMs: 1, maxDelayMs: 1, maxAttempts: 2, backoffMultiplier: 1 }
+      );
+
+    it('should be recognised by the OfferQuantityBatchUpdater guard', () => {
+      expect(isOfferQuantityBatchUpdater(adapter)).toBe(true);
+    });
+
+    it('should issue a single command for items sharing the same quantity', async () => {
+      const batchAdapter = fastAdapter();
+
+      httpClient.put.mockResolvedValueOnce({
+        data: { id: 'cmd-batch-1', status: 'ACCEPTED' } as AllegroOfferQuantityChangeCommandResponse,
+        status: 200,
+        headers: {},
+      });
+      httpClient.get.mockResolvedValueOnce({
+        data: {
+          id: 'cmd-batch-1',
+          taskCount: 2,
+          completedTaskCount: 2,
+          tasks: [
+            { offerId: 'offer-1', status: 'SUCCESS' },
+            { offerId: 'offer-2', status: 'SUCCESS' },
+          ],
+        },
+        status: 200,
+        headers: {},
+      });
+
+      const result = await batchAdapter.updateOfferQuantitiesBatch({
+        items: [
+          { offerId: 'offer-1', quantity: 10, idempotencyKey: 'key-1' },
+          { offerId: 'offer-2', quantity: 10, idempotencyKey: 'key-2' },
+        ],
+      });
+
+      expect(httpClient.put).toHaveBeenCalledTimes(1);
+      expect(httpClient.put).toHaveBeenCalledWith(
+        expect.stringMatching(/^\/sale\/offer-quantity-change-commands\/[a-f0-9-]+$/),
+        expect.objectContaining({
+          modification: { changeType: 'FIXED', value: 10 },
+          offerCriteria: [
+            {
+              offers: [{ id: 'offer-1' }, { id: 'offer-2' }],
+              type: 'CONTAINS_OFFERS',
+            },
+          ],
+        })
+      );
+      expect(result.succeeded.sort()).toEqual(['offer-1', 'offer-2']);
+      expect(result.failed).toEqual([]);
+    });
+
+    it('should issue one command per distinct quantity group', async () => {
+      const batchAdapter = fastAdapter();
+
+      httpClient.put.mockResolvedValue({
+        data: { id: 'cmd-x', status: 'ACCEPTED' } as AllegroOfferQuantityChangeCommandResponse,
+        status: 200,
+        headers: {},
+      });
+      httpClient.get.mockResolvedValue({
+        data: {
+          id: 'cmd-x',
+          taskCount: 1,
+          completedTaskCount: 1,
+          tasks: [
+            { offerId: 'offer-1', status: 'SUCCESS' },
+            { offerId: 'offer-2', status: 'SUCCESS' },
+          ],
+        },
+        status: 200,
+        headers: {},
+      });
+
+      await batchAdapter.updateOfferQuantitiesBatch({
+        items: [
+          { offerId: 'offer-1', quantity: 10, idempotencyKey: 'key-1' },
+          { offerId: 'offer-2', quantity: 5, idempotencyKey: 'key-2' },
+        ],
+      });
+
+      expect(httpClient.put).toHaveBeenCalledTimes(2);
+    });
+
+    it('should report a per-offer failure without failing the whole batch', async () => {
+      const batchAdapter = fastAdapter();
+
+      httpClient.put.mockResolvedValueOnce({
+        data: { id: 'cmd-mixed', status: 'ACCEPTED' } as AllegroOfferQuantityChangeCommandResponse,
+        status: 200,
+        headers: {},
+      });
+      httpClient.get.mockResolvedValueOnce({
+        data: {
+          id: 'cmd-mixed',
+          taskCount: 2,
+          completedTaskCount: 2,
+          tasks: [
+            { offerId: 'offer-1', status: 'SUCCESS' },
+            {
+              offerId: 'offer-2',
+              status: 'FAIL',
+              errors: [{ code: 'OFFER_INACTIVE', message: 'Offer is inactive' }],
+            },
+          ],
+        },
+        status: 200,
+        headers: {},
+      });
+
+      const result = await batchAdapter.updateOfferQuantitiesBatch({
+        items: [
+          { offerId: 'offer-1', quantity: 10, idempotencyKey: 'key-1' },
+          { offerId: 'offer-2', quantity: 10, idempotencyKey: 'key-2' },
+        ],
+      });
+
+      expect(result.succeeded).toEqual(['offer-1']);
+      expect(result.failed).toEqual([
+        {
+          offerId: 'offer-2',
+          errorCode: 'OFFER_INACTIVE',
+          message: 'OFFER_INACTIVE: Offer is inactive',
+        },
+      ]);
+    });
+
+    it('should fail an item without an idempotency key without calling Allegro', async () => {
+      const batchAdapter = fastAdapter();
+
+      httpClient.put.mockResolvedValueOnce({
+        data: { id: 'cmd-solo', status: 'ACCEPTED' } as AllegroOfferQuantityChangeCommandResponse,
+        status: 200,
+        headers: {},
+      });
+      httpClient.get.mockResolvedValueOnce({
+        data: {
+          id: 'cmd-solo',
+          taskCount: 1,
+          completedTaskCount: 1,
+          tasks: [{ offerId: 'offer-1', status: 'SUCCESS' }],
+        },
+        status: 200,
+        headers: {},
+      });
+
+      const result = await batchAdapter.updateOfferQuantitiesBatch({
+        items: [
+          { offerId: 'offer-1', quantity: 10, idempotencyKey: 'key-1' },
+          { offerId: 'offer-2', quantity: 10 },
+        ],
+      });
+
+      expect(httpClient.put).toHaveBeenCalledTimes(1);
+      expect(httpClient.put).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          offerCriteria: [{ offers: [{ id: 'offer-1' }], type: 'CONTAINS_OFFERS' }],
+        })
+      );
+      expect(result.succeeded).toEqual(['offer-1']);
+      expect(result.failed).toEqual([
+        {
+          offerId: 'offer-2',
+          errorCode: 'missing-idempotency-key',
+          message: 'idempotencyKey is required for Allegro offer quantity updates',
+        },
+      ]);
+    });
+
+    it('should report every item in a group as failed when the command submit rejects, without throwing', async () => {
+      const batchAdapter = fastAdapter();
+
+      httpClient.put.mockRejectedValueOnce(new Error('network timeout'));
+
+      const result = await batchAdapter.updateOfferQuantitiesBatch({
+        items: [
+          { offerId: 'offer-1', quantity: 10, idempotencyKey: 'key-1' },
+          { offerId: 'offer-2', quantity: 10, idempotencyKey: 'key-2' },
+        ],
+      });
+
+      expect(result.succeeded).toEqual([]);
+      expect(result.failed.sort((a, b) => a.offerId.localeCompare(b.offerId))).toEqual([
+        { offerId: 'offer-1', errorCode: 'transport-error', message: 'network timeout' },
+        { offerId: 'offer-2', errorCode: 'transport-error', message: 'network timeout' },
+      ]);
     });
   });
 
