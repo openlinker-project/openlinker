@@ -10,6 +10,7 @@ import type {
   OrderDateConversionResult,
   SalesAndChannelAnalytics,
 } from '@openlinker/core/orders';
+import type { IAnalyticsDisplaySettingsService } from '@openlinker/core/analytics';
 import { SalesAnalyticsController } from './sales-analytics.controller';
 
 describe('SalesAnalyticsController', () => {
@@ -71,13 +72,27 @@ describe('SalesAnalyticsController', () => {
       convertAtOrderDate: jest.fn(),
     });
 
+  const createDisplaySettings = (
+    includeBackfilledTaxRatesInNetSales = false
+  ): jest.Mocked<Pick<IAnalyticsDisplaySettingsService, 'getSettings'>> => ({
+    getSettings: jest.fn().mockResolvedValue({
+      displayCurrency: null,
+      rateBasis: 'current',
+      includeBackfilledTaxRatesInNetSales,
+      updatedAt: null,
+      updatedByUserId: null,
+    }),
+  });
+
   const createController = (
     orderRecordService: jest.Mocked<Pick<IOrderRecordService, 'getSalesAndChannelAnalytics'>>,
-    displayCurrencyConversionService: jest.Mocked<IDisplayCurrencyConversionService>
+    displayCurrencyConversionService: jest.Mocked<IDisplayCurrencyConversionService>,
+    displaySettings = createDisplaySettings()
   ): SalesAnalyticsController =>
     new SalesAnalyticsController(
       orderRecordService as unknown as IOrderRecordService,
-      displayCurrencyConversionService
+      displayCurrencyConversionService,
+      displaySettings as unknown as IAnalyticsDisplaySettingsService
     );
 
   it('maps the query params to filters and projects the domain result into the response DTO', async () => {

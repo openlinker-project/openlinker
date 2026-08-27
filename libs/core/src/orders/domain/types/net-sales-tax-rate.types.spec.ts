@@ -1,6 +1,9 @@
 import {
   deriveNetLineAmount,
+  netSalesEraEligibleSql,
   netSalesLineNetAmountSql,
+  netSalesLineNetEligibleConditionSql,
+  netSalesOrderNetEligibleSql,
   netSalesRateFractionSql,
   resolveNetSalesTaxRate,
 } from './net-sales-tax-rate.types';
@@ -84,5 +87,80 @@ describe('netSalesLineNetAmountSql', () => {
     );
     expect(sql).toContain("rec.\"taxTreatment\" = 'exclusive'");
     expect(sql).toContain('li."unitPrice" * li."quantity"');
+  });
+});
+
+describe('netSalesEraEligibleSql (#2469)', () => {
+  it("keeps ADR-063's blanket pre-rollout exclusion when the operator has not opted in", () => {
+    expect(netSalesEraEligibleSql(false)).toBe(`rec."taxRateEra" IS DISTINCT FROM 'pre-rollout'`);
+  });
+
+  it('makes the era clause vacuous when the operator HAS opted in', () => {
+    // Vacuous, not "admit everything": the rate-resolution requirement lives in
+    // the sibling clauses of both predicates below, which is what keeps the
+    // opt-in equivalent to Phase 4's category-A definition.
+    expect(netSalesEraEligibleSql(true)).toBe('TRUE');
+  });
+});
+
+describe('netSalesOrderNetEligibleSql (#2469)', () => {
+  const build = (flag: boolean): string =>
+    netSalesOrderNetEligibleSql('rec."internalOrderId"', 'net_li', 'rec."taxTreatment"', flag);
+
+  it('excludes pre-rollout orders outright with the flag OFF', () => {
+    const sql = build(false);
+    expect(sql).toContain(`rec."taxRateEra" IS DISTINCT FROM 'pre-rollout'`);
+  });
+
+  it('drops the era test with the flag ON', () => {
+    const sql = build(true);
+    expect(sql).not.toContain('taxRateEra');
+    expect(sql).toContain('TRUE');
+  });
+
+  it('keeps the has-lines and every-line-resolves requirements in BOTH flag states', () => {
+    // This is the whole reason the flag can be a vacuous era clause rather than
+    // a second predicate: turning it ON must not admit an order whose rate is
+    // still unresolved.
+    for (const flag of [false, true]) {
+      const sql = build(flag);
+      expect(sql).toContain('EXISTS (');
+      expect(sql).toContain('NOT EXISTS (');
+      expect(sql).toContain(`rec."taxTreatment" = 'exclusive'`);
+      expect(sql).toContain('IS NULL');
+    }
+  });
+
+  it('differs between the two flag states ONLY in the era clause', () => {
+    const off = build(false).replace(`rec."taxRateEra" IS DISTINCT FROM 'pre-rollout'`, 'TRUE');
+    expect(off).toBe(build(true));
+  });
+});
+
+describe('netSalesLineNetEligibleConditionSql (#2469)', () => {
+  const build = (flag: boolean): string =>
+    netSalesLineNetEligibleConditionSql('li."taxRate"', 'rec."taxTreatment"', flag);
+
+  it('excludes pre-rollout lines outright with the flag OFF', () => {
+    expect(build(false)).toContain(`rec."taxRateEra" IS DISTINCT FROM 'pre-rollout'`);
+  });
+
+  it('drops the era test with the flag ON', () => {
+    const sql = build(true);
+    expect(sql).not.toContain('taxRateEra');
+    expect(sql).toContain('TRUE');
+  });
+
+  it("keeps the line's own rate-resolution requirement in BOTH flag states", () => {
+    for (const flag of [false, true]) {
+      const sql = build(flag);
+      expect(sql).toContain(`rec."taxTreatment" = 'exclusive'`);
+      expect(sql).toContain('IS NOT NULL');
+    }
+  });
+
+  it('differs between the two flag states ONLY in the era clause', () => {
+    const off = build(false).replace(`rec."taxRateEra" IS DISTINCT FROM 'pre-rollout'`, 'TRUE');
+    expect(off).toBe(build(true));
   });
 });

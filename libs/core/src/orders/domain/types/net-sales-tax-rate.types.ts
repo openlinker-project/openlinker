@@ -160,17 +160,61 @@ export function netSalesLineNetAmountSql(
 }
 
 /**
- * Order-level net-sales eligibility predicate: post-rollout, has line items,
- * and either net-priced (`exclusive`) or every line resolves a tax rate.
+ * The ERA half of net-sales eligibility, split out so the two eligibility
+ * predicates below cannot disagree about it (#2469, epic #2452 Phase 5).
+ *
+ * `false` (the default everywhere) keeps ADR-063's blanket exclusion: a
+ * `taxRateEra = 'pre-rollout'` order never enters a net figure, whatever its
+ * lines say.
+ *
+ * `true` is the operator's org-wide opt-in
+ * (`analytics_display_settings.include_backfilled_tax_rates_in_net_sales`,
+ * #2461, ADR-063's amendment for #2456) and it makes the era clause VACUOUS —
+ * it does NOT drop the requirement that the rate resolve. That requirement is
+ * already the sibling clauses of both predicates: an order still needs line
+ * items and either net pricing or a resolvable rate on every line, and a line
+ * still needs its own resolvable rate. So a pre-rollout order is admitted
+ * exactly when `TaxRateBackfillService` (or ingestion) has actually written a
+ * real rate for it — which IS Phase 4's category-A definition, reached through
+ * the same `netSalesRateFractionSql` resolution rule the detector's
+ * `resolveNetSalesTaxRate` uses, rather than a second copy of it.
+ *
+ * ONE HALF OF CATEGORY A IS DELIBERATELY NOT ADMITTED, and the difference
+ * matters. `TaxCoverageDetectionService` also counts an order as category A
+ * when a rate is merely RESOLVABLE from the live catalogue right now
+ * (`IProductsService.getEffectiveTaxRate`) but has not been written to
+ * `order_line_items.taxRate` yet. A live catalogue read has no SQL equivalent,
+ * and net-sales arithmetic needs a stored rate to compute with — there is
+ * nothing to multiply by. Turning the setting ON therefore does not by itself
+ * pull such an order into Net Sales; running the backfill does, which is
+ * exactly what `POST /analytics/coverage/tax/rerun-backfill` exists for.
+ *
+ * Never a bare `TRUE` at a call site: both predicates route through this
+ * function so the flag has one meaning and one place to change.
+ */
+export function netSalesEraEligibleSql(includeBackfilledPreRollout: boolean): string {
+  return includeBackfilledPreRollout ? 'TRUE' : `rec."taxRateEra" IS DISTINCT FROM 'pre-rollout'`;
+}
+
+/**
+ * Order-level net-sales eligibility predicate: era-eligible (see
+ * {@link netSalesEraEligibleSql}), has line items, and either net-priced
+ * (`exclusive`) or every line resolves a tax rate.
+ *
+ * `includeBackfilledPreRollout` is REQUIRED rather than defaulted: this
+ * predicate decides whether a range of orders appears in a revenue figure, and
+ * a caller that forgot to thread the operator's setting through would silently
+ * report the pre-#2469 number while the UI said the setting was on.
  */
 export function netSalesOrderNetEligibleSql(
   orderRecordIdColumnRef: string,
   lineItemTableAlias: string,
-  taxTreatmentColumnRef: string
+  taxTreatmentColumnRef: string,
+  includeBackfilledPreRollout: boolean
 ): string {
   const rateFraction = netSalesRateFractionSql(`${lineItemTableAlias}."taxRate"`);
   return `(
-      rec."taxRateEra" IS DISTINCT FROM 'pre-rollout'
+      ${netSalesEraEligibleSql(includeBackfilledPreRollout)}
       AND EXISTS (
         SELECT 1 FROM order_line_items ${lineItemTableAlias}
         WHERE ${lineItemTableAlias}."orderRecordId" = ${orderRecordIdColumnRef}
@@ -187,13 +231,23 @@ export function netSalesOrderNetEligibleSql(
 }
 
 /**
- * Line-level net-sales eligibility for stamped orders: post-rollout and
- * either net-priced or the line's own tax rate resolves.
+ * Line-level net-sales eligibility for stamped orders: era-eligible (see
+ * {@link netSalesEraEligibleSql}) and either net-priced or the line's own tax
+ * rate resolves.
+ *
+ * Note this is per LINE, so with the opt-in on, a pre-rollout order with one
+ * resolvable line and one unresolvable line contributes its resolvable line to
+ * the per-product net figures while the ORDER-level predicate above excludes
+ * the order entirely. That asymmetry predates this change — it is the same
+ * grain difference #1988's per-product read has always had against #1987's
+ * order-level aggregates — and the flag is threaded identically into both so
+ * it cannot introduce a third behaviour.
  */
 export function netSalesLineNetEligibleConditionSql(
   taxRateColumnRef: string,
-  taxTreatmentColumnRef: string
+  taxTreatmentColumnRef: string,
+  includeBackfilledPreRollout: boolean
 ): string {
   const rateFraction = netSalesRateFractionSql(taxRateColumnRef);
-  return `(rec."taxRateEra" IS DISTINCT FROM 'pre-rollout' AND (${taxTreatmentColumnRef} = 'exclusive' OR (${rateFraction}) IS NOT NULL))`;
+  return `(${netSalesEraEligibleSql(includeBackfilledPreRollout)} AND (${taxTreatmentColumnRef} = 'exclusive' OR (${rateFraction}) IS NOT NULL))`;
 }

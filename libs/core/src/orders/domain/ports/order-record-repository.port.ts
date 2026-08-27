@@ -196,10 +196,24 @@ export interface OrderRecordRepositoryPort {
    * the one native currency shared by every unconverted, non-cancelled order
    * this day/connection, or `null` when that set mixes currencies, contains
    * a row with no recorded native currency, or is empty — nothing to label.
+   *
+   * `includeBackfilledPreRollout` (#2469) is the operator's org-wide
+   * Net-Sales opt-in for backfilled pre-rollout tax rates
+   * (`analytics_display_settings.include_backfilled_tax_rates_in_net_sales`,
+   * #2461 / ADR-063's amendment for #2456). Threaded in as a plain parameter
+   * from the `apps/api` layer, exactly as `currentReportingCurrency` is:
+   * `orders` must not import `analytics` (that would create a needless
+   * `analytics <-> orders` cycle, since `analytics` already type-imports
+   * `CoverageResolutionStatus` from here), and reading it per request is what
+   * makes "the toggle changes the very next query" true with no cache to
+   * invalidate. Optional and defaulting to `false` so every pre-#2469 caller
+   * and test is byte-identical; see `netSalesEraEligibleSql` for what `true`
+   * does and, importantly, what it does NOT do.
    */
   getDailyOrderAggregates(
     filters: SalesAnalyticsFilters,
-    currentReportingCurrency: string
+    currentReportingCurrency: string,
+    includeBackfilledPreRollout?: boolean
   ): Promise<DailyOrderAggregateRow[]>;
 
   /**
@@ -244,10 +258,18 @@ export interface OrderRecordRepositoryPort {
    * page-of-one-category). Bounded in practice by the same
    * `[filters.from, filters.to)` window every sales-analytics read already
    * requires (10-100 orders/day persona scale, per #1985's ADR-039 note).
+   *
+   * `includeBackfilledPreRollout` (#2469) is the same operator opt-in
+   * {@link getDailyOrderAggregates} documents, and threading it here is a
+   * correctness requirement rather than consistency for its own sake: with the
+   * setting ON a backfilled pre-rollout order becomes net-ELIGIBLE, so it must
+   * leave this candidate population too — otherwise the Data Coverage panel
+   * keeps reporting as `tax-a` an order that is already inside Net Sales.
    */
   findNetExcludedOrderCandidates(
     filters: SalesAnalyticsFilters,
-    currentReportingCurrency: string
+    currentReportingCurrency: string,
+    includeBackfilledPreRollout?: boolean
   ): Promise<NetExcludedOrderCandidate[]>;
 
   /**
@@ -289,10 +311,13 @@ export interface OrderRecordRepositoryPort {
    * not pre-rollout history (ADR-063 § Consequences) and carry a resolvable
    * tax-rate fraction on every line. `null` on an empty ordered-set, same
    * convention as the gross median.
+   * `includeBackfilledPreRollout` carries the same meaning as in
+   * {@link getDailyOrderAggregates}.
    */
   getNetMedianOrderValue(
     filters: SalesAnalyticsFilters,
-    currentReportingCurrency: string
+    currentReportingCurrency: string,
+    includeBackfilledPreRollout?: boolean
   ): Promise<number | null>;
 
   /**
