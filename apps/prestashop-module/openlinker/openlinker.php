@@ -96,7 +96,7 @@ class OpenLinker extends CarrierModule
     {
         $this->name = 'openlinker';
         $this->tab = 'administration';
-        $this->version = '1.7.0';
+        $this->version = '1.8.0';
         $this->author = 'OpenLinker Team';
         $this->need_instance = 0;
         $this->ps_versions_compliancy = [
@@ -1374,6 +1374,10 @@ class OpenLinker extends CarrierModule
         Configuration::deleteByName('OPENLINKER_OUTBOX_RETENTION_DAYS');
         Configuration::deleteByName('OPENLINKER_OUTBOX_RETENTION_LAST_RUN');
         Configuration::deleteByName('OPENLINKER_OUTBOX_FAILURE_STREAK');
+        Configuration::deleteByName('OPENLINKER_CRON_LAST_RUN_AT');
+        Configuration::deleteByName('OPENLINKER_CRON_LAST_RUN_SOURCE');
+        Configuration::deleteByName('OPENLINKER_REPLAY_GUARD_DEGRADED_AT');
+        Configuration::deleteByName(self::DYNAMIC_CARRIER_CONFIG_KEY);
         // Retired in 1.3.0; still deleted so an install that predates the
         // upgrade does not leave the row behind.
         Configuration::deleteByName('DEDUPLICATION_WINDOW_MINUTES');

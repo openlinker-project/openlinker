@@ -113,6 +113,65 @@ class EndpointHardeningTest extends TestCase
         self::assertLessThan($pinAt, $registerAt);
     }
 
+    public function testTheOutputBufferOpensWhereTheGuardIsRegistered(): void
+    {
+        // A fatal between the registration and the buffer printed unbuffered:
+        // the guard reported zero discarded bytes and, once PHP had flushed,
+        // headers_sent() made it give up silently and leave an HTML 200.
+        $source = self::sourceOf('importorder');
+
+        $registerAt = strpos($source, 'register_shutdown_function');
+        $bufferAt = strpos($source, 'ob_start()');
+        $pinAt = strpos($source, '$this->pinLinePrices(');
+
+        self::assertIsInt($registerAt);
+        self::assertIsInt($bufferAt);
+        self::assertLessThan($pinAt, $bufferAt, 'the buffer opens after the pin loop');
+        self::assertLessThan($bufferAt, $registerAt);
+    }
+
+    /**
+     * @dataProvider bufferedEndpoints
+     */
+    public function testTheEndpointBuffersItsWritesAndGuardsASilentExit(string $endpoint): void
+    {
+        // Both call sites now require a JSON envelope, so a notice printed in
+        // front of one aborts the call. Both endpoints therefore buffer, and
+        // both turn a silent exit into a 502 rather than the shop's HTML 200.
+        $source = self::sourceOf($endpoint);
+
+        self::assertStringContainsString('ob_start()', $source);
+        self::assertStringContainsString('register_shutdown_function', $source);
+        self::assertStringContainsString('function guardAgainstSilentExit', $source);
+        self::assertStringContainsString('$this->responded = true;', $source);
+    }
+
+    /**
+     * @dataProvider bufferedEndpoints
+     */
+    public function testEveryResponderDiscardsTheBufferBeforeEchoing(string $endpoint): void
+    {
+        // Otherwise the buffered notice is flushed ahead of the envelope, which
+        // is the exact body shape the client rejects.
+        $source = self::sourceOf($endpoint);
+
+        foreach (['jsonOk', 'jsonError'] as $responder) {
+            $at = strpos($source, 'private function ' . $responder . '(');
+            self::assertIsInt($at, $responder . ' not found in ' . $endpoint);
+            $body = substr($source, $at);
+            $discardAt = strpos($body, '$this->discardStrayOutput();');
+            $echoAt = strpos($body, 'echo json_encode');
+            self::assertIsInt($discardAt, $responder . ' does not discard the buffer');
+            self::assertIsInt($echoAt);
+            self::assertLessThan($echoAt, $discardAt);
+        }
+    }
+
+    public static function bufferedEndpoints(): array
+    {
+        return [['importorder'], ['cartshipping']];
+    }
+
     public function testFailureEnvelopesAdvertiseTheModuleFeatures(): void
     {
         // The backend learns what this build accepts from `features`. Carrying

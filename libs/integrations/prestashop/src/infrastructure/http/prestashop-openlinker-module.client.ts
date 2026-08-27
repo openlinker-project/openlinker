@@ -24,7 +24,7 @@
  */
 import { createHmac } from 'crypto';
 
-import { Logger } from '@openlinker/shared/logging';
+import { Logger, formatBodyForLog } from '@openlinker/shared/logging';
 import type { FetchLike } from '@openlinker/shared/http';
 import type { WebhookSecretProviderPort } from '@openlinker/core/integrations';
 
@@ -53,8 +53,86 @@ const CARTSHIPPING_PATH = '/index.php?fc=module&module=openlinker&controller=car
 /** Order-import endpoint (validateOrder path, ADR-016 / #905). Same wire-contract shape as cartshipping. */
 const IMPORTORDER_PATH = '/index.php?fc=module&module=openlinker&controller=importorder';
 
+/**
+ * How much of a rejected body reaches the log.
+ *
+ * A PrestaShop error page is a full HTML document, so the snippet is capped
+ * here rather than left to `OL_LOG_BODY_MAX_BYTES`, which is uncapped by
+ * default. The head of the body is what identifies the fault - a PHP fatal, a
+ * maintenance page, a WAF block - and #2497 is about not having even that.
+ */
+const BODY_SNIPPET_CHARS = 400;
+
 /** Feature name the module advertises when it accepts pinned line prices (#2597). */
 const LINE_PRICES_FEATURE = 'line_prices';
+
+/** A read module response: the envelope if there was one, plus a capped body snippet. */
+interface ModuleResponseBody {
+  readonly envelope: Record<string, unknown> | null;
+  readonly snippet: string;
+}
+
+/**
+ * Parse the module's envelope out of a response body, tolerating leading noise.
+ *
+ * A strict parse of the whole body was a regression rather than a fix: PHP
+ * prints a notice or a UTF-8 BOM ahead of the JSON on plenty of real shops, and
+ * such a response used to be accepted with the write already done. Rejecting it
+ * aborted an order create that had in fact succeeded, and named a cause the
+ * operator cannot act on.
+ *
+ * So the BOM and surrounding whitespace go first, and a failed parse is retried
+ * from the first `{` to the last `}`. An HTML error page does not survive that -
+ * inline CSS braces are not JSON - so a shop page is still the failure #2601
+ * made it, and a page that somehow did parse would still carry no `ok: true`.
+ */
+function parseEnvelope(body: string): Record<string, unknown> | null {
+  const text = body.replace(/^\uFEFF/, '').trim();
+
+  const asObject = (raw: string): Record<string, unknown> | null => {
+    const data: unknown = JSON.parse(raw);
+    return typeof data === 'object' && data !== null && !Array.isArray(data)
+      ? (data as Record<string, unknown>)
+      : null;
+  };
+
+  try {
+    // A body that parses is answered on its own terms, whatever shape it has.
+    // The salvage below runs only when the body did not parse at all, so a
+    // well-formed JSON array stays the rejection it was: pulling an object out
+    // of the middle of one would accept a body the module never sent.
+    return asObject(text);
+  } catch {
+    // Not parsable as a whole, so something is printed in front of - or behind
+    // - the envelope. Take the outermost braces and try again.
+  }
+
+  const start = text.indexOf('{');
+  const end = text.lastIndexOf('}');
+  if (start === -1 || end <= start) {
+    return null;
+  }
+  try {
+    return asObject(text.slice(start, end + 1));
+  } catch {
+    return null;
+  }
+}
+
+/** Head of a response body, whitespace-collapsed and hard-capped, for one log line. */
+function bodySnippet(body: string): string {
+  const collapsed = body.replace(/\s+/g, ' ').trim();
+  if (collapsed === '') {
+    return '<empty body>';
+  }
+  const capped =
+    collapsed.length > BODY_SNIPPET_CHARS
+      ? `${collapsed.slice(0, BODY_SNIPPET_CHARS)}… [truncated, total length: ${collapsed.length}]`
+      : collapsed;
+  // Through the shared formatter too, so an operator who set a tighter
+  // OL_LOG_BODY_MAX_BYTES gets it honoured here as everywhere else.
+  return formatBodyForLog(capped);
+}
 
 /**
  * Per-connection record of what the shop's module last said it supports.
@@ -103,7 +181,7 @@ export class PrestashopOpenLinkerModuleClient implements IPrestashopOpenLinkerMo
     );
 
     const response = await this.signedPost(CARTSHIPPING_PATH, body, input.idCart);
-    const envelope = await this.readEnvelope(response);
+    const { envelope, snippet } = await this.readEnvelope(response);
     const failure = this.failureReason(response, envelope);
     if (failure === null) {
       return;
@@ -111,7 +189,7 @@ export class PrestashopOpenLinkerModuleClient implements IPrestashopOpenLinkerMo
 
     this.logger.warn(
       `OpenLinker module: cartshipping write failed connection=${this.connectionId} ` +
-        `idCart=${input.idCart} status=${response.status} reason=${failure}`
+        `idCart=${input.idCart} status=${response.status} reason=${failure} body=${snippet}`
     );
     throw new PrestashopOlModuleException(this.connectionId, input.idCart, response.status, failure);
   }
@@ -145,7 +223,7 @@ export class PrestashopOpenLinkerModuleClient implements IPrestashopOpenLinkerMo
 
     const sentLinePrices = Boolean(input.linePrices && input.linePrices.length > 0);
     const response = await this.signedPost(IMPORTORDER_PATH, body, input.idCart);
-    const envelope = await this.readEnvelope(response);
+    const { envelope, snippet } = await this.readEnvelope(response);
     // Learned from failures too, because the module advertises `features` on
     // every envelope. A downgraded shop is then corrected by the next request of
     // any kind, not only by the next created order.
@@ -154,7 +232,7 @@ export class PrestashopOpenLinkerModuleClient implements IPrestashopOpenLinkerMo
     if (failure !== null) {
       this.logger.warn(
         `OpenLinker module: importorder failed connection=${this.connectionId} ` +
-          `idCart=${input.idCart} status=${response.status} reason=${failure}`
+          `idCart=${input.idCart} status=${response.status} reason=${failure} body=${snippet}`
       );
       throw new PrestashopOlModuleException(
         this.connectionId,
@@ -182,6 +260,11 @@ export class PrestashopOpenLinkerModuleClient implements IPrestashopOpenLinkerMo
       );
     }
     if (!parsed) {
+      this.logger.warn(
+        `OpenLinker module: importorder answered a malformed envelope ` +
+          `connection=${this.connectionId} idCart=${input.idCart} ` +
+          `status=${response.status} body=${snippet}`
+      );
       throw new PrestashopOlModuleException(
         this.connectionId,
         input.idCart,
@@ -253,25 +336,19 @@ export class PrestashopOpenLinkerModuleClient implements IPrestashopOpenLinkerMo
    * a PrestaShop front controller answers when it dies early - is a parse
    * failure we can name, not a silent success (#2601).
    *
-   * @returns the decoded object, or null when the body is not one
+   * The raw body comes back alongside the envelope as a capped snippet, so a
+   * rejection can say what the shop actually returned (#2601 review, and the
+   * silence #2497 reports).
    */
-  private async readEnvelope(response: Response): Promise<Record<string, unknown> | null> {
+  private async readEnvelope(response: Response): Promise<ModuleResponseBody> {
     let text: string;
     try {
       text = await response.text();
     } catch {
-      return null;
+      return { envelope: null, snippet: '<body could not be read>' };
     }
 
-    try {
-      const data: unknown = JSON.parse(text);
-      if (typeof data === 'object' && data !== null && !Array.isArray(data)) {
-        return data as Record<string, unknown>;
-      }
-      return null;
-    } catch {
-      return null;
-    }
+    return { envelope: parseEnvelope(text), snippet: bodySnippet(text) };
   }
 
   /**

@@ -44,7 +44,25 @@ class ModuleSettings
         'OPENLINKER_CRON_LAST_RUN_SOURCE',
         'OPENLINKER_IMPORT_SEND_MAIL',
         'OPENLINKER_DYNAMIC_CARRIER_ID',
+        'OPENLINKER_REPLAY_GUARD_DEGRADED_AT',
     ];
+
+    /**
+     * Rows PrestaShop core treats as global.
+     *
+     * Core's own `Configuration::sqlRestriction` is
+     * `(id_shop_group IS NULL OR id_shop_group = 0) AND (id_shop IS NULL OR
+     * id_shop = 0)`, and `loadConfiguration` buckets a row as global on a
+     * falsy `id_shop`. So `id_shop = 0` is global, not shop 0. Legacy dumps,
+     * SQL imports and third-party writes all produce such rows, which is why
+     * core defends against the zero in two places.
+     *
+     * Getting this wrong is destructive rather than merely ineffective: a
+     * global row read as shop-scoped is UPDATEd by the promote and then
+     * removed by the delete, so the signing secret ends up in no row at all
+     * and webhooks stop authenticating with nothing left to recover.
+     */
+    const SHOP_SCOPED_PREDICATE = '(COALESCE(`id_shop`, 0) <> 0 OR COALESCE(`id_shop_group`, 0) <> 0)';
 
     /**
      * Pick the value to promote to global scope out of the per-shop rows.
@@ -53,7 +71,9 @@ class ModuleSettings
      * is a shop that was never configured sitting next to the shop that was.
      * Between two non-empty values the first row wins - they should not differ,
      * and guessing between two real secrets would be worse than being
-     * predictable about it.
+     * predictable about it. That case is logged by the caller, because a
+     * merchant whose second shop genuinely held a different secret is losing
+     * it and needs a trace of that.
      *
      * @param array $rows Rows of ['value' => string|null], in id order.
      * @return string|null null when there is nothing worth promoting.
@@ -94,7 +114,7 @@ class ModuleSettings
             $rows = $db->executeS(
                 'SELECT `value` FROM `' . bqSQL($table) . '`'
                 . ' WHERE `name` = "' . pSQL($key) . '"'
-                . ' AND (`id_shop` IS NOT NULL OR `id_shop_group` IS NOT NULL)'
+                . ' AND ' . self::SHOP_SCOPED_PREDICATE
                 . ' ORDER BY `id_configuration` ASC'
             );
 
@@ -103,6 +123,7 @@ class ModuleSettings
             }
 
             $value = self::pickValueToPromote($rows);
+            self::logConflictingValues($key, $rows);
             if ($value !== null) {
                 Configuration::updateGlobalValue($key, $value);
             }
@@ -110,7 +131,7 @@ class ModuleSettings
             $db->execute(
                 'DELETE FROM `' . bqSQL($table) . '`'
                 . ' WHERE `name` = "' . pSQL($key) . '"'
-                . ' AND (`id_shop` IS NOT NULL OR `id_shop_group` IS NOT NULL)'
+                . ' AND ' . self::SHOP_SCOPED_PREDICATE
             );
         }
 
@@ -118,5 +139,40 @@ class ModuleSettings
         // deleted, so anything reading a setting later in this request would
         // read a row that no longer exists.
         Configuration::loadConfiguration();
+    }
+
+    /**
+     * Record that shops disagreed on a setting, before the losing rows go.
+     *
+     * The winner is predictable, but a merchant whose second shop held a real
+     * and different secret has no other way to find out it was discarded: the
+     * rows are deleted and the docblock explaining the tie-break is not
+     * something an operator reads. Value contents are never logged - the keys
+     * include a signing secret - only how many distinct values there were.
+     *
+     * @param string $key
+     * @param array $rows
+     * @return void
+     */
+    private static function logConflictingValues($key, array $rows)
+    {
+        $distinct = [];
+        foreach ($rows as $row) {
+            $value = isset($row['value']) ? (string) $row['value'] : '';
+            if ($value !== '') {
+                $distinct[$value] = true;
+            }
+        }
+
+        if (count($distinct) < 2) {
+            return;
+        }
+
+        PrestaShopLogger::addLog(
+            'OpenLinker: ' . $key . ' had ' . count($distinct) . ' different per-shop values while'
+            . ' being promoted to global scope. The value from the lowest id_configuration was kept'
+            . ' and the others were deleted. Re-enter this setting if the wrong shop won.',
+            2
+        );
     }
 }

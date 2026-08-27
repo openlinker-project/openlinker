@@ -1026,7 +1026,7 @@ describe('PrestashopOrderSourceAdapter', () => {
       expect(incoming.shippingAddress?.taxId).toBe('PL 123-456-78-90');
     });
 
-    it('should read a blank vat_number as the shop asserting the buyer has no tax id (#2599)', async () => {
+    it('should read a blank vat_number as unknown, not as the buyer having no tax id (#2599 review)', async () => {
       mockHttpClient.getResource = jest.fn().mockImplementation((resource: string, id: string) => {
         if (resource === 'orders') return Promise.resolve(orderWithAddresses);
         if (resource === 'addresses') {
@@ -1046,7 +1046,10 @@ describe('PrestashopOrderSourceAdapter', () => {
 
       const incoming = await adapter.getOrder({ externalOrderId: '42' });
 
-      expect(incoming.billingAddress?.taxId).toBeNull();
+      // A blank optional field is the shop never recording one. Reading it as
+      // asserted-none would let a `buyerHasTaxId === false` routing rule pick
+      // the fiscal document for nearly every B2C order.
+      expect(incoming.billingAddress?.taxId).toBeUndefined();
     });
 
     it('should leave the tax id unknown when the address resource carries no vat_number at all (#2599)', async () => {

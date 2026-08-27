@@ -503,10 +503,13 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort {
    * `vat_number` is PrestaShop's own buyer tax field on `ps_address` (#2599).
    * It is carried verbatim - no national format is applied, because the
    * invoicing domain is country-agnostic and the provider adapter owns the
-   * regime. The three states matter: the resource not carrying the key at all
-   * means the shop asserted nothing (an older PrestaShop, or a webservice role
-   * without the field), while a returned blank means the buyer supplied none.
-   * `readSourceBuyerTaxId` is what keeps every source agreeing on that.
+   * regime. The three states matter, and BOTH empty shapes read as unknown:
+   * the resource not carrying the key at all (an older PrestaShop, or a
+   * webservice role without the field) and a returned blank say the same
+   * thing, because `vat_number` is optional and empty on essentially every
+   * consumer order. Reading a blank as "the buyer has no tax id" would make a
+   * routing rule testing that fire on almost every B2C order.
+   * `readSourceBuyerTaxId` owns that decision so every source agrees.
    *
    * A failed fetch yields no address at all, which reads downstream as
    * unknown - correct, since a transport error says nothing about the buyer.

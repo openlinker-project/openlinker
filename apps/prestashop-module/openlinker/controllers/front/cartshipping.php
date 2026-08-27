@@ -25,6 +25,8 @@
  *                      | 'misconfigured'}
  *   405 {ok: false, error: 'method-not-allowed'}
  *   500 {ok: false, error: 'persist-failed'}
+ *   502 {ok: false, error: 'cart-shipping-aborted'} - the shop ended the
+ *       request without a response (a PHP fatal during the write)
  *
  * Idempotent: the same payload sent twice rewrites the same row (the only
  * change between calls is updated_at).
@@ -45,6 +47,12 @@ class OpenLinkerCartShippingModuleFrontController extends ModuleFrontController
 {
     /** @var bool Skip the PS theme/Smarty pipeline — JSON only. */
     public $ajax = true;
+
+    /** @var bool True once a JSON response was emitted. */
+    private $responded = false;
+
+    /** @var bool True while the sidecar-write output buffer is open. */
+    private $bufferOpen = false;
 
     public function postProcess()
     {
@@ -106,6 +114,17 @@ class OpenLinkerCartShippingModuleFrontController extends ModuleFrontController
         }
 
         // 5. Upsert the sidecar row. Repository handles numeric casts + pSQL.
+        //
+        // Buffered, and guarded, for the same reason `importorder` is (#2601
+        // review): a PHP notice or a fatal during the write would otherwise
+        // print in front of the JSON envelope, and the backend - which now
+        // requires the envelope - would abort the order create over a sidecar
+        // row that had in fact been written. A silent exit leaves an explicit
+        // 502 naming the cause instead of the shop's HTML error page at 200.
+        register_shutdown_function([$this, 'guardAgainstSilentExit'], $idCart);
+        ob_start();
+        $this->bufferOpen = true;
+
         $repo = new CartShippingRepository();
         $ok = $repo->upsert($idCart, (float) $amountTaxExcl, (float) $amountTaxIncl, $source);
         if (!$ok) {
@@ -118,6 +137,58 @@ class OpenLinkerCartShippingModuleFrontController extends ModuleFrontController
         }
 
         $this->jsonOk(['ok' => true, 'id_cart' => $idCart]);
+    }
+
+    /**
+     * Drop whatever the output buffer holds, if one is open.
+     *
+     * @return void
+     */
+    private function discardStrayOutput()
+    {
+        if ($this->bufferOpen) {
+            $this->bufferOpen = false;
+            ob_end_clean();
+        }
+    }
+
+    /**
+     * Shutdown guard for the sidecar write.
+     *
+     * Runs on every request end once registered. No response emitted means the
+     * request died inside PrestaShop, so an explicit 502 replaces whatever was
+     * buffered - a failure must never leave here as an HTML 200. Public because
+     * PHP calls it as a shutdown callback.
+     *
+     * @param int $idCart
+     * @return void
+     */
+    public function guardAgainstSilentExit($idCart)
+    {
+        if ($this->responded) {
+            return;
+        }
+
+        $strayLength = $this->bufferOpen ? (int) ob_get_length() : 0;
+        $this->discardStrayOutput();
+
+        if (headers_sent()) {
+            return;
+        }
+
+        PrestaShopLogger::addLog(
+            'OpenLinker: cart-shipping write ended without a response for id_cart=' . $idCart
+                . ' (' . $strayLength . ' bytes of unexpected output discarded)',
+            3, null, 'Cart', $idCart
+        );
+
+        http_response_code(502);
+        header('Content-Type: application/json');
+        echo json_encode([
+            'ok' => false,
+            'error' => 'cart-shipping-aborted',
+            'detail' => 'the shop ended the request without a response',
+        ]);
     }
 
     /**
@@ -153,6 +224,11 @@ class OpenLinkerCartShippingModuleFrontController extends ModuleFrontController
      */
     private function jsonOk(array $body)
     {
+        // Discarded before anything is echoed: whatever the buffer holds is by
+        // definition output we did not mean to send, and flushing it would put
+        // that in front of the envelope.
+        $this->discardStrayOutput();
+        $this->responded = true;
         http_response_code(200);
         header('Content-Type: application/json');
         echo json_encode($body);
@@ -170,6 +246,8 @@ class OpenLinkerCartShippingModuleFrontController extends ModuleFrontController
      */
     private function jsonError($status, $reason)
     {
+        $this->discardStrayOutput();
+        $this->responded = true;
         http_response_code($status);
         header('Content-Type: application/json');
         echo json_encode(['ok' => false, 'error' => $reason]);
