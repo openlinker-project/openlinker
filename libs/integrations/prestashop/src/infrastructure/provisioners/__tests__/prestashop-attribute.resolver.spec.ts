@@ -58,12 +58,18 @@ describe('PrestashopAttributeResolver', () => {
   it('should request only the fields it needs (display field-selection)', async () => {
     await resolver.getOptionValueMap('conn-1', client, localize);
 
-    expect(client.listResources).toHaveBeenCalledWith('product_options', {
-      display: '[id,name]',
-    });
-    expect(client.listResources).toHaveBeenCalledWith('product_option_values', {
-      display: '[id,name,id_attribute_group]',
-    });
+    expect(client.listResources).toHaveBeenCalledWith(
+      'product_options',
+      { display: '[id,name]' },
+      100,
+      0
+    );
+    expect(client.listResources).toHaveBeenCalledWith(
+      'product_option_values',
+      { display: '[id,name,id_attribute_group]' },
+      100,
+      0
+    );
   });
 
   it('should omit option values whose attribute group cannot be resolved', async () => {

@@ -41,6 +41,7 @@ import type {
   PrestashopTaxRateUnknown,
 } from './prestashop-tax-rate.types';
 import { TAX_RATE_EVIDENCE_DETAIL_MAX } from './prestashop-tax-rate.types';
+import { readAllPrestashopPages } from '../http/prestashop-paged-read';
 
 /**
  * The only field this resolver reads off a product. Exported so a caller that
@@ -144,6 +145,7 @@ export class PrestashopTaxRateResolver {
       externalProductId,
       countryId,
       webserviceClient,
+      connectionId,
       preloadedProduct
     );
     // Only a resolved rate enters the cache. An unknown is a condition an
@@ -195,6 +197,7 @@ export class PrestashopTaxRateResolver {
     externalProductId: string | number,
     countryId: number | undefined,
     webserviceClient: IPrestashopWebserviceClient,
+    connectionId: string,
     preloadedProduct?: PrestashopProductTaxRow
   ): Promise<PrestashopTaxRateResolution> {
     let product: PrestashopProductTaxRow | undefined = preloadedProduct;
@@ -249,9 +252,24 @@ export class PrestashopTaxRateResolver {
 
     let rules: PrestashopTaxRuleRow[];
     try {
-      rules = await webserviceClient.listResources<PrestashopTaxRuleRow>('tax_rules', {
-        custom: { id_tax_rules_group: groupId },
-      });
+      // Paged: a tax-rule group can carry a rule per country and state, which is
+      // past one page on a shop that sells widely. A cut page hides the buyer's
+      // own country's rule, and `selectRule` then reports no usable rule at all
+      // for a shop that has one (#2608).
+      rules = await readAllPrestashopPages<PrestashopTaxRuleRow>(
+        (limit, offset) =>
+          webserviceClient.listResources<PrestashopTaxRuleRow>(
+            'tax_rules',
+            { custom: { id_tax_rules_group: groupId } },
+            limit,
+            offset
+          ),
+        {
+          resource: 'tax_rules',
+          connectionId,
+          detail: `id_tax_rules_group=${String(groupId)}`,
+        }
+      );
     } catch (error) {
       return this.transportUnknown(
         `tax_rules?id_tax_rules_group=${groupId}`,

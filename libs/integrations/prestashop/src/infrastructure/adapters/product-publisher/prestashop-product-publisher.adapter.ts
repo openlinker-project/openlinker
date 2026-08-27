@@ -33,7 +33,7 @@ import {
 
 import { PRESTASHOP_DESCRIPTION_FORMAT } from './prestashop-description-format';
 import { PrestashopApiException } from '@openlinker/integrations-prestashop';
-import { PrestashopProvisioningException } from '../../../domain/exceptions/prestashop-provisioning.exception';
+import { findAcrossPrestashopPages } from '../../http/prestashop-paged-read';
 
 import type { IPrestashopWebserviceClient } from '../../http/prestashop-webservice.client.interface';
 import type {
@@ -52,15 +52,6 @@ import type {
 } from './prestashop-product-publish.types';
 
 const DEFAULT_ADAPTER_KEY = 'prestashop.webservice.v1';
-
-/** Rows per page while scanning a level for a multilang name - the PS WS default. */
-const LANG_SCAN_PAGE_SIZE = 100;
-
-/**
- * Page budget for one level scan. Exhausting it throws, because reporting a miss
- * would make a resolve-or-create caller mint a duplicate - see findByLangText.
- */
-const LANG_SCAN_MAX_PAGES = 50;
 
 function langField(value: string, languageId = '1'): PrestashopLangField {
   return { language: [{ '@_id': languageId, '#text': value }] };
@@ -484,8 +475,10 @@ export class PrestashopProductPublisherAdapter
    * create caller reads that as "absent" and creates a duplicate. And a single
    * page can legitimately not hold the whole level, which is the same silent miss
    * one step further out, so the scan pages until the shop returns a short page.
-   * Exhausting the page budget throws: a duplicate category or feature is worse
-   * than a failed publish, and only a throw makes the operator aware (#2616).
+   * Exhausting the page budget throws `PrestashopTruncatedReadException`: a
+   * duplicate category or feature is worse than a failed publish, and only a
+   * throw makes the operator aware (#2616). The paging itself is the shared
+   * primitive every PrestaShop list read now uses (#2608).
    *
    * The paging carries no explicit sort, because `PrestashopQueryFilters` exposes
    * none. PrestaShop answers an unsorted collection read in primary-key order, so
@@ -509,28 +502,14 @@ export class PrestashopProductPublisherAdapter
     expected: string,
     readField: (row: T) => string | PrestashopLangField
   ): Promise<T | null> {
-    for (let page = 0; page < LANG_SCAN_MAX_PAGES; page += 1) {
-      const rows = await this.client.listResources<T>(
+    return findAcrossPrestashopPages<T>(
+      (limit, offset) => this.client.listResources<T>(resource, { custom }, limit, offset),
+      (row) => this.extractLangText(readField(row), languageId) === expected,
+      {
         resource,
-        { custom },
-        LANG_SCAN_PAGE_SIZE,
-        page * LANG_SCAN_PAGE_SIZE
-      );
-
-      const match = rows.find(
-        (row) => this.extractLangText(readField(row), languageId) === expected
-      );
-      if (match) {
-        return match;
+        connectionId: this.connection.id,
+        detail: `searching for "${expected}"`,
       }
-
-      if (rows.length < LANG_SCAN_PAGE_SIZE) {
-        return null;
-      }
-    }
-
-    throw new PrestashopProvisioningException(
-      `PrestaShop ${resource} scan passed ${LANG_SCAN_MAX_PAGES} pages without resolving "${expected}" on connection ${this.connection.id}. Refusing rather than creating a duplicate.`
     );
   }
 

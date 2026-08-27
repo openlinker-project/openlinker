@@ -18,6 +18,7 @@ import { PrestashopCategoryPathResolver } from '../../provisioners/prestashop-ca
 import {
   PrestashopResourceNotFoundException,
   PrestashopNotSupportedException,
+  PrestashopTruncatedReadException,
 } from '@openlinker/integrations-prestashop';
 import { MasterProductNotFoundError } from '@openlinker/core/products';
 import { PrestashopApiException } from '@openlinker/integrations-prestashop';
@@ -448,7 +449,9 @@ describe('PrestashopProductMasterAdapter', () => {
           custom: expect.objectContaining({
             id_product: externalProductId,
           }),
-        })
+        }),
+        100,
+        0
       );
 
       expect(result).toHaveLength(2);
@@ -464,6 +467,69 @@ describe('PrestashopProductMasterAdapter', () => {
           expect.objectContaining({ entityType: 'ProductVariant', externalId: '101' }),
           expect.objectContaining({ entityType: 'ProductVariant', externalId: '102' }),
         ])
+      );
+    });
+
+    it('should report every combination of a product whose combinations span several pages (#2608)', async () => {
+      const productId = 'internal-product-123';
+      const externalProductId = '42';
+      const TOTAL = 250;
+
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
+      mockIdentifierMapping.getExternalIds = jest
+        .fn()
+        .mockResolvedValue([
+          { connectionId: connection.id, externalId: externalProductId, entityType: 'Product' },
+        ]);
+      mockHttpClient.getResource = jest.fn().mockResolvedValue(samplePrestashopProduct);
+
+      const allCombinations: PrestashopCombination[] = Array.from({ length: TOTAL }, (_, i) => ({
+        id: String(i + 1),
+        id_product: externalProductId,
+        reference: `VAR-${i + 1}`,
+        price: '1.00',
+        quantity: '1',
+      }));
+      mockHttpClient.listResources = jest.fn(
+        (_resource: string, _filters: unknown, limit?: number, offset?: number) =>
+          Promise.resolve(allCombinations.slice(offset ?? 0, (offset ?? 0) + (limit ?? 100)))
+      ) as unknown as jest.Mocked<IPrestashopWebserviceClient>['listResources'];
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
+      mockIdentifierMapping.batchGetOrCreateInternalIds = jest
+        .fn()
+        .mockResolvedValue(
+          new Map(allCombinations.map((c) => [`${c.id}:${connection.id}`, `internal-${c.id}`]))
+        );
+
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
+      const result = await adapter.getProductVariants(productId);
+
+      expect(result).toHaveLength(TOTAL);
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access -- test mock: narrowing dynamic spy / fixture / response shape
+      expect(mockHttpClient.listResources).toHaveBeenCalledTimes(3);
+    });
+
+    it('should refuse rather than report a truncated combination list when the page budget runs out (#2608)', async () => {
+      const productId = 'internal-product-123';
+      const externalProductId = '42';
+
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- test mock: narrowing dynamic spy / fixture / response shape
+      mockIdentifierMapping.getExternalIds = jest
+        .fn()
+        .mockResolvedValue([
+          { connectionId: connection.id, externalId: externalProductId, entityType: 'Product' },
+        ]);
+      mockHttpClient.getResource = jest.fn().mockResolvedValue(samplePrestashopProduct);
+      const fullPage: PrestashopCombination[] = Array.from({ length: 100 }, (_, i) => ({
+        id: String(i + 1),
+        id_product: externalProductId,
+        price: '1.00',
+        quantity: '1',
+      }));
+      mockHttpClient.listResources = jest.fn().mockResolvedValue(fullPage);
+
+      await expect(adapter.getProductVariants(productId)).rejects.toBeInstanceOf(
+        PrestashopTruncatedReadException
       );
     });
 

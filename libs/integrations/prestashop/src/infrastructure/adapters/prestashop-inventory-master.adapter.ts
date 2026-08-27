@@ -35,6 +35,7 @@ import {
   resolvePackStockMode,
   type PrestashopPackComponent,
 } from '../../domain/types/prestashop-pack.types';
+import { readAllPrestashopPages } from '../http/prestashop-paged-read';
 import { Logger } from '@openlinker/shared/logging';
 
 /**
@@ -248,9 +249,23 @@ export class PrestashopInventoryMasterAdapter implements InventoryMasterPort {
   ): Promise<Map<string, number>> {
     const componentProductIds = [...new Set(components.map((component) => component.productId))];
 
-    const rows = await this.httpClient.listResources<PrestashopStockAvailable>('stock_availables', {
-      custom: { id_product: componentProductIds.join('|') },
-    });
+    // Paged: the OR filter spans every component and every combination of each,
+    // so one page is easily short. A component whose row was cut read as absent,
+    // the pack published 0, and a live listing stopped selling (#2598, #2608).
+    const rows = await readAllPrestashopPages<PrestashopStockAvailable>(
+      (limit, offset) =>
+        this.httpClient.listResources<PrestashopStockAvailable>(
+          'stock_availables',
+          { custom: { id_product: componentProductIds.join('|') } },
+          limit,
+          offset
+        ),
+      {
+        resource: 'stock_availables',
+        connectionId: this.connection.id,
+        detail: `${componentProductIds.length} pack components`,
+      }
+    );
 
     const availability = new Map<string, number>();
     for (const row of rows) {
@@ -278,9 +293,13 @@ export class PrestashopInventoryMasterAdapter implements InventoryMasterPort {
     }
 
     try {
+      // One page is the whole answer here by construction: `name` is unique in
+      // `configurations` and only the first row is read.
       const rows = await this.httpClient.listResources<{ value?: string | number }>(
         'configurations',
-        { custom: { name: 'PS_PACK_STOCK_TYPE' } }
+        { custom: { name: 'PS_PACK_STOCK_TYPE' } },
+        1,
+        0
       );
       const raw = rows.length > 0 ? rows[0].value : undefined;
       const parsed = typeof raw === 'number' ? raw : Number.parseInt(String(raw ?? ''), 10);
@@ -372,9 +391,21 @@ export class PrestashopInventoryMasterAdapter implements InventoryMasterPort {
     filters: PrestashopQueryFilters
   ): Promise<PrestashopStockAvailable[]> {
     try {
-      return await this.httpClient.listResources<PrestashopStockAvailable>(
-        'stock_availables',
-        filters
+      // Paged: a product carries one stock row per combination, so a product with
+      // more than a page of variants reported stock for only some of them (#2608).
+      return await readAllPrestashopPages<PrestashopStockAvailable>(
+        (limit, offset) =>
+          this.httpClient.listResources<PrestashopStockAvailable>(
+            'stock_availables',
+            filters,
+            limit,
+            offset
+          ),
+        {
+          resource: 'stock_availables',
+          connectionId: this.connection.id,
+          detail: `product ${productId}`,
+        }
       );
     } catch (error) {
       if (error instanceof PrestashopResourceNotFoundException) {

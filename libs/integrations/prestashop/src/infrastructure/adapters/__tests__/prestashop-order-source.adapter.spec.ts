@@ -15,6 +15,7 @@ import {
   PrestashopApiException,
   PrestashopCurrencyUnknownException,
   PrestashopResourceNotFoundException,
+  PrestashopTruncatedReadException,
 } from '@openlinker/integrations-prestashop';
 import type {
   PrestashopOrder,
@@ -590,9 +591,66 @@ describe('PrestashopOrderSourceAdapter', () => {
 
       await adapter.getOrder({ externalOrderId: '42' });
 
-      expect(mockHttpClient.listResources).toHaveBeenCalledWith('order_details', {
-        custom: { id_order: '42' },
-      });
+      expect(mockHttpClient.listResources).toHaveBeenCalledWith(
+        'order_details',
+        { custom: { id_order: '42' } },
+        100,
+        0
+      );
+    });
+
+    it('should ingest every line of an order whose lines span several pages (#2608)', async () => {
+      const prestashopOrder: PrestashopOrder = {
+        id: '42',
+        reference: 'ORDER-042',
+        id_customer: '7',
+        current_state: '2',
+        total_paid: '99.99',
+        date_add: '2024-01-01 10:00:00',
+        date_upd: '2024-01-01 12:00:00',
+      };
+      const TOTAL_LINES = 250;
+      const allRows: PrestashopOrderRow[] = Array.from({ length: TOTAL_LINES }, (_, i) => ({
+        id: String(i + 1),
+        product_id: String(i + 1),
+        product_quantity: '1',
+        product_price: '1.00',
+        product_reference: `SKU-${i + 1}`,
+      }));
+      mockHttpClient.getResource = jest.fn().mockResolvedValue(prestashopOrder);
+      mockHttpClient.listResources = jest.fn(
+        (_resource: string, _filters: unknown, limit?: number, offset?: number) =>
+          Promise.resolve(allRows.slice(offset ?? 0, (offset ?? 0) + (limit ?? 100)))
+      ) as unknown as jest.Mocked<IPrestashopWebserviceClient>['listResources'];
+
+      const order = await adapter.getOrder({ externalOrderId: '42' });
+
+      expect(order.items).toHaveLength(TOTAL_LINES);
+      expect(mockHttpClient.listResources).toHaveBeenCalledTimes(3);
+    });
+
+    it('should refuse the order rather than mirror it with lines missing when the page budget runs out (#2608)', async () => {
+      const prestashopOrder: PrestashopOrder = {
+        id: '42',
+        reference: 'ORDER-042',
+        id_customer: '7',
+        current_state: '2',
+        total_paid: '99.99',
+        date_add: '2024-01-01 10:00:00',
+        date_upd: '2024-01-01 12:00:00',
+      };
+      const fullPage: PrestashopOrderRow[] = Array.from({ length: 100 }, (_, i) => ({
+        id: String(i + 1),
+        product_id: String(i + 1),
+        product_quantity: '1',
+        product_price: '1.00',
+      }));
+      mockHttpClient.getResource = jest.fn().mockResolvedValue(prestashopOrder);
+      mockHttpClient.listResources = jest.fn().mockResolvedValue(fullPage);
+
+      await expect(adapter.getOrder({ externalOrderId: '42' })).rejects.toBeInstanceOf(
+        PrestashopTruncatedReadException
+      );
     });
   });
 
